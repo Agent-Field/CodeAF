@@ -432,6 +432,23 @@ carries `waits_on` and `waiting_on`.
 Stopping, ending or withdrawing an allowance starts nothing further and stops nothing
 already running.
 
+A Factory job create (`POST /v1/jobs`, or `POST /v1/issues` when it opens the
+GitHub issue first) sent with an `Idempotency-Key` header is remembered for 24
+hours per caller, route and key, and a resend with the same key never makes a
+second job or issue. An answer given before the create wrote anything carries
+the response header `X-Codeaf-Phase: pre-mutation` and is not kept, so the same
+key runs the create again. Such answers are refusals of the request (a bad field,
+a repository the caller cannot see or that is off, a missing pipeline), sign-in and
+read failures, GitHub's own 4xx refusal of the issue, and GitHub not answering
+before the issue request was sent. An answer given once the issue request may
+have reached GitHub or the job exists is replayed unchanged, including a 5xx or
+408. Examples are a lost or 5xx GitHub answer, or a job made whose start failed.
+After an `uncertain` keyed create, resend the same key: a create that wrote nothing
+runs again, and one that did returns its first answer. If that is the same failure
+again, read the queue, since the job or issue may exist. A create without a key is
+never replayed. Worker and runner routes keep their own rule: a 5xx, 408 or 429 is
+never kept, and a report refused as invalid is checked again.
+
 `factory.job_create` keeps `title` trimmed and separate from literal `text`,
 including details whitespace in the job ask and body; empty details stay empty.
 Neither field lifts

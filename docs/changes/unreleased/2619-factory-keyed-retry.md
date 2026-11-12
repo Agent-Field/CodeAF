@@ -1,18 +1,28 @@
 ---
 kind: fixed
-title: A keyed Factory request runs again after a server error; a rate-limited poll says so
+title: A keyed Factory create runs again when it wrote nothing; a rate-limited poll says so
 pr: 2619
 surface: [engine, factory]
 invalidates:
-  - "Was true: a keyed Factory request replayed its first answer for 24 hours even when that answer was a server error. Is true now: 5xx, 408 and 429 answers are not replayed, so a retry with the same key runs again."
+  - "Was true: a keyed Factory job create replayed its first answer for 24 hours, even a server error or refusal given before anything was written. Is true now: such an answer carries X-Codeaf-Phase pre-mutation and is not kept, so the same key runs the create again."
   - "Was true: a source poll that GitHub rate limited read not reachable. Is true now: a 429, or a 403 that says when to retry, reads rate limited."
 ---
 
-Under an `Idempotency-Key`, 5xx, 408 and 429 answers are no longer kept or
-replayed, including rows stored by an older build; successes and other
-refusals still replay for 24 hours. A source poll's trouble words say
-"rate limited" for any GitHub 429 and for a 403 that carries a retry time; a
-403 without one still reads "not reachable".
+A job create (`POST /v1/jobs`, `POST /v1/issues`) sent with an
+`Idempotency-Key` now keeps only the answers it gave after its first write.
+An answer given before then, whether a refusal, a sign-in or read failure,
+GitHub refusing the issue or GitHub not answering before the issue request was
+sent, carries `X-Codeaf-Phase: pre-mutation` and is not kept. A resend with the
+same key then runs the create again and succeeds once the cause has passed.
+An answer given once the issue request may have reached GitHub, or once the job
+exists, is still replayed for 24 hours, a 5xx or 408 included, so a resend
+never makes a second job or GitHub issue. Unkeyed creates carry the same marker.
+Worker and runner routes keep their rule: a 5xx, 408 or 429 is never kept.
 
-Carried from #2439 and #2460, which merged only into the closed integration
-branch of #2306.
+A source poll's trouble words say "rate limited" for any GitHub 429 and for a
+403 that carries a retry time; a 403 without one still reads "not reachable".
+
+The poll words are carried from #2460. The keyed rule replaces #2439's, which
+stopped keeping every 5xx, 408 and 429, so a create that failed after making
+its job or issue ran again and made a second one. Both merged only into the
+closed integration branch of #2306.
