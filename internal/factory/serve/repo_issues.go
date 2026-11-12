@@ -149,18 +149,30 @@ func (h *Handler) repoIssuesStatus(w http.ResponseWriter, r *http.Request, respo
 	return false
 }
 
+// repoIssuesRetryAt is when GitHub says a spent limit ends. Retry-After names
+// it for a secondary limit. X-RateLimit-Reset comes on every response but ends
+// the primary window, so it counts only when that window is spent or GitHub
+// does not say what remains. When both count, the later one wins: a request
+// before either time would be refused again.
 func (h *Handler) repoIssuesRetryAt(header http.Header) time.Time {
-	if reset, err := strconv.ParseInt(header.Get("X-RateLimit-Reset"), 10, 64); err == nil && reset > 0 {
-		return time.Unix(reset, 0).UTC()
-	}
+	var at time.Time
 	if seconds, err := strconv.ParseInt(header.Get("Retry-After"), 10, 32); err == nil && seconds >= 0 {
-		return h.clock().Add(time.Duration(seconds) * time.Second).UTC()
+		at = h.clock().Add(time.Duration(seconds) * time.Second).UTC()
+	} else if retry, err := http.ParseTime(header.Get("Retry-After")); err == nil {
+		at = retry.UTC()
 	}
-	if retry, err := http.ParseTime(header.Get("Retry-After")); err == nil {
-		return retry.UTC()
+	if remaining, err := strconv.ParseInt(header.Get("X-RateLimit-Remaining"), 10, 64); err != nil || remaining <= 0 {
+		if reset, err := strconv.ParseInt(header.Get("X-RateLimit-Reset"), 10, 64); err == nil && reset > 0 {
+			if primary := time.Unix(reset, 0).UTC(); primary.After(at) {
+				at = primary
+			}
+		}
 	}
-	// A spent limit without either clock hint still needs a usable retry time.
-	return h.clock().Add(time.Minute).UTC()
+	if at.IsZero() {
+		// A spent limit without either clock hint still needs a usable retry time.
+		return h.clock().Add(time.Minute).UTC()
+	}
+	return at
 }
 
 func repoIssuesOf(repo string, rows []githubRepoIssue) api.RepoIssues {

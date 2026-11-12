@@ -918,8 +918,10 @@ pull requests. An empty result has `issues: []`, `rows: 0` and no `newest`.
 Invalid params are `bad_params` before any request. A repository the caller
 cannot see, or GitHub's repository 404, is `not_found`. A spent GitHub rate
 limit on the visibility check or issues request is `busy` with
-`detail.retry_at` in RFC 3339, using GitHub's reset time when supplied,
-otherwise its `retry-after` hint.
+`detail.retry_at` in RFC 3339: GitHub's `Retry-After` hint, or its
+`X-RateLimit-Reset` when `X-RateLimit-Remaining` is `0` or absent, the later
+of the two when both apply. A secondary limit, which leaves requests
+remaining, therefore never waits for the primary window's reset.
 Every GitHub HTTP 429 is a rate limit, even without headers; a 403 is a
 rate limit only with `X-RateLimit-Remaining: 0` or `Retry-After`.
 A rate-limited visibility check is not cached as a repository denial;

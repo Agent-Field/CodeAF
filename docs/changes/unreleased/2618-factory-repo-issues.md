@@ -31,8 +31,11 @@ person out of a Factory that still accepts them.
 A spent GitHub rate limit, on the issues request or on the repository
 visibility check behind any repository route, is any 429, or a 403 with
 `X-RateLimit-Remaining: 0` or a `Retry-After`. It answers HTTP 429 with
-`retry_at` (GitHub's reset or `Retry-After` when given, otherwise one minute
-after the Factory's clock) and is never cached as a denial. Job lookups behind
+`retry_at`: GitHub's `Retry-After`, or its reset when `X-RateLimit-Remaining`
+is `0` or absent (the later when both apply), otherwise one minute after the
+Factory's clock. A
+secondary limit with requests remaining retries after its own hint, not the
+primary window's reset up to an hour away. It is never cached as a denial. Job lookups behind
 visibility still answer a hidden job the same as a missing one.
 
 This app wire read adds no chat or resident surface, so neither shipped manual

@@ -122,3 +122,39 @@ func TestRepoIssuesRateLimitsIncludeBare429(t *testing.T) {
 		})
 	}
 }
+
+// A secondary limit leaves primary requests remaining, and GitHub sends the
+// primary window's X-RateLimit-Reset on every response. That reset is not when
+// this limit ends: Retry-After is, or one minute without it. With nothing
+// remaining the reset still holds, even when a Retry-After is sooner. The
+// same rule answers the issues request and the visibility check before it.
+func TestSecondaryRateLimitRetriesAfterItsHintNotThePrimaryReset(t *testing.T) {
+	now := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	reset := strconv.FormatInt(now.Add(55*time.Minute).Unix(), 10)
+	for _, tc := range []struct {
+		name   string
+		status int
+		header http.Header
+		want   time.Time
+	}{
+		{"403 retry seconds", 403, http.Header{"X-Ratelimit-Remaining": {"4200"}, "X-Ratelimit-Reset": {reset}, "Retry-After": {"60"}}, now.Add(time.Minute)},
+		{"429 retry seconds", 429, http.Header{"X-Ratelimit-Remaining": {"4200"}, "X-Ratelimit-Reset": {reset}, "Retry-After": {"60"}}, now.Add(time.Minute)},
+		{"403 retry date", 403, http.Header{"X-Ratelimit-Remaining": {"1"}, "X-Ratelimit-Reset": {reset}, "Retry-After": {now.Add(2 * time.Minute).Format(http.TimeFormat)}}, now.Add(2 * time.Minute)},
+		{"429 no hint", 429, http.Header{"X-Ratelimit-Remaining": {"4200"}, "X-Ratelimit-Reset": {reset}}, now.Add(time.Minute)},
+		{"primary spent, sooner retry", 429, http.Header{"X-Ratelimit-Remaining": {"0"}, "X-Ratelimit-Reset": {reset}, "Retry-After": {"30"}}, now.Add(55 * time.Minute)},
+	} {
+		for _, step := range []string{"issues", "visibility"} {
+			t.Run(tc.name+"/"+step, func(t *testing.T) {
+				h, token, clock := visibilityLimitFloor(t)
+				*clock = now
+				if step == "issues" {
+					// Cache the visibility grant first, so only the issues request is limited.
+					repoIssuesGitHub(h, func(*http.Request) (int, http.Header, string) { return 200, http.Header{}, `[]` })
+					readRepoIssuesAnswer(t, h, token, "")
+				}
+				repoIssuesGitHub(h, func(*http.Request) (int, http.Header, string) { return tc.status, tc.header, `{}` })
+				checkVisibilityRetry(t, h, identityRequest(h, "GET", "/v1/repos/acme/api/issues", "", token, nil), tc.want)
+			})
+		}
+	}
+}
