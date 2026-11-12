@@ -380,8 +380,18 @@ func reportQuestion(it *factory.Item, question *factory.Asked, kind string, now 
 	if strings.TrimSpace(q.Question) == "" {
 		return fmt.Errorf("question requires text")
 	}
+	// THE SAME WAIT SENT AGAIN KEEPS ITS CLOCK. A worker parked at its budget
+	// sends the cap question again, with no clock of its own, on every later
+	// report that carries thread messages, usage or acknowledgements, so the
+	// factory still reads it as parked. Stamped with each report's arrival,
+	// the one wait moved: needs_you.since moved with it, and every report
+	// recorded another needs-you outcome that read as a new wait.
+	again := sameWait(*it, q, kind)
 	if q.At.IsZero() {
 		q.At = now
+		if again {
+			q.At = it.Asking.At
+		}
 	}
 	q.With = factory.AskedYou
 	if q.Stage != "" && kind != factory.QKindSpendStopped {
@@ -398,8 +408,32 @@ func reportQuestion(it *factory.Item, question *factory.Asked, kind string, now 
 	if it.QKind == "" {
 		it.QKind = qkindStep
 	}
-	loopSay(it, now, "ask", q.Question)
+	if !again {
+		loopSay(it, now, "ask", q.Question)
+	}
 	return nil
+}
+
+// sameWait says q is the question the job already waits on, sent again: the
+// person's ask still stands (an answer takes it down), of the same kind, at
+// the same step, in the same words. A budget wait is the same wait in new
+// words too: its sentence names the cap, and the factory rewords it when a
+// raise falls short and keeps the ask's clock (the lease's holdAtJobBudget).
+func sameWait(it factory.Item, q factory.Asked, kind string) bool {
+	a := it.Asking
+	if a == nil || a.With != factory.AskedYou || a.At.IsZero() || it.State != factory.StateNeedsYou {
+		return false
+	}
+	if kind == "" {
+		kind = qkindStep
+	}
+	if it.QKind != kind {
+		return false
+	}
+	if kind != factory.QKindSpendStopped && a.Stage != q.Stage {
+		return false
+	}
+	return kind == "cap" || a.Question == q.Question
 }
 
 func reportPR(it *factory.Item, receipt *factory.PullRequest) error {
