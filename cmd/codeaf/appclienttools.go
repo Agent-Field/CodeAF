@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -21,7 +23,6 @@ const clientToolSettledTTL = 10 * time.Minute
 const clientToolSettledMax = 1024
 
 var appClientToolsBackend atomic.Pointer[appBackend]
-var clientToolFreshID atomic.Uint64
 
 type clientToolAgentSets struct {
 	version  uint64
@@ -258,12 +259,34 @@ func (d *appClientToolDoor) ClientToolSets() (uint64, []session.ClientToolSet) {
 	return state.version, state.sets
 }
 
-func clientToolCallID(agent, provider string) string {
-	if provider == "" {
-		return fmt.Sprintf("ct_fresh_%x", clientToolFreshID.Add(1))
+// clientToolCallID names one model call to the app as `ct_` and 64 hex digits.
+//
+// The hash covers the whole call: the agent, the provider's call id, the set,
+// the tool name and the exact argument bytes. The same call dispatched again,
+// in this process or after a restart, keeps its id, so it joins the pending
+// wait or gets the saved answer. A provider id alone is not a call's identity:
+// Kimi-family models write their own `name:idx` ids, which repeat after a
+// rewind or a compaction, and a faulty server can repeat any id. A reused id
+// with another tool or other arguments is therefore a new call that reaches
+// the app. Each field is length-prefixed, so no two calls share one input.
+//
+// Without a provider id nothing can recognise a redispatch, and the app keeps
+// answered ids for 30 days, far longer than one process lives. The id is
+// random rather than counted, so no later launch mints it again.
+func clientToolCallID(agent string, call session.ClientToolCall) string {
+	if call.TurnCall == "" {
+		var random [sha256.Size]byte
+		_, _ = rand.Read(random[:])
+		return "ct_" + hex.EncodeToString(random[:])
 	}
-	sum := sha256.Sum256([]byte(agent + "\x00" + provider))
-	return "ct_" + hex.EncodeToString(sum[:])
+	sum := sha256.New()
+	for _, field := range [][]byte{[]byte(agent), []byte(call.TurnCall), []byte(call.Set), []byte(call.Name), call.Args} {
+		var size [8]byte
+		binary.BigEndian.PutUint64(size[:], uint64(len(field)))
+		sum.Write(size[:])
+		sum.Write(field)
+	}
+	return "ct_" + hex.EncodeToString(sum.Sum(nil))
 }
 
 func (d *appClientToolDoor) CallClientTool(ctx context.Context, call session.ClientToolCall) (session.ClientToolAnswer, error) {
@@ -274,7 +297,7 @@ func (d *appClientToolDoor) CallClientTool(ctx context.Context, call session.Cli
 	if json.Unmarshal(call.Args, &object) != nil || object == nil {
 		return session.ClientToolAnswer{Text: "Invalid arguments: expected a JSON object", IsError: true}, nil
 	}
-	id := clientToolCallID(d.agent, call.TurnCall)
+	id := clientToolCallID(d.agent, call)
 	r := &d.backend.clientTools
 	pending, answer, emit := r.begin(ctx, d.agent, id, call)
 	if pending == nil {

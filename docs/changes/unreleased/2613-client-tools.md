@@ -13,7 +13,12 @@ tool, for as long as that client stays connected. Each call reaches the client
 as one `agents.tool_call` event, and the client answers it with
 `agents.tool_result`. A disconnect, the wait (30 seconds by default, at most
 120) or the end of the turn answers the model with an error that says the
-outcome is unknown. Late or repeated answers are ignored. A conversation holds
+outcome is unknown. Late or repeated answers are ignored. The event's `call` id
+hashes the whole call (agent, provider call id, set, tool and exact arguments),
+so the same call dispatched again keeps its id and its saved answer, while a
+provider id reused for another tool or other arguments is a new call that
+reaches the client. A call without a provider id gets a random id that no later
+launch repeats. A conversation holds
 at most 4 sets and 64 tools; built-in tool names are refused, and child tasks
 never receive client tools. The hello carries `agents.client_tools`.
 

@@ -178,7 +178,8 @@ func TestClientToolsRemoteJoinedModelRoundTrip(t *testing.T) {
 			}
 		finished:
 			call := clientToolAwait(t, rig.emitter.seen)
-			if call.Call != clientToolCallID(rig.door.agent, "provider-remote-1") || call.TurnCall != "provider-remote-1" || call.SourceMessageID == "" {
+			modelCall := session.ClientToolCall{Set: "notes", Name: "app_note", TurnCall: "provider-remote-1", Args: json.RawMessage(`{}`)}
+			if call.Call != clientToolCallID(rig.door.agent, modelCall) || call.TurnCall != "provider-remote-1" || call.SourceMessageID == "" {
 				t.Fatalf("call identity: %+v", call)
 			}
 			matchedMessage := false
@@ -270,6 +271,45 @@ func TestClientToolsRemoteBoundedResult(t *testing.T) {
 	want := fmt.Sprintf("[cut: %d bytes dropped]", len(data)-(session.ClientToolOutputMax-1))
 	if got.IsError || !strings.HasSuffix(got.Text, want) || strings.Count(got.Text, "[cut:") != 1 {
 		t.Fatalf("forwarding changed the truncation receipt: %.80s", got.Text[max(0, len(got.Text)-80):])
+	}
+}
+
+// C2: the holder's calls reach the app's registry under the same call identity
+// as local calls, so a provider id the holder's model reuses for other
+// arguments is a new call here too, and the same call again is still one call.
+func TestClientToolsRemoteReusedProviderIDWithOtherArgumentsIsANewCall(t *testing.T) {
+	rig := clientToolRemoteBackend(t, "")
+	call := clientToolAttach(t, rig.backend, rig.door)
+	rig.emitter.answer = func(event appwire.AgentsToolCall) {
+		result, _ := json.Marshal(string(event.Args))
+		ack, err := rig.backend.ClientToolResult(appwire.ClientToolResultParams{Call: event.Call, Result: result})
+		if err != nil || !ack.Accepted {
+			t.Errorf("answer: %+v %v", ack, err)
+		}
+	}
+	through := func(call session.ClientToolCall) session.ClientToolAnswer {
+		t.Helper()
+		answer := make(chan session.ClientToolAnswer, 1)
+		go func() {
+			got, _ := rig.hub.CallClientTool(context.Background(), call)
+			answer <- got
+		}()
+		return clientToolAwait(t, answer)
+	}
+	other := call
+	other.Args = json.RawMessage(`{"id":4}`)
+	for _, step := range []struct {
+		call session.ClientToolCall
+		want string
+	}{{call, `"{\"id\":3}"`}, {other, `"{\"id\":4}"`}, {call, `"{\"id\":3}"`}} {
+		if got := through(step.call); got.IsError || got.Text != step.want {
+			t.Fatalf("holder call %s answered %+v, want %s", step.call.Args, got, step.want)
+		}
+	}
+	rig.emitter.mu.Lock()
+	defer rig.emitter.mu.Unlock()
+	if len(rig.emitter.calls) != 2 || rig.emitter.calls[0].Call == rig.emitter.calls[1].Call {
+		t.Fatalf("two distinct holder calls emitted: %+v", rig.emitter.calls)
 	}
 }
 

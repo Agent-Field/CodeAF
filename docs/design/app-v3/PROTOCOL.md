@@ -179,9 +179,15 @@ an absent field means no such message, rather than an older engine.
 
 One model call emits exactly one `agents.tool_call`. `turn` is the engine's
 process-local conversation counter, which resets after restart;
-`turn_call` matches `turn.tool.call`. `call` is unique
-among pending calls and deterministic for the agent + provider call id. Without
-a provider id the engine mints a fresh id. A concurrent redispatch joins the
+`turn_call` matches `turn.tool.call`. `call` is `ct_` followed by 64 lowercase
+hex digits. It is a hash of the whole call: the agent, the provider call id, the
+set, the tool name and the exact argument bytes. The same call dispatched again
+keeps its `call`, including after an engine restart. A provider call id alone
+can repeat: Kimi-family models write their own `name:index` ids, which repeat
+after `agents.rewind` or compaction, and a faulty server can repeat any id. So a
+reused provider id with another tool or other arguments is a new call with its
+own `call` and its own event. Without a provider id the engine mints a random
+`call`, which no later launch repeats. A concurrent redispatch joins the
 pending wait and emits no second event. A settled redispatch returns the saved
 answer without an event for 10 minutes, subject to a maximum of 1024 saved
 answers per connection. Non-object model arguments become an invalid-arguments

@@ -7,8 +7,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -478,7 +480,7 @@ func TestClientToolsEventResultAndReplay(t *testing.T) {
 	first := clientToolStart(context.Background(), door, call)
 	event := clientToolAwait(t, emitter.seen)
 	if event.Agent != door.agent || event.Turn != 7 || event.TurnCall != call.TurnCall || event.Set != call.Set || event.Name != call.Name ||
-		string(event.Args) != string(call.Args) || event.DeadlineMS != session.ClientToolDefaultDeadlineMS || event.Call != clientToolCallID(door.agent, call.TurnCall) || event.SourceMessageID != call.SourceMessage {
+		string(event.Args) != string(call.Args) || event.DeadlineMS != session.ClientToolDefaultDeadlineMS || event.Call != clientToolCallID(door.agent, call) || event.SourceMessageID != call.SourceMessage {
 		t.Fatalf("event shape: %+v", event)
 	}
 	second := clientToolStart(context.Background(), door, call)
@@ -502,7 +504,7 @@ func TestClientToolsEventResultAndReplay(t *testing.T) {
 	if len(emitter.calls) != 1 {
 		t.Fatalf("%d events for one call", len(emitter.calls))
 	}
-	// A new registry represents a new process, with a different local counter.
+	// A new registry represents a new process, which must name the same call alike.
 	fresh, freshDoor, freshEmitter := clientToolBackend(t)
 	clientToolAttach(t, fresh, freshDoor)
 	fresh.locked(func() { fresh.agents[freshDoor.agent].live.turn = 1 })
@@ -515,6 +517,123 @@ func TestClientToolsEventResultAndReplay(t *testing.T) {
 		t.Fatal(err)
 	}
 	clientToolAwait(t, replayed)
+}
+
+// Contract (b), (d): a provider id names a call only together with what was
+// called. Kimi-family models write their own `name:idx` ids, which repeat after
+// a rewind or a compaction, and a faulty server can repeat any id. A reused id
+// with another tool or other arguments must reach the app as a call of its own,
+// whether the earlier call is still waiting or already answered.
+func TestClientToolsReusedProviderIDWithAnotherCallReachesTheApp(t *testing.T) {
+	for _, earlier := range []string{"settled", "pending"} {
+		t.Run(earlier, func(t *testing.T) {
+			b, door, emitter := clientToolBackend(t)
+			call := clientToolAttach(t, b, door)
+			if _, err := b.SetClientTools(clientToolParams(door.agent, "other", "app_other")); err != nil {
+				t.Fatal(err)
+			}
+			answer := func(event appwire.AgentsToolCall) string {
+				t.Helper()
+				text := event.Name + " " + string(event.Args)
+				result, _ := json.Marshal(text)
+				ack, err := b.ClientToolResult(appwire.ClientToolResultParams{Call: event.Call, Result: result})
+				if err != nil || !ack.Accepted {
+					t.Fatalf("answer %+v: %+v %v", event, ack, err)
+				}
+				return string(result)
+			}
+			first := clientToolStart(context.Background(), door, call)
+			firstEvent := clientToolAwait(t, emitter.seen)
+			firstWant := ""
+			if earlier == "settled" {
+				firstWant = answer(firstEvent)
+				if got := clientToolAwait(t, first); got.IsError || got.Text != firstWant {
+					t.Fatalf("first answer: %+v", got)
+				}
+			}
+			otherArgs := call
+			otherArgs.Args = json.RawMessage(`{"id":4}`)
+			otherTool := session.ClientToolCall{Set: "other", Name: "app_other", TurnCall: call.TurnCall, Args: call.Args}
+			seen := map[string]bool{firstEvent.Call: true}
+			for _, reused := range []session.ClientToolCall{otherArgs, otherTool} {
+				done := clientToolStart(context.Background(), door, reused)
+				var event appwire.AgentsToolCall
+				select {
+				case event = <-emitter.seen:
+				case got := <-done:
+					t.Fatalf("%s %s with reused provider id %q never reached the app; the model was told %+v",
+						reused.Name, reused.Args, reused.TurnCall, got)
+				case <-time.After(2 * time.Second):
+					t.Fatalf("%s %s with reused provider id %q never reached the app: it joined the earlier call's wait",
+						reused.Name, reused.Args, reused.TurnCall)
+				}
+				if seen[event.Call] || event.Name != reused.Name || string(event.Args) != string(reused.Args) || event.TurnCall != reused.TurnCall {
+					t.Fatalf("reused provider id did not get its own call: %+v (earlier %v)", event, seen)
+				}
+				seen[event.Call] = true
+				want := answer(event)
+				if got := clientToolAwait(t, done); got.IsError || got.Text != want {
+					t.Fatalf("%s %s was answered %+v, want its own answer %s", reused.Name, reused.Args, got, want)
+				}
+			}
+			if earlier == "pending" {
+				firstWant = answer(firstEvent)
+				if got := clientToolAwait(t, first); got.IsError || got.Text != firstWant {
+					t.Fatalf("first answer: %+v", got)
+				}
+			}
+			// The same call dispatched again is still the same call.
+			if got := clientToolAwait(t, clientToolStart(context.Background(), door, call)); got.IsError || got.Text != firstWant {
+				t.Fatalf("true redispatch: %+v want %s", got, firstWant)
+			}
+			emitter.mu.Lock()
+			defer emitter.mu.Unlock()
+			if len(emitter.calls) != 3 {
+				t.Fatalf("three distinct calls emitted %d events: %+v", len(emitter.calls), emitter.calls)
+			}
+		})
+	}
+}
+
+// Contract (b): a call without a provider id gets a call id no later launch
+// can mint again. The app keeps answered ids for 30 days, far longer than one
+// engine process lives, so each child process below is one launch of the engine.
+func TestClientToolsCallWithoutProviderIDNeverRepeatsAcrossLaunches(t *testing.T) {
+	const child = "CODEAF_TEST_CLIENT_TOOL_FRESH_ID"
+	if os.Getenv(child) == "1" {
+		b, door, emitter := clientToolBackend(t)
+		call := clientToolAttach(t, b, door)
+		call.TurnCall = ""
+		ctx, cancel := context.WithCancel(context.Background())
+		done := clientToolStart(ctx, door, call)
+		event := clientToolAwait(t, emitter.seen)
+		cancel()
+		clientToolAwait(t, done)
+		fmt.Printf("client-tool-call=%s\n", event.Call)
+		return
+	}
+	var ids []string
+	for launch := 0; launch < 2; launch++ {
+		command := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestClientToolsCallWithoutProviderIDNeverRepeatsAcrossLaunches$", "-test.v")
+		command.Env = append(os.Environ(), child+"=1")
+		out, err := command.CombinedOutput()
+		if err != nil {
+			t.Fatalf("launch %d: %v\n%s", launch+1, err, out)
+		}
+		match := regexp.MustCompile(`(?m)^client-tool-call=(\S+)$`).FindSubmatch(out)
+		if match == nil {
+			t.Fatalf("launch %d printed no call id:\n%s", launch+1, out)
+		}
+		ids = append(ids, string(match[1]))
+	}
+	if ids[0] == ids[1] {
+		t.Fatalf("two launches minted the same call id %s for different calls without a provider id", ids[0])
+	}
+	for _, id := range ids {
+		if !regexp.MustCompile(`^ct_[0-9a-f]{64}$`).MatchString(id) {
+			t.Fatalf("call id %q is not ct_ and 64 hex digits", id)
+		}
+	}
 }
 
 // Contract (b): the pending entry exists before an emitter can answer synchronously.
@@ -657,7 +776,7 @@ func TestClientToolsEndedQueuedCallsAreNotEmitted(t *testing.T) {
 			queuedCtx, cancelQueued := context.WithCancel(context.Background())
 			defer cancelQueued()
 			call.TurnCall = "queued-call"
-			id := clientToolCallID(door.agent, call.TurnCall)
+			id := clientToolCallID(door.agent, call)
 			r := &b.clientTools
 			r.mu.Lock()
 			pending, _, emit := r.beginLocked(queuedCtx, door.agent, id, call)
@@ -852,8 +971,30 @@ func TestClientToolsSettledMemoryBoundAndExpiry(t *testing.T) {
 	if len(r.settled) != 0 {
 		t.Fatal("expired answers remain")
 	}
-	if clientToolCallID("a", "p") == clientToolCallID("b", "p") || clientToolCallID("a", "") == clientToolCallID("a", "") {
-		t.Fatal("call identity collision")
+	call := session.ClientToolCall{Set: "s", Name: "n", TurnCall: "p", Args: json.RawMessage(`{}`), SourceMessage: "m", DeadlineMS: 1000}
+	shape := regexp.MustCompile(`^ct_[0-9a-f]{64}$`)
+	same := call
+	same.SourceMessage, same.DeadlineMS = "other message", 2000
+	if id := clientToolCallID("a", call); !shape.MatchString(id) || id != clientToolCallID("a", same) {
+		t.Fatalf("redispatch identity: %q", id)
+	}
+	for _, change := range []func(*session.ClientToolCall) string{
+		func(c *session.ClientToolCall) string { c.TurnCall = "q"; return "b" },
+		func(c *session.ClientToolCall) string { return "b" },
+		func(c *session.ClientToolCall) string { c.Set = "t"; return "a" },
+		func(c *session.ClientToolCall) string { c.Name = "o"; return "a" },
+		func(c *session.ClientToolCall) string { c.Args = json.RawMessage(`{"x":1}`); return "a" },
+		func(c *session.ClientToolCall) string { c.Set, c.Name = "s\x00n", ""; return "a" },
+	} {
+		other := call
+		if agent := change(&other); clientToolCallID(agent, other) == clientToolCallID("a", call) {
+			t.Fatalf("call identity collision: %+v", other)
+		}
+	}
+	fresh := call
+	fresh.TurnCall = ""
+	if id := clientToolCallID("a", fresh); !shape.MatchString(id) || id == clientToolCallID("a", fresh) {
+		t.Fatalf("fresh identity: %q", id)
 	}
 }
 
