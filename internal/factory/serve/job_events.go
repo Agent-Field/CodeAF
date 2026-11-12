@@ -1,6 +1,7 @@
 package serve
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -59,6 +60,13 @@ func (h *Handler) jobEvents(w http.ResponseWriter, r *http.Request) {
 	defer timer.Stop()
 	for {
 		out, err := h.visibleJobEvents(r, q.after, q.limit)
+		if errors.Is(err, errJobVisibilityUnknown) {
+			// An ended sign-in keeps its own answer; anything else is a retry.
+			if !h.authFailed(w, r) {
+				h.fail(w, http.StatusServiceUnavailable, err.Error())
+			}
+			return
+		}
 		if h.failed(w, err) || h.authFailed(w, r) {
 			return
 		}
@@ -96,24 +104,58 @@ func (h *Handler) visibleJobEvents(r *http.Request, after *int64, limit int) (ap
 		}
 	}
 	out := api.JobEvents{Events: []api.JobEvent{}, Cursor: got.Cursor, Reset: got.Reset, More: got.More}
+	passed := int64(0)
+	if after != nil {
+		passed = *after
+	}
 	for _, e := range got.Events {
-		if h.jobEventVisible(r, e.Job) {
+		visible, known := h.jobEventVisible(r, e.Job)
+		if !known {
+			// AN OUTCOME NOBODY COULD DECIDE IS NOT PASSED. The cursor
+			// used to move past it as past a hidden one, and the caller,
+			// who saves the cursor, lost the outcome for good when its
+			// repository check had only failed for a moment.
+			if len(out.Events) == 0 && after != nil && passed == *after {
+				return api.JobEvents{}, errJobVisibilityUnknown
+			}
+			out.Cursor, out.More = passed, true
+			break
+		}
+		if visible {
 			out.Events = append(out.Events, e)
 		}
+		passed = e.Seq
 	}
 	return out, err
 }
 
+// errJobVisibilityUnknown is the read that would start at an outcome whose
+// repository GitHub could not answer for: the caller tries again later, from
+// the same cursor.
+var errJobVisibilityUnknown = errors.New("GitHub did not answer whether you can see a job's repository; try again")
+
 // jobEventVisible checks a job's repository against the caller's access from
 // the saved job. A cursor read is bookkeeping: it must not look up the job's
 // author on GitHub, or write the job, as a person's own read of it does.
-func (h *Handler) jobEventVisible(r *http.Request, id int) bool {
+// known is false when GitHub gave no answer for that repository just now.
+func (h *Handler) jobEventVisible(r *http.Request, id int) (visible, known bool) {
 	if h.config.Store == nil {
-		return h.viewerWantsLive(r, live.Event{Kind: live.OutcomeKind, Job: id})
+		return h.viewerWantsLive(r, live.Event{Kind: live.OutcomeKind, Job: id}), true
 	}
 	if _, filter := h.repoAccess(r, nil); !filter {
-		return true
+		return true, true
 	}
 	it, err := h.config.Store.GetSaved(id)
-	return err == nil && h.repoVisible(r, itemRepo(it))
+	if err != nil {
+		return false, true
+	}
+	repo := itemRepo(it)
+	allow, unknown, filter := h.repoAccessDecided(r, []string{repo})
+	if !filter {
+		return true, true
+	}
+	if unknown[repo] {
+		return false, false
+	}
+	return repo != "" && allow[repo], true
 }

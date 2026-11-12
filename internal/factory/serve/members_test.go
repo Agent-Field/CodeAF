@@ -225,6 +225,8 @@ type scriptGitHub struct {
 	login string
 	allow map[string]map[string]bool
 	hits  int
+	// down names repositories GitHub cannot answer for just now (503).
+	down map[string]bool
 }
 
 func (g *scriptGitHub) client() *http.Client {
@@ -260,6 +262,9 @@ func (g *scriptGitHub) client() *http.Client {
 			full := strings.ToLower(strings.TrimPrefix(r.URL.Path, "/repos/"))
 			if !g.allow[login][full] {
 				status = http.StatusNotFound
+			}
+			if g.down[full] {
+				status = http.StatusServiceUnavailable
 			}
 			body = `{}`
 		default:

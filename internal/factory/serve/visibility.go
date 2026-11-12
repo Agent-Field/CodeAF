@@ -136,6 +136,14 @@ func repoKeys(s factory.Snapshot) []string {
 // false for the owner: loopback without a GitHub profile, and the host token.
 // A signed-in profile with no token still filters, and sees nothing.
 func (h *Handler) repoAccess(r *http.Request, keys []string) (map[string]bool, bool) {
+	allow, _, filter := h.repoAccessDecided(r, keys)
+	return allow, filter
+}
+
+// repoAccessDecided is [Handler.repoAccess] that also names the keys GitHub
+// gave no answer for just now (a 5xx, a failed connection or an ended
+// sign-in): those read as not allowed, and are not known to be.
+func (h *Handler) repoAccessDecided(r *http.Request, keys []string) (allow, unknown map[string]bool, filter bool) {
 	var session accessSession
 	var ok bool
 	if trial, isTrial := r.Context().Value(trialSessionKey{}).(*accessSession); isTrial {
@@ -147,20 +155,20 @@ func (h *Handler) repoAccess(r *http.Request, keys []string) (map[string]bool, b
 		// An ended sign-in never falls back to the owner's unfiltered view,
 		// including when a long-lived event stream outlasts its credential.
 		if state, ok := r.Context().Value(authErrorKey{}).(*authErrorState); ok && state.err != nil {
-			return map[string]bool{}, true
+			return map[string]bool{}, nil, true
 		}
-		return nil, false
+		return nil, nil, false
 	}
 	if session.profile == nil || session.profile.Handle == "" {
-		return nil, false
+		return nil, nil, false
 	}
 	token := session.githubToken
 	if token == "" && h.viewer != nil {
 		token = h.viewer.token(session.profile.Handle)
 	}
-	allow := map[string]bool{}
+	allow = map[string]bool{}
 	if token == "" {
-		return allow, true
+		return allow, nil, true
 	}
 	seen := map[string]bool{}
 	for _, key := range keys {
@@ -169,12 +177,19 @@ func (h *Handler) repoAccess(r *http.Request, keys []string) (map[string]bool, b
 			continue
 		}
 		seen[key] = true
-		allow[key] = h.repoAllowed(r, token, key)
+		known := false
+		allow[key], known = h.repoAllowed(r, token, key)
+		if !known {
+			if unknown == nil {
+				unknown = map[string]bool{}
+			}
+			unknown[key] = true
+		}
 		if state, ok := r.Context().Value(authErrorKey{}).(*authErrorState); ok && state.err != nil {
 			break
 		}
 	}
-	return allow, true
+	return allow, unknown, true
 }
 
 func (h *Handler) repoVisible(r *http.Request, name string) bool {
@@ -186,7 +201,9 @@ func (h *Handler) repoVisible(r *http.Request, name string) bool {
 	return name != "" && allow[name]
 }
 
-func (h *Handler) repoAllowed(r *http.Request, token, key string) bool {
+// repoAllowed is GitHub's answer for this token and key, kept for a while.
+// known is false when GitHub gave no answer just now; allow is then false.
+func (h *Handler) repoAllowed(r *http.Request, token, key string) (allow, known bool) {
 	sum := sha256.Sum256([]byte(token))
 	cacheKey := hex.EncodeToString(sum[:]) + "\n" + key
 	now := h.now()
@@ -195,7 +212,7 @@ func (h *Handler) repoAllowed(r *http.Request, token, key string) bool {
 		grant, ok := h.viewer.grants[cacheKey]
 		h.viewer.mu.Unlock()
 		if ok && now.Before(grant.until) {
-			return grant.allow
+			return grant.allow, true
 		}
 	}
 	allow, cache := h.askRepo(r, token, key)
@@ -204,7 +221,7 @@ func (h *Handler) repoAllowed(r *http.Request, token, key string) bool {
 		h.viewer.grants[cacheKey] = repoGrant{allow: allow, until: h.now().Add(repoVisibilityTTL)}
 		h.viewer.mu.Unlock()
 	}
-	return allow
+	return allow, cache
 }
 
 // askRepo is GitHub's own answer for this token. A 5xx or a transport failure

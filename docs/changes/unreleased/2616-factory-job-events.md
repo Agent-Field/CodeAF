@@ -33,7 +33,10 @@ stopped records nothing (it waits in Backlog and asks nothing of anyone),
 whether the stop came at a gate, in a step or after one; a Close or Reject
 records only its `finished`. `group` stays empty until jobs carry one. The
 cursor checks which jobs the caller may see from each job's saved copy, so
-reading it looks up no author access on GitHub.
+reading it looks up no author access on GitHub. An outcome whose repository
+GitHub could not answer for just now is not passed as hidden: the page ends
+before it, and a read that would start at it answers try again (HTTP 503)
+from the same cursor.
 
 Carried from #2416, which merged only into the closed integration branch of
 #2306.
