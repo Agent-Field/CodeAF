@@ -171,6 +171,10 @@ func TestABoundedStopAbandonsATurnThatWouldNotLetGo(t *testing.T) {
 		close(closed)
 	}()
 	waitUntilClosed(t, "the bounded stop letting go of the turn", closed, 10*time.Second)
+	// The clock's abandon closes the turn's events before it writes its
+	// journal line, so the line is waited for, not read the instant the
+	// events end.
+	waitFor(t, "the abandoned line in the journal", func() bool { return len(abandonedLines(t, journal)) > 0 })
 	if lines := abandonedLines(t, journal); len(lines) != 1 || lines[0].Reason != string(AbandonStopTimeout) {
 		t.Fatalf("want one abandoned line saying %q, got %+v", AbandonStopTimeout, lines)
 	}
