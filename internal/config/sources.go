@@ -380,7 +380,7 @@ func CodexRememberedModels(service modelsource.Connected, profileDir string) []c
 }
 
 // ConnectClaudeCode connects the person's own Claude Code as a model service:
-// its row is kept and the picker is seeded with the three models it answers to.
+// its row is kept and the picker is seeded with the models it answers to.
 //
 // THERE IS NO SIGN-IN HERE, because codeaf never holds one. It refuses when
 // Claude Code is not installed or not signed in, with the sentence that says
