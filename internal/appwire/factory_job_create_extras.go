@@ -10,9 +10,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 )
 
-// FactoryReasonTooOld identifies a Factory that cannot carry a field or route.
-const FactoryReasonTooOld = "factory_too_old"
-
 // The shared bounds keep attachments separate from the description limit.
 const (
 	MaxFactoryJobContextItems  = factory.MaxJobContextItems
