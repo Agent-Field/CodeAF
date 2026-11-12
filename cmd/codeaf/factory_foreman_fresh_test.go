@@ -251,6 +251,8 @@ func TestTheForemansBriefLetsItAnswerBeyondTheFloor(t *testing.T) {
 func TestTheFactoryManagersDoorReopensItAndFreshPutsTheOldOneAway(t *testing.T) {
 	s := newLocalSetup(t)
 	convs := foremanFakeOpens(s)
+	heard := &foremanHeard{next: s.backend.emit}
+	s.backend.emit = heard
 	st := s.start()
 	ref := map[string]any{"factory": st.Factory}
 
@@ -281,6 +283,11 @@ func TestTheFactoryManagersDoorReopensItAndFreshPutsTheOldOneAway(t *testing.T) 
 	s.must(appwire.FeatureFactoryForemanFresh, ref, &fresh)
 	if fresh.Agent == "" || fresh.Agent == first.Agent {
 		t.Fatalf("a fresh start answered %q; want a new conversation", fresh.Agent)
+	}
+	// EVERY WINDOW IS TOLD WHICH CONVERSATION IS THE MANAGER NOW, and only
+	// when one was replaced: the opens and the reopen above replaced nothing.
+	if got := heard.replacements(); len(got) != 1 || got[0] != (appwire.FactoryForemanChanged{Factory: st.Factory, Agent: fresh.Agent, Replaced: first.Agent}) {
+		t.Fatalf("the app was told of the replacements %+v; want one, of %s by %s", got, first.Agent, fresh.Agent)
 	}
 	if !s.backend.isHeld(fresh.Agent) || s.backend.tidied(fresh.Agent) {
 		t.Fatal("the fresh manager is not held open")
@@ -407,6 +414,8 @@ func TestManyOpensAtOnceMakeOneFactoryManager(t *testing.T) {
 func TestAFactoryStartingMovesItsManagerOutOfTheCodeafHome(t *testing.T) {
 	s := newLocalSetup(t)
 	convs := foremanFakeOpens(s)
+	heard := &foremanHeard{next: s.backend.emit}
+	s.backend.emit = heard
 	floor, err := store.Open(v3FactoryRoot())
 	if err != nil {
 		t.Fatal(err)
@@ -430,9 +439,24 @@ func TestAFactoryStartingMovesItsManagerOutOfTheCodeafHome(t *testing.T) {
 	if !factoryOwnedConversation(named) || factoryOwnedConversation(old) {
 		t.Fatalf("the mark did not follow the manager: new %v, old %v", factoryOwnedConversation(named), factoryOwnedConversation(old))
 	}
+	// THE APP IS TOLD, so a tab it brought back on the old conversation is
+	// swapped for the manager instead of being written to.
+	if got := heard.replacements(); len(got) != 1 || got[0] != (appwire.FactoryForemanChanged{Factory: st.Factory, Agent: appAgentID(named), Replaced: oldID}) {
+		t.Fatalf("the app was told of the replacements %+v; want one, of %s by %s", got, oldID, appAgentID(named))
+	}
 	// THE OLD ONE NO LONGER READS AS THE MANAGER, in the engine's word and in
-	// its own journal's: the tab the app brings back may still hold it.
-	foremanEventually(t, "the replaced manager being renamed", func() bool { return convs.renamedTo(oldID) == foremanEarlierTitle })
+	// its own journal's, where an open reads a name from. AND IT WAS NEVER
+	// OPENED TO BE RENAMED: its folder is the one it was moved out of.
+	foremanEventually(t, "the replaced manager's journal taking its new name", func() bool {
+		data, err := os.ReadFile(old)
+		return err == nil && strings.Contains(string(data), foremanEarlierTitle)
+	})
+	convs.mu.Lock()
+	_, assembled := convs.by[oldID]
+	convs.mu.Unlock()
+	if assembled {
+		t.Error("the replaced manager was opened in its old folder to be put away")
+	}
 	was, err := s.backend.find(oldID)
 	if err != nil {
 		t.Fatal(err)
@@ -485,17 +509,28 @@ func TestAnAlreadyOpenManagerIsSaidToBeTheFactorysWhenItsDoorOpensIt(t *testing.
 type foremanHeard struct {
 	next appwire.Emitter
 
-	mu      sync.Mutex
-	changed []appwire.Agent
+	mu       sync.Mutex
+	changed  []appwire.Agent
+	replaced []appwire.FactoryForemanChanged
 }
 
 func (h *foremanHeard) Emit(event string, data any) {
-	if changed, ok := data.(appwire.AgentChanged); ok {
-		h.mu.Lock()
-		h.changed = append(h.changed, changed.Agent)
-		h.mu.Unlock()
+	h.mu.Lock()
+	switch said := data.(type) {
+	case appwire.AgentChanged:
+		h.changed = append(h.changed, said.Agent)
+	case appwire.FactoryForemanChanged:
+		h.replaced = append(h.replaced, said)
 	}
+	h.mu.Unlock()
 	h.next.Emit(event, data)
+}
+
+// replacements is every time the app was told the manager was replaced.
+func (h *foremanHeard) replacements() []appwire.FactoryForemanChanged {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return append([]appwire.FactoryForemanChanged(nil), h.replaced...)
 }
 
 // owned is how many times the app was told agent is the factory's.

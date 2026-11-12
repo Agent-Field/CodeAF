@@ -3,6 +3,7 @@ package appwire
 import (
 	"context"
 	"encoding/json"
+	"reflect"
 )
 
 // ── factory.foreman_open: the factory's own manager, as a conversation ────
@@ -58,6 +59,27 @@ func withFactoryForemanFreshFeature(hello Hello, e Engine) Hello {
 	return hello
 }
 
+// EventFactoryForemanChanged says the engine REPLACED a factory's manager: the
+// conversation Replaced is the manager no longer, and Agent is. It is sent
+// when the manager is started over (factory.foreman_fresh), and when one
+// working in a folder the factory refuses is made again, which happens as the
+// factory starts with nobody asking. Its data is [FactoryForemanChanged].
+//
+// IT IS HOW A WINDOW HOLDING THE OLD CONVERSATION LEARNS IT IS HOLDING THE
+// WRONG ONE. A tab the app brought back still showed the replaced manager
+// under its name, with a box to write in; what was written there reached a
+// conversation that could no longer read the factory, while the manager's own
+// button opened another. The app swaps the tab for the manager on this event.
+const EventFactoryForemanChanged = "factory.foreman_changed"
+
+// FactoryForemanChanged names the manager a factory has now and the
+// conversation it replaced. Factory is the id factory.foreman_open takes.
+type FactoryForemanChanged struct {
+	Factory  string `json:"factory"`
+	Agent    string `json:"agent"`
+	Replaced string `json:"replaced"`
+}
+
 // FactoryForemanOpener is the engine's half of factory.foreman_open.
 type FactoryForemanOpener interface {
 	FactoryForemanOpen(ctx context.Context, p FactoryRef) (FactoryForeman, error)
@@ -76,6 +98,7 @@ func withFactoryForemanOpenFeature(hello Hello, e Engine) Hello {
 func init() {
 	methods[FeatureFactoryForemanOpen] = shaped[FactoryRef, FactoryForeman](foremanOpen)
 	methods[FeatureFactoryForemanFresh] = shaped[FactoryRef, FactoryForeman](foremanFreshCall)
+	eventShapes[EventFactoryForemanChanged] = reflect.TypeFor[FactoryForemanChanged]()
 }
 
 func foremanFreshCall(e Engine, raw json.RawMessage) (*FactoryForeman, error) {

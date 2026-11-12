@@ -2121,6 +2121,7 @@ and the reply is empty.
 | `deliverable.changed` | `DeliverableChanged` |
 | `devices.changed` | `DevicesResult` |
 | `entry.added` | `EntryAdded` |
+| `factory.foreman_changed` | `FactoryForemanChanged` |
 | `factory.jobs_changed` | `FactoryJobsChanged` |
 | `factory.sessions_changed` | `Empty` |
 | `factory.event` | `FactoryEvent` |
@@ -2688,6 +2689,12 @@ conversation it replaces is stopped and archived after the new one is
 answered, on a best effort, and is no longer the factory's: it reads
 `factory_owned: false`, as one of the person's own chats in Archived, titled
 "Factory manager (earlier)" when its title was still the manager's own.
+
+Whenever the engine replaces the manager (here, or by `factory.foreman_fresh`)
+it sends the event `factory.foreman_changed {factory, agent, replaced}`:
+`agent` is the manager now and `replaced` the conversation that no longer is.
+A window showing `replaced` swaps it for `agent`; without the event a tab the
+app brought back went on showing the old conversation under the manager's name.
 
 ### Starting the Factory manager over (`factory.foreman_fresh`)
 
