@@ -316,7 +316,7 @@ func stopLocked(history *record.Record, doc *document, held *Lease, id int, it *
 		}
 		doc.Receipts = append(live, publisherReceipt{Lease: *held, Item: *it})
 	}
-	release(doc, id)
+	stopRelease(doc, *held)
 	return true, nil
 }
 

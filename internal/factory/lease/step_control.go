@@ -50,7 +50,7 @@ func (d *Doors) rewind(id int, revision *int, rerun bool, control func(it *facto
 			if rerun {
 				withdraw(doc, *held)
 			} else {
-				release(doc, id)
+				stopRelease(doc, *held)
 			}
 		}
 		return true, nil
@@ -172,5 +172,16 @@ func withdraw(doc *document, held Lease) {
 		doc.Withdrawn = map[string]string{}
 	}
 	doc.Withdrawn[held.Worker] = held.ID
+	delete(doc.Stopped, held.Worker)
+	release(doc, held.Job)
+}
+
+// stopRelease retains that a person's Stop revoked the lease until its worker pulls again.
+func stopRelease(doc *document, held Lease) {
+	if doc.Stopped == nil {
+		doc.Stopped = map[string]string{}
+	}
+	doc.Stopped[held.Worker] = held.ID
+	delete(doc.Withdrawn, held.Worker)
 	release(doc, held.Job)
 }

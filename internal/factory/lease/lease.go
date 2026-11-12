@@ -61,6 +61,9 @@ var (
 // ErrWithdrawn is a replaced lease, still refused as no longer live.
 var ErrWithdrawn = fmt.Errorf("factory lease: execution withdrawn: %w", ErrNoLease)
 
+// ErrStopped is a lease revoked by a person's Stop, still refused as no longer live.
+var ErrStopped = fmt.Errorf("factory lease: stopped by person: %w", ErrNoLease)
+
 // Lease is the persisted and wire shape, so the worker and person survive a
 // server restart without a second registry becoming the ownership authority.
 type Lease struct {
@@ -324,11 +327,12 @@ func (d *Desk) reserve(doc *document, worker Worker, taken *Lease) error {
 		// its manager, but only the locked job can authorize running steps.
 		taken.ThreadOnly = factory.StoppedByPerson(*it) || it.State != factory.StateQueued && !owesFollow(*it) || paused(*it)
 		delete(doc.Withdrawn, worker.ID)
+		delete(doc.Stopped, worker.ID)
 		doc.Leases = append(doc.Leases, *taken)
 		if err := d.write(*doc); err != nil {
 			return err
 		}
-		if it.WorktreeMachine == "" {
+		if it.WorktreeMachine == "" && !factory.AgentFieldPipeline(*it) && strings.TrimSpace(it.RunOn) == "" {
 			it.WorktreeMachine = taken.Machine
 		}
 		if !taken.ThreadOnly {

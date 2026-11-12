@@ -4,6 +4,8 @@ import (
 	"context"
 	"sync/atomic"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/factory/lease"
 )
 
 // ── a quitting runner gives its holds back ─────────────────────────────────
@@ -33,13 +35,20 @@ const handBackWait = 2 * time.Second
 var handBacks atomic.Int64
 
 // handBack gives the job's hold back to the factory, when that is safe.
-func (j *job) handBack() {
+func (j *job) handBack() bool {
 	if j.pending != nil || j.blocked != "" || j.o.Runner.Running(j.id) {
-		return
+		return true
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), handBackWait)
+	wait := handBackWait
+	if j.o.BeatEvery > 0 && j.o.BeatEvery < lease.HeartbeatEvery {
+		wait = min(wait, max(100*time.Millisecond, j.o.BeatEvery*4))
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), wait)
 	defer cancel()
-	if err := j.w.HandBack(ctx, j.lease); err == nil {
+	err := j.w.HandBack(ctx, j.lease)
+	if err == nil {
 		handBacks.Add(1)
+		return true
 	}
+	return gone(err)
 }
