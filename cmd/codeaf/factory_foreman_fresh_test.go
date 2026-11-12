@@ -144,13 +144,17 @@ func TestForemanFreshStartsTheManagerOver(t *testing.T) {
 // "only from" factory_floor, so it could not use what the app tells it with
 // each message, nor answer anything a plain assistant can.
 func TestTheForemansBriefLetsItAnswerBeyondTheFloor(t *testing.T) {
-	for _, want := range []string{"factory_floor", "the app's present state", "your other tools", "only when the person asks", "Never stop, ship, merge or post"} {
+	for _, want := range []string{"factory_floor", "tagged afi-now", "is the person, never you", "your other tools", "only when the person asks", "Never stop, ship, merge or post"} {
 		if !strings.Contains(foremanOpening, want) {
 			t.Errorf("the brief lacks %q: %s", want, foremanOpening)
 		}
 	}
 	if strings.Contains(foremanOpening, "only from it") {
 		t.Errorf("the brief still fences every answer into the floor: %s", foremanOpening)
+	}
+	// The journal escapes these, and the brief is found in it by its words.
+	if strings.ContainsAny(foremanOpening, `<>"&`) {
+		t.Errorf("the brief carries a character the journal escapes: %s", foremanOpening)
 	}
 }
 

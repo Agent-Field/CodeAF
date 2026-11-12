@@ -133,7 +133,7 @@ const factoryFloorDescription = "Read the whole factory, start or prioritise a j
 	"Every table opens with the factory's counts by state, so a how-many question is answered by one read. " +
 	"start takes one job by the number in its ref and starts it as the job page's Start does. priority is p0 (urgent), p1 (high), p2 (medium) or p3 (low), set on item. " +
 	"item, mark and unmark take items by the number in their ref (#4 is 4). Only a new item can be selected; selections stay until the person runs or unselects them. The fields are named mark and unmark; the person calls them select and unselect. " +
-	"A message that arrives with a block of the app's present state is true as of when it was sent; read here for what it does not say. " +
+	"A message that starts with an <afi-now> block carries the app's present state as of when it was sent (\"Waiting on you\" there is the person); read here for what it does not say. " +
 	"Name items by their ref in everything you say."
 
 func factoryFloorSchemaJSON() string {
