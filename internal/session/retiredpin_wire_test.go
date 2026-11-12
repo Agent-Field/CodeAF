@@ -135,7 +135,7 @@ func TestAnErrandBesideTheTurnDoesNotCarryTheTalkPin(t *testing.T) {
 	provider.RepinLane(provider.LanePin{Lane: "DeepSeek"})
 	t.Cleanup(func() { provider.RepinLane(provider.LanePin{}) })
 
-	agent, err := New(Config{
+	agent, err := newTestProviderAgent(t, Config{
 		Workspace: t.TempDir(),
 		Model:     model,
 		Routing:   provider.RoutingSimple,

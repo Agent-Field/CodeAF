@@ -133,7 +133,7 @@ func TestLiveInterruptFanoutSpendsAtMostOnePlannerAndTitle(t *testing.T) {
 	}
 	t.Setenv("HOME", t.TempDir())
 	watch := &interruptCallWatch{inner: inner}
-	agent, err := newAgent(Config{
+	agent, err := newTestAgentWithConfig(t, Config{
 		Workspace:  t.TempDir(),
 		Model:      model,
 		APIKey:     key,
