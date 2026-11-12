@@ -16,6 +16,11 @@ import (
 // ([session.Agent.InterruptWithin]). These pin both ends of that: what the
 // surface sends, and which door the engine answers it with.
 
+// THE REAL AGENT IS ONE THE SERVER CAN BOUND. The server asks for the second
+// stage by an optional interface, so a rename on the session's side would
+// leave every hosted stop unbounded again with these tests still passing.
+var _ boundedStopper = (*session.Agent)(nil)
+
 // boundedFakeAgent is a [fakeAgent] whose stop can carry its second stage.
 type boundedFakeAgent struct {
 	*fakeAgent

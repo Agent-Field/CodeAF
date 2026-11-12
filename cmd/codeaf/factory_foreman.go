@@ -49,6 +49,13 @@ const foremanHandle = "foreman"
 // was given; [foremanRetitle] moves it to [foremanTitle] on the next open.
 const foremanOldTitle = "foreman"
 
+// foremanEarlierTitle is what a foreman that was REPLACED is titled from then
+// on, when its title was still the manager's own. A tab the app brings back
+// may still hold that conversation: under the manager's name it read as the
+// manager, and a person wrote to it there while the manager's button opened
+// another one.
+const foremanEarlierTitle = "Factory manager (earlier)"
+
 // foremanOpening is the brief's fixed part, said once so the brief, the test
 // and the manual quote the same words. It is kept free of the characters a
 // journal line escapes (angle brackets, double quotes), so the conversation's
@@ -181,20 +188,26 @@ func withForeman(seam factory.Seam, st *store.Store, workspace, profileDir strin
 // in the store, so A SECOND ASK OPENS THE SAME CONVERSATION. load is the floor's
 // read, asked once at the making for the recipes' policy lines.
 //
-// A FOREMAN WHOSE FOLDER IS THE CODEAF HOME IS MADE AGAIN, in a folder of its
+// A FOREMAN WHOSE FOLDER THE FACTORY REFUSES IS MADE AGAIN, in a folder of its
 // own. A host that named no folder once gave the foreman the engine's working
-// directory, which under the desk is the home itself: every save of that
-// conversation then swept the whole home, and its tool calls waited behind a
-// capture that never finished, so the manager answered nothing at all. No new
-// foreman is made there ([factoryFolderRefusal]); this is the same refusal for
-// the one a store already names. The old conversation is left on disk for its
-// owner to put away ([appBackend.FactoryForemanOpen]).
+// directory, which under the desk is the codeaf home itself: every save of
+// that conversation then swept the whole home, and its tool calls waited behind
+// a capture that never finished, so the manager answered nothing at all. No
+// new foreman is made there ([factoryFolderRefusal]); this is the same refusal
+// for the one a store already names, and it is that rule whole: the home, any
+// folder above it, and any folder inside it that is not one of the factory's
+// own areas. The old conversation is left on disk, off the `factory` team and
+// no longer marked the factory's. The app stops and archives it
+// ([appBackend.foremanOpened], [appBackend.settleForeman]); the terminal's
+// door leaves it as it is, an ordinary conversation in the person's list.
 func foremanMaker(st *store.Store, workspace, profileDir string, load func() (factory.Snapshot, error)) func(context.Context) (string, error) {
 	return func(context.Context) (string, error) {
 		factoryReconcileOnce(profileDir, st)
 		if chat, err := st.Foreman(); err == nil && chat != "" {
 			if _, serr := os.Stat(chat); serr == nil && foremanFolderRefusal(st, chat) == nil {
 				foremanRetitle(profileDir, chat)
+				// One made before the mark existed takes it on its next open.
+				_ = markFactoryForeman(st, chat)
 				return chat, nil
 			}
 		}
@@ -255,14 +268,14 @@ func foremanMint(st *store.Store, workspace, profileDir string, load func() (fac
 		return "", err
 	}
 	transcript := place.Transcript()
-	var snap factory.Snapshot
-	if load != nil {
-		snap, _ = load()
-	}
-	if err := session.SeedConversation(transcript, where, foremanTitle, foremanBrief(snap)); err != nil {
+	if err := session.SeedConversation(transcript, where, foremanTitle, foremanBrief(foremanPolicyRead(load))); err != nil {
 		return "", err
 	}
-	if old, err := st.Foreman(); err == nil && old != "" {
+	if err := markFactoryForeman(st, transcript); err != nil {
+		return "", err
+	}
+	old, _ := st.Foreman()
+	if old != "" {
 		foremanLeaveTeam(profileDir, old)
 	}
 	if err := foremanJoinTeam(profileDir, transcript, where); err != nil {
@@ -271,7 +284,56 @@ func foremanMint(st *store.Store, workspace, profileDir string, load func() (fac
 	if err := st.SetForeman(transcript); err != nil {
 		return "", err
 	}
+	// Only once the store names the new one: until then the old one is still
+	// the foreman, and still the factory's.
+	if old != "" && !sameSessionFile(old, transcript) {
+		foremanRetire(old)
+	}
 	return transcript, nil
+}
+
+// foremanRetire makes a replaced foreman an ordinary conversation of the
+// person's: its mark comes off, and a title that was still the manager's own
+// says it is the earlier one. A title the person gave it is theirs and stays.
+// It is best effort; the new foreman is the factory's either way.
+func foremanRetire(transcript string) {
+	unmarkFactoryForeman(transcript)
+	dir := session.DirOf(transcript)
+	meta, err := session.LoadMeta(dir)
+	if err != nil {
+		return
+	}
+	if title := strings.TrimSpace(meta.Title); title == foremanTitle || title == foremanOldTitle {
+		meta.Title = foremanEarlierTitle
+		_ = session.SaveMeta(dir, meta)
+	}
+}
+
+// foremanPolicyWait is how long a foreman's making waits for the floor's read
+// before it is made without the recipes' policy lines.
+const foremanPolicyWait = 5 * time.Second
+
+// foremanPolicyRead is the floor's read for the brief's policy lines, WAITED
+// FOR A BOUNDED TIME. The read is the one factory_floor bounds for the same
+// reason (internal/session's floorWithin): it reads disk and may wait on a
+// lock, and a making that waited on it without limit was an open of the
+// manager that never answered. A brief without the policy lines is still a
+// foreman; a floor that could not be read in time says nothing here.
+func foremanPolicyRead(load func() (factory.Snapshot, error)) factory.Snapshot {
+	if load == nil {
+		return factory.Snapshot{}
+	}
+	done := make(chan factory.Snapshot, 1)
+	go func() {
+		snap, _ := load()
+		done <- snap
+	}()
+	select {
+	case snap := <-done:
+		return snap
+	case <-time.After(foremanPolicyWait):
+		return factory.Snapshot{}
+	}
 }
 
 // foremanBrief is the foreman's opening note: [foremanOpening], then each
