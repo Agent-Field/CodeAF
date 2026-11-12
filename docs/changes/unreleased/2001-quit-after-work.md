@@ -11,3 +11,14 @@ invalidates:
 ---
 Found by the last real two-computer round, on the published dev build. Every
 other step of the round passed.
+
+Desktop engines use the same final save: closing an app conversation publishes
+its newest saved turn and releases its hold, preserves a failed saving reply,
+and flushes local records before the app lifetime ends. The overall app leaving
+bound is two minutes so local sealing, publication and the final disk flush each
+retain their full 30-second bound. A fresh app seat also seals background-task
+tails before the first foreground turn. Admission that learns another computer
+took a chat retires its old send hold and updates cached sync health.
+
+Manual lookup keeps quitting, moving chats, sharing files, card marks, budget
+refusals and factory auto-merge questions reachable in the combined corpus.

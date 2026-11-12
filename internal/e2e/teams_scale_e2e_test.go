@@ -17,6 +17,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
+	"github.com/Agent-Field/codeaf/internal/teams/teamstest"
 )
 
 // Screen timings include input delivery and observed terminal output, but not
@@ -132,5 +133,5 @@ func seedTeamsScale(t *testing.T, count, members int, home, ws string) {
 		}
 		teams = append(teams, tm)
 	}
-	writeJSON(t, teamstore.Path(home), teamstore.File{Version: teamstore.Version, Teams: teams})
+	teamstest.WriteTeams(t, home, teams)
 }

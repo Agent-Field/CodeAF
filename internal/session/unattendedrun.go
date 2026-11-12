@@ -3,8 +3,13 @@ package session
 // StillGoing reports that an unattended run has something left to happen.
 // A session somebody is steering, a run with no budget, and a task's own agent
 // all answer false because none of them has a door that should wait here.
+//
+// A FACTORY STAGE HAS ONE, AND NO GOAL OWNER. Its runner waits for the round
+// to be idle — its turn over AND the work it handed out landed — before it
+// reads the report, and a stage is deliberately owned by nobody
+// ([newPrincipalFor]), so it is asked here by its door rather than its owner.
 func (a *Agent) StillGoing() bool {
-	if a == nil || a.steward() == nil {
+	if a == nil || (a.steward() == nil && !a.config.mayStage()) {
 		return false
 	}
 
@@ -15,6 +20,10 @@ func (a *Agent) StillGoing() bool {
 	// never calls a method that would take a.mu while the graph is held.
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	return a.stillGoingLocked()
+}
+
+func (a *Agent) stillGoingLocked() bool {
 	if a.closed {
 		return false
 	}

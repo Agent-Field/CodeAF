@@ -297,32 +297,10 @@ const consentBash = "bash"
 // name means every command for the rest of the conversation, and a person who
 // read `git status*` must not buy silence for `rm -rf`.
 func (a *app) rememberAlways(tool, shape string) (string, bool) {
-	if tool == consentBash {
-		if a.saveBashApproval == nil {
-			return "", false
-		}
-		// The shape the person picked in the second beat, and the line itself
-		// where there was no beat to pick in — a command that never arrived
-		// whole, a compound line nothing can be derived from.
-		command := strings.TrimSpace(shape)
-		if command == "" {
-			command = a.askCommand(tool)
-		}
-		if command == "" {
-			return "", false
-		}
-		if a.saveBashApproval(command) != nil {
-			return "", false
-		}
-		return command, true
+	if tool == consentBash && strings.TrimSpace(shape) == "" {
+		shape = a.askCommand(tool)
 	}
-	if a.saveApproval == nil {
-		return "", false
-	}
-	// A PLAIN TOOL BANKS NO RULE, only a setting keyed by the same name the
-	// engine's own memo is keyed by — so the two agree and the engine writes its
-	// memo as it always did ([session.AnswerBanked] is what would stop it).
-	return "", a.saveApproval(tool) == nil
+	return config.SaveApproval(tool, strings.TrimSpace(shape), a.saveBashApproval, a.saveApproval)
 }
 
 // askCommand is the exact command line a bash question is about.

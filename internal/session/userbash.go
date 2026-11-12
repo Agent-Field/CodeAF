@@ -63,16 +63,20 @@ func (a *Agent) approveUserBash(ctx context.Context, hub *eventHub, call ai.Tool
 		return refusal(off), false
 	}
 	decision, governed := a.decide(call)
-	if governed && decision.Action == approval.ActionDeny {
+	// THE PERSON'S OWN COMMAND IS NOT THE AGENT'S. Typing `! gh auth token` is what
+	// the credential floor sends a person to do, so it does not refuse them here.
+	if governed && decision.Action == approval.ActionDeny && !decision.Credential {
 		return refusal("denied by approval rule: " + decision.Rule), false
 	}
 	args := json.RawMessage(call.Function.Arguments)
 	// THE FLOOR STILL ASKS. Enter consents to ordinary shell work, but it
 	// cannot answer the critical table on behalf of a question not yet shown.
-	if governed && approval.AlwaysAsks(call.Function.Name, args) {
+	if governed && (decision.ProfileReadError != "" || approval.AlwaysAsks(call.Function.Name, args)) {
 		// An allow-only policy asks the same critical matcher for the rule
 		// shown on the card, even when the person's policy said "default".
-		decision = (approval.Policy{Default: approval.ActionAllow}).Check(call.Function.Name, args)
+		if decision.ProfileReadError == "" {
+			decision = (approval.Policy{Default: approval.ActionAllow}).Check(call.Function.Name, args)
+		}
 		if !a.config.AskConsent || hub == nil {
 			return refusal("needs approval but no resolver is attached: " + decision.Rule), false
 		}
@@ -101,7 +105,7 @@ func displayToolOutput(id, output string) string {
 // is retained across writes so remote JSON frames cannot corrupt split runes.
 type shellOutput struct {
 	hub          *eventHub
-	id           string
+	id, tool     string
 	bytes, lines int
 	pending      []byte
 	cut          bool
@@ -127,12 +131,12 @@ func (w *shellOutput) Write(p []byte) (int, error) {
 		}
 	}
 	if end > 0 {
-		w.hub.send(Event{Kind: EventToolOutput, Tool: "bash", CallID: w.id, Text: strings.ToValidUTF8(string(w.pending[:end]), "�")})
+		w.hub.send(Event{Kind: EventToolOutput, Tool: w.tool, CallID: w.id, Text: strings.ToValidUTF8(string(w.pending[:end]), "�")})
 	}
 	w.pending = append(w.pending[:0], w.pending[end:]...)
 	if w.cut {
 		w.pending = nil
-		w.hub.send(Event{Kind: EventToolOutput, Tool: "bash", CallID: w.id, Text: "\n[Live output limit reached; the final result includes the saved output path.]\n"})
+		w.hub.send(Event{Kind: EventToolOutput, Tool: w.tool, CallID: w.id, Text: "\n[Live output limit reached; the final result includes the saved output path.]\n"})
 	}
 	return n, nil
 }
@@ -163,7 +167,7 @@ func (a *Agent) runUserBash(ctx context.Context, hub *eventHub, command string) 
 		output, failed = "Command cancelled", true
 	} else {
 		caps := a.resultCaps()
-		writer := &shellOutput{hub: hub, id: call.ID, bytes: caps.MaxBytes, lines: caps.MaxLines}
+		writer := &shellOutput{hub: hub, id: call.ID, tool: "bash", bytes: caps.MaxBytes, lines: caps.MaxLines}
 		var err error
 		// C5 includes changes made by the person as well as model tools.
 		// Bash has unknown changes, so its recorded call visits the whole tree.

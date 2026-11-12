@@ -30,6 +30,7 @@ package session
 // else.
 
 import (
+	"context"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
@@ -66,7 +67,7 @@ const spawnFloorRefusal = "this ask is one command — do it here. A commit, an 
 // IT ANSWERS A STAGED CALL, nil for none, because the bounce is not a settled
 // refusal: it marks the message it was made for, and a call withdrawn before
 // it went ahead takes that mark back ([askBounce.Withdraw]).
-func (a *Agent) refuseProposedTask(spec taskSpec) bare.Staged {
+func (a *Agent) refuseProposedTask(ctx context.Context, spec taskSpec) bare.Staged {
 	verb := ""
 	if !a.config.InTask {
 		verb = trivialVerb(a.taskRequest())
@@ -81,7 +82,9 @@ func (a *Agent) refuseProposedTask(spec taskSpec) bare.Staged {
 		return bare.Settled(spawnFloorRefusal, true)
 	}
 	if refusal := a.proposalDependencyRefusal(spec); refusal != "" {
-		return bare.Settled(refusal, true)
+		// A depends_on the graph can never satisfy is an argument fault, caught
+		// before anything is started.
+		return bare.Settled(rejectToolArguments(ctx, refusal), true)
 	}
 	if refusal := a.programRetryRefusal(spec.via); refusal != "" {
 		return bare.Settled(refusal, true)

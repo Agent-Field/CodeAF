@@ -89,6 +89,13 @@ type taskLive struct {
 	// a sentence is a node saying something.
 	lines   []string
 	partial string
+	// calls is the TYPED record of the same steps the ring words, and stepAt
+	// indexes it by the provider's call id (task_app_steps.go). It is written
+	// from the same events, because a model asking "what is it doing" wants the
+	// sentence and a surface that groups steps by kind wants the facts, and
+	// neither can be composed from the other without losing something.
+	calls  []liveStep
+	stepAt map[string]int
 }
 
 // taskLiveState is the recorder copied out, so nothing renders under its lock.
@@ -102,6 +109,12 @@ type taskLiveState struct {
 	Steps int
 	// Lines is the tail asked for, oldest first.
 	Lines []string
+	// Calls is the same work as FACTS, oldest first and bounded the same way
+	// ([AppTaskStep]). It is what a task page's work log is built from; Lines
+	// stays the worded tail a model reads. It is named for CALLS and not for
+	// steps because Steps above is the finished-call COUNT, which is the node's
+	// own threshold unit and must go on meaning exactly that.
+	Calls []AppTaskStep
 }
 
 // record folds one of the child's events in. It is the whole write side.
@@ -111,6 +124,12 @@ func (l *taskLive) record(event Event) {
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	// ONE READING OF THE CLOCK SERVES BOTH RECORDS. The typed record of a step
+	// (task_app_steps.go) is folded in beside the worded one, and two readings a
+	// moment apart would let a step's duration and the line that announced it
+	// disagree about when it happened.
+	at := time.Now()
+	l.recordStep(event, at)
 	switch event.Kind {
 	case EventTextDelta:
 		l.write(event.Text)
@@ -118,7 +137,7 @@ func (l *taskLive) record(event Event) {
 		// Named, not clocked: see [taskLive.began].
 		l.call, l.began = taskLiveCall(event), time.Time{}
 	case EventToolBegin:
-		l.call, l.began = taskLiveCall(event), time.Now()
+		l.call, l.began = taskLiveCall(event), at
 		l.push("· " + l.call)
 	case EventToolEnd:
 		l.finished()
@@ -244,6 +263,7 @@ func (l *taskLive) state(tail int) taskLiveState {
 	}
 	out := taskLiveState{Call: l.call, Since: l.began, Last: l.last, Steps: l.steps}
 	out.Lines = append(out.Lines, lines...)
+	out.Calls = l.liveSteps(tail)
 	return out
 }
 

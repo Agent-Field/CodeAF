@@ -233,6 +233,7 @@ var taskSchemaJSON = `{"type":"object","properties":{` +
 	expectsSchemaJSON + `,` +
 	checksSchemaJSON + `,` +
 	`"depends_on":{"type":"array","items":{"type":"integer"},"description":"Ids that must finish first, only ones propose_task returned in this session. Its brief is given their reports; an unknown or failed id refuses the proposal"},` +
+	`"irreversible":{"type":"boolean","description":"True for work that cannot be undone; it never starts on a clock"},` +
 	`"wide":{"type":"boolean","description":"Optional. True when the work is wider than one pair of hands. Say true whenever you judged it broad; a wrong true costs nothing"},` +
 	`"model":{"type":"string","description":"One-task override of task.model and crew. Catalog ID or unique name, only when requested; ambiguous names are offered for confirmation."},` +
 	`"effort":{"type":"string","enum":["best","cheap"],"description":"Only when the person asked"},` +
@@ -251,6 +252,7 @@ const workspaceSetTaskSchema = `"workspace_set":{"type":"object","description":"
 
 // taskArguments is the wire form.
 type taskArguments struct {
+	Irreversible bool                 `json:"irreversible,omitempty"`
 	Title        string               `json:"title"`
 	Summary      string               `json:"summary"`
 	Brief        string               `json:"brief"`
@@ -292,6 +294,8 @@ type taskArguments struct {
 // a person may still move afterwards is `model`, and only from inside the node's
 // own room — see the field itself.
 type taskSpec struct {
+	// Irreversible work always waits for an explicit answer.
+	irreversible bool
 	workspaceSet *WorkspaceSetRequest
 	title        string
 	computer     string
@@ -324,6 +328,12 @@ type taskSpec struct {
 	// before origins were carried, a test that never set one — and
 	// [composeBrief] draws nothing for it.
 	origin taskOrigin
+	// source is the message or directive that started this work, captured when
+	// it was admitted and never read back out of any text (task_source.go). Nil
+	// is unknown.
+	source *TaskSource
+	// sourceCaptured preserves a captured unknown on promotion or delayed admission.
+	sourceCaptured bool
 	// admission is the WORKING CONTEXT this node was admitted with: bounded
 	// quotations of what was said around the work, with who said them, and
 	// handles to the calls that already ran (admission.go). Every door compiles
@@ -636,7 +646,7 @@ func (a *Agent) mayProposeTask() bool { return a.config.mayProposeTask() }
 // at construction, and the belt and the prompt must not disagree about whether
 // it can.
 func (c Config) mayFanOut() bool {
-	return c.InTask && c.tasker != nil && fansOutAt(c.taskDepth)
+	return !c.readingTask() && c.InTask && c.tasker != nil && fansOutAt(c.taskDepth)
 }
 
 // fansOutAt says whether a worker standing this many tasks deep may hand work
@@ -723,7 +733,7 @@ func (a *Agent) stageTask(ctx context.Context, args json.RawMessage) bare.Staged
 		if taskHasPlacementContract(spec) {
 			problem = proposalProblems(problem, a.resolveTaskGround(spec))
 		}
-		return bare.Settled(problem, true)
+		return bare.Settled(rejectToolArguments(ctx, problem), true)
 	}
 	if err := a.checkProposedTaskComputer(ctx, spec); err != nil {
 		return bare.Settled(err.Error(), true)
@@ -733,12 +743,16 @@ func (a *Agent) stageTask(ctx context.Context, args json.RawMessage) bare.Staged
 	// resolve are all "do not start this"; they live in one helper so this
 	// road does not grow another ending (complexity_test.go's ratchet on this
 	// function).
-	if refusal := a.refuseProposedTask(spec); refusal != nil {
+	if refusal := a.refuseProposedTask(ctx, spec); refusal != nil {
 		return refusal
 	}
 	// A PROGRAM'S RUN THAT ENDED DONE IS A DEPENDENCY MET, and the graph knows
 	// no node by its id (program_depends.go).
 	spec.dependsOn = a.withoutEndedProgramRuns(spec.dependsOn)
+	// A WORKER SEAT ON CLAUDE CODE HANDS THE TASK TO CLAUDE CODE ITSELF
+	// (claudeseat.go): the person chose who does the work, and on that seat
+	// it is an agent with its own tools rather than a model under codeaf's.
+	spec = a.seatOnClaudeCode(spec)
 	// A DELEGATE IS RESOLVED BEFORE THE CARD, so a name this machine has no
 	// delegate for is answered with the names it has and nobody is asked to
 	// approve work that could not start (delegate_door.go).
@@ -781,6 +795,11 @@ func (a *Agent) stageTask(ctx context.Context, args json.RawMessage) bare.Staged
 	// so a nested worker still finds the person's turn, not its parent's
 	// journal.
 	spec.origin = a.taskOriginRef()
+	// AND WHICH MESSAGE IT CAME FROM, captured now and not at approval: the person
+	// may type again while the card is open, and the card is still about the message
+	// that made it (task_source.go). A node inherits its own block.
+	spec.source = a.bornSource()
+	spec.sourceCaptured = true
 	// AND WHERE THE WORK STANDS, resolved from the evidence this conversation
 	// already holds (taskstands.go) before anybody is asked anything, so the card
 	// the person answers names the project rather than a folder under a session.
@@ -941,10 +960,14 @@ func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 	// and why ([runDidNotStart]), and reads as a failure. Only a run road that
 	// is not there at all (no engine linked, no place for a store) leaves this
 	// door for the older one ([Agent.commitProposalToRun]).
-	ctx = withCrewWish(ctx, crewWish{effort: spec.crewEffort, worker: namedModel(spec)})
+	ctx = withCrewWish(ctx, a.proposalCrewWish(p.id, crewWish{effort: spec.crewEffort, worker: namedModel(spec)}))
+	// THE BLOCK THE ROW WILL BE BORN IN is the one captured when the card was raised,
+	// whichever road publishes its first row (task_source.go).
+	a.expectRunSource(p.id, spec.source)
 	if answer, refused, handled := a.commitProposalToRun(ctx, p, spec, elsewhere); handled {
 		return answer, refused, nil
 	}
+	a.runSources.Delete(p.id) // The fallback graph owns the captured spec; no run row will consume this marker.
 	state := graph.admit(p.id, spec)
 	admitted = true
 	return taskReceipt(p.id, spec, state, p.stand, elsewhere), false, nil
@@ -978,56 +1001,76 @@ func proposalBrief(spec taskSpec, via *delegate.Delegate) string {
 // of its own on the brief, which is not what was asked for, so its failure is
 // answered as a refusal.
 func (a *Agent) commitProposalToRun(ctx context.Context, p *stagedProposal, spec taskSpec, elsewhere string) (string, bool, bool) {
-	stand, err := a.admitWorkspaceProposal(ctx, p.stand, spec)
-	if err != nil {
-		return runDidNotStart(p.id, err), true, true
-	}
-
-	if !a.proposalUsesRunRoad(spec) {
+	if !a.runRoadOwns(spec) {
+		if _, err := a.admitWorkspaceProposal(ctx, p.stand, spec); err != nil {
+			return runDidNotStart(p.id, err), true, true
+		}
 		return "", false, false
 	}
 	a.mu.Lock()
 	question := questionAtTaskHandoff(a.owedAsks)
 	a.mu.Unlock()
-	var via *delegate.Delegate
-	if spec.via != "" {
-		m, err := a.delegateFor(spec.via)
-		if err != nil {
-			return err.Error(), true, true
-		}
-		via = &m
-	}
-	placementStand := stand
-	// The explicit in-place request controls computer placement even when the
-	// repository's existing isolation law still prepares a local branch.
-	if strings.EqualFold(strings.TrimSpace(spec.where), "in place") {
-		placementStand.mode = TaskModeInPlace
-	}
-	placement, err := a.resolveTaskComputer(ctx, spec.computer, placementStand, spec.kind(), via != nil)
+	via, err := a.handoffDelegate(spec)
 	if err != nil {
+		a.settleUnstartedHandoff(p.id, spec.title, err)
 		return err.Error(), true, true
 	}
-	placement.model = namedModel(spec)
-	placement.effort = string(spec.crewEffort)
-	if spec.thinking != effort.None {
-		placement.effort = spec.thinking.String()
+	start, err := a.startApprovedHandoff(ctx, p, spec, via, question)
+	// A COMPUTER THAT CANNOT TAKE THE TASK IS SAID AS ITSELF, before any run row
+	// is opened: the placement refusal names the computer and the way out.
+	if refusal := (placementRefusal{}); errors.As(err, &refusal) {
+		return refusal.Error(), true, true
 	}
-	placement.maxSteps, placement.noProgress = spec.maxSteps, spec.noProgress
-	ctx = withTaskPlacement(ctx, placement)
-	elsewhere = withReport(elsewhere, placement.sentence)
-	description := proposalRunDescription(spec, via, placement)
-	// THE RUN OUTLIVES THE TURN THAT LAUNCHED IT, AND NOT THE CONVERSATION.
-	// This context is the turn's, and the turn cancels it on its way out
-	// (agent.go, `defer cancel(nil)`); a run driven under it would be stopped
-	// the moment the model finished its sentence. The values ride along, the
-	// cancellation does not. What ends it instead is the conversation: the
-	// person's stop (stoprun.go) or the room closing ([Agent.cutBeltRun]).
-	//
-	// WHETHER IT JOINED is the start door's answer and not a look taken
-	// before it: in a batch committed at one moment none of the hand-offs
-	// could see a live run beforehand, and the one that opened the run is
-	// decided under the start lock ([Agent.startOrJoinTaskRunVia]).
+	elsewhere = withReport(elsewhere, start.placed)
+	// A ROLE WITH NOTHING ALLOWED TO RUN ON IS A QUESTION, NOT A FAILURE: the
+	// task waits, asks, and starts from here once a model is allowed
+	// (taskrouting.go). Nothing ran and nothing was moved onto another model.
+	if receipt, parked := a.parkUnroutedHandoff(ctx, p, spec, elsewhere, via, err); parked {
+		return receipt, false, true
+	}
+	return a.handoffAnswer(p, spec, elsewhere, via, start.asked, start.stand, start.joined, err)
+}
 
+// runRoadOwns is an approved hand-off this door starts as a run: the bash
+// belt, a named program, or a task placed on a paired computer. A session
+// inside a task, or one with no run engine, leaves the hand-off to the older
+// road.
+func (a *Agent) runRoadOwns(spec taskSpec) bool {
+	if chatRunEngine == nil || a.config.InTask {
+		return false
+	}
+	return bashBeltAsked() || spec.via != "" || a.taskComputerPreference() || (a.config.TaskComputers != nil && spec.computer != "")
+}
+
+// handoffDelegate is the program a hand-off named, or nil when it named none.
+// A name this session cannot resolve is the error, and the hand-off does not start.
+func (a *Agent) handoffDelegate(spec taskSpec) (*delegate.Delegate, error) {
+	if spec.via == "" {
+		return nil, nil
+	}
+	m, err := a.delegateFor(spec.via)
+	if err != nil {
+		return nil, err
+	}
+	return &m, nil
+}
+
+// startApprovedHandoff registers the run. The context it is given outlives
+// the turn that launched it: that turn cancels its own context on the way out
+// (agent.go, `defer cancel(nil)`), and a run driven under it would stop when
+// the model finished its sentence. What ends the run is the conversation, the
+// person's stop or the room closing. Whether it joined a run already underway
+// is this door's answer, decided under the start lock.
+func (a *Agent) startApprovedHandoff(ctx context.Context, p *stagedProposal, spec taskSpec, via *delegate.Delegate, question string) (handoffStart, error) {
+	stand, err := a.admitWorkspaceProposal(ctx, p.stand, spec)
+	if err != nil {
+		return handoffStart{stand: stand}, err
+	}
+	placement, err := a.placeHandoff(ctx, spec, stand, via)
+	if err != nil {
+		return handoffStart{stand: stand}, placementRefusal{err}
+	}
+	ctx = withTaskPlacement(ctx, placement)
 	asked := programAsked(spec)
 	var prior *programOutcome
 	if via != nil {
@@ -1035,8 +1078,55 @@ func (a *Agent) commitProposalToRun(ctx context.Context, p *stagedProposal, spec
 		prior = a.keepProgramAttempt(p.id, a.programAttemptOf())
 		ctx = withProgramWish(ctx, programWish{thinking: spec.thinking, carry: a.programCarryOf(prior, via.Name)})
 	}
-	joined, err := a.startOrJoinTaskRunVia(context.WithoutCancel(ctx), p.id, spec.title, description, spec.dependsOn, stand, question, via, asked...)
+	a.expectRunSource(p.id, spec.source)
+	joined, err := a.startOrJoinTaskRunVia(context.WithoutCancel(ctx), p.id, spec.title, proposalRunDescription(spec, via, placement), spec.dependsOn, stand, question, via, asked...)
 	a.rollbackFailedProgramStart(via, p.id, prior, err)
+	return handoffStart{joined: joined, stand: stand, asked: asked, placed: placement.sentence}, err
+}
+
+// handoffStart is what starting an approved hand-off settled: whether it
+// joined a run already underway, the stand it runs on, the programs asked
+// for, and the sentence that says which computer it was placed on.
+type handoffStart struct {
+	joined bool
+	stand  taskStand
+	asked  []string
+	placed string
+}
+
+// placementRefusal is a hand-off whose named computer cannot take it. It is
+// said as its own sentence, never as a run that did not start.
+type placementRefusal struct{ err error }
+
+func (r placementRefusal) Error() string { return r.err.Error() }
+func (r placementRefusal) Unwrap() error { return r.err }
+
+// placeHandoff resolves the computer an approved hand-off runs on. The
+// explicit in-place request controls computer placement even when the
+// repository's existing isolation law still prepares a local branch.
+func (a *Agent) placeHandoff(ctx context.Context, spec taskSpec, stand taskStand, via *delegate.Delegate) (taskPlacement, error) {
+	if strings.EqualFold(strings.TrimSpace(spec.where), "in place") {
+		stand.mode = TaskModeInPlace
+	}
+	placement, err := a.resolveTaskComputer(ctx, spec.computer, stand, spec.kind(), via != nil)
+	if err != nil {
+		return placement, err
+	}
+	placement.model = namedModel(spec)
+	placement.effort = string(spec.crewEffort)
+	if spec.thinking != effort.None {
+		placement.effort = spec.thinking.String()
+	}
+	placement.maxSteps, placement.noProgress = spec.maxSteps, spec.noProgress
+	return placement, nil
+}
+
+// handoffAnswer is what an approved hand-off that was this door's to start
+// says back. A start that failed is settled as failed before the model hears
+// it, except a run road that is not there at all, which the older engine
+// still admits under the same id.
+func (a *Agent) handoffAnswer(p *stagedProposal, spec taskSpec, elsewhere string, via *delegate.Delegate, asked []string, stand taskStand, joined bool, err error) (string, bool, bool) {
+	a.settleUnstartedHandoff(p.id, spec.title, err)
 	if refusal := (standsElsewhereError{}); errors.As(err, &refusal) {
 		return refusal.Error(), true, true
 	}
@@ -1057,6 +1147,33 @@ func (a *Agent) commitProposalToRun(ctx context.Context, p *stagedProposal, spec
 		return withElsewhere(runDidNotStart(p.id, err), elsewhere), true, true
 	}
 	return "", false, false
+}
+
+// settleUnstartedHandoff ends the row of an approved hand-off whose run never
+// started: failed, with [runDidNotStart]'s sentence as what stopped it.
+//
+// WITHOUT IT THE APPROVAL WAS THE LAST THING ANY SURFACE HEARD. The card was
+// restated approved with its clock gone ([taskWait.decided]), which a surface
+// reads as work queued to begin, and nothing that followed was about this id:
+// the store refused it, no run row was published, and the refusal went back to
+// the model alone. A window, the app's task list and a turn's replay all kept a
+// queued task that nothing would ever start. The row is published the way every
+// other ending of a run is ([Agent.publishRunRow]), so it is said live, kept on
+// the checkpoint and the index, and read back as failed after a reopen — a true
+// account of an attempt, never deleted and never left pending.
+//
+// A nil error is a run that started, and [errRunRoadUnavailable] is a hand-off
+// the older engine is about to admit under the same id; neither is settled.
+func (a *Agent) settleUnstartedHandoff(id uint64, title string, err error) {
+	g := a.graph()
+	if g == nil || id == 0 || err == nil || errors.Is(err, errRunRoadUnavailable) {
+		return
+	}
+	reason := runDidNotStart(id, err)
+	a.publishRunRow(g, TaskNotice{
+		ID: id, Title: title, State: TaskFailed,
+		Report: reason, EndedAt: a.taskClockNow(),
+	})
 }
 
 // namedModel is the model a hand-off named for its work, and nothing when it
@@ -1177,8 +1294,9 @@ func parseTaskArguments(args json.RawMessage) (taskSpec, string) {
 		return taskSpec{}, "Invalid arguments: " + err.Error()
 	}
 	spec := taskSpec{
-		title:    strings.TrimSpace(parsed.Title),
-		computer: strings.TrimSpace(parsed.Computer),
+		title:        strings.TrimSpace(parsed.Title),
+		computer:     strings.TrimSpace(parsed.Computer),
+		irreversible: parsed.Irreversible,
 		// THE MODEL GROOMED THIS PROPOSAL AND NAMED IT IN THE SAME BREATH, so the
 		// namer leaves it alone (taskname.go).
 		named:        strings.TrimSpace(parsed.Title) != "",
@@ -1285,10 +1403,12 @@ func parseTaskArguments(args json.RawMessage) (taskSpec, string) {
 // [taskWait] is waiting. Holding closes hold exactly once but keeps answer alive, because
 // typing removes the clock rather than answering the question.
 type taskQuestion struct {
-	answer chan TaskAnswer
-	hold   chan struct{}
-	held   bool
-	notice TaskNotice
+	// Version distinguishes model and hold edits while the proposal is open.
+	appVersion uint64
+	answer     chan TaskAnswer
+	hold       chan struct{}
+	held       bool
+	notice     TaskNotice
 }
 
 // ResolveTask answers one EventTaskProposal. A surface hands back the id the
@@ -1324,15 +1444,14 @@ func (a *Agent) HoldTask(id uint64) {
 		return
 	}
 	question.held = true
+	question.appVersion++
 	question.notice.Deadline = time.Time{}
 	notice := question.notice
 	hub := a.hub
 	close(question.hold)
 	a.mu.Unlock()
 
-	if hub != nil {
-		hub.send(Event{Kind: EventTaskProposal, Tool: "propose_task", Task: &notice})
-	}
+	a.broadcastTaskProposal(hub, notice)
 }
 
 // openTask puts one proposal in front of the person, starts its clock, and
@@ -1366,6 +1485,9 @@ func (a *Agent) HoldTask(id uint64) {
 // elsewhere is the preflight's one line about other windows already in these
 // files, or "" — a fact the card draws beside the work, not a reason to wait.
 func (a *Agent) openTask(ctx context.Context, id uint64, spec taskSpec, elsewhere string) (*taskWait, error) {
+	if owner := a.taskProposalOwner(spec); owner != a {
+		return owner.openTask(ctx, id, spec, elsewhere)
+	}
 	a.mu.Lock()
 	if a.closed {
 		a.mu.Unlock()
@@ -1375,6 +1497,13 @@ func (a *Agent) openTask(ctx context.Context, id uint64, spec taskSpec, elsewher
 	// runs inside a turn, and the turn's fan-out is where its question is seen.
 	hub := a.hub
 	clock, countdown := a.taskClock(hub)
+	if spec.irreversible {
+		clock = false
+		if hub == nil && len(a.taskWatchers) == 0 {
+			a.mu.Unlock()
+			return nil, errors.New("this task needs your answer in a watching session")
+		}
+	}
 	var deadline time.Time
 	if clock {
 		deadline = a.taskClockNow().Add(countdown)
@@ -1407,7 +1536,7 @@ func (a *Agent) openTask(ctx context.Context, id uint64, spec taskSpec, elsewher
 	// The card that carries the brief is the lane's own announcement, and the
 	// question goes out after it on EventQuestion's own ordering law
 	// ([Agent.raiseQuestion] keeps it, so no lane emits the raise itself).
-	forget := a.presenceAskingWhole(proposed, func() { a.announceTask(hub, question) })
+	forget := a.presenceAskingWhole(ctx, proposed, func() { a.announceTask(hub, question) })
 	wait := &taskWait{
 		agent: a, id: id, question: question, proposed: proposed,
 		settled:   make(chan taskSettled, 1),
@@ -1488,6 +1617,11 @@ func (w *taskWait) run(ctx context.Context, expiry <-chan time.Time, stopTimer f
 			// nothing, so nothing is appended to the brief.
 			silent := TaskAnswer{Approved: true}
 			w.decided(silent)
+			// AND THE QUESTION CLOSES SAYING THE WORK STARTED, before the turn is
+			// handed the yes. The card above already says so, but on the task
+			// lane; a surface reading the question lane would otherwise see a
+			// bare withdrawal first and call a starting task no longer needed.
+			w.agent.withdrawStarted(w.proposed)
 			w.settled <- taskSettled{answer: silent}
 			return
 		case <-ctx.Done():
@@ -1521,12 +1655,9 @@ func (w *taskWait) decided(answer TaskAnswer) {
 	hub := a.hub
 	notice := w.question.notice
 	a.mu.Unlock()
-	if hub == nil {
-		return
-	}
 	notice.Deadline = time.Time{}
 	notice.Decided = &answer
-	hub.send(Event{Kind: EventTaskProposal, Tool: "propose_task", Task: &notice})
+	a.broadcastTaskProposal(hub, notice)
 }
 
 // answer is what the wait came to, waiting for it if it has not come to
@@ -1575,9 +1706,7 @@ func (w *taskWait) withdraw() {
 	a.mu.Unlock()
 	notice.Deadline = time.Time{}
 	notice.Withdrawn = taskWithdrawnReason
-	if hub != nil {
-		hub.send(Event{Kind: EventTaskProposal, Tool: "propose_task", Task: &notice})
-	}
+	a.broadcastTaskProposal(hub, notice)
 }
 
 // taskClock is the clock's law from [Agent.openTask]'s comment, decided once
@@ -1602,17 +1731,19 @@ func newTaskQuestion(id uint64, spec taskSpec, elsewhere string, deadline time.T
 		answer: make(chan TaskAnswer, 1),
 		hold:   make(chan struct{}),
 		notice: TaskNotice{
-			ID:         id,
-			Computer:   spec.computer,
-			Title:      spec.title,
-			Summary:    spec.summary,
-			Brief:      spec.brief,
-			Acceptance: spec.acceptance,
-			Where:      taskCardWhere(config, id, spec),
-			Ground:     spec.ground,
-			Mode:       spec.mode,
-			DependsOn:  spec.dependsOn,
-			Deadline:   deadline,
+			ID:           id,
+			Computer:     spec.computer,
+			Title:        spec.title,
+			Source:       cloneSource(spec.source),
+			Summary:      spec.summary,
+			Brief:        spec.brief,
+			Acceptance:   spec.acceptance,
+			Where:        taskCardWhere(config, id, spec),
+			Ground:       spec.ground,
+			Mode:         spec.mode,
+			DependsOn:    spec.dependsOn,
+			Deadline:     deadline,
+			Irreversible: spec.irreversible,
 			// What it will run on, and — when one word fit more than one model
 			// — what it could run on instead. A surface draws the first as a
 			// fact and offers the second as a choice; both are settled by the
@@ -1632,9 +1763,6 @@ func newTaskQuestion(id uint64, spec taskSpec, elsewhere string, deadline time.T
 // put it in. A nil hub is a headless run, and a headless run has nobody to
 // show a card to; the clock admits the work on its own.
 func (a *Agent) announceTask(hub *eventHub, question *taskQuestion) {
-	if hub == nil {
-		return
-	}
 	// AND THE WARM LINE, WHERE THE HANDOFF CAME OUT OF THE WORK ITSELF. It
 	// goes ABOVE the card because it is the reason the card is there, and it
 	// is [EventNotice] — the dim one-liner a surface already draws for
@@ -1645,15 +1773,11 @@ func (a *Agent) announceTask(hub *eventHub, question *taskQuestion) {
 	// nobody groomed). Silence still starts it, so the person is told and the
 	// work opens; what the card adds is a window to redirect, which is more
 	// than an auto-start could give them and not less.
-	if a.alreadyWorking() {
+	if hub != nil && a.alreadyWorking() {
 		hub.send(Event{Kind: EventNotice, Text: taskEscalationNote})
 	}
 	notice := question.notice
-	hub.send(Event{
-		Kind: EventTaskProposal,
-		Tool: "propose_task",
-		Task: &notice,
-	})
+	a.broadcastTaskProposal(hub, notice)
 }
 
 // taskSilenceAdmits is what an expired clock has to ask before it may approve
@@ -1726,14 +1850,19 @@ func taskWhereNotice(place Place, workspace string, id uint64, where string, mod
 		}
 		return "task folder"
 	}
-	if strings.EqualFold(where, "in place") {
-		return workspace
-	}
 	if where != "" {
-		if resolved, err := resolveTaskWhere(where, workspace); err == nil {
-			return resolved
+		target := workspace
+		if !strings.EqualFold(where, "in place") {
+			resolved, err := resolveTaskWhere(where, workspace)
+			if err != nil {
+				return where
+			}
+			target = resolved
 		}
-		return where
+		if trees := place.Trees(); mode == TaskModeReference && trees != "" && HoldsHomeFolder(target) {
+			return filepath.Join(trees, strconv.FormatUint(id, 10))
+		}
+		return target
 	}
 	if trees := place.Trees(); trees != "" {
 		return filepath.Join(trees, strconv.FormatUint(id, 10))
@@ -1840,6 +1969,21 @@ func (a *Agent) proposalAsk(id uint64, notice TaskNotice) Question {
 	return a.proposalQuestion(id, notice)
 }
 
+// A proposal stays visible after its originating turn ends, like a running task.
+func (a *Agent) broadcastTaskProposal(hub *eventHub, notice TaskNotice) {
+	notice = a.withWorker(notice)
+	event := Event{Kind: EventTaskProposal, Tool: "propose_task", Task: &notice}
+	if hub != nil {
+		hub.send(event)
+	}
+	a.mu.Lock()
+	watchers := append([]*eventStream(nil), a.taskWatchers...)
+	a.mu.Unlock()
+	for _, watcher := range watchers {
+		watcher.send(event)
+	}
+}
+
 func validateTaskWorkspaceProposal(spec taskSpec) string {
 	if spec.workspaceSet != nil {
 		if !bashBeltAsked() {
@@ -1884,11 +2028,6 @@ func (a *Agent) checkProposedTaskComputer(ctx context.Context, spec taskSpec) er
 	}
 	_, err := a.resolveTaskComputer(ctx, spec.computer, taskStand{}, "", false)
 	return err
-}
-
-// The run road keeps the existing fallback condition and short-circuit order.
-func (a *Agent) proposalUsesRunRoad(spec taskSpec) bool {
-	return (bashBeltAsked() || spec.via != "" || a.taskComputerPreference() || (a.config.TaskComputers != nil && spec.computer != "")) && chatRunEngine != nil && !a.config.InTask
 }
 
 // Checks belong only in the instruction transported to another computer.

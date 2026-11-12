@@ -498,6 +498,17 @@ func TestAnUnmanagedSubTeamsMemberAnswersToTheManagerAbove(t *testing.T) {
 	if post := last(log); post.From != "loner" || post.To != teams.ToManager || !strings.Contains(post.Text, `(from "dock"`) {
 		t.Fatalf("harbor's log: %+v", post)
 	}
+	// Its answer names the line it became in harbor's log and harbor by id;
+	// the same words posted again are another line, read back as that one.
+	read, ok := ReadTeamPost(said)
+	if !ok || !read.Up || read.TeamID != harbor || read.Team != "harbor" || read.From != "dock" || read.Post != last(log).ID {
+		t.Fatalf("the answer %q read back as %+v %v (log line %s)", said, read, ok, last(log).ID)
+	}
+	again, _ := callTool(t, loner.teamPostTool, `{"to":"manager","text":"the dock is done"}`)
+	log, _ = teams.ReadTraffic(n.fixture.profile, harbor, "", 0)
+	if second, ok := ReadTeamPost(again); !ok || second.Post == read.Post || second.Post != last(log).ID || second.TeamID != harbor {
+		t.Fatalf("the same words again read back as %+v %v (log line %s, first %s)", second, ok, last(log).ID, read.Post)
+	}
 	if news := boss.teamBoundary(); !strings.Contains(news, "from @loner") || !strings.Contains(news, "the dock is done") {
 		t.Fatalf("harbor's manager was not handed the post:\n%s", news)
 	}

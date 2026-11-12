@@ -92,3 +92,32 @@ func TestAProgramWithNoVocabularyIsReadPlainly(t *testing.T) {
 		t.Fatal("an action with no words was shown")
 	}
 }
+
+// A LINE CARRIES A LAUNCH ONLY IN THE ONE SHAPE A LAUNCH IS DRAWN IN: a
+// malformed one is dropped as the line is written, and two launches never
+// share an identity.
+func TestALineCarriesALaunchOnlyInTheShapeOneIsDrawnIn(t *testing.T) {
+	dir := t.TempDir()
+	mine, other := NewLaunch(), NewLaunch()
+	if !ValidLaunch(mine) || mine == other {
+		t.Fatalf("launches %q %q", mine, other)
+	}
+	forged := StageAction(time.Date(2026, 10, 16, 9, 0, 0, 0, time.UTC), StageRecord{Stage: "x"})
+	forged.Launch = "not-a-launch"
+	if err := AppendAction(dir, forged); err != nil {
+		t.Fatal(err)
+	}
+	if err := AppendTurn(dir, Turn{Seq: 1, Launch: "NOT-HEX"}); err != nil {
+		t.Fatal(err)
+	}
+	logged, err := ReadActions(dir, 0)
+	turns, turnErr := ReadTurns(dir, 0)
+	if err != nil || turnErr != nil || len(logged) != 1 || logged[0].Launch != "" || len(turns) != 1 || turns[0].Launch != "" {
+		t.Fatalf("logged %+v turns %+v (%v %v)", logged, turns, err, turnErr)
+	}
+	for _, bad := range []string{"", "ABCDEF0123456789abcdef0123456789", mine + "0", mine[:31]} {
+		if ValidLaunch(bad) {
+			t.Errorf("%q passed as a launch", bad)
+		}
+	}
+}

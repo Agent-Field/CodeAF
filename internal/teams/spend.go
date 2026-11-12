@@ -3,9 +3,11 @@ package teams
 import (
 	"bufio"
 	"encoding/json"
+	"github.com/Agent-Field/codeaf/internal/filememo"
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -72,7 +74,13 @@ func TeamSpend(profileDir, teamID, day string) (Spend, error) {
 
 // TeamSpendIn is [TeamSpend] against the ledger at ledger.
 func TeamSpendIn(profileDir, ledger, teamID, day string) (Spend, error) {
-	f, err := spendTeamsFile(profileDir)
+	return teamSpendResults.read(profileDir, ledger, teamID, day)
+}
+
+func readTeamSpend(profileDir, ledger, teamID, day string) (Spend, error) {
+	// The team and every team below it, and nothing else: a team's day is
+	// its subtree's, however many other teams there are.
+	f, err := LoadSubtree(profileDir, teamID)
 	if err != nil {
 		return Spend{}, err
 	}
@@ -95,13 +103,32 @@ func TeamSpendIn(profileDir, ledger, teamID, day string) (Spend, error) {
 	if err != nil {
 		return out, err
 	}
-	for pair, sum := range totals {
+	sumTeamSpend(&out, ids, totals)
+	return out, nil
+}
+
+// sumTeamSpend orders contributing ledger pairs before adding floats. A map's
+// iteration order must not change a quiet team's reported money or wake watchers.
+func sumTeamSpend(out *Spend, ids map[string]string, totals map[spendPair]spendSum) {
+	pairs := make([]spendPair, 0)
+	for pair := range totals {
+		if _, ok := ids[pair.session]; ok {
+			pairs = append(pairs, pair)
+		} else if _, ok := ids[pair.root]; ok {
+			pairs = append(pairs, pair)
+		}
+	}
+	sort.Slice(pairs, func(i, j int) bool {
+		if pairs[i].session == pairs[j].session {
+			return pairs[i].root < pairs[j].root
+		}
+		return pairs[i].session < pairs[j].session
+	})
+	for _, pair := range pairs {
+		sum := totals[pair]
 		key, ok := ids[pair.session]
 		if !ok {
-			key, ok = ids[pair.root]
-		}
-		if !ok {
-			continue
+			key = ids[pair.root]
 		}
 		out.USD += sum.usd
 		out.Calls += sum.calls
@@ -110,42 +137,6 @@ func TeamSpendIn(profileDir, ledger, teamID, day string) (Spend, error) {
 		}
 		out.ByMember[key] += sum.usd
 	}
-	return out, nil
-}
-
-// All team pools read the same immutable membership snapshot. Keep only the
-// most recently used profile, and reload when its membership stamp changes;
-// a ledger append still uses the existing incremental ledger reader below.
-var spendTeams struct {
-	sync.Mutex
-	path, stamp string
-	file        *File
-	reads       int
-}
-
-func spendTeamsFile(profileDir string) (*File, error) {
-	spendTeams.Lock()
-	defer spendTeams.Unlock()
-	path, before := Path(profileDir), spendMembershipStamp(profileDir)
-	if spendTeams.file != nil && spendTeams.path == path && spendTeams.stamp == before {
-		return spendTeams.file, nil
-	}
-	f, err := Load(profileDir)
-	spendTeams.reads++
-	spendTeams.path, spendTeams.stamp, spendTeams.file = "", "", nil
-	if err == nil && spendMembershipStamp(profileDir) == before {
-		spendTeams.path, spendTeams.stamp, spendTeams.file = path, before, f
-	}
-	return f, err
-}
-
-func spendMembershipStamp(profileDir string) string {
-	stamp := Stamp(profileDir)
-	if stamp == MissingStamp {
-		// An older installation can acquire its legacy file before migration.
-		return stamp + "|" + stampOf(legacyPath(profileDir))
-	}
-	return stamp
 }
 
 // SpendStamp is one stamp over what a team's spend is read from: the teams
@@ -188,6 +179,7 @@ type spendSum struct {
 
 // ledgerFold is one ledger as read so far.
 type ledgerFold struct {
+	info   os.FileInfo
 	stamp  string
 	offset int64
 	days   map[string]map[spendPair]spendSum
@@ -237,19 +229,22 @@ func (m *spendMemory) day(path, day string) (map[spendPair]spendSum, error) {
 func (m *spendMemory) refresh(path string) (*ledgerFold, error) {
 	stamp := stampOf(path)
 	f := m.ledgers[path]
-	if f != nil && f.stamp == stamp {
+	info, statErr := os.Stat(path)
+	if statErr != nil && !os.IsNotExist(statErr) {
+		return nil, statErr
+	}
+	if f != nil && f.stamp == stamp && (info == nil && f.info == nil || info != nil && f.info != nil && os.SameFile(f.info, info)) {
 		return f, nil
 	}
 	if stamp == MissingStamp {
 		f = &ledgerFold{stamp: stamp, days: map[string]map[spendPair]spendSum{}}
-		m.ledgers[path] = f
+		m.keep(path, f)
 		return f, nil
 	}
-	info, err := os.Stat(path)
-	if err != nil {
-		return nil, err
+	if statErr != nil {
+		return nil, statErr
 	}
-	if f == nil || info.Size() < f.offset {
+	if f == nil || f.info == nil || !os.SameFile(f.info, info) || info.Size() < f.offset || info.Size() <= f.info.Size() {
 		f = &ledgerFold{days: map[string]map[spendPair]spendSum{}}
 	}
 	file, err := os.Open(path)
@@ -260,7 +255,7 @@ func (m *spendMemory) refresh(path string) (*ledgerFold, error) {
 	if _, err := file.Seek(f.offset, io.SeekStart); err != nil {
 		return nil, err
 	}
-	r := bufio.NewReaderSize(file, 32<<10)
+	r := bufio.NewReaderSize(io.LimitReader(file, max(int64(0), info.Size()-f.offset)), 32<<10)
 	for {
 		raw, err := r.ReadBytes('\n')
 		if len(raw) > 0 && raw[len(raw)-1] == '\n' {
@@ -295,7 +290,19 @@ func (m *spendMemory) refresh(path string) (*ledgerFold, error) {
 			return nil, err
 		}
 	}
+	f.info = info
 	f.stamp = stamp
-	m.ledgers[path] = f
+	m.keep(path, f)
 	return f, nil
+}
+
+// keep bounds ledger histories when several profiles are inspected in one process.
+func (m *spendMemory) keep(path string, f *ledgerFold) {
+	if _, ok := m.ledgers[path]; !ok && len(m.ledgers) >= filememo.MaxEntries {
+		for key := range m.ledgers {
+			delete(m.ledgers, key)
+			break
+		}
+	}
+	m.ledgers[path] = f
 }

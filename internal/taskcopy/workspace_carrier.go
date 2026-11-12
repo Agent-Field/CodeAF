@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/keys"
 	"github.com/Agent-Field/codeaf/internal/workspaceidentity"
@@ -143,7 +144,7 @@ func (k Carry) composeWorkspacePlan(c cell.Cell, plan WorkspacePlan, digest stri
 	published := false
 	defer func() {
 		if !published {
-			os.RemoveAll(stage)
+			fsreplace.RemoveAll(stage)
 		}
 	}()
 	manifest := workspaceManifest{Version: 2, Checkpoint: digest, Plan: plan, Generation: filepath.Base(stage)}
@@ -185,7 +186,7 @@ func (k Carry) composeWorkspacePlan(c cell.Cell, plan WorkspacePlan, digest stri
 	// Only the preceding manifest grants ownership of the old generation. Unknown
 	// siblings are retained; carrier capture is not a generic directory sweeper.
 	if priorErr == nil && previous.Generation != manifest.Generation && validGeneration(previous.Generation) {
-		if err := os.RemoveAll(filepath.Join(root, previous.Generation)); err != nil {
+		if err := fsreplace.RemoveAll(filepath.Join(root, previous.Generation)); err != nil {
 			return err
 		}
 	}
@@ -230,7 +231,7 @@ func writeWorkspaceJSON(path string, value any) error {
 		return err
 	}
 	name := file.Name()
-	defer os.Remove(name)
+	defer fsreplace.Remove(name)
 	if err = file.Chmod(0600); err == nil {
 		_, err = file.Write(raw)
 	}
@@ -244,15 +245,10 @@ func writeWorkspaceJSON(path string, value any) error {
 	if closeErr != nil {
 		return closeErr
 	}
-	if err = os.Rename(name, path); err != nil {
+	if err = fsreplace.Rename(name, path); err != nil {
 		return err
 	}
-	dir, err := os.Open(filepath.Dir(path))
-	if err != nil {
-		return err
-	}
-	defer dir.Close()
-	return dir.Sync()
+	return fsreplace.SyncDir(filepath.Dir(path))
 }
 
 // workspaceCaptureReceipt records the only in-progress carrier generation the
@@ -290,7 +286,7 @@ func prepareWorkspaceCapture(c cell.Cell, previous workspaceManifest) (string, e
 			if err != nil {
 				return "", err
 			}
-			if err = os.RemoveAll(path); err != nil {
+			if err = fsreplace.RemoveAll(path); err != nil {
 				return "", err
 			}
 		}

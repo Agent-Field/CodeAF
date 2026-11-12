@@ -5,13 +5,12 @@ spoken audio file from text, a piece of music from a brief, a short video from a
 prompt. Each one is a tool on the list, each one costs money, and each one saves
 a file and tells you where it went.
 
-**These tools are only there when a model behind them is.** codeaf resolves one
-model per kind of media — drawing, speaking, composing, filming — from your
-settings, and a kind with no model available simply has no tool, rather than a
-tool that refuses. So `generate_image`, `speak`, `generate_music` and
-`generate_video` may each be present or absent independently, and asking for one
-that is absent gets you an honest "I do not have that here" rather than a failed
-attempt.
+**A missing service has no tool.** codeaf resolves a model per media kind
+from your settings. A connected drawing or filming service may keep its tool
+while a safe default still needs your choice: an actual attempt then explains
+which model setting is needed and makes no provider request. It does not pick
+an arbitrary model or retry. Speaking and composing retain their existing
+model requirement; each media kind can be present or absent independently.
 
 **All four work in tasks, in adaptive runs and inside saved harnesses**, not only
 in this conversation — see "Can a task or a harness make media?" below.
@@ -21,7 +20,7 @@ in this conversation — see "Can a task or a harness make media?" below.
 Yes, with `generate_image`, when a drawing model is available.
 
 Arguments: `prompt` (required), `reference_paths`, `aspect_ratio`, `size`, `path`,
-`model`.
+`model`, `n`.
 
 The picture is written to a file, and the result codeaf reads is one line naming
 it — **the whole path, absolute, from the root** — like:
@@ -49,6 +48,26 @@ and folder; an existing file there is overwritten, exactly as `write` would.
 
 `aspect_ratio` (for example `16:9`) and `size` (for example `1024x1024`) are
 passed to the image model untouched. Leave them out for its own default.
+
+## Can you make several versions, variants or a contact sheet of one picture?
+
+Yes: give `generate_image` an `n` from 1 to 10 (default 1). It asks the drawing
+model for that many pictures in **one** request and saves each as its own file —
+with `path: "sheet.png"` they are `sheet-1.png`, `sheet-2.png` and so on, and an
+existing file with one of those names is never overwritten (the next free name is
+used). The result says how many were asked for, how many the model sent and how
+many were saved, lists one path per line in the order the model sent them, and
+does not rank them — you choose.
+
+Limits: more than 10 is refused before anything is spent. If the drawing model
+cannot return several pictures in one request it says so and the call fails;
+codeaf does not quietly make several single requests instead, and it never
+retries a paid request. If the model sends fewer than you asked for, only those
+are saved and the count is stated. If one picture will not decode or write, the
+others stay saved and the failure is named. The cost is for the whole request;
+codeaf does not split it per picture. A reply whose pictures together are over
+64MB (or any one over 32MB) is refused after being paid for, with a suggestion to
+ask for fewer or a smaller size.
 
 ## Do I only get a file path, or can I see the image you made?
 
@@ -301,7 +320,14 @@ next step:
 A compose that fails says so the same way: `job 4 failed: music generation
 failed (<model>): …`. It shows in `jobs list` as `job 4 · music · running · 12.3s
 · a calm solo piano loop`, and `jobs kill 4` stops it — `music (job 4) stopped;
-no music was saved`. Like every job, it dies when the conversation ends.
+no music was saved. Only waiting stopped here — the provider was not told to
+cancel, so whether it is charged is unknown`. A stop that arrives after the piece
+has finished is answered `had already finished rendering and is being saved`, and
+the file and its note still arrive. A compose that fails lists as `failed`, and
+nothing retries it. At most 3 renders (video and music together) run at once across the
+whole program, and a stopped one still counts until the provider actually answers;
+the next is refused until a place frees. A reply over the size limit is
+refused, never saved cut short. Like every job, it dies when the conversation ends.
 
 **There is no length argument**, because the endpoint has none: the model writes
 a piece of its own choosing — half a minute to a minute in practice — and you
@@ -387,8 +413,12 @@ Arguments: `prompt` (required), `duration` in seconds, `aspect_ratio`,
 
 The render **is** a job: it shows in `jobs list` as
 `job 3 · video · running · 42.1s · a ferry at dawn`, and `jobs kill 3` stops it —
-`video (job 3) stopped; no video was saved`. Like every job, it dies when the
-conversation ends. The provider gives up after **10 minutes** and no file is
+`video (job 3) stopped; no video was saved. Only waiting stopped here — the
+provider was not told to cancel, so whether it is charged is unknown`. A stop that
+arrives after the render has finished is answered `had already finished rendering
+and is being saved`; the file and its note still arrive. A render that fails lists
+as `failed` and is never retried, and a video reply over 512MB is refused rather
+than saved cut short. Like every job, it dies when the conversation ends. The provider gives up after **10 minutes** and no file is
 saved.
 
 ## Can you make a longer video — several clips, a whole story, 2 minutes of film?
@@ -592,6 +622,36 @@ wrong is silent.
 **`edit_video` works in tasks, in adaptive runs and inside saved harnesses**
 under the same one condition, exactly as the making verbs do.
 
+## Can you show a chart, plot or picture that a Python script or command made, right in your answer?
+
+Yes, for a picture. When I run a command that makes a chart, a plot or a rendering
+for you, I list its path in `bash`'s `outputs` argument **before** it runs, and
+codeaf looks at that path before and after the command and records the picture
+as a source of that very call, so the app can show it with the answer without
+you editing any markdown. The terminal does not draw it inline; `/files` lists
+every recorded picture, including ones shown as found, and does not say which
+were made now.
+
+What it will and will not do:
+
+- **At most 8 paths**, under the working folder, each png, jpeg, gif or webp
+  under the image limit. Anything else is reported as not registered, with the
+  reason, and nothing is guessed from the command, its output or a file name.
+- **Only when the command finishes in that call** with exit status 0. A command
+  run with `background:true`, one handed to a job, or one that failed, timed out
+  or was interrupted registers nothing: the file it may write later is not
+  promised.
+- **Made, or only shown.** A path that was absent before and is a file after is
+  recorded as `created`; one that was already there is shown as it was found
+  (`unchanged`, or `modified` when it changed) and is never recorded as made now.
+  If another job or another tool call overlapped the command, it is `unknown`.
+  A command that leaves a child process still writing after it exits can be
+  recorded before that child finishes. A picture only
+  looked at with `view_image` stays something I looked at.
+- A file that changes while it is being read, or a record that cannot be written,
+  is reported as not registered or unknown, never as done. A file being there
+  says nothing about a paid generation.
+
 ## Where do I find the file for the image you generated — where pictures, audio, music and video end up?
 
 In one of three places, decided by whose folder the workspace is:
@@ -621,6 +681,39 @@ ran it, not something hidden away in a folder of its own.
 something — a join of one clip, a clip nothing can be read out of, a fade longer
 than the picture — no empty file is left where the result would have gone. A
 `path` you named yourself is never touched by that, whatever is already in it.
+
+## Can I stop a picture while it is being made, and was a failed or stopped image charged?
+
+Every `generate_image` request is written into this conversation's render
+history **before** it is sent, as a render of kind `image` with the run and the
+call that asked for it, beside the video and music renders. A request
+that cannot be written there is **not sent**, and the call answers
+`Could not start the image: <reason>. No request was sent.` — the conversation is
+closing, its history file cannot be written, or 64 renders across the program
+are in flight or waiting for their outcome to be saved.
+
+How the record ends:
+
+- `finished` — at least one picture was saved. The record names no file; the
+  pictures are the media this same call made.
+- `failed` — the provider refused or errored, sent nothing usable, or nothing
+  could be saved.
+- `cancelled` — it was stopped, or the turn ended while the provider worked.
+
+In the terminal, stopping the turn stops it. The desktop app's render stop
+(`render.cancel`) works on a picture while the provider is working, and answers `cancelled` (nothing will be saved), `too_late` (the picture had
+already been accepted for saving and will land) or `already_ended`. After
+`cancelled` the call says `Image generation was stopped (<model>); nothing was saved.
+Only waiting stopped here — the provider was not told to cancel, so whether it
+charged is unknown.` Nothing is retried after a stop or a failure.
+
+**What it was charged** is the provider's own figure: `charged` with the amount,
+`not_charged` when it said zero, and `unknown` when it said nothing — never a
+guessed zero. A figure that arrives after a stop is added to the same stopped
+record. A call refused before any request (no model chosen, none advertised)
+is `failed` and `not_charged`. Several pictures from `n` are one
+request and one record, naming the model the request asked for. `codeaf image`
+and a saved harness's run keep no such record.
 
 ## What does a picture, a voiceover, a piece of music or a video cost?
 

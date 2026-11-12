@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"io"
 	"os"
 	"path/filepath"
@@ -21,6 +20,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/connect"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/enginehost"
 	"github.com/Agent-Field/codeaf/internal/env"
@@ -29,6 +29,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/handoff"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/leave"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/openrouterauth"
 	"github.com/Agent-Field/codeaf/internal/resident"
 	"github.com/Agent-Field/codeaf/internal/roles"
@@ -36,6 +37,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/store"
 	"github.com/Agent-Field/codeaf/internal/subharness"
+	"github.com/Agent-Field/codeaf/internal/syncsetup"
 	"github.com/Agent-Field/codeaf/internal/trace"
 	"github.com/Agent-Field/codeaf/internal/tui3"
 	codeupdate "github.com/Agent-Field/codeaf/internal/update"
@@ -120,9 +122,17 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		"how many dollars an unattended --yolo session may carry its own work on (env CODEAF_MAX_COST)")
 	debug := flags.Bool("debug", false,
 		debugFlagHelp()+" · /debug turns it on mid-session")
+	// The three live flags of a headless turn (chat_once_live.go).
+	onceEvents := flags.String("events", "", "with --once: copy every line of this conversation's record to this file as it is written")
+	onceSteer := flags.String("steer", "", "with --once: read each line appended to this file as a note into the running turn")
+	onceJSON := flags.Bool("json", false, "with --once: print one machine-readable object {ok, stop, answer, model, error} instead of the reply")
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
+	if (*onceEvents != "" || *onceSteer != "" || *onceJSON) && strings.TrimSpace(*once) == "" {
+		return fmt.Errorf("--events, --steer and --json go with --once")
+	}
+	chatOnceLive = onceLive{events: *onceEvents, steer: *onceSteer, json: *onceJSON}
 	// THE RECORD'S SWITCH IS READ HERE AND THE RUN ID IS MINTED HERE, at the
 	// door, before anything can make a call — because a record written under a
 	// second id, or under none, is a record nothing can be joined to. The id is
@@ -373,6 +383,13 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// neither of them is a gate that quietly opens because the terminal
 		// happens to be a pipe.
 		cfg.AskConsent = false
+		// AND ITS COMMANDS ARE FENCED to the folder it runs in (fence.go):
+		// nobody watches them, so the jail holds what a person would have.
+		fence, err := unattendedFence(workspace, settings.ProfileDir)
+		if err != nil {
+			return err
+		}
+		cfg.Fence = fence
 		// AND NOTHING MAY BE SET UP HERE. An automation spends money at times
 		// nobody chose, so it needs a yes; a headless run has nobody to give
 		// one, and a clock that armed it anyway would be the harness agreeing on
@@ -430,7 +447,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// which is the safe direction and not the useful one ([beltWatch] states the
 	// ordering problem this closes).
 	launch.Subharnesses.Belt.watch(agent.ToolOnBelt)
-	if notice != "" {
+	if cfg.SessionFile != launch.SessionFile {
 		// The session file moved under us, so everything downstream that names
 		// it — /help, /new, the resumed line — has to name the new one.
 		transcript, resumed = cfg.SessionFile, false
@@ -674,7 +691,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// the top of the conversation — rather than growing surfaces of their
 		// own. An ordinary attended launch with the same file on disk is still
 		// shown nothing whatever.
-		Notice:        v3Interrupted(cfg, joinV3Notices(entryNotice, notice, session.UnattendedNotice(cfg), buildinfo.StaleNotice())),
+		Notice:        v3Interrupted(cfg, joinV3Notices(entryNotice, notice, session.UnattendedNotice(cfg), buildinfo.StaleNotice(), v3UpgradeNotice(cfg.Place.Dir, cfg.Interactive))),
 		ContextWindow: cfg.ContextWindow,
 		History:       recall,
 		DraftFile:     draft,
@@ -782,6 +799,12 @@ type v3Options struct {
 	// posture every session has always had, where the model stopping is the
 	// session stopping.
 	Budget session.Budget
+	// LaunchDir is where the person stood, when the door knows it better than
+	// the process does. Empty is the process's own launch directory, which is
+	// every terminal door; `codeaf app` holds conversations in many folders
+	// from one process started wherever the desktop app was, so it names the
+	// workspace the person asked for instead.
+	LaunchDir string
 }
 
 // joinV3Notices puts the launch's dim lines on one row, in the order they were
@@ -877,7 +900,7 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// resolved once, at the door (chatv3_process.go). Everything below this line
 	// is a function of the DIRECTORY this conversation is about, which is the
 	// whole of what makes a launch different from the process it runs in.
-	settings := proc.Settings
+	settings := proc.launchSettings()
 	chosen := v3TalkModel(opts.Model, settings)
 	// WHERE THE PERSON IS STANDING, which is not the same fact as which project
 	// this is: `codeaf` typed in repo/cmd/ is a conversation about the
@@ -885,6 +908,9 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// (Decision 26). A door that named a workspace has already answered the
 	// project question and its answer is taken as given.
 	launchDir := proc.LaunchDir
+	if named := strings.TrimSpace(opts.LaunchDir); named != "" {
+		launchDir = named
+	}
 
 	project, owned := v3Workspace(launchDir, opts.Workspace)
 	found, err := v3ResolveSession(strings.TrimSpace(opts.Session), project,
@@ -917,17 +943,27 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	var taskLanded func(session.TaskLanding)
 	// AN INDEPENDENT JUDGE CANNOT SHARE THE CREW MODEL. A one-model
 	// launch therefore leaves this optional scoring to an ordinary launch;
-	// it must neither judge new landings nor sweep earlier pending work.
+	// it must neither judge new landings nor sweep earlier pending work. The
+	// saved one-model setting can change while this process runs, so the hook
+	// and the sweep read it themselves at the moment they would ask
+	// ([poolJudgeStandsDown]).
 	if !opts.OneModel {
-		taskLanded = poolJudgeHook(settings, settings.ProfileDir, workspace,
-			config.CrewCatalog, poolJudgeAsk(proc.liveSettings(settings), settings.ProfileDir), time.Now, "task")
+		if config.ModelPoolAt(settings.ProfileDir).CanRead() {
+			held := proc.poolErrands
+			hook := poolJudgeHookContext(held.ctx, settings, settings.ProfileDir,
+				config.CrewCatalog, poolJudgeAsk(proc.liveSettings(settings), settings.ProfileDir), time.Now, "task")
+			taskLanded = func(landing session.TaskLanding) {
+				held.goCtx("pool/judge", func(context.Context) { hook(landing) })
+			}
+		}
 		// The runs a live process would have judged but a process death left unjudged,
 		// and the headless doors that never had this hook: at start, on a goroutine
 		// nobody waits on, judge the resumed session's own final-state nodes and the
 		// pending file's rows, each exactly once, bounded so it never holds the prompt. The
 		// process tracker cancels and joins it at close.
-		poolErrandGoCtx(settings.ProfileDir, "pool/judge-sweep", func(ctx context.Context) {
-			poolJudgeSweepRun(ctx, settings, settings.ProfileDir, found.Place.Tasks(),
+		poolProfile := config.ProfilePath(settings.ProfileDir, "")
+		poolErrandGoCtx(proc.poolErrands, "pool/judge-sweep", func(ctx context.Context) {
+			poolJudgeSweepRun(ctx, settings, poolProfile, found.Place.Tasks(),
 				config.CrewCatalog, poolJudgeAsk(proc.liveSettings(settings), settings.ProfileDir), time.Now)
 		})
 	}
@@ -975,7 +1011,7 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 // resumes the person's newest conversation in a project, and an automation
 // that did that would be writing into somebody's chat.
 func v3ConfigFor(proc *v3Process, opts v3Options, workspace string, place session.Place, transcript string, taskLanded func(session.TaskLanding)) (session.Config, *catalog.Catalog, v3Subharness, error) {
-	settings := proc.Settings
+	settings := proc.launchSettings()
 	chosen := v3TalkModel(opts.Model, settings)
 	// The model catalog and the sub-harness registry, borrowed from the process
 	// rather than opened here (chatv3_process.go states why each must be one).
@@ -1014,6 +1050,10 @@ func v3ConfigFor(proc *v3Process, opts v3Options, workspace string, place sessio
 	}
 
 	cfg := session.Config{
+		// The page names codeaf's own data folder when CODEAF_HOME moved it
+		// ([session.Config.StateHome]), so a model that read `~/.codeaf` in the
+		// manual does not go looking in the person's default home instead.
+		StateHome:      v3StateHome(),
 		TeamComputers:  teamComputers,
 		TeamsPaired:    teamPaired,
 		Workspace:      workspace,
@@ -1204,7 +1244,7 @@ func v3ConfigFor(proc *v3Process, opts v3Options, workspace string, place sessio
 	cfg.Unattended = opts.Yolo
 	cfg.Interactive = opts.Interactive
 	if !opts.Interactive {
-		gate := v3ApprovalGate{workspace: cfg.Workspace, profileDir: settings.ProfileDir, headless: true}
+		gate := &v3ApprovalGate{workspace: cfg.Workspace, profileDir: settings.ProfileDir, headless: true}
 		cfg.ApprovalGate = gate
 		cfg.ApprovalPolicy, cfg.Guardian, err = gate.Build(cfg.ApprovalPosture)
 		if err != nil {
@@ -1231,6 +1271,7 @@ func v3ConfigFor(proc *v3Process, opts v3Options, workspace string, place sessio
 		cfg.Media = v3MediaClient(mediaSettings)
 		cfg.MediaModel = v3MediaModel(activeModels, settings.ProfileDir, cfg.RolesSource, cfg.OneModel)
 		cfg.MediaPick = v3MediaPick(activeModels)
+		cfg.MediaAdmission = v3MediaAdmission(activeModels, settings.ProfileDir, cfg.RolesSource)
 	}
 
 	// AND THE RUN DOOR IS BUILT FROM THE SAME PAIR. A saved harness may name a
@@ -1244,7 +1285,7 @@ func v3ConfigFor(proc *v3Process, opts v3Options, workspace string, place sessio
 	// the same row in `/files`. Left out, the run's belt fell to the legacy dot
 	// directory and recorded nothing, which made a harness's work invisible.
 	cfg.RunHarness = v3RunHarness(harnesses, settings, chosen, workspace, session.HarnessBeltSeams{
-		Media: cfg.Media, MediaModel: cfg.MediaModel, MediaPick: cfg.MediaPick,
+		Media: cfg.Media, MediaModel: cfg.MediaModel, MediaPick: cfg.MediaPick, MediaAdmission: cfg.MediaAdmission,
 		Place: cfg.Place, ArtifactsIndex: cfg.ArtifactsIndex,
 	})
 	// AND THE SAME DOOR PUTS THAT STORE ON THE LIST. A program saved as a page is
@@ -1452,7 +1493,21 @@ func openV3Agent(cfg session.Config, workspace string, open func(session.Config)
 	if handoff.Arriving(cfg.Place.Dir) {
 		return nil, cfg, "", errors.New(chatArrivingSentence)
 	}
-	cfg = v3Seated(v3Migrated(cfg))
+	model, modelNotice, err := continuedModel(cfg)
+	if err != nil {
+		var missing *continuedModelUnavailable
+		if !errors.As(err, &missing) {
+			return nil, cfg, "", err
+		}
+		// Taking and opening a chat do not require a usable model. Retain the
+		// incoming identity even if seating seals local bookkeeping first.
+		cfg.PrepareModel = missing.prepare
+	}
+	if model != "" {
+		cfg.Model = model
+	}
+	cfg, claim := v3SeatedPending(v3Migrated(cfg))
+	defer claim(false)
 	constructed := false
 	defer func() {
 		if !constructed {
@@ -1492,6 +1547,13 @@ func openV3Agent(cfg session.Config, workspace string, open func(session.Config)
 	}
 	agent, err := open(restored)
 	if err == nil {
+		claim(true)
+		if model != "" {
+			if err := agent.ContinueWithModel(model, modelNotice); err != nil {
+				closeV3Agent(agent)
+				return nil, cfg, "", err
+			}
+		}
 		if restoredPosture != "" {
 			if err := agent.SetApprovalPosture(restoredPosture); err != nil {
 				closeV3Agent(agent)
@@ -1502,9 +1564,14 @@ func openV3Agent(cfg session.Config, workspace string, open func(session.Config)
 			agent.SetConversationEffort(savedEffort)
 		}
 		constructed = true
-		return agent, cfg, "", nil
+		return agent, cfg, modelNotice, nil
 	}
 	if !errors.Is(err, session.ErrSessionLocked) {
+		// With account storage off, startup is purely local and makes no relay
+		// writes, so retaining the drive lets callers observe watch retirement.
+		if syncsetup.StorageForHome(home.Dir()) == "off" {
+			claim(true)
+		}
 		return nil, cfg, "", err
 	}
 	return nil, cfg, "", &sessionHeldElsewhere{
@@ -1561,11 +1628,8 @@ func v3TakeOverInstead(cfg session.Config, workspace string) (*session.Agent, se
 	if err != nil {
 		return nil, cfg, err
 	}
-	agent, err := v3OpenSession(fresh)
-	if err != nil {
-		return nil, cfg, err
-	}
-	return agent, fresh, nil
+	agent, fresh, _, err := openV3Agent(fresh, workspace, v3OpenSession)
+	return agent, fresh, err
 }
 
 // sessionHeldElsewhereSentence is what a person reads when the conversation
@@ -1748,7 +1812,7 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo, oneModel boo
 	// posture an untouched conversation starts at rather than only as the
 	// policy it starts on, so the seam can say what it is and the wheel can
 	// walk away from it (internal/session's approvalposture.go).
-	cfg.ApprovalGate = v3ApprovalGate{workspace: workspace, profileDir: profileDir}
+	cfg.ApprovalGate = &v3ApprovalGate{workspace: workspace, profileDir: profileDir}
 	if yolo {
 		cfg.ApprovalPosture = session.PostureAllow
 	}
@@ -1984,25 +2048,71 @@ func v3Policy(workspace, profileDir string, yolo bool) (*approval.Policy, error)
 // ordinary launch — so the exceptions, the shell rules and the floor cannot
 // differ between them.
 func v3PolicyMode(workspace, profileDir, mode string) (*approval.Policy, error) {
-	if mode == "" {
-		row, err := config.ProjectStringAt(workspace, profileDir, config.KeyToolApprovalMode)
-		if err != nil {
-			return nil, err
-		}
-		mode = row
-	}
-	raw := map[string]any{"default": mode}
-	text, err := config.ProjectStringAt(workspace, profileDir, config.KeyToolApprovals)
+	rows, err := v3ApprovalRowsAt(workspace, profileDir, mode, false)
 	if err != nil {
 		return nil, err
 	}
+	return rows.build()
+}
+
+// v3ApprovalRows is the complete input to an immutable policy. Comparing the
+// resolved rows lets a live gate reuse its policy without duplicating the
+// configuration reader's file freshness rules.
+type v3ApprovalRows struct {
+	mode, tools, bash string
+	profileReadError  string
+}
+
+func v3ApprovalRowsAt(workspace, profileDir, mode string, headless bool) (rows v3ApprovalRows, err error) {
+	project, err := config.LoadProjectConfig(workspace)
+	if err != nil {
+		return v3ApprovalRows{}, err
+	}
+	// Every profile read participates, including a read that fails after an
+	// earlier row succeeded. Returning an ordinary error would retain an old,
+	// potentially permissive live policy instead of asking the person.
+	defer func() {
+		var pathErr *os.PathError
+		if errors.As(err, &pathErr) && pathErr.Path == config.BudgetConfigPath(profileDir) {
+			rows, err = v3ApprovalRows{profileReadError: err.Error()}, nil
+		}
+	}()
+	if _, err := config.ReadProfileApprovalConfig(profileDir); err != nil {
+		return v3ApprovalRows{}, err
+	}
+	if mode == "" {
+		if headless {
+			mode, err = config.HeadlessToolApprovalModeAt(workspace, profileDir)
+		} else {
+			mode, err = project.ResolveString(profileDir, config.KeyToolApprovalMode)
+		}
+		if err != nil {
+			return v3ApprovalRows{}, err
+		}
+	}
+	tools, err := project.ResolveString(profileDir, config.KeyToolApprovals)
+	if err != nil {
+		return v3ApprovalRows{}, err
+	}
+	bash, err := project.ResolveString(profileDir, config.KeyBashApprovals)
+	if err != nil {
+		return v3ApprovalRows{}, err
+	}
+	return v3ApprovalRows{mode: mode, tools: tools, bash: bash}, nil
+}
+
+func (rows v3ApprovalRows) build() (*approval.Policy, error) {
+	if rows.profileReadError != "" {
+		return &approval.Policy{ProfileReadError: rows.profileReadError}, nil
+	}
+	raw := map[string]any{"default": rows.mode}
 	// The repository's exceptions REPLACE the person's, whole (internal/config
 	// states the merge law): a rule set assembled from two files is a rule set
 	// neither file's reader could read back. Whichever file wins, what it says
 	// lands ON TOP of the built-in floor below rather than instead of it.
 	exceptions := v3BuiltinApprovals()
-	if text != "" {
-		tools, err := config.ParseToolApprovals(text)
+	if rows.tools != "" {
+		tools, err := config.ParseToolApprovals(rows.tools)
 		if err != nil {
 			return nil, fmt.Errorf("settings row %q: %w", config.KeyToolApprovals, err)
 		}
@@ -2017,12 +2127,8 @@ func v3PolicyMode(workspace, profileDir, mode string) (*approval.Policy, error) 
 	// the top of the row outranks anything a consent card appended below it.
 	// --yolo does not touch them either — the flag replaces the default and
 	// nothing a person wrote down.
-	rules, err := config.ProjectStringAt(workspace, profileDir, config.KeyBashApprovals)
-	if err != nil {
-		return nil, err
-	}
-	if rules != "" {
-		parsed, err := config.ParseBashApprovals(rules)
+	if rows.bash != "" {
+		parsed, err := config.ParseBashApprovals(rows.bash)
 		if err != nil {
 			return nil, fmt.Errorf("settings row %q: %w", config.KeyBashApprovals, err)
 		}
@@ -2132,6 +2238,28 @@ func v3BuiltinApprovals() map[string]any {
 		// A conflict raised to the manager above the parties: a packet and a
 		// line of Traffic, and nothing spent or started.
 		"team_raise": "allow",
+		// A factory stage's report and its proposal of stages (internal/session's
+		// tools_stage.go): each hands words to the runner waiting in code, and
+		// neither changes, posts or starts anything. They are on a stage's belt
+		// alone, and a stage has nobody at its keyboard to ask, so without this
+		// line the headless floor refused every report and no stage could end.
+		"stage_result": "allow", "plan_edit": "allow",
+		// The manager's reply to a step's question (tools_factory_answer.go):
+		// words handed to the runner waiting in code, on a turn nobody is at
+		// the keyboard of.
+		"factory_answer": "allow",
+		// THE MANAGER'S PEN ON ITS OWN ITEM'S STEPS (tools_factory_run.go): it
+		// changes the stages of the one item the conversation manages, within
+		// the bounds factory.Edit holds in code, and posts, starts and spends
+		// nothing. Its shaping turns are headless, so without this line every
+		// edit met `needs approval but no resolver is attached: default` and the
+		// recipe stood by accident.
+		"factory_run": "allow",
+		// THE MANAGER'S START (tools_factory_start.go): the run button on the
+		// item's page, pressed from the manager's chat when the person asks; it
+		// launches, resumes or continues the one item the conversation manages,
+		// within the floor's own rules.
+		"factory_start": "allow",
 		// A manager taking back a team that never held anyone, which the
 		// person declined in its own conversation: one record nobody used is
 		// forgotten, and nothing is started, stopped or spent. A team that
@@ -2414,7 +2542,49 @@ func (c *v3Crew) snapshot() (map[string]string, error) {
 			values[roles.PinKey(roles.Role(role))] = model
 		}
 	}
-	return values, nil
+	// THE PAGE AI's DEFAULT IS ANSWERED, NEVER WRITTEN ([config.InsightDefault]):
+	// it rides the snapshot while its provider is connected and the model is
+	// allowed, below every pin, and a one-model profile drops it with the pins.
+	if send, ok := config.InsightDefaultAt(c.profileDir); ok {
+		values[roles.DefaultKey(roles.RoleInsight)] = send
+	}
+	return v3SettleOneModel(values, c.profileDir), nil
+}
+
+// v3SettleOneModel answers every text tier with the saved one model while the
+// profile's task models are in one-model mode, and drops the text pins.
+//
+// ONE MODEL MEANS ONE MODEL AT EVERY RUNG, HERE AS UNDER `--one-model`. The
+// flag withholds these rows and lets each errand fall to the conversation's
+// model; the saved setting names its model, so the rows answer that model
+// instead, and the crew-only callers that pass an empty floor (the mark's
+// reader, the brief's writer) reach it too rather than a tier nobody chose.
+// The snapshot is rebuilt whenever the settings move, so a mode switched
+// mid-process reaches the next errand. Media pins stay: a media slot is
+// capability-qualified, exactly as under the flag. A one model that cannot be
+// used right now answers no tier at all, never another model.
+func v3SettleOneModel(values map[string]string, profileDir string) map[string]string {
+	send, one, err := factoryTaskOneModel(profileDir, modelsource.Set{})
+	if !one {
+		return values
+	}
+	media := map[string]bool{}
+	for _, role := range v3MediaPin {
+		media[roles.PinKey(role)] = true
+	}
+	settled := map[string]string{}
+	for key, model := range values {
+		if media[key] {
+			settled[key] = model
+		}
+	}
+	if err != nil {
+		return settled
+	}
+	for _, tier := range roles.Tiers {
+		settled[roles.TierKey(tier)] = send
+	}
+	return settled
 }
 
 // v3Catalog is the ONE question this door asks a model catalog, and it is a
@@ -2481,6 +2651,9 @@ func v3Models(models v3Catalog) []tui3.Model {
 			// resolve what actually travels (catalog's ReasoningWord states the
 			// same three states in words).
 			Reasoning: row.Reasons() || row.ReasoningLevels(),
+		}
+		if row.Created > 0 {
+			model.ListedAt = row.Created
 		}
 		// PriceUnknown is OpenRouter's "-1", which it uses for its own routers:
 		// they charge whatever the model they pick charges, and nobody yet knows
@@ -2742,7 +2915,7 @@ func warmV3Models(ctx context.Context, models *catalog.Catalog, agent *session.A
 	}
 	// THE CLOSE REACHES THE WAIT, and that is the point of the context here: the
 	// catalog's own resolution is a network round-trip on a cold cache, and this
-	// errand rides the profile's start-up tracker ([v3Process.warmModels]), whose
+	// errand rides the process's start-up tracker ([v3Process.warmModels]), whose
 	// context [stopPoolErrands] cancels. A process that closes ends the wait HERE
 	// rather than leaving the write below to land in whatever state root happens
 	// to be current when the rows finally arrive.
@@ -2762,7 +2935,8 @@ func warmV3Models(ctx context.Context, models *catalog.Catalog, agent *session.A
 // terminal ownership. Everything the surface would draw as chrome goes to
 // stderr and only what the model said goes to stdout, so a probe can compare
 // stdout with the sentence it asked for.
-func runChatV3Once(ctx context.Context, cfg session.Config, workspace, text, level string, resumed bool) error {
+func runChatV3Once(ctx context.Context, cfg session.Config, workspace, text, level string, resumed bool) (onceErr error) {
+	var onceFailure error
 	// The leaving road stands before session opening because opening can take
 	// time, and a signal there would otherwise take the default disposition and
 	// skip every defer — the whole of #471. Cancelling the turn is all the
@@ -2798,11 +2972,29 @@ func runChatV3Once(ctx context.Context, cfg session.Config, workspace, text, lev
 	// directory for an OWNED conversation — there it is the session's private
 	// work folder under ~/.codeaf/v3/projects — so the launch's own workspace is
 	// carried in rather than read back off the config.
+	// A LIVE, STEERABLE RUN HAS SOMEONE TO ASK (chat_once_live.go's onceAsker).
+	var asker *onceAsker
+	if chatOnceLive.events != "" && chatOnceLive.steer != "" {
+		asker = newOnceAsker(chatOnceLive.events)
+		cfg.Asker = asker
+	}
 	agent, cfg, notice, err := openV3Agent(cfg, workspace, v3OpenSession)
 	if err != nil {
 		return reported(err)
 	}
 	agent.SetReasoning(level)
+	// --events' LAST COPY WAITS FOR THE RECORD TO BE CLOSED. Closing the
+	// agent and the usage ledger still writes lines — a background helper's
+	// usage row lands a moment after the answer — and a copy that stopped
+	// before them would leave the watcher's conversation one line short of
+	// this one. Defers run last-in-first-out, so this one, registered before
+	// both closes, runs after them.
+	var finishEvents func()
+	defer func() {
+		if finishEvents != nil {
+			finishEvents()
+		}
+	}()
 	defer session.CloseUsage()
 	if notice != "" {
 		fmt.Fprintln(os.Stderr, notice+": "+cfg.SessionFile)
@@ -2837,11 +3029,33 @@ func runChatV3Once(ctx context.Context, cfg session.Config, workspace, text, lev
 		}
 	})
 
+	live := chatOnceLive
+	var reply io.Writer = os.Stdout
+	var answer *lockedWriter
+	if live.json {
+		answer = &lockedWriter{}
+		reply = answer
+		defer func() {
+			failure := onceFailure
+			if failure == nil {
+				failure = onceErr
+			}
+			writeOnceEnvelope(os.Stdout, answer.String(), cfg.Model, failure)
+		}()
+	}
+	var steers sync.WaitGroup
+	finishSteer, finishCopy := startOnceLive(agent, cfg.SessionFile, live, asker, reply, os.Stderr, &steers)
+	finishEvents = finishCopy
+	defer finishSteer()
+
 	events, err := agent.Submit(ctx, text)
 	if err != nil {
+		onceFailure = err
 		return reported(err)
 	}
-	failure := drainOnceEvents(events, os.Stdout, os.Stderr)
+	failure := drainOnceEvents(events, reply, os.Stderr)
+	defer func() { steers.Wait() }()
+	onceFailure = failure
 	if wakes == nil {
 		return reported(failure)
 	}
@@ -2870,7 +3084,7 @@ func runChatV3Once(ctx context.Context, cfg session.Config, workspace, text, lev
 				return reported(failure)
 			}
 			settled = false
-			if streamFailure := drainOnceEvents(stream, os.Stdout, os.Stderr); streamFailure != nil {
+			if streamFailure := drainOnceEvents(stream, reply, os.Stderr); streamFailure != nil {
 				failure = streamFailure
 			}
 		case <-ctx.Done():
@@ -2978,4 +3192,13 @@ func v3RecentSessions(bucket string) []tui3.Session {
 		})
 	}
 	return rows
+}
+
+// v3StateHome is codeaf's own data folder when CODEAF_HOME names one other than
+// the person's default, and "" otherwise.
+func v3StateHome() string {
+	if strings.TrimSpace(env.Get(home.EnvVar)) == "" {
+		return ""
+	}
+	return home.Dir()
 }

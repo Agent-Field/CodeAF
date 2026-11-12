@@ -437,10 +437,10 @@ var sharedCatalog = newSharedCatalog()
 // function rather than the value alone so a test can seat its own instance:
 // the once is inside, and two runs in one process must not share a catalog
 // pointed at whichever of them called first.
-func newSharedCatalog() func(config.Config) *catalog.Catalog {
-	var once sync.Once
+func newSharedCatalog() func(config.Config, ...*poolErrands) *catalog.Catalog {
+	var once, errandsOnce sync.Once
 	var resolved *catalog.Catalog
-	return func(settings config.Config) *catalog.Catalog {
+	return func(settings config.Config, owners ...*poolErrands) *catalog.Catalog {
 		once.Do(func() {
 			resolved = catalog.LoadLazy(context.Background(), catalog.Options{
 				BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: settings.ProfileDir,
@@ -450,9 +450,13 @@ func newSharedCatalog() func(config.Config) *catalog.Catalog {
 			// and set once at start-up so every headless door routes against
 			// the list it already holds.
 			seatCrewRows(resolved.ModelsNow)
-			// and the pool's errands beside it, in the same one-time manner.
-			wirePoolIndex(settings.ProfileDir)
 		})
+		// Startup remains shared by this catalog accessor. Its first invocation
+		// with an owner seats the work on that owner's lifetime, even if an
+		// earlier catalog-only read already resolved the rows.
+		if len(owners) > 0 && owners[0] != nil {
+			errandsOnce.Do(func() { owners[0].wireIndex(settings.ProfileDir) })
+		}
 		return resolved
 	}
 }
@@ -478,11 +482,15 @@ var autoSeatRowsBound = 3 * time.Second
 // wait, not on the fetch — when it runs out the warm carries on in the
 // background and the router works from the models it can still price (a pin, a
 // flag), and says so in the error it answers when it cannot seat a seat.
-func useAutoSeats(settings config.Config) {
-	resolved := sharedCatalog(settings)
+func useAutoSeats(settings config.Config) *poolErrands {
+	// Pool work belongs to the invocation, while the catalog accessor can be
+	// shared. Returning the handle makes each headless door own its close.
+	held := poolErrandsStart(settings.ProfileDir)
+	resolved := sharedCatalog(settings, held)
 	ctx, cancel := context.WithTimeout(context.Background(), autoSeatRowsBound)
 	defer cancel()
 	resolved.Warmed(ctx)
+	return held
 }
 
 // promisedWorker is the node's own answer to "who runs this", read in the order

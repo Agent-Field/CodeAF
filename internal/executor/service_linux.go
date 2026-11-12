@@ -26,11 +26,8 @@ func cmdline(pid int) []string {
 func listenPorts(pids []int) []int {
 	seen := map[int]bool{}
 	for _, pid := range pids {
-		listening := listeningInodes(pid)
-		for inode := range socketInodes(pid) {
-			if port, ok := listening[inode]; ok {
-				seen[port] = true
-			}
+		for _, port := range pidPorts(pid) {
+			seen[port] = true
 		}
 	}
 	ports := make([]int, 0, len(seen))
@@ -38,6 +35,17 @@ func listenPorts(pids []int) []int {
 		ports = append(ports, p)
 	}
 	sort.Ints(ports)
+	return ports
+}
+
+func pidPorts(pid int) []int {
+	listening := listeningInodes(pid)
+	ports := make([]int, 0)
+	for inode := range socketInodes(pid) {
+		if port, ok := listening[inode]; ok {
+			ports = append(ports, port)
+		}
+	}
 	return ports
 }
 

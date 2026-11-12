@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -18,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/agentdid"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	procexec "github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/plandb"
@@ -56,9 +58,11 @@ import (
 // CODEAF_TASK_BELT names the older belt, so on that road not one byte of any
 // prompt, belt or landing changes — nothing constructs this worker.
 type BashWorker struct {
-	store     *plandb.Store
-	workspace string
-	model     string
+	profileDir   string
+	store        *plandb.Store
+	workspace    string
+	model        string
+	conversation string
 	// always is the memory section over this place — every line kept for the
 	// person, this machine and this project — rendered by the door
 	// ([session.MemoryWorld]) and closed on by the worker's brief. It is the
@@ -89,6 +93,9 @@ type BashWorker struct {
 	seat         procexec.Seat
 	workspaceURI string
 	workspaceSet *session.WorkspaceSet
+	// agentDID is the conversation's agent DID; each worker acts as
+	// `<agentDID>#w<n>` ([workerDID]). Empty leaves workers with no identity.
+	agentDID string
 	// The task door carries the settled task's controls into this child run.
 	taskEffort effort.Rung
 	noProgress int
@@ -96,6 +103,11 @@ type BashWorker struct {
 
 // WorkerOption changes how a worker is built; the zero set is the host worker.
 type WorkerOption func(*BashWorker)
+
+// WithConversation attributes every worker call to the chat that started it.
+func WithConversation(id string) WorkerOption {
+	return func(w *BashWorker) { w.conversation = id }
+}
 
 // WithTaskControls carries an explicitly settled task's controls without
 // changing this computer's saved defaults or spending permission.
@@ -111,6 +123,12 @@ func WithWorkspaceURI(uri string) WorkerOption {
 // WithWorkspaceSet carries the prototype's explicitly admitted root routes.
 func WithWorkspaceSet(set *session.WorkspaceSet) WorkerOption {
 	return func(w *BashWorker) { w.workspaceSet = set.Clone() }
+}
+
+// WithAgentDID names the conversation whose run this is, so each worker acts
+// as that conversation's worker for its task rather than as nobody.
+func WithAgentDID(did string) WorkerOption {
+	return func(w *BashWorker) { w.agentDID = strings.TrimSpace(did) }
 }
 
 // WithSeat runs the worker's tool calls on seat.
@@ -168,6 +186,7 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 	}
 	agent, err := session.NewBeltWorker(session.Config{
 		Effort:           w.taskEffort,
+		ApprovalGate:     session.BeltWorkerApprovalGate(w.profileDir),
 		Workspace:        w.workspace,
 		WorkspaceURI:     w.workspaceURI,
 		WorkspaceSet:     w.workspaceSet.Clone(),
@@ -183,9 +202,10 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 		DailyBudgetUSD:      w.dailyBudgetUSD,
 		DailyBudgetResolved: true,
 		SpendPreauthorized:  w.spendPreauthorized,
+		WorkerDID:           workerDID(w.store, task, w.agentDID),
 		AttributionOff:      w.attributionOff,
 		AttributionModelOff: w.attributionModelOff,
-	}, w.completer, &task, w.store.Path(), w.store.RootID())
+	}, w.completer, &task, w.store.Path(), w.store.RootID(), w.conversation)
 	if err != nil {
 		return Report{}, err
 	}
@@ -194,7 +214,7 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 		used := settledWorkerUsage(agent, &receipts)
 		observeStorageProof(ctx, agent.TaskStorageQuiescent())
 		rep.USD, rep.TokensIn, rep.TokensOut = used.CostUSD, used.Input, used.Output
-		w.recordSpend(task.ID, used.CostUSD, used.Input, used.Output)
+		w.recordSpend(task.ID, used, agent.AnsweredUsage(), agent.Answers())
 	}()
 	runCtx, stop := context.WithCancel(provider.WithReceiptPending(ctx, receipts.owe))
 	defer stop()
@@ -251,7 +271,7 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 	if w.noProgress > 0 {
 		stalledAfter = w.noProgress
 	}
-	// readNotes is the ids of this task's notes THIS WORKER has already been
+	// notes holds the ids of this task's notes THIS WORKER has already been
 	// handed. THE MARK IS THE WORKER'S ALONE and lives only for the life of the
 	// loop: a person opening the task's page reads the same notes without
 	// consuming them, because there is one reader of this map and it is here.
@@ -263,7 +283,11 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 	// is a new worker on the same task, and the record says what the task has
 	// already been told ([notesAlreadyHad]); starting from nothing handed a woken
 	// parent its older notes a second time.
-	readNotes := notesAlreadyHad(storeDir, task.ID)
+	//
+	// THE NOTES ARE READ A PAGE AT A TIME FROM WHERE THIS WORKER HAS READ UP TO
+	// ([bashNotes]), never as the task's oldest fifty: a task whose first fifty
+	// had all been handed over never handed over the fifty-first.
+	notes := newBashNotes(w.store, task.ID, notesAlreadyHad(storeDir, task.ID))
 	for {
 		events, err := agent.Submit(runCtx, brief)
 		if err != nil {
@@ -441,14 +465,11 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 				//
 				// AND A WORKER IS NEVER HANDED ITS OWN WORDS. A note this step
 				// wrote on this task is the worker's own and it already knows it
-				// ([ownNotes]), so it is marked had before anything is handed over.
-				had := ownNotes(w.store, task.ID, stepCommand(event), readNotes)
-				if ending.kind == endingNone && !stalled {
-					had = append(had, deliverNotes(w.store, task.ID, readNotes, func(words string) error {
-						_, err := agent.Steer(words)
-						return err
-					})...)
-				}
+				// ([isOwnNote]), so it is marked had before anything is handed over.
+				had := notes.boundary(runCtx, stepCommand(event), ending.kind == endingNone && !stalled, func(words string) error {
+					_, err := agent.Steer(words)
+					return err
+				})
 				if len(had) > 0 {
 					// THE MARK IS WRITTEN DOWN, so the next worker of this task
 					// starts with it. A line that would not write costs only a
@@ -463,6 +484,12 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 					}
 				} else if !onlyPlanFinish(stepCommand(event)) {
 					executed = true
+				}
+				// A PERSON'S HOLD STOPS THE WORK AT THIS STEP, not only the parts
+				// not yet started: the worker waits here, between actions, until
+				// the hold is released or the run is cut ([holdWhileHeld]).
+				if ending.kind == endingNone && !stalled {
+					holdWhileHeld(ctx, w.store, task.ID)
 				}
 				// THE STORE'S OWN ENDING IS DETECTED AFTER THE COMMAND RUNS. A
 				// `plandb done`, or a `plandb wait`, that the worker itself just
@@ -722,58 +749,88 @@ func sameStepSpoken() string {
 // make a worker stop reading them.
 const notesPerDelivery = 5
 
-// unreadNotes answers the notes on a task this worker has not been handed yet,
-// oldest first, bounded by [notesPerDelivery]. read is the worker's OWN mark
-// and the only one there is: the screen draws the same notes without consuming
-// them, so a note the person opened is never a note the worker missed.
-func unreadNotes(store *plandb.Store, taskID string, read map[string]bool) []plandb.Note {
-	var fresh []plandb.Note
-	for _, note := range store.Notes(taskID, 0) {
-		if read[note.ID] {
-			continue
-		}
-		fresh = append(fresh, note)
-		if len(fresh) >= notesPerDelivery {
-			break
-		}
-	}
-	return fresh
+// bashNotes is one bash worker's note channel: where it has read up to in its
+// task's notes ([taskInbox]) and the ids it has had.
+type bashNotes struct {
+	inbox *taskInbox
+	// read is the ids of this task's notes THIS TASK'S WORKERS have had: the
+	// record's own marks when the worker started ([notesAlreadyHad]) and every
+	// note this worker was handed or wrote itself since. THE MARK IS THE
+	// WORKER'S ALONE: the screen draws the same notes without consuming them,
+	// so a note the person opened is never a note the worker missed.
+	read map[string]bool
 }
 
-// deliverNotes hands a task's unread notes to its working turn and MARKS READ
-// ONLY WHAT THE TURN TOOK. It is one function rather than five lines at the
-// boundary because the branch that matters is the one that is hard to reach: a
-// splice that refuses, which happens when the worker's own turn ends in the gap
-// between the step that brought the note and the steer that would have landed
-// it. Reached through a steer of its own, that branch can be asserted directly
-// instead of waiting for the race to come round.
+func newBashNotes(pages notePager, taskID string, read map[string]bool) *bashNotes {
+	return &bashNotes{inbox: newTaskInbox(pages, taskID), read: read}
+}
+
+// boundary is one step boundary's whole note decision, and it answers the ids
+// it marked had, for the caller to write down where the next worker of the
+// same task will read them ([notesAlreadyHad]).
 //
-// It answers the ids it marked, so the caller can write the mark down where the
-// next worker of the same task will read it ([notesAlreadyHad]).
-func deliverNotes(store *plandb.Store, taskID string, read map[string]bool, steer func(string) error) []string {
-	fresh := unreadNotes(store, taskID, read)
-	if len(fresh) == 0 {
-		return nil
+// It reads ONE page after the worker's mark ([taskInbox.next]): at most
+// [notesPerDelivery] notes it has not had, after passing at most
+// [notesExaminedPerDecision] by. A note THIS STEP'S COMMAND WROTE is marked had
+// as the read passes it and is never handed back ([isOwnNote]). When deliver
+// is true the batch is handed to the working turn through steer, and MARKED
+// READ ONLY WHEN THE TURN TOOK IT.
+//
+// IT IS ONE FUNCTION RATHER THAN LINES AT THE BOUNDARY because the branches
+// that matter are the ones that are hard to reach: a splice that refuses,
+// which happens when the worker's own turn ends in the gap between the step
+// that brought the note and the steer that would have landed it; a store that
+// is busy; a note too large to read; a turn that is ending. Reached through a
+// steer and a pager of their own, each can be asserted directly instead of
+// waiting for the race.
+func (n *bashNotes) boundary(ctx context.Context, command string, deliver bool, steer func(string) error) []string {
+	var had []string
+	skip := func(note plandb.NoteEnvelope) bool {
+		if n.read[note.ID] {
+			return true
+		}
+		if isOwnNote(note, command) {
+			n.read[note.ID] = true
+			had = append(had, note.ID)
+			return true
+		}
+		return false
 	}
-	if steer(planNoteSpoken(fresh)) != nil {
-		// NOTHING IS MARKED. The words reached nobody, so the notes are still
-		// unread — the next boundary offers them again, and the one after, until
-		// a turn takes them. Marked here they would have been delivered to
-		// nobody and never offered again.
-		return nil
+	batch, err := n.inbox.next(ctx, notesPerDelivery, skip)
+	if err != nil {
+		// NOTHING IS HANDED OVER AND NOTHING ELSE IS MARKED: a busy or failed
+		// read, or a note too large to read, is not an empty inbox. The own
+		// notes a read passed before a cancellation stopped it are this step's
+		// own words all the same, so their marks stand.
+		return had
 	}
-	marked := make([]string, 0, len(fresh))
-	for _, note := range fresh {
-		read[note.ID] = true
-		marked = append(marked, note.ID)
+	if len(batch.notes) == 0 {
+		n.inbox.settle(batch)
+		return had
 	}
-	return marked
+	// A TURN THAT IS ENDING IS NOT HANDED NOTES, and they are not marked:
+	// nobody would read them, so they are still unread for the next worker.
+	if !deliver {
+		return had
+	}
+	if steer(planNoteSpoken(batch.notes)) != nil {
+		// NOTHING IS MARKED AND THE MARK DOES NOT MOVE. The words reached
+		// nobody, so the notes are still unread — the next boundary offers
+		// them again, and the one after, until a turn takes them. Marked here
+		// they would have been delivered to nobody and never offered again.
+		return had
+	}
+	for _, note := range batch.notes {
+		n.read[note.ID] = true
+		had = append(had, note.ID)
+	}
+	n.inbox.settle(batch)
+	return had
 }
 
-// ownNotes marks as had every unread note on the task that this step's own
-// command wrote, and answers their ids. A note is the worker's own when it is in
-// a worker's voice and its words are in the command the worker just ran: the
-// worker typed them, so there is nothing in them it has not already read.
+// isOwnNote reports whether a note is the worker's own: in a worker's voice,
+// with words THIS STEP'S command carries verbatim. The worker typed them, so
+// there is nothing in them it has not already read.
 //
 // IT IS READ OFF THE WORDS AND NOT OFF THE AUTHOR'S NAME, because the name does
 // not say it: a worker's `plandb task note` carries whatever agent name it
@@ -781,20 +838,18 @@ func deliverNotes(store *plandb.Store, taskID string, read map[string]bool, stee
 // whose words the command does not carry verbatim — quoting the shell rewrote —
 // is handed over as it always was, which repeats the worker's own sentence
 // rather than losing anybody else's.
-func ownNotes(store *plandb.Store, taskID, command string, read map[string]bool) []string {
-	if strings.TrimSpace(command) == "" {
-		return nil
+//
+// ONLY THIS STEP'S COMMAND, NEVER AN EARLIER ONE. A note the read first reaches
+// a step later is handed over and the worker hears its own sentence again;
+// matching it against the commands before would make a colleague's later note
+// that repeats words the worker once typed read as the worker's own, and hide
+// it. A repeat costs a sentence; a hidden note is a lost one.
+func isOwnNote(note plandb.NoteEnvelope, command string) bool {
+	body := strings.TrimSpace(note.Body)
+	if strings.TrimSpace(command) == "" || note.From == plandb.NoteFromPerson || body == "" {
+		return false
 	}
-	var marked []string
-	for _, note := range store.Notes(taskID, 0) {
-		body := strings.TrimSpace(note.Body)
-		if read[note.ID] || note.From == plandb.NoteFromPerson || body == "" || !strings.Contains(command, body) {
-			continue
-		}
-		read[note.ID] = true
-		marked = append(marked, note.ID)
-	}
-	return marked
+	return strings.Contains(command, body)
 }
 
 // planNoteSpoken is how a plan note reads when it reaches a working worker: the
@@ -806,7 +861,7 @@ func ownNotes(store *plandb.Store, taskID, command string, read map[string]bool)
 // quietly stop building the thing that was asked for. So the sentence says
 // plainly that the work order has not moved, and names the shape a real
 // direction arrives in.
-func planNoteSpoken(notes []plandb.Note) string {
+func planNoteSpoken(notes []plandb.NoteEnvelope) string {
 	var b strings.Builder
 	if len(notes) == 1 {
 		b.WriteString("a note was left on your task:\n")
@@ -824,7 +879,7 @@ func planNoteSpoken(notes []plandb.Note) string {
 // itself keeps ([plandb.NoteFromPerson]): the person steering the run, or
 // another worker on it. A worker's agent name is said when the store has one,
 // because which sibling found the thing is half of what the note is worth.
-func noteAuthorWord(note plandb.Note) string {
+func noteAuthorWord(note plandb.NoteEnvelope) string {
 	if note.From == plandb.NoteFromPerson {
 		return "the person"
 	}
@@ -911,23 +966,74 @@ func (w *BashWorker) storeEnding(id string) (storeEnding, bool) {
 	return storeEnding{}, false
 }
 
-// recordSpend writes the task's one spend row: the model this seat was built
-// on, the role its shape gave it at the moment the turn ended, and the dollars
-// and tokens its calls cost. It is best-effort whole and last, because the money
-// is already in the Report the supervisor absorbs and in the session's usage
-// ledger; a store that refuses this write leaves the run's own counters true,
-// and a row here is a reading of the run rather than the run's book. A turn that
-// spent nothing writes nothing rather than a zero row somebody reads as a
-// figure.
-func (w *BashWorker) recordSpend(taskID string, usd float64, inTokens, outTokens int) {
-	if usd == 0 && inTokens == 0 && outTokens == 0 {
+// recordSpend writes the task's spend rows, with the role its shape gave it at
+// the moment the turn ended and the dollars and tokens its calls cost. The rows
+// always sum to what the seat spent, so every reader of the task's price reads
+// the figure it always did. What they say about WHO answered is kept apart:
+//
+//   - every model that GAVE AN ANSWER ([session.Agent.Answers]) is one ANSWERED
+//     row ([plandb.Store.AddAnsweredSpend]) carrying whatever money its calls
+//     banked — none, for a free or unmetered answer, which is still that model
+//     doing the work;
+//   - answers from no named model, and money banked under a model that gave no
+//     answer here (a late receipt), are unmarked rows;
+//   - money the per-model shares do not cover — none were kept, or the seat's
+//     total holds figures from before this process tallied them — is one row on
+//     the model the seat was built on, as it always was, and NOT marked.
+//
+// Only the first is a fact about who did the work; the rest are billing, and any
+// one of them leaves the work unattributable.
+//
+// It is best-effort whole and last, because the money is already in the Report
+// the supervisor absorbs and in the session's usage ledger; a store that
+// refuses this write leaves the run's own counters true, and a row here is a
+// reading of the run rather than the run's book. A seat that neither spent nor
+// was answered writes nothing.
+func (w *BashWorker) recordSpend(taskID string, used session.Usage, shares map[string]session.Usage, answers map[string]int) {
+	if used.CostUSD == 0 && used.Input == 0 && used.Output == 0 && used.Calls == 0 && len(answers) == 0 {
 		return
 	}
 	role, err := w.store.RoleOf(taskID)
 	if err != nil {
 		role = plandb.RoleWork
 	}
-	_ = w.store.AddSpend(taskID, w.model, role, usd, inTokens, outTokens)
+	seen := map[string]bool{}
+	var models []string
+	for model := range shares {
+		seen[model] = true
+		models = append(models, model)
+	}
+	for model := range answers {
+		if !seen[model] {
+			models = append(models, model)
+		}
+	}
+	sort.Strings(models)
+	var covered session.Usage
+	for _, model := range models {
+		share := shares[model]
+		covered.CostUSD += share.CostUSD
+		covered.Input += share.Input
+		covered.Output += share.Output
+		covered.Calls += share.Calls
+		answered := answers[model] > 0
+		switch {
+		case answered && model != "":
+			_ = w.store.AddAnsweredSpend(taskID, model, role, share.CostUSD, share.Input, share.Output)
+		case answered || share != (session.Usage{}):
+			_ = w.store.AddSpend(taskID, model, role, share.CostUSD, share.Input, share.Output)
+		}
+	}
+	// Integer coverage does not prove dollar coverage: a receipt may report
+	// cost without tokens. Only a few floating-point rounding units from the
+	// regrouped sum are noise; preserve every larger residual as unproven spend.
+	rounding := math.Abs(math.Nextafter(used.CostUSD, math.Inf(1))-used.CostUSD) * float64(len(models)+1)
+	if covered.Calls == used.Calls && covered.Input == used.Input && covered.Output == used.Output &&
+		math.Abs(used.CostUSD-covered.CostUSD) <= rounding {
+		return
+	}
+	_ = w.store.AddSpend(taskID, w.model, role, max(used.CostUSD-covered.CostUSD, 0),
+		max(used.Input-covered.Input, 0), max(used.Output-covered.Output, 0))
 }
 
 // stepRecorder appends one worker's step lines, and keeps the two readings
@@ -1128,4 +1234,43 @@ func planVerbs(command string) []string {
 // never a second attempt at a handle that is closed.
 func (w *BashWorker) clearLiveStep(taskID string) {
 	_ = w.store.ClearLive(taskID)
+}
+
+// heldPoll is how often a held worker looks again for its release.
+var heldPoll = time.Second
+
+// holdWhileHeld waits while a person's hold is on the task or a task above it,
+// and answers at once when there is none. The model is not called while it
+// waits, so a hold costs nothing, and a cut run ends the wait.
+func holdWhileHeld(ctx context.Context, store *plandb.Store, taskID string) {
+	for store != nil && store.HeldInLineage(taskID) {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(heldPoll):
+		}
+	}
+}
+
+// workerDID is who the worker on task acts as: the conversation's DID with the
+// number of the row the person and the conversation know this work by. A task
+// handed to a run keeps its row's number as its store id, so that number is
+// the task's own; a task the run split off under one has no number of its own
+// and acts as the row it was split from, which is the only task anybody
+// outside the run asked for.
+func workerDID(store *plandb.Store, task plandb.Task, did string) string {
+	if did == "" {
+		return ""
+	}
+	seen := map[string]bool{}
+	for at := &task; at != nil && !seen[at.ID]; at = store.Task(at.ParentID) {
+		seen[at.ID] = true
+		if n, err := strconv.ParseUint(strings.TrimPrefix(at.ID, "t-"), 10, 64); err == nil && n > 0 {
+			return agentdid.Worker(did, n)
+		}
+		if at.ParentID == "" {
+			break
+		}
+	}
+	return ""
 }

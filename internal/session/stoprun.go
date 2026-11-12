@@ -70,6 +70,12 @@ func beltStoppedWhere(branch, ground string, changed []string) string {
 // run's at all: false sends the caller on to the task graph, which is where
 // every other task number lives.
 func (a *Agent) stopBeltRow(id uint64, why string) (string, bool, error) {
+	return a.stopBeltRowForEnding(id, why, TaskEndingStopped)
+}
+
+// stopBeltRowForEnding carries a conversation limit through the same cancellation
+// door as Stop, while keeping the ending distinct on the published receipt.
+func (a *Agent) stopBeltRowForEnding(id uint64, why string, ending TaskEnding) (string, bool, error) {
 	why = strings.TrimSpace(why)
 	for {
 		a.beltMu.Lock()
@@ -87,13 +93,13 @@ func (a *Agent) stopBeltRow(id uint64, why string) (string, bool, error) {
 			run.deliveryMu.Unlock()
 			continue
 		}
-		return a.stopCurrentBeltRow(run, id, why)
+		return a.stopCurrentBeltRow(run, id, why, ending)
 	}
 }
 
 // stopCurrentBeltRow enters holding deliveryMu and beltMu. Both are released
 // with the stop flag, before cancellation, store writes or other work.
-func (a *Agent) stopCurrentBeltRow(run *beltRun, id uint64, why string) (string, bool, error) {
+func (a *Agent) stopCurrentBeltRow(run *beltRun, id uint64, why string, ending TaskEnding) (string, bool, error) {
 	unlock := func() { a.beltMu.Unlock(); run.deliveryMu.Unlock() }
 	if run.row == id {
 		name := taskStopName(id, run.title)
@@ -111,15 +117,22 @@ func (a *Agent) stopCurrentBeltRow(run *beltRun, id uint64, why string) (string,
 			return name + " is already stopping", true, nil
 		}
 		run.stopped, run.stopReason = true, why
+		run.stopEnding = ending
 		cut := run.cut
 		unlock()
 		// THE STORE FIRST, THE CONTEXT NEXT (the header says why). A store that
 		// would not take the write is said on the run's page by whoever settles
 		// it; the context is cut either way, because the person asked for the
 		// spend to end and that is the half nothing else can do for them.
-		if err := run.store.StopRoot(stopBecause(taskStoppedWord, why)); err != nil {
+		var stopErr error
+		if ending == TaskEndingTimeLimit {
+			stopErr = run.store.EndRoot(conversationTimeLimitReason)
+		} else {
+			stopErr = run.store.StopRoot(stopBecause(taskStoppedWord, why))
+		}
+		if stopErr != nil {
 			if g := a.graph(); g != nil {
-				g.planNote("the run's stop could not be written: " + err.Error())
+				g.planNote("the run's stop could not be written: " + stopErr.Error())
 			}
 		}
 		if run.remoteEngine != nil {
@@ -279,7 +292,7 @@ func (a *Agent) stopUndrivenRow(id, parent uint64, why string) (string, bool, er
 	return "stopped " + stopBecause(taskStopName(id, notice.Title), why) + " — nothing was driving it any more", true, nil
 }
 
-// sayToRunRow is a message to a row a run owns, and it reports whether the
+// sayToRunRowFrom is a message to a row a run owns, and it reports whether the
 // number is a run's at all: false sends the caller on to the answer that there
 // is no such task.
 //
@@ -289,7 +302,13 @@ func (a *Agent) stopUndrivenRow(id, parent uint64, why string) (string, bool, er
 // words as a note on their task's page, which is where a run's worker reads
 // what it is told between its steps (the page's own box writes the same note,
 // [Agent.PlanNote]). A row nothing drives says so, and says it can be stopped.
-func (a *Agent) sayToRunRow(id uint64, text string, origin messageOrigin) (SteerReceipt, bool, error) {
+//
+// Only the source's opaque client id is used here: it is committed with the note
+// in the store's one transaction ([plandb.Store.AddPersonNoteKeyed]), so the
+// note's key and the note exist together or not at all. The conversation's own
+// notes carry no key, and a key the app could not keep ([AppNoteClientID]) is
+// dropped rather than stored half-trusted.
+func (a *Agent) sayToRunRowFrom(id uint64, text string, origin messageOrigin, source spokenSource) (SteerReceipt, bool, error) {
 	a.beltMu.Lock()
 	run := a.beltRun
 	owned := run != nil && (run.row == id || slices.Contains(run.joined, id))
@@ -308,12 +327,12 @@ func (a *Agent) sayToRunRow(id uint64, text string, origin messageOrigin) (Steer
 		}
 		var err error
 		if origin == fromPerson {
-			_, err = run.store.AddPersonNote(key, text)
+			_, err = run.store.AddPersonNoteKeyed(key, text, AppNoteClientID(source.clientID))
 		} else {
 			_, err = run.store.AddNote(key, plandb.NoteAgentChat, text)
 		}
 		if err != nil {
-			return SteerReceipt{}, true, err
+			return SteerReceipt{}, true, commitUncertainAsUnanswered(err)
 		}
 		return SteerReceipt{Landing: RunNotePickupWord}, true, nil
 	}
@@ -363,7 +382,14 @@ func (a *Agent) beltRunRootRow(id string) (uint64, bool) {
 // the one way every ending of it is ([ProgramFolder.Finish]), with the stop's
 // words after its usable message, or below the title as a fallback.
 func (a *Agent) settleStoppedBeltRun(run *beltRun, why string, cut []string) {
+	ending := run.stopEnding
+	if ending == "" {
+		ending = TaskEndingStopped
+	}
 	report := stopBecause(taskStoppedWord, why)
+	if ending == TaskEndingTimeLimit {
+		report = TaskReasonOf(ending, "")
+	}
 	var merge, branch string
 	var changed []string
 	if run.folder != nil {
@@ -425,7 +451,7 @@ func (a *Agent) settleStoppedBeltRun(run *beltRun, why string, cut []string) {
 	// or the engine answered — and not after the kept work was committed
 	// ([Agent.beltRunEndedAt]).
 	notice := TaskNotice{
-		ID: run.row, Title: run.title, State: TaskFailed, Stopped: true,
+		ID: run.row, Title: run.title, State: TaskFailed, Stopped: ending == TaskEndingStopped, Ending: ending,
 		WorkspaceSet: cloneWorkspaceSet(run.tree.workspaceSet),
 		Report:       report, Changed: changed, Merge: merge, Branch: branch, EndedAt: a.beltRunEndedAt(run),
 	}
@@ -440,9 +466,7 @@ func (a *Agent) settleStoppedBeltRun(run *beltRun, why string, cut []string) {
 		}
 	}
 	a.publishRunRow(g, notice)
-	// A JOINED ROW THE STOP TOOK DOWN ENDS WITH THE STOP, NOT AS A FAULT: cut
-	// is the run engine's own typed record of which tasks its ending cut
-	// mid-flight, and the stop is a person, so the law draws those rows with
-	// the stop ending ([Agent.settleJoinedRows], [TaskReasonOf]).
-	a.settleJoinedRows(g, run, notice.EndedAt, TaskEndingStopped, cut)
+	// Joined rows inherit the cancellation's cause, so a time limit names that
+	// limit rather than attributing it to a Stop press or to a worker fault.
+	a.settleJoinedRows(g, run, notice.EndedAt, ending, cut)
 }

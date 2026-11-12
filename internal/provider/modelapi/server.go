@@ -91,6 +91,11 @@ type Config struct {
 	// TaskDir is the task's record folder, where the conversation log is kept
 	// (delegate.ConversationFile). Empty keeps no log.
 	TaskDir string
+	// Launch is the launch of the program's process this API serves
+	// (delegate.NewLaunch), stamped on every turn it writes so a reader can
+	// tell this process's calls from another launch's on the same task. Empty
+	// stamps none.
+	Launch string
 	// CompleterFor answers the funnel a call on model goes out through. Nil is
 	// a run with no model road: every call is answered with the sentence that
 	// says so, and none is made.
@@ -989,6 +994,7 @@ func (s *Server) log(turn delegate.Turn) {
 	if strings.TrimSpace(s.config.TaskDir) == "" {
 		return
 	}
+	turn.Launch = s.config.Launch
 	s.logMu.Lock()
 	defer s.logMu.Unlock()
 	_ = delegate.AppendTurn(s.config.TaskDir, turn)

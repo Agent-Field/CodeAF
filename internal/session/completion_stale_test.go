@@ -367,13 +367,15 @@ func TestAgreementDoesNotBuyASecondCompletion(t *testing.T) {
 	agent := finishedAgent(t, completer, path)
 	ran := make(ranNodes, 2)
 	graph := stubbedGraph(agent, func(node *TaskNode) { ran <- node })
+	// R1's helper gate adds I/O before the sidecar answers; use the existing
+	// watch so the finite script cannot outrun that answer on a busy machine.
+	watchReadings(t, agent)
 
-	events, err := agent.Submit(context.Background(), theAsk)
+	events, err := agent.Submit(watchedContext(agent), theAsk)
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
 	collect(t, events)
-	ran.await(t)
 
 	// THE FIRST CLAIM WAS BELIEVED AND THE SECOND WAS NOT.
 	ceilings := journaledCeilings(t, path)
@@ -392,6 +394,7 @@ func TestAgreementDoesNotBuyASecondCompletion(t *testing.T) {
 	if gap := ceilings[1].Rounds - ceilings[0].Rounds; gap > checkpointPrice {
 		t.Fatalf("the ceiling came back %d rounds later, want no more than %d", gap, checkpointPrice)
 	}
+	ran.await(t)
 	if count := admitted(graph); count != 1 {
 		t.Fatalf("%d tasks were admitted for a turn that worked on past its own claim; want one", count)
 	}
@@ -443,8 +446,11 @@ func TestANewDirectionArrivesWithTheClaimUnspent(t *testing.T) {
 	}
 	agent = finishedAgent(t, completer, path)
 	graph := stubbedGraph(agent, func(*TaskNode) {})
+	// The second claim needs the mark's drawing before the finite script ends.
+	// Hold ordinary responses until that reading lands, as the checkpoint rig does.
+	watchReadings(t, agent)
 
-	events, err := agent.Submit(context.Background(), theAsk)
+	events, err := agent.Submit(watchedContext(agent), theAsk)
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
@@ -453,6 +459,9 @@ func TestANewDirectionArrivesWithTheClaimUnspent(t *testing.T) {
 
 	if !queued.Load() {
 		t.Fatal("the forced ordering never queued the revision")
+	}
+	if got := claims.Load(); got != 2 {
+		t.Fatalf("the revision reached %d claims, want the original and the revision", got)
 	}
 	if count := admitted(graph); count != 0 {
 		t.Fatalf("%d tasks were admitted; a revision inherited the claim spent on the sentence before it", count)
@@ -618,7 +627,8 @@ func TestACompletionDropLeavesTheRunningCommandOwed(t *testing.T) {
 				arguments, _ := json.Marshal(struct {
 					Command    string `json:"command"`
 					Background bool   `json:"background"`
-				}{Command: command, Background: true})
+					Notify     bool   `json:"notify"`
+				}{Command: command, Background: true, Notify: true})
 				return toolResponseWithText("start-build", "bash", string(arguments),
 					"Starting the build in the background."), nil
 			}

@@ -1,0 +1,130 @@
+package syncsetup
+
+import (
+	"context"
+	"github.com/Agent-Field/codeaf/internal/cellstore"
+
+	"github.com/Agent-Field/codeaf/internal/chatlist"
+	"github.com/Agent-Field/codeaf/internal/directory"
+)
+
+// ConfirmWork checks only this chat's directory record without waiting for
+// capture before reading ownership. The caller bounds ctx and decides how to
+// degrade a failed read. True confirms the current fence; false means either a
+// viewer or a drive that cannot confirm ownership yet.
+func (d *Drive) ConfirmWork(ctx context.Context) (bool, error) {
+	held := d.sendLeaseSnapshot()
+	if d.batcher == nil || d.displaced() {
+		return false, nil
+	}
+	id, fence := d.batcher.Lease()
+	// Preserving orphaned work in a branch does not revive this displaced
+	// window. A deliberate reopen owns that branch through a new drive.
+	if id != d.directoryID {
+		return false, nil
+	}
+	v, err := d.sync.Dir.Cell(ctx, id)
+	if err != nil {
+		return false, err
+	}
+	lease := v.Cell.Lease
+	// A first publish or branch can change the lease during the read. That
+	// answer confirms neither a takeover nor the batcher's new lease.
+	if currentID, currentFence := d.batcher.Lease(); currentID != id || currentFence != fence {
+		return false, nil
+	}
+	if lease.Expires <= v.Now {
+		d.availableAfter(held, lease)
+		return false, nil
+	}
+	if lease.Device == d.sync.Device.ID() && lease.Fence == fence {
+		d.resumeViewer()
+		return true, nil
+	}
+	if lease.Device == d.sync.Device.ID() {
+		d.availableAfter(held, lease)
+		return false, nil
+	}
+
+	// Naming the holder shares the admission budget. Once the fence is known
+	// lost, a slow name lookup cannot turn the refusal back into admission.
+	name := chatlist.DeviceName(nil, lease.Device, nil)
+	if lease.Device == "" {
+		name = unknownDevice
+	} else if listing, err := d.sync.Dir.List(ctx); err == nil {
+		key := directory.MetadataKey(d.sync.Identity.CellKey())
+		name = chatlist.DeviceName(listing.Devices, lease.Device, func(sealed string) (string, error) { return directory.OpenName(key, sealed) })
+	}
+	viewer := Viewer{ID: lease.Device, Name: name, Line: chatlist.Superseded(name)}
+	d.mu.Lock()
+	if d.viewer.Line != "" {
+		d.mu.Unlock()
+		return false, nil
+	}
+	d.viewer = viewer
+	expected := sendLease{Cell: d.directoryID, Fence: d.recordedFence}
+	d.mu.Unlock()
+	if d.opt.OnViewer != nil {
+		d.opt.OnViewer(viewer)
+	}
+	if d.opt.OnRenewalChange != nil {
+		d.opt.OnRenewalChange()
+	}
+	// Match becomeViewer's capture-before-notice ordering in the background:
+	// pending saves must settle, but admission cannot inherit their disk wait.
+	go func() {
+		if err := d.sync.forgetSendLease(d.cell.ID, expected); err != nil {
+			d.notice(err.Error())
+		}
+		pending, cancel := context.WithTimeout(context.Background(), cellstore.SealWithin)
+		defer cancel()
+		if err := cellstore.Await(pending, d.cell); err != nil {
+			d.notice(err.Error())
+		}
+		d.notice(viewer.Line)
+	}()
+	return false, nil
+}
+
+func (d *Drive) resumeViewer() {
+	d.mu.Lock()
+	if d.stopped {
+		d.mu.Unlock()
+		return
+	}
+	changed := d.viewer.Line != "" || d.lost
+	d.viewer, d.lost = Viewer{}, false
+	d.mu.Unlock()
+	if changed && d.opt.OnDriving != nil {
+		d.opt.OnDriving()
+	}
+}
+
+// available retains the work gate until ownership is confirmed again, without
+// claiming that the last holder is still working in a released chat.
+func (d *Drive) available() {
+	d.availableAfter(sendLease{}, directory.Lease{})
+}
+
+// availableAfter closes the work gate before receipt I/O can block and retires
+// only the receipt held before the reading, so a concurrent reacquisition survives.
+// Expiry and release retire the receipt too. Readers hear the change after
+// retirement finishes; continuation must acquire a new hold.
+func (d *Drive) availableAfter(held sendLease, reading directory.Lease) {
+	viewer := Viewer{Line: chatlist.Available}
+	d.mu.Lock()
+	changed := d.viewer != viewer
+	d.viewer = viewer
+	d.mu.Unlock()
+	if held.Fence != 0 {
+		if err := d.sync.forgetSendLease(d.cell.ID, held); err != nil {
+			d.notice(err.Error())
+		}
+	}
+	if changed {
+		d.renewalChanged()
+	}
+	if changed && d.opt.OnViewer != nil {
+		d.opt.OnViewer(viewer)
+	}
+}

@@ -61,6 +61,8 @@ models.fallbacks
 models.pool.public_key
 models.quick_switch
 models.roles
+models.tasks.mode
+models.tasks.one
 models.tiers.high
 models.tiers.low
 models.tiers.mastermind
@@ -124,4 +126,7 @@ update.auto
 vision_model
 work.workers
 working_set_tokens
+
+daily_budget_authority
+daily_budget_today
 sync.preference_times

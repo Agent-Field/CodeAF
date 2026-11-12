@@ -17,6 +17,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/calllog"
 	"github.com/Agent-Field/codeaf/internal/catalog"
+	"github.com/Agent-Field/codeaf/internal/claudemodel"
 	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/ctxbudget"
 	"github.com/Agent-Field/codeaf/internal/env"
@@ -338,6 +339,8 @@ func LoadKeyless() (Config, error) { return load(false) }
 // first run write that are not settings-registry rows. They are consumed even
 // though NewSettings(...).Rows() does not list them.
 var nonSettingProfileFields = []string{
+	dailyAuthorityKey,
+	dailyTodayKey,
 	preferenceTimesKey,
 	KeySetupSeen,
 	// The talk lane's borrow row sits beside its lane row and is read by
@@ -372,6 +375,10 @@ var nonSettingProfileFields = []string{
 	KeyCrewRouteWorker,
 	KeyCrewRoutePlanner,
 	KeyCrewRouteChecker,
+	// Task models' mode and its one model (taskmodels.go), written from the
+	// app's Task models page and read at every task's admission.
+	KeyTaskModelsMode,
+	KeyTaskModelsOne,
 }
 
 // retiredProfileKeys are top-level config.json keys that a shipped version once
@@ -595,15 +602,13 @@ func load(requireKey bool) (Config, error) {
 }
 
 // ResolveImageModel applies the runtime preference order: an explicit slot,
-// Seedream 5.0 Pro then Krea 2 Medium Turbo as each is advertised, then the
-// catalog's first image output model. Catalog's offline fallbacks make the
-// last resort usable while keeping the ordinary path free of unverified
-// defaults.
+// then Seedream 5.0 Pro or Krea 2 Medium Turbo — and only when the catalog
+// advertises it AND has published a price for it. There is no "first image
+// model" rung: see [DefaultMediaRoute], which also says why there was no
+// answer. Empty means no default, and the caller keeps image generation off
+// the belt or shows [MediaRoute.Err].
 func (c Config) ResolveImageModel(models *catalog.Catalog) string {
-	if configured := strings.TrimSpace(c.ImageModel); configured != "" {
-		return configured
-	}
-	return resolveOutputModel(models, "image", preferredImageModel, fallbackImageModel)
+	return c.ResolveImageRoute(models).Model
 }
 
 // ResolveSpeechModel prefers Fish Audio S2.1 Pro, then Fish Audio S1, then
@@ -716,13 +721,11 @@ func ModelCandidates(models *catalog.Catalog, slot string) []catalog.Model {
 	}
 }
 
-// ResolveVideoModel prefers Seedance 2.5, then Seedance 2.0 Mini as each is
-// advertised, then the catalog's first exact video-output model.
+// ResolveVideoModel prefers Seedance 2.5, then Seedance 2.0 Mini — each only
+// when advertised and carrying a published per-second price. There is no
+// "first video model" rung; see [DefaultMediaRoute].
 func (c Config) ResolveVideoModel(models *catalog.Catalog) string {
-	if configured := strings.TrimSpace(c.VideoModel); configured != "" {
-		return configured
-	}
-	return resolveOutputModel(models, "video", preferredVideoModel, fallbackVideoModel)
+	return c.ResolveVideoRoute(models).Model
 }
 
 // ResolveVisionModel applies the inspection-proxy order at the moment a leaf
@@ -730,6 +733,13 @@ func (c Config) ResolveVideoModel(models *catalog.Catalog) string {
 // each advertises image input, Qwen VL when advertised, then the first model
 // with image input. Unlike generation slots, an unadvertised default is never
 // invented: no result means view_image can preserve its calm refusal.
+//
+// EVERY CANDIDATE MUST BE A PAIR OF EYES, NOT A PAINTER. Image input is also
+// what an image editor takes, and its answer is a picture: handed a photograph
+// and asked what is in it, it draws one. A candidate therefore has to take
+// images AND answer in text and nothing else ([seesAndAnswersInText]) — the
+// same reading the perception slots apply. The explicit slot above is the
+// person's own word and is not second-guessed.
 func (c Config) ResolveVisionModel(models *catalog.Catalog, talkModel, workModel string) string {
 	if configured := strings.TrimSpace(c.VisionModel); configured != "" {
 		return configured
@@ -739,15 +749,48 @@ func (c Config) ResolveVisionModel(models *catalog.Catalog, talkModel, workModel
 	}
 	for _, candidate := range []string{talkModel, workModel, preferredVisionModel} {
 		candidate = strings.TrimSpace(candidate)
-		if candidate != "" && models.Supports(candidate, "input", "image") {
+		if candidate == "" {
+			continue
+		}
+		if row, ok := models.Model(candidate); ok && seesAndAnswersInText(row) {
 			return candidate
 		}
 	}
-	candidates := models.ModelsWithInput("image")
-	if len(candidates) > 0 {
-		return candidates[0].ID
+	for _, candidate := range models.ModelsWithInput("image") {
+		if seesAndAnswersInText(candidate) {
+			return candidate.ID
+		}
 	}
 	return ""
+}
+
+// seesAndAnswersInText says a row takes images and replies in words. A row
+// that publishes no output list at all is a cache written before modalities
+// were kept, and is read as it always was: by its input alone.
+func seesAndAnswersInText(model catalog.Model) bool {
+	if !hasInput(model, "image") {
+		return false
+	}
+	return len(model.OutputModalities) == 0 ||
+		(hasOutput(model, "text") && !generatesMedia(model))
+}
+
+func hasInput(model catalog.Model, modality string) bool {
+	for _, input := range model.InputModalities {
+		if strings.EqualFold(strings.TrimSpace(input), modality) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasOutput(model catalog.Model, modality string) bool {
+	for _, output := range model.OutputModalities {
+		if strings.EqualFold(strings.TrimSpace(output), modality) {
+			return true
+		}
+	}
+	return false
 }
 
 // chatCandidatesWithInput is the three PERCEPTION slots' shared question: a
@@ -953,12 +996,26 @@ func ClientConfigFor(sources modelsource.Set, model string) provider.Config {
 		Direct:      !strings.EqualFold(strings.TrimSpace(service.Source.ID), modelsource.DefaultID),
 		KeyOptional: service.Source.KeyOptional,
 		BillingDoor: service.Door.Name,
+		Billing:     billingFactOf(service),
 		Effort:      effort,
 	}
 	if strings.EqualFold(strings.TrimSpace(service.Source.ID), "codex") {
 		configured.APIKey = codexauth.Sentinel
 		configured.HTTPClient = codexauth.Client(service.Home)
 		configured.BillingDoor = ""
+		// A sign-in is not a plan statement: until the plan claim is read and
+		// verified, a codex call's billing is nobody's word.
+		configured.Billing = provider.BillingFact{}
+		configured.ModelPrice = func(string) (float64, float64, bool) { return 0, 0, false }
+	}
+	if strings.EqualFold(strings.TrimSpace(service.Source.ID), claudemodel.ID) {
+		// Claude Code answers through its own program on the person's own
+		// sign-in; a session that knows its folder replaces this client with
+		// one that works there (internal/session's clientConfig).
+		configured.APIKey = claudemodel.Sentinel
+		configured.HTTPClient = claudemodel.Client()
+		configured.BillingDoor = ""
+		configured.Billing = provider.BillingFact{}
 		configured.ModelPrice = func(string) (float64, float64, bool) { return 0, 0, false }
 	}
 	if service.Overflow != nil {
@@ -967,6 +1024,23 @@ func ClientConfigFor(sources modelsource.Set, model string) provider.Config {
 		configured.OverflowOnPlanPause = service.PlanPaused == PlanPausedUseMeter
 	}
 	return configured
+}
+
+// billingFactOf is the billing statement the connected service's bound door
+// makes, and nothing else. A named door says metered or included in so many
+// words (`modelsource.Door.Metered`, proved when it was connected); a service
+// with no named door — the default router, a one-door vendor, a custom
+// endpoint, a local runner — states nothing, and the client's fact stays
+// unknown rather than being inferred from a price, a key shape or a label.
+func billingFactOf(service modelsource.Connected) provider.BillingFact {
+	door := strings.TrimSpace(service.Door.ID)
+	if door == "" {
+		return provider.BillingFact{}
+	}
+	if service.Door.Metered {
+		return provider.MeteredDoorFact(service.Source.ID, door)
+	}
+	return provider.IncludedDoorFact(service.Source.ID, door)
 }
 
 // WithoutSeatPin is the settings a raw request path takes: the same account,

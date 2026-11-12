@@ -6,10 +6,13 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/sqliteuri"
 )
 
@@ -35,17 +38,137 @@ const knowledgeSchema = `
  CREATE TABLE IF NOT EXISTS wakes(partition TEXT,id TEXT,source TEXT,reason TEXT,PRIMARY KEY(partition,id,source));
 `
 
+// busyWaitMillis is how long a write waits for another writer before it fails. The longest holder is the build of
+// profile_session_lookup, once per database: 1.5 s at 1 GB on a fast Mac, so about 5 s on a laptop three times slower.
+const busyWaitMillis = 15_000
+
 var schemaLocks sync.Map
 var schemaReady sync.Map
 
+// consentRecheck bounds how stale this process's view of another process's
+// consent change may be. This process's own writes refresh the view at once.
+const consentRecheck = 5 * time.Second
+
+var consentNow = time.Now
+var consentViews sync.Map
+
+type consentView struct {
+	mu             sync.Mutex
+	reading        chan struct{}
+	checked        time.Time
+	readable       bool
+	since          time.Time
+	readGeneration uint64
+	generation     atomic.Uint64
+}
+
+func (v *Vault) captureConsentView() *consentView {
+	path := filepath.Join(v.root, "knowledge.sqlite")
+	if view, ok := consentViews.Load(path); ok {
+		return view.(*consentView)
+	}
+	view, _ := consentViews.LoadOrStore(path, &consentView{})
+	return view.(*consentView)
+}
+
+// CaptureConsent shares one consent read across this process's chat tickers.
+// It answers whether a tick has anything to look at; a tick that finds sources
+// to admit asks [Vault.ConfirmConsent] before it admits them or moves past them.
+func (v *Vault) CaptureConsent() (enabled bool, since time.Time) {
+	return v.consent(consentRecheck)
+}
+
+// CaptureConsentWithin is CaptureConsent for a look that has a reason to be
+// prompt, such as a chat that has just written: the shared answer is used only
+// while it is younger than maxAge. The view is shared, so however many chats
+// write, this opens the database at most once per maxAge.
+func (v *Vault) CaptureConsentWithin(maxAge time.Duration) (enabled bool, since time.Time) {
+	return v.consent(min(maxAge, consentRecheck))
+}
+
+// ConfirmConsent reads consent now and shares the answer with the other
+// tickers. Admission uses it, so a source is judged against the database's own
+// opt-in time, never a remembered one.
+func (v *Vault) ConfirmConsent() (enabled bool, since time.Time) {
+	return v.consent(0)
+}
+
+// consent answers from the shared view while it is younger than maxAge and no
+// consent write of this process came after it; maxAge 0 always reads.
+func (v *Vault) consent(maxAge time.Duration) (enabled bool, since time.Time) {
+	// A failed metadata read must not admit sources or advance their cursors.
+	// Successful reads still check the live setting on every memory step.
+	defer func() {
+		learning := v.Enabled()
+		enabled = enabled && learning
+		if !enabled {
+			since = time.Time{}
+		} else if since.IsZero() {
+			since = time.Unix(0, 0).UTC()
+		}
+	}()
+	view := v.captureConsentView()
+	for {
+		view.mu.Lock()
+		now := consentNow()
+		generation := view.generation.Load()
+		if maxAge > 0 && !view.checked.IsZero() && view.readGeneration == generation && now.Sub(view.checked) < maxAge {
+			enabled, since = view.readable, view.since
+			view.mu.Unlock()
+			return enabled, since
+		}
+		if reading := view.reading; reading != nil {
+			view.mu.Unlock()
+			<-reading
+			continue
+		}
+		reading := make(chan struct{})
+		view.reading = reading
+		view.mu.Unlock()
+
+		// SQLite can wait for another writer. Keep that wait outside the
+		// view lock so fresh answers remain available and pending readers
+		// share the result through a wait that also lets fake clocks advance.
+		value, err := v.state("config")
+		if err == nil {
+			enabled = true
+			since, _ = time.Parse(time.RFC3339Nano, textValue(value["created_at"]))
+		}
+		view.mu.Lock()
+		view.checked, view.readable, view.since = now, enabled, since
+		view.readGeneration = generation
+		view.reading = nil
+		close(reading)
+		view.mu.Unlock()
+		return enabled, since
+	}
+}
+
+func (v *Vault) forgetConsent() {
+	// Invalidation does not wait for an in-flight read, including during a worker pass.
+	v.captureConsentView().generation.Add(1)
+}
+
+var databaseHook atomic.Pointer[func(string)]
+
+// SetDatabaseHookForTest observes database opens for tests in this and other
+// packages. Production callers leave this test-only hook unset.
+func SetDatabaseHookForTest(hook func(path string)) (restore func()) {
+	previous := databaseHook.Swap(&hook)
+	return func() { databaseHook.Store(previous) }
+}
+
 func (v *Vault) database() (*sql.DB, error) {
+	path := filepath.Join(v.root, "knowledge.sqlite")
+	if hook := databaseHook.Load(); hook != nil && *hook != nil {
+		(*hook)(path)
+	}
 	if err := os.MkdirAll(v.root, 0700); err != nil {
 		return nil, err
 	}
-	path := filepath.Join(v.root, "knowledge.sqlite")
 	uri := sqliteuri.File(path)
 	q := uri.Query()
-	q.Add("_pragma", "busy_timeout(1000)")
+	q.Add("_pragma", "busy_timeout("+strconv.Itoa(busyWaitMillis)+")")
 	q.Add("_pragma", "foreign_keys(1)")
 	q.Set("_txlock", "immediate")
 	uri.RawQuery = q.Encode()
@@ -112,8 +235,7 @@ func (v *Vault) state(key string) (document, error) {
 	return stateDocument(db, key)
 }
 func (v *Vault) Enabled() bool {
-	value, err := v.state("config")
-	return err == nil && flag(value["enabled"])
+	return config.MemoryEnabledAt(v.profile)
 }
 func (v *Vault) EnabledSince() time.Time {
 	value, err := v.state("config")
@@ -185,12 +307,26 @@ func (v *Vault) captureTx(tx *sql.Tx, s Source) error {
 			}
 		}
 		source := document{"id": part.ID, "session": part.Session, "role": part.Role, "ts": part.TS, "text": part.Text, "provenance": document{"kind": part.Kind, "content_hash": identity(part.Text), "recorded_at": part.TS, "valid_at": part.TS, "locator": document{"session": part.Session, "message": part.ID, "project": part.Project}, "revision": nil, "independently_verified": false}}
+		if part.Job {
+			source["job"] = true
+		}
 		var raw string
 		err := tx.QueryRow("SELECT payload FROM events WHERE partition='profile' AND id=?", part.ID).Scan(&raw)
 		if err == nil {
 			var prior document
-			if json.Unmarshal([]byte(raw), &prior) != nil || identity(prior) != identity(source) {
+			if json.Unmarshal([]byte(raw), &prior) != nil {
 				return errors.New("knowledge immutable source changed")
+			}
+			priorEvidence, evidence := clone(prior), clone(source)
+			delete(priorEvidence, "job")
+			delete(evidence, "job")
+			if identity(priorEvidence) != identity(evidence) {
+				return errors.New("knowledge immutable source changed")
+			}
+			if part.Job && !flag(prior["job"]) {
+				if _, err = tx.Exec("UPDATE events SET payload=? WHERE partition='profile' AND id=?", mustJSON(source), part.ID); err != nil {
+					return err
+				}
 			}
 			continue
 		}
@@ -238,7 +374,7 @@ func (v *Vault) status(db *sql.DB) (Snapshot, error) {
 		return snapshot, err
 	}
 	snapshot.Revision = textValue(revision["value"])
-	snapshot.Enabled = flag(settings["enabled"])
+	snapshot.Enabled = v.Enabled()
 	snapshot.LastError = textValue(status["last_error"])
 	snapshot.NeedsUpdate = flag(status["needs_update"])
 	snapshot.CostUSD = number(status["cost_usd"])
@@ -279,7 +415,7 @@ func (v *Vault) Snapshot() (Snapshot, error) {
 	}
 	defer db.Exec("ROLLBACK")
 	snapshot, err := v.status(db)
-	if err != nil || !snapshot.Enabled {
+	if err != nil {
 		return snapshot, err
 	}
 	snapshot.Pages, err = readPages(db)
@@ -456,7 +592,7 @@ func storePages(tx *sql.Tx, pages []Page) error {
 	}
 	return nil
 }
-func (v *Vault) commitPublication(vault, learning, registry document, digest string) error {
+func (v *Vault) commitPublication(vault, learning, registry document, digest, request string) error {
 	if err := validatePublication(vault); err != nil {
 		return err
 	}
@@ -505,10 +641,7 @@ func (v *Vault) commitPublication(vault, learning, registry document, digest str
 	if err = saveState(tx, "topics", registry); err != nil {
 		return err
 	}
-	if err = saveState(tx, "projection", document{"input_hash": digest, "version": knowledgeProjectionVersion}); err != nil {
-		return err
-	}
-	if _, err = tx.Exec("DELETE FROM state WHERE key='organization_boundary'"); err != nil {
+	if err = saveState(tx, "projection", document{"input_hash": digest, "version": knowledgeProjectionVersion, "build_request": request}); err != nil {
 		return err
 	}
 	return tx.Commit()

@@ -37,6 +37,9 @@ func TestStatusLineCopy(t *testing.T) {
 			t.Errorf("%s: got %q, want %q", st, got, want)
 		}
 	}
+	if got, want := StatusLine(Row{Status: Running, Device: "host-a", Working: true}), "working on host-a"; got != want {
+		t.Errorf("a turn running there: got %q, want %q", got, want)
+	}
 }
 
 func TestTakeoverLineOmitsClauseAtZero(t *testing.T) {
@@ -88,7 +91,7 @@ func TestFrozenSentences(t *testing.T) {
 		ClockOff:         "this computer's clock is off by more than 5 minutes",
 		ReplacedGone:     "your identity was replaced and sync has deleted the old one; pair this computer again (/pair on a computer that has the new one)",
 		Replaced:         "your chats are moving to a new identity; when that is done, pair this computer again (/pair on the computer that moved them)",
-		Removed:          "this device was removed by another of your devices, so this chat stays here only — run codeaf pair to bring it back",
+		Removed:          "this device was removed by another of your devices, so this chat stays here only — run codeaf pair --replace to bring it back",
 		SlowDown:         "sync is asking this computer to slow down; new turns stay here and go up as soon as it allows",
 		TooManyNew:       "this network has started too many new identities today; sync begins when it allows more",
 		RelayStorageFull: "sync is full for everyone right now, so new turns stay on this computer and go up when it has room",
@@ -155,5 +158,12 @@ func TestTooManyNewNamesWhenTheDayFreesUp(t *testing.T) {
 		if got := TooManyNewIn(wait); got != want {
 			t.Errorf("wait %v: got %q want %q", wait, got, want)
 		}
+	}
+}
+
+// B11: a notice an earlier engine stored with the old remedy is still a removal.
+func TestEarlierRemovedNoticeIsStillARemoval(t *testing.T) {
+	if !IsRemovedNotice(earlierRemoved) || !IsRemovedNotice(Removed) || earlierRemoved == Removed {
+		t.Fatal("removal notices from before --replace are no longer recognised")
 	}
 }

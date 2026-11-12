@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
@@ -46,6 +47,9 @@ type SealWatch struct {
 	// OnTurnEnd, when set, hears each time the agent finishes a turn. The door
 	// sets it to the sync side's idle call.
 	OnTurnEnd func()
+	// OnTurnStart, when set, hears each time a turn begins. The door sets it to
+	// the sync side's working call, so other computers can say a turn runs here.
+	OnTurnStart func()
 	// OnTail, when set, is called once the record has been quiet for Quiet after
 	// writes that came behind the turn-end seal. The door seals the tree and asks
 	// the sync side to upload, exactly as it does at the end of a turn, so there
@@ -60,6 +64,7 @@ type SealWatch struct {
 	tail        *time.Timer
 	cause       string
 	said        []string
+	changes     chan struct{}
 	failing     bool
 	syncFailing bool
 	// SyncAddress is selected by the door, so failures without a URL still name the right service.
@@ -120,9 +125,37 @@ func (w *SealWatch) say(sentence string) {
 		return
 	}
 	w.said = append(w.said, sentence)
+	if w.changes == nil {
+		w.changes = make(chan struct{}, 1)
+	}
+	select {
+	case w.changes <- struct{}{}:
+	default:
+	}
 	if w.wake != nil {
 		w.wake()
 	}
+}
+
+// Changes wakes a reader when a sentence is queued. One signal may stand for
+// several sentences; a receiver drains Take until it returns "".
+func (w *SealWatch) Changes() <-chan struct{} {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.changes == nil {
+		w.changes = make(chan struct{}, 1)
+	}
+	return w.changes
+}
+
+// Owed reports whether a reader that drains Take must look again although
+// nothing woke it: a sentence is waiting, or sealing is failing, whose recovery
+// is found only by asking Take or Failing. It never looks for that recovery
+// itself, so a reader's own Take stays the one check per look.
+func (w *SealWatch) Owed() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.failing || len(w.said) > 0
 }
 
 // Listen wakes a local surface without giving its sentences a second consuming road.
@@ -204,14 +237,24 @@ func (w *SealWatch) Waiting() {
 	}
 }
 
+// liveTurns counts this process's watches with a turn running. The desktop
+// app keeps its saving helpers warm only while one is (daemon_app.go).
+var liveTurns atomic.Int64
+
 // TurnStarted is the session's word that a turn began: the turn writes the
 // record itself and every call seals it, so no tail seal is owed.
 func (w *SealWatch) TurnStarted() {
 	w.mu.Lock()
-	defer w.mu.Unlock()
+	if !w.started || w.idle {
+		liveTurns.Add(1)
+	}
 	w.started = true
 	w.idle = false
 	w.stopTail()
+	w.mu.Unlock()
+	if w.OnTurnStart != nil {
+		w.OnTurnStart()
+	}
 }
 
 // Wrote is the session's word that something the chat owns was written: a line
@@ -260,6 +303,9 @@ func (w *SealWatch) sealTail() {
 // forwards, so a watch without a listener costs nothing.
 func (w *SealWatch) TurnEnded() {
 	w.mu.Lock()
+	if w.started && !w.idle {
+		liveTurns.Add(-1)
+	}
 	w.started = true
 	w.idle = true
 	w.requireTranscript()

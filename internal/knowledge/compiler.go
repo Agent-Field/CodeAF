@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 	"unicode/utf8"
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/filelock"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 func knowledgeModel(profile string) string { return config.KnowledgeModelAt(profile) }
@@ -24,6 +26,12 @@ func (v *Vault) compile(ctx context.Context, key string, force bool) (err error)
 	}
 	if err = ctx.Err(); err != nil {
 		return err
+	}
+	if v.calls != nil {
+		ctx, err = v.calls(ctx)
+		if err != nil {
+			return err
+		}
 	}
 	lock, err := os.OpenFile(filepath.Join(v.root, ".compiler.lock"), os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
@@ -51,7 +59,7 @@ func (v *Vault) compile(ctx context.Context, key string, force bool) (err error)
 		return err
 	}
 	defer db.Close()
-	model := compilerModel{ctx: ctx, root: v.root, key: key, model: knowledgeModel(v.profile), db: db}
+	model := compilerModel{ctx: ctx, root: v.root, key: key, model: knowledgeModel(v.profile), db: db, calls: v.calls, repeats: v.repeats}
 	defer func() {
 		message := ""
 		if err != nil {
@@ -75,31 +83,46 @@ func (v *Vault) compile(ctx context.Context, key string, force bool) (err error)
 	if err = v.compilerStatus(db, model.model, "", true); err != nil {
 		return err
 	}
-	boundary, err := stateDocument(db, "organization_boundary")
+	boundaryKey := "organization_boundary"
+	if owner := provider.SessionFrom(ctx); owner != "" {
+		boundaryKey += ":" + owner
+	}
+	boundary, err := stateDocument(db, boundaryKey)
 	if err != nil {
 		return err
 	}
 	through := int64(number(boundary["through"]))
-	if through == 0 {
+	if through == 0 || provider.SessionFrom(ctx) != "" {
 		if err = db.QueryRow("SELECT coalesce(max(rowid),0) FROM events WHERE partition='profile'").Scan(&through); err != nil {
 			return err
 		}
-		if err = saveState(db, "organization_boundary", document{"through": through}); err != nil {
+		if err = saveState(db, boundaryKey, document{"through": through}); err != nil {
 			return err
 		}
 	}
-	vault, err := v.compilePending(db, "profile", model, force, through)
+	before, err := pendingCompilerSources(db, ctx, through)
 	if err != nil {
 		return err
 	}
-	// First-build organization needs the complete admitted history, rather than
-	// a tree whose page boundaries reflect extraction batches.
-	var pending int
-	if err = db.QueryRow("SELECT count(*) FROM events WHERE partition='profile' AND rowid<=? AND status IN ('pending','revisit')", through).Scan(&pending); err != nil {
-		return err
-	}
-	if pending > 0 {
-		return nil
+	var vault document
+	for {
+		vault, err = v.compilePending(db, "profile", model, force, through)
+		if err != nil {
+			return err
+		}
+		remaining, err := pendingCompilerSources(db, ctx, through)
+		if err != nil {
+			return err
+		}
+		if remaining == 0 {
+			break
+		}
+		// Only an owned turn drains its finite snapshot. Ordinary Flush keeps
+		// its bounded single-batch admission even when forced.
+		if !force || provider.SessionFrom(ctx) == "" || remaining >= before {
+			return nil
+		}
+		before = remaining
 	}
 	projection, err := stateDocument(db, "projection")
 	if err != nil {
@@ -110,9 +133,24 @@ func (v *Vault) compile(ctx context.Context, key string, force bool) (err error)
 	if err != nil {
 		return err
 	}
-	needsLearning := textValue(projection["input_hash"]) != digest || hasPendingRefinement(learning)
+	intent, err := stateDocument(db, "job")
+	if err != nil {
+		return err
+	}
+	request := textValue(intent["request"])
+	explicitBuild := request != "" && request != textValue(projection["build_request"])
+	sameInput := textValue(projection["input_hash"]) == digest
+	if sameInput && projection["version"] == knowledgeProjectionVersion && !explicitBuild {
+		_, err = db.Exec("DELETE FROM state WHERE key=?", boundaryKey)
+		return err
+	}
+	needsLearning := !sameInput || (explicitBuild && hasPendingRefinement(learning))
 	if !needsLearning && projection["version"] == knowledgeProjectionVersion {
-		_, err = db.Exec("DELETE FROM state WHERE key='organization_boundary'")
+		projection["build_request"] = request
+		if err = saveState(db, "projection", projection); err != nil {
+			return err
+		}
+		_, err = db.Exec("DELETE FROM state WHERE key=?", boundaryKey)
 		return err
 	}
 	if needsLearning {
@@ -142,7 +180,11 @@ func (v *Vault) compile(ctx context.Context, key string, force bool) (err error)
 	if err != nil {
 		return err
 	}
-	return v.commitPublication(published, learning, registry, digest)
+	if err = v.commitPublication(published, learning, registry, digest, request); err != nil {
+		return err
+	}
+	_, err = db.Exec("DELETE FROM state WHERE key=?", boundaryKey)
+	return err
 }
 func (v *Vault) compilerStatus(db *sql.DB, model, message string, needsUpdate bool) error {
 	var cost float64
@@ -170,7 +212,8 @@ func (v *Vault) compilePending(db *sql.DB, partition string, model compilerModel
 		previous = repaired
 		revision++
 	}
-	rows, err := db.Query("SELECT e.id,e.payload,e.arrived,e.status,coalesce(w.length,0) FROM events e LEFT JOIN source_windows w ON w.partition=e.partition AND w.id=e.id WHERE e.partition=? AND e.rowid<=? AND e.status IN ('pending','revisit') ORDER BY e.arrived,e.id LIMIT 64", partition, through)
+	selection, args := compilerSourceSelection(model.ctx, "e.payload")
+	rows, err := db.Query("SELECT e.id,e.payload,e.arrived,e.status,coalesce(w.length,0) FROM events e LEFT JOIN source_windows w ON w.partition=e.partition AND w.id=e.id WHERE e.partition=? AND e.rowid<=? AND e.status IN ('pending','revisit') AND ("+selection+") ORDER BY e.arrived,e.id LIMIT 64", append([]any{partition, through}, args...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -192,6 +235,7 @@ func (v *Vault) compilePending(db *sql.DB, partition string, model compilerModel
 			rows.Close()
 			return nil, err
 		}
+		delete(source, "job")
 		n := utf8.RuneCountInString(textValue(source["text"]))
 		if windowLength > 0 {
 			n = windowLength
@@ -261,4 +305,31 @@ func (v *Vault) compilePending(db *sql.DB, partition string, model compilerModel
 		return nil, fmt.Errorf("knowledge capture publication: %w", err)
 	}
 	return vault, nil
+}
+
+func pendingCompilerSources(db *sql.DB, ctx context.Context, through int64) (int, error) {
+	var pending int
+	selection, args := compilerSourceSelection(ctx, "payload")
+	err := db.QueryRow("SELECT count(*) FROM events WHERE partition='profile' AND rowid<=? AND status IN ('pending','revisit') AND ("+selection+")", append([]any{through}, args...)...).Scan(&pending)
+	return pending, err
+}
+
+func compilerSourceSelection(ctx context.Context, payload string) (string, []any) {
+	owners, bound := ctx.Value(ownerSessionsKey{}).([]string)
+	if !bound && provider.SessionFrom(ctx) != "" {
+		owners = []string{provider.SessionFrom(ctx)}
+	}
+	if bound && len(owners) == 0 {
+		return "0", nil
+	}
+	if len(owners) == 0 {
+		return "coalesce(json_extract(" + payload + ",'$.job'),0)=0", nil
+	}
+	clauses := make([]string, 0, len(owners))
+	args := make([]any, 0, len(owners)*3)
+	for _, owner := range owners {
+		clauses = append(clauses, "(json_extract("+payload+",'$.session')=? OR substr(json_extract("+payload+",'$.session'),1,length(?))=?)")
+		args = append(args, owner, "task:"+owner+":", "task:"+owner+":")
+	}
+	return strings.Join(clauses, " OR "), args
 }

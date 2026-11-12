@@ -172,5 +172,7 @@ func turnSkillsNotice(names []string) Event {
 		Kind:   EventNotice,
 		Text:   turnSkillsNote(names),
 		Skills: append([]string(nil), names...),
+
+		NoticeKind: NoticeKindSkills,
 	}
 }

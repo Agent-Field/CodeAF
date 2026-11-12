@@ -35,7 +35,8 @@ Apply uses the exact reviewed snapshot, preserves conflicts and unrelated staged
 dirty work, and keeps the private copy.
 
 For every chat, task cards recover their worker transcript and recorded model after
-a restart or a move. Typed folder targets survive asynchronous listings, and a
+a restart or a move. Retained read-only task pages also keep the desktop's
+recorded source message when the plan database did not move. Typed folder targets survive asynchronous listings, and a
 failed move keeps the typed words and never sends them.
 
 Native chat activity uses the chat's identity rather than its internal state
@@ -49,3 +50,6 @@ Warm-transfer frame hints ride the Raft relay and stay off by default:
 - an invalid set is dropped rather than refusing the publish;
 - Home listings omit them;
 - every cluster member must understand them before a device sends them.
+
+Desktop rollback of an unused legacy chat folder recognizes the new empty
+metadata lock. A lock with contents or an unexpected file type keeps the folder.

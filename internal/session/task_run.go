@@ -65,10 +65,11 @@ package session
 // ── WHY A NODE NEVER ASKS ──
 //
 // There is nobody to ask. Its approval posture is composed from the same
-// [approval.Policy] the conversation uses — allow everything, with the critical
+// approval machinery the conversation uses — allow everything, with the critical
 // table (rm -rf /, mkfs, a redirect onto a raw disk, shutdown) still a floor
-// under it — and where a conversation would raise a question, the node reads a
-// refusal it can act on. That is exactly consent.go's law for a headless run,
+// under it and any profile read failure carried forward. Where a conversation
+// would raise a question, the node reads a refusal it can act on.
+// That is exactly consent.go's law for a headless run,
 // said in the node's own words.
 
 import (
@@ -91,6 +92,7 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	"github.com/Agent-Field/codeaf/internal/guard"
@@ -278,6 +280,11 @@ const (
 // brief is assembled once at start (runFrontier's JIT assembly) from spec.brief
 // plus prerequisites' reports and is not the spec.
 type TaskNode struct {
+	// File captures serialize before and after bytes across concurrent tool calls.
+	quickIO sync.Mutex
+	// App holds are checkpointed with the node, so a restart never grants a resume.
+	app     appTaskRecord
+	appWake chan struct{}
 	// storageBlocked records a writer whose bounded shutdown has not finished.
 	storageBlocked bool
 
@@ -580,7 +587,11 @@ type TaskNode struct {
 	receipts []toolReceipt
 	branch   string
 	worktree string
-	merge    string
+	// deliverSink is where this node's worker records the deliverables it
+	// creates ([deliverableSink]), and what its landing settles. Guarded by the
+	// graph's lock.
+	deliverSink *deliverableSink
+	merge       string
 	// clashing names the files that stopped this node's branch fastening onto the
 	// person's, read out of the index while the refused merge still held them and
 	// written here by the landing road ([landHome]). It is what a your-call row
@@ -626,7 +637,14 @@ type TaskNode struct {
 	// seed a card codeaf is holding, and an engine that died mid-turn quietly
 	// dropping the hand-back it owed.
 	decider TaskAskOwner
-	started time.Time
+	// waitsExt are the tasks of other conversations this node waits on
+	// ([Agent.WaitOnTask]), admittedAt the instant it entered the graph and
+	// stateAt the instant it entered its present state; the checkpoint keeps all
+	// three (taskRecord.WaitsExternal, AdmittedAt, StateAt).
+	waitsExt   []TaskRef
+	admittedAt time.Time
+	stateAt    time.Time
+	started    time.Time
 	// ended is the instant this node last landed. It is stamped at the live
 	// transition and kept on the checkpoint, so a rebuilt row reads the record's
 	// fact instead of dating old work with the clock that happened to read it.
@@ -834,10 +852,9 @@ type TaskNode struct {
 	// now, including the ones nobody has picked up. So the fact is written down
 	// on its own rather than inferred from a pointer that no longer means it.
 	claimed bool
-	// stopped marks a node a PERSON ended (cancel.go). It is set BEFORE the
-	// context is cut, so that the landing this stop causes already knows whose
-	// decision it was — a flag written afterwards would be a flag the update
-	// announcing the end raced past.
+	// stopped marks cancellation before the context is cut, so the landing
+	// already knows it must keep partial work. The ending distinguishes a
+	// person's Stop from a time limit they set.
 	stopped bool
 	// handed is the receipt for THIS SESSION'S own hand-over press: the person
 	// asked codeaf to decide this one card, and the note that asks it has been
@@ -1016,6 +1033,10 @@ type TaskGraph struct {
 	nodes map[uint64]*TaskNode
 	// Deleted ids cannot admit later children or return through run updates.
 	deleted map[uint64]bool
+	// dismissed is the set of tasks the person hid from the default view, by the
+	// id the app reads them under (a number, or a plan row's "t-…"). It is a
+	// visibility fact only and is persisted in the checkpoint (task_dismiss.go).
+	dismissed map[string]bool
 	// plan is the bash belt's plan store side (plandb_plan.go), nil on every
 	// session outside the experiment and until the first ordinary task seeds
 	// it. planMu is ITS gate, and the lock order is written at the top of
@@ -1078,6 +1099,13 @@ type TaskGraph struct {
 	// refusal: a runnable node past the cap sits on the frontier and starts when
 	// a slot frees, which is what a queue in a graph is for.
 	limit int
+
+	// ext is what this graph knows of the tasks its nodes wait on in OTHER
+	// conversations, and extCtx cancels the reads that learn it at quit
+	// (task_external.go). All of it is guarded by mu.
+	ext       externalState
+	extCtx    context.Context
+	extCancel context.CancelFunc
 
 	// governor is the machine's own answer to "may one more node start"
 	// (task_pressure.go), and nil is no governor: every scripted graph in the
@@ -1238,6 +1266,23 @@ func (g *TaskGraph) runRowsLocked() []TaskNotice {
 	return out
 }
 
+// runRowLocked is one row of a run by its number, with the same visibility
+// as [TaskGraph.runRowsLocked]: a deleted row, or one under a deleted parent,
+// is not found.
+func (g *TaskGraph) runRowLocked(id uint64) (TaskNotice, bool) {
+	for _, root := range g.runRuns {
+		for i := range g.runs[root] {
+			if row := &g.runs[root][i]; row.ID == id {
+				if g.deleted[row.ID] || g.deleted[row.Parent] {
+					return TaskNotice{}, false
+				}
+				return *row, true
+			}
+		}
+	}
+	return TaskNotice{}, false
+}
+
 func newTaskGraph() *TaskGraph {
 	// A GRAPH IS ALONE IN ITS PROCESS UNTIL IT IS TOLD OTHERWISE. The caller
 	// that knows several conversations share one machine says so by putting its
@@ -1357,17 +1402,27 @@ func (g *TaskGraph) admit(id uint64, spec taskSpec) TaskState {
 	// WHOSE TURN HANDED THIS OUT, read once, before the node exists
 	// (turnhandoff.go).
 	admitter := g.admittingAgent(spec)
+	// WHICH MESSAGE OR DIRECTIVE STARTED IT, stamped at this one door for the
+	// roads that did not carry one: a child inherits its parent's block and never
+	// the conversation's current one; a root takes what its admitting agent is
+	// answering now; and nobody typed into a woken turn, so it has none
+	// (task_source.go).
+	if !spec.sourceCaptured && !spec.source.valid() {
+		spec.source = g.inheritedSource(spec, admitter)
+	}
 	node := &TaskNode{
-		graph:     g,
-		id:        id,
-		dependsOn: spec.dependsOn,
-		parent:    spec.parent,
-		depth:     spec.depth,
-		owner:     spec.owner,
-		done:      make(chan struct{}),
-		spec:      spec,
-		kind:      spec.kind(),
-		state:     TaskQueued,
+		graph:      g,
+		id:         id,
+		dependsOn:  spec.dependsOn,
+		admittedAt: time.Now(),
+		stateAt:    time.Now(),
+		parent:     spec.parent,
+		depth:      spec.depth,
+		owner:      spec.owner,
+		done:       make(chan struct{}),
+		spec:       spec,
+		kind:       spec.kind(),
+		state:      TaskQueued,
 		// WHOSE REQUEST HANDED THIS OUT, stamped at the one door every task in
 		// this package comes through so no road has to remember to do it
 		// (turnhandoff.go).
@@ -1524,6 +1579,17 @@ func (g *TaskGraph) children(parent uint64) []*TaskNode {
 	return kids
 }
 
+func (g *TaskGraph) wakeBudgetForWork(starting []*TaskNode) {
+	if len(starting) > 0 && g.home != nil {
+		g.home.wakeBudgetForWork()
+	}
+	for _, node := range starting {
+		if node.owner != nil && node.owner != g.home {
+			node.owner.wakeBudgetForWork()
+		}
+	}
+}
+
 // runFrontier is the scheduler, and it is the whole of it.
 //
 // One pass: fail every queued node whose dependencies cannot be met, start
@@ -1575,7 +1641,7 @@ func (g *TaskGraph) runFrontier() {
 		}
 		ready, blocked := g.readinessLocked(node)
 		if blocked != "" {
-			node.state = TaskFailed
+			node.setStateLocked(TaskFailed)
 			node.ended = time.Now()
 			node.landLocked(blocked)
 			node.held = ""
@@ -1603,6 +1669,8 @@ func (g *TaskGraph) runFrontier() {
 		node.brief = g.briefLocked(node, orders[node.id])
 		node.state = TaskRunning
 		node.started = time.Now()
+		node.stateAt = node.started
+		node.app.Version++
 		// The hold is lifted by the start itself, so the running update this
 		// node is about to send carries no reason to be waiting.
 		node.held = ""
@@ -1630,11 +1698,15 @@ func (g *TaskGraph) runFrontier() {
 	// quit has started waiting on it.
 	g.runners.Add(len(starting))
 	g.mu.Unlock()
+	g.wakeBudgetForWork(starting)
 
 	// A machine hold is the one hold nothing will come along and lift.
 	if machineHeld {
 		g.armPoll()
 	}
+	// AND A WAIT ON ANOTHER CONVERSATION'S TASK IS LOOKED AT once, outside every
+	// lock, only while one is pending (task_external.go).
+	g.armExternal()
 
 	// The pass's transitions reach the disk BEFORE the runs they authorize start:
 	// a node that is running in this process must never be a node the checkpoint
@@ -1819,6 +1891,9 @@ func (g *TaskGraph) stopAll(grace time.Duration) {
 	}
 	g.mu.Lock()
 	g.quitting = true
+	if g.extCancel != nil {
+		g.extCancel()
+	}
 	var cuts []context.CancelFunc
 	for _, id := range g.order {
 		node := g.nodes[id]
@@ -1879,6 +1954,9 @@ func (g *TaskGraph) doomedDependencies(ids []uint64) (missing, failed []uint64) 
 // not finish is a node whose brief can never be assembled, and leaving it
 // queued forever would be a task the person watches wait on nothing.
 func (g *TaskGraph) readinessLocked(node *TaskNode) (bool, string) {
+	if node.app.Paused {
+		return false, ""
+	}
 	ready := true
 	for _, id := range node.dependsOn {
 		prerequisite := g.nodes[id]
@@ -1901,7 +1979,13 @@ func (g *TaskGraph) readinessLocked(node *TaskNode) (bool, string) {
 			ready = false
 		}
 	}
-	return ready, ""
+	if len(node.waitsExt) == 0 {
+		return ready, ""
+	}
+	// A WAIT ON ANOTHER CONVERSATION IS READ FROM THE OBSERVATION and never from
+	// the reader: this lock is the one every control takes (task_external.go).
+	outside, blocked := g.externalVerdict(node)
+	return ready && outside, blocked
 }
 
 // briefLocked assembles what one node is handed: its own brief, then what the
@@ -2094,7 +2178,8 @@ func shareReports(reports []string, pot int) []string {
 // state transition and the slot being handed back.
 func (g *TaskGraph) complete(node *TaskNode, state TaskState) {
 	g.mu.Lock()
-	node.state = state
+	node.setStateLocked(state)
+	node.app.Version++
 	node.ended = time.Now()
 	if !node.started.IsZero() {
 		// The age stops here. A finished node's elapsed is a fact about how long
@@ -2155,7 +2240,8 @@ func (g *TaskGraph) handBackSlotLocked(node *TaskNode) {
 // dependents move on the new state.
 func (g *TaskGraph) resettle(node *TaskNode, state TaskState) {
 	g.mu.Lock()
-	node.state = state
+	node.setStateLocked(state)
+	node.app.Version++
 	node.ended = time.Now()
 	// AND THE SETTLE'S OWN CLAIM IS HANDED BACK IN THE SAME WRITE — the claim
 	// covers everything down to the resettle ([TaskNode.claimSettle]), so
@@ -2223,6 +2309,9 @@ func (n *TaskNode) wasStopped() bool {
 func (n *TaskNode) stoppedLead() string {
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
+	if n.ending == TaskEndingTimeLimit {
+		return conversationTimeLimitReason
+	}
 	return stopBecause(taskStoppedWord, n.stopReason)
 }
 
@@ -2902,6 +2991,7 @@ func (n *TaskNode) finish(report string, changed []string, branch, merge string)
 	n.branch = branch
 	n.merge = merge
 	n.graph.mu.Unlock()
+	n.settleDeliverables(merge)
 	// THE VERDICT IS A TRANSITION TOO. The state change follows immediately, but
 	// what a person needs after a kill is the merge outcome and the branch name,
 	// and those are written here.
@@ -3810,9 +3900,12 @@ func (n *TaskNode) noticeLocked(cost float64) TaskNotice {
 		thinking = *n.nextEffort
 	}
 	return TaskNotice{
-		Thinking: thinking,
-		ID:       n.id,
-		Title:    n.spec.title,
+		Thinking:  thinking,
+		ID:        n.id,
+		Source:    cloneSource(n.spec.source),
+		Retryable: n.spec.quick == nil,
+		Dismissed: n.graph.dismissed[strconv.FormatUint(n.id, 10)] && n.state == TaskFailed && !n.stopped && n.endingLocked() != TaskEndingStopped && !n.app.Declined,
+		Title:     n.spec.title,
 		// Reopened task pages need the contract even when no proposal card survives.
 		Brief:        n.spec.brief,
 		Summary:      n.spec.summary,
@@ -3853,7 +3946,7 @@ func (n *TaskNode) noticeLocked(cost float64) TaskNotice {
 		Mending:     n.mend,
 		Waiting:     waiting,
 		Settling:    n.resolutionInFlightLocked(),
-		Stopped:     n.stopped,
+		Stopped:     n.stopped && n.endingLocked() == TaskEndingStopped,
 		Ending:      n.endingLocked(),
 		// AND WHAT CLASHED, WHICH ROAD PUT IT THERE, AND WHOSE DECISION IT IS. None
 		// of the three is derivable from anything else on this notice: the names
@@ -3898,16 +3991,15 @@ func (n *TaskNode) endingNow() TaskEnding {
 }
 
 // endingLocked is the ending a notice and a record carry, with the graph held.
-// A node a person stopped carries [TaskEndingStopped] whether or not anything
-// wrote it — the flag was the whole of that fact before the ending existed, and
-// it stays the source of it.
+// A cancelled node keeps a typed time-limit ending. Older cancellations with
+// only the stopped flag retain the person's Stop reading.
 func (n *TaskNode) endingLocked() TaskEnding {
 	// A NODE MACHINERY CUT WHERE IT STOOD IS STILL RUNNING AND STILL HAS A REASON.
 	// The paused road leaves the state alone so recovery resumes the node, and it
 	// used to carry no ending at all — so a reader could not tell a node machinery
 	// had cut from one still being worked. The ending is surfaced for a running
 	// node exactly as it is for a failed one; every other state still carries none,
-	// and the flag a person's stop sets outranks the field wherever it is.
+	// and cancellation retains the cause recorded before its context was cut.
 	if n.state == TaskRunning {
 		return n.ending
 	}
@@ -3915,6 +4007,9 @@ func (n *TaskNode) endingLocked() TaskEnding {
 		return ""
 	}
 	if n.stopped {
+		if n.ending == TaskEndingTimeLimit {
+			return n.ending
+		}
 		return TaskEndingStopped
 	}
 	return n.ending
@@ -4063,6 +4158,12 @@ func (a *Agent) reportTaskNode(node *TaskNode) {
 	}
 	a.recordTaskIndex(node)
 	a.tellTaskLanded(node)
+	// A reading returns its answer through the waiting read, even on success.
+	// Its record stays intact, but a landing note would report the answer twice
+	// or blame a reading the chat already replaced with an inline read.
+	if node.spec.quick != nil && node.spec.quick.reading {
+		return
+	}
 	transcript := taskURI(node.journalPath())
 	note := landingNoteLead(notice) + taskNote(notice, transcript, a.settlePolicy(), a.addressLanding(notice))
 	// WHETHER IT IS WORTH A TURN OF ITS OWN depends on whether anybody is waiting
@@ -4920,6 +5021,15 @@ func (a *Agent) readsTheDecisionLocked(node *TaskNode) bool {
 // A surface reading both sees an in-turn update on both, exactly as a surface
 // holding two Submit channels sees each event on each (see [Agent.Submit]).
 func (a *Agent) emitTaskUpdate(notice TaskNotice) {
+	if notice.Run == "" {
+		notice.Retryable = a.tasker().retrySupported(notice.ID)
+	}
+
+	// WHETHER THE PERSON HID IT is the graph's fact, said on the one door every
+	// move goes through, so no road that builds a notice by hand can un-hide a task
+	// by forgetting to say so (task_dismiss.go).
+	notice.Dismissed = notice.State == TaskFailed && !notice.Stopped && notice.Ending != TaskEndingStopped && a.tasker().isDismissed(strconv.FormatUint(notice.ID, 10))
+	notice = a.withWorker(notice)
 	event := Event{Kind: EventTaskUpdate, Tool: "propose_task", Task: &notice}
 	a.mu.Lock()
 	hub := a.hub
@@ -4983,6 +5093,9 @@ func (a *Agent) WatchTaskUpdates() (<-chan Event, func()) {
 		return stream.out, func() {}
 	}
 	a.taskWatchers = append(a.taskWatchers, stream)
+	factoryCards := a.standingFactoryCardsLocked()
+	factoryCards = append(factoryCards, a.standingRecipeCardsLocked()...)
+	factoryCards = append(factoryCards, a.standingItemCardsLocked()...)
 	a.mu.Unlock()
 	// THE ROSTER GOES OUT FIRST OF ALL, to EVERY new lane. A lane is opened by
 	// a surface that has no rows yet — a conversation resumed from its
@@ -4993,6 +5106,13 @@ func (a *Agent) WatchTaskUpdates() (<-chan Event, func()) {
 	// that watched all along re-hears what it already drew, and drawing a row
 	// twice is drawing it once (tui3's taskUpdate keys rows by id).
 	a.replayTaskRoster(stream)
+	// AND A FACTORY CARD STILL STANDING, for the same reason: it went out on
+	// this lane once, and a window that arrived after that holds the question
+	// with no card above it (tools_factory.go). A window that already drew it
+	// hears the same id again, which is one card (tui3's factoryProposal).
+	for _, event := range factoryCards {
+		stream.send(event)
+	}
 	var once sync.Once
 	return stream.out, func() {
 		once.Do(func() {
@@ -5056,10 +5176,20 @@ func (a *Agent) replayTaskRoster(stream *eventStream) {
 	// moment old is the same snapshot a live watcher already drew; a job
 	// that moves after this returns will announce onto the lane itself.
 	liveJobs := a.liveJobNotices()
+	// The process shelf may know a settled job's full name and final facts.
+	// It wins over the roster's short title just as it does in JobNotices.
+	if kept, err := a.JobNotices(); err == nil {
+		for _, job := range kept {
+			if _, live := liveJobs[job.ID]; !live {
+				liveJobs[job.ID] = job
+			}
+		}
+	}
 	graph.mu.Lock()
 	defer graph.mu.Unlock()
 	for i, node := range nodes {
 		notice := node.noticeLocked(costs[i])
+		notice = a.withWorker(notice)
 		stream.send(Event{Kind: EventTaskUpdate, Tool: "propose_task", Task: &notice})
 	}
 	// AND THE ADAPTIVE RUNS GO OUT UNDER THE SAME HOLD, for the same reason and
@@ -5085,8 +5215,8 @@ func (a *Agent) replayTaskRoster(stream *eventStream) {
 		// ran yesterday.
 		if job, isJob := jobNoticeFromRow(row); isJob {
 			// A LIVE JOB IS THE REGISTRY'S, NOT THE CHECKPOINT'S. The row is
-			// what tomorrow will read; it never held Started, Command, Kind
-			// or the name that arrived after the first announce. A lane
+			// what tomorrow will read; an older row lacks Started, Command,
+			// Kind and the name that arrived after the first announce. A lane
 			// attaching while the process is still going would otherwise
 			// draw a blank clock and a page with no command until the job
 			// ended — announceJobRow will not fill those in, because a
@@ -5097,6 +5227,7 @@ func (a *Agent) replayTaskRoster(stream *eventStream) {
 			stream.send(Event{Kind: EventJobUpdate, Job: &job})
 			continue
 		}
+		row = a.withWorker(row)
 		stream.send(Event{Kind: EventTaskUpdate, Tool: "propose_task", Task: &row})
 	}
 }
@@ -6432,7 +6563,7 @@ func keptWork(tree taskTree, title string, changed []string, sign gitSignature) 
 	case problem != "":
 		return mergeAborted, changed
 	}
-	saved, problem, _ := commitTaskWork(tree.dir, title, changed, sign, tree.bashBelt)
+	saved, problem, _ := commitTaskWork(tree.dir, title, changed, sign, tree.bashBelt, true)
 	changed = alsoChanged(changed, saved)
 	// THE INHERITANCE COMES BACK OUT OF A KEPT BRANCH TOO, for the reason it does
 	// at a merge (groundladder.go): what the sentence offers the person is the
@@ -7658,7 +7789,9 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 	if root == "" {
 		root = a.sessionID()
 	}
+	sink := a.deliverSinkLocked(dir, node)
 	a.mu.Unlock()
+	node.setDeliverSink(sink)
 
 	// Written on the node the moment it is minted: the name carries a timestamp,
 	// so this is the only moment anybody can learn it, and [Agent.TaskJournal] is
@@ -7691,6 +7824,7 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		workerSeat = effort.RoleWork
 	}
 
+	taskCapUSD, _ := config.CrewTaskSpendCap(parent.ProfileDir)
 	workspaceURI, logOwnerURI := node.workspaceIdentity()
 	childConfig := Config{
 		// Search authority follows the work without enabling memory writes.
@@ -7734,6 +7868,9 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// repository or a worktree of it. landing.go states the law and the
 		// measured failure; this line is the whole of the fix for a task node.
 		droppings: family,
+		// AND WHERE ITS NEW FILES ARE RECORDED: the conversation that owns the
+		// graph, proved by construction here and nowhere else (deliverable_task.go).
+		deliverSink: sink,
 		// AND WHETHER THIS DIRECTORY IS A PROJECT, which is the family's question
 		// and not the worker's: a worker carries no Place (session.go), so the
 		// answer is settled here, once, while the family's is in hand.
@@ -7780,6 +7917,7 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// turns an allow into a "prompt" for the handful of shapes that destroy
 		// a disk or drop the machine, and a prompt in a node is a refusal it can
 		// read (consent.go, InTask) — never a question and never a hang.
+		// An unreadable profile also requires a person because saved denials are unknown.
 		ApprovalPolicy: &approval.Policy{Default: approval.ActionAllow},
 		AskConsent:     false,
 		InTask:         true,
@@ -7837,8 +7975,10 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// handed over afterwards would be a verb the model is never told it has.
 		// It is nil for every other node — there is no list to tick — which is
 		// what keeps `items` off every other belt in this build (task_quick.go).
-		writeScope: node.quickScope(),
-		quickItems: node.quickDoor(),
+		writeScope:  node.quickScope(),
+		quickItems:  node.quickDoor(),
+		taskControl: node,
+		taskCapUSD:  taskCapUSD,
 		// AND THE DESIGN THREAD'S ONE EXTRA HAND, wired here for roomThread's
 		// reason: a belt is assembled once, when the agent is constructed
 		// (agent.go), so a door handed over after this call would be a verb the
@@ -7889,9 +8029,10 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// The media belt travels for the search pair's reason: a node briefed to
 		// draw a diagram needs the hand that draws it, and the resolver is what
 		// says which model does (media_contract.go).
-		Media:      parent.Media,
-		MediaModel: parent.MediaModel,
-		MediaPick:  parent.MediaPick,
+		Media:          parent.Media,
+		MediaModel:     parent.MediaModel,
+		MediaAdmission: parent.MediaAdmission,
+		MediaPick:      parent.MediaPick,
 		// A node reads documents on the rung the person chose, like the
 		// conversation does (tools_doc.go): the same worker, working somewhere
 		// quieter, must not silently drop to a different engine — or to a paid
@@ -7991,7 +8132,7 @@ func (a *Agent) seatTaskModelLocked(node *TaskNode, parent Config, model, on str
 	if !known || supported {
 		return model, nil
 	}
-	fallback, resolveErr := roles.Resolve(roles.Source(parent.RolesSource), roles.RoleWorker, a.model)
+	fallback, resolveErr := readerFor(parent, a.model).Resolve(roles.RoleWorker, a.model)
 	if resolveErr != nil || strings.EqualFold(strings.TrimSpace(fallback), strings.TrimSpace(model)) {
 		return "", fmt.Errorf("model %s does not support tool use, and the worker tier resolves to the same model", model)
 	}
@@ -8554,9 +8695,7 @@ func prepareSingletonTaskTreeOn(ctx context.Context, place Place, workspace, ses
 		return taskTree{}, err
 	}
 	ground := canonicalPath(strings.TrimSpace(stand.dir))
-	if WorkspaceOwnershipEnabled(place) && stand.mode == TaskModeFolder {
-		stand.mode = ownershipPlainMode(ground)
-	}
+	stand.mode = preparedTaskMode(place, ground, stand.mode)
 	if ground == "" {
 		// A PART REACHES THIS ROAD AND ITS FREEZE HAS TO TRAVEL WITH IT. A part
 		// admitted by `divide_work` carries no ground of its own (task_divide.go
@@ -8841,7 +8980,7 @@ func (t taskTree) comeHome(title string, wrote []string, sign gitSignature) (str
 	// they are — what is on that disk is the only copy of the work there is
 	// (task_land_unsaved.go). Going on used to merge a branch holding nothing and
 	// then remove the directory the work was in.
-	if _, problem, why := commitTaskWork(t.dir, title, wrote, sign, t.bashBelt); problem != "" {
+	if _, problem, why := commitTaskWork(t.dir, title, wrote, sign, t.bashBelt, true); problem != "" {
 		return mergeAborted, unsavedSentence(t.dir, problem), nil, why
 	}
 	// THE INHERITANCE GOES BACK OUT BEFORE THE WORK COMES IN. A branch carved
@@ -9246,8 +9385,8 @@ func nonEmptyLines(out string) []string {
 // be staged into, the index could not be read, or git refused the commit. A
 // landing read them as nothing to do, merged a branch holding nothing and
 // removed the working copy the work was sitting in (task_land_unsaved.go, #255).
-func commitTaskWork(dir, title string, wrote []string, sign gitSignature, bashBelt bool) ([]string, string, landingRefusal) {
-	saved, _, why, err := commitTaskWorkAs(dir, "task: "+clip(firstLine(title), 72), wrote, sign, bashBelt)
+func commitTaskWork(dir, title string, wrote []string, sign gitSignature, bashBelt, ownedCopy bool) ([]string, string, landingRefusal) {
+	saved, _, why, err := commitTaskWorkAs(dir, "task: "+clip(firstLine(title), 72), wrote, sign, bashBelt, ownedCopy)
 	if err != nil {
 		return nil, firstLine(err.Error()), why
 	}
@@ -9279,7 +9418,7 @@ func commitTaskWork(dir, title string, wrote []string, sign gitSignature, bashBe
 // the edits, or — at a division — pin a world believing it held work that was
 // still on the floor. A caller that cannot act on the answer may still discard
 // it; a caller that can is now able to.
-func commitTaskWorkAs(dir, message string, wrote []string, sign gitSignature, bashBelt bool) ([]string, string, landingRefusal, error) {
+func commitTaskWorkAs(dir, message string, wrote []string, sign gitSignature, bashBelt, ownedCopy bool) ([]string, string, landingRefusal, error) {
 	if problem, why := stageTaskWork(dir, wrote, bashBelt); problem != "" {
 		return nil, "", why, errors.New(problem)
 	}
@@ -9298,7 +9437,13 @@ func commitTaskWorkAs(dir, message string, wrote []string, sign gitSignature, ba
 	if !sign.off && !repositoryRefusesTrailers(dir) {
 		message = signed(message, sign)
 	}
-	if out, err := git(dir, append(codeafGitIdentity(),
+	// The run engine also uses this commit road in a person's own folder.
+	// Only a caller that owns the copy can suppress detached maintenance.
+	runGit := git
+	if ownedCopy {
+		runGit = privateGit
+	}
+	if out, err := runGit(dir, append(codeafGitIdentity(),
 		"commit", "--no-verify", "-m", message)...); err != nil {
 		// A COMMIT THAT WOULD NOT GO IS USUALLY ABOUT THE COMMIT — a signature it
 		// could not make, a ref it could not lock, a rule the repository holds —
@@ -9562,8 +9707,18 @@ func beltTreeWork(dir string) []string {
 // Git may report a resolved path even when its caller arrived through a
 // symlink; canonicalizing here makes every later path and repository lock use
 // that same spelling.
-func repositoryRoot(dir string) (string, bool) {
-	out, err := git(dir, "rev-parse", "--show-toplevel")
+//
+// ask is who puts the question to git, and it is [git] unless a caller hands
+// in its own: a person's land asks through its bounded reader, with no GIT_*
+// variable of this process's own reaching git, a deadline and a process group
+// killed whole. The question and the refusal that stops the walk stay here,
+// whoever asks.
+func repositoryRoot(dir string, ask ...rootAsker) (string, bool) {
+	run := git
+	if len(ask) > 0 && ask[0] != nil {
+		run = ask[0]
+	}
+	out, err := run(dir, "rev-parse", "--show-toplevel")
 	if err != nil {
 		return "", false
 	}
@@ -9576,6 +9731,10 @@ func repositoryRoot(dir string) (string, bool) {
 	}
 	return canonicalPath(root), true
 }
+
+// rootAsker runs one git command in a directory and answers what it printed,
+// the way [git] does.
+type rootAsker func(dir string, args ...string) (string, error)
 
 // climbsOutOfScratch is THE LAW: A GROUND NEVER CLIMBS OUT OF A SCRATCH
 // DIRECTORY ITS PATH LIVES IN.

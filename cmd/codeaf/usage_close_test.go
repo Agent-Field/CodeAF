@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"path/filepath"
 	"runtime"
 	"testing"
 	"time"
@@ -15,6 +16,16 @@ import (
 // parked and visible immediately before closeAll. Once closeAll returns, no
 // usage writer started by the process may remain alive.
 func TestProcessCloseJoinsTheUsageWriter(t *testing.T) {
+	// A prior caller can queue a row before its writer enters the run loop.
+	earlier := filepath.Join(t.TempDir(), "earlier-usage.jsonl")
+	t.Cleanup(func() { session.StopUsageWriter(earlier) })
+	session.RecordUsage(earlier, session.UsageLine{
+		At: time.Now(), Model: "test/earlier", Calls: 1, Input: 1, USD: 0.01,
+	})
+	// Flush orders the baseline after every existing writer has started.
+	if !session.FlushUsage() {
+		t.Fatal("earlier usage did not reach its ledger")
+	}
 	baseline := liveUsageWriters()
 	proc := v3TestProcess(t)
 	session.RecordUsage(session.UsageLedgerPath(), session.UsageLine{
@@ -24,7 +35,9 @@ func TestProcessCloseJoinsTheUsageWriter(t *testing.T) {
 		Input: 1,
 		USD:   0.01,
 	})
-	session.FlushUsage()
+	if !session.FlushUsage() {
+		t.Fatal("process usage did not reach its ledger")
+	}
 
 	if before := liveUsageWriters(); before != baseline+1 {
 		t.Fatalf("immediately before product Close, live usage writers = %d, want baseline %d + owned writer", before, baseline)

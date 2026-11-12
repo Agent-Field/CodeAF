@@ -144,6 +144,10 @@ func TestKnowledgeRefinementOverlapsTwoJobsAndPublishesTogether(t *testing.T) {
 			t.Fatalf("completed %s was not published: %v", scope, refreshed)
 		}
 	}
+	// Only an explicit Build may advance unfinished refinement without new input.
+	if err := v.StartBuild(); err != nil {
+		t.Fatal(err)
+	}
 	if err := v.Flush(context.Background(), "fixture", true); err != nil {
 		t.Fatal(err)
 	}

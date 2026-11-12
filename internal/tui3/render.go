@@ -410,17 +410,20 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 	if len(lives) > 0 {
 		showActivity = false
 	}
+	appendVirtualDisclosure := func(f workfold) {
+		if wasUser || wasBlock {
+			gap()
+		}
+		out = append(out, row{text: a.pal.dim(fit(a.workfoldLabel(d, f), max(0, width-workIndentCols(width)))), entry: -1, hit: hitWorkFold, turn: f.key})
+		if a.workFoldOpen(d, f.key) {
+			out = append(out, a.completionRows(f.completions, max(0, width-workIndentCols(width)))...)
+		}
+		wasCluster, wasBlock, wasUser, wasNote = true, false, false, false
+	}
 	for i := 0; i < len(es); i++ {
 		e := &es[i]
 		if f, ok := folds[i]; ok && f.virtual {
-			if wasUser || wasBlock {
-				gap()
-			}
-			out = append(out, row{text: a.pal.dim(fit(a.workfoldLabel(d, f), max(0, width-workIndentCols(width)))), entry: -1, hit: hitWorkFold, turn: f.key})
-			if a.workFoldOpen(d, f.key) {
-				out = append(out, a.completionRows(f.completions, max(0, width-workIndentCols(width)))...)
-			}
-			wasCluster, wasBlock, wasUser, wasNote = true, false, false, false
+			appendVirtualDisclosure(f)
 		}
 		if e.completion != nil {
 			continue
@@ -628,6 +631,13 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 			end := i + 1
 			for end < len(es) && es[end].kind == entryDone {
 				end++
+			}
+			// Later landings can own disclosures too, even when the whole
+			// batch suppresses their superseded decision cards.
+			for at := i + 1; at < end; at++ {
+				if f, ok := folds[at]; ok && f.virtual {
+					appendVirtualDisclosure(f)
+				}
 			}
 			if cards := a.doneCluster(d, nil, i, end, width); len(cards) > 0 {
 				gap()

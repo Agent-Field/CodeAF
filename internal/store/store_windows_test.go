@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// N2 opens the real history store at a native path with spaces and non-ASCII,
+// R2 opens the real history store at a native path with spaces and non-ASCII,
 // writes a graph row, and reads it after reopening the same database.
 func TestWindowsStoreNativePath(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "dir with space é", "graph #%25.db")

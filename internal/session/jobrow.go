@@ -143,6 +143,9 @@ func jobRowState(info jobInfo) (TaskState, bool) {
 // for that work is the node's. Publishing here would be rows on a column nobody
 // is reading, minted from a graph that is not the conversation's.
 func (a *Agent) announceJobRow(info jobInfo) {
+	// A command starting is work in flight; the budget watch must move to its
+	// live cadence now, whether or not this job earns a row.
+	a.wakeBudgetForWork()
 	if a.config.InTask {
 		return
 	}
@@ -165,6 +168,17 @@ func (a *Agent) announceJobRow(info jobInfo) {
 		// where its output is, and a person watching it run wants that as much as a
 		// person reading it afterwards.
 		Report: jobRowLead(info.id, info.logPath),
+	}
+	notice.JobCommand, notice.JobCallID = info.command, info.callID
+	notice.StartedAt, notice.EndedAt = info.started, info.ended
+	if info.state == jobExited {
+		code := info.code
+		notice.JobExitCode = &code
+	}
+	if minted {
+		notice.Source = a.bornSource()
+	} else {
+		notice = a.sourcedRunRow(a.graph(), notice)
 	}
 	// THE ORDER IS THE FAMILY SEAM'S ORDER, and for its reasons
 	// ([orchestrateFamily.publish]): the news goes to whoever is watching before
@@ -208,6 +222,7 @@ func (a *Agent) announceJobRow(info jobInfo) {
 // outlives the turn that started it for the same reason a node does and the
 // subscribers who already hold that lane are who will draw it.
 func (a *Agent) emitJobUpdate(notice JobNotice) {
+	a.keepProcessNotice(notice)
 	event := Event{Kind: EventJobUpdate, Job: &notice}
 	a.mu.Lock()
 	hub := a.hub

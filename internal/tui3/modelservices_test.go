@@ -38,7 +38,7 @@ func installModelServiceShelf(a *app, dir string) {
 		if err != nil {
 			return nil, err
 		}
-		rows := surfaceModels(models.ModelsNow())
+		rows := surfaceModels(models.ModelsNow(), true)
 		held[service.Source.ID] = append([]Model(nil), rows...)
 		if err := WriteModelCacheFor(service.Source.ID, service.Address, rows); err != nil {
 			return nil, err

@@ -103,3 +103,7 @@ crew: bugfix · worker glm-5.3-flash (openrouter) · checker kimi-k3 (pinned) ·
 `codeaf do --json` carries the same facts as `model`, `plan_model`, `check_model`,
 `model_source`, `plan_model_source` and `check_model_source`, with `class`, `crew` and
 `est_usd` beside them.
+
+When no fallback is configured, the shared default is `deepseek/deepseek-v4.1-flash`. Explicit fallback chains and saved per-conversation Main/Fallback choices win, including a conversation's explicit None. Factory steps and team conversations use this same default; a one-model launch still forbids fallback.
+
+Refreshing or reopening a factory chat preserves that conversation’s saved Main/Fallback pair. The job default and historical execution models never replace a person’s selection during a read.

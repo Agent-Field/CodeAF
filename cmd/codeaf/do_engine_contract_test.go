@@ -234,6 +234,8 @@ func TestDoOnTheRunEngineSignsFirstCommitOnUnbornBranch(t *testing.T) {
 		t.Fatal(err)
 	}
 	beltGit(t, workspace, "init")
+	beltGit(t, workspace, "config", "--local", "maintenance.auto", "false")
+	beltGit(t, workspace, "config", "--local", "gc.auto", "0")
 	beltGit(t, workspace, "checkout", "-b", "work")
 	seat := &beltSeat{
 		script: []func(context.Context, []ai.Message) (*ai.Response, error){

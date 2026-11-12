@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -193,8 +195,15 @@ func (r *pairRig) joinWith(t *testing.T, code string, replace bool) (*pairScreen
 // types it, both screens show the same three words, a person types y, and the
 // second computer holds the first one's chats and the relay it came through.
 // L4-M12b: code approval uses the same completion sentence as link approval.
-func TestPairBothDoorsOnATerminal(t *testing.T) {
+func TestM1M8PairBothDoorsOnATerminal(t *testing.T) {
 	rig := newPairRig(t)
+	// Dev permits startup preferences, but refuses submitted chats and unknown files.
+	kept := filepath.Join(rig.homeB, "config.json")
+	const preferences = `{"model.talk":"fixture/saved"}`
+	if err := os.WriteFile(kept, []byte(preferences), 0600); err != nil {
+		t.Fatal(err)
+	}
+
 	if _, err := devname.Set(rig.homeA, "laptop-a"); err != nil {
 		t.Fatal(err)
 	}
@@ -226,6 +235,9 @@ func TestPairBothDoorsOnATerminal(t *testing.T) {
 	}
 	if !strings.HasSuffix(shown.out.String(), pair.PairedChatsLine("laptop")+"\n") {
 		t.Fatalf("the sharing terminal did not end on the paired line:\n%s", shown.out.String())
+	}
+	if got, err := os.ReadFile(kept); err != nil || string(got) != preferences {
+		t.Fatalf("startup preferences changed: %q, %v", got, err)
 	}
 	first, _ := identity.Load(rig.homeA)
 	second, err := identity.Load(rig.homeB)

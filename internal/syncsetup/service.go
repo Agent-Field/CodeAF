@@ -7,6 +7,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/identity"
 )
 
@@ -24,7 +25,7 @@ func ProbeService(ctx context.Context, url string) ([]directory.Capability, erro
 	if err != nil {
 		return nil, err
 	}
-	defer os.RemoveAll(home)
+	defer fsreplace.RemoveAll(home)
 	id, err := identity.Ensure(home)
 	if err != nil {
 		return nil, err

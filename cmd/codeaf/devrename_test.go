@@ -60,9 +60,9 @@ func TestDevicesRenameTakesSeveralWordsAndAnEmptyNameIsUsage(t *testing.T) {
 	}
 }
 
-// `codeaf pair --name` keeps the name before any relay is looked up, so a bad
-// name stops the pairing with its reason and nothing is sent.
-func TestPairNameFlagIsKeptAndSentAsTheJoiningLabel(t *testing.T) {
+// M7: a join validates --name before reaching a relay and saves it only after
+// success, so a refusal leaves the computer unchanged.
+func TestM7PairNameFlagWaitsForSuccess(t *testing.T) {
 	celltest.Available(t)
 	dir := t.TempDir()
 	t.Setenv("CODEAF_HOME", dir)
@@ -72,23 +72,23 @@ func TestPairNameFlagIsKeptAndSentAsTheJoiningLabel(t *testing.T) {
 	if !errors.Is(err, pair.ErrSyncOff) {
 		t.Fatalf("the pairing ended with %v, want it to reach the relay check", err)
 	}
-	if got := pairJoiningAt(dir)(false).Label; got != "atlas" {
-		t.Fatalf("the joining label is %q, want the typed name", got)
+	if _, chosen := devname.Chosen(dir); chosen {
+		t.Fatal("M7 a refused join kept --name")
 	}
 
 	err = newPairDoor(strings.NewReader(""), &pairScreenText{}).run(context.Background(), []string{"--name", "bad\x00name", "42-715-302"})
 	if !errors.Is(err, devname.ErrControl) {
 		t.Fatalf("a bad name ended with %v", err)
 	}
-	if devname.Name(dir) != "atlas" {
-		t.Fatalf("a refused --name changed the name to %q", devname.Name(dir))
+	if _, chosen := devname.Chosen(dir); chosen {
+		t.Fatal("M7 a bad name changed the saved name")
 	}
 }
 
 // A person at a terminal who has never named this computer is asked once, with
 // the host name filled in; Enter keeps it and writes nothing, a name is kept, and
 // a bad one is refused and asked again.
-func TestAJoinAsksForANameAndEnterKeepsTheHostName(t *testing.T) {
+func TestM7JoinDefersANameUntilPaired(t *testing.T) {
 	cases := []struct {
 		typed, want string
 		chosen      bool
@@ -105,8 +105,15 @@ func TestAJoinAsksForANameAndEnterKeepsTheHostName(t *testing.T) {
 		if err := d.naming(context.Background(), "", nil, false); err != nil {
 			t.Fatal(err)
 		}
-		if _, chosen := devname.Chosen(dir); chosen != c.chosen || devname.Name(dir) != c.want {
-			t.Errorf("typed %q: name %q chosen %t, want %q %t", c.typed, devname.Name(dir), chosen, c.want, c.chosen)
+		if _, chosen := devname.Chosen(dir); chosen {
+			t.Fatal("M7 name was written before pairing")
+		}
+		want := c.want
+		if !c.chosen {
+			want = ""
+		}
+		if d.name != want {
+			t.Errorf("typed %q: pending name %q, want %q", c.typed, d.name, want)
 		}
 		if !strings.Contains(out.String(), pair.NamePrompt(devname.Default())) {
 			t.Errorf("typed %q: the question was not asked:\n%s", c.typed, out.String())

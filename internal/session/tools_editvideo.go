@@ -152,7 +152,7 @@ func (a *Agent) editVideoTool() bare.Tool {
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed editVideoArguments
 			if err := decodeToolArguments(args, &parsed); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
 			switch strings.TrimSpace(parsed.Action) {
 			case editVideoMeasure:
@@ -164,7 +164,7 @@ func (a *Agent) editVideoTool() bare.Tool {
 			case editVideoScore:
 				return a.scoreVideo(ctx, parsed)
 			case "":
-				return fmt.Sprintf("Invalid arguments: action is required (%s)", editVideoActions()), true, nil
+				return rejectToolArguments(ctx, fmt.Sprintf("Invalid arguments: action is required (%s)", editVideoActions())), true, nil
 			default:
 				return fmt.Sprintf("Unknown action: %s. Use %s.", parsed.Action, editVideoActions()), true, nil
 			}
@@ -191,7 +191,7 @@ func editVideoActions() string {
 func (a *Agent) measureVideo(ctx context.Context, parsed editVideoArguments) (string, bool, error) {
 	full, refusal := a.videoSource(parsed.Video, "video")
 	if refusal != "" {
-		return "Invalid arguments: " + refusal, true, nil
+		return rejectToolArguments(ctx, "Invalid arguments: "+refusal), true, nil
 	}
 	facts, err := video.Probe(ctx, full)
 	if err != nil {
@@ -210,16 +210,16 @@ func (a *Agent) measureVideo(ctx context.Context, parsed editVideoArguments) (st
 func (a *Agent) frameVideo(ctx context.Context, parsed editVideoArguments) (string, bool, error) {
 	full, refusal := a.videoSource(parsed.Video, "video")
 	if refusal != "" {
-		return "Invalid arguments: " + refusal, true, nil
+		return rejectToolArguments(ctx, "Invalid arguments: "+refusal), true, nil
 	}
 	at, said, refusal := frameMoment(parsed.At)
 	if refusal != "" {
-		return "Invalid arguments: " + refusal, true, nil
+		return rejectToolArguments(ctx, "Invalid arguments: "+refusal), true, nil
 	}
 	destination, refusal, err := a.videoDestination(parsed.Path, said, framePicture,
 		ImagesDir(a.config.Place, a.config.Workspace), frameFormats)
 	if refusal != "" {
-		return "Invalid arguments: " + refusal, true, nil
+		return rejectToolArguments(ctx, "Invalid arguments: "+refusal), true, nil
 	}
 	if err != nil {
 		return "Could not work out where to save the frame: " + err.Error(), true, nil
@@ -228,7 +228,7 @@ func (a *Agent) frameVideo(ctx context.Context, parsed editVideoArguments) (stri
 	if err := video.SaveFrame(ctx, full, at, destination); err != nil {
 		return "Could not save the frame: " + err.Error(), true, nil
 	}
-	a.recordVideoArtifact(destination, said, "image")
+	a.recordVideoArtifact(ctx, destination, said, "image", nil)
 
 	// The picture's own geometry is read back off the file, for the same reason
 	// every other answer here is: a size this claimed rather than measured would
@@ -268,13 +268,13 @@ func frameMoment(at string) (time.Duration, string, string) {
 // named in the refusal — the same law generate_video's frames follow.
 func (a *Agent) joinVideo(ctx context.Context, parsed editVideoArguments) (string, bool, error) {
 	if len(parsed.Clips) == 0 {
-		return "Invalid arguments: join needs clips — the video files to lay end to end, in order", true, nil
+		return rejectToolArguments(ctx, "Invalid arguments: join needs clips — the video files to lay end to end, in order"), true, nil
 	}
 	clips := make([]string, 0, len(parsed.Clips))
 	for _, named := range parsed.Clips {
 		full, refusal := a.videoSource(named, "clip")
 		if refusal != "" {
-			return "Invalid arguments: " + refusal, true, nil
+			return rejectToolArguments(ctx, "Invalid arguments: "+refusal), true, nil
 		}
 		clips = append(clips, full)
 	}
@@ -282,7 +282,7 @@ func (a *Agent) joinVideo(ctx context.Context, parsed editVideoArguments) (strin
 	destination, refusal, err := a.videoDestination(parsed.Path, said, videoExtension,
 		VideoDir(a.config.Place, a.config.Workspace), nil)
 	if refusal != "" {
-		return "Invalid arguments: " + refusal, true, nil
+		return rejectToolArguments(ctx, "Invalid arguments: "+refusal), true, nil
 	}
 	if err != nil {
 		return "Could not work out where to save the cut: " + err.Error(), true, nil
@@ -292,7 +292,7 @@ func (a *Agent) joinVideo(ctx context.Context, parsed editVideoArguments) (strin
 	if err != nil {
 		return "Could not join the clips: " + err.Error(), true, nil
 	}
-	a.recordVideoArtifact(destination, said, "video")
+	a.recordVideoArtifact(ctx, destination, said, "video", &facts)
 	return a.describeVideoFile(destination, facts) + fmt.Sprintf(", joined from %d clips", len(clips)), false, nil
 }
 
@@ -303,13 +303,16 @@ func (a *Agent) joinVideo(ctx context.Context, parsed editVideoArguments) (strin
 // mixing under existing sound or filling a silence — and the library should not
 // be guessing at intent.
 func (a *Agent) scoreVideo(ctx context.Context, parsed editVideoArguments) (string, bool, error) {
+	if parsed.Level != nil && *parsed.Level <= 0 {
+		return rejectToolArguments(ctx, "Invalid arguments: level is how loud the music is and must be above zero; use replace to drop the video's own sound"), true, nil
+	}
 	clip, refusal := a.videoSource(parsed.Video, "video")
 	if refusal != "" {
-		return "Invalid arguments: " + refusal, true, nil
+		return rejectToolArguments(ctx, "Invalid arguments: "+refusal), true, nil
 	}
 	audio, refusal := a.videoSource(parsed.Audio, "audio")
 	if refusal != "" {
-		return "Invalid arguments: " + refusal, true, nil
+		return rejectToolArguments(ctx, "Invalid arguments: "+refusal), true, nil
 	}
 	picture, err := video.Probe(ctx, clip)
 	if err != nil {
@@ -324,16 +327,13 @@ func (a *Agent) scoreVideo(ctx context.Context, parsed editVideoArguments) (stri
 		scoring.Level = scoreUnderLevel
 	}
 	if parsed.Level != nil {
-		if *parsed.Level <= 0 {
-			return "Invalid arguments: level is how loud the music is and must be above zero; use replace to drop the video's own sound", true, nil
-		}
 		scoring.Level = *parsed.Level
 	}
 	const said = "scored cut"
 	destination, refusal, err := a.videoDestination(parsed.Path, said, videoExtension,
 		VideoDir(a.config.Place, a.config.Workspace), nil)
 	if refusal != "" {
-		return "Invalid arguments: " + refusal, true, nil
+		return rejectToolArguments(ctx, "Invalid arguments: "+refusal), true, nil
 	}
 	if err != nil {
 		return "Could not work out where to save the scored video: " + err.Error(), true, nil
@@ -343,7 +343,7 @@ func (a *Agent) scoreVideo(ctx context.Context, parsed editVideoArguments) (stri
 	if err != nil {
 		return "Could not score the video: " + err.Error(), true, nil
 	}
-	a.recordVideoArtifact(destination, said, "video")
+	a.recordVideoArtifact(ctx, destination, said, "video", &facts)
 
 	// Whether the piece was looped or trimmed is MEASURED, not assumed, and it
 	// is worth saying: it is the difference between a score that repeats — where
@@ -447,8 +447,21 @@ func formatList(allowed map[string]bool) string {
 // deliverables index, so `/files` finds a cut or a frame again by name and date
 // exactly as it finds a generated one. A file the person may want back is a
 // deliverable whether a provider made it or ffmpeg did.
-func (a *Agent) recordVideoArtifact(path, said, kind string) {
-	a.recordArtifact(path, mediaTitle(said, path), kind)
+//
+// Its media fact is the file as it now is (DerivedMedia), with a length and a
+// frame size only when the caller's probe measured them: ffmpeg made it, so
+// there is no provider usage and the charge stays unknown.
+func (a *Agent) recordVideoArtifact(ctx context.Context, path, said, kind string, measured *video.Facts) {
+	fact := DerivedMedia(path).WithMade(madeBy(ctx, nil))
+	if measured != nil {
+		fact = fact.WithDuration(measured.Length).WithSize(measured.Width, measured.Height)
+	}
+	a.recordMedia(Artifact{
+		Path:    path,
+		Title:   mediaTitle(said, path),
+		Kind:    kind,
+		Created: time.Now(),
+	}, fact)
 }
 
 // describeVideoFile is the one sentence every action that touches a video

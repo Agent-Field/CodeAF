@@ -770,6 +770,32 @@ the connection to devbox is gone — run the same command to pick the conversati
 That is not advice dressed up: the conversation is on that machine's disk and the same
 command opens it again. Running the session elsewhere with `--host` has its own page.
 
+## When the work folder is saved between commands and at pauses
+
+The desktop's background recorder writes each finished tool call to its local call
+ledger immediately. A shell command can change any file, so its full-folder save can
+wait for a pause. After each tool batch, codeaf first writes its result lines.
+The batch can then stay in the call ledger until turn end or a save boundary between
+steps, such as moving or continuing the chat elsewhere, uploading it or closing
+it. A boundary encountered during an open step leaves that step in the call ledger;
+it does not wait for the running tool or save work without its result lines.
+
+While commands keep running, the next batch boundary saves all pending calls once
+the oldest completion is at least 30 seconds old. There is no timer that saves
+underneath a running tool. A batch with exact changed paths can save immediately
+while no shell or other unknown-effect call is pending; transcript-only batches
+also save immediately. Setup calls and synchronous recorders keep their existing
+saves. Turn end and explicit forced settles still save pending calls immediately.
+
+A failed save during displacement leaves completed calls in the local call ledger
+for take-back; saved turns can still be kept as a separate chat. When calls remain
+unsaved, the notice says `kept <K> turns from <device> as a separate chat`.
+A crash also leaves finished calls in the local call ledger for the next save to
+carry. File seals support moving, taking over and recovering a chat. Ordinary
+conversation rewind leaves files changed. The separate cell file-rewind path
+refuses an open tool step with “rewind refused: a tool step is open; settle it
+first” rather than save or restore underneath it.
+
 ## A command was running when codeaf was killed — what the chat says when you come back, and whether it runs again
 
 When the codeaf process is killed hard (`kill -9`, a crash) while a command is running,
@@ -813,6 +839,11 @@ there without a single character of the secret surviving.
 **The model never gets the characters, and never needs them.** A command that has to *use*
 a credential already has it in its own environment — that is what `TOKEN=$(gh auth token)`
 does — so nothing on the belt is worse off for this.
+
+**A credential you hand over goes through a masked box, not a message.** When the chat
+needs a token or password from you it asks with `request_secret`; the value goes to a
+private file its commands read, and the conversation only ever holds the path. The page
+on giving a password, token or API key has the whole of it.
 
 **Inside a task the read itself is refused.** A token never has to be shown to be spent, and
 a task runs unattended in a copy of its own and holds no login of yours, so `gh
@@ -930,6 +961,9 @@ conversation or disbands a team. Tasks inside manager conversations can still be
 independently. The optional global-manager conversation can be deleted without a replacement;
 its teams and their managers remain. `+ Global manager` on All teams creates it again.
 
+Kept-running services are stopped before the conversation is removed. If a service cannot
+be stopped, deletion fails with the reason and keeps the conversation available.
+
 The dialog disappears while deletion runs; a failure restores it with the reason.
 Deletion removes all team memberships and the conversation's tasks and transcripts.
 Earlier team exchanges and decisions remain in team history. Links to a deleted conversation
@@ -961,6 +995,22 @@ rather than taking over an empty conversation that could acquire membership duri
 `Conversation unavailable` on a team card means its saved transcript is missing. A missing
 file is not recreated silently; add a new conversation and choose it as manager explicitly.
 
+## Desktop rewind undo and conversation commands
+
+The desktop can list your newest turns and rewind to one with `agents.rewind.points` and
+`agents.rewind`. The selected turn and everything after it are set aside in the record;
+files and commands already run stay as they are. `agents.rewind.undo` restores that tail
+while nothing newer depends on the shortened conversation. Another turn or rewind, a
+changed transcript, or restarting the owning engine ends Undo. Interrupt running work
+before rewinding. The list carries up to the newest 1000 turns.
+
+`agents.delete` permanently deletes the conversation through the same guarded operation
+as the terminal. A team manager needs a replacement first; optional global leadership
+can be cleared. The desktop asks for confirmation before calling it.
+
+`agents.debug` keeps this conversation's full record from now on and names its folder.
+It cannot be switched off. `agents.manual` sends the same manual question as `/manual`,
+answered by the model from the manual with the page named; it is an ordinary paid turn.
 ## Starting a new chat without waiting for the first token
 
 Sending a first message from Home or the new-chat page (`+` or `ctrl+t`) shows
@@ -988,6 +1038,10 @@ Chats already open in this window switch directly.
 
 ## Saving stopped or could not save this chat
 
+Each codeaf home shares its own local saving engine, separate from other homes.
+If its connection closes, the next save reconnects, starting that engine again
+if needed. An interrupted operation is not replayed.
+
 If the storage process is alive but its socket has disappeared, codeaf says
 “saving is stuck”. Your turns stay on this computer. When codeaf can safely
 replace its own unreachable storage process, saving resumes with a fresh one.
@@ -1006,6 +1060,17 @@ If a local write fails, the error names the local transcript that keeps
 the unsaved turns. A sync outage alone leaves the turns saved here and does not produce a local-write failure. Keep that file: after storage becomes reachable again, the
 turns can be saved and published, or kept separately when you continue the chat.
 
+## Rewind is off when Windows cannot save file history securely
+
+If Windows cannot provide a private local saving connection within its address
+limit, codeaf turns saved file history off for that chat and says once:
+
+> rewind is off because this chat cannot save file history securely; restart codeaf to try again.
+
+Tools keep working and the conversation still saves normally. Reopening the chat
+does not repeat the sentence. Restart codeaf to try saving file history again.
+Ordinary project chats with a usable saving connection keep their history.
+
 ## Closing one open chat while sync storage is off
 
 Closing a chat with `/quit` or its close action can leave your other chats open. Only when an upload is refused because sync storage is off after a successful local save, codeaf says `saved here; sync storage is off for this account, so it stays on this computer`. The same words appear when quitting the app with that saving result.
@@ -1013,3 +1078,18 @@ Closing a chat with `/quit` or its close action can leave your other chats open.
 When local saving succeeds but another upload is still pending, the sentence is `saved here; it reaches your other devices when the sync service at <address> answers`. It names the service used by the chat you closed.
 
 If saving here fails, closing one chat still says `this chat could not be saved; its unsaved turns stay on this computer for the next start`. An unanswered save remains finishing in the background until its result arrives. Storage being off alone does not mean the local save failed.
+
+## A chat opened in codeaf's own folder — ~/.codeaf, its files are not saved
+
+codeaf's own folder (`~/.codeaf`, or wherever `CODEAF_HOME` points) holds codeaf's
+state: its databases, the factory's clones, your saved keys. It is never a project,
+so a chat whose folder is that folder, or a folder above it, saves the conversation
+and its own folder only, exactly as a chat opened in your home folder does. It says
+once:
+
+> this folder holds codeaf's own folder, so its files are not saved with this chat · rewind brings back the conversation only · open codeaf in a project folder to save its files
+
+Tools still run in that folder, and nothing in it is moved or deleted. A folder
+inside it that is one factory job's own checkout is a project like any other and
+is saved as usual. Chats made before this rule that name `~/.codeaf` stop saving
+its files the next time they open; nothing else about them changes.

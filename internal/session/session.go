@@ -42,6 +42,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/search"
+	"github.com/Agent-Field/codeaf/internal/service"
 	"github.com/Agent-Field/codeaf/internal/store"
 	"github.com/Agent-Field/codeaf/internal/subharness"
 	"github.com/Agent-Field/codeaf/internal/taxonomy"
@@ -644,8 +645,90 @@ const (
 	// in this turn — saved, paused, resumed, deleted, asked to run now. It is a
 	// report and never a question.
 	EventAutomationUpdate
+	// EventSummaryStarted says a compaction pass has asked the conversation's
+	// model for a summary and is waiting on it, with the session lock released
+	// (compact_summary.go). It is the one proof a summary is being written:
+	// [EventCompacting] is sent only after the transcript was edited.
+	// [Event.Compaction] carries the pass's sequence number and the weight it
+	// started from. It is always followed by [EventCompacted] or
+	// [EventSummaryFailed] carrying the same sequence number.
+	EventSummaryStarted
+	// EventSummaryFailed ends a summary that did not land in a pass that then
+	// changed nothing; [Event.Compaction] says why ([CompactionFact.Failed]).
+	// A pass whose free rungs did change the conversation ends on
+	// [EventCompacted] instead, with the same Failed reason set on it.
+	EventSummaryFailed
+	// EventKeepRunning asks the person whether to keep one command running
+	// after the turn, and, restated with its answer, is the receipt of what
+	// they said (keep_running.go). Keep carries the card.
+	// IT IS PINNED AT EventAutomationUpdate + 3, after the two summary
+	// ordinals above; persisted event numbers must not move.
+	EventKeepRunning = EventAutomationUpdate + 3
+	// EventRenderUpdate reports one video or music RENDER changing: started,
+	// finished, failed, cancelled, or a charge receipt on one already ended
+	// (renderlog.go). [Event.Render] is the whole record, so a surface replaces
+	// the record with that id rather than appending. Receipts for an ended
+	// render carry the SAME id and state. Appended after every existing ordinal
+	// because hosts serialize EventKind as an integer.
+	EventRenderUpdate = EventKeepRunning + 1
+	// EventMediaUpdate follows a successful immutable source-index append.
+	EventMediaUpdate = EventRenderUpdate + 1
+	// EventArtifactUpdate follows a successful append of a CREATION row to the
+	// deliverables index (artifacts.go). It is generic: the row's id, kind and
+	// producing run and call, never the file or a path. Appended after every
+	// existing ordinal because hosts serialize EventKind as an integer.
+	EventArtifactUpdate = EventMediaUpdate + 1
+	// The factory kinds are appended after every existing ordinal because hosts
+	// serialize EventKind as an integer: one added in the middle renumbers
+	// every kind under it.
+	//
+	// EventFactoryProposal is the card `factory_add` raises: the chat wants to
+	// put one piece of work on the factory floor (tools_factory.go). Factory
+	// carries the card, and its ID is the token a surface hands back to
+	// [Agent.ResolveFactory]. The same kind comes again, once, when the card is
+	// settled, with Decided or Withdrawn set, so a surface can draw the outcome
+	// where the question stood.
+	//
+	// IT RIDES THE TASK LANE ([Agent.WatchTaskUpdates]) and the question rides
+	// the questions lane beside it. There is NO CLOCK THAT ADDS: silence puts
+	// nothing on the floor, and a surface that ignores this kind adds nothing,
+	// which is the correct behaviour rather than a degradation.
+	EventFactoryProposal = EventArtifactUpdate + 1
+	// EventFactoryAdded says one item has just been written to the factory
+	// floor from a chat. Factory.Item is the floor's own id for it, so the
+	// surface re-reads the floor rather than drawing a row from the card.
+	EventFactoryAdded = EventFactoryProposal + 1
+	// EventRecipeProposal is the card `factory_recipe` raises: the chat wants to
+	// add one line to a repository's recipe, its policy or its habits
+	// (tools_factory_recipe.go). Recipe carries the card, and its ID is the
+	// token a surface hands back to [Agent.ResolveRecipe]. It comes again, once,
+	// when the card is settled, with Decided or Withdrawn set, exactly as
+	// EventFactoryProposal does, and on the same task lane.
+	EventRecipeProposal = EventFactoryAdded + 1
+	// EventRecipeBanked says the line is in the repository's
+	// `.codeaf/factory.yaml` now, so a surface reading the recipe reads it again.
+	EventRecipeBanked = EventRecipeProposal + 1
+	// EventItemProposal is the card `factory_item` raises: the chat wants to
+	// change the ONE floor item its conversation is about — its stages, gate,
+	// cap or effort — or leave its stages a note (tools_factory_item.go).
+	// FactoryItem carries the card, and its ID is the token a surface hands back
+	// to [Agent.ResolveItem]. It comes again, once, when the card is settled,
+	// with Decided or Withdrawn set, exactly as EventRecipeProposal does, and on
+	// the same task lane.
+	EventItemProposal = EventRecipeBanked + 1
+	// EventItemChanged says the item is changed on the floor now. FactoryItem's
+	// Now is the item as the floor holds it after the change, so a surface with
+	// no floor of its own (a window over --host) still draws the live card.
+	EventItemChanged = EventItemProposal + 1
+	// EventCloseContinued carries the pending key only when a started turn
+	// consumes that close note before its model request. It is private telemetry.
+	EventCloseContinued = EventItemChanged + 1
+	// EventConsentAllowed records a call allowed by an explicit saved rule.
+	EventConsentAllowed = EventCloseContinued + 1
+	// EventModelIdentity updates execution facts without adding a transcript note.
+	EventModelIdentity = EventConsentAllowed + 1
 	// EventChatStart asks the attached terminal to open an independent chat.
-	EventChatStart
+	EventChatStart EventKind = iota
 )
 
 // TaskReplyTag is the task identity a surface places beside the answer its
@@ -687,9 +770,12 @@ type TaskReplyTag struct {
 // today — sees all of it in order and needs no second rule; a caller that stops
 // at the terminal event stops at the terminal event of the FIRST turn.
 type Event struct {
-	ChatStart      *ChatStart   `json:",omitempty"`
-	ReplayCursor   ReplayCursor `json:",omitempty"`
-	ReplayObserved bool         `json:"-"`
+	ChatStart      *ChatStart     `json:",omitempty"`
+	ModelIdentity  *ModelIdentity `json:"ModelIdentity,omitempty"`
+	ModelSwitch    *ModelSwitch   `json:"ModelSwitch,omitempty"`
+	RunID          string         `json:"RunID,omitempty"`
+	ReplayCursor   ReplayCursor   `json:",omitempty"`
+	ReplayObserved bool           `json:"-"`
 
 	Discussion *QuestionDiscussion `json:",omitempty"`
 
@@ -707,6 +793,13 @@ type Event struct {
 	Tool       string
 	Hint       string
 	Err        error
+	// ErrKind, ErrStatus and ErrWords sort an EventError for a reader on the
+	// far side of a wire, where the typed cause cannot travel and only Err's
+	// sentence does ([ClassifyTurnError]). They are empty on every other kind
+	// and on an event that never crossed a wire.
+	ErrKind   string `json:"ErrKind,omitempty"`
+	ErrStatus int    `json:"ErrStatus,omitempty"`
+	ErrWords  string `json:"ErrWords,omitempty"`
 	// Discard says an EventError ended a cut attempt whose streamed text was
 	// never a reply. The surface withdraws that attempt before drawing the
 	// error, as it does for EventRetrying, without counting another retry.
@@ -717,7 +810,12 @@ type Event struct {
 	// out of sight keeps such a line and draws it when the person brings the
 	// conversation back (tui3's keeper.go). Every other notice is either in the
 	// transcript already or said for the moment it is said in.
-	Unrecorded    bool `json:"Unrecorded,omitempty"`
+	Unrecorded bool `json:"Unrecorded,omitempty"`
+	// NoticeKind names which of the engine's own typed notices an EventNotice
+	// is: [NoticeKindSkills] or [NoticeKindMemory], set only at the producers
+	// ([turnSkillsNotice], [Agent.sayMemory]). Empty on every other notice, which
+	// stays ordinary; a surface never derives it from Text.
+	NoticeKind    string `json:"NoticeKind,omitempty"`
 	Usage         Usage
 	TaskReplyTags []TaskReplyTag
 	// Skills is the ordered list of skill names this turn carried, on the
@@ -747,6 +845,12 @@ type Event struct {
 	// with no summary serialises exactly as it did before this field, and a
 	// surface talking to an older engine folds every pass.
 	Summarized int `json:"Summarized,omitempty"`
+
+	// Compaction is the pass as facts, on [EventCompacted],
+	// [EventSummaryStarted] and [EventSummaryFailed] (compaction_facts.go).
+	// Nil on every other kind and from a peer built before it existed, which
+	// a surface reads as "unknown" and never as "nothing happened".
+	Compaction *CompactionFact `json:"Compaction,omitempty"`
 
 	// Category is the FAMILY OF WORK an EventCaption's sentence is about — one
 	// word from the closed list in actioncategory.go — and it is zero on every
@@ -825,6 +929,10 @@ type Event struct {
 	// output for any purpose other than showing it to a person.
 	Output string
 
+	// ToolInvoked is true only after actual handler dispatch. It does not prove
+	// a subprocess or network request occurred; argument validation can still reject.
+	ToolInvoked bool
+
 	// HarnessMade says this step's failure was written by the HARNESS and not by
 	// the world the model reached for: a hand that was withdrawn (withdrawn.go),
 	// a door that refused the call (consent.go and the rest of the pre-action
@@ -854,6 +962,29 @@ type Event struct {
 	// fact is kept here, where the attempted action is known, so no reader has to
 	// tell the two apart by the words of the answer.
 	Refused bool
+
+	// RejectedBeforeRun says the tool refused this call's arguments before it did
+	// any of its work: malformed JSON, a missing required argument, a value out
+	// of range. It is set on EventToolFailed and nowhere else, and only by the
+	// typed marker a handler's known argument-validation return sets
+	// ([rejectToolArguments]) — never by reading the result's words, so a command
+	// that prints "Invalid arguments", or a server that answers with it, is a
+	// call that RAN. It is true-only and omitted otherwise, so an older peer and
+	// every ordinary failure serialise as before.
+	RejectedBeforeRun bool `json:"RejectedBeforeRun,omitempty"`
+
+	// MediaAttempt says this call made at least one render record carrying its
+	// own run and call id (an image attempt, a refused media call, a video or
+	// music render begun). It is set on EventToolEnd and EventToolFailed, only
+	// by the code that wrote the record (media_attempt.go), never from the
+	// tool's name or its words. True-only and omitted otherwise: absent is
+	// unknown, as on every older peer and every older journal line.
+	MediaAttempt bool `json:"MediaAttempt,omitempty"`
+
+	// ToolProcess names the job or kept service this successful call became,
+	// on EventToolEnd only. It comes from the registry's adoption or start,
+	// never from the output, and is nil on foreground calls and older peers.
+	ToolProcess *ToolProcess `json:"ToolProcess,omitempty"`
 
 	// ID names one EventConsentRequest, and is the token a surface hands back
 	// to [Agent.ResolveConsent]. It is zero on every other kind but
@@ -895,6 +1026,15 @@ type Event struct {
 	// things and folding them would make "which call" and "which question"
 	// the same field with two answers.
 	CallID string
+
+	// Exit is the exit code a call's result reports, on EventToolEnd and
+	// EventToolFailed, and nil when it reports none.
+	Exit *int `json:"Exit,omitempty"`
+
+	// Batch names the calls the model asked for together, which run at once:
+	// the first call's id, on every EventToolBegin of a batch of two or more,
+	// and empty on a call that ran alone.
+	Batch string `json:"Batch,omitempty"`
 
 	// ArgsText is the RAW, PARTIAL arguments text of a forming call: exactly what
 	// the provider has streamed so far, uncompacted and unparsed. It is set on
@@ -959,6 +1099,14 @@ type Event struct {
 	// minted somewhere else to keep it from colliding with a task's.
 	Job *JobNotice
 
+	// Render carries one EventRenderUpdate's payload (renderlog.go) and is nil
+	// on every other kind.
+	Render *RenderRecord
+	Media  *MediaChange
+	// Artifact carries one EventArtifactUpdate's payload and is nil on every
+	// other kind.
+	Artifact *ArtifactChange
+
 	// TaskPhase carries one EventTaskPhase's payload (task_contract.go): which
 	// running node moved into which of its three lives. It is nil on every
 	// other kind, and it is its OWN payload rather than more fields on
@@ -971,10 +1119,30 @@ type Event struct {
 	// payload (automation_tool.go). It is nil on every other kind.
 	Automation *AutomationNotice `json:",omitempty"`
 
+	// Keep carries one EventKeepRunning's card (keep_running.go). It is nil on
+	// every other kind.
+	Keep *KeepNotice `json:",omitempty"`
+
 	// Subharness carries one EventSubharnessProposal's intake card
 	// (subharness_contract.go). It is nil on every other kind, and the ID beside
 	// it is the token a surface hands back to [Agent.ResolveSubharness].
 	Subharness *SubharnessCard
+
+	// Factory carries one EventFactoryProposal's card or one EventFactoryAdded's
+	// news (factory_contract.go). It is nil on every other kind, and it rides
+	// behind a json tag of its own so a peer built before it simply does not
+	// see it.
+	Factory *FactoryNotice `json:"Factory,omitempty"`
+
+	// Recipe carries one EventRecipeProposal's card or one EventRecipeBanked's
+	// news (factory_contract.go), behind a json tag of its own for the reason
+	// Factory's is.
+	Recipe *RecipeNotice `json:"Recipe,omitempty"`
+
+	// FactoryItem carries one EventItemProposal's card or one
+	// EventItemChanged's news (factory_contract.go), behind a json tag of its
+	// own for the reason Factory's is.
+	FactoryItem *ItemNotice `json:"FactoryItem,omitempty"`
 
 	// Retry carries one [EventRetrying]'s payload in parts (retrynews.go): which
 	// model was being asked, how far into its patience the step is, why the
@@ -997,7 +1165,8 @@ type Event struct {
 
 	// Rule is the approval policy's own phrasing of why a call is being asked
 	// about — `bash pattern "rm -rf *"`, `tool "edit"`, `default`. It is set on
-	// EventConsentRequest and empty elsewhere. The wording is the policy's
+	// EventConsentRequest; on EventConsentAllowed it is the matched scope.
+	// It is empty elsewhere. The wording is the policy's
 	// (internal/approval) so that every surface says the same sentence about the
 	// same rule instead of deriving one.
 	Rule string
@@ -1036,7 +1205,9 @@ type Event struct {
 	// [Agent.ResolveConnect]. Service is the account's id — "google" — on all
 	// three kinds; ServiceName is the word a person reads — "Google" — on the
 	// ask. AuthURL is the page to open, on EventConnectAuth only. Account and
-	// Failed are the outcome, on EventConnectDone only.
+	// Failed are the outcome, on EventConnectDone only. Service and
+	// ServiceName also name the account an EventToolBegin's call acts through,
+	// and are empty on a call that reaches no account.
 	ConnectID   string
 	Service     string
 	ServiceName string
@@ -1228,6 +1399,43 @@ type TaskLanding struct {
 }
 
 type Config struct {
+	// ConversationModels is the desktop conversation's explicit main/fallback pair.
+	// Nil retains the terminal's existing routing policy.
+	ConversationModels *ConversationModels
+
+	// AutomaticModels explicitly permits cross-model fallback. Nil inherits the
+	// stored policy or the existing launch default; OneModel always takes priority.
+	AutomaticModels *bool
+
+	// TeamListeningSince preserves the traffic subscription boundary when an
+	// app opens a light record after the event that needs it.
+	TeamListeningSince time.Time
+
+	// DeterministicNames preserves the legacy no-model naming request.
+	// When both naming flags are set this free rule takes precedence.
+	DeterministicNames bool
+
+	// IntentNames is the desktop app's naming: the conversation is named from
+	// what the person opened it with — their own words and the names of the
+	// files they attached — by the model they configured for titles, with
+	// one concrete second name within the first three exchanges for vague
+	// openers (intentname.go).
+	// It replaces the rule that named a conversation from its first words.
+	IntentNames bool
+
+	// IntentSiblingNames reads the current other open names for each naming call.
+	// The callback must be safe to call while the app changes its conversations.
+	IntentSiblingNames func() []string
+
+	// HandOverOnAsk is the desktop app's: a running reply is never moved to a
+	// task by the checkpoints on their own; it moves only when the person asks
+	// ([Agent.MoveTurnToTask]), and the app says the reply is running long.
+	HandOverOnAsk bool
+
+	// LiveToolOutput is the desktop app's too: a shell call the model makes
+	// sends its output as it arrives (EventToolOutput), as one the person
+	// typed always does, so a work log can show what a long command is saying.
+	LiveToolOutput bool
 	// knowledgeReadVault lends the parent project knowledge to task worktrees, read-only.
 	knowledgeReadVault *knowledge.Vault
 
@@ -1249,6 +1457,15 @@ type Config struct {
 	// session and never a path. Nil is a session with no cell, whose calls run
 	// on the host; see [Config.seat].
 	Seat procexec.Seat
+	// Fence is the confinement an unattended run's commands get when it has no
+	// cell seat (internal/executor's fence.go): writes only inside the job,
+	// keys and sign-ins unreadable, docker refused, the network open. The
+	// doors that run an agent with nobody at the keyboard set it (a factory
+	// stage, `codeaf chat --once`, a headless engine conversation); an
+	// interactive conversation leaves it nil and runs on the host as before.
+	// The session's own read, write and edit tools are held to it too, because
+	// they run inside codeaf and so outside any jail (fencedFileTool).
+	Fence *procexec.Fence
 	// Interrupted is what the last run of this conversation's cell left
 	// unfinished: the model is told once, on its next turn, that those calls were
 	// cut off (interrupted.go). Nil is nothing to tell.
@@ -1279,6 +1496,11 @@ type Config struct {
 	APIKey          string
 	BaseURL         string
 	Sources         modelsource.Set
+	// PrepareModel resolves a continued chat's unavailable model before any
+	// model work. A failure leaves it pending for setup and the next turn;
+	// success applies the replacement through the conversation's model rules
+	// and records the notice once. Ordinary conversations leave it nil.
+	PrepareModel func(model string, sources modelsource.Set) (replacement, notice string, err error)
 
 	// There is no app-attribution field here any more. The three that used to
 	// be forwarded to the provider client — a referer, a title, a category
@@ -1447,9 +1669,10 @@ type Config struct {
 	ApprovalPolicy *approval.Policy
 
 	// ApprovalGate is the door onto the settings rows the gate is built from,
-	// so this conversation can move its own posture from inside itself
-	// (approvalposture.go). Nil is a session with no such dial — a test, a
-	// worker, a headless run — and the surface then draws no control for it.
+	// refreshed before tool decisions and used to move this conversation's own
+	// posture (approvalposture.go). Build must be safe for concurrent calls and
+	// cheap when settings are unchanged. Nil is a session with no such dial,
+	// and the surface then draws no control for it.
 	ApprovalGate ApprovalGate
 	// ApprovalPosture is the posture the LAUNCH handed down — `--yolo` says
 	// [PostureAllow] here — for a conversation nobody has moved yet. It is in
@@ -1491,6 +1714,9 @@ type Config struct {
 	// other. The other caller today is the trail that records a request's own
 	// length (task_calltrail.go).
 	clock func() time.Time
+	// bashAfter lets tests fire the real promotion callback after the command
+	// starts. Production leaves it nil and arms time.AfterFunc as before.
+	bashAfter func(time.Duration, func()) *time.Timer
 	// teamWatchManual leaves traffic-clock advances to tests calling
 	// teamWatchTick. Production leaves it false and starts the real ticker.
 	teamWatchManual bool
@@ -1862,7 +2088,8 @@ type Config struct {
 	// which is why this is a closure and not a table.
 	//
 	// The absence law is per-verb: a nil Media keeps every generation tool off
-	// the belt; a nil MediaModel (or one answering "") keeps that MODALITY's
+	// the belt; without the optional MediaAdmission seam, a nil MediaModel
+	// (or one answering "") keeps that MODALITY's
 	// tools off ([Agent.mediaHand]). They REPLACED a pre-revision pair of this
 	// config's own — an image client and an image slug, with a pin ladder the
 	// tool walked itself — and nothing of that pair survives: one client and one
@@ -1870,6 +2097,9 @@ type Config struct {
 	// speak for reasons nobody can find.
 	Media      MediaGenerator
 	MediaModel func(modality string) string
+	// MediaAdmission optionally keeps connected generation capabilities explainable
+	// when no safe default exists. It is evaluated for the actual invocation.
+	MediaAdmission func(modality, word string) MediaAdmission
 
 	// MediaPick is the just-in-time half of the pair above: where MediaModel
 	// answers "the default for this modality", MediaPick answers "the model
@@ -1977,6 +2207,10 @@ type Config struct {
 	// piece of work, which is every conversation a person opens themselves.
 	Effort effort.Rung
 
+	// DropRefusedEffort opts a Factory manager turn into client-local effort recovery.
+	// Available Factory tools alone do not establish that this is Factory work.
+	DropRefusedEffort bool
+
 	// EffortRole is what this session is FOR, and it is the rung of last resort
 	// before the install's default: an errand asks for nothing at all, and a
 	// task worker on the bash belt starts low. THE ZERO VALUE IS NOT A ROLE and
@@ -2030,6 +2264,31 @@ type Config struct {
 	// straight off the sheet, and a surface counting it down draws the same
 	// number the person typed.
 	TaskAutoApproveSeconds int
+	// ChoiceClockSeconds, when above zero, puts a clock on a choice the asker
+	// recommended an answer for, when the project has no row of its own for
+	// choices: the card shows the suggested answer and takes it when the clock
+	// runs out, unless the person answers first. Zero leaves a choice waiting,
+	// which is the terminal's arrangement; the desktop app sets it.
+	ChoiceClockSeconds int
+	// JobQuitGrace, when above zero, is how long the conversation's running
+	// processes are given between SIGTERM and SIGKILL when it closes, in place
+	// of the two seconds a terminal's quit gives them. The desktop app sets it.
+	JobQuitGrace time.Duration
+	// Services is the door to the processes a person agreed to keep running
+	// (internal/service), shared by every conversation in this codeaf. Nil is
+	// off: bash then has no keep_running argument at all (keep_running.go).
+	Services *service.Supervisor
+	// StandingOrders saves what the `automation` tool proposes as a proposed
+	// standing order before its card is up, so the app can list it and agree
+	// to it from its own window: the card's yes ratifies it and its no deletes
+	// it. Nothing runs before the yes. Work saved this way asks before each run
+	// until the person has trusted it (internal/automation's trust.go). The
+	// desktop app sets it; the terminal saves on the yes, as it always has.
+	StandingOrders bool
+	// QuickTasks keeps `quick_task` on a conversation's belt when its full
+	// tasks are runs in the plan store ([Config.mayQuickTask]). The desktop
+	// app sets it.
+	QuickTasks bool
 
 	// BashBackgroundAfterSeconds is how long a foreground command stays in the
 	// turn before the same running process is kept as a job (promote.go,
@@ -2095,6 +2354,12 @@ type Config struct {
 	// keeps an account of its own — which is the truth for an embedder with one
 	// conversation, and for every scripted graph in the tests.
 	TaskLanes *TaskLanes
+
+	// ExternalTasks reads one task of ANOTHER conversation, for the waits
+	// [Agent.WaitOnTask] records (task_external.go). It may do IO; the engine
+	// never calls it under a lock. Left nil the capability is absent: no
+	// cross-conversation wait can be recorded, and none is ever enforced.
+	ExternalTasks ExternalTasks
 
 	// InTask marks this agent as ONE TASK NODE'S RUNNER (task_run.go) rather
 	// than the conversation. It changes exactly two things, and both are
@@ -2223,6 +2488,93 @@ type Config struct {
 	// (task_run.go's newTaskAgentOn).
 	quickItems func(done int, add []string) string
 
+	// Factory is the door onto the factory floor (factory_contract.go). NIL IS
+	// NO DOOR: `factory_add` is off the belt and the page says nothing about
+	// it, because a capability with nothing behind it is absent, not broken.
+	Factory FactoryDoor
+
+	// Recipe is the door onto a repository's recipe file (factory_contract.go).
+	// NIL IS NO DOOR: `factory_recipe` is off the belt. It is set exactly where
+	// Factory is, by a window on this machine, and never on --once, a task node,
+	// --host or --at.
+	Recipe RecipeDoor
+
+	// FactoryItem is the door onto one floor item (factory_contract.go). NIL IS
+	// NO DOOR: `factory_item` is off the belt. It is set exactly where Factory
+	// is, and never on --once, a task node, --host or --at.
+	FactoryItem ItemDoor
+
+	// FactoryRun is the manager's door onto its item's run
+	// (tools_factory_run.go). NIL IS NO DOOR: `factory_run` is off the belt.
+	// It is set where FactoryItem is, and on the one turn the runner gives an
+	// item's manager to shape its run.
+	FactoryRun RunDoor
+
+	// StateHome is codeaf's own data folder for this window when it is not
+	// the person's default one (CODEAF_HOME names another), and "" otherwise.
+	// The page states it ([stateHomeFact]) because the manual's pages say
+	// `~/.codeaf` and a model that read them went looking in the person's
+	// default home, the wrong one, while the app ran on another (the
+	// 2026-11-06 audit: the desk's assistant listed the real
+	// `~/.codeaf/graph.db`). It is a fact on the page, not a confinement: the
+	// shell can still reach the person's whole home directory.
+	StateHome string
+	// FactoryWorkRefusal rechecks automatic manager work on a worker mirror.
+	FactoryWorkRefusal func() string
+
+	// JobChat is the door a factory job's own conversation spends from the
+	// job's budget through (factory_contract.go). NIL IS NO DOOR, and every
+	// conversation spends as it always has. It is set where FactoryItem is,
+	// kept on the turn the runner gives a job's manager, and taken off a
+	// stage's conversation, whose round's spend the runner already counts.
+	JobChat JobChatDoor
+
+	// JobBudget is the shared live meter of a factory-owned agent family.
+	// Children inherit it without inheriting manager or stage authority.
+	JobBudget JobChat
+
+	// JobContext is the owning pipeline's lifetime across stage conversations.
+	// Optional knowledge may finish after a stage closes, but never after this
+	// context ends. A standalone job conversation uses its own close lifetime.
+	JobContext context.Context
+
+	// JobPendingSpend keeps the worker report path open for paid memory receipts.
+	JobPendingSpend func() func()
+
+	// Stage is the door a factory stage's own conversation reports through
+	// (stage_contract.go). NIL IS NO DOOR: `stage_result` and `plan_edit` are off
+	// the belt. Only the factory's runner sets it, on a stage round it opened.
+	Stage StageDoor
+
+	// Asker takes this conversation's clarifying questions when it is not a
+	// stage of this machine's factory but someone elsewhere still answers
+	// them: `codeaf chat --once --events --steer`, a step an AgentField node
+	// runs for a WorkAF factory, hands each one to the factory over its events
+	// and waits for the answer on its steer channel. It is asked only when
+	// Stage takes no questions, and IT PUTS NOTHING ON THE BELT: `ask` is the
+	// same verb, with someone to answer it.
+	Asker StageAsker
+
+	// PlanStage requires the plan file list in the stage_result answer schema.
+	PlanStage bool
+	// RepairStage offers the PR repair report in the stage_result answer schema;
+	// only the step that follows a pull request can write one.
+	RepairStage bool
+
+	// Floor is the foreman's door onto the whole floor (tools_floor.go): the
+	// floor's read and its marks. NIL IS NO DOOR: `factory_floor` is off the
+	// belt. It is set only on the foreman's own conversation (cmd/codeaf's
+	// foremanFloorDoor), on a launch that has a Factory door.
+	Floor FloorDoor
+
+	// factoryWindow overrides how long one factory card holds its tool call
+	// open, for tests that watch the window end. Zero is [factoryCardWindow].
+	factoryWindow time.Duration
+	// taskControl binds file receipts and step holds to the node that owns them.
+	taskControl *TaskNode
+	// The saved per-task cap applies across this node's worker and repair rounds.
+	taskCapUSD float64
+
 	// fixesDir is the project bucket the error→fix sidecar keeps its file in
 	// (fixstore.go), and it is set only when this agent is a NODE. A node's
 	// session file is a journal inside its parent's place rather than a place of
@@ -2250,6 +2602,10 @@ type Config struct {
 	// It is private for roomThread's reason: no surface sets it, the constructor
 	// that builds the worker does.
 	droppings Place
+	// deliverSink says where the new files of a TASK WORKER are recorded and as
+	// whose. It is set only by the conversation that owns the task graph, when it
+	// builds the worker ([Agent.deliverSinkLocked]); a worker never sets its own.
+	deliverSink *deliverableSink
 	// ownSpace marks a worker standing in THE CONVERSATION'S OWN SPACE rather
 	// than in a project: an owned conversation's work/ repository, or a worktree
 	// cut from it (task_run.go's standingInOwnSpace). One line of the prompt
@@ -2294,15 +2650,16 @@ type Config struct {
 	// exists.
 	Divide bool
 
-	// usageLedger points this agent's spending records at a file OTHER than the
-	// machine's own (usage_ledger.go's [UsageLedgerPath]). Empty — which is every
-	// door in the product — means the machine's.
+	// usageLedger is this agent's accounting destination. newAgent resolves an
+	// empty value to UsageLedgerPath once, before any accounting producer starts.
+	// Late receipts keep that home even after the chat closes.
 	//
 	// It is private for [Config.fixesDir]'s reason inverted: no surface sets it
 	// and no surface should, because the whole value of the ledger is that there
 	// is exactly one of it. What it is for is a test that wants to read back what
 	// a turn recorded without depending on where this machine keeps its state.
 	usageLedger string
+	receipts    *receiptTracker
 
 	// rootSession is the CONVERSATION every dollar this agent spends belongs to,
 	// and it is empty in a conversation — where the agent's own journal already
@@ -2317,6 +2674,21 @@ type Config struct {
 	// it, because the only honest source for it is the agent that built the
 	// worker.
 	rootSession string
+
+	// agentDID is the conversation's agent DID and actorDID who this agent's
+	// commands act as: the same DID in a conversation, `<did>#w<task id>` in a
+	// task worker (agent_identity.go). A child agent inherits both from the
+	// agent that built it ([Agent.newChildAgent]); no surface sets them.
+	agentDID      string
+	agentDocument *AgentIdentity
+	actorDID      string
+
+	// WorkerDID is who a run worker's commands act as, `<did>#w<n>`: the
+	// conversation's DID with the task number its row wears. A run builds its
+	// workers outside the conversation's own tree ([NewBeltWorker]), so the
+	// run states the name rather than the worker inheriting it. Empty leaves a
+	// run worker with no identity, as before.
+	WorkerDID string
 
 	// automationID is the id of the automation whose run this agent IS
 	// (automation_run.go), and empty in every conversation and every ordinary
@@ -2376,6 +2748,9 @@ type Config struct {
 	// It is read only when DailyBudgetResolved is true; zero then means unlimited.
 	DailyBudgetUSD float64
 
+	// dailyBudgetAuthority keeps descendants on their owner's live day limit.
+	dailyBudgetAuthority func() (float64, error)
+
 	// DailyBudgetResolved says the daily ceiling was deliberately carried into
 	// this agent. Roots leave it false and read their profile and environment live,
 	// including the ordinary default profile whose ProfileDir is empty. A separate
@@ -2423,14 +2798,46 @@ type Config struct {
 // events — every Submit streams, whether it started the turn or steered it.
 // The methods live in agent.go; the loop they drive lives in loop.go.
 type Agent struct {
-	taskComputerPrompt bool
-	remoteAckJobs      sync.WaitGroup
-	knowledgeMu        sync.RWMutex
+	modelChanges       sync.Mutex
+	conversationModels *ConversationModels
+	modelRequestSlot   string
+	fallbackNoticeOwed bool
+	// continuedModelNoticed suppresses the next main-request announcement when
+	// the receiver already explained this exact change on continuation.
+	continuedModelNoticed string
+
+	modelIdentity   ModelIdentity
+	automaticModels atomic.Int32
+	errands         errandState
+	// rewindUndo keeps one reversible cut; a new cut replaces it.
+	rewindUndo *rewindUndo
+	debugRun   string
+
+	budgetWatchOnce   sync.Once
+	budgetWorkStarted chan struct{}
+
+	// toolsInFlight and toolsStarted count this agent's tool calls
+	// ([Agent.executeTool]). A shell output is only vouched for as made by its
+	// own command when no other tool call overlapped it (shell_outputs.go).
+	toolsInFlight atomic.Int64
+	toolsStarted  atomic.Uint64
+	// liveOutputWanted counts the windows that joined this conversation asking
+	// for a shell call's output as it arrives ([Agent.WantLiveToolOutput]),
+	// beside the window that opened it with [Config.LiveToolOutput].
+	liveOutputWanted atomic.Int32
+	chatStarts       map[string]bool
+	knowledgeMu      sync.RWMutex
+	// Tests shorten the join deadline without changing other agents.
+	knowledgeCloseWait time.Duration
 	knowledgeRetired   []*knowledgeJournal
 	knowledgeVault     *knowledge.Vault
 	knowledgeJournal   *knowledgeJournal
-
-	chatStarts map[string]bool
+	taskComputerPrompt bool
+	remoteAckJobs      sync.WaitGroup
+	// knowledgeWake is signalled after each journal line reaches the file.
+	// initKnowledge creates it once before the agent is reachable and never
+	// replaces it, so writers read it without a lock.
+	knowledgeWake chan struct{}
 	// jailNotice keeps a host limit from becoming noise on every tool call.
 	jailNotice sync.Once
 
@@ -2440,8 +2847,10 @@ type Agent struct {
 	crewDayHeld *SpendDay
 	// Clarification streams and their deferred history share the agent lock.
 	// questionParent is installed before a child becomes reachable.
-	questionParent     func(Event)
-	approvalParent     *Agent
+	questionParent func(Event)
+	approvalParent *Agent
+	// approvalReadParent shares only failed reads; the child keeps its own rules.
+	approvalReadParent *Agent
 	discussionEvents   []Event
 	discussionEventSeq uint64
 	discussionRecorded map[string]bool
@@ -2457,7 +2866,17 @@ type Agent struct {
 	// that lock. Atomic publication keeps both roads on the same figure.
 	liveSpendRail    atomic.Uint64
 	liveSpendRailSet atomic.Bool
-	client           Completer
+	// jobChat is the factory job this conversation is the own chat of, asked
+	// of Config.JobChat once ([Agent.jobChatOf]); nil is no job's.
+	jobChatOnce sync.Once
+	jobChat     JobChat
+	// moveAsked is the person's ask to move the running reply to a task, taken
+	// at the next step boundary ([Agent.MoveTurnToTask]).
+	moveAsked atomic.Bool
+	// receipts is shared by the family before a child can make requests.
+	// The pointer is initialized under mu; the tracker owns its own lock.
+	receipts *receiptTracker
+	client   Completer
 	// managedClient distinguishes the provider adapter built by New from a test
 	// completer handed to newAgent. clientAccount is the resolved account the
 	// adapter holds, so a service-set change can replace it before another call.
@@ -2771,6 +3190,10 @@ type Agent struct {
 	// reason: its callers are tool calls running in parallel inside one batch.
 	docs documentRung
 
+	// spendStampMu orders meter capture with its metadata write. The folder
+	// lock alone cannot keep an older captured total from being written last.
+	spendStampMu sync.Mutex
+
 	// mu guards everything below it. The lock is held for state transitions
 	// only, never across a provider call or a tool execution: a turn that
 	// holds it while waiting on the network would deadlock Interrupt, which is
@@ -2850,6 +3273,18 @@ type Agent struct {
 	// put in place of the conversation above. A surface draws the region instead
 	// of them, so the conversation is told once ([EarlierHistory]).
 	earlierFloor int
+	// passSeq is how many compaction passes this conversation has made,
+	// failures included, and keptTurns and keptFrom the newest summary's
+	// provenance (compaction_facts.go). Restored from the journal on resume.
+	// That is all a live agent keeps of its passes: the journal holds them.
+	passSeq   int
+	keptTurns int
+	keptFrom  time.Time
+	// summarizing is true while a pass waits on a summary request.
+	summarizing bool
+	// manualPass is the cut of a pass a surface asked for outside any turn,
+	// while it runs ([Agent.CompactObserved]); Stop cuts it with the turn.
+	manualPass *manualPassCut
 	// personAsk is the last thing THE PERSON typed, kept apart from the
 	// transcript because the transcript cannot answer the question. Every user
 	// message in a.messages is user-role, including the ones the session wrote
@@ -2937,6 +3372,9 @@ type Agent struct {
 	// carried on every direction forwarded under it, so two lives cannot be
 	// mistaken for one (task_forward.go).
 	personScope string
+	// directiveSeq counts the `/task` directives this life has heard, so each
+	// is a source of its own (task_source.go). Guarded by mu.
+	directiveSeq uint64
 	// personHeard is the turn [Agent.personAsk] was typed into, and it is what
 	// tells "the person is asking for this right now" from "the person last said
 	// something two turns ago". A woken turn — a task landed, a job exited —
@@ -3060,8 +3498,20 @@ type Agent struct {
 	// team is this conversation's account of its teams: its key, its roles and
 	// its Traffic cursors (team.go). It has its own lock and is never read
 	// under mu.
-	team  teamSeat
+	team teamSeat
+	// lead is whether this conversation manages a factory item (team.go's
+	// [Agent.factoryLead]), asked of its run door and kept once known.
+	lead  factoryLeadSeat
 	usage Usage
+	// answered is the session's money once per model that ANSWERED it, every
+	// call banked under the name the response itself gave (competence.go's
+	// [Agent.AnsweredUsage]). It sums to usage's figures call for call.
+	answered modelShares
+	// answers is how many responses each model gave this session, counted where
+	// a response arrives whether or not it carried usage — a free or unmetered
+	// answer is still a model doing the work. A late receipt is money for an
+	// answer already counted, and adds none ([Agent.Answers]).
+	answers map[string]int
 	// principal is WHO THIS SESSION IS WORKING FOR (principal.go), and it is
 	// never nil: a session built with no posture at all gets a [Person], which
 	// answers every question the way this package answered it before the
@@ -3088,6 +3538,12 @@ type Agent struct {
 	// quiet one. The product reads nothing off this context that it would not
 	// read off the background.
 	wokenTurnBase func() context.Context
+	// Pending notes belong to the queue, independently of whether their wake
+	// clock is still armed. All three fields are guarded by mu; the private
+	// clock lets fixtures advance the window without sleeping.
+	jobWakePending bool
+	jobWake        *jobWakeWindow
+	jobWakeAfter   func(time.Duration, func()) func()
 	// wallStop ends the one reader that waits independently for this session's
 	// wall, and is nil when neither launch nor Steward sets a wall.
 	// wallEndingTaken is the once-only mark on the ending that reader writes.
@@ -3119,6 +3575,14 @@ type Agent struct {
 	// session that has never opened an episode.
 	writes  *writeMeter
 	running bool
+	// factoryAutomaticTurn distinguishes runtime manager work from person chat.
+	// It is meaningful only while running, under mu.
+	factoryAutomaticTurn bool
+	// mustCall is the one tool the running turn's next answered request must
+	// call, "" for none ([Agent.FollowUpRequiring]): set from the message that
+	// opens the turn and spent by the first request that is answered
+	// (tools_stage.go's [Agent.turnBelt]).
+	mustCall string
 	// turnFloor is where the running turn's WORK begins in a.messages: the
 	// index just past the message that opened the turn, stamped by
 	// [Agent.startTurnLocked] and meaningful only while running is true. It is
@@ -3133,6 +3597,7 @@ type Agent struct {
 	workStopping   bool
 	workEpoch      uint64
 	workStopReason string
+	workStopEnding TaskEnding
 	workStopDone   chan struct{}
 	// cancel ends the turn in flight AND SAYS WHICH DOOR IT CAME THROUGH. It is
 	// a [context.CancelCauseFunc] rather than a plain one because a turn that
@@ -3179,6 +3644,10 @@ type Agent struct {
 	// remembers (steer.go's [Agent.rideModel]).
 	riding   string
 	steering []userMessage
+	// turnCreation is the creation stamp the running turn hung, nil when it
+	// hung none; a person's message spliced into the turn may mark it mixed
+	// ([Agent.mixCreationLocked]). Guarded by mu.
+	turnCreation *creationTeamStamp
 	// steerGrace is the one armed second look at a correction that arrived
 	// while a foreground bash was still too young to adopt (steer_grace.go).
 	// There is at most one, it is replaced rather than added to, and every exit
@@ -3229,6 +3698,7 @@ type Agent struct {
 	// caller that loses the race is guaranteed to find a channel to wait on
 	// rather than a nil one.
 	closeDone    chan struct{}
+	closedSignal chan struct{}
 	localDurable bool
 	// takenOver says another window has asked for this conversation and this
 	// process has not let go of it yet (takeover.go). Set once, never cleared:
@@ -3245,6 +3715,11 @@ type Agent struct {
 	// not let a request that was already on the disk before this turn started
 	// end it (takeover.go says why that request has had its chance).
 	turnBegan time.Time
+	// answeredSinceSeal says an answer to the person was recorded since the
+	// last seal, which is what lets the seal stamp [Meta.LastReplyAt] for this
+	// turn's answer and never again for an older one (placemeta.go's
+	// [Agent.stampSealed]).
+	answeredSinceSeal bool
 	// steerSeq names the sentences the person has spliced into a running turn
 	// (steer.go). It is an atomic rather than a field under mu because minting an
 	// identity is not a fact about the transcript, and an id that could only be
@@ -3272,12 +3747,10 @@ type Agent struct {
 	// wakes for itself ([Agent.postTaskNews]).
 	taskNotes int
 	taskNews  chan struct{}
-	// jobParkBound is the allowance a task worker's run was given, and it is
-	// non-zero only on a worker: it is what ARMS the wait on a command this agent
-	// started in the foreground and had taken over into a job (task_job_park.go's
-	// [Agent.armJobPark]). A conversation leaves it zero, and its park returns
-	// having done nothing, because a person's chat answers a long command by
-	// yielding the keyboard rather than by waiting.
+	// stageSettled fences automatic wakes while the runner adjudicates an idle stage.
+	stageSettled bool
+	// jobParkBound arms engine waiting for task workers and factory stages.
+	// Ordinary conversations leave it zero and continue yielding the keyboard.
 	jobParkBound time.Duration
 	// handover is the seam a delivery's last two writes are made across, and the
 	// seam the runner reads them across ([Agent.handOverTaskNews] and
@@ -3442,6 +3915,25 @@ type Agent struct {
 	subharnessSeq    uint64
 	subharnessOffers map[uint64]*subharnessOffer
 
+	// factoryOffers is the factory cards chat has raised and nobody has
+	// answered yet, keyed by the proposal id the EventFactoryProposal carried,
+	// and factorySeq is what names them (tools_factory.go). Each entry keeps
+	// its own card for the reason subharnessOffers does: a surface that
+	// subscribes while the question stands must still be able to draw it.
+	factorySeq    uint64
+	factoryOffers map[string]*factoryOffer
+
+	// recipeOffers and recipeSeq are the same book for `factory_recipe`'s
+	// cards (tools_factory_recipe.go), kept apart because the two cards are
+	// answered by different resolvers and write to different places.
+	recipeSeq    uint64
+	recipeOffers map[string]*recipeOffer
+
+	// itemOffers and itemSeq are the same book for `factory_item`'s cards
+	// (tools_factory_item.go), kept apart for the recipe book's reason.
+	itemSeq    uint64
+	itemOffers map[string]*itemOffer
+
 	// harnessPick is a harness the PERSON chose rather than one a matcher
 	// offered, left here by [Agent.RunHarnessRequest] for the turn it just
 	// started to collect (harness.go). It is a take-over between two halves of
@@ -3532,6 +4024,12 @@ type Agent struct {
 	// held.
 	beltMu  sync.Mutex
 	beltRun *beltRun
+	// appHeldRuns is every run row a person holds from the app, by its number,
+	// so each republish of the row keeps saying it is held (task_app_runs.go).
+	appHeldRuns sync.Map
+	// runSources is the source captured for a run row before its first publish,
+	// by the row's number (task_source.go). The first publish consumes it.
+	runSources sync.Map
 	// runSummaryBusy holds the roots whose card reading is being bought right
 	// now ([Agent.RefreshRunSummary]), so a second surface that asks in the same
 	// moment keeps the last reading rather than paying for a second one.
@@ -3545,21 +4043,31 @@ type Agent struct {
 	// crews is every task's crew this conversation routed, by row: what its
 	// log row settles with and what `/redo stronger` escalates (taskcrew.go).
 	crews crewBook
+	// taskRouting is this conversation's per-task model choices made before a
+	// task started, and the tasks waiting because a role had no model
+	// (taskrouting.go).
+	taskRouting taskRoutingBook
 	// taskAnswers is the proposals a person owes an answer to, keyed by the id
 	// the EventTaskProposal carried. It is consent's pending-id machinery for a
 	// question whose CLOCK can be held: the wait ends on an answer, on an active
 	// deadline, or with the turn (task.go). The ids are the GRAPH's — a proposal
 	// is a node that has not been admitted yet, not a second numbering.
 	taskAnswers map[uint64]*taskQuestion
-	// taskNow and taskTimer are the proposal clock's test seam. Production leaves
-	// them nil and takes the real clock; keeping both decisions together lets a
-	// contract test cross the old deadline without sleeping or racing a machine.
+	// taskNow and taskTimer are the task clock's test seams, shared by proposal
+	// deadlines and read hand-off waits. Production leaves them nil and takes
+	// the real clock, so tests can cross a deadline without sleeping.
 	taskNow   func() time.Time
 	taskTimer func(time.Duration) (<-chan time.Time, func())
 	// automationAnswers and automationSeq are the same wait, for automation
 	// cards (automation_tool.go).
 	automationAnswers map[uint64]chan AutomationAnswer
 	automationSeq     uint64
+	// keepAsks and keepSeq are the same wait, for keep-running cards, and
+	// turnJobs are the jobs a "deny" left to end with the turn that started
+	// them, by job id and turn (keep_running.go).
+	keepAsks map[uint64]*keepAsk
+	keepSeq  uint64
+	turnJobs map[int]uint64
 	// questionWords is THE WORDS of the questions this session has put, keyed by
 	// lane and token (question.go's [questionToken]).
 	//
@@ -3613,6 +4121,9 @@ type Agent struct {
 	// Model choices have a separate writer so coalescing never drops a user stamp.
 	modelStampOnce   sync.Once
 	modelStampWriter *stampWriter
+	// Spend has its own writer so a late bill cannot replace an owed user stamp.
+	spendStampOnce   sync.Once
+	spendStampWriter *stampWriter
 
 	// toldStampWriter is the deferred write the elsewhere reading owes told.json,
 	// and toldStampOnce builds it on the first reading (taskdelta.go). It is its
@@ -3638,9 +4149,19 @@ type Agent struct {
 
 	title      string
 	titleTried bool
+	// titleProvisional is the name this session wrote at acceptance and has not
+	// yet been claimed by the person: the current name a model may replace
+	// (intentname.go). Empty in every session that is not named by intent, and
+	// in every one whose name has been claimed by the person.
+	titleProvisional string
+	titleLiteral     bool
+	intentName       *intentNameState
+	intentNaming     bool
+	// Serializes current-name metadata snapshots and writes, outside a.mu.
+	titleStampMu sync.Mutex
 
-	// titleCtx is the lifetime of the naming errand and titleJobs counts the one
-	// that may be running. They are memoryCtx's bargain above, for the same
+	// titleCtx is the lifetime of naming/reply errands and titleJobs counts the
+	// errands that may be running. They are memoryCtx's bargain above, for the same
 	// reason and with the same two lines: the namer now runs BESIDE the turn
 	// that triggered it (title.go), so it cannot ride the turn's context — a
 	// quick answer would cancel a name that is still being written — and it may
@@ -3659,16 +4180,19 @@ type Agent struct {
 	// outlives its turn has no turn stream left to land on.
 	titleWatchers []*eventStream
 
+	// approvalMu serializes gate builds, publication and snapshot selection.
+	// Always acquire approvalMu before mu, never the reverse; Build runs without mu.
+	approvalMu sync.Mutex
+
 	// approvalPolicy is the gate as it stands NOW, when a surface has replaced
 	// the one this session launched on ([Agent.SetApprovalPolicy], and the prose
 	// in approvalgate.go for why that is a thing a surface may do). Nil is the
 	// ordinary case — nobody has replaced anything — and Config.ApprovalPolicy
 	// still answers.
 	//
-	// It is under mu with everything else here, and it is the ONLY approval
-	// state that is: Config.ApprovalPolicy is written once before New returns
-	// and never again, which is what lets task_run.go copy the whole config
-	// without a lock and still be right.
+	// Mutable approval state is under mu. Config.ApprovalPolicy is written
+	// once before New returns and never again, which lets task_run.go copy
+	// the whole config without a lock.
 	approvalPolicy *approval.Policy
 	// approvalPosture is the posture THIS conversation was set to
 	// (approvalposture.go), kept in the session folder's meta.json so it
@@ -3676,7 +4200,8 @@ type Agent struct {
 	approvalPosture string
 	// guardianOverride is whether the small model stands in, as the
 	// conversation's own posture decided it; nil leaves Config.Guardian to
-	// answer. It is set only by [Agent.SetApprovalPosture].
+	// answer. Explicit posture changes and refreshes of them update it together
+	// with the policy.
 	guardianOverride *bool
 
 	// attachedSkills is the ordered set of skill names a person has put in front
@@ -3698,11 +4223,22 @@ type Agent struct {
 // seat is the executor this session's tool calls run on. A session with no
 // cell says so by name: it is on the host seat.
 func (c Config) seat() procexec.Seat {
-	if c.Seat == nil {
-		return procexec.Host
+	seat := c.Seat
+	if seat == nil {
+		seat = procexec.Host
 	}
-	return c.Seat
+	// THE FENCE GOES AROUND WHATEVER SEAT THIS IS: the host's, or the cell's
+	// that records each call. Wrapping is idempotent, so a seat this returned
+	// and a door stored back (WithEnvironment) is not fenced twice.
+	return procexec.WithFence(seat, c.Fence)
 }
+
+// fenced is whether this session's commands run fenced, the prompt's predicate.
+func (c Config) fenced() bool { return c.Fence != nil }
+
+// fence is the fence this session's commands and file tools keep to, nil
+// when none.
+func (c Config) fence() *procexec.Fence { return c.Fence }
 
 // seatFor is the seat a turn's tool calls run on: the session's own, or its
 // setup form when the turn is a setup turn (setup.go).

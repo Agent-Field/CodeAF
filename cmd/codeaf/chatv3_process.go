@@ -35,6 +35,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/catalog"
@@ -43,6 +44,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/history"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/store"
 	"github.com/Agent-Field/codeaf/internal/subharness"
@@ -62,11 +64,19 @@ type v3Process struct {
 	// Models is ONE lazy warm and one cache on disk. N catalogs would be N
 	// network round trips for one answer.
 	Models *catalog.Catalog
+	// poolErrands is retained by this process so windows on the same profile
+	// cannot cancel its warms or judge hook, and late work stays refused.
+	poolErrands *poolErrands
 	// processCtx is the lifetime shared by background work owned by this process.
 	// processStop closes that lifetime before closeAll joins each owned worker.
 	processCtx    context.Context
 	processStop   context.CancelFunc
 	knowledgeDone chan struct{}
+	// quitReceiptWait, when set, replaces [v3ReceiptWait] for every receipt
+	// wait from then on. The app sets it as it leaves, when its receipts have
+	// been hurried ([provider.HurryReceipts]) and the desk kills an engine that
+	// is still leaving after thirty seconds (app.go's [appQuitReceiptWait]).
+	quitReceiptWait atomic.Int64
 	// Shelf holds Models until somebody asks /model for today's list, and the
 	// refreshed catalog after (chatv3_modelshelf.go). The picker and the two
 	// session readers that answer about a model somebody may have just picked
@@ -127,14 +137,14 @@ type v3Process struct {
 	// project is still a conversation this door opened from here.
 	LaunchDir string
 
-	// mu guards everything below: the lazily opened history file and the list of
-	// agents this process has built. Both are touched from the surface's
-	// goroutine and from the door's defer, which are not the same one.
-	mu          sync.Mutex
-	recall      *history.Store
-	agents      []*session.Agent
-	sweepCancel context.CancelFunc
-	sweepDone   chan struct{}
+	// mu guards Settings.APIKey, Settings.Sources and everything below.
+	// Provider handoffs, launches and process cleanup run on different goroutines.
+	mu            sync.Mutex
+	recall        *history.Store
+	agents        []*session.Agent
+	receiptAgents map[*session.Agent]struct{}
+	sweepCancel   context.CancelFunc
+	sweepDone     chan struct{}
 	// catalogs are the lazy catalogs this process opened beside Models — a
 	// direct service's own listing, asked for when a conversation is opened on
 	// one of its models ([v3Process.ownCatalog]). closeAll cancels and joins each.
@@ -258,7 +268,7 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 	// The crew router picks its seats from this catalog (config.CrewCatalog):
 	// the same non-blocking read, never a fetch, and set once at start-up.
 	seatCrewRows(models.ModelsNow)
-	wirePoolIndex(settings.ProfileDir)
+	poolErrands := wirePoolIndex(settings.ProfileDir)
 	shelf := newV3ModelShelf(models, discovery)
 	shelf.setSources(settings.Sources)
 	memory := v3Memory(settings.ProfileDir)
@@ -277,6 +287,7 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 		ProfileDir:        settings.ProfileDir,
 		UnreadProfileKeys: append([]string(nil), settings.UnreadProfileKeys...),
 		Models:            models,
+		poolErrands:       poolErrands,
 		processCtx:        processCtx,
 		processStop:       processStop,
 		Shelf:             shelf,
@@ -371,9 +382,12 @@ func (p *v3Process) forget(agent *session.Agent) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	kept := p.agents[:0]
+	found := false
 	for _, held := range p.agents {
 		if held != agent {
 			kept = append(kept, held)
+		} else {
+			found = true
 		}
 	}
 	// The tail is cleared rather than left pointing at what was dropped: the
@@ -383,6 +397,25 @@ func (p *v3Process) forget(agent *session.Agent) {
 		p.agents[i] = nil
 	}
 	p.agents = kept
+	if p.closed || !found {
+		return
+	}
+	if p.receiptAgents == nil {
+		p.receiptAgents = make(map[*session.Agent]struct{})
+	}
+	p.receiptAgents[agent] = struct{}{}
+	// Closed chats leave broadcasts immediately but remain owned until their
+	// admitted receipts settle. The reaper bounds retention in a long-lived host.
+	guard.Go("chatv3/retired-receipts", func() {
+		p.waitReceipts(agent)
+		p.forgetReceiptAgent(agent)
+	})
+}
+
+func (p *v3Process) forgetReceiptAgent(agent *session.Agent) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	delete(p.receiptAgents, agent)
 }
 
 // setAPIKey is the key arriving after the door: the first-run screen or the
@@ -546,6 +579,14 @@ func (p *v3Process) sourceSeeds() (profileDir, key, base string) {
 	return p.ProfileDir, p.Settings.APIKey, p.Settings.BaseURL
 }
 
+// launchSettings copies the profile while provider handoffs hold the same lock.
+// Model source sets replace their backing slice, so the copy keeps its sources.
+func (p *v3Process) launchSettings() config.Config {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.Settings
+}
+
 func (p *v3Process) currentAccount() (string, modelsource.Set) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -564,11 +605,15 @@ func (p *v3Process) takeForClose() (agents []*session.Agent, recall *history.Sto
 	}
 	p.closed = true
 	agents, recall = p.agents, p.recall
+	for agent := range p.receiptAgents {
+		agents = append(agents, agent)
+	}
+	p.receiptAgents = nil
 	p.agents, p.recall = nil, nil
 	return agents, recall, true
 }
 
-// warmModels seats the model warm on the profile's start-up errand tracker, so
+// warmModels seats the model warm on the process's start-up errand tracker, so
 // [v3Process.closeAll] cancels and waits for it exactly as it does the pool
 // errands (poolindex.go's [poolErrandGoCtx]).
 //
@@ -593,9 +638,31 @@ func (p *v3Process) warmModels(scope string, agent *session.Agent, started strin
 	// into the OpenRouter list. Both the engine road and the in-process road
 	// handed it the launch's catalog until #1383.
 	models := p.Models
-	poolErrandGoCtx(p.ProfileDir, scope, func(ctx context.Context) {
+	poolErrandGoCtx(p.poolErrands, scope, func(ctx context.Context) {
 		warmV3Models(ctx, models, agent, started)
 	})
+}
+
+// v3ReceiptWait follows the provider's bounded receipt lifetime. It is a
+// variable so deadline tests need not wait through the provider retry schedule.
+var v3ReceiptWait = provider.ReceiptWait
+
+// waitReceipts waits on this process's own bound: the app's shorter quit wait
+// once it is leaving, [v3ReceiptWait] otherwise.
+func (p *v3Process) waitReceipts(agent *session.Agent) {
+	wait := v3ReceiptWait
+	if quit := time.Duration(p.quitReceiptWait.Load()); quit > 0 && quit < wait {
+		wait = quit
+	}
+	waitV3ReceiptsWithin(agent, wait)
+}
+
+func waitV3ReceiptsWithin(agent *session.Agent, wait time.Duration) {
+	ctx, cancel := context.WithTimeout(context.Background(), wait)
+	defer cancel()
+	if err := agent.WaitReceipts(ctx); err != nil {
+		fmt.Fprintln(os.Stderr, "codeaf: receipt settlement timed out; spending may be incomplete")
+	}
 }
 
 // closeAll closes every conversation this process opened and then the stores
@@ -653,7 +720,7 @@ func (p *v3Process) closeAll() {
 	// is still writing under its profile once it closes (poolindex.go states
 	// the seam). It runs first, before the conversations and the stores, because
 	// it is the process's own errand and not a conversation's.
-	stopPoolErrands(p.ProfileDir)
+	stopPoolErrands(p.poolErrands)
 
 	var waiting sync.WaitGroup
 	for _, agent := range agents {
@@ -671,6 +738,7 @@ func (p *v3Process) closeAll() {
 			// A pending save has a bounded wait. Its failure must remain visible
 			// after the terminal is restored, rather than disappearing with the surface.
 			closeV3Agent(agent)
+			p.waitReceipts(agent)
 		})
 	}
 	waiting.Wait()
@@ -873,7 +941,7 @@ func (s *v3Seam) open(launch *v3Launch, cfg session.Config, resumed bool) (tui3.
 		return tui3.Conversation{}, err
 	}
 	s.proc.track(agent)
-	if notice != "" {
+	if cfg.SessionFile != launch.SessionFile {
 		// The session file moved under us, so this is a new conversation rather
 		// than the one that was asked for, and the sentence says so.
 		resumed = false
@@ -953,7 +1021,7 @@ func (s *v3Seam) bundle(agent v3Live, launch *v3Launch, cfg session.Config,
 		AnchorWorkspace: anchor,
 		Resumed:         resumed,
 		Seal:            sealSeamOf(agent, cfg.Seals),
-		Notice:          v3Interrupted(cfg, notice),
+		Notice:          v3Interrupted(cfg, joinV3Notices(notice, v3UpgradeNotice(cfg.Place.Dir, cfg.Interactive))),
 		ContextWindow:   cfg.ContextWindow,
 		DraftFile:       draft,
 		History:         recall,

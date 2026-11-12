@@ -2,7 +2,6 @@ package tui3
 
 import (
 	"context"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -119,11 +118,7 @@ const wallOrganizedFor = 6 * time.Second
 const wallOrganizeLoose = 5
 
 // organizeWait bounds the model pass. Past it the folder pass is shown alone.
-const organizeWait = 10 * time.Second
-
-// organizeAnswerTokens is what a proposal's answer is taken to cost in
-// tokens, for the estimate: a few short JSON rows.
-const organizeAnswerTokens = 250
+const organizeWait = session.OrganizeWait
 
 // teamProposer is the door the model pass comes through, asserted as
 // [teamNamer] is, so an agent without it is simply not asked.
@@ -165,107 +160,57 @@ func (a *app) orgConvs() []orgConv {
 	return out
 }
 
-// folderTeamName is the team name a folder gives: its last element,
-// lowercased and cut to [teamNameCells], "" for a root.
-func folderTeamName(where string) string {
-	base := filepath.Base(filepath.Clean(where))
-	if base == "/" || base == "." || base == "" {
-		return ""
-	}
-	return ansi.Truncate(strings.ToLower(base), teamNameCells, "")
-}
+func teamNamed(teams []team, name string) int { return session.OrganizeTeamNamed(teams, name, false) }
 
-// teamNamed is the index of the team called name, compared without case, -1
-// for none.
-func teamNamed(teams []team, name string) int {
-	for i, t := range teams {
-		if strings.EqualFold(strings.TrimSpace(t.Name), strings.TrimSpace(name)) {
-			return i
-		}
-	}
-	return -1
-}
-
-// organizeFolders is the folder pass: every folder two or more conversations
-// share becomes a new team named after it, unless one team already holds them
-// all, and unless a team already has the folder's name, when the ones it is
-// missing are suggested for it instead. Two folders of one name are one team.
-// It is pure and exact, so the same conversations always give the same rows.
-func organizeFolders(convs []orgConv, teams []team) []orgProp {
-	groups := map[string][]string{}
-	var order []string
+// organizeConversations adapts the tabs without giving the shared planner UI state.
+func organizeConversations(convs []orgConv) []session.OrganizeConversation {
+	out := make([]session.OrganizeConversation, 0, len(convs))
 	for _, c := range convs {
-		if strings.TrimSpace(c.where) == "" {
-			continue
-		}
-		w := filepath.Clean(c.where)
-		if _, ok := groups[w]; !ok {
-			order = append(order, w)
-		}
-		if !orgHas(groups[w], c.key) {
-			groups[w] = append(groups[w], c.key)
-		}
-	}
-	var out []orgProp
-	for _, w := range order {
-		keys := groups[w]
-		name := folderTeamName(w)
-		if len(keys) < 2 || name == "" || teamsHoldAll(teams, keys) {
-			continue
-		}
-		if i := teamNamed(teams, name); i >= 0 {
-			var missing []string
-			for _, k := range keys {
-				if !teamHolds(teams[i], k) {
-					missing = append(missing, k)
-				}
-			}
-			out = orgMergeInto(out, orgProp{team: teams[i].ID, name: teams[i].Name, hue: teams[i].HueSpec(), keys: missing, folder: true})
-			continue
-		}
-		out = orgMergeInto(out, orgProp{name: name, keys: keys, folder: true})
+		out = append(out, session.OrganizeConversation{Key: c.key, Title: c.title, Folder: c.where})
 	}
 	return out
 }
 
-// teamsHoldAll reports whether one team holds every one of keys.
-func teamsHoldAll(teams []team, keys []string) bool {
-	for _, t := range teams {
-		all := true
-		for _, k := range keys {
-			if !teamHolds(t, k) {
-				all = false
+func organizeRows(props []session.OrganizeSuggestion, teams []team) []orgProp {
+	var out []orgProp
+	for _, p := range props {
+		row := orgProp{team: p.Team, name: p.Name, keys: p.Keys, reason: p.Reason, folder: p.FromFolder}
+		if i := teamIndex(teams, p.Team); i >= 0 {
+			row.hue = teams[i].HueSpec()
+		}
+		out = append(out, row)
+	}
+	return out
+}
+
+func organizeShared(props []orgProp) []session.OrganizeSuggestion {
+	var out []session.OrganizeSuggestion
+	for _, p := range props {
+		out = append(out, session.OrganizeSuggestion{Team: p.team, Name: p.name, Keys: p.keys, Reason: p.reason, FromFolder: p.folder})
+	}
+	return out
+}
+
+func organizeFolders(convs []orgConv, teams []team) []orgProp {
+	return organizeRows(session.OrganizeFolders(organizeConversations(convs), teams), teams)
+}
+
+func organizeFromModel(res session.TeamProposal, teams []team) []orgProp {
+	return organizeRows(session.OrganizeFromModel(res, teams), teams)
+}
+
+func organizeMerge(folder, model []orgProp) []orgProp {
+	merged := session.OrganizeMerge(organizeShared(folder), organizeShared(model))
+	out := organizeRows(merged, nil)
+	for i := range out {
+		for _, p := range append(append([]orgProp(nil), folder...), model...) {
+			if out[i].team != "" && out[i].team == p.team {
+				out[i].hue = p.hue
 				break
 			}
 		}
-		if all {
-			return true
-		}
 	}
-	return false
-}
-
-// orgMergeInto adds p to props, folding it into a row that is the same
-// suggestion already: the same existing team, or a new team of the same name.
-// The row already there keeps its reason and its place.
-func orgMergeInto(props []orgProp, p orgProp) []orgProp {
-	if len(p.keys) == 0 {
-		return props
-	}
-	for i, q := range props {
-		same := p.team != "" && q.team == p.team ||
-			p.team == "" && q.team == "" && strings.EqualFold(q.name, p.name)
-		if !same {
-			continue
-		}
-		for _, k := range p.keys {
-			if !orgHas(props[i].keys, k) {
-				props[i].keys = append(props[i].keys, k)
-			}
-		}
-		return props
-	}
-	return append(props, p)
+	return out
 }
 
 func orgHas(keys []string, key string) bool {
@@ -275,86 +220,6 @@ func orgHas(keys []string, key string) bool {
 		}
 	}
 	return false
-}
-
-// organizeFromModel is the model's answer as rows. The answer was validated
-// by the session; what is checked again here is what may have moved while it
-// was asked: a team that is gone, and a member a team now holds.
-func organizeFromModel(res session.TeamProposal, teams []team) []orgProp {
-	var out []orgProp
-	for _, n := range res.New {
-		if i := teamNamed(teams, n.Name); i >= 0 {
-			out = append(out, orgProp{team: teams[i].ID, name: teams[i].Name, hue: teams[i].HueSpec(), keys: orgMissing(teams[i], n.Members)})
-			continue
-		}
-		out = append(out, orgProp{name: n.Name, keys: n.Members, reason: n.Reason})
-	}
-	for _, add := range res.Additions {
-		i := teamIndex(teams, add.TeamID)
-		if i < 0 {
-			continue
-		}
-		out = append(out, orgProp{team: teams[i].ID, name: teams[i].Name, hue: teams[i].HueSpec(), keys: orgMissing(teams[i], add.Members)})
-	}
-	return out
-}
-
-// orgMissing is keys less the ones t already holds.
-func orgMissing(t team, keys []string) []string {
-	var out []string
-	for _, k := range keys {
-		if !teamHolds(t, k) && !orgHas(out, k) {
-			out = append(out, k)
-		}
-	}
-	return out
-}
-
-// organizeMerge is the two passes as one list, new teams first. The folder
-// pass wins: a model team with a folder team's name, or with exactly its
-// members, is dropped, and a model addition to a team the folder pass already
-// adds to only brings the members that row lacks.
-func organizeMerge(folder, model []orgProp) []orgProp {
-	props := append([]orgProp(nil), folder...)
-	for _, p := range model {
-		if p.team == "" {
-			dup := false
-			for _, q := range folder {
-				if q.team == "" && (strings.EqualFold(q.name, p.name) || orgSameKeys(q.keys, p.keys)) {
-					dup = true
-					break
-				}
-			}
-			if dup {
-				continue
-			}
-		}
-		props = orgMergeInto(props, p)
-	}
-	var out []orgProp
-	for _, p := range props {
-		if p.team == "" && len(p.keys) >= 2 {
-			out = append(out, p)
-		}
-	}
-	for _, p := range props {
-		if p.team != "" && len(p.keys) > 0 {
-			out = append(out, p)
-		}
-	}
-	return out
-}
-
-func orgSameKeys(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for _, k := range a {
-		if !orgHas(b, k) {
-			return false
-		}
-	}
-	return true
 }
 
 // organizeSig is the state Organize reads, as one number that any change to
@@ -437,17 +302,7 @@ func (a *app) wallOrganizeOpen() tea.Cmd {
 			}
 		}))
 	}
-	in := session.TeamProposalInput{}
-	for _, c := range convs {
-		in.Conversations = append(in.Conversations, session.TeamProposalConversation{Key: c.key, Title: c.title, Folder: filepath.Base(filepath.Clean(c.where))})
-	}
-	for _, t := range a.wall.teams {
-		pt := session.TeamProposalTeam{ID: t.ID, Name: t.Name}
-		for _, m := range t.Members {
-			pt.Members = append(pt.Members, m.Key)
-		}
-		in.Teams = append(in.Teams, pt)
-	}
+	in := session.OrganizeInput(organizeConversations(convs), a.wall.teams)
 	gen := o.gen
 	o.thinking = true
 	return tea.Batch(opened, a.besideLine(func() func(here bool) tea.Cmd {
@@ -544,7 +399,10 @@ func (a *app) wallOrganized(gen int, res session.TeamProposal, err error) {
 		a.wallOrganizeShow(nil, true, "")
 		return
 	}
-	cost := a.organizeCost(res.Model, res.PromptChars)
+	cost := ""
+	if res.CostUSD != nil {
+		cost = dollars(*res.CostUSD)
+	}
 	a.wallOrganizeShow(organizeFromModel(res, a.wall.teams), false, cost)
 }
 
@@ -588,21 +446,6 @@ func (a *app) wallOrganizeShow(model []orgProp, folderOnly bool, cost string) {
 	if o.cleanSet {
 		o.cleanSig = organizeSig(keys, a.wall.teams)
 	}
-}
-
-// organizeCost is what the ask cost, estimated from its size: its characters
-// at four to a token and a short answer, priced at the model that answered
-// when its price is known, and said in tokens when it is not, since a price
-// nobody published is not a figure.
-func (a *app) organizeCost(model string, chars int) string {
-	if chars <= 0 {
-		return ""
-	}
-	in := chars/4 + 1
-	if m, ok := a.priceFor(model); ok {
-		return "about " + dollars(float64(in)*m.PromptPrice+float64(organizeAnswerTokens)*m.CompletionPrice)
-	}
-	return "about " + tokenWord(in+organizeAnswerTokens) + " tokens"
 }
 
 // wallOrganizeClose puts the card away with no change; an answer still on its

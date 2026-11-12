@@ -54,6 +54,9 @@ func TeamsAsideLine(path string) string {
 const openChatsLine = ". Run codeaf to open your chats."
 const JoinedLine = "Paired with your other device" + openChatsLine
 
+// AlreadyPairedLine is the no-change result on every pairing surface.
+const AlreadyPairedLine = "already paired; nothing changed"
+
 // FollowedLine is what the joining device says when it was on an identity that
 // was rotated and has moved to the one that replaced it.
 const FollowedLine = JoinedLine
@@ -130,6 +133,14 @@ func JoinedFleetLine(workspaces int) string {
 var platformWords = map[string]string{
 	"darwin": "Mac", "linux": "Linux", "windows": "Windows",
 	"ios": "iPhone or iPad", "android": "Android",
+}
+
+// ComputerLabel retains the name and adds a familiar platform when known.
+func ComputerLabel(name, platform string) string {
+	if word, ok := platformWords[platform]; ok {
+		return fmt.Sprintf("%s (%s)", name, word)
+	}
+	return name
 }
 
 // WantsToJoinLine tells the approving person which device is asking. A system

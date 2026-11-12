@@ -1,6 +1,7 @@
 package pull
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -82,7 +83,10 @@ func (p *Puller) loadCache() (cache, bool) {
 // fetched to CacheDir. Each file goes to a temporary name and is then renamed
 // into place, so a run cut in half never leaves a half-written cache. The
 // files it leaves behind have mode 0600. CacheDir is made if it is missing.
-func (p *Puller) storeCache(doc, sig []byte, etag string, version int64, fetchedAt time.Time) {
+func (p *Puller) storeCache(ctx context.Context, doc, sig []byte, etag string, version int64, fetchedAt time.Time) {
+	if ctx.Err() != nil {
+		return
+	}
 	if err := os.MkdirAll(p.CacheDir, 0o700); err != nil {
 		// A cache that cannot be written is not fatal: the caller still gets
 		// its document, and the next run simply fetches again.
@@ -105,6 +109,9 @@ func (p *Puller) storeCache(doc, sig []byte, etag string, version int64, fetched
 		{"meta.json", meta},
 	}
 	for _, f := range files {
+		if ctx.Err() != nil {
+			return
+		}
 		if err := atomicWrite(p.CacheDir, f.name, f.data); err != nil {
 			return
 		}

@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // THE BOX BELONGS TO WHOEVER IT IS TALKING TO.
@@ -595,9 +597,26 @@ func (a *app) recoverOwned(owner string, who recipient, snap outboxSnapshot) boo
 }
 
 // mainDraftText is the conversation's unsent sentence, and nothing else's.
+//
+// A SECRET BEING TYPED IS NOT A DRAFT. While the box is a question's masked
+// box ([app.typingSecret]) what is in it is a credential, and every road this
+// text takes — the debounced draft file, the stash of a conversation put
+// down, the line kept when quitting — is a copy of it on disk. Observed
+// 2026-11-05: a token typed into request_secret's box was written whole to
+// v3/draft-*.txt. So the box reads as empty to all of them.
 func (a *app) mainDraftText() string {
+	if a.typingSecret() {
+		return ""
+	}
 	main := a.mainComposer()
 	return main.box.String()
+}
+
+// typingSecret says the input box is, right now, a question's masked box: the
+// one reading [app.secretDraftBlock] draws it by.
+func (a *app) typingSecret() bool {
+	head, ok := a.questionHead()
+	return ok && head.question.Input.Secret && head.question.Input.Kind == session.InputText
 }
 
 // composersAside is every PAGE's composer, for a conversation being put down —

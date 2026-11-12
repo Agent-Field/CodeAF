@@ -76,6 +76,7 @@ func (a *Agent) deliverAskAnswer(answer Answer, text string) bool {
 // shape.
 func answerNote(text string) userMessage {
 	note := wakeNote(text)
+	note.answer = true
 	note.authored = true
 	note.steered = true
 	note.batch = false
@@ -97,6 +98,9 @@ func answerNote(text string) userMessage {
 // for now" is what it MEANS, and a provisional decision the model reads as a
 // settled one is a model that never mentions it again.
 func askAnswerText(q Question, answer Answer, theirs map[string]string, prior *Answer) string {
+	if q.SecretAnswer() {
+		return secretAnswerText(q, answer)
+	}
 	return askAnswerLead(q, answer, prior) + "\n" + answerJSON(askInTheirKeys(answer, q, theirs))
 }
 
@@ -208,13 +212,33 @@ func (a *Agent) startAskClock(open *askOpen) {
 		return
 	}
 	id := open.q.ID
+	// A surface's clock waits for its card to be drawn (tools_ask.go), with no
+	// bound: [Agent.StartQuestionClock] is what starts it.
 	a.mu.Lock()
-	if a.closed {
+	if a.closed || open.deferred {
 		a.mu.Unlock()
 		return
 	}
-	open.clock = time.AfterFunc(open.q.Policy.After, func() { a.askClockRanOut(id) })
+	armAskClockLocked(open, open.q.Policy.After, func(gen uint64) { a.askClockEnded(id, gen, true) })
 	a.mu.Unlock()
+}
+
+// armAskClockLocked is the only way a question's timer is set: it stops the
+// one before, and the timer it arms carries its own arming so a callback of an
+// older one can tell it is stale.
+//
+// A STOPPED TIMER CAN STILL CALL. [time.Timer.Stop] reports false for a timer
+// whose callback has already begun, and that callback may be waiting on a.mu
+// while the clock is deferred and started again; read after, its question
+// looks clocked and it would take the pick against the NEW deadline. So
+// every callback names its arming and does nothing unless it is still the one.
+func armAskClockLocked(open *askOpen, after time.Duration, fire func(gen uint64)) {
+	if open.clock != nil {
+		open.clock.Stop()
+	}
+	open.clockGen++
+	gen := open.clockGen
+	open.clock = time.AfterFunc(after, func() { fire(gen) })
 }
 
 // stopAskClocksLocked is the session's own end of the book's close, called from
@@ -233,11 +257,19 @@ func (a *Agent) stopAskClocksLocked() { a.asked.stopClocksLocked() }
 
 // askClockRanOut takes the asker's own pick for the person, through the one door
 // every other answer goes through — so it is recorded, announced and delivered
-// exactly as a key press would be, and marked as what it is.
-func (a *Agent) askClockRanOut(id uint64) {
+// exactly as a key press would be, and marked as what it is. It is the clock
+// running now that ran out; a timer's own callback is [Agent.askClockEnded].
+func (a *Agent) askClockRanOut(id uint64) { a.askClockEnded(id, 0, false) }
+
+// askClockEnded is one timer's end: gen is the arming it carries, read only
+// when armed, so a stale timer decides nothing ([armAskClockLocked]).
+func (a *Agent) askClockEnded(id, gen uint64, armed bool) {
 	a.mu.Lock()
 	open := a.asked.atLocked(id)
-	if open == nil || open.settled != nil || open.held || a.closed {
+	if open == nil || open.settled != nil || open.held || open.deferred || a.closed || (armed && open.clockGen != gen) {
+		// A DEFERRED CLOCK IS NOT RUNNING, and a timer armed before the
+		// clock was deferred is not the clock (askclock.go).
+		//
 		// NOTHING THIS CLOCK COULD SAY WOULD REACH ANYBODY once the session has
 		// closed, and a decision nobody read is worse than no decision: the next
 		// run of this conversation reads the record as something the person
@@ -288,11 +320,12 @@ func (a *Agent) HoldQuestion(kind QuestionKind, token string) {
 func (a *Agent) holdAsk(id uint64) {
 	a.mu.Lock()
 	open := a.asked.atLocked(id)
-	if open == nil || open.settled != nil || open.held || open.q.Deadline.IsZero() {
+	if open == nil || open.settled != nil || open.held || (open.q.Deadline.IsZero() && !open.deferred) {
 		a.mu.Unlock()
 		return
 	}
 	open.held = true
+	open.deferred = false
 	if open.clock != nil {
 		open.clock.Stop()
 	}

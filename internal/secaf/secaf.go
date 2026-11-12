@@ -94,6 +94,9 @@ var Program = delegate.Delegate{
 	// scope words that say nothing as a title (`quick`, `changes`).
 	Title:      func(brief string) string { return "Security audit of " + ReadScope(brief, false, "", "").Describe() },
 	Unattended: Unattended,
+	// THE FILE THE PROGRAM WRITES FOR A LATER READ: the one name the engine will
+	// hand back byte for byte (delegate.ReadReport), kept beside reportJSON.
+	Reports: []string{reportJSON},
 	// THE OFFER IS A FIX, AND THE PERSON SAYS WHETHER. A report that found
 	// something wants mending; mending is another program's work and more of
 	// the person's money, so the conversation offers it and waits.
@@ -221,7 +224,11 @@ func runAudit(ctx context.Context, host delegate.Host, o options, notes io.Write
 			if errors.Is(err, errNoChanges) {
 				return delegate.Ending{Status: delegate.StatusPass, Message: "it had nothing to audit: " + err.Error(),
 					Deliverable: "Security audit of " + scope.Describe() + ": " + err.Error() + ", so there was nothing to audit.",
-					Extra:       map[string]any{"status": "pass"}}
+					// nothing_to_audit is TRUE-ONLY and written here alone, so a
+					// surface can tell this pass from an audit that ran without
+					// reading the sentence; no count is written, because none
+					// was measured.
+					Extra: map[string]any{"status": "pass", "nothing_to_audit": true}}
 			}
 			return delegate.Ending{Status: delegate.StatusFail, Message: "it could not start: " + err.Error()}
 		}
@@ -326,7 +333,7 @@ func runAudit(ctx context.Context, host delegate.Host, o options, notes io.Write
 		result.Metadata["analysis_incomplete"] = interruption
 	}
 	host.Stage(delegate.StageRecord{Stage: stageReport, Status: "running"})
-	files, err := reportFiles(records, result, len(request.ComplianceFrameworks) > 0, runFacts{
+	files, receipts, err := reportFiles(records, result, len(request.ComplianceFrameworks) > 0, runFacts{
 		scope: scope, changes: changes, spent: spent, sessions: sessions, calls: calls, took: time.Since(started),
 		cutAt: cut, wall: host.Ceilings().TimeWord()})
 	if err != nil {
@@ -334,7 +341,7 @@ func runAudit(ctx context.Context, host delegate.Host, o options, notes io.Write
 	}
 	text := summary(scope, changes, result, files, cut, host.Ceilings().TimeWord())
 	extra := map[string]any{
-		"status": status, "reports": files, "sessions": sessions, "calls": calls, "cut_at": cut,
+		"status": status, "reports": files, delegate.ReportReceiptsKey: receipts, "sessions": sessions, "calls": calls, "cut_at": cut,
 		"confirmed": result.Confirmed, "likely": result.Likely,
 		"inconclusive": result.Inconclusive, "ruled_out": result.NotExploitable,
 	}

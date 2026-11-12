@@ -12,6 +12,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/ctxbudget"
 	"github.com/Agent-Field/codeaf/internal/env"
+	"github.com/Agent-Field/codeaf/internal/money"
 	"github.com/Agent-Field/codeaf/internal/pool/poolcfg"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
@@ -113,7 +114,7 @@ const (
 	KeyDocumentEngine = "document_engine"
 	KeyVisionModel    = "vision_model"
 	// KeyModelPool is the stored word the pool's resolver takes: the same three
-	// answers the CODEAF_MODEL_POOL pin and a CI environment may give it
+	// answers the CODEAF_MODEL_POOL pin may give it
 	// (internal/pool/poolcfg). The resolver beside the search rows is the one
 	// place the process environment is read for the pool.
 	KeyModelPool = "model_pool"
@@ -333,13 +334,8 @@ const (
 	// as the default, silently, the way any word this build does not know reads
 	// ([TaskStartAt]).
 	KeyTaskStart = "task.start"
-	// KeyMemoryEnabled is whether codeaf NOTICES things worth keeping on its
-	// own (internal/session's memory.go): after a turn the person typed, one
-	// small call may keep one line they said, and says so. It governs nothing
-	// else — the lines a person kept ride every conversation whether it is on
-	// or off, and /remember works either way — and it is read live, so a change
-	// applies from the next turn without a restart. The key keeps its old
-	// spelling because profiles on disk carry it.
+	// KeyMemoryEnabled controls automatic learning from chats and jobs.
+	// Saved knowledge and explicit keeps remain available while it is off.
 	KeyMemoryEnabled = "memory.enabled"
 
 	KeyModelRoles = "models.roles"
@@ -692,14 +688,13 @@ const (
 	MemoryOn  = "on"
 )
 
-// MemoryModes lists them, on first — which is the default. A colleague who
-// forgot every preference you stated the moment you closed the window would be
-// one you had to brief again every morning, and the calls that carry this are
-// the cheapest the surface makes.
+// MemoryModes lists the default first; saved choices remain authoritative.
 var MemoryModes = []string{MemoryOn, MemoryOff}
 
-// DefaultMemory is on.
 const DefaultMemory = MemoryOn
+
+// MemoryCostNote is the cost disclosure shared by settings surfaces.
+const MemoryCostNote = "Learns from chats and jobs so later work can use what you learned. On by default; uses extra model calls on your key. See actual costs in Spending."
 
 // The prompt profile's three answers, and they are three rather than two
 // because the honest default is not a size at all: it is "work it out". A row
@@ -1039,6 +1034,25 @@ var ModelPoolChoices = []string{"on", "read", "off"}
 // planner internals. They are listed read-only in the sheet's environment
 // footer and never become editable rows.
 var OperatorEnvPins = []string{
+	// The factory page's developer switch. CODEAF_FACTORY_FIXTURE puts a still,
+	// made-up floor on the page in place of the person's own. It is for the
+	// people who build the page; a row offering to hide your real floor behind a
+	// fixture is not a preference, so plumbing.
+	"CODEAF_FACTORY_FIXTURE",
+	// The desktop's bundled launch marks a trusted local window with
+	// CODEAF_APP_LOCAL_GUI; the engine consumes it at start. It is launch
+	// plumbing a person never sets, not a preference.
+	"CODEAF_APP_LOCAL_GUI",
+	// Factory worker routing and stage posture are launch plumbing, not
+	// editable profile preferences.
+	"CODEAF_FACTORY_BENCHES",
+	"CODEAF_FACTORY_POSTURE",
+	// The fence widening a launcher hands an unattended run (jailallow.go).
+	"CODEAF_JAIL_ALLOW",
+	// What a fenced command is told about itself; codeaf sets it, nobody reads
+	// it back as a preference.
+	"CODEAF_FENCED",
+	"CODEAF_FACTORY_NO_WORKER",
 	"CODEAF_BASE_URL",
 	// These two addresses make the real Codex browser and backend roads
 	// reproducible against a local fixture. They are plumbing, not preferences.
@@ -1055,12 +1069,19 @@ var OperatorEnvPins = []string{
 	// The harness supplies the admitted working-root identity to each execution.
 	// This runtime association is not an editable placement preference.
 	"CODEAF_WORKSPACE_URI",
+	// The engine hands each command the identity of the agent running it
+	// (internal/agentdid). It names who acted, so it is never a preference.
+	"CODEAF_AGENT_DID",
 	// These switches select unfinished ownership and archive lifecycles in an
 	// explicit prototype profile; they are not persisted settings. The archive
 	// executable path is operator plumbing, like CODEAF_FURROW below.
 	"CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP",
 	"CODEAF_PROTOTYPE_TASK_STORAGE",
 	"CODEAF_PROTOTYPE_ARCHIVE_BINARY",
+	// CODEAF_CLAUDE_BIN names the Claude Code program when `claude` on PATH is
+	// a shell alias a child process cannot start (internal/claudeagent). It is
+	// an executable path, so it is plumbing like the archive binary above.
+	"CODEAF_CLAUDE_BIN",
 	// CODEAF_RELAY points a headless peer at the relay this host pairs through
 	// (internal/pair). It is an address, so it is plumbing for the same reason
 	// CODEAF_BASE_URL is. CODEAF_RELAY_ADMIN_KEY names the operator seed file
@@ -1220,6 +1241,24 @@ var OperatorEnvPins = []string{
 	// answers. It is plumbing: diagnostic output a preference sheet has no
 	// business persisting.
 	"CODEAF_WIRE_LOG",
+	// CODEAF_GITHUB_LOG names a file for one line per GitHub request
+	// (internal/githubcalls). It is for measuring one run's rate-limit spend, so
+	// it is not a setting anyone keeps.
+	"CODEAF_GITHUB_LOG",
+	// CODEAF_GITHUB_CLIENT_ID names the GitHub app the factory's browser
+	// sign-in asks for a device code (internal/factory/github). It is a
+	// build-time identity the release normally bakes in, so it is not a
+	// setting a person keeps.
+	"CODEAF_GITHUB_CLIENT_ID",
+	// CODEAF_GITHUB_LOGIN_URL points that same sign-in at a stand-in GitHub for
+	// tests. It is test plumbing, never a preference.
+	"CODEAF_GITHUB_LOGIN_URL",
+	// Opt-in developer profiling output and its bounded capture controls. These
+	// are process instrumentation, not persisted model or user preferences.
+	"CODEAF_DIAGNOSTIC_PROFILE_DIR",
+	"CODEAF_DIAGNOSTIC_PROFILE_SECONDS",
+	"CODEAF_DIAGNOSTIC_PROFILE_HEAP",
+	"CODEAF_DIAGNOSTIC_PROFILE_DELAY",
 	// CODEAF_QUESTION_DEMO names one of the fixture questions the question page
 	// draws itself with (internal/tui3's questiondemo.go), so that a page whose
 	// real questions do not exist yet can be SEEN full rather than only through
@@ -1752,6 +1791,9 @@ func (s Setting) PinnedBy() (string, bool) {
 	if strings.TrimSpace(env.Value(s.Env)) == "" {
 		return "", false
 	}
+	if strings.HasPrefix(s.Env, "CODEAF_") {
+		return env.Spelling(s.Env)
+	}
 	return s.Env, true
 }
 
@@ -2007,8 +2049,8 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyModelPool, Category: CategoryModels, Kind: SettingChoice,
 			Label: "model pool", Env: "CODEAF_MODEL_POOL", Choices: ModelPoolChoices,
-			Hint: "codeaf picks your models from the public Model Pool, and your runs improve it. " +
-				"On by default: what leaves is computed, text-free numbers under a per-install nonce, " +
+			Hint: "Off by default: no pool judging, recommendations or sharing. Task roles still follow your task-model settings. " +
+				"on: use and contribute computed, text-free numbers under a per-install nonce, " +
 				"never code, prompts or paths. read: use the pool, send nothing. off: neither " +
 				"(CODEAF_MODEL_POOL=off for one run).",
 			read:  func() string { return ModelPoolAt(dir).Mode.String() },
@@ -2121,7 +2163,7 @@ func (s *Settings) build() []Setting {
 				"waits for midnight or for you to raise it here. " +
 				"Say none for no limit. The limit value follows your paired computers; spending against it is counted per computer. A change lands at the next rail check.",
 			read:    func() string { return moneyValue(resolvedDollars(DailyBudgetUSDAt(dir))) },
-			write:   func(raw string) error { return writeDollars(dir, KeyDailyBudget, raw) },
+			write:   func(raw string) error { return writeDailyBudget(dir, raw) },
 			receipt: s.spentTodayReceipt,
 		},
 		Setting{
@@ -2323,11 +2365,10 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyTaskAudit, Category: CategoryTasks, Kind: SettingChoice,
 			Label: "task audit", Choices: TaskAuditModes,
-			Hint: "when on, every task node's work is checked by an independent read-only " +
-				"auditor — it runs the repo's own verification and reads the diff — before " +
-				"anything may merge into your branch. Off trusts the node's own report and " +
-				"merges unaudited. On is the default: the audit is what 'done' means, and it " +
-				"roughly doubles a small task's model cost.",
+			Hint: "when on, a separate read-only checker runs the repository's checks and reads " +
+				"the diff before a task's work may merge into your branch. When off, codeaf " +
+				"trusts the task's own report, merges its work and lands done without this check. " +
+				"On is the default and roughly doubles a small task's model cost.",
 			read:  func() string { return TaskAuditAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyTaskAudit, raw, TaskAuditModes) },
 		},
@@ -2349,15 +2390,8 @@ func (s *Settings) build() []Setting {
 		},
 		Setting{
 			Key: KeyMemoryEnabled, Category: CategoryPractice, Kind: SettingChoice,
-			Label: "notice things to remember", Choices: MemoryModes,
-			// THE ONE SPELLING OF WHAT THIS ROW DOES: the settings panel reads it
-			// as the row's detail and the settings tool reads it as its hint, so
-			// the two cannot disagree. Off comes first because it is what a
-			// person scanning the row needs to know before anything else.
-			Hint: "Off stops only the noticing: what you keep with /remember still rides every " +
-				"conversation, and nothing saved is deleted. On, after a turn you typed, codeaf may " +
-				"keep one line you said that should hold everywhere — a preference, a rule, a " +
-				"correction — and tells you; the Memories tab shows, forgets and puts back any of it.",
+			Label: "learn from chats and jobs", Choices: MemoryModes,
+			Hint:  MemoryCostNote + " Off stops automatic learning; nothing saved is deleted, and saved knowledge and /remember stay available. A call already in flight finishes and is billed.",
 			read:  func() string { return MemoryAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyMemoryEnabled, raw, MemoryModes) },
 		},
@@ -2550,12 +2584,12 @@ func (s *Settings) build() []Setting {
 		},
 		Setting{
 			Key: KeyModelFallbacks, Category: CategoryModels, Kind: SettingText,
-			Label: "fallback models", EmptyLabel: "nearest in the catalog",
+			Label: "fallback models", EmptyLabel: "DeepSeek V4.1 Flash",
 			Hint: "where a conversation goes when your model cannot answer — nothing serving " +
 				"it will take the request, it keeps going quiet mid-reply, or it is being " +
 				"rate limited and will not stop. One or more slugs, comma-separated, first " +
 				"tried first: `openai/gpt-5-mini, anthropic/claude-sonnet-4`. Leave it blank " +
-				"and the nearest same-class model in the catalog is used. The turn says which " +
+				"to use DeepSeek V4.1 Flash by default. The turn says which " +
 				"one it moved to.",
 			read:  func() string { return ModelFallbacksAt(dir) },
 			write: func(raw string) error { return writeText(dir, KeyModelFallbacks, raw) },
@@ -2873,7 +2907,7 @@ func SpentFigure(usd float64) string {
 // MoneyFloor is the smallest amount any surface writes as a figure: a hundredth
 // of a cent, four places after the point. It is the number [SubCent] compares
 // against AND the number it prints, so it is spelled once.
-const MoneyFloor = 0.0001
+const MoneyFloor = money.Floor
 
 // SubCent is how a positive amount SMALLER THAN A CENT is written, everywhere.
 //
@@ -2885,10 +2919,7 @@ const MoneyFloor = 0.0001
 // was spent, which is the emptiness law's failure turned inside out. Every
 // sub-cent figure is written here now, and the floor never rounds to a lie.
 func SubCent(usd float64) string {
-	if usd < MoneyFloor/2 {
-		return "<" + fmt.Sprintf("$%.4f", MoneyFloor)
-	}
-	return fmt.Sprintf("$%.4f", usd)
+	return money.SubCent(usd)
 }
 
 // spentTodayReceipt is the day's spend beside the day's ceiling (13). Nil seam
@@ -3689,16 +3720,25 @@ func knownDocumentEngine(engine string) bool {
 // absent setting uses YOLO; an unrecognised persisted value still asks, so a
 // garbled setting does not widen a previously selected posture.
 func ToolApprovalModeAt(profileDir string) string {
-	if value, ok := persistedString(profileDir, KeyToolApprovalMode); ok {
+	values, err := ReadProfileApprovalConfig(profileDir)
+	if err != nil {
+		return "prompt"
+	}
+	return toolApprovalMode(values, DefaultToolApprovalMode)
+}
+
+func toolApprovalMode(values map[string]json.RawMessage, fallback string) string {
+	encoded, found := values[KeyToolApprovalMode]
+	if !found {
+		return fallback
+	}
+	var value string
+	if err := json.Unmarshal(encoded, &value); err == nil {
 		if mode := strings.ToLower(strings.TrimSpace(value)); knownToolApprovalMode(mode) {
 			return mode
 		}
-		return "prompt"
 	}
-	if _, found := persistedValue(profileDir, KeyToolApprovalMode); found {
-		return "prompt"
-	}
-	return DefaultToolApprovalMode
+	return "prompt"
 }
 
 // HeadlessToolApprovalModeAt requires an explicit setting to open an unwatched gate.
@@ -3713,13 +3753,11 @@ func HeadlessToolApprovalModeAt(workspace, profileDir string) (string, error) {
 	} else if found {
 		return project.ResolveString(profileDir, KeyToolApprovalMode)
 	}
-	if _, found := persistedValue(profileDir, KeyToolApprovalMode); found {
-		if _, text := persistedString(profileDir, KeyToolApprovalMode); !text {
-			return "prompt", nil
-		}
-		return ToolApprovalModeAt(profileDir), nil
+	values, err := ReadProfileApprovalConfig(profileDir)
+	if err != nil {
+		return "", err
 	}
-	return "prompt", nil
+	return toolApprovalMode(values, "prompt"), nil
 }
 
 // GuardianAt resolves whether a small model answers a tool prompt before the
@@ -3920,14 +3958,50 @@ func TaskStartAt(profileDir string) string {
 	return DefaultTaskStart
 }
 
-// MemoryAt resolves the memory row to its word, default on.
+// MemoryAt resolves the learning switch, retaining an explicit saved choice.
 func MemoryAt(profileDir string) string {
-	if value, ok := persistedString(profileDir, KeyMemoryEnabled); ok {
-		if value = strings.TrimSpace(value); value != "" {
-			return value
-		}
+	enabled, _ := MemorySettingAt(profileDir)
+	if enabled {
+		return MemoryOn
 	}
-	return DefaultMemory
+	return MemoryOff
+}
+
+// MemorySettingAt reads saved words and booleans, and whether one was saved.
+func MemorySettingAt(profileDir string) (enabled, saved bool) {
+	values, err := readProfileConfigStrict(profileDir)
+	if err != nil {
+		return false, false
+	}
+	raw, present := values[KeyMemoryEnabled]
+	if !present {
+		return DefaultMemory == MemoryOn, false
+	}
+	var value any
+	if json.Unmarshal(raw, &value) != nil {
+		return false, false
+	}
+	switch choice := value.(type) {
+	case string:
+		switch strings.TrimSpace(choice) {
+		case MemoryOn:
+			return true, true
+		case MemoryOff:
+			return false, true
+		}
+	case bool:
+		return choice, true
+	}
+	return false, false
+}
+
+// WriteMemoryEnabled saves an explicit choice through the shared profile writer.
+func WriteMemoryEnabled(profileDir string, enabled bool) error {
+	word := MemoryOff
+	if enabled {
+		word = MemoryOn
+	}
+	return writeProfileValue(profileDir, KeyMemoryEnabled, word)
 }
 
 // PromptProfileAt resolves the prompt-profile row to its word: the environment
@@ -3957,10 +4031,7 @@ func PromptProfileAt(profileDir string) string {
 	return DefaultPromptProfile
 }
 
-// MemoryEnabledAt is [MemoryAt] as the bool the v3 door reads before it opens a
-// brain at all: memory off is a session handed no store, which is what makes
-// "no block and no calls" a property of the wiring rather than a branch every
-// caller has to remember (internal/session's memory.go states the law).
+// MemoryEnabledAt reads automatic learning live; saved lines remain readable.
 func MemoryEnabledAt(profileDir string) bool {
 	return MemoryAt(profileDir) == MemoryOn
 }
@@ -4144,12 +4215,15 @@ func RetiredPinNote(raw string) string {
 	return fmt.Sprintf("%s are no longer roles — those pins are ignored", strings.Join(dropped, " and "))
 }
 
-// ModelFallbacksAt resolves the fallback chain as the person wrote it.
+// DefaultFallbackModel is the shared default for chats, teams and factory stages.
+const DefaultFallbackModel = "deepseek/deepseek-v4.1-flash"
+
+// ModelFallbacksAt resolves an explicit chain, or the shared default when blank.
 func ModelFallbacksAt(profileDir string) string {
-	if value, ok := persistedString(profileDir, KeyModelFallbacks); ok {
+	if value, ok := persistedString(profileDir, KeyModelFallbacks); ok && strings.TrimSpace(value) != "" && strings.TrimSpace(value) != "nearest in the catalog" {
 		return strings.TrimSpace(value)
 	}
-	return ""
+	return DefaultFallbackModel
 }
 
 // ParseModelFallbacks reads the row into an ordered list of model slugs.

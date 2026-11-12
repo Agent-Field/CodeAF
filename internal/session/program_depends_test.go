@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"slices"
 	"strings"
 	"testing"
@@ -29,7 +30,7 @@ func TestAProgramsProposalNamingUnfinishedWorkIsRefused(t *testing.T) {
 		if got, want := agent.proposalDependencyRefusal(spec), programCannotWaitRefusal("senior-dev", []uint64{3}); got != want {
 			t.Fatalf("a program's proposal on a %s node answered %q, want %q", state, got, want)
 		}
-		if refusal := agent.refuseProposedTask(spec); refusal == nil {
+		if refusal := agent.refuseProposedTask(context.Background(), spec); refusal == nil {
 			t.Fatalf("the door let a program's proposal on a %s node through", state)
 		}
 	}

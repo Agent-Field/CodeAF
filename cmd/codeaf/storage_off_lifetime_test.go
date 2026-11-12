@@ -17,6 +17,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	cellstoretest "github.com/Agent-Field/codeaf/internal/cellstore/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellsync"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/directory"
@@ -148,7 +149,7 @@ func waitStorageOffBoundary(t *testing.T, what string, ready func() bool) {
 
 func storageOffSavedChat(t *testing.T) (session.Config, cell.Cell) {
 	t.Helper()
-	cfg, c := spokenDoorChat(t)
+	cfg, c := spokenDoorChatWithPairing(t, true)
 	// A real saved-chat location lets the ordinary Home reader find the reopened workspace.
 	root := filepath.Join(session.PlacesRoot(), "project", c.ID)
 	if err := os.MkdirAll(filepath.Dir(root), 0700); err != nil {
@@ -168,8 +169,8 @@ func storageOffSavedChat(t *testing.T) (session.Config, cell.Cell) {
 }
 
 func TestStorageOffContinuedChatSendsAfterItsOwnEmptyHeadHoldExpires(t *testing.T) {
+	cellstoretest.EngineDir(t)
 	cfg, c := storageOffSavedChat(t)
-	t.Cleanup(cellstore.StopSpawned)
 	id, err := identity.Ensure(home.Dir())
 	if err != nil {
 		t.Fatal(err)
@@ -206,7 +207,7 @@ func TestStorageOffContinuedChatSendsAfterItsOwnEmptyHeadHoldExpires(t *testing.
 	if err := cellstore.NotePublished(c, ""); err != nil {
 		t.Fatal(err)
 	}
-	taker := takeover{s.Continuer(eng, syncsetup.TakeOptions{RootFor: func(string) string { return c.Root }})}
+	taker := takeover{c: s.Continuer(eng, syncsetup.TakeOptions{RootFor: func(string) string { return c.Root }})}
 	continued, err := taker.Take(t.Context(), c.ID)
 	if err != nil || !continued.LocalOnly {
 		t.Fatalf("continue: %+v %v", continued, err)
@@ -340,8 +341,8 @@ func TestStorageOnChatWithDifferentHeadsStillAsksToContinue(t *testing.T) {
 
 func testRecordedHeadReturn(t *testing.T, mode string) {
 	t.Helper()
+	cellstoretest.EngineDir(t)
 	cfg, c := storageOffSavedChat(t)
-	t.Cleanup(cellstore.StopSpawned)
 	id, err := identity.Ensure(home.Dir())
 	if err != nil {
 		t.Fatal(err)
@@ -387,7 +388,7 @@ func testRecordedHeadReturn(t *testing.T, mode string) {
 	}
 	permission("off")
 	writesAtRevoke := store.writes.Load()
-	taker := takeover{s.Continuer(eng, syncsetup.TakeOptions{RootFor: func(string) string { return c.Root }})}
+	taker := takeover{c: s.Continuer(eng, syncsetup.TakeOptions{RootFor: func(string) string { return c.Root }})}
 	continued, err := taker.Take(t.Context(), c.ID)
 	if err != nil || !continued.LocalOnly {
 		t.Fatalf("continue after revoke: %+v %v", continued, err)

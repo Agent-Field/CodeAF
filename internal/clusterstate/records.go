@@ -46,6 +46,24 @@ type Device struct {
 	Platform string `json:"platform,omitempty"`  // darwin|linux|windows|ios|android|other
 	Created  int64  `json:"created,omitempty"`   // directory ms when the device joined
 	LastSeen int64  `json:"last_seen,omitempty"` // directory ms of the last watch socket close or hello
+
+	// Outbox is the messages this device wrote to chats another computer
+	// holds, until the holder says it took them; Took is the ids of other
+	// devices' messages this device put in a chat's queue here. A message's
+	// text is sealed under the metadata key, so the relay never reads it.
+	// Absent from older devices and from relays that do not advertise
+	// Codeaf-Chat-Notes.
+	Outbox []Note   `json:"outbox,omitempty"`
+	Took   []string `json:"took,omitempty"`
+}
+
+// Note is one message waiting in a device's outbox for whichever computer
+// holds Cell. Text is b64, sealed; At is the sender's clock in ms, for order.
+type Note struct {
+	ID   string `json:"id"`
+	Cell string `json:"cell"`
+	Text string `json:"text"`
+	At   int64  `json:"at"`
 }
 
 // Lease says who may write a cell. Only the directory clock sets Expires.
@@ -56,6 +74,18 @@ type Lease struct {
 	Pending uint32 `json:"pending"` // turns sealed on the holder and not yet durable
 	// ReleasedAt is directory time of an explicit release, separate from the last turn.
 	ReleasedAt int64 `json:"released_at,omitempty"`
+	// UploadSent of UploadTotal bytes is how far the holder's upload of its
+	// pending turns had got at its last beat. Absent when nothing is pending,
+	// when the holder is not uploading, or from a holder or relay that predates
+	// it; a publish, a release and an acquire clear it. Display only.
+	UploadSent  uint64 `json:"upload_sent,omitempty"`
+	UploadTotal uint64 `json:"upload_total,omitempty"`
+	// Working says the holder was in the middle of a turn at its last beat, so
+	// another computer can say the chat is working there and not merely open.
+	// A beat sets it either way; an acquire and a release clear it, and a
+	// publish keeps it, because a turn publishes as it goes. Display only: it
+	// is never a reason to refuse anything.
+	Working bool `json:"working,omitempty"`
 }
 
 // MaxFrameHints and FrameHintBudget bound optional warm-transfer metadata and
@@ -72,15 +102,20 @@ type FrameHint struct {
 // Cell is keyed by cell ULID. It exists only once it has a durable head.
 type Cell struct {
 	// FrameHints is optional and absent by default; every cluster member must understand it before a device sends it.
-	FrameHints  []FrameHint                  `json:"frame_hints,omitempty"`
-	V           uint16                       `json:"V"`
-	Head        string                       `json:"head"`       // last durable turn id (hex64)
-	DurableAt   int64                        `json:"durable_at"` // directory ms
-	Class       string                       `json:"class"`
-	Size        uint64                       `json:"size"`
-	ParentCell  string                       `json:"parent_cell,omitempty"`
-	Title       string                       `json:"title,omitempty"` // b64, sealed
-	Keys        map[string]map[string]string `json:"keys"`            // cell_key_id -> identity -> wrapped
+	FrameHints []FrameHint `json:"frame_hints,omitempty"`
+	V          uint16      `json:"V"`
+	Head       string      `json:"head"`               // last durable turn id (hex64)
+	DurableAt  int64       `json:"durable_at"`         // directory ms
+	SavedAt    int64       `json:"saved_at,omitempty"` // sealed head's time, independent of publication
+	Class      string      `json:"class"`
+	Size       uint64      `json:"size"`
+	ParentCell string      `json:"parent_cell,omitempty"`
+	Title      string      `json:"title,omitempty"` // b64, sealed
+	// Folder is the name of the folder the chat works in, sealed like the
+	// title, so another computer can say what a move copies. Absent from older
+	// publishers and from relays that do not advertise Codeaf-Chat-Folders.
+	Folder      string                       `json:"folder,omitempty"`
+	Keys        map[string]map[string]string `json:"keys"` // cell_key_id -> identity -> wrapped
 	Lease       Lease                        `json:"lease"`
 	OrphanTurns uint32                       `json:"orphan_turns,omitempty"` // turns in a death branch
 	Archived    bool                         `json:"archived,omitempty"`     // a merged or discarded branch
@@ -106,10 +141,12 @@ type CellView struct {
 
 // CellInit creates a cell. The calling device holds the new lease at fence 1.
 type CellInit struct {
+	SavedAt     int64                        `json:"saved_at,omitempty"`
 	FrameHints  []FrameHint                  `json:"frame_hints,omitempty"`
 	Head        string                       `json:"head"`
 	Class       string                       `json:"class"`
 	Title       string                       `json:"title,omitempty"`
+	Folder      string                       `json:"folder,omitempty"`
 	ParentCell  string                       `json:"parent_cell,omitempty"`
 	Size        uint64                       `json:"size"`
 	Keys        map[string]map[string]string `json:"keys"`
@@ -121,10 +158,18 @@ type CellInit struct {
 type Beat struct {
 	Fence   uint64 `json:"fence"`
 	Pending uint32 `json:"pending"`
+	// UploadSent of UploadTotal is how far the upload of the pending turns has
+	// got; both absent while nothing uploads.
+	UploadSent  uint64 `json:"upload_sent,omitempty"`
+	UploadTotal uint64 `json:"upload_total,omitempty"`
+	// Working says a turn is running on the holder. Sent only to a relay that
+	// answers Codeaf-Working-Beats: 1, because older relays decode strictly.
+	Working bool `json:"working,omitempty"`
 }
 
 // Publish moves a cell's durable head under a lease the caller holds.
 type Publish struct {
+	SavedAt    int64       `json:"saved_at,omitempty"`
 	FrameHints []FrameHint `json:"frame_hints,omitempty"`
 	Fence      uint64      `json:"fence"`
 	OldHead    string      `json:"old_head"`
@@ -132,6 +177,7 @@ type Publish struct {
 	Size       uint64      `json:"size"`
 	Class      string      `json:"class"`
 	Title      string      `json:"title,omitempty"`  // empty keeps the current title
+	Folder     string      `json:"folder,omitempty"` // empty keeps the current folder
 	Pending    uint32      `json:"pending"`          // turns still not durable after this one
 	Frames     []string    `json:"frames,omitempty"` // empty or absent replaces the record's plan with none
 }
@@ -149,4 +195,14 @@ type Rotation struct {
 type LeaseExpectation struct {
 	Device string `json:"device"`
 	Fence  uint64 `json:"fence"`
+	Head   string `json:"head,omitempty"`
+}
+
+// Matches requires the observed holder and fence. A supplied saved head
+// adds a content check without relaxing ownership.
+func (e LeaseExpectation) Matches(c Cell) bool {
+	if c.Lease.Device != e.Device || e.Head != "" && c.Head != e.Head {
+		return false
+	}
+	return c.Lease.Fence == e.Fence
 }

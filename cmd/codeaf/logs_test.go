@@ -7,6 +7,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -17,6 +18,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/calllog"
 	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/testutil"
 )
 
 // TestMain switches the model-call log OFF for this package and gives the
@@ -41,6 +43,10 @@ func TestMain(m *testing.M) {
 	if code, child := runAsCarriedChild(); child {
 		os.Exit(code)
 	}
+	if err := testutil.CanonicalizeTempRoots(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 	// C27.7 keeps unrelated CLI fixtures on host execution. Cell wiring tests
 	// declare availability, and engine-backed tests require the real engine;
 	// the stamped binary smoke independently proves the production default.
@@ -60,6 +66,9 @@ func TestMain(m *testing.M) {
 	if _, pinned := os.LookupEnv("CODEAF_MODEL_POOL_SUBMIT_URL"); !pinned {
 		os.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/v1/rows")
 	}
+	// Ordinary doctor tests have fake keys and must never contact a provider.
+	doctorKeyClient = &http.Client{Transport: setupHealthTransport(func(*http.Request) (*http.Response, error) { return nil, errors.New("offline test fixture") })}
+	readinessLookPath = func(string) (string, error) { return "", errors.New("tools absent in test fixture") }
 	restore := isolateTestEnvironment()
 	// AND THE CREW ROUTER READS ONE FIXED CATALOG. The process's catalog is
 	// seated once, by whichever test first builds it, from whatever server that

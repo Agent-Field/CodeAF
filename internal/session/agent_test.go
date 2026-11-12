@@ -272,20 +272,52 @@ func newTestAgent(t *testing.T, completer Completer, mutate func(*Config)) (*Age
 	if err != nil {
 		t.Fatalf("newAgent: %v", err)
 	}
-	// A SESSION'S DEFERRED WRITES ARE SETTLED BEFORE ITS DIRECTORIES GO AWAY, the
-	// same call an exit door owes ([Agent.SettleWrites], placemeta.go). Cleanups
-	// run last-registered-first, so this lands before the tempdirs above it.
-	//
-	// AND THE SETTLE IS AFTER THE CLOSE, which is the order these two were in the
-	// wrong way round. [Agent.Close] settles on its own way in, so a settle in
-	// front of it is a settle of what the session owed a moment ago; what can
-	// still be owed is what the CLOSE itself sets in motion — a node stopped, a
-	// follow-up dropped, a place referred on the way out — and a write owed there
-	// lands on a directory the runner has already taken away
-	// (`TempDir RemoveAll cleanup: directory not empty`).
-	t.Cleanup(agent.SettleWrites)
-	t.Cleanup(func() { _ = agent.Close() })
+	// A private render gate, so a test that leaves a provider call blocked
+	// cannot starve the next test of the process-wide places.
+	agent.jobs.gate = newRenderGate(jobRenderCap)
+	ownTestAgent(t, agent)
 	return agent, workspace
+}
+
+// newTestProviderAgent preserves the public constructor while giving its
+// test the same accounting ownership as newTestAgent.
+func newTestProviderAgent(t *testing.T, config Config) (*Agent, error) {
+	t.Helper()
+	agent, err := New(config)
+	if err == nil {
+		ownTestAgent(t, agent)
+	}
+	return agent, err
+}
+
+func newTestAgentWithConfig(t *testing.T, config Config, completer Completer) (*Agent, error) {
+	t.Helper()
+	agent, err := newAgent(config, completer)
+	if err == nil {
+		ownTestAgent(t, agent)
+	}
+	return agent, err
+}
+
+func ownTestAgent(t *testing.T, agent *Agent) {
+	t.Helper()
+	// The fixture owns the process side of shutdown before its home is removed.
+	// Close stops requests but deliberately leaves receipts and the shared usage
+	// writer alive. Join receipts before stopping that writer, or a cancelled
+	// arm can bank an unbilled marker after the old writer has already stopped.
+	// Capture this agent's ledger rather than resolving a later CODEAF_HOME.
+	t.Cleanup(func() {
+		_ = agent.Close()
+		ctx, cancel := context.WithTimeout(context.Background(), provider.ReceiptWait)
+		defer cancel()
+		if err := agent.WaitReceipts(ctx); err != nil {
+			t.Errorf("fixture receipt settlement: %v", err)
+		}
+		agent.SettleWrites()
+		// Stop retains its existing bounded fallback when the disk stalls.
+		// The responsive-disk join is asserted by the fixture regression.
+		StopUsageWriter(agent.config.usageLedger)
+	})
 }
 
 // collect drains one turn's stream to close, failing rather than hanging.

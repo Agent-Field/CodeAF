@@ -3,6 +3,7 @@ package tui3
 import (
 	"context"
 	"errors"
+	"github.com/Agent-Field/codeaf/internal/claudemodel"
 	"net/url"
 	"sort"
 	"strings"
@@ -215,6 +216,8 @@ func modelConnectionStatus(source modelsource.Source, held bool) connect.Status 
 		if source.ID == modelsource.DefaultID {
 			need = "browser · key"
 		}
+	case source.ID == claudemodel.ID:
+		need = "your Claude Code sign-in · no key"
 	case modelsource.IsCustomID(source.ID):
 		need = "address · key"
 	case len(source.Regions) > 0:
@@ -237,7 +240,7 @@ func modelConnectionStatus(source modelsource.Source, held bool) connect.Status 
 		ID: modelConnectionID(source.ID), Name: name, Blurb: need,
 		Auth: connect.AuthKey, Category: "models",
 	}
-	if source.ID == "ollama" {
+	if source.ID == "ollama" || source.ID == claudemodel.ID {
 		service.Auth = "none"
 	} else if source.ID == "codex" || source.ID == modelsource.DefaultID {
 		service.Auth = connect.AuthBrowser
@@ -325,6 +328,11 @@ func (a *app) startModelConnect(row connect.Status, fromSheet bool) tea.Cmd {
 			a.connPanel.close()
 		}
 		return a.beginCodexConnect(*draft)
+	case source.ID == claudemodel.ID:
+		// NO KEY IS ASKED FOR: codeaf never holds the `claude` program's
+		// sign-in, so connecting is checking it is here and signed in.
+		a.modelDraft = nil
+		return a.beginClaudeCodeConnect(*draft)
 	default:
 		draft.step = modelConnectKey
 		a.showModelEntry(newModelEntry(row.ID, source.Name, "key", nil, true), fromSheet)
@@ -449,6 +457,39 @@ func (a *app) adoptCodexFlow(msg codexFlowMsg) tea.Cmd {
 	}
 }
 
+// beginClaudeCodeConnect connects the person's own `claude` program through the
+// same door the app and `codeaf connect claude-code` use, and keeps its three
+// models with their window, so a conversation on one is measured against
+// Claude's window and not a stranger's default.
+func (a *app) beginClaudeCodeConnect(draft modelConnectDraft) tea.Cmd {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if draft.setupAttempt != nil {
+		ctx = draft.setupAttempt.ctx
+		a.setup.providerBusy = true
+		a.touch()
+	}
+	dir := a.profileDir
+	return func() tea.Msg {
+		outcome, err := config.ConnectClaudeCode(ctx, dir)
+		var models []Model
+		if err == nil {
+			for _, m := range claudemodel.Models() {
+				models = append(models, Model{ID: m.ID, ContextLength: m.ContextLength})
+			}
+			if connected, found := config.ResolveSources(dir, "", "").ByID(claudemodel.ID); found {
+				_ = WriteModelCacheFor(connected.Source.ID, connected.Address, models)
+			}
+		}
+		return modelConnectResultMsg{
+			service: claudemodel.ID, name: claudemodel.Name, written: claudemodel.ID,
+			outcome: outcome, models: models, err: err, setupAttempt: draft.setupAttempt,
+		}
+	}
+}
+
 // codexConnectedModels is the Codex rows this surface keeps once a sign-in
 // lands: the catalog [config.ConnectCodex] just remembered, WINDOWS INCLUDED,
 // and the same rows written to this service's model cache so the next launch
@@ -483,7 +524,7 @@ func codexCatalogModels(dir string) []Model {
 	if !found {
 		return nil
 	}
-	return surfaceModels(config.CodexRememberedModels(connected, dir))
+	return surfaceModels(config.CodexRememberedModels(connected, dir), false)
 }
 
 func codexFailureReason(err error) string {
@@ -806,7 +847,7 @@ func (a *app) beginModelConnect(draft modelConnectDraft) tea.Cmd {
 					options := config.CatalogOptionsFor(connected, dir)
 					_ = modelcatalog.Remember(options, seed)
 					catalog, refreshErr := modelcatalog.Refresh(ctx, options)
-					if refreshed := surfaceModels(catalog.ModelsNow()); refreshErr == nil && len(refreshed) > 0 {
+					if refreshed := surfaceModels(catalog.ModelsNow(), true); refreshErr == nil && len(refreshed) > 0 {
 						models = refreshed
 					}
 					_ = WriteModelCacheFor(instance, connected.Address, models)
@@ -829,7 +870,12 @@ func modelsFromListedIDs(ids []string) []Model {
 	return cleanModels(models)
 }
 
-func surfaceModels(rows []modelcatalog.Model) []Model {
+// surfaceModels is a catalog's rows as the rows this surface draws. listed
+// says the rows came from the service's own listing just read, where a row
+// that is not PriceUnknown published its figures, so a zero is free; rows a
+// cache may have kept from ids alone know no price, and their zeros are
+// absences ([modelcatalog.Model.PriceUnknown]).
+func surfaceModels(rows []modelcatalog.Model, listed bool) []Model {
 	models := make([]Model, 0, len(rows))
 	for _, row := range rows {
 		model := Model{
@@ -837,9 +883,14 @@ func surfaceModels(rows []modelcatalog.Model) []Model {
 			Output: row.OutputModalities, Input: row.InputModalities,
 			Reasoning: row.Reasons() || row.ReasoningLevels(),
 		}
+		if row.Created > 0 {
+			model.ListedAt = row.Created
+		}
 		if !row.PriceUnknown {
 			model.PromptPrice = row.PromptPrice
 			model.CompletionPrice = row.CompletionPrice
+			model.RequestPrice = row.RequestPrice
+			model.PriceKnown = listed
 			model.CacheReadPrice = row.CacheReadPrice
 		}
 		models = append(models, model)

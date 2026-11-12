@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"os/signal"
 	"syscall"
 	"testing"
 	"time"
@@ -40,6 +41,12 @@ func TestASecondInterruptLeavesAShellRunAtOnce(t *testing.T) {
 		// Still here: the second ctrl-c was swallowed.
 		os.Exit(0)
 	}
+	// A background suite may inherit ignored SIGINT from its shell. Catch it
+	// while starting the child so exec gives it the foreground disposition;
+	// stopping the child's handler must then restore termination, not ignore.
+	interrupts := make(chan os.Signal, 1)
+	signal.Notify(interrupts, os.Interrupt)
+	t.Cleanup(func() { signal.Stop(interrupts) })
 	command := exec.Command(os.Args[0], "-test.run=^TestASecondInterruptLeavesAShellRunAtOnce$")
 	command.Env = append(os.Environ(), carriedSecondSignalEnv+"=1")
 	began := time.Now()

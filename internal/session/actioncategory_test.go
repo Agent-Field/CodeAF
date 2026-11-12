@@ -1,6 +1,7 @@
 package session
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -137,6 +138,9 @@ func TestAFamilyWordAloneIsNotACaption(t *testing.T) {
 // the day it lands.
 func TestEveryToolOnTheBeltHasAnActionFamily(t *testing.T) {
 	agent := &Agent{config: Config{Workspace: t.TempDir(), ProfileDir: t.TempDir()}}
+	// AND AN INDEX, so share_deliverable — present only where a shared row has
+	// somewhere to land (share_tool.go) — is on the belt this gate walks.
+	agent.config.ArtifactsIndex = filepath.Join(t.TempDir(), ArtifactsIndexName)
 	agent.tools = agent.belt()
 	tools := agent.offeredTools()
 	if len(tools) == 0 {

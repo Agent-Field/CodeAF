@@ -71,7 +71,9 @@ func swapClient(t *testing.T, engine *swapEngine) (*remote.Client, *recordingAge
 func TestTheHostedDoorSaysItsResumeSelectsRatherThanAdds(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	client, _ := swapClient(t, &swapEngine{})
-	options, _ := hostOptions(onePipeFleet("devbox", client), client.Welcome(), false)
+	fleet := onePipeFleet("devbox", client)
+	t.Cleanup(fleet.closeAll)
+	options, _ := hostOptions(fleet, client.Welcome(), false)
 	if !options.SharedAgent {
 		t.Fatal("the hosted door did not say its conversations share one handle, so the surface will keep the same agent twice")
 	}
@@ -86,7 +88,9 @@ func TestResumingOverAConnectionSelectsTheSameHandleAndEndsTheOneItLeft(t *testi
 	t.Setenv("HOME", t.TempDir())
 	engine := &swapEngine{}
 	client, first := swapClient(t, engine)
-	options, _ := hostOptions(onePipeFleet("devbox", client), client.Welcome(), false)
+	fleet := onePipeFleet("devbox", client)
+	t.Cleanup(fleet.closeAll)
+	options, _ := hostOptions(fleet, client.Welcome(), false)
 
 	next, err := options.Resume("/srv/app/b.jsonl")
 	if err != nil {

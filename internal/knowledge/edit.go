@@ -4,22 +4,32 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"regexp"
 	"strings"
 	"time"
+	"unicode"
 )
 
 var ErrPageChanged = errors.New("knowledge page changed; reopen it before saving or deleting")
+var ErrInvalidTitle = fmt.Errorf("use a title of 1 to %d characters on one line", MaxTitleRunes)
+
+// MaxTitleRunes bounds labels at the metadata door for every reader.
+const MaxTitleRunes = 200
 
 // Human overrides are separate database records. Publishing generated pages
 // always overlays the latest committed edits and tombstones in its transaction.
 type pageOverride struct {
-	ID                   string `json:"id"`
-	Deleted              bool   `json:"deleted,omitempty"`
-	Markdown             string `json:"markdown,omitempty"`
-	UpdatedAt            string `json:"updated_at"`
-	EvidenceBaselineHash string `json:"evidence_baseline_hash,omitempty"`
+	Title                string       `json:"title,omitempty"`
+	TitleAliases         []string     `json:"title_aliases,omitempty"`
+	ChoicesOnly          bool         `json:"choices_only,omitempty"`
+	Resolutions          []Resolution `json:"resolutions,omitempty"`
+	ID                   string       `json:"id"`
+	Deleted              bool         `json:"deleted,omitempty"`
+	Markdown             string       `json:"markdown,omitempty"`
+	UpdatedAt            string       `json:"updated_at"`
+	EvidenceBaselineHash string       `json:"evidence_baseline_hash,omitempty"`
 }
 
 func evidenceFingerprint(evidence []Evidence) string {
@@ -71,13 +81,20 @@ func (v *Vault) EditPage(id, expectedRevision, markdown string) error {
 	}
 	return v.changePage(id, expectedRevision, pageOverride{ID: id, Markdown: markdown})
 }
+
+// RenamePage changes a label without turning generated prose into a manual edit.
+// The id, scope and folder stay stable, and earlier labels remain link aliases.
+func (v *Vault) RenamePage(id, expectedRevision, title string) error {
+	title = strings.TrimSpace(title)
+	if title == "" || len([]rune(title)) > MaxTitleRunes || strings.IndexFunc(title, unicode.IsControl) >= 0 || strings.ContainsAny(title, "\u2028\u2029") {
+		return ErrInvalidTitle
+	}
+	return v.changePage(id, expectedRevision, pageOverride{ID: id, Title: title, ChoicesOnly: true})
+}
 func (v *Vault) DeletePage(id, expectedRevision string) error {
 	return v.changePage(id, expectedRevision, pageOverride{ID: id, Deleted: true})
 }
 func (v *Vault) changePage(id, revision string, override pageOverride) error {
-	if !v.Enabled() {
-		return ErrDisabled
-	}
 	db, err := v.database()
 	if err != nil {
 		return err
@@ -101,10 +118,22 @@ func (v *Vault) changePage(id, revision string, override pageOverride) error {
 	if revision == "" || page.Revision != revision {
 		return ErrPageChanged
 	}
+	overrides, err := readOverrides(tx)
+	if err != nil {
+		return err
+	}
+	renaming := override.Title != ""
+	prior := overrides[id]
+	override = mergeTitleChange(page, prior, override)
 	if override.Deleted {
 		override.Markdown = PageMarkdown(page)
 	}
-	override.EvidenceBaselineHash = evidenceFingerprint(page.Evidence)
+	if len(override.Resolutions) == 0 {
+		override.Resolutions = page.Resolutions
+	}
+	if !renaming || prior.ID == "" {
+		override.EvidenceBaselineHash = evidenceFingerprint(page.Evidence)
+	}
 	override.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
 	payload, err := json.Marshal(override)
 	if err != nil {
@@ -117,10 +146,7 @@ func (v *Vault) changePage(id, revision string, override pageOverride) error {
 	if err != nil {
 		return err
 	}
-	overrides, err := readOverrides(tx)
-	if err != nil {
-		return err
-	}
+	overrides[id] = override
 	effective := applyNativeOverrides(generated, overrides)
 	linkCompilation(effective)
 	pages, err := materializePages(effective)
@@ -142,6 +168,22 @@ func (v *Vault) changePage(id, revision string, override pageOverride) error {
 	}
 	return tx.Commit()
 }
+
+// mergeTitleChange keeps body edits and their evidence baseline independent of
+// a rename, and keeps a later body edit from erasing a person's chosen label.
+func mergeTitleChange(page Page, prior, next pageOverride) pageOverride {
+	if next.Title == "" {
+		next.Title, next.TitleAliases = prior.Title, prior.TitleAliases
+		return next
+	}
+	title := next.Title
+	if prior.ID != "" {
+		next = prior
+	}
+	next.Title = title
+	next.TitleAliases = sortedUnique(append(next.TitleAliases, page.Title))
+	return next
+}
 func applyPageOverrides(pages []Page, overrides map[string]pageOverride) ([]Page, error) {
 	kept := make([]Page, 0, len(pages))
 	visible := map[string]bool{}
@@ -150,15 +192,22 @@ func applyPageOverrides(pages []Page, overrides map[string]pageOverride) ([]Page
 			if override.Deleted {
 				continue
 			}
-			page.HumanEdited = true
-			page.HumanEditedAt = override.UpdatedAt
-			page.Links = nil
-			page.Backlinks = nil
-			page.Markdown = override.Markdown
-			page.Sections = manualSections(override.Markdown)
-			page.Claims = nil
-			page.NeedsEditorialUpdate = override.EvidenceBaselineHash == "" || override.EvidenceBaselineHash != evidenceFingerprint(page.Evidence)
-			page.LearningState = "human_edited"
+			page.Resolutions = override.Resolutions
+			if override.Title != "" {
+				page.Title, page.TitleEdited = override.Title, true
+				page.Aliases = sortedUnique(append(page.Aliases, override.TitleAliases...))
+			}
+			if !override.ChoicesOnly {
+				page.HumanEdited = true
+				page.HumanEditedAt = override.UpdatedAt
+				page.Links = nil
+				page.Backlinks = nil
+				page.Markdown = override.Markdown
+				page.Sections = manualSections(override.Markdown)
+				page.Claims = nil
+				page.NeedsEditorialUpdate = override.EvidenceBaselineHash == "" || override.EvidenceBaselineHash != evidenceFingerprint(page.Evidence)
+				page.LearningState = "human_edited"
+			}
 		}
 		visible[page.ID] = true
 		kept = append(kept, page)

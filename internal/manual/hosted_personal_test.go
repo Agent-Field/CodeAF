@@ -20,11 +20,12 @@ func TestR6R9R23HostedPersonalManualTruth(t *testing.T) {
 	if !ok {
 		t.Fatal("R9 coordination page is missing")
 	}
+	// The design law removes unusable manual leadership for this release, per #2559.
 	for _, claim := range []string{
 		"joins the hosted relay",
 		"as a durable learner",
-		"`codeaf cluster lead`",
-		"The voters are then two anchors and this computer",
+		"the coordinating computer cannot be chosen by hand",
+		"Tracked in issue #2559",
 		"routes signed coordination requests",
 		"waits for its own durable copy before replying",
 		"`codeaf cluster status`",

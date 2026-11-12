@@ -32,7 +32,7 @@ func TestARunSetAsideAsInterruptedReadsInterruptedOnItsPage(t *testing.T) {
 	}
 	defer archived.Close()
 	for _, id := range []string{"71", "part"} {
-		row := planTaskRow(archived, dir, archived.Task(id), nil, nil)
+		row := planTaskRow(archived, dir, archived.Task(id), nil, nil, len(planTrajectory(dir, id)))
 		if !row.Interrupted || row.Stopped {
 			t.Fatalf("row %s of a run set aside reads %+v, want interrupted and not stopped", id, row)
 		}

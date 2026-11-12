@@ -39,6 +39,7 @@ package remote
 // ([Client.buryLanes]).
 
 import (
+	"context"
 	"encoding/json"
 	"sync"
 
@@ -166,4 +167,20 @@ func (a *Agent) HoldQuestion(kind session.QuestionKind, token string) {
 		defer guard.Recover("remote/question hold")
 		_, _ = c.call(nil, MethodQuestionHold, QuestionHoldArgs{Kind: kind, Token: token})
 	}()
+}
+
+// ClockQuestion defers one question's clock on the far machine, or starts a
+// deferred one (start), and answers what the engine's clock now says
+// ([MethodQuestionClock]). It waits for the answer because the caller is about
+// to draw it; an engine without the method is an error, never a quiet yes.
+func (a *Agent) ClockQuestion(ctx context.Context, kind session.QuestionKind, token string, start bool) (QuestionClockReply, error) {
+	raw, err := a.c.call(ctx, MethodQuestionClock, QuestionClockArgs{Kind: kind, Token: token, Start: start})
+	if err != nil {
+		return QuestionClockReply{}, err
+	}
+	var reply QuestionClockReply
+	if err := json.Unmarshal(raw, &reply); err != nil {
+		return QuestionClockReply{}, err
+	}
+	return reply, nil
 }

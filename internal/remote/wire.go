@@ -17,6 +17,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -416,7 +417,7 @@ const Version = 22
 type Frame struct {
 	// Kind says what this frame is: "hello", "welcome", "call", "result",
 	// "event", "closed", "facts", "task", "design", "question", "phase", "lane",
-	// "turn", "driver", "moved", "fatal".
+	// "turn", "driver", "moved", "fatal", "sideAskDelta".
 	//
 	// "facts", "task", "design", "question", "phase" and "lane" are the KINDS
 	// THAT ANSWER NOTHING. The third and fourth are version 11's harness lane
@@ -450,6 +451,8 @@ type Frame struct {
 	// Error is a call that failed, on "result" frames, and the reason on
 	// "fatal" frames.
 	Error string `json:"error,omitempty"`
+	// WorkRefusal preserves ownership facts beside the unchanged error sentence.
+	WorkRefusal *executor.WorkRefusal `json:"workRefusal,omitempty"`
 	// LocalSaved confirms a completed local close on a saving reply.
 	LocalSaved bool `json:"localSaved,omitempty"`
 	// SyncPending distinguishes an upload failure after the local close succeeded.
@@ -522,19 +525,22 @@ const (
 	// the surface drops the answer it was never waiting for, and what is lost is
 	// a pre-warm nobody can see. Nothing goes dark, so nothing is refused at the
 	// door.
-	MethodTyping          = "Typing"                 // nothing → nothing, and nothing waits
-	MethodStopWork        = "StopWork"               // nothing → nothing; stop this conversation, retaining history
-	MethodInterrupt       = "Interrupt"              // InterruptArgs, or nothing → nothing
-	MethodCompact         = "Compact"                // nothing → nothing (error carries the failure)
-	MethodClose           = "Close"                  // nothing → nothing
-	MethodModel           = "Model"                  // nothing → string
-	MethodSetModel        = "SetModel"               // string → nothing
-	MethodSetSpendRail    = "SetSpendRail"           // dollars → nothing
-	MethodSetContext      = "SetContextWindow"       // legacy version-5 hint; current remote surfaces do not send it
-	MethodReasoningFor    = "ReasoningFor"           // string → string
-	MethodSetReasoningFor = "SetReasoningFor"        // ReasoningArgs → nothing
-	MethodConsent         = "ResolveConsent"         // ConsentArgs → nothing
-	MethodConsentRemember = "ResolveConsentRemember" // ConsentArgs → nothing
+	MethodTyping                = "Typing"    // nothing → nothing, and nothing waits
+	MethodStopWork              = "StopWork"  // nothing → nothing; stop this conversation, retaining history
+	MethodInterrupt             = "Interrupt" // InterruptArgs, or nothing → nothing
+	MethodCompact               = "Compact"   // nothing → nothing (error carries the failure)
+	MethodClose                 = "Close"     // nothing → nothing
+	MethodModel                 = "Model"     // nothing → string
+	MethodSetAutomaticModels    = "SetAutomaticModels"
+	MethodSetConversationModels = "SetConversationModels"
+	MethodSetModel              = "SetModel"               // string → nothing
+	MethodSetSpendRail          = "SetSpendRail"           // dollars → nothing
+	MethodSpendRail             = "SpendRail"              // nothing → dollars, zero for none; an older engine answers "no such method"
+	MethodSetContext            = "SetContextWindow"       // legacy version-5 hint; current remote surfaces do not send it
+	MethodReasoningFor          = "ReasoningFor"           // string → string
+	MethodSetReasoningFor       = "SetReasoningFor"        // ReasoningArgs → nothing
+	MethodConsent               = "ResolveConsent"         // ConsentArgs → nothing
+	MethodConsentRemember       = "ResolveConsentRemember" // ConsentArgs → nothing
 	// MethodQuestionResolve is the ONE door for an answer to any question, over
 	// the wire. It carries
 	// [session.Answer] whole — the lane, the token, the keys, the words beside
@@ -561,6 +567,18 @@ const (
 	// says the question again with its deadline gone, so every window stops
 	// counting from the same frame rather than from its own guess.
 	MethodQuestionHold = "Question.Hold" // QuestionHoldArgs → nothing
+	// MethodQuestionClock is a surface saying it has NOT shown a question yet,
+	// or that it now has: the first stops the question's clock until the
+	// second starts it for the policy's whole length from then
+	// (internal/session's askclock.go). It is not a hold — it is undone, and
+	// the engine undoes it itself after its own bound.
+	//
+	// IT ANSWERS, unlike [MethodQuestionHold], because the surface asking it
+	// is about to draw the countdown and must draw the engine's deadline and
+	// not its own guess. An engine without it says no such method, and a
+	// surface that is told so shows the question at once rather than holding
+	// it on a clock it cannot stop.
+	MethodQuestionClock = "Question.Clock" // QuestionClockArgs → QuestionClockReply
 	// MethodQuestionWatch is the surface saying it draws questions, and it buys
 	// exactly what [MethodTaskWatch] and [MethodDesignWatch] buy: "question"
 	// frames from here on, including everything already open replayed the
@@ -651,6 +669,7 @@ const (
 	MethodDetachSkill    = "DetachSkill"    // string → bool (whether it was on)
 	MethodAttachedSkills = "AttachedSkills" // nothing → []string
 	MethodClearSkills    = "ClearSkills"    // nothing → int (how many were on)
+	MethodSkillFolders   = "SkillFolders"   // no args → []skills.Skill from this engine’s folders
 	MethodSkillShelf     = "SkillShelf"     // SkillShelfArgs → []store.Fact
 
 	// The three memory commands cross the wire under their Memory.* names
@@ -718,6 +737,8 @@ const (
 	// machines would mix clocks that need not agree and would not measure the
 	// path the person is actually waiting on.
 	MethodPing = "Ping" // nothing → nothing
+	// MethodCheckWork reads the existing ownership gate before an app claims an action.
+	MethodCheckWork = "CheckWork" // nothing → nothing (or the viewer refusal)
 
 	// MethodPlacesTask is ONE ROW of that record, read deeper than the walk
 	// reads it: the last thing that piece of work said, out of the journal it
@@ -831,6 +852,39 @@ const (
 // how a surface tells "the engine built what I asked for" from "I joined
 // somebody else's conversation".
 type LaunchShape struct {
+	// IntentNames names the conversation from what the person opened it with —
+	// their own words and the names of the files they attached — by the model
+	// they configured for titles ([session.Config.IntentNames]); the desktop app
+	// sets it.
+	IntentNames bool `json:"intentNames,omitempty"`
+	// DeterministicNames retains legacy first-word naming without a model call.
+	// It is independent of IntentNames, including when old and new clients share a host.
+	DeterministicNames bool `json:"deterministicNames,omitempty"`
+	// HandOverOnAsk keeps a running reply in the conversation until the person
+	// moves it to a task ([session.Config.HandOverOnAsk]); the desktop app sets it.
+	HandOverOnAsk bool `json:"handOverOnAsk,omitempty"`
+	// TeamListeningSince carries the app's subscribe-before-check boundary.
+	TeamListeningSince time.Time `json:"teamListeningSince,omitzero"`
+	// ProposalClockS, when set, is how many seconds a proposed task waits before
+	// it starts on its own ([session.Config.TaskAutoApproveSeconds]).
+	ProposalClockS *int `json:"proposalClockS,omitempty"`
+	// ChoiceClockS, when above zero, is how many seconds a choice with a
+	// suggested answer waits before taking it ([session.Config.ChoiceClockSeconds]).
+	ChoiceClockS int `json:"choiceClockS,omitempty"`
+	// QuitGraceS, when above zero, is how many seconds the conversation's running
+	// processes get between SIGTERM and SIGKILL when it closes
+	// ([session.Config.JobQuitGrace]).
+	QuitGraceS int `json:"quitGraceS,omitempty"`
+	// StandingOrders saves what the `automation` tool proposes before the card
+	// is up, as proposed and not yet running ([session.Config.StandingOrders]);
+	// the desktop app sets it.
+	StandingOrders bool `json:"standingOrders,omitempty"`
+	// QuickTasks keeps quick tasks offered beside runs ([session.Config.QuickTasks]).
+	QuickTasks bool `json:"quickTasks,omitempty"`
+	// LiveToolOutput sends a model's shell output as it arrives
+	// ([session.Config.LiveToolOutput]); the desktop app sets it.
+	LiveToolOutput bool `json:"liveToolOutput,omitempty"`
+
 	Yolo      bool    `json:"yolo,omitempty"`
 	NoCompact bool    `json:"noCompact,omitempty"`
 	OneModel  bool    `json:"oneModel,omitempty"`
@@ -1046,6 +1100,44 @@ type StreamCursor struct {
 // Welcome is the server's answer ("welcome"): the facts a surface needs before
 // its first frame, which are the same facts newApp reads off a local agent.
 type Welcome struct {
+	// WorkAdmission says this engine exposes the session's ownership gate.
+	WorkAdmission bool `json:"workAdmission,omitempty"`
+	// UserMessages is counted from the engine's replay, so an attaching app
+	// need not parse the journal again just to allocate visible message IDs.
+	UserMessages *int `json:"userMessages,omitempty"`
+
+	// MessageMarks says this engine records a submission's authored words,
+	// attachments and reference-read facts together. Absence is an older
+	// engine: a marked submission must be refused before any words are sent.
+	MessageMarks bool `json:"messageMarks,omitempty"`
+	// SteerMarks and FollowUpMarks say the same of Steer and FollowUp: the
+	// engine keeps a correction's or a follow-up's mark on the line the words
+	// land on. Each is its own fact — an engine that keeps a Submit's mark need
+	// not keep a Steer's — and absence refuses a marked call before it is sent.
+	SteerMarks    bool `json:"steerMarks,omitempty"`
+	FollowUpMarks bool `json:"followUpMarks,omitempty"`
+	// ComposedMessages says this engine takes a Submit that carries pictures and
+	// an annotation and answers its receipt. Absence is an older engine: such a
+	// Submit is refused before anything is sent.
+	ComposedMessages bool `json:"composedMessages,omitempty"`
+	// MessageReceipts also acknowledges ordinary text with an engine-minted ID.
+	MessageReceipts bool `json:"messageReceipts,omitempty"`
+	// MessageClientIDs says this engine keeps a submission's ClientID on the
+	// person's own line ([session.Submission.ClientID]). Absence is an older
+	// engine, which would drop the field unread: a call carrying one is refused
+	// before it is sent rather than run without the correlation it asked for.
+	MessageClientIDs bool `json:"messageClientIds,omitempty"`
+	// MessageFrom says this engine keeps a submission's From on the person's
+	// own line ([session.Submission.From]); a call carrying one is refused
+	// before it is sent to an engine that has not said so.
+	MessageFrom bool `json:"messageFrom,omitempty"`
+	// HarnessRequests says this engine exposes the picked-harness turn door.
+	HarnessRequests bool `json:"harnessRequests,omitempty"`
+	// AttachmentSources says this engine keeps [session.MessageAttachment.Source],
+	// the recorded audio or video span a file attachment was kept for. Absence is
+	// an older engine, which would drop it unread: a call carrying one is refused
+	// before it is sent.
+	AttachmentSources bool `json:"attachmentSources,omitempty"`
 	// LocalSavingReceipts acknowledges the surface's optional saving capability.
 	LocalSavingReceipts bool `json:"localSavingReceipts,omitempty"`
 	// SyncService names the service that saves this chat across computers.
@@ -1069,6 +1161,9 @@ type Welcome struct {
 	// Note is a sentence worth showing once — "session open elsewhere, started
 	// a new one" travels here.
 	Note string `json:"note,omitempty"`
+	// Interrupted keeps the per-command opening warnings typed. They also
+	// remain in Note for terminal surfaces that predate this field.
+	Interrupted []string `json:"interrupted,omitempty"`
 	// ApprovalMode is the engine machine's own answer to "does a tool run
 	// without asking" (internal/config's ToolApprovalModeAt) — "allow" or
 	// empty. A REMOTE YOLO BADGE MUST NAME THE ENGINE'S POSTURE, NOT THIS
@@ -1194,6 +1289,20 @@ type Welcome struct {
 	// asking twice, which is the degradation that costs a keystroke rather than
 	// the one that corrects a worker twice.
 	SteerRepeat bool `json:"steerRepeat,omitempty"`
+	// QueuedMarks says this engine keeps a Submit's queued mark
+	// ([SubmitArgs.Queued]) on the message's line. ABSENCE IS AN ENGINE THAT
+	// WOULD DROP IT: the surface then sends the words without the mark and
+	// says nothing about where the message came from, rather than showing a
+	// fact the record will not hold.
+	QueuedMarks bool `json:"queuedMarks,omitempty"`
+	// AppTaskReceipt advertises typed outcomes on [MethodAppTaskAction] when
+	// its receipt flag is set. It does not attribute any particular error:
+	// every untyped error remains unknown regardless of this flag. Only an
+	// explicit typed refused receipt establishes refusal. A panic inside the
+	// door is a typed unknown ([appTaskReceiptGuarded]).
+	// An older engine may flatten a failure after delivery into error text;
+	// that text must never invite sending the same words again.
+	AppTaskReceipt bool `json:"appTaskReceipt,omitempty"`
 
 	// SteerOwner says this engine CHECKS THE CONVERSATION A SEND WAS WRITTEN FOR
 	// ([TaskSteerArgs.Session]) against the one it actually has open, and refuses
@@ -1344,7 +1453,10 @@ type Welcome struct {
 	// false, and false is refused at this end before anything is written, which
 	// the wall reads as it reads any failed ask: the word it already holds, and
 	// Organize's folder pass alone.
-	TeamAsk bool `json:"teamAsk,omitempty"`
+	TeamAsk         bool `json:"teamAsk,omitempty"`
+	ReplySuggestion bool `json:"replySuggestion,omitempty"`
+	// Errand says this engine runs [methodErrand] for the agent it has open.
+	Errand bool `json:"errand,omitempty"`
 
 	// News says this engine SENDS THE STATUS LINE'S NEWS — the "phase" and
 	// "lane" frames the live rate and the `via <machine>` rider are drawn from
@@ -1377,6 +1489,8 @@ type Welcome struct {
 	// false keeps the picker's own sentence for a conversation that cannot
 	// carry attached skills rather than a list whose every choice goes nowhere.
 	Skills bool `json:"skills,omitempty"`
+	// SkillFolders says discovery runs on this engine rather than the client.
+	SkillFolders bool `json:"skill_folders,omitempty"`
 
 	// ── version 21 ──────────────────────────────────────────────────────────
 
@@ -1394,6 +1508,20 @@ type Welcome struct {
 	// conversations this one cannot see.
 	Automations     bool   `json:"automations,omitempty"`
 	AutomationsZone string `json:"automationsZone,omitempty"`
+
+	// SideAsk says this engine ANSWERS [MethodSideAsk]: its agent can be asked
+	// one question about its conversation outside it, with nothing written
+	// into the conversation (internal/session's sideask.go).
+	//
+	// IT IS CARRIED FOR [Welcome.TeamAsk]'S REASON: a *remote.Agent always has
+	// SideAsk on it, so a surface's type assertion says nothing about the far
+	// machine. It is additive to this version, as the teams doors were: an
+	// engine from before it sends no field, and ABSENCE IS false, which is
+	// refused at this end before anything is written — never answered by
+	// sending the question as a turn instead.
+	SideAsk bool `json:"sideAsk,omitempty"`
+	// SideAskStream adds ephemeral text deltas to the side ask.
+	SideAskStream bool `json:"sideAskStream,omitempty"`
 	// Setup says this engine's conversation answers [MethodSetupPlan] and
 	// [MethodSubmitSetup] (setup.go), for [Welcome.Folders]'s reason: a
 	// *remote.Agent always has the methods. ABSENCE IS false, and the surface
@@ -1470,7 +1598,68 @@ type InterruptArgs struct {
 }
 
 type SubmitArgs struct {
-	Text string `json:"text"`
+	// WantReceipt is used only when the welcome advertised MessageReceipts.
+	WantReceipt bool   `json:"wantReceipt,omitempty"`
+	Text        string `json:"text"`
+	// Said, Attachments and Reads are what a door that knows more than the
+	// words said about a person's message (internal/session's
+	// [session.Submission]), on Submit alone. All are absent from every other
+	// call, and an engine built before them reads the words and nothing else —
+	// the message still runs, it is only kept without its mark.
+	Said        *string                     `json:"said,omitempty"`
+	Attachments []session.MessageAttachment `json:"attachments,omitempty"`
+	Reads       []session.MessageRead       `json:"reads,omitempty"`
+	// Media and Annotation are the pictures a message carries as real image
+	// parts and what the person marked on them ([session.Agent.SubmitComposed]),
+	// on Submit alone. Their paths mean something on the ENGINE's machine, which
+	// is where the files are read. An engine built before them would run the
+	// words and drop the pictures, so a surface asks the welcome's
+	// ComposedMessages first.
+	Media      []session.SubmissionMedia `json:"media,omitempty"`
+	Annotation *session.Annotation       `json:"annotation,omitempty"`
+	Queued     bool                      `json:"queued,omitempty"`
+	// ClientID is the door's opaque name for the message
+	// ([session.Submission.ClientID]); correlation only, never idempotency.
+	ClientID string `json:"clientId,omitempty"`
+	// From names who sent the message on the person's behalf
+	// ([session.Submission.From]).
+	From string `json:"from,omitempty"`
+	// Creation is the creation context the door stated for this accepted
+	// message ([session.Submission.Creation]): absent is UNKNOWN, {} an explicit
+	// none, {"team":id} the exact team. An engine built before it ignores the
+	// field and records no team, which is unknown and so true; it is therefore
+	// NOT a mark ([SubmitArgs.marked]) an engine must keep or refuse.
+	Creation *session.CreationContext `json:"creation,omitempty"`
+}
+
+// marked is whether the call carries a mark beside its words. Submit, Steer
+// and FollowUp each take one; a marked call is kept with its mark or refused
+// whole, and never run as its words alone.
+func (a SubmitArgs) marked() bool {
+	return a.Queued || a.ClientID != "" || a.From != "" || a.Said != nil || len(a.Attachments) > 0 || len(a.Reads) > 0 || a.composed()
+}
+
+// composed is whether the call carries pictures or an annotation, which only a
+// Submit can.
+func (a SubmitArgs) composed() bool { return len(a.Media) > 0 || a.Annotation != nil }
+
+// submission is the call as the agent's own door for a mark takes it.
+func (a SubmitArgs) submission() session.Submission {
+	return session.Submission{Text: a.Text, Said: a.Said, Attachments: a.Attachments, Reads: a.Reads, Media: a.Media, Annotation: a.Annotation, Queued: a.Queued, ClientID: a.ClientID, From: a.From, Creation: creationCopy(a.Creation)}
+}
+
+// argsOf is a submission as the wire carries it.
+func argsOf(message session.Submission) SubmitArgs {
+	return SubmitArgs{Text: message.Text, Said: message.Said, Attachments: message.Attachments, Reads: message.Reads, Media: message.Media, Annotation: message.Annotation, Queued: message.Queued, ClientID: message.ClientID, From: message.From, Creation: creationCopy(message.Creation)}
+}
+
+// creationCopy is a creation context that shares nothing with c, nil for nil:
+// absence stays absence across the wire and back.
+func creationCopy(c *session.CreationContext) *session.CreationContext {
+	if c == nil {
+		return nil
+	}
+	return &session.CreationContext{Team: c.Team}
 }
 
 // UnqueueArgs names the queued follow-up a surface wants taken back out: the
@@ -1888,6 +2077,9 @@ type LaneWire struct {
 
 type StreamRef struct {
 	Stream uint64 `json:"stream"`
+	// Receipt answers a composed Submit: the message's durable id and how its
+	// pictures reached a model. Absent on every other stream.
+	Receipt *session.SubmissionReceipt `json:"receipt,omitempty"`
 }
 
 type ReasoningArgs struct {
@@ -1921,6 +2113,23 @@ type QuestionArgs struct {
 type QuestionHoldArgs struct {
 	Kind  session.QuestionKind `json:"kind"`
 	Token string               `json:"token"`
+}
+
+// QuestionClockArgs names one question the way [QuestionHoldArgs] does, and
+// says which way its clock goes: Start false defers it, Start true starts it.
+type QuestionClockArgs struct {
+	Kind  session.QuestionKind `json:"kind"`
+	Token string               `json:"token"`
+	Start bool                 `json:"start,omitempty"`
+}
+
+// QuestionClockReply is what the clock did: Changed is false for a question
+// the call could not move (answered, held by a person, never clocked, or
+// already that way), and Deadline is the clock's end after the call, zero
+// while it is deferred or has none.
+type QuestionClockReply struct {
+	Changed  bool      `json:"changed"`
+	Deadline time.Time `json:"deadline,omitempty"`
 }
 
 type HarnessArgs struct {
@@ -1964,6 +2173,11 @@ func WireEvent(ev session.Event) EventWire {
 	w := EventWire{Event: ev}
 	if ev.Err != nil {
 		w.Err = ev.Err.Error()
+		// The typed cause does not survive JSON, so its sorting rides beside
+		// the sentence for a surface that has to tell a refusal from a stop.
+		if ev.Kind == session.EventError && w.Event.ErrKind == "" {
+			w.Event.ErrKind, w.Event.ErrStatus, w.Event.ErrWords = session.ClassifyTurnError(ev.Err)
+		}
 	}
 	w.Event.Err = nil
 	return w

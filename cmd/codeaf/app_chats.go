@@ -1,0 +1,783 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"math"
+	"path/filepath"
+	"reflect"
+	"slices"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/chatlist"
+	"github.com/Agent-Field/codeaf/internal/dirwatch"
+	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/handoff"
+	"github.com/Agent-Field/codeaf/internal/pair"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/syncsetup"
+)
+
+type appChats struct {
+	start    sync.Once
+	byAgent  map[string]appwire.ChatRow
+	taking   map[string]int
+	landed   map[string]uint64
+	moves    map[string]*appMove
+	ended    map[string]appwire.ChatMoveEnded
+	slot     chan struct{}
+	slotOnce sync.Once
+	op       sync.Mutex
+	mu       sync.Mutex
+	rows     []appwire.ChatRow
+	facts    map[string]chatlist.Row
+	// takeable is each row's can_take before its holder's sharing was judged,
+	// so a presence change can lift the block as well as set it.
+	takeable        map[string]bool
+	sent            []appwire.ChatRow
+	version         uint64
+	source          *syncsetup.Sync
+	feed            dirwatch.Follower
+	cancel          context.CancelFunc
+	done            chan struct{}
+	closed          bool
+	publicationDone chan struct{}
+	publicationWake chan struct{}
+	notes           appNotes
+}
+type appLocalChat struct {
+	agent    string
+	copyable bool
+}
+
+// Startup offers local cells without starting a chat-inventory subscriber.
+// Device publication owns the paired engine's shared directory follower.
+func (b *appBackend) startLocalChatPublication() {
+	c := &b.chats
+	c.publicationDone = make(chan struct{})
+	c.publicationWake = make(chan struct{}, 1)
+	guard.Go("app/existing-chats", func() {
+		defer close(c.publicationDone)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		guard.Go("app/existing-chats-stop", func() {
+			select {
+			case <-b.left:
+				cancel()
+			case <-ctx.Done():
+			}
+		})
+		ticker := time.NewTicker(syncsetup.DefaultInterval)
+		defer ticker.Stop()
+		b.runLocalChatPublication(ctx, time.Now, ticker.C, nil)
+	})
+}
+
+func (c *appChats) wakePublication() {
+	select {
+	case c.publicationWake <- struct{}{}:
+	default:
+	}
+}
+
+// runLocalChatPublication samples host ticks; settled acknowledges completed
+// rounds when a caller needs to observe deterministic request counts.
+func (b *appBackend) runLocalChatPublication(ctx context.Context, now func() time.Time, ticks <-chan time.Time, settled chan<- struct{}) {
+	c := &b.chats
+	var source *syncsetup.Sync
+	// offered says the first pass for this binding has run; failing that the
+	// last pass left chats to try again; sharingNow that a first pass is
+	// running; stateFailing that the last pass over keys, memory and
+	// preferences failed. Together they decide the sharing line (say), which
+	// is said only to a person with another computer paired (syncsetup's
+	// others.go): with none, there is nobody the chats were not shared with.
+	offered, failing, sharingNow, stateFailing := false, false, false, false
+	refresh := false
+	var stateRetry time.Time
+	var stateBackoff time.Duration
+	sharing := newHomeSharing(b.relayHome())
+	defer sharing.release()
+	var stopStorage func()
+	defer func() {
+		if stopStorage != nil {
+			stopStorage()
+		}
+	}()
+	said := ""
+	say := func() {
+		line := ""
+		switch {
+		case source == nil || !source.OthersPaired():
+		case stateFailing:
+			line = "Saved keys, memory and preferences could not be shared yet; codeaf will try again."
+		case failing:
+			line = "Some chats could not be shared yet. They are still saved here; codeaf will try again."
+		case sharingNow:
+			line = "Sharing this computer's chats."
+		}
+		if line != said {
+			said = line
+			b.sharingStatus(line)
+		}
+	}
+	// shareState shares keys, memory and preferences when pairing left them
+	// pending and no retry is waiting. It runs before each round's chat pass
+	// and between its chats: a pass lasts as long as its uploads keep moving,
+	// which for a large backlog is hours, and a computer just paired needs the
+	// keys first. Home state has its own lock.
+	shareState := func() {
+		if ctx.Err() != nil || !pair.SharingPending(source.Home, source.Identity.ID()) || now().Before(stateRetry) {
+			return
+		}
+		if err := source.SyncState(ctx); err != nil {
+			if stateBackoff == 0 {
+				stateBackoff = syncsetup.DefaultInterval
+			} else {
+				stateBackoff = min(2*stateBackoff, syncsetup.SharingRetryMax)
+			}
+			stateRetry = now().Add(stateBackoff)
+			stateFailing = true
+		} else {
+			stateFailing = false
+		}
+	}
+	count := func() {
+		u := sharing.note(source, now())
+		b.noteUnshared(&u)
+	}
+	for {
+		if b.pairingWorkRefusal() == nil {
+			ready := func() bool {
+				if c.isClosed() || ctx.Err() != nil {
+					return false
+				}
+				next, ok, err := syncsetup.Open(b.relayHome())
+				if err != nil {
+					said = "Sharing could not finish yet. Your chats are still saved here; codeaf will try again."
+					b.sharingStatus(said)
+					return false
+				}
+				if !ok || !syncsetup.MayTalk(b.relayHome()) {
+					sharing.forget()
+					b.noteUnshared(nil)
+					return false
+				}
+				if source == nil || source.Identity.ID() != next.Identity.ID() || source.Device.ID() != next.Device.ID() || source.Relay != next.Relay {
+					source, offered = next, false
+					stateRetry, stateBackoff = time.Time{}, 0
+				}
+				if refresh {
+					refresh, offered = false, false
+				}
+				return true
+			}()
+			if ready && ctx.Err() == nil {
+				if stopStorage == nil && !source.StorageAllowed() {
+					stopStorage = syncsetup.StartStorageRefresh(ctx, source.Home)
+				}
+				shareState()
+				say()
+				// One process publishes for the home (homesharing.go). Every
+				// round rescans, so a chat that appears on disk is found.
+				if sharing.claim() {
+					sharingNow = !offered
+					say()
+					var counted time.Time
+					source.BetweenChats = func() {
+						shareState()
+						if now().Sub(counted) >= unsharedRecount/3 {
+							counted = now()
+							count()
+						}
+						say()
+					}
+					err := b.publishLocalChats(source, now)
+					source.BetweenChats = nil
+					offered, failing, sharingNow = true, err != nil, false
+					if ctx.Err() == nil {
+						sharing.copyOne(ctx)
+					}
+				} else {
+					offered, failing = true, false
+				}
+				count()
+				say()
+			}
+		}
+		if settled != nil {
+			select {
+			case settled <- struct{}{}:
+			case <-ctx.Done():
+				return
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticks:
+		case <-c.publicationWake:
+			// Pairing may follow chats made after the startup scan without
+			// changing the binding. Keep its publication progress when scanning.
+			refresh = true
+		}
+	}
+}
+
+// localChats relates physical chat folders to directory ids. Older chats may
+// have a separate moving copy, and a drive may publish under a mapped id.
+func (b *appBackend) localChats(s *syncsetup.Sync) map[string]appLocalChat {
+	type entry struct{ id, file string }
+	var local []entry
+	for _, r := range session.ReadWorld(filepath.Join(b.relayHome(), "v3", "projects")).Sessions() {
+		if appChatStaging(r.Dir) {
+			continue
+		}
+		local = append(local, entry{r.ID, r.Transcript})
+	}
+	b.locked(func() {
+		for id, a := range b.agents {
+			if a.transcript != "" {
+				local = append(local, entry{id, a.transcript})
+			}
+		}
+	})
+	out := map[string]appLocalChat{}
+	for _, item := range local {
+		agent, file := item.id, item.file
+		root := session.DirOf(file)
+		copied := cell.Copied(root)
+		if _, err := cell.OpenAt(copied, filepath.Base(copied)); err != nil {
+			continue
+		}
+		remote := filepath.Base(copied)
+		if held, _, err := s.SendLease(remote); err == nil && held != "" {
+			remote = held
+		}
+		copyable := true
+		if meta, err := session.LoadMeta(root); err == nil && copied != root {
+			copyable = olderChatCopyable(meta)
+		}
+		out[remote] = appLocalChat{agent: agent, copyable: copyable}
+	}
+	return out
+}
+
+// appChatStaging excludes private takeover scratch from app agent admission.
+// Opening its copied working presence can attach a journal and directory watch
+// before the taker renames it, preventing installation on native Windows.
+func appChatStaging(dir string) bool {
+	return strings.HasSuffix(filepath.Clean(dir), handoff.StagingSuffix)
+}
+
+// Local list/open responses keep their disk-only latency. The desktop's
+// explicit inventory bootstrap and sync callbacks share this same follower.
+func (b *appBackend) startChatInventory() {
+	c := &b.chats
+	if c.inventoryActive() {
+		return
+	}
+	c.start.Do(func() {
+		guard.Go("app/chats-bootstrap", func() {
+			if !c.inventoryActive() {
+				_, _ = b.ListChats()
+			}
+		})
+	})
+}
+
+func (c *appChats) isClosed() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.closed
+}
+
+func (c *appChats) inventoryActive() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.closed || c.source != nil
+}
+
+func (b *appBackend) ListChats() (appwire.ChatsResult, error) {
+	c := &b.chats
+	c.op.Lock()
+	defer c.op.Unlock()
+	if c.isClosed() {
+		return appwire.ChatsResult{}, appwire.Errorf(appwire.CodeClosed, "codeaf is shutting down")
+	}
+	s, ok, err := syncsetup.Open(b.relayHome())
+	if errors.Is(err, syncsetup.ErrNoIdentity) {
+		err = nil
+	}
+	if err != nil {
+		return appwire.ChatsResult{}, appEngineError(err)
+	}
+	if !ok || s == nil || !syncsetup.MayTalk(b.relayHome()) {
+		readVersion := func() uint64 {
+			c.mu.Lock()
+			defer c.mu.Unlock()
+			return c.version
+		}
+		version := readVersion()
+		b.publishChats([]appwire.ChatRow{}, version, false)
+		return appwire.ChatsResult{Chats: []appwire.ChatRow{}, Version: version}, nil
+	}
+	feed := b.startChatFeed(s)
+	return b.readChats(context.Background(), s, feed, false)
+}
+
+func (b *appBackend) startChatFeed(s *syncsetup.Sync) dirwatch.Follower {
+	c := &b.chats
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.source == nil {
+		c.source = s
+		c.feed = s.Follow()
+		if c.feed != nil {
+			ctx, cancel := context.WithCancel(context.Background())
+			c.cancel = cancel
+			c.done = make(chan struct{})
+			feed, done := c.feed, c.done
+			guard.Go("app/chats", func() { defer close(done); b.followChats(ctx, feed) })
+		}
+	}
+	return c.feed
+}
+
+// PublishCopy is also the terminal's background publication door. One finite,
+// sequential pass offers existing cell chats, and finished copies of older
+// chats, without opening or resealing them. The caller says the sharing line.
+func (b *appBackend) publishLocalChats(s *syncsetup.Sync, now func() time.Time) error {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	guard.Go("app/existing-chats-cancel", func() {
+		select {
+		case <-b.left:
+			cancel()
+		case <-ctx.Done():
+		}
+	})
+	err := s.PublishLocalChats(ctx, now, func(c cell.Cell, line string) {
+		// Unopened chats use the global sync reason. Queueing one identical
+		// per-chat fact on every outage retry would grow without a reader.
+		known := false
+		b.locked(func() {
+			for _, a := range b.agents {
+				if session.DirOf(a.transcript) == c.Root {
+					known = true
+					break
+				}
+			}
+		})
+		if known {
+			b.syncFact(c, appSyncFact{line: line})
+		}
+	})
+	return err
+}
+
+func (b *appBackend) readChats(parent context.Context, s *syncsetup.Sync, feed dirwatch.Follower, emit bool) (appwire.ChatsResult, error) {
+	ctx, cancel := context.WithTimeout(parent, syncsetup.DeviceRequestWithin)
+	defer cancel()
+	rows, mail, version, err := s.RowsMailAt(ctx)
+	if err != nil {
+		return appwire.ChatsResult{}, appEngineError(err)
+	}
+	if result, newer := b.chats.newerChats(version); newer {
+		return result, nil
+	}
+	state := dirwatch.State{}
+	if feed != nil {
+		state = feed.State()
+	}
+	known := b.devices.watch.Snapshot(s.Identity, s.Device).Online
+	local := b.localChats(s)
+	out := make([]appwire.ChatRow, 0, len(rows))
+	facts := make(map[string]chatlist.Row, len(rows))
+	takeable := make(map[string]bool, len(rows))
+	for _, r := range rows {
+		if r.Parent != "" || r.Status == chatlist.Branch {
+			continue
+		}
+		facts[r.Cell] = r
+		_, installed := local[r.Cell]
+		here := r.Mine && (r.Status == chatlist.Here || installed)
+		row := appwire.ChatRow{Cell: r.Cell, Title: r.Title, Here: here, Status: string(r.Status), Seen: appwire.Seen{Device: r.DeviceID, Fence: r.Fence, Head: r.Head}, CanTake: !here && r.Head != ""}
+		if service, ok := s.Dir.(interface{ HeadTakes() bool }); ok && !service.HeadTakes() {
+			row.Seen.Head = ""
+		}
+		if r.DeviceID != "" {
+			row.Holder = &appwire.LocationHolder{ID: r.DeviceID, Name: r.Device}
+		}
+		appChatPresence(&row, r, state, known)
+		if r.SavedAt > 0 {
+			row.SavedAt = time.UnixMilli(r.SavedAt).UTC()
+		}
+		row.Folder = r.Folder
+		if l, ok := local[r.Cell]; ok {
+			row.LocalAgent = l.agent
+			row.CanTake = row.CanTake && l.copyable
+		} else if !here && r.Size > 0 {
+			row.Size = int64(min(r.Size, math.MaxInt64))
+		}
+		takeable[r.Cell] = row.CanTake
+		appChatSharing(&row, r)
+		row.Working = !here && r.Working
+		row.Notes = b.appChatNotes(mail, r.Cell, here)
+		if row.Here {
+			row.Status = "here"
+		}
+		out = append(out, row)
+	}
+	// Messages waiting for chats held here go into their queues; the queue
+	// takes its own locks, so this runs apart from the list's.
+	guard.Go("app/chat-notes", func() { b.carryNotes(s, mail, local) })
+	b.chats.markTaking(out, true)
+	cacheFacts := func() {
+		b.chats.mu.Lock()
+		defer b.chats.mu.Unlock()
+		b.chats.facts, b.chats.takeable = facts, takeable
+	}
+	cacheFacts()
+	// markTaking has already cleared a landed take on a row saying the chat is
+	// here, so only a row from before the take keeps its agent where it is.
+	b.publishChatRows(out, version, emit, func(r appwire.ChatRow) bool { return !b.chats.landedTake(r.Cell) })
+	return appwire.ChatsResult{Chats: out, Version: version}, nil
+}
+
+func (c *appChats) newerChats(version uint64) (appwire.ChatsResult, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if version < c.version {
+		return appwire.ChatsResult{Chats: slices.Clone(c.rows), Version: c.version}, true
+	}
+	return appwire.ChatsResult{}, false
+}
+
+// A take is in flight from when agents.take asks for the chat until it ends,
+// so a client that stopped waiting can tell a move still copying from one that
+// never happened. A take that acquired the chat keeps saying so on every row
+// from before it until a row says the chat is here or a later fence holds it.
+// Only a directory reading (prune) can say a chat left the list: the cache
+// may be empty or stale, so rows from it never drop a landed take.
+func (c *appChats) markTaking(rows []appwire.ChatRow, prune bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	listed := make(map[string]bool, len(rows))
+	for i := range rows {
+		r := &rows[i]
+		listed[r.Cell] = true
+		fence, landed := c.landed[r.Cell]
+		if landed && (r.Here || r.Seen.Fence > fence) {
+			delete(c.landed, r.Cell)
+			landed = false
+		}
+		r.Taking = c.taking[r.Cell] > 0 || landed
+		c.markMoves(r)
+	}
+	if !prune {
+		return
+	}
+	// A chat that left the list is no longer anyone's take.
+	for id := range c.landed {
+		if !listed[id] {
+			delete(c.landed, id)
+		}
+	}
+}
+
+func (c *appChats) landedTake(id string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	_, ok := c.landed[id]
+	return ok
+}
+
+func (c *appChats) landTake(id string, fence uint64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.landed == nil {
+		c.landed = make(map[string]uint64)
+	}
+	c.landed[id] = fence
+}
+
+func (c *appChats) countTake(id string, delta int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.taking == nil {
+		c.taking = make(map[string]int)
+	}
+	c.taking[id] += delta
+	if c.taking[id] <= 0 {
+		delete(c.taking, id)
+	}
+}
+
+// The take's own start and end change no directory version, so its row is
+// emitted again from the cache.
+func (b *appBackend) publishTaking() {
+	c := &b.chats
+	c.op.Lock()
+	defer c.op.Unlock()
+	cached := func() ([]appwire.ChatRow, uint64, bool) {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		return slices.Clone(c.rows), c.version, !c.closed && c.source != nil
+	}
+	rows, version, following := cached()
+	if !following {
+		return
+	}
+	c.markTaking(rows, false)
+	// Only taking changed, so the cache's older locations stay off the agents
+	// a take may already have placed here.
+	b.publishChatRows(rows, version, true, nil)
+}
+
+// A finished take stops counting under the inventory lock, and this reading
+// clears its taking with the row that says the chat is here.
+func (b *appBackend) settleTake(ctx context.Context, s *syncsetup.Sync, id string) error {
+	c := &b.chats
+	c.op.Lock()
+	defer c.op.Unlock()
+	c.countTake(id, -1)
+	_, err := b.readChats(ctx, s, c.feed, true)
+	return err
+}
+
+// appChatSharing says another computer has not finished sharing the chat's
+// newest turns. A move now would copy the chat without them, so it waits,
+// unless the holder is no longer a known computer (removed, or presence
+// unknown) and would never finish.
+func appChatSharing(row *appwire.ChatRow, fact chatlist.Row) {
+	if fact.Mine || fact.Pending == 0 || row.Here {
+		return
+	}
+	row.Sharing = &appwire.ChatSharing{Pending: fact.Pending}
+	if fact.UploadTotal > 0 {
+		total := min(fact.UploadTotal, math.MaxInt64)
+		row.Sharing.Sent, row.Sharing.Total = int64(min(fact.UploadSent, total)), int64(total)
+	}
+	if row.Online != nil && !fact.HolderRemoved {
+		row.CanTake = false
+	}
+}
+
+// appChatSharingAgain judges a cached row's holder sharing again after its
+// presence changed, from can_take as it was before sharing blocked it
+// (takeable): a holder whose presence is now unknown no longer blocks.
+func appChatSharingAgain(row *appwire.ChatRow, fact chatlist.Row, takeable bool) {
+	if row.Sharing != nil && !row.Here {
+		row.CanTake = takeable
+	}
+	appChatSharing(row, fact)
+}
+
+func appChatPresence(row *appwire.ChatRow, fact chatlist.Row, state dirwatch.State, known map[string]bool) {
+	row.Online = nil
+	if fact.DeviceID != "" {
+		if online, ok := known[fact.DeviceID]; ok {
+			row.Online = &online
+		}
+	}
+	row.Line = appChatStatusLine(fact, row.Online)
+	row.TakeoverLine = appChatTakeoverLine(fact, row.Online)
+}
+
+// Inventory operations hold op through caching and emission. A list refreshes
+// the cache silently; only the follower compares against rows actually emitted.
+func (b *appBackend) publishChats(rows []appwire.ChatRow, version uint64, emit bool) {
+	b.publishChatRows(rows, version, emit, func(appwire.ChatRow) bool { return true })
+}
+
+// locate says which rows re-place their local agents; nil re-places none.
+func (b *appBackend) publishChatRows(rows []appwire.ChatRow, version uint64, emit bool, locate func(appwire.ChatRow) bool) {
+	old, current := b.chats.cacheRows(rows, version, emit)
+	if !current || !emit {
+		return
+	}
+	before := map[string]appwire.ChatRow{}
+	for _, r := range old {
+		before[r.Cell] = r
+	}
+	for _, r := range rows {
+		prev, exists := before[r.Cell]
+		delete(before, r.Cell)
+		if !exists || !reflect.DeepEqual(prev, r) {
+			b.emit.Emit(appwire.EventChatChanged, appwire.ChatChanged{Chat: r, Version: version})
+		}
+		if locate != nil && r.LocalAgent != "" && locate(r) {
+			var a *appAgent
+			b.locked(func() { a = b.agents[r.LocalAgent] })
+			if a != nil {
+				b.located(a, chatLocation(r))
+			}
+		}
+	}
+	for id := range before {
+		b.emit.Emit(appwire.EventChatRemoved, appwire.ChatRemoved{Cell: id, Version: version})
+	}
+}
+
+func (c *appChats) cacheRows(rows []appwire.ChatRow, version uint64, emit bool) ([]appwire.ChatRow, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if version < c.version {
+		return nil, false
+	}
+	c.rows = rows
+	c.byAgent = make(map[string]appwire.ChatRow)
+	for _, row := range rows {
+		if row.LocalAgent != "" {
+			c.byAgent[row.LocalAgent] = row
+		}
+	}
+	c.version = version
+	old := c.sent
+	if emit {
+		c.sent = rows
+	}
+	return old, true
+}
+
+func chatLocation(r appwire.ChatRow) *appwire.Location {
+	seen := r.Seen
+	line := r.Line
+	if !r.Here && r.Status == string(chatlist.Idle) {
+		line = chatlist.Available
+	} else if !r.Here && r.Holder != nil {
+		line = chatlist.Superseded(r.Holder.Name)
+	}
+	return &appwire.Location{Cell: r.Cell, Seen: &seen, Here: r.Here, Holder: r.Holder, CanTake: r.CanTake, Line: line, TakeoverLine: r.TakeoverLine}
+}
+func (b *appBackend) followChats(ctx context.Context, feed dirwatch.Follower) {
+	// Device publication may have connected the shared watch before this
+	// subscriber joined. Changes announces only future frames, so reconcile
+	// its current state once; a watch that has not spoken still stays silent.
+	if feed.State().Up && !b.refreshChatInventory(ctx, feed) {
+		return
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case _, ok := <-feed.Changes():
+			if !ok {
+				return
+			}
+		}
+		if !b.refreshChatInventory(ctx, feed) {
+			return
+		}
+	}
+}
+
+func (b *appBackend) refreshChatInventory(ctx context.Context, feed dirwatch.Follower) bool {
+	c := &b.chats
+	c.op.Lock()
+	defer c.op.Unlock()
+	if ctx.Err() != nil {
+		return false
+	}
+	readSource := func() (*syncsetup.Sync, uint64) {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		return c.source, c.version
+	}
+	s, version := readSource()
+	state := feed.State()
+	if state.Version > version {
+		_, _ = b.readChats(ctx, s, feed, true)
+	} else {
+		// Presence alone changes no directory version and needs no directory GET.
+		cloneRows := func() ([]appwire.ChatRow, map[string]bool) {
+			c.mu.Lock()
+			defer c.mu.Unlock()
+			// takeable is replaced whole by each read, never written in place.
+			return slices.Clone(c.rows), c.takeable
+		}
+		rows, takeable := cloneRows()
+		known := b.devices.watch.Snapshot(s.Identity, s.Device).Online
+		for i := range rows {
+			r := &rows[i]
+			appChatPresence(r, c.facts[r.Cell], state, known)
+			appChatSharingAgain(r, c.facts[r.Cell], takeable[r.Cell])
+		}
+		c.markTaking(rows, false)
+		// Presence still refreshes local agents' lines, but a cached row from
+		// before a landed take would move its agent back elsewhere.
+		b.publishChatRows(rows, version, true, func(r appwire.ChatRow) bool { return !c.landedTake(r.Cell) })
+	}
+	return true
+}
+
+func (b *appBackend) closeChats() {
+	c := &b.chats
+	stopFollower := func() (context.CancelFunc, dirwatch.Follower, chan struct{}) {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		c.closed = true
+		return c.cancel, c.feed, c.done
+	}
+	cancel, feed, done := stopFollower()
+	if cancel != nil {
+		cancel()
+	}
+	if feed != nil {
+		feed.Close()
+	}
+	if done != nil {
+		<-done
+	}
+	if c.publicationDone != nil {
+		<-c.publicationDone
+	}
+	// Join foreground continuations and inventory reads before the remaining teardown.
+	c.takeSlot() <- struct{}{}
+	defer c.freeSlot()
+	c.op.Lock()
+	defer c.op.Unlock()
+}
+
+// Cached enrichment is also used on agent.changed; emitting a turn's event
+// never adds network I/O. Existing refusal facts take precedence until the next
+// directory reading explicitly replaces them.
+func (b *appBackend) cachedChatLocation(id string) *appwire.Location {
+	readRow := func() (appwire.ChatRow, bool) {
+		b.chats.mu.Lock()
+		defer b.chats.mu.Unlock()
+		row, ok := b.chats.byAgent[id]
+		return row, ok
+	}
+	row, ok := readRow()
+	if !ok {
+		return nil
+	}
+	return chatLocation(row)
+}
+
+func (b *appBackend) dressChatLocation(view *appwire.Agent) {
+	fresh := b.cachedChatLocation(view.ID)
+	if fresh == nil {
+		return
+	}
+	if view.Location != nil {
+		copy := *view.Location
+		if copy.Cell == "" {
+			copy.Cell = fresh.Cell
+		}
+		if copy.Seen == nil {
+			copy.Seen = fresh.Seen
+		}
+		if !copy.Here {
+			copy.CanTake = fresh.CanTake
+			copy.TakeoverLine = fresh.TakeoverLine
+		}
+		fresh = &copy
+	}
+	view.Location = fresh
+}

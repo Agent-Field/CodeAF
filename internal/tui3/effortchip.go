@@ -9,6 +9,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/slashcat"
 )
 
 // THE THINKING CHIP — how hard this conversation thinks, said beside the model
@@ -120,7 +121,7 @@ import (
 //
 // The shared chord spelling renders this as opt+e on macOS and alt+e elsewhere,
 // matching the project and approvals controls beside it.
-const effortKey = "alt+e"
+const effortKey = slashcat.EffortKey
 
 // effortAutoWord is what this surface calls absence: the dial left alone, with
 // nothing asked for and the model thinking however it thinks.

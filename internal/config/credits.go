@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -72,15 +73,36 @@ func CreditsNeedRead(profileDir, key string) bool {
 	return r.Key != CreditsKeyPrint(key) || r.Low || r.Expired
 }
 
-// WriteCreditsReading atomically replaces machine state. Dollars and the key
-// stay out of the file; a successful rename wakes the live crew's generation.
+// WriteCreditsReading is [WriteCreditsReadingAt] observed now — for a reading
+// that was not just read from the provider. A read of the provider's balance
+// writes with the time the read began.
 func WriteCreditsReading(profileDir, key string, reading credits.Reading) error {
+	return WriteCreditsReadingAt(profileDir, key, reading, time.Now())
+}
+
+// ErrCreditsObservedAhead is a reading dated after the moment it is written:
+// a time nothing has reached yet cannot be when a balance was seen.
+var ErrCreditsObservedAhead = errors.New("credits reading is dated in the future")
+
+// WriteCreditsReadingAt atomically replaces machine state with a reading
+// OBSERVED AT observedAt — when the read that produced it began, not when it
+// finished. A balance read that began before a payment refusal and answered
+// after it says nothing about the refusal, and must not be dated as if it
+// did ([crewHeldAgainstNow] lifts a payment refusal only on credit read after
+// it). A zero time is kept as unknown, and lifts nothing; a time after now is
+// refused with [ErrCreditsObservedAhead] and nothing is written. Dollars and
+// the key stay out of the file; a successful rename wakes the live crew's
+// generation.
+func WriteCreditsReadingAt(profileDir, key string, reading credits.Reading, observedAt time.Time) error {
+	if observedAt.After(time.Now()) {
+		return ErrCreditsObservedAhead
+	}
 	path := ProfilePath(profileDir, "credits.json")
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
 	value := creditsRecord{Low: reading.Known && reading.Low, Known: reading.Known, Expired: reading.Known && reading.Expired,
-		Key: CreditsKeyPrint(key), ReadAt: time.Now().UTC()}
+		Key: CreditsKeyPrint(key), ReadAt: observedAt.UTC()}
 	data, err := json.Marshal(value)
 	if err != nil {
 		return err

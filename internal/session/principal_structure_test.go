@@ -37,6 +37,11 @@ import (
 // the question in words. "It does not need to" is a legitimate answer and two
 // of these give it.
 var wakeRoads = map[string]string{
+	"ResumeAfterCloseKey": "the desktop app carrying on its keyed, still-owed reply after an unexpected close, through a private wake addressed to that conversation’s own model",
+	"ResumeAfterQuit": "the desktop app opening again after its quit stopped a reply part-way " +
+		"(resume_quit.go). It is addressed to THE CONVERSATION'S OWN MODEL, to finish the answer " +
+		"to the person's own last message, and it only exists because that person had the app " +
+		"open, was answered part-way, and has opened it again",
 	"wakeNote": "the constructor itself; it addresses nobody and carries no words of its own",
 	"jobNote": "the registry's background-job ending; the model started this work and its tool " +
 		"contract promised the ending would return instead of being polled",
@@ -64,6 +69,11 @@ var wakeRoads = map[string]string{
 		"because somebody answered — a key on a screen, or the dial they set for this shape of " +
 		"question — so the person the sentence is for has just been there by construction, and " +
 		"what it says is their own decision read back",
+	"answerAsk": "the person's ask-back about a question this conversation already put, when " +
+		"no call is parked on it (tools_ask.go). It is addressed to THE CONVERSATION'S OWN MODEL, " +
+		"which owes the explanation; like [answerNote], it exists because somebody just replied " +
+		"to that question, so no principal has to find a person to address. Their words leave " +
+		"the decision open and continue that question even when the chat is a viewer",
 	"postTaskMessage": "THE ONE THAT MATTERED, and the seam both roads into a landed node's " +
 		"news take ([Agent.deliverTaskNote] announces the ending, " +
 		"[Agent.bubbleUnverifiedChildren] re-addresses what is still owed). The note is built " +

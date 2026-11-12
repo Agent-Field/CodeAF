@@ -92,35 +92,26 @@ func (a *Agent) callRole(
 func (a *Agent) callRoleChecked(ctx context.Context, role roles.Role, sessionDefault string,
 	messages []ai.Message, accept func(*ai.Response, string) bool, options ...ai.Option,
 ) (*ai.Response, string, error) {
-	a.mu.Lock()
-	source := a.config.RolesSource
-	// ONE MODEL MEANS ONE MODEL AT EVERY RUNG. A crew-only caller passes an empty
-	// floor deliberately — it is a quality judgement about a profile that HAS a
-	// crew, and it refuses to let the running model mark its own work — but the
-	// person who passed `--one-model` has already said the conversation's model
-	// is the crew. Left alone, those callers had no pin, no tier and no floor
-	// under the flag, so [roles.Ladder] answered ErrNoModel and a measured run
-	// had no mark reader and no brief writer at all (#443). It is decided HERE,
-	// at the one seam every errand passes through, so the next crew-only caller
-	// is correct without knowing the flag exists.
-	//
-	// THE FLOOR IS a.model AND NOT THE TURN'S LATCHED MODEL, because it is the
-	// same live conversation model every other errand already passes as its own
-	// floor (title.go, taskname.go, route_judge.go all read it live). A /model
-	// typed mid-turn reaches the turn's own next request now ([Agent.SetModel]),
-	// so reading it live here moves the crew-only rungs WITH the work rather than
-	// leaving the errands beside a turn talking to a model they do not know about.
-	if a.config.OneModel {
-		sessionDefault = a.model
+	if role == roles.RoleTitle {
+		ctx = context.WithValue(ctx, factoryAutomaticTurnKey{}, a.automaticFactoryRefusal)
 	}
-	a.mu.Unlock()
+	if err := factoryCallRefusal(ctx); err != nil {
+		return nil, sessionDefault, err
+	}
+	// ONE MODEL MEANS ONE MODEL AT EVERY RUNG, and that is decided by the
+	// session's one role reader (rolemodel.go), not here: a crew-only caller's
+	// empty floor and every rung above it answer the conversation's live model
+	// under the flag (#443), whatever source the door handed over.
+	reader := a.roleModels()
 	// ONE ESC SPENDS ONE PLANNER AND ONE TITLE. A second claim in the same
 	// generation is silence — the leftover race and the redirect must not
 	// each fire their own (interrupt_fan.go, F13/F17).
 	if err := a.interrupt.allow(role); err != nil {
 		return nil, "", err
 	}
-	rungs, err := roles.Ladder(roles.Source(source), role, sessionDefault)
+	// A caller's own errand may route itself (errand.go's [routedErrandLadder]).
+	rungs, err := reader.Ladder(role, sessionDefault)
+	rungs, err = routedErrandLadder(ctx, rungs, err)
 	if err != nil {
 		return nil, "", err
 	}
@@ -145,6 +136,12 @@ func (a *Agent) callRoleChecked(ctx context.Context, role roles.Role, sessionDef
 	ctx = provider.WithReconcile(ctx, a.reconciled)
 	if len(rungs) > roleFallThroughs+1 {
 		rungs = rungs[:roleFallThroughs+1]
+	}
+	// AN ERRAND THAT MAY NOT SUCCEED TAKES THE PERSON'S ROUTE AND NO OTHER
+	// (intentname.go): the rungs below the first are what the session falls
+	// back to so that a call that must be answered is, and a label is not one.
+	if firstRungOnly(ctx) && len(rungs) > 1 {
+		rungs = rungs[:1]
 	}
 	patience := roles.PatienceFor(role)
 	// THE PATIENCE IS THE ERRAND'S AND NOT EACH RUNG'S, and that is the whole of
@@ -224,6 +221,13 @@ func (a *Agent) callRoleChecked(ctx context.Context, role roles.Role, sessionDef
 	// per rung on a title would turn one bad minute at a provider into several
 	// charges and several waits for an answer nobody asked for.
 	for attempt, rung := range rungs {
+		if err := a.admitModelCall(errandCtx, rung.Model); err != nil {
+			// A caller's deadline is still written down; a cancel is not news.
+			if errors.Is(err, context.DeadlineExceeded) {
+				a.journalFailedCall(errandCtx, rung.Model, string(role), err, attempt+1, 0)
+			}
+			return nil, rung.Model, err
+		}
 		// AND THE CALLER THAT HAS SOMEBODY WATCHING IS TOLD, before the wait
 		// rather than after it. A person looking at a task being sized has one
 		// phase word and nothing under it; which model is being asked, and
@@ -291,7 +295,14 @@ func (a *Agent) callRoleChecked(ctx context.Context, role roles.Role, sessionDef
 			called = rung.Model
 		}
 		releaseRung()
+		if errors.Is(callErr, ErrSpendRail) {
+			return nil, called, callErr
+		}
 		if callErr == nil && response != nil {
+			// THE ROAD THIS ANSWER CAME DOWN goes with the answer to whichever
+			// caller banks it ([Agent.addUsageAs]); the slot is this attempt's
+			// own, so nothing else's road is in it.
+			noteAnswerBilling(response, served.TakeBilling())
 			// AND THE ERRAND WRITES ITS OWN CALL LINE, exactly as a step of the
 			// turn does (loop.go's [Agent.addUsage]). Without it the journal's
 			// call lines covered only the conversation's own requests, and a

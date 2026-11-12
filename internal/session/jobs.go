@@ -4,7 +4,7 @@ package session
 //
 // A session is a conversation, and a conversation cannot wait ten minutes for
 // `npm run dev` to exit — the command never exits, that is the point of it. So
-// bash grows one optional argument (background:true, tools.go) and the process
+// bash can fork a command (background:true, tools_jobs.go), and the process
 // it starts becomes a JOB: started, registered, watched, and reported on when
 // it ends. The model gets an id back in the same beat it made the call.
 //
@@ -57,14 +57,18 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
 
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	procexec "github.com/Agent-Field/codeaf/internal/executor"
+	"github.com/Agent-Field/codeaf/internal/factory/verification"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
 	"github.com/Agent-Field/codeaf/internal/shell"
 )
@@ -174,7 +178,10 @@ type job struct {
 	epoch   uint64
 	id      int
 	command string
-	kind    jobKind
+	// stageOwned is immutable completion ownership, independent of the parked caller.
+	stageOwned     bool
+	stageDelivered bool
+	kind           jobKind
 	// label and detail are a watch's short name and its terms ("every 10s on
 	// change"), empty for a bash job. They are set once at start and read
 	// without the lock.
@@ -211,8 +218,9 @@ type job struct {
 	// (jobname.go) and answers, when it answers, well after the job started
 	// saying things. It is empty for a job that has a label already, and for one
 	// whose namer never came back.
-	name  string
-	state jobState
+	callID string
+	name   string
+	state  jobState
 	// exitCode is meaningful only in jobExited.
 	exitCode int
 	ended    time.Time
@@ -222,6 +230,20 @@ type job struct {
 	// Such a job does not report its own death: the caller already knows, and
 	// a note saying so would be the agent telling itself what it just did.
 	killRequested bool
+	// committed is a RENDER's point of no return: the provider's bytes have
+	// arrived and the job has decided to save them. It and killRequested are
+	// both written under mu, and exactly one of them can win — see
+	// [job.commitRender] and [job.requestKillRender].
+	committed bool
+	// permit is the process-wide render place this job holds, if it is a render
+	// ([renderGate]). It is released by [job.releaseRender] when the PROVIDER
+	// GOROUTINE exits — never at a stop, and never because the row changed state.
+	permit     *renderGate
+	permitOnce sync.Once
+	// ledger and renderID tie a render job to its durable record
+	// ([renderLedger]); both are set once by [jobRegistry.beginRender].
+	ledger   *renderLedger
+	renderID string
 	// personStopped says the requested death this job is about to have is A
 	// PERSON'S STOP ([Agent.cancelJob]) rather than the model's `jobs kill` or a
 	// shutdown.
@@ -247,16 +269,21 @@ type job struct {
 	// commands somebody is still standing over, which is what a task worker parks
 	// on (task_job_park.go).
 	owed bool
+	// notify keeps an explicitly requested completion on the waking lane.
+	notify bool
 }
 
 // jobInfo is a job's status copied out from under its lock, so rendering never
 // holds it.
 type jobInfo struct {
-	id      int
-	command string
-	kind    jobKind
-	label   string
-	detail  string
+	callID          string
+	outputTruncated bool
+	url             string
+	id              int
+	command         string
+	kind            jobKind
+	label           string
+	detail          string
 	// name is the short name the job is CALLED — the label where the registry
 	// minted one, and otherwise whatever the cheap namer answered (jobname.go).
 	// It is empty until there is one: naming is an errand and the work never
@@ -277,23 +304,44 @@ type jobInfo struct {
 	// engine for a duration four times a second (jobnotice.go says why both).
 	started time.Time
 	elapsed time.Duration
+	// ended is the moment the registry settled the job, and zero while it runs.
+	// It is copied out rather than derived from started+elapsed because a saved
+	// running row's elapsed is a snapshot, and an ending computed from it would
+	// be a time the process never ended at (app_processes.go).
+	ended time.Time
 }
 
 func (j *job) info() jobInfo {
 	j.mu.Lock()
 	defer j.mu.Unlock()
+	truncated := false
+	url := ""
+	if j.sink != nil {
+		truncated = j.sink.notice() != ""
+		url = j.sink.processURL()
+	}
 	elapsed := time.Since(j.started)
 	if j.state != jobRunning {
 		elapsed = j.ended.Sub(j.started)
 	}
 	return jobInfo{
-		id: j.id, command: j.command, kind: j.kind, label: j.label, detail: j.detail,
+		id: j.id, command: verification.OriginalCommand(j.command), kind: j.kind, label: j.label, detail: j.detail, outputTruncated: truncated, url: url,
 		name:    j.name,
+		callID:  j.callID,
 		logPath: j.logPath,
 		dir:     j.dir,
 		state:   j.state, code: j.exitCode, ticks: j.ticks,
 		started: j.started, elapsed: elapsed,
+		ended: settledAt(j.state, j.ended),
 	}
+}
+
+// settledAt is a job's ending only once it has one.
+func settledAt(state jobState, ended time.Time) time.Time {
+	if state == jobRunning {
+		return time.Time{}
+	}
+	return ended
 }
 
 // setName gives the job the short name it is called, and reports whether that
@@ -345,12 +393,82 @@ func (j *job) running() bool {
 // decision made once rather than a race between two goroutines.
 func (j *job) requestKill() bool {
 	j.mu.Lock()
-	defer j.mu.Unlock()
 	if j.state != jobRunning {
+		j.mu.Unlock()
 		return false
 	}
 	j.killRequested = true
+	// A render that has not committed is cancelled by this claim, and the
+	// record says so now — not when a provider that ignores the cancel returns.
+	seal := j.kind == jobKindRender && !j.committed
+	j.mu.Unlock()
+	if seal {
+		j.sealRender(renderPatch{state: RenderCancelled})
+	}
 	return true
+}
+
+// sealRender writes the render's one terminal record, if it has a record and no
+// ending yet. It reports whether this call was the ending.
+func (j *job) sealRender(patch renderPatch) bool {
+	j.mu.Lock()
+	ledger, id := j.ledger, j.renderID
+	j.mu.Unlock()
+	if ledger == nil || id == "" {
+		return false
+	}
+	return ledger.settle(id, patch, time.Now())
+}
+
+// isCommitted reports a render's commit flag.
+func (j *job) isCommitted() bool {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return j.committed
+}
+
+// commitRender is a render's gate between "the provider answered" and "a file
+// is written", and it is ATOMIC WITH THE STOP: it refuses when a stop was
+// already accepted and otherwise makes any later stop lose. So a stop either
+// lands before the file exists (nothing is ever written) or finds the render
+// already committed (and is told so), and there is no third outcome in which a
+// file appears after a stop was acknowledged.
+func (j *job) commitRender() bool {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if j.killRequested {
+		return false
+	}
+	j.committed = true
+	return true
+}
+
+// saving reports whether this render has committed to saving its file, the
+// state in which a kill refuses ([job.requestKillRender]).
+func (j *job) saving() bool {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return j.kind == jobKindRender && j.committed && j.state == jobRunning
+}
+
+// requestKillRender is [job.requestKill] for a render: it claims the stop unless
+// the render has already committed to saving its file, and says which. A render
+// that has committed is NOT marked killed, because the file will exist and its
+// note must still reach the model.
+func (j *job) requestKillRender() (claimed, committed bool) {
+	j.mu.Lock()
+	if j.state != jobRunning {
+		j.mu.Unlock()
+		return false, false
+	}
+	if j.committed {
+		j.mu.Unlock()
+		return false, true
+	}
+	j.killRequested = true
+	j.mu.Unlock()
+	j.sealRender(renderPatch{state: RenderCancelled})
+	return true, false
 }
 
 // payOwed settles this job's debt, reporting whether there was one to settle.
@@ -379,12 +497,12 @@ func (j *job) stillOwed() bool {
 	return j.owed
 }
 
-// markPersonStopped records that the kill about to be asked for is a person's.
-// It is called BEFORE [job.requestKill]; see the field.
-func (j *job) markPersonStopped() {
+// markPersonStopped claims the completion note before a person requests a
+// kill, or returns that ending to the reaper when the stop remains unproven.
+func (j *job) markPersonStopped(stopped bool) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	j.personStopped = true
+	j.personStopped = stopped
 }
 
 // stoppedByPerson reports whether this job's requested death is a person's stop.
@@ -405,6 +523,10 @@ func (j *job) settledKilled() bool {
 	return j.state == jobKilled
 }
 
+// waitJobTree is the platform completion barrier, replaceable by the contract
+// test so a leader exit and a still-live launch can be presented independently.
+var waitJobTree = processgroup.WaitEmpty
+
 // settle makes a job final: the log is closed, the status fields stop moving,
 // and done is released. It reports whether the death was REQUESTED, which is
 // the one thing the caller needs to decide whether to say anything about it.
@@ -413,6 +535,11 @@ func (j *job) settledKilled() bool {
 // job's middle — the reaper for a process, the timer loop for a watch — which
 // is what makes the close of done safe without a second flag guarding it.
 func (j *job) settle(code int) bool {
+	if j.cmd != nil && j.cmd.Process != nil {
+		// A managed Windows launch stays running after its leader exits while
+		// any descendant remains. Foreground command returns are separate.
+		_ = waitJobTree(j.cmd.Process.Pid, 0)
+	}
 	// The log file closes before the status is final, so a reader that sees a
 	// finished job sees a complete file. Closing it only ASKS the registry for
 	// a folder pass ([jobRegistry.askRetention]); the sweep itself never runs
@@ -466,6 +593,34 @@ func (j *job) signal(sig syscall.Signal) {
 // for a turn: a job started in one turn is still running, and still listable,
 // three turns later, and Close is what ends it.
 type jobRegistry struct {
+	// workStarted wakes the owner after a job becomes visible to StopWork.
+	workStarted func()
+
+	// renderMu makes "count the running renders, then add one" one step, so two
+	// renders starting together cannot both pass the cap.
+	renderMu sync.Mutex
+	// renders is the durable render ledger, opened on first use
+	// ([jobRegistry.renderLedger]).
+	renders     *renderLedger
+	rendersOnce sync.Once
+	// renderNotify carries every render record change to the session's
+	// watchers ([Agent.emitRenderUpdate]). IT IS SET ONCE, AT CONSTRUCTION,
+	// beside announce, and copied onto the ledger inside rendersOnce before the
+	// ledger is handed to anybody, so no reader can see it change. It used to be
+	// installed by the first video or music render, which left an image refusal
+	// in a session that had not rendered yet with a saved record and no event,
+	// and wrote the field under a lock its reader did not take.
+	renderNotify func(RenderRecord)
+	// rendersClosed is set, under mu, by [jobRegistry.closeRenders]; a ledger
+	// first opened after it is closed at once. NOT BY A STOP-WORK ROUND: that
+	// round reopens the registry for the next message, and a closed ledger
+	// would refuse every later picture and lose the endings of the renders
+	// the round was ending.
+	rendersClosed bool
+	// gate is the process-wide render admission this registry draws on. It is
+	// [processRenders] outside tests; a test hands two registries one private
+	// gate to prove the total is shared without disturbing other tests.
+	gate      *renderGate
 	workspace string
 	// place is the session folder, and it is what decides where the logs land
 	// (landing.go). The zero Place keeps them under the workspace, which is the
@@ -482,6 +637,12 @@ type jobRegistry struct {
 	// whether anybody has to answer; it does not reshape the news first
 	// ([jobNote] states the law).
 	notify func(string)
+	// notifyUnowed preserves the absence of a parked caller for the wake scheduler.
+	// Registries without that scheduler keep the ordinary notification lane.
+	notifyUnowed func(string)
+	// notifyQuiet carries successful process endings to the next turn without
+	// waking the agent. Tasks and renders still use notify through finish.
+	notifyQuiet func(string)
 	// notifyWatch carries a watch's news, and the bool is WHICH KIND OF NEWS IT
 	// IS: false for a periodic tick, true for the tick that ENDED the watch —
 	// `until` matched, the output went quiet, the command failed its way out
@@ -520,8 +681,10 @@ type jobRegistry struct {
 	// with nobody parked leaves it nil and pays nothing.
 	paid func()
 
-	mu   sync.Mutex
-	jobs []*job
+	// stage confines finite-check ownership to factory stage conversations.
+	stage bool
+	mu    sync.Mutex
+	jobs  []*job
 	// Claims keep ids unique even when a legacy registry changes workspace.
 	claimMu sync.Mutex
 	seq     int
@@ -607,6 +770,18 @@ var errSessionClosed = errors.New("this session has closed; nothing new starts i
 // so that the overwhelmingly common case — a session already closed when the
 // call is made — costs nothing and creates no directory.
 func (r *jobRegistry) newJob(command string, kind jobKind) (*job, error) {
+	return r.newJobIn(command, kind, "")
+}
+
+// errWorkspaceMoved is a run again refused because the registry's workspace
+// is no longer the folder the command was recorded in.
+var errWorkspaceMoved = errors.New("this conversation's folder changed; the command was not run again")
+
+// newJobIn is [jobRegistry.newJob] for a job that must run in want, when want
+// is not empty. THE FOLDER IS CHECKED UNDER THE SAME HOLD THAT READS IT, so a
+// workspace anchored elsewhere between a run again's check and its fork can
+// never send the recorded command into a folder it was not recorded in.
+func (r *jobRegistry) newJobIn(command string, kind jobKind, want string) (*job, error) {
 	// NOTHING STARTS IN A SESSION THAT HAS LEFT. The refusal is here, ahead of
 	// the directory, because the first thing this function does is CREATE one:
 	// a job claimed during a quit put the jobs folder back the moment after it
@@ -617,6 +792,9 @@ func (r *jobRegistry) newJob(command string, kind jobKind) (*job, error) {
 	r.mu.Unlock()
 	if closed {
 		return nil, errSessionClosed
+	}
+	if want != "" && filepath.Clean(workspace) != filepath.Clean(want) {
+		return nil, errWorkspaceMoved
 	}
 
 	// The selected workspace/session may itself be a legitimate directory
@@ -659,6 +837,10 @@ func (r *jobRegistry) newJob(command string, kind jobKind) (*job, error) {
 		done:    make(chan struct{}),
 	}
 	started.sink = newJobSink(logFile, spoolPath)
+	if config.AppMode() {
+		started.sink.appWindow = true
+		started.sink.chunkBytes = AppProcessOutputBytes
+	}
 	// Closing asks for maintenance before the job publishes its final state.
 	// Claim and startup also sweep, while a log write never does.
 	started.sink.finishRetention = func() { r.askRetention(directory, started.sink) }
@@ -778,6 +960,9 @@ func (r *jobRegistry) join(started *job) error {
 	}
 	r.jobs = append(r.jobs, started)
 	r.mu.Unlock()
+	if r.workStarted != nil {
+		r.workStarted()
+	}
 	return nil
 }
 
@@ -853,7 +1038,200 @@ func (r *jobRegistry) settled(one *job, code int) bool {
 // whole purpose is to outlive the turn would be killed by the very act of
 // answering the person. The job's lifetime is the session's, and Close is the
 // only thing that ends it early.
+// jobProcessCap is how many background processes one agent may have running
+// at once; the next is refused with [errJobProcessCap]'s sentence.
+const jobProcessCap = 16
+
+var errJobProcessCap = fmt.Errorf("%d processes are running for this agent.", jobProcessCap)
+
+// runningProcesses counts the background processes still running.
+func (r *jobRegistry) runningProcesses() int {
+	running := 0
+	for _, one := range r.all() {
+		if one.kind != jobKindBash {
+			continue
+		}
+		select {
+		case <-one.done:
+		default:
+			running++
+		}
+	}
+	return running
+}
+
+// runningAny counts jobs of every kind still running: anything that could be
+// writing into the folder while a foreground command runs.
+func (r *jobRegistry) runningAny() int {
+	running := 0
+	for _, one := range r.all() {
+		select {
+		case <-one.done:
+		default:
+			running++
+		}
+	}
+	return running
+}
+
+// renderLedger opens this session's render ledger once. A session with no
+// folder (the legacy layout) keeps it in memory.
+func (r *jobRegistry) renderLedger() *renderLedger {
+	r.rendersOnce.Do(func() {
+		r.mu.Lock()
+		place := r.place
+		r.mu.Unlock()
+		ledger := openRenderLedger(place.join(placeRenders), place.ID(), time.Now())
+		ledger.notify = r.renderNotify
+		r.mu.Lock()
+		closed := r.rendersClosed
+		r.renders = ledger
+		r.mu.Unlock()
+		if closed {
+			ledger.close()
+		}
+	})
+	return r.renders
+}
+
+// closeRenders releases the ledger's file when the session itself ends
+// ([Agent.Close], an automation's run), and makes any ledger opened after it a
+// closed one, so a call that outlived the close records nothing and sends
+// nothing. It opens nothing; it is idempotent.
+func (r *jobRegistry) closeRenders() {
+	r.mu.Lock()
+	r.rendersClosed = true
+	ledger := r.renders
+	r.mu.Unlock()
+	if ledger != nil {
+		ledger.close()
+	}
+}
+
+// beginRender records a started render and ties the job to its record. run and
+// call are the tool site's own identities (runIdentity, callIDFrom), never
+// parsed from anything.
+func (r *jobRegistry) beginRender(one *job, kind, model, run, call string) error {
+	ledger := r.renderLedger()
+	id, err := ledger.beginChecked(one.id, kind, model, run, call, time.Now())
+	if err != nil {
+		return err
+	}
+	one.mu.Lock()
+	one.ledger, one.renderID = ledger, id
+	one.mu.Unlock()
+	return nil
+}
+
+// jobRenderCap is how many provider generations (video, music) one agent may
+// have running at once. It is a separate count from the process cap because a
+// render is a goroutine holding a response buffer, not a process.
+const jobRenderCap = 3
+
+// renderGate is a counting admission that never blocks: a place is taken or the
+// caller is told no. It bounds how many provider render calls (each able to hold
+// up to the media client's response ceiling, 512 MiB for video, plus its
+// decoding and transient copies) exist in the PROCESS at once. IT BOUNDS THE
+// NUMBER OF RENDERS ONLY and is not a memory guarantee: 3 x 512 MiB plus
+// decoding is the worst case it permits, and a byte budget is later work.
+type renderGate struct{ places chan struct{} }
+
+func newRenderGate(places int) *renderGate {
+	return &renderGate{places: make(chan struct{}, places)}
+}
+
+func (g *renderGate) tryAcquire() bool {
+	select {
+	case g.places <- struct{}{}:
+		return true
+	default:
+		return false
+	}
+}
+
+func (g *renderGate) release() { <-g.places }
+
+// processRenders is the one gate every agent in this process draws on.
+var processRenders = newRenderGate(jobRenderCap)
+
+var errProcessRenderCap = fmt.Errorf("%d renders are already running in this process, counting stopped ones whose provider has not answered yet; try again when one returns.", jobRenderCap)
+
+// releaseRender gives the job's process-wide place back, once. The render
+// goroutines defer it so that every road out of them — success, failure, a
+// stop, a panic — returns the place.
+func (j *job) releaseRender() {
+	j.permitOnce.Do(func() {
+		j.mu.Lock()
+		ledger, id := j.ledger, j.renderID
+		j.mu.Unlock()
+		if ledger != nil && id != "" {
+			ledger.release(id)
+		}
+		if j.permit != nil {
+			j.permit.release()
+		}
+	})
+}
+
+// noteCharge hands the ledger what the provider reported charging, the moment
+// the provider call returns — whatever became of the render meanwhile. A
+// render already cancelled keeps its state and gains the receipt.
+func (j *job) noteCharge(usage *ai.Usage) {
+	j.mu.Lock()
+	ledger, id := j.ledger, j.renderID
+	j.mu.Unlock()
+	if ledger != nil && id != "" {
+		ledger.charge(id, usage, time.Now())
+	}
+}
+
+var errRenderCap = fmt.Errorf("%d renders are already running for this agent; wait for one to finish or stop one with jobs kill.", jobRenderCap)
+
+// runningRenders counts the renders still running.
+func (r *jobRegistry) runningRenders() int {
+	running := 0
+	for _, one := range r.all() {
+		if one.kind != jobKindRender {
+			continue
+		}
+		select {
+		case <-one.done:
+		default:
+			running++
+		}
+	}
+	return running
+}
+
 func (r *jobRegistry) start(command string) (*job, error) {
+	return r.startIn(command, "")
+}
+
+// jobStartError is a background job's start error. A refusal the platform can
+// explain leads with that reason, which the background-job tool puts on its
+// first line; the original error stays wrapped either way.
+func jobStartError(goos string, err error) error {
+	reason, advice := shell.StartFailure(goos, err)
+	if reason == "" {
+		return fmt.Errorf("could not start the command: %w", err)
+	}
+	return fmt.Errorf("%s\n%s\nWindows said: %w", reason, advice, err)
+}
+
+// startIn is [jobRegistry.start] held to one folder ([jobRegistry.newJobIn]).
+func (r *jobRegistry) startIn(command, want string) (*job, error) {
+	return r.startInUnder(context.Background(), command, want)
+}
+
+// startInUnder admits a stamped request only while its caller still waits.
+// Once started, the background job keeps its existing independent lifetime.
+func (r *jobRegistry) startInUnder(ctx context.Context, command, want string, notify ...bool) (*job, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if r.runningProcesses() >= jobProcessCap {
+		return nil, errJobProcessCap
+	}
 	if err := markTaskStorageUncertain(r.workspace); err != nil {
 		return nil, err
 	}
@@ -861,10 +1239,17 @@ func (r *jobRegistry) start(command string) (*job, error) {
 	if shellErr != nil {
 		return nil, shellErr
 	}
-	started, err := r.newJob(command, jobKindBash)
+	started, err := r.newJobIn(command, jobKindBash, want)
 	if err != nil {
 		return nil, err
 	}
+
+	// Record the request before the reaper can observe even an immediate exit.
+	started.mu.Lock()
+	started.notify = len(notify) > 0 && notify[0]
+	started.stageOwned = r.stage && verification.CheckCommand(verification.OriginalCommand(command))
+	started.callID = callIDFrom(ctx)
+	started.mu.Unlock()
 
 	// THE SAME STREAMING SHELL A FOREGROUND CALL GETS (internal/exec/bare's
 	// streaming.go). A background job is the one place where block-buffered
@@ -896,9 +1281,15 @@ func (r *jobRegistry) start(command string) (*job, error) {
 	process.Stdout = started.sink
 	process.Stderr = started.sink
 
-	if err := process.Start(); err != nil {
+	// Recheck after the bounded registry/log setup, immediately before the
+	// effect. No cancelled request is replayed later by a detached worker.
+	if err := ctx.Err(); err != nil {
 		started.sink.close()
-		return nil, fmt.Errorf("could not start the command: %w", err)
+		return nil, err
+	}
+	if err := processgroup.Start(process); err != nil {
+		started.sink.close()
+		return nil, jobStartError(runtime.GOOS, err)
 	}
 	started.cmd = process
 	started.group = processgroup.CaptureGroup(process.Process.Pid)
@@ -964,6 +1355,38 @@ func (r *jobRegistry) startTask(id uint64, title string, cancel context.CancelFu
 // a watch's loop is tools_watch.go's: this registry owns the id, the log, the
 // row and the kill.
 func (r *jobRegistry) startRender(label, prompt string) (*job, context.Context, error) {
+	// THE PROCESS-WIDE PLACE COMES FIRST AND IS NON-BLOCKING. It is held until
+	// the provider goroutine actually returns, so a stopped render whose provider
+	// ignores the cancel keeps its place and cannot be replaced by an endless
+	// stream of new ones. Every refusal and rollback below gives it back.
+	gate := r.gate
+	if gate == nil {
+		gate = processRenders
+	}
+	if !gate.tryAcquire() {
+		return nil, nil, errProcessRenderCap
+	}
+	started, ctx, err := r.startRenderHolding(label, prompt)
+	if err != nil {
+		gate.release()
+		return nil, nil, err
+	}
+	started.permit = gate
+	return started, ctx, nil
+}
+
+// startRenderHolding is the per-registry part of [jobRegistry.startRender]; the
+// caller owns the process-wide place and gives it back if this fails.
+func (r *jobRegistry) startRenderHolding(label, prompt string) (*job, context.Context, error) {
+	// A RENDER HOLDS ITS WHOLE ANSWER IN MEMORY (up to the provider client's
+	// ceiling, 512 MB for video) and a goroutine until it settles, so the number
+	// running at once is bounded. The next is refused up front, before any money
+	// is spent, and a settled render frees its place.
+	r.renderMu.Lock()
+	defer r.renderMu.Unlock()
+	if r.runningRenders() >= jobRenderCap {
+		return nil, nil, errRenderCap
+	}
 	started, err := r.newJob(prompt, jobKindRender)
 	if err != nil {
 		return nil, nil, err
@@ -1028,7 +1451,8 @@ func (r *jobRegistry) releaseParked() {
 }
 
 // finish settles a job whose middle was a goroutine rather than a process, and
-// drops its one note on the steering queue.
+// drops its one note on the steering queue. Tasks and renders keep this waking
+// path: plain processes end through settleExit instead.
 //
 // It is [jobRegistry.reap] for the kinds that have nothing to wait on: the same
 // two rules hold, which are that a death this session ASKED for says nothing —
@@ -1058,6 +1482,7 @@ func (r *jobRegistry) finish(done *job, code int, note string) {
 // a clock, a timeout, a person's key or a person's steer all take the same
 // process into the same registry and mean different things by it.
 type adoption struct {
+	callID string
 	// quiet leaves the person-visible row to the caller, to be published after
 	// the claim: the process and the job id become one fact under bare's adoption
 	// lock, and the row goes out once that lock is released.
@@ -1090,6 +1515,9 @@ type adoption struct {
 // WHAT THE CALLER KNOWS AND THIS DOES NOT is [adoption], the two facts about the
 // road the takeover came down.
 func (r *jobRegistry) adopt(taken *bare.BashCall, how adoption) (*job, error) {
+	if r.runningProcesses() >= jobProcessCap {
+		return nil, errJobProcessCap
+	}
 	started, err := r.newJob(taken.Command(), jobKindBash)
 	if err != nil {
 		return nil, err
@@ -1102,6 +1530,8 @@ func (r *jobRegistry) adopt(taken *bare.BashCall, how adoption) (*job, error) {
 	// The provenance is written before the job joins the registry, which is the
 	// last instant this goroutine is the only one that can see it.
 	started.owed = how.owed
+	started.stageOwned = r.stage && verification.CheckCommand(verification.OriginalCommand(taken.Command()))
+	started.callID = how.callID
 	// THE JOIN COMES BEFORE THE ATTACH, so that a refused adoption never points
 	// bash's streams at a sink this registry has just closed and a log it has
 	// just removed. A quiet adoption takes the same door — it only declines the
@@ -1132,8 +1562,20 @@ func (r *jobRegistry) reap(watched *job) {
 
 // settleExit is what happens the moment a process's exit code is known, however
 // it became known: the job is made final, and unless the death was asked for a
-// note goes on the steering queue.
+// note goes to the waking lane or waits silently for the next turn.
 func (r *jobRegistry) settleExit(watched *job, code int) {
+	// Receipt/news delivery remains live work even after the process has exited.
+	defer func() {
+		if watched.stageOwned {
+			watched.mu.Lock()
+			watched.stageDelivered = true
+			watched.mu.Unlock()
+			if r.paid != nil {
+				r.paid()
+			}
+		}
+	}()
+
 	requested := r.settled(watched, code)
 
 	// A JOB'S REAL ENDING REACHES THE JOURNAL BEFORE THE NOTE. This is the one
@@ -1175,7 +1617,14 @@ func (r *jobRegistry) settleExit(watched *job, code int) {
 	// The answer is kept because a registry with no notify lane still has to
 	// release the park itself below.
 	owed := watched.payOwed()
-	if r.notify != nil {
+	quiet := code == 0 && !owed && !watched.notify && !watched.stageOwned
+	notify := r.notify
+	if quiet {
+		notify = r.notifyQuiet
+	} else if !owed && !watched.stageOwned && r.notifyUnowed != nil {
+		notify = r.notifyUnowed
+	}
+	if notify != nil {
 		note := fmt.Sprintf("job %d exited %d", watched.id, code)
 		if last := watched.sink.lastNonEmptyLine(); last != "" {
 			note += ": " + clip(last, jobExitNoteLimit)
@@ -1184,7 +1633,9 @@ func (r *jobRegistry) settleExit(watched *job, code int) {
 		// steering lane and arrives as a user-role message, which read cold is
 		// indistinguishable from somebody typing "job 3 exited 0" — and a model
 		// reading it that way runs the command again to see what they meant.
-		note += "\n" + jobExitNewsRule
+		if !quiet {
+			note += "\n" + jobExitNewsRule
+		}
 		// AND THE OUTPUT COMES WITH IT. A watch's note is its own sentence and
 		// needs none of this; a bash job's ending is the moment its output finally
 		// means something, and a note that withheld it would be an invitation to
@@ -1199,7 +1650,7 @@ func (r *jobRegistry) settleExit(watched *job, code int) {
 					strconv.Itoa(jobExitTailLines) + " lines · " + watched.sink.completionFooter(watched.logPath) + "]"
 			}
 		}
-		r.notify(note)
+		notify(note)
 		return
 	}
 	// A REGISTRY WITH NO LANE TO REPORT INTO HAS NO NOTE FOR THE RELEASE TO RIDE
@@ -1217,6 +1668,28 @@ func (r *jobRegistry) all() []*job {
 	snapshot := make([]*job, len(r.jobs))
 	copy(snapshot, r.jobs)
 	return snapshot
+}
+
+// runningNewest is the running jobs among the newest scan this registry
+// holds, newest first, and whether older jobs were left unexamined. A job's
+// end is read off its done channel, so no job's lock is taken under r.mu.
+func (r *jobRegistry) runningNewest(scan int) ([]*job, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var out []*job
+	examined := 0
+	for i := len(r.jobs) - 1; i >= 0; i-- {
+		if examined == scan {
+			return out, true
+		}
+		examined++
+		select {
+		case <-r.jobs[i].done:
+		default:
+			out = append(out, r.jobs[i])
+		}
+	}
+	return out, false
 }
 
 func (r *jobRegistry) find(id int) *job {
@@ -1238,13 +1711,47 @@ func (r *jobRegistry) find(id int) *job {
 // four seconds this used to spend watching for an exit nobody was waiting for
 // any more.
 func (r *jobRegistry) kill(ctx context.Context, id int) (string, bool) {
+	line, result := r.killFor(ctx, id)
+	return line, result == killNotClaimed
+}
+
+// killResult is what one kill actually did.
+type killResult int
+
+const (
+	// killNotClaimed is no such job, or one that had already ended.
+	killNotClaimed killResult = iota
+	// killRefusedSaving is a render that had already committed to saving its
+	// file: nothing was signalled and it keeps running until the file lands.
+	killRefusedSaving
+	// killSignalled is a job this kill claimed and signalled.
+	killSignalled
+	// killUnproven means neither signal round proved that the job ended.
+	killUnproven
+)
+
+// killFor is [jobRegistry.kill] with its actual result, for a caller that must
+// not report a stop that did not happen.
+func (r *jobRegistry) killFor(ctx context.Context, id int) (string, killResult) {
 	target := r.find(id)
 	if target == nil {
-		return fmt.Sprintf("No job %d.", id), true
+		return fmt.Sprintf("No job %d.", id), killNotClaimed
 	}
-	if !target.requestKill() {
+	// A render that already has its bytes and has decided to save them is not
+	// stopped: the file will exist, and its note is still coming. Saying
+	// "nothing was saved" there would be false.
+	if target.kind == jobKindRender {
+		claimed, committed := target.requestKillRender()
+		if committed {
+			return fmt.Sprintf("%s (job %d) had already finished rendering and is being saved; it was not stopped, and its note will name the file", target.label, id), killRefusedSaving
+		}
+		if !claimed {
+			info := target.info()
+			return fmt.Sprintf("Job %d already %s.", id, statusText(info)), killNotClaimed
+		}
+	} else if !target.requestKill() {
 		info := target.info()
-		return fmt.Sprintf("Job %d already %s.", id, statusText(info)), true
+		return fmt.Sprintf("Job %d already %s.", id, statusText(info)), killNotClaimed
 	}
 	if target.explicitStop != nil {
 		target.explicitStop()
@@ -1257,25 +1764,34 @@ func (r *jobRegistry) kill(ctx context.Context, id int) (string, bool) {
 		// hanging the turn on it would be worse than reporting the SIGKILL.
 		waitDoneUnder(ctx, target.done, jobTermGrace)
 	}
+	select {
+	case <-target.done:
+	default:
+		if requireJobStopProof() {
+			return fmt.Sprintf("job %d was told to stop and had not ended when the wait ran out", id), killUnproven
+		}
+	}
 	// A watch is stopped, not killed: there was no process of its own to end,
 	// and "stopped" is the word its list row and its notes already use.
 	if target.kind == jobKindWatch {
-		return fmt.Sprintf("watch %s (job %d) stopped", target.label, id), false
+		return fmt.Sprintf("watch %s (job %d) stopped", target.label, id), killSignalled
 	}
 	// A task is STOPPED and its branch is KEPT. The words matter: nothing the
 	// node wrote is thrown away by ending it, and the completion note that
 	// follows names the branch the work is on.
 	if target.kind == jobKindTask {
-		return fmt.Sprintf("%s (job %d) stopped; its branch is kept", target.label, id), false
+		return fmt.Sprintf("%s (job %d) stopped; its branch is kept", target.label, id), killSignalled
 	}
-	// A render is STOPPED and nothing was saved, which is the whole of what the
-	// model needs to know: no file landed, and no note about this job is
-	// coming. The label is the noun — "video", "music" — so the sentence names
-	// what was lost without this switch growing a case per modality.
+	// A render is STOPPED HERE and nothing was saved: no file landed (the
+	// commit gate guarantees it) and no note about this job is coming. The
+	// label is the noun — "video", "music". What this does NOT say is that the
+	// provider's job ended: nothing here tells the provider to cancel, so
+	// whether it is still running or charged is unknown, and the sentence says
+	// so rather than imply a refund.
 	if target.kind == jobKindRender {
-		return fmt.Sprintf("%s (job %d) stopped; no %s was saved", target.label, id, target.label), false
+		return fmt.Sprintf("%s (job %d) stopped; no %s was saved. Only waiting stopped here — the provider was not told to cancel, so whether it is charged is unknown", target.label, id, target.label), killSignalled
 	}
-	return fmt.Sprintf("job %d killed", id), false
+	return fmt.Sprintf("job %d killed", id), killSignalled
 }
 
 // shutdown ends every running job at Close: one SIGTERM round, ONE shared
@@ -1346,8 +1862,13 @@ func statusText(info jobInfo) string {
 			return "finished"
 		}
 		// Nor has a render: it either landed a file or failed, and both of
-		// those already reached the model as a note.
+		// those already reached the model as a note. The two are still told
+		// apart here, because a list that says "finished" for a render that
+		// produced nothing is a list that lies.
 		if info.kind == jobKindRender {
+			if info.code != 0 {
+				return "failed"
+			}
 			return "finished"
 		}
 		return fmt.Sprintf("exited(%d)", info.code)
@@ -1438,6 +1959,8 @@ type jobSink struct {
 	file            *os.File
 	closed          bool
 	base            string
+	url             string
+	appWindow       bool
 	chunkBytes      int64
 	spoolBytes      int64
 	spoolBroken     bool
@@ -1472,6 +1995,7 @@ func newJobSink(file *os.File, base string) *jobSink {
 func (s *jobSink) Write(data []byte) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.captureProcessURLLocked(data)
 	if s.file != nil && !s.closed {
 		s.spoolLocked(data)
 	}
@@ -1541,6 +2065,9 @@ func (s *jobSink) spoolWriteLocked(piece []byte) (int, error) {
 // previous backup is removed before the copy, so even during rotation there
 // are at most two chunks. A backup is only removed if this sink created it.
 func (s *jobSink) rotateLocked() bool {
+	if s.appWindow {
+		return s.trimAppWindowLocked()
+	}
 	root, err := os.OpenRoot(filepath.Dir(s.base))
 	if err != nil {
 		s.breakSpoolLocked(err)
@@ -1752,7 +2279,7 @@ func (s *jobSink) tail(n int) string {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	text := strings.TrimRight(string(s.ring), "\n")
+	text := strings.TrimRight(shell.OutputText(string(s.ring)), "\n")
 	if text == "" {
 		return ""
 	}
@@ -1798,16 +2325,23 @@ func (s *jobSink) lastNonEmptyLine() string {
 
 // ── process plumbing ────────────────────────────────────────────────────────
 
-// jobShell shares bare's shell preference through internal/shell: Unix keeps
-// /bin/bash, bash on PATH, sh, and Windows uses the engine's native bash.
+// jobShell returns the program and its arguments that run command. It shares
+// bare's shell preference through internal/shell: Unix keeps /bin/bash, bash
+// on PATH, sh, and Windows uses the engine's native bash. A bash command runs
+// under [shell.PipefailArgs], as at every other bash door, so a failing stage
+// of a pipe fails the command; sh gets the command unchanged.
 //
 // IT IS NOT FOR ANYTHING WHOSE OUTPUT SOMEBODY READS WHILE IT RUNS. A bash job
 // goes through [bare.StreamingShell] instead, which is this choice plus the
 // line-buffering that keeps a long command's log from being empty until it
 // exits. What is left on this one is a watch's tick and an automation's look
 // — commands that are short by construction and read only after they end.
-func jobShell() (string, []string, error) {
-	return shell.Preferred()
+func jobShell(command string) (string, []string, error) {
+	program, flags, err := shell.Preferred()
+	if err != nil {
+		return "", nil, err
+	}
+	return program, shell.PipefailArgs(program, flags, command), nil
 }
 
 // waitExitCode extracts an exit code from cmd.Wait's error, -1 when the process

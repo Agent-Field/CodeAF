@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -121,7 +120,7 @@ func TestProgramFinishLeavesTheEnginesOwnCheckpointAtTheTip(t *testing.T) {
 func TestProgramFinishLeavesAPushedTipAlone(t *testing.T) {
 	repo := newTestRepo(t)
 	remote := filepath.Join(t.TempDir(), "remote.git")
-	if out, err := exec.Command("git", "init", "--bare", "-q", remote).CombinedOutput(); err != nil {
+	if out, err := fixtureGit(filepath.Dir(remote), "init", "--bare", "-q", remote); err != nil {
 		t.Fatalf("bare remote: %v: %s", err, out)
 	}
 	mustGit(t, repo, "remote", "add", "origin", remote)

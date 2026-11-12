@@ -1,0 +1,6 @@
+{
+  "factory": {"name": "agentfield", "address": "http://factory", "version": "test"},
+  "error": "GitHub sign-in has expired; sign in again",
+  "reason": "github_expired",
+  "request_id": "request_fixture"
+}

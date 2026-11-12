@@ -18,11 +18,12 @@ const collectionsSummary = `  codeaf collections [list] [--json]    organize cha
 
 const collectionsUsage = collectionsSummary + `
   codeaf collections create <name> | rename <collection-id> <name>
+  codeaf collections duplicate <collection-id> <name> | delete <collection-id>
   codeaf collections show <collection-id>
   codeaf collections add|remove <collection-id> <kind> <record-id>
   codeaf collections find <kind> <record-id>
-      kinds: collection, conversation, task, artifact (a file path)
-      tasks need --session <conversation-id>; all accept --db and --json
+      kinds: collection, conversation, task, process, crew, artifact (a file path)
+      tasks and processes need --session <conversation-id>; all accept --db and --json
       organize references without moving files or starting work`
 
 func runCollections(args []string) error { return runCollectionsTo(args, os.Stdout) }
@@ -40,7 +41,7 @@ func runCollectionsTo(args []string, output io.Writer) error {
 		rest = []string{"list"}
 	}
 	verb := rest[0]
-	want := map[string]int{"list": 1, "create": 2, "rename": 3, "show": 2, "add": 4, "remove": 4, "find": 3}
+	want := map[string]int{"list": 1, "create": 2, "rename": 3, "duplicate": 3, "delete": 2, "show": 2, "add": 4, "remove": 4, "find": 3}
 	if n, ok := want[verb]; !ok || len(rest) != n {
 		return fmt.Errorf("usage: %s", strings.TrimLeft(collectionsUsage, " "))
 	}
@@ -50,12 +51,12 @@ func runCollectionsTo(args []string, output io.Writer) error {
 	if strings.TrimSpace(*database) == "" {
 		return fmt.Errorf("%w: --db needs a collection database path", workspace.ErrInvalid)
 	}
-	if verb == "rename" || verb == "show" || verb == "add" || verb == "remove" {
+	if verb == "rename" || verb == "duplicate" || verb == "delete" || verb == "show" || verb == "add" || verb == "remove" {
 		if err := (workspace.Ref{Kind: workspace.CollectionKind, ID: rest[1]}).Validate(); err != nil {
 			return err
 		}
 	}
-	if verb == "create" || verb == "rename" {
+	if verb == "create" || verb == "rename" || verb == "duplicate" {
 		if err := workspace.ValidateName(rest[len(rest)-1]); err != nil {
 			return err
 		}
@@ -86,7 +87,7 @@ func runCollectionsTo(args []string, output io.Writer) error {
 			return fmt.Errorf("%w: standing items are gone, so a collection cannot gain one", workspace.ErrInvalid)
 		}
 	} else if *sessionID != "" {
-		return fmt.Errorf("%w: --session belongs to a task reference in add, remove or find", workspace.ErrInvalid)
+		return fmt.Errorf("%w: --session belongs to a task or process reference in add, remove or find", workspace.ErrInvalid)
 	}
 	path, err := expandHome(*database)
 	if err != nil {
@@ -119,6 +120,11 @@ func runCollectionsTo(args []string, output io.Writer) error {
 	case "rename":
 		err = store.Rename(ctx, rest[1], rest[2])
 		result = workspace.Collection{ID: rest[1], Name: rest[2]}
+	case "duplicate":
+		result, err = store.Duplicate(ctx, rest[1], rest[2])
+	case "delete":
+		_, err = store.Delete(ctx, rest[1])
+		result = collectionDeleted{ID: rest[1], Deleted: true}
 	case "show":
 		result, err = store.Members(ctx, rest[1])
 	case "add":
@@ -136,6 +142,12 @@ func runCollectionsTo(args []string, output io.Writer) error {
 	return writeCollectionsResult(output, verb, *asJSON, result)
 }
 
+// collectionDeleted is what delete answers: the collection that is gone.
+type collectionDeleted struct {
+	ID      string `json:"id"`
+	Deleted bool   `json:"deleted"`
+}
+
 func writeCollectionsResult(output io.Writer, verb string, asJSON bool, result any) error {
 	if asJSON {
 		return json.NewEncoder(output).Encode(result)
@@ -144,6 +156,10 @@ func writeCollectionsResult(output io.Writer, verb string, asJSON bool, result a
 	switch value := result.(type) {
 	case workspace.Collection:
 		_, err = fmt.Fprintf(output, "%s  %s\n", value.ID, value.Name)
+	case collectionDeleted:
+		// Deleting a collection takes its memberships and every membership
+		// naming it, and never the records any of them referenced.
+		_, err = fmt.Fprintln(output, "Collection deleted; the records it referenced are unchanged.")
 	case []workspace.Collection:
 		if len(value) == 0 {
 			// `find` coming back empty says this record is in no collection,
@@ -187,8 +203,8 @@ func writeCollectionsResult(output io.Writer, verb string, asJSON bool, result a
 
 func writeCollectionRef(output io.Writer, ref workspace.Ref) error {
 	var err error
-	if ref.Kind == workspace.TaskKind {
-		_, err = fmt.Fprintf(output, "task  %s  conversation %s\n", ref.ID, ref.SessionID)
+	if ref.Kind == workspace.TaskKind || ref.Kind == workspace.ProcessKind {
+		_, err = fmt.Fprintf(output, "%s  %s  conversation %s\n", ref.Kind, ref.ID, ref.SessionID)
 	} else {
 		_, err = fmt.Fprintf(output, "%s  %s\n", ref.Kind, ref.ID)
 	}

@@ -83,32 +83,16 @@ package session
 // beside it is the same router.Event every routed attempt writes.
 
 import (
-	"math"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/competence"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/router"
 )
 
 const (
-	// taskKindWords bounds a kind. A title is already capped at
-	// [TaskNameWords]; this is the guard for the other doors a node can be
-	// named through — a person's own `/task` sentence, a shaper that ran long —
-	// so that one over-long name cannot become a class nothing else ever meets.
-	taskKindWords = 6
-
-	// taskKindOverlap is when two kinds are the same kind-shaped work: half the
-	// words of the smaller one, or more.
-	//
-	// HALF, because a name is three words and two of three in common is a
-	// genuine family — "tests for the rail" beside "tests for the composer" —
-	// while one word in common is a shared verb and nothing else. A threshold
-	// that pooled on one word would have every "write" in the project rating
-	// one model, which is the exec.leaf mistake arm B paid for.
-	taskKindOverlap = 0.5
-
 	// TaskGradeEvidence is how many checked settles of one kind-shaped work it
 	// takes before the store may move a tier.
 	//
@@ -331,68 +315,13 @@ func (g *taskGrades) saysCareful(model, kind string) bool {
 // ── the kind, and when two of them are one ──────────────────────────────────
 
 // taskKindOf is the divider's own name for a piece of work, in the spelling the
-// store keys on: lower case, cut at anything that is not a letter or a digit,
-// and capped.
-//
-// THE WORDS KEEP THEIR ORDER, so the class reads as the name somebody wrote —
-// `task.node/tests for the rail` on `codeaf models` — for the reason
-// internal/router states about its own keys: a ledger nobody can read is a
-// ledger nobody checks. The set comparison that pools two kinds happens at read
-// time and does not need the key sorted.
-func taskKindOf(title string) string {
-	fields := strings.FieldsFunc(strings.ToLower(strings.TrimSpace(title)), func(r rune) bool {
-		switch {
-		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
-			return false
-		}
-		return true
-	})
-	seen := make(map[string]bool, len(fields))
-	words := make([]string, 0, taskKindWords)
-	for _, field := range fields {
-		if seen[field] {
-			continue
-		}
-		seen[field] = true
-		words = append(words, field)
-		if len(words) == taskKindWords {
-			break
-		}
-	}
-	return strings.Join(words, " ")
-}
+// store keys on. It is [competence.WorkOf], read from there so the task ledger
+// and the competence map can never disagree about which work a task was.
+func taskKindOf(title string) string { return competence.WorkOf(title) }
 
-// taskKindsMeet reports whether two kinds are the same kind-shaped work: their
-// words overlap by [taskKindOverlap] of the smaller one or more.
-//
-// The smaller side is the denominator on purpose. A three-word name that is
-// wholly inside a six-word one is the same work described at two lengths, and
-// measuring against the longer side would call that a stranger.
-func taskKindsMeet(one, other string) bool {
-	first, second := taskKindWordSet(one), taskKindWordSet(other)
-	if len(first) == 0 || len(second) == 0 {
-		return false
-	}
-	if len(first) > len(second) {
-		first, second = second, first
-	}
-	shared := 0
-	for word := range first {
-		if second[word] {
-			shared++
-		}
-	}
-	return float64(shared) >= math.Ceil(taskKindOverlap*float64(len(first)))
-}
-
-func taskKindWordSet(kind string) map[string]bool {
-	words := strings.Fields(kind)
-	set := make(map[string]bool, len(words))
-	for _, word := range words {
-		set[word] = true
-	}
-	return set
-}
+// taskKindsMeet reports whether two kinds are the same kind-shaped work, by the
+// one overlap rule both readers share ([competence.WorkMeets]).
+func taskKindsMeet(one, other string) bool { return competence.WorkMeets(one, other) }
 
 // ── what the settle tells the store ─────────────────────────────────────────
 

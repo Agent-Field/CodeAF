@@ -43,6 +43,11 @@ func (c *countedVault) Removed(prefix string) ([]string, error) {
 	return c.VaultFile.Removed(prefix)
 }
 
+func (c *countedVault) Revisions(scope string) (map[string]keys.Revision, error) {
+	c.calls++
+	return c.VaultFile.(*keys.Vault).Revisions(scope)
+}
+
 // heldKeys is a Keyset that holds its keys in memory.
 type heldKeys map[string]string
 
@@ -57,6 +62,42 @@ func (h heldKeys) Apply(changes map[string]string) error {
 		}
 	}
 	return nil
+}
+
+type rejectedKeys struct{ heldKeys }
+
+func (rejectedKeys) Accept(string, string, string) bool { return false }
+
+func TestSelectiveRestoreM1BoundedVaultReads(t *testing.T) {
+	for _, n := range []int{16, 256} {
+		t.Run(fmt.Sprint(n), func(t *testing.T) {
+			home := t.TempDir()
+			_, err := identity.Ensure(home)
+			must(t, err)
+			v, err := keys.Open(home)
+			must(t, err)
+			set := rejectedKeys{heldKeys{}}
+			for i := range n {
+				set.heldKeys[fmt.Sprint(i)] = "before"
+			}
+			carrier := Keys("selective", set, filepath.Join(home, "selective.ledger"))
+			must(t, carrier.capture(v))
+			for name := range set.heldKeys {
+				must(t, v.PutAt(carrier.id(name), keys.Entry{Name: name, Value: "incoming", Scope: carrier.scope}, time.Now().Add(time.Minute)))
+			}
+			counted := &countedVault{VaultFile: v}
+			must(t, carrier.restore(counted))
+			if counted.calls > 3 {
+				t.Fatalf("M1 %d rejected keys opened the vault %d times; cap 3", n, counted.calls)
+			}
+			for name, value := range set.heldKeys {
+				if value != "before" {
+					t.Fatalf("M1 rejected value applied to %s", name)
+				}
+			}
+			t.Logf("%d rejected keys: %d vault reads", n, counted.calls)
+		})
+	}
 }
 
 // TestARestoreOpensTheVaultAFixedNumberOfTimes holds the idle cost of a state

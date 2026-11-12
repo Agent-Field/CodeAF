@@ -49,9 +49,17 @@ A computer removed from your paired devices keeps saving this chat locally.
 Quitting stays quiet and does not try a final relay save; the removal notice
 already explains that the chat stays on this computer until you pair it again.
 
+## The line the terminal prints after you quit, when another device took the chat over
+
+If codeaf learns while closing that another device took the chat, the restored
+terminal says `<device> continued this chat; this window now only shows it`
+once. It keeps this notice even when the full-screen chat has already closed.
+
 ## Quitting while the sync service is slow — waiting for a final save
 
 Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
+
+A removed computer quits quietly; it no longer says it is saving to your other devices.
 
 The screen closes after at most one second while a slow close finishes. The
 launcher keeps its connection open for the final publish and release before it exits.
@@ -580,7 +588,9 @@ second `esc` inside half a second is the rewind's door and `ctrl+c` at rest is t
 out, so neither is free — and you do not need one. The `esc` you already pressed started the
 10-second window, and when it runs out codeaf stops waiting on its own.
 
-**What happens at 10 seconds.** codeaf detaches from the turn: the waits codeaf holds are
+## What happens if it will not stop
+
+**At 10 seconds** codeaf detaches from the turn: the waits codeaf holds are
 ended and whatever request was still open to the model is aborted. A wait that ignores
 being cancelled — a command whose output a grandchild is still holding, say — may run on
 behind the detached turn; what detaching guarantees is that NOTHING IS WAITING FOR IT any
@@ -596,12 +606,12 @@ by then, so a turn nobody waited for is never a turn nobody can account for. Wha
 is already on your spending page either way: codeaf counts money as each request is
 answered rather than when a turn ends.
 
-**You should almost never see this.** Ten seconds is well above the longest ordinary
+**You should almost never see this happen.** Ten seconds is well above the longest ordinary
 letting-go, so the deadline only fires on a turn that was genuinely not going to end. If
 something is wedged even further down, `ctrl+c` at rest still quits and takes the whole
 process with it — but you no longer have to reach for that just to get your prompt back.
 
-## Quitting codeaf — how do I exit codeaf, how do I close codeaf, or why did ctrl+c not quit
+## How do I quit — quitting codeaf, exit, close, or why ctrl+c did not quit
 
 To exit or close codeaf, press `ctrl+c` once. That is the whole gesture: no second press,
 no window to beat, nothing to confirm — with one exception, a running automation, below.
@@ -920,7 +930,7 @@ message box, **home's box at the foot of the screen**, the errand pane on home,
 the `something else…` box on a question's own answer row, the settings filter and
 its value editor, the task page's filter, the rewind search, and every filterable
 overlay — the model picker, `/resume`, `/files`, the connect key box, the
-connections panel — and the Memories tab's filter and line editor.
+connections panel — and the Memory tab's filter and line editor.
 
 | Chord | Everywhere |
 |---|---|
@@ -1003,6 +1013,11 @@ a browser.
 
 Your unsent sentence, caret and attachments stay with the conversation. The
 conversation remains in `alt+k` and Home, and reopening restores its tab and draft.
+After a restart, opening from Home or the switcher also restores the saved composer.
+An untouched composer cannot passively replace a saved draft it has not restored.
+Editing, sending or deliberately clearing your own words saves that action;
+sent words do not return as a draft. A blocked passive save includes
+`saved draft has not been restored` in its explanation.
 
 Closing the active tab selects the most recently used remaining open tab. With
 none left, the window goes **Home** with the current session behind it.
@@ -1295,7 +1310,8 @@ file you can read sits beside it.
 - **If it cannot be written, you are told**: `this draft could not be saved`, with the
   reason. A record codeaf cannot read — a later build's, or a half-finished write — is
   never overwritten either; it is moved aside as `<name>.json.unreadable-<number>` and
-  the new one written in its place.
+  the new one written in its place. Editing a new composer preserves that unreadable
+  record beside your new words too.
 - **A task page's line follows its conversation, not the window.** Open that
   conversation tomorrow in a different window and its lines come with it; open a
   different conversation and they are neither shown to you nor deleted.
@@ -2107,7 +2123,7 @@ Only in a conversation, with none of those claiming it and the box empty, is it 
 
 Two claims on `tab` were withdrawn when the places arrived, and both moved to a key that
 points the way they go: **the settings panel** changed its own section with `tab`, and now
-uses `←` and `→` alone; **the memory panel** changed shelf with `tab`, and the Memories tab
+uses `←` and `→` alone; **the memory panel** changed shelf with `tab`, and the Memory tab
 that replaced it has no shelf key at all — `→` opens a group and `←` folds it, as on the
 Activity tab.
 
@@ -2434,11 +2450,11 @@ to filter, `↑↓` to walk, `enter` to use it, `esc` to go back to the layer.
 inside a conversation, and `/home` opens it too.
 
 **There is also a number: `alt+1` (`opt+1` on a Mac).** Home is the first of the eight words on
-the top line, `home  chats  AI teams  activity  memories  automations  spend  settings`, and
+the top line, `home  chats  AI teams  activity  memory  automations  spend  settings`, and
 `alt+1` opens it. **The other numbers do not follow the bar's order** — they kept the
 destinations they had before the bar was regrouped: `alt+2` AI teams, `alt+3` chats,
-`alt+4` activity, `alt+5` spend, `alt+6` settings, `alt+7` automations, `alt+8` memories. So
-memories is the fifth word on the bar and `alt+8`, and automations, the sixth, is `alt+7`.
+`alt+4` activity, `alt+5` spend, `alt+6` settings, `alt+7` automations, `alt+8` Memory. So
+Memory is the fifth word on the bar and `alt+8`, and automations, the sixth, is `alt+7`.
 `alt+.` draws every place with its number, and `/help` lists them the same way, digit by
 digit. `alt+3` is `chats`, the way back to the conversation in front (a new chat when none
 is open); it is not a room, so `tab` steps over it. Hold
@@ -3437,7 +3453,7 @@ and it moves the rung of **the thing you are looking at**. One chord, three scop
 
 | Where you are | What moves |
 |---|---|
-| The message box, typing or empty | **This conversation's** rung — the one on the legend above the box, beside the model, see *The thinking chip above the message box* |
+| The message box, typing or empty | **This conversation's** rung — the one on the legend above the box, beside the model, see *What is the chip above the message box — the thinking chip, `alt+e`, `/effort`, and how to make this one chat think harder* |
 | The task roster holds the keyboard (`alt+t`) and the cursor is on a task | That task's rung |
 | You are inside a task's page | That task's rung |
 | Home, whatever row the cursor is on | **The next conversation's** rung — the effort word after the model's colon on the rule above home's box, carried onto the conversation `enter` opens |
@@ -3495,7 +3511,7 @@ answer:
 | `ctrl+k` | **Bound, in every box**: delete from the caret to the end of the line, the pair to `ctrl+u`. It does not eat the newline. It was the conversation switcher until that moved to `alt+k` (`opt+k` on a Mac) to give this letter back to the message box |
 | `alt+k` | **The switcher**: the card of every conversation this terminal has open. On a Mac it is `opt+k`, and it needs "use option as meta" turned on in your terminal — see "Why alt+k and not ctrl+k or ctrl+tab" |
 | `ctrl+r` | Bound. In the message box it is **spell it out** — see "Make my prompt better" above — in the `/files` list it opens the folder a file is in, and in the `/model` picker it fetches the newest model list. Nowhere else |
-| `alt+e` | **Bound**, on three surfaces: it moves how hard the thing you are looking at thinks — this conversation from the message box, a task, or on home the next conversation. An automation has no rung to move. The machine's own default is the `thinking` row of `/settings` and is not on this chord. See "The thinking chip above the message box" and "alt+e — how hard the thing you are looking at thinks". Anywhere else it does nothing. On macOS it is shown as `opt+e`; the terminal must send Option as Alt/Meta, as for the other Option shortcuts |
+| `alt+e` | **Bound**, on three surfaces: it moves how hard the thing you are looking at thinks — this conversation from the message box, a task, or on home the next conversation. An automation has no rung to move. The machine's own default is the `thinking` row of `/settings` and is not on this chord. See "What is the chip above the message box — the thinking chip, `alt+e`, `/effort`, and how to make this one chat think harder" and "alt+e — how hard the thing you are looking at thinks". Anywhere else it does nothing. On macOS it is shown as `opt+e`; the terminal must send Option as Alt/Meta, as for the other Option shortcuts |
 | `ctrl+x` | Bound in two places: inside the paste editor it discards that paste (`ctrl+x discards this paste`); and on a `tasks` row of home that this window holds it asks to stop that task (`ctrl+x stop it` on the `alt+.` map; the foot under a field row is the resting sentence and does not name it). It stops no automation — that is `→` then `s` on `/automations` — and it no longer drops a harness design. Not bound anywhere else |
 | `ctrl+y` | **Bound** on a program's task page: it turns the page between the actions the program took and its raw model calls; on a Home project row and in the `/files` list it copies the path under the cursor. Nowhere else |
 | `ctrl+z` | **Bound**: undo in every box, with `ctrl+shift+z` to redo — see "Undo what I typed" |
@@ -3829,6 +3845,26 @@ in the roster, and press `x`. Neither route opens the task room. The stop card
 opens on `keep going`: choose `stop it` and press Enter to confirm, or click
 that answer. Escape cancels the card. A half-typed message is preserved; with
 text in the box, an ordinary `x` types the letter instead.
+
+## suggested replies in the desktop message box — Tab inserts, Escape dismisses
+
+In the desktop app, an idle, empty message box can show a suggested next message
+in your voice instead of its ordinary placeholder. This works in individual,
+crew manager/member, factory manager/step and task-note conversations. It uses
+recent settled messages and the current task or job state. Sometimes no reply
+is needed: the usual placeholder stays, especially while work is running.
+
+Press Tab to insert the suggestion as an editable draft. It does not send,
+approve, resume or change Auto/Manual. Edit it and send normally when ready.
+Escape dismisses it for that context; Shift-Tab keeps normal focus navigation.
+Typing your own words, adding files or opening a command/mention menu takes
+precedence. A late suggestion cannot replace your words or cross conversations.
+
+Generation is one small, cached naming-model request, not a full agent turn.
+Its usage counts toward the conversation and any owning factory job budget.
+It stops at the budget limit or when the conversation closes, and falls back
+quietly if generation fails or the connected engine lacks this capability.
+This is a desktop composer feature; terminal Tab behavior is unchanged.
 
 ## Quitting before local saving finishes — no upload receipt yet
 

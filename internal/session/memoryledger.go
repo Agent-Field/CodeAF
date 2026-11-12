@@ -23,6 +23,7 @@ import (
 	"sync"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
 
@@ -159,7 +160,7 @@ func writeMemoryLedger(path string, events []store.LedgerMemoryEvent) error {
 			return err
 		}
 	}
-	return os.Rename(tmp, path)
+	return fsreplace.Rename(tmp, path)
 }
 
 // bindMemoryLedger points the process ledger at this conversation's folder. A

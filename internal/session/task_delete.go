@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/filelock"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/guard"
 )
 
@@ -337,7 +338,7 @@ func requestTaskDeletion(file, id string) error {
 	pending := filepath.Join(dir, ".task-delete-request-"+req.Token)
 	running := filepath.Join(dir, ".task-delete-running-"+req.Token)
 	result := filepath.Join(dir, ".task-delete-result-"+req.Token)
-	if err := os.WriteFile(pending, raw, 0600); err != nil {
+	if err := writePresenceRequest(pending, raw); err != nil {
 		return err
 	}
 	defer os.Remove(pending)
@@ -380,10 +381,11 @@ func requestTaskDeletion(file, id string) error {
 }
 
 func (a *Agent) drainTaskDeletion() {
-	if a.config.InTask || a.config.Place.Dir == "" {
+	dir := a.requestDir()
+	if dir == "" {
 		return
 	}
-	paths, _ := filepath.Glob(filepath.Join(a.config.Place.Dir, ".task-delete-request-*"))
+	paths, _ := filepath.Glob(filepath.Join(dir, ".task-delete-request-*"))
 	for _, path := range paths {
 		raw, err := os.ReadFile(path)
 		if err != nil {
@@ -435,7 +437,8 @@ func filterDeletedTaskIndex(path string, rows []TaskIndexEntry) []TaskIndexEntry
 		}
 		deletions[row.SessionID] = ids
 	}
-	kept := rows[:0:0]
+	// The caller owns rows (lastPerNode built them), so they are thinned in place.
+	kept := rows[:0]
 	for _, row := range rows {
 		if !gone[row.SessionID] && !deletions[row.SessionID][row.ID] {
 			kept = append(kept, row)
@@ -541,7 +544,7 @@ func commitTaskDeletions(file string, deleted, ids map[string]bool) error {
 	if err = os.WriteFile(marker+".tmp", raw, 0600); err != nil {
 		return err
 	}
-	if err = os.Rename(marker+".tmp", marker); err != nil {
+	if err = fsreplace.Rename(marker+".tmp", marker); err != nil {
 		return err
 	}
 	return nil
@@ -583,7 +586,7 @@ func purgeTaskIndex(file, sessionID string, ids map[string]bool, blocked map[str
 		if err != nil {
 			return err
 		}
-		return os.Rename(name, path)
+		return fsreplace.Rename(name, path)
 	})
 	if err != nil {
 		return err
@@ -632,7 +635,7 @@ func purgeTaskCheckpoint(file string, ids map[string]bool, checkpointWrite bool)
 		if err = os.WriteFile(checkpoint+".delete-tmp", raw, 0600); err != nil {
 			return nil, err
 		}
-		if err = os.Rename(checkpoint+".delete-tmp", checkpoint); err != nil {
+		if err = fsreplace.Rename(checkpoint+".delete-tmp", checkpoint); err != nil {
 			return nil, err
 		}
 	}

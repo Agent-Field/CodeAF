@@ -329,7 +329,7 @@ func runReview(ctx context.Context, host delegate.Host, request Request, o optio
 	if recorder, ok := host.(delegate.Recorder); ok {
 		records = recorder.Records()
 	}
-	files, err := writeReport(records, saved, run)
+	files, receipts, err := writeReport(records, saved, run)
 	if err != nil {
 		_, _ = fmt.Fprintf(notes, "[review] could not write the full report: %v\n", err)
 	}
@@ -344,7 +344,7 @@ func runReview(ctx context.Context, host delegate.Host, request Request, o optio
 		Deliverable: account(result, run, files),
 		Extra: map[string]any{
 			"partial":      run.partial,
-			"pull_request": t.String(), "reports": files, "findings": result.Summary.TotalFindings,
+			"pull_request": t.String(), "reports": files, delegate.ReportReceiptsKey: receipts, "findings": result.Summary.TotalFindings,
 			"blocking": result.Summary.BlockingCount, "sessions": sessionCount, "calls": callCount, "cut_at": run.cutAt,
 		},
 	}

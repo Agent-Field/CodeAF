@@ -1,0 +1,1520 @@
+package api
+
+import (
+	"fmt"
+	"maps"
+	"slices"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/estimate"
+)
+
+// FromSnapshot is the floor as `GET /v1/queue` says it to me.
+func FromSnapshot(s factory.Snapshot, me string, clocks ...time.Time) Queue {
+	s.Items = factory.IssueJobs(s.Items)
+	now := s.Now
+	if len(clocks) > 0 {
+		now = clocks[0]
+	}
+	people := map[string]factory.PersonSummary{}
+	jobs := make([]Job, len(s.Items))
+	book := estimate.Open(s.Items)
+	// Only two running jobs can overlap ([factory.Overlaps]), so each running
+	// job is compared with the running ones alone. Comparing every job with
+	// every other was the queue's one quadratic step: 640,000 comparisons,
+	// each copying two whole items, for a floor of 800 open issues.
+	var running []int
+	for i := range s.Items {
+		if factory.JobState(s.Items[i]) == "running" {
+			running = append(running, i)
+		}
+	}
+	for i, it := range s.Items {
+		for _, handle := range factory.MentionedHandles(it) {
+			if handle = factory.NormalizeHandle(handle); handle != "" {
+				people[handle] = s.People[handle]
+			}
+		}
+		jobs[i] = FromItem(it)
+		AreaIn(&jobs[i], s.Repos)
+		jobs[i].Display = DisplayFor(jobs[i], now)
+		jobs[i].Can = CanFor(it, me, now)
+		jobs[i].Estimate = estimateOf(book, it)
+		ForViewer(&jobs[i], it, me)
+		if factory.JobState(it) == "running" {
+			for _, k := range running {
+				if factory.Overlaps(it, s.Items[k]) {
+					jobs[i].Overlap = append(jobs[i].Overlap, factory.JobRef(s.Items[k]))
+				}
+			}
+		}
+	}
+	return Queue{
+		People:   people,
+		Since:    fromShift(s.Shift),
+		Jobs:     jobs,
+		Repos:    fromRepos(s.Repos, s.Checkouts),
+		Strip:    strip(jobs),
+		Capacity: Capacity{Benches: s.Benches, Daily: s.Daily, Rail: s.Rail, Queued: s.Count(factory.StateQueued)},
+		Me:       me,
+		NeedsYou: groupNeedsYou(jobs),
+		Desk: &QueueDesk{
+			Now: s.Now, Sources: mapList(s.Sources, fromSource), Busy: s.Busy, BusyAll: s.BusyAll,
+			LastReadCost: s.LastReadCost, ScoutPrice: s.ScoutPrice, Estimates: calibrationOf(book), Marked: s.Marked, Checkouts: s.Checkouts,
+		},
+	}
+}
+
+// groupNeedsYou buckets waiting jobs by kind, in the fixed enum order.
+// A kind with no job is omitted, and the job ids stay in floor order.
+func groupNeedsYou(jobs []Job) []NeedsYouGroup {
+	buckets := map[string][]int{}
+	for _, j := range jobs {
+		if j.NeedsYou == nil || j.NeedsYou.Kind == "" {
+			continue
+		}
+		buckets[j.NeedsYou.Kind] = append(buckets[j.NeedsYou.Kind], j.ID)
+	}
+	var out []NeedsYouGroup
+	for _, kind := range factory.NeedsYouKinds {
+		if ids := buckets[kind]; len(ids) > 0 {
+			out = append(out, NeedsYouGroup{Kind: kind, Jobs: ids})
+		}
+	}
+	return out
+}
+
+// ToSnapshot is the inverse a client seam's Load answers: the floor rebuilt
+// from the queue and the jobs it lists. jobs nil reads q.Jobs. Everything the
+// TUI page reads comes back; what does not is named in [Lost].
+func ToSnapshot(q Queue, jobs []Job) factory.Snapshot {
+	if jobs == nil {
+		jobs = q.Jobs
+	}
+	d := q.Desk
+	if d == nil {
+		d = &QueueDesk{}
+	}
+	return factory.Snapshot{
+		People: q.People,
+		Now:    d.Now, Repos: toRepos(q.Repos), Items: mapList(jobs, ToItem),
+		Benches: q.Capacity.Benches, Daily: q.Capacity.Daily, Rail: q.Capacity.Rail,
+		Shift: toShift(q.Since), Sources: mapList(d.Sources, toSource),
+		Busy: d.Busy, BusyAll: d.BusyAll, LastReadCost: d.LastReadCost, ScoutPrice: d.ScoutPrice,
+		Marked: d.Marked, Checkouts: d.Checkouts,
+	}
+}
+
+// Lost names the Go fields the wire does not carry, and why. The round-trip
+// test reads it, so a field is either carried or named here.
+var Lost = map[string]string{
+	"Item.PausedRecoveryQuestion": "the service owns the paused decision identity; readers see the paused presentation",
+	"Item.LastRecoveryResume":     "the service's private acknowledgment for a repeated chat retry",
+	"Item.Passing":                "service-owned: who is passing the waiting approve step, set by the approval door just before its answer and moved onto the step's phase (Step.passed carries the result)",
+	"Item.PassJudge":              "service-owned: the manager's judgement of a manager-when approval, read only by the service that decides Auto (its reason reaches the job as needs_you's words)",
+	"Item.GitHubIssueID":          "service-owned permanent GitHub identity; workers send RunReport deltas through run.ApplyReport, never replacement Items",
+	"Item.SourceClosed":           "service-owned automatic close provenance; RunReport has no such field; starting work clears it through TouchIssue",
+	"Item.PersonTouched":          "service-owned reconciliation exclusion; RunReport cannot replace it; store.RecordIssueTouch preserves ownership",
+
+	"Item.MemorySpent":             "runner-local provenance already included in total cost; completed-round checks compare only charges since local admission, so readers and a newly admitted worker need no historical split",
+	"Item.SpentCleared":            "the service's own record of what a Bring back cleared from the job; only the factory's spending totals read it (GET /v1/spend/*), and a job never carries it, so a fresh job reads $0",
+	"Snapshot.People":              "the queue projects identities onto mentioned handles only; unrelated cached profiles do not cross",
+	"Item.PlannedFiles":            "the cache never crosses: the wire's planned_files is derived from the plan step's result (factory.PlanFilesOf), which does",
+	"Item.BriefSeen":               "each person's own: the caller's crosses as brief_seen (ForViewer), and nobody else's ever does",
+	"Item.OldGate":                 "read into approve steps on load and never in memory",
+	"Stage.OldGate":                "read into approve steps on load and never in memory",
+	"Stage.OldGateWhen":            "read into approve steps on load and never in memory",
+	"Phase.RoundCosts":             "worker admission carries the complete round table; readers get only its sum as step.cost",
+	"Phase.Carry":                  "the runner's own inbox for a resumed step; no surface reads it",
+	"Phase.Result":                 "a reader's job carries Files, Output (step result), Spent (step cost), Tests and Model; the rest is the runner's revival state, which only the worker's pull carries (WorkerJob)",
+	"Phase.Kind":                   "an empty phase kind under a stage with a kind comes back as the stage's",
+	"Phase.Left":                   "crosses in whole milliseconds",
+	"Item.ChatSpent":               "crosses as the job's cost while it has no run; a start carries it into the run's spend before any worker pulls the job",
+	"Item.ChatModels":              "the service's own split of ChatSpent; a reader gets it summed by model from GET /v1/spend/models, and a start carries it onto the run before any worker pulls the job",
+	"Stream.Models":                "the service's own split of the run's spend; a reader gets it summed by model from GET /v1/spend/models, and a worker reports each call beside its report through ModelSpendHeader",
+	"CheckRun.AppID":               "server-side readiness matching only; every poll reads it from GitHub again before a required check is matched",
+	"PullRequest.ReadinessContext": "server-side review material up to 384 KiB; a queued final review carries it to the worker as the follow-up's details",
+	"PipelineCopy.Text":            "the whole copied file, up to 256 KiB a job; a reader's job carries who saved it and when, and only the worker's pull carries the file (WorkerJob)",
+	// Known gaps, recorded rather than carried (2026-10-27): each is the service's own record, and carrying it would
+	// make an older factory refuse a worker's whole report.
+	"Item.ReportReceipts": "known gap: the service's own acknowledgments of retained worker results, kept with the item so a lost reply never charges twice; no reader needs them",
+	"Item.ReportRetryAt":  "known gap: a person's retry grant, read by the service that holds the item; not carried to readers yet",
+	"Item.ManagerAnswer":  "known gap: the service's idempotency receipt for the manager's last decision; not carried to readers yet",
+	"Item.Briefs":         "the job's brief versions cross whole only through GET /v1/jobs/{id}/brief; a job carries the newest rev and status as brief, and only the worker's pull carries the read before work (WorkerJob first_read)",
+	"Item.BriefWriting":   "crosses as the brief's status (job.brief.status and the brief route's failure); the writer's own record otherwise",
+	"Item.Followers":      "each person's own: the caller's crosses as following (ForViewer), and nobody else's ever does",
+	"Item.CommentsSeen":   "the service's own record of which comments the job's manager has considered; only the service that reads GitHub uses it, and readers see comment_reads",
+	"Item.Judged":         "the deciding rule's answer crosses as route.answer and every other rule's no as route_declined; other rules' yeses, and every answer's key and time, are the service's own record of what it already asked",
+	"Item.RouteRefused":   "the service's own mark that a refused routing rule's activity row was written once; the row itself is the record a surface reads",
+	"Item.RepoSetBy":      "who gave the job its repository is the service's own routing input, read where the intake runs; the repository itself crosses as repo",
+	"Item.OverLimit":      "known gap: crosses as over_limit only while the job is queued, which is the only time it means anything; a round trip of any other state loses it",
+}
+
+// cloneBlocked is a copy of a job's block, so a job and the item it came from
+// never share one.
+func cloneBlocked(b *factory.JobBlocked) *factory.JobBlocked {
+	if b == nil {
+		return nil
+	}
+	c := *b
+	return &c
+}
+
+// FromItem is one item as a job.
+func FromItem(it factory.Item) Job {
+	if it.PersonStopped == nil && factory.StoppedByPerson(it) {
+		factory.MarkPersonStopped(&it)
+	}
+	j := Job{
+		FromJob: it.FromJob, SourceIssue: it.SourceIssue, RunOn: it.RunOn, AgentField: it.AgentField, AgentFieldSteps: it.AgentFieldSteps,
+		WaitsOn: append([]int(nil), it.WaitsOn...), PolicyRun: it.PolicyRun, Blocked: cloneBlocked(it.Blocked),
+		Recovery: it.Recovery, Autonomy: it.Autonomy, AutonomyWhy: factory.AutonomyBlockReason(it), FollowUp: it.FollowUp, Manual: it.Manual, Effort: it.Effort,
+		SetupHeld: it.SetupHeld, Held: heldInQueue(it), OverLimit: it.OverLimit && it.State == factory.StateQueued,
+		Owners: append([]string(nil), it.Owners...),
+		ID:     it.ID, Repo: it.Repo, Num: it.Num, Kind: string(it.Kind), Title: it.Title, URL: it.URL,
+		HeadCommit: it.HeadCommit, Publishing: it.PublishStatus, Change: it.Change, Publish: it.Publish, CommentURL: it.CommentURL,
+		Runner: runnerOf(it), JobID: factory.JobKey(it), Ref: factory.JobRef(it), Priority: factory.PriorityFor(it), Size: factory.JobSize(it), Budget: it.Cap, StopAfterStep: it.StopAfterStep, Model: it.Model, AutomaticModels: it.AutomaticModels, FactoryModel: it.FactoryModel,
+		Reason: factory.JobReason(it), DoneHow: factory.JobDoneHow(it), DoneAt: it.DoneAt, Rejection: wireRejection(it.Rejection),
+		PublishAnyway: it.PublishAnyway, DismissedBy: append([]string(nil), it.DismissedBy...), Approval: factory.JobApprovalSummary(it),
+		State: factory.JobState(it), Ready: it.State == factory.StateLanded, Gate: gate(it),
+		AssignedTo: it.Person(), Assignee: it.Person(),
+		AskedFirstReason: it.AskedFirstReason,
+		HouseRules:       cloneHouse(it.House),
+		PipelineCopy:     copyWithoutText(it.PipelineCopy),
+		PipelineDecided:  it.PipelineDecided,
+		StartRules:       cloneStartRules(it.StartRules),
+		RuleHold:         it.RuleHold,
+		RuleChecks:       fromRuleChecks(it.RuleChecks),
+		Brief:            briefMark(it),
+		Steps:            steps(it),
+		Claims:           mapList(it.Proof, fromClaim),
+		PlannedFiles:     factory.PlanFilesOf(it),
+		Questions:        questions(it),
+		CreatedAt:        it.Created,
+		Desk:             fromDesk(it),
+	}
+	// Preserve a stored true flag for future job kinds as well. A false flag
+	// is known only for a PR; other jobs leave the field absent.
+	if it.Kind == factory.KindPR || it.Draft {
+		draft := it.Draft
+		j.Draft = &draft
+	}
+	AreaIn(&j, nil)
+	j.ReadSize = readSize(it)
+	j.PR = fromPR(it.PullRequest)
+	j.Merge = jobMerge(it)
+	if factory.PausedDecision(it) {
+		j.State = StateNeedsYou
+	}
+	if j.State == "" {
+		j.State = string(it.State)
+	}
+	if a := it.Asking; a != nil && a.With == factory.AskedYou {
+		at := a.At
+		j.WaitingSince = &at
+	}
+	// THE JOB'S COST IS EVERYTHING DONE FOR IT: its run's, or before any run
+	// what its chat spent ([factory.JobSpent]).
+	j.Cost = factory.JobSpent(it)
+	j.LifetimeCost = factory.JobLifetimeSpent(it)
+	j.Scout = fromScout(it)
+	// A JOB AN AGENTFIELD RUN HAS NOT REACHED YET HAS NO STEP: its steps are
+	// the run's calls, and the stream it was started with still holds the
+	// stock pipeline (plan · write · …), which it will never run.
+	if st := it.Stream; st != nil && !factory.RunOnPending(it) {
+		j.Step = &StepAt{Index: st.Cur, Count: len(st.Phases)}
+		if st.Cur >= 0 && st.Cur < len(st.Phases) {
+			j.Step.Name = st.Phases[st.Cur].Name
+			if i := factory.StageIndex(it.Stages, j.Step.Name); i >= 0 {
+				j.Step.Label = strings.TrimSpace(it.Stages[i].Label)
+			}
+		}
+	}
+	j.NeedsYou = needsYou(it)
+	j.SpendingLimit = spendingLimit(it)
+	j.Failure = failureOf(it)
+	j.Ask = jobAsk(it)
+	j.PublishError = it.PublishError
+	jobFacts(&j, it)
+	PresentJob(&j)
+	if it.State == factory.StateLanded {
+		j.PublishPreview = factory.PublishBody(it, "")
+	}
+
+	j.FollowPR = factory.IsIssueJob(it) && it.DoneHow != "dropped" && it.DoneHow != "closed_locally"
+
+	return j
+}
+
+func needsYou(it factory.Item) *NeedsYou {
+	if factory.RecoveryPaused(it) {
+		return nil
+	}
+	kind := factory.NeedsKind(it)
+	if kind == "" {
+		return nil
+	}
+	ny := &NeedsYou{Kind: kind, Since: factory.NeedsSince(it), WhoCanAnswer: factory.WhoCanAnswer(kind)}
+	if it.QKind == factory.QKindSpendStopped || it.QKind == factory.QKindAgentField {
+		ny.WhoCanAnswer = factory.WhoJobPerson
+	}
+	if who := factory.WaitingApprover(it); who != "" && factory.JobPersonOnly(kind) {
+		ny.WhoCanAnswer, ny.Approver = factory.WhoApprover, who
+	}
+	if kind == factory.NeedsQuestion || kind == factory.NeedsOutOfAttempts || kind == factory.NeedsRunnerOffline {
+		ny.Question = needsQuestion(it)
+	}
+	switch kind {
+	case factory.NeedsApprovePlan:
+		ny.BackTo, _ = factory.PlanSendsBack(it)
+	case factory.NeedsApproveStep:
+		ny.BackTo, _ = factory.PlanSendsBack(it)
+		ny.Step, _ = factory.StepHold(it)
+	case factory.NeedsOutOfAttempts:
+		ny.BackTo = stuckBackTo(it)
+	}
+	return ny
+}
+
+// stuckBackTo is, on a step that stopped short, the finished step before it
+// that could take the work back ([factory.PreviousWork]), "" when there is none:
+// the step a person's "send it back" reruns.
+func stuckBackTo(it factory.Item) string {
+	if it.Stream == nil || it.Stream.Cur < 0 || it.Stream.Cur >= len(it.Stream.Phases) {
+		return ""
+	}
+	if prev := factory.PreviousWork(it.Stream.Phases, it.Stream.Cur); prev >= 0 {
+		return it.Stream.Phases[prev].Name
+	}
+	return ""
+}
+
+func needsQuestion(it factory.Item) *NeedsQuestion {
+	if it.QKind == factory.QKindAgentField {
+		if w := factory.AgentFieldWaiting(it); w != nil {
+			return agentFieldQuestion(it, *w)
+		}
+	}
+	form, options, who := factory.QuestionForm(it)
+	q := &NeedsQuestion{
+		ID: itQuestionID(it.ID), Kind: form, Text: it.Question, Options: options, WhoCanAnswer: who,
+	}
+	if it.Question == "" && it.Asking != nil {
+		q.Text = it.Asking.Question
+	}
+	if it.Asking != nil && it.Asking.Stage != "" {
+		q.FromStep = it.Asking.Stage
+	} else if st := it.Stream; st != nil && st.Cur >= 0 && st.Cur < len(st.Phases) {
+		q.FromStep = st.Phases[st.Cur].Name
+	}
+	if asks := it.Person(); asks != "" {
+		q.Asks = asks
+	}
+	if a := it.Asking; a != nil {
+		q.Pick, q.Why = a.Pick, a.Why
+	}
+	return q
+}
+
+// AgentFieldApprovalOptions are an AgentField approval's answers, in the
+// order the person reads them: approved, request_changes with their words,
+// rejected.
+var AgentFieldApprovalOptions = []string{"Approve", "Ask for changes", "Reject"}
+
+// agentFieldQuestion is a run's pause for a person as the job's question:
+// the reasoner's question, the whole body it asks the person to approve, and
+// which round of it this is. ONLY THE JOB'S PERSON ANSWERS IT.
+func agentFieldQuestion(it factory.Item, w factory.AgentFieldWait) *NeedsQuestion {
+	q := &NeedsQuestion{
+		ID: itQuestionID(it.ID) + ":" + firstNonBlank(w.RequestID, w.Execution+"@"+strconv.FormatInt(w.At.Unix(), 10)), Kind: factory.QKindAgentField,
+		Text: factory.AgentFieldQuestion(w), Body: w.Body, Options: append([]string(nil), AgentFieldApprovalOptions...),
+		FromStep: w.Step, WhoCanAnswer: factory.WhoJobPerson, ApprovalKind: w.Kind, Node: w.Node, URL: w.URL,
+	}
+	run := agentFieldRunWaiting(it, w)
+	if run == nil {
+		q.Round = 1
+		return q
+	}
+	q.Round = max(1, len(run.Asks))
+	if n := len(run.Asks); n >= 2 {
+		q.PreviousBody = run.Asks[n-2].Body
+	}
+	for i := len(run.Decisions) - 1; i >= 0; i-- {
+		if d := run.Decisions[i]; d.Decision == "request_changes" {
+			if q.Round > 1 {
+				q.Note = d.Words
+			}
+			break
+		}
+	}
+	return q
+}
+
+// agentFieldRunWaiting is the run record that holds the wait w.
+func agentFieldRunWaiting(it factory.Item, w factory.AgentFieldWait) *factory.AgentFieldRun {
+	if it.AgentField != nil && it.AgentField.Waiting != nil && it.AgentField.Waiting.Execution == w.Execution {
+		return it.AgentField
+	}
+	for _, r := range it.AgentFieldSteps {
+		if r != nil && r.Waiting != nil && r.Waiting.Execution == w.Execution {
+			return r
+		}
+	}
+	return nil
+}
+
+func firstNonBlank(v ...string) string {
+	for _, s := range v {
+		if strings.TrimSpace(s) != "" {
+			return strings.TrimSpace(s)
+		}
+	}
+	return ""
+}
+
+func itQuestionID(id int) string { return fmt.Sprintf("q%d", id) }
+
+func spendingLimit(it factory.Item) *SpendingLimit {
+	if factory.RecoveryPaused(it) || factory.NeedsKind(it) != factory.NeedsSpendingLimit {
+		return nil
+	}
+	spent := factory.JobLifetimeSpent(it)
+	return &SpendingLimit{Limit: it.Cap, Spent: spent, NextLimit: factory.NextJobCap(it), Currency: factory.CurrencyUSD}
+}
+
+func failureOf(it factory.Item) *Failure {
+	if it.Failure == nil {
+		return nil
+	}
+	return failureWire(*it.Failure)
+}
+
+func failureWire(f factory.Failure) *Failure {
+	return &Failure{Rounds: f.Attempts, Runner: f.Machine, Step: f.Step, Code: f.Code, Detail: f.Detail, Attempts: f.Attempts, Machine: f.Machine, Next: f.Next, At: f.At, Summary: f.Summary}
+}
+
+func failureItem(f *Failure) *factory.Failure {
+	if f == nil {
+		return nil
+	}
+	return &factory.Failure{Step: f.Step, Code: f.Code, Detail: f.Detail, Attempts: f.Attempts, Machine: f.Machine, Next: f.Next, At: f.At, Summary: f.Summary}
+}
+
+// CanFor is MayAct in the wire's field names.
+func CanFor(it factory.Item, caller string, clocks ...time.Time) Can {
+	now := time.Now()
+	if len(clocks) > 0 && !clocks[0].IsZero() {
+		now = clocks[0]
+	}
+	a := factory.MayAct(it, caller)
+	if factory.StoppedByPerson(it) && factory.JobState(it) != StateDone {
+		owner := it.Person() == "" || it.Person() == factory.NormalizeHandle(caller)
+		// A STOPPED JOB OFFERS THE WAYS TO START IT AGAIN, never Resume:
+		// Resume only continues a paused job, and refuses a stopped one with
+		// "is not paused".
+		return Can{StartNow: owner, RunAgain: owner, RunAsNew: owner, Close: owner, Drop: owner, RaiseBudget: owner, Reply: a.Reply, Undo: owner && it.StopUndo != nil && now.Before(it.StopUndo.Until) && it.StopUndo.By == factory.NormalizeHandle(caller)}
+	}
+	person := it.Person()
+	owner := person == "" || person == factory.NormalizeHandle(caller)
+	approval := factory.JobApproval(it)
+	approve := approval != nil && approval.State == "waiting" && person != "" && person == factory.NormalizeHandle(caller)
+	// AN APPROVAL THAT NAMES WHO IT WAITS ON IS THEIRS, the job's person's no
+	// longer (factory.MayApprove). The operator role is the serving factory's
+	// to grant; a caller here is not known to be one.
+	named := factory.WaitingApprover(it) != ""
+	if named {
+		approve = approval != nil && approval.State == "waiting" && factory.NormalizeHandle(caller) != "" && factory.MayApprove(it, caller, false)
+	}
+	answer := a.Answer
+	if named && it.QKind == factory.QKindApprove {
+		answer = factory.NormalizeHandle(caller) != "" && factory.MayApprove(it, caller, false)
+	}
+	state := factory.JobState(it)
+	// A RUN THAT ALREADY ENDED HAS NOTHING TO STOP, so a failed or stopped
+	// job offers no Stop beside its Run again ([factory.UnderWay]).
+	active := factory.UnderWay(it)
+	if it.DoneHow == "closed_locally" {
+		return Can{Reopen: owner, RunAsNew: owner}
+	}
+	if factory.RecoveryPaused(it) {
+		return Can{Close: owner, Stop: owner && active, Drop: owner, RaiseBudget: owner, Reply: a.Reply}
+	}
+	// START NOW ON A QUEUED JOB IS THE ONE PASS ABOVE JOBS AT ONCE, so a job
+	// already given it is not offered it again.
+	queued := state == StateQueued && it.State == factory.StateQueued
+	running := state == StateRunning && it.State == factory.StateRunning && !it.Publishing
+	held := (queued || running) && it.Stream != nil && it.Stream.Paused
+	holdDecision := factory.CanPauseRecovery(it)
+	// AN AGENTFIELD RUN'S APPROVAL IS THE JOB'S PERSON'S: approve, ask for
+	// changes with words, or reject — the three answers the control plane
+	// takes, carried to it by the runner that started the run.
+	afApproval := factory.AgentFieldPause(it) && factory.MayAnswerAgentField(it, caller)
+	if afApproval {
+		approve = true
+	}
+	can := Can{
+		Run: owner && state == StateBacklog, StartNow: owner && (state == StateBacklog || queued && !it.OverLimit),
+		Hold: owner && ((queued || running) && !held || holdDecision), Resume: owner && held,
+		Close: owner && state != StateDone, Stop: owner && active, Dismiss: factory.NormalizeHandle(caller) != "", Drop: owner && state != StateDone,
+		ChangeAssignee: person != "" && factory.NormalizeHandle(caller) == person, Unassign: person != "" && factory.NormalizeHandle(caller) == person, Nudge: person != "", RaiseBudget: owner, StopAfterStep: owner && factory.MayStopAfterStep(it),
+		Undo:          (it.Approval != nil && it.Approval.State == "approving" && now.Before(it.Approval.UndoUntil) && it.Approval.DecidedBy == factory.NormalizeHandle(caller)) || (it.StopUndo != nil && now.Before(it.StopUndo.Until) && it.StopUndo.By == factory.NormalizeHandle(caller)) || (it.Merging != nil && it.Merging.State == factory.MergeAsked && now.Before(it.Merging.UndoUntil) && it.Merging.By == factory.NormalizeHandle(caller)),
+		PublishAnyway: owner && factory.NormalizeHandle(caller) != "" && factory.OffersPublishAnyway(it), Approve: approve, RunAgain: a.RunAgain, RunAsNew: owner && factory.CanRunAsNew(it), CancelJob: a.CancelJob,
+		RetryPublish: a.RetryPublish, Answer: answer, AssignToMe: a.AssignToMe, Reply: a.Reply,
+		SpendAnswer: owner && it.State == factory.StateNeedsYou && it.QKind == factory.QKindSpendStopped,
+		RejectPlan:  answer && planSendsBack(it),
+		AcceptStep:  answer && factory.OffersAccept(it),
+		Reject:      (answer || approve) && factory.WaitsOnApproval(it),
+		PRReady:     owner && factory.NormalizeHandle(caller) != "" && factory.OffersMarkReady(it),
+		Merge:       owner && factory.NormalizeHandle(caller) != "" && factory.MergeGate(it, factory.MergeAsk{By: caller}).OK,
+		Restore:     owner && factory.JobDoneHow(it) == "dropped",
+	}
+	if afApproval {
+		can.RejectPlan, can.RequestChanges = true, true
+	}
+	return can
+}
+
+// AsOperator grants what an approval that waits on the factory's operators
+// lets an operator do: approve it, and answer it when it is a question. Only
+// the serving factory knows a caller is an operator, so it applies this after
+// [CanFor]; nothing else changes.
+func AsOperator(can *Can, it factory.Item, caller string) {
+	if factory.WaitingApprover(it) != factory.ApproverOperator || factory.NormalizeHandle(caller) == "" {
+		return
+	}
+	if a := factory.JobApproval(it); a != nil && a.State == "waiting" {
+		can.Approve = true
+	}
+	if it.QKind == factory.QKindApprove {
+		can.Answer = true
+		can.RejectPlan = planSendsBack(it)
+	}
+	can.Reject = can.Reject || (can.Approve || can.Answer) && factory.WaitsOnApproval(it)
+}
+
+// wireRejection is a stored rejection on the wire, nil for none.
+func wireRejection(r *factory.Rejection) *Rejection {
+	if r == nil {
+		return nil
+	}
+	return &Rejection{By: r.By, Words: r.Words, At: r.At}
+}
+
+// heldInQueue is a queued job its person keeps from starting ([run.HoldQueued]).
+func heldInQueue(it factory.Item) bool {
+	return it.State == factory.StateQueued && it.Stream != nil && it.Stream.Paused
+}
+
+// planSendsBack is factory.PlanSendsBack without the step's name.
+func planSendsBack(it factory.Item) bool {
+	_, ok := factory.PlanSendsBack(it)
+	return ok
+}
+
+// jobMerge is the job's merging on the wire, absent until the job has a pull
+// request of its own or a pinned policy to show.
+func jobMerge(it factory.Item) *JobMerge {
+	if it.Kind == factory.KindPR || (it.PullRequest == nil && it.MergePolicy == nil && it.Merging == nil) {
+		return nil
+	}
+	out := &JobMerge{}
+	if p := it.MergePolicy; p != nil {
+		out.Auto, out.Method = p.Auto, p.Method
+	}
+	if m := it.Merging; m != nil {
+		run := &JobMergeRun{State: m.State, By: m.By, Auto: m.Auto, Rule: m.Rule, Why: m.Why, Commit: m.Commit, Method: m.Method}
+		if !m.At.IsZero() {
+			at := m.At
+			run.At = &at
+		}
+		if !m.UndoUntil.IsZero() {
+			until := m.UndoUntil
+			run.UndoUntil = &until
+		}
+		out.Run = run
+	}
+	if m := it.Merging; m == nil || m.State == factory.MergeFailed {
+		// Blocked is the gate's answer for a person: the same rule the Merge
+		// verb applies, so a disabled button and a refused verb agree.
+		if v := factory.MergeOffered(it); !v.OK {
+			out.Blocked = v.Why
+		}
+	}
+	return out
+}
+
+// unmerge reads a job's merging back: the pinned policy and the merge on
+// its way, which a worker needs to carry the merge out.
+func unmerge(m *JobMerge) (*factory.MergePolicy, *factory.MergeRun) {
+	if m == nil {
+		return nil, nil
+	}
+	var policy *factory.MergePolicy
+	if m.Auto || m.Method != "" {
+		policy = &factory.MergePolicy{Auto: m.Auto, Method: m.Method}
+	}
+	r := m.Run
+	if r == nil {
+		return policy, nil
+	}
+	run := &factory.MergeRun{State: r.State, By: r.By, Auto: r.Auto, Rule: r.Rule, Why: r.Why, Commit: r.Commit, Method: r.Method}
+	if r.At != nil {
+		run.At = *r.At
+	}
+	if r.UndoUntil != nil {
+		run.UndoUntil = *r.UndoUntil
+	}
+	return policy, run
+}
+
+// jobAsk prefers the stored ask. A GitHub issue with no stored ask is derived
+// and is not written back, so a round trip cannot invent a second copy.
+func jobAsk(it factory.Item) *JobAsk {
+	if it.Ask != nil {
+		a := &JobAsk{Text: it.Ask.Text, By: it.Ask.By, Source: it.Ask.Source, FromRef: it.Ask.FromRef}
+		if !it.Ask.At.IsZero() {
+			at := it.Ask.At
+			a.At = &at
+		}
+		return a
+	}
+	if !factory.GitHubIssue(it) {
+		return nil
+	}
+	return &JobAsk{Text: it.Body, Issue: &AskIssue{Number: it.Num, URL: it.URL, Title: it.Title}}
+}
+
+// readSize is the size to show when no label sets one. A label wins and leaves
+// this absent, so job.size and job.read_size are never both present.
+func readSize(it factory.Item) *JobReadSize {
+	if factory.JobSize(it) != "" {
+		return nil
+	}
+	letter, from := factory.ShownSize(it)
+	if letter == "" || (from != factory.ShownRead && from != factory.ShownDiff) {
+		return nil
+	}
+	return &JobReadSize{Value: letter, From: from}
+}
+
+// ToItem is one job as an item.
+func ToItem(j Job) factory.Item {
+	d := j.Desk
+	if d == nil {
+		d = &JobDesk{}
+	}
+	it := factory.Item{
+		FromJob: j.FromJob, SourceIssue: j.SourceIssue, RunOn: j.RunOn, AgentField: j.AgentField, AgentFieldSteps: j.AgentFieldSteps,
+		WaitsOn: append([]int(nil), j.WaitsOn...), PolicyRun: j.PolicyRun, PolicyGroup: d.PolicyGroup, Blocked: cloneBlocked(j.Blocked),
+		Recovery: j.Recovery, Autonomy: j.Autonomy, FollowUp: j.FollowUp, Manual: j.Manual, Effort: j.Effort,
+		SetupHeld: j.SetupHeld, StopAfterStep: j.StopAfterStep,
+		Owners: append([]string(nil), j.Owners...),
+		ID:     j.ID, Repo: j.Repo, Num: j.Num, Kind: factory.Kind(j.Kind), Title: j.Title, URL: j.URL, Model: j.Model, AutomaticModels: j.AutomaticModels, FactoryModel: j.FactoryModel,
+		HeadCommit: j.HeadCommit, PublishStatus: j.Publishing, Change: j.Change, ChangeBase: d.ChangeBase, Publish: j.Publish, CommentURL: j.CommentURL,
+		WorktreeMachine: d.WorktreeMachine, Publishing: d.Publishing,
+		PublishAnyway: j.PublishAnyway, Priority: d.Priority, DoneHow: d.DoneHow, Approval: d.Approval, StopUndo: d.StopUndo, PersonStopped: d.PersonStopped, Rejection: d.Rejection,
+		DismissedBy: j.DismissedBy, DoneAt: j.DoneAt,
+		State: stateIn(j), Created: j.CreatedAt,
+		Product: d.Product, Places: d.Places, Body: d.Body, Author: d.Author,
+		Assignee: d.Assignee, Starter: d.Starter, Taker: d.Taker,
+		SourceAssignees: slices.Clone(d.Assignees),
+		Tier:            factory.Tier(d.Tier), Origin: factory.Origin(d.Origin), SourceRef: d.SourceRef, Synced: d.Synced, Changed: d.ChangedAt,
+		Triage: toTriage(d.Triage), Cap: d.Cap,
+		Proof: mapList(j.Claims, toClaim), Policy: mapList(d.Policy, toClaim),
+		Marked: d.Marked, Labels: d.Labels, Checks: d.Checks, Diff: d.Diff,
+		Adapted: d.Adapted, Notes: d.Notes, Talk: d.Talk, Heard: d.Heard, Thread: d.Thread,
+		Comments: mapList(d.Comments, toComment), CommentReads: slices.Clone(d.CommentReads), Files: mapList(d.Files, toFile),
+		CheckRuns: mapList(d.CheckRuns, toCheckRun), Base: d.Base, Head: d.Head, HeadSHA: d.HeadSHA,
+		Activity: mapList(d.Activity, toActivity),
+	}
+	it.PullRequest = toPR(j.PR)
+	it.MergePolicy, it.Merging = unmerge(j.Merge)
+	if j.Draft != nil {
+		it.Draft = *j.Draft
+	}
+	it.AskedFirstReason = j.AskedFirstReason
+	it.House = cloneHouse(j.HouseRules)
+	it.PipelineCopy = j.PipelineCopy.Clone()
+	if j.FirstRead != nil {
+		it.Briefs = []factory.BriefVersion{*j.FirstRead}
+	}
+	it.PipelineDecided = j.PipelineDecided
+	it.StartRules = cloneStartRules(j.StartRules)
+	it.RuleHold = j.RuleHold
+	it.RuleChecks = toRuleChecks(j.RuleChecks)
+	itemFacts(j, &it)
+	it.PublishError = j.PublishError
+	if a := j.Ask; a != nil && a.Issue == nil {
+		it.Ask = &factory.JobAsk{Text: a.Text, By: a.By, Source: a.Source, FromRef: a.FromRef}
+		if a.At != nil {
+			it.Ask.At = *a.At
+		}
+	}
+	if f := j.Failure; f != nil {
+		it.Failure = failureItem(f)
+	}
+	it.Stages, it.Stream = unsteps(j)
+	if it.Stream == nil {
+		it.ChatSpent = j.Cost
+	}
+	it.SpentBefore = max(0, j.LifetimeCost-j.Cost)
+	it.Scout = toScout(j.Scout)
+	unquestions(&it, j.Questions)
+	return it
+}
+
+var stateOut = map[factory.State]string{
+	factory.StateNew:       StateBacklog,
+	factory.StateQueued:    StateQueued,
+	factory.StateRunning:   StateRunning,
+	factory.StateNeedsYou:  StateNeedsYou,
+	factory.StateLanded:    StateNeedsYou,
+	factory.StateShipped:   StateDone,
+	factory.StateDismissed: StateDropped,
+}
+
+var stateBack = map[string]factory.State{
+	StateBacklog:  factory.StateNew,
+	StateQueued:   factory.StateQueued,
+	StateRunning:  factory.StateRunning,
+	StateNeedsYou: factory.StateNeedsYou,
+	StateDone:     factory.StateShipped,
+	StateDropped:  factory.StateDismissed,
+}
+
+// stateIn reads a job's state back. A state the API does not name passes
+// through as it came, so a state the floor grows later is not lost on the
+// wire before the codec learns its name.
+func stateIn(j Job) factory.State {
+	if j.Desk != nil && j.Desk.EngineState != "" {
+		return factory.State(j.Desk.EngineState)
+	}
+	if j.Ready {
+		return factory.StateLanded
+	}
+	if s, ok := stateBack[j.State]; ok {
+		return s
+	}
+	return factory.State(j.State)
+}
+
+// gate is what Approve does on the item now: sign off a landed proof, say yes
+// at an approve step after the plan, raise a cap, or answer a question.
+func gate(it factory.Item) string {
+	if it.State == factory.StateLanded && it.PublishStatus != nil && it.PublishStatus.State == "failed" {
+		return "publish_failed"
+	}
+	switch {
+	case it.State == factory.StateLanded:
+		return GateProof
+	case it.Question == "":
+		return ""
+	case it.QKind == factory.QKindApprove:
+		if _, ok := factory.StepHold(it); ok {
+			return GateStep
+		}
+		return GatePlan
+	case it.QKind == "cap":
+		return GateCap
+	}
+	return GateQuestion
+}
+
+// mapList maps a list, keeping nil as nil and empty as empty, because the
+// floor reads some nils as "not read yet".
+func mapList[A, B any](in []A, f func(A) B) []B {
+	if in == nil {
+		return nil
+	}
+	out := make([]B, len(in))
+	for i, a := range in {
+		out[i] = f(a)
+	}
+	return out
+}
+
+func fromShift(s factory.Shift) Since {
+	return Since{At: s.Since, Shipped: s.Shipped, Arrived: s.Arrived, Asked: s.Asked, Handled: s.Handled, Spent: s.Spent, SpentToday: s.SpentToday, MergedToday: s.MergedToday, MergedWeek: s.MergedWeek, Hours: s.Hours, Shipping: s.Shipping}
+}
+
+func toShift(s Since) factory.Shift {
+	return factory.Shift{Since: s.At, Shipped: s.Shipped, Arrived: s.Arrived, Asked: s.Asked, Handled: s.Handled, Spent: s.Spent, SpentToday: s.SpentToday, MergedToday: s.MergedToday, MergedWeek: s.MergedWeek, Hours: s.Hours, Shipping: s.Shipping}
+}
+
+// fromPR is a published pull request on the wire. Nil stays nil so a comment
+// receipt is JSON null, which is the field a client already reads.
+func fromPR(pr *factory.PullRequest) *PR {
+	if pr == nil {
+		return nil
+	}
+	out := &PR{
+		FeedbackItems: append([]factory.PRFeedback(nil), pr.FeedbackItems...), FeedbackTracked: pr.FeedbackTracked, Problems: append([]factory.PRReadProblem(nil), pr.Problems...), BaseSHA: pr.BaseSHA, Feedback: pr.Feedback, CheckRuns: mapList(pr.CheckRuns, fromCheckRun),
+		ReadinessKey: pr.ReadinessKey, Conflict: pr.Conflict, Draft: pr.Draft, Number: pr.Number, URL: pr.URL, CI: pr.CI, State: pr.State,
+		MergedBy: pr.MergedBy, ReviewDecision: pr.ReviewDecision, RequiredReviews: pr.Required,
+		Reviews: mapList(pr.Reviews, func(r factory.PRReview) PRReview {
+			return PRReview{By: r.By, State: r.State, At: r.At, Body: r.Body, URL: r.URL}
+		}),
+		HeadSHA: pr.HeadSHA, HeadBranch: pr.HeadBranch, Mergeable: pr.Mergeable, ChecksRead: pr.ChecksRead, ReviewsRead: pr.ReviewsRead,
+	}
+	if !pr.MergedAt.IsZero() {
+		at := pr.MergedAt
+		out.MergedAt = &at
+	}
+	out.NoWorkflows, out.NoChecks = pr.NoWorkflows, pr.NoChecks
+	out.Files, out.FilesTotal, out.FilesHead = append([]factory.ChangedFile(nil), pr.Files...), pr.FilesTotal, pr.FilesHead
+	if !pr.NoChecksSince.IsZero() {
+		since := pr.NoChecksSince
+		out.NoChecksSince = &since
+	}
+	if pr.Checks != (factory.PRChecks{}) {
+		c := pr.Checks
+		out.Checks = &PRChecks{Passed: c.Passed, Failed: c.Failed, Pending: c.Pending}
+	}
+	return out
+}
+
+func toPR(pr *PR) *factory.PullRequest {
+	if pr == nil {
+		return nil
+	}
+	out := &factory.PullRequest{
+		FeedbackItems: append([]factory.PRFeedback(nil), pr.FeedbackItems...), FeedbackTracked: pr.FeedbackTracked, Problems: append([]factory.PRReadProblem(nil), pr.Problems...), BaseSHA: pr.BaseSHA, Feedback: pr.Feedback, CheckRuns: mapList(pr.CheckRuns, toCheckRun),
+		ReadinessKey: pr.ReadinessKey, Conflict: pr.Conflict, Draft: pr.Draft, Number: pr.Number, URL: pr.URL, CI: pr.CI, State: pr.State,
+		MergedBy: pr.MergedBy, ReviewDecision: pr.ReviewDecision, Required: pr.RequiredReviews,
+		Reviews: mapList(pr.Reviews, func(r PRReview) factory.PRReview {
+			return factory.PRReview{By: r.By, State: r.State, At: r.At, Body: r.Body, URL: r.URL}
+		}),
+		HeadSHA: pr.HeadSHA, HeadBranch: pr.HeadBranch, Mergeable: pr.Mergeable, ChecksRead: pr.ChecksRead, ReviewsRead: pr.ReviewsRead,
+	}
+	if pr.MergedAt != nil {
+		out.MergedAt = *pr.MergedAt
+	}
+	out.NoWorkflows, out.NoChecks = pr.NoWorkflows, pr.NoChecks
+	out.Files, out.FilesTotal, out.FilesHead = append([]factory.ChangedFile(nil), pr.Files...), pr.FilesTotal, pr.FilesHead
+	if pr.NoChecksSince != nil {
+		out.NoChecksSince = *pr.NoChecksSince
+	}
+	if pr.Checks != nil {
+		out.Checks = factory.PRChecks{Passed: pr.Checks.Passed, Failed: pr.Checks.Failed, Pending: pr.Checks.Pending}
+	}
+	return out
+}
+
+func fromSource(s factory.SourceInfo) Source {
+	return Source{Name: s.Name, Writes: s.Writes, Repos: s.Repos, Polled: s.Polled, Trouble: s.Trouble, Polling: s.Polling, Reading: s.Reading, Read: s.Read, Of: s.Of, Items: s.Items}
+}
+
+func toSource(s Source) factory.SourceInfo {
+	return factory.SourceInfo{Name: s.Name, Writes: s.Writes, Repos: s.Repos, Polled: s.Polled, Trouble: s.Trouble, Polling: s.Polling, Reading: s.Reading, Read: s.Read, Of: s.Of, Items: s.Items}
+}
+
+// fromRepos carries each repository's watched fact as the floor stamped it
+// ([factory.Repo.Watched]), never a constant: a queue lists only the
+// repositories that are on, and a floor that keeps no list watches none.
+func fromRepos(rs []factory.Repo, checkouts map[string]string) []Repo {
+	return mapList(rs, func(r factory.Repo) Repo {
+		p := FromRecipe(r.Recipe)
+		return Repo{Name: r.Name, Watched: r.Watched, Checkout: checkouts[r.Name], CheckedOut: checkouts[r.Name] != "", Pipeline: &p,
+			Team: r.Team, Areas: r.Areas, Habits: r.Habits, Hue: r.Hue, CIRed: r.CIRed}
+	})
+}
+
+// toRepos reads the repositories back; their checkouts come back through the
+// desk's one map, never per repository, so there is one source for them.
+func toRepos(rs []Repo) []factory.Repo {
+	return mapList(rs, func(r Repo) factory.Repo {
+		out := factory.Repo{Name: r.Name, Watched: r.Watched, Team: r.Team, Areas: r.Areas, Habits: r.Habits, Hue: r.Hue, CIRed: r.CIRed}
+		if r.Pipeline != nil {
+			out.Recipe = toRecipe(*r.Pipeline)
+		}
+		return out
+	})
+}
+
+// FromRecipe is a recipe as a pipeline, for `GET .../pipeline` as much as for
+// the repositories on the queue.
+func FromRecipe(r factory.Recipe) Pipeline {
+	p := Pipeline{DefaultBudget: r.DefaultBudget, Source: r.Source, Steps: mapList(r.Stages, fromStage), Policy: r.Policy, Habits: r.Habits}
+	for _, problem := range r.Problems {
+		p.Problems = append(p.Problems, problem)
+	}
+	if r.ByKind != nil {
+		p.ByKind = make(map[string][]StepDef, len(r.ByKind))
+		for k, st := range r.ByKind {
+			if k == factory.KindPR || k == factory.KindCI {
+				continue
+			}
+			p.ByKind[string(k)] = mapList(st, fromStage)
+		}
+	}
+	if r.Adapt != nil {
+		p.Adapt = make(map[string]string, len(r.Adapt))
+		for k, m := range r.Adapt {
+			p.Adapt[string(k)] = string(m)
+		}
+	}
+	if r.Merge != (factory.MergePolicy{}) {
+		p.Merge = &MergeBlock{Auto: r.Merge.Auto, Method: r.Merge.Method}
+	}
+	return p
+}
+
+func toRecipe(p Pipeline) factory.Recipe {
+	r := factory.Recipe{DefaultBudget: p.DefaultBudget, Source: p.Source, Stages: mapList(p.Steps, toStage), Policy: p.Policy, Habits: p.Habits}
+	for _, problem := range p.Problems {
+		r.Problems = append(r.Problems, problem)
+	}
+	if p.ByKind != nil {
+		r.ByKind = make(map[factory.Kind][]factory.Stage, len(p.ByKind))
+		for k, st := range p.ByKind {
+			r.ByKind[factory.Kind(k)] = mapList(st, toStage)
+		}
+	}
+	if p.Adapt != nil {
+		r.Adapt = make(map[factory.Kind]factory.AdaptMode, len(p.Adapt))
+		for k, m := range p.Adapt {
+			r.Adapt[factory.Kind(k)] = factory.AdaptMode(m)
+		}
+	}
+	if m := p.Merge; m != nil {
+		r.Merge = factory.MergePolicy{Auto: m.Auto, Method: m.Method}
+	}
+	return r
+}
+
+func fromStage(s factory.Stage) StepDef {
+	return StepDef{Name: s.Name, Label: strings.TrimSpace(s.Label), Parent: s.Parent, Group: s.Group, GroupLabel: s.GroupLabel, Target: s.Target, Input: s.Input, Kind: string(s.Kind), Ask: s.Ask, Until: s.Until, Max: s.Max, Fixed: s.Fixed,
+		Custom: custom(s), Off: !s.On, When: s.When, Effort: s.Effort, UseModel: s.Model, Fanout: s.Fanout, Proof: s.Proof, Why: s.Why, By: s.By, Who: s.Who, Pass: s.Pass}
+}
+
+func toStage(d StepDef) factory.Stage {
+	return factory.Stage{Name: d.Name, Label: strings.TrimSpace(d.Label), Parent: d.Parent, Group: d.Group, GroupLabel: d.GroupLabel, Target: d.Target, Input: d.Input, Kind: factory.StageKind(d.Kind), Ask: d.Ask, Until: d.Until, Max: d.Max, Fixed: d.Fixed,
+		On: !d.Off, When: d.When, Effort: d.Effort, Model: d.UseModel, Fanout: d.Fanout, Proof: d.Proof, Why: d.Why, By: d.By, Who: d.Who, Pass: d.Pass}
+}
+
+// stockNames are the step names the default pipeline spells for any kind; a
+// step named otherwise is a team's own, which the dashboard badges `custom`.
+var stockNames = func() map[string]bool {
+	r := factory.DefaultRecipe()
+	names := map[string]bool{}
+	for _, s := range r.Stages {
+		names[s.Name] = true
+	}
+	for _, st := range r.ByKind {
+		for _, s := range st {
+			names[s.Name] = true
+		}
+	}
+	return names
+}()
+
+func custom(s factory.Stage) bool { return !factory.IsApprove(s) && !stockNames[s.Name] }
+
+func fromClaim(c factory.Claim) Claim {
+	out := Claim{Text: c.Text, Proven: c.OK}
+	if c.Evidence != "" || c.Medium != "" {
+		out.Evidence = &Evidence{Kind: c.Medium, Ref: c.Evidence}
+	}
+	return out
+}
+
+func toClaim(c Claim) factory.Claim {
+	out := factory.Claim{Text: c.Text, OK: c.Proven}
+	if c.Evidence != nil {
+		out.Medium, out.Evidence = c.Evidence.Kind, c.Evidence.Ref
+	}
+	return out
+}
+
+func fromDesk(it factory.Item) *JobDesk {
+	d := &JobDesk{
+		SourceRef:   it.SourceRef,
+		EngineState: string(it.State), Priority: it.Priority, DoneHow: it.DoneHow, Approval: it.Approval, PolicyGroup: it.PolicyGroup, StopUndo: it.StopUndo, PersonStopped: it.PersonStopped, Rejection: it.Rejection,
+		ChangeBase: it.ChangeBase, WorktreeMachine: it.WorktreeMachine, Publishing: it.Publishing,
+		Product: it.Product, Places: it.Places, Body: it.Body, Author: it.Author,
+		Assignee: it.Assignee, Starter: it.Starter, Taker: it.Taker,
+		Assignees: slices.Clone(it.SourceAssignees),
+		Tier:      string(it.Tier), Origin: string(it.Origin), Synced: it.Synced, ChangedAt: it.Changed,
+		Triage: fromTriage(it.Triage), Cap: it.Cap, Policy: mapList(it.Policy, fromClaim),
+		Marked: it.Marked, Labels: it.Labels, Checks: it.Checks, Diff: it.Diff,
+		Adapted: it.Adapted, Notes: it.Notes, Talk: it.Talk, Thread: it.Thread, Heard: it.Heard,
+		Comments: mapList(it.Comments, FromComment), CommentReads: slices.Clone(it.CommentReads), Files: mapList(it.Files, fromFile),
+		CheckRuns: mapList(it.CheckRuns, fromCheckRun), Base: it.Base, Head: it.Head, HeadSHA: it.HeadSHA,
+		Activity: mapList(it.Activity, fromActivity),
+	}
+	if st := it.Stream; st != nil {
+		d.Run = &Run{Started: st.Started, Ended: st.Ended, Activity: st.Activity, Log: mapList(st.Log, fromLog),
+			Paused: st.Paused, Findings: st.Findings, Bench: st.Bench, Room: st.Room}
+	}
+	return d
+}
+
+func fromTriage(t factory.Triage) Triage {
+	return Triage{Type: t.Type, Size: t.Size, SizeFrom: t.SizeFrom, Area: t.Area, Readiness: t.Readiness, Rubric: fromRubric(t.Rubric), DupOf: t.DupOf,
+		Risk: t.Risk, Read: t.Read, Questions: t.Questions, Dup: t.Dup, Priority: t.Priority, Reason: t.Reason, TriagedAt: t.TriagedAt, StartJudged: t.StartJudged, StartMatched: t.StartMatched, StartPaths: t.StartPaths, StartRules: t.StartRules}
+}
+
+func toTriage(t Triage) factory.Triage {
+	return factory.Triage{Type: t.Type, Size: t.Size, SizeFrom: t.SizeFrom, Area: t.Area, Readiness: t.Readiness, Rubric: toRubric(t.Rubric), DupOf: t.DupOf,
+		Risk: t.Risk, Read: t.Read, Questions: t.Questions, Dup: t.Dup, Priority: t.Priority, Reason: t.Reason, TriagedAt: t.TriagedAt, StartJudged: t.StartJudged, StartMatched: t.StartMatched, StartPaths: t.StartPaths, StartRules: t.StartRules}
+}
+
+// estimateOf is an open job's measured range, nil for a finished job or one
+// with no figure.
+func estimateOf(book estimate.Book, it factory.Item) *Estimate {
+	if factory.JobState(it) == "done" || (it.Stream != nil && !it.Stream.Ended.IsZero()) {
+		return nil
+	}
+	var e Estimate
+	if r, ok := book.For(it); ok {
+		e = *FromRange(r)
+	}
+	if factory.JobState(it) == "running" && it.Stream != nil {
+		if l, ok := book.Left(it); ok {
+			e.Left = &Left{USDLo: l.USDLo, USDHi: l.USDHi, N: l.N}
+		}
+	}
+	if e.N == 0 && e.Left == nil {
+		return nil
+	}
+	return &e
+}
+
+// FromRange is a measured range on the wire.
+func FromRange(r estimate.Range) *Estimate {
+	return &Estimate{USDLo: r.USDLo, USDHi: r.USDHi, MinLo: int(r.MinLo), MinHi: int(r.MinHi), N: r.N, Repo: r.Repo, Widened: r.Widened, Basis: r.Basis}
+}
+
+func calibrationOf(book estimate.Book) *Calibration {
+	c := book.Calibration()
+	out := &Calibration{Jobs: book.Jobs(), Hit: c.Hit, Of: c.Of}
+	for _, basis := range []string{estimate.BasisRead, estimate.BasisKind} {
+		if b := book.CalibrationBy(basis); b.Of > 0 {
+			if out.Basis == nil {
+				out.Basis = map[string]HitRate{}
+			}
+			out.Basis[basis] = HitRate{Hit: b.Hit, Of: b.Of}
+		}
+	}
+	return out
+}
+
+// fromScout is a job's Look closer on the wire, stale when the issue's text
+// moved on since.
+func fromScout(it factory.Item) *Scout {
+	s := it.Scout
+	if s == nil {
+		return nil
+	}
+	files := make([]ScoutFile, len(s.Files))
+	for i, f := range s.Files {
+		files[i] = ScoutFile{Path: f.Path, Why: f.Why}
+	}
+	return &Scout{Files: files, Plan: s.Plan, Unknowns: s.Unknowns, Tests: s.Tests, Rubric: fromRubric(s.Rubric),
+		Cited: s.Cited, Dropped: s.Dropped, Calls: s.Calls, USD: s.USD, Model: s.Model, TookMS: s.Took.Milliseconds(),
+		Body: s.Body, Head: s.Head, At: s.At, Stale: s.Stale(it)}
+}
+
+func toScout(s *Scout) *factory.Scout {
+	if s == nil {
+		return nil
+	}
+	files := make([]factory.ScoutFile, len(s.Files))
+	for i, f := range s.Files {
+		files[i] = factory.ScoutFile{Path: f.Path, Why: f.Why}
+	}
+	return &factory.Scout{Files: files, Plan: s.Plan, Unknowns: s.Unknowns, Tests: s.Tests, Rubric: toRubric(s.Rubric),
+		Cited: s.Cited, Dropped: s.Dropped, Calls: s.Calls, USD: s.USD, Model: s.Model, Took: time.Duration(s.TookMS) * time.Millisecond,
+		Body: s.Body, Head: s.Head, At: s.At}
+}
+
+// fromRubric is a rubric on the wire, with its sum and band said, so the
+// desk never adds factors itself.
+func fromRubric(r *factory.Rubric) *Rubric {
+	if r == nil {
+		return nil
+	}
+	f := func(x factory.Factor) Factor { return Factor{Score: x.Score, Why: x.Why, Low: x.Low, Cite: x.Cite} }
+	return &Rubric{Scope: f(r.Scope), Clarity: f(r.Clarity), Coupling: f(r.Coupling), Proof: f(r.Proof), Novelty: f(r.Novelty),
+		From: r.From, Complexity: r.Complexity(), Band: r.Band(), BandNear: factory.BandNear(r.Complexity())}
+}
+
+func toRubric(r *Rubric) *factory.Rubric {
+	if r == nil {
+		return nil
+	}
+	f := func(x Factor) factory.Factor {
+		return factory.Factor{Score: x.Score, Why: x.Why, Low: x.Low, Cite: x.Cite}
+	}
+	return &factory.Rubric{Scope: f(r.Scope), Clarity: f(r.Clarity), Coupling: f(r.Coupling), Proof: f(r.Proof), Novelty: f(r.Novelty), From: r.From}
+}
+
+func fromLog(l factory.LogLine) LogLine {
+	out := LogLine{At: l.At, Glyph: l.Glyph, Tone: l.Tone, Text: l.Text}
+	if l.Tone == "tool" || factory.LegacyToolLog(l) {
+		out.Kind = "tool"
+		out.Text = factory.ToolLogText(l.Text, "")
+	}
+	return out
+}
+
+func toLog(l LogLine) factory.LogLine {
+	return factory.LogLine{At: l.At, Glyph: l.Glyph, Tone: l.Tone, Text: l.Text}
+}
+
+// FromComment is one comment as the wire carries it.
+func FromComment(c factory.Comment) Comment {
+	return Comment{Author: c.Author, Body: c.Body, At: c.At, ID: c.ID, URL: c.URL, Tier: string(c.Tier), ByFactory: c.ByFactory}
+}
+func toComment(c Comment) factory.Comment {
+	return factory.Comment{Author: c.Author, Body: c.Body, At: c.At, ID: c.ID, URL: c.URL, Tier: factory.Tier(c.Tier), ByFactory: c.ByFactory}
+}
+
+func fromFile(f factory.FileChange) File {
+	return File{Path: f.Path, Added: f.Added, Removed: f.Removed}
+}
+func toFile(f File) factory.FileChange {
+	return factory.FileChange{Path: f.Path, Added: f.Added, Removed: f.Removed}
+}
+
+func fromCheckRun(c factory.CheckRun) CheckRun {
+	return CheckRun{Source: c.Source, Name: c.Name, State: c.State, URL: c.URL}
+}
+func toCheckRun(c CheckRun) factory.CheckRun {
+	return factory.CheckRun{Source: c.Source, Name: c.Name, State: c.State, URL: c.URL}
+}
+
+func fromActivity(e factory.Event) Activity { return Activity{At: e.At, What: e.What} }
+func toActivity(a Activity) factory.Event   { return factory.Event{At: a.At, What: a.What} }
+
+// questions are what the job waits on: the floor's own open question, and
+// the question a step put to the manager, which the person sees once the
+// manager sent it on.
+func questions(it factory.Item) []Question {
+	var out []Question
+	if it.Question != "" {
+		q := Question{Text: it.Question, State: "open", Kind: questionKindOut(it.QKind, it.Question)}
+		if st := it.Stream; st != nil && st.Cur >= 0 && st.Cur < len(st.Phases) {
+			q.FromStep = st.Phases[st.Cur].Name
+		}
+		annotateQuestion(&q, it)
+		out = append(out, q)
+	}
+	if a := it.Asking; a != nil {
+		at := a.At
+		q := Question{Text: a.Question, State: "open", Kind: QuestionAsked, FromStep: a.Stage, Person: a.Person,
+			With: a.With, Options: append([]string(nil), a.Options...), Pick: a.Pick, Why: a.Why, At: &at}
+		// A reported ask holds the same words in Question and Asking. Keep
+		// its gate kind and its answer details together on one wire entry.
+		if a.With == factory.AskedYou && it.Question != "" && it.Question == a.Question {
+			q.Kind = questionKindOut(it.QKind, it.Question)
+			annotateQuestion(&q, it)
+			out[0] = q
+		} else {
+			out = append(out, q)
+		}
+	}
+	return append(out, it.AnsweredQuestions...)
+}
+
+// questionKindOut is the kind a person reads. The store keeps the runner's
+// words (approve, scope); the wire says plan and max_rounds. Anything else,
+// including proof and step, is already the wire's word.
+func questionKindOut(kind, text string) string {
+	switch kind {
+	case factory.QKindApprove:
+		return "plan"
+	case "scope":
+		if strings.Contains(text, "one more round") {
+			return "max_rounds"
+		}
+	}
+	return kind
+}
+
+// questionKindIn is the store's word for a kind the wire showed, so a job
+// that left the factory and came back still has the runner's kind.
+func questionKindIn(kind string) string {
+	switch kind {
+	case "plan":
+		return factory.QKindApprove
+	case "max_rounds":
+		return "scope"
+	default:
+		return kind
+	}
+}
+
+// annotateQuestion adds the numbers and choices a cap or rounds question
+// carries. Choices the step did not offer are filled only when nothing is
+// stored beside the question, so a round trip does not invent an answer list.
+func annotateQuestion(q *Question, it factory.Item) {
+	if q.Kind == "cap" {
+		q.Limit = it.Cap
+		q.Spent = factory.JobLifetimeSpent(it)
+		q.NextLimit = factory.NextJobCap(it)
+	}
+	if it.QKind == factory.QKindOutOfAttempts && len(q.Options) == 0 {
+		q.Options = factory.OutOfAttemptChoices(it)
+	}
+	if len(q.Options) == 0 && it.Asking == nil && (q.Kind == "cap" || q.Kind == "max_rounds") {
+		q.Options = []string{"yes", "no"}
+	}
+}
+
+func unquestions(it *factory.Item, qs []Question) {
+	for _, q := range qs {
+		if q.Answer != nil {
+			it.AnsweredQuestions = append(it.AnsweredQuestions, q)
+			continue
+		}
+		if q.Kind != QuestionAsked {
+			it.Question, it.QKind = q.Text, questionKindIn(q.Kind)
+			if q.With != factory.AskedYou {
+				continue
+			}
+		}
+		a := &factory.Asked{Stage: q.FromStep, Question: q.Text, Options: q.Options, Pick: q.Pick, With: q.With, Why: q.Why, Person: q.Person}
+		if q.At != nil {
+			a.At = *q.At
+		}
+		it.Asking = a
+	}
+}
+
+// steps lines the item's pipeline up with its run. The two lists are the
+// same names in the same order on every item the runner compiled, but an
+// edit may add a stage the run has not reached or a run may hold a phase the
+// stages since dropped; a phase named nowhere ahead in the pipeline is its own
+// step, so neither list loses a row or its order.
+func steps(it factory.Item) []Step {
+	var phases []factory.Phase
+	if it.Stream != nil {
+		phases = it.Stream.Phases
+	}
+	stages := it.Stages
+	if factory.RunOnPending(it) {
+		// The run has not said what its steps are yet: neither the stock
+		// stages nor a stream started with them are its steps.
+		stages, phases = nil, nil
+	}
+	out := make([]Step, 0, len(stages)+len(phases))
+	j := 0
+	for i, st := range stages {
+		for j < len(phases) && phases[j].Name != st.Name && factory.StageIndex(stages[i:], phases[j].Name) < 0 {
+			out = append(out, runStep(Step{StepDef: StepDef{Name: phases[j].Name, Kind: string(phases[j].Kind)}}, phases[j]))
+			j++
+		}
+		s := Step{StepDef: fromStage(st), State: StepPending, InPipeline: true}
+		if !st.On {
+			s.State = StepSkipped
+		}
+		if j < len(phases) && phases[j].Name == st.Name {
+			s = runStep(s, phases[j])
+			j++
+		}
+		out = append(out, s)
+	}
+	for ; j < len(phases); j++ {
+		out = append(out, runStep(Step{StepDef: StepDef{Name: phases[j].Name, Kind: string(phases[j].Kind)}}, phases[j]))
+	}
+	out = withAgentFieldSteps(it, out)
+	// A persisted decision owns the current step even if an older worker
+	// left its phase marked running. Do not draw an idle working timer.
+	if it.State == factory.StateNeedsYou && it.Question != "" && it.Stream != nil && it.Stream.Cur >= 0 && it.Stream.Cur < len(phases) {
+		name := phases[it.Stream.Cur].Name
+		for i := range out {
+			if out[i].Name == name && out[i].State == StepRunning {
+				out[i].State = StepWaiting
+			}
+		}
+	}
+	return out
+}
+
+func runStep(s Step, p factory.Phase) Step {
+	s.SkipReason = p.SkipReason
+	s.RoundLimit, s.Verification = p.RoundLimit, p.Verification
+	s.InRun, s.State, s.Round, s.Note, s.Tasks = true, string(p.State), p.Round, p.Note, p.Tasks
+	// Keep the interrupted attempt in the run, but its checks are no longer live.
+	if p.State == factory.PhaseRunning && p.Failure != nil && p.Failure.Code == factory.CodeMachineLost && p.Failure.Next == factory.FailureStopped {
+		s.State, s.Verification = StepWaiting, nil
+	}
+	s.LeftMS, s.Chat, s.Handle = p.Left.Milliseconds(), p.Chat, p.Handle
+	if string(p.Kind) != s.Kind {
+		s.RunKind = string(p.Kind)
+	}
+	if r := p.Result; r != nil && p.State != factory.PhaseSkipped {
+		s.Files = r.Files
+		s.Result, s.Tests, s.Model = r.Output, r.Tests, r.Model
+	}
+	s.Cost = p.StepCost()
+	s.At, s.StartedAt = timeOrNil(p.At), timeOrNil(p.Started)
+	s.Failure = failureWireOrNil(p.Failure)
+	s.Rounds = roundsWire(p.Rounds)
+	if p.Passed != nil && p.State == factory.PhaseDone {
+		s.Passed = &StepPassed{By: p.Passed.By, Handle: p.Passed.Handle, Why: p.Passed.Why}
+	}
+	return s
+}
+
+// timeOrNil is an instant on the wire: absent when it is unknown.
+func timeOrNil(t time.Time) *time.Time {
+	if t.IsZero() {
+		return nil
+	}
+	return &t
+}
+
+// roundsWire is a step's finished tries in the wire's words, nil for none.
+// [roundsItem] reads them back.
+func roundsWire(lines []factory.RoundLine) []RoundLine {
+	if len(lines) == 0 {
+		return nil
+	}
+	out := make([]RoundLine, len(lines))
+	for i, line := range lines {
+		out[i] = RoundLine{Rejected: line.Rejected, Round: line.Round, Summary: line.Summary, At: line.At, StartedAt: line.Started, Chat: line.Chat, Result: line.Result, Reason: line.Reason}
+	}
+	return out
+}
+
+// withoutTryResults takes how each try ended out of steps a worker reports
+// (its steps' rounds and a reshaped pipeline's). The factory judges that
+// itself from the result it folds (run.foldResult), and a factory older than
+// the fields decodes a worker's report strictly, so sending them would cost
+// the whole report.
+func withoutTryResults(steps []Step, reports []StepReport) {
+	for i := range steps {
+		clearTryResults(steps[i].Rounds)
+	}
+	for i := range reports {
+		clearTryResults(reports[i].Rounds)
+	}
+}
+
+func clearTryResults(lines []RoundLine) {
+	for i := range lines {
+		lines[i].Result, lines[i].Reason = "", ""
+	}
+}
+
+// roundsItem is the wire's finished tries as the item keeps them.
+func roundsItem(lines []RoundLine) []factory.RoundLine {
+	if len(lines) == 0 {
+		return nil
+	}
+	out := make([]factory.RoundLine, len(lines))
+	for i, line := range lines {
+		out[i] = factory.RoundLine{Rejected: line.Rejected, Round: line.Round, Summary: line.Summary, At: line.At, Started: line.StartedAt, Chat: line.Chat, Result: line.Result, Reason: line.Reason}
+	}
+	return out
+}
+
+func failureWireOrNil(f *factory.Failure) *Failure {
+	if f == nil {
+		return nil
+	}
+	return failureWire(*f)
+}
+
+// unsteps gives each step back to its own list: the pipeline's stages, and
+// the run's phases on a stream rebuilt from the job's run block.
+func unsteps(j Job) ([]factory.Stage, *factory.Stream) {
+	var stages []factory.Stage
+	var phases []factory.Phase
+	// A RUN'S OWN CALLS ARE NEVER THE JOB'S STEPS. [withAgentFieldSteps]
+	// folds each agentfield step's run right after the step, one row per call
+	// of that run, so the rail can draw them under it; they come back on the
+	// step's own run record ([Job.AgentFieldSteps]), never as phases of the
+	// job. Read back as phases, a runner that took the job again mid-run went
+	// on to the run's next call when the step ended and reported it as a step
+	// the pipeline does not have, and the factory refused the whole report.
+	folded := 0
+	for _, s := range j.Steps {
+		if folded > 0 && !s.InPipeline {
+			folded--
+			continue
+		}
+		folded = 0
+		if r := j.AgentFieldSteps[s.Name]; r != nil {
+			folded = len(r.Stages)
+		}
+		if s.InPipeline {
+			stages = append(stages, toStage(s.StepDef))
+		}
+		if s.InRun {
+			phases = append(phases, toPhase(s))
+		}
+	}
+	if j.Desk == nil || j.Desk.Run == nil {
+		return stages, nil
+	}
+	r := j.Desk.Run
+	st := &factory.Stream{Phases: phases, Spent: j.Cost, Started: r.Started, Ended: r.Ended, Activity: r.Activity,
+		Log: mapList(r.Log, toLog), Paused: r.Paused, Findings: r.Findings, Bench: r.Bench, Room: r.Room}
+	if j.Step != nil {
+		st.Cur = j.Step.Index
+	}
+	return stages, st
+}
+
+func toPhase(s Step) factory.Phase {
+	kind := s.Kind
+	if s.RunKind != "" {
+		kind = s.RunKind
+	}
+	p := factory.Phase{Name: s.Name, Kind: factory.StageKind(kind), State: factory.PhaseState(s.State), SkipReason: s.SkipReason, Note: s.Note,
+		Round: s.Round, RoundLimit: s.RoundLimit, Verification: s.Verification, Tasks: s.Tasks, Left: time.Duration(s.LeftMS) * time.Millisecond, Chat: s.Chat, Handle: s.Handle}
+	// THE WHOLE REPORT WINS WHEN IT CAME. A worker's pull carries it; a
+	// reader's job, and a pull from an older factory, carry only the step's
+	// result line, which is read as it always was (no done, no notes, no claims).
+	if r := s.Report; r != nil {
+		res := stageResultItem(*r)
+		res.Model = s.Model
+		p.Result = &res
+	} else if s.Files != nil || s.Result != "" || (s.Cost != 0 && s.RoundCosts == nil) || s.Tests != nil || s.Model != "" {
+		spent := s.Cost
+		if s.RoundCosts != nil {
+			spent = s.RoundCosts[max(1, s.Round)]
+		}
+		p.Result = &factory.StageResult{Files: s.Files, Output: s.Result, Spent: spent, Tests: s.Tests, Model: s.Model}
+	}
+	if s.At != nil {
+		p.At = *s.At
+	}
+	if s.StartedAt != nil {
+		p.Started = *s.StartedAt
+	}
+	p.RoundCosts = maps.Clone(s.RoundCosts)
+	p.Failure = failureItem(s.Failure)
+	p.Rounds = roundsItem(s.Rounds)
+	return p
+}
+
+// strip counts the jobs standing in each step, in the order the steps first
+// appear, and marks the steps where an approve waits.
+func strip(jobs []Job) []Cell {
+	var out []Cell
+	at := map[string]int{}
+	for _, j := range jobs {
+		if j.Step == nil || j.Step.Name == "" || (j.State != StateRunning && j.State != StateNeedsYou) {
+			continue
+		}
+		i, ok := at[j.Step.Name]
+		if !ok {
+			i = len(out)
+			at[j.Step.Name] = i
+			out = append(out, Cell{Step: j.Step.Name, Label: j.Step.Label})
+		}
+		out[i].Jobs++
+		out[i].Waiting = out[i].Waiting || j.Gate == GatePlan || j.Gate == GateStep || j.Gate == GateProof
+	}
+	return out
+}
+
+// copyWithoutText is the factory's copy a job carries as a reader sees it:
+// who saved it and when, without the file, which only the runner pulling the
+// job is sent ([WorkerJob]). Nil stays nil.
+func copyWithoutText(c *factory.PipelineCopy) *factory.PipelineCopy {
+	out := c.Clone()
+	if out != nil {
+		out.Text = ""
+	}
+	return out
+}
+
+// cloneHouse copies a job's house rules so the wire and the store never share
+// a slice. Nil stays nil: a job not yet queued carries none.
+func cloneHouse(h *factory.HouseRules) *factory.HouseRules {
+	if h == nil {
+		return nil
+	}
+	return &factory.HouseRules{
+		Rules:    append([]string{}, h.Rules...),
+		AskFirst: append([]string{}, h.AskFirst...),
+		Never:    append([]string{}, h.Never...),
+		Adapt:    h.Adapt,
+
+		StartOnItsOwn: h.StartOnItsOwn,
+		StartLabels:   append([]string(nil), h.StartLabels...),
+	}
+}
+
+// cloneStartRules copies a job's start rules; nil stays nil.
+func cloneStartRules(r *factory.StartRules) *factory.StartRules {
+	if r == nil {
+		return nil
+	}
+	return &factory.StartRules{AskFirst: append([]string{}, r.AskFirst...), Never: append([]string{}, r.Never...), Unread: r.Unread, UnreadWhy: r.UnreadWhy, UnreadFile: r.UnreadFile, UnreadLine: r.UnreadLine, Pending: r.Pending, NoFile: r.NoFile}
+}
+
+func fromRuleChecks(c *factory.RuleChecks) *RuleChecks {
+	if c == nil {
+		return nil
+	}
+	return &RuleChecks{Start: c.Start, Publish: c.Publish, PublishHead: c.PublishHead}
+}
+
+func toRuleChecks(c *RuleChecks) *factory.RuleChecks {
+	if c == nil {
+		return nil
+	}
+	return &factory.RuleChecks{Start: c.Start, Publish: c.Publish, PublishHead: c.PublishHead}
+}
+
+// briefMark is the job's brief rev and status, nil while the job has only
+// its stub: a reader reads the stub's facts from the job's own steps.
+func briefMark(it factory.Item) *BriefMark {
+	status := factory.BriefStatusOf(it)
+	if status == factory.BriefStatusStub {
+		return nil
+	}
+	rev := 0
+	if n := len(it.Briefs); n > 0 {
+		rev = it.Briefs[n-1].Rev
+	}
+	return &BriefMark{Rev: rev, Status: status}
+}
+
+// runnerOf is the machine a job runs on. An AgentField job runs on its node's
+// machine, never this factory's, so it says the node (and its host).
+func runnerOf(it factory.Item) string {
+	if strings.TrimSpace(it.RunOn) != "" {
+		return factory.AgentFieldRunner(it)
+	}
+	return it.WorktreeMachine
+}
+
+// withAgentFieldSteps places each agentfield step's run right after the step:
+// every execution of the run is a step of its own, a top-level call naming
+// the agentfield step as its parent, so the run folds under it on the rail
+// exactly as a RunOn job's nested calls fold under theirs.
+func withAgentFieldSteps(it factory.Item, steps []Step) []Step {
+	if len(it.AgentFieldSteps) == 0 {
+		return steps
+	}
+	out := make([]Step, 0, len(steps))
+	for _, s := range steps {
+		out = append(out, s)
+		r := it.AgentFieldSteps[s.Name]
+		if r == nil {
+			continue
+		}
+		for k, st := range r.Stages {
+			def := fromStage(st)
+			if def.Parent == "" {
+				def.Parent = s.Name
+			}
+			c := Step{StepDef: def, State: StepPending, InPipeline: false}
+			if k < len(r.Phases) && r.Phases[k].Name == st.Name {
+				c = runStep(c, r.Phases[k])
+			}
+			out = append(out, c)
+		}
+	}
+	return out
+}

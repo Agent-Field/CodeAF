@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// N2 writes and reopens an automation in a native Windows folder whose spaces,
+// R2 writes and reopens an automation in a native Windows folder whose spaces,
 // Unicode, fragment and percent characters must remain part of the filename.
 func TestWindowsAutomationStoreNativePath(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "dir with space é", "automations #%25")

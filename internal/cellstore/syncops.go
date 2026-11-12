@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strconv"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
@@ -195,8 +194,24 @@ func (e SyncEngine) Export(ctx context.Context, c cell.Cell, head string) (Expor
 			return out, err
 		}
 	}
-	op := exportOp{Head: head, Outbox: e.outbox(c), Ledger: e.Ledger, MaxFrame: e.MaxFrame, keyArgs: hexKeys(e.Keys)}
-	return out, e.ask(ctx, c, op, &out)
+	outbox := e.outbox(c)
+	// An export still waiting in the outbox is answered as it stands rather
+	// than sealed again (keptExport says why).
+	stamp, known := e.stampFor(e.Target(c).DataDir, head)
+	if known {
+		if kept, ok := reuse(outbox, stamp); ok {
+			return kept, nil
+		}
+	}
+	op := exportOp{Head: head, Outbox: outbox, Ledger: e.Ledger, MaxFrame: e.MaxFrame, keyArgs: hexKeys(e.Keys)}
+	if err := e.ask(ctx, c, op, &out); err != nil {
+		return out, err
+	}
+	if known {
+		stamp.Export = out
+		keep(outbox, stamp)
+	}
+	return out, nil
 }
 
 // Published implements the sync seam.
@@ -267,18 +282,17 @@ func (e SyncEngine) Materialize(ctx context.Context, c cell.Cell, head string) e
 	// legacy-copy markers snapshots never carry: they are read first and
 	// written back after the head is materialized.
 	earlier := heldBefore(c, e.holdDir(c))
-	_, readyErr := os.Stat(rel(c, cell.CopyReadyPath))
-	_, lockErr := os.Stat(c.Root + ".lock")
-	keepCopyReady := readyErr == nil || (filepath.Base(filepath.Dir(c.Root)) == ".moving" && lockErr == nil)
+	restoreCopyReady, err := cell.PreserveCopyReady(c.Root)
+	if err != nil {
+		return err
+	}
 	_, offeredErr := os.Stat(rel(c, cell.CopyOfferedPath))
 	keepCopyOffered := offeredErr == nil
 	if err := e.ask(ctx, c, materializeOp{Head: head}, &out); err != nil {
 		return err
 	}
-	if keepCopyReady {
-		if err := cell.StampCopyReady(c.Root); err != nil {
-			return err
-		}
+	if err := restoreCopyReady(); err != nil {
+		return err
 	}
 	if keepCopyOffered {
 		offeredFile := rel(c, cell.CopyOfferedPath)
@@ -374,7 +388,33 @@ func (e Engine) Sync(keys SyncKeys, ledger string) SyncEngine {
 			if err := e.screenCapture(ctx, c); err != nil {
 				return nil, err
 			}
-			return e.do(ctx, c, e.cellDir(c), op)
+			// The daemon retains a directory watcher after materializing a tree.
+			// A take renames that tree next, which Windows refuses while watched.
+			// Join a one-shot process before returning; Follow binds the final root.
+			materializer := e
+			materializer.Transport = materializeTransport(e.transport())
+			return materializer.do(ctx, c, e.cellDir(c), op)
 		},
+	}
+}
+
+// materializeTransport releases daemon watchers before installation while
+// preserving a caller's independent transport, binary and runner.
+func materializeTransport(transport Transport) Transport {
+	switch t := transport.(type) {
+	case Daemon:
+		return Spawn{Binary: t.Binary, Socket: t.Socket}
+	case *Daemon:
+		return materializeTransport(*t)
+	case Fallback:
+		switch t.Primary.(type) {
+		case Daemon, *Daemon:
+			return materializeTransport(t.Secondary)
+		}
+		return Fallback{Primary: materializeTransport(t.Primary), Secondary: materializeTransport(t.Secondary)}
+	case *Fallback:
+		return materializeTransport(*t)
+	default:
+		return transport
 	}
 }

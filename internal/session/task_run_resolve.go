@@ -9,11 +9,17 @@ import (
 	"github.com/Agent-Field/codeaf/internal/plandb"
 )
 
-const completedRunReview = "the plan finished before the restart, but its final checks and landing were not recorded; inspect the saved working copy, then accept or refute it on the task page or ask this conversation to do so"
+const completedRunReview = "the plan finished before the restart, but its final checks and landing were not recorded; inspect the saved working copy, then accept it or say it is not right on the task page or ask this conversation to do so"
+
+// localRunConflict identifies a completed local landing whose retained copy
+// still needs the person's decision, independently of a live worker graph.
+func localRunConflict(notice TaskNotice) bool {
+	return notice.Remote == nil && notice.Program == "" && notice.Copy != nil && notice.Merge == mergeConflicted
+}
 
 // resolveCompletedRun is the existing explicit decision door for completed
-// work whose process disappeared before its landing. It never starts workers
-// and a completed store alone never supplies a successful check receipt.
+// work whose landing still needs a decision. It never starts workers, and a
+// completed store alone never supplies a successful check receipt.
 func (a *Agent) resolveCompletedRun(ctx context.Context, id uint64, resolution TaskResolution, why string, by TaskAskOwner) (string, bool, error) {
 	g, found := a.completedRunOwner(id)
 	if !found {
@@ -63,7 +69,7 @@ func (a *Agent) completedRunOwner(id uint64) (*TaskGraph, bool) {
 	if g == nil {
 		return nil, false
 	}
-	if kept, found := runRowOf(g, id); !found || !kept.RecoveredCompletion {
+	if kept, found := runRowOf(g, id); !found || (!kept.RecoveredCompletion && !localRunConflict(kept)) {
 		return nil, false
 	}
 	return g, true
@@ -93,6 +99,13 @@ func (a *Agent) acceptCompletedRun(ctx context.Context, g *TaskGraph, kept TaskN
 	if err != nil {
 		return "", true, err
 	}
+	// A refused landing releases Git's registration while retaining its files.
+	// Restore that registration before checking or committing the saved branch.
+	if reopened, back, problem := tree.reopenReleased(); problem != "" {
+		return "", true, fmt.Errorf("task %d could not reopen its saved working copy: %s", kept.ID, problem)
+	} else if back {
+		tree = reopened
+	}
 	// A directory that now belongs to another branch is not the saved work.
 	// The ordinary landing also checks the recorded destination branch and head.
 	if kept.Copy.Branch != "" && currentBranch(tree.dir) != kept.Copy.Branch {
@@ -115,8 +128,12 @@ func (a *Agent) acceptCompletedRun(ctx context.Context, g *TaskGraph, kept TaskN
 	if err := a.admitCompletedRunHomecoming(ctx, epoch); err != nil {
 		return "", true, err
 	}
-	merge, detail, _, _ := tree.comeHome(kept.Title, nil, a.signsGitWork())
+	if kept.GroundHeld {
+		tree = carryOnTheirWord(tree)
+	}
+	merge, detail, conflicts, refusal := tree.comeHome(kept.Title, nil, a.signsGitWork())
 	kept.Changed, kept.Branch, kept.Merge = changed, branch, merge
+	kept.Conflicts, kept.GroundHeld = conflicts, refusal == refusedByYourFiles
 	kept.Report = withReport(acceptedLine(strings.TrimSpace(why), by), withReport(root.Result, detail))
 	if commit != "" {
 		kept.Report = withReport(kept.Report, "work commit "+commit)
@@ -125,6 +142,7 @@ func (a *Agent) acceptCompletedRun(ctx context.Context, g *TaskGraph, kept TaskN
 		kept.State = TaskDone
 	} else {
 		kept.State = TaskUnverified
+		kept.Report = withYourCallLead(kept.StatusFacts(), kept.Report)
 	}
 	return a.saveCompletedRunOutcome(g, kept, path, root.ID)
 }

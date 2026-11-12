@@ -1,0 +1,54 @@
+---
+kind: fixed
+title: Execution notes and completion guard share trustworthy command outcomes
+pr: 2298
+surface: [engine, factory, chat]
+invalidates:
+  - "A zero exit could hide an unmeasured check in the same call. Every check must now have a zero exit before the call reads passed."
+  - "A failed shell script could recreate an obligation for measured scratch checks already classified as diagnostic."
+  - "Unrun literal Go test attempts, including quoted test filters, could remain owed after later measured covering passes."
+  - "Execution notes previously called approval and policy refusals completed. They now say refused and retain the real refusal reason."
+  - "Partial PASS output could previously label an interrupted command passed. Cancellation and timeout receipts now keep their interrupted outcome."
+  - "Printed cancellation or timeout text in legacy journals does not establish an interruption. Background launch success without a measured exit means started, never passed; producer status and call metadata take precedence over printed launch or timeout text."
+---
+
+Shell producers explicitly record cancellation, timeout and deadline outcomes rather
+than asking readers to infer them from output. Factory execution notes read the
+journal's producer outcome and refusal mark, with a
+conservative fallback for older approval receipts. Refusals, cancellations and
+timeouts remain unresolved until later measured covering evidence qualifies. Later
+stage briefs retain the reason instead of implying that the refused command ran. PR validation
+continues to publish only passed command receipts. Only measured exits of 0 for every check bound to the call and its exact command,
+with no shell form that can hide an unobserved failure, read `passed`; any non-zero exit reads `failed`. Producer refusals, cancellations and
+timeouts retain their outcomes. Without measured exits, legacy PASS or `ok  `
+output reads `completed`, never `passed`. Named test counts attach only to
+measured passed or failed receipts. Publication uses each command's last outcome:
+a later failed or unmeasured rerun withdraws its earlier passing claim.
+
+The completion guard honors outside-checkout diagnostic ownership for shell
+history, including deleted scratch fixtures. Later measured Go test passes on the
+current checkout resolve earlier literal refused, cancelled, timed-out or
+unmeasured attempts when scope and environment match. Unknown compound commands
+remain conservative obligations. Real failures without covering reruns, missing
+receipts, narrower passes and mismatched targets still hold completion.
+
+A hold names every remaining obligation on one line. All guarded completion paths,
+including no-change repair reports, stop after three unchanged refusals or six
+refusals overall, retaining incomplete work rather than declaring success.
+
+A compound with unquoted `;` or `||` publishes nothing, even when every observed
+check passed. Single `&`, newlines, command substitutions and backticks likewise
+lower an otherwise passing call to `completed`. Quoted literal separators, `&&`
+chains and `|` pipes remain eligible. Measured failures still read `failed`.
+Publication downgrades to `completed` retain unfinished background shell obligations;
+only the guard's existing measured-check coverage rules can clear them.
+Rerunning the identical compound on the current
+checkout with every measured exit zero clears its earlier failure, even when the
+surrounding command reads `completed`.
+`bash -c 'go test ./...'`, `sh script.sh` and `make test` publish nothing, as on
+app/v3. This existing observation limit is not a fault fixed by this change.
+
+Any non-zero check exit keeps a compound call failed regardless of order.
+Otherwise an unmeasured check keeps it completed and unpublished, even with PASS
+output. Calls without checks retain legacy output classification, which now
+rejects FAIL on the first line as well as later lines.

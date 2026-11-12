@@ -126,6 +126,18 @@ const (
 	QuestionFuel QuestionKind = "fuel"
 	// QuestionAsk is the model's own question, raised through the ask tool.
 	QuestionAsk QuestionKind = "ask"
+	// QuestionFactory is a card the chat raised to put one piece of work on the
+	// factory floor (tools_factory.go, [Agent.ResolveFactory]). Its token is a
+	// string, the proposal's own id, so an answer names it by Ref.
+	QuestionFactory QuestionKind = "factory"
+	// QuestionRecipe is a card the chat raised to add one line to a
+	// repository's recipe, policy or habits (tools_factory_recipe.go,
+	// [Agent.ResolveRecipe]). Its token is the proposal's own id, by Ref.
+	QuestionRecipe QuestionKind = "recipe"
+	// QuestionItem is a card the chat raised to change one floor item's
+	// stages, gate, cap or effort, or leave it a note (tools_factory_item.go,
+	// [Agent.ResolveItem]). Its token is the proposal's own id, by Ref.
+	QuestionItem QuestionKind = "item"
 )
 
 // AnswerOption is one answer a question will take: the key that gives it and
@@ -237,6 +249,29 @@ func AnswerOptions(kind QuestionKind) []AnswerOption {
 			{Key: AutomationRunNowKey, Label: "Save and run it now"},
 			{Key: AutomationNoKey, Label: "Don't save", Safe: true},
 		}
+	case QuestionFactory:
+		// THE YES WRITES ONE ROW AND STARTS NOTHING, and the no changes nothing
+		// at all, so it is the safe one. Words are the third answer and have no
+		// key: they arrive through the card's box as a change (question.go's
+		// [Agent.applyToLane]).
+		return []AnswerOption{
+			{Key: FactoryAddKey, Label: FactoryAddLabel},
+			{Key: FactoryNotNowKey, Label: FactoryNotNowLabel, Safe: true},
+		}
+	case QuestionRecipe:
+		// THE YES WRITES ONE LINE INTO THE REPOSITORY'S RECIPE, and the no
+		// writes nothing, so it is the safe one. Words arrive through the box.
+		return []AnswerOption{
+			{Key: RecipeBankKey, Label: RecipeBankLabel},
+			{Key: RecipeNotNowKey, Label: RecipeNotNowLabel, Safe: true},
+		}
+	case QuestionItem:
+		// THE YES CHANGES THE ITEM, within the recipe's bounds, and
+		// the no changes nothing, so it is the safe one.
+		return []AnswerOption{
+			{Key: ItemYesKey, Label: ItemYesLabel},
+			{Key: ItemKeepKey, Label: ItemKeepLabel, Safe: true},
+		}
 	case QuestionConnect:
 		return []AnswerOption{
 			{Key: "1", Label: "connect"},
@@ -254,6 +289,8 @@ func AnswerOptions(kind QuestionKind) []AnswerOption {
 			{Key: "2", Label: "finish on what is done", Consequence: "it writes up what it already has"},
 			{Key: "3", Label: "stop", Consequence: "the run ends where it stands"},
 		}
+	case QuestionKeep:
+		return KeepOptions()
 	case QuestionLanding, QuestionConflict:
 		// THE LANDING KEYS ARE TASK-STATES' OWN, LETTER FOR LETTER
 		//: `[a] <yes> · [n] <no> · [s] tell
@@ -418,6 +455,12 @@ type AnswerAction struct {
 	Scope ConsentScope
 	// Task is the proposal lane's answer, for [Agent.ResolveTask].
 	Task TaskAnswer
+	// Factory is the factory card's answer, for [Agent.ResolveFactory].
+	Factory FactoryAnswer
+	// Recipe is the recipe card's answer, for [Agent.ResolveRecipe].
+	Recipe RecipeAnswer
+	// Item is the item card's answer, for [Agent.ResolveItem].
+	Item ItemAnswer
 }
 
 // AnswerFromKey is the whole mapping, and it is the one place it is written.
@@ -459,6 +502,31 @@ func AnswerFromKey(kind QuestionKind, key string) (AnswerAction, bool) {
 			action.Task = TaskAnswer{Approved: true}
 		case "2":
 			action.Task = TaskAnswer{Approved: false}
+		}
+	case QuestionFactory:
+		switch key {
+		case FactoryAddKey:
+			action.Factory = FactoryAnswer{Approved: true}
+		case FactoryNotNowKey:
+			// Written out for the standing arm's reason: the zero value is
+			// already the no, and a reader counting answers must find both.
+			action.Factory = FactoryAnswer{}
+		}
+	case QuestionRecipe:
+		switch key {
+		case RecipeBankKey:
+			action.Recipe = RecipeAnswer{Approved: true}
+		case RecipeNotNowKey:
+			// Written out for the factory arm's reason.
+			action.Recipe = RecipeAnswer{}
+		}
+	case QuestionItem:
+		switch key {
+		case ItemYesKey:
+			action.Item = ItemAnswer{Approved: true}
+		case ItemKeepKey:
+			// Written out for the factory arm's reason.
+			action.Item = ItemAnswer{}
 		}
 	}
 	return action, true
@@ -554,6 +622,11 @@ type Answer struct {
 	// the person taking the work over rather than by an answer to it. It is
 	// meaningful on [QuestionSubharnessAsk] alone.
 	TakingOver bool `json:"takingOver,omitempty"`
+	// Kept is where a credential typed into a secret question went instead of
+	// into this answer (secret_request.go). It carries the file and when it
+	// stops being readable, never one byte of what was typed, so it may travel
+	// wherever an answer travels.
+	Kept *KeptSecret `json:"kept,omitempty"`
 	// Revises says this is a NEW ANSWER TO A QUESTION ALREADY SETTLED — the
 	// person changing their mind from the receipt — rather than a second click
 	// on a question somebody else has already answered.

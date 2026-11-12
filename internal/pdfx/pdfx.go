@@ -83,20 +83,28 @@ func (e *NoTextLayerError) Unwrap() error { return ErrNoTextLayer }
 // wrapping ErrNoTextLayer for a scanned file, "" and a plain error for a file
 // that would not parse.
 func Extract(path string) (string, error) {
+	text, _, err := ExtractCounted(path)
+	return text, err
+}
+
+// ExtractCounted is Extract plus the page count the parser itself reported: the
+// number of pages the document parsed to, which is zero only when the file did
+// not parse. A scanned file still answers its count, in the NoTextLayerError.
+func ExtractCounted(path string) (string, int, error) {
 	info, err := os.Stat(path)
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 	if info.IsDir() {
-		return "", fmt.Errorf("%s is a directory", path)
+		return "", 0, fmt.Errorf("%s is a directory", path)
 	}
 
 	document, err := load(path, info.Size())
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 	if len(document.Pages) == 0 {
-		return "", errors.New("the file parsed but contains no pages")
+		return "", 0, errors.New("the file parsed but contains no pages")
 	}
 
 	var text strings.Builder
@@ -113,9 +121,9 @@ func Extract(path string) (string, error) {
 		}
 	}
 	if !anyText {
-		return "", &NoTextLayerError{Pages: len(document.Pages)}
+		return "", len(document.Pages), &NoTextLayerError{Pages: len(document.Pages)}
 	}
-	return text.String(), nil
+	return text.String(), len(document.Pages), nil
 }
 
 // ExtractPages returns the text of the pages named, first through last

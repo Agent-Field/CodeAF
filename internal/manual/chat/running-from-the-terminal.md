@@ -8,7 +8,7 @@ status and uses the same sentence as `codeaf devices`:
 The address is your configured sync service. Check this computer's network
 and that the service is running, then try the command again.
 
-## Is there a newer version — update a dev build — keep a dev build up to date — latest dev — /update — why does it say this every time I start
+## Is there a newer version — update codeaf — update a dev build — keep a dev build up to date — latest dev — /update — why does it say this every time I start
 
 Every launch of a release build checks whether there is a newer version: the
 newest release of the channel it follows. What happens next depends on the build:
@@ -187,7 +187,13 @@ exactly once, or what it fetched is not a shell script, it answers 502.
 Building from source needs nothing published: clone the repository, run `make build`,
 then run `bin/codeaf` from the checkout.
 
-The installer writes `~/.codeaf/bin/codeaf`, adds it to your shell profile, and
+On Windows, run the Bash installer from Git Bash. It installs `codeaf.exe` and
+adds its native bin folder to the Windows user PATH only when missing, preserving
+existing entries. Open a new terminal afterward. If the update fails, or you use
+`--no-modify-path`, the guide prints the exact `powershell.exe -NoProfile -Command`
+line to run from Git Bash, then open a new terminal.
+
+On macOS and Linux the installer writes `~/.codeaf/bin/codeaf`, adds it to your shell profile, and
 when a folder already on `PATH` is writable (`~/.local/bin`, `~/bin`, or
 `/usr/local/bin`) it links `codeaf` there too, so the command works in the same
 terminal with nothing to paste. It never replaces anything there but its own link:
@@ -329,14 +335,364 @@ to a person: **`codeaf plandb`** answers the same commands the worker runs in ba
 critical-path` — against the run's own `plandb.db`, so a plan a worker is driving can be
 read the way the worker reads it.
 
-Four more exist and are deliberately kept out of the help text, because nothing types
-them by hand: **`codeaf engine`** is the far half of `chat --host`, started by ssh, and
+Five more exist and are deliberately kept out of the help text, because nothing types
+them by hand: **`codeaf app`** is the backend the codeaf desktop app starts and talks to
+over its own pipes, holding every agent the app shows in that one process;
+**`codeaf engine`** is the far half of `chat --host`, started by ssh, and
 **`codeaf clock`** is the one process that runs your automations while a codeaf window is
 open — a window starts it, and it leaves by itself half a minute after the last window
 closes. Neither draws anything or reads a key. **`codeaf tick`** and **`codeaf wake`** are
 kept out of it as well, because they do nothing any more (see *codeaf wake and codeaf
 tick* below).
 
+## The desktop app's command became a background process — its work log link
+
+When a command becomes a job, the desktop backend names that process on the
+command's finished work-log row and on the same row read back from history.
+This includes `background:true`, a foreground command kept past its session
+clock or timeout, a command kept by a steer, and a declined `keep_running`
+request run as a job for that turn. Waiting for approval does not break the link.
+A kept service is linked only where the backend publishes its process row.
+Each command keeps its own link; starting another command does not carry an
+earlier command's link.
+
+The link comes from the engine's job or service registry. A normal foreground
+completion, failed call, refusal, argument rejection or interrupted command
+gets no process link, however often its output mentions a job. Older records
+without the fact leave the link absent; the backend does not guess from words
+or from the call's clock.
+
+## The desktop app's keys, day cap and budget asks — what codeaf app keeps
+
+Keys pasted into the codeaf desktop app are kept in the Mac's keychain, not by codeaf.
+The app hands them to `codeaf app` at every launch and that process holds them in memory
+only: while it runs, a key never reaches the profile's `config.json`, and a provider the
+app disconnected is not quietly reconnected from a key in the profile or the shell. A key
+the provider rejects is reported in the provider's own words and status code; one codeaf
+turns away itself (an OpenRouter management key) says why in codeaf's words. Which providers the
+app connects, and how, is *Connecting a provider from the app* below. The GitHub token
+pasted while setting up the app's factory is kept the same way and handed back at every
+launch, so the factory stays connected after a restart; choosing gh's own login keeps only
+that choice, and gh keeps its token. The same is true of a Jira token and of an AgentField
+control plane's API key (and the node secret codeaf made for it): codeaf hands each one to
+the app to keep in the keychain when it is connected, the app hands it back at the next
+launch, and disconnecting removes the kept copy too. An app older than this does not keep
+them, and then the factory's Jira or AgentField connection is gone after a restart until it
+is connected again.
+
+The app's day cap is the profile's daily limit, the same one `/budget day` sets: setup,
+Settings and the terminal all read and change that one figure, and a cap an older app
+kept for itself is adopted into it once, keeping the tighter positive limit. A message sent once today's spending has reached the day cap is not sent at
+all; the agent asks instead, `Day cap reached · $40.00 of $40.00`, with *Raise for today*
+(back to the set figure at midnight) or *Wait until tomorrow*. An agent with a budget asks
+once it has spent four fifths of it — `It's close to its $5.00 budget` — and again when it
+reaches it, offering *Raise budget*, *Stop* or *Tell it something*. Raising either limit
+runs again the message it refused. Neither limit stops a turn halfway: a turn that crosses
+one finishes, and the next is the one that waits.
+
+The app's own settings (new agents' folder, the 12-second proposed-task clock, 7 idle
+days before an agent reads closed) and its setup progress live in `app/state.json` under
+codeaf's home folder, so quitting setup halfway resumes there; the day cap is not among
+them, because it is the profile's.
+
+## Desktop setup model default and provider key health
+
+On every OS, fresh setup supplies the same default model as the CLI. A saved
+model remains the person's choice. The app wire's `setup.get` and `health.check`
+include optional `provider_key`: `state` is `ok`, `invalid`, or `unknown`, with
+`checked_at` after a check finishes. Starting the engine makes no key-check
+request. codeaf checks it once in the background when setup or health is first
+read, using OpenRouter's key auth endpoint with a two-second deadline. A handover
+of the app's stored key also starts the check. Reads never wait for it and say
+`unknown` until it completes; later reads and turns do not repeat it. A key or
+address change starts a new check. `codeaf doctor` checks directly on every OS.
+Linux and macOS desk reads run no git or gh commands; Windows health reads also
+report machine readiness.
+A real-turn 401 also marks that key invalid. An invalid key says
+`Your OpenRouter key stopped working. Sign in again.` Offline or a timeout means
+`unknown` and does not prevent starting.
+
+## Connecting a provider from the app — Ollama, a custom endpoint, Codex, regions
+
+The app's setup and its Settings offer every provider `/connect` offers, in the
+same order, and ask each for what `/connect` asks: OpenRouter a key or a browser
+sign-in; DeepSeek, MiniMax and ai& a key; Z.ai, Moonshot and Alibaba Qwen a region
+(International or China) and then a key; Ollama and a custom OpenAI-compatible endpoint
+an address, with a key only if they want one; Codex the ChatGPT plan sign-in in the
+browser and nothing else. Setup connects as many of them as you like, one after another,
+or none at all, and Settings connects one later; with none connected, setup says there
+are no models yet instead of offering a default.
+
+OpenRouter's key is checked against OpenRouter's own record of it before its models are
+listed, so a revoked or made-up key, or a management key, is turned away rather than
+reported as working; all of its requests share ten seconds to answer. Every other
+provider is checked the way `/connect` checks it: its model list, a one-token call where
+it has none, and for a provider with a coding plan each way of paying in turn, plan
+first. What the check found besides the key — the region, the plan the key opened, the
+address — is kept in the profile where the terminal reads it; the key is not. A provider
+that lists no models offers the model `/connect` would move a conversation onto.
+
+The ChatGPT sign-in is the one credential the app leaves in the profile, exactly where
+the terminal keeps it, because its tokens change on every refresh; the app keeps no key
+for it. One sign-in waits for the browser at a time, for up to ten minutes, and it can be
+cancelled while it waits without signing anything out. Removing it in the app signs the
+account out of that profile, as `codeaf disconnect codex` does — a sign-in still waiting
+is cancelled first, and one already being saved has to finish before it can be removed.
+Removing Ollama or a custom endpoint disconnects it.
+
+## The desktop app's processes — stop, rerun, and what a Mac going to sleep does to them
+
+The app lists each conversation's background processes, running and ended, for
+seven days, and shows a process's output by line or follows it live. Stop
+stops it; Rerun starts its command again as a new process. When the Mac goes
+to sleep the app stops every running process and the agent reads asleep; on
+waking, each stopped process leaves one line, such as `link checker stopped
+while this Mac slept · Rerun`, and nothing is restarted for you.
+
+## The desktop app's work log — what each step says, and a command's whole output
+
+Each step in the app's work log says its kind (read, search, command, edit,
+web, an account, a task, or a step that asked you first), when it started and
+ended, which steps the agent started together, a command's exit code, and
+whether it repeats an earlier command of the same reply. An edit says the
+lines it added and removed. A command still going shows its last three lines,
+and twelve once it ends. A command's whole output is kept on this Mac for a
+week under the app's folder in codeaf's home, so it can be opened after the
+reply ends, or after the app restarts.
+
+## The desktop app's conversation — steer or queue, the decision dock, and notes to a task
+
+In the desktop app a message typed while the agent works can steer or queue.
+A steer reaches the agent after its current step, like a correction typed in
+the terminal; if the reply ends first, the words are sent as the next message.
+Queued messages wait in order until the reply ends; they can be edited,
+reordered or taken out until then. Thinking shows while it happens and is not
+kept. Words the agent says before a step show as an update.
+
+The dock above the message box shows one question at a time: why it is asked,
+what it shows, the agent's suggested answer, the tasks waiting on it, and a
+clock only when the question has one. Later puts it aside; You decide takes
+the agent's suggestion. Commands asked about together are answered together
+or one by one. A note to a task says when a step of the task read it, and a
+task can be paused, resumed or tried again from its page.
+
+## The desktop app's Inbox — every open question in one list, Undo, and Later
+
+The app's Inbox lists every question any agent the app holds is waiting on,
+each with the two turns before it and where it comes from. An answer given
+there waits five seconds before it is sent, and Undo takes it back. Later puts
+a question aside without answering it. A question answered anywhere else, in
+the conversation, on a task's page or in the terminal, leaves the Inbox at
+once with its receipt. An agent with a question open is kept open until the
+question is answered.
+
+## The desktop app's crews — they are your teams
+
+A crew in the desktop app is a codeaf team: the same teams, members, handles,
+manager, sub-teams, daily caps, team log and decisions you see in the Teams
+page, under another name. A crew made in the app is a team in the terminal,
+and the other way round. While the app is open it does for a crew what a
+terminal window does for a team it holds: it opens the member a manager starts
+with `team_start` and stops the one a manager stops. Members with live work,
+questions, running factory stages, processes or work awaiting recovery are opened
+at startup. Once opened, a crew member stays held across its engine closing or a
+factory stage resuming, so its questions still reach you. Idle
+members stay as saved records until you open their chat, send them a message,
+or crew traffic wakes them; a member woken by its manager is seen working.
+When the app and a terminal both hold one manager, the first to claim a start
+opens the member and the other does nothing, so one `team_start` makes one
+member. Each member's row shows the step it is on, or the question it waits on.
+
+A question that climbs to you, a cap reached and a closing report arrive in the
+app's dock and Inbox as decisions; your answer decides them for the team.
+Closing a crew does not stop its conversations.
+
+A few things exist only in the app and the terminal never shows them: a crew's
+goal and end date, linked jobs, issues and pull requests, roles (instructions
+and a model sent to a member as a message), a member's own budget, pausing a
+member (its own turns are stopped until you resume it), and an agent's
+proposal to bring in helpers.
+
+## Idle desktop chats, recovery checks and crew traffic
+
+While the desktop app is open, startup checks every saved candidate for work
+awaiting recovery. After startup, chats with live factory stages, kept or
+starting services, crew holds or due retries are checked every two seconds.
+Chats seen live in the last 10 minutes also keep these prompt checks after
+closing. Crew traffic and team changes retain their immediate file-watch checks.
+
+Other closed chats are checked in small batches, so every quiet chat's presence,
+tasks, team and process files are checked within a minute, allowing one extra
+two-second tick at the boundary. New work wakes the chat on its next check.
+These checks also find missed changes when file watching is unavailable or a
+work directory disappears and is re-created. Watcher errors still trigger an
+immediate crew check. The app watches shared crew directories; saved chats do
+not each add file watches.
+
+## Closing, archiving and renaming agents in the desktop app — and finding one
+
+In the desktop app, Move to Closed lets an agent's conversation go and takes it
+off the rail; nothing in it is deleted, and opening it or sending to it opens
+it again. Archive closes it and puts it away with the same archive mark the
+terminal's conversation list uses, so it is listed only when you ask for
+archived agents; Reopen brings either back exactly as it was. Select idle picks
+the open agents nobody has spoken in for the idle days in Settings (seven
+unless you change it). Rename gives an agent the name you type, and codeaf never
+renames it after that. Search (⌘K) finds agents and crews by name, tasks by
+title, and the words of every conversation.
+
+## The desktop app's Settings window — what each row changes
+
+The desktop app's Settings window reads and writes the same places the
+terminal does wherever there is one. The default model is the profile's chat
+model; the Checks and Planner models are the crew's high and planner rows (the
+ones /crew changes), and leaving them empty follows the default; the fallback
+model is the profile's fallback list. Day cap, per-agent budget and task cap
+are the spending limits; the proposed-task clock also times a choice with a
+suggested answer. Appearance, text size, open at login, the dock badge and the
+three pinned models (⌥⌘1–3) are the app's own. Permissions lists every
+always-allow rule, a tool's or a command pattern's, and removing one takes it
+out of the profile; Memory lists what codeaf remembers and forgets a line on
+request; Export writes a CSV of every billed call between two days into the
+app's exports folder. Signing in to GitHub is not in the app yet.
+
+## Quitting the desktop app — agents pause and resume, processes stop
+
+Quitting the desktop app does not fail the work in it. An agent in the middle
+of a reply is stopped where it stands and carries on by itself the next time
+the app opens, with "Resumed after quit" in front of it; a task it had running
+is picked up where its record stands. A process the model started is sent
+SIGTERM, then SIGKILL five seconds later, and the Processes list says "stopped
+by quit". Automations are not touched by a quit and fire again once the app is
+open. A conversation the app joined in a terminal window is that window's, and
+quitting the app only lets go of it.
+
+The app waits for local saving, publishes the newest saved turn and releases its
+hold so another computer can continue. Each saving boundary waits up to 30 seconds.
+A successful save is quiet; a definite final-save failure is kept in the engine
+log and leaves unsaved turns on this computer. A chat whose folder was deleted
+while it was open, such as a finished job's checkout, has nothing left to save
+there and is not a failure.
+
+A reply stopped by a quit still has its cost recorded. The app asks the router
+for that call's price once more, for at most two seconds, and waits at most
+three seconds in all; a price the router has not worked out yet is recorded as
+unpriced, with its tokens, instead of holding the quit.
+
+Crew members follow the same quit and resume rules. A member still opening
+does not hold up quitting for optional file cleanup; its files are kept.
+Closing the desktop's input pipe starts the same bounded shutdown as a first
+SIGTERM, including while the engine is waiting for a lock. A second SIGTERM
+ends the process immediately.
+
+## When the desktop app closes unexpectedly — a reply stuck working, carrying on after it closed
+
+If the desktop app closes unexpectedly during a reply, opening it again carries
+the reply and its running tasks on from where their records stand.
+"Resumed after the app closed" appears before that reply. Finished steps are
+not repeated; the agent checks the result of an unfinished step before relying
+on it. Another window still working on the conversation is left alone. An idle
+conversation without a promised reply stays idle.
+
+If the app closes again before its promised reply begins, opening it again
+tries that reply with the same notice. Newer task activity keeps that promise's
+original notice and age. Another reply starting does not cancel
+that promise. A message, correction, queued message or answer from you cancels
+that promise, including a message sent in another window while the app was
+closed. A deleted conversation never carries on.
+
+A conversation carries on automatically at most twice in a row. A reply that
+finishes normally, or a direction from you, resets that limit; the agent's own
+notes do not. Compacting or rewinding the conversation does not reset it.
+Retrying a promised reply uses an attempt too. On the third
+opening within ten minutes that finds unfinished replies, none carry on
+automatically. A reply last active more than an hour before opening is left
+for you to choose. For a promised reply that never began, the hour starts when
+that promise was first saved, even if its tasks worked again afterwards.
+
+When work is left for you, its chat says "The app closed while this was working · send a message to carry on".
+Send a message to continue. These lines, and "Resumed after quit" after a normal
+quit, stay in the conversation when you close and reopen the app.
+
+## Reopening the app while the last one is still leaving — your factory isn't answering, another codeaf is still running this factory
+
+When the app closes, or its window is killed, the codeaf behind it leaves by
+itself: it never keeps working without the app. It lets go of this machine's
+factory first (a running job stops the way a quit stops it and goes back to the
+queue), then stops its replies and processes, which carry on when the app opens
+again. Leaving takes at most two minutes, including the final saving waits.
+A second SIGTERM or SIGINT ends it at once.
+
+If the app is opened again before the last one has let go, the factory on this
+machine is listed as not answering with the words "Another codeaf on this
+machine is still running this factory. It comes back here once that one
+stops." The next look at the factory list after that serves it here again,
+with nothing to set up. The same words appear while a terminal's
+`codeaf factory serve` holds this machine's factory; stop that one, or start
+the factory in the app to use it through that codeaf.
+
+## The desktop app's clocks — a proposed task, and a choice with a suggestion
+
+In the desktop app a proposed task waits on a clock (twelve seconds unless you
+change it in Settings) and starts on its own when it runs out; its receipt
+says how long the clock was, as in "Started on its own after 12s". A choice the
+agent asks with a suggested answer runs on the same clock and takes the
+suggestion when it runs out ("Picks Suggested in 12s"); holding the card or
+typing in it stops the clock. A choice with no suggestion, anything
+irreversible, and a project that set its own rule for choices never run on it.
+In the terminal neither clock applies unless you set one with /autonomy.
+
+## Pausing a handed-over task in the desktop app
+
+A reply you moved to a task, and any task codeaf handed over to run on its own,
+can be paused from the app like any other task: nothing new starts under it and
+the worker stops at its next step until you resume it. Its page shows the
+worker's steps as its log, and a note you leave shows when the worker read it.
+A task is never renamed after a single file it touches.
+
+## A conversation open in a terminal and in the desktop app at once
+
+When the app opens an agent a terminal already has open, it joins that
+terminal's conversation instead of opening a second copy, even when the
+conversation lives in another folder's terminal (a crew member a manager
+started). If it cannot reach that terminal it says the conversation is open in
+another codeaf window rather than opening it twice.
+
+If that window accepts a connection but does not answer, the app waits up to
+five seconds across all candidate windows, then shows “Couldn’t open chat”:
+“This chat didn’t answer from the other codeaf window. Try again, or continue
+there.” Choose “Try again” when that window answers again. A failed open sends
+no message, takes over no work and leaves the terminal's conversation alone.
+The five-second limit ends with the handshake; joined replies can run longer.
+
+A joined conversation keeps the rules of the window that opened it, because
+they are how it behaves for everyone: a proposed task's clock, a choice's
+clock, moving a running reply to a task, naming, and saving proposed reminders
+as standing orders follow the terminal. One thing changes while the app is
+joined: a command's output streams as it arrives, in the app and in the
+terminal's row for that command. The app still says the agent is working
+whenever a turn runs, whoever started it.
+
+## Standing orders in the desktop app — agree to a reminder or routine before it runs, and how it earns trust
+
+In the desktop app, a reminder or a piece of scheduled work an agent proposes
+is saved as proposed the moment its card appears, and NOTHING RUNS until you
+agree: Save on the card, or Ratify in the orders list, makes it active; Don't
+save or Not now takes it away; a card left unanswered keeps it proposed. These
+are the same automations `/automations` lists in the terminal.
+
+Scheduled work proposed this way asks before each run: when it comes due it
+waits for your Go, Skip or Not right (showing its budget per run), and later
+times are passed over while it waits. Five Go's make it trusted, and it runs
+alone after that; one Not right puts it back to asking first. Run now counts as
+a Go. Reminders and watches never ask. Pause keeps the trust; Stop ends it for
+good and keeps its history. Each order says where its results go: this chat,
+the crew, everywhere, or not here.
+
+The app keeps the clock running while it is open. Nothing runs while it is
+closed or the Mac sleeps; a time missed then runs once, late, and the app says
+it was missed. A run waiting for your Go shows as queued in the terminal's
+list, and only the desktop app can answer it.
 A third, **`codeaf cell`**, is typed by hand but is not in the help text: it works
 by default on Linux and macOS on every build. Native Windows is supported too; a compatible furrow engine is required. Its verbs are described under "The cell verbs" below.
 
@@ -346,7 +702,7 @@ On the hosted sync service this needs sync storage approval (Settings → Device
 
 **`codeaf pair approve <link>`** compares the four-digit check number and asks `y / n`: only `y` or `yes` approves, and `d`, Esc, Enter or anything else decline. Code pairing keeps its `y / n` question.
 
-**`codeaf pair`** on a new computer asks to join your devices and shows a link to approve from a computer that is already in (`codeaf pair approve <link>`); **`codeaf pair --code`** shows a code that gives your chats to another computer. **`codeaf pair <code>`** uses a code that another computer showed, for example `codeaf pair 42-715-302`. `CODEAF_SYNC_URL=<url>` or `--via <url>` keeps the invitation on that service's own pairing page and includes `--via` in the token command; it never prints the hosted page link for a self-hosted invitation. `--via <url>` names the sync service to go through, and `--replace` keeps this computer’s old chat files locally while replacing shared keys and clearing shared memories, preferences and the shared key vault; provider keys in local settings remain. The page *Pairing your chats with a second computer* has the whole story.
+**`codeaf pair`** on a new computer asks to join your devices and shows a link to approve from a computer that is already in (`codeaf pair approve <link>`); **`codeaf pair --code`** shows a code that gives your chats to another computer. **`codeaf pair <code>`** uses a code that another computer showed, for example `codeaf pair 42-715-302`. `CODEAF_SYNC_URL=<url>` or `--via <url>` keeps the invitation on that service's own pairing page and includes `--via` in the token command; it never prints the hosted page link for a self-hosted invitation. `--via <url>` names the sync address to go through, and a solo computer with submitted chats refuses ordinary pairing and explains `--replace`. Terminal pairing prints “Paired with <name>. Run codeaf to open your chats.” Start codeaf again to share existing chats, saved keys, memory and preferences in the background; reopen after an interruption to resume. A computer with local work refuses and changes nothing. Explicit `--replace` confirms replacement: local chats stay here but stop syncing, shared memories and settings clear, and local provider keys stay here. The page *Pairing your chats with a second computer* has the whole story.
 
 ## The architecture map — codeaf atlas [map], /atlas [map], what talks to what, how two computers pair and continue a chat
 
@@ -412,7 +768,7 @@ both use the cell the current folder is in.
 
 ## Do moving chats restrict commands, network access or installs
 
-New chats declare `host-bound`: shell commands run on this computer with the network and the same access as any program you run. Moving chats does not change that access. `/setup` compares the tools a chat used with this machine and can install missing tools or rebuild folders left behind by a move; it is not needed for ordinary network access. A cell already declared sandboxed by an earlier build keeps that class.
+New interactive chats declare `host-bound`: shell commands run on this computer with the network and the same access as any program you run. `codeaf chat --once`, `codeaf exec` and factory steps are limited to their own folder instead ("What an unattended run may touch"). Moving chats does not change that access. `/setup` compares the tools a chat used with this machine and can install missing tools or rebuild folders left behind by a move; it is not needed for ordinary network access. A cell already declared sandboxed by an earlier build keeps that class.
 
 ## Your identity — codeaf identity show, export and import
 
@@ -561,6 +917,8 @@ type `--export`, so a report on its own writes no file and sends nothing.
 
 ## Free disk from old conversations — codeaf cell gc and the cell disk budget
 
+At launch, codeaf removes unfinished older-chat scratch copies untouched for a week only when their original transcript remains, their copy lock is free, and they have no ready marker or sealed history. Completed copies stay.
+
 **`codeaf cell gc [--dry-run]`** (when cells are available) frees disk from finished
 conversations. A conversation that codeaf keeps its own working folder for has files that
 can always be written back from what codeaf sealed. `gc` removes those working files of
@@ -573,7 +931,7 @@ minutes, and one with a call still in flight or not yet sealed are passed over, 
 says why beside each. Your own project folders are never removed: a conversation
 working in a folder of yours is passed over with "workspace is yours", however much disk
 you are short of. What stays is the conversation itself (its transcript and history),
-so it still lists and opens, and opening one writes its files back, byte for byte. Nothing is removed automatically when opening a chat, while idle or on a timer. The budget is the default for explicit gc only. A fresh snapshot is checked by restoring it into a temporary folder. Only top-level entries that match that restored copy byte for byte are removed. Withheld secrets, `.furrowpolicy` exclusions, rebuildable dependency folders and any directory containing excluded files stay in place. The policy file and the lockfiles (or their containing folders) stay too, so reopening preserves those exclusions. `--dry-run`
+so it still lists and opens, and opening one writes its files back, byte for byte. These sealed working files are removed only by explicit gc, not automatically when opening a chat, while idle or on a timer. The budget is the default for explicit gc only. A fresh snapshot is checked by restoring it into a temporary folder. Only top-level entries that match that restored copy byte for byte are removed. Withheld secrets, `.furrowpolicy` exclusions, rebuildable dependency folders and any directory containing excluded files stay in place. The policy file and the lockfiles (or their containing folders) stay too, so reopening preserves those exclusions. `--dry-run`
 removes nothing and prints the exact top-level paths that would go (it still checks a fresh capture):
 
 ```
@@ -1155,6 +1513,33 @@ machine would run work on. **On a machine with no evidence the whole answer is o
 No competence evidence yet.
 ```
 
+## What has each model proven — checked results, with codeaf competence --json
+
+`codeaf competence --json` prints the desktop Competence map: **which model passes checks,
+and where**, from the checked-results ledger beside spending.
+
+A checked result is one finished task whose declared checks — the tests, lint or build its
+proposal named — actually ran against the work and came back with a real exit status. Every
+check exiting zero is a pass; any failing is a failure. It is credited to the one model that
+answered the task's work, after any fallback, even a free one. A task answered by two models,
+that another task joined, or with a check that could not start, is not counted at all. A
+checker's opinion, a task that finished with no check, and anything a model says about its
+own work are never counted; a check that was killed or cut off counts as failed. Undo does not
+appear yet: the only undo there is takes back quick tasks, which run no checks.
+
+Results are grouped by place (the repository or folder) and kind of work (the words of the
+task's title) into `strong`, `frontier`, `weak` and `stale`. A scope with no result in the last
+30 days is `stale`. Otherwise four in five passing, with at least three results, is `strong`;
+two in five or fewer is `weak`; everything between is `frontier`.
+
+`--model <id>` maps that exact model; left alone it is the model with the newest result.
+`--scope <id>` narrows to one place, kind of work or scope from the map's own `filters`.
+
+Deleting a source keeps its results. **Earlier work is not inferred**: a new ledger starts
+with `"model": ""` and four empty groups. No model is called and routing never changes.
+A complete read is bounded to 32 MiB and 10 seconds. Oversized or unreadable history is
+unavailable, never classified from a partial subset.
+
 ## The Model Pool — what this machine reads from it, with codeaf pool
 
 The public Model Pool is a signed index of measured models. It does not seat
@@ -1164,9 +1549,12 @@ the copy built into the binary. Your runs can improve the shared measurements. N
 the machine — what is shared is a measurement of the run, not the work. One
 setting answers for all of it, `model_pool` in `/settings`, with three
 values: `on` reads and sends, `read` uses the pool and sends nothing, `off`
-does neither. It defaults to `on`. `CODEAF_MODEL_POOL` pins the same word
-from the shell, and on a CI machine with neither set codeaf reads but does
-not send. **The telemetry off switch stops the pool sending too**:
+does neither. It defaults to `off`, including in CI: no pool judge calls,
+pool routing or pool records. Each role still follows your task-model and
+tier settings, and in Auto the router picks from your allowed models.
+`CODEAF_MODEL_POOL=on` or a saved `model_pool = on` enables it; an earlier
+explicit choice stays honoured. A missing or blank saved word means you never
+chose and stays off. `CODEAF_MODEL_POOL` pins the same word from the shell. **The telemetry off switch stops the pool sending too**:
 `CODEAF_TELEMETRY=off`, `DO_NOT_TRACK=1` or the `telemetry` switch in `/settings` caps the
 pool at `read` — it wins over an explicit `on` — and `codeaf pool status`
 then says `mode read · telemetry`.
@@ -1177,7 +1565,7 @@ codeaf pool [show|status|verify] [--json] [--key key]
 
 `show` — also what bare `codeaf pool` prints — is the reading form: the mode
 and the addresses in force with the word saying where each came from
-(`default`, `setting`, `env`, `ci`, or `telemetry` when the telemetry off switch capped
+(`default`, `setting`, `env`, or `telemetry` when the telemetry off switch capped
 sending), then what index is cached, how old
 it is and how many cells it holds, or `no index cached yet · built-in
 seed of <date>`. The binary carries a seed index of scored runs, shown until a fresher
@@ -1212,6 +1600,12 @@ cost. The judge asks with the key the install holds at that moment, so a task
 that lands just after you paste a key into first-run setup is scored with that key.
 A task that lands while there is no key at all is not judged. It is not marked
 judged either, so the next start scores it once a key exists.
+
+Quitting cancels unfinished scoring and waits at most one second for the pool's
+background work to stop. A cancelled score is left pending; the next ordinary launch retries
+it. After quitting, that pool work sends no new requests and writes no files, even if
+a late response arrives. A cancelled push keeps its unsent rows in `outbox.jsonl`
+for the next push. Scores saved before you quit stay saved.
 
 With `model_pool` on, the rows leave for the relay after each judged run and
 once more at start-up, under this install's own nonce and nothing else. The
@@ -1615,7 +2009,7 @@ spend            rail $20.00
 model calls      /home/you/.codeaf/logs/calls.jsonl · 26 KiB
 ```
 
-`key` comes first: whether this machine can reach a model at all, and where the key came
+`key` comes first: whether a default-service key is present, and where it came
 from — never the key itself. `store` names the file the journal and every derived table
 live in, and how big it is — `· not created` on a machine that has not made one yet. `spend`
 is the day against its limit, and `model calls` is where the call log is and what it
@@ -1633,6 +2027,34 @@ machine that counted, which is the opposite of the truth.
 
 That command is about this *install*. `/status` in the chat is about the conversation you
 are in. They are related and they are not the same reading.
+
+## Doctor provider key, git identity, gh sign-in and Windows Git Bash checks
+
+On every OS, `codeaf doctor` checks OpenRouter key auth without making a model call. Its
+`provider key` row reports `ok`, `invalid`, or `unknown`; an offline endpoint or a
+two-second timeout is `unknown`. An invalid key says
+`Your OpenRouter key stopped working. Sign in again.` Connect OpenRouter again.
+The `key` row above it still names the credential's source without printing it.
+
+Doctor on every OS, and the app wire's `health.check` on Windows, report git availability,
+`git config user.name`, `git config user.email`, and `gh auth status`. Each command
+has a two-second deadline. Fix identity with
+`git config --global user.name "Your Name"` and
+`git config --global user.email "you@example.com"`. Fix gh sign-in with
+`gh auth login --web`. Missing gh is information; install GitHub CLI when you need
+GitHub workflows. These probes inherit your normal environment, including
+`GH_TOKEN`; model shells continue to filter credentials.
+
+On Linux and macOS, desk setup and health reads run no git or gh commands,
+so they cannot prompt for access to gh credentials in the login Keychain. These
+command checks run only when you explicitly run `codeaf doctor`. Missing gh
+does not change its exit code.
+
+On Windows the same health checks use codeaf's shell resolver to find native Git
+Bash. Install Git for Windows or set `CODEAF_BASH` to its `bash.exe`. A package
+manager's git shim lookup has its own three-second ceiling. WSL's launcher does
+not count as Git Bash. Windows sign-in links and file opens use the Windows
+file protocol handler.
 
 ## I deleted my codeaf home while the engine was stopping
 
@@ -1698,6 +2120,13 @@ ending. Otherwise it waits at most the provider's existing receipt deadline and 
 the figures already received when a receipt cannot be settled. An incomplete
 receipt therefore reports the work's paid calls as well as its failure reason.
 
+## Desktop messages with an invalid client id
+
+The desktop app refuses a message with an invalid `client_id` as `bad_params`
+before opening its conversation or starting a turn. This applies to creating an
+agent, sending, queueing and steering. An id must be valid UTF-8, at most 256
+bytes, with no control characters. Client ids correlate entries with messages;
+they are not idempotency keys, and repeated ids are allowed.
 ## What background processes are still running
 
 Run `codeaf services` in the terminal to list long-running services started here
@@ -1708,3 +2137,59 @@ command says `nothing is being kept running.`
 For the current chat's background commands, watches or renders, use `/processes`
 in that chat. Click a process to open its log. The sidebar shows only running
 processes; finished logs remain available on demand without an ended count.
+
+## Desktop app quit and saving helpers
+
+Saving helpers started by the desktop app use a one-minute idle limit. While a
+reply is running or a save is still in progress, the app's engine sends a light
+health request about every 20 seconds to the helpers it started, so they stay
+ready. An idle app sends none: its saving helper exits after about one minute
+and stops using the processor, and the next save starts it again, which can add
+a short delay to that save. These requests never start or restart a helper, and
+failures are ignored.
+
+After the engine quits or is killed, the requests stop. Its saving helpers exit
+by themselves after about one minute without activity. Quit sends no shutdown
+request to a saving helper, so another window can continue saving through it;
+that activity delays its idle exit. A real saving operation starts a helper again
+when needed.
+
+A helper already running when the app connects keeps its existing idle limit.
+Terminal and command-line helpers keep their normal ten-minute idle limit.
+
+## Crew proposals in the desktop app stream beside the chat
+
+**Bring in helpers** asks the conversation's own model about the work without
+starting a turn or changing the chat's history or model context. The proposal
+arrives in complete lines, with its size and name before its helpers. Proposal
+generation asks for reasoning to be off, or the lowest level the provider supports.
+Your chat's reasoning setting stays the same. The default
+is the smallest useful crew, usually one to three helpers. Separate teams are
+proposed only for separate streams of work that each need multiple people.
+
+The final **Bring in helpers** ask still offers **Make the crew**, **Edit**, and
+**Keep it one agent**. If the stream stops after at least one helper, the ask
+keeps those helpers and says "Stopped after 2 helpers", with the actual count.
+An answer with no usable helpers leaves one quiet notice. Handles are limited to
+12 characters. Longer model-proposed handles are shortened at the last hyphen
+that fits, or to the first 12 characters, with numbering for clashes.
+
+Accepting a proposal keeps this conversation as manager and creates one flat
+crew. All helpers are seated under their approved handles before creation returns.
+Duplicate helper handles are refused before a crew is made. An automatic manager
+handle that clashes with a helper gets a free handle; the manager remains the same
+conversation. If setup fails after the crew is made, accepting the same proposal
+continues seating its missing helpers and reuses their original starts. Repeating
+a completed acceptance returns the same crew. Proposed reporting handles are recorded on members. Team groups do not
+create nested crews yet.
+
+## Log what codeaf asks GitHub (CODEAF_GITHUB_LOG, rate limit)
+
+Set `CODEAF_GITHUB_LOG` to a file to get one JSON line for each GitHub request
+codeaf makes: when, which factory route or loop caused it (`caller`), the method,
+the endpoint with names taken out (`/repos/:owner/:repo/issues/:n`), the status,
+and the rate limit GitHub reported (`res`, `rem`, `used`). A 304 does not count
+against the limit. `"m":"GH"` is a `gh` the engine ran. It is off by default. It
+never holds a token, a query, a body, a repository name or a file path. A `gh` run
+by an agent's own shell command is not in it: a jump in `used` between two lines
+that the lines do not explain was spent somewhere else on the same account.

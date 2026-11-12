@@ -197,16 +197,16 @@ conversations. Nothing changes until Apply. Suggestions come from two sources:
 
 - **Folders:** two or more conversations sharing a project folder become a suggestion
   named for it. An existing team of that name receives only missing conversations.
-  A folder already covered by one team is left alone. This pass is free.
+  A folder already held together by one team needs no suggestion. This pass is free.
 - **The naming model:** one request uses conversation titles, folders and current teams
   for other groupings or additions. Folders win disagreements. It has ten seconds;
-  `thinking…` shows while it works, and a known estimated price appears below.
+  `thinking…` shows while it works, and its reported usage cost appears below when known.
 
+The terminal uses the conversation’s model when no naming role is set.
 If the model is unavailable, the card shows `suggestions from folders only`. With no
 suggestions it says `Everything is organized` beside Close. Rows start selected.
 Arrows move; space or a press toggles; enter or Apply takes the selected suggestions.
-Escape, Cancel or a press outside leaves everything unchanged. Suggestions can include
-one conversation in several teams. New teams use the offered names and colours.
+Escape, Cancel or a press outside leaves everything unchanged. New teams use the offered names and colours.
 
 After Apply, All teams shows **Organized** and offers **Undo** briefly. Undo removes the
 new groups and membership additions from that organization pass. The card may also offer
@@ -358,11 +358,13 @@ or `no file matches`. After a chosen mention, a space or punctuation such as
 
 ## Where teams are kept
 
-Teams are saved in your profile, in `teams.json`, every time one changes, and never in
-`config.json`. Over `--host` that is the far machine's profile, where the conversations run. A `spaces.json` from an earlier build is read once, its groups keep their
-names, members and colours, and it is renamed to `spaces.json.migrated`. A teams file that
-cannot be read is moved aside as `teams.json.unreadable-<number>` rather than written over,
-so nothing you made is lost.
+Teams are saved in your profile, in `teams.db`, every time one changes, and never in
+`config.json`. Over `--host` that is the far machine's profile, where the conversations run.
+A change writes only the teams it touched, and nothing but a full disk limits how many
+teams, members or briefs the store holds. A `teams.json` or `spaces.json` from an earlier
+build is not read: teams made before the store start over, and the old file is left where
+it is. A teams store that cannot be read is moved aside as `teams.db.unreadable-<number>`
+rather than written over, so nothing you made is lost.
 
 ## The wall said my team was not saved
 
@@ -427,7 +429,7 @@ cleanup is omitted from the saved conversation grid and membership pickers.
 
 No. Deleting a conversation removes its transcript, task records and team memberships. Memories
 already saved for a user, project or machine remain available, with their source identity.
-Use the Memories tab to forget a saved memory separately. Deleting a team also preserves those memories.
+Use the Memory tab to forget a saved memory separately. Deleting a team also preserves those memories.
 
 
 ## Ask the chat to start another chat on a different model
@@ -438,7 +440,7 @@ Omitting `model` uses the requesting chat's current model. An unknown or ambiguo
 name is refused before any chat opens. The new chat opens behind the current one,
 with its model and approval posture set before its first message. Your focus stays
 in the original chat. Its receipt confirms the request; the terminal reports whether
-it actually opened. This needs an attached interactive terminal that can open chats.
+it actually opened. This needs an attached interactive terminal that can open chats; app-only sessions do not offer this tool.
 Only one attached window can claim each request, so delivery to several windows or
 replay does not open copies. A failed launcher is not retried automatically; ask again
 to issue a new request. A new independent chat does not report its answer back here automatically; use a task
@@ -587,7 +589,7 @@ With share teams on, pairing with `--replace` puts this computer's teams aside,
 and the newly joined computers supply the team list. Local chats and Traffic stay
 here. The receipt says where the teams went:
 `This computer's teams were set aside to <path>.`
-That copy is named `teams.json.unreadable-<timestamp>` beside the original (or the
+That copy is named `teams.db.unreadable-<timestamp>` beside the original (or the
 older layout's equivalent name). Keep it to recover the original teams.
 
 The chat and a terminal ask before replacement, even when this computer has teams

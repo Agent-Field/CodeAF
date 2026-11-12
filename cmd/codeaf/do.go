@@ -572,6 +572,8 @@ func applyContextLaw(fillPercent, completionReserve int) error {
 // to main, which says it on stderr — an ordinary run has no object to put it in
 // and never wanted one.
 func doErrand(request doRequest) error {
+	// Producers stop before the process-owned usage writers are joined.
+	defer session.CloseUsage()
 	started := time.Now()
 	// The two seats, resolved before anything is opened or built, so the run
 	// says which models it is about to use and on whose authority — and says it
@@ -593,7 +595,8 @@ func doErrand(request doRequest) error {
 		settings, err = config.LoadKeyless()
 	}
 	if err == nil {
-		useAutoSeats(settings)
+		held := useAutoSeats(settings)
+		defer stopPoolErrands(held)
 	}
 	profileDir := config.ProfileDir()
 	// A PROFILE WRITTEN BEFORE CREWS WERE ROUTED IS MIGRATED ONCE, and the one
@@ -4074,7 +4077,11 @@ func runSpendBound(request doRequest, profileDir string, now time.Time) (runSpen
 				"rerun with --yes-spend to let it go past that", consent)}
 	}
 	if daily > 0 {
-		left := daily - spentToday(now)
+		spent, err := session.DailySpendUSD(session.UsageLedgerPath(), now)
+		if err != nil {
+			return runSpend{}, fmt.Errorf("daily spending could not be verified: %w", err)
+		}
+		left := daily - spent
 		if left <= 0 {
 			return runSpend{refused: true, stop: stopBudget, words: fmt.Sprintf(
 				"today's spending limit of $%.2f is spent, so nothing was started; "+
@@ -4087,18 +4094,6 @@ func runSpendBound(request doRequest, profileDir string, now time.Time) (runSpen
 		}
 	}
 	return bound, nil
-}
-
-// spentToday is what today has cost on this machine, read off the usage ledger
-// every conversation and every run worker writes ([session.SpendToday]). A
-// ledger that cannot be read is a day that has spent nothing as far as this
-// door can tell; the plan-price rung still bounds the run.
-func spentToday(now time.Time) float64 {
-	lines, err := session.ReadUsage(session.UsageLedgerPath(), now.Add(-48*time.Hour))
-	if err != nil {
-		return 0
-	}
-	return session.SpendToday(lines, now)
 }
 
 // crewCompleters turns the run road's provider seam into the per-model

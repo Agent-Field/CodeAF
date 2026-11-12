@@ -30,15 +30,14 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/delegate/builtin"
-	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
-	lanes "github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/plan"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/relayserve"
 	"github.com/Agent-Field/codeaf/internal/router"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/teams"
 	"github.com/Agent-Field/codeaf/internal/telemetry"
 	"github.com/Agent-Field/codeaf/internal/trace"
 	codeupdate "github.com/Agent-Field/codeaf/internal/update"
@@ -48,6 +47,9 @@ import (
 var flushFinalSaves = cellstore.Flush
 
 func main() {
+	// THE DEVELOPER-ONLY PROFILE STARTS FIRST AND STOPS LAST, and is inert
+	// unless CODEAF_DIAGNOSTIC_PROFILE_DIR is set (diagnostics.go).
+	stopDiagnostics := startDiagnostics()
 	if startupMaintenanceNeeded(os.Args[1:]) {
 		home.Adopt(log.Printf)
 		// CODEAF SCHEDULES NOTHING ON THE MACHINE. Real starts remove the
@@ -56,7 +58,11 @@ func main() {
 	}
 	home.Witness(home.Dir())
 	registerRunningCLI()
-	os.Exit(execute())
+	code := execute()
+	// The teams store folds its WAL back in as it closes (internal/teams).
+	teams.Close()
+	stopDiagnostics()
+	os.Exit(code)
 }
 
 // registerRunningCLI tells the worker harness which binary a worker's `codeaf`
@@ -246,16 +252,13 @@ func execute() (code int) {
 	// log's close and therefore runs before it, so a compaction that had to be
 	// deferred still has somewhere to say so.
 	beliefs, stopBeliefs := context.WithCancel(context.Background())
-	defer func() {
-		stopBeliefs()
-		lanes.Flush()
-	}()
+	beliefsDone := startLaneSaving(beliefs)
+	defer finishLaneSaving(stopBeliefs, beliefsDone)
 	// AND THE LANE-SHEET BEAT RIDES THE SAME LIFETIME. It is started later, at
 	// the one seam every surface measures through (lanebeat.go), and it is a
 	// goroutine of exactly this shape: process-wide, nobody's request, stopped
 	// at the same exit.
 	laneBeatCtx = beliefs
-	guard.Go("lanes/persist", func() { lanes.Persist(beliefs) })
 	err := run()
 	var status exitStatus
 	switch {
@@ -316,6 +319,12 @@ func run() error {
 		// command that draws nothing and reads no keys would only be a puzzle
 		// in a list of commands that do.
 		return runRemoteEngine(os.Args[2:])
+	case "app":
+		// The desktop app's backend: JSON lines on this process's own pipes,
+		// every agent held in this one process (app.go). Like `engine` it is
+		// absent from the usage text, because the app starts it and a person
+		// never types it.
+		return runApp(os.Args[2:])
 	case "serve":
 		// The other half of reaching this machine, for the machines ssh cannot
 		// reach: it dials OUT to a relay and holds the connection open, so a
@@ -345,6 +354,17 @@ func run() error {
 		// MACHINE'S, which is why it is a command here rather than something a
 		// surface can do down the wire (chatv3_at.go).
 		return runDevices(os.Args[2:])
+	case "factory":
+		// The factory host and its verbs (factory_command.go).
+		return runFactory(os.Args[2:])
+	case "runner":
+		// This machine as a factory's runner (runner_command.go).
+		return runRunner(os.Args[2:])
+	case "attach":
+		// Which factory this machine's windows talk to (factory_attach.go).
+		return runAttach(os.Args[2:])
+	case "detach":
+		return runDetach(os.Args[2:])
 	case "do":
 		return runDo(os.Args[2:])
 	case "plan":
@@ -617,16 +637,19 @@ Housekeeping — changes state on disk or on the network
       an always-on computer of yours on your own Railway account
   codeaf serve [--workspace path] [--via url] [--take-tasks]
       be reachable from your other devices without ssh, with a pairing code
-  codeaf devices | codeaf cluster status | lead
+  codeaf devices | codeaf cluster status
       list your devices and the ones that can use this machine
   codeaf devices revoke <name> [--all] | rename <name>
       remove one (cannot undo what a device holds), or name this one
+  codeaf factory [serve|add|name|steps|convert|token|revoke|revoke-sessions]
+  codeaf attach <url> | codeaf detach | codeaf runner join <link>
+      a team factory: host it (` + factoryDefaultListen + `), use it, or run its jobs here
   codeaf notebook [--db path]
       what it has learned, and what it has been corrected on
   codeaf notebook retract|restore <seq> [--db path]
 ` + collectionsSummary + `
-  codeaf competence [--db path] [--model slug]
-      what it has been measured as good at
+  codeaf competence [--db path] [--model slug] [--json [--scope id]]
+      what it has been measured as good at; --json, what each model proved
   codeaf services [--db path]
       long-running processes it was asked to keep
   codeaf services stop <name> [--db path]
@@ -653,8 +676,7 @@ Examples:
     codeaf logs --tail 20 --model anthropic/claude-opus-4
     codeaf chat --host devbox:~/src/api   the chat here, the work over there
 
-Every command answers ` + "`codeaf <command> --help`" + ` with its own line and its flags.
-The environment table is ` + "`codeaf help env`" + ` — every variable and its default.`
+Every command answers ` + "`codeaf <command> --help`" + ` with its own line and its flags.`
 
 // environmentText is the reference half of the old `--help`: every variable a
 // person can set, and what it defaults to.
@@ -759,6 +781,9 @@ A variable that pins a ` + "`/settings`" + ` row wins over that row.
                        also record each call's whole request and response —
                        your prompts included. Off by default, and for one run
                        at a time.
+  CODEAF_GITHUB_LOG    a file: one line per GitHub request, by endpoint and
+                       status, with the rate limit GitHub reported. Names,
+                       paths and tokens are not written. Off by default.
   CODEAF_TELEMETRY    on (default). off turns the anonymous usage counts off;
                        docs/TELEMETRY.md in the repository says what they are,
                        DO_NOT_TRACK=1 does the same, and so does the telemetry
@@ -890,7 +915,8 @@ func runPlanNew(name string, args []string) error {
 	if err != nil {
 		return err
 	}
-	useAutoSeats(settings)
+	held := useAutoSeats(settings)
+	defer stopPoolErrands(held)
 	seats := doorSeats(settings, *model, *planModel, goal)
 	applySeats(&settings, seats)
 	workClient, err := settings.Client()
@@ -1070,7 +1096,8 @@ func runRevise(name string, args []string) error {
 	if err != nil {
 		return err
 	}
-	useAutoSeats(settings)
+	held := useAutoSeats(settings)
+	defer stopPoolErrands(held)
 	seats := doorSeats(settings, *model, *planModel, graph.Goal+"\n\n"+event)
 	applySeats(&settings, seats)
 	workClient, err := settings.Client()

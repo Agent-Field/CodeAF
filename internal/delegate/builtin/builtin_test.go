@@ -2,8 +2,10 @@ package builtin
 
 import (
 	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"github.com/Agent-Field/codeaf/internal/delegate"
@@ -43,6 +45,44 @@ func TestEveryCarriedProgramsHelpFitsEightyColumns(t *testing.T) {
 					t.Errorf("codeaf %s %s line %d draws %d cells: %q", program.Name, strings.Join(line, " "), at+1, width, printed)
 				}
 			}
+		}
+	}
+}
+
+// AN ENDING'S FACTS CHANGE NONE OF A PROGRAM'S WORDS: for every program this
+// build carries, the ending line reads to the same step, text and outcome with
+// its data as without it, and the typed facts ride beside them.
+func TestEndingFactsLeaveEveryProgramsWordsAlone(t *testing.T) {
+	at := time.Date(2026, 10, 16, 9, 0, 0, 0, time.UTC)
+	for _, program := range All() {
+		terminal := delegate.Terminal{Status: delegate.StatusPass, Message: "an ending in words", Data: map[string]json.RawMessage{
+			"claim": json.RawMessage(`"it works"`), "observed": json.RawMessage(`"3 of 3 passed"`), "findings": json.RawMessage(`4`)}}
+		plain := delegate.Terminal{Status: terminal.Status, Message: terminal.Message}
+		with, okWith := program.Reader()(delegate.EndAction(at, terminal))
+		without, okWithout := program.Reader()(delegate.EndAction(at, plain))
+		if okWith != okWithout {
+			t.Errorf("%s: the ending is shown %v with facts and %v without", program.Name, okWith, okWithout)
+			continue
+		}
+		if with.Ending == nil || with.Ending.Claim != "it works" || with.Ending.Findings == nil || without.Ending != nil {
+			t.Errorf("%s: facts = %+v without = %+v", program.Name, with.Ending, without.Ending)
+		}
+		with.Ending = nil
+		if with != without {
+			t.Errorf("%s: the ending reads %+v with facts and %+v without", program.Name, with, without)
+		}
+	}
+}
+
+// A LAUNCH'S START LINE IS CODEAF'S, NOT THE PROGRAM'S: no carried program's
+// vocabulary shows it, so a page never draws a launch as an action, and a
+// reader fed a launch from its first line reads the program's own lines exactly
+// as it did before launches were stamped.
+func TestNoCarriedProgramShowsALaunchsStartLine(t *testing.T) {
+	start := delegate.StartAction(time.Date(2026, 10, 16, 9, 0, 0, 0, time.UTC), delegate.NewLaunch())
+	for _, program := range append(All(), delegate.Delegate{Name: "plain"}) {
+		if shown, ok := program.Reader()(start); ok {
+			t.Errorf("%s shows a start line as %+v", program.Name, shown)
 		}
 	}
 }

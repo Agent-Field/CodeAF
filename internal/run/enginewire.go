@@ -48,7 +48,7 @@ func (engine) Start(ctx context.Context, spec session.RunSpec) session.RunSummar
 		// AND UNDER `--one-model` ONE MODEL IS EVERY SEAT, the probe and the
 		// check's environment rung included ([Seats.One]).
 		One: spec.OneModel,
-	}, spec.Memory, false, spec.CompleterFor, []WorkerOption{WithWorkspaceURI(spec.WorkspaceURI), WithWorkspaceSet(spec.WorkspaceSet)}, spec.Sources)
+	}, spec.Memory, false, spec.CompleterFor, engineWorkerOptions(spec), spec.Sources)
 	// A `/task` run from interactive chat is never spend-preauthorized: `--yes-spend`
 	// is a headless `codeaf do` flag, so a chat run is held to the daily ceiling
 	// like every interactive turn (crew.go's CrewFactory, #1546).
@@ -99,6 +99,7 @@ func (engine) Start(ctx context.Context, spec session.RunSpec) session.RunSummar
 		StorageSafe: storage.safe() && spec.Delegate == nil,
 		Outcome:     string(outcome),
 		Result:      summary.Result,
+		Failure:     summary.Failure,
 		// WHICH LIMIT FIRED IS A FACT AND NOT A WORD IN THE OUTCOME SENTENCE:
 		// the run's own typed answer crosses the seam here, mapped one for one,
 		// so the session draws the ending out of the fact and never parses the
@@ -171,3 +172,9 @@ func (engine) Land(ctx context.Context, store *plandb.Store, workspace, base, ro
 // package is linked, so the door's second road is live in a binary that carries
 // the engine and absent in one that does not.
 func init() { session.RegisterRunEngine(engine{}) }
+
+// engineWorkerOptions are what a chat's run hands each of its workers: where it
+// works, and whose conversation it acts for.
+func engineWorkerOptions(spec session.RunSpec) []WorkerOption {
+	return []WorkerOption{WithWorkspaceURI(spec.WorkspaceURI), WithWorkspaceSet(spec.WorkspaceSet), WithAgentDID(spec.AgentDID), WithConversation(spec.Conversation)}
+}

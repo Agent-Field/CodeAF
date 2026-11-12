@@ -3106,10 +3106,9 @@ func refutedLine(why string, by TaskAskOwner) string {
 // is what the checker would have been built on anyway — this is a question about
 // where to go next, and a build with nothing to resolve simply has nowhere.
 func (a *Agent) auditorModel() string {
-	a.mu.Lock()
-	source, model := a.config.RolesSource, a.model
-	a.mu.Unlock()
-	judge, err := roles.Resolve(roles.Source(source), roles.RoleAuditor, model)
+	reader := a.roleModels()
+	model := reader.model
+	judge, err := reader.Resolve(roles.RoleAuditor, model)
 	if err != nil {
 		return model
 	}
@@ -3159,7 +3158,7 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor, on str
 	a.mu.Unlock()
 	nodeRung := node.effortRung()
 
-	judge, err := roles.Resolve(roles.Source(parent.RolesSource), roles.RoleAuditor, model)
+	judge, err := readerFor(parent, model).Resolve(roles.RoleAuditor, model)
 	if err != nil {
 		return nil, err
 	}
@@ -3212,6 +3211,7 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor, on str
 		// belt is what actually constrains this agent: there is no hand here
 		// that writes. AskConsent is off and InTask is on for the node's own
 		// reason — there is nobody in a worktree to ask.
+		// An unreadable profile still requires a person, just as it does for a worker.
 		ApprovalPolicy: &approval.Policy{Default: approval.ActionAllow},
 		AskConsent:     false,
 		InTask:         true,
@@ -3382,7 +3382,7 @@ func readingOnlyBash(tool bare.Tool, door auditDoor, voice shellLeash) bare.Tool
 			Command string `json:"command"`
 		}
 		if err := decodeToolArguments(args, &fields); err != nil {
-			return "Invalid arguments: " + err.Error(), true, nil
+			return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 		}
 		command := fields.Command
 		if voice == auditShell {
@@ -3394,7 +3394,7 @@ func readingOnlyBash(tool bare.Tool, door auditDoor, voice shellLeash) bare.Tool
 				fields.Command = command
 				rewritten, err := json.Marshal(fields)
 				if err != nil {
-					return "Invalid arguments: " + err.Error(), true, nil
+					return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 				}
 				args = rewritten
 			}

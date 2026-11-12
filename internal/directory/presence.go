@@ -14,7 +14,7 @@ type DevicePresence struct {
 }
 
 // PresenceView is the answer to GET /v1/dir/presence (docs/ux-pairing-contract.md, section 3.5):
-// one entry per device that is not revoked. It is the fallback for a client
+// one entry per device whose presence is known and that is not revoked. It is the fallback for a client
 // whose watch socket is down, and what a surface reads at open.
 type PresenceView struct {
 	Now     int64                     `json:"now"`
@@ -45,12 +45,12 @@ func presenceOf(l Listing, online map[string]bool) PresenceView {
 
 func (c *memoryClient) Presence(ctx context.Context) (PresenceView, error) {
 	l, err := c.List(ctx)
-	return presenceOf(l, c.m.feed.OnlineSet()), err
+	return c.m.feed.WithPresence(presenceOf(l, nil)), err
 }
 
 func (c *sqliteClient) Presence(ctx context.Context) (PresenceView, error) {
 	l, err := c.List(ctx)
-	return presenceOf(l, c.s.feed.OnlineSet()), err
+	return c.s.feed.WithPresence(presenceOf(l, nil)), err
 }
 
 // Presence asks the relay who is online. ErrTooOld-style fallbacks are the caller's: a relay without the route answers not found.
@@ -68,7 +68,7 @@ func (m *Memory) seen(device string, at int64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if d, ok := m.devices[device]; ok {
-		d.LastSeen = at
+		d.LastSeen = max(d.LastSeen, at)
 		set(m, m.devices, device, d)
 	}
 }
@@ -79,7 +79,7 @@ func (s *SQLite) seen(device string, at int64) {
 		if get(tx, "devices", device, &d) != nil {
 			return nil // not a device of this identity: nothing to stamp
 		}
-		d.LastSeen = at
+		d.LastSeen = max(d.LastSeen, at)
 		return put(tx, s.feed, "devices", device, d, at)
 	})
 }

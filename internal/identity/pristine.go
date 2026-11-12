@@ -32,13 +32,16 @@ func Pristine(home string) (bool, error) {
 // holds rather than by its name.
 var startupRules = rules{
 	File: never, DeviceFile: never, legacyKeyFile: never, soloFile: never,
+	"vault.enc.lock": never, "pair-sharing.pending": never,
 	"config.json": never, "config.json.lock": never, "notices.json": never,
 	// The pairing name prompt writes this before checking whether the home can join.
 	"device-name":          never,
 	"teams.json.lock":      never,
+	"app.lock":             never,
 	"model-catalog-*.json": catalogCache, // Provider catalog caches are fetched again on demand.
 	"knowledge": within(rules{
 		".worker.lock":         never,
+		".discovery-asked":     never, // the Memory page asking the worker for a count
 		"knowledge.sqlite":     knowledgeStartup,
 		"knowledge.sqlite-wal": never, "knowledge.sqlite-shm": never,
 	}),

@@ -522,7 +522,7 @@ func (e *subharnessEnv) Ask(ctx context.Context, question string, opts exec.AskO
 	// ([Agent.presenceAsk]), so a lane that only raised the question would turn
 	// the session amber with nothing under it, the exact shape the fuel gate was
 	// fixed for (taskpresence.go). Both go up and come down together.
-	defer e.agent.presenceAskingWhole(e.agent.subharnessAskQuestion(id, *asking), func() {
+	defer e.agent.presenceAskingWhole(ctx, e.agent.subharnessAskQuestion(id, *asking), func() {
 		if e.room != nil {
 			e.room.publish(Event{Kind: EventSubharnessAsk, ID: id, Text: question, Args: string(input)})
 		}

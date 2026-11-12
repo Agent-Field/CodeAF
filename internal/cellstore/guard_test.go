@@ -24,11 +24,12 @@ type guardRig struct {
 	cell   cell.Cell
 	guard  Guard
 	notice []string
+	kept   []string // lines for files withheld for a secret: the log's, never the chat's
 }
 
 func newRig(t *testing.T) *guardRig {
 	r := &guardRig{t: t, tree: t.TempDir(), cell: newCell(t)}
-	r.guard = Guard{Home: t.TempDir(), Notify: func(s string) { r.notice = append(r.notice, s) }}
+	r.guard = Guard{Home: t.TempDir(), Notify: func(s string) { r.notice = append(r.notice, s) }, Kept: func(s string) { r.kept = append(r.kept, s) }}
 	return r
 }
 
@@ -97,8 +98,11 @@ func TestScreenWithholdsAnyFileWithASecretAndSaysOnce(t *testing.T) {
 	if got := r.policy().withheld; len(got) != 1 || got[0] != "src/config.py" {
 		t.Fatalf("withheld %v", got)
 	}
-	if len(r.notice) != 1 || !strings.Contains(r.notice[0], "src/config.py") || strings.Contains(r.notice[0], fakeKey) {
-		t.Fatalf("notices %q: want one, naming the file and never the secret", r.notice)
+	if len(r.kept) != 1 || !strings.Contains(r.kept[0], "src/config.py") || strings.Contains(r.kept[0], fakeKey) {
+		t.Fatalf("log lines %q: want one, naming the file and never the secret", r.kept)
+	}
+	if len(r.notice) != 0 {
+		t.Fatalf("notices %q: a file kept out for a secret is logged, never said", r.notice)
 	}
 }
 
@@ -439,10 +443,10 @@ func TestSecretNoticesDescribeOnlyWhatAnUnpairedComputerKeeps(t *testing.T) {
 	r.write(".env", "LOCAL_KEY="+fakeKey+"\n")
 	r.write("config.py", "key = '"+fakeKey+"'\n")
 	r.screen()
-	if len(r.notice) != 2 {
-		t.Fatalf("notices: %q", r.notice)
+	if len(r.kept) != 2 || len(r.notice) != 0 {
+		t.Fatalf("log lines %q, notices %q", r.kept, r.notice)
 	}
-	for _, notice := range r.notice {
+	for _, notice := range r.kept {
 		if !strings.Contains(notice, "kept out of the saved history") || !strings.Contains(notice, "only to paired computers") || strings.Contains(notice, "kept in your key vault") {
 			t.Fatalf("untrue notice: %s", notice)
 		}
@@ -470,7 +474,7 @@ func TestAGuardWithNoRouteLogsItsNoticeAndWritesNothingToStderr(t *testing.T) {
 	defer func() { os.Stderr = saved }()
 
 	r := newRig(t)
-	r.guard.Notify = nil
+	r.guard.Notify, r.guard.Kept = nil, nil
 	r.write("Tests/BrowseTests.swift", "let key = \""+fakeKey+"\"\n")
 	r.screen()
 

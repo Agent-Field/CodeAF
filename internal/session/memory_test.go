@@ -127,6 +127,7 @@ func brainAgent(t *testing.T, completer Completer, mutate func(*Config)) (*Agent
 		// A profile the test owns, so the noticing row is never read from the
 		// machine's own configuration.
 		config.ProfileDir = t.TempDir()
+		writeProfileRow(t, config.ProfileDir, "memory.enabled", "on")
 		if mutate != nil {
 			mutate(config)
 		}
@@ -525,14 +526,14 @@ func TestTheSwitchTurnsNoticingOffAndLeavesEverythingElse(t *testing.T) {
 	if !strings.Contains(script.system(0), "prefers tabs over spaces") {
 		t.Fatal("with noticing off the person's lines stopped riding the turn")
 	}
-	if len(script.asked) != 1 || script.asked[0] {
+	if len(script.asked) != 0 {
 		t.Fatalf("with noticing off the post-turn call asked about memory: %v", script.asked)
 	}
 	if got := activeTexts(t, brain, store.OwnerUser); len(got) != 1 {
 		t.Fatalf("with noticing off something was kept: %v", got)
 	}
-	if !strings.Contains(agent.stateCardText(), "tidy the build") {
-		t.Fatal("with noticing off the state card stopped being kept")
+	if strings.Contains(agent.stateCardText(), "tidy the build") {
+		t.Fatal("off made an automatic state-card call")
 	}
 	if _, err := agent.Remember("a line kept by hand"); err != nil {
 		t.Fatalf("with noticing off /remember stopped working: %v", err)
@@ -541,7 +542,7 @@ func TestTheSwitchTurnsNoticingOffAndLeavesEverythingElse(t *testing.T) {
 	writeProfileRow(t, agent.config.ProfileDir, config.KeyMemoryEnabled, config.MemoryOn)
 	collect(t, mustSubmit(t, agent, "another"))
 	settleMemory(agent)
-	if len(script.asked) != 2 || !script.asked[1] {
+	if len(script.asked) != 1 || !script.asked[0] {
 		t.Fatalf("the row's change was not followed without a restart: %v", script.asked)
 	}
 }
@@ -782,6 +783,9 @@ func TestANoticedLineIsSaidOnTheStandingLane(t *testing.T) {
 				// holding this conversation out of sight keeps it by.
 				if !event.Unrecorded {
 					t.Fatal("a memory notice was not marked unrecorded")
+				}
+				if event.NoticeKind != NoticeKindMemory {
+					t.Fatalf("a memory notice carries kind %q", event.NoticeKind)
 				}
 				return
 			}

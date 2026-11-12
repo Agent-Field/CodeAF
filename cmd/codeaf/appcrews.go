@@ -1,0 +1,2508 @@
+package main
+
+// ── codeaf app: CREWS ARE TEAMS ─────────────────────────────────────────────
+//
+// A crew IS a codeaf team (internal/teams), read from and written to the same
+// store the terminal's Teams page uses: the teams file, each team's Traffic
+// log, the decision packets and the usage ledger. Nothing here keeps a second
+// account of a team. What the design asks for and teams do not keep is the
+// app layer's (appcrewlayer.go), and is never written into the teams file.
+//
+// THE APP DOES WHAT THE TERMINAL WINDOW DOES FOR THE TEAMS IT HOLDS
+// (internal/tui3's teamtraffic.go): a manager's `start` line is a new
+// conversation it opens in the crew's folder and adds under the manager's
+// handle, and a manager's `stop` line is the member's own stop. It acts only on
+// lines that arrive while it watches, never on history, and only while it
+// holds the manager. Idle members remain light records until traffic needs
+// them; the shared watch subscribes before checking pending wakes, so a turn
+// on an unopened member still reaches the wire (appwakes.go).
+//
+// A decision packet waiting on the person is also an ask on the manager that
+// brought it to them, so it reaches the dock and the Inbox like any question;
+// answering either decides the packet through the store's own door.
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"math"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/redact"
+	"github.com/Agent-Field/codeaf/internal/session"
+	teamstore "github.com/Agent-Field/codeaf/internal/teams"
+	"github.com/fsnotify/fsnotify"
+)
+
+// The ids a crew's asks carry: a decision packet, and an agent's proposal.
+const (
+	appCrewAskPrefix     = "crew:"
+	appProposalAskPrefix = "crewprop:"
+)
+
+// appTrafficStart is a cursor before a log's first line.
+var appTrafficStart = strings.Repeat("0", 12)
+
+// appCrewLogPage bounds one read of a crew's log.
+const appCrewLogPage = 200
+
+// The named tints and the hue each stands for, in OKLCH degrees.
+var appTints = []struct {
+	name string
+	hue  float64
+}{{"rose", 15}, {"sand", 75}, {"sage", 145}, {"tide", 215}, {"iris", 285}}
+
+// appTintGraphite is the root crew's tint, and an uncoloured crew's.
+const appTintGraphite = "graphite"
+
+// appTintOf is the named tint nearest a hue.
+func appTintOf(t teamstore.Team) string {
+	if t.Root || !t.Hued() {
+		return appTintGraphite
+	}
+	best, gap := appTintGraphite, math.Inf(1)
+	for _, tint := range appTints {
+		if g := teamstore.HueGap(t.Hue, tint.hue); g < gap {
+			best, gap = tint.name, g
+		}
+	}
+	return best
+}
+
+// appTintHue is a named tint's hue.
+func appTintHue(name string) (float64, bool) {
+	for _, tint := range appTints {
+		if tint.name == name {
+			return tint.hue, true
+		}
+	}
+	return 0, false
+}
+
+// appCrewRun is the app's watch over the crews: what it last said of each,
+// where it is in each log, the packets waiting on the person, the asks they
+// are, and which agents an open crew keeps held.
+type appCrewRun struct {
+	// ready publishes the initial subscription and check to concurrent callers.
+	ready chan struct{}
+
+	// proposal keeps durable proposal changes and ask events in the same order.
+	proposal sync.Mutex
+
+	formation  sync.Mutex
+	tick       sync.Mutex
+	watcher    *fsnotify.Watcher
+	since      time.Time
+	wakeStamps map[string]string
+	// Cold admission state is protected by tick.
+	coldAfter   string
+	lazyStarted bool
+	stamp       func(string) string
+	// recovering is true during startup admission and false once settled. A
+	// settled recovery is revisited for new traffic, never for its old claim.
+	recovering map[string]bool
+
+	read   appCrewRead
+	inputs string
+	teams  []teamstore.Team
+	mu     sync.Mutex
+	stop   chan struct{}
+	done   chan struct{}
+	watch  teamstore.Watch
+	prints map[string]string
+	// closedAt is the store revision a crew that closed while watched was
+	// last said at ([teamstore.Revisions]).
+	closedAt map[string]int64
+	members  map[string]string
+	cursors  map[string]string
+	acted    map[string]bool
+	packets  map[string]teamstore.Packet
+	asks     map[string]appwire.Ask
+	held     map[string][]string
+	opening  map[string]bool
+	// proposing is every agent whose model is being asked for a crew
+	// proposal right now (appcrewmembers.go's CrewPropose); nil until the
+	// first press.
+	proposing map[string]bool
+	// unheld is every member the crew could not hold, and when it tries again
+	// (appcrewhold.go).
+	unheld map[string]*appUnheld
+}
+
+// newAppCrewRun gives every watch writable state, including watches driven
+// without subscriptions or a background loop in tests and benchmarks.
+func newAppCrewRun() *appCrewRun {
+	return &appCrewRun{
+		ready: make(chan struct{}), stop: make(chan struct{}), done: make(chan struct{}),
+		prints: map[string]string{}, members: map[string]string{}, cursors: map[string]string{},
+		acted: map[string]bool{}, packets: map[string]teamstore.Packet{}, asks: map[string]appwire.Ask{},
+		held: map[string][]string{}, opening: map[string]bool{},
+		wakeStamps: map[string]string{}, recovering: map[string]bool{},
+	}
+}
+
+func (c *appCrewRun) locked(fn func()) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	fn()
+}
+
+// crewProfile is the profile whose teams the app reads.
+func (b *appBackend) crewProfile() string {
+	if b.profileDir != "" {
+		return b.profileDir
+	}
+	return config.ProfileDir()
+}
+
+// crews starts the watch the first time anything asks for a crew, and answers it.
+func (b *appBackend) crews() *appCrewRun {
+	var run *appCrewRun
+	start := false
+	b.locked(func() {
+		if b.crewRun == nil && !b.closing {
+			b.crewRun = newAppCrewRun()
+			start = true
+		}
+		run = b.crewRun
+	})
+	if start {
+		b.subscribeCrewTraffic(run)
+		b.crewTick(run, true)
+		b.reopenProposals(run)
+		guard.Go("app/crews", func() { b.crewLoop(run) })
+		close(run.ready)
+	} else if run != nil && run.ready != nil {
+		<-run.ready
+	}
+	return run
+}
+
+// reopenProposals asks again about every crew proposal the person had not
+// answered when the app last closed: a proposal is kept in the app layer, so
+// its ask outlives a restart.
+func (b *appBackend) reopenProposals(run *appCrewRun) {
+	var kept []appwire.Proposal
+	_ = b.crewLayer().read(func(f *appCrewLayerFile) {
+		for _, p := range f.Proposals {
+			if p != nil {
+				kept = append(kept, *p)
+			}
+		}
+	})
+	sort.Slice(kept, func(i, j int) bool { return kept[i].ID < kept[j].ID })
+	for _, p := range kept {
+		ask := appProposalAskOf(p)
+		run.locked(func() { run.asks[ask.ID] = ask })
+		b.emit.Emit(appwire.EventAskOpened, appwire.AskOpened{Ask: ask})
+	}
+}
+
+// crewLoop looks at the crews every beat until the app closes.
+func (b *appBackend) crewLoop(run *appCrewRun) {
+	defer close(run.done)
+	var events <-chan fsnotify.Event
+	var errors <-chan error
+	if run.watcher != nil {
+		events, errors = run.watcher.Events, run.watcher.Errors
+		defer run.watcher.Close()
+	}
+	ticker := time.NewTicker(appCrewPoll)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-run.stop:
+			return
+		case event, ok := <-events:
+			if !ok {
+				events = nil
+				continue
+			}
+			if crewTrafficEvent(event) {
+				b.crewTick(run, false)
+			}
+		case _, ok := <-errors:
+			if !ok {
+				errors = nil
+				continue
+			}
+			b.crewTick(run, false)
+		case <-ticker.C:
+			b.crewRefresh(run)
+		}
+	}
+}
+
+// crewStop ends the watch.
+func (run *appCrewRun) close() {
+	close(run.stop)
+	<-run.done
+}
+
+// appCrewRead is one look at the store: the teams, the defaults, the layer,
+// and the packets waiting on the person.
+type appCrewRead struct {
+	file     *teamstore.File
+	defaults teamstore.Defaults
+	layer    appCrewLayerFile
+	waiting  []teamstore.Packet
+}
+
+func (b *appBackend) crewRead() (appCrewRead, error) {
+	profile := b.crewProfile()
+	// ONCE FOR THIS BACKEND CONNECTION, BEFORE THE FIRST READ: a team the factory made before
+	// the stamp was kept is marked from its item's recorded Room, never a name.
+	b.factoryRooms.Do(func() {
+		factoryStampStoredRooms(profile, v3FactoryRoot())
+		factorySweepEndedRooms(profile, v3FactoryRoot())
+	})
+	// THE WATCH FOLLOWS THE OPEN CREWS. A closed crew does not change by
+	// itself, and every finished factory job leaves one, so the beat reads the
+	// open ones; a closed one is read by id when it is shown ([appBackend.CrewGet],
+	// the closed list) or when it closes ([appBackend.crewTickLocked]).
+	file, err := teamstore.LoadOpen(profile)
+	if err != nil {
+		return appCrewRead{}, err
+	}
+	read := appCrewRead{file: file, defaults: teamstore.DefaultsAt(profile)}
+	_ = b.crewLayer().read(func(f *appCrewLayerFile) {
+		raw, _ := json.Marshal(f)
+		_ = json.Unmarshal(raw, &read.layer)
+	})
+	read.waiting, _, _ = teamstore.OpenPackets(profile, teamstore.Person)
+	return read, nil
+}
+
+// crewTick is one look: every crew said again where it changed, every new log
+// line said and acted on, every packet on the person made an ask or closed,
+// and every member of an open crew held.
+func (b *appBackend) crewTick(run *appCrewRun, first bool) bool {
+	run.tick.Lock()
+	defer run.tick.Unlock()
+	return b.crewTickLocked(run, first)
+}
+
+// crewTickLocked rebuilds the view while the caller holds the tick gate.
+func (b *appBackend) crewTickLocked(run *appCrewRun, first bool) bool {
+	read, err := b.crewRead()
+	if err != nil {
+		return false
+	}
+	run.read = read
+	run.locked(func() { run.teams = read.file.Teams })
+	views := map[string]appwire.Crew{}
+	held := map[string][]string{}
+	for _, t := range read.file.Teams {
+		view := b.crewView(read, t)
+		views[t.ID] = view
+		if !t.Closed() {
+			for _, m := range view.Members {
+				held[m.Agent] = append(held[m.Agent], t.ID)
+			}
+		}
+	}
+	var changed []appwire.Crew
+	var removed []string
+	var members []appwire.CrewMember
+	var moved []string
+	run.locked(func() {
+		for id, view := range views {
+			raw, _ := json.Marshal(view)
+			if run.prints[id] != string(raw) {
+				run.prints[id] = string(raw)
+				if !first {
+					changed = append(changed, view)
+				}
+			}
+			for _, m := range view.Members {
+				raw, _ := json.Marshal(m)
+				key := appMemberKey(id, m.Agent)
+				if run.members[key] != string(raw) {
+					run.members[key] = string(raw)
+					if !first {
+						members = append(members, m)
+					}
+				}
+			}
+		}
+		for id := range run.prints {
+			if _, still := views[id]; !still {
+				removed = append(removed, id)
+			}
+		}
+		if !first {
+			moved = appMembershipMoved(run.held, held)
+		}
+		run.held = held
+	})
+	sort.Slice(changed, func(i, j int) bool { return changed[i].ID < changed[j].ID })
+	for _, view := range changed {
+		b.emit.Emit(appwire.EventCrewChanged, appwire.CrewChanged{Crew: view})
+	}
+	for _, m := range members {
+		b.emit.Emit(appwire.EventMemberChanged, appwire.MemberChanged{Member: m})
+	}
+	// A CREW THAT CLOSED WHILE THIS WATCH HELD IT, or was deleted. A crew a
+	// person closed is kept, so archiving or deleting it later, from any door
+	// or process, is said too, but it costs its revision, one indexed row:
+	// only a crew whose row moved is read again and said again, and one that
+	// is gone is removed. A ROOM ITS JOB'S END CLOSED LEAVES THE WATCH once
+	// its close is said: there is one for every job the factory finishes, so
+	// keeping them would grow every look with the factory's work. Its job
+	// coming back reopens it, and the open crews are read on every look.
+	if len(removed) > 0 {
+		sort.Strings(removed)
+		revs, err := teamstore.Revisions(b.crewProfile(), removed...)
+		if err == nil {
+			var moved []string
+			for _, id := range removed {
+				rev, ok := revs[id]
+				if !ok {
+					run.locked(func() { delete(run.prints, id); delete(run.closedAt, id) })
+					b.emit.Emit(appwire.EventCrewRemoved, appwire.CrewRemoved{ID: id})
+					continue
+				}
+				seen := false
+				run.locked(func() { at, ok := run.closedAt[id]; seen = ok && at == rev })
+				if !seen {
+					moved = append(moved, id)
+				}
+			}
+			if len(moved) > 0 {
+				crewClosedReads.Add(int64(len(moved)))
+				gone, err := teamstore.LoadWithHomes(b.crewProfile(), moved...)
+				for _, id := range moved {
+					t, ok := gone.Team(id)
+					if err != nil || !ok {
+						continue
+					}
+					view := b.crewView(appCrewRead{file: gone, defaults: read.defaults, layer: read.layer, waiting: read.waiting}, t)
+					raw, _ := json.Marshal(view)
+					said := false
+					run.locked(func() {
+						if run.closedAt == nil {
+							run.closedAt = map[string]int64{}
+						}
+						said = run.prints[id] == string(raw)
+						run.prints[id], run.closedAt[id] = string(raw), revs[id]
+						if t.JobEnded {
+							delete(run.prints, id)
+							delete(run.closedAt, id)
+							for _, m := range view.Members {
+								delete(run.members, appMemberKey(id, m.Agent))
+							}
+						}
+					})
+					if !said {
+						b.emit.Emit(appwire.EventCrewChanged, appwire.CrewChanged{Crew: view})
+					}
+				}
+			}
+		}
+	}
+
+	// A CREW CLOSED BEFORE THE WATCH STARTED is followed the same way from
+	// its first look: the closed and archived lists hold it, so archiving or
+	// deleting it from another door is said. It is kept by its revision only
+	// and read when that moves; a room its job's end closed is not kept.
+	if first {
+		if revs, err := teamstore.ClosedCrewRevisions(b.crewProfile()); err == nil {
+			run.locked(func() {
+				if run.closedAt == nil {
+					run.closedAt = map[string]int64{}
+				}
+				for id, rev := range revs {
+					if _, held := run.prints[id]; !held {
+						run.prints[id], run.closedAt[id] = "", rev
+					}
+				}
+			})
+		}
+	}
+
+	// AN AGENT WHOSE CREWS CHANGED IS SAID AGAIN, so its row's crews are
+	// never older than the crews' own.
+	for _, id := range moved {
+		var a *appAgent
+		b.locked(func() { a = b.agents[id] })
+		if a != nil {
+			b.sayAgent(a)
+		}
+	}
+	for _, t := range read.file.Teams {
+		if !t.Closed() {
+			b.crewTraffic(run, read, t)
+		}
+	}
+	b.crewPackets(run, read, first)
+	b.holdMembers(run, b.neededMembers(run, read, first))
+	// What a hold that failed or came back has to say is said on a later
+	// look than the first, which runs before the app's hello is on the wire.
+	if !first {
+		b.sayHolds(run)
+	}
+	return true
+}
+
+// crewClosedReads counts the crews that closed while watched and were read
+// again, for a test to see one whose row did not move is not.
+var crewClosedReads atomic.Int64
+
+// appMembershipMoved is every agent whose open crews differ between two looks.
+func appMembershipMoved(before, after map[string][]string) []string {
+	var moved []string
+	for id, crews := range after {
+		if strings.Join(crews, ",") != strings.Join(before[id], ",") {
+			moved = append(moved, id)
+		}
+	}
+	for id := range before {
+		if _, still := after[id]; !still {
+			moved = append(moved, id)
+		}
+	}
+	sort.Strings(moved)
+	return moved
+}
+
+// ── the view ────────────────────────────────────────────────────────────────
+
+// crewView is one team as a crew.
+func (b *appBackend) crewView(read appCrewRead, t teamstore.Team) appwire.Crew {
+	f := read.file
+	view := appwire.Crew{
+		ID: t.ID, Name: t.Name, Parent: t.Parent, Root: t.Root, FactoryManaged: t.FactoryManaged, CreatedBy: t.CreatedBy, Hue: t.Hue, Tier: t.Tier, Tint: appTintOf(t),
+		ClosedWith: t.ClosedWith, Report: t.Report, Members: []appwire.CrewMember{},
+		Settings: appwire.CrewSettings{QuestionsUp: t.Settings.QuestionsUp, CapUSDDay: t.Settings.CapUSDDay, DepthLimit: t.Settings.DepthLimit, SubShare: t.Settings.SubShare, Wake: t.Settings.Wake},
+	}
+	if !t.Made.IsZero() {
+		made := t.Made
+		view.MadeAt = &made
+	}
+	if !t.ClosedAt.IsZero() {
+		closed := t.ClosedAt
+		view.ClosedAt = &closed
+	}
+	if t.Archived() {
+		archived := t.ArchivedAt
+		view.ArchivedAt = &archived
+	}
+	if t.Wrap != nil {
+		view.Wrap = &appwire.CrewWrap{Started: t.Wrap.Started, BoundS: int(t.Wrap.Bound.Seconds())}
+	}
+	e := f.Effective(t.ID, read.defaults)
+	origin := func(o teamstore.Origin) appwire.CrewOrigin {
+		return appwire.CrewOrigin{Kind: o.Kind, Crew: o.Team, Name: o.Name}
+	}
+	view.Effective = appwire.CrewEffective{
+		QuestionsUp: e.QuestionsUp, QuestionsUpFrom: origin(e.QuestionsUpFrom),
+		CapUSDDay: e.CapUSDDay, CapFrom: origin(e.CapFrom),
+		DepthLimit: e.DepthLimit, DepthFrom: origin(e.DepthFrom),
+		SubShare: e.SubShare, SubShareFrom: origin(e.SubShareFrom),
+		Wake: e.Wake, WakeFrom: origin(e.WakeFrom),
+	}
+	spend, _ := teamstore.TeamSpend(b.crewProfile(), t.ID, teamstore.Today())
+	view.Spend = appwire.CrewSpend{Day: spend.Day, USD: spend.USD, Calls: spend.Calls}
+	if len(spend.ByMember) > 0 {
+		view.Spend.ByMember = map[string]float64{}
+	}
+	keys := map[string]string{}
+	for _, m := range t.Members {
+		keys[m.Key] = appMemberAgent(m)
+	}
+	for key, usd := range spend.ByMember {
+		agent := keys[key]
+		if agent == "" {
+			agent = appAgentID(key)
+		}
+		view.Spend.ByMember[agent] += usd
+	}
+	if m, ok := t.Member(t.Manager); ok {
+		view.Manager = appMemberAgent(m)
+	}
+	for _, m := range t.Members {
+		view.Members = append(view.Members, b.memberView(read, t, m, view.Spend.ByMember))
+	}
+	for _, m := range t.FormerMembers {
+		view.FormerMembers = append(view.FormerMembers, appwire.CrewMember{Agent: appMemberAgent(m), Crew: t.ID, Handle: m.Handle, Title: m.Word})
+	}
+	if t.Parent != "" {
+		view.Brief = b.subCrewBrief(t)
+	}
+	if extra := read.layer.Crews[t.ID]; extra != nil {
+		view.Goal, view.EndsAt, view.History = extra.Goal, extra.EndsAt, extra.History
+		view.HistoryTasks = crewHistoryTasks(extra, t.Founder)
+		view.Items = append(view.Items, extra.Items...)
+	}
+	view.State = b.crewState(read, t, view)
+	if view.State == appwire.CrewIdle || view.State == appwire.CrewNeedsYou {
+		view.IdleSince = b.crewIdleSince(view.Members)
+	}
+	return view
+}
+
+// crewIdleSince is the instant since which no member of a crew has run: the
+// latest instant any member stopped. A member at rest stopped when its
+// conversation last changed (the end of its last turn); a member whose turn is
+// open but stopped on a question that holds the turn stopped when the first
+// such question still open was put. Nil when any member may still be running
+// or any member's instant is unknown.
+func (b *appBackend) crewIdleSince(members []appwire.CrewMember) *time.Time {
+	var last time.Time
+	known := len(members) > 0
+	b.locked(func() {
+		for _, m := range members {
+			stopped := b.stoppedLocked(b.agents[m.Agent])
+			if stopped.IsZero() {
+				known = false
+				return
+			}
+			if stopped.After(last) {
+				last = stopped
+			}
+		}
+	})
+	if !known {
+		return nil
+	}
+	return &last
+}
+
+// stoppedLocked is when an agent last stopped running, and the zero time when
+// it runs, may run, or is not known. Callers hold b.mu.
+func (b *appBackend) stoppedLocked(a *appAgent) time.Time {
+	if a == nil || a.view.State == appwire.StateWorking || a.view.State == appwire.StateStarting {
+		return time.Time{}
+	}
+	live := a.live
+	if live == nil || !live.running {
+		return a.view.UpdatedAt
+	}
+	// A TURN IS OPEN. It has stopped only on a question that holds the turn,
+	// and it stopped when the first of those still open was put; anything
+	// else may be running.
+	var first time.Time
+	for _, q := range live.questions {
+		if q.Blocking.Turn && !q.Asked.IsZero() && (first.IsZero() || q.Asked.Before(first)) {
+			first = q.Asked
+		}
+	}
+	return first
+}
+
+// subCrewBrief is the words a sub-crew's manager was started with: the
+// parent's start line that named this crew.
+func (b *appBackend) subCrewBrief(t teamstore.Team) string {
+	entries, err := teamstore.ReadTraffic(b.crewProfile(), t.Parent, "", 0)
+	if err != nil {
+		return ""
+	}
+	for i := len(entries) - 1; i >= 0; i-- {
+		if e := entries[i]; e.Kind == teamstore.KindStart && e.Team == t.ID {
+			return redact.Secrets(strings.TrimSpace(e.Text))
+		}
+	}
+	return ""
+}
+
+// crewState is a crew's one word: closed, waiting on the person, working, or
+// idle.
+func (b *appBackend) crewState(read appCrewRead, t teamstore.Team, view appwire.Crew) string {
+	if t.Closed() {
+		return appwire.CrewClosed
+	}
+	for _, p := range read.waiting {
+		if p.Origin == t.ID {
+			return appwire.CrewNeedsYou
+		}
+	}
+	working := false
+	for _, m := range view.Members {
+		switch m.State {
+		case teamstore.StateAsking:
+			return appwire.CrewNeedsYou
+		case teamstore.StateRunning:
+			working = true
+		}
+	}
+	if working {
+		return appwire.CrewWorking
+	}
+	return appwire.CrewIdle
+}
+
+// memberView is one member as the crew shows it.
+func (b *appBackend) memberView(read appCrewRead, t teamstore.Team, m teamstore.Member, spent map[string]float64) appwire.CrewMember {
+	agent := appMemberAgent(m)
+	view := appwire.CrewMember{
+		Agent: agent, Crew: t.ID, Handle: m.Handle, HandleBy: m.HandleBy, Title: m.Word, Workspace: m.Where,
+		Started: m.Started, Home: m.Home, Independent: m.Independent, SpentUSD: spent[agent],
+	}
+	if !m.JoinedAt.IsZero() {
+		joined := m.JoinedAt
+		view.JoinedAt = &joined
+	}
+	if home, ok := read.file.Home(m.Key); ok {
+		manager := ""
+		if team, ok := read.file.Team(home.Team); ok {
+			if mm, ok := team.Member(home.Manager); ok {
+				manager = appMemberAgent(mm)
+			}
+		}
+		view.ReportsTo = &appwire.CrewReportsTo{Crew: home.Team, Manager: manager, Distance: home.Distance}
+	}
+	if m.ReportsTo != "" {
+		manager := ""
+		for _, candidate := range t.Members {
+			if (m.ReportsTo == "manager" && candidate.Key == t.Manager) || candidate.Handle == m.ReportsTo {
+				manager = appMemberAgent(candidate)
+				break
+			}
+		}
+		if manager != "" {
+			distance := 1
+			if m.ReportsTo != "manager" {
+				distance = 2
+			}
+			view.ReportsTo = &appwire.CrewReportsTo{Crew: t.ID, Manager: manager, Distance: distance}
+		}
+	}
+	for _, other := range read.file.Teams {
+		if other.ID != t.ID && !other.Closed() && other.Holds(m.Key) {
+			view.AlsoIn = append(view.AlsoIn, other.ID)
+		}
+		// A MEMBER THAT RUNS A CREW UNDER THIS ONE IS THAT CREW here, not a
+		// plain member: it answers to this crew's manager for the crew it runs.
+		if other.Parent == t.ID && !other.Closed() && other.Manager == m.Key {
+			view.Leads = other.ID
+		}
+	}
+	view.State, view.Model, view.Title, view.Line = b.memberLive(agent, view.Title)
+	// A MEMBER THE CREW COULD NOT OPEN SAYS SO ON ITS ROW, with the reason,
+	// rather than reading idle while its questions reach nobody.
+	if line, unheld := b.unheldLine(agent); unheld {
+		view.State, view.Line = teamstore.StateFailed, line
+	}
+	if usd, set := b.agentBudget(agent, b.now()); set {
+		view.CapUSD = &usd
+	}
+	if extra := read.layer.Members[appMemberKey(t.ID, agent)]; extra != nil {
+		view.Role, view.Paused, view.Was = extra.Role, extra.Paused, extra.Was
+		if role := read.layer.Roles[extra.Role]; role != nil {
+			view.Role = role.ID
+		}
+	}
+	return view
+}
+
+// memberLive is a member's state, model and title as the app holds its agent:
+// the engine's member words (running, asking, idle, failed).
+func (b *appBackend) memberLive(agent, title string) (state, model, name, line string) {
+	state, name = teamstore.StateIdle, title
+	b.locked(func() {
+		a := b.agents[agent]
+		if a == nil {
+			return
+		}
+		model = a.view.Model
+		if a.view.Title != "" {
+			name = a.view.Title
+		}
+		switch {
+		case a.view.State == appwire.StateWorking || a.view.State == appwire.StateStarting:
+			state = teamstore.StateRunning
+		case a.view.State == appwire.StateNeedsYou:
+			state = teamstore.StateAsking
+		case a.failed != "":
+			state = teamstore.StateFailed
+		}
+		line = agentLineLocked(a, a.view.State)
+	})
+	return state, model, name, line
+}
+
+// ── the log, and the manager's starts and stops ─────────────────────────────
+
+// appLogLine is one Traffic line as the app says it.
+func appLogLine(t teamstore.Team, e teamstore.Entry) appwire.LogLine {
+	line := appwire.LogLine{
+		ID: e.ID, Crew: t.ID, At: e.At, Kind: e.Kind, From: e.From, To: e.To, Text: redact.Secrets(e.Text),
+		Handles: e.Handles, Answers: e.Answers, Files: e.Files, Member: e.Member, State: e.State,
+		Packet: e.Packet, Reply: e.Reply, Team: e.Team,
+		Turn: e.Turn, Run: e.Run,
+	}
+	// THE AGENT THAT RAN THE RUN is named the way every other agent in this
+	// line is, from the conversation key the engine recorded. It is not the
+	// line's Member, which can be someone else: a manager's directive concerns
+	// a member and was written by the manager's run.
+	if e.RunBy != "" {
+		if m, ok := t.Member(e.RunBy); ok {
+			line.RunAgent = appMemberAgent(m)
+		} else {
+			line.RunAgent = appAgentID(e.RunBy)
+		}
+	}
+	key := e.Member
+	if key == "" && e.From != "" {
+		if m, ok := t.ByHandle(e.From); ok {
+			key = m.Key
+		}
+	}
+	if key != "" {
+		if m, ok := t.Member(key); ok {
+			line.Agent = appMemberAgent(m)
+		} else {
+			line.Agent = appAgentID(key)
+		}
+	}
+	// THE LOG NAMES PEOPLE, NOT SEATS. A line is from and to a member by its
+	// handle, the person ("you"), or everyone; the manager is the member that
+	// holds the seat. A line codeaf wrote about a member is that member's.
+	manager := teamstore.FromManager
+	if m, ok := t.Member(t.Manager); ok && m.Handle != "" {
+		manager = m.Handle
+	}
+	line.From = appLogParty(t, e.From, e.Member, manager)
+	line.To = appLogParty(t, e.To, "", manager)
+	// The manager's mark in a line codeaf wrote is the manager's handle.
+	if e.Kind == teamstore.KindEvent || e.Kind == teamstore.KindPacket {
+		line.Text = strings.ReplaceAll(line.Text, "◆", "@"+manager)
+	}
+	return line
+}
+
+// appLogParty is one end of a log line as the log names it.
+func appLogParty(t teamstore.Team, word, member, manager string) string {
+	switch word {
+	case teamstore.FromManager:
+		return manager
+	case teamstore.ToRoom:
+		return teamstore.ToEveryone
+	case teamstore.FromSystem:
+		if m, ok := t.Member(member); ok && m.Handle != "" {
+			return m.Handle
+		}
+		return "codeaf"
+	}
+	return word
+}
+
+// crewTraffic says a crew's new log lines and acts on its manager's starts and
+// stops. The first look at a crew only finds where its log ends.
+func (b *appBackend) crewTraffic(run *appCrewRun, read appCrewRead, t teamstore.Team) {
+	profile := b.crewProfile()
+	var cursor string
+	known := false
+	run.locked(func() { cursor, known = run.cursors[t.ID] })
+	if !known {
+		tail, _, err := run.watch.Traffic(profile, t.ID, "", 1)
+		if err != nil {
+			return
+		}
+		cursor = appTrafficStart
+		if len(tail) > 0 {
+			cursor = tail[len(tail)-1].ID
+		}
+		run.locked(func() { run.cursors[t.ID] = cursor })
+		return
+	}
+	entries, _, err := run.watch.Traffic(profile, t.ID, cursor, appCrewLogPage)
+	if err != nil || len(entries) == 0 {
+		return
+	}
+	run.locked(func() { run.cursors[t.ID] = entries[len(entries)-1].ID })
+	for _, e := range entries {
+		b.emit.Emit(appwire.EventCrewLog, appwire.CrewLogEvent{Line: appLogLine(t, e)})
+		b.crewAct(run, read, t, e)
+	}
+}
+
+// crewAct performs a manager's start or stop once, when the app holds the
+// manager.
+func (b *appBackend) crewAct(run *appCrewRun, read appCrewRead, t teamstore.Team, e teamstore.Entry) {
+	if e.Kind != teamstore.KindStop && e.Kind != teamstore.KindStart {
+		return
+	}
+	done := t.ID + "/" + e.ID
+	acted := false
+	run.locked(func() {
+		acted = run.acted[done]
+		run.acted[done] = true
+	})
+	if acted {
+		return
+	}
+	switch e.Kind {
+	case teamstore.KindStop:
+		key := e.Member
+		if key == "" || !t.Holds(key) {
+			if m, ok := t.ByHandle(e.To); ok {
+				key = m.Key
+			}
+		}
+		m, ok := t.Member(key)
+		if !ok || m.Independent {
+			return
+		}
+		if home, ok := read.file.Home(key); ok && home.Team != t.ID {
+			return
+		}
+		agent := appMemberAgent(m)
+		if b.isHeld(agent) {
+			_ = b.Stop(agent)
+		}
+	case teamstore.KindStart:
+		manager, ok := t.Member(t.Manager)
+		if !ok || !b.isHeld(appMemberAgent(manager)) {
+			return
+		}
+		// ANOTHER WINDOW HOLDING THE SAME MANAGER — a terminal the app joined —
+		// CARRIES IT OUT INSTEAD when it claims the line first (internal/teams'
+		// startclaim.go). A member under the handle that joined after the line
+		// is a start by a window from before the claim.
+		if m, ok := t.ByHandle(e.To); ok && !m.JoinedAt.Before(e.At) {
+			return
+		}
+		claimed := false
+		if err := teamstore.UpdateOpen(b.crewProfile(), func(f *teamstore.File) error {
+			claimed = f.ClaimStart(t.ID, e.ID)
+			return nil
+		}); err != nil || !claimed {
+			return
+		}
+		guard.Go("app/crew-start", func() { b.crewStart(t, manager, e, appMemberAgent(manager)) })
+	}
+}
+
+// isHeld says the app holds the agent's conversation.
+func (b *appBackend) isHeld(agent string) bool {
+	held := false
+	b.locked(func() { held = b.agents[agent] != nil && b.agents[agent].live != nil })
+	return held
+}
+
+// crewMemberOpen holds a started member's conversation and gives it the
+// approval posture its start named, or else its manager's.
+func (b *appBackend) crewMemberOpen(manager teamstore.Member, handle, agent, posture string) {
+	a, live, err := b.heldLive(agent)
+	if err != nil {
+		if !b.isClosing() {
+			b.crewNote(manager, "could not start @"+handle+": "+err.Error())
+		}
+		return
+	}
+	// A manager the person closed since is not opened to read its posture:
+	// its saved word is read instead.
+	if posture == "" {
+		_, mlive, err := b.keptLive(appMemberAgent(manager))
+		switch {
+		case err == nil:
+			if door, ok := mlive.conn.Conv.(appPostureDoor); ok {
+				posture = door.ResolvedApprovalPosture()
+			}
+		case errors.Is(err, errAppKeptClosed):
+			posture = b.savedPosture(manager)
+		}
+	}
+	if posture != "" {
+		if door, ok := live.conn.Conv.(appPostureDoor); ok && door.SetApprovalPosture(posture) == nil {
+			// The view the open said was the posture before this one.
+			var transcript string
+			b.locked(func() { transcript = a.transcript })
+			approval := appApprovalOf(live.conn.Conv, transcript)
+			var view appwire.Agent
+			said := false
+			b.locked(func() {
+				a.view.Approval = approval
+				view, said = a.view, a.saidLocked()
+			})
+			if said {
+				b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
+			}
+		}
+	}
+}
+
+// savedPosture is the posture a crew member that is not held stands at, read
+// without opening it: its own stored word, else the one its view last said.
+func (b *appBackend) savedPosture(member teamstore.Member) string {
+	transcript := member.File
+	if strings.TrimSpace(transcript) == "" {
+		transcript = member.Key
+	}
+	if stored := appStoredApproval(transcript); stored != "" && stored != session.PostureAuto {
+		return stored
+	}
+	var last *appwire.AgentApproval
+	b.locked(func() {
+		if a := b.agents[appMemberAgent(member)]; a != nil {
+			last = a.view.Approval
+		}
+	})
+	if last != nil {
+		return last.Posture
+	}
+	return ""
+}
+
+// appPostureDoor is a conversation whose approval posture can be read or set.
+type appPostureDoor interface {
+	ResolvedApprovalPosture() string
+	SetApprovalPosture(string) error
+}
+
+// crewStart is a manager's start: a new conversation in the crew's folder,
+// added under the manager's handle for it; the conversation reads its brief
+// off the start line itself and takes its first turn. createdBy is who asked
+// for it: the manager's agent for its own start line, the person for a
+// proposal they accepted.
+func (b *appBackend) crewStart(t teamstore.Team, manager teamstore.Member, e teamstore.Entry, createdBy string) error {
+	handle := strings.TrimSpace(e.To)
+	var pending appPendingStart
+	_ = b.crewLayer().read(func(f *appCrewLayerFile) { pending = f.Pending[appPendingKey(t.ID, handle)] })
+	where := appCrewWhere(t)
+	model := e.Model
+	if model == "" {
+		model = pending.Model
+	}
+	agent, err := b.CreateAgent(appwire.CreateAsk{Workspace: where, Model: model, CreatedBy: createdBy})
+	if err != nil {
+		b.crewNote(manager, "could not start @"+handle+": "+err.Error())
+		return err
+	}
+	a, err := b.find(agent.ID)
+	if err != nil {
+		b.crewNote(manager, "could not start @"+handle+": "+err.Error())
+		return err
+	}
+	// A STARTED MEMBER IS NAMED BY ITS BRIEF, the way a conversation a person
+	// opens is named by its first message: the brief is its first message. The
+	// conversation names its own record the same way when its turn reads the
+	// brief; this is the name the list shows from the first moment. And it is
+	// not blank (appblank.go): its brief is on the crew's log for it to read.
+	name := session.FirstMessageName(e.Text)
+	b.locked(func() {
+		a.briefed = true
+		if name != "" && strings.TrimSpace(a.view.Title) == "" {
+			a.view.Title = name
+		}
+	})
+	if name != "" {
+		b.sayAgent(a)
+	}
+	// THE START DOES NOT WAIT FOR THE MEMBER'S CONVERSATION TO OPEN. Opening
+	// one takes as long as its workspace takes to settle, many seconds on a
+	// large folder, and a crew made from a proposal starts every helper in
+	// turn while the app waits on crews.create. The membership needs only the
+	// conversation's file, which agents.create has already made; the open,
+	// and the manager's approval posture it inherits, follow in the background.
+	posture := strings.TrimSpace(e.Approval)
+	guard.Go("app/crew-member-open", func() { b.crewMemberOpen(manager, handle, agent.ID, posture) })
+	member, err := b.agentMember(agent.ID)
+	if err != nil {
+		b.crewNote(manager, "could not start @"+handle+": "+err.Error())
+		return err
+	}
+	// A MEMBER A MANAGER STARTED HAS NO JOINING MOMENT: its brief is the start
+	// line written before it existed, and a joining moment after that line
+	// would hide the brief from it (the session reads nothing older than a
+	// member's joining). The terminal's start writes none either.
+	member.Handle, member.JoinedAt, member.Started = handle, time.Time{}, true
+	member.ReportsTo = pending.ReportsTo
+	// THE MEMBERSHIP KEEPS THE ID OF THE LINE THAT MADE IT, so its brief is
+	// that line by identity and survives a rename or a handle reused later.
+	// Only a manager's start of this crew is recorded; the terminal's start
+	// writes the same field (internal/tui3/teamtraffic.go).
+	if e.Kind == teamstore.KindStart && e.From == teamstore.FromManager && (e.Team == "" || e.Team == t.ID) {
+		member.StartEntry, member.StartID = e.ID, e.ID
+	}
+	err = teamstore.UpdateOpen(b.crewProfile(), func(f *teamstore.File) error {
+		if err := f.AddMember(t.ID, member); err != nil {
+			return err
+		}
+		return f.SetHandle(t.ID, member.Key, handle)
+	})
+	if err != nil {
+		b.crewNote(manager, "@"+handle+" opened but did not join "+t.Name+": "+err.Error())
+		return err
+	}
+	if pending.Role != "" || pending.ReportsTo != "" {
+		return b.crewLayer().write(func(f *appCrewLayerFile) error {
+			f.member(t.ID, agent.ID).Role = pending.Role
+			delete(f.Pending, appPendingKey(t.ID, handle))
+			b.roleCopyLocked(f, pending.Role)
+			return nil
+		})
+	}
+	return nil
+}
+
+// roleCopyLocked is nothing to do: a role's copies are read from the members
+// that carry it. It is named so the place a copy is made reads as one.
+func (b *appBackend) roleCopyLocked(*appCrewLayerFile, string) {}
+
+// crewNote says something beside the manager, in its conversation's own lane.
+func (b *appBackend) crewNote(manager teamstore.Member, text string) {
+	agent := appMemberAgent(manager)
+	b.emit.Emit(appwire.EventEntryAdded, appwire.EntryAdded{Entry: appwire.Entry{
+		ID: "crew-note-" + strconv.FormatInt(b.now().UnixNano(), 36), Agent: agent, Kind: appwire.EntryNotice,
+		At: b.now(), Text: redact.Secrets(text), Quiet: true,
+	}})
+}
+
+// appCrewWhere is the folder a crew's new members open in: the manager's, else
+// the one every member shares.
+func appCrewWhere(t teamstore.Team) string {
+	if m, ok := t.Member(t.Manager); ok && strings.TrimSpace(m.Where) != "" {
+		return m.Where
+	}
+	where := ""
+	for _, m := range t.Members {
+		w := strings.TrimSpace(m.Where)
+		if w == "" {
+			continue
+		}
+		if where == "" {
+			where = filepath.Clean(w)
+		} else if filepath.Clean(w) != where {
+			return ""
+		}
+	}
+	return where
+}
+
+// agentMember is an agent as a team member: its conversation key and file,
+// its folder and title.
+func (b *appBackend) agentMember(agent string) (teamstore.Member, error) {
+	a, err := b.find(agent)
+	if err != nil {
+		return teamstore.Member{}, err
+	}
+	var transcript, where, title string
+	b.locked(func() { transcript, where, title = a.transcript, a.view.Workspace, a.view.Title })
+	if strings.TrimSpace(transcript) == "" {
+		return teamstore.Member{}, appwire.Errorf(appwire.CodeNotFound, "the conversation of %s has no file yet", agent)
+	}
+	key := filepath.Clean(transcript)
+	if real, err := filepath.EvalSymlinks(key); err == nil {
+		key = filepath.Clean(real)
+	}
+	return teamstore.Member{Key: key, File: transcript, Where: where, Word: title, JoinedAt: b.now()}, nil
+}
+
+// holdMembers opens only the members with work selected by neededMembers,
+// one at a time. A member that cannot be opened is said, once, and tried
+// again later (appcrewhold.go): a member nobody holds is a member whose
+// questions reach nobody. A factory step whose journal is locked is quiet instead.
+func (b *appBackend) holdMembers(run *appCrewRun, held map[string][]string) {
+	now := b.now()
+	for agent := range held {
+		if b.isHeld(agent) {
+			b.holdRecovered(run, agent)
+			continue
+		}
+		// AN AGENT THE PERSON CLOSED IS NOT KEPT: holding it would take it out
+		// of Closed, and its row would come back the moment it left.
+		if b.tidied(agent) {
+			continue
+		}
+		start := false
+		run.locked(func() {
+			if !run.opening[agent] && run.holdDueLocked(agent, now) {
+				run.opening[agent], start = true, true
+			}
+		})
+		if !start {
+			continue
+		}
+		guard.Go("app/crew-hold", func() {
+			defer run.locked(func() { delete(run.opening, agent) })
+			a, err := b.find(agent)
+			if err != nil {
+				// A conversation that is not on this machine raises nothing
+				// here to lose: it waits like one that failed, and is not said.
+				b.holdFailed(run, agent, err, true)
+				return
+			}
+			view, opened, err := b.keepOpen(a)
+			if errors.Is(err, errAppKeptClosed) {
+				return
+			}
+			if err != nil {
+				// A factory step whose journal is locked is not said as another
+				// window. The usual holder is this process's runner. The next
+				// try holds the step once that journal is free.
+				quiet := appHoldIsWindowLock(err) && b.factoryStageMember(agent)
+				b.holdFailed(run, agent, err, quiet)
+				return
+			}
+			b.holdRecovered(run, agent)
+			// ONE agent.changed FOR AN AGENT THIS OPENED, as heldLive says it:
+			// a list the app read while the agent was closed is otherwise
+			// never told. A conversation already held opens nothing.
+			if opened {
+				b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
+			}
+		})
+	}
+}
+
+// crewKeeps says an open crew keeps this agent held.
+func (b *appBackend) crewKeeps(agent string) bool {
+	var run *appCrewRun
+	b.locked(func() { run = b.crewRun })
+	if run == nil {
+		return false
+	}
+	keeps := false
+	run.locked(func() { keeps = len(run.held[agent]) > 0 })
+	return keeps
+}
+
+// crewsOf is the open crews an agent is a member of.
+func (b *appBackend) crewsOf(agent string) []string {
+	var run *appCrewRun
+	b.locked(func() { run = b.crewRun })
+	if run == nil {
+		return nil
+	}
+	var out []string
+	run.locked(func() { out = append(out, run.held[agent]...) })
+	sort.Strings(out)
+	return out
+}
+
+// ── decisions ───────────────────────────────────────────────────────────────
+
+// appDecisionOf is a packet as a decision, its path named by the crews it
+// climbed through.
+// appPacketTeams is every crew packets name: where each was raised, where it
+// waits, and every crew it climbed through, which is all a decision is
+// named by ([appDecisionOf]).
+func appPacketTeams(profile string, packets ...teamstore.Packet) (*teamstore.File, error) {
+	var ids []string
+	for _, p := range packets {
+		ids = append(ids, p.Origin, p.Team)
+		for _, hop := range p.Trail {
+			ids = append(ids, hop.To)
+		}
+	}
+	return teamstore.LoadTeams(profile, ids...)
+}
+
+func appDecisionOf(f *teamstore.File, p teamstore.Packet) appwire.Decision {
+	name := func(id string) string {
+		if id == teamstore.Person {
+			return "you"
+		}
+		if t, ok := f.Team(id); ok {
+			return t.Name
+		}
+		return id
+	}
+	d := appwire.Decision{
+		ID: p.ID, Crew: p.Origin, WaitsOn: p.Team, Kind: p.Kind, RaisedBy: p.RaisedBy, Question: redact.Secrets(p.Question),
+		State: p.State, DecidedBy: p.DecidedBy, Decision: p.Decision, Reason: p.Reason, Raised: p.Raised, At: p.At,
+	}
+	for _, party := range p.Parties {
+		dp := appwire.DecisionParty{Handle: party.Handle, Crew: party.Team, Context: redact.Secrets(party.Context)}
+		if party.Key != "" {
+			dp.Agent = appAgentID(party.Key)
+		}
+		d.Parties = append(d.Parties, dp)
+	}
+	for _, o := range p.Options {
+		d.Options = append(d.Options, appwire.DecisionOption{ID: o.ID, Label: o.Label, Consequence: o.Consequence})
+	}
+	if p.Recommendation != nil {
+		d.Recommendation = &appwire.DecisionPick{Option: p.Recommendation.Option, Reason: p.Recommendation.Reason}
+	}
+	if r := p.Report; r != nil {
+		d.Report = &appwire.CrewReport{Done: r.Done, Left: r.Left, Files: r.Files, SpendUSD: r.SpendUSD, Incomplete: r.Incomplete}
+	}
+	if c := p.Cap; c != nil {
+		d.Cap = &appwire.CrewCap{Crew: c.Team, Day: c.Day, CapUSD: c.CapUSD, SpentUSD: c.SpentUSD, RaiseTo: c.RaiseTo}
+	}
+	d.Path = []string{name(p.Origin)}
+	for _, hop := range p.Trail {
+		d.Trail = append(d.Trail, appwire.DecisionHop{From: hop.From, To: hop.To, By: hop.By, Reason: hop.Reason, At: hop.At})
+		d.Path = append(d.Path, name(hop.To))
+	}
+	if d.Path[len(d.Path)-1] != name(p.Team) {
+		d.Path = append(d.Path, name(p.Team))
+	}
+	return d
+}
+
+// decisionAgent is the agent a decision on the person is asked on: the
+// manager of the crew that brought it up, else the crew it was raised in.
+func decisionAgent(f *teamstore.File, p teamstore.Packet) string {
+	from := p.Origin
+	if n := len(p.Trail); n > 0 {
+		from = p.Trail[n-1].From
+	}
+	for _, id := range []string{from, p.Origin} {
+		if t, ok := f.Team(id); ok {
+			if m, ok := t.Member(t.Manager); ok {
+				return appMemberAgent(m)
+			}
+			if len(t.Members) > 0 {
+				return appMemberAgent(t.Members[0])
+			}
+		}
+	}
+	return ""
+}
+
+// appDecisionAsk is a decision on the person as an ask.
+func appDecisionAsk(f *teamstore.File, p teamstore.Packet) appwire.Ask {
+	d := appDecisionOf(f, p)
+	ask := appwire.Ask{
+		ID: appCrewAskPrefix + p.ID, Agent: decisionAgent(f, p), Kind: appwire.AskQuestion, Subkind: appwire.SubkindCrewDecision,
+		Title: d.Question, Path: d.Path, SayWhy: true, DecisionKind: d.Kind,
+		Subject: &appwire.AskSubject{Kind: appwire.SubjectCrewDecision, Ref: p.ID},
+	}
+	if d.Recommendation != nil {
+		ask.Reason = d.Recommendation.Reason
+	}
+	for _, o := range d.Options {
+		ask.Options = append(ask.Options, appwire.AskOption{ID: o.ID, Label: o.Label})
+		choice := appwire.AskChoice{ID: o.ID, Label: o.Label, Detail: o.Consequence}
+		if d.Recommendation != nil && d.Recommendation.Option == o.ID {
+			choice.Suggested = true
+		}
+		ask.Choices = append(ask.Choices, choice)
+	}
+	return ask
+}
+
+// crewPackets says each packet that began or stopped waiting on the person,
+// as a decision and as an ask.
+func (b *appBackend) crewPackets(run *appCrewRun, read appCrewRead, first bool) {
+	now := map[string]teamstore.Packet{}
+	for _, p := range read.waiting {
+		now[p.ID] = p
+	}
+	var opened, gone []teamstore.Packet
+	run.locked(func() {
+		for id, p := range now {
+			if _, had := run.packets[id]; !had {
+				opened = append(opened, p)
+			}
+		}
+		for id, p := range run.packets {
+			if _, still := now[id]; !still {
+				gone = append(gone, p)
+			}
+		}
+		run.packets = now
+	})
+	// A packet names crews by id, closed ones too: those are read by id.
+	names, err := appPacketTeams(b.crewProfile(), append(append([]teamstore.Packet(nil), opened...), gone...)...)
+	if err != nil {
+		names = read.file
+	}
+	for _, p := range opened {
+		ask := appDecisionAsk(names, p)
+		run.locked(func() { run.asks[ask.ID] = ask })
+		if !first {
+			b.emit.Emit(appwire.EventDecisionOpened, appwire.DecisionEvent{Decision: appDecisionOf(names, p)})
+		}
+		b.emit.Emit(appwire.EventAskOpened, appwire.AskOpened{Ask: ask})
+	}
+	for _, p := range gone {
+		id := appCrewAskPrefix + p.ID
+		var ask appwire.Ask
+		run.locked(func() {
+			ask = run.asks[id]
+			delete(run.asks, id)
+		})
+		decided, err := teamstore.PacketByID(b.crewProfile(), p.ID)
+		if err != nil {
+			decided = p
+		}
+		b.emit.Emit(appwire.EventDecisionChanged, appwire.DecisionEvent{Decision: appDecisionOf(names, decided)})
+		b.closeCrewAsk(ask, decided.Decision, decided.DecidedBy)
+	}
+}
+
+// closeCrewAsk closes a crew's ask with its receipt, which the Inbox and the
+// dock read.
+func (b *appBackend) closeCrewAsk(ask appwire.Ask, option, by string) {
+	if ask.ID == "" || ask.Agent == "" {
+		return
+	}
+	at := b.now()
+	who := "you"
+	if by != "" && by != teamstore.Person {
+		who = "@" + by
+	}
+	b.emit.Emit(appwire.EventAskClosed, appwire.AskClosed{Agent: ask.Agent, ID: ask.ID, By: appwire.ClosedByApp, Option: option, At: at})
+	b.emit.Emit(appwire.EventEntryAdded, appwire.EntryAdded{Entry: appwire.Entry{
+		ID: "r" + ask.ID, Agent: ask.Agent, Kind: appwire.EntryReceipt, At: at, Text: "Decided · " + who + " · " + at.Format("15:04"),
+	}})
+}
+
+// crewAsksOf is the crew asks waiting on an agent.
+func (b *appBackend) crewAsksOf(agent string) []appwire.Ask {
+	var run *appCrewRun
+	b.locked(func() { run = b.crewRun })
+	if run == nil {
+		return nil
+	}
+	var out []appwire.Ask
+	run.locked(func() {
+		for _, ask := range run.asks {
+			if ask.Agent == agent {
+				out = append(out, ask)
+			}
+		}
+	})
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
+}
+
+// answerCrewAsk answers a crew's ask: a decision is decided through the store,
+// a proposal made into a crew or let go.
+func (b *appBackend) answerCrewAsk(agent, id, option, text, why string) (bool, error) {
+	switch {
+	case strings.HasPrefix(id, appCrewAskPrefix):
+		_, err := b.CrewDecide(strings.TrimPrefix(id, appCrewAskPrefix), option, text, why)
+		return true, err
+	case strings.HasPrefix(id, appProposalAskPrefix):
+		return true, b.answerProposal(agent, strings.TrimPrefix(id, appProposalAskPrefix), option)
+	}
+	return false, nil
+}
+
+// ── the methods ─────────────────────────────────────────────────────────────
+
+// CrewList is every open crew, or every closed one that is not archived.
+func (b *appBackend) CrewList(closed bool) ([]appwire.Crew, error) {
+	b.crews()
+	read, err := b.crewRead()
+	if err != nil {
+		return nil, appEngineError(err)
+	}
+	teams := read.file.Open()
+	if closed {
+		// The person's closed crews, with the crews above them; a room its
+		// factory job's end closed is read where its job names it, never
+		// listed.
+		if read.file, err = teamstore.LoadClosedCrews(b.crewProfile()); err != nil {
+			return nil, appEngineError(err)
+		}
+		teams = nil
+		for _, t := range read.file.ClosedTeams() {
+			if !t.Archived() && !t.JobEnded {
+				teams = append(teams, t)
+			}
+		}
+	}
+	out := make([]appwire.Crew, 0, len(teams))
+	for _, t := range teams {
+		out = append(out, b.crewView(read, t))
+	}
+	return out, nil
+}
+
+// CrewListArchived is every crew put away, the newest first.
+func (b *appBackend) CrewListArchived() ([]appwire.Crew, error) {
+	b.crews()
+	read, err := b.crewRead()
+	if err != nil {
+		return nil, appEngineError(err)
+	}
+	if read.file, err = teamstore.LoadClosedCrews(b.crewProfile()); err != nil {
+		return nil, appEngineError(err)
+	}
+	// Only a person archives a crew, so every one is theirs to find.
+	teams := read.file.ArchivedTeams()
+	out := make([]appwire.Crew, 0, len(teams))
+	for _, t := range teams {
+		out = append(out, b.crewView(read, t))
+	}
+	return out, nil
+}
+
+// ListCrews is the open crews.
+func (b *appBackend) ListCrews() ([]appwire.Crew, error) { return b.CrewList(false) }
+
+// CrewGet is one crew.
+func (b *appBackend) CrewGet(id string) (appwire.Crew, error) {
+	b.crews()
+	read, err := b.crewRead()
+	if err != nil {
+		return appwire.Crew{}, appEngineError(err)
+	}
+	t, ok := read.file.Team(id)
+	if !ok {
+		// Not open: read by id, with what its members' rows are drawn from.
+		if read.file, err = teamstore.LoadWithHomes(b.crewProfile(), id); err != nil {
+			return appwire.Crew{}, appEngineError(err)
+		}
+		if t, ok = read.file.Team(id); !ok {
+			return appwire.Crew{}, appwire.Errorf(appwire.CodeNotFound, "there is no crew %s", id)
+		}
+	}
+	return b.crewView(read, t), nil
+}
+
+// crewEdit is one write to the teams store, its refusal in the app's words.
+func (b *appBackend) crewEdit(fn func(*teamstore.File) error) error {
+	if err := teamstore.Update(b.crewProfile(), fn); err != nil {
+		var wire *appwire.Error
+		if errors.As(err, &wire) {
+			return wire
+		}
+		return appwire.Errorf(appwire.CodeBadParams, "%s", strings.TrimPrefix(err.Error(), "teams: "))
+	}
+	return nil
+}
+
+// CrewCreate makes a crew from agents, or from an agent's proposal.
+func (b *appBackend) CrewCreate(ask appwire.CrewCreate) (appwire.Crew, error) {
+	if ask.From == "proposal" {
+		return b.createFromProposal(ask)
+	}
+	name := strings.TrimSpace(ask.Name)
+	if name == "" {
+		return appwire.Crew{}, appwire.Errorf(appwire.CodeBadParams, "give the crew a name")
+	}
+	if len(ask.Agents) == 0 {
+		return appwire.Crew{}, appwire.Errorf(appwire.CodeBadParams, "a crew needs at least one agent")
+	}
+	members := make([]teamstore.Member, 0, len(ask.Agents))
+	managerKey := ""
+	for _, agent := range ask.Agents {
+		m, err := b.agentMember(agent)
+		if err != nil {
+			return appwire.Crew{}, err
+		}
+		if agent == ask.Manager {
+			managerKey = m.Key
+		}
+		members = append(members, m)
+	}
+	if ask.Manager != "" && managerKey == "" {
+		return appwire.Crew{}, appwire.Errorf(appwire.CodeBadParams, "the manager must be one of the crew's agents")
+	}
+	hue, err := b.askedHue(ask.Hue, ask.Tint)
+	if err != nil {
+		return appwire.Crew{}, err
+	}
+	id, err := b.newTeam(name, ask.Parent, members, managerKey, hue, ask.Settings, ask.CapUSDDay)
+	if err != nil {
+		return appwire.Crew{}, err
+	}
+	b.crewExtraOnCreate(id, ask.Manager, ask.Goal, ask.EndsAt)
+	b.crewReceipt(ask.Manager, id, name)
+	return b.CrewGet(id)
+}
+
+// askedHue is the hue a create or update asked for: a hue, or a named tint.
+func (b *appBackend) askedHue(hue *float64, tint string) (*float64, error) {
+	if hue != nil {
+		h := math.Mod(math.Mod(*hue, 360)+360, 360)
+		return &h, nil
+	}
+	if strings.TrimSpace(tint) != "" {
+		h, ok := appTintHue(tint)
+		if !ok {
+			return nil, appwire.Errorf(appwire.CodeBadParams, "a tint is rose, sand, sage, tide or iris")
+		}
+		return &h, nil
+	}
+	return nil, nil
+}
+
+// newTeam writes a new team, its name unique among open teams, under its
+// parent when it has one and the parent may nest.
+func (b *appBackend) newTeam(name, parent string, members []teamstore.Member, managerKey string, hue *float64, settings *appwire.CrewSettings, cap *float64) (string, error) {
+	id := teamstore.NewID()
+	return id, b.newTeamAs(id, name, parent, members, managerKey, hue, settings, cap)
+}
+
+// newTeamAs is [appBackend.newTeam] under an id the caller chose, so a caller
+// that has to know whether a failed write committed anyway can look for it.
+func (b *appBackend) newTeamAs(id, name, parent string, members []teamstore.Member, managerKey string, hue *float64, settings *appwire.CrewSettings, cap *float64) error {
+	defaults := teamstore.DefaultsAt(b.crewProfile())
+	return b.crewEdit(func(f *teamstore.File) error {
+		for _, t := range f.Open() {
+			if strings.EqualFold(strings.TrimSpace(t.Name), name) {
+				return appwire.Errorf(appwire.CodeBadParams, "a crew already uses the name %s", name)
+			}
+		}
+		if parent != "" && !f.CanNest(parent, defaults) {
+			return appwire.Errorf(appwire.CodeBadParams, "a crew cannot go under that one: it is closed or as deep as crews may go")
+		}
+		var used []teamstore.HueSpec
+		for _, t := range f.Teams {
+			if t.Hued() {
+				used = append(used, t.HueSpec())
+			}
+		}
+		team := teamstore.Team{ID: id, Name: name, Made: b.now(), Founder: managerKey, CreatedBy: appwire.CreatedByPerson}
+		spec := teamstore.NextHue(used, nil)
+		if hue != nil {
+			spec.Hue = *hue
+		}
+		team.SetHue(spec)
+		f.Teams = append(f.Teams, team)
+		for _, m := range members {
+			if err := f.AddMember(id, m); err != nil {
+				return err
+			}
+		}
+		if managerKey != "" {
+			if err := f.SetManager(id, managerKey); err != nil {
+				return err
+			}
+		}
+		if parent != "" {
+			if err := f.SetParent(id, parent); err != nil {
+				return err
+			}
+		}
+		if settings != nil || cap != nil {
+			return f.SetSettings(id, func(s *teamstore.Settings) {
+				if settings != nil {
+					appApplySettings(s, *settings)
+				}
+				if cap != nil {
+					v := *cap
+					s.CapUSDDay = &v
+				}
+			})
+		}
+		return nil
+	})
+}
+
+// appApplySettings writes the settings that were given.
+func appApplySettings(s *teamstore.Settings, given appwire.CrewSettings) {
+	if given.QuestionsUp != nil {
+		s.QuestionsUp = given.QuestionsUp
+	}
+	if given.CapUSDDay != nil {
+		s.CapUSDDay = given.CapUSDDay
+	}
+	if given.DepthLimit != nil {
+		s.DepthLimit = given.DepthLimit
+	}
+	if given.SubShare != nil {
+		s.SubShare = given.SubShare
+	}
+	if given.Wake != nil {
+		s.Wake = given.Wake
+	}
+}
+
+// crewExtraOnCreate keeps a new crew's goal, end date and the manager's tasks
+// as they stood.
+func (b *appBackend) crewExtraOnCreate(id, manager, goal string, ends *time.Time, origin ...appStartClaim) {
+	var history []string
+	if manager != "" {
+		if tasks, err := b.ListTasks(manager); err == nil {
+			for _, task := range tasks {
+				history = append(history, task.ID)
+			}
+		}
+	}
+	if strings.TrimSpace(goal) == "" && ends == nil && len(history) == 0 {
+		return
+	}
+	_ = b.crewLayer().write(func(f *appCrewLayerFile) error {
+		extra := f.crew(id)
+		extra.Goal, extra.EndsAt, extra.History = strings.TrimSpace(goal), ends, history
+		if len(origin) > 0 {
+			extra.GoalAgent, extra.GoalClientID = origin[0].Manager, origin[0].ClientID
+		}
+		if len(history) > 0 {
+			extra.HistoryOwner = manager
+		}
+		return nil
+	})
+}
+
+// crewHistoryTasks uses the owner kept at creation, or the immutable owner
+// embedded in a canonical legacy task ID. A changed/current manager is never a
+// fallback. Very old local-only numbers require the team's original founder.
+func crewHistoryTasks(extra *appCrewExtra, founder string) []appwire.CrewHistoryTask {
+	fallback := extra.HistoryOwner
+	if fallback == "" {
+		fallback = founder
+	}
+	var out []appwire.CrewHistoryTask
+	for _, id := range extra.History {
+		owner := fallback
+		if original, local, ok := appSplitID(id); ok {
+			if n, err := strconv.ParseUint(local, 10, 64); err == nil && n > 0 {
+				owner = original
+			}
+		}
+		if owner == "" {
+			continue
+		}
+		out = append(out, appwire.CrewHistoryTask{Task: appIndexTaskID(owner, id), Owner: owner})
+	}
+	return out
+}
+
+// crewReceipt says in the founding manager's conversation that the crew was
+// made. It says the fact the teams file keeps ([teamstore.Team.Founder], Made
+// and Name) and no words, so a restart reads the same entry back from
+// [appBackend.crewFormedEntries] under the same id.
+func (b *appBackend) crewReceipt(manager, id, name string) {
+	if manager == "" {
+		return
+	}
+	for _, entry := range b.crewFormedEntries(manager) {
+		if entry.ID == appCrewFormedID(id) {
+			b.emit.Emit(appwire.EventEntryAdded, appwire.EntryAdded{Entry: entry})
+			return
+		}
+	}
+}
+
+// appCrewFormedID is the entry id of a crew's formation fact.
+func appCrewFormedID(crew string) string { return "rcrew:" + crew }
+
+// crewFormedEntries is the crews an agent's conversation founded, each as the
+// formation entry the conversation carried when it was made, oldest first.
+// One read of the teams file.
+func (b *appBackend) crewFormedEntries(agent string) []appwire.Entry {
+	file, err := teamstore.LoadFoundedBy(b.crewProfile(), agent)
+	if err != nil {
+		return nil
+	}
+	var out []appwire.Entry
+	for _, t := range file.Teams {
+		if t.Founder == "" || t.Made.IsZero() {
+			continue
+		}
+		founder := appAgentID(t.Founder)
+		for _, m := range append(append([]teamstore.Member{}, t.Members...), t.FormerMembers...) {
+			if m.Key == t.Founder {
+				founder = appMemberAgent(m)
+				break
+			}
+		}
+		if founder != agent {
+			continue
+		}
+		out = append(out, appwire.Entry{
+			ID: appCrewFormedID(t.ID), Agent: agent, Kind: appwire.EntryReceipt, At: t.Made,
+			Op: &appwire.EntryOp{Kind: appwire.OpCrewFormed, Crew: t.ID, Name: t.Name},
+		})
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].At.Before(out[j].At) })
+	return out
+}
+
+// appWithFormed puts formation entries among a transcript's entries by the
+// clock: before the first entry whose own instant is later. unknown is the
+// instant an entry carries when the record never said, which places nothing.
+func appWithFormed(all, formed []appwire.Entry, unknown time.Time, sources ...*[]int) []appwire.Entry {
+	for _, f := range formed {
+		at, seen := len(all), false
+		for i, e := range all {
+			if e.ID == f.ID {
+				seen = true
+				break
+			}
+			if at == len(all) && !e.At.Equal(unknown) && e.At.After(f.At) {
+				at = i
+			}
+		}
+		if seen {
+			continue
+		}
+		all = append(all, appwire.Entry{})
+		copy(all[at+1:], all[at:])
+		all[at] = f
+		if len(sources) > 0 && sources[0] != nil {
+			from := *sources[0]
+			from = append(from, -1)
+			copy(from[at+1:], from[at:])
+			from[at] = -1 // A formation fact has no transcript item to dress.
+			*sources[0] = from
+		}
+	}
+	return all
+}
+
+// CrewUpdate renames, recolours or resets a crew, and keeps its goal and end
+// date in the app layer.
+func (b *appBackend) CrewUpdate(ask appwire.CrewUpdate) (appwire.Crew, error) {
+	tint := ""
+	if ask.Tint != nil {
+		tint = *ask.Tint
+	}
+	hue, err := b.askedHue(ask.Hue, tint)
+	if err != nil {
+		return appwire.Crew{}, err
+	}
+	clearHue := false
+	for _, key := range ask.Clear {
+		clearHue = clearHue || key == "hue"
+	}
+	if clearHue && (ask.Hue != nil || strings.TrimSpace(tint) != "") {
+		return appwire.Crew{}, appwire.Errorf(appwire.CodeBadParams, "a crew cannot be given a colour and have it cleared in one update")
+	}
+	err = b.crewEdit(func(f *teamstore.File) error {
+		i := teamstore.Index(f.Teams, ask.ID)
+		if i < 0 {
+			return appwire.Errorf(appwire.CodeNotFound, "there is no crew %s", ask.ID)
+		}
+		if ask.Name != nil {
+			name := strings.TrimSpace(*ask.Name)
+			if name == "" {
+				return appwire.Errorf(appwire.CodeBadParams, "give the crew a name")
+			}
+			for _, t := range f.Open() {
+				if t.ID != ask.ID && strings.EqualFold(strings.TrimSpace(t.Name), name) {
+					return appwire.Errorf(appwire.CodeBadParams, "a crew already uses the name %s", name)
+				}
+			}
+			f.Teams[i].Name = name
+		}
+		if hue != nil {
+			f.Teams[i].SetHue(teamstore.HueSpec{Hue: *hue, Tier: f.Teams[i].Tier})
+		}
+		if clearHue {
+			f.Teams[i].ClearHue()
+		}
+		if ask.Settings != nil || len(ask.Clear) > 0 {
+			return f.SetSettings(ask.ID, func(s *teamstore.Settings) {
+				if ask.Settings != nil {
+					appApplySettings(s, *ask.Settings)
+				}
+				for _, key := range ask.Clear {
+					switch key {
+					case "questions_up":
+						s.QuestionsUp = nil
+					case "cap_usd_day":
+						s.CapUSDDay = nil
+					case "depth_limit":
+						s.DepthLimit = nil
+					case "sub_share":
+						s.SubShare = nil
+					case "wake":
+						s.Wake = nil
+					}
+				}
+			})
+		}
+		return nil
+	})
+	if err != nil {
+		return appwire.Crew{}, err
+	}
+	if ask.Goal != nil || ask.EndsAt != nil {
+		err := b.crewLayer().write(func(f *appCrewLayerFile) error {
+			extra := f.crew(ask.ID)
+			if ask.Goal != nil {
+				extra.Goal = strings.TrimSpace(*ask.Goal)
+				extra.GoalAgent, extra.GoalClientID = "", ""
+			}
+			if ask.EndsAt != nil {
+				ends := *ask.EndsAt
+				extra.EndsAt = &ends
+				if ends.IsZero() {
+					extra.EndsAt = nil
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			return appwire.Crew{}, appEngineError(err)
+		}
+	}
+	crew, err := b.CrewGet(ask.ID)
+	if err != nil {
+		return crew, err
+	}
+	// A CAP THE PERSON SET IS SAID IN THE MANAGER'S CHAT, where the spending
+	// it bounds is decided.
+	cleared := false
+	for _, key := range ask.Clear {
+		cleared = cleared || key == "cap_usd_day"
+	}
+	if ask.Settings != nil && ask.Settings.CapUSDDay != nil || cleared {
+		words := crew.Name + " cap cleared"
+		if !cleared {
+			words = fmt.Sprintf("%s cap set to $%.2f", crew.Name, *ask.Settings.CapUSDDay)
+		}
+		b.crewSettingReceipt(crew.Manager, crew.ID, "cap", words)
+	}
+	return crew, nil
+}
+
+// crewSettingReceipt writes a receipt for a crew setting the person changed
+// into the manager's chat.
+func (b *appBackend) crewSettingReceipt(manager, id, setting, words string) {
+	if manager == "" {
+		return
+	}
+	at := b.now()
+	b.emit.Emit(appwire.EventEntryAdded, appwire.EntryAdded{Entry: appwire.Entry{
+		ID: "rcrew:" + id + ":" + setting + ":" + strconv.FormatInt(at.UnixNano(), 36), Agent: manager,
+		Kind: appwire.EntryReceipt, At: at, Text: words + " · you · " + at.Format("15:04"),
+	}})
+}
+
+// crewTeam is one team as it stands, or not_found.
+func (b *appBackend) crewTeam(id string) (teamstore.Team, *teamstore.File, error) {
+	f, err := teamstore.LoadTeams(b.crewProfile(), id)
+	if err != nil {
+		return teamstore.Team{}, nil, appEngineError(err)
+	}
+	t, ok := f.Team(id)
+	if !ok {
+		return teamstore.Team{}, nil, appwire.Errorf(appwire.CodeNotFound, "there is no crew %s", id)
+	}
+	return t, f, nil
+}
+
+// crewMemberOf is an agent's membership of a crew.
+func (b *appBackend) crewMemberOf(t teamstore.Team, agent string) (teamstore.Member, bool) {
+	for _, m := range t.Members {
+		if appMemberAgent(m) == agent {
+			return m, true
+		}
+	}
+	return teamstore.Member{}, false
+}
+
+// crewSeatOf is [appCrewSeat] over the teams agent is a member of, read by
+// the store's index rather than over every team.
+func (b *appBackend) crewSeatOf(agent string) (teamstore.Team, teamstore.Member, bool) {
+	f, err := teamstore.LoadTeamsOf(b.crewProfile(), agent, false)
+	if err != nil {
+		return teamstore.Team{}, teamstore.Member{}, false
+	}
+	return appCrewSeat(f, agent)
+}
+
+// appCrewSeat is the one open crew an agent works in, and its membership
+// there: a crew it is an ordinary member of before one it manages, because a
+// sub-crew's manager is a member of the crew above and answers to that crew's
+// manager. The root team comes last, since it holds every top-level manager
+// and is nobody's working crew.
+func appCrewSeat(f *teamstore.File, agent string) (teamstore.Team, teamstore.Member, bool) {
+	var managed, root *teamstore.Team
+	var managedAs, rootAs teamstore.Member
+	for _, t := range f.Open() {
+		for _, m := range t.Members {
+			if appMemberAgent(m) != agent {
+				continue
+			}
+			switch {
+			case t.Root:
+				if root == nil {
+					root, rootAs = &t, m
+				}
+			case t.Manager == m.Key:
+				if managed == nil {
+					managed, managedAs = &t, m
+				}
+			default:
+				return t, m, true
+			}
+		}
+	}
+	if managed != nil {
+		return *managed, managedAs, true
+	}
+	if root != nil {
+		return *root, rootAs, true
+	}
+	return teamstore.Team{}, teamstore.Member{}, false
+}
+
+// CrewMessage puts the person's words into a conversation of the crew: the
+// manager's, or a member's, which the manager is also told of on the crew's
+// log (app layer).
+//
+// THE ACCEPTED TURN STATES THIS CREW'S EXACT ID as its creation context, on
+// the plain, attached and queued paths alike. Automations created in that turn
+// record Origin.Team from it, never from who manages the crew now. The engine
+// checks at acceptance that the crew holds the recipient; a closed crew is
+// sent to exactly as before.
+func (b *appBackend) CrewMessage(ask appwire.CrewMessage) (appwire.Entry, error) {
+	t, _, err := b.crewTeam(ask.Crew)
+	if err != nil {
+		return appwire.Entry{}, err
+	}
+	target := ask.To
+	if target == "" || target == teamstore.ToManager {
+		m, ok := t.Member(t.Manager)
+		if !ok {
+			return appwire.Entry{}, appwire.Errorf(appwire.CodeBadParams, "%s has no manager to talk to", t.Name)
+		}
+		target = appMemberAgent(m)
+	}
+	member, ok := b.crewMemberOf(t, target)
+	if !ok {
+		return appwire.Entry{}, appwire.Errorf(appwire.CodeNotFound, "%s is not in %s", target, t.Name)
+	}
+	if len(ask.Attachments) > 0 || ask.Said != nil || len(ask.Reads) > 0 || ask.From != "" {
+		return b.crewMessageWith(t, member, target, ask)
+	}
+	shown := appStated(ask.Text, appInTeam(t.ID))
+	turn, err := b.send(target, ask.Text, ask.ClientID, shown)
+	var wire *appwire.Error
+	if errors.As(err, &wire) && wire.Code == appwire.CodeBusy {
+		// A MEMBER IN THE MIDDLE OF A TURN IS NOT REFUSED THE PERSON'S WORDS:
+		// they wait in its queue and go in when the turn in hand ends, the way
+		// a message typed to a working agent does. Turn 0 says it is waiting.
+		// The queue keeps the same creation context so a flush still records
+		// the crew this message was accepted for.
+		turn, err = 0, nil
+		if _, qerr := b.queue(target, ask.Text, ask.ClientID, shown); qerr != nil {
+			err = qerr
+		}
+	}
+	if err != nil {
+		return appwire.Entry{}, err
+	}
+	b.tellManager(t, member, ask.Text)
+	return appwire.Entry{Agent: target, Turn: turn, Kind: appwire.EntryUser, At: b.now(), Text: ask.Text, ClientID: ask.ClientID}, nil
+}
+
+// crewMessageWith is a crew message carrying attachments staged on its
+// target, the person's own words apart from the text, or reads. A MESSAGE
+// CARRYING ANY OF THEM IS NEVER QUEUED: the queue keeps words only, so
+// queueing it would send the words and lose the rest. A busy target refuses it
+// instead, and every chip stays staged for the person to send again when the
+// turn ends.
+func (b *appBackend) crewMessageWith(t teamstore.Team, member teamstore.Member, target string, ask appwire.CrewMessage) (appwire.Entry, error) {
+	turn, shown, err := b.sendMessageFor(target, appwire.AgentMessage{Text: ask.Text, Said: ask.Said, ClientID: ask.ClientID, Attachments: ask.Attachments, Reads: ask.Reads, From: ask.From}, appInTeam(t.ID))
+	var wire *appwire.Error
+	if errors.As(err, &wire) && wire.Code == appwire.CodeBusy {
+		if len(ask.Attachments) > 0 {
+			return appwire.Entry{}, appwire.Errorf(appwire.CodeBusy, "%s is working on a turn; the message was not sent and its attachments are still attached", member.Handle)
+		}
+		return appwire.Entry{}, appwire.Errorf(appwire.CodeBusy, "%s is working on a turn; the message was not sent", member.Handle)
+	}
+	if err != nil {
+		return appwire.Entry{}, err
+	}
+	// The manager is told what the person said, never the expanded words the
+	// member's model was sent.
+	text := ask.Text
+	var views []appwire.Attachment
+	var reads []appwire.MessageRead
+	if shown != nil {
+		text, views, reads = shown.text, shown.attachments, appReadsOf(shown.reads)
+	}
+	logged := text
+	if strings.TrimSpace(logged) == "" && len(views) > 0 {
+		titles := make([]string, 0, len(views))
+		for _, view := range views {
+			titles = append(titles, view.Title)
+		}
+		logged = "Attached: " + strings.Join(titles, ", ")
+	}
+	if strings.TrimSpace(logged) != "" {
+		b.tellManager(t, member, logged)
+	}
+	return appwire.Entry{Agent: target, Turn: turn, Kind: appwire.EntryUser, At: b.now(), Text: text, ClientID: ask.ClientID, Attachments: views, Reads: reads, From: ask.From}, nil
+}
+
+// tellManager puts the person's words to a member on the crew's log.
+// THE MANAGER IS TOLD AS A MEMBER'S WORDS REACH IT: one line on the crew's
+// log, in its digest at its next step. It does not wake it. Words to the
+// manager itself are not logged; it heard them.
+func (b *appBackend) tellManager(t teamstore.Team, member teamstore.Member, text string) {
+	if member.Key == t.Manager || t.Manager == "" {
+		return
+	}
+	_ = teamstore.AppendTraffic(b.crewProfile(), t.ID, teamstore.Entry{
+		Kind: teamstore.KindYou, From: teamstore.FromYou, To: member.Handle, ToKey: member.Key, Member: member.Key, Text: text,
+	})
+}
+
+// CrewLog is a crew's log after a cursor, oldest first.
+func (b *appBackend) CrewLog(id, after string, limit int) ([]appwire.LogLine, string, error) {
+	t, _, err := b.crewTeam(id)
+	if err != nil {
+		return nil, "", err
+	}
+	// The crew is being looked at: a member it could not open is tried again
+	// now rather than at the end of its wait.
+	b.retryHolds(t.ID)
+	if limit <= 0 || limit > appCrewLogPage {
+		limit = appCrewLogPage
+	}
+	entries, err := teamstore.ReadTraffic(b.crewProfile(), id, after, limit)
+	if err != nil {
+		return nil, "", appEngineError(err)
+	}
+	lines := make([]appwire.LogLine, 0, len(entries))
+	for _, e := range entries {
+		lines = append(lines, appLogLine(t, e))
+	}
+	cursor := after
+	if len(entries) > 0 {
+		cursor = entries[len(entries)-1].ID
+	}
+	return lines, cursor, nil
+}
+
+// appLogAnchorAround is how many neighbours an anchor reads on each side when
+// the ask names none.
+const appLogAnchorAround = 2
+
+// CrewLogAt is one crew log line a conversation's own record points at (a
+// handoff's post, a delivery's post), with its neighbours. THE LINE IS FOUND
+// BY FACTS, NEVER BY WORDS OR TIME: a crew the agent is a member of, with the
+// name the record gave, whose log holds that very id written by or to that
+// member. Two crews that both qualify are refused rather than guessed between,
+// and a line rotated out of the log is not_found, never a nearby one.
+func (b *appBackend) CrewLogAt(ask appwire.LogAnchorAsk) (appwire.LogAnchor, error) {
+	post, ok := teamstore.ThreadID(ask.Post)
+	if !ok {
+		return appwire.LogAnchor{}, appwire.Errorf(appwire.CodeBadParams, "%q is not a crew log line", ask.Post)
+	}
+	around := ask.Around
+	if around == 0 {
+		around = appLogAnchorAround
+	}
+	profile := b.crewProfile()
+	// A line whose crew is named is looked for in that crew and the crews under
+	// it; one that is not, in the crews the agent is in. Neither reads others.
+	var f *teamstore.File
+	var err error
+	if ask.Crew != "" {
+		f, err = teamstore.LoadSubtree(profile, ask.Crew)
+	} else {
+		f, err = teamstore.LoadTeamsOf(profile, ask.Agent, false)
+	}
+	if err != nil {
+		return appwire.LogAnchor{}, appEngineError(err)
+	}
+	if ask.Crew != "" {
+		return b.crewLogAtCrew(profile, f, ask.Crew, ask.Agent, post, around)
+	}
+	var (
+		found   []appwire.LogAnchor
+		inCrews int
+	)
+	for _, t := range f.Teams {
+		if ask.CrewName != "" && t.Name != ask.CrewName {
+			continue
+		}
+		m, ok := b.crewMemberOf(t, ask.Agent)
+		if !ok {
+			continue
+		}
+		inCrews++
+		entries, ok, err := teamstore.ReadAround(profile, t.ID, post, around)
+		if err != nil {
+			return appwire.LogAnchor{}, appEngineError(err)
+		}
+		if !ok {
+			continue
+		}
+		var mine bool
+		lines := make([]appwire.LogLine, 0, len(entries))
+		for _, e := range entries {
+			if e.ID == post {
+				mine = teamstore.Involves(e, m)
+			}
+			lines = append(lines, appLogLine(t, e))
+		}
+		if mine {
+			found = append(found, appwire.LogAnchor{Crew: t.ID, Closed: t.Closed(), Lines: lines})
+		}
+	}
+	switch {
+	case len(found) == 1:
+		return found[0], nil
+	case len(found) > 1:
+		return appwire.LogAnchor{}, appwire.Errorf(appwire.CodeConflict, "line %s is in more than one of this agent's crews", teamstore.ThreadNumber(post))
+	case inCrews == 0:
+		return appwire.LogAnchor{}, appwire.Errorf(appwire.CodeNotFound, "this agent is no longer in a crew named %q", ask.CrewName)
+	}
+	return appwire.LogAnchor{}, appwire.Errorf(appwire.CodeNotFound, "line %s is no longer in the crew's log", teamstore.ThreadNumber(post))
+}
+
+// crewLogAtCrew is CrewLogAt for a line whose record named its crew by id (a
+// post up to the crew above). The agent must be in that crew, where the line
+// may be any written by or to it ([teamstore.Involves]), or in a crew under it,
+// where it must be the agent's own: the line names that membership
+// (Member), so the room's lines up there stay that crew's.
+func (b *appBackend) crewLogAtCrew(profile string, f *teamstore.File, crew, agent, post string, around int) (appwire.LogAnchor, error) {
+	t, ok := f.Team(crew)
+	if !ok {
+		return appwire.LogAnchor{}, appwire.Errorf(appwire.CodeNotFound, "the crew line %s was written to is gone", teamstore.ThreadNumber(post))
+	}
+	direct, in := b.crewMemberOf(t, agent)
+	var below []teamstore.Member
+	for _, d := range f.Descendants(t.ID) {
+		if m, ok := b.crewMemberOf(d, agent); ok && m.Key != "" {
+			below = append(below, m)
+		}
+	}
+	if !in && len(below) == 0 {
+		return appwire.LogAnchor{}, appwire.Errorf(appwire.CodeNotFound, "this agent is not in %q or a crew under it", t.Name)
+	}
+	entries, ok, err := teamstore.ReadAround(profile, t.ID, post, around)
+	if err != nil {
+		return appwire.LogAnchor{}, appEngineError(err)
+	}
+	mine := false
+	lines := make([]appwire.LogLine, 0, len(entries))
+	for _, e := range entries {
+		if e.ID == post {
+			mine = in && teamstore.Involves(e, direct)
+			for _, m := range below {
+				mine = mine || e.Member == m.Key
+			}
+		}
+		lines = append(lines, appLogLine(t, e))
+	}
+	if !ok || !mine {
+		return appwire.LogAnchor{}, appwire.Errorf(appwire.CodeNotFound, "line %s is no longer in the crew's log", teamstore.ThreadNumber(post))
+	}
+	return appwire.LogAnchor{Crew: t.ID, Closed: t.Closed(), Lines: lines}, nil
+}
+
+// CrewDecisions is the decisions waiting (or all of them) for one crew, or
+// every decision waiting on the person.
+func (b *appBackend) CrewDecisions(id string, all bool) ([]appwire.Decision, error) {
+	profile := b.crewProfile()
+	var packets []teamstore.Packet
+	var err error
+	switch {
+	case id == "":
+		packets, _, err = teamstore.OpenPackets(profile, teamstore.Person)
+	case all:
+		packets, err = teamstore.Packets(profile, id)
+	default:
+		var open []teamstore.Packet
+		open, _, err = teamstore.OpenPackets(profile, teamstore.ScopeAll)
+		for _, p := range open {
+			if p.Origin == id || p.Team == id {
+				packets = append(packets, p)
+			}
+		}
+	}
+	if err != nil {
+		return nil, appEngineError(err)
+	}
+	f, err := appPacketTeams(profile, packets...)
+	if err != nil {
+		return nil, appEngineError(err)
+	}
+	out := make([]appwire.Decision, 0, len(packets))
+	for _, p := range packets {
+		out = append(out, appDecisionOf(f, p))
+	}
+	return out, nil
+}
+
+// CrewDecide is the person's decision on a packet; a closing report accepted
+// closes the crew it reports on.
+func (b *appBackend) CrewDecide(packet, option, text, reason string) (appwire.Decision, error) {
+	profile := b.crewProfile()
+	decision, err := appValidateCrewDecisionAnswer(option, text)
+	if err != nil {
+		return appwire.Decision{}, err
+	}
+	if strings.TrimSpace(option) != "" && strings.TrimSpace(text) != "" && strings.TrimSpace(reason) == "" {
+		reason = text
+	}
+	p, err := teamstore.Decide(profile, packet, teamstore.Person, decision, strings.TrimSpace(reason))
+	if err != nil {
+		switch {
+		case errors.Is(err, teamstore.ErrNoPacket):
+			return appwire.Decision{}, appwire.Errorf(appwire.CodeNotFound, "there is no decision %s", packet)
+		case errors.Is(err, teamstore.ErrDecided):
+			return appwire.Decision{}, appwire.Errorf(appwire.CodeBadParams, "that decision was already made")
+		}
+		return appwire.Decision{}, appEngineError(err)
+	}
+	if p.Kind == teamstore.PacketClosing && (p.Decision == teamstore.OptionClose || p.Decision == teamstore.OptionCloseNow) {
+		if _, err := teamstore.AcceptClosing(profile, p); err != nil {
+			return appwire.Decision{}, appEngineError(err)
+		}
+	}
+	f, err := appPacketTeams(profile, p)
+	if err != nil {
+		return appwire.Decision{}, appEngineError(err)
+	}
+	var run *appCrewRun
+	b.locked(func() { run = b.crewRun })
+	if run != nil {
+		b.crewTick(run, false)
+	}
+	return appDecisionOf(f, p), nil
+}
+
+func appValidateCrewDecisionAnswer(option, text string) (string, error) {
+	decision := strings.TrimSpace(option)
+	if decision == "" {
+		decision = strings.TrimSpace(text)
+	}
+	if decision == "" {
+		return "", appwire.Errorf(appwire.CodeBadParams, "a decision needs an answer")
+	}
+	return decision, nil
+}
+
+// CrewManager makes a member the crew's manager, or clears it.
+func (b *appBackend) CrewManager(id, agent string) (appwire.Crew, error) {
+	t, _, err := b.crewTeam(id)
+	if err != nil {
+		return appwire.Crew{}, err
+	}
+	key := ""
+	if agent != "" {
+		m, ok := b.crewMemberOf(t, agent)
+		if !ok {
+			return appwire.Crew{}, appwire.Errorf(appwire.CodeBadParams, "the manager must be a member of %s", t.Name)
+		}
+		key = m.Key
+	}
+	err = b.crewEdit(func(f *teamstore.File) error {
+		if key == "" {
+			return f.ClearManager(id)
+		}
+		return f.SetManager(id, key)
+	})
+	if err != nil {
+		return appwire.Crew{}, err
+	}
+	return b.CrewGet(id)
+}
+
+// CrewMove puts crews under another crew, or at the top with parent "".
+func (b *appBackend) CrewMove(ids []string, parent string) error {
+	defaults := teamstore.DefaultsAt(b.crewProfile())
+	return b.crewEdit(func(f *teamstore.File) error {
+		target := f.MoveTarget(parent)
+		// The check answers whether the move MAY go: false comes with why not.
+		if block, ok := f.MoveCheck(ids, target, defaults); !ok {
+			return appwire.Errorf(appwire.CodeBadParams, "%s", appMoveWords(block))
+		}
+		return f.Move(ids, target)
+	})
+}
+
+// appMoveWords is why a move was refused, in the app's words.
+func appMoveWords(block teamstore.MoveBlock) string {
+	switch block.Kind {
+	case "closed":
+		return block.Name + " is closed"
+	case "depth":
+		return fmt.Sprintf("crews may go %d deep there, and this would make %d", block.Limit, block.Depth+block.Need)
+	case "here":
+		return "it is already there"
+	case "self":
+		return "a crew cannot go under itself"
+	case "inside":
+		return block.Name + " cannot go under a crew inside it"
+	case "root":
+		return "All crews stays at the top"
+	case "gone":
+		return "that crew is gone"
+	}
+	return "that move is not allowed"
+}
+
+// CrewWrapUp asks the crew's manager to wrap up and bring a closing report.
+func (b *appBackend) CrewWrapUp(id, text string) error {
+	t, _, err := b.crewTeam(id)
+	if err != nil {
+		return err
+	}
+	if t.Manager == "" {
+		return appwire.Errorf(appwire.CodeBadParams, "%s has no manager to wrap up; close it instead", t.Name)
+	}
+	if err := teamstore.AppendTraffic(b.crewProfile(), id, teamstore.WrapUpRequest(text)); err != nil {
+		return appEngineError(err)
+	}
+	return nil
+}
+
+// CrewClose closes a crew and every crew under it. Its conversations keep
+// working; the app stops holding them for it.
+func (b *appBackend) CrewClose(id string) error {
+	t, _, err := b.crewTeam(id)
+	if err != nil {
+		return err
+	}
+	if t.Root {
+		return appwire.Errorf(appwire.CodeBadParams, "All crews does not close; clear its manager instead")
+	}
+	if err := b.crewEdit(func(f *teamstore.File) error { return f.Disband(id, b.now(), "") }); err != nil {
+		return err
+	}
+	_ = teamstore.AppendTraffic(b.crewProfile(), id, teamstore.Entry{Kind: teamstore.KindClose, From: teamstore.FromYou, To: teamstore.ToRoom, Text: "closed"})
+	return nil
+}
+
+// CrewReopen opens a closed crew again, with the crews its close closed.
+func (b *appBackend) CrewReopen(id string) (appwire.Crew, error) {
+	if _, _, err := b.crewTeam(id); err != nil {
+		return appwire.Crew{}, err
+	}
+	err := b.crewEdit(func(f *teamstore.File) error {
+		if err := f.Reopen(id); err != nil {
+			if errors.Is(err, teamstore.ErrParentClosed) {
+				return appwire.Errorf(appwire.CodeBadParams, "its parent crew is closed; reopen that first")
+			}
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return appwire.Crew{}, err
+	}
+	_ = teamstore.AppendTraffic(b.crewProfile(), id, teamstore.Entry{Kind: teamstore.KindReopen, From: teamstore.FromYou, To: teamstore.ToRoom, Text: "reopened"})
+	return b.CrewGet(id)
+}
+
+// CrewArchive puts a closed crew away. It marks that crew only: the crews under
+// it are not archived, and nothing is closed, stopped or deleted. An open crew
+// is refused; closing is its own act.
+func (b *appBackend) CrewArchive(id string) (appwire.Crew, error) {
+	t, _, err := b.crewTeam(id)
+	if err != nil {
+		return appwire.Crew{}, err
+	}
+	if t.Root {
+		return appwire.Crew{}, appwire.Errorf(appwire.CodeBadParams, "All crews does not archive")
+	}
+	err = b.crewEdit(func(f *teamstore.File) error {
+		if err := f.Archive(id, b.now()); err != nil {
+			if errors.Is(err, teamstore.ErrNotClosed) {
+				return appwire.Errorf(appwire.CodeBadParams, "close %s before archiving it", t.Name)
+			}
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return appwire.Crew{}, err
+	}
+	return b.CrewGet(id)
+}
+
+// CrewDelete forgets a closed crew and the crews under it. Their
+// conversations are never deleted.
+func (b *appBackend) CrewDelete(id string) ([]string, error) {
+	t, _, err := b.crewTeam(id)
+	if err != nil {
+		return nil, err
+	}
+	if !t.Closed() {
+		return nil, appwire.Errorf(appwire.CodeBadParams, "close %s before deleting it", t.Name)
+	}
+	ids, err := teamstore.Delete(b.crewProfile(), id)
+	if err != nil {
+		return nil, appEngineError(err)
+	}
+	_ = b.crewLayer().write(func(f *appCrewLayerFile) error {
+		for _, gone := range ids {
+			delete(f.Crews, gone)
+			for key := range f.Members {
+				if strings.HasPrefix(key, gone+"/") {
+					delete(f.Members, key)
+				}
+			}
+		}
+		return nil
+	})
+	return ids, nil
+}
+
+// appDefaults is the five defaults on the wire.
+func appDefaults(d teamstore.Defaults) appwire.CrewDefaults {
+	return appwire.CrewDefaults{QuestionsUp: d.QuestionsUp, CapUSDDay: d.CapUSDDay, DepthLimit: d.DepthLimit, SubShare: d.SubShare, Wake: d.Wake}
+}
+
+// CrewDefaults is the profile's five crew defaults.
+func (b *appBackend) CrewDefaults() (appwire.CrewDefaults, error) {
+	return appDefaults(teamstore.DefaultsAt(b.crewProfile())), nil
+}
+
+// CrewSetDefault writes one default the way the terminal's settings do.
+func (b *appBackend) CrewSetDefault(key, value string) (appwire.CrewDefaults, error) {
+	if err := config.ApplyTeamDefault(b.crewProfile(), key, value); err != nil {
+		return appwire.CrewDefaults{}, appwire.Errorf(appwire.CodeBadParams, "%s", plainWords(err.Error()))
+	}
+	return b.CrewDefaults()
+}
+
+// CrewItems is a crew's linked items (app layer).
+func (b *appBackend) CrewItems(id string) ([]appwire.CrewItem, error) {
+	if _, _, err := b.crewTeam(id); err != nil {
+		return nil, err
+	}
+	var items []appwire.CrewItem
+	_ = b.crewLayer().read(func(f *appCrewLayerFile) {
+		if extra := f.Crews[id]; extra != nil {
+			items = append(items, extra.Items...)
+		}
+	})
+	return items, nil
+}
+
+// CrewLink links a job, issue, pull request or file to a crew (app layer).
+func (b *appBackend) CrewLink(id, kind, ref, title string) (appwire.CrewItem, error) {
+	if _, _, err := b.crewTeam(id); err != nil {
+		return appwire.CrewItem{}, err
+	}
+	var item appwire.CrewItem
+	err := b.crewLayer().write(func(f *appCrewLayerFile) error {
+		item = appwire.CrewItem{ID: f.next("i"), Crew: id, Kind: kind, Ref: strings.TrimSpace(ref), Title: strings.TrimSpace(title), At: b.now()}
+		extra := f.crew(id)
+		extra.Items = append(extra.Items, item)
+		return nil
+	})
+	if err != nil {
+		return appwire.CrewItem{}, appEngineError(err)
+	}
+	return item, nil
+}
+
+// CrewUnlink takes a linked item off a crew.
+func (b *appBackend) CrewUnlink(id, item string) error {
+	found := false
+	err := b.crewLayer().write(func(f *appCrewLayerFile) error {
+		extra := f.Crews[id]
+		if extra == nil {
+			return nil
+		}
+		kept := extra.Items[:0]
+		for _, it := range extra.Items {
+			if it.ID == item {
+				found = true
+				continue
+			}
+			kept = append(kept, it)
+		}
+		extra.Items = kept
+		return nil
+	})
+	if err != nil {
+		return appEngineError(err)
+	}
+	if !found {
+		return appwire.Errorf(appwire.CodeNotFound, "%s has no item %s", id, item)
+	}
+	return nil
+}

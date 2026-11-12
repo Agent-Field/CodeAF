@@ -24,6 +24,8 @@ func TestDefaultProfileDailyAuthorityStaysLive(t *testing.T) {
 				t.Setenv("CODEAF_HOME", t.TempDir())
 				t.Setenv("CODEAF_PROFILE_DIR", "")
 				t.Setenv("CODEAF_DAILY_BUDGET", "")
+				ledger := UsageLedgerPath()
+				t.Cleanup(func() { StopUsageWriter(ledger) })
 				setLimit := func(limit float64) {
 					t.Helper()
 					if source == "environment" {

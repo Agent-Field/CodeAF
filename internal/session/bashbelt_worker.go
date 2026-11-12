@@ -32,6 +32,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/approval"
+	profileconfig "github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/router"
@@ -56,7 +57,9 @@ import (
 // when the run opened it; the root is which run it is, and a worker's
 // `plandb` refuses a store at that path whose root is another run's
 // ([plandb.RunEnv]). Empty binds the path alone.
-func NewBeltWorker(config Config, completer Completer, task *plandb.Task, storePath, rootID string) (*Agent, error) {
+// conversation optionally names the parent chat for ledger attribution; the
+// run's rootID identifies its plan and is a different identity.
+func NewBeltWorker(config Config, completer Completer, task *plandb.Task, storePath, rootID string, conversation ...string) (*Agent, error) {
 	if !bashBeltAsked() {
 		return nil, errors.New("the bash belt is off: CODEAF_TASK_BELT names the node belt")
 	}
@@ -71,6 +74,14 @@ func NewBeltWorker(config Config, completer Completer, task *plandb.Task, storeP
 	}
 	config.InTask = true
 	config.bashBelt = true
+	// AND IT ACTS AS ITS OWN WORKER, never as the conversation: the run named
+	// it ([Config.WorkerDID]), and its commands carry that name.
+	if config.WorkerDID != "" {
+		config.actorDID = config.WorkerDID
+	}
+	if len(conversation) > 0 {
+		config.rootSession = strings.TrimSpace(conversation[0])
+	}
 	// A RUN WORKER THINKS AT THE WORK SEAT, ONE ACTION PER ROUND. The belt's
 	// one call per response would pay the person's depth again on every round
 	// of the run, so the seat is work (effort.RoleWork) — the same seat the
@@ -85,7 +96,14 @@ func NewBeltWorker(config Config, completer Completer, task *plandb.Task, storeP
 	// allow into a prompt for the shapes that destroy a disk or drop the
 	// machine, and a prompt in a worker is a refusal it can read — never a
 	// question and never a hang.
-	config.ApprovalPolicy = &approval.Policy{Default: approval.ActionAllow}
+	policy := &approval.Policy{Default: approval.ActionAllow}
+	if config.ApprovalPolicy != nil {
+		policy.ProfileReadError = config.ApprovalPolicy.ProfileReadError
+	}
+	config.ApprovalPolicy = policy
+	if config.ApprovalGate == nil {
+		config.ApprovalGate = beltWorkerApprovalGate{policy: policy, profileDir: config.ProfileDir}
+	}
 	config.AskConsent = false
 	// THE WORKER'S OWN RECORD FOLDER. The transcript this agent writes and the
 	// whole outputs the belt's cut files land in the task's own folder beside
@@ -359,4 +377,31 @@ func (a *Agent) sendBeltStep(ctx context.Context, hub *eventHub, event Event) {
 	case <-handled:
 	case <-ctx.Done():
 	}
+}
+
+// BeltWorkerApprovalGate supplies live failed-read protection to a standalone
+// run worker without giving unrelated session settings a different profile.
+func BeltWorkerApprovalGate(profileDir string) ApprovalGate {
+	return beltWorkerApprovalGate{profileDir: profileDir, policy: &approval.Policy{Default: approval.ActionAllow}}
+}
+
+// beltWorkerApprovalGate checks the run's profile at each decision because a
+// standalone run worker has no parent agent whose current gate it can consult.
+// Readable files retain the worker's own allowance, including parse failures.
+type beltWorkerApprovalGate struct {
+	policy     *approval.Policy
+	profileDir string
+}
+
+func (g beltWorkerApprovalGate) Standing() string {
+	return PostureAllow
+}
+
+func (g beltWorkerApprovalGate) Build(_ string) (*approval.Policy, bool, error) {
+	_, err := profileconfig.ReadProfileApprovalConfig(g.profileDir)
+	var pathErr *os.PathError
+	if errors.As(err, &pathErr) {
+		return &approval.Policy{ProfileReadError: err.Error()}, false, nil
+	}
+	return g.policy, false, nil
 }

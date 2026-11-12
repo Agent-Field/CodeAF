@@ -1,0 +1,830 @@
+// Package lease holds the factory's claims desk. Workers pull queued items;
+// the desk records one expiring hold per job and never executes the work.
+package lease
+
+import (
+	"crypto/rand"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"time"
+
+	"context"
+
+	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/record"
+	"github.com/Agent-Field/codeaf/internal/factory/run"
+	"github.com/Agent-Field/codeaf/internal/factory/store"
+)
+
+// DefaultTTL keeps a disconnected worker's job from remaining taken forever.
+const DefaultTTL = factory.DefaultRunnerTimeoutSeconds * time.Second
+
+// HeartbeatEvery is how often a worker renews a live lease. The worker loop's
+// default beat is this same duration, so a quiet machine and a missed beat
+// are measured on one clock.
+const HeartbeatEvery = 2 * time.Second
+
+// RenewalSettles is how old a hold's stored renewal must be before a renewal
+// rewrites leases.json. A runner renews every [HeartbeatEvery], and each
+// rewrite wakes every watcher of the factory's folder (on macOS, a re-read of
+// the whole folder): the ninth live round's idle engine rewrote the file once
+// a second for two held jobs whose deadlines were most of a minute away. A
+// renewal still answers its full deadline at once, and the stored one is never
+// more than this behind it, a sixth of the default [DefaultTTL] ([Desk.settles]
+// keeps the same share of a shorter one).
+const RenewalSettles = 10 * time.Second
+
+// OfflineMisses is how many heartbeat intervals may pass with nothing heard
+// before a machine is offline. S2 SETS SIXTY SECONDS: presence and the default lease share this deadline.
+const OfflineMisses = int(OfflineAfter / HeartbeatEvery)
+
+// OfflineAfter is the S2 runner silence deadline, shared by every presence read.
+const OfflineAfter = factory.DefaultRunnerTimeoutSeconds * time.Second
+
+var (
+	ErrNoJob      = errors.New("factory lease: no queued job for this worker")
+	ErrLeased     = errors.New("factory lease: job is already taken")
+	ErrWorkerBusy = errors.New("factory lease: worker already has a job")
+	ErrNoLease    = errors.New("factory lease: no live lease for this job")
+	ErrPerson     = errors.New("factory lease: job belongs to another person")
+	ErrWorker     = errors.New("factory lease: job belongs to another worker")
+	// ErrNotTaken is an un-take of a job nobody has taken. A forge assignee
+	// is not a take, so release does not clear one.
+	ErrNotTaken = errors.New("factory lease: job is not taken")
+)
+
+// ErrWithdrawn is a replaced lease, still refused as no longer live.
+var ErrWithdrawn = fmt.Errorf("factory lease: execution withdrawn: %w", ErrNoLease)
+
+// ErrStopped is a lease revoked by a person's Stop, still refused as no longer live.
+var ErrStopped = fmt.Errorf("factory lease: stopped by person: %w", ErrNoLease)
+
+// Lease is the persisted and wire shape, so the worker and person survive a
+// server restart without a second registry becoming the ownership authority.
+type Lease struct {
+	// ID distinguishes successive holds on the same job so delayed reports cannot write into a new run.
+	ID      string `json:"id,omitempty"`
+	Job     int    `json:"job"`
+	Worker  string `json:"worker"`
+	Machine string `json:"machine,omitempty"`
+	// ThreadOnly lends the manager to a reply without restarting job steps.
+	ThreadOnly bool `json:"thread_only,omitempty"`
+	Asleep     bool `json:"asleep,omitempty"`
+	// Publish keeps a collected approval recoverable if the publisher vanishes.
+	Publish string `json:"publish,omitempty"`
+	// Merge is the commit of a collected merge, kept the same way.
+	Merge  string `json:"merge,omitempty"`
+	Handle string `json:"handle"`
+	// Since is when this hold began. HeartbeatAt is the last renewal. Both
+	// stay on the lease so a restart can still say who is working and when
+	// they were last heard, without a second presence file.
+	Since       time.Time `json:"since,omitempty"`
+	HeartbeatAt time.Time `json:"heartbeat_at,omitempty"`
+	ExpiresAt   time.Time `json:"expires_at"`
+}
+
+// EveryRepo in TakesUnassigned is consent to unassigned work in every
+// repository: a machine working its own loopback factory, where every job is
+// its person's.
+const EveryRepo = "*"
+
+// Worker carries authenticated identity and repository-specific consent.
+// TakesUnassigned never grants access to a job that already has a person.
+type Worker struct {
+	ID              string
+	Machine         string
+	Handle          string
+	TakesUnassigned map[string]bool
+	// Team refuses unassigned work even when an older client offers consent.
+	Team  bool
+	Solo  bool
+	Slots int
+}
+
+// Options makes time deterministic in tests; a zero TTL uses DefaultTTL.
+// Record, when set, receives a step_failed event when a hold expires and
+// the job goes back to the queue.
+type Options struct {
+	TTL    time.Duration
+	Now    func() time.Time
+	Record *record.Record
+}
+
+// Desk uses the store's root so every server opening the same factory shares
+// the same flock, rather than trusting a mutex in one server process.
+type Desk struct {
+	store  *store.Store
+	ttl    time.Duration
+	now    func() time.Time
+	record *record.Record
+	// persist is the atomic lease-file writer; nil uses writeAtomic.
+	persist func(string, []byte) error
+	// queued is the floor as the last look read it ([Desk.floorQueue]).
+	queued queueCache
+}
+
+// Open holds no handles. Reading is deferred to each operation so a desk
+// opened before another server writes never keeps a stale ownership cache.
+func Open(st *store.Store, options Options) (*Desk, error) {
+	if st == nil || st.Root() == "" {
+		return nil, errors.New("factory lease: no store")
+	}
+	if options.TTL < 0 {
+		return nil, errors.New("factory lease: TTL must be positive")
+	}
+	if options.TTL == 0 {
+		options.TTL = DefaultTTL
+	}
+	if options.Now == nil {
+		options.Now = time.Now
+	}
+	return &Desk{store: st, ttl: options.TTL, now: options.Now, record: options.Record}, nil
+}
+
+// TTL is the hold length this desk renews to.
+func (d *Desk) TTL() time.Duration {
+	if _, err := os.Stat(filepath.Join(d.store.Root(), "runner-settings.json")); err == nil {
+		if value, err := d.store.RunnerSettings(); err == nil {
+			return time.Duration(value.RunnerTimeoutSeconds) * time.Second
+		}
+	}
+	return d.ttl
+}
+
+// Live is the holds that are still inside their TTL, after releasing any
+// that have expired. Reading presence reaps the same way a pull does, so a
+// job is not described as held once its lease is gone.
+func (d *Desk) Live() ([]Lease, error) {
+	var live []Lease
+	err := d.change(func(doc *document, now time.Time) (bool, error) {
+		live = append([]Lease(nil), doc.Leases...)
+		return false, nil
+	})
+	return live, err
+}
+
+// Unheld says no lease is held at all, read without reaping anything. With no
+// hold there is nothing a clock can expire, so what a pull would find changes
+// only when a file under the floor does.
+func (d *Desk) Unheld() (bool, error) {
+	unheld := false
+	err := d.locked(func(doc *document, _ time.Time) error {
+		unheld = len(doc.Leases) == 0
+		return nil
+	})
+	return unheld, err
+}
+
+// Assign implements Take: it gives an unassigned item a person, not a worker.
+// Pull remains the only door that reserves a worker and starts a queued job.
+func (d *Desk) Assign(id int, handle string) error {
+	handle = factory.NormalizeHandle(handle)
+	if handle == "" {
+		return errors.New("factory lease: a person needs a handle")
+	}
+	return d.change(func(doc *document, now time.Time) (bool, error) {
+		if find(doc, id) != nil {
+			return false, ErrLeased
+		}
+		return false, d.store.Update(id, func(it *factory.Item) error {
+			if owner := it.Person(); owner != "" && owner != handle {
+				return ErrPerson
+			}
+			it.Taker = handle
+			return nil
+		})
+	})
+}
+
+// Release is un-take. The person who took the job lets it go. A worker's
+// hold is left alone: release does not stop the run or delete the branch.
+func (d *Desk) Release(id int, handle string) error {
+	handle = factory.NormalizeHandle(handle)
+	if handle == "" {
+		return errors.New("factory lease: a person needs a handle")
+	}
+	return d.change(func(doc *document, now time.Time) (bool, error) {
+		return false, d.store.Update(id, func(it *factory.Item) error {
+			if it.Taker == "" {
+				return ErrNotTaken
+			}
+			if factory.NormalizeHandle(it.Taker) != handle {
+				return ErrPerson
+			}
+			it.Taker = ""
+			return nil
+		})
+	})
+}
+
+// runsBefore is THE QUEUE'S ORDER: whether a runs before b. A job a person
+// said to start now (Marked) runs before every other; then priority, p0
+// before p1 before p2 before p3 before a job with none ([factory.PriorityRank]:
+// a person's mark, a routing rule's, or a p0..p3 / priority:* label); then
+// the oldest, and the lower number between two made in the same instant.
+func runsBefore(a, b factory.Item) bool {
+	return runsBeforeRanked(a, b, factory.PriorityRank(a), factory.PriorityRank(b))
+}
+
+// runsBeforeRanked is [runsBefore] given each job's [factory.PriorityRank],
+// so a sort works each one out once rather than once per comparison.
+func runsBeforeRanked(a, b factory.Item, pa, pb int) bool {
+	if a.Marked != b.Marked {
+		return a.Marked
+	}
+	if pa != pb {
+		return pa < pb
+	}
+	if a.Created.Equal(b.Created) {
+		return a.ID < b.ID
+	}
+	return a.Created.Before(b.Created)
+}
+
+// Pull takes the first eligible queued item in [runsBefore]'s order. One worker holds one job; an
+// opt-in applies only to unassigned work in that exact repository. A computer
+// already running its Jobs at once takes only a job a person said to start now
+// ([factory.Item.OverLimit]), and never any other.
+func (d *Desk) Pull(worker Worker) (Lease, error) {
+	worker.Handle = factory.NormalizeHandle(worker.Handle)
+	worker.Machine = strings.TrimSpace(worker.Machine)
+	if strings.TrimSpace(worker.ID) == "" || worker.Handle == "" {
+		return Lease{}, errors.New("factory lease: a worker needs an id and handle")
+	}
+	var taken Lease
+	err := d.change(func(doc *document, now time.Time) (bool, error) {
+		occupied := 0
+		for _, held := range doc.Leases {
+			if worker.Machine != "" && held.Machine == worker.Machine && held.Handle == worker.Handle {
+				occupied++
+			}
+			if held.Worker == worker.ID {
+				return false, ErrWorkerBusy
+			}
+		}
+		full := worker.Slots > 0 && occupied >= worker.Slots
+		// The queue is shared with every other look until the floor changes
+		// (queue.go): it is read here and never written.
+		items, err := d.floorQueue()
+		if err != nil {
+			return false, err
+		}
+		for _, it := range items {
+			if !eligible(it, worker) || find(doc, it.ID) != nil || full && !overLimit(it) {
+				continue
+			}
+			var token [16]byte
+			if _, err := rand.Read(token[:]); err != nil {
+				return false, err
+			}
+			taken = Lease{ID: "lease_" + hex.EncodeToString(token[:]), Job: it.ID, Worker: worker.ID, Machine: worker.Machine, Handle: worker.Handle, Since: now, HeartbeatAt: now, ExpiresAt: now.Add(d.TTL()), ThreadOnly: factory.StoppedByPerson(it) || it.State != factory.StateQueued || paused(it)}
+			if err := d.reserve(doc, worker, &taken); errors.Is(err, ErrNoJob) {
+				continue
+			} else {
+				return false, err
+			}
+		}
+		if full {
+			return false, ErrWorkerBusy
+		}
+		return false, ErrNoJob
+	})
+	if err != nil {
+		return Lease{}, err
+	}
+	return taken, nil
+}
+
+// reserve rechecks the item under its own lock because intake or a person
+// may have changed it after List. THE LEASE IS DURABLE BEFORE RUNNING: a crash
+// between files leaves a reserved queued job that expiry can recover, never
+// running work without a lease that another worker could immediately take.
+func (d *Desk) reserve(doc *document, worker Worker, taken *Lease) error {
+	blocked := false
+	err := d.store.Update(taken.Job, func(it *factory.Item) error {
+		if !eligible(*it, worker) {
+			return ErrNoJob
+		}
+		was := budgetHoldOf(*it)
+		if holdAtJobBudget(it, d.now()) {
+			// A JOB ALREADY HELD AT ITS BUDGET IS LEFT AS IT IS ON DISK. A
+			// job waiting on its budget with a reply pending stays eligible,
+			// and saving it unchanged made a fresh file every look; a fresh
+			// file wakes every open pull, which looked, found it, and saved it
+			// again: a loop that never let an idle machine rest.
+			if reflect.DeepEqual(budgetHoldOf(*it), was) {
+				return ErrNoJob
+			}
+			blocked = true
+			return nil
+		}
+		// A Stop may have landed after List. A pending reply may still borrow
+		// its manager, but only the locked job can authorize running steps.
+		taken.ThreadOnly = factory.StoppedByPerson(*it) || it.State != factory.StateQueued && !owesFollow(*it) || paused(*it)
+		delete(doc.Withdrawn, worker.ID)
+		delete(doc.Stopped, worker.ID)
+		doc.Leases = append(doc.Leases, *taken)
+		if err := d.write(*doc); err != nil {
+			return err
+		}
+		if it.WorktreeMachine == "" && !factory.AgentFieldPipeline(*it) && strings.TrimSpace(it.RunOn) == "" {
+			it.WorktreeMachine = taken.Machine
+		}
+		if !taken.ThreadOnly {
+			if it.Recovery != nil && it.Recovery.State == "queued" {
+				cp := *it.Recovery
+				cp.State = "running"
+				cp.Reason = fmt.Sprintf("Automatic retry %d of %d is running.", cp.Attempts, cp.Limit)
+				it.Recovery = &cp
+			}
+			// A RUN WAITING ON ITS APPROVAL KEEPS ITS QUESTION while the runner
+			// that takes it follows it again: the person is still asked.
+			if !factory.AgentFieldPause(*it) {
+				it.State = factory.StateRunning
+			}
+			it.OverLimit = false
+		}
+		return nil
+	})
+	if err == nil && blocked {
+		return ErrNoJob
+	}
+	return err
+}
+
+// budgetHold is what [holdAtJobBudget] may change, so a reservation can tell a
+// hold it made from one already in place.
+type budgetHold struct {
+	state     factory.State
+	question  string
+	qkind     string
+	asking    factory.Asked
+	asked     bool
+	overLimit bool
+}
+
+func budgetHoldOf(it factory.Item) budgetHold {
+	h := budgetHold{state: it.State, question: it.Question, qkind: it.QKind, overLimit: it.OverLimit}
+	if it.Asking != nil {
+		h.asking, h.asked = *it.Asking, true
+	}
+	return h
+}
+
+// holdAtJobBudget uses the server's saved total while its item lock is held.
+func holdAtJobBudget(it *factory.Item, now time.Time) bool {
+	if it.Cap <= 0 || factory.JobLifetimeSpent(*it) < it.Cap || approvedWriteOnly(*it) {
+		return false
+	}
+	// The held recovery decision stays in place even if the budget drops below spend.
+	if factory.RecoveryPaused(*it) {
+		return true
+	}
+	// A stopped job keeps its Stop and waits on a person. It gets no cap question:
+	// a person starts it again, and is asked then.
+	if factory.StoppedByPerson(*it) {
+		it.State = factory.StateNeedsYou
+		it.OverLimit = false
+		return true
+	}
+	ask := factory.Asked{With: factory.AskedYou, At: now}
+	if it.QKind == "cap" && it.Asking != nil {
+		ask = *it.Asking
+	}
+	it.State = factory.StateNeedsYou
+	it.Question, it.QKind = (*run.Money)(nil).CapQuestion(*it)
+	ask.Question = it.Question
+	it.Asking = &ask
+	it.OverLimit = false
+	return true
+}
+
+// overLimit is a queued job a person said to start now, which may take a
+// slot above its computer's Jobs at once. A thread-only hold is not a start.
+func overLimit(it factory.Item) bool {
+	return it.OverLimit && it.State == factory.StateQueued && !paused(it)
+}
+
+// OverLimit counts the jobs worker may take above its Jobs at once: queued,
+// started now by a person, and not yet held. The worker runs that many slots
+// beyond its owner's number until they are taken.
+func (d *Desk) OverLimit(worker Worker) (int, error) {
+	worker.Handle = factory.NormalizeHandle(worker.Handle)
+	worker.Machine = strings.TrimSpace(worker.Machine)
+	n := 0
+	err := d.change(func(doc *document, now time.Time) (bool, error) {
+		// The shared queue (queue.go), read and never written.
+		items, err := d.floorQueue()
+		if err != nil {
+			return false, err
+		}
+		for _, it := range items {
+			if overLimit(it) && eligible(it, worker) && find(doc, it.ID) == nil {
+				n++
+			}
+		}
+		return false, nil
+	})
+	return n, err
+}
+
+// Heartbeat renews only the live holder's lease. At the expiry instant the
+// lease is gone; a late heartbeat cannot reclaim a requeued job.
+func (d *Desk) Heartbeat(id int, worker string) (Lease, error) {
+	var renewed Lease
+	err := d.change(func(doc *document, now time.Time) (bool, error) {
+		held, err := holder(doc, id, worker)
+		if err != nil {
+			return false, err
+		}
+		var dirty bool
+		renewed, dirty = d.renew(held, now)
+		return dirty, nil
+	})
+	if err != nil {
+		return Lease{}, err
+	}
+	return renewed, nil
+}
+
+// renew is one renewal of held at now: the lease as renewed, and whether the
+// renewal is worth writing ([RenewalSettles]). A renewal that is not written
+// leaves held as stored.
+func (d *Desk) renew(held *Lease, now time.Time) (Lease, bool) {
+	ttl := d.TTL()
+	renewed := *held
+	renewed.ExpiresAt, renewed.HeartbeatAt = now.Add(ttl), now
+	if !held.HeartbeatAt.IsZero() && !held.Asleep && now.Sub(held.HeartbeatAt) < min(RenewalSettles, ttl/6) && now.Before(held.ExpiresAt) {
+		return renewed, false
+	}
+	*held = renewed
+	return renewed, true
+}
+
+// Expire returns the leases it released, even though completed or paused jobs
+// keep their state. Only running work returns to the queue.
+func (d *Desk) Expire() ([]Lease, error) {
+	var expired []Lease
+	err := d.locked(func(doc *document, now time.Time) error {
+		var err error
+		expired, err = d.expire(doc, now)
+		if err != nil || len(expired) == 0 {
+			return err
+		}
+		return d.write(*doc)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return expired, nil
+}
+
+// Requeue releases a worker's hold early. Ownership on the item stays put,
+// so another person's machines cannot inherit a disconnected person's bill.
+func (d *Desk) Requeue(id int, worker string) error {
+	return d.change(func(doc *document, now time.Time) (bool, error) {
+		if _, err := holder(doc, id, worker); err != nil {
+			return false, err
+		}
+		if err := d.queue(id); err != nil {
+			return false, err
+		}
+		if err := d.restorePublish(doc, id); err != nil {
+			return false, err
+		}
+		return true, d.keepPublish(doc, id)
+	})
+}
+
+// HandBack gives back the hold named id, which worker holds, because its
+// process is ending cleanly. It is [Desk.Requeue] by the hold's identity: a
+// running job is queued again with no failure stamped, a publish or a merge
+// the hold carried waits for the next pull, and the hold is released.
+//
+// A QUIT IS NOT A LOST MACHINE. Before, a runner that quit let its holds run
+// out, so the job sat on a dead hold for the lease's whole silence (a minute)
+// and was then marked "Runner went offline mid-step" for a person or the
+// automatic retry to pick up; a restart minutes later found nothing to take.
+// Handed back, the job is on the queue at once: a native step is run again
+// from where its job stands, and a step whose AgentField run goes on at the
+// control plane is followed by whichever runner pulls it next
+// ([owesFollow]), without a retry spent. A job that is not running (waiting
+// on a person, paused, finished) keeps its state, as expiry would keep it.
+func (d *Desk) HandBack(id, worker string) error {
+	return d.change(func(doc *document, _ time.Time) (bool, error) {
+		held, err := identified(doc, id, worker)
+		if err != nil {
+			return false, err
+		}
+		job := held.Job
+		if err := d.queue(job); err != nil {
+			return false, err
+		}
+		if err := d.restorePublish(doc, job); err != nil {
+			return false, err
+		}
+		return true, d.keepPublish(doc, job)
+	})
+}
+
+func eligible(it factory.Item, worker Worker) bool {
+	if factory.StoppedByPerson(it) && !pendingReply(it) && !owesStop(it) {
+		return false
+	}
+	if factory.JobState(it) == "done" {
+		return false
+	}
+	if it.Recovery != nil && it.Recovery.State == "waiting" {
+		return false
+	}
+	if it.Recovery != nil && it.Recovery.State == "queued" && factory.RecoveryBlockReason(it) != "" {
+		return false
+	}
+	if !factory.IsIssueJob(it) {
+		return false
+	}
+	if (it.State != factory.StateQueued || paused(it)) && !pendingReply(it) && !owesFollow(it) && !owesStop(it) || (it.WorktreeMachine != "" && it.WorktreeMachine != worker.Machine) {
+		return false
+	}
+	if worker.Solo {
+		return true
+	}
+	if owner := it.Person(); owner != "" {
+		return owner == worker.Handle
+	}
+	// THE FORGE NAMED SOMEONE, so this is not unassigned work: several
+	// assignees leave no single owner, and consent to unassigned work is not
+	// consent to theirs. Only an explicit Assign or start gives it a person.
+	if len(it.SourceAssignees) > 0 {
+		return false
+	}
+	return !worker.Team && (worker.TakesUnassigned[it.Repo] || worker.TakesUnassigned[EveryRepo])
+}
+
+// owesFollow is a job whose AgentField run goes on at the control plane with
+// no runner here following it: running, queued, or waiting in Needs you on
+// that run's own approval. A RUN THAT GOES ON WITHOUT A FOLLOWER IS OWED ONE,
+// whatever left it alone — a hold that expired while the job waited on an
+// approval (a job in Needs you is not running, so expiry queues nothing), an
+// approval given while no runner held the job (it turns the job running with
+// no hold), a runner that let go. Its pull is the job's own Pull, called only
+// when no lease is on the job, so a followed run is never taken twice; the
+// runner that takes it follows the same run ([factory.AgentFieldRunLive]) and
+// sends any decision it still owes. A paused, stopped or finished job is not
+// owed one.
+func owesFollow(it factory.Item) bool {
+	if paused(it) || factory.StoppedByPerson(it) || factory.JobState(it) == "done" || !factory.AgentFieldAnyRunLive(it) {
+		return false
+	}
+	switch it.State {
+	case factory.StateRunning, factory.StateQueued:
+		return true
+	case factory.StateNeedsYou:
+		return it.QKind == factory.QKindAgentField
+	}
+	return false
+}
+
+// owesStop is a job a person stopped whose AgentField run has not ended: the
+// Stop was written on the job, but only a runner can carry it to the control
+// plane, and none held the job when it landed. It is offered to a runner held
+// to talk only (never to run a step), and that runner cancels the run and
+// writes its end on the job, after which it is owed nothing.
+func owesStop(it factory.Item) bool {
+	return factory.StoppedByPerson(it) && factory.JobState(it) != "done" && factory.AgentFieldAnyRunLive(it)
+}
+
+func pendingReply(it factory.Item) bool {
+	if it.Talk == "" {
+		return false
+	}
+	for _, m := range it.Thread {
+		if m.State == "pending" {
+			return true
+		}
+	}
+	return false
+}
+
+func find(doc *document, id int) *Lease {
+	for i := range doc.Leases {
+		if doc.Leases[i].Job == id {
+			return &doc.Leases[i]
+		}
+	}
+	return nil
+}
+
+func holder(doc *document, id int, worker string) (*Lease, error) {
+	held := find(doc, id)
+	if held == nil {
+		return nil, ErrNoLease
+	}
+	if held.Worker != worker {
+		return nil, ErrWorker
+	}
+	return held, nil
+}
+
+func (d *Desk) queue(id int) error {
+	return d.queueJob(id, time.Time{}, "")
+}
+
+// queueJob returns a running job to the queue. lost is set when the hold
+// expired: that is the machine lost after the lease's own wait, and the job
+// records a failure. A worker letting go passes the zero time and records none.
+// machine is the hold's machine, empty when the worker did not name one.
+func (d *Desk) queueJob(id int, lost time.Time, machine string) error {
+	// A no-op must not stamp Changed or append activity to finished work.
+	unchanged := errors.New("factory lease: job is not running")
+	var failed factory.Failure
+	err := d.store.Update(id, func(it *factory.Item) error {
+		if it.State != factory.StateRunning || paused(*it) {
+			return unchanged
+		}
+		if lost.IsZero() {
+			it.State = factory.StateQueued
+		} else if !it.Publishing && factory.AgentFieldRunOwed(*it, currentStepName(*it)) {
+			// RE-ATTACHING TO A LIVE REMOTE RUN IS NOT A RETRY. A step whose
+			// AgentField run goes on at the control plane never ran here, so a
+			// runner that went away (an engine restart, a lid closed) interrupted
+			// nothing: the job waits for a runner again exactly as when one lets
+			// go, and the runner that takes it follows the same run. No failure
+			// is stamped, so no automatic retry is spent and the step keeps its
+			// round.
+			// NOR IS A RUN THAT ENDED ON THE CONTROL PLANE BEFORE ITS STEP DID
+			// HERE: a quit seconds after the run finished leaves its end on the
+			// record and the step running, and the runner that takes the job
+			// reads that end as the step's (factory.AgentFieldRunOwed). It was
+			// never "offline mid-step".
+			it.State = factory.StateQueued
+		} else {
+			failed = markRunnerLost(it, lost, machine)
+		}
+		return nil
+	})
+	if errors.Is(err, store.ErrNotFound) || errors.Is(err, unchanged) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	d.recordRunnerLost(id, failed)
+	return nil
+}
+
+// currentStepName is the name of the step the job is on, empty when none.
+func currentStepName(it factory.Item) string {
+	if it.Stream != nil && it.Stream.Cur >= 0 && it.Stream.Cur < len(it.Stream.Phases) {
+		return it.Stream.Phases[it.Stream.Cur].Name
+	}
+	return ""
+}
+
+func markRunnerLost(it *factory.Item, now time.Time, machine string) factory.Failure {
+	step := ""
+	attempts := 1
+	if it.Stream != nil && it.Stream.Cur >= 0 && it.Stream.Cur < len(it.Stream.Phases) {
+		ph := it.Stream.Phases[it.Stream.Cur]
+		step, attempts = ph.Name, max(1, ph.Round)
+	}
+	if machine == "" {
+		machine = it.WorktreeMachine
+	}
+	if it.Publishing {
+		step = "publishing"
+	}
+	const reason = "Runner went offline mid-step"
+	it.State, it.QKind, it.Question = factory.StateNeedsYou, factory.NeedsRunnerOffline, reason
+	failed := factory.NewFailure(step, factory.CodeMachineLost, reason, machine, factory.FailureStopped, attempts, now)
+	factory.StampFailure(it, failed)
+	if it.FollowUp != nil {
+		cp := *it.FollowUp
+		cp.State, cp.Reason = "needs_you", failed.Detail
+		it.FollowUp = &cp
+	}
+	return failed
+}
+
+func (d *Desk) recordRunnerLost(id int, failed factory.Failure) {
+	if failed.Code != "" && d.record != nil {
+		_, _ = d.record.Append(context.Background(), record.Event{
+			Kind: record.StepFailed, Job: id, Detail: failed.Code + " · " + failed.Step + " · " + failed.Next,
+		})
+	}
+}
+
+func paused(it factory.Item) bool {
+	return factory.RecoveryPaused(it) || it.Stream != nil && it.Stream.Paused
+}
+
+// AsleepCeiling bounds how long a lease is kept for a computer that went to
+// sleep holding it. Sleep keeps the job on its computer through a night; a
+// computer that never wakes (lost, wiped, put away) does not hold the job
+// forever, and after this the job is queued again like any silent hold.
+const AsleepCeiling = 24 * time.Hour
+
+// live says a hold still counts at now: renewed within its silence deadline,
+// or asleep and within AsleepCeiling of going to sleep.
+func (l Lease) live(now time.Time) bool {
+	if l.Asleep {
+		return now.Before(l.HeartbeatAt.Add(AsleepCeiling))
+	}
+	return now.Before(l.ExpiresAt)
+}
+
+func (d *Desk) expire(doc *document, now time.Time) ([]Lease, error) {
+	var expired, kept []Lease
+	for _, held := range append([]Lease(nil), doc.Leases...) {
+		if !held.HeartbeatAt.IsZero() {
+			held.ExpiresAt = held.HeartbeatAt.Add(d.TTL())
+		}
+		if held.live(now) {
+			kept = append(kept, held)
+			continue
+		}
+		if err := d.queueJob(held.Job, now, held.Machine); err != nil {
+			return nil, fmt.Errorf("factory lease: requeue job %d: %w", held.Job, err)
+		}
+		expired = append(expired, held)
+		if err := d.restorePublish(doc, held.Job); err != nil {
+			return nil, err
+		}
+		if err := d.keepPublish(doc, held.Job); err != nil {
+			return nil, err
+		}
+	}
+	doc.Leases = kept
+	return expired, nil
+}
+
+// change persists expiry even when the requested operation is refused. A
+// worker polling the wrong person's job must still free disconnected workers.
+func (d *Desk) change(change func(*document, time.Time) (bool, error)) error {
+	return d.locked(func(doc *document, now time.Time) error {
+		expired, err := d.expire(doc, now)
+		if err != nil {
+			return err
+		}
+		// Persist recovery before the next operation, which may itself write
+		// a lease before changing an item's state.
+		if len(expired) > 0 {
+			if err := d.write(*doc); err != nil {
+				return err
+			}
+		}
+		dirty, err := change(doc, now)
+		if err != nil || !dirty {
+			return err
+		}
+		return d.write(*doc)
+	})
+}
+
+// LiveHold is [Desk.HasLiveHold] and whether that hold is thread-only: the
+// manager lent to a reply, running no step and taking no execution slot.
+func (d *Desk) LiveHold(id int) (live, threadOnly bool, err error) {
+	err = d.locked(func(doc *document, now time.Time) error {
+		if h := find(doc, id); h != nil && h.live(now) {
+			live, threadOnly = true, h.ThreadOnly
+		}
+		return nil
+	})
+	return live, threadOnly, err
+}
+
+// HasLiveHold observes presence without reaping leases or changing job state.
+// Status questions must never become implicit recovery actions.
+func (d *Desk) HasLiveHold(id int) (bool, error) {
+	held := false
+	err := d.locked(func(doc *document, now time.Time) error {
+		if h := find(doc, id); h != nil {
+			held = h.live(now)
+		}
+		return nil
+	})
+	return held, err
+}
+
+// Approved forge writes spend no model budget. A running model or check phase
+// still needs budget even when publication consent or a merge remains on the job.
+func approvedWriteOnly(it factory.Item) bool {
+	anyway := factory.PublishedAnyway(it)
+	writing := it.Publishing || anyway || it.Merging != nil && (it.Merging.State == factory.MergeQueued || it.Merging.State == factory.MergeMerging)
+	if !writing {
+		return false
+	}
+	if it.Stream != nil {
+		for _, ph := range it.Stream.Phases {
+			if ph.State == factory.PhaseRunning && !(anyway && ph.Kind == factory.StagePost) {
+				return false
+			}
+		}
+	}
+	return true
+}

@@ -1,0 +1,251 @@
+package github
+
+import (
+	"context"
+	"errors"
+	"os/exec"
+	"regexp"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/env"
+	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/githubcalls"
+	"github.com/Agent-Field/codeaf/internal/guard"
+	forge "github.com/Agent-Field/codeaf/internal/praf/github"
+)
+
+// ── HOW THIS MACHINE REACHES GITHUB ─────────────────────────────────────────
+//
+// The floor's connect prompt and the settings place's `github` row ask the
+// doors below, which the launch hangs on the seam with [Connect]. A token is
+// found in one order, said once here: GH_TOKEN, then GITHUB_TOKEN, then a
+// token kept in the profile, then gh's own login, BUT GH ONLY AFTER THE PERSON
+// SAID YES TO IT on the floor (config.KeyGitHubVia). The bytes of a token go
+// into a client and nowhere else.
+
+// ghTimeout is how long `gh auth status` and `gh auth token` may take before
+// the floor stops waiting and offers the token row instead.
+const ghTimeout = 3 * time.Second
+
+// TokenAt is the token the factory reads GitHub with on this profile and the
+// way it was found, or "" and "" for none.
+func TokenAt(ctx context.Context, profileDir string) (token, via string) {
+	// An app handoff owns this connection, including a deliberate removal.
+	// A shell token or gh login must not replace the assignee's app account.
+	if source := config.AppCredentialSource(); source != nil {
+		if t, ok := source.Key("github"); ok {
+			if t == "" {
+				return "", ""
+			}
+			return t, factory.ViaToken
+		}
+	}
+	for _, name := range []string{"GH_TOKEN", "GITHUB_TOKEN"} {
+		if t := strings.TrimSpace(env.Value(name)); t != "" {
+			return t, factory.ViaEnv
+		}
+	}
+	if t := config.GitHubTokenAt(profileDir); t != "" {
+		return t, factory.ViaToken
+	}
+	if config.GitHubViaAt(profileDir) == factory.ViaGH {
+		if t := ghToken(ctx); t != "" {
+			return t, factory.ViaGH
+		}
+	}
+	return "", ""
+}
+
+// ghToken is what `gh auth token` last answered, or "". A READ NEVER WAITS ON
+// GH: every read of the factory asks for the token (once per job on a queue),
+// and a gh that hangs (a keychain prompt nobody answers, a dead network) once
+// held each of them. The answer stands for [ghFresh] and is then asked again
+// behind the reads, one ask at a time; a gh that hangs keeps the last answer.
+// Only the very first read waits, at most [FirstWait], for gh's first answer.
+func ghToken(ctx context.Context) string {
+	ghCache.mu.Lock()
+	token, at, ask := ghCache.token, ghCache.at, ghCache.ask
+	if ask == nil && (at.IsZero() || time.Since(at) > ghFresh) {
+		ask = make(chan struct{})
+		ghCache.ask, ghCache.began = ask, time.Now()
+		gh, _ := forge.LookPath("gh")
+		guard.Go("factory/gh token", func() {
+			token, hung := ghTokenFrom(context.Background(), gh)
+			settleGHToken(ask, token, hung)
+		})
+	}
+	began := ghCache.began
+	ghCache.mu.Unlock()
+	if !at.IsZero() {
+		return token
+	}
+	// Counted from when the ask began, so the reads of one queue share it.
+	select {
+	case <-ask:
+	case <-time.After(time.Until(began.Add(FirstWait))):
+	case <-ctx.Done():
+	}
+	ghCache.mu.Lock()
+	defer ghCache.mu.Unlock()
+	return ghCache.token
+}
+
+// ghFresh is how long gh's answer stands before it is asked again.
+const ghFresh = time.Minute
+
+var ghCache struct {
+	mu    sync.Mutex
+	token string
+	at    time.Time     // when gh last answered (or gave up); zero for never
+	ask   chan struct{} // the ask that is out, or nil
+	began time.Time     // when that ask began
+}
+
+// settleGHToken keeps gh's answer; a gh that hung keeps the last one.
+func settleGHToken(ask chan struct{}, token string, hung bool) {
+	ghCache.mu.Lock()
+	defer ghCache.mu.Unlock()
+	if ghCache.ask == ask {
+		if !hung || ghCache.at.IsZero() {
+			ghCache.token = token
+		}
+		ghCache.at, ghCache.ask = time.Now(), nil
+	}
+	close(ask)
+}
+
+// forgetGHToken drops gh's last answer, so the next read asks gh again.
+func forgetGHToken() {
+	ghCache.mu.Lock()
+	defer ghCache.mu.Unlock()
+	ghCache.token, ghCache.at, ghCache.ask = "", time.Time{}, nil
+}
+
+// ghTokenNow asks `gh auth token` now, for at most [ghTimeout]: WaitDelay
+// ends the wait even when gh leaves a child holding its output open, which
+// once made the timeout a minute.
+func ghTokenNow(ctx context.Context) string {
+	gh, _ := forge.LookPath("gh")
+	token, _ := ghTokenFrom(ctx, gh)
+	return token
+}
+
+// ghTokenFrom is [ghTokenNow] of the gh at path ("" for none), and whether gh
+// hung rather than answered.
+func ghTokenFrom(ctx context.Context, gh string) (token string, hung bool) {
+	if gh == "" {
+		return "", false
+	}
+	ctx, cancel := context.WithTimeout(ctx, ghTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, gh, "auth", "token")
+	cmd.WaitDelay = time.Second
+	out, err := cmd.Output()
+	if err != nil {
+		return "", ctx.Err() != nil
+	}
+	return strings.TrimSpace(string(out)), false
+}
+
+// reGHAccount reads the login out of `gh auth status`, which has said it two
+// ways: `Logged in to github.com account NAME (keyring)` and, before that,
+// `Logged in to github.com as NAME (…)`.
+var reGHAccount = regexp.MustCompile(`Logged in to github\.com (?:account|as) ([A-Za-z0-9-]+)`)
+
+// GHLogin is the login `gh auth status` answers, and "" when gh is not
+// installed, not logged in, or slower than [ghTimeout]. It never asks for a
+// token: knowing who gh is logged in as is what the prompt needs to ask.
+func GHLogin(ctx context.Context) (string, error) {
+	gh, err := forge.LookPath("gh")
+	if err != nil {
+		return "", nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, ghTimeout)
+	defer cancel()
+	// gh writes its status to stderr on some versions and stdout on others.
+	githubcalls.NoteGH(ctx, "auth status")
+	cmd := exec.CommandContext(ctx, gh, "auth", "status", "--hostname", "github.com")
+	cmd.WaitDelay = time.Second // a child holding the output open must not outlast the timeout
+	out, _ := cmd.CombinedOutput()
+	if m := reGHAccount.FindSubmatch(out); m != nil {
+		return string(m[1]), nil
+	}
+	return "", nil
+}
+
+// Link is who the profile's token belongs to and the way it was found; a zero
+// link when no token resolves. A token GitHub refuses is an error, so the
+// row never names a login it could not confirm.
+func Link(ctx context.Context, profileDir string) (factory.GitHubLink, error) {
+	token, via := TokenAt(ctx, profileDir)
+	if token == "" {
+		return factory.GitHubLink{}, nil
+	}
+	login, err := forge.NewClient(token).Me(ctx)
+	if err != nil {
+		return factory.GitHubLink{Via: via}, err
+	}
+	return factory.GitHubLink{Login: login, Via: via}, nil
+}
+
+// Keep keeps a way to reach GitHub on the profile: "" is the person's yes to
+// gh's own login, which is refused when gh answers no token; anything else is
+// a token, kept once GitHub has said whose it is.
+func Keep(ctx context.Context, profileDir, token string) error {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		forgetGHToken()
+		if ghTokenNow(ctx) == "" {
+			return errors.New("gh answered no token · gh auth login, then try again")
+		}
+		return config.WriteGitHubViaGH(profileDir)
+	}
+	if strings.ContainsAny(token, " \t\n") {
+		return errors.New("a token is one word")
+	}
+	if _, err := forge.NewClient(token).Me(ctx); err != nil {
+		return errors.New("github did not take that token")
+	}
+	return config.WriteGitHubToken(profileDir, token)
+}
+
+// Lister is the picker's list over the profile's token: every repository it
+// can see, most recently pushed first, or nothing when no token resolves.
+func Lister(profileDir string) factory.RepoLister {
+	return func(ctx context.Context) ([]factory.RepoInfo, error) {
+		token, _ := TokenAt(ctx, profileDir)
+		if token == "" {
+			return nil, nil
+		}
+		repos, err := forge.NewClient(token).Repos(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return RepoInfos(repos), nil
+	}
+}
+
+// RepoInfos converts the forge's repositories to the floor's.
+func RepoInfos(in []RepoInfo) []factory.RepoInfo {
+	out := make([]factory.RepoInfo, 0, len(in))
+	for _, r := range in {
+		out = append(out, factory.RepoInfo{Full: r.Full, Name: r.Name, Owner: r.Owner, Private: r.Private, Pushed: r.Pushed, Open: r.Open, OpenIssues: r.OpenIssues})
+	}
+	return out
+}
+
+// Connect hangs the three connection doors on seam over profileDir: who the
+// token belongs to, who gh is logged in as, and keeping a way in. An empty
+// profile leaves seam as it was, because there is nowhere to keep an answer.
+func Connect(seam factory.Seam, profileDir string) factory.Seam {
+	if strings.TrimSpace(profileDir) == "" {
+		return seam
+	}
+	seam.GitHub = func(ctx context.Context) (factory.GitHubLink, error) { return Link(ctx, profileDir) }
+	seam.GHLogin = GHLogin
+	seam.ConnectGitHub = func(ctx context.Context, token string) error { return Keep(ctx, profileDir, token) }
+	return seam
+}

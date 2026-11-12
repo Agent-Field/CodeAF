@@ -127,6 +127,14 @@ type Clock struct {
 	// fail every check and every piece of work for as long as any window
 	// stayed open. Empty never leaves for this reason.
 	Env string
+	// Orphaned says the window that started this clock has gone. THE CLOCK
+	// LEAVES WITH THE WINDOW THAT STARTED IT once nothing is in hand: an
+	// engine restarted by its desk used to find the old engine's clock still
+	// running, a process of the build it had just replaced, and keep it for
+	// as long as it stayed open (the seventh live A+B run). Any window still
+	// open starts the next clock within [keepEvery]. Nil never leaves for
+	// this reason.
+	Orphaned func() bool
 
 	mu       sync.Mutex
 	inflight map[int64]*flight
@@ -181,13 +189,7 @@ func (c *Clock) Run(ctx context.Context) error {
 	}
 	defer release()
 	c.inflight = map[int64]*flight{}
-	// A CLOCK IS ONLY EVER TAKEN FROM A PROCESS THAT IS GONE, so a run still
-	// recorded as running is one nobody is running any more.
-	if n, err := c.Store.Abandoned(LineClosed); err != nil {
-		c.log("could not close runs a previous clock left: " + err.Error())
-	} else if n > 0 {
-		c.log(fmt.Sprintf("closed %d run(s) a previous clock left running", n))
-	}
+	c.closeAbandoned()
 	var empty time.Time
 	ticker := time.NewTicker(pollEvery)
 	defer ticker.Stop()
@@ -202,10 +204,19 @@ func (c *Clock) Run(ctx context.Context) error {
 		case windows > 0:
 			empty = time.Time{}
 			c.pass(ctx, now)
-			if c.outgrown() {
-				c.log("a window started with a different environment is open; leaving so it starts the clock")
+			if why := c.leaveFor(); why != "" {
+				c.log(why)
 				return nil
 			}
+		case c.orphaned():
+			// THE WINDOW THAT STARTED THIS CLOCK HAS CLOSED AND NO OTHER IS
+			// OPEN, with nothing in hand: there is nothing to wait the grace
+			// out for. The grace covers a window restarting onto a new build,
+			// and that window starts its own clock. Waiting it out left the
+			// ninth live WorkAF round's clock running 30–33 seconds after its
+			// engine had gone.
+			c.log("the window that started this clock has closed and no other is open; leaving")
+			return nil
 		case empty.IsZero():
 			empty = now
 		case now.Sub(empty) >= closingGrace:
@@ -219,6 +230,41 @@ func (c *Clock) Run(ctx context.Context) error {
 		case <-ticker.C:
 		}
 	}
+}
+
+// closeAbandoned closes the runs a previous clock left. A CLOCK IS ONLY EVER
+// TAKEN FROM A PROCESS THAT IS GONE, so a run still recorded as running is one
+// nobody is running any more.
+func (c *Clock) closeAbandoned() {
+	if n, err := c.Store.Abandoned(LineClosed); err != nil {
+		c.log("could not close runs a previous clock left: " + err.Error())
+	} else if n > 0 {
+		c.log(fmt.Sprintf("closed %d run(s) a previous clock left running", n))
+	}
+}
+
+// leaveFor is why this clock should leave an open window to start the next,
+// or "" to stay: the window that started it has gone, or a newer window says
+// a different environment. Either waits until nothing is in hand.
+func (c *Clock) leaveFor() string {
+	switch {
+	case c.orphaned():
+		return "the window that started this clock has closed; leaving so an open one starts its own"
+	case c.outgrown():
+		return "a window started with a different environment is open; leaving so it starts the clock"
+	}
+	return ""
+}
+
+// orphaned reports whether the window that started this clock has gone, with
+// nothing in hand to stop by leaving.
+func (c *Clock) orphaned() bool {
+	if c.Orphaned == nil || !c.Orphaned() {
+		return false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.inflight) == 0
 }
 
 // outgrown reports whether the newest open window says a different environment
@@ -357,6 +403,15 @@ func (c *Clock) start(ctx context.Context, run Run) {
 		if errors.Is(err, ErrNotFound) {
 			_ = c.Store.Start(run.ID)
 			c.finish(run)
+		}
+		return
+	}
+	// WORK NOT YET TRUSTED WAITS FOR THE PERSON'S GO (trust.go), unless this
+	// is the run they already said go to.
+	if a.NeedsAsk() && a.Granted != run.ID {
+		c.mu.Unlock()
+		if err := c.Store.AskRun(run.ID); err != nil {
+			c.log("could not ask about a run of " + a.Title + ": " + err.Error())
 		}
 		return
 	}

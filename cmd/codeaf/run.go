@@ -190,7 +190,8 @@ func runGraph(name string, args []string) error {
 	if err != nil {
 		return err
 	}
-	useAutoSeats(settings)
+	held := useAutoSeats(settings)
+	defer stopPoolErrands(held)
 	seats := doorSeats(settings, *model, *planModel, graph.Goal)
 	applySeats(&settings, seats)
 	// A graph may be loaded from disk and expanded again after an overrun, so

@@ -8,6 +8,23 @@ import (
 	"testing"
 )
 
+func TestApprovalReadersReportProfileErrors(t *testing.T) {
+	profile := t.TempDir()
+	path := filepath.Join(profile, "config.json")
+	if err := os.WriteFile(path, []byte(`{"tools.approvalMode":`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	workspace := t.TempDir()
+	for _, key := range []string{KeyToolApprovalMode, KeyToolApprovals, KeyBashApprovals} {
+		if _, err := ProjectStringAt(workspace, profile, key); err == nil {
+			t.Errorf("%s hid a profile JSON error", key)
+		}
+	}
+	if _, err := HeadlessToolApprovalModeAt(workspace, profile); err == nil {
+		t.Error("headless mode hid a profile JSON error")
+	}
+}
+
 // The project-local layer is a file people check into a repository, so the tests
 // are about the two ways such a file can betray them: applying when it should
 // not, and — far worse — not applying while looking as though it does.

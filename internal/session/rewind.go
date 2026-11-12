@@ -1,9 +1,14 @@
 package session
 
 import (
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/provider"
@@ -174,6 +179,7 @@ func (a *Agent) rewindReadyLocked() error {
 // and established that index is a point; this does the three things a cut is:
 // journal it, shape what is leaving, and let go of it.
 func (a *Agent) cutLocked(index int) []DisplayEntry {
+	a.rewindUndo = nil
 	a.alignReasoningLocked()
 	dropped := a.messages[index:]
 	removed := shapeEntries(dropped, a.file, a.presentation)
@@ -189,6 +195,9 @@ func (a *Agent) cutLocked(index int) []DisplayEntry {
 	}
 	a.messages = a.messages[:index]
 	a.messageReasoning = a.messageReasoning[:index]
+	// And so are their marks, which would hold the same bytes
+	// ([presentationIndex.retain]).
+	a.retainPresentationLocked()
 	return removed
 }
 
@@ -328,4 +337,80 @@ func (a *Agent) lastTurnStartLocked() (int, bool) {
 func isCompactionNote(text string) bool {
 	return strings.HasPrefix(text, foldMarkerPrefix) ||
 		strings.HasPrefix(text, "[context compacted]")
+}
+
+// rewindUndo retains the original allocations so image and presentation identities survive.
+type rewindUndo struct {
+	fingerprint [32]byte
+	token       string
+	tail        []ai.Message
+	reasoning   []provider.MessageReasoning
+	marks       []*messagePresentation
+	instants    []time.Time
+}
+
+// RewindKeep uses the terminal's cut and retains one tail until another turn or cut.
+func (a *Agent) RewindKeep(index int) (string, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if err := a.rewindReadyLocked(); err != nil {
+		return "", err
+	}
+	valid := false
+	for _, p := range a.rewindPointsLocked() {
+		if p.Index == index && p.Turn {
+			valid = true
+			break
+		}
+	}
+	if !valid {
+		return "", fmt.Errorf("session: %d is not a current turn rewind point", index)
+	}
+	var bytes [24]byte
+	if _, err := rand.Read(bytes[:]); err != nil {
+		return "", err
+	}
+	a.alignReasoningLocked()
+	undo := &rewindUndo{token: hex.EncodeToString(bytes[:]), tail: append([]ai.Message(nil), a.messages[index:]...), reasoning: append([]provider.MessageReasoning(nil), a.messageReasoning[index:]...)}
+	for _, m := range undo.tail {
+		undo.marks = append(undo.marks, a.presentation.of(m))
+		undo.instants = append(undo.instants, a.file.written(m))
+	}
+	a.cutLocked(index)
+	undo.fingerprint = rewindFingerprint(a.messages)
+	a.rewindUndo = undo
+	return undo.token, nil
+}
+
+// UndoRewind refuses once anything newer uses the shortened conversation.
+func (a *Agent) UndoRewind(token string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if err := a.rewindReadyLocked(); err != nil {
+		return err
+	}
+	u := a.rewindUndo
+	if u == nil || token != u.token || rewindFingerprint(a.messages) != u.fingerprint {
+		return errors.New("session: rewind undo is no longer available; newer work depends on this conversation")
+	}
+	for i, m := range u.tail {
+		a.presentation.remember(m, u.marks[i])
+		if a.file != nil {
+			a.file.presentation.remember(m, u.marks[i])
+			a.file.rememberStamp(m, u.instants[i])
+		}
+	}
+	if a.file != nil {
+		a.file.appendWindow(u.tail, u.reasoning)
+	}
+	a.messages = append(a.messages, u.tail...)
+	a.messageReasoning = append(a.messageReasoning, u.reasoning...)
+	a.rewindUndo = nil
+	return nil
+}
+
+// The digest detects edits to retained messages as well as appends.
+func rewindFingerprint(messages []ai.Message) [32]byte {
+	raw, _ := json.Marshal(messages)
+	return sha256.Sum256(raw)
 }

@@ -52,6 +52,7 @@ var legacyEffortStampers = map[string]string{
 	"agent.go":           "the per-model dial's doc comment, which names the shape it is NOT",
 	"callwindow.go":      "an answer ask's thinking switched off: a requirement of that one call shape, not a person's depth",
 	"compact_summary.go": "a compaction summary asked at low effort: a digest of what already happened is that one call shape's own economy, not a person's depth",
+	"sideask.go":         "a side ask beside the chat asked at low effort: a question about work already written down, put while a person waits on a button, is that one call shape's own economy, not a person's depth",
 }
 
 // EVERY FILE THAT STAMPS A RUNG ALSO RESOLVES ONE.

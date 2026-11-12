@@ -1,15 +1,13 @@
 package main
 
-// The chat's pairing door (chatv3_pair.go). The plain refusal is said the
-// chat's way: the terminal sentence names its --replace flag, and here the
-// same fact points at the /pair keystroke the person is already sitting at.
+// The chat's pairing door shares the same merge and explicit replacement
+// behavior as the terminal command.
 
 import (
 	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 	"github.com/Agent-Field/codeaf/internal/teams"
 	"io"
@@ -19,23 +17,43 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/pair"
+	"github.com/Agent-Field/codeaf/internal/teams/teamstest"
 )
 
-func TestChatJoinRefusalNamesTheInChatReplace(t *testing.T) {
-	err := chatJoinRefusal(pair.ErrDifferentChats)
-	for _, want := range []string{"/pair <code> --replace", "already has chats of its own"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Fatalf("the refusal lacks %q: %s", want, err)
-		}
+// A used computer is told how to confirm replacement without changing its chats.
+func TestChatPairRefusalExplainsReplacement(t *testing.T) {
+	if !strings.Contains(pair.ErrDifferentChats.Error(), "--replace") || !strings.Contains(pair.ErrDifferentChats.Error(), "nothing was changed") {
+		t.Fatal(pair.ErrDifferentChats)
 	}
-	// Any other failure is carried as it is.
-	other := errors.New("the relay is down")
-	if chatJoinRefusal(other) != other {
-		t.Fatal("an unrelated error was rewritten")
+}
+
+func TestM1M8ChatPairDoorUsedSoloHome(t *testing.T) {
+	rig := newPairRig(t)
+	t.Setenv("CODEAF_HOME", rig.homeB)
+	t.Setenv("CODEAF_PROFILE_DIR", rig.homeB)
+	t.Setenv("CODEAF_SYNC_URL", rig.url)
+	if _, err := identity.EnsureSolo(rig.homeB); err != nil {
+		t.Fatal(err)
 	}
-	if chatJoinRefusal(nil) != nil {
-		t.Fatal("a nil error was rewritten")
+	chat := filepath.Join(rig.homeB, "own-chat")
+	if err := os.WriteFile(chat, []byte("history kept\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	shown := rig.show(t)
+	code := shown.code(t)
+	done := make(chan error, 1)
+	go func() {
+		_, err := (chatPairDoor{}).Join(t.Context(), code, joinScreen{newTerminal(strings.NewReader(""), io.Discard)})
+		done <- err
+	}()
+	if err := <-done; !errors.Is(err, pair.ErrDifferentChats) {
+		t.Fatalf("used solo pairing = %v", err)
+	}
+	if got, err := os.ReadFile(chat); err != nil || string(got) != "history kept\n" {
+		t.Fatalf("M1 /pair history: %q, %v", got, err)
 	}
 }
 
@@ -175,13 +193,14 @@ func TestTerminalPairReplaceWithoutTerminalNeverWaitsForInput(t *testing.T) {
 // R3/F3 completes non-terminal teams-only replacement and prints the preserved team's actual path.
 func TestTerminalTeamsOnlyReplacePrintsAsideReceiptWithoutInput(t *testing.T) {
 	rig := newPairRig(t)
+	row, _ := config.NewSettings(config.SettingsOptions{ProfileDir: rig.homeB}).Row(config.KeyTeamsShare)
+	if err := row.Apply("on"); err != nil {
+		t.Fatal(err)
+	}
 	if err := teams.Update(rig.homeB, func(f *teams.File) error { f.Teams = []teams.Team{{ID: "local", Name: "harbor"}}; return nil }); err != nil {
 		t.Fatal(err)
 	}
-	before, err := os.ReadFile(teams.Path(rig.homeB))
-	if err != nil {
-		t.Fatal(err)
-	}
+	before := teamstest.JSON(t, rig.homeB)
 	shown := rig.show(t)
 	code := shown.code(t)
 	in, writer := io.Pipe()
@@ -214,15 +233,21 @@ func TestTerminalTeamsOnlyReplacePrintsAsideReceiptWithoutInput(t *testing.T) {
 	if err := shown.end(t); err != nil {
 		t.Fatal(err)
 	}
-	paths, err := filepath.Glob(teams.Path(rig.homeB) + ".unreadable-*")
+	paths, err := filepath.Glob(teams.Path(rig.homeB) + ".unreadable-*[0-9]")
 	if err != nil || len(paths) != 1 {
 		t.Fatal("replacement did not set teams aside", paths, err, out.String())
 	}
 	if !strings.Contains(out.String(), pair.TeamsAsideLine(paths[0])) || strings.Contains(out.String(), pair.ReplaceAskLine) {
 		t.Fatal("missing non-terminal receipt", out.String())
 	}
-	got, err := os.ReadFile(paths[0])
-	if err != nil || !bytes.Equal(got, before) {
+	kept := t.TempDir()
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		if err := os.Rename(paths[0]+suffix, teams.Path(kept)+suffix); err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+	}
+	got := teamstest.JSON(t, kept)
+	if !bytes.Equal(got, before) {
 		t.Fatal("receipt's file did not preserve teams", string(got), err)
 	}
 }

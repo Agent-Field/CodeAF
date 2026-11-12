@@ -488,7 +488,7 @@ func TestEveryPageQuotingAShippedSentenceQuotesItWhole(t *testing.T) {
 func TestTheCrewCommandRowsNameTheSeatsTheRouterOwns(t *testing.T) {
 	rows := strings.Join(crewCommandRows(t), "\n")
 	if rows == "" {
-		t.Fatal("internal/tui3/commands.go offers no /crew row")
+		t.Fatal("internal/slashcat/catalog.go offers no /crew row")
 	}
 	for _, seat := range crewroute.Seats {
 		if !strings.Contains(rows, string(seat)) {
@@ -503,12 +503,13 @@ func TestTheCrewCommandRowsNameTheSeatsTheRouterOwns(t *testing.T) {
 	}
 }
 
-// crewCommandRows is every /crew row in the command list, read as text.
-var crewRowLine = regexp.MustCompile(`(?m)^.*\{name: "crew".*$`)
+// crewCommandRows is every /crew row in the command list, read as text. The
+// list is internal/slashcat's one table, which the terminal and the wire both read.
+var crewRowLine = regexp.MustCompile(`(?m)^.*\{Name: "crew".*$`)
 
 func crewCommandRows(t *testing.T) []string {
 	t.Helper()
-	return crewRowLine.FindAllString(sourceText(t, "../tui3/commands.go"), -1)
+	return crewRowLine.FindAllString(sourceText(t, "../slashcat/catalog.go"), -1)
 }
 
 // THE FLOOR AND THE PAGE ABOUT IT AGREE, INCLUDING ABOUT ITS SIZE.

@@ -261,3 +261,42 @@ func TestL4InterruptedFinalSavingUsesLocalReceipt(t *testing.T) {
 		})
 	}
 }
+
+// Removal is rechecked at both sentences, including after quitting has begun.
+func TestL4QuitProgressRechecksSharing(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		allowed [2]bool
+		want    []string
+	}{
+		{"removed before progress", [2]bool{false, false}, nil},
+		{"removed while quitting", [2]bool{true, false}, []string{quitSavingWord}},
+		{"paired again", [2]bool{false, true}, []string{quitStillSavingWord}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ticks := make(chan time.Time, 2)
+			ticks <- time.Time{}
+			ticks <- time.Time{}
+			stop := make(chan struct{})
+			var got []string
+			checks := 0
+			q := quitProgress{
+				after: func(time.Duration) <-chan time.Time { return ticks },
+				say:   func(line string) { got = append(got, line) },
+				stop:  stop,
+				allowed: func() bool {
+					allowed := tc.allowed[checks]
+					checks++
+					if checks == 2 {
+						close(stop)
+					}
+					return allowed
+				},
+			}
+			q.run()
+			if checks != 2 || strings.Join(got, "\n") != strings.Join(tc.want, "\n") {
+				t.Fatalf("sharing checks=%d, lines=%q; want %q", checks, got, tc.want)
+			}
+		})
+	}
+}

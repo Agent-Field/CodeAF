@@ -9,6 +9,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/keys"
+	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/teams"
 	"github.com/Agent-Field/codeaf/internal/vaultsync"
 )
@@ -91,7 +92,7 @@ func (s *Sync) SyncState(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	return s.withVault(func(v vaultsync.Syncer) error {
+	err = s.withVault(func(v vaultsync.Syncer) error {
 		sharing := s.teamsSharing()
 		if sharing != s.teamsShared {
 			s.stateVaultKnown = false
@@ -128,6 +129,10 @@ func (s *Sync) SyncState(ctx context.Context) error {
 		}
 		return nil
 	})
+	if err == nil && pair.SharingPending(s.Home, s.Identity.ID()) {
+		return pair.CompleteSharing(s.Home, s.Identity.ID())
+	}
+	return err
 }
 
 // RunState is owned and joined by the terminal's lifetime. Pairing while Home

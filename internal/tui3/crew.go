@@ -137,15 +137,7 @@ func (a *app) crewAllowedModels(rest string) int {
 		a.noteFacts("allowed models · "+config.CrewAllowedAt(a.profileDir).String(), config.CrewAllowedAt(a.profileDir).String())
 		return -1
 	}
-	var err error
-	switch {
-	case strings.HasPrefix(rest, "+") && !strings.Contains(rest, " "):
-		err = config.ModifyCrewAllowed(a.profileDir, true, strings.TrimPrefix(rest, "+"))
-	case strings.HasPrefix(rest, "-") && !strings.Contains(rest, " "):
-		err = config.ModifyCrewAllowed(a.profileDir, false, strings.TrimPrefix(rest, "-"))
-	default:
-		err = config.SetCrewAllowed(a.profileDir, rest)
-	}
+	err := config.ApplyCrewModels(a.profileDir, rest)
 	if err != nil {
 		a.note("could not set the allowed models · " + err.Error())
 		return -1
@@ -451,6 +443,10 @@ func (a *app) crewHint() string { return a.crewSegment() }
 const (
 	crewOneModelSegment = "one model"
 	crewOneModelWord    = "one model · every call rides the model you are talking to"
+	// crewTaskOneWord and crewTaskOneTail say the profile's one-model row: a
+	// row the app's Task models page writes, read at every task's start.
+	crewTaskOneWord = "one model for every task: "
+	crewTaskOneTail = " · the seats and allowed models below wait for Auto"
 )
 
 // refreshSettings rebuilds an open settings panel from the registry. A command

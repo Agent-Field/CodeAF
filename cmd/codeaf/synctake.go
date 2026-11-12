@@ -5,10 +5,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"log"
 	"net/url"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/automation"
@@ -53,12 +55,11 @@ func wireSync(o *tui3.Options) {
 	if o.Fleet == nil {
 		o.Fleet = s
 	}
-	take := takeover{s.Continuer(cellstore.EngineFor(""), syncsetup.TakeOptions{
-		DeviceName: deviceName(),
-		RootFor:    takeRootFor,
-		BucketFor:  takeCopyBucket,
-		Notify:     surfaceNotices.Say,
-	})}
+	if o.NotShared == nil {
+		o.NotShared = terminalNotShared
+	}
+	moving := &takeProgress{}
+	take := takeover{c: chatContinuer(s, surfaceNotices.Say, moving.report), moving: moving}
 	if o.Takeover == nil {
 		o.Takeover = take
 	}
@@ -280,7 +281,51 @@ func standingRefusal(err error) error {
 
 // takeover is the surface's Taker over the take side: what a takeover reports,
 // in the shape the surface knows.
-type takeover struct{ c *syncsetup.Continuer }
+type takeover struct {
+	c      *syncsetup.Continuer
+	moving *takeProgress
+}
+
+// takeProgress is how far the terminal's one running continue has got.
+type takeProgress struct {
+	mu   sync.Mutex
+	cell string
+	at   tui3.MoveProgress
+	ok   bool
+}
+
+func (p *takeProgress) start(cell string) {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.cell, p.ok = cell, false
+}
+
+func (p *takeProgress) report(m syncsetup.MoveProgress) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.at, p.ok = tui3.MoveProgress{Step: m.Step, Done: m.Done, Total: m.Total}, true
+}
+
+// MoveProgress says how far the continue of cell has got.
+func (t takeover) MoveProgress(cell string) (tui3.MoveProgress, bool) {
+	if t.moving == nil {
+		return tui3.MoveProgress{}, false
+	}
+	t.moving.mu.Lock()
+	defer t.moving.mu.Unlock()
+	return t.moving.at, t.moving.ok && t.moving.cell == cell
+}
+
+// surfaceTakeError names a stalled continue in the terminal's words.
+func surfaceTakeError(err error) error {
+	if errors.Is(err, syncsetup.ErrMoveStalled) {
+		return fmt.Errorf("%w: %w", tui3.ErrMoveStalled, err)
+	}
+	return err
+}
 
 var _ tui3.Taker = takeover{}
 
@@ -292,19 +337,21 @@ func (t takeover) Take(ctx context.Context, id string) (tui3.Taken, error) {
 // acquire, so its consent cannot displace a holder that arrived meanwhile.
 func (t takeover) TakeSeen(ctx context.Context, id string, seen *directory.LeaseExpectation) (tui3.Taken, error) {
 	began := time.Now()
+	t.moving.start(id)
 	got, err := t.c.TakeSeen(ctx, id, seen)
 	elapsed := time.Since(began)
 	if err != nil {
-		return tui3.Taken{}, err
+		return tui3.Taken{}, surfaceTakeError(err)
 	}
 	return surfaceTaken(got, elapsed), nil
 }
 
 func (t takeover) TakeSeenWithWorkspaceRoots(ctx context.Context, id string, seen *directory.LeaseExpectation, roots map[string]string) (tui3.Taken, error) {
 	began := time.Now()
+	t.moving.start(id)
 	got, err := t.c.TakeSeenWithWorkspaceRoots(ctx, id, seen, roots)
 	if err != nil {
-		return tui3.Taken{}, err
+		return tui3.Taken{}, surfaceTakeError(err)
 	}
 	return surfaceTaken(got, time.Since(began)), nil
 }
@@ -326,22 +373,28 @@ func surfaceTaken(got syncsetup.Continued, elapsed time.Duration) tui3.Taken {
 // already has, found where a chat keeps it, and otherwise a folder in the
 // bucket of chats that belong to no project, where a chat that arrives from
 // another machine is at home.
-func takeRootFor(id string) string {
-	if c, err := openCellByID(id); err == nil {
+func takeRootFor(id string) string { return takeRootForAt(home.Dir(), id) }
+
+func takeRootForAt(dir, id string) string {
+	if c, err := openCellByIDAt(dir, id); err == nil {
 		return c.Root
 	}
-	return filepath.Join(home.Join("v3", "projects", "copies"), id)
+	return filepath.Join(dir, "v3", "projects", "copies", id)
 }
 
 // takeCopyBucket files each copy under the folder it came from, apart from
-// conversations that work in this computer's own folder of the same name.
-func takeCopyBucket(origin string) string {
+// conversations that work in this computer's own folder of the same name. A
+// chat's origin grows with every move, so an uncapped bucket name stops working
+// at the filesystem's 255-byte component limit.
+func takeCopyBucket(origin string) string { return takeCopyBucketAt(home.Dir(), origin) }
+
+func takeCopyBucketAt(dir, origin string) string {
 	name := "copy-" + encodeWorkspace(origin)
 	if len(name) > 255 {
 		digest := sha256.Sum256([]byte(filepath.Clean(origin)))
 		name = "copy-" + hex.EncodeToString(digest[:])
 	}
-	return home.Join("v3", "projects", name)
+	return filepath.Join(dir, "v3", "projects", name)
 }
 
 // deviceName is what this machine is called in a sentence about it: the name a
@@ -380,6 +433,25 @@ func (t takeover) SafeToContinue(ctx context.Context, id, current string, automa
 		log.Printf("continue %s needs a choice: local files, conversation or tool work changed", id)
 	}
 	return !dirty, err
+}
+
+// chatContinuer is the shared CLI and app continuation assembly.
+// chatContinuer is the terminal's continue: it stops when nothing comes
+// through for syncsetup.MoveIdleWithin, and tells onMove how far it has got.
+func chatContinuer(s *syncsetup.Sync, notify func(string), onMove func(syncsetup.MoveProgress)) *syncsetup.Continuer {
+	return s.Continuer(cellstore.EngineFor(""), syncsetup.TakeOptions{
+		DeviceName: devname.Name(s.Home),
+		RootFor:    func(id string) string { return takeRootForAt(s.Home, id) },
+		BucketFor:  func(origin string) string { return takeCopyBucketAt(s.Home, origin) },
+		Notify:     notify,
+		OnMove:     onMove,
+		IdleWithin: syncsetup.MoveIdleWithin,
+	})
+}
+
+// chatMover is chatContinuer for a move the app watches.
+func chatMover(s *syncsetup.Sync, onMove func(syncsetup.MoveProgress)) *syncsetup.Continuer {
+	return chatContinuer(s, nil, onMove)
 }
 
 // ReleaseUnused leaves the installed files and kept work intact, just as closing

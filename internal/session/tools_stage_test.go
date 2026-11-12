@@ -1,0 +1,330 @@
+package session
+
+// A factory stage's two verbs (tools_stage.go), held to their laws: absent
+// without the door, the arguments read into the result and the edit the door
+// is handed, the sentences the model reads back, the door's refusal said back,
+// and a belt that costs every other conversation nothing.
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"path/filepath"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/run"
+	"github.com/Agent-Field/codeaf/internal/manual"
+)
+
+// THE TWO DOORS ARE ONE SHAPE. The runner builds a run.StageDoor and the
+// wiring hands it to Config.Stage; this line stops compiling the day either
+// spelling drifts.
+var _ StageDoor = run.StageDoor(nil)
+
+// fakeStageDoor keeps what it is handed, or refuses with refuse.
+type fakeStageDoor struct {
+	mu      sync.Mutex
+	reports []factory.StageResult
+	edits   []factory.PlanEdit
+	refuse  error
+}
+
+func (d *fakeStageDoor) Report(_ context.Context, r factory.StageResult) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.refuse != nil {
+		return d.refuse
+	}
+	d.reports = append(d.reports, r)
+	return nil
+}
+
+func (d *fakeStageDoor) Edit(_ context.Context, e factory.PlanEdit) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.refuse != nil {
+		return d.refuse
+	}
+	d.edits = append(d.edits, e)
+	return nil
+}
+
+func stageAgent(t *testing.T, door StageDoor) *Agent {
+	t.Helper()
+	a := &Agent{config: Config{Workspace: t.TempDir()}}
+	if door != nil {
+		a.config.Stage = door
+	}
+	a.tools = a.belt()
+	return a
+}
+
+func stageToolNamed(t *testing.T, a *Agent, name string) bare.Tool {
+	t.Helper()
+	for _, tool := range a.offeredTools() {
+		if tool.Name == name {
+			return tool
+		}
+	}
+	t.Fatalf("%s is not on the belt", name)
+	return bare.Tool{}
+}
+
+func callStageTool(t *testing.T, tool bare.Tool, args string) (string, bool) {
+	t.Helper()
+	out, isErr, err := tool.Execute(context.Background(), json.RawMessage(args))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out, isErr
+}
+
+func TestTheStageVerbsAreOnTheBeltOnlyWithTheDoor(t *testing.T) {
+	for _, tool := range stageAgent(t, nil).offeredTools() {
+		if tool.Name == "stage_result" || tool.Name == "plan_edit" {
+			t.Fatalf("a conversation that is not a stage carries %s", tool.Name)
+		}
+	}
+	a := stageAgent(t, &fakeStageDoor{})
+	stageToolNamed(t, a, "stage_result")
+	stageToolNamed(t, a, "plan_edit")
+	// AND THE SHIPPED CONVERSATION IS NOT A STAGE: no door sets Stage there.
+	if shipped := shippedShapeAgent(t); shipped.offers("stage_result") || shipped.offers("plan_edit") {
+		t.Fatal("the shipped conversation carries a stage verb")
+	}
+}
+
+func TestStageResultHandsTheDoorWhatTheModelReported(t *testing.T) {
+	door := &fakeStageDoor{}
+	tool := stageToolNamed(t, stageAgent(t, door), "stage_result")
+	out, isErr := callStageTool(t, tool, `{"done":true,"findings":1,
+		"claims":[{"text":"  refunds   count once ","ok":true,"evidence":"TestRefund passes","medium":" Test "}],
+		"notes":["the export changed",""],"output":"  one finding left  "}`)
+	if isErr || out != "reported" {
+		t.Fatalf("result = %q (error %v)", out, isErr)
+	}
+	want := factory.StageResult{Done: true, Findings: 1, Notes: []string{"the export changed"}, Output: "one finding left",
+		Claims: []factory.Claim{{Text: "refunds count once", OK: true, Evidence: "TestRefund passes", Medium: "test"}}}
+	got := door.reports[0]
+	if got.Done != want.Done || got.Findings != want.Findings || got.Output != want.Output ||
+		len(got.Notes) != 1 || got.Notes[0] != want.Notes[0] || len(got.Claims) != 1 || got.Claims[0] != want.Claims[0] {
+		t.Fatalf("door got %+v, want %+v", got, want)
+	}
+}
+
+func TestStageResultSaysWhatIsMissing(t *testing.T) {
+	door := &fakeStageDoor{}
+	tool := stageToolNamed(t, stageAgent(t, door), "stage_result")
+	for args, want := range map[string]string{
+		`{"findings":0}`:                                  stageNeedsDone,
+		`{"done":true,"findings":-1}`:                     stageNeedsFindings,
+		`{"done":true,"claims":[{"text":" ","ok":true}]}`: stageNeedsClaim,
+	} {
+		if out, isErr := callStageTool(t, tool, args); !isErr || out != want {
+			t.Errorf("%s answered %q, want %q", args, out, want)
+		}
+	}
+	if len(door.reports) != 0 {
+		t.Fatal("an invalid call reached the door")
+	}
+	door.refuse = errors.New("claim 1 has no evidence: add what shows it, or set ok: false")
+	if out, isErr := callStageTool(t, tool, `{"done":false}`); !isErr || out != "not reported: claim 1 has no evidence: add what shows it, or set ok: false" {
+		t.Fatalf("a refusal answered %q", out)
+	}
+}
+
+func TestPlanEditHandsTheDoorAProposalAndChangesNothing(t *testing.T) {
+	door := &fakeStageDoor{}
+	tool := stageToolNamed(t, stageAgent(t, door), "plan_edit")
+	out, isErr := callStageTool(t, tool, `{"add":["after review, read it for auth holes"],"skip":[" neaten "],"on":["security"],"why":"touches  billing"}`)
+	if isErr || out != "proposed · the runner applies it within the recipe's bounds" {
+		t.Fatalf("result = %q", out)
+	}
+	e := door.edits[0]
+	if len(e.Add) != 1 || e.Add[0].Ask != "after review, read it for auth holes" || len(e.Skip) != 1 || e.Skip[0] != "neaten" ||
+		len(e.On) != 1 || e.On[0] != "security" || e.Why != "touches billing" {
+		t.Fatalf("edit = %+v", e)
+	}
+	if out, isErr := callStageTool(t, tool, `{"why":"nothing"}`); !isErr || out != planNeedsChange {
+		t.Fatalf("an empty proposal answered %q", out)
+	}
+	if out, isErr := callStageTool(t, tool, `{"add":["after test,"]}`); !isErr || !strings.Contains(out, "needs to say what it does") {
+		t.Fatalf("a stage with no ask answered %q", out)
+	}
+	door.refuse = errors.New("the proposal changes nothing")
+	if out, isErr := callStageTool(t, tool, `{"skip":["neaten"]}`); !isErr || out != "not proposed: the proposal changes nothing" {
+		t.Fatalf("a refusal answered %q", out)
+	}
+}
+
+// THE DESCRIPTIONS SAY WHAT A STAGE IS, because the model has nothing else to
+// learn it from: no sentence on the page names these verbs.
+func TestTheStageDescriptionsSayWhatAStageIsAndHowItEnds(t *testing.T) {
+	for _, want := range []string{"IS one stage of a factory item", "its brief", "tasks", "Successful done ends the step immediately; use final false for an intermediate report.", "until clean needs zero", "Nothing is posted anywhere"} {
+		if !strings.Contains(stageResultDescription, want) {
+			t.Errorf("stage_result's description lacks %q", want)
+		}
+	}
+	for _, want := range []string{"Nothing changes by calling this", "recipe's bounds", "never posts"} {
+		if !strings.Contains(planEditDescription, want) {
+			t.Errorf("plan_edit's description lacks %q", want)
+		}
+	}
+	for _, d := range []string{stageResultDescription, planEditDescription} {
+		if strings.Contains(d, "—") {
+			t.Error("a description carries an em dash")
+		}
+	}
+}
+
+// stageBeltBudget is what the two verbs cost a stage conversation on every
+// request, in bytes of name, description and schema. It is measured, with a
+// little room, and only ever comes down.
+const stageBeltBudget = 2_500
+
+// THE PROMPT FRAGMENT IS THE TWO TOOLS AND NOTHING ON THE PAGE. The page had
+// four bytes of headroom against its budget (prefixbudget_test.go) when this
+// lane arrived, so a stage is told what it is by its brief and by these
+// descriptions, and the page every other conversation reads is unchanged.
+func TestTheStageVerbsCostOnlyTheStageAndStayUnderTheirBudget(t *testing.T) {
+	a := stageAgent(t, &fakeStageDoor{})
+	total := 0
+	for _, name := range []string{"stage_result", "plan_edit"} {
+		tool := stageToolNamed(t, a, name)
+		total += len(tool.Name) + len(tool.Description) + len(tool.Schema)
+		if !json.Valid(tool.Schema) {
+			t.Errorf("%s's schema is not JSON", name)
+		}
+	}
+	t.Logf("the stage verbs are %d bytes", total)
+	if total > stageBeltBudget {
+		t.Fatalf("the stage verbs are %d bytes, over their %d", total, stageBeltBudget)
+	}
+	// BEING A STAGE CHANGES ONE PARAGRAPH OF THE PAGE AND NOTHING ELSE: the
+	// hand-off paragraph names no quick task it does not carry
+	// (stage_turn_test.go). Every other conversation's page is untouched.
+	plain := Config{Workspace: "/w"}
+	stage := plain
+	stage.Stage = &fakeStageDoor{}
+	plainPage, stagePage := promptWithBeltFacts(plain), promptWithBeltFacts(stage)
+	for _, page := range []string{plainPage, stagePage} {
+		if strings.Contains(page, "stage_result") || strings.Contains(page, "plan_edit") {
+			t.Fatal("the page names a stage verb: the page is paid for by every conversation")
+		}
+	}
+	if strings.Contains(stagePage, "`"+quickTaskToolName+"`") || !strings.Contains(plainPage, "`"+quickTaskToolName+"`") {
+		t.Fatal("the hand-off paragraph is not the one each belt carries")
+	}
+}
+
+func TestTheStageVerbsHaveAFamilyAGlossAndAPageInTheManual(t *testing.T) {
+	for _, name := range []string{"stage_result", "plan_edit"} {
+		if got := ActionCategoryForTool(name); got != ActionPlan {
+			t.Errorf("%s is in the %s family", name, got)
+		}
+		if !manual.Chat().Mentions(name) {
+			t.Errorf("the manual never names %s", name)
+		}
+	}
+	if glossField["stage_result"] != "output" || glossField["plan_edit"] != "why" {
+		t.Fatal("the stage verbs are glossed by the wrong field")
+	}
+}
+
+// A FACTORY STAGE HAS ONE JUDGE, ITS RUNNER. Armed exactly as the factory
+// arms one (unattended, under a wall), a stage conversation has no goal owner,
+// so nothing in it can say done for a stage that never reported; and it is
+// still asked whether it is going, so its runner waits for a landing it owes
+// an answer.
+func TestAStageConversationHasNoGoalOwnerAndIsStillAskedIfItIsGoing(t *testing.T) {
+	stage, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Stage = &fakeStageDoor{}
+		c.Unattended, c.Budget = true, Budget{Wall: time.Hour}
+	})
+	if stage.steward() != nil {
+		t.Fatal("a stage conversation was given a goal owner")
+	}
+	if stage.checkpoints(context.Background(), userMessage{wake: true}) {
+		t.Fatal("a stage conversation takes stock, which only a goal owner reads")
+	}
+	stage.graph()
+	if stage.StillGoing() {
+		t.Fatal("an idle stage read as still going")
+	}
+	stage.mu.Lock()
+	stage.steering = append(stage.steering, jobNote("task 1 has landed"))
+	stage.mu.Unlock()
+	if !stage.StillGoing() {
+		t.Fatal("a stage owed an answer to a landing read as idle")
+	}
+
+	plain, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Unattended, c.Budget = true, Budget{Wall: time.Hour}
+	})
+	if plain.steward() == nil {
+		t.Fatal("an unattended run under a wall lost its goal owner")
+	}
+}
+
+func TestFactoryManagerDoesNotOwnOrPollPipelineCompletion(t *testing.T) {
+	talk := filepath.Join(t.TempDir(), "manager.jsonl")
+	door := &jobChatStub{talk: talk}
+	manager, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.SessionFile = talk
+		c.JobChat = door
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+		c.AskConsent = true
+	})
+	if manager.steward() != nil {
+		t.Fatal("factory manager has a second completion owner")
+	}
+	if manager.checkpoints(context.Background(), userMessage{wake: true}) {
+		t.Fatal("manager completion checker polls the runner")
+	}
+}
+
+// A PLAN'S FILE LIST COSTS NO OTHER STAGE ANYTHING, AND COSTS THE PLAN NO MORE:
+// it takes the place of the publish summary a plan never writes.
+func TestThePlanStagesVerbsCostNoMoreThanAnyOtherStages(t *testing.T) {
+	belt := func(plan bool) int {
+		a := stageAgent(t, &fakeStageDoor{})
+		a.config.PlanStage = plan
+		a.tools = a.belt()
+		total := 0
+		for _, name := range []string{"stage_result", "plan_edit"} {
+			tool := stageToolNamed(t, a, name)
+			total += len(tool.Name) + len(tool.Description) + len(tool.Schema)
+			if !json.Valid(tool.Schema) {
+				t.Errorf("%s's schema is not JSON", name)
+			}
+		}
+		return total
+	}
+	other, plan := belt(false), belt(true)
+	t.Logf("other stages %d bytes, plan %d bytes", other, plan)
+	if plan > other {
+		t.Fatalf("a plan's verbs are %d bytes, over the other stages' %d", plan, other)
+	}
+}
+
+// ONLY THE STEP FOLLOWING A PULL REQUEST IS OFFERED THE REPAIR REPORT.
+func TestOnlyARepairStageIsOfferedTheRepairReport(t *testing.T) {
+	for _, repair := range []bool{false, true} {
+		a := stageAgent(t, &fakeStageDoor{})
+		a.config.RepairStage = repair
+		a.tools = a.belt()
+		schema := string(stageToolNamed(t, a, "stage_result").Schema)
+		if !json.Valid([]byte(schema)) {
+			t.Fatalf("schema is not JSON: %s", schema)
+		}
+		if got := strings.Contains(schema, `"repair":`); got != repair {
+			t.Errorf("repair stage %v: schema offers repair = %v", repair, got)
+		}
+	}
+}

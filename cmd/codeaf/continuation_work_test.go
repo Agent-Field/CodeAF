@@ -14,6 +14,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	cellstoretest "github.com/Agent-Field/codeaf/internal/cellstore/celltest"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/remote"
@@ -65,13 +66,12 @@ func TestC29LocalHomeHasFiftyChatsBeforeItsWireCacheAnswers(t *testing.T) {
 func TestC31AStartupSaveIsNotAChoice(t *testing.T) {
 	celltest.RequireEngine(t)
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
-	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(t.TempDir(), "no-global-config"))
-	t.Cleanup(cellstore.StopSpawned)
+	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(cellstoretest.EngineDir(t), "no-global-config"))
+
 	for _, action := range []string{"bookkeeping", "git-status", "git-private", "git-stage", "files", "conversation", "tool"} {
 		t.Run(action, func(t *testing.T) {
-			t.Setenv(home.EnvVar, t.TempDir())
+			t.Setenv(home.EnvVar, cellstoretest.EngineDir(t))
 			work := t.TempDir()
-			t.Cleanup(cellstore.StopSpawned)
 			file := filepath.Join(work, "work.txt")
 			if err := os.WriteFile(file, []byte("already shared"), 0600); err != nil {
 				t.Fatal(err)
@@ -108,6 +108,8 @@ func TestC31AStartupSaveIsNotAChoice(t *testing.T) {
 			}
 			if strings.HasPrefix(action, "git-") {
 				git("init", "-q")
+				git("config", "--local", "maintenance.auto", "false")
+				git("config", "--local", "gc.auto", "0")
 				git("add", "work.txt")
 				git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-qm", "initial")
 				if action == "git-private" {

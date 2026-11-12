@@ -145,7 +145,7 @@ func (a *Agent) automationDispatch(ctx context.Context, args json.RawMessage) (s
 	var parsed automationArguments
 	if len(args) > 0 {
 		if err := decodeToolArguments(args, &parsed); err != nil {
-			return "Invalid arguments: " + err.Error(), true, nil
+			return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 		}
 	}
 	store := a.config.automationStore()
@@ -164,17 +164,17 @@ func (a *Agent) automationDispatch(ctx context.Context, args json.RawMessage) (s
 		if op == "resume" {
 			status = automation.StatusActive
 		}
-		return a.automationSetStatus(store, parsed.ID, status)
+		return a.automationSetStatus(ctx, store, parsed.ID, status)
 	case "delete":
-		return a.automationDelete(store, parsed.ID)
+		return a.automationDelete(ctx, store, parsed.ID)
 	case "run":
-		return a.automationRunNow(store, parsed.ID)
+		return a.automationRunNow(ctx, store, parsed.ID)
 	case "history":
-		return automationHistory(store, parsed.ID, time.Now())
+		return automationHistory(ctx, store, parsed.ID, time.Now())
 	case "":
-		return "Invalid arguments: op is required — " + automationOps, true, nil
+		return rejectToolArguments(ctx, "Invalid arguments: op is required — "+automationOps), true, nil
 	default:
-		return "Invalid arguments: no op called " + strconv.Quote(parsed.Op) + " — " + automationOps, true, nil
+		return rejectToolArguments(ctx, "Invalid arguments: no op called "+strconv.Quote(parsed.Op)+" — "+automationOps), true, nil
 	}
 }
 
@@ -184,16 +184,16 @@ func (a *Agent) automationPropose(ctx context.Context, store *automation.Store, 
 	// ONE READING OF THE CLOCK FOR THE WHOLE CALL, so `when.in`, the refusal of a
 	// passed moment and the card's next-run line all measure the same instant.
 	now := time.Now()
-	item, problem := a.automationFrom(parsed, now)
+	item, problem := a.automationFrom(ctx, parsed, now)
 	if problem != "" {
-		return problem, true, nil
+		return rejectToolArguments(ctx, problem), true, nil
 	}
 	if err := item.Validate(); err != nil {
-		return "Invalid arguments: " + err.Error(), true, nil
+		return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 	}
 	next, err := item.Schedule.First(now)
 	if err != nil {
-		return "Invalid arguments: " + err.Error(), true, nil
+		return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 	}
 	notice := AutomationNotice{
 		Automation: item,
@@ -203,7 +203,29 @@ func (a *Agent) automationPropose(ctx context.Context, store *automation.Store, 
 		CostWords:  a.automationCostWords(item, now),
 		Options:    AutomationOptions(item),
 	}
+	// A STANDING ORDER IS SAVED BEFORE THE CARD IS UP, as proposed: the app
+	// lists it and can agree to it from its own window, and the card names it.
+	// Nothing runs before the yes, and the card's no takes it away again.
+	proposed := ""
+	if a.config.StandingOrders {
+		item.Status = automation.StatusProposed
+		if item.Action.Do != "" && item.Trust == "" {
+			item.Trust = automation.TrustAsksFirst
+		}
+		held, err := store.Create(item)
+		if err != nil {
+			return "nothing was saved: " + err.Error(), true, nil
+		}
+		proposed, item, notice.Automation = held.ID, held, held
+		a.emitAutomationUpdate("proposed", held, "")
+	}
 	answer, err := a.askAutomation(ctx, &notice)
+	if proposed != "" {
+		answer, err = a.settleProposed(store, proposed, answer, err)
+		if errors.Is(err, errAutomationUnanswered) {
+			return "the card was left unanswered — it is kept as proposed, and nothing runs until the person agrees to it", false, nil
+		}
+	}
 	if err != nil {
 		out, failed := automationNoAnswer(err, "set up", "saved")
 		return out, failed, nil
@@ -214,7 +236,12 @@ func (a *Agent) automationPropose(ctx context.Context, store *automation.Store, 
 		}
 		return "nothing was saved: the person said no.", false, nil
 	}
-	saved, err := store.Create(item)
+	var saved automation.Automation
+	if proposed != "" {
+		saved, err = store.Get(proposed)
+	} else {
+		saved, err = store.Create(item)
+	}
 	if err != nil {
 		return "nothing was saved: " + err.Error(), true, nil
 	}
@@ -227,6 +254,41 @@ func (a *Agent) automationPropose(ctx context.Context, store *automation.Store, 
 		return line + "\n" + automationRunNowHandoff(saved), false, nil
 	}
 	return line + "\nThey answered the card. Your WHOLE reply is one short line saying what is now set up and when it first runs — no preamble, and do not ask again.", false, nil
+}
+
+// settleProposed carries the card's answer to an order saved as proposed: a
+// yes ratifies it, unless the person already agreed to it from the app's own
+// window, and a no or a change takes it away. A card that went unanswered
+// leaves the order proposed, listed for the person to agree to later.
+func (a *Agent) settleProposed(store *automation.Store, id string, answer AutomationAnswer, err error) (AutomationAnswer, error) {
+	if err != nil {
+		current, getErr := store.Get(id)
+		switch {
+		case getErr != nil:
+		case current.Status != automation.StatusProposed:
+			return AutomationAnswer{Save: true}, nil
+		case !errors.Is(err, errAutomationUnanswered):
+			// Nobody could be asked at all, so nothing is left proposed.
+			_ = store.Delete(id)
+		}
+		return answer, err
+	}
+	if !answer.Save {
+		if current, getErr := store.Get(id); getErr == nil && current.Status == automation.StatusProposed {
+			_ = store.Delete(id)
+		}
+		return answer, nil
+	}
+	current, getErr := store.Get(id)
+	if getErr != nil {
+		return AutomationAnswer{}, getErr
+	}
+	if current.Status == automation.StatusProposed {
+		if _, err := store.Ratify(id); err != nil {
+			return AutomationAnswer{}, err
+		}
+	}
+	return answer, nil
 }
 
 // automationRunNowHandoff hands the action back to the model to do ONCE, now,
@@ -256,14 +318,18 @@ func automationRunNowHandoff(item automation.Automation) string {
 
 // automationFrom builds the automation the card will show, or says what is
 // wrong with the arguments in words the model can act on.
-func (a *Agent) automationFrom(parsed automationArguments, now time.Time) (automation.Automation, string) {
+func (a *Agent) automationFrom(ctx context.Context, parsed automationArguments, now time.Time) (automation.Automation, string) {
+	origin, problem := a.automationOrigin(ctx)
+	if problem != "" {
+		return automation.Automation{}, problem
+	}
 	item := automation.Automation{
 		Title:     strings.TrimSpace(parsed.Title),
 		Words:     strings.TrimSpace(parsed.Words),
 		Workspace: a.automationWorkspace(),
 		Worktree:  parsed.Worktree != nil && *parsed.Worktree,
 		Action:    automation.Action{Say: strings.TrimSpace(parsed.Say), Do: strings.TrimSpace(parsed.Do)},
-		Origin:    a.automationOrigin(),
+		Origin:    origin,
 	}
 	if item.Title == "" {
 		item.Title = clip(firstNonEmptyString(item.Words, item.Action.Say, item.Action.Do), 60)
@@ -400,7 +466,7 @@ func automationNoAnswer(err error, can, nothing string) (string, bool) {
 func (a *Agent) automationChange(ctx context.Context, store *automation.Store, parsed automationArguments) (string, bool, error) {
 	id := strings.TrimSpace(parsed.ID)
 	if id == "" {
-		return "Invalid arguments: id is required — list shows them", true, nil
+		return rejectToolArguments(ctx, "Invalid arguments: id is required — list shows them"), true, nil
 	}
 	stored, err := store.Get(id)
 	if err != nil {
@@ -409,16 +475,16 @@ func (a *Agent) automationChange(ctx context.Context, store *automation.Store, p
 	now := time.Now()
 	item, rescheduled, problem := a.automationChanged(stored, parsed, now)
 	if problem != "" {
-		return problem, true, nil
+		return rejectToolArguments(ctx, problem), true, nil
 	}
 	if err := item.Validate(); err != nil {
-		return "Invalid arguments: " + err.Error(), true, nil
+		return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 	}
 	// THE CARD'S NEXT RUN IS THE ONE THE SAVE WILL GIVE IT, by the one rule
 	// both doors keep ([automation.NextAfterChange]).
 	next, err := automation.NextAfterChange(stored, item, now)
 	if err != nil {
-		return "Invalid arguments: " + err.Error(), true, nil
+		return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 	}
 	whenWords := automation.Describe(item.Schedule, now)
 	if rescheduled {
@@ -527,11 +593,32 @@ func (a *Agent) automationChanged(stored automation.Automation, parsed automatio
 
 // automationOrigin is the conversation an automation is made in: where its
 // one line goes when a run ends, and the door "why did this happen?" opens.
-func (a *Agent) automationOrigin() automation.Origin {
+// Creation-team provenance is the turn's stated context: the exact id its door
+// was accepted for, explicit NONE, or UNKNOWN (Team nil) for a turn whose door
+// stated nothing this engine could prove. It never guesses from membership.
+//
+// THE ID WAS CHECKED WHEN THE MESSAGE WAS ACCEPTED ([Agent.provenCreation]) and
+// is not checked against the teams file again here: a crew that closed, lost
+// its manager or changed hands since keeps what was made in it. Only the shape
+// is checked once more: a malformed id (one that never passed acceptance) is
+// recorded unknown, and never refuses the automation.
+func (a *Agent) automationOrigin(ctx context.Context) (automation.Origin, string) {
 	a.mu.Lock()
 	id := a.sessionID()
 	a.mu.Unlock()
-	return automation.Origin{SessionID: id, Transcript: strings.TrimSpace(a.config.SessionFile)}
+	origin := automation.Origin{
+		SessionID:  id,
+		Transcript: strings.TrimSpace(a.config.SessionFile),
+	}
+	teamID, known := creationTeamFrom(ctx)
+	if !known {
+		return origin, ""
+	}
+	if teamID != "" && !creationTeamIDOK(teamID) {
+		return origin, ""
+	}
+	origin.Team = &automation.OriginTeam{Known: true, ID: teamID}
+	return origin, ""
 }
 
 // automationMoment reads a stamp: RFC 3339, or a local wall time.
@@ -672,7 +759,7 @@ func (a *Agent) askAutomation(ctx context.Context, notice *AutomationNotice) (Au
 	notice.ID = id
 	card := *notice
 	question := AutomationQuestion(card)
-	defer a.presenceAskingWhole(question, func() {
+	defer a.presenceAskingWhole(ctx, question, func() {
 		hub.send(Event{Kind: EventAutomationProposal, Tool: "automation", Automation: &card})
 	})()
 	select {
@@ -738,9 +825,9 @@ func automationRow(store *automation.Store, item automation.Automation, now time
 	return strings.Join(parts, " · ")
 }
 
-func (a *Agent) automationSetStatus(store *automation.Store, id string, status automation.Status) (string, bool, error) {
+func (a *Agent) automationSetStatus(ctx context.Context, store *automation.Store, id string, status automation.Status) (string, bool, error) {
 	if strings.TrimSpace(id) == "" {
-		return "Invalid arguments: id is required — list shows them", true, nil
+		return rejectToolArguments(ctx, "Invalid arguments: id is required — list shows them"), true, nil
 	}
 	item, err := store.SetStatus(strings.TrimSpace(id), status)
 	if err != nil {
@@ -754,10 +841,10 @@ func (a *Agent) automationSetStatus(store *automation.Store, id string, status a
 	return word + " " + item.ID + ": " + item.Title, false, nil
 }
 
-func (a *Agent) automationDelete(store *automation.Store, id string) (string, bool, error) {
+func (a *Agent) automationDelete(ctx context.Context, store *automation.Store, id string) (string, bool, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return "Invalid arguments: id is required — list shows them", true, nil
+		return rejectToolArguments(ctx, "Invalid arguments: id is required — list shows them"), true, nil
 	}
 	item, err := store.Get(id)
 	if err != nil {
@@ -770,10 +857,10 @@ func (a *Agent) automationDelete(store *automation.Store, id string) (string, bo
 	return "deleted " + id + ": " + item.Title, false, nil
 }
 
-func (a *Agent) automationRunNow(store *automation.Store, id string) (string, bool, error) {
+func (a *Agent) automationRunNow(ctx context.Context, store *automation.Store, id string) (string, bool, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return "Invalid arguments: id is required — list shows them", true, nil
+		return rejectToolArguments(ctx, "Invalid arguments: id is required — list shows them"), true, nil
 	}
 	item, err := store.Get(id)
 	if err != nil {
@@ -786,10 +873,10 @@ func (a *Agent) automationRunNow(store *automation.Store, id string) (string, bo
 	return "asked " + id + " to run now: it starts within seconds while codeaf is open, and its result arrives in this conversation", false, nil
 }
 
-func automationHistory(store *automation.Store, id string, now time.Time) (string, bool, error) {
+func automationHistory(ctx context.Context, store *automation.Store, id string, now time.Time) (string, bool, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return "Invalid arguments: id is required — list shows them", true, nil
+		return rejectToolArguments(ctx, "Invalid arguments: id is required — list shows them"), true, nil
 	}
 	if _, err := store.Get(id); err != nil {
 		return automationNotFound(err), true, nil

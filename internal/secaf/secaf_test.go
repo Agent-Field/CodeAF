@@ -350,6 +350,13 @@ func TestAnAuditOfTheChangesFocusesItsHunters(t *testing.T) {
 	if len(models.scanned) == 0 {
 		t.Fatal("no hunter scanned")
 	}
+	// An audit that ran never says there was nothing to audit.
+	if _, said := host.ending.Extra["nothing_to_audit"]; said {
+		t.Fatalf("an audit that ran said nothing_to_audit: %+v", host.ending.Extra)
+	}
+	if _, facts := endLineData(t, *host.ending); facts == nil || facts.NothingToAudit != nil {
+		t.Fatalf("an audit that ran ended with facts %+v", facts)
+	}
 	for _, prompt := range models.scanned {
 		if !strings.Contains(prompt, "CHANGE UNDER AUDIT") || !strings.Contains(prompt, "- app/views.py") || !strings.Contains(prompt, "os.system") {
 			t.Fatalf("a hunter was not told the change:\n%s", prompt)
