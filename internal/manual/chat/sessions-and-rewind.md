@@ -318,9 +318,11 @@ There is one line per **completed turn**, and one more for each call made beside
 naming the conversation, the memory reflex, the check on a reply, a task's fold-up, a
 planner, a harness run. Those are marked `aux`. A second-stage stop that lets go of a
 turn while tools still run also saves its paid conversation steps in a `usage` seal,
-without duration. Its `abandoned` line records the stop and last-known spend as evidence;
-it is never added to the bill. A turn that spent nothing writes no usage line.
-Older transcripts without that step seal cannot restore the missing steps.
+without duration. It saves the conversation's new total to `meta.json` too, which is
+what Home reads, so that figure matches the transcript after a restart. Its `abandoned`
+line records the stop and last-known spend as evidence; it is never added to the bill.
+A turn that spent nothing writes no usage line. Older transcripts without that step
+seal cannot restore the missing steps.
 
 One exception to "one line per turn": a turn that was answered by **more than one model**
 — the model hopped mid-turn — writes **one line per model that answered**, each with that

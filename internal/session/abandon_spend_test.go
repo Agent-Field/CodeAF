@@ -381,6 +381,88 @@ func TestOtherTurnEndingsSealTheirStepSpend(t *testing.T) {
 	}
 }
 
+// Contract A2, exit audit: a step seal saves the total Home and agents.list
+// read, as an ordinary seal does. A title has already saved .01, so meta.json
+// holds a figure a resume will not replace; after a .25 step ends at an
+// abandoned batch, a settle bound or a final stage report and the engine
+// restarts, the meter (/cost, the status row, agents.budget.get), meta.json
+// (agents.list spent_usd, Home) and the journal must all read .26.
+func TestAStepSealSavesTheTotalAResumeRestores(t *testing.T) {
+	for _, ending := range []string{"abandoned", "settle bound", "final report"} {
+		t.Run(ending, func(t *testing.T) {
+			ctx := context.Background()
+			tool, args := "wedge", `{}`
+			var configure func(*Config)
+			switch ending {
+			case "settle bound":
+				ctx = withSettleWake(ctx, settleWake{ceiling: 1})
+				tool, args = "ls", `{"path":"."}`
+			case "final report":
+				tool, args = "stage_result", `{"done":true,"output":"finished"}`
+				configure = func(c *Config) {
+					c.Stage = &fakeStageDoor{}
+					c.Unattended = true
+				}
+			}
+			agent, entered, dir, path, ledger := abandonSpendAgent(t, &scriptedCompleter{steps: []step{
+				func(context.Context, []ai.Message) (*ai.Response, error) {
+					return priced(toolResponse("paid", tool, args), .25), nil
+				},
+			}}, configure)
+			agent.addDetachedUsageAs(priced(textResponse("named"), .01), "test/helper", 1, "title")
+			if saved := stampedMeta(t, agent, dir); math.Abs(saved.SpentUSD-.01) > 1e-12 {
+				t.Fatalf("the title saved %+v, want .01 before the paid step", saved)
+			}
+			events, err := agent.Submit(ctx, "finish at the boundary")
+			if err != nil {
+				t.Fatalf("submit: %v", err)
+			}
+			if ending == "abandoned" {
+				waitMetaPatch(t, entered)
+				agent.Interrupt()
+				if _, ok := agent.Abandon(AbandonStopTimeout); !ok {
+					t.Fatal("the parked turn was not abandoned")
+				}
+			}
+			collect(t, events)
+			waitAbandonSpendExit(t, path, 1)
+			live := agent.Usage()
+			if math.Abs(live.CostUSD-.26) > 1e-12 {
+				t.Fatalf("live meter = %+v, want .26", live)
+			}
+			saved := stampedMeta(t, agent, dir)
+			if err := agent.Close(); err != nil {
+				t.Fatalf("close before restart: %v", err)
+			}
+			second, err := newAgent(Config{
+				Workspace: agent.config.Workspace, Model: "test/model", System: "SYSTEM",
+				Place: Place{Dir: dir, Workspace: agent.config.Workspace}, SessionFile: path, usageLedger: ledger,
+			}, &scriptedCompleter{})
+			if err != nil {
+				t.Fatalf("resume: %v", err)
+			}
+			t.Cleanup(func() { _ = second.Close() })
+			second.SettleWrites()
+			restored := second.Usage()
+			listed, err := SavedSpend(dir)
+			if err != nil {
+				t.Fatalf("saved spend: %v", err)
+			}
+			digest, err := ReadDigest(path)
+			if err != nil {
+				t.Fatalf("digest: %v", err)
+			}
+			journal, _ := digest.Spend()
+			if math.Abs(saved.SpentUSD-live.CostUSD) > 1e-12 || saved.Tokens != live.Input+live.Output {
+				t.Errorf("before restart meta.json = $%v / %d tokens, meter = $%v / %d tokens", saved.SpentUSD, saved.Tokens, live.CostUSD, live.Input+live.Output)
+			}
+			if math.Abs(restored.CostUSD-.26) > 1e-12 || math.Abs(listed-restored.CostUSD) > 1e-12 || math.Abs(journal-restored.CostUSD) > 1e-12 {
+				t.Errorf("after restart meter (/cost) = $%v, meta.json (agents.list) = $%v, journal = $%v; want all .26", restored.CostUSD, listed, journal)
+			}
+		})
+	}
+}
+
 // abandonSpendAgent uses the existing releasable wedge and constructor with a
 // fixed session folder and private ledger, so resume observes the same record.
 func abandonSpendAgent(t *testing.T, completer Completer, configure ...func(*Config)) (*Agent, <-chan struct{}, string, string, string) {

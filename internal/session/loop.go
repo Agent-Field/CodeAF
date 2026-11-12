@@ -1019,8 +1019,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) (f
 			a.markSettleBound(count)
 			// Keep the step spend without duration or ordinary turn-ending acts;
 			// abandonment can displace this turn while the bound is marked.
-			turn.Duration = 0
-			a.file.appendUsage(turn, model, false, "")
+			a.sealSteps(turn, model)
 			return false
 		}
 
@@ -1500,8 +1499,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) (f
 		// this return cannot reach another ending. Cleanup already knows to leave
 		// the displaced turn alone (agent.go's turnSeq).
 		if abandoned(ctx) {
-			turn.Duration = 0
-			a.file.appendUsage(turn, model, false, "")
+			a.sealSteps(turn, model)
 			return false
 		}
 		if severed != nil {
@@ -1522,8 +1520,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) (f
 		if a.stageBatchFinal(calls, results) {
 			// Keep the step spend without duration or ordinary turn-ending acts;
 			// abandonment can displace this turn after the batch check above.
-			turn.Duration = 0
-			a.file.appendUsage(turn, model, false, "")
+			a.sealSteps(turn, model)
 			return true
 		}
 		// The batch can settle after its result lines and each call's `took`
@@ -1851,8 +1848,9 @@ func (a *Agent) keepSteeredPartial(partial *partialBuffer, reasoning *reasoningB
 //
 // Ordinary endings write their cost here: the loop above, the harness turn,
 // the orchestrated turn and the image turn. The abandoned tool-batch, settle-bound
-// and final stage-report exits write only their step seals, without duration or
-// ordinary turn-ending acts that could affect a replacement turn after abandonment.
+// and final stage-report exits write only their step seals ([Agent.sealSteps]),
+// without duration or ordinary turn-ending acts that could affect a replacement
+// turn after abandonment.
 //
 // AND IT IS NOT WHERE THE MACHINE'S LEDGER IS WRITTEN, which is the whole of
 // issue #269. A seal is the shape of a TURN — its duration, its place in the
@@ -1889,6 +1887,25 @@ func (a *Agent) sealTurn(turn Usage, started time.Time, model string) Usage {
 	a.tellTurnEnded()
 	a.noticeSealed()
 	return turn
+}
+
+// sealSteps writes the paid conversation steps of a turn that ends without
+// [Agent.sealTurn]: an abandoned tool batch, a settle bound, or a final stage
+// report. The seal carries no duration, and none of the turn-ending acts run,
+// because after abandonment the session already belongs to the next turn.
+//
+// IT SAVES THE RUNNING TOTAL BESIDE THE SEAL, as an ordinary seal does. The
+// steps banked as turn calls, which [Agent.bank] leaves for the seal to stamp.
+// Without this stamp meta.json kept the figure from before these steps. A
+// restart then restored the larger journal total on the meter while Home and
+// agents.list read the older figure ([Agent.stampRestoredSpend] fills only a
+// missing figure). The stamp is the deferred, coalesced spend write.
+// It reads the live books and writes only the spend fields, so it changes
+// nothing a replacement turn owns.
+func (a *Agent) sealSteps(turn Usage, model string) {
+	turn.Duration = 0
+	a.file.appendUsage(turn, model, false, "")
+	a.stampSpend()
 }
 
 // tellWrote tells the seal watch that the chat's record changed, when it wants
@@ -4617,7 +4634,8 @@ func (a *Agent) bank(call bankedCall) {
 	// NOWHERE ELSE. A late receipt, an errand's call, memory work or a remote
 	// task's money can arrive after the turn sealed, and Home must not read less
 	// than /cost (dev #2577). A step of the conversation is stamped once, when
-	// its turn seals, so a turn saves its spend once however many calls it made
+	// its turn seals or its step seal is written ([Agent.sealSteps]), so a turn
+	// saves its spend once however many calls it made
 	// (app/v3's TestLateRecoveredCancellationSavesCumulativeSpendOnce).
 	if !call.turn {
 		a.stampSpend()
