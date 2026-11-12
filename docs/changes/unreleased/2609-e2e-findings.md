@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: AgentField pipelines hand off pull requests, report usage and keep queue state current
-pr: 0
+pr: 2609
 surface: [factory, app, engine, chat, docs]
 invalidates:
   - "Was true: a successful AgentField pipeline without a pull request could reach Done without a completion timestamp. Is true now: worker completion records the remote run's end time, or the factory's observation time, and preserves it after reload."
