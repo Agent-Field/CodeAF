@@ -221,7 +221,8 @@ the disconnected sentence first and then says
 `this conversation was on deepseek-direct/deepseek-v4-pro · it is now on ~deepseek/deepseek-v4-flash-latest`, or, when nothing can replace it,
 `this conversation was on deepseek-direct/deepseek-v4-pro and nothing else here can take it · connect a provider or pick a model`.
 The replacement is for this run only; it leaves the saved model and profile model
-settings unchanged. The configured model returns when it is available again.
+settings unchanged. Later turns use the replacement the sentence names while it is
+listed, and the configured model returns when it is available again.
 Choosing the replacement yourself saves it, even if it is already running.
 
 OpenRouter uses the same two-Enter confirmation. A saved profile key is cleared from the

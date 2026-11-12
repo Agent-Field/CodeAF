@@ -173,6 +173,90 @@ func TestCreditDefaultSurvivesListedModelSubmission(t *testing.T) {
 	}
 }
 
+// The disconnect receipt names the replacement, so the next real provider
+// request must use it. The catalog lists another row first, as a router
+// catalog usually does, which a reconcile anchored on the unlisted saved
+// model would otherwise take.
+func TestDisconnectReplacementIsTheModelTheNextRequestUses(t *testing.T) {
+	dir := t.TempDir()
+	row := config.PersistedSource{ID: "deepseek", Written: "deepseek-direct", Key: "sk-direct-1234567890", Order: 1}
+	if err := config.WriteSources(dir, []config.PersistedSource{row}); err != nil {
+		t.Fatal(err)
+	}
+	defaultServer := sourcestub.New("vendor/catalog-first", config.DefaultModel)
+	defer defaultServer.Close()
+	directServer := sourcestub.New("deepseek-v4-pro")
+	defer directServer.Close()
+	base := testDefaultService("sk-default-1234567890")
+	base.Source.Address, base.Address = defaultServer.URL(), defaultServer.URL()
+	sources := modelsource.NewSet(base, testDirectService(directServer.URL()))
+	configured := "deepseek-direct/deepseek-v4-pro"
+	agent, err := session.New(session.Config{Workspace: t.TempDir(), Model: configured, Sources: sources})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer agent.Close()
+	a := modelServiceTestAppWithAgent(t, dir, agent.Model(), sources,
+		[]Model{{ID: "vendor/catalog-first"}, {ID: config.DefaultModel}}, agent)
+	a.requireListedModel = true
+	a.disconnectModelService("deepseek")
+	acknowledgeModelChanges(t, a)
+	if got, want := noteSaying(t, a, "this conversation was on"), "this conversation was on "+configured+" · it is now on "+config.DefaultModel; got != want {
+		t.Fatalf("disconnect receipt = %q, want %q", got, want)
+	}
+	if a.model != config.DefaultModel || agent.Model() != config.DefaultModel || agent.ConfiguredModel() != configured {
+		t.Fatalf("after disconnect surface=%q engine=%q configured=%q, want the named replacement %q",
+			a.model, agent.Model(), agent.ConfiguredModel(), config.DefaultModel)
+	}
+	// Every send passes the same availability gate before it starts.
+	if !a.ensureAvailableModel() {
+		t.Fatal("the send gate refused a listed replacement")
+	}
+	acknowledgeModelChanges(t, a)
+	drainModelServiceTurn(t, agent, "after disconnect")
+	if got := completionRequests(defaultServer); len(got) != 1 || completionModel(t, got[0]) != config.DefaultModel {
+		models := make([]string, 0, len(got))
+		for _, request := range got {
+			models = append(models, completionModel(t, request))
+		}
+		t.Fatalf("the next request used %v, but the receipt named %q", models, config.DefaultModel)
+	}
+}
+
+// A run-only replacement is kept while it stays listed. A refreshed catalog
+// that lists a different row first must not move the conversation between
+// turns; only a replacement that leaves the list is replaced again.
+func TestRunOnlyReplacementStaysPutWhenTheCatalogReorders(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	rows := []Model{{ID: "vendor/first", ContextLength: 32768}, {ID: "vendor/second"}}
+	agent := &modelForNowAgent{fakeAgent: &fakeAgent{model: "vendor/configured"}, configured: "vendor/configured"}
+	a := newApp(t.Context(), Options{Agent: agent, ProfileDir: t.TempDir(), RequireListedModel: true,
+		Sources: modelsource.NewSet(testDefaultService("key")), Models: func() []Model { return rows },
+	})
+	acknowledgeModelChanges(t, a)
+	if a.model != "vendor/first" || agent.Model() != "vendor/first" || len(agent.temporary) != 1 {
+		t.Fatalf("launch replacement surface=%q engine=%q temporary=%v", a.model, agent.Model(), agent.temporary)
+	}
+	rows = []Model{{ID: "vendor/new-top"}, {ID: "vendor/second"}, {ID: "vendor/first", ContextLength: 32768}}
+	a.serviceModelsLanded(modelsource.DefaultID, config.DefaultBaseURL)
+	acknowledgeModelChanges(t, a)
+	if a.model != "vendor/first" || agent.Model() != "vendor/first" || len(agent.temporary) != 1 {
+		t.Fatalf("a reordered catalog moved the run: surface=%q engine=%q temporary=%v", a.model, agent.Model(), agent.temporary)
+	}
+	a.input.insert("answer on the replacement already named")
+	spend(t, a, a.enterLine())
+	if len(agent.submitted) != 1 || agent.submitted[0] != "vendor/first" || agent.ConfiguredModel() != "vendor/configured" {
+		t.Fatalf("submitted=%v configured=%q temporary=%v", agent.submitted, agent.ConfiguredModel(), agent.temporary)
+	}
+	a.settle()
+	rows = []Model{{ID: "vendor/new-top"}, {ID: "vendor/second"}}
+	a.serviceModelsLanded(modelsource.DefaultID, config.DefaultBaseURL)
+	acknowledgeModelChanges(t, a)
+	if a.model != "vendor/new-top" || agent.Model() != "vendor/new-top" || agent.ConfiguredModel() != "vendor/configured" {
+		t.Fatalf("an unlisted replacement was kept: surface=%q engine=%q configured=%q", a.model, agent.Model(), agent.ConfiguredModel())
+	}
+}
+
 // C6: remote doors leave the engine's model alone even when it is not listed.
 func TestRemoteCatalogDoesNotSelectARunOnlyModel(t *testing.T) {
 	agent := &modelForNowAgent{fakeAgent: &fakeAgent{model: "engine/model"}, configured: "engine/model"}

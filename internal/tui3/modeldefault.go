@@ -35,6 +35,27 @@ func (a *app) isAvailableModel(id string) bool {
 	return ok && strings.EqualFold(model.ID, strings.TrimSpace(id))
 }
 
+// listedModel is the catalog row for id, and false when id is not listed.
+func listedModel(id string, rows []Model) (Model, bool) {
+	model, ok := availableConversationModel(id, rows)
+	return model, ok && strings.EqualFold(model.ID, strings.TrimSpace(id))
+}
+
+// runOnlyModel is the model a conversation should run on. The saved choice
+// wins whenever it is listed. While it is not, the replacement already running
+// stays as long as it is listed: a disconnect's receipt names that replacement,
+// and a refreshed catalog that lists another row first must not move the
+// conversation between turns. Only then does the first listed row take over.
+func runOnlyModel(configured, running string, rows []Model) (Model, bool) {
+	if model, ok := listedModel(configured, rows); ok {
+		return model, true
+	}
+	if model, ok := listedModel(running, rows); ok {
+		return model, true
+	}
+	return availableConversationModel("", rows)
+}
+
 // ensureAvailableModel reconciles a local conversation with its picker catalog.
 // A launch preference is not evidence of availability. An automatic choice uses
 // the off-loop run-only door without saving a preference the person did not
@@ -72,8 +93,12 @@ func (a *app) ensureAvailableModel() bool {
 	if pending != nil && !pending.temporary {
 		return a.model != ""
 	}
-	preferred := a.configuredModel()
-	model, ok := availableConversationModel(preferred, a.modelList())
+	// a.model already shows a pending selection; an empty display asks the engine.
+	running := a.model
+	if running == "" {
+		running = a.agent.Model()
+	}
+	model, ok := runOnlyModel(a.configuredModel(), running, a.modelList())
 	if !ok {
 		a.model, a.ctxWindow = "", 0
 		a.hudStale = true

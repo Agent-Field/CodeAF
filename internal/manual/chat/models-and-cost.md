@@ -124,7 +124,8 @@ model. With several providers, the default still belongs to their combined list.
 Availability replacements apply only to this run. They do not overwrite the
 conversation's saved model, main/fallback pair or profile model settings. When
 the configured model is listed again, codeaf returns to it automatically.
-A hidden chat reconciles availability when it next comes to the front.
+Until then the replacement stays while it is listed; a refreshed list that puts
+another model first does not move the conversation. A hidden chat reconciles availability when it next comes to the front.
 Choosing a model yourself, including the replacement already running, saves that
 choice as usual.
 
