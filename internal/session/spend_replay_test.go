@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -241,5 +243,33 @@ func TestDigestSpendIncludesLateReceiptsWithoutAddingUsageLines(t *testing.T) {
 				t.Fatalf("derived metadata = %+v, want .375 and 115 tokens", meta)
 			}
 		})
+	}
+}
+
+// Contract (a), manual: the shipped page must not tell a reader that every call
+// line is left out of the bill. A resume adds a line marked with an arm
+// (TestLateCallLinesRestoreSpendWithoutAddingTurns), so any paragraph that
+// says call lines are never added up has to name that exception beside it.
+func TestTheManualNamesTheArmWhereverItSaysCallLinesAreNotAddedUp(t *testing.T) {
+	page, err := os.ReadFile("../manual/chat/sessions-and-rewind.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var denials int
+	for _, paragraph := range strings.Split(string(page), "\n\n") {
+		words := strings.ToLower(strings.Join(strings.Fields(paragraph), " "))
+		if !strings.Contains(words, "`call` line") && !strings.Contains(words, "call lines") {
+			continue
+		}
+		if !strings.Contains(words, "nothing adds them up") && !(strings.Contains(words, "never") && strings.Contains(words, "added up")) {
+			continue
+		}
+		denials++
+		if !strings.Contains(paragraph, "`arm`") {
+			t.Errorf("this paragraph says call lines are not added up without naming the late-receipt arm a resume adds:\n%s", paragraph)
+		}
+	}
+	if denials == 0 {
+		t.Fatal("the page no longer says which call lines a resume leaves out")
 	}
 }

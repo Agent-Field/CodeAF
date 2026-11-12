@@ -292,8 +292,9 @@ line types are `session` (the header: version, id, working directory, model, tim
 `message`, `compaction`, `rewind`, `title`, `usage` and `call`. Message content is written
 as text. A `usage` line records what one piece of work cost, and on a resume those lines
 are added back up — which is why the bill survives a restart. A `call` line records one
-request's own shape and is **never** added up: the money on it is already counted in the
-`usage` line that closed its turn.
+request's own shape and is normally **not** added up: the money on it is already counted in
+the `usage` line that closed its turn. The exception is a late receipt, a `call` line marked
+with an `arm`: its money is in no `usage` line, so a resume adds it once.
 
 The session id is 16 random hex characters, minted when the file is created and replayed
 unchanged on every resume — that is what keeps one conversation one identity across days.
