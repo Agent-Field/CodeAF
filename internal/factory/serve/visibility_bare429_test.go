@@ -49,8 +49,9 @@ func TestBare429VisibilityAnswersRetryNotMissing(t *testing.T) {
 	}
 }
 
-// D2: The next request retries a bare 429 within the denial TTL, without
-// waiting for retry_at; the recovered grant is cached normally.
+// D2: A bare 429 is not a cached denial. Nothing asks GitHub again before its
+// one-minute retry_at; the first read after it, well within the denial TTL,
+// does, and the recovered grant is cached normally.
 func TestBare429VisibilityIsNotCached(t *testing.T) {
 	h, token, clock := visibilityLimitFloor(t)
 	probes, issues := 0, 0
@@ -70,10 +71,14 @@ func TestBare429VisibilityIsNotCached(t *testing.T) {
 			return 500, http.Header{}, `{}`
 		}
 	})
-	checkVisibilityRetry(t, h, identityRequest(h, "GET", "/v1/repos/acme/api/issues", "", token, nil), clock.Add(time.Minute))
+	retry := clock.Add(time.Minute)
+	for range 2 {
+		checkVisibilityRetry(t, h, identityRequest(h, "GET", "/v1/repos/acme/api/issues", "", token, nil), retry)
+	}
 	if probes != 1 || issues != 0 {
 		t.Fatalf("limited read: probes=%d issues=%d", probes, issues)
 	}
+	*clock = retry
 	for range 2 {
 		readRepoIssuesAnswer(t, h, token, "")
 	}

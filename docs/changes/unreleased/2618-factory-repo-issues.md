@@ -5,8 +5,8 @@ pr: 2618
 surface: [engine, factory, app]
 invalidates:
   - "Was true: an app could read a repository's issues only through GitHub's public API or the Factory's open-issue search. Is true now: factory.repo_issues lists issues in every state, updated since a time, through the Factory's GitHub connection, so private repositories work."
-  - "Was true: a rate limit during the Factory's repository visibility check answered not_found on every repository route, and the denial was cached for ten minutes. Is true now: it answers busy with detail.retry_at on factory.repo_issues (busy on other calls), and the next check asks GitHub again."
-  - "Was true: a GitHub 429 on the Factory's visibility check without X-RateLimit-Remaining or Retry-After read as repository not found and was cached as a denial. Is true now: every 429 answers busy with retry_at and the next read checks GitHub again."
+  - "Was true: a rate limit during the Factory's repository visibility check answered not_found on every repository route, and the denial was cached for ten minutes. Is true now: it answers busy with detail.retry_at on factory.repo_issues (busy on other calls), and GitHub is asked again once retry_at passes, or after ten minutes at most."
+  - "Was true: a GitHub 429 on the Factory's visibility check without X-RateLimit-Remaining or Retry-After read as repository not found and was cached as a denial. Is true now: every 429 answers busy with retry_at, and GitHub is asked again once retry_at passes."
 ---
 
 `factory.repo_issues {factory, repo, since?, page?}` lists one repository's
@@ -33,10 +33,13 @@ visibility check behind any repository route, is any 429, or a 403 with
 `X-RateLimit-Remaining: 0` or a `Retry-After`. It answers HTTP 429 with
 `retry_at`: GitHub's `Retry-After`, or its reset when `X-RateLimit-Remaining`
 is `0` or absent (the later when both apply), otherwise one minute after the
-Factory's clock. A
-secondary limit with requests remaining retries after its own hint, not the
-primary window's reset up to an hour away. It is never cached as a denial. Job lookups behind
-visibility still answer a hidden job the same as a missing one.
+Factory's clock. A secondary limit with requests remaining retries after its
+own hint, not the primary window's reset up to an hour away. It is never
+cached as a denial. Until `retry_at`, for at most ten minutes, the Factory
+answers the same token's other repository checks with that limit instead of
+asking GitHub again, so queue paints, event ticks and issue polls stop calling
+GitHub while it has said to wait. Job lookups behind visibility still answer a
+hidden job the same as a missing one.
 
 This app wire read adds no chat or resident surface, so neither shipped manual
 corpus changes. Carried from #2419, with the visibility parts of #2439 and

@@ -213,9 +213,10 @@ func TestVisibilityTransientAndSignInFailuresKeepTheirAnswers(t *testing.T) {
 }
 
 // B3, B6: A hidden job keeps the missing-job answer; a narrowed queue hides
-// limited repositories for that read, with no retry detail or cached denial.
+// limited repositories until the limit's retry time, with no retry detail or
+// cached denial. Only the first check asks GitHub inside that window.
 func TestRateLimitedVisibilityStillHidesJobsAndNarrowsLists(t *testing.T) {
-	h, token, _ := visibilityLimitFloor(t)
+	h, token, clock := visibilityLimitFloor(t)
 	limited, probes := true, 0
 	repoIssuesGitHub(h, func(*http.Request) (int, http.Header, string) {
 		probes++
@@ -237,11 +238,82 @@ func TestRateLimitedVisibilityStillHidesJobsAndNarrowsLists(t *testing.T) {
 	if queue := queueAs(t, h, token, false); len(queue.Jobs) != 0 || len(queue.Repos) != 0 {
 		t.Fatalf("limited queue exposed jobs or repositories: %+v", queue)
 	}
-	if probes != 3 {
-		t.Fatalf("hidden-job and queue probes = %d, want 3", probes)
+	if probes != 1 {
+		t.Fatalf("hidden-job and queue probes = %d, want 1", probes)
 	}
 	limited = false
-	if queue := queueAs(t, h, token, false); len(queue.Jobs) != 3 || len(queue.Repos) != 2 || probes != 5 {
+	*clock = clock.Add(time.Minute)
+	if queue := queueAs(t, h, token, false); len(queue.Jobs) != 3 || len(queue.Repos) != 2 || probes != 3 {
 		t.Fatalf("next queue retained a denial: jobs=%d repos=%d probes=%d", len(queue.Jobs), len(queue.Repos), probes)
+	}
+}
+
+// B2: GitHub said this token's limit is spent until retry_at, so until then the
+// Factory asks it nothing more for that token: a second issues read, a queue
+// paint over every repository and a job lookup answer from that alone, with
+// the same retry_at. The first check after retry_at asks again, and its
+// readable answer is cached normally. The limit is never a cached denial.
+func TestARateLimitedVisibilityCheckWaitsForRetryAt(t *testing.T) {
+	h, token, clock := visibilityLimitFloor(t)
+	retry := clock.Add(time.Minute)
+	limited, probes := true, 0
+	repoIssuesGitHub(h, func(r *http.Request) (int, http.Header, string) {
+		switch r.URL.Path {
+		case "/repos/acme/api", "/repos/acme/web":
+			probes++
+			if limited {
+				return 403, http.Header{"X-Ratelimit-Remaining": {"4200"}, "Retry-After": {"60"}}, `{}`
+			}
+			return 200, http.Header{}, `{}`
+		case "/repos/acme/api/issues":
+			return 200, http.Header{}, `[]`
+		default:
+			t.Errorf("unexpected GitHub request: %s", r.URL)
+			return 500, http.Header{}, `{}`
+		}
+	})
+	checkVisibilityRetry(t, h, identityRequest(h, "GET", "/v1/repos/acme/api/issues", "", token, nil), retry)
+	*clock = clock.Add(30 * time.Second)
+	checkVisibilityRetry(t, h, identityRequest(h, "GET", "/v1/repos/acme/api/issues", "", token, nil), retry)
+	if queue := queueAs(t, h, token, false); len(queue.Jobs) != 0 || len(queue.Repos) != 0 {
+		t.Fatalf("limited queue exposed jobs or repositories: %+v", queue)
+	}
+	if w := identityRequest(h, "GET", "/v1/jobs/1", "", token, nil); w.Code != 404 {
+		t.Fatalf("limited job lookup = %d %s", w.Code, w.Body)
+	}
+	if probes != 1 {
+		t.Fatalf("GitHub was asked %d times inside its limit window, want 1", probes)
+	}
+	limited = false
+	*clock = retry
+	for range 2 {
+		readRepoIssuesAnswer(t, h, token, "")
+	}
+	if probes != 2 {
+		t.Fatalf("after retry_at: probes = %d, want 2", probes)
+	}
+}
+
+// B2: A retry time far off is relied on for one visibility TTL at most, still
+// answering GitHub's own retry_at, and then GitHub is asked again.
+func TestAFarRateLimitRetryIsCheckedAgainAfterTheVisibilityTTL(t *testing.T) {
+	h, token, clock := visibilityLimitFloor(t)
+	reset := clock.Add(55 * time.Minute)
+	probes := 0
+	repoIssuesGitHub(h, func(r *http.Request) (int, http.Header, string) {
+		probes++
+		return 403, http.Header{"X-Ratelimit-Remaining": {"0"}, "X-Ratelimit-Reset": {strconv.FormatInt(reset.Unix(), 10)}}, `{}`
+	})
+	start := *clock
+	checkVisibilityRetry(t, h, identityRequest(h, "GET", "/v1/repos/acme/api/issues", "", token, nil), reset)
+	*clock = start.Add(repoVisibilityTTL - time.Second)
+	checkVisibilityRetry(t, h, identityRequest(h, "GET", "/v1/repos/acme/api/issues", "", token, nil), reset)
+	if probes != 1 {
+		t.Fatalf("inside the visibility TTL GitHub was asked %d times, want 1", probes)
+	}
+	*clock = start.Add(repoVisibilityTTL)
+	checkVisibilityRetry(t, h, identityRequest(h, "GET", "/v1/repos/acme/api/issues", "", token, nil), reset)
+	if probes != 2 {
+		t.Fatalf("after the visibility TTL GitHub was asked %d times, want 2", probes)
 	}
 }

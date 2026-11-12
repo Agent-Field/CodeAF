@@ -924,9 +924,12 @@ of the two when both apply. A secondary limit, which leaves requests
 remaining, therefore never waits for the primary window's reset.
 Every GitHub HTTP 429 is a rate limit, even without headers; a 403 is a
 rate limit only with `X-RateLimit-Remaining: 0` or `Retry-After`.
-A rate-limited visibility check is not cached as a repository denial;
-the next read checks GitHub again. Without a usable reset or retry hint,
-`detail.retry_at` is one minute after the Factory's clock.
+A rate-limited visibility check is not cached as a repository denial.
+Until `retry_at`, and for at most the ten-minute visibility cache life, the
+Factory answers that GitHub token's uncached repository checks as the same
+rate limit without asking GitHub; the next check after that asks again.
+Without a usable reset or retry hint, `detail.retry_at` is one minute after
+the Factory's clock.
 A sign-in the Factory accepts but that has no GitHub access the route can use
 (a pasted access token with no GitHub sign-in, or a solo Factory whose host
 has no GitHub profile) gets HTTP 401 with reason `github_expired` and no
@@ -934,8 +937,8 @@ bearer challenge. The engine answers `github_expired` for it, and for any 401
 from this route without a `WWW-Authenticate` challenge, and keeps the sign-in.
 Only the Factory's sign-in gate refusing the bearer, which always challenges,
 is `signed_out`; that forgets a restored sign-in as every read does.
-A Factory missing
-the route is `conflict` with `detail.reason: "factory_too_old"`; its own
+A Factory missing the route is `conflict` with
+`detail.reason: "factory_too_old"`; its own
 "repository not found" remains `not_found`. An engine without the reader
 answers `unknown_method`.
 The route itself stores nothing and appends no activity; the Factory's
