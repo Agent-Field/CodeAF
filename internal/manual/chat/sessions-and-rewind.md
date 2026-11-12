@@ -310,7 +310,8 @@ exactly `[image /path/to/file — file changed or gone]`.
 
 Yes. Every piece of work that cost money appends a `usage` line to the transcript, carrying
 the model it ran on, tokens in and out, cache read and cache write, the money, how many
-requests it took and how long it lasted.
+requests it took and how long it lasted. A late receipt writes a marked `call` line instead
+(below).
 
 There is one line per **completed turn**, and one more for each call made beside a turn —
 naming the conversation, the memory reflex, the check on a reply, a task's fold-up, a
@@ -323,7 +324,8 @@ One exception to "one line per turn": a turn that was answered by **more than on
 model's own tokens and money. A single sum could only name one of them, and naming the one
 standing at the end would hand the whole turn's bill to the wrong model.
 
-**On a resume these lines are added up, and that sum is the session's totals.** So `/cost`,
+**On a resume these lines, and the marked late-receipt `call` lines below, are added up,
+and that sum is the session's totals.** So `/cost`,
 `/status` and the status line show what the whole conversation has spent across every
 restart, not only what has happened since you reopened it. The spend ceiling reads the same
 sum — see the spending pages for what that means the day after you reach one.
@@ -354,11 +356,11 @@ provider's own **receipt** is fetched afterwards, the request writes its line th
 with `arm`: `hedge` for a rescue arm, `reconciled` for any other late receipt. A receipt
 names no endpoint, so the line leaves that field out rather than guess.
 
-These lines are **evidence, never spending**. Nothing adds them up, `/cost` does not read
+Ordinary call lines are **evidence, never spending**. Nothing adds them up, `/cost` does not read
 them, and a resume ignores them entirely, because every dollar on them is already in the
 `usage` line that sealed the turn. They are there so a question about *shape* — what does a
 mostly-cached request actually cost here — can be read out of the file instead of guessed
-at.
+at. A line with an `arm` is the exception: its money is in no seal, so a resume adds it once.
 
 ## Picking up where you left off
 

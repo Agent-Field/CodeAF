@@ -502,10 +502,10 @@ type journalCreated struct {
 
 // journalCall is what ONE provider response reported, on its own line.
 //
-// IT IS EVIDENCE AND NEVER SPEND. The seal above already carries every one of
-// these numbers, summed; a replay that added these lines too would bill the
-// session twice for the same calls. Nothing reads them back into the session's
-// totals, and [replaySessionFile] says so where it drops them.
+// AN ORDINARY ROW IS EVIDENCE AND NEVER SPEND. The seal above already carries
+// every one of these numbers, summed; a replay that added these lines too would
+// bill the session twice for the same calls. Only a late receipt, marked by
+// Arm below, restores money from its own row rather than from a seal.
 //
 // It exists because a turn is sixty-odd requests with wildly different shapes —
 // a cold first call, then fifty that are almost all cache read — and the sum of
@@ -541,9 +541,10 @@ type journalCreated struct {
 // fires when the first answer is slow, a receipt is fetched when a stream was
 // cut — and a journal that records every cheap call and none of the dear ones
 // answers a cost autopsy wrongly: the measured session's call lines summed to
-// barely half its bill until the arms wrote theirs. The money is already banked
-// by the reconciliation itself, so the row is evidence here and never spend,
-// the same as every other line of this shape.
+// barely half its bill until the arms wrote theirs. The money was banked LATE,
+// outside every turn seal, so this row is the only record a replay has of that
+// charge. Restoring it adds no turn: the receipt is a call, not a new step of
+// the conversation.
 type journalCall struct {
 	Model      string  `json:"model,omitempty"`
 	Endpoint   string  `json:"endpoint,omitempty"`
@@ -1242,7 +1243,8 @@ type sessionFile struct {
 	stamps *stampIndex
 
 	// restored is what this conversation had already spent when the file was
-	// opened: the SUM of its usage lines, replayed once and never updated after.
+	// opened: the SUM of its usage lines and late-receipt call lines, replayed
+	// once and never updated after.
 	// It is the file's answer to "what did this cost before today", and the agent
 	// seeds its own running total from it at construction (agent.go). Nothing
 	// stores a second copy of the total — the lines are the record, and this is
@@ -1251,7 +1253,8 @@ type sessionFile struct {
 }
 
 // RestoredUsage is what the conversation in this file had spent before it was
-// opened, and the zero Usage for a file that is new or holds no usage lines.
+// opened, and the zero Usage for a file that is new or holds no usage lines or
+// late-receipt call lines.
 func (s *sessionFile) RestoredUsage() Usage {
 	if s == nil {
 		return Usage{}
@@ -2203,9 +2206,9 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 			messages = messages[:len(messages)-entry.Dropped]
 			reasoning = reasoning[:len(reasoning)-entry.Dropped]
 		case "usage":
-			// EVERY line is added, and none is ever taken back. This is the one
-			// arm that accumulates rather than rebuilds: a compaction below
-			// replaces the message window, and money spent before it stays spent.
+			// EVERY line is added, and none is ever taken back. Charges accumulate
+			// rather than rebuild: a compaction below replaces the message window,
+			// and money spent before it stays spent.
 			if entry.Usage == nil {
 				continue
 			}
@@ -2234,18 +2237,30 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 				spent.Turns += used.Calls
 			}
 		case "call":
-			// NEVER BILLED, and this arm exists to say so rather than to leave it
-			// to the switch falling off the end. A call line is the SHAPE of one
-			// request — who served it, how much of its prompt was warm — and every
-			// dollar on it is already counted in the seal that closed its turn.
-			// Folding it into `spent` would bill the session twice for the same
-			// money.
+			// Ordinary call lines are NEVER BILLED, and this arm exists to say so
+			// rather than to leave it to the switch falling off the end. A call line
+			// is the SHAPE of one request — who served it, how much of its prompt
+			// was warm — and every ordinary dollar on it is already counted in the
+			// seal that closed its turn. Folding it into `spent` would bill the
+			// session twice for the same money.
+			//
+			// AN ARM IS THE EXCEPTION: its money was banked late, outside every
+			// seal, so this line is the only record a replay has of that charge.
+			// It restores one call and no turn, exactly as [Agent.reconciled] banked.
 			//
 			// IT IS READ FOR ITS SHAPE, which is what it was written for: the
 			// size of each request and what came back from it, for a page that
 			// watches this work with no lane to it ([RequestBooks]).
 			if entry.Call != nil {
 				requests.observe(*entry.Call)
+				if call := entry.Call; call.Arm != "" {
+					spent.Input += call.Input
+					spent.Output += call.Output
+					spent.CacheRead += call.CacheRead
+					spent.CacheWrite += call.CacheWrite
+					spent.CostUSD += call.CostUSD
+					spent.Calls++
+				}
 			}
 		case "error":
 			// DROPPED ON PURPOSE, for the reason a call line is, and one of its
@@ -3259,8 +3274,8 @@ func (s *sessionFile) appendUsage(used Usage, model string, aux bool, role strin
 	})
 }
 
-// appendCall writes ONE response's own accounting down, beside the seal that
-// will sum it.
+// appendCall writes ONE response's own accounting down. An ordinary response
+// sits beside the seal that will sum it; a late receipt is its own record.
 //
 // A RESPONSE THAT REPORTED NO USAGE WRITES NOTHING. The emptiness law, and the
 // same test the seal keeps: a call with no tokens and no cost is a call the
@@ -3453,7 +3468,8 @@ func (s *sessionFile) writeLine(entry any) bool {
 	// records people share — the call log and the debug record — not here.
 	payload = trace.ScrubRegistered(payload)
 	entryLine, _ := entry.(sessionEntry)
-	if !s.appendLine(payload, entryLine.Type == "usage") {
+	paid := entryLine.Type == "usage" || entryLine.Type == "call" && entryLine.Call != nil && entryLine.Call.Arm != ""
+	if !s.appendLine(payload, paid) {
 		return false
 	}
 	if s.onWrite != nil {
@@ -3462,15 +3478,16 @@ func (s *sessionFile) writeLine(entry any) bool {
 	return true
 }
 
-func (s *sessionFile) appendLine(payload []byte, usage bool) bool {
+func (s *sessionFile) appendLine(payload []byte, paid bool) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
-		if !usage {
+		if !paid {
 			return false
 		}
-		// Paid work can outlive its stage. Keep its usage in the same journal
-		// under this file's mutex so reopening restores the full paid total.
+		// Paid work can outlive its stage. Keep its usage seals and late arm
+		// receipts in the same journal under this file's mutex so reopening
+		// restores the full paid total.
 		file, err := os.OpenFile(s.file.Name(), os.O_WRONLY|os.O_APPEND, 0600)
 		if err != nil {
 			return false
@@ -3491,7 +3508,7 @@ func (s *sessionFile) appendLine(payload []byte, usage bool) bool {
 // flock on its own — but it states the release at the place a reader looks for
 // it, and it puts the release before the close rather than as a side effect of
 // it. Nothing can slip into the gap: closed is already set, so no write reaches
-// the file after this point, except paid usage appended by path.
+// the file after this point, except paid accounting appended by path.
 func (s *sessionFile) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

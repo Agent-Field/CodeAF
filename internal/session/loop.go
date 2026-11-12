@@ -4654,8 +4654,9 @@ func (a *Agent) reconciled(receipt provider.Reconciled) {
 	// way: EVERY request this session makes writes one, and a request whose
 	// usage block never arrived wrote none — so the journal's call lines summed
 	// to barely half the measured session's bill, and exactly the expensive
-	// half was missing. The row is evidence and never spend; the money moved
-	// through the door above and nowhere else.
+	// half was missing. The live money moved through the door above and nowhere
+	// else; this row is the only record a replay can restore it from, because
+	// late money belongs to no turn seal.
 	a.file.appendCall(armCall(receipt))
 	// A cancelled turn has already sealed, so its late charge is saved by
 	// [Agent.bank]'s stamp above rather than waiting for another turn.
