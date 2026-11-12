@@ -120,7 +120,10 @@ Children, workers and clarification conversations inherit neither tools nor
 instructions. Within the same app connection, every join or re-join pushes the
 conversation's current sets to its holder; a roaming link resends them after
 redial only when the welcome identifies the same conversation. A changed
-conversation forgets the old snapshot and ends its calls. A returning owner's
+conversation forgets the old snapshot and ends its calls. When another window
+starts a new conversation or opens another one in the holder, every
+connection's sets for the old conversation are dropped and its calls end, so
+none reach the replacement. A returning owner's
 random token moves its sets to the replacement connection even while the old
 connection remains attached; other owners still face collision checks. A
 conversation returning to this engine uses the registry directly.

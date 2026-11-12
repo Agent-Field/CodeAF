@@ -1802,6 +1802,14 @@ func (sess *Session) swap(asked *server, build func() (WrappedAgent, string, boo
 	sess.follows = map[uint64]followQueued{}
 	sess.held.forget()
 	sess.engine.SessionFile = file
+	// AND THE APP TOOLS OF THE CONVERSATION LEFT BEHIND STAY WITH IT. The hub
+	// is shared across openings, so without this an app that joined the old
+	// conversation would lend its tools, and its calls, to the new one. It is
+	// done before the new agent is reachable, so its first step already sees
+	// the empty snapshot.
+	if sess.engine.ClientTools != nil {
+		sess.engine.ClientTools.forget(file)
+	}
 	sess.engine.Resumed = resumed
 	// The note belonged to the launch and to nothing after it: a swap the
 	// person asked for is not a session that moved under them.

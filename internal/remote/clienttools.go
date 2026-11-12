@@ -91,6 +91,11 @@ type ClientToolHub struct {
 	sets     []session.ClientToolSet
 	pending  map[string]*clientToolWait
 	sequence uint64
+	// swapped and conversation record the conversation a swap moved to
+	// ([ClientToolHub.forget]), so a joined connection's late snapshot for the
+	// one it left is refused.
+	swapped      bool
+	conversation string
 }
 
 var _ session.ClientToolDoor = (*ClientToolHub)(nil)
@@ -132,6 +137,9 @@ func (h *ClientToolHub) replace(owner *server, token string, sets []session.Clie
 	defer h.mu.Unlock()
 	if owner.clientToolsGone.Load() {
 		return nil, ErrClientToolDisconnected
+	}
+	if h.swapped && owner.joined != "" && !sameTranscript(owner.joined, h.conversation) {
+		return nil, ErrJoinedGone
 	}
 	if len(token) < clientToolOwnerMin || len(token) > clientToolOwnerMax {
 		return nil, fmt.Errorf("client tools need an owner token of %d–%d bytes", clientToolOwnerMin, clientToolOwnerMax)
@@ -243,6 +251,24 @@ func (h *ClientToolHub) settleLocked(id string, pending *clientToolWait, answer 
 	}
 	close(pending.done)
 	return true
+}
+
+// forget ends the hub's tie to the conversation a session is leaving. The hub
+// outlives [Session.swap], but sets belong to one conversation: every
+// connection's sets go, so none reach the replacement, and each pending call
+// ends with an ended frame, so the app stops waiting too. A joined connection
+// cannot attach again; any other connection may attach to the new one.
+func (h *ClientToolHub) forget(file string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.swapped, h.conversation = true, file
+	for _, state := range h.owners {
+		state.sets = nil
+	}
+	for id, pending := range h.pending {
+		h.settleLocked(id, pending, clientToolWaitEnded(pending.call, false), false)
+	}
+	h.snapshotLocked()
 }
 
 func (h *ClientToolHub) drop(owner *server) {

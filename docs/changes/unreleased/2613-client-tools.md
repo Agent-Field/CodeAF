@@ -32,7 +32,9 @@ replayed call; turns the engine starts itself carry none. The hello feature
 codeaf host already holds, `agents.tools_set` sends the agent's sets to that
 holder. Its calls come back on the app connection that set them, and answers go
 back the same way. A connection that leaves loses its sets, and its pending
-calls end at once. Two connections on one conversation keep separate sets. A
+calls end at once. When another window starts a new conversation or opens
+another one in that holder, every connection's sets are dropped and their calls
+end, so the replacement conversation never gets them. Two connections on one conversation keep separate sets. A
 chat held on another computer keeps its sets until it runs here again. The app
 hello adds `agents.client_tools.remote`. A holder from an older build is
 answered with `bad_scope`, and the remote protocol version is unchanged.

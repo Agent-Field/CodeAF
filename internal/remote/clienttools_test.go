@@ -670,6 +670,84 @@ func TestClientToolsRemoteModelBoundary(t *testing.T) {
 	}
 }
 
+// C3: sets belong to one conversation. When another window swaps the session
+// to a new or another conversation, the app that joined the old one must not
+// lend its tools to the replacement, and a pending call ends at once.
+func TestClientToolsRemoteSessionSwapDropsTheOldConversationsSets(t *testing.T) {
+	for _, door := range []string{"new", "open"} {
+		t.Run(door, func(t *testing.T) {
+			hub := &ClientToolHub{}
+			engine := &Engine{Agent: &fakeAgent{}, ClientTools: hub, SessionFile: "/a.jsonl",
+				Fresh: func() (WrappedAgent, string, error) { return &fakeAgent{}, "/b.jsonl", nil },
+				Open:  func(string) (WrappedAgent, bool, error) { return &fakeAgent{}, true, nil }}
+			held := NewSession(engine, true)
+			t.Cleanup(func() { _ = held.Close() })
+			app, err := LoopbackAttach(Hello{Session: "/a.jsonl", Join: true}, AttachOptions{Open: func(Hello) (*Session, error) { return held, nil }})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = app.Close() })
+			set := clientToolTestSet("notes", "app_note")
+			set.DeadlineMS = 120000
+			if _, err := app.Client.Agent().SetClientTools(context.Background(), []session.ClientToolSet{set}); err != nil {
+				t.Fatal(err)
+			}
+			entered, ended := make(chan struct{}, 4), make(chan struct{}, 4)
+			app.Client.Agent().SetClientToolHandler(func(ctx context.Context, _ session.ClientToolCall) (session.ClientToolAnswer, error) {
+				entered <- struct{}{}
+				<-ctx.Done()
+				ended <- struct{}{}
+				return session.ClientToolAnswer{}, ctx.Err()
+			})
+			pending := clientToolTestCall(hub, context.Background(), "app_note")
+			clientToolTestSignal(t, entered)
+			window := clientToolTestPair(t, held)
+			if door == "new" {
+				_, err = window.Client.NewSession()
+			} else {
+				_, err = window.Client.OpenSession("/c.jsonl")
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, sets := hub.ClientToolSets(); len(sets) != 0 {
+				t.Fatalf("the replacement conversation got the joined app's sets: %+v", sets)
+			}
+			got := clientToolTestAnswer(t, clientToolTestCall(hub, context.Background(), "app_note"))
+			if !got.IsError || got.Text != session.ClientToolUnavailable("app_note").Text {
+				t.Fatalf("the replacement conversation reached the joined app: %+v", got)
+			}
+			if got := clientToolTestAnswer(t, pending); !got.IsError || !strings.HasPrefix(got.Text, "the turn ended before the app answered app_note") {
+				t.Fatalf("the old conversation's pending call: %+v", got)
+			}
+			clientToolTestSignal(t, ended)
+			select {
+			case <-entered:
+				t.Fatal("the joined app received a call from the replacement conversation")
+			default:
+			}
+			if _, err := app.Client.Agent().SetClientTools(context.Background(), []session.ClientToolSet{set}); err == nil {
+				t.Fatal("the joined app attached its tools to the replacement conversation")
+			}
+			if _, sets := hub.ClientToolSets(); len(sets) != 0 {
+				t.Fatalf("a refused snapshot reached the replacement conversation: %+v", sets)
+			}
+			// A snapshot already past the session's check when the swap landed.
+			late := &server{joined: "/a.jsonl"}
+			if _, err := hub.replace(late, strings.Repeat("t", clientToolOwnerMin), []session.ClientToolSet{set}); !errors.Is(err, ErrJoinedGone) {
+				t.Fatalf("a late snapshot for the old conversation: %v", err)
+			}
+			// A window that follows the session may attach to what is open now.
+			if _, err := window.Client.Agent().SetClientTools(context.Background(), []session.ClientToolSet{set}); err != nil {
+				t.Fatalf("a following window could not attach to the open conversation: %v", err)
+			}
+			if _, sets := hub.ClientToolSets(); len(sets) != 1 {
+				t.Fatalf("the following window's sets: %+v", sets)
+			}
+		})
+	}
+}
+
 func clientToolTestAnswer(t *testing.T, answer <-chan session.ClientToolAnswer) session.ClientToolAnswer {
 	t.Helper()
 	select {

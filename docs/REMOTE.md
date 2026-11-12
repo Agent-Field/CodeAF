@@ -89,8 +89,12 @@ with that connection, and leaving removes its sets and settles its waits.
 Watching connections cannot attach or answer tools. A roaming client resends
 its last acknowledged snapshot after redial only onto the same conversation,
 using the welcome's transcript identity (or live instance when unnamed). A
-changed conversation forgets that snapshot. One sender per owner skips queued
-calls whose wait ended, so a stuck write blocks only that owner's sender.
+changed conversation forgets that snapshot. A session swap (`Session.New` or
+`Session.Open`) drops every connection's sets and ends pending calls with
+`clientToolEnded`; a joined connection's later snapshot is refused, while a
+following surface may attach to the conversation now open. One sender per owner
+skips queued calls whose wait ended, so a stuck write blocks only that owner's
+sender.
 Client requests share the ordinary call/write path and its failure behavior.
 A holder without the flag receives none of these new calls.
 
