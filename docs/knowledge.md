@@ -79,6 +79,13 @@ A database operation already in progress may finish after close; capture and
 publication writes remain atomic SQLite transactions. The cap does not bound
 other close phases or an unavailable logging sink.
 
+The profile-wide consent view locks only its cached metadata. SQLite refreshes
+run outside that mutex; a completion channel coalesces readers that need a
+refresh, while readers with a still-current answer can return immediately.
+This also lets fake-clock tests advance while a shared read waits in SQLite.
+Source admission still confirms consent against the database, and in-process
+invalidation still prevents an older generation from satisfying a later read.
+
 One compilation can need several dependent requests: extraction and discovery
 already require two for a small new concept; guide writing and evidence review
 add their existing bounded stages. Their output and the 8,000-token response
