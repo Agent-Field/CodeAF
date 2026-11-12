@@ -470,12 +470,16 @@ to `bad_params`, before any job or GitHub issue is made, including with
 Bad extras answer `bad_params`, naming the field and limit, before anything is
 sent. The Factory also validates extras before opening an issue or making a job.
 A Factory's 422 strict-decoder refusal of `group`, `milestone`, `budget`,
-`issue` or `split_from`, or a 404/405 on the issue create route, answers `conflict`
+`issue` or `split_from`, or the issue create route missing (a 405 there, or a 404
+whose body is the Factory's `factory endpoint not found` or is not its JSON),
+answers `conflict`
 with `detail.reason: "factory_too_old"` and the existing update instruction:
 "This factory doesn't support that yet; nothing was changed. Update the factory
-to use it." No fallback request is sent. A 501 stays `engine` with "this factory
-does not provide that action"; GitHub and sign-in refusals retain their existing
-mapping. A timeout or 5xx stays `uncertain`.
+to use it." No fallback request is sent. Any other 404 on the issue create route,
+such as the Factory's own "repository not found" for a repository the caller
+cannot see, stays `not_found` with the Factory's words. A 501 stays `engine` with
+"this factory does not provide that action"; GitHub and sign-in refusals retain
+their existing mapping. A timeout or 5xx stays `uncertain`.
 
 The reply is unchanged: `FactoryJobActed` with `action: "create"`, `job` and
 optional `current`. A Factory that keeps keys replays the first response for

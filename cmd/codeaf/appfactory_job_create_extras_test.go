@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/factory/api"
 )
 
 // E1: factory.capabilities announces create extras and the separate context write.
@@ -81,7 +82,7 @@ func TestAppFactoryCreateOlderFactoryRefusals(t *testing.T) {
 		status            int
 		issue, old        bool
 	}{
-		{"issue 404", "not found", appwire.CodeConflict, 404, true, true},
+		{"issue 404", api.EndpointNotFound, appwire.CodeConflict, 404, true, true},
 		{"issue 405", "method not allowed", appwire.CodeConflict, 405, true, true},
 		{"plain 404", "not found", appwire.CodeNotFound, 404, false, false},
 		{"unavailable", "unavailable", appwire.CodeEngine, 501, true, false},
@@ -120,6 +121,41 @@ func TestAppFactoryCreateOlderFactoryRefusals(t *testing.T) {
 				if !ok || d.Reason != appwire.FactoryReasonTooOld {
 					t.Fatalf("old factory detail: %#v", wire.Detail)
 				}
+			}
+		})
+	}
+}
+
+// A 404 on the issue create route is an older Factory only when it is the
+// mux's missing route (api.EndpointNotFound) or not the Factory's JSON at all.
+// The current Factory's own 404, "repository not found" from its visibility
+// check, keeps the plain not_found mapping and its words.
+func TestAppFactoryIssueCreateNotFoundIsTooOldOnlyForAMissingRoute(t *testing.T) {
+	for _, tc := range []struct {
+		name, body, code, words string
+		status                  int
+		old                     bool
+	}{
+		{"hidden repository", `{"error":"repository not found","request_id":"ab12cd34"}`, appwire.CodeNotFound, "repository not found", 404, false},
+		{"missing route", `{"error":"` + api.EndpointNotFound + `"}`, appwire.CodeConflict, "", 404, true},
+		{"not JSON", "404 page not found\n", appwire.CodeConflict, "", 404, true},
+		{"route without POST", `{"error":"this endpoint accepts GET"}`, appwire.CodeConflict, "", 405, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			stub := startStub(t, func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tc.status)
+				io.WriteString(w, tc.body)
+			})
+			b, conn := attachStub(t, testFactoryHub(t), stub, actionTestCredential)
+			_, err := b.FactoryJobCreate(context.Background(), appwire.FactoryJobCreateParams{Factory: conn.ID, Repo: "o/r", Title: "Fix", OpenIssue: true})
+			var wire *appwire.Error
+			if !errors.As(err, &wire) || wire.Code != tc.code {
+				t.Fatalf("refusal %v, want code %s", err, tc.code)
+			}
+			d, _ := wire.Detail.(*appwire.FactoryRefusal)
+			tooOld := d != nil && d.Reason == appwire.FactoryReasonTooOld
+			if tooOld != tc.old || (tc.old && wire.Error() != factoryTooOld().Error()) || (!tc.old && wire.Message != tc.words) {
+				t.Fatalf("refusal %q detail %#v; want too old=%v words %q", wire.Error(), wire.Detail, tc.old, tc.words)
 			}
 		})
 	}

@@ -46,7 +46,11 @@ func factoryCreateFailure(req *http.Request, reply appFactoryReply) error {
 	if _, create := req.Context().Value(factoryCreateKey{}).(string); !create {
 		return err
 	}
-	missing := req.URL.Path == "/v1/issues" && (reply.status == http.StatusNotFound || reply.status == http.StatusMethodNotAllowed)
+	// An issue create route the Factory lacks: a 405, since every Factory that
+	// serves /v1/issues takes POST there, or the mux's own 404. The current
+	// Factory's JSON 404, "repository not found", keeps its not_found mapping.
+	missing := req.URL.Path == "/v1/issues" &&
+		(reply.status == http.StatusMethodNotAllowed || reply.status == http.StatusNotFound && missingRouteBody(reply.body))
 	unknown := reply.status == http.StatusUnprocessableEntity && unknownFactoryField(err, "group", "milestone", "budget", "issue", "split_from")
 	if !missing && !unknown {
 		return err

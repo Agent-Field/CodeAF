@@ -1196,11 +1196,13 @@ and details:
 `create_budget` and `create_key`. True means the engine supports the choice;
 an older engine omits the flag or reports false. The attached Factory can
 still be older. A 422 refusing unknown `group`, `milestone`, `budget` or HTTP
-`issue`, or a 404/405 on `/v1/issues`, answers `conflict` with
+`issue`, or a Factory without `/v1/issues` (a 405 there, or a 404 saying
+`factory endpoint not found` or not in the Factory's JSON), answers `conflict` with
 `detail.reason: "factory_too_old"`:
 "This factory doesn't support that yet; nothing was changed. Update the factory
-to use it." No fallback create is sent. Invalid fields answer `bad_params`
-before a write.
+to use it." No fallback create is sent. The Factory's own 404 "repository not
+found", for a repository your GitHub can't see, stays `not_found`. Invalid fields
+answer `bad_params` before a write.
 
 The Factory replays the first response for the same caller, route and key for
 24 hours. After an `uncertain` create, resend the same key within that window;

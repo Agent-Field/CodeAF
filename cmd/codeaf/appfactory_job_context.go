@@ -27,18 +27,23 @@ func (b *appBackend) FactoryJobContextSet(ctx context.Context, p appwire.Factory
 // Factory JSON refusal. Every other job write keeps its existing mapping.
 func factoryJobContextFailure(req *http.Request, reply appFactoryReply) error {
 	if req.Method == http.MethodPost && strings.HasPrefix(req.URL.Path, "/v1/jobs/") && strings.HasSuffix(req.URL.Path, "/context") &&
-		(reply.status == http.StatusNotFound || reply.status == http.StatusMethodNotAllowed) {
-		var refusal struct {
-			Error string `json:"error"`
+		(reply.status == http.StatusNotFound || reply.status == http.StatusMethodNotAllowed) && missingRouteBody(reply.body) {
+		err := factoryTooOld()
+		var e *appwire.Error
+		if errors.As(err, &e) {
+			e.Detail = &appwire.FactoryRefusal{Reason: appwire.FactoryReasonTooOld}
 		}
-		if json.Unmarshal(reply.body, &refusal) != nil || refusal.Error == api.EndpointNotFound {
-			err := factoryTooOld()
-			var e *appwire.Error
-			if errors.As(err, &e) {
-				e.Detail = &appwire.FactoryRefusal{Reason: appwire.FactoryReasonTooOld}
-			}
-			return err
-		}
+		return err
 	}
 	return factoryCreateFailure(req, reply)
+}
+
+// missingRouteBody says whether a 404 or 405 body is a route the Factory does
+// not have: its mux's [api.EndpointNotFound], or not the Factory's JSON at all.
+// Any other JSON error is the Factory refusing the request itself.
+func missingRouteBody(body []byte) bool {
+	var refusal struct {
+		Error string `json:"error"`
+	}
+	return json.Unmarshal(body, &refusal) != nil || refusal.Error == api.EndpointNotFound
 }
