@@ -352,6 +352,8 @@ type TaskNode struct {
 	admit sync.Mutex
 
 	spec taskSpec
+	// Only the root holds the tree's fixed admission ceiling.
+	treeLimit *nodeTreeLimit
 	// kind is what sort of node this is ([TaskKind]), settled at admission from
 	// the spec and never touched again. It is a FIELD rather than a question put
 	// to the spec because a node restored from a checkpoint has no spec worth
@@ -1134,6 +1136,8 @@ type TaskGraph struct {
 	// at rest — every claim is released by the admission it authorized or by the
 	// proposal that came to nothing.
 	claims map[uint64]int
+	// Pending titles stay reserved until their own proposal lands or withdraws.
+	childTitles map[uint64][]string
 
 	// run executes one node to completion and calls [TaskGraph.complete] when
 	// it lands. It is a field rather than a method so the graph can be exercised
@@ -1457,7 +1461,7 @@ func (g *TaskGraph) admit(id uint64, spec taskSpec) TaskState {
 	refused := g.quitting || g.deleted[spec.parent]
 	if g.deleted[spec.parent] {
 		g.deleted[id] = true
-		g.releaseChildLocked(spec.parent)
+		g.releaseChildLocked(spec.parent, spec.title)
 		g.mu.Unlock()
 		return TaskFailed
 	}
@@ -1470,8 +1474,9 @@ func (g *TaskGraph) admit(id uint64, spec taskSpec) TaskState {
 	g.order = append(g.order, id)
 	// The node counts itself from here, so the slot its proposal was holding
 	// goes back (see [TaskGraph.claimChild]).
-	g.releaseChildLocked(spec.parent)
+	g.releaseChildLocked(spec.parent, spec.title)
 	g.mu.Unlock()
+	g.setNodeTreeLimit(node)
 
 	// ADMISSION IS A TRANSITION, and it is checkpointed before the frontier turns
 	// rather than after: a process killed between these two lines still resumes
@@ -1502,7 +1507,7 @@ func (g *TaskGraph) admit(id uint64, spec taskSpec) TaskState {
 // model fanning out emits its propose_task calls in one batch, which is exactly
 // the moment this cap is for. Every one of them would read the same count and
 // every one of them would pass.
-func (g *TaskGraph) claimChild(parent uint64) string {
+func (g *TaskGraph) claimChild(parent uint64, titles ...string) string {
 	if parent == 0 {
 		// The conversation's own work is not fanned out and is not capped: the
 		// person is watching every proposal go by and can stop any of them.
@@ -1510,19 +1515,29 @@ func (g *TaskGraph) claimChild(parent uint64) string {
 	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	if refusal := g.nodeGrowthRefusalLocked(parent, titles); refusal != "" {
+		return refusal
+	}
+	count := max(1, len(titles))
 	held := g.claims[parent]
 	for _, node := range g.nodes {
 		if node != nil && node.parent == parent {
 			held++
 		}
 	}
-	if held >= taskFanLimit {
+	if held+count > taskFanLimit {
 		return fmt.Sprintf("no: you have already handed out %d pieces of this work, which is as many as one task may. Do the rest in your own hands, or finish these and report what is left undone.", taskFanLimit)
 	}
 	if g.claims == nil {
 		g.claims = make(map[uint64]int, 1)
 	}
-	g.claims[parent]++
+	g.claims[parent] += count
+	if !bashBeltAsked() && len(titles) > 0 {
+		if g.childTitles == nil {
+			g.childTitles = make(map[uint64][]string)
+		}
+		g.childTitles[parent] = append(g.childTitles[parent], titles...)
+	}
 	return ""
 }
 
@@ -1540,17 +1555,18 @@ func (g *TaskGraph) claimChild(parent uint64) string {
 // never come and the run's ending cancels it first. The pass runs OUTSIDE the
 // lock: it takes the plan gate before the graph's mu, and nothing may hold
 // that mu while asking for the gate.
-func (g *TaskGraph) releaseChild(parent uint64) {
+func (g *TaskGraph) releaseChild(parent uint64, titles ...string) {
 	g.mu.Lock()
 	freed := g.claims[parent] > 0
-	g.releaseChildLocked(parent)
+	g.releaseChildLocked(parent, titles...)
 	g.mu.Unlock()
 	if freed {
 		g.planPulse()
 	}
 }
 
-func (g *TaskGraph) releaseChildLocked(parent uint64) {
+func (g *TaskGraph) releaseChildLocked(parent uint64, titles ...string) {
+	g.releaseChildTitleLocked(parent, titles)
 	if parent == 0 || g.claims == nil {
 		return
 	}
@@ -1610,6 +1626,7 @@ func (g *TaskGraph) wakeBudgetForWork(starting []*TaskNode) {
 // call when nothing can move: the cost of a pass with nothing to do is one lock
 // and a walk of the order slice.
 func (g *TaskGraph) runFrontier() {
+	g.prepareNodeTreeLimits()
 	// The machine is READ before the lock and at most once a pass: a handful of
 	// small file reads behind a one-second cache, and the graph's lock is held
 	// by everything that announces a node — no reading of /proc belongs under

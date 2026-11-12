@@ -196,6 +196,7 @@ func (g *TaskGraph) writeAppControl(change func() (func(), error)) error {
 		store.mu.Lock()
 		defer store.mu.Unlock()
 	}
+	bills := g.nodeTreeBills()
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	rollback, err := change()
@@ -203,7 +204,7 @@ func (g *TaskGraph) writeAppControl(change func() (func(), error)) error {
 		return err
 	}
 	if store != nil {
-		if err := store.writeLocked(g.documentLocked()); err != nil {
+		if err := store.writeLocked(g.documentLocked(bills)); err != nil {
 			if rollback != nil {
 				rollback()
 			}

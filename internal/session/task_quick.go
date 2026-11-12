@@ -501,7 +501,7 @@ func (a *Agent) admitQuick(ask quickAsk) (uint64, taskSpec, quickRefusal) {
 		return 0, taskSpec{}, quickRefusal{said: refusal}
 	}
 
-	if refused := graph.claimChild(spec.parent); refused != "" {
+	if refused := graph.claimChild(spec.parent, spec.title); refused != "" {
 		return 0, taskSpec{}, quickRefusal{said: refused, fanFull: true}
 	}
 	id := graph.reserve()
