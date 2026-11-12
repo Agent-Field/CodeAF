@@ -440,7 +440,7 @@ func (b *appBackend) startLocalLocked(ctx context.Context, resume bool) error {
 	}
 	// The foreman is put right as the factory starts, off this call: a tab the
 	// app brings back reaches it without ever opening it by its door.
-	guard.Go("app/factory foreman settle", func() { b.settleForeman(host) })
+	b.settleForeman(host)
 	return nil
 }
 

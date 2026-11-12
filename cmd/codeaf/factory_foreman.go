@@ -60,7 +60,7 @@ const foremanEarlierTitle = "Factory manager (earlier)"
 // and the manual quote the same words. It is kept free of the characters a
 // journal line escapes (angle brackets, double quotes), so the conversation's
 // file holds it as written and can be searched for it.
-const foremanOpening = "You are the foreman of this factory, its factory-wide manager. Every job, its state, its step and its pull request come through factory_floor: read it before you answer what is running, what waits, what is queued, what shipped or how many jobs a repository has, and never answer those from memory. A message from the person may start with a block tagged afi-now that the app writes: the time, the factory's counts, what waits on the person ('Waiting on you' is the person, never you), what is running, what was made today and what was noticed lately. It is the app's, not the person's words, and it was true when they sent the message: answer from it what it says, read factory_floor for what it does not, and never quote it back. Anything else the person asks, answer as any assistant would, with your other tools. Start a job or set its priority with factory_floor only when the person asks for it here, naming the job by its ref. Propose what to take on by selecting jobs. Never stop, ship, merge or post. Name jobs by their ref."
+const foremanOpening = "You are the foreman of this factory, its factory-wide manager. Every job, its state, its step and its pull request come through factory_floor: read it before you answer what is running, what waits, what is queued, what shipped or how many jobs a repository has, and never answer those from memory. A message from the person may start with blocks the app writes. One tagged afi-now is the app's present state: the time, the factory's counts, what waits on the person ('Waiting on you' is the person, never you), what is running, what was made today and what was noticed lately. One tagged app-places says where things are in the app, for when the person asks where to find or do something. They are the app's, not the person's words, and were true when the message was sent: answer from them what they say, read factory_floor for what they do not, and never quote them back. Anything else the person asks, answer as any assistant would, with your other tools. Start a job or set its priority with factory_floor only when the person asks for it here, naming the job by its ref. Propose what to take on by selecting jobs. Never stop, ship, merge or post. Name jobs by their ref."
 
 // floorDoor is `factory_floor`'s door over the store, or nil.
 //
@@ -271,9 +271,6 @@ func foremanMint(st *store.Store, workspace, profileDir string, load func() (fac
 	if err := session.SeedConversation(transcript, where, foremanTitle, foremanBrief(foremanPolicyRead(load))); err != nil {
 		return "", err
 	}
-	if err := markFactoryForeman(st, transcript); err != nil {
-		return "", err
-	}
 	old, _ := st.Foreman()
 	if old != "" {
 		foremanLeaveTeam(profileDir, old)
@@ -281,15 +278,53 @@ func foremanMint(st *store.Store, workspace, profileDir string, load func() (fac
 	if err := foremanJoinTeam(profileDir, transcript, where); err != nil {
 		return "", err
 	}
+	// THE STORE'S WORD COMES FIRST, THEN THE MARKS. The store is what makes a
+	// conversation the foreman; the mark only says so beside the journal. A
+	// making cut short after the store named the new one leaves marks a later
+	// open or start puts right ([markFactoryForeman] there, [foremanSweep]);
+	// one cut short before it leaves a conversation nobody names and nothing
+	// hides, which the person can see and delete. Marked first, that same
+	// conversation was hidden from every list with no door that opened it.
 	if err := st.SetForeman(transcript); err != nil {
 		return "", err
 	}
-	// Only once the store names the new one: until then the old one is still
-	// the foreman, and still the factory's.
+	if err := markFactoryForeman(st, transcript); err != nil {
+		return "", err
+	}
 	if old != "" && !sameSessionFile(old, transcript) {
 		foremanRetire(old)
 	}
 	return transcript, nil
+}
+
+// foremanSweep retires every conversation that still carries the foreman's
+// mark and is not the one the store names: a making that was cut short
+// between naming the new foreman and retiring the old one left the old one
+// marked, so it was the factory's in every reading, in no list, and behind no
+// door. They are found where a replaced foreman is always left, among the
+// `factory` team's former members under the foreman's handle. It answers the
+// conversations it retired, for their owner to put away.
+func foremanSweep(st *store.Store, profileDir string) []string {
+	current, err := st.Foreman()
+	if err != nil {
+		return nil
+	}
+	f, err := teams.Load(profileDir)
+	if err != nil {
+		return nil
+	}
+	var retired []string
+	for _, t := range f.Teams {
+		for _, m := range t.FormerMembers {
+			file := strings.TrimSpace(m.File)
+			if file == "" || m.Handle != foremanHandle || sameSessionFile(file, current) || !factoryForemanMarked(file) {
+				continue
+			}
+			foremanRetire(file)
+			retired = append(retired, file)
+		}
+	}
+	return retired
 }
 
 // foremanRetire makes a replaced foreman an ordinary conversation of the
