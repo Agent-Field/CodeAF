@@ -2268,15 +2268,32 @@ each through the same factory verb the job page's own Start and priority send,
 as the person. It never stops, ships, merges or posts. `repos` lists every
 repository with its jobs counted by state, `shipped` takes `days` (1 is today
 and the default, at most 90) and counts the pull requests merged, and every
-table opens with the whole factory's counts by state. One read or act waits a
-bounded time on the factory (20 s to read, 60 s to act) and then answers that
-the factory did not, so a floor that never answers cannot hold the turn open.
+answer but `item` and `repos` says the whole factory's counts by state on its
+first line. One read or act waits a bounded time on the factory (20 s to read,
+60 s to act) and then answers that the factory did not, so a floor that never
+answers cannot hold the turn open.
 
 The open is the person's own: a Factory manager they closed or archived is
-taken out of Closed and answered open. A manager whose conversation works in
-the codeaf home (one made by a build that gave it the engine's own folder) is
-made again in `<floor>/chats/foreman` on its next open, and the conversation it
-replaces is stopped and archived.
+taken out of Closed and answered open. Opens are answered one at a time, so two
+asks at once are answered the same manager.
+
+The Factory manager's conversation is the factory's on disk (a mark beside its
+journal), so `agents.open` and every other reading answer it `factory_owned`
+after a relaunch too, and it is left out of `agents.list`. A manager made
+before the mark existed takes it when the factory starts or when it is next
+opened, and an app that had already read it as an ordinary chat is sent
+`agent.changed` with `factory_owned: true`.
+
+A manager whose conversation works in a folder the factory refuses for its
+chats (the codeaf home, a folder above it, or a folder inside it outside the
+factory's own areas; one made by a build that gave it the engine's own folder)
+is made again in `<floor>/chats/foreman`. This happens as the factory on this
+machine starts, and on `factory.foreman_open` if it had not happened yet, so a
+tab the app brings back never writes to the old one as the manager. The
+conversation it replaces is stopped and archived after the new one is
+answered, on a best effort, and is no longer the factory's: it reads
+`factory_owned: false`, as one of the person's own chats in Archived, titled
+"Factory manager (earlier)" when its title was still the manager's own.
 
 ### Starting the Factory manager over (`factory.foreman_fresh`)
 
@@ -2284,11 +2301,14 @@ The hello feature `factory.foreman_fresh` announces the app's Clear for the
 Factory manager. `factory.foreman_fresh {factory}` answers `{factory, agent}`
 as the open does, but `agent` is a NEW conversation with only the manager's
 brief in it; it takes the manager's place (every later `factory.foreman_open`
-answers it) and its `@foreman` handle. The conversation it replaces is stopped
-and archived: its history stays on disk and nothing of it runs on. A manager
-has this where another conversation has Archive, because it is the factory's
-one conversation with one door: archived, that door opened a chat nobody could
-write to. Only the factory this engine serves is accepted.
+answers it) and its `@foreman` handle. It opens on the default model and
+settings, not the old conversation's. The conversation it replaces is stopped
+and archived after the new one is answered, on a best effort: its history
+stays on disk, and it is one of the person's own chats from then on
+(`factory_owned: false`). A manager has this where another conversation has
+Archive, because it is the factory's one conversation with one door: archived,
+that door opened a chat nobody could write to. Only the factory this engine
+serves is accepted.
 ### factory.job_publish_anyway
 
 Hello feature `factory.publish_anyway` advertises this person action. Params:

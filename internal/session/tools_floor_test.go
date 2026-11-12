@@ -381,6 +381,26 @@ func TestFactoryFloorHeadCountsTheWholeFactoryWhateverWasAsked(t *testing.T) {
 	}
 }
 
+// AND AN ASK NOTHING ANSWERS STILL SAYS HOW THE FACTORY STANDS: "is anything
+// waiting on me" with nothing waiting is answered beside what is running, and
+// a day nothing shipped says so beside the same counts.
+func TestFactoryFloorAnAskWithNoRowsStillCountsTheFactory(t *testing.T) {
+	door := floorLab()
+	door.snap.Items[4].State = factory.StateRunning // nothing waits on the person now
+	const counts = " · in the factory: 2 running, 4 new"
+	if text, _ := floorCall(t, door, `{"ask":"waiting"}`); text != "no items in the factory answer that ask (waiting on the person)"+counts {
+		t.Errorf("waiting = %q", text)
+	}
+	if text, _ := floorCall(t, door, `{"ask":"shipped"}`); text != "nothing shipped today"+counts {
+		t.Errorf("shipped = %q", text)
+	}
+	// A factory with nothing open adds nothing: no counts of nothing.
+	empty := &fakeFloorDoor{snap: factory.Snapshot{Now: door.snap.Now}}
+	if text, _ := floorCall(t, empty, `{"ask":"shipped"}`); text != "nothing shipped today" {
+		t.Errorf("an empty factory's shipped = %q", text)
+	}
+}
+
 // `repos` IS WHERE THE WORK IS: every repository with its jobs counted by
 // state, the one with work in hand first. "How many repos are active in our
 // factory" was the question the manager could not answer from a table of jobs.
@@ -432,13 +452,14 @@ func TestFactoryFloorShippedReadsBackByDaysAndCountsMergedPullRequests(t *testin
 		merged(32, 33, 303, 20*24*time.Hour),
 		factory.Item{ID: 33, Num: 34, Repo: "acme/api", Kind: factory.KindIssue, Title: "shipped by hand", State: factory.StateShipped, DoneAt: now.Add(-26 * time.Hour), DoneHow: "done by hand"})
 
+	const counts = " · in the factory: 1 running, 1 waiting on the person, 4 new"
 	text, _ := floorCall(t, door, `{"ask":"shipped"}`)
-	if head, _, _ := strings.Cut(text, "\n"); head != "shipped today · 1 job · 1 pull request merged" {
+	if head, _, _ := strings.Cut(text, "\n"); head != "shipped today · 1 job · 1 pull request merged"+counts {
 		t.Errorf("today's head = %q", head)
 	}
 	text, _ = floorCall(t, door, `{"ask":"shipped","days":7}`)
 	lines := strings.Split(text, "\n")
-	if lines[0] != "shipped in the last 7 days · 3 jobs · 2 pull requests merged" {
+	if lines[0] != "shipped in the last 7 days · 3 jobs · 2 pull requests merged"+counts {
 		t.Errorf("the week's head = %q", lines[0])
 	}
 	// Newest first, each with the day it shipped, and nothing older than asked.

@@ -130,7 +130,7 @@ const (
 const factoryFloorDescription = "Read the whole factory, start or prioritise a job when the person asks, and propose what to take on by selecting items. " +
 	"You are the factory's foreman: you read, rank, propose and sum up. Start a job (start) or set its priority (priority with item) only when the person asks for that job in this conversation; nothing here ships, merges or posts. " +
 	"ask: running (jobs running or queued to run, with their step), queue (jobs not started yet, most urgent then oldest first), waiting (jobs that need the person), shipped (jobs shipped today, with their pull requests and changes, to sum up; set days to read further back), repos (every repository with its count of jobs in each state, for how many and where), risky, cheapest (ten, by estimate), oldest (ten), all, or item (one item in full: its read, facts, stages, question and body; set item). " +
-	"Every table opens with the factory's counts by state, so a how-many question is answered by one read. " +
+	"Every answer but item and repos says the factory's counts by state on its first line, so a how-many question is answered by one read. " +
 	"start takes one job by the number in its ref and starts it as the job page's Start does. priority is p0 (urgent), p1 (high), p2 (medium) or p3 (low), set on item. " +
 	"item, mark and unmark take items by the number in their ref (#4 is 4). Only a new item can be selected; selections stay until the person runs or unselects them. The fields are named mark and unmark; the person calls them select and unselect. " +
 	"A message that starts with an <afi-now> block carries the app's present state as of when it was sent (\"Waiting on you\" there is the person); read here for what it does not say. " +
@@ -413,17 +413,12 @@ func floorAnswer(snap factory.Snapshot, ask string, item, days int) string {
 	if now.IsZero() {
 		now = time.Now()
 	}
+	open := floorOpen(snap)
 	if ask == floorAskShipped {
-		return floorShipped(snap, now, days)
+		return floorWithCounts(floorShipped(snap, now, days), open)
 	}
 	if ask == floorAskRepos {
 		return floorReposAnswer(snap)
-	}
-	var open []factory.Item
-	for _, it := range snap.Items {
-		if it.State != factory.StateDismissed && (it.State != factory.StateShipped || floorFollowing(it)) {
-			open = append(open, it)
-		}
 	}
 	if len(open) == 0 {
 		return floorNothing
@@ -482,7 +477,7 @@ func floorAnswer(snap factory.Snapshot, ask string, item, days int) string {
 		head = "every open item"
 	}
 	if len(rows) == 0 {
-		return floorNoneAsked + " (" + head + ")"
+		return floorWithCounts(floorNoneAsked+" ("+head+")", open)
 	}
 	var b strings.Builder
 	b.WriteString(floorSummary(open, len(rows), head))
@@ -499,6 +494,35 @@ func floorAnswer(snap factory.Snapshot, ask string, item, days int) string {
 		fmt.Fprintf(&b, "\nand %d more", more)
 	}
 	return b.String()
+}
+
+// floorOpen is every item still the factory's work: not dismissed, and not
+// shipped unless it is still following its pull request.
+func floorOpen(snap factory.Snapshot) []factory.Item {
+	var open []factory.Item
+	for _, it := range snap.Items {
+		if it.State != factory.StateDismissed && (it.State != factory.StateShipped || floorFollowing(it)) {
+			open = append(open, it)
+		}
+	}
+	return open
+}
+
+// floorWithCounts puts the factory's counts on the first line of an answer
+// that is not a table of open items (what shipped, or an ask nothing
+// answers), so those say how the factory stands too: "nothing is waiting" is
+// worth more beside what is running. Nothing is added when nothing is open.
+func floorWithCounts(text string, open []factory.Item) string {
+	counts := floorCounts(open)
+	if counts == "" {
+		return text
+	}
+	head, rest, more := strings.Cut(text, "\n")
+	head += " · in the factory: " + counts
+	if more {
+		return head + "\n" + rest
+	}
+	return head
 }
 
 // floorSummary is the table's head: what was asked, how many rows answer it,

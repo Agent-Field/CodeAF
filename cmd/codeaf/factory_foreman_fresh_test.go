@@ -15,12 +15,61 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/factory/store"
+	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
+
+// THE APP'S STOP IS BOUNDED ONLY WHILE THE REAL CONVERSATION CAN BE: the app
+// reaches a conversation through a remote agent, and a rename of the method
+// on either side would restore the stop that did nothing, with every test on
+// a fake still passing ([appStopByPerson]).
+var _ appBoundedStop = (*remote.Agent)(nil)
+
+// foremanEventually waits for a thing the engine does off the call (putting
+// the replaced foreman away, settling the foreman as the factory starts).
+func foremanEventually(t *testing.T, what string, ok func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(15 * time.Second)
+	for !ok() {
+		if time.Now().After(deadline) {
+			t.Fatalf("%s never happened", what)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// homeForeman makes a foreman the way the older build made it: working in dir
+// (the codeaf home), named by the store, in the `factory` team, and WITHOUT
+// the foreman's mark, which did not exist then.
+func homeForeman(t *testing.T, floor *store.Store, profile, dir string) string {
+	t.Helper()
+	bucket, err := v3ProjectDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	place, err := v3MintSession(bucket, dir, v3StampLaunchDir(v3LaunchDir(), dir), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := place.Transcript()
+	if err := session.SeedConversation(old, dir, foremanTitle, "the older brief"); err != nil {
+		t.Fatal(err)
+	}
+	if err := foremanJoinTeam(profile, old, dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := floor.SetForeman(old); err != nil {
+		t.Fatal(err)
+	}
+	return old
+}
 
 // foremanHandleHolder is the conversation key holding `@foreman` in the
 // profile's teams, "" for none, and how many members hold it.
@@ -54,24 +103,7 @@ func TestAForemanWorkingInTheCodeafHomeIsMadeAgainInAFolderOfItsOwn(t *testing.T
 
 	// The foreman as the older build made it: in the engine's own folder,
 	// which under the desk is the codeaf home.
-	bucket, err := v3ProjectDir(state)
-	if err != nil {
-		t.Fatal(err)
-	}
-	place, err := v3MintSession(bucket, state, v3StampLaunchDir(v3LaunchDir(), state), false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	old := place.Transcript()
-	if err := session.SeedConversation(old, state, foremanTitle, "the older brief"); err != nil {
-		t.Fatal(err)
-	}
-	if err := foremanJoinTeam(profile, old, state); err != nil {
-		t.Fatal(err)
-	}
-	if err := floor.SetForeman(old); err != nil {
-		t.Fatal(err)
-	}
+	old := homeForeman(t, floor, profile, state)
 
 	maker := foremanMaker(floor, factoryHostWorkspace(state), profile, nil)
 	made, err := maker(context.Background())
@@ -97,6 +129,23 @@ func TestAForemanWorkingInTheCodeafHomeIsMadeAgainInAFolderOfItsOwn(t *testing.T
 	// ITS HISTORY IS NOT DELETED: the owner of the conversation puts it away.
 	if _, err := os.Stat(old); err != nil {
 		t.Fatalf("the conversation it replaced is gone from disk: %v", err)
+	}
+	// THE MARK FOLLOWS THE FOREMAN: the new one is the factory's on disk, so a
+	// relaunch reads it back as the factory's, and the old one is the
+	// person's own chat again.
+	if !factoryOwnedConversation(made) {
+		t.Error("the foreman made again is not marked the factory's on disk")
+	}
+	if factoryOwnedConversation(old) {
+		t.Error("the conversation it replaced is still marked the factory's")
+	}
+	// AND IT NO LONGER READS AS THE MANAGER: a tab the app brings back may
+	// still hold it, and under the manager's name a person wrote to it there.
+	if was, err := session.LoadMeta(session.DirOf(old)); err != nil || was.Title != foremanEarlierTitle {
+		t.Errorf("the conversation it replaced is titled %q (%v); want %q", was.Title, err, foremanEarlierTitle)
+	}
+	if now, err := session.LoadMeta(session.DirOf(made)); err != nil || now.Title != foremanTitle {
+		t.Errorf("the foreman made again is titled %q (%v)", now.Title, err)
 	}
 	// AND THE NEXT ASK OPENS THE SAME ONE, as every ask after a making does.
 	if again, err := maker(context.Background()); err != nil || !sameSessionFile(again, made) {
@@ -135,6 +184,9 @@ func TestForemanFreshStartsTheManagerOver(t *testing.T) {
 	if foremanFloorDoor(st, web, profile, first) != nil {
 		t.Error("the replaced foreman still carries factory_floor")
 	}
+	if !factoryOwnedConversation(fresh) || factoryOwnedConversation(first) {
+		t.Errorf("the mark did not follow the foreman: fresh %v, replaced %v", factoryOwnedConversation(fresh), factoryOwnedConversation(first))
+	}
 	if again, err := foremanMaker(st, web, profile, nil)(context.Background()); err != nil || !sameSessionFile(again, fresh) {
 		t.Fatalf("the open after a fresh start answered %q, %v; want the fresh one", again, err)
 	}
@@ -160,9 +212,7 @@ func TestTheForemansBriefLetsItAnswerBeyondTheFloor(t *testing.T) {
 
 func TestTheFactoryManagersDoorReopensItAndFreshPutsTheOldOneAway(t *testing.T) {
 	s := newLocalSetup(t)
-	s.backend.open = func(ask appOpenAsk) (*appConn, error) {
-		return &appConn{Conv: &fakeConversation{}, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() {}}, nil
-	}
+	convs := foremanFakeOpens(s)
 	st := s.start()
 	ref := map[string]any{"factory": st.Factory}
 
@@ -197,25 +247,196 @@ func TestTheFactoryManagersDoorReopensItAndFreshPutsTheOldOneAway(t *testing.T) 
 	if !s.backend.isHeld(fresh.Agent) || s.backend.tidied(fresh.Agent) {
 		t.Fatal("the fresh manager is not held open")
 	}
-	if !s.backend.tidied(first.Agent) || s.backend.isHeld(first.Agent) {
-		t.Fatal("the manager it replaced was left open")
-	}
+	// The old one is put away off the call, so the new one is answered first.
+	foremanEventually(t, "the replaced manager being stopped and archived", func() bool {
+		return s.backend.tidied(first.Agent) && !s.backend.isHeld(first.Agent) && convs.stops(first.Agent) > 0
+	})
 	var after appwire.FactoryForeman
 	s.must(appwire.FeatureFactoryForemanOpen, ref, &after)
 	if after.Agent != fresh.Agent {
 		t.Fatalf("the door after a fresh start answered %q; want %q", after.Agent, fresh.Agent)
 	}
-	// AND EACH IS THE FACTORY'S, never one of the person's own chats.
-	for _, id := range []string{first.Agent, fresh.Agent} {
+	// THE NEW ONE IS THE FACTORY'S AND THE OLD ONE IS THE PERSON'S AGAIN, in
+	// Archived with its history, never hidden where no list shows it.
+	for id, want := range map[string]bool{fresh.Agent: true, first.Agent: false} {
 		a, err := s.backend.find(id)
 		if err != nil {
 			t.Fatal(err)
 		}
-		owned := false
-		s.backend.locked(func() { owned = a.view.FactoryOwned })
-		if !owned {
-			t.Errorf("%s is not marked the factory's", id)
+		owned, title := false, ""
+		s.backend.locked(func() { owned, title = a.view.FactoryOwned, a.view.Title })
+		if owned != want {
+			t.Errorf("%s: the factory's = %v, want %v", id, owned, want)
+		}
+		if wantTitle := map[bool]string{true: foremanTitle, false: foremanEarlierTitle}[want]; title != wantTitle {
+			t.Errorf("%s is titled %q; want %q", id, title, wantTitle)
 		}
 	}
 	s.mustFail(appwire.FeatureFactoryForemanFresh, map[string]any{"factory": "factory_other"}, appwire.CodeNotFound)
+}
+
+// foremanConvs is the fake conversations a rig opened, by agent id, so a test
+// can read whether one was stopped.
+type foremanConvs struct {
+	mu sync.Mutex
+	by map[string]*fakeConversation
+}
+
+func (c *foremanConvs) stops(agent string) int {
+	c.mu.Lock()
+	conv := c.by[agent]
+	c.mu.Unlock()
+	if conv == nil {
+		return 0
+	}
+	conv.mu.Lock()
+	defer conv.mu.Unlock()
+	return conv.interrupted
+}
+
+// foremanFakeOpens has the rig open every conversation as a fake that holds
+// its turn open until it is stopped, so a manager can be put away mid-turn.
+func foremanFakeOpens(s *localSetup) *foremanConvs {
+	convs := &foremanConvs{by: map[string]*fakeConversation{}}
+	s.backend.open = func(ask appOpenAsk) (*appConn, error) {
+		conv := &fakeConversation{}
+		convs.mu.Lock()
+		convs.by[appAgentID(ask.Transcript)] = conv
+		convs.mu.Unlock()
+		return &appConn{Conv: conv, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() {}}, nil
+	}
+	return convs
+}
+
+// TWO ASKS NEVER EACH MAKE A MANAGER. A double press of the manager's button
+// once made two: the second was the store's, and the first was left held and
+// the factory's with no floor behind it and no door that reached it again.
+func TestManyOpensAtOnceMakeOneFactoryManager(t *testing.T) {
+	s := newLocalSetup(t)
+	foremanFakeOpens(s)
+	st := s.start()
+	const asks = 8
+	answers := make([]string, asks)
+	errs := make([]error, asks)
+	var wg sync.WaitGroup
+	for i := range asks {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			out, err := s.backend.FactoryForemanOpen(context.Background(), appwire.FactoryRef{Factory: st.Factory})
+			answers[i], errs[i] = out.Agent, err
+		}()
+	}
+	wg.Wait()
+	for i := range asks {
+		if errs[i] != nil || answers[i] == "" || answers[i] != answers[0] {
+			t.Fatalf("ask %d answered %q, %v; the first answered %q", i, answers[i], errs[i], answers[0])
+		}
+	}
+	if _, holders := foremanHandleHolder(t, s.backend.local.host.profile); holders != 1 {
+		t.Fatalf("%d conversations hold @foreman, want 1", holders)
+	}
+	named, _ := s.backend.local.host.floor.Foreman()
+	if appAgentID(named) != answers[0] {
+		t.Fatalf("the store names %q, the asks were answered %q", appAgentID(named), answers[0])
+	}
+}
+
+// THE FACTORY PUTS ITS MANAGER RIGHT AS IT STARTS, not only when the manager's
+// button is pressed. The app brings its tabs back by conversation id and
+// resumes a reply the last quit cut, so the manager working in the codeaf home
+// was written to there again without factory.foreman_open ever being called.
+func TestAFactoryStartingMovesItsManagerOutOfTheCodeafHome(t *testing.T) {
+	s := newLocalSetup(t)
+	foremanFakeOpens(s)
+	floor, err := store.Open(v3FactoryRoot())
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := homeForeman(t, floor, factoryProfile(s.backend.profileDir), s.home)
+	oldID := appAgentID(old)
+
+	st := s.start()
+	foremanEventually(t, "the manager being made again as the factory started", func() bool {
+		named, _ := s.backend.local.host.floor.Foreman()
+		return named != "" && !sameSessionFile(named, old) && s.backend.tidied(oldID)
+	})
+	named, _ := s.backend.local.host.floor.Foreman()
+	meta, err := session.LoadMetaIn(session.DirOf(named), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(s.backend.local.host.floor.Root(), "chats", "foreman"); meta.Workspace != want {
+		t.Fatalf("the manager works in %q; want %q", meta.Workspace, want)
+	}
+	if !factoryOwnedConversation(named) || factoryOwnedConversation(old) {
+		t.Fatalf("the mark did not follow the manager: new %v, old %v", factoryOwnedConversation(named), factoryOwnedConversation(old))
+	}
+	// AND ITS BUTTON OPENS THE NEW ONE, with nothing more made.
+	var opened appwire.FactoryForeman
+	s.must(appwire.FeatureFactoryForemanOpen, map[string]any{"factory": st.Factory}, &opened)
+	if opened.Agent != appAgentID(named) {
+		t.Fatalf("the door answered %q; want the manager the start made, %q", opened.Agent, appAgentID(named))
+	}
+}
+
+// A MANAGER MADE BEFORE ITS MARK EXISTED IS TOLD TO THE APP AS THE FACTORY'S.
+// After a relaunch the app read such a manager back as one of the person's
+// own chats and offered to archive it; opening it by its button set the flag
+// in the engine's memory and told the app nothing, because the conversation
+// was already open.
+func TestAnAlreadyOpenManagerIsSaidToBeTheFactorysWhenItsDoorOpensIt(t *testing.T) {
+	s := newLocalSetup(t)
+	foremanFakeOpens(s)
+	heard := &foremanHeard{next: s.backend.emit}
+	s.backend.emit = heard
+	st := s.start()
+	ref := map[string]any{"factory": st.Factory}
+	var first appwire.FactoryForeman
+	s.must(appwire.FeatureFactoryForemanOpen, ref, &first)
+	a, err := s.backend.find(first.Agent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// As a relaunch before the mark left it: open, and an ordinary chat.
+	s.backend.locked(func() { a.view.FactoryOwned = false })
+	said := func() int { return heard.owned(first.Agent) }
+	before := said()
+	var again appwire.FactoryForeman
+	s.must(appwire.FeatureFactoryForemanOpen, ref, &again)
+	if again.Agent != first.Agent {
+		t.Fatalf("the door answered %q; want %q", again.Agent, first.Agent)
+	}
+	foremanEventually(t, "the app being told the open manager is the factory's", func() bool { return said() > before })
+}
+
+// foremanHeard keeps what the engine told the app of its agents, and passes
+// every event on.
+type foremanHeard struct {
+	next appwire.Emitter
+
+	mu      sync.Mutex
+	changed []appwire.Agent
+}
+
+func (h *foremanHeard) Emit(event string, data any) {
+	if changed, ok := data.(appwire.AgentChanged); ok {
+		h.mu.Lock()
+		h.changed = append(h.changed, changed.Agent)
+		h.mu.Unlock()
+	}
+	h.next.Emit(event, data)
+}
+
+// owned is how many times the app was told agent is the factory's.
+func (h *foremanHeard) owned(agent string) int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	n := 0
+	for _, a := range h.changed {
+		if a.ID == agent && a.FactoryOwned {
+			n++
+		}
+	}
+	return n
 }

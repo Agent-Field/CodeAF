@@ -289,7 +289,7 @@ When you ask ("start the oldest p1", "make #12 urgent"), it starts that one job 
 
 ## the Factory manager counts — how many jobs are running, how many repos are active, how many pull requests merged this week
 
-Every `factory_floor` table opens with the whole factory's counts by state, such as `in the factory: 2 running, 1 waiting on the person, 40 new`, so a how-many question is answered by one read, whichever table was asked for. The counts are of the factory and never of the rows listed, which stop at 50.
+Every `factory_floor` answer but `item` and `repos` says the whole factory's counts by state on its first line, such as `in the factory: 2 running, 1 waiting on the person, 40 new`, so a how-many question is answered by one read, whichever was asked for. An ask nothing answers, and a day nothing shipped, say the counts too. The counts are of the factory and never of the rows listed, which stop at 50.
 
 - `repos`: every repository with its jobs counted by state, the one with work in hand first: `acme/api · 6 open: 1 running, 1 waiting on the person, 4 new · 3 done`. The first line says how many repositories have jobs, how many have open jobs, and how many have a job running, queued, waiting or following a pull request.
 - `shipped` with `days`: jobs shipped over that many days, today included (1 is today and the default, at most 90), newest first, each with the day it shipped. The first line counts the pull requests merged among them.
@@ -302,9 +302,9 @@ One `factory_floor` read waits at most 20 seconds on the factory, and a start or
 
 The app's Stop is bounded. It interrupts the turn, and a turn that has still not let go ten seconds later is let go of by the engine: it ends "Stopped by you" and the next message opens an ordinary turn.
 
-A Factory manager whose conversation works in the codeaf home is made again in a folder of its own (`chats/foreman` under the factory) the next time it is opened, and the conversation it replaces is stopped and archived. One made by an older build worked in the home itself, where every save swept the whole home and its tool calls never finished.
+A Factory manager whose conversation works in a folder the factory refuses for its chats (the codeaf home, a folder above it, or elsewhere inside it) is made again in a folder of its own, `chats/foreman` under the factory. The desktop app does this as its factory starts, and when the manager is next opened if it had not yet; the conversation it replaces is then stopped and archived, and is one of your own chats in Archived from then on, titled "Factory manager (earlier)". One made by an older build worked in the home itself, where every save swept the whole home and its tool calls never finished. In a terminal the replaced conversation is left as it is, in your list.
 
-The Factory manager is cleared, not archived. `factory.foreman_fresh` starts it over: a new conversation with only its brief takes its place and its `@foreman` address, and the old one is stopped and archived with its history kept. Opening the Factory manager is your own open, so one you closed or archived comes back open.
+The Factory manager is cleared, not archived. `factory.foreman_fresh` starts it over: a new conversation with only its brief takes its place and its `@foreman` address, on the default model and settings, and the old one is stopped and archived with its history kept, as one of your own chats. Opening the Factory manager is your own open, so one you closed or archived comes back open. The manager's conversation stays the factory's across a relaunch: it is not listed among your chats and has no Archive.
 
 ## the default steps — what a job runs with no factory.yaml, how many rounds, security pass
 
