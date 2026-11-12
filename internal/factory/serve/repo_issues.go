@@ -79,6 +79,11 @@ func repoIssuesQuery(raw string) (url.Values, error) {
 
 // The credential rule matches searchIssues: a person's sign-in, or only a
 // solo Factory's own profile. A team's host credential cannot stand in for it.
+//
+// A sign-in with no GitHub credential (a pasted access token, or a solo
+// Factory whose host has no GitHub profile) is still a sign-in this Factory
+// accepts. Its refusal names github_expired and carries no bearer challenge,
+// so an app asks for GitHub again rather than forgetting the sign-in.
 func (h *Handler) repoIssuesToken(w http.ResponseWriter, r *http.Request) string {
 	session, _ := h.credential(r)
 	token := session.githubToken
@@ -89,7 +94,7 @@ func (h *Handler) repoIssuesToken(w http.ResponseWriter, r *http.Request) string
 		return ""
 	}
 	if token == "" {
-		h.fail(w, http.StatusUnauthorized, "Reconnect GitHub to read repository issues")
+		h.refuse(w, http.StatusUnauthorized, "Reconnect GitHub to read repository issues", api.ReasonGitHubExpired, "", nil, "")
 	}
 	return token
 }

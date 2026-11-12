@@ -925,7 +925,14 @@ rate limit only with `X-RateLimit-Remaining: 0` or `Retry-After`.
 A rate-limited visibility check is not cached as a repository denial;
 the next read checks GitHub again. Without a usable reset or retry hint,
 `detail.retry_at` is one minute after the Factory's clock.
-Sign-in failures retain `signed_out` or `github_expired`. A Factory missing
+A sign-in the Factory accepts but that has no GitHub access the route can use
+(a pasted access token with no GitHub sign-in, or a solo Factory whose host
+has no GitHub profile) gets HTTP 401 with reason `github_expired` and no
+bearer challenge. The engine answers `github_expired` for it, and for any 401
+from this route without a `WWW-Authenticate` challenge, and keeps the sign-in.
+Only the Factory's sign-in gate refusing the bearer, which always challenges,
+is `signed_out`; that forgets a restored sign-in as every read does.
+A Factory missing
 the route is `conflict` with `detail.reason: "factory_too_old"`; its own
 "repository not found" remains `not_found`. An engine without the reader
 answers `unknown_method`.

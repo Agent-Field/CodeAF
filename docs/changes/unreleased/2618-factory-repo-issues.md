@@ -20,6 +20,14 @@ client can advance its cursor through them. A missing Factory route answers
 `conflict` with reason `factory_too_old`, distinct from a repository's
 `not_found`. The route stores nothing and appends no activity.
 
+A sign-in with no GitHub credential the route can use, such as a team Factory
+attached with a pasted access token and no GitHub sign-in, answers
+`github_expired` and keeps the sign-in: the Factory names the reason and sends
+no bearer challenge, and the engine reads any unchallenged 401 from this route
+that way. Only the Factory refusing the sign-in itself is `signed_out`, which
+forgets a restored sign-in, so a background issue poll can no longer sign a
+person out of a Factory that still accepts them.
+
 A spent GitHub rate limit, on the issues request or on the repository
 visibility check behind any repository route, is any 429, or a 403 with
 `X-RateLimit-Remaining: 0` or a `Retry-After`. It answers HTTP 429 with

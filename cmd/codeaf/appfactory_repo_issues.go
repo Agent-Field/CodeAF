@@ -67,7 +67,16 @@ func (h *appFactoryHub) readRepoIssues(ctx context.Context, id, path string) (ap
 	return out, nil
 }
 
+// repoIssuesFailure keeps signed_out, which forgets a restored sign-in, for the
+// Factory's sign-in gate refusing the bearer. That gate always sends a bearer
+// challenge. A 401 without one comes from the route's own GitHub step: the
+// sign-in stands but has no GitHub access the route can use, such as a pasted
+// access token with no GitHub sign-in. That is github_expired, including from a
+// Factory that sent the step without a reason.
 func repoIssuesFailure(r appFactoryReply) error {
+	if r.status == http.StatusUnauthorized && r.header.Get("WWW-Authenticate") == "" {
+		return appwire.Errorf(appwire.CodeGitHubExpired, "GitHub access for this sign-in is missing or expired; reconnect GitHub")
+	}
 	err := appFactoryFailure(r)
 	if routeMissing(err) {
 		var wire *appwire.Error

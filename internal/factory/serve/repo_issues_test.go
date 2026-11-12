@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -14,9 +15,24 @@ import (
 	"unicode/utf8"
 
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/tokens"
 )
 
 func repoIssuesFloor(t *testing.T) (*Handler, string) {
+	t.Helper()
+	h, token, _ := repoIssuesFloorAt(t)
+	return h, token
+}
+
+// repoIssuesFloorClock is the same floor for a caller who brings their own
+// bearer, with the Factory's clock.
+func repoIssuesFloorClock(t *testing.T) (*Handler, *time.Time) {
+	t.Helper()
+	h, _, clock := repoIssuesFloorAt(t)
+	return h, clock
+}
+
+func repoIssuesFloorAt(t *testing.T) (*Handler, string, *time.Time) {
 	t.Helper()
 	h, clock, g := visibilityFloor(t, map[string]map[string]bool{"reader": {"acme/api": true}})
 	token := signViewer(t, h, g, clock, "reader")
@@ -27,7 +43,7 @@ func repoIssuesFloor(t *testing.T) (*Handler, string) {
 			t.Fatalf("prime %s = %d %s", repo, w.Code, w.Body)
 		}
 	}
-	return h, token
+	return h, token, clock
 }
 
 func repoIssuesGitHub(h *Handler, serve func(*http.Request) (int, http.Header, string)) {
@@ -280,6 +296,52 @@ func TestRepoIssuesOnlySoloMayUseTheFactoryProfile(t *testing.T) {
 			}
 			if w.Code != wantStatus || calls != wantCalls {
 				t.Fatalf("%s = %d %s, GitHub calls %d", mode, w.Code, w.Body, calls)
+			}
+		})
+	}
+}
+
+// A sign-in the Factory accepts but that carries no GitHub credential this
+// route may use is told to reconnect GitHub with github_expired. That covers a
+// team Factory reached with the host's access token or a minted access-token
+// row, and a solo Factory whose host has no GitHub profile. The sign-in itself
+// is not refused, so there is no bearer challenge and the same bearer still
+// reads the queue; an app must not forget it.
+func TestRepoIssuesWithoutAGitHubCredentialAsksToReconnectGitHub(t *testing.T) {
+	for _, tc := range []struct{ name, mode, bearer string }{
+		{"team host token", api.FactoryTeam, "floor-secret"},
+		{"team minted token", api.FactoryTeam, "minted"},
+		{"solo without a GitHub profile", api.FactorySolo, "floor-secret"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h, clock := repoIssuesFloorClock(t)
+			h.config.Mode = tc.mode
+			h.config.GitHubToken = func(context.Context) string { return "" }
+			bearer := tc.bearer
+			if bearer == "minted" {
+				row, err := tokens.Mint()
+				if err != nil {
+					t.Fatal(err)
+				}
+				row.Created, row.Expires = *clock, clock.Add(time.Hour)
+				bearer = row.Token
+				h.config.TokensPath = filepath.Join(t.TempDir(), "tokens.json")
+				if err := tokens.Save(h.config.TokensPath, []tokens.Token{row}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			repoIssuesGitHub(h, func(r *http.Request) (int, http.Header, string) {
+				t.Errorf("unexpected GitHub request: %s %s", r.Method, r.URL)
+				return 500, http.Header{}, `{}`
+			})
+			w := identityRequest(h, "GET", "/v1/repos/acme/api/issues", "", bearer, nil)
+			var got struct{ Error, Reason string }
+			if w.Code != 401 || json.Unmarshal(w.Body.Bytes(), &got) != nil || got.Reason != api.ReasonGitHubExpired ||
+				got.Error != "Reconnect GitHub to read repository issues" || w.Header().Get("WWW-Authenticate") != "" {
+				t.Fatalf("issues without GitHub = %d %s, WWW-Authenticate %q", w.Code, w.Body, w.Header().Get("WWW-Authenticate"))
+			}
+			if q := identityRequest(h, "GET", "/v1/queue", "", bearer, nil); q.Code != 200 {
+				t.Fatalf("the same sign-in no longer reads the queue: %d %s", q.Code, q.Body)
 			}
 		})
 	}
