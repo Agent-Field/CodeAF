@@ -983,6 +983,18 @@ no turns at all is not offered again either, because there is nothing for a next
 carry on from, and it says that instead: `…with none of its work recorded, so there was
 nothing for another attempt to carry on from`.
 
+## What do and exec wait for at shutdown — usage writes after a timeout
+
+`codeaf do` joins its cancelled workers' admitted receipt accounting before closing
+the process's usage writers, including when the run times out. Receipt settlement
+shares the existing five-second background stop wait. Usage shutdown has a separate
+two-second bound. With a responsive provider and disk, the command returns after
+those accounting writes finish. A stalled provider or disk can exhaust a bound;
+complete rows already in the pending usage journal remain recoverable on restart.
+
+`codeaf exec` also closes its usage writer before returning, under the same
+two-second usage shutdown bound.
+
 ## How long a headless run gets — the `-timeout` wall, how long does codeaf do wait, can I write 5m or 2h
 
 `codeaf do` runs under a hard wall, and `-timeout` is where you set it. **Left alone it is

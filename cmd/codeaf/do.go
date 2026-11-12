@@ -572,6 +572,8 @@ func applyContextLaw(fillPercent, completionReserve int) error {
 // to main, which says it on stderr — an ordinary run has no object to put it in
 // and never wanted one.
 func doErrand(request doRequest) error {
+	// Producers stop before the process-owned usage writers are joined.
+	defer session.CloseUsage()
 	started := time.Now()
 	// The two seats, resolved before anything is opened or built, so the run
 	// says which models it is about to use and on whose authority — and says it
