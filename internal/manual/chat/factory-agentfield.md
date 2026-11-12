@@ -633,14 +633,18 @@ which keeps the one approval: if it was answered first somewhere else (hax, the
 control plane's page) the job's question comes down by itself, and a late
 answer says "this was already answered somewhere else, and that answer stands".
 
-## restart while an AgentField step runs — the run goes on, not a retry, no "interrupted" round
+## restart or lost worker lease while an AgentField step runs — what happens to a remote build if the worker loses its job, the run goes on, not a retry, no "interrupted" round
 
-Restarting codeaf, or its runner going away, while an agentfield step's run is
-still going on the control plane interrupts nothing: the run keeps going there.
-The job waits for its runner again ("Waiting to start"), and the runner that
-takes it follows that same run. There is no second run, no "interrupted"
-round, no "trying <step> again", and no automatic retry is spent, however many
-times it restarts. Only a person's Stop cancels the run.
+Restarting codeaf, its runner going away, or a worker losing its lease (a
+heartbeat that answers "lease is no longer live" or cannot reach the queue in
+time) while an agentfield step's run is still going on the control plane
+interrupts nothing: the run keeps going there and receives no cancel-tree call.
+The job waits for its runner again ("Waiting to start"), never shown as stopped
+by you, and the next lease of the job follows that same run (same run id) to
+its end without dispatching a second build. There is no "interrupted" round, no
+"trying <step> again", and no automatic retry is spent, however many times it
+restarts or re-attaches. Only a person's Stop cancels the run, posting
+cancel-tree once.
 
 This holds wherever the job was when its runner went away: running, or
 waiting in Needs you on the run's approval. A job whose run goes on with no
