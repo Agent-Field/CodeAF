@@ -12,10 +12,11 @@ engine reports it. Check the running work before starting the same brief again.
 A task is one self-contained piece of work handed off to run on its own while the
 conversation carries on. It works in a folder of its own and reports back when it lands.
 Projects may be copied; a task that would copy your home folder reads it in place and
-starts with an empty folder. It never inherits the conversation: what it reads is one written brief — your own message, word
-for word, then the work, what to produce and what done means, and a pointer at the
+starts with an empty folder. It never inherits the conversation: what it reads is one written brief —
+the work, what to produce, what done means, your own message word for word, and a pointer at the
 journal path and line of your original turn so it can read those words in full when the
-restatement was cut. How that is assembled is on the *how tasks run* page, under *What the
+restatement was cut. A proposal on the run road puts its own work first; a task you typed
+yourself keeps your message first. How that is assembled is on the *how tasks run* page, under *What the
 task actually reads* and *Can the task see the original request*. The one exception is a
 **quick task started with `inherit`**, which opens holding the conversation itself — see
 *Can it keep what it read* below.
@@ -2329,8 +2330,16 @@ you set it — and under the day's limit above it. An adaptive run they start op
 $100.00 default.
 
 **An ordinary `/task`, or any task codeaf's own worker does, also has a money limit of its own: $5 unless you set another**, shown on the
-Spending tab's `per task` row and set with `/crew cap task <$>`. A call that would spend
-past it is not made, whichever way the ordinary task was started, and the task stops there.
+Spending tab's `per task` row and set with `/crew cap task <$>`. On the run road this is
+one ceiling for the whole tree, including planning and checks. The smaller of that limit
+and the conversation's remaining allowance wins, even when no crew was routed.
+Continuing interrupted work keeps what the same tree already spent: only the unspent
+part of its per-task limit remains available.
+A routed crew refuses a call that would cross its per-task limit. Reaching the run's
+ceiling ends workers in flight and starts no more. When the per-task limit binds, the
+report says `this task reached its $5 limit · raise it in /crew` (with your configured
+amount). Raise it with `/crew cap task <$>`, then rerun the remaining work with `/task`.
+Continuing a run is for interrupted work; a settled dollar-limit ending needs a rerun.
 **senior-dev, sec and review have their own dollar and time ceilings for each run**,
 separate from that `per task` row; see each program's page for its defaults and how to
 change them.

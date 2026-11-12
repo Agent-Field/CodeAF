@@ -245,6 +245,10 @@ func (s *Store) RootID() string {
 // CLI mints short random ones — `t-` + six base-36 characters — and honours
 // `--as` names. Both roads end here.
 func (s *Store) AddMany(specs []TaskSpec) ([]*Task, error) {
+	return s.addMany(specs, false)
+}
+
+func (s *Store) addMany(specs []TaskSpec, bounded bool) ([]*Task, error) {
 	if len(specs) == 0 {
 		return nil, errors.New("tasks must not be empty")
 	}
@@ -276,6 +280,11 @@ func (s *Store) AddMany(specs []TaskSpec) ([]*Task, error) {
 				return fmt.Errorf("duplicate task id %q", specs[i].ID)
 			}
 			batch[specs[i].ID] = true
+		}
+		if bounded {
+			if err := boundedGrowthRefusal(*next, s.rdb, specs); err != nil {
+				return err
+			}
 		}
 		for _, spec := range specs {
 			if next.Tasks[spec.ParentID] == nil && !batch[spec.ParentID] {
@@ -586,7 +595,7 @@ func (s *Store) AddReviewCheck(spec TaskSpec) (*Task, error) {
 		if parent == nil {
 			return fmt.Errorf("parent %q does not exist", spec.ParentID)
 		}
-		check := &Task{TaskSpec: spec, Status: StatusPending, CreatedAt: now, UpdatedAt: now}
+		check := &Task{TaskSpec: spec, Status: StatusPending, ReviewCheck: true, CreatedAt: now, UpdatedAt: now}
 		next.Tasks[spec.ID] = check
 		next.Order = append(next.Order, spec.ID)
 		for ancestor := parent; ancestor != nil; ancestor = next.Tasks[ancestor.ParentID] {

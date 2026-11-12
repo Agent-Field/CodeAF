@@ -3065,12 +3065,43 @@ A missing argument comes back as an ordinary result, never an error:
 There is a sixth part the model is **not** asked for and cannot leave out: your own
 message. See the next section.
 
+## Task tree limits, duplicate tasks and proposals that auto-start
+
+A run worker can hand out work at most two levels below its run's root task. A run can
+hold at most 20 counted tasks: the root, checks seated by the review round and cancelled
+tasks do not consume those slots. A task a worker creates with `--role check` still
+counts. These are runaway stops, not a target for how much work to hand out.
+
+A worker's `plandb add`, `split`, `task insert` or `task pivot` also refuses a title already
+used anywhere in that run, including its own task and the root. Titles are compared in
+lower case with runs of punctuation and whitespace folded to one space. Cancelled titles
+can be reused. A duplicate within one batch, or a batch that would cross either tree
+limit, refuses the whole batch: nothing is added and nothing can start from it. The
+refusal tells the worker to do its own work or report what remains undone.
+
+A proposal that joins a live run because its countdown expired obeys the same growth
+rules. A refusal settles its card as not started. Choosing to start it yourself, or typing
+`/task`, retains your ability to join work beyond the count limit. Every ordinary run
+still has its whole-tree per-task dollar ceiling. Your own `codeaf plandb` commands with
+no run bound retain their existing behavior; the growth refusal applies to run workers.
+
+## What a proposed task reads — its own assignment and your conversation message
+
+A task the conversation proposed on the run road opens on **THE WORK**, **WHAT TO
+PRODUCE** and **DONE WHEN**. Your message follows under a rule saying it was addressed to
+the conversation when it proposed this task. Proposing, starting or handing out tasks in
+that message is already the conversation's work, not this worker's to repeat. Your words
+still govern this task; a disagreement about its work belongs in the report rather than
+being acted on by widening the assignment. Each child opens on its own plan task and
+reads the run's description later as context.
+
 ## What the task actually reads — does it see what I said?
 
 Yes. Your own message travels with the work, word for word.
 
-A task's first and only message is assembled by codeaf from these parts, under headings, in
-this order:
+A task you typed yourself keeps your message first. Its opening document is assembled by
+codeaf from these parts, under headings, in this order; the older session-tree road uses
+this order too:
 
 ```
 WHAT THE PERSON ASKED FOR, IN THEIR OWN WORDS
