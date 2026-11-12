@@ -8,6 +8,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/live"
+	"github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
@@ -26,6 +27,7 @@ func TestStoredOutcomesMatchJobFacts(t *testing.T) {
 		{"closed", factory.Item{State: factory.StateShipped, PullRequest: &factory.PullRequest{State: factory.PROpen}}, factory.Item{State: factory.StateShipped, PullRequest: &factory.PullRequest{State: factory.PRClosed}, DoneAt: at}, "finished", func(j api.Job) time.Time { return j.DoneAt }},
 		{"dropped", factory.Item{State: factory.StateNew}, factory.Item{State: factory.StateDismissed, DoneAt: at}, "finished", func(j api.Job) time.Time { return j.DoneAt }},
 		{"failed", factory.Item{State: factory.StateRunning}, factory.Item{State: factory.StateNew, Failure: &factory.Failure{At: at, Code: factory.CodeToolError, Step: "check"}}, "failed", func(j api.Job) time.Time { return j.Failure.At }},
+		{"runner lost", factory.Item{State: factory.StateRunning}, factory.Item{State: factory.StateRunning, Failure: &factory.Failure{At: at, Code: factory.CodeMachineLost, Step: "plan", Next: factory.FailureStopped}}, "failed", func(j api.Job) time.Time { return j.Failure.At }},
 		{"question", factory.Item{State: factory.StateRunning}, factory.Item{State: factory.StateNeedsYou, Asking: &factory.Asked{At: at, With: factory.AskedYou, Question: "Which file?"}}, "needs_you", func(j api.Job) time.Time { return j.NeedsYou.Since }},
 		{"need changed", factory.Item{State: factory.StateNeedsYou, QKind: factory.QKindApprove, Asking: &factory.Asked{At: at, With: factory.AskedYou}}, factory.Item{State: factory.StateNeedsYou, QKind: factory.QKindAskFirst, Asking: &factory.Asked{At: at, With: factory.AskedYou}}, "needs_you", func(j api.Job) time.Time { return j.NeedsYou.Since }},
 		{"since changed", factory.Item{State: factory.StateNeedsYou, Asking: &factory.Asked{At: at.Add(-time.Second), With: factory.AskedYou}}, factory.Item{State: factory.StateNeedsYou, Asking: &factory.Asked{At: at, With: factory.AskedYou}}, "needs_you", func(j api.Job) time.Time { return j.NeedsYou.Since }},
@@ -148,6 +150,15 @@ func runningPlan(at time.Time) factory.Item {
 	}
 }
 
+// atPlanGate moves a [runningPlan] job to wait at its approve gate, the plan
+// done and the person asked, as a run leaves it when its plan finishes.
+func atPlanGate(it *factory.Item, at time.Time) {
+	it.Stream.Phases[0].State = factory.PhaseDone
+	it.Stream.Cur, it.Stream.Phases[1].State = 1, factory.PhaseWaiting
+	it.State, it.QKind, it.Question = factory.StateNeedsYou, factory.QKindApprove, "plan is ready · continue, or send it back?"
+	it.Asking = &factory.Asked{Stage: "approve", Question: it.Question, At: at, With: factory.AskedYou}
+}
+
 // E1: one wait on a person is one needs-you outcome, however many writes the
 // job takes while it waits: its runner's reports, its priority, its budget, a
 // rename. A wait at the plan gate recorded another on every write (hand test,
@@ -166,12 +177,7 @@ func TestStoredNeedsYouOncePerWait(t *testing.T) {
 		wait         func(*factory.Item)
 		need, reason string
 	}{
-		{"plan gate", func(it *factory.Item) {
-			planDone(it)
-			it.Stream.Cur, it.Stream.Phases[1].State = 1, factory.PhaseWaiting
-			ask(it, "approve", "plan is ready · continue, or send it back?")
-			it.QKind = factory.QKindApprove
-		}, factory.NeedsApprovePlan, "approval_plan"},
+		{"plan gate", func(it *factory.Item) { atPlanGate(it, at) }, factory.NeedsApprovePlan, "approval_plan"},
 		{"hold before a step", func(it *factory.Item) {
 			planDone(it)
 			it.Stream.Phases[1].State = factory.PhaseDone
@@ -239,6 +245,81 @@ func TestStoredNeedsYouOncePerWait(t *testing.T) {
 					t.Fatal(err)
 				}
 				check(w.name)
+			}
+		})
+	}
+}
+
+// E1: a person's stop is no outcome, on every road that writes one. Each stop
+// that cuts a step (a wait at a gate, a running step, a step's own Stop) puts
+// the person's stop on the job as a failure coded stopped, and that write
+// recorded a failed outcome (hand test, 2026-11-12: factory.job_stop at the
+// plan gate recorded failed, code stopped, step approve), which the desktop
+// app takes as a failed job to wake its agent for. The job waits in Backlog.
+func TestStoredPersonStopIsNoOutcome(t *testing.T) {
+	at := time.Date(2026, 11, 12, 17, 29, 26, 345727000, time.FixedZone("offset", -5*3600))
+	now := at.Add(2 * time.Minute)
+	// The stop write of the Factory's Stop door (lease.Doors.Stop and StopAs,
+	// which factory.job_stop and `codeaf factory stop` reach) and of a stop
+	// with no run to cancel here.
+	stopDoor := func(it *factory.Item) error {
+		if err := run.StopItem(it, now); err != nil {
+			return err
+		}
+		factory.MarkPersonStopped(it)
+		it.Asking = nil
+		return nil
+	}
+	tests := []struct {
+		name  string
+		setup func(*factory.Item)
+		stop  []func(*factory.Item) error
+		step  string
+	}{
+		{"stop at the plan gate", func(it *factory.Item) { atPlanGate(it, at) }, []func(*factory.Item) error{stopDoor}, "approve"},
+		{"stop during a running step", func(*factory.Item) {}, []func(*factory.Item) error{stopDoor}, "plan"},
+		{
+			// Runner.Stop of a job its loop holds: the stop is recorded, then
+			// the cancelled loop ends the run ([run.StopItem] writes the same end).
+			"stop with a run to cancel", func(it *factory.Item) { atPlanGate(it, at) },
+			[]func(*factory.Item) error{
+				func(it *factory.Item) error { factory.MarkPersonStopped(it); it.Asking = nil; return nil },
+				func(it *factory.Item) error { return run.StopItem(it, now) },
+			}, "approve",
+		},
+		{"a step's own Stop", func(*factory.Item) {}, []func(*factory.Item) error{
+			func(it *factory.Item) error { return run.StepControl(it, "plan", false, "", now) },
+		}, "plan"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			st, err := store.Open(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			initial := runningPlan(at)
+			tt.setup(&initial)
+			// A created job records nothing, so every outcome below is the stop's.
+			it, err := st.Create(initial)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, stop := range tt.stop {
+				if err := st.Update(it.ID, stop); err != nil {
+					t.Fatal(err)
+				}
+			}
+			stored, err := st.Get(it.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if f := stored.Failure; f == nil || f.Code != factory.CodeStopped || f.Step != tt.step || api.FromItem(stored).State != "backlog" {
+				t.Fatalf("the stop's own write: failure %+v, state %s", stored.Failure, api.FromItem(stored).State)
+			}
+			zero := int64(0)
+			got, err := live.ReadOutcomes(st.Root(), &zero, 100)
+			if err != nil || got.Reset || len(got.Events) != 0 || got.Cursor != 0 {
+				t.Fatalf("a person's stop recorded outcomes: %+v %v", got.Events, err)
 			}
 		})
 	}

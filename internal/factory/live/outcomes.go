@@ -56,13 +56,25 @@ func Outcomes(before, after factory.Item, now time.Time) []Event {
 	if factory.JobState(after) == "done" && factory.JobState(before) != "done" && !merged && factory.JobDoneHow(after) != "merged" {
 		out = append(out, newOutcome(after, Outcome{Kind: "finished", At: outcomeTime(after.DoneAt, now), How: factory.JobDoneHow(after)}))
 	}
-	if f := after.Failure; f != nil && (before.Failure == nil || !before.Failure.At.Equal(f.At)) {
+	if f := after.Failure; f != nil && !personStop(after) && (before.Failure == nil || !before.Failure.At.Equal(f.At)) {
 		out = append(out, newOutcome(after, Outcome{Kind: "failed", At: f.At, Code: f.Code, Step: f.Step}))
 	}
 	if needsOutcome(before, after) {
 		out = append(out, newOutcome(after, Outcome{Kind: "needs_you", At: outcomeNeedsTime(after, now), Need: factory.NeedsKind(after), Reason: factory.JobReason(after)}))
 	}
 	return out
+}
+
+// personStop says the job's failure is a person's decision, not a failed job.
+// EVERY ROAD THAT ENDS A RUN ON A PERSON'S WORD writes it as a failure coded
+// stopped on the step it cut and on the job: Stop at a gate or in a step, a
+// step's own Stop, a no to the stop after a step, Close, Reject, the reset
+// before a reassignment and a cancel out of attempts. Read as a failure it was
+// recorded as failed, which the desktop app answers by waking the agent for a
+// failed job. A job a person stopped waits in Backlog ([factory.JobState]),
+// and the history record skips the same failure.
+func personStop(it factory.Item) bool {
+	return it.Failure.Code == factory.CodeStopped || factory.StoppedByPerson(it)
 }
 
 func needsOutcome(before, after factory.Item) bool {
