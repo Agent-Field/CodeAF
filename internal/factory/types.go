@@ -604,6 +604,12 @@ type Item struct {
 	// RunOn job's whole run) each keeps its run's executions as its own
 	// Stages and Phases, which fold under that step.
 	AgentFieldSteps map[string]*AgentFieldRun `json:",omitempty"`
+	// Group is the opaque label supplied when the job was made.
+	Group string `json:",omitempty"`
+	// Milestone is the milestone label supplied when the job was made.
+	Milestone string `json:",omitempty"`
+	// Context holds the person's reference attachments outside the description.
+	Context []JobContext `json:",omitempty"`
 	// PublishAnyway preserves the person decision without changing measured proof.
 	PublishAnyway *Approval `json:",omitempty"`
 	// GitHubIssueID pins the permanent issue identity, learned only by a direct read.

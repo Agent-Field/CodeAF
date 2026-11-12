@@ -111,6 +111,7 @@ func ToSnapshot(q Queue, jobs []Job) factory.Snapshot {
 // Lost names the Go fields the wire does not carry, and why. The round-trip
 // test reads it, so a field is either carried or named here.
 var Lost = map[string]string{
+	"JobContext.Markdown":         "attachment text is private to worker admission; ordinary job and queue reads carry only title and source",
 	"Item.PausedRecoveryQuestion": "the service owns the paused decision identity; readers see the paused presentation",
 	"Item.LastRecoveryResume":     "the service's private acknowledgment for a repeated chat retry",
 	"Item.Passing":                "service-owned: who is passing the waiting approve step, set by the approval door just before its answer and moved onto the step's phase (Step.passed carries the result)",
@@ -169,6 +170,7 @@ func FromItem(it factory.Item) Job {
 		factory.MarkPersonStopped(&it)
 	}
 	j := Job{
+		Group: it.Group, Milestone: it.Milestone, Context: mapList(it.Context, fromJobContext),
 		FromJob: it.FromJob, SourceIssue: it.SourceIssue, RunOn: it.RunOn, AgentField: it.AgentField, AgentFieldSteps: it.AgentFieldSteps,
 		WaitsOn: append([]int(nil), it.WaitsOn...), PolicyRun: it.PolicyRun, Blocked: cloneBlocked(it.Blocked),
 		Recovery: it.Recovery, Autonomy: it.Autonomy, AutonomyWhy: factory.AutonomyBlockReason(it), FollowUp: it.FollowUp, Manual: it.Manual, Effort: it.Effort,
@@ -607,6 +609,7 @@ func ToItem(j Job) factory.Item {
 		d = &JobDesk{}
 	}
 	it := factory.Item{
+		Group: j.Group, Milestone: j.Milestone, Context: mapList(j.Context, toJobContext),
 		FromJob: j.FromJob, SourceIssue: j.SourceIssue, RunOn: j.RunOn, AgentField: j.AgentField, AgentFieldSteps: j.AgentFieldSteps,
 		WaitsOn: append([]int(nil), j.WaitsOn...), PolicyRun: j.PolicyRun, PolicyGroup: d.PolicyGroup, Blocked: cloneBlocked(j.Blocked),
 		Recovery: j.Recovery, Autonomy: j.Autonomy, FollowUp: j.FollowUp, Manual: j.Manual, Effort: j.Effort,

@@ -196,6 +196,9 @@ func stageResultItem(r StepResult) factory.StageResult {
 func WorkerJob(it factory.Item) Job {
 	j := FromItem(it)
 	j.RoundCostTables, j.FailureSummaries = true, true
+	for i := range j.Context {
+		j.Context[i].Markdown = it.Context[i].Markdown
+	}
 	// The runner runs the file the job carries, so it is sent whole here.
 	j.PipelineCopy = it.PipelineCopy.Clone()
 	// The read written before work is what every step is told the issue

@@ -259,8 +259,8 @@ func withFactoryJobStepRerunModelFeature(hello Hello, e Engine) Hello {
 }
 
 // FactoryJobCreateParams makes a job. WITHOUT Start THE JOB IS ONLY ADDED TO
-// THE BACKLOG: nothing starts, no model is asked, and no GitHub issue is
-// opened. Start "now" is the one explicit way to also start it, and it requires
+// THE BACKLOG: nothing starts and no model is asked. OpenIssue explicitly opens a
+// GitHub issue. Start "now" is the one way to also start it, and it requires
 // Assignee to be present ("" for no one; a team factory refuses that). Assignee
 // left out leaves the factory's rule in charge; "" leaves the job unassigned.
 type FactoryJobCreateParams struct {
@@ -273,6 +273,16 @@ type FactoryJobCreateParams struct {
 	// Pipeline (feature factory.start_pipeline) is the kind whose pipeline the
 	// new job runs, as [FactoryJobStartParams] says; "" for the issue steps.
 	Pipeline string `json:"pipeline,omitempty"`
+	// OpenIssue opens a GitHub issue with the title and text before making the job.
+	OpenIssue bool `json:"open_issue,omitempty"`
+	// Group is an opaque label, trimmed to at most 200 characters without controls.
+	Group string `json:"group,omitempty"`
+	// Milestone is a second label with the same bounds as Group.
+	Milestone string `json:"milestone,omitempty"`
+	// Budget sets the job's initial cap to one of FactoryBudgetSteps.
+	Budget *float64 `json:"budget,omitempty"`
+	// Key is carried as Idempotency-Key on this create request alone.
+	Key string `json:"key,omitempty"`
 }
 
 func (p *FactoryJobCreateParams) pickedPipeline() string { return p.Pipeline }
@@ -316,7 +326,7 @@ type FactoryJobActed struct {
 // commit ids and times, never a credential.
 type FactoryRefusal struct {
 	// Reason is the factory's word: stale, not_job_person, not_allowed,
-	// conflict, already_answered or changed_since_opened.
+	// conflict, already_answered, changed_since_opened or factory_too_old.
 	Reason string `json:"reason,omitempty"`
 	// By is who the refusal names (the assignee, the approver), with @.
 	By string `json:"by,omitempty"`
@@ -654,6 +664,9 @@ func prepStep(p *FactoryJobStepParams) error {
 }
 
 func prepCreate(p *FactoryJobCreateParams) error {
+	if err := checkCreateExtras(p); err != nil {
+		return err
+	}
 	id, err := factoryID(strings.TrimSpace(p.Factory))
 	if err != nil {
 		return err

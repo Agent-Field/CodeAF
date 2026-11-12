@@ -418,6 +418,11 @@ type JobReadSize struct {
 
 // Job is one unit of work on the floor (code: [factory.Item]).
 type Job struct {
+	// Group and Milestone are opaque labels supplied at creation.
+	Group     string `json:"group,omitempty"`
+	Milestone string `json:"milestone,omitempty"`
+	// Context lists attachment metadata; only worker admission includes its text.
+	Context []JobContext `json:"context,omitempty"`
 	// RoundCostTables advertises table support only on worker admission.
 	RoundCostTables bool `json:"round_cost_tables,omitempty"`
 	// FailureSummaries advertises, on worker admission only, that this factory
