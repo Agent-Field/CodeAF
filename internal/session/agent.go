@@ -160,6 +160,9 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		config.liveProfile.launch = chosenPromptProfile(config)
 	}
 	config.liveProfile.current.Store(config.profile)
+	// What the page and the tasks description say about other windows follows
+	// the stored scope; a later change is taken at a turn's start (scope.go).
+	config.ownWork = config.readsOwnWorkOnly()
 	system, own := config.System, false
 	if strings.TrimSpace(system) == "" {
 		system, own = renderSystem(config), true
@@ -297,6 +300,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// hub has to exist before the tools are assembled (connect.go).
 	agent.connect = newConnectHub(config)
 	agent.initKnowledge()
+	agent.ownWorkTold.Store(config.ownWork)
 	agent.tools = agent.belt()
 	definitions, err := toolDefinitions(agent.tools)
 	if err != nil {
@@ -2027,6 +2031,9 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	// (taskpresence.go). The nudge never blocks and never takes a lock, which is
 	// what lets it sit under a.mu here.
 	a.nudgePresence()
+	// AND WHAT THE PAGE SAYS ABOUT OTHER WINDOWS FOLLOWS A CHANGED SCOPE, from
+	// this turn on, as the scope's documentation promises (scope.go).
+	a.followWorkScopeLocked(time.Now())
 	// AND THE CLOCK IN THE PROMPT IS BROUGHT UP TO DATE BEFORE THE TURN OPENS,
 	// when it has gone stale enough to be worth the cold prefix (prompt.go's
 	// clockRefresh says why that is free).

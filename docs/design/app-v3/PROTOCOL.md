@@ -89,11 +89,13 @@ landed and running work in its folder, as today. `conversation` means it is told
 only about its own work: its turns receive no other-conversation `<elsewhere>`
 block, and its `tasks` tool lists and addresses only its own tasks. Neither the
 other-window running section nor the wider `scope: "everywhere"` section is
-added. Task nodes keep their existing scope.
+added. Its instructions and the `tasks` tool description say that other
+conversations' work is hidden from it, instead of promising that work. Task
+nodes keep their existing scope.
 
 The choice is stored with the conversation and survives restarts. It takes
-effect from the conversation's next turn; a live tasks call also reads the
-stored choice. Setting it never opens, warms or interrupts the conversation,
+effect from the conversation's next turn, instructions and tool description
+included; a live tasks call also reads the stored choice. Setting it never opens, warms or interrupts the conversation,
 never moves its folder, and never changes its transcript, title, model or tasks.
 The write-safety checks still warn before its own work writes over files other
 conversations are writing. The person's task list is unchanged.

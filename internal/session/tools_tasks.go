@@ -69,7 +69,13 @@ import (
 // stated once, on the page's own routing table, rather than once per tool here —
 // eighteen descriptions each carrying their own routing clause is the same table
 // written eighteen times and billed on every request of every turn.
-const tasksDescription = "Find tasks. A finished task is asked about with `tasks` and is never redone or rechecked by hand. No id searches; an id reads, steers, stops, forwards, continues or settles one. To END running work use stop; say may be ignored. Never to WAIT for handed-off work. Search includes other windows' live work as `another window`, with no id here."
+const tasksDescription = tasksDescriptionCore + " Search includes other windows' live work as `another window`, with no id here."
+
+// tasksDescriptionOwnWork is the same contract for a conversation told only
+// about its own work (scope.go), whose search reaches no other window.
+const tasksDescriptionOwnWork = tasksDescriptionCore + " Search lists only this conversation's own work: other windows and other projects are hidden from it, even with scope everywhere."
+
+const tasksDescriptionCore = "Find tasks. A finished task is asked about with `tasks` and is never redone or rechecked by hand. No id searches; an id reads, steers, stops, forwards, continues or settles one. To END running work use stop; say may be ignored. Never to WAIT for handed-off work."
 
 // The schema's `resolve` enum is INTERPOLATED from [TaskResolutions] rather
 // than typed out, because the landing note offers the same three words to the
@@ -220,9 +226,15 @@ func (a *Agent) tasksTool() bare.Tool {
 	if a.config.oneTaskRoad() {
 		schema = tasksSchemaWithNote
 	}
+	// AND THE DESCRIPTION SAYS WHOSE WORK A SEARCH REACHES, from the scope the
+	// page was told ([Agent.followWorkScopeLocked]).
+	description := tasksDescription
+	if a.ownWorkTold.Load() {
+		description = tasksDescriptionOwnWork
+	}
 	return bare.Tool{
 		Name:        "tasks",
-		Description: tasksDescription,
+		Description: description,
 		Schema:      json.RawMessage(schema),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed tasksArguments

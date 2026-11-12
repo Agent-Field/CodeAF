@@ -40,7 +40,9 @@ answered with `bad_scope`, and the remote protocol version is unchanged.
 **Conversation scope.** `agents.set_scope {id, scope}` stores `project` or
 `conversation` and answers the stored word. Engines serving it announce
 `agents.scope`. The choice survives a restart and takes effect on the next turn
-or tasks call without opening, warming or interrupting the conversation. A lent
+or tasks call without opening, warming or interrupting the conversation. Under
+`conversation` the model's instructions and its `tasks` tool description say
+that other conversations' work is hidden, rather than promising it. A lent
 conversation or one without a local folder is refused. The person's task list,
 task nodes and the write-safety checks keep their existing behavior.
 

@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // scopeRig uses the same index and presence records as the turn-context and
@@ -40,6 +42,147 @@ func scopeRig(t *testing.T) (*Agent, string) {
 	machineSession(t, root, "away", "another", "Separate project", t.TempDir(), 4242, time.Second,
 		PresenceTask{ID: "8", Title: "Separate project work", State: string(TaskRunning)})
 	return agent, dir
+}
+
+// scopePromiseCompleter keeps the page and the tasks description of each
+// request that carries the tasks tool, so errands beside a turn are ignored.
+type scopePromiseCompleter struct {
+	scriptedCompleter
+	pages, tasks []string
+}
+
+func (s *scopePromiseCompleter) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
+	var request ai.Request
+	for _, option := range options {
+		_ = option(&request)
+	}
+	for _, tool := range request.Tools {
+		if tool.Function.Name == "tasks" && len(messages) > 0 {
+			s.mu.Lock()
+			s.pages = append(s.pages, messageText(messages[0]))
+			s.tasks = append(s.tasks, tool.Function.Description)
+			s.mu.Unlock()
+		}
+	}
+	return s.scriptedCompleter.CompleteWithMessages(ctx, messages, options...)
+}
+
+// The page and the tasks tool's description are what the model believes about
+// other windows. Under conversation scope both must say that other work is
+// hidden, so an empty answer is never read as "nothing else is running"; under
+// project scope both keep their earlier words. The stored word decides from
+// the next turn, both ways, and from the first turn of a reopened conversation.
+func TestConversationScopeShapesWhatThePageAndTasksToolPromise(t *testing.T) {
+	const otherWindows = "OTHER codeaf WINDOWS ON THIS PROJECT ARE VISIBLE TO YOU"
+	const tasksOtherWindows = "Search includes other windows' live work as `another window`"
+	const ownWorkPage = "THIS CONVERSATION IS TOLD ONLY ABOUT ITS OWN WORK"
+	const ownWorkTasks = "Search lists only this conversation's own work"
+	if strings.Count(systemPrompt, otherWindows) != 1 || !strings.Contains(tasksDescription, tasksOtherWindows) {
+		t.Fatal("the project-scope sentences moved; this test would pass on nothing")
+	}
+	turn := func(agent *Agent, completer *scopePromiseCompleter, scope string) {
+		t.Helper()
+		completer.mu.Lock()
+		before := len(completer.pages)
+		completer.mu.Unlock()
+		events, err := agent.Submit(context.Background(), "what else is running?")
+		if err != nil {
+			t.Fatal(err)
+		}
+		collect(t, events)
+		completer.mu.Lock()
+		if len(completer.pages) == before {
+			completer.mu.Unlock()
+			t.Fatal("the turn sent no request carrying the tasks tool")
+		}
+		page, description := completer.pages[before], completer.tasks[before]
+		completer.mu.Unlock()
+		own := scope == WorkScopeConversation
+		for _, check := range []struct {
+			where, text, sentence string
+			want                  bool
+		}{
+			{"page", page, otherWindows, !own},
+			{"page", page, ownWorkPage, own},
+			{"tasks description", description, tasksOtherWindows, !own},
+			{"tasks description", description, ownWorkTasks, own},
+		} {
+			if strings.Contains(check.text, check.sentence) != check.want {
+				t.Fatalf("%s scope: the %s says %q = %v, want %v:\n%s", scope, check.where, check.sentence, !check.want, check.want, check.text)
+			}
+		}
+	}
+	rig := func(place *Place, workspace string) (*Agent, *scopePromiseCompleter) {
+		t.Helper()
+		completer := &scopePromiseCompleter{}
+		agent, _ := newTestAgent(t, completer, func(c *Config) {
+			c.System, c.PromptProfile = "", "full"
+			if workspace != "" {
+				c.Workspace = workspace
+			}
+			c.Place = Place{Dir: place.Dir, Workspace: c.Workspace}
+			c.SessionFile = c.Place.Transcript()
+		})
+		return agent, completer
+	}
+	place := &Place{Dir: filepath.Join(t.TempDir(), "here", "0123456789abcdef")}
+	agent, completer := rig(place, "")
+	if err := SaveMeta(place.Dir, Meta{ID: "0123456789abcdef", Workspace: agent.config.Workspace}); err != nil {
+		t.Fatal(err)
+	}
+	turn(agent, completer, WorkScopeProject)
+	if _, err := SetConversationScope(place.Dir, WorkScopeConversation); err != nil {
+		t.Fatal(err)
+	}
+	turn(agent, completer, WorkScopeConversation)
+	if _, err := SetConversationScope(place.Dir, WorkScopeProject); err != nil {
+		t.Fatal(err)
+	}
+	turn(agent, completer, WorkScopeProject)
+	if err := agent.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := SetConversationScope(place.Dir, WorkScopeConversation); err != nil {
+		t.Fatal(err)
+	}
+	reopened, reopenedCompleter := rig(place, agent.config.Workspace)
+	turn(reopened, reopenedCompleter, WorkScopeConversation)
+}
+
+// A lean conversation keeps `tasks` on a shelf. The copy it loads after the
+// scope changed must say what a belt that always carried it says.
+func TestConversationScopeReachesAShelvedTasksTool(t *testing.T) {
+	t.Setenv(promptProfileEnv, "")
+	dir := filepath.Join(t.TempDir(), "here", "0123456789abcdef")
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.PromptProfile = "lean"
+		c.Place = Place{Dir: dir, Workspace: c.Workspace}
+		c.SessionFile = c.Place.Transcript()
+	})
+	if !agent.config.promptProfile().lean() || agent.hasTool("tasks") {
+		t.Fatal("the fixture did not keep tasks on a shelf")
+	}
+	if err := SaveMeta(dir, Meta{ID: "0123456789abcdef", Workspace: agent.config.Workspace}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := SetConversationScope(dir, WorkScopeConversation); err != nil {
+		t.Fatal(err)
+	}
+	collect(t, mustSubmit(t, agent, "hello"))
+	if _, failed := agent.loadCapability("tasks"); failed {
+		t.Fatal("load tasks")
+	}
+	agent.armMu.Lock()
+	description := ""
+	for _, tool := range agent.tools {
+		if tool.Name == "tasks" {
+			description = tool.Description
+		}
+	}
+	agent.armMu.Unlock()
+	if !strings.Contains(description, "Search lists only this conversation's own work") || strings.Contains(description, "another window") {
+		t.Fatalf("the loaded tasks tool kept the project's words: %q", description)
+	}
 }
 
 // L-FIX9-cross A1

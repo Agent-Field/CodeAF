@@ -2909,7 +2909,9 @@ running work in the same folder. `conversation` means it is told only about its
 own work. No `<elsewhere>` block is added to its turns, and the model's `tasks`
 tool lists only its own tasks. Another conversation's tasks cannot be read by
 name or id, steered or resolved through that tool. The running-in-other-windows
-section and the `scope: "everywhere"` section are absent too.
+section and the `scope: "everywhere"` section are absent too. Its instructions
+and the `tasks` tool's description say other windows' work is hidden from it,
+so it does not claim nothing else is running in the folder.
 
 The choice survives a restart and takes effect from the next turn; a tasks call
 also reads the saved choice. Setting it does not open or interrupt the chat,

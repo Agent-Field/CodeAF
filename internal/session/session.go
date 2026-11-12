@@ -2572,6 +2572,11 @@ type Config struct {
 	// ClientTools is the door onto tools an app attached to this conversation. Nil is no door.
 	ClientTools ClientToolDoor
 
+	// ownWork says the page is composed for a conversation told only about its
+	// own work (scope.go). Only the agent sets it, from the scope it last read,
+	// so the page and the tasks description cannot disagree.
+	ownWork bool
+
 	// factoryWindow overrides how long one factory card holds its tool call
 	// open, for tests that watch the window end. Zero is [factoryCardWindow].
 	factoryWindow time.Duration
@@ -2838,7 +2843,10 @@ type Agent struct {
 	knowledgeVault     *knowledge.Vault
 	knowledgeJournal   *knowledgeJournal
 	taskComputerPrompt bool
-	remoteAckJobs      sync.WaitGroup
+	// ownWorkTold is the scope the page and the tasks description last told the
+	// model (scope.go). It is atomic because belts are built outside a.mu.
+	ownWorkTold   atomic.Bool
+	remoteAckJobs sync.WaitGroup
 	// knowledgeWake is signalled after each journal line reaches the file.
 	// initKnowledge creates it once before the agent is reachable and never
 	// replaces it, so writers read it without a lock.
