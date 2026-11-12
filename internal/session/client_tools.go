@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -42,10 +43,50 @@ type ClientTool struct {
 }
 
 type ClientToolSet struct {
-	ID           string
-	Instructions string
-	DeadlineMS   int
-	Tools        []ClientTool
+	ID           string       `json:"id"`
+	Instructions string       `json:"instructions"`
+	DeadlineMS   int          `json:"deadline_ms"`
+	Tools        []ClientTool `json:"tools"`
+}
+
+var clientToolSetPattern = regexp.MustCompile(`^[a-z][a-z0-9_.-]{0,63}$`)
+var clientToolNamePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
+
+// ValidateClientToolSet checks declarations at a conversation's transport door.
+func ValidateClientToolSet(set ClientToolSet) error {
+	if !clientToolSetPattern.MatchString(set.ID) {
+		return fmt.Errorf("a valid set id is required")
+	}
+	if len(set.Tools) > ClientToolMaxPerSet || len(set.Instructions) > ClientToolInstructionsMax {
+		return fmt.Errorf("a set allows at most %d tools and %d instruction bytes", ClientToolMaxPerSet, ClientToolInstructionsMax)
+	}
+	if set.DeadlineMS != 0 && (set.DeadlineMS < ClientToolMinDeadlineMS || set.DeadlineMS > ClientToolMaxDeadlineMS) {
+		return fmt.Errorf("deadline_ms must be 0 or %d–%d", ClientToolMinDeadlineMS, ClientToolMaxDeadlineMS)
+	}
+	names := make(map[string]bool, len(set.Tools))
+	for _, tool := range set.Tools {
+		if !clientToolNamePattern.MatchString(tool.Name) || names[tool.Name] {
+			return fmt.Errorf("invalid or duplicate tool name %q", tool.Name)
+		}
+		names[tool.Name] = true
+		if len(tool.Description) == 0 || len(tool.Description) > ClientToolDescriptionMax {
+			return fmt.Errorf("%s description must be 1–%d bytes", tool.Name, ClientToolDescriptionMax)
+		}
+		var object map[string]json.RawMessage
+		if len(tool.InputSchema) > ClientToolSchemaMax || json.Unmarshal(tool.InputSchema, &object) != nil || object == nil {
+			return fmt.Errorf("%s input_schema must be an object of at most %d bytes", tool.Name, ClientToolSchemaMax)
+		}
+		var kind string
+		if json.Unmarshal(object["type"], &kind) != nil || kind != "object" {
+			return fmt.Errorf("%s input_schema type must be object", tool.Name)
+		}
+		switch tool.Category {
+		case ActionRead, ActionEdit, ActionCreate:
+		default:
+			return fmt.Errorf("%s category must be read, edit or create", tool.Name)
+		}
+	}
+	return nil
 }
 
 type ClientToolCall struct {

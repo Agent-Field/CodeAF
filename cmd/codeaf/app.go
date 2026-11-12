@@ -2054,6 +2054,7 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 		a.crewHeld = a.crewHeld || crewHeld
 		view = a.view
 	})
+	b.holdClientTools(a, live)
 	startTitles()
 	b.flushSync(a)
 	b.locked(func() { view = a.view })
