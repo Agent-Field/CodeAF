@@ -10,4 +10,5 @@ invalidates:
 The fixture now follows the process owner's receipt-before-writer shutdown order.
 Deterministic checks hold receipt reconciliation and ledger projection separately,
 covering both a recovered charge and a missing receipt's unbilled marker. Product
-shutdown behavior and close bounds are unchanged.
+shutdown behavior and close bounds are unchanged. The fixture retains the existing
+bounded fallback when the disk stalls; the regression asserts the responsive case.
