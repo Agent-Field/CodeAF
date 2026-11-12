@@ -6,6 +6,7 @@ import "reflect"
 // other type is a contract break; the test recorders check every event they
 // see against this table, and the schema is generated from it.
 var eventShapes = map[string]reflect.Type{
+	EventAgentsToolCall:    reflect.TypeFor[AgentsToolCall](),
 	EventPairChanged:       reflect.TypeFor[PairResult](),
 	EventChatChanged:       reflect.TypeFor[ChatChanged](),
 	EventChatRemoved:       reflect.TypeFor[ChatRemoved](),

@@ -387,6 +387,7 @@ func adoptSeed(child *Agent, quick *quickTaskSpec) {
 	// carries a System gets at construction (agent.go), said here because this
 	// page arrives after the agent was built.
 	child.system = promotedSystem(quick.system)
+	child.system = clientToolsWithoutSections(child.system)
 	child.systemOwn = false
 	messages[0] = textMessage("system", child.system)
 	child.messages = messages

@@ -405,6 +405,7 @@ func renderSystemAt(config Config, now time.Time) string {
 	}
 
 	out.WriteString(workerFooter(config, now))
+	out.WriteString(clientToolsSection(config))
 	return out.String()
 }
 
