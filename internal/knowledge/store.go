@@ -54,6 +54,7 @@ var consentViews sync.Map
 
 type consentView struct {
 	mu             sync.Mutex
+	reading        chan struct{}
 	checked        time.Time
 	readable       bool
 	since          time.Time
@@ -107,27 +108,44 @@ func (v *Vault) consent(maxAge time.Duration) (enabled bool, since time.Time) {
 		}
 	}()
 	view := v.captureConsentView()
-	view.mu.Lock()
-	defer view.mu.Unlock()
-	now := consentNow()
-	generation := view.generation.Load()
-	if maxAge > 0 && !view.checked.IsZero() && view.readGeneration == generation && now.Sub(view.checked) < maxAge {
-		return view.readable, view.since
+	for {
+		view.mu.Lock()
+		now := consentNow()
+		generation := view.generation.Load()
+		if maxAge > 0 && !view.checked.IsZero() && view.readGeneration == generation && now.Sub(view.checked) < maxAge {
+			enabled, since = view.readable, view.since
+			view.mu.Unlock()
+			return enabled, since
+		}
+		if reading := view.reading; reading != nil {
+			view.mu.Unlock()
+			<-reading
+			continue
+		}
+		reading := make(chan struct{})
+		view.reading = reading
+		view.mu.Unlock()
+
+		// SQLite can wait for another writer. Keep that wait outside the
+		// view lock so fresh answers remain available and pending readers
+		// share the result through a wait that also lets fake clocks advance.
+		value, err := v.state("config")
+		if err == nil {
+			enabled = true
+			since, _ = time.Parse(time.RFC3339Nano, textValue(value["created_at"]))
+		}
+		view.mu.Lock()
+		view.checked, view.readable, view.since = now, enabled, since
+		view.readGeneration = generation
+		view.reading = nil
+		close(reading)
+		view.mu.Unlock()
+		return enabled, since
 	}
-	// Keep the lock across the read so simultaneous tickers share failures too.
-	value, err := v.state("config")
-	if err == nil {
-		enabled = true
-		since, _ = time.Parse(time.RFC3339Nano, textValue(value["created_at"]))
-	}
-	view.checked, view.readable, view.since = now, enabled, since
-	view.readGeneration = generation
-	return enabled, since
 }
 
 func (v *Vault) forgetConsent() {
-	// A reader may hold the view lock while SQLite waits for our write to end.
-	// Invalidation must never wait for that reader, including during a worker pass.
+	// Invalidation does not wait for an in-flight read, including during a worker pass.
 	v.captureConsentView().generation.Add(1)
 }
 
