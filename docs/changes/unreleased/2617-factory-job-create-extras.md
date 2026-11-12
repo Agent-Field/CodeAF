@@ -12,7 +12,7 @@ invalidates:
 and opens one GitHub issue with the title and text), `group` and `milestone`
 (opaque labels stored on the job and returned on its reads), `budget` (one of
 the standard steps, the job's budget from creation), `key` (sent as
-`Idempotency-Key`, so a retried create returns the same job) and `split_from`
+`Idempotency-Key`, so a resent create never makes a second job or issue) and `split_from`
 (a positive job number held by the same Factory and visible to the caller; the
 new job's reads return it, its activity records `split from #N`, and the
 parent is unchanged and is checked from its saved copy).
@@ -31,6 +31,11 @@ sent, and a missing or hidden split parent is refused before any job or issue
 is made. A Factory older than a field or route answers `conflict` with
 `detail.reason: "factory_too_old"` and nothing changes. A job's `group` here is
 a label only: go-aheads still name the jobs they cover by number.
+
+This must merge together with #2619. On its own, a Factory replays every keyed
+answer for 24 hours, a refusal or 5xx included, so a resend after one cannot
+succeed. #2619 lets a create that wrote nothing run again on the same key, and
+still replays every answer given after the job or issue was made.
 
 Carried from #2415 and #2429, which merged only into the closed integration
 branch of #2306.

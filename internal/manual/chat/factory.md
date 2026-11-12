@@ -1204,10 +1204,11 @@ to use it." No fallback create is sent. The Factory's own 404 "repository not
 found", for a repository your GitHub can't see, stays `not_found`. Invalid fields
 answer `bad_params` before a write.
 
-The Factory replays the first response for the same caller, route and key for
-24 hours. After an `uncertain` create, resend the same key within that window;
-a different key creates a separate job. Without a key there is no replay
-protection. Context is a separate `factory.job_context_set` write after
+Within 24 hours, a resend with the same key from the same caller never makes a
+second job or GitHub issue, and a different key creates a separate job. After
+an `uncertain` create, resend the same key, never a new one; if the answer is
+still uncertain, read the queue before trying again. Without a key there is no
+replay protection. Context is a separate `factory.job_context_set` write after
 creation; it is not a create field.
 
 ## Split a failed job into smaller jobs — split_from lineage
@@ -1249,7 +1250,8 @@ job's person may edit, or anyone when no person is assigned; solo allows it.
 
 Attach at most 20 items, each with a title, markdown and optional source label,
 path or URL. Titles are 1–200 characters after trimming, sources at most 500,
-and markdown must be non-empty. All markdown together is at most 100,000
+and markdown must contain more than whitespace: blank markdown is refused with
+"context markdown must be non-empty". All markdown together is at most 100,000
 characters, separate from the job description's 20,000-character limit.
 Job and queue reads show only titles and sources.
 

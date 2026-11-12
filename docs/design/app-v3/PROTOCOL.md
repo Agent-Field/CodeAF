@@ -482,11 +482,12 @@ cannot see, stays `not_found` with the Factory's words. A 501 stays `engine` wit
 their existing mapping. A timeout or 5xx stays `uncertain`.
 
 The reply is unchanged: `FactoryJobActed` with `action: "create"`, `job` and
-optional `current`. A Factory that keeps keys replays the first response for
-the same caller, route and key for 24 hours, so resending a create with the same
-key after an uncertain response is safe. A different key creates a separate job.
-With none of the new fields, the route, body and absent idempotency header are
-unchanged.
+optional `current`. Within 24 hours, a resend with the same key from the same
+caller never makes a second job or issue on a Factory that keeps keys; a
+different key creates a separate job. After an `uncertain` create, resend the
+same key, never a new one, and if the answer is still uncertain read the queue
+before trying again. With none of the new fields, the route, body and absent
+idempotency header are unchanged.
 
 
 An engine whose hello carries `factory.stop_any_version` accepts
@@ -1263,7 +1264,7 @@ write. `factory.job_create` refuses `context` as an unknown field.
 | --- | --- |
 | `factory`, `job` | One attached Factory and a positive job number. |
 | `expect` | Required `expect.version` from the job read; stale versions answer `stale` without changing attachments. |
-| `context` | Required list of at most 20 `{title, markdown, source?}` attachments. Title is 1–200 characters after trimming; markdown is non-empty; source is at most 500 characters. Total markdown is at most 100,000 characters, separate from the 20,000-character `text` limit. `[]` clears attachments. |
+| `context` | Required list of at most 20 `{title, markdown, source?}` attachments. Title is 1–200 characters after trimming; markdown must contain more than whitespace (blank markdown is `bad_params` "context markdown must be non-empty"); source is at most 500 characters. Total markdown is at most 100,000 characters, separate from the 20,000-character `text` limit. `[]` clears attachments. |
 
 The engine sends one `POST /v1/jobs/{id}/context` with `{context, expect}`.
 The job must be in Backlog or queued with no run (no stream): before its first

@@ -116,6 +116,7 @@ func TestJobContextRefusalsHaveNoEffects(t *testing.T) {
 		{"null context", factory.StateNew, false, "sam", `{"expect":{"version":1},"context":null}`, 422, "context"},
 		{"title", factory.StateNew, false, "sam", `{"expect":{"version":1},"context":[{"title":" ","markdown":"body"}]}`, 422, "title"},
 		{"markdown", factory.StateNew, false, "sam", `{"expect":{"version":1},"context":[{"title":"t","markdown":""}]}`, 422, "markdown"},
+		{"blank markdown", factory.StateNew, false, "sam", `{"expect":{"version":1},"context":[{"title":"t","markdown":" \n\t"}]}`, 422, "markdown"},
 		{"oversized", factory.StateNew, false, "sam", `{"expect":{"version":1},"context":[{"title":"t","markdown":"` + strings.Repeat("x", 100001) + `"}]}`, 422, "100000"},
 	}
 	for _, tc := range cases {
