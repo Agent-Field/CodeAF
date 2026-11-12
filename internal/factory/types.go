@@ -753,6 +753,10 @@ type Item struct {
 	Stages        []Stage // the item's copy of the recipe, toggled
 	StopAfterStep bool
 	Cap           float64
+	// CapChosen says Cap is a budget a person chose when the job was made,
+	// never a default its start took, so it can equal the default and still
+	// be kept when the job's rules are read after the clone (run.settledCap).
+	CapChosen bool `json:",omitempty"`
 
 	// Assignee is the forge's person; Taker and Starter keep the person who
 	// took or started otherwise unassigned work. Author is never ownership:

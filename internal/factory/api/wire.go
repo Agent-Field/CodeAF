@@ -907,6 +907,9 @@ type JobDesk struct {
 	ChangedAt time.Time `json:"changed_at"`
 	Triage    Triage    `json:"triage"`
 	Cap       float64   `json:"cap,omitempty"`
+	// CapChosen travels so a runner's read of the rules after its clone keeps a
+	// person's budget ([factory.Item.CapChosen]).
+	CapChosen bool      `json:"cap_chosen,omitempty"`
 	Policy    []Claim   `json:"policy,omitempty"`
 	Marked    bool      `json:"marked,omitempty"`
 	Labels    []string  `json:"labels,omitempty"`

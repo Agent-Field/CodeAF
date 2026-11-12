@@ -75,7 +75,7 @@ func (h *Handler) stampNewJobExtras(r *http.Request, id int, body api.NewJob) er
 				it.Note(h.clock(), fmt.Sprintf("split from #%d", it.SplitFrom))
 			}
 			if body.Budget != nil {
-				it.Cap = *body.Budget
+				it.Cap, it.CapChosen = *body.Budget, true
 			}
 			return nil
 		})

@@ -95,6 +95,39 @@ func TestNewJobExtrasPersistAndBudgetPrecedesStart(t *testing.T) {
 	}
 }
 
+// A create's budget is the person's choice even at the default's $5, so the
+// rules read after a clone keep it (run.settledCap); a copy made with Run as
+// new keeps that choice with the amount. A create without one chose nothing.
+func TestACreateBudgetIsMarkedAsChosen(t *testing.T) {
+	f := newCreateExtrasJobs(t)
+	five := factory.DefaultJobBudget
+	chosen := createExtrasJob(t, f, "/v1/jobs", api.NewJob{Repo: "acme/api", Title: "Fix", Source: factory.AskApp, Budget: &five})
+	if chosen.Cap != five || !chosen.CapChosen {
+		t.Fatalf("create budget: cap=%v chosen=%v", chosen.Cap, chosen.CapChosen)
+	}
+	if plain := createExtrasJob(t, f, "/v1/jobs", api.NewJob{Repo: "acme/api", Title: "Fix", Source: factory.AskApp}); plain.CapChosen {
+		t.Fatal("a create without a budget is marked as chosen")
+	}
+	if err := f.st.Update(chosen.ID, func(it *factory.Item) error {
+		it.State, it.DoneHow, it.Stream = factory.StateShipped, "answered", &factory.Stream{Ended: now}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ended, err := f.st.Get(chosen.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := f.post(t, ended, "run-as-new", "", http.StatusCreated)
+	var made api.JobCreated
+	if err := json.Unmarshal(w.Body.Bytes(), &made); err != nil {
+		t.Fatal(err)
+	}
+	if again, err := f.st.Get(made.ID); err != nil || again.Cap != five || !again.CapChosen {
+		t.Fatalf("Run as new: cap=%v chosen=%v err=%v", again.Cap, again.CapChosen, err)
+	}
+}
+
 // E2/E5: omitted extras stay absent on ordinary job reads.
 func TestNewJobWithoutExtrasKeepsReadShape(t *testing.T) {
 	f := newCreateExtrasJobs(t)
