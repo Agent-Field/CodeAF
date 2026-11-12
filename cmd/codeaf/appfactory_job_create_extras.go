@@ -24,6 +24,7 @@ func factoryCreateBody(p appwire.FactoryJobCreateParams) api.NewJob {
 		Repo: p.Repo, Title: p.Title, Text: p.Text, Source: factory.AskApp,
 		Assignee: p.Assignee, Pipeline: p.Pipeline, Issue: p.OpenIssue,
 		Group: p.Group, Milestone: p.Milestone, Budget: p.Budget,
+		SplitFrom: p.SplitFrom,
 	}
 	if p.Start == "now" {
 		body.Start = "now"
@@ -46,7 +47,7 @@ func factoryCreateFailure(req *http.Request, reply appFactoryReply) error {
 		return err
 	}
 	missing := req.URL.Path == "/v1/issues" && (reply.status == http.StatusNotFound || reply.status == http.StatusMethodNotAllowed)
-	unknown := reply.status == http.StatusUnprocessableEntity && unknownFactoryField(err, "group", "milestone", "budget", "issue")
+	unknown := reply.status == http.StatusUnprocessableEntity && unknownFactoryField(err, "group", "milestone", "budget", "issue", "split_from")
 	if !missing && !unknown {
 		return err
 	}

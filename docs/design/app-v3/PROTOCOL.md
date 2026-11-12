@@ -443,10 +443,10 @@ Factories without the separate-title capability retain their prior behavior.
 
 `factory.job_create` also accepts these optional fields. Engine capabilities are
 `create_issue`, `create_group` (group and milestone), `create_budget`,
-`create_key` and `job_context` (the separate attachment write below). Each is
-true when the engine carries that feature end to end; an older engine omits it
-or answers false. These flags describe the engine; the attached Factory may
-still be older than a feature.
+`create_key`, `create_split_from` and `job_context` (the separate attachment write
+below). Each is true when the engine carries that feature end to end; an older
+engine omits it or answers false. These flags describe the engine; the attached
+Factory may still be older than a feature.
 
 | Parameter | Rule |
 | --- | --- |
@@ -454,14 +454,23 @@ still be older than a feature.
 | `group`, `milestone` | Opaque labels, trimmed, at most 200 characters each, with no control characters. Empty means none. |
 | `budget` | Initial job budget in USD: one of the standard steps, 5, 10, 20 or 30. Recorded as a budget action before starting; a start now or later keeps it instead of taking the pipeline default. |
 | `key` | A create key of 1–128 characters from `[A-Za-z0-9._:-]`, sent only as the create request's `Idempotency-Key` header. `key: ""` is the same as no key (`omitempty`): no header is sent. |
+| `split_from` | Integer at least 1, naming a job held by the same Factory that the caller can see. Stores the job this new job was split from. An explicit zero or negative number is `bad_params` before sending. |
 
 The Factory stores group and milestone outside the description.
 `factory.job`, queue rows and `current` carry the labels when present.
+Those reads also carry `split_from` when supplied, omitted otherwise. The parent
+job stays unchanged. The new job's own activity adds one line, `split from #N`.
+Split lineage leaves normal pipeline stamping, step briefs and run-as-new
+cleanup behavior in effect; it is stored separately from `from_job`.
+
+A missing or hidden `split_from` parent is the same Factory 422 refusal, mapped
+to `bad_params`, before any job or GitHub issue is made, including with
+`open_issue: true`.
 
 Bad extras answer `bad_params`, naming the field and limit, before anything is
 sent. The Factory also validates extras before opening an issue or making a job.
-A Factory's 422 strict-decoder refusal of `group`, `milestone`, `budget`
-or `issue`, or a 404/405 on the issue create route, answers `conflict`
+A Factory's 422 strict-decoder refusal of `group`, `milestone`, `budget`,
+`issue` or `split_from`, or a 404/405 on the issue create route, answers `conflict`
 with `detail.reason: "factory_too_old"` and the existing update instruction:
 "This factory doesn't support that yet; nothing was changed. Update the factory
 to use it." No fallback request is sent. A 501 stays `engine` with "this factory

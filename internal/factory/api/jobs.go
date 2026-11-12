@@ -28,6 +28,7 @@ type NewJob struct {
 	Group     string   `json:"group,omitempty"`
 	Milestone string   `json:"milestone,omitempty"`
 	Budget    *float64 `json:"budget,omitempty"`
+	SplitFrom *int     `json:"split_from,omitempty"`
 }
 
 // JobAction carries the read a person acted on so mutations can reject stale pages.

@@ -1208,6 +1208,28 @@ a different key creates a separate job. Without a key there is no replay
 protection. Context is a separate `factory.job_context_set` write after
 creation; it is not a create field.
 
+## Split a failed job into smaller jobs — split_from lineage
+
+When creating smaller jobs from a failed job, `factory.job_create` accepts
+optional `split_from`: an integer job number of at least 1 on the same Factory.
+Engines that carry it announce `create_split_from: true` in
+`factory.capabilities`.
+
+Each new job remembers that number. Its job read, queue row and create reply's
+`current` carry `split_from`; a job created without it omits the field. The new
+job's own activity adds one line such as `split from #80`. The parent job stays
+unchanged. The smaller job follows the normal creation, pipeline and start
+rules; its steps read its own brief and details.
+
+An explicit zero or negative number answers `bad_params` before the engine
+sends anything. The Factory also requires the parent to exist and be visible
+to the caller. A missing or hidden parent answers `bad_params` before any job
+or GitHub issue is made, including when `open_issue: true` was requested.
+
+An older Factory that refuses the `split_from` field answers `conflict` with
+`detail.reason: "factory_too_old"`; update that Factory. Nothing is made, and
+the engine sends no fallback create.
+
 ## Job context attachments before the first run
 
 `factory.job_context_set` replaces the reference material attached to one job.

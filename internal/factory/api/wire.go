@@ -430,6 +430,7 @@ type Job struct {
 	// than it decodes reports strictly and refuses the whole one that carries it.
 	FailureSummaries bool   `json:"failure_summaries,omitempty"`
 	FromJob          int    `json:"from_job,omitempty"`
+	SplitFrom        int    `json:"split_from,omitempty"`
 	SourceIssue      string `json:"source_issue,omitempty"`
 	// RunOn is the AgentField reasoner that runs this job, "<node>.<reasoner>",
 	// and AgentField the run once it was dispatched; both absent on a job

@@ -82,6 +82,8 @@ type FactoryCapabilities struct {
 	JobContext bool `json:"job_context"`
 	// CreateKey carries the caller's create key as Idempotency-Key.
 	CreateKey bool `json:"create_key"`
+	// CreateSplitFrom carries the job a new job was split from.
+	CreateSplitFrom bool `json:"create_split_from"`
 	// Contract is the factory API contract this engine speaks.
 	Contract int `json:"contract"`
 	// Remote: attach to, read and sign in to a factory served elsewhere.
