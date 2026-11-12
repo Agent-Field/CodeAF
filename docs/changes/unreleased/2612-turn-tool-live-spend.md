@@ -1,7 +1,7 @@
 ---
 kind: added
 title: Tool step events carry the conversation's live spend so far
-pr: 2413
+pr: 2612
 surface: [app, docs]
 invalidates:
   - A running turn said nothing about its conversation's spend until it ended; turn.tool now carries the live figure as spent_usd.

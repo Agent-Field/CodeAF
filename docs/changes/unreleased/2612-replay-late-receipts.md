@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: A resumed conversation keeps its late receipts and never saves a lower spend
-pr: 2414
+pr: 2612
 surface: [chat, engine, app]
 invalidates:
   - Replay restored a conversation's spend from usage seals only, so a restart forgot late receipts and the next turn could save a lower total.
