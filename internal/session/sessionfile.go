@@ -446,12 +446,11 @@ type journalRule struct {
 
 // journalAbandoned is ONE TURN NOBODY WAITED FOR THE END OF.
 //
-// IT IS THE ONE LINE THAT COULD NOT BE RECONSTRUCTED. Every other record of what
-// a turn did is written when the turn ENDS — the seal carries its cost, the
-// principal line carries its decision — and the whole definition of an abandoned
-// turn is that its ending never came. Before this line a turn let go of at a
-// bound was indistinguishable in this file from a turn that simply stopped
-// talking, which is exactly the reading that made issue #265's four minutes
+// IT IS THE ONE LINE THAT COULD NOT BE RECONSTRUCTED. The seal carries a turn's
+// cost, but cannot say that the session let go of it while tools still ran.
+// Before this line a turn let go of at a bound was indistinguishable in this
+// file from a turn that simply stopped talking, which is exactly the reading
+// that made issue #265's four minutes
 // unaccountable: the surface was freed, the person moved on, and the file said a
 // turn had been stopped and nothing about the fact that something may still have
 // been running under it.
@@ -459,9 +458,10 @@ type journalRule struct {
 // Reason is why the turn was let go of ([AbandonReason]); today the only one is
 // the stop bound. The token and money figures are THE TURN'S LAST KNOWN SPEND —
 // what [Agent.bank] had moved by the moment the door was opened — and they are
-// EVIDENCE AND NEVER SPEND, for [journalCall]'s reason exactly: every one of
-// those calls already wrote its own line and moved the machine's ledger, so a
-// replay that summed this one too would bill the abandoned turn twice.
+// EVIDENCE AND NEVER SPEND: the displaced loop writes its conversation steps
+// in a usage seal, while on-clock errands already wrote auxiliary usage lines.
+// The calls also moved the machine's ledger when banked. Replaying this tally
+// as spend would count those charges twice.
 //
 // A turn abandoned before it had spent anything writes the line with no figures
 // on it, which is the emptiness law: the fact worth recording is that the turn
@@ -2281,13 +2281,13 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 				}
 			}
 		case "abandoned":
-			// DROPPED ON PURPOSE, for the reason a call line is and one of its
-			// own. Every dollar on it is already counted — the calls it sums each
-			// wrote their own line and each moved the machine's ledger when they
-			// were made (usage_ledger.go) — so folding it in would bill the
-			// abandoned turn twice. And it is not a message: what the turn had
-			// said before it was let go of is already in the transcript above it,
-			// and a resumed session must open on that rather than on a note about
+			// Evidence only: conversation steps belong to the displaced loop's
+			// usage seal, and errands to their own auxiliary usage lines. This
+			// tally mixes both, so billing it would count errands twice even in
+			// older journals whose abandoned turns have no step seal. It is not
+			// a message either: what the turn said before it was let go of is
+			// already in the transcript above it. A resumed session opens on
+			// that rather than on a note about
 			// how the last one ended. The line is for whoever reads the file.
 		case "mark", "ceiling", "division", "carry", "failure", "flight":
 			// DROPPED ON PURPOSE, for the reason a call line is: these are the
