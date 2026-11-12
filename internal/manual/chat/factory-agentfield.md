@@ -473,7 +473,7 @@ steps:
 
 `input` maps the reasoner's own field names to the job's facts: `{title}`,
 `{body}`, `{repo}`, `{repo_url}`, `{base}`, `{issue_url}`, `{issue_number}`,
-`{job}`. Each value is sent in the type the reasoner's input says for its
+`{job}`, and the downstream result binding `{pr_url}` (below). Each value is sent in the type the reasoner's input says for its
 field (`{issue_number}` is a number for a number field), and one that is a
 fact alone is left out when the job has none. An object or a yes/no field is written
 as its JSON text (`config: '{"check_ci": false}'`, `plan_review: "true"`). With no `input` the
@@ -494,6 +494,40 @@ opened; how that reads is under "an AgentField step that did not succeed". A pip
 when its runs do, with no proof to approve, and needs no checkout on this
 machine: its job never says it is cloning the repository here, and Start is not
 refused because this machine cannot clone it. The same is true of a `run_on` job.
+
+## build then review in one pipeline — pass the opened pull request as {pr_url}
+
+An AgentField step can pass the job's opened pull request to a later step:
+
+```yaml
+pipeline:
+  build-review: [build, review]
+steps:
+  build:
+    kind: agentfield
+    target: planner.build_issue
+    input:
+      title: "{title}"
+      repo_url: "{repo_url}"
+      issue_number: "{issue_number}"
+  review:
+    kind: agentfield
+    target: pr-af.review
+    input:
+      pr_url: "{pr_url}"
+```
+
+Saving the library accepts the binding before a PR exists. The build finishes
+before review starts; review receives the job's first opened PR URL, following
+the existing rule that later results never replace that PR. Earlier phases
+must be done or skipped, with at least one completed work step before the
+consumer. A build that succeeds without opening a PR stops at review before
+contacting its reasoner, with: "this step needs {pr_url}: finish an earlier
+work step that opens a pull request first".
+
+The binding also works inside text (`"Review {pr_url}"`). It is sent only
+when explicitly mapped: a step with no `input` keeps its existing default
+fields. A standalone review can still receive a literal PR URL.
 
 ## give an AgentField step its input in the app — the pipeline editor's input fields, plan_review, config, a field the reasoner does not list
 

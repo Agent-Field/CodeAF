@@ -548,8 +548,13 @@ in hello features says `factory.pipeline_preview` takes an `add_step` of
 `kind: "agentfield"`: `prompt` is the reasoner, `node.reasoner`, and the
 optional `input` maps the reasoner's field names to text with the job's
 `{placeholders}` (`{title}`, `{body}`, `{repo}`, `{repo_url}`, `{base}`,
-`{issue_url}`, `{issue_number}`, `{job}`; a value that is exactly one of them is
-sent as that fact's type, so `{issue_number}` is a number). A job's `steps[]`
+`{issue_url}`, `{issue_number}`, `{job}`, `{pr_url}`; a value that is exactly one of them is
+sent as that fact's type, so `{issue_number}` is a number). `{pr_url}` explicitly
+binds the job's first opened PR for a downstream step. Before dispatch, earlier
+phases must be done or skipped, at least one earlier work step must be done,
+and the job must have a PR URL; otherwise the consuming step fails before
+contacting its reasoner. Unmapped default inputs do not gain this field.
+A job's `steps[]`
 read it back as a `StepDef {kind: "agentfield", target, input}`, and the run's
 executions follow it as steps whose `parent` is that step. The job also carries
 `agentfield_steps`, each run by its step's name. `factory.agentfield_reasoners

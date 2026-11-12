@@ -292,6 +292,9 @@ func (r *afRemote) Step(ctx context.Context, job factoryrun.Job) (factory.StageR
 	// in Manual or Auto alike. A round begun afresh after the step read its
 	// run's end (Run again, Try again, Reopen) starts a run of its own.
 	if run == nil || run.ExecutionID == "" || (!run.Ended.IsZero() && !afRoundsRun(job, *run)) {
+		if err := factory.AgentFieldInputReady(it, st); err != nil {
+			return factory.StageResult{}, err
+		}
 		fresh, err := r.dispatch(ctx, client, node, target, afTypedInput(ctx, client, target, factory.AgentFieldInput(it, st)))
 		if err != nil {
 			return factory.StageResult{}, err
