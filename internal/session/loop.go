@@ -3600,7 +3600,7 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 		if service != "" {
 			serviceName = a.serviceName(service)
 		}
-		hub.send(Event{
+		hub.send(a.clientToolEvent(Event{
 			Kind:        EventToolBegin,
 			Tool:        call.Function.Name,
 			Hint:        a.gloss(call),
@@ -3609,7 +3609,7 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 			Batch:       batch,
 			Service:     service,
 			ServiceName: serviceName,
-		})
+		}))
 	}
 
 	// THE NARRATOR ARMS BESIDE THE WORK, not after a long silence. A half-second
@@ -4011,6 +4011,9 @@ func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, ca
 		return toolResult{text: notice, isError: true, harness: true}
 	}
 	if notice, retired := a.teamRetiredNotice(call.Function.Name); retired {
+		return toolResult{text: notice, isError: true, harness: true}
+	}
+	if notice, retired := a.clientToolRetiredNotice(call.Function.Name); retired {
 		return toolResult{text: notice, isError: true, harness: true}
 	}
 	// A name nobody ever had keeps the old answer, and keeps it word for word:

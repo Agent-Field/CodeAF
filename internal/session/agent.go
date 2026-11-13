@@ -90,6 +90,8 @@ func New(config Config) (*Agent, error) {
 // parent's account-keyed pool and resolve their own model before their first
 // request, rather than inheriting whichever adapter the parent last used.
 func (a *Agent) newChildAgent(config Config) (*Agent, error) {
+	config.ClientTools = nil
+	config.System = clientToolsWithoutSections(config.System)
 	if pair, ok := a.ConversationModelPair(); ok && config.ConversationModels == nil {
 		pair.Main = config.Model
 		if config.OneModel || pair.Fallback == pair.Main {
@@ -158,6 +160,9 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		config.liveProfile.launch = chosenPromptProfile(config)
 	}
 	config.liveProfile.current.Store(config.profile)
+	// What the page and the tasks description say about other windows follows
+	// the stored scope; a later change is taken at a turn's start (scope.go).
+	config.ownWork = config.readsOwnWorkOnly()
 	system, own := config.System, false
 	if strings.TrimSpace(system) == "" {
 		system, own = renderSystem(config), true
@@ -295,6 +300,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// hub has to exist before the tools are assembled (connect.go).
 	agent.connect = newConnectHub(config)
 	agent.initKnowledge()
+	agent.ownWorkTold.Store(config.ownWork)
 	agent.tools = agent.belt()
 	definitions, err := toolDefinitions(agent.tools)
 	if err != nil {
@@ -1436,6 +1442,9 @@ type userMessage struct {
 	// leave it empty, and the turn is then stamped with no person message — an
 	// unknown, never a guess at the latest one.
 	answersMessage string
+	// sourceMessage is the exact recorded message a resumed answer continues.
+	// Only ResumeStoppedTurn sets it; ordinary notes never inherit the latest message.
+	sourceMessage string
 
 	// said is THE PERSON'S OWN WORDS, when what the model reads is not only
 	// them. Empty in every ordinary case, and set where the session writes
@@ -2022,6 +2031,9 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	// (taskpresence.go). The nudge never blocks and never takes a lock, which is
 	// what lets it sit under a.mu here.
 	a.nudgePresence()
+	// AND WHAT THE PAGE SAYS ABOUT OTHER WINDOWS FOLLOWS A CHANGED SCOPE, from
+	// this turn on, as the scope's documentation promises (scope.go).
+	a.followWorkScopeLocked(time.Now())
 	// AND THE CLOCK IN THE PROMPT IS BROUGHT UP TO DATE BEFORE THE TURN OPENS,
 	// when it has gone stale enough to be worth the cold prefix (prompt.go's
 	// clockRefresh says why that is free).
@@ -2056,7 +2068,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	// turn, or one a task or member report opened, has a run and no person
 	// message, which is the truth. A steer that lands later is NOT the opener
 	// and changes nothing here.
-	turnCtx = withTurnOrigin(turnCtx, turnOrigin{run: runIdentity(turnCtx), turn: openingMessage(user)})
+	turnCtx = withTurnOrigin(turnCtx, turnOriginLocked(user, runIdentity(turnCtx)))
 	// AND THE TURN CARRIES THE CREATION CONTEXT the accepting door stated on
 	// its opening message (creation_team.go), only when it stated one: any other
 	// turn leaves the team unknown. Never rewritten from who manages a team now.

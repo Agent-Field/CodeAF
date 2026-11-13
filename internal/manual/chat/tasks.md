@@ -2862,8 +2862,9 @@ it had started.
 
 ## Does it know what my other windows are doing — will it notice work from another terminal
 
-Yes, and it is told rather than having to go and ask. When another codeaf window on this
-same directory lands a task, or has one running, codeaf puts a small block into the chat's
+With the default `project` conversation scope, yes: it is told rather than having to
+go and ask. When another codeaf window on this same directory lands a task, or has
+one running, codeaf puts a small block into the chat's
 own context — never on your screen — that reads:
 
 ```
@@ -2900,10 +2901,32 @@ running in another window now:
   told.
 - A **task** is never given this block. A task's brief is its whole world.
 
+## Conversation scope — tell this chat only about its own work
+
+A client can set a saved conversation's scope with `agents.set_scope {id, scope}`.
+`project` is the default: the chat is told about other conversations' landed and
+running work in the same folder. `conversation` means it is told only about its
+own work. No `<elsewhere>` block is added to its turns, and the model's `tasks`
+tool lists only its own tasks. Another conversation's tasks cannot be read by
+name or id, steered or resolved through that tool. The running-in-other-windows
+section and the `scope: "everywhere"` section are absent too. Its instructions
+and the `tasks` tool's description say other windows' work is hidden from it,
+so it does not claim nothing else is running in the folder.
+
+The choice survives a restart and takes effect from the next turn; a tasks call
+also reads the saved choice. Setting it does not open or interrupt the chat,
+move its folder, or change its transcript, title, model or tasks. Set `project`
+to restore the ordinary reading. This setting has no terminal command or UI
+control. The person's `@` task list and task nodes keep their existing behavior.
+
+The checks that warn before this chat's own work writes over files other
+conversations are writing still apply.
+
 ## Asking the chat what else is running on this project right now
 
-Ask it in words. It reads the other windows itself rather than guessing from the project's
-record — which cannot answer, because an ordinary task writes no row there until it lands.
+With `project` conversation scope, ask it in words. It reads the other windows itself
+rather than guessing from the project's record — which cannot answer, because an
+ordinary task writes no row there until it lands.
 What it gets back looks like this:
 
 ```

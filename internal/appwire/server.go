@@ -215,7 +215,9 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, hello Hello, engine En
 	hello = withCrewsOrganizeFeature(hello, engine)
 	hello = withReplySuggestionFeature(hello, engine)
 	hello = withUnreadFeature(hello, engine)
+	hello = withAgentScopeFeature(hello, engine)
 	hello = withErrandFeature(hello, engine)
+	hello = withClientToolsFeature(hello, engine)
 	hello = withAsksDrawnFeature(hello, engine)
 	hello = withTaskModelsAuxiliaryFeature(hello, engine)
 	hello = withMemorySettingsFeature(hello, engine)
@@ -417,7 +419,9 @@ func (s *Server) handle(ctx context.Context, line []byte, engine Engine, infligh
 // methods is the dispatch table. shutdown is not in it: it is answered by the
 // loop itself, because it ends the loop.
 var methods = map[string]method{
-	"ping": typed(func(Engine, struct{}) (*Empty, error) { return &Empty{}, nil }),
+	"agents.tools_set":   typed(setClientTools),
+	"agents.tool_result": typed(answerClientTool),
+	"ping":               typed(func(Engine, struct{}) (*Empty, error) { return &Empty{}, nil }),
 	"agents.list": typed(func(e Engine, p AgentsListParams) (*AgentsResult, error) {
 		// A STATE AND A QUERY are answered by an engine that keeps them.
 		if t, ok := e.(Tidier); ok {

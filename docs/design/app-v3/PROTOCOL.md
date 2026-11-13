@@ -75,10 +75,156 @@ decides which combinations are accepted.
 | `agents.set_effort` | `{effort, id}` | `agentResult` |
 | `agents.set_model` | `{automatic, id, model}` | `agentResult` |
 | `agents.set_models` | `{fallback, id, main}` | `agentResult` |
+| `agents.set_scope` | `{id, scope}` | `AgentScope` |
 | `agents.since` | `{after, id}` | `Since` |
 | `agents.steer` | `in.sayTo` | `Empty` |
 | `agents.stop` | `in.IDParams` | `Empty` |
 | `agents.suggest_reply` | `in.ReplySuggestionParams` | `ReplySuggestion` |
+
+## Conversation work scope
+
+`agents.set_scope {id, scope}` answers `{id, scope}` with the stored word.
+`project` is the default: the conversation is told about other conversations'
+landed and running work in its folder, as today. `conversation` means it is told
+only about its own work: its turns receive no other-conversation `<elsewhere>`
+block, and its `tasks` tool lists and addresses only its own tasks. Neither the
+other-window running section nor the wider `scope: "everywhere"` section is
+added. Its instructions and the `tasks` tool description say that other
+conversations' work is hidden from it, instead of promising that work. Task
+nodes keep their existing scope.
+
+The choice is stored with the conversation and survives restarts. It takes
+effect from the conversation's next turn, instructions and tool description
+included; a live tasks call also reads the stored choice. Setting it never opens, warms or interrupts the conversation,
+never moves its folder, and never changes its transcript, title, model or tasks.
+The write-safety checks still warn before its own work writes over files other
+conversations are writing. The person's task list is unchanged.
+
+Engines that serve this method announce `agents.scope` in `hello.features`.
+A missing id or a scope other than `project` or `conversation` is `bad_params`;
+an engine without the door answers `unknown_method`. An unknown conversation is
+`not_found`; a lent conversation or one without a local folder is `conflict`.
+No `agent.changed` event is emitted, because the Agent view carries no scope.
+
+## Client tools
+
+The optional features `agents.client_tools` and `agents.client_tools.source`
+appear together in `hello.features` exactly when the engine implements the
+client-tools interface. The latter guarantees message identity on calls whenever
+the running turn answers a message. `agents.client_tools.remote` additionally
+advertises forwarding through a joined conversation's remote connection when
+its holder supports it. Sets belong to this
+stdio connection and one conversation. They are memory-only: register again
+after reconnecting. Attachment does not open the conversation or start a turn.
+Children, workers and clarification conversations inherit neither tools nor
+instructions. Within the same app connection, every join or re-join pushes the
+conversation's current sets to its holder; a roaming link resends them after
+redial only when the welcome identifies the same conversation. A changed
+conversation forgets the old snapshot and ends its calls. When another window
+starts a new conversation or opens another one in the holder, every
+connection's sets for the old conversation are dropped and its calls end, so
+none reach the replacement. A returning owner's
+random token moves its sets to the replacement connection even while the old
+connection remains attached; other owners still face collision checks. A
+conversation returning to this engine uses the registry directly.
+If another computer holds the chat (`Location.Here == false`), attachment still
+validates and stores the sets without opening the conversation. They apply
+when this engine runs it again after "Continue here" or take, without a second
+`agents.tools_set`.
+
+| method | params | result |
+|---|---|---|
+| `agents.tools_set` | `{agent, set, instructions?, deadline_ms?, tools?: [{name, description, input_schema, category}]}` | `{agent, set, tools: [name, ...]}` |
+| `agents.tool_result` | `{call, result: <any JSON>}` or `{call, error: <text>}` | `{accepted: true}` or `{accepted: false}` |
+
+`agents.tools_set` replaces that `agent` + `set` whole; other sets remain.
+Omitted `tools` or `tools: []` removes only that set and returns `tools: []`.
+An agent holds at most 4 sets, 32 tools per set and 64 tools total. All validation
+is atomic: a refusal leaves every set unchanged.
+
+- `set` matches `^[a-z][a-z0-9_.-]{0,63}$`.
+- `name` matches `^[a-z][a-z0-9_]{0,63}$`, unique within and across the agent's sets.
+- `description` is 1–2048 bytes. `input_schema` is a JSON object whose `type`
+  is `"object"`, at most 16 KiB. Schema validation of call arguments is the app's job.
+- `category` is `read`, `edit` or `create` and supplies this conversation's tool
+  category. Reading-only contexts refuse edits and creations. Ordinary tool
+  approval rules apply; attachment is not approval.
+- `instructions` is at most 4096 bytes per set and may be empty. It appears in a
+  section headed `Tools from the app: <set>`. A caller-supplied system page is
+  preserved and receives no section. Ordinary conversations gain no text.
+- `deadline_ms` is 0 (the default 30000) or 1000–120000.
+
+Invalid fields, aggregate limits, duplicates and built-in tool names answer
+`bad_params`; a collision message names the tool. Collision checks include the
+live belt and all classified engine tools. A built-in arriving later wins and
+the colliding client tool leaves the belt. No model request has duplicate names.
+Unknown agents answer `not_found`. A joined holder without forwarding support
+answers `bad_scope`: `client tools need a conversation this engine runs`.
+Holder refusals answer `bad_params` with the holder's message; a failed or timed
+out link answers `unreachable`, leaving the app registry unchanged for retry.
+Different remote connections keep separate sets. The aggregate limits count
+all of them, tool-name collisions are refused atomically, and only the
+connection that owns a set can receive or answer its calls.
+Tools and instructions update at the next step boundary, with client tools at
+the tail after all built-ins.
+
+| event | data |
+|---|---|
+| `agents.tool_call` | `{agent, turn, call, turn_call, source_message_id?, set, name, args: <JSON object>, deadline_ms}` |
+
+`source_message_id` names the message the running turn answers: the same string
+as `Entry.message_id` on that message's chat entry in `agents.read` (and in
+`entry.added` when present). It is captured when the turn starts, never changed
+by a mid-turn steer or note, and survives journal restarts and call replays.
+It is absent when no message can be named exactly. A stopped answer reuses its
+recorded message id. Turns the engine starts itself, including ordinary session
+wakes, mixed batches and a carry-on after a quit or close, carry none.
+With `agents.client_tools.source` advertised,
+an absent field means no such message, rather than an older engine.
+
+One model call emits exactly one `agents.tool_call`. `turn` is the engine's
+process-local conversation counter, which resets after restart;
+`turn_call` matches `turn.tool.call`. `call` is `ct_` followed by 64 lowercase
+hex digits. It is a hash of the whole call: the agent, the provider call id, the
+set, the tool name and the exact argument bytes. The same call dispatched again
+keeps its `call`, including after an engine restart. A provider call id alone
+can repeat: Kimi-family models write their own `name:index` ids, which repeat
+after `agents.rewind` or compaction, and a faulty server can repeat any id. So a
+reused provider id with another tool or other arguments is a new call with its
+own `call` and its own event. Without a provider id the engine mints a random
+`call`, which no later launch repeats. A concurrent redispatch joins the
+pending wait and emits no second event. A settled redispatch returns the saved
+answer without an event for 10 minutes, subject to a maximum of 1024 saved
+answers per connection. Non-object model arguments become an invalid-arguments
+error result without an event.
+
+`agents.tool_result` requires exactly one of `result` and `error`. `result`
+accepts any JSON, including `null`, and reaches the model as compact JSON text,
+cut at 64 KiB with a plain dropped-byte marker. `error` must be a nonempty string
+of at most 4096 bytes and becomes an error tool result:
+`<set> could not do <name>: <text>`. Invalid answers are `bad_params`.
+A pending answer returns `accepted: true`; unknown, late or duplicate ids return
+`accepted: false` without an error or any other effect.
+
+Connection end (EOF, shutdown or context cancellation) disconnects the registry
+before conversations close: all sets are dropped and all pending calls settle
+immediately. These failures reach the model as error tool results, with no
+engine retry.
+
+For forwarded calls, a disconnect observed by the holder immediately removes
+that connection's sets and settles its waits. A link loss the holder cannot
+observe ends at the set's `deadline_ms`. The app drops the pending entry when
+its link ends or the holder reports that the call ended; later results return
+`accepted: false`. Failure text is:
+
+- A stale call after removal or disconnection:
+  `client_unavailable: the app that provides <name> is not connected; nothing was done.`
+- Disconnection during a call:
+  `client_unavailable: the app that provides <name> disconnected before answering; the outcome is unknown, so check before trying again.`
+- Deadline:
+  `client_timeout: the app that provides <name> did not answer within <n>s; the outcome is unknown, so check before trying again.`
+- Turn cancellation: the turn ended before the app answered. The pending entry
+  is dropped immediately and later answers return `accepted: false`.
 
 ## asks methods
 

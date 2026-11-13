@@ -222,6 +222,7 @@ func runApp(args []string) error {
 	// ONE SUPERVISOR FOR EVERY CONVERSATION THE APP BUILDS (appservices.go).
 	services := openAppServices()
 	appServiceDoor.Store(services)
+	appClientToolsBackend.Store(backend)
 	backend.attachServices(services)
 	// And the press a job's manager makes Merge and Mark ready through, the
 	// job page's own (factory_manager_press.go).
@@ -586,6 +587,7 @@ func appConnOf(client *remote.Client, release func(), assembled bool) *appConn {
 
 // appBackend is the [appwire.Engine] over this process's conversations.
 type appBackend struct {
+	clientTools    appClientTools
 	libraryWatch   sync.Once
 	libraryInboxMu sync.Mutex
 	pluginPauses   map[string]appPluginPause
@@ -2052,6 +2054,7 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 		a.crewHeld = a.crewHeld || crewHeld
 		view = a.view
 	})
+	b.holdClientTools(a, live)
 	startTitles()
 	b.flushSync(a)
 	b.locked(func() { view = a.view })
@@ -4671,6 +4674,8 @@ func (b *appBackend) Close() error {
 	if b.leaving != nil {
 		b.leaving()
 	}
+	b.clientTools.disconnect()
+	appClientToolsBackend.CompareAndSwap(b, nil)
 	already := false
 	var waitClosed chan struct{}
 	var crews *appCrewRun
