@@ -222,3 +222,45 @@ func TestOldStoresDefaultToUnattributedAdditionsAndNoStop(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// A PIVOT IS COUNTED AS WHAT SURVIVES IT. A worker that added three parts under
+// its own task and replaces them with three others — one of them keeping a
+// replaced part's title with a new description — is within its five: the parts
+// the pivot cancels are not counted against it and their titles are not taken.
+// A pivot that would still leave more than five of its own additions standing
+// is refused whole.
+func TestWorkerPivotCountsOnlyTheWorkThatSurvivesIt(t *testing.T) {
+	h, s := treeBoundStore(t)
+	treeBoundAdd(t, s, TaskSpec{ID: "own", Title: "Own work"})
+	t.Setenv(RunEnv, s.RootID())
+	t.Setenv(TaskEnv, "own")
+	for i, title := range []string{"Part A", "Part B", "Part C"} {
+		h.cliAdd(title, fmt.Sprintf("old%d", i))
+	}
+	code := h.run("--db", h.db, "task", "pivot", "t-own", "--subtasks",
+		`[{"title":"Part A","description":"the same part, done another way"},{"title":"Part D"},{"title":"Part E"}]`)
+	if code != 0 {
+		t.Fatalf("a pivot within the allowance was refused: %s", h.errb)
+	}
+	open := map[string]bool{}
+	for _, task := range s.Tasks() {
+		if task.ParentID == "own" && task.Status != StatusCancelled {
+			open[task.Title] = true
+		}
+	}
+	if len(open) != 3 || !open["Part A"] || !open["Part D"] || !open["Part E"] {
+		t.Fatalf("the pivot did not replace the parts: %v", open)
+	}
+	for i := 0; i < 3; i++ {
+		if task := s.Task(fmt.Sprintf("old%d", i)); task.Status != StatusCancelled {
+			t.Fatalf("a replaced part survived the pivot: %+v", task)
+		}
+	}
+	h.errb.Reset()
+	before := s.Tasks()
+	code = h.run("--db", h.db, "task", "pivot", "t-own", "--subtasks",
+		`[{"title":"One"},{"title":"Two"},{"title":"Three"},{"title":"Four"},{"title":"Five"},{"title":"Six"}]`)
+	if code == 0 || !strings.Contains(h.errb.String(), "would exceed 5 tasks") || !reflect.DeepEqual(before, s.Tasks()) {
+		t.Fatalf("a pivot past the allowance was not refused whole: %d %s", code, h.errb)
+	}
+}

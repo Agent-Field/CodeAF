@@ -3073,7 +3073,8 @@ tasks do not consume those slots. A task a worker creates with `--role check` st
 counts. These are runaway stops, not a target for how much work to hand out.
 
 Each worker can add at most **five** tasks in total, excluding cancelled additions.
-Finished and archived additions still count. Joined handoffs, review checks and fix tasks
+Finished and archived additions still count. A `task pivot` counts what survives it: the
+open tasks it replaces hold no slot and no title for their replacements. Joined handoffs, review checks and fix tasks
 created by the engine do not spend that worker's five slots.
 
 Every worker-created task must be under that worker's own task. `plandb add` without
@@ -3086,8 +3087,8 @@ unbound CLI still defaults to the run root.
 
 A worker's `plandb add`, `split`, `task insert` or `task pivot` also refuses a title already
 used anywhere in that run, including its own task and the root. Titles are compared in
-lower case with runs of punctuation and whitespace folded to one space. Cancelled titles
-can be reused. A duplicate within one batch, or a batch that would cross either tree
+lower case with runs of punctuation and whitespace folded to one space. Cancelled titles,
+and the titles of open tasks a pivot is replacing, can be reused. A duplicate within one batch, or a batch that would cross either tree
 limit, refuses the whole batch: nothing is added and nothing can start from it. The
 refusal tells the worker to do its own work or report what remains undone.
 

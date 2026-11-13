@@ -125,11 +125,26 @@ func (s *Store) AddManyForWorker(workerTask string, specs []TaskSpec) ([]*Task, 
 	return s.addMany(specs, true, workerTask, false)
 }
 
-func boundedGrowthRefusal(plan state, q rowQuerier, specs []TaskSpec, workerTask string) error {
+// AddManyForWorkerReplacing is [Store.AddManyForWorker] for a replacement:
+// the open tasks named in retiring are about to be cancelled by the same
+// command, so they hold no slot and no title for the new rows. They are
+// cancelled after the add rather than before because cancelling a parent's
+// last open child completes the parent, which would then refuse the add.
+func (s *Store) AddManyForWorkerReplacing(workerTask string, retiring []string, specs []TaskSpec) ([]*Task, error) {
+	return s.addMany(specs, true, workerTask, false, retiring...)
+}
+
+// AddManyBoundedReplacing is [Store.AddManyBounded] for the same replacement.
+func (s *Store) AddManyBoundedReplacing(retiring []string, specs []TaskSpec) ([]*Task, error) {
+	return s.addMany(specs, true, "", false, retiring...)
+}
+
+func boundedGrowthRefusal(plan state, q rowQuerier, specs []TaskSpec, workerTask string, retiring ...string) error {
 	plan, err := growthPlan(plan, q)
 	if err != nil {
 		return err
 	}
+	plan = withoutRetiring(plan, retiring)
 	if workerTask != "" {
 		if err := workerGrowthRefusal(plan, specs, workerTask); err != nil {
 			return err
@@ -149,12 +164,51 @@ func boundedGrowthRefusal(plan state, q rowQuerier, specs []TaskSpec, workerTask
 	return nil
 }
 
+// withoutRetiring is the plan as the growth bounds read it when the open
+// tasks in retiring are being replaced: those rows count toward no total, no
+// worker's allowance and no taken title. Finished work they would not touch
+// stays counted, and so does every task outside the set.
+func withoutRetiring(plan state, retiring []string) state {
+	if len(retiring) == 0 {
+		return plan
+	}
+	gone := make(map[string]bool, len(retiring))
+	for _, id := range retiring {
+		if task := plan.Tasks[id]; task != nil && !terminal(task.Status) && id != plan.RootID {
+			gone[id] = true
+		}
+	}
+	if len(gone) == 0 {
+		return plan
+	}
+	tasks := make(map[string]*Task, len(plan.Tasks))
+	for id, task := range plan.Tasks {
+		if !gone[id] {
+			tasks[id] = task
+		}
+	}
+	order := make([]string, 0, len(plan.Order))
+	for _, id := range plan.Order {
+		if !gone[id] {
+			order = append(order, id)
+		}
+	}
+	plan.Tasks, plan.Order = tasks, order
+	return plan
+}
+
 func cliAddMany(st *Store, specs []TaskSpec) ([]*Task, error) {
+	return cliAddManyReplacing(st, nil, specs)
+}
+
+// cliAddManyReplacing is [cliAddMany] for a command that cancels the open
+// tasks in retiring once its replacements are in ([cliPivot]).
+func cliAddManyReplacing(st *Store, retiring []string, specs []TaskSpec) ([]*Task, error) {
 	if cliRunBound() {
 		if own := cliWorkerTask(); own != "" {
-			return st.AddManyForWorker(own, specs)
+			return st.AddManyForWorkerReplacing(own, retiring, specs)
 		}
-		return st.AddManyBounded(specs)
+		return st.AddManyBoundedReplacing(retiring, specs)
 	}
 	return st.AddMany(specs)
 }

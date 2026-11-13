@@ -1044,7 +1044,14 @@ func cliPivot(st *Store, p *cliParsed) error {
 	// The whole subtree, read before the new children go in, so what
 	// --keep-done spared can be told apart from the replacements and reported.
 	standing := cliSubtreeAll(st, parent.ID)
-	created, err := cliAddMany(st, specs)
+	// THE BOUNDS COUNT WHAT SURVIVES THE PIVOT. The doomed subtree is still
+	// open while the replacements go in, and counted it filled a worker's five
+	// and held its titles, so an ordinary re-plan was refused.
+	retiring := make([]string, 0, len(doomed))
+	for _, task := range doomed {
+		retiring = append(retiring, task.ID)
+	}
+	created, err := cliAddManyReplacing(st, retiring, specs)
 	if err != nil {
 		return err
 	}

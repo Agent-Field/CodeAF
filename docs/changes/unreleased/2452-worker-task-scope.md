@@ -11,7 +11,8 @@ invalidates:
 
 Worker additions retain their adding task in the live store and archive. Engine-created
 handoffs, reviews and fixes do not consume the worker allowance; cancelled additions do
-not count. Run-bound callers without a task binding retain their previous bounds and
+not count, and neither do the open tasks a `plandb task pivot` replaces, whose titles it
+may reuse. Run-bound callers without a task binding retain their previous bounds and
 default parent. Person-typed briefs, delegated program words and the older session-tree
 road retain their existing documents.
 

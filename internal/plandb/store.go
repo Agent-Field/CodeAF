@@ -263,7 +263,7 @@ func (s *Store) AddJoinedMany(specs []TaskSpec, bounded bool) ([]*Task, error) {
 	return s.addMany(specs, bounded, "", true)
 }
 
-func (s *Store) addMany(specs []TaskSpec, bounded bool, workerTask string, joined bool) ([]*Task, error) {
+func (s *Store) addMany(specs []TaskSpec, bounded bool, workerTask string, joined bool, retiring ...string) ([]*Task, error) {
 	if len(specs) == 0 {
 		return nil, errors.New("tasks must not be empty")
 	}
@@ -297,7 +297,7 @@ func (s *Store) addMany(specs []TaskSpec, bounded bool, workerTask string, joine
 			batch[specs[i].ID] = true
 		}
 		if bounded {
-			if err := boundedGrowthRefusal(*next, s.rdb, specs, workerTask); err != nil {
+			if err := boundedGrowthRefusal(*next, s.rdb, specs, workerTask, retiring...); err != nil {
 				return err
 			}
 		}
