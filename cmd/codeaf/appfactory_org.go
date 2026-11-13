@@ -86,6 +86,9 @@ func (b *appBackend) FactoryOrgCall(ctx context.Context, id string, req appwire.
 		return err
 	}
 	h.touch(id)
+	// The connection answers as an organization, so its changes are
+	// followed from here on (appfactory_org_events.go).
+	h.followOrg(id, token)
 	if reply.status == http.StatusNoContent || len(bytes.TrimSpace(data)) == 0 || out == nil {
 		return nil
 	}

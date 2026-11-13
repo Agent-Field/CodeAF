@@ -31,11 +31,16 @@ type orgServer struct {
 	streams  map[string]*appwire.OrgWorkstream
 	next     int
 	lastBody map[string]any
+	// frames are written to whoever holds /v1/events, one per frame; an
+	// empty one drops that stream. opened receives each opening's headers.
+	frames chan string
+	opened chan http.Header
 }
 
 func startOrgServer(t *testing.T) *orgServer {
 	t.Helper()
-	o := &orgServer{operator: true, teams: map[string]*appwire.OrgTeam{}, streams: map[string]*appwire.OrgWorkstream{}}
+	o := &orgServer{operator: true, teams: map[string]*appwire.OrgTeam{}, streams: map[string]*appwire.OrgWorkstream{},
+		frames: make(chan string, 16), opened: make(chan http.Header, 16)}
 	srv := httptest.NewServer(http.HandlerFunc(o.serve))
 	t.Cleanup(srv.Close)
 	o.url = srv.URL
@@ -67,6 +72,10 @@ func orgRefuse(w http.ResponseWriter, status int, words string) {
 }
 
 func (o *orgServer) serve(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/v1/events" {
+		o.stream(w, r)
+		return
+	}
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	if r.URL.Path == "/v1/about" || r.URL.Path == "/v1/me" && r.Header.Get("Authorization") == "" {
