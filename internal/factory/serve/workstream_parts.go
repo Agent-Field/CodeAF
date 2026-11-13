@@ -45,6 +45,8 @@ var (
 	errPageGone     = errors.New("page not found")
 	errPartNotJSON  = workstreamInvalid("a part is one JSON object")
 	errPartTooLarge = workstreamInvalid("a part may hold at most 256 KiB")
+
+	errWorkstreamNoUnarchive = errors.New("only its owner and those it is shared with for full access can bring this workstream back")
 )
 
 func (h *Handler) workstreamPartRoutes() {
@@ -121,6 +123,8 @@ func (h *Handler) partRefused(w http.ResponseWriter, err error) bool {
 		h.fail(w, http.StatusPreconditionFailed, err.Error())
 	case errors.Is(err, errPageGone), errors.Is(err, store.ErrPartGone):
 		h.fail(w, http.StatusNotFound, err.Error())
+	case errors.Is(err, errWorkstreamNoUnarchive):
+		h.fail(w, http.StatusForbidden, err.Error())
 	default:
 		return h.workstreamRefused(w, err)
 	}
@@ -183,7 +187,7 @@ func (h *Handler) createWorkstreamPage(w http.ResponseWriter, r *http.Request) {
 	}
 	h.recordWorkstream(r, ws.ID, "added page", page.ID)
 	h.publishWorkstreamPart(saved, api.PartPage, page.ID, h.orgActor(r), 1, false)
-	h.writeWorkstream(w, http.StatusCreated, saved)
+	h.writeWorkstream(w, http.StatusCreated, saved, v)
 }
 
 // patchWorkstreamPage renames, re-kinds or moves one page. IF-MATCH IS THE
@@ -250,7 +254,7 @@ func (h *Handler) patchWorkstreamPage(w http.ResponseWriter, r *http.Request) {
 	}
 	h.recordWorkstream(r, ws.ID, verb, pid)
 	h.publishWorkstreamPart(saved, api.PartPage, pid, h.orgActor(r), pageRev, false)
-	h.writeWorkstream(w, http.StatusOK, saved)
+	h.writeWorkstream(w, http.StatusOK, saved, v)
 }
 
 // descends is whether page is pid or sits somewhere under it.
@@ -304,7 +308,7 @@ func (h *Handler) deleteWorkstreamPage(w http.ResponseWriter, r *http.Request) {
 	_ = h.dropDoc("ws/" + ws.ID + "/page/" + pid)
 	h.recordWorkstream(r, ws.ID, "removed page", pid)
 	h.publishWorkstreamPart(saved, api.PartPage, pid, h.orgActor(r), 0, true)
-	h.writeWorkstream(w, http.StatusOK, saved)
+	h.writeWorkstream(w, http.StatusOK, saved, v)
 }
 
 // ── page versions ──
@@ -753,7 +757,7 @@ func (h *Handler) addWorkstreamJob(w http.ResponseWriter, r *http.Request) {
 		h.recordWorkstream(r, ws.ID, "added job", "job "+jobID)
 		h.publishWorkstreamPart(saved[ws.ID], api.PartJobs, jobID, by, saved[ws.ID].Rev, false)
 	}
-	h.writeWorkstream(w, http.StatusOK, saved[ws.ID])
+	h.writeWorkstream(w, http.StatusOK, saved[ws.ID], v)
 }
 
 func (h *Handler) removeWorkstreamJob(w http.ResponseWriter, r *http.Request) {
@@ -782,20 +786,21 @@ func (h *Handler) removeWorkstreamJob(w http.ResponseWriter, r *http.Request) {
 		h.recordWorkstream(r, ws.ID, "removed job", "job "+strconv.Itoa(job))
 		h.publishWorkstreamPart(saved, api.PartJobs, strconv.Itoa(job), h.orgActor(r), saved.Rev, true)
 	}
-	h.writeWorkstream(w, http.StatusOK, saved)
+	h.writeWorkstream(w, http.StatusOK, saved, v)
 }
 
 // ── unarchive ──
 
-// unarchiveWorkstream brings an archived workstream back to every list. One
-// that is not archived is answered as it is.
+// unarchiveWorkstream brings an archived workstream back to every list. It
+// takes full access, as archiving does. One that is not archived is answered
+// as it is.
 func (h *Handler) unarchiveWorkstream(w http.ResponseWriter, r *http.Request) {
 	ws, v, ok := h.findWorkstream(w, r)
 	if !ok {
 		return
 	}
-	if !v.canWrite(ws) {
-		h.fail(w, http.StatusForbidden, errWorkstreamNoWrite.Error())
+	if !v.canGovern(ws) {
+		h.fail(w, http.StatusForbidden, errWorkstreamNoUnarchive.Error())
 		return
 	}
 	now := h.clock().UTC()
@@ -805,8 +810,8 @@ func (h *Handler) unarchiveWorkstream(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			return nil, errWorkstreamGone
 		}
-		if !v.canWrite(cur) {
-			return nil, errWorkstreamNoWrite
+		if !v.canGovern(cur) {
+			return nil, errWorkstreamNoUnarchive
 		}
 		before = cur
 		if cur.ArchivedAt == nil {
@@ -816,14 +821,14 @@ func (h *Handler) unarchiveWorkstream(w http.ResponseWriter, r *http.Request) {
 		all[cur.ID] = cur
 		return []string{cur.ID}, nil
 	})
-	if h.workstreamRefused(w, err) {
+	if h.partRefused(w, err) {
 		return
 	}
 	if saved[ws.ID].Rev != before.Rev {
 		h.recordWorkstream(r, ws.ID, "unarchived workstream", "")
 		h.publishWorkstreamPart(saved[ws.ID], api.PartWorkstream, ws.ID, h.orgActor(r), saved[ws.ID].Rev, false)
 	}
-	h.writeWorkstream(w, http.StatusOK, saved[ws.ID])
+	h.writeWorkstream(w, http.StatusOK, saved[ws.ID], v)
 }
 
 // ── budget and spend ──
