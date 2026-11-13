@@ -18,6 +18,18 @@ type PatchFactorySettings struct {
 	KeepOutputDays       *int  `json:"keep_output_days,omitempty"`
 	KeepOutputMB         *int  `json:"keep_output_mb,omitempty"`
 	ReadOnArrival        *bool `json:"read_on_arrival,omitempty"`
+	// AgentRunner is "driver" or "server" (factory.AgentRunner*), and only
+	// one of the choices the server offers in [FactorySettingsView].
+	AgentRunner *string `json:"agent_runner,omitempty"`
+}
+
+// FactorySettingsView is GET /v1/settings's answer and the answer to a PATCH
+// of it: the settings everyone in the organization may read (only the
+// operator may change them), and AgentRunners, the places this server can run
+// an organization workstream's agent. A choice not listed is not offered.
+type FactorySettingsView struct {
+	FactorySettings
+	AgentRunners []string `json:"agent_runners"`
 }
 
 // Spending is GET /v1/spending and the answer to a PATCH of it: the factory's

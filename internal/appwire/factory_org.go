@@ -47,6 +47,9 @@ type OrgRequest struct {
 	Path    string
 	Body    any
 	IfMatch string
+	// IdempotencyKey, when set, is sent as Idempotency-Key so a POST that is
+	// sent again answers what it answered the first time (spend, once).
+	IdempotencyKey string
 }
 
 // FactoryOrg is the engine's half: carry req to the connection id with the
@@ -154,6 +157,9 @@ type OrgWorkstream struct {
 	BudgetUSD *float64 `json:"budget_usd,omitempty"`
 	SpendUSD  float64  `json:"spend_usd,omitempty"`
 	CreatedBy string   `json:"created_by,omitempty"`
+	// Driver is who drives its agent now (factory_org_runner.go); absent
+	// when nobody does.
+	Driver *OrgWorkstreamDriver `json:"driver,omitempty"`
 }
 
 // OrgWorkstreams is factory.org_workstreams's answer: those visible to the
@@ -429,6 +435,7 @@ func withFactoryOrgFeature(hello Hello, e Engine) Hello {
 		hello = withFeature(hello, FeatureOrgTeams)
 		hello = withFeature(hello, FeatureOrgWorkstreams)
 		hello = withFeature(hello, FeatureOrgRoles)
+		hello = withFeature(hello, FeatureOrgAgentRunner)
 	}
 	return hello
 }

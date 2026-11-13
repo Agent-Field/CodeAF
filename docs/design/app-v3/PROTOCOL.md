@@ -285,6 +285,11 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.org_workstream_job_add` | `in.OrgWorkstreamJobParams` | `OrgWorkstream` |
 | `factory.org_workstream_job_remove` | `in.OrgWorkstreamJobParams` | `OrgWorkstream` |
 | `factory.org_workstream_unarchive` | `in.OrgWorkstreamParams` | `OrgWorkstream` |
+| `factory.org_agent_runner` | `in.OrgConn` | `OrgAgentRunner` |
+| `factory.org_agent_runner_set` | `in.OrgAgentRunnerSetParams` | `OrgAgentRunner` |
+| `factory.org_workstream_drive` | `in.OrgWorkstreamParams` | `OrgWorkstreamDriver` |
+| `factory.org_workstream_let_go` | `in.OrgWorkstreamParams` | `Empty` |
+| `factory.org_workstream_spend` | `in.OrgWorkstreamSpendParams` | `OrgWorkstreamSpend` |
 | `factory.detach` | `in.FactoryRef` | `Empty` |
 | `factory.job` | `in.FactoryJobParams` | `Job` |
 | `factory.job_approve` | `in.FactoryJobApproveParams` | `FactoryJobActed` |
@@ -558,6 +563,26 @@ Personal ids of workstreams the same person already moved in; they are linked by
 their organization ids, and a later import is linked from earlier ones that named it.
 When the operator removes a person, their workstreams go to `?heir=<handle>` or the
 operator, and they leave every share; each change is a `workstream.changed` event.
+
+An engine whose hello carries `org_agent_runner` reads and keeps where an organization
+workstream's agent runs. `factory.org_agent_runner` `GET /v1/settings` answers
+`{agent_runner, agent_runners}`: the operator's choice, `driver` (on the laptop of the
+person driving the workstream, their engine and model key) or `server` (on the
+organization's server with keys the operator set there), and the choices that server
+offers; an older server reads as `driver` of `[driver]`. Today every server offers only
+`driver`. `factory.org_agent_runner_set {agent_runner}` `PATCH /v1/settings` is the
+operator's alone (`forbidden` otherwise); a choice not offered is refused by the server.
+While it is `driver`, one person at a time drives a workstream's agent through its
+driver hand: `factory.org_workstream_drive {id}` `PUT /v1/workstreams/{id}/driver` takes
+it, or renews it when it is already yours, and answers `{handle, since, until, ttl_s}`;
+the hand lapses `ttl_s` (90) seconds after its last renewal, so a desk renews it while
+the window is open. Someone else's live hand is `conflict` with `detail.reason`
+`driving` and `detail.by` `@handle`. `factory.org_workstream_let_go {id}` `DELETE`
+lets go; its owner and the operator may also take it from someone else. A workstream
+answers `driver` while someone holds it. `factory.org_workstream_spend {id, usd, key,
+job?, chat?}` `POST /v1/workstreams/{id}/spend` posts what the driver's agent spent,
+with `key` sent as `Idempotency-Key` so a retry counts once, and answers `{spend_usd,
+budget_usd}`; the server names the spender from the session.
 
 The event `factory.org_changed` `{connection, kind, id}` says a team or workstream
 changed on an organization's server, so a window showing that organization reads it
