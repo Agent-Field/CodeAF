@@ -71,6 +71,8 @@ func (h *appFactoryHub) followOrg(id, token string) {
 
 // stopOrgFollowLocked ends id's follower, if any.
 func (h *appFactoryHub) stopOrgFollowLocked(id string) {
+	// The connection's documents end with it (appfactory_org_docs.go).
+	h.stopConnDocsLocked(id)
 	if f, ok := h.orgFollow[id]; ok {
 		f.cancel()
 		delete(h.orgFollow, id)
@@ -81,6 +83,9 @@ func (h *appFactoryHub) stopOrgFollowLocked(id string) {
 func (h *appFactoryHub) stopAllOrgFollowLocked() {
 	for id := range h.orgFollow {
 		h.stopOrgFollowLocked(id)
+	}
+	for key := range h.docFollow {
+		h.stopDocFollowLocked(key)
 	}
 }
 

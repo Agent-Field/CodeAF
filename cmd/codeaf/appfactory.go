@@ -175,8 +175,13 @@ type appFactoryHub struct {
 	// orgPresence relays who is on an organization item now; nil drops it.
 	orgPresence func(appwire.FactoryOrgPresence)
 	orgRetry    time.Duration
-	jobEvents   *appFactoryJobEvents
-	closed      bool
+	// docFollow is each followed live document, keyed by connection and
+	// document, and docEvent relays what they carry (appfactory_org_docs.go);
+	// a hub with no docEvent follows none.
+	docFollow map[string]*appDocFollow
+	docEvent  func(name string, data any)
+	jobEvents *appFactoryJobEvents
+	closed    bool
 }
 
 // newAppFactoryHub is a registry whose HTTP client takes no ambient proxy,
@@ -210,6 +215,7 @@ func (b *appBackend) factoryHub() *appFactoryHub {
 		b.factories.keptChanged = func() { b.emit.Emit(appwire.EventFactorySessionsChanged, appwire.Empty{}) }
 		b.factories.orgChanged = func(e appwire.FactoryOrgChanged) { b.emit.Emit(appwire.EventFactoryOrgChanged, e) }
 		b.factories.orgPresence = func(e appwire.FactoryOrgPresence) { b.emit.Emit(appwire.EventFactoryOrgPresence, e) }
+		b.factories.docEvent = func(name string, data any) { b.emit.Emit(name, data) }
 	})
 	return b.factories
 }
