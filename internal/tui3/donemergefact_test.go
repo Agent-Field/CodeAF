@@ -7,7 +7,7 @@ package tui3
 // and a source-control fact into one, on the one row that is supposed to say the
 // state once. What it carries now is `merged`, `branch kept`, or nothing — and
 // the state is one cell to the left, in the tier word
-// (docs/design/task-states/DESIGN.md).
+//.
 
 import (
 	"strings"

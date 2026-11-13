@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strconv"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
@@ -155,6 +154,9 @@ type Export struct {
 // each on the cell's own device-local store.
 type SyncEngine struct {
 	Transport Transport
+	// Work distinguishes unpublished work from a displaced session's
+	// accounting-only seals before sync preserves an orphaned head.
+	Work func(context.Context, cell.Cell) (bool, error)
 	// BeforeExport joins local records and the engine group before frames can
 	// leave this computer. Bare independent clients can use the transport alone.
 	BeforeExport func(context.Context, cell.Cell) error
@@ -175,6 +177,15 @@ type SyncEngine struct {
 	MaterializeWith func(context.Context, cell.Cell, Op) ([]byte, error)
 }
 
+// LocalWork reports work beyond the shared boundary. Standalone sync engines
+// without a local journal retain every orphan rather than assume it is empty.
+func (e SyncEngine) LocalWork(ctx context.Context, c cell.Cell) (bool, error) {
+	if e.Work == nil {
+		return true, nil
+	}
+	return e.Work(ctx, c)
+}
+
 // Export implements the sync seam.
 func (e SyncEngine) Export(ctx context.Context, c cell.Cell, head string) (Export, error) {
 	var out Export
@@ -183,8 +194,24 @@ func (e SyncEngine) Export(ctx context.Context, c cell.Cell, head string) (Expor
 			return out, err
 		}
 	}
-	op := exportOp{Head: head, Outbox: e.outbox(c), Ledger: e.Ledger, MaxFrame: e.MaxFrame, keyArgs: hexKeys(e.Keys)}
-	return out, e.ask(ctx, c, op, &out)
+	outbox := e.outbox(c)
+	// An export still waiting in the outbox is answered as it stands rather
+	// than sealed again (keptExport says why).
+	stamp, known := e.stampFor(e.Target(c).DataDir, head)
+	if known {
+		if kept, ok := reuse(outbox, stamp); ok {
+			return kept, nil
+		}
+	}
+	op := exportOp{Head: head, Outbox: outbox, Ledger: e.Ledger, MaxFrame: e.MaxFrame, keyArgs: hexKeys(e.Keys)}
+	if err := e.ask(ctx, c, op, &out); err != nil {
+		return out, err
+	}
+	if known {
+		stamp.Export = out
+		keep(outbox, stamp)
+	}
+	return out, nil
 }
 
 // Published implements the sync seam.
@@ -229,12 +256,15 @@ func (e SyncEngine) importWith(ctx context.Context, c cell.Cell, op importOp) (i
 	return out.Imported, e.ask(ctx, c, op, &out)
 }
 
-// Holds implements the sync seam: the ledger file the engine keeps beside the
-// store is written by every export and import against this relay, so it has
-// content exactly when the device has exchanged objects with the relay.
+// Holds reports history this computer held for this chat. The publication
+// ledger belongs to the shared store, so another chat's exchange proves nothing
+// about this one. Local adoption and turn records already supply this evidence.
 func (e SyncEngine) Holds(c cell.Cell) bool {
-	info, err := os.Stat(filepath.Join(e.Target(c).DataDir, "published."+e.Ledger))
-	return err == nil && info.Size() > 0
+	if _, ok := readAdoption(c); ok {
+		return true
+	}
+	turn, err := lastTurn(rel(c, TurnsPath))
+	return err == nil && turn != nil
 }
 
 // Materialize implements the sync seam.
@@ -248,13 +278,37 @@ func (e SyncEngine) Materialize(ctx context.Context, c cell.Cell, head string) e
 		Held []heldName `json:"held"`
 	}
 	// The restore brings the sender's policy file and record over this machine's,
-	// which would forget the names an earlier take set apart: they are read first
-	// and written back with this take's.
+	// which would forget the names an earlier take set apart and any local
+	// legacy-copy markers snapshots never carry: they are read first and
+	// written back after the head is materialized.
 	earlier := heldBefore(c, e.holdDir(c))
+	restoreCopyReady, err := cell.PreserveCopyReady(c.Root)
+	if err != nil {
+		return err
+	}
+	_, offeredErr := os.Stat(rel(c, cell.CopyOfferedPath))
+	keepCopyOffered := offeredErr == nil
 	if err := e.ask(ctx, c, materializeOp{Head: head}, &out); err != nil {
 		return err
 	}
+	if err := restoreCopyReady(); err != nil {
+		return err
+	}
+	if keepCopyOffered {
+		offeredFile := rel(c, cell.CopyOfferedPath)
+		if _, err := os.Stat(offeredFile); os.IsNotExist(err) {
+			if err := writeFile(offeredFile, nil); err != nil {
+				return err
+			}
+		}
+	}
 	if err := noteAdopted(c, head); err != nil {
+		return err
+	}
+	// A snapshot sealed after the first publish carries the sender's earlier
+	// upload note, whose snapshot this store may never have fetched; record
+	// the received head so local-work checks compare against a snapshot held here.
+	if err := NotePublished(c, head); err != nil {
 		return err
 	}
 	return noteHeld(c, e.holdDir(c), mergeHeld(earlier, out.Held))
@@ -315,6 +369,7 @@ func (e SyncEngine) ask(ctx context.Context, c cell.Cell, op Op, out any) error 
 // wrote. The inbox is device-local scratch beside the cell's store.
 func (e Engine) Sync(keys SyncKeys, ledger string) SyncEngine {
 	return SyncEngine{
+		Work:      e.LocalWork,
 		Transport: e.transport(),
 		BeforeExport: func(ctx context.Context, c cell.Cell) error {
 			if err := Await(ctx, c); err != nil {
@@ -333,7 +388,33 @@ func (e Engine) Sync(keys SyncKeys, ledger string) SyncEngine {
 			if err := e.screenCapture(ctx, c); err != nil {
 				return nil, err
 			}
-			return e.do(ctx, c, e.cellDir(c), op)
+			// The daemon retains a directory watcher after materializing a tree.
+			// A take renames that tree next, which Windows refuses while watched.
+			// Join a one-shot process before returning; Follow binds the final root.
+			materializer := e
+			materializer.Transport = materializeTransport(e.transport())
+			return materializer.do(ctx, c, e.cellDir(c), op)
 		},
+	}
+}
+
+// materializeTransport releases daemon watchers before installation while
+// preserving a caller's independent transport, binary and runner.
+func materializeTransport(transport Transport) Transport {
+	switch t := transport.(type) {
+	case Daemon:
+		return Spawn{Binary: t.Binary, Socket: t.Socket}
+	case *Daemon:
+		return materializeTransport(*t)
+	case Fallback:
+		switch t.Primary.(type) {
+		case Daemon, *Daemon:
+			return materializeTransport(t.Secondary)
+		}
+		return Fallback{Primary: materializeTransport(t.Primary), Secondary: materializeTransport(t.Secondary)}
+	case *Fallback:
+		return materializeTransport(*t)
+	default:
+		return transport
 	}
 }

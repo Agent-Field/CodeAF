@@ -62,7 +62,7 @@ import (
 // "the turn has had its go, and there is still most of the run left to finish in".
 //
 // THE SHARE ITSELF IS SETTLED BY MEASUREMENT AND NOT BY THIS ONE READING. Three
-// is what the measured cell argues for; docs/design/turn-wall-share-doe/ is the
+// is what the measured cell argues for; the implementation is the
 // record of the run that decides between it and a half, and a change to this
 // number is a change to that record in the same commit.
 const turnWallShare = 3
@@ -75,7 +75,7 @@ const turnWallShare = 3
 // already what the code holds a task to, and a figure written here beside them
 // would be a figure that drifts.
 //
-// ── THE RUN THIS WAS ADDED FROM (the record in docs/design/turn-wall-share-doe) ──
+// ── THE RUN THIS WAS ADDED FROM (the record in the implementation) ──
 //
 // The share alone is taken off the WHOLE wall from the turn's own start, so a turn
 // that began late was given a third the wall no longer had: on a 900 s wall the

@@ -65,7 +65,7 @@ import (
 //
 // ONE COLUMN, EVERY PAGE THAT STREAMS. The state lives on [feed] — the ONE
 // reducer both the conversation and a task room grow their transcripts with
-// (feed.go, and docs/design/lens/DESIGN.md's Decision 1 on why there is not a
+// (feed.go, and the implementation's Decision 1 on why there is not a
 // second one) — so a node's page draws the same column by the same code, from
 // its own sources:
 //
@@ -99,10 +99,10 @@ import (
 //     whole conversation, not the step it happens to be in, and a figure that
 //     divided it between steps would be arithmetic nobody performed.
 //
-// A ROW THAT HAS FINISHED CARRIES NOTHING. The column is a sign of motion, so
-// it lives exactly as long as the motion does: a settled step drops its figure,
-// and the whole column goes with the turn — this is the owner's ruling, and the
-// session's totals are the status line's, which never go away.
+// A ROW THAT HAS FINISHED CARRIES NOTHING. The column is a sign of motion, so it lives
+// exactly as long as the motion does: a settled step drops its figure, and the whole
+// column goes with the turn —, and the session's totals are the status line's, which never
+// go away.
 //
 // IT IS SPARE CELLS AND NEVER A RESERVATION. The words are the point of every
 // row it lands on, so the column takes what is left at the right edge after the
@@ -306,18 +306,13 @@ func (c *tokenCol) tick(written, turn, slots int, snap bool, now time.Time) bool
 // chaseFigure is one half's step toward its reading, and whether that step is
 // MOTION — the thing the glow is lit for.
 //
-// A FIGURE THAT WAS NOT ON THE SCREEN ARRIVES WHOLE AND UNLIT. Every page opens
-// its column at nothing ([tokenCol.open], a new room, a conversation taken up
-// from a tab), and its first reading is a figure that already existed before
-// anybody looked — the weight of a request, a task's tokens read off its
-// journal. Walking it up from zero and lighting it on the way was the surface
-// performing work that was not happening: the owner opened a task page, watched
-// `↑ 79.6k  ↓ 37.6k` count up and glow, switched away and back, watched it do
-// the same climb to the same figures, and read a page being redrawn as a task
-// being busy. It is [tokenCol.receiptOf]'s rule said for the walk and the glow
-// too: THE FIRST READING IS A FIGURE ARRIVING, NOT A FIGURE GROWING, and only
-// growth is drawn as growth. So from nothing the figure is simply there, and
-// the first thing that lights it is the first time it actually moves.
+// A FIGURE THAT WAS NOT ON THE SCREEN ARRIVES WHOLE AND UNLIT. Every page opens its column
+// at nothing ([tokenCol.open], a new room, a conversation taken up from a tab), and its
+// first reading is a figure that already existed before anybody looked — the weight of a
+// request, a task's tokens read off its journal. It is [tokenCol.receiptOf]'s rule said
+// for the walk and the glow too: THE FIRST READING IS A FIGURE ARRIVING, NOT A FIGURE
+// GROWING, and only growth is drawn as growth. So from nothing the figure is simply there,
+// and the first thing that lights it is the first time it actually moves.
 func chaseFigure(shown, target, slots int) (next int, grew bool) {
 	if shown == 0 {
 		return target, false

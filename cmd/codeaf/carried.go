@@ -123,6 +123,8 @@ func carriedSignals() (context.Context, context.CancelFunc) {
 // model goes out through, whether this person's services can take a call on a
 // model, and the work seat a call nothing here can serve is answered on.
 type carriedRoad struct {
+	close func()
+
 	completerFor  func(model string) modelapi.Completer
 	authKeySource func(model string) string
 	serves        func(model string) bool
@@ -130,6 +132,7 @@ type carriedRoad struct {
 	modelPrice    func(model string) (input, output float64, known bool)
 	seat          string
 	defaultSeat   func() (string, error)
+	unsigned      bool
 	signNamed     bool
 	// warmCatalog waits, within ctx, for the named models' service catalogs
 	// to be resolved and written down. Nil for a road with no catalog.
@@ -156,11 +159,19 @@ func profileRoad() (carriedRoad, error) {
 	if err != nil {
 		return carriedRoad{}, err
 	}
-	useAutoSeats(settings)
+	held := useAutoSeats(settings)
 	settings.Models = sharedCatalog(settings)
 	adapters := &carriedAdapters{settings: settings, built: map[string]modelapi.Completer{}}
 	sources := settings.Sources.OrDefault(settings.APIKey, settings.BaseURL)
+	opened := &roadCatalogs{}
 	return carriedRoad{
+		close: func() {
+			settings.Models.Close()
+			for _, c := range opened.take() {
+				c.Close()
+			}
+			stopPoolErrands(held)
+		},
 		completerFor:  adapters.forModel,
 		authKeySource: func(model string) string { return config.APIKeySourceForModel(settings.ProfileDir, sources, model) },
 		serves:        func(model string) bool { return session.ServesModel(sources, model) },
@@ -181,6 +192,7 @@ func profileRoad() (carriedRoad, error) {
 			}
 			return seats.Work.Model, nil
 		},
+		unsigned:  !config.AttributionAt(settings.ProfileDir),
 		signNamed: config.AttributionModelAt(settings.ProfileDir),
 		warmCatalog: func(ctx context.Context, models []string) bool {
 			// The child reads each service's own cache without provider keys.
@@ -199,9 +211,7 @@ func profileRoad() (carriedRoad, error) {
 				}
 				options := config.CatalogOptionsFor(service, settings.ProfileDir)
 				key := catalog.CacheKey(options.Source, options.BaseURL)
-				if catalogs[key] == nil {
-					catalogs[key] = catalog.LoadLazy(ctx, options)
-				}
+				catalogs[key] = opened.forKey(key, options)
 			}
 			ready := true
 			for _, models := range catalogs {
@@ -210,6 +220,44 @@ func profileRoad() (carriedRoad, error) {
 			return ready
 		},
 	}, nil
+}
+
+// roadCatalogs holds the per-service catalogs a profile road opened. THEY
+// LIVE AS LONG AS THE ROAD, NOT AS LONG AS ONE READINESS WAIT: a stale cache's
+// background refresh keeps running after the wait answers, and the road's close
+// is what cancels and joins it. A second wait reuses the catalog already open
+// for a cache key rather than opening another.
+type roadCatalogs struct {
+	mu   sync.Mutex
+	open map[string]*catalog.Catalog
+}
+
+// forKey answers the catalog open for key, opening it on first use.
+func (r *roadCatalogs) forKey(key string, options catalog.Options) *catalog.Catalog {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if c := r.open[key]; c != nil {
+		return c
+	}
+	if r.open == nil {
+		r.open = map[string]*catalog.Catalog{}
+	}
+	c := catalog.LoadLazy(context.Background(), options)
+	r.open[key] = c
+	return c
+}
+
+// take hands over every catalog the road opened and forgets them, so the
+// caller closes each exactly once.
+func (r *roadCatalogs) take() []*catalog.Catalog {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]*catalog.Catalog, 0, len(r.open))
+	for _, c := range r.open {
+		out = append(out, c)
+	}
+	r.open = nil
+	return out
 }
 
 // carriedModelPrice prices the same service and bare id the adapter calls.
@@ -299,6 +347,9 @@ func runCarriedHost(ctx context.Context, inv *delegate.Invocation) error {
 		}
 		return err
 	}
+	if road.close != nil {
+		defer road.close()
+	}
 	var modelsToWarm []string
 	if asked != "" {
 		modelsToWarm = strings.Split(asked, ",")
@@ -364,7 +415,7 @@ func runCarriedHost(ctx context.Context, inv *delegate.Invocation) error {
 	// refusal — another program's run in a plain folder — before a cent is
 	// spent. A plain folder is no longer the program's first-line failure:
 	// codeaf says so on the program's line.
-	folder, err := carriedFolder(inv, record)
+	folder, err := carriedFolder(inv, record, road.unsigned)
 	if err != nil {
 		fmt.Fprintln(carriedStderr, "error:", err)
 		return exitCannotRun
@@ -533,14 +584,15 @@ var carriedAPIClose = (*modelapi.Server).Close
 // carriedFolder readies the folder a shell run's program works in
 // (internal/session's PrepareProgramFolder); nil for a program that edits no
 // files, which reads the folder where it is.
-func carriedFolder(inv *delegate.Invocation, record string) (*session.ProgramFolder, error) {
+func carriedFolder(inv *delegate.Invocation, record string, unsigned bool) (*session.ProgramFolder, error) {
 	if !inv.Program.LandsTree() {
 		return nil, nil
 	}
 	return session.PrepareProgramFolder(session.ProgramFolderOrder{
 		Program: inv.Program, Dir: inv.Workspace, Brief: inv.Brief(),
 		Holder: "a run started at a shell", Keep: record,
-		Instead: "run it in the project's folder, or name that folder with --dir",
+		Instead:  "run it in the project's folder, or name that folder with --dir",
+		Unsigned: unsigned,
 	})
 }
 

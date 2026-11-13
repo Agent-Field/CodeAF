@@ -24,7 +24,22 @@ func (a *app) trafficToggle(key string) {
 // trafficGo switches to member key: its tab when the strip has one, and
 // otherwise what the team kept of it, which is enough to open it again.
 func (a *app) trafficGo(key string) tea.Cmd {
-	if key == "" || key == a.frontTabKey() {
+	if key == "" {
+		return nil
+	}
+	// Ownership precedes the shortcut for a tab already in front or behind.
+	// A local copy can still be held on the other computer now.
+	member := teamMember{Key: key}
+	for _, t := range a.wall.teams {
+		if m, ok := t.Member(key); ok {
+			member = m
+			break
+		}
+	}
+	if cmd, remote := a.teamsRemoteGo(member); remote {
+		return cmd
+	}
+	if key == a.frontTabKey() {
 		return nil
 	}
 	for _, tab := range a.tabList() {
@@ -45,6 +60,11 @@ func (a *app) trafficGo(key string) tea.Cmd {
 					m, ok = former, true
 					break
 				}
+			}
+		}
+		if ok {
+			if cmd, remote := a.teamsRemoteGo(m); remote {
+				return cmd
 			}
 		}
 		if ok && m.File != "" {

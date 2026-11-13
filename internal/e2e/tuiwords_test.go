@@ -188,7 +188,7 @@ var tuiWords = map[string]tuiWord{
 		why:    "the other half of that rule, which is how a conversation is told from home",
 	},
 
-	// ── home's panels (docs/design/home-mission-control/DESIGN.md) ────────────
+	// ── home's panels ────────────
 	//
 	// THE FLAT RANKED LIST IS GONE, and with it the section line, `alt+g`,
 	// `alt+q` and the `quiet since` fold the suite used to wait for. Home is seven
@@ -260,10 +260,10 @@ var tuiWords = map[string]tuiWord{
 			"until the place was named for what is in it",
 	},
 	"barMemoryWord": {
-		screen: "Memories",
-		source: "memories",
+		screen: "Memory",
+		source: "memory",
 		why: "the fifth place on the wordmark row, which stands on the bar before the first memory is saved. It " +
-			"was `Memory` until 2026-10-14",
+			"was `Memories` from 2026-10-15 until decision #1943 restored `Memory` on 2026-10-25",
 	},
 	"barAutomationsWord": {
 		screen: "Automations",
@@ -326,6 +326,19 @@ var tuiWords = map[string]tuiWord{
 		screen: "waiting on you",
 		pkg:    tui3Pkg,
 		why:    "the tail on any row — an errand or another window's conversation — that is stopped on a person",
+	},
+	"conversationOpeningPage": {
+		screen: "opening conversation",
+		why: "the placeholder page a first message once waited on (conversation_open.go's conversationOpeningWord); " +
+			"the chat-start suite asserts the first message never lands on it",
+	},
+	"conversationOpeningState": {
+		screen: "opening chat",
+		why:    "the state the ordinary chat wears under a first message while its engine is still opening",
+	},
+	"chatTurnWorkingWord": {
+		screen: "working",
+		why:    "the state the ordinary chat wears once the first message's turn is in flight",
 	},
 	"homeAskWorkingWord": {
 		screen: "working",
@@ -400,7 +413,7 @@ var tuiWords = map[string]tuiWord{
 
 	// ── automations: the card, the place and the clock ────────────────────────
 	//
-	// docs/design/automations/DESIGN.md is the design and automations_e2e_test.go
+	// the implementation is the design and automations_e2e_test.go
 	// reads it off a real screen. What an automation is CALLED and what it SAYS
 	// are the scenario's own words (its scripted model chose them, or its typed
 	// command did), so they are typed there; what is here is what the surface
@@ -540,7 +553,7 @@ var tuiWords = map[string]tuiWord{
 		why:    "the first option on that question, which the ENGINE writes and home only relays",
 	},
 
-	// ── a landing that is the person's call (#268, docs/design/task-states) ───
+	// ── a landing that is the person's call (#268, the implementation) ───
 	"settleAskWord": {
 		screen: "nobody could check it",
 		pkg:    "internal/session",
@@ -583,9 +596,26 @@ var tuiWords = map[string]tuiWord{
 		pkg:    "internal/session",
 		why:    "the receipt proving the not-right answer reached the engine's settle door",
 	},
-	"doneRollupWord": {
-		screen: " tasks done",
-		why:    "the folded completion batch counts both seeded tasks after the nested landing is accepted",
+	"settleAcceptReceipt": {
+		screen: " → accept · you · ",
+		source: "accept",
+		pkg:    "internal/session",
+		why:    "the decision receipt names the accepted task and the person who answered, before its variable timestamp",
+	},
+	"settleNotRightReceipt": {
+		screen: " → not right · you · ",
+		source: "not right",
+		pkg:    "internal/session",
+		why:    "the decision receipt names the refused task and the person who answered, before its variable timestamp",
+	},
+	"backgroundWorkWord": {
+		screen: "background work",
+		why:    "routine task completions remain available behind the background-work disclosure",
+	},
+	"taskOpenResultWord": {
+		screen: " · open result",
+		source: "open result",
+		why:    "a named completion row offers its result beside its state, distinguishing it from model prose",
 	},
 	"taskIncompleteWord": {
 		screen: " · incomplete",
@@ -600,7 +630,11 @@ var tuiWords = map[string]tuiWord{
 	},
 	"starterTaskWord": {
 		screen: "/task <brief> starts work",
-		why:    "the greeting's own starter line, and the door a person is pointed at before they have typed anything",
+		why:    "the ordinary greeting's starter line, after the machine's first conversation",
+	},
+	"firstConversationStarterWord": {
+		screen: "What would you like to work on?",
+		why:    "the first conversation offers starting points instead of the ordinary greeting's task hint",
 	},
 	"refusedCallRowWord": {
 		screen: "the call was refused",
@@ -820,7 +854,7 @@ var tuiWords = map[string]tuiWord{
 		pkg:    "internal/session",
 		why: "the tier word on the head of a landing that is waiting on a person. It replaced `needs your look`, " +
 			"`awaiting review` and `unverified` — one word for one state, spelled in the engine and drawn by " +
-			"every surface (docs/design/task-states/DESIGN.md)",
+			"every surface",
 	},
 	"unverifiedGlyph": {
 		screen: "?",
@@ -834,7 +868,7 @@ var tuiWords = map[string]tuiWord{
 
 	// ── the three tiers, one glyph and one word each (task-states) ───────────
 	//
-	// docs/design/task-states/DESIGN.md is the ruling and these are its words on a
+	// the implementation is the ruling and these are its words on a
 	// real screen. THE WORDS ARE THE ENGINE'S and the KEYS ARE THE SURFACE'S,
 	// which is why several rows here name a `key` and a `source`: a card that
 	// reads `a resolve it` on the same column where another reads `a accept` is
@@ -853,7 +887,7 @@ var tuiWords = map[string]tuiWord{
 		why: "the `over` tier's cell for work that did not finish — GlyphFailed. It is NOT the cell a " +
 			"person's own stop wears, which is GlyphStopped, because nobody found anything wrong with work " +
 			"somebody ended. It was `✗` in internal/tui3 until the icons wave moved every mark into one " +
-			"vocabulary (docs/design/icons/DESIGN.md)",
+			"vocabulary",
 	},
 	"taskDoneWord": {
 		screen: " · done",
@@ -963,7 +997,7 @@ var tuiWords = map[string]tuiWord{
 	},
 	// ── questions: one object, drawn at the size the evidence needs ──────────
 	//
-	// docs/design/questions/DESIGN.md is a contract about what a person SEES when
+	// the implementation is a contract about what a person SEES when
 	// this engine hands them a decision, and questions_e2e_test.go is the only
 	// place that drives it through a real binary. Every sentence below is a
 	// product sentence; the heads, labels and bodies in those scenarios are the
@@ -1192,7 +1226,7 @@ var tuiWords = map[string]tuiWord{
 		why: "the keys the panel writes into its bottom edge, which is how a screen says a question " +
 			"is up and waiting on a person. It was `allow? [1] allow once` — the approval gate's own " +
 			"offer row — until the questions wave gave every question one frame, one key table and one " +
-			"spelling for a key (owner ruling 2026-09-11, hints pick A)",
+			"spelling for a key",
 	},
 	"consentOldCancelWord": {
 		key:    "esc",
@@ -1228,6 +1262,23 @@ var tuiWords = map[string]tuiWord{
 		screen: "no model provider is connected",
 		why: "the dim line the conversation says after esc, which is the other half of a front door: " +
 			"a person who declined is told the next direct road rather than left on an empty screen",
+	},
+	"addMachinePitch": {
+		screen: "Pick up your work anywhere, exactly where you left it.",
+		why: "the pitch on home's add-another-device card (homeband_addmachine.go's addMachinePitch), " +
+			"read by the pairing journey so a respelled card fails the untagged word gate before tmux runs",
+	},
+
+	"secretDeclineWord": {
+		screen: "Decline",
+		pkg:    "internal/session",
+		why: "the one answer a request_secret card offers besides its masked box (secret_request.go's " +
+			"SecretDeclineLabel): a card wearing it is the credential question, up and waiting",
+	},
+	"secretGivenReceipt": {
+		screen: "given, kept out of chat",
+		why: "what a secret question's receipt says was answered (question.go's questionSecretGiven). " +
+			"It said `with: <the token>` until the live run that found it",
 	},
 }
 

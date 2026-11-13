@@ -57,7 +57,10 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
+
+	fastjson "github.com/segmentio/encoding/json"
 )
 
 // The two grains a ledger row can have.
@@ -355,12 +358,15 @@ func (q UsageQuery) matches(line UsageLine) bool {
 // counted as consumed — [scanUsage]'s rule, so one absurd row costs its own
 // record and never the rows after it. A last line with no newline is a write in
 // flight and is neither parsed nor counted, as there.
-func scanUsageLines(r io.Reader, limit int64, fn func(offset int64, line UsageLine) error) (UsageScanStats, error) {
-	var stats UsageScanStats
+func scanUsageLines(r io.Reader, limit int64, fn func(offset int64, line UsageLine) error) (stats UsageScanStats, err error) {
+	defer func() { usageBytesScanned.Add(stats.Bytes) }()
 	if limit >= 0 {
 		r = io.LimitReader(r, limit)
 	}
 	buffered := bufio.NewReaderSize(r, usageLineBytes)
+	// The callback receives a value. Reuse the decode buffer rather than
+	// allocating a full row for every historical call in an identity scan.
+	var line UsageLine
 	for {
 		chunk, err := buffered.ReadSlice('\n')
 		if errors.Is(err, bufio.ErrBufferFull) {
@@ -382,8 +388,11 @@ func scanUsageLines(r io.Reader, limit int64, fn func(offset int64, line UsageLi
 		}
 		offset := stats.Bytes
 		stats.Bytes += int64(len(chunk))
-		var line UsageLine
-		if json.Unmarshal(bytes.TrimSpace(chunk), &line) != nil || line.At.IsZero() {
+		line = UsageLine{}
+		// Validate the full row, including price and token types, before an
+		// identity can suppress a charge. The compiled decoder keeps this
+		// validation within the writer's existing flush budget.
+		if fastjson.Unmarshal(bytes.TrimSpace(chunk), &line) != nil || line.At.IsZero() {
 			stats.Malformed++
 			continue
 		}
@@ -392,6 +401,10 @@ func scanUsageLines(r io.Reader, limit int64, fn func(offset int64, line UsageLi
 		}
 	}
 }
+
+// usageBytesScanned is every whole ledger line's bytes any scan has read, so
+// a test can tell a read of what was appended from a read of everything.
+var usageBytesScanned atomic.Int64
 
 // usageTailError is the end of the reading: the end of the file (with or
 // without a partial line after the last whole one) is no error at all.
@@ -414,6 +427,7 @@ func openUsageScan(path string) (*os.File, func(), error) {
 	if strings.TrimSpace(path) == "" {
 		return nil, release, nil
 	}
+	prepareUsage(path)
 	file, err := os.Open(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, release, nil
@@ -470,7 +484,7 @@ func (e *UsageEntry) add(line UsageLine) {
 		e.bytes += int64(len(model)) + usageModelBytes
 	}
 	e.Records++
-	e.Calls += max(line.Calls, 1)
+	e.Calls += line.modelCalls()
 	e.Input += int64(line.Input)
 	e.Output += int64(line.Output)
 	if line.USD > 0 {
@@ -501,7 +515,7 @@ func (e *UsageEntry) hasModel(model string) bool {
 // is non-negative once this has passed and a row is a part of the totals: a
 // sum the totals could hold, every row's share of it can too.
 func (t *UsageLedgerTotals) count(line UsageLine) error {
-	calls := max(line.Calls, 1)
+	calls := line.modelCalls()
 	if line.Input < 0 || line.Output < 0 || line.USD < 0 || line.Calls < 0 || math.IsNaN(line.USD) || math.IsInf(line.USD, 0) ||
 		t.Records == math.MaxInt || t.Calls > math.MaxInt-calls ||
 		t.Input > math.MaxInt64-int64(line.Input) || t.Output > math.MaxInt64-int64(line.Output) {

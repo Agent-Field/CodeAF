@@ -40,6 +40,7 @@ type pairDoor struct {
 	// asksName is true when a person is at the terminal and so can be asked what
 	// this computer should be called while it joins.
 	asksName bool
+	name     string // A join keeps the requested name only after approval succeeds.
 
 	// The three seams of pairing by link.
 	requests func(pair.Mailbox) directory.Requests
@@ -79,6 +80,24 @@ func ownDeviceRecord(ctx context.Context, dir string, route pair.Mailbox) error 
 	return syncsetup.PutOwnDevice(ctx, client, id, dev, devname.Name(dir))
 }
 
+// ownDeviceRevoked says the directory refuses this computer's own device: it
+// was removed, and pairing again must give it a new device key.
+func ownDeviceRevoked(ctx context.Context, dir string, route pair.Mailbox) bool {
+	if identity.Solo(dir) {
+		return false
+	}
+	client, _, err := homeDirectory(dir, route)
+	if err != nil {
+		return false
+	}
+	dev, err := identity.Device(dir)
+	if err != nil {
+		return false
+	}
+	listing, err := client.List(ctx)
+	return errors.Is(err, directory.ErrRevoked) || err == nil && listing.Devices[dev.ID()].Revoked
+}
+
 // recordOwnDeviceOrSay is what a finished pairing does about its record: the
 // pairing itself succeeded, so a record that did not land is one line on the
 // screen and a clean exit — the next chat start writes the record anyway.
@@ -110,9 +129,9 @@ func (d pairDoor) run(ctx context.Context, args []string) error {
 		fmt.Fprintln(usageOut, reason)
 	}
 	flags := commandFlags("pair")
-	via := flags.String("via", "", "the sync address to pair through; empty is the one this device already uses")
+	via := flags.String("via", "", "the sync service to pair through; empty is the one this device already uses")
 	renamedFlag(flags, "relay", "via")
-	code := flags.Bool("code", false, "show a six-digit code that shares this device's chats, instead of asking to join")
+	code := flags.Bool("code", false, "show a code such as "+pair.ExampleChatCode+" that shares this device's chats, instead of asking to join")
 	replace := flags.Bool("replace", false, "when typing a code, replace this device's own chats with the shared ones")
 	name := flags.String("name", "", "what your devices call this one; empty keeps its current name, which starts as the host name")
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
@@ -121,18 +140,32 @@ func (d pairDoor) run(ctx context.Context, args []string) error {
 	if err := d.naming(ctx, *name, flags.Args(), *code); err != nil {
 		return err
 	}
-	return d.dispatch(ctx, flags.Args(), *via, *replace, *code)
+	progressAddress := *via
+	if progressAddress == "" {
+		progressAddress = syncsetup.Resolve(home.Dir()).URL
+	}
+	d.term.waitingStop = terminalSyncProgress(progressAddress)
+	defer d.term.stopProgress()
+	return explainSyncUnreachable(d.dispatch(ctx, flags.Args(), *via, *replace, *code), *via)
 }
 
-// naming settles what this computer is called before a join starts, because the
-// name is what the device that lets it in will show. A typed --name is kept as it
-// is, and a bad one stops the pairing before the relay is looked up. Without one,
+// naming settles the label shown during approval. A join keeps the choice in
+// memory until it succeeds, so refusal changes no files. A bad --name stops
+// pairing before the relay is looked up. Without one,
 // a person at a terminal who has never named this computer is shown the host name
 // and may keep it with Enter or type another. The device that shows a code or
 // approves already has a name, so only a join asks.
-func (d pairDoor) naming(ctx context.Context, typed string, args []string, showing bool) error {
+func (d *pairDoor) naming(ctx context.Context, typed string, args []string, showing bool) error {
 	if typed != "" {
-		_, err := devname.Set(home.Dir(), typed)
+		name, err := devname.Clean(typed)
+		if err != nil {
+			return err
+		}
+		if !showing && joins(args) {
+			d.name = name
+			return nil
+		}
+		_, err = devname.Set(home.Dir(), name)
 		return err
 	}
 	if !d.asksName || showing || !joins(args) {
@@ -151,7 +184,7 @@ func joins(args []string) bool {
 }
 
 // askName asks until a name is kept or the person leaves it as it is.
-func (d pairDoor) askName(ctx context.Context) error {
+func (d *pairDoor) askName(ctx context.Context) error {
 	for {
 		fmt.Fprint(d.term.out, pair.NamePrompt(devname.Name(home.Dir()))+" ")
 		typed, ok := d.term.lines.next(ctx)
@@ -159,8 +192,9 @@ func (d pairDoor) askName(ctx context.Context) error {
 			fmt.Fprintln(d.term.out)
 			return nil
 		}
-		_, err := devname.Set(home.Dir(), typed)
+		name, err := devname.Clean(typed)
 		if err == nil {
+			d.name = name
 			return nil
 		}
 		d.term.say(pair.NameTried(err))
@@ -198,12 +232,19 @@ func (d pairDoor) show(ctx context.Context, relay string) error {
 	if err != nil {
 		return err
 	}
+	if d.ownRecord != nil {
+		if err := d.ownRecord(ctx, route); err != nil {
+			return err
+		}
+	}
 	label, err := pair.Offer(ctx, route, grant, offerScreen{d.term})
 	if err != nil {
 		return d.endedByPerson(ctx, err)
 	}
-	d.term.say(pair.PairedChatsLine(label))
+	waitStorage := startPairedStorage(ctx, d.joining(false).Home, route)
 	d.recordOwnDeviceOrSay(ctx, route)
+	waitStorage()
+	d.term.say(pair.PairedChatsLine(label))
 	return nil
 }
 
@@ -213,16 +254,39 @@ func (d pairDoor) join(ctx context.Context, relay, typed string, replace bool) e
 	if _, err := pair.ReadJoinCode(typed); err != nil {
 		return err
 	}
+	if !d.confirmReplacement(ctx, replace) {
+		return nil
+	}
 	route, err := d.mailbox(relay)
 	if err != nil {
 		return err
 	}
-	joined, err := pair.Join(ctx, route, d.joining(replace), typed, joinScreen{d.term})
+	if err := d.pairingStatus(ctx, route, replace); err != nil {
+		return err
+	}
+	joining := d.joining(replace)
+	if d.name != "" {
+		joining.Label = d.name
+	}
+	joined, err := pair.Join(ctx, route, joining, typed, joinScreen{d.term})
 	if err != nil {
+		if line := pair.TeamsAsideLine(joined.TeamsAside); line != "" {
+			d.term.say(line)
+		}
 		return d.endedByPerson(ctx, err)
 	}
+	if !joined.Already && d.name != "" {
+		if _, err := devname.Set(joining.Home, d.name); err != nil {
+			return err
+		}
+	}
+	if !joined.Already {
+		if f, err := pullFleet(joining.Home, route)(ctx); err == nil {
+			joined.With = f.With
+		}
+		d.recordOwnDeviceOrSay(ctx, route)
+	}
 	d.term.say(joinedSentence(joined))
-	d.recordOwnDeviceOrSay(ctx, route)
 	return nil
 }
 
@@ -232,7 +296,7 @@ func joinedSentence(joined pair.Joined) string { return joined.Sentence() }
 // endedByPerson turns the end a person chose with ctrl+c into a clean exit that
 // says nothing was paired, and leaves every other failure as the sentence it already is.
 func (d pairDoor) endedByPerson(ctx context.Context, err error) error {
-	if ctx.Err() != nil {
+	if errors.Is(ctx.Err(), context.Canceled) {
 		// The terminal echoes ^C on the prompt's own line, so start a fresh one.
 		fmt.Fprintln(d.term.out)
 		d.term.say(pair.CancelledLine)
@@ -250,5 +314,28 @@ func asksForHelp(args []string) bool {
 			return true
 		}
 	}
+	return false
+}
+
+// confirmReplacement asks before either terminal joining flow changes local state.
+func (d pairDoor) confirmReplacement(ctx context.Context, replace bool) bool {
+	// A non-terminal --replace already authorizes replacement, as it did
+	// before the interactive question included teams.
+	if !replace || !d.asksName {
+		return true
+	}
+	j := d.joining(true)
+	profile := j.ProfileDir
+	if profile == "" {
+		profile = j.Home
+	}
+	_, err := identity.Load(j.Home)
+	if err != nil && !pair.HasTeams(profile) {
+		return true
+	}
+	if d.term.confirm(ctx, pair.ReplaceAskLine) {
+		return true
+	}
+	d.term.say("nothing was replaced: this computer's chats stay.")
 	return false
 }

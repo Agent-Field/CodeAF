@@ -93,6 +93,69 @@ adds the content to the end of the file instead of replacing it and reports
 `Appended N lines to <path>; the file now has M lines.` — appending to a file
 that does not exist yet simply creates it.
 
+## UTF-16 files, PowerShell text, BOM and CRLF line endings
+
+`read` decodes UTF-16 little-endian and big-endian files that start with a byte
+order mark (BOM), including files written by Windows PowerShell 5.1. `edit` and
+`write`, including `append:true`, keep that encoding and BOM. Files without a
+UTF-16 BOM retain their existing interpretation; UTF-8 needs no conversion.
+Keeping an existing encoding requires a readable file. Linux and macOS still
+allow a write-only file to be replaced with the exact supplied bytes.
+Reads, edits and appends refuse malformed UTF-16 with an incomplete code unit or
+an unpaired surrogate. Windows also refuses rewriting malformed UTF-16; Linux
+and macOS allow a full rewrite to replace its old bytes.
+
+UTF-16 edits, rewrites and appends keep the file's line-ending style on every OS.
+For other files, chat edits preserve the existing style. Windows rewrites, appends
+and headless edits also preserve that style. On Linux and macOS, `write` keeps
+the supplied bytes exactly, and headless `codeaf do`, `exec` and `run` edits
+continue to match and replace literal text, including CRLF.
+
+## Why is a written or edited file missing from Files — deliverables in a plain folder
+
+Successful `write` and `edit` calls record files inside the conversation's
+workspace, its own `work/`, or its `artifacts/` folder. This includes overwriting
+an existing file and appending to it. A rewrite updates the same deliverable ID
+with the new content hash; it does not add another card. Files of other types,
+such as text, source code and PDFs, are recorded as files too.
+
+If the same path has both an authored card and an independently shared card,
+rewrites update the authored card. If it has only a shared card, a write or edit
+creates a separate authored card; the shared identity and version stay unchanged
+so an interrupted share can still be retried. Legacy cards with unknown authorship
+also stay unchanged. Keeping a copy while the source is rewritten
+retains the copy's recorded bytes and the source's latest hash and preview.
+This also holds when the desktop keeps locally while another process hosts
+the conversation and records its writes.
+
+A desktop conversation has a deliverables index and a journal even when its
+folder is a home directory or another folder outside Git. These rules cover the
+conversation's own tools. Writing outside these roots does not claim a deliverable.
+Task workers retain creation-only recording for supported file kinds; media
+created in a task worktree is not automatically recorded.
+
+Chat `/files` counts up to 200 distinct paths from recent index rows. Repeated
+edits to one file do not consume that 200-path limit. Generic files use a bounded
+header sniff for MIME, retaining a known MIME when the new sniff is generic.
+
+Shell commands have a narrower signal: pictures declared in `bash`'s `outputs`
+are already inspected and recorded. Other shell-made files are not discovered
+automatically; there is no filesystem scan. `share_deliverable` can explicitly
+hand over an existing file.
+## Why did a compact worker reject a write with “write needs text”?
+
+Chat writes require a string `content` field, including with `append:true`. A
+missing or null `content` returns
+`Invalid arguments: content is required and must be a string` before changing
+files or creating directories. An explicit `content:""` is valid.
+
+The compact worker toolbelt uses `write` with `path` and `text`, rather than the
+chat toolbelt's `path` and `content`. Its `text` field must be a string. A missing,
+null or differently typed `text` returns
+`write needs text as a string (use text, not content; an empty string is allowed)`
+before creating directories or changing a file. Retry with the required `text`
+field. An explicit `text:""` intentionally writes an empty file.
+
 ## Can you append to a file, or add to the end without rewriting it?
 
 Yes. `write` takes an optional `append:true`, which adds the new content after
@@ -291,7 +354,7 @@ truly enormous amounts before it was kept as a job, the log begins where codeaf'
 rolling tail begins — the last few hundred kilobytes — rather than at the very
 first line.
 
-## Does codeaf poll a background job, or does it get told — how does it know a job finished?
+## Does codeaf poll a background job with repeated sleep and tail commands, or get told when it finishes?
 
 **It gets told, and it never has to poll.** Two things arrive without anybody
 asking for them.
@@ -473,6 +536,25 @@ outcome belongs here, and gathering, deciding, writing or checking something —
 parts it has, and however long it takes — belongs to a task instead, which gives you a room
 to watch and a report you can read. If a multi-part piece of work was started as a
 background command, say so: it can be handed to a task instead.
+
+## Why was my background job ended — the CPU and process bound on a job
+
+The bound applies to `bash` jobs: both background commands and foreground
+commands kept as jobs. It measures the job's whole process tree, including its
+children, rather than just the shell that started it.
+
+A job's tree may not hold more than **128 processes**. When no CPU quota or
+affinity mask holds codeaf below the machine's logical core count, the tree
+also may not sustain more than **three fifths of those logical cores**. Under
+a binding quota or affinity mask, only the process-count bound applies.
+
+Either limit exceeded for **15 consecutive readings, 2 seconds apart**
+(**thirty seconds**) ends the job. A brief spike does not end it. The run is
+told **"the job subtree was not settled within its bound"**, with the job's
+process count and CPU usage, so the ending is explained.
+
+The tree is read on **Linux and macOS**. Where the tree cannot be read,
+including **Windows**, this bound never cuts a job.
 
 ## How much disk space do finished job logs keep?
 
@@ -682,8 +764,9 @@ It tries rungs in order and names the one that answered, e.g.
 `<path> is over the 25MB document limit`. A path it cannot open answers
 `could not read <path>`. With no API key on the session:
 `the document rungs are out of reach: this session has no API key — read_document rides this session's own API key and base URL`.
-When every rung fails, each is named, e.g.
-`could not read <path> — native: 402 insufficient credits; cloudflare-ai: no readable text`.
+When every rung fails, each is named and the error points to `read` for local
+text extraction, e.g.
+`could not read <path> — all document parsers failed; native: 402 insufficient credits; cloudflare-ai: no readable text; try read for local text extraction`.
 
 Extraction is remembered for the conversation, so paging through a long document
 costs nothing extra.
@@ -693,6 +776,13 @@ rung only, which is a model's own eyes. When the model you are talking to cannot
 see, that rung is sent to the **looking model** instead of to your blind one, so
 `read_document` reads a photograph on any model. Everything else (PDFs, docx,
 xlsx, pptx) goes to your own model and the parsers, as before.
+
+## Can read_document read a short or one-line office document?
+
+`read_document` accepts complete office text, even a single line. Length alone
+does not trigger another parser. Invalid UTF-8 or binary control characters are
+rejected, so unreadable output still tries the next rung. If every parser fails,
+the error names them and suggests `read` for local text extraction.
 
 ## Can you look at an image, listen to audio or watch a video I have on disk?
 
@@ -1032,7 +1122,7 @@ Yes, in two ways: the transcript itself, and three tools that hold working state
 **outside** the transcript so a compaction cannot lose it.
 
 (Carrying something into a *later* conversation is a different mechanism and has
-its own page — `remember`, `forget`, `/remember`, `/memories` and the Memories tab are on
+its own page — `remember`, `forget`, `/remember`, `/memories` and the Memory tab are on
 what-i-remember.)
 
 **`track`** records one item. Arguments: `text` (required), `kind` (required —
@@ -1161,6 +1251,11 @@ reaches, even when the question was looked up in different words.
 When the manual has nothing on a topic, the answer is:
 `The manual has nothing on that, which usually means codeaf does not do it.`
 
+**In the desktop app, the app's own pages are in it too.** The app registers its
+pages when it starts, and `manual` searches them beside codeaf's own. Their names
+start with `workaf/`, such as `workaf/inbox`, so an answer always says whether it
+came from the app's pages or from codeaf's. They last until the app quits.
+
 **Looking something up never asks your permission and records nothing.** It is a
 read, like `grep` — no journal line, no cost, no trace in the conversation.
 
@@ -1240,7 +1335,7 @@ commit trailer, and every credential row. The permissions page lists them exactl
 model that could widen its own restraints would not have any.
 
 Both tools are absent inside a running task, along with `watch`. A task node
-works in a copy of its own with nobody watching it, and a permanent change to your
+works in a folder of its own with nobody watching it, and a permanent change to your
 machine that no transcript ever showed you is the one thing this pair must not be
 able to make. `propose_task` and `tasks` are NOT absent there: a task may hand
 pieces of its own work out, tasks nesting 3 deep at most, and `tasks` shows it those
@@ -1289,7 +1384,11 @@ compacted away, codeaf loads the group again when needed.
 **Yes, with `share_deliverable`.** When a file is something you should get back — a
 chart a script rendered, a report, a PDF, a recording, a spreadsheet, an archive — the
 agent shares it, and it joins this conversation's deliverables marked **shared by** the
-agent. A file made with `write` or by a generator is recorded already and needs no share.
+agent. Files recorded by `write` or a generator need no share. Sharing an unchanged
+authored file reports that it is already among this conversation's deliverables,
+adds no record, emits no update and costs nothing. Other files in the same call
+are still shared. If a script or shell changed the bytes since the authored record,
+sharing records the new version; content hashes decide, not timestamps.
 
 - **Up to 8 files and 64 MiB in all per call**, any regular file kind. A picture, a sound
   or a video is also a media source you can preview; every other file keeps the type its

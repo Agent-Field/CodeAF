@@ -1,0 +1,119 @@
+package tui3
+
+import (
+	"context"
+	"fmt"
+
+	tea "charm.land/bubbletea/v2"
+	"github.com/Agent-Field/codeaf/internal/session"
+)
+
+// startRequestedChat keeps the requesting conversation in front. The new model
+// and approvals are applied off the UI loop before the first message is sent.
+func (a *app) startRequestedChat(request *session.ChatStart, owner Agent) tea.Cmd {
+	if request == nil || request.ID == "" {
+		return nil
+	}
+	if a.chatStarts == nil {
+		a.chatStarts = map[string]bool{}
+	}
+	if a.chatStarts[request.ID] {
+		return nil
+	}
+	a.chatStarts[request.ID] = true
+	if a.shared || a.start == nil || !a.canStart() {
+		a.note("could not start chat · " + newUnavailableWord)
+		return nil
+	}
+	start := a.start
+	listed := a.requireListedModel
+	var models []Model
+	var parentRunning string
+	if listed {
+		models = a.modelList()
+		if owner != nil {
+			parentRunning = runningModel(owner)
+		}
+	}
+	// Opening a chat the model asked for is not a person's gesture, like a team
+	// start: its dial and first message must not stand in front of an answer or
+	// a model pick a person presses meanwhile. Nothing here needs the parent's
+	// order, and the child has no selection on the line to wait for.
+	return a.besideLine(func() func(bool) tea.Cmd {
+		claimer, ok := owner.(interface{ ClaimChatStart(string) (bool, error) })
+		if !ok {
+			return func(bool) tea.Cmd { a.note("could not start chat · launch ownership unavailable"); return nil }
+		}
+		claimed, claimErr := claimer.ClaimChatStart(request.ID)
+		if claimErr != nil {
+			return func(bool) tea.Cmd { a.note("could not start chat · " + claimErr.Error()); return nil }
+		}
+		if !claimed {
+			return func(bool) tea.Cmd { return nil }
+		}
+		conv, err := start(request.Workspace)
+		seated := request.Model
+		var events <-chan session.Event
+		if err == nil && conv.Agent == nil {
+			err = fmt.Errorf("the new conversation has no agent")
+		}
+		if err == nil {
+			// The request carries the parent's saved choice. Availability is
+			// reconciled for this child before its first request, without saving
+			// a temporary replacement inherited from the parent.
+			conv.Agent.SetModel(request.Model)
+			if request.Approval != "" {
+				if setter, ok := conv.Agent.(interface{ SetApprovalPosture(string) error }); ok {
+					err = setter.SetApprovalPosture(request.Approval)
+				} else {
+					err = fmt.Errorf("the new conversation cannot inherit approvals")
+				}
+			}
+		}
+		if err == nil && listed {
+			// An unlisted request runs for now on the replacement the parent is
+			// already running, as the parent's own reconcile would keep it.
+			model, available := runOnlyModel(request.Model, parentRunning, models)
+			if !available {
+				err = fmt.Errorf("%s", noAvailableModelWord)
+			} else if model.ID != request.Model {
+				if door, ok := conv.Agent.(interface{ UseModelForNow(string) error }); ok {
+					err = door.UseModelForNow(model.ID)
+				} else {
+					conv.Agent.SetModel(model.ID)
+				}
+			}
+			if err == nil && model.ContextLength > 0 {
+				conv.Agent.SetContextWindow(model.ContextLength)
+			}
+			if err == nil {
+				seated = model.ID
+			}
+		}
+		if err == nil {
+			err = waitModelSelection(context.Background(), conv.Agent)
+		}
+		if err == nil {
+			events, err = conv.Agent.Submit(context.Background(), request.Brief)
+		}
+		if err != nil && conv.Agent != nil {
+			_ = conv.Agent.Close()
+		}
+		return func(bool) tea.Cmd {
+			if err != nil {
+				a.note("could not start chat · " + err.Error())
+				return nil
+			}
+			cmd := a.stow(conv, nil)
+			key := a.convKey(conv.SessionFile)
+			if held := a.behind[key]; held != nil {
+				held.watch.adopt(events, nil)
+			}
+			a.trafficBehindTop(key)
+			a.chatTabBar = tabBar{}
+			// The receipt names the model the new chat runs on.
+			a.note("started chat · " + seated)
+			return cmd
+		}
+	})
+}

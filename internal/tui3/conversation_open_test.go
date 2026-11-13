@@ -49,6 +49,7 @@ func TestHomeOpeningDoesNotHoldInputAndCancelledDraftIsNotSent(t *testing.T) {
 	if a.conversationRequest != request {
 		t.Fatal("repeated enter queued another open")
 	}
+	_, _ = a.Update(key("esc"))
 	_, _ = a.Update(key("x"))
 	if a.conversationOpening || !strings.Contains(a.home.box.String(), "x") {
 		t.Fatal("typing was blocked or did not cancel the stale submission")

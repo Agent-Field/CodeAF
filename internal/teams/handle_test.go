@@ -41,10 +41,10 @@ func TestDeriveHandle(t *testing.T) {
 // the team's handles are all different.
 func TestHandlesFromRealTitlesNameTheWork(t *testing.T) {
 	titles := map[string]string{
-		"checking codeaf branches for qa binary":              "qa-binary",
-		"review santosh dev2 branch code complexity security": "security",
-		"reviewing codeaf repo issue tags and milestones":     "milestones",
-		"agent native user journey automated testing":         "testing",
+		"checking codeaf branches for qa binary":          "qa-binary",
+		"review dev dev2 branch code complexity security": "security",
+		"reviewing codeaf repo issue tags and milestones": "milestones",
+		"agent native user journey automated testing":     "testing",
 		"can you te": "chat",
 	}
 	tm := Team{ID: "t"}
@@ -154,7 +154,7 @@ func TestRepairClearsRepeatedAndInvalidHandles(t *testing.T) {
 func TestChooseHandleTakesTheModelsWord(t *testing.T) {
 	f := &File{Teams: []Team{{ID: "t1", Name: "test"}}}
 	titles := map[string]string{
-		"a": "santosh dev2 branch code complexity & security review",
+		"a": "dev dev2 branch code complexity & security review",
 		"b": "CodeAF repo issue tags & milestones",
 		"c": "quantum gravity research updates / session monitor",
 	}

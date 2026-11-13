@@ -3,13 +3,11 @@ package tui3
 // THE PROGRAM'S BADGE: how a person tells work handed to a program codeaf
 // carries — senior-dev — from a task this conversation's own worker does.
 //
-// The two looked the same everywhere a task is named. A senior-dev run and an
-// ordinary `/task` drew the same first line on the side list — a state glyph, a
-// title, a handle — and the card a person approved said `wants to start a
-// task:` for both, so the one thing about the work that decides what it will do
-// and how long it will take was not on the screen at all. The owner asked for a
-// prominent badge like `[senior-dev]` on the task's row, none on an ordinary
-// task's, and a badge of its own for every program that comes after it.
+// The two looked the same everywhere a task is named. A senior-dev run and an ordinary
+// `/task` drew the same first line on the side list — a state glyph, a title, a handle —
+// and the card a person approved said `wants to start a task:` for both, so the one thing
+// about the work that decides what it will do and how long it will take was not on the
+// screen at all.
 //
 // SO THE BADGE IS THE PROGRAM'S NAME IN BRACKETS, AND NOTHING ELSE MAKES IT. A
 // program's [session.TaskNotice.Program] is the name its own command row says
@@ -20,15 +18,10 @@ package tui3
 // hyphen-separated parts — `[sd]`, `[dw]` for a doc-writer — which is what a
 // twenty-four-cell column can afford.
 //
-// THE BRACKETS ARE ALWAYS DRAWN. The badge is painted in the accent, bold,
-// because the owner asked for it to be prominent and the accent is this
-// surface's one loud voice (docs/DESIGN-LANGUAGE.md's accent budget: it marks
-// the live or chosen thing, and a program's work is the one row on a column that
-// is a different kind of thing) — but ink is not always there to be read. A
-// terminal with no colour draws none; a row somebody is standing in is laid on
-// the selected ground, which swallows a chip's; and a screen reader reads words.
-// The brackets are what is left in all three, so they are part of the badge and
-// never decoration around it ([session.ProgramBadge] spells them once).
+// THE BRACKETS ARE ALWAYS DRAWN. A terminal with no colour draws none; a row somebody is
+// standing in is laid on the selected ground, which swallows a chip's; and a screen reader
+// reads words. The brackets are what is left in all three, so they are part of the badge
+// and never decoration around it ([session.ProgramBadge] spells them once).
 //
 // IT IS NEVER A LEAD AND NEVER A TARGET. The badge stands after the title, in
 // the row's trailing slot — never in front of it, where the column's law keeps

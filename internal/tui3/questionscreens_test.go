@@ -233,12 +233,10 @@ func TestQuestionScreens(t *testing.T) {
 		l.rows()
 	})
 
-	// THE EVIDENCE, AT THE THREE WIDTHS THE OWNER PICKED FOR (2026-09-11).
-	// Preview A beside the list at a hundred columns and wider, preview-narrow B
-	// unfolded under the pointer below that, and page A — the page `o` opens —
-	// as two panes where they fit and one column where they do not. Each is the
-	// same answer's evidence through the same renderer, so the six pictures are
-	// one account of it drawn at three widths.
+	// Preview A beside the list at a hundred columns and wider, preview-narrow B unfolded
+	// under the pointer below that, and page A — the page `o` opens — as two panes where they
+	// fit and one column where they do not. Each is the same answer's evidence through the
+	// same renderer, so the six pictures are one account of it drawn at three widths.
 	for _, width := range []int{120, 96, 56} {
 		shot("evidence-"+itoa(width), func(l *questionLab) {
 			l.a.width, l.a.height = width, 40

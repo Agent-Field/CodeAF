@@ -107,7 +107,7 @@ package session
 // ── AND A PAUSE THAT BOUGHT NOTHING IS PAID ONCE, NOT ON EVERY TASK ──
 //
 // That bargain was written for a pause that happens once. Measured on the
-// owner's laptop, 2026-09-11: ninety-three nodes admitted over three days, every
+// regression scenario: ninety-three nodes admitted over three days, every
 // one of them grounded on the snapshot rung, and every one of them had first
 // attached, sealed and forked its whole workspace and thrown the fork away —
 // about fifteen seconds in front of each task's first request, for a rung that
@@ -132,6 +132,7 @@ package session
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -348,6 +349,18 @@ func carveGround(ctx context.Context, order groundOrder) (taskTree, error) {
 // carveGroundDown is [carveGround] over the rungs it is handed, which is how a
 // copy that must be a particular kind of world comes back by the same walk.
 func carveGroundDown(ctx context.Context, ladder []groundRung, order groundOrder) (taskTree, error) {
+	if err := ensureTaskStorage(ctx, order.place, order.ground); err != nil {
+		return taskTree{}, fmt.Errorf("restore task ground: %w", err)
+	}
+	if manager, enabled := taskStorage(order.place); enabled && taskStorageOwns(order.place, order.dir) {
+		state, err := manager.Inspect(ctx, order.dir)
+		if err != nil {
+			return taskTree{}, err
+		}
+		if state.Snapshot != "" {
+			return taskTree{}, errors.New("this task already has saved work; continue its existing copy")
+		}
+	}
 	var climb groundClimb
 	for _, rung := range ladder {
 		reaches, stood := rung.reach(order)
@@ -508,6 +521,7 @@ func forkGround(ctx context.Context, order groundOrder) (taskTree, error) {
 	}
 	if err != nil {
 		_ = os.RemoveAll(order.dir)
+		removeForkStaging(order.dir)
 		return taskTree{}, err
 	}
 	if order.promise == TaskModeWorktree {
@@ -1099,7 +1113,7 @@ func (t taskTree) replayOwnWork() bool {
 	if strings.TrimSpace(t.base) == "" || strings.TrimSpace(t.dir) == "" {
 		return false
 	}
-	if _, err := git(t.dir, append(codeafGitIdentity(),
+	if _, err := privateGit(t.dir, append(codeafGitIdentity(),
 		"rebase", "--onto", t.base+"^", t.base)...); err == nil {
 		return false
 	}
@@ -1169,6 +1183,9 @@ func (t taskTree) carryBranchHomeLocked() (string, error) {
 // releaseLanded retires a completed copy before giving back its directory.
 // A failed retirement preserves the files Furrow needs to remove its timeline.
 func (t taskTree) releaseLanded() error {
+	if retainTaskStorage(t) {
+		return nil
+	}
 	// THE SAME DOOR [taskTree.releaseKept] closes: a tree whose ground was never
 	// made has nowhere a worktree could be registered and no repository to ask,
 	// and a command with no directory runs in the process's own directory — so

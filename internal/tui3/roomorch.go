@@ -1412,7 +1412,9 @@ func (a *app) orchGraphRows(page *orchPage, width int) {
 	run := a.orchOf()
 	if len(run.snap.Nodes) == 0 {
 		word := orchEmptyWord
-		if !run.known {
+		if reason := run.snap.EmptyPlanReason(); reason != "" {
+			word = reason
+		} else if !run.known {
 			word = orchUnknownWord
 		}
 		page.put(a.pal.dim(fit(word, width)))
@@ -1821,7 +1823,7 @@ func orchNodeWord(node orchestrate.NodeStatus) string {
 		// looking for a fault, and most of the ways a node ends this way are not
 		// one — so a run's node reads what every other piece of work on this
 		// surface reads (taskview.go's [taskRecordStoppedWord], and
-		// docs/design/task-states/DESIGN.md).
+		// the implementation).
 		return taskRecordStoppedWord
 	case orchestrate.Cancelled:
 		return orchStoppedWord
@@ -2024,6 +2026,8 @@ func (a *app) orchHeadMark() string {
 	switch {
 	case run.snap.Stopped:
 		return a.icon(tokens.GStopped)
+	case run.snap.EmptyPlanReason() != "":
+		return a.icon(tokens.GFailed)
 	case run.gate != nil || run.snap.Paused:
 		return a.linearMark(orchGlyphPaused, orchGlyphPausedASCII)
 	case run.snap.Done:
@@ -2043,6 +2047,8 @@ func (a *app) orchStateWord() string {
 	switch {
 	case run.snap.Stopped:
 		return orchStoppedWord
+	case run.snap.EmptyPlanReason() != "":
+		return taskRecordStoppedWord
 	case run.gate != nil || run.snap.Paused:
 		return orchPausedWord
 	case run.snap.Done:

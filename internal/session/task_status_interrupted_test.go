@@ -23,7 +23,7 @@ func TestWorkNothingIsDrivingSaysSoInTheOneWord(t *testing.T) {
 		t.Fatalf("it reads as %q", status.Presence)
 	}
 	if status.Word != "interrupted" {
-		t.Fatalf("the word is %q, and it is the one the owner asked for by name", status.Word)
+		t.Fatalf("the status word is %q, want interrupted", status.Word)
 	}
 	// AND IT IS NOT A FAULT. Nothing was found out about the work at all, so
 	// colouring it as something having broken would report a finding nobody made.

@@ -1,5 +1,13 @@
 # Models, context, and what it costs
 
+## A fallback list naming only the current model — keep the answer on that model
+
+The `fallback models` row is your list of other models a failed request may try.
+If it names only the current model, there is no other model to try: codeaf does
+not replace it with a suggestion from the catalog.
+Repeating the same model or adding blank rows does not change that choice.
+A list containing only blanks leaves the catalog free to suggest another model.
+
 ## Lost internet, Wi-Fi disconnected, DNS errors, and waiting for connection
 
 When DNS or a connection attempt fails before the request is accepted, codeaf
@@ -113,13 +121,23 @@ On a local launch, the opening model comes from the same available chat list as
 is kept only if that model is listed. Otherwise codeaf selects the first available
 chat model in provider order. With only Ollama connected, that is an installed Ollama
 model. With several providers, the default still belongs to their combined list.
-Automatic replacements do not overwrite your saved preference.
+Availability replacements apply only to this run. They do not overwrite the
+conversation's saved model, main/fallback pair or profile model settings. When
+the configured model is listed again, codeaf returns to it automatically.
+Until then the replacement stays while it is listed; a refreshed list that puts
+another model first does not move the conversation. A hidden chat reconciles availability when it next comes to the front.
+Choosing a model yourself, including the replacement already running, saves that
+choice as usual.
 
 While every catalog is cold or empty, no default model is displayed and a message
 stays in the draft. The picker opens with:
 `no available model · connect a provider or refresh /model`.
 When a provider's list arrives, codeaf selects an available model. Press Enter again
-to send the draft. Refreshing a list or removing a connection also replaces a model
+to send the draft. The replacement is displayed immediately, and each send waits
+for that chat's model switch to finish. A failed selection reports
+`could not change model · <reason>`; the message still sends once on the engine's
+current model, and the next availability check retries the selection.
+Refreshing a list or removing a connection also replaces a model
 that is no longer listed; existing requests finish on the model they started with.
 
 Remote sessions keep the engine's opening model; this laptop's catalog does not
@@ -261,7 +279,7 @@ your query. `↑`/`↓` do not count as editing. `tab` always opens and closes.
 **This is one list with two doors.** `/model` opens it, and so does the **your model**
 row at the top of the Models category in `/settings` — the same rows, the same name
 search, the same providers under `→`, and `enter` on a provider pins it either way. The media
-slots on that tab (**drawing**, **speaking**, **looking** and the rest) open the same
+choices on that tab (**drawing**, **speaking**, **looking** and the rest) open the same
 component over their own models, but they have no provider row behind them, so nothing
 unfolds under them and the foot does not offer the key.
 
@@ -277,7 +295,7 @@ Type a letter, use `backspace` or `ctrl+w`, or paste: any edit returns the caret
 
 Every model list opens on the model it holds. `/model` opens on the model in use,
 highlighted and on screen on the first frame, so enter with nothing typed confirms.
-The settings slots and roles, a task's model word, home's draft, the task composer's
+The settings choices and roles, a task's model word, home's draft, the task composer's
 `alt+o` and a lane list or chip follow the same rule. A refresh returns the cursor to
 the held model with the typed filter kept; `ctrl+u` emptying the box returns there too.
 If that model is absent, the first selectable row is used, skipping unavailable
@@ -285,13 +303,13 @@ notices. `/model <query>` and typing a filter start the narrowed list at its fir
 
 The model in use is bold in the accent with no band of its own. The band belongs to
 the cursor, and a pointer hovering another row lifts that row too. Every model list
-owns the mouse wheel while it is up: `/model`, settings slots and roles, home's draft
+owns the mouse wheel while it is up: `/model`, settings choices and roles, home's draft
 and the task composer walk three rows a notch, clamped at both ends, while the page
 beneath stays put. The cursor's row stays on screen with headings and extra lines
 included in the window's size.
 
 **Enter on a model chooses it and closes the list immediately.** This applies to the
-conversation, a task's model, settings slots and roles, home's draft and the task composer.
+conversation, a task's model, settings choices and roles, home's draft and the task composer.
 The keyboard returns to the draft or page you opened the list from. To compare another
 model, reopen the list. With no matching model, Enter leaves the list open and changes
 nothing. Enter inside a provider fold keeps those controls open, including when it opens
@@ -306,8 +324,8 @@ appear; with only OpenRouter connected, only its models appear. With several pro
 connected, their lists appear together in provider groups. Removing a connection or its
 key removes its models from subsequent lists. A cold catalog never adds built-in guesses.
 
-This applies to `/model`, task rooms, settings slots and roles, Home drafts and the task
-composer. Each slot still keeps only models with the capabilities it needs. A provider
+This applies to `/model`, task rooms, settings choices and roles, Home drafts and the task
+composer. Each field still keeps only models with the capabilities it needs. A provider
 that cannot list models has a non-selectable notice; `+ add a provider` opens connection
 setup and is not a model. That menu includes every built-in provider from initial setup, including
 OpenRouter, and labels each `connected` or `not connected`. You can add OpenRouter after
@@ -415,7 +433,7 @@ their rounded `t/s` rates, with a rate that rounds to zero absent there too.
 
 ## Why does the model picker keep jumping
 
-The `/model` list you are reading is a snapshot. Typing in the filter still narrows it;
+The `/model` list you are reading is a saved copy. Typing in the filter still narrows it;
 the `via` and the speeds do not rewrite themselves while you look. A turn running
 underneath can still update the status line. Close the list and open it again if you
 want the latest machines.
@@ -464,7 +482,7 @@ Where that happens the column is dropped, head and all:
 | **filming** | `video`, on every row | no |
 
 `inputs` survives the same test on most lists because it genuinely varies: on `/model` it
-has eleven different values across three hundred-odd models, and in the **filming** slot
+has eleven different values across three hundred-odd models, and in the **filming** field
 some models take a picture to animate and some take a clip.
 
 **This is only asked of `inputs` and `outputs`,** because they are the only columns a list
@@ -474,9 +492,9 @@ list is a coincidence, not a definition, and those columns are always drawn.
 **The cells report only what was published — they never read the id.** A model whose name
 says `vl` or `vision` but whose catalog row lists no modalities draws two blank cells,
 because a cell is a fact about the catalog and not a guess about a name. The **looking**
-slot does fall back to those two words in a name when a row published nothing, so a silent
+field does fall back to those two words in a name when a row published nothing, so a silent
 `…-vl` row can be offered there while showing nothing under `inputs` here. The two are
-asking different questions: the cell says what is known, the slot has to decide whether to
+asking different questions: the cell says what is known, the field has to decide whether to
 offer the row at all.
 
 **On a line with no heading over it the side is spelled out.** `codeaf models`, a frame too
@@ -809,6 +827,9 @@ unchecked rather than on a bill ten times its estimate.
 Only the checker's own calls count toward that ceiling, whatever model the worker or
 planner runs, including a crew whose three seats use one model. The ceiling follows
 the checker when it moves to another model.
+Each check in a run starts with its own checker ceiling. An earlier check's actual
+cost does not raise the estimate held against a later check's ceiling. Every check's
+spend still counts toward the whole run's per-task limit and the day's limits.
 
 This cap is the crew's own. The day's limit under `/settings` → Spending counts everything
 codeaf spends, and still applies.
@@ -824,17 +845,18 @@ Every priced call of one task — each seat's, on every model, and the helpers m
 counts against one figure: what the task has spent, plus every call of it still on its
 way, plus what this call is expected to cost. A call that would pass the limit is not made,
 and the task stops on `this task reached its $5 limit · raise it in /crew`, with what it had
-done so far. The checker's own ceiling still applies inside it.
+done so far. The checker's own ceiling still applies inside it. A raise you give one task
+in the app, when its models need more than the limit, is that task's limit, even while it
+runs, and the sentence names the raised amount.
 
 `-yes-spend` does not lift it. `codeaf do` holds every run to the same limit, with or
 without a routed crew; the flag answers the day's questions and the plan-price question,
 not this one.
 
-### The selector snapshot — when the crew is picked by the pareto engine
+### Saved routing choices — when the crew is picked by the pareto engine
 
 The crew is normally routed by the learned router, and **nothing else seats a crew unless
-you configured it**. There is one extra hand on the picker: a `selector snapshot` row in the
-profile's settings (`models.crew.selector_snapshot`), a path to a fitted snapshot file.
+you configured it**. In Settings, you can choose a file of fitted routing choices.
 Configured, it points the pareto selection engine at the same models your providers reach,
 and it picks one model per unpinned seat — the worker seat from its worker class, the
 checker from its checker class, the planner from its planner class.
@@ -848,11 +870,11 @@ priced and health-checked, so a demoted route, a turned-off provider and an out-
 account all hold for it too.
 
 What happens when the file is missing or bad: the crew is routed **exactly as if no
-snapshot were configured** — no half-crew, no refusal, no note. A path that does not load
-is refused when you write it (`that snapshot does not load: …`); one that stops loading
+saved copy were configured** — no half-crew, no refusal, no note. A path that does not load
+is refused when you choose it; one that stops loading
 later silently falls back. A seat the engine cannot seat (no allowed model passes its
 capability gate for that seat) keeps the router's own pick for that seat alone. With no
-snapshot row the engine never runs at all, and every crew is byte for byte the crew the
+saved copy row the engine never runs at all, and every crew is byte for byte the crew the
 router picked before it existed.
 
 ### How hard to try one task — --best and --cheap
@@ -893,7 +915,7 @@ pick is the best crew under it, and the line says `held under the $5.00 task lim
 changed it.
 
 A pin sends exactly the id you wrote when the catalog lists it. An id the catalog lists
-only as a variant — a dated snapshot — is sent as that variant, and the line says which:
+only as a variant — a dated saved copy — is sent as that variant, and the line says which:
 `checker ⌖ deepseek-v4-flash → -0731`.
 
 The first word is the kind of work the task was read as. The worker's provider is named
@@ -1037,6 +1059,14 @@ role**, grouped under the row answering it, saying which model comes out:
 | `guardian` | small work | is this one tool call plainly safe |
 | `router` | small work | whether a turn should have been work |
 | `taskname` | small work | the two or three words a task is called |
+| `insight` | small work | the model every page AI writes with (the desktop app's repository notes, answers and themes) |
+| `insight_notes` | small work | a repository's notes since you last looked; unpinned, it follows `insight` |
+| `insight_ask` | small work | an answer to a question about a repository; unpinned, it follows `insight` |
+| `insight_themes` | small work | the themes in a repository's backlog; unpinned, it follows `insight` |
+| `insight_pipeline` | small work | a pipeline's steps written with AI; unpinned, it follows `insight` |
+| `insight_views` | small work | a factory's topic views; unpinned, it follows `insight` |
+| `insight_factory_read` | small work | the read of what arrived in a factory; unpinned, it follows `insight` |
+| `insight_factory_scout` | small work | a closer look at what arrived in a factory; unpinned, it follows `insight` |
 | `checker` | checker | whether finished-looking work is actually finished (older pins may keep their former spelling) |
 | `vision` | checker | reads images for a model that cannot see them |
 | `shaper` | checker | the brief a task you started yourself is given |
@@ -1322,11 +1352,19 @@ harnesses" is a sentence codeaf acts on — it looks the row up with `settings` 
 with `change_setting`, into the same `models.roles` row, after asking you. The reflex and
 small work rows of the Models category, and the crew's worker, checker and planner pins behind
 its one **seats** row, are writable that way too — a pin outside your allowed models is
-refused there as it is on `/crew`; only the role **slots** further down the Models category are not,
+refused there as it is on `/crew`; only the role **choices** further down the Models category are not,
 because those are bindings the running session holds rather than values in your profile.
 
 So the ladder for any role, most specific first: **its pin**, then **its row's model**,
 then **the model you are talking to**.
+
+The page AI's roles add two rungs after their own pin. Every `insight_` override
+(`insight_notes`, `insight_ask`, `insight_themes`, `insight_pipeline`, `insight_views`,
+`insight_factory_read`, `insight_factory_scout`) reads **the `insight` pin** next, so one pin on `insight` moves every page.
+Then comes **codeaf's default for `insight`**: `deepseek/deepseek-v4.1-flash` on
+OpenRouter, while OpenRouter is connected and your allowed models admit it. That default is
+never written into `models.roles`; it stops applying the moment either condition does, and
+any pin you write outranks it. Without it the page AI follows the small work row.
 
 Two things worth knowing:
 
@@ -1480,8 +1518,9 @@ and your own model rows answer for them (*Automations*).
 **The crew line names the flag, because the flag is what seats the call.** Under
 `--one-model` the crew line of `/status` and the phone sheet reads `one model` rather than
 `auto`, and `/status` answers its crew line with `one model · every call rides the model
-you are talking to`. The model picker's hint slot and the welcome line under the wordmark say
-the same word. All of them read one answer, so none of them can disagree with another.
+you are talking to`. The model picker's hint field and the welcome line under the wordmark say
+the same word. All of them read one answer, including windows attached to an engine or
+opened with `--host` or `--at`, so none of them can disagree with another.
 
 **Your crew is not gone, it is overridden.** Your pins are untouched on disk — this flag
 writes nothing — and the next session started without it draws `crew auto` again exactly as
@@ -1666,12 +1705,16 @@ provider translates whichever one it was given for a model that reads the other.
 endpoint that cannot be given a number at all falls back to `high`, which is the honest
 answer: it cannot think harder than its own ceiling.
 
-**None of this can fail a turn.**
+**Budget repairs are automatic; unsupported thinking can still fail an ordinary turn.**
 
 - A model whose endpoint refuses the thinking budget has the budget dropped and the refusal
   remembered, so it costs one rejected request for that model and never a failed reply.
 - A model whose catalog row says it takes no reasoning knob at all is sent nothing about
   thinking.
+- If an unlisted endpoint says its model does not support thinking or reasoning,
+  only opted-in task clients retry once without the knob and remember the refusal
+  in that client. Ordinary clients return the refusal and keep the requested
+  effort; they do not inherit a task client's memo.
 - On a small context window the budget shrinks to the room the conversation leaves beside
   an answer. When less than 1,024 tokens of thinking would fit, the budget is dropped and
   the rung travels as `high`, so `xhigh` on a 32,000-token window is never refused for the
@@ -1778,7 +1821,7 @@ cannot help there, and giving up would only hand you the retry to do by hand.
 So in a conversation you are watching, with no fallback model left to move to, **codeaf
 keeps asking that machine until it answers or you stop it**. It waits before every ask:
 1 second, then 2, 4 and 8, then every **10 seconds** from then on. The wait never grows
-past ten seconds, because what you are waiting for (weights loading, one busy slot)
+past ten seconds, because what you are waiting for (weights loading, one busy field)
 finishes at a moment nobody can predict. The give-up deadline does not end it either. The
 status line says how long it has been:
 
@@ -1793,12 +1836,18 @@ machine at most **four** times, with the same waits between them, and then moves
 fallback or ends. So does a watched conversation that still has a fallback model to go to. A router's pool is **never** treated as one machine, whatever your `routing` row
 says: it keeps the short allowance above, because the next ask can land on another machine.
 
+## Pending receipts at exit
+
+Shutdown waits for admitted receipts across chats together, including closed chats, retired children and successful Factory answers. This wait lasts at most 70 seconds, followed by the bounded ledger drain. On timeout, quit proceeds with `codeaf: receipt settlement timed out; spending may be incomplete`. Unavailable provider or disk responses can leave spending incomplete.
+
 ## Was I charged for a reply that got cut off — money on a stream that was cut, stopped, or lost the race
 
 Yes, a provider may still charge for the prompt and the tokens it produced before a stream
 was cut. The last usage block never arrives in that case, so codeaf does not guess from the
 text it happened to receive. When the stream named the provider's generation id, codeaf asks
 for that generation's own receipt in the background. Your reply does not wait for this.
+A stop before the first word keeps the stream open at most a tenth of a second, until the
+provider names the generation, so its receipt can still be asked for.
 
 When the receipt arrives, its own cost and token counts move the conversation's meter and add
 one late line to the machine's usage ledger. That line is marked `reconciled`, meaning its
@@ -1817,6 +1866,17 @@ conversation and its tasks; `/spend` counts the markers in its selected time win
 say, for example, `2 calls the provider charged for and could not be priced`. At zero they
 say nothing. Settings→Spending also shows missing receipts learned during this process.
 Receipt workers exit when their queue is empty and start again when another receipt arrives.
+
+Factory jobs and their page helpers also request receipts for successful answers
+without usage. After a failed stream, the final receipt replaces interim usage
+for billing: a $0.10 interim figure followed by a $0.12 receipt charges $0.12 once.
+A receipt without a price keeps measured interim spend; an explicitly priced zero
+replaces it. Each call is booked once.
+Missing receipts keep their job attribution. Job usage and Spending expose the
+missing price as unbilled, never as a measured $0. A saturated ledger queue writes
+through instead of discarding charges; a caller never waits on the disk.
+Filesystem write failures still appear as missing records.
+
 
 ## A reply that never finished — the turn ran for half an hour, codeaf looked frozen, nothing happened for ages, the model kept writing and never stopped
 
@@ -2183,7 +2243,7 @@ for it, and each door has its own sentence:
 | the conversation was closed or left under the turn | `the reply stopped when this conversation was left — ask again to pick it up` |
 | your stop took too long and was let go of | `the reply was let go of after the stop took too long` |
 | you stopped all the work in the conversation | `everything running here was stopped, the reply with it` |
-| nobody was left watching a conversation on another machine | `nobody was left watching this conversation, so the reply stopped — ask again to pick it up`. Only the unattended door says this. If the engine knew which window it thought had gone, the sentence names it: `nobody was left watching this conversation from studio, so the reply stopped — ask again to pick it up` |
+| nobody was left watching a conversation on another machine | `nobody was left watching this conversation, so the reply stopped — ask again to pick it up`. Only the unattended door says this. If the engine knew which window it thought had gone, the sentence names it: `nobody was left watching this conversation from tower, so the reply stopped — ask again to pick it up` |
 | the engine holding this conversation was stopped | `the engine holding this conversation was stopped, so the reply stopped — ask again to pick it up` |
 
 **You do not have to type your question again when a conversation moved.** If the
@@ -2236,7 +2296,7 @@ second window taking the conversation over.
 
 A window that just did something — pressed a key, answered a card — is still watching, even if its link dropped for a few seconds. That gap is a stalled call and the redial after it, not an empty room, and the reply is not stopped for want of a watcher.
 
-When the unattended door does take a stop, it names the window it believed had gone: `nobody was left watching this conversation from studio, so the reply stopped — ask again to pick it up`. Without a name the sentence is the one above, unchanged.
+When the unattended door does take a stop, it names the window it believed had gone: `nobody was left watching this conversation from tower, so the reply stopped — ask again to pick it up`. Without a name the sentence is the one above, unchanged.
 
 ## Why did my task not move to a stronger model — trouble with the connection never buys a dearer model
 
@@ -2426,7 +2486,39 @@ which is the whole machine's ledger rather than this conversation's — it was a
 
 `conversation` and `tasks` are dropped together unless the work has spent something, so a
 conversation that has started no tasks prints `spend` alone. When they are there they add
-up to the line above them, always — that is the whole point of printing them.
+up to the line above them, always — that is the whole point of printing them. The
+same split is shown in a new conversation and after resuming it.
+
+Paid workers from `/task solo` and other local tasks count under `tasks` as
+they spend. Their calls contribute once to `spend`; attributing them to this
+conversation adds no second charge. Both split lines appear when both halves
+have spent money and their sum matches `spend`.
+
+## Reopening a task-only conversation — each model call is counted once
+
+Reopening a conversation whose first paid work was a task does not add those
+worker charges again to the machine's spending ledger. The conversation's total
+includes its tasks, but restoring that total is not another model call. This also
+holds when a task finished before a restart left its saved run marked running,
+and when the conversation already had paid turns of its own.
+
+## Desktop saved agent spend after stopping a reply
+
+An agent's saved spend is the conversation's cumulative total in `meta.json`.
+The desktop engine's `agents.list` reads saved `spent_usd` from its disk row.
+`agents.open` reads the saved figure from disk, including for a conversation
+the engine already holds or is opening. Every `agent.changed` reads it when
+the event is sent, and `agents.take` carries it because it answers through
+`agents.open`. Other method answers omit `spent_usd`, so the desktop keeps
+its last figure. A zero figure is omitted.
+
+The total is saved when a turn ends. If a cancelled call's receipt is recovered
+later, the engine saves the updated total and sends one `agent.changed` if the
+figure differs from the one last said, without waiting for another message.
+Duplicate or delayed save news sends nothing if that figure has already been
+said. The charge is counted once.
+`agents.budget.get` reads the live meter in `engine.spent_usd`, which may include
+calls not yet saved to metadata.
 
 ## Why do the tokens on the status line jump instead of counting up
 
@@ -2560,7 +2652,9 @@ Every cost line written into a conversation's transcript is also appended to one
 whole machine, `~/.codeaf/v3/usage.jsonl`, moved by `CODEAF_HOME` like everything else codeaf
 keeps. **One line per model call, written the moment that call's bill comes back** — the
 requests of a turn, and the calls made beside a turn such as naming a session or judging a
-route. Each line carries `calls: 1`, so a turn that used three tools is four lines rather than
+route, and background knowledge compilation. Knowledge calls appear in Spend
+under the model that served them, even if an answer was empty or unusable.
+Each line carries `calls: 1`, so a turn that used three tools is four lines rather than
 one.
 
 **That is why the figure moves while a reply is still being written.** The line is written as
@@ -2677,18 +2771,18 @@ same three-second beat every place runs on, and it draws three things:
   `planning` — read from the settings as they stand right now, and never the auxiliary word
   one call gave itself. That is the point of the column: seeing that execution is most of
   the bill sends you to the one row that changes it. A model that is on the bill and is
-  bound to nothing today draws **no role word at all**, and a model bound to two slots says
+  bound to nothing today draws **no role word at all**, and a model bound to two choices says
   both. The rows **open nothing** — a model is not a thing money was spent *on* — so the
   foot over one keeps `→ the limits` and never promises `enter`; they are stops so that a
   long table scrolls under the cursor. A model is drawn by the word you say out loud — `claude-opus-4-1`, not
   `anthropic/claude-opus-4-1` — which is the spelling `/model`, the crew chips and the
   status line all use;
-- **a role slot with nothing bound to it** gets a row of its own under the models —
+- **a role field with nothing bound to it** gets a row of its own under the models —
   `planning · unbound · follows execution` — because "planning costs nothing" and "nothing
   is bound to planning" are opposite facts about the same blank. There is no figure on that
-  row: no line in the ledger names a slot, so there is nothing measured to put there.
-  **Today only the conversation slot is drawn at all.** A window holds a client for the
-  model you are talking to and for no other; the other slots are answered where their
+  row: no line in the ledger names a field, so there is nothing measured to put there.
+  **Today only the conversation field is drawn at all.** A window holds a client for the
+  model you are talking to and for no other; the other choices are answered where their
   own session is opened, so this window cannot tell "nothing is bound" from "I cannot ask" —
   and the emptiness law says an unknown is drawn as nothing rather than guessed at;
 - **by topic** — the three things money is ever spent on, because the ledger holds
@@ -3191,7 +3285,7 @@ Open **Spending** for monetary limits. There is no practice limit: codeaf no lon
 The settings panel's tab bar reads, in order:
 
 ```
-General · Models · Memory · Tasks · AI teams · Permissions · Spending · Connections · Privacy
+General · Models · Memory · Tasks · AI teams · Permissions · Spending · Connections · Devices · Privacy
 ```
 
 Money is on **Spending** and nowhere else. The rows that used to share it are on the two
@@ -4261,7 +4355,7 @@ Lean changes four things:
 - Your memories still ride: the `<memory>` block is in front of every
   request, bounded the same as on any window. What is missing is the
   `remember` and `forget` verbs, so the model cannot keep or forget a line
-  itself — it tells you to use `/remember` or the Memories tab, which work as
+  itself — it tells you to use `/remember` or the Memory tab, which work as
   always, and noticing still runs after a turn you typed. The record of what
   was said is untouched, and still searchable.
 
@@ -4336,15 +4430,84 @@ list than on the conversation.
 ## Does the daily budget apply to chat and team tasks?
 
 The daily budget blocks a new chat call when today's recorded spending reaches
-the limit. Task crews and their helpers use it when checking the next call's
-estimated cost. Other conversations' completed usage receipts are read on each
-check, and completed spending resets at the local date boundary. Calls already
-in flight may finish; this is not an atomic reservation across processes.
+the limit. Task crews and their helpers use the same recorded-spend check
+before their next call. Knowledge compilation, task summaries, names, captions,
+memory updates and automation checks use this gate too. Task crews also check
+the next call's estimated cost. Other conversations' completed usage receipts are read on each
+check, and completed spending resets at the local date boundary. When a recorded
+charge reaches the daily limit, new calls are refused. Calls waiting for their
+first reply token are cancelled; calls already replying finish and record their
+full usage. Reasoning and tool-call fragments count as reply tokens. Remaining
+owned work stops after those replies settle. While capped work is moving,
+recorded charges and changes to the saved daily limit are checked at 100 ms
+intervals. Lowering the daily limit below today's recorded spending closes
+admission and applies the same first-token rule within one interval, without
+waiting for another charge. Idle conversations do no
+background budget checking. Starting a model call, tool, background command,
+task, crew or program run checks again, so a charge recorded while idle still
+stops new work without waiting for another charge.
+The chat and work report the limit; raise it with `/budget day 30`, then submit
+again. Only recorded spending closes the cap; usage on an open stream and
+pending receipts do not count until recorded. A stream can continue spending
+past the limit unnoticed while no ledger write crosses it. Spending is assigned
+to the date recorded, including receipts arriving after midnight.
+Detached summaries follow the same first-token rule. Running adaptive workers follow their owner's raised
+daily limit. A sampled job refusal is checked again against the current cap.
+Known-free auxiliary calls can continue despite another conversation's daily spend.
+Partial usage is kept; a cancelled call without usage has unknown cost.
 Use `/budget` to change the limit. Per-conversation and per-task limits still
 apply separately. The default profile and home errands follow the saved
-or environment daily limit too; `/budget day` changes apply on the next turn.
+or environment daily limit too; `/budget day` changes apply on the next check.
+The refusal says `daily limit reached · $1 spent of $1 · /budget day changes it`
+with your actual figures. A task stopped by this limit keeps that same refusal in its
+report and ending card, ahead of any `nothing to land` explanation.
+Knowledge builds retain progress and resume
+automatically after a limit increase or the local day changes; a skipped task
+summary keeps its last reading. `--yes-spend` (or
+`CODEAF_PREAUTHORIZE_SPEND=1`) lifts the daily gate for work started with that
+spending permission.
 Task checks use the same selected daily limit and spending permission as the work
 they check.
+
+
+## Why does a crew with no worker show the daily limit?
+
+An adaptive crew checks recorded daily spending when its run finishes. Its chat
+records the daily-limit notice once even if its planner finishes without starting
+a worker. Raise the limit with `/budget day 30`, then send a new message after the
+old work finishes stopping.
+
+## How far can spending exceed the daily cap while replies finish?
+
+At a recorded daily-cap crossing, calls waiting for their first reply token are
+cancelled. Calls already replying finish, including reasoning and tool-call
+fragments, and record their real usage. No further paid call is admitted.
+
+Spending can exceed the cap by the remaining cost of calls already replying
+at the crossing. There is no fixed dollar bound without per-call provider limits;
+cutting a reply cannot undo its bill. The chat keeps completed replies and tool
+results, then shows the daily-limit notice. Raise the cap and send another message
+after the old work finishes stopping.
+This is not an atomic reservation across processes.
+
+
+## Can I resume while a spending receipt is pending?
+
+Yes, if recorded spending is still below the cap. A stopped call whose price is
+available only through a pending receipt has not added that price to `/cost`
+or today's spending. With no earlier charges the live status row keeps `$0.00`.
+The partial answer stays visible; Stop work says
+`everything running here was stopped, the reply with it`. There is no special
+pending-receipt warning or daily-limit notice during that window. A new explicit
+submission can start without raising the cap.
+
+When the receipt is recorded, a crossing cancels waiting calls, lets replies finish,
+and names the limit.
+For $0.25 recorded against $0.24 it says
+`daily limit reached · $0.25 spent of $0.24 · /budget day changes it`.
+Raise the limit, then submit again. Receipt recovery has a 70-second ceiling
+from queueing, including retries and request time. A receipt that cannot be
+recovered leaves an unknown price; this ceiling does not guarantee a known bill.
 
 ## Is the desktop day cap the same limit as /budget?
 
@@ -4362,17 +4525,19 @@ potentially paid admission instead of being read as zero. Legacy malformed rows
 are still skipped and reported as coverage gaps; their dates are not guessed.
 These totals do not prove a complete bill. Repair the named
 record or explicitly set a valid limit, then retry. Per-task and per-role limits
-remain separate. This is not yet a universal per-request cap: the main chat
-turn can finish after crossing it, and native media has no shared dispatch
-reservation. A monthly cap is not available yet. Provider charges already in
+remain separate. Native media has no shared dispatch reservation. A monthly cap is not available yet. Provider charges already in
 flight can exceed a limit. If startup could not establish the limit, repair it
 and reopen the app before standing orders can start.
+
+## Why is my conversation blocked
+
+A conversation cannot start another turn after it reaches its conversation budget or this computer's daily spending limit. Both limits apply. Raise the limit named in the refusal with `/budget day 30` or `/budget conversation 30`, then send your message again. Changing one does not reset recorded spending or lift the other. The conversation limit lets a running turn finish; a recorded daily-limit crossing cancels calls waiting for their first token and lets replies finish before stopping owned work. A turn with no call, tool or owned work in flight checks its own limit before work starts. An earlier spending record does not stop that conversation. A refused message shows the daily-limit explanation without starting a provider call.
 
 ## Which budget takes precedence — daily or per conversation, and why my budget command doesn't work while the conversation is still blocked
 
 **Both limits apply; neither overrides the other.** New chat turns stop when
 either limit is reached. The daily limit counts all of today's spending on this
-machine — every conversation and every task, not only this conversation. The
+machine — every conversation, task, helper and knowledge compilation. The
 conversation limit counts that conversation's recorded spending, including
 earlier days.
 
@@ -4410,7 +4575,7 @@ you paste in. It cannot open files, run commands or look anything up, and it wil
 if you ask it to. It is also given a **short chat page** as its instructions instead of
 codeaf's working page — about 2,000 characters rather than 20,000 or more, because the
 working page is almost all about tools — with your memories in front of it as on any
-other page, and no verbs to keep or forget one (`/remember` and the Memories tab still work). Your
+other page, and no verbs to keep or forget one (`/remember` and the Memory tab still work). Your
 project's instruction files (AGENTS.md, CLAUDE.md) are not sent to it. The request-size
 check counts only what is really sent. Pick a model that takes tools (`/model`) when you
 need it to work in your files: the next message goes out with the working page and every
@@ -4516,3 +4681,98 @@ media, model lists, connection probes, credits and provider lane reads. A custom
 HTTP transport retains its own timeouts and can impose stricter redirects, but
 cannot allow a request outside the original origin. Same-origin redirects work;
 a chain ends after ten requests rather than waiting forever.
+
+## Do my crew settings follow me to my other computer?
+
+Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
+
+After pairing, crew seat model pins, allowed-model choices, the crew daily cap,
+per-task cap and free-route choice follow synced preferences within a few seconds,
+even with no chat open. Both computers need to be running codeaf and able to reach
+the relay. An unpaired computer keeps these choices to itself.
+
+Each pin's provider route and providers you turned off stay on each computer.
+Choose those separately there. A seat model pin still needs an available provider
+and its credentials on the receiving computer; pairing does not install a provider.
+The **share teams** switch does not change which crew choices follow preferences.
+Desktop app crews are separate.
+
+## Windows spending history updates while the file is open
+
+On Windows 10 version 1709 or newer with NTFS, saved spending history can be
+replaced while a reader or the spending writer holds it open. Readers finish
+with their earlier view; later charges go to the current history without losing
+earlier charges. Older Windows versions and filesystems that do not support
+this keep Windows' native replacement limits. A persistent file error is still
+reported.
+
+## Are queued spending records saved when I close a conversation?
+
+Closing a conversation waits for spending records already queued to its ledger,
+including the last call. Other conversations can keep writing to that ledger.
+The first write may need to scan older records, so a large spending history can
+make closing slower.
+
+Closing waits at most two seconds for the spending ledger, so a stalled ledger can
+add up to two seconds to each close. Pending rows can still be written if the process stays open and
+the mount recovers. Rows already saved to the pending journal recover on the next start. If both journal and ledger writes fail before exit, those rows can be lost. Reaching
+the limit writes one line to the log with the ledger path and the number of rows
+pending, and those rows count as records not written down until they are written.
+No warning appears on screen.
+
+## Why a tiny crew cost has four decimal places
+
+A known positive crew cost below one cent keeps four decimal places, such as
+`$0.0003`. An amount below the shared display floor reads `<$0.0001`. Unknown
+or zero costs add no figure to the crew line.
+
+## Spending reports, daily rollups and changes to the usage ledger
+
+`spend.report` reports spending by stored local day, model and subject. Both
+range ends are required, covering at most 366 days. Reports refuse more than
+8,192 groups or an estimated 4 MiB of cells rather than dropping groups.
+Unpriced calls and missing receipts remain visible as gaps.
+
+Each cell sums its lines in ledger order. Money totals, including subtotals for
+lines with and without a run, sum cells in report order: day, model, kind,
+subject, root, session, agent and Library activity. The scan and rollup use this same order,
+including for ordinary decimal costs.
+
+A date-only report can reuse daily totals in memory. The first read builds them;
+later reads add complete appended lines, including receipts for earlier days.
+A last line without a newline waits until it is complete. No rollup file is
+written. Restarting codeaf rebuilds the totals on the next report.
+
+Replacing, rotating or shortening the ledger rebuilds the totals. Changes to
+the already-read prefix's first or last 4,096 bytes also trigger a rebuild;
+rewrites confined to the middle of that prefix are not detected.
+
+Reports with additional filters, partial days, a changed time zone, disagreement
+between a stored day and its instant use a full scan.
+Exceeding the rollup's total storage budget or encountering invalid
+figures also uses the scan, preserving each range's existing limits and refusals.
+The retained rollup is limited to one ledger, 8,192 groups and an estimated
+4 MiB of cells; it grows with distinct daily groups, not call count.
+
+## Usage totals after a crash or forced exit
+
+codeaf saves each complete priced usage row in a pending journal before handing
+it to the background ledger writer. On the next start, missing charges are
+replayed once with their original amount, day and ownership. Already booked
+charges are not added again. A successful journal write survives a process
+crash, including forced termination immediately after recording usage. Journal
+sync runs in background batches every 100 ms or 64 rows, whichever comes first.
+On power loss, up to the last 100 ms batch can be lost, as before. Clean close
+drains and syncs before compacting. These guarantees require successful disk
+operations; they cannot recover facts that an older build never saved.
+
+The sidecar is `usage.jsonl.pending-v1.jsonl`, beside `usage.jsonl` in your
+profile's `v3` directory. Startup and clean close compact booked rows out of it.
+Keep this file with the ledger when recovering a profile. If disk writes fail,
+chat continues with its in-memory counters while accounting retries; an unsaved
+row cannot survive process exit.
+
+Model-only calls also keep a local receipt record until sealing succeeds. An
+older build can lose that receipt detail when it rewrites the call log. The
+pending usage journal remains the source for exact money recovery; downgrading
+can lose model-call receipt detail, never money already saved by this journal.

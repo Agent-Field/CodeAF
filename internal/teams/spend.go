@@ -78,7 +78,9 @@ func TeamSpendIn(profileDir, ledger, teamID, day string) (Spend, error) {
 }
 
 func readTeamSpend(profileDir, ledger, teamID, day string) (Spend, error) {
-	f, err := Load(profileDir)
+	// The team and every team below it, and nothing else: a team's day is
+	// its subtree's, however many other teams there are.
+	f, err := LoadSubtree(profileDir, teamID)
 	if err != nil {
 		return Spend{}, err
 	}

@@ -122,7 +122,7 @@ const pathSeenMax = 4096
 // It is built through net/url rather than by concatenation because a path is
 // allowed to contain the characters a URI is not — a space, a '#', a '?' — and
 // `"file://" + path` hands the terminal a URI that stops at the first one of
-// them. The authority is left empty (`file:///Users/...`), which is the form
+// them. The authority is left empty (`file:///workspace`), which is the form
 // every terminal that implements OSC 8 reads; naming a host is a claim about
 // which machine the file is on, and this pass only ever links files on this one.
 func fileURI(path string) string {
@@ -334,7 +334,7 @@ func (l linker) path(word string) (from, to int, target string, ok bool) {
 }
 
 // pathTrim finds the name inside a word by peeling the punctuation prose wraps
-// names in. It is deliberately symmetric and deliberately dumb: it does not try
+// names in. It is deliberately symmetric and deliberately simple: it does not try
 // to match a bracket to its partner, because the word it was handed may be one
 // fragment of a path a wrap broke in half, and half a path has no partners.
 //

@@ -17,7 +17,9 @@ import (
 	"errors"
 	"fmt"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"strings"
 	"time"
+	"unicode"
 
 	"github.com/Agent-Field/codeaf/internal/workgraph"
 )
@@ -49,6 +51,11 @@ const (
 	// memory budget. It is additive: an app that does not know the word treats
 	// it as any failure, and one that does reads Error.Detail.
 	CodeTooLarge = "too_large"
+	// CodeUnreadable refuses a read of a store this engine cannot read: one a
+	// newer build wrote, or a file that is not the store. Trying again does not
+	// help; the app says so instead of offering it. It is additive like
+	// CodeTooLarge: an app that does not know the word treats it as any failure.
+	CodeUnreadable = "unreadable"
 	// CodeUncertain answers a mutation whose effect the engine itself cannot
 	// confirm: it may have happened. A caller MUST NOT retry it blind, which
 	// could do it twice; it looks at the state again first. It is the same word
@@ -80,7 +87,14 @@ const (
 
 // The states an agent can be in, as the app draws them.
 const (
-	StateIdle     = "idle"
+	StateIdle = "idle"
+	// StateStarting is an agent whose first message has been taken and whose
+	// conversation is still being opened: no turn has started yet. It ends in
+	// working when the turn starts, or in stopped when a stop came first or
+	// the open failed. A stop or a steer sent while it lasts is honoured (the
+	// steer reaches the first turn). It is additive: an app that does not know
+	// the word can draw it as working.
+	StateStarting = "starting"
 	StateWorking  = "working"
 	StateNeedsYou = "needs_you"
 	StateStopped  = "stopped"
@@ -98,23 +112,25 @@ const (
 
 // The event names this package and its engines send.
 const (
-	EventHello        = "hello"
-	EventAgentChanged = "agent.changed"
-	EventTurnStarted  = "turn.started"
-	EventTurnDelta    = "turn.delta"
-	EventTurnTool     = "turn.tool"
-	EventTurnDone     = "turn.done"
-	EventAskOpened    = "ask.opened"
-	EventAskClosed    = "ask.closed"
-	EventEntryAdded   = "entry.added"
-	EventSpendChanged = "spend.changed"
-	EventTaskChanged  = "task.changed"
-	EventCrewChanged  = "crew.changed"
-	EventCrewRemoved  = "crew.removed"
-	EventLog          = "log"
+	EventHello             = "hello"
+	EventAgentChanged      = "agent.changed"
+	EventTurnStarted       = "turn.started"
+	EventTurnDelta         = "turn.delta"
+	EventTurnTool          = "turn.tool"
+	EventTurnDone          = "turn.done"
+	EventCrewProposalDelta = "crew.proposal.delta"
+	EventAskOpened         = "ask.opened"
+	EventAskClosed         = "ask.closed"
+	EventEntryAdded        = "entry.added"
+	EventSpendChanged      = "spend.changed"
+	EventTaskChanged       = "task.changed"
+	EventCrewChanged       = "crew.changed"
+	EventCrewRemoved       = "crew.removed"
+	EventLog               = "log"
 
 	EventSettingsChanged = "settings.changed"
 	EventProviderChanged = "provider.changed"
+	EventModelsChanged   = "models.changed"
 )
 
 // Error is a refusal the app can read: a code from the closed set above and a
@@ -141,10 +157,12 @@ func Errorf(code, format string, args ...any) *Error {
 type Hello struct {
 	// Features are additive request extensions; absent means unsupported.
 	Features []string `json:"features,omitempty"`
-	Contract int      `json:"contract"`
-	Version  string   `json:"version"`
-	PID      int      `json:"pid"`
-	Home     string   `json:"home"`
+	// Errand is what agents.errand accepts, present with that feature.
+	Errand   *ErrandCaps `json:"errand,omitempty"`
+	Contract int         `json:"contract"`
+	Version  string      `json:"version"`
+	PID      int         `json:"pid"`
+	Home     string      `json:"home"`
 }
 
 // Agent is one conversation as the app sees it. ID is the conversation's
@@ -155,18 +173,24 @@ type Hello struct {
 // the first century; the emptiness law says
 // an unknown draws nothing, so UpdatedAt and LastActiveAt carry omitzero.
 type Agent struct {
+	Location      *Location              `json:"location,omitempty"`
 	ModelIdentity *session.ModelIdentity `json:"model_identity,omitempty"`
 	// Retryable means this backend retained the failed message for agents.retry.
 	Retryable    bool   `json:"retryable"`
 	FactoryOwned bool   `json:"factory_owned,omitempty"`
 	ID           string `json:"id"`
-	Title        string `json:"title"`
-	Workspace    string `json:"workspace"`
-	Model        string `json:"model,omitempty"`
+	// DID is the agent's identity: what its commands carry as
+	// $CODEAF_AGENT_DID and a worker's `<did>#w<n>` hangs from. It never
+	// changes once written, and is absent for a conversation that has not
+	// taken a turn since agents were given one.
+	DID       string `json:"did,omitempty"`
+	Title     string `json:"title"`
+	Workspace string `json:"workspace"`
+	Model     string `json:"model,omitempty"`
 	// Effort is the conversation override: low, medium, high, xhigh or max.
 	// It is omitted when unset (auto); other effort scopes can still apply.
 	Effort    string    `json:"effort,omitempty"`
-	State     string    `json:"state" enum:"idle,working,needs_you,stopped,closed,archived"`
+	State     string    `json:"state" enum:"idle,starting,working,needs_you,stopped,closed,archived"`
 	UpdatedAt time.Time `json:"updated_at,omitzero"`
 	// Crews are the crews this agent is a member of, open ones only.
 	Crews []string `json:"crews,omitempty"`
@@ -175,19 +199,60 @@ type Agent struct {
 	Line string `json:"line,omitempty"`
 	// ClosedAt is when it was moved to Closed and ArchivedAt when it was put
 	// away; LastActiveAt is when the person last spoke in it, absent for one
-	// they never spoke in (a crew member a manager started), and SpentUSD
-	// what it has spent in all.
+	// they never spoke in (a crew member a manager started). SpentUSD is the
+	// cumulative spend saved in meta.json: the disk row's figure in list answers,
+	// read from disk for open (and take, which answers through open) and when
+	// every agent.changed is said. Other method answers omit it. The live meter belongs to agents.budget.get.
 	ClosedAt     *time.Time `json:"closed_at,omitempty"`
 	ArchivedAt   *time.Time `json:"archived_at,omitempty"`
 	LastActiveAt time.Time  `json:"last_active_at,omitzero"`
 	SpentUSD     float64    `json:"spent_usd,omitempty"`
+	// Unread says it has said something new to the person since they last saw
+	// it (agents.mark_seen): an answer, a question waiting on them, or a run's
+	// result. Tool steps and thinking alone never set it (unread.go).
+	Unread bool `json:"unread"`
 	// Context is what the conversation weighs against its window
 	// (compaction.go); absent when nothing holds the conversation.
 	Context *AgentContext `json:"context,omitempty"`
 	// Budget is this agent's own spend limit (budget.go), which is never
 	// settings.budget_usd; absent from an engine that does not say.
 	Budget *AgentBudget `json:"budget,omitempty"`
+	// Approval is what this conversation does before it acts, as of the last
+	// time it was held; absent before then, or where its engine has no gate.
+	Approval *AgentApproval `json:"approval,omitempty"`
+	// CreatedBy is who started it: "person", or the id of the agent or app
+	// that did. Absent for an agent made before this was kept.
+	CreatedBy string `json:"created_by,omitempty"`
 }
+
+// AgentApproval is the gate a conversation stands at. Posture is the resolved
+// word (internal/session's approvalposture.go): ask, guardian, allow, or deny.
+// Source says who decided it: "settings" when the conversation follows
+// Settings, "chat" when it was set in this conversation.
+type AgentApproval struct {
+	Posture string `json:"posture" enum:"ask,guardian,allow,deny"`
+	Source  string `json:"source" enum:"settings,chat"`
+	// Follows is what this chat stands at when it follows (auto): its
+	// repository's approval mode where one is set, else Settings. A pick equal
+	// to it is auto; any other is the chat's own.
+	Follows string `json:"follows,omitempty" enum:"ask,guardian,allow,deny"`
+}
+
+// AppApprovalPosture is a posture the app may set on a conversation, spelled
+// the engine's way: ask, guardian, allow, or auto. deny is refused.
+func AppApprovalPosture(word string) (string, bool) {
+	switch posture := strings.ToLower(strings.TrimSpace(word)); posture {
+	case session.PostureAsk, session.PostureGuardian, session.PostureAllow, session.PostureAuto:
+		return posture, true
+	}
+	return "", false
+}
+
+// The two answers to who decided a conversation's posture.
+const (
+	ApprovalFromSettings = "settings"
+	ApprovalFromChat     = "chat"
+)
 
 // Task is one node of an agent's task graph.
 type Task struct {
@@ -266,6 +331,13 @@ type Task struct {
 	Program string `json:"program,omitempty"`
 	Ending  string `json:"ending,omitempty"`
 	Branch  string `json:"branch,omitempty"`
+	// Worker is who this task's commands act as: the agent's DID with the
+	// task's fragment, `<did>#w<n>`, the value its commands see as
+	// $CODEAF_AGENT_DID. Once the task has ended (done, failed, your_call, or a
+	// declined or withdrawn proposal) nothing runs under that name any more,
+	// so whatever an app keeps under it (a writer's lease) is the app's to let
+	// go. Absent when the agent has no DID.
+	Worker string `json:"worker,omitempty"`
 }
 
 // TaskSource is [workgraph.TaskSource]: one spelling on both wires.
@@ -286,6 +358,18 @@ const (
 	ClosedByElsewhere = "elsewhere"
 	ClosedByStopped   = "stopped"
 )
+
+// AskSecret is the masked box of an ask whose answer is a credential.
+//
+// KeepsForS is how many seconds the engine keeps what was typed in a private
+// file the agent's commands can read, and 0 where the value goes somewhere
+// else (a connection's key goes to that connection). It is the engine's own
+// figure, so the line the app draws under the box can never promise a day the
+// engine does not keep.
+type AskSecret struct {
+	Placeholder string `json:"placeholder,omitempty"`
+	KeepsForS   int    `json:"keeps_for_s,omitempty"`
+}
 
 // Ask is one thing an agent is waiting on the person for: a tool call waiting
 // to be allowed, or a question the agent put. Options are the engine's own
@@ -330,8 +414,12 @@ type Ask struct {
 	// as waiting. An empty HoldingUp never says false: a parked reply waits
 	// on no task.
 	Blocking *bool `json:"blocking,omitempty"`
-	SayWhy   bool  `json:"say_why,omitempty"`
-	Later    bool  `json:"later,omitempty"`
+	// Secret says the answer is a CREDENTIAL: the app draws one masked box and
+	// sends what was typed as the answer's text, and never shows it back. Nil
+	// on every other ask.
+	Secret *AskSecret `json:"secret,omitempty"`
+	SayWhy bool       `json:"say_why,omitempty"`
+	Later  bool       `json:"later,omitempty"`
 	// Path is the crews a crew's decision climbed through to the person,
 	// "Backend → Release → you".
 	Path []string `json:"path,omitempty"`
@@ -351,6 +439,10 @@ type Ask struct {
 	// exact command and folder, its one check, the proposed policy, and the
 	// fixed timings it will run under.
 	KeepRunning *KeepRunning `json:"keep_running,omitempty"`
+	// Asked is when the question was first put, by its own record (a
+	// proposal's, a run's), so an ask said again after a restart keeps its
+	// time for unread. It is the engine's own and never on the wire.
+	Asked time.Time `json:"-"`
 }
 
 // AskSubject is the thing an ask is about: its kind and the id the app knows
@@ -410,6 +502,16 @@ type Entry struct {
 	Turn  uint64    `json:"turn,omitempty"`
 	Kind  string    `json:"kind" enum:"user,answer,tool,receipt,notice,error,update,steer,note,summary,footer"`
 	At    time.Time `json:"at"`
+	// Author is who wrote the entry's words: the person, the engine (codeaf's
+	// own words in the conversation — a factory step's opening instructions,
+	// a "[carry on]" nudge, the runner's progress lines, a session note) or
+	// the agent (the model's answers and calls). IT IS THE PRODUCER'S FACT,
+	// so a client folds the engine's lines without reading their words. A
+	// user entry the engine wrote is still kind user, because it sits in the
+	// person's seat for the model; its author says it is not the person's.
+	// Absent where an older engine never said, and on entry kinds the engine
+	// builds outside the transcript. Hello word `agents.entry_author`.
+	Author string `json:"author,omitempty" enum:"person,engine,agent"`
 	// Text is the words of a user, answer, receipt, notice or error entry.
 	Text     string `json:"text,omitempty"`
 	Thinking string `json:"thinking,omitempty"`
@@ -435,19 +537,20 @@ type Entry struct {
 	// Ref is what a notice points at, and Quiet marks a notice the terminal
 	// shows as one dim line; ErrorKind and Status sort an error.
 	Ref       string `json:"ref,omitempty"`
-	Quiet     bool   `json:"quiet,omitempty"`
+	Quiet     bool   `json:"quiet"`
 	ErrorKind string `json:"error_kind,omitempty"`
 	Status    int    `json:"status,omitempty"`
 	// NoticeKind, Skills and Unrecorded are typed facts the engine attached to a
 	// notice at its producer: "skills" (the skills a turn carried, named in
-	// Skills) or "memory" (a memory line, Unrecorded because no transcript
-	// record redraws it). They are absent on every other notice, which is an
-	// ordinary one; a consumer never derives them from Text.
-	NoticeKind string   `json:"notice_kind,omitempty" enum:"skills,memory,factory_status"`
+	// Skills), "memory" (a memory line), "factory_status", or a local "sync",
+	// "moved" or "interrupted" sentence. Unrecorded says no transcript record
+	// redraws it. A consumer never derives these facts from Text.
+	NoticeKind string   `json:"notice_kind,omitempty" enum:"skills,memory,factory_status,sync,moved,interrupted"`
 	Skills     []string `json:"skills,omitempty"`
 	Unrecorded bool     `json:"unrecorded,omitempty"`
 	// A steer's and a note's state, the step a steer landed at and the step a
-	// note was read at; a note's direction; a footer's kind and figures; the
+	// note was read at; a note's direction, or on a user entry who sent it on
+	// the person's behalf (agents.send's from); a footer's kind and figures; the
 	// files and links a message of the person's carried (convo.go).
 	State       string       `json:"state,omitempty"`
 	Step        *int         `json:"step,omitempty"`
@@ -531,6 +634,28 @@ type EntryOp struct {
 // OpCrewFormed is a crew made under this conversation's agent as its manager.
 const OpCrewFormed = "crew.formed"
 
+// Who wrote an entry's words ([Entry.Author]).
+const (
+	AuthorPerson = "person"
+	AuthorEngine = "engine"
+	AuthorAgent  = "agent"
+)
+
+// FeatureEntryAuthor is announced in hello when an engine says
+// [Entry.Author] on the entries it reads out of a conversation's transcript.
+const FeatureEntryAuthor = "agents.entry_author"
+
+// EntryAuthorSayer is an engine whose transcript entries carry
+// [Entry.Author]; it is the only thing [FeatureEntryAuthor] is announced on.
+type EntryAuthorSayer interface{ SaysEntryAuthor() bool }
+
+func withEntryAuthorFeature(hello Hello, e Engine) Hello {
+	if a, ok := e.(EntryAuthorSayer); ok && a.SaysEntryAuthor() {
+		hello = withFeature(hello, FeatureEntryAuthor)
+	}
+	return hello
+}
+
 // The kinds of entry.
 const (
 	EntryUser    = "user"
@@ -567,6 +692,15 @@ type Model struct {
 	Provider string `json:"provider"`
 	// ListedAt is the provider catalog listing time in Unix seconds; absent is unknown.
 	ListedAt int64 `json:"listed_at,omitempty"`
+	// PriceInPerM and PriceOutPerM are the catalog's input and output prices in
+	// US dollars per million tokens. Absent is unknown and never $0; a present
+	// zero is a model the catalog says is free.
+	PriceInPerM  *float64 `json:"price_in_per_m,omitempty"`
+	PriceOutPerM *float64 `json:"price_out_per_m,omitempty"`
+	// ContextLength is how many tokens the model accepts; absent is unknown.
+	ContextLength int `json:"context_length,omitempty"`
+	// ArenaElo is the best Design Arena Elo the catalog carries; absent is unknown.
+	ArenaElo float64 `json:"arena_elo,omitempty"`
 	// ProviderName is the provider's own name, as the picker heads its group.
 	ProviderName string `json:"provider_name,omitempty"`
 	// Default marks the model a new conversation runs on.
@@ -587,16 +721,26 @@ const (
 // WorkFolder is where an agent created with no workspace works;
 // ProposedTaskClockS is how long a proposed task waits before it starts on its
 // own; IdleCloseDays is how long an agent nobody touches stays open.
+// MemorySettings is the live automatic-learning choice and its cost disclosure.
+type MemorySettings struct {
+	Enabled  bool   `json:"enabled"`
+	Source   string `json:"source" enum:"default,saved"`
+	CostNote string `json:"cost_note"`
+}
+
 type Settings struct {
-	DefaultModel       string   `json:"default_model"`
-	BudgetUSD          *float64 `json:"budget_usd"`
-	AsksBefore         string   `json:"asks_before"`
-	DayCapUSD          *float64 `json:"day_cap_usd"`
-	WorkFolder         string   `json:"work_folder"`
-	TaskCapUSD         *float64 `json:"task_cap_usd"`
-	ProposedTaskClockS int      `json:"proposed_task_clock_s"`
-	IdleCloseDays      int      `json:"idle_close_days"`
-	Effort             string   `json:"effort,omitempty" enum:"low,medium,high"`
+	KnowledgeModel     string            `json:"knowledge_model,omitempty"`
+	WhenPlanPaused     map[string]string `json:"when_plan_paused"`
+	Memory             MemorySettings    `json:"memory"`
+	DefaultModel       string            `json:"default_model"`
+	BudgetUSD          *float64          `json:"budget_usd"`
+	AsksBefore         string            `json:"asks_before"`
+	DayCapUSD          *float64          `json:"day_cap_usd"`
+	WorkFolder         string            `json:"work_folder"`
+	TaskCapUSD         *float64          `json:"task_cap_usd"`
+	ProposedTaskClockS int               `json:"proposed_task_clock_s"`
+	IdleCloseDays      int               `json:"idle_close_days"`
+	Effort             string            `json:"effort,omitempty" enum:"low,medium,high"`
 	// The General rows the window draws by (Wave 8): kept here so every window
 	// reads the same answer.
 	Appearance  string `json:"appearance" enum:"system,light,dark"`
@@ -610,12 +754,19 @@ type Settings struct {
 	ChecksModel   string   `json:"checks_model"`
 	PlannerModel  string   `json:"planner_model"`
 	FallbackModel string   `json:"fallback_model"`
+	// ApprovalPosture is what asks_before and the guardian row amount to in
+	// the posture ladder: the gate a conversation that follows Settings
+	// stands at. Read only; settings.set changes it through asks_before.
+	ApprovalPosture string `json:"approval_posture,omitempty" enum:"ask,guardian,allow,deny"`
 }
 
 // SettingsPatch is settings.set's params: only the fields present change. A
 // money figure sent as null is cleared, which the settings that always have a
 // figure refuse.
 type SettingsPatch struct {
+	KnowledgeModel     *string
+	WhenPlanPaused     map[string]string
+	MemoryEnabled      *bool
 	DefaultModel       *string
 	BudgetUSD          *Figure
 	AsksBefore         *string
@@ -655,7 +806,7 @@ type Provider struct {
 	// that predates this field assumes of every provider), a browser sign-in
 	// and nothing else (browser), or where the service runs, with a key only if
 	// it wants one (address).
-	Kind string `json:"kind,omitempty" enum:"key,browser,address"`
+	Kind string `json:"kind,omitempty" enum:"key,browser,address,agent"`
 	// KeyOptional says the key may be left blank: the service answers with none.
 	KeyOptional bool `json:"key_optional,omitempty"`
 	// Address is an address provider's address: the one in use when it is
@@ -685,6 +836,10 @@ const (
 	ProviderKey     = "key"
 	ProviderBrowser = "browser"
 	ProviderAddress = "address"
+	// ProviderAgent is a program on the engine's machine that answers on its
+	// own sign-in, such as Claude Code: connecting it asks for nothing, and
+	// codeaf holds no credential for it.
+	ProviderAgent = "agent"
 )
 
 // ProviderRegion is one of a provider's separate hosts.
@@ -723,11 +878,12 @@ type Connection struct {
 // Setup is how far the person has come through first-run setup, kept by
 // codeaf so quitting halfway resumes at the same step.
 type Setup struct {
-	Step         SetupStep `json:"step"`
-	Provider     string    `json:"provider,omitempty"`
-	DefaultModel string    `json:"default_model,omitempty"`
-	DayCapUSD    *float64  `json:"day_cap_usd,omitempty"`
-	Start        string    `json:"start,omitempty"`
+	ProviderKey  ProviderKeyHealth `json:"provider_key,omitzero"`
+	Step         SetupStep         `json:"step"`
+	Provider     string            `json:"provider,omitempty"`
+	DefaultModel string            `json:"default_model,omitempty"`
+	DayCapUSD    *float64          `json:"day_cap_usd,omitempty"`
+	Start        string            `json:"start,omitempty"`
 }
 
 // SetupStep is a setup step: 1 to [SetupSteps] on the wire as a number, or
@@ -821,8 +977,11 @@ const (
 // Spend is today's spending on this machine against the daily cap, which is
 // null when there is none.
 type Spend struct {
-	TodayUSD  float64  `json:"today_usd"`
-	DayCapUSD *float64 `json:"day_cap_usd"`
+	TodayUSD float64 `json:"today_usd"`
+	// FactoryAIUSD is the part of today that Factory's triage, scouts and page
+	// AI spent. Absent when there is none. It is inside TodayUSD.
+	FactoryAIUSD *float64 `json:"factory_ai_usd,omitempty"`
+	DayCapUSD    *float64 `json:"day_cap_usd"`
 }
 
 // AskOption is one answer an ask offers.
@@ -859,6 +1018,11 @@ type (
 		Phase   string `json:"phase"`
 		OK      *bool  `json:"ok,omitempty"`
 		Summary string `json:"summary,omitempty"`
+		// SpentUSD is the conversation's live spend when this step was said,
+		// the same meter agents.budget.get calls engine.spent_usd. It can be
+		// ahead of Agent.SpentUSD, saved at turn end, and is omitted when zero
+		// or unknown.
+		SpentUSD *float64 `json:"spent_usd,omitempty"`
 		ToolFacts
 	}
 	TurnDone struct {
@@ -1007,6 +1171,36 @@ type CreateAsk struct {
 	// Said is the person's own words for the first message: what its entry and
 	// the record show in place of Text, as agents.send's said does. Absent is Text.
 	Said *string `json:"said,omitempty"`
+	// Effort is the new conversation's own thinking rung, set as
+	// agents.set_effort sets it before the first turn runs. Absent (or auto)
+	// leaves the conversation on the scopes above it.
+	Effort string `json:"effort,omitempty" enum:"auto,low,medium,high,xhigh,max"`
+	// ApprovalPosture is the new conversation's own gate, set as
+	// agents.set_approval_posture sets it before the first turn runs. Absent
+	// (or auto) follows Settings.
+	ApprovalPosture string `json:"approval_posture,omitempty" enum:"ask,guardian,allow,auto"`
+	// CreatedBy says who started the agent: absent is the person, and an app
+	// acting for the person names itself, such as "afi:<agent id>"
+	// ([CheckCreatedBy]).
+	CreatedBy string `json:"created_by,omitempty"`
+}
+
+// CreatedByPerson is the origin of work the person started themselves.
+const CreatedByPerson = "person"
+
+// MaxCreatedByBytes bounds an origin, which is a name and never a message.
+const MaxCreatedByBytes = 128
+
+// CheckCreatedBy is an origin as it is kept: trimmed, one line, bounded.
+func CheckCreatedBy(word string) (string, error) {
+	word = strings.TrimSpace(word)
+	if len(word) > MaxCreatedByBytes {
+		return "", Errorf(CodeBadParams, "created_by is at most %d bytes", MaxCreatedByBytes)
+	}
+	if strings.ContainsFunc(word, unicode.IsControl) {
+		return "", Errorf(CodeBadParams, "created_by is one line of text")
+	}
+	return word, nil
 }
 
 // Warmer is an engine with something slow it can start on before anything is

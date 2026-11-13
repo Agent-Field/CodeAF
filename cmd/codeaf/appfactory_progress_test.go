@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"os"
 	"testing"
 	"time"
 
@@ -55,7 +57,7 @@ func addedSaying(t *testing.T, rec *appRecorder, text string) appwire.Entry {
 func TestAJobsProgressLineReachesTheAppAsItIsWritten(t *testing.T) {
 	backend, rec := heldOverFakes(t)
 	transcript, id := jobConversation(t)
-	if err := backend.holdJobChat(id); err != nil {
+	if _, err := backend.holdJobChat(id); err != nil {
 		t.Fatal(err)
 	}
 	review := &factory.StepProgress{Step: "review", Round: 2, Event: factory.ProgressDone}
@@ -102,7 +104,7 @@ func TestAProgressLineInAConversationTheAppDoesNotHoldIsReadWhenItOpens(t *testi
 	backend, rec := heldOverFakes(t)
 	transcript, id := jobConversation(t)
 	held, heldID := jobConversation(t)
-	if err := backend.holdJobChat(heldID); err != nil {
+	if _, err := backend.holdJobChat(heldID); err != nil {
 		t.Fatal(err)
 	}
 	started := &factory.StepProgress{Step: "plan", Round: 1, Event: factory.ProgressStarted}
@@ -135,7 +137,7 @@ func TestAProgressLineInAConversationTheAppDoesNotHoldIsReadWhenItOpens(t *testi
 func TestRecordedFactorySteerEchoStaysHiddenLiveAndAfterReload(t *testing.T) {
 	backend, rec := heldOverFakes(t)
 	transcript, id := jobConversation(t)
-	if err := backend.holdJobChat(id); err != nil {
+	if _, err := backend.holdJobChat(id); err != nil {
 		t.Fatal(err)
 	}
 	const echo = "steer: Everything ok here?"
@@ -159,5 +161,72 @@ func TestRecordedFactorySteerEchoStaysHiddenLiveAndAfterReload(t *testing.T) {
 		if err != nil || len(page) != 1 || page[0].Text != "plan started" || page[0].ID != live.ID {
 			t.Fatalf("reloaded history exposed the echo or changed ids: %+v, %v", page, err)
 		}
+	}
+}
+
+// A WOKEN TURN'S ANSWER NEVER TAKES A PROGRESS LINE'S ID. The desk lane's
+// trace: the manager answered under the person's message (a2.0), the factory
+// wrote "stopped" between turns (a2.1 on every reading), and the woken turn,
+// counting from the last turn's one answer, said its answer live as a2.1 too;
+// the desk's upsert dropped it, and the reading gave it a2.2. The next live id
+// is read from the transcript, so live and read back agree and never collide.
+func TestAWokenAnswerAfterAProgressLineTakesTheIdTheReadingGivesIt(t *testing.T) {
+	backend, rec := heldOverFakes(t)
+	transcript, id := jobConversation(t)
+	appendLine := func(line string) {
+		t.Helper()
+		f, err := os.OpenFile(transcript, os.O_APPEND|os.O_WRONLY, 0o600)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer f.Close()
+		if _, err := f.WriteString(line + "\n"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	appendLine(`{"type":"message","role":"user","content":"add a security step after review"}`)
+	appendLine(`{"type":"message","role":"assistant","content":"Added security after review."}`)
+	if err := session.AppendProgress(transcript, "stopped", &factory.StepProgress{Step: "write", Round: 1, Event: factory.ProgressStopped}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := backend.holdJobChat(id); err != nil {
+		t.Fatal(err)
+	}
+	page, _, err := backend.Entries(id, "", 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	taken := map[string]bool{}
+	n := -1
+	for _, e := range page {
+		taken[e.ID] = true
+		if e.Kind == appwire.EntryUser {
+			fmt.Sscanf(e.ID, "u%d", &n)
+		}
+	}
+	if n < 0 {
+		t.Fatalf("no person's message in %+v", page)
+	}
+	// The last live turn said one answer under n; the progress line written
+	// after it took the next id. The woken turn must not reuse it.
+	a := backend.agent(id)
+	live := backend.liveOf(a)
+	backend.locked(func() { live.lastN, live.lastMsgs, live.lastNotices = n, 1, 0 })
+	events := make(chan session.Event, 2)
+	events <- session.Event{Kind: session.EventTextDelta, Text: "Security is running now."}
+	events <- session.Event{Kind: session.EventTurnDone}
+	close(events)
+	backend.wokenTurn(a, live, appTurnElsewhere{events: events})
+	said := addedSaying(t, rec, "Security is running now.").ID
+	if taken[said] {
+		t.Fatalf("the woken answer was said as %s, an id the reading already gives: %v", said, taken)
+	}
+	appendLine(`{"type":"message","role":"assistant","content":"Security is running now."}`)
+	page, _, err = backend.Entries(id, "", 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := page[len(page)-1]; got.ID != said || got.Text != "Security is running now." {
+		t.Fatalf("the reading gives the woken answer %s (%q), it was said live as %s", got.ID, got.Text, said)
 	}
 }

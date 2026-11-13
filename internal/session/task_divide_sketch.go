@@ -31,7 +31,7 @@ package session
 //   - THE TIEBREAK still fires only where a model's reading of breadth armed this
 //     work, which is precisely the case a mark's split creates — four whole issues
 //     enumerate nothing a counter can see, so the division reaches the reviewer by
-//     the road Lane J built for it.
+//     the task execution path.
 //   - THE CAPACITY GATE still refuses to divide what nobody is free to pick up.
 //   - THE REVIEWER still reads the parts together and may amend, merge or refuse
 //     them, and A REFUSAL IS THE WHOLE ANSWER: the task runs as one worker, which

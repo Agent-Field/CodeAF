@@ -61,5 +61,4 @@ invalidates:
 Pair only computers you trust: they receive your shared identity and sealed vault.
 Revoking a lost computer cannot take back its downloaded chats or keys; identity
 rotation reseals the chats under a replacement and retires the relay's old copy.
-The hosted worker's tests isolate local state from the caller's home. Its staging-first
-operator runbook is relay/hosted/DEPLOY.md; deployment is performed by the owner.
+The hosted worker's tests isolate local state from the caller's home.

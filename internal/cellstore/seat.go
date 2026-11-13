@@ -2,6 +2,9 @@ package cellstore
 
 import (
 	"context"
+	"errors"
+	"os"
+	"runtime"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/chatfiles"
@@ -11,9 +14,8 @@ import (
 )
 
 // SeatFor builds the executor a session owns: every call runs under the class
-// the cell declared and each tool call is logged and the
-// workspace sealed when it returns. This is the one place a session's
-// executor is made.
+// the cell declared and each tool call is logged before the workspace's next
+// seal. This is the one place a session's executor is made.
 //
 // obs, when set, sees every process the seat ran and every tool a shell call's
 // command line started (the inventory's observer).
@@ -35,11 +37,26 @@ func SeatOver(class executor.Class, c cell.Cell, workspace string, obs executor.
 	for _, opt := range opts {
 		opt(&engine)
 	}
+	if runtime.GOOS == "windows" && engine.Transport == nil && engine.Run == nil {
+		bin, _ := (Spawn{Binary: engine.Binary}).program()
+		if socketFor(bin) == "" {
+			engine.notifyHistoryOff(c)
+			return executor.Watching(base, obs), nil
+		}
+	}
+	if workspace != "" && engine.workspace(c) == "" {
+		if holdsCodeafHome(workspace) && !holdsUserHome(canonicalTree(workspace)) {
+			engine.Guard.notify(codeafHomeWord)
+		} else {
+			engine.Guard.notify(homeFolderWord)
+		}
+	}
 	var store Store = engine
 	if over != nil {
 		store = over(engine)
 	}
-	rec, err := recorderFor(base.In(workspace), store, c, Options{Report: report, Refresh: refreshOf(obs), Async: engine.pipeline})
+	rec, err := recorderFor(base.In(workspace), store, c, Options{Report: report, Refresh: refreshOf(obs), Async: engine.pipeline,
+		FolderGone: func() bool { return errors.Is(engine.workspaceThere(c), ErrWorkspaceGone) }})
 	if err != nil {
 		return executor.Watching(base, obs), err
 	}
@@ -49,20 +66,42 @@ func SeatOver(class executor.Class, c cell.Cell, workspace string, obs executor.
 	return executor.Watching(sealed{Stance: base, rec: rec}, obs), nil
 }
 
+// homeFolderWord is said once when a chat opens in a folder that holds the home
+// folder: the conversation is saved, the folder's files are not.
+const homeFolderWord = "this folder holds your home folder, so its files are not saved with this chat · rewind brings back the conversation only · open codeaf in a project folder to save its files"
+
+// codeafHomeWord is [homeFolderWord] for a chat whose folder is codeaf's own
+// folder (the codeaf home) or a folder above it: its files are codeaf's state,
+// never a project, so they are not saved with the chat.
+const codeafHomeWord = "this folder holds codeaf's own folder, so its files are not saved with this chat · rewind brings back the conversation only · open codeaf in a project folder to save its files"
+
+// notifyHistoryOff records the sentence on the chat, so reopening a seat
+// cannot repeat it. A notice must never make tools wait on saved history.
+func (e Engine) notifyHistoryOff(c cell.Cell) {
+	f, err := os.OpenFile(rel(c, cell.StateDir+"/saving-engine-notice"), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		return
+	}
+	_ = f.Close()
+	e.Guard.notify("rewind is off because this chat cannot save file history securely; restart codeaf to try again.")
+}
+
 // SeatOption adjusts the engine a seat seals through.
 type SeatOption func(*Engine)
 
-// WithPipeline returns command results while their capture finishes. Every next
-// call and close still drains the same recorder, with a bounded wait (D3).
+// WithPipeline returns command results before saving at a pause. The next call
+// waits for any capture already running, and close settles held calls too (D3).
 func WithPipeline() SeatOption { return func(e *Engine) { e.pipeline = true } }
 
-// WithWarmCapture starts the first screened capture as soon as the seat opens,
-// rather than leaving a cold attachment for the second command (E2).
+// WithWarmCapture screens the folder as soon as the seat opens without adding
+// an empty turn. The first command waits for this screen before changing files.
 func WithWarmCapture() SeatOption { return func(e *Engine) { e.warm = true } }
 
-// WithNotices sends the guard's one-line notices (a file kept out of the saved
-// history, and why) to say instead of to stderr, which a full-screen surface
-// cannot show. A door with a surface passes where its sentences go.
+// WithNotices sends the guard's one-line notices (a file this machine cannot
+// read, a vault that cannot be written) to say instead of to the standard
+// logger, which a full-screen surface keeps in its log file. A file kept out
+// for a secret is not one: it goes to the log ([Guard.Kept]). A door with a
+// surface passes where its sentences go.
 func WithNotices(say func(string)) SeatOption {
 	return func(e *Engine) { e.Guard.Notify = say }
 }

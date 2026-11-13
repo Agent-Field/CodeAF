@@ -255,6 +255,9 @@ func TestPuttingAConversationAwayFromHomeWhileItsTurnIsSealedKeepsBoth(t *testin
 func TestAFolderWhoseLockCannotBeTakenStillStamps(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "0123456789abcdef")
 	seedMetaLockConversation(t, dir)
+	if err := os.Remove(filepath.Join(dir, placeMetaLock)); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.Mkdir(filepath.Join(dir, placeMetaLock), 0o700); err != nil {
 		t.Fatal(err)
 	}

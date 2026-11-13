@@ -53,7 +53,7 @@ func recipeDoorAt(t *testing.T, dir string) fileRecipeDoor {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return recipeDoor(st, dir).(fileRecipeDoor)
+	return recipeDoor(st, dir).(roadRecipeDoor).fileRecipeDoor
 }
 
 func recipeGit(t *testing.T, dir string, args ...string) {

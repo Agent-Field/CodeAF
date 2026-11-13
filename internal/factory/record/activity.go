@@ -19,6 +19,8 @@ func enrich(e *Event) {
 	}
 	if e.Verb == "" {
 		switch e.Kind {
+		case ContextSet:
+			e.Verb = "set context"
 		case StepEdited:
 			e.Verb = "edited steps"
 		case StepStopped:
@@ -27,14 +29,26 @@ func enrich(e *Event) {
 			e.Verb = "reran step"
 		case HandOffNotNow:
 			e.Verb = "put away hand-off"
+		case RunAsNew:
+			e.Verb = "ran as new"
 		case AutoStarted, Started:
 			e.Verb = "started"
+		case Held:
+			e.Verb = "held"
+		case Resumed:
+			e.Verb = "resumed"
 		case AskedFirst:
 			e.Verb = "asked"
+		case Routed:
+			e.Verb = "routed"
+		case RepoSet:
+			e.Verb = "set repository"
 		case Posted:
 			e.Verb = "published"
 		case RequestChanges:
 			e.Verb = "requested changes"
+		case PRReady:
+			e.Verb = "marked ready for review"
 		case PRMerged:
 			e.Verb = "merged"
 		case PRClosed, SourceClosed:
@@ -53,6 +67,8 @@ func enrich(e *Event) {
 			e.Verb = "failed"
 		case "priority_changed":
 			e.Verb = "changed priority"
+		case StopAfterStepChanged:
+			e.Verb = "changed spending stop"
 		case BudgetChanged:
 			e.Verb = "changed budget"
 		case "budget_raised":

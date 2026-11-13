@@ -100,7 +100,7 @@ func (a *app) finishHarnessCard(ev session.Event) {
 	// AND THE QUESTION IS RAISED, above the box where every decision on this
 	// surface is put. The page itself stays in the feed — it is what is being
 	// judged and it is ordinary scrollable content — and the three answers are
-	// the block's (question.go, docs/design/questions/DESIGN.md).
+	// the block's (question.go, the implementation).
 	a.raiseQuestion(a.harnessDesignShown(ev, c))
 	// The room's one-line ticker is stale news the moment the page lands: left
 	// alone it kept saying "subharness · reviewing · …" under a design that was

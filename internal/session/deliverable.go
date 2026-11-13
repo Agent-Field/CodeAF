@@ -47,7 +47,8 @@ import (
 	"time"
 )
 
-// The kinds a deliverable has. "export" and "document" are legacy rows only.
+// The kinds a deliverable has. "export" and "document" are legacy rows only;
+// other authored files use the shared file kind in share_file.go.
 const (
 	DeliverableMarkdown = "markdown"
 	DeliverableMermaid  = "mermaid"
@@ -116,6 +117,9 @@ type DeliverableFact struct {
 	ID     string    `json:"id"`
 	Update bool      `json:"update,omitempty"`
 	At     time.Time `json:"at"`
+	// MediaUpdate publishes a fresh media source on this update row. A state
+	// update clears it, so restating a source never lists that source twice.
+	MediaUpdate bool `json:"media_update,omitempty"`
 	// Turn is the authored MESSAGE the work answered (TaskSource.ID form), and
 	// is set only from authoritative causality. Run is the producing turn's
 	// immutable RunID, the join to DisplayEntry.RunID. Either may be absent.
@@ -126,7 +130,7 @@ type DeliverableFact struct {
 	State   string   `json:"state,omitempty"`
 	Profile string   `json:"profile,omitempty"`
 	Origin  string   `json:"origin,omitempty"`
-	// Authored says a writer seam saw the file CREATED. An edit never sets it.
+	// Authored says a writer seam observed the bytes written by the agent.
 	Authored bool `json:"authored,omitempty"`
 	// Call is the provider tool call the row was recorded under, where the
 	// recording seam knew it. It is an attribution, never an idempotency key.
@@ -290,6 +294,9 @@ type deliverTracker struct {
 	count   int
 	updates map[string][]deliverUpdate
 
+	// written is the path lookup index, guarded by artifactsMu.
+	written *writtenPaths
+
 	// The registry's own fields, guarded by deliverRegistry.mu and never by mu.
 	key    string        // the index path it is registered under
 	leases int           // callers using it now; one with leases is never evicted
@@ -344,6 +351,15 @@ func deliverUpdateIn(line []byte, off int64) (deliverFound, bool) {
 // row) and wait as the pending line, never parsed as though the file ended.
 func (s *deliverScan) feed(buf []byte) []deliverFound {
 	var batch []deliverFound
+	s.feedLines(buf, func(off int64, line []byte) {
+		if f, ok := deliverUpdateIn(line, off); ok {
+			batch = append(batch, f)
+		}
+	})
+	return batch
+}
+
+func (s *deliverScan) feedLines(buf []byte, visit func(int64, []byte)) {
 	start := 0
 	for {
 		nl := bytes.IndexByte(buf[start:], '\n')
@@ -359,8 +375,8 @@ func (s *deliverScan) feed(buf []byte) []deliverFound {
 			line = append(s.carry, line...)
 		}
 		s.carry, s.overlong = nil, false
-		if f, ok := deliverUpdateIn(line, off); ok && !skip {
-			batch = append(batch, f)
+		if !skip && len(line) <= mediaRowMax {
+			visit(off, line)
 		}
 		start = end + 1
 	}
@@ -375,7 +391,6 @@ func (s *deliverScan) feed(buf []byte) []deliverFound {
 		}
 	}
 	s.pos += int64(len(buf))
-	return batch
 }
 
 // commit applies one chunk's updates and its new place TOGETHER, or neither.
@@ -795,9 +810,8 @@ func FindDeliverable(index, sessionID, id string, deadline time.Time) (Deliverab
 
 // ── appending ───────────────────────────────────────────────────────────────
 
-// AppendDeliverableUpdate appends a full-snapshot update of base with change
-// applied, and answers whether the row was written. It copies the base's path,
-// title, session, kind and Created so older readers keep their ordering.
+// AppendDeliverableUpdate merges change onto the latest snapshot of base's id
+// and answers whether the row was written. Only base's identity is used.
 func AppendDeliverableUpdate(index string, base DeliverableRow, change func(*DeliverableFact)) bool {
 	_, ok := appendDeliverableUpdate(index, base, change)
 	return ok
@@ -806,17 +820,47 @@ func AppendDeliverableUpdate(index string, base DeliverableRow, change func(*Del
 // appendDeliverableUpdate is [AppendDeliverableUpdate] that answers the
 // deliverable as the row it wrote now states it.
 func appendDeliverableUpdate(index string, base DeliverableRow, change func(*DeliverableFact)) (DeliverableRow, bool) {
-	row := base.Artifact
-	fact := base.Fact
-	fact.ID, fact.Update, fact.At = base.ID, true, time.Now().UTC()
-	fact.From = append([]string(nil), base.Fact.From...)
-	change(&fact)
-	row.Deliver = &fact
-	written, ok := recordArtifactRow(index, row)
+	written, ok := mutateDeliverable(index, base, func(row *Artifact) {
+		fact := *row.Deliver
+		fact.Update, fact.At, fact.MediaUpdate = true, time.Now().UTC(), false
+		fact.From = append([]string(nil), fact.From...)
+		change(&fact)
+		row.Deliver = &fact
+	})
 	if !ok {
 		return DeliverableRow{}, false
 	}
-	return DeliverableRow{Artifact: written, Fact: fact, Recorded: true, ID: base.ID, Kind: base.Kind, Start: base.Start, Len: base.Len}, true
+	return DeliverableRow{Artifact: written, Fact: *written.Deliver, Recorded: true, ID: base.ID, Kind: written.Kind, Start: base.Start, Len: base.Len}, true
+}
+
+// deliverableAfterLookup lets tests pause a mutation inside the transaction.
+var deliverableAfterLookup = func() {}
+
+// mutateDeliverable holds both the process mutex and the index's OS file lock
+// from lookup through append. Full snapshots remain readable by older clients,
+// while a Keep in another process cannot restore stale source metadata.
+func mutateDeliverable(index string, identity DeliverableRow, change func(*Artifact)) (Artifact, bool) {
+	return prepareArtifactRow(index, func() (Artifact, error) {
+		latest, err := currentDeliverable(index, identity)
+		if err != nil {
+			return Artifact{}, err
+		}
+		deliverableAfterLookup()
+		change(&latest)
+		return latest, nil
+	})
+}
+
+func currentDeliverable(index string, identity DeliverableRow) (Artifact, error) {
+	if identity.ID == "" {
+		return latestWrittenArtifact(index, identity.Artifact)
+	}
+	latest, err := FindDeliverable(index, identity.Artifact.Session, identity.ID, time.Time{})
+	if err != nil {
+		return Artifact{}, err
+	}
+	latest.Artifact.Deliver = &latest.Fact
+	return latest.Artifact, nil
 }
 
 // deliverRowFits says whether a row is within what this engine writes for a

@@ -5,7 +5,7 @@ package e2e
 import "testing"
 
 // harness_surface_e2e_test.go holds the words the tmux suite will read off a run
-// engine's plan row once a run scenario drives one end to end (docs/design/worker-harness
+// engine's plan row once a run scenario drives one end to end (the implementation
 // /SURFACE.md §2A, §4 Cell 2 — the rail's live step line).
 //
 // THE THREE NEEDLES BELOW ARE THE PLAN ROW'S OWN, and the sources they stand on

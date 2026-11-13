@@ -10,8 +10,7 @@ import (
 
 // ── ONE SPELLING OF THE CHORDS, AND WHAT THIS TERMINAL CAN ACTUALLY SEND ─────
 //
-// The owner's ask was "ensure you properly have alt or ctrl etc according to
-// windows or mac", and the honest half of the answer has to be said first: A
+// Chord labels match the platform, with one terminal limit: A
 // TUI CANNOT SEE WHETHER OPTION IS META. It sees what the emulator sent. On a
 // Mac, `opt+1` reaches this program as escape-then-`1` when the profile says
 // "option as meta" and as the single character `¡` when it does not, and there

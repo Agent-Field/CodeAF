@@ -377,7 +377,7 @@ func crowded256(c Color, claimed []uint8) bool {
 //
 // It exists so an explicit override has a door WITHOUT this package minting an
 // environment pin of its own. Colour capability is a decided value that the
-// shell passes down — from a settings row when Wave 4 adds one, from a flag, or
+// shell passes down — from a settings row, from a flag, or
 // from [DetectProfile] — and an unrecognized spelling reports false rather than
 // guessing, because an override that silently did something else would be the
 // affordance lying about what it accepted (5.20).

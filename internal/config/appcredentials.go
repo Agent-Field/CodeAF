@@ -25,13 +25,18 @@ var ErrAppKeys = errors.New("keys are kept by the app")
 type AppCredentials struct {
 	mu   sync.RWMutex
 	keys map[string]string
+	// handed counts the times each provider's key was handed over or removed.
+	handed map[string]uint64
+	// kept hears every credential a door gave this process (Keep, Forget),
+	// so the app can keep it for the next launch ([AppCredentials.OnKept]).
+	kept atomic.Pointer[func(provider, key string)]
 }
 
 var appCredentials atomic.Pointer[AppCredentials]
 
 // NewAppCredentials is an empty set of app keys.
 func NewAppCredentials() *AppCredentials {
-	return &AppCredentials{keys: make(map[string]string)}
+	return &AppCredentials{keys: make(map[string]string), handed: make(map[string]uint64)}
 }
 
 // UseAppCredentials installs the keys every key reader consults first, before
@@ -53,12 +58,59 @@ func (c *AppCredentials) Set(provider, key string) {
 	provider, key = strings.ToLower(strings.TrimSpace(provider)), strings.TrimSpace(key)
 	trace.Secret(key)
 	redact.Register(key)
-	c.change(func() { c.keys[provider] = key })
+	c.change(func() { c.keys[provider] = key; c.handed[provider]++ })
+}
+
+// AppKept reports whether provider is a credential a door keeps with the app
+// ([AppCredentials.Keep]) rather than a model provider's key: the GitHub
+// token, the Jira token and the AgentField key and node secret. The launch's
+// hand-back takes each of these as it was kept.
+func AppKept(provider string) bool {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "github", AppJiraProvider, AppAgentFieldProvider, AppAgentFieldNodeProvider, AppAgentFieldTokenProvider:
+		return true
+	}
+	return false
+}
+
+// OnKept installs the one listener for credentials a door gives this
+// process. It hears the provider and the key, or "" for a removal.
+func (c *AppCredentials) OnKept(listen func(provider, key string)) {
+	if listen == nil {
+		c.kept.Store(nil)
+		return
+	}
+	c.kept.Store(&listen)
+}
+
+// Keep holds a credential a door gave this process and hands it to the app
+// to keep. EVERY CREDENTIAL AN APP-RUN ENGINE IS GIVEN THROUGH A DOOR OUTLIVES
+// THE LAUNCH: the process keeps keys in memory only, so the app, which keeps
+// them in the person's secure store, is told, and hands the key back with
+// keys.set at the next launch. A key handed back that way is held with Set,
+// which tells nobody, so a launch never echoes its own keys.
+func (c *AppCredentials) Keep(provider, key string) {
+	c.Set(provider, key)
+	c.tell(provider, strings.TrimSpace(key))
+}
+
+// Forget removes a credential a door took away and tells the app to remove
+// its kept copy, so the next launch does not bring it back.
+func (c *AppCredentials) Forget(provider string) {
+	c.Remove(provider)
+	c.tell(provider, "")
+}
+
+func (c *AppCredentials) tell(provider, key string) {
+	if listen := c.kept.Load(); listen != nil {
+		(*listen)(strings.ToLower(strings.TrimSpace(provider)), key)
+	}
 }
 
 // Remove disconnects one provider for the rest of this launch.
 func (c *AppCredentials) Remove(provider string) {
-	c.change(func() { c.keys[strings.ToLower(strings.TrimSpace(provider))] = "" })
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	c.change(func() { c.keys[provider] = ""; c.handed[provider]++ })
 }
 
 // change makes one change to the keys held. A key handed over is a credential
@@ -94,6 +146,15 @@ func appKey(provider string) (string, bool) {
 		return source.Key(provider)
 	}
 	return "", false
+}
+
+// Handed counts how many times a provider's key was handed over or removed. A
+// reading kept from that key compares this to know it is out of date, including
+// when the same key is handed over again after a refusal.
+func (c *AppCredentials) Handed(provider string) uint64 {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.handed[strings.ToLower(strings.TrimSpace(provider))]
 }
 
 // Snapshot is a copy of the keys by provider. Nothing writes it anywhere.

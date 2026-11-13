@@ -56,16 +56,20 @@ type PeopleLoader struct {
 	// order they were asked; asked dedupes it. failed holds when a handle
 	// whose background read failed may be asked for again. reading is true
 	// while the one background reader runs.
-	wanted  []string
-	asked   map[string]bool
-	failed  map[string]time.Time
-	reading bool
+	wanted     []string
+	asked      map[string]bool
+	failed     map[string]time.Time
+	reading    bool
+	closed     bool
+	readCancel context.CancelFunc
+	readDone   chan struct{}
 
-	// ownersMu is separate because an ownership read does hold its lock over
-	// the forge call: it happens once per repository per poll, and two
-	// callers asking for the same file should share one read.
-	ownersMu sync.Mutex
-	owners   map[string]ownerRead
+	// ownersMu guards owners and is never held over the forge call; ownersAsk
+	// makes the callers asking for the same file share one read.
+	ownersMu  sync.Mutex
+	ownersAsk behind
+	owners    map[string]ownerRead
+	absent    absences
 }
 
 // NewPeopleLoader binds the forge and an optional deterministic clock.
@@ -114,7 +118,7 @@ func (l *PeopleLoader) Known(handle string) (factory.GitHubPerson, bool) {
 // wantLocked queues handle for the background reader unless it is queued
 // already or failed recently, and starts the reader when none is running.
 func (l *PeopleLoader) wantLocked(handle string) {
-	if l.asked[handle] || l.now().Before(l.failed[handle]) {
+	if l.closed || l.asked[handle] || l.now().Before(l.failed[handle]) {
 		return
 	}
 	l.asked[handle] = true
@@ -122,19 +126,28 @@ func (l *PeopleLoader) wantLocked(handle string) {
 	if l.reading {
 		return
 	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
 	l.reading = true
-	guard.Go("factory/people-profiles", l.readWanted)
+	l.readCancel = cancel
+	l.readDone = done
+	guard.Go("factory/people-profiles", func() {
+		defer close(done)
+		defer cancel()
+		l.readWanted(ctx)
+	})
 }
 
 // readWanted reads queued handles one at a time until none are left. One
 // reader, one request at a time, is deliberate: the forge's rate limit is
 // shared with the poll, and a list's names arriving a little later is better
 // than the poll being refused.
-func (l *PeopleLoader) readWanted() {
+func (l *PeopleLoader) readWanted(parent context.Context) {
 	for {
 		l.mu.Lock()
-		if len(l.wanted) == 0 {
+		if l.closed || parent.Err() != nil || len(l.wanted) == 0 {
 			l.reading = false
+			l.readCancel = nil
 			l.mu.Unlock()
 			return
 		}
@@ -143,16 +156,19 @@ func (l *PeopleLoader) readWanted() {
 		seen, ok := l.profiles[handle]
 		asked := l.now()
 		l.mu.Unlock()
-		ctx, cancel := context.WithTimeout(context.Background(), profileReadTimeout)
+		ctx, cancel := context.WithTimeout(parent, profileReadTimeout)
 		_, err := l.read(ctx, handle, seen, ok)
+		canceled := parent.Err() != nil
 		cancel()
 		l.mu.Lock()
 		delete(l.asked, handle)
-		if err != nil {
+		switch {
+		case canceled || l.closed:
+		case err != nil:
 			// The wait counts from the ask, so a slow refusal does not
 			// lengthen it.
 			l.failed[handle] = asked.Add(ProfileRetry)
-		} else {
+		default:
 			delete(l.failed, handle)
 		}
 		l.mu.Unlock()
@@ -180,33 +196,83 @@ func (l *PeopleLoader) read(ctx context.Context, handle string, seen profileRead
 		return seen.profile, err
 	}
 	l.mu.Lock()
-	seen.until = l.now().Add(ProfileTTL)
-	l.profiles[handle] = seen
+	if !l.closed && ctx.Err() == nil {
+		seen.until = l.now().Add(ProfileTTL)
+		l.profiles[handle] = seen
+	}
 	l.mu.Unlock()
 	return seen.profile, nil
 }
 
 // RefreshOwners invalidates both missing files and failures on every poll.
 func (l *PeopleLoader) RefreshOwners(ctx context.Context, repo string) {
+	seen := l.readOwners(ctx, repo)
 	l.ownersMu.Lock()
 	defer l.ownersMu.Unlock()
-	l.owners[repo] = l.readOwners(ctx, repo)
+	l.owners[repo] = seen
 }
 
 // Owners returns independent rules so a caller cannot mutate the poll cache.
+// Every reader only shows owners (the queue, a job's card), so a repository
+// not read yet waits for the forge at most [FirstWait] and then answers none,
+// while the forge's answer lands for the next read; the forge is never asked
+// while ownersMu is held.
 func (l *PeopleLoader) Owners(ctx context.Context, repo string) ([]factory.CodeOwner, error) {
 	l.ownersMu.Lock()
-	defer l.ownersMu.Unlock()
 	seen, ok := l.owners[repo]
+	l.ownersMu.Unlock()
 	if !ok {
-		seen = l.readOwners(ctx, repo)
-		l.owners[repo] = seen
+		l.ownersAsk.start(repo, "factory/codeowners read", func(ctx context.Context) {
+			seen := l.readOwners(ctx, repo)
+			if errors.Is(ctx.Err(), context.Canceled) {
+				return
+			}
+			l.ownersMu.Lock()
+			defer l.ownersMu.Unlock()
+			if _, known := l.owners[repo]; !known || ctx.Err() == nil {
+				l.owners[repo] = seen
+			}
+		}).wait(ctx, FirstWait)
+		l.ownersMu.Lock()
+		seen = l.owners[repo]
+		l.ownersMu.Unlock()
 	}
 	out := make([]factory.CodeOwner, len(seen.rules))
 	for i, rule := range seen.rules {
 		out[i] = factory.CodeOwner{Pattern: rule.Pattern, Handles: append([]string(nil), rule.Handles...)}
 	}
 	return out, seen.err
+}
+
+// Close cancels any background profile or CODEOWNERS read and waits up to
+// [closeWait] for it to finish.
+func (l *PeopleLoader) Close() {
+	if l == nil {
+		return
+	}
+	l.mu.Lock()
+	l.closed = true
+	l.wanted = nil
+	cancel := l.readCancel
+	done := l.readDone
+	l.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	deadline := time.Now().Add(closeWait)
+	if done != nil {
+		timer := time.NewTimer(closeWait)
+		select {
+		case <-done:
+		case <-timer.C:
+		}
+		timer.Stop()
+	}
+	if left := time.Until(deadline); left > 0 {
+		l.ownersAsk.close(left)
+	} else {
+		l.ownersAsk.close(0)
+	}
 }
 
 func (l *PeopleLoader) readOwners(ctx context.Context, repo string) ownerRead {
@@ -222,7 +288,13 @@ func (l *PeopleLoader) readOwners(ctx context.Context, repo string) ownerRead {
 		return ownerRead{}
 	}
 	for _, path := range []string{".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS"} {
-		text, _, _, err := api.Contents(ctx, owner, name, path, "", "")
+		if ctx.Err() != nil {
+			return ownerRead{err: ctx.Err()}
+		}
+		text, _, _, err := l.absent.contents(ctx, api, l.now(), owner, name, path, "")
+		if ctx.Err() != nil {
+			return ownerRead{err: ctx.Err()}
+		}
 		if missing(err) {
 			continue
 		}

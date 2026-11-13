@@ -67,7 +67,7 @@ const (
 	// deepseek-v4.1-flash went to the two cheapest lanes — one answering 17% of
 	// the time at 22 tok/s, the other 14% — while the lane at 234 tok/s cost six
 	// hundredths of a cent more per thousand tokens and was never a candidate.
-	// The replay of that day (docs/design/routing/ASSESSMENT-20260911.md) put
+	// The replay of that day put
 	// the router's mean regret at 31.9 s against 0.4 s with λ held above zero. A
 	// task the person is not watching still ends when its slowest call ends,
 	// and its calls still pay for every refusal, so its seconds are not free;
@@ -218,7 +218,7 @@ const PrefixHold = 5 * time.Minute
 // decision into sampling noise. The direction is fixed by the design's own
 // sentence — a dollar buys ninety seconds, so spend up to a cent to save a
 // second — and by [underPriceCeiling], which goes the other way (seconds into
-// dollars) and divides. See docs/design/routing/provider-routing.md, Part III.
+// dollars) and divides. See the implementation, Part III.
 //
 // THE TWO CASES ARE DIFFERENT UNITS ON PURPOSE. With nobody waiting, a second
 // is worth nothing; the honest score is the money, and perceived time is then

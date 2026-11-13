@@ -38,12 +38,13 @@ name that appeared in one early wordmark and never shipped a release.
 Three things you already have keep working, so nothing on your machine has to be
 moved by hand:
 
-- **Your state folder.** The first time the renamed build starts it renames
+- **Your state folder.** The first real start of the renamed build renames
   `~/.aforge` to `~/.codeaf` and tries to leave a link behind at the old path, so a
   `PATH` line pointing at `~/.aforge/bin`, a login item, a running daemon or a
   script of your own still resolves. It happens once, it never overwrites a
   `~/.codeaf` directory that is already there. If the move itself cannot be done,
-  it says so and carries on reading the old folder.
+  it says so and carries on reading the old folder. Asking for version, help
+  or the manual does not perform this adoption or create the link.
 - **Your environment variables.** A variable spelled `AFORGE_…` is still read
   wherever the `CODEAF_…` one is unset or empty — `AFORGE_HOME` still moves the state
   folder, for example. Set the new spelling when you next edit that file;
@@ -56,6 +57,11 @@ If you have seen “CodeAF” as the name of a coding harness in a benchmark tab
 that is a different program and nothing here talks to it.
 
 ## Starting it — how do I start codeaf
+
+Opening a chat lets you read and draft while its first local save finishes.
+The next tool call and a move to another device still wait for saving; opening
+the screen does not mean the chat is ready to move. A saving failure is reported
+instead of silently discarding the pending work.
 
 | What you type | What you get |
 | --- | --- |
@@ -831,3 +837,30 @@ without printing it. A key saved by `codeaf connect openrouter` or `/settings`
 reaches a conversation when you next open it or switch models;
 `OPENROUTER_API_KEY` still wins. `your key was not accepted for this model` means
 the provider refused the key; doctor helps find the source to replace.
+
+## Chats on another computer and hosted sync storage
+
+Pairing and live `--at` access work while hosted sync storage is off. Hosted storage is off by default while its privacy terms are being finished, so chats and files stay on this computer until approval. After pairing, request access in Settings → Devices → sync storage → enter. The panel shows the public request code and link as well as opening a browser. Sync starts by itself after a background reading sees approval; `/status` refreshes it without holding up the chat. A self-hosted `codeaf relay --store <directory>` needs no request.
+
+## Sync storage is off — a notice in an open chat
+
+A paired account with storage off sees `sync storage is off for this account, so chats stay on this computer; request access in Settings under Devices` once when that chat first tries to sync. If access is withdrawn after syncing starts, the chat shows it once again. This appears in the window showing the chat, including an already-open window. Your chats keep saving on this computer.
+
+## Starting after an upgrade — standing orders and rules from an earlier version
+
+Standing orders and rules stored by an earlier chat version were not carried over.
+If this home's `v3/standing/` contains old items, its first interactive launch
+shows a notice once on Home and in the conversation: `They were not carried over.`
+The notice says `Recreate schedules in /automations and rules with /remember.`
+
+The list is `<codeaf home>/v3/standing-upgrade-report.txt`, normally
+`~/.codeaf/v3/standing-upgrade-report.txt`. It gives each item's original words,
+instruction, workspace, schedule, status and source file. Paused and retired items
+are separate from active counts; unreadable and unknown-format files are named
+without guessing. The report is saved before the home remembers the notice. If
+saving fails, a later interactive launch tries again. Headless starts do not
+consume it. A remote home's notice and report belong to that remote home.
+
+The old `v3/standing/` is untouched. Recreate schedules in `/automations` and rules
+with `/remember`, checking their scope and limits. Nothing is imported or run
+from the report, and a home without old items has no notice.

@@ -11,6 +11,7 @@ import { decode } from './frame.js';
 import { hex, sha256 } from './codec.js';
 import { Serial } from './serial.js';
 
+export class StorageOff extends Error {}
 export class Conflict extends Error {}
 export class Damaged extends Error {}
 /** Unsatisfiable is a ranged get whose offset begins past the frame: the caller turns it into a refusal. */
@@ -43,7 +44,8 @@ export async function sealFrame(bytes) {
 export class R2Store {
   #writes = new Serial();
 
-  constructor(bucket, sql, identity) {
+  constructor(bucket, sql, identity, assertStorage = () => { throw new StorageOff(); }) {
+    this.assertStorage = assertStorage;
     this.bucket = bucket;
     this.sql = sql;
     this.prefix = `${identity}/f/`;
@@ -59,12 +61,33 @@ export class R2Store {
    */
   put(frame, admit = () => {}) {
     return this.#writes.run(async () => {
+      this.assertStorage();
       if (this.#indexed(frame.id)) return false;
       await this.#refuseConflicts(frame.objects);
       await admit();
+      this.assertStorage();
       await this.bucket.put(this.prefix + frame.id, frame.bytes);
       this.#index(frame);
       return true;
+    });
+  }
+
+  /** checkReferences waits for indexing and durability before an upload receipt is proposed. */
+  checkReferences(headRID, frames, durable) {
+    return this.#writes.run(async () => {
+      if (typeof durable !== 'function' || !/^[0-9a-f]{64}$/.test(headRID)) throw new Damaged();
+      const head = await this.get(headRID);
+      if (!head || head.length !== this.#locate(headRID).len) throw new Damaged();
+      for (const id of new Set([this.#locate(headRID).frame, ...frames])) {
+        if (!/^[0-9a-f]{64}$/.test(id) || !this.#indexed(id)) throw new Damaged();
+        const object = await this.bucket.get(this.prefix + id);
+        if (!object) throw new Damaged();
+        const bytes = new Uint8Array(await object.arrayBuffer());
+        if (await frameIdOf(bytes) !== id) throw new Damaged();
+        const frame = decode(bytes);
+        for (const ref of frame.objects) if (!this.#locate(ref.rid)) throw new Damaged();
+      }
+      await durable();
     });
   }
 
@@ -170,7 +193,9 @@ export class R2Store {
   // #index is one synchronous turn, so no request sees a frame half indexed. An object already held
   // (the same rid in an earlier frame, with the same bytes) keeps its first place.
   #index({ id, base, objects }) {
-    this.sql.exec('INSERT OR IGNORE INTO frames VALUES (?)', id);
     for (const { rid, off, len } of objects) this.sql.exec('INSERT OR IGNORE INTO objs VALUES (?,?,?,?)', rid, id, base + off, len);
+    // The completion marker comes last so an interrupted index is repaired
+    // by the next immutable put, rather than being mistaken for completion.
+    this.sql.exec('INSERT OR IGNORE INTO frames VALUES (?)', id);
   }
 }

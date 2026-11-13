@@ -48,7 +48,6 @@ var capitalised = regexp.MustCompile(`CodeAF|Codeaf([^-]|$)`)
 var rootFiles = map[string]bool{
 	"go.mod": true, "Makefile": true, ".gitignore": true, "SIZE-BUDGET": true,
 	"README.md": true, "CLAUDE.md": true, "AGENTS.md": true, "PERF.md": true,
-	"BENCHMARKS.md": true,
 }
 
 // TestW4TheFinishedTreeHasNoOldProductName is the repository-sized assertion.
@@ -94,7 +93,6 @@ func TestW4EveryCoverageClassFailsWithFileAndLine(t *testing.T) {
 		{"agent guide", "CLAUDE.md", "# Safe\naforge\n", 2},
 		{"agent guide link surface", "AGENTS.md", "# Safe\naforge\n", 2},
 		{"performance guide", "PERF.md", "# Safe\naforge\n", 2},
-		{"benchmark guide", "BENCHMARKS.md", "# Safe\naforge\n", 2},
 		{"top-level doc", "docs/LIVE.md", "# Safe\naforge\n", 2},
 		{"rule doc", "docs/rules/live.md", "# Safe\naforge\n", 2},
 	}
@@ -191,11 +189,7 @@ func TestW4FrozenAndNonProductPathsStayExempt(t *testing.T) {
 	root := fixtureTree(t, map[string]string{
 		"CHANGELOG.md":                     "aforge\n",
 		"docs/changes/unreleased/x.md":     "aforge\n",
-		"docs/design/x/DESIGN.md":          "aforge\n",
-		"docs/design/x/frame.txt":          "aforge\n",
 		"bench-results/run.txt":            "aforge\n",
-		"audit-notes/run.md":               "aforge\n",
-		"harness-research-notes.md":        "aforge\n",
 		"internal/live/testdata/record.go": "aforge\n",
 		"bench/tool/fixtures/record.go":    "aforge\n",
 		"third_party/example/live.go":      "aforge\n",
@@ -430,7 +424,7 @@ func coveredFile(rel string) bool {
 
 func exemptDir(rel string) bool {
 	for _, dir := range []string{
-		".git", "docs/changes", "docs/design", "bench-results", "audit-notes",
+		".git", "docs/changes", "bench-results",
 		"third_party", "bin", "internal/furrowbin", "internal/namelaw",
 	} {
 		if rel == dir || hasPathPrefix(rel, dir) {
@@ -447,7 +441,7 @@ func exemptDir(rel string) bool {
 }
 
 func exemptFile(rel string) bool {
-	if rel == "CHANGELOG.md" || rel == "harness-research-notes.md" {
+	if rel == "CHANGELOG.md" {
 		return true
 	}
 	return strings.HasPrefix(rel, "internal/manual/") && strings.HasSuffix(rel, ".pack.gz")

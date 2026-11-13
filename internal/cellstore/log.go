@@ -25,6 +25,26 @@ type Entry struct {
 	IsAdopted bool
 }
 
+// SavedAt returns the seal time of the named head. A received head whose turn
+// record is unavailable has no known time; copying it must not invent one.
+func SavedAt(c cell.Cell, head string) (int64, error) {
+	last, err := lastTurn(rel(c, TurnsPath))
+	if err != nil || last == nil {
+		return 0, err
+	}
+	if last.ID == head {
+		return last.SealedAtMs, nil
+	}
+	// Publication may be uploading an earlier head while another turn seals.
+	turns, err := Turns(c)
+	for i := len(turns) - 1; i >= 0; i-- {
+		if turns[i].ID == head {
+			return turns[i].SealedAtMs, err
+		}
+	}
+	return 0, err
+}
+
 // Turns reads the cell's whole chain, oldest first. A cell that was never
 // sealed has an empty chain.
 func Turns(c cell.Cell) ([]Turn, error) {

@@ -301,10 +301,11 @@ func (b *appBackend) SessionActions(agent string) (appwire.ActionCapabilities, e
 		return appwire.ActionCapabilities{}, appActionReadsBusy()
 	}
 	defer release()
-	_, live, err := b.heldLive(agent)
+	_, live, endLive, err := b.borrowLive(agent)
 	if err != nil {
 		return appwire.ActionCapabilities{}, err
 	}
+	defer endLive()
 	return appActionDoorsOf(live.conn.Conv).capabilities(agent), nil
 }
 
@@ -466,9 +467,20 @@ func (b *appBackend) SessionAct(ask appwire.ActionAsk) (appwire.ActionReceipt, e
 		return r, err
 	}
 
-	_, live, err := b.heldLive(ask.Agent)
+	a, err := b.find(ask.Agent)
 	if err != nil {
 		return appwire.ActionReceipt{}, err
+	}
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	_, live, err := b.heldLiveLocked(a)
+	if err != nil {
+		return appwire.ActionReceipt{}, err
+	}
+	if ask.Action == appwire.ActionTaskStart || ask.Action == appwire.ActionProgramStart {
+		if err := b.workAllowed(a); err != nil {
+			return appwire.ActionReceipt{}, err
+		}
 	}
 	run, err := b.actionRun(live.conn.Conv, ask)
 	if err != nil {

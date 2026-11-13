@@ -1,17 +1,43 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/service"
 	"github.com/Agent-Field/codeaf/internal/session"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 	"github.com/fsnotify/fsnotify"
 )
+
+// recoveringAgents is every agent a close recovery or a quit still owes work.
+// Recovery admits paid-capable work before opening its checkpoint; these
+// records stay on that road even if its timer and the crew look overlap.
+func (b *appBackend) recoveringAgents() map[string]bool {
+	recovering := map[string]bool{}
+	r := &b.closeRecovery
+	r.locked(func() {
+		for path, claim := range r.claims {
+			if !claim.presence.Fresh(b.now()) || !session.InUse(session.Place{Dir: path}.Transcript()) {
+				recovering[filepath.Base(path)] = true
+			}
+		}
+	})
+	_ = b.state.read(func(f *appStateFile) {
+		for id := range f.ClosePending {
+			recovering[id] = true
+		}
+		for _, id := range f.ResumeAfterQuit {
+			recovering[id] = true
+		}
+	})
+	return recovering
+}
 
 // subscribeCrewTraffic installs the shared watch before the first pending-work
 // check. Directory watches survive log replacement; the existing crew beat
@@ -21,27 +47,7 @@ func (b *appBackend) subscribeCrewTraffic(run *appCrewRun) {
 	defer run.tick.Unlock()
 	run.since = b.now()
 	run.wakeStamps = map[string]string{}
-	run.mu.Lock()
-	run.recovering = map[string]bool{}
-	// Recovery admits paid-capable work before opening its checkpoint. These
-	// records stay on that road even if its timer and the crew look overlap.
-	r := &b.closeRecovery
-	r.mu.Lock()
-	for path, claim := range r.claims {
-		if !claim.presence.Fresh(b.now()) || !session.InUse(session.Place{Dir: path}.Transcript()) {
-			run.recovering[filepath.Base(path)] = true
-		}
-	}
-	r.mu.Unlock()
-	_ = b.state.read(func(f *appStateFile) {
-		for id := range f.ClosePending {
-			run.recovering[id] = true
-		}
-		for _, id := range f.ResumeAfterQuit {
-			run.recovering[id] = true
-		}
-	})
-	run.mu.Unlock()
+	run.locked(func() { run.recovering = b.recoveringAgents() })
 	run.watcher, _ = fsnotify.NewWatcher()
 	if run.watcher != nil {
 		_ = run.watcher.Add(filepath.Dir(teamstore.Path(b.crewProfile())))
@@ -53,15 +59,11 @@ func (b *appBackend) subscribeCrewTraffic(run *appCrewRun) {
 // light record; presence, recovery or unread wake traffic needs a conversation.
 // The per-agent gate in ensure still arbitrates every automatic and UI open.
 func (b *appBackend) neededMembers(run *appCrewRun, read appCrewRead, first bool) map[string][]string {
-	b.locked(func() {
-		for id, a := range b.agents {
-			if a.live != nil && len(run.held[id]) > 0 {
-				a.crewHeld = true
-			}
-		}
-	})
 	candidates := b.lazyCandidates(run, read, first)
 	needed := map[string][]string{}
+	profile := b.crewProfile()
+	shared := ""
+	traffic := map[string]string{}
 	for id, row := range candidates {
 		var since time.Time
 		var crewHeld bool
@@ -73,7 +75,15 @@ func (b *appBackend) neededMembers(run *appCrewRun, read appCrewRead, first bool
 			needed[id] = run.held[id]
 			continue
 		}
-		stamp := b.lazyWorkStamp(row.Dir, run.held[id])
+		if shared == "" {
+			shared = teamstore.Stamp(profile) + run.workStamp(config.BudgetConfigPath(profile))
+		}
+		for _, crew := range run.held[id] {
+			if _, ok := traffic[crew]; !ok {
+				traffic[crew] = teamstore.TrafficStamp(profile, crew)
+			}
+		}
+		stamp := shared + run.lazyWorkStamp(row.Transcript, run.held[id], traffic)
 		// A failed open remains due even when its input files did not change.
 		retry := false
 		run.locked(func() { retry = run.unheld[id] != nil })
@@ -101,7 +111,7 @@ func (b *appBackend) needsLazyOpen(run *appCrewRun, read appCrewRead, row sessio
 	if recovered && !(presence.Fresh(b.now()) && session.InUse(row.Transcript)) {
 		return false
 	}
-	busy := presence.State == session.PresenceWorking || presence.NeedsPerson() || len(presence.RunningTasks) > 0 || len(presence.Jobs) > 0
+	busy := memberBusy(presence)
 	return busy || b.serviceKeeps(row.ID) || session.NeedsTaskRecovery(row.Transcript) || session.NeedsProcessRecovery(row.Transcript)
 }
 
@@ -110,7 +120,7 @@ func (b *appBackend) needsLazyOpen(run *appCrewRun, read appCrewRead, row sessio
 func (b *appBackend) lazyCandidates(run *appCrewRun, read appCrewRead, first bool) map[string]session.SessionRow {
 	if first {
 		for _, row := range session.ReadWorld(session.PlacesRoot()).Sessions() {
-			if !row.DeletionPending {
+			if !row.DeletionPending && !appChatStaging(row.Dir) {
 				b.remember(row)
 			}
 		}
@@ -126,35 +136,92 @@ func (b *appBackend) lazyCandidates(run *appCrewRun, read appCrewRead, first boo
 			b.rememberLazyMember(appMemberAgent(member))
 		}
 	}
+	startup := first || !run.lazyStarted
+	run.lazyStarted = true
+	now := b.now()
+	hot := map[string]bool{}
+	for _, agent := range stageAgentsWhere(func(*session.Agent) bool { return true }) {
+		hot[appAgentID(agent.SessionPath())] = true
+	}
+	if svc, err := b.servicesOf(); err == nil {
+		for _, row := range svc.sup.All() {
+			if row.Running || row.Stopping || row.State == service.StateStarting || row.State == service.StateRestarting {
+				hot[row.Owner] = true
+			}
+		}
+	}
 	recovering := map[string]bool{}
 	run.locked(func() {
+		for id, crews := range run.held {
+			if len(crews) > 0 {
+				hot[id] = true
+			}
+		}
+		for id, u := range run.unheld {
+			if u.healed || !now.Before(u.next) {
+				hot[id] = true
+			}
+		}
 		for id, waiting := range run.recovering {
 			recovering[id] = waiting
 		}
 	})
 	candidates := map[string]session.SessionRow{}
+	var cold []string
 	b.locked(func() {
 		for id, a := range b.agents {
+			if a.live != nil {
+				if len(run.held[id]) > 0 {
+					a.crewHeld = true
+				}
+			}
+			if !a.lastLive.IsZero() && !now.After(a.lastLive.Add(appLazyHotWindow)) {
+				hot[id] = true
+			}
 			if a.live != nil || a.transcript == "" || recovering[id] {
 				continue
 			}
 			if a.listening.IsZero() {
 				a.listening = run.since
 			}
-			candidates[id] = session.SessionRow{ID: id, Dir: filepath.Dir(a.transcript), Transcript: a.transcript}
+			if startup || hot[id] {
+				candidates[id] = session.SessionRow{ID: id, Dir: session.DirOf(a.transcript), Transcript: a.transcript}
+			} else {
+				cold = append(cold, id)
+			}
+		}
+		// A key cursor survives agents joining or leaving the cold set without
+		// restarting the sweep at the beginning and starving later chats.
+		sort.Strings(cold)
+		start := sort.Search(len(cold), func(i int) bool { return cold[i] > run.coldAfter })
+		beats := int(appLazyColdSweep / appCrewPoll)
+		for i := 0; i < (len(cold)+beats-1)/beats; i++ {
+			id := cold[(start+i)%len(cold)]
+			a := b.agents[id]
+			candidates[id] = session.SessionRow{ID: id, Dir: session.DirOf(a.transcript), Transcript: a.transcript}
+			run.coldAfter = id
 		}
 	})
 	return candidates
 }
 
-func (b *appBackend) lazyWorkStamp(dir string, crews []string) string {
-	profile := b.crewProfile()
-	stamp := teamstore.Stamp(profile) + lazyStamp(config.BudgetConfigPath(profile))
-	for _, name := range []string{"presence.json", "tasks.json", "team.json", "processes", "processes/head.json", "processes.json"} {
-		stamp += lazyStamp(filepath.Join(dir, name))
+func (run *appCrewRun) workStamp(path string) string {
+	if run.stamp != nil {
+		return run.stamp(path)
+	}
+	return lazyStamp(path)
+}
+
+func (run *appCrewRun) lazyWorkStamp(transcript string, crews []string, traffic map[string]string) string {
+	stamp := run.workStamp(filepath.Join(session.DirOf(transcript), "presence.json"))
+	// Presence belongs to the folder; task and process records stay beside
+	// the journal, including inside .cell/.
+	truth := filepath.Dir(transcript)
+	for _, name := range []string{"tasks.json", "team.json", "processes", "processes/head.json", "processes.json"} {
+		stamp += run.workStamp(filepath.Join(truth, name))
 	}
 	for _, crew := range crews {
-		stamp += teamstore.TrafficStamp(profile, crew)
+		stamp += traffic[crew]
 	}
 	return stamp
 }
@@ -165,7 +232,18 @@ func lazyStamp(path string) string {
 	if err != nil {
 		return "-"
 	}
-	return path + ":" + strconv.FormatInt(info.Size(), 10) + ":" + strconv.FormatInt(info.ModTime().UnixNano(), 10)
+	if stamp := appInfoStamp(path, info); stamp != "" {
+		return stamp
+	}
+	return fmt.Sprintf("%s:%d:%d;", path, info.Size(), info.ModTime().UnixNano())
+}
+
+func appInfoStamp(path string, info os.FileInfo) string {
+	dev, ino, ctime, ok := appFileIdentity(info)
+	if !ok {
+		return ""
+	}
+	return fmt.Sprintf("%s:%d:%d:%d:%d:%d;", path, dev, ino, info.Size(), info.ModTime().UnixNano(), ctime)
 }
 
 func crewTrafficEvent(event fsnotify.Event) bool {
@@ -204,13 +282,43 @@ func (b *appBackend) rememberLazyMember(id string) {
 
 // findCrewOwner restores the owner-backed answer an open crew had before its
 // idle members became light records. Other closed conversations stay closed.
-func (b *appBackend) findCrewOwner(id string) (*appAgent, error) {
-	a, err := b.find(id)
-	if err != nil {
-		return nil, err
+func (b *appBackend) findCrewOwner(id string) (*appAgent, func(), error) {
+	return b.readAgent(id, true)
+}
+
+// findCrewReader pins an existing owner and opens only a busy crew member.
+func (b *appBackend) findCrewReader(id string) (*appAgent, func(), error) {
+	return b.readAgent(id, false)
+}
+
+// memberRests is true for a member whose conversation is not held and has
+// nothing a held conversation would answer differently from its files: no
+// working turn, question, task or process in its presence, no kept service, no
+// lent stage. The crew beat opens it for new traffic; a person's view or send
+// opens it through [appBackend.ensure].
+func (b *appBackend) memberRests(a *appAgent) bool {
+	var held bool
+	b.locked(func() { held = a.live != nil || a.opening })
+	return !held && b.memberQuiet(a)
+}
+
+// memberQuiet is true for a member, held or not, whose files and services show
+// nothing in flight, so letting its conversation go loses nothing the crew
+// would not open it again for.
+func (b *appBackend) memberQuiet(a *appAgent) bool {
+	var id, transcript string
+	b.locked(func() { id, transcript = a.view.ID, a.transcript })
+	if transcript == "" {
+		return false
 	}
-	if b.crewKeeps(id) {
-		_, _, err = b.heldLive(id)
+	if _, staged := liveStageFor(transcript); staged || b.serviceKeeps(id) {
+		return false
 	}
-	return a, err
+	presence, _ := session.ReadSessionPresenceAnyAge(session.DirOf(transcript))
+	return !memberBusy(presence)
+}
+
+// memberBusy is what a presence record says about work in flight.
+func memberBusy(presence session.SessionPresence) bool {
+	return presence.State == session.PresenceWorking || presence.NeedsPerson() || len(presence.RunningTasks) > 0 || len(presence.Jobs) > 0
 }

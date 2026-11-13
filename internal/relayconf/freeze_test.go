@@ -21,7 +21,7 @@ import (
 const holderHomeEnv = "CAF_FREEZE_HOLDER_HOME"
 
 // freezeBound is what the owner was promised: a device that stops answering is
-// shown offline within 30 s (STAGE-1-CONTRACTS.md section 21.12.2).
+// shown offline within 30 s.
 const freezeBound = 30 * time.Second
 
 // holderMain is the child: it follows the watch feed as a device of the

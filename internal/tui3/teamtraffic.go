@@ -86,6 +86,7 @@ type trafficState struct {
 	// cursor is each team's last entry id read, by team id; a team with none
 	// has not been looked at yet, and its first read is the tail.
 	cursor map[string]string
+	mirror map[string]string
 	// rows is each team's cached entries, oldest first, at most trafficKeep.
 	rows map[string][]teamstore.Entry
 	// done is every stop and start acted on, by team id and entry id.
@@ -122,13 +123,18 @@ type trafficTickMsg struct{}
 
 // trafficJob is one team's read: after the cursor, or the tail on a first look.
 type trafficJob struct {
-	id    string
-	after string
-	first bool
+	id     string
+	after  string
+	mirror string
+	first  bool
 }
 
 // trafficGot is what one team's read found.
 type trafficGot struct {
+	next   string
+	mirror string
+	news   []teamstore.Entry
+	reset  bool
 	trafficJob
 	entries []teamstore.Entry
 	err     error
@@ -254,7 +260,7 @@ func (a *app) trafficRead() tea.Cmd { return a.trafficReadOf(a.trafficIDs(), fal
 // clock, whose fold sets the next one; a turn that finds a read already out
 // leaves the answer to it and only comes round again.
 func (a *app) trafficReadOf(ids []string, tick bool) tea.Cmd {
-	if titles := a.trafficTitles(); len(titles) > 0 {
+	if titles := a.trafficTitles(); (len(ids) > 0 || !a.teamsShare) && len(titles) > 0 {
 		// A member that joined before it had a title takes its tab's name,
 		// and with it a handle, as an ordinary edit: [app.teamEdit] gives every
 		// member this window has a tab for its tab's name on the way, and the
@@ -270,11 +276,19 @@ func (a *app) trafficReadOf(ids []string, tick bool) tea.Cmd {
 	var jobs []trafficJob
 	for _, id := range ids {
 		after, seen := a.traffic.cursor[id]
-		jobs = append(jobs, trafficJob{id: id, after: after, first: !seen})
+		jobs = append(jobs, trafficJob{id: id, after: after, mirror: a.traffic.mirror[id], first: !seen})
 	}
 	a.traffic.reading = true
-	seam, reserved, stamp, edits := a.teamsSeam(), teamReservedHues(a.pal), a.traffic.stamp, a.traffic.edits
+	seam, reserved, stamp, edits, sharing := a.teamsSeam(), teamReservedHues(a.pal), a.traffic.stamp, a.traffic.edits, a.teamsShare
+	generation := a.teamsShareGeneration
 	return a.besideLine(func() func(bool) tea.Cmd {
+		var engineSharing *teamsSharingMsg
+		if seam.Sharing != nil {
+			if enabled, err := seam.Sharing(); err == nil {
+				sharing = enabled
+				engineSharing = &teamsSharingMsg{generation, enabled}
+			}
+		}
 		got := make([]trafficGot, len(jobs))
 		for i, j := range jobs {
 			after, limit := j.after, trafficPage
@@ -282,13 +296,32 @@ func (a *app) trafficReadOf(ids []string, tick bool) tea.Cmd {
 				after, limit = "", trafficKeep
 			}
 			entries, err := seam.Traffic(j.id, after, limit)
-			got[i] = trafficGot{trafficJob: j, entries: entries, err: err}
+			got[i] = trafficGot{trafficJob: j, entries: entries, news: entries, err: err}
+			if seam.DisplayTraffic != nil && err == nil && sharing {
+				display, next, mirror, reset, displayErr := seam.DisplayTraffic(j.id, after, j.mirror, trafficKeep)
+				if displayErr != nil {
+					teamstore.SharingError(a.profileDir, displayErr)
+				}
+				if displayErr == nil && reset {
+					got[i].entries, got[i].reset = display, true
+				}
+				got[i].mirror = mirror
+				// At opening only, the display reader may establish a cursor.
+				if j.first {
+					got[i].next = next
+				}
+			}
 		}
 		fresh, at, same, err := seam.ReadSince(stamp, reserved)
 		if err != nil || same {
 			fresh, at = nil, stamp
 		}
-		return func(bool) tea.Cmd { return a.trafficTake(got, fresh, at, edits, tick) }
+		return func(bool) tea.Cmd {
+			if engineSharing != nil {
+				a.takeTeamsSharing(*engineSharing)
+			}
+			return a.trafficTake(got, fresh, at, edits, tick)
+		}
 	})
 }
 
@@ -302,7 +335,7 @@ func (a *app) trafficTake(got []trafficGot, fresh []team, at string, edits int, 
 	version := a.traffic.version
 	changed := false
 	if edits == a.traffic.edits && a.traffic.wrote == a.traffic.edits {
-		if fresh != nil {
+		if fresh != nil || at != a.traffic.stamp {
 			a.teamAdopt(teamsClone(fresh))
 			changed = true
 		}
@@ -315,7 +348,24 @@ func (a *app) trafficTake(got []trafficGot, fresh []team, at string, edits int, 
 		}
 	}
 	var acts []tea.Cmd
+	needRoster := false
 	for _, g := range got {
+		// A history response already in flight cannot revive rows after off.
+		if !a.teamsShare {
+			g.mirror = ""
+			if g.reset {
+				g.entries, g.reset = g.news, false
+			}
+		}
+		if g.news == nil && !g.reset {
+			g.news = g.entries
+		}
+		for _, e := range g.entries {
+			if e.Origin != "" {
+				id, _, _ := strings.Cut(e.Origin, "/")
+				needRoster = needRoster || !a.teamComputerKnown(id)
+			}
+		}
 		if g.err != nil {
 			continue
 		}
@@ -324,13 +374,33 @@ func (a *app) trafficTake(got []trafficGot, fresh []team, at string, edits int, 
 			// stale, and taking it would add its entries twice.
 			continue
 		}
+		if a.traffic.mirror == nil {
+			a.traffic.mirror = map[string]string{}
+		}
+		a.traffic.mirror[g.id] = g.mirror
+		if g.reset {
+			changed = changed || len(a.traffic.rows[g.id]) > 0
+			a.traffic.rows[g.id] = nil
+		}
 		if len(g.entries) == 0 {
 			if g.first {
 				a.traffic.cursor[g.id] = trafficFromStart
 			}
 			continue
 		}
-		a.traffic.cursor[g.id] = g.entries[len(g.entries)-1].ID
+		next := g.next
+		if next == "" {
+			next = g.after
+			for _, e := range g.news {
+				if e.Origin == "" {
+					next = e.ID
+				}
+			}
+		}
+		if next == "" {
+			next = trafficFromStart
+		}
+		a.traffic.cursor[g.id] = next
 		a.teamsTakeInteractions(g.id, g.entries)
 		changed = true
 		if g.first {
@@ -347,7 +417,10 @@ func (a *app) trafficTake(got []trafficGot, fresh []team, at string, edits int, 
 			}
 			continue
 		}
-		for _, e := range g.entries {
+		for _, e := range g.news {
+			if e.Origin != "" || e.ID <= g.after {
+				continue
+			}
 			if cmd := a.trafficAct(g.id, e); cmd != nil {
 				acts = append(acts, cmd)
 			}
@@ -373,6 +446,9 @@ func (a *app) trafficTake(got []trafficGot, fresh []team, at string, edits int, 
 			a.traffic.ticking = false
 		}
 	}
+	if needRoster && a.teamsShare {
+		acts = append(acts, a.askRoster())
+	}
 	return tea.Batch(acts...)
 }
 
@@ -381,7 +457,7 @@ func (a *app) trafficTake(got []trafficGot, fresh []team, at string, edits int, 
 // trafficAct does what one new entry asks of this window, once per entry id: a
 // stop for a conversation it holds, a start when it holds the team's manager.
 func (a *app) trafficAct(teamID string, e teamstore.Entry) tea.Cmd {
-	if e.Kind != teamstore.KindStop && e.Kind != teamstore.KindStart {
+	if e.Origin != "" || (e.Kind != teamstore.KindStop && e.Kind != teamstore.KindStart) {
 		return nil
 	}
 	done := teamID + "/" + e.ID
@@ -504,6 +580,10 @@ func (a *app) trafficStart(t team, e teamstore.Entry) tea.Cmd {
 			}
 		}
 		conv, err := start(where)
+		// Seat the conversation before membership can wake its first turn.
+		if err == nil && conv.Agent != nil && e.Model != "" {
+			conv.Agent.SetModel(e.Model)
+		}
 		// The session owns both the gate and its persisted posture. Apply it
 		// off the UI loop, before membership can wake the first turn.
 		if err == nil && conv.Agent != nil && posture != "" {

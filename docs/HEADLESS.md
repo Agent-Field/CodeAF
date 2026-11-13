@@ -201,8 +201,7 @@ launched from. `do --json` carries the same facts as fields.
 from "nothing was attempted" to "it asked a question" to "the price was refused",
 and `2` meant both "the delivery did not land whole" and "the wall came first".
 Those are five different situations and a script could branch on none of them.
-The whole before-and-after, per command, is
-`docs/design/polish/envelope-and-exits.md`.
+The exit codes are described below.
 
 `2`'s causes are one fact: **the deliverable did not land whole.** The delivery
 gate — the judge that asks whether the person who asked would accept this —
@@ -524,8 +523,7 @@ wrote two readers and the second one was written wrong.
 
 **Every old name is still printed beside the new one for one release** — `text`,
 `turns`, `elapsed_ms`, `artifacts`, and the whole `usage` object — so nothing
-that reads them breaks today. The full before-and-after is
-`docs/design/polish/envelope-and-exits.md`.
+that reads them breaks today.
 
 **One value moved and was not preserved.** `exec` used to report
 `"stop": "done"` for a run that finished having produced no text at all. It says
@@ -792,6 +790,7 @@ The full list is `codeaf help env`. What matters headless:
 | `CODEAF_EXEC_BUDGET` | unset | `codeaf exec` only: the token budget when `--token-budget` was not passed. |
 | `CODEAF_EXEC_TIMEOUT` | unset | `codeaf exec` only: the wall when `--timeout` was not passed, as a duration or a bare number of seconds. A typed flag always wins over all three; see section 2. |
 | `CODEAF_EXIT_CODES` | unset | `legacy` restores `codeaf exec`'s old 2/3/4/5/6 exit codes for one release and changes nothing else. |
+| `CODEAF_ATTRIBUTION` | `on` | `off` (`0`, `false`) stops codeaf from adding `Assisted-by` and `Co-Authored-By` trailers to commits and tells the worker not to add AI attribution lines to commits, pull requests, issues or comments. `CODEAF_ATTRIBUTION_MODEL=off` hides only the model name while keeping attribution on. |
 
 A variable set in the environment always wins over the `/settings` sheet, and
 that row reads read-only in the sheet rather than fighting your shell.

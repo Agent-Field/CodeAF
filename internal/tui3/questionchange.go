@@ -217,7 +217,7 @@ func (a *app) changeAnswer(record questionRecord) {
 	// AND NOTHING IS WAITING ON IT. The turn that asked has long since been
 	// answered and moved on — that is what the receipt was — so a row that still
 	// said `waiting` would be telling somebody their work had stopped for a
-	// decision they are only revisiting. Seen on the Spark, 2026-09-11.
+	// decision they are only revisiting. Seen in a test run, 2026-09-11.
 	q.Blocking = session.Blocking{}
 	q.Asked = a.now()
 	if a.priorAnswers == nil {

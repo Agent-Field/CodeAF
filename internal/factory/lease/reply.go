@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/run"
 )
 
 // Reply keeps the person's words on the job before a worker can collect them.
@@ -26,6 +27,9 @@ func (d *Desk) Reply(id int, from, words string) error {
 	}
 	return d.change(func(_ *document, now time.Time) (bool, error) {
 		return false, d.store.Update(id, func(it *factory.Item) error {
+			if err := run.CheckWriteAccess(*it, "chat"); err != nil {
+				return err
+			}
 			if err := factory.RefuseDropped(*it); err != nil {
 				return err
 			}

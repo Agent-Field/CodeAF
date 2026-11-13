@@ -57,7 +57,7 @@ type AgentQuestion struct {
 	OriginNodeID string
 	// OriginCharterID is the standing rule an older build asked about. Nothing
 	// asks on a charter's behalf any more — the v1 scheduler that owned them is
-	// gone (docs/design/automations/DESIGN.md) — but the column and the queue
+	// gone — but the column and the queue
 	// event still carry the ones a store already holds, and the resident reads
 	// it to let those lapse rather than wait on machinery that cannot answer.
 	OriginCharterID  string

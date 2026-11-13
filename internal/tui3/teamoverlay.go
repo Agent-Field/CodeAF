@@ -93,7 +93,7 @@ func (a *app) teamOverlaySync() tea.Cmd {
 	}
 	a.teamViews.pending = target.key
 	cmd := a.tabGo(target)
-	if a.frontTabKey() != target.key {
+	if !a.conversationOpening && a.frontTabKey() != target.key {
 		a.teamViewSet("")
 	}
 	return cmd

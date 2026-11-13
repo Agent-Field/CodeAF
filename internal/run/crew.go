@@ -149,10 +149,15 @@ func crewFactory(store *plandb.Store, workspace, profileDir string, seats Seats,
 	// there is none. The person's `--yes-spend` rides beside it, lifting that one
 	// limit in the worker exactly as it does in the crew guard.
 	dailyBudgetUSD, _ := config.DailyBudgetUSDAt(profileDir)
+	attributionOff := !config.AttributionAt(profileDir)
+	attributionModelOff := !config.AttributionModelAt(profileDir)
 	workerFor := func(model string, completer session.Completer) *BashWorker {
 		worker := NewBashWorker(store, workspace, model, completer, workerOpts...)
+		worker.profileDir = profileDir
 		worker.dailyBudgetUSD = dailyBudgetUSD
 		worker.spendPreauthorized = preauthorized
+		worker.attributionOff = attributionOff
+		worker.attributionModelOff = attributionModelOff
 		// The memory section rides on every worker this run seats, read once by
 		// the door that built the factory.
 		worker.always = always
@@ -179,16 +184,34 @@ func crewFactory(store *plandb.Store, workspace, profileDir string, seats Seats,
 		role, _ := store.RoleOf(task.ID)
 		tier := SeatFor(role)
 		model := seatModel(profileDir, tier, seats)
+		if tier == config.ModelTierWorker {
+			if named := taskWorkModel(store, task); named != "" {
+				model = named
+			}
+		}
 		if model == "" {
 			return seatlessWorker{tier: tier}
 		}
-		// EVERY CALL IS MARKED WITH THE SEAT THE TASK SITS, because this is the
-		// one place that knows it: the spend guard holds the checker to its own
-		// ceiling by seat, and a crew whose seats share one model would give it
-		// nothing else to tell a check's call from a worker's.
+		// Every call carries its seat and task id so a shared guard gives each
+		// check its own ceiling, including when seats share a model or a task
+		// is seated again after a wake.
 		seat, _ := config.CrewTierSeat(tier)
-		return workerFor(model, session.SeatCompleter(seat, completerFor(model)))
+		return workerFor(model, session.SeatCompleterFor(seat, task.ID, completerFor(model)))
 	}
+}
+
+// taskWorkModel keeps a named work model through splits. Coordinators and checks
+// retain their own seats; work leaves use the nearest explicit ancestor override.
+func taskWorkModel(store *plandb.Store, task plandb.Task) string {
+	for current := &task; current != nil; current = store.Task(current.ParentID) {
+		if current.Model != "" {
+			return current.Model
+		}
+		if current.ParentID == "" {
+			break
+		}
+	}
+	return ""
 }
 
 // seatModel is the model a task riding tier is seated on, and the one answer

@@ -18,7 +18,7 @@ import (
 )
 
 // TestC9CommittedHistoryTravelsSealedAndWorkingSecretsUseTheVault proves the
-// history half of C9 as decided by Abir on 2026-10-21. A deleted historical key
+// history transfer boundary. A deleted historical key
 // must remain readable on the second home, with all commits and branches intact,
 // while an untracked .env arrives only through the vault. Every request body at
 // the in-process relay must be free of both plaintext keys on both transports.

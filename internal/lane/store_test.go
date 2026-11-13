@@ -367,7 +367,7 @@ func TestFourLedgersOverOneFileKeepEverybodysBeliefs(t *testing.T) {
 // exactly what happened —
 // `the belief file could not be compacted: json: unsupported value: NaN` —
 // so every compaction failed, the journal grew instead, and every load replayed
-// all of it (docs/design/recovery/census-20260910.md §8, finding 8).
+// all of it.
 
 // TestABeliefThatIsNotANumberCostsItselfAndNeverTheFile is the law: a value the
 // arithmetic got wrong is dropped, and everything beside it is written.

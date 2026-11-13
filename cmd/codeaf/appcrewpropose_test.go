@@ -26,9 +26,11 @@ const helpersProposal = `{"name": "flaky", "goal": "keep CI green", "helpers": [
 // app's proposal question with helpersProposal, and every other request with
 // "done", keeping every request it was sent.
 type helpersModel struct {
-	server   *httptest.Server
-	mu       sync.Mutex
-	requests []recordedRequest
+	server          *httptest.Server
+	mu              sync.Mutex
+	requests        []recordedRequest
+	proposal        string
+	proposalRelease <-chan struct{}
 }
 
 func newHelpersModel(t *testing.T) *helpersModel {
@@ -49,12 +51,35 @@ func newHelpersModel(t *testing.T) *helpersModel {
 		model.mu.Unlock()
 		answer := "done"
 		if envelope.messageContaining("Propose a crew") != "" {
-			answer = helpersProposal
+			model.mu.Lock()
+			answer = model.proposal
+			if answer == "" {
+				answer = helpersProposal
+			}
+			model.mu.Unlock()
 		}
 		content, _ := json.Marshal(answer)
 		if envelope.Stream {
 			writer.Header().Set("Content-Type", "text/event-stream")
-			_, _ = writer.Write([]byte(`data: {"id":"helpers","choices":[{"index":0,"delta":{"role":"assistant","content":` + string(content) + `},"finish_reason":"stop"}]}` + "\n\ndata: [DONE]\n\n"))
+			model.mu.Lock()
+			release := model.proposalRelease
+			model.mu.Unlock()
+			waited := false
+			for start := 0; start < len(answer); start += 7 {
+				end := min(start+7, len(answer))
+				chunk, _ := json.Marshal(answer[start:end])
+				_, _ = writer.Write([]byte(`data: {"id":"helpers","choices":[{"index":0,"delta":{"content":` + string(chunk) + `}}]}` + "\n\n"))
+				writer.(http.Flusher).Flush()
+				if !waited && release != nil && envelope.messageContaining("Propose a crew") != "" && strings.Contains(answer[:end], "\n") {
+					select {
+					case <-release:
+					case <-request.Context().Done():
+						return
+					}
+					waited = true
+				}
+			}
+			_, _ = writer.Write([]byte(`data: {"id":"helpers","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}` + "\n\ndata: [DONE]\n\n"))
 			return
 		}
 		_, _ = writer.Write([]byte(`{"choices":[{"index":0,"message":{"role":"assistant","content":` + string(content) + `},"finish_reason":"stop"}]}`))
@@ -437,6 +462,7 @@ func TestAppCrewProposalAtTheDayCapAsksAboutTheCap(t *testing.T) {
 // agent alone leaves "Kept as one agent · you · <time>", and making the crew
 // leaves the crew's formation fact alone — not a second "Made the crew" beside
 // it.
+// Contract 1: proposal answers settle the Inbox and chat exactly once.
 func TestAppCrewProposalEndsInOneReceipt(t *testing.T) {
 	conv := &proposingConversation{fakeConversation: &fakeConversation{}, answer: helpersProposal}
 	backend, rec, agent := proposingBackend(t, conv)
@@ -470,6 +496,12 @@ func TestAppCrewProposalEndsInOneReceipt(t *testing.T) {
 	}
 
 	kept := opened()
+	if err := backend.AnswerAsk(agent.ID, kept.ID, appwire.ProposalEdit, ""); err != nil {
+		t.Fatal(err)
+	}
+	if waiting, counts, err := backend.ListInbox(appwire.InboxWaiting, ""); err != nil || len(waiting) != 1 || counts.Waiting != 1 {
+		t.Fatalf("Edit changed Waiting: %+v %+v %v", waiting, counts, err)
+	}
 	rec.mu.Lock()
 	mark := len(rec.events)
 	rec.mu.Unlock()
@@ -487,11 +519,85 @@ func TestAppCrewProposalEndsInOneReceipt(t *testing.T) {
 	// Made with its helpers edited away, so no start runs on behind the test:
 	// the receipt is what is asserted, and a start is the crew watch's own.
 	edits := &appwire.Proposal{Helpers: []appwire.ProposalHelper{}}
-	if _, err := backend.CrewCreate(appwire.CrewCreate{From: "proposal", Proposal: strings.TrimPrefix(made.ID, appProposalAskPrefix), Edits: edits}); err != nil {
+	create := appwire.CrewCreate{From: "proposal", Proposal: strings.TrimPrefix(made.ID, appProposalAskPrefix), Edits: edits}
+	crew, err := backend.CrewCreate(create)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if asks, err := backend.ListAsks(agent.ID); err != nil || len(asks) != 0 {
+		t.Fatalf("asks after create: %+v %v", asks, err)
+	}
+	if waiting, counts, err := backend.ListInbox(appwire.InboxWaiting, ""); err != nil || len(waiting) != 0 || counts.Waiting != 0 {
+		t.Fatalf("Waiting after create: %+v %+v %v", waiting, counts, err)
+	}
+	if again, err := backend.CrewCreate(create); err != nil || again.ID != crew.ID {
+		t.Fatalf("retried create: %+v %v", again, err)
+	}
+	done, counts, err := backend.ListInbox(appwire.InboxDone, "")
+	if err != nil || len(done) != 2 || counts.DoneToday != 2 || done[0].ID != appInboxID(agent.ID, made.ID) || done[0].Answered == nil || done[0].Answered.Option != appwire.ProposalCreate {
+		t.Fatalf("Done after Keep and retried create: %+v %+v %v", done, counts, err)
 	}
 	got := receipts(mark)
 	if len(got) != 1 || got[0].Op == nil || got[0].Op.Kind != appwire.OpCrewFormed || got[0].Op.Name != "flaky" {
 		t.Fatalf("making the crew left %+v", got)
+	}
+}
+
+// appProposalDelivery holds the event writer after the client receives a card.
+type appProposalDelivery struct {
+	next    appwire.Emitter
+	opened  chan appwire.Ask
+	release chan struct{}
+	done    chan struct{}
+}
+
+func (e *appProposalDelivery) Emit(event string, data any) {
+	e.next.Emit(event, data)
+	if opened, ok := data.(appwire.AskOpened); ok && opened.Ask.Subkind == appwire.SubkindCrewProposal {
+		e.opened <- opened.Ask
+		<-e.release
+	}
+	if _, ok := data.(appwire.InboxCounts); ok {
+		select {
+		case e.done <- struct{}{}:
+		default:
+		}
+	}
+}
+
+func TestAppCrewProposalEditKeepsInboxWhileCardDeliveryIsPending(t *testing.T) {
+	conv := &proposingConversation{fakeConversation: &fakeConversation{}, answer: helpersProposal}
+	backend, rec, agent := proposingBackend(t, conv)
+	delivery := &appProposalDelivery{
+		next: rec, opened: make(chan appwire.Ask, 1), release: make(chan struct{}), done: make(chan struct{}, 1),
+	}
+	backend.emit = backend.newAppInbox(delivery)
+	// Let publication finish before the backend and its folders are cleaned up.
+	t.Cleanup(func() {
+		close(delivery.release)
+		select {
+		case <-delivery.done:
+		case <-time.After(5 * time.Second):
+			t.Error("proposal publication did not finish")
+		}
+	})
+	if err := backend.CrewPropose(agent.ID); err != nil {
+		t.Fatal(err)
+	}
+	var ask appwire.Ask
+	select {
+	case ask = <-delivery.opened:
+	case <-time.After(5 * time.Second):
+		t.Fatal("proposal card was not delivered")
+	}
+	if err := backend.AnswerAsk(agent.ID, ask.ID, appwire.ProposalEdit, ""); err != nil {
+		t.Fatal(err)
+	}
+	waiting, counts, err := backend.ListInbox(appwire.InboxWaiting, "")
+	if err != nil || len(waiting) != 1 || counts.Waiting != 1 || counts.Later != 0 || counts.DoneToday != 0 {
+		t.Fatalf("Edit changed Waiting while card delivery was pending: %+v %+v %v", waiting, counts, err)
+	}
+	if waiting[0].Ask.ID != ask.ID || waiting[0].Ask.Agent != agent.ID {
+		t.Fatalf("Edit left a different ask waiting: %+v", waiting[0].Ask)
 	}
 }

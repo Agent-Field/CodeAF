@@ -400,11 +400,10 @@ func TestModelAtHomePinsTheDraftAndSaysSo(t *testing.T) {
 	if a.model != "zhipu/glm-5.3-flash" {
 		t.Fatalf("/model at home re-modelled the conversation behind the screen: %q", a.model)
 	}
-	// AND IT SAYS NOTHING ON THE LINE UNDER THE BOX. That line used to read `model
-	// · glm-5.3 · for the next conversation you start here`, and the question it
-	// was answering is answered by the RULE below instead — which carries the
-	// pinned model for as long as the pin lasts rather than until the next note
-	// replaces it (the owner's ruling).
+	// AND IT SAYS NOTHING ON THE LINE UNDER THE BOX. That line used to read `model · glm-5.3
+	// · for the next conversation you start here`, and the question it was answering is
+	// answered by the RULE below instead — which carries the pinned model for as long as the
+	// pin lasts rather than until the next note replaces it.
 	if a.home.msg != "" {
 		t.Fatalf("home's line reads %q, want nothing — the rule says it instead", a.home.msg)
 	}
@@ -412,7 +411,7 @@ func TestModelAtHomePinsTheDraftAndSaysSo(t *testing.T) {
 	if text := homeText(a); !strings.Contains(text, modelBase("zhipu/glm-5.3")) {
 		t.Fatalf("the rule does not say the pinned model:\n%s", text)
 	}
-	// AND IT SURVIVES LEAVING HOME AND COMING BACK (the owner's ruling).
+	// AND IT SURVIVES LEAVING HOME AND COMING BACK.
 	a.closeHome()
 	runCmd(a.showPage(pageHome))
 	if a.target.model != "zhipu/glm-5.3" {

@@ -22,6 +22,8 @@ import (
 type taskDone struct {
 	id    uint64
 	ident taskIdent
+	// Placement survives the live node, just like the rest of this receipt.
+	placement string
 	// program is the program the work was handed to, "" for codeaf's own.
 	// Its ending is the conversation's to act on (session's program_outcome.go),
 	// so its card says it ended and that the chat has the rest
@@ -38,7 +40,7 @@ type taskDone struct {
 	// the card, `incomplete` on the record page and `stopped` on the roster. The
 	// tier is the glyph, [session.TaskStatus.Word] is the word, and
 	// [session.TaskStatus.Ask] is the question and its two answers
-	// (docs/design/task-states/DESIGN.md).
+	//.
 	status session.TaskStatus
 	// span is the node's own age at its final state. started is the record's start
 	// or the live surface's established fallback, and landed is the record's
@@ -115,7 +117,7 @@ type taskDone struct {
 // `your call` are [session.TaskStatus.Word], spelled once in internal/session's
 // task_status.go and read off the reading — because a state with two spellings
 // is two states to whoever is reading it, and this card used to hold four of its
-// own (docs/design/task-states/DESIGN.md).
+// own.
 const (
 	// doneWord is the record page's own reading of a landed row (taskstatus.go)
 	// and no longer this card's head: the head takes its word from the reading.
@@ -205,6 +207,7 @@ func (a *app) landedCard(node *taskNode) {
 		landed = a.now()
 	}
 	card := &taskDone{
+		placement:   a.taskComputerWords(node),
 		id:          node.id,
 		ident:       node.ident,
 		program:     a.nodeProgram(node),
@@ -231,7 +234,7 @@ func (a *app) landedCard(node *taskNode) {
 		cost:        node.spent(),
 	}
 	card.attention = node.actionNeeded()
-	card.quiet = card.status.Tier != session.TaskTierYourCall && card.attention == ""
+	card.quiet = card.status.Tier != session.TaskTierYourCall && card.attention == "" && !card.status.ChangesUnlanded()
 	if card.span == 0 && !node.began.IsZero() {
 		card.span = a.now().Sub(node.began)
 	}
@@ -472,6 +475,11 @@ func (a *app) doneRows(card *taskDone, width int, sel bool) []string {
 		return nil
 	}
 	out := []string{a.doneHead(card, width, sel)}
+	if card.placement != "" {
+		for _, line := range wrap(card.placement, width-2) {
+			out = append(out, "  "+a.pal.dim(line))
+		}
+	}
 	if card.attention != "" {
 		for _, line := range wrap(card.attention, width-2) {
 			out = append(out, "  "+a.pal.warn(line))
@@ -762,7 +770,7 @@ func (a *app) doneUnder(card *taskDone, width int) string {
 // the half a person can do without; the clause naming what to press is the half
 // they cannot. So the room is spent on the key first and the reason is cut into
 // whatever is left, which is the reverse of every other fit on this card and the
-// reason this has a function of its own (docs/design/task-states/DESIGN.md).
+// reason this has a function of its own.
 //
 // A row with no room for even the key drops the key rather than the reason: half
 // a key is a press that does nothing.
@@ -1263,8 +1271,8 @@ func (a *app) rollupHead(d deck, from, to, width int) string {
 	return fitPainted(head, width)
 }
 
-// supersededIn reports whether the card at i lands again LATER IN THE SAME RUN:
-// the first landing of a node that asked `your call` and was then decided.
+// supersededIn reports whether a later landing replaces the card at i.
+// A task's current state replaces earlier cards across turn boundaries too.
 //
 // A BATCH COUNTS WORK, NOT LANDINGS. A decision lands a node a second time, and
 // when the answer comes straight under the question both cards fall into one
@@ -1277,6 +1285,7 @@ func supersededIn(d deck, i, to int) bool {
 	if card == nil || card.id == 0 {
 		return false
 	}
+	to = len(d.entries)
 	for j := i + 1; j < to; j++ {
 		if next := d.entries[j].done; next != nil && next.id == card.id {
 			return true

@@ -46,7 +46,7 @@ import (
 //     away.
 //
 //   - THE GLYPH CARRIES THE STATE, through the one door every mark comes
-//     through (docs/design/icons/DESIGN.md): running, paused, or what its last
+//     through: running, paused, or what its last
 //     run came to. The title is calm.
 
 // The margin's own words. Both labels are words this product already uses for

@@ -109,7 +109,7 @@ const (
 
 // exitRung is one row of the table. The meaning is a full sentence because it
 // is the sentence: `internal/manual/chat/running-from-the-terminal.md` prints
-// these words and so does docs/design/polish/envelope-and-exits.md.
+// these words and so does the implementation.
 type exitRung struct {
 	Code exitStatus
 	// Meaning is what the number means, in the words a person reads.
@@ -288,10 +288,7 @@ type resultEnvelope struct {
 	// short and a provider that gave up at turn nine both say why under
 	// `incomplete`, beside whatever answer the run had managed.
 	Error string `json:"error"`
-	// SpendUSD is what this run cost, whole, in dollars.
-	SpendUSD float64 `json:"spend_usd"`
-	// Tokens is what it cost in tokens, prompt and completion.
-	Tokens envelopeTokens `json:"tokens"`
+	envelopeUsage
 	// Seconds is how long it took, wall clock.
 	Seconds float64 `json:"seconds"`
 	// CoreDoneSeconds is when the requested work was FIRST found done, in
@@ -362,6 +359,14 @@ type resultEnvelope struct {
 	// [resultEnvelope.MarshalJSON] merges it in, and THE CONTRACT ALWAYS WINS a
 	// collision, so nothing here can quietly overwrite a field above.
 	extra map[string]any
+}
+
+// envelopeUsage keeps accounting names and shapes identical across headless doors.
+type envelopeUsage struct {
+	// SpendUSD is what this run cost, whole, in dollars.
+	SpendUSD float64 `json:"spend_usd"`
+	// Tokens is what it cost in tokens, prompt and completion.
+	Tokens envelopeTokens `json:"tokens"`
 }
 
 // envelopeTokens is the token half of the bill. Two numbers, because those are
@@ -460,13 +465,13 @@ func buildResultEnvelope(result runResult) resultEnvelope {
 		files = []string{}
 	}
 	envelope := resultEnvelope{
-		OK:              exitFor(stop) == exitDone,
-		Stop:            stop,
-		Answer:          result.Answer,
-		Files:           files,
-		Error:           result.Error,
-		SpendUSD:        result.SpendUSD,
-		Tokens:          envelopeTokens{In: result.TokensIn, Out: result.TokensOut},
+		OK:     exitFor(stop) == exitDone,
+		Stop:   stop,
+		Answer: result.Answer,
+		Files:  files,
+		Error:  result.Error,
+		envelopeUsage: envelopeUsage{SpendUSD: result.SpendUSD,
+			Tokens: envelopeTokens{In: result.TokensIn, Out: result.TokensOut}},
 		Seconds:         result.Seconds,
 		CoreDoneSeconds: result.CoreDoneSeconds,
 		Model:           result.Model,
@@ -527,7 +532,7 @@ var envelopeContract = []string{
 
 // legacyErrandFields are `codeaf do --json`'s field names as they were before
 // the envelope. Every one of them is going away after one release; the new
-// spelling for each is named in docs/design/polish/envelope-and-exits.md.
+// spelling for each is named in the implementation.
 //
 // `settled`, `spend_work`, `spend_overhead`, `blocked_on`, `learned`,
 // `plan_model`, the two `*_source` fields, `subharness` and `workspace` are NOT

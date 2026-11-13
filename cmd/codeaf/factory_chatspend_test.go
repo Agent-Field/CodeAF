@@ -153,3 +153,141 @@ func TestEveryOwnedStageChatSharesBudgetWithoutManagerAuthority(t *testing.T) {
 		t.Fatal("stage views bypassed job budget")
 	}
 }
+
+// The budget is watched ten times a second, so a look at a job whose file has
+// not changed answers from the last read instead of decoding the document
+// again; a write by anyone else, the runner booking a round here, is the next
+// look's answer. The proof of the first half is a document blanked in place
+// with its size and time kept: a look that decoded it would say the budget
+// could not be read.
+func TestAJobsChatReadsItsBudgetAgainOnlyWhenTheJobChanges(t *testing.T) {
+	st, talk := chatSpendFloor(t)
+	it, err := st.Create(factory.Item{Repo: "acme/api", Title: "fix it", State: factory.StateNew, Cap: 1, Talk: talk})
+	if err != nil {
+		t.Fatal(err)
+	}
+	chat := jobChatDoorOf(st).Chat(talk)
+	if chat == nil {
+		t.Fatal("the job's own conversation was not found by its Talk")
+	}
+	if why := chat.Refusal(); why != "" {
+		t.Fatalf("an unspent job refused its chat: %q", why)
+	}
+
+	path := st.ItemPath(it.ID)
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kept, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rewriteInPlace := func(data []byte) {
+		t.Helper()
+		f, err := os.OpenFile(path, os.O_WRONLY, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.WriteAt(data, 0); err != nil {
+			t.Fatal(err)
+		}
+		if err := f.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(path, info.ModTime(), info.ModTime()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	blank := make([]byte, len(kept))
+	for i := range blank {
+		blank[i] = ' '
+	}
+	rewriteInPlace(blank)
+	if why := chat.Refusal(); why != "" {
+		t.Fatalf("an unchanged job was decoded again: %q", why)
+	}
+	rewriteInPlace(kept)
+
+	if err := st.Annotate(it.ID, func(it *factory.Item) error {
+		it.ChatSpent = 1
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if want := fmt.Sprintf(factoryrun.ChatBudgetReached, "$1", "$1"); chat.Refusal() != want {
+		t.Fatalf("after the job was spent elsewhere the refusal was %q, want %q", chat.Refusal(), want)
+	}
+}
+
+func TestManagerBudgetReadOutageHoldsOnlyNewWork(t *testing.T) {
+	st, talk := chatSpendFloor(t)
+	it, err := st.Create(factory.Item{Repo: "acme/api", Talk: talk, Cap: 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	budget := jobChatDoorOf(st).Chat(talk)
+	if budget == nil {
+		t.Fatal("manager budget missing")
+	}
+	path := st.ItemPath(it.ID)
+	saved := path + ".unread"
+	if err := os.Rename(path, saved); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Rename(saved, path) }()
+	if why := budget.Refusal(); why != "job budget could not be read; new work held" {
+		t.Fatalf("uncertain manager budget: %q", why)
+	}
+	if err := os.Rename(saved, path); err != nil {
+		t.Fatal(err)
+	}
+	if why := budget.Refusal(); why != "" {
+		t.Fatalf("recovered manager budget stayed held: %q", why)
+	}
+}
+
+// AN OPEN JOB CHAT'S BUDGET WATCH LISTS NO FOLDER WHILE THE MIRRORS ARE AS
+// THEY WERE. Every job chat asks where its job's money is every few seconds,
+// and each asking globbed the workers' folders. The mirror folders are listed
+// once; a worker's mirror that appears, or a job it takes, is found at once.
+func TestAJobChatsHoldersListTheMirrorFoldersOncePerChangeOfThem(t *testing.T) {
+	st, talk := chatSpendFloor(t)
+	it, err := st.Create(factory.Item{Repo: "acme/api", Title: "fix it", State: factory.StateQueued, Cap: 5, Talk: talk})
+	if err != nil {
+		t.Fatal(err)
+	}
+	chat := &jobChat{floor: st, id: it.ID}
+	if got := chat.holders(); len(got) != 1 || got[0] != st {
+		t.Fatalf("no worker runs it, yet its money is in %d places", len(got))
+	}
+	mirror := thisWorkersMirror(t, st)
+	if got := chat.holders(); len(got) != 1 {
+		t.Fatalf("an empty mirror holds the job: %d places", len(got))
+	}
+	held := it
+	held.State = factory.StateRunning
+	if err := mirror.Save(held); err != nil {
+		t.Fatal(err)
+	}
+	was := mirrorListings.Load()
+	for range 20 {
+		if got := chat.holders(); len(got) != 2 || got[0].Root() != mirror.Root() {
+			t.Fatalf("the mirror running the job was not found first: %d places", len(got))
+		}
+	}
+	if n := mirrorListings.Load() - was; n > 1 {
+		t.Fatalf("twenty askings listed the unchanged mirror folders %d times; want at most once", n)
+	}
+	// A second factory's mirror appears beside the first: found on the next asking.
+	second, err := store.Open(filepath.Join(filepath.Dir(mirror.Root()), "fedcba9876543210"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := second.Save(held); err != nil {
+		t.Fatal(err)
+	}
+	if got := chat.holders(); len(got) != 3 {
+		t.Fatalf("the new mirror was not found: %d places", len(got))
+	}
+}

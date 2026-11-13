@@ -50,10 +50,11 @@ func (b *appBackend) ShowAsk(agent, id string) (*appwire.Ask, error) {
 }
 
 func (b *appBackend) clockAsk(agent, id string, start bool) (*appwire.Ask, error) {
-	a, err := b.findCrewOwner(agent)
+	a, endRead, err := b.findCrewOwner(agent)
 	if err != nil {
 		return nil, err
 	}
+	defer endRead()
 	live := b.liveOf(a)
 	if live == nil {
 		return nil, appwire.Errorf(appwire.CodeNotFound, "the ask %s is not open", id)
@@ -95,6 +96,12 @@ func (b *appBackend) clockAsk(agent, id string, start bool) (*appwire.Ask, error
 		}
 		ask = &shaped
 	})
+	// A CLOCK THAT CHANGED IS SAID TO EVERY WINDOW, so the countdown a surface
+	// draws is the one the engine counts; the lane's own restate is then the
+	// same ask and adds nothing.
+	if ask != nil && reply.Changed {
+		live.box.Event(appwire.EventAskOpened, appwire.AskOpened{Ask: *ask})
+	}
 	return ask, nil
 }
 
@@ -154,10 +161,11 @@ func (b *appBackend) TaskSince(id, after string) (appwire.Since, error) {
 	if !strings.HasPrefix(after, prefix) {
 		return appwire.Since{}, nil
 	}
-	a, live, err := b.heldLive(agent)
+	a, live, endLive, err := b.borrowLive(agent)
 	if err != nil {
 		return appwire.Since{}, err
 	}
+	defer endLive()
 	journal, ok := live.conn.Conv.(appTaskJournal)
 	if !ok {
 		return appwire.Since{}, nil

@@ -46,11 +46,11 @@ func (v *verbs) actions(merge bool) BranchActions {
 // continueRows is a chat that went off, one that went off with nothing left
 // behind it, and a branch.
 var continueRows = chatlist.Static{
-	{Cell: "c-off", Title: "Port the picker", Device: "studio", Status: chatlist.Off, DurableAgo: 3 * time.Hour, Pending: 3},
-	{Cell: "c-clean", Title: "Tidy the docs", Device: "studio", Status: chatlist.Off, DurableAgo: 90 * time.Second},
+	{Cell: "c-off", Title: "Port the picker", Device: "host-a", Status: chatlist.Off, DurableAgo: 3 * time.Hour, Pending: 3},
+	{Cell: "c-clean", Title: "Tidy the docs", Device: "host-a", Status: chatlist.Off, DurableAgo: 90 * time.Second},
 	{Cell: "c-branch", Title: "Fix the flaky test", Device: "laptop", Status: chatlist.Branch, OrphanTurns: 2, DurableAgo: 5 * time.Hour},
 	{Cell: "c-short", Title: "Trim logs", Device: "mac", Status: chatlist.Branch, OrphanTurns: 4, DurableAgo: 6 * time.Hour},
-	{Cell: "c-run", Title: "Nightly index rebuild", Device: "studio", Status: chatlist.Running, DurableAgo: 2 * time.Minute},
+	{Cell: "c-run", Title: "Nightly index rebuild", Device: "host-a", Status: chatlist.Running, DurableAgo: 2 * time.Minute},
 }
 
 // standOn puts the cursor on the chat from another machine and presses enter.
@@ -85,7 +85,7 @@ func TestTakeoverScreenCopy(t *testing.T) {
 	standOn(t, a, "c-off")
 	text := homeText(a)
 	for _, want := range []string{
-		"last saved turn 3h ago; up to 3 turns may still be on studio",
+		"last saved turn 3h ago; up to 3 turns may still be on host-a",
 		chatlist.OfferContinue,
 	} {
 		if !strings.Contains(text, want) {
@@ -100,13 +100,13 @@ func TestTakeoverScreenCopy(t *testing.T) {
 	}
 }
 
-// A chat running on another machine is continued from the same screen: it says
+// A chat held on another machine is continued from the same screen: it says
 // where the chat runs now, and confirming takes it.
 func TestTakeoverScreenOffersARunningChat(t *testing.T) {
 	taker := &fakeTaker{}
 	a := continueHome(t, taker, continueRows, 200)
 	standOn(t, a, "c-run")
-	if text := homeText(a); !strings.Contains(text, "running on studio; last saved turn 2m ago") {
+	if text := homeText(a); !strings.Contains(text, "held on host-a; last saved turn 2m ago") {
 		t.Fatalf("the screen does not name where the chat runs:\n%s", text)
 	}
 	confirm(t, a)
@@ -167,11 +167,13 @@ func TestTakeoverScreenOpensTheChatAndSaysWhatWasKept(t *testing.T) {
 	a := lab.app(mine)
 	a.width, a.height = 200, 70
 	drain(t, a, a.openHome())
-	a.machines = continueRows
+	src := &continuationListing{row: continueRows[0]}
+	a.machines = src
 	a.taker = &fakeTaker{
 		taken: Taken{Kept: "c-kept", KeptTurns: 2, Device: "desk", Elapsed: 3200 * time.Millisecond},
 		on: func(cell string) {
 			lab.session("project", cell, "Port the picker", workspace, time.Now())
+			src.change(func(row *chatlist.Row) { row.Mine, row.Status = true, chatlist.Here })
 		},
 	}
 	drain(t, a, a.askMachines())
@@ -187,7 +189,7 @@ func TestTakeoverScreenOpensTheChatAndSaysWhatWasKept(t *testing.T) {
 }
 
 // winnerTakes is a Source that lists the chat as off until it is asked again,
-// and then as running on the device that won it.
+// and then as held on the device that won it.
 type winnerTakes struct{ asked int }
 
 func (w *winnerTakes) Rows(context.Context) ([]chatlist.Row, error) {
@@ -199,14 +201,29 @@ func (w *winnerTakes) Rows(context.Context) ([]chatlist.Row, error) {
 	return rows, nil
 }
 
+// R25 keeps the old client's actual visible refusal, independently of the
+// internal directory error's diagnostic spelling.
 func TestTakeoverScreenLostRace(t *testing.T) {
 	taker := &fakeTaker{err: fmt.Errorf("take: %w", directory.ErrLeaseHeld)}
 	a := continueHome(t, taker, &winnerTakes{}, 200)
 	standOn(t, a, "c-off")
 	confirm(t, a)
 	text := homeText(a)
-	if !strings.Contains(text, "Port the picker  running on desk") || !strings.Contains(text, lostRaceWord) {
-		t.Fatalf("the row did not come back as running on the winner, with one line saying so:\n%s", text)
+	if !strings.Contains(text, "another device continued this chat first") {
+		t.Fatalf("R25 visible refusal changed:\n%s", text)
+	}
+	q, card := a.homeAsking()
+	if !card || q.question.Options[0].Label != continueRetry || q.question.Options[1].Label != continueStay {
+		t.Fatalf("the refusal did not stay on its retry card:\n%s", text)
+	}
+	found := false
+	for _, row := range a.machineRead.rows {
+		if row.Cell == "c-off" && row.Device == "desk" && row.Status == chatlist.Running {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("the refreshed row lost its holder: %+v", a.machineRead.rows)
 	}
 	if len(taker.cells) != 1 {
 		t.Fatalf("the takeover ran %d times", len(taker.cells))
@@ -346,7 +363,7 @@ func TestC7HomeExplainsAnOldSyncService(t *testing.T) {
 	a := continueHome(t, &fakeTaker{err: directory.ErrConditionalTake}, continueRows, 220)
 	standOn(t, a, "c-off")
 	confirm(t, a)
-	if !strings.Contains(homeText(a), "the sync service must be updated before chats can move") {
+	if !strings.Contains(homeText(a), "waits for a sync service update") {
 		t.Fatalf("old service refusal missing:\n%s", homeText(a))
 	}
 }
@@ -391,7 +408,8 @@ func TestTakeoverScreenGolden(t *testing.T) {
 	golden := map[int][]string{
 		80: {
 			"╭─ ? Continue this chat here? ────────────────────────────────────────────────╮",
-			"│ last saved turn 3h ago; up to 3 turns may still be on studio                │",
+			"│ host-a offline; last saved turn 3h ago; up to 3 turns may still be on host- │",
+			"│ a                                                                           │",
 			"│                                                                             │",
 			"│ ▸ 1  continue here                                                          │",
 			"│   2  leave it there                                            safe answer  │",
@@ -400,8 +418,8 @@ func TestTakeoverScreenGolden(t *testing.T) {
 		},
 		40: {
 			"╭─ ? Continue this chat here? ────────╮",
-			"│ last saved turn 3h ago; up to 3     │",
-			"│ turns may still be on studio        │",
+			"│ host-a offline; last saved turn 3h  │",
+			"│ ago; up to 3 turns may still be on  │",
 			"│                                     │",
 			"│ ▸ 1  continue here                  │",
 			"│   2  leave it there    safe answer  │",
@@ -475,7 +493,7 @@ func TestTakeoverCardOfAnOfflineDeviceDoesNotSayRunning(t *testing.T) {
 	a.dirFeed = feed
 	a.rebuildMachines()
 	standOn(t, a, "c-run")
-	if text := homeText(a); !strings.Contains(text, "running on build-box; last saved turn 15s ago") {
+	if text := homeText(a); !strings.Contains(text, "held on build-box; last saved turn 15s ago") {
 		t.Fatalf("an online device's card lost running on:\n%s", text)
 	}
 	feed.state.Online = nil

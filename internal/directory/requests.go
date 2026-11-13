@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/clusterstate"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
@@ -28,13 +29,13 @@ const (
 
 // The numbers every implementation shares (contract 1, 3).
 const (
-	RequestTTL  = 10 * time.Minute // a request lives this long, counted by the relay's clock
-	DecidedKeep = 2 * time.Minute  // a decided request stays readable this long
-	MaxWait     = 25 * time.Second // the longest GetRequest wait
-	MaxGrant    = 4096             // bytes of grant the relay stores
-	MaxNewBody  = 1024             // bytes of a create body
-	maxName     = 96               // bytes of name before sealing
-	sealedExtra = 24 + 16          // secretbox nonce and tag
+	RequestTTL  = 10 * time.Minute          // a request lives this long, counted by the relay's clock
+	DecidedKeep = 2 * time.Minute           // a decided request stays readable this long
+	MaxWait     = 25 * time.Second          // the longest GetRequest wait
+	MaxGrant    = clusterstate.MaxJoinGrant // bytes of grant the relay stores
+	MaxNewBody  = 1024                      // bytes of a create body
+	maxName     = 96                        // bytes of name before sealing
+	sealedExtra = 24 + 16                   // secretbox nonce and tag
 	keySize     = 32
 )
 
@@ -111,18 +112,8 @@ var b64u = base64.RawURLEncoding
 // NormalizeCode is the one spelling a code is looked up by.
 func NormalizeCode(code string) string { return strings.ToLower(strings.TrimSpace(code)) }
 
-// platforms are the values a platform may take; anything else is "other".
-var platforms = map[string]bool{"darwin": true, "linux": true, "windows": true, "ios": true, "android": true, "other": true}
-
-// platformOf keeps a known platform, maps an unknown one to "other" and leaves
-// an unset one unset.
-func platformOf(p string) string {
-	switch {
-	case p == "" || platforms[p]:
-		return p
-	}
-	return "other"
-}
+// platformOf shares normalization with the replicated device rule.
+func platformOf(p string) string { return clusterstate.PlatformOf(p) }
 
 // CheckOf is the four digits both ends show so a substituted key is visible.
 func CheckOf(pubkey []byte) string {

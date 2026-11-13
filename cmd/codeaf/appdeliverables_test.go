@@ -176,6 +176,28 @@ func TestCreatedDeliverableIsSaidOnceAndBounded(t *testing.T) {
 	}
 }
 
+func TestRewrittenDeliverableInvalidatesTheSameCard(t *testing.T) {
+	recorder := newAppRecorder()
+	backend := &appBackend{}
+	live := &appLive{box: appwire.NewOutbox(recorder)}
+	change := session.ArtifactChange{ID: session.NewDeliverableID(), Run: "turn", Call: "create"}
+	backend.artifactCreated("agent", live, change)
+	change.Call = "overwrite"
+	backend.artifactCreated("agent", live, change)
+	backend.artifactCreated("agent", live, change) // duplicate delivery
+	live.box.Close()
+	recorder.mu.Lock()
+	defer recorder.mu.Unlock()
+	if len(recorder.events) != 2 {
+		t.Fatalf("want creation and rewrite invalidations, got %d", len(recorder.events))
+	}
+	for _, data := range recorder.data {
+		if got, ok := data.(appwire.DeliverableChanged); !ok || got.ID != change.ID {
+			t.Fatalf("rewrite must refresh the same card: %+v", data)
+		}
+	}
+}
+
 // A scripted conversation reports a creation; the app says it, and the list a
 // subscriber then asks for - and a fresh one after a reopen - holds the row.
 func TestCreationEventThenListThenReplay(t *testing.T) {

@@ -107,9 +107,8 @@ func TestAShortPatienceRoleRefusesTheMachineItWillNotWaitFor(t *testing.T) {
 	}
 }
 
-// TestTheDeadlineIsTheWholeOfTheVeto is the elegance the owner asked for, stated
-// as a test: there is no second rule and no ratio anywhere. One pool, two roles,
-// and the only thing that changes is the number the role table declares.
+// One pool, two roles, and the only thing that changes is the number the role table
+// declares.
 //
 // A machine believed to start promptly and then write at sixteen tokens a second
 // is inside every OTHER bound in this package — its first token is within
@@ -294,7 +293,7 @@ func TestNoProbeRidesARoleSomebodyIsWaitingOn(t *testing.T) {
 	}
 }
 
-// TestTheChoiceNamesNoRoleAndNoMachine is the owner's architecture bar written
+// TestTheChoiceNamesNoRoleAndNoMachine is the routing architecture contract written
 // as a law the build holds, and it is the one this file exists to keep.
 //
 // BEHAVIOUR IS DERIVED FROM DECLARED PROPERTIES AND FROM MEASURED BELIEFS. Not

@@ -11,7 +11,8 @@ import (
 // non-path character, an option such as -I or a file:// scheme), so a repository
 // directory such as ./internal/users or src/home stays intact. A home
 // name may contain spaces only when a separator follows it, and never starts like
-// a route parameter, so prose such as "/users/:id" or "the /users/ endpoint" stays.
+// a route parameter, so a route such as users/:id under a leading slash, or an
+// endpoint named after the users folder, stays.
 const pathStart = `(^|[^\w.~/\\-]|(?:^|\s)-{1,2}[A-Za-z][\w-]*|file://)`
 
 var factoryCheckout = regexp.MustCompile(`(?i)` + pathStart + `(?:[A-Z]:[/\\]|/(?:Users|home|root|private|tmp|var|opt|srv|workspace|workspaces)/)[^\n\r\x60"';&|<>]*?[/\\]factory[/\\]work[/\\][^/\\\s\x60"';&|<>]+`)

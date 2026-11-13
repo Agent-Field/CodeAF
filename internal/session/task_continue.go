@@ -45,6 +45,9 @@ const continueAskedLead = "What they asked this time"
 // brief and the acceptance the node was admitted with stay the ones the work
 // is graded against.
 func (a *Agent) ContinueTask(id uint64, words string) error {
+	if err := a.CheckWork(); err != nil {
+		return err
+	}
 	node := a.taskNode(id)
 	if node == nil {
 		return fmt.Errorf("no task %d in this session", id)
@@ -52,10 +55,17 @@ func (a *Agent) ContinueTask(id uint64, words string) error {
 	return a.tasker().reopen(node, words)
 }
 
-// RetryTask restarts incomplete work without changing its identity or assignment.
+// RetryTask restarts incomplete work. Graph nodes keep their identity and
+// assignment; an empty adaptive opening starts a fresh admitted run.
 func (a *Agent) RetryTask(id uint64) error {
+	if err := a.CheckWork(); err != nil {
+		return err
+	}
 	node := a.taskNode(id)
 	if node == nil {
+		if handled, err := a.retryEmptyOrchestrate(id); handled {
+			return err
+		}
 		return fmt.Errorf("no task %d in this session", id)
 	}
 	return a.tasker().reopenAttempt(node, "", true)
@@ -266,6 +276,14 @@ func (n *TaskNode) resumeContinuedTree(place Place, workspace string) (taskTree,
 	root, ok := repositoryRoot(ground)
 	if !ok {
 		if root, ok = repositoryRoot(workspace); !ok {
+			return taskTree{}, false
+		}
+	}
+	if _, enabled := taskStorage(place); enabled {
+		kept := taskTree{dir: dir, root: root, branch: branch, place: place, ground: ground, mode: mode}
+		if restored, back, problem := kept.reopenReleased(); back {
+			return n.ladderRecord(restored), true
+		} else if problem != "" {
 			return taskTree{}, false
 		}
 	}

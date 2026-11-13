@@ -96,6 +96,8 @@ type draft struct {
 	steps    map[string]Step
 	fixed    []string
 	rules    []string
+	adapt    factory.AdaptMode
+	adaptBy  map[factory.Kind]factory.AdaptMode
 	merge    factory.MergePolicy
 }
 
@@ -136,6 +138,19 @@ func readDoc(root *yaml.Node) draft {
 			}
 		case "merge":
 			d.readMerge(p.val)
+		case "adapt":
+			if p.val.Kind == yaml.MappingNode {
+				d.readAdaptKinds(p.val)
+				continue
+			}
+			s, ok := scalar(p.val)
+			word, good := stepWord(s, factory.AdaptWords)
+			if !ok || !good {
+				d.problems = append(d.problems, Problem{Line: p.line, Where: "adapt", Why: "adapt is adapt, ask or fixed"})
+				continue
+			}
+			d.adapt = factory.AdaptMode(word)
+			d.set.adapt = true
 		case "rules":
 			rules, ps, ok := stringList(p.val)
 			d.problems = append(d.problems, tag("rules", ps)...)
@@ -205,6 +220,30 @@ func (d *draft) readStart(n *yaml.Node) {
 // readMerge reads `merge: {auto, method}`. auto is on or off (true and false
 // read the same); method is merge, squash or rebase, and omitted lets the
 // forge's repository settings choose.
+// readAdaptKinds reads `adapt:` written as a map, one word per pipeline. A
+// kind it does not name is adapt, so a pair that says adapt is no pair. Any
+// pair that does not read is a problem and nothing of the map is kept: a
+// reader that half-read it would let a plan reshape what the file holds.
+func (d *draft) readAdaptKinds(n *yaml.Node) {
+	pairs, probs := mapping(n)
+	d.problems = append(d.problems, tag("adapt", probs)...)
+	by := map[factory.Kind]factory.AdaptMode{}
+	for _, p := range pairs {
+		s, ok := scalar(p.val)
+		word, good := stepWord(s, factory.AdaptWords)
+		if !ok || !good || !stepNamed(p.name) {
+			d.problems = append(d.problems, Problem{Line: p.line, Where: "adapt." + p.name, Why: "adapt names a pipeline and one of adapt, ask or fixed"})
+			return
+		}
+		if word != string(factory.AdaptFree) {
+			by[factory.Kind(p.name)] = factory.AdaptMode(word)
+		}
+	}
+	if len(probs) == 0 {
+		d.adaptBy, d.set.adapt = by, true
+	}
+}
+
 func (d *draft) readMerge(n *yaml.Node) {
 	pairs, probs := mapping(n)
 	d.problems = append(d.problems, tag("merge", probs)...)
@@ -347,14 +386,30 @@ func readStep(n *yaml.Node) (stepRead, []Problem) {
 	badWhen := 0
 	for _, p := range pairs {
 		switch p.name {
-		case "prompt":
+		case "label":
 			s, ok := scalar(p.val)
 			if !ok {
-				probs = append(probs, Problem{Line: p.line, Where: "prompt", Why: "a prompt is a sentence"})
+				probs = append(probs, Problem{Line: p.line, Where: "label", Why: "a label is text"})
+				continue
+			}
+			step.Label = strings.TrimSpace(s)
+		case "prompt", "target":
+			// `target:` is an agentfield step's prompt by its own name: the
+			// reasoner, node.reasoner, that runs it.
+			s, ok := scalar(p.val)
+			if !ok {
+				probs = append(probs, Problem{Line: p.line, Where: p.name, Why: "a " + p.name + " is a sentence"})
 				continue
 			}
 			step.Prompt = strings.TrimSpace(s)
 			step.wrotePrompt = true
+		case "input":
+			in, bad := inputMap(p.val)
+			if bad != "" {
+				probs = append(probs, Problem{Line: p.line, Where: "input", Why: bad})
+				continue
+			}
+			step.Input = in
 		case "until":
 			s, ok := scalar(p.val)
 			if !ok {
@@ -377,7 +432,7 @@ func readStep(n *yaml.Node) (stepRead, []Problem) {
 			s, ok := scalar(p.val)
 			k, good := kindWord(s)
 			if !ok || !good {
-				why := "kind is chat, check, gate or post; until it is one, the run holds at this step for a person"
+				why := "kind is chat, check, gate, post or agentfield; until it is one, the run holds at this step for a person"
 				probs = append(probs, Problem{Line: p.line, Where: p.name, Why: why})
 				step.hold = why
 				continue
@@ -393,8 +448,29 @@ func readStep(n *yaml.Node) (stepRead, []Problem) {
 			step.Effort = enumWord(p, factory.EffortWords, "effort is cheap or strong; leave it out for the default", &probs)
 		case "fanout":
 			step.Fanout = enumWord(p, StepFanouts, "fanout is one, per-file, per-finding or per-claim", &probs)
+		case "who":
+			// AN UNREADABLE APPROVER IS NEVER "ANYONE": the step is read as
+			// waiting on the job's person, and the file says why.
+			s, ok := scalar(p.val)
+			w, good := factory.ApproverWord(s)
+			if !ok || !good {
+				probs = append(probs, Problem{Line: p.line, Where: p.name, Why: "who is @handle or operator; leave it out for the job's person"})
+				continue
+			}
+			step.Who = w
+		case "pass":
+			// AN UNREADABLE PASS WORD IS NEVER "THE MANAGER": the step is read
+			// as a person's alone, and the file says why.
+			s, ok := scalar(p.val)
+			w, good := factory.PassWord(s)
+			if !ok || !good {
+				probs = append(probs, Problem{Line: p.line, Where: p.name, Why: "pass is person, manager, or manager when <a condition the manager judges>; until it is one, only a person passes this step"})
+				step.Pass = factory.PassPerson
+				continue
+			}
+			step.Pass = w
 		default:
-			probs = append(probs, Problem{Line: p.line, Where: p.name, Why: "a step is a prompt, a kind, when, effort, fanout, an until and a max"})
+			probs = append(probs, Problem{Line: p.line, Where: p.name, Why: "a step is a prompt, a kind, when, effort, fanout, an until, a max, for a person who and pass, and for an agentfield step its target and input"})
 		}
 	}
 	// An unreadable condition costs a chat or a check money when it falls back
@@ -405,7 +481,33 @@ func readStep(n *yaml.Node) (stepRead, []Problem) {
 		probs = append(probs, Problem{Line: badWhen, Where: "when", Why: why})
 		step.hold = why
 	}
+	if len(step.Input) > 0 && step.Kind != string(factory.StageAgentField) {
+		probs = append(probs, Problem{Where: "input", Why: "only an agentfield step takes an input; this one is ignored"})
+		step.Input = nil
+	}
 	return stepRead{step: step}, probs
+}
+
+// inputMap reads an agentfield step's input: a map of the reasoner's field
+// names to text with the job's {placeholders}. It answers why it cannot.
+func inputMap(n *yaml.Node) (map[string]string, string) {
+	if n == nil || n.Kind != yaml.MappingNode {
+		return nil, "input is a map of the reasoner's field names to text, such as goal: \"{title}\""
+	}
+	out := map[string]string{}
+	for i := 0; i+1 < len(n.Content); i += 2 {
+		k, v := n.Content[i], n.Content[i+1]
+		key, ok := scalar(k)
+		val, vok := scalar(v)
+		if !ok || strings.TrimSpace(key) == "" || !vok {
+			return nil, "input is a map of the reasoner's field names to text, such as goal: \"{title}\""
+		}
+		if bad := factory.AgentFieldInputProblem(val); bad != "" {
+			return nil, "input." + key + ": " + bad
+		}
+		out[strings.TrimSpace(key)] = val
+	}
+	return out, ""
 }
 
 // enumWord reads one runtime word. A word outside the vocabulary is a problem
@@ -470,6 +572,7 @@ func (d draft) file(defaults bool) File {
 	for name, step := range d.steps {
 		if defaults {
 			base := f.Steps[name]
+			base.Label = step.Label
 			if step.wrotePrompt {
 				base.Prompt = step.Prompt
 				base.wrotePrompt = true
@@ -477,12 +580,16 @@ func (d draft) file(defaults bool) File {
 			if step.wroteUntil {
 				base.Until = step.Until
 				base.wroteUntil = true
+			} else if step.wrotePrompt && base.Until == factory.UntilNoNewFailures {
+				// A repository's own Test prompt keeps the strict rule it inherited
+				// before baseline comparison unless the file opts in explicitly.
+				base.Until = factory.UntilGreen
 			}
 			if step.wroteMax {
 				base.Max = step.Max
 				base.wroteMax = true
 			}
-			base.Kind, base.When, base.Effort, base.Fanout, base.hold = step.Kind, step.When, step.Effort, step.Fanout, step.hold
+			base.Kind, base.When, base.Effort, base.Fanout, base.Who, base.Pass, base.hold, base.Input = step.Kind, step.When, step.Effort, step.Fanout, step.Who, step.Pass, step.hold, step.Input
 			if base.Kind != "" {
 				// A shipped prompt and stop sentence are words for a model. A
 				// check would run the prompt in a shell and a post would read it
@@ -513,6 +620,9 @@ func (d draft) file(defaults bool) File {
 	}
 	if d.set.rules {
 		f.Rules = append([]string(nil), d.rules...)
+	}
+	if d.set.adapt {
+		f.Adapt, f.AdaptKinds = d.adapt, d.adaptBy
 	}
 	if d.set.mergeAuto {
 		f.Merge.Auto = d.merge.Auto
@@ -555,6 +665,13 @@ func (f *File) resolve() {
 
 func (f *File) clean(requireStep bool) {
 	for name, step := range f.Steps {
+		if unsupportedBaselinePolicy(name, step.Kind, step.Until) {
+			f.Problems = append(f.Problems, Problem{Where: "steps." + name + ".until", Why: baselinePolicyScope})
+			if step.hold == "" {
+				step.hold = baselinePolicyScope
+			}
+			f.Steps[name] = step
+		}
 		if factory.ApproveWord(name) && step.wrotePrompt && strings.TrimSpace(step.Prompt) != "" {
 			f.Problems = append(f.Problems, Problem{Where: "steps." + name, Why: "approve is a person and has no prompt"})
 			step.Prompt = ""
@@ -563,6 +680,17 @@ func (f *File) clean(requireStep bool) {
 		}
 		// A person step is only ever a gate: it is not written to the file, so a
 		// runtime word kept on it would be dropped without a word.
+		// Only a person waits on someone: who on any other step is dropped.
+		if step.Who != "" && !factory.ApproveWord(name) && step.Kind != string(factory.StageGate) {
+			f.Problems = append(f.Problems, Problem{Where: "steps." + name + ".who", Why: "only approve or a gate waits on someone"})
+			step.Who = ""
+			f.Steps[name] = step
+		}
+		if step.Pass != "" && !factory.ApproveWord(name) && step.Kind != string(factory.StageGate) {
+			f.Problems = append(f.Problems, Problem{Where: "steps." + name + ".pass", Why: "only approve or a gate is passed by someone"})
+			step.Pass = ""
+			f.Steps[name] = step
+		}
 		if factory.ApproveWord(name) {
 			step := f.Steps[name]
 			if step.When != "" || step.Effort != "" || step.Fanout != "" || (step.Kind != "" && step.Kind != string(factory.StageGate)) {

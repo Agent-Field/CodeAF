@@ -1,7 +1,7 @@
 package main
 
 // chatv3_layout.go is where a v3 conversation lives, and which one a launch
-// opens (docs/CHAT-V3.md, Decision 26).
+// opens.
 //
 // A session is a FOLDER: ~/.codeaf/v3/projects/<encoded-workspace>/<id>/, with
 // the transcript, the sidecars, the node journals and — for an owned session —
@@ -12,7 +12,7 @@ package main
 //   - WHICH PROJECT. The workspace is the git root of the directory the person
 //     stood in, so `codeaf` typed in repo/cmd and in repo/ is the same project.
 //     The encoded directory name is a bucket and not an identity — meta.json
-//     carries the real path — which is what lets the encoding stay dumb.
+//     carries the real path — which is what lets the encoding stay simple.
 //   - BORROWED OR OWNED. A conversation opened inside a project borrows it and
 //     litters nothing; one opened nowhere at all owns a workspace of its own.
 //   - WHICH CONVERSATION. The newest one the PERSON spoke in, or a fresh
@@ -182,7 +182,7 @@ func v3GitRoot(dir string) (string, bool) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), v3GitRootTimeout)
 	defer cancel()
-	command := exec.CommandContext(ctx, "git", "rev-parse", "--show-toplevel")
+	command := exec.CommandContext(ctx, "git", "--no-optional-locks", "rev-parse", "--show-toplevel")
 	command.Dir = dir
 	out, err := command.Output()
 	if err != nil {
@@ -487,16 +487,22 @@ func v3MintSessionAs(class cell.Class, bucket, workspace, launchDir string, owne
 		return session.Place{}, err
 	}
 	place := v3PlaceFor(dir, workspace, owned)
-	// The write is not checked for the reason place.go gives: meta.json is a
-	// citation and not the record, and a session that would not open because a
-	// lookup file could not be written would be the wrong trade twice over.
-	_ = session.SaveMeta(dir, session.Meta{
-		ID:        id,
-		Workspace: place.Workspace,
-		LaunchDir: launchDir,
-		Owned:     owned,
-		Created:   time.Now(),
-	})
+	var policy *session.WorkspacePolicy
+	if session.WorkspaceOwnershipPrototypeEnabled() {
+		policy = session.DefaultWorkspacePolicy()
+	}
+	// Placement policy is durable conversation truth, so a failed creation
+	// write must not silently open the conversation with legacy task placement.
+	if err := session.SaveMeta(dir, session.Meta{
+		ID:              id,
+		Workspace:       place.Workspace,
+		LaunchDir:       launchDir,
+		Owned:           owned,
+		Created:         time.Now(),
+		WorkspacePolicy: policy,
+	}); err != nil {
+		return session.Place{}, fmt.Errorf("save new conversation policy: %w", err)
+	}
 	return place, nil
 }
 
@@ -538,7 +544,7 @@ func v3NextSessionFrom(current session.Place, workspace, launchDir string) (sess
 			// cannot be inherited: it is minted with the folder, below.
 			root = workspace
 		}
-		return v3MintSession(filepath.Dir(dir), root,
+		return v3MintSession(session.BucketOf(current.Transcript()), root,
 			v3StampLaunchDir(launchDir, root), current.Owned)
 	}
 	bucket, err := v3ProjectDir(workspace)
@@ -653,16 +659,11 @@ type v3Folder struct {
 // deliverables is never empty whatever its journal says — those are somebody's
 // content, and no groom of a bookkeeping file may take them.
 func v3ScanBucket(bucket string) (spoken, empty []v3Folder) {
-	entries, err := os.ReadDir(bucket)
-	if err != nil {
+	sessionDirs := session.BucketSessionDirs(bucket)
+	if len(sessionDirs) == 0 {
 		return nil, nil
 	}
-	protected, known := v3TeamConversations()
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		dir := cell.Copied(filepath.Join(bucket, entry.Name()))
+	for _, dir := range sessionDirs {
 		place := session.Place{Dir: dir}
 		if _, err := os.Stat(place.Transcript()); err != nil {
 			continue
@@ -671,12 +672,14 @@ func v3ScanBucket(bucket string) (spoken, empty []v3Folder) {
 		folder.meta, _ = session.LoadMeta(dir)
 		folder.at = folder.meta.LastUserAt
 		if folder.at.IsZero() {
-			if info, err := entry.Info(); err == nil {
+			if info, err := os.Stat(dir); err == nil {
 				folder.at = info.ModTime()
 			}
 		}
 		if v3EmptyUnassignedSession(dir) {
-			if known && !protected[teams.ConversationIdentity(place.Transcript())] {
+			// A team or collection reference keeps a blank out of both piles.
+			// So does a store that cannot say whether it is referenced.
+			if referenced, err := teams.ConversationReferenced(config.ProfileDir(), place.Transcript()); err == nil && !referenced && !collectionKeepsConversation(dir) {
 				empty = append(empty, folder)
 			}
 			continue
@@ -705,23 +708,20 @@ func v3ScanBucket(bucket string) (spoken, empty []v3Folder) {
 // [session.Peek]: Peek folds "read it all, nobody spoke" and "could not read
 // it" into one false, which is right for a picker row and fatal for a delete.
 // Only the first of the two is emptiness.
-// A team reference makes an empty conversation intentional, not reusable litter.
-func v3TeamConversations() (map[string]bool, bool) {
-	f, err := teams.Snapshot(config.ProfileDir())
-	if err != nil {
-		return nil, false
-	}
-	return f.ReferencedConversations(), true
-}
-
+// A team reference makes an empty conversation intentional, not reusable
+// litter. Only the teams that name this conversation are read (the store's
+// index), and a store that cannot say keeps the folder.
+// A collection reference keeps it too, including when its store cannot be read.
 func v3EmptySession(dir string) bool {
-	protected, known := v3TeamConversations()
-	if !known || protected[teams.ConversationIdentity(session.Place{Dir: dir}.Transcript())] {
+	referenced, err := teams.ConversationReferenced(config.ProfileDir(), session.Place{Dir: dir}.Transcript())
+	if err != nil || referenced {
 		return false
 	}
-	return v3EmptyUnassignedSession(dir)
+	return v3EmptyUnassignedSession(dir) && !collectionKeepsConversation(dir)
 }
 
+// v3EmptyUnassignedSession reads only content. References decide whether a blank
+// is kept, never whether it is a conversation somebody has spoken in.
 func v3EmptyUnassignedSession(dir string) bool {
 	place := session.Place{Dir: dir, Owned: true}
 	spoken, sure := session.SpokeIn(place.Transcript())
@@ -749,17 +749,18 @@ func v3EmptyUnassignedSession(dir string) bool {
 func v3ReapEmpty(empty []v3Folder, keep string) {
 	// Recheck the record and emptiness under the team writer's lock. Unknown
 	// membership is a reason to keep a folder, never a reason to remove it.
-	_ = teams.Inspect(config.ProfileDir(), func(f *teams.File) error {
-		protected := f.ReferencedConversations()
-		for _, folder := range empty {
-			transcript := session.Place{Dir: folder.dir}.Transcript()
-			if folder.dir == keep || protected[teams.ConversationIdentity(transcript)] || session.InUse(transcript) || !v3EmptyUnassignedSession(folder.dir) {
-				continue
-			}
-			_ = os.RemoveAll(folder.dir)
+	for _, folder := range empty {
+		if folder.dir == keep {
+			continue
 		}
-		return nil
-	})
+		transcript := session.Place{Dir: folder.dir}.Transcript()
+		_ = teams.InspectConversation(config.ProfileDir(), transcript, func(referenced bool) error {
+			if !referenced && !session.InUse(transcript) && v3EmptyUnassignedSession(folder.dir) && !collectionKeepsConversation(folder.dir) {
+				_ = os.RemoveAll(folder.dir)
+			}
+			return nil
+		})
+	}
 }
 
 // v3Migrated readies an existing cell without changing a legacy chat's layout.
@@ -781,24 +782,38 @@ func v3Migrated(cfg session.Config) session.Config {
 	return cfg
 }
 
-// v3Seated gives the session the executor it owns, built once here from the
-// class the cell declared and the workspace its tools run in.
+// v3Seated is for a caller that already holds the journal. It gives the session
+// the executor it owns, built from the cell class and its tools' workspace.
 //
 // A folder that is not a readable cell gets no seat and its calls run on the
 // host as they always did, and so does every folder without a compatible engine. The
 // seat is set on every call, so a config reused for the next conversation never
 // carries the last one's executor.
 func v3Seated(cfg session.Config) session.Config {
+	cfg, claim := v3SeatedPending(cfg)
+	claim(true)
+	return cfg
+}
+
+// v3SeatedPending builds the seat before committing its drive to journal ownership.
+func v3SeatedPending(cfg session.Config) (session.Config, func(bool)) {
 	cfg.Seat, cfg.Machine, cfg.Seals, cfg.Interrupted = nil, nil, nil, nil
-	seat, machine, seals := v3SeatWith(cfg.Place, nil, syncDrives)
+	seat, machine, seals, claim := v3SeatPending(cfg.Place, nil, syncDrives)
 	cfg.Seat, cfg.Interrupted = seat, executor.InterruptedOn(seat)
+	cfg.Renewals = syncDrives.renewalsOf(cfg.Place.ID())
+	cfg.FinishSaving, cfg.SavingNotices = nil, nil
+	if drive := syncDrives.renewalsOf(cfg.Place.ID()); drive != nil {
+		book, id := syncDrives, cfg.Place.ID()
+		cfg.FinishSaving = func() error { return book.closeCell(id) }
+		cfg.SavingNotices = drive.TakeSavingNotices
+	}
 	if machine != nil {
 		cfg.Machine = machine
 	}
 	if seals != nil {
 		cfg.Seals = seals
 	}
-	return cfg
+	return cfg, claim
 }
 
 // v3SeatOf is the seat of the cell a place names, the machine view it was
@@ -815,28 +830,44 @@ func v3SeatOf(place session.Place, say func(string)) (executor.Seat, *preflight.
 // the chat its tool calls are refused. A nil book, or sync off, is the seat
 // exactly as it was.
 func v3SeatWith(place session.Place, say func(string), drives *driveBook) (executor.Seat, *preflight.Machine, *cellstore.SealWatch) {
+	seat, machine, watch, claim := v3SeatPending(place, say, drives)
+	claim(true)
+	return seat, machine, watch
+}
+
+func v3SeatPending(place session.Place, say func(string), drives *driveBook) (executor.Seat, *preflight.Machine, *cellstore.SealWatch, func(bool)) {
+	noop := func(bool) {}
 	if !cell.Available() || place.Dir == "" || place.Workspace == "" {
-		return nil, nil, nil
+		return nil, nil, nil, noop
 	}
 	c, err := cell.OpenAt(place.Dir, filepath.Base(place.Dir))
 	if err != nil {
-		return nil, nil, nil
+		return nil, nil, nil, noop
 	}
 	class, ok := executor.ParseClass(string(c.Meta().Class))
 	if !ok {
 		class = executor.HostBound
 	}
 	machine, err := preflight.OpenMachine(c.Root, place.Workspace)
-	watch := &cellstore.SealWatch{Say: say}
+	watch := &cellstore.SealWatch{Say: say, SyncAddress: chatSyncService()}
 	failed(watch, err)
-	drive := drives.driveOf(c, cellstore.EngineFor(place.Workspace), watch.Report)
+	drive, claim := drives.pendingDriveOf(c, cellstore.EngineFor(place.Workspace), watch.SyncReport, watch)
 	if drive != nil {
-		watch.OnTurnEnd = drive.Idle // the agent waits for the person: upload what is sealed now
+		// The turn can finish locally while its final capture is still running.
+		watch.OnTurnEnd = func() { drive.TurnEnded(c, watch.Report) }
+		watch.OnTurnStart = func() { drive.Working(true) }
 	}
 	seat, err := cellstore.SeatOver(class, c, place.Workspace, observerOf(machine), watch.Report, driveStore(drive), cellstore.WithNotices(watch.Note), cellstore.WithPipeline(), cellstore.WithWarmCapture())
 	failed(watch, err)
+	if err != nil {
+		watch.Retire()
+	}
 	watch.OnTail = func() { sealTail(seat, drive) }
-	return executor.Gated(seat, driveGate(drive)), machine, watch
+	// A fresh seat has no foreground turn in flight. Background tasks may be
+	// the first input; their journal writes need a tail seal even before chat.
+	// Window attachment reuses the engine's seat rather than constructing one.
+	watch.Waiting()
+	return executor.Gated(seat, driveGate(drive), driveWorkGate(drive)), machine, watch, claim
 }
 
 // sealTail seals what the chat wrote after the turn-end seal (titles, summaries,
@@ -873,6 +904,9 @@ func sealSeamOf(agent any, seals session.SealState) tui3.SealSeam {
 	if seals != nil {
 		seam = tui3.SealSeam{Failing: seals.Failing, Notice: seals.Take}
 	}
+	if watch, ok := seals.(interface{ Listen(func()) func() }); ok {
+		seam.Listen = watch.Listen
+	}
 	if door, ok := agent.(interface{ SealFailing() bool }); ok {
 		seam.Failing = door.SealFailing
 	}
@@ -904,6 +938,13 @@ func v3Interrupted(cfg session.Config, notice string) string {
 	if cfg.Interrupted == nil {
 		return notice
 	}
-	lines := append([]string{notice}, cfg.Interrupted.Lines()...)
+	lines := append([]string{notice}, v3InterruptedLines(cfg)...)
 	return strings.TrimSpace(strings.Join(lines, "\n"))
+}
+
+func v3InterruptedLines(cfg session.Config) []string {
+	if cfg.Interrupted == nil {
+		return nil
+	}
+	return cfg.Interrupted.Lines()
 }

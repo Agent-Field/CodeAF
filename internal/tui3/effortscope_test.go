@@ -247,7 +247,7 @@ func TestAltEOnAConversationRowChangesNothing(t *testing.T) {
 	}
 }
 
-// AND THE CONVERSATION ITSELF IS NOT, EITHER — not from this lane. With no
+// AND THE CONVERSATION ITSELF IS NOT, EITHER — not from this test. With no
 // roster hold and no room, the chord reaches nothing that would write.
 func TestAltEWithNoTaskUnderTheCursorAsksTheEngineNothing(t *testing.T) {
 	a, agent := effortTaskApp(t)

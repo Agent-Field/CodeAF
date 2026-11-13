@@ -409,9 +409,6 @@ func TestTheCardHoldsTheWholeMachineAndOpensARowThatIsNotOpenYet(t *testing.T) {
 	}
 }
 
-// TestTheFoldKeepsTheCardAboutWhatIsOpen is the shape the owner asked for: the
-// ring is the conversations this terminal is holding, and everything else on the
-// machine is behind one door with a count on it.
 func TestTheFoldKeepsTheCardAboutWhatIsOpen(t *testing.T) {
 	dir := t.TempDir()
 	a := newTestApp(&fakeAgent{model: "m"})
@@ -859,8 +856,6 @@ func TestALongNameTakesTheRoomAndIsNotRepeatedUnderTheList(t *testing.T) {
 // what was behind the screen. These four are that door, asserted from a place
 // (hop.go's [app.hopLand]).
 
-// TestTakingARowFromHomeLandsInTheConversation is the owner's own report: home
-// up, `ctrl+k`, `enter`, and you are IN the conversation you chose.
 func TestTakingARowFromHomeLandsInTheConversation(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.file = "/tmp/lab/this-one.jsonl"

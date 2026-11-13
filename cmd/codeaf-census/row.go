@@ -74,7 +74,7 @@ var classesInOrder = []statusClass{
 // off a finished day and decides nothing: there is no error value to hand
 // `taxonomy.Classify`, no evidence internal/provider could have stamped, and
 // nothing downstream of it but a markdown cell. The columns are the ones
-// docs/design/recovery/DESIGN.md §1 asks for, which is where the three numbers
+// the implementation §1 asks for, which is where the three numbers
 // come from; if the design's table changes, this changes with it and nothing
 // else in the build moves.
 var refusalColumns = map[int]struct {
@@ -131,7 +131,7 @@ const (
 	// exceeded` rows in the first census sit at exactly sixty and ninety
 	// seconds, which is no bound internal/provider owns: they are the errand
 	// deadlines internal/session sets around an auxiliary call
-	// (docs/design/recovery/DESIGN.md §8, R4's correction). A census that files
+	//. A census that files
 	// them under the stream guard's walls is telling a wave to go and loosen a
 	// bound that had nothing to do with it.
 	causeCaller    causeFamily = "caller deadline (the caller's own context)"

@@ -2,17 +2,21 @@ package serve
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptrace"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
@@ -20,6 +24,7 @@ import (
 func (h *Handler) jobScreens() {
 	h.postJob("assignee", h.config.Store != nil, h.changeAssignee)
 	h.postJob("sync", true, h.guarded("sync", h.onlyOwner(h.syncJob)))
+	h.postJob("issue_comment", true, h.issueComment)
 	for _, verb := range []string{"stop", "rerun"} {
 		h.postJob("steps/{sid}/"+verb, h.config.Store != nil, h.stepControl(verb == "rerun"))
 	}
@@ -27,8 +32,15 @@ func (h *Handler) jobScreens() {
 		http.MethodGet: h.readStepEdits, http.MethodPost: h.editSteps,
 	})
 	h.read("/v1/jobs/{id}/hand-off/{card}", h.readJobHandOff)
+	h.read("/v1/jobs/{id}/brief", h.readJobBrief)
+	h.read("/v1/jobs/{id}/brief/spots/{spot}", h.readBriefSpot)
+	h.postJob("brief/begin", h.config.Store != nil, h.onlyOwner(h.beginBrief))
+	h.postJob("brief/keep", h.config.Store != nil, h.onlyOwner(h.keepBrief))
 	h.route("/v1/jobs/{id}/hand-off/{card}/not-now", map[string]http.HandlerFunc{http.MethodPost: h.jobHandOffNotNow})
 	h.route("/v1/repos/{owner}/{repo}/pipeline/open-pr", map[string]http.HandlerFunc{http.MethodPost: h.pipelinePR})
+	h.route("/v1/repos/{owner}/{repo}/pipeline/factory-copy", map[string]http.HandlerFunc{
+		http.MethodGet: h.pipelineCopy, http.MethodPut: h.pipelineCopy, http.MethodDelete: h.pipelineCopy,
+	})
 	h.route("/v1/issues", map[string]http.HandlerFunc{http.MethodGet: h.searchIssues, http.MethodPost: h.createIssueJob})
 }
 
@@ -43,23 +55,26 @@ func (h *Handler) stepControl(rerun bool) jobAction {
 		var body struct {
 			Expect *api.Expect `json:"expect,omitempty"`
 			Words  string      `json:"words,omitempty"`
+			// Model is the model a rerun's step runs on from now: run again
+			// from here with another model. "" keeps the step's own.
+			Model string `json:"model,omitempty"`
 		}
 		if !h.decode(w, r, &body, true) || !h.fresh(w, r, it, verb, body.Expect) {
 			return
 		}
-		if !rerun && strings.TrimSpace(body.Words) != "" {
-			h.fail(w, http.StatusUnprocessableEntity, "only a rerun takes words")
+		if !rerun && (strings.TrimSpace(body.Words) != "" || strings.TrimSpace(body.Model) != "") {
+			h.fail(w, http.StatusUnprocessableEntity, "only a rerun takes words or a model")
 			return
 		}
 		var revision *int
 		if body.Expect != nil {
 			revision = body.Expect.Version
 		}
-		h.onlyOwner(h.stepAct(rerun, body.Words, revision))(w, r, it)
+		h.onlyOwner(h.stepAct(rerun, body.Words, body.Model, revision))(w, r, it)
 	}
 }
 
-func (h *Handler) stepAct(rerun bool, words string, revision *int) jobAction {
+func (h *Handler) stepAct(rerun bool, words, model string, revision *int) jobAction {
 	return func(w http.ResponseWriter, r *http.Request, it factory.Item) {
 		if !h.workerReady(w) {
 			return
@@ -83,7 +98,11 @@ func (h *Handler) stepAct(rerun bool, words string, revision *int) jobAction {
 			verb = record.StepRerun
 		}
 		h.finish(w, h.recordAction(r, it, verb, name, func() error {
-			return lease.NewDoors(h.workers.desk).StepControlExpected(it.ID, name, rerun, words, revision)
+			doors := lease.NewDoors(h.workers.desk)
+			if rerun {
+				return doors.StepRerunExpected(it.ID, name, words, model, revision)
+			}
+			return doors.StepControl(it.ID, name, false, "")
 		}))
 	}
 }
@@ -119,6 +138,7 @@ func (h *Handler) readStepEdits(w http.ResponseWriter, r *http.Request) {
 // FS0/FS15 allow only the caller's own.
 func (h *Handler) stepEditsReply(w http.ResponseWriter, r *http.Request, it factory.Item, lines []string) {
 	jobs := []api.Job{h.withVersion(api.FromItem(it))}
+	h.modelsIn(jobs, []factory.Item{it})
 	if _, _, err := h.applyPresence(jobs); h.failed(w, err) {
 		return
 	}
@@ -149,14 +169,24 @@ func (h *Handler) editSteps(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, 409, "finished or publishing jobs cannot edit steps")
 		return
 	}
-	edit := factory.RunEdit{Ask: body.Ask, Thinking: body.Thinking, On: body.On, Skip: body.Skip, Why: body.Why, By: factory.ByYou}
-	for _, addition := range body.Add {
-		d := addition.Step
-		if d.Max != 0 || d.Fixed || d.Off || d.Custom || d.When != "" || d.Fanout != "" || len(d.Proof) > 0 || d.By != "" || d.Why != "" || d.UntilSentence != "" {
-			h.fail(w, 422, "new steps accept name, kind, ask, until and effort")
+	edit := factory.RunEdit{Label: body.Label, Ask: body.Ask, Thinking: body.Thinking, Max: body.Max, Model: body.Model, On: body.On, Skip: body.Skip, Remove: body.Remove, Why: body.Why, By: factory.ByYou}
+	for _, mv := range body.Move {
+		// A MOVE SAYS WHERE IT GOES: "" is first, and no place at all is refused
+		// rather than guessed.
+		if mv.After == nil {
+			h.fail(w, 422, "a moved step names the step it goes after, or \"\" for first")
 			return
 		}
-		edit.Add = append(edit.Add, factory.Added{Stage: factory.Stage{Name: d.Name, Kind: factory.StageKind(d.Kind), Ask: d.Ask, Until: d.Until, Effort: d.Effort, On: true}, After: addition.After})
+		edit.Move = append(edit.Move, factory.Moved{Stage: mv.Step, After: *mv.After})
+	}
+	for _, addition := range body.Add {
+		d := addition.Step
+		// A CHECK MAY SAY ITS ROUNDS; nothing else added here may.
+		if (d.Max != 0 && d.Kind != string(factory.StageCheck)) || d.Fixed || d.Off || d.Custom || d.Fanout != "" || len(d.Proof) > 0 || d.By != "" || d.Why != "" || d.UntilSentence != "" || d.UseModel != "" {
+			h.fail(w, 422, "new steps accept name, label, kind, ask, until, when and effort, and a check its max")
+			return
+		}
+		edit.Add = append(edit.Add, factory.Added{Stage: factory.Stage{Name: d.Name, Label: strings.TrimSpace(d.Label), Kind: factory.StageKind(d.Kind), Ask: d.Ask, Until: d.Until, When: d.When, Effort: d.Effort, Max: d.Max, On: true}, After: addition.After})
 	}
 	var updated factory.Item
 	var lines []string
@@ -172,8 +202,8 @@ func (h *Handler) editSteps(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		if h.config.Pipeline != nil {
-			file, err := h.config.Pipeline(r.Context(), itemRepo(it), "")
+		if h.config.Pipeline != nil || h.config.JobPipeline != nil {
+			file, err := h.jobPipeline(r.Context(), it, "")
 			if h.failed(w, err) {
 				return
 			}
@@ -191,6 +221,24 @@ func (h *Handler) editSteps(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.stepEditsReply(w, r, updated, lines)
+}
+
+// jobPipeline is the pipeline one job is bounded by, for every door that
+// starts it, edits its steps or merges it: THE FILE ITS FIRST LAUNCH DECIDED
+// ([factory.Item.DecidePipeline]: the factory's copy it carries, else main's
+// file), else, before that, this factory's read of its repository now
+// ([Config.JobPipeline], pipeline.JobFile), so nothing bounds a job by a copy
+// saved or stopped since. dir is its checkout, "" when not known.
+func (h *Handler) jobPipeline(ctx context.Context, it factory.Item, dir string) (pipeline.File, error) {
+	if h.config.JobPipeline != nil {
+		return h.config.JobPipeline(ctx, it, dir)
+	}
+	return pipeline.JobFile(it, "", func(bool) (pipeline.File, error) {
+		if h.config.Pipeline == nil {
+			return pipeline.Defaults(), nil
+		}
+		return h.config.Pipeline(ctx, itemRepo(it), dir)
+	})
 }
 
 func (h *Handler) readJobHandOff(w http.ResponseWriter, r *http.Request) {
@@ -271,7 +319,7 @@ func (h *Handler) searchIssues(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !h.repoVisible(r, repo) {
-		if !h.authFailed(w, r) {
+		if !h.authFailed(w, r) && !h.githubVisibilityLimited(w, r) {
 			h.fail(w, 404, "repository not found")
 		}
 		return
@@ -305,6 +353,13 @@ func (h *Handler) searchIssues(w http.ResponseWriter, r *http.Request) {
 
 // githubJobJSON uses the signed-in person's credential. Only a solo host may
 // use its local profile; a team's read grant is never used for a write.
+//
+// For a write it is the handler's first change, so it clears the phase marker
+// (api.PhaseHeader) once GitHub may have acted: when the request got a
+// connection, since nothing is sent before that, and when GitHub answered
+// anything but its own 4xx refusal, which makes nothing. A failure before the
+// request was sent, or a refusal, therefore stays marked as having written
+// nothing; a lost answer, a GitHub 5xx or an unreadable receipt does not.
 func (h *Handler) githubJobJSON(w http.ResponseWriter, r *http.Request, method, path string, body any, out any) bool {
 	session, _ := h.credential(r)
 	token := session.githubToken
@@ -323,7 +378,9 @@ func (h *Handler) githubJobJSON(w http.ResponseWriter, r *http.Request, method, 
 			return false
 		}
 	}
-	req, err := http.NewRequestWithContext(r.Context(), method, "https://api.github.com"+path, ioBody(raw))
+	var connected atomic.Bool
+	ctx := httptrace.WithClientTrace(r.Context(), &httptrace.ClientTrace{GotConn: func(httptrace.GotConnInfo) { connected.Store(true) }})
+	req, err := http.NewRequestWithContext(ctx, method, "https://api.github.com"+path, ioBody(raw))
 	if h.failed(w, err) {
 		return false
 	}
@@ -334,10 +391,16 @@ func (h *Handler) githubJobJSON(w http.ResponseWriter, r *http.Request, method, 
 	client := h.githubClient()
 	response, err := client.Do(req)
 	if err != nil {
+		if connected.Load() {
+			clearPhase(w)
+		}
 		h.fail(w, 502, "GitHub isn't answering; retry this job change")
 		return false
 	}
 	defer response.Body.Close()
+	if response.StatusCode < 400 || response.StatusCode >= 500 {
+		clearPhase(w)
+	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		h.fail(w, 502, fmt.Sprintf("GitHub refused this job change (HTTP %d)", response.StatusCode))
 		return false

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -80,5 +81,82 @@ func TestAppAgentsListFiltersByState(t *testing.T) {
 	none, _ := backend.ListAgentsIn("", "", "no such words anywhere")
 	if len(none) != 0 {
 		t.Fatalf("a query matched nothing it names: %+v", none)
+	}
+}
+
+// A WARM OPEN NEVER TAKES AN AGENT OUT OF CLOSED OR THE ARCHIVE: a window's
+// guess at a view (a hover's prefetch) is refused and the mark stays, while
+// a person's own open still reopens it.
+func TestAWarmOpenLeavesAClosedAgentClosed(t *testing.T) {
+	for name, verb := range tidyVerbs {
+		t.Run(name, func(t *testing.T) {
+			w := newSvcWorld(t)
+			w.realTranscript(t)
+			backend, agent := w.backend, w.agent
+			if err := verb(backend, agent.ID); err != nil {
+				t.Fatal(err)
+			}
+			_, err := backend.WarmAgent(agent.ID)
+			var wire *appwire.Error
+			if !errors.As(err, &wire) || wire.Code != appwire.CodeConflict {
+				t.Fatalf("a warm open of a %s agent answered %v", name, err)
+			}
+			if !backend.tidied(agent.ID) || backend.held(agent.ID) {
+				t.Fatalf("after a warm open: marked=%v held=%v", backend.tidied(agent.ID), backend.held(agent.ID))
+			}
+			opened, err := backend.OpenAgent(agent.ID)
+			if err != nil || opened.State == appwire.StateClosed || opened.State == appwire.StateArchived || backend.tidied(agent.ID) {
+				t.Fatalf("a plain open of a %s agent = %+v, %v, marked=%v", name, opened, err, backend.tidied(agent.ID))
+			}
+		})
+	}
+}
+
+// A warm open of an open agent opens it, as any open does.
+func TestAWarmOpenOpensAnOpenAgent(t *testing.T) {
+	backend, _, agent := workBackend(t, &fakeConversation{})
+	if _, err := backend.WarmAgent(agent.ID); err != nil || !backend.held(agent.ID) {
+		t.Fatalf("warm = %v, held=%v", err, backend.held(agent.ID))
+	}
+}
+
+// NO OPEN LANDS BETWEEN A CLOSE'S RELEASE AND ITS MARK: a warm open asked
+// while the close runs waits on the agent's gate, then finds the mark and is
+// refused, so the agent is neither held nor reopened.
+func TestAWarmOpenWaitingOnACloseFindsItClosed(t *testing.T) {
+	backend, _, agent := workBackend(t, &fakeConversation{})
+	a, err := backend.find(agent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	warmed := make(chan error, 1)
+	err = backend.closeOne(a, func() error {
+		go func() { _, err := backend.WarmAgent(agent.ID); warmed <- err }()
+		select {
+		case err := <-warmed:
+			t.Errorf("a warm open ran between the release and the mark: %v", err)
+		case <-time.After(150 * time.Millisecond):
+		}
+		return backend.state.write(func(f *appStateFile) error {
+			if f.Closed == nil {
+				f.Closed = map[string]time.Time{}
+			}
+			f.Closed[agent.ID] = backend.now()
+			return nil
+		})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-warmed:
+		if err == nil {
+			t.Fatal("the warm open that waited on the close opened it")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the warm open never answered")
+	}
+	if !backend.tidied(agent.ID) || backend.held(agent.ID) {
+		t.Fatalf("after the close: marked=%v held=%v", backend.tidied(agent.ID), backend.held(agent.ID))
 	}
 }

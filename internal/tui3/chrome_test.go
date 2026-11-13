@@ -255,6 +255,32 @@ func TestASettingsToggleWritesTheRegistryKey(t *testing.T) {
 	}
 }
 
+// THE ATTRIBUTION TOGGLE SITS ABOVE MODEL IN COMMITS ON THE WORKSPACE TAB and
+// writes the profile's `attribution` key when toggled.
+func TestTheAttributionToggleWritesTheRegistryKey(t *testing.T) {
+	a, dir := sheetApp(t)
+	a.openSettings()
+	cursorTo(t, a, config.KeyAttribution)
+	attIdx := a.sheet.cursor
+	cursorTo(t, a, config.KeyAttributionModel)
+	modelIdx := a.sheet.cursor
+	if attIdx >= modelIdx {
+		t.Fatalf("attribution sits at %d, want directly above model in commits (%d)", attIdx, modelIdx)
+	}
+	cursorTo(t, a, config.KeyAttribution)
+	if !config.AttributionAt(dir) {
+		t.Fatal("attribution did not start on")
+	}
+	drive(t, a, key("enter"))
+	if config.AttributionAt(dir) {
+		t.Fatalf("enter did not turn attribution off: %v", a.sheet.msg)
+	}
+	drive(t, a, key("enter"))
+	if !config.AttributionAt(dir) {
+		t.Fatal("a second enter did not turn attribution back on")
+	}
+}
+
 // AN ENUM OPENS ITS CHOICES AND SAVES THE EXPLICIT SELECTION.
 func TestASettingsChoiceWritesTheRegistryKey(t *testing.T) {
 	a, dir := sheetApp(t)
@@ -1424,7 +1450,7 @@ func TestTheFrameDrawsThePageThatWasOpenedLast(t *testing.T) {
 	// two vocabularies staying apart, so a place may never be renamed to a word
 	// the settings panel already spells (pages.go).
 	for _, id := range barPages(a.page, false) {
-		if !strings.Contains(strings.ToLower(plain(spend)), strings.ToLower(id.word())) {
+		if !strings.Contains(strings.ToLower(plain(spend)), strings.ToLower(navLabel(id))) {
 			t.Fatalf("the tab bar does not name the %s place:\n%s", id.word(), spend)
 		}
 	}

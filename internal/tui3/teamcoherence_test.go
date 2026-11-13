@@ -92,7 +92,7 @@ func TestGridDoesNotResumeUnheldTeamMembers(t *testing.T) {
 // team and plain where it is an ordinary word.
 func TestTheTeamLinkGrammar(t *testing.T) {
 	test := team{ID: "t1", Name: "test", Members: []teamMember{
-		{Key: "k-sec", Handle: "security", Word: "santosh dev2 branch code complexity & security review"},
+		{Key: "k-sec", Handle: "security", Word: "dev dev2 branch code complexity & security review"},
 		{Key: "k-mil", Handle: "milestones", Word: "CodeAF repo issue tags & milestones"},
 		{Key: "k-me", Handle: "boss"},
 	}}
@@ -104,7 +104,7 @@ func TestTheTeamLinkGrammar(t *testing.T) {
 		{"handles", "Ask @security, then @milestones.", []string{"@security", "@milestones"}},
 		{"unknown handle", "Ask @nobody about it.", nil},
 		{"own handle", "I am @boss here.", nil},
-		{"address", "Write to santosh@security.dev today.", nil},
+		{"address", "Write to dev@security.dev today.", nil},
 		{"team word before", "The team test has two members.", []string{"test"}},
 		{"team word after", "Everything in the test team is done.", []string{"test"}},
 		{"quoted", `Team traffic in "test" for you.`, []string{"test"}},

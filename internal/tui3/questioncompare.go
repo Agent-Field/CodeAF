@@ -10,7 +10,7 @@ import (
 
 // `x` — THE ANSWERS LAID AGAINST EACH OTHER, AND ONLY WHERE THEY DIFFER.
 //
-// docs/design/questions/DESIGN.md: "x compare on the asker's dimensions
+// the implementation: "x compare on the asker's dimensions
 // (fallback: +/− lines)", and "compare stacks under 80 cols".
 //
 // WHY DIFFERENCES ONLY. Three answers with eight axes is a twenty-four cell

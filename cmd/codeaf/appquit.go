@@ -106,6 +106,12 @@ func (b *appBackend) resumeAfterQuit() {
 		f.ResumeAfterQuit, f.QuitReplies, f.QuitTasks = nil, nil, nil
 		return nil
 	})
+	if len(resume) > 0 {
+		at := b.now()
+		b.locked(func() {
+			b.lastResume = &appwire.HealthResume{At: at, RepliesResumed: len(replies) > 0, Replies: len(replies), Tasks: len(tasks)}
+		})
+	}
 	for _, id := range resume {
 		reply := false
 		var mine []string
@@ -135,7 +141,16 @@ func (b *appBackend) resumeOneWith(id string, reply bool, tasks []string, kind, 
 	if b.isClosing() {
 		return
 	}
-	a, live, err := b.heldLive(id)
+	a, err := b.find(id)
+	if err != nil {
+		return
+	}
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	if b.tidied(id) {
+		return
+	}
+	_, live, err := b.heldLiveLocked(a)
 	if err != nil {
 		return
 	}

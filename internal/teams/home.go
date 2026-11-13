@@ -85,6 +85,42 @@ func (f *File) Home(key string) (Report, bool) {
 	return Report{}, false
 }
 
+// Homes is the same reading as Home for every conversation, in one membership
+// pass. Overview readers need all of them; repeating Home per member instead
+// searches the entire membership list once for every row being drawn.
+func (f *File) Homes() map[string]Report {
+	index := make(map[string]int, len(f.Teams))
+	for i, t := range f.Teams {
+		if _, exists := index[t.ID]; !exists {
+			index[t.ID] = i
+		}
+	}
+	out := map[string]Report{}
+	for _, t := range f.Teams {
+		if t.Closed() {
+			continue
+		}
+		// Member reads the first occurrence even in an older, untidied file.
+		seen := make(map[string]bool, len(t.Members))
+		for _, m := range t.Members {
+			if seen[m.Key] {
+				continue
+			}
+			seen[m.Key] = true
+			if !m.Home {
+				continue
+			}
+			if _, exists := out[m.Key]; exists {
+				continue
+			}
+			if r, ok := managerUpIndexed(f.Teams, t.ID, m.Key, index); ok {
+				out[m.Key] = r
+			}
+		}
+	}
+	return out
+}
+
 // Links is every other manager the conversation with key can be reached by:
 // the nearest manager up each of its memberships, in the pick order, each
 // managed team once, the home left out.
@@ -135,9 +171,24 @@ func setHomeFlag(teams []Team, key, id string) {
 // not key: the team must be open and have a manager. The walk is bounded by
 // the list, so a loop cannot hang it.
 func managerUp(teams []Team, id, key string) (Report, bool) {
+	return managerUpIndexed(teams, id, key, nil)
+}
+
+// The batched reader shares the authority walk and its cycle bound with Home;
+// its index changes lookup cost, never which manager a membership reports to.
+func managerUpIndexed(teams []Team, id, key string, index map[string]int) (Report, bool) {
 	at := id
 	for distance := 0; at != "" && distance <= len(teams); distance++ {
-		i := Index(teams, at)
+		i := -1
+		if index == nil {
+			i = Index(teams, at)
+		} else {
+			var found bool
+			i, found = index[at]
+			if !found {
+				i = -1
+			}
+		}
 		if i < 0 {
 			return Report{}, false
 		}
@@ -221,29 +272,69 @@ func depthIn(teams []Team, id string) int {
 // manager to report to and none for any other, and reports whether it moved
 // a flag. A valid flag is never moved.
 func assignHomes(teams []Team) bool {
+	// Group memberships once. Repair used to search every team's members
+	// several times per conversation, including for a perfectly tidy file.
+	type position struct{ team, member int }
+	positions := map[string][]position{}
+	var keys []string
+	index, depths := map[string]int{}, map[string]int{}
+	for i, t := range teams {
+		if _, exists := index[t.ID]; !exists {
+			index[t.ID] = i
+		}
+		depths[t.ID] = depthIn(teams, t.ID)
+		for j, m := range t.Members {
+			if _, exists := positions[m.Key]; !exists {
+				keys = append(keys, m.Key)
+			}
+			positions[m.Key] = append(positions[m.Key], position{i, j})
+		}
+	}
 	changed := false
-	done := map[string]bool{}
-	for _, t := range teams {
-		for _, m := range t.Members {
-			if done[m.Key] {
+	for _, key := range keys {
+		flags, validTeam := 0, ""
+		independent, hasBest := false, false
+		var best candidate
+		lastTeam := -1
+		for _, p := range positions[key] {
+			// Home, independent and candidates all use Team.Member: only
+			// the first occurrence in an untidied team participates.
+			if p.team == lastTeam {
 				continue
 			}
-			done[m.Key] = true
-			if independent(teams, m.Key) {
-				if clearOrSet(teams, m.Key, "") {
-					changed = true
-				}
+			lastTeam = p.team
+			t, m := teams[p.team], teams[p.team].Members[p.member]
+			independent = independent || m.Independent
+			if m.Home {
+				flags++
+			}
+			if t.Closed() {
 				continue
 			}
-			if homeHolds(teams, m.Key) {
+			r, ok := managerUpIndexed(teams, t.ID, key, index)
+			if !ok {
 				continue
 			}
-			want := ""
-			if c := candidates(teams, m.Key); len(c) > 0 {
-				want = c[0].Via
+			if m.Home && validTeam == "" {
+				validTeam = t.ID
 			}
-			if clearOrSet(teams, m.Key, want) {
-				changed = true
+			c := candidate{r: r, depth: depths[r.Team], started: m.Started, order: p.team}
+			if !hasBest || c.before(best) {
+				best, hasBest = c, true
+			}
+		}
+		if !independent && (flags == 1 && validTeam != "" || flags == 0 && !hasBest) {
+			continue
+		}
+		want := validTeam
+		if want == "" && !independent && hasBest {
+			want = best.r.Via
+		}
+		for _, p := range positions[key] {
+			m := &teams[p.team].Members[p.member]
+			on := want != "" && teams[p.team].ID == want
+			if m.Home != on {
+				m.Home, changed = on, true
 			}
 		}
 	}

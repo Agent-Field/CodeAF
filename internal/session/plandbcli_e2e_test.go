@@ -1,6 +1,6 @@
 package session
 
-// The plandb CLI's end-to-end proof (docs/design/plandb-cli/DESIGN.md, wave
+// The plandb CLI's end-to-end proof (the implementation, wave
 // 2): the acceptance the whole wiring wave is judged by. A bash-belt worker
 // coordinates through the REAL `plandb` binary — add, add+dep, note, the
 // reading set between parts, and the taught finish — and the runtime's pulse

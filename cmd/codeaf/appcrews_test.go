@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/Agent-Field/codeaf/internal/session"
-	"os"
 	"path/filepath"
 	"reflect"
 	"strconv"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
+	"github.com/Agent-Field/codeaf/internal/teams/teamstest"
 )
 
 // crewBackend is a work backend whose crews are the teams of a profile of its
@@ -83,10 +83,7 @@ func TestAppCrewIsItsTeamAndTheLayerStaysOutOfTheTeamsFile(t *testing.T) {
 	if len(items) != 1 || items[0].Ref != "#1830" {
 		t.Fatalf("the items = %+v", items)
 	}
-	raw, err := os.ReadFile(teamstore.Path(backend.profileDir))
-	if err != nil {
-		t.Fatal(err)
-	}
+	raw := teamstest.JSON(t, backend.profileDir)
 	if strings.Contains(string(raw), goal) || strings.Contains(string(raw), "#1830") {
 		t.Fatalf("the app layer reached the teams file:\n%s", raw)
 	}
@@ -740,7 +737,7 @@ func TestAppCrewStartRecordsTheStartLineAndTheBriefFollowsIt(t *testing.T) {
 		if ask.Transcript == "" {
 			return nil, errors.New("opened without a transcript")
 		}
-		return &appConn{Conv: &fakeConversation{}, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() { mu.Lock(); release++; mu.Unlock() }}, nil
+		return &appConn{Conv: &fakeConversation{model: ask.Model}, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() { mu.Lock(); release++; mu.Unlock() }}, nil
 	}
 	t.Cleanup(func() { backend.Close() })
 	backend.state = &appState{path: filepath.Join(t.TempDir(), appStateName)}
@@ -767,7 +764,7 @@ func TestAppCrewStartRecordsTheStartLineAndTheBriefFollowsIt(t *testing.T) {
 	}
 	start := func(brief string) string {
 		t.Helper()
-		sid, err := teamstore.AppendTrafficID(backend.profileDir, id, teamstore.Entry{Kind: teamstore.KindStart, From: teamstore.FromManager, FromKey: leadMember.Key, To: "web", Text: brief})
+		sid, err := teamstore.AppendTrafficID(backend.profileDir, id, teamstore.Entry{Kind: teamstore.KindStart, From: teamstore.FromManager, FromKey: leadMember.Key, To: "web", Text: brief, Model: "moonshotai/kimi-k3"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -781,7 +778,23 @@ func TestAppCrewStartRecordsTheStartLineAndTheBriefFollowsIt(t *testing.T) {
 		}
 		team, _ := file.Team(id)
 		manager, _ := team.Member(team.Manager)
-		backend.crewStart(team, manager, e)
+		backend.crewStart(team, manager, e, appMemberAgent(manager))
+		listed, err := backend.ListAgents("")
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, agent := range listed {
+			if agent.Title == session.FirstMessageName(brief) {
+				found = true
+				if agent.Model != "moonshotai/kimi-k3" {
+					t.Fatalf("started model = %q", agent.Model)
+				}
+			}
+		}
+		if !found {
+			t.Fatal("started member not listed")
+		}
 		return sid
 	}
 	const (

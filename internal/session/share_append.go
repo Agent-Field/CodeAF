@@ -2,7 +2,8 @@ package session
 
 // share_append.go is the one append a share makes to the deliverables index.
 //
-// IT IS NOT [RecordArtifact], on purpose. That door is silent by design — a
+// It uses the common append funnel with stricter validation than [RecordArtifact].
+// That door is silent by design — a
 // generator that has just made a picture has nothing to do with the news that a
 // lookup row was not written — and it drops an over-size deliverable fact to
 // keep the plain row. A share cannot do either: the row IS the publication, and
@@ -25,9 +26,7 @@ package session
 import (
 	"encoding/json"
 	"errors"
-	"io"
 	"os"
-	"path/filepath"
 	"strings"
 )
 
@@ -40,31 +39,7 @@ func appendShareRow(path string, row Artifact) error {
 	if err != nil {
 		return err
 	}
-	artifactsMu.Lock()
-	defer artifactsMu.Unlock()
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
-	}
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o600)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	ended, err := shareIndexEnded(file)
-	if err != nil {
-		return err
-	}
-	if !ended {
-		line = append([]byte{'\n'}, line...)
-	}
-	written, err := file.Write(line)
-	if err == nil && written != len(line) {
-		err = io.ErrShortWrite
-	}
-	if err != nil {
-		return errors.Join(errShareAppend, err)
-	}
-	if err := file.Sync(); err != nil {
+	if err := appendArtifactIndex(path, func() ([]byte, error) { return line, nil }, true); err != nil {
 		return errors.Join(errShareAppend, err)
 	}
 	return nil

@@ -19,6 +19,8 @@ type hold struct {
 
 // holderRig is a holder on a fake clock dialling scripted sockets, and the
 // holds each dial named.
+func (h hold) HoldIdentity() (string, uint64) { return h.cell, h.fence }
+
 type holderRig struct {
 	t       *testing.T
 	clock   *fakeClock
@@ -65,7 +67,8 @@ func (r *holderRig) dials() [][]hold {
 // speak makes the socket say something and waits until the holder believes it.
 func (r *holderRig) speak(s *fakeStream, w *Holding[hold]) {
 	r.t.Helper()
-	s.send(Frame{Version: 1}, nil)
+	cell, fence := w.hold.HoldIdentity()
+	s.send(Frame{Version: 1, Holds: []HoldReceipt{{Cell: cell, Fence: fence, Index: 1, At: r.clock.Now().UnixMilli(), Until: r.clock.Now().UnixMilli() + 90_000}}}, nil)
 	for deadline := time.Now().Add(5 * time.Second); !w.feed.snapshot().Up; time.Sleep(time.Millisecond) {
 		if time.Now().After(deadline) {
 			r.t.Fatal("the holder was never told the socket is up")
@@ -106,14 +109,14 @@ func TestHolderBeatsWhileSocketDown(t *testing.T) {
 	}
 }
 
-func TestHolderIsNotHealthyWithoutTheVouchingWord(t *testing.T) {
+func TestR22HolderReceiptDoesNotRequireLegacyVouchHeader(t *testing.T) {
 	r := newHolderRig(t, 4)
 	r.vouch = false
 	w := r.holder.Take(hold{"c1", 7})
 	defer w.Release()
 	r.speak(r.socket(), w)
-	if w.Healthy() {
-		t.Fatal("healthy on a socket whose server did not say it vouches")
+	if !w.Healthy() {
+		t.Fatal("committed receipt refused because legacy header is absent")
 	}
 }
 

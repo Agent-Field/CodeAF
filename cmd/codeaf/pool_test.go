@@ -183,7 +183,7 @@ func TestPoolShowPrintsTheConfigAndSaysWhenNoIndexIsCached(t *testing.T) {
 	}
 	body := out.String()
 	for _, want := range []string{
-		"mode on · default",
+		"mode off · default",
 		"relay https://codeaf.agentfield.ai/pool · default",
 		"index https://codeaf.agentfield.ai/pool/index.json · default",
 		"mirror https://raw.githubusercontent.com/Agent-Field/CodeAF/model-pool/pool/index.json · default",
@@ -239,7 +239,7 @@ func TestPoolShowJSONWithASeededIndexReportsTheDocument(t *testing.T) {
 	if err := json.Unmarshal([]byte(out.String()), &answer); err != nil {
 		t.Fatalf("--json did not parse: %v\n%s", err, out.String())
 	}
-	if answer.Mode != "on" || answer.ModeSource != "default" {
+	if answer.Mode != "off" || answer.ModeSource != "default" {
 		t.Fatalf("mode = %q from %q", answer.Mode, answer.ModeSource)
 	}
 	if answer.IndexURL == "" || answer.SubmitURL == "" || answer.TTLSeconds != 86400 {
@@ -852,7 +852,7 @@ func TestPoolPublicKeysCarryTheIndexSignersKey(t *testing.T) {
 	prev := poolRefreshGo
 	poolRefreshGo = func(scope string, fn func()) { started++ }
 	t.Cleanup(func() { poolRefreshGo = prev })
-	startPoolIndexRefresh(context.Background(), t.TempDir(), poolcfg.Resolve("", "", noEnv), poolPublicKeys)
+	startPoolIndexRefresh(nil, t.TempDir(), poolcfg.Resolve("on", "", noEnv), poolPublicKeys)
 	if started != 1 {
 		t.Fatalf("the build's key started %d refresh(es) under mode on, want 1", started)
 	}
@@ -880,7 +880,7 @@ func TestPoolTrustedKeysFollowTheStoredKey(t *testing.T) {
 		}
 	}
 
-	built, err := poolTrustedKeysErr(poolcfg.Resolve("", "", noEnv))
+	built, err := poolTrustedKeysErr(poolcfg.Resolve("on", "", noEnv))
 	if err != nil || len(built) != 1 || !bytes.Equal(built[0], poolPublicKeys[0]) {
 		t.Fatalf("with nothing stored, the build's own key is the key (err %v)", err)
 	}
@@ -893,7 +893,7 @@ func TestPoolVerifyFetchesUnderTheBuiltInKeyAndNamesWhatFailed(t *testing.T) {
 	dir := t.TempDir()
 	// A dead port is the fetch that would have happened: if the door let one
 	// through, the failure below would be a fetch error, not the sentence.
-	lookup := oneEnv("CODEAF_MODEL_POOL_URL", "http://127.0.0.1:1/index.json")
+	lookup := poolEnv(map[string]string{"CODEAF_MODEL_POOL": "on", "CODEAF_MODEL_POOL_URL": "http://127.0.0.1:1/index.json"})
 	var out strings.Builder
 	err := runPoolWith([]string{"verify"}, &out, dir, poolClock(t), lookup)
 	if err == nil {
@@ -930,7 +930,7 @@ func TestPoolVerifyRefusesWhenThePoolIsOff(t *testing.T) {
 func TestPoolVerifyRefusesAKeyItCannotRead(t *testing.T) {
 	for _, bad := range []string{"not base64!!", "abcd"} {
 		var out strings.Builder
-		err := runPoolWith([]string{"verify", "--key", bad}, &out, t.TempDir(), poolClock(t), noEnv)
+		err := runPoolWith([]string{"verify", "--key", bad}, &out, t.TempDir(), poolClock(t), oneEnv("CODEAF_MODEL_POOL", "on"))
 		if !errors.Is(err, exitCannotRun) {
 			t.Fatalf("a key %q is a door refusal, not a fetch: %v", bad, err)
 		}
@@ -957,6 +957,7 @@ func TestPoolVerifyChecksOnlyUnderTheKeyItIsGiven(t *testing.T) {
 		t.Fatal(err)
 	}
 	lookup := poolEnv(map[string]string{
+		"CODEAF_MODEL_POOL":            "on",
 		"CODEAF_MODEL_POOL_URL":        server.URL + "/index.json",
 		"CODEAF_MODEL_POOL_MIRROR_URL": "",
 	})
@@ -1008,7 +1009,7 @@ func TestPoolVerifyNamesAStoredKeyThatDoesNotDecode(t *testing.T) {
 func TestPoolVerifyNamesTheEnvPinWhenItsKeyDoesNotDecode(t *testing.T) {
 	var out strings.Builder
 	err := runPoolWith([]string{"verify"}, &out, t.TempDir(), poolClock(t),
-		oneEnv("CODEAF_MODEL_POOL_PUBLIC_KEY", "not-a-key"))
+		poolEnv(map[string]string{"CODEAF_MODEL_POOL": "on", "CODEAF_MODEL_POOL_PUBLIC_KEY": "not-a-key"}))
 	if !errors.Is(err, exitIncomplete) {
 		t.Fatalf("a pin that does not decode is a door refusal, not a fetch: %v", err)
 	}
@@ -1035,7 +1036,7 @@ func TestPoolVerifyFetchesAndChecksASignedIndex(t *testing.T) {
 		[]byte(base64.StdEncoding.EncodeToString(sig)), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	lookup := oneEnv("CODEAF_MODEL_POOL_URL", filepath.Join(src, "index.json"))
+	lookup := poolEnv(map[string]string{"CODEAF_MODEL_POOL": "on", "CODEAF_MODEL_POOL_URL": filepath.Join(src, "index.json")})
 	dir := t.TempDir()
 	var out strings.Builder
 	if err := runPoolWith([]string{"verify", "--key", base64.StdEncoding.EncodeToString(pub)},
@@ -1073,7 +1074,7 @@ func TestPoolVerifyNamesTheMetricsItVerified(t *testing.T) {
 		[]byte(base64.StdEncoding.EncodeToString(sig)), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	lookup := oneEnv("CODEAF_MODEL_POOL_URL", filepath.Join(src, "index.json"))
+	lookup := poolEnv(map[string]string{"CODEAF_MODEL_POOL": "on", "CODEAF_MODEL_POOL_URL": filepath.Join(src, "index.json")})
 	dir := t.TempDir()
 	var out strings.Builder
 	if err := runPoolWith([]string{"verify", "--key", base64.StdEncoding.EncodeToString(pub)},
@@ -1140,7 +1141,7 @@ func TestPoolVerifyRefusesADocumentItsKeyDoesNotTrust(t *testing.T) {
 		[]byte(base64.StdEncoding.EncodeToString(sig)), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	lookup := oneEnv("CODEAF_MODEL_POOL_URL", filepath.Join(src, "index.json"))
+	lookup := poolEnv(map[string]string{"CODEAF_MODEL_POOL": "on", "CODEAF_MODEL_POOL_URL": filepath.Join(src, "index.json")})
 	dir := t.TempDir()
 	var out strings.Builder
 	err = runPoolWith([]string{"verify", "--key", base64.StdEncoding.EncodeToString(pub)},
@@ -1176,18 +1177,18 @@ func TestPoolRefreshStartsNoGoroutineWithoutAKey(t *testing.T) {
 	t.Cleanup(func() { poolRefreshGo = prev })
 
 	key := []ed25519.PublicKey{make(ed25519.PublicKey, ed25519.PublicKeySize)}
-	on := poolcfg.Resolve("", "", noEnv)
+	on := poolcfg.Resolve("on", "", noEnv)
 	off := poolcfg.Resolve("off", "", noEnv)
 
-	startPoolIndexRefresh(context.Background(), t.TempDir(), on, nil)
+	startPoolIndexRefresh(nil, t.TempDir(), on, nil)
 	if started != 0 {
 		t.Fatalf("no key, yet %d goroutine(s) started", started)
 	}
-	startPoolIndexRefresh(context.Background(), t.TempDir(), off, key)
+	startPoolIndexRefresh(nil, t.TempDir(), off, key)
 	if started != 0 {
 		t.Fatal("a mode that forbids reading started a goroutine")
 	}
-	startPoolIndexRefresh(context.Background(), t.TempDir(), on, key)
+	startPoolIndexRefresh(nil, t.TempDir(), on, key)
 	if started != 1 {
 		t.Fatalf("with a key, %d goroutine(s) started, want 1", started)
 	}
@@ -1212,16 +1213,10 @@ func stubPoolRefresh(t *testing.T) *int {
 func TestWirePoolIndexStartsTheRefreshAndThePush(t *testing.T) {
 	started := stubPoolRefresh(t)
 	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/v1/rows")
-	// A CI environment answers the mode when neither the environment word nor
-	// the stored setting does: GitHub Actions exports CI=true, the resolver reads
-	// that as read-only, the push never starts, and the count below read one on
-	// every pull-request run while passing on every laptop. This test is about
-	// the DEFAULT mode, so the CI word is emptied for its duration; t.Setenv
-	// restores the runner's own value afterwards.
-	t.Setenv("CI", "")
-
-	// The default mode is on: the refresh and the push both start.
-	wirePoolIndex(t.TempDir())
+	// This test exercises both errands of an explicitly enabled pool.
+	t.Setenv("CODEAF_MODEL_POOL", "on")
+	held := wirePoolIndex(t.TempDir())
+	t.Cleanup(func() { stopPoolErrands(held) })
 	if *started != 2 {
 		t.Fatalf("a sending pool started %d errand(s) at start-up, want the refresh and the push", *started)
 	}
@@ -1229,7 +1224,8 @@ func TestWirePoolIndexStartsTheRefreshAndThePush(t *testing.T) {
 	// A mode that does not send starts the refresh alone.
 	*started = 0
 	t.Setenv("CODEAF_MODEL_POOL", "read")
-	wirePoolIndex(t.TempDir())
+	readOnly := wirePoolIndex(t.TempDir())
+	t.Cleanup(func() { stopPoolErrands(readOnly) })
 	if *started != 1 {
 		t.Fatalf("a read-only pool started %d errand(s), want the refresh alone", *started)
 	}
@@ -1670,6 +1666,7 @@ func poolEnv(pairs map[string]string) func(string) (string, bool) {
 // at once and reaches no network.
 func deadEnv() func(string) (string, bool) {
 	return poolEnv(map[string]string{
+		"CODEAF_MODEL_POOL":            "on",
 		"CODEAF_MODEL_POOL_URL":        "http://127.0.0.1:1/index.json",
 		"CODEAF_MODEL_POOL_MIRROR_URL": "http://127.0.0.1:1/index.json",
 	})
@@ -1792,6 +1789,7 @@ func TestPoolStatusSaysTheRelayAnswered(t *testing.T) {
 	}
 	server := poolServer(t, priv, signedPoolDoc(7))
 	lookup := poolEnv(map[string]string{
+		"CODEAF_MODEL_POOL":            "on",
 		"CODEAF_MODEL_POOL_URL":        server.URL + "/index.json",
 		"CODEAF_MODEL_POOL_MIRROR_URL": "",
 	})
@@ -1829,6 +1827,7 @@ func TestPoolStatusSaysWhenThisRunCachedTheIndex(t *testing.T) {
 	}
 	server := poolServer(t, priv, signedPoolDoc(7))
 	lookup := poolEnv(map[string]string{
+		"CODEAF_MODEL_POOL":            "on",
 		"CODEAF_MODEL_POOL_URL":        server.URL + "/index.json",
 		"CODEAF_MODEL_POOL_MIRROR_URL": "",
 	})
@@ -1872,6 +1871,7 @@ func TestPoolStatusSaysWhenThisRunReplacedTheCachedIndex(t *testing.T) {
 	}
 	server := poolServer(t, priv, signedPoolDoc(7))
 	lookup := poolEnv(map[string]string{
+		"CODEAF_MODEL_POOL":            "on",
 		"CODEAF_MODEL_POOL_URL":        server.URL + "/index.json",
 		"CODEAF_MODEL_POOL_MIRROR_URL": "",
 	})
@@ -1901,6 +1901,7 @@ func TestPoolStatusJSONSaysWhenThisRunCachedTheIndex(t *testing.T) {
 	}
 	server := poolServer(t, priv, signedPoolDoc(7))
 	lookup := poolEnv(map[string]string{
+		"CODEAF_MODEL_POOL":            "on",
 		"CODEAF_MODEL_POOL_URL":        server.URL + "/index.json",
 		"CODEAF_MODEL_POOL_MIRROR_URL": "",
 	})
@@ -1969,6 +1970,7 @@ func TestPoolStatusFallsToTheMirrorWhenTheRelayIsDown(t *testing.T) {
 	}
 	mirror := poolServer(t, priv, signedPoolDoc(7))
 	lookup := poolEnv(map[string]string{
+		"CODEAF_MODEL_POOL":            "on",
 		"CODEAF_MODEL_POOL_URL":        "http://127.0.0.1:1/index.json",
 		"CODEAF_MODEL_POOL_MIRROR_URL": mirror.URL + "/index.json",
 	})
@@ -1999,6 +2001,7 @@ func TestPoolStatusChecksOnlyUnderTheKeyItIsGiven(t *testing.T) {
 		t.Fatal(err)
 	}
 	lookup := poolEnv(map[string]string{
+		"CODEAF_MODEL_POOL":            "on",
 		"CODEAF_MODEL_POOL_URL":        server.URL + "/index.json",
 		"CODEAF_MODEL_POOL_MIRROR_URL": "",
 	})
@@ -2087,6 +2090,7 @@ func TestPoolStatusJSONCarriesTheRelayAndMirror(t *testing.T) {
 	}
 	server := poolServer(t, priv, signedPoolDoc(7))
 	lookup := poolEnv(map[string]string{
+		"CODEAF_MODEL_POOL":            "on",
 		"CODEAF_MODEL_POOL_URL":        server.URL + "/index.json",
 		"CODEAF_MODEL_POOL_MIRROR_URL": "",
 	})

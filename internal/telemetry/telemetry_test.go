@@ -428,7 +428,7 @@ func TestInstallMethodReadsOnlyTheInstallerWords(t *testing.T) {
 	if got := installMethod(); got != "unknown" {
 		t.Errorf("WriteInstallMethod(stray word): got %q, want unknown", got)
 	}
-	if err := os.WriteFile(telemetryFile("install.json"), []byte(`{"install_method":"/Users/santosh/secret-project"}`), 0o600); err != nil {
+	if err := os.WriteFile(telemetryFile("install.json"), []byte(`{"install_method":"/Users/dev/secret-project"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if got := installMethod(); got != "unknown" {

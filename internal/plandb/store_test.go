@@ -2,7 +2,7 @@ package plandb
 
 // Tests for the adapted store, brought over from the v1 port's store_test.go
 // and retargeted at validateSpec as it now stands
-// (docs/design/plandb-cli/DESIGN.md). The v1 file doubled as a governance
+//. The v1 file doubled as a governance
 // gate's witness: its specs carried roles, deliverables, acceptance and
 // resource claims, and its Claim test asserted the resource-conflict refusal.
 // The adaptation took those gates off, so the tests asserting them are gone

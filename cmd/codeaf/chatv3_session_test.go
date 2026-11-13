@@ -12,7 +12,7 @@ import (
 
 // A second window in the same directory resumes the same transcript, which the
 // first one is holding open. It used to be handed a NEW conversation and one
-// sentence about it, which is the defect this lane ends: the chat the person
+// sentence about it, which is the defect this test ends: the chat the person
 // came back for was still running, and nothing led them to it. Now it is a
 // refusal that says where the conversation is and what lets go of it.
 func TestASecondWindowOnALockedSessionIsRefusedAndNamesTheWayOut(t *testing.T) {
@@ -143,7 +143,7 @@ func TestALaunchThatMeetsALockOpensAFreshOneAndCarriesTheHeldRow(t *testing.T) {
 	}
 	defer func() { _ = first.Close() }()
 
-	_, _, _, err = openV3Agent(cfg, workspace, v3OpenSession)
+	_, seated, _, err := openV3Agent(cfg, workspace, v3OpenSession)
 	// THE FAILURE IS TYPED AND CARRIES THE PATH, because the sentence
 	// deliberately does not contain one and the surface needs one to point at.
 	var held *sessionHeldElsewhere
@@ -159,7 +159,7 @@ func TestALaunchThatMeetsALockOpensAFreshOneAndCarriesTheHeldRow(t *testing.T) {
 		t.Fatalf("%v no longer reads as a locked session", err)
 	}
 
-	second, fresh, err := v3TakeOverInstead(cfg, workspace)
+	second, fresh, err := v3TakeOverInstead(seated, workspace)
 	if err != nil {
 		t.Fatalf("the second window was left with nothing: %v", err)
 	}

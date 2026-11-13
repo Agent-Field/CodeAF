@@ -650,6 +650,17 @@ func (d *driver) add(adds []orchestrate.Node) {
 			d.refuse(fmt.Sprintf("%q has an empty goal, so nobody could work it", node.ID))
 			continue
 		}
+		invalidScope := false
+		for _, scope := range node.WriteScope {
+			if err := orchestrate.ValidateScope(scope); err != nil {
+				d.refuse(fmt.Sprintf("node %q write_scope %q: %s", node.ID, scope, err))
+				invalidScope = true
+				break
+			}
+		}
+		if invalidScope {
+			continue
+		}
 		bad := ""
 		for _, need := range node.Needs {
 			if !live[need] && !batch[need] {
@@ -773,27 +784,13 @@ func (d *driver) collide(fresh *nodeRun) {
 		if other.State == orchestrate.Done || other.State == orchestrate.Failed || held[other.ID] {
 			continue
 		}
-		if !overlaps(fresh.WriteScope, other.WriteScope) {
+		if !orchestrate.ScopesOverlap(fresh.WriteScope, other.WriteScope) {
 			continue
 		}
 		fresh.Needs = append(fresh.Needs, other.ID)
 		fresh.Forced = append(fresh.Forced, other.ID)
 		held[other.ID] = true
 	}
-}
-
-// overlaps is path containment in either direction: "internal/x" and
-// "internal/x/y.go" are the same collision as two identical paths.
-func overlaps(a, b []string) bool {
-	for _, one := range a {
-		for _, two := range b {
-			one, two := strings.Trim(one, "/"), strings.Trim(two, "/")
-			if one == two || strings.HasPrefix(one, two+"/") || strings.HasPrefix(two, one+"/") {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 // wouldCycle walks the needs graph from the candidate. It names the path it

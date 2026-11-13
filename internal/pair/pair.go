@@ -39,7 +39,7 @@
 // ── what is NOT here, said plainly ──────────────────────────────────────────
 //
 // THE DEVICE KEY IS A FILE, NOT A KEYCHAIN ENTRY, AND THERE IS NO TOUCH ID.
-// The design for this lane puts the device key in the OS keychain where there
+// The design for this implementation puts the device key in the OS keychain where there
 // is one, so that the platform can demand a fingerprint before releasing it and
 // codeaf never sees a biometric. That is the right design and it is not built.
 // What is built is [Keeper] — the seam it goes behind — with one implementation:

@@ -24,7 +24,7 @@
   ],
   "slots_policy": {
     "min": 1,
-    "max": 8,
+    "max": 100,
     "requires_live": true
   }
 }

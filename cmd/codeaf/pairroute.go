@@ -8,11 +8,13 @@ package main
 import (
 	"net/http"
 	"net/url"
+	"runtime"
 	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/devname"
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/pair"
@@ -24,17 +26,31 @@ import (
 // wait and this client never cuts a healthy one short.
 const pairPollTimeout = pairbox.MaxWait + 10*time.Second
 
+// syncRelayURL is the relay this computer syncs through, empty when sync is
+// off. `codeaf serve` and `--at` fall back to it, so a machine whose chats sync
+// is reachable through the same relay with nothing else set up.
+func syncRelayURL() string {
+	if relay := syncsetup.Resolve(home.Dir()); relay.On() {
+		return relay.URL
+	}
+	return ""
+}
+
 // pairMailbox is the relay a pairing runs through: the --relay flag, else the
 // relay this computer syncs through. A relay named by flag is the one the other
 // device is told to pass, so it is `Shown`; the default needs no telling.
 func pairMailbox(relayFlag string) (pair.Mailbox, error) {
-	if syncsetup.Resolve(home.Dir()).Off {
+	return pairMailboxAt(home.Dir(), relayFlag)
+}
+
+func pairMailboxAt(dir, relayFlag string) (pair.Mailbox, error) {
+	if syncsetup.Resolve(dir).Off {
 		return pair.Mailbox{}, pair.ErrSyncOff
 	}
 	flag := strings.TrimSpace(relayFlag)
 	base := flag
 	if flag == "" {
-		relay := syncsetup.Resolve(home.Dir())
+		relay := pairingRelay(dir)
 		if relay.Off {
 			return pair.Mailbox{}, pair.ErrSyncOff
 		}
@@ -51,7 +67,7 @@ func pairMailbox(relayFlag string) (pair.Mailbox, error) {
 		Box:   pairbox.NewHTTP(base, &http.Client{Timeout: pairPollTimeout}),
 		URL:   base,
 		Host:  u.Host,
-		Shown: flag,
+		Shown: syncsetup.Named(base),
 	}, nil
 }
 
@@ -63,14 +79,18 @@ func pairMailbox(relayFlag string) (pair.Mailbox, error) {
 // It also names the identities this one replaced by rotation, so a computer
 // still on one of them may follow instead of being refused.
 func pairGrant(route pair.Mailbox) (pair.Grant, error) {
-	id, err := identity.Ensure(home.Dir())
+	return pairGrantAt(home.Dir(), route)
+}
+
+func pairGrantAt(dir string, route pair.Mailbox) (pair.Grant, error) {
+	id, err := identity.Ensure(dir)
 	if err != nil {
 		return pair.Grant{}, err
 	}
-	if err := identity.EndSolo(home.Dir()); err != nil { // offering the identity is starting a fleet
+	if err := identity.EndSolo(dir); err != nil { // offering the identity is starting a fleet
 		return pair.Grant{}, err
 	}
-	return pair.Grant{Identity: id, SyncURL: syncsetup.Named(route.URL), Replaces: identity.Predecessors(home.Dir())}, nil
+	return pair.Grant{Identity: id, SyncURL: syncsetup.Named(route.URL), Replaces: identity.Predecessors(dir)}, nil
 }
 
 // pairJoining is this computer as the device that types the code.
@@ -81,10 +101,25 @@ func pairJoiningAt(dir string) func(replace bool) pair.Joining {
 	return func(replace bool) pair.Joining {
 		return pair.Joining{
 			Home:        dir,
+			TeamsPaired: func() bool { return syncsetup.MayTalk(dir) },
 			ProfileDir:  config.ProfileDir(),
 			Label:       devname.Name(dir),
+			Platform:    runtime.GOOS,
 			Replace:     replace,
 			SaveSyncURL: func(url string) error { return syncsetup.SaveRelayURL(dir, url) },
 		}
 	}
+}
+
+// pairingRelay keeps the pairing/remote override out of ordinary chat syncing.
+// An explicit sync variable wins; otherwise pairing may use CODEAF_RELAY before
+// the saved service or hosted default, as its printed instructions promise.
+func pairingRelay(dir string) syncsetup.Relay {
+	selected := syncsetup.Resolve(dir)
+	if env.Get(syncsetup.URLVar) == "" {
+		if override := strings.TrimSpace(env.Get(pair.RelayEnv)); override != "" {
+			return syncsetup.Relay{URL: override}
+		}
+	}
+	return selected
 }

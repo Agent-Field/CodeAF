@@ -139,7 +139,7 @@ func TestTheLineSaysClassPlannerAndARetry(t *testing.T) {
 	}
 }
 
-// THE OWNER'S CATALOG: a free stranger with no price and one published index
+// A SAMPLE CATALOG: a free stranger with no price and one published index
 // beside the priced models. Every class keeps it out.
 func TestTheOwnersCatalogNeverSeatsTheFreeStranger(t *testing.T) {
 	stranger := Candidate{
@@ -343,16 +343,17 @@ func TestTheLineDrawsNoZeroMoney(t *testing.T) {
 	}}
 	unpriced := d
 	unpriced.EstUSD = 0
+	// R5 keeps four decimal places for positive sub-cent crew costs.
 	for _, c := range []struct {
 		line string
 		want string
 	}{
 		{d.Line("", 0), "· est $0.013"},
 		{d.Line("", -1), "· est $0.013"},
-		{d.Line("", 0.004), "· $0.004 (est $0.013)"},
+		{d.Line("", 0.004), "· $0.0040 (est $0.013)"},
 		{unpriced.Line("", -1), ""},
 		{unpriced.Line("", 0), ""},
-		{unpriced.Line("", 0.004), "· $0.004"},
+		{unpriced.Line("", 0.004), "· $0.0040"},
 	} {
 		if strings.Contains(c.line, "$0.000") || strings.HasSuffix(c.line, "·") || strings.HasSuffix(c.line, "· ") || strings.Contains(c.line, "(est )") {
 			t.Errorf("the line draws a zero or a dangling segment: %q", c.line)

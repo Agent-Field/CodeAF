@@ -109,7 +109,7 @@ func usage() {
 	fmt.Fprint(os.Stderr, `usage: codeaf-replay [flags]
 
 Replays the model-call log through every candidate chooser and prints, as
-markdown, the regret each one would have paid (docs/design/recovery/DESIGN.md §8).
+markdown, the regret each one would have paid.
 
 flags:
 `)

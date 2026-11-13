@@ -4,8 +4,8 @@ package session
 // answer takes back to it.
 //
 // AN ANSWER IS A MESSAGE TO THE CONVERSATION THAT ALSO RELEASES A WAITING CALL
-// WHEN THERE IS ONE (docs/design/questions/DESIGN.md, "An answer is a message").
-// Until this lane existed an answer was only the RETURN VALUE of the `ask` call
+// WHEN THERE IS ONE.
+// Until this implementation existed an answer was only the RETURN VALUE of the `ask` call
 // that raised the question — the turn parked on a channel, and an answer that
 // arrived with nobody parked went nowhere at all. Three things a person asked
 // for are the same shape and none of them could be built on that: carrying on
@@ -76,6 +76,7 @@ func (a *Agent) deliverAskAnswer(answer Answer, text string) bool {
 // shape.
 func answerNote(text string) userMessage {
 	note := wakeNote(text)
+	note.answer = true
 	note.authored = true
 	note.steered = true
 	note.batch = false
@@ -97,6 +98,9 @@ func answerNote(text string) userMessage {
 // for now" is what it MEANS, and a provisional decision the model reads as a
 // settled one is a model that never mentions it again.
 func askAnswerText(q Question, answer Answer, theirs map[string]string, prior *Answer) string {
+	if q.SecretAnswer() {
+		return secretAnswerText(q, answer)
+	}
 	return askAnswerLead(q, answer, prior) + "\n" + answerJSON(askInTheirKeys(answer, q, theirs))
 }
 
@@ -129,7 +133,7 @@ func askedText(q Question) string {
 		askAskedWord, askQuestionWord(q), strings.TrimSpace(q.Head), askCarryOnNote)
 }
 
-// The words this lane says to the model, spelled once because the manual quotes
+// The words this implementation says to the model, spelled once because the manual quotes
 // them and because the sentence the model is told to expect
 // ([askCarryOnNote]) is the sentence an answer actually opens with.
 const (
@@ -208,8 +212,10 @@ func (a *Agent) startAskClock(open *askOpen) {
 		return
 	}
 	id := open.q.ID
+	// A surface's clock waits for its card to be drawn (tools_ask.go), with no
+	// bound: [Agent.StartQuestionClock] is what starts it.
 	a.mu.Lock()
-	if a.closed {
+	if a.closed || open.deferred {
 		a.mu.Unlock()
 		return
 	}
@@ -244,7 +250,7 @@ func armAskClockLocked(open *askOpen, after time.Duration, fire func(gen uint64)
 // ([askedOfThePerson.stopClocksLocked], which stops each armed clock and drops
 // each settled entry); this exists so that `agent.go` names an ask-lane verb
 // rather than reaching into another file's map, and so that the one place a
-// reader looks for what Close lets go of finds this lane in the list.
+// reader looks for what Close lets go of finds this implementation in the list.
 //
 // It is called with a.mu already held, like every other `Locked` verb here.
 func (a *Agent) stopAskClocksLocked() { a.asked.stopClocksLocked() }

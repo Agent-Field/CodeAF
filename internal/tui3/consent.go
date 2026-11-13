@@ -23,7 +23,7 @@ import (
 //
 // THE BLOCK DRAWS IT NOW (question.go), and everything about those four rows
 // belongs to the block: the row it re-uses, the answers, the queue count, the
-// narrow sheet, the clock, the keyboard and the receipt. docs/design/questions/
+// narrow sheet, the clock, the keyboard and the receipt. the implementation
 // DESIGN.md is why — one renderer for every decision this engine hands a
 // person — and the 1388 lines that used to be here were the strongest argument
 // for it, because every law they carried had to be argued again in eight other

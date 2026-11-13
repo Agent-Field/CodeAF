@@ -27,7 +27,7 @@ import (
 // block draws it in whichever form its evidence asks for, on every page, with
 // the one key grammar (question.go, questionkeys.go, questionroom.go). The keys
 // are still task-states' own — `[a] <yes> · [n] <no> · [s] tell it`
-// (docs/design/task-states/DESIGN.md, [session.LandingYesKey] and its
+// (the implementation, [session.LandingYesKey] and its
 // neighbours) — and they are now answered through [session.Agent.ResolveQuestion]
 // like every other decision this engine hands a person.
 //

@@ -18,13 +18,13 @@ package main
 // [appBackend.sweepAgent]), which is what keeps its asks answerable here.
 
 import (
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/guard"
-	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
 
 const (
@@ -71,14 +71,36 @@ type appInboxTap struct {
 }
 
 func (t *appInboxTap) Emit(event string, data any) {
-	// EVERY agent.changed IS DRESSED ON ITS WAY OUT, whichever road said it:
-	// its crews, its live line, and working while a turn runs.
-	if changed, ok := data.(appwire.AgentChanged); ok {
-		t.b.dress(&changed.Agent)
-		data = changed
+	// A QUESTION COUNTS FOR UNREAD BEFORE THE WINDOW HEARS OF IT, so a mark
+	// sent once the window has it is never stamped ahead of it.
+	var opening *appwire.InboxItem
+	if opened, ok := data.(appwire.AskOpened); ok {
+		t.b.noteAsk(opened.Ask)
+		// Store the item before publishing a card the client can answer.
+		item := t.b.inboxOpen(opened.Ask)
+		opening = &item
 	}
-	t.next.Emit(event, data)
-	t.b.inboxSaw(event, data)
+	// EVERY agent.changed IS DRESSED ON ITS WAY OUT, whichever road said it:
+	// its crews, its live line, working while a turn runs, and unread. Its
+	// unread and saved spend are worked out and said in one step, so two roads
+	// saying the agent at once cannot leave the window with an older reading.
+	if changed, ok := data.(appwire.AgentChanged); ok {
+		t.b.dressState(&changed.Agent)
+		t.b.sayingUnread(func() {
+			t.b.dressSpendLocked(&changed.Agent)
+			t.b.dressUnreadLocked(&changed.Agent)
+			t.next.Emit(event, changed)
+		})
+		data = changed
+	} else {
+		t.next.Emit(event, data)
+	}
+	if opening != nil {
+		t.b.inboxAdded(*opening)
+	} else {
+		t.b.inboxSaw(event, data)
+	}
+	t.b.unreadSaw(data)
 }
 
 // newAppInbox listens on emit and answers the emitter the backend uses.
@@ -103,8 +125,6 @@ func (b *appBackend) inboxSaw(event string, data any) {
 		return
 	}
 	switch v := data.(type) {
-	case appwire.AskOpened:
-		b.inboxOpened(v.Ask)
 	case appwire.AskClosed:
 		id := appInboxID(v.Agent, v.ID)
 		var held *appInboxHeld
@@ -137,6 +157,11 @@ func (b *appBackend) inboxSaw(event string, data any) {
 
 // inboxOpened adds an ask to the Inbox, or says it again as it now stands.
 func (b *appBackend) inboxOpened(ask appwire.Ask) {
+	b.inboxAdded(b.inboxOpen(ask))
+}
+
+// inboxOpen stores an ask before its card is published.
+func (b *appBackend) inboxOpen(ask appwire.Ask) appwire.InboxItem {
 	in := b.inbox
 	id := appInboxID(ask.Agent, ask.ID)
 	var item appwire.InboxItem
@@ -165,7 +190,12 @@ func (b *appBackend) inboxOpened(ask appwire.Ask) {
 			delete(in.closing, id)
 		})
 	}
-	in.next.Emit(appwire.EventInboxAdded, appwire.InboxAddedEvent{Item: item})
+	return item
+}
+
+// inboxAdded keeps Inbox notifications after the event that opened the ask.
+func (b *appBackend) inboxAdded(item appwire.InboxItem) {
+	b.inbox.next.Emit(appwire.EventInboxAdded, appwire.InboxAddedEvent{Item: item})
 	b.inboxCounts()
 }
 
@@ -208,14 +238,12 @@ func (b *appBackend) inboxWhere(ask appwire.Ask) appwire.InboxWhere {
 	// Inbox is where it reaches the person, and the person knows a member by
 	// the handle the crew's Team and Log call it, never by a conversation title
 	// they did not write. One crew is named, the one it works in.
-	if f, err := teamstore.Load(b.crewProfile()); err == nil {
-		if t, m, ok := appCrewSeat(f, ask.Agent); ok {
-			where.Crew = t.ID
-			if m.Handle != "" {
-				title = m.Handle
-			}
-			where.Path = append([]string{t.Name}, where.Path...)
+	if t, m, ok := b.crewSeatOf(ask.Agent); ok {
+		where.Crew = t.ID
+		if m.Handle != "" {
+			title = m.Handle
 		}
+		where.Path = append([]string{t.Name}, where.Path...)
 	}
 	if title != "" {
 		at := 0
@@ -314,6 +342,7 @@ func (b *appBackend) inboxCounts() {
 // ListInbox answers one of the Inbox's lists, newest first, narrowed by a
 // query over its words and where it comes from.
 func (b *appBackend) ListInbox(list, query string) ([]appwire.InboxItem, appwire.InboxCounts, error) {
+	b.syncLibraryInbox()
 	in := b.inbox
 	query = strings.ToLower(query)
 	matches := func(item appwire.InboxItem) bool {
@@ -352,12 +381,84 @@ func (b *appBackend) AnswerInbox(id, option, text, why, scope string) (time.Time
 	if !ok {
 		return time.Time{}, appwire.Errorf(appwire.CodeBadParams, "%s is not an Inbox item", id)
 	}
+	// Validate outside the Inbox lock because finding a crew owner can emit.
+	words := strings.TrimSpace(strings.TrimSpace(text) + "\n" + strings.TrimSpace(why))
+	if episode, service := strings.CutPrefix(ask, "service:"); service {
+		if err := appValidateServiceAnswer(option); err != nil {
+			return time.Time{}, err
+		}
+		local, _, _ := strings.Cut(episode, ".")
+		svc, owner, serviceID, err := b.serviceRow(agent + ":" + local)
+		if err != nil {
+			return time.Time{}, err
+		}
+		if _, err := svc.sup.Get(owner, serviceID); err != nil {
+			return time.Time{}, appServiceError(err)
+		}
+	} else {
+		asks, err := b.ListAsks(agent)
+		if err != nil {
+			return time.Time{}, err
+		}
+		at := slices.IndexFunc(asks, func(q appwire.Ask) bool { return q.ID == ask })
+		if at < 0 {
+			return time.Time{}, appwire.Errorf(appwire.CodeNotFound, "the ask %s is not open; it may have been answered elsewhere", ask)
+		}
+		q := asks[at]
+		// A CREDENTIAL IS NEVER HELD HERE. The Inbox keeps an answer's words for
+		// its hold and shows them back, and a masked box exists only in the
+		// chat, so a secret ask is answered there (asks.answer_secret); its
+		// Decline may still be pressed from here.
+		if q.Secret != nil && words != "" {
+			return time.Time{}, appwire.Errorf(appwire.CodeBadParams, "the ask %s takes a secret; type it into the chat's masked box, not here", ask)
+		}
+		switch q.Subkind {
+		case appwire.SubkindCrewProposal:
+			err = appValidateProposalAnswer(option)
+		case appwire.SubkindOrderRun:
+			err = appValidateOrderAnswer(ask, option)
+		case appwire.SubkindCrewDecision:
+			_, err = appValidateCrewDecisionAnswer(option, text)
+		}
+		if err != nil {
+			return time.Time{}, err
+		}
+		a, endRead, err := b.findCrewOwner(agent)
+		if err != nil {
+			return time.Time{}, err
+		}
+		defer endRead()
+		var refused error
+		b.locked(func() {
+			if a.live == nil {
+				return
+			}
+			if money, found := a.live.money[ask]; found {
+				_, refused = appValidateMoneyAnswer(money.scope, ask, option, words, a.live.running)
+			} else if question, found := a.live.questions[ask]; found {
+				question = b.connectedPluginQuestion(question)
+				q.Options = appAskOf(agent, question).Options
+				_, refused = appValidateQuestionAnswer(ask, question, option, words, scope)
+			}
+		})
+		if refused != nil {
+			return time.Time{}, refused
+		}
+		if option != "" && !slices.ContainsFunc(q.Options, func(o appwire.AskOption) bool { return o.ID == option }) {
+			return time.Time{}, appwire.Errorf(appwire.CodeBadParams, "the ask %s offers no option %q", ask, option)
+		}
+		if q.Subkind == appwire.SubkindPermission {
+			if err := appValidateScope(option, scope, q.Scopes); err != nil {
+				return time.Time{}, err
+			}
+		}
+	}
 	in := b.inbox
 	var refused error
 	var until time.Time
 	in.locked(func() {
 		switch {
-		case in.items[id] == nil:
+		case in.items[id] == nil || in.closing[id].ID != "":
 			refused = appwire.Errorf(appwire.CodeNotFound, "the Inbox item %s is no longer waiting", id)
 		case in.held[id] != nil:
 			refused = appwire.Errorf(appwire.CodeBusy, "the Inbox item %s is already being answered", id)
@@ -419,6 +520,9 @@ func (b *appBackend) UndoInbox(id string) error {
 // LaterInbox puts an item aside, or brings it back to waiting; the dock reads
 // the same mark.
 func (b *appBackend) LaterInbox(id string, later bool) error {
+	if strings.HasPrefix(id, "library:") {
+		return b.laterLibraryInbox(id, later)
+	}
 	agent, askID, ok := appInboxSplit(id)
 	if !ok {
 		return appwire.Errorf(appwire.CodeBadParams, "%s is not an Inbox item", id)
@@ -426,10 +530,34 @@ func (b *appBackend) LaterInbox(id string, later bool) error {
 	if service, err := b.laterServiceItem(id, askID, later); service {
 		return err
 	}
-	a, err := b.findCrewOwner(agent)
+	if strings.HasPrefix(askID, appProposalAskPrefix) {
+		run := b.crews()
+		if run == nil {
+			return appwire.Errorf(appwire.CodeNotFound, "the Inbox item %s is no longer waiting", id)
+		}
+		run.proposal.Lock()
+		defer run.proposal.Unlock()
+		var ask appwire.Ask
+		if err := b.crewLayer().write(func(f *appCrewLayerFile) error {
+			p := f.Proposals[strings.TrimPrefix(askID, appProposalAskPrefix)]
+			if p == nil || p.Agent != agent {
+				return appwire.Errorf(appwire.CodeNotFound, "the Inbox item %s is no longer waiting", id)
+			}
+			p.Later = later
+			ask = appProposalAskOf(*p)
+			return nil
+		}); err != nil {
+			return err
+		}
+		run.locked(func() { run.asks[askID] = ask })
+		b.emit.Emit(appwire.EventAskOpened, appwire.AskOpened{Ask: ask})
+		return nil
+	}
+	a, endRead, err := b.findCrewOwner(agent)
 	if err != nil {
 		return err
 	}
+	defer endRead()
 	live := b.liveOf(a)
 	if live == nil {
 		return appwire.Errorf(appwire.CodeNotFound, "the Inbox item %s is no longer waiting", id)

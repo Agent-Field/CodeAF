@@ -200,7 +200,7 @@ func TestAnUnnamedStreamTeachesTheBeliefNothing(t *testing.T) {
 // either", and that sentence cost more than it bought: the belief is also what
 // tells a refused request where NOT to go next, so a session with routing off
 // could only ever retry into the machine that had just failed it
-// (docs/design/recovery/DESIGN.md §2, problem 9). The reading is kept; nothing
+// . The reading is kept; nothing
 // derived from it reaches the wire, which is the part a person asked for.
 func TestRoutingOffStillTeachesTheBelief(t *testing.T) {
 	soup := loadCorpus(t, "babble-repetition-loop.txt")

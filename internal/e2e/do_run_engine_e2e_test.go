@@ -4,7 +4,7 @@
 // the built binary, a real provider, the bash belt, and a run that writes a file
 // in the directory it was handed, in place and uncommitted.
 //
-// where the column of this lane comes from
+// where the column of this test comes from
 //
 // THE DOOR IS THE BUILT BINARY, not a package seam. Every other rig in this
 // repository reaches inside and hands a scripted agent to a struct; this one
@@ -47,7 +47,7 @@
 // cannot express a ceiling of nothing, and no untagged test can make it — the
 // refusal is proven where it lives instead, by the do package's own
 // `TestDoOnTheRunEngineStopsAtACostCapOfZero`, which hands the request a cap of
-// zero and reads back the same exit 3 and `blocked_on` this lane would assert.
+// zero and reads back the same exit 3 and `blocked_on` this test would assert.
 
 package e2e
 
@@ -65,12 +65,12 @@ import (
 	"github.com/Agent-Field/codeaf/internal/home"
 )
 
-// doBrief is the one errand this lane runs: write a file with one known word in
+// doBrief is the one errand this test runs: write a file with one known word in
 // it and stop. The word is the needle the lane reads HELLO.md for, and HELLO.md
 // is the path the envelope's files name.
 const doBrief = "write HELLO.md containing the word hello, then stop"
 
-// doWall is the wall this lane gives the run, and it is the run's own clock. It
+// doWall is the wall this test gives the run, and it is the run's own clock. It
 // is deliberately shorter than the Go test binary's timeout so the door's wall
 // fires first and the run still composes an envelope.
 const doWall = 6 * time.Minute
@@ -80,7 +80,7 @@ const doWall = 6 * time.Minute
 // timeout must not be the thing that discovers it.
 const doRunEngineLead = 8 * time.Minute
 
-// doEnvelope is `codeaf do --json` as this lane reads it: the contract's own
+// doEnvelope is `codeaf do --json` as this test reads it: the contract's own
 // fields beside the two `do` spellings the answer and the ceiling ride under.
 // Both are decoded because the contract renamed `deliverable` to `answer` and
 // `blocked_on` is a fact only `do` has.
@@ -104,7 +104,7 @@ func TestDoOnTheRunEngine(t *testing.T) {
 
 	// The throwaway home is the person's own profile with every model row
 	// pinned to the suite's model, so the crew the run engine seats from the
-	// profile is the one cheap model this lane rides rather than the person's
+	// profile is the one cheap model this test rides rather than the person's
 	// own.
 	root := newHome(t, map[string]any{
 		config.KeyTierWorkerModel:     e2eModel,
@@ -189,7 +189,7 @@ func TestDoOnTheRunEngine(t *testing.T) {
 }
 
 // doRunEngineEnv is the environment the run rides: the throwaway home, the
-// belt's switch, and the key this lane resolved through [liveKey]. Any
+// belt's switch, and the key this test resolved through [liveKey]. Any
 // inherited answer to those three questions is dropped first, so the child
 // cannot read two homes, two belt settings or two keys out of one environment.
 func doRunEngineEnv(root, key string) []string {

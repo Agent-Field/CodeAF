@@ -19,7 +19,7 @@ import (
 
 // ── THE LAWS THE PLACES ARE BUILT ON ────────────────────────────────────────
 //
-// docs/design/home-rethink/ARCHITECTURE.md states six, and every one of them is
+// the implementation states six, and every one of them is
 // a shape a person could not see going wrong until a room was already broken.
 // They are pinned here because the whole argument for the `place` interface is
 // that a room added later cannot half-exist — and "cannot" has to be something
@@ -91,10 +91,7 @@ func TestNothingSwitchesOnAPageIdOutsideTheRegistry(t *testing.T) {
 
 // LAW 2 · EVERY PLACE IS REGISTERED ONCE AND IS IN THE TAB ORDER.
 //
-// The registry and [placeOrder] are two lists that have to be the same list. A
-// place in the registry and not in the order is a room with no tab and no
-// number; a place in the order and not in the registry is a tab that opens
-// nothing, which is exactly what the owner met on a fresh machine.
+// The registry and [placeOrder] are two lists that have to be the same list.
 func TestEveryPlaceIsRegisteredOnceAndInTabOrder(t *testing.T) {
 	if len(placeRegistry) != len(placeOrder) {
 		t.Fatalf("%d places are registered and %d are on the bar", len(placeRegistry), len(placeOrder))

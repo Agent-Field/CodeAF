@@ -1,19 +1,6 @@
-// Package contract freezes the interface contracts between the three
-// pareto-crewing lanes (evidence, learner, integration) before they run in
-// parallel, per the approved plan at ~/pareto-handoff/IMPLEMENTATION-EXPERIMENT-PLAN.md
-// section 5 and the math in ~/pareto-handoff/PROPOSED-LEARNING-MODEL.md.
-//
-// WHAT THIS PACKAGE IS NOT: it is not an implementation of the predictor, the
-// policy or the grader. It is the wire shape and the semantics those
-// implementations must agree on. The types are deliberately boring and
-// explicit: they are the load-bearing interface three downstream lanes build
-// against, and every field here is one a lane can be held to.
-//
-// VERSIONING RULE: every event and artifact carries the schema version it was
-// written under. A reader that does not know that version refuses rather than
-// half-reads (same rule as internal/pool/index). Any change to a field's
-// meaning, or the removal/redefinition of a field, is a version bump — see
-// CONTRACT.md in this package for the field-by-field pin.
+// Package contract defines the versioned interfaces shared by prediction,
+// learning and selection. Readers reject unknown schema versions so a field
+// cannot silently acquire a different meaning across components.
 package contract
 
 import (
@@ -57,7 +44,7 @@ var ErrShape = errors.New("contract: structurally invalid document")
 // boundary. Everything on it must be provable to exist at decision time:
 // features carry the version of the feature map they were built under, and a
 // feature that was not observable at the decision is a future-feature leak
-// that lane A's acceptance checks reject.
+// rejected by the acceptance checks.
 type DecisionEvent struct {
 	// SchemaVersion is DecisionEventVersion at write time.
 	SchemaVersion int `json:"schema_version"`

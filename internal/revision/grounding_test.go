@@ -121,7 +121,7 @@ func TestTheSpacingLadderGateIsGroundedInItsOwnRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the request fixture is the acceptance criterion: %v", err)
 	}
-	// The recorded event, copied verbatim out of docs/design/gate/muse-evidence.json
+	// The recorded event, copied verbatim out of the implementation
 	// (which holds the surrounding plan and node events too, and was captured
 	// truncated). Reading the line rather than retyping it is what keeps this
 	// test about the run that happened.

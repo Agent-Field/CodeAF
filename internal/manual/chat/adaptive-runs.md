@@ -139,15 +139,9 @@ None of this happens without a folder to weigh in. A run with no `-w`, or a goal
 no file that exists, is not treated as small — it is treated as unmeasured, and every one of
 these passes behaves exactly as it did before any of it was read.
 
-## Running one task without the screen — codeaf do, headless, from a script: what flags it takes, what it prints, what its last line and its exit code mean
+## What flags does codeaf do take — run one task from a script
 
-```
-codeaf do "<task>"
-```
-
-One job, nobody watching, then it exits. What you type **is** the goal — it is not reworded
-on the way in, and where this conversation would stop and ask, a run with nobody at the
-keyboard decides for itself and says on the record that it decided.
+Run `codeaf do "<task>"` for one job without the screen. These options control that invocation.
 
 | flag | what it does |
 | --- | --- |
@@ -167,6 +161,10 @@ keyboard decides for itself and says on the record that it decided.
 
 Flags may come after the task text, and the task itself may be piped in.
 
+## What does the last line of codeaf do mean
+
+With plain output, `codeaf do` ends with a footer describing the completed work. `--json` prints one machine-readable object instead.
+
 **Standard output is the answer and nothing else**: the deliverable, then `files:` with one
 absolute path under it per file, then `learned:` — what one worker told the others
 mid-flight — and last one footer line:
@@ -184,6 +182,16 @@ directly under the sentence saying it did not run.
 piece of work as it starts and as it lands, and, when half a minute passes with nothing to
 report, a line like `still waiting: 1 task pending, 1 running · last call <model> 40s ago —
 4m30s`.
+
+## How do I run codeaf without the screen — headless exit codes and questions
+
+```
+codeaf do "<task>"
+```
+
+One job, nobody watching, then it exits. What you type **is** the goal — it is not reworded
+on the way in, and where this conversation would stop and ask, a run with nobody at the
+keyboard decides for itself and says on the record that it decided.
 
 **The exit code is what a script reads.** `0` — the whole of it stands. `1` — nothing
 usable: it failed, the price was refused, or it stopped on a question. `2` — partial: the
@@ -212,6 +220,9 @@ of a job runs on, handed to you on its own. Reach for it when you have already d
 the work is and want the cheapest, most predictable path to an answer; reach for `codeaf
 do` when you want codeaf to work out how the job divides and to judge what it produced.
 Nothing checks the answer here.
+
+Its commands are limited to the workspace it runs in and its own temp and cache folders: no
+writes elsewhere, no reading keys and sign-ins, no docker ("What an unattended run may touch").
 
 With no prompt written out, it reads the prompt from whatever is piped in.
 
@@ -258,6 +269,25 @@ Without `--json`, standard output is the worker's own text and nothing else. It 
 error stream naming one model rather than three — `models: worker <model> (routed)` —
 because only one of them runs anything.
 
+
+## Watch codeaf exec live, or send it a note mid-flight — --events, --steer
+
+`codeaf exec` prints one result at the end. Two flags let something else watch it and talk
+to it while it works; both are files, because stdin already carries the prompt.
+
+| flag | what it does |
+| --- | --- |
+| `--events <file>` | every entry of the run's transcript is appended to the file as one JSON line the moment it happens: `{"at", "kind", "turn", "tool", "text", "ms", "failed"}`, where `kind` is `assistant`, `tool_call`, `tool_result`, `note`, `fault`, or `status` (`started`, then `ended: <stop>`) |
+| `--steer <file>` | every complete line appended to the file is a note from a person — plain text or `{"text": "…"}` — read at the worker's next turn boundary and shown to it as your guidance |
+
+A note that lands shows in the events as a `note` reading `steered: <your words>`, and the
+worker adjusts course without throwing away sound work. A note arriving after the worker
+has handed over its answer is not read. A half-written line waits until its newline arrives.
+Neither flag changes the run when it is not given.
+
+The AgentField Go SDK's codeaf harness passes both flags itself, which is how a step in an
+AgentField run shows a live transcript in WorkAF and takes a steer note (see the AgentField
+page on watching a run).
 ## What one costs and what happens when the money runs out
 
 Every model call in the run bills against **one tank**: the nodes, and the planner's own
@@ -334,6 +364,48 @@ do is change what a node already running was asked for.
 
 When no page is open, the planner's notes land in the conversation as dim lines beginning
 `run · `.
+
+## Planner reply cut off or empty repair — the plan stays unchanged
+
+After work has started, a planner reply cut off by its output cap is refused.
+A blank reply or an empty syntax repair is also refused. The run's planner notes
+say `the planner did not answer: the planner's reply was cut off`. The current
+plan stays unchanged, workers continue, and later completions can ask the planner
+again. A complete explicit `{}` still means no change and adds no failure note.
+
+Syntax repair requests at least 8,192 output tokens or twice the original reply's
+reported completion tokens, whichever is greater. A larger output cap already
+requested for recovery is preserved. This applies to opening and later replies;
+existing provider and spending checks still apply.
+
+## The crew planned no work — reason, retry, or edit the goal
+
+If the opening plan creates no nodes, the run ends as **incomplete**, with the
+planner's reason. If the planner gave no reason, the conversation says exactly:
+`The crew didn't plan any work for this goal.` The line is saved in the chat.
+This ending does not mean you ended the run yourself, and it does not claim success.
+
+For this ending only, the task's retry control starts a **fresh run** through the
+usual ownership and budget checks. The old run stays readable; its notes, nodes,
+and answer are not carried into the new plan. Retry is available while the
+original run is still held by this session. Reopened historical rows have no
+saved restart instructions.
+
+To edit the goal, start a new run with the revised goal. There is no dedicated
+editor for an ended adaptive run; steering an ended run does not restart it.
+Other adaptive endings do not offer this retry control.
+
+## The opening planner reply was cut off or lost its work
+
+If the opening planner reply hits its output limit, is blank, or loses all its
+nodes during JSON repair, codeaf tries the opening plan once more with more
+output room. A cut-off reply is never handed to syntax repair as an empty plan.
+If recovery still cannot produce a plan, the crew ends as incomplete and the
+chat saves exactly: `the planner's reply was cut off`.
+
+This ending uses the same fresh-run retry control and ownership and budget
+checks described above. A complete, explicit empty plan still uses the
+planner's reason or `The crew didn't plan any work for this goal.`.
 
 ## A run's nodes on the roster
 
@@ -466,7 +538,7 @@ The file itself is a real session journal at
 ## it could not be read on that machine — a run's transcript over --host
 
 A run's rows on the task page each name a transcript, and over `--host` that name is drawn
-with the far machine in front of it — `spark:/home/you/.codeaf/v3/runs/<session>/<run>/n3.jsonl`.
+with the far machine in front of it — `tower:/home/you/.codeaf/v3/runs/<session>/<run>/n3.jsonl`.
 The card then peeks the end of that file over the connection.
 
 Two things used to go wrong here and both are fixed:
@@ -542,6 +614,15 @@ handed, word for word.
 ## What a run's workers may touch
 
 Each node is a child agent working in your workspace, and two bounds are put on it.
+
+Write scopes name workspace-relative files, directories or globs like
+`crew-0-*.md`. `*`, `?` and `[...]` match within one path segment, never across
+`/`. As in the shell, a wildcard never matches a name starting with `.`, so `*`
+never reaches `.git` or `.env`; write `.env*` to mean them. Matched directories
+cover their subtrees. `**`, `..` segments, absolute
+scopes and malformed patterns are refused before work starts; the planner
+receives the reason and can correct it.
+Writes through symlinks that leave the workspace are refused too.
 
 - **A write scope.** The planner says which paths a node may write. That is enforced by the
   harness, not by asking politely in the brief: a `write`, an `edit`, or an `edit_video`
@@ -902,6 +983,19 @@ no turns at all is not offered again either, because there is nothing for a next
 carry on from, and it says that instead: `…with none of its work recorded, so there was
 nothing for another attempt to carry on from`.
 
+## What do and exec wait for at shutdown — usage writes after a timeout
+
+`codeaf do` closes the process's usage writers after its workers stop, including
+when the run times out. With `CODEAF_TASK_BELT=node`, cancelled workers' admitted
+receipt accounting joins inside the existing five-second background stop wait.
+Usage shutdown has a separate two-second bound. With a responsive provider and
+disk, the command returns after those accounting writes finish. A stalled
+provider or disk can exhaust a bound; complete rows already in the pending usage
+journal remain recoverable on restart.
+
+`codeaf exec` also closes its usage writer before returning, under the same
+two-second usage shutdown bound.
+
 ## How long a headless run gets — the `-timeout` wall, how long does codeaf do wait, can I write 5m or 2h
 
 `codeaf do` runs under a hard wall, and `-timeout` is where you set it. **Left alone it is
@@ -1246,7 +1340,7 @@ has not finished, and the acceptance line is where you see that.
 
 **And the record always says what was read, whoever read it.** The two readings above
 are taken by the worker that does the work; when the worker took no reading — nothing to
-size one against, or no room left to afford one — the check at the end of the job takes its
+size one against, or no capacity left to afford one — the check at the end of the job takes its
 own reading of the tree it is judging.
 Either way there is a row in the run's record saying what ran, what it named — or, when
 there was no reading, which of the reasons it was: your project declares no way of checking
@@ -1857,3 +1951,27 @@ answer. Workers already in flight keep their own states and may finish. Topping 
 choosing to finish clears the pause; stopping settles the run. A late attachment sees
 the current pause too. Restarting the engine leaves an interrupted record, not a budget
 question for a run that no longer exists.
+
+## Watch codeaf chat --once live, or send it a note mid-turn — --events, --steer, --json
+
+`codeaf chat --once "<words>"` runs one turn of an ordinary chat with no
+screen. Three flags let another program watch and steer it, and need `--once`
+("--events, --steer and --json go with --once"):
+
+- `--events PATH` — every line of the conversation's own record
+  (`transcript.jsonl`) is copied to PATH as it is written, byte for byte. A
+  program that writes those lines into a conversation folder of its own has
+  the same conversation, read by the same code.
+- `--steer PATH` — each complete line appended to PATH (plain text or
+  `{"text": "…"}`) is put into the running turn, the way typing during a turn
+  steers it, and lands in the record as a steer. stderr says `steered: <note>`.
+  A note that arrives after the turn ended starts the turn it asks for, and the
+  run waits that turn out. Before it exits, the run reads PATH once more, so a
+  note written as the last turn ends still gets its turn and is never lost.
+- `--json` — print one object at the end instead of the reply:
+  `{"ok", "stop", "answer", "model", "error"}`, the shape `codeaf exec --json`
+  prints.
+
+This is how an AgentField node runs a codeaf harness step that a factory can
+watch and steer.
+

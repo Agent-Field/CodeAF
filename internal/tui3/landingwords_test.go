@@ -10,7 +10,7 @@ import (
 // The words the ENGINE spells and this surface only draws (internal/session's
 // task_status.go). They are written out HERE, in the tests, so a change to
 // either side has to be made deliberately in both: the surface itself must never
-// hold a second copy of a state word (docs/design/task-states/DESIGN.md).
+// hold a second copy of a state word.
 const (
 	taskYourCallWord    = "your call"
 	taskDoneStateWord   = "done"

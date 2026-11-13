@@ -16,8 +16,8 @@ import (
 
 var rosterOf = []chatlist.Device{
 	{ID: "dev_me", Name: "This Mac", Self: true},
-	{ID: "dev_spark", Name: "spark"},
-	{ID: "dev_dumb", Name: "dumb"},
+	{ID: "dev_tower", Name: "tower"},
+	{ID: "dev_desk", Name: "desk"},
 }
 
 func devicesRig(online ...string) (*app, *fakeFeed) {
@@ -25,8 +25,8 @@ func devicesRig(online ...string) (*app, *fakeFeed) {
 	feed := &fakeFeed{state: dirwatch.State{Up: true, Online: online}}
 	a.dirFeed, a.devRow.devices, a.taker = feed, rosterOf, &fakeTaker{}
 	a.machineRead = machineReading{rows: []chatlist.Row{
-		{Cell: "c1", Title: "Port", Device: "spark", DeviceID: "dev_spark", Status: chatlist.Running},
-		{Cell: "c2", Title: "Docs", Device: "dumb", DeviceID: "dev_dumb", Status: chatlist.Off},
+		{Cell: "c1", Title: "Port", Device: "tower", DeviceID: "dev_tower", Status: chatlist.Running},
+		{Cell: "c2", Title: "Docs", Device: "desk", DeviceID: "dev_desk", Status: chatlist.Off},
 	}}
 	return a, feed
 }
@@ -38,20 +38,20 @@ func devicesFrame(a *app, width int) string {
 
 // C27.7 exercises this behaviour without an opt-in switch.
 func TestDevicesRowDrawsPresenceFromTheFeed(t *testing.T) {
-	a, feed := devicesRig("dev_spark")
+	a, feed := devicesRig("dev_tower")
 	got := devicesFrame(a, 80)
-	if !strings.Contains(got, "● This Mac  ● spark  ○ dumb (offline)") {
+	if !strings.Contains(got, "● This Mac  ● tower  ○ desk (offline)") {
 		t.Fatalf("row wrong:\n%s", got)
 	}
-	feed.state.Online = []string{"dev_dumb", "dev_spark"}
-	if got := devicesFrame(a, 80); !strings.Contains(got, "● dumb") || strings.Contains(got, "(offline)") {
+	feed.state.Online = []string{"dev_desk", "dev_tower"}
+	if got := devicesFrame(a, 80); !strings.Contains(got, "● desk") || strings.Contains(got, "(offline)") {
 		t.Fatalf("presence change not drawn:\n%s", got)
 	}
 }
 
 // C27.7 exercises this behaviour without an opt-in switch.
 func TestDevicesRowIsAbsentWhenItCannotSpeakTruly(t *testing.T) {
-	a, feed := devicesRig("dev_spark")
+	a, feed := devicesRig("dev_tower")
 	feed.state.Up = false
 	if got := devicesFrame(a, 80); got != "" {
 		t.Fatalf("drew with the feed down:\n%s", got)
@@ -70,7 +70,7 @@ func TestDevicesRowIsAbsentWhenItCannotSpeakTruly(t *testing.T) {
 
 // C27.7 exercises this behaviour without an opt-in switch.
 func TestDevicesRowObeysWidthAndVocabulary(t *testing.T) {
-	a, _ := devicesRig("dev_spark")
+	a, _ := devicesRig("dev_tower")
 	for _, width := range []int{12, 24, 40, 80} {
 		for _, line := range strings.Split(devicesFrame(a, width), "\n") {
 			if ansi.StringWidth(line) > width {
@@ -88,13 +88,13 @@ func TestDevicesRowObeysWidthAndVocabulary(t *testing.T) {
 
 // C27.7 exercises this behaviour without an opt-in switch.
 func TestOnlineDeviceOffersMoveHereForARunningChat(t *testing.T) {
-	a, _ := devicesRig("dev_spark")
+	a, _ := devicesRig("dev_tower")
 	if cmd := a.bringWork(); cmd != nil {
 		t.Fatal("offering the card started work")
 	}
 	ask, ok := a.homeAsking()
 	if !ok || ask.question.Kind != homeContinueKind || ask.question.Subject.Name != "Port" {
-		t.Fatalf("no takeover card for spark's chat: %+v", ask.question)
+		t.Fatalf("no takeover card for tower's chat: %+v", ask.question)
 	}
 	if ask.pick != continueYesAt {
 		t.Fatalf("Move here left the cursor on %d, not on `continue here`", ask.pick)
@@ -109,7 +109,7 @@ func TestOnlineDeviceOffersMoveHereForARunningChat(t *testing.T) {
 
 // C27.7 exercises this behaviour without an opt-in switch.
 func TestSeveralOnlineDevicesAskWhichAndThenOfferTheCard(t *testing.T) {
-	a, _ := devicesRig("dev_spark", "dev_dumb")
+	a, _ := devicesRig("dev_tower", "dev_desk")
 	a.bringWork()
 	ask, ok := a.homeAsking()
 	if !ok {
@@ -119,12 +119,12 @@ func TestSeveralOnlineDevicesAskWhichAndThenOfferTheCard(t *testing.T) {
 	for _, o := range ask.question.Options {
 		labels = append(labels, o.Label)
 	}
-	if want := "Move here from spark|Continue here from dumb|leave it there"; strings.Join(labels, "|") != want {
+	if want := "Move here from tower|Continue here from desk|leave it there"; strings.Join(labels, "|") != want {
 		t.Fatalf("picker options %q", labels)
 	}
 	ask.local(session.Answer{Key: "2", Picked: []string{"2"}})
 	if ask, ok = a.homeAsking(); !ok || ask.question.Subject.Name != "Docs" {
-		t.Fatal("the pick did not raise the takeover card for dumb's chat")
+		t.Fatal("the pick did not raise the takeover card for desk's chat")
 	}
 }
 

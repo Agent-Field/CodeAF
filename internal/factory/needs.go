@@ -10,8 +10,12 @@ import (
 // here and to TestNeedsYouKindsContractTwo in the same commit. The queue groups
 // jobs by this list, in this order.
 const (
-	NeedsApproveStart  = "approve_start"
-	NeedsApprovePlan   = "approve_plan"
+	NeedsApproveStart = "approve_start"
+	NeedsApprovePlan  = "approve_plan"
+	// NeedsApproveStep is Manual's hold before a step's first round: the step
+	// is next and waits for the person to go on ([StepHold]). It is not a plan
+	// approval, so it has a kind of its own.
+	NeedsApproveStep   = "approve_step"
 	NeedsApproveProof  = "approve_proof"
 	NeedsQuestion      = "question"
 	NeedsRunnerOffline = "runner_offline"
@@ -19,24 +23,30 @@ const (
 	NeedsOutOfAttempts = "out_of_rounds"
 	NeedsPublishFailed = "publish_failed"
 	// Persisted question kinds keep their bytes across wire contracts.
+	QKindSpendStopped = "spend_stopped"
+	// QKindStep is a step's question the person holds, and the wire's kind
+	// for it (appwire's factory.job_answer answers it by that kind).
+	QKindStep             = "step"
 	QKindOutOfAttempts    = "out_of_attempts"
 	NeedsFailed           = "failed"
 	NeedsChangesRequested = "changes_requested"
 	NeedsConflict         = "conflict"
 	WhoAnyoneWithRepo     = "anyone_with_repo"
 	WhoJobPerson          = "job_person"
-	QuestionText          = "text"
-	AskYesNo              = "yes_no"
-	AskOptions            = "options"
-	ChoiceContinue        = "continue"
-	ChoiceTryOnceMore     = "try_once_more"
-	ChoiceSendBack        = "send_back"
-	ChoiceCancel          = "cancel_job"
-	CodeToolError         = "tool_error"
-	CodeProviderError     = "provider_error"
-	CodeCrash             = "crash"
-	CodeMachineLost       = "machine_lost"
-	CodeTransportError    = "transport_error"
+	// WhoApprover is an approval that names who it waits on (Stage.Who).
+	WhoApprover        = "approver"
+	QuestionText       = "text"
+	AskYesNo           = "yes_no"
+	AskOptions         = "options"
+	ChoiceContinue     = "continue"
+	ChoiceTryOnceMore  = "try_once_more"
+	ChoiceSendBack     = "send_back"
+	ChoiceCancel       = "cancel_job"
+	CodeToolError      = "tool_error"
+	CodeProviderError  = "provider_error"
+	CodeCrash          = "crash"
+	CodeMachineLost    = "machine_lost"
+	CodeTransportError = "transport_error"
 	// CodeStopped is a person's stop that cut a step, by the step's own Stop
 	// or the whole job's: the job and that step both say it was stopped.
 	CodeStopped     = "stopped"
@@ -50,15 +60,18 @@ const (
 	LinkRevoked        = "revoked"
 	LinkUnknown        = "unknown"
 	ReasonNotJobPerson = "not_job_person"
-	AskApp             = "app"
-	AskTUI             = "tui"
-	CurrencyUSD        = "USD"
+	// ReasonNotApprover refuses an approval to anyone but whom it names.
+	ReasonNotApprover = "not_approver"
+	AskApp            = "app"
+	AskTUI            = "tui"
+	CurrencyUSD       = "USD"
 )
 
 // NeedsYouKinds is the whole enum, in the order the queue groups by.
 var NeedsYouKinds = []string{
 	NeedsApproveStart,
 	NeedsApprovePlan,
+	NeedsApproveStep,
 	NeedsApproveProof,
 	NeedsQuestion,
 	NeedsSpendingLimit,
@@ -98,13 +111,18 @@ type SourceRef struct {
 // when the step itself errored. Attempts is how many tries that step had
 // already made. Machine is the one that was holding the work.
 type Failure struct {
-	Step     string    `json:",omitempty"`
-	Code     string    `json:",omitempty"`
-	Detail   string    `json:",omitempty"`
-	Attempts int       `json:",omitempty"`
-	Machine  string    `json:",omitempty"`
-	Next     string    `json:",omitempty"`
-	At       time.Time `json:",omitempty"`
+	Step     string `json:",omitempty"`
+	Code     string `json:",omitempty"`
+	Detail   string `json:",omitempty"`
+	Attempts int    `json:",omitempty"`
+	Machine  string `json:",omitempty"`
+	Next     string `json:",omitempty"`
+	// Summary is the failure in one line a person reads first, at most
+	// [FailureSummaryMost] characters: the step's own when it gave one
+	// ([StageResult.Summary]), else one the job's manager wrote from Detail
+	// ([FailureSummary]). "" until either exists; Detail stays whole.
+	Summary string    `json:",omitempty"`
+	At      time.Time `json:",omitempty"`
 }
 
 // RoundLine is one finished try of a loop step. The step keeps one line per
@@ -123,6 +141,13 @@ type RoundLine struct {
 	At       time.Time `json:",omitempty"`
 	Started  time.Time `json:",omitempty"`
 	Chat     string    `json:",omitempty"`
+	// Result and Reason are how the try ended ([TryResult]): its rule's word
+	// (clean, not clean, green, proven, blocked…) and a counted reason ("2
+	// findings"). A failure closed on retry says stopped, interrupted or failed
+	// from its failure code. Absent on older tries, whose outcome must not be
+	// guessed from their summary.
+	Result string `json:",omitempty"`
+	Reason string `json:",omitempty"`
 }
 
 // Acts is who may use each verb on this job. It is computed for one caller.
@@ -141,24 +166,39 @@ type Acts struct {
 	Reply        bool
 }
 
-// NextJobCap is the ceiling a continue answer allows. THE NUMBER COMES FROM
-// codeaf, NEVER FROM THE APP: it is this job's cap doubled. The TUI's cap
-// ladder is a different control and is not this figure.
-func NextJobCap(cap float64) float64 {
-	if cap <= 0 {
-		return 0
+// JobBudgetSteps are the standard absolute job budgets, in ascending US dollars.
+func JobBudgetSteps() []float64 {
+	return []float64{5, 10, 20, 30}
+}
+
+// NextJobCap chooses the smallest standard budget above recorded spending,
+// then doubles the current cap until it covers that spending.
+func NextJobCap(it Item) float64 {
+	spent := JobLifetimeSpent(it)
+	steps := JobBudgetSteps()
+	for _, budget := range steps {
+		if budget > spent {
+			return budget
+		}
 	}
-	return cap * 2
+	next := it.Cap * 2
+	if next <= 0 {
+		next = steps[len(steps)-1] * 2
+	}
+	for next <= spent {
+		next *= 2
+	}
+	return next
 }
 
 // ContinueJob raises this job's cap to NextJobCap when the spend has already
 // reached it. It assigns the next ceiling, so a second caller that already
 // sees the raised cap leaves it alone.
 func ContinueJob(it *Item) bool {
-	if it == nil || it.Cap <= 0 || it.Stream == nil || it.Stream.Spent < it.Cap {
+	if it == nil || it.Cap <= 0 || JobLifetimeSpent(*it) < it.Cap {
 		return false
 	}
-	it.Cap = NextJobCap(it.Cap)
+	it.Cap = NextJobCap(*it)
 	return true
 }
 
@@ -177,10 +217,13 @@ func IsContinue(yes bool, words string) bool {
 
 // OutOfAttemptsChoice reads a person's answer to a step that used its rounds.
 // yes, or the word try_once_more, runs one more round. send_back returns to
-// the previous step. Anything else cancels the job.
+// the previous step. accept takes the step as it stands, where the job
+// offers it ([OffersAccept]). Anything else cancels the job.
 func OutOfAttemptsChoice(yes bool, words string) string {
 	w := strings.ToLower(strings.TrimSpace(words))
 	switch {
+	case w == ChoiceAccept:
+		return ChoiceAccept
 	case w == ChoiceTryOnceMore || w == "yes" || (yes && (w == "" || w == "yes")):
 		return ChoiceTryOnceMore
 	case w == ChoiceSendBack || strings.HasPrefix(w, ChoiceSendBack+":"):
@@ -231,6 +274,11 @@ func NeedsKind(it Item) string {
 	case it.QKind == NeedsRunnerOffline:
 		return NeedsRunnerOffline
 	case it.QKind == QKindApprove:
+		// A MANUAL HOLD BETWEEN STEPS IS NOT A PLAN. Reading it as one put
+		// "Plan ready" over "RunVetAndTest is next" in Needs you.
+		if _, ok := StepHold(it); ok {
+			return NeedsApproveStep
+		}
 		return NeedsApprovePlan
 	case it.QKind == "cap":
 		return NeedsSpendingLimit
@@ -259,7 +307,7 @@ func publishFailed(it Item) bool {
 // A free question is anyone who can see the repository.
 func JobPersonOnly(kind string) bool {
 	switch kind {
-	case NeedsApproveStart, NeedsApprovePlan, NeedsApproveProof, NeedsSpendingLimit, NeedsOutOfAttempts, NeedsPublishFailed, NeedsRunnerOffline, NeedsFailed, NeedsChangesRequested, NeedsConflict:
+	case NeedsApproveStart, NeedsApprovePlan, NeedsApproveStep, NeedsApproveProof, NeedsSpendingLimit, NeedsOutOfAttempts, NeedsPublishFailed, NeedsRunnerOffline, NeedsFailed, NeedsChangesRequested, NeedsConflict:
 		return true
 	default:
 		return false
@@ -280,14 +328,27 @@ func WhoCanAnswer(kind string) string {
 // QuestionForm is the question object for a free question or an
 // out-of-attempts ask. Other needs-you kinds have no question object.
 func QuestionForm(it Item) (kind string, options []string, who string) {
+	if it.QKind == QKindSpendStopped {
+		return AskYesNo, []string{"yes", "no"}, WhoJobPerson
+	}
 	switch NeedsKind(it) {
 	case NeedsRunnerOffline:
 		return AskOptions, []string{ChoiceTryOnceMore, ChoiceCancel}, WhoJobPerson
 	case NeedsOutOfAttempts:
-		return AskOptions, append([]string(nil), OutOfAttemptOptions...), WhoJobPerson
+		return AskOptions, OutOfAttemptChoices(it), WhoJobPerson
 	case NeedsQuestion:
 		who = WhoAnyoneWithRepo
 		var opts []string
+		// A STEP'S QUESTION IS KIND STEP, WITH ITS OPTIONS AS ITS ANSWERS,
+		// however many there are and whatever they say: the answer door and
+		// every desk read it by that kind. It went out as "options" (or
+		// "yes_no", or "text") and its buttons were never drawn.
+		if it.QKind == QKindStep {
+			if it.Asking != nil {
+				opts = append(opts, it.Asking.Options...)
+			}
+			return QKindStep, opts, who
+		}
 		if it.Asking != nil {
 			opts = it.Asking.Options
 		}
@@ -315,11 +376,31 @@ func yesNoOptions(options []string) bool {
 	return (a == "yes" && b == "no") || (a == "no" && b == "yes")
 }
 
-// NeedsSince is when this wait started: the landed stream's end, the ask's
-// clock, the current step's clock, then the job's own stamps.
+// NeedsSince is when this wait started: the failure's clock, a failed
+// publish's, the landed stream's end, the ask's clock, the current step's
+// clock, then when the store saw the wait begin ([Item.NeedsAt]), then the
+// job's own stamps.
+//
+// A WAIT WITH NO CLOCK OF ITS OWN WAITS FROM WHEN IT BEGAN, NOT FROM THE LAST
+// WRITE. It read Changed, which every stamped write moves: a rename, a
+// priority, a budget or a note on a start held for approval, a take-over, an
+// AgentField run's approval or a Stop undone each recorded another needs_you
+// outcome the desktop app took for a new wait, and moved factory.job's
+// needs_you.since with it.
+//
+// A FAILED PUBLISH WAITS FROM THE MOMENT IT FAILED, whatever state the job's
+// copy is in. On a Factory service the runner's report of the failure arrives
+// while the copy still runs the publish, and the runner's done lands the job
+// after it: read by the state, one refusal waited first from the current
+// step's clock and then from the landed run's end, two waits recorded for one
+// refusal, and a publish retried and refused again waited from the run's end
+// as the first refusal had.
 func NeedsSince(it Item) time.Time {
 	if it.Failure != nil && !it.Failure.At.IsZero() {
 		return it.Failure.At
+	}
+	if p := it.PublishStatus; p != nil && p.State == "failed" && !p.At.IsZero() {
+		return p.At
 	}
 	if it.State == StateLanded && it.Stream != nil && !it.Stream.Ended.IsZero() {
 		return it.Stream.Ended
@@ -330,10 +411,34 @@ func NeedsSince(it Item) time.Time {
 	if it.Stream != nil && it.Stream.Cur >= 0 && it.Stream.Cur < len(it.Stream.Phases) && !it.Stream.Phases[it.Stream.Cur].At.IsZero() {
 		return it.Stream.Phases[it.Stream.Cur].At
 	}
+	if !it.NeedsAt.IsZero() {
+		return it.NeedsAt
+	}
 	if !it.Changed.IsZero() {
 		return it.Changed
 	}
 	return it.Created
+}
+
+// NoteWait keeps [Item.NeedsAt] across one write of the job, from before to
+// it: a wait this write began is stamped now, a wait that goes on keeps its
+// clock, and a job that waits on nobody has none. A wait goes on while the job
+// reads needs_you with the same need, question kind and question; anything
+// else is a new wait. Every store write calls it, so no road that puts a job
+// in front of a person has to remember a clock.
+func NoteWait(before Item, it *Item, now time.Time) {
+	switch {
+	case JobState(*it) != "needs_you":
+		it.NeedsAt = time.Time{}
+	case JobState(before) != "needs_you" || NeedsKind(before) != NeedsKind(*it) || before.QKind != it.QKind || before.Question != it.Question:
+		it.NeedsAt = now
+	case !before.NeedsAt.IsZero():
+		it.NeedsAt = before.NeedsAt
+	default:
+		// A wait written before this clock was kept goes on from the clock
+		// it showed, so its next write records no second wait.
+		it.NeedsAt = NeedsSince(before)
+	}
 }
 
 // GitHubIssue is a job that started from a GitHub issue. A number alone is
@@ -453,6 +558,14 @@ func NoteRound(ph *Phase, cap int, line RoundLine) {
 	replaced := false
 	for i := range ph.Rounds {
 		if (line.Chat != "" && ph.Rounds[i].Chat == line.Chat) || (line.Chat == "" && ph.Rounds[i].Chat == "" && ph.Rounds[i].Round == line.Round) {
+			// A LINE THAT DOES NOT SAY HOW THE TRY ENDED KEEPS WHAT WAS SAID: a
+			// worker's report and a rerun's note carry the try again without
+			// its word, which the factory judged from the report it folded.
+			// A line that says the try was rejected never keeps a word that said
+			// it passed, so only a line that agrees with the old one keeps it.
+			if old := ph.Rounds[i]; line.Result == "" && old.Round == line.Round && old.Rejected == line.Rejected {
+				line.Result, line.Reason = old.Result, old.Reason
+			}
 			ph.Rounds[i] = line
 			replaced = true
 			break
@@ -502,11 +615,17 @@ func MayAct(it Item, caller string) Acts {
 	caller = NormalizeHandle(caller)
 	person := it.Person()
 	owner := person == "" || caller == person
+	if StoppedByPerson(it) {
+		return Acts{RunAgain: owner, CancelJob: owner, Reply: true}
+	}
 	var answer bool
 	switch NeedsKind(it) {
 	case NeedsQuestion:
 		answer = true
-	case NeedsApproveStart, NeedsApprovePlan, NeedsApproveProof, NeedsSpendingLimit, NeedsOutOfAttempts, NeedsRunnerOffline:
+	case NeedsApproveStart, NeedsApprovePlan, NeedsApproveStep, NeedsApproveProof, NeedsSpendingLimit, NeedsOutOfAttempts, NeedsRunnerOffline:
+		answer = owner
+	}
+	if it.QKind == QKindSpendStopped {
 		answer = owner
 	}
 	assign := person == ""

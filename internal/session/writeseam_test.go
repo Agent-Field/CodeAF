@@ -1,6 +1,6 @@
 package session
 
-// THE WRITE SEAM, PROVED (issue #272, part 2, on the owner's ruling).
+// THE WRITE SEAM, PROVED (issue #272, part 2, on).
 //
 // The measured run is one sentence: a chat turn made forty-eight tool calls and
 // edited a person's live checkout with `sed -i` for seven minutes and forty-six

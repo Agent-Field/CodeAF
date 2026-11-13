@@ -3,11 +3,11 @@ package main
 // chatv3_exchange.go is the door's half of `ask here` — home's second action
 // row, which answers an errand ("remind me at 6", "tell me when CI goes red")
 // without opening a conversation the list would then have to hold forever
-// (tui3's homeexchange.go, docs/AMBIENT.md Part 5).
+// (tui3's homeexchange.go, the implementation Part 5).
 //
 // ───────────────────────────────────────────────────────────────────────────
 // MERGE NOTE (lane errand). Everything in this file is new, and the only line
-// this lane added outside it is the `Errand:` / `ErrandsRoot:` pair in
+// this implementation added outside it is the `Errand:` / `ErrandsRoot:` pair in
 // chatv3.go's tui3.Options literal. If that literal has moved under another
 // lane, the pair is the whole of what has to be carried across.
 // ───────────────────────────────────────────────────────────────────────────

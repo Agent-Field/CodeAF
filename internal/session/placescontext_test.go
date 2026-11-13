@@ -3,7 +3,7 @@ package session
 // A FOLDER SOMEBODY ATTACHED HAS TO REACH THE MODEL.
 //
 // The defect these are written against is the one the whole wave is for: the
-// picker said `folder · /home/…/thing`, the set was written onto meta.json, and
+// picker said `folder · /workspace/thing`, the set was written onto meta.json, and
 // the next request went out with no mention of the folder anywhere — so the
 // model went looking for it, usually by walking a home directory for a name that
 // sounded right. A displayed line is not a message.

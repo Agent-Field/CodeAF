@@ -25,7 +25,7 @@ func (s *Source) readinessMaterial(ctx context.Context, owner, name string, p fo
 	if !ok {
 		return nil
 	}
-	if pr.State != factory.PROpen || !pr.ChecksRead || !pr.ReviewsRead || pr.CI != "ci ✓" || pr.Mergeable != factory.MergeableYes {
+	if pr.State != factory.PROpen || !pr.ChecksRead || !pr.ReviewsRead || (pr.CI != "ci ✓" && !pr.NoWorkflows) || pr.Mergeable != factory.MergeableYes {
 		return nil
 	}
 	diff, required, err := a.ReadinessMaterial(ctx, owner, name, p.Base, p.Number)
@@ -63,13 +63,21 @@ func (s *Source) readinessMaterial(ctx context.Context, owner, name string, p fo
 // Ready is executed only by the recorded publication door, on the assignee's
 // existing GitHub identity. It never pushes, replaces the body or merges.
 func (s *Source) Ready(ctx context.Context, it factory.Item) (factory.PullRequest, error) {
+	return s.ReadyChecked(ctx, it, nil)
+}
+
+// ReadyChecked rechecks execution authority after preparatory reads on every attempt.
+func (s *Source) ReadyChecked(ctx context.Context, it factory.Item, before func(context.Context) error) (factory.PullRequest, error) {
+	if err := factory.CheckPersonStop(it); err != nil {
+		return factory.PullRequest{}, err
+	}
 	var pr factory.PullRequest
 	var err error
 	for attempt := 0; attempt < readyAttempts; attempt++ {
 		// Each attempt starts with a complete live read. An uncertain prior
 		// success is observed instead of replayed; changed facts refuse the
 		// old approval before another mutation can be sent.
-		pr, err = s.readyOnce(ctx, it)
+		pr, err = s.readyOnce(ctx, it, before)
 		if err == nil || !factory.Automatic(it) || !transientReadyError(err) || attempt+1 == readyAttempts || ctx.Err() != nil {
 			return pr, err
 		}
@@ -108,7 +116,7 @@ func transientReadyError(err error) bool {
 	return errors.As(err, &network) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF)
 }
 
-func (s *Source) readyOnce(ctx context.Context, it factory.Item) (factory.PullRequest, error) {
+func (s *Source) readyOnce(ctx context.Context, it factory.Item, before func(context.Context) error) (factory.PullRequest, error) {
 	a, ok := s.api.(readinessAPI)
 	if !ok {
 		return factory.PullRequest{}, fmt.Errorf("this factory GitHub client does not support ready for review")
@@ -145,6 +153,11 @@ func (s *Source) readyOnce(ctx context.Context, it factory.Item) (factory.PullRe
 	if !s.watching(owner + "/" + name) {
 		return fresh, factory.ErrReadOnly
 	}
+	if before != nil {
+		if err := before(ctx); err != nil {
+			return fresh, err
+		}
+	}
 	if err = a.MarkPullReady(ctx, owner, name, fresh.Number, fresh.HeadSHA); err != nil {
 		return fresh, err
 	}
@@ -156,4 +169,36 @@ func (s *Source) readyOnce(ctx context.Context, it factory.Item) (factory.PullRe
 		return after, fmt.Errorf("PR changed while marking ready; check its current state before retrying")
 	}
 	return after, nil
+}
+
+// MarkReady is a person's explicit decision, using the job's own GitHub road.
+// Unlike automatic readiness it needs no model review and never retries or
+// waits for a follow read: the mutation itself confirms the head and draft.
+func (s *Source) MarkReady(ctx context.Context, it factory.Item) (factory.PullRequest, error) {
+	if err := factory.CheckPersonStop(it); err != nil {
+		return factory.PullRequest{}, err
+	}
+	a, ok := s.api.(interface {
+		MarkDraftPullReady(context.Context, string, string, int, string) error
+	})
+	if !ok {
+		return factory.PullRequest{}, factory.ErrReadOnly
+	}
+	owner, name, ok := pullRepo(it)
+	if !ok {
+		return factory.PullRequest{}, factory.ErrNotOnSource
+	}
+	if !s.watching(owner + "/" + name) {
+		return factory.PullRequest{}, factory.ErrReadOnly
+	}
+	pr := it.PullRequest
+	if pr == nil || pr.Number <= 0 || pr.State != factory.PROpen || !pr.Draft {
+		return factory.PullRequest{}, fmt.Errorf("this job has no open draft pull request")
+	}
+	if err := a.MarkDraftPullReady(ctx, owner, name, pr.Number, pr.HeadSHA); err != nil {
+		return factory.PullRequest{}, err
+	}
+	ready := *pr
+	ready.Draft = false
+	return ready, nil
 }

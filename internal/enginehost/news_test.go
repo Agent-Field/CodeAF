@@ -156,7 +156,7 @@ func TestOneHostSendsEachConversationsNewsDownItsOwnConnection(t *testing.T) {
 	host := newsHost(t, workspace)
 
 	here := openRawSurface(t, host, "one.jsonl", "macbook")
-	there := openRawSurface(t, host, "two.jsonl", "studio")
+	there := openRawSurface(t, host, "two.jsonl", "host-a")
 	waitUntil(t, "both conversations opened", func() bool { return len(host.held()) == 2 })
 	waitUntil(t, "both windows have a live row", func() bool {
 		for _, sess := range host.held() {
@@ -218,7 +218,7 @@ func TestOneHostSendsEachConversationsSightingDownItsOwnConnection(t *testing.T)
 	host := newsHost(t, workspace)
 
 	here := openRawSurface(t, host, "one.jsonl", "macbook")
-	there := openRawSurface(t, host, "two.jsonl", "studio")
+	there := openRawSurface(t, host, "two.jsonl", "host-a")
 	waitUntil(t, "both conversations opened", func() bool { return len(host.held()) == 2 })
 
 	said := make(chan struct{})

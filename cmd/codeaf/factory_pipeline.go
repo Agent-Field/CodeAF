@@ -10,21 +10,35 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
 	"github.com/Agent-Field/codeaf/internal/factory/intake"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
+	"github.com/Agent-Field/codeaf/internal/factory/tokens"
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
 	forge "github.com/Agent-Field/codeaf/internal/praf/github"
 )
 
-func factoryPipelineOption() factory.LocalOption {
-	return factory.WithOptions(pipeline.LocalFiles(), factory.WithRepositoryRecipeLoader(func(repo, dir string) (factory.Recipe, []factory.Problem, error) {
-		f, err := factoryRules().Load(context.Background(), repo, dir, home.Join("factory.yaml"))
-		return f.Recipe(), f.RecipeProblems(), err
-	}))
+// factoryPipelineOption is the seam's recipes: a repository's is main's
+// file, or the factory's own copy in its place when st keeps one
+// ([factoryRepoRead]); a job's is the file it was decided on first
+// ([factoryJobFile]). st is nil for a worker's mirror, which keeps no copy:
+// the jobs it runs carry theirs. These recipes are only shown (the queue, a
+// job's card), so they never wait on GitHub ([factorygithub.ShowOnly]).
+func factoryPipelineOption(st *store.Store) factory.LocalOption {
+	return factory.WithOptions(pipeline.LocalFiles(),
+		factory.WithRepositoryRecipeLoader(func(repo, dir string) (factory.Recipe, []factory.Problem, error) {
+			f, err := factoryRepoRead(factorygithub.ShowOnly(context.Background()), st, repo, dir)
+			return f.Recipe(), f.RecipeProblems(), err
+		}),
+		factory.WithJobRecipeLoader(func(it factory.Item, dir string) (factory.Recipe, []factory.Problem, error) {
+			f, err := factoryJobFile(factorygithub.ShowOnly(context.Background()), st, it, it.Repo, dir)
+			return f.Recipe(), f.RecipeProblems(), err
+		}))
 }
 
 func runFactoryConvert(args []string, out, warnings io.Writer) error {
@@ -56,12 +70,45 @@ func runFactoryConvert(args []string, out, warnings io.Writer) error {
 	return err
 }
 
+// factoryAfterPoll is what runs after every poll: the start rules, then the
+// go-ahead pass ([intake.Intake.GoAheads]), which starts what a group policy
+// covers once what it waits on has merged. Both read the poll's fresh facts.
+func factoryAfterPoll(in *intake.Intake) func(context.Context) error {
+	return func(ctx context.Context) error { return errors.Join(in.Once(ctx), in.GoAheads(ctx)) }
+}
+
 // factoryIntake reuses the same runner door as a person's Run action: the
 // lease's, which queues the job for whichever worker pulls it.
 func factoryIntake(st *store.Store) *intake.Intake {
+	return factoryIntakeOwned(st, factoryProfileOwner)
+}
+
+// factoryIntakeOwned is [factoryIntake] whose rule-started jobs belong to
+// owner: the factory's operator, as the host that runs the intake knows them.
+func factoryIntakeOwned(st *store.Store, owner func(context.Context) string) *intake.Intake {
 	history, _ := record.Open(st, record.Options{})
+	look := factoryScoutLook(st, config.Load)
 	return intake.New(st, intake.Options{
+		Standing: factorygithub.Rechecker(func(ctx context.Context) string {
+			token, _ := factorygithub.TokenAt(ctx, factoryProfile(""))
+			return token
+		}),
+		Owner:  owner,
 		Record: history,
+		// A routing rule's question is answered by the floor's AI filter,
+		// on the factory's default model (a rule names none yet) and booked
+		// as `factory filter`. Every host builds its intake here, so the app,
+		// a team server and the command line all ask the same judge.
+		Judge: factoryJudge(st, config.Load),
+		// An automatic start is looked at closer first, while Read new issues
+		// as they arrive is on.
+		Scout: func(ctx context.Context, id int) error {
+			if !factoryReadsOnArrival(st) {
+				return errors.New("read on arrival is off")
+			}
+			_, _, err := look(ctx, id, false)
+			return err
+		},
 		Refresh: func(ctx context.Context) error {
 			repos, err := st.Repos()
 			if err != nil {
@@ -74,10 +121,13 @@ func factoryIntake(st *store.Store) *intake.Intake {
 			return ctx.Err()
 		},
 		Load: func(repo string) (pipeline.File, error) {
-			return factoryRules().Load(context.Background(), repo, st.CheckoutDir(repo), home.Join("factory.yaml"))
+			return factoryPipelineRead(context.Background(), st, repo, st.CheckoutDir(repo))
+		},
+		LoadJob: func(it factory.Item) (pipeline.File, error) {
+			return factoryJobRead(context.Background(), st, it, st.CheckoutDir(factory.RepoOf(it)))
 		},
 		Launch: func(id int) error {
-			seam := factory.LocalSeam(st, time.Now(), factoryRunnerDoors(st), factoryPipelineOption(), factory.WithRepoDirs(st.CheckoutDir))
+			seam := factory.LocalSeam(st, time.Now(), factoryRunnerDoors(st), factoryPipelineOption(st), factory.WithRepoDirs(st.CheckoutDir))
 			if seam.Launch == nil {
 				return errors.New("factory has no worker to start this job")
 			}
@@ -93,7 +143,11 @@ var factoryPeopleCaches = struct {
 }{profiles: map[string]*factorygithub.PeopleLoader{}}
 
 func factoryPeople() *factorygithub.PeopleLoader {
-	profile := factoryProfile("")
+	return factoryPeopleAt("")
+}
+
+func factoryPeopleAt(profileDir string) *factorygithub.PeopleLoader {
+	profile := factoryProfile(profileDir)
 	factoryPeopleCaches.Lock()
 	defer factoryPeopleCaches.Unlock()
 	if loader := factoryPeopleCaches.profiles[profile]; loader != nil {
@@ -101,6 +155,9 @@ func factoryPeople() *factorygithub.PeopleLoader {
 	}
 	loader := factorygithub.NewPeopleLoader(func(ctx context.Context) factorygithub.PeopleAPI {
 		token, _ := factorygithub.TokenAt(ctx, profile)
+		if token == "" {
+			return nil
+		}
 		return forge.NewClient(token)
 	}, nil)
 	factoryPeopleCaches.profiles[profile] = loader
@@ -115,7 +172,11 @@ var factoryRuleCaches = struct {
 }{profiles: map[string]*factorygithub.PipelineLoader{}}
 
 func factoryRules() *factorygithub.PipelineLoader {
-	profile := factoryProfile("")
+	return factoryRulesAt("")
+}
+
+func factoryRulesAt(profileDir string) *factorygithub.PipelineLoader {
+	profile := factoryProfile(profileDir)
 	factoryRuleCaches.Lock()
 	defer factoryRuleCaches.Unlock()
 	if loader := factoryRuleCaches.profiles[profile]; loader != nil {
@@ -130,4 +191,174 @@ func factoryRules() *factorygithub.PipelineLoader {
 	})
 	factoryRuleCaches.profiles[profile] = loader
 	return loader
+}
+
+func stopFactoryLoaders(profileDir string) {
+	keys := []string{factoryProfile(profileDir)}
+	if def := factoryProfile(""); def != keys[0] {
+		keys = append(keys, def)
+	}
+	people, rules := detachFactoryLoaders(keys)
+	var wg sync.WaitGroup
+	for _, loader := range people {
+		wg.Add(1)
+		guard.Go("factory/people-close", func() {
+			defer wg.Done()
+			loader.Close()
+		})
+	}
+	for _, loader := range rules {
+		wg.Add(1)
+		guard.Go("factory/pipeline-close", func() {
+			defer wg.Done()
+			loader.Close()
+		})
+	}
+	wg.Wait()
+}
+
+// detachFactoryLoaders removes the profiles' loaders from both caches and
+// hands them back, so a later reader opens fresh ones and only the caller
+// closes these.
+func detachFactoryLoaders(keys []string) ([]*factorygithub.PeopleLoader, []*factorygithub.PipelineLoader) {
+	return detachPeopleLoaders(keys), detachRuleLoaders(keys)
+}
+
+func detachPeopleLoaders(keys []string) (people []*factorygithub.PeopleLoader) {
+	factoryPeopleCaches.Lock()
+	defer factoryPeopleCaches.Unlock()
+	for _, key := range keys {
+		if loader := factoryPeopleCaches.profiles[key]; loader != nil {
+			delete(factoryPeopleCaches.profiles, key)
+			people = append(people, loader)
+		}
+	}
+	return people
+}
+
+func detachRuleLoaders(keys []string) (rules []*factorygithub.PipelineLoader) {
+	factoryRuleCaches.Lock()
+	defer factoryRuleCaches.Unlock()
+	for _, key := range keys {
+		if loader := factoryRuleCaches.profiles[key]; loader != nil {
+			delete(factoryRuleCaches.profiles, key)
+			rules = append(rules, loader)
+		}
+	}
+	return rules
+}
+
+// factoryPipelineRead is one repository's pipeline as THIS FACTORY runs it,
+// for every reader that decides or shows what a job runs under: the main
+// branch's file (forge first, the checkout's main branch when offline) with the
+// personal file, then THE FACTORY'S OWN COPY in its place when the store keeps
+// one ([pipeline.WithFactoryCopy]: it clears itself once main says the same),
+// then the factory's own rules on top ([withFactoryHouseRules]). The order is
+// the precedence factory.RecipeSource records: copy, else main, else built-in.
+func factoryPipelineRead(ctx context.Context, st *store.Store, repo, dir string) (pipeline.File, error) {
+	f, err := factoryRepoRead(ctx, st, repo, dir)
+	return withFactoryHouseRules(st, f, err)
+}
+
+// factoryJobRead is [factoryPipelineRead] for ONE JOB: the factory's copy the
+// job carries in place of the repository's read ([factoryJobFile]), with the
+// factory's own rules on top. Every door that edits a job's steps reads this.
+func factoryJobRead(ctx context.Context, st *store.Store, it factory.Item, dir string) (pipeline.File, error) {
+	f, err := factoryJobFile(ctx, st, it, factory.RepoOf(it), dir)
+	return withFactoryHouseRules(st, f, err)
+}
+
+// factoryRepoRead is one repository's pipeline before the factory's own
+// rules: main's file with the personal file, or the factory's copy in its
+// place when st keeps one ([pipeline.WithFactoryCopy], which is handed main's
+// read before the personal file and merges it itself). A nil st keeps no
+// copy.
+func factoryRepoRead(ctx context.Context, st *store.Store, repo, dir string) (pipeline.File, error) {
+	personal := home.Join("factory.yaml")
+	if st == nil {
+		return factoryRules().Load(ctx, repo, dir, personal)
+	}
+	f, err := factoryRules().Load(ctx, repo, dir, "")
+	return pipeline.WithFactoryCopy(f, err, st, repo, personal)
+}
+
+// factoryJobFile is THE ONE RESOLVER of the file a job is bounded by, before
+// the factory's own rules ([pipeline.JobFile]): THE COPY THE JOB CARRIES
+// ([factory.Item.PipelineCopy]) with the personal file; else main's file
+// alone for a job decided on it; else, for a job not decided yet, this
+// factory's read of repo now ([factoryRepoRead]). The edit doors, the
+// manager's brief, the item card, a start and the runner (its rules, its
+// plan's bounds and a post's policy) all read it, so none of them bounds a job
+// by a file it does not run.
+func factoryJobFile(ctx context.Context, st *store.Store, it factory.Item, repo, dir string) (pipeline.File, error) {
+	return pipeline.JobFile(it, home.Join("factory.yaml"), func(withCopy bool) (pipeline.File, error) {
+		if !withCopy {
+			return factoryRepoRead(ctx, nil, repo, dir)
+		}
+		return factoryRepoRead(ctx, st, repo, dir)
+	})
+}
+
+// withFactoryHouseRules adds the factory's own rules (the store's, see
+// [factory.HouseRules]) to one repository's read, for every reader that
+// decides or shows what a job runs under: intake's start decision and the
+// factory's pipeline answers. A store that cannot read its rules makes the
+// read fail rather than quietly decide without them, so nothing starts on
+// its own that a house rule would have held. The factory's spending defaults
+// ([factory.Spending]) fill what the repository leaves unsaid on the same
+// terms: a spending file that cannot be read fails the read too.
+func withFactoryHouseRules(st *store.Store, f pipeline.File, err error) (pipeline.File, error) {
+	if st == nil {
+		return f, err
+	}
+	house, herr := st.HouseRules()
+	if herr != nil {
+		return f, fmt.Errorf("%w: %v", pipeline.ErrHouseRulesUnread, herr)
+	}
+	spending, serr := st.Spending()
+	if serr != nil {
+		return f, fmt.Errorf("%w: %v", pipeline.ErrHouseRulesUnread, serr)
+	}
+	// THE FACTORY'S PIPELINE LIBRARY goes beside every read the same way, so
+	// a Start, a routing rule and a job's own kind all resolve a pipeline's
+	// name through [pipeline.File.Resolve]: the repository's file, then the
+	// library, then the built-in steps. A library that cannot be read fails
+	// the read like the rules do: a rule naming one of its pipelines must
+	// never quietly run something else.
+	kept, lerr := st.PipelineLibrary()
+	if lerr != nil {
+		return f, fmt.Errorf("%w: %v", pipeline.ErrHouseRulesUnread, lerr)
+	}
+	lib, lerr := pipeline.ParseLibrary(kept.Text)
+	if lerr != nil {
+		return f, fmt.Errorf("%w: %v", pipeline.ErrHouseRulesUnread, lerr)
+	}
+	return pipeline.WithLibrary(pipeline.WithSpending(pipeline.WithHouseRules(f, house), spending), lib), err
+}
+
+// factoryProfileOwner is the forge login of this machine's GitHub connection:
+// on a factory a person serves from their own machine, they are its operator.
+// "" when there is no connection or GitHub cannot say.
+func factoryProfileOwner(ctx context.Context) string {
+	token, _ := factorygithub.TokenAt(ctx, factoryProfile(""))
+	if token == "" {
+		return ""
+	}
+	login, err := forge.NewClient(token).Me(ctx)
+	if err != nil {
+		return ""
+	}
+	return login
+}
+
+// factoryOperatorOwner is a team server's operator, from its persisted claim
+// beside the tokens file; "" before anyone has claimed it.
+func factoryOperatorOwner(tokensPath string) func(context.Context) string {
+	return func(context.Context) string {
+		claim, err := tokens.LoadOperator(tokensPath)
+		if err != nil {
+			return ""
+		}
+		return claim.Login
+	}
 }

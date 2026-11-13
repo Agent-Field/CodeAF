@@ -69,7 +69,7 @@ func recipeDoor(st *store.Store, workspace string) session.RecipeDoor {
 	if st == nil {
 		return nil
 	}
-	return fileRecipeDoor{dirs: factoryRepoDirs(st, workspace)}
+	return roadRecipeDoor{fileRecipeDoor: fileRecipeDoor{dirs: factoryRepoDirs(st, workspace)}, factory: appLocalID, repos: st.Repos, road: appRoad}
 }
 
 // fileRecipeDoor writes one line into a repository's `.codeaf/factory.yaml`.
@@ -145,7 +145,13 @@ func bankStageAt(dir string, kind factory.Kind, line string) error {
 	if i := factory.StageIndex(stages, add[0].Name); i >= 0 {
 		stages[i] = add[0]
 	} else {
-		stages = append(stages, add[0])
+		// A NEW STAGE GOES BEFORE PROOF, as the pipeline editor adds one: a
+		// stage after proof would change work nobody proves.
+		at := len(stages)
+		if p := factory.StageIndex(stages, "proof"); p >= 0 {
+			at = p
+		}
+		stages = append(stages[:at], append([]factory.Stage{add[0]}, stages[at:]...)...)
 	}
 	return (pipeline.Files{}).BankStages(dir, kind, stages)
 }
@@ -218,6 +224,7 @@ func factorySeam(st *store.Store, workspace, profileDir string) factory.Seam {
 	// `github`, `ghlogin` and `connectgithub` doors exist. The fixture seam
 	// above returns before this line and is never wrapped.
 	profileDir = factoryProfile(profileDir)
+	registerFactoryTierResolver(st, profileDir, "")
 	// AND THE ITEM'S OWN CONVERSATION (`T`, factory_talk.go) is made on this
 	// machine, so its door is hung only here, where the floor is this
 	// machine's: --once and --host never build this seam.
@@ -228,7 +235,7 @@ func factorySeam(st *store.Store, workspace, profileDir string) factory.Seam {
 		// are the lease's, which queue a job for a worker and signal its
 		// lease; no window runs a job through them.
 		factoryRunnerDoors(st),
-		factoryPipelineOption(), factory.WithRepoDirs(dirs),
+		factoryPipelineOption(st), factory.WithRepoDirs(dirs),
 		factory.WithRepoLister(factorygithub.Lister(profileDir)),
 		factory.WithTalk(talkMaker(st, workspace, profileDir)),
 		// THE REFRESH DOORS (`u`, `U`, `g`) read through a GitHub source built
@@ -399,6 +406,10 @@ func factoryGitHub(ctx context.Context, st *store.Store, token func(context.Cont
 // factoryPoll is the one GitHub poll this process runs, started at most once.
 var factoryPoll sync.Once
 
+// factoryPollStop cancels and joins the poll before a test replaces its home.
+// Production keeps the once and its worker for the whole process.
+var factoryPollStop func()
+
 // factoryBusyClear is this process's one clearing of stale in-flight marks.
 var factoryBusyClear sync.Once
 
@@ -462,8 +473,11 @@ func startFactoryPoll(st *store.Store, profileDir string) {
 	factoryBusyClear.Do(func() { _ = st.ClearBusy() })
 	startFactoryTriage(context.Background(), st)
 	factoryPoll.Do(func() {
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan struct{})
+		factoryPollStop = func() { cancel(); <-done }
 		guard.Go("factory/github-poll", func() {
-			ctx := context.Background()
+			defer close(done)
 			token := func(ctx context.Context) string {
 				t, _ := factorygithub.TokenAt(ctx, profileDir)
 				return t
@@ -475,7 +489,7 @@ func startFactoryPoll(st *store.Store, profileDir string) {
 			// NOTHING IS LOGGED TO THE SCREEN: in the window the surface owns it,
 			// and in the engine stdout is the protocol. A failure is the facts
 			// line's `github · not reachable`, read off the store.
-			factorygithub.Poll(ctx, src, st, factoryPollEvery, nil, factoryIntake(st).Once)
+			factorygithub.Poll(ctx, src, st, factoryPollEvery, factoryPollLog, factoryAfterPoll(factoryIntake(st)))
 		})
 	})
 }
@@ -499,19 +513,28 @@ var factoryFloorHere = func(st *store.Store, workspace, profileDir string) {
 // passes its own, and a seam with no `new` door is handed back untouched.
 func factoryHere(seam factory.Seam, workspace string) factory.Seam {
 	here := strings.TrimSpace(workspace)
-	if seam.New == nil || here == "" {
+	if (seam.New == nil && seam.NewJob == nil) || here == "" {
 		return seam
 	}
 	here = filepath.Base(filepath.Clean(here))
 	if here == "." || here == string(filepath.Separator) {
 		return seam
 	}
-	made := seam.New
-	seam.New = func(repo, words string) (int, error) {
-		if strings.TrimSpace(repo) == "" {
-			repo = here
+	if made := seam.New; made != nil {
+		seam.New = func(repo, words string) (int, error) {
+			if strings.TrimSpace(repo) == "" {
+				repo = here
+			}
+			return made(repo, words)
 		}
-		return made(repo, words)
+	}
+	if made := seam.NewJob; made != nil {
+		seam.NewJob = func(repo, title, text string) (int, error) {
+			if strings.TrimSpace(repo) == "" {
+				repo = here
+			}
+			return made(repo, title, text)
+		}
 	}
 	return seam
 }

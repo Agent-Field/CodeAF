@@ -3,7 +3,7 @@
 // questions_e2e_test.go is THE QUESTIONS WAVE, DRIVEN THROUGH THE REAL BINARY
 // IN A REAL TERMINAL AGAINST A REAL MODEL.
 //
-// docs/design/questions/DESIGN.md is a contract about what a person sees when
+// the implementation is a contract about what a person sees when
 // this engine hands them a decision: a line, a card, a room, a sheet; a chip
 // that counts what is waiting; `esc` that means later and never cancel; a
 // receipt that stays where the question was. Six lanes built that in eleven
@@ -232,7 +232,7 @@ func type_(t *testing.T, r *rig, text string) {
 // THE .ansi IS THE EVIDENCE AND THE .png IS THE GALLERY. capture-pane -e keeps
 // every colour byte, so the file is what the terminal held; the png is that file
 // through freeze, with the runs of blank rows collapsed so a mostly-empty screen
-// does not cost half a megabyte. Both land under docs/design/questions/screens/
+// does not cost half a megabyte. Both land under the implementation
 // because a picture nobody committed is a picture nobody looked at.
 func shot(t *testing.T, r *rig, moment string) {
 	t.Helper()
@@ -451,7 +451,7 @@ func questionsCard(t *testing.T) {
 
 // questionsBlocksUnderAnswers is the call a model could not make. On 2026-09-10
 // deepseek-v4-flash was given the message below — a person's own words, on the
-// Spark, in a real terminal — and three calls running it sent the answers list
+// test machine, in a real terminal — and three calls running it sent the answers list
 // as a JSON STRING holding the list; every one was refused with `options takes
 // a list`, the turn ended on the loop guard and the person never saw a
 // question. Two things changed (session/toolargs.go, session/tools_ask.go), and
@@ -604,11 +604,10 @@ func questionsRoom(t *testing.T) {
 	screenSays(t, room, say(t, "questionWouldSwitchWord"), "what would change the asker's mind")
 	shot(t, r, "open")
 
-	// TWO PANES, AND THE ARROWS MOVING BETWEEN THEM (owner ruling 2026-09-11,
-	// page pick A): the answers on the left, the evidence of the one the pointer
-	// is on beside them, and `→ detail` on the foot because there IS a pane to
-	// move into. A page of one column unfolds that evidence under the pointer
-	// and does not offer the key.
+	// TWO PANES, AND THE ARROWS MOVING BETWEEN THEM: the answers on the left, the evidence of
+	// the one the pointer is on beside them, and `→ detail` on the foot because there IS a
+	// pane to move into. A page of one column unfolds that evidence under the pointer and
+	// does not offer the key.
 	screenSays(t, room, say(t, "questionPageDetailWord"), "the page is two panes at this width")
 	shot(t, r, "split")
 
@@ -1209,7 +1208,7 @@ func questionsOlderBlocks(t *testing.T) {
 		"`cancel` is the word this wave retired: nothing is cancelled by putting a question off")
 }
 
-// questionAssumptionMark is docs/design/questions/DESIGN.md's own spelling for
+// questionAssumptionMark is the implementation's own spelling for
 // the assumption kind: "assumptions ≈". Nothing in internal/tui2/tokens carries
 // it, which is why it is a literal here — see the comment at its one use.
 const questionAssumptionMark = "≈"

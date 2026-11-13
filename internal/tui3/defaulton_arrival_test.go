@@ -12,7 +12,7 @@ import (
 // the published chat. The chord must retain the request and offer confirmation
 // once the listing arrives, without silently taking anything.
 func TestD6EarlyBringWaitsForTheCatalog(t *testing.T) {
-	a, _ := devicesRig("dev_spark")
+	a, _ := devicesRig("dev_tower")
 	a.machines = chatlist.Static{}
 	a.machineRead.rows = nil
 	a.bringWork()
@@ -22,7 +22,7 @@ func TestD6EarlyBringWaitsForTheCatalog(t *testing.T) {
 	if _, ok := a.homeAsking(); ok {
 		t.Fatal("offered a chat before it arrived")
 	}
-	a.tookMachines(homeMachinesMsg{rows: []chatlist.Row{{Cell: "d6", Title: "arrived", Device: "spark", DeviceID: "dev_spark", Status: chatlist.Running}}})
+	a.tookMachines(homeMachinesMsg{rows: []chatlist.Row{{Cell: "d6", Title: "arrived", Device: "tower", DeviceID: "dev_tower", Status: chatlist.Running}}})
 	ask, ok := a.homeAsking()
 	if !ok || !strings.Contains(ask.question.Head, "Continue this chat here?") {
 		t.Fatalf("arrival never offered confirmation: %+v", ask)
@@ -43,7 +43,7 @@ func TestD6PresenceFinishesAnEarlyChord(t *testing.T) {
 		t.Fatal("early request not kept")
 	}
 	feed.state.Up = true
-	feed.state.Online = []string{"dev_spark"}
+	feed.state.Online = []string{"dev_tower"}
 	a.tookWatch(dirWatchMsg{from: feed})
 	if _, ok := a.homeAsking(); !ok {
 		t.Fatal("presence arrived but request was lost")
@@ -53,7 +53,7 @@ func TestD6PresenceFinishesAnEarlyChord(t *testing.T) {
 // TestD6FailedCatalogReadRetriesWhileWatching proves D6: a healthy change
 // socket cannot turn a failed initial listing into a five-minute stale home.
 func TestD6FailedCatalogReadRetriesWhileWatching(t *testing.T) {
-	a, _ := devicesRig("dev_spark")
+	a, _ := devicesRig("dev_tower")
 	now := time.Unix(100, 0)
 	a.clock = func() time.Time { return now }
 	a.fileMachines(homeMachinesMsg{err: errors.New("temporary read failure")})

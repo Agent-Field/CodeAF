@@ -283,7 +283,7 @@ func TestTheReadingOfARunHeldAtItsGate(t *testing.T) {
 
 // ── the whole road ──────────────────────────────────────────────────────────
 
-// THE OWNER'S SCENARIO, end to end and through the real doors: a run spends its
+// THE REGRESSION SCENARIO, end to end and through the real doors: a run spends its
 // tank, the roster's row says a person is being asked, and answering the gate
 // takes it back off. It drives [Agent.RunOrchestrate] rather than the family so
 // that the two wires this depends on — the engine's OnPause and

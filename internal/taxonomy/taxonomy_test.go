@@ -55,7 +55,7 @@ func TestTheSame400GoesTwoWaysOnWhetherAnUpstreamWasNamed(t *testing.T) {
 
 // THE WAIT DOUBLES, AND THE CALLER'S OWN DEADLINE — NOT A COUNT — IS WHAT ENDS
 // THE REQUEST. The count was `Limits.TransportAttempts` and it is deleted
-// (docs/design/recovery/DESIGN.md §4): the transport under every caller was
+// : the transport under every caller was
 // already bounded by the plan's deadline, so a second budget on the same axis
 // multiplied rather than bounded. `OutOfTime` is how the caller says it is gone,
 // and the thing given up on is still the REQUEST and never the tier.

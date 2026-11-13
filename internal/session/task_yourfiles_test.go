@@ -403,7 +403,7 @@ func TestTheLandingsRoadAndFilesRideTheCheckpoint(t *testing.T) {
 // THE LANDING ASKS ON ONE ROW, AND PROMOTES ONLY WHERE IT HAS SOMETHING MORE TO
 // SAY.
 //
-// docs/design/questions/DESIGN.md's defaults table says `card / room` beside
+// the implementation's defaults table says `card / room` beside
 // this kind AND says why in the same cell — `task-states row unchanged`. That
 // row is `[a] <yes> · [n] <no> · [s] tell it`, three columns in one order, which
 // is the LINE form: the card spends a row per answer and never composes it. The

@@ -2,12 +2,11 @@ package tui3
 
 // planrail.go draws A RUN'S TASKS THE WAY EVERY OTHER TASK IS DRAWN.
 //
-// A run's parts are rows of its plan store and not nodes of this window's graph,
-// and for a while they had a renderer of their own: a still half-circle where
-// every other working row has the spinner, no handle, no clock and price line,
-// and the finished parts of a family folded into one `✓ N done` count. Two
-// shapes for one kind of thing is a column a person has to learn twice, and the
-// owner's ruling on it was plain — every task looks the same.
+// A run's parts are rows of its plan store and not nodes of this window's graph, and for a
+// while they had a renderer of their own: a still half-circle where every other working
+// row has the spinner, no handle, no clock and price line, and the finished parts of a
+// family folded into one `✓ N done` count. Two shapes for one kind of thing is a column a
+// person has to learn twice, and on it was plain — every task looks the same.
 //
 // SO THERE IS ONE RENDERER AND THIS FILE IS ITS ADAPTER. A store row is lent a
 // [taskNode] ([planRailNode]) carrying only what the store knows — its title,

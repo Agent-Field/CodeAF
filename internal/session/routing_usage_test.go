@@ -75,7 +75,7 @@ func TestAnUnwatchedTaskNodesTurnAsksForPriceInstead(t *testing.T) {
 // the grounds that nobody reads a node's raw stream. The λ beside it had
 // already stopped believing that — a run started from a window somebody is
 // watching has an owner reading its cards as they land, and the seconds are
-// theirs (loop.go, and bench/lanelab/REPORT.md for what pricing them at zero
+// theirs (loop.go, and the implementation for what pricing them at zero
 // costs) — and the two were free to disagree only because they were two
 // separate stamps. They are one now: the turn names its ROLE, and internal/lane's
 // table answers what a second of it is worth, what bar it has to clear, and

@@ -523,7 +523,7 @@ func TestARunningParentKeepsItsRefusedChildUnderIt(t *testing.T) {
 			// [session.TaskStatus.RowWord] — the join that says the word once and
 			// drops a reason that merely restates it.
 			want := line.item.status().RowWord()
-			if got := tasksMiddle(line.item); got != want {
+			if got := tasksMiddle(*line.item); got != want {
 				t.Fatalf("refused child reason = %q, want %q", got, want)
 			}
 		}
@@ -600,9 +600,8 @@ func tasksPolishFixture() (session.World, session.UsageWindow, time.Time) {
 // tasksOpen is one reading with every fold open, for the tests that are about
 // something other than folding.
 //
-// EVERY CONVERSATION AND EVERY FAMILY OPENS SHUT (the owner's ruling — see
-// [tasksReading.opens]). A test written to look at a piece of work would be
-// looking at the root standing over it instead, so it says which it means by
+// EVERY CONVERSATION AND EVERY FAMILY OPENS SHUT. A test written to look at a piece of
+// work would be looking at the root standing over it instead, so it says which it means by
 // asking for this. The tests that are ABOUT the folds do not call it.
 func tasksOpen(r tasksReading) tasksReading {
 	r.unfolded = true
@@ -659,7 +658,7 @@ func TestTheTaskNameIsWholeBeforeAnyFactGetsACell(t *testing.T) {
 	// row, because a row that has already spent the one thing it was drawn to
 	// say may not spend cells on a figure as well.
 	item := reading.items[0]
-	narrow := plain(tasksRow(tasksLine{kind: tasksLineTask, item: item}, 30, now, tasksSort{}, newPalette(tokens.NoColor, false), false))
+	narrow := plain(tasksRow(tasksLine{kind: tasksLineTask, item: &item}, 30, now, tasksSort{}, newPalette(tokens.NoColor, false), false))
 	if strings.Contains(narrow, "$") || strings.Contains(narrow, rowSep) {
 		t.Fatalf("a frame too narrow for the name alone drew\n  %s\nwant the cut name and no facts beside it", narrow)
 	}

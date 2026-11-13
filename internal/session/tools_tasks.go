@@ -69,7 +69,13 @@ import (
 // stated once, on the page's own routing table, rather than once per tool here —
 // eighteen descriptions each carrying their own routing clause is the same table
 // written eighteen times and billed on every request of every turn.
-const tasksDescription = "Find tasks. A finished task is asked about with `tasks` and is never redone or rechecked by hand. No id searches; an id reads, steers, stops, forwards, continues or settles one. To END running work use stop; say may be ignored. Never to WAIT for handed-off work. Search includes other windows' live work as `another window`, with no id here."
+const tasksDescription = tasksDescriptionCore + " Search includes other windows' live work as `another window`, with no id here."
+
+// tasksDescriptionOwnWork is the same contract for a conversation told only
+// about its own work (scope.go), whose search reaches no other window.
+const tasksDescriptionOwnWork = tasksDescriptionCore + " Search lists only this conversation's own work: other windows and other projects are hidden from it, even with scope everywhere."
+
+const tasksDescriptionCore = "Find tasks. A finished task is asked about with `tasks` and is never redone or rechecked by hand. No id searches; an id reads, steers, stops, forwards, continues or settles one. To END running work use stop; say may be ignored. Never to WAIT for handed-off work."
 
 // The schema's `resolve` enum is INTERPOLATED from [TaskResolutions] rather
 // than typed out, because the landing note offers the same three words to the
@@ -220,9 +226,15 @@ func (a *Agent) tasksTool() bare.Tool {
 	if a.config.oneTaskRoad() {
 		schema = tasksSchemaWithNote
 	}
+	// AND THE DESCRIPTION SAYS WHOSE WORK A SEARCH REACHES, from the scope the
+	// page was told ([Agent.followWorkScopeLocked]).
+	description := tasksDescription
+	if a.ownWorkTold.Load() {
+		description = tasksDescriptionOwnWork
+	}
 	return bare.Tool{
 		Name:        "tasks",
-		Description: tasksDescription,
+		Description: description,
 		Schema:      json.RawMessage(schema),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed tasksArguments
@@ -375,7 +387,7 @@ func (a *Agent) taskSearchText(query string, limit int, scope string) string {
 	// THIS CONVERSATION'S OWN RUNS ARE LEFT TO THEIR STORE'S LISTING, which the
 	// tool puts above this one ([Agent.withoutOwnRunRows]).
 	out := taskRowsTextLimit(a.withoutOwnRunRows(a.taskRows()), query, limit)
-	if !a.tellsElsewhere() {
+	if !a.tellsElsewhere() || a.ownWorkOnly() {
 		return a.taskConversationHint(out)
 	}
 	now := time.Now()
@@ -598,7 +610,7 @@ func everyFamilyCount(groups []otherProjectFamilies) int {
 // machine, grouped by project, under the same query the search used.
 //
 //	running in other projects on this machine:
-//	wisp · /Users/ada/code/wisp
+//	wisp · /workspace/code/wisp
 //	  another window · Port the parser · running · running for 2m 3s
 //	    in the window called "parser work"
 //	  open here · Rewrite the docs · queued
@@ -1079,8 +1091,8 @@ func taskWhereWord(entry TaskIndexEntry) string {
 	return taskWhereNowhere
 }
 
-// taskRows is what this tool answers from: the project's whole index in a
-// conversation, and in a node ONLY THE CHILDREN IT HANDED OUT ITSELF.
+// taskRows is what this tool answers from: the project's index or only this
+// conversation's own rows, and in a node ONLY THE CHILDREN IT HANDED OUT ITSELF.
 //
 // The scope is applied here, at the one door, rather than in each of the three
 // ops: a search, a read, a steer and a resolve are four things to do with a
@@ -1088,7 +1100,20 @@ func taskWhereWord(entry TaskIndexEntry) string {
 func (a *Agent) taskRows() []TaskIndexEntry {
 	parent := a.config.taskID
 	if parent == 0 {
-		return a.TaskIndex()
+		rows := a.TaskIndex()
+		if a.config.InTask || !a.ownWorkOnly() {
+			return rows
+		}
+		a.mu.Lock()
+		session := a.sessionID()
+		a.mu.Unlock()
+		own := make([]TaskIndexEntry, 0, len(rows))
+		for _, row := range rows {
+			if row.SessionID == session {
+				own = append(own, row)
+			}
+		}
+		return own
 	}
 	a.mu.Lock()
 	session := a.sessionID()
@@ -1118,9 +1143,9 @@ func (a *Agent) taskRows() []TaskIndexEntry {
 // left to settle it in" and pointed at a stranger's worktree — over a node this
 // session was holding all along.
 //
-// A NAME STILL MEANS THE NEWEST. A slug is derived from a title and carries no
-// conversation in it, so "the nil-map task" said out loud means the last one
-// whoever ran it, exactly as it always did.
+// A NAME STILL MEANS THE NEWEST VISIBLE ROW. A slug is derived from a title
+// and carries no conversation in it, so the scope of the rows decides whose
+// "nil-map task" a name can reach.
 //
 // AND A NODE ASKS FOR NOTHING WIDER THAN ITS OWN FAMILY. Inside a node
 // [Agent.taskRows] is already only the pieces it handed out, and reaching into

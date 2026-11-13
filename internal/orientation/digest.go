@@ -27,7 +27,7 @@ import (
 // dropped, leaving the top-level tree and the README head. The bound is in
 // bytes (not UTF-16 code units) because the digest is Markdown read by the
 // model, and a model's token count tracks bytes more closely than JS string
-// length. 8000 bytes ≈ 2000 tokens, which is the budget a pi-harness leaf
+// length. 8000 bytes ≈ 2000 tokens, which is the budget a tool-using worker
 // spends on orientation total.
 const MaxBytes = 8000
 

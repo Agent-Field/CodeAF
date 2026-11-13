@@ -5,7 +5,7 @@ WHY THIS EXISTS. `git status --porcelain` was the whole measure of a cell's work
 and it is correct for the words road: chat edits the checkout and leaves the
 changes uncommitted. IT IS BLIND TO THE TASK ROAD. A task works in a git
 worktree, COMMITS, and merges back — so the checkout comes out clean and the
-cell records zero changed files over work that really happened. Wave 1d turned
+cell records zero changed files over work that really happened. An earlier implementation turned
 nine cells onto that road at once and every one of them was being under-read.
 
 So the work is the union of two things:
@@ -59,7 +59,7 @@ def worktrees(cell):
     A task does not edit the clone: it branches into its own worktree under the
     session folder (`<session>/trees/<n>`), works there, commits, and merges home
     only when it LANDS. So a cell whose task was still running — or was killed
-    while running, which is what the settle bug did to six wave-1f cells — has
+    while running, which is what the settle bug did to recorded cells — has
     all of its work here and none of it in the clone. Measuring only the clone
     reported those cells as "0 files changed" over eighteen minutes of real work.
 
@@ -108,7 +108,7 @@ def worktree_patch(cell):
 def patch(repo, base):
     """THE PATCH A JUDGE GRADES: everything that landed on the person's branch.
 
-    THE RULE, and it is the one wave 1h got wrong. A judge is grading what the
+    A judge grades what the
     attempt DELIVERED, and delivery means the clone's branch:
 
         base..HEAD          what a task committed and merged home, plus
@@ -117,9 +117,8 @@ def patch(repo, base):
 
     NOTHING FROM A TASK WORKTREE APPEARS HERE. A part working in
     `<session>/trees/N` that never merged has produced nothing the person can
-    use, and wave 1h's batch bundle proved how badly that reads when mixed in:
-    the judge was shown raw `<<<<<<< Updated upstream` conflict markers as if
-    they were the diff. Stranded work is real and worth recording, so it is
+    use. Raw conflict markers from an unmerged worktree must not appear in the
+    delivered diff. Stranded work is real and worth recording, so it is
     written separately by [worktree_patch] under its own heading — never here.
 
     The failure this replaces was quieter and worse: `git diff` alone is EMPTY

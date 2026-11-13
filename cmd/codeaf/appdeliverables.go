@@ -8,7 +8,6 @@ import (
 	"errors"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -77,7 +76,7 @@ func (e *appDeliverEnv) agent(id string) *appDeliverAgent {
 	if a, err := e.b.find(id); err == nil {
 		var workspace string
 		e.b.locked(func() { workspace = a.view.Workspace })
-		place := session.Place{Dir: filepath.Dir(a.transcript), Owned: true}
+		place := session.Place{Dir: session.DirOf(a.transcript), Owned: true}
 		out = &appDeliverAgent{
 			roots:     []string{workspace, place.Work(), place.Artifacts()},
 			folders:   []string{place.Work(), place.Artifacts()},
@@ -185,7 +184,8 @@ func (e *appDeliverEnv) wireOf(row session.DeliverableRow) (appwire.Deliverable,
 			out.PreviewUnavailable = "source_gone"
 			break
 		}
-		// The media source is the BASE row's; an update restates it.
+		// State updates restate a source; writes can publish a fresh source
+		// while retaining the deliverable's identity.
 		bare := row.Artifact
 		bare.Deliver = nil
 		if media, ok := session.MediaSourceOf(bare); ok {
@@ -233,29 +233,22 @@ func (b *appBackend) deliverScope(q appwire.DeliverablesQuery) (map[string]bool,
 		}
 		return map[string]bool{q.Agent: true}, nil
 	case "crew":
-		for _, closed := range []bool{false, true} {
-			crews, err := b.CrewList(closed)
-			if err != nil {
-				return nil, err
-			}
-			for _, crew := range crews {
-				if crew.ID != q.Crew {
-					continue
-				}
-				members := map[string]bool{}
-				for _, member := range crew.Members {
-					members[member.Agent] = true
-				}
-				if q.Member != "" {
-					if !members[q.Member] {
-						return nil, appwire.Errorf(appwire.CodeNotFound, "%s is not a member of this crew", q.Member)
-					}
-					return map[string]bool{q.Member: true}, nil
-				}
-				return members, nil
-			}
+		// The one crew, open or closed, read by id.
+		crew, err := b.CrewGet(q.Crew)
+		if err != nil {
+			return nil, err
 		}
-		return nil, appwire.Errorf(appwire.CodeNotFound, "there is no crew %s", q.Crew)
+		members := map[string]bool{}
+		for _, member := range crew.Members {
+			members[member.Agent] = true
+		}
+		if q.Member != "" {
+			if !members[q.Member] {
+				return nil, appwire.Errorf(appwire.CodeNotFound, "%s is not a member of this crew", q.Member)
+			}
+			return map[string]bool{q.Member: true}, nil
+		}
+		return members, nil
 	case appwire.ScopeTeams:
 		// The teams union is resolved against the request's own deadline
 		// (listTeamsUnion); falling through here would read as every conversation.
@@ -628,25 +621,28 @@ func appDeliverError(err error) error {
 	return appMediaError(err)
 }
 
-// artifactCreated says deliverable.changed (created) for one creation row the
+// artifactCreated says deliverable.changed (created) for an authored row the
 // session reported after a successful append. The agent is the conversation
 // whose own stream carried it, so ownership is the engine's and not a join the
-// app makes. The same append arriving twice is said once.
+// app makes. The same tool call arriving twice is said once, while later calls
+// updating the same deliverable invalidate its card again.
 func (b *appBackend) artifactCreated(agent string, live *appLive, change session.ArtifactChange) {
-	if live == nil || change.ID == "" || len(change.ID) > 128 {
+	if live == nil || change.ID == "" || len(change.ID) > 128 || len(change.Run) > 1024 || len(change.Call) > 1024 {
 		return
 	}
 	id := strings.Clone(change.ID)
+	sum := sha256.Sum256([]byte(change.Run + "\x00" + change.Call))
+	key := id + ":" + hex.EncodeToString(sum[:])
 	fresh := false
 	b.locked(func() {
 		if live.artifactSeen == nil {
 			live.artifactSeen = map[string]bool{}
 		}
-		if live.artifactSeen[id] {
+		if live.artifactSeen[key] {
 			return
 		}
-		live.artifactSeen[id] = true
-		live.artifactRecent = append(live.artifactRecent, id)
+		live.artifactSeen[key] = true
+		live.artifactRecent = append(live.artifactRecent, key)
 		fresh = true
 		if len(live.artifactRecent) > appMediaRecentMax {
 			delete(live.artifactSeen, live.artifactRecent[0])

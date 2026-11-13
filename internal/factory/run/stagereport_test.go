@@ -29,7 +29,7 @@ func TestAStepThatEndsInProseTwiceReportsOnTheTurnThatMust(t *testing.T) {
 			mu.Unlock()
 			// A MODEL THAT HONOURS tool_choice: it can only call the verb.
 			if c.Required() == stageResultTool {
-				_ = c.Spec.Stage.Report(ctx, factory.StageResult{Done: true, Output: "planned two edits"})
+				_ = c.Spec.Stage.Report(ctx, factory.StageResult{Done: true, Output: "planned two edits", Files: []string{"ledger.md"}})
 				return
 			}
 			c.Answer("all done")
@@ -356,7 +356,7 @@ func TestJobBudgetResumeKeepsChatAndDoesNotDoubleChargeLiveSpend(t *testing.T) {
 	if err := g.r.Launch(id); err != nil {
 		t.Fatal(err)
 	}
-	it := g.asked(id, "budget of $1 reached · $1 more, or stop?")
+	it := g.asked(id, "budget of $1 reached · job total $1 · raise it to $5, or stop?")
 	if it.Stream.Spent != 1 {
 		t.Fatalf("double charged %v", it.Stream.Spent)
 	}
@@ -364,8 +364,11 @@ func TestJobBudgetResumeKeepsChatAndDoesNotDoubleChargeLiveSpend(t *testing.T) {
 		t.Fatal(err)
 	}
 	it = g.waitState(id, factory.StateLanded)
-	if calls != 2 || it.Stream.Spent != 1 || it.Cap != 2 {
+	if calls != 2 || it.Stream.Spent != 1 || it.Cap != 5 {
 		t.Fatalf("calls %v spent %v cap %v", calls, it.Stream.Spent, it.Cap)
+	}
+	if got := it.Stream.Phases[0].StepCost(); got != 1 {
+		t.Fatalf("smaller same-segment result lowered step cost to %g, want 1", got)
 	}
 }
 
@@ -399,7 +402,7 @@ func TestJobBudgetCancelsNonChatExecutorWhenManagerSpends(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("shared cap did not cancel executor")
 	}
-	g.asked(id, "budget of $1 reached · $1 more, or stop?")
+	g.asked(id, "budget of $1 reached · job total $1 · raise it to $5, or stop?")
 	if err := g.r.Answer(id, true, ""); err != nil {
 		t.Fatal(err)
 	}

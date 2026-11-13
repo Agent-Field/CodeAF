@@ -51,7 +51,7 @@ func TestTheConnectOfferIsRaisedAnsweredAndWithdrawnOnTheQuestionsLane(t *testin
 	if answered.Question.Ref != ref {
 		t.Fatalf("the answered event is about %q, want %q", answered.Question.Ref, ref)
 	}
-	// AND THE RECORD KEEPS IT, which no family of this lane had before: an
+	// AND THE RECORD KEEPS IT, which no family of this test had before: an
 	// answer with no banked words leaves nothing anybody can read afterwards.
 	decisions := agent.Decisions()
 	if len(decisions) == 0 || !strings.Contains(decisions[len(decisions)-1].Head, "Notion") {
@@ -416,5 +416,46 @@ func TestTheStampSaysItsDayWhenItIsNotToday(t *testing.T) {
 		By: DecidedByPerson, At: today,
 	}) != "accepted "+today.Format("15:04") {
 		t.Fatalf("a stamp from today says more than its hour")
+	}
+}
+
+func TestPluginQuestionUsesAccountConnectedByAnotherSurface(t *testing.T) {
+	agent, _ := questionSession(t, "cccc3333cccc3333", nil)
+	hub := &fakeHub{keyService: true}
+	agent.connect = hub
+	events := watched(agent)
+	go func() {
+		for range events {
+		}
+	}()
+	asks, stop := agent.WatchQuestions()
+	defer stop()
+	done := make(chan string, 1)
+	go func() {
+		_, failed := agent.connectService(context.Background(), connectStatus{ID: "stripe", Name: "Stripe", Auth: "key"})
+		done <- failed
+	}()
+	raised := waitForAsk(t, asks, EventQuestion)
+	if raised.Question.Subject.Name != "stripe" {
+		t.Fatalf("missing plugin id: %+v", raised.Question)
+	}
+	hub.mu.Lock()
+	hub.keyConnected = true
+	hub.mu.Unlock()
+	if err := agent.ResolveQuestion(Answer{Kind: QuestionConnect, Ref: raised.Question.Ref, Key: "1"}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case failed := <-done:
+		if failed != "" {
+			t.Fatal(failed)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("connected plugin left the turn waiting")
+	}
+	hub.mu.Lock()
+	defer hub.mu.Unlock()
+	if hub.key != "" || hub.begins != 0 {
+		t.Fatal("the connection was attempted twice")
 	}
 }

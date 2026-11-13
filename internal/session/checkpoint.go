@@ -66,7 +66,7 @@ package session
 // it over would have, and asked the model to say in one line whether what was
 // left was one job or several independent parts. It was measured off-policy over
 // 240 completions against real recorded transcripts at the round-ten mark
-// (bench/oneroad/replay/RESULTS.md), and the finding that killed it is not that
+//, and the finding that killed it is not that
 // the answers were wrong. It is that THERE OFTEN WAS NO ANSWER: the running chat
 // model emitted a tool call instead of answering between 17% and 53% of the time,
 // depending on the phrasing. A mechanism whose decision is left to a model in
@@ -144,7 +144,7 @@ import (
 //
 // AND IT STAYS THERE, ON A SECOND MEASUREMENT THAT IS WORSE THAN THE FIRST. Read
 // off-policy over the same digests, the flash tier answered `(done)` on
-// HALF-FINISHED batches 15 times out of 18 (bench/oneroad/replay/RESULTS-2.md) —
+// HALF-FINISHED batches 15 times out of 18 —
 // which is not a cheaper reading of the work, it is the one answer that drops the
 // handover a person is owed ([checkpointSketch.saysDone] is what a `(done)`
 // corroborates). A tier that is wrong in that direction cannot be bought with any
@@ -515,7 +515,7 @@ const checkpointResultArrow = " → "
 // PINNED WORD FOR WORD because the wording is the measurement.
 //
 // It is variant C of four that were scored off-policy over 240 completions
-// (bench/oneroad/replay/RESULTS.md). What makes it the winner is not that it
+// . What makes it the winner is not that it
 // reasons better — it is that it asks for a DRAWING rather than a decision, and a
 // model asked to draw one line answers with one line. Across both models it left
 // nothing ambiguous and nothing unanswered, where every phrasing that asked for a
@@ -618,6 +618,9 @@ var errStageStays = errors.New("a factory step's reply stays in its step")
 // running stage to a person (cmd/codeaf's app_lend.go), and this is the one
 // door through which their move would have reached it.
 func (a *Agent) MoveTurnToTask() error {
+	if err := a.CheckWork(); err != nil {
+		return err
+	}
 	if a.config.mayStage() {
 		return errStageStays
 	}
@@ -1727,7 +1730,7 @@ func parseCheckpointSketch(answer string) checkpointSketch {
 // four-issue batch that is the shape kimi actually draws: it found the four-way
 // fork 6 times out of 6 at round ten and wrote it as parts-then-gather every
 // time, so the shipping parser read SPLIT on 2 of 12 batch reads where reading the
-// first stage reads 6 of 6 (bench/oneroad/replay/RESULTS-2.md). The cost of the
+// first stage reads 6 of 6. The cost of the
 // rule on the traps is 4 more splits out of 72 reads, every one a genuine
 // two-way `(A | B) > C`, which is a division the evidence gate and the reviewer
 // stand behind anyway (task_divide.go).
@@ -1873,14 +1876,8 @@ func unbracket(stage string) string {
 // unless `--one-model` put the conversation's own model there (auxiliary.go).
 // A session with no client at all is the same answer for the other reason.
 func (a *Agent) markReaderAbsent() bool {
-	a.mu.Lock()
-	source, floor := a.config.RolesSource, ""
-	if a.config.OneModel {
-		floor = a.model
-	}
-	a.mu.Unlock()
 	if a.hasClient() {
-		if _, err := roles.Ladder(roles.Source(source), roles.RoleMarkReader, floor); err == nil {
+		if _, err := a.roleLadder(roles.RoleMarkReader, ""); err == nil {
 			return false
 		}
 	}

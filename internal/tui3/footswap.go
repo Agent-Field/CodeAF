@@ -15,10 +15,10 @@ import (
 //	 › your sentence
 //	 $0.27 · ⟲ saved $0.0038 · 58% cached   66.8k/1.3M · 5%             38 tok/s · ⠹ working · 12s
 //
-// Home's foot was the other way round — its chords on the seam, its hint on the
-// last row — and the two boxes a person moves between most looked like two
-// different programs. The owner ruled that THE LOWEST LINE IS FOR KEYS on both,
-// and that the telemetry goes up onto the seam where the chords were:
+// Home's foot was the other way round — its chords on the seam, its hint on the last row —
+// and the two boxes a person moves between most looked like two different programs. THE
+// LOWEST LINE IS FOR KEYS on both, and that the telemetry goes up onto the seam where the
+// chords were:
 //
 //	─ glm-5.3-flash (deepinfra):high · ◇ asks ── $0.27 · 58% cached   66.8k/1.3M · 5%   ⠹ working · 12s ─
 //	 › your sentence
@@ -237,11 +237,7 @@ func (a *app) seamTelemetryLabel(ledger, alive []hudPart) (string, string) {
 // because it was fitted against the keys and not against the words standing
 // in for them.
 //
-// AND THE TIP COVERS THE PROJECT WHILE IT IS UP, since 2026-09-24 at the
-// owner's word (notice.go's THE CONVERSATION'S TIP): the same right end, the
-// same fitting to what the keys leave, with home's bulb before it and a cross
-// after it whose columns are recorded here too ([app.chatTipClose]). The
-// project is back the moment the tip goes.
+// The project is back the moment the tip goes.
 func (a *app) hintRow(width int) string {
 	a.homeDoor = hudSpan{}
 	a.seamProjectSpan = hudSpan{}

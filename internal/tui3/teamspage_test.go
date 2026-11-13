@@ -432,6 +432,7 @@ func TestTeamsDisbandedSubteamHasNoReopenAction(t *testing.T) {
 }
 
 // Contract 6.1: A linked local team with a history door draws its closing report in the closed pane.
+// F1 preserves the existing team surface contract with an explicit pairing gate.
 func TestLinkedLocalClosedTeamDrawsItsReport(t *testing.T) {
 	a, harbor, _ := teamsPlaceLabIDs(t)
 	p := teamstore.Packet{ID: "closing-report", Team: teamstore.Person, Origin: harbor,
@@ -441,7 +442,7 @@ func TestLinkedLocalClosedTeamDrawsItsReport(t *testing.T) {
 	if err := a.teamEdit(func(f *teamstore.File) error { return f.Close(harbor, a.now(), p.ID) }); err != nil {
 		t.Fatal(err)
 	}
-	door := localTeams(a.profileDir, &a.teamsDisk.watch)
+	door := localTeams(a.profileDir, &a.teamsDisk.watch, nil)
 	door.History = func(team string) ([]teamstore.Packet, error) {
 		if team == harbor {
 			return []teamstore.Packet{p}, nil
@@ -604,7 +605,7 @@ func TestTeamsMemberPressOpensChatsWithOriginatingOverlay(t *testing.T) {
 // does not edit this machine's.
 func TestTeamsSettingsTabOverHostIsReadOnlyAndSaysWhose(t *testing.T) {
 	a := placeApp(t)
-	a.host = "spark"
+	a.host = "tower"
 	drive(t, a, key(placeChord(pageSettings)))
 	for i, title := range settingTabs {
 		if title == tabTeams {
@@ -612,12 +613,12 @@ func TestTeamsSettingsTabOverHostIsReadOnlyAndSaysWhose(t *testing.T) {
 		}
 	}
 	a.sheet.build()
-	if note := a.sheet.footNote(); !strings.Contains(note, "on spark") {
+	if note := a.sheet.footNote(); !strings.Contains(note, "on tower") {
 		t.Fatalf("the Teams tab over --host says %q", note)
 	}
 	before := a.sheet.items[a.sheet.cursor].row.Value()
 	drive(t, a, key("enter"))
-	if a.sheet.edit != nil || !strings.Contains(a.sheet.msg, "spark") {
+	if a.sheet.edit != nil || !strings.Contains(a.sheet.msg, "tower") {
 		t.Fatalf("a Teams row took an edit over --host (msg %q)", a.sheet.msg)
 	}
 	if after := a.sheet.items[a.sheet.cursor].row.Value(); after != before {

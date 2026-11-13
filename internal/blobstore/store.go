@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
+	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
 // Store holds encrypted objects, addressed only by content (L5). It never sees
@@ -70,8 +72,15 @@ var (
 	ErrConflict    = errors.New("blobstore: rid exists with different bytes")
 	ErrUnreachable = errors.New("blobstore: unreachable") // transport; callers degrade
 	ErrFull        = errors.New("blobstore: full")        // quota or disk; retry later
-	ErrTooMany     = errors.New("blobstore: too many rids")
-	ErrDamaged     = errors.New("blobstore: stored data is damaged")
+	// ErrRelayFull distinguishes shared capacity while preserving callers' full-store handling.
+	ErrRelayFull = fmt.Errorf("blobstore: relay storage: %w: %w", ErrFull, wireauth.ErrRelayFull)
+	ErrTooMany   = errors.New("blobstore: too many rids")
+	ErrDamaged   = errors.New("blobstore: stored data is damaged")
+	// ErrAnswered is a server that was reached and failed the request
+	// without naming a refusal (a 500 from an uncaught error, say). It also
+	// matches ErrUnreachable, so callers that degrade on a broken server
+	// still do; only words for a person tell the two apart.
+	ErrAnswered = errors.New("blobstore: the server answered with an error")
 )
 
 // ValidRID reports whether s is 64 lowercase hex characters.

@@ -40,7 +40,7 @@ const (
 	// waits in seconds and a quarter of one is a whole scenario here.
 	thinkTypical = 250 * time.Millisecond
 	// thinkWatched is how many of those the process has seen. It is past the
-	// point `bench/lanelab/gosim`'s TestWhenTheThinkGateCloses measures the gate
+	// point `the benchmark harness`'s TestWhenTheThinkGateCloses measures the gate
 	// closing at, which is what makes this a test of the wire rather than a
 	// second measurement of the arithmetic.
 	thinkWatched = 40

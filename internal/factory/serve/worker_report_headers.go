@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 )
 
@@ -21,6 +22,13 @@ func workerReportHeaders(body *api.WorkerReport, headers http.Header) error {
 				body.Steps[i].Model = model
 			}
 		}
+	}
+	if raw := headers.Get(api.ModelSpendHeader); raw != "" {
+		var rows []factory.ModelUse
+		if len(raw) > 64<<10 || json.Unmarshal([]byte(raw), &rows) != nil {
+			return fmt.Errorf("invalid model spend")
+		}
+		body.Models = rows
 	}
 	if raw := headers.Get(api.StepChatsHeader); raw != "" {
 		var chats map[string]string
@@ -48,6 +56,12 @@ func workerReportHeaders(body *api.WorkerReport, headers http.Header) error {
 		for i := range body.Steps {
 			if state, ok := runtime[body.Steps[i].Name]; ok {
 				body.Steps[i].RoundLimit, body.Steps[i].Verification = state.RoundLimit, state.Verification
+				if state.VerificationFailureKey != "" {
+					if body.Steps[i].Result == nil {
+						return fmt.Errorf("verification failure key requires a step result")
+					}
+					body.Steps[i].Result.VerificationFailureKey = state.VerificationFailureKey
+				}
 			}
 		}
 	}

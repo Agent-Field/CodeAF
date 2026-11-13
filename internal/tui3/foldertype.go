@@ -2,7 +2,7 @@ package tui3
 
 // WHAT KIND OF THING A ROW IS, IN ONE CELL.
 //
-// The owner's reference (../reference-yazi.png) carries a small mark beside
+// The column browser layout carries a small mark beside
 // every name, and the 2026-09-08 review asks for the same thing here: a compact
 // visual navigation aid, so a directory of forty files can be scanned for "the
 // picture" or "the source" without reading a single name.

@@ -90,7 +90,7 @@ func forgetLiveSession(agent *Agent) {
 // WHAT IT IS FOR. λ — what a second of waiting is worth — is zero for work
 // nobody is waiting on, and that is a true statement about a run whose owner
 // has closed the window and a false one about a run they are watching land
-// (internal/session's loop.go, and bench/lanelab/REPORT.md for what the false
+// (internal/session's loop.go, and the implementation for what the false
 // version costs). It is deliberately coarse: it says a person is HERE, not that
 // they are looking at this particular node.
 func someoneIsWatching() bool {

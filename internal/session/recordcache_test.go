@@ -663,3 +663,72 @@ func BenchmarkRecordCache(b *testing.B) {
 		})
 	}
 }
+
+// A KEPT RECORD THAT NOBODY ASKS FOR GOES BACK TO THE HEAP. Paging a long
+// conversation wants the next page from the same parse, a few seconds later;
+// nothing wants a journal's whole reading an hour after the last page, and
+// eight of them held for the life of a desktop engine were most of its
+// resident set. Reading it again later is one parse.
+func TestAKeptRecordNobodyAsksForIsDroppedWhenItIdles(t *testing.T) {
+	clock := time.Now().Add(time.Hour)
+	dir := t.TempDir()
+	cache := NewRecordCache(RecordCacheLimits{Settle: time.Nanosecond, Now: func() time.Time { return clock }})
+	var paths []string
+	for _, name := range []string{"a.jsonl", "b.jsonl"} {
+		path := filepath.Join(dir, name)
+		writeRecord(t, path, recordJournal(6, false))
+		paths = append(paths, path)
+		read(t, cache, path)
+	}
+	if s := cache.Stats(); s.Entries != 2 || s.Retained == 0 {
+		t.Fatalf("stats = %+v, want both journals kept", s)
+	}
+	clock = clock.Add(recordCacheIdle / 2)
+	read(t, cache, paths[0]) // a hit: this one is in use again
+	clock = clock.Add(recordCacheIdle/2 + time.Second)
+	cache.Expire()
+	s := cache.Stats()
+	if s.Entries != 1 {
+		t.Fatalf("after the idle time %d records are kept, want only the one read since", s.Entries)
+	}
+	clock = clock.Add(recordCacheIdle)
+	cache.Expire()
+	if s := cache.Stats(); s.Entries != 0 || s.Retained != 0 {
+		t.Fatalf("stats = %+v, want an empty cache once nothing was read for the idle time", s)
+	}
+	read(t, cache, paths[1])
+	if s := cache.Stats(); s.Parses != 3 {
+		t.Fatalf("parses = %d, want two first readings and the expired journal read afresh", s.Parses)
+	}
+}
+
+func TestRecordExpirySchedulesTheEarliestRemainingDeadline(t *testing.T) {
+	first := filepath.Join(t.TempDir(), "first.jsonl")
+	second := filepath.Join(t.TempDir(), "second.jsonl")
+	writeRecord(t, first, recordJournal(1, false))
+	writeRecord(t, second, recordJournal(1, false))
+	now := time.Now().Add(time.Hour)
+	cache := NewRecordCache(RecordCacheLimits{Now: func() time.Time { return now }})
+	var delay time.Duration
+	var fire func()
+	cache.after = func(d time.Duration, f func()) func() { delay, fire = d, f; return func() {} }
+	read(t, cache, first)
+	if delay != 30*time.Second {
+		t.Fatalf("first deadline in %s, want 30s", delay)
+	}
+	now = now.Add(time.Second)
+	read(t, cache, second)
+	now = now.Add(29 * time.Second)
+	fire()
+	if got := cache.Stats().Entries; got != 1 {
+		t.Fatalf("first deadline kept %d entries, want 1", got)
+	}
+	if delay != time.Second {
+		t.Fatalf("next expiry in %s, want the remaining 1s", delay)
+	}
+	now = now.Add(time.Second)
+	fire()
+	if got := cache.Stats().Entries; got != 0 {
+		t.Fatalf("second deadline kept %d entries, want 0", got)
+	}
+}

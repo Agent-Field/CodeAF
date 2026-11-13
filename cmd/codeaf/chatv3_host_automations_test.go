@@ -36,7 +36,9 @@ func TestTheHostDoorReadsTheFarMachinesAutomations(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = loop.Close() })
 
-	options, _ := hostOptions(onePipeFleet("devbox", loop.Client), loop.Client.Welcome(), false)
+	fleet := onePipeFleet("devbox", loop.Client)
+	t.Cleanup(fleet.closeAll)
+	options, _ := hostOptions(fleet, loop.Client.Welcome(), false)
 	seam := options.Automations
 	if seam.List == nil || seam.Changes == nil || seam.Claim == nil || seam.Active == nil {
 		t.Fatal("the door hands a window over --host no automations seam, so it can draw none of that machine's automations")
@@ -84,7 +86,9 @@ func TestTheHostDoorReadsTheFarMachinesAutomations(t *testing.T) {
 		t.Fatalf("a ~ folder typed over --host was kept as %q, want the engine machine's %q", far.Workspace, filepath.Join(house, "app"))
 	}
 
-	bare, _ := hostOptions(onePipeFleet("devbox", hostedClient(t)), remote.Welcome{Version: remote.Version, Workspace: "/srv/app"}, false)
+	bareFleet := onePipeFleet("devbox", hostedClient(t))
+	t.Cleanup(bareFleet.closeAll)
+	bare, _ := hostOptions(bareFleet, remote.Welcome{Version: remote.Version, Workspace: "/srv/app"}, false)
 	if !reflect.ValueOf(bare.Automations).IsZero() {
 		t.Fatalf("an engine without the automations doors was handed a seam: %+v", bare.Automations)
 	}

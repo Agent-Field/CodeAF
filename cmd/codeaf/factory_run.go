@@ -15,6 +15,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
@@ -78,7 +79,9 @@ func factoryRunnerDoors(st *store.Store) factory.LocalOption {
 	if err != nil {
 		return nil
 	}
-	return factory.WithRunner(lease.NewDoors(desk))
+	return factory.WithRunner(lease.NewDoors(desk).WithTalk(sessionTalk{}).WithStartRead(func(ctx context.Context, it factory.Item) (pipeline.File, error) {
+		return factoryJobRead(ctx, st, it, st.CheckoutDir(factory.RepoOf(it)))
+	}))
 }
 
 // startFactoryWorker builds this process's shaping door and, unless
@@ -111,7 +114,7 @@ func startFactoryWorker(st *store.Store, workspace, profileDir string, parent se
 				// The session `codeaf runner join` kept for this machine.
 				credentials.SetFactorySession(a.URL, a.Token)
 			}
-			host := &appFactoryHost{ctx: ctx, floor: st, workspace: workspace, profile: profileDir, credentials: credentials, parent: factoryWorkerParent, defaultTarget: func() (factoryTarget, error) { return resolveFactory(st, factorySeam(st, workspace, profileDir)) }}
+			host := &appFactoryHost{ctx: ctx, floor: st, workspace: factoryHostWorkspace(workspace), profile: profileDir, credentials: credentials, parent: factoryWorkerParent, defaultTarget: func() (factoryTarget, error) { return resolveFactory(st, factorySeam(st, workspace, profileDir)) }}
 			host.workers()
 		})
 	})
@@ -176,9 +179,19 @@ func setFactoryProcess(change func()) {
 // is handed no ledger: what a round spent goes on the item (its spend, its
 // cap, today's rail) and nowhere else.
 func buildFactoryRunner(items, floor *store.Store, workspace, profileDir string, maker factoryrun.ConversationMaker, turns *shapeTurns) *factoryrun.Runner {
+	return buildFactoryRunnerWith(items, floor, workspace, profileDir, maker, turns, nil, nil, nil)
+}
+
+// buildFactoryRunnerWith is [buildFactoryRunner] with the run a job filed
+// with run_on is handed to (factory_agentfield_run.go); nil refuses one.
+func buildFactoryRunnerWith(items, floor *store.Store, workspace, profileDir string, maker factoryrun.ConversationMaker, turns *shapeTurns, remote func(context.Context, int) error, step factoryrun.Executor, answer func(context.Context, int, factory.AgentFieldDecision) error) *factoryrun.Runner {
 	dirs := factoryRepoDirs(floor, workspace)
-	recipe := func(repo string) factory.Recipe {
-		return factoryItemRecipe(dirs, factory.Item{Repo: repo})
+	// EVERY BOUND ON A JOB IS THE FILE IT WAS DECIDED ON at its first start:
+	// the factory's copy it carries, else main's file here
+	// ([factoryItemRecipe]). No store copy is read: the factory that handed
+	// the job over, this machine's or a remote one, decided its file.
+	recipe := func(it factory.Item) factory.Recipe {
+		return factoryItemRecipe(nil, dirs, it)
 	}
 	source := factorySource(floor, profileDir)
 	money := factoryrun.NewMoney(items, nil, time.Now)
@@ -207,7 +220,7 @@ func buildFactoryRunner(items, floor *store.Store, workspace, profileDir string,
 			factory.StagePost: factoryrun.NewPostExecutorWith(factoryrun.PostOptions{
 				Record: history,
 				Source: source,
-				Policy: func(repo string) []string { return recipe(repo).Policy },
+				Policy: func(it factory.Item) []string { return recipe(it).Policy },
 				Push:   factoryrun.GitPush(pushGit),
 			}),
 			// A GATE IS A PERSON, and the loop answers it before it would look
@@ -224,8 +237,11 @@ func buildFactoryRunner(items, floor *store.Store, workspace, profileDir string,
 		// AND A REPOSITORY WITH NO CHECKOUT HERE IS CLONED FIRST, into this
 		// machine's factory folder, over the token the push uses
 		// (factory_clone.go).
-		Workdir:   factoryRunWorkdir(floor, dirs, workdirs, factoryTokenOf(profileDir)),
-		Recipe:    recipe,
+		Workdir: factoryRunWorkdir(floor, dirs, workdirs, factoryTokenOf(profileDir)),
+		Recipe:  recipe,
+		RulesAfterClone: func(ctx context.Context, it factory.Item) (pipeline.File, error) {
+			return factoryJobRead(ctx, floor, it, dirs(it.Repo))
+		},
 		Source:    source,
 		Publisher: factoryPublisher(profileDir),
 		// APPROVING PUBLISHES (internal/factory/run's publish.go): the job's
@@ -252,6 +268,15 @@ func buildFactoryRunner(items, floor *store.Store, workspace, profileDir string,
 	// it none.
 	if turns != nil {
 		opts.Inbox = turns.Inbox
+		opts.FailureSummary = turns.FailureSummary
+	}
+	opts.Remote = remote
+	opts.AgentFieldAnswer = answer
+	// AN AGENTFIELD STEP RUNS OVER THE SAME CONNECTION AS A run_on JOB: a
+	// runner with no AgentField connection has no executor for it, and the
+	// step fails with the runner's sentence for a kind it cannot run.
+	if step != nil {
+		opts.Exec[factory.StageAgentField] = step
 	}
 	return factoryrun.New(opts)
 }

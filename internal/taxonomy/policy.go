@@ -263,7 +263,7 @@ func waitsForEver(e Evidence) bool {
 //
 // It had one until 2026-09-11: `Limits.TransportAttempts`, a count of sends,
 // walked by a caller whose transport was ALREADY bounded by the plan's deadline
-// (docs/design/recovery/DESIGN.md §4). Two budgets on one axis multiply, and the
+// . Two budgets on one axis multiply, and the
 // person could be told neither. So the deadline is the whole bound and it
 // reaches this policy the way every other fact does — as evidence: a caller
 // whose plan is spent says so ([Evidence.Spent]), which is answered above this

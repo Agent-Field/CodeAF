@@ -46,7 +46,7 @@ func TestJobScreensAStoppedJobSaysSoUntilUndoOrStart(t *testing.T) {
 	it := f.create(t, factory.Item{State: factory.StateRunning, Assignee: "sam", Stages: stages, Stream: recordedRun()})
 	f.post(t, it, "stop", "{}", 200)
 	j := f.read(t, it)
-	if j.State != "needs_you" || j.Failure == nil || j.Failure.Code != factory.CodeStopped || j.Failure.Next != factory.FailureStopped || j.Failure.Step != "write" || j.Failure.Detail != "Stopped by you" {
+	if j.State != "backlog" || j.Failure == nil || j.Failure.Code != factory.CodeStopped || j.Failure.Next != factory.FailureStopped || j.Failure.Step != "write" || j.Failure.Detail != "Stopped by you" {
 		t.Fatalf("the stopped job does not say so: %s %+v", j.State, j.Failure)
 	}
 	if j.StatePresentation.Kind != "failed" || j.StatePresentation.Title != "Step stopped" || j.Cost != 1.25 {
@@ -98,18 +98,18 @@ func TestJobScreensStopRerunKeepsEarlierWorkAndRevokesLease(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.post(t, it, "steps/write/stop", `{"expect":{"step":"plan"}}`, 409)
 	f.person = "mei"
 	f.post(t, it, "steps/write/stop", "{}", 403)
 	f.person = "sam"
 	f.post(t, it, "steps/missing/stop", "{}", 404)
 	f.post(t, it, "steps/plan/stop", "{}", 409)
-	f.post(t, it, "steps/write/stop", "{}", 200)
+	// Stop is the same wish after any progress: a stale read doesn't refuse it.
+	f.post(t, it, "steps/write/stop", `{"expect":{"step":"plan"}}`, 200)
 	if _, err := desk.Heartbeat(held.Job, worker.ID); err == nil {
 		t.Fatal("old lease still accepts a heartbeat")
 	}
 	j := f.read(t, it)
-	if j.State != "needs_you" || j.StatePresentation.Title != "Step stopped" || !j.Controls.RerunStep || j.Controls.StopStep || j.Cost != 1.25 {
+	if j.State != "backlog" || j.StatePresentation.Title != "Step stopped" || !j.Controls.RerunStep || j.Controls.StopStep || j.Cost != 1.25 {
 		t.Fatalf("stop: %+v", j)
 	}
 	f.post(t, it, "steps/proof/rerun", "{}", 409)
@@ -300,7 +300,7 @@ func TestJobScreensStatePresentationOnQueueAndJobReads(t *testing.T) {
 func TestJobScreensPublishedRoutesAreRegistered(t *testing.T) {
 	f := newV2Jobs(t)
 	for _, route := range api.ServiceRoutes {
-		path := strings.NewReplacer("{id}", "999", "{sid}", "write", "{card}", "missing", "{owner}", "acme", "{repo}", "api").Replace(route.Path)
+		path := strings.NewReplacer("{id}", "999", "{sid}", "write", "{card}", "missing", "{spot}", "1", "{owner}", "acme", "{repo}", "api").Replace(route.Path)
 		w := verbRequest(f.h, route.Method, path, "{}")
 		if w.Code == 405 || strings.Contains(w.Body.String(), "factory endpoint not found") {
 			t.Fatalf("unregistered %s %s: %s", route.Method, route.Path, w.Body.String())
@@ -353,4 +353,54 @@ func TestJobScreensLiveEditsRecompileTailAndRevokeOldWorker(t *testing.T) {
 		t.Fatalf("live edit: %+v", cur)
 	}
 	f.post(t, it, "step-edits", `{"ask":{"write":"too late"}}`, 409)
+}
+
+// A JOB'S PERSON REMOVES AND MOVES ITS STEPS through the same door and bounds
+// as every other step edit: a move says where it goes, proof stays, and only
+// the job's person edits.
+func TestJobScreensRemoveAndMoveAStepOfOneJob(t *testing.T) {
+	f := newV2Jobs(t)
+	f.seam.Edit = factory.LocalSeam(f.st, now).Edit
+	reopenJobs(t, f)
+	it := f.create(t, factory.Item{State: factory.StateNew, Assignee: "sam", Stages: []factory.Stage{
+		{Name: "write", Kind: factory.StageChat, Ask: "write it", On: true},
+		{Name: "pretest", Kind: factory.StageChat, Ask: "run the old tests", On: false},
+		{Name: "docs", Kind: factory.StageChat, Ask: "say it", On: true},
+		{Name: "proof", Kind: factory.StageChat, Ask: "prove", Fixed: true, On: true},
+	}})
+	f.post(t, it, "step-edits", `{"move":[{"step":"docs"}]}`, 422)
+	f.post(t, it, "step-edits", `{"remove":["proof"]}`, 409)
+	f.person = "mei"
+	f.post(t, it, "step-edits", `{"remove":["pretest"]}`, 403)
+	f.person = "sam"
+	f.post(t, it, "step-edits", `{"remove":["pretest"],"move":[{"step":"docs","after":""}],"why":"docs first"}`, 200)
+	cur, _ := f.st.Get(it.ID)
+	if len(cur.Stages) != 3 || cur.Stages[0].Name != "docs" || cur.Stages[1].Name != "write" || cur.Stages[0].By != factory.ByYou {
+		t.Fatalf("stages = %+v", cur.Stages)
+	}
+	if strings.Join(cur.Adapted, " · ") != "you removed pretest · you moved docs first · why: docs first" {
+		t.Fatalf("record = %q", cur.Adapted)
+	}
+}
+
+// A STEP EDIT IS BOUNDED BY THE FILE THE JOB RUNS: the factory's copy it
+// carries fixes docs, which main's file does not, so its person may not
+// remove docs from it; the same job under main's file may.
+func TestJobScreensAStepEditIsBoundedByTheCopyTheJobCarries(t *testing.T) {
+	f := newV2Jobs(t)
+	f.seam.Edit = factory.LocalSeam(f.st, now).Edit
+	reopenJobs(t, f)
+	stages := []factory.Stage{
+		{Name: "write", Kind: factory.StageChat, Ask: "write it", On: true},
+		{Name: "docs", Kind: factory.StageChat, Ask: "say it", On: true},
+		{Name: "proof", Kind: factory.StageChat, Ask: "prove", Until: factory.UntilProven, On: true},
+	}
+	carried := &factory.PipelineCopy{Repo: "acme/api", Text: "pipeline:\n  issue: [write, docs, proof]\nsteps:\n  docs: say it\nfixed: [docs]\n", By: "test-owner", At: now}
+	it := f.create(t, factory.Item{State: factory.StateNew, Assignee: "sam", Stages: factory.CopyStages(stages), PipelineCopy: carried})
+	f.post(t, it, "step-edits", `{"remove":["docs"]}`, 409)
+	if cur, _ := f.st.Get(it.ID); len(cur.Stages) != 3 {
+		t.Fatalf("the copy's fixed step went: %+v", cur.Stages)
+	}
+	plain := f.create(t, factory.Item{State: factory.StateNew, Assignee: "sam", Stages: factory.CopyStages(stages)})
+	f.post(t, plain, "step-edits", `{"remove":["docs"]}`, 200)
 }

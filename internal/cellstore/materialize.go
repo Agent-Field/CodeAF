@@ -2,9 +2,12 @@ package cellstore
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
+	"os"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/taskcopy"
 )
 
 // Capture snapshots the cell's folder as it stands and answers the snapshot
@@ -18,6 +21,13 @@ func (e Engine) Capture(ctx context.Context, c cell.Cell) (string, error) {
 	if err := e.recoverCompleted(ctx, c); err != nil {
 		return "", err
 	}
+	// Recovery can seal independently; acquire after it to avoid nesting this
+	// process lock while still fencing composition through the native snapshot.
+	release, err := taskcopy.LockWorkspaceCheckpoint(ctx, c)
+	if err != nil {
+		return "", err
+	}
+	defer release()
 	if err := e.composeExtra(c); err != nil {
 		return "", err
 	}
@@ -64,11 +74,11 @@ func (e Engine) screenCapture(ctx context.Context, c cell.Cell) error {
 // of a completed external call even if death preceded its background seal (D4,
 // L9). Incomplete intents remain unresolved and are never executed here.
 func (e Engine) recoverCompleted(ctx context.Context, c cell.Cell) error {
-	_, recovery, err := OpenWAL(e.WALPath(c))
+	_, recovery, err := openRecovery(c, e.WALPath(c))
 	if err != nil {
 		return err
 	}
-	if len(recovery.Completed) == 0 {
+	if len(recovery.Completed) == 0 && len(recovery.Models) == 0 {
 		return nil
 	}
 	_, err = e.SealRecovered(ctx, c)
@@ -79,13 +89,47 @@ func (e Engine) recoverCompleted(ctx context.Context, c cell.Cell) error {
 // same turn before take-back sets them aside as a branch (D4, L9). A call that
 // only returned external output is still work; incomplete intents stay local.
 func (e Engine) SealRecovered(ctx context.Context, c cell.Cell) (Sealed, error) {
-	wal, recovery, err := OpenWAL(e.WALPath(c))
+	wal, recovery, err := openRecovery(c, e.WALPath(c))
 	if err != nil {
 		return Sealed{}, err
 	}
-	sealed, err := e.Seal(ctx, c, TurnInfo{Calls: recovery.Completed, Changed: changedOf(recovery.Completed)})
-	if err != nil || len(recovery.Completed) == 0 {
+	models, err := unsealedModels(c, recovery.Models)
+	if err != nil {
+		return Sealed{}, err
+	}
+	sealed, err := e.Seal(ctx, c, TurnInfo{Calls: recovery.Completed, Models: models, Changed: changedOf(recovery.Completed)})
+	if err != nil || len(recovery.Completed) == 0 && len(recovery.Models) == 0 {
 		return sealed, err
 	}
-	return sealed, wal.Sealed(recovery.Completed)
+	return sealed, wal.Sealed(recovery.Completed, recovery.Models...)
+}
+
+// StageAdmission reads only the incoming workspace policy and checkpoint into
+// private scratch space. Ordinary chats need no full tree before their lease.
+func (e Engine) StageAdmission(ctx context.Context, c cell.Cell, head string) error {
+	return e.stageIncoming(ctx, c, head, []string{cell.MetaPath, cell.StateDir + "/session.json", cell.StateDir + "/tasks.json", taskcopy.WorkspaceCarrierPath + "/manifest.json"})
+}
+
+// StageWorkspace restores a workspace for admission in an independent timeline,
+// leaving the real chat's binding and folder untouched if admission refuses it.
+func (e Engine) StageWorkspace(ctx context.Context, c cell.Cell, head string) error {
+	return e.stageIncoming(ctx, c, head, nil)
+}
+
+func (e Engine) stageIncoming(ctx context.Context, c cell.Cell, head string, paths []string) error {
+	if err := os.MkdirAll(c.Root, 0700); err != nil {
+		return err
+	}
+	target := e.target(c)
+	target.Tree, target.CellDir = canonicalTree(c.Root), ""
+	// Filing a copy changes its next staging folder. Detached timelines retain
+	// their folder binding, so admission identity belongs to the scratch path.
+	target.Timeline = fmt.Sprintf("incoming-admission-%x", sha256.Sum256([]byte(target.Tree)))
+	transport := Spawn{Binary: e.Binary, Run: e.Run}
+	if _, err := transport.Do(ctx, target, indexScratchOp{}); err != nil {
+		return err
+	}
+	defer func() { _, _ = transport.Do(ctx, target, indexScratchOp{forget: true}) }()
+	_, err := transport.Do(ctx, target, restoreOp{Snapshot: head, Paths: paths})
+	return err
 }

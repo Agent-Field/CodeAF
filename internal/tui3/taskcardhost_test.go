@@ -266,7 +266,7 @@ func TestAHostedRunningRoomFillsOnItsOwnBoundedBeat(t *testing.T) {
 // A HOSTED CARD NEVER OPENS A FILE ON THIS DISK. The path on the record is the
 // engine's; a read of it here is either nothing or a stranger's file, and it is
 // the read that produced the wrong sentence in the first place. The pin is a
-// REAL journal at the far path, made on this machine — if anything in this lane
+// REAL journal at the far path, made on this machine — if anything in this test
 // ever falls back to the local disk, this is what it would find.
 //
 // A HOSTED JOB'S LOG IS THE SAME LAW ON THE OTHER SURFACE, and it is pinned

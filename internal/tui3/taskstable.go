@@ -103,7 +103,7 @@ func tasksAgeHeaderHit(x, width int) bool {
 // ([tasksReasonLine]). It was on the row for as long as this page has existed and
 // it is what made the right edge prose.
 func tasksStateField(line tasksLine) rowField {
-	item := line.item
+	item := *line.item
 	if note := tasksNote(item); note != "" {
 		// THE WORDS FIRST AND THE WINDOW'S NAME AFTER THEM. `another window ·
 		// Fix the nil-map crash` is thirty-eight cells and this column has twenty,

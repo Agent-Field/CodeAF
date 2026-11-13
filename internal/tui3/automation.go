@@ -1,7 +1,7 @@
 package tui3
 
 // automation.go is how an automation touches a conversation
-// (docs/design/automations/DESIGN.md): the card a proposal raises, the one dim
+//: the card a proposal raises, the one dim
 // line a change to an automation writes, and the one dim line a finished run
 // writes into the conversation that made it.
 //

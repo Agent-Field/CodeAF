@@ -225,16 +225,16 @@ conversation is already running under another, codeaf says so in one line and op
 conversation in this terminal instead, where the flag is real. That one ends when the
 terminal does.
 
-## What typing from spark now means, and why my input box is one line
+## What typing from tower now means, and why my input box is one line
 
 It means another window on this conversation has the keyboard, and this one is watching.
 Where your input box was, there is one dim line instead:
 
 ```
-typing from spark now                                     enter takes it back
+typing from tower now                                     enter takes it back
 ```
 
-`spark` is the machine the other window is on — the name that machine calls itself, with
+`tower` is the machine the other window is on — the name that machine calls itself, with
 any domain trimmed off it. A second window on **this** machine reads as `another window`
 instead, which is what codeaf calls a conversation open somewhere else everywhere. A
 machine that could not say its own name gets `another window` too.
@@ -281,7 +281,7 @@ window and get on with something else on this machine.
 You get one sentence back from the machine holding the conversation:
 
 ```
-the keyboard is on spark right now — press enter here to move it here
+the keyboard is on tower right now — press enter here to move it here
 ```
 
 or, for a window on this same machine, `the keyboard is in another window right now — press
@@ -471,19 +471,27 @@ it says `no engine is holding /home/you/api on this machine`. `--status-all` doe
 workspace this machine has an engine folder for. As with `--stop`, no `--workspace` means
 your home directory.
 
+## An older engine holds the chat — why its models can't be changed in the app
+
+The desktop app opens a chat that an older codeaf engine holds, and you can read it there.
+Its models stay as that engine set them, and a pick answers `An older codeaf engine holds
+this conversation, so its models can't be changed here. Stop that engine, then open this
+chat again to change them.` The same sentence shows in the chat when it opens. Closing the
+older window is not enough while its engine runs on: `codeaf engine stop` ends it.
+
 ## An older engine cannot move chats — what happens when a new window needs them
 
 Moving chats is available by default on Linux, macOS and native Windows with a compatible engine.
 An older engine may lack that capability. **An idle engine without it is restarted**,
 with one line saying so: `restarted the idle engine because it ran without moving chats; moving chats available now`.
 **An engine that is still working is left alone** and the window says what to do:
-let that finish, or run `codeaf engine --stop --workspace <folder>` and open again.
+finish that work, close every window for the workspace, and open again.
 
 **A chat can read as running after every window closed.** That is on purpose: the engine keeps
 a chat's lock so you can come back and be in it. It lets go on its own after the chat has
 been idle for 30 minutes, and the engine itself leaves two minutes after its last chat. Until
 then `codeaf cell gc` and the cell commands pass over that chat as running, and say how long
-the wait is; `codeaf engine --stop` lets go at once.
+the wait is; finish work and close every window for the workspace before reopening.
 
 ## Rebuilt codeaf but your conversation was still on the old engine — how codeaf tells you
 
@@ -511,7 +519,7 @@ next safe launch — after the work is done and every window has left — opens 
 
 For a safe update, let active turns and tasks finish, close **every window for this workspace**, then reopen with the updated binary. `engine --status --workspace <path>` names the running build and attached windows. Attached windows count as in use even when no reply is running; status does not treat that alone as proof of an active turn.
 
-The startup note also gives an explicit, shell-quoted `engine --stop --workspace <path>` command using the installed executable (for example `devaf`). Run it on the named machine only when ready: **it interrupts active turns and tasks in that workspace**. Reconnect afterward with the updated build. Other workspace engines are unaffected.
+The startup note asks you to finish work and close every window for this workspace before reopening. Stopping the engine while another window remains open makes that window start it again; it does not complete the update.
 
 When both ends support restart detection, that reconnect retires the old reply channels
 before displaying new replies. If an answer was still open, the window says
@@ -523,8 +531,7 @@ loss to the same running engine still resumes its existing answer.
 days ago is older, and so is one too old to say. **A newer engine is never replaced** by an
 older codeaf — that window joins it — and two copies of one build never take the slot from
 each other. An older engine on another wire, or one too old to be asked at all, is refused
-with `codeaf engine --stop --workspace '<path>'` named, and nothing is signalled behind your
-back. It used to be the other way round for a busy engine: it was killed and replaced, which
+with advice to finish work and close every window for that workspace before reopening. On Unix, a newer incompatible engine hands the bridge to its own executable once; if the file cannot be used, the refusal names that file and the installed program's update command. Nothing is signalled behind your back. It used to be the other way round for a busy engine: it was killed and replaced, which
 is the rule this page no longer states.
 
 ## What still does not work, even though the session stays open
@@ -655,7 +662,7 @@ the same stream and its recorded events.
 ## Are saved memories available on the default engine launch?
 
 Yes. Plain `codeaf` holds the conversation in this machine's engine and reads
-its memories. `/memory` or `alt+8` opens the Memories tab; `/remember <text>`
+its memories. `/memory` or `alt+8` opens the Memory tab; `/remember <text>`
 keeps one line, `/memories` lists them, and the tab forgets one. The page and commands use the same engine store. A demo
 home's seeded lines are available on this road too.
 
@@ -663,5 +670,12 @@ Over `--host`, these same doors reach the other machine's store. When a
 machine's memory store could not be opened, the page and the commands say so
 (`memory is unavailable in this conversation · the store could not be opened`
 here, `memory is unavailable on this machine · …` from a far engine). The
-`notice things to remember` row is read on every turn, so even an engine that
-has been running for days follows a change from the next turn.
+`learn from chats and jobs` row is read at every memory step, so even an engine
+that has been running for days follows a change without a restart. Off stops
+automatic memory model calls; saved lines remain available.
+
+## Executable handoff on Windows
+
+Windows cannot replace the running bridge in place. When a newer engine needs a
+different version, this launch stops cleanly and names the installed program’s
+update command. It leaves the existing conversation and its windows running.

@@ -57,6 +57,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -109,7 +110,7 @@ const (
 	// is news, and it asks for nothing.
 	//
 	// A HARNESS-AUTHORED MESSAGE CARRIES ITS OWN READING INSTRUCTION, which is
-	// the delivery class docs/design/prompt-diet/DESIGN.md §2 files this under.
+	// the delivery class the implementation §2 files this under.
 	// Saying it here costs the turn a job ends on; saying it on the page cost
 	// every request of every turn.
 	//
@@ -496,12 +497,12 @@ func (j *job) stillOwed() bool {
 	return j.owed
 }
 
-// markPersonStopped records that the kill about to be asked for is a person's.
-// It is called BEFORE [job.requestKill]; see the field.
-func (j *job) markPersonStopped() {
+// markPersonStopped claims the completion note before a person requests a
+// kill, or returns that ending to the reaper when the stop remains unproven.
+func (j *job) markPersonStopped(stopped bool) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	j.personStopped = true
+	j.personStopped = stopped
 }
 
 // stoppedByPerson reports whether this job's requested death is a person's stop.
@@ -522,6 +523,10 @@ func (j *job) settledKilled() bool {
 	return j.state == jobKilled
 }
 
+// waitJobTree is the platform completion barrier, replaceable by the contract
+// test so a leader exit and a still-live launch can be presented independently.
+var waitJobTree = processgroup.WaitEmpty
+
 // settle makes a job final: the log is closed, the status fields stop moving,
 // and done is released. It reports whether the death was REQUESTED, which is
 // the one thing the caller needs to decide whether to say anything about it.
@@ -530,6 +535,11 @@ func (j *job) settledKilled() bool {
 // job's middle — the reaper for a process, the timer loop for a watch — which
 // is what makes the close of done safe without a second flag guarding it.
 func (j *job) settle(code int) bool {
+	if j.cmd != nil && j.cmd.Process != nil {
+		// A managed Windows launch stays running after its leader exits while
+		// any descendant remains. Foreground command returns are separate.
+		_ = waitJobTree(j.cmd.Process.Pid, 0)
+	}
 	// The log file closes before the status is final, so a reader that sees a
 	// finished job sees a complete file. Closing it only ASKS the registry for
 	// a folder pass ([jobRegistry.askRetention]); the sweep itself never runs
@@ -583,6 +593,9 @@ func (j *job) signal(sig syscall.Signal) {
 // for a turn: a job started in one turn is still running, and still listable,
 // three turns later, and Close is what ends it.
 type jobRegistry struct {
+	// workStarted wakes the owner after a job becomes visible to StopWork.
+	workStarted func()
+
 	// renderMu makes "count the running renders, then add one" one step, so two
 	// renders starting together cannot both pass the cap.
 	renderMu sync.Mutex
@@ -947,6 +960,9 @@ func (r *jobRegistry) join(started *job) error {
 	}
 	r.jobs = append(r.jobs, started)
 	r.mu.Unlock()
+	if r.workStarted != nil {
+		r.workStarted()
+	}
 	return nil
 }
 
@@ -1191,6 +1207,17 @@ func (r *jobRegistry) start(command string) (*job, error) {
 	return r.startIn(command, "")
 }
 
+// jobStartError is a background job's start error. A refusal the platform can
+// explain leads with that reason, which the background-job tool puts on its
+// first line; the original error stays wrapped either way.
+func jobStartError(goos string, err error) error {
+	reason, advice := shell.StartFailure(goos, err)
+	if reason == "" {
+		return fmt.Errorf("could not start the command: %w", err)
+	}
+	return fmt.Errorf("%s\n%s\nWindows said: %w", reason, advice, err)
+}
+
 // startIn is [jobRegistry.start] held to one folder ([jobRegistry.newJobIn]).
 func (r *jobRegistry) startIn(command, want string) (*job, error) {
 	return r.startInUnder(context.Background(), command, want)
@@ -1204,6 +1231,9 @@ func (r *jobRegistry) startInUnder(ctx context.Context, command, want string, no
 	}
 	if r.runningProcesses() >= jobProcessCap {
 		return nil, errJobProcessCap
+	}
+	if err := markTaskStorageUncertain(r.workspace); err != nil {
+		return nil, err
 	}
 	program, shellArgs, shellErr := bare.StreamingShell(command)
 	if shellErr != nil {
@@ -1257,9 +1287,9 @@ func (r *jobRegistry) startInUnder(ctx context.Context, command, want string, no
 		started.sink.close()
 		return nil, err
 	}
-	if err := process.Start(); err != nil {
+	if err := processgroup.Start(process); err != nil {
 		started.sink.close()
-		return nil, fmt.Errorf("could not start the command: %w", err)
+		return nil, jobStartError(runtime.GOOS, err)
 	}
 	started.cmd = process
 	started.group = processgroup.CaptureGroup(process.Process.Pid)
@@ -1696,6 +1726,8 @@ const (
 	killRefusedSaving
 	// killSignalled is a job this kill claimed and signalled.
 	killSignalled
+	// killUnproven means neither signal round proved that the job ended.
+	killUnproven
 )
 
 // killFor is [jobRegistry.kill] with its actual result, for a caller that must
@@ -1731,6 +1763,13 @@ func (r *jobRegistry) killFor(ctx context.Context, id int) (string, killResult) 
 		// uninterruptible sleep is not something a tool call can fix, and
 		// hanging the turn on it would be worse than reporting the SIGKILL.
 		waitDoneUnder(ctx, target.done, jobTermGrace)
+	}
+	select {
+	case <-target.done:
+	default:
+		if requireJobStopProof() {
+			return fmt.Sprintf("job %d was told to stop and had not ended when the wait ran out", id), killUnproven
+		}
 	}
 	// A watch is stopped, not killed: there was no process of its own to end,
 	// and "stopped" is the word its list row and its notes already use.
@@ -2200,8 +2239,8 @@ func (s *jobSink) trimLocked() {
 		return
 	}
 	start := len(s.ring) - jobRingBytes
-	// Do not cut a rune in half: a tail starting mid-character renders as a
-	// replacement glyph in the model's context for no reason.
+	// Do not cut a rune in half: a tail starting mid-character renders as
+	// a replacement glyph in the model's context for no reason.
 	for start < len(s.ring) && !utf8RuneStart(s.ring[start]) {
 		start++
 	}
@@ -2240,7 +2279,7 @@ func (s *jobSink) tail(n int) string {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	text := strings.TrimRight(string(s.ring), "\n")
+	text := strings.TrimRight(shell.OutputText(string(s.ring)), "\n")
 	if text == "" {
 		return ""
 	}
@@ -2286,16 +2325,23 @@ func (s *jobSink) lastNonEmptyLine() string {
 
 // ── process plumbing ────────────────────────────────────────────────────────
 
-// jobShell shares bare's shell preference through internal/shell: Unix keeps
-// /bin/bash, bash on PATH, sh, and Windows uses the engine's native bash.
+// jobShell returns the program and its arguments that run command. It shares
+// bare's shell preference through internal/shell: Unix keeps /bin/bash, bash
+// on PATH, sh, and Windows uses the engine's native bash. A bash command runs
+// under [shell.PipefailArgs], as at every other bash door, so a failing stage
+// of a pipe fails the command; sh gets the command unchanged.
 //
 // IT IS NOT FOR ANYTHING WHOSE OUTPUT SOMEBODY READS WHILE IT RUNS. A bash job
 // goes through [bare.StreamingShell] instead, which is this choice plus the
 // line-buffering that keeps a long command's log from being empty until it
 // exits. What is left on this one is a watch's tick and an automation's look
 // — commands that are short by construction and read only after they end.
-func jobShell() (string, []string, error) {
-	return shell.Preferred()
+func jobShell(command string) (string, []string, error) {
+	program, flags, err := shell.Preferred()
+	if err != nil {
+		return "", nil, err
+	}
+	return program, shell.PipefailArgs(program, flags, command), nil
 }
 
 // waitExitCode extracts an exit code from cmd.Wait's error, -1 when the process

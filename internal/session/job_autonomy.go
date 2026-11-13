@@ -26,7 +26,7 @@ func automaticJobPolicy(base *approval.Policy) *approval.Policy {
 	return &p
 }
 
-const jobAutoInstruction = "Factory job Auto mode is enabled. Decide routine engineering and implementation choices within the issue. Do not ask for routine plan, continuation or publication approvals: the factory records those decisions within its budget and retry limits. Ask only when a critical unresolved decision, missing access or credentials, spending authority, destructive external action or conflicting explicit instructions requires the person. Explicit permission denials and critical-action floors still apply. Never merge. Claim progress or publication only after the engine confirms it."
+const jobAutoInstruction = "Factory job Auto mode is enabled. Decide routine engineering and implementation choices within the issue. Do not ask for routine plan, continuation or publication approvals: the factory records those decisions within its budget and retry limits. Ask only when a critical unresolved decision, missing access or credentials, spending authority, destructive external action or conflicting explicit instructions requires the person. Explicit permission denials and critical-action floors still apply. Never merge on your own judgment; press Merge only when the person asks for it in this conversation. Claim progress or publication only after the engine confirms it."
 
 // This request's live mode is transient prompt context, not another chat line
 // or a permanent change to history. Switching Manual removes it next request.

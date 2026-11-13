@@ -22,7 +22,7 @@ import "strings"
 // a card that disagreed with the rail beside it. [TaskTier] is the question every
 // row answers, [TaskStatus.Word] is the word it answers with, [TaskAsk] is the
 // question and its two answers, and every one of them is written down exactly
-// once, here (docs/design/task-states/DESIGN.md).
+// once, here.
 
 // TaskPresence is where one task is in the person's terms. The zero value means
 // nothing is known — an unrecognised state is not evidence that anything was
@@ -238,7 +238,7 @@ type TaskFacts struct {
 // TaskTier is the ONE QUESTION every row answers before it says anything else:
 // do I need to do anything? There are three answers, each with one glyph and one
 // word, and a person who has learned three glyphs has learned the whole system
-// (docs/design/task-states/DESIGN.md).
+// .
 //
 // IT IS COMPUTED HERE AND NOWHERE ELSE. Every surface that worked a tier out of
 // the state, the ending, the stop flag and the merge word grew a table of its
@@ -1080,7 +1080,7 @@ func taskAskOf(facts TaskFacts) TaskAsk {
 		}
 		// AND A CONFLICT IS NEVER THE MODEL'S. It cannot merge by decree, and no
 		// settle policy hands it one: whatever a caller says about who is deciding,
-		// two versions of somebody's own file are theirs (docs/design/task-states).
+		// two versions of somebody's own file are theirs.
 		ask.Owner = TaskAskOwnerPerson
 	case facts.Held:
 		ask.Kind, ask.Reason = TaskAskHeld, taskHeldReason(facts.Report)

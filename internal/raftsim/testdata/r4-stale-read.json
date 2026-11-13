@@ -1,0 +1,66 @@
+{
+  "History": [
+    {
+      "ID": 0,
+      "Call": 1,
+      "Return": 2,
+      "Input": {
+        "Kind": "create",
+        "Actor": "a",
+        "Cell": "c",
+        "Head": "h"
+      },
+      "Output": {
+        "Code": "ok",
+        "Cell": {
+          "Holder": "a",
+          "Fence": 1,
+          "Head": "h",
+          "Until": 90000
+        }
+      }
+    },
+    {
+      "ID": 1,
+      "Call": 3,
+      "Return": 4,
+      "Input": {
+        "Kind": "publish",
+        "Actor": "a",
+        "Cell": "c",
+        "Fence": 1,
+        "OldHead": "h",
+        "Head": "new"
+      },
+      "Output": {
+        "Code": "ok",
+        "Cell": {
+          "Holder": "a",
+          "Fence": 1,
+          "Head": "new",
+          "Until": 90000
+        }
+      }
+    },
+    {
+      "ID": 2,
+      "Call": 5,
+      "Return": 6,
+      "Input": {
+        "Kind": "read",
+        "Actor": "a",
+        "Cell": "c"
+      },
+      "Output": {
+        "Code": "ok",
+        "Cell": {
+          "Holder": "a",
+          "Fence": 1,
+          "Head": "h",
+          "Until": 90000
+        }
+      }
+    }
+  ],
+  "Expected": "Illegal"
+}

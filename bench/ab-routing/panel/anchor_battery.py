@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Pin a candidate model onto Phase A's ability scale, cheaply.
 
-Phase A (bench/routerlab) fitted a Rasch ability scale over seven models on 36
+Phase A (the benchmark harness) fitted a Rasch ability scale over seven models on 36
 deterministically-graded tasks and recommended a four-model panel. This script
 answers the only question Phase B still needs from that scale: *would adding
 this other model move the frontier?* -- without re-running the whole design.
@@ -31,9 +31,9 @@ Usage:
   python3 anchor_battery.py --run [--cap 1.00]
   python3 anchor_battery.py --report
 
-The anchor tasks and their graders come from bench/routerlab; point at it with
+The anchor tasks and their graders come from the benchmark harness; point at it with
 --routerlab or $CODEAF_ROUTERLAB (default: ../../routerlab relative to here,
-then the repository's bench/routerlab).
+then the repository's the benchmark harness).
 """
 import argparse
 import asyncio
@@ -158,7 +158,7 @@ def load_routerlab(path):
             import orclient  # noqa: E402
             return routerlab_tasks, orclient, candidate
     raise SystemExit(
-        "could not find bench/routerlab (needs tasks.py + orclient.py).\n"
+        "could not find the benchmark harness (needs tasks.py + orclient.py).\n"
         "Pass --routerlab PATH or set CODEAF_ROUTERLAB.")
 
 

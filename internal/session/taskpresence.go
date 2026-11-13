@@ -28,8 +28,10 @@ package session
 //     loses its machine writes no farewell, so a file left behind would claim a
 //     session that is gone. THE ONLY THING THAT MAKES A PRESENCE FILE TRUE IS
 //     ITS AGE: the file clock is touched while the session lives, and a
-//     reader takes it as live only inside [presenceWindow], which is three
-//     maintenance beats. Past that the session is gone and every "running"
+//     reader takes it as live only inside its window ([SessionPresence.Window]):
+//     [presenceWindow], three maintenance beats, for a busy claim, and the
+//     lease an idle claim names, three idle refreshes, for an idle one. Past
+//     that the session is gone and every "running"
 //     it claims is void. That is why there is no cleanup daemon and no pid liveness check —
 //     staleness IS the cleanup, and it costs nothing and cannot go wrong.
 //
@@ -89,6 +91,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/orchestrate"
 )
@@ -134,7 +137,35 @@ const (
 	// keeping older readers alive through the JSON updatedAt clock alone.
 	presenceRefresh = (presenceWindow - time.Second) / 2
 	// PresenceWindow lets a watcher expire claims on the writer's own clock.
+	// It is the window of a BUSY claim — working, waiting on you, or holding
+	// work out — and of every claim that names no lease of its own; an idle
+	// claim's window is its lease ([SessionPresence.Window]).
 	PresenceWindow = presenceWindow
+	// presenceIdleRefresh is how often an IDLE session rewrites an unchanged
+	// claim. AN IDLE CONVERSATION COSTS NOTHING BETWEEN THESE. The sixth live
+	// A+B run measured an engine with 24 idle job and step chats at 7–9% of a
+	// core, and every one of those chats rewrote its file every seven seconds
+	// to say the same thing; a session's state changes are written the moment
+	// they happen ([Agent.nudgePresence]), so the refresh only proves the
+	// process is still alive, and an idle claim can prove that rarely.
+	presenceIdleRefresh = time.Minute
+	// presenceIdleWindow is the lease an idle claim is written with: three
+	// idle refreshes, the same three-beat margin the busy window keeps, so one
+	// missed refresh and the shared clock's jitter cannot expire a live idle
+	// session. It is what a reader believes instead of [presenceWindow] for a
+	// claim that says so ([SessionPresence.LeaseSeconds]).
+	presenceIdleWindow = 3 * presenceIdleRefresh
+	// presenceLeaseMost bounds the lease a reader will believe, whatever a
+	// writer claims: a file from a build that promised an hour must not keep a
+	// dead session on a surface for an hour.
+	presenceLeaseMost = 10 * time.Minute
+	// presenceQuietPass is how often a QUIET session — idle, asking nothing,
+	// in a folder the kernel is watching — runs its doorstep safety pass. Its
+	// requests and answers wake it the moment they are written (the shared
+	// directory watch), so the pass only repairs an event the watch lost, and
+	// it no longer costs a rename, three opens and a directory read every five
+	// seconds for every open conversation.
+	presenceQuietPass = time.Minute
 	// presenceCloseGrace bounds how long [Agent.Close] waits for the heartbeat
 	// to remove the file. Past it the quit goes on and the file is left to go
 	// stale, which the law above already covers — a person's quit must never
@@ -391,6 +422,15 @@ type SessionPresence struct {
 	// move an mtime without the session ever having been alive; the stamp
 	// travels with the claim it dates.
 	UpdatedAt time.Time `json:"updatedAt"`
+	// LeaseSeconds is how long after UpdatedAt the writer promises this claim
+	// stays true without being rewritten, and it is ABSENT ON EVERY BUSY CLAIM,
+	// which keeps the ordinary [presenceWindow]. An idle session writes
+	// [presenceIdleWindow] here and refreshes on [presenceIdleRefresh], which
+	// is what lets an idle conversation leave its file alone. A build older
+	// than this field reads every claim on the short window, so to it an idle
+	// session of a newer build drops off its surfaces between refreshes; it
+	// still sees every working and waiting session exactly as before.
+	LeaseSeconds int `json:"leaseSeconds,omitempty"`
 	// State is what the session is doing.
 	State PresenceState `json:"state"`
 	// Reason is one line about WHY it is waiting, and it is empty for every
@@ -484,7 +524,19 @@ func (p SessionPresence) Fresh(now time.Time) bool {
 	// A stamp in the FUTURE is believed rather than refused: a machine whose
 	// clock is a minute ahead of ours is the ordinary cause, and treating that
 	// session as dead would hide a live window over a clock skew.
-	return !p.UpdatedAt.Before(now.Add(-presenceWindow))
+	return !p.UpdatedAt.Before(now.Add(-p.Window()))
+}
+
+// Window is how long after UpdatedAt this claim is believed: the writer's own
+// lease when it named one, never shorter than [presenceWindow] and never
+// longer than [presenceLeaseMost], and [presenceWindow] otherwise. Every reader
+// that waits a claim out uses this rather than the constant, so an idle claim
+// is not taken for a dead one between its refreshes.
+func (p SessionPresence) Window() time.Duration {
+	if p.LeaseSeconds <= 0 {
+		return presenceWindow
+	}
+	return min(max(time.Duration(p.LeaseSeconds)*time.Second, presenceWindow), presenceLeaseMost)
 }
 
 // ── the writer ──────────────────────────────────────────────────────────────
@@ -503,8 +555,12 @@ type presenceDesk struct {
 	last      []byte
 	refreshed time.Time
 	active    bool
-	// ticks substitutes the shared maintenance clock in deterministic tests.
-	ticks <-chan time.Time
+	// passed is when the doorstep safety pass last ran ([presenceQuietPass]).
+	passed time.Time
+	// ticks substitutes the shared maintenance clock in deterministic tests,
+	// and refreshTicks the shared refresh clock.
+	ticks        <-chan time.Time
+	refreshTicks <-chan time.Time
 	// stop is closed once by [Agent.stopPresence]; done is closed by the
 	// heartbeat when it has removed the file and gone.
 	stop chan struct{}
@@ -601,6 +657,9 @@ func (a *Agent) stopPresence() {
 // the channel already full does nothing, which is right: the write it would have
 // asked for has not happened yet and will carry this change with it.
 func (a *Agent) nudgePresence() {
+	// Every change a reader of the presence file cares about is also a moment
+	// work may have started, which is what the job's budget watch waits on.
+	a.wakeBudgetForWork()
 	desk := a.presence
 	if desk == nil {
 		return
@@ -767,6 +826,12 @@ func (a *Agent) presenceRestateQuestion(q Question) {
 // beat subscribes before checking the doorstep, so a request cannot fall
 // between opening the session and installing its watch. The process shares one
 // maintenance and refresh clocks; idle agents own no ticker.
+//
+// A QUIET SESSION DOES NO DISK WORK ON A BEAT. Its questions are swept in
+// memory every beat as before, but its doorstep — answers and requests — is
+// looked at when the shared watch says something landed there, and otherwise
+// only once a [presenceQuietPass]. A busy session, or one whose folder the
+// watch cannot see (the watch knocks on it every beat), looks every beat.
 func (d *presenceDesk) beat() {
 	defer close(d.done)
 	requests, beats, refreshes, cancel := presenceDoors.subscribe(filepath.Dir(d.path))
@@ -774,8 +839,11 @@ func (d *presenceDesk) beat() {
 	if d.ticks != nil {
 		beats = d.ticks
 	}
+	if d.refreshTicks != nil {
+		refreshes = d.refreshTicks
+	}
 	d.write()
-	d.drainRequests()
+	d.doorstep(time.Now())
 	for {
 		select {
 		case <-d.stop:
@@ -784,18 +852,27 @@ func (d *presenceDesk) beat() {
 		case <-d.nudge:
 			d.write()
 		case <-requests:
-			d.drainRequests()
+			d.doorstep(time.Now())
 		case now := <-refreshes:
 			d.refresh(now)
-		case <-beats:
-			d.agent.drainAnswers()
-			d.drainRequests()
+		case now := <-beats:
+			if d.active || now.Sub(d.passed) >= presenceQuietPass {
+				d.doorstep(now)
+			}
 			d.agent.sweepQuestions()
 			if d.active {
 				d.write()
 			}
 		}
 	}
+}
+
+// doorstep is one look at everything another window may have left in this
+// session's folder: answers first, then requests.
+func (d *presenceDesk) doorstep(now time.Time) {
+	d.passed = now
+	d.agent.drainAnswers()
+	d.drainRequests()
 }
 
 // requestDir is the folder the doorstep requests land in, or "" for a
@@ -818,11 +895,21 @@ func (d *presenceDesk) drainRequests() {
 	d.agent.drainTakeover()
 }
 
-// refresh advances the JSON clock even when the session's state is unchanged.
+// refresh is the shared refresh clock's tick. It writes a CHANGED claim at
+// once, and an unchanged one only when its promise is running out: every tick
+// while the session is busy, keeping the short window every reader has always
+// believed, and once a [presenceIdleRefresh] while it is idle, under the long
+// lease the idle claim carries. Reading the state is in memory; an unchanged
+// idle claim between refreshes costs no system call at all.
 func (d *presenceDesk) refresh(now time.Time) {
-	if now.After(d.refreshed) {
-		d.writeAt(now, true)
+	if !now.After(d.refreshed) {
+		return
 	}
+	if !d.active && now.Sub(d.refreshed) < presenceIdleRefresh {
+		d.writeAt(now, false)
+		return
+	}
+	d.writeAt(now, true)
 }
 
 // write puts this instant on disk, whole. Every failure is silence — see the
@@ -834,6 +921,9 @@ func (d *presenceDesk) write() {
 func (d *presenceDesk) writeAt(now time.Time, refresh bool) {
 	snapshot := d.agent.presenceSnapshot(time.Time{})
 	d.active = snapshot.State != PresenceIdle || len(snapshot.RunningTasks) > 0 || len(snapshot.Jobs) > 0
+	if !d.active {
+		snapshot.LeaseSeconds = int(presenceIdleWindow / time.Second)
+	}
 	content, err := json.Marshal(snapshot)
 	if err != nil || (!refresh && bytes.Equal(content, d.last)) {
 		return
@@ -865,7 +955,7 @@ func (d *presenceDesk) writeAt(now time.Time, refresh bool) {
 		os.Remove(name)
 		return
 	}
-	if err := os.Rename(name, d.path); err != nil {
+	if err := fsreplace.Rename(name, d.path); err != nil {
 		os.Remove(name)
 		return
 	}
@@ -1014,7 +1104,7 @@ func (a *Agent) waitingOnPerson() personAsk {
 	// AND A LANDED TASK'S `YOUR CALL` IS A QUESTION LIKE ANY OTHER, which for a
 	// long time this did not count. Work that finished and that nobody could
 	// check waits on a person's word and moves for nothing else — it is the
-	// third tier of docs/design/task-states/DESIGN.md and the whole content of
+	// third tier of the implementation and the whole content of
 	// pending.go's registry — and yet it lived outside every lane above, so a
 	// session sitting on one said `idle` to home, to the switcher and to the tab
 	// signal. A person was told there was nothing to do about work that could
@@ -1356,7 +1446,7 @@ func orchestrateProgress(nodes []orchestrate.NodeStatus) (done, total int) {
 // ReadSessionPresence reads one session folder's presence, and reports false for
 // every reason there is not one to believe: no file, an unreadable file, a
 // schema this build does not know, a session with no id, and — the case the
-// whole file turns on — a claim older than [presenceWindow].
+// whole file turns on — a claim older than its window ([SessionPresence.Window]).
 //
 // The session folder's own name is trusted over the id inside the file when the
 // file has none, because the folder IS the session id (place.go's [Place.ID]).
@@ -1499,8 +1589,8 @@ type StaleBuildRow struct {
 
 // SweepStaleBuilds is the launch gate's one question: which FRESH presence
 // rows hold a build whose leading rev token is not `currentRev`. Files that
-// are unreadable, unparsable, empty of Build, or older than [presenceWindow]
-// are invisible to the sweep, by the same three rules the reader above has.
+// are unreadable, unparsable, empty of Build, or older than their window
+// ([SessionPresence.Window]) are invisible to the sweep, by the same three rules the reader above has.
 //
 // The rev comparison's one rule: the first space-separated token of
 // presence.Build is the rev (buildinfo stamps it "<rev> built <time>",

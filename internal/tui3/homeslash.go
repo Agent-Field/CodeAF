@@ -58,14 +58,11 @@ func (h *homeView) commandLines() []homeLine {
 // in the right margin WHAT ENTER WILL DO WITH IT HERE, then the command's own
 // note (commands.go's [command.note]).
 //
-// THE MARGIN USED TO SAY `a command`, which every row of the list already
-// demonstrated by existing. What a person standing on home cannot know is the
-// thing this list is now the only place to learn: that `/compact` opens a
-// conversation before it runs, that `/model` changes a draft and touches nothing
-// behind the screen, that `/quit` closes a conversation they cannot see. The
-// owner asked for that to be readable BEFORE the key is pressed, including for
-// the commands that do nothing useful here — so the fate leads the margin and
-// the note follows it.
+// THE MARGIN USED TO SAY `a command`, which every row of the list already demonstrated by
+// existing. What a person standing on home cannot know is the thing this list is now the
+// only place to learn: that `/compact` opens a conversation before it runs, that `/model`
+// changes a draft and touches nothing behind the screen, that `/quit` closes a
+// conversation they cannot see.
 //
 // AND THE FATE IS NEVER THE HALF THAT IS CUT. [overlayRow] fits the whole margin
 // to the room the label leaves, from the right, so a margin built as one string
@@ -196,6 +193,8 @@ func homeFate(word, rest string) string {
 		// /project IS THE PIN AND /folder IS NOT, since 2026-09-22
 		// (projectcmd.go says what the two used to share).
 		return fateTargetFolder
+	case "pair", "devices":
+		return fateAnswers
 	case "settings", "spend", "history", "home", "wall", "teams":
 		return fatePlace
 	case "resume":
@@ -210,7 +209,7 @@ func homeFate(word, rest string) string {
 		return fateBehind
 	case "files", "permissions", "connect", "harness", "subharness", "skill",
 		"autonomy", "copy", "select", "rewind", "compact", "export", "drafts", "manual", "folder", "processes",
-		"setup", "pair", "devices", "atlas":
+		"setup", "atlas":
 		// /manual IS HERE SINCE 2026-09-22 and not among the answers: it is a
 		// turn of a conversation now (manualcmd.go), and a turn needs one. As
 		// an answer it printed the pages into the conversation BEHIND home,

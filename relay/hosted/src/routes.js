@@ -3,12 +3,12 @@
 // is refused with, and the handler. Handlers get {tenant, device, body} and the path's captures,
 // and answer a Response or throw a refusal; the Durable Object does everything around them.
 import { MAX_FRAME } from './frame.js';
+import { signedUri } from './base.js';
 import { MAX_FABRIC_BODY } from './fabric.js';
 import { approve, deny } from './link/decide.js';
-import { parseBeat, presenceOf } from './presence.js';
+import { parseBeat } from './presence.js';
 import { parseHolds } from './vouch.js';
 import { Wire, badRequest, json, empty, notFound } from './wire.js';
-import { signedUri } from './base.js';
 
 const MAX_SMALL = 1 << 20; // directory.MaxBody, and every store body but a frame
 const MAX_HAS = 1000;
@@ -48,13 +48,13 @@ function watching(c) {
   const { searchParams } = new URL(c.request.url);
   const holds = parseHolds(searchParams.getAll('hold'), c.tenant.limits.maxHolds);
   const beat = parseBeat(searchParams.getAll('beat'));
-  return c.tenant.watch(c.device, { holds, beat, events: searchParams.get('events') === '1' });
+  return c.tenant.watch(c.device, { holds, beat, events: searchParams.get('events') === '1', receipts: searchParams.get('receipts') === '1' });
 }
 
 // The directory's version rides on a presence answer as on a list.
 const presence = (c) => {
   const { tenant } = c;
-  const answer = presenceOf(tenant.dir.list().devices, tenant.watchers.online(), tenant.clock());
+  const answer = tenant.watchers.presence(tenant.dir.list().devices, tenant.clock());
   return withVersion(json(answer), tenant.dir.version);
 };
 
@@ -88,15 +88,46 @@ async function frameOf(c, [id]) {
 // a put in flight, which Has must not overtake.
 const STORE = { over: 'bad_frame' };
 const DIR = { over: 'too_large' };
-const FABRIC = { over: 'too_large', limit: MAX_FABRIC_BODY, fabric: true };
 // `write` marks a route a replaced identity refuses: every verb that changes a record or a frame, and
 // the watch, which a replaced identity could only ever hear a thaw on (contract 21.2).
 const LINK = { over: 'too_big', limit: 16 << 10, write: true }; // an approve body: a device record, a cert and a grant of at most 4 KiB
+const FABRIC = { over: 'too_large', limit: MAX_FABRIC_BODY, fabric: true };
+const FABRIC_WRITE = { ...FABRIC, write: true };
 const STORE_WRITE = { ...STORE, write: true };
 const DIR_WRITE = { ...DIR, write: true };
-const FABRIC_WRITE = { ...FABRIC, write: true };
 
 const ROUTES = [
+  // HostedIdentity serves this against committed read authority outside Raft.
+  ['POST', /^\/v1\/store\/handoff$/, { ...STORE, limit: 4096 }, () => { throw notFound(); }],
+  ['POST', /^\/v1\/store\/frames$/, { ...STORE_WRITE, limit: MAX_FRAME, frames: true }, async (c) => json(await c.tenant.putFrame(c.body))],
+  ['GET', /^\/v1\/store\/objects\/([^/]+)$/, STORE, async (c, [rid]) => {
+    if (!isRid(rid)) throw new Wire('bad_rid', 400);
+    return octets(await c.tenant.getObject(rid));
+  }],
+  ['POST', /^\/v1\/store\/objects$/, STORE, async (c) => octets(await c.tenant.getMany(asMany(c.body)))],
+  ['GET', /^\/v1\/store\/frames\/([^/]+)$/, STORE, frameOf],
+  ['POST', /^\/v1\/store\/locate$/, STORE, async (c) => json({ at: await c.tenant.locate(asRids(object(c.body))) })],
+  ['POST', /^\/v1\/store\/has$/, STORE, async (c) => json({ have: await c.tenant.has(asRids(object(c.body))) })],
+  ['GET', /^\/v1\/store\/stats$/, STORE, (c) => json({ storage: c.tenant.storage.state(), ...c.tenant.stats.snapshot(), ...c.tenant.quota.snapshot(c.tenant.clock()) })],
+  ['GET', /^\/v1\/dir\/list$/, DIR, (c) => {
+    const response = withVersion(json(c.tenant.dir.list()), c.tenant.dir.version);
+    response.headers.set('Codeaf-Head-Takes', '1');
+    return response;
+  }],
+  ['GET', /^\/v1\/dir\/watch$/, DIR_WRITE, (c) => watching(c)],
+  // C7: the client reads this promise before it can displace a holder.
+  ['GET', /^\/v1\/dir\/cells\/([^/]+)$/, DIR, (c, [id]) => {
+    const response = json(c.tenant.dir.cell(id));
+    response.headers.set('codeaf-conditional-takes', '1');
+    response.headers.set('Codeaf-Head-Takes', '1');
+    return response;
+  }],
+  ['PUT', /^\/v1\/dir\/devices\/([^/]+)$/, DIR_WRITE, (c, [id]) => {
+    if (id !== c.device) throw new Wire('unauthorized', 401);
+    c.tenant.dir.putDevice(id, object(c.body));
+    return empty();
+  }],
+  ['POST', /^\/v1\/dir\/devices\/([^/]+)\/revoke$/, DIR_WRITE, (c, [id]) => (c.tenant.revoke(id, c.device), empty())],
   ['PUT', /^\/v1\/clients\/([^/]+)$/, FABRIC_WRITE, async (c, [device]) => {
     await c.tenant.fabric.registerClient({
       caller: c.device,
@@ -141,30 +172,6 @@ const ROUTES = [
     c.tenant.fabric.claimQueue({ caller: c.device, targetDevice: device, numberText: number, body: c.body, ack: true });
     return empty();
   }],
-  ['POST', /^\/v1\/store\/frames$/, { ...STORE_WRITE, limit: MAX_FRAME, frames: true }, async (c) => json(await c.tenant.putFrame(c.body))],
-  ['GET', /^\/v1\/store\/objects\/([^/]+)$/, STORE, async (c, [rid]) => {
-    if (!isRid(rid)) throw new Wire('bad_rid', 400);
-    return octets(await c.tenant.getObject(rid));
-  }],
-  ['POST', /^\/v1\/store\/objects$/, STORE, async (c) => octets(await c.tenant.getMany(asMany(c.body)))],
-  ['GET', /^\/v1\/store\/frames\/([^/]+)$/, STORE, frameOf],
-  ['POST', /^\/v1\/store\/locate$/, STORE, async (c) => json({ at: await c.tenant.locate(asRids(object(c.body))) })],
-  ['POST', /^\/v1\/store\/has$/, STORE, async (c) => json({ have: await c.tenant.has(asRids(object(c.body))) })],
-  ['GET', /^\/v1\/store\/stats$/, STORE, (c) => json(c.tenant.stats.snapshot())],
-  ['GET', /^\/v1\/dir\/list$/, DIR, (c) => withVersion(json(c.tenant.dir.list()), c.tenant.dir.version)],
-  ['GET', /^\/v1\/dir\/watch$/, DIR_WRITE, (c) => watching(c)],
-  // C7: the client reads this promise before it can displace a holder.
-  ['GET', /^\/v1\/dir\/cells\/([^/]+)$/, DIR, (c, [id]) => {
-    const response = json(c.tenant.dir.cell(id));
-    response.headers.set('codeaf-conditional-takes', '1');
-    return response;
-  }],
-  ['PUT', /^\/v1\/dir\/devices\/([^/]+)$/, DIR_WRITE, (c, [id]) => {
-    if (id !== c.device) throw new Wire('unauthorized', 401);
-    c.tenant.dir.putDevice(id, object(c.body));
-    return empty();
-  }],
-  ['POST', /^\/v1\/dir\/devices\/([^/]+)\/revoke$/, DIR_WRITE, (c, [id]) => (c.tenant.revoke(id, c.device), empty())],
   ['GET', /^\/v1\/dir\/presence$/, DIR, presence],
   ['POST', /^\/v1\/dir\/requests\/([^/]+)\/approve$/, LINK, async (c, args) => (await approve(c, args), empty())],
   ['POST', /^\/v1\/dir\/requests\/([^/]+)\/deny$/, LINK, async (c, args) => (await deny(c, args), empty())],
@@ -186,7 +193,7 @@ const ROUTES = [
   ['POST', /^\/v1\/identity\/rotation$/, DIR, (c) => json(c.tenant.rotate(c.device, object(c.body)))],
 ];
 
-/** matchRoute answers {limit, over, frames, write, handler, args} for a request, or throws not_found. */
+/** matchRoute answers {limit, over, frames, write, fabric, handler, args} for a request, or throws not_found. */
 export function matchRoute(method, path) {
   for (const [m, pattern, { limit = MAX_SMALL, over, frames = false, write = false, fabric = false }, handler] of ROUTES) {
     const hit = m === method && pattern.exec(path);

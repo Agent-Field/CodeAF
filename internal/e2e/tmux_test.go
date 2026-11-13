@@ -16,7 +16,7 @@
 // to check. The key is resolved through [liveKey], not by reading one variable.
 //
 // EVERY RUN IS ITS OWN MACHINE. Each rig gets its own CODEAF_HOME under
-// t.TempDir() — the whole state root moves with that one variable
+// a short temporary root — the whole state root moves with that one variable
 // (internal/home) — and its own git-initialised workspace. A workspace under
 // /tmp that is NOT a repository is treated by the door as "somewhere the person
 // stood by accident" and gets an owned session in a private work directory
@@ -112,10 +112,7 @@ func binary(t *testing.T) string {
 // dump on failure walks the tree and deliberately skips it.
 func newHome(t *testing.T, overrides map[string]any) string {
 	t.Helper()
-	home := filepath.Join(t.TempDir(), "home")
-	if err := os.MkdirAll(home, 0o700); err != nil {
-		t.Fatalf("home: %v", err)
-	}
+	home := emptyHome(t)
 	rows := map[string]any{}
 	userHome, err := os.UserHomeDir()
 	if err == nil {
@@ -174,10 +171,13 @@ func newHome(t *testing.T, overrides map[string]any) string {
 // first thing that writes into this directory is the product.
 func emptyHome(t *testing.T) string {
 	t.Helper()
-	home := filepath.Join(t.TempDir(), "home")
-	if err := os.MkdirAll(home, 0o700); err != nil {
-		t.Fatalf("home: %v", err)
+	// Engine sockets include CODEAF_HOME; subtest names must not force the
+	// in-process fallback by exceeding the 103-byte socket-path limit.
+	home, err := os.MkdirTemp("", "afld")
+	if err != nil {
+		t.Fatalf("make a short state root: %v", err)
 	}
+	t.Cleanup(func() { _ = os.RemoveAll(home) })
 	return home
 }
 
@@ -475,7 +475,7 @@ func startWithEnv(t *testing.T, env []string, name, home, ws string, cols, rows 
 		say(t, "starterTaskWord"), say(t, "setupTitleWord"), say(t, "setupSkipWord"), setupMovesWord,
 		say(t, "landingKeysWord"), say(t, "welcomeStarterKeysWord"),
 		say(t, "answersAllowOnce"), say(t, "homeAnswerHint"), say(t, "homeNeedsHeading"),
-		say(t, "chatFootEffortWord")); hit == "" {
+		say(t, "chatFootEffortWord"), "opt+e effort · opt+a approvals"); hit == "" {
 		t.Fatal("the terminal never reached an interactive surface")
 	}
 	return r

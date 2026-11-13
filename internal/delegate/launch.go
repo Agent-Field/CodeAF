@@ -3,7 +3,7 @@ package delegate
 // The launch: one program as a child process, in its own process group, its
 // stdout read as the records and its stderr kept in a file for a person, ended
 // by SIGTERM with a grace and then SIGKILL when the caller's context ends
-// (docs/design/delegate/PROTOCOL.md). The process is codeaf's own executable
+//. The process is codeaf's own executable
 // running the program's verb ([ChildArgs]); what it is started with is the
 // caller's to say, so a test can start a script that speaks the records.
 
@@ -169,6 +169,9 @@ func Run(ctx context.Context, launch Launch, sink Sink) (Result, error) {
 	cmd, err := executor.For(ctx).In(launch.Dir).Command(context.Background(), executor.ExecRequest{
 		Argv: append([]string{launch.Bin}, launch.Args...),
 		Env:  append(append([]string(nil), baseEnv...), processgroup.RunMarkerEnv+"="+marker),
+		// A FENCED PROGRAM STILL WRITES ITS OWN RECORDS AND READS ITS INBOX,
+		// which codeaf keeps outside the folder it works in.
+		Writable: recordFolders(baseEnv),
 	})
 	if err != nil {
 		return Result{ExitCode: -1}, fmt.Errorf("start %s: %w", launch.Name, err)
@@ -199,7 +202,7 @@ func Run(ctx context.Context, launch Launch, sink Sink) (Result, error) {
 	}
 	cmd.Stdout = stdoutWrite
 	started := time.Now()
-	if err := cmd.Start(); err != nil {
+	if err := processgroup.Start(cmd); err != nil {
 		_ = stdoutRead.Close()
 		_ = stdoutWrite.Close()
 		return Result{ExitCode: -1}, fmt.Errorf("start %s: %w", launch.Name, err)
@@ -225,18 +228,33 @@ func Run(ctx context.Context, launch Launch, sink Sink) (Result, error) {
 	if grace <= 0 {
 		grace = DefaultGrace
 	}
-	var waitErr error
+	var waitErr, stopErr error
 	select {
 	case waitErr = <-waitDone:
 	case <-ctx.Done():
 		result.Stopped = true
 		_ = group.Terminate()
-		select {
-		case waitErr = <-waitDone:
-		case <-time.After(grace):
+		deadline := time.Now().Add(grace)
+		hardStop := func() {
 			result.Killed = true
 			_ = group.Kill()
-			waitErr = <-waitDone
+			stopErr = processgroup.WaitEmpty(cmd.Process.Pid, grace)
+			if stopErr != nil {
+				result.Stopped = false
+			}
+		}
+		select {
+		case waitErr = <-waitDone:
+			// A leader's exit does not end its Windows Job Object. Preserve
+			// the remaining soft grace, then stop any orphaned descendants.
+			if processgroup.WaitEmpty(cmd.Process.Pid, max(time.Until(deadline), time.Nanosecond)) != nil {
+				hardStop()
+			}
+		case <-time.After(grace):
+			hardStop()
+			if stopErr == nil {
+				waitErr = <-waitDone
+			}
 		}
 	}
 	result.Elapsed = time.Since(started)
@@ -269,6 +287,9 @@ func Run(ctx context.Context, launch Launch, sink Sink) (Result, error) {
 	}
 	_ = stdoutRead.Close()
 	result.Reading = r.reading
+	if stopErr != nil {
+		return result, fmt.Errorf("stop %s: %w", launch.Name, stopErr)
+	}
 	if result.Stopped {
 		return result, ctx.Err()
 	}
@@ -305,3 +326,21 @@ func openStderr(path string) (io.WriteCloser, error) {
 type nopCloser struct{ io.Writer }
 
 func (nopCloser) Close() error { return nil }
+
+// recordFolders is the folders a program's environment names for its records
+// and its inbox: what it must be able to write under a fence.
+func recordFolders(environment []string) []string {
+	var out []string
+	for _, kv := range environment {
+		name, value, _ := strings.Cut(kv, "=")
+		value = strings.TrimSpace(value)
+		switch {
+		case value == "":
+		case name == EnvRecords:
+			out = append(out, value)
+		case name == EnvInbox:
+			out = append(out, filepath.Dir(value))
+		}
+	}
+	return out
+}

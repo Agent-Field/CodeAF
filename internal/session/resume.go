@@ -111,6 +111,9 @@ func resumesUnanswered(door StopDoor) bool {
 // stopped attempt's reasoning and half-written reply are simply gone, because
 // nothing kept them.
 func (a *Agent) ResumeStoppedTurn(ctx context.Context) (<-chan Event, bool) {
+	if err := a.CheckWork(); err != nil {
+		return refusedStream(err), true
+	}
 	a.mu.Lock()
 	door := a.stoppedTurn
 	a.stoppedTurn = ""
@@ -152,6 +155,9 @@ func (a *Agent) ResumeStoppedTurn(ctx context.Context) (<-chan Event, bool) {
 	resumed := userMessage{message: last, resumed: true}
 	if mark := a.presentation.of(last); mark != nil {
 		resumed.creation = acceptedCreation(mark.Creation)
+		if mark.Composed != nil {
+			resumed.sourceMessage = mark.Composed.MessageID
+		}
 	}
 	events := a.startTurnLocked(ctx, resumed, nil)
 	a.mu.Unlock()

@@ -11,7 +11,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
-// leftPanel is `since you left` (docs/design/home-mission-control/DESIGN.md §1,
+// leftPanel is `since you left` (the implementation §1,
 // §3 P3): what happened on its own while nobody was looking, newest first — a
 // line per task that landed, a line per file a conversation made, the
 // automations that ran and what memory learned. The heading carries how long
@@ -50,10 +50,9 @@ func (leftPanel) rows(in *homeGridInput) homePanelRows {
 // task's and a file's doors are the row's own and not a place's.
 //
 // THE MARGIN IS WHEN IT HAPPENED. It used to be a task's cost on one row and a
-// conversation's name on the next — two unrelated facts down one edge of one
-// panel — and both are the row's description now, drawn under the cursor
-// ([switcherRow.note]); the edge reads `3h`, `1h`, like every row of the field
-// (owner, 2026-09-15).
+// conversation's name on the next — two unrelated facts down one edge of one panel — and
+// both are the row's description now, drawn under the cursor ([switcherRow.note]); the
+// edge reads `3h`, `1h`, like every row of the field.
 //
 // A PROGRAM'S LANDING WEARS ITS BADGE BETWEEN ITS NAME AND WHAT IT CAME TO, so
 // the cell cuts the outcome before the badge and pays for the badge out of the

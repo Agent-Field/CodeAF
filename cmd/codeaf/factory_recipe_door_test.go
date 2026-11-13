@@ -54,13 +54,14 @@ func TestFactoryRecipeDoorBanksOneLineIntoTheWorkspacesRecipe(t *testing.T) {
 		t.Fatalf("security stage = %+v", stages)
 	}
 
-	// A new stage is one more line.
+	// A new stage is one more line, in before proof: proof shows the work, so
+	// a stage after it would change what nobody proves.
 	if err := door.BankStage(ctx, "web", factory.KindIssue, "docs · chat · update the readme"); err != nil {
 		t.Fatal(err)
 	}
 	file, _ = pipeline.Load(web)
 	recipe = file.Recipe()
-	if got := recipe.For(factory.KindIssue); len(got) != defaults+1 || got[len(got)-1].Name != "docs" {
+	if got := recipe.For(factory.KindIssue); len(got) != defaults+1 || got[len(got)-2].Name != "docs" || got[len(got)-1].Name != "proof" {
 		t.Fatalf("after a new stage: %+v", got)
 	}
 

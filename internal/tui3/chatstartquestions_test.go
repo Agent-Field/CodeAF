@@ -214,7 +214,7 @@ func TestAVisibleQuestionStillAnswersItsNumber(t *testing.T) {
 
 // A WAITING PERMISSION MUST NOT MAKE `ctrl+t` A DEAD KEY, and on a short
 // terminal it did — silently, which is the worst of the three things a key can
-// do (lane T found it merging this branch with lane F's).
+// do.
 //
 // [app.chromeHeight] charges the body region for [app.questionHeight], and a
 // permission hangs in a frame now: eleven rows where it used to be one. At sixty

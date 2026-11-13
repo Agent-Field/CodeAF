@@ -10,15 +10,9 @@ import (
 
 // THE FIXTURE DOOR ONTO THE QUESTION PAGE, and why one exists at all.
 //
-// A question with a diagram under each answer, four axes to compare on and a
-// dial for an input shape is a question NOTHING IN THIS PROGRAM RAISES YET: the
-// tool that lets a model ask one is lane E2's and the cards that promote into
-// this page are lane S1's, so on the day this page landed there was no way to
-// put a real one on a real screen. The alternative to this file was a page whose
-// author had only ever seen it through a test's string comparison, and
-// CLAUDE.md's `make demo-home` exists because the owner has already ruled on
-// that trade once: a fixture with something on every place is how you SEE a page
-// full, and a page nobody has looked at is not done.
+// These fixtures make diagrams, comparisons and input forms inspectable in a
+// real terminal without calling a model. A populated example exposes layout
+// problems that a string comparison alone can miss.
 //
 // SO IT IS THE SAME SHAPE AS `make demo-home` AND UNDER THE SAME TERMS. It is
 // reached only by naming a case in the environment, it is read through
@@ -274,7 +268,7 @@ func demoQuestionLayout() session.Question {
 // OWN BUILDERS wherever there is one, so a fixture cannot drift from the thing
 // it is a picture of.
 var blockDemos = map[string]func() session.Question{
-	// THE EVIDENCE ON THE PANEL (lane R): the page's own worked example and its
+	// THE EVIDENCE ON THE PANEL: the page's own worked example and its
 	// layout case, raised onto the block instead of the page, so the list with
 	// the evidence beside it — and, narrower, unfolded under the pointer — can be
 	// seen without a model.

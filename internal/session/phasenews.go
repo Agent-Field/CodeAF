@@ -396,7 +396,7 @@ func (a *Agent) tellPhase(phase provider.Phase, detail string, since time.Time) 
 //
 // It exists for [provider.PhaseSwitchingModel], which lost its only producer
 // when the adapter stopped changing the model (internal/provider's endpoints.go,
-// docs/design/recovery/DESIGN.md §2.2). The word belongs to the layer that now
+// the implementation §2.2). The word belongs to the layer that now
 // owns the hop, and it has to carry the target, because a status line that said
 // `switching model` without naming the model would be telling somebody their
 // answer is changing hands and refusing to say to whom.

@@ -27,10 +27,9 @@ package session
 //     does it by hand, and the model's `forget` is the one place it is asked
 //     for in words.
 //
-//   - THE SWITCH GOVERNS NOTICING, NOT MEMORY. The person's `memory.enabled`
-//     row turns the noticing pass off; saved lines remain available and
-//     /remember goes on working. It is read live, at the end of every
-//     turn, so a long-lived engine follows a change without a restart.
+//   - THE SWITCH GOVERNS AUTOMATIC LEARNING. The person's memory.enabled
+//     row stops noticing and knowledge compilation. Saved lines remain
+//     available and /remember goes on working. Each memory step reads it live.
 //
 // A READ-ONLY POSTURE (an automation's run, [Config.bindingOnlyMemory]) reads
 // the block and does nothing else: no noticing, no verbs, no lines said.
@@ -528,11 +527,11 @@ func (a *Agent) refreshMemoryLocked() {
 // because the notice it guards is about what the store's lines now do.
 func memoryUpgradeMarker() string { return home.Join("v3", "memory-upgrade-noticed") }
 
-// noteMemoryOffUpgradeLocked is the owner's ruling for a person who had memory
-// OFF before this build: off used to keep their saved lines out of every
-// prompt, and now it governs only the noticing, so the lines ride again. That
-// is said ONCE PER MACHINE — on the first start after the upgrade, in the
-// first conversation that turn starts in — and nothing about the lines changes.
+// noteMemoryOffUpgradeLocked is for a person who had memory OFF before this build: off
+// used to keep their saved lines out of every prompt, and now it governs only the
+// noticing, so the lines ride again. That is said ONCE PER MACHINE — on the first start
+// after the upgrade, in the first conversation that turn starts in — and nothing about the
+// lines changes.
 //
 // THE MARKER IS CREATED FIRST, EXCLUSIVELY, WHATEVER THE SETTING SAYS. The
 // first start after the upgrade is the one moment "had memory off before" is
@@ -572,7 +571,7 @@ func memoryOffUpgradeWords(count int) string {
 	if count == 1 {
 		lines = "1 kept memory line now rides every conversation it holds in"
 	}
-	return lines + " — memory off now only stops noticing · see or forget them on the Memories tab"
+	return lines + " — memory off stops automatic learning · see or forget them on the Memories tab"
 }
 
 // memoryOverflowWords is that one line.
@@ -941,6 +940,9 @@ func (a *Agent) reportNoticeFailure(err error) {
 // set stay together, so a correction never applies to a newer turn's memories.
 // The job remains owned by memoryCtx and memoryJobs, including its backoff.
 func (a *Agent) noticeWithRecovery(client reflex.Completer, words, answer string, texts []string, askMemory bool) (reflex.NoticeResult, error) {
+	if !config.MemoryEnabledAt(a.config.ProfileDir) {
+		return reflex.NoticeResult{}, nil
+	}
 	found, err := reflex.Notice(a.memoryCtx, client, words, answer, texts, askMemory)
 	kind, _ := provider.RouteFailureOf(err)
 	if err == nil || kind != provider.RouteTransient || a.memoryCtx.Err() != nil {
@@ -955,6 +957,9 @@ func (a *Agent) noticeWithRecovery(client reflex.Completer, words, answer string
 	}
 	if err := a.memoryCtx.Err(); err != nil {
 		return reflex.NoticeResult{}, err
+	}
+	if !config.MemoryEnabledAt(a.config.ProfileDir) {
+		return reflex.NoticeResult{}, nil
 	}
 	return reflex.Notice(a.memoryCtx, client, words, answer, texts, askMemory)
 }
@@ -992,14 +997,13 @@ func (a *Agent) keepNoticedDurable(text, scope string, replaced *store.Memory, d
 // [Agent.SetModel]'s sake: the last rung of the reflex ladder is the model the
 // conversation is talking to.
 func (a *Agent) reflexClient() reflex.Completer {
-	a.mu.Lock()
-	source, model := a.config.RolesSource, a.model
-	a.mu.Unlock()
-	named, err := reflex.Model(roles.Source(source), model)
+	reader := a.roleModels()
+	model := reader.model
+	named, err := reflex.Model(reader.Source(), model)
 	if err != nil {
 		return nil
 	}
-	fallback := reflex.FallbackModel(roles.Source(source), model)
+	fallback := reflex.FallbackModel(reader.Source(), model)
 	routed := a.routedCompleter()
 	if routed == nil {
 		return nil

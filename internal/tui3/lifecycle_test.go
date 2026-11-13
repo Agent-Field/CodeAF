@@ -248,10 +248,6 @@ func TestElapsedWordSpellsEveryScale(t *testing.T) {
 // for a person, and it is marked everywhere at once: the row it is about, the
 // question itself, and the word in the status line. Anything less was the defect
 // — a person who could not tell the agent had stopped and was waiting for them.
-//
-// It was a violet of its own until the owner retired it (2026-09-11, colour pick
-// C): home, the places, the chip and the tab had always said this in amber, and
-// one meaning may not wear two hues.
 func TestTheConsentQuestionIsAmberEverywhereAtOnce(t *testing.T) {
 	agent, a := wired([]session.Event{
 		toolBegin("bash", "bash rm -rf build"),
@@ -345,12 +341,10 @@ func TestTheEditPreviewAppearsOnAnnouncementAndCollapsesIntoTheStat(t *testing.T
 	if strings.Contains(plain(toolRowText(t, a)), "+1") {
 		t.Fatalf("a queued edit drew its stat: %q", plain(toolRowText(t, a)))
 	}
-	// The header is DIM, like every other word about a call that has not run
-	// yet. It wore the question hue until the questions wave took the amber back
-	// to the marks (owner ruling 2026-09-11, colour pick C): the `?` in the
-	// gutter is what says a person is being waited on, and a second colour on a
-	// word meaning "not yet" was the hue spent on something that is not a
-	// question at all.
+	// The header is DIM, like every other word about a call that has not run yet. It wore the
+	// question hue until the questions wave took the amber back to the marks: the `?` in the
+	// gutter is what says a person is being waited on, and a second colour on a word meaning
+	// "not yet" was the hue spent on something that is not a question at all.
 	for _, r := range rows(a) {
 		if strings.Contains(plain(r.text), "pending") && !strings.Contains(r.text, a.pal.dim("pending")) {
 			t.Fatalf("the pending header is not dim: %q", r.text)

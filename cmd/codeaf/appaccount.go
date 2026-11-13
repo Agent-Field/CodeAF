@@ -20,9 +20,12 @@ package main
 // whether the service lists its models, the address) is not a secret, so
 // keys.set keeps it in the profile the terminal reads ([config.KeepAppSource]).
 //
-// OPENROUTER'S CHECK IS EXACTLY ONE REQUEST, with no redirect followed and ten
-// seconds to answer, and a rejection is said in the provider's own words with
-// its own status code. Its browser sign-in produces a key the app keeps.
+// OPENROUTER'S CHECK PROVES THE KEY BEFORE IT LISTS ANYTHING: the key's own row
+// first (/key, or the older /auth/key), then the models it reaches, with no
+// redirect followed and ten seconds for every request together. A key the
+// provider rejects is said in its own words with its own status code; a row that
+// is not a key's, or is a management key's, is turned away in codeaf's words.
+// Its browser sign-in produces a key the app keeps.
 //
 // THE CHATGPT SIGN-IN IS THE ONE EXCEPTION, accepted by the owner: its tokens
 // rotate on every refresh, so they stay in the profile exactly as the terminal
@@ -43,6 +46,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/claudemodel"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
@@ -135,15 +139,19 @@ func (b *appBackend) appProviders() []appProvider {
 }
 
 // appProviderOf is one description as the app connects it. The kind is read
-// off the same facts the terminal's connect flow branches on.
+// off the same facts the terminal's connect flow branches on. OpenRouter's
+// check uses its API base to ask for key details before listing models, because
+// its listing answers even for a bearer it does not accept.
 func appProviderOf(source modelsource.Source) appProvider {
 	p := appProvider{id: source.ID, name: source.Name, kind: appwire.ProviderKey, source: source}
 	switch {
 	case source.ID == modelsource.DefaultID:
 		p.signIn = true
-		p.check = strings.TrimRight(config.DefaultBaseURL, "/") + "/models/user"
+		p.check = strings.TrimRight(config.DefaultBaseURL, "/")
 	case strings.EqualFold(source.ID, "codex"):
 		p.kind, p.signIn = appwire.ProviderBrowser, true
+	case strings.EqualFold(source.ID, claudemodel.ID):
+		p.kind = appwire.ProviderAgent
 	case source.AddressOwned || modelsource.IsCustomID(source.ID):
 		p.kind = appwire.ProviderAddress
 	}
@@ -197,6 +205,15 @@ func (b *appBackend) providerView(p appProvider, sources modelsource.Set, rows m
 		key = service.Key
 	}
 	switch p.kind {
+	case appwire.ProviderAgent:
+		// CONNECTED IS THE ROW BEING KEPT; THE PLAN IS CLAUDE CODE'S OWN WORD.
+		// Whether it is still signed in is read on the machine the engine runs
+		// on, which over the relay is not the machine the desk is drawn on. Its
+		// key is a sentinel, so no hint is drawn from it.
+		_, held := rows[p.id]
+		view.SignedIn = found && held
+		view.KeyOptional = true
+		view.Plan = claudeCodeRowPlan(b.claudeStatus())
 	case appwire.ProviderBrowser:
 		// The sign-in's key is a word naming where its tokens live, never a
 		// key a person could recognise, so no hint is drawn from it.
@@ -265,6 +282,7 @@ func (b *appBackend) providerConnected() bool {
 // providerChanged says provider.changed for one provider, with key carried
 // only when this process made the key itself and the app has never seen it.
 func (b *appBackend) providerChanged(p appProvider, key string) {
+	b.locked(func() { delete(b.pluginPauses, p.id) })
 	view := b.providerView(p, appSourcesNow(), appPersistedRows())
 	b.emit.Emit(appwire.EventProviderChanged, appwire.ProviderChanged{Provider: view, Key: key})
 }
@@ -284,10 +302,15 @@ func (b *appBackend) CheckKey(provider, key string) (appwire.KeyCheck, error) {
 }
 
 // CheckProvider proves a provider can be connected as asked and keeps
-// nothing. OpenRouter's key is one request; every other provider is proved by
-// the terminal's own requests, with the region or address the person gave.
+// nothing. OpenRouter must accept the key at its key endpoint before its model
+// listing is asked, because the listing answers for any bearer. Every other
+// provider is proved by the terminal's own requests, with the region or address
+// the person gave.
 func (b *appBackend) CheckProvider(params appwire.KeyParams) (appwire.KeyCheck, error) {
 	p, ok := b.appProviderNamed(params.Provider)
+	if ok && p.kind == appwire.ProviderAgent {
+		return claudeCodeCheck(b.claudeStatusNow()), nil
+	}
 	if !ok {
 		return appwire.KeyCheck{}, appwire.Errorf(appwire.CodeBadParams, "codeaf cannot connect %s with a key", params.Provider)
 	}
@@ -324,6 +347,8 @@ func appKeyAsked(p appProvider, key string) error {
 	switch {
 	case p.kind == appwire.ProviderBrowser:
 		return appwire.Errorf(appwire.CodeBadParams, "%s signs in through the browser and takes no key", p.name)
+	case p.kind == appwire.ProviderAgent && key != "":
+		return appwire.Errorf(appwire.CodeBadParams, "%s uses its own sign-in and takes no key", p.name)
 	case p.kind == appwire.ProviderKey && key == "":
 		return appwire.Errorf(appwire.CodeBadParams, "%s needs a key", p.name)
 	}
@@ -459,44 +484,79 @@ func appServiceHost(source modelsource.Source, row config.PersistedSource) strin
 	return modelsource.AddressHost(firstNonEmptyString(address, source.Address))
 }
 
-// appCheckKey is the one request: an authenticated listing of the models the
-// key reaches. OpenRouter's public listing proves nothing about a key, so its
-// listing filtered to the key's own account is the one asked.
-func appCheckKey(ctx context.Context, client *http.Client, address, provider, key string) appwire.KeyCheck {
+// appCheckKeyAuth shares OpenRouter's cheap auth proof with setup, health and doctor.
+// Both model listings answer 200 with the public catalog for any
+// bearer, revoked or made up, so a listing proves nothing about a key. The key
+// endpoint answers only for a bearer OpenRouter resolved to a live key: its 200
+// carries that key's own row (label, limit, usage), and an unknown key is a 401.
+// So the key's row is asked first (and the older /auth/key when /key is not
+// there, as the balance reader does).
+// A management key has a row too, but OpenRouter lets it manage keys and never
+// run a model, so its row is a refusal. One deadline covers every request.
+func appCheckKeyAuth(ctx context.Context, client *http.Client, address, key string) appwire.KeyCheck {
+	address = strings.TrimRight(address, "/")
 	host := address
 	if parsed, err := url.Parse(address); err == nil && parsed.Host != "" {
 		host = parsed.Hostname()
 	}
-	unreachable := appwire.KeyCheck{Status: "timeout", Message: "No answer · couldn't reach " + host + " in 10s"}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, address, nil)
-	if err != nil {
-		return unreachable
-	}
-	request.Header.Set("Accept", "application/json")
-	request.Header.Set("Authorization", "Bearer "+key)
 	if client == nil {
 		client = http.DefaultClient
 	}
-	// A REDIRECT MUST NEVER TURN THIS ONE CALL INTO A KEY SENT ELSEWHERE.
+	// A REDIRECT MUST NEVER TURN THE CHECK INTO A KEY SENT ELSEWHERE.
 	local := *client
 	local.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	response, err := local.Do(request)
-	if err != nil {
-		var netErr net.Error
-		if errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &netErr) && netErr.Timeout()) {
-			return unreachable
+	get := func(path string) (int, []byte, *appwire.KeyCheck) {
+		return appKeyGet(ctx, &local, address+path, host, key)
+	}
+
+	status, raw, failed := get("/key")
+	if failed == nil && status == http.StatusNotFound {
+		status, raw, failed = get("/auth/key")
+	}
+	if failed != nil {
+		return *failed
+	}
+	if status != http.StatusOK {
+		return appwire.KeyCheck{Status: status, Message: redact.Secrets(appProviderWords(raw, status))}
+	}
+	var row struct {
+		Data map[string]json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &row); err != nil || row.Data == nil {
+		return appwire.KeyCheck{Status: status, Message: "the provider answered, but not with the key's details"}
+	}
+	// is_provisioning_key is the flag's older name, still sent beside it.
+	for _, flag := range []string{"is_management_key", "is_provisioning_key"} {
+		var set bool
+		if json.Unmarshal(row.Data[flag], &set) == nil && set {
+			return appwire.KeyCheck{Status: status, Message: "this is a management key, which can't run models · use an API key"}
 		}
-		unreachable.Status = appCheckUnreachable
-		unreachable.Message = "No answer · couldn't reach " + host
-		return unreachable
 	}
-	defer response.Body.Close()
-	raw, err := io.ReadAll(io.LimitReader(response.Body, appKeyAnswerLimit+1))
-	if err != nil || len(raw) > appKeyAnswerLimit {
-		return appwire.KeyCheck{Status: response.StatusCode, Message: "the provider's answer could not be read"}
+
+	return appwire.KeyCheck{OK: true}
+}
+
+// appCheckKey adds setup's model list only after the shared auth proof succeeds.
+func appCheckKey(ctx context.Context, client *http.Client, address, provider, key string) appwire.KeyCheck {
+	check := appCheckKeyAuth(ctx, client, address, key)
+	if !check.OK {
+		return check
 	}
-	if response.StatusCode != http.StatusOK {
-		return appwire.KeyCheck{Status: response.StatusCode, Message: redact.Secrets(appProviderWords(raw, response.StatusCode))}
+	if client == nil {
+		client = http.DefaultClient
+	}
+	local := *client
+	local.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	host := address
+	if parsed, err := url.Parse(address); err == nil && parsed.Host != "" {
+		host = parsed.Hostname()
+	}
+	status, raw, failed := appKeyGet(ctx, &local, strings.TrimRight(address, "/")+"/models/user", host, key)
+	if failed != nil {
+		return *failed
+	}
+	if status != http.StatusOK {
+		return appwire.KeyCheck{Status: status, Message: redact.Secrets(appProviderWords(raw, status))}
 	}
 	var listing struct {
 		Data []struct {
@@ -505,9 +565,9 @@ func appCheckKey(ctx context.Context, client *http.Client, address, provider, ke
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(raw, &listing); err != nil || listing.Data == nil {
-		return appwire.KeyCheck{Status: response.StatusCode, Message: "the provider answered, but not with a list of models"}
+		return appwire.KeyCheck{Status: status, Message: "the provider answered, but not with a list of models"}
 	}
-	check := appwire.KeyCheck{OK: true, Models: []appwire.Model{}}
+	check = appwire.KeyCheck{OK: true, Models: []appwire.Model{}}
 	for _, row := range listing.Data {
 		id := strings.TrimSpace(row.ID)
 		if id == "" {
@@ -520,6 +580,33 @@ func appCheckKey(ctx context.Context, client *http.Client, address, provider, ke
 		check.Models = append(check.Models, appwire.Model{ID: id, Name: name, Provider: provider})
 	}
 	return check
+}
+
+// appKeyGet is one of the check's requests: a GET with the key on it and the
+// answer read under the cap. It returns the status and the body, or the check's
+// answer when there is no answer to read: the host was not reached in time, not
+// reached at all, or said more than the cap.
+func appKeyGet(ctx context.Context, client *http.Client, address, host, key string) (int, []byte, *appwire.KeyCheck) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, address, nil)
+	if err != nil {
+		return 0, nil, &appwire.KeyCheck{Status: "timeout", Message: "No answer · couldn't reach " + host + " in 10s"}
+	}
+	request.Header.Set("Accept", "application/json")
+	request.Header.Set("Authorization", "Bearer "+key)
+	response, err := client.Do(request)
+	if err != nil {
+		var netErr net.Error
+		if errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &netErr) && netErr.Timeout()) {
+			return 0, nil, &appwire.KeyCheck{Status: "timeout", Message: "No answer · couldn't reach " + host + " in 10s"}
+		}
+		return 0, nil, &appwire.KeyCheck{Status: appCheckUnreachable, Message: "No answer · couldn't reach " + host}
+	}
+	defer response.Body.Close()
+	raw, err := io.ReadAll(io.LimitReader(response.Body, appKeyAnswerLimit+1))
+	if err != nil || len(raw) > appKeyAnswerLimit {
+		return 0, nil, &appwire.KeyCheck{Status: response.StatusCode, Message: "the provider's answer could not be read"}
+	}
+	return response.StatusCode, raw, nil
 }
 
 // appProviderWords are a rejection's own words, read from the shapes
@@ -562,6 +649,9 @@ func (b *appBackend) SetProvider(params appwire.KeyParams) error {
 	if params.Provider == appwire.KeyGitHub {
 		return b.setGitHubKey(params.Key)
 	}
+	if config.AppKept(params.Provider) {
+		return b.setKeptKey(params.Provider, params.Key)
+	}
 	p, ok := b.appProviderNamed(params.Provider)
 	if !ok {
 		return appwire.Errorf(appwire.CodeBadParams, "codeaf cannot connect %s with a key", params.Provider)
@@ -569,6 +659,16 @@ func (b *appBackend) SetProvider(params appwire.KeyParams) error {
 	key := strings.TrimSpace(params.Key)
 	if err := appKeyAsked(p, key); err != nil {
 		return err
+	}
+	if p.kind == appwire.ProviderAgent {
+		if _, err := config.ConnectClaudeCode(context.Background(), config.ProfileDir()); err != nil {
+			return appwire.Errorf(appwire.CodeBadParams, "%s", err.Error())
+		}
+		b.forgetClaudeStatus()
+		b.keysMoved(p.id)
+		b.providerChanged(p, "")
+		b.warmProviderModels()
+		return nil
 	}
 	if p.id != modelsource.DefaultID {
 		if err := b.keepConnection(p, params, key); err != nil {
@@ -599,6 +699,22 @@ func (b *appBackend) setGitHubKey(key string) error {
 		return appwire.Errorf(appwire.CodeBadParams, "keys.set %s needs a token", appwire.KeyGitHub)
 	}
 	b.keys.Set(appwire.KeyGitHub, key)
+	return nil
+}
+
+// setKeptKey holds a credential a door kept with the app at an earlier
+// launch (config.AppKept: the Jira token, the AgentField key and node
+// secret), handed back now. It is no model provider, so no conversation,
+// model list or profile row hears of it; its readers find it in the app's
+// credentials first. It is held with Set, which does not tell the app to keep
+// it again.
+func (b *appBackend) setKeptKey(provider, key string) error {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return appwire.Errorf(appwire.CodeBadParams, "keys.set %s needs a key", provider)
+	}
+	b.keys.Set(provider, key)
+	b.agentFieldKeyMoved(provider)
 	return nil
 }
 
@@ -689,6 +805,9 @@ func (b *appBackend) RemoveKey(provider string) error {
 // ([openAppEngineProcess]) and reads this key then; an open one is updated
 // here, whoever opened it.
 func (b *appBackend) keysMoved(provider string) {
+	if provider == modelsource.DefaultID {
+		b.refreshKeyHealth()
+	}
 	proc := openedEngineProcess()
 	if proc == nil {
 		return
@@ -704,7 +823,7 @@ func (b *appBackend) keysMoved(provider string) {
 // connected provider this process has no list for yet — most often the one
 // just connected — through the terminal's own door ([v3ModelShelf.warmAll]),
 // so models.list offers its models as the terminal's picker would. It is
-// seated on the profile's errand tracker, so a close waits for it.
+// seated on the process's errand tracker, so a close waits for it.
 func (b *appBackend) warmProviderModels() {
 	if !b.assembled.Load() || b.isClosing() {
 		return
@@ -717,9 +836,30 @@ func (b *appBackend) warmProviderModels() {
 		return
 	}
 	done := make(chan struct{})
-	b.locked(func() { b.providerWarm = done })
-	poolErrandGoCtx(proc.ProfileDir, "app/provider-models", func(ctx context.Context) {
-		defer close(done)
+	var prev chan struct{}
+	stopped := false
+	b.locked(func() {
+		if b.closing {
+			stopped = true
+			return
+		}
+		prev = b.providerWarm
+		b.providerWarm = done
+	})
+	if stopped {
+		close(done)
+		return
+	}
+	poolErrandGoCtx(proc.poolErrands, "app/provider-models", func(ctx context.Context) {
+		defer func() {
+			if prev != nil {
+				select {
+				case <-prev:
+				case <-ctx.Done():
+				}
+			}
+			close(done)
+		}()
 		proc.Shelf.warmAll(ctx, true, proc.noteServiceModels)
 	})
 }

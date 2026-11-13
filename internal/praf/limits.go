@@ -3,12 +3,10 @@ package praf
 // Each of a review's agents runs under turn and time limits of its own,
 // keyed on the label its reasoner gives its session (reasoners.Label*).
 //
-// EACH AGENT'S LIMIT IS ITS OWN, AND PR'S ALONE. A reviewer reading a
-// dimension of the change and a lens choosing what to review do different
-// amounts of reading, so one limit for all either cut the one or let the
-// other wander; and the agent loop is shared with sec, so a limit tuned for
-// its agents must never become review's. The owner's call (2026-10-06) is each
-// program's own figures for each of its agents.
+// EACH AGENT'S LIMIT IS ITS OWN, AND PR'S ALONE. A reviewer reading a dimension of the
+// change and a lens choosing what to review do different amounts of reading, so one limit
+// for all either cut the one or let the other wander; and the agent loop is shared with
+// sec, so a limit tuned for its agents must never become review's.
 //
 // THE FIGURES ARE A CHOICE OF DEPTH, NOT A MEASUREMENT. A live review's
 // sessions read until their limit whatever it was, so the limit sets how

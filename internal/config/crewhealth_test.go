@@ -72,7 +72,7 @@ func TestRouteHealthTransitions(t *testing.T) {
 	}
 }
 
-// THE OWNER'S SEQUENCE: a route refused a seat with a 403, and the next task
+// THE PROVIDER SEQUENCE: a route refused a seat with a 403, and the next task
 // was routed onto it again. A forbidden route is quarantined, and the next
 // task's crew does not sit on it.
 func TestAForbiddenRouteIsNotRoutedToAgain(t *testing.T) {

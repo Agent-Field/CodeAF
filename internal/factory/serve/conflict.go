@@ -35,7 +35,7 @@ func (h *Handler) guarded(verb string, action jobAction) jobAction {
 // withVersion stamps the store's document revision onto the job the page
 // reads. A handler with no store leaves it zero, and the field stays off the wire.
 func (h *Handler) withVersion(job api.Job) api.Job {
-	return h.withVersionKept(job, h.retention())
+	return h.withVersionKept(job, h.retention(), nil)
 }
 
 // retention is how long a finished job stays on the page. A response that
@@ -48,7 +48,14 @@ func (h *Handler) retention() time.Duration {
 }
 
 // withVersionKept is [Handler.withVersion] with the retention already read.
-func (h *Handler) withVersionKept(job api.Job, retention time.Duration) api.Job {
+// EVERY JOB ANSWER CARRIES ITS WAITING_ON here, the queue's rows as much as the
+// single-job read, because a page that reads waits off the queue takes an
+// absent waiting_on for a job already released. byID is the factory's jobs
+// already in hand, so a list answer does not read the store once per wait;
+// nil reads each job it waits on from the store.
+func (h *Handler) withVersionKept(job api.Job, retention time.Duration, byID map[int]factory.Item) api.Job {
+	api.AreaIn(&job, h.areas.declared())
+	h.waitingOn(&job, byID)
 	job.Display = api.DisplayForRetention(job, h.clock(), retention)
 	if h.config.Store == nil || job.ID == 0 {
 		return job
@@ -64,7 +71,12 @@ func (h *Handler) withVersionKept(job api.Job, retention time.Duration) api.Job 
 // fresh is true when expect is absent or still matches the job. A mismatch
 // is the page the person was looking at, not the job as it is now.
 func (h *Handler) fresh(w http.ResponseWriter, r *http.Request, it factory.Item, verb string, exp *api.Expect) bool {
-	if exp == nil {
+	// Pause and Resume keep their intent after progress; their doors refuse ended jobs.
+	if verb == "pause" || verb == "resume" {
+		return true
+	}
+	// Stop expresses the same intent after any progress on an active run.
+	if exp == nil || ((verb == "stop" || verb == "step_stop") && (factory.UnderWay(it) || it.State == factory.StateRunning)) {
 		return true
 	}
 	job := h.withVersion(api.FromItem(it))
@@ -72,14 +84,37 @@ func (h *Handler) fresh(w http.ResponseWriter, r *http.Request, it factory.Item,
 	if job.Step != nil {
 		step = job.Step.Name
 	}
+	versionStale := false
+	if exp.Version != nil && (h.config.Store == nil || !bookkeepingAction(verb)) {
+		versionStale = *exp.Version != job.Version
+	} else if exp.Version != nil {
+		err := h.config.Store.CheckActionExpected(it.ID, *exp.Version)
+		var stale *store.StaleError
+		if err != nil && !errors.As(err, &stale) {
+			h.failed(w, err)
+			return false
+		}
+		versionStale = err != nil
+	}
 	stale := (exp.State != "" && exp.State != job.State) ||
 		(exp.Step != "" && exp.Step != step) ||
-		(exp.Version != nil && *exp.Version != job.Version)
+		versionStale
 	if !stale {
 		return true
 	}
 	h.moved(w, r, it, job, verb)
 	return false
+}
+
+// bookkeepingAction opts only job controls into action revision history.
+// Approval, publication and plan revision always require the exact version.
+func bookkeepingAction(verb string) bool {
+	switch verb {
+	case "control", "step_rerun", "step_stop", "stop", "request_changes":
+		return true
+	default:
+		return false
+	}
 }
 
 // moved answers a stale expect. The sentence is the one the page can show:
@@ -121,6 +156,13 @@ func (h *Handler) approvedSentence(r *http.Request, it factory.Item) (string, st
 		when = it.Changed
 		commit = it.HeadCommit
 	}
+	if ok && handle == "" {
+		if when.IsZero() {
+			return "approved automatically", "", nil, eventID, commit
+		}
+		stamp := when.UTC()
+		return "approved automatically at " + stamp.Format("15:04"), "", &stamp, eventID, commit
+	}
 	if handle == "" {
 		handle = "someone"
 	}
@@ -142,7 +184,7 @@ func (h *Handler) latestApproval(ctx context.Context, id int) (handle, eventID, 
 	}
 	for i := len(events) - 1; i >= 0; i-- {
 		e := events[i]
-		if e.Job == id && e.Kind == record.Approved && e.Handle != "" {
+		if e.Job == id && e.Kind == record.Approved {
 			return e.Handle, e.ID, e.Commit, e.At, true
 		}
 	}
@@ -164,7 +206,9 @@ type refusalBody struct {
 	CurrentCommit string      `json:"current_commit,omitempty"`
 	HeadCommit    string      `json:"head_commit,omitempty"`
 	JobPerson     string      `json:"job_person,omitempty"`
-	RequestID     string      `json:"request_id"`
+	// Outcome is set only by the issue comment route ([api.CommentRefused]).
+	Outcome   string `json:"outcome,omitempty"`
+	RequestID string `json:"request_id"`
 }
 
 func (h *Handler) refuse(w http.ResponseWriter, status int, words, reason, by string, at *time.Time, nowState string) {
@@ -296,7 +340,8 @@ func classify(err error) (int, string) {
 	var stepRefusal run.StepControlRefusal
 	var editRefusal factory.EditRefusal
 	var planRefusal run.PlanRevisionRefusal
-	if errors.As(err, &stepRefusal) || errors.As(err, &editRefusal) || errors.As(err, &planRefusal) {
+	var writeRefusal run.WriteAccessRefusal
+	if errors.As(err, &stepRefusal) || errors.As(err, &editRefusal) || errors.As(err, &planRefusal) || errors.As(err, &writeRefusal) {
 		return http.StatusConflict, "conflict"
 	}
 	var stale *store.StaleError
@@ -319,7 +364,7 @@ func classify(err error) (int, string) {
 		return http.StatusGatewayTimeout, ""
 	case errors.Is(err, context.Canceled):
 		return http.StatusRequestTimeout, ""
-	case errors.Is(err, run.ErrAlreadyRunning):
+	case errors.Is(err, run.ErrAlreadyRunning), errors.Is(err, factory.ErrPersonStopped), errors.Is(err, factory.ErrNoRepo):
 		return http.StatusConflict, "conflict"
 	}
 	msg := err.Error()

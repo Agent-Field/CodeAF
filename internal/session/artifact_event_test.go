@@ -24,7 +24,7 @@ func artifactEvents(agent *Agent) *[]ArtifactChange {
 }
 
 // A normal write of a new document announces the deliverable it recorded, once,
-// after the row is on the index; an edit and a failed append announce nothing.
+// after the row is on the index. Rewrites announce the same identity.
 func TestAWrittenDocumentIsAnnouncedAfterTheAppendAndOnlyThen(t *testing.T) {
 	agent, workspace, index := deliverableAgent(t, false)
 	session := agent.journalID()
@@ -48,11 +48,11 @@ func TestAWrittenDocumentIsAnnouncedAfterTheAppendAndOnlyThen(t *testing.T) {
 		t.Fatalf("event preceded the commit: %v", err)
 	}
 
-	// an edit of the same file, and a file of another kind: nothing
+	// An overwrite invalidates the same card; ordinary files get cards too.
 	beltTool(t, agent, "write").Execute(ctx, []byte(`{"path":"notes.md","content":"# edited\n"}`))
 	beltTool(t, agent, "write").Execute(ctx, []byte(`{"path":"main.go","content":"package main\n"}`))
-	if len(*seen) != 1 {
-		t.Fatalf("an edit or an unsupported kind announced a deliverable: %+v", *seen)
+	if len(*seen) != 3 || (*seen)[1].ID != got.ID {
+		t.Fatalf("missing overwrite or file announcement: %+v", *seen)
 	}
 
 	// a failed append: the index is a directory, the write still happens, no event
@@ -66,7 +66,7 @@ func TestAWrittenDocumentIsAnnouncedAfterTheAppendAndOnlyThen(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(workspace, "other.md")); err != nil {
 		t.Fatal("the write itself failed")
 	}
-	if len(*seen) != 1 {
+	if len(*seen) != 3 {
 		t.Fatal("a failed append announced a deliverable")
 	}
 }

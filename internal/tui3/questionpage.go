@@ -12,11 +12,10 @@ import (
 
 // ── THE PAGE, DRAWN ─────────────────────────────────────────────────────────
 //
-// `o` OPENS THE QUESTION AS TWO PANES (owner ruling 2026-09-11, page pick A):
-// the question and its reason across the top, the answers in a list on the left
-// with what the asker showed for the whole decision under them, and the evidence
-// of the answer the pointer is on in a pane on the right — its word, what it
-// means, what taking it leaves true, why the asker would take it, what would
+// `o` OPENS THE QUESTION AS TWO PANES: the question and its reason across the top, the
+// answers in a list on the left with what the asker showed for the whole decision under
+// them, and the evidence of the answer the pointer is on in a pane on the right — its
+// word, what it means, what taking it leaves true, why the asker would take it, what would
 // change its mind, how sure it is, and everything it drew.
 //
 //	  ? Which storage for the session index?          model asks · the turn waits on it
@@ -511,8 +510,7 @@ func (a *app) questionRoomRows(width int) []row {
 // one place the list's window is moved for anything other than the wheel.
 //
 // An arrow that walks the pointer below the fold with nothing moving on screen
-// is a key that reads as doing nothing (lane F measured it on the old page, where
-// the window was moved only by the wheel). It scrolls the LEAST it can: a row
+// is a key that reads as doing nothing. It scrolls the LEAST it can: a row
 // already on screen does not move, and one off it is brought just inside the
 // edge it left by — the reading position a person built is kept, not
 // re-anchored under them.

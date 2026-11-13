@@ -5,7 +5,7 @@ package main
 // It used to run one bounded pass of the v1 resident — charters woken and
 // judged, practice, tenure — against the resident's store, and an operating
 // system timer an older build installed ran it every five minutes. That
-// scheduler is gone (docs/design/automations/DESIGN.md): nothing in this
+// scheduler is gone: nothing in this
 // build schedules anything on the machine, and automations run only while a
 // codeaf window is open.
 //

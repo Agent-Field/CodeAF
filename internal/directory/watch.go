@@ -47,14 +47,16 @@ func (h *handler) watch(w http.ResponseWriter, r *http.Request) {
 	}
 	defer sub.Close()
 	// Accept keeps the headers set on w, so this one rides the 101 answer.
-	w.Header().Set(VouchHeader, "1")
+	if !sub.committed {
+		w.Header().Set(VouchHeader, "1")
+	}
 	w.Header().Set(PresenceHeader, "1")
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{CompressionMode: websocket.CompressionDisabled})
 	if err != nil {
 		return
 	}
 	conn.SetReadLimit(watchRead)
-	serveWatch(r.Context(), conn, sub, c.device, wantsEvents(r))
+	serveWatchReceipts(r.Context(), conn, sub, c.device, wantsEvents(r), r.URL.Query().Get("receipts") == "1")
 }
 
 // wantsEvents is whether the socket opted in to event frames (EventsQuery).
@@ -95,6 +97,11 @@ func subscribe(c call) (*Sub, error) {
 	if err != nil {
 		return nil, err
 	}
+	if authenticated, ok := c.dir.(interface {
+		SubscribeWatch(string, *http.Request, []Hold, time.Duration) (*Sub, error)
+	}); ok {
+		return authenticated.SubscribeWatch(c.device, c.r, holds, beat)
+	}
 	return feed.Feed().SubscribeBeat(c.device, holds, beat)
 }
 
@@ -106,16 +113,31 @@ func isUpgrade(r *http.Request) bool {
 // "ping" with "pong" and ignores every other frame, so its error is what ends
 // the socket when the peer goes.
 func serveWatch(ctx context.Context, conn *websocket.Conn, sub *Sub, device string, events bool) {
+	serveWatchReceipts(ctx, conn, sub, device, events, false)
+}
+
+func serveWatchReceipts(ctx context.Context, conn *websocket.Conn, sub *Sub, device string, events, receipts bool) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	// The first version precedes receipt frames just as it precedes events.
+	ready := make(chan struct{})
 	go func() {
 		defer cancel()
-		answerPings(ctx, conn, sub)
+		select {
+		case <-ready:
+		case <-ctx.Done():
+			return
+		}
+		if sendReceipts(ctx, conn, sub, receipts) != nil {
+			return
+		}
+		answerPingsReceipts(ctx, conn, sub, receipts)
 	}()
 	// The version is the first frame; an event socket then hears who is online.
-	first := func() {}
+	first := func() { close(ready) }
 	if events {
 		first = func() {
+			close(ready)
 			events := sub.Events()
 			go sendEvents(ctx, cancel, conn, events)
 		}
@@ -197,14 +219,34 @@ func sendVersion(ctx context.Context, conn *websocket.Conn, v uint64) error {
 // answerPings answers each ping, stamping the socket's sign of life first so a
 // peer that has heard the pong can rely on it.
 func answerPings(ctx context.Context, conn *websocket.Conn, sub *Sub) {
+	answerPingsReceipts(ctx, conn, sub, false)
+}
+
+func sendReceipts(ctx context.Context, conn *websocket.Conn, sub *Sub, enabled bool) error {
+	holds := sub.takeReceipts()
+	if !enabled || len(holds) == 0 {
+		return nil
+	}
+	raw, err := json.Marshal(struct {
+		Holds []dirwatch.HoldReceipt `json:"holds"`
+	}{holds})
+	if err != nil {
+		return err
+	}
+	return sendText(ctx, conn, string(raw))
+}
+
+func answerPingsReceipts(ctx context.Context, conn *websocket.Conn, sub *Sub, receipts bool) {
 	for {
 		kind, msg, err := conn.Read(ctx)
 		if err != nil {
 			return
 		}
 		if kind == websocket.MessageText && string(msg) == "ping" {
-			sub.Ping()
-			if sendText(ctx, conn, "pong") != nil {
+			if sub.PingCommitted() != nil {
+				return
+			}
+			if sendReceipts(ctx, conn, sub, receipts) != nil || sendText(ctx, conn, "pong") != nil {
 				return
 			}
 		}

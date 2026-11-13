@@ -68,7 +68,7 @@ func TestASendDoesNotHoldTheSocketShut(t *testing.T) {
 		t.Fatal("the send never reached the engine")
 	}
 	// The preamble is held for two seconds from here, exactly as the brief for
-	// this lane stated it, and let go early only if the assertions below fail.
+	// this test stated it, and let go early only if the assertions below fail.
 	timer := time.AfterFunc(2*time.Second, letGo)
 	t.Cleanup(func() { timer.Stop() })
 

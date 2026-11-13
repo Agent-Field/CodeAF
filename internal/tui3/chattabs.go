@@ -686,7 +686,7 @@ func (a *app) tabsRow(width int) string {
 // THERE IS NO GLYPH-ALONE RUNG ANY MORE. Between sixty and eighty columns the
 // door used to be a bare ` ▦ `, a lone mark a person had to press to learn
 // about; four cells taken from the tabs is the price of it saying what it is,
-// and the owner's bar is word buttons, never lone glyphs. tabWallWordFrom is
+// and the tab bar is word buttons, never lone glyphs. tabWallWordFrom is
 // kept equal to tabWallFrom so the two rungs cannot drift apart again.
 const (
 	tabWallFrom     = roomHeadFloor
@@ -1362,7 +1362,9 @@ func (a *app) tabHoverAt(x, y int) (hoverAt, bool) {
 // through to whatever the next rung would have made of it.
 func (a *app) tabPress(x, y int) (tea.Cmd, bool) {
 	width, _ := a.size()
-	if y < 0 || y >= a.tabsHeight(width) {
+	// A pending opening can draw the strip above Home. Its recorded targets
+	// still answer the navigation click that just cancelled that opening.
+	if y < 0 || (y >= a.tabsHeight(width) && (y != tabStripRow || len(a.chatTabHits) == 0)) {
 		return nil, false
 	}
 	if y != tabStripRow {
@@ -1396,7 +1398,7 @@ func (a *app) tabPress(x, y int) (tea.Cmd, bool) {
 			a.closeWall()
 			return nil, true
 		}
-		return a.openWall(), true
+		return a.openTabsWall(), true
 	case tabClose:
 		return a.tabDismiss(hit.tab), true
 	case tabHere:
@@ -1421,9 +1423,12 @@ func (a *app) tabPress(x, y int) (tea.Cmd, bool) {
 // refusals said in the same words, because one gesture with two spellings of
 // "that folder is gone" is two features to keep in step.
 func (a *app) tabGo(tab chatTab) (cmd tea.Cmd) {
+	if cmd, remote := a.teamsRemoteGo(teamMember{Key: tab.key, File: tab.file, Word: tab.word}); remote {
+		return cmd
+	}
 	defer func() {
-		if t, ok := a.teamActive(); ok && !a.wall.on && !a.teamOverlayHolds(t, a.frontTabKey()) {
-			a.teamViewSet("")
+		if !a.conversationOpening {
+			a.tabSettleTeam()
 		}
 	}()
 	if tab.work {
@@ -1452,6 +1457,14 @@ func (a *app) tabGo(tab chatTab) (cmd tea.Cmd) {
 		return cmd
 	}
 	return a.hopStart(hopRow{file: tab.file, where: tab.where, title: tab.word})
+}
+
+// tabSettleTeam validates the overlay against the conversation actually selected,
+// after an immediate switch or after an asynchronous opening has settled.
+func (a *app) tabSettleTeam() {
+	if t, ok := a.teamActive(); ok && !a.wall.on && !a.teamOverlayHolds(t, a.frontTabKey()) {
+		a.teamViewSet("")
+	}
 }
 
 // ── DISMISSING A TAB ────────────────────────────────────────────────────────

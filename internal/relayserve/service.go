@@ -11,21 +11,28 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
+	"github.com/Agent-Field/codeaf/internal/clusterctl"
+	"github.com/Agent-Field/codeaf/internal/clusterstate"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/pairbox"
+	"github.com/Agent-Field/codeaf/internal/rafttransport"
 	"github.com/Agent-Field/codeaf/internal/relay"
-	"github.com/Agent-Field/codeaf/internal/reqsign"
 )
 
 // Config is everything a relay is told. The zero Store is the blind pipe.
 type Config struct {
+	// Cluster is supplied by the persistent member host after loading its
+	// committed enrollment view. Its handler is an internal assembly seam, not a
+	// rollout switch or an alternative directory writer.
+	Cluster http.Handler
+
 	Store  string           // directory holding directory/ and blobs/; empty serves the pipe only
 	Status bool             // answer GET /status with what is connected right now
 	Now    func() time.Time // the relay's clock; nil is the wall clock
 	Logf   func(string, ...any)
 	Note   func(name, what string) // the pipe's arrival and departure line; nil says nothing
 
-	// TrustProxy makes the pairing mailbox's per-network limits count the
+	// TrustProxy makes registration, dial and pairing limits count the
 	// address in X-Forwarded-For. Only a relay behind a proxy that sets it may
 	// say so; anywhere else a caller could name any network it liked.
 	TrustProxy bool
@@ -100,15 +107,16 @@ func (s *Service) sweepLoop(every time.Duration, logf func(string, ...any)) {
 
 // New builds the relay. Every relay is the blind pipe and the pairing mailbox,
 // which needs no disk and no identity. Given a store it also serves the
-// directory and store wires, every request authenticated by the real signature
-// check against the relay's own clock.
+// directory and store wires through three persistent local anchors per identity.
+// First use migrates the source; every request proves its original signature.
 func New(cfg Config) *Service {
 	now := cfg.Now
 	if now == nil {
 		now = time.Now
 	}
-	mux := pipeMux(&relay.Server{Note: cfg.Note}, cfg.Status)
+	mux := pipeMux(&relay.Server{Note: cfg.Note, Peer: peerOf(cfg)}, cfg.Status)
 	mountPairing(mux, cfg, now)
+	mountCluster(mux, cfg.Cluster)
 	mux.HandleFunc("/p/", servePairPage)
 	svc := &Service{Handler: stamped(now, mux)}
 	if cfg.Store == "" {
@@ -116,28 +124,36 @@ func New(cfg Config) *Service {
 	}
 	links := directory.NewLinks(now, directory.DefaultLinkLimits)
 	svc.ns = newNamespaces(cfg.Store, now, cfg.Grace, cfg.MaxWatchers)
+	svc.ns.logf = cfg.Logf
 	svc.ns.after = cfg.After
 	svc.ns.links = links
-	auth := noting(turningRevokedAway(reqsign.AuthenticateAt(now), svc.ns.revoked))
-	fabric := &fabric{ns: svc.ns, auth: auth}
+	mux.HandleFunc(clusterstate.ClusterAPIPath, svc.ns.clusterAPI)
+	mux.HandleFunc(clusterstate.PersonalAdmissionPath, svc.ns.enrollPersonal)
+	if cfg.Cluster == nil {
+		mux.HandleFunc(rafttransport.ExchangePath, svc.ns.exchangePersonal)
+		mux.HandleFunc(rafttransport.SocketPath, svc.ns.exchangePersonal)
+		mux.HandleFunc(clusterctl.ForwardPath, svc.ns.exchangePersonal)
+	}
+	mux.Handle(clusterctl.Path, clusterctl.Handler(svc.ns.controlAuthenticate, svc.ns.controlBackend))
+	auth := noting(svc.ns.authenticate)
+	fabric := &fabric{ns: svc.ns, auth: noting(svc.ns.authenticateFabric)}
 	svc.fabric = fabric
-	fullAuth := fabric.fullAuth
-	dirs := logged(cfg.Logf, fabric.directoryHandler(directory.Handler(fullAuth, svc.ns.directory)))
+	dirs := logged(cfg.Logf, fabric.directoryHandler(directory.Handler(auth, svc.ns.directory)))
 	mux.Handle("/v1/clients/", logged(cfg.Logf, fabric.handler()))
 	mux.Handle("POST /v1/dir/devices/{device}/revoke", logged(cfg.Logf, fabric.serve(revokeClient)))
 	mux.Handle("/v1/dir/", dirs)
 	mux.Handle("/v1/identity/", dirs)
 	mux.Handle(directory.LinkPath+"/", logged(cfg.Logf, directory.LinkHandler(links, peerOf(cfg))))
-	mux.Handle("/v1/store/", logged(cfg.Logf, blobstore.HandlerAt(now, fullAuth, svc.ns.blobs)))
+	mux.Handle("/v1/store/", logged(cfg.Logf, blobstore.HandlerAt(now, auth, svc.ns.blobs)))
 	svc.stop = make(chan struct{})
 	svc.swept.Add(1)
 	go svc.sweepLoop(sweepInterval(cfg.SweepEvery), cfg.Logf)
 	return svc
 }
 
-// peerOf names the network of a link-pairing request: the proxy's word when
-// the relay sits behind one, the socket otherwise.
-func peerOf(cfg Config) directory.PeerFunc {
+// peerOf keeps registrations, dials and both pairing paths on one explicit
+// proxy policy. An untrusted forwarding header can never select an allowance.
+func peerOf(cfg Config) func(*http.Request) string {
 	if cfg.TrustProxy {
 		return pairbox.ForwardedPeer
 	}
@@ -160,10 +176,7 @@ func mountPairing(mux *http.ServeMux, cfg Config, now func() time.Time) {
 	if limits == (pairbox.Limits{}) {
 		limits = pairbox.DefaultLimits
 	}
-	peer := pairbox.SocketPeer
-	if cfg.TrustProxy {
-		peer = pairbox.ForwardedPeer
-	}
+	peer := peerOf(cfg)
 	h := logged(cfg.Logf, pairbox.Handler(pairbox.NewMemory(limits, now), peer))
 	mux.Handle(pairbox.Path, h)
 	mux.Handle(pairbox.Path+"/", h)

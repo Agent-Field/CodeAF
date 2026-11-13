@@ -32,6 +32,8 @@ type state struct {
 	Contexts []ContextEntry
 	NextID   uint64
 	Deleted  map[string]bool
+	// Stopped records a person's stop even if the root had already finished.
+	Stopped bool
 }
 
 // sqliteBusyCode is SQLITE_BUSY, the refusal SQLite gives a writer while
@@ -77,7 +79,8 @@ var schemaStatements = []string{
 		project TEXT    NOT NULL,
 		root_id TEXT    NOT NULL,
 		next_id INTEGER NOT NULL,
-		version INTEGER NOT NULL
+		version INTEGER NOT NULL,
+		stopped INTEGER NOT NULL DEFAULT 0
 	)`,
 	`CREATE TABLE IF NOT EXISTS tasks (
 		id                    TEXT    PRIMARY KEY,
@@ -117,7 +120,10 @@ var schemaStatements = []string{
 		seen_at               TEXT    NOT NULL DEFAULT '',
 		waiting               INTEGER NOT NULL DEFAULT 0,
 		waited_at             TEXT    NOT NULL DEFAULT '',
-		verdict_basis         TEXT    NOT NULL DEFAULT 'null'
+		verdict_basis         TEXT    NOT NULL DEFAULT 'null',
+		review_check          INTEGER NOT NULL DEFAULT 0,
+		added_by_task         TEXT    NOT NULL DEFAULT '',
+		joined_assignment     INTEGER NOT NULL DEFAULT 0
 	)`,
 	`CREATE TABLE IF NOT EXISTS deps (
 		downstream TEXT    NOT NULL,
@@ -169,6 +175,9 @@ var schemaStatements = []string{
 		waiting               INTEGER NOT NULL DEFAULT 0,
 		waited_at             TEXT    NOT NULL DEFAULT '',
 		verdict_basis         TEXT    NOT NULL DEFAULT 'null',
+		review_check          INTEGER NOT NULL DEFAULT 0,
+		added_by_task         TEXT    NOT NULL DEFAULT '',
+		joined_assignment     INTEGER NOT NULL DEFAULT 0,
 		archived_at           TEXT    NOT NULL
 	)`,
 	`CREATE TABLE IF NOT EXISTS notes (
@@ -349,6 +358,9 @@ func schemaTransaction(db *sql.DB) error {
 // schema transaction, so an old store's columns are added atomically with the
 // tables and a reader never sees one column present and its sibling absent.
 func migrateColumns(tx *sql.Tx) error {
+	if err := ensureColumn(tx, "meta", "stopped", "INTEGER", "0"); err != nil {
+		return err
+	}
 	for _, table := range []string{"tasks", "notes", "contexts"} {
 		for _, column := range []string{"project", "chat"} {
 			if err := ensureColumn(tx, table, column, "TEXT", "''"); err != nil {
@@ -369,6 +381,9 @@ func migrateColumns(tx *sql.Tx) error {
 		return err
 	}
 	for _, table := range []string{"tasks", "archived_tasks"} {
+		if err := ensureColumn(tx, table, "model", "TEXT", "''"); err != nil {
+			return err
+		}
 		if err := ensureColumn(tx, table, "owner", "TEXT", "''"); err != nil {
 			return err
 		}
@@ -393,6 +408,15 @@ func migrateColumns(tx *sql.Tx) error {
 			return err
 		}
 		if err := ensureColumn(tx, table, "verdict_basis", "TEXT", "'null'"); err != nil {
+			return err
+		}
+		if err := ensureColumn(tx, table, "review_check", "INTEGER", "0"); err != nil {
+			return err
+		}
+		if err := ensureColumn(tx, table, "added_by_task", "TEXT", "''"); err != nil {
+			return err
+		}
+		if err := ensureColumn(tx, table, "joined_assignment", "INTEGER", "0"); err != nil {
 			return err
 		}
 	}
@@ -502,8 +526,8 @@ func enterWAL(db *sql.DB) error {
 // — so a database that has been tampered with is refused rather than trusted.
 func loadState(tx *sql.Tx) (state, error) {
 	var value state
-	row := tx.QueryRow(`SELECT project, root_id, next_id, version FROM meta WHERE id = 1`)
-	if err := row.Scan(&value.Project, &value.RootID, &value.NextID, &value.Version); err != nil {
+	row := tx.QueryRow(`SELECT project, root_id, next_id, version, stopped FROM meta WHERE id = 1`)
+	if err := row.Scan(&value.Project, &value.RootID, &value.NextID, &value.Version, &value.Stopped); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return state{}, errNoStore
 		}
@@ -560,7 +584,7 @@ const taskColumns = `id, title, description, question, kind, parent_id, priority
 	parallel, isolation, role, agent, acceptance, checks, capabilities, resources, context_inputs,
 	deliverables, evidence_requirements, status, composite, claimed_by, result, err,
 	artifacts, evidence, created_at, updated_at, completed_at, project, chat, paused, owner, seen_at,
-	waiting, waited_at, verdict_basis`
+	waiting, waited_at, verdict_basis, model, review_check, added_by_task, joined_assignment`
 
 // rowQuerier is the read half both the database handle and a transaction
 // carry, so the archive reader can share the task scan with the loader
@@ -581,7 +605,7 @@ func scanTask(row *sql.Rows, extra ...any) (*Task, error) {
 		createdAt, updatedAt, completedAt                            string
 		effect, parallel, isolation                                  string
 		seenAt, waitedAt                                             string
-		waiting                                                      int
+		waiting, reviewCheck, joinedAssignment                       int
 		basis                                                        string
 	)
 	dest := []any{
@@ -590,7 +614,7 @@ func scanTask(row *sql.Rows, extra ...any) (*Task, error) {
 		&checks, &capabilities, &resources, &contextInputs, &deliverables, &evidenceRequirements,
 		&task.Status, &composite, &task.ClaimedBy, &task.Result, &task.Error,
 		&artifacts, &evidence, &createdAt, &updatedAt, &completedAt, &task.Project, &task.Chat, &paused,
-		&task.Owner, &seenAt, &waiting, &waitedAt, &basis,
+		&task.Owner, &seenAt, &waiting, &waitedAt, &basis, &task.Model, &reviewCheck, &task.AddedByTask, &joinedAssignment,
 	}
 	dest = append(dest, extra...)
 	if err := row.Scan(dest...); err != nil {
@@ -601,6 +625,8 @@ func scanTask(row *sql.Rows, extra ...any) (*Task, error) {
 	task.Composite = composite != 0
 	task.Paused = paused != 0
 	task.Waiting = waiting != 0
+	task.ReviewCheck = reviewCheck != 0
+	task.JoinedAssignment = joinedAssignment != 0
 	if err := decodeJSON(checks, &task.Checks); err != nil {
 		return nil, err
 	}
@@ -697,7 +723,7 @@ func insertArchived(tx *sql.Tx, tasks []*Task, now time.Time) error {
 		id, ord, title, description, question, kind, parent_id, priority, effect, parallel, isolation,
 		role, agent, acceptance, checks, capabilities, resources, context_inputs, deliverables,
 		evidence_requirements, status, composite, claimed_by, result, err, artifacts, evidence,
-		created_at, updated_at, completed_at, project, chat, paused, owner, seen_at, waiting, waited_at, archived_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		created_at, updated_at, completed_at, project, chat, paused, owner, seen_at, waiting, waited_at, archived_at, model, review_check, added_by_task, joined_assignment) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
@@ -741,7 +767,7 @@ func insertArchived(tx *sql.Tx, tasks []*Task, now time.Time) error {
 			evidenceRequirements, string(task.Status), boolInt(task.Composite), task.ClaimedBy,
 			task.Result, task.Error, artifacts, evidence, formatTime(task.CreatedAt),
 			formatTime(task.UpdatedAt), formatTime(task.CompletedAt), task.Project, task.Chat,
-			boolInt(task.Paused), task.Owner, formatTime(task.SeenAt), boolInt(task.Waiting), formatTime(task.WaitedAt), formatTime(now)); err != nil {
+			boolInt(task.Paused), task.Owner, formatTime(task.SeenAt), boolInt(task.Waiting), formatTime(task.WaitedAt), formatTime(now), task.Model, boolInt(task.ReviewCheck), task.AddedByTask, boolInt(task.JoinedAssignment)); err != nil {
 			return err
 		}
 	}
@@ -844,8 +870,8 @@ func saveState(tx *sql.Tx, value state) error {
 			return err
 		}
 	}
-	if _, err := tx.Exec(`INSERT INTO meta (id, project, root_id, next_id, version) VALUES (1, ?, ?, ?, ?)`,
-		value.Project, value.RootID, value.NextID, value.Version); err != nil {
+	if _, err := tx.Exec(`INSERT INTO meta (id, project, root_id, next_id, version, stopped) VALUES (1, ?, ?, ?, ?, ?)`,
+		value.Project, value.RootID, value.NextID, value.Version, boolInt(value.Stopped)); err != nil {
 		return err
 	}
 	if err := saveTasks(tx, value); err != nil {
@@ -866,7 +892,7 @@ func saveTasks(tx *sql.Tx, value state) error {
 		role, agent, acceptance, checks, capabilities, resources, context_inputs, deliverables,
 		evidence_requirements, status, composite, claimed_by, result, err, artifacts, evidence,
 		created_at, updated_at, completed_at, project, chat, paused, owner, seen_at, waiting, waited_at,
-		verdict_basis) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		verdict_basis, model, review_check, added_by_task, joined_assignment) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
@@ -915,7 +941,7 @@ func saveTasks(tx *sql.Tx, value state) error {
 			evidenceRequirements, string(task.Status), boolInt(task.Composite), task.ClaimedBy,
 			task.Result, task.Error, artifacts, evidence, formatTime(task.CreatedAt),
 			formatTime(task.UpdatedAt), formatTime(task.CompletedAt), task.Project, task.Chat, boolInt(task.Paused),
-			task.Owner, formatTime(task.SeenAt), boolInt(task.Waiting), formatTime(task.WaitedAt), basis); err != nil {
+			task.Owner, formatTime(task.SeenAt), boolInt(task.Waiting), formatTime(task.WaitedAt), basis, task.Model, boolInt(task.ReviewCheck), task.AddedByTask, boolInt(task.JoinedAssignment)); err != nil {
 			return err
 		}
 	}

@@ -226,7 +226,7 @@ var rows = []Row{
 	// `/subharness` AND `/sub` USED TO BE WORDS FOR THE ROW ABOVE and are not any
 	// more, because they now name something else. A subharness is a typed program
 	// with an input schema, a cost shape and a card you settle before it runs
-	// (docs/SUBHARNESS-PRD.md §2 fixes the person-facing name); a harness is the
+	//; a harness is the
 	// older saved shape of work that row opens. They are two things, so they are
 	// two rows — a word that reached whichever of them the table happened to list
 	// first is a word nobody could rely on.
@@ -257,11 +257,11 @@ var rows = []Row{
 	// bare row is the one nearly everybody wants, and a single row carrying
 	// [query] would make it unreachable from the list ([app.runMenu] puts a row
 	// that TAKES something into the draft instead of running it).
-	{Name: "memory", Desc: "open the Memories tab", Place: "memory"},
+	{Name: "memory", Desc: "open the Memory tab", Place: "memory"},
 	{Name: "memory", Args: "<words>", Desc: "print the remembered lines those words name"},
-	{Name: "memories", Desc: "open the Memories tab, or print every line kept here"},
+	{Name: "memories", Desc: "open the Memory tab, or print every line kept here"},
 	{Name: "memories", Args: "<words>", Desc: "…only the lines those words name"},
-	// THERE IS NO /forget: a line is forgotten on the Memories tab, where it is
+	// THERE IS NO /forget: a line is forgotten on the Memory tab, where it is
 	// in front of the person rather than guessed at from words (memory.go).
 	{Name: "remember", Args: "<text>", Desc: "keep one line for this project · for you everywhere, from home"},
 	// AND /always, THE SAME ERRAND AS /remember UNDER THE WORD PEOPLE WERE TAUGHT:
@@ -452,11 +452,9 @@ var rows = []Row{
 	// characters with /files one row above, and a word that narrowed the list to
 	// both errands at once is the near-miss /history was named to avoid.
 	//
-	// TWO ROWS, /folder'S REASON EXACTLY: the bare form is the browser and
-	// enter on its row opens it at once, where one row with a placeholder
-	// left `/attach ` in the box waiting for a path nobody had — a second
-	// enter to reach the sheet the word already meant (the owner met it,
-	// 2026-09-22).
+	// TWO ROWS, /folder'S REASON EXACTLY: the bare form is the browser and enter on its row
+	// opens it at once, where one row with a placeholder left `/attach ` in the box waiting
+	// for a path nobody had — a second enter to reach the sheet the word already meant.
 	{Name: "attach", Desc: "choose a file to attach · the browser opens", Alias: []string{"upload"}},
 	{Name: "attach", Args: "<path>", Desc: "…attach that file · tab completes the path"},
 	// AND DIRECTLY ABOVE /help, THE OTHER QUESTION SOMEBODY HAS WHEN THEY ARE

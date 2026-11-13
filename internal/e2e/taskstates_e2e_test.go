@@ -2,7 +2,7 @@
 
 package e2e
 
-// taskstates_e2e_test.go IS THE ACCEPTANCE OF docs/design/task-states/DESIGN.md
+// taskstates_e2e_test.go IS THE ACCEPTANCE OF the implementation
 // ON A REAL SCREEN.
 //
 // The ruling is one sentence: every task row, card, rail line and roster entry
@@ -155,7 +155,7 @@ func testStatesYourCall(t *testing.T) {
 	statesNoDeletedWords(t, screen)
 
 	// AND THE HAND-OVER IS NOT ON THE ROW. `[d]` still reaches it — the door
-	// takes it like every other landing key — but docs/design/questions/DESIGN.md
+	// takes it like every other landing key — but the implementation
 	// is explicit that `LandingDecideKey` `d`, `LandingAgainKey` `r` and
 	// `LandingTakeBackKey` `u` are "reachable through the door but not on the
 	// row", and the row this suite waits for is the task-states row unchanged.
@@ -516,7 +516,7 @@ func testStatesRailAndRoster(t *testing.T) {
 	// from the right, and THE VERB IS NEVER WHAT GOES: the title gives ground down
 	// to about one word and the reason's file list goes before either, because the
 	// row is read to find out whether it needs anything and the word is the half
-	// that answers that (docs/design/task-states/DESIGN.md).
+	// that answers that.
 	//
 	// THE ROW IS READ WITH ITS BLOCK ([statesRailRow] says why). Thirty cells will
 	// not hold a name and a reason side by side, so the reading is laid over the
@@ -724,7 +724,7 @@ func statesNoDeletedWords(t *testing.T, screen string) {
 	t.Helper()
 	for _, gone := range statesDeleted {
 		if strings.Contains(screen, gone) {
-			t.Errorf("the screen still says %q, which docs/design/task-states/DESIGN.md deletes:\n%s", gone, screen)
+			t.Errorf("the screen still says %q, which the implementation deletes:\n%s", gone, screen)
 		}
 	}
 }

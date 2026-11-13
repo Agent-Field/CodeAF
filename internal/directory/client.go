@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/clusterstate"
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
@@ -48,9 +49,10 @@ type Client interface {
 // AcquireOpts says how a device takes a lease. Its JSON is the acquire
 // request body, and an empty body means the zero value.
 type AcquireOpts struct {
-	// RequireConditional is a continuation's local safety requirement, even
-	// when the observed holder has gone quiet. An ordinary non-forced resume
-	// still works on older services, whose live-holder check is already atomic.
+	// RequireConditional asks the coordinating runtime to check the expected
+	// holder and fence even when the observed holder has gone quiet. A service
+	// without conditional takes still takes a lapsed lease, because its
+	// live-holder check is already atomic; only Force waits for the promise.
 	RequireConditional bool `json:"-"`
 	// Force takes the lease from a live holder. It is for a person who chose to
 	// continue a chat where it runs now: waiting out the holder's lease would
@@ -61,12 +63,8 @@ type AcquireOpts struct {
 	Expect *LeaseExpectation `json:"expect,omitempty"`
 }
 
-// LeaseExpectation binds a continuation to the lease the taking device read,
-// so another continuation during its fetch wins rather than being displaced.
-type LeaseExpectation struct {
-	Device string `json:"device"`
-	Fence  uint64 `json:"fence"`
-}
+// LeaseExpectation retains the conditional-take tuple shared by every runtime.
+type LeaseExpectation = clusterstate.LeaseExpectation
 
 // Directory is one identity's shared directory; For gives each device its own
 // Client. The relay handler calls For(deviceFromSignature) once per request.
@@ -79,26 +77,26 @@ type Directory interface {
 // relay sees one request per HeartbeatEvery at most and the TTL still covers
 // two missed beats.
 const (
-	LeaseTTL       = 90 * time.Second
-	HeartbeatEvery = 30 * time.Second
+	LeaseTTL       = time.Duration(clusterstate.LeaseTTLMillis) * time.Millisecond
+	HeartbeatEvery = time.Duration(clusterstate.RenewEveryMillis) * time.Millisecond
 )
 
 // The errors a Client returns. Callers compare with errors.Is.
 var (
-	ErrNotFound     = errors.New("directory: not found")
-	ErrExists       = errors.New("directory: exists")
-	ErrLeaseHeld    = errors.New("directory: lease held by another device")
-	ErrFenceStale   = errors.New("directory: fence superseded") // L7
-	ErrHeadMoved    = errors.New("directory: head moved")
-	ErrCAS          = errors.New("directory: compare-and-swap failed")
+	ErrNotFound     = clusterstate.ErrNotFound
+	ErrExists       = clusterstate.ErrExists
+	ErrLeaseHeld    = clusterstate.ErrLeaseHeld
+	ErrFenceStale   = clusterstate.ErrFenceStale
+	ErrHeadMoved    = clusterstate.ErrHeadMoved
+	ErrCAS          = clusterstate.ErrCAS
 	ErrRevoked      = wireauth.ErrRevoked // every verb of a revoked device; the wires share this one sentinel
-	ErrSelfRevoke   = errors.New("directory: a device cannot revoke itself")
+	ErrSelfRevoke   = clusterstate.ErrSelfRevoke
 	ErrUnauthorized = errors.New("directory: unauthorized")
 	ErrUnreachable  = errors.New("directory: unreachable") // transport; callers degrade
 	ErrTooOld       = errors.New("directory: this relay is too old for that")
-	// ErrConditionalTake names the update needed before an old service can
-	// safely move chats; its other read and pairing doors remain usable.
-	ErrConditionalTake = errors.New("the sync service must be updated before chats can move; codeaf's operators update the hosted service, or run this build of codeaf relay for your own service")
+	// ErrConditionalTake is the one feature an older service cannot offer
+	// safely. It says what still works and the one thing to do instead.
+	ErrConditionalTake = errors.New(conditionalTakeFeature + " waits for a sync service update; all else works, so close it there and continue here")
 )
 
 // ReleaseQuiet distinguishes background preparation from quitting an open

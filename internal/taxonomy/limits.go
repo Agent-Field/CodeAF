@@ -19,7 +19,7 @@ type Limits struct {
 	// (`lane.Role.GiveUp`), 3 is three times as long.
 	//
 	// IT WAS A COUNT OF SENDS AND IT IS A MULTIPLIER ON A DEADLINE. `N attempts`
-	// bounded nothing after docs/design/recovery/DESIGN.md §4 — the transport
+	// bounded nothing after the implementation §4 — the transport
 	// under it already stopped at the plan's deadline, so a person who asked for
 	// eight tries bought eight identical requests inside the same ninety seconds
 	// and a number that multiplied the one below it. The intent behind the knob
@@ -48,7 +48,7 @@ type Limits struct {
 // role's own patience on the wire with a wait doubling from one second, and a
 // stronger tier bought on the first measured failure.
 //
-// THE WIRE'S COUNT IS GONE ALTOGETHER (docs/design/recovery/DESIGN.md §4). It
+// THE WIRE'S COUNT IS GONE ALTOGETHER. It
 // was four attempts doubling from two seconds until 2026-09-10 and three from
 // one second after it; what bounds the wire now is the plan's deadline, which is
 // the role's give-up scaled by [Limits.Patience], and the only number left here

@@ -442,8 +442,7 @@ for scenario in $SCENARIOS; do
     # Did the cell's only route upstream survive the cell? A guard that exits
     # mid-run leaves the harness dialling a closed port, and everything after
     # that — no reply, no file, no receipt — is about the rig and not about the
-    # harness. It has happened once in this lane (notes/pilot-02-03.md), and it
-    # arrived looking exactly like a product failure.
+    # harness. A failed guard can look exactly like a product failure.
     guard_died=0
     if [ "$DRY_RUN" != "1" ] && [ "$UNGUARDED" != "1" ] && ! guard_alive; then
       guard_died=1

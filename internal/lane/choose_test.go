@@ -13,7 +13,7 @@ import (
 // ── THE MEASURED WORLD, AS A FIXTURE ────────────────────────────────────────
 //
 // Every number below is from the sheet `deepseek/deepseek-v4-flash` published
-// on 2026-08-30 (docs/design/routing/provider-routing.md, "The world, measured"): the
+// on 2026-08-30: the
 // first-token percentiles in milliseconds, the throughput percentiles in tokens
 // a second, the uptime, the output tariff in dollars per million tokens, the
 // quantization, whether the lane takes a tool call, and how much it will write.
@@ -253,7 +253,7 @@ func TestTheGateDropsALaneThatCannotServeTheRequestAtAll(t *testing.T) {
 	// is evidence about the machine that nothing here can produce — but it is an
 	// opinion published minutes ago about a fleet that moves, and a wrong one
 	// removed GMICloud from every tool request of a task it had just served three
-	// times (docs/design/recovery/DESIGN.md §1). They demote instead.
+	// times. They demote instead.
 	half := lanes["Baidu"]
 	half.Facts.Uptime5m = 90
 	if !capable(half, talk(), opts) {
@@ -315,7 +315,7 @@ func TestTheSheetsDoubtsRankALaneLastAndAProbeStillAsksIt(t *testing.T) {
 		t.Fatalf("the probe drew %+v, want the doubted lane asked first", probed)
 	}
 
-	// AND EVIDENCE ENDS THE DOUBT. Three tool calls this lane actually served are
+	// AND EVIDENCE ENDS THE DOUBT. Three tool calls this test actually served are
 	// a measurement of the thing the sheet was guessing at.
 	served := lanes[ID{Model: testModel, Lane: "GMICloud"}]
 	served.Quality = Beta{A: 12, B: 1}

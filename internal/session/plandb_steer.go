@@ -51,7 +51,13 @@ func planNoTask(id string) error {
 // store refusal — a whole run is not held, a terminal task cannot be
 // cancelled, a revision is only for work that has not started — travels back
 // as the store wrote it, because the store is the one that knows its own laws.
-func (a *Agent) planSteer(id string, write func(*plandb.Store, *plandb.Task) error) error {
+func (a *Agent) planSteer(id string, write func(*plandb.Store, *plandb.Task) error, stopRoot ...bool) error {
+	rootStop := len(stopRoot) > 0 && stopRoot[0]
+	for _, notice := range a.historicalPlanNotices() {
+		if planTaskID(notice.PlanTask) == planTaskID(id) && !rootStop {
+			return errPlanEndedRun
+		}
+	}
 	stores, plan, closeStores := a.openPlanReadHandles()
 	defer closeStores()
 	if len(stores) == 0 {
@@ -71,7 +77,9 @@ func (a *Agent) planSteer(id string, write func(*plandb.Store, *plandb.Task) err
 		// there to read them: the write landed and nothing ever read it. An ended
 		// run answers the one sentence every earlier run answers.
 		if root := live.Task(live.RootID()); root != nil && terminalStoreStatus(root.Status) {
-			return errPlanEndedRun
+			if !planStopOpenWork(live, task, stopRoot) {
+				return errPlanEndedRun
+			}
 		}
 		return write(live, task)
 	}
@@ -80,10 +88,28 @@ func (a *Agent) planSteer(id string, write func(*plandb.Store, *plandb.Task) err
 			if task.Chat != plan.chat {
 				return errPlanOtherChat
 			}
+			if planStopOpenWork(store, task, stopRoot) {
+				return write(store, task)
+			}
 			return errPlanEndedRun
 		}
 	}
 	return planNoTask(id)
+}
+
+// planStopOpenWork permits only a stop of lingering work below an ended root.
+// Other steering of ended runs, and repeated stops of fully ended runs, keeps
+// its existing refusal.
+func planStopOpenWork(store *plandb.Store, task *plandb.Task, stopRoot []bool) bool {
+	if len(stopRoot) == 0 || !stopRoot[0] || task.ID != store.RootID() {
+		return false
+	}
+	for _, child := range store.Tasks() {
+		if !terminalStoreStatus(child.Status) {
+			return true
+		}
+	}
+	return false
 }
 
 // PlanNote leaves a note in the person's own voice on one task. It is the soft
@@ -181,7 +207,7 @@ func (a *Agent) PlanCancel(id string) error {
 		}
 		_, err := store.Cancel(task.ID, taskStoppedWord)
 		return err
-	})
+	}, true)
 }
 
 // PlanAmend prepends text to a task's description, the way the CLI's `task

@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// THREE TIERS AND ONE QUESTION (docs/design/task-states/DESIGN.md).
+// THREE TIERS AND ONE QUESTION.
 //
 // Every row a person reads answers one thing before it says anything else: do I
 // need to do anything? These tests hold the engine to the three answers, to the

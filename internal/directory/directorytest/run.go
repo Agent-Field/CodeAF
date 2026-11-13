@@ -199,8 +199,8 @@ func acquireOwnLeaseRaisesFence(t *testing.T, e env) {
 // forcedAcquireBeatsLiveLease: a person who continues a chat where it runs now
 // takes the lease at once, and the displaced holder is refused as in L7.
 func forcedAcquireBeatsLiveLease(t *testing.T, e env) {
-	start(t, e)
-	v, err := e.as(devB).Acquire(ctx, cell, directory.AcquireOpts{Force: true})
+	seen := start(t, e).Cell.Lease
+	v, err := e.as(devB).Acquire(ctx, cell, directory.AcquireOpts{Force: true, Expect: &directory.LeaseExpectation{Device: seen.Device, Fence: seen.Fence}})
 	must(t, err)
 	if l := v.Cell.Lease; l.Device != e.id(devB) || l.Fence != 2 || l.Pending != 0 {
 		t.Fatalf("lease = %+v", l)

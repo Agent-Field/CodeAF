@@ -33,14 +33,98 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		question string
 		page     string
 	}{
+		{"how do I give you my API key safely", "giving-a-password-or-token"},
+		{"can Claude Code make a canvas", "claude-code-provider"},
+		{"does Claude Code see my codeaf skills", "claude-code-provider"},
+		{"Claude Code's edits don't show as rows in the chat", "claude-code-provider"},
+		{"can Claude Code propose a task", "claude-code-provider"},
+		{"use my Claude plan with no API key", "claude-code-provider"},
+		{"where is the token I pasted kept and for how long", "giving-a-password-or-token"},
+		{"can the model see my password", "giving-a-password-or-token"},
+		{"can I send a message to the chat running on my other computer", "desktop-sync"},
+		{"queue a message for my other computer while its turn is working", "desktop-sync"},
+		{"my message to the other computer was never delivered because it is offline", "desktop-sync"},
+		{"message to my other computer didn't send, can't reach relay", "desktop-sync"},
 		// C9: Windows shell questions must reach the self-contained Git Bash section.
+		{"are factory steps sandboxed", "unattended-run-limits"},
+		{"why did brew install fail in a factory step", "unattended-run-limits"},
+		{"codeaf blocked this", "unattended-run-limits"},
+		{"let a factory step use docker", "unattended-run-limits"},
+		{"how do I allow more with jail.allow", "unattended-run-limits"},
+		{"can codeaf exec read my ssh keys", "unattended-run-limits"},
+		{"where does a step's GOCACHE go", "unattended-run-limits"},
 		{"why do my commands fail on Windows", "running-commands-on-windows"},
 		{"which bash does codeaf use on Windows", "running-commands-on-windows"},
 		{"can codeaf use WSL", "running-commands-on-windows"},
 		{"Git Bash", "running-commands-on-windows"},
+		{"why did Defender block my command on Windows", "running-commands-on-windows"},
+		{"Windows refused to start the shell access denied", "running-commands-on-windows"},
+		{"Windows command line too long 32,767 characters", "running-commands-on-windows"},
 		// R4 and R3 keep command routes and explicit-choice remedies reachable.
 		{"gh api says not found on Windows", "running-commands-on-windows"},
 		{"CODEAF_BASH does not exist", "running-commands-on-windows"},
+		// Task placement must answer DESIGN contract 16 in the person's words.
+		{"taskdoor empty frame when starting a task", "tasks-on-another-computer"},
+		{"taskdoor a frame needs a type", "tasks-on-another-computer"},
+		{"could not check your devices right now", "tasks-on-another-computer"},
+		{"could not confirm this is my task computer", "tasks-on-another-computer"},
+		{"the task copy could not be sent", "tasks-on-another-computer"},
+		{"the task copy cell or head is not readable", "tasks-on-another-computer"},
+		{"the task destination already contains files", "tasks-on-another-computer"},
+		{"could not put the result in place earlier copy kept", "tasks-on-another-computer"},
+		{"the sent task copy fingerprint is missing", "tasks-on-another-computer"},
+		{"that task attempt id is not readable", "tasks-on-another-computer"},
+		{"that task is already finished", "tasks-on-another-computer"},
+		{"that task request is not readable", "tasks-on-another-computer"},
+		{"the other computer no longer has this task answer", "tasks-on-another-computer"},
+		{"the other computer sent an unreadable task event", "tasks-on-another-computer"},
+		{"the task remote record cannot be saved here", "tasks-on-another-computer"},
+		{"the task was interrupted before it left an answer", "tasks-on-another-computer"},
+		{"could not record the task child", "tasks-on-another-computer"},
+		{"the task saved event is too large", "tasks-on-another-computer"},
+		{"this computer is already taking tasks", "tasks-on-another-computer"},
+		{"can a task run on my other computer", "tasks-on-another-computer"},
+		{"why a task appears before its copy is ready", "tasks-on-another-computer"},
+		{"paired task computers are unavailable here", "tasks-on-another-computer"},
+		{"run a task on my mac mini", "tasks-on-another-computer"},
+		{"what does running on mean", "tasks-on-another-computer"},
+		{"my other computer stopped answering", "tasks-on-another-computer"},
+		{"run it here", "tasks-on-another-computer"},
+		{"run tasks on", "tasks-on-another-computer"},
+		{"codeaf serve --take-tasks takes tasks", "tasks-on-another-computer"},
+		{"does plain codeaf serve take tasks", "tasks-on-another-computer"},
+		{"when does the model get the computer argument", "tasks-on-another-computer"},
+		{"why did my task run here instead", "tasks-on-another-computer"},
+		{"send a task to my dev box", "a-dev-box-on-your-own-railway"},
+		{"can this conversation start other tasks while one runs on another computer", "tasks-on-another-computer"},
+		{"why didn't my task's changes show up in my folder", "how-tasks-run"},
+		{"can I run codeaf on my own server", "a-dev-box-on-your-own-railway"},
+		{"set up a dev box", "a-dev-box-on-your-own-railway"},
+		{"always-on computer in the cloud", "a-dev-box-on-your-own-railway"},
+		{"how do I remove my dev box", "a-dev-box-on-your-own-railway"},
+		{"how much does a dev box cost", "a-dev-box-on-your-own-railway"},
+		// R6/R7/R8/R15/R30 keep leadership, fallback and worker limits reachable.
+		{"can my phone lead", "coordination-and-workers"},
+		{"can my phone be the leader", "coordination-and-workers"},
+		{"can my phone coordinate my computers", "coordination-and-workers"},
+		{"what is cluster lead", "coordination-and-workers"},
+		{"what does codeaf cluster lead do", "coordination-and-workers"},
+		{"make this computer the leader", "coordination-and-workers"},
+		{"what happens if my leader goes away", "coordination-and-workers"},
+		{"my leading laptop went to sleep", "coordination-and-workers"},
+		{"the leader computer was turned off", "coordination-and-workers"},
+		{"what can a worker do", "coordination-and-workers"},
+		{"can a worker approve pairing", "coordination-and-workers"},
+		{"can a worker read all my chats", "coordination-and-workers"},
+		// R25/R29 keep older-client refusals and failed quit saves reachable.
+		{"why can an older computer list chats but not continue a chat that is still running", "continuing-a-chat-on-another-computer"},
+		{"what happens if the final save fails during quit", "continuing-a-chat-on-another-computer"},
+		// #2070 keeps continue-here troubleshooting, duplicate Home rows and sync repair reachable.
+		{"continue here does nothing", "continuing-a-chat-on-another-computer"},
+		{"the same chat twice on Home", "home"},
+		{"why do I see the same chat twice on Home", "home"},
+		{"repair sync", "continuing-a-chat-on-another-computer"},
+		{"how do I repair sync", "continuing-a-chat-on-another-computer"},
 		// C29.4/C30.2/C31.5 must be reachable in the person's own words.
 		{"can I rewind an old chat on my new laptop", "continuing-a-chat-on-another-computer"},
 		{"I quit on my laptop and opened my desktop", "continuing-a-chat-on-another-computer"},
@@ -87,6 +171,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I switch teams from the tab strip", "conversations-and-teams"},
 		{"does deleting a team close its conversations", "conversations-and-teams"},
 		{"where are my teams saved", "conversations-and-teams"},
+		{"do my teams show on my other computer?", "conversations-and-teams"},
+		{"how do I turn on team sharing", "conversations-and-teams"},
+		{"will deleting a team on my laptop delete it on my desktop?", "conversations-and-teams"},
+		{"does Traffic sync between computers?", "conversations-and-teams"},
+		{"do my crew settings follow me to my other computer?", "models-and-cost"},
 		{"create an empty team and add several saved conversations", "teams-page"},
 		{"how do I choose another manager before deleting its conversation", "teams-page"},
 		{"where is the model name and working spinner on team cards", "teams-page"},
@@ -211,7 +300,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why does /connect say connections are unavailable", "accounts"},
 		{"connect says unavailable on my own machine", "accounts"},
 		{"credentials.json is damaged but where are my models", "accounts"},
-		// The questions object (docs/design/questions/DESIGN.md), asked the
+		// The questions object, asked the
 		// six ways somebody meets it: the shapes, the clock, the record, the
 		// refusals, answering from elsewhere, and what is not built.
 		{"what kinds of questions does it ask me", "questions"},
@@ -224,7 +313,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"it went ahead by itself", "questions"},
 		{"make it ask me every time", "questions"},
 		{"it assumed something wrong", "questions"},
-		// An answer is a message now (docs/design/questions/DESIGN.md), and the
+		// An answer is a message now, and the
 		// three things that fall out of it are asked in the words somebody
 		// reaches for: the work going on around a question, changing their mind
 		// afterwards, and a clock that went with the recommendation.
@@ -243,7 +332,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// And the receipt on a window too narrow for it, asked by somebody who
 		// has just noticed half of their own sentence is not on the line.
 		{"the decided line is missing what I typed", "questions"},
-		// The block (docs/design/questions/DESIGN.md, internal/tui3's
+		// The block (the design notes, internal/tui3's
 		// question.go), asked the five ways somebody meets it: putting one off,
 		// finding it again, what happened when nobody pressed anything, taking
 		// an approval back, and making the asking stop.
@@ -252,11 +341,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did it decide by itself", "questions"},
 		{"undo what I just approved", "questions"},
 		{"stop asking me about rm", "questions"},
-		// And the room form (lane S2): the page a question opens into, and the
+		// And the room form: the page a question opens into, and the
 		// nine things a person does on it. Each one is asked in the words
 		// somebody would actually type rather than in the key's own name.
 		{"can I open a question up to read it properly", "questions"},
-		// And lane R's three, in the asker's own words: the owner asked for
+		// Option comparisons, in the asker's own words: the conversation asked for
 		// exactly these sentences (2026-09-11) and each one is a person
 		// describing the drawing rather than naming a key.
 		{"show me the options side by side", "questions"},
@@ -271,7 +360,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can I just let it decide", "questions"},
 		{"stop asking me this kind of thing", "questions"},
 		{"none of the answers it offered are right", "questions"},
-		// Reach (docs/design/questions/DESIGN.md's PRESENCE-AWARE DELIVERY,
+		// Reach (the design notes PRESENCE-AWARE DELIVERY,
 		// ONE STEP ONE PANEL, WITHDRAWN WITH A REASON and FIRST ANSWER WINS), asked the way somebody meets each of them: answering somewhere
 		// else, coming back to a window nobody was at, a pile of them arriving
 		// together, one vanishing, two windows racing, and the setting that
@@ -288,8 +377,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did several questions arrive at once", "questions"},
 		{"answer a whole batch of questions at once", "questions"},
 		{"same answer for all of these", "questions"},
-		// Several questions from one step are tabs with a review (lane T of the
-		// question-views wave), asked the ways somebody meets them: moving
+		// Several questions from one step are tabs with a review, asked the ways somebody meets them: moving
 		// between them, sending them together, and a batch of approvals.
 		{"go back to the previous question", "questions"},
 		{"answer them all at once", "questions"},
@@ -337,10 +425,16 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"stop adding a co-author trailer to my commits", "permissions"},
 		{"does it sign every comment it leaves on my pull request", "permissions"},
 		{"what is the small drafted with line under its comment", "permissions"},
-		// The owner's rulings on #1410 (2026-09-24): signing has no off, a
-		// person who had turned it off is told so, and a task landed on the
-		// worker harness, the belt tasks run on by default, names no model.
+		// Attribution can be turned off with the attribution row or
+		// CODEAF_ATTRIBUTION=off, and a task landed on the worker harness, the
+		// belt tasks run on by default, names no model.
 		{"I turned attribution off before, why are my commits signed again", "permissions"},
+		{"how do I remove Co-Authored-By CodeAF from my commits", "permissions"},
+		{"turn off attribution", "permissions"},
+		{"stop codeaf signing my commits", "permissions"},
+		{"remove the drafted with CodeAF footer from my pull requests", "permissions"},
+		{"can I disable the Assisted-by trailer", "permissions"},
+		{"what does CODEAF_ATTRIBUTION do", "permissions"},
 		{"why does the commit my task landed not name the model", "permissions"},
 		// AND THE TASK PROPOSAL AS IT IS DRAWN NOW that it is that block too
 		// (internal/tui3's task.go), asked the four ways somebody meets the
@@ -362,7 +456,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"I typed no to the task and it started anyway", "tasks"},
 		{"where did the model chips on the proposal go", "tasks"},
 		{"change which model a task runs on before it starts", "tasks"},
-		// The wire (docs/design/questions/DESIGN.md, internal/remote's
+		// The wire (the design notes, internal/remote's
 		// questionlane.go). Somebody who has just met a question that did not
 		// appear asks about the ROAD, in the words the road is spelled in on
 		// each of them, and about the page that reads another conversation.
@@ -737,7 +831,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"ctrl+b on home does nothing", "keys"},
 		{"can I copy text off the home screen", "keys"},
 		// Copy mode, asked by somebody who wants to get words off the screen.
-		// It was taken out on 2026-09-22 and put back on 2026-09-23 — the owner
+		// It was taken out on 2026-09-22 and put back on 2026-09-23 — the user
 		// wanted the feature kept and only its tip dropped — so these have to
 		// reach the pages that describe it working.
 		{"how do I copy text out of the conversation", "keys"},
@@ -824,7 +918,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what do the up and down arrows next to working mean", "screen"},
 		{"how many tokens is this turn using right now", "screen"},
 		{"do the token arrows show inside a task room", "screen"},
-		// The owner's own words for the gap, 2026-09-10: "at some times I don't see
+		// the user’s own words for the gap, 2026-09-10: "at some times I don't see
 		// infra provider and tok/sec … maybe when I have follow up".
 		{"provider missing", "screen"},
 		{"tok/s not showing", "screen"},
@@ -879,6 +973,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"my cursor jumped to another task while I was reading", "tasks"},
 		{"why is the finished piece at the bottom of the family", "tasks"},
 		{"can codeaf parallelize my task", "tasks"},
+		{"where is the tasks at once setting", "tasks"},
+		{"what section is task.parallel under", "tasks"},
 		{"how do I open my tasks on a phone", "tasks"},
 		{"how do I get back from a task on my phone", "tasks"},
 		{"do tasks touch my working copy", "how-tasks-run"},
@@ -1485,11 +1581,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// meant it to.
 		{"select a word with the mouse", "keys"},
 		{"why did copying take the whole line instead of the words I dragged over", "keys"},
-		// Selecting inside the BOX, and taking back what was typed there. The
-		// owner asked for both in one sentence — "i am unable to select text
-		// with highlight from input bar in all places … maybe even ctrl+z as
-		// well like undo or redo like shift z" — and the words people reach for
-		// are "input bar", "highlight", "undo", and the chord itself.
+		// Selection and undo in the message box use familiar editing words.
 		{"how do I select text in the message box", "keys"},
 		{"I cannot highlight text in the input bar", "keys"},
 		{"can I drag to select what I typed in the input box", "keys"},
@@ -1648,7 +1740,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"set my daily budget to 5", "what-i-can-do"},
 
 		// THE SPENDING WAVE, in the words of the person asking
-		// (docs/design/spending/DESIGN.md acceptance 9). Money has one editor
+		//. Money has one editor
 		// and many doors, and every one of these is somebody standing at a
 		// different door asking the same question.
 		{"how do I remove the daily limit", "models-and-cost"},
@@ -2005,7 +2097,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// longer to speak up", which is a row in the settings panel and a page
 		// that has to name the right tab of it.
 		{"where is the setting for how long a proposal waits", "tasks"},
-		// And the same state met from inside the task's room, where the owner sat
+		// And the same state met from inside the task's room, where the conversation sat
 		// with `look it over` on the roster and nothing to press on the page.
 		{"how do I approve a task", "tasks"},
 		{"task needs my look but there is no button", "tasks"},
@@ -2104,7 +2196,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// chat will go on describing it from a version that no longer exists.
 		{"what is the diamond symbol next to each task", "tasks"},
 
-		// AND THE ONE THE OWNER ACTUALLY ASKED, in their own words: the column of
+		// AND THE ONE THE USER ASKED, in their own words: the column of
 		// work on the right, and a press on it that opened nothing. Three cells
 		// answered a click and changed nothing on screen — the seam at a width
 		// with no wider tier, the state glyph on a row that could fold, and every
@@ -2166,7 +2258,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"undo started a task", "tasks"},
 		{"fix this one line became a task", "tasks"},
 
-		// The quick task (docs/design/quick-task/DESIGN.md), asked the ten ways
+		// The quick task, asked the ten ways
 		// somebody meets it. Nobody types the word `quick_task`: they describe
 		// the shape of what they wanted or read the row back off the screen, so
 		// each probe is the sentence somebody actually says at the surface —
@@ -2514,7 +2606,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"continue this chat in another terminal", "home"},
 		{"move the conversation to this window", "home"},
 		{"it says open in another window", "home"},
-		// The self-collision wave: the owner's own two sentences on the day a
+		// The self-collision wave: the user’s own two sentences on the day a
 		// plain launch was refused by the engine that was holding the
 		// conversation. The first is what the screen said; the second is what
 		// actually happened next.
@@ -2539,7 +2631,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I bring a conversation back to this window", "home"},
 		// The move wave: the conversation lives in the engine, so a second
 		// terminal opens it rather than asking anybody for it. The first two are
-		// the owner's own words on the day the old road waited ten minutes.
+		// the user’s own words on the day the old road waited ten minutes.
 		{"why does moving a conversation here take so long", "home"},
 		{"it is still running in the other shell can I bring it here", "home"},
 		{"the row says open in the engine", "home"},
@@ -2688,7 +2780,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// looking at the page, at the card's `where` band, or at the one line a
 		// conversation opens with.
 		// A RULE IS A MEMORY MARKED ALWAYS NOW (what-i-remember.md's `Always`
-		// sections; docs/design/automations/DESIGN.md), so the questions about
+		// sections), so the questions about
 		// making one, which rules hold here and how far one reaches are answered
 		// on the memory page. What stood on a clock is an automation, and the
 		// standing page's own words — the page, the count, the line a
@@ -2733,7 +2825,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I make this permanent", "what-i-remember"},
 		{"it didn't notice this was a rule and did it once", "what-i-remember"},
 		{"can I click keeping an eye on 2", "automations"},
-		// THE AUTOMATIONS WAVE (automations.md, docs/design/automations/DESIGN.md):
+		// THE AUTOMATIONS WAVE (automations.md):
 		// a reminder, scheduled work or a watch, on a clock, only while a codeaf
 		// window is open. Asked the ways people meet them — saying one, typing
 		// one exactly, finding the list, a card in front of them, a line or a
@@ -2880,15 +2972,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"is a retired tip gone for good", "hints-and-tips"},
 		{"a tip appeared in my conversation after a while", "hints-and-tips"},
 		{"why does the hint only show up when I stop typing", "hints-and-tips"},
-		// The showing rule, and the day the row went blank: asked by the
-		// owner, whose afternoon of stepping through home had spent the table.
+		// Hints count as shown after enough time on screen; exhausted hints leave no row.
 		{"how long does a tip have to be on screen to count", "hints-and-tips"},
 		{"no hints at all any more, home's row is blank", "hints-and-tips"},
 		{"can I search my conversations with memory off", "places"},
 		{"search says what was said is not indexed", "places"},
 
 		// The wave that made the places follow the session's machine. These are
-		// the owner's own sentences, from the report that started it: they
+		// the user’s own sentences, from the report that started it: they
 		// attached over --host, pressed space-space, got one dim line, and said
 		// "i thought we can open multiple terminals and things would just auto
 		// transfer and work". Every one of these has to land somewhere that
@@ -2900,7 +2991,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"whose projects am I looking at over --host", "places"},
 		{"does the tasks page show the other machine's work", "places"},
 		{"the tasks tab showed work that is not on this machine", "places"},
-		{"what does on spark at the end of the tab bar mean", "places"},
+		{"what does on tower at the end of the tab bar mean", "places"},
 		{"which places work over --host", "places"},
 		{"why does spend say this session is on another machine", "places"},
 		{"can I search my old chats over --host", "places"},
@@ -2922,7 +3013,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"I updated codeaf on that machine and it still says the versions differ", "running-on-another-machine"},
 		{"I rebuilt codeaf on my dev box and --host still refuses", "running-on-another-machine"},
 		{"it says the two halves have to be the same build but they are", "running-on-another-machine"},
-		{"it says spark is still running an older codeaf", "running-on-another-machine"},
+		{"it says tower is still running an older codeaf", "running-on-another-machine"},
 		{"how do I stop the thing holding my session on that machine", "staying-on-that-machine"},
 		{"what does codeaf engine --stop do", "staying-on-that-machine"},
 		{"does the session host notice when I rebuild codeaf", "staying-on-that-machine"},
@@ -2936,7 +3027,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can I tab complete a path for /attach", "attaching-files"},
 		{"where does an attached file go over --host", "attaching-files"},
 		{"I dropped a file and nothing happened", "attaching-files"},
-		// The wave that made a KEYSTROKE-shaped drop land. The owner met both of
+		// The wave that made a KEYSTROKE-shaped drop land. the conversation met both of
 		// these on a real terminal over --host, and both are asked in the words
 		// they used: the refusal they were given, and what they were looking at
 		// when they gave up on it.
@@ -3009,7 +3100,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"is alt the same as option on a mac", "screen"},
 		{"does ctrl+1 go to a place", "keys"},
 
-		// THE OWNER'S OWN WORDS, on the day the jumps were dead everywhere but
+		// the user’s OWN WORDS, on the day the jumps were dead everywhere but
 		// the message box: "option left right and cmd and clicking does not seem
 		// to work". A person reports the KEY they pressed, never the name the
 		// terminal sent it under, so the page has to answer `option+←` and
@@ -3116,7 +3207,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I turn off endpoint routing", "lanes"},
 		// The picker's lanes, asked by somebody who pressed the arrows and saw
 		// nothing move, and by somebody reading `@cloudflare` on the name
-		// (docs/design/lanes-picker/DESIGN.md).
+		//.
 		{"how do I change the host for a model", "lanes"},
 		{"which host am I pinned to", "lanes"},
 		{"left and right arrows in the model picker do nothing", "lanes"},
@@ -3200,9 +3291,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"codeaf relay --listen --store how do I run my own relay", "relay-hosted-or-your-own"},
 		{"is there a docker image for the relay", "relay-hosted-or-your-own"},
 		{"is there a storage limit on the relay", "relay-limits-and-refusals"},
+		{"how much sync space am I using", "relay-limits-and-refusals"},
+		{"how close am I to the relay limit", "relay-limits-and-refusals"},
+		{"how big is my relay storage", "relay-limits-and-refusals"},
 		{"why does my chat not sync and say nothing, is the relay full", "relay-limits-and-refusals"},
 		{"what is the limit on new identities from one network", "relay-limits-and-refusals"},
-		{"the chat says the relay has no room left", "relay-limits-and-refusals"},
+		{"the chat says your sync space is full", "relay-limits-and-refusals"},
+		{"my sync space is full, how do I free it?", "relay-limits-and-refusals"},
+		{"does deleting a chat free sync space?", "relay-limits-and-refusals"},
 		{"the relay is asking this computer to slow down", "relay-limits-and-refusals"},
 		{"I lost all my computers, can I recover my chats", "losing-every-device"},
 		{"is there a codeaf identity rotate", "losing-every-device"},
@@ -3222,6 +3318,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does leave it there do", "continuing-a-chat-on-another-computer"},
 		{"when was a device last seen", "add-or-remove-a-computer"},
 		{"what does the removed computer see after I remove it", "add-or-remove-a-computer"},
+		{"can I remove a device from settings", "add-or-remove-a-computer"},
+		{"where are my computers in the settings page", "add-or-remove-a-computer"},
+		{"how do I revoke a computer in settings", "add-or-remove-a-computer"},
+		{"add another device from settings", "add-or-remove-a-computer"},
 		{"what happens to node_modules when I move a chat", "home"},
 		{"are my job logs moved with the chat", "home"},
 		{"does the task history come with the chat to another computer", "home"},
@@ -3232,6 +3332,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"a folder was left out of the move because it could not be read", "home"},
 		{"how do I take a chat back from my other computer", "continuing-a-chat-on-another-computer"},
 		{"what happens if two computers continue the same chat at once", "continuing-a-chat-on-another-computer"},
+		{"which computer coordinates cluster status cluster lead", "continuing-a-chat-on-another-computer"},
+		{"how does a delegated worker claim an assignment or run parallel tasks", "continuing-a-chat-on-another-computer"},
+		{"will an interrupted worker replay tools after a crash or reassignment", "continuing-a-chat-on-another-computer"},
+		{"can a worker access all my chats or approve pairing", "continuing-a-chat-on-another-computer"},
+		{"worker restarts draining and learner metadata visibility", "continuing-a-chat-on-another-computer"},
 		{"why does it say this chat is arriving", "continuing-a-chat-on-another-computer"},
 		{"does /remember work on my other computer", "what-i-remember"},
 		{"are my memories shared across computers", "what-i-remember"},
@@ -3254,7 +3359,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I list my chats on every machine from the terminal", "running-from-the-terminal"},
 		{"codeaf cell list --all", "running-from-the-terminal"},
 		{"a chat is running on my other computer how does home show it", "home"},
-		{"what does studio offline mean on a chat row", "home"},
+		{"what does tower offline mean on a chat row", "home"},
 		{"home says other machines unreachable", "home"},
 		{"how do I turn on sync between my machines", "running-from-the-terminal"},
 		{"what is CODEAF_SYNC_URL", "running-from-the-terminal"},
@@ -3266,7 +3371,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"is my code private when my chats sync", "use-this-on-another-computer"},
 		{"which relay do my chats sync through by default", "use-this-on-another-computer"},
 		{"how do I continue a chat here that my other computer left", "home"},
-		{"what does last durable turn ago up to turns may still be on studio mean", "home"},
+		{"what does last durable turn ago up to turns may still be on tower mean", "home"},
 		{"my unsaved edits here were kept as turns", "home"},
 		{"how do I discard the turns from a branch row", "home"},
 		{"can I merge a branch from another machine", "home"},
@@ -3452,6 +3557,53 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// A DROP DELETES THE JOB'S LOCAL WORK, asking first when there is some,
 		// and a start checks the one issue on GitHub.
 		{"bring back a dropped factory job", "factory"},
+		{"what happens to a running factory job when I quit codeaf", "factory"},
+		{"send work to the factory from Jira", "factory"},
+		{"how do I connect GitHub in the app without Terminal", "factory"},
+		{"what does the one-time code for GitHub sign-in mean", "factory"},
+		{"which permissions does a GitHub token for the factory need", "factory"},
+		{"how do I add a factory job from a script", "factory"},
+		{"what does POST /api/intake take", "factory"},
+		{"codeaf factory add", "factory"},
+		{"can I send work to the factory with curl or Zapier", "factory"},
+		{"what is running in the factory and what did we ship today", "factory"},
+		{"what is the factory manager in the factory team", "factory"},
+		{"the factory manager says my job is following its pull request", "factory"},
+		{"start the oldest p1 job", "factory"},
+		{"the manager said nothing was waiting but merge pull request was on screen", "factory"},
+		{"why is there a step called immediately in my job", "factory"},
+		{"the manager refused to add my step, it says it has no name of its own", "factory"},
+		{"I sent the same ticket twice to the factory", "factory"},
+		{"will my go-ahead start jobs when the app is closed", "factory"},
+		{"why did a job not start after the job it waits on merged", "factory"},
+		{"rules for every repository in the factory", "factory"},
+		{"make the factory ask before it touches auth", "factory"},
+		{"why did Auto stop at the plan saying a rule asks first", "factory"},
+		// WHO MAY PASS AN APPROVE STEP, asked the way an owner asks it.
+		{"make only a person able to approve the plan", "factory"},
+		{"let the manager pass the approval when the plan touches few files", "factory"},
+		{"who passed the approve step and when", "factory"},
+		{"stop the plan from changing the pipeline steps", "factory"},
+		{"send Jira tickets to a repository with a routing rule", "factory"},
+		{"route inbox work to a pipeline and start it by itself", "factory"},
+		{"make a new pipeline for docs jobs", "factory"},
+		{"reuse a pipeline across repos", "factory"},
+		{"where are my pipelines kept", "factory"},
+		{"which pipeline wins, the repo's or the library's", "factory"},
+		{"does priority change which factory job runs next", "factory"},
+		{"why did a newer p0 job run before the older ones", "factory"},
+		{"who can change the routing rules", "factory"},
+		{"can a routing rule ask the AI whether a ticket is a small bug fix", "factory"},
+		{"what does couldn't judge mean on a job", "factory"},
+		{"test these rules before saving them", "factory"},
+		{"make the factory start issues by itself", "factory"},
+		{"can an AI filter decide which tickets the factory starts", "factory"},
+		{"what does the factory filter charge on spending", "factory"},
+		{"what does pick up issues do", "factory"},
+		{"my Jira ticket says waiting for a repository, how do I give it one", "factory"},
+		{"a routing rule says the repository has no pipeline", "factory"},
+		{"do routing rules still work with pick up issues off", "factory"},
+		{"swap a queued job's pipeline", "factory"},
 		{"does dropping a factory job delete its branch", "factory"},
 		{"drop a factory job that has uncommitted changes", "factory"},
 		{"the factory says my issue was closed on GitHub so it wasn't started", "factory"},
@@ -3470,8 +3622,75 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"factory start refused, not checked out, connect GitHub so the factory can clone it", "factory"},
 		// WHAT A STEP FOUND REACHES THE STEPS AFTER IT: the plan whole, the
 		// files it names, every claim so far.
+		// JIRA TICKETS ARE WORK: connected with an API token and a JQL, polled,
+		// matched to a repository through the jira-project label, answered with
+		// a comment carrying the pull request's link.
+		{"how do I connect Jira to the factory", "factory-jira"},
+		{"can Jira tickets become factory jobs", "factory-jira"},
+		{"which Jira tickets does the factory pick up", "factory-jira"},
+		{"what JQL should I write for the factory", "factory-jira"},
+		{"will codeaf comment on the Jira ticket with the PR link", "factory-jira"},
+		{"how do I disconnect Jira", "factory-jira"},
+		{"does the Jira connection use webhooks", "factory-jira"},
+		{"send one Jira project to one repository", "factory-jira"},
+		{"what does Jira priority Highest become in the factory", "factory-jira"},
+		{"does codeaf work with Jira Server or Data Center", "factory-jira"},
+		// ASK AI IN THE JOBS SEARCH BAR: by meaning, two passes, a cost before
+		// it runs, saved as a view whose refresh reuses its answers.
+		{"can the factory search find issues by meaning, not just title words", "factory-ai-search"},
+		{"find all jobs related to exports with AI", "factory-ai-search"},
+		{"how does the AI search decide an issue matches", "factory-ai-search"},
+		{"what does an AI search of the jobs cost", "factory-ai-search"},
+		{"is there a spending cap or limit on an AI search", "factory-ai-search"},
+		{"save an AI search as a view", "factory-ai-search"},
+		{"does a saved AI view check new issues by itself", "factory-ai-search"},
+		// THE TRIGGER API: AgentField only, a message from outside read
+		// as a comment, the status of a job: none of it is an HTTP door or a
+		// webhook any more, and every one is answered by AgentField's page.
+		{"how do I connect my own tool to the factory", "factory-agentfield"},
+		{"can I add an AgentField trigger from the app", "factory-agentfield"},
+		{"route jobs to an AgentField reasoner with no repository", "factory-agentfield"},
+		{"is there an SDK for the factory", "factory-agentfield"},
+		{"send a comment to a job from outside", "factory-agentfield"},
+		{"the engine restarted, did my AgentField execution fail", "factory-agentfield"},
+		{"how does my tool add more details to a factory job it filed", "factory-agentfield"},
+		{"check the status of a factory job from my script", "factory-agentfield"},
+		{"set a webhook for a source", "factory-agentfield"},
+		{"which webhook events does the factory send", "factory-agentfield"},
+		{"how do I verify the factory webhook signature", "factory-agentfield"},
+		{"what happens if my webhook endpoint is down", "factory-agentfield"},
+		{"can I give a tool a token that only files its own tickets", "factory-agentfield"},
+		// THE FACTORY IS AN AGENTFIELD NODE: AgentField's triggers are its
+		// intake, translated per source, completed with the pull request.
+		{"how do I connect AgentField to the factory", "factory-agentfield"},
+		{"can I approve an AgentField plan from a team factory on another computer", "factory-agentfield"},
+		{"answer an AgentField approval from a desk attached to a remote factory", "factory-agentfield"},
+		{"register the factory on the AgentField control plane", "factory-agentfield"},
+		{"can a Linear issue start a factory job through AgentField", "factory-agentfield"},
+		{"trigger factory work from Sentry", "factory-agentfield"},
+		{"can a Slack message become a factory job", "factory-agentfield"},
+		{"can a pipeline step run a reasoner on AgentField", "factory-agentfield"},
+		{"approve the plan an AgentField run asks about", "factory-agentfield"},
+		{"why did my AgentField step fail and open no pull request", "factory-agentfield"},
+		// THE APP'S EDITOR GIVES AN AGENTFIELD STEP ITS INPUT (WorkAF r10).
+		{"how do I set plan_review on an AgentField step in the pipeline editor", "factory-agentfield"},
+		{"give a reasoner a field the job does not fill in the app", "factory-agentfield"},
+		{"merge says no approved commit is recorded for my AgentField job", "factory-agentfield"},
+		{"ask for changes to the AgentField plan", "factory-agentfield"},
+		{"an AgentField step asked a question, who answers it", "factory-agentfield"},
+		{"why do the parallel AgentField steps all have the same name", "factory-agentfield"},
+		{"does an AgentField cron trigger make a job", "factory-agentfield"},
+		{"why didn't my AgentField trigger make a job", "factory-agentfield"},
+		{"what source name does AgentField work get in routing rules", "factory-agentfield"},
+		{"does the AgentField execution get the pull request link", "factory-agentfield"},
+		{"what happens to a GitHub webhook from AgentField", "factory-agentfield"},
+		{"how is the AgentField node protected, does it check a secret", "factory-agentfield"},
+		{"add an AgentField trigger that targets the factory", "factory-agentfield"},
+		{"disconnect AgentField", "factory-agentfield"},
+		{"can a routing rule run jobs on the organization's own agent", "factory-agentfield"},
 		{"does the factory write step see the whole plan", "factory-stage-conversations"},
 		{"does the proof step know what earlier steps claimed", "factory-stage-conversations"},
+		{"ask the manager for changes to a waiting plan", "factory-stage-conversations"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)
@@ -3494,6 +3713,67 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 			t.Errorf("%q should reach %s; it reached %v", ask.question, ask.page, pages)
 		}
 	}
+}
+
+func TestMemoryTabNameAndMemoriesQuestions(t *testing.T) {
+	for _, name := range Chat().Pages() {
+		page, _ := Chat().Page(name)
+		page = strings.Join(strings.Fields(page), " ")
+		if strings.Contains(page, "Memories tab") || strings.Contains(page, "memories tab") {
+			t.Errorf("%s calls the Memory tab Memories", name)
+		}
+	}
+	for _, question := range []string{"where are my memories", "how do I see what codeaf remembers about me"} {
+		found := false
+		for _, section := range Chat().Search(question, DefaultResults) {
+			if section.Page == "what-i-remember" && strings.Contains(section.Body, "Memory") {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%q did not reach the Memory answer", question)
+		}
+	}
+}
+
+func TestTaskLandingManualMatchesFoldedPresentation(t *testing.T) {
+	page, ok := Chat().Page("tasks")
+	if !ok {
+		t.Fatal("missing tasks page")
+	}
+	for _, obsolete := range []string{"✓ 3 tasks done", "✕ N tasks landed", "? N tasks landed", "report under the second card", "a **second** card"} {
+		if strings.Contains(page, obsolete) {
+			t.Errorf("task manual still promises %q", obsolete)
+		}
+	}
+	for _, fact := range []string{"background work · N tasks · ctrl+e", "named task row", "branch kept · <branch>"} {
+		if !strings.Contains(page, fact) {
+			t.Errorf("task manual does not explain %q", fact)
+		}
+	}
+}
+
+// #1454: task.parallel is on the Tasks tab as `tasks at once`, not under
+// Spending. This checks the retrieved section's answer rather than only its
+// page, so restoring the former category cannot leave the retrieval gate green.
+func TestTaskParallelQuestionReachesItsCorrectedSettingsLocation(t *testing.T) {
+	const (
+		question = "where is task.parallel"
+		title    = "How many tasks run at once"
+	)
+	for _, section := range Chat().Search(question, DefaultResults) {
+		if section.Page != "tasks" || !strings.Contains(section.Title, title) {
+			continue
+		}
+		if !strings.Contains(section.Body, "under Tasks as `tasks at once`") {
+			t.Errorf("task.parallel answer omits its visible settings location: %s", section.Body)
+		}
+		if strings.Contains(section.Body, `category "spending"`) {
+			t.Errorf("task.parallel answer still names the former category: %s", section.Body)
+		}
+		return
+	}
+	t.Fatalf("%q did not reach tasks · %q", question, title)
 }
 
 // #1469: home listed waiting standing orders without their due time, and a person
@@ -4532,14 +4812,15 @@ func TestTheSupersededChatQuestionsReachTheAnswer(t *testing.T) {
 	}
 }
 
+// F8 keeps the shipped sharing explanation searchable and accurate.
 func TestTheDeviceQuestionsReachTheirPages(t *testing.T) {
 	const add, cont, naming = "add-or-remove-a-computer", "continuing-a-chat-on-another-computer", "naming-a-device"
 	for _, probe := range []struct{ asked, page, says string }{
 		{"why can't I type in this chat", cont, "Your words stay in the box"},
 		{"my message did not send and home opened with a question", cont, "Continue this chat here?"},
-		{"continue on this machine", cont, "Continue spark's latest chat here?"},
-		{"what does running on spark mean", cont, "Move here"},
-		{"what does moved from spark in 3.2s mean", cont, "Everything as you left it."},
+		{"continue on this machine", cont, "Continue tower's latest chat here?"},
+		{"what does running on tower mean", cont, "Move here"},
+		{"what does moved from tower in 3.2s mean", cont, "Everything as you left it."},
 		{"what is the card that says set this machine up", cont, "set up"},
 		{"what does the hollow dot next to a device mean", add, "(offline)"},
 		{"how do I add another computer", add, "On the new device, install and run: codeaf pair"},
@@ -4549,7 +4830,11 @@ func TestTheDeviceQuestionsReachTheirPages(t *testing.T) {
 		{"what is the check number on the new device", add, "Check number 4821. Approve only if"},
 		{"what does codeaf pair --code do", add, "codeaf pair --code"},
 		{"how do I remove a computer", add, "r remove"},
-		{"what does the dot next to a computer mean", add, "○ dumb (offline)"},
+		{"can I remove a device from settings", add, "between `Connections` and `Privacy`"},
+		{"where are my computers in the settings page", add, "between `Connections` and `Privacy`"},
+		{"how do I revoke a computer in settings", add, "between `Connections` and `Privacy`"},
+		{"add another device from settings", add, "`enter add` on `Add another device` leaves `/settings`"},
+		{"what does the dot next to a computer mean", add, "○ desk (offline)"},
 		{"I was told this computer was removed", add, "this device was removed by another of your devices"},
 		{"how do I rename this computer", naming, "codeaf devices rename \"atlas\""},
 		{"why does it show my hostname", naming, "Because you never named this device"},
@@ -4569,9 +4854,40 @@ func TestTheDeviceQuestionsReachTheirPages(t *testing.T) {
 	}
 }
 
+// C6 and C9 keep the sharing answer consistent with the default and local off switch.
+// F8 keeps the shipped sharing explanation searchable and accurate.
+func TestTheTeamSharingQuestionExplainsTheLocalDefaultOn(t *testing.T) {
+	for _, section := range Chat().Search("do my teams show on my other computer?", DefaultResults) {
+		if section.Page != "conversations-and-teams" {
+			continue
+		}
+		complete := true
+		for _, fact := range []string{
+			"Settings → General → share teams", "on by default",
+			"Turning it off on either computer stops sharing", "teams, members",
+			"team settings", "recent Traffic as read-only history",
+		} {
+			complete = complete && strings.Contains(section.Body, fact)
+		}
+		if complete {
+			return
+		}
+	}
+	t.Fatal("the team sharing question must reach one section explaining the local default-on choice and what it shares")
+}
+
 // C30.5 replaces the old chat-only memory promise with independent encrypted sync.
+// C6 and C9 keep cross-computer answers consistent with default-on team sharing.
+// F8 keeps the shipped sharing explanation searchable and accurate.
 func TestTheCrossComputerQuestionsReachTheFactThatAnswersThem(t *testing.T) {
 	for _, probe := range []struct{ asked, page, says string }{
+		{"do my teams show on my other computer?", "conversations-and-teams", "within a few seconds"},
+		{"how do I turn on team sharing", "conversations-and-teams", "on by default"},
+		{"how do I turn on team sharing", "conversations-and-teams", "Settings → General → share teams"},
+		{"stop sharing teams with my other computer", "conversations-and-teams", "Turning it off on either computer stops sharing"},
+		{"will deleting a team on my laptop delete it on my desktop?", "conversations-and-teams", "a deleted team stays deleted"},
+		{"does Traffic sync between computers?", "conversations-and-teams", "32 lines per team"},
+		{"do my crew settings follow me to my other computer?", "models-and-cost", "provider route and providers you turned off stay on each computer"},
 		{"is my code sent anywhere before I pair", "use-this-on-another-computer", "no device record reaches the relay"},
 		{"what does sync is waiting until another machine is added mean", "use-this-on-another-computer", "That is not a fault."},
 		{"how do I pair a server with no browser", "add-or-remove-a-computer", "the bare token `<code>.<key>`"},
@@ -4588,6 +4904,9 @@ func TestTheCrossComputerQuestionsReachTheFactThatAnswersThem(t *testing.T) {
 		{"how do I take a chat back from my other computer", "continuing-a-chat-on-another-computer", "Nothing has to be returned or switched off first."},
 		{"what happens if two computers continue the same chat at once", "continuing-a-chat-on-another-computer", "The slower one sees `another device continued this chat first`"},
 		{"where does sync go by default", "relay-hosted-or-your-own", "https://codeaf.agentfield.ai/fabric"},
+		{"which relay does a dev build or staging build use", "relay-hosted-or-your-own", "https://caf-fabric-dev.instrument-santosh.workers.dev"},
+		{"do dev and stable builds sync with each other", "relay-hosted-or-your-own", "Channels do not sync with each other"},
+		{"sync off and my chats are gone", "home", "Home still lists every chat on this computer"},
 	} {
 		found := false
 		for _, section := range Chat().Search(probe.asked, DefaultResults) {
@@ -4602,6 +4921,38 @@ func TestTheCrossComputerQuestionsReachTheFactThatAnswersThem(t *testing.T) {
 	}
 }
 
+// These are the four original capability questions from #1378 and #1937.
+func TestSkillCapabilityQuestionsReachTheirAnswer(t *testing.T) {
+	for _, row := range []struct {
+		question, page, heading string
+		facts                   []string
+	}{
+		{"what is a skill", "skills-from-other-tools", "What is a skill", []string{"SKILL.md", "/skill"}},
+		{"can you use skills", "skills-from-other-tools", "Can you use skills", []string{"Yes", "SKILL.md", "/skill"}},
+		{"do you have skills", "skills-from-other-tools", "Can you use skills", []string{"Yes", "SKILL.md", "/skill"}},
+		{"why can't you use my skills", "use-skill", "Why can't you use my skills", []string{"memory.enabled", "SKILL.md", "/skill"}},
+	} {
+		t.Run(row.question, func(t *testing.T) {
+			found := Chat().Search(row.question, DefaultResults)
+			for index, section := range found {
+				if section.Page != row.page || !strings.HasPrefix(section.Title, row.heading) {
+					continue
+				}
+				if row.question == "what is a skill" && index != 0 {
+					t.Errorf("the definition is answer %d, want the first answer", index+1)
+				}
+				for _, fact := range row.facts {
+					if !strings.Contains(section.Body, fact) {
+						t.Errorf("answer does not explain %q", fact)
+					}
+				}
+				return
+			}
+			t.Fatalf("question did not reach its %q answer in %d results", row.heading, DefaultResults)
+		})
+	}
+}
+
 // N4 pins all shared refusals quoted by the Windows manual sections.
 func TestWindowsManualQuotesTheShellRefusal(t *testing.T) {
 	page, ok := Chat().Page("running-commands-on-windows")
@@ -4611,6 +4962,157 @@ func TestWindowsManualQuotesTheShellRefusal(t *testing.T) {
 	for _, refusal := range []string{shell.NoBash, fmt.Sprintf(shell.MissingBash, "<path>"), fmt.Sprintf(shell.WSLBash, "<path>")} {
 		if !strings.Contains(page, "\""+refusal+"\"") {
 			t.Errorf("Windows manual must quote the shared refusal exactly: %q", refusal)
+		}
+	}
+}
+
+// TestSyncOffManualQuotesExactSentences pins the retrieval probe and exact
+// person-facing sentences for #2072 (sync off keeps every chat).
+func TestSyncOffManualQuotesExactSentences(t *testing.T) {
+	for _, probe := range []struct {
+		asked   string
+		page    string
+		heading string
+		quotes  []string
+	}{
+		{
+			asked:   "sync off and my chats are gone",
+			page:    "home",
+			heading: "Sync off and my chats are gone",
+			quotes: []string{
+				"CODEAF_SYNC_URL=off",
+				"chats from older versions alike",
+				"each once, and each opens and can be written",
+			},
+		},
+	} {
+		t.Run(probe.asked, func(t *testing.T) {
+			results := Chat().Search(probe.asked, DefaultResults)
+			for _, section := range results {
+				if section.Page != probe.page || !strings.HasPrefix(section.Title, probe.heading) {
+					continue
+				}
+				for _, quote := range probe.quotes {
+					if !strings.Contains(section.Body, quote) {
+						t.Errorf("section %q on %s missing exact quote %q", section.Title, section.Page, quote)
+					}
+				}
+				return
+			}
+			t.Fatalf("%q did not retrieve %q on %s within %d results", probe.asked, probe.heading, probe.page, DefaultResults)
+		})
+	}
+}
+
+func TestFactoryBriefLaterRequestsReachInputs(t *testing.T) {
+	const heading = "Job Brief inputs"
+	for _, asked := range []string{"job brief later requests answers saved notes", "job brief inputs later requests"} {
+		sections := Chat().Search(asked, DefaultResults)
+		found := false
+		for _, section := range sections {
+			if section.Page == "factory" && strings.HasPrefix(section.Title, heading) {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%q does not reach %q", asked, heading)
+		}
+	}
+}
+
+// R1/R9 and F8 keep first-merge safety, local cap scope and replacement recovery reachable by ordinary questions.
+func TestChatTeamSharingSafetyAnswers(t *testing.T) {
+	for _, tc := range []struct {
+		query string
+		facts []string
+	}{
+		{"first team sharing backup duplicate names global managers", []string{"teams.before-sharing.json", "both appear", "Rename one in its Settings", "older global team stays global", "former-manager history", "Teams"}},
+		{"shared team spending cap both computers", []string{"spending on each computer separately", "other computer is metered there"}},
+		{"pairing with replace what happens to teams", []string{"teams are set aside", "Provider keys saved on this computer stay here", "This computer's teams were set aside to <path>."}},
+		{"stop sharing teams with my other computer", []string{"stops sending and receiving", "encrypted copies in the vault", "history from the other computer is hidden"}},
+	} {
+		t.Run(tc.query, func(t *testing.T) {
+			for _, section := range Chat().Search(tc.query, DefaultResults) {
+				text := strings.ToLower(strings.Join(strings.Fields(section.Body), " "))
+				complete := true
+				for _, fact := range tc.facts {
+					complete = complete && strings.Contains(text, strings.ToLower(fact))
+				}
+				if complete {
+					return
+				}
+			}
+			t.Fatalf("no self-contained answer to %q includes %v", tc.query, tc.facts)
+		})
+	}
+}
+
+func TestStorageOptInManualQuestions(t *testing.T) {
+	for _, question := range []string{
+		"how do I turn on sync storage",
+		"why don't my chats sync to my other computer",
+		"request access to sync storage",
+		"does the relay store my chats",
+	} {
+		found := false
+		for _, section := range Chat().Search(question, DefaultResults) {
+			if section.Page == "relay-what-it-stores-and-sees" && strings.Contains(section.Body, "off by default") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%q did not reach the hosted storage approval answer", question)
+		}
+	}
+}
+
+func TestStorageOptInSettingsAndTeamsQuestions(t *testing.T) {
+	for _, probe := range []struct{ question, page, heading string }{
+		{"Settings General share teams between paired computers", "settings", "General —"},
+		{"Team sharing and Traffic on another computer", "team-manager", "Team sharing and Traffic"},
+		{"Shared team spending caps and continued members", "team-manager", "Shared team spending caps"},
+	} {
+		t.Run(probe.question, func(t *testing.T) {
+			for _, section := range Chat().Search(probe.question, DefaultResults) {
+				if section.Page == probe.page && strings.HasPrefix(section.Title, probe.heading) {
+					if !strings.Contains(section.Body, "sync storage approval") {
+						t.Fatalf("approval missing: %s", section.Body)
+					}
+					return
+				}
+			}
+			t.Fatalf("%q did not reach %s / %s", probe.question, probe.page, probe.heading)
+		})
+	}
+}
+
+func TestKnowledgeSpendingAndAutomaticCaptureManual(t *testing.T) {
+	for page, phrases := range map[string][]string{
+		"settings":        {"capture automatically", "existing eligible history waits", "paid model work recorded in Spend", "/budget day"},
+		"models-and-cost": {"background knowledge compilation", "task summaries", "daily limit reached", "summary keeps its last reading"},
+		"places":          {"Each\npaid call appears in Spend", "Knowledge build paused: daily limit reached", "retained-progress and automatic-retry"},
+		"automations":     {"no new paid check starts once it is reached"},
+	} {
+		text, ok := Chat().Page(page)
+		if !ok {
+			t.Fatalf("missing page %s", page)
+		}
+		for _, phrase := range phrases {
+			if !strings.Contains(text, phrase) {
+				t.Errorf("%s does not explain %q", page, phrase)
+			}
+		}
+	}
+	for _, query := range []string{"knowledge compilation Spend daily limit", "new profile knowledge capture automatically"} {
+		found := false
+		for _, section := range Chat().Search(query, DefaultResults) {
+			if section.Page == "settings" || section.Page == "models-and-cost" {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("knowledge question missed its settings/cost answer: %q", query)
 		}
 	}
 }

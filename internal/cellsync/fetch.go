@@ -12,6 +12,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 )
 
 // FetchWindow is the most frame fetches a take has in flight at once
@@ -25,13 +26,45 @@ const ImportEvery = 4
 
 // Fetcher brings a head and everything it needs from the store onto this device.
 type Fetcher struct {
-	Engine Engine
-	Store  blobstore.Store
+	// WarmFrameHints opts into bounded latest-frame priming; off by default.
+	WarmFrameHints bool
+	Engine         Engine
+	Store          blobstore.Store
 	// Dir reads the cell's record for the plan (contract §22.2). Nil means no
 	// priming: the fetch is exactly the want loop (rotation uses it that way).
 	Dir        directory.Client
 	Inbox      func(c cell.Cell) string
 	OnProgress func(have, want int) // optional; want grows as the graph is learned
+	// ManyMax bounds the rids one GetMany asks for; 0 is blobstore.MaxGetMany.
+	// ManyMaxFor picks it for a relay.
+	ManyMax int
+}
+
+// HostedGetMany is the most rids one GetMany asks the hosted relay for. Its
+// batch get reads, for every frame a request touches, the bytes from the first
+// wanted object to the last, all at once in a 128 MB isolate, while bulk frames
+// are BulkFrame (8 MiB). Measured on a 1.4 GB chat's real frames (N21), 256
+// rids made it read up to 65 MB for a few hundred KB wanted, and the move
+// failed with a 500 on every try; 16 keeps a request at about 8 MB in walk
+// order and under 15 MB even for scattered objects. A big move asks about
+// three times as often.
+const HostedGetMany = 16
+
+// ManyMaxFor is the GetMany bound for relay: HostedGetMany for a hosted sync
+// relay (the "(hosted)" one the device screens name), the full batch for a
+// relay of the person's own, which reads each object by itself.
+func ManyMaxFor(relay string) int {
+	if syncwords.Hosted(relay) {
+		return HostedGetMany
+	}
+	return blobstore.MaxGetMany
+}
+
+func (f *Fetcher) manyMax() int {
+	if f.ManyMax <= 0 || f.ManyMax > blobstore.MaxGetMany {
+		return blobstore.MaxGetMany
+	}
+	return f.ManyMax
 }
 
 // Fetch completes head in the store and then materializes it. A rid the
@@ -47,6 +80,9 @@ func (f *Fetcher) Fetch(ctx context.Context, c cell.Cell, head string) error {
 // device's store afterwards and the folder the person works in is not touched.
 // It is how a device holds a chat's objects without taking the chat over.
 func (f *Fetcher) Complete(ctx context.Context, c cell.Cell, head string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	inbox := f.Inbox(c)
 	if err := os.MkdirAll(inbox, 0o700); err != nil {
 		return err
@@ -91,12 +127,13 @@ func (f *Fetcher) round(ctx context.Context, c cell.Cell, head, inbox string, wa
 	return n, err
 }
 
-// gather brings every wanted object into the inbox, a frame's worth per request:
-// the store answers a prefix of what is asked, and the rest is asked again. An
-// object the store does not hold is an error that names it.
+// gather brings every wanted object into the inbox, a frame's worth per request
+// of at most ManyMax rids, in want order: the store answers a prefix of what is
+// asked, and the rest is asked again. An object the store does not hold is an
+// error that names it.
 func (f *Fetcher) gather(ctx context.Context, inbox string, want []string) error {
 	for len(want) > 0 {
-		batch := want[:min(len(want), blobstore.MaxGetMany)]
+		batch := want[:min(len(want), f.manyMax())]
 		objects, err := f.Store.GetMany(ctx, batch)
 		if err != nil {
 			return fmt.Errorf("cellsync: fetch object %s: %w", batch[0], err)
@@ -126,15 +163,19 @@ func (f *Fetcher) prime(ctx context.Context, c cell.Cell, head, inbox string) er
 	if f.Dir == nil {
 		return nil // no directory, no plan: exactly today's want loop
 	}
-	if err := os.MkdirAll(inbox, 0o700); err != nil {
+	owned, err := ensureHintInbox(filepath.Dir(inbox))
+	if err != nil {
 		return err
 	}
+	inbox = owned
 	defer os.RemoveAll(inbox)
-	// A device that already exchanged objects with this relay holds most of the
-	// chat: the plan names its whole upload history, so priming it would
+	// A device that already held this chat has most of its history: the plan names its whole upload history, so priming it would
 	// download what it has to learn about a one-file change. The want loop
 	// fetches a warm take's delta by rid.
 	if f.Engine.Holds(c) {
+		if f.WarmFrameHints {
+			return f.primeWarm(ctx, c, head, inbox)
+		}
 		return nil
 	}
 	// A device that already holds the head wants nothing, and needs no frames.

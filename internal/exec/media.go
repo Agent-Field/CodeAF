@@ -409,7 +409,7 @@ func (t *Toolbox) viewImage(ctx context.Context, args map[string]any) Result {
 			return errorf("image inspection paused at the daily budget — approve it in chat to continue")
 		}
 	}
-	// WithoutStream, the way every other one-shot call in this lane is made
+	// WithoutStream, the way every other one-shot call in this implementation is made
 	// (internal/subharness's exec_model.go): what comes back is a TOOL RESULT
 	// and not the leaf's answer, so it must not be typed into whatever stream
 	// the context above happens to be pointed at — and it is also what puts the

@@ -94,7 +94,7 @@ const (
 // custodyRemainderHead opens the block the TRANSCRIPT keeps when part of a
 // drawing did not travel. It is internal/session's own
 // (checkpoint_custody.go's checkpointOwnRemainderHead), spelled again here
-// because it is unexported there and this lane reads what a person would read.
+// because it is unexported there and this test reads what a person would read.
 const custodyRemainderHead = "WHAT STAYS HERE, FOR WHEN THE PIECES ALREADY OUT LAND:"
 
 // custodyHeldWorkReason is the word the journal writes on a rung of the brief
@@ -534,7 +534,7 @@ func (r *custodyRun) report(attempt int) {
 		r.carries, r.ceilings, custodyRowLog(r.rows))
 }
 
-// ── the readings this lane makes of prose ───────────────────────────────────
+// ── the readings this test makes of prose ───────────────────────────────────
 //
 // They mirror internal/session's own (checkpoint_custody.go's namesHeldWork and
 // numbersBesideTheNoun) rather than importing them, because the whole point of

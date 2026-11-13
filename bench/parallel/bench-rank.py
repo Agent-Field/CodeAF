@@ -4,7 +4,7 @@ import csv, glob, os, sys
 
 root = open(os.path.expanduser('~/af-v3/.bench-par-root')).read().strip()
 
-# Master's recorded numbers, BENCHMARKS.md, CODEAF_MODE=node, same model+judge.
+# Master's recorded numbers, the implementation, CODEAF_MODE=node, same model+judge.
 MASTER = {
     '20': dict(sec=85,  passed=None, cost=0.005, note='workflow added'),
     '21': dict(sec=356, passed=554,  cost=0.185, note='529-554 range; 554 = no contract'),

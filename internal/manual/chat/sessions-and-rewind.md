@@ -292,8 +292,9 @@ line types are `session` (the header: version, id, working directory, model, tim
 `message`, `compaction`, `rewind`, `title`, `usage` and `call`. Message content is written
 as text. A `usage` line records what one piece of work cost, and on a resume those lines
 are added back up — which is why the bill survives a restart. A `call` line records one
-request's own shape and is **never** added up: the money on it is already counted in the
-`usage` line that closed its turn.
+request's own shape and is normally **not** added up: the money on it is already counted in
+the `usage` line that closed its turn. The exception is a late receipt, a `call` line marked
+with an `arm`: its money is in no `usage` line, so a resume adds it once.
 
 The session id is 16 random hex characters, minted when the file is created and replayed
 unchanged on every resume — that is what keeps one conversation one identity across days.
@@ -310,20 +311,26 @@ exactly `[image /path/to/file — file changed or gone]`.
 
 Yes. Every piece of work that cost money appends a `usage` line to the transcript, carrying
 the model it ran on, tokens in and out, cache read and cache write, the money, how many
-requests it took and how long it lasted.
+requests it took and how long it lasted. A late receipt writes a marked `call` line instead
+(below).
 
 There is one line per **completed turn**, and one more for each call made beside a turn —
 naming the conversation, the memory reflex, the check on a reply, a task's fold-up, a
-planner, a harness run. Those are marked `aux` so a reader can tell the turn itself from
-the work done around it. A turn that spent nothing writes no line at all, because a zero is
-absence, not a fact worth a line.
+planner, a harness run. Those are marked `aux`. A second-stage stop that lets go of a
+turn while tools still run also saves its paid conversation steps in a `usage` seal,
+without duration. It saves the conversation's new total to `meta.json` too, which is
+what Home reads, so that figure matches the transcript after a restart. Its `abandoned`
+line records the stop and last-known spend as evidence; it is never added to the bill.
+A turn that spent nothing writes no usage line. Older transcripts without that step
+seal cannot restore the missing steps.
 
 One exception to "one line per turn": a turn that was answered by **more than one model**
 — the model hopped mid-turn — writes **one line per model that answered**, each with that
 model's own tokens and money. A single sum could only name one of them, and naming the one
 standing at the end would hand the whole turn's bill to the wrong model.
 
-**On a resume these lines are added up, and that sum is the session's totals.** So `/cost`,
+**On a resume these lines, and the marked late-receipt `call` lines below, are added up,
+and that sum is the session's totals.** So `/cost`,
 `/status` and the status line show what the whole conversation has spent across every
 restart, not only what has happened since you reopened it. The spend ceiling reads the same
 sum — see the spending pages for what that means the day after you reach one.
@@ -354,11 +361,11 @@ provider's own **receipt** is fetched afterwards, the request writes its line th
 with `arm`: `hedge` for a rescue arm, `reconciled` for any other late receipt. A receipt
 names no endpoint, so the line leaves that field out rather than guess.
 
-These lines are **evidence, never spending**. Nothing adds them up, `/cost` does not read
+Ordinary call lines are **evidence, never spending**. Nothing adds them up, `/cost` does not read
 them, and a resume ignores them entirely, because every dollar on them is already in the
 `usage` line that sealed the turn. They are there so a question about *shape* — what does a
 mostly-cached request actually cost here — can be read out of the file instead of guessed
-at.
+at. A line with an `arm` is the exception: its money is in no seal, so a resume adds it once.
 
 ## Picking up where you left off
 
@@ -770,6 +777,32 @@ the connection to devbox is gone — run the same command to pick the conversati
 That is not advice dressed up: the conversation is on that machine's disk and the same
 command opens it again. Running the session elsewhere with `--host` has its own page.
 
+## When the work folder is saved between commands and at pauses
+
+The desktop's background recorder writes each finished tool call to its local call
+ledger immediately. A shell command can change any file, so its full-folder save can
+wait for a pause. After each tool batch, codeaf first writes its result lines.
+The batch can then stay in the call ledger until turn end or a save boundary between
+steps, such as moving or continuing the chat elsewhere, uploading it or closing
+it. A boundary encountered during an open step leaves that step in the call ledger;
+it does not wait for the running tool or save work without its result lines.
+
+While commands keep running, the next batch boundary saves all pending calls once
+the oldest completion is at least 30 seconds old. There is no timer that saves
+underneath a running tool. A batch with exact changed paths can save immediately
+while no shell or other unknown-effect call is pending; transcript-only batches
+also save immediately. Setup calls and synchronous recorders keep their existing
+saves. Turn end and explicit forced settles still save pending calls immediately.
+
+A failed save during displacement leaves completed calls in the local call ledger
+for take-back; saved turns can still be kept as a separate chat. When calls remain
+unsaved, the notice says `kept <K> turns from <device> as a separate chat`.
+A crash also leaves finished calls in the local call ledger for the next save to
+carry. File seals support moving, taking over and recovering a chat. Ordinary
+conversation rewind leaves files changed. The separate cell file-rewind path
+refuses an open tool step with “rewind refused: a tool step is open; settle it
+first” rather than save or restore underneath it.
+
 ## A command was running when codeaf was killed — what the chat says when you come back, and whether it runs again
 
 When the codeaf process is killed hard (`kill -9`, a crash) while a command is running,
@@ -813,6 +846,11 @@ there without a single character of the secret surviving.
 **The model never gets the characters, and never needs them.** A command that has to *use*
 a credential already has it in its own environment — that is what `TOKEN=$(gh auth token)`
 does — so nothing on the belt is worse off for this.
+
+**A credential you hand over goes through a masked box, not a message.** When the chat
+needs a token or password from you it asks with `request_secret`; the value goes to a
+private file its commands read, and the conversation only ever holds the path. The page
+on giving a password, token or API key has the whole of it.
 
 **Inside a task the read itself is refused.** A token never has to be shown to be spent, and
 a task runs unattended in a copy of its own and holds no login of yours, so `gh
@@ -983,10 +1021,82 @@ answered by the model from the manual with the page named; it is an ordinary pai
 ## Starting a new chat without waiting for the first token
 
 Sending a first message from Home or the new-chat page (`+` or `ctrl+t`) shows
-its own `new chat` screen immediately, with your message and
-`opening conversation… · esc cancels`. The conversation opens in the background;
-the message reaches its new conversation only after opening succeeds. This
-screen acknowledges your action before the model starts answering. The previous
-chat keeps its draft and attachments. Escape cancels the pending opening;
-typing also cancels it and edits the original draft. An opening failure returns
-to that draft with the error, so your message is not lost or sent to the old chat.
+the ordinary chat immediately, with your message, an `opening chat` status and composer.
+The conversation opens in the background; the message reaches its new conversation
+only after opening succeeds. You can type a follow-up while it opens; that draft
+stays in the new chat's composer when opening finishes. The previous chat keeps
+its draft and attachments. Escape cancels the pending opening and restores your
+first message and any follow-up draft. Existing tabs and navigation remain
+available: selecting another conversation or page cancels opening and follows
+that selection on the first click. Clicking the message body does not cancel
+opening. An opening failure returns those words
+with the error, so your message is not lost or sent to the old chat.
+
+Returning to an already open chat keeps its last displayed text visible while
+its current history refreshes. The refreshed history replaces that preview.
+
+## Switching to a team chat that is not open yet
+
+A team tab can name a manager or worker that this window has not opened yet.
+In windows that can keep several chats open, its connection opens in the
+background, with an opening notice on the current chat. You can select another tab or cancel with Escape while the engine is
+busy. A canceled opening does not replace the selected chat when it finishes.
+Chats already open in this window switch directly.
+
+## Saving stopped or could not save this chat
+
+Each codeaf home shares its own local saving engine, separate from other homes.
+If its connection closes, the next save reconnects, starting that engine again
+if needed. An interrupted operation is not replayed.
+
+If the storage process is alive but its socket has disappeared, codeaf says
+“saving is stuck”. Your turns stay on this computer. When codeaf can safely
+replace its own unreachable storage process, saving resumes with a fresh one.
+Otherwise the process exits after its idle timeout, within 10 minutes, and the
+next save starts it again.
+
+“sealing works again, and the calls made meanwhile are sealed now” appears only
+after this chat's own latest turn is saved again. A spoken turn that syncs must
+also be published. An unused startup chat recovers after its local seal; it owes
+no publication until you speak. The notice appears once on the next surface tick,
+even after the answer has finished, and the saving-failure status clears.
+Later bookkeeping does not hide that recovery. Another task saving successfully
+does not clear this chat's saving failure.
+
+If a local write fails, the error names the local transcript that keeps
+the unsaved turns. A sync outage alone leaves the turns saved here and does not produce a local-write failure. Keep that file: after storage becomes reachable again, the
+turns can be saved and published, or kept separately when you continue the chat.
+
+## Rewind is off when Windows cannot save file history securely
+
+If Windows cannot provide a private local saving connection within its address
+limit, codeaf turns saved file history off for that chat and says once:
+
+> rewind is off because this chat cannot save file history securely; restart codeaf to try again.
+
+Tools keep working and the conversation still saves normally. Reopening the chat
+does not repeat the sentence. Restart codeaf to try saving file history again.
+Ordinary project chats with a usable saving connection keep their history.
+
+## Closing one open chat while sync storage is off
+
+Closing a chat with `/quit` or its close action can leave your other chats open. Only when an upload is refused because sync storage is off after a successful local save, codeaf says `saved here; sync storage is off for this account, so it stays on this computer`. The same words appear when quitting the app with that saving result.
+
+When local saving succeeds but another upload is still pending, the sentence is `saved here; it reaches your other devices when the sync service at <address> answers`. It names the service used by the chat you closed.
+
+If saving here fails, closing one chat still says `this chat could not be saved; its unsaved turns stay on this computer for the next start`. An unanswered save remains finishing in the background until its result arrives. Storage being off alone does not mean the local save failed.
+
+## A chat opened in codeaf's own folder — ~/.codeaf, its files are not saved
+
+codeaf's own folder (`~/.codeaf`, or wherever `CODEAF_HOME` points) holds codeaf's
+state: its databases, the factory's clones, your saved keys. It is never a project,
+so a chat whose folder is that folder, or a folder above it, saves the conversation
+and its own folder only, exactly as a chat opened in your home folder does. It says
+once:
+
+> this folder holds codeaf's own folder, so its files are not saved with this chat · rewind brings back the conversation only · open codeaf in a project folder to save its files
+
+Tools still run in that folder, and nothing in it is moved or deleted. A folder
+inside it that is one factory job's own checkout is a project like any other and
+is saved as usual. Chats made before this rule that name `~/.codeaf` stop saving
+its files the next time they open; nothing else about them changes.

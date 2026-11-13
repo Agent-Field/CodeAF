@@ -119,7 +119,7 @@ func TestSpendRailNeverCutsTheTurnInFlight(t *testing.T) {
 }
 
 // TestTheRefusalNamesTheLimitTheFigureAndTheDoor is
-// docs/design/spending/DESIGN.md acceptance 6: one line, the limit, the figure
+// the implementation acceptance 6: one line, the limit, the figure
 // and the key — and nothing about it said twice.
 //
 // IT SAYS `limit` AND NOT `rail`. The machinery's word is this file's; the
@@ -164,6 +164,7 @@ func TestTheRefusalNamesTheLimitTheFigureAndTheDoor(t *testing.T) {
 }
 
 func TestSpendRailRefusesTurnWhenDailyBudgetExceeded(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	completer := &scriptedCompleter{steps: []step{
 		func(context.Context, []ai.Message) (*ai.Response, error) {
 			t.Error("a refused turn reached the provider")
@@ -213,6 +214,8 @@ func TestTheDailyCeilingBindsTaskAndErrandTurnsToo(t *testing.T) {
 		{"the home errand", func(cfg *Config) { cfg.Errand = true }},
 	} {
 		t.Run(posture.what, func(t *testing.T) {
+			// The daily rail reads the machine ledger as well as the held spend.
+			t.Setenv("CODEAF_HOME", t.TempDir())
 			profileDir := t.TempDir()
 			if err := config.WriteDailyBudgetUSD(profileDir, 1.00); err != nil {
 				t.Fatalf("write daily budget: %v", err)
@@ -234,11 +237,24 @@ func TestTheDailyCeilingBindsTaskAndErrandTurnsToo(t *testing.T) {
 			if !strings.Contains(err.Error(), "daily limit reached") {
 				t.Fatalf("error = %v, want it to say the daily limit was reached", err)
 			}
+
+			agent.crewDayHeld = NewSpendDay(0.50)
+			if err := agent.railBlockLocked(); err != nil {
+				t.Fatalf("%s under the daily ceiling was refused: %v", posture.what, err)
+			}
+
+			// Spend recorded by another conversation still binds this turn even
+			// when its held spend is below the limit.
+			recordUsage(t, UsageLedgerPath(), UsageLine{At: time.Now(), Model: "test/model", Calls: 1, USD: 1.50})
+			if err := agent.railBlockLocked(); !errors.Is(err, ErrSpendRail) ||
+				!strings.Contains(err.Error(), "daily limit reached · $1.50 spent of $1") {
+				t.Fatalf("%s ignored the ledger's daily spend: %v", posture.what, err)
+			}
 		})
 	}
 
-	// And under the ceiling, each posture still starts: the fix refuses only the
-	// turn the day's allowance cannot pay for.
+	// And under the ceiling, the ledger and held meter describe the same spend,
+	// so they must not be added.
 	profileDir := t.TempDir()
 	if err := config.WriteDailyBudgetUSD(profileDir, 1.00); err != nil {
 		t.Fatalf("write daily budget: %v", err)
@@ -248,7 +264,6 @@ func TestTheDailyCeilingBindsTaskAndErrandTurnsToo(t *testing.T) {
 		cfg.InTask = true
 	})
 	agent.crewDayHeld = NewSpendDay(0.50)
-	// The ledger and held meter describe the same spend, so they must not be added.
 	if err := agent.railBlockLocked(); err != nil {
 		t.Fatalf("a task turn under the daily ceiling was refused: %v", err)
 	}
@@ -261,6 +276,7 @@ func TestTheDailyCeilingBindsTaskAndErrandTurnsToo(t *testing.T) {
 // the default profile's limit and would refuse a worker under a higher selected limit and
 // let it spend past a lower one.
 func TestAWorkerIsHeldToTheSelectedBudgetItCarriesNotTheDefault(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	// A worker: no ProfileDir, the selected limit carried down as $1.
 	worker := &Agent{}
 	worker.config.DailyBudgetUSD = 1.00
@@ -323,6 +339,7 @@ func TestSpendPreauthorizationLiftsTheDailyCeiling(t *testing.T) {
 // Raising the day's allowance does not remove a conversation's separate cap.
 // The named conversation setting must release the same live agent on retry.
 func TestBudgetScopeAndLiveConversationRecovery(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	profile := t.TempDir()
 	if err := config.WriteDailyBudgetUSD(profile, 20); err != nil {
 		t.Fatal(err)

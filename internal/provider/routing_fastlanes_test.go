@@ -11,7 +11,7 @@ import (
 
 // ── THE BELIEF'S ORDER DROPS THE WIRE CEILING ───────────────────────────────
 //
-// THE MEASURED FAILURE (docs/design/routing/ASSESSMENT-20260911.md). `max_price`
+// THE MEASURED FAILURE. `max_price`
 // is list × 1.25 and the list price is the cheapest endpoint, so on 2026-09-11
 // a request the belief addressed to GMICloud, Novita, Fireworks went out under a
 // $0.75 ceiling that left one of them, and the account's data policy excluded

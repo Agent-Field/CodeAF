@@ -155,7 +155,7 @@ func (c *Client) sayThePinIsNotSent(ctx context.Context) {
 // ── WHY THE WORDS ARE NOT THE GATE ──────────────────────────────────────────
 //
 // A phrase list here was the first design and it was wrong in the way rule 1 of
-// docs/design/failsafe/FAILSAFE.md warns about: a fail-safe detects by STRUCTURE
+// the implementation warns about: a fail-safe detects by STRUCTURE
 // or it is decoration. `Unrecognized request argument supplied: provider` and
 // `invalid provider name` both name the field and both are 400s, and they mean
 // opposite things — the first is a base that has never heard of it, the second

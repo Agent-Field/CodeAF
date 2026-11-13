@@ -3,7 +3,7 @@ package session
 // automation_tool.go is the model's door to automations: `automation`, which
 // proposes one on a card and manages the ones that exist. The person never
 // names the tool; the model recognises a reminder, a piece of scheduled work or
-// a watch from what their sentence IS. docs/design/automations/DESIGN.md.
+// a watch from what their sentence IS. the implementation.
 //
 // RULES ARE NOT AUTOMATIONS. "Always use tabs here" has no moment, no rhythm
 // and nothing to run; it is a memory marked always, and `remember` is its door.

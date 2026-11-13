@@ -155,7 +155,7 @@ func TestH9HostMissingCommandNamesTheCurrentInstallation(t *testing.T) {
 		}
 	}
 	got := missingHostCommand("devbox").Error()
-	for _, want := range []string{"called codeaf now", "before 2026-09-14", "installed on devbox under that name"} {
+	for _, want := range []string{"not installed on devbox", "https://agentfield.ai/get/", "non-login ssh"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("host remedy %q does not contain %q", got, want)
 		}
@@ -292,7 +292,9 @@ func TestTheHostDoorWiresTheFarMachineAndNothingAboutThisMachine(t *testing.T) {
 	// recovered nil dereferences per run that the guard swallowed
 	// (chatv3_host_duty_test.go pins the seam that now refuses them).
 	client := hostedClient(t)
-	options, _ := hostOptions(onePipeFleet("devbox", client), welcome, false)
+	fleet := onePipeFleet("devbox", client)
+	t.Cleanup(fleet.closeAll)
+	options, _ := hostOptions(fleet, welcome, false)
 	if options.Build != welcome.Build {
 		t.Fatalf("the surface says build %q, want the engine's %q", options.Build, welcome.Build)
 	}
@@ -367,7 +369,9 @@ func TestTheConnectionSeamsReachTheSurface(t *testing.T) {
 		t.Fatal("a seam that is not filled is a seam nobody can wire")
 	}
 
-	options, _ := hostOptions(onePipeFleet("devbox", client), remote.Welcome{Version: remote.Version, Workspace: "/srv/app"}, false)
+	fleet := onePipeFleet("devbox", client)
+	t.Cleanup(fleet.closeAll)
+	options, _ := hostOptions(fleet, remote.Welcome{Version: remote.Version, Workspace: "/srv/app"}, false)
 	if options.Link.Note == nil || options.Link.Ping == nil || options.Link.Notice == nil || options.Link.Held == nil {
 		t.Fatalf("the surface was handed %+v — a seam left nil is a fact nobody is told", options.Link)
 	}
@@ -466,6 +470,7 @@ func TestAConversationOpenedBesideKeepsTheRecallStore(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	client := hostedClient(t)
 	fleet := onePipeFleet("devbox", client)
+	t.Cleanup(fleet.closeAll)
 	options, _ := hostOptions(fleet, remote.Welcome{Version: remote.Version, Workspace: "/srv/app"}, false)
 	if options.History == nil {
 		t.Fatal("the surface opened with no recall store")
@@ -598,7 +603,9 @@ func TestHostedWelcomeCarriesUnreadProfileKeysToSurface(t *testing.T) {
 			t.Error("hosted welcome engine did not finish shutdown")
 		}
 	})
-	options, _ := hostOptions(onePipeFleet("devbox", loop.Client), loop.Client.Welcome(), false)
+	fleet := onePipeFleet("devbox", loop.Client)
+	t.Cleanup(fleet.closeAll)
+	options, _ := hostOptions(fleet, loop.Client.Welcome(), false)
 	if got := options.UnreadProfileKeys; len(got) != 1 || got[0] != "models" {
 		t.Fatalf("hosted unread keys = %v", got)
 	}

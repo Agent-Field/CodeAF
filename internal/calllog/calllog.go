@@ -92,6 +92,8 @@ const (
 // reached an endpoint says nothing about tokens, and a zero in that place would
 // be a figure somebody could read as a measurement.
 type Record struct {
+	// GenerationID names the provider receipt, including for helper calls.
+	GenerationID string `json:"generation_id,omitempty"`
 	// Time is when this row was written, RFC3339 with milliseconds: the moment
 	// an attempt went out on a start row, the moment it came back on an end row.
 	Time string `json:"ts"`
@@ -123,7 +125,7 @@ type Record struct {
 	// 65,536-token ceiling looked identical to an idle process.
 	Phase string `json:"phase,omitempty"`
 	// Tag is what the call was for — "turn", "leaf", "compile", "brief" — set
-	// by whoever made it (provider.WithCallTag). Empty for a call this lane did
+	// by whoever made it (provider.WithCallTag). Empty for a call this implementation did
 	// not locate, which is honest: an untagged row is still a row.
 	Tag string `json:"tag,omitempty"`
 	// Node is the work the call belongs to, where the caller knows one: a plan
@@ -216,7 +218,7 @@ type Record struct {
 	// apparently running past twice their own deadline. Every one of those was
 	// a healthy call outliving a hazard ceiling, which is the ordinary case. The
 	// figure was right and the NAME was the lie, so the name moved
-	// (docs/design/recovery/DESIGN.md §7, wave R0).
+	//.
 	HazardCeilingMs int64 `json:"hazard_ceiling_ms,omitempty"`
 	// AppliedMs is THE BOUND THAT ACTUALLY ENDED THIS ATTEMPT and AppliedWord is
 	// what to call it. HazardCeilingMs above says what was PLANNED; these two say

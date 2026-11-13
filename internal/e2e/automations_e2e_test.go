@@ -4,7 +4,7 @@ package e2e
 
 // automations_e2e_test.go is AUTOMATIONS ON A REAL SCREEN: the real binary, a
 // real terminal, the real card, the real store and the real clock process
-// (docs/design/automations/DESIGN.md).
+//.
 //
 // IT REPLACED THREE SUBTESTS OF [TestTUIE2E] THAT WERE ABOUT STANDING ORDERS,
 // and it says which. `ask here` still exists, and an errand that asks for a

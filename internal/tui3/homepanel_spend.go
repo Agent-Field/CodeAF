@@ -10,23 +10,20 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
-// spendPanel is `spend`: a small HUD, THREE LINES THAT EACH SAY ONE THING. The
-// heading names the panel; today's cost and allowance are already on the top
-// line. Once the day has spent enough of its allowance to see, one thin meter
-// says how much is gone. Then the fortnight, one block cell a day with today at the right, its
-// total and its loudest day. Then who it went to and what for: the two models
-// most of it bought, and how many chats and tasks today has seen. NO ROW OF IT
-// IS A DOOR: the lines under the heading are a reading and not things to do
-// anything to, so the cursor steps over them and a press on one does nothing
-// (owner, 2026-09-17: "nothing under the spend title should be selectable or
-// clickable"). The heading itself still opens the spend place, as every
-// heading that names a place does ([app.homeHeadPress]).
+// spendPanel is `spend`: a small HUD, THREE LINES THAT EACH SAY ONE THING. The heading
+// names the panel; today's cost and allowance are already on the top line. Once the day
+// has spent enough of its allowance to see, one thin meter says how much is gone. Then the
+// fortnight, one block cell a day with today at the right, its total and its loudest day.
+// Then who it went to and what for: the two models most of it bought, and how many chats
+// and tasks today has seen. NO ROW OF IT IS A DOOR: the lines under the heading are a
+// reading and not things to do anything to, so the cursor steps over them and a press on
+// one does nothing. The heading itself still opens the spend place, as every heading that
+// names a place does ([app.homeHeadPress]).
 //
-// IT WAS TWO CHARTS (owner, 2026-09-10). A gauge-cell bar under the heading
-// read as a second sparkline, the braille fortnight beside it was noise at a
-// column's width, and the allowance said `$500.00` under a pulse saying `$500`.
-// The meter is a line now and not a chart, the fortnight is block cells, and the
-// allowance is spelled the pulse's way ([railFigure]).
+// IT WAS TWO CHARTS. A gauge-cell bar under the heading read as a second sparkline, the
+// braille fortnight beside it was noise at a column's width, and the allowance said
+// `$500.00` under a pulse saying `$500`. The meter is a line now and not a chart, the
+// fortnight is block cells, and the allowance is spelled the pulse's way ([railFigure]).
 type spendPanel struct{ homePanelBase }
 
 const (

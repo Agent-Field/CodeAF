@@ -43,7 +43,7 @@ func TestEveryTransportBoundSitsAboveTheCeilingTheControllerActsAt(t *testing.T)
 			bounds, ceiling := boundsFor(role), role.Ceiling()
 			// A ROLE THAT PRODUCES NO TOKEN STREAM IS OUTSIDE THE TOKEN
 			// CONTROLLER AND NOT OUTSIDE PATIENCE (§F of
-			// docs/design/waiting/DESIGN.md). Media has no first token, no gap
+			// the implementation). Media has no first token, no gap
 			// between tokens and no rate to be surprised by, so there is no
 			// ceiling for its bounds to clear — what is asked of it here is only
 			// that it still HAS all three, because a role that fell through this

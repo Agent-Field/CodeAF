@@ -19,6 +19,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/intake"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
+	"github.com/Agent-Field/codeaf/internal/factory/route"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	forge "github.com/Agent-Field/codeaf/internal/praf/github"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -42,10 +43,12 @@ type readLoopsWorld struct {
 	ghCalls  atomic.Int64
 	asked    atomic.Int64
 	sources  atomic.Int64
-	mu       sync.Mutex
-	rules    pipeline.File
-	issues   []int
-	models   []string
+	// passes counts the intake passes that ran (each starts with Refresh).
+	passes atomic.Int64
+	mu     sync.Mutex
+	rules  pipeline.File
+	issues []int
+	models []string
 }
 
 func newReadLoopsWorld(t *testing.T) *readLoopsWorld {
@@ -84,7 +87,7 @@ func newReadLoopsWorld(t *testing.T) *readLoopsWorld {
 		w.models = append(w.models, req.Model)
 		w.mu.Unlock()
 		rw.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(rw, `{"choices":[{"message":{"role":"assistant","content":"{\"read\":\"A read\",\"size\":\"S\",\"est_usd\":1}"},"finish_reason":"stop"}]}`)
+		_, _ = io.WriteString(rw, `{"choices":[{"message":{"role":"assistant","content":"{\"read\":\"A read\",\"rubric\":{\"scope\":{\"score\":0},\"clarity\":{\"score\":0},\"coupling\":{\"score\":0},\"proof\":{\"score\":1},\"novelty\":{\"score\":0}}}"},"finish_reason":"stop"}]}`)
 	}))
 	t.Cleanup(w.github.Close)
 	t.Cleanup(w.model.Close)
@@ -133,7 +136,7 @@ func (w *readLoopsWorld) intake(st *store.Store) *intake.Intake {
 	history, _ := record.Open(st, record.Options{})
 	return intake.New(st, intake.Options{
 		Record:  history,
-		Refresh: func(context.Context) error { return nil },
+		Refresh: func(context.Context) error { w.passes.Add(1); return nil },
 		Load: func(string) (pipeline.File, error) {
 			w.mu.Lock()
 			defer w.mu.Unlock()
@@ -186,6 +189,7 @@ func readLoopsSetup(t *testing.T, w *readLoopsWorld, pin string) *localSetup {
 	readLoopsProfile(t, w, pin)
 	s.backend.local.pollSource = w.source()
 	s.backend.local.newIntake = w.intake
+	closeQuietly(t, s.backend)
 	return s
 }
 
@@ -264,6 +268,7 @@ func TestThisMacsFactoryPollsAndNeverAsksAModel(t *testing.T) {
 	// A RESTART BRINGS THE POLL BACK, and still no model.
 	s.backend.Close()
 	w, _ := reopened(t, s.backend.factoryHub())
+	closeQuietly(t, w.backend)
 	w.backend.local.pollSource = world.source()
 	w.backend.local.newIntake = world.intake
 	var resumed appwire.FactoryLocalStatus
@@ -296,9 +301,10 @@ func TestThisMacsFactoryPollsAndNeverAsksAModel(t *testing.T) {
 	}
 }
 
-// AN ARRIVING ISSUE STARTS NOTHING. Even with a repository start rule that
-// allows the waiting item, this Mac's runner, on and polling, launches no job:
-// a job starts only when a person presses Run.
+// AN ARRIVING ISSUE STARTS NOTHING WHILE "START ON ITS OWN" IS OFF, which it
+// is until a person turns it on. Even with a repository start rule that allows
+// the waiting item, this Mac's runner, on and polling, launches no job: a job
+// starts only when a person presses Run.
 func TestStartRulesNeverLaunchAJobOnThisMac(t *testing.T) {
 	quickReads(t)
 	world := newReadLoopsWorld(t)
@@ -309,7 +315,7 @@ func TestStartRulesNeverLaunchAJobOnThisMac(t *testing.T) {
 		t.Fatalf("start: %+v", st)
 	}
 	floor := s.backend.local.host.floor
-	if _, err := floor.Create(factory.Item{Repo: "acme/api", Num: 3, Title: "Ready", Kind: factory.KindIssue, State: factory.StateNew, Labels: []string{"agent-ready", "size:S"}}); err != nil {
+	if _, err := floor.Create(factory.Item{Tier: factory.TierOwner, Repo: "acme/api", Num: 3, Title: "Ready", Kind: factory.KindIssue, State: factory.StateNew, Labels: []string{"agent-ready", "size:S"}}); err != nil {
 		t.Fatal(err)
 	}
 	eventually(t, "the poll has run", func() bool { return len(readLoopsItems(t, floor)) >= 2 })
@@ -321,6 +327,32 @@ func TestStartRulesNeverLaunchAJobOnThisMac(t *testing.T) {
 		if it.State != factory.StateNew {
 			t.Fatalf("an item left Backlog on its own: %+v", it)
 		}
+	}
+}
+
+// TURNED ON, THE SAME ISSUE STARTS BY ITSELF: with the factory's "Start on its
+// own" on, the start rule that let it through launches it once, and the next
+// polls leave it be.
+func TestStartOnItsOwnLaunchesWhatTheStartRulesAllow(t *testing.T) {
+	quickReads(t)
+	world := newReadLoopsWorld(t)
+	world.startRule(t)
+	world.file(4)
+	s := readLoopsSetup(t, world, readLoopsPin)
+	if st := watchAndStart(t, s); !st.Runner {
+		t.Fatalf("start: %+v", st)
+	}
+	floor := s.backend.local.host.floor
+	if _, err := floor.ChangeHouseRules(factory.RulesChange{}, func(h *factory.HouseRules) error { h.StartOnItsOwn = true; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := floor.Create(factory.Item{Tier: factory.TierOwner, Repo: "acme/api", Num: 3, Title: "Ready", Kind: factory.KindIssue, State: factory.StateNew, Labels: []string{"agent-ready", "size:S"}}); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "the ready issue started", func() bool { return world.launches.Load() == 1 })
+	settle()
+	if n := world.launches.Load(); n != 1 {
+		t.Fatalf("%d launches for one ready issue", n)
 	}
 }
 
@@ -338,6 +370,7 @@ func TestANewHostInTheSameProcessStartsItsOwnPoll(t *testing.T) {
 	s.backend.Close()
 
 	w, _ := reopened(t, s.backend.factoryHub())
+	closeQuietly(t, w.backend)
 	w.backend.local.pollSource = world.source()
 	w.backend.local.newIntake = world.intake
 	var st appwire.FactoryLocalStatus
@@ -367,9 +400,11 @@ func TestAJoinedFactoryGetsNoReadLoops(t *testing.T) {
 	world := newReadLoopsWorld(t)
 	world.file(1)
 	a := newLocalSetup(t)
+	closeQuietly(t, a.backend)
 	readLoopsProfile(t, world, readLoopsPin)
 	a.start()
 	b := newFactoryWire(t, testFactoryHub(t))
+	closeQuietly(t, b.backend)
 	offlineLocal(b.backend, &setupGitHub{}, t)
 	b.backend.local.pollSource = world.source()
 	b.backend.local.newIntake = world.intake
@@ -435,8 +470,11 @@ func TestTheTerminalTriageStartStillHoldsOneActiveLoop(t *testing.T) {
 	if _, err := floor.Create(factory.Item{Repo: "acme/api", Title: "Waiting", Kind: factory.KindIssue, State: factory.StateNew}); err != nil {
 		t.Fatal(err)
 	}
-	factoryTriage = sync.Once{}
-	t.Cleanup(func() { factoryTriage = sync.Once{} })
+	// The read on arrival is off until the operator turns it on.
+	if _, err := floor.ChangeRunnerSettings(func(s *store.RunnerSettings) error { s.ReadOnArrival = true; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	freshEngineFactoryStore(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	startFactoryTriage(ctx, floor)
 	startFactoryTriage(ctx, floor)
@@ -456,4 +494,114 @@ func TestTheTerminalTriageStartStillHoldsOneActiveLoop(t *testing.T) {
 		}
 		return ok
 	})
+}
+
+// WITH READ NEW ISSUES AS THEY ARRIVE OFF (the default), the terminal's
+// triage worker runs and holds its lock, and reads nothing by itself.
+func TestTheTerminalTriageReadsNothingWhileTheReadOnArrivalIsOff(t *testing.T) {
+	quickReads(t)
+	world := newReadLoopsWorld(t)
+	readLoopsProfile(t, world, readLoopsPin)
+	floor, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := floor.Create(factory.Item{Repo: "acme/api", Title: "Waiting", Kind: factory.KindIssue, State: factory.StateNew}); err != nil {
+		t.Fatal(err)
+	}
+	freshEngineFactoryStore(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	startFactoryTriage(ctx, floor)
+	eventually(t, "the worker holds the triage lock", func() bool {
+		release, ok := floor.TryTriager()
+		if ok {
+			release()
+		}
+		return !ok
+	})
+	time.Sleep(10 * factoryTriageEvery)
+	if items := readLoopsItems(t, floor); len(items) != 1 || items[0].Triage.Read != "" || !items[0].Triage.TriagedAt.IsZero() {
+		t.Fatalf("an item was read with the read on arrival off: %+v", items[0].Triage)
+	}
+}
+
+// PICK UP ISSUES OFF STILL ROUTES. The switch governs the label rule alone:
+// with it off, an inbox job a routing rule sends to acme/api with start: auto
+// is routed and started, while the labelled issue no rule matched waits for
+// a person. Turning the switch off used to skip the router entirely, so the
+// routed job sat unrouted with nothing to say why.
+func TestPickUpIssuesOffStillRunsTheRoutingRules(t *testing.T) {
+	quickReads(t)
+	world := newReadLoopsWorld(t)
+	world.startRule(t)
+	world.file(4)
+	s := readLoopsSetup(t, world, readLoopsPin)
+	if st := watchAndStart(t, s); !st.Runner {
+		t.Fatalf("start: %+v", st)
+	}
+	floor := s.backend.local.host.floor
+	if _, err := floor.SetRoutes([]route.Rule{{Name: "ops", When: route.Match{Sources: []string{"inbox"}}, Then: route.Action{Repo: "acme/api", Start: route.StartAuto}}}, factory.RulesChange{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := floor.Create(factory.Item{Tier: factory.TierOwner, Repo: "acme/api", Num: 3, Title: "Ready", Kind: factory.KindIssue, State: factory.StateNew, Labels: []string{"agent-ready", "size:S"}}); err != nil {
+		t.Fatal(err)
+	}
+	ops, err := floor.Create(factory.Item{Tier: factory.TierOwner, Origin: "inbox:ops", SourceRef: "inbox:ops:A1", Title: "Rotate the key", Kind: factory.KindIssue, State: factory.StateNew})
+	if err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "the routed job started", func() bool { return world.launches.Load() == 1 })
+	settle()
+	if n := world.launches.Load(); n != 1 {
+		t.Fatalf("%d launches; want the routed job alone", n)
+	}
+	got, err := floor.Get(ops.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Route != "ops" || got.Repo != "acme/api" || got.State == factory.StateNew {
+		t.Fatalf("routed job: route %q repo %q state %s", got.Route, got.Repo, got.State)
+	}
+}
+
+// WITH NO ROUTING RULES, PICK UP ISSUES OFF IS EXACTLY WHAT IT WAS: no intake
+// pass runs at all, so a labelled GitHub issue that a start rule would let
+// through is neither started, held, read again nor written on. The first
+// routing rule is what makes the pass run with the switch off.
+func TestPickUpIssuesOffWithNoRulesRunsNoPassAsBefore(t *testing.T) {
+	quickReads(t)
+	world := newReadLoopsWorld(t)
+	world.startRule(t)
+	world.file(4)
+	s := readLoopsSetup(t, world, readLoopsPin)
+	if st := watchAndStart(t, s); !st.Runner {
+		t.Fatalf("start: %+v", st)
+	}
+	floor := s.backend.local.host.floor
+	ready, err := floor.Create(factory.Item{Tier: factory.TierOwner, Repo: "acme/api", Num: 3, Title: "Ready", Kind: factory.KindIssue, State: factory.StateNew, Labels: []string{"agent-ready", "size:S"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "the poll has run", func() bool { return len(readLoopsItems(t, floor)) >= 2 })
+	settle()
+	if n, p := world.launches.Load(), world.passes.Load(); n != 0 || p != 0 {
+		t.Fatalf("with no rules and Pick up issues off: %d launches, %d intake passes; want none of either", n, p)
+	}
+	got, err := floor.Get(ready.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.State != factory.StateNew || got.Route != "" || got.QKind != "" || got.StartRules != nil || len(got.Stages) != len(ready.Stages) {
+		t.Fatalf("the labelled issue was worked on: state %s route %q ask %q", got.State, got.Route, got.QKind)
+	}
+	if _, err := floor.SetRoutes([]route.Rule{{Name: "ops", When: route.Match{Sources: []string{"inbox"}}, Then: route.Action{Repo: "acme/api", Start: route.StartBacklog}}}, factory.RulesChange{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	factorygithub.Nudge(floor)
+	eventually(t, "a pass runs once there is a rule", func() bool { return world.passes.Load() > 0 })
+	settle()
+	if world.launches.Load() != 0 {
+		t.Fatal("a rule for inbox work started the labelled GitHub issue")
+	}
 }

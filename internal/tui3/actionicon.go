@@ -46,7 +46,7 @@ import (
 // NOT HERE. Every mark is a SLOT in internal/tui2/tokens' vocabulary, and the
 // three spellings of each — the Font Awesome 4 icon a patched font draws, the
 // geometric floor every terminal draws, and the one ASCII character a screen
-// reader can name — are that table's (docs/design/icons/DESIGN.md). This file
+// reader can name — are that table's. This file
 // holds the map from a family of work to a slot, and nothing else.
 //
 // FALLBACK IS A CAPABILITY DECISION, NOT THE DESIGN BASELINE. The existing

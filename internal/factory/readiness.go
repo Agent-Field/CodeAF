@@ -25,6 +25,9 @@ type ReadinessReview struct {
 }
 
 func ReadinessGate(it Item) error {
+	if err := CheckPersonStop(it); err != nil {
+		return err
+	}
 	if it.Question != "" || it.Asking != nil {
 		return fmt.Errorf("a pending decision must be resolved before readiness can complete")
 	}
@@ -41,8 +44,8 @@ func ReadinessGate(it Item) error {
 	if !p.ChecksRead || !p.ReviewsRead || p.Mergeable != MergeableYes || p.Conflict {
 		return fmt.Errorf("PR checks, reviews or mergeability are incomplete or blocked")
 	}
-	if p.Checks.Passed < 1 || p.Checks.Failed > 0 || p.Checks.Pending > 0 || p.CI != "ci ✓" {
-		return fmt.Errorf("current-head CI must pass with no pending checks")
+	if err := readinessChecks(p); err != nil {
+		return err
 	}
 	// Readiness reviews the feedback itself. A reviewer's approving vote is
 	// a merge requirement, never a prerequisite for requesting their review.
@@ -51,10 +54,63 @@ func ReadinessGate(it Item) error {
 			return fmt.Errorf("check %s has not passed", r.Name)
 		}
 	}
-	if it.Cap <= 0 || JobSpent(it) >= it.Cap {
+	if it.Cap <= 0 || JobLifetimeSpent(it) >= it.Cap {
 		return fmt.Errorf("job budget reached or unavailable")
 	}
 	return nil
+}
+
+// NoChecksSettle is how long a head must go on reading as having no checks
+// configured before the factory believes it: long enough for a check suite
+// that a push starts to have reported.
+const NoChecksSettle = 3 * time.Minute
+
+// NoChecksWords is what the job says when it was reviewed without CI.
+const NoChecksWords = "No GitHub checks in this repo; reviewed without CI."
+
+// NoChecksSettlingWords is what the job says while that fact settles.
+const NoChecksSettlingWords = "No GitHub checks are configured in this repo. Waiting for the push to settle, then the final review runs without CI."
+
+// readinessChecks is the CI half of [ReadinessGate]. A repository with no
+// checks configured is a stated condition once settled; pending or failing
+// checks are never that.
+func readinessChecks(p *PullRequest) error {
+	switch {
+	case p.Checks.Failed > 0 || p.Checks.Pending > 0:
+	case p.NoChecks:
+		return nil
+	case p.NoWorkflows:
+		return fmt.Errorf("no GitHub checks are configured on this head; the final review starts without CI once %s have passed with none reported", NoChecksSettle)
+	case p.Checks.Passed >= 1 && p.CI == "ci ✓":
+		return nil
+	}
+	return fmt.Errorf("current-head CI must pass with no pending checks")
+}
+
+// SettleNoChecks carries the no-checks reading across follows of one head and
+// settles it: fresh.NoChecks only once fresh.NoWorkflows has held on this head
+// for [NoChecksSettle]. Any check, status or workflow file resets it.
+func SettleNoChecks(prev *PullRequest, fresh *PullRequest, now time.Time) {
+	fresh.NoChecksSince, fresh.NoChecks = time.Time{}, false
+	if !fresh.NoWorkflows {
+		return
+	}
+	fresh.NoChecksSince = now
+	if prev != nil && prev.NoWorkflows && prev.HeadSHA == fresh.HeadSHA && !prev.NoChecksSince.IsZero() {
+		fresh.NoChecksSince = prev.NoChecksSince
+	}
+	fresh.NoChecks = now.Sub(fresh.NoChecksSince) >= NoChecksSettle
+}
+
+// DraftWhy is why a factory PR is still a draft and what will move it.
+func DraftWhy(it Item) string {
+	if ReadinessPending(it) {
+		return "its final readiness review passed, and it is marked ready for review next"
+	}
+	if err := ReadinessGate(it); err != nil {
+		return "the final readiness review marks it ready, and that review waits because " + err.Error()
+	}
+	return "the final readiness review marks it ready, and that review starts on the next follow"
 }
 
 func ReadinessPending(it Item) bool {

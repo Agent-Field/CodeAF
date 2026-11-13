@@ -371,7 +371,7 @@ func TestTheHandoverSaysItIsBriefingAWorkerWhileItWritesTheBrief(t *testing.T) {
 	}
 
 	// AND IT IS CLOSED. A phase left open is a clock a surface goes on drawing for
-	// work that ended, which is the defect this lane exists to prevent.
+	// work that ended, which is the defect this test exists to prevent.
 	words := phaseWords(log.all())
 	last := -1
 	for index, one := range log.all() {

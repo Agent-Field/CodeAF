@@ -31,6 +31,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/offpath"
 )
 
@@ -66,10 +67,14 @@ func (a *Agent) stampUserLocked(text string) {
 	at := time.Now()
 	title := placeholderTitle(text)
 	a.metaStamp().Owe(func() {
+		if userStampHeld != nil {
+			userStampHeld()
+		}
 		a.updateMeta(dir, snapshot, func(meta *Meta) {
 			meta.AutomaticModels = snapshot.AutomaticModels
 			meta.ModelIdentity = snapshot.ModelIdentity
 			meta.Model, meta.Effort, meta.Approval = snapshot.Model, snapshot.Effort, snapshot.Approval
+			meta.ModelProvider = snapshot.ModelProvider
 			meta.Places, meta.Trees = snapshot.Places, snapshot.Trees
 			meta.LastUserAt = at
 			if strings.TrimSpace(meta.Title) == "" {
@@ -127,6 +132,7 @@ func (a *Agent) SettleWrites() {
 	}
 	a.metaStamp().settle()
 	a.modelStamp().settle()
+	a.spendStamp().settle()
 	a.toldStamp().settle()
 	a.fixShelfFor().settle()
 	a.treesAhead().Settle()
@@ -261,12 +267,13 @@ func (a *Agent) metaSnapshotAt() (string, Meta) {
 // across every Agent and process that writes this conversation folder.
 // Each patch owns its fields; a spend snapshot made before naming cannot write
 // an old title back afterward. Snapshot collection must never run inside patch.
-func (a *Agent) updateMeta(dir string, snapshot Meta, patch func(*Meta)) {
+// The answer says whether the patched metadata reached disk.
+func (a *Agent) updateMeta(dir string, snapshot Meta, patch func(*Meta)) bool {
 	dir = strings.TrimSpace(dir)
 	if dir == "" {
-		return
+		return false
 	}
-	_ = withMetaLock(dir, func() error {
+	return withMetaLock(dir, func() error {
 		meta, err := LoadMeta(dir)
 		if err != nil {
 			return err
@@ -275,6 +282,12 @@ func (a *Agent) updateMeta(dir string, snapshot Meta, patch func(*Meta)) {
 		// fields that another transaction may have updated since the snapshot.
 		if meta.ID == "" {
 			meta.ID, meta.Owned = snapshot.ID, snapshot.Owned
+		}
+		if meta.ChatURI == "" {
+			meta.ChatURI = snapshot.ChatURI
+		}
+		if meta.AgentIdentity == nil {
+			meta.AgentIdentity = snapshot.AgentIdentity
 		}
 		if meta.Workspace == "" {
 			meta.Workspace = snapshot.Workspace
@@ -286,6 +299,7 @@ func (a *Agent) updateMeta(dir string, snapshot Meta, patch func(*Meta)) {
 			meta.AutomaticModels = snapshot.AutomaticModels
 			meta.ModelIdentity = snapshot.ModelIdentity
 			meta.Model, meta.Effort, meta.Approval = snapshot.Model, snapshot.Effort, snapshot.Approval
+			meta.ModelProvider = snapshot.ModelProvider
 		}
 		if meta.Places == nil {
 			meta.Places = snapshot.Places
@@ -294,8 +308,8 @@ func (a *Agent) updateMeta(dir string, snapshot Meta, patch func(*Meta)) {
 			meta.Trees = snapshot.Trees
 		}
 		patch(&meta)
-		return SaveMeta(dir, meta)
-	})
+		return saveMetaLocked(dir, meta)
+	}) == nil
 }
 
 // fillMetaLocked fills in everything about a session that does not change while
@@ -303,6 +317,12 @@ func (a *Agent) updateMeta(dir string, snapshot Meta, patch func(*Meta)) {
 // comes back whole rather than half-filled. The agent lock is held for the
 // model, which /model moves.
 func (a *Agent) fillMetaLocked(meta Meta) Meta {
+	if !a.config.InTask && a.config.WorkspaceURI != "" {
+		meta.ChatURI = a.config.WorkspaceURI
+	}
+	if identity := a.config.agentIdentity(); identity != nil {
+		meta.AgentIdentity = identity
+	}
 	if strings.TrimSpace(meta.ID) == "" {
 		meta.ID = a.config.Place.ID()
 	}
@@ -320,8 +340,12 @@ func (a *Agent) fillMetaLocked(meta Meta) Meta {
 	if meta.Created.IsZero() {
 		meta.Created = time.Now()
 	}
-	if model := strings.TrimSpace(a.model); model != "" {
+	if model := strings.TrimSpace(a.configuredModelLocked()); model != "" {
 		meta.Model = model
+		meta.ModelProvider = a.config.serviceFor(model).Source.ID
+		if a.modelForNowProvider != "" {
+			meta.ModelProvider = a.modelForNowProvider
+		}
 	}
 	// The rung is written whatever it is, absence included, because absence is
 	// a value a person can choose their way back to: a session dialled to max
@@ -353,7 +377,14 @@ func (a *Agent) fillMetaLocked(meta Meta) Meta {
 //
 // EVERY FAILURE IS SILENCE, for this file's stated reason: the rung is a
 // convenience and the session is the record.
-func (a *Agent) stampEffort() { a.stampMeta() }
+func (a *Agent) stampEffort() {
+	if metaStampSettling != nil {
+		metaStampSettling()
+	}
+	a.metaStamp().settle()
+	dir, snapshot := a.metaSnapshotAt()
+	a.updateMeta(dir, snapshot, func(meta *Meta) { meta.Effort = snapshot.Effort })
+}
 
 // stampPlaces writes the folders this conversation is about down the moment the
 // set changes, for [Agent.stampEffort]'s reason: a person who names a place and
@@ -375,28 +406,69 @@ func (a *Agent) stampPlaces() { a.stampMeta() }
 // bytes, and it happens once per file first written rather than once per write.
 func (a *Agent) stampTrees() { a.stampMeta() }
 
-// stampMeta updates the configuration and working context those three stamps
-// share. The transaction reads the latest title and spending from disk and
-// preserves them; this snapshot owns only model, effort, approval, places and trees.
+// stampMeta updates the configuration and working context [Agent.stampPlaces]
+// and [Agent.stampTrees] share. The transaction reads the latest title and
+// spending from disk and preserves them; this snapshot owns only model, effort,
+// approval, places and trees. [Agent.stampEffort] and [Agent.stampApproval]
+// settle the same way but patch only their own field, so restoring a dial when a
+// conversation opens leaves the file untouched when nothing moved (#1933).
 // EVERY FAILURE IS SILENCE, for this file's stated reason.
+//
+// AN EARLIER DEFERRED STAMP LANDS FIRST. [Agent.stampUserLocked] captures the
+// model, effort, approval, places and trees when a person speaks, and writes
+// them behind the path. If that write were still owed when this one ran, it
+// would land afterwards and put the older values back. An effort set just after
+// a conversation opened read back empty after a restart (#2549), and a tree cut
+// in the same window would have been forgotten. [Agent.stampModel] settles for
+// the same reason. The settle comes before the snapshot, so whatever lands
+// second is the newer state.
 func (a *Agent) stampMeta() {
+	if metaStampSettling != nil {
+		metaStampSettling()
+	}
+	a.metaStamp().settle()
 	dir, snapshot := a.metaSnapshotAt()
 	a.updateMeta(dir, snapshot, func(meta *Meta) {
 		meta.AutomaticModels = snapshot.AutomaticModels
 		meta.ModelIdentity = snapshot.ModelIdentity
 		meta.Model, meta.Effort, meta.Approval = snapshot.Model, snapshot.Effort, snapshot.Approval
+		meta.ModelProvider = snapshot.ModelProvider
 		meta.Places, meta.Trees = snapshot.Places, snapshot.Trees
 	})
 }
 
+// userStampHeld lets a test hold [Agent.stampUserLocked]'s deferred write
+// before it reaches the disk, and metaStampSettling tells the same test that
+// [Agent.stampMeta] is about to wait for it. Both are nil in production.
+var (
+	userStampHeld     func()
+	metaStampSettling func()
+)
+
+// spendStamp keeps spend writes ordered without coalescing away a user stamp.
+// Its callback settles the user stamp first, then reads the current books so
+// an older turn snapshot cannot overwrite a bill that arrived after sealing.
+func (a *Agent) spendStamp() *stampWriter {
+	a.spendStampOnce.Do(func() { a.spendStampWriter = &stampWriter{} })
+	return a.spendStampWriter
+}
+
 // stampSpend records the conversation's running total — what the talking has
-// cost so far, and what it weighed — on the session's own meta.json.
+// cost so far, and what it weighed — on the session's own meta.json, which is
+// what Home's search card reads.
 //
-// IT RIDES THE END OF A TURN AND NOTHING ELSE. [Agent.sealTurn] is the one
-// place a turn's cost reaches the journal, for the reason stated there: every
-// turn shape in the package ends through it. So it is also the one place the
-// total can be written down without a shape of turn silently keeping no record,
-// and stamping anywhere else would be a second answer to "what has this cost".
+// IT RIDES EVERY BILL, NOT ONLY THE END OF A TURN. It used to be written once,
+// when [Agent.sealTurn] closed a turn, on the reasoning that every turn shape
+// ends there. But an auxiliary call can bill after its turn sealed — a
+// detached title (title.go) is the common one — and then Home's card showed
+// less than `/cost` for the same conversation (the pre-release hand test read
+// $0.0020 against $0.0034). So a turn's seal, a task fold and an auxiliary
+// bill all owe this one deferred write, and the write reads the live books
+// when it runs, so a late bill is never lost to an older turn's snapshot.
+//
+// IT SETTLES THE USER STAMP FIRST, for the ordering #2557 established: a
+// deferred stamp carrying an older snapshot must never land after a newer
+// value, so the opening stamp's write is settled before this one reads.
 //
 // THE FIGURE IS THE SESSION'S OWN AND NEVER ITS TASKS'. [Agent.usage] is this
 // agent's talking: its turns, and the auxiliary calls beside them (the namer,
@@ -412,35 +484,108 @@ func (a *Agent) stampMeta() {
 // scans it, and what a run has spent is its own row's answer
 // (internal/automation) and not this one.
 //
-// ONE SMALL ATOMIC WRITE PER TURN. There is no other end-of-turn write to a
-// session's meta.json to ride — [Agent.stampUserLocked] runs at the START of a
-// turn, before the cost exists — so this is a read and a temp-and-rename of a
-// file of a few hundred bytes, once per turn of a conversation, beside a
-// provider call that took seconds. EVERY FAILURE IS SILENCE, for this file's
-// stated reason: the total is a citation and the transcript is the record.
+// The write is small and coalesced: a read and a temp-and-rename of a file of
+// a few hundred bytes, owed through one stampWriter so a burst of bills becomes
+// one write. A worker with no place owes no file. EVERY FAILURE IS SILENCE,
+// because the total is a citation and the transcript is the record.
 func (a *Agent) stampSpend() {
 	a.mu.Lock()
-	dir := a.config.Place.Dir
-	snapshot := a.fillMetaLocked(Meta{})
-	spent, tokens := a.usage.CostUSD, a.usage.Input+a.usage.Output
+	needed := strings.TrimSpace(a.config.Place.Dir) != "" && (a.usage.CostUSD > 0 || a.usage.Input+a.usage.Output > 0)
 	a.mu.Unlock()
-	if spent <= 0 && tokens <= 0 {
+	if !needed {
 		return
 	}
-	a.writeSpendSnapshot(dir, snapshot, spent, tokens)
+	a.spendStamp().Owe(func() { a.stampTurnEnd(false) })
+}
+
+// stampSealed is [Agent.stampSpend] at a turn's seal, which also says when the
+// conversation last answered the person ([Meta.LastReplyAt]) if this turn
+// ended on an answer. The seal saves both fields before publishing its news.
+//
+// AN ANSWER IS THE TURN'S LAST WORD TO THE PERSON: an answer was recorded
+// since the last seal and the journal still ends on it, an assistant message
+// with words and no tool call. A turn that stopped on a tool step, on
+// thinking, or before saying anything leaves the stamp where it was, and so
+// does one that ends on a partial reply a stop cut short or on a line the
+// harness wrote in the model's place ([Agent.answeredLocked]).
+func (a *Agent) stampSealed() { a.stampTurnEnd(true) }
+
+// spendStampCaptured lets a test hold a stamp between capture and write.
+// It is nil in production and runs outside a.mu, under spendStampMu.
+var spendStampCaptured func(*Agent, float64)
+
+func (a *Agent) stampTurnEnd(sealed bool) {
+	a.metaStamp().settle()
+	a.spendStampMu.Lock()
+	defer a.spendStampMu.Unlock()
+	dir, snapshot, spent, tokens, replied := a.captureSpendStamp(sealed)
+	if !replied {
+		if spent <= 0 && tokens <= 0 {
+			return
+		}
+		a.writeSpendSnapshot(dir, snapshot, spent, tokens)
+		return
+	}
+	at := time.Now()
+	if a.updateMeta(dir, snapshot, func(meta *Meta) {
+		if spent > 0 || tokens > 0 {
+			meta.SpentUSD, meta.Tokens = spent, tokens
+		}
+		meta.LastReplyAt = at
+	}) && (spent > 0 || tokens > 0) {
+		announceSpendSaved(SpendSaved{Dir: dir, SpentUSD: spent})
+	}
+}
+
+// captureSpendStamp keeps the capture and its test seam together, so moving
+// capture outside spendStampMu is observable before any metadata is written.
+func (a *Agent) captureSpendStamp(sealed bool) (dir string, snapshot Meta, spent float64, tokens int, replied bool) {
+	a.mu.Lock()
+	dir = a.config.Place.Dir
+	snapshot = a.fillMetaLocked(Meta{})
+	spent, tokens = a.usage.CostUSD, a.usage.Input+a.usage.Output
+	if sealed {
+		replied = a.answeredSinceSeal && len(a.messages) > 0 && a.answeredLocked(a.messages[len(a.messages)-1])
+		a.answeredSinceSeal = false
+	}
+	a.mu.Unlock()
+	if spendStampCaptured != nil {
+		spendStampCaptured(a, spent)
+	}
+	return
+}
+
+// answeredLocked says a recorded message answered the person: [isAnswer], and
+// not marked as a reply cut short (a stop, a steer) or as an operational line
+// (a checkpoint's hand-over note), which the model did not finish saying to
+// them. Callers hold a.mu.
+func (a *Agent) answeredLocked(message ai.Message) bool {
+	if !isAnswer(message) {
+		return false
+	}
+	mark := a.presentation.of(message)
+	return mark == nil || (!mark.Interrupted && mark.Audience != "operational")
+}
+
+// isAnswer says a message is an answer: the assistant's words, with no tool
+// call waiting on them.
+func isAnswer(message ai.Message) bool {
+	return message.Role == "assistant" && len(message.ToolCalls) == 0 && strings.TrimSpace(messageContentText(message)) != ""
 }
 
 // stampRestoredSpend fills the total in for a conversation resumed from a
 // journal written before this field existed.
 //
 // IT FOLDS NOTHING AND READS NOTHING EXTRA. The resume already replayed the
-// file and already summed its usage lines ([sessionFile.RestoredUsage], which
-// is what the agent's live counters are restored from — agent.go), so this
-// takes that sum and writes it once. A session with nothing restored, or one
-// whose meta already carries a figure, writes nothing at all: the stamp above
-// keeps it true from here on, and a rewrite per open would be a file touched by
-// every window that merely looked.
+// file and already summed its usage lines and late-receipt call lines
+// ([sessionFile.RestoredUsage], which is what the agent's live counters are
+// restored from — agent.go), so this takes that sum and writes it once. A
+// session with nothing restored, or one whose meta already carries a figure,
+// writes nothing at all: the stamp above keeps it true from here on, and a
+// rewrite per open would be a file touched by every window that merely looked.
 func (a *Agent) stampRestoredSpend(restored Usage) {
+	a.spendStampMu.Lock()
+	defer a.spendStampMu.Unlock()
 	dir, _ := a.metaSnapshotAt()
 	dir = strings.TrimSpace(dir)
 	if dir == "" {
@@ -468,7 +613,9 @@ func (a *Agent) writeSpend(dir string, spent float64, tokens int) {
 
 // The snapshot can predate a title commit; only the spend belongs to this patch.
 func (a *Agent) writeSpendSnapshot(dir string, snapshot Meta, spent float64, tokens int) {
-	a.updateMeta(dir, snapshot, func(meta *Meta) {
+	if a.updateMeta(dir, snapshot, func(meta *Meta) {
 		meta.SpentUSD, meta.Tokens = spent, tokens
-	})
+	}) {
+		announceSpendSaved(SpendSaved{Dir: dir, SpentUSD: spent})
+	}
 }

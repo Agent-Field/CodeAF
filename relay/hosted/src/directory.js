@@ -2,11 +2,15 @@
 // and every method here is one synchronous turn (no await between a read and the write that
 // depends on it), so nothing can interleave inside a swap: that is the compare-and-swap the
 // lease rules need. The rules themselves are pure and live in rules.js.
+import { Wire } from './wire.js';
 import { makeRules, RuleError } from './rules.js';
 import { lifted } from './vouch.js';
 import { CLOSE_REVOKED, CLOSE_ROTATED, NOBODY } from './watch.js';
 
 const refuse = (code) => new RuleError(code);
+// A device record's outbox holds at most MaxNotes messages (internal/directory); took lists ids in flight from every sender.
+const MAX_NOTES = 8;
+const MAX_TOOK = 64;
 const present = (c) => {
   if (!c) throw refuse('not_found');
   return c;
@@ -24,13 +28,20 @@ export class Directory {
     this.clock = clock;
     this.rules = makeRules(policy);
     this.watchers = watchers;
+    sql.exec('CREATE TABLE IF NOT EXISTS legacy_gate (one INTEGER PRIMARY KEY CHECK(one=1), doc TEXT NOT NULL)');
     sql.exec('CREATE TABLE IF NOT EXISTS dir (kind TEXT NOT NULL, id TEXT NOT NULL, doc TEXT NOT NULL, PRIMARY KEY (kind, id)) WITHOUT ROWID');
     sql.exec('CREATE TABLE IF NOT EXISTS dirver (one INTEGER PRIMARY KEY CHECK (one = 1), n INTEGER NOT NULL)');
-    sql.exec('INSERT OR IGNORE INTO dirver VALUES (1, 0)');
+    // Frozen sources reopen for inventory without attempting a guarded seed.
+    if(!sql.exec('SELECT doc FROM legacy_gate WHERE one=1').toArray().length) sql.exec('INSERT OR IGNORE INTO dirver VALUES (1, 0)');
     this.version = sql.exec('SELECT n FROM dirver').one().n;
   }
 
+  assertLegacy() {
+    if(this.sql.exec('SELECT doc FROM legacy_gate WHERE one=1').toArray().length) throw new Wire('unreachable',503);
+  }
+
   read(kind, id) {
+    this.assertLegacy();
     const row = this.sql.exec('SELECT doc FROM dir WHERE kind = ? AND id = ?', kind, id).toArray()[0];
     return row ? JSON.parse(row.doc) : null;
   }
@@ -40,6 +51,7 @@ export class Directory {
    * version. This is the one place a version is counted, so no verb, rotation included, decides alone.
    */
   write(kind, id, doc) {
+    this.assertLegacy();
     const before = this.#stored(kind, id);
     this.sql.exec('INSERT OR REPLACE INTO dir VALUES (?,?,?)', kind, id, JSON.stringify(doc));
     if (!before || this.#visible(kind, id, before) !== this.#visible(kind, id, doc)) this.#bump();
@@ -93,6 +105,7 @@ export class Directory {
   }
 
   create(id, init, device) {
+    folderString(init);
     return this.swap(id, (c, now) => {
       if (c) throw refuse('exists');
       return this.rules.created(init, device, now);
@@ -108,6 +121,7 @@ export class Directory {
   }
 
   publish(id, device, p) {
+    folderString(p);
     return this.change(id, (c, now) => this.rules.publishTo(c, device, p, now));
   }
 
@@ -122,18 +136,33 @@ export class Directory {
   // A device's record says whether it is revoked, and the device cannot change that: only revoke can.
   // The relay alone says when the device joined and when it was last seen (contract 4): a client's values are dropped.
   putDevice(id, device) {
+    // A device's outbox and took lists carry messages between its computers (Codeaf-Chat-Notes); both stay short.
+    if ((device.outbox?.length ?? 0) > MAX_NOTES || (device.took?.length ?? 0) > MAX_TOOK) throw refuse('bad_request');
+    if ((device.kind ?? '') !== '' || (device.methods?.length ?? 0) > 0) throw refuse('bad_request');
     this.write('devices', id, this.#kept(id, { ...device, revoked: this.revoked(id) }));
+  }
+
+  /** putClientDevice writes the record of a scoped client device. */
+  putClientDevice(id, device) {
+    this.write('devices', id, { ...this.#kept(id, { ...device, revoked: false }), kind: 'client', methods: device.methods });
   }
 
   /** approveDevice writes the record of a device a paired device approved, and answers what was stored. */
   approveDevice(id, device) {
+    if ((device.kind ?? '') !== '' || (device.methods?.length ?? 0) > 0) throw refuse('bad_request');
     return this.write('devices', id, this.#kept(id, { ...device, revoked: false }));
   }
 
   #kept(id, doc) {
     const before = this.read('devices', id);
-    const { created: _c, last_seen: _l, ...own } = doc;
-    return { ...own, created: before ? before.created : this.clock(), last_seen: before?.last_seen };
+    const { created: _c, last_seen: _l, kind: _k, methods: _m, ...own } = doc;
+    return {
+      ...own,
+      ...(before?.kind && { kind: before.kind }),
+      ...(before?.methods?.length && { methods: before.methods }),
+      created: before ? before.created : this.clock(),
+      last_seen: before?.last_seen,
+    };
   }
 
   /** seen stamps when the device last held a watch socket (hello or close). Only the relay writes it; it moves no version (contract 4). */
@@ -182,6 +211,7 @@ export class Directory {
 
   /** list answers the whole Listing: the identity record, every device and every cell. */
   list() {
+    this.assertLegacy();
     const out = { now: this.clock(), identity: { V: 1, identity: this.identity }, devices: {}, cells: {} };
     for (const { kind, id, doc } of this.sql.exec('SELECT kind, id, doc FROM dir').toArray()) {
       if (kind === 'identity') out.identity = JSON.parse(doc);
@@ -189,10 +219,16 @@ export class Directory {
         const rec = kind === 'cells' ? this.#lift(id, JSON.parse(doc)) : JSON.parse(doc);
         // The list is the home screen's hot read: frame plans are for takers, and they
         // read them off the cell answer, so the list never carries them.
-        if (kind === 'cells') delete rec.frames;
+        if (kind === 'cells') { delete rec.frames; delete rec.frame_hints; }
         out[kind][id] = rec;
       }
     }
     return out;
   }
+}
+
+// Go decodes folder as a string (null means empty). The sealed bytes are opaque;
+// only the existing request-body ceiling bounds their size.
+function folderString(record) {
+  if (record.folder != null && typeof record.folder !== 'string') throw refuse('bad_request');
 }

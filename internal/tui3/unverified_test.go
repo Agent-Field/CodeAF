@@ -91,7 +91,7 @@ func TestAnUnverifiedLandingIsNeitherDoneNorFailed(t *testing.T) {
 		glyphAsk + " Port the parser",
 		// AND THE ROW READS ITS REASON. A bare `your call` sends a person to the
 		// card to find out what for; the reason is the half they can act on
-		// (tasktier.go, docs/design/task-states/DESIGN.md). The under-block WRAPS
+		// (tasktier.go, the implementation). The under-block WRAPS
 		// rather than truncating at this width, so the sentence is asserted in the
 		// two halves it is drawn in.
 		tierYourCallWord + " · nobody could",

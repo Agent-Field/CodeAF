@@ -71,7 +71,7 @@ func (a *app) imageCallRows(e *entry, width int) ([]string, int) {
 // them, and the quotes are the plain ASCII pair rather than the typographic
 // one: this block is drawn on every terminal this surface reaches, including
 // the ones with no repertoire beyond ASCII, and a quote mark is not a mark from
-// the vocabulary that could answer for those (docs/design/icons/DESIGN.md
+// the vocabulary that could answer for those (the implementation
 // governs glyphs, and this is punctuation).
 //
 // A call with no prompt draws nothing rather than an empty pair of quotes.

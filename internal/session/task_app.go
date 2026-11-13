@@ -22,6 +22,7 @@ type AppTaskView struct {
 	Retryable bool
 
 	ID, Parent, Title, Brief, State, Model, Origin, Result string
+	Group                                                  string
 	Waits                                                  []string
 	Deadline                                               time.Time
 	Held                                                   bool
@@ -195,6 +196,7 @@ func (g *TaskGraph) writeAppControl(change func() (func(), error)) error {
 		store.mu.Lock()
 		defer store.mu.Unlock()
 	}
+	bills := g.nodeTreeBills()
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	rollback, err := change()
@@ -202,7 +204,7 @@ func (g *TaskGraph) writeAppControl(change func() (func(), error)) error {
 		return err
 	}
 	if store != nil {
-		if err := store.writeLocked(g.documentLocked()); err != nil {
+		if err := store.writeLocked(g.documentLocked(bills)); err != nil {
 			if rollback != nil {
 				rollback()
 			}
@@ -262,18 +264,29 @@ func (a *Agent) AppTasks() ([]AppTaskView, error) {
 	cap, _ := config.CrewTaskSpendCap(a.config.ProfileDir)
 	graphIDs := map[string]bool{}
 	out = a.appGraphTasks(out, cap, graphIDs)
-	// A HANDED-OVER TASK is a run's row, not a node (task_app_runs.go).
-	for _, row := range a.appRunRows() {
+	// Both projections share the plan gate and each trajectory for this listing.
+	rows := a.appRunRows()
+	aliases := appRunPlanAliases(rows)
+	stores, plan, closeStores := a.openPlanReadHandles()
+	defer closeStores()
+	read := &planTaskRead{stores: stores, plan: plan}
+	for _, row := range rows {
 		id := strconv.FormatUint(row.ID, 10)
 		if graphIDs[id] {
 			continue
 		}
 		graphIDs[id] = true
-		out = append(out, a.appRunView(row, cap))
+		graphIDs[planStoreID(appRunRowKey(row))] = true
+		out = append(out, a.appRunViewIn(row, cap, read))
 	}
-	for _, row := range a.PlanTasks() {
+	plans := a.planTasksIn(read)
+	groups := appPlanGroups(rows, plans)
+	for _, row := range plans {
 		if graphIDs[row.ID] {
 			continue
+		}
+		if parent := aliases[row.Parent]; parent != "" {
+			row.Parent = parent
 		}
 		state := row.StateWord()
 		if state == "queued" {
@@ -285,7 +298,7 @@ func (a *Agent) AppTasks() ([]AppTaskView, error) {
 		if state == "incomplete" {
 			state = "failed"
 		}
-		out = append(out, AppTaskView{Source: cloneSource(row.Source), Dismissed: state == "failed" && a.tasker().isDismissed(row.ID), ID: row.ID, Parent: row.Parent, Title: row.Title, State: state, Model: row.Model, Cap: cap, Spent: row.USD, Step: row.Steps, Waits: append([]string{}, row.Waits...), Origin: "asked"})
+		out = append(out, AppTaskView{Source: cloneSource(row.Source), Dismissed: state == "failed" && a.tasker().isDismissed(row.ID), ID: row.ID, Parent: row.Parent, Group: groups[row.ID], Title: row.Title, State: state, Model: row.Model, Cap: cap, Spent: row.USD, Step: row.Steps, Waits: append([]string{}, row.Waits...), Origin: "asked"})
 	}
 	out = append(out, a.appProposalViews(cap)...)
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
@@ -412,12 +425,21 @@ func (a *Agent) AppTaskAction(intent AppTaskIntent) error {
 // appTaskAct is the one dispatch both doors take. The receipt is the node's or
 // the store's own answer for a note or a brief, and empty for every other verb.
 func (a *Agent) appTaskAct(intent AppTaskIntent) (SteerReceipt, error) {
+	id, numeric := strconv.ParseUint(intent.ID, 10, 64)
+	// Starting an already offered proposal answers its pending question.
+	if numeric == nil && intent.Action == "start" {
+		if handled, err := a.appProposalAction(id, intent); handled {
+			return SteerReceipt{}, err
+		}
+	}
+	if err := a.checkAppTaskWork(intent); err != nil {
+		return SteerReceipt{}, err
+	}
 	// DISMISS AND RESTORE ARE ONE GENERIC FACT FOR EVERY ROAD, so they are settled
 	// before the road is chosen (task_dismiss.go).
 	if intent.Action == AppActionDismiss || intent.Action == AppActionRestore {
 		return SteerReceipt{}, a.appDismissAction(intent)
 	}
-	id, numeric := strconv.ParseUint(intent.ID, 10, 64)
 	if handled, said, err := a.appBeforeTheList(id, numeric, intent); handled {
 		return said, err
 	}
@@ -425,6 +447,12 @@ func (a *Agent) appTaskAct(intent AppTaskIntent) (SteerReceipt, error) {
 		// Past its proposal a task's model is RetargetTask's promise, not this card's.
 		return SteerReceipt{}, errors.New("that task must be a proposed task to change its model")
 	}
+	return a.appListedTaskAction(id, numeric, intent)
+}
+
+// appListedTaskAction checks the saved row before dispatching an action to
+// its run, plan or graph road, preserving the same stale-state refusal.
+func (a *Agent) appListedTaskAction(id uint64, numeric error, intent AppTaskIntent) (SteerReceipt, error) {
 	row, found, err := a.AppTask(intent.ID)
 	if err != nil {
 		return SteerReceipt{}, err
@@ -448,6 +476,25 @@ func (a *Agent) appTaskAct(intent AppTaskIntent) (SteerReceipt, error) {
 		return a.appTaskNote(node, intent)
 	}
 	return SteerReceipt{}, a.appGraphAction(node, intent, row)
+}
+
+// checkAppTaskWork keeps answers and controls available on a viewer while
+// refusing actions that would start or revise work.
+func (a *Agent) checkAppTaskWork(intent AppTaskIntent) error {
+	switch intent.Action {
+	case "cancel", "stop", "hold", "typing", "decline", AppActionDismiss, AppActionRestore:
+	case "decide":
+		if intent.Verb == "not_right" || intent.Verb == "tell" {
+			if err := a.CheckWork(); err != nil {
+				return err
+			}
+		}
+	default:
+		if err := a.CheckWork(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // appWordAction is whether an action carries the person's words to the task:
@@ -733,6 +780,11 @@ func (a *Agent) AppQuickTasks() ([]AppQuickTaskView, error) {
 }
 
 func (a *Agent) AppQuickTaskAction(intent AppTaskIntent) ([]string, []string, error) {
+	if intent.Action != "cancel" {
+		if err := a.CheckWork(); err != nil {
+			return nil, nil, err
+		}
+	}
 	id, err := strconv.ParseUint(intent.ID, 10, 64)
 	if err != nil {
 		return nil, nil, errors.New("no such quick task")

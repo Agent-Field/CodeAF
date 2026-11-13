@@ -224,7 +224,7 @@ type transportLadder struct {
 	fallback bool
 	// outOfTime says the caller's own deadline is gone — the plan's give-up, in
 	// the person's time — which is the whole of what bounds a failing request
-	// (docs/design/recovery/DESIGN.md §4). It is the caller's fact for the same
+	//. It is the caller's fact for the same
 	// reason `fallback` is: this package knows the clock it started, and the
 	// boundary decides what running out of it MEANS.
 	outOfTime bool
@@ -417,7 +417,7 @@ func transportKeptWords(verdict taxonomy.Verdict) string {
 // `outOfTime` is the turn's own give-up, spent on going nowhere; the count that
 // used to bound this was the person's `response.attempts` walked a second time,
 // under a transport already bounded by the same deadline
-// (docs/design/recovery/DESIGN.md §4).
+// .
 func (a *Agent) readEmptyReply(model string, attempt int, outOfTime bool) taxonomy.Verdict {
 	verdict := a.classify(taxonomy.Evidence{Empty: true, Attempt: attempt, OutOfTime: outOfTime}, model, "")
 	if verdict.Class == taxonomy.Transport {
@@ -538,7 +538,7 @@ func (a *Agent) movesForFailure(node *TaskNode, ranOn string, runErr error, log 
 // SO IT IS THE VERDICT THAT ANSWERS, AND NOT A LIST OF STATUSES. It used to be
 // `api.Status >= 500 || 404 || 429 || 401 || 403` written out here — the third
 // of the three rules that each decided for themselves what a 404 meant
-// (docs/design/recovery/DESIGN.md §2.6), and the one whose list drifted furthest
+// , and the one whose list drifted furthest
 // from the other two. [taxonomy.Classify] already answers "was this the wire or
 // was it an answer", from evidence the transport stamped once, so this asks it:
 // the class the boundary gives a failure IS the distinction this function was

@@ -235,7 +235,7 @@ var taskSchemaJSON = `{"type":"object","properties":{` +
 	`"depends_on":{"type":"array","items":{"type":"integer"},"description":"Ids that must finish first, only ones propose_task returned in this session. Its brief is given their reports; an unknown or failed id refuses the proposal"},` +
 	`"irreversible":{"type":"boolean","description":"True for work that cannot be undone; it never starts on a clock"},` +
 	`"wide":{"type":"boolean","description":"Optional. True when the work is wider than one pair of hands. Say true whenever you judged it broad; a wrong true costs nothing"},` +
-	`"model":{"type":"string","description":"Optional, only where the person asked for one: a catalog id or part of one, never a class word, so resolve \"fast\" to a concrete model. A word fitting several is shown to the person to settle"},` +
+	`"model":{"type":"string","description":"One-task override of task.model and crew. Catalog ID or unique name, only when requested; ambiguous names are offered for confirmation."},` +
 	`"effort":{"type":"string","enum":["best","cheap"],"description":"Only when the person asked"},` +
 	taskViaSchemaJSON +
 	`"max_steps":{"type":"integer","description":"Optional. Finished tool calls per progress checkpoint (default ` + strconv.Itoa(taskMaxSteps) + `); work still advancing is given more."},` +
@@ -247,16 +247,21 @@ var taskSchemaJSON = `{"type":"object","properties":{` +
 // on the same Config.mayDelegate predicate that controls the prompt.
 var taskSchemaWithoutViaJSON = strings.Replace(taskSchemaJSON, taskViaSchemaJSON, "", 1)
 
+// A model may select private working roots, but cannot grant landing authority.
+const workspaceSetTaskSchema = `"workspace_set":{"type":"object","description":"Optional private sibling working roots. Use when a task needs several explicitly selected folders. Each root is copied privately; this does not authorize source writes. Omit ground and where when using this field.","properties":{"primary":{"type":"string"},"roots":{"type":"array","items":{"type":"object","properties":{"source":{"type":"string"},"source_uri":{"type":"string"},"slot":{"type":"string"},"access":{"type":"string","enum":["read","write"]}},"required":["slot","access"],"additionalProperties":false}}},"required":["primary","roots"],"additionalProperties":false}`
+
 // taskArguments is the wire form.
 type taskArguments struct {
-	Irreversible bool   `json:"irreversible,omitempty"`
-	Title        string `json:"title"`
-	Summary      string `json:"summary"`
-	Brief        string `json:"brief"`
-	Deliverable  string `json:"deliverable"`
-	Where        string `json:"where"`
-	Ground       string `json:"ground"`
-	Acceptance   string `json:"acceptance"`
+	Irreversible bool                 `json:"irreversible,omitempty"`
+	Title        string               `json:"title"`
+	Summary      string               `json:"summary"`
+	Brief        string               `json:"brief"`
+	Deliverable  string               `json:"deliverable"`
+	Where        string               `json:"where"`
+	Computer     string               `json:"computer,omitempty"`
+	Ground       string               `json:"ground"`
+	WorkspaceSet *WorkspaceSetRequest `json:"workspace_set,omitempty"`
+	Acceptance   string               `json:"acceptance"`
 	// Expects is what this brief assumes is already true of the folder the
 	// worker will get, checked before it is allowed to spend anything
 	// (handoffcontract.go). It is optional and the harness never writes one.
@@ -291,7 +296,9 @@ type taskArguments struct {
 type taskSpec struct {
 	// Irreversible work always waits for an explicit answer.
 	irreversible bool
+	workspaceSet *WorkspaceSetRequest
 	title        string
+	computer     string
 	// named says A MODEL ALREADY WROTE THIS TITLE as a name, rather than the
 	// door cutting one out of a sentence it had to hand. It is the whole of what
 	// decides whether the work is named again (taskname.go): a name the shaper
@@ -377,7 +384,7 @@ type taskSpec struct {
 	checks    []string
 	dependsOn []uint64
 	// planID is THE TASK'S ID IN THE PLAN STORE (internal/plandb), set only on
-	// a node the bash belt's plandb loop drives (docs/design/plandb-cli/
+	// a node the bash belt's plandb loop drives (the implementation
 	// DESIGN.md, the wiring section). It is what makes a node and its plan
 	// task one thing: the runtime claims the store task under this id when it
 	// dispatches the node, the node's work order is composed FROM the store
@@ -611,6 +618,12 @@ func (a *Agent) taskTools() []bare.Tool {
 	if a.config.mayDelegate() {
 		schema = taskSchemaJSON
 	}
+	if a.config.mayNameTaskComputer() {
+		schema = strings.Replace(schema, `"properties":{`, `"properties":{`+taskComputerSchema, 1)
+	}
+	if WorkspaceOwnershipEnabled(a.config.Place) {
+		schema = strings.Replace(schema, `"properties":{`, `"properties":{`+workspaceSetTaskSchema+`,`, 1)
+	}
 	return []bare.Tool{bare.StagedTool("propose_task", taskDescription, json.RawMessage(schema), a.stageTask)}
 }
 
@@ -707,6 +720,12 @@ func proposalProblems(contract string, stand taskStand) string {
 // started early (the quality law of an early start: the same brief, sooner).
 func (a *Agent) stageTask(ctx context.Context, args json.RawMessage) bare.Staged {
 	spec, problem := parseTaskArguments(args)
+	// A model cannot opt into placement through an argument its belt did not
+	// offer. Preserve the original treatment of that unknown field; a person
+	// can still choose a computer in the later proposal answer.
+	if !a.config.mayNameTaskComputer() {
+		spec.computer = ""
+	}
 	if problem != "" {
 		// A CONTRACT PROBLEM DOES NOT HIDE A PLACEMENT PROBLEM. Once the call has
 		// enough of a task to place, both readings are already available and each
@@ -715,6 +734,9 @@ func (a *Agent) stageTask(ctx context.Context, args json.RawMessage) bare.Staged
 			problem = proposalProblems(problem, a.resolveTaskGround(spec))
 		}
 		return bare.Settled(rejectToolArguments(ctx, problem), true)
+	}
+	if err := a.checkProposedTaskComputer(ctx, spec); err != nil {
+		return bare.Settled(err.Error(), true)
 	}
 	// THE DOOR REFUSALS, before a card or a slot. A proposal that left out the
 	// program the person named, a trivial ask and a depends_on that can never
@@ -727,6 +749,10 @@ func (a *Agent) stageTask(ctx context.Context, args json.RawMessage) bare.Staged
 	// A PROGRAM'S RUN THAT ENDED DONE IS A DEPENDENCY MET, and the graph knows
 	// no node by its id (program_depends.go).
 	spec.dependsOn = a.withoutEndedProgramRuns(spec.dependsOn)
+	// A WORKER SEAT ON CLAUDE CODE HANDS THE TASK TO CLAUDE CODE ITSELF
+	// (claudeseat.go): the person chose who does the work, and on that seat
+	// it is an agent with its own tools rather than a model under codeaf's.
+	spec = a.seatOnClaudeCode(spec)
 	// A DELEGATE IS RESOLVED BEFORE THE CARD, so a name this machine has no
 	// delegate for is answered with the names it has and nobody is asked to
 	// approve work that could not start (delegate_door.go).
@@ -805,7 +831,7 @@ func (a *Agent) stageTask(ctx context.Context, args json.RawMessage) bare.Staged
 	// THE SLOT IS TAKEN BEFORE THE QUESTION and handed back by everything that
 	// is not an admission, so a batch of proposals cannot walk through the fan
 	// cap together ([TaskGraph.claimChild]).
-	if refusal := graph.claimChild(spec.parent); refusal != "" {
+	if refusal := graph.claimChild(spec.parent, spec.title); refusal != "" {
 		return bare.Settled(refusal, true)
 	}
 	id := graph.reserve()
@@ -821,7 +847,7 @@ func (a *Agent) stageTask(ctx context.Context, args json.RawMessage) bare.Staged
 	if err != nil {
 		// The session closed under the question. Nothing was asked and nothing
 		// admitted, so the proposal simply never became one.
-		graph.releaseChild(spec.parent)
+		graph.releaseChild(spec.parent, spec.title)
 		return bare.Settled(taskNeverAnswered, true)
 	}
 	return &stagedProposal{agent: a, graph: graph, id: id, spec: spec, stand: stand, elsewhere: elsewhere, wait: wait}
@@ -849,7 +875,7 @@ type stagedProposal struct {
 // other ending of [stagedProposal.Commit], and exactly one of the two runs.
 func (p *stagedProposal) Withdraw() {
 	p.wait.withdraw()
-	p.graph.releaseChild(p.spec.parent)
+	p.graph.releaseChild(p.spec.parent, p.spec.title)
 }
 
 // Commit reads what the wait came to and admits on it. It runs once the message
@@ -863,7 +889,7 @@ func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 	admitted := false
 	defer func() {
 		if !admitted {
-			graph.releaseChild(spec.parent)
+			graph.releaseChild(spec.parent, spec.title)
 		}
 	}()
 	answer, err := p.wait.answer()
@@ -881,6 +907,12 @@ func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 			return withElsewhere("the person declined this task: "+reason, elsewhere), false, nil
 		}
 		return withElsewhere("the person declined this task", elsewhere), false, nil
+	}
+	// A card choice is explicit placement for this proposal only. Admission
+	// still resolves it through the same roster and eligibility checks as a
+	// computer originally named in the tool call or the typed task command.
+	if computer := strings.TrimSpace(answer.Computer); computer != "" {
+		spec.computer = computer
 	}
 	if redirect := strings.TrimSpace(answer.Redirect); redirect != "" {
 		// APPENDED, never merged into the brief's prose. The person's words
@@ -929,6 +961,7 @@ func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 	// is not there at all (no engine linked, no place for a store) leaves this
 	// door for the older one ([Agent.commitProposalToRun]).
 	ctx = withCrewWish(ctx, a.proposalCrewWish(p.id, crewWish{effort: spec.crewEffort, worker: namedModel(spec)}))
+	ctx = withSilentTaskStart(ctx, p.wait.silent)
 	// THE BLOCK THE ROW WILL BE BORN IN is the one captured when the card was raised,
 	// whichever road publishes its first row (task_source.go).
 	a.expectRunSource(p.id, spec.source)
@@ -941,15 +974,26 @@ func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 	return taskReceipt(p.id, spec, state, p.stand, elsewhere), false, nil
 }
 
-// proposalBrief is what a proposal committed to a run hands its work: the
-// composed brief every task gets, or, for a program that reads its brief as
-// words, the words alone, the way a typed `/<name>` hands them
-// ([delegate.Delegate.Words]).
+// proposalBrief hands a proposed run only its assignment. The proposing
+// conversation must put all needed context into the work order itself.
 func proposalBrief(spec taskSpec, via *delegate.Delegate) string {
 	if via != nil && via.Words {
 		return programWords(spec.brief, *via)
 	}
-	return composeBrief(briefWhole, spec.request, spec.brief, spec.deliverable, spec.acceptance, "", spec.admission, spec.origin, taskCopy{})
+	var parts []string
+	if strings.TrimSpace(spec.title) != "" {
+		parts = append(parts, spec.title)
+	}
+	if strings.TrimSpace(spec.brief) != "" {
+		parts = append(parts, briefWorkHeading+"\n\n"+strings.TrimSpace(spec.brief))
+	}
+	if strings.TrimSpace(spec.deliverable) != "" {
+		parts = append(parts, briefMakeHeading+"\n\n"+spec.deliverable)
+	}
+	if strings.TrimSpace(spec.acceptance) != "" {
+		parts = append(parts, briefDoneHeading+"\n\n"+spec.acceptance)
+	}
+	return strings.Join(parts, "\n\n")
 }
 
 // commitProposalToRun is the run road of an approved proposal: an approved
@@ -970,6 +1014,9 @@ func proposalBrief(spec taskSpec, via *delegate.Delegate) string {
 // answered as a refusal.
 func (a *Agent) commitProposalToRun(ctx context.Context, p *stagedProposal, spec taskSpec, elsewhere string) (string, bool, bool) {
 	if !a.runRoadOwns(spec) {
+		if _, err := a.admitWorkspaceProposal(ctx, p.stand, spec); err != nil {
+			return runDidNotStart(p.id, err), true, true
+		}
 		return "", false, false
 	}
 	a.mu.Lock()
@@ -980,24 +1027,31 @@ func (a *Agent) commitProposalToRun(ctx context.Context, p *stagedProposal, spec
 		a.settleUnstartedHandoff(p.id, spec.title, err)
 		return err.Error(), true, true
 	}
-	joined, stand, asked, err := a.startApprovedHandoff(ctx, p, spec, via, question)
+	start, err := a.startApprovedHandoff(ctx, p, spec, via, question)
+	// A COMPUTER THAT CANNOT TAKE THE TASK IS SAID AS ITSELF, before any run row
+	// is opened: the placement refusal names the computer and the way out.
+	if refusal := (placementRefusal{}); errors.As(err, &refusal) {
+		return refusal.Error(), true, true
+	}
+	elsewhere = withReport(elsewhere, start.placed)
 	// A ROLE WITH NOTHING ALLOWED TO RUN ON IS A QUESTION, NOT A FAILURE: the
 	// task waits, asks, and starts from here once a model is allowed
 	// (taskrouting.go). Nothing ran and nothing was moved onto another model.
 	if receipt, parked := a.parkUnroutedHandoff(ctx, p, spec, elsewhere, via, err); parked {
 		return receipt, false, true
 	}
-	return a.handoffAnswer(p, spec, elsewhere, via, asked, stand, joined, err)
+	return a.handoffAnswer(p, spec, elsewhere, via, start.asked, start.stand, start.joined, err)
 }
 
 // runRoadOwns is an approved hand-off this door starts as a run: the bash
-// belt, or a named program. A session inside a task, or one with no run
-// engine, leaves the hand-off to the older road.
+// belt, a named program, or a task placed on a paired computer. A session
+// inside a task, or one with no run engine, leaves the hand-off to the older
+// road.
 func (a *Agent) runRoadOwns(spec taskSpec) bool {
 	if chatRunEngine == nil || a.config.InTask {
 		return false
 	}
-	return bashBeltAsked() || spec.via != ""
+	return bashBeltAsked() || spec.via != "" || a.taskComputerPreference() || (a.config.TaskComputers != nil && spec.computer != "")
 }
 
 // handoffDelegate is the program a hand-off named, or nil when it named none.
@@ -1019,21 +1073,64 @@ func (a *Agent) handoffDelegate(spec taskSpec) (*delegate.Delegate, error) {
 // the model finished its sentence. What ends the run is the conversation, the
 // person's stop or the room closing. Whether it joined a run already underway
 // is this door's answer, decided under the start lock.
-func (a *Agent) startApprovedHandoff(ctx context.Context, p *stagedProposal, spec taskSpec, via *delegate.Delegate, question string) (bool, taskStand, []string, error) {
-	stand := p.stand
-	if via != nil {
-		stand = delegateStand(stand.dir)
+func (a *Agent) startApprovedHandoff(ctx context.Context, p *stagedProposal, spec taskSpec, via *delegate.Delegate, question string) (handoffStart, error) {
+	stand, err := a.admitWorkspaceProposal(ctx, p.stand, spec)
+	if err != nil {
+		return handoffStart{stand: stand}, err
 	}
+	placement, err := a.placeHandoff(ctx, spec, stand, via)
+	if err != nil {
+		return handoffStart{stand: stand}, placementRefusal{err}
+	}
+	ctx = withTaskPlacement(ctx, placement)
 	asked := programAsked(spec)
 	var prior *programOutcome
 	if via != nil {
+		stand = delegateStand(stand.dir)
 		prior = a.keepProgramAttempt(p.id, a.programAttemptOf())
 		ctx = withProgramWish(ctx, programWish{thinking: spec.thinking, carry: a.programCarryOf(prior, via.Name)})
 	}
 	a.expectRunSource(p.id, spec.source)
-	joined, err := a.startOrJoinTaskRunVia(context.WithoutCancel(ctx), p.id, spec.title, proposalBrief(spec, via), spec.dependsOn, stand, question, via, asked...)
+	joined, err := a.startOrJoinTaskRunVia(context.WithoutCancel(ctx), p.id, spec.title, proposalRunDescription(spec, via, placement), spec.dependsOn, stand, question, via, asked...)
 	a.rollbackFailedProgramStart(via, p.id, prior, err)
-	return joined, stand, asked, err
+	return handoffStart{joined: joined, stand: stand, asked: asked, placed: placement.sentence}, err
+}
+
+// handoffStart is what starting an approved hand-off settled: whether it
+// joined a run already underway, the stand it runs on, the programs asked
+// for, and the sentence that says which computer it was placed on.
+type handoffStart struct {
+	joined bool
+	stand  taskStand
+	asked  []string
+	placed string
+}
+
+// placementRefusal is a hand-off whose named computer cannot take it. It is
+// said as its own sentence, never as a run that did not start.
+type placementRefusal struct{ err error }
+
+func (r placementRefusal) Error() string { return r.err.Error() }
+func (r placementRefusal) Unwrap() error { return r.err }
+
+// placeHandoff resolves the computer an approved hand-off runs on. The
+// explicit in-place request controls computer placement even when the
+// repository's existing isolation law still prepares a local branch.
+func (a *Agent) placeHandoff(ctx context.Context, spec taskSpec, stand taskStand, via *delegate.Delegate) (taskPlacement, error) {
+	if strings.EqualFold(strings.TrimSpace(spec.where), "in place") {
+		stand.mode = TaskModeInPlace
+	}
+	placement, err := a.resolveTaskComputer(ctx, spec.computer, stand, spec.kind(), via != nil)
+	if err != nil {
+		return placement, err
+	}
+	placement.model = namedModel(spec)
+	placement.effort = string(spec.crewEffort)
+	if spec.thinking != effort.None {
+		placement.effort = spec.thinking.String()
+	}
+	placement.maxSteps, placement.noProgress = spec.maxSteps, spec.noProgress
+	return placement, nil
 }
 
 // handoffAnswer is what an approved hand-off that was this door's to start
@@ -1058,7 +1155,7 @@ func (a *Agent) handoffAnswer(p *stagedProposal, spec taskSpec, elsewhere string
 	if via != nil {
 		return via.Name + " could not start: " + err.Error(), true, true
 	}
-	if !errors.Is(err, errRunRoadUnavailable) {
+	if !singletonRunFallback(err, stand) {
 		return withElsewhere(runDidNotStart(p.id, err), elsewhere), true, true
 	}
 	return "", false, false
@@ -1210,17 +1307,19 @@ func parseTaskArguments(args json.RawMessage) (taskSpec, string) {
 	}
 	spec := taskSpec{
 		title:        strings.TrimSpace(parsed.Title),
+		computer:     strings.TrimSpace(parsed.Computer),
 		irreversible: parsed.Irreversible,
 		// THE MODEL GROOMED THIS PROPOSAL AND NAMED IT IN THE SAME BREATH, so the
 		// namer leaves it alone (taskname.go).
-		named:       strings.TrimSpace(parsed.Title) != "",
-		summary:     strings.TrimSpace(parsed.Summary),
-		brief:       strings.TrimSpace(parsed.Brief),
-		deliverable: strings.TrimSpace(parsed.Deliverable),
-		where:       strings.TrimSpace(parsed.Where),
-		ground:      strings.TrimSpace(parsed.Ground),
-		acceptance:  strings.TrimSpace(parsed.Acceptance),
-		dependsOn:   parsed.DependsOn,
+		named:        strings.TrimSpace(parsed.Title) != "",
+		workspaceSet: cloneWorkspaceSetRequest(parsed.WorkspaceSet),
+		summary:      strings.TrimSpace(parsed.Summary),
+		brief:        strings.TrimSpace(parsed.Brief),
+		deliverable:  strings.TrimSpace(parsed.Deliverable),
+		where:        strings.TrimSpace(parsed.Where),
+		ground:       strings.TrimSpace(parsed.Ground),
+		acceptance:   strings.TrimSpace(parsed.Acceptance),
+		dependsOn:    parsed.DependsOn,
 		// THE MODEL'S OWN "THIS IS WIDE", carried to [TaskGraph.admit] where the
 		// road is armed. Absent is false, which is the honest default: a model
 		// that has never heard of this argument proposes exactly the task it
@@ -1230,6 +1329,9 @@ func parseTaskArguments(args json.RawMessage) (taskSpec, string) {
 		via:        strings.TrimSpace(parsed.Via),
 		maxSteps:   parsed.MaxSteps,
 		noProgress: parsed.NoProgress,
+	}
+	if problem := validateTaskWorkspaceProposal(spec); problem != "" {
+		return spec, problem
 	}
 	if word := strings.TrimSpace(parsed.Effort); word != "" {
 		effort, ok := crewroute.ParseEffort(word)
@@ -1479,6 +1581,8 @@ type taskWait struct {
 	// settled carries what the wait came to, once; a withdrawn wait sends
 	// nothing on it.
 	settled chan taskSettled
+	// silent is written before the expiry answer is sent and read after it.
+	silent bool
 	// withdrawn is closed by [taskWait.withdraw] and finished by
 	// [taskWait.run] as it returns.
 	withdrawn    chan struct{}
@@ -1526,7 +1630,13 @@ func (w *taskWait) run(ctx context.Context, expiry <-chan time.Time, stopTimer f
 			// Silence is a yes, and it is a yes with no redirect: the person said
 			// nothing, so nothing is appended to the brief.
 			silent := TaskAnswer{Approved: true}
+			w.silent = true
 			w.decided(silent)
+			// AND THE QUESTION CLOSES SAYING THE WORK STARTED, before the turn is
+			// handed the yes. The card above already says so, but on the task
+			// lane; a surface reading the question lane would otherwise see a
+			// bare withdrawal first and call a starting task no longer needed.
+			w.agent.withdrawStarted(w.proposed)
 			w.settled <- taskSettled{answer: silent}
 			return
 		case <-ctx.Done():
@@ -1637,6 +1747,7 @@ func newTaskQuestion(id uint64, spec taskSpec, elsewhere string, deadline time.T
 		hold:   make(chan struct{}),
 		notice: TaskNotice{
 			ID:           id,
+			Computer:     spec.computer,
 			Title:        spec.title,
 			Source:       cloneSource(spec.source),
 			Summary:      spec.summary,
@@ -1748,20 +1859,25 @@ func taskWhereNotice(place Place, workspace string, id uint64, where string, mod
 	if strings.EqualFold(where, "in place") {
 		_, redirectedInPlace = whereInsideRepository(where, workspace)
 	}
-	if where != "" && (mode == TaskModeWorktree || strings.EqualFold(where, "in place") && redirectedInPlace) {
+	if where != "" && (mode == TaskModeWorktree || mode == TaskModeMirror || strings.EqualFold(where, "in place") && redirectedInPlace) {
 		if trees := place.Trees(); trees != "" {
 			return filepath.Join(trees, strconv.FormatUint(id, 10))
 		}
 		return "task folder"
 	}
-	if strings.EqualFold(where, "in place") {
-		return workspace
-	}
 	if where != "" {
-		if resolved, err := resolveTaskWhere(where, workspace); err == nil {
-			return resolved
+		target := workspace
+		if !strings.EqualFold(where, "in place") {
+			resolved, err := resolveTaskWhere(where, workspace)
+			if err != nil {
+				return where
+			}
+			target = resolved
 		}
-		return where
+		if trees := place.Trees(); mode == TaskModeReference && trees != "" && HoldsHomeFolder(target) {
+			return filepath.Join(trees, strconv.FormatUint(id, 10))
+		}
+		return target
 	}
 	if trees := place.Trees(); trees != "" {
 		return filepath.Join(trees, strconv.FormatUint(id, 10))
@@ -1870,6 +1986,7 @@ func (a *Agent) proposalAsk(id uint64, notice TaskNotice) Question {
 
 // A proposal stays visible after its originating turn ends, like a running task.
 func (a *Agent) broadcastTaskProposal(hub *eventHub, notice TaskNotice) {
+	notice = a.withWorker(notice)
 	event := Event{Kind: EventTaskProposal, Tool: "propose_task", Task: &notice}
 	if hub != nil {
 		hub.send(event)
@@ -1880,4 +1997,59 @@ func (a *Agent) broadcastTaskProposal(hub *eventHub, notice TaskNotice) {
 	for _, watcher := range watchers {
 		watcher.send(event)
 	}
+}
+
+func validateTaskWorkspaceProposal(spec taskSpec) string {
+	if spec.workspaceSet != nil {
+		if !bashBeltAsked() {
+			return "workspace_set requires the Bash task engine"
+		}
+		if spec.via != "" || spec.ground != "" || spec.where != "" {
+			return "workspace_set cannot be combined with via, ground, or where; declare each selected root explicitly"
+		}
+		for _, root := range spec.workspaceSet.Roots {
+			if root.Landing != "" || root.LandingURI != "" {
+				return "workspace_set proposals cannot authorize landing; work stays in private copies"
+			}
+		}
+	}
+	return ""
+}
+
+func (a *Agent) admitWorkspaceProposal(ctx context.Context, stand taskStand, spec taskSpec) (taskStand, error) {
+	if spec.workspaceSet != nil && !WorkspaceOwnershipEnabled(a.config.Place) {
+		return stand, errors.New("workspace_set requires private task placement for this conversation")
+	}
+	if spec.workspaceSet != nil && (chatRunEngine == nil || a.config.InTask) {
+		return stand, errors.New("workspace_set requires the linked conversation run engine")
+	}
+	if stand.workspaceSet != nil {
+		request := cloneWorkspaceSetRequest(stand.workspaceSet)
+		if err := admitWorkspaceSetRequest(ctx, a.config.Place, request); err != nil {
+			return stand, err
+		}
+		stand.workspaceSet = request
+	}
+	return stand, nil
+}
+func singletonRunFallback(err error, stand taskStand) bool {
+	return stand.workspaceSet == nil && errors.Is(err, errRunRoadUnavailable)
+}
+
+// Placement validation precedes the proposal card without adding roster work to local proposals.
+func (a *Agent) checkProposedTaskComputer(ctx context.Context, spec taskSpec) error {
+	if spec.computer == "" {
+		return nil
+	}
+	_, err := a.resolveTaskComputer(ctx, spec.computer, taskStand{}, "", false)
+	return err
+}
+
+// Checks belong only in the instruction transported to another computer.
+func proposalRunDescription(spec taskSpec, via *delegate.Delegate, placement taskPlacement) string {
+	description := proposalBrief(spec, via)
+	if placement.computer != nil && len(spec.checks) > 0 {
+		description += "\n\nChecks\n\n" + strings.Join(spec.checks, "\n")
+	}
+	return description
 }

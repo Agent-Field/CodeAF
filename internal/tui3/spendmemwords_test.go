@@ -2,7 +2,7 @@ package tui3
 
 // THE MONEY PLACES AND THE MEMORY PLACE, HELD TO THE WORDS THEY SAY.
 //
-// Every test here is one row of docs/design/polish/audit-settings.md or
+// Every test here is one row of the implementation or
 // audit-help.md: a sentence a person read on the screen and could not act on.
 // The failure messages print the line that was drawn and the line that should
 // have been, because the defect in each case is a reading and not a value.
@@ -246,7 +246,7 @@ func TestEveryPlaceWhisperWrapsLikeHomesAndIsNeverCut(t *testing.T) {
 			for i, line := range lines {
 				rows[i] = strings.TrimRight(plain(line), " ")
 			}
-			said := whisperRowsUnder(rows, placeHeadRows)
+			said := whisperRowsUnder(rows, emptyPlaceHeadingRow(t, a.chords, lab.id, rows))
 			if len(said) == 0 || len(said) > 3 {
 				t.Fatalf("the empty %s place at %d cells whispers on %d rows:\n%s",
 					lab.id.word(), width, len(said), strings.Join(rows, "\n"))

@@ -8,6 +8,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/cellstore"
 )
 
 // THE APP'S PROCESS ENDING IS THE APP LEAVING. The parent is the one the
@@ -75,7 +77,7 @@ func TestALeavingThatOutrunsItsBoundIsEnded(t *testing.T) {
 			defer cancel()
 			left := make(chan struct{})
 			ended := make(chan time.Time, 1)
-			go leaveWithin(ctx, left, 30*time.Millisecond, func() { ended <- time.Now() })
+			go leaveWithin(ctx, left, make(chan struct{}), 30*time.Millisecond, func() { ended <- time.Now() })
 			select {
 			case <-ended:
 				t.Fatal("the process was ended before it started leaving")
@@ -99,10 +101,48 @@ func TestALeavingThatOutrunsItsBoundIsEnded(t *testing.T) {
 	}
 }
 
+// A WRAP-UP THAT FINISHED IS NOT ENDED. The door's own deferred cancel starts
+// the clock as the door returns, and a process that lives on after it, as a
+// test binary does, was ended a bound later in the middle of another test.
+// Once the door has returned the watch stands down, whether it returned
+// before leaving began or during the wrap-up.
+func TestADoorThatReturnedIsNotEndedByItsBound(t *testing.T) {
+	for _, when := range []string{"before leaving", "while leaving"} {
+		t.Run(when, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			returned := make(chan struct{})
+			ended := make(chan struct{}, 1)
+			watched := make(chan struct{})
+			go func() {
+				leaveWithin(ctx, make(chan struct{}), returned, 30*time.Millisecond, func() { ended <- struct{}{} })
+				close(watched)
+			}()
+			if when == "while leaving" {
+				cancel()
+				close(returned)
+			} else {
+				close(returned)
+				cancel()
+			}
+			select {
+			case <-watched:
+			case <-time.After(5 * time.Second):
+				t.Fatal("the watch outlived the door it bounds")
+			}
+			select {
+			case <-ended:
+				t.Fatal("a door that had returned was ended by its bound")
+			default:
+			}
+		})
+	}
+}
+
 // The bound is built from the stop waits it has to cover, so changing one of
 // them cannot leave the bound shorter than the wrap-up it ends.
 func TestTheLeavingBoundCoversEveryStopWait(t *testing.T) {
-	if appLeaveWait < 2*appLocalStopWait+appReleaseWait+appQuitGraceS*time.Second {
+	if appLeaveWait < 2*appLocalStopWait+appReleaseWait+appQuitGraceS*time.Second+3*cellstore.SealWithin {
 		t.Fatalf("appLeaveWait %s is shorter than the wrap-up it bounds", appLeaveWait)
 	}
 }

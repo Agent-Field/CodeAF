@@ -14,7 +14,7 @@ import (
 
 // ── THE SPENDING TAB ────────────────────────────────────────────────────────
 //
-// Money has ONE EDITOR and MANY DOORS (docs/design/spending/DESIGN.md). The
+// Money has ONE EDITOR and MANY DOORS. The
 // editor is this tab: the registry's three money rows, in the order a person
 // worries about them, with the day's own bill above them and — between them —
 // the two rails this build enforces somewhere a settings row cannot reach.

@@ -155,7 +155,7 @@ func runScriptTail(t *testing.T, idle func(*Drive), tail bool) cost {
 	r.engine.Transport = cellstore.Daemon{Socket: filepath.Join(t.TempDir(), "e.sock"), Binary: r.bin}
 	r.a.Interval = DefaultInterval // the rig shortens it for tests that run on real time
 	sim := newSimClock()
-	drive, err := r.a.Drive(context.Background(), r.engine, r.cell, DriveOptions{DeviceName: "spark", Sleep: sim.Sleep})
+	drive, err := r.a.Drive(context.Background(), r.engine, r.cell, DriveOptions{DeviceName: "tower", Sleep: sim.Sleep})
 	if err != nil {
 		t.Fatal(err)
 	}

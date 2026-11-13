@@ -528,8 +528,8 @@ func TestRetrieveSkillsDoesNotFalselyMatchRepoScopePaths(t *testing.T) {
 	skills := []store.Fact{
 		{Artifact: "/skills/secret", Scope: "repo:/Users/bob/secret-backend", Body: "handle authentication tokens"},
 	}
-	// An unrelated workspace under /Users/alice should NOT match /Users/bob/secret-backend
-	// merely because both have "Users" in their path.
+	// An unrelated workspace must not match another repository merely because
+	// both share a home-directory prefix.
 	got := RetrieveSkills("run the test suite", "/Users/alice/frontend", skills)
 	if len(got) != 0 {
 		t.Fatalf("RetrieveSkills = %q, want no match for unrelated repo scope", got)

@@ -4,7 +4,7 @@ package e2e
 
 // refusedaccept_e2e_test.go IS THE ACCEPTANCE OF #767 ON A REAL SCREEN.
 //
-// 2026-09-09, on the owner's own machine: a divided task landed as their call,
+// 2026-09-09, in a regression scenario: a divided task landed as their call,
 // the model spent `accept` on it under `task.settle = auto`, and the merge was
 // refused by the person's own uncommitted copies of the very files the task had
 // written. The node re-settled asking a DIFFERENT question — now theirs — and
@@ -68,7 +68,7 @@ func testRefusedAcceptAsks(t *testing.T) {
 	screen := r.waitFor(45*time.Second, refusedGroundReason, refusedYesWord)
 	t.Logf("a landing whose merge was refused by the person's own copies:\n%s", screen)
 
-	// THE THREE COLUMNS, ALWAYS THE SAME THREE (docs/design/task-states/DESIGN.md).
+	// THE THREE COLUMNS, ALWAYS THE SAME THREE.
 	for _, want := range []string{refusedYesWord, refusedNoWord, refusedTellWord} {
 		if !strings.Contains(screen, want) {
 			t.Errorf("the screen offers no %q, so the person is told what is wrong and given "+

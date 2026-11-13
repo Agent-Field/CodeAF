@@ -348,7 +348,7 @@ func updateAheadNotice(available codeupdate.Available) string {
 	if running == "" {
 		running = "an unstamped build"
 	}
-	return "codeaf " + available.Latest + " is out · you have " + running
+	return available.ProgramName() + " " + available.Latest + " is out · you have " + running
 }
 
 // ── THE ANSWERS ─────────────────────────────────────────────────────────────

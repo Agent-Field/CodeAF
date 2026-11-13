@@ -39,10 +39,8 @@ func flake() Harness {
 	}
 }
 
-// postset is the shape the owner read off a screen and rejected: a fan-out into
-// lanes, a gather, a check and a choice. It is the second sample because the
-// laws about NESTING — lanes drawn once, a gather drawn not at all — need a
-// program that has both, and flake has neither.
+// It is the second sample because the laws about NESTING — lanes drawn once, a gather
+// drawn not at all — need a program that has both, and flake has neither.
 func postset() Harness {
 	return Harness{
 		Id: Id{Name: "social-post-set", Desc: "a set of platform images from one brief"},

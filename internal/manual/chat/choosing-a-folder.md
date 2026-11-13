@@ -1,5 +1,11 @@
 # Choosing a folder
 
+## How do I change directory?
+
+Use `/folder`, `/place` or `/dir` to choose the folder this conversation is about.
+They open the add-context sheet. Browsing attaches nothing; choose a folder with
+`alt+m` or its action row. Over `--host`, `/folder` refuses because a folder cannot travel.
+
 ## /folder — choose a folder, pick a directory, say which project you mean
 
 `/folder` opens the **add context** sheet — a framed window over the middle of the screen,
@@ -12,6 +18,11 @@ with the folder you are standing in browsable in columns. It also answers to `/p
 /folder ~/code/    …with a path already typed, so the columns are open in ~/code
 /attach            the same sheet; over --host it browses the machine you are sitting at
 ```
+
+On native Windows, typing a drive path such as `C:\work\project` or
+`C:/work/project`, or a UNC path such as `\\server\share\project`, browses
+that path. Both native separators work, and changing a drive letter's case
+keeps the same folder. A bare name still searches the known folders.
 
 **Locally, both commands open the same sheet, in the same place, already browsing.** Where
 it opens is the first of these that exists: a folder this conversation has already been
@@ -83,6 +94,20 @@ actually does` below has the whole of that distinction.
 To start a new conversation already pointed at a project, `/project` on the home
 screen picks the folder the next one opens in — `/project ~/code/parser`, or bare
 for the browser.
+
+## Do attached folders survive a restart or a move to another computer?
+
+A folder you add with `/folder` stays with this conversation across a restart,
+including a sibling of the workspace or a folder on another drive. The
+`folder · ~/code/agentfield` confirmation records the folder before it appears
+above your message box.
+
+Folders under the conversation, workspace or home directory follow those roots
+when you continue on another computer. A folder outside those roots keeps its
+exact absolute path. Its contents are not copied. If that path is absent on the
+other computer, the folder stays attached and the model is told
+`NOT on this disk right now`. Reopening or saving there does not replace or
+forget that path. Remove the attachment and choose a local folder if needed.
 
 ## The add context sheet over --host — another machine, over ssh
 
@@ -471,6 +496,14 @@ rows.
 reach that folder — which is the whole point of choosing it. What it does **not** do is
 move this conversation: the directory it is anchored to, the `AGENTS.md` it reads, and its
 own status line stay exactly as they were.
+
+## A task on your home folder — it reads there and works in a folder of its own
+
+A task that would have copied your home folder, or a folder that holds it, now reads your files
+where they are and keeps what it makes in an empty folder of its own. Its report says where, and
+it asks you nothing. A folder inside home is copied as usual. Some tasks work differently: a home
+folder that is a git repository gets a worktree of what it tracks; a task in a chat opened at your
+home folder that names no other folder, or a place you saved as in place, runs there directly.
 
 ## Where edits go — the folder you are standing in, and the ones you chose
 

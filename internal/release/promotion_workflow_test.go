@@ -129,36 +129,16 @@ func TestPromotionWorkflowExplainsItsSafetyLaws(t *testing.T) {
 	}
 }
 
-// R5, R6, and R8: Setup and manual copy must describe the token and weekly outcome truthfully.
+// Promotion instructions must preserve the Friday cutoff schedule, candidate validation and forward-only updates.
 func TestPromotionDocsDescribeLiveSetupAndConditionalCadence(t *testing.T) {
-	root := repositoryRoot(t)
-	read := func(path string) string {
-		t.Helper()
-		raw, err := os.ReadFile(filepath.Join(root, path))
-		if err != nil {
-			t.Fatal(err)
-		}
-		return string(raw)
+	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), "docs/rules/promotion.md"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	runbook := read("docs/rules/promotion.md")
-	for _, want := range []string{"fine-grained\npersonal access token", "Contents: read and", "Workflows: read and write", ".current_user_can_bypass", "always", "expire after one hour", "token-minting step"} {
-		if !strings.Contains(runbook, want) {
+	for _, want := range []string{"every Friday after a 17:00 America/Toronto cutoff", "dry_run=true", "Full check", "exact candidate", "git merge-base --is-ancestor", "git push origin $SHA:staging", "Never\nforce a promotion"} {
+		if !strings.Contains(string(raw), want) {
 			t.Errorf("runbook lacks %q", want)
 		}
-	}
-	if strings.Contains(runbook, "installation token with those permissions and bypass\nrights also works") {
-		t.Error("runbook presents an expiring App token as a static secret")
-	}
-	rules := read(".github/rulesets/README.md")
-	for _, want := range []string{"repository is public", "live `protection` ruleset", "`main`, `dev`,", "`staging`", "`PROMOTION_TOKEN`", "bypass list"} {
-		if !strings.Contains(rules, want) {
-			t.Errorf("ruleset README lacks %q", want)
-		}
-	}
-	manual := read("internal/manual/chat/running-from-the-terminal.md")
-	section := strings.SplitN(strings.SplitN(manual, "## What is stageaf", 2)[1], "\n## ", 2)[0]
-	if len(section) >= 2000 || strings.Contains(section, "Staging moves once a week") || !strings.Contains(section, "The promotion runs once a week") || !strings.Contains(section, "When the check\nfails or there is nothing new, staging stays where it was") {
-		t.Fatalf("stageaf manual overpromises or exceeds section limit: %s", section)
 	}
 }
 

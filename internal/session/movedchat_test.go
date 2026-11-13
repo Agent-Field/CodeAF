@@ -85,7 +85,7 @@ func (m *resumeMachine) News() string {
 
 func folderPlan() preflight.Report {
 	return preflight.Report{Resume: preflight.Resume{
-		From:    "blackmac",
+		From:    "laptop",
 		Missing: []inventory.Withheld{{Path: "web/node_modules", Lock: "web/package-lock.json", MadeBy: "npm ci", Cwd: "web"}},
 	}}
 }
@@ -169,7 +169,7 @@ func TestYesStartsSetupTurnUnderFloor(t *testing.T) {
 		t.Fatalf("a plan with a folder to bring back and no tool to install was refused: %v", err)
 	}
 	collect(t, events)
-	for _, want := range []string{"This chat moved here from blackmac", "web/node_modules: from web/package-lock.json; it was made with `npm ci` in web/", "install in this workspace: ./bin, ./.venv/bin, ./node_modules/.bin are found automatically"} {
+	for _, want := range []string{"This chat moved here from laptop", "web/node_modules: from web/package-lock.json; it was made with `npm ci` in web/", "install in this workspace: ./bin, ./.venv/bin, ./node_modules/.bin are found automatically"} {
 		if !strings.Contains(brief, want) {
 			t.Errorf("the turn's opening lacks %q:\n%s", want, brief)
 		}
@@ -177,7 +177,7 @@ func TestYesStartsSetupTurnUnderFloor(t *testing.T) {
 	if len(calls) != 1 || !calls[0] {
 		t.Fatalf("calls on the setup form = %v, want [true]: the turn runs under the setup floor", calls)
 	}
-	if got.Resume.From != "blackmac" {
+	if got.Resume.From != "laptop" {
 		t.Fatalf("the machine was not told the turn ended: %+v", got)
 	}
 }

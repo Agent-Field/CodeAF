@@ -74,9 +74,30 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
+
+// teamView is the teams this conversation's own view reads: the ones its keys
+// are in, the ones above and the open ones below ([teams.LoadConversationView]),
+// never every team in the profile.
+func teamView(profile string, keys []string) (*teams.File, error) {
+	convs := make([]string, 0, len(keys))
+	for _, key := range keys {
+		convs = append(convs, teams.ConversationName(key))
+	}
+	return teams.LoadConversationView(profile, convs...)
+}
+
+// A team names a member's conversation the way the app names an agent: by the
+// folder its transcript lives in, as this package lays folders out. The store
+// indexes memberships by that name (internal/teams conv.go).
+func init() {
+	teams.SetConversationName(func(transcript string) string {
+		return filepath.Base(DirOf(filepath.Clean(transcript)))
+	})
+}
 
 // teamRole is one team this conversation is in, as teams.json says right now.
 type teamRole struct {
@@ -90,7 +111,7 @@ type teamRole struct {
 	// managed says the team has a manager at all, its own or, for a sub-team
 	// with none, the nearest one above it (boss). A member's `team_post` is
 	// offered only in a team that has one, because the manager is the one the
-	// room is run by (docs/design/conversations-and-teams/DESIGN.md, section 5).
+	// room is run by.
 	managed bool
 	// boss is the managed team whose manager this membership answers to: the
 	// team itself when it has a manager, and otherwise the nearest open
@@ -134,14 +155,27 @@ type teamRole struct {
 }
 
 // fileStamp is what a stat says about a file, and the whole of how this file
-// decides a read is worth doing: a teams file or a Traffic log whose size and
-// modification time have not moved has nothing new in it. present is false for
-// a file that is not there.
+// decides a read is worth doing: a Traffic log whose size and modification
+// time have not moved has nothing new in it. The teams store's is its own
+// count of writes instead ([teamsStampOf]). present is false for a file that
+// is not there.
 type fileStamp struct {
 	size    int64
 	mod     time.Time
+	rev     string
 	present bool
 	read    bool
+}
+
+// teamsStampOf is the teams store's stamp ([teams.Stamp]): its count of
+// writes moves on every write, where teams.db's stat need not (WAL mode does
+// not grow the file, and a coarse clock may not move its time).
+func teamsStampOf(profile string) fileStamp {
+	rev := teams.Stamp(profile)
+	if rev == teams.MissingStamp {
+		return fileStamp{read: true}
+	}
+	return fileStamp{rev: rev, present: true, read: true}
 }
 
 func stampOf(path string) fileStamp {
@@ -319,7 +353,7 @@ func (a *Agent) teamRolesLocked(profile string) []teamRole {
 	if len(keys) == 0 {
 		return nil
 	}
-	now := stampOf(teams.Path(profile))
+	now := teamsStampOf(profile)
 	settings := a.teamDefaultsMovedLocked(profile)
 	if now == a.team.teamsAt && !settings {
 		return a.team.roles
@@ -329,7 +363,7 @@ func (a *Agent) teamRolesLocked(profile string) []teamRole {
 		a.team.events.member.Store(false)
 		return nil
 	}
-	file, err := teams.Load(profile)
+	file, err := teamView(profile, keys)
 	if err != nil {
 		// AN UNREADABLE FILE IS THE INTERFACE'S TO SET ASIDE ([teams.SetAside]),
 		// never this reader's. What was known a moment ago stays known, and the
@@ -454,6 +488,7 @@ func memberOf(team teams.Team, keys []string) (teams.Member, bool) {
 // and a demotion is rare enough that paying once for it is cheap. A role
 // gained again appends its verbs at the tail as before.
 func (a *Agent) teamBoundary() string {
+	a.clientToolsBoundary()
 	profile := a.config.teamProfile()
 	if profile == "" {
 		return ""
@@ -1006,15 +1041,43 @@ func (a *Agent) readTeamCursorsLocked() {
 		return
 	}
 	var stored struct {
-		Read map[string]string `json:"read"`
+		Read   map[string]string `json:"read"`
+		Device string            `json:"device,omitempty"`
 	}
 	if json.Unmarshal(raw, &stored) != nil {
 		return
 	}
+	// A COPIED FILE'S POSITIONS COUNT ANOTHER COMPUTER'S LOG. A chat continued
+	// here from another computer brings its cursor file along, and those ids
+	// number lines this computer never wrote, so every team starts again from
+	// [Agent.firstTeamCursor], exactly as for a team met for the first time;
+	// that keeps the directive a rouse opened this conversation for.
+	sharing := a.teamsSharing()
+	if sharing && stored.Device != "" && stored.Device != teamCursorDevice() {
+		return
+	}
 	for id, cursor := range stored.Read {
-		if strings.TrimSpace(cursor) != "" {
-			a.team.cursors[id] = cursor
+		if strings.TrimSpace(cursor) == "" {
+			continue
 		}
+		// An untagged file can still have travelled: it was written before its
+		// computer paired. A position past the end of this computer's log was
+		// not written here, and keeping it would silently skip every local line
+		// up to it, so that team alone starts again. A position at or before the
+		// end can at worst hand a line over twice, the direction this must fail
+		// in, and a log that cannot be read keeps the cursor as it always did.
+		if sharing {
+			if tail, err := teams.ReadTraffic(a.config.teamProfile(), id, "", 1); err == nil {
+				end := teamLogStart
+				if len(tail) > 0 {
+					end = tail[len(tail)-1].ID
+				}
+				if cursor > end {
+					continue
+				}
+			}
+		}
+		a.team.cursors[id] = cursor
 	}
 }
 
@@ -1030,9 +1093,14 @@ func (a *Agent) saveTeamCursorsLocked() {
 	for id, cursor := range a.team.cursors {
 		read[id] = cursor
 	}
+	device := ""
+	if a.teamsSharing() {
+		device = teamCursorDevice()
+	}
 	raw, err := json.Marshal(struct {
-		Read map[string]string `json:"read"`
-	}{read})
+		Read   map[string]string `json:"read"`
+		Device string            `json:"device,omitempty"`
+	}{read, device})
 	if err != nil {
 		return
 	}
@@ -1057,7 +1125,7 @@ func writeTeamFile(path string, raw []byte) error {
 		_ = os.Remove(name)
 		return err
 	}
-	if err := os.Rename(name, path); err != nil {
+	if err := fsreplace.Rename(name, path); err != nil {
 		_ = os.Remove(name)
 		return err
 	}
@@ -1088,19 +1156,49 @@ func (a *Agent) refreshTeamDigest(ctx context.Context) {
 	if profile == "" || ctx.Err() != nil {
 		return
 	}
-	block := a.teamDigest(profile)
+	sharing := a.teamsSharing()
+	a.mu.Lock()
+	a.adoptTeamDigestSharingLocked(sharing)
+	generation := a.teamDigestGeneration
+	a.mu.Unlock()
+	block := a.teamDigestWithSharing(profile, sharing)
+	current := a.teamsSharing()
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.closed {
+	if a.closed || ctx.Err() != nil || generation != a.teamDigestGeneration {
+		return
+	}
+	a.adoptTeamDigestSharingLocked(current)
+	if current != sharing {
 		return
 	}
 	a.teamDigestText = block
+}
+
+// adoptTeamDigestSharingLocked retires every scratch digest made under a
+// different sharing state. Keep its message slot so turn and checkpoint indices
+// stay valid; these notes are request context and are never journalled.
+func (a *Agent) adoptTeamDigestSharingLocked(sharing bool) {
+	if a.teamDigestKnown && a.teamDigestSharing != sharing {
+		a.teamDigestGeneration++
+		a.teamDigestText = ""
+		for i, message := range a.messages {
+			if message.Role == "user" && strings.HasPrefix(messageContentText(message), teamNoteOpening+"\n\n") {
+				a.messages[i] = textMessage("user", teamNoteOpening+"\n\nThe previous team history reading is no longer current.")
+			}
+		}
+	}
+	a.teamDigestSharing, a.teamDigestKnown = sharing, true
 }
 
 // teamDigest is one digest per managed team, "" for a conversation that
 // manages none. Who the manager is and what it does is not here: that is the
 // role note's, which cannot arrive late ([teamRoleBlock]).
 func (a *Agent) teamDigest(profile string) string {
+	return a.teamDigestWithSharing(profile, a.teamsSharing())
+}
+
+func (a *Agent) teamDigestWithSharing(profile string, sharing bool) string {
 	a.team.mu.Lock()
 	roles := a.teamRolesLocked(profile)
 	keys := append([]string(nil), a.teamKeysLocked()...)
@@ -1128,7 +1226,7 @@ func (a *Agent) teamDigest(profile string) string {
 			continue
 		}
 		team = managedView(file, team)
-		log, _ := teams.ReadTraffic(profile, role.id, "", teamStateLook)
+		log, _ := teams.ReadHistory(profile, role.id, teamStateLook, sharing)
 		states := memberStates(team, keys, now, log, &a.team.journals)
 		markShared(file, team, states)
 		parts = append(parts, teams.Digest(team, states, recentOf(log), teamDigestBudget))

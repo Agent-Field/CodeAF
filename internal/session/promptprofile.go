@@ -370,6 +370,9 @@ func leanDropsSection(heading string) bool {
 // it: the table in tools_capabilities.go that owns it, and the pre-arming below.
 const questionsGroup = "questions"
 
+// secretsGroup is the shelf group `request_secret` waits in.
+const secretsGroup = "secrets"
+
 // leanCapabilityGroups is what a LEAN belt shelves on top of
 // [capabilityGroups], built exactly the way that table is — names, no schemas,
 // no gates — so a tool this machine does not build is missing from the shelf for
@@ -536,7 +539,7 @@ func (c Config) instructionLimit() int {
 // carries both is carrying two copies of one set of house rules. On a full
 // prefix both are quoted, because a frontier model can hold them and the rules
 // the person actually edits are the highest-value text in the prefix
-// (docs/design/prompt-diet/DESIGN.md §7 says so in as many words). On a lean one
+// . On a lean one
 // the second copy is the first thing to go — and it is the second FOUND rather
 // than a named file, so a project that has only CLAUDE.md still gets its rules.
 func (c Config) onlyOneInstructionFile() bool { return c.promptProfile().lean() }

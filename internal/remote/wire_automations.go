@@ -12,7 +12,7 @@ import "github.com/Agent-Field/codeaf/internal/automation"
 // ── AUTOMATIONS FOLLOW THE MACHINE THAT RUNS THEM ───────────────────────────
 //
 // An automation is a row in one machine's store, run by that machine's clock
-// while a window is open on it (docs/design/automations/DESIGN.md). A window
+// while a window is open on it. A window
 // over --host or --at sits in front of a conversation on the FAR machine, and
 // that conversation's `automation` tool proposes into the far store — so the
 // list, the run lines and the notifications such a window draws are the far

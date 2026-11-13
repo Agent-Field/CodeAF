@@ -257,6 +257,9 @@ func seatTranscript(s *seat) string {
 // to each while both are in flight, and each seat is asserted to have been
 // handed its own note and NEVER the other's.
 func TestTwoWorkersLiveAtOnceEachGetOnlyItsOwnNote(t *testing.T) {
+	// This fixture measures note delivery; optional workspace-engine discovery
+	// must not consume the bounded wait for the first worker command.
+	t.Setenv("CODEAF_FURROW", filepath.Join(t.TempDir(), "not-installed"))
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	t.Setenv("CODEAF_PLANDB_BIN", realPlandbDoor(t))
 	store := runOpenStore(t)

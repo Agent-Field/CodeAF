@@ -173,11 +173,11 @@ func (a *app) spendSplit() (conversation, tasks float64, ok bool) {
 func (a *app) selfSessionID() string { return sessionIDOf(a.file) }
 
 // sessionIDOf is the conversation id a journal at file is kept under: the name
-// of its folder. "" for no file.
+// of its session folder in either transcript layout. "" for no file.
 func sessionIDOf(file string) string {
 	file = strings.TrimSpace(file)
 	if file == "" {
 		return ""
 	}
-	return filepath.Base(filepath.Dir(file))
+	return filepath.Base(session.DirOf(file))
 }

@@ -10,13 +10,10 @@ package tui3
 // "▸ worked · 10 tool calls · ctrl+e" and the person who walked in to watch the
 // work was handed the report and nothing else.
 //
-// The owner ruled the other way on 2026-09-01 (issue #252, ruling 1): the task
-// page folds settled work into phase chips by default and the machinery stays
-// one keypress away. The chip is spent per SETTLED PHASE now — the work that
-// preceded each paragraph the node wrote — so the machinery collapses, every
-// paragraph stays standing, and the live frontier does not fold at all. That
-// answers the original complaint without building the page on the premise that
-// every call has to be read.
+// The chip is spent per SETTLED PHASE now — the work that preceded each paragraph the node
+// wrote — so the machinery collapses, every paragraph stays standing, and the live
+// frontier does not fold at all. That answers the original complaint without building the
+// page on the premise that every call has to be read.
 //
 // So these tests are rewritten WITH the design: what folds, what may never
 // fold, and every door that opens what did.

@@ -103,6 +103,7 @@ func (l *errandLab) app(here string, turns ...[]session.Event) *app {
 	l.t.Helper()
 	l.agent = &errandAgent{fakeAgent: fakeAgent{model: "m", turns: turns}}
 	a := l.homeLab.app(here)
+	keepSurfaceWorkersInTest(l.t, a)
 	a.errandsRoot = l.errands
 	a.errand = func(orders ErrandOrders) (Agent, error) {
 		l.dirs = append(l.dirs, orders.Dir)
@@ -720,7 +721,7 @@ func TestEscLeavesTheExchangeAliveAndTheListMoving(t *testing.T) {
 	if cursorWord(a) == before {
 		t.Fatal("the list did not move with an exchange standing beside it")
 	}
-	a.quit()
+	spend(t, a, a.quit())
 	if lab.agent.closes == 0 {
 		t.Fatal("quitting left the errand's agent open")
 	}
@@ -1580,17 +1581,25 @@ func TestQuittingFilesEveryOpenExchange(t *testing.T) {
 	a := lab.app(mine)
 	a.openHome()
 	first := askedHere(t, lab, a, "remind me at 6 to leave")
+	firstAgent := lab.agent
+	// Each exchange owns an agent; quit closes them concurrently.
+	lab.agent = &errandAgent{fakeAgent: fakeAgent{model: "m"}}
 	askedHere(t, lab, a, "tell me when CI goes red")
 
 	a.errandEvent(first, session.Event{Kind: session.EventAutomationUpdate,
 		Automation: &session.AutomationNotice{Update: "saved", Automation: automation.Automation{ID: "cccc000000000009", Title: "leave"}}})
 
-	a.quit()
+	var closed <-chan struct{}
+	a.closingStarted = func(done <-chan struct{}) { closed = done }
+	spend(t, a, a.quit())
+	<-closed
 	if len(a.exchanges) != 0 {
 		t.Fatalf("quitting left %d exchanges open", len(a.exchanges))
 	}
-	if lab.agent.closes < 2 {
-		t.Fatalf("quitting closed %d of two errand agents", lab.agent.closes)
+	for i, agent := range []*errandAgent{firstAgent, lab.agent} {
+		if agent.closes != 1 {
+			t.Fatalf("quitting closed errand agent %d %d times, want once", i+1, agent.closes)
+		}
 	}
 	for _, dir := range lab.dirs {
 		if _, err := os.Stat(filepath.Join(dir, "transcript.jsonl")); err != nil {

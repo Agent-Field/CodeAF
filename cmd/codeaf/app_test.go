@@ -7,11 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -29,6 +31,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/session"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
+	"github.com/Agent-Field/codeaf/internal/tui3"
 )
 
 // THE COMMAND ITSELF, ON ITS OWN PIPES. The hello is the first line and names
@@ -36,6 +39,16 @@ import (
 // their members named by agent id, an unknown method is refused, and the
 // process leaves when its input ends.
 func TestAppCommandAnswersHelloPingCrewsAndUnknownMethod(t *testing.T) {
+	oldFlush := flushFinalSaves
+	var flushed atomic.Int32
+	flushFinalSaves = func(ctx context.Context) error {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		flushed.Add(1)
+		return nil
+	}
+	t.Cleanup(func() { flushFinalSaves = oldFlush })
 	root := resolvedTempDir(t)
 	t.Setenv("HOME", filepath.Join(root, "home"))
 	t.Setenv(home.EnvVar, filepath.Join(root, "unused"))
@@ -130,6 +143,9 @@ func TestAppCommandAnswersHelloPingCrewsAndUnknownMethod(t *testing.T) {
 		if err != nil {
 			t.Fatalf("the app left with %v", err)
 		}
+		if flushed.Load() != 1 {
+			t.Fatalf("app returned before final durability: flushes = %d", flushed.Load())
+		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("the app did not leave when its input ended")
 	}
@@ -150,7 +166,9 @@ type fakeConversation struct {
 	interrupted  int
 	needs        bool
 	tasks        chan session.Event
+	heldTasks    []session.Event
 	questions    chan session.Event
+	heldAsks     []session.Event
 	endLane      func()
 	answers      []session.Answer
 	model        string
@@ -202,7 +220,7 @@ func (f *fakeConversation) WatchTaskRoom(uint64) (<-chan session.Event, func(), 
 func (f *fakeConversation) WatchQuestions() (<-chan session.Event, func()) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	lane := make(chan session.Event, 8)
+	lane := laneWith(8, &f.heldAsks)
 	var once sync.Once
 	end := func() { once.Do(func() { close(lane) }) }
 	f.questions, f.endLane = lane, end
@@ -222,10 +240,33 @@ func (f *fakeConversation) ResolveQuestion(answer session.Answer) error {
 
 // raise puts one event on the conversation's question lane.
 func (f *fakeConversation) raise(event session.Event) {
+	f.put(&f.questions, &f.heldAsks, event)
+}
+
+// put sends event on the lane, or holds it while nobody watches yet. The backend
+// starts watching only after a test can already see the agent as live, and a
+// send on the lane the fake has not made would block for ever.
+func (f *fakeConversation) put(lane *chan session.Event, held *[]session.Event, event session.Event) {
 	f.mu.Lock()
-	lane := f.questions
+	open := *lane
+	if open == nil {
+		*held = append(*held, event)
+	}
 	f.mu.Unlock()
-	lane <- event
+	if open != nil {
+		open <- event
+	}
+}
+
+// laneWith makes a lane that starts with what was held for it, in order, and
+// room for size more.
+func laneWith(size int, held *[]session.Event) chan session.Event {
+	lane := make(chan session.Event, size+len(*held))
+	for _, event := range *held {
+		lane <- event
+	}
+	*held = nil
+	return lane
 }
 
 func (f *fakeConversation) Submit(ctx context.Context, text string) (<-chan session.Event, error) {
@@ -441,7 +482,7 @@ func (f *fakeConversation) NeedsPerson() bool { f.mu.Lock(); defer f.mu.Unlock()
 func (f *fakeConversation) WatchTaskUpdates() (<-chan session.Event, func()) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.tasks = make(chan session.Event, 4)
+	f.tasks = laneWith(4, &f.heldTasks)
 	lane := f.tasks
 	var once sync.Once
 	return lane, func() { once.Do(func() { close(lane) }) }
@@ -508,11 +549,23 @@ const appFakeTranscript = "/state/v3/places/proj/5e55a0f1/transcript.jsonl"
 //
 // Every fake backend keeps its own app file, because every fake agent has the
 // same id and a budget one test gave it must not reach the next.
+//
+// A rig given no opener refuses every open, as a host that cannot be reached
+// would. Background work (the brief's writer holding a job's chat) can open a
+// conversation in any rig, and a nil opener would panic the test binary.
 func newFakeBackend(rec appwire.Emitter, open appOpener) *appBackend {
+	if open == nil {
+		open = refuseAppOpen
+	}
 	backend := newAppBackend(rec, open)
 	backend.mint = func(string) (string, error) { return appFakeTranscript, nil }
 	backend.state = &appState{path: filepath.Join(os.TempDir(), "codeaf-app-test-"+strconv.Itoa(os.Getpid()), strconv.FormatUint(appFakeStates.Add(1), 10), appStateName)}
 	return backend
+}
+
+// refuseAppOpen is the opener of a rig that was given none.
+func refuseAppOpen(appOpenAsk) (*appConn, error) {
+	return nil, appwire.Errorf(appwire.CodeUnreachable, "this test backend opens no conversations")
 }
 
 // appFakeStates numbers the fake backends' app files.
@@ -600,43 +653,57 @@ func TestAppSendMapsSessionEventsOntoTurnEvents(t *testing.T) {
 	defer rec.mu.Unlock()
 	// A create with no words announces nothing (appblank.go), so the first
 	// event is the send's own agent.changed.
-	got := rec.events[:done+2]
+	// agent.changed goes straight out while the turn's events go through their
+	// ordered box, so where it lands among them is not part of the order. Each
+	// one says the agent as it stood: working from the send, the first call's live
+	// line (appliveline.go), idle under its title at the end.
+	got, data, said := []string{}, []any{}, []appwire.Agent{}
+	for i, event := range rec.events[:done+2] {
+		if c, ok := rec.data[i].(appwire.AgentChanged); ok {
+			said = append(said, c.Agent)
+			continue
+		}
+		got, data = append(got, event), append(data, rec.data[i])
+	}
+	if said[0].State != appwire.StateWorking {
+		t.Fatalf("first change = %s, want working", said[0].State)
+	}
+	firstCall := tui3.ToolTitle("read", "", "read go.mod")
+	if !slices.ContainsFunc(said, func(a appwire.Agent) bool { return a.Line == firstCall }) {
+		t.Fatalf("no change said the first call's live line %q: %+v", firstCall, said)
+	}
 	want := []string{
-		appwire.EventAgentChanged, appwire.EventTurnStarted, appwire.EventEntryAdded,
+		appwire.EventTurnStarted, appwire.EventEntryAdded,
 		appwire.EventTurnThinking, appwire.EventTurnThinkingDone, appwire.EventTurnDelta, appwire.EventEntryAdded,
 		appwire.EventTurnTool, appwire.EventTurnTool, appwire.EventTurnTool, appwire.EventTurnTool,
-		appwire.EventTaskChanged, appwire.EventAgentChanged, appwire.EventTurnDone, appwire.EventAgentChanged,
+		appwire.EventTaskChanged, appwire.EventTurnDone,
 	}
 	if strings.Join(got, " ") != strings.Join(want, " ") {
 		t.Fatalf("events:\n got %v\nwant %v", got, want)
 	}
-	data := rec.data[:done+2]
-	if s := data[0].(appwire.AgentChanged).Agent.State; s != appwire.StateWorking {
-		t.Fatalf("first change = %s, want working", s)
-	}
-	if d := data[1].(appwire.TurnStarted); d.Turn != turn || d.Agent != agent.ID {
+	if d := data[0].(appwire.TurnStarted); d.Turn != turn || d.Agent != agent.ID {
 		t.Fatalf("turn.started = %+v", d)
 	}
-	if e := data[2].(appwire.EntryAdded).Entry; e.Kind != appwire.EntryUser || e.ID != "u0" || e.Text != "fix it" || e.Turn != turn || e.Agent != agent.ID {
+	if e := data[1].(appwire.EntryAdded).Entry; e.Kind != appwire.EntryUser || e.ID != "u0" || e.Text != "fix it" || e.Turn != turn || e.Agent != agent.ID {
 		t.Fatalf("the person's entry = %+v", e)
 	}
 	// The thought is said live and never kept; the words before a tool call
 	// are an update.
-	if d := data[3].(appwire.TurnThinking); d.Text != "hmm" || d.Turn != turn {
+	if d := data[2].(appwire.TurnThinking); d.Text != "hmm" || d.Turn != turn {
 		t.Fatalf("thinking = %+v", d)
 	}
-	if d := data[4].(appwire.TurnThinkingDone); d.Seconds < 1 {
+	if d := data[3].(appwire.TurnThinkingDone); d.Seconds < 1 {
 		t.Fatalf("thinking done = %+v", d)
 	}
-	if d := data[5].(appwire.TurnDelta); d.Kind != appwire.DeltaText || d.Text != "hello world" {
+	if d := data[4].(appwire.TurnDelta); d.Kind != appwire.DeltaText || d.Text != "hello world" {
 		t.Fatalf("text = %+v", d)
 	}
-	if e := data[6].(appwire.EntryAdded).Entry; e.Kind != appwire.EntryUpdate || e.ID != "a0.0" || e.Msg == nil || *e.Msg != 0 || e.Text != "hello world" || e.Thinking != "" {
+	if e := data[5].(appwire.EntryAdded).Entry; e.Kind != appwire.EntryUpdate || e.ID != "a0.0" || e.Msg == nil || *e.Msg != 0 || e.Text != "hello world" || e.Thinking != "" {
 		t.Fatalf("the update entry = %+v", e)
 	}
-	begin := data[7].(appwire.TurnTool)
-	end := data[8].(appwire.TurnTool)
-	failed := data[10].(appwire.TurnTool)
+	begin := data[6].(appwire.TurnTool)
+	end := data[7].(appwire.TurnTool)
+	failed := data[9].(appwire.TurnTool)
 	if begin.Phase != appwire.PhaseBegin || begin.Call != "c1" || begin.Name != "read" || begin.Title != "read go.mod" || begin.OK != nil {
 		t.Fatalf("begin = %+v", begin)
 	}
@@ -646,10 +713,10 @@ func TestAppSendMapsSessionEventsOntoTurnEvents(t *testing.T) {
 	if failed.Phase != appwire.PhaseEnd || failed.OK == nil || *failed.OK || failed.Summary != "exit status 1" {
 		t.Fatalf("failed = %+v", failed)
 	}
-	if task := data[11].(appwire.TaskChanged).Task; task.ID != agent.ID+":3" || task.Agent != agent.ID || task.State != appwire.TaskRunning || task.Title != "fix the parser" {
+	if task := data[10].(appwire.TaskChanged).Task; task.ID != agent.ID+":3" || task.Agent != agent.ID || task.State != appwire.TaskRunning || task.Title != "fix the parser" {
 		t.Fatalf("task = %+v", task)
 	}
-	if d := data[13].(appwire.TurnDone); !d.OK || d.Turn != turn || d.Error != "" {
+	if d := data[11].(appwire.TurnDone); !d.OK || d.Turn != turn || d.Error != "" {
 		t.Fatalf("turn.done = %+v", d)
 	}
 }
@@ -1401,6 +1468,8 @@ func TestAppModelsListIsThePickersList(t *testing.T) {
 	if err := catalog.Remember(options, []catalog.Model{
 		{ID: "deepseek/deepseek-v4.1-flash", Name: "DeepSeek V4.1 Flash", Created: 1760000000, InputModalities: []string{"text"}, OutputModalities: []string{"text"}},
 		{ID: "qwen/qwen3-coder", Name: "Qwen3 Coder", Created: -100, InputModalities: []string{"text"}, OutputModalities: []string{"text"}},
+		{ID: "z-ai/glm-5.3", Name: "GLM 5.3", ContextLength: 202752, ArenaElo: 1312.5, PromptPrice: 0.0000006, CompletionPrice: 0.0000022, InputModalities: []string{"text"}, OutputModalities: []string{"text"}},
+		{ID: "openrouter/auto", Name: "Auto Router", PromptPrice: -1, CompletionPrice: -1, PriceUnknown: true, InputModalities: []string{"text"}, OutputModalities: []string{"text"}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -1426,6 +1495,14 @@ func TestAppModelsListIsThePickersList(t *testing.T) {
 	}
 	if m := byID["qwen/qwen3-coder"]; m.Provider != "openrouter" || m.Default || m.ListedAt != 0 {
 		t.Fatalf("models = %+v", models)
+	}
+	// The catalog's facts ride along: prices per million tokens, the window and
+	// the Arena Elo. A router whose price nobody knows sends none of them, never $0.
+	if m := byID["z-ai/glm-5.3"]; m.PriceInPerM == nil || m.PriceOutPerM == nil || math.Abs(*m.PriceInPerM-0.6) > 1e-9 || math.Abs(*m.PriceOutPerM-2.2) > 1e-9 || m.ContextLength != 202752 || m.ArenaElo != 1312.5 {
+		t.Fatalf("model facts = %+v", m)
+	}
+	if m, ok := byID["openrouter/auto"]; ok && (m.PriceInPerM != nil || m.PriceOutPerM != nil || m.ContextLength != 0 || m.ArenaElo != 0) {
+		t.Fatalf("unknown price became a figure: %+v", m)
 	}
 	if err := os.WriteFile(config.BudgetConfigPath(settings.ProfileDir), []byte(`{"model.talk":"unlisted/model-2099-12-31"}`), 0600); err != nil {
 		t.Fatal(err)
@@ -1553,8 +1630,8 @@ func TestAppARealAgentIsNamedOnceFromItsIntent(t *testing.T) {
 		backend.Close()
 		t.Fatalf("create = %v", err)
 	}
-	opening := session.OpeningName(words, []session.MessageAttachment{{Kind: "file", Path: "plan.md"}})
-	if agent.Title != opening || utf8.RuneCountInString(agent.Title) > session.AppNameLimit || strings.Contains(agent.Title, "plan.md") {
+	const opening = "say done and then tell me about the…"
+	if agent.Title != opening || utf8.RuneCountInString(agent.Title) > session.OpeningNameLimit || strings.Contains(agent.Title, "plan.md") {
 		backend.Close()
 		t.Fatalf("title = %q, want the opening name %q", agent.Title, opening)
 	}
@@ -1642,7 +1719,7 @@ func TestAppCreateAnswersBeforeTheConversationIsOpen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if took > 50*time.Millisecond || agent.State != appwire.StateWorking || agent.Title != "fix the parser" || agent.ID != "5e55a0f1" {
+	if took > 50*time.Millisecond || agent.State != appwire.StateStarting || agent.Title != "fix the parser" || agent.ID != "5e55a0f1" {
 		t.Fatalf("create took %v and answered %+v", took, agent)
 	}
 	if listed, _ := backend.ListAgents(""); len(listed) != 1 || listed[0].ID != agent.ID {

@@ -104,6 +104,10 @@ type sessionHeader struct {
 
 type sessionEntry struct {
 	ModelSwitch *ModelSwitch `json:"modelSwitch,omitempty"`
+	// KnowledgeProject scopes subsequent original messages after a workspace anchor.
+	KnowledgeProject         string `json:"knowledgeProject,omitempty"`
+	KnowledgePreviousProject string `json:"knowledgePreviousProject,omitempty"`
+
 	// Presentation is the source-authored audience of this occurrence, never a
 	// rule inferred from its words. Older entries omit it and use conservative
 	// compatibility handling only for complete reserved bookkeeping records.
@@ -289,8 +293,9 @@ type sessionEntry struct {
 	Title string `json:"title,omitempty"`
 	// LiteralName says the title is a rule's or a person's exact words rather
 	// than a generated label, so the replay keeps it verbatim (appnames.go).
-	LiteralName bool   `json:"literalName,omitempty"`
-	ShortTitle  string `json:"shortTitle,omitempty"` // Deprecated: accepted for old records; never used as a name.
+	LiteralName bool             `json:"literalName,omitempty"`
+	IntentName  *intentNameState `json:"intentName,omitempty"`
+	ShortTitle  string           `json:"shortTitle,omitempty"` // Deprecated: accepted for old records; never used as a name.
 
 	// Usage is what one COMPLETED turn — or one auxiliary call beside it — cost,
 	// and it is on its own line rather than on the assistant message that ended
@@ -441,12 +446,11 @@ type journalRule struct {
 
 // journalAbandoned is ONE TURN NOBODY WAITED FOR THE END OF.
 //
-// IT IS THE ONE LINE THAT COULD NOT BE RECONSTRUCTED. Every other record of what
-// a turn did is written when the turn ENDS — the seal carries its cost, the
-// principal line carries its decision — and the whole definition of an abandoned
-// turn is that its ending never came. Before this line a turn let go of at a
-// bound was indistinguishable in this file from a turn that simply stopped
-// talking, which is exactly the reading that made issue #265's four minutes
+// IT IS THE ONE LINE THAT COULD NOT BE RECONSTRUCTED. The seal carries a turn's
+// cost, but cannot say that the session let go of it while tools still ran.
+// Before this line a turn let go of at a bound was indistinguishable in this
+// file from a turn that simply stopped talking, which is exactly the reading
+// that made issue #265's four minutes
 // unaccountable: the surface was freed, the person moved on, and the file said a
 // turn had been stopped and nothing about the fact that something may still have
 // been running under it.
@@ -454,9 +458,10 @@ type journalRule struct {
 // Reason is why the turn was let go of ([AbandonReason]); today the only one is
 // the stop bound. The token and money figures are THE TURN'S LAST KNOWN SPEND —
 // what [Agent.bank] had moved by the moment the door was opened — and they are
-// EVIDENCE AND NEVER SPEND, for [journalCall]'s reason exactly: every one of
-// those calls already wrote its own line and moved the machine's ledger, so a
-// replay that summed this one too would bill the abandoned turn twice.
+// EVIDENCE AND NEVER SPEND: the displaced loop writes its conversation steps
+// in a usage seal, while on-clock errands already wrote auxiliary usage lines.
+// The calls also moved the machine's ledger when banked. Replaying this tally
+// as spend would count those charges twice.
 //
 // A turn abandoned before it had spent anything writes the line with no figures
 // on it, which is the emptiness law: the fact worth recording is that the turn
@@ -497,10 +502,10 @@ type journalCreated struct {
 
 // journalCall is what ONE provider response reported, on its own line.
 //
-// IT IS EVIDENCE AND NEVER SPEND. The seal above already carries every one of
-// these numbers, summed; a replay that added these lines too would bill the
-// session twice for the same calls. Nothing reads them back into the session's
-// totals, and [replaySessionFile] says so where it drops them.
+// AN ORDINARY ROW IS EVIDENCE AND NEVER SPEND. The seal above already carries
+// every one of these numbers, summed; a replay that added these lines too would
+// bill the session twice for the same calls. Only a late receipt, marked by
+// Arm below, restores money from its own row rather than from a seal.
 //
 // It exists because a turn is sixty-odd requests with wildly different shapes —
 // a cold first call, then fifty that are almost all cache read — and the sum of
@@ -536,9 +541,10 @@ type journalCreated struct {
 // fires when the first answer is slow, a receipt is fetched when a stream was
 // cut — and a journal that records every cheap call and none of the dear ones
 // answers a cost autopsy wrongly: the measured session's call lines summed to
-// barely half its bill until the arms wrote theirs. The money is already banked
-// by the reconciliation itself, so the row is evidence here and never spend,
-// the same as every other line of this shape.
+// barely half its bill until the arms wrote theirs. The money was banked LATE,
+// outside every turn seal, so this row is the only record a replay has of that
+// charge. Restoring it adds no turn: the receipt is a call, not a new step of
+// the conversation.
 type journalCall struct {
 	Model      string  `json:"model,omitempty"`
 	Endpoint   string  `json:"endpoint,omitempty"`
@@ -721,23 +727,18 @@ type journalMark struct {
 // this is an act — and because a handover can fire with no reading behind it at
 // all (a sidecar nobody could reach still meets the ceiling).
 //
-// Decision is `moved`, `dropped:nothing-left` — the running model declared the
-// work finished AND the mark's own reader agreed nothing remained — or one of the
-// two ways a handover ends with no task of its own: `dropped:no-brief`, when
-// nothing could be written down for anybody, and `dropped:work-already-out`, when
-// everything there was to write down was about pieces this conversation is still
-// holding and therefore nobody else's to take (checkpoint.go's custody road). On a
-// run with a goal owner two more are possible, and both mean the turn was sealed
-// at the handover with no task started: `dropped:stopped`, the owner read the
-// ending and stopped the run with a reason, and `dropped:done`, the owner read it
-// and said the ask was met (checkpoint.go's [Agent.endTurnUnderSteward]). And the
-// write seam writes one more of its own, `dropped:delivering-own-result`: the turn
-// is finishing the delivery of a result this conversation already owns, so the
-// counter stood down and the work stayed here (writeseam.go's
-// [Agent.writeSeamFires]). TaskID names the node when one was ADMITTED, and is
-// absent otherwise by the emptiness law the rest of the line keeps — the delivery
-// row admits nothing and names its result in Reason instead, so a bench counting
-// tasks started off that field still counts only tasks.
+// Decision is `moved`, `dropped:nothing-left` — the running model declared the work
+// finished AND the mark's own reader agreed nothing remained — or one of the two ways a
+// handover ends with no task of its own: `dropped:no-brief`, when nothing could be written
+// down for anybody, and `dropped:work-already-out`, when everything there was to write
+// down was about pieces this conversation is still holding and therefore nobody else's to
+// take (checkpoint.go's custody road). And the write seam writes one more of its own,
+// `dropped:delivering-own-result`: the turn is finishing the delivery of a result this
+// conversation already owns, so the counter stood down and the work stayed here
+// (writeseam.go's [Agent.writeSeamFires]). TaskID names the node when one was ADMITTED,
+// and is absent otherwise by the emptiness law the rest of the line keeps — the delivery
+// row admits nothing and names its result in Reason instead, so a bench counting tasks
+// started off that field still counts only tasks.
 //
 // Carry NAMES THE RUNG THAT SUPPLIED THE BRIEF the task actually opened on
 // (checkpoint.go's [Agent.handOverRunningTurn]): `handoff`, `draft` or `ask`.
@@ -894,15 +895,25 @@ type journalDivision struct {
 // counts every request to the provider, Turns only the ones a turn of the
 // person's made (see [Agent.addAuxiliaryUsage]).
 type journalUsage struct {
-	Model      string  `json:"model,omitempty"`
-	Input      int     `json:"input,omitempty"`
-	Output     int     `json:"output,omitempty"`
-	CacheRead  int     `json:"cacheRead,omitempty"`
-	CacheWrite int     `json:"cacheWrite,omitempty"`
-	CostUSD    float64 `json:"costUsd,omitempty"`
-	Calls      int     `json:"calls,omitempty"`
-	DurationMS int64   `json:"durationMs,omitempty"`
-	Aux        bool    `json:"aux,omitempty"`
+	CallID string `json:"call_id,omitempty"`
+	// Folded keeps a worker's already-billed share in the conversation's books
+	// without reconstructing it as another model call on the machine ledger.
+	Folded       bool   `json:"folded,omitempty"`
+	Billing      string `json:"billing,omitempty"`
+	BillingBasis string `json:"billing_basis,omitempty"`
+	Unbilled     bool   `json:"unbilled,omitempty"`
+	FactoryJob   string `json:"factory_job,omitempty"`
+	// RemoteEvent makes mirrored charges idempotent across cursor replay.
+	RemoteEvent string  `json:"remote_event,omitempty"`
+	Model       string  `json:"model,omitempty"`
+	Input       int     `json:"input,omitempty"`
+	Output      int     `json:"output,omitempty"`
+	CacheRead   int     `json:"cacheRead,omitempty"`
+	CacheWrite  int     `json:"cacheWrite,omitempty"`
+	CostUSD     float64 `json:"costUsd,omitempty"`
+	Calls       int     `json:"calls,omitempty"`
+	DurationMS  int64   `json:"durationMs,omitempty"`
+	Aux         bool    `json:"aux,omitempty"`
 	// Empty marks a paid auxiliary call that reached its output ceiling without
 	// returning any answer. Role says which errand it was; today only a reflex
 	// writes the mark.
@@ -1144,6 +1155,7 @@ func (p journalPart) placeholderBecause(reason string) ai.ContentPart {
 // lock orders the writes, this one keeps a write from being interleaved by
 // anything that reaches the file another way.
 type sessionFile struct {
+	remoteSeen map[string]bool
 	// onWrite hears each line that reached the file, once the lock is released.
 	onWrite func()
 	mu      sync.Mutex
@@ -1231,7 +1243,8 @@ type sessionFile struct {
 	stamps *stampIndex
 
 	// restored is what this conversation had already spent when the file was
-	// opened: the SUM of its usage lines, replayed once and never updated after.
+	// opened: the SUM of its usage lines and late-receipt call lines, replayed
+	// once and never updated after.
 	// It is the file's answer to "what did this cost before today", and the agent
 	// seeds its own running total from it at construction (agent.go). Nothing
 	// stores a second copy of the total — the lines are the record, and this is
@@ -1240,7 +1253,8 @@ type sessionFile struct {
 }
 
 // RestoredUsage is what the conversation in this file had spent before it was
-// opened, and the zero Usage for a file that is new or holds no usage lines.
+// opened, and the zero Usage for a file that is new or holds no usage lines or
+// late-receipt call lines.
 func (s *sessionFile) RestoredUsage() Usage {
 	if s == nil {
 		return Usage{}
@@ -1748,6 +1762,10 @@ func openSessionFile(path, cwd, model, id string) (*sessionFile, replayedSession
 		journal.stamps = &stampIndex{}
 	}
 	journal.restored = replayed.usage
+	journal.remoteSeen = replayed.remoteSeen
+	if info, err := file.Stat(); err == nil {
+		replayed.readBytes = info.Size()
+	}
 
 	if !replayed.existed {
 		// The header names the session once. A resumed file keeps its
@@ -1897,6 +1915,7 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 		earlierRows int
 		title       string
 		shortTitle  string
+		intentName  *intentNameState
 		id          string
 		lines       int
 		scanned     int
@@ -1910,6 +1929,7 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 	// compaction marker for the same reason the title does — where a picture came
 	// from is a fact about the file, not about the tail of the transcript.
 	images := make(map[string]string)
+	remoteSeen := make(map[string]bool)
 	// And the note index with it, for the same reason and in the same pass: the
 	// mark is on the LINE, and once the line has been rebuilt into a message
 	// there is nothing left to read it off (see [sessionFile.notes]).
@@ -2186,13 +2206,19 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 			messages = messages[:len(messages)-entry.Dropped]
 			reasoning = reasoning[:len(reasoning)-entry.Dropped]
 		case "usage":
-			// EVERY line is added, and none is ever taken back. This is the one
-			// arm that accumulates rather than rebuilds: a compaction below
-			// replaces the message window, and money spent before it stays spent.
+			// EVERY line is added, and none is ever taken back. Charges accumulate
+			// rather than rebuild: a compaction below replaces the message window,
+			// and money spent before it stays spent.
 			if entry.Usage == nil {
 				continue
 			}
 			used := entry.Usage
+			if used.RemoteEvent != "" {
+				if remoteSeen[used.RemoteEvent] {
+					continue
+				}
+				remoteSeen[used.RemoteEvent] = true
+			}
 			spent.Input += used.Input
 			spent.Output += used.Output
 			spent.CacheRead += used.CacheRead
@@ -2211,18 +2237,30 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 				spent.Turns += used.Calls
 			}
 		case "call":
-			// NEVER BILLED, and this arm exists to say so rather than to leave it
-			// to the switch falling off the end. A call line is the SHAPE of one
-			// request — who served it, how much of its prompt was warm — and every
-			// dollar on it is already counted in the seal that closed its turn.
-			// Folding it into `spent` would bill the session twice for the same
-			// money.
+			// Ordinary call lines are NEVER BILLED, and this arm exists to say so
+			// rather than to leave it to the switch falling off the end. A call line
+			// is the SHAPE of one request — who served it, how much of its prompt
+			// was warm — and every ordinary dollar on it is already counted in the
+			// seal that closed its turn. Folding it into `spent` would bill the
+			// session twice for the same money.
+			//
+			// AN ARM IS THE EXCEPTION: its money was banked late, outside every
+			// seal, so this line is the only record a replay has of that charge.
+			// It restores one call and no turn, exactly as [Agent.reconciled] banked.
 			//
 			// IT IS READ FOR ITS SHAPE, which is what it was written for: the
 			// size of each request and what came back from it, for a page that
 			// watches this work with no lane to it ([RequestBooks]).
 			if entry.Call != nil {
 				requests.observe(*entry.Call)
+				if call := entry.Call; call.Arm != "" {
+					spent.Input += call.Input
+					spent.Output += call.Output
+					spent.CacheRead += call.CacheRead
+					spent.CacheWrite += call.CacheWrite
+					spent.CostUSD += call.CostUSD
+					spent.Calls++
+				}
 			}
 		case "error":
 			// DROPPED ON PURPOSE, for the reason a call line is, and one of its
@@ -2243,13 +2281,13 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 				}
 			}
 		case "abandoned":
-			// DROPPED ON PURPOSE, for the reason a call line is and one of its
-			// own. Every dollar on it is already counted — the calls it sums each
-			// wrote their own line and each moved the machine's ledger when they
-			// were made (usage_ledger.go) — so folding it in would bill the
-			// abandoned turn twice. And it is not a message: what the turn had
-			// said before it was let go of is already in the transcript above it,
-			// and a resumed session must open on that rather than on a note about
+			// Evidence only: conversation steps belong to the displaced loop's
+			// usage seal, and errands to their own auxiliary usage lines. This
+			// tally mixes both, so billing it would count errands twice even in
+			// older journals whose abandoned turns have no step seal. It is not
+			// a message either: what the turn said before it was let go of is
+			// already in the transcript above it. A resumed session opens on
+			// that rather than on a note about
 			// how the last one ended. The line is for whoever reads the file.
 		case "mark", "ceiling", "division", "carry", "failure", "flight":
 			// DROPPED ON PURPOSE, for the reason a call line is: these are the
@@ -2290,7 +2328,10 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 			// transcript — the brief the turn carried on with, the line the
 			// person read — and replaying it would put machinery into somebody's
 			// conversation.
+		case "intent_name":
+			intentName = entry.IntentName
 		case "title":
+			intentName = entry.IntentName
 			// LAST one wins. A name written twice is a name that was changed,
 			// and the file's order is the order it was changed in. A name that
 			// is the namer's own instruction is read as NO name ([healedTitle],
@@ -2322,6 +2363,7 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 		stopped = ""
 	}
 	return replayedSession{
+		remoteSeen:     remoteSeen,
 		stopped:        stopped,
 		messages:       messages,
 		unread:         unread,
@@ -2330,6 +2372,7 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 		overlap:        overlap,
 		passes:         passes,
 		title:          title,
+		intentName:     intentName,
 		modelSwitches:  modelSwitches,
 		shortTitle:     shortTitle,
 		id:             id,
@@ -2483,10 +2526,14 @@ func legacyCompactionNote(summary string) string {
 // the name arrived here after the other two — and a reader of a call site
 // should not have to count positions to know which bool is which.
 type replayedSession struct {
+	// readBytes lets the resume caller release a large replay's working memory
+	// after shaping, without looking up the journal's path a second time.
+	readBytes     int64
 	modelSwitches []ModelSwitch
 	// userLines is read-only physical provenance for display reads, nil on resume.
-	userLines map[any]int
-	messages  []ai.Message
+	userLines  map[any]int
+	remoteSeen map[string]bool
+	messages   []ai.Message
 	// requests is what the file's request lines said, read beside the rebuild
 	// for a page watching the work with no lane to it ([RequestBooks]).
 	requests RequestBooks
@@ -2524,6 +2571,7 @@ type replayedSession struct {
 	// once and keeps its summary; a resume keeps neither.
 	passes     []CompactionFact
 	title      string
+	intentName *intentNameState
 	shortTitle string
 	// id is the header's session id, empty for a file that has no header yet.
 	id string
@@ -3125,6 +3173,10 @@ func (s *sessionFile) appendTitle(title, _ string) {
 // appendNamedTitle is [sessionFile.appendTitle] with the literal mark: a name
 // the replay must keep exactly as written rather than heal like a label.
 func (s *sessionFile) appendNamedTitle(title string, literal bool) {
+	s.appendNamedTitleWithIntent(title, literal, nil)
+}
+
+func (s *sessionFile) appendNamedTitleWithIntent(title string, literal bool, intent *intentNameState) {
 	title = strings.TrimSpace(title)
 	if title == "" {
 		return
@@ -3132,7 +3184,7 @@ func (s *sessionFile) appendNamedTitle(title string, literal bool) {
 	s.mu.Lock()
 	s.title, s.shortTitle = title, ""
 	s.mu.Unlock()
-	s.writeLine(sessionEntry{Type: "title", Title: title, LiteralName: literal, Timestamp: stamp()})
+	s.writeLine(sessionEntry{Type: "title", Title: title, LiteralName: literal, IntentName: intent, Timestamp: stamp()})
 }
 
 // appendUsage journals what one seal cost: the turn's own figures, or one
@@ -3151,7 +3203,7 @@ func (s *sessionFile) appendNamedTitle(title string, literal bool) {
 // The NIL RECEIVER writes nothing, for the reason [sessionFile.isNote] answers
 // false: a memory-only session has no journal, and the caller should not have
 // to test for a file before sealing a turn.
-func (s *sessionFile) appendUsage(used Usage, model string, aux bool, role string) {
+func (s *sessionFile) appendUsage(used Usage, model string, aux bool, role string, folded ...bool) {
 	if s == nil {
 		return
 	}
@@ -3183,6 +3235,7 @@ func (s *sessionFile) appendUsage(used Usage, model string, aux bool, role strin
 		for i, name := range names {
 			share := (*used.byModel)[name]
 			line := journalUsage{
+				Folded:     len(folded) > 0 && folded[0],
 				Model:      name,
 				Input:      share.Input,
 				Output:     share.Output,
@@ -3204,6 +3257,7 @@ func (s *sessionFile) appendUsage(used Usage, model string, aux bool, role strin
 	s.writeLine(sessionEntry{
 		Type: "usage",
 		Usage: &journalUsage{
+			Folded:     len(folded) > 0 && folded[0],
 			Model:      strings.TrimSpace(model),
 			Input:      used.Input,
 			Output:     used.Output,
@@ -3220,8 +3274,8 @@ func (s *sessionFile) appendUsage(used Usage, model string, aux bool, role strin
 	})
 }
 
-// appendCall writes ONE response's own accounting down, beside the seal that
-// will sum it.
+// appendCall writes ONE response's own accounting down. An ordinary response
+// sits beside the seal that will sum it; a late receipt is its own record.
 //
 // A RESPONSE THAT REPORTED NO USAGE WRITES NOTHING. The emptiness law, and the
 // same test the seal keeps: a call with no tokens and no cost is a call the
@@ -3413,7 +3467,9 @@ func (s *sessionFile) writeLine(entry any) bool {
 	// the model exactly as they wrote it. The broader shape scrub belongs to the
 	// records people share — the call log and the debug record — not here.
 	payload = trace.ScrubRegistered(payload)
-	if !s.appendLine(payload) {
+	entryLine, _ := entry.(sessionEntry)
+	paid := entryLine.Type == "usage" || entryLine.Type == "call" && entryLine.Call != nil && entryLine.Call.Arm != ""
+	if !s.appendLine(payload, paid) {
 		return false
 	}
 	if s.onWrite != nil {
@@ -3422,11 +3478,23 @@ func (s *sessionFile) writeLine(entry any) bool {
 	return true
 }
 
-func (s *sessionFile) appendLine(payload []byte) bool {
+func (s *sessionFile) appendLine(payload []byte, paid bool) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
-		return false
+		if !paid {
+			return false
+		}
+		// Paid work can outlive its stage. Keep its usage seals and late arm
+		// receipts in the same journal under this file's mutex so reopening
+		// restores the full paid total.
+		file, err := os.OpenFile(s.file.Name(), os.O_WRONLY|os.O_APPEND, 0600)
+		if err != nil {
+			return false
+		}
+		defer file.Close()
+		_, err = file.Write(append(payload, '\n'))
+		return err == nil
 	}
 	_, err := s.file.Write(append(payload, '\n'))
 	return err == nil
@@ -3440,7 +3508,7 @@ func (s *sessionFile) appendLine(payload []byte) bool {
 // flock on its own — but it states the release at the place a reader looks for
 // it, and it puts the release before the close rather than as a side effect of
 // it. Nothing can slip into the gap: closed is already set, so no write reaches
-// the file after this point.
+// the file after this point, except paid accounting appended by path.
 func (s *sessionFile) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

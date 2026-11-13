@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/executor"
@@ -14,6 +15,66 @@ import (
 type blockingCapture struct {
 	entered, release chan struct{}
 	calls            chan TurnInfo
+}
+
+func TestRecoveryNoticesRemainAvailableDuringWarmCapture(t *testing.T) {
+	c := newCell(t)
+	path := filepath.Join(t.TempDir(), "wal")
+	w, _, err := OpenWAL(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	intent := Intent{V: walV, Tool: "bash", ArgsHash: "interrupted", Started: 1, Brief: "unfinished command"}
+	if err := w.Begin(intent); err != nil {
+		t.Fatal(err)
+	}
+	s := blockingCapture{make(chan struct{}, 2), make(chan struct{}), make(chan TurnInfo, 2)}
+	r, err := NewRecorder(&stubExec{}, s, c, path, Options{Async: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Warm(t.Context())
+	<-s.entered
+	t.Cleanup(func() {
+		close(s.release)
+		if err := r.Drain(context.Background()); err != nil {
+			t.Error(err)
+		}
+	})
+	done := make(chan error, 1)
+	go func() {
+		notice := r.Interrupted()
+		if len(notice.Lines()) != 1 || notice.Note() == "" {
+			done <- errors.New("lost the interrupted call's recovery notice")
+			return
+		}
+		done <- notice.Close()
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("startup recovery notices waited for workspace capture")
+	}
+	if len(r.Interrupted().Lines()) != 0 {
+		t.Fatal("resolved recovery notice survived")
+	}
+	_, recovery, err := OpenWAL(path)
+	if err != nil || len(recovery.Incomplete) != 0 {
+		t.Fatalf("resolution was not recorded: %+v %v", recovery, err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	ran := false
+	err = r.Around(ctx, executor.Call{Tool: "bash"}, executor.EffectExternal, AgentRun, func() ([]byte, bool) {
+		ran = true
+		return nil, false
+	})
+	if !errors.Is(err, context.Canceled) || ran {
+		t.Fatalf("reading recovery bypassed the tool's capture barrier: %v ran=%v", err, ran)
+	}
 }
 
 func (s blockingCapture) Seal(ctx context.Context, c cell.Cell, in TurnInfo) (Sealed, error) {
@@ -28,7 +89,7 @@ func (s blockingCapture) Seal(ctx context.Context, c cell.Cell, in TurnInfo) (Se
 }
 
 // TestD3CommandReturnsAndNextCallWaits proves D3 and D4 without clock sleeps:
-// the first call returns with a durable completion while capture is blocked;
+// an exact-path call returns with a durable completion while capture is blocked;
 // no later tool can run over that capture, and its output remains in the WAL.
 func TestD3CommandReturnsAndNextCallWaits(t *testing.T) {
 	c := newCell(t)
@@ -38,7 +99,7 @@ func TestD3CommandReturnsAndNextCallWaits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := r.Around(t.Context(), executor.Call{Tool: "bash", Args: []byte("first")}, executor.EffectExternal, AgentRun, func() ([]byte, bool) { return []byte("first output"), false }); err != nil {
+	if err := r.Around(t.Context(), executor.Call{Tool: "write", Args: []byte("first"), Changed: []string{"first.txt"}}, executor.EffectExternal, AgentRun, func() ([]byte, bool) { return []byte("first output"), false }); err != nil {
 		t.Fatal(err)
 	}
 	<-s.entered
@@ -111,6 +172,7 @@ func TestD4FailedCaptureBlocksAMove(t *testing.T) {
 	if err := r.Around(t.Context(), executor.Call{Tool: "bash"}, executor.EffectExternal, AgentRun, func() ([]byte, bool) { return []byte("done once"), false }); err != nil {
 		t.Fatal(err)
 	}
+	r.Settle(t.Context())
 	if err := r.wait(t.Context()); err != nil {
 		t.Fatal(err)
 	}

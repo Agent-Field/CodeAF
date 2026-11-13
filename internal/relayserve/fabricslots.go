@@ -1,6 +1,7 @@
 package relayserve
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -160,7 +161,7 @@ func revokeClient(c fabricCall) (any, error) {
 	if len(c.body) != 0 {
 		return nil, badFabric(400, "bad_request")
 	}
-	if err := c.dir.For(c.dev).Revoke(c.r.Context(), c.r.PathValue("device")); err != nil {
+	if err := c.ns.commitFabricV1(c.r.Context(), c.dev, c.r, c.body); err != nil {
 		return nil, err
 	}
 	err := os.Remove(c.statePath())
@@ -181,20 +182,24 @@ func (f *fabric) cleanRevoked() error {
 		if f.ns.gone(id) {
 			continue
 		}
-		d, err := f.ns.sqlite(id)
-		if err != nil {
-			return err
-		}
 		entries, err := os.ReadDir(filepath.Join(f.ns.root, "fabric", id))
-		if errors.Is(err, os.ErrNotExist) {
+		if errors.Is(err, os.ErrNotExist) || len(entries) == 0 {
 			continue
 		}
 		if err != nil {
 			return err
 		}
+		d, err := f.ns.activate(context.Background(), id, nil)
+		if err != nil {
+			return err
+		}
+		l, err := d.fabricListing(context.Background())
+		if err != nil {
+			return err
+		}
 		for _, entry := range entries {
 			dev, ok := strings.CutSuffix(entry.Name(), ".json")
-			if ok && fabricDevice.MatchString(dev) && d.Revoked(dev) {
+			if ok && fabricDevice.MatchString(dev) && l.Devices[dev].Revoked {
 				if err := os.Remove(filepath.Join(f.ns.root, "fabric", id, entry.Name())); err != nil && !errors.Is(err, os.ErrNotExist) {
 					return err
 				}

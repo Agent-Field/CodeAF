@@ -175,15 +175,23 @@ func (s *Store) SetTrust(id string, trust Trust) (Automation, error) {
 	})
 }
 
-// AskRun parks a queued run until the person says go.
+// AskRun parks a queued run until the person says go, and keeps when.
 func (s *Store) AskRun(id int64) error {
+	now := s.now()
 	return s.write(func(tx *sql.Tx, seq int64) error {
-		_, err := tx.Exec(`UPDATE runs SET phase = ?, seq = ? WHERE id = ? AND phase = ?`, string(PhaseAsking), seq, id, string(PhaseQueued))
-		return err
+		res, err := tx.Exec(`UPDATE runs SET phase = ?, seq = ? WHERE id = ? AND phase = ?`, string(PhaseAsking), seq, id, string(PhaseQueued))
+		if err != nil {
+			return err
+		}
+		if parked, _ := res.RowsAffected(); parked == 0 {
+			return nil
+		}
+		return noteAsked(tx, id, now)
 	})
 }
 
-// Asking is every run waiting for the person's word, oldest first.
+// Asking is every run waiting for the person's word, oldest first, each with
+// when it began to wait.
 func (s *Store) Asking() ([]Run, error) {
 	return s.queryRuns(`WHERE phase = ? ORDER BY id`, string(PhaseAsking))
 }

@@ -55,6 +55,9 @@ import (
 // [app.task], the lane that answers it — so the answer and the row can never
 // disagree about what was decided.
 type taskCard struct {
+	computerPicked                           bool
+	computerPreference                       string
+	computer                                 string
 	id                                       uint64
 	title, summary, brief, acceptance, where string
 	// name is the two-or-three-word NAME cut from the title, sub the one-line
@@ -150,6 +153,12 @@ func (c *taskCard) settled() bool { return c.verdict != "" }
 // elapsed clock counts on the frame tick instead of freezing at whatever the
 // last update happened to say. Everything else is the notice, kept.
 type taskNode struct {
+	retryable bool
+	computer  string
+	// A later local replacement clears placement; an older silent node cannot.
+	computerKnown             bool
+	unreachable, ranElsewhere bool
+	remote                    *session.TaskRemoteRecord
 	// workTurn records the request that admitted this live work, independently of completion time.
 	workTurn  int
 	workOwned bool
@@ -733,7 +742,7 @@ func mergeScreenWord(merge string) string {
 // `stopped — branch kept`, which welded the two together and made the branch
 // unsayable about any other landing; where the work was left is now its own
 // clause on the row ([taskBranchKept], and the landing card's fact line), and
-// the state is one word (docs/design/task-states/DESIGN.md).
+// the state is one word.
 const taskStoppedWord = "stopped"
 
 // taskBranchKept is WHERE THE WORK WAS LEFT, and it is a fact about source
@@ -744,7 +753,7 @@ const taskStoppedWord = "stopped"
 // `finished, but needs your look` and `finished — look it over` were three
 // spellings of one reading — the machine has done what it can, and somebody has
 // to say something — which internal/session now spells once as `your call` plus
-// the reason for it (docs/design/task-states/DESIGN.md). They were this file's
+// the reason for it. They were this file's
 // own vocabulary, and the roster, the record and home each had a different one.
 const taskBranchKept = "branch kept"
 
@@ -905,6 +914,9 @@ func (a *app) taskEvent(ev session.Event) tea.Cmd {
 		a.note(ev.Text)
 	case session.EventTaskProposal:
 		a.proposeTask(ev)
+		if a.proposalComputerName(a.task) != "" {
+			pilot = a.readTaskComputers()
+		}
 	case session.EventTaskUpdate:
 		pilot = a.taskUpdate(ev)
 		mentions = a.refreshTasks()
@@ -1290,22 +1302,24 @@ func (a *app) proposeTask(ev session.Event) {
 	brief := strings.TrimSpace(notice.Brief)
 	name := taskTitleOf(title, firstNonEmpty(summary, brief), notice.ID)
 	card := &taskCard{
-		id:         notice.ID,
-		title:      title,
-		summary:    summary,
-		brief:      brief,
-		acceptance: strings.TrimSpace(notice.Acceptance),
-		where:      strings.TrimSpace(notice.Where),
-		name:       name,
-		sub:        taskSubtitleOf(name, firstNonEmpty(summary, brief)),
-		ident:      identFor(notice.ID),
-		dependsOn:  notice.DependsOn,
-		model:      strings.TrimSpace(notice.Model),
-		program:    strings.TrimSpace(notice.Program),
-		ceiling:    strings.TrimSpace(notice.Ceiling),
-		elsewhere:  strings.TrimSpace(notice.Elsewhere),
-		deadline:   notice.Deadline,
-		born:       a.now(),
+		id:                 notice.ID,
+		computer:           strings.TrimSpace(notice.Computer),
+		computerPreference: config.TaskRunsOnAt(a.profileDir),
+		title:              title,
+		summary:            summary,
+		brief:              brief,
+		acceptance:         strings.TrimSpace(notice.Acceptance),
+		where:              strings.TrimSpace(notice.Where),
+		name:               name,
+		sub:                taskSubtitleOf(name, firstNonEmpty(summary, brief)),
+		ident:              identFor(notice.ID),
+		dependsOn:          notice.DependsOn,
+		model:              strings.TrimSpace(notice.Model),
+		program:            strings.TrimSpace(notice.Program),
+		ceiling:            strings.TrimSpace(notice.Ceiling),
+		elsewhere:          strings.TrimSpace(notice.Elsewhere),
+		deadline:           notice.Deadline,
+		born:               a.now(),
 	}
 	a.task = card
 	a.closeLive()
@@ -1593,11 +1607,12 @@ const (
 // something is being asked, which is what its readers actually want to know.
 func (a *app) awaitingTask() bool { return a.task != nil && !a.task.settled() }
 
-// taskKey is the ONE key the proposal still owns, and it is not an answer.
+// taskKey handles the proposal's disclosure and computer keys. Neither answers
+// the shared question, whose own keys still decide whether the work starts.
 //
-// The three answers and the clock went to the question block with every other
-// decision on this surface (question.go), and what is left here is the key that
-// opens the assignment in the transcript: `ctrl+e` is what this surface means
+// The answers and clock belong to the shared question. These keys change what
+// its assignment shows: `ctrl+d` cycles eligible computers before acceptance,
+// while `ctrl+e` is what this surface means
 // "show me the rest of this" by, and the brief is the rest of a proposal. It
 // belongs to the lane rather than to the block because it acts on the BLOCK IN
 // THE TRANSCRIPT — the question above the box has nothing to unfold.
@@ -1606,10 +1621,20 @@ func (a *app) awaitingTask() bool { return a.task != nil && !a.task.settled() }
 // is the rule input.go applies to the thinking block, and it is applied here for
 // the same reason: ctrl+e is end-of-line in every shell a person has used.
 func (a *app) taskKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
-	if !a.awaitingTask() || msg.String() != "ctrl+e" {
+	if !a.awaitingTask() {
 		return nil, false
 	}
 	if !a.input.empty() {
+		return nil, false
+	}
+	if msg.String() == taskComputerCycleKey {
+		if a.questionOffFrame() || !a.canCycleTaskComputer(a.task) {
+			return nil, false
+		}
+		a.cycleTaskComputer()
+		return nil, true
+	}
+	if msg.String() != "ctrl+e" {
 		return nil, false
 	}
 	a.toggleCard()
@@ -1644,6 +1669,12 @@ func (a *app) taskAnswered(id uint64, answer session.Answer) session.Answer {
 	}
 	card.verdict = taskVerdict(approve, redirect)
 	card.answer = word
+	if approve && card.computerPicked && a.taskComputersAvailable() {
+		if answer.Blanks == nil {
+			answer.Blanks = map[string]string{}
+		}
+		answer.Blanks[session.TaskComputerBlank] = card.computer
+	}
 	// A YES OPENS THE FORMING BLOCK. The task the card names does not exist
 	// until its first update arrives, and the person who just said yes is owed
 	// something moving in that pause rather than nothing (taskcommand.go's
@@ -1921,6 +1952,10 @@ func (a *app) taskCardRows(card *taskCard, width int, sel bool) []string {
 	}
 	head := a.taskHead(card, width, sel)
 	if card.settled() {
+		if words := a.taskComputerWords(a.tasks[card.id]); words != "" {
+			stem := a.blockStem()
+			return []string{head, a.pal.dim(stem + fit(words, max(1, width-ansi.StringWidth(stem)))), a.taskFoot(card, width)}
+		}
 		return []string{head, a.taskFoot(card, width)}
 	}
 	stem := a.pal.ask(a.blockStem())
@@ -1960,6 +1995,9 @@ func (a *app) taskCardRows(card *taskCard, width int, sel bool) []string {
 	}
 	if card.where != "" {
 		out = append(out, stem+a.pal.dim(fit("where: "+card.where, room)))
+	}
+	if computer := a.proposalComputerName(card); computer != "" {
+		out = append(out, stem+a.pal.dim(fit("runs on "+computer, room)))
 	}
 	if point := a.taskBranchPoint(); point != "" && card.program == "" {
 		// The branch point is the last of the facts about the work, and it is the
@@ -2196,6 +2234,9 @@ func (a *app) taskMetaWord(card *taskCard, width int) string {
 	}
 	if card.model != "" {
 		parts = append(parts, taskModelTag+card.model)
+	}
+	if a.canCycleTaskComputer(card) {
+		parts = append(parts, taskComputerCycleHint)
 	}
 	if !card.open && card.brief != "" {
 		parts = append(parts, taskExpandHint)
@@ -4251,6 +4292,14 @@ func (a *app) railEntryRow(e railEntry, width int) string {
 	const indent = "  "
 	glyph := a.railTreeGlyph(node)
 	room := width - len(indent) - 2
+	// Placement is a recorded fact; its complete words get cells before the
+	// title or clock. A rail too narrow for the phrase leaves it off whole.
+	placement := a.taskComputerWords(node)
+	if cells := ansi.StringWidth(placement); placement != "" && room >= cells+2 {
+		room -= cells + 1
+	} else {
+		placement = ""
+	}
 	// A program's badge stays on its row when the side column is compact.
 	// The time gives up cells first, then the badge shortens, while the title
 	// keeps enough room to name the work.
@@ -4269,6 +4318,9 @@ func (a *app) railEntryRow(e railEntry, width int) string {
 	}
 	title, w := fitWidth(node.title, room)
 	line := indent + glyph + " " + a.railTitle(node, title) + a.pal.programAfter(wears)
+	if placement != "" {
+		line += a.pal.dim(" " + placement)
+	}
 	if age != "" {
 		line += strings.Repeat(" ", max(room-w, 0)+1) + a.pal.dim(age)
 	}
@@ -4390,6 +4442,15 @@ func (a *app) railTitle(node *taskNode, title string) string {
 // handles back to work that is not on screen, and half of one of those is worth
 // nothing at all.
 func (a *app) railUnder(node *taskNode, width int) []string {
+	if words := a.taskComputerWords(node); words != "" {
+		rows := []string{a.pal.dim(fit(words, width))}
+		if node.state == session.TaskRunning {
+			if figures := a.railTelemetry(node, width); figures != "" {
+				rows = append(rows, a.pal.dim(figures))
+			}
+		}
+		return rows
+	}
 	paint, text := a.pal.dim, ""
 	switch node.state {
 	case session.TaskRunning:
@@ -4760,10 +4821,13 @@ func planLiveRow(command string, parts []session.PlanCommandPart, width int, pal
 // is doing, in the only vocabulary it has — so a prefix would be the surface
 // explaining a plain English word with a second plain English word.
 func (a *app) railDoing(node *taskNode, width int) []string {
-	if node.doing == "" {
+	if words := a.taskComputerWords(node); words != "" {
+		return []string{a.pal.dim(fit(words, width))}
+	}
+	if taskDoingWords(node) == "" {
 		return nil
 	}
-	return []string{a.pal.dim(fit(node.doing, width))}
+	return []string{a.pal.dim(fit(taskDoingWords(node), width))}
 }
 
 // railProgramRow is the run's own plan row for a node whose run was handed to
@@ -5204,7 +5268,7 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 			taskLiveLines(notice) == node.liveLines() && !taskRenames(notice, node) &&
 			!taskRenamesContext(notice, node) && !taskStops(notice, node) &&
 			!taskPauses(notice, node) && !taskReasks(notice, node) &&
-			notice.Decider == node.decider && notice.NextModel == node.nextModel && notice.Thinking == node.thinking &&
+			notice.Retryable == node.retryable && notice.Decider == node.decider && notice.NextModel == node.nextModel && notice.Thinking == node.thinking &&
 			(notice.Brief == "" || notice.Brief == node.brief) &&
 			(notice.Acceptance == "" || notice.Acceptance == node.acceptance) &&
 			(notice.Program == "" || notice.Program == node.program) &&
@@ -5291,6 +5355,7 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		resumed = a.resumeRetriedRoom(node)
 	}
 	node.state = notice.State
+	node.takeComputerNotice(notice)
 	if len(notice.DependsOn) > 0 {
 		node.dependsOn = notice.DependsOn
 	}
@@ -5302,6 +5367,7 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	if notice.Parent != 0 {
 		node.parent = itoa(int(notice.Parent))
 	}
+	node.retryable = notice.Retryable
 	// THE RUN DOOR IS KEPT AND NEVER UNSET. Belonging to an adaptive run and
 	// the node's place inside it are facts for the row's whole life; an update
 	// quiet about either one has not turned it back into an ordinary task.
@@ -5363,7 +5429,7 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	// that handed a question back both publish a row that stops carrying what the
 	// last one did — so keeping either past the notice that dropped it would be
 	// this surface asking a question somebody has already answered
-	// (docs/design/task-states/DESIGN.md).
+	//.
 	node.conflicts, node.decider = notice.Conflicts, notice.Decider
 	node.shifted, node.groundHeld = notice.Shifted, notice.GroundHeld
 	// The model is kept whenever an update carries one and never overwritten

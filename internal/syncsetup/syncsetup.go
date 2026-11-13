@@ -16,6 +16,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
@@ -28,6 +30,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/dirwatch"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/identity"
+	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/reqsign"
 	"github.com/Agent-Field/codeaf/internal/rotate"
 )
@@ -38,6 +41,12 @@ const (
 	URLVar = "CODEAF_SYNC_URL"
 	// IntervalVar is how often unsaved turns are flushed, in milliseconds.
 	IntervalVar = "CODEAF_SYNC_INTERVAL_MS"
+	// ServeStateVar opts `codeaf serve` into keeping this computer's saved keys,
+	// settings, shared memories and directory presence in step while it serves,
+	// the way an open terminal does. A dev box's boot script sets it to 1.
+	// UNSET, SERVE BEHAVES EXACTLY AS IT ALWAYS HAS: it syncs nothing and
+	// publishes no presence, so nobody who never asked sees a change.
+	ServeStateVar = "CODEAF_SERVE_SYNC"
 	// DefaultInterval is the flush interval when IntervalVar is unset.
 	DefaultInterval = 5 * time.Second
 	// requestTimeout bounds one directory request so a silent relay cannot hang
@@ -45,20 +54,46 @@ const (
 	requestTimeout = 30 * time.Second
 )
 
+// ServeKeepsState reports whether ServeStateVar asks `codeaf serve` to keep
+// home state and presence in step; only the value 1 does.
+func ServeKeepsState() bool { return strings.TrimSpace(env.Get(ServeStateVar)) == "1" }
+
 // ErrNoIdentity is what a machine says when a relay is set but it has no
 // identity to sign with. Its words are the list's own, so every surface agrees.
 var ErrNoIdentity = errors.New(chatlist.NoIdentity)
 
 // Sync is everything that talks to the relay, bound to this device.
 type Sync struct {
-	stateSent string           // The last completed home-state round, guarded by stateMu.
-	Dir       directory.Client // bound to this device by its signer
-	Store     blobstore.Store  // the bare store wire; every use of it goes through a Scope so it is counted
-	Device    identity.Dev
-	Identity  identity.Identity
-	Relay     string // the normalized relay address every client and the ledger name are built from
-	Hosted    bool   // Relay is the hosted default, which the first-run line speaks of
-	Home      string // the codeaf home: where the branch map and the stats files live
+	publicationMu   sync.Mutex
+	publication     map[string]*pendingPublication
+	publicationSeen map[string]struct{}
+	// BetweenChats, when set, runs after each chat a PublishLocalChats pass
+	// offers, with the pass's lock released: a pass lasts as long as its
+	// uploads keep moving, and the caller counts (CountUnshared) and does its
+	// other sharing work between chats instead of after the whole backlog.
+	BetweenChats      func()
+	teamsCache        *teamIdentityCache // Guarded by stateMu across vault rounds.
+	teamsShared       bool               // Enabling sharing must restore an already-known vault.
+	removed           atomic.Bool
+	memberRetries     uint64
+	clock             func() time.Time
+	relayAttempts     atomic.Uint64
+	clusterFrames     atomic.Uint64
+	memberMu          sync.Mutex
+	member            *personalMember
+	memberUnsupported bool
+	memberRetry       time.Time
+	memberBackoff     time.Duration
+	stateVault        string
+	stateVaultKnown   bool
+	stateSent         string           // The last completed home-state round, guarded by stateMu.
+	Dir               directory.Client // bound to this device by its signer
+	Store             blobstore.Store  // the bare store wire; every use of it goes through a Scope so it is counted
+	Device            identity.Dev
+	Identity          identity.Identity
+	Relay             string // the normalized relay address every client and the ledger name are built from
+	Hosted            bool   // Relay is the hosted default, which the first-run line speaks of
+	Home              string // the codeaf home: where the branch map and the stats files live
 	// ProfileDir is where the product keeps its profile files (config.json,
 	// credentials.json): CODEAF_PROFILE_DIR when set, else empty, which means Home.
 	ProfileDir string
@@ -100,6 +135,9 @@ func OpenFirst(home string) (*Sync, bool, error) {
 }
 
 func open(home string) (*Sync, bool, error) {
+	if err := pair.Resume(home, func(url string) error { return SaveRelayURL(home, url) }); err != nil {
+		return nil, false, err
+	}
 	relay := Resolve(home)
 	if !relay.On() {
 		return nil, false, nil
@@ -161,11 +199,14 @@ func flushInterval() (time.Duration, error) {
 
 // build binds both wires to one signer and one client, and leaves the store to be counted by scope.
 func build(home, base string, id identity.Identity, dev identity.Dev, interval time.Duration) *Sync {
-	sign := reqsign.SignFor(deviceSigner{id, dev}, time.Now)
-	hc := gated(home, &http.Client{Timeout: requestTimeout})
-	return &Sync{
-		Dir:        directory.NewHTTP(base, sign, hc),
-		Store:      blobstore.NewHTTP(base, sign, gated(home, &http.Client{})),
+	return buildAt(home, base, id, dev, interval, time.Now)
+}
+
+// buildAt supplies the host clock for deterministic lifetime and wake proofs.
+func buildAt(home, base string, id identity.Identity, dev identity.Dev, interval time.Duration, now func() time.Time) *Sync {
+	sign := reqsign.SignFor(deviceSigner{id, dev}, now)
+	s := &Sync{
+		clock:      now,
 		Device:     dev,
 		Identity:   id,
 		Relay:      base,
@@ -174,6 +215,9 @@ func build(home, base string, id identity.Identity, dev identity.Dev, interval t
 		Ledger:     cellstore.LedgerName(base, id.ID()),
 		Interval:   interval,
 	}
+	s.Dir = &deviceDirectory{HTTP: directory.NewHTTP(base, sign, s.ClusterHTTP(&http.Client{Timeout: requestTimeout})), home: home, binding: deviceBindingFor(base, id, dev)}
+	s.Store = GateStore(blobstore.NewHTTP(base, sign, s.ClusterHTTP(&http.Client{})), home, base, id.ID())
+	return s
 }
 
 // deviceSigner is the reqsign.Signer of this machine: the device key signs,
@@ -196,13 +240,28 @@ func (s *Sync) Rows(ctx context.Context) ([]chatlist.Row, error) {
 
 // RowsAt is Rows and the directory version the listing was read at.
 func (s *Sync) RowsAt(ctx context.Context) ([]chatlist.Row, uint64, error) {
+	rows, _, version, err := s.RowsMailAt(ctx)
+	return rows, version, err
+}
+
+// RowsMailAt is [Sync.RowsAt] with what the same read says about messages
+// between computers ([MailOf]), so a screen that lists chats delivers and
+// clears messages without reading the directory twice.
+func (s *Sync) RowsMailAt(ctx context.Context) ([]chatlist.Row, Mail, uint64, error) {
+	current, err := s.currentDisplaySync()
+	if err != nil {
+		return nil, Mail{}, 0, err
+	}
+	if current != s {
+		return current.RowsMailAt(ctx)
+	}
 	l, err := s.list(ctx)
 	if err != nil {
-		return nil, 0, err
+		return nil, Mail{}, 0, err
 	}
 	key := directory.MetadataKey(s.Identity.CellKey())
 	open := func(sealed string) (string, error) { return directory.OpenName(key, sealed) }
-	return chatlist.Rows(l, s.Device.ID(), open), l.Version, nil
+	return chatlist.Rows(l, s.Device.ID(), open), MailOf(l, s.Device.ID(), key), l.Version, nil
 }
 
 // Follow joins this process's change feed for the identity on this relay, so a
@@ -210,19 +269,43 @@ func (s *Sync) RowsAt(ctx context.Context) ([]chatlist.Row, uint64, error) {
 // nil when the directory client cannot open a watch socket, which is a screen
 // that polls alone.
 func (s *Sync) Follow() dirwatch.Follower {
+	if current, err := s.currentDisplaySync(); err == nil && current != s {
+		return current.Follow()
+	}
 	w, ok := s.Dir.(directory.Watcher)
 	if !ok {
 		return nil
 	}
-	return dirwatch.Follow(s.Ledger, w.Watch)
+	return dirwatch.Follow(s.Ledger+"#home:"+s.Home+":"+s.Device.ID(), func(ctx context.Context) (dirwatch.Stream, error) {
+		if Quiet(s.Home) {
+			return nil, ErrQuiet
+		}
+		current, err := s.currentDisplaySync()
+		if err != nil {
+			return nil, err
+		}
+		watcher := w
+		if current != s {
+			var ok bool
+			watcher, ok = current.Dir.(directory.Watcher)
+			if !ok {
+				return nil, dirwatch.ErrNoRoute
+			}
+		}
+		stream, err := current.followStream(ctx, watcher)
+		if err != nil {
+			return nil, err
+		}
+		return quietStream{Stream: stream, home: current.Home, owner: current}, nil
+	})
 }
 
 // holdKey keeps the holding socket's feed apart from the home screen's, which
 // is keyed by the ledger alone: the home socket names no holds.
-func (s *Sync) holdKey() string { return s.Ledger + "#holding" }
+func (s *Sync) holdKey() string { return s.Ledger + "#holding:" + s.Device.ID() }
 
 // Liveness is the process's holding socket for this identity, which lets the
-// chats it holds stop heartbeating while the relay vouches for them. It answers
+// chats it holds stop heartbeating while committed hold receipts cover them. It answers
 // nil when the directory client cannot name holds (a self-hosted directory), so
 // those chats heartbeat as they always did.
 func (s *Sync) Liveness() cellsync.Liveness {
@@ -230,7 +313,16 @@ func (s *Sync) Liveness() cellsync.Liveness {
 	if !ok {
 		return nil
 	}
-	return holdSocket{dirwatch.Hold(s.holdKey(), directory.MaxHolds, w.WatchHolding)}
+	return holdSocket{dirwatch.Hold(s.holdKey(), directory.MaxHolds, func(ctx context.Context, holds []directory.Hold) (dirwatch.Stream, error) {
+		if Quiet(s.Home) {
+			return nil, ErrQuiet
+		}
+		stream, err := w.WatchHolding(ctx, holds)
+		if err != nil {
+			return nil, err
+		}
+		return quietStream{Stream: stream, home: s.Home, owner: s}, nil
+	})}
 }
 
 // holdSocket adapts the holding socket to the Batcher's view of it.
@@ -248,3 +340,10 @@ var (
 	// The engine glue is the sync seam by method set: no adapter between them.
 	_ cellsync.Engine = cellstore.SyncEngine{}
 )
+
+func (s *Sync) now() time.Time {
+	if s.clock != nil {
+		return s.clock()
+	}
+	return time.Now()
+}

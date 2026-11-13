@@ -10,13 +10,13 @@ import (
 
 // ── ONE KEY GRAMMAR, SPELLED ONCE ───────────────────────────────────────────
 //
-// docs/design/questions/DESIGN.md's ONE KEY GRAMMAR law names fifteen keys and
+// the implementation's ONE KEY GRAMMAR law names fifteen keys and
 // then says the thing that matters about them: "Spelled once in one table, read
 // by every form and by the manual." This file is that table.
 //
 // IT IS ONE TABLE BECAUSE FOUR READERS AGREE THROUGH IT. The line, the card and
 // the ratify row draw their answers row from it ([app.questionKeyRow]); the room
-// reads it for its foot (lane S2 imports [questionKeys] rather than spelling a
+// reads it for its foot (it imports [questionKeys] rather than spelling a
 // second set); `internal/manual/chat/questions.md` lists exactly these keys and
 // exactly these words; and the tmux suite's needles come out of the same words.
 // A key spelled in two places is a key that means two things the first week one
@@ -52,16 +52,15 @@ type questionVerb struct {
 	// form. The emptiness law lives here: no pick means no `enter →` line, no
 	// rule to offer means no `r`, nothing real to undo means no `u`.
 	needs questionNeed
-	// tier is which of the two rows a question draws this key on: the primary
-	// keys are written into the frame's bottom edge and the rest stand on one
-	// dim row under the frame (owner ruling 2026-09-11, hints pick A).
+	// tier is which of the two rows a question draws this key on: the primary keys are
+	// written into the frame's bottom edge and the rest stand on one dim row under the frame.
 	//
 	// IT IS A COLUMN AND NOT A LIST OF NAMES SOMEWHERE ELSE. The primary tier is
 	// "what a person needs in order to answer this at all" — walk, take, later,
 	// and whatever key is the ANSWER on a shape that has one (`space` on a
 	// checklist, `a`/`b` on a pair) — and the secondary tier is everything that
 	// says something ABOUT the decision rather than giving it. A row that mixed
-	// them was the owner's "no hierarchy": answers, navigation, dismissal, four
+	// them had no hierarchy: answers, navigation, dismissal, four
 	// meta-verbs and a clock at one hue and one weight.
 	tier keyTier
 	// giveUp is the order a narrow row surrenders its keys in — the HIGHEST
@@ -111,8 +110,8 @@ const (
 	formsGroup
 )
 
-// formsBlock is the three forms THIS lane draws — the pinned block above the
-// box. The room is lane S2's and is named here so its keys travel in the same
+// formsBlock is the three forms this block draws — the pinned block above the
+// box. The room is named here so its keys travel in the same
 // table rather than in a second one beside it.
 const formsBlock = formsLine | formsCard | formsRatify
 
@@ -128,7 +127,7 @@ const (
 	// nothing for `enter` to take and the row does not say there is.
 	needPick
 	// needRule is the third same-shaped yes, which is the only moment `r` is
-	// offered (docs/design/questions/DESIGN.md's RULES ARE OFFERED, VISIBLE,
+	// offered (the implementation's RULES ARE OFFERED, VISIBLE,
 	// FORGETTABLE).
 	needRule
 	// needUndo is an answer that can still be taken back — `u` while real.
@@ -152,7 +151,7 @@ const (
 	// would be the surface deciding an irreversible thing on somebody's behalf
 	// — which is exactly what the question exists to prevent.
 	needHands
-	// ── the room's own conditions (lane S2) ────────────────────────────────
+	// ── the room's own conditions ────────────────────────────────
 	//
 	// They are HERE and not in a second table beside this one, because a key is
 	// a key wherever it is drawn: the room's `a`/`b`/`=` and its `n` have to be
@@ -253,7 +252,7 @@ const (
 	// questionWalkDownKey is the same walk spelled for a card, whose answers
 	// stand in a column.
 	questionWalkDownKey = "↑↓"
-	// The room's own keys (lane S2). `a` and `b` are the two sides of a pair and
+	// The room's own keys. `a` and `b` are the two sides of a pair and
 	// `a` is also the checklist's "take its suggestion" — the one collision the
 	// grammar has, and it is the same instinct at two shapes: take the thing on
 	// the left.
@@ -288,10 +287,7 @@ const (
 // on it, and let the person type. Nothing is cancelled, so the word may not say
 // cancelled.
 var questionKeys = []questionVerb{
-	// THE WALK COMES FIRST, because every drawing the owner picked reads its
-	// keys in the order a hand uses them: choose, then take it, then put it
-	// off (docs/design/questions/picked — `↑↓ choose · enter take it · esc
-	// later`). It is given up early all the same; the order is not the rank.
+	// It is given up early all the same; the order is not the rank.
 	//
 	// THE POINTER'S KEYS ARE SPELLED THE WAY THE FORM LAYS ITS ANSWERS OUT:
 	// across on a line, down on a card. Both pairs walk on both.
@@ -541,7 +537,7 @@ func questionKeyWord(key string) string {
 // wherever a person is standing — the status line's chip says it, and it works
 // on every page.
 //
-// The owner assigned `alt+a` to approvals and moved this door to `alt+y`.
+// Approvals uses `alt+a`; pending questions use `alt+y`.
 // It still works on every page, including while the draft has text in it.
 const questionChipKey = "alt+y"
 
@@ -738,7 +734,7 @@ func (a *app) questionPageOf(q questionShown) *questionRoom {
 // gate asks because a policy said a person has to see this call; `you decide` on
 // it would give that decision straight back to the thing the gate was put in
 // front of, which is the gate answering itself with one keystroke.
-// docs/design/questions/DESIGN.md's kind table says the same about the clock — a
+// the implementation's kind table says the same about the clock — a
 // permission may act on its own "only when Stakes == reversible" — and a key
 // that skips a question is a clock a person wound by hand.
 //
@@ -778,7 +774,7 @@ func questionHasMore(q session.Question) bool {
 
 // questionTakesWords reports whether a typed answer means anything here.
 //
-// A CONFIRMATION TAKES NONE (docs/design/questions/DESIGN.md's kind table says
+// A CONFIRMATION TAKES NONE (the implementation's kind table says
 // so in one word), because the two answers ARE the question: `stop it` and
 // `keep going` have no third reading a sentence could add, and a box under them
 // would be a place to type something nothing reads.
@@ -839,9 +835,9 @@ func questionOwnsBox(q session.Question) bool {
 //
 // AIMING IS A KEY THAT COULD NEVER BE TEXT, or a click on the block's own rows:
 // `↑↓` choosing, `tab` walking, `enter` taking, `esc` putting it off, the mouse
-// landing on an answer. That is the owner's own grammar for this block read in
+// landing on an answer. That is the interaction order for this block, read in
 // the order a hand uses it — choose, then take it, then put it off
-// (docs/design/questions/picked) — and every one of those gestures is somebody
+// — and every one of those gestures is somebody
 // looking at the question rather than at the box.
 //
 // AND THE ANSWERS' OWN KEYS ARE NOT ON THIS ROAD. `1`-`9`, and the letters a

@@ -92,12 +92,15 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"io/fs"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
@@ -144,8 +147,9 @@ type appLocalFactory struct {
 	server    *http.Server
 	// runner is true once factory.local_run started the worker loop, and
 	// runnerDone closes when that loop has returned.
-	runner     bool
-	runnerDone chan struct{}
+	runner      bool
+	runnerDone  chan struct{}
+	closingDone chan struct{}
 	// githubHTTP, rules, seamHook and parent are test seams set before the
 	// first start. parent, when set, is the conversation config the runner
 	// opens its stages from, as a terminal launch hands one to its worker.
@@ -173,7 +177,7 @@ func (b *appBackend) startLocal(ctx context.Context) error {
 	l := &b.local
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.closed {
+	if l.closed || b.isClosing() {
 		return appwire.Errorf(appwire.CodeClosed, "the engine is stopping")
 	}
 	if !l.running || l.host == nil {
@@ -229,7 +233,7 @@ func (b *appBackend) resumeLocalServe(ctx context.Context) bool {
 	l := &b.local
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.closed || l.running {
+	if l.closed || l.running || b.isClosing() {
 		return false
 	}
 	rows, err := b.factoryHub().snapshot()
@@ -299,7 +303,7 @@ func (b *appBackend) localRunnable() (string, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	switch {
-	case l.closed:
+	case l.closed || b.isClosing():
 		return "", appwire.Errorf(appwire.CodeClosed, "the engine is stopping")
 	case !l.running:
 		return "", appwire.Errorf(appwire.CodeNotFound, "the factory on this machine is not started")
@@ -314,7 +318,7 @@ func (b *appBackend) startLocalRunner() (appwire.FactoryLocalStatus, error) {
 	l := &b.local
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.closed || !l.running || l.host == nil {
+	if l.closed || !l.running || l.host == nil || b.isClosing() {
 		return appwire.FactoryLocalStatus{}, appwire.Errorf(appwire.CodeClosed, "the engine is stopping")
 	}
 	if !l.runner {
@@ -322,10 +326,15 @@ func (b *appBackend) startLocalRunner() (appwire.FactoryLocalStatus, error) {
 		done := make(chan struct{})
 		l.runner, l.runnerDone = true, done
 		// THE HOST SERVES THIS FACTORY (checked above), so its GitHub poll may
-		// start; the host starts it once. No intake rides on it and no triage
-		// runs beside it: nothing here starts a job or asks a model.
+		// start; the host starts it once. No triage runs beside it. Its
+		// routing table is read for every new job, and its label rule runs
+		// only while the person's "Pick up issues" is on
+		// (appFactoryHost.routeAndPickUp): off, no label starts a job here.
 		host.pollLoop()
 		guard.Go("app/factory local runner", func() { defer close(done); host.workers() })
+		// Jobs filed while the runner was off are routed now, not on the
+		// next poll or entry: a factory with no watched repository has none.
+		host.routeSoon()
 	}
 	return b.localStatusLocked(), nil
 }
@@ -381,10 +390,26 @@ func (b *appBackend) startLocalLocked(ctx context.Context, resume bool) error {
 	done := make(chan struct{})
 	close(done)
 	address := "http://" + listener.Addr().String()
-	host := &appFactoryHost{ctx: hostCtx, cancel: cancel, done: done, floor: floor, address: address, token: token, workspace: home.Dir(), profile: b.localProfile(), credentials: newFactorySessions(), quiet: true, githubHTTP: l.githubHTTP, rules: l.rules, seamHook: l.seamHook, parent: l.parent, pollSource: l.pollSource, newIntake: l.newIntake,
+	// THE DESK'S FACTORY HAS NO WORKSPACE. It named the codeaf home here once,
+	// and every chat of a job with no checkout — each AgentField step, the
+	// foreman — worked in ~/.codeaf and swept codeaf's own state on every
+	// save. Those chats now work in their job's own empty folder
+	// (factory_chat_folder.go).
+	host := &appFactoryHost{ctx: hostCtx, cancel: cancel, done: done, floor: floor, address: address, token: token, workspace: "", profile: b.localProfile(), credentials: newFactorySessions(), quiet: true, githubHTTP: l.githubHTTP, rules: l.rules, seamHook: l.seamHook, parent: l.parent, pollSource: l.pollSource, newIntake: l.newIntake,
 		// A runner, once asked for, serves THIS factory with this launch's own bearer.
 		defaultTarget: func() (factoryTarget, error) { return factoryTarget{address, token}, nil }}
 	floor.SetOutputPolicy(appFactoryOutputPolicy(host.profile))
+	floor.ObserveWrites(func(before, after factory.Item) {
+		b.briefJobChanged(before, after)
+		// Queue filters change after filing too, when a background step waits or ends.
+		if before.State != after.State || before.Question != after.Question || before.QKind != after.QKind ||
+			before.DoneHow != after.DoneHow || !before.DoneAt.Equal(after.DoneAt) {
+			b.emit.Emit(appwire.EventFactoryJobsChanged, appwire.FactoryJobsChanged{Factory: appLocalID, Job: after.ID})
+		}
+	})
+	host.jobFiled = func(job int) {
+		b.emit.Emit(appwire.EventFactoryJobsChanged, appwire.FactoryJobsChanged{Factory: appLocalID, Job: job})
+	}
 	mount, err := host.mountSolo(ctx)
 	if err != nil {
 		listener.Close()
@@ -503,10 +528,21 @@ func (h *appFactoryHub) releaseLocal(id string) {
 // closeLocalFactory ends what start began. It is idempotent and runs before
 // the registry is closed, so the bearer it held is let go with the service.
 func (b *appBackend) closeLocalFactory() {
-	server, host, id, running, runnerDone := b.takeLocal()
+	if b.briefs != nil {
+		b.briefs.stop()
+	}
+	server, host, id, running, runnerDone, done := b.takeLocal()
+	if done == nil {
+		return
+	}
+	defer func() {
+		b.clearLocalClosing()
+		close(done)
+	}()
 	if host != nil {
 		// THE RUNNER STOPS FIRST, so no worker is dialling a service that is
 		// going away; and it is waited for only so long.
+		host.forbidLoops()
 		host.cancel()
 		if runnerDone != nil {
 			select {
@@ -533,16 +569,42 @@ func (b *appBackend) closeLocalFactory() {
 	}
 }
 
-// takeLocal marks the local factory closed and hands over what it held.
-func (b *appBackend) takeLocal() (server *http.Server, host *appFactoryHost, id string, running bool, runnerDone chan struct{}) {
+// takeLocal marks the local factory closed and hands over what it held. A
+// second caller while the first is still tearing down waits for the first.
+func (b *appBackend) takeLocal() (server *http.Server, host *appFactoryHost, id string, running bool, runnerDone, done chan struct{}) {
+	var wait chan struct{}
+	server, host, id, running, runnerDone, done, wait = b.takeLocalLocked()
+	if wait != nil {
+		<-wait
+	}
+	return
+}
+
+// takeLocalLocked is takeLocal's critical section: it either claims the
+// teardown and hands over what the factory held, or answers the channel of the
+// teardown already under way.
+func (b *appBackend) takeLocalLocked() (server *http.Server, host *appFactoryHost, id string, running bool, runnerDone, done, wait chan struct{}) {
 	l := &b.local
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	if l.closingDone != nil {
+		return nil, nil, "", false, nil, nil, l.closingDone
+	}
+	done = make(chan struct{})
+	l.closingDone = done
 	l.closed = true
 	server, host, id, running, runnerDone = l.server, l.host, l.id, l.running, l.runnerDone
 	l.server, l.host, l.running, l.id, l.origin = nil, nil, false, "", ""
 	l.runner, l.runnerDone = false, nil
 	return
+}
+
+// clearLocalClosing ends a teardown's claim once it has finished.
+func (b *appBackend) clearLocalClosing() {
+	l := &b.local
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.closingDone = nil
 }
 
 // ── the CLI's attachment ───────────────────────────────────────────────────
@@ -643,7 +705,7 @@ func (b *appBackend) FactorySetupAct(ctx context.Context, _ string, act appwire.
 	}
 	req := api.FactorySetupRequest{Verb: act.Verb}
 	switch act.Verb {
-	case appwire.SetupVerbDiscover, appwire.SetupVerbBack, appwire.SetupVerbDone:
+	case appwire.SetupVerbDiscover, appwire.SetupVerbBack, appwire.SetupVerbDone, appwire.SetupVerbContinue:
 	case appwire.SetupVerbConnect:
 		req.Source = act.Source
 		if act.Source == appwire.SetupSourceToken {
@@ -726,12 +788,12 @@ func setupWithin(p, root string) bool {
 // takes, or why it may not be used.
 func (b *appBackend) setupFolder(raw string) (string, error) {
 	path := strings.TrimSpace(raw)
-	if path == "~" || strings.HasPrefix(path, "~/") {
+	if path == "~" || strings.HasPrefix(path, "~/") || strings.HasPrefix(path, "~"+string(filepath.Separator)) {
 		base, err := os.UserHomeDir()
 		if err != nil {
 			return "", appwire.Errorf(appwire.CodeEngine, "this machine has no home folder to put that in")
 		}
-		path = filepath.Join(base, strings.TrimPrefix(strings.TrimPrefix(path, "~"), "/"))
+		path = filepath.Join(base, path[1:])
 	}
 	if !filepath.IsAbs(path) {
 		return "", appwire.Errorf(appwire.CodeBadParams, "folder must be a full path or start with ~/")
@@ -747,6 +809,58 @@ func (b *appBackend) setupFolder(raw string) (string, error) {
 		}
 	}
 	return path, nil
+}
+
+// FactorySetupFolderCheck measures the folder a person chose on this machine,
+// where the clone would be made, before anything is cloned. It needs no
+// started factory. It makes no folder; on Windows it makes and removes one
+// temporary probe file ([folderRoom]).
+func (b *appBackend) FactorySetupFolderCheck(_ context.Context, _ string, folder string) (appwire.FactorySetupFolder, error) {
+	path, err := b.setupFolder(folder)
+	if err != nil {
+		return appwire.FactorySetupFolder{}, err
+	}
+	checked, blocked := nearestFolder(path)
+	out := appwire.FactorySetupFolder{Folder: b.shownFolder(path), Exists: checked == path && blocked == nil, Checked: b.shownFolder(checked)}
+	switch {
+	case errors.Is(blocked, errNotAFolder):
+		out.Problem = out.Checked + " is a file, not a folder"
+	case blocked != nil:
+		out.Problem = "codeaf cannot look inside " + out.Checked
+	default:
+		out.Writable, out.FreeBytes, err = folderRoom(checked)
+		if err != nil {
+			out.Problem = err.Error()
+		}
+	}
+	return out, nil
+}
+
+var errNotAFolder = errors.New("not a folder")
+
+// nearestFolder is path when it is a folder, else the nearest folder above it
+// that exists. A file in the way (a path that is missing, or runs through a
+// file, climbs on to it) stops the climb there with errNotAFolder,
+// and any other failure to look stops it at the folder that could not be
+// looked into, because the room of a folder further up says nothing about
+// whether this one can be used.
+func nearestFolder(path string) (string, error) {
+	for {
+		info, err := os.Stat(path)
+		switch {
+		case err == nil && info.IsDir():
+			return path, nil
+		case err == nil:
+			return path, errNotAFolder
+		case !errors.Is(err, fs.ErrNotExist) && !errors.Is(err, syscall.ENOTDIR):
+			return filepath.Dir(path), err
+		}
+		parent := filepath.Dir(path)
+		if parent == path {
+			return path, err
+		}
+		path = parent
+	}
 }
 
 // shownFolder is path as a person is shown it: "~/…" under their home, only
@@ -785,7 +899,7 @@ func (b *appBackend) setupView(in api.FactorySetup) appwire.FactorySetupView {
 		out.GitHub.Error = trimWords(*in.GitHub.Error)
 	}
 	for _, r := range in.Repos {
-		repo := appwire.FactorySetupRepo{ID: r.ID, OpenIssues: r.OpenIssues, Archived: r.Archived, Selected: r.Selected, Read: r.Read, ReadCount: r.ReadCount, WaitingS: r.WaitingS, ResumesAt: r.ResumesAt, Clone: r.Clone, CloneMB: r.CloneMB, SuggestedFolder: b.shownFolder(r.SuggestedCheckout)}
+		repo := appwire.FactorySetupRepo{ID: r.ID, OpenIssues: r.OpenIssues, OpenIssuesExact: r.OpenIssuesExact, Archived: r.Archived, Selected: r.Selected, Read: r.Read, ReadCount: r.ReadCount, WaitingS: r.WaitingS, ResumesAt: r.ResumesAt, Clone: r.Clone, CloneMB: r.CloneMB, SuggestedFolder: b.shownFolder(r.SuggestedCheckout)}
 		if r.Pipeline != nil {
 			repo.Pipeline = *r.Pipeline
 		}

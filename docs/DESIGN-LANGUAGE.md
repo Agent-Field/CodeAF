@@ -90,7 +90,7 @@ No new colour arrives for the emphasized state. No run of bolding spreads across
 the row. And above all **no outline is added** — emphasis is a step UP this
 ladder, never a ring drawn around a thing.
 
-A QUESTION'S FRAME IS NOT EMPHASIS (owner ruling, 2026-09-11). The dim frame a
+A QUESTION'S FRAME IS NOT EMPHASIS. The dim frame a
 question hangs in (WHAT WE REFUSED → Borders, amended) says "this is one object,
 and it is asking you" — a claim about what the thing IS, drawn once, the same
 way whatever row inside it is focused. It never lights, never thickens and never
@@ -296,7 +296,7 @@ brick red, one clear step from `bad`'s 173. The obvious alternative, L 62, lands
 on **168**, which is a pink; a diff whose minus lines went pink on every
 256-colour terminal would have been the fallback nobody looked at, again.
 
-**`ask` was untouched and untouchable — until the owner retired it (2026-09-11).**
+**Questions use the shared amber status hue.**
 `#C08FE8` (light `#6F3FA8`) was spent on the moment the agent is waiting for a
 person and on nothing else. What was true: it was also spent on every WORD of that
 moment — the head, each answer, each key — while home, the places and the chip
@@ -308,18 +308,7 @@ keep the old values as history; neither is on any ladder any more.
 
 ## THE PLACE LADDER — the same table, with three roles re-pointed
 
-**Owner-signed, 2026-08-25, and then reversed by the owner the same day.** The first
-order was "follow the exact design": home and the six places beside it — tasks,
-standing, memory, spend, search, settings — took the captured design's nine hexes,
-painted `#12121A` over every cell of the
-frame, and carried place-scoped variants of the glare law, the isoluminant band and
-the ground ladder to admit them. It was built and shipped for testing. The owner ran
-it and said:
-
-> "i want bg color and text color to be same as in inside chat please this new bg
-> looks weird i think we were taking user terminal stuff or something previously"
-
-**So a place paints from the table above and authors nothing of its own.** There is no
+**A place paints from the table above and authors nothing of its own.** There is no
 second palette, no second ceiling, no second band, and no page ground on any surface —
 `placeSignalBand`, `placeGlareCeiling` and the place ground ladder are gone from
 `internal/tui3/designlanguage_test.go`, and REST IS NOT A COLOUR is one law again.
@@ -477,8 +466,7 @@ paints exactly one cell — the glyph at the head of its row — and the title b
 it keeps the ordinary ink. A needs-you row's amber is on the `?` and not on the
 sentence.
 
-A QUESTION WEARS AMBER ON ITS MARKS AND NOWHERE ELSE (owner ruling, 2026-09-11,
-colour pick C). Until that day the conversation painted a question's head, every
+A QUESTION WEARS AMBER ON ITS MARKS AND NOWHERE ELSE. Previously the conversation painted a question's head, every
 answer label, every key and every separator in a violet of its own (`#C08FE8`)
 while home and the places said the same "waiting on you" in amber — two hues for
 one meaning, and whole rows in a status colour, which is this law broken on the
@@ -540,8 +528,7 @@ do not jump sideways as they update.
 **Where a label does hold ground over nothing, it teaches.** Home's panels are
 the one place on this surface that keep a heading with no rows under it — a map
 that redraws itself is not a map — and each carries one dim line naming what
-arrives there and the one thing that puts it there (the copy of record is
-docs/design/home-mission-control/DESIGN.md §4). That line says what the region
+arrives there and the one thing that puts it there. That line says what the region
 is FOR; it never says that the region is empty. `no tasks yet` and every
 sentence like it are the emptiness law inverted into words and they stay
 banned. The exception is the label, not the announcement.
@@ -623,7 +610,7 @@ two regions are different kinds of thing, and on a conversation surface they
 mostly are not. This is also why the emphasis law forbids adding a ring: rings
 are borders arriving one row at a time.
 
-*Amended 2026-09-11, owner ruling (question views, frame pick A):* **a question
+**a question
 hangs above the box in a frame.** What was true: no border anywhere, with three
 dim rounded boxes that shipped anyway as argued exceptions (the `/folder`
 chooser, the `ctrl+k` switcher card, the onboarding panel), each with its own
@@ -694,4 +681,4 @@ keeps any later content aligned. A slow decoding ripple changes one letter
 at a time into symbols before restoring it, with readable pauses between passes. The row scrolls with the question and
 disappears on completion; it adds nothing to the input chrome. Chevrons and a
 gold dot use native glyphs. Accessible and small-window views retain text.
-See `docs/design/work-logo.md` for the shared geometry contract.
+The shared geometry is implemented in `internal/tui3`.

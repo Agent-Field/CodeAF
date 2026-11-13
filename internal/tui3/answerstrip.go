@@ -42,8 +42,7 @@ func (a *app) answerStrip(width int, now time.Time) []string {
 	}
 	tail := strings.Join(answers, answerChipGap)
 	tailWidth := ansi.StringWidth(tail)
-	// THE ANSWERS ARE KEYS AND WORDS, not a stripe of the question hue (owner
-	// ruling 2026-09-11, colour pick C): the key steps up to the payload hue and
+	// THE ANSWERS ARE KEYS AND WORDS, not a stripe of the question hue: the key steps up to the payload hue and
 	// its word is ink, exactly as on the panel above a conversation's box.
 	paint := func(text string) string { return a.pal.ink(text) }
 	if tailWidth >= width {

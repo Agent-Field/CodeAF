@@ -2,10 +2,7 @@ package session
 
 // THE PERSON'S WORD WINS, AND IT WINS AT THE REQUEST.
 //
-// steer.go states the law and the run it was measured against: a task step
-// thirteen minutes into a wait, the owner picking another model, and the step
-// still talking to the model they had moved off a minute later. These fixtures
-// are the two halves of the rule and the clock on both.
+// These fixtures are the two halves of the rule and the clock on both.
 //
 // EVERY ASSERTION IS ON THE WIRE. What each request carried is
 // [scriptedCompleter.model] — the model id the adapter was actually handed for
@@ -41,8 +38,7 @@ func waitingRequest(out chan<- struct{}) step {
 	}
 }
 
-// TestAModelNamedWhileNothingHasComeBackIsOnTheVeryNextRequest is the owner's
-// own case: a request that has produced nothing is let go of, and the re-ask
+// TestAModelNamedWhileNothingHasComeBackIsOnTheVeryNextRequest proves this behavior: a request that has produced nothing is let go of, and the re-ask
 // carries the model they just named, within [lanes.SpokenWithin].
 func TestAModelNamedWhileNothingHasComeBackIsOnTheVeryNextRequest(t *testing.T) {
 	out := make(chan struct{}, 1)
@@ -427,7 +423,7 @@ func TestAPickOfTheModelTheStepIsAlreadyRidingSpendsNothing(t *testing.T) {
 
 // ── `CONTINUE` IS A PERSON'S WORD TOO, AND IT HAS THE SAME CLOCK ────────────
 //
-// The owner's 14:40:10 evidence is TWO acts: they picked a model AND typed
+// The reproduction has TWO acts: pick a model AND type
 // `continue`. A direction into a running room was enqueued and nothing else, so
 // it was drained when the request ended — which on that step was thirteen
 // minutes away. The record was always right; what was missing was the hearing.

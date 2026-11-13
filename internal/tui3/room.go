@@ -334,7 +334,7 @@ type taskRoom struct {
 	// feed is this page's transcript and the reducer that grows it (feed.go).
 	//
 	// IT IS THE CONVERSATION'S OWN REDUCER AND NOT A SECOND ONE, which is the
-	// whole of docs/design/lens/DESIGN.md's Decision 1: this file used to hold a
+	// whole of the implementation's Decision 1: this file used to hold a
 	// hand-copy of eleven of its methods, and being the copy is why a node's row
 	// never said "took 4s", why a retry inside a task was invisible, and why an
 	// end event paired by a different rule in here than out there. It is
@@ -1390,7 +1390,7 @@ func (a *app) openRoomAt(i int) bool {
 // hand-copy of the reducer instead — eleven functions that agreed with the
 // conversation's on the day they were written and had fallen behind by six event
 // kinds — which is the whole reason the reducer exists (feed.go states the law,
-// docs/design/lens/DESIGN.md's Decision 1 states the design).
+// the implementation's Decision 1 states the design).
 //
 // THE SPEND IS NOT COUNTED HERE, AND THE OMISSION IS THE DESIGN. A node's turn
 // totals are folded by its PILOT (task.go's [app.pilotEvent]), which keeps flying
@@ -2112,6 +2112,9 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			return a.slash(line), true
 		}
 	}
+	if msg.String() == taskRunHereKey && a.input.empty() && !a.guarding() && !a.stopping() && !a.recalling() && !a.roomIsGuest() && a.taskCanRunHere(a.roomRetryEntry()) {
+		return a.runTaskHere(a.roomRetryEntry()), true
+	}
 	if a.room.orch != nil && !a.recalling() {
 		if cmd, taken := a.orchKey(msg); taken {
 			return cmd, true
@@ -2216,7 +2219,7 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		// session with no history at all — which is the same bargain the
 		// conversation struck, where ↑ has not been a one-row scroll since the day
 		// there was anything to recall.
-		if !a.input.onFirstLine() {
+		if !a.recalling() && !a.input.onFirstLine() {
 			return nil, false // the caret's, in input.go
 		}
 		if !a.recallBack() {
@@ -2225,7 +2228,7 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, true
 
 	case "down":
-		if !a.input.onLastLine() {
+		if !a.recalling() && !a.input.onLastLine() {
 			return nil, false
 		}
 		if !a.recallForward() {
@@ -2248,6 +2251,9 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // next keystroke.
 func (a *app) roomHint() string {
 	if a.room != nil && !a.roomIsGuest() && a.room.program == nil && !a.guarding() && !a.asking() && !a.stopping() {
+		if a.input.empty() && !a.recalling() && a.taskCanRunHere(a.roomRetryEntry()) {
+			return taskRunHereVerb
+		}
 		entry := a.roomRetryEntry()
 		if hint := a.taskRetryHint(entry); hint != "" {
 			return hint
@@ -3375,7 +3381,7 @@ func (a *app) roomGuestTail(inner int) []row {
 	// (taskowner.go's questions lane).
 	//
 	// IT IS DIM AND NOT AMBER, AND THAT IS THE HUE LAW RATHER THAN AN OVERSIGHT.
-	// Amber is waiting on YOU and nothing else (docs/design/questions/DESIGN.md);
+	// Amber is waiting on YOU and nothing else;
 	// this question is waiting on the window that owns the work, this page has no
 	// key that would answer it, and a row here in the colour that means "press
 	// something" would be asking a person for a keystroke that does not exist.
@@ -3435,12 +3441,33 @@ func guestOwnerName(owner string) string {
 // roomStateWord is what the node is doing, in the engine's own vocabulary where
 // it has one (task.go's merge words).
 func (a *app) roomStateWord(node *taskNode) string {
+	word := a.roomLocalStateWord(node)
+	if words := a.taskComputerWords(node); words != "" {
+		if word == "" || strings.HasPrefix(words, word+" ") {
+			return words
+		}
+		return word + railSep + words
+	}
+	return word
+}
+
+// The state reading stays the same when a separate placement fact is drawn.
+func (a *app) roomLocalStateWord(node *taskNode) string {
+	// A COMPLETED WORKER CAN STILL HAVE A REFUSED LANDING, and then the room reads
+	// the same pending decision as the card, including one projected from the
+	// store. A node in a named phase keeps its phase ("awaiting your look" is the
+	// design's own word for waiting on the person), which outranks this below.
+	if taskDoingWords(node) == "" {
+		if status := a.taskStatus(node); status.Tier == session.TaskTierYourCall {
+			return status.Word
+		}
+	}
 	// A QUESTION SOMEBODY ELSE IS ANSWERING IS STILL THAT QUESTION. This line
 	// used to read `awaiting review` for a card the settle policy had handed to
 	// the model, which was a fourth word for one reading and said nothing about
 	// what the question actually was. The header reads the reading's own sentence
 	// — `your call · nobody could check it` — and WHO is holding it is the card's
-	// to say, one keypress away (tasksettle.go, docs/design/task-states/DESIGN.md).
+	// to say, one keypress away (tasksettle.go, the implementation).
 	switch node.state {
 	case session.TaskRunning:
 		// A NODE A PERSON HAS ENDED IS STOPPING, AND IT OUTRANKS EVERY PHASE
@@ -3469,8 +3496,8 @@ func (a *app) roomStateWord(node *taskNode) string {
 		// IS at this moment (session's TaskNotice.Doing) — a header that said
 		// "working" over a card waiting on the person would be the one line on the
 		// page spent on the least specific thing on it.
-		if node.doing != "" {
-			return node.doing
+		if doing := taskDoingWords(node); doing != "" {
+			return doing
 		}
 		// AND SO DOES A NODE THAT IS NOT ITS OWN WORKER RIGHT NOW. A check
 		// reading what the work left, and a round closing what the check found,
@@ -3536,7 +3563,7 @@ func (a *app) roomStateWord(node *taskNode) string {
 		// AND `failed` IS GONE. The engine keeps the state's name and a person
 		// reads the reading's own word — `incomplete` — because "failed" sends
 		// somebody looking for a fault and four of the five ways a run ends this
-		// way are not one (docs/design/task-states/DESIGN.md). The reason itself is
+		// way are not one. The reason itself is
 		// on the rail's row under the node; the header has one line and spends it
 		// on the state.
 		return a.taskStatus(node).Word

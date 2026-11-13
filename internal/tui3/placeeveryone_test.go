@@ -231,7 +231,7 @@ func settingsPlaceLab(t *testing.T) *app {
 
 // everyEmptyPlace is each place that can hold nothing, opened on a machine
 // that has put nothing in it. Settings is absent because it is never empty, and
-// home because its empty panels are lane G's and are pinned beside the grid.
+// home because its empty panels are pinned beside the grid.
 func everyEmptyPlace() []everyPlace {
 	opened := func(id page) func(t *testing.T) *app {
 		return func(t *testing.T) *app {

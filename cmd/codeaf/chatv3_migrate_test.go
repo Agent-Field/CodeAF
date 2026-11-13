@@ -42,7 +42,7 @@ func writeFlatSession(t *testing.T, bucket, stem, id string, lines ...string) st
 
 // The whole of a flat session folds into one folder named by its header id: the
 // journal, both sidecars, the node journals from the parallel tree, and a
-// meta.json built from what the header remembered (docs/CHAT-V3.md, Decision
+// meta.json built from what the header remembered (the implementation, Decision
 // 26's last law).
 func TestTheBootPassFoldsAFlatSessionIntoItsFolder(t *testing.T) {
 	t.Setenv("CODEAF_HOME", filepath.Join(t.TempDir(), "state"))

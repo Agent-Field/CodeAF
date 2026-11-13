@@ -44,6 +44,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/redact"
@@ -98,6 +99,9 @@ type appFactoryFile struct {
 type appFactorySession struct {
 	token   string
 	expires time.Time
+	// restored marks a sign-in the app handed back from an earlier launch
+	// (appfactory_sessions.go): the factory refusing it forgets it once.
+	restored bool
 }
 
 // appFactorySignIn is one pending device sign-in. code is GitHub's device
@@ -155,10 +159,15 @@ type appFactoryHub struct {
 	// runtimeOK is what the engine remembers of a factory's own say-so that it
 	// runs kind, when, effort and fanout (appfactory_pipeline_runtime.go).
 	runtimeOK map[string]appFactoryRuntimeRecord
+	// kept is the sign-ins the app's core is owed, to keep or to forget
+	// (appfactory_sessions.go); keptChanged announces that there are some.
+	kept        []keptChange
+	keptChanged func()
 	// linkSt is the invitations the engine holds and the lists it owes
 	// (appfactory_links.go), made by the first use.
-	linkSt *linkState
-	closed bool
+	linkSt    *linkState
+	jobEvents *appFactoryJobEvents
+	closed    bool
 }
 
 // newAppFactoryHub is a registry whose HTTP client takes no ambient proxy,
@@ -189,6 +198,7 @@ func (b *appBackend) factoryHub() *appFactoryHub {
 	b.factoryOnce.Do(func() {
 		b.factories = newAppFactoryHub()
 		b.factories.resume = b.resumeLocal
+		b.factories.keptChanged = func() { b.emit.Emit(appwire.EventFactorySessionsChanged, appwire.Empty{}) }
 	})
 	return b.factories
 }
@@ -202,6 +212,7 @@ func (b *appBackend) closeFactories() {
 }
 
 func (h *appFactoryHub) close() {
+	h.stopJobEvents()
 	h.forgetAll()
 	h.client.CloseIdleConnections()
 }
@@ -391,7 +402,7 @@ func (h *appFactoryHub) save() error {
 		err = closeErr
 	}
 	if err == nil {
-		err = os.Rename(tmp.Name(), h.path())
+		err = fsreplace.Rename(tmp.Name(), h.path())
 	}
 	if err != nil {
 		return appwire.Errorf(appwire.CodeEngine, "the factory connections could not be saved")
@@ -404,6 +415,11 @@ func (h *appFactoryHub) target(id string) (appFactoryRow, string, error) {
 	if id == appLocalID && h.resume != nil {
 		h.resume(context.Background())
 	}
+	return h.lookup(id)
+}
+
+// lookup reads a connection without resuming a local service.
+func (h *appFactoryHub) lookup(id string) (appFactoryRow, string, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.closed {
@@ -429,7 +445,11 @@ func (h *appFactoryHub) tokenLocked(id string) string {
 }
 
 // hold keeps a session in memory and tells the redactors it is a secret.
-func (h *appFactoryHub) hold(id, token string, lives time.Duration) {
+func (h *appFactoryHub) hold(id, token string, lives time.Duration) { h.holdAt(id, "", token, lives) }
+
+// holdAt is hold for a sign-in to a factory at url, which is also queued for
+// the app to keep (appfactory_sessions.go). With no url nothing is queued.
+func (h *appFactoryHub) holdAt(id, url, token string, lives time.Duration) {
 	if token == "" {
 		return
 	}
@@ -443,6 +463,7 @@ func (h *appFactoryHub) hold(id, token string, lives time.Duration) {
 	defer h.mu.Unlock()
 	if !h.closed {
 		h.sessions[id] = s
+		h.keepSessionLocked(id, url, s)
 		// A different caller does not inherit an invitation held for the last.
 		if h.linkSt != nil {
 			if l := h.linkSt.held[id]; l != nil && l.digest != bearerDigest(token) {
@@ -522,6 +543,12 @@ func appFactoryFailure(r appFactoryReply) error {
 		return appwire.Errorf(appwire.CodeGitHubExpired, "GitHub access to this factory has expired; reconnect GitHub")
 	case r.status == http.StatusUnauthorized:
 		return appwire.Errorf(appwire.CodeSignedOut, "sign in to this factory")
+	case r.status == http.StatusConflict && body.Reason == api.ReasonNotCloned:
+		return appwire.Errorf(appwire.CodeNotCloned, "%s", words)
+	case r.status == http.StatusForbidden && body.Reason == api.ReasonDenied:
+		return appwire.Errorf(appwire.CodeForbidden, "denied")
+	case r.status == http.StatusUnprocessableEntity && body.Reason == api.ReasonBinary:
+		return appwire.Errorf(appwire.CodeUnreadable, "binary")
 	case r.status == http.StatusNotFound:
 		if words == "" {
 			words = "the factory has no such thing"
@@ -556,7 +583,11 @@ func appFactoryFailure(r appFactoryReply) error {
 // before anything private is sent, unless a fresh probe finds the factory solo.
 // A saved mode is never trusted for that, because an address can change hands.
 func (h *appFactoryHub) credentialed(ctx context.Context, id string) (appFactoryRow, string, error) {
-	row, token, err := h.target(id)
+	target := h.target
+	if passive, _ := ctx.Value(appFactoryPassiveRead{}).(bool); passive {
+		target = h.lookup
+	}
+	row, token, err := target(id)
 	if err != nil || token != "" {
 		return row, token, err
 	}
@@ -567,8 +598,14 @@ func (h *appFactoryHub) credentialed(ctx context.Context, id string) (appFactory
 		return row, "", appwire.Errorf(appwire.CodeUnreachable, "the local factory is not running for this app; start it again")
 	case row.Mode != "" && row.Mode != api.FactorySolo:
 		// Learned while a credential was held: refuse without sending a thing.
-	case h.probeMode(ctx, row) == api.FactorySolo:
-		return row, "", nil
+	default:
+		// A probe that reaches nothing is the list's unreachable, never a
+		// sign-out: the desktop keeps a down factory's rows and drops a
+		// signed-out one's.
+		mode, err := h.probeMode(ctx, row)
+		if err != nil || mode == api.FactorySolo {
+			return row, "", err
+		}
 	}
 	return row, "", appwire.Errorf(appwire.CodeSignedOut, "sign in to this factory")
 }
@@ -587,21 +624,22 @@ func (h *appFactoryHub) learnModeLocked(id, mode string) {
 
 // probeMode asks a factory with no bearer which mode it runs in and keeps
 // nothing else of the answer: on a loopback team service that answer is the
-// host's own identity, which no caller may be shown.
-func (h *appFactoryHub) probeMode(ctx context.Context, row appFactoryRow) string {
+// host's own identity, which no caller may be shown. The error is the send's
+// own, so a factory that cannot be reached is unreachable here as in the list.
+func (h *appFactoryHub) probeMode(ctx context.Context, row appFactoryRow) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, appFactoryProbe)
 	defer cancel()
 	r, err := h.send(ctx, row.URL, "", http.MethodGet, "/v1/me", nil, appFactorySmall, nil)
 	if err != nil || r.status < 200 || r.status >= 300 {
-		return ""
+		return "", err
 	}
 	var me struct {
 		Mode string `json:"mode"`
 	}
 	if json.Unmarshal(r.body, &me) != nil {
-		return ""
+		return "", nil
 	}
-	return me.Mode
+	return me.Mode, nil
 }
 
 // staleCredential is the refusal for a reply that came back after the
@@ -632,7 +670,11 @@ func (h *appFactoryHub) read(ctx context.Context, id, path string, limit int64, 
 		return err
 	}
 	if r.status < 200 || r.status >= 300 {
-		return appFactoryFailure(r)
+		err := appFactoryFailure(r)
+		if w, ok := err.(*appwire.Error); ok && w.Code == appwire.CodeSignedOut {
+			h.refused(id, token)
+		}
+		return err
 	}
 	if json.Unmarshal(r.body, out) != nil {
 		return appwire.Errorf(appwire.CodeEngine, "the factory sent an answer this app cannot read")
@@ -703,6 +745,8 @@ func (h *appFactoryHub) view(ctx context.Context, row appFactoryRow) (out appwir
 		out.State = appwire.FactorySignedOut
 		if appFactoryFailure(r).(*appwire.Error).Code == appwire.CodeGitHubExpired {
 			out.State = appwire.FactoryGitHubExpired
+		} else {
+			h.refusedLocked(row.ID, token)
 		}
 	case r.status >= 200 && r.status < 300:
 		var me api.Me
@@ -746,12 +790,63 @@ func (b *appBackend) PipelineRuntimeGuarded() {}
 // factory.pipeline_edit_structure.
 func (b *appBackend) PipelineStructureEdits() {}
 
+// PipelineRulesEdits marks this backend as one whose source carries the file's
+// own rules, ask_first and never and describes a missing file from the shipped
+// defaults, and whose preview applies set_list and takes an empty base, which
+// is what lets hello announce factory.pipeline_edit_rules.
+func (b *appBackend) PipelineRulesEdits() {}
+
+// PipelineSettingsEdits marks this backend as one whose source carries the
+// file's adapt word, start labels and start limits, and whose preview applies
+// set_adapt, set_fixed, set_start and the labels list, which is what lets hello
+// announce factory.pipeline_edit_settings.
+func (b *appBackend) PipelineSettingsEdits() {}
+
+// PipelineCheckEdits marks this backend as one whose preview applies an
+// add_step of kind check, which is what lets hello announce
+// factory.pipeline_edit_checks.
+func (b *appBackend) PipelineCheckEdits() {}
+
+// PipelineRenameEdits marks this backend as one whose preview applies
+// rename_step, which is what lets hello announce factory.pipeline_edit_rename.
+func (b *appBackend) PipelineRenameEdits() {}
+
+// PipelinePipelineEdits marks this backend as one whose preview applies
+// add_pipeline, remove_pipeline and rename_pipeline, which is what lets hello
+// announce factory.pipeline_edit_pipelines.
+func (b *appBackend) PipelinePipelineEdits() {}
+
+// PipelineGateEdits marks this backend as one whose preview applies an
+// add_step of kind gate, which is what lets hello announce
+// factory.pipeline_edit_gates.
+func (b *appBackend) PipelineGateEdits() {}
+
+// PipelineAgentFieldEdits marks this backend as one whose preview applies an
+// add_step of kind agentfield, which is what lets hello announce
+// factory.pipeline_edit_agentfield.
+func (b *appBackend) PipelineAgentFieldEdits() {}
+
+// PipelineApproverEdits marks this backend as one whose preview applies
+// set_approver, which is what lets hello announce
+// factory.pipeline_edit_approvers.
+func (b *appBackend) PipelineApproverEdits() {}
+
+// PipelinePassEdits marks this backend as one whose preview applies set_pass
+// and pass on an added gate, which is what lets hello announce
+// factory.pipeline_edit_pass.
+func (b *appBackend) PipelinePassEdits() {}
+
+// PipelineAdaptKindEdits marks this backend as one whose preview applies
+// set_adapt for one pipeline and whose source carries each pipeline's word.
+func (b *appBackend) PipelineAdaptKindEdits() {}
+
 func (b *appBackend) FactoryCapabilities(context.Context) (appwire.FactoryCapabilities, error) {
 	return appwire.FactoryCapabilities{
-		Contract: api.Contract, Remote: true, Registry: true, AccessLinks: true, SignIn: true,
+		Contract: api.Contract, Remote: true, Registry: true, AccessLinks: true, SignIn: true, JobEvents: true,
 		Local: true, Runner: true, Writes: false, Admin: true,
-		Links: true, CopyLink: b.copier().Available(), ReposManage: true, RunnerManage: true, PipelinePR: true, PipelineEdit: true, PipelineEditRuntime: true,
-		PipelineEditStructure: true, MaxConnections: appwire.MaxFactoryConnections, MaxFlows: appwire.MaxFactoryFlows,
+		Links: true, CopyLink: b.copier().Available(), ReposManage: true, RunnerManage: true, Rules: true, PipelinePR: true, PipelinePRs: true, PipelinePRUpdate: true, PipelineSourceRef: true, SpendByRepo: true, SpendByModel: true, PipelineEdit: true, PipelineEditRuntime: true, CreateIssue: true, CreateGroup: true, CreateBudget: true, JobContext: true, CreateSplitFrom: true,
+		PipelineEditStructure: true, PipelineEditRules: true, RepoRead: true, RepoFacts: true, GroupPolicy: true, WaitsOn: true, MaxConnections: appwire.MaxFactoryConnections, MaxFlows: appwire.MaxFactoryFlows,
+		RepoIssues: true,
 	}, nil
 }
 
@@ -825,7 +920,7 @@ func (b *appBackend) FactoryAttach(ctx context.Context, raw, token string) (appw
 		name = about.Factory.Name
 	}
 	if token != "" {
-		h.hold(id, token, 0)
+		h.holdAt(id, origin, token, 0)
 	}
 	row := appFactoryRow{ID: id, URL: origin, Name: name}
 	if err := h.saveAttached(row, known); err != nil {
@@ -942,6 +1037,7 @@ func (b *appBackend) FactoryDetach(_ context.Context, id string) error {
 	}
 	h.rows = kept
 	delete(h.sessions, id)
+	h.forgetKeptLocked(id)
 	delete(h.seen, id)
 	h.dropHeldLocked(id)
 	for key, flow := range h.signIns {
@@ -967,37 +1063,52 @@ func (b *appBackend) FactoryMe(ctx context.Context, id string) (appwire.FactoryM
 func (b *appBackend) FactoryQueue(ctx context.Context, id string) (api.Queue, error) {
 	var q api.Queue
 	err := b.factoryHub().read(ctx, id, "/v1/queue", appFactoryBody, &q)
+	if err == nil {
+		for i := range q.Jobs {
+			j := &q.Jobs[i]
+			j.LifetimeCost = max(j.Cost, j.LifetimeCost)
+		}
+	}
 	return q, err
 }
 
 func (b *appBackend) FactoryJob(ctx context.Context, id string, job int) (api.Job, error) {
 	var out api.Job
 	err := b.factoryHub().read(ctx, id, "/v1/jobs/"+strconv.Itoa(job), appFactoryBody, &out)
+	if err == nil {
+		out.LifetimeCost = max(out.Cost, out.LifetimeCost)
+	}
 	return out, err
 }
 
 func (b *appBackend) FactoryRepos(ctx context.Context, id string) (appwire.FactoryRepos, error) {
 	var body struct {
-		Factory   api.Factory `json:"factory"`
-		Watched   []string    `json:"watched"`
-		Available []struct {
+		AvailableReadAt time.Time   `json:"available_read_at"`
+		Factory         api.Factory `json:"factory"`
+		Watched         []string    `json:"watched"`
+		Available       []struct {
 			Full    string    `json:"full"`
 			Name    string    `json:"name"`
 			Owner   string    `json:"owner"`
 			Private bool      `json:"private"`
 			Pushed  time.Time `json:"pushed"`
 			Open    int       `json:"open"`
+			// OpenIssues is believed only as a whole number from 0.
+			OpenIssues *int `json:"open_issues"`
 		} `json:"available"`
 	}
 	if err := b.factoryHub().read(ctx, id, "/v1/repos", appFactoryBody, &body); err != nil {
 		return appwire.FactoryRepos{}, err
 	}
-	out := appwire.FactoryRepos{Factory: body.Factory, Watched: body.Watched, Available: make([]appwire.FactoryRepo, len(body.Available))}
+	out := appwire.FactoryRepos{AvailableReadAt: body.AvailableReadAt, Factory: body.Factory, Watched: body.Watched, Available: make([]appwire.FactoryRepo, len(body.Available))}
 	if out.Watched == nil {
 		out.Watched = []string{}
 	}
 	for i, r := range body.Available {
 		out.Available[i] = appwire.FactoryRepo{Full: r.Full, Name: r.Name, Owner: r.Owner, Private: r.Private, Pushed: r.Pushed, Open: r.Open}
+		if r.OpenIssues != nil && *r.OpenIssues >= 0 {
+			out.Available[i].OpenIssues = r.OpenIssues
+		}
 	}
 	return out, nil
 }
@@ -1261,6 +1372,7 @@ func (h *appFactoryHub) access(ctx context.Context, caller, link, verb string) (
 		// An explicit completed sign-in changes the caller, including when a
 		// local authority was previously reached through its operator bearer.
 		h.sessions[id] = appFactorySession{token: granted}
+		h.keepSessionLocked(id, origin, h.sessions[id])
 	}
 	if joined {
 		delete(h.links, key)
@@ -1492,7 +1604,7 @@ func (b *appBackend) FactorySignInPoll(ctx context.Context, caller, flow string)
 			h.forgetSignIn(flow)
 			return appwire.FactorySignInState{}, appwire.Errorf(appwire.CodeEngine, "the factory sent an answer this app cannot read")
 		}
-		h.hold(factoryID, signed.AccessToken, time.Duration(signed.ExpiresIn)*time.Second)
+		h.holdAt(factoryID, row.URL, signed.AccessToken, time.Duration(signed.ExpiresIn)*time.Second)
 		h.forgetSignIn(flow)
 		me := signed.Me
 		me.SessionID = ""

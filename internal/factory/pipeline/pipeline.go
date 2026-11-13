@@ -28,6 +28,7 @@ package pipeline
 
 import (
 	"fmt"
+	"maps"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -47,7 +48,10 @@ const (
 	// DefaultMaxSize is the largest job that starts on its own.
 	DefaultMaxSize = "M"
 	// DefaultMaxCost is the dollars per job, over which the job asks first.
-	DefaultMaxCost = 2
+	// It is the default job budget, so a job no file sizes up starts by itself:
+	// what a start compares is the budget, the most a job may spend, never an
+	// estimate, and a lower default would hold every job a factory picks up.
+	DefaultMaxCost = factory.DefaultJobBudget
 	// DefaultIssueMode is how an issue's size is read: the model's rubric.
 	DefaultIssueMode = "model"
 	// IssueModeLabel reads size/S, size/M and size/L off the issue's labels.
@@ -71,6 +75,15 @@ type File struct {
 	Steps         map[string]Step
 	Fixed         []string
 	Rules         []string
+	// Adapt is the `adapt:` key: how much a job's plan may reshape the steps
+	// it runs, for every pipeline in the file ([factory.AdaptMode]): adapt
+	// (within the bounds, the default), ask (and a person ratifies before
+	// anything after plan runs) or fixed (the steps as written). Empty when
+	// the file says nothing, which is adapt.
+	Adapt factory.AdaptMode
+	// AdaptKinds is `adapt:` written as a map, one word per pipeline: a kind
+	// it does not name is adapt. At most one of Adapt and AdaptKinds is set.
+	AdaptKinds map[factory.Kind]factory.AdaptMode
 	// Merge is the `merge:` key. AUTO-MERGE IS OFF unless a file turns it on;
 	// a personal file may only turn it off ([Merge]).
 	Merge factory.MergePolicy
@@ -84,8 +97,20 @@ type File struct {
 	Text         string
 	PersonalText string
 	Personal     bool
+	// House is the factory's own rules when [WithHouseRules] added them to this
+	// read, so a client can say which lines came from the factory rather than
+	// the repository. The repository's Text never holds them.
+	House factory.HouseRules
+	// Copy is the factory's own copy of the repository's file when
+	// [WithFactoryCopy] read it in place of main's: Text is then the copy's,
+	// and From is factory.FromFactoryCopy. Nil for every other read.
+	Copy *factory.PipelineCopy
 	// Problems are lines that did not load. The rest of the file did.
 	Problems []Problem
+
+	// library is the factory's pipeline library this read was given
+	// ([WithLibrary]); nil for none. It is never written into the file.
+	library *File
 
 	// set records which keys a personal file wrote. A repo file leaves it unused.
 	set presence
@@ -97,9 +122,12 @@ type File struct {
 // Start is what may begin without a person. An empty Labels means nothing
 // starts on its own: a label has to be named first.
 type Start struct {
-	Labels   []string
-	MaxSize  string
-	MaxCost  float64
+	Labels  []string
+	MaxSize string
+	MaxCost float64
+	// Never is kept so files that still write `never:` keep working: each
+	// line is a protected path, exactly like an ask-first `touch <path>`
+	// ([ProtectedPaths]).
 	Never    []string
 	AskFirst []string
 }
@@ -121,6 +149,7 @@ type Size struct {
 // conversation. No other word is read, and a file never invents one. A file
 // that says `kind: chat` reads as "", so the two spellings are one file.
 type Step struct {
+	Label  string
 	Prompt string
 	Kind   string
 	When   string
@@ -128,6 +157,19 @@ type Step struct {
 	Fanout string
 	Until  string
 	Max    int
+	// Who is who a person step waits on ([factory.ApproverWord]): "" the job's
+	// person. Only approve and a gate take one.
+	Who string
+	// Pass is who may pass a person step ([factory.PassWord]): "" (a person
+	// or the manager, as before the key), person, manager, or `manager when
+	// <condition>`. Only approve and a gate take one.
+	Pass string
+	// Input is an agentfield step's input, by the reasoner's own field names,
+	// each value a string with the job's {placeholders}
+	// ([factory.AgentFieldInput]); nil sends the default mapping. An
+	// agentfield step's Prompt is its reasoner, "<node>.<reasoner>" (the file
+	// may spell it `target:`).
+	Input map[string]string
 
 	wrotePrompt bool
 	wroteUntil  bool
@@ -146,6 +188,12 @@ func (s Step) holdWhy() string {
 	if !textRun(s.Kind) {
 		return ""
 	}
+	if s.Kind == string(factory.StageAgentField) {
+		if _, err := factory.AgentFieldTargetWord(s.Prompt); err != nil {
+			return "an agentfield step names its reasoner as node.reasoner (target: swe-planner.build); " + err.Error() + "; the run holds here for a person"
+		}
+		return ""
+	}
 	if strings.TrimSpace(s.Prompt) == "" {
 		return "a " + s.Kind + " runs its own prompt as written and this one has none; the run holds here for a person"
 	}
@@ -158,7 +206,7 @@ func (s Step) holdWhy() string {
 // textRun says whether a kind hands its prompt to something other than a
 // model: a check's shell, a post's verb. Neither may be given extra words.
 func textRun(kind string) bool {
-	return kind == string(factory.StageCheck) || kind == string(factory.StagePost)
+	return kind == string(factory.StageCheck) || kind == string(factory.StagePost) || kind == string(factory.StageAgentField)
 }
 
 // isGate says whether a step is a person: a gate by kind, or a step that holds.
@@ -181,7 +229,7 @@ func kindWord(s string) (string, bool) {
 // vocabulary documents on [factory.Stage]; a count or a free "per x" is a
 // markdown spelling the YAML does not take.
 var (
-	StepKinds   = []string{string(factory.StageChat), string(factory.StageCheck), string(factory.StageGate), string(factory.StagePost)}
+	StepKinds   = []string{string(factory.StageChat), string(factory.StageCheck), string(factory.StageGate), string(factory.StagePost), string(factory.StageAgentField)}
 	StepFanouts = []string{"one", "per-file", "per-finding", "per-claim"}
 )
 
@@ -231,6 +279,7 @@ type presence struct {
 	pipeline      map[factory.Kind]bool
 	fixed         bool
 	rules         bool
+	adapt         bool
 	mergeAuto     bool
 	mergeMethod   bool
 }
@@ -356,7 +405,7 @@ func (f File) Recipe() factory.Recipe {
 		Source:        f.Source,
 		DefaultBudget: f.DefaultBudget,
 
-		Adapt:  copyAdapt(f.markdownAdapt),
+		Adapt:  f.adaptByKind(),
 		Policy: append([]string(nil), f.Rules...),
 		ByKind: map[factory.Kind][]factory.Stage{},
 		Merge:  f.Merge,
@@ -364,16 +413,19 @@ func (f File) Recipe() factory.Recipe {
 	for _, problem := range f.Problems {
 		r.Problems = append(r.Problems, problem.Error())
 	}
-	for kind, names := range f.Pipeline {
-		stages := f.stages(names)
+	// EVERY NAME IS RESOLVED THE ONE WAY ([File.Resolve]): the file's own
+	// list, else the library's, else the built-in steps.
+	for _, name := range f.pipelineNames() {
+		res, _ := f.Resolve(name)
+		kind := factory.Kind(name)
 		if kind == factory.KindIssue {
-			r.Stages = stages
+			r.Stages = res.Stages
 			continue
 		}
-		if len(stages) == 0 {
+		if len(res.Stages) == 0 {
 			continue
 		}
-		r.ByKind[kind] = stages
+		r.ByKind[kind] = res.Stages
 	}
 	if r.Stages == nil {
 		r.Stages = []factory.Stage{}
@@ -390,7 +442,7 @@ func (f File) stages(names []string) []factory.Stage {
 				continue
 			}
 			used[raw] = true
-			out = append(out, factory.Stage{Name: raw, Kind: factory.StageGate, On: true, Fixed: listed(f.Fixed, raw)})
+			out = append(out, factory.Stage{Name: raw, Label: strings.TrimSpace(f.Steps[raw].Label), Kind: factory.StageGate, On: true, Fixed: listed(f.Fixed, raw), Who: f.Steps[raw].Who, Pass: f.Steps[raw].Pass})
 			continue
 		}
 		step, ok := f.Steps[raw]
@@ -414,7 +466,7 @@ func (f File) stages(names []string) []factory.Stage {
 		if step.holdWhy() != "" {
 			// Nothing of a step that cannot run as written reaches the runner:
 			// no prompt, no condition. A person decides whether the run goes on.
-			out = append(out, factory.Stage{Name: name, Kind: factory.StageGate, On: true, Fixed: listed(f.Fixed, raw)})
+			out = append(out, factory.Stage{Name: name, Label: strings.TrimSpace(step.Label), Kind: factory.StageGate, On: true, Fixed: listed(f.Fixed, raw)})
 			continue
 		}
 		word, free := mechanicalUntil(step.Until)
@@ -428,10 +480,24 @@ func (f File) stages(names []string) []factory.Stage {
 		if free && kind == factory.StageChat {
 			ask = withStop(ask, step.Until)
 		}
-		out = append(out, factory.Stage{
-			Name: name, Kind: kind, Ask: ask, When: step.When, Effort: step.Effort,
-			Fanout: step.Fanout, Until: word, Max: step.Max, On: true, Fixed: listed(f.Fixed, raw),
-		})
+		who, pass := "", ""
+		if kind == factory.StageGate {
+			who, pass = step.Who, step.Pass
+		}
+		st := factory.Stage{
+			Name: name, Label: strings.TrimSpace(step.Label), Kind: kind, Ask: ask, When: step.When, Effort: step.Effort,
+			Fanout: step.Fanout, Until: word, Max: step.Max, On: true, Fixed: listed(f.Fixed, raw), Who: who, Pass: pass,
+		}
+		if kind == factory.StageAgentField {
+			// AN AGENTFIELD STEP'S PROMPT IS ITS REASONER: what runs it is a
+			// run on the control plane, so there is no model to hand words to.
+			st.Target, _ = factory.AgentFieldTargetWord(step.Prompt)
+			st.Ask = st.Target
+			if len(step.Input) > 0 {
+				st.Input = maps.Clone(step.Input)
+			}
+		}
+		out = append(out, st)
 	}
 	return out
 }
@@ -455,11 +521,20 @@ func mechanicalUntil(sentence string) (word string, free bool) {
 		return factory.UntilClean, false
 	case "green":
 		return factory.UntilGreen, false
+	case factory.UntilNoNewFailures:
+		return factory.UntilNoNewFailures, false
 	case "proven", "every claim has evidence":
 		return factory.UntilProven, false
 	default:
 		return factory.UntilDone, true
 	}
+}
+
+const baselinePolicyScope = "until: " + factory.UntilNoNewFailures + " is only available on the Test conversation"
+
+func unsupportedBaselinePolicy(name, kind, until string) bool {
+	word, _ := mechanicalUntil(until)
+	return word == factory.UntilNoNewFailures && !factory.IsTestConversation(factory.Stage{Name: name, Kind: factory.StageKind(kind)})
 }
 
 func withStop(prompt, until string) string {
@@ -501,6 +576,24 @@ func (f File) RecipeProblems() []factory.Problem {
 	out := make([]factory.Problem, len(f.Problems))
 	for i, p := range f.Problems {
 		out[i] = factory.Problem{Line: p.Line, Text: p.Where, Why: p.Why}
+	}
+	return out
+}
+
+// adaptByKind is the recipe's adapt word per kind: the file's per-pipeline
+// map, else its one `adapt:` word for the issue pipeline and every pipeline
+// the file lists, else the Markdown recipe's words carried over, else none
+// (the default, adapt).
+func (f File) adaptByKind() map[factory.Kind]factory.AdaptMode {
+	if len(f.AdaptKinds) > 0 {
+		return copyAdapt(f.AdaptKinds)
+	}
+	if f.Adapt == "" {
+		return copyAdapt(f.markdownAdapt)
+	}
+	out := map[factory.Kind]factory.AdaptMode{factory.KindIssue: f.Adapt}
+	for _, kind := range f.pipelineNames() {
+		out[factory.Kind(kind)] = f.Adapt
 	}
 	return out
 }

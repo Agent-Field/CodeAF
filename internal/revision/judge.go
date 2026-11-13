@@ -668,7 +668,7 @@ type Evidence struct {
 	// Without it the gate read a suite's absolute state as a verdict on the
 	// change: a repository carrying one pre-existing red test failed every
 	// correct patch that passed through it, four times out of four on the
-	// measured battery (audit-notes §14.4.1). It is stated as fact rather than
+	// measured battery (the implementation §14.4.1). It is stated as fact rather than
 	// as an excuse, and it acquits only what it names.
 	Baseline []string
 	// Regressed names the project's own checks that PASSED BEFORE this work and
@@ -767,7 +767,7 @@ type Evidence struct {
 	// states. The gate reads it instead of reading the deliverable's sentence
 	// about its own tests: a claim that "all 56 tests pass" is a claim about
 	// tests the same worker wrote, and weighing it is how two graded runs ended
-	// at exit 0 over wrong answers (docs/design/gate/ACCEPTANCE.md).
+	// at exit 0 over wrong answers.
 	//
 	// A zero value is a photograph nobody took, which stops the acceptance
 	// settlement rather than convicting anything: NOBODY LOOKED IS NOT NOTHING
@@ -931,7 +931,7 @@ func (e Evidence) block(budget ctxbudget.Budget) string {
 	// pass" and nothing beside it weighs the sentence, because a sentence is
 	// what it has; a judge holding the command, its exit status and its roster
 	// weighs the world. The two runs this block exists for both passed on the
-	// sentence (docs/design/gate/ACCEPTANCE.md).
+	// sentence.
 	if reading := e.readingBlock(); reading != "" {
 		if body.Len() > 0 {
 			body.WriteString("\n")
@@ -1189,7 +1189,7 @@ const enumerationFloor = 3
 // writing prose about work it did not do, and one did: textual s5 was acquitted
 // on "everything it names is already in the delivered text" over a true finding
 // that an example file had never been written, and shipped 1 of 20 hidden
-// checks under exit 0 (2026-08-29, bench/deepswe; docs/design/gate/SETTLEMENT.md
+// checks under exit 0 (2026-08-29, bench/deepswe; the implementation
 // §6).
 //
 // Where the run produced NOTHING BUT THE MESSAGE, that is not a softening of the
@@ -2227,7 +2227,7 @@ func ExtendForGap(ctx context.Context, graph *store.Store, node store.Node, part
 	// never timed, is not refused on a clock it cannot read — the fail-safe
 	// direction here is to try, because the alternative is the defect this whole
 	// change is about: eight runs that stopped at a tenth of their wall by
-	// choice. See PERF.md and docs/design/gate/SETTLEMENT.md §3.
+	// choice. See PERF.md and the implementation §3.
 	// A REQUEST ALREADY SATISFIED BUYS NO ROUND. It is asked here, before the
 	// wall is weighed and before anything is planned, because a run that has
 	// done what was asked should end saying so rather than end saying it ran out

@@ -45,6 +45,7 @@ type apiRefusal struct {
 }
 
 type installGitHub struct {
+	asset             string
 	server            *httptest.Server
 	releases          []string
 	timings           map[string]fakeTiming
@@ -163,6 +164,9 @@ func (github *installGitHub) writeAsset(w http.ResponseWriter, tag, name string)
 		binary = github.binary
 	}
 	asset := platformAsset()
+	if github.asset != "" {
+		asset = github.asset
+	}
 	if github.legacyAssetOnly {
 		asset = legacyPlatformAsset()
 	}

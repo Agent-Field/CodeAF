@@ -8,16 +8,19 @@ package main
 import (
 	"context"
 	"errors"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cellsync"
+	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/pair"
+	"github.com/Agent-Field/codeaf/internal/reqsign"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 	"github.com/Agent-Field/codeaf/internal/tui3"
 )
@@ -54,7 +57,11 @@ func (e toldLine) Unwrap() error { return e.err }
 // Anything that is not a refusal is returned as it came.
 func told(err error) error {
 	if refusal, ok := cellsync.RefusalOf(err); ok {
-		return toldLine{line: refusal.Say(err), err: err}
+		line := refusal.Say(err)
+		if line == chatlist.Removed {
+			line = chatlist.RemovedChat
+		}
+		return toldLine{line: line, err: err}
 	}
 	return err
 }
@@ -66,7 +73,12 @@ func (d *approvalsDoor) who() (pair.Approver, error) {
 	}
 	who, err := d.approver(route)
 	if err == nil {
-		who.BeforeApprove = func(ctx context.Context) error { return ownDeviceRecord(ctx, d.dir, route) }
+		// The record gets its own wait, so a slow first write cannot spend the approve's.
+		who.BeforeApprove = func(ctx context.Context) error {
+			ctx, cancel := context.WithTimeout(ctx, approveStep)
+			defer cancel()
+			return ownDeviceRecord(ctx, d.dir, route)
+		}
 	}
 	return who, err
 }
@@ -80,16 +92,23 @@ func (d *approvalsDoor) Pending(ctx context.Context, typed string) (tui3.Pending
 	if err != nil {
 		return tui3.PendingDevice{}, err
 	}
-	// A pasted self-hosted link must never send its code to the current
-	// service when the two differ. The terminal's printed command names it.
-	if via := pair.LinkRelay(typed); via != "" && strings.TrimRight(via, "/") != strings.TrimRight(route.URL, "/") {
-		return tui3.PendingDevice{}, errors.New("this pairing link uses another sync address — approve it in a terminal with the command shown on the new device")
+	// Refuse before a code or its key can reach another sync service.
+	if err := pair.CheckLinkService(typed, route.URL); err != nil {
+		return tui3.PendingDevice{}, err
 	}
+
 	who, err := d.approver(route)
 	if err != nil {
 		return tui3.PendingDevice{}, err
 	}
 	as, err := who.Look(ctx, ref)
+	if errors.Is(err, pair.ErrLinkDecided) && approvedHere(who, ref.Code, "") == requestApprovedHere {
+		// An approval whose reply was lost: the device is in, so this computer is shared.
+		if err := identity.EndSolo(d.dir); err != nil {
+			return tui3.PendingDevice{}, err
+		}
+		return tui3.PendingDevice{}, tui3.ErrAlreadyPaired
+	}
 	if err != nil {
 		return tui3.PendingDevice{}, told(err)
 	}
@@ -115,7 +134,7 @@ func (d *approvalsDoor) recall(p tui3.PendingDevice) (pair.Asking, error) {
 	defer d.mu.Unlock()
 	as, ok := d.asking[p.Code]
 	if !ok {
-		return pair.Asking{}, pair.ErrLinkGone
+		return pair.Asking{}, errors.New("open that pairing link again before approving")
 	}
 	return as, nil
 }
@@ -123,10 +142,67 @@ func (d *approvalsDoor) recall(p tui3.PendingDevice) (pair.Asking, error) {
 func (d *approvalsDoor) Approve(ctx context.Context, p tui3.PendingDevice) error {
 	return d.answer(p, func(who pair.Approver, as pair.Asking) error {
 		if err := who.Approve(ctx, as); err != nil {
-			return err
+			if err = settleApproval(who, as, err); err != nil {
+				return err
+			}
 		}
 		return identity.EndSolo(d.dir)
 	})
+}
+
+// approveStep bounds each wait of an approval on its own: the device record,
+// and the lookup after an answer whose reply was lost.
+const approveStep = 8 * time.Second
+
+// settleApproval reads the request again after an approve that ran out of time
+// or was refused as already answered. The relay may have let the device in
+// while the reply was lost, or an earlier attempt may have, so an approved
+// request for this device is success. A request still waiting says plainly that
+// nothing arrived; anything else keeps the error it came with.
+func settleApproval(who pair.Approver, as pair.Asking, err error) error {
+	if !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, pair.ErrLinkDecided) {
+		return err
+	}
+	switch approvedHere(who, as.Ref.Code, as.DeviceID()) {
+	case requestApprovedHere:
+		return nil
+	case requestWaiting:
+		if errors.Is(err, context.DeadlineExceeded) {
+			return tui3.ErrAnswerNotArrived
+		}
+	}
+	return err
+}
+
+type requestOutcome int
+
+const (
+	requestUnknown requestOutcome = iota
+	requestWaiting
+	requestApprovedHere
+)
+
+// approvedHere reads where a request stands. Approved here means the relay
+// approved it for this very device AND that device is in this computer's own
+// fleet, so a link some other fleet answered never counts as this one sharing.
+// An empty device is whichever device the request names.
+func approvedHere(who pair.Approver, code, device string) requestOutcome {
+	ctx, cancel := context.WithTimeout(context.Background(), approveStep)
+	defer cancel()
+	r, err := who.Requests.GetRequest(ctx, code, 0)
+	switch {
+	case err != nil:
+		return requestUnknown
+	case r.State == directory.RequestPending:
+		return requestWaiting
+	case r.State != directory.RequestApproved || device != "" && r.Device != device:
+		return requestUnknown
+	}
+	listing, err := who.Dir.List(ctx)
+	if dev, ok := listing.Devices[r.Device]; err != nil || !ok || dev.Revoked {
+		return requestUnknown
+	}
+	return requestApprovedHere
 }
 
 func (d *approvalsDoor) Deny(ctx context.Context, p tui3.PendingDevice) error {
@@ -172,7 +248,7 @@ func (d *approvalsDoor) home() (directory.Client, identity.Identity, string, err
 
 func (d *approvalsDoor) Devices(ctx context.Context) ([]tui3.DeviceRow, error) {
 	if syncsetup.Quiet(d.dir) {
-		return nil, nil
+		return []tui3.DeviceRow{d.ownRow()}, nil
 	}
 	client, id, self, err := d.home()
 	if err != nil {
@@ -183,6 +259,13 @@ func (d *approvalsDoor) Devices(ctx context.Context) ([]tui3.DeviceRow, error) {
 		return nil, told(err)
 	}
 	rows := rowsOf(listing, directory.MetadataKey(id.CellKey()), self)
+	foundSelf := false
+	for _, row := range rows {
+		foundSelf = foundSelf || row.Self
+	}
+	if !foundSelf {
+		rows = append(rows, d.ownRow())
+	}
 	if own, named := devname.Chosen(d.dir); named {
 		rows = withOwnName(rows, own)
 	}
@@ -249,4 +332,35 @@ func (d *approvalsDoor) DeviceName(sealed string) string {
 // things.
 func (d *approvalsDoor) Rename(ctx context.Context, typed string) (string, error) {
 	return renameThisDevice(ctx, d.dir, typed)
+}
+
+// ownRow keeps an unpaired computer nameable without waking the sync service.
+func (d *approvalsDoor) ownRow() tui3.DeviceRow {
+	dev, err := identity.LoadDevice(d.dir)
+	id := ""
+	if err == nil {
+		id = dev.ID()
+	}
+	return tui3.DeviceRow{ID: id, Name: devname.Name(d.dir), Platform: runtime.GOOS, Self: true}
+}
+
+// SyncService names the local pairing service even when the chat runs elsewhere.
+func (d *approvalsDoor) SyncService() string { return syncsetup.Resolve(d.dir).URL }
+
+// RelayStorage reads this computer's account without creating keys or asking the network.
+func (d *approvalsDoor) RelayStorage() (code, state string) {
+	relay := syncsetup.Resolve(d.dir)
+	if !relay.On() || identity.Solo(d.dir) {
+		return "", ""
+	}
+	id, err := identity.Load(d.dir)
+	if err != nil {
+		return "", ""
+	}
+	code = reqsign.IDOf(id.PublicKey())
+	state = syncsetup.ReportedStorage(d.dir, relay.URL, code)
+	if state == "" {
+		return "", ""
+	}
+	return code, state
 }

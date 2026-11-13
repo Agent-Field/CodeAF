@@ -12,7 +12,7 @@ import (
 
 // ── ONE DISPATCHER ──────────────────────────────────────────────────────────
 //
-// docs/design/recovery/DESIGN.md §4 is one sentence about structure: there is
+// the implementation §4 is one sentence about structure: there is
 // ONE loop that decides what a failed call does next, and everything else is a
 // move generator under it or a watcher feeding it. Both laws below are that
 // sentence said in a way the build can check, because the eleven controllers of
@@ -83,7 +83,7 @@ func TestOneDispatcherSendsForACompletion(t *testing.T) {
 			}
 			if !allowed {
 				t.Errorf("%s sends a request of its own — every completion goes through %s's send "+
-					"(docs/design/recovery/DESIGN.md §4). If this is not a completion, add it to "+
+					". If this is not a completion, add it to "+
 					"sendsForACompletion with the sentence that says why", name, dispatcherFile)
 			}
 			_ = reason
@@ -104,7 +104,7 @@ var countsAttempts = map[string]string{
 // TestNoAttemptCountingLoopOutsideTheDispatcher refuses the OTHER half of the
 // shape: not a second place that sends, but a second place that counts.
 //
-// Six of the eleven budgets in docs/design/recovery/DESIGN.md §2 were loops with
+// Six of the eleven budgets in the implementation §2 were loops with
 // a private count in their header — three faults, six paced sends, sixty patient
 // ones, four arms, one ladder arm, seven rungs. Every one of them was correct on
 // its own and none of them could see the others, so their product bounded the
@@ -125,7 +125,7 @@ func TestNoAttemptCountingLoopOutsideTheDispatcher(t *testing.T) {
 				over := strings.ToLower(receiverOf(loop.X))
 				if strings.Contains(over, "relaxationplan") || strings.HasSuffix(over, ".shapes") {
 					t.Errorf("%s walks the relaxation rungs itself — the rungs are the plan's and "+
-						"%s asks control.Next for one (docs/design/recovery/DESIGN.md §4)", name, dispatcherFile)
+						"%s asks control.Next for one", name, dispatcherFile)
 				}
 				return true
 			}
@@ -141,7 +141,7 @@ func TestNoAttemptCountingLoopOutsideTheDispatcher(t *testing.T) {
 				ident, ok := target.(*ast.Ident)
 				if ok && counting[strings.ToLower(ident.Name)] {
 					t.Errorf("%s counts %q in a loop header — the one budget is the plan's deadline "+
-						"(docs/design/recovery/DESIGN.md §4)", name, ident.Name)
+						"", name, ident.Name)
 				}
 			}
 			return true
@@ -174,7 +174,7 @@ func TestNoConstantInThisPackageBoundsAnAttemptCount(t *testing.T) {
 				if strings.HasSuffix(lower, "attempts") || strings.HasSuffix(lower, "pacingbudget") ||
 					strings.HasSuffix(lower, "moves") && strings.HasPrefix(lower, "free") {
 					t.Errorf("%s declares %s — a budget of its own is what the one deadline replaced "+
-						"(docs/design/recovery/DESIGN.md §4)", name, ident.Name)
+						"", name, ident.Name)
 				}
 			}
 			return true

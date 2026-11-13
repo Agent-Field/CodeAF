@@ -123,11 +123,11 @@ func TestEveryPlanHasACeilingEvenWithNoChoiceAtAll(t *testing.T) {
 
 // TestTheSpreadIsFlooredAtTheLanesOwnVariability: a posterior's variance is the
 // variance of the ESTIMATE and a controller handed it would believe a tail
-// impossible — and the floor under it is how variable ONE ANSWER from THIS lane
+// impossible — and the floor under it is how variable ONE ANSWER from this test
 // is, not how variable the worst lane on the sheet is.
 func TestTheSpreadIsFlooredAtTheLanesOwnVariability(t *testing.T) {
 	certain := Belief{TTFT: Posterior{X: math.Log(400), P: 1e-12}, Rate: Posterior{X: math.Log(50), P: 1e-12}}
-	// Nothing published about this lane, so what a sure belief is floored at is
+	// Nothing published about this test, so what a sure belief is floored at is
 	// the prior about one draw.
 	certainly := PaceOf(certain)
 	if !near(certainly.First.Sigma, SpreadFloor) || !near(certainly.Gap.Sigma, SpreadFloor) {
@@ -284,7 +284,7 @@ func TestAFirstTokenPastTheCrossingIsHedged(t *testing.T) {
 	cost := plan.Alts[0].First.Mean() + plan.Lambda*plan.Alts[0].Extra + plan.Margin
 
 	// BOTH TESTS, because an act before the ceiling needs both (§B): the payoff
-	// crossing, and a silence abnormal for this lane. The tail mass is the
+	// crossing, and a silence abnormal for this test. The tail mass is the
 	// per-request false-act budget over the alarm opportunities this request's
 	// own shape offers, written out here from the error function so that the
 	// scripted crossing does not read the controller's own arithmetic back.

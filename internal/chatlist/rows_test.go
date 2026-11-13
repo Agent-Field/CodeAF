@@ -19,7 +19,7 @@ func listing(cells map[string]directory.Cell) directory.Listing {
 		Now: 1_000_000,
 		Devices: map[string]directory.Device{
 			self:  {Name: "laptop"},
-			other: {Name: "studio"},
+			other: {Name: "host-a"},
 		},
 		Cells: cells,
 	}
@@ -132,7 +132,7 @@ func TestAChatHeldByARevokedDeviceReadsAsReleased(t *testing.T) {
 		"live": cell(other, 1_010_000, nil),
 		"dead": cell(other, 900_000, nil),
 	})
-	l.Devices[other] = directory.Device{Name: "studio", Revoked: true}
+	l.Devices[other] = directory.Device{Name: "host-a", Revoked: true}
 	for _, r := range Rows(l, self, plain) {
 		if r.Status != Idle {
 			t.Errorf("%s: status %s, want %s", r.Cell, r.Status, Idle)
@@ -144,11 +144,31 @@ func TestAChatHeldByARevokedDeviceReadsAsReleased(t *testing.T) {
 // macOS ".local" suffix; every label that reads it must show the same name.
 func TestEveryLabelOfADeviceDropsTheLocalSuffix(t *testing.T) {
 	l := listing(map[string]directory.Cell{"c1": cell(other, 1_010_000, nil)})
-	l.Devices[other] = directory.Device{Name: "studio.local"}
-	if r := Rows(l, self, plain)[0]; r.Device != "studio" {
+	l.Devices[other] = directory.Device{Name: "host-a.local"}
+	if r := Rows(l, self, plain)[0]; r.Device != "host-a" {
 		t.Errorf("row shows %q", r.Device)
 	}
-	if got := DeviceName(l.Devices, other, plain); got != "studio" {
+	if got := DeviceName(l.Devices, other, plain); got != "host-a" {
 		t.Errorf("DeviceName shows %q", got)
+	}
+}
+
+// TestThisComputersLapsedChatOpensWithoutAQuestion pins #2072: a chat this
+// computer last held, whose lease lapsed with nobody else holding it, has
+// nothing to continue from. It reads as free, so it opens without the card.
+func TestThisComputersLapsedChatOpensWithoutAQuestion(t *testing.T) {
+	r := Rows(listing(map[string]directory.Cell{"c": cell(self, 900_000, nil)}), self, plain)[0]
+	if r.Status != Idle || !r.Mine || OfferFor(r).Kind != Open {
+		t.Fatalf("this computer's lapsed chat: status %s, offer %+v", r.Status, OfferFor(r))
+	}
+}
+
+// TestARowSaysItsHolderWasRemoved pins #2072: a removed device is never named
+// in an offer, so the row carries that its holder is gone.
+func TestARowSaysItsHolderWasRemoved(t *testing.T) {
+	l := listing(map[string]directory.Cell{"c": cell(other, 900_000, nil)})
+	l.Devices[other] = directory.Device{Name: "host-a", Revoked: true}
+	if r := Rows(l, self, plain)[0]; !r.HolderRemoved {
+		t.Fatalf("row of a removed holder: %+v", r)
 	}
 }

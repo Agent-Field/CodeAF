@@ -35,6 +35,8 @@ import (
 	"math"
 	"strings"
 	"time"
+
+	procexec "github.com/Agent-Field/codeaf/internal/executor"
 )
 
 // UsageCall is one ledger line as a call record. Its strings are the line's own,
@@ -106,7 +108,7 @@ func EachUsageCall(path string, q UsageQuery, fn func(UsageCall) error) (UsageCa
 	var counted UsageLedgerTotals
 	stats, err := scanUsageLines(file, info.Size(), func(offset int64, line UsageLine) error {
 		line.Run = strings.TrimSpace(line.Run)
-		if !q.matches(line) {
+		if line.Kind == procexec.UnbilledMarkerKind || !q.matches(line) {
 			return nil
 		}
 		if line.USD < 0 || line.Calls < 0 || math.IsNaN(line.USD) {

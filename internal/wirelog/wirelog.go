@@ -18,7 +18,7 @@
 // as it did before. The cost of the meter when it is off is one LookupEnv at
 // boot.
 //
-// The log is deliberately dumb — four space-separated integers per line, one
+// The log is deliberately simple — four space-separated integers per line, one
 // line per wall-clock second, silent seconds included as zeros so a reader can
 // tell "nothing was drawn" from "the process was gone":
 //

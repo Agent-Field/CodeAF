@@ -267,7 +267,7 @@ const (
 // has to. Grounding it would refuse it every single time, which is exactly the
 // shape of the three graded runs that shipped patches deleting attributes their
 // repositories already had while their own narrow tests stayed green
-// (2026-08-28, bench/deepswe; docs/design/gate/SETTLEMENT.md §4).
+// (2026-08-28, bench/deepswe; the implementation §4).
 //
 // ok is false — and the caller judges exactly as it did before this existed —
 // when nothing was measured or nothing turned red. A worker that cannot take

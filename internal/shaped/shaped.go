@@ -8,7 +8,7 @@
 // decide what an unusable reply means. The planner had one, the delivery gate
 // had another, the intent compiler had a third, and two of them scanned for
 // braces by hand. They disagreed about everything that matters. The s4 sweep
-// (bench/deepswe/AUTOPSY.md) cost two of five runs to that disagreement, on one
+// cost two of five runs to that disagreement, on one
 // model, in one afternoon:
 //
 //   - the planner's fan-out was cut at the completion ceiling, the object was

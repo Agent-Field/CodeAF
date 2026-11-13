@@ -31,7 +31,7 @@ import (
 //
 // ── AND THREE OF THE SHEET'S CLAIMS ARE PRIORS RATHER THAN GATES ────────────
 //
-// THE MEASURED FAILURE (docs/design/recovery/DESIGN.md §1). On 2026-09-10 a
+// THE MEASURED FAILURE. On 2026-09-10 a
 // tool-carrying request drew nine identical refusals from a saturated Fireworks
 // while GMICloud — which had served the three previous tool calls of the very
 // same task, in six seconds each — was not a candidate at all, because the

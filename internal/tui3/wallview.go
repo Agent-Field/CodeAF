@@ -110,8 +110,20 @@ const wallFreshSettle = 600 * time.Millisecond
 // wallMadeFor is how long the chip row says a team was just made.
 const wallMadeFor = 2 * time.Second
 
-// wallEmptyWord is the whisper an empty wall draws beside its way back.
+// wallEmptyWord is the whisper an empty library draws beside its way back.
 const wallEmptyWord = "Conversations you save will appear here"
+
+// wallNoTabsWord is the same whisper for All, where saving is not what fills
+// the grid: the tabs in this view are.
+const wallNoTabsWord = "No conversations open in this view"
+
+// wallEmptyText is what an empty grid is missing, in the scope it was opened.
+func wallEmptyText(v wallView) string {
+	if v.openTabs {
+		return wallNoTabsWord
+	}
+	return wallEmptyWord
+}
 
 // wallBox is one border's glyphs.
 type wallBox struct{ tl, tr, bl, br, h, v string }
@@ -306,7 +318,7 @@ func renderWall(pal palette, v wallView, width, height int) ([]string, []wallHit
 			y := wallGridTop + (gridEnd-wallGridTop-1)/2
 			row, h := wallNoneRow(pal, v, width, y)
 			if v.filter == "" && v.team == "" {
-				word := wallEmptyWord
+				word := wallEmptyText(v)
 				if v.loading {
 					word = "Loading conversations"
 				}
@@ -430,8 +442,8 @@ func wallInset(width, c, tileW int) int {
 // a count growing a digit moves only what is left of it. The count waiting on
 // a person is a button: it goes to the next one, as ? does.
 //
-// The title says that the grid contains all saved conversations. Team overlays
-// never filter this library; the counts describe the cards currently shown.
+// The title identifies the saved library or current tab strip, including the
+// selected team for scoped tabs; counts describe the cards currently shown.
 func wallTitleRow(pal palette, g wallGlyphs, v wallView, width, inset, y int) (string, []wallHit) {
 	mark := "▦"
 	run := "⠿"
@@ -439,6 +451,9 @@ func wallTitleRow(pal palette, g wallGlyphs, v wallView, width, inset, y int) (s
 		mark, run = "#", "*"
 	}
 	sub := wallOpenHereWord
+	if v.openTabs {
+		sub = "open tabs"
+	}
 	teamName := ""
 	if i := v.teamRow(v.team); i >= 0 {
 		teamName = v.teams[i].name

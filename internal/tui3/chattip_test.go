@@ -101,9 +101,8 @@ func TestAConversationsTipCoversTheProjectOnTheKeysRow(t *testing.T) {
 	}
 }
 
-// THE TIP STANDS WITH THE TASK COLUMN OPEN OR PUT AWAY (the owner's report,
-// 2026-09-24): a column put away — whose keys row then says `ctrl+g tasks` —
-// does not silence it.
+// THE TIP STANDS WITH THE TASK COLUMN OPEN OR PUT AWAY: a column put away — whose keys row
+// then says `ctrl+g tasks` — does not silence it.
 func TestTheConversationsTipStandsWithTheColumnOpenOrAway(t *testing.T) {
 	a, _, _ := taskApp(t)
 	a.profileDir = t.TempDir()
@@ -252,7 +251,7 @@ func TestTheWayHomeTipIsSaidAwayFromHomeOnly(t *testing.T) {
 	if row.id == "" {
 		t.Fatal("the way-home tip is not on the table")
 	}
-	if row.text != "space space takes you back to home" || row.retire != eventHomeGesture {
+	if row.text != "space space brings you back to home" || row.retire != eventHomeGesture {
 		t.Fatalf("the way-home tip reads %q and retires on %q", row.text, row.retire)
 	}
 	a, _ := chatTipLab(t)

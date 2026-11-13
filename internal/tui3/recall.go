@@ -19,6 +19,8 @@ import "github.com/Agent-Field/codeaf/internal/history"
 // is further than any ↑ walk anybody has ever done, and it bounds the copy.
 const recallDepth = 200
 
+const recallKeysWord = "↑ older · ↓ newer · esc restore draft · enter send"
+
 // History is the slice of *history.Store this surface uses. It is an interface
 // for the same reason [Agent] is: the surface is driven in a test without a
 // file, and a store that is nil is simply a surface with no recall.

@@ -1,7 +1,7 @@
 // Package router turns one model into a panel of them.
 //
 // It exists because of a measured result rather than an intuition. Two labs
-// (bench/routerlab, bench/probelab) asked whether a harness can spend less and
+// (the benchmark harness, the benchmark harness) asked whether a harness can spend less and
 // get more by not sending every call to the same model, and the answer they
 // converged on is narrow and specific: predicting which model will fail does not
 // pay, but *trying the cheap one and escalating on a verified failure* does. On

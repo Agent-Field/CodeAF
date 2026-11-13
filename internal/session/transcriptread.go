@@ -76,7 +76,7 @@ import (
 // be showing a person the pass's own shortened copy of their work as though it
 // were the work: the calls above the marker come back as stubs, and the prose
 // comes back as one folded line. THE LENS MAY LOWER SALIENCE; IT MAY NOT DROP A
-// FACT (docs/design/lens/DESIGN.md).
+// FACT.
 //
 // Earlier is empty, and Floor zero, for every record that was never compacted —
 // which is nearly all of them — and for one compacted by a build that did not

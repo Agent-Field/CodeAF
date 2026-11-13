@@ -278,10 +278,6 @@ func TestTheAnswersRowIsWhereTheBlockSaysItIsWithAReceiptAboveIt(t *testing.T) {
 }
 
 // ── THE BOX KEEPS THE FIRST LETTER ──────────────────────────────────────────
-//
-// The defect, in the owner's own words: "the first key typed into an empty box
-// must not answer — a digit picks, `d` hands the call back today." The rule and
-// the reason the ANSWERS' keys are not on this road are in questionkeys.go.
 
 // handLab is one question on the block, settled, with an empty box under it.
 func handLab(t *testing.T) *questionLab {
@@ -462,7 +458,7 @@ func TestAKeyDroppedByTheSettleGuardDoesNotGiveTheHand(t *testing.T) {
 // ── THE DOOR TAKES A LIST ───────────────────────────────────────────────────
 //
 // One frame can hold several questions — a step that asks for three permissions
-// at once is one thing to decide (lane P's grouped frame) — and the person
+// at once is one thing to decide — and the person
 // answering it makes one gesture. [app.answerQuestions] is that gesture: every
 // row settles on the keystroke, the doors are asked in order on ONE goroutine
 // off the loop, and a refusal comes back against its own row.

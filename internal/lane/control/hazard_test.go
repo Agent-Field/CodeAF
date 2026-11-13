@@ -164,7 +164,7 @@ func budgetFor(p Plan) float64 {
 //
 // IT IS A CONJUNCTION NOW (§B): the payoff crossing is necessary and no longer
 // sufficient, and the moment to act is the first one at which the wait has both
-// become worth acting on AND become abnormal for this lane.
+// become worth acting on AND become abnormal for this test.
 func TestTheCrossingIsWhereTheClosedFormSaysItIs(t *testing.T) {
 	for _, test := range []struct {
 		name    string
@@ -1033,7 +1033,7 @@ func TestAStallIsStillActedOnAsQuicklyAsItWas(t *testing.T) {
 		// AND IT ACTED AT THE MOMENT BOTH TESTS SAY, solved here from their own
 		// definitions. This is what "no regression" means precisely: the gate
 		// may not postpone an act by one millisecond past the first moment the
-		// wait is BOTH worth acting on and abnormal for this lane.
+		// wait is BOTH worth acting on and abnormal for this test.
 		cost := p.Alts[0].First.Mean() + p.Lambda*p.Alts[0].Extra
 		allowed, want := budgetFor(p), p.Ceiling
 		for ms := int(p.Floor / time.Millisecond); ms < int(p.Ceiling/time.Millisecond); ms++ {

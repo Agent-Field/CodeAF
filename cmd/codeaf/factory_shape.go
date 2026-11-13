@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -12,10 +11,15 @@ import (
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
+	"github.com/Agent-Field/codeaf/internal/factory/record"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
+	"github.com/Agent-Field/codeaf/internal/factory/serve"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"unicode/utf8"
 )
 
 // ── THE MANAGER'S TURNS ────────────────────────────────────────────────────
@@ -54,7 +58,8 @@ type idleWaiter interface {
 
 // shapeTurns gives an item's manager one turn of its conversation.
 type shapeTurns struct {
-	dirs func(repo string) string
+	dirs      func(repo string) string
+	checkWork func(int) error
 	// live answers the item's manager conversation when a window of THIS
 	// process holds it ([session.LiveAgentFor]), as a turn through it with
 	// door lent to that turn alone.
@@ -73,7 +78,13 @@ type shapeTurns struct {
 // factoryShapeTurnsFrom reads the launch when a manager opens, because the
 // worker survives the window whose launch first built its turns.
 func factoryShapeTurnsFrom(st *store.Store, workspace, profileDir string, current func() session.Config) *shapeTurns {
-	turns := &shapeTurns{dirs: factoryRepoDirs(st, workspace)}
+	turns := &shapeTurns{dirs: factoryRepoDirs(st, workspace), checkWork: func(id int) error {
+		it, err := st.Get(id)
+		if err != nil {
+			return err
+		}
+		return factory.CheckPersonStop(it)
+	}}
 	// UNDER A SAVED ONE MODEL THE WINDOW'S CONVERSATION IS NOT THE FACTORY'S: it
 	// runs on whatever model the person is talking to, so liveOK refuses it and
 	// the turn opens a governed factory session instead.
@@ -86,6 +97,12 @@ func factoryShapeTurnsFrom(st *store.Store, workspace, profileDir string, curren
 	}
 	turns.open = func(_ context.Context, it factory.Item, door session.RunDoor, cheap bool) (managerTurn, error) {
 		parent := current()
+		parent.FactoryWorkRefusal = func() string {
+			if err := turns.checkWork(it.ID); err != nil {
+				return err.Error()
+			}
+			return ""
+		}
 		if err := refusalOf(parent, turns.refusal); err != nil {
 			return nil, err
 		}
@@ -156,15 +173,29 @@ func shapeCheap(it factory.Item) bool {
 // when this process holds it, else opened for the turn. It answers what the
 // manager said.
 func (s *shapeTurns) through(ctx context.Context, it factory.Item, ask string, door session.RunDoor) (string, error) {
+	return s.turn(ctx, it, ask, door, shapeCheap(it))
+}
+
+// turn is through at the thinking cheap names when the conversation must be
+// opened for it.
+func (s *shapeTurns) turn(ctx context.Context, it factory.Item, ask string, door session.RunDoor, cheap bool) (string, error) {
 	if s == nil || s.open == nil {
 		return "", errors.New("no manager to ask")
+	}
+	if err := factoryrun.CheckWriteAccess(it, "chat"); err != nil {
+		return "", err
+	}
+	if door != nil && s.checkWork != nil {
+		if err := s.checkWork(it.ID); err != nil {
+			return "", err
+		}
 	}
 	var turn managerTurn
 	if s.live != nil {
 		turn, _ = s.live(it.Talk, door)
 	}
 	if turn == nil {
-		opened, err := s.open(ctx, it, door, shapeCheap(it))
+		opened, err := s.open(ctx, it, door, cheap)
 		if errors.Is(err, session.ErrSessionLocked) {
 			// ANOTHER PROCESS HOLDS IT (a window on the engine host): this
 			// runner cannot give it a turn, and says so by name. No retry.
@@ -268,10 +299,11 @@ func openManagerTurn(parent session.Config, workspace, profileDir string, it fac
 	cfg.AskConsent = false
 	cfg.Factory, cfg.Recipe, cfg.FactoryItem, cfg.Floor, cfg.Stage = nil, nil, nil, nil, nil
 	cfg.FactoryRun = door
+	cfg.DropRefusedEffort = true
 	if cheap {
 		cfg.Effort = effort.Low
 	}
-	gate := v3ApprovalGate{workspace: where, profileDir: profileDir, headless: true}
+	gate := &v3ApprovalGate{workspace: where, profileDir: profileDir, headless: true}
 	cfg.ApprovalGate = gate
 	cfg.ApprovalPosture = session.PostureAsk
 	if cfg.ApprovalPolicy, cfg.Guardian, err = gate.Build(session.PostureAsk); err != nil {
@@ -292,11 +324,69 @@ func runDoor(st *store.Store, workspace, profileDir string) session.RunDoor {
 	if st == nil {
 		return nil
 	}
-	seam := factory.LocalSeam(st, time.Now(), factoryPipelineOption(), factory.WithRepoDirs(factoryRepoDirs(st, workspace)))
+	dirs := factoryRepoDirs(st, workspace)
+	seam := factory.LocalSeam(st, time.Now(), factoryPipelineOption(st), factory.WithRepoDirs(dirs))
 	if seam.Edit == nil {
 		return nil
 	}
-	return seamRunDoor{st: st, workspace: workspace, profileDir: profileDir, edit: seam.Edit}
+	return seamRunDoor{st: st, workspace: workspace, profileDir: profileDir, edit: managerEdit(st, dirs)}
+}
+
+// managerEdit is the manager's edit through the door a person's edit takes
+// ([lease.Doors.EditSteps]): A WORKER RUNNING THE JOB FROM ITS OWN COPY IS
+// WITHDRAWN in the same change, so it pulls the edited steps, and no report
+// from the old copy can write its steps back. The bounds are the pipeline the
+// job runs (the file it was decided on, [factoryJobRead]) with the
+// factory's rules, as the person's edit is bounded.
+func managerEdit(st *store.Store, dirs func(string) string) func(ctx context.Context, id int, e factory.RunEdit) (factory.Item, []string, error) {
+	return func(ctx context.Context, id int, e factory.RunEdit) (factory.Item, []string, error) {
+		it, err := st.Get(id)
+		if err != nil {
+			return factory.Item{}, nil, err
+		}
+		repo := factory.RepoOf(it)
+		f, err := factoryJobRead(ctx, st, it, dirs(repo))
+		if errors.Is(err, pipeline.ErrHouseRulesUnread) {
+			return factory.Item{}, nil, err
+		}
+		desk, err := lease.Open(st, lease.Options{})
+		if err != nil {
+			return factory.Item{}, nil, err
+		}
+		updated, lines, err := lease.NewDoors(desk).EditSteps(id, e, f.Recipe())
+		if err != nil {
+			return updated, lines, err
+		}
+		// THE MANAGER'S EDIT IS ON THE FACTORY'S RECORD as the person's is: the
+		// job page's step-edit door writes a timed "edited steps" event after
+		// its edit lands, and the job's activity and its consent trail read
+		// that record, so an edit made in conversation must not be missing
+		// from them.
+		if err := recordManagerEdit(ctx, st, updated, e); err != nil {
+			return updated, lines, fmt.Errorf("the steps changed, but the factory's record did not take the edit: %w", err)
+		}
+		return updated, lines, nil
+	}
+}
+
+// recordManagerEdit writes the step-edit event for one landed manager edit,
+// with the reason the manager gave, or the job's manager named when it gave
+// none.
+func recordManagerEdit(ctx context.Context, st *store.Store, it factory.Item, e factory.RunEdit) error {
+	history, err := record.Open(st, record.Options{})
+	if err != nil {
+		return err
+	}
+	detail := strings.TrimSpace(e.Why)
+	if detail == "" {
+		detail = "edited by the job's manager"
+	}
+	cost := 0.0
+	if it.Stream != nil {
+		cost = it.Stream.Spent
+	}
+	_, err = history.Append(ctx, record.Event{Kind: record.StepEdited, Job: it.ID, Cost: cost, Detail: detail})
+	return err
 }
 
 // seamRunDoor finds the item a conversation manages and edits it through the
@@ -319,7 +409,26 @@ func (d seamRunDoor) EditRun(ctx context.Context, conversation string, e factory
 	if err != nil {
 		return factory.Item{}, nil, err
 	}
+	if err := factory.CheckPersonStop(it); err != nil {
+		return factory.Item{}, nil, err
+	}
 	return d.edit(ctx, it.ID, e)
+}
+
+// managedFrom is [seamRunDoor.managed] that reads the job hint first, by id,
+// and lists the floor only when hint is not (or no longer) that job: a
+// conversation's job almost never changes, and one document is cheaper to
+// read than every document on the floor.
+func (d seamRunDoor) managedFrom(conversation string, hint int) (factory.Item, error) {
+	want := sameFileKey(conversation)
+	if hint != 0 && want != "" && d.st != nil {
+		it, err := d.st.Get(hint)
+		factoryStopCheckDecodes.Add(1)
+		if err == nil && strings.TrimSpace(it.Talk) != "" && sameFileKey(it.Talk) == want {
+			return it, nil
+		}
+	}
+	return d.managed(conversation)
 }
 
 // managed is the item whose conversation is the asking one.
@@ -332,6 +441,7 @@ func (d seamRunDoor) managed(conversation string) (factory.Item, error) {
 	if err != nil {
 		return factory.Item{}, err
 	}
+	factoryStopCheckDecodes.Add(int64(len(items)))
 	for _, it := range items {
 		if strings.TrimSpace(it.Talk) != "" && sameFileKey(it.Talk) == want {
 			return it, nil
@@ -341,16 +451,7 @@ func (d seamRunDoor) managed(conversation string) (factory.Item, error) {
 }
 
 // sameFileKey is a path as one spelling, links resolved.
-func sameFileKey(path string) string {
-	path = strings.TrimSpace(path)
-	if path == "" {
-		return ""
-	}
-	if real, err := filepath.EvalSymlinks(path); err == nil {
-		path = real
-	}
-	return filepath.Clean(path)
-}
+func sameFileKey(path string) string { return store.FileKey(path) }
 
 // ManagerStatus reads the durable job and lease without opening another agent
 // or making a provider request. The saved transcript is not execution state.
@@ -366,11 +467,12 @@ func (d seamRunDoor) ManagerStatus(ctx context.Context, conversation string) (fa
 	if err != nil {
 		return factory.ManagerStatus{}, err
 	}
-	held, err := desk.HasLiveHold(it.ID)
+	held, threadOnly, err := desk.LiveHold(it.ID)
 	if err != nil {
 		return factory.ManagerStatus{}, err
 	}
-	return factory.StatusForManager(it, held, time.Now()), nil
+	now := time.Now()
+	return factory.StatusForManagerWaiting(it, held, threadOnly, serve.QueuedWait(d.st, it, now), now), nil
 }
 
 func (d seamRunDoor) AnswerPending(ctx context.Context, conversation, questionID, answer string) (string, error) {
@@ -389,6 +491,45 @@ func (d seamRunDoor) AnswerPending(ctx context.Context, conversation, questionID
 	return managerAnswerResult(receipt, err)
 }
 
+// RejectPendingPlan uses the same typed send-back door as the job's controls.
+// The manager binding and exact decision are checked again on the locked item.
+func (d seamRunDoor) RejectPendingPlan(ctx context.Context, conversation, questionID, words string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	words = strings.TrimSpace(words)
+	if words == "" || utf8.RuneCountInString(words) > api.MaxRejectPlanWords {
+		return "", fmt.Errorf("Nothing changed: requested changes must contain 1 to %d characters", api.MaxRejectPlanWords)
+	}
+	it, err := d.managed(conversation)
+	if err != nil {
+		return "", err
+	}
+	revision, err := d.st.Revision(it.ID)
+	if err != nil {
+		return "", err
+	}
+	desk, err := lease.Open(d.st, lease.Options{})
+	if err != nil {
+		return "", err
+	}
+	_, err = lease.NewDoors(desk).RejectPlan(it.ID, revision, words, func(cur factory.Item) error {
+		if cur.Talk != it.Talk || questionID == "" || factory.PendingQuestionID(cur) != questionID {
+			return errors.New("Nothing changed: the pending decision changed; read factory_status before trying again")
+		}
+		return nil
+	})
+	if err != nil {
+		var refused factoryrun.PlanRevisionRefusal
+		var stale *store.StaleError
+		if errors.As(err, &refused) || errors.As(err, &stale) {
+			return "", fmt.Errorf("Nothing changed: %w", err)
+		}
+		return "", err
+	}
+	return "Plan sent back with the requested changes. The previous step will run again with those words and approval will be requested again afterward. This confirms the send-back, not that a worker has started; read factory_status for current progress.", nil
+}
+
 func managerAnswerResult(receipt factory.ManagerAnswer, err error) (string, error) {
 	if receipt.QuestionID == "" {
 		return "", err
@@ -398,4 +539,17 @@ func managerAnswerResult(receipt factory.ManagerAnswer, err error) (string, erro
 		return line + " Worker notification could not be persisted: " + err.Error() + ". Retry factory_answer with the same question_id and answer to redeliver; the decision is already saved.", nil
 	}
 	return line + " The saved decision is confirmed. A newer pending question, if any, is unchanged.", nil
+}
+
+// FailureSummary is the runner's Options.FailureSummary: one cheap turn of the
+// job's manager writing a failed step's headline from its failure, with no
+// door, so it can only answer in words. The turn is the job's own
+// conversation, so what it costs is booked on the job like every other turn
+// there. The runner cuts the line to its headline length.
+func (s *shapeTurns) FailureSummary(ctx context.Context, it factory.Item, f factory.Failure) (string, error) {
+	detail := strings.Join(strings.Fields(f.Detail), " ")
+	if detail == "" {
+		detail = f.Code
+	}
+	return s.turn(ctx, it, fmt.Sprintf(factory.FailureSummaryAsk, f.Step, detail), nil, true)
 }

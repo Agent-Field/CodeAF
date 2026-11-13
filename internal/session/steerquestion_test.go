@@ -114,7 +114,7 @@ func TestASteerAtAnOpenQuestionPutsTheNextRequestOnTheWireAtOnce(t *testing.T) {
 
 	select {
 	case at := <-next:
-		// THE WHOLE OF WHAT THIS LANE PROMISES. A person's own sentence reaches
+		// THE WHOLE OF WHAT this test PROMISES. A person's own sentence reaches
 		// the model inside the allowance every wait in the request path is held
 		// to, rather than behind a tool that is waiting for that same sentence.
 		if waited := at.Sub(steeredAt); waited > lanes.SpokenWithin {

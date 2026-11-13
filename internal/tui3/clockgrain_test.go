@@ -5,7 +5,7 @@ package tui3
 // A task's row said `42m` and the page it opened said `ran 6m 0s`, so the same
 // clock changed grain across one keypress — and four of those cells were spent
 // on a zero the emptiness law would strike anywhere else on the surface
-// (docs/design/polish/audit-tasks.md row 17). [reltime.Elapsed] already states
+//. [reltime.Elapsed] already states
 // the rule for the settled figure; this is the live one saying it too.
 
 import (

@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -66,7 +67,7 @@ func Offer(ctx context.Context, route Mailbox, grant Grant, ui OfferUI) (string,
 // relay that cannot serve a code is never allowed to display one.
 func checkRelay(ctx context.Context, route Mailbox) error {
 	if _, err := route.Box.Limits(ctx); err != nil {
-		return phraseBox(err, route.Host)
+		return phraseBox(err, route.URL)
 	}
 	return nil
 }
@@ -82,7 +83,7 @@ func offerOnce(ctx context.Context, route Mailbox, grant Grant, ui OfferUI, burn
 	}
 	made, err := createApart(ctx, route.Box, key, burned)
 	if err != nil {
-		return "", "", phraseBox(err, route.Host)
+		return "", "", phraseBox(err, route.URL)
 	}
 	code = code.WithPlate(made.Nameplate)
 	defer discard(route.Box, made.Nameplate, key)
@@ -95,7 +96,7 @@ func offerOnce(ctx context.Context, route Mailbox, grant Grant, ui OfferUI, burn
 		key: key, gone: map[stage]error{awaitStart: ErrDidNotFinish, awaitOffer: ErrDidNotFinish}, sendGone: ErrDidNotFinish}
 	joiner, err := answer(link, chatScheme(made.Nameplate), code.secret())
 	if err != nil {
-		return "", made.Nameplate, phraseBox(err, route.Host)
+		return "", made.Nameplate, phraseBox(err, route.URL)
 	}
 	label, err := conclude(ctx, joiner, grant, ui)
 	return label, made.Nameplate, err
@@ -144,7 +145,15 @@ func joinerLabel(offer []byte) string {
 	if len(offer) < nonceSize {
 		return readableLabel("")
 	}
-	return readableLabel(string(offer[:len(offer)-nonceSize]))
+	name := string(offer[:len(offer)-nonceSize])
+	// Keep the established text offer readable by older engines. A platform
+	// suffix is outside the name's limit, so a full-length name retains it.
+	for platform, word := range platformWords {
+		if plain, ok := strings.CutSuffix(name, " ("+word+")"); ok {
+			return ComputerLabel(readableLabel(plain), platform)
+		}
+	}
+	return readableLabel(name)
 }
 
 // nonceSize is the random tail of a joining device's offer. It makes the offer

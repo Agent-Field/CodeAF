@@ -55,6 +55,8 @@ const (
 	// briefPlanWrite is the plan step's own instruction: the plan goes where
 	// the steps after it will read it.
 	briefPlanWrite = "Write the plan in output: what you'll change, in which files, and how you'll know it works."
+	// briefPlanFiles requests one authoritative list; old plans remain readable.
+	briefPlanFiles = "In stage_result, fill files with every repository-relative file you will touch or add. Prose is not a file list the factory can check. Follow the schema limits; files, not folders or globs. If the list is unknown, leave files empty and the factory pauses for a person."
 	// briefPlanAbove stands for the plan's words on its own line, which the
 	// plan's paragraph already carries whole.
 	briefPlanAbove = "its plan is above"
@@ -70,12 +72,16 @@ const (
 	writeStep = "write"
 )
 
-// planBrief is the plan step's instruction, "" for every other step.
+// planBrief is the plan step's instruction, "" for every other step: where
+// the plan goes and the shape of its file list. IT IS EVERY PLAN STEP'S, NOT
+// THE SHIPPED ONE'S ASK: a pipeline file's own plan step is read by the same
+// parser ([factory.PlanFilesOf] finds the step by this name), so it is told
+// the same.
 func planBrief(job Job) string {
 	if !strings.EqualFold(stageLabel(job.Stage), planStep) {
 		return ""
 	}
-	return briefPlanWrite
+	return briefPlanWrite + "\n" + briefPlanFiles
 }
 
 // earlier is one step that ran before this one, as the brief names it.
@@ -223,7 +229,7 @@ func claimsCut(n int) []string {
 }
 
 // planFiles is the write step's `files the plan names:` paragraph: the paths
-// the finished plan declares ([factory.ParsePlanFiles], the same reading the
+// the finished plan declares ([factory.StageResult.PlanFiles], the same reading the
 // job's planned files are drawn from), at most [briefFilesMost] of them. nil
 // for every other step, for a plan that did not finish, and for one that
 // declared no list.
@@ -231,7 +237,7 @@ func planFiles(job Job, steps []earlier, plan int) []string {
 	if plan < 0 || !steps[plan].result.Done || !strings.EqualFold(stageLabel(job.Stage), writeStep) {
 		return nil
 	}
-	files := factory.ParsePlanFiles(steps[plan].result.Output)
+	files := steps[plan].result.PlanFiles()
 	if len(files) == 0 {
 		return nil
 	}

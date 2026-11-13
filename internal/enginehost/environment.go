@@ -23,8 +23,19 @@ const environmentName = "environment"
 // must be refused even when a provider environment change can join busy work.
 const syncEnvironmentName = "sync-environment"
 
-func syncEnvironment() string {
-	relay := syncsetup.Resolve(home.Dir())
+// syncUnnamedName is the relay the host would have resolved with no
+// CODEAF_SYNC_URL of its own. A launch that names no relay is compared against
+// THIS: `codeaf chat --host` runs `codeaf engine` under a non-interactive ssh
+// shell that rarely carries the variable, and comparing its silence with the
+// variable of the terminal that started the host retired that host, and the
+// terminal's next launch retired the ssh one's, back and forth.
+const syncUnnamedName = "sync-unnamed"
+
+func syncEnvironment() string { return relayWord(syncsetup.Resolve(home.Dir())) }
+
+func syncUnnamed() string { return relayWord(syncsetup.ResolveUnnamed(home.Dir())) }
+
+func relayWord(relay syncsetup.Relay) string {
 	if relay.Off {
 		return "off"
 	}
@@ -96,11 +107,18 @@ func fingerprintMAC(salt []byte, value string) []byte {
 // writeEnvironment writes a fresh salt and digest atomically, so a launcher
 // never compares a partly written answer. No environment value is saved, even
 // when the environment contains a provider key with an unfamiliar shape.
+//
+// THE PROVIDER FINGERPRINT LEAVES THE RELAY OUT. The relay has its own two
+// answers and its own rule ([SyncDiffers]), and folding it in here too would
+// let a launch that named no relay restart an idle host through the back door.
 func writeEnvironment(dir, workspace string) error {
 	if err := writeFingerprint(dir, syncEnvironmentName, syncEnvironment()); err != nil {
 		return err
 	}
-	return writeFingerprint(dir, environmentName, resolvedEnvironment(workspace))
+	if err := writeFingerprint(dir, syncUnnamedName, syncUnnamed()); err != nil {
+		return err
+	}
+	return writeFingerprint(dir, environmentName, canonicalEnvironment(workspace))
 }
 
 func writeFingerprint(dir, name, value string) error {
@@ -127,15 +145,27 @@ func writeFingerprint(dir, name, value string) error {
 // or malformed files mean the host has not said, which must never be a reason
 // to restart it. Comparison stays local and takes constant time for the digest.
 func EnvironmentDiffers(workspace string) bool {
-	return fingerprintDiffers(workspace, environmentName, resolvedEnvironment(workspace), false)
+	return fingerprintDiffers(workspace, environmentName, canonicalEnvironment(workspace), false) || SyncDiffers(workspace)
 }
 
 // SyncDiffers compares the relay the host resolved at startup with this
 // terminal's choice, including a pairing's saved address and the off switch.
+//
+// ONLY A RELAY THIS PROCESS NAMES IS A CHOICE. With CODEAF_SYNC_URL set, the
+// whole resolved answer is compared, and an address or off that differs from
+// the host's must not be joined. With it unset, this process said nothing
+// about the relay, so only what both sides read from the same home — a
+// pairing's saved address, else the hosted default — is compared; the
+// variable the host's own terminal carried is that terminal's word and stands.
 func SyncDiffers(workspace string) bool {
-	// A host from before this fingerprint cannot confirm an explicit address
-	// or off switch. That choice must not fall through to busy-host reuse.
-	return fingerprintDiffers(workspace, syncEnvironmentName, syncEnvironment(), env.Get(syncsetup.URLVar) != "")
+	if env.Get(syncsetup.URLVar) != "" {
+		// A host from before this fingerprint cannot confirm an explicit address
+		// or off switch. That choice must not fall through to busy-host reuse.
+		return fingerprintDiffers(workspace, syncEnvironmentName, syncEnvironment(), true)
+	}
+	// A host from before the unnamed fingerprint cannot say, and a process that
+	// named nothing has no choice for it to be ignoring: join it.
+	return fingerprintDiffers(workspace, syncUnnamedName, syncUnnamed(), false)
 }
 
 func fingerprintDiffers(workspace, name, value string, unknown bool) bool {

@@ -51,7 +51,7 @@ import (
 //	final message is its CLAIM about that change, and a claim is read beside the
 //	thing it is about, never in place of it.
 //
-// Which is docs/design/gate/SETTLEMENT.md §6 stated once more at the other door.
+// Which is the implementation §6 stated once more at the other door.
 // §6 already settled that the delivered text may overturn a finding ONLY where
 // the text is the whole of what the run left behind; this is the same rule
 // applied one step earlier, to what the judge is handed in the first place.

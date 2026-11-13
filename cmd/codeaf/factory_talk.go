@@ -11,8 +11,10 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
+	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/teams"
@@ -20,12 +22,11 @@ import (
 
 // ── TALK IT THROUGH: THE ITEM'S OWN CONVERSATION ────────────────────────────
 //
-// `T` on the factory floor opens an item's own conversation, made on the first
-// press and the same one on every press after ([factory.Seam.Talk]). It is
-// OPTIONAL AND NEVER MADE BY DEFAULT: an item that nobody pressed `T` on has no
-// conversation and no team.
+// The item's own conversation is made for a personal send, a system brief or
+// a run, and every later ask reuses it ([factory.Seam.Talk]). Making the
+// conversation records no personal touch; accepted personal messages do.
 //
-// What the first press makes, all of it on this machine's disk and none of it
+// What creation makes, all of it on this machine's disk and none of it
 // a model call:
 //
 //   - a team for the item, named by its ref and title (`#12 · fix the ledger
@@ -65,8 +66,8 @@ const (
 	talkBlockWho   = "You are the manager of %s in %s."
 	talkBlockKnow  = "You know: the issue and its comments, what codeaf read of it, the repository's recipe, policy and habits, the checkout, and what the person has said here."
 	talkBlockDo    = "You do: shape the run, start it with factory_start when the person asks (nothing to look up first), report each stage here from the runner’s recorded state, answer the person, and hold at each approve step until the person says continue, saying what you wait on. The runner runs the steps: read a step to report on it, and never send one work, stop it or start one yourself."
-	talkBlockShape = "Shape the run with factory_run: stages are one lowercase word each, at most nine. Each stage has an ask that says what done looks like, a loop (until, rounds, fanout) and one line of why. Keep the recipe's stages unless the item says otherwise; change asks before adding stages; add a stage only for work no existing stage covers. Never drop proof. An approve step is where the run holds until the person says continue: keep the recipe's, add one (named approve) after a stage the person wants to read first, and skip one only when the person asks. Nothing posts outward before an approve step."
-	talkBlockSay   = "Say what you set in three lines at most, then stop. Do not narrate. Call concurrency limits execution slots, never benches. When a job is queued, explain that it waits for an available execution slot and point to Jobs at once in Settings → Factory concurrency. Read factory_status for current facts; never invent a limit, running-job count or start time. Idle PR monitoring uses no execution slot."
+	talkBlockShape = "Shape the run with factory_run: stages are one lowercase word each, at most nine. Each stage has an ask that says what done looks like, a loop (until, rounds, fanout) and one line of why. Keep the recipe's stages unless the item says otherwise; change asks before adding stages; add a stage only for work no existing stage covers. When the person asks to remove or delete a stage, remove it (it leaves this job; skip only switches it off), and move a stage when they ask for another order. Never drop, remove or move proof. An approve step is where the run holds until the person says continue: keep the recipe's, add one (named approve) after a stage the person wants to read first, and leave skipping, removing or moving one to the person. Nothing posts outward before an approve step, unless factory_status says the job is in Auto, which passes routine approve steps by itself."
+	talkBlockSay   = "Say what you set in three lines at most, then stop. Before describing any job action as accepted, call the appropriate tool and check its result. Never promise a state change before acceptance. On refusal, tell the person plainly that the action did not happen and what they can do next, without tool names or internal identifiers. If the result is uncertain, say it is unconfirmed and read saved status before retrying. Do not narrate. Call concurrency limits execution slots, never benches. When a job is queued, say what factory_status says it waits for; only when that is an available execution slot, point to Jobs at once in Settings → Factory → Your computers. Its person can press Start now on a queued job to give it one slot above that limit, or Hold it until they resume it. Read factory_status for current facts; never invent a limit, running-job count or start time. Idle PR monitoring uses no execution slot. Answer job facts (the step count, whether a step is running or stopped, the job's autonomy, the pull request, its checks and reviews) only from factory_status, and never claim a gate holds the run when it says Autonomy: Auto."
 )
 
 // talkBlockBrief is the block on the job before it starts and on the
@@ -102,34 +103,108 @@ const talkItemDoor = "factory_item changes the budget (its field is cap), the th
 // checkout only when it is the repository's, [factoryRepoDirs]), and
 // profileDir the profile whose teams file the item's team is written into.
 func talkMaker(st *store.Store, workspace, profileDir string) func(context.Context, factory.Item) (string, error) {
-	dirs := factoryRepoDirs(st, workspace)
+	return talkMakerReading(st, st, workspace, profileDir)
+}
+
+// talkMakerReading is [talkMaker] whose brief reads the factory copies kept
+// by copies: st for this machine's own floor, whose jobs it decides; NIL FOR A
+// JOB ANOTHER FACTORY HANDED THIS MACHINE (a worker's runner, a job a remote
+// factory runs here), which carries the file it was decided on, so this
+// machine's own copy is never read for it, nor cleared by that read.
+func talkMakerReading(st, copies *store.Store, workspace, profileDir string) func(context.Context, factory.Item) (string, error) {
+	return talkMakerHolding(st, st, copies, workspace, profileDir)
+}
+
+// talkMakerHolding is [talkMakerReading] whose jobs live in st, while the
+// conversation's folder and team belong to floor: a worker's mirror holds a
+// remote job's row and goes when the worker ends; the conversation stays.
+func talkMakerHolding(st, floor, copies *store.Store, workspace, profileDir string) func(context.Context, factory.Item) (string, error) {
+	dirs := factoryRepoDirs(floor, workspace)
 	return func(_ context.Context, it factory.Item) (string, error) {
-		factoryReconcileOnce(profileDir, st)
-		where, err := talkFolder(st, dirs, it)
-		if err != nil {
-			return "", err
+		factoryReconcileOnce(profileDir, floor)
+		if _, held, err := talkHeld(st, it); held != "" || err != nil {
+			return held, err
 		}
-		bucket, err := v3ProjectDir(where)
-		if err != nil {
-			return "", err
-		}
-		place, err := v3MintSession(bucket, where, v3StampLaunchDir(v3LaunchDir(), where), false)
-		if err != nil {
-			return "", err
-		}
-		transcript := place.Transcript()
-		if err := markFactoryChat(st, it, transcript); err != nil {
-			return "", err
-		}
-		name := talkTeamName(it)
-		if err := session.SeedConversation(transcript, where, name, talkBrief(it, factoryItemRecipe(dirs, it))); err != nil {
-			return "", err
-		}
-		if err := talkJoinTeam(profileDir, it, transcript, where, name); err != nil {
-			return "", err
-		}
-		return transcript, nil
+		// Recipe reads can reach GitHub. Finish the brief before the floor lock.
+		brief := talkBrief(it, factoryItemRecipe(copies, dirs, it))
+		return withTalkMintLock(st, func() (string, error) {
+			ours, held, err := talkHeld(st, it)
+			if held != "" || err != nil {
+				return held, err
+			}
+			where, err := talkFolder(floor, dirs, it)
+			if err != nil {
+				return "", err
+			}
+			bucket, err := v3ProjectDir(where)
+			if err != nil {
+				return "", err
+			}
+			place, err := v3MintSession(bucket, where, v3StampLaunchDir(v3LaunchDir(), where), false)
+			if err != nil {
+				return "", err
+			}
+			transcript := place.Transcript()
+			if err := markFactoryChat(st, it, transcript); err != nil {
+				return "", err
+			}
+			name := talkTeamName(it)
+			if err := session.SeedConversation(transcript, where, name, brief); err != nil {
+				return "", err
+			}
+			if err := talkJoinTeam(profileDir, it, transcript, where, name); err != nil {
+				return "", err
+			}
+			if ours {
+				err = st.Update(it.ID, func(cur *factory.Item) error {
+					if strings.TrimSpace(cur.Talk) == "" {
+						cur.Talk = transcript
+					}
+					return nil
+				})
+				if err != nil {
+					return "", err
+				}
+			}
+			return transcript, nil
+		})
 	}
+}
+
+// withTalkMintLock lets one maker at a time make a job's manager, across every
+// process on this floor (the runner and the app's job chats race when a job
+// starts). A second manager costs money and answers its team's replies, so the
+// loser must never be created, not merely lose the write to Talk.
+func withTalkMintLock(st *store.Store, mint func() (string, error)) (string, error) {
+	root := st.Root()
+	if root == "" {
+		return mint()
+	}
+	file, err := os.OpenFile(filepath.Join(root, "talk.lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	if err := filelock.Lock(file, true, false); err != nil {
+		return "", err
+	}
+	defer func() { _ = filelock.Unlock(file) }()
+	return mint()
+}
+
+// talkHeld reads st's own row for it: ours says the row is
+// this job, and held is the manager an earlier maker already kept on it. A job
+// another factory handed over can share a number with a row here; that row's
+// conversation is never its manager.
+func talkHeld(st *store.Store, it factory.Item) (ours bool, held string, err error) {
+	cur, err := st.Get(it.ID)
+	if err != nil || cur.Repo != it.Repo || cur.Num != it.Num || !cur.Created.Equal(it.Created) {
+		return false, "", nil
+	}
+	if err := factory.RefuseDropped(cur); err != nil {
+		return true, "", err
+	}
+	return true, strings.TrimSpace(cur.Talk), nil
 }
 
 // managerMaker is the runner's Options.Manager: the item's own conversation,
@@ -137,8 +212,12 @@ func talkMaker(st *store.Store, workspace, profileDir string) func(context.Conte
 // named the lead of the item's team either way, so a conversation `T` made
 // before this build, or before the team had a lead, is the lead from its next
 // run on.
+//
+// THE RUNNER'S JOB WAS HANDED OVER BY A FACTORY, this machine's own or a
+// remote one, and carries the pipeline file it was decided on: its brief
+// reads that file, never st's own copy ([talkMakerReading] with no copies).
 func managerMaker(st *store.Store, workspace, profileDir string) func(context.Context, factory.Item) (string, error) {
-	mint := talkMaker(st, workspace, profileDir)
+	mint := talkMakerReading(st, nil, workspace, profileDir)
 	dirs := factoryRepoDirs(st, workspace)
 	return func(ctx context.Context, it factory.Item) (string, error) {
 		chat := strings.TrimSpace(it.Talk)
@@ -170,7 +249,28 @@ func managerMaker(st *store.Store, workspace, profileDir string) func(context.Co
 // fell back to the folder its window was opened in worked in the app's own
 // home, and a manager there with no checkout cloned the repository into it.
 // The runner clones the repository when the job starts ([talkBlockBrief]).
+// AND NEVER CODEAF'S OWN FOLDER: whatever it answers passes
+// [factoryFolderRefusal] first.
 func talkFolder(st *store.Store, dirs func(string) string, it factory.Item) (string, error) {
+	// A JOB AGENTFIELD RUNS WORKS IN ITS OWN EMPTY FOLDER, whatever is checked
+	// out here: its code runs on the node, so its manager has nothing on this
+	// machine to work in, and a checkout it does not need is only more to
+	// sweep on every save.
+	if factory.RunsElsewhere(it) {
+		return factoryJobFolder(st, it.ID)
+	}
+	where, err := talkCheckoutFolder(st, dirs, it)
+	if err != nil {
+		return "", err
+	}
+	if err := factoryFolderRefusal(st, where); err != nil {
+		return "", err
+	}
+	return where, nil
+}
+
+// talkCheckoutFolder is [talkFolder] for a job that runs on this machine.
+func talkCheckoutFolder(st *store.Store, dirs func(string) string, it factory.Item) (string, error) {
 	if where := strings.TrimSpace(dirs(it.Repo)); where != "" {
 		return where, nil
 	}
@@ -183,11 +283,7 @@ func talkFolder(st *store.Store, dirs func(string) string, it factory.Item) (str
 	if st.Root() == "" || it.ID <= 0 {
 		return "", errors.New("codeaf does not know which folder this item's conversation belongs in")
 	}
-	own := filepath.Join(st.Root(), "chats", strconv.Itoa(it.ID))
-	if err := os.MkdirAll(own, 0o700); err != nil {
-		return "", fmt.Errorf("the item's conversation has no folder: %w", err)
-	}
-	return own, nil
+	return factoryJobFolder(st, it.ID)
 }
 
 // sessionTalk is the runner's [factoryrun.Talk] over internal/session's
@@ -242,11 +338,7 @@ func talkJoinTeam(profileDir string, it factory.Item, transcript, where, name st
 	}
 	key = filepath.Clean(key)
 	now := time.Now()
-	return teams.Update(profileDir, func(f *teams.File) error {
-		id := recordedRoomIn(f, it)
-		if id == "" {
-			id = itemTeamIn(f, name, now)
-		}
+	join := func(f *teams.File, id string) error {
 		if err := f.AddMember(id, teams.Member{Key: key, File: transcript, Where: where, Word: name, Handle: talkHandle(it), JoinedAt: now}); err != nil {
 			return err
 		}
@@ -257,6 +349,36 @@ func talkJoinTeam(profileDir string, it factory.Item, transcript, where, name st
 			_ = f.SetManager(id, key)
 		}
 		return nil
+	}
+	// A RECORDED ROOM THAT IS NOT OPEN IS STILL THE JOB'S ROOM. A live job's
+	// room its end closed opens again first; an ended job's Talk joins it
+	// closed, as a stage does ([stageJoinTeam]), and never makes a new room
+	// that nothing would close.
+	recorded := jobRoomRecorded(it)
+	if recorded != "" && !jobOver(it) {
+		_ = reopenJobRoom(profileDir, it)
+	}
+	notOpen := false
+	err := teams.UpdateOpen(profileDir, func(f *teams.File) error {
+		id := recordedRoomIn(f, it)
+		_, here := f.Team(recorded)
+		if notOpen = id == "" && recorded != "" && !here; notOpen {
+			return nil
+		}
+		if id == "" {
+			id = itemTeamIn(f, name, now)
+		}
+		return join(f, id)
+	})
+	if err != nil || !notOpen {
+		return err
+	}
+	return teams.Update(profileDir, func(f *teams.File) error {
+		if i := teams.Index(f.Teams, recorded); i >= 0 && !f.Teams[i].Root && !factoryIsParent(f, recorded) {
+			f.Teams[i].FactoryManaged = true
+			return join(f, recorded)
+		}
+		return join(f, itemTeamIn(f, name, now))
 	})
 }
 
@@ -301,8 +423,13 @@ func factoryIsParent(f *teams.File, id string) bool {
 // teams.Update, so finding and making are one read-modify-write.
 func itemTeamIn(f *teams.File, name string, now time.Time) string {
 	parent := factoryParentTeam(f, now)
+	// A job with no issue was once named #N. Its saved team keeps that name.
+	saved := name
+	if rest, ok := strings.CutPrefix(name, "job "); ok {
+		saved = "#" + rest
+	}
 	for i, t := range f.Teams {
-		if t.Parent == parent && t.Name == name && !t.Closed() {
+		if t.Parent == parent && (t.Name == name || t.Name == saved) && !t.Closed() {
 			f.Teams[i].FactoryManaged = true
 			return t.ID
 		}
@@ -368,13 +495,18 @@ func talkHandle(it factory.Item) string {
 	return h
 }
 
-// factoryItemRecipe shares the forge-backed rules the floor and intake read.
-func factoryItemRecipe(dirs func(string) string, it factory.Item) factory.Recipe {
+// factoryItemRecipe is the recipe one job is bounded by, as its manager's
+// brief and its item card read it, with the personal file ([factoryJobFile]):
+// the factory's copy the job carries, else main's file for a job decided on
+// it, else, for a job not decided yet, st's read of its repository (its copy,
+// else main's file, else the built-in steps). A nil st keeps no copy, as for a
+// worker's runner, whose jobs carry their file.
+func factoryItemRecipe(st *store.Store, dirs func(string) string, it factory.Item) factory.Recipe {
 	dir := ""
 	if dirs != nil {
 		dir = strings.TrimSpace(dirs(it.Repo))
 	}
-	f, _ := factoryRules().Load(context.Background(), it.Repo, dir, home.Join("factory.yaml"))
+	f, _ := factoryJobFile(context.Background(), st, it, it.Repo, dir)
 	return f.Recipe()
 }
 
@@ -512,7 +644,7 @@ func (d storeItemDoor) Preview(_ context.Context, item int, change session.ItemC
 	if err != nil {
 		return factory.Item{}, factory.Item{}, err
 	}
-	recipe := factoryItemRecipe(d.dirs, it)
+	recipe := factoryItemRecipe(d.st, d.dirs, it)
 	before := session.ItemStaged(it, recipe)
 	after, err := session.ApplyItemChange(it, change, recipe)
 	if err != nil {
@@ -524,10 +656,18 @@ func (d storeItemDoor) Preview(_ context.Context, item int, change session.ItemC
 // Apply makes the change in one read-modify-write of the item's document,
 // against the item as it is NOW — a stage may have started since the card was
 // raised, and the bounds are asked again — and answers the item as saved.
+//
+// IT GOES THROUGH THE DOOR A PERSON'S STEP EDIT TAKES ([lease.Doors.ChangeSteps]):
+// a step the card removes or moves is laid out of, or into its new place in,
+// the run's phases not yet begun, queued or running, and a worker running the
+// job from its own copy is withdrawn so it pulls the changed steps.
 func (d storeItemDoor) Apply(_ context.Context, item int, change session.ItemChange) (factory.Item, error) {
-	var now factory.Item
-	err := d.st.Update(item, func(it *factory.Item) error {
-		next, err := session.ApplyItemChange(*it, change, factoryItemRecipe(d.dirs, *it))
+	desk, err := lease.Open(d.st, lease.Options{})
+	if err != nil {
+		return factory.Item{}, err
+	}
+	_, err = lease.NewDoors(desk).ChangeSteps(item, func(it *factory.Item) error {
+		next, err := session.ApplyItemChange(*it, change, factoryItemRecipe(d.st, d.dirs, *it))
 		if err != nil {
 			return err
 		}
@@ -540,10 +680,7 @@ func (d storeItemDoor) Apply(_ context.Context, item int, change session.ItemCha
 	if err != nil {
 		return factory.Item{}, err
 	}
-	if now, err = d.st.Get(item); err != nil {
-		return factory.Item{}, err
-	}
-	return now, nil
+	return d.st.Get(item)
 }
 
 // Stages is the stage names kind runs in repo's recipe today, which the recipe
@@ -572,7 +709,7 @@ func (d fileRecipeDoor) Stages(ctx context.Context, repo string, kind factory.Ki
 // carries its floor id after it (`[factory item #1540 · 7]`) so the surface
 // finds the right row whichever repository the number belongs to.
 func talkMarker(it factory.Item) string {
-	ref := it.Ref()
+	ref := it.KeyRef()
 	if ref == "#"+strconv.Itoa(it.ID) || it.ID <= 0 {
 		return "[factory item " + ref + "]"
 	}
@@ -597,43 +734,10 @@ func talkPutAway(seam factory.Seam, st *store.Store, profileDir string) factory.
 		if err != nil || strings.TrimSpace(it.Talk) == "" {
 			return nil
 		}
-		room := ""
-		if it.Stream != nil {
-			room = strings.TrimSpace(it.Stream.Room)
-		}
 		_ = session.SetArchived(filepath.Dir(it.Talk), true)
-		key := it.Talk
-		if real, err := filepath.EvalSymlinks(key); err == nil {
-			key = real
-		}
-		key = filepath.Clean(key)
-		_ = teams.Update(profileDir, func(f *teams.File) error {
-			// ONLY WHAT THE FACTORY RECORDED IS CLOSED: the item's own
-			// Stream.Room, else a factory-made item team holding the talk.
-			// An ordinary crew that holds the same conversation, the root and
-			// the `factory` parent are the person's, and stay open.
-			closable := func(t teams.Team) bool {
-				return !t.Closed() && !t.Root && !factoryIsParent(f, t.ID)
-			}
-			for _, t := range f.Teams {
-				if room != "" && t.ID == room && closable(t) {
-					return f.Close(t.ID, time.Now(), "")
-				}
-			}
-			if room != "" {
-				for _, t := range f.Teams {
-					if t.ID == room {
-						return nil
-					}
-				}
-			}
-			for _, t := range f.Teams {
-				if t.Holds(key) && t.FactoryManaged && t.Parent != "" && closable(t) {
-					return f.Close(t.ID, time.Now(), "")
-				}
-			}
-			return nil
-		})
+		// The dismissal ended the job, which closed its room already
+		// (factory_room_follow.go); this closes it if that write was not seen.
+		_ = closeJobRooms(profileDir, nil, it)
 		return nil
 	}
 	return seam

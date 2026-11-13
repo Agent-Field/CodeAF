@@ -11,7 +11,7 @@ import (
 //
 // IT CARRIES ONE PATH, NOT TWO. It used to keep the store's resolved path
 // beside the spelling a `--db` flag was given in, because the v2 chat door
-// parsed that flag and `~/store.db` and `/home/…/store.db` are different
+// parsed that flag and `~/store.db` and `/workspace/store.db` are different
 // strings for one file. That door is gone (#329), the only caller left resolves
 // the path before it opens anything, and a second field that always held the
 // same value was one more thing to keep in step.

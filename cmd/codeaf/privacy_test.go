@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
+	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
@@ -32,7 +33,7 @@ func TestC8DeviceListsOnASoloHomeSendNothing(t *testing.T) {
 	if err := runDevices(nil); err != nil {
 		t.Fatal(err)
 	}
-	if rows, err := newApprovalsDoor(home.Dir()).Devices(context.Background()); err != nil || len(rows) != 0 {
+	if rows, err := newApprovalsDoor(home.Dir()).Devices(context.Background()); err != nil || len(rows) != 1 || !rows[0].Self || rows[0].Name != devname.Name(home.Dir()) {
 		t.Fatalf("slash device list: %v, %v", rows, err)
 	}
 	if hits.Load() != 0 || !syncsetup.Quiet(home.Dir()) {

@@ -168,7 +168,7 @@ func TestAnAllProvidersIgnoredRefusalClimbsTheLadder(t *testing.T) {
 //
 // It used to walk [Client.fallbackChain] at its foot: a model hop inside the
 // adapter, on a budget nobody above could see, while internal/session's turn
-// loop walked the same list for the same reason (docs/design/recovery/DESIGN.md
+// loop walked the same list for the same reason (the implementation
 // §2.2). Live evidence from 2026-09-10 22:32 says what it cost beyond the double
 // spend — the hop carried the ORIGINAL model's `provider.only` across and was
 // answered `404 No allowed providers are available for the selected model`,
@@ -443,7 +443,7 @@ func pacedChainClient(t *testing.T, handler http.Handler, fallbacks []string) *C
 //
 // There was a second door here — `recoverFromPacing` — which walked the fallback
 // models when the attempt loop's patience ran out. It was the other half of the
-// two-model-hop defect (docs/design/recovery/DESIGN.md §2.2) and it is deleted.
+// two-model-hop defect and it is deleted.
 // The 429 now travels back exactly as it arrived: the response boundary reads it
 // as the wire, the turn spends its own budget on it, and if that budget runs out
 // the ONE model hop in this build takes it to the next model knowing what has

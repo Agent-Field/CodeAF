@@ -9,7 +9,7 @@ package tui3
 // from them, and any figure the status line was already showing went on being
 // served from a cache no task event could drop.
 //
-// docs/design/lens/DESIGN.md, Decision 4: "a room's closed tools feed the same
+// the implementation, Decision 4: "a room's closed tools feed the same
 // HUD/spend walk chat's do, so the header instrument and the ambient counters
 // are one set of numbers."
 

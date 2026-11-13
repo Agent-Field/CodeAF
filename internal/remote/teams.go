@@ -5,6 +5,8 @@ import (
 	"errors"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/config"
+
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
 
@@ -39,7 +41,7 @@ func (s *server) teamsCall(call Frame) (json.RawMessage, bool, error) {
 	}
 	sess := s.session
 	sess.mu.Lock()
-	dir := sess.engine.ProfileDir
+	dir, paired := sess.engine.ProfileDir, sess.engine.TeamsPaired
 	sess.mu.Unlock()
 
 	switch call.Method {
@@ -48,7 +50,7 @@ func (s *server) teamsCall(call Frame) (json.RawMessage, bool, error) {
 		if err != nil {
 			return nil, true, err
 		}
-		reading, err := teamsRead(dir, args)
+		reading, err := teamsRead(dir, args, paired)
 		if err != nil {
 			return nil, true, err
 		}
@@ -76,6 +78,14 @@ func (s *server) teamsCall(call Frame) (json.RawMessage, bool, error) {
 		if limit <= 0 || limit > teamsPage {
 			limit = teamsPage
 		}
+		if args.History {
+			entries, cursor, mirror, reset, err := teamsWatch.History(dir, args.Team, args.After, args.Mirror, limit, config.TeamsSharingAt(dir, paired))
+			if err != nil {
+				return nil, true, err
+			}
+			payload, err := json.Marshal(TeamsTraffic{Entries: entries, Cursor: cursor, Mirror: mirror, Reset: reset})
+			return payload, true, err
+		}
 		entries, stamp, err := teamsWatch.Traffic(dir, args.Team, args.After, limit)
 		if err != nil {
 			return nil, true, err
@@ -94,10 +104,21 @@ func (s *server) teamsCall(call Frame) (json.RawMessage, bool, error) {
 // hand back an older list with a newer stamp, and the window would be told
 // "same" about a change it never saw. A colour repair the load writes back
 // moves the stamp the same way, and costs the same one extra read.
-func teamsRead(dir string, args TeamsReadArgs) (TeamsReading, error) {
+func teamsRead(dir string, args TeamsReadArgs, paired func() bool) (TeamsReading, error) {
+	sharing := config.TeamsSharingAt(dir, paired)
 	stamp := teamstore.Stamp(dir)
 	if args.Stamp != "" && args.Stamp == stamp {
-		return TeamsReading{Stamp: stamp, Same: true}, nil
+		return TeamsReading{Sharing: &sharing, Stamp: stamp, Same: true}, nil
+	}
+	if args.Stamp != "" && sharing {
+		// Refresh is observational. Persisted repairs remain at the
+		// explicit opening and write boundaries, even over a host connection.
+		f, err := teamstore.Snapshot(dir)
+		if err != nil {
+			return TeamsReading{}, err
+		}
+		f.Colour(args.Reserved)
+		return TeamsReading{Sharing: &sharing, Stamp: stamp, Teams: f.Teams}, nil
 	}
 	f, err := teamstore.LoadHued(dir, args.Reserved)
 	if err != nil {
@@ -109,9 +130,9 @@ func teamsRead(dir string, args TeamsReadArgs) (TeamsReading, error) {
 		if _, aside := teamstore.SetAside(dir); aside != nil {
 			return TeamsReading{}, err
 		}
-		return TeamsReading{Stamp: teamstore.Stamp(dir)}, nil
+		return TeamsReading{Sharing: &sharing, Stamp: teamstore.Stamp(dir)}, nil
 	}
-	return TeamsReading{Stamp: stamp, Teams: f.Teams}, nil
+	return TeamsReading{Sharing: &sharing, Stamp: stamp, Teams: f.Teams}, nil
 }
 
 // teamsUpdate is [MethodTeamsUpdate]: the list written whole, under the store's
@@ -181,6 +202,18 @@ func (c *Client) TeamsUpdate(base string, teams []teamstore.Team) (TeamsReading,
 // TeamsTraffic reads one team's log on the engine machine after a cursor.
 func (c *Client) TeamsTraffic(team, after string, limit int) (TeamsTraffic, error) {
 	payload, err := c.call(nil, MethodTeamsTraffic, TeamsTrafficArgs{Team: team, After: after, Limit: limit})
+	if err != nil {
+		return TeamsTraffic{}, err
+	}
+	var out TeamsTraffic
+	err = json.Unmarshal(payload, &out)
+	return out, err
+}
+
+// TeamsHistory uses the existing Traffic door with an optional display flag.
+// An older engine ignores the flag and still returns its local history safely.
+func (c *Client) TeamsHistory(team, after, version string, limit int) (TeamsTraffic, error) {
+	payload, err := c.call(nil, MethodTeamsTraffic, TeamsTrafficArgs{Team: team, After: after, Limit: limit, History: true, Mirror: version})
 	if err != nil {
 		return TeamsTraffic{}, err
 	}

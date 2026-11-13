@@ -27,7 +27,13 @@ const (
 // The author is the bot account — the same identity the Co-Authored-By trailer
 // names — and the two older local addresses are recognised as legacy.
 func codeafGitIdentity() []string {
-	return []string{"-c", "user.name=" + codeafGitName, "-c", "user.email=" + codeafGitEmail}
+	return gitidentity.ConfigArgs()
+}
+
+// privateGit belongs to copies whose owner must be able to walk or remove them
+// as soon as a command returns, without a detached maintenance child racing it.
+func privateGit(dir string, args ...string) (string, error) {
+	return git(dir, gitidentity.PrivateArgs(args...)...)
 }
 
 // protectedBranchNames is THE ONE LIST of branch names automatic task landing leaves unchanged.
@@ -167,13 +173,19 @@ func (t taskTree) landsInThePersonsRepository() bool {
 // when the checkout is not a safe destination. It only reads the checkout; the
 // caller has already put the task branch in the root repository before asking.
 func (t taskTree) keptLandingSentence() string {
+	return t.landingSafetySentence(true)
+}
+
+// Explicit reviewed apply grants consent to the chosen protected branch, while
+// retaining the checkout and historical branch-movement checks.
+func (t taskTree) landingSafetySentence(automatic bool) string {
 	current := currentBranch(t.root)
 	switch {
 	case current == "":
 		return "its branch " + t.branch + " was kept: your checkout is not on a branch — inspect the retained task branch without changing this checkout"
 	case t.home != "" && current != t.home:
 		return "its branch " + t.branch + " was kept: your checkout has moved from " + t.home + " to " + current + " since the work was cut — inspect the retained task branch before choosing a destination"
-	case protectedBranch(t.root, current):
+	case automatic && protectedBranch(t.root, current):
 		return "its branch " + t.branch + " was kept: your checkout is on " + current + ", which tasks do not merge into automatically"
 	case branchMovedByPerson(t.root, current, t.homeSha):
 		return "its branch " + t.branch + " was kept: " + current + " has moved on since the work was cut — inspect the retained task branch before choosing a destination"

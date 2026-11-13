@@ -61,6 +61,10 @@ func wirePipeline(f pipeline.File) api.Pipeline {
 	p.Text = f.Text
 	p.PersonalText = f.PersonalText
 	p.Personal = f.Personal
+	if !f.House.Empty() {
+		house := f.House
+		p.HouseRules = &house
+	}
 	p.Origin = pipelineOrigin(f.From)
 	p.Start = &api.StartBlock{
 		Labels:   copyStrings(f.Start.Labels),
@@ -70,11 +74,13 @@ func wirePipeline(f pipeline.File) api.Pipeline {
 		AskFirst: copyStrings(f.Start.AskFirst),
 	}
 	p.Size = &api.SizeBlock{PRLines: f.Size.PRLines, Issue: f.Size.Issue}
-	noteSentences(p.Steps, f)
+	noteSentences(p.Steps, f.PipelineFile(string(factory.KindIssue)))
 	for kind, steps := range p.ByKind {
-		noteSentences(steps, f)
+		// A library pipeline's sentences are the library's own.
+		noteSentences(steps, f.PipelineFile(kind))
 		p.ByKind[kind] = steps
 	}
+	p.Pipelines = pipelineChoices(f)
 	return p
 }
 
@@ -96,6 +102,10 @@ func pipelineOrigin(from string) string {
 		return "working tree"
 	case factory.FromDefault:
 		return "defaults"
+	case factory.FromFactoryCopy:
+		// The factory's own copy of the file, in place of main's
+		// (factory.PipelineCopy); Text is the copy's.
+		return "factory copy"
 	default:
 		return ""
 	}

@@ -42,10 +42,10 @@ func watched(t *testing.T, driving Driving) (*app, *[]string) {
 // will not send is worse than no box: the whole of what they need to know is
 // where the conversation went and which key brings it back.
 func TestAWatcherDrawsOneLineWhereItsComposerWas(t *testing.T) {
-	a, _ := watched(t, Driving{Machine: "spark"})
+	a, _ := watched(t, Driving{Machine: "tower"})
 
 	got := plain(frame(a))
-	for _, want := range []string{"typing from spark now", "enter takes it back"} {
+	for _, want := range []string{"typing from tower now", "enter takes it back"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("the watcher's line is missing %q:\n%s", want, got)
 		}
@@ -106,7 +106,7 @@ func TestALocalSessionIsNeverAWatcher(t *testing.T) {
 // keyboard comes back. A surface that emptied the box because somebody else
 // started typing would be throwing away the one thing it owns.
 func TestAWatcherKeepsTheDraftItCouldNotSend(t *testing.T) {
-	a, taken := watched(t, Driving{Machine: "spark"})
+	a, taken := watched(t, Driving{Machine: "tower"})
 	a.input.insert("the thing I was about to say")
 
 	// Enter does not send it and does not clear it; it asks for the keyboard.
@@ -132,7 +132,7 @@ func TestAWatcherKeepsTheDraftItCouldNotSend(t *testing.T) {
 // person cannot fill a draft they cannot see. The line on screen is the answer
 // to why nothing happened.
 func TestTypingAtAWatcherDoesNotFillAnInvisibleBox(t *testing.T) {
-	a, _ := watched(t, Driving{Machine: "spark"})
+	a, _ := watched(t, Driving{Machine: "tower"})
 
 	drive(t, a, key("h"), key("i"))
 
@@ -145,7 +145,7 @@ func TestTypingAtAWatcherDoesNotFillAnInvisibleBox(t *testing.T) {
 // work, not a guest — so the door home is exactly where it always was, and the
 // gesture that opens it still reaches the bottom of the router.
 func TestAWatcherCanStillWalkAwayToHome(t *testing.T) {
-	a, _ := watched(t, Driving{Machine: "spark"})
+	a, _ := watched(t, Driving{Machine: "tower"})
 
 	// Nothing typed reaches the box, spaces included — this was driven over a
 	// real connection and `this should be swallowed` walked out of the
@@ -179,7 +179,7 @@ func TestATakeBackThatFailedIsSaidAndNotSwallowed(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.host = "devbox"
 	a.link = LinkSeam{
-		Driving: func() Driving { return Driving{Machine: "spark"} },
+		Driving: func() Driving { return Driving{Machine: "tower"} },
 		Take:    func() error { return errors.New("the connection to devbox is gone") },
 	}
 
@@ -204,7 +204,7 @@ func TestATakeBackThatFailedIsSaidAndNotSwallowed(t *testing.T) {
 // the code that draws every turn, with the sentence that opened it above the
 // reply so the screen has not lost the thread.
 func TestAWatcherDrawsTheTurnAnotherWindowStarted(t *testing.T) {
-	a, _ := watched(t, Driving{Machine: "spark"})
+	a, _ := watched(t, Driving{Machine: "tower"})
 	events := make(chan session.Event, 4)
 	turns := make(chan Following, 1)
 	a.link.Follow = func() <-chan Following { return turns }
@@ -231,7 +231,7 @@ func TestAWatcherDrawsTheTurnAnotherWindowStarted(t *testing.T) {
 // the transcript this surface read on its way in already has that message. A
 // second copy of it would be the same question asked twice.
 func TestATurnAlreadyRunningAddsNoSecondCopyOfTheQuestion(t *testing.T) {
-	a, _ := watched(t, Driving{Machine: "spark"})
+	a, _ := watched(t, Driving{Machine: "tower"})
 	events := make(chan session.Event, 4)
 	turns := make(chan Following, 1)
 	a.link.Follow = func() <-chan Following { return turns }

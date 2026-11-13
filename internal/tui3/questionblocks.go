@@ -10,7 +10,7 @@ import (
 
 // THE EVIDENCE AN ASKER ATTACHES, DRAWN AT THE SIZE IT NEEDS.
 //
-// docs/design/questions/DESIGN.md, rung five of the ladder: "show outcomes —
+// the implementation, rung five of the ladder: "show outcomes —
 // attach what each answer produces (a diff, a rendered row, a layout)". A
 // question with a diff under each answer is a question a person answers in four
 // seconds; the same question with the diffs described in prose is one they

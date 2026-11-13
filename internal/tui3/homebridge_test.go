@@ -138,11 +138,9 @@ func TestTheSecondColumnIsTheCardOfTheRowUnderTheCursor(t *testing.T) {
 	}
 }
 
-// HOME OPENS ON THE CONVERSATION THIS WINDOW HOLDS, VISIBLY SELECTED — the row
-// esc drops back into — so the first frame answers "where am I" before a key is
-// pressed. `↑` OFF THE TOP ROW STAYS THERE: the field's column has no way up
-// onto the tab bar (owner, 2026-09-17: nothing outside the left column is
-// walked, and the tabs are reached by a press, `tab` or a chord), where every
+// HOME OPENS ON THE CONVERSATION THIS WINDOW HOLDS, VISIBLY SELECTED — the row esc drops
+// back into — so the first frame answers "where am I" before a key is pressed. `↑` OFF THE
+// TOP ROW STAYS THERE: the field's column has no way up onto the tab bar, where every
 // other place's `↑` still climbs onto the bar (pages.go's [app.barReach]).
 func TestHomeOpensOnItsOwnConversationAndUpOffTheTopStaysInTheColumn(t *testing.T) {
 	a, mine := bridgeLab(t)

@@ -2,7 +2,7 @@ package tui3
 
 // THE PREVIEW PANE, AND HOW THE SHEET'S WIDTH IS DIVIDED.
 //
-// The owner's reference is Yazi's arrangement (../reference-yazi.png): a
+// The browser uses a three-column arrangement: a
 // readable path along the top, a NARROW ancestry column on the left, a GENEROUS
 // list of what you are standing in, and a LARGE preview on the right — with the
 // sizes right-aligned, one unmistakable selection, and compact controls at the

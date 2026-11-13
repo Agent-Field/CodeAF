@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 )
@@ -22,10 +21,15 @@ type RunnerSettings struct {
 	RunnerTimeoutSeconds int `json:"runner_timeout_s"`
 	KeepOutputDays       int `json:"keep_output_days"`
 	KeepOutputMB         int `json:"keep_output_mb"`
+	// ReadOnArrival is "Read new issues as they arrive": the arrival read of
+	// each new issue and the look closer before an automatic start. Off until
+	// the operator turns it on: off, the factory's AI reads nothing by itself
+	// and runs only when a person clicks Read or Look closer.
+	ReadOnArrival bool `json:"read_on_arrival"`
 }
 
 func DefaultRunnerSettings() RunnerSettings {
-	return RunnerSettings{DefaultRunnerTimeoutSeconds, DefaultKeepOutputDays, DefaultKeepOutputMB}
+	return RunnerSettings{RunnerTimeoutSeconds: DefaultRunnerTimeoutSeconds, KeepOutputDays: DefaultKeepOutputDays, KeepOutputMB: DefaultKeepOutputMB}
 }
 func (v RunnerSettings) Valid() bool {
 	return v.RunnerTimeoutSeconds >= factory.MinRunnerTimeoutSeconds && v.RunnerTimeoutSeconds <= factory.MaxRunnerTimeoutSeconds && v.KeepOutputDays >= factory.MinKeepOutputDays && v.KeepOutputDays <= factory.MaxKeepOutputDays && v.KeepOutputMB >= factory.MinKeepOutputMB && v.KeepOutputMB <= factory.MaxKeepOutputMB
@@ -75,40 +79,7 @@ func (st *Store) retainOutput(it *factory.Item) {
 	if it.Stream == nil {
 		return
 	}
-	days, bytes := 0, 0
-	if st.outputPolicy != nil {
-		days, bytes = st.outputPolicy()
-	} else {
-		if _, err := os.Stat(filepath.Join(st.root, "runner-settings.json")); err != nil {
-			return
-		}
-		settings, err := st.RunnerSettings()
-		if err != nil {
-			return
-		}
-		days, bytes = settings.KeepOutputDays, settings.KeepOutputMB*(1<<20)
-	}
-	if days < 1 || bytes < 1 {
-		return
-	}
-	cutoff := st.now().Add(-time.Duration(days) * 24 * time.Hour)
-	budget := bytes
-	kept := []factory.LogLine{}
-	for i := len(it.Stream.Log) - 1; i >= 0; i-- {
-		line := it.Stream.Log[i]
-		if !line.At.IsZero() && line.At.Before(cutoff) {
-			continue
-		}
-		if len(line.Text) > budget {
-			break
-		}
-		budget -= len(line.Text)
-		kept = append(kept, line)
-	}
-	for i, j := 0, len(kept)-1; i < j; i, j = i+1, j-1 {
-		kept[i], kept[j] = kept[j], kept[i]
-	}
-	it.Stream.Log = kept
+	st.outputKeep().apply(it, st.now())
 }
 
 // SetOutputPolicy binds a local runner before it starts; subsequent reads follow live app settings.

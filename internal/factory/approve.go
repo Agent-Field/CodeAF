@@ -195,6 +195,10 @@ func (it *Item) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	*it = Item(p)
+	// A FAILED, REJECTED OR STOPPED JOB'S FILE SAYS SO ([StateFailedOnDisk],
+	// [StateRejectedOnDisk], [StateStoppedOnDisk]); in memory it is a job that
+	// is not running, with that end on it, as it always was.
+	it.State = fromDiskState(it.State)
 	MigrateGates(it)
 	RepairShipDefault(it)
 	NormalizeStageNames(it)
@@ -259,4 +263,9 @@ func NeedsPublishApproval(it Item) bool {
 		}
 	}
 	return false
+}
+
+// NextStepQuestion is what Manual asks before a step no approve step answers for.
+func NextStepQuestion(step string) string {
+	return step + " is next · continue, or send back the step before?"
 }

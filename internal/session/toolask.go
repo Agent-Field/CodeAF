@@ -29,7 +29,7 @@ package session
 //  4. THE WAIT WAS A SECOND BUDGET. `view_image` carried its own ten-minute
 //     window, spelled as [providerTimeout], beside the deadline the dispatcher
 //     already builds from the call's role (internal/provider's dispatch.go,
-//     docs/design/recovery/DESIGN.md §4 — ONE deadline, derived from the role's
+//     the implementation §4 — ONE deadline, derived from the role's
 //     patience column). The window here is that same derivation, held at this
 //     door so that a call which never reaches the dispatcher still ends.
 //

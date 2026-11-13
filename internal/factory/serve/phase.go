@@ -13,10 +13,35 @@ import (
 // clearPhase, can never claim a refusal wrote nothing, so a new mutating route
 // is uncertain-on-failure to its clients until it is added deliberately.
 func markPreMutation(r *http.Request) bool {
+	// The factory's own copy of one repository's steps, saved or stopped:
+	// exactly /v1/repos/{owner}/{repo}/pipeline/factory-copy.
+	if r.Method == http.MethodPut || r.Method == http.MethodDelete {
+		if rest, ok := strings.CutPrefix(r.URL.Path, "/v1/repos/"); ok {
+			if name, ok := strings.CutSuffix(rest, "/pipeline/factory-copy"); ok {
+				owner, repo, two := strings.Cut(name, "/")
+				if two && owner != "" && repo != "" && !strings.Contains(repo, "/") {
+					return true
+				}
+			}
+		}
+	}
+	// The factory's spending defaults: exactly /v1/spending.
+	if r.Method == http.MethodPatch && r.URL.Path == "/v1/spending" {
+		return true
+	}
 	switch r.Method {
 	case http.MethodPost:
-		return r.URL.Path == "/v1/access/links" || r.URL.Path == "/v1/access/revoke-sessions"
+		// A job create, with or without its GitHub issue: exactly /v1/jobs
+		// and /v1/issues. Its marker also decides whether a keyed answer is
+		// kept ([keepReplay]).
+		return r.URL.Path == "/v1/access/links" || r.URL.Path == "/v1/access/revoke-sessions" ||
+			r.URL.Path == "/v1/jobs" || r.URL.Path == "/v1/issues"
 	case http.MethodPut:
+		// The factory's own rules, its routing table and its pipeline
+		// library: exactly /v1/rules, /v1/routes and /v1/pipeline-library.
+		if r.URL.Path == "/v1/rules" || r.URL.Path == "/v1/routes" || r.URL.Path == "/v1/pipeline-library" {
+			return true
+		}
 		// One runner's settings: exactly /v1/runners/{runner}.
 		if rest, ok := strings.CutPrefix(r.URL.Path, "/v1/runners/"); ok {
 			return rest != "" && !strings.Contains(rest, "/")

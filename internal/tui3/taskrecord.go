@@ -72,7 +72,7 @@ const (
 	// the foot draws on almost every frame. The head's right corner already says
 	// `esc back` at every width it has a corner to say it in, and a page that
 	// named the same instruction twice on a six-line card spent two of its
-	// sixteen words repeating itself (docs/design/polish/audit-tasks.md row 15).
+	// sixteen words repeating itself.
 	// So THE FOOT CARRIES THE WAY OUT ONLY WHERE THE HEAD DOES NOT, which is
 	// [app.taskCardTitleLine]'s own answer and not a second guess at it.
 	//
@@ -185,6 +185,7 @@ const (
 	taskCardHitMention
 	taskCardHitStronger
 	taskCardHitOutput
+	taskCardHitRunHere
 )
 
 // back reports whether a row of the card is the way back to the list.
@@ -314,6 +315,13 @@ func taskSameRecord(a, b session.TaskIndexEntry) bool {
 // where the report would have gone.
 func (a *app) readTaskTail(entry session.TaskIndexEntry) tea.Cmd {
 	path, key := taskURIPath(entry.TranscriptURI), tasksKeyOf(entry)
+	// A NODE THAT JUST SETTLED HAS NO SAVED TRANSCRIPT YET, but it already holds its
+	// own report. Without a transcript to read, that report is the page's answer;
+	// with one, the transcript stays the source, as it is after a restart.
+	if node := a.taskSheetNodeFor(&entry); path == "" && node != nil && !entry.Live() && strings.TrimSpace(node.report) != "" {
+		a.taskTailRead(taskTailMsg{path: path, key: key, at: entry.EndedAt, tail: node.report, kept: true})
+		return nil
+	}
 	if path == "" {
 		// THE READ THAT NEVER HAPPENS IS STILL AN ANSWER, and both readers are
 		// told it: the card so its report slot stops waiting, the pane so it does
@@ -436,6 +444,8 @@ func (a *app) taskCardKey(key string) tea.Cmd {
 		return cmd
 	}
 	switch key {
+	case taskRunHereKey:
+		return a.runTaskHere(entry)
 	case "o":
 		return a.openTaskResultOutput(entry)
 	case "r":
@@ -515,6 +525,9 @@ func (a *app) taskCardPress(x, y int) tea.Cmd {
 	if hits[y] == taskCardHitOutput {
 		return a.openTaskResultOutput(a.taskSheet.detail)
 	}
+	if hits[y] == taskCardHitRunHere {
+		return a.runTaskHere(a.taskSheet.detail)
+	}
 	if hits[y] == taskCardHitStronger {
 		return a.redoTaskStronger(a.taskSheet.detail)
 	}
@@ -585,6 +598,10 @@ func (a *app) taskCardFrame(width, height int) ([]string, []taskCardHit, int, in
 
 	head := len(lines)
 	room := height - head - taskCardFoot
+	runHere := a.taskCanRunHere(entry) && width-2 >= len(taskRunHereVerb)
+	if runHere {
+		room--
+	}
 	stronger := a.taskCanRedoStronger(entry) && width-2 >= len(taskStrongerWord)
 	if stronger {
 		room--
@@ -606,7 +623,7 @@ func (a *app) taskCardFrame(width, height int) ([]string, []taskCardHit, int, in
 	// card, is a foot pinned for nobody: the reader's eye travels the whole
 	// frame to find `esc back` for a page that ended at line eleven, and the
 	// emptiness the law forbids in a figure is drawn here as rows of it
-	// (docs/design/polish/audit-tasks.md row 5).
+	//.
 	//
 	// A PAGE THAT SCROLLS KEEPS ITS PINNED FOOT, because there the bottom of the
 	// frame IS where the content ends — so the pad is gone and nothing else is:
@@ -622,6 +639,9 @@ func (a *app) taskCardFrame(width, height int) ([]string, []taskCardHit, int, in
 	for i := 0; i < drawn; i++ {
 		add(" "+body[a.taskSheet.detailTop+i], taskCardHitNone)
 	}
+	if runHere {
+		add(" "+pal.underline(taskRunHereVerb), taskCardHitRunHere)
+	}
 	if stronger {
 		add(" "+pal.underline(taskStrongerWord), taskCardHitStronger)
 	}
@@ -630,13 +650,12 @@ func (a *app) taskCardFrame(width, height int) ([]string, []taskCardHit, int, in
 	}
 
 	add(pal.dim(rule(width)), taskCardHitNone)
-	// THE PAGE ENTER LANDS ON FROM A `needs you` ROW SHOWS THE QUESTION IT
-	// NEEDS YOU FOR. The landing has been on the block above the conversation's
-	// box all along ([session.Agent.publishLandingQuestion]); this card is a
-	// place, the block is neither drawn nor keyed under a place, and a person
-	// sent here by `enter` read the whole report and found nothing to press
-	// (the owner, 2026-09-10). So the card draws the question's own head and
-	// answers row, from the block's own object, above its foot.
+	// THE PAGE ENTER LANDS ON FROM A `needs you` ROW SHOWS THE QUESTION IT NEEDS YOU FOR. The
+	// landing has been on the block above the conversation's box all along
+	// ([session.Agent.publishLandingQuestion]); this card is a place, the block is neither
+	// drawn nor keyed under a place, and a person sent here by `enter` read the whole report
+	// and found nothing to press. So the card draws the question's own head and answers row,
+	// from the block's own object, above its foot.
 	asking := false
 	if q, ok := a.taskRecordLanding(entry); ok {
 		asking = true
@@ -834,7 +853,7 @@ type taskRecordVerb struct {
 // the shape [app.questionAnswerParts] already falls back to for an option
 // carrying no key of its own — it spells `itoa(i+1)` there — and the only
 // difference here is that these options DO carry keys: the landing's answers wear
-// LETTERS because docs/design/task-states/DESIGN.md fixed `a`, `n` and `s` on that
+// LETTERS because the implementation fixed `a`, `n` and `s` on that
 // card (session's answers.go states the law). So the position is a SECOND name
 // beside the letter rather than a stand-in for a missing one, and the letters are
 // untouched.
@@ -999,6 +1018,14 @@ func (a *app) taskCardBody(entry session.TaskIndexEntry, width int) []string {
 	if line := a.taskCardWhenLine(entry); line != "" {
 		bands = append(bands, []string{pal.ink(fit(line, width))})
 	}
+	placement := a.taskEntryComputerWords(entry)
+	if placement != "" {
+		var rows []string
+		for _, line := range wrap(placement, width) {
+			rows = append(rows, pal.dim(line))
+		}
+		bands = append(bands, rows)
+	}
 	// THE RECOVERY BAND STANDS WHERE THE OUTCOME WOULD, because it is what this
 	// card was opened to say: work another window is running has no outcome and
 	// never will here, and the sentence a person came for is where the work is
@@ -1017,7 +1044,7 @@ func (a *app) taskCardBody(entry session.TaskIndexEntry, width int) []string {
 		bands = append(bands, result)
 	}
 	// Identical result and landing prose needs one paragraph; both original fields remain intact.
-	if outcome := strings.TrimSpace(entry.Outcome); outcome != "" && outcome != displayedResult {
+	if outcome := strings.TrimSpace(entry.Outcome); outcome != "" && outcome != displayedResult && (placement == "" || strings.TrimSuffix(outcome, taskRunHereSuffix) != placement) {
 		var said []string
 		for _, wrapped := range wrap(outcome, width) {
 			said = append(said, pal.ink(wrapped))

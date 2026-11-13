@@ -15,10 +15,11 @@ package session
 // copy, so every page of one run reads the same difference; the page says so
 // rather than pretending a part's share can be told apart.
 //
-// NOTHING HERE WRITES. The copy is read with plumbing commands only, so opening
-// a page never moves an index or a branch under a worker that is typing in it.
+// Query reads use plumbing commands only. The explicit OpenPlanTaskWork action
+// may restore an archived copy before the work tab reads its ordinary difference.
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -32,6 +33,9 @@ import (
 // nothing yet, which [PlanTaskWork.Read] tells apart from a copy nobody could
 // read.
 type PlanTaskWork struct {
+	// Error reports an explicit restoration failure instead of saying the saved
+	// working copy was never here. Ordinary query reads leave this empty.
+	Error string `json:"error,omitempty"`
 	// Dir is the run's copy, the directory its workers type in.
 	Dir string
 	// Patch is the unified difference between the commit the copy was cut
@@ -66,6 +70,29 @@ const planWorkPatchCap = 256 << 10
 // page on an engine without it draws the tab's honest absence.
 type PlanWorkAgent interface {
 	PlanTaskWork(id string) (PlanTaskWork, bool)
+}
+
+// PlanWorkOpener is the explicit work-tab gesture, separate from background reads.
+// Engines that do not implement it keep their ordinary read-only work tab.
+type PlanWorkOpener interface {
+	OpenPlanTaskWork(id string) (PlanTaskWork, bool)
+}
+
+// OpenPlanTaskWork restores a retained run copy only when a person opens its
+// work tab. List, hover and polling callers keep using PlanTaskWork.
+func (a *Agent) OpenPlanTaskWork(id string) (PlanTaskWork, bool) {
+	root, ok := a.planTaskRoot(id)
+	if !ok {
+		return PlanTaskWork{}, false
+	}
+	copied := a.planRunCopy(root)
+	if copied == nil {
+		return PlanTaskWork{}, true
+	}
+	if err := a.RestoreTaskPath(context.Background(), copied.Dir); err != nil {
+		return PlanTaskWork{Dir: copied.Dir, Error: "could not restore the saved working copy: " + err.Error()}, true
+	}
+	return readPlanWork(copied), true
 }
 
 // PlanTaskWork answers the working copy of the run one store task belongs to.

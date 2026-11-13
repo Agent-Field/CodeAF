@@ -24,7 +24,7 @@ import (
 // Three laws, and they are the whole of it.
 //
 //  1. RESOLUTION IS PROJECT → PROFILE → BUILT-IN DEFAULT, which is exactly omp's
-//     layering and exactly the order docs/CHAT-V3.md Decision 6 states. The
+//     layering and exactly the order the implementation Decision 6 states. The
 //     environment still outranks all three where a row has a pin: a variable is
 //     the operator's explicit instruction for this process, and a file checked
 //     into a repository must not be able to overrule the shell the binary was
@@ -147,10 +147,10 @@ func LoadProjectConfig(cwd string) (ProjectConfig, error) {
 	if path == "" {
 		return ProjectConfig{}, nil
 	}
-	project, err := projectConfigMemo.Read(path)
+	project, err := projectConfigMemo.ReadStrict(path)
 	if os.IsNotExist(err) {
 		legacy := filepath.Join(strings.TrimSpace(cwd), legacyProjectConfigDir, ProjectConfigFile)
-		project, err = projectConfigMemo.Read(legacy)
+		project, err = projectConfigMemo.ReadStrict(legacy)
 		if os.IsNotExist(err) {
 			return ProjectConfig{path: path}, nil
 		}
@@ -323,12 +323,8 @@ func (p ProjectConfig) ResolveString(profileDir, key string) (string, error) {
 		return value, nil
 	}
 	switch key {
-	case KeyToolApprovalMode:
-		return ToolApprovalModeAt(profileDir), nil
-	case KeyToolApprovals:
-		return ToolApprovalsAt(profileDir), nil
-	case KeyBashApprovals:
-		return BashApprovalsAt(profileDir), nil
+	case KeyToolApprovalMode, KeyToolApprovals, KeyBashApprovals:
+		return profileApprovalString(profileDir, key)
 	case KeyTierLowModel:
 		return TierModelAt(profileDir, ModelTierLow), nil
 	case KeyTierHighModel:
@@ -337,6 +333,31 @@ func (p ProjectConfig) ResolveString(profileDir, key string) (string, error) {
 		return ModelRolesAt(profileDir), nil
 	}
 	return "", fmt.Errorf("%q is not a text row", key)
+}
+
+// ReadProfileApprovalConfig preserves a failed profile read so policy builders
+// can require a person even when a caller or project supplies an allow mode.
+func ReadProfileApprovalConfig(profileDir string) (map[string]json.RawMessage, error) {
+	return readProfileConfigStrict(profileDir)
+}
+
+func profileApprovalString(profileDir, key string) (string, error) {
+	values, err := ReadProfileApprovalConfig(profileDir)
+	if err != nil {
+		return "", err
+	}
+	if key == KeyToolApprovalMode {
+		return toolApprovalMode(values, DefaultToolApprovalMode), nil
+	}
+	encoded, found := values[key]
+	if !found {
+		return "", nil
+	}
+	var value string
+	if err := json.Unmarshal(encoded, &value); err != nil {
+		return "", fmt.Errorf("settings row %q: %w", key, err)
+	}
+	return strings.TrimSpace(value), nil
 }
 
 // ResolveBool answers one on/off row through the ladder.

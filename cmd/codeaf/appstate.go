@@ -18,6 +18,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -26,6 +27,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/effort"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/home"
 )
 
@@ -51,7 +53,9 @@ type appRaise struct {
 // appStateFile is the app's file. A nil figure is one nobody set, which reads
 // as its default; a day cap of zero is one the person turned off.
 type appStateFile struct {
-	Setup *appwire.Setup `json:"setup,omitempty"`
+	// LibraryLater keeps a deferred knowledge question in Later across restarts.
+	LibraryLater map[string]bool `json:"library_later,omitempty"`
+	Setup        *appwire.Setup  `json:"setup,omitempty"`
 	// SetupSteps is how many steps the kept setup's step is counted in. A
 	// file kept before setup became three steps has none, and its step is
 	// counted in four ([appSetupStepFromFour]).
@@ -59,11 +63,13 @@ type appStateFile struct {
 	WorkFolder string `json:"work_folder,omitempty"`
 	// DayCapUSD is LEGACY and read-only: the daily limit is the profile's
 	// (appdaylimit.go), and this is read once, to hand it over.
-	DayCapUSD          *float64            `json:"day_cap_usd,omitempty"`
-	ProposedTaskClockS *int                `json:"proposed_task_clock_s,omitempty"`
-	IdleCloseDays      *int                `json:"idle_close_days,omitempty"`
-	Budgets            map[string]float64  `json:"budgets,omitempty"`
-	Raises             map[string]appRaise `json:"raises,omitempty"`
+	DayCapUSD          *float64           `json:"day_cap_usd,omitempty"`
+	ProposedTaskClockS *int               `json:"proposed_task_clock_s,omitempty"`
+	IdleCloseDays      *int               `json:"idle_close_days,omitempty"`
+	Budgets            map[string]float64 `json:"budgets,omitempty"`
+	// CreatedBy is who started each agent made here (appcreatedby.go).
+	CreatedBy map[string]string   `json:"created_by,omitempty"`
+	Raises    map[string]appRaise `json:"raises,omitempty"`
 	// Unlimited is the agents a person said have no budget of their own, and
 	// when (appbudget.go). A zero in Budgets never meant that, so it is kept
 	// apart rather than read into a figure an older file already holds.
@@ -93,6 +99,16 @@ type appStateFile struct {
 	// put it away (apptidy.go).
 	Closed   map[string]time.Time `json:"closed,omitempty"`
 	Archived map[string]time.Time `json:"archived,omitempty"`
+	// Seen is when the person last saw each agent (agents.mark_seen), and
+	// UnreadFrom when this file began keeping it: an agent with no mark is
+	// read up to then (appunread.go).
+	Seen       map[string]time.Time `json:"seen,omitempty"`
+	UnreadFrom time.Time            `json:"unread_from,omitzero"`
+	// SeenAhead is the output a mark saw that was stamped ahead of the
+	// mark's clock, each instant read seen as itself (appunread.go). An
+	// unreleased build kept one instant per agent under seen_ahead; that key
+	// is left unread.
+	SeenAhead map[string][]time.Time `json:"seen_ahead_at,omitempty"`
 	// The Settings window's General rows and pinned models (appsettings.go);
 	// a nil row is one nobody set, which reads as its default.
 	Appearance   string   `json:"appearance,omitempty"`
@@ -182,7 +198,7 @@ func (s *appState) write(fn func(*appStateFile) error) error {
 	if err := os.WriteFile(temp, raw, appStateFileMode); err != nil {
 		return err
 	}
-	if err := os.Rename(temp, s.path); err != nil {
+	if err := fsreplace.Rename(temp, s.path); err != nil {
 		return err
 	}
 	s.file = next
@@ -192,6 +208,10 @@ func (s *appState) write(fn func(*appStateFile) error) error {
 // clone is a copy that shares nothing with the file it came from.
 func (f appStateFile) clone() appStateFile {
 	out := f
+	out.LibraryLater = make(map[string]bool, len(f.LibraryLater))
+	for id, later := range f.LibraryLater {
+		out.LibraryLater[id] = later
+	}
 	if f.Setup != nil {
 		setup := *f.Setup
 		out.Setup = &setup
@@ -199,6 +219,10 @@ func (f appStateFile) clone() appStateFile {
 	out.Budgets = make(map[string]float64, len(f.Budgets))
 	for k, v := range f.Budgets {
 		out.Budgets[k] = v
+	}
+	out.CreatedBy = make(map[string]string, len(f.CreatedBy))
+	for k, v := range f.CreatedBy {
+		out.CreatedBy[k] = v
 	}
 	out.Raises = make(map[string]appRaise, len(f.Raises))
 	for k, v := range f.Raises {
@@ -215,6 +239,14 @@ func (f appStateFile) clone() appStateFile {
 	out.Archived = make(map[string]time.Time, len(f.Archived))
 	for k, v := range f.Archived {
 		out.Archived[k] = v
+	}
+	out.Seen = make(map[string]time.Time, len(f.Seen))
+	for k, v := range f.Seen {
+		out.Seen[k] = v
+	}
+	out.SeenAhead = make(map[string][]time.Time, len(f.SeenAhead))
+	for k, v := range f.SeenAhead {
+		out.SeenAhead[k] = slices.Clone(v)
 	}
 	out.ResumeAfterQuit = append([]string(nil), f.ResumeAfterQuit...)
 	out.QuitReplies = append([]string(nil), f.QuitReplies...)
@@ -315,6 +347,7 @@ func appSetupStepFromFour(step appwire.SetupStep) appwire.SetupStep {
 // step one, offering the app's day cap. A setup a four-step build kept is
 // answered in three steps.
 func (b *appBackend) Setup() (appwire.Setup, error) {
+	b.refreshKeyHealth()
 	// The day cap offered is the profile's limit, whatever the saved step says.
 	base, err := b.dayBase()
 	if err != nil {
@@ -329,11 +362,12 @@ func (b *appBackend) Setup() (appwire.Setup, error) {
 			}
 			return
 		}
-		setup = appwire.Setup{Step: appwire.SetupStep{N: 1}}
+		setup = appwire.Setup{Step: appwire.SetupStep{N: 1}, DefaultModel: appDefaultModel()}
 	})
 	if err != nil {
 		return appwire.Setup{}, appEngineError(err)
 	}
+	setup.ProviderKey = b.keyHealth.read()
 	setup.DayCapUSD = appFigure(base)
 	return setup, nil
 }
@@ -342,6 +376,7 @@ func (b *appBackend) Setup() (appwire.Setup, error) {
 // same step. What it chose is also put in force at once: a default model is the
 // profile's default, and a day cap is the app's day cap.
 func (b *appBackend) SetSetup(setup appwire.Setup) (appwire.Setup, error) {
+	setup.ProviderKey = appwire.ProviderKeyHealth{}
 	setup.Provider = strings.ToLower(strings.TrimSpace(setup.Provider))
 	setup.DefaultModel = strings.TrimSpace(setup.DefaultModel)
 	if setup.DefaultModel != "" && setup.DefaultModel != appDefaultModel() {
@@ -373,6 +408,7 @@ func (b *appBackend) SetSetup(setup appwire.Setup) (appwire.Setup, error) {
 	if setup.DefaultModel != "" || setup.DayCapUSD != nil {
 		b.settingsMoved()
 	}
+	setup.ProviderKey = b.keyHealth.read()
 	return setup, nil
 }
 
@@ -393,6 +429,7 @@ func (b *appBackend) Settings() (appwire.Settings, error) {
 	settings := appwire.Settings{
 		DefaultModel:       appDefaultModel(),
 		AsksBefore:         config.ToolApprovalModeAt(profile),
+		ApprovalPosture:    appStandingPosture(profile),
 		BudgetUSD:          appFigure(config.SpendRailUSDAt(profile)),
 		DayCapUSD:          appFigure(base),
 		WorkFolder:         file.workFolder(),
@@ -402,6 +439,14 @@ func (b *appBackend) Settings() (appwire.Settings, error) {
 	}
 	if rung := config.DefaultEffortAt(profile); rung.Valid() {
 		settings.Effort = rung.String()
+	}
+	settings.WhenPlanPaused = map[string]string{}
+	for _, row := range config.PersistedSources(b.crewProfile()) {
+		policy := row.PlanPaused
+		if policy == "" {
+			policy = config.PlanPausedWait
+		}
+		settings.WhenPlanPaused[row.ID] = policy
 	}
 	settingsExtra(&settings, file, profile)
 	return settings, nil
@@ -415,6 +460,11 @@ func (b *appBackend) SetSettings(patch appwire.SettingsPatch) (appwire.Settings,
 		// Before any other field lands: a limit the environment pins is
 		// refused whole, not half-applied.
 		if err := dayLimitFree(); err != nil {
+			return appwire.Settings{}, err
+		}
+	}
+	if patch.WhenPlanPaused != nil {
+		if err := b.setPlanPaused(patch.WhenPlanPaused); err != nil {
 			return appwire.Settings{}, err
 		}
 	}
@@ -513,6 +563,9 @@ func (b *appBackend) SetSettings(patch appwire.SettingsPatch) (appwire.Settings,
 	// THEIR ROWS — the checker and planner pins are the Checks and Planner
 	// rows — so a budget, an appearance or a folder is never held up by them.
 	b.settingsChanged(settings, patch.ChecksModel != nil || patch.PlannerModel != nil)
+	if patch.AsksBefore != nil {
+		b.reapproveHeld()
+	}
 	if patch.DayCapUSD != nil {
 		b.spendSay()
 	}
@@ -524,6 +577,27 @@ func (b *appBackend) settingsMoved() {
 	if settings, err := b.Settings(); err == nil {
 		b.emit.Emit(appwire.EventSettingsChanged, appwire.SettingsChanged{Settings: settings})
 	}
+}
+
+// listenSyncedSettings uses the restore transaction's notification rather than
+// another file watcher or clock. One restore can change several settings.
+func (b *appBackend) listenSyncedSettings() func() {
+	return config.ObserveSyncedPreferences(config.ProfileDir(), func(keys []string) {
+		for _, key := range keys {
+			if key == config.KeyToolApprovalMode {
+				b.reapproveHeld()
+			}
+		}
+		for _, key := range keys {
+			switch key {
+			case config.KeyChatModel, config.KeyToolApprovalMode, config.KeySpendRail,
+				config.KeyDailyBudget, config.KeyCrewTaskCap, config.KeyEffort,
+				config.KeyTierHighModel, config.KeyTierMastermindModel, config.KeyModelFallbacks:
+				b.settingsMoved()
+				return
+			}
+		}
+	})
 }
 
 // appDollars writes a figure the way the profile's money writers read one.

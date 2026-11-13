@@ -43,7 +43,7 @@ import (
 
 // MachineName is what this machine calls itself on the wire: the name a person
 // gave it, else its host name with any domain trimmed off ([devname.Name]), so a
-// person reads `spark` rather than `spark.local.example.com` in a sentence about
+// person reads `laptop` rather than `laptop.local.example.com` in a sentence about
 // which window is typing.
 //
 // IT IS A LABEL AND NOT AN IDENTITY (see [Hello.Surface]). The empty string is a
@@ -289,8 +289,9 @@ var watcherReads = map[string]bool{
 	MethodPlanTaskPage:  true,
 	MethodAppTasks:      true, MethodAppTask: true, MethodAppQuickTasks: true, MethodAppProgramActions: true,
 	MethodRenderList: true, MethodRenderGet: true,
-	MethodDetach: true,
-	MethodPing:   true,
+	MethodDetach:    true,
+	MethodPing:      true,
+	MethodCheckWork: true,
 }
 
 func watcherMay(method string) bool { return watcherReads[method] }

@@ -14,14 +14,10 @@ import (
 
 // THE PERSON-FACING WORD FOR THE THING BEHIND A MODEL IS `provider`.
 //
-// One model id is served by many machines, and until 2026-09-14 this surface
-// called one of them a **lane**: the settings row was labelled `lane`, the
-// picker's hint said `→ lanes`, the fold's empty line said `no machine has been
-// measured`, and the manual's page was titled Lanes. The wire, OpenRouter's own
-// refusals (`provider.only`) and the owner all said **provider**, so a person
-// met two words for one thing and only one of them was ever written down
-// anywhere they could check. The owner ruled on the word (issue #1023): it is
-// `provider`, everywhere a person reads.
+// One model id is served by many machines, and until 2026-09-14 this surface called one of
+// them a **lane**: the settings row was labelled `lane`, the picker's hint said `→ lanes`,
+// the fold's empty line said `no machine has been measured`, and the manual's page was
+// titled Lanes.
 //
 // THE RULING IS ABOUT VOCABULARY AND NOT ABOUT ARCHITECTURE, which is why this
 // law reads STRING LITERALS and nothing else. `internal/lane`, `LanePin`,

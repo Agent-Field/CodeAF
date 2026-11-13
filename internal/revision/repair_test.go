@@ -66,7 +66,7 @@ func TestTheTreeStampMovesOnlyWhenTheTreeDoes(t *testing.T) {
 // ofetch `task-2-x1` — where a composition closed each of them and the runs
 // settled whole at 7 of 25 and 44 of 47 hidden checks. The third is the shape
 // Compose exists for, and the fourth is the prose answer whose message is its
-// own artifact. See docs/design/gate/SETTLEMENT.md §8.
+// own artifact. See the implementation §8.
 func TestAnUnmovedRepairClosesOnlyWhatWritingCanClose(t *testing.T) {
 	const ink = "The deliverable is a listing of files, not the answer itself. The request " +
 		"asked for grid display mode to be implemented — the code changes, the branch, and " +

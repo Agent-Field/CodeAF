@@ -139,7 +139,7 @@ func repairCheckFixture(t *testing.T) (string, string, func(string)) {
 	if err := os.WriteFile(filepath.Join(bin, "cargo"), []byte("#!/bin/sh\nif [ \"${CHECK_EXIT:-0}\" = 127 ]; then exit 127; fi\necho 'test result: ok'\nexit \"${CHECK_EXIT:-0}\"\n"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	journal, err := os.Create(file)
+	journal, err := os.OpenFile(file, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,7 +150,9 @@ func repairCheckFixture(t *testing.T) (string, string, func(string)) {
 		// Keep reporting logs outside the measured checkout.
 		command = strings.ReplaceAll(command, "check.log", repairShellQuote(filepath.Join(bin, "check.log")))
 		command = "export PATH=" + repairShellQuote(bin) + ":\"$PATH\"; " + command
-		wrapped, err := verification.Prepare(file, command)
+		n++
+		id := fmt.Sprint(n)
+		wrapped, err := verification.PrepareCallIn(file, "", command, id)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -165,8 +167,6 @@ func repairCheckFixture(t *testing.T) (string, string, func(string)) {
 				t.Fatal(runErr)
 			}
 		}
-		n++
-		id := fmt.Sprint(n)
 		args, _ := json.Marshal(map[string]string{"command": command})
 		if err := enc.Encode(map[string]any{"role": "assistant", "toolCalls": []any{map[string]any{"id": id, "function": map[string]string{"name": "bash", "arguments": string(args)}}}}); err != nil {
 			t.Fatal(err)
@@ -293,5 +293,76 @@ func TestRepairCorrectsInvalidCargoWithSavedExitAndReporting(t *testing.T) {
 		if strings.HasPrefix(n, verification.FailurePrefix) {
 			t.Fatalf("saved-exit correction remained blocked: %s", n)
 		}
+	}
+}
+
+// A repair whose evidence keeps changing is not stopped by a clock: it has
+// stageVerificationReportLimit refused reports in all, and no timer runs
+// between them.
+func TestRepairChangingEvidenceIsBoundedByReportsNotMinutes(t *testing.T) {
+	root, file, run := repairCheckFixture(t)
+	parent := &repairReportDoor{}
+	door := &receiptStageDoor{StageDoor: parent, file: file, dir: root, repair: true}
+	t.Cleanup(door.closeVerification)
+	stopped := door.stoppedVerification()
+	fixed := factory.StageResult{Done: true, Repair: &factory.CIRepairResult{Decision: "fixed", Reason: "claimed fixed"}}
+	for i := range stageVerificationReportLimit {
+		// A different failing exit each time is changed evidence, not a repeat.
+		run(fmt.Sprintf("CHECK_EXIT=%d cargo test --test cli regression", 10+i))
+		if err := door.Report(t.Context(), fixed); err == nil {
+			t.Fatal("failed repair accepted")
+		}
+		door.mu.Lock()
+		timer := door.timer
+		door.mu.Unlock()
+		if timer != nil {
+			t.Fatal("a refused report started a clock")
+		}
+		if i < stageVerificationReportLimit-1 {
+			select {
+			case reason := <-stopped:
+				t.Fatalf("stopped after %d changing reports: %s", i+1, reason)
+			default:
+			}
+		}
+	}
+	select {
+	case reason := <-stopped:
+		if !strings.Contains(reason, fmt.Sprintf("%d completion reports were refused", stageVerificationReportLimit)) {
+			t.Fatal(reason)
+		}
+	default:
+		t.Fatal("changing evidence ran past its report limit")
+	}
+}
+
+// A successful correction cancels the stop: refused reports before it do not
+// count toward the limit after it.
+func TestASuccessfulReportStartsTheRefusedCountOver(t *testing.T) {
+	root, file, run := repairCheckFixture(t)
+	parent := &repairReportDoor{}
+	door := &receiptStageDoor{StageDoor: parent, file: file, dir: root, repair: true}
+	t.Cleanup(door.closeVerification)
+	stopped := door.stoppedVerification()
+	fixed := factory.StageResult{Done: true, Repair: &factory.CIRepairResult{Decision: "fixed", Reason: "claimed fixed"}}
+	refuse := func(from int) {
+		t.Helper()
+		for i := range stageVerificationReportLimit - 1 {
+			run(fmt.Sprintf("CHECK_EXIT=%d cargo test --test cli regression", from+i))
+			if err := door.Report(t.Context(), fixed); err == nil {
+				t.Fatal("failed repair accepted")
+			}
+		}
+	}
+	refuse(10)
+	run("cargo test --test cli regression")
+	if err := door.Report(t.Context(), fixed); err != nil {
+		t.Fatalf("passing correction refused: %v", err)
+	}
+	refuse(30)
+	select {
+	case reason := <-stopped:
+		t.Fatalf("stopped on reports refused before the correction: %s", reason)
+	default:
 	}
 }

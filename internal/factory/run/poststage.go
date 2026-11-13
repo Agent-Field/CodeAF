@@ -20,17 +20,23 @@ type PostOptions struct {
 	Record *record.Record
 	// Source answers the item's source, nil when none.
 	Source func(repo string) factory.Source
-	// Policy answers the repo's recipe policy lines.
-	Policy func(repo string) []string
+	// Policy answers the policy lines of the recipe the job runs: the file
+	// it was decided on, the factory's copy it carries or main's file
+	// ([Options.Recipe]).
+	Policy func(it factory.Item) []string
 	// Push publishes the item's branch from its folder before a `pr` is
 	// opened from it; the wire hands [GitPush]. Nil pushes nothing, and the
 	// pull request is opened from whatever the remote already has.
-	Push func(dir, branch string) error
+	Push func(dir, branch string, before ...func() error) error
 }
 
 // NewPostExecutor runs a post stage: one write through the item's source.
 func NewPostExecutor(source func(repo string) factory.Source, policy func(repo string) []string) Executor {
-	return NewPostExecutorWith(PostOptions{Source: source, Policy: policy})
+	o := PostOptions{Source: source}
+	if policy != nil {
+		o.Policy = func(it factory.Item) []string { return policy(it.Repo) }
+	}
+	return NewPostExecutorWith(o)
 }
 
 // NewPostExecutorWith runs a post stage: one write through the item's source.
@@ -53,7 +59,19 @@ func NewPostExecutorWith(o PostOptions) Executor {
 		}
 		it := job.Item
 		verb, rest := splitAsk(job.Stage.Ask)
-		action := factory.Action{Verb: verb, Item: it}
+		action := factory.Action{Verb: verb, Item: it, BeforeWrite: job.BeforeWrite}
+		check := func() error {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if err := factory.CheckPersonStop(it); err != nil {
+				return err
+			}
+			if job.BeforeWrite != nil {
+				return job.BeforeWrite(ctx)
+			}
+			return nil
+		}
 		switch verb {
 		case "comment":
 			action.Body = rest
@@ -65,7 +83,7 @@ func NewPostExecutorWith(o PostOptions) Executor {
 		case "pr":
 			action.Draft = strings.EqualFold(strings.TrimSpace(rest), "draft")
 			action.Branch = branchFor(it)
-			action.Body = factory.PublicText(proofList(it, job.Prior) + "\n\nby codeaf factory")
+			action.Body = factory.PublicText(proofList(it, job.Prior) + "\n" + factory.SkippedValidation(it) + factory.AcceptedValidation(it) + "\nby codeaf factory")
 		case "close":
 		default:
 			return factory.StageResult{}, fmt.Errorf("a post stage says comment, label, pr or close")
@@ -79,9 +97,13 @@ func NewPostExecutorWith(o PostOptions) Executor {
 			return factory.StageResult{}, fmt.Errorf("%s is not on a source codeaf can post to", it.Ref())
 		}
 		if policy != nil {
-			if ok, why := PolicyAllows(policy(it.Repo), it, action, job.Prior); !ok {
+			if ok, why := PolicyAllows(withHouse(policy(it), it), it, action, job.Prior); !ok {
+				output := "post refused: " + why
+				if shapeOf(why) == shapeTestsFirst {
+					output += skippedPolicyWait(it)
+				}
 				return factory.StageResult{
-					Output: "post refused: " + why,
+					Output: output,
 					Claims: []factory.Claim{{Text: verb + " refused by policy", OK: false, Evidence: why, Medium: "policy"}},
 				}, nil
 			}
@@ -90,7 +112,13 @@ func NewPostExecutorWith(o PostOptions) Executor {
 		// without the job's recorded approval, and a comment or a pull
 		// request carries its trailer as the body's last line.
 		if o.Record != nil {
-			trailer, err := o.Record.Trailer(ctx, it.ID)
+			trailer := ""
+			var err error
+			if factory.PublishedAnyway(it) && ValidTrailer(it.PublishAnyway.Words) && TrailerCommit(it.PublishAnyway.Words) == it.HeadCommit && TrailerHandle(it.PublishAnyway.Words) == it.PublishAnyway.DecidedBy {
+				trailer = it.PublishAnyway.Words
+			} else {
+				trailer, err = o.Record.Trailer(ctx, it.ID)
+			}
 			if err != nil {
 				return factory.StageResult{}, err
 			}
@@ -99,9 +127,15 @@ func NewPostExecutorWith(o PostOptions) Executor {
 			}
 		}
 		if verb == "pr" && o.Push != nil {
-			if err := push(o.Push, job.Dir, it, action.Branch); err != nil {
+			if err := check(); err != nil {
 				return factory.StageResult{}, err
 			}
+			if err := push(o.Push, job.Dir, it, action.Branch, check); err != nil {
+				return factory.StageResult{}, err
+			}
+		}
+		if err := check(); err != nil {
+			return factory.StageResult{}, err
 		}
 		rcpt, err := src.Write(ctx, action)
 		if err != nil {
@@ -112,7 +146,11 @@ func NewPostExecutorWith(o PostOptions) Executor {
 			if it.Stream != nil {
 				cost = it.Stream.Spent
 			}
-			if _, err := o.Record.Append(ctx, record.Event{Kind: record.Posted, Job: it.ID, Handle: it.Person(), Cost: cost, Detail: verb + " · " + rcpt.URL}); err != nil {
+			handle := it.Person()
+			if it.Approval != nil && it.Approval.Automatic {
+				handle = ""
+			}
+			if _, err := o.Record.Append(ctx, record.Event{Kind: record.Posted, Job: it.ID, Handle: handle, Cost: cost, Detail: verb + " · " + rcpt.URL}); err != nil {
 				return factory.StageResult{}, fmt.Errorf("posted %s · %s; could not record post: %w", verb, rcpt.URL, err)
 			}
 		}
@@ -185,11 +223,11 @@ func proofList(it factory.Item, prior []factory.StageResult) string {
 }
 
 // push runs the push and says what went wrong in a sentence.
-func push(run func(dir, branch string) error, dir string, it factory.Item, branch string) error {
+func push(run func(dir, branch string, before ...func() error) error, dir string, it factory.Item, branch string, before ...func() error) error {
 	if strings.TrimSpace(dir) == "" {
 		return fmt.Errorf("codeaf does not know where %s is checked out", strings.TrimSpace(it.Repo))
 	}
-	err := run(dir, branch)
+	err := run(dir, branch, before...)
 	switch {
 	case err == nil:
 		return nil

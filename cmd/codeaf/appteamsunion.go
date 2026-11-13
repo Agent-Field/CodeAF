@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"sort"
 	"strconv"
 	"strings"
@@ -72,12 +71,16 @@ func (b *appBackend) teamsUnion(ctx context.Context) (*appTeamsUnion, error) {
 	return buildTeamsUnion(ctx, file.Teams)
 }
 
-// teamsSnapshot is one read-only, ctx-aware read of the stored teams.
+// teamsSnapshot is one read-only, ctx-aware read of the stored open teams:
+// the union walks only open crews down from the top, so closed ones are not
+// read.
 func (b *appBackend) teamsSnapshot(ctx context.Context) (*teamstore.File, error) {
-	file, _, err := teamstore.ReadSnapshot(ctx, b.crewProfile(), teamstore.SnapshotMaxBytes)
+	var file *teamstore.File
+	err := ctx.Err()
+	if err == nil {
+		file, err = teamstore.LoadOpen(b.crewProfile())
+	}
 	switch {
-	case errors.Is(err, teamstore.ErrSnapshotTooLarge):
-		return nil, appwire.Errorf(appwire.CodeTooLarge, "the teams file is too large to read as one union")
 	case ctx.Err() != nil:
 		return nil, appTeamsBusy()
 	case err != nil:

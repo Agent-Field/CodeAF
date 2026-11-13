@@ -148,3 +148,6 @@ func watchQuery(holds []Hold, events bool) string {
 	}
 	return q + "&" + EventsQuery
 }
+
+// HoldIdentity binds committed watch receipts to the exact lease.
+func (h Hold) HoldIdentity() (string, uint64) { return h.Cell, h.Fence }

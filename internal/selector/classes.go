@@ -11,7 +11,7 @@ type ClassShape struct {
 	NeedsTools  bool    // tool-use gate
 	NeedsImages bool    // image gate
 	Volume      float64 // seat-volume weight for the bill
-	Role        string  // lane B prediction role (worker|checker|thinker)
+	Role        string  // prediction role (worker|checker|thinker)
 }
 
 // DefaultClasses returns the five classes with the session's shapes.

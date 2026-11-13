@@ -28,6 +28,11 @@ import (
 // — Deliver, Media, File, Source, From, References — reaches the plan. What
 // the plan starts from is the claim's durable bytes, never Receipt.
 func (c *ShareClaim) Plan(rows []Artifact) error {
+	return c.plan(rows, nil)
+}
+
+// plan freezes skipped ids alongside the rows, before any index append.
+func (c *ShareClaim) plan(rows []Artifact, alreadyRecorded map[string]bool) error {
 	if c == nil || c.lock == nil {
 		return ErrShareOpInvalid
 	}
@@ -47,6 +52,7 @@ func (c *ShareClaim) Plan(rows []Artifact) error {
 			return err
 		}
 		receipt.Planned[i].Row = frozen
+		receipt.Planned[i].AlreadyRecorded = alreadyRecorded[receipt.Planned[i].ID]
 	}
 	receipt.Status = ShareOpPlanned
 	receipt.WrittenAt = time.Now().UTC()
@@ -58,8 +64,8 @@ func (c *ShareClaim) Plan(rows []Artifact) error {
 }
 
 // PlannedRows is the plan as the ONLY thing an append may write: a fresh decode
-// of the durable receipt, every row its own memory, in planned order. A
-// receipt without a written plan has nothing to append.
+// of the durable receipt, excluding already-recorded files, with every row
+// in its own memory and planned order. An unwritten plan has nothing to append.
 func (c *ShareClaim) PlannedRows() ([]Artifact, error) {
 	receipt, err := c.frozen()
 	if err != nil {
@@ -68,9 +74,11 @@ func (c *ShareClaim) PlannedRows() ([]Artifact, error) {
 	if !receipt.PlanWritten() {
 		return nil, ErrShareOpInvalid
 	}
-	rows := make([]Artifact, len(receipt.Planned))
-	for i, planned := range receipt.Planned {
-		rows[i] = *planned.Row
+	rows := make([]Artifact, 0, len(receipt.Planned))
+	for _, planned := range receipt.Planned {
+		if !planned.AlreadyRecorded {
+			rows = append(rows, *planned.Row)
+		}
 	}
 	return rows, nil
 }
@@ -101,6 +109,9 @@ func validateSharePlan(r ShareReceipt) error {
 	rows := 0
 	for _, planned := range r.Planned {
 		if planned.Row == nil {
+			if planned.AlreadyRecorded {
+				return ErrShareOpInvalid
+			}
 			continue
 		}
 		rows++

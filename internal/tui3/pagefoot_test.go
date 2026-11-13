@@ -8,7 +8,7 @@ package tui3
 // pinned the rule and the key row there — so a six-line card in a fifty-row
 // frame drew seventeen blank rows and put `esc back` on row thirty, and the
 // reader's eye travelled the whole frame to find the foot of a page that had
-// ended at line eleven (docs/design/polish/audit-tasks.md row 5).
+// ended at line eleven.
 //
 // A PLACE IS THE OTHER CASE AND IS NOT COVERED HERE. The tasks LIST has a
 // composer under it at a fixed row, which may not move (composerlayer.go), so

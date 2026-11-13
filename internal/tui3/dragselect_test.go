@@ -140,10 +140,8 @@ func TestTheSlopSeparatesAJitteryClickFromASweep(t *testing.T) {
 	}
 }
 
-// THE GESTURE A REAL HAND MAKES AND A SYNTHETIC CLICK NEVER DOES: press, drift
-// one row, release there. It is a click on the row that was PRESSED, and it
-// copies nothing — the owner met the other answer, where the tool call under
-// the pointer did not open and the status line said `copied · 2 lines` instead.
+// THE GESTURE A REAL HAND MAKES AND A SYNTHETIC CLICK NEVER DOES: press, drift one row,
+// release there.
 func TestAClickThatDriftsOneRowStillClicksTheRowItPressed(t *testing.T) {
 	a := dragApp(t)
 	y := screenRowWith(t, a, "the person wants fmt")

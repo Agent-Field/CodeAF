@@ -8,7 +8,7 @@ these bytes exactly (validation contract V11 / design risk 3: float + Markdown
 parity).
 
 Regenerate:
-  PYTHONPATH=/home/abir/gb/pr-af/src \
+  PYTHONPATH=/home/dev/gb/pr-af/src \
     <venv>/bin/python go/internal/orch/testdata/gen_summary_golden.py
 """
 from __future__ import annotations
@@ -16,7 +16,7 @@ from __future__ import annotations
 import os
 import sys
 
-sys.path.insert(0, "/home/abir/gb/pr-af/src")
+sys.path.insert(0, "/home/dev/gb/pr-af/src")
 
 import pr_af.orchestrator as orch_mod
 from pr_af.orchestrator import ReviewOrchestrator

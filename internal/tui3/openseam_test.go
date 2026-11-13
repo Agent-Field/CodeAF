@@ -26,7 +26,7 @@ func (*seamHistory) Append(string, string)                 {}
 func (*seamHistory) RecentFor(string, int) []history.Entry { return nil }
 func (*seamHistory) Recent(int) []history.Entry            { return nil }
 
-// TestAnAlwaysAfterNewReachesTheConversationInFront is this lane's proof.
+// TestAnAlwaysAfterNewReachesTheConversationInFront is this test's proof.
 //
 // THE BUG IT REPRODUCES. The consent card's "always" does two things: it writes
 // the rule into the person's profile, and it hands the gate the running session
@@ -36,7 +36,7 @@ func (*seamHistory) Recent(int) []history.Entry            { return nil }
 // session that /new had just closed. The card said `saved`, it was saved, and
 // the very next call asked again, with nothing on screen to connect the two.
 //
-// It cannot be written against the code this lane replaces, and that is the
+// It cannot be written against the code this test replaces, and that is the
 // shape of the fault rather than a gap in the test: before [Options.Start] there
 // was exactly ONE save seam on the whole surface and no way for a second
 // conversation to carry its own, so there was nothing for an assertion to

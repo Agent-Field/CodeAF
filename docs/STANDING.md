@@ -7,12 +7,10 @@
 > build installed) and the doctor rows that read them. A store an older build
 > wrote still opens and rebuilds — the journal keeps its events, which replay
 > passes over, and the `charters` table is left where it is, read only to name
-> an older build's work in a self receipt. What replaces all of it is
-> docs/design/automations/DESIGN.md. The rest of this page is history.
+> an older build's work in a self receipt. The rest of this page describes the earlier behavior.
 
 *This is the v1-era design doc, and it is the ANCESTOR rather than the account:
-what v3 built is docs/AMBIENT.md, and where the two disagree AMBIENT.md and the
-code are right. Three decisions below have been overtaken by what shipped and
+where this page and the code disagree, the code is authoritative. Three decisions below have been overtaken by what shipped and
 say so where they stand — the card's answers (Decision 2), the ambient rail
 (Decision 3), and probation (Decision 5). Everything else here still holds,
 which is why it is left as written.*
@@ -123,7 +121,7 @@ visible exactly when relevant, otherwise one quiet line.
   say it from: `ask here` on home opens a real exchange whose record is kept
   under the standing root, it OUTLIVES the screen it was asked on, several can
   be alive at once, and it is filed only once it has settled, been seen, and the
-  cursor has left it (AMBIENT.md Part 5).
+  cursor has left it.
 
 ## Decision 4 — The system may propose, through the same door
 

@@ -53,6 +53,10 @@ import (
 // session, every test, and every headless frame. Nothing half-works there: no
 // segment is drawn, no notice is looked for, and no question is asked about.
 type LinkSeam struct {
+	// SendRefusal reads known connection state before the composer spends a draft.
+	// Nil is a local connection with no remote-send gate.
+	SendRefusal func() string
+
 	// EngineBuild reads the latest welcome already held by the client. It
 	// changes after redial onto a replacement engine and never touches the wire.
 	EngineBuild func() string
@@ -203,7 +207,7 @@ func (a *app) linkSegment() string {
 	if note := a.linkNote(); note != "" {
 		return note
 	}
-	if !a.hosted() || a.linkLatency <= 0 {
+	if !a.hosted() || !a.linkLatencyFresh() {
 		return ""
 	}
 	return a.host + " · " + latencyWord(a.linkLatency)
@@ -230,6 +234,24 @@ func (a *app) linkNoting() bool { return a.linkNote() != "" }
 // adds twelve empty round trips a minute rather than turning observation into
 // traffic.
 const hostPingEvery = 5 * time.Second
+
+// hostPingMargin tolerates a normal reply without keeping an unanswered reading.
+const hostPingMargin = time.Second
+
+func (a *app) linkLatencyFresh() bool {
+	return a.linkLatency > 0 && !a.linkLatencyAt.IsZero() && a.now().Sub(a.linkLatencyAt) < hostPingEvery+hostPingMargin
+}
+
+type linkLatencyExpiredMsg struct{ at time.Time }
+
+// linkLatencyExpiry repaints an idle bar even while its next ping is still waiting.
+func (a *app) linkLatencyExpiry() tea.Cmd {
+	if !a.linkLatencyFresh() {
+		return nil
+	}
+	at := a.linkLatencyAt
+	return surfaceTick(hostPingEvery+hostPingMargin, func(time.Time) tea.Msg { return linkLatencyExpiredMsg{at: at} })
+}
 
 // latencyHandful is the EWMA's effective window. A quarter of each new sample
 // moves the reading, so a brief spike is visible without making the status row
@@ -276,11 +298,12 @@ func (a *app) linkPingBack(msg linkPingMsg) {
 	if msg.err != nil || msg.elapsed <= 0 {
 		return
 	}
-	if a.linkLatency <= 0 {
+	if !a.linkLatencyFresh() {
 		a.linkLatency = msg.elapsed
 	} else {
 		a.linkLatency = (a.linkLatency*time.Duration(latencyHandful-1) + msg.elapsed) / latencyHandful
 	}
+	a.linkLatencyAt = a.now()
 	a.touch()
 }
 
@@ -316,7 +339,9 @@ func latencyWord(elapsed time.Duration) string {
 // surface has one way of saying those (app.go's [feed.note]) — the same road the
 // door's own entry notice takes on the first frame.
 func (a *app) takeLinkNotice() {
-	if a.link.Notice == nil {
+	// Updates can still arrive while quit waits for saving. They must leave
+	// unread sentences for the closing report because the window is leaving.
+	if a.quitting || a.link.Notice == nil {
 		return
 	}
 	if said := a.link.Notice(); said != "" {
@@ -335,12 +360,8 @@ const newsSilenceNote = "this window uses an older background engine; host and t
 // sayNewsSilence says [newsSilenceNote] once per window, the first time a turn
 // that produced an answer ends on an engine that has sent no news.
 //
-// THE DEFECT IT ANSWERS. The news frames rode an existing wire version on
-// purpose, so a surface attached to an engine from before them — which the door
-// does, rather than retire a busy one — drew no `via` and no rate and nothing
-// saying why, and the owner read the gap as those two vanishing at random. The
-// engine's version is not the question; whether the news arrives is, so that is
-// what is asked ([LinkSeam.NewsSilent]).
+// THE DEFECT IT ANSWERS. The engine's version is not the question; whether the news
+// arrives is, so that is what is asked ([LinkSeam.NewsSilent]).
 //
 // AN ANSWER HAS TO HAVE ARRIVED, because that is what makes silence a fact. An
 // engine with the news posts a phase on every request it makes, so a turn that

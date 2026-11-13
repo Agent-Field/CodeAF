@@ -1014,3 +1014,30 @@ func TestRunSummariesCrossWholeAndDroppedRefreshKeepsNothing(t *testing.T) {
 	}
 	<-dropped
 }
+
+func TestExplicitWorkOpenCrossesAndOnlyOldEnginesUseQueryFallback(t *testing.T) {
+	client, e := newEngine(t)
+	want := session.PlanTaskWork{Dir: "/work/copy", Read: true, Added: []string{"answer.txt"}}
+	e.answers[MethodOpenPlanTaskWork] = PlanTaskWorkResult{Work: want, OK: true}
+	e.answers[MethodPlanTaskWork] = PlanTaskWorkResult{Work: want, OK: true}
+	got, ok := client.Agent().OpenPlanTaskWork("t-6")
+	if !ok || !reflect.DeepEqual(got, want) {
+		t.Fatalf("explicit work open: %+v %v", got, ok)
+	}
+	if len(e.calls(MethodPlanTaskWork)) != 0 {
+		t.Fatal("opening current storage invoked the polling query")
+	}
+	if classify(MethodOpenPlanTaskWork) != classWork {
+		t.Fatal("archive reopen runs on the ordered interaction lane")
+	}
+	e.fails[MethodOpenPlanTaskWork] = `engine: no such method "OpenPlanTaskWork"`
+	got, ok = client.Agent().OpenPlanTaskWork("t-6")
+	if !ok || !reflect.DeepEqual(got, want) || len(e.calls(MethodPlanTaskWork)) != 1 {
+		t.Fatalf("old engine fallback: %+v %v", got, ok)
+	}
+	e.fails[MethodOpenPlanTaskWork] = "snapshot object unavailable"
+	got, ok = client.Agent().OpenPlanTaskWork("t-6")
+	if !ok || !strings.Contains(got.Error, "snapshot object unavailable") || len(e.calls(MethodPlanTaskWork)) != 1 {
+		t.Fatalf("archive failure was hidden by a query fallback: %+v %v", got, ok)
+	}
+}

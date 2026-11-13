@@ -26,7 +26,7 @@ import (
 // test results and the confirmation that pnpm test exits 0" — composed a better
 // summary, were re-judged on the better summary, and settled whole at 7 of 25
 // and 44 of 47 hidden checks (2026-08-29, bench/deepswe;
-// docs/design/gate/SETTLEMENT.md §8).
+// the implementation §8).
 //
 // THE LAW: A REPAIR THAT DID NOT MOVE THE TREE MAY NOT CLOSE A FINDING WHOSE
 // GROUND IS THE TREE OR A READING. It may still close a finding whose only
@@ -206,7 +206,7 @@ func readingIsGreen(evidence Evidence) bool {
 // been an expression at the wiring seam, and the rule it now states was not
 // visible there to be got wrong. Every reader of "did the repair close it" reads
 // this and there is no second copy — see cmd/codeaf/chat.go, its only caller,
-// and docs/design/gate/SETTLEMENT.md §8.
+// and the implementation §8.
 func RepairClosed(rejudged, finding Judgment, evidence Evidence, unmoved bool) bool {
 	if !rejudged.Checked || !rejudged.Pass {
 		return false

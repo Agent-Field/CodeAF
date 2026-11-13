@@ -12,7 +12,7 @@ import (
 )
 
 // The experiment belt: one honest shell and the few hands that cannot be a
-// shell command (docs/design/bash-task-loop/DESIGN.md, Decision 1).
+// shell command.
 //
 // THE EXPERIMENT IS A SECOND BELT, NOT AN ENGINE CHANGE. A task worker's belt
 // is composed by the same [Agent.belt] as the conversation's, differentiated by
@@ -94,6 +94,7 @@ func (a *Agent) bashBelt() []bare.Tool {
 	tools = append(tools, a.subharnessTools()...)
 	tools = append(tools, a.shareTools()...)
 	tools = append(tools, a.memoryTools()...)
+	tools = append(tools, a.knowledgeTools()...)
 	tools = append(tools, a.anchorWorkspaceTools()...)
 	tools = append(tools, a.workspaceTools()...)
 	tools = append(tools, a.conversationTools()...)

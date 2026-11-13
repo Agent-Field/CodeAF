@@ -11,7 +11,7 @@ import (
 
 // ── THE SPENDING TAB, AND EVERY DOOR ONTO IT ────────────────────────────────
 //
-// docs/design/spending/DESIGN.md's acceptance list, one test per point. The
+// the implementation's acceptance list, one test per point. The
 // design's own sentence is the thing under test: money has ONE EDITOR and MANY
 // DOORS, and no door is a second editor.
 
@@ -116,7 +116,7 @@ func TestSafetyAndTasksHoldWhatSpendingLetGoAndWorkspaceNamesNoMoney(t *testing.
 		}
 	}
 	// AND THE BAR READS IN THE DESIGN'S ORDER.
-	want2 := []string{tabGeneral, tabProviders, tabMemory, tabTasks, tabTeams, tabSafety, tabSpending, tabConnections, tabPrivacy}
+	want2 := []string{tabGeneral, tabProviders, tabMemory, tabTasks, tabTeams, tabSafety, tabSpending, tabConnections, tabDevices, tabPrivacy}
 	if strings.Join(settingTabs, " ") != strings.Join(want2, " ") {
 		t.Fatalf("the tab bar reads %v", settingTabs)
 	}

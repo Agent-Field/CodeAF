@@ -55,7 +55,7 @@ func liveVerificationModel() string {
 	return "deepseek/deepseek-v4-flash"
 }
 
-// personConfig is the credentials this lane borrows: the profile in the
+// personConfig is the credentials this test borrows: the profile in the
 // person's OWN codeaf home, read before the throwaway one is put in front of
 // it. It is COPIED into that throwaway CODEAF_HOME and never read out loud,
 // because it holds the person's key.
@@ -65,12 +65,12 @@ func liveVerificationModel() string {
 // credentials", which reads as a key that was never set rather than as a path
 // that was never yours. Resolving through [home.InheritedDir] honours the same
 // override the binary does, so a person who runs codeaf out of CODEAF_HOME
-// runs this lane out of it too.
+// runs this test out of it too.
 //
 // It is the INHERITED root and not [home.Dir], which hands a test binary a
 // throwaway root of its own so that a suite cannot write into a person's state
 // (internal/home/undertest.go). Reading a credential the person already has is
-// the one thing this lane genuinely wants from that root, and Dir would have
+// the one thing this test genuinely wants from that root, and Dir would have
 // pointed it at an empty directory — every model-driven subtest skipping with
 // "no provider credentials" on a machine that has them.
 func personConfig() string {
@@ -117,7 +117,7 @@ func newWorld(t *testing.T) *world {
 	t.Setenv("CODEAF_PROFILE_DIR", "")
 
 	// A PROFILE THAT IS NOT THERE IS NO LONGER A SKIP. It was, and that made a
-	// second way for this lane to go green without running: a machine whose key
+	// second way for this test to go green without running: a machine whose key
 	// is exported in the shell and has never written a profile file is a machine
 	// the product runs on perfectly well.
 	if raw, err := os.ReadFile(profile); err == nil {
@@ -128,7 +128,7 @@ func newWorld(t *testing.T) *world {
 		t.Fatalf("read the profile at %s: %v", profile, err)
 	}
 	// And the throwaway home carries the key itself, whichever road it came
-	// down, so every door this lane opens under it authenticates the same way.
+	// down, so every door this test opens under it authenticates the same way.
 	if err := config.WriteAPIKey("", key); err != nil {
 		t.Fatalf("write the key into the throwaway profile: %v", err)
 	}
@@ -412,7 +412,7 @@ func (w *world) drain(agent *session.Agent, what string, events <-chan session.E
 			out.Calls = append(out.Calls, call{Name: event.Tool, Args: event.Args, Output: event.Output, Failed: true})
 			t.Logf("  CALL(failed) %s %s\n    → %s", event.Tool, shorten(event.Args, 400), shorten(event.Output, 600))
 		case session.EventConsentRequest:
-			// The person's own rules allow everything this lane does, so this is
+			// The person's own rules allow everything this test does, so this is
 			// belt and braces rather than a policy the test invented.
 			t.Logf("  CONSENT asked about %s (%s) — allowing", event.Tool, event.Rule)
 			agent.ResolveConsent(event.ID, true)

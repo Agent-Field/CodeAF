@@ -35,7 +35,7 @@ func wireError() step {
 func endingAgent(t *testing.T, completer Completer) (*Agent, *TaskGraph) {
 	t.Helper()
 	repo := newGoModuleRepo(t)
-	t.Setenv("HOME", t.TempDir())
+	useTaskUsageHome(t)
 	t.Setenv("CODEAF_RESPONSE_ATTEMPTS", "2")
 	agent, _ := newTestAgent(t, completer, func(config *Config) {
 		config.Workspace = repo
@@ -124,7 +124,7 @@ func TestATaskWhoseConnectionStaysDownLandsAsLostTheConnection(t *testing.T) {
 	//
 	// The figure this used to assert was 8 — two calls per worker, because the
 	// ladder was a COUNT of two. It is a length of time now
-	// (docs/design/recovery/DESIGN.md §4), so what is checked is the structure:
+	//, so what is checked is the structure:
 	// four ladders of equal length, each of them longer than a single call.
 	// Writing the length out here would be this test asserting the backoff
 	// schedule, which is not what it is about.

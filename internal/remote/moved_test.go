@@ -32,11 +32,11 @@ func TestASecondWindowMovesTheConversationAndTheFirstIsTold(t *testing.T) {
 	desk.hello(Hello{Version: Version, Surface: "macbook"})
 
 	away := dialSession(t, sess)
-	away.hello(Hello{Version: Version, Surface: "spark"})
+	away.hello(Hello{Version: Version, Surface: "tower"})
 
 	told := movedOn(desk)
-	if told.Machine != "spark" {
-		t.Fatalf("the window that was left was told %q took it, want spark", told.Machine)
+	if told.Machine != "tower" {
+		t.Fatalf("the window that was left was told %q took it, want tower", told.Machine)
 	}
 	if told.Here {
 		t.Fatalf("a window on another machine was reported as one on this one")
@@ -70,7 +70,7 @@ func TestAMoveEndsNothingInTheEngine(t *testing.T) {
 	desk := dialSession(t, sess)
 	desk.hello(Hello{Version: Version, Surface: "macbook"})
 	away := dialSession(t, sess)
-	away.hello(Hello{Version: Version, Surface: "spark"})
+	away.hello(Hello{Version: Version, Surface: "tower"})
 	movedOn(desk)
 
 	if agent.closed() != 0 {
@@ -104,9 +104,9 @@ func TestAWatcherArrivingMovesNobody(t *testing.T) {
 	reader.hello(Hello{Version: Version, Surface: "reader", Watch: true, Join: true, Session: sess.engine.SessionFile})
 
 	away := dialSession(t, sess)
-	away.hello(Hello{Version: Version, Surface: "spark"})
+	away.hello(Hello{Version: Version, Surface: "tower"})
 
-	if told := movedOn(desk); told.Machine != "spark" {
+	if told := movedOn(desk); told.Machine != "tower" {
 		t.Fatalf("the first move the desk heard named %q — the reader moved it", told.Machine)
 	}
 }
@@ -123,7 +123,7 @@ func TestAWatcherIsNeverToldItHasBeenMoved(t *testing.T) {
 	first := dialSession(t, sess)
 	first.hello(Hello{Version: Version, Surface: "macbook"})
 	second := dialSession(t, sess)
-	second.hello(Hello{Version: Version, Surface: "spark"})
+	second.hello(Hello{Version: Version, Surface: "tower"})
 
 	// Two arrivals, so two "driver" frames — and a move would land between them
 	// (the engine tells the room who drives, then tells the room it has moved).
@@ -149,9 +149,9 @@ func TestARedialMovesNobody(t *testing.T) {
 	again.hello(Hello{Version: Version, Surface: "laptop", Back: true})
 
 	away := dialSession(t, sess)
-	away.hello(Hello{Version: Version, Surface: "spark"})
+	away.hello(Hello{Version: Version, Surface: "tower"})
 
-	if told := movedOn(desk); told.Machine != "spark" {
+	if told := movedOn(desk); told.Machine != "tower" {
 		t.Fatalf("the first move the desk heard named %q — the redial moved it", told.Machine)
 	}
 }

@@ -1,6 +1,6 @@
 package session
 
-// The plan side of the bash belt (docs/design/plandb-cli/DESIGN.md, the
+// The plan side of the bash belt (the implementation, the
 // wiring section): the store the worker's `plandb` calls write, and the two
 // pulse points that make the graph and the store one thing. THE STORE IS THE
 // WORKER'S CLI's STORE and this file's store at once — one SQLite database in
@@ -49,7 +49,10 @@ type planState struct {
 	// own plan ([NewBeltWorker]) from the run's open handle. It is what the
 	// worker's `plandb` checks the store at path against ([plandb.RunEnv]), so
 	// a later store at the same path cannot take the worker's writes.
-	root    string
+	root string
+	// task binds creation to the run worker's own store task, independently of
+	// PLANDB_AGENT, which remains the identity used for claims and completion.
+	task    string
 	shimmed bool
 	// archives holds read handles for ended stores. Ended stores are immutable,
 	// so each is opened at most once for the life of this conversation.
@@ -510,7 +513,7 @@ func (g *TaskGraph) planPulse() {
 		if parent == nil || parent.state == TaskQueued || parent.depth+1 > taskDepthLimit {
 			continue
 		}
-		if refused := g.claimChild(parent.nodeID); refused != "" {
+		if refused := g.claimChild(parent.nodeID, task.Title); refused != "" {
 			continue
 		}
 		spec := taskSpec{
@@ -806,11 +809,14 @@ func (g *TaskGraph) planBashPrefix() string {
 	// was when the run opened it; a later request can set that store aside and
 	// seed another at the same path, and a worker bound by the path alone then
 	// wrote its children and its `done`s into a run that was not its own
-	// (measured on the owner's session: four children and ten `done`s). The
+	// (observed in a session: four children and ten `done`s). The
 	// root names which run this is, and the CLI refuses a store at the path
 	// whose root is another's ([plandb.RunEnv]).
 	if plan.root != "" {
 		prefix += " " + plandb.RunEnv + "=" + quoteShWord(plan.root)
+		if plan.task != "" {
+			prefix += " " + plandb.TaskEnv + "=" + quoteShWord(plan.task)
+		}
 	}
 	return prefix + "; "
 }

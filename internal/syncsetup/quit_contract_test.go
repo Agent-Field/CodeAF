@@ -29,6 +29,9 @@ func TestC28C31FailedQuitKeepsFinalRecordsAndDoesNotRelease(t *testing.T) {
 	if e = a.drive.Close(context.Background()); e == nil {
 		t.Fatal("failed final upload reported a successful quit")
 	}
+	if err := a.drive.Close(context.Background()); err == nil {
+		t.Fatal("a repeated close hid the failed final upload")
+	}
 	v, e := h.b.Dir.Cell(context.Background(), h.cell.ID)
 	if e != nil {
 		t.Fatal(e)

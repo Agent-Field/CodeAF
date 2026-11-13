@@ -2,6 +2,7 @@ package factory
 
 import (
 	"context"
+	"strings"
 	"time"
 )
 
@@ -27,6 +28,9 @@ type RepoInfo struct {
 	// lists it (GitHub's open_issues_count counts both), and -1 when the forge
 	// did not say.
 	Open int
+	// OpenIssues is how many issues alone are open, nil when the forge did
+	// not say; it is never 0 in place of an answer.
+	OpenIssues *int
 	// Dir is where this machine has it checked out, "" when it does not know;
 	// the floor's stages run only where it is known.
 	Dir string
@@ -91,3 +95,13 @@ const (
 	DefaultKeepOutputDays       = 7
 	DefaultKeepOutputMB         = 10
 )
+
+// AttachCheckouts attaches this machine's registered folders to a discovered list.
+func AttachCheckouts(repos []RepoInfo, dir func(string) string) {
+	if dir == nil {
+		return
+	}
+	for i := range repos {
+		repos[i].Dir = strings.TrimSpace(dir(repos[i].Full))
+	}
+}

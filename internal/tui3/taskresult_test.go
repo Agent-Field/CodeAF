@@ -286,7 +286,7 @@ func TestAHeldAnswerIsNamedAndNeverDrawnAsTheAnswer(t *testing.T) {
 	// AND THE POINTER IS WHERE THE ANSWER IS AND NOTHING ELSE. The sentence this
 	// block used to lead with — `what it produced was not taken as done` — was a
 	// second spelling of a state the card's own reason row now says in the
-	// engine's words (docs/design/task-states/DESIGN.md).
+	// engine's words.
 	got := plainOf(a.doneDetail(card, 78))
 	if !strings.Contains(got, doneMoreAt+"/tmp/journal/node-7.jsonl") {
 		t.Fatalf("the card does not say where the answer is:\n%s", got)
@@ -358,7 +358,11 @@ func TestAnUndeliveredLandingWithNoResultSplitsItsReportOnce(t *testing.T) {
 // expansion has always been behind, and the one a new block of rows is easiest
 // to drop out of.
 func TestRoutineResultLeavesNoTranscriptClickTargets(t *testing.T) {
-	a := doneResultApp(t, 160, session.TaskDone, conflictedStoryNotice())
+	notice := conflictedStoryNotice()
+	// R10a's kept-branch decision (517cbbfb3) leaves unlanded work visible.
+	// This routine-result contract applies to work that actually merged.
+	notice.Merge, notice.Report = mergeWordMerged, "The story landed."
+	a := doneResultApp(t, 160, session.TaskDone, notice)
 	body, _ := a.window(a.width, a.viewHeight())
 	for _, row := range body {
 		if row.hit == hitDone {

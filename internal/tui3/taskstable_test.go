@@ -151,7 +151,7 @@ func TestEveryRowOfOneFramePutsItsColumnsInTheSameCells(t *testing.T) {
 			case tasksLineTask:
 				want = rowTail([]rowField{tasksStateField(line)}, stateCells)
 			case tasksLineChat:
-				want = rowTail([]rowField{tasksChatStateField(line.chat)}, stateCells)
+				want = rowTail([]rowField{tasksChatStateField(*line.chat)}, stateCells)
 			default:
 				continue
 			}
@@ -189,7 +189,7 @@ func TestEveryRowOfWorkSaysWhatItIs(t *testing.T) {
 		if line.kind != tasksLineChat {
 			continue
 		}
-		got := rowTail([]rowField{tasksChatStateField(line.chat)}, tasksStateCells)
+		got := rowTail([]rowField{tasksChatStateField(*line.chat)}, tasksStateCells)
 		if strings.TrimSpace(got) == "" {
 			t.Fatalf("the conversation %q drew nothing in the state column", line.chat.title)
 		}
@@ -335,10 +335,10 @@ func TestTheTasksFootNamesThePagesKeysOverAConversationToo(t *testing.T) {
 
 // ── the folds ───────────────────────────────────────────────────────────────
 
-// EVERY CONVERSATION AND EVERY FAMILY OPENS SHUT (owner, 2026-09-11), `→` opens
-// one, and A TYPED FILTER OPENS EVERY CONVERSATION WITH A MATCHING ROW — then
-// gives the person their own folds back when it clears. A row that matched and
-// is sitting behind a fold is a row the query appears not to have found.
+// EVERY CONVERSATION AND EVERY FAMILY OPENS SHUT, `→` opens one, and A TYPED FILTER OPENS
+// EVERY CONVERSATION WITH A MATCHING ROW — then gives the person their own folds back when
+// it clears. A row that matched and is sitting behind a fold is a row the query appears
+// not to have found.
 func TestTasksOpenAllLevelsAndFilterRestoresExplicitFolds(t *testing.T) {
 	a := tasksTableApp(t)
 	width, _ := a.size()

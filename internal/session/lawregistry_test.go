@@ -46,7 +46,7 @@ import (
 )
 
 // lawClass is the delivery class from the diet's taxonomy
-// (docs/design/prompt-diet/DESIGN.md §2). Every byte of law is filed under
+// . Every byte of law is filed under
 // exactly one of them, and the class is what decides where the sentence lives.
 type lawClass string
 
@@ -145,8 +145,7 @@ var lawRegistry = []lawUnit{
 	// task and a quick task all report themselves; lanes deleting a tool's own
 	// copy of that rule are deleting it on the strength of THIS line, so its
 	// wording is a fixture and not a draft.
-	// AND THE KEY IS THE FAMILY FRAGMENT RATHER THAN THE WHOLE SENTENCE (lane F,
-	// 2026-09-10). `jobs` said this twice in its own description and `watch`
+	// AND THE KEY IS THE FAMILY FRAGMENT RATHER THAN THE WHOLE SENTENCE. `jobs` said this twice in its own description and `watch`
 	// said it once more; all three are deleted now on the strength of the page's
 	// line, and `watch.instead-of-polling` went with them because the law it
 	// filed no longer has a verb-class home. Matching on the shorter fragment is
@@ -177,16 +176,13 @@ var lawRegistry = []lawUnit{
 	// ── the routing triggers, which are the page's own and nobody else's. A
 	// description says what a verb DOES; it cannot say when to reach for it
 	// without teaching every model that carries the belt a rule it did not ask
-	// for (docs/design/prompt-diet/DESIGN.md §4), so the trigger is core law and
+	// for, so the trigger is core law and
 	// the contract is verb law, and these three came back to the page when lane
 	// F took the routing prose off the descriptions.
 	{id: "tasks.look-inside", class: lawCore, key: "Look inside running or landed work with `tasks` and its id"},
 	{id: "tasks.continue-is-not-a-new-task", class: lawCore, key: "never a fresh `propose_task`"},
 	{id: "read.what-read-cannot-turn-into-text", class: lawCore, key: "What `read` cannot turn into text → `read_document`"},
-	// ── and the two triggers for a program codeaf carries (delegate_door.go's
-	// [delegateFact], the owner's call of 2026-09-24): the work a program's own
-	// guide claims goes to it, and so does work the person asks one for. What
-	// each program is for is its guide's; these say only that codeaf prefers it.
+	// What each program is for is its guide's; these say only that codeaf prefers it.
 	{id: "program.work-it-is-for", class: lawCore, key: "AND WORK A PROGRAM BUILT INTO CODEAF IS FOR GOES TO IT WHOLE"},
 	{id: "program.the-one-asked-for", class: lawCore, key: "so does work the person asks one for, by name or as `/name`."},
 	// ── the mark codeaf leaves on work it did in somebody's name. It is core
@@ -218,7 +214,7 @@ var lawRegistry = []lawUnit{
 	// `standing.background-checks` and `standing.a-minute-is-a-timer` were filed
 	// here against the chat manual's keeping-an-eye page. Both laws described the
 	// standing side — an operating-system timer on by default, and a one-minute
-	// reminder riding it — which automations replaced (docs/design/automations/
+	// reminder riding it — which automations replaced (the implementation
 	// DESIGN.md): nothing is installed on the machine any more, and the page they
 	// lived on is gone with the feature. They were deleted, not moved.
 	{id: "accounts.never-sent-twice", class: lawDemand, at: "manual:accounts", key: "Each outgoing mail or Slack message goes out **once**"},

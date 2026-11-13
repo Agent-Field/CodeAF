@@ -10,7 +10,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/store"
 )
 
-// jargonWords is docs/JOURNEY.md's design filter as something a test can run.
+// jargonWords is the implementation's design filter as something a test can run.
 // The head is the mouth: every string below is composed deterministically and
 // posted verbatim, so a word out of the store schema here is a word out of the
 // store schema in the conversation.

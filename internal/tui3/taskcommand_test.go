@@ -28,6 +28,23 @@ type taskCommandFake struct {
 	err  error
 }
 
+func TestOrdinaryChatTaskReviewAndApplyExplainPrivateCopies(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv("CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP", "")
+	for _, arg := range []string{"review", "apply", "review 1 work", "apply 1 work"} {
+		t.Run(arg, func(t *testing.T) {
+			a := newTestApp(&fakeAgent{model: "m"})
+			cmd, handled := a.runTaskWorkspaceCommand(arg)
+			if !handled || cmd != nil {
+				t.Fatal("ordinary chat dispatched a private workspace operation")
+			}
+			if got := lastNote(t, a); got != session.TaskWorkspaceUnavailable {
+				t.Fatalf("command explanation: %q", got)
+			}
+		})
+	}
+}
+
 func TestTaskStartLateAnswerDoesNotSayTheTaskFailedToStart(t *testing.T) {
 	note := taskStartFailureNote(session.ErrSendUnanswered)
 	if note != taskStartLateNote {
@@ -165,7 +182,7 @@ func TestTheUsageLineNamesOnlyTheTwoForms(t *testing.T) {
 func TestHostedTaskUsesTheAgentDoor(t *testing.T) {
 	f := &taskCommandFake{Agent: &fakeAgent{model: "m"}}
 	a := newTestApp(f)
-	a.host = "spark"
+	a.host = "tower"
 	cmd := a.runTaskCommand("solo fix the far parser")
 	if cmd == nil {
 		t.Fatal("the hosted command opened no task door")

@@ -162,7 +162,7 @@ func (l *homeLab) app(standing string) *app {
 	// falls back to the package's one shared test home, which every /export
 	// test writes into — so `since you left` in one lab read the files another
 	// test made, and a firing folded under `3 more` only when the whole suite
-	// ran (a red the Spark found twice and a lone run never could).
+	// ran (a red the test machine found twice and a lone run never could).
 	a.artifacts = filepath.Join(l.root, "v3", session.ArtifactsIndexName)
 	// THE LEDGER IS THE LAB'S TOO. An empty path is the door's way of saying
 	// "this machine's" (usage_ledger.go's [UsageCache] falls back to
@@ -601,10 +601,9 @@ func TestHomePutsASessionThatNeedsYouFirst(t *testing.T) {
 	if !strings.Contains(text, tokens.GlyphNeedsHuman+" Pricing Research") {
 		t.Fatalf("the row does not wear the needs-you mark:\n%s", text)
 	}
-	// AND WHAT IT IS STOPPED ON IS UNDER THE ROW ITSELF while the row is being
-	// read — under the pointer or the cursor (owner, 2026-09-17) — not one
-	// keystroke away in a pane: the `needs you` panel draws the question on the
-	// line under the title (homepanel_needs.go).
+	// AND WHAT IT IS STOPPED ON IS UNDER THE ROW ITSELF while the row is being read — under
+	// the pointer or the cursor — not one keystroke away in a pane: the `needs you` panel
+	// draws the question on the line under the title (homepanel_needs.go).
 	homeLineOf(t, a, func(l homeLine) bool { return l.cell != nil && l.cell.title == "Pricing Research" })
 	if under := homeLineBelow(homeText(a), tokens.GlyphNeedsHuman+" Pricing Research", 3); !strings.Contains(under, "can I run: rm -rf build/") {
 		t.Fatalf("the row does not show what it is stopped on under its thread title:\n%s", homeText(a))
@@ -972,8 +971,8 @@ func TestTheRestingBoxKeepsACaretOnTheCellTheFirstLetterLandsOn(t *testing.T) {
 // clause it deliberately leaves out (SCREEN 1a and 2b, FIDELITY.md item 3).
 //
 // It is pinned as a literal rather than against the constants alone because the
-// constants are what a careless edit changes: the owner's order was "follow the
-// exact design", and the only assertion that can catch a sentence drifting is
+// constants are what a careless edit changes: the only assertion that can
+// catch a sentence drifting is
 // one that carries the sentence.
 //
 // THE LAW THAT DIED IS `esc close` ON THE RESTING ROW. Home used to end every
@@ -983,10 +982,8 @@ func TestTheRestingBoxKeepsACaretOnTheCellTheFirstLetterLandsOn(t *testing.T) {
 // still closes home, and every other row's hint still ends with it, which is the
 // second half of this test.
 //
-// AND THE PROMISE MOVED INTO THE BOX ON 2026-09-17. `type to search or start
-// something new` opened this foot until the owner ruled that the one box
-// left on a place says what it is for, and the lowest line is for keys
-// (footswap.go): the box row is the promise, the foot is the keys.
+// AND THE PROMISE MOVED INTO THE BOX ON 2026-09-17. The box says what typing does, and the
+// lowest line names keys (footswap.go), so the two do not compete for the same space.
 func TestHomesRestingFootIsTheDesignsSentence(t *testing.T) {
 	a, _ := homeRestLab(t, 120)
 	width, height := a.size()
@@ -1752,18 +1749,14 @@ func TestHomeStatsAFolderOncePerReadingAndNotPerFrame(t *testing.T) {
 // Every sentence typed at home opens a conversation OF ITS OWN, however many are
 // already open, and each one is sent its own sentence and nobody else's.
 //
-// THE DEFECT THIS CLOSES, in the owner's own words: "whenever I create a new
-// chat, it seems to go into the same chat instead of creating a new one". Home
-// closed itself, asked [app.renew] for a conversation, and sent the sentence
-// whether or not one came back — so from the eighth conversation onward, where
-// the keeper used to refuse another, every new chat typed at home was delivered
-// to the conversation that was already on the screen. The same one, every time,
-// with the refusal noted underneath it.
+// Home closed itself, asked [app.renew] for a conversation, and sent the sentence whether
+// or not one came back — so from the eighth conversation onward, where the keeper used to
+// refuse another, every new chat typed at home was delivered to the conversation that was
+// already on the screen. The same one, every time, with the refusal noted underneath it.
 //
-// THE CAP ITSELF IS GONE (keeper.go, owner's ruling 2026-08-31), so the count
-// here deliberately runs well past the eight that used to be the whole of the
-// defect: the ninth sentence and the twentieth get conversations of their own
-// exactly as the first did.
+// THE CAP ITSELF IS GONE (keeper.go 2026-08-31), so the count here deliberately runs well
+// past the eight that used to be the whole of the defect: the ninth sentence and the
+// twentieth get conversations of their own exactly as the first did.
 func TestHomeTypingOpensItsOwnConversationEveryTime(t *testing.T) {
 	lab := newHomeLab(t)
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "one", "/tmp/alpha", time.Now())
@@ -2089,7 +2082,7 @@ func TestEnterOnTheRowYouAreInJustStepsIntoIt(t *testing.T) {
 }
 
 // AN EMPTY MACHINE'S HOME WHISPERS WHAT ARRIVES, panel by panel, and never
-// says it is empty (docs/design/home-mission-control/DESIGN.md §4).
+// says it is empty.
 func TestAnEmptyMachinesHomeWhispersWhatArrives(t *testing.T) {
 	lab := newHomeLab(t)
 	a := lab.app("")
@@ -2487,12 +2480,10 @@ func TestHomesBoxWrapsALongDraftInsteadOfTruncatingIt(t *testing.T) {
 	}
 }
 
-// HOME IS ALWAYS REACHABLE. This pin used to say the opposite — that the door
-// was shut and the gesture inert on a machine whose only conversation was this
-// one, because a door that opened on nothing should be neither drawn nor bound.
-// The owner ruled the other way: being greeted by home and being able to GO
-// there are two questions, and an empty home is a designed screen rather than a
-// refusal ([app.homeDoorOpen]). So the reversal is deliberate and pinned here.
+// HOME IS ALWAYS REACHABLE. This pin used to say the opposite — that the door was shut and
+// the gesture inert on a machine whose only conversation was this one, because a door that
+// opened on nothing should be neither drawn nor bound. So the reversal is deliberate and
+// pinned here.
 func TestTheDoorIsOpenWithOnlyThisConversation(t *testing.T) {
 	lab := newHomeLab(t)
 	mine := lab.session("-alpha", "aaaa000000000001", "the only one", lab.workspace("alpha"), time.Now())
@@ -2588,8 +2579,7 @@ func TestAnEmptyHomeKeepsItsShapeAtEveryWidth(t *testing.T) {
 			}
 		}
 		// AND AN EMPTY HOME HAS NO ROW TO STAND ON AT ALL: `projects` is never
-		// empty (DESIGN.md §4) but its rows are read and not stood on (owner,
-		// 2026-09-17), and every other panel whispers — a whisper names what
+		// empty (DESIGN.md §4) but its rows are read and not stood on, and every other panel whispers — a whisper names what
 		// arrives rather than a thing to open.
 		if stops := (placeHome{}).stops(a); len(stops) != 0 {
 			t.Fatalf("at %d columns an empty home offered rows to stand on: %v", tc.width, stops)
@@ -3363,7 +3353,7 @@ func TestALetterAlwaysTypesWhateverIsChosen(t *testing.T) {
 // asked whether this process holds it ([app.homeTrue]), and the key that answers
 // is a transcript path with its symlinks walked ([convKey]) — a walk of THIS
 // laptop for a file on the far machine. That walk is not free: on macOS `/home`
-// is an automounter's mount point, so each row's `Lstat("/home/santosh")` waited
+// is an automounter's mount point, so each lookup of a child directory waited
 // on autofs, and home over --host cost up to a second per frame with the keys
 // queued behind it. A hosted key is the cleaned spelling and the disk is never
 // asked ([app.convKey]); this counts the asking so it cannot come back.

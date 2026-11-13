@@ -239,6 +239,10 @@ var funnelKnownSecondTransports = map[string]string{
 	// to provider.Client by config, and the provider funnel still owns the call,
 	// its lane, its watch and its record.
 	"internal/codexauth/transport.go": "the provider funnel's Codex wire adapter",
+	// The same is true of Claude Code's: config attaches it to provider.Client
+	// for the claude-code service, and it answers the funnel's own request by
+	// running the person's Claude Code rather than dialling anything.
+	"internal/claudemodel/claudemodel.go": "the provider funnel's Claude Code adapter",
 }
 
 // TestNothingOutsideTheFunnelTalksToAModelEndpoint is law (a).
@@ -597,7 +601,7 @@ var funnelModelSetters = []string{"ParseDocument", "newRequest", "probeLane"}
 // ladder's own walk and the pacing door's — and rung four used to live here, in
 // the adapter, drawing from the same `FallbackModels` that internal/session's
 // turn loop draws from, with neither knowing the other had already tried a model
-// (docs/design/recovery/DESIGN.md §2.2). Live evidence from 2026-09-10 22:32 says
+// . Live evidence from 2026-09-10 22:32 says
 // what it cost beyond the double spend: the adapter's hop carried the ORIGINAL
 // model's `provider.only` to the new model and was answered `404 No allowed
 // providers are available for the selected model`, because a lane pin is per

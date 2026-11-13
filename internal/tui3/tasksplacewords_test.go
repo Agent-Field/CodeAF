@@ -41,7 +41,7 @@ func TestARowSaysItsStateWordOnce(t *testing.T) {
 		forbids: taskRecordStoppedWord + rowSep + taskRecordStoppedWord,
 	}} {
 		item := tasksItem{entry: tc.entry, runs: tc.runs}
-		row := plain(tasksRow(tasksLine{kind: tasksLineTask, item: item}, 120, now, tasksSort{}, newPalette(tokens.NoColor, false), false))
+		row := plain(tasksRow(tasksLine{kind: tasksLineTask, item: &item}, 120, now, tasksSort{}, newPalette(tokens.NoColor, false), false))
 		word := taskStateWord(tc.entry, tc.runs)
 		if strings.Contains(row, tc.forbids) {
 			t.Fatalf("%s draws\n  %s\nand says %q twice", tc.why, row, word)
@@ -75,7 +75,7 @@ func TestConversationProjectColumnIncludesCurrentAndHomeProjects(t *testing.T) {
 	now := time.Date(2026, time.September, 11, 9, 0, 0, 0, time.UTC)
 	pal := newPalette(tokens.NoColor, false)
 	draw := func(chat tasksChat, folder string) string {
-		line := tasksLine{kind: tasksLineChat, chat: chat}
+		line := tasksLine{kind: tasksLineChat, chat: &chat}
 		return plain(tasksChatRow(line, 100, now, folder, "/home/pat", tasksSort{}, pal, false))
 	}
 	root := func(title, project, dir string) tasksChat {
@@ -173,7 +173,7 @@ func TestTheStateWordIsTheLastThingARowGivesUp(t *testing.T) {
 		// and the reason under it ([tasksReasonLine]) — one row said whole rather
 		// than twenty rows each missing the same word.
 		for _, width := range []int{120, 100, tasksStateFloor} {
-			row := plain(tasksRow(tasksLine{kind: tasksLineTask, item: tc.item}, width, now, tasksSort{}, pal, false))
+			row := plain(tasksRow(tasksLine{kind: tasksLineTask, item: &tc.item}, width, now, tasksSort{}, pal, false))
 			if !strings.Contains(row, word) {
 				t.Fatalf("at %d columns %s reads\n  %s\nand has given up %q, which is the one thing the list is read for",
 					width, tc.why, strings.TrimRight(row, " "), word)

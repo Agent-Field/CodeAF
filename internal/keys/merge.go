@@ -9,9 +9,12 @@ import (
 // wire. A vault never written yet exports as an empty, sealed one, so the
 // receiver can tell "nothing yet" from "damaged".
 func (v *Vault) Export() ([]byte, error) {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	d, err := v.read()
+	unlock, err := v.lock()
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
+	d, err := v.readLocked()
 	if err != nil {
 		return nil, err
 	}
@@ -30,13 +33,16 @@ func (v *Vault) Export() ([]byte, error) {
 // stamp instead of taking the time of the merge, so merging never makes an old
 // edit look new.
 func (v *Vault) Merge(enc []byte) error {
-	v.mu.Lock()
-	defer v.mu.Unlock()
+	unlock, err := v.lock()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	remote, err := openDoc(v.key, enc)
 	if err != nil {
 		return fmt.Errorf("keys: cannot merge vault: %w", err)
 	}
-	local, err := v.read()
+	local, err := v.readLocked()
 	if err != nil {
 		return err
 	}
@@ -69,5 +75,25 @@ func supersedes(a record, ad *vaultDoc, b record, bd *vaultDoc) bool {
 		return false
 	}
 	sa, sb := a.stampOf(ad), b.stampOf(bd)
-	return sa > sb || (sa == sb && a.Deleted && b.live())
+	if sa == sb && a.live() && b.live() && a.Entry == b.Entry && a.Metadata != "" && b.Metadata == "" {
+		return true
+	}
+	if (a.Scope != "home:keys:teams" && a.Scope != "home:windows:team-traffic") || a.Scope != b.Scope {
+		return sa > sb || (sa == sb && a.Deleted && b.live())
+	}
+	if sa != sb {
+		return sa > sb
+	}
+	if a.Deleted != b.Deleted {
+		return a.Deleted
+	}
+	// Independent devices can save within one clock tick. Stable content order
+	// resolves that tie so exchanging the same slots cannot leave two answers.
+	if a.Scope != b.Scope {
+		return a.Scope > b.Scope
+	}
+	if a.Name != b.Name {
+		return a.Name > b.Name
+	}
+	return a.Value > b.Value
 }

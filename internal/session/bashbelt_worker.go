@@ -32,6 +32,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/approval"
+	profileconfig "github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/router"
@@ -56,7 +57,9 @@ import (
 // when the run opened it; the root is which run it is, and a worker's
 // `plandb` refuses a store at that path whose root is another run's
 // ([plandb.RunEnv]). Empty binds the path alone.
-func NewBeltWorker(config Config, completer Completer, task *plandb.Task, storePath, rootID string) (*Agent, error) {
+// conversation optionally names the parent chat for ledger attribution; the
+// run's rootID identifies its plan and is a different identity.
+func NewBeltWorker(config Config, completer Completer, task *plandb.Task, storePath, rootID string, conversation ...string) (*Agent, error) {
 	if !bashBeltAsked() {
 		return nil, errors.New("the bash belt is off: CODEAF_TASK_BELT names the node belt")
 	}
@@ -66,8 +69,19 @@ func NewBeltWorker(config Config, completer Completer, task *plandb.Task, storeP
 	// THE BELT IS THE SEAT'S, and InTask is the predicate's other half
 	// ([Config.mayBashBelt]): a run worker is a task, and the switch above is
 	// what said a run may build one.
+	if err := prepareWorkspaceWriteScope(&config); err != nil {
+		return nil, err
+	}
 	config.InTask = true
 	config.bashBelt = true
+	// AND IT ACTS AS ITS OWN WORKER, never as the conversation: the run named
+	// it ([Config.WorkerDID]), and its commands carry that name.
+	if config.WorkerDID != "" {
+		config.actorDID = config.WorkerDID
+	}
+	if len(conversation) > 0 {
+		config.rootSession = strings.TrimSpace(conversation[0])
+	}
 	// A RUN WORKER THINKS AT THE WORK SEAT, ONE ACTION PER ROUND. The belt's
 	// one call per response would pay the person's depth again on every round
 	// of the run, so the seat is work (effort.RoleWork) — the same seat the
@@ -82,7 +96,14 @@ func NewBeltWorker(config Config, completer Completer, task *plandb.Task, storeP
 	// allow into a prompt for the shapes that destroy a disk or drop the
 	// machine, and a prompt in a worker is a refusal it can read — never a
 	// question and never a hang.
-	config.ApprovalPolicy = &approval.Policy{Default: approval.ActionAllow}
+	policy := &approval.Policy{Default: approval.ActionAllow}
+	if config.ApprovalPolicy != nil {
+		policy.ProfileReadError = config.ApprovalPolicy.ProfileReadError
+	}
+	config.ApprovalPolicy = policy
+	if config.ApprovalGate == nil {
+		config.ApprovalGate = beltWorkerApprovalGate{policy: policy, profileDir: config.ProfileDir}
+	}
 	config.AskConsent = false
 	// THE WORKER'S OWN RECORD FOLDER. The transcript this agent writes and the
 	// whole outputs the belt's cut files land in the task's own folder beside
@@ -92,6 +113,9 @@ func NewBeltWorker(config Config, completer Completer, task *plandb.Task, storeP
 	// place to inherit.
 	taskDir := plandb.TaskDir(filepath.Dir(storePath), task.ID)
 	if err := os.MkdirAll(taskDir, 0o700); err != nil {
+		return nil, err
+	}
+	if err := configureOwnedWorker(&config, taskDir); err != nil {
 		return nil, err
 	}
 	config.SessionFile = filepath.Join(taskDir, workerJournalName())
@@ -114,7 +138,7 @@ func NewBeltWorker(config Config, completer Completer, task *plandb.Task, storeP
 	// back — and a shim that never landed is a seat that cannot run, because
 	// every `plandb` its worker runs would resolve to whatever shares the
 	// machine's PATH and write a plan this run would never read.
-	plan := &planState{path: storePath, root: rootID}
+	plan := &planState{path: storePath, root: rootID, task: task.ID}
 	if err := plan.armShim(); err != nil {
 		_ = agent.Close()
 		return nil, fmt.Errorf("arm the plandb shim: %w", err)
@@ -174,11 +198,12 @@ func workerJournalName() string {
 // the run's own ask reached the store as the ROOT task's description. A leaf
 // handed only the paraphrase inherits its omissions and cannot notice: on two
 // runs of one objective the planner dropped the same bullet, and only the leaf
-// that read the person's own sentence carried it. So one section of a non-root
-// worker's document carries that sentence VERBATIM — the leaf reads the whole
+// that read the person's own sentence carried it. So a descendant's document
+// carries that sentence verbatim — the leaf reads the whole
 // ask even though it owns one part, and where the ask and its work order
 // disagree about a requirement it owns, the ask wins and the leaf says so in
-// its report.
+// its report. A joined handoff establishes its own ask; its descendants read
+// that assignment, while its own work order already carries it.
 //
 // THE ROOT'S OWN DOCUMENT IS UNCHANGED: its work order IS the ask, so there is
 // nothing to put beside it. The section is absent there, and absent when the
@@ -205,6 +230,10 @@ func BeltWorkerBrief(store *plandb.Store, task *plandb.Task, root, resume bool, 
 		strings.Join(task.Deliverables, "\n"),
 		task.Acceptance,
 		"", AdmissionContext{}, taskOrigin{}, taskCopy{})
+	if task.Title != "" {
+		identity, rest, _ := strings.Cut(doc, "\n")
+		doc = identity + "\n" + task.Title + "\n" + rest
+	}
 	// The runtime's directory is authority, while the work order may still
 	// quote the source checkout. Preserve those words and explain their scope
 	// before the worker sees them, as the checker already does for its probes.
@@ -214,12 +243,10 @@ func BeltWorkerBrief(store *plandb.Store, task *plandb.Task, root, resume bool, 
 		identity, work, _ := strings.Cut(doc, "\n\n")
 		doc = identity + "\n\n" + assignment + "\n\n" + work
 	}
-	// THE ASK, FOR EVERY LEAF AND ONLY A LEAF. The section is absent on the
-	// root's own document (its work order is the ask) and absent when the store
-	// holds no root row to read it from, which is the emptiness law and not a
-	// special case.
+	// Descendants inherit their assignment's ask. A joined assignment's own
+	// work order already carries it, just as the run root's does.
 	if !root {
-		if ask := runRootAsk(store); ask != "" {
+		if ask := runTaskAsk(store, task); ask != "" {
 			doc = withReport(doc, askSection(ask))
 		}
 	}
@@ -256,8 +283,8 @@ func BeltWorkerBrief(store *plandb.Store, task *plandb.Task, root, resume bool, 
 	return doc
 }
 
-// The heading, the rule and the bound over the run root's own words, carried
-// on every leaf's document ([BeltWorkerBrief]). The heading is the belt pages'
+// The heading, the rule and the bound over an assignment's own words, carried
+// on its descendants' documents ([BeltWorkerBrief]). The heading is the belt pages'
 // own Markdown voice; the rule is the one sentence that says what the section
 // is for.
 const (
@@ -271,7 +298,7 @@ const (
 	askSectionLimit = 16 << 10
 )
 
-// askSection lays out the run root's own words: the heading, the one sentence
+// askSection lays out the assignment's own words: the heading, the one sentence
 // saying what they are for, and the description VERBATIM — unedited and
 // untrimmed, bounded only by [askSectionLimit], which marks its cut.
 func askSection(ask string) string {
@@ -310,6 +337,20 @@ If no declared command can be run, answer "check: <one sentence>" instead.
 One line. A requirement you could not test is one you did not prove.
 `
 
+// runTaskAsk selects the nearest independent joined assignment, falling back
+// to the root for work the root's own worker or reviewer added.
+func runTaskAsk(store *plandb.Store, task *plandb.Task) string {
+	if store == nil || task == nil || task.JoinedAssignment {
+		return ""
+	}
+	for parent := store.Task(task.ParentID); parent != nil && parent.ID != store.RootID(); parent = store.Task(parent.ParentID) {
+		if parent.JoinedAssignment {
+			return parent.Description
+		}
+	}
+	return runRootAsk(store)
+}
+
 // runRootAsk answers the run root's description as the store keeps it — the
 // person's own ask, seeded on the root row — or "" when there is no root to
 // read (a store that never seeded one, a lost root, a nil handle). The empty
@@ -340,6 +381,7 @@ func (a *Agent) TaskReport() string { return taskReport(a) }
 // The shared event hub stays asynchronous; only this producer waits, outside
 // every agent and hub lock. Cancellation also releases a failed event reader.
 func (a *Agent) sendBeltStep(ctx context.Context, hub *eventHub, event Event) {
+	event = a.clientToolEvent(event)
 	if !a.config.WaitForBeltSteps {
 		hub.send(event)
 		return
@@ -353,4 +395,31 @@ func (a *Agent) sendBeltStep(ctx context.Context, hub *eventHub, event Event) {
 	case <-handled:
 	case <-ctx.Done():
 	}
+}
+
+// BeltWorkerApprovalGate supplies live failed-read protection to a standalone
+// run worker without giving unrelated session settings a different profile.
+func BeltWorkerApprovalGate(profileDir string) ApprovalGate {
+	return beltWorkerApprovalGate{profileDir: profileDir, policy: &approval.Policy{Default: approval.ActionAllow}}
+}
+
+// beltWorkerApprovalGate checks the run's profile at each decision because a
+// standalone run worker has no parent agent whose current gate it can consult.
+// Readable files retain the worker's own allowance, including parse failures.
+type beltWorkerApprovalGate struct {
+	policy     *approval.Policy
+	profileDir string
+}
+
+func (g beltWorkerApprovalGate) Standing() string {
+	return PostureAllow
+}
+
+func (g beltWorkerApprovalGate) Build(_ string) (*approval.Policy, bool, error) {
+	_, err := profileconfig.ReadProfileApprovalConfig(g.profileDir)
+	var pathErr *os.PathError
+	if errors.As(err, &pathErr) {
+		return &approval.Policy{ProfileReadError: err.Error()}, false, nil
+	}
+	return g.policy, false, nil
 }

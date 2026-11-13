@@ -24,6 +24,10 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/githubcalls"
+	"github.com/Agent-Field/codeaf/internal/gitidentity"
+	"github.com/Agent-Field/codeaf/internal/gitpolicy"
 )
 
 // The four answers, and the one for a line the file already had.
@@ -45,7 +49,7 @@ var (
 )
 
 func gitRun(ctx context.Context, dir string, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd := exec.CommandContext(ctx, "git", gitpolicy.WithoutAutoMaintenance(args...)...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_EDITOR=true")
 	var out, errb bytes.Buffer
@@ -139,7 +143,7 @@ func BankRecipeChange(ctx context.Context, dir, sentence, why, line string, writ
 	if _, err := gitRun(ctx, wt, "diff", "--cached", "--quiet"); err == nil {
 		return RecipeNoteHad, nil
 	}
-	if _, err := gitRun(ctx, wt, "commit", "-q", "-m", "recipe: "+sentence); err != nil {
+	if _, err := gitRun(ctx, wt, append(gitidentity.ConfigArgs(), "commit", "-q", "-m", "recipe: "+sentence)...); err != nil {
 		return "", errors.New("could not commit the recipe change: " + err.Error())
 	}
 	// From here the branch holds the work; keep it.
@@ -157,6 +161,7 @@ func BankRecipeChange(ctx context.Context, dir, sentence, why, line string, writ
 			body = "Taught in conversation."
 		}
 		body += "\n\nAdds to `.codeaf/factory.yaml`:\n\n    " + oneLine(line)
+		githubcalls.NoteGH(ctx, "pr create")
 		cmd := exec.CommandContext(ctx, gh, "pr", "create", "--title", sentence, "--body", body, "--head", branch, "--base", defName)
 		cmd.Dir = top
 		var out bytes.Buffer

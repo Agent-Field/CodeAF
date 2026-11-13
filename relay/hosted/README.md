@@ -1,19 +1,22 @@
 # Hosted relay
 
-The relay of `internal/relayserve` (contract sections 3, 4.4, 6 and 18) as a Cloudflare Worker.
+The relay of `internal/relayserve` as a Cloudflare Worker.
 The Go client holds both implementations to `internal/relayconf`; run the local matrix below
 before claiming conformance for a build.
-The relay sees only ciphertext and keeps no account table: an identity is the hash of its key.
+Chat content, names and credentials stay encrypted. The relay also reads routing,
+ownership and coordination metadata and keeps no account table: an identity is the hash of its key.
 
 ## How it is built
 
 ```
 request --> Worker (stateless) --+--> /v1/pair*  --> PairGate (one object) --> Mailbox (one per nameplate)
                                  |
-                                 +--> /v1/store/*, /v1/dir/* --> IdentityDO (one per identity) --> R2
+                                 +--> identity ingress --> IdentityDO (router/blob index) --> R2
+                                                              |
+                                                              +--> RaftMemberDO A/B/C
 ```
 
-The Worker (`src/worker.js`) decides where a request goes and does nothing else. It reads the
+The Worker (`src/raft-worker.js`, exporting `src/worker.js`) decides where a request goes and does nothing else. It reads the
 identity from the unsigned `Codeaf-Identity` header, refuses an oversized `Content-Length` with 413
 before waking anything, and forwards the request, body unread, to that identity's Durable Object.
 Routing before reading is what keeps one identity's slow put from ever delaying another identity's
@@ -26,9 +29,13 @@ it, checks the device is not revoked, spends the caller's rate budget, and serve
 - `Has` never answers no while a put for the same identity is still being received. It waits for the
   puts in flight (`src/flight.js`, a port of `internal/blobstore/flight.go`) and fails with 503 after
   30 s rather than say no. A caller with no cert of the identity cannot hold a put open.
-- The directory lives in the object's SQLite (`src/directory.js`). The object is single-threaded and
-  every operation is one synchronous turn, which is the compare-and-swap the lease rules need. The
-  rules (`src/rules.js`) are a JS port of `internal/directory/rules.go`.
+- Directory and authority decisions live in three separately addressed `RaftMemberDO` SQLite
+  stores. `src/raft/hosted.js` freezes the original source on first use, streams the same
+  genesis to A/B/C and publishes ownership only after a fresh quorum read. Commands use the
+  original v1 proof and the shared Go state machine; JavaScript has no authoritative lease
+  writer. `src/directory.js` and its old rules remain only for immutable source conversion and
+  legacy fixture tests. Source backups are retained until the identity is retired.
+  An absent quorum returns retryable 503 and never reopens the old writer.
 - Frames live in R2 at `<identity>/f/<FrameID>` (`src/store.js`), each validated (magics, header,
   `cell_key_id`) before it is stored. The index that finds an object inside its frame is rows in the
   object's SQLite (`objs`: rid -> frame, offset, length, primary key on rid), so it takes no memory
@@ -39,7 +46,7 @@ it, checks the device is not revoked, spends the caller's rate budget, and serve
   holding the objects of the longest prefix of the ids that fits in about 1 MiB, in request order,
   and stops at the first id the index does not hold (`404 not_found` only when the first is absent).
   It locates the ids in the object's SQLite and reads each frame it touches once, as one ranged R2
-  read, so a takeover pays one Worker request and one R2 read per frame, not per object.
+  read, so a takeover uses one Worker request and one R2 read per frame, not per object.
 - A rid held with other bytes is `409 conflict`, and the frame stores none of its objects. Puts run
   one at a time inside the object, so two racing puts of one rid cannot both win.
 - `/v1/store/stats` is kept across evictions and restarts: counts are batched in memory and written
@@ -54,22 +61,22 @@ Directory revocation is `POST /v1/dir/devices/{id}/revoke` (204; unknown id 404 
 caller itself 400 `self_revoke`; twice is fine). A revoked device is `401 revoked` on both wires, and
 a device record cannot set or clear its own flag.
 
-Directory watch (contract 21) is `GET /v1/dir/watch`, a signed WebSocket upgrade on the same object
-(`src/watch.js`). It replaces the home screen's polling: the object keeps a durable version of the
-directory (`dirver` in its SQLite), bumps it on every change a person could see (a heartbeat that only
+Directory watch is `GET /v1/dir/watch`, a signed WebSocket upgrade on the same object
+(`src/watch.js`). It supplies compatibility version and presence hints: the object keeps a durable version of the
+directory (the replicated application version), bumps it on every change a person could see (a heartbeat that only
 moves a lease's expiry is not one), and sends `{"v":N}` to every socket. It accepts with the hibernation
 API and answers the client's `ping` with the platform's auto-response, so an open, quiet socket wakes
-nothing and bills nothing. `test/request-scoped.test.js` keeps the object free of timers (but `Has`'s
+nothing. `test/request-scoped.test.js` keeps the object free of timers (but `Has`'s
 bounded wait) and of outbound connections. `maxWatchers` (default 1000) caps sockets per identity.
 
-Rotation (contract 20) is `POST|GET /v1/identity/rotation` on the same object (`src/rotation.js`, a
-port of `internal/directory/rotation.go`). The state is the `rotation` field of the identity record in
-the object's SQLite. The first device to freeze owns the rotation, any device may thaw a frozen
+Rotation is `POST|GET /v1/identity/rotation` through the same coordinator.
+The shared Go state machine owns its `rotation` field in the replicated identity record. The first device to freeze owns the rotation, any device may thaw a frozen
 identity, nothing thaws a retired one. Routes marked `write` in `src/routes.js` (every directory verb
 that changes a record, and a frame put) are `410 rotated` once the identity is frozen or retired;
 reads stay open. A retire arms the object's alarm at its deadline. The alarm (`src/erasure.js`) writes
 the tombstone first (`gone` in the object's storage), deletes the identity's R2 prefix a page per turn,
-then drops the SQLite tables, so a crash half way is finished by the next alarm; afterwards every
+then erases all member copies/snapshots and source SQLite tables through a retained journal,
+so a crash half way is finished by the next alarm; afterwards every
 request is `410 gone` and makes no table and no R2 object. The one alarm slot is shared with the stats
 flush, so `#arm` only ever moves it earlier and the alarm handler re-arms the deadline.
 
@@ -81,19 +88,31 @@ the object to be evicted does not reset them.
 Link pairing (`src/link/`, `docs/ux-pairing-contract.md`) is the sibling for a new device that asks a paired
 device to approve it: `LinkGate` holds the per-IP decisions and allocates the 8-character code, one
 `LinkRequest` object per code holds the record and moves it once (pending, then approved or denied), and the
-signed approve and deny routes under `/v1/dir/requests/` are served by the identity's own object, which
-writes the device in one synchronous turn. The relay stores the grant and the sealed name as opaque bytes.
+signed approve and deny routes under `/v1/dir/requests/` enter through the identity coordinator.
+The shared Go state machine commits device authorization, metadata and the sealed decision together.
+A retained outbox delivers that decision to the request object afterward and repairs interrupted
+delivery. The grant and sealed name remain opaque bytes.
 
-The frozen Go code is not compiled into the Worker. The three pure parts (frame decode, request
-verify, lease rules) are ported to JavaScript and pinned to Go by vectors that Go generates.
+The pinned modified Go Raft core and directory state machine compile into the Worker's WASI reactor.
+JavaScript owns authentication, storage, transport and encrypted blobs; it does not decide lease or
+membership policy. Original v1 bodies keep their 1 MiB HTTP limit. Large signed requests use bounded
+body pages and an atomic final application, preserving all metadata without exposing partial changes.
+Frame decoding and request verification still have JavaScript ports pinned by Go vectors; the old
+JavaScript directory rules serve only source conversion and legacy fixtures.
 
 ## Run it locally
+
+Use Node 22, the version CI uses (`node --version`); wrangler refuses anything older. The build hook
+compiles `src/raft/core.wasm` with Go first, on Linux and macOS alike.
 
 ```sh
 cd relay/hosted
 npm ci
 npm run dev                       # http://127.0.0.1:8787, R2 and Durable Objects simulated in workerd
 ```
+
+If `npm ci` finishes but `npm run dev` then says esbuild or workerd is missing, their install scripts
+did not run; install again with Node 22's npm.
 
 `npm run dev` lifts the new-identity cap (the conformance suite makes one identity per case, all from
 127.0.0.1); a bare `wrangler dev` keeps the default of 200 a day per network. Conformance, against
@@ -137,27 +156,61 @@ canonical names, so the stricter side is the safe one.
 | Binding | Kind | Purpose |
 |---|---|---|
 | `FRAMES` | R2 bucket | frames and the object index, under `<identity>/` |
-| `IDENTITY` | Durable Object `IdentityDO` (SQLite) | directory, puts in flight, caps, one per identity |
+| `IDENTITY` | Durable Object `IdentityDO` (SQLite) | source gate/backup, coordinator, blob index, puts in flight, caps |
+| `RAFT_MEMBERS` | Durable Object `RaftMemberDO` (SQLite) | three independently addressed coordination stores per identity |
 | `NEWCOMERS` | Durable Object `NewcomerGate` (SQLite) | new identities per IP, one object |
 | `PAIR_GATE` | Durable Object `PairGate` (SQLite) | nameplates, per-IP counters, one object |
 | `MAILBOX` | Durable Object `Mailbox` | one pairing, one per nameplate |
 | `LINK_GATE` | Durable Object `LinkGate` (SQLite) | link-request codes, per-IP counters, one object |
 | `LINK_REQUEST` | Durable Object `LinkRequest` | one pending request, one per code |
-| `LEASE_POLICY` | var | `amended` (default: 90 s, a publish renews; stage 1H decision 8.7) or `stage1` (the frozen 30 s law) |
+| `MACHINE` | Durable Object `MachineDO` (SQLite) | one machine name's `codeaf serve` socket and the surfaces dialled to it |
+| `MACHINE_DIAL_LIMIT` | Rate limit (`30` / `60 s`) | per-network dial ceiling at the Worker front door before `MACHINE` wakes |
+| `MACHINE_REGISTER_LIMIT` | Rate limit (`10` / `60 s`) | per-network registration ceiling at the Worker front door before `MACHINE` wakes |
+| `LEASE_POLICY` | var | `amended` (default: 90 s, a publish renews) or `stage1` (30 s leases) |
 | `CAF_LIMITS` | var, optional | JSON that overrides the numbers below |
-| `BASE_PATH` | var, optional | a path prefix every route is served beneath (`/fabric` in production); empty, the default, serves from the root. A request outside the prefix is `404 not_found` |
+| `BASE_PATH` | var, optional | a path prefix every route is served beneath (for example, `/fabric`); empty, the default, serves from the root. A request outside the prefix is `404 not_found` |
 | `TRUST_PROXY` | var, optional | `1` takes the caller's network from the first `X-Forwarded-For` address (the self-hosted relay's `--trust-proxy`); for test rigs only, never production, where `CF-Connecting-IP` is the one truth |
 
 `wrangler.toml` declares all of them and the migration `v1` that creates the four classes as
-SQLite-backed; migration `v2` adds the link classes. The relay needs Workers Paid: the Free plan allows 10 ms of CPU a request and 100,000
-requests a day.
+SQLite-backed; migration `v2` adds the link classes, `v3-raft-members` adds the three-anchor
+namespace and `v4-machines` adds `MachineDO`. A deployment's own configuration must carry the `RAFT_MEMBERS` binding, the
+`v3-raft-members` migration, the `src/raft-worker.js` entry and the build command that
+`wrangler.toml` declares; the first authenticated use of an existing identity then upgrades it in place, and that upgrade cannot
+be rolled back to the single-object writer.
+
+The frozen source refuses writes even from older Worker code. Its directory
+requests return HTTP 500 `internal`, with the storage error
+`codeaf: directory upgraded; use a current relay build` in the Worker log.
+Running an older relay after the upgrade is not supported. Restore current code
+with the same complete storage to resume; the original directory and encrypted
+frames remain retained.
+
+## Machine doors
+
+`codeaf serve` registers at `/v1/engine` and `codeaf chat --at <name>` dials at `/v1/dial/<name>`, the
+two doors of the self-hosted `codeaf relay` (`internal/relay`). A Worker answers only WebSocket
+upgrades, so both doors take a WebSocket offering the `aforge-relay/1` subprotocol and answer anything
+else with `426`, which is what tells a client to use the WebSocket. Over it run the same bytes as
+over the self-hosted relay's raw upgrade: the registration proof, then the carrier's frames, one frame
+to a message (`src/engine/carrier.js`, a port of `handshake.go` and `mux.go`).
+
+Each machine name has one `MachineDO` (`src/engine/machine.js`). It checks that the name is the one
+the machine's key derives and that the machine holds that key, then holds the machine's socket and
+splices each dialled socket onto it as one stream. It reads no payload. Every socket hibernates, and
+the routing lives in socket tags and attachments, so a quiet machine costs nothing: the machine
+proves the socket alive with WebSocket pings, which the platform answers without waking the object.
+A second registration under a live name is refused; one with the **same public key** under a name whose
+socket stopped answering (a pong is asked for and not given within 5 s) replaces it, which is how a
+machine whose network dropped comes back before the platform has closed its old socket. A colliding
+key never replaces an existing registration, silent or live.
 
 ## Base path
 
-The hosted deployment shares its hostname with other things, so it is mounted at
-`https://codeaf.agentfield.ai/fabric`. `BASE_PATH = "/fabric"` makes the Worker serve every route
+A deployment can share a hostname by using a path prefix, such as
+`https://relay.example.com/fabric`. `BASE_PATH = "/fabric"` makes the Worker serve every route
 (store, directory, the `/v1/dir/watch` upgrade, pairing, link requests, rotation) beneath that prefix.
-`src/base.js` holds the whole mechanism: the Worker strips the prefix once, before dispatch, and a
+Prefixes may have several segments, such as `/my-relay` or `/a/relay`.
+`src/base.js` normalizes the configured prefix and strips it once before dispatch; a
 request outside it is the usual 404.
 
 The request signature covers the path the client sent (`internal/reqsign` signs `RequestURI()`), so a
@@ -165,22 +218,24 @@ client signs `/fabric/v1/...` and the identity object checks the signature again
 (`signedUri`), not against the stripped path. A client that signed the bare path is `401`. Every Go
 client joins its routes to the relay address in one helper, `wireauth.Endpoint`, so an address with a
 path (`https://host/fabric`, with or without the last slash) works for all of them.
+The committed request retains both the original signed URI and the configured prefix,
+so every member interprets the same operation even when a joined computer leads.
 
 The Go relay (`internal/relayserve`) stays at the root of its host: it has no base path. A self-hoster
 who wants one puts their own proxy in front, and the proxy must pass the path on unchanged (the client
 signed it), or serve the relay on a host of its own.
 
-## Deploy
+## Run your own
 
-[DEPLOY.md](DEPLOY.md) is the staging-first operator runbook and its local proof.
-Nothing deploys by itself. `staging.toml` names `caf-relay-staging` and
-`caf-relay-staging-frames` on workers.dev. `production.toml` names `caf-fabric` and
-`caf-fabric-frames`, with two routes on the shared host: `/fabric*` for the wire and
-`/p/*` for the pairing page. The wire stays beneath `BASE_PATH=/fabric`; the page
-lives outside that prefix. Observability is off in production.
+Copy `wrangler.toml` to a config of your own and choose a Worker name and R2 bucket name.
+Create the bucket and deploy from `relay/hosted`:
 
-The rollback keeps the bucket and Durable Object namespaces. Removing a route is
-not a data rollback, and deleting storage is never part of rolling back code.
+```sh
+cp wrangler.toml wrangler.custom.toml
+# Edit wrangler.custom.toml to match the bucket name below.
+npx wrangler r2 bucket create your-relay-frames
+npx wrangler deploy --config wrangler.custom.toml
+```
 
 ## Limits (`src/limits.js`, one table)
 
@@ -202,69 +257,31 @@ not a data rollback, and deleting storage is never part of rolling back code.
 | link requests: creates an hour, pending at once, per IP | 10, 3 | `429 rate_limited`, `Retry-After` |
 | link requests: reads a minute, misses a minute, open polls, per IP | 60, 20, 4 | `429 rate_limited` |
 | link requests: live in all | 2,000 | `503 full` |
+| machine doors: surfaces on one machine at once (`MAX_STREAMS`) | 16 | `429` |
+| machine doors: dials and registrations a minute, per network at the Worker front (`MACHINE_DIAL_LIMIT`, `MACHINE_REGISTER_LIMIT`) and per machine name in memory | 30, 10 | `429` |
 
 Stored quotas (bytes, objects, frames a day), the stats counts and the per-IP counters live in the identity object's SQLite and survive
 eviction. A frame the store already holds costs no quota, so a client that resends is never refused
 for it. The per-minute rates are kept in memory: an eviction can only forgive a burst.
 
-## Cost note: Durable Object SQLite rows written
+## Deployment limits and data erasure
 
-DO SQLite bills rows written at $1 per million after 50 million a month included (rows read are
-25 billion included and not a concern here). Every table in the object is `WITHOUT ROWID` or keyed
-by the rowid, so a row is one row written, not a row and an index entry (an assumption to confirm
-against billed usage on a real account; the stage 1H staging read-back is the method).
+`CAF_LIMITS` optionally sets `globalNewIdentitiesPerDay`, `globalStoreBytes` and
+`globalHardStoreBytes`. All three are unlimited (`Infinity`) by default. A finite
+`globalNewIdentitiesPerDay` caps daily admission. `globalStoreBytes` closes admission
+when stored bytes reach it; `0` closes admission immediately. Existing identities
+keep storing up to their own `storeBytes`, `storeObjects` and `framesPerDay` ceilings,
+which still answer `507 full`. Per-network limits still apply.
 
-| Operation | Rows written |
-|---|---|
-| put of a frame with n objects, new | n + 2 (the frame, each object, the usage row) |
-| put of a frame already held | 0 |
-| directory create, acquire, heartbeat, publish, release | 1 |
-| stats | 1 per flush window (5 s) of store activity, not per request |
-| `Has`, `Get`, list, cell read | 0 |
-| an identity's first request | 1 (admitted) |
-
-For the session shape measured in the stage 1H decision (232 one-object puts, 197 directory writes)
-that is about 930 rows a session; 10,000 identities at 8 sessions a month is 74M rows, so about
-$24 a month over the included 50M. With frames batched to about 12 puts of 20 objects a session it
-is about 510 rows, 41M a month, inside the included amount. Object count no longer costs memory, so
-the only price of a large repository is these rows: 170,000 objects is 170,000 rows once, about
-$0.17.
-
-## The other option
-
-The R2-only directory (a Worker with no Durable Object) was built and measured in the stage 1H
-spike and is kept in git history, not in this tree: `git log wip/layout-v0-hspike -- relay/hosted/src/r2dir.js`.
-It costs 1.3 to 2.3 times as much and a directory write takes tens of times longer, and it cannot
-keep the in-flight-put rule by identity.
-
-## Deployment-wide cost brakes and data erasure
-
-`CAF_LIMITS` also accepts `globalNewIdentitiesPerDay` (default 10,000) and
-`globalStoreBytes` (default 1 TiB, 1,099,511,627,776 bytes). Set either to `0` to close
-that door. For example, merge this JSON into the chosen config's existing `CAF_LIMITS`
-value, retaining staging's short test timings:
-
-```toml
-CAF_LIMITS = '{"globalNewIdentitiesPerDay":1000,"globalStoreBytes":107374182400}'
-```
-
-A new identity over the global daily admission ceiling gets `429 relay_admission_full`
-and `Retry-After` in seconds. Its rolling day starts with the first successful admission;
-per-network admission still applies. An identity already admitted is never charged again.
-New identities at the storage ceiling, and new frames that would exceed it, get
-`507 relay_storage_full`. Existing data remains readable, a held frame can be retried,
-and freeze/retire erasure remains available. These are deployment settings; the operator
-can change them without editing code. Apply changed vars with the owner's normal
-staging-first deployment procedure.
-
-The existing `NewcomerGate` keeps the global budget in SQLite. Its first use inventories
-all existing R2 objects, page by page, before allowing new writes, so an upgrade includes
-old stored bytes. Interrupted inventories repeat safely. A new frame reserves its bytes
-before R2 is written, and retries share that reservation. A failed or interrupted write
-may retain a conservative reservation; the owner's completed identity erasure returns
-all its capacity. The extra budget rows are metadata; the byte ceiling measures R2 frame
-bytes, not total Cloudflare spend. Existing per-identity, mailbox and link caps still apply.
-Monitor request, database and storage charges as described in DEPLOY.md.
+A new identity over the daily admission limit gets `429 relay_admission_full` with
+`Retry-After`. New identities at the shared storage ceiling get
+`507 relay_storage_full`. Every frame still counts in the deployment total as existing
+identities grow, so admission stays closed. This brake bounds total storage at roughly
+(identities admitted before it closed) × `storeBytes`, rather than at `globalStoreBytes`.
+The operator's opt-in emergency stop is `globalHardStoreBytes`: any new frame that would
+pass it gets `507 relay_storage_full`, for every identity. `0` closes all new writes.
+Under either brake, existing data stays readable, held frames can be retried, and
+identity erasure remains available and returns the owner's counted bytes.
 
 Every frame is under an identity prefix. Its owner can retire the identity through the
 signed rotation route (normally `codeaf identity rotate`); after the grace period, an
@@ -280,3 +297,28 @@ metrics and update prompts off, no dependency on a writable home. Use that wrapp
 local Wrangler commands too. The project `.npmrc` keeps npm's own installation cache and
 logs below the ignored `.wrangler/npm-cache` directory, so `npm ci && npm test` also
 works with a read-only home. `npm ci` installs only the lockfile's dependencies.
+
+## Hosted storage approvals
+
+Hosted R2 writes are closed by default, including dev and staging, while the privacy terms are being finished. Pairing, presence, directory coordination, live tunnels and existing frame reads remain available. Account approval is stored separately from newcomer admission. A self-hosted Go relay does not use this policy.
+
+Build the operator-only command with `go build -o /tmp/codeaf-relay-admin ./cmd/codeaf-relay-admin` from the repository root; it is not packaged in releases or installers. An operator supplies their own Ed25519 seed file, one unpadded base64url 32-byte seed per file with owner-only permissions. The default is `~/.config/codeaf-relay-admin/admin.key`; `CODEAF_RELAY_ADMIN_KEY` or `--key` overrides it. Never place a private key in this repository.
+
+```sh
+codeaf-relay-admin public-key --key <seed-file>
+codeaf-relay-admin approve id_<32-hex> --relay prod --key <seed-file>
+codeaf-relay-admin revoke id_<32-hex> --relay staging --key <seed-file>
+```
+
+`--relay` defaults to `prod`; `staging`, `dev` and an explicit HTTP URL are also accepted. URL prefixes such as `/fabric` are preserved. The command signs the exact JSON body after `codeaf/relay-admin/v1\n` and posts to `/v1/admin/storage`. The front Worker verifies an Ed25519 signature from `CAF_ADMIN_KEYS`, the arrived host and a ten-minute clock window. The identity object rejects replayed or reordered timestamps with `409 stale`. Revocation stops future writes without deleting existing frames.
+
+`CAF_ADMIN_KEYS` contains comma-separated unpadded base64url raw public keys; an empty value permits no approvals. The committed public key in `[vars]` is retained by every channel configuration. `CAF_LIMITS.storageOpen` accepts `true` or `1` to open storage for everyone later; no deployment configuration enables it by default.
+
+
+## Storage handoff during rotation
+
+Relays advertise handoff support through the `storage` field in signed store stats. The client always sends the original freeze body, then posts a device-signed `POST /v1/store/handoff` as the source identity before resealing uploads. Its JSON body is `{"successor":"id_…","successor_key":"<hex Ed25519 public key>","proof":"<hex signature>"}`. The successor identity key signs `codeaf/storage-handoff/v1\n<source id>\n<successor id>`.
+
+The hosted object checks its committed rotation view: a source that is neither frozen nor retired receives `409 not_rotating`. WebCrypto verifies the successor's key-derived ID and proof. The first accepted successor is permanently bound in the source's local `meta`, surviving thaw and object restart. A different successor receives `409 conflict`; the same successor may retry. This does not change coordination commands, records or the shared evaluator.
+
+Only an `on` approval can be inherited, only into a successor with no approval record, and only while storage is closed globally. The response is `200 {"successor":…, "storage":"on"|"off"}` with the successor's resulting state. A frozen rotation journal repeats this handoff before uploads; `--abandon` keeps its bound successor keys for reuse. Storage-off rotation completes locally with no store writes. An older relay receives no handoff request.

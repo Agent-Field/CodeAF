@@ -7,14 +7,19 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"github.com/Agent-Field/codeaf/internal/guard"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
+	"sync"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/env"
+	"github.com/Agent-Field/codeaf/internal/guard"
 )
 
 // The elected runner accepts memory-only factory sessions over a private Unix
@@ -22,6 +27,7 @@ import (
 func (h *appFactoryHost) runnerControl() func() {
 	path, err := factoryRunnerSocket(h.floor.Root())
 	if err != nil {
+		fmt.Fprintln(os.Stderr, "factory runner control: "+err.Error())
 		return func() {}
 	}
 	// The worker lock proves the previous listener's owner is gone.
@@ -93,9 +99,36 @@ func (h *appFactoryHost) electWorker(ticks <-chan time.Time) (func(), bool) {
 }
 
 // The runtime socket stays outside the state home, whose files are portable
-// records and can be scanned for secrets. Its path is stable across TMPDIRs.
+// records and can be scanned for secrets. The default stays stable across
+// TMPDIRs so an upgraded process can still share an older runner.
+const factoryRunnerRuntimeEnv = "CODEAF_FACTORY_RUNTIME_DIR"
+
+// Tests replace the default base so even fallback sockets stay off live runners.
+var factoryRunnerRuntimeDefault = "/tmp"
+
+// The portable limit leaves room for the terminator on macOS and Linux.
+const factoryRunnerSocketBytes = 100
+
+// A joining process can look repeatedly, but a fallback needs saying only once.
+var factoryRunnerRuntimeFallbacks sync.Map
+
 func factoryRunnerSocket(root string) (string, error) {
-	runtimeDir := filepath.Join("/tmp", "codeaf-runners-"+strconv.Itoa(os.Getuid()))
+	base := strings.TrimSpace(env.Get(factoryRunnerRuntimeEnv))
+	if base == "" {
+		base = factoryRunnerRuntimeDefault
+	} else if !filepath.IsAbs(base) {
+		return "", fmt.Errorf("%s must be an absolute directory", factoryRunnerRuntimeEnv)
+	}
+	hash := sha256.Sum256([]byte(filepath.Clean(root)))
+	name := hex.EncodeToString(hash[:16]) + ".sock"
+	userDir := "codeaf-runners-" + strconv.Itoa(os.Getuid())
+	runtimeDir := filepath.Join(base, userDir)
+	if len(filepath.Join(runtimeDir, name)) >= factoryRunnerSocketBytes {
+		if _, said := factoryRunnerRuntimeFallbacks.LoadOrStore(base, struct{}{}); !said {
+			fmt.Fprintf(os.Stderr, "factory runner: %s exceeds the %d-byte Unix socket path limit; using the default runtime directory\n", factoryRunnerRuntimeEnv, factoryRunnerSocketBytes-1)
+		}
+		runtimeDir = filepath.Join(factoryRunnerRuntimeDefault, userDir)
+	}
 	if err := os.MkdirAll(runtimeDir, 0700); err != nil {
 		return "", err
 	}
@@ -109,6 +142,5 @@ func factoryRunnerSocket(root string) (string, error) {
 	if err := os.Chmod(runtimeDir, 0700); err != nil {
 		return "", err
 	}
-	hash := sha256.Sum256([]byte(filepath.Clean(root)))
-	return filepath.Join(runtimeDir, hex.EncodeToString(hash[:16])+".sock"), nil
+	return filepath.Join(runtimeDir, name), nil
 }

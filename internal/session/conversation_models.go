@@ -43,6 +43,36 @@ func (a *Agent) ConversationModelPair() (ConversationModels, bool) {
 // SetConversationModels changes future requests only. In particular it never
 // calls hearModelLocked, whose terminal behavior may cancel an unproductive stream.
 func (a *Agent) SetConversationModels(pair ConversationModels) ([]ModelSwitch, error) {
+	return a.setConversationModels(pair, "")
+}
+
+// ContinueWithModel applies a receiver's usable model through the conversation's
+// existing main/fallback rules and records its specific explanation once.
+func (a *Agent) ContinueWithModel(model, notice string) error {
+	if pair, ok := a.ConversationModelPair(); ok {
+		pair.Main = model
+		if pair.Fallback == model {
+			pair.Fallback = ""
+		}
+		_, err := a.setConversationModels(pair, notice)
+		return err
+	}
+	a.SetModel(model)
+	if notice != "" {
+		record := func() ModelSwitch {
+			a.mu.Lock()
+			defer a.mu.Unlock()
+			a.continuedModelNoticed = model
+			return a.recordModelSwitchLocked(notice)
+		}()
+		a.publishModelSwitch(record)
+	}
+	return nil
+}
+
+// A continued chat can supply the reason for its main-model change. Keeping
+// that reason on the same write path avoids recording a second generic notice.
+func (a *Agent) setConversationModels(pair ConversationModels, mainNotice string) ([]ModelSwitch, error) {
 	if a == nil {
 		return nil, errors.New("conversation is unavailable")
 	}
@@ -63,12 +93,17 @@ func (a *Agent) SetConversationModels(pair ConversationModels) ([]ModelSwitch, e
 		return nil, errors.New("this conversation was launched with one-model; a fallback is unavailable")
 	}
 	hadPair := a.conversationModels != nil
-	previous := ConversationModels{Main: a.model}
+	previous := ConversationModels{Main: a.configuredModelLocked()}
 	if a.conversationModels != nil {
 		previous = *a.conversationModels
 	}
 	active := a.modelIdentity.Active != ""
 	a.conversationModels = &pair
+	// The pair is the next request's selection, including when its main did
+	// not change. A queued temporary main must not outlive this explicit pick.
+	a.spokenModel = ""
+	a.modelForNowConfigured = ""
+	a.modelForNowProvider = ""
 	a.model = pair.Main
 	if a.clientPool != nil {
 		a.clientPool.setSeat(pair.Main)
@@ -90,7 +125,12 @@ func (a *Agent) SetConversationModels(pair ConversationModels) ([]ModelSwitch, e
 	}
 	notices := []ModelSwitch{}
 	if previous.Main != pair.Main {
-		notices = append(notices, a.recordModelSwitchLocked("Main model changed from "+previous.Main+" to "+pair.Main+"."+suffix))
+		if mainNotice == "" {
+			mainNotice = "Main model changed from " + previous.Main + " to " + pair.Main + "." + suffix
+		} else {
+			a.continuedModelNoticed = pair.Main
+		}
+		notices = append(notices, a.recordModelSwitchLocked(mainNotice))
 	}
 	if previous.Fallback != pair.Fallback && (hadPair || previous.Main != pair.Main) {
 		from, to := previous.Fallback, pair.Fallback

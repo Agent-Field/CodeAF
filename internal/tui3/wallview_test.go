@@ -301,6 +301,10 @@ func TestWallRenderStates(t *testing.T) {
 	if !strings.Contains(wallPlainFrame(empty), wallEmptyWord) {
 		t.Fatalf("the empty frame says nothing")
 	}
+	scoped, _ := renderWall(pal, wallView{openTabs: true}, 80, 24)
+	if got := wallPlainFrame(scoped); !strings.Contains(got, wallNoTabsWord) || strings.Contains(got, wallEmptyWord) {
+		t.Fatalf("the empty open-tabs grid says the library line: %q", got)
+	}
 
 	v.filtering, v.filter = true, "port"
 	rows, _ = renderWall(pal, v, 120, 40)

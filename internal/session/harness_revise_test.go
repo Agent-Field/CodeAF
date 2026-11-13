@@ -499,7 +499,7 @@ func TestDroppingTheFirstCardStillDrops(t *testing.T) {
 //
 // It is the honest version of polling the graph: a phase a node passed through
 // in microseconds is still a phase it published, and this sees it. What a
-// surface reads is this lane, so what this asserts is what a surface would draw.
+// surface reads is this test, so what this asserts is what a surface would draw.
 func waitForPhaseOnTheWire(t *testing.T, lane <-chan Event, id uint64, phase string) {
 	t.Helper()
 	deadline := time.After(harnessTestPatience)

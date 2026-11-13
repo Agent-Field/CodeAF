@@ -41,7 +41,9 @@ func TestAppIntentTitleAfterTurnEndsReachesNativeProjection(t *testing.T) {
 	rec := newAppRecorder()
 	backend := newAppBackend(rec, appOpenInProcess)
 	defer backend.Close()
-	agent, err := mustCreate(t, backend, appwire.CreateAsk{Workspace: workspace, Text: "repair the tokenizer"})
+	// E5: #1952 permits a second naming call for a vague opener. A concrete
+	// opening keeps this contract about one title delivered after turn.ended.
+	agent, err := mustCreate(t, backend, appwire.CreateAsk{Workspace: workspace, Text: "repair unicode token boundaries in tokenizer"})
 	if err != nil {
 		t.Fatal(err)
 	}

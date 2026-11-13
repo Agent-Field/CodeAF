@@ -16,10 +16,28 @@ package session
 // own. Nothing had gone wrong except that two readings of one string disagreed.
 
 import (
+	"context"
+	"encoding/json"
 	"reflect"
 	"strings"
 	"testing"
 )
+
+func TestQuickTaskRefusesInvalidScopeInToolResult(t *testing.T) {
+	for _, scope := range []string{"../*.md", "docs/../*.md", "docs/../report.md", "/tmp/*.md", "docs/[", "docs/**/x"} {
+		t.Run(scope, func(t *testing.T) {
+			agent, _, workspace := quickAgent(t, newQuickLanes(nil))
+			args, err := json.Marshal(quickArguments{Line: "write report", Files: []string{scope}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			said, failed, err := agent.startQuickTask(context.Background(), args)
+			if err != nil || !failed || !strings.Contains(said, scope) || !strings.Contains(said, "call again") {
+				t.Fatalf("scope %q in %s: failed=%v err=%v result=%q", scope, workspace, failed, err, said)
+			}
+		})
+	}
+}
 
 // AN ABSOLUTE PATH UNDER THE WORKSPACE IS THE SAME SCOPE, converted rather than
 // refused: it names the same file, and a refusal would spend a round teaching a

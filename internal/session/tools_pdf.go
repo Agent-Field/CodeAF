@@ -70,7 +70,7 @@ func (a *Agent) pdfRead(inner bare.Tool) bare.Tool { return a.senseRead(inner) }
 // pdfSense is the local rung: extract the text layer in-binary and page it by
 // pi's law. shown is the path AS THE MODEL WROTE IT, because every sentence
 // below quotes it back and a model that asked about `spec.pdf` should not be
-// answered about `/home/…/spec.pdf`.
+// answered about `/workspace/spec.pdf`.
 //
 // It is only ever called for a file the sniff already claimed and the stat
 // already found, so there is no "not a PDF" and no "no such file" branch left

@@ -118,6 +118,19 @@ export class Fabric {
     sql.exec('CREATE TABLE IF NOT EXISTS fabric_seq (device TEXT PRIMARY KEY, last_number INTEGER NOT NULL) WITHOUT ROWID');
   }
 
+  async withClockAndDir(now, dir, fn) {
+    const prevClock = this.clock;
+    const prevDir = this.dir;
+    this.clock = () => now;
+    this.dir = dir;
+    try {
+      return await fn();
+    } finally {
+      this.clock = prevClock;
+      this.dir = prevDir;
+    }
+  }
+
   isClient(device) {
     return this.dir.read('devices', device)?.kind === 'client';
   }
@@ -128,9 +141,8 @@ export class Fabric {
     this.sql.exec('DELETE FROM fabric_seq WHERE device = ?', device);
   }
 
-  async registerClient({ caller, targetDevice, body, identityHeader, identity }) {
+  async validateRegisterClient({ targetDevice, body, identityHeader }) {
     ensureDevice(targetDevice);
-    this.#requireFullCaller(caller);
     const inBody = expectKeys(body, ['cert', 'methods'], ['name']);
     if (!Array.isArray(inBody.methods)) throw badRequest();
     const name = inBody.name ?? '';
@@ -142,8 +154,14 @@ export class Fabric {
       seen.add(method);
     }
     await verifyClientCert(inBody.cert, identityHeader, targetDevice);
+    return { inBody, name };
+  }
+
+  async registerClient({ caller, targetDevice, body, identityHeader, identity }) {
+    this.#requireFullCaller(caller);
+    const { inBody, name } = await this.validateRegisterClient({ targetDevice, body, identityHeader });
     if (this.dir.read('devices', targetDevice)) throw exists();
-    this.dir.putDevice(targetDevice, { V: 1, kind: 'client', methods: inBody.methods, name, added_by: identity });
+    this.dir.putClientDevice(targetDevice, { V: 1, kind: 'client', methods: inBody.methods, name, added_by: identity });
   }
 
   putSlot({ caller, targetDevice, name, body }) {

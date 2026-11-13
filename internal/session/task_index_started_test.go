@@ -11,7 +11,7 @@ import (
 // A ROW CARRIES THE NODE'S OWN START ACROSS THE FILE. A node restored from its
 // checkpoint keeps the instant it began (task_store.go), so the row written for
 // it says when the work started rather than when some window first met it —
-// the defect docs/design/polish/audit-jobs.md row 2 describes.
+// the defect the implementation row 2 describes.
 func TestAnIndexRowCarriesTheNodesRecordedStart(t *testing.T) {
 	started := time.Now().Add(-32 * time.Minute).Truncate(time.Millisecond)
 	landed := started.Add(12 * time.Minute)

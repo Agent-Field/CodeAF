@@ -12,7 +12,7 @@ import (
 
 func webResume() machine.Resume {
 	return machine.Resume{
-		From:    "blackmac",
+		From:    "laptop",
 		Missing: []inventory.Withheld{{Path: "web/node_modules", Lock: "web/package-lock.json"}, {Path: ".venv", Lock: "uv.lock"}},
 		Stopped: []inventory.Running{{Command: "npm run dev", Cwd: "web", Ports: []int{3000}}},
 		Lacks:   []machine.Item{{Bucket: machine.Installable, Name: "node", Want: "v22.4.0"}},
@@ -40,7 +40,7 @@ func TestTheSetupCardAsksWhatTheAgentWillBeTold(t *testing.T) {
 	a.offerSetup(webResume())
 	card := askedCard(t, a)
 	q := card.question
-	if q.Head != "Set this machine up like blackmac had it?" || q.Ask != session.AskConfirmation || q.Stakes != session.StakesReversible {
+	if q.Head != "Set this machine up like laptop had it?" || q.Ask != session.AskConfirmation || q.Stakes != session.StakesReversible {
 		t.Fatalf("card %+v", q)
 	}
 	for _, want := range []string{"not brought along: web/node_modules (npm ci), .venv (uv sync)", "was running there: npm run dev in web/ (port 3000)", "also needed: needs node 22.4 — agent can set it up"} {
@@ -164,9 +164,9 @@ func TestTheLastTestRunIsSaidOnlyWhenOneWasRecorded(t *testing.T) {
 
 func TestAnArrivalWithOnlyFactsRaisesABriefThatRunsNothing(t *testing.T) {
 	a, agent := movedApp(t)
-	a.offerSetup(machine.Resume{From: "spark", Uncommitted: []string{"README.md"}, Tests: &inventory.TestRun{Passed: true}})
+	a.offerSetup(machine.Resume{From: "tower", Uncommitted: []string{"README.md"}, Tests: &inventory.TestRun{Passed: true}})
 	q := askedCard(t, a).question
-	if q.Head != "Moved from spark. Here is where it stands." || !strings.Contains(q.Reason, "README.md") || !strings.Contains(q.Reason, "passed") {
+	if q.Head != "Moved from tower. Here is where it stands." || !strings.Contains(q.Reason, "README.md") || !strings.Contains(q.Reason, "passed") {
 		t.Fatalf("brief %q / %q", q.Head, q.Reason)
 	}
 	if len(q.Options) != 1 || q.Options[0].Label != "got it" || agent.runs != 0 {
@@ -193,7 +193,7 @@ func TestATakenChatHomeDoesNotListStillOpens(t *testing.T) {
 // that was aimed at whatever was on screen a moment before it.
 func TestTheFirstEnterSendsTheSentenceOverTheArrivalCard(t *testing.T) {
 	for _, settled := range []bool{false, true} {
-		for _, card := range []machine.Resume{webResume(), {From: "spark", Uncommitted: []string{"README.md"}}} {
+		for _, card := range []machine.Resume{webResume(), {From: "tower", Uncommitted: []string{"README.md"}}} {
 			a, agent := movedApp(t)
 			typeText(t, a, "hello there")
 			a.offerSetup(card)

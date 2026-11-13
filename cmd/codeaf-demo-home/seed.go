@@ -162,7 +162,7 @@ func seedDemoHome(dir string, now time.Time) (builtHome, error) {
 	// one thing this fixture exists to prevent.
 	//
 	// TWELVE HOURS IS THE FIGURE THE DESIGN DRAWS (`since you left · 12h`,
-	// docs/design/home-mission-control/DESIGN.md §1) and it is far enough back
+	// docs/example-report.md §1) and it is far enough back
 	// that the landed work and the made files above it are all inside the
 	// window.
 	session.NoteLook(filepath.Join(root, "v3", "projects"), now.Add(-demoLastLook))
@@ -285,7 +285,7 @@ func initRepository(dir string, now time.Time) error {
 		{"add", "."},
 		{"-c", "user.name=Demo", "-c", "user.email=demo@example.invalid", "commit", "--quiet", "-m", "the first commit"},
 	} {
-		command := exec.Command("git", append([]string{"-C", dir}, argv...)...)
+		command := exec.Command("git", append([]string{"--no-optional-locks", "-C", dir}, argv...)...)
 		command.Env = append(os.Environ(),
 			"GIT_AUTHOR_DATE="+stamp, "GIT_COMMITTER_DATE="+stamp,
 			// A demo home must not inherit the machine's git configuration:

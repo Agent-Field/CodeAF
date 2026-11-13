@@ -27,7 +27,7 @@ import (
 // why an end event paired by one rule out in the conversation and another in
 // there: every event kind added since had to be wired twice, and the second
 // wiring is the one nobody remembers. The copies are gone
-// (docs/design/lens/DESIGN.md, Decision 1), and a surface that needs the
+// , and a surface that needs the
 // reducer to do something extra installs a [feedHooks] function instead; it
 // does not write a second reducer, which agrees with this one on the day it is
 // written and drifts from it by the next wave.
@@ -761,7 +761,7 @@ func (f *feed) claimAnnounced(ev session.Event) int {
 // is left, exactly as it is for an announcement ([feed.claimAnnounced]).
 //
 // It is the law on BOTH surfaces as of the lens design's ruling 3
-// (docs/design/lens/DESIGN.md). The chat took the oldest row of that name and
+// . The chat took the oldest row of that name and
 // nothing else, which is right by convention and wrong half the time the
 // convention does not hold: two `bash` calls running at once resolve in whatever
 // order they finish, and the room already had to solve this because its page can

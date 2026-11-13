@@ -8,7 +8,7 @@ import (
 
 // ── A REFUSAL IS EVIDENCE ───────────────────────────────────────────────────
 //
-// THE MEASURED FAILURE (docs/design/routing/ASSESSMENT-20260911.md). In the
+// THE MEASURED FAILURE. In the
 // three days to 2026-09-10 a 429 reached the strike ledger and never the belief,
 // so the request that followed a refusal asked the same pool 825 times in 1,010,
 // two seconds later. Replayed with refusals recorded, the chooser's mean regret

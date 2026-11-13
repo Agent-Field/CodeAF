@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -44,6 +45,8 @@ type editStub struct {
 	me     api.Me
 	source func(http.ResponseWriter, *http.Request)
 	onRead func()
+	// other answers every other route; nil is a plain 404.
+	other func(http.ResponseWriter, *http.Request)
 }
 
 func newEditStub(t *testing.T, me api.Me) *editStub {
@@ -53,7 +56,7 @@ func newEditStub(t *testing.T, me api.Me) *editStub {
 		s.mu.Lock()
 		s.log = append(s.log, r.Method+" "+r.URL.RequestURI())
 		s.auths = append(s.auths, r.Header.Get("Authorization"))
-		me, source, onRead := s.me, s.source, s.onRead
+		me, source, onRead, other := s.me, s.source, s.onRead, s.other
 		s.mu.Unlock()
 		switch {
 		case r.URL.Path == "/v1/me":
@@ -67,6 +70,8 @@ func newEditStub(t *testing.T, me api.Me) *editStub {
 				return
 			}
 			editSourceReply(editSourceFor(strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/v1/repos/"), "/pipeline/edit-source"), editTestFile))(w, r)
+		case other != nil:
+			other(w, r)
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -139,7 +144,7 @@ func dol(v float64) *float64 { return &v }
 func TestPipelineEditIsAnnouncedAndDistinct(t *testing.T) {
 	stub := newEditStub(t, api.Me{Mode: api.FactoryTeam})
 	r := newEditWire(t, stub, false, api.FactoryTeam, prToken)
-	for _, want := range []string{appwire.FeatureFactoryPipelineEdit, appwire.FeatureFactoryPipelineEditRuntime, appwire.FeatureFactoryPipelinePR} {
+	for _, want := range []string{appwire.FeatureFactoryPipelineEdit, appwire.FeatureFactoryPipelineEditRuntime, appwire.FeatureFactoryPipelinePR, appwire.FeatureFactoryTestBaseline} {
 		if !strings.Contains(r.hello, want) {
 			t.Fatalf("hello does not announce %s: %s", want, r.hello)
 		}
@@ -153,6 +158,8 @@ func TestPipelineEditIsAnnouncedAndDistinct(t *testing.T) {
 
 // ── source: the yes path ───────────────────────────────────────────────────
 
+// E5: the held-caller read contract uses the issue-only factory introduced by
+// a71691760d (0-factory-issues-only.md); PR and CI pipelines are no longer defaults.
 func TestPipelineSourceReadsOnceAsTheHeldCaller(t *testing.T) {
 	stub := newEditStub(t, api.Me{Mode: api.FactoryTeam, Profile: api.Profile{Handle: "alice"}}) // a member, not the operator
 	r := newEditWire(t, stub, false, api.FactoryTeam, prToken)
@@ -164,7 +171,7 @@ func TestPipelineSourceReadsOnceAsTheHeldCaller(t *testing.T) {
 		got.State != "file" || !got.Editable || got.Text != editTestFile || !got.CanPush || got.DefaultBudget != 4 || !got.BudgetInFile {
 		t.Fatalf("%+v", got)
 	}
-	if len(got.Steps) == 0 || len(got.Pipelines) != 3 || got.Pipelines[0].Kind != "issue" {
+	if len(got.Steps) == 0 || len(got.Pipelines) != 1 || got.Pipelines[0].Kind != "issue" {
 		t.Fatalf("%+v", got)
 	}
 	if log := strings.Join(stub.requests(), "|"); log != "GET /v1/me|GET /v1/repos/octo/Hello.x_y/pipeline/edit-source" {
@@ -217,12 +224,13 @@ func TestPipelineSourceNeedsAHeldCredentialAndSendsNothingWithout(t *testing.T) 
 
 // ── source: states that refuse editing ─────────────────────────────────────
 
+// A missing file is no longer one of them: behind factory.pipeline_edit_rules it
+// is edited from the shipped defaults (appfactory_pipeline_rules_test.go).
 func TestPipelineSourceStatesAreCarriedAndRefuseEditing(t *testing.T) {
 	for name, c := range map[string]struct {
 		body  api.PipelineEditSource
 		state string
 	}{
-		"missing":   {api.PipelineEditSource{State: api.PipelineEditMissing}, "missing"},
 		"too large": {api.PipelineEditSource{State: api.PipelineEditTooLarge}, "too_large"},
 		"syntax":    {editSourceFor(prRepo, "pipeline: ["), "invalid"},
 		"unknown":   {editSourceFor(prRepo, "model: x\n"), "invalid"},
@@ -235,7 +243,8 @@ func TestPipelineSourceStatesAreCarriedAndRefuseEditing(t *testing.T) {
 			stub.source = editSourceReply(body)
 			r := newEditWire(t, stub, false, api.FactoryTeam, prToken)
 			got, err := r.source()
-			if err != nil || got.State != c.state || got.Editable || got.Steps != nil || got.Pipelines != nil || got.DefaultBudget != 0 {
+			if err != nil || got.State != c.state || got.Editable || got.Steps != nil || got.Pipelines != nil || got.DefaultBudget != 0 ||
+				got.Rules != nil || got.AskFirst != nil || got.Never != nil {
 				t.Fatalf("%+v %v", got, err)
 			}
 			if c.state == "invalid" && (len(got.Problems) == 0 || got.Text != body.Text) {
@@ -520,6 +529,12 @@ func TestPipelinePreviewRefusalsAreTypedAndPlainlyWorded(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			stub := newEditStub(t, api.Me{Mode: api.FactoryTeam})
 			r := newEditWire(t, stub, false, api.FactoryTeam, prToken)
+			// A factory id may contain digits forbidden in the displayed words.
+			r.id = "factory_0000000000000820"
+			r.hub.mu.Lock()
+			r.hub.rows[0].ID = r.id
+			r.hub.mu.Unlock()
+			r.hub.hold(r.id, prToken, 0)
 			_, err := r.preview(c.base, c.edit)
 			we := prWantCode(t, err, appwire.CodeBadParams)
 			d, ok := we.Detail.(appwire.FactoryPipelineEditRefusal)
@@ -529,7 +544,7 @@ func TestPipelinePreviewRefusalsAreTypedAndPlainlyWorded(t *testing.T) {
 			if !strings.HasSuffix(we.Message, "Nothing was written.") {
 				t.Fatal(we.Message)
 			}
-			prNoNames(t, err, "deploy", "approve")
+			prNoNames(t, errors.New(we.Message), "deploy", "approve")
 		})
 	}
 }
@@ -653,10 +668,12 @@ func TestPipelineEditWireAgainstTheRealFactoryHandler(t *testing.T) {
 			}
 			switch scenario {
 			case "missing":
-				if src.State != "missing" || src.Editable || src.Text != "" {
+				// No file is edited from the shipped defaults, and the pull
+				// request creates the file.
+				if src.State != "missing" || !src.Editable || src.Text != "" || src.BudgetInFile || len(src.Steps) == 0 ||
+					src.Rules == nil || len(*src.Rules) != 0 {
 					t.Fatalf("%+v", src)
 				}
-				return
 			case "invalid":
 				if src.State != "invalid" || src.Editable || len(src.Problems) == 0 {
 					t.Fatalf("%+v", src)
@@ -669,16 +686,20 @@ func TestPipelineEditWireAgainstTheRealFactoryHandler(t *testing.T) {
 				}
 				return
 			}
-			if src.State != "file" || !src.Editable || src.Text != editTestFile {
+			if scenario != "missing" && (src.State != "file" || !src.Editable || src.Text != editTestFile) {
 				t.Fatalf("%+v", src)
 			}
 			edit := appwire.FactoryPipelineEdit{Op: "set_step", Name: "write", Max: num(7)}
 			if scenario == "no_change" {
 				edit.Max = num(2)
 			}
+			edits := []appwire.FactoryPipelineEdit{edit}
+			if scenario == "missing" {
+				edits = append(edits, appwire.FactoryPipelineEdit{Op: "set_list", List: "never", Lines: []string{"auth/"}})
+			}
 			var prev appwire.FactoryPipelinePreview
 			w.must("factory.pipeline_preview", appwire.FactoryPipelinePreviewParams{Factory: conn.ID, Repo: "acme/api", BaseSHA: src.BaseSHA, BaseText: src.Text,
-				Edits: []appwire.FactoryPipelineEdit{edit}}, &prev)
+				Edits: edits}, &prev)
 			mu.Lock()
 			if len(writes) != 0 {
 				t.Fatalf("reading and previewing wrote to GitHub: %v", writes)
@@ -710,6 +731,13 @@ func TestPipelineEditWireAgainstTheRealFactoryHandler(t *testing.T) {
 			}
 			if strings.Join(writes, ",") != "branch,commit,pull_request" {
 				t.Fatalf("writes %v", writes)
+			}
+			if scenario == "missing" {
+				back, err := pipeline.Parse(committed)
+				if err != nil || len(back.Problems) > 0 || back.Steps["write"].Max != 7 || len(back.Start.Never) != 1 || back.Start.Never[0] != "auth/" ||
+					prev.FormatRewritten || prev.CommentsDropped || prev.Lists == nil || len(*prev.Lists) != 1 {
+					t.Fatalf("the created file: %v %v\n%s\n%+v", err, back.Problems, committed, prev)
+				}
 			}
 			w.neverSaid("simulated-profile-credential", testHostToken)
 		})

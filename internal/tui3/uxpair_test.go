@@ -11,7 +11,7 @@ import (
 // which a press cannot use; it used to show a bare `esc close` over a card that
 // still looked undecided.
 func TestApproveSaysItIsWorkingAndOffersNoKeysMeanwhile(t *testing.T) {
-	door := &fakeApprovals{pending: spark(time.Now())}
+	door := &fakeApprovals{pending: tower(time.Now())}
 	a, r := approveApp(t, door)
 	r.slash("/pair " + testLink)
 	r.until("the card", func() bool { c, ok := a.pair.card.(*approveCard); return ok && c.req != nil })
@@ -24,7 +24,7 @@ func TestApproveSaysItIsWorkingAndOffersNoKeysMeanwhile(t *testing.T) {
 
 // A request that has run out offers no a or d, and says why.
 func TestApproveOffersNoKeysOnceTheRequestRanOut(t *testing.T) {
-	old := spark(time.Now())
+	old := tower(time.Now())
 	old.ExpiresAt = time.Now().Add(-time.Minute)
 	door := &fakeApprovals{pending: old}
 	a, r := approveApp(t, door)
@@ -54,7 +54,7 @@ func TestDeviceListKeysFollowTheRowAndColumnsAlign(t *testing.T) {
 	var col int
 	for _, line := range strings.Split(plain(frame(a)), "\n") {
 		for _, word := range []string{"Mac", "Linux"} {
-			if i := strings.Index(line, "  "+word); i >= 0 && (strings.Contains(line, "this mac") || strings.Contains(line, "dumb") || strings.Contains(line, "spark")) {
+			if i := strings.Index(line, "  "+word); i >= 0 && (strings.Contains(line, "this mac") || strings.Contains(line, "desk") || strings.Contains(line, "tower")) {
 				if col == 0 {
 					col = utf8.RuneCountInString(line[:i])
 				} else if utf8.RuneCountInString(line[:i]) != col {
@@ -63,14 +63,14 @@ func TestDeviceListKeysFollowTheRowAndColumnsAlign(t *testing.T) {
 			}
 		}
 	}
-	if got := plain(frame(a)); !strings.Contains(got, "seen 3h ago") || !strings.Contains(got, "spark     Linux  offline") {
+	if got := plain(frame(a)); !strings.Contains(got, "seen 3h ago") || !strings.Contains(got, "tower     Linux  offline") {
 		t.Fatalf("away rows do not say offline:\n%s", got)
 	}
 }
 
 // A pair link in the box names what enter does.
 func TestPairLinkInTheBoxHintsEnter(t *testing.T) {
-	a, _ := approveApp(t, &fakeApprovals{pending: spark(time.Now())})
+	a, _ := approveApp(t, &fakeApprovals{pending: tower(time.Now())})
 	typeText(t, a, testLink)
 	if got := a.hintWord(); got != "enter opens the join request" {
 		t.Fatalf("hint = %q", got)

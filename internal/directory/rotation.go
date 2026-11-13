@@ -2,9 +2,14 @@ package directory
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
+	"net/http"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/blobstore"
+	"github.com/Agent-Field/codeaf/internal/clusterstate"
+	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
@@ -14,13 +19,8 @@ const (
 	StateRetired = "retired" // read-only until RetireAt, then deleted by the relay
 )
 
-// Rotation is what an identity's record says about its replacement.
-type Rotation struct {
-	State    string `json:"state"`
-	By       string `json:"by"` // the device that froze it; only it may retire
-	At       int64  `json:"at"` // directory ms of the freeze
-	RetireAt int64  `json:"retire_at,omitempty"`
-}
+// Rotation retains the shared record without importing the directory into wasm.
+type Rotation = clusterstate.Rotation
 
 // RotationOp is one move of the rotation state machine.
 type RotationOp string
@@ -42,7 +42,7 @@ type RotationReq struct {
 type GraceBounds struct{ Min, Max, Default time.Duration }
 
 // DefaultGraceBounds is one hour to thirty days, a week unless told.
-var DefaultGraceBounds = GraceBounds{Min: time.Hour, Max: 30 * 24 * time.Hour, Default: 7 * 24 * time.Hour}
+var DefaultGraceBounds = GraceBounds{Min: time.Duration(clusterstate.MinGraceMillis) * time.Millisecond, Max: time.Duration(clusterstate.MaxGraceMillis) * time.Millisecond, Default: time.Duration(clusterstate.DefaultGraceMillis) * time.Millisecond}
 
 // RotationView is the answer to both rotation calls: the state now, the
 // directory's time, and the bounds it enforces, so a conformance run can test
@@ -140,10 +140,53 @@ func retire(cur *Rotation, device string, req RotationReq, now int64, b GraceBou
 }
 
 // Gate is a Client's rotation calls as the three moves a rotation makes.
-type Gate struct{ Client Client }
+type Gate struct {
+	Client Client
+	// Store discovers the hosted handoff route without changing the rotation wire.
+	Store interface {
+		Stats(context.Context) (blobstore.Counts, error)
+	}
+	Source string
+}
 
 // Freeze stops every write to the identity.
 func (g Gate) Freeze(ctx context.Context) error { return g.move(ctx, RotationReq{Op: OpFreeze}) }
+
+// HandoffTo carries hosted storage permission after freezing and before uploads.
+// It reports whether a binding was accepted; relays without the stats field
+// receive no additional request and need no saved successor after cancellation.
+func (g Gate) HandoffTo(ctx context.Context, successor identity.Identity) (bool, error) {
+	if g.Store == nil {
+		return false, nil
+	}
+	counts, err := g.Store.Stats(ctx)
+	if err != nil {
+		return false, err
+	}
+	if counts.Storage == "" {
+		return false, nil
+	}
+	client, ok := g.Client.(interface {
+		HandoffStorage(context.Context, string, identity.Identity) error
+	})
+	if !ok {
+		return false, ErrTooOld
+	}
+	err = client.HandoffStorage(ctx, g.Source, successor)
+	return err == nil, err
+}
+
+// HandoffStorage signs consent with the successor root; the HTTP request is
+// still signed by a device of the source, just like other store requests.
+func (h *HTTP) HandoffStorage(ctx context.Context, source string, successor identity.Identity) error {
+	proof := successor.Sign([]byte("codeaf/storage-handoff/v1\n" + source + "\n" + successor.ID()))
+	request := struct {
+		Successor    string `json:"successor"`
+		SuccessorKey string `json:"successor_key"`
+		Proof        string `json:"proof"`
+	}{successor.ID(), hex.EncodeToString(successor.PublicKey()), hex.EncodeToString(proof)}
+	return h.do(ctx, http.MethodPost, "/v1/store/handoff", request, nil)
+}
 
 // Thaw undoes a freeze.
 func (g Gate) Thaw(ctx context.Context) error { return g.move(ctx, RotationReq{Op: OpThaw}) }

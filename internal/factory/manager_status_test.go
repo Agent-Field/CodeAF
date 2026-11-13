@@ -72,12 +72,42 @@ func TestStatusOnlyRequestRecognizesNaturalCheckInsWithoutSwallowingWork(t *test
 
 func TestManagerStatusQueuedExplainsExecutionCapacityAndSettings(t *testing.T) {
 	status := StatusForManager(Item{State: StateQueued}, false, time.Now())
-	for _, want := range []string{"queued", "execution slot", "Settings → Factory concurrency", "Idle PR monitoring does not use"} {
+	for _, want := range []string{"queued", "execution slot", "Settings → Factory → Your computers", "Idle PR monitoring does not use"} {
 		if !strings.Contains(status.Text, want) {
 			t.Fatalf("queued status missing %q: %s", want, status.Text)
 		}
 	}
 	if strings.Contains(status.Text, "bench") {
 		t.Fatal(status.Text)
+	}
+}
+
+// A thread-only hold is the manager answering a reply: it is never described
+// as the step running, and it takes no execution slot.
+func TestThreadOnlyHoldIsNotTheStepRunning(t *testing.T) {
+	it := Item{State: StateRunning, Stream: &Stream{Cur: 0, Phases: []Phase{{Name: "code", State: PhaseRunning}}}}
+	if got := StatusForManagerHold(it, true, true, time.Now()).Text; strings.Contains(got, "running on its worker") || !strings.Contains(got, "takes no execution slot") {
+		t.Fatalf("thread-only hold: %q", got)
+	}
+	if got := StatusForManagerHold(it, true, false, time.Now()).Text; !strings.Contains(got, "code is running on its worker") {
+		t.Fatalf("a real hold: %q", got)
+	}
+	it.State = StateQueued
+	if got := StatusForManagerHold(it, true, true, time.Now()).Text; !strings.Contains(got, "Answering a reply in this thread does not take one") {
+		t.Fatalf("queued with a thread-only hold: %q", got)
+	}
+}
+
+// The manager says the same reason the job's page says, not a slot it does
+// not wait for.
+func TestManagerStatusNamesWhatAQueuedJobWaitsFor(t *testing.T) {
+	it := Item{State: StateQueued, OverLimit: true}
+	got := StatusForManagerWaiting(it, false, false, "Waiting for mbp (asleep for 3 min).", time.Now()).Text
+	if !strings.Contains(got, "Waiting for mbp (asleep for 3 min).") || strings.Contains(got, "slot") || strings.Contains(got, "Jobs at once") {
+		t.Fatalf("status: %q", got)
+	}
+	got = StatusForManagerWaiting(it, false, false, "", time.Now()).Text
+	if strings.Contains(got, "waiting for an available execution slot") {
+		t.Fatalf("a started-now job does not wait for a slot: %q", got)
 	}
 }

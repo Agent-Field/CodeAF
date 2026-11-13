@@ -2,12 +2,7 @@ package tui3
 
 // /project — WHICH FOLDER THE NEXT CONVERSATION OPENS IN, AND NOTHING ELSE.
 //
-// Until 2026-09-22 this was the home half of `/folder`, and the owner's word
-// for that was that `/folder` was doing two different jobs: in a conversation
-// it hands the conversation a directory to be about, the way `/attach` hands
-// it a file; on home the same word pinned the project the NEXT conversation
-// would open in. Two acts behind one command, told apart by which screen you
-// happened to be standing on.
+// Two acts behind one command, told apart by which screen you happened to be standing on.
 //
 // So the pin is its own command now. `/folder` means one thing everywhere —
 // give this conversation a folder — and typing it on home opens a conversation

@@ -30,7 +30,7 @@ func TestShellResolvesAuxiliaryModelsBeforeARealChildCallsTheProvider(t *testing
 		{"omitted-light", "", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			home := t.TempDir()
+			home := testHome(t)
 			t.Setenv("CODEAF_HOME", home)
 			t.Setenv(config.ProfileDirEnv, home)
 			t.Setenv("OPENROUTER_API_KEY", "sk-or-v1-fixture")
@@ -41,7 +41,6 @@ func TestShellResolvesAuxiliaryModelsBeforeARealChildCallsTheProvider(t *testing
 			// on loopback and must finish before this fixture gives up its profile.
 			t.Setenv("CODEAF_MODEL_POOL_URL", "http://127.0.0.1:1/index.json")
 			t.Setenv("CODEAF_MODEL_POOL_MIRROR_URL", "http://127.0.0.1:1/index.json")
-			t.Cleanup(func() { stopPoolErrands(home) })
 			var mu sync.Mutex
 			var sent []string
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -74,7 +73,7 @@ func TestShellResolvesAuxiliaryModelsBeforeARealChildCallsTheProvider(t *testing
 				w.Header().Set("Content-Type", "text/event-stream")
 				fmt.Fprintf(w, "data: {\"id\":\"fixture\",\"model\":%q,\"choices\":[{\"index\":0,\"delta\":{\"content\":\"done\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":1,\"total_tokens\":2,\"cost\":0}}\n\ndata: [DONE]\n\n", request.Model)
 			}))
-			defer server.Close()
+			t.Cleanup(server.Close)
 			t.Setenv("CODEAF_BASE_URL", server.URL+"/api/v1")
 			oldCatalog, oldOut := sharedCatalog, carriedStdout
 			sharedCatalog, carriedStdout = newSharedCatalog(), &lockedBuffer{}
@@ -82,7 +81,7 @@ func TestShellResolvesAuxiliaryModelsBeforeARealChildCallsTheProvider(t *testing
 			program := fakeModelFlagsProgram()
 			restore := builtin.Override([]delegate.Delegate{program})
 			defer restore()
-			line := []string{"run", "--model", "fixture/floating-latest", "--dir", t.TempDir()}
+			line := []string{"run", "--model", "fixture/floating-latest", "--dir", testHome(t)}
 			if tc.light != "" {
 				line = append(line, "--light="+tc.light)
 			}

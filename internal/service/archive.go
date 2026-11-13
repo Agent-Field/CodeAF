@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/redact"
 )
 
@@ -64,7 +65,7 @@ func (s *Supervisor) writeArchive(a Archived) error {
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tmp.Name())
+	defer fsreplace.Remove(tmp.Name())
 	if err := tmp.Chmod(0o600); err != nil {
 		_ = tmp.Close()
 		return err
@@ -75,7 +76,7 @@ func (s *Supervisor) writeArchive(a Archived) error {
 	if err := errors.Join(writeErr, syncErr, closeErr); err != nil {
 		return err
 	}
-	if err := os.Rename(tmp.Name(), s.archivePath(a.ID)); err != nil {
+	if err := fsreplace.Rename(tmp.Name(), s.archivePath(a.ID)); err != nil {
 		return err
 	}
 	return syncDir(dir)

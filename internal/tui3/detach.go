@@ -29,11 +29,9 @@ import (
 // an in-flight turn from its first token ([session.Agent.Attach]) and puts the
 // sidecar's readings back.
 //
-// EVERYTHING NOT IN THE SIDECAR IS REBUILT FROM THE AGENT OR FORGOTTEN. That is
-// the bargain that makes this a third of the size of a surface that held N
-// conversations: the transcript, the rail, the meters, the pending cards, the
-// model and the title are all facts about the agent, and the agent still has
-// them.
+// The last drawn transcript stays in the sidecar as a preview while the
+// authoritative record is fetched again. The rail, meters, and pending cards
+// are rebuilt from the agent, which owns their current state.
 
 // aside is a detached conversation's PERSON-SIDE readings: the few things on
 // screen that are not facts about the agent and would therefore be lost when
@@ -44,6 +42,8 @@ import (
 // keep correct while it is not drawing it, which is the expensive kind of
 // state; the test is "would a person notice it was gone", not "could we".
 type aside struct {
+	// preview keeps the last drawn words visible until the atomic replay arrives.
+	preview []entry
 	// A send held behind an atomic replay remains with its conversation.
 	hostDeferred []func() tea.Cmd
 	// openingPrompt survives a switch while the title and transcript arrive.
@@ -63,6 +63,8 @@ type aside struct {
 	// surface yet. It follows the sidecar so returning mid-send cannot send the
 	// same message again when the stream closes.
 	parkSending bool
+	// A deferred relabel belongs to this conversation across chat switches.
+	deferredModelRename *modelRename
 	// parkNotes are receipts from held sends and memory commands. They land in
 	// this conversation when it comes forward rather than in whichever unrelated
 	// conversation happened to be on screen at the time.
@@ -194,7 +196,7 @@ var resolveTranscript = filepath.EvalSymlinks
 // over --host the paths in a row are THE ENGINE MACHINE'S and resolving them
 // here walks this laptop's disk for a file that was never on it. That walk is
 // not merely useless: on macOS `/home` is an automounter's mount point, so
-// `Lstat("/home/<name>")` on the Mac waits on autofs for a quarter of a second
+// looking up a child of that directory can wait on autofs for a quarter of a second
 // or more — and home asked it for every row on every frame, which is why typing
 // on a hosted home took a second per key (2026-08-27). A hosted key is the
 // cleaned spelling and nothing else; the far machine's `/tmp`-versus-
@@ -240,7 +242,7 @@ func (a *app) front() Conversation {
 		SessionFile:      a.file,
 		Workspace:        a.workspace,
 		Place:            a.place,
-		Owned:            a.owned,
+		Owned:            a.owned && a.movedName == "",
 		ContextWindow:    a.ctxWindow,
 		DraftFile:        a.draftFile,
 		History:          a.history,
@@ -266,6 +268,7 @@ func (a *app) front() Conversation {
 func (a *app) detachConversation() *aside {
 	main := a.mainComposer()
 	side := &aside{
+		preview:      a.entries,
 		hostDeferred: a.hostDeferred,
 		// The box and the parked messages are separate while this process can
 		// keep the conversation alive. The shared-handle exception below folds
@@ -275,17 +278,18 @@ func (a *app) detachConversation() *aside {
 		// A conversation can be put down while a task's page is in front, and the
 		// box then holds that page's steering line — which is not this
 		// conversation's unsent message and must not come back as one.
-		draft:         a.mainDraftText(),
-		parks:         a.parks,
-		parkSending:   a.parkSending,
-		chips:         main.chips,
-		pastes:        main.pastes,
-		sends:         main.sends,
-		offset:        a.offset,
-		stick:         a.stick,
-		since:         a.now(),
-		title:         a.title,
-		openingPrompt: a.openingPrompt,
+		draft:               a.mainDraftText(),
+		parks:               a.parks,
+		parkSending:         a.parkSending,
+		deferredModelRename: a.deferredModelRename,
+		chips:               main.chips,
+		pastes:              main.pastes,
+		sends:               main.sends,
+		offset:              a.offset,
+		stick:               a.stick,
+		since:               a.now(),
+		title:               a.title,
+		openingPrompt:       a.openingPrompt,
 	}
 	// A SHARED HANDLE CANNOT KEEP A WAITING TURN. Its engine interrupts and
 	// closes the old conversation during the swap, so the only honest fallback
@@ -462,6 +466,7 @@ func (a *app) clearConversation() {
 	a.forgetComposers()
 	a.parks = nil
 	a.parkSending = false
+	a.deferredModelRename = nil
 	a.touch()
 }
 
@@ -531,6 +536,10 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 	}
 	was := a.agent
 	a.takeUp(conv, true)
+	a.deferredModelRename = nil
+	if side != nil {
+		a.deferredModelRename, side.deferredModelRename = side.deferredModelRename, nil
+	}
 	// ANOTHER CONVERSATION'S QUESTIONS DO NOT COME ALONG ([app.forgetQuestions]);
 	// the new lane below replays its own.
 	if a.agent != was {
@@ -549,7 +558,6 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 	a.resetMeters()
 	if agent != nil {
 		a.model = agent.Model()
-		a.ensureAvailableModel()
 		a.title = strings.TrimSpace(agent.Title())
 		// A cached earned name survives an agent whose snapshot is still arriving.
 		if a.title == "" && side != nil {
@@ -580,10 +588,15 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 	// machine entirely — so this door is a call over a pipe, and a switch that
 	// made it from Update was a window that could not draw, could not take a key
 	// and could not read its own conversation's news for as long as the far end
-	// took. What it costs is one frame of an empty transcript, which is the
-	// frame the person is switching away from anyway.
+	// took. A returning conversation keeps its last drawn words visible until
+	// that reading arrives, even when the engine takes more than one frame.
 	var joined tea.Cmd
 	if door, ok := agent.(attachReplayer); ok {
+		if side != nil {
+			a.entries = side.preview
+			// Replayed rows replace this preview rather than appending to it.
+			a.recordRows = len(a.entries)
+		}
 		a.hostReplayLoading = true
 		joined = a.offLoop(func() func(bool) tea.Cmd {
 			entries, events, stop := door.AttachReplay()
@@ -664,13 +677,21 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 
 	if side != nil {
 		cmds = append(cmds, a.restoreAside(side))
+	} else if a.homeTakenSaid == nil {
+		a.restoreDraft()
 	}
+	a.ensureAvailableModel()
 	// THE IN-FLIGHT TURN'S STREAM IS PUMPED LAST, so the replay above has
 	// already put the person's own message on the screen: the journal holds it
 	// from the moment it was submitted, and the events this stream carries
 	// belong to that same turn number rather than to a new one.
 	if joined != nil {
 		cmds = append(cmds, joined)
+	}
+	if a.shared {
+		for _, line := range takeSavingNotices(agent) {
+			a.note(line)
+		}
 	}
 	a.touch()
 	return tea.Batch(cmds...)

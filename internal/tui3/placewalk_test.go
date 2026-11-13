@@ -8,12 +8,10 @@ import (
 
 // WALKING BETWEEN THE PLACES.
 //
-// The owner's report against the real binary: "in home left right does not seem
-// to move tabs, only shift does". The cause was not the arrows — it was `tab`
-// walking into the tasks place, being refused because this machine had run no
-// work, and being put straight back on home. Every press did that, so the
-// circle had one member and `shift+tab` (which lands on settings, and settings
-// always opened) was the only key that appeared to work.
+// The cause was not the arrows — it was `tab` walking into the tasks place, being refused
+// because this machine had run no work, and being put straight back on home. Every press
+// did that, so the circle had one member and `shift+tab` (which lands on settings, and
+// settings always opened) was the only key that appeared to work.
 //
 // THE WALK ANSWERED IT BY STEPPING PAST A SHUT ROOM. Then the refusals went
 // (pages.go's [app.showPage]), and with them the idea of a shut room — so the

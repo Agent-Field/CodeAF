@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 )
 
 const taskCleanupFile = ".task-delete-cleanup.json"
@@ -56,7 +58,7 @@ func writeTaskCleanup(file string, receipts map[string]taskCleanup) error {
 	if err = os.WriteFile(path+".tmp", raw, 0600); err != nil {
 		return err
 	}
-	return os.Rename(path+".tmp", path)
+	return fsreplace.Rename(path+".tmp", path)
 }
 
 func finishTaskCleanup(owner *Agent, file, chat, id string) error {

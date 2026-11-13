@@ -11,7 +11,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/store"
 )
 
-// jargonWords is docs/JOURNEY.md's design filter as something a test can run:
+// jargonWords is the implementation's design filter as something a test can run:
 // internally we may speak of leaves, crafts and charters; the user only ever
 // experiences steps, the way we already do this, and a standing rule. Every
 // receipt this package composes goes into the thread verbatim, so these are

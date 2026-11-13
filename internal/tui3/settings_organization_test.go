@@ -13,7 +13,7 @@ func TestSettingsOrganizationCategoriesAndAdvancedSearch(t *testing.T) {
 	if settingTabs[a.sheet.tab] != tabGeneral {
 		t.Fatal("settings must open on General")
 	}
-	want := "General,Models,Memory,Tasks,AI teams,Permissions,Spending,Connections,Privacy"
+	want := "General,Models,Memory,Tasks,AI teams,Permissions,Spending,Connections,Devices,Privacy"
 	if strings.Join(settingTabs, ",") != want {
 		t.Fatalf("categories: %v", settingTabs)
 	}
@@ -142,6 +142,9 @@ func TestSettingsOrganizationCaretAndMemoryDoor(t *testing.T) {
 	a.sheet.build()
 	if len(a.sheet.items) == 0 || !a.sheet.items[0].memoryDoor {
 		t.Fatal("Memory has no inspect door")
+	}
+	if got := a.sheet.items[0].meta.label; got != "Open the Memory tab" {
+		t.Fatalf("inspect door names the wrong tab: %q", got)
 	}
 	a.sheet.cursor = 0
 	a.activate()

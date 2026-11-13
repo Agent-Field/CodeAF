@@ -162,7 +162,7 @@ func resumedRunRows(t *testing.T, script func(*orchestrateFamily)) (*Agent, []Ta
 	return today, runRowsOf(familyNotices(t, today.TaskUpdates()), "7")
 }
 
-// THE OWNER'S SCENARIO. A run was mid-flight when codeaf closed; the next
+// THE REGRESSION SCENARIO. A run was mid-flight when codeaf closed; the next
 // morning the conversation is reopened and its rows are on the column again —
 // not pretending to be alive, and not pretending to have failed either.
 //

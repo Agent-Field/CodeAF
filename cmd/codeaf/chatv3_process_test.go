@@ -4,11 +4,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/tui3"
@@ -149,7 +151,7 @@ type gateOnly struct {
 	recordingGate
 }
 
-// THE BUG THIS LANE FIXES, at the door's end.
+// THE BUG this test FIXES, at the door's end.
 //
 // The three approval seams used to be minted once, at boot, around the boot
 // agent, and the surface went on holding them through every /new and every
@@ -175,7 +177,7 @@ func TestABankedRuleReachesTheAgentItWasMintedWith(t *testing.T) {
 		t.Fatalf("the always was not saved: %v", err)
 	}
 	if len(closed.pushed) != 0 {
-		t.Fatal("the rebuilt gate went into the conversation that was closed — the bug this lane fixes")
+		t.Fatal("the rebuilt gate went into the conversation that was closed")
 	}
 	if len(front.pushed) != 1 || front.pushed[0] == nil {
 		t.Fatalf("the conversation in front was handed %d gates", len(front.pushed))
@@ -379,4 +381,62 @@ func waitForStandingTick(t *testing.T, root string, interval time.Duration) {
 		time.Sleep(interval)
 	}
 	t.Fatal("standing ticker did not take its lock")
+}
+
+// Provider handoffs and engine launches run on different app wire callers.
+func TestAppKeysMovedWhileOpeningLaunch(t *testing.T) {
+	server := newV3ClientDoorServer(t)
+	t.Setenv("CODEAF_BASE_URL", server.URL)
+	proc := v3TestProcess(t)
+	t.Setenv(config.APIKeyEnv, "")
+	t.Setenv("OPENAI_API_KEY", "")
+	engineProcess.mu.Lock()
+	previous := engineProcess.proc
+	engineProcess.proc = proc
+	engineProcess.mu.Unlock()
+	defer func() {
+		engineProcess.mu.Lock()
+		engineProcess.proc = previous
+		engineProcess.mu.Unlock()
+	}()
+	backend := &appBackend{keys: config.NewAppCredentials()}
+	workspace := t.TempDir()
+	stop := make(chan struct{})
+	ready := make(chan struct{})
+	var workers sync.WaitGroup
+	workers.Add(1)
+	guard.Go("test/keys-moved-launch", func() {
+		defer workers.Done()
+		for i := 0; ; i++ {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			key := "test-key-A"
+			if i%2 != 0 {
+				key = "test-key-B"
+			}
+			backend.keys.Set(modelsource.DefaultID, key)
+			backend.keysMoved(modelsource.DefaultID)
+			if i == 0 {
+				close(ready)
+			}
+		}
+	})
+	defer func() { close(stop); workers.Wait() }()
+	<-ready
+	for range 10 {
+		launch, err := openV3Launch(proc, v3Options{Model: "test/model", Workspace: workspace, OneModel: true})
+		if err != nil {
+			t.Fatal("launch failed during provider handoff")
+		}
+		if launch.Settings.APIKey != "test-key-A" && launch.Settings.APIKey != "test-key-B" {
+			t.Fatal("launch did not receive a complete provider key")
+		}
+		sources := launch.Settings.Sources.All()
+		if len(sources) == 0 || sources[0].Key != launch.Settings.APIKey {
+			t.Fatal("launch settings mixed provider handoffs")
+		}
+	}
 }

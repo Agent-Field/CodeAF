@@ -13,8 +13,8 @@ import (
 )
 
 // TestC7OldServiceRefusesTakesAcrossClients proves C7 at the HTTP door: a
-// service without the promise never receives a take, from any client, and its
-// absence is read again before each attempt (one read per refused take).
+// service without the promise never receives a forced take, from any client,
+// and its absence is read again before each attempt (one read per refused take).
 func TestC7OldServiceRefusesTakesAcrossClients(t *testing.T) {
 	reads, takes := 0, 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -26,15 +26,68 @@ func TestC7OldServiceRefusesTakesAcrossClients(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(directory.CellView{})
 	}))
 	defer srv.Close()
-	for _, opts := range []directory.AcquireOpts{{Force: true}, {RequireConditional: true}} {
+	for range 2 {
 		client := directory.NewHTTP(srv.URL, fakeSign("id_one", devA), srv.Client())
-		_, err := client.Acquire(context.Background(), cellX, opts)
+		_, err := client.Acquire(context.Background(), cellX, directory.AcquireOpts{Force: true, RequireConditional: true})
 		if !errors.Is(err, directory.ErrConditionalTake) {
 			t.Fatalf("take = %v", err)
 		}
 	}
 	if reads != 2 || takes != 0 {
 		t.Fatalf("requests: reads=%d takes=%d", reads, takes)
+	}
+}
+
+func TestHTTPF2HeadGuardRequiresAtomicSupport(t *testing.T) {
+	for _, supported := range []bool{false, true} {
+		t.Run(map[bool]string{false: "legacy", true: "current"}[supported], func(t *testing.T) {
+			takes := 0
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set(directory.ConditionalTakeHeader, "1")
+				if supported {
+					w.Header().Set(directory.HeadTakeHeader, "1")
+				}
+				if strings.HasSuffix(r.URL.Path, "/acquire") {
+					takes++
+					var body directory.AcquireOpts
+					if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+						t.Error(err)
+					}
+					if body.Expect == nil || body.Expect.Head != "saved-head" {
+						t.Error("F2 head guard was stripped")
+					}
+				}
+				_ = json.NewEncoder(w).Encode(directory.CellView{})
+			}))
+			defer srv.Close()
+			client := directory.NewHTTP(srv.URL, fakeSign("id_one", devA), srv.Client())
+			_, err := client.Acquire(t.Context(), cellX, directory.AcquireOpts{Force: true, Expect: &directory.LeaseExpectation{Device: devA, Fence: 1, Head: "saved-head"}})
+			if supported && (err != nil || takes != 1) {
+				t.Fatalf("F2 supported take failed: %v, %d requests", err, takes)
+			}
+			if !supported && (!errors.Is(err, directory.ErrConditionalTake) || takes != 0) {
+				t.Fatalf("F2 unsupported atomic guard was weakened: %v, %d requests", err, takes)
+			}
+		})
+	}
+}
+
+// TestOldServiceStillTakesALapsedLease pins #2072: a lapsed lease is taken on
+// a service without the promise, because its own acquire still refuses a live
+// holder. Waiting for the service's update must never lock a person out.
+func TestOldServiceStillTakesALapsedLease(t *testing.T) {
+	takes := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/acquire") {
+			takes++
+		}
+		_ = json.NewEncoder(w).Encode(directory.CellView{})
+	}))
+	defer srv.Close()
+	client := directory.NewHTTP(srv.URL, fakeSign("id_one", devA), srv.Client())
+	_, err := client.Acquire(context.Background(), cellX, directory.AcquireOpts{RequireConditional: true, Expect: &directory.LeaseExpectation{Device: devA, Fence: 1}})
+	if err != nil || takes != 1 {
+		t.Fatalf("lapsed take on an old service: err=%v takes=%d", err, takes)
 	}
 }
 

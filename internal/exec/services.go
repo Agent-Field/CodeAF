@@ -2,12 +2,8 @@ package exec
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"io"
-	"os"
 	"os/exec"
-	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/executor"
@@ -19,36 +15,6 @@ const (
 	serviceTerminateGrace = 2 * time.Second
 	serviceStopPoll       = 20 * time.Millisecond
 )
-
-// ProcessStartTime is the platform identity helper used both when a service
-// is recorded and when it is re-adopted. Darwin and the other Unix targets
-// supported by codeaf expose lstart through ps; callers degrade safely when a
-// platform does not.
-func ProcessStartTime(pid int) (time.Time, error) {
-	if pid <= 0 {
-		return time.Time{}, errors.New("invalid pid")
-	}
-	//codeaf:plumbing ps read of a process start time
-	command := exec.Command("ps", "-o", "lstart=", "-p", fmt.Sprint(pid))
-	// ps renders lstart in the caller's locale, which reorders month and day.
-	// Asking for C makes the one format we depend on the one we get; the
-	// day-first layouts below keep a platform that ignores the request usable.
-	command.Env = append(os.Environ(), "LC_ALL=C", "LANG=C", "LC_TIME=C")
-	output, err := command.Output()
-	if err != nil {
-		return time.Time{}, err
-	}
-	raw := strings.Join(strings.Fields(string(output)), " ")
-	for _, layout := range []string{
-		"Mon Jan 2 15:04:05 2006", "Mon Jan _2 15:04:05 2006",
-		"Mon 2 Jan 15:04:05 2006", "Jan 2 15:04:05 2006", "2 Jan 15:04:05 2006",
-	} {
-		if parsed, parseErr := time.ParseInLocation(layout, raw, time.Local); parseErr == nil {
-			return parsed.UTC(), nil
-		}
-	}
-	return time.Time{}, fmt.Errorf("parse process start time %q", raw)
-}
 
 // ProcessIdentityMatches protects re-adoption from PID reuse. A platform that
 // cannot expose start time reports an error; callers can preserve the process
@@ -70,7 +36,7 @@ func StartDetachedService(command, dir, logPath string) (int, time.Time, error) 
 	}
 	cmd, err := detachedCommand(executor.Host, context.Background(), dir, command, nil, logFile, 0)
 	if err == nil {
-		err = cmd.Start()
+		err = processgroup.Start(cmd)
 	}
 	if err != nil {
 		_ = logFile.Close()
@@ -100,7 +66,7 @@ func detachedCommand(
 		return nil, err
 	}
 	cmd, err := seat.In(dir).Command(ctx, executor.ExecRequest{
-		Argv: []string{bash, "-o", "pipefail", "-lc", command}, Env: environment,
+		Argv: append([]string{bash}, commandshell.PipefailArgs(bash, []string{"-lc"}, command)...), Env: environment,
 		Group: executor.GroupSession, WaitDelay: wait,
 	})
 	if err != nil {
@@ -125,25 +91,21 @@ func StopServiceProcess(pid int, startedAt time.Time) error {
 		return nil
 	}
 	if matched, err := ProcessIdentityMatches(pid, startedAt); err != nil || !matched {
-		return nil
+		return unverifiedServiceStop(pid)
 	}
-	if err := processgroup.Terminate(pid); err != nil {
+	if err := serviceTerminate(pid); err != nil {
 		return err
 	}
 	deadline := time.Now().Add(serviceTerminateGrace)
-	for serviceLeaderAlive(pid) && time.Now().Before(deadline) {
+	for serviceTreeAlive(pid) && time.Now().Before(deadline) {
 		time.Sleep(serviceStopPoll)
 	}
-	if serviceLeaderAlive(pid) {
+	if serviceTreeAlive(pid) {
 		if err := processgroup.Kill(pid); err != nil {
 			return err
 		}
 	}
-	// One last sweep of anything the session leader left behind. Best effort:
-	// the group is commonly already gone, and a stop must not fail for saying
-	// so twice.
-	_ = processgroup.Kill(pid)
-	return nil
+	return finishServiceStop(pid)
 }
 
 // serviceLeaderAlive asks about the leader rather than the group: a group

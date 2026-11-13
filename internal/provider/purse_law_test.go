@@ -203,9 +203,9 @@ func TestTheDeletedAllowanceIsNotStillDescribed(t *testing.T) {
 		"stopped", "gone", "replaced", "does not exist", "gets deleted",
 	}
 	// The live prose: the two packages that owned the rail and the two documents
-	// that publish what bounds a wait. `docs/changes` and `bench/lanelab/REPORT.md`
+	// that publish what bounds a wait. `docs/changes` and `the implementation`
 	// are records of what was true on a day and are deliberately not read.
-	for _, where := range []string{"../provider", "../lane", "../../docs/ARCHITECTURE.md", "../../docs/design/waiting/DESIGN.md"} {
+	for _, where := range []string{"../provider", "../lane", "../../docs/ARCHITECTURE.md"} {
 		for _, file := range prose(t, where) {
 			// THE LAW IS ALLOWED TO SAY THE NAMES IT BANS. Every dead identifier
 			// is written out in this file, twice — once in the list and once in

@@ -176,6 +176,9 @@ func (e nobodyToRead) Unwrap() error { return ErrNobodyToRead }
 // (assignment.go, task_ledger.go). [SteerReceipt.Held] is how a surface tells
 // that apart from delivery, in the engine's own words.
 func (a *Agent) SteerTask(id uint64, text string) (SteerReceipt, error) {
+	if err := a.CheckWork(); err != nil {
+		return SteerReceipt{}, err
+	}
 	return a.sayToTask(id, text, fromPerson, spokenSource{})
 }
 
@@ -281,6 +284,9 @@ func (s SteerSource) spoken() spokenSource {
 // made worse off — it simply cannot ask again safely, and the surface that
 // cannot is the one that must keep the words and ask the person.
 func (a *Agent) SteerTaskFrom(id uint64, text string, from SteerSource) (SteerReceipt, error) {
+	if err := a.CheckWork(); err != nil {
+		return SteerReceipt{}, err
+	}
 	// THE CONVERSATION IS CHECKED FIRST, because the id below is only meaningful
 	// inside the one the caller meant ([SteerSource.Conversation]).
 	if err := a.thisConversation(from.Conversation); err != nil {
@@ -531,7 +537,7 @@ func (a *Agent) deliverTaskDirection(node *TaskNode, text string, origin message
 	// RECORD — it reaches the worker when the worker next assembles a request —
 	// and until this call the record was the whole of it: a `continue` typed at a
 	// step thirteen minutes into a pace was drained when that request ended and
-	// not before, which is the other half of the owner's 14:40:10 evidence and
+	// not before, which is the second half of the model-change reproduction and
 	// the half that was still broken after the model half was fixed.
 	//
 	// IT IS THE SAME DOOR THE PICK GOES THROUGH (steer.go's [Agent.hearTheWord]),
@@ -877,7 +883,17 @@ func (a *Agent) WatchTaskRoom(id uint64) (<-chan Event, func(), error) {
 func (a *Agent) TaskJournal(id uint64) string {
 	node := a.taskNode(id)
 	if node == nil {
-		return ""
+		graph := a.tasker()
+		if graph == nil {
+			return ""
+		}
+		if _, known := runRowOf(graph, id); !known {
+			return ""
+		}
+		a.mu.Lock()
+		place, session := a.familyPlace(nil), a.sessionID()
+		a.mu.Unlock()
+		return findWorkerHistory(place, session, id).journal
 	}
 	if path := node.journalPath(); path != "" {
 		return path

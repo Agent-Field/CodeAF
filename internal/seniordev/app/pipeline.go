@@ -401,7 +401,7 @@ func splitModelID(value string) (providerID, modelID string) {
 
 func gitOutput(ctx context.Context, workspace string, args ...string) string {
 	//codeaf:plumbing git read of the workspace
-	command := exec.CommandContext(ctx, "git", args...)
+	command := exec.CommandContext(ctx, "git", append([]string{"--no-optional-locks"}, args...)...)
 	command.Dir = workspace
 	output, err := command.Output()
 	if err != nil {

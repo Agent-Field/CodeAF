@@ -63,10 +63,9 @@ func TestABareManualAsksTheModelForTheTour(t *testing.T) {
 	}
 }
 
-// ON HOME THE QUESTION OPENS A CONVERSATION FIRST AND IS ASKED THERE. It used to
-// be an answer echoed to home's line, and the answer — the pages, printed —
-// went into the conversation behind home, where the person who typed it could
-// see nothing happen at all (the owner met it, 2026-09-22).
+// ON HOME THE QUESTION OPENS A CONVERSATION FIRST AND IS ASKED THERE. It used to be an
+// answer echoed to home's line, and the answer — the pages, printed — went into the
+// conversation behind home, where the person who typed it could see nothing happen at all.
 func TestManualOnHomeOpensAConversationAndAsksThere(t *testing.T) {
 	lab := newHomeLab(t)
 	a := lab.door("")

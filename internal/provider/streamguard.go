@@ -352,7 +352,7 @@ const (
 // stallBounds are the three silence bounds ONE REQUEST is guarded by. They are a
 // per-request figure rather than three package constants read directly because
 // the role that asked is what decides how long a silence may last (§F of
-// docs/design/waiting/DESIGN.md), and because the ceiling they have to clear is
+// the implementation), and because the ceiling they have to clear is
 // that same role's.
 type stallBounds struct {
 	first, gap, buffered time.Duration

@@ -37,10 +37,9 @@ import (
 
 // statusText is /status: every fact the status line can carry, one per line.
 //
-// The list is [app.deckItems] whole, because the phone sheet and this command
-// are ONE surface asked for in two ways — its head even says "status"
-// ([deckSheetTitle]). A row that appears on one and not the other would make
-// "what does this session say about itself" a question with two answers.
+// The live facts are [app.deckItems] whole, because the phone sheet and this
+// command share the same status readings. The command also has room for lookup
+// facts and one bounded relay reading that the live frame never fetches.
 //
 // Its differences from the sheet are about the MEDIUM rather than about the
 // facts:
@@ -56,6 +55,9 @@ import (
 //	              written once and read once, so design-law-v2 §16 applies to it
 //	              plainly — and /cost's answer to the same session is "nothing
 //	              spent yet", which this list has to agree with.
+//	sync space    the relay's stored amount and limit, read at launch and again
+//	              after each /status, outside rendering; shown only when both
+//	              are known.
 //
 // The crew used to be a third difference — a line this command added under the
 // model and the sheet did not have. It is on [app.deckItems] now, directly under
@@ -66,8 +68,8 @@ func (a *app) statusText() string {
 	return labelledLines(a.statusItems())
 }
 
-// statusItems is the whole list /status prints: [app.deckItems] with the three
-// differences of medium this command makes, then the build and file rows. It is
+// statusItems is the whole list /status prints: the live facts from [app.deckItems],
+// the optional relay reading, then the build and file rows. It is
 // the ONE list behind both the text form and [app.statusJSON], so the two forms
 // cannot disagree about a fact. The transformations below are described at
 // length on [app.statusText]; they live here because they are the list rather
@@ -102,7 +104,7 @@ func (a *app) statusItems() []deckItem {
 		// link the row says `devbox · 3ms`; /status has room to say what that
 		// number is. While redialling, the existing sentence is already whole
 		// and is kept verbatim instead.
-		if a.hosted() && item.label == deckSegWords[segLink] && a.linkLatency > 0 && a.linkNote() == "" {
+		if a.hosted() && item.label == deckSegWords[segLink] && a.linkLatencyFresh() && a.linkNote() == "" {
 			item.value = "the round trip to " + a.host + " is about " + latencyWord(a.linkLatency)
 		}
 		// AND AN OWNED SESSION SAYS WHERE IT ACTUALLY IS, here and nowhere else.
@@ -114,6 +116,11 @@ func (a *app) statusItems() []deckItem {
 			item.value = a.workspace
 		}
 		items = append(items, item)
+	}
+	if a.relayStorageOff() {
+		items = append(items, deckItem{label: storageLabel, value: "off"})
+	} else if word := a.syncSpaceWord(); word != "" {
+		items = append(items, deckItem{label: "sync space", value: word})
 	}
 	// phone lane: `keeping watch` used to be added HERE and nowhere else, which
 	// made it the one fact /status carried that the phone's own sheet did not —
@@ -200,11 +207,19 @@ func (a *app) statusJSON() string {
 func (a *app) statusFacts(text string) []string {
 	facts := columnFacts(text, false)
 	crew := a.crewWord()
-	if crew == "" {
+	space := a.syncSpaceWord()
+	if a.relayStorageOff() {
+		space = "off"
+	}
+	if crew == "" && space == "" {
 		return facts
 	}
 	out := make([]string, 0, len(facts)+2)
 	for _, fact := range facts {
+		// Sync space stays dim as a whole line, including when there is no crew row.
+		if fact == space {
+			continue
+		}
 		if fact == crew {
 			// AND UNDER `--one-model` THERE IS NOTHING HERE TO LIFT. The word names
 			// the flag rather than four rows ([app.crewReading]), the ids

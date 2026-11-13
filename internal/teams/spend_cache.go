@@ -9,8 +9,9 @@ import (
 
 type spendQuery struct{ profile, ledger, team, day string }
 type spendReading struct {
-	teams, legacy, ledger os.FileInfo
-	value                 Spend
+	teams  string
+	ledger os.FileInfo
+	value  Spend
 }
 type teamSpendMemory struct {
 	mu    sync.Mutex
@@ -33,16 +34,13 @@ func (m *teamSpendMemory) read(profile, ledger, team, day string) (Spend, error)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	key := spendQuery{profile, ledger, team, day}
-	t, te := os.Stat(Path(profile))
-	l, le := os.Stat(legacyPath(profile))
-	u, ue := os.Stat(ledger)
-	for _, err := range []error{te, le, ue} {
-		if err != nil && !os.IsNotExist(err) {
-			return Spend{}, err
-		}
+	t := Stamp(profile)
+	u, err := os.Stat(ledger)
+	if err != nil && !os.IsNotExist(err) {
+		return Spend{}, err
 	}
 	held, ok := m.held[key]
-	if ok && sameSpendFile(t, held.teams) && sameSpendFile(l, held.legacy) && sameSpendFile(u, held.ledger) {
+	if ok && t == held.teams && sameSpendFile(u, held.ledger) {
 		out := held.value
 		out.ByMember = maps.Clone(out.ByMember)
 		return out, nil
@@ -61,7 +59,7 @@ func (m *teamSpendMemory) read(profile, ledger, team, day string) (Spend, error)
 			break
 		}
 	}
-	m.held[key] = spendReading{t, l, u, out}
+	m.held[key] = spendReading{t, u, out}
 	out.ByMember = maps.Clone(out.ByMember)
 	return out, nil
 }

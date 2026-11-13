@@ -1065,3 +1065,10 @@ func TestATypedNamedTagRecordsTheLookedUpPublishMoment(t *testing.T) {
 		t.Fatalf("the typed install recorded %+v, ok = %t; want the looked-up moment %s", record, ok, publishedAt)
 	}
 }
+
+func TestUpdateNoticeNamesTheInstalledProgram(t *testing.T) {
+	got := updateAheadNotice(codeupdate.Available{Latest: "dev-new", Running: "dev-old", Name: "devaf"})
+	if got != "devaf dev-new is out · you have dev-old" {
+		t.Fatalf("notice %q", got)
+	}
+}

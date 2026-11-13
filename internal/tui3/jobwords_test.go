@@ -6,7 +6,7 @@ package tui3
 // they said different things about the same process: the column read
 // [jobStateWord] and the page rendered `string(job.State)`, the engine's own
 // enum, with nothing between it and the screen
-// (docs/design/polish/audit-tasks.md rows 11 and 16).
+//.
 
 import (
 	"strings"

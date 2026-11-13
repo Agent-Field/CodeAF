@@ -274,6 +274,9 @@ type streamDelta struct {
 	ReasoningContent string          `json:"reasoning_content,omitempty"`
 	ReasoningText    string          `json:"reasoning_text,omitempty"`
 	ReasoningDetails json.RawMessage `json:"reasoning_details,omitempty"`
+	// Steps are tool calls a model that runs its own tools has already run and
+	// finished ([StreamStepsRan]); no endpoint but such a transport sends them.
+	Steps json.RawMessage `json:"codeaf_steps,omitempty"`
 }
 
 // thinking reports that this delta carried thought rather than answer.

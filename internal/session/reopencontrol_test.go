@@ -72,6 +72,7 @@ func TestReopenedConversationKeepsEveryContinuationOutOfTheExchange(t *testing.T
 		checkpointLoadNudgeLead([]string{"ask"}),
 		checkpointAskNudgeLead("an option needs a label"),
 		truncationContinuationNote,
+		ResumedStepBrief("write: Add HasPositive. You are the write step of a codeaf run."),
 	}
 	messages := []ai.Message{textMessage("user", "Please finish the work.")}
 	for _, continuation := range continuations {

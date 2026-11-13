@@ -16,7 +16,7 @@ import (
 
 // tasktier_test.go proves the two halves of the one table: that every reading
 // this surface can be handed draws the cell and the row the design says it does
-// (docs/design/task-states/DESIGN.md), and that no source in this package has
+//, and that no source in this package has
 // gone back to spelling a state for itself.
 
 // tierStatus is one node's facts as a surface would hold them, read.
@@ -340,7 +340,7 @@ func TestTheRosterAndTheRecordAgreeOnEveryShape(t *testing.T) {
 
 // tierDeletedWords are the person-facing spellings the task-states wave removed.
 // Each was one surface's private name for a reading internal/session now spells
-// once (docs/design/task-states/DESIGN.md).
+// once.
 var tierDeletedWords = []string{
 	"needs your look",
 	"finished, but needs your look",

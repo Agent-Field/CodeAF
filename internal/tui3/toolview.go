@@ -12,7 +12,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// THE TOOL CLUSTER (docs/CHAT-V3.md D11).
+// THE TOOL CLUSTER.
 //
 // A turn's calls are one object on the screen, not a stream of them: a rail
 // down the left, one row per call, the elbow closing the run.
@@ -1427,7 +1427,7 @@ func (a *app) toolLimit(e *entry) time.Duration {
 // where every other figure obeys the emptiness law — a task's record card read
 // `done · landed 1h ago · ran 6m 0s` beside a row that had just said `42m`, so
 // the same clock changed grain across one keypress
-// (docs/design/polish/audit-tasks.md row 17). It is the law
+// . It is the law
 // [reltime.Elapsed] already states for the settled figure, said here for the
 // live one; `4m 30s` is untouched.
 func countUpWord(d time.Duration) string {
@@ -1482,11 +1482,10 @@ func countUpRungs(big int, bigUnit string, small int, smallUnit string) string {
 // waiting on a person, in which case the whole row is the question.
 func (a *app) paintName(e *entry, name string) string {
 	if e.status == toolConsent {
-		// THE WORDS ARE INK AND THE MARK IS THE AMBER (owner ruling 2026-09-11,
-		// colour pick C). A row waiting on a person already wears `?` in the
-		// gutter; painting its name and its target in the question hue as well
-		// was the same claim made three times, and it made the transcript shout
-		// at the exact moment a person was trying to READ a command.
+		// THE WORDS ARE INK AND THE MARK IS THE AMBER. A row waiting on a person already wears
+		// `?` in the gutter; painting its name and its target in the question hue as well was
+		// the same claim made three times, and it made the transcript shout at the exact moment
+		// a person was trying to READ a command.
 		return a.pal.ink(name)
 	}
 	return a.pal.muted(name)

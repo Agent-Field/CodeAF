@@ -2,7 +2,9 @@ bin/
 # The furrow the build fetches, and the copy it stages for go:embed. Both are
 # six megabytes of somebody else's release; internal/furrowbin/pin.json is the
 # committed, auditable half and these are rebuilt from it by `make furrow`.
-third_party/
+third_party/*
+!third_party/raft/
+!third_party/raft-patch/
 internal/furrowbin/cache/furrow-*.gz
 .obs/
 *.log
@@ -27,7 +29,7 @@ bench/swarm/results/
 # (~/bench-diet-out and ~/bench-diet-build), because a cell's workspace nested
 # inside this repository hands the model the harness instead of its fixture.
 # This line is the backstop for an --out somebody points back in here anyway.
-bench/prompt-diet/out/
+the benchmark harness
 # The manuals are generated for packed release builds. Their Markdown folders
 # are the tracked source; committing these shared binaries causes every branch
 # that documents a feature to conflict with every other one.
@@ -54,3 +56,6 @@ relay/hosted/.wrangler/
 
 # Native Windows test executables are local acceptance artifacts.
 .wintest/
+
+# The hosted reactor is generated from the shared, pinned Go core.
+/relay/hosted/src/raft/core.wasm

@@ -59,9 +59,9 @@ func liveProfileDir() string {
 // somewhere neither the product nor this suite reads.
 const noLiveKeyReason = "no provider key on this machine by any road the product reads " +
 	"(OPENROUTER_API_KEY, OPENAI_API_KEY, or the profile's api_key row): " +
-	"this lane drives a real model or it says nothing"
+	"this test drives a real model or it says nothing"
 
-// liveKey is the key this lane talks with, or a skip when the machine has none.
+// liveKey is the key this test talks with, or a skip when the machine has none.
 //
 // EVERY GATE IN THIS PACKAGE GOES THROUGH IT, and internal/e2e's untagged
 // [TestEveryLaneAsksForItsKeyTheWayTheProductDoes] fails the pull request on a

@@ -9,7 +9,7 @@ import (
 
 // The remap seam (10.2.7, 12.4.4).
 //
-// internal/sanitize landed the remap MECHANISM in Wave 1 with an identity
+// internal/sanitize supplies the remap mechanism with an identity
 // table, and this package supplies the palette that replaces it. The tests
 // below run the real sanitizer with the real table, because a [16]int that
 // merely looks right is not a seam — the thing worth proving is that the

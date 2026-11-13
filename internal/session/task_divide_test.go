@@ -133,7 +133,7 @@ const narrowEvidence = "there are 3 bugs in the reconciler"
 // four planner arms against four readings of that gate over 273 judged plan
 // draws and put the arm with the gate OFF on the front — same quality as the
 // best armed cell, a third of its unrecoverable draws, the lowest cost
-// (docs/design/plan-gate-doe/REPORT.md). So an unpinned binary now keeps every
+// . So an unpinned binary now keeps every
 // division a worker asks for, and the refusal, the tiebreak and the mastermind
 // behind it are reachable only where a run asked for a floor.
 //
@@ -444,7 +444,7 @@ func TestTheRoadOffProducesWorkersWithoutTheVerb(t *testing.T) {
 // The evidence gate was armed by default and refused this exact division for
 // free; a designed experiment then measured four planner arms against four
 // readings of it and put the arm with the gate OFF on the front
-// (docs/design/plan-gate-doe/REPORT.md), so the default moved on 2026-09-02.
+// , so the default moved on 2026-09-02.
 // The same three-bug evidence the floor calls too narrow now becomes parts,
 // because the worker asking is the one that read the work.
 //
@@ -1120,14 +1120,20 @@ func TestAStoppedPartsSpendStillReachesTheSessionLedger(t *testing.T) {
 
 func TestADivisionWiderThanTheCapIsRefusedWholeRatherThanHalfTaken(t *testing.T) {
 	nest := newDivideNest(t, wideBrief, 0)
-	// Four parts already handed out leaves room for one, and a division of
-	// three is not a division of one.
-	for i := 0; i < taskFanLimit-1; i++ {
-		if answer := nest.divide(t, divideArgs(wideEvidence, 2)); i == 0 && !strings.Contains(answer, "split into") {
+	// Distinct parts leave room for two, so a division of three cannot fit.
+	for i := 0; i < (taskFanLimit-1)/2; i++ {
+		parts := []dividePart{
+			{Title: fmt.Sprintf("Existing north %d", i), Summary: "s", Brief: "b", Acceptance: "a"},
+			{Title: fmt.Sprintf("Existing south %d", i), Summary: "s", Brief: "b", Acceptance: "a"},
+		}
+		if answer := nest.divide(t, divideArgsFor(wideEvidence, parts...)); i == 0 && !strings.Contains(answer, "split into") {
 			t.Fatalf("the first division was refused: %q", answer)
 		}
 	}
 	before := nest.graph.children(nest.parent.id)
+	if len(before) != taskFanLimit-2 {
+		t.Fatalf("the fixture admitted %d distinct parts, want %d", len(before), taskFanLimit-2)
+	}
 	answer := nest.divide(t, divideArgs(wideEvidence, 3))
 	if !strings.Contains(answer, "as many as one task may") {
 		t.Fatalf("the worker was told %q, want the cap said in the words it is said in everywhere else", answer)
@@ -1942,7 +1948,7 @@ func TestTheDivisionSchemaCarriesTheGrade(t *testing.T) {
 //
 // The floor clause in divide_work's description was unconditional while the
 // gate was armed by default; the experiment that turned the gate off
-// (docs/design/plan-gate-doe/REPORT.md) made it a promise about one pinned
+// made it a promise about one pinned
 // binary. A model reasons from this string, so a floor it is told about and
 // that nobody will enforce costs a division that would have been granted —
 // which is CLAUDE.md's law about system.md, applied to a tool block.

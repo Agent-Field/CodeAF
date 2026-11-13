@@ -9,7 +9,7 @@ import (
 // also names the folder that conversation works in.
 //
 // The mission-control ruling retired two of the three answers this surface used
-// to give (docs/design/home-mission-control/DESIGN.md §1, "What is retired"):
+// to give:
 // a project tag on a row in THIS WINDOW'S OWN FOLDER, where the tag is the same
 // word on every row and says nothing that tells one row from another; and `~`
 // as a project name, because the home directory is where a person stands rather

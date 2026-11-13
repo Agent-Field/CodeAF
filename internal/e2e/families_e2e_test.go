@@ -2,7 +2,7 @@
 
 // TASK FAMILIES, END TO END, ON BOTH GROUNDS.
 //
-// WHAT THIS LANE PROVES. A task that turns out to be wider than one worker hands
+// WHAT this test PROVES. A task that turns out to be wider than one worker hands
 // parts out under itself, each part works somewhere of its own, and the whole
 // family's product comes home into the person's material — on a git repository
 // and on a plain folder alike. Everything below is asserted ON DISK: the files
@@ -68,7 +68,7 @@ const (
 	// not a fault — so the ask is put twice before the lane calls it a failure,
 	// and the failure quotes what the road actually decided.
 	familyAttempts = 2
-	// familyCap is what one scenario may spend before this lane says something is
+	// familyCap is what one scenario may spend before this test says something is
 	// wrong with the run rather than with the work. A settled family of three
 	// parts on this model measures in cents; a dollar is a runaway.
 	familyCap = 1.00
@@ -134,7 +134,7 @@ var textRoles = func() []roles.Role {
 }()
 
 // familyConfig is what the v3 door wires for work, applied to a conversation
-// this lane drives directly. Everything here is a row cmd/codeaf reads
+// this test drives directly. Everything here is a row cmd/codeaf reads
 // (chatv3.go's applyV3Governance); the two departures from a person's own
 // launch are named where they are made.
 func familyConfig(w *world) func(*session.Config) {
@@ -155,7 +155,7 @@ func familyConfig(w *world) func(*session.Config) {
 		cfg.AskConsent = false
 		cfg.TaskAutoApproveSeconds = 0
 		// THE VERIFIED FRONTIER IS OFF, AND IT IS A SCOPE RULING RATHER THAN A
-		// CONVENIENCE. What this lane measures is where a part works and how its
+		// CONVENIENCE. What this test measures is where a part works and how its
 		// work comes home; the check is a separate gate with its own tests, and
 		// leaving it on would put a cheap checker's opinion between a finished
 		// part and the person's folder — so a red here would say nothing about
@@ -346,7 +346,7 @@ func (r *familyRun) awaitFamilyTree(ctx context.Context) {
 // person's folder held when the copy was taken. Both are internal/session's own
 // (task_run.go's codeafDroppings, task_mirror_manners.go's
 // groundBaselineRecord), spelled again here because they are unexported there
-// and this lane reads the disk rather than the engine.
+// and this test reads the disk rather than the engine.
 const (
 	codeafDroppings      = ".codeaf"
 	groundBaselineRecord = "ground-baseline.json"
@@ -518,10 +518,10 @@ func (r *familyRun) journals() string {
 func TestFamilies(t *testing.T) {
 	w := newWorld(t)
 	pinEveryTextModel(t)
-	// THE WIDTH FLOOR IS OFF FOR THIS LANE, and it is the switch cmd/codeaf's own
+	// THE WIDTH FLOOR IS OFF FOR this test, and it is the switch cmd/codeaf's own
 	// tests use (partsroute_test.go, method_test.go). internal/splitgate refuses a
 	// division whose evidence names fewer than six separate items, which is a
-	// finding about whether handing work out PAYS — a question this lane is not
+	// finding about whether handing work out PAYS — a question this test is not
 	// asking. Three sections and two write-ups are the smallest families that can
 	// prove isolation and landing, and they are deliberately below that floor.
 	t.Setenv("CODEAF_SPLITGATE", "0")
@@ -755,7 +755,7 @@ func eachPartWorkedApart(t *testing.T, run *familyRun, parent taskRow) {
 // commit, on its own branch, merged in — so the history is the proof, and the
 // answer is what the landing laws below are then read against.
 //
-// A PART WHOSE BRANCH DID NOT MERGE IS SAID OUT LOUD AND IS NOT THIS LANE'S RED.
+// A PART WHOSE BRANCH DID NOT MERGE IS SAID OUT LOUD AND IS NOT this test'S RED.
 // A conflicted branch is kept and named, by design, and it happens here when a
 // part writes outside the file its brief gave it — which is a finding about the
 // worker rather than about isolation or landing. What must never happen is a
@@ -787,7 +787,7 @@ func whatCameBack(t *testing.T, run *familyRun, tree string) map[string]string {
 			// commits a node's ledger as `task: <title>` at the landing, and a
 			// worker is told never to commit at all — but a worker that ran
 			// `git commit` inside its own worktree has still done its work in
-			// isolation and still merged it back, which is everything this lane is
+			// isolation and still merged it back, which is everything this test is
 			// about. Failing here would make the road's laws hostage to a liberty
 			// one worker took inside a directory that is entirely its own.
 			if len(first) > 1 && !strings.HasPrefix(first[1], "task: ") {

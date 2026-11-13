@@ -56,7 +56,7 @@ type Driving struct {
 	// and it draws nothing at all.
 	Yours bool
 	// Machine is the name of the machine whose window has the keyboard —
-	// `spark`, `macbook` — and the empty string when the far end could not say.
+	// `laptop`, `macbook` — and the empty string when the far end could not say.
 	Machine string
 	// Here says the window with the keyboard is another window on THIS machine,
 	// which a person reads as one they forgot rather than as a machine they
@@ -81,7 +81,7 @@ func (a *app) watching() bool {
 // watchWord is the line that stands where the composer stands, and it is the
 // whole of what a watcher is told:
 //
-//	typing from spark now · enter takes it back
+//	typing from laptop now · enter takes it back
 //
 // `another window` is what it says about a window on this same machine, because
 // that is the word codeaf already uses at home for a conversation open somewhere

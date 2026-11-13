@@ -45,7 +45,7 @@ Two spellings of one model:
 | arm | slug | why |
 |---|---|---|
 | codeaf | `~deepseek/deepseek-v4-flash-latest` | codeaf's own alias syntax, and its shipped default (`internal/config/config.go`, `DefaultModel`) |
-| pi, opencode | `deepseek/deepseek-v4-flash-0731` | the concrete OpenRouter id that alias serves (`bench/probelab/REPORT.md`) |
+| pi, opencode | `deepseek/deepseek-v4-flash-0731` | the concrete OpenRouter id that alias serves (`the implementation`) |
 
 The codeaf arm is given the alias rather than the concrete id on purpose: the
 battery measures the tasker **as configured**, not as specially tuned for a

@@ -11,7 +11,7 @@ package tui3
 // Every road that ends in "this directory" ends in [app.referPlace] with a
 // [chosenPlace]: the picker's enter, `/attach` handed a folder, and — when the
 // forming card's ground row lands — its `g`. There is ONE such method on
-// purpose. Lane P2 is what makes a chosen place PERSIST (a `Places` list on the
+// purpose. The place list makes a chosen place PERSIST (a `Places` list on the
 // conversation's meta, feeding the ground ladder's SAID rung); it replaces the
 // body of that one method and does not have to go and find the doors again.
 // What P1 does there is real and not a placeholder: it writes the pick down for
@@ -219,14 +219,12 @@ func (a *app) openFolderPick(query string) tea.Cmd {
 // does both (folderact.go's [app.targetFolderConfirm]). The intent decides
 // only which tip the gesture retires (notice.go).
 //
-// IT IS THE SAME SHEET AS THE CONVERSATION'S AND NOT A SECOND ONE. Home's own
-// answer to "which folder" used to be one line under the box — `alt+p moves
-// the next conversation · or type a path` — which named a chord and a gesture
-// and drew nothing a person could walk. The owner's word for it was that they
-// did not notice it. So the command opens the browser every other surface
-// opens, with three differences that all come from the same fact — the
-// conversation this is about does not exist yet (folderpick.go's
-// [folderPick.forTarget]):
+// IT IS THE SAME SHEET AS THE CONVERSATION'S AND NOT A SECOND ONE. Home's own answer to
+// "which folder" used to be one line under the box — `alt+p moves the next conversation ·
+// or type a path` — which named a chord and a gesture and drew nothing a person could
+// walk. So the command opens the browser every other surface opens, with three differences
+// that all come from the same fact — the conversation this is about does not exist yet
+// (folderpick.go's [folderPick.forTarget]):
 //
 //   - NO FOLDER DOOR IS REQUIRED. A pin is a string on this window; nothing is
 //     referred to any agent, so a session that cannot hold a folder is no reason
@@ -292,8 +290,12 @@ func (a *app) openTargetContextPick(query string, files bool) tea.Cmd {
 // surface has a layer to undraw, routed through one door so none of the ways out
 // can leave the layer behind.
 func (a *app) closeFolderSheet() tea.Cmd {
-	home := a.folder.forTarget
+	home := a.folder.forTarget || a.folder.chooseFolder != nil
+	cancelChoose := a.folder.cancelChoose
 	a.folder.close()
+	if cancelChoose != nil {
+		cancelChoose()
+	}
 	a.touch()
 	if home {
 		return tea.Batch(tea.ClearScreen, a.openHome())
@@ -309,8 +311,7 @@ func (a *app) closeFolderSheet() tea.Cmd {
 //
 // ── WHAT THE INTENT DECIDES, AND WHAT IT DOES NOT ──────────────────────────
 //
-// ONE SHEET SHOWS BOTH KINDS WHICHEVER DOOR OPENED IT, which is the owner's
-// requirement in as many words: a person deciding what this conversation is
+// ONE SHEET SHOWS BOTH KINDS WHICHEVER DOOR OPENED IT: a person deciding what this conversation is
 // about is looking at a repository and a log inside it at the same time, and two
 // browsers would have made them choose the door before they had seen the thing.
 // So the intent decides exactly one thing — WHETHER A FOLDER DOOR IS REQUIRED
@@ -366,12 +367,8 @@ func (a *app) openContextPick(query string, folders bool) tea.Cmd {
 		// BOTH DOORS OPEN BROWSING, AT THE SAME DIRECTORY, AND THIS IS THIS
 		// WAVE'S OWN REPAIR.
 		//
-		// They used to open differently and the owner met the difference: `/attach`
-		// browsed the columns immediately and `/folder` showed a flat list of
-		// remembered PLACES, so one command answered "what is here" and the other
-		// answered "where have you been" — two surfaces behind one sheet. On a
-		// machine with nothing remembered `/folder` refused outright rather than
-		// showing a person the folder they were standing in.
+		// On a machine with nothing remembered `/folder` refused outright rather than showing a
+		// person the folder they were standing in.
 		//
 		// The list is not gone: it is what the box shows the moment there is a word
 		// in it rather than a path, and ctrl+u clears the path to reach it. So the
@@ -930,6 +927,11 @@ func (a *app) tookFolderKids(msg folderKidsMsg) tea.Cmd {
 	if !a.folder.took(msg.path, msg.read) {
 		return nil
 	}
+	// A typed leaf can arrive after the parent listing was requested. Walking
+	// clears the filter, so explicit navigation keeps its own cursor.
+	if a.folder.browsing && msg.path == a.folder.cols.dir {
+		a.folder.browseSync(a.resolvePath)
+	}
 	a.touch()
 	// A LEVEL ARRIVING CAN MAKE THE NEXT ONE WORTH ASKING FOR — the parent of
 	// the level that just landed is not known until the level is, and neither is
@@ -996,12 +998,10 @@ func folderFactsOf(dir string) []string {
 		return nil
 	}
 	if !info.IsDir() {
-		// A FILE'S FACTS ARE THE TWO A CHOOSER CAN ANSWER: how big it is, and when
-		// it last changed. They ride the same right end of the action row a
-		// directory's do [owner review 2026-09-08 §4: metadata answers the SELECTED
-		// item rather than cluttering every row], and neither is drawn where the
-		// disk had nothing to say — a zero-byte file says its size and a file with
-		// no modification time says nothing at all [design-law §EMPTINESS].
+		// A FILE'S FACTS ARE THE TWO A CHOOSER CAN ANSWER: how big it is, and when it last
+		// changed. They ride the same right end of the action row a directory's do, and neither
+		// is drawn where the disk had nothing to say — a zero-byte file says its size and a file
+		// with no modification time says nothing at all [design-law §EMPTINESS].
 		//
 		// IT IS THE MODIFICATION TIME AND IT IS NAMED AS ONE. It is not "last
 		// opened": atime is a lie on every filesystem mounted `relatime`, and
@@ -1190,6 +1190,8 @@ func (a *app) tookFolderStore(msg folderStoreMsg) tea.Cmd {
 	marks, pane := a.folder.marks, a.folder.pane
 	paneTop, paneLeft := a.folder.paneTop, a.folder.paneLeft
 	forTarget, forWorkspace := a.folder.forTarget, a.folder.forWorkspace
+	chooseFolder, chooseTitle := a.folder.chooseFolder, a.folder.chooseTitle
+	cancelChoose := a.folder.cancelChoose
 	a.folder.start(a.folderCandidates(), a.tilde)
 	a.folder.filter, a.folder.facts = filter, facts
 	a.folder.kids, a.folder.asking, a.folder.hidden = kids, asking, hidden
@@ -1202,6 +1204,8 @@ func (a *app) tookFolderStore(msg folderStoreMsg) tea.Cmd {
 	// chosen on it went to the conversation BEHIND home. Its sheet holds nothing
 	// either, for the reason that function gives.
 	a.folder.forTarget, a.folder.forWorkspace = forTarget, forWorkspace
+	a.folder.chooseFolder, a.folder.chooseTitle = chooseFolder, chooseTitle
+	a.folder.cancelChoose = cancelChoose
 	if !forTarget && !forWorkspace {
 		a.markFolderHeld()
 	}

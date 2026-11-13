@@ -39,9 +39,8 @@ const (
 	// viewPanel is the framed panel a question hangs in above the box
 	// (questionpanel.go). It is the ordinary answer.
 	viewPanel
-	// viewSplit is the same panel with its answers in a list on the left and
-	// the evidence of the one the pointer is on in a pane on the right, which
-	// follows the pointer (owner ruling 2026-09-11, preview pick A).
+	// viewSplit is the same panel with its answers in a list on the left and the evidence of
+	// the one the pointer is on in a pane on the right, which follows the pointer.
 	viewSplit
 	// viewRow is one row: a question whose whole decision fits beside its own
 	// answers, and the ratify line, which is not asking anything.
@@ -176,10 +175,9 @@ func questionAnswersCarryBlocks(q session.Question) bool {
 // answers' own words: what taking one produces, what one means, a pick the asker
 // gave a reason for, or a call the question is about.
 //
-// THE CALL IS ONE OF THEM, and it is the permission's whole case: a person
-// allowing a command has to READ the command, so it stands on the panel's first
-// row in the payload hue with what it touches beside it (owner ruling
-// 2026-09-11, consent pick B).
+// THE CALL IS ONE OF THEM, and it is the permission's whole case: a person allowing a
+// command has to READ the command, so it stands on the panel's first row in the payload
+// hue with what it touches beside it.
 func questionCarriesWeight(q session.Question) bool {
 	if q.Subject.Kind == session.SubjectCall {
 		return true

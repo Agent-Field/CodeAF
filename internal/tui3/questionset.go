@@ -32,10 +32,10 @@ import (
 //
 // ── THE TWO DRAWINGS, EXACTLY AS THEY ARE DRAWN ─────────────────────────────
 //
-// TABS (owner pick `multi — A`): one panel, a tab per question across the top
-// edge and a review tab after them. `←→` move between questions, `↑↓` walk the
-// answers of the one on screen, and `enter` takes an answer FOR THIS TAB — it is
-// held, and the panel moves on to the next question still waiting.
+// TABS: one panel, a tab per question across the top edge and a review tab after them.
+// `←→` move between questions, `↑↓` walk the answers of the one on screen, and `enter`
+// takes an answer FOR THIS TAB — it is held, and the panel moves on to the next question
+// still waiting.
 //
 //	╭─ ● storage   ○ naming   ○ tests   ✓ review ───────────────── 1 of 3 ─╮
 //	│                                                                      │
@@ -57,7 +57,7 @@ import (
 //	│                                                                      │
 //	╰─ enter send · ← back · esc later ────────────────────────────────────╯
 //
-// ONE PERMISSION FRAME (the owner's approved "group permissions"): where every
+// ONE PERMISSION FRAME: where every
 // question in the set is a permission with a plain grant and an answer that
 // loses nothing, the set is ONE decision about several calls, and it is asked
 // as one. `one by one` opens the same set as the tabs above.

@@ -117,7 +117,7 @@ func TestPromoteAndDemoteWalkOnlyTheGreyRamp(t *testing.T) {
 	}
 }
 
-// TestCutMarkVocabulary is the truncation law's half of Wave 2 (12.5.2). The
+// TestCutMarkVocabulary is the truncation vocabulary contract. The
 // token layer does not decide WHERE a cut is drawn — that binds the head and
 // the parts renderers — but nothing above can render one honestly if the
 // vocabulary cannot say it.

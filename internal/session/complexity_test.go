@@ -78,7 +78,6 @@ const theCeiling = 15
 // refuse the debt it was built to hold; it can only refuse the next one.
 var complexityDebt = map[string]int{
 	"decodeTasks":           28,
-	"taskSegments":          26,
 	"TaskGraph.runFrontier": 18,
 	"Agent.workTaskNode":    21,
 	"declaredInvalidations": 21,
@@ -116,10 +115,6 @@ var whyTheDebtIsStillThere = map[string]string{
 	// None of these is #260's debt. They are what was already standing in the
 	// engine's other files, ledgered so that the gate covers the whole of it
 	// rather than the half whose names happen to carry an underscore.
-	"taskSegments": "a shell command taken apart into the commands it really runs " +
-		"(taskoutside.go) — quotes, substitutions, separators. It is a lexer, and a lexer's " +
-		"decisions ARE its character classes; splitting it would move them rather than " +
-		"reduce them.",
 	"pathTokens": "one reading of what in a sentence is a path (taskstands.go). Twenty " +
 		"lines, and most of its number is the single `FieldsFunc` predicate naming every " +
 		"character that ends a token.",

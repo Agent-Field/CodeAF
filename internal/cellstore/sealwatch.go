@@ -1,8 +1,15 @@
 package cellstore
 
 import (
+	"errors"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
+	"net/url"
+	"os"
 	"sync"
+	"sync/atomic"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/cell"
 )
 
 // TailQuiet is how long the record must be still, after a turn ended, before
@@ -26,11 +33,23 @@ const TailQuiet = 2 * time.Second
 // surface to draw a segment on sets Say, and the sentences go there as they
 // happen instead of waiting to be taken.
 type SealWatch struct {
+	turn cell.Cell
+
 	// Say, when set, receives each sentence as it happens.
 	Say func(string)
+	// OnRetire releases seat-owned subscriptions after the session stops.
+	OnRetire func()
+	retired  sync.Once
+	stopped  bool
+	owners   int
+	wake     func()
+	listener uint64
 	// OnTurnEnd, when set, hears each time the agent finishes a turn. The door
 	// sets it to the sync side's idle call.
 	OnTurnEnd func()
+	// OnTurnStart, when set, hears each time a turn begins. The door sets it to
+	// the sync side's working call, so other computers can say a turn runs here.
+	OnTurnStart func()
 	// OnTail, when set, is called once the record has been quiet for Quiet after
 	// writes that came behind the turn-end seal. The door seals the tree and asks
 	// the sync side to upload, exactly as it does at the end of a turn, so there
@@ -38,24 +57,36 @@ type SealWatch struct {
 	// it.
 	OnTail func()
 	// Quiet is TailQuiet unless a test sets it shorter.
-	Quiet   time.Duration
-	mu      sync.Mutex
-	idle    bool
-	tail    *time.Timer
-	cause   string
-	said    []string
-	failing bool
+	Quiet       time.Duration
+	mu          sync.Mutex
+	idle        bool
+	started     bool
+	tail        *time.Timer
+	cause       string
+	said        []string
+	changes     chan struct{}
+	failing     bool
+	syncFailing bool
+	// SyncAddress is selected by the door, so failures without a URL still name the right service.
+	SyncAddress string
+	// requiredEnd follows conversation writes, so later bookkeeping cannot hide recovery.
+	requiredEnd int64
 }
 
 // Report takes the outcome of one seal: nil when it held, the error when it did
 // not. It matches [Options.Report], so a watch's method is the recorder's hook.
 func (w *SealWatch) Report(err error) {
+	if syncwords.NetworkFailure(err) {
+		w.SyncReport(err)
+		return
+	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if err == nil {
 		w.recover()
 		return
 	}
+	w.requireTranscript()
 	w.fail(err.Error())
 }
 
@@ -79,6 +110,9 @@ func (w *SealWatch) fail(cause string) {
 }
 
 func (w *SealWatch) recover() {
+	if w.turn.Root != "" && !w.ownTurnSaved() {
+		return
+	}
 	if w.failing {
 		w.say("sealing works again, and the calls made meanwhile are sealed now")
 	}
@@ -91,15 +125,136 @@ func (w *SealWatch) say(sentence string) {
 		return
 	}
 	w.said = append(w.said, sentence)
+	if w.changes == nil {
+		w.changes = make(chan struct{}, 1)
+	}
+	select {
+	case w.changes <- struct{}{}:
+	default:
+	}
+	if w.wake != nil {
+		w.wake()
+	}
 }
+
+// Changes wakes a reader when a sentence is queued. One signal may stand for
+// several sentences; a receiver drains Take until it returns "".
+func (w *SealWatch) Changes() <-chan struct{} {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.changes == nil {
+		w.changes = make(chan struct{}, 1)
+	}
+	return w.changes
+}
+
+// Owed reports whether a reader that drains Take must look again although
+// nothing woke it: a sentence is waiting, or sealing is failing, whose recovery
+// is found only by asking Take or Failing. It never looks for that recovery
+// itself, so a reader's own Take stays the one check per look.
+func (w *SealWatch) Owed() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.failing || len(w.said) > 0
+}
+
+// Listen wakes a local surface without giving its sentences a second consuming road.
+func (w *SealWatch) Listen(wake func()) func() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.listener++
+	serial := w.listener
+	w.wake = wake
+	if len(w.said) > 0 && wake != nil {
+		wake()
+	}
+	return func() {
+		w.mu.Lock()
+		defer w.mu.Unlock()
+		if w.listener == serial {
+			w.wake = nil
+		}
+	}
+}
+
+// Adopt keeps subscriptions alive while a conversation still uses this watch.
+func (w *SealWatch) Adopt() func() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.stopped {
+		return func() {}
+	}
+	w.owners++
+	var released sync.Once
+	return func() {
+		released.Do(func() {
+			last := func() bool {
+				w.mu.Lock()
+				defer w.mu.Unlock()
+				w.owners--
+				if w.owners != 0 {
+					return false
+				}
+				// Mark the last release before unlocking so a retired watch cannot be adopted again.
+				w.stopped = true
+				return true
+			}()
+			if last {
+				w.Retire()
+			}
+		})
+	}
+}
+
+// Retire ends this seat's sentence subscriptions once no conversation uses it.
+//
+// RETIRING NEVER TOUCHES THE TRAILING SEAL. The tail belongs to the writes, not
+// to the subscriptions: a conversation still finishing its journal, or a Home
+// errand opened later on the same seat, must seal what it wrote exactly as it
+// did before retirement existed. Only the delivery of sentences ends here.
+func (w *SealWatch) Retire() {
+	w.retired.Do(func() {
+		func() {
+			w.mu.Lock()
+			defer w.mu.Unlock()
+			w.stopped = true
+			w.wake = nil
+		}()
+		if w.OnRetire != nil {
+			w.OnRetire()
+		}
+	})
+}
+
+// Waiting arms a newly constructed chat that is waiting for its first input.
+// It schedules nothing until a write arrives. Once a turn has started or ended,
+// calling it again cannot change that turn's state.
+func (w *SealWatch) Waiting() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if !w.started {
+		w.idle = true
+	}
+}
+
+// liveTurns counts this process's watches with a turn running. The desktop
+// app keeps its saving helpers warm only while one is (daemon_app.go).
+var liveTurns atomic.Int64
 
 // TurnStarted is the session's word that a turn began: the turn writes the
 // record itself and every call seals it, so no tail seal is owed.
 func (w *SealWatch) TurnStarted() {
 	w.mu.Lock()
-	defer w.mu.Unlock()
+	if !w.started || w.idle {
+		liveTurns.Add(1)
+	}
+	w.started = true
 	w.idle = false
 	w.stopTail()
+	w.mu.Unlock()
+	if w.OnTurnStart != nil {
+		w.OnTurnStart()
+	}
 }
 
 // Wrote is the session's word that something the chat owns was written: a line
@@ -132,10 +287,13 @@ func (w *SealWatch) stopTail() {
 }
 
 func (w *SealWatch) sealTail() {
-	w.mu.Lock()
-	owed := w.idle && w.tail != nil
-	w.tail = nil
-	w.mu.Unlock()
+	owed := func() bool {
+		w.mu.Lock()
+		defer w.mu.Unlock()
+		owed := w.idle && w.tail != nil
+		w.tail = nil
+		return owed
+	}()
 	if owed {
 		w.OnTail()
 	}
@@ -145,7 +303,12 @@ func (w *SealWatch) sealTail() {
 // forwards, so a watch without a listener costs nothing.
 func (w *SealWatch) TurnEnded() {
 	w.mu.Lock()
+	if w.started && !w.idle {
+		liveTurns.Add(-1)
+	}
+	w.started = true
 	w.idle = true
+	w.requireTranscript()
 	w.stopTail()
 	w.mu.Unlock()
 	if w.OnTurnEnd != nil {
@@ -153,10 +316,13 @@ func (w *SealWatch) TurnEnded() {
 	}
 }
 
-// Failing reports whether the most recent seal failed.
+// Failing reports whether this chat still has a saving failure.
 func (w *SealWatch) Failing() bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	if w.failing && w.turn.Root != "" {
+		w.recover()
+	}
 	return w.failing
 }
 
@@ -164,10 +330,103 @@ func (w *SealWatch) Failing() bool {
 func (w *SealWatch) Take() string {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	if w.failing && w.turn.Root != "" {
+		w.recover()
+	}
 	if len(w.said) == 0 {
 		return ""
 	}
 	sentence := w.said[0]
 	w.said = w.said[1:]
 	return sentence
+}
+
+// TrackTurn binds recovery notices to this chat's saved transcript.
+func (w *SealWatch) TrackTurn(root string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.turn = cell.Cell{Root: root}
+	w.requiredEnd = 0
+	w.requireTranscript()
+}
+
+func (w *SealWatch) requireTranscript() {
+	if w.turn.Root != "" {
+		if info, err := os.Stat(rel(w.turn, cell.TranscriptPath)); err == nil {
+			w.requiredEnd = max(w.requiredEnd, info.Size())
+		}
+	}
+}
+
+// A successful background seal cannot speak for the chat's unsaved answer.
+// Synced turns also retain their failure until the publish boundary covers it.
+func (w *SealWatch) ownTurnSaved() bool {
+	if w.started && !w.idle {
+		return false
+	}
+	captures.Lock()
+	state := captures.cells[w.turn.Root]
+	if state != nil {
+		select {
+		case <-state.done:
+			if state.err != nil {
+				captures.Unlock()
+				return false
+			}
+		default:
+			captures.Unlock()
+			return false
+		}
+	}
+	captures.Unlock()
+	head, err := Head(w.turn)
+	if err != nil || head == nil {
+		return false
+	}
+	info, err := os.Stat(rel(w.turn, cell.TranscriptPath))
+	if err != nil {
+		return false
+	}
+	requiredEnd := w.requiredEnd
+	if !w.idle {
+		requiredEnd = max(requiredEnd, info.Size())
+	}
+	if info.Size() < requiredEnd || head.Receipt.Transcript.End < requiredEnd {
+		return false
+	}
+	if head.Turn.Fence != 0 || requiresPublication(w.turn, head.Receipt.Transcript.End) {
+		unpublished, _, err := Unpublished(w.turn, "")
+		if err != nil || unpublished != "" {
+			return false
+		}
+	}
+	return true
+}
+
+// SyncReport is fed only by a completed service call. Local sealing has its
+// own report path and cannot clear an outage while the network still refuses.
+func (w *SealWatch) SyncReport(err error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if err == nil {
+		if w.syncFailing {
+			w.say(syncwords.Recovered)
+		}
+		w.syncFailing = false
+		return
+	}
+	if !syncwords.NetworkFailure(err) {
+		return
+	}
+	var request *url.Error
+	if errors.As(err, &request) {
+		w.SyncAddress = request.URL
+	}
+	if w.SyncAddress == "" {
+		w.SyncAddress = syncwords.HostedURL
+	}
+	if !w.syncFailing {
+		w.say(syncwords.Outage(w.SyncAddress))
+	}
+	w.syncFailing = true
 }

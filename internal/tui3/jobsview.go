@@ -214,7 +214,7 @@ func jobRowLine(job session.JobNotice, now time.Time, width int, pal palette) st
 // a `▸`, which invited a keypress that does nothing — the one state this surface
 // is not allowed to be in — and the doc comment above said in so many words that
 // it opens nothing while the line drew the mark that promises it does
-// (docs/design/polish/audit-tasks.md row 16). The count sits at the ROWS' own
+// . The count sits at the ROWS' own
 // indent, under the rows it counts, so the head's `▸` means exactly one thing on
 // this section.
 func jobEarlierLine(n, width int, pal palette) string {
@@ -251,7 +251,7 @@ func jobRightWord(job session.JobNotice, now time.Time) string {
 // exited 1` in the column and `job 3 · failed · exit 1` on the page one keypress
 // away — two words for one fact, and a new [session.JobState] would have leaked
 // its spelling onto a person's screen the day it was added
-// (docs/design/polish/audit-tasks.md row 11).
+// .
 func jobStateWord(job session.JobNotice) string {
 	switch job.State {
 	case session.JobFailed:

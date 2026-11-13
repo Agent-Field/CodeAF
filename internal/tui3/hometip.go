@@ -36,14 +36,13 @@ import (
 
 // homeTipLead is the bulb before a tip on the row.
 //
-// IT IS AN EMOJI, AND THAT IS THE OWNER'S RULING (2026-09-22) against the
-// vocabulary's own no-emoji-in-chrome law (internal/tui2/tokens's glyph.go):
-// one bulb, on one row, asked for by name. It is not a slot in the vocabulary
-// because the vocabulary refuses the emoji planes on purpose and its width
-// gate would refuse this one; and it is not the icon law's to own, because the
-// law owns the vocabulary's runes and no other. It measures two cells
-// everywhere the renderer measures, and the row is laid out from that
-// measurement rather than from a guess.
+// IT IS AN EMOJI (2026-09-22) against the vocabulary's own no-emoji-in-chrome law
+// (internal/tui2/tokens's glyph.go): one bulb, on one row, asked for by name. It is not a
+// slot in the vocabulary because the vocabulary refuses the emoji planes on purpose and
+// its width gate would refuse this one; and it is not the icon law's to own, because the
+// law owns the vocabulary's runes and no other. It measures two cells everywhere the
+// renderer measures, and the row is laid out from that measurement rather than from a
+// guess.
 const homeTipLead = "💡"
 
 // homeTipGap is the cell between the bulb and the tip, and between the tip and
@@ -84,10 +83,15 @@ func (a *app) tipLine(tip string, width int, pal palette) (string, hudSpan) {
 // columns in [app.targetFolderSpan] — the same span the rule used to write —
 // and clears them where the path does not fit.
 func (a *app) homeFootLine(width int, pal palette) string {
+	return a.homeFootWithWarning(width, pal, a.homeCreditWarningFor(width))
+}
+
+// homeFootWithWarning also serves a footer below a message row that already
+// carries the warning, so the account news is drawn only once.
+func (a *app) homeFootWithWarning(width int, pal palette, warning string) string {
 	a.targetFolderSpan = hudSpan{}
 	// THE LOW-CREDIT LINE, when it applies, stands just left of the project and
 	// is fitted before either the keys or the path (credits.go, #1439).
-	warning := a.homeCreditWarningFor(width)
 	room := width - 2
 	if warning != "" {
 		room -= ansi.StringWidth(warning) + 1

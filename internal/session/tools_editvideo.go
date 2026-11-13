@@ -51,7 +51,7 @@ import (
 // four tools for the reason the jobs tool is one tool with an action: they are
 // one intention — "work on the video files I already have" — and a belt with
 // four hands for one intention makes the model choose, and what it chooses is
-// wrong (docs/CHAT-V3.md, Decision 20).
+// wrong.
 const (
 	editVideoMeasure = "measure"
 	editVideoFrame   = "frame"

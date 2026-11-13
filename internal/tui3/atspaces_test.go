@@ -196,9 +196,8 @@ func (b atBox) comp(a *app) *completion {
 	return &a.comp
 }
 
-// TestTheAtListIsTheSameOnEveryBox: the same fixture, the same searches with
-// spaces in them, the same answers — on a conversation's box, on home's, and
-// on the new-chat page's. The owner asked for this to hold always.
+// TestTheAtListIsTheSameOnEveryBox: the same fixture, the same searches with spaces in
+// them, the same answers — on a conversation's box, on home's, and on the new-chat page's.
 func TestTheAtListIsTheSameOnEveryBox(t *testing.T) {
 	for _, b := range atBoxes {
 		t.Run(b.name, func(t *testing.T) {

@@ -460,9 +460,8 @@ func TestARoomsFootIsTheWayOutTheNumbersAndTheKeys(t *testing.T) {
 
 // THE ROOM SAYS WHEN, AND IT SAYS THE TRUE ONE OF THE TWO.
 //
-// The sentence it used to say was `its next turn takes it`, and on 2026-09-11 it
-// was read by the owner over a task step thirteen minutes into a wait, where the
-// next turn was a promise about nothing. What the engine answers now is WHEN the
+// The sentence `its next turn takes it` promises nothing during a long task
+// step. What the engine answers now is WHEN the
 // pick landed (internal/session's [session.ModelLanding]) and the room spells
 // exactly that — never the word "turn", because a step is one turn and can run
 // for twenty minutes.

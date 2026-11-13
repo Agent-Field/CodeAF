@@ -13,17 +13,59 @@ import (
 
 const schema = 1
 
+type publisherReceipt struct {
+	Lease     Lease        `json:"lease"`
+	Item      factory.Item `json:"item"`
+	Restarted bool         `json:"restarted,omitempty"`
+}
+
 type document struct {
-	Schema int     `json:"schema"`
-	Leases []Lease `json:"leases"`
+	Receipts []publisherReceipt `json:"publisher_receipts,omitempty"`
+	Schema   int                `json:"schema"`
+	Leases   []Lease            `json:"leases"`
 	// Signals are what people asked of a job that its worker has not yet
 	// collected, keyed by job id. They live beside the leases, under the same
 	// lock, so a verb and the hold it is meant for can never disagree.
 	Signals map[int][]Signal `json:"signals,omitempty"`
+	// Withdrawn keeps the last replaced lease for each worker until its next
+	// pull. Losing execution authority is different from a person's Stop.
+	Withdrawn map[string]string `json:"withdrawn,omitempty"`
+	// Stopped keeps the last lease revoked by a person's Stop for each worker
+	// until its next pull, so an expired or lost hold is never mistaken for Stop.
+	Stopped map[string]string `json:"stopped,omitempty"`
 }
 
+// File is the shared document's name beside the factory's numbered job files.
+const File = "leases.json"
+
 // Path names the shared document beside the factory's numbered job files.
-func (d *Desk) Path() string { return filepath.Join(d.store.Root(), "leases.json") }
+func (d *Desk) Path() string { return filepath.Join(d.store.Root(), File) }
+
+// RenewalShape is the lease document as a look reads it: every hold, signal,
+// receipt and withdrawal, WITHOUT the two facts a renewal moves (when a hold
+// was last heard and when it expires). A held job's runner renews its hold
+// every [HeartbeatEvery], so the file is rewritten every two seconds per hold
+// while nothing a pull could find has changed; two equal shapes say a pull
+// woken by that rewrite would find what it found before. ok is false for a
+// document that cannot be read, which is never the same as another.
+//
+// EXPIRY IS NOT IN THE SHAPE, and needs not be: a hold expires because it was
+// NOT renewed, so no write announces it. A look made at the end of a pull's
+// wait is what requeues it, as it always was.
+func RenewalShape(data []byte) (shape string, ok bool) {
+	var doc document
+	if err := json.Unmarshal(data, &doc); err != nil {
+		return "", false
+	}
+	for i := range doc.Leases {
+		doc.Leases[i].HeartbeatAt, doc.Leases[i].ExpiresAt = time.Time{}, time.Time{}
+	}
+	out, err := json.Marshal(doc)
+	if err != nil {
+		return "", false
+	}
+	return string(out), true
+}
 
 func (d *Desk) locked(change func(*document, time.Time) error) error {
 	lock, err := os.OpenFile(filepath.Join(d.store.Root(), "leases.lock"), os.O_CREATE|os.O_RDWR, 0o600)

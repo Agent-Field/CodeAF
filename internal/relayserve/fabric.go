@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"strings"
 	"sync"
 
 	"github.com/Agent-Field/codeaf/internal/directory"
@@ -48,20 +49,28 @@ func fabricReply(w http.ResponseWriter, out any, err error) {
 		e := fabricError{500, "internal"}
 		if !errors.As(err, &e) {
 			switch {
-			case errors.Is(err, wireauth.ErrRevoked):
+			case errors.Is(err, wireauth.ErrRevoked), errors.Is(err, directory.ErrRevoked):
 				e = fabricError{401, "revoked"}
 			case errors.Is(err, wireauth.ErrSkew):
 				e = fabricError{401, "skew"}
-			case errors.Is(err, wireauth.ErrUnauthorized):
+			case errors.Is(err, wireauth.ErrUnauthorized), errors.Is(err, directory.ErrUnauthorized):
 				e = fabricError{401, "unauthorized"}
 			case errors.Is(err, wireauth.ErrGone):
 				e = fabricError{410, "gone"}
 			case errors.Is(err, directory.ErrNotFound):
 				e = fabricError{404, "not_found"}
+			case errors.Is(err, directory.ErrExists):
+				e = fabricError{409, "exists"}
 			case errors.Is(err, directory.ErrSelfRevoke):
 				e = fabricError{400, "self_revoke"}
-			case errors.Is(err, wireauth.ErrRotated):
+			case errors.Is(err, directory.ErrBadRequest):
+				e = fabricError{400, "bad_request"}
+			case errors.Is(err, directory.ErrFull):
+				e = fabricError{507, "full"}
+			case errors.Is(err, wireauth.ErrRotated), errors.Is(err, directory.ErrRotated):
 				e = fabricError{410, "rotated"}
+			case errors.Is(err, wireauth.ErrUnavailable), errors.Is(err, directory.ErrUnreachable):
+				e = fabricError{503, "unreachable"}
 			}
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -87,25 +96,6 @@ func decodeFabric(body []byte, out any) error {
 		return badFabric(400, "bad_request")
 	}
 	return nil
-}
-
-func (f *fabric) fullAuth(r *http.Request, body []byte) (string, string, error) {
-	id, dev, err := f.auth(r, body)
-	if err != nil {
-		return id, dev, err
-	}
-	d, err := f.ns.directory(id)
-	if err != nil {
-		return "", "", err
-	}
-	l, err := d.For(dev).List(r.Context())
-	if err != nil {
-		return "", "", err
-	}
-	if l.Devices[dev].Kind == "client" {
-		return "", "", wireauth.ErrUnauthorized
-	}
-	return id, dev, nil
 }
 
 // directoryHandler keeps revocation and a fabric mutation from crossing.
@@ -162,7 +152,7 @@ type fabricCall struct {
 	r       *http.Request
 	body    []byte
 	id, dev string
-	dir     directory.Directory
+	ns      *nativeNamespace
 	listing directory.Listing
 }
 
@@ -179,6 +169,15 @@ func (f *fabric) handler() http.Handler {
 
 func (f *fabric) serve(route fabricRoute) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		isDir := strings.HasPrefix(r.URL.Path, "/v1/dir/")
+		if isDir {
+			w.Header().Set(directory.SavedTurnTimeHeader, "1")
+			w.Header().Set(directory.HeadTakeHeader, "1")
+			w.Header().Set(directory.UploadProgressHeader, "1")
+			w.Header().Set(directory.WorkingBeatsHeader, "1")
+			w.Header().Set(directory.ChatNotesHeader, "1")
+			w.Header().Set(directory.ChatFoldersHeader, "1")
+		}
 		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, MaxFabricBody))
 		if err != nil {
 			fabricReply(w, nil, badFabric(413, "too_large"))
@@ -193,6 +192,9 @@ func (f *fabric) serve(route fabricRoute) http.HandlerFunc {
 			}
 			return route(c)
 		}()
+		if isDir && err == nil {
+			w.Header().Set(directory.ConditionalTakeHeader, "1")
+		}
 		fabricReply(w, out, err)
 	}
 }
@@ -207,11 +209,11 @@ func (f *fabric) admit(r *http.Request, body []byte) (fabricCall, error) {
 	if !fabricDevice.MatchString(r.PathValue("device")) {
 		return c, badFabric(400, "bad_request")
 	}
-	c.dir, err = f.ns.directory(c.id)
+	c.ns, err = f.ns.activate(r.Context(), c.id, nil)
 	if err != nil {
 		return c, err
 	}
-	c.listing, err = c.dir.For(c.dev).List(r.Context())
+	c.listing, err = c.ns.fabricListing(r.Context())
 	return c, err
 }
 
@@ -251,6 +253,5 @@ func registerClient(c fabricCall) (any, error) {
 	if _, exists := c.listing.Devices[in.Cert.DeviceID()]; exists {
 		return nil, badFabric(409, "exists")
 	}
-	d := directory.Device{V: 1, Kind: "client", Methods: in.Methods, Name: in.Name, AddedBy: c.id}
-	return nil, c.dir.For(in.Cert.DeviceID()).PutDevice(c.r.Context(), in.Cert.DeviceID(), d)
+	return nil, c.ns.commitFabricV1(c.r.Context(), c.dev, c.r, c.body)
 }

@@ -66,6 +66,9 @@ func v3OpenSession(cfg session.Config) (*session.Agent, error) {
 	if cfg.ExternalTasks == nil {
 		cfg.ExternalTasks = workGraphs.externalTasks()
 	}
+	if cfg.TaskComputers == nil {
+		cfg.TaskComputers = v3TaskComputers(cfg.ProfileDir)
+	}
 	cfg, runs := v3Adaptive(cfg)
 	agent, err := session.New(cfg)
 	if err != nil {

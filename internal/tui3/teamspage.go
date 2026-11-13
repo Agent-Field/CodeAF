@@ -86,6 +86,10 @@ type teamsPage struct {
 	// recent exists only during a paint, sharing one subtree-time pass between
 	// the sidebar and every nested card. Readers outside paint use fresh state.
 	recent map[string]time.Time
+	// homes exists only during paint. Shared membership lookups must be built
+	// once, not rescan every team's members for every card and status count.
+	homes        map[string]teamstore.Report
+	homesPending bool
 	// reading says a read is out, so a beat that comes round before it is
 	// answered does not start a second; again says a read was asked for while
 	// it was out, and againWorld that the ask wanted the members' rows too.
@@ -656,8 +660,12 @@ func (a *app) teamsRead(withWorld bool) tea.Cmd {
 	} else if selected.ID != "" {
 		interactionIDs = append(interactionIDs, selected.ID)
 	}
+	elsewhere := map[string]bool{}
+	for _, m := range members {
+		elsewhere[m.Key] = a.teamsElsewhere(m) != ""
+	}
 	previous := a.tp.previews
-	worldDoor, hosted, rowsDoor := a.world, a.hosted(), a.teamsDisk.rows
+	worldDoor, hosted, rowsDoor, sharing := a.world, a.hosted(), a.teamsDisk.rows, a.teamsShare
 	if rowsDoor == nil {
 		rowsDoor = session.ReadRows
 	}
@@ -679,14 +687,24 @@ func (a *app) teamsRead(withWorld bool) tea.Cmd {
 			side(func() {
 				got.previews = map[string]teamsPreview{}
 				for _, m := range members {
-					got.previews[m.Key] = teamsReadPreview(m.File, previous[m.Key])
+					if elsewhere[m.Key] {
+						got.previews[m.Key] = teamsPreview{}
+					} else {
+						got.previews[m.Key] = teamsReadPreview(m.File, previous[m.Key])
+					}
 				}
 			})
 		}
 		traffic := make([][]teamstore.Entry, len(interactionIDs))
 		if seam.Traffic != nil {
 			for i, id := range interactionIDs {
-				side(func() { traffic[i], _ = seam.Traffic(id, "", trafficKeep) })
+				side(func() {
+					if seam.DisplayTraffic != nil && sharing {
+						traffic[i], _, _, _, _ = seam.DisplayTraffic(id, "", "", trafficKeep)
+					} else {
+						traffic[i], _ = seam.Traffic(id, "", trafficKeep)
+					}
+				})
 			}
 		}
 		type spendGot struct {
@@ -835,6 +853,20 @@ func (a *app) teamsFold(got teamsGot) tea.Cmd {
 		changed = a.teamsTakeInteractions(got.interactionTeam, got.interactions) || changed
 	}
 	for id, entries := range got.interactionSets {
+		// This is a complete history tail. Retire old mirror rows while
+		// retaining local rows a concurrent live read may have just found.
+		kept := a.traffic.rows[id][:0:0]
+		for _, e := range a.traffic.rows[id] {
+			if e.Origin == "" {
+				kept = append(kept, e)
+			}
+		}
+		if len(kept) != len(a.traffic.rows[id]) {
+			changed = true
+		}
+		if a.traffic.rows != nil {
+			a.traffic.rows[id] = kept
+		}
 		changed = a.teamsTakeInteractions(id, entries) || changed
 	}
 	if got.packetsErr == nil && !got.packetsSame && got.packetsStamp != "" {
@@ -879,6 +911,16 @@ func (a *app) teamsFold(got teamsGot) tea.Cmd {
 		a.tp.again, a.tp.againWorld = false, false
 		if a.at(pageTeams) {
 			return a.teamsRead(world)
+		}
+	}
+	for _, entries := range got.interactionSets {
+		for _, e := range entries {
+			if e.Origin != "" {
+				id, _, _ := strings.Cut(e.Origin, "/")
+				if a.teamsShare && !a.teamComputerKnown(id) {
+					return a.askRoster()
+				}
+			}
 		}
 	}
 	return nil

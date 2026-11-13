@@ -61,6 +61,8 @@ func newPartialPRForge(t *testing.T) (*partialPRForge, *Source) {
 				state, merged = "closed", terminal == factory.PRMerged
 			}
 			fmt.Fprintf(w, `{"number":7,"title":"Surface token failures","body":"Preserves the original failure with verified tests.","state":%q,"merged":%t,"draft":true,"mergeable":true,"changed_files":1,"html_url":"https://github.com/acme/api/pull/7","head":{"sha":%q},"base":{"ref":"main","sha":"base"}}`, state, merged, partialPRHead)
+		case "/repos/acme/api/pulls/7/files":
+			fmt.Fprint(w, `[{"filename":"a.go","status":"modified","additions":1}]`)
 		case "/repos/acme/api/commits/" + partialPRHead + "/check-runs":
 			if checksFail {
 				w.WriteHeader(http.StatusForbidden)

@@ -11,6 +11,8 @@ import (
 	internalenv "github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/syncsetup"
+	"github.com/Agent-Field/codeaf/internal/teams"
 	"github.com/Agent-Field/codeaf/internal/tui3"
 	codeupdate "github.com/Agent-Field/codeaf/internal/update"
 )
@@ -24,6 +26,7 @@ var (
 	surfaceRunningExecutable = os.Executable
 	surfaceRevision          = buildinfo.Revision
 	surfaceArguments         = func() []string { return append([]string(nil), os.Args[1:]...) }
+	surfaceForceExit         = os.Exit
 )
 
 // ── THE ONE WAY THE v3 SURFACE IS RUN ───────────────────────────────────────
@@ -47,6 +50,68 @@ var (
 // it would lack is everything below, which is why [TestOnlyTheSurfaceHelperRunsTheV3Surface]
 // reads this package's sources rather than trusting the next door to remember.
 func runSurface(ctx context.Context, options tui3.Options) error {
+	stopStorage := syncsetup.StartStorageRefresh(ctx, home.Dir(), false)
+	defer stopStorage()
+	if options.Host == "" {
+		if options.Notices == nil {
+			options.Notices = surfaceNotices
+		}
+		defer teams.WatchSharingErrors(options.ProfileDir, options.Notices.SayOnce)()
+	}
+	if options.SyncService == "" && options.Host == "" {
+		options.SyncService = chatSyncService()
+	}
+	if options.SyncStats == nil && options.Host == "" {
+		options.SyncStats = chatSyncStats
+	}
+	forced := armFinalSaving()
+	var progressAllowed func() bool
+	if options.Host == "" {
+		// Hosted local chats use this pairing; an explicit remote host uses its own.
+		progressAllowed = func() bool { return !syncsetup.ConfirmedRemoved(home.Dir()) }
+	}
+	setFinalSyncService(options.SyncService, progressAllowed)
+	previousCompatibility := options.SavingCompatibility
+	options.SavingCompatibility = func(check func() bool) {
+		retainSavingCompatibility(check)
+		if previousCompatibility != nil {
+			previousCompatibility(check)
+		}
+	}
+	previousDurability := options.SavingDurability
+	options.SavingDurability = func(check func() bool) {
+		retainLocalDurability(check)
+		if previousDurability != nil {
+			previousDurability(check)
+		}
+	}
+	previousSaveFailure := options.SaveFailure
+	options.SaveFailure = func(err error) {
+		recordFinalSaveFailure(err)
+		if previousSaveFailure != nil {
+			previousSaveFailure(err)
+		}
+	}
+	previousNotices := options.SavingNotices
+	options.SavingNotices = func(lines []string) {
+		recordFinalSaveNotices(lines)
+		if previousNotices != nil {
+			previousNotices(lines)
+		}
+	}
+	previousClosing, previousForce := options.ClosingStarted, options.ForceQuit
+	options.ClosingStarted = func(done <-chan struct{}) {
+		retainFinalClose(done)
+		if previousClosing != nil {
+			previousClosing(done)
+		}
+	}
+	options.ForceQuit = func() {
+		forceFinalClose()
+		if previousForce != nil {
+			previousForce()
+		}
+	}
 	revision := surfaceRevision()
 	executable, executableErr := surfaceRunningExecutable()
 	curl := codeupdate.CurlCommand
@@ -60,8 +125,16 @@ func runSurface(ctx context.Context, options tui3.Options) error {
 		options.Restart = restart
 	}
 	options.CellsUnavailable = cell.UnavailableReason()
-	if options.CellsUnavailable == "" {
+	options.TeamsPaired = teamPaired
+	if options.TaskComputers == nil && options.Host == "" {
+		options.TaskComputers = v3TaskComputers(options.ProfileDir)
+	}
+	if options.CellsUnavailable == "" && options.Host == "" {
 		wireSync(&options)
+		options.WaitForRelease = func() bool {
+			s, err := syncOf()
+			return err == nil && s.Coordinating()
+		}
 		stateCtx, stopState := context.WithCancel(ctx)
 		stateDone := make(chan struct{})
 		guard.Go("sync/home-state", func() {
@@ -72,7 +145,14 @@ func runSurface(ctx context.Context, options tui3.Options) error {
 		})
 		copiesDone := make(chan struct{})
 		guard.Go("sync/older-chats", func() { defer close(copiesDone); runOlderChats(stateCtx) })
-		defer func() { stopState(); <-stateDone; <-copiesDone }()
+		defer func() {
+			if s, err := syncOf(); err == nil {
+				_ = s.HandBack(ctx)
+			}
+			stopState()
+			<-stateDone
+			<-copiesDone
+		}()
 		options.Pairing = chatPairDoor{}
 		options.Approvals = newApprovalsDoor(home.Dir())
 	}
@@ -151,7 +231,19 @@ func runSurface(ctx context.Context, options tui3.Options) error {
 	defer closeWire()
 	options.Output = wire
 	return withSurfaceLogger(options.ProfileDir, func() error {
-		return runSurfaceProgram(ctx, options)
+		err := runSurfaceProgram(ctx, options)
+		startFinalSaveProgress()
+		select {
+		case <-forced:
+			// A second quit interrupt keeps the baseline escape after screen restoration.
+			stopFinalSaveProgress()
+			surfaceForceExit(130)
+			return err
+
+		default:
+		}
+		awaitFinalCloses(ctx)
+		return err
 	})
 }
 

@@ -13,6 +13,32 @@ import (
 	"testing"
 )
 
+func TestLandRunTreeLeavesNativeOwnershipMarkersOutOfTheWork(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	repo := newTestRepo(t)
+	writeFile(t, filepath.Join(repo, ".furrow", "fork-id"), "0123456789abcdef0123456789abcdef\n")
+	writeFile(t, filepath.Join(repo, ".furrow", "workspace-id"), "fedcba9876543210fedcba9876543210\n")
+	writeFile(t, filepath.Join(repo, "report.md"), "the requested report\n")
+	_, changed, refusal, err := LandRunTree(repo, "", "write the report", "")
+	if err != nil || refusal != "" || !reflect.DeepEqual(changed, []string{"report.md"}) {
+		t.Fatalf("landing mixed ownership markers into the work: %v, %q, %v", changed, refusal, err)
+	}
+}
+
+func TestLandRunTreeLeavesCommittedNativeMarkersOutOfItsLedger(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	repo := newTestRepo(t)
+	base := runTreeHead(repo)
+	writeFile(t, filepath.Join(repo, ".furrow", "fork-id"), "0123456789abcdef0123456789abcdef\n")
+	writeFile(t, filepath.Join(repo, "report.md"), "the requested report\n")
+	mustGit(t, repo, "add", "--all")
+	mustGit(t, repo, "-c", "user.name=Worker", "-c", "user.email=worker@example.test", "commit", "-m", "worker checkpoint")
+	_, changed, refusal, err := LandRunTree(repo, base, "write the report", "")
+	if err != nil || refusal != "" || !reflect.DeepEqual(changed, []string{"report.md"}) {
+		t.Fatalf("committed markers entered the landing ledger: %v, %q, %v", changed, refusal, err)
+	}
+}
+
 // A RUN'S WORK IS THE TREE'S OWN. Two files the tree says are changed land in
 // one commit on the branch the copy stands on, and the commit is the paths the
 // index built, not any list handed in.
@@ -108,5 +134,28 @@ func TestLandRunTreeLeavesTheTreeAloneWithTheFlagOff(t *testing.T) {
 	}
 	if out := gitOut(t, repo, "status", "--porcelain"); !strings.Contains(out, "second.txt") {
 		t.Fatalf("the tree's own work is not still uncommitted:\n%s", out)
+	}
+}
+
+// When CODEAF_ATTRIBUTION is off, LandRunTree leaves worker commits at their
+// original hashes and writes its own landing commit without trailers.
+func TestLandRunTreeWithAttributionOffLeavesWorkerAndLandingCommitsUnsigned(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	t.Setenv("CODEAF_ATTRIBUTION", "off")
+	repo := newTestRepo(t)
+	base := strings.TrimSpace(gitOut(t, repo, "rev-parse", "HEAD"))
+	workerSHA := runCommitFile(t, repo, "worker.txt", "worker commit")
+	writeFile(t, filepath.Join(repo, "loose.txt"), "loose work\n")
+	branch, changed, refusal, err := LandRunTree(repo, base, "do the thing", "deepseek/deepseek-v4-flash")
+	if err != nil || refusal != "" || branch != "work" || !reflect.DeepEqual(changed, []string{"loose.txt", "worker.txt"}) {
+		t.Fatalf("landing = %q, %v, %q, %v", branch, changed, refusal, err)
+	}
+	if got := strings.TrimSpace(gitOut(t, repo, "rev-parse", "HEAD~1")); got != workerSHA {
+		t.Fatalf("worker commit sha moved with attribution off: %s -> %s", workerSHA, got)
+	}
+	for _, rev := range []string{"HEAD", "HEAD~1"} {
+		if message := gitOut(t, repo, "log", "-1", "--format=%B", rev); strings.Contains(message, "Assisted-by") || strings.Contains(message, "Co-Authored-By") {
+			t.Fatalf("%s carries attribution with CODEAF_ATTRIBUTION=off: %q", rev, message)
+		}
 	}
 }

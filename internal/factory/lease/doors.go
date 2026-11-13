@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/publish"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/run"
@@ -22,40 +23,90 @@ import (
 // doors, because they only write files under the desk's lock: no process owns
 // the floor.
 type Doors struct {
-	desk *Desk
+	desk    *Desk
+	read    StartRead
+	resumed func(int)
 }
+
+// StartRead is one job's pipeline read with the factory's own rules in it, as
+// a start decides under it: the same read intake and a person's Start make,
+// of THE JOB'S OWN FILE (pipeline.JobFile: the one its first start decided,
+// else, for a job never started, its repository's as this factory reads it
+// now, its own copy first). An error wrapping [pipeline.ErrHouseRulesUnread]
+// means the factory's rules could not be read; any other error, the
+// repository's file.
+type StartRead func(ctx context.Context, it factory.Item) (pipeline.File, error)
 
 // NewDoors hangs the doors over desk's store.
 func NewDoors(desk *Desk) *Doors { return &Doors{desk: desk} }
 
+// WithStartRead makes every Launch read the job's repository first, so a job
+// started by any door (a person's, the manager's, a new job's, intake's) runs
+// the steps and carries the rules a person's Start would give it.
+func (d *Doors) WithStartRead(read StartRead) *Doors {
+	d.read = read
+	return d
+}
+
+// WithTalk gives explicit Resume the same manager conversation writer as the runner.
+func (d *Doors) WithTalk(talk run.Talk) *Doors {
+	d.resumed = run.ResumeReporter(d.desk.store, talk)
+	return d
+}
+
 // update changes job id under the desk's lock: held is its live lease, nil
 // when no worker holds it. change answers whether the desk itself changed.
 func (d *Doors) update(id int, change func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error)) error {
-	return d.updateAt(id, nil, change)
+	return d.updateAt(id, nil, false, change)
 }
 
-// updateAt is update that writes only on the document revision named, when
-// one is: the store compares it inside the item's flock, which is taken
-// inside the desk's lock. The comparison and item mutation use the same
-// document; a different revision is the store's StaleError and change never
+// updateAt requires the document revision named, allowing only bookkeeping
+// when explicitly requested. The store compares it inside the item's flock,
+// taken inside the desk's lock. The comparison and item mutation use the same
+// document; a stale revision is the store's StaleError and change never
 // runs. The lease file is persisted separately after the item write.
-func (d *Doors) updateAt(id int, revision *int, change func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error)) error {
-	return d.desk.change(func(doc *document, now time.Time) (bool, error) {
+func (d *Doors) updateAt(id int, revision *int, bookkeeping bool, change func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error)) error {
+	read, err := d.desk.store.Get(id)
+	if err != nil {
+		return err
+	}
+	var refusal error
+	err = d.desk.change(func(doc *document, now time.Time) (bool, error) {
 		held := find(doc, id)
 		dirty := false
 		write := func(it *factory.Item) error {
 			var err error
 			dirty, err = change(doc, held, it, now)
+			var denied run.WriteAccessRefusal
+			if errors.As(err, &denied) {
+				factory.StampFailure(it, denied.Failure(*it, now))
+				// Read-only lookup detail belongs on the admission response,
+				// never in the saved failure or the mutation's input.
+				if it.Tier == "" && it.Author == read.Author && factory.RepoOf(*it) == factory.RepoOf(read) {
+					var detail run.WriteAccessRefusal
+					if errors.As(run.CheckWriteAccess(read, denied.Step), &detail) {
+						denied.Reason = detail.Reason
+					}
+				}
+				refusal = denied
+				return nil
+			}
 			return err
 		}
 		var err error
-		if revision == nil {
+		if bookkeeping {
+			err = d.desk.store.UpdateActionExpected(id, revision, write)
+		} else if revision == nil {
 			err = d.desk.store.Update(id, write)
 		} else {
 			err = d.desk.store.UpdateExpected(id, *revision, write)
 		}
 		return dirty && err == nil, err
 	})
+	if err != nil {
+		return err
+	}
+	return refusal
 }
 
 // Launch queues the job for a worker; a paused job goes on instead.
@@ -64,10 +115,62 @@ func (d *Doors) Launch(id int) error {
 	if err != nil {
 		return err
 	}
+	if err := factory.CheckPersonStop(it); err != nil {
+		return err
+	}
+	if factory.RecoveryPaused(it) {
+		return run.StepControlRefusal(factory.DecisionPauseDetail(it))
+	}
+	// A JOB WITH NO REPOSITORY WAITS FOR ONE: work filed from outside
+	// (internal/factory/inbox) may arrive before a rule or a person says where
+	// it is done, and a run with nowhere to check out would fail on a worker.
+	if factory.NamesNoRepo(it) {
+		return factory.ErrNoRepo
+	}
 	if run.StoredPaused(it) {
 		return d.Hold(id, false)
 	}
-	return d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
+	// THE FACTORY'S OWN RULES GO WITH THE JOB ([factory.Item.House]), read
+	// here, on the factory that queues it, because a runner on another machine
+	// cannot read this store. A rules file that cannot be read refuses the
+	// start: rules that silently vanished would let work begin that a person
+	// said must not.
+	house, err := d.desk.store.HouseRules()
+	if err != nil {
+		return err
+	}
+	// THE FACTORY'S DEFAULT MODEL GOES WITH THE JOB on the same terms, and a
+	// spending file that cannot be read refuses the start the same way.
+	spending, err := d.desk.store.Spending()
+	if err != nil {
+		return err
+	}
+	// THE REPOSITORY IS READ AS A PERSON'S START READS IT: with the factory's
+	// rules unread nothing starts; with only the repository's file unread the
+	// job keeps the steps it has and is marked so its plan waits for a person.
+	var file *pipeline.File
+	var copied *factory.PipelineCopy
+	var readErr error
+	unread, decide := false, false
+	if d.read != nil {
+		f, err := d.read(context.Background(), it)
+		if errors.Is(err, pipeline.ErrHouseRulesUnread) {
+			return err
+		}
+		if err == nil {
+			file = &f
+		}
+		readErr, unread = err, err != nil
+		copied, decide = f.Copy, true
+	}
+	var refusal error
+	err = d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
+		if err := factory.CheckPersonStop(*it); err != nil {
+			return false, err
+		}
+		if factory.RecoveryPaused(*it) {
+			return false, run.StepControlRefusal(factory.DecisionPauseDetail(*it))
+		}
 		if held != nil {
 			return false, run.AlreadyRunning(it.Ref())
 		}
@@ -79,13 +182,73 @@ func (d *Doors) Launch(id int) error {
 			it.MarkPublishing("queued", "", "", now)
 			return true, nil
 		}
+		// A JOB THAT NEVER RAN RUNS THE PIPELINE ITS FILE SAYS NOW, not the
+		// one it was stamped with when it arrived; the run is built from
+		// these steps just below.
+		if file != nil {
+			pipeline.StampSteps(it, *file)
+		}
+		// THE JOB'S PIPELINE FILE IS DECIDED AT ITS FIRST START, ONCE
+		// ([factory.Item.DecidePipeline]): the factory's copy this read used
+		// goes with the job ([factory.Item.PipelineCopy]), as the factory's
+		// rules do, so a runner on another machine reads it from the job and
+		// never from its own read of main; no copy decides main's file alone.
+		// A job already decided read its own file above and keeps it, so a
+		// copy saved or stopped since never reaches its steps, rules or
+		// merge. Even a read of main that failed decides: the job runs
+		// main's file, or the copy the read still used.
+		if decide {
+			it.DecidePipeline(copied, now)
+		}
+		// EVERY START CARRIES ITS START RULES ([factory.Item.StartRules]), so
+		// the approval after the plan is checked whichever door started it.
+		// One a door already stamped keeps them.
+		if it.StartRules == nil {
+			switch {
+			case file != nil:
+				it.StartRules = pipeline.StartRulesOf(*file)
+			case unread:
+				it.StartRules = &factory.StartRules{AskFirst: append([]string{}, house.AskFirst...), Never: append([]string{}, house.Never...)}
+				pipeline.MarkUnread(it.StartRules, readErr)
+				if !it.StartRules.Pending {
+					it.Note(now, pipeline.UnreadNote)
+				}
+			default:
+				it.StartRules = &factory.StartRules{AskFirst: append([]string{}, house.AskFirst...), Never: append([]string{}, house.Never...)}
+			}
+			it.RuleHold = ""
+		}
+		if unread && it.Cap <= 0 {
+			it.Cap = factory.DefaultJobBudget
+		}
 		if err := run.QueueItem(it, now); err != nil {
+			var refused run.WriteAccessRefusal
+			if errors.As(err, &refused) {
+				refusal = err
+				return false, nil
+			}
 			return false, err
 		}
+		for i := range doc.Receipts {
+			if doc.Receipts[i].Lease.Job == id {
+				doc.Receipts[i].Restarted = true
+			}
+		}
+		it.House = &house
+		it.FactoryModel = spending.DefaultModel
 		_, stale := doc.Signals[id]
+		for _, receipt := range doc.Receipts {
+			if receipt.Lease.Job == id {
+				stale = true
+			}
+		}
 		delete(doc.Signals, id)
 		return stale, nil
 	})
+	if err != nil {
+		return err
+	}
+	return refusal
 }
 
 // Stop puts the job back to new and takes its lease away: the worker learns
@@ -106,28 +269,72 @@ func (d *Doors) stop(id int, caller *string, receipt bool) error {
 		return err
 	}
 	return d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
-		// A RESET OF A RUN THAT ALREADY ENDED CHANGES NOTHING: a failed or
-		// stopped job is reassigned or dropped as it stands, and why it ended
-		// stays. Only a person's Stop of it is refused, as not running.
-		if receipt || !factory.RunEnded(*it) {
-			if err := run.StopItem(it, now); err != nil {
-				return false, err
-			}
-		}
-		// THE PERSON'S STOP WINS: keep it durable while the job is locked,
-		// before intake can see the job back in the backlog.
-		if receipt {
-			if _, err := history.Append(context.Background(), record.Event{Kind: record.Stopped, Job: id, Handle: stopHandle(caller, it.Person())}); err != nil {
-				return false, err
-			}
-		}
-		it.Publishing = false
-		if held == nil {
-			return false, nil
-		}
-		release(doc, id)
-		return true, nil
+		return stopLocked(history, doc, held, id, it, now, caller, receipt)
 	})
+}
+
+// stopLocked is a stop's write, under the desk's lock and the item's: the
+// job stops, a person's stop is recorded as theirs (receipt), and the runner
+// holding it lets go. Callers hold both locks.
+func stopLocked(history *record.Record, doc *document, held *Lease, id int, it *factory.Item, now time.Time, caller *string, receipt bool) (bool, error) {
+	wasStopped := factory.StoppedByPerson(*it)
+	// A RESET OF A RUN THAT ALREADY ENDED CHANGES NOTHING: a failed or
+	// stopped job is reassigned or dropped as it stands, and why it ended
+	// stays. Only a person's Stop of it is refused, as not running.
+	cutHere := false
+	if receipt || !factory.RunEnded(*it) {
+		if err := run.StopItem(it, now); err != nil {
+			return false, err
+		}
+		cutHere = true
+	}
+	// THE PERSON'S STOP WINS: keep it durable while the job is locked,
+	// before intake can see the job back in the backlog.
+	if receipt {
+		factory.MarkPersonStopped(it)
+		it.Asking = nil
+		it.ManagerAnswer = nil
+		if _, err := history.Append(context.Background(), record.Event{Kind: record.Stopped, Job: id, Handle: stopHandle(caller, it.Person())}); err != nil {
+			return false, err
+		}
+	}
+	if !receipt && !wasStopped {
+		stopped := false
+		it.PersonStopped = &stopped
+		// A RESET HANDS THE JOB ON; IT IS NOBODY'S FAILURE. The stop it
+		// just wrote on the job read as a failed job waiting in Needs you
+		// ("Stopped by you", for a stop its new person never made). The
+		// job waits in Backlog for them, as an unassigned one does, and the
+		// step the reset cut still says it was stopped.
+		if cutHere && it.Failure != nil && it.Failure.Code == factory.CodeStopped {
+			it.Failure = nil
+		}
+		// AND ITS ASK GOES WITH THE RUN IT CUT, as a person's stop takes
+		// it down: it was put to the old person, by a run that no longer
+		// runs. Left standing, the job in Backlog showed waiting_since,
+		// which the desktop app's full read keyed as a wait on a person.
+		if cutHere {
+			it.Asking = nil
+		}
+	}
+	it.Publishing = false
+	_, pendingSignals := doc.Signals[id]
+	delete(doc.Signals, id)
+	if held == nil {
+		return pendingSignals, nil
+	}
+	if held.Publish != "" {
+		// Retain receipt ownership without retaining execution authority or capacity.
+		var live []publisherReceipt
+		for _, receipt := range doc.Receipts {
+			if receipt.Lease.live(now) {
+				live = append(live, receipt)
+			}
+		}
+		doc.Receipts = append(live, publisherReceipt{Lease: *held, Item: *it})
+	}
+	stopRelease(doc, *held)
+	return true, nil
 }
 
 // Pause holds a running job, or lets a held one go on.
@@ -140,22 +347,53 @@ func (d *Doors) Pause(id int) error {
 }
 
 // Hold says on (pause) or off (go on). An ask already true changes nothing.
-// A paused job nobody holds is queued again, and its worker resumes it.
+// A paused job nobody holds is queued again, and its worker resumes it. A
+// queued job nobody holds yet is held where it is: no worker takes it until a
+// person lets it go on.
 func (d *Doors) Hold(id int, on bool) error {
-	return d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
+	resumed := false
+	err := d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
+		if err := factory.CheckPersonStop(*it); err != nil {
+			state := "paused"
+			if on {
+				state = "running"
+			}
+			return false, fmt.Errorf("%s is not %s: %w", it.Ref(), state, err)
+		}
+		if !on && !factory.UnderWay(*it) {
+			return false, fmt.Errorf("%s is not paused", it.Ref())
+		}
+		if on && it.State != factory.StateQueued && (it.State != factory.StateRunning || factory.JobState(*it) != "running" || it.Publishing) {
+			return false, fmt.Errorf("%s is not running", it.Ref())
+		}
 		paused := run.StoredPaused(*it)
 		switch {
 		case paused == on:
 			return false, nil
+		case held == nil && on && it.State == factory.StateQueued:
+			return false, run.HoldQueued(it, now)
 		case held == nil && on:
-			return false, fmt.Errorf("%s is not running", it.Ref())
-		case held == nil:
-			return false, run.ResumeItem(it, now)
+			return false, run.PauseItem(it, now)
+		case !on:
+			// Resume queues even while the old worker drains its cancelled
+			// round. It must take capacity through Pull again.
+			if err := run.ResumeItem(it, now); err != nil {
+				return false, err
+			}
+			resumed = true
+			return false, nil
 		}
 		it.Stream.Paused = on
 		signal(doc, id, Signal{Verb: SignalHold, Yes: on})
 		return true, nil
 	})
+	if err != nil {
+		return err
+	}
+	if resumed && d.resumed != nil {
+		d.resumed(id)
+	}
+	return nil
 }
 
 // Answer answers the question the job waits on. A job that asked before it
@@ -165,6 +403,9 @@ func (d *Doors) Answer(id int, yes bool, words string) error {
 	it, err := d.desk.store.Get(id)
 	if err != nil {
 		return err
+	}
+	if factory.RecoveryPaused(it) {
+		return run.StepControlRefusal(factory.DecisionPauseDetail(it))
 	}
 	if it.Publishing && it.State == factory.StateNeedsYou && it.QKind == factory.NeedsRunnerOffline {
 		if factory.OutOfAttemptsChoice(yes, words) == factory.ChoiceTryOnceMore {
@@ -187,10 +428,21 @@ func (d *Doors) Answer(id int, yes bool, words string) error {
 // a job no worker holds is answered on the document, and a held job has its
 // question taken down and hears the answer through its lease.
 func answerLocked(doc *document, held *Lease, id int, it *factory.Item, yes bool, words string, now time.Time) (bool, error) {
+	if factory.RecoveryPaused(*it) {
+		return false, run.StepControlRefusal(factory.DecisionPauseDetail(*it))
+	}
+	if err := factory.CheckPersonStop(*it); err != nil {
+		return false, err
+	}
 	if yes {
 		if err := factory.CheckAutomaticApproval(*it); err != nil {
 			return false, err
 		}
+	}
+	// ACCEPT IS ANSWERED ONLY WHERE THE JOB OFFERS IT. Anywhere else the word
+	// would fall through to the stuck step's last choice, which stops the job.
+	if it.QKind == factory.QKindOutOfAttempts && factory.OutOfAttemptsChoice(yes, words) == factory.ChoiceAccept && !factory.OffersAccept(*it) {
+		return false, run.AcceptRefusal()
 	}
 	if held == nil {
 		return false, run.AnswerUnheld(it, yes, words, now)
@@ -198,7 +450,11 @@ func answerLocked(doc *document, held *Lease, id int, it *factory.Item, yes bool
 	if err := run.AnswerHeld(it, yes, now, words); err != nil {
 		return false, err
 	}
-	signal(doc, id, Signal{Verb: SignalAnswer, Yes: yes, Words: words})
+	var consent *factory.Approval
+	if yes && factory.PublishedAnyway(*it) {
+		consent = it.PublishAnyway
+	}
+	signal(doc, id, Signal{Verb: SignalAnswer, Yes: yes, Words: words, PublishAnyway: consent})
 	return true, nil
 }
 
@@ -217,7 +473,7 @@ func answerLocked(doc *document, held *Lease, id int, it *factory.Item, yes bool
 // reach, so the caller's receipt names the question that was answered.
 func (d *Doors) RejectPlan(id, revision int, words string, may func(factory.Item) error) (factory.Item, error) {
 	var before factory.Item
-	err := d.updateAt(id, &revision, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
+	err := d.updateAt(id, &revision, false, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
 		if err := run.PlanRevision(*it); err != nil {
 			return false, err
 		}
@@ -270,13 +526,16 @@ func (d *Doors) Steer(id int, words string) error {
 // pushes and opens the pull request, and the job is done when it reports the
 // pr. A job with no recorded approval publishes nothing.
 func (d *Doors) SignOff(id int, edited bool) (bool, error) {
-	trailer, err := d.trailer(id)
-	if err != nil {
-		return false, err
-	}
 	var repo string
-	err = d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
-		if it.Cap > 0 && factory.JobSpent(*it) >= it.Cap {
+	err := d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
+		if err := run.CheckWriteAccess(*it, "publish"); err != nil {
+			return false, err
+		}
+		trailer, err := d.trailer(id, it.HeadCommit)
+		if err != nil {
+			return false, err
+		}
+		if it.Cap > 0 && factory.JobLifetimeSpent(*it) >= it.Cap {
 			return false, fmt.Errorf("job budget reached; raise Budget before publishing")
 		}
 		if err := factory.CheckAutomaticApproval(*it); err != nil {
@@ -324,6 +583,9 @@ func (d *Doors) Merge(id int, m factory.MergeRun) error {
 		return errors.New("a merge names the exact commit to merge")
 	}
 	return d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
+		if err := run.CheckWriteAccess(*it, "merge"); err != nil {
+			return false, err
+		}
 		if it.State != factory.StateShipped {
 			return false, fmt.Errorf("%s has not opened its pull request", it.Ref())
 		}
@@ -344,12 +606,12 @@ func (d *Doors) Merge(id int, m factory.MergeRun) error {
 
 // trailer is the job's recorded approval as its trailer line, read from the
 // record beside the desk's store: the one consent a publish may cite.
-func (d *Doors) trailer(id int) (string, error) {
+func (d *Doors) trailer(id int, commit string) (string, error) {
 	history, err := record.Open(d.desk.store, record.Options{})
 	if err != nil {
 		return "", err
 	}
-	trailer, err := history.Trailer(context.Background(), id)
+	trailer, err := history.TrailerFor(context.Background(), id, commit)
 	if err != nil {
 		return "", err
 	}
@@ -396,6 +658,9 @@ func (d *Doors) AnswerPending(id int, manager, questionID, words string) (factor
 		dirty := false
 		var receipt factory.ManagerAnswer
 		err := d.desk.store.Update(id, func(it *factory.Item) error {
+			if err := factory.CheckPersonStop(*it); err != nil {
+				return err
+			}
 			if manager == "" || it.Talk != manager {
 				return errors.New("the job's manager changed; read factory_status from its current conversation")
 			}
@@ -412,6 +677,9 @@ func (d *Doors) AnswerPending(id int, manager, questionID, words string) (factor
 			} else {
 				if factory.PendingQuestionID(*it) != questionID {
 					return errors.New("the pending step question changed; read factory_status before answering again")
+				}
+				if it.QKind != "step" || it.Asking == nil {
+					return errors.New("Nothing changed: use the supported gate action from factory_status or the job decision controls")
 				}
 				if it.Manual || it.Publishing {
 					return errors.New("manual control or publication owns this job")
@@ -456,4 +724,30 @@ func (d *Doors) AnswerPending(id int, manager, questionID, words string) (factor
 		return dirty, nil
 	})
 	return saved, err
+}
+
+// SpendAnswer answers only the spending question on the locked revision.
+// Refusals leave both the item and its worker signal unchanged.
+func (d *Doors) SpendAnswer(id, revision int, yes bool, may func(factory.Item) error) (factory.Item, error) {
+	var before factory.Item
+	err := d.updateAt(id, &revision, false, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
+		if err := run.SpendingAnswer(*it); err != nil {
+			return false, err
+		}
+		if may != nil {
+			if err := may(*it); err != nil {
+				return false, err
+			}
+		}
+		var err error
+		before, err = copyItem(*it)
+		if err != nil {
+			return false, err
+		}
+		return answerLocked(doc, held, id, it, yes, "", now)
+	})
+	if err != nil {
+		return factory.Item{}, err
+	}
+	return before, nil
 }

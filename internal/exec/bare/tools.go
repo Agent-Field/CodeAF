@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -23,6 +24,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
 	"github.com/Agent-Field/codeaf/internal/shell"
+	"github.com/Agent-Field/codeaf/internal/textfile"
 )
 
 // Tool is the shape every tool in this package wears, and the shape a
@@ -334,7 +336,10 @@ func readTool(cwd string, caps Caps) Tool {
 			if err != nil {
 				return "Error reading file: " + err.Error(), true, nil
 			}
-			textContent := string(data)
+			textContent, _, err := textfile.Decode(data)
+			if err != nil {
+				return "Error reading file: " + err.Error(), true, nil
+			}
 			allLines := strings.Split(textContent, "\n")
 			totalFileLines := len(allLines)
 
@@ -537,8 +542,8 @@ func newBashTool(cwd string, caps Caps) Tool {
 			cmd.Stdout = acc
 			cmd.Stderr = acc
 
-			if err := cmd.Start(); err != nil {
-				return "Failed to start command: " + err.Error(), true, nil
+			if err := processgroup.Start(cmd); err != nil {
+				return startFailedText(runtime.GOOS, err), true, nil
 			}
 
 			// THE SEAT IS TOLD WHICH GROUP THIS IS, so a record of the call can end
@@ -678,6 +683,7 @@ func newBashTool(cwd string, caps Caps) Tool {
 			}
 
 			if call.wasTimedOut() {
+				reportBashInterruption(ctx, "timed out")
 				// The bound that was APPLIED, which is the model's own figure
 				// or the ceiling it was given in place of one.
 				timeoutSecs := timeoutMs / 1000
@@ -703,9 +709,11 @@ func newBashTool(cwd string, caps Caps) Tool {
 			// promotion rule and its record reader (why.go) both hold to, so
 			// an interrupted command is never carried on as a background job.
 			if errors.Is(ctx.Err(), context.Canceled) {
+				reportBashInterruption(ctx, "cancelled")
 				return appendStatus(text, "Command aborted"), true, nil
 			}
 			if ctx.Err() != nil {
+				reportBashInterruption(ctx, "timed out")
 				return commandCutWords(began, text), true, nil
 			}
 
@@ -727,6 +735,18 @@ func newBashTool(cwd string, caps Caps) Tool {
 			return text, false, nil
 		},
 	}
+}
+
+// startFailedText is the bash tool's result when the shell never started. A
+// refusal the platform can explain puts that reason on the first line, which is
+// the line a failed step's summary shows, with the advice and the platform's own
+// words below it; every other failure keeps the plain one-line form.
+func startFailedText(goos string, err error) string {
+	reason, advice := shell.StartFailure(goos, err)
+	if reason == "" {
+		return "Failed to start command: " + err.Error()
+	}
+	return "Failed to start command: " + reason + "\n" + advice + "\nWindows said: " + err.Error()
 }
 
 // appendStatus mirrors pi's bash.js:appendStatus: join text and status with
@@ -777,13 +797,14 @@ func exitCodeFromWait(err error) int {
 // getShellConfig mirrors pi's shell.js:getShellConfig on Unix: /bin/bash if
 // it exists, then bash on PATH, then fallback to sh. Windows instead uses the
 // engine's native bash, and refuses before a command can reach a WSL launcher.
-// Bash pipelines preserve a failing check's status on every supported platform.
-func getShellConfig() (string, []string, error) {
-	program, args, err := shell.Preferred()
-	if err == nil && program != "sh" {
-		args = append([]string{"-o", "pipefail"}, args...)
+// Its arguments end with command, run under [shell.PipefailArgs] like every
+// other bash door.
+func getShellConfig(command string) (string, []string, error) {
+	program, flags, err := shell.Preferred()
+	if err != nil {
+		return "", nil, err
 	}
-	return program, args, err
+	return program, shell.PipefailArgs(program, flags, command), nil
 }
 
 // killProcessGroup sends SIGKILL to the process group, mirroring pi's
@@ -856,9 +877,13 @@ func newEditTool(cwd string) Tool {
 				}
 
 				// Strip BOM, detect EOL, normalize to LF.
-				bom, content := stripBom(string(rawContent))
-				originalEnding := detectLineEnding(content)
-				normalizedContent := normalizeToLF(content)
+				decoded, encoding, err := textfile.Decode(rawContent)
+				if err != nil {
+					return fmt.Sprintf("Could not process edit: %s. %s", path, err), true, nil
+				}
+				bom, content := stripBom(decoded)
+				originalEnding := textfile.DetectLineEnding(content)
+				normalizedContent := textfile.NormalizeToLF(content)
 
 				result, err := applyEditsToNormalizedContent(normalizedContent, edits, path)
 				if err != nil {
@@ -868,9 +893,13 @@ func newEditTool(cwd string) Tool {
 					return "Operation aborted", true, nil
 				}
 
-				finalContent := bom + restoreLineEndings(result.newContent, originalEnding)
-				if err := os.WriteFile(absPath, []byte(finalContent), 0644); err != nil {
+				finalContent := bom + textfile.RestoreLineEndings(result.newContent, originalEnding)
+				written, err := writeFileObserved(absPath, encoding.Encode(finalContent))
+				if err != nil {
 					return fmt.Sprintf("Could not process edit: %s. %s", path, err.Error()), true, nil
+				}
+				if observe := writeObserverFrom(ctx); observe != nil {
+					observe(written)
 				}
 				if ctx.Err() != nil {
 					return "Operation aborted", true, nil
@@ -953,11 +982,15 @@ func newWriteTool(cwd string) Tool {
 		Schema:      json.RawMessage(writeSchemaJSON),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			var p struct {
-				Path    string `json:"path"`
-				Content string `json:"content"`
+				Path    string  `json:"path"`
+				Content *string `json:"content"`
 			}
 			if err := json.Unmarshal(args, &p); err != nil {
 				return RejectArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
+			}
+
+			if p.Content == nil {
+				return "Invalid arguments: content is required and must be a string", true, nil
 			}
 
 			absPath := resolveToCwd(p.Path, cwd)
@@ -973,7 +1006,15 @@ func newWriteTool(cwd string) Tool {
 				if ctx.Err() != nil {
 					return "Operation aborted", true, nil
 				}
-				written, err := writeFileObserved(absPath, []byte(p.Content))
+				original, err := textfile.ReadForWrite(absPath)
+				if err != nil && !os.IsNotExist(err) {
+					return err.Error(), true, nil
+				}
+				content, err := textfile.WriteContent(original, *p.Content)
+				if err != nil {
+					return err.Error(), true, nil
+				}
+				written, err := writeFileObserved(absPath, content)
 				if err != nil {
 					return err.Error(), true, nil
 				}
@@ -988,13 +1029,13 @@ func newWriteTool(cwd string) Tool {
 				}
 				// pi uses content.length which is the JS string char length
 				// (UTF-16 code units), NOT the byte length.
-				return fmt.Sprintf("Successfully wrote %d bytes to %s", utf16Length(p.Content), p.Path), false, nil
+				return fmt.Sprintf("Successfully wrote %d bytes to %s", utf16Length(*p.Content), p.Path), false, nil
 			})
 		},
 	}
 }
 
-// WriteEvent is what one successful write tool call did to the disk, observed
+// WriteEvent is what one successful write or edit tool call did to the disk, observed
 // inside the file's mutation queue by the writer itself.
 //
 // Created is true ONLY when this call made the file: the path was absent when
@@ -1012,7 +1053,7 @@ type WriteEvent struct {
 
 type writeObserverKey struct{}
 
-// WithWriteObserver returns a context whose write tool calls report each
+// WithWriteObserver returns a context whose write and edit tool calls report each
 // successful write to observe, inside the file mutation queue. It is generic:
 // the tool neither knows nor cares what the observer is for.
 func WithWriteObserver(ctx context.Context, observe func(WriteEvent)) context.Context {
@@ -1125,9 +1166,8 @@ func releaseMutationQueue(key string, ch chan struct{}) {
 	}
 }
 
-// mutationQueueKey mirrors pi's getMutationQueueKey: resolve the path, then
-// realpath it; if the file does not exist yet, fall back to the resolved
-// path.
+// mutationQueueKey resolves aliases before mutation, including dangling leaf
+// symlinks and absent files whose parent directory is reached through a symlink.
 func mutationQueueKey(filePath string) string {
 	resolved := filepath.Clean(filePath)
 	abs, err := filepath.Abs(resolved)
@@ -1137,7 +1177,48 @@ func mutationQueueKey(filePath string) string {
 	if real, err := filepath.EvalSymlinks(abs); err == nil {
 		return real
 	}
-	return abs
+	return mutationDanglingKey(abs)
+}
+
+// mutationDanglingKey walks components even past an absent target. A symlink's
+// parent is resolved before its relative target, and target components stay
+// uncleaned so dir/.. follows dir's real parent rather than its lexical parent.
+func mutationDanglingKey(abs string) string {
+	const maxSymlinkHops = 40
+	volume := filepath.VolumeName(abs)
+	resolved := volume + string(filepath.Separator)
+	pending := strings.Split(filepath.ToSlash(strings.TrimPrefix(abs, volume)), "/")
+	hops := 0
+	for len(pending) > 0 {
+		part := pending[0]
+		pending = pending[1:]
+		switch part {
+		case "", ".":
+			continue
+		case "..":
+			resolved = filepath.Dir(resolved)
+			continue
+		}
+		next := filepath.Join(resolved, part)
+		target, err := os.Readlink(next)
+		if err != nil {
+			resolved = next
+			continue
+		}
+		// The file operation will refuse loops and excessive chains. Bound
+		// queue-key traversal too, so those paths cannot strand the caller.
+		if hops == maxSymlinkHops {
+			return abs
+		}
+		hops++
+		if filepath.IsAbs(target) {
+			volume = filepath.VolumeName(target)
+			resolved = volume + string(filepath.Separator)
+			target = strings.TrimPrefix(target, volume)
+		}
+		pending = append(strings.Split(filepath.ToSlash(target), "/"), pending...)
+	}
+	return resolved
 }
 
 // ── bash output accumulator ────────────────────────────────────────────────
@@ -1306,7 +1387,7 @@ type accumulatorSnapshot struct {
 }
 
 func (a *outputAccumulator) snapshot() accumulatorSnapshot {
-	snapshotText := a.getSnapshotText()
+	snapshotText := shell.OutputText(a.getSnapshotText())
 	tailTrunc := truncateTail(snapshotText, a.caps)
 
 	truncated := a.totalLines > a.maxLines || a.totalDecoded > a.maxBytes

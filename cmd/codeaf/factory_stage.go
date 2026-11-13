@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/approval"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
@@ -48,19 +49,25 @@ import (
 //   - it runs at the ALLOW POSTURE, what --yolo gives, behind the headless
 //     gate ([stageApprovalGate]): a stage that writes must be able to edit and
 //     run things in its checkout, and nothing it does may wait on a person who
-//     is not there;
+//     is not there. The posture opens the gate and NOT the machine: every
+//     command still runs inside the fence (fence.go), which keeps it to its
+//     worktree, its git folder and its own temp and cache folders;
 //   - the doors that raise a card for a person (factory_add, factory_recipe,
 //     factory_item) are taken off, because no person is there to answer one
 //     and a card nobody answers holds the round forever.
 
 // stageMaker opens stage conversations from parent, the launch's own config.
 type stageMaker struct {
-	floor      *store.Store
-	parent     session.Config
-	current    func() session.Config
-	refusal    func() error
-	workspace  string
-	profileDir string
+	floor *store.Store
+	// jobs is where the job a step runs for is kept: the worker's mirror of
+	// the job the factory leased it. Nil is floor.
+	jobs        *store.Store
+	memoryOwner *store.Store
+	parent      session.Config
+	current     func() session.Config
+	refusal     func() error
+	workspace   string
+	profileDir  string
 }
 
 // factoryStageMaker is this process's maker.
@@ -72,6 +79,12 @@ func factoryStageMaker(floor *store.Store, workspace, profileDir string, parent 
 // including a resumed round whose journal predates the one-model launch.
 func factoryStageMakerFrom(floor *store.Store, workspace, profileDir string, current func() session.Config) stageMaker {
 	return stageMaker{floor: floor, current: current, workspace: workspace, profileDir: profileDir}
+}
+
+// withJobs reads and books a step's money on jobs, the worker's mirror.
+func (m stageMaker) withJobs(jobs *store.Store) stageMaker {
+	m.jobs = jobs
+	return m
 }
 
 // withRefusal gives the maker the reason its parent was last refused.
@@ -94,8 +107,17 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	if where == "" {
 		where = strings.TrimSpace(m.workspace)
 	}
+	if where == "" && spec.Item.ID > 0 {
+		// A STAGE WITH NO WORKTREE AND A HOST WITH NO FOLDER works in its
+		// job's own empty folder, never in whatever folder the engine started
+		// in (factory_chat_folder.go).
+		where, _ = factoryJobFolder(m.floor, spec.Item.ID)
+	}
 	if where == "" {
 		return nil, errors.New("codeaf does not know which folder this stage's conversation belongs in")
+	}
+	if err := factoryFolderRefusal(m.floor, where); err != nil {
+		return nil, err
 	}
 	bucket, err := v3ProjectDir(where)
 	if err != nil {
@@ -118,18 +140,34 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 		return nil, err
 	}
 	cfg.Workspace = where
-	// THE JOB'S OWN MODEL, WHEN A PERSON CHOSE ONE, over the launch's default.
-	cfg.AutomaticModels = spec.AutomaticModels
-	if model := strings.TrimSpace(spec.Model); model != "" {
-		cfg.Model = model
+	// A STAGE'S COMMANDS ARE FENCED to its worktree (fence.go): the allow
+	// posture below opens the gate, and the fence is what still holds.
+	// Its check receipts are written beside its transcript, in codeaf's home,
+	// from inside that fence, so their folder is the one place outside the
+	// worktree it also writes (verification.ReceiptRoot).
+	var receipts []string
+	if cfg.SessionFile != "" {
+		receipts = append(receipts, verification.ReceiptRoot(cfg.SessionFile))
 	}
+	if cfg.Fence, err = unattendedFence(where, m.profileDir, receipts...); err != nil {
+		return nil, err
+	}
+	cfg.AutomaticModels = spec.AutomaticModels
+	cfg.Model = factoryOpenModel(m.profileDir, cfg, spec)
 	fallback := appDefaultFallback(m.profileDir)
 	if cfg.OneModel || fallback == cfg.Model {
 		fallback = ""
 	}
 	cfg.ConversationModels = &session.ConversationModels{Main: cfg.Model, Fallback: fallback}
-	verification := &receiptStageDoor{StageDoor: spec.Stage, file: cfg.SessionFile, dir: where, repair: spec.VerifyRepair, requireFresh: spec.VerifyChecks}
+	verification := &receiptStageDoor{
+		StageDoor: spec.Stage, file: cfg.SessionFile, dir: where,
+		repair: spec.VerifyRepair, requireFresh: spec.VerifyChecks, baselineCommit: spec.BaselineCommit,
+		accepted:   spec.AcceptedFailures,
+		syncPRBase: spec.SyncPRBase,
+	}
 	cfg.Stage = verification
+	cfg.PlanStage = strings.EqualFold(strings.TrimSpace(spec.VerificationStage), "plan")
+	cfg.RepairStage = factory.IsCIRepairStage(factory.Stage{Name: strings.TrimSpace(spec.VerificationStage)})
 	cfg.Interactive = false
 	cfg.Unattended = true
 	cfg.Budget = session.Budget{Wall: factoryStageWall}
@@ -140,9 +178,23 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	// Stages carry no manager tool authority. Their separate live meter charges
 	// the same job before round completion, including delegated provider calls.
 	cfg.JobChat = nil
-	budget := &stageBudget{floor: m.floor, item: spec.Item}
+	jobs := m.jobs
+	if jobs == nil {
+		jobs = m.floor
+	}
+	budget := &stageBudget{floor: jobs, memoryOwner: m.memoryOwner, item: spec.Item, stage: spec.VerificationStage}
+	if spec.Item.Stream != nil {
+		for _, ph := range spec.Item.Stream.Phases {
+			if ph.Name == budget.stage {
+				budget.round = max(1, ph.Round)
+				break
+			}
+		}
+	}
 	cfg.JobBudget = budget
-	gate := stageApprovalGate{rows: v3ApprovalGate{workspace: where, profileDir: m.profileDir, headless: true}, posture: factoryStagePosture()}
+	cfg.JobContext = spec.JobContext
+	cfg.JobPendingSpend = spec.PendingSpend
+	gate := stageApprovalGate{rows: &v3ApprovalGate{workspace: where, profileDir: m.profileDir, headless: true}, posture: factoryStagePosture()}
 	cfg.ApprovalGate = gate
 	cfg.ApprovalPosture = gate.posture
 	if cfg.ApprovalPolicy, cfg.Guardian, err = gate.Build(cfg.ApprovalPosture); err != nil {
@@ -186,7 +238,9 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	}
 	brief := spec.Brief + inheritFactoryChecks(spec, cfg.SessionFile, where)
 	if resumed {
-		brief = session.CarryOn(brief)
+		// The model reads its brief again; the person's chat does not show
+		// the engine's resume prompt as a line they typed.
+		brief = session.ResumedStepBrief(brief)
 	}
 	events, err := agent.Submit(context.WithoutCancel(ctx), brief)
 	if err != nil {
@@ -258,22 +312,33 @@ func factoryStagePosture() string {
 // name) still hold, because they sit under every policy and they are not a
 // person's preference. A person who wants a stage narrower says so with
 // [factoryPostureEnv].
+// An unreadable profile still requires a person: its saved denials are unknown.
 type stageApprovalGate struct {
-	rows    v3ApprovalGate
+	rows    *v3ApprovalGate
 	posture string
 }
 
 // Build is the gate for one posture.
 func (g stageApprovalGate) Build(posture string) (*approval.Policy, bool, error) {
+	if g.rows != nil {
+		_, err := config.ReadProfileApprovalConfig(g.rows.profileDir)
+		var pathErr *os.PathError
+		if errors.As(err, &pathErr) {
+			return &approval.Policy{ProfileReadError: err.Error()}, false, nil
+		}
+	}
 	if posture != session.PostureAllow {
 		return g.rows.Build(posture)
 	}
-	policy, err := approval.Load(map[string]any{"default": string(approval.ActionAllow), "tools": v3BuiltinApprovals()})
-	if err != nil {
-		return nil, false, err
-	}
-	return &policy, false, nil
+	policy, err := stageAllowPolicy()
+	return policy, false, err
 }
+
+// Every stage's allow policy has the same inputs and is immutable after build.
+var stageAllowPolicy = sync.OnceValues(func() (*approval.Policy, error) {
+	policy, err := approval.Load(map[string]any{"default": string(approval.ActionAllow), "tools": v3BuiltinApprovals()})
+	return &policy, err
+})
 
 // Standing is the posture the stage stands at.
 func (g stageApprovalGate) Standing() string { return g.posture }
@@ -285,6 +350,13 @@ func (g stageApprovalGate) Standing() string { return g.posture }
 // IT IS THE OPENING BRIEF AND ONLY THAT: a resumed stage is never joined again
 // (Open skips this), because what a resume is given is a carry-on note
 // ([session.CarryOn]) and not the brief the stage began on.
+//
+// A ROOM CLOSED UNDER A RUNNING ROUND STILL TAKES ITS STAGES. A person may
+// close the job's room, or the `factory` crew above it, while a round is
+// going, and a job may end with a round still opening stages: the stage joins
+// the room closed, as it always has, and the room stays as it was left. The
+// open crews are written first, which is where the room almost always is; only
+// a room not among them is joined through the whole list.
 func stageJoinTeam(profileDir, team, transcript, where, name, handle, brief string) error {
 	key := transcript
 	if real, err := filepath.EvalSymlinks(transcript); err == nil {
@@ -292,9 +364,20 @@ func stageJoinTeam(profileDir, team, transcript, where, name, handle, brief stri
 	}
 	key = filepath.Clean(key)
 	now := time.Now()
-	return teams.Update(profileDir, func(f *teams.File) error {
+	join := func(f *teams.File) error {
 		return f.AddMember(team, teams.Member{Key: key, File: transcript, Where: where, Word: name, Handle: handle, JoinedAt: now, FactoryStage: true, FactoryBrief: redact.Secrets(brief)})
+	}
+	open := false
+	err := teams.UpdateOpen(profileDir, func(f *teams.File) error {
+		if _, open = f.Team(team); !open {
+			return nil
+		}
+		return join(f)
 	})
+	if err != nil || open {
+		return err
+	}
+	return teams.Update(profileDir, join)
 }
 
 // stageSettle is how long the conversation must have been still before it
@@ -398,6 +481,7 @@ func (c *stageConversation) drain(events <-chan session.Event) {
 		prose.Reset()
 	}
 	for event := range events {
+		tellStageNews(c.file, event)
 		switch event.Kind {
 		case session.EventTextDelta:
 			if c.progress != nil && prose.Len() < 4*1024 {
@@ -413,18 +497,29 @@ func (c *stageConversation) drain(events <-chan session.Event) {
 			prose.Reset()
 		case session.EventToolBegin:
 			flush()
-			hint := c.relativeHint(event.Hint)
-			if hint != "" {
-				c.say(event.Tool + " " + hint)
-			} else {
-				c.say(event.Tool)
+			hint := strings.TrimSpace(event.Hint)
+			if event.Tool == "bash" {
+				var args struct {
+					Command string `json:"command"`
+				}
+				if json.Unmarshal([]byte(event.Args), &args) == nil && args.Command != "" {
+					hint = "bash " + strings.Join(strings.Fields(args.Command), " ")
+				}
 			}
+			if hint != event.Tool && !strings.HasPrefix(hint, event.Tool+" ") {
+				hint = strings.TrimSpace(event.Tool + " " + hint)
+			}
+			c.say(factory.ToolCaptionPrefix + factory.ToolLogText(hint, c.dir))
 		case session.EventToolFailed:
+			var refused *approval.ProfileReadFailure
+			if errors.As(event.Err, &refused) {
+				c.fail(refused)
+			}
 			reason := event.Hint
 			if reason == "" && event.Err != nil {
 				reason = event.Err.Error()
 			}
-			c.say(event.Tool + " failed: " + reason)
+			c.say(factory.ToolCaptionPrefix + factory.ToolLogText(event.Tool+" failed: "+reason, c.dir))
 		case session.EventNotice:
 			// THE ACCEPTANCE NOTICE IS THE STAGE'S OWN BUSINESS: every stage
 			// would log a `done when · …` line, which says nothing to the
@@ -453,7 +548,10 @@ func (c *stageConversation) fail(err error) {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.failure = err
+	var refused *approval.ProfileReadFailure
+	if !errors.As(c.failure, &refused) {
+		c.failure = err
+	}
 }
 
 // say puts one caption on the account, dropping it rather than holding the
@@ -565,9 +663,17 @@ func (c *stageConversation) Wait(ctx context.Context) error {
 	case <-done:
 		c.mu.Lock()
 		defer c.mu.Unlock()
+		var refused *approval.ProfileReadFailure
+		if errors.As(c.failure, &refused) {
+			return refused
+		}
 		if c.budget != nil {
 			if why := c.budget.Refusal(); why != "" {
-				return factoryrun.SpendStop{Job: c.budget.reachedCap(), Said: why}
+				// A daily refusal already recorded was not caused by memory, so
+				// the stop keeps its ordinary meaning: an early report is rejected.
+				var refused factoryrun.SpendStop
+				daily := errors.As(c.failure, &refused) && refused.Daily
+				return factoryrun.SpendStop{Job: c.budget.reachedCap(), Memory: !daily && c.budget.memoryCap(), Said: why}
 			}
 		}
 		return c.failure
@@ -591,10 +697,10 @@ func (c *stageConversation) VerificationStopped() <-chan string {
 // ID is the conversation's session file, which is how a surface opens it.
 func (c *stageConversation) ID() string { return c.file }
 
-// Spent is what the conversation has cost, its tasks folded in.
+// Spent is the logical round total, including resumed work and descendants.
 func (c *stageConversation) Spent() float64 {
 	if c.budget != nil {
-		return c.budget.total()
+		return c.budget.roundTotal()
 	}
 	return c.agent.Usage().CostUSD
 }
@@ -665,6 +771,12 @@ func factoryChatStage(st *store.Store, profileDir string, inner factoryrun.Execu
 		}
 		if job.Item.Stream != nil {
 			if room := strings.TrimSpace(job.Item.Stream.Room); room != "" {
+				// A live job's room that its end closed opens again here, should
+				// the reopen that followed the job's return have been lost
+				// (factory_room_follow.go).
+				if !jobOver(job.Item) {
+					_ = reopenJobRoom(profileDir, job.Item)
+				}
 				local, err := factoryEnsureRoom(profileDir, job.Item, room)
 				if err != nil {
 					return factory.StageResult{}, err
@@ -838,20 +950,11 @@ func factoryItemTeam(profileDir string, it factory.Item) (string, error) {
 	name := talkTeamName(it)
 	now := time.Now()
 	id := ""
-	err := teams.Update(profileDir, func(f *teams.File) error {
+	err := teams.UpdateOpen(profileDir, func(f *teams.File) error {
 		id = itemTeamIn(f, name, now)
 		return nil
 	})
 	return id, err
-}
-
-// relativeHint spends the visible log on the filename and command, not a home path.
-func (c *stageConversation) relativeHint(s string) string {
-	if c.dir == "" {
-		return s
-	}
-	s = strings.ReplaceAll(s, c.dir+string(os.PathSeparator), "")
-	return strings.ReplaceAll(s, c.dir, ".")
 }
 
 // watchVerification relays bounded structured facts even while a model turn parks.

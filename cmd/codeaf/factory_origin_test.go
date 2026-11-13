@@ -7,6 +7,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,6 +21,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/remote"
+	"github.com/Agent-Field/codeaf/internal/session"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
 
@@ -226,7 +228,7 @@ func TestResumedStageKeepsItsOpeningBriefThroughTheRealMaker(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	item, err := floor.Create(factory.Item{Kind: factory.KindIssue, Repo: "acme/api", Num: 1, State: factory.StateRunning, Cap: 10, Stream: &factory.Stream{Room: team, Phases: []factory.Phase{{Name: "review", Kind: factory.StageChat, State: factory.PhaseRunning}}}})
+	item, err := floor.Create(factory.Item{Tier: factory.TierOwner, Kind: factory.KindIssue, Repo: "acme/api", Num: 1, State: factory.StateRunning, Cap: 10, Stream: &factory.Stream{Room: team, Phases: []factory.Phase{{Name: "review", Kind: factory.StageChat, State: factory.PhaseRunning}}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -257,14 +259,19 @@ func TestResumedStageKeepsItsOpeningBriefThroughTheRealMaker(t *testing.T) {
 		t.Fatal(err)
 	}
 	tm, _ := f.Team(team)
+	if len(tm.Members) == 1 {
+		tm.Members[0] = stageBriefs(t, "", team, tm.Members[0])
+	}
 	if len(tm.Members) != 1 || !tm.Members[0].FactoryStage || tm.Members[0].FactoryBrief != "Look it over. End by calling stage_result once." {
 		t.Fatalf("members = %+v", tm.Members)
 	}
 	model.mu.Lock()
 	defer model.mu.Unlock()
 	last := model.briefs[len(model.briefs)-1]
-	if !strings.Contains(last, "[carry on] Pick up where you stopped.") {
-		t.Fatalf("the resume did not go through CarryOn: %.400s", last)
+	// The request is JSON, so the lead's line break reads escaped there.
+	want, _ := json.Marshal(session.ResumedStepBrief("Pick up where you stopped."))
+	if !strings.Contains(last, strings.Trim(string(want), `"`)) {
+		t.Fatalf("the resume did not go through ResumedStepBrief: %.400s", last)
 	}
 }
 
@@ -330,7 +337,7 @@ func TestStoredPhaseChatStampsOnlyTheRecordedStageMembers(t *testing.T) {
 	got := map[string]teamstore.Member{}
 	for _, tm := range f.Teams {
 		for _, m := range tm.Members {
-			got[tm.ID+"/"+m.Handle] = m
+			got[tm.ID+"/"+m.Handle] = stageBriefs(t, profile, tm.ID, m)
 		}
 	}
 	if m := got[id+"/legacy"]; !m.FactoryStage || m.FactoryBrief != "" {
@@ -369,7 +376,33 @@ func TestFactoryStageBriefRedactsBeforeStorage(t *testing.T) {
 		t.Fatal(err)
 	}
 	tm, _ := f.Team(room)
+	if len(tm.Members) == 1 {
+		tm.Members[0] = stageBriefs(t, profile, room, tm.Members[0])
+	}
 	if len(tm.Members) != 1 || !strings.HasPrefix(tm.Members[0].FactoryBrief, "Review the diff.") || strings.Contains(tm.Members[0].FactoryBrief, secret) {
 		t.Fatal("opening brief missing or secret persisted in team storage")
+	}
+}
+
+// stageBriefs is m with its briefs, which a load of the teams leaves out.
+func stageBriefs(t *testing.T, profile, team string, m teamstore.Member) teamstore.Member {
+	t.Helper()
+	m, err := teamstore.WithBriefs(profile, team, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+// A job with no issue was once named #3, and its saved team keeps that name.
+// Its next conversation joins that team, not a second one beside it.
+func TestItemTeamFindsAJobsTeamUnderItsOldName(t *testing.T) {
+	var f teamstore.File
+	old := itemTeamIn(&f, "#3 · review", time.Now())
+	if got := itemTeamIn(&f, "job 3 · review", time.Now()); got != old {
+		t.Fatalf("a second team %q beside the saved %q: %+v", got, old, f.Teams)
+	}
+	if other := itemTeamIn(&f, "job 4 · review", time.Now()); other == old {
+		t.Fatalf("another job joined the saved team: %+v", f.Teams)
 	}
 }

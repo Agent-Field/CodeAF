@@ -30,6 +30,7 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/pool/judge"
@@ -64,10 +65,24 @@ func poolJudgeHook(settings config.Config, profileDir, workspace string, models 
 	if !config.ModelPoolAt(profileDir).CanRead() {
 		return nil
 	}
+	return poolJudgeHookContext(context.Background(), settings, profileDir, models, ask, now, door)
+}
+
+func poolJudgeHookContext(ctx context.Context, settings config.Config, profileDir string, models func() []catalog.Model, ask func(string) judge.Ask, now func() time.Time, door string) func(session.TaskLanding) {
+	profileDir = config.ProfilePath(profileDir, "")
 	return func(landing session.TaskLanding) {
 		defer guard.Recover("pool/judge")
-		poolJudgeLanding(settings, profileDir, models, ask, now, door, landing)
+		poolJudgeLandingContext(ctx, settings, profileDir, models, ask, now, door, landing)
 	}
+}
+
+// poolJudgeStandsDown says whether the profile's task models are in one-model
+// mode, read at the moment each landing would be judged, by the live hook and
+// by the sweep alike. The judge exists to ask a model outside the crew, and
+// one-model mode allows no other model, so it stands down exactly as it does
+// under `--one-model`: nothing is asked and no judged marker is written.
+func poolJudgeStandsDown(profileDir string) bool {
+	return config.TaskModelsModeAt(profileDir) == crewroute.ModeOne
 }
 
 // judgeLast is the small record the hook leaves after every landing it
@@ -136,6 +151,9 @@ func poolJudgeLanding(settings config.Config, profileDir string, models func() [
 }
 
 func poolJudgeLandingContext(ctx context.Context, settings config.Config, profileDir string, models func() []catalog.Model, ask func(model string) judge.Ask, now func() time.Time, door string, landing session.TaskLanding) {
+	if ctx.Err() != nil || poolJudgeStandsDown(profileDir) {
+		return
+	}
 	pool := config.ModelPoolAt(profileDir)
 	poolDir := config.ProfilePath(profileDir, "pool")
 	// A seat's id enters the pool spelled bare (poolSeatID): the sheet, the
@@ -148,6 +166,9 @@ func poolJudgeLandingContext(ctx context.Context, settings config.Config, profil
 		seats[judge.RoleHigh] = poolSeatID(landing.High)
 	}
 	candidates := judge.Candidates(models(), seats, judge.DefaultFloor)
+	if ctx.Err() != nil {
+		return
+	}
 	// The seats are said in the crew's own order — the worker, then the high
 	// seat when the run held one — so the record reads the way the crew ran.
 	held := []string{poolSeatID(landing.Worker)}
@@ -186,10 +207,16 @@ func poolJudgeLandingContext(ctx context.Context, settings config.Config, profil
 	var scores []judge.Score
 	var err error
 	for _, candidate := range candidates {
+		if ctx.Err() != nil {
+			return
+		}
 		rec.Judge = candidate
 		ctx, cancel := context.WithTimeout(ctx, judgeTimeout*time.Duration(len(seats)+1))
 		one := ask(candidate)
 		perSeat := func(ctx context.Context, system, user string) (string, error) {
+			if err := ctx.Err(); err != nil {
+				return "", err
+			}
 			qctx, cancel := context.WithTimeout(ctx, judgeTimeout)
 			defer cancel()
 			return one(qctx, system, user)
@@ -215,6 +242,11 @@ func poolJudgeLandingContext(ctx context.Context, settings config.Config, profil
 		if trace.Enabled() {
 			log.Printf("model pool: judge %s scored no seat of task %d: %v", candidate, landing.ID, err)
 		}
+	}
+	// A provider may return scores after cancellation, or only one seat before
+	// the next is cancelled. Keep the whole landing for the restart sweep.
+	if ctx.Err() != nil {
+		return
 	}
 	// What the judge did is said before anything else is recorded, so the
 	// record stands even when the sheet or the outbox refuses it: a failure
@@ -291,7 +323,7 @@ func poolJudgeLandingContext(ctx context.Context, settings config.Config, profil
 	// evidence now; the copies waiting in the outbox leave for the relay
 	// here, on this hook's own goroutine (the session runs TaskLanded on
 	// one), under the push's own bound.
-	pushCtx, cancelPush := context.WithTimeout(context.Background(), poolPushBudget)
+	pushCtx, cancelPush := context.WithTimeout(ctx, poolPushBudget)
 	defer cancelPush()
 	poolPush(pushCtx, profileDir, pool, poolPushBudget)
 }
@@ -350,6 +382,9 @@ func poolJudgeAsk(live func() config.Config, profileDir string) func(model strin
 			}
 			if response == nil || strings.TrimSpace(response.Text()) == "" {
 				return "", errors.New("the model answered nothing")
+			}
+			if err := ctx.Err(); err != nil {
+				return "", err
 			}
 			recordPoolUsage(settings, model, response.Usage)
 			return response.Text(), nil
@@ -531,7 +566,7 @@ var poolJudgeSweepRun = poolJudgeSweepContext
 
 func poolJudgeSweepContext(ctx context.Context, settings config.Config, profileDir, tasksPath string, models func() []catalog.Model, ask func(model string) judge.Ask, now func() time.Time) {
 	defer guard.Recover("pool/judge-sweep")
-	if !config.ModelPoolAt(profileDir).CanRead() {
+	if ctx.Err() != nil || !config.ModelPoolAt(profileDir).CanRead() || poolJudgeStandsDown(profileDir) {
 		return
 	}
 	if strings.TrimSpace(settings.APIKey) == "" {
@@ -563,6 +598,9 @@ func poolJudgeSweepContext(ctx context.Context, settings config.Config, profileD
 				judged++
 			}
 		}
+	}
+	if ctx.Err() != nil {
+		return
 	}
 	// The sweep's one record of itself, at its end: what it judged, what its
 	// budget left waiting, and whether the deadline ended it with rows left.
@@ -612,6 +650,9 @@ func sweepPendingContext(ctx context.Context, settings config.Config, profileDir
 		if data, err := os.ReadFile(pendingPath(poolDir)); err == nil {
 			left += countUnjudged(poolDir, strings.Split(string(data), "\n"))
 		}
+		return judged, left
+	}
+	if ctx.Err() != nil {
 		return judged, left
 	}
 	if err := os.Rename(pendingPath(poolDir), claim); err != nil {

@@ -17,9 +17,8 @@ import (
 // stopwatches for the reason that file's doctrine gives: a count is a fact about
 // the code and the same fact on a loaded laptop as on idle CI.
 //
-// WHAT THEY WERE WRITTEN AFTER. The owner reported that "when I hover or go up
-// and down in home it's very laggy, I think it has something to do with git".
-// Three separate things were true, and the guess was one of them:
+// WHAT THEY WERE WRITTEN AFTER. Three separate things were true, and the guess was one of
+// them:
 //
 //   - the deliverables index was read and parsed inside a draw (fixed one commit
 //     earlier, pinned by [TestTheDeliverablesIndexIsReadOnceForTheWholeScreen]);
@@ -96,9 +95,6 @@ func TestMovingTheCursorOnHomeRunsNoCommand(t *testing.T) {
 	// ([app.refreshGridReadings]), so an arrow has nothing to ask.
 }
 
-// AND SO DOES A POINTER, which is the half the owner met first: a surface in
-// AllMotion answers a sweep sixty times a second (coalesce.go), so one command
-// per answered motion is sixty commands a second in front of the keys.
 func TestAPointerMotionOnHomeRunsNoCommand(t *testing.T) {
 	ran := 0
 	a := snappyLab(t, 10*time.Millisecond, &ran)

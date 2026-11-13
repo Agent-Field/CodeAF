@@ -113,7 +113,7 @@ func engineDoors(t *testing.T) map[string]bool {
 
 // doorsStillOnTheLoop is the DEBT this law NAMES rather than hides.
 //
-// THE ANSWER ROAD IS CLOSED AND THE REST OF THE SURFACE IS NOT. This lane fixed
+// THE ANSWER ROAD IS CLOSED AND THE REST OF THE SURFACE IS NOT. this test fixed
 // the road a QUESTION'S ANSWER travels — every `Resolve…`, the dial, the record
 // a switch rebuilds from — because that is where the ten-second freeze was
 // measured and where a stalled call costs a person a decision rather than a
@@ -165,7 +165,7 @@ var doorsStillOnTheLoop = map[string]string{
 // doorsOnTheLoopBudget is how many such call sites there may be, and it is a
 // ratchet in `internal/ci`'s own shape: it may only ever be lowered. Move one
 // off the loop and lower this number in the same commit.
-const doorsOnTheLoopBudget = 38
+const doorsOnTheLoopBudget = 37
 
 // NO DOOR IS ASKED FROM THE UPDATE LOOP.
 //
@@ -222,7 +222,9 @@ func TestNoEngineDoorIsAskedFromTheUpdateLoop(t *testing.T) {
 				if _, named := doorsStillOnTheLoop[sel.Sel.Name]; named {
 					// Named debt, carrying where it is asked from. Counted so
 					// the ratchet can hold, and not reported.
-					debt++
+					if !inside(sel) {
+						debt++
+					}
 					return true
 				}
 				found++
@@ -304,13 +306,17 @@ func agentNames(file *ast.File) map[string]bool {
 	return names
 }
 
-// offLoopSpans is every function literal handed to [app.offLoop] or to
-// [app.besideLine] in one file — the only places a door may be asked, both off
-// the update loop — and beside it every literal nested
-// inside one of those, which is where a door may NOT be asked: the fold runs on
-// the update loop.
+// offLoopSpans includes explicit goroutines and function literals handed to
+// [app.offLoop] or [app.besideLine], which run outside the update loop,
+// and beside them every literal nested inside a queued command, where a door
+// may not be asked because the fold runs on the update loop.
 func offLoopSpans(file *ast.File) (allowed, folds []*ast.FuncLit) {
 	ast.Inspect(file, func(n ast.Node) bool {
+		if launch, ok := n.(*ast.GoStmt); ok {
+			if lit, ok := launch.Call.Fun.(*ast.FuncLit); ok {
+				allowed = append(allowed, lit)
+			}
+		}
 		call, ok := n.(*ast.CallExpr)
 		if !ok {
 			return true

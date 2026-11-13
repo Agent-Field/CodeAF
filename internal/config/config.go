@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -18,6 +17,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/calllog"
 	"github.com/Agent-Field/codeaf/internal/catalog"
+	"github.com/Agent-Field/codeaf/internal/claudemodel"
 	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/ctxbudget"
 	"github.com/Agent-Field/codeaf/internal/env"
@@ -252,7 +252,7 @@ type Config struct {
 	//
 	// WHY ON IS THE DEFAULT NOW. It shipped off because nobody had measured
 	// what a division costs when it does not pay. The bench corpus then
-	// measured it (bench/swarm/AB-REPORT.md), and the answer was that the
+	// measured it, and the answer was that the
 	// expense is not division — it is division of work that was never wide. So
 	// the wave that landed the mode also landed the gate that refuses narrow
 	// work (internal/splitgate), and with the gate in front of it the mode
@@ -291,6 +291,8 @@ type Config struct {
 	// rather than loaded here, because a config that fetched would make building
 	// a client a network operation.
 	Models *catalog.Catalog
+	// DropRefusedEffort is a runtime-only task-child option, never a saved setting.
+	DropRefusedEffort bool `json:"-"`
 }
 
 // ErrNoAPIKey is what [Load] returns when nothing — the two variables, the
@@ -395,11 +397,10 @@ var retiredProfileKeys = map[string]bool{
 	"memory.consolidation": true, // reader removed by 10dcdfdd4
 	"practice_demand_pct":  true, // reader removed by 84ba8503e
 	"propose_new_skills":   true, // reader removed by 84ba8503e
-	"attribution":          true, // reader removed on 2026-09-23: signing has no off
 	// The v1 resident's scheduler knobs: the practice carve-out and its quiet
 	// period, the arrival brief's absence (whose value Load copied onto a field
 	// nothing read), and the clean-firing count that earned a charter tenure.
-	// The scheduler went on 2026-10-10 (docs/design/automations/DESIGN.md).
+	// The scheduler went on 2026-10-10.
 	"practice_budget_usd": true, // reader removed on 2026-10-10: the practice loop is gone
 	"practice_idle":       true, // reader removed on 2026-10-10: the practice loop is gone
 	"brief_after":         true, // reader removed on 2026-10-10: nothing read the field
@@ -415,37 +416,6 @@ var retiredProfileKeys = map[string]bool{
 	legacyKeyCrewSource: true, // family row retired on 2026-09-24: `open` became the allowed rule
 	legacyKeyCrewPick:   true, // pick row retired on 2026-09-24
 }
-
-// retiredRowNotes are the retired keys a person set ON PURPOSE, each with the
-// plain sentence they are told instead of the silence the rest of
-// [retiredProfileKeys] gets.
-//
-// SILENCE IS RIGHT FOR A KEY NOBODY TYPED and wrong for one somebody did. A
-// profile holding `attribution: false` holds a person's decision not to sign,
-// and a build that stopped reading it without a word would be signing their
-// work behind their back — while one that kept obeying it would be a setting
-// the product says it no longer has. So such a key is reported unread, like a
-// key the loader never knew, and the surface prints this sentence in place of
-// the generic one ([RetiredRowNote]).
-//
-// The row's environment spelling counts as the row: `CODEAF_ATTRIBUTION` set in
-// a shell is the same decision made in a different place, and it is told the
-// same sentence ([retiredRowEnv]).
-var retiredRowNotes = map[string]string{
-	"attribution": "the attribution row and CODEAF_ATTRIBUTION are gone: codeaf always signs " +
-		"the commits, pull requests, issues and comments it writes. The one part you can turn off " +
-		"is the model's name in the Assisted-by line, with the " + KeyAttributionModel + " row.",
-}
-
-// retiredRowEnv is the environment spelling each told retired row had.
-var retiredRowEnv = map[string]string{
-	"attribution": "CODEAF_ATTRIBUTION",
-}
-
-// RetiredRowNote is the sentence a surface prints for a key the loader reported
-// unread because the row it belonged to is gone, and empty for every other
-// key: an unknown key still gets the surface's generic sentence.
-func RetiredRowNote(key string) string { return retiredRowNotes[key] }
 
 // consumedProfileKeys is every top-level config.json key a reader consumes at
 // head: every settings-registry row plus the non-setting loader and first run
@@ -469,27 +439,15 @@ func warnUnreadProfileKeys(profileDir string, values map[string]json.RawMessage)
 	consumed := consumedProfileKeys(profileDir)
 	var unread []string
 	for key := range values {
-		if consumed[key] || (retiredProfileKeys[key] && retiredRowNotes[key] == "") {
+		if consumed[key] || retiredProfileKeys[key] {
 			continue
 		}
 		unread = append(unread, key)
-	}
-	// A TOLD ROW SET IN THE SHELL IS THE SAME ROW. It is reported once, under
-	// the row's own key, whether the profile, the variable or both said it.
-	for key, name := range retiredRowEnv {
-		if strings.TrimSpace(env.Get(name)) != "" && !slices.Contains(unread, key) {
-			unread = append(unread, key)
-		}
 	}
 	sort.Strings(unread)
 	if len(unread) > 0 {
 		if _, warned := warnedProfileConfigs.LoadOrStore(path, struct{}{}); !warned {
 			log.Printf("codeaf: %s has unread top-level config key(s): %s", path, strings.Join(unread, ", "))
-			for _, key := range unread {
-				if note := RetiredRowNote(key); note != "" {
-					log.Printf("codeaf: %s", note)
-				}
-			}
 		}
 	}
 	return unread
@@ -1050,6 +1008,16 @@ func ClientConfigFor(sources modelsource.Set, model string) provider.Config {
 		configured.Billing = provider.BillingFact{}
 		configured.ModelPrice = func(string) (float64, float64, bool) { return 0, 0, false }
 	}
+	if strings.EqualFold(strings.TrimSpace(service.Source.ID), claudemodel.ID) {
+		// Claude Code answers through its own program on the person's own
+		// sign-in; a session that knows its folder replaces this client with
+		// one that works there (internal/session's clientConfig).
+		configured.APIKey = claudemodel.Sentinel
+		configured.HTTPClient = claudemodel.Client()
+		configured.BillingDoor = ""
+		configured.Billing = provider.BillingFact{}
+		configured.ModelPrice = func(string) (float64, float64, bool) { return 0, 0, false }
+	}
 	if service.Overflow != nil {
 		configured.PlanOverflow = service.Overflow.Address
 		configured.PlanOverflowDoor = service.Overflow.Name
@@ -1097,6 +1065,7 @@ func WithoutSeatPin(configured provider.Config) provider.Config {
 func (c Config) ClientConfig(model string) provider.Config {
 	configured := ClientConfigFor(c.Sources.OrDefault(c.APIKey, c.BaseURL), model)
 	configured.Timeout = c.Timeout
+	configured.DropRefusedEffort = c.DropRefusedEffort
 	// The published answer to "does this model take this field", from rows
 	// already in memory. A nil catalog and a catalog still warming both say
 	// "unknown", which the adapter treats as "send nothing on your own

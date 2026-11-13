@@ -128,7 +128,7 @@ func (b *appBackend) processRowFromList(id string) (string, session.JobNotice, e
 	if !ok {
 		return "", session.JobNotice{}, appwire.Errorf(appwire.CodeBadParams, "%s is not a process id", id)
 	}
-	rows, _, err := b.processRows(agent)
+	rows, err := b.processRows(agent)
 	if err != nil {
 		return "", session.JobNotice{}, err
 	}
@@ -146,7 +146,30 @@ func (b *appBackend) heldLive(agent string) (*appAgent, *appLive, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	view, opened, err := b.ensure(a)
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	return b.heldLiveLocked(a)
+}
+
+// keptLive is heldLive for work carried on without the person asking: an agent
+// they closed or archived since is left closed ([appBackend.keepOpen]).
+func (b *appBackend) keptLive(agent string) (*appAgent, *appLive, error) {
+	a, err := b.find(agent)
+	if err != nil {
+		return nil, nil, err
+	}
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	if b.tidied(agent) {
+		return nil, nil, errAppKeptClosed
+	}
+	return b.heldLiveLocked(a)
+}
+
+// heldLiveLocked opens the conversation while its admission and release gate
+// remains held by the caller, including through a work-producing action.
+func (b *appBackend) heldLiveLocked(a *appAgent) (*appAgent, *appLive, error) {
+	view, opened, err := b.ensureLocked(a)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -229,6 +252,7 @@ func appTaskOf(agent string, notice *session.TaskNotice, proposal bool, phase st
 		ID:        appTaskID(agent, notice.ID), Agent: agent, Title: notice.Title, State: state, Group: notice.Run, UpdatedAt: now,
 		Irreversible: notice.Irreversible, YourCall: state == appwire.TaskUnverified,
 		Result: redact.Secrets(strings.TrimSpace(notice.Result)), Files: appFiles(notice.Changed), SpentUSD: appFigure(notice.CostUSD),
+		Worker: strings.TrimSpace(notice.Worker),
 	}
 	// A FAILED TASK SAYS WHAT STOPPED IT. A run row that ended without working
 	// carries its reason as the report and no result — a hand-off whose run never
@@ -306,9 +330,12 @@ func appTaskOfView(agent string, view session.AppTaskView) appwire.Task {
 	if n != 0 {
 		id = appTaskID(agent, n)
 	}
-	task := appwire.Task{Retryable: view.Retryable, ID: id, Agent: agent, Title: view.Title, Result: redact.Secrets(view.Result), Files: appFiles(view.Files), BudgetUSD: appFigure(view.Cap), SpentUSD: appFigure(view.Spent)}
-	if p, err := strconv.ParseUint(view.Parent, 10, 64); err == nil && p != 0 {
-		task.Parent = appTaskID(agent, p)
+	task := appwire.Task{Retryable: view.Retryable, ID: id, Agent: agent, Group: view.Group, Parent: view.Parent, Title: view.Title, Result: redact.Secrets(view.Result), Files: appFiles(view.Files), BudgetUSD: appFigure(view.Cap), SpentUSD: appFigure(view.Spent)}
+	if p, err := strconv.ParseUint(view.Parent, 10, 64); err == nil {
+		task.Parent = ""
+		if p != 0 {
+			task.Parent = appTaskID(agent, p)
+		}
 	}
 	switch view.State {
 	case "waiting", "paused":
@@ -397,6 +424,10 @@ func (b *appBackend) taskNotice(id string, live *appLive, notice *session.TaskNo
 		// A PROGRAM IS A FACT OF THE ROW'S WHOLE LIFE: an update that leaves it out has not changed it.
 		if task.Program == "" {
 			task.Program = before.Program
+		}
+		// So is who it acts as.
+		if task.Worker == "" {
+			task.Worker = before.Worker
 		}
 		// THE GROUP'S LABEL IS ITS RUN'S OWN ROW'S TITLE: the row with the run's
 		// id and no parent is the run itself.
@@ -664,10 +695,11 @@ func (b *appBackend) GetTask(id string) (appwire.TaskPage, error) {
 	if !ok {
 		return appwire.TaskPage{}, appwire.Errorf(appwire.CodeBadParams, "%s is not a task id", id)
 	}
-	_, live, err := b.heldLive(agent)
+	_, live, endLive, err := b.borrowLive(agent)
 	if err != nil {
 		return appwire.TaskPage{}, err
 	}
+	defer endLive()
 	view, found, err := live.conn.Conv.AppTask(local)
 	if err != nil {
 		return appwire.TaskPage{}, appEngineError(err)
@@ -857,9 +889,43 @@ func (b *appBackend) actOnTask(id, action, verdict, text, clientID string) error
 	if !ok {
 		return appwire.Errorf(appwire.CodeBadParams, "%s is not a task id", id)
 	}
-	_, live, err := b.heldLive(agent)
+	a, err := b.find(agent)
 	if err != nil {
 		return err
+	}
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	_, live, err := b.heldLiveLocked(a)
+	if err != nil {
+		return err
+	}
+	answer := false
+	if action == "start" {
+		b.locked(func() {
+			if task, ok := live.tasks[id]; ok && task.Proposed {
+				answer = true
+			}
+			for _, q := range live.questions {
+				if q.Kind == session.QuestionTask && strconv.FormatUint(q.ID, 10) == local {
+					answer = true
+				}
+			}
+		})
+	}
+	switch action {
+	case "cancel", "stop", "hold", "typing", "decline", "dismiss", "restore":
+	case "decide":
+		if verdict == appwire.VerdictNotRight || verdict == "not_right" || verdict == "tell" {
+			if err := b.workAllowed(a); err != nil {
+				return err
+			}
+		}
+	default:
+		if !answer {
+			if err := b.workAllowed(a); err != nil {
+				return err
+			}
+		}
 	}
 	intent := session.AppTaskIntent{ID: local, Action: action, Text: strings.TrimSpace(text), Verb: verdict, ClientID: clientID}
 	switch action {
@@ -961,7 +1027,13 @@ func (b *appBackend) SetTaskModel(id, model, state string, version *uint64) erro
 	if !ok {
 		return appwire.Errorf(appwire.CodeBadParams, "%s is not a task id", id)
 	}
-	_, live, err := b.heldLive(agent)
+	a, err := b.find(agent)
+	if err != nil {
+		return err
+	}
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	_, live, err := b.heldLiveLocked(a)
 	if err != nil {
 		return err
 	}
@@ -1079,10 +1151,11 @@ func (b *appBackend) UndoQuick(id string) error {
 	if !ok {
 		return appwire.Errorf(appwire.CodeBadParams, "%s is not a quick task id", id)
 	}
-	_, live, err := b.heldLive(agent)
+	_, live, endLive, err := b.borrowLive(agent)
 	if err != nil {
 		return err
 	}
+	defer endLive()
 	_, changed, err := live.conn.Conv.AppQuickTaskAction(session.AppTaskIntent{ID: local, Action: "undo"})
 	if err != nil {
 		return appTaskError(err)
@@ -1107,8 +1180,17 @@ func (b *appBackend) PromoteQuick(id string) (appwire.Task, error) {
 	if !ok {
 		return appwire.Task{}, appwire.Errorf(appwire.CodeBadParams, "%s is not a quick task id", id)
 	}
-	_, live, err := b.heldLive(agent)
+	a, err := b.find(agent)
 	if err != nil {
+		return appwire.Task{}, err
+	}
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	_, live, err := b.heldLiveLocked(a)
+	if err != nil {
+		return appwire.Task{}, err
+	}
+	if err := b.workAllowed(a); err != nil {
 		return appwire.Task{}, err
 	}
 	before := map[string]bool{}
@@ -1141,8 +1223,9 @@ func (b *appBackend) PromoteQuick(id string) (appwire.Task, error) {
 
 // appFollow is one process the app is following, and how to stop following.
 type appFollow struct {
-	stop chan struct{}
-	done chan struct{}
+	stop  chan struct{}
+	done  chan struct{}
+	ended atomic.Bool
 }
 
 // appProcessOf is one job notice on the wire.
@@ -1232,6 +1315,9 @@ func (b *appBackend) processMoved(agent string, live *appLive, job *session.JobN
 		same = known && reflect.DeepEqual(before, process)
 		finished = known && before.State == appwire.ProcessRunning && (process.State == appwire.ProcessEnded || process.State == appwire.ProcessFailed)
 		live.logs[process.ID] = job.LogPath
+		if f := b.follows[process.ID]; f != nil {
+			f.processState(recovered.State)
+		}
 	})
 	if !same {
 		live.box.Event(appwire.EventProcessChanged, appwire.ProcessChanged{Process: process})
@@ -1247,29 +1333,41 @@ func (b *appBackend) processMoved(agent string, live *appLive, job *session.JobN
 
 // processRows is an agent's processes: the live registry's while its
 // conversation is held, its record on disk otherwise.
-func (b *appBackend) processRows(agent string) ([]session.JobNotice, *appLive, error) {
-	a, err := b.findCrewOwner(agent)
+func (b *appBackend) processRows(agent string) ([]session.JobNotice, error) {
+	a, endRead, err := b.findCrewReader(agent)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
+	defer endRead()
 	var transcript string
 	live := b.liveOf(a)
 	b.locked(func() { transcript = a.transcript })
 	if live != nil {
-		rows, err := live.conn.Conv.JobNotices()
-		if err != nil {
-			return nil, nil, appListError(err)
+		rows, answered, err := appLiveJobNotices(live.conn.Conv, appProcessListWait)
+		if answered {
+			if err != nil {
+				return nil, appListError(err)
+			}
+			for i := range rows {
+				rows[i] = appRecoverJob(rows[i], live.replayJobs)
+			}
+			b.locked(func() {
+				for _, row := range rows {
+					live.logs[appProcessOf(agent, row).ID] = row.LogPath
+				}
+			})
+			return rows, nil
 		}
-		for i := range rows {
-			rows[i] = appRecoverJob(rows[i], live.replayJobs)
-		}
-		return rows, live, nil
+		// THE ENGINE HOLDING IT IS BUSY (a long tool call, a seal of a large
+		// workspace, a quit's wrap-up): the record on disk answers instead,
+		// as it does for a conversation nobody holds, rather than the list
+		// waiting on that engine. An app asking at quit gets its answer.
 	}
 	rows, err := session.ReadProcessNotices(transcript)
 	if err != nil {
-		return nil, nil, appListError(err)
+		return nil, appListError(err)
 	}
-	return rows, nil, nil
+	return rows, nil
 }
 
 // appListError says a history the whole list cannot carry as too_large,
@@ -1284,7 +1382,7 @@ func appListError(err error) error {
 
 // ListProcesses answers an agent's processes, running and ended.
 func (b *appBackend) ListProcesses(agent string) ([]appwire.Process, error) {
-	rows, live, err := b.processRows(agent)
+	rows, err := b.processRows(agent)
 	if err != nil {
 		return nil, err
 	}
@@ -1294,9 +1392,6 @@ func (b *appBackend) ListProcesses(agent string) ([]appwire.Process, error) {
 			continue
 		}
 		process := appProcessOf(agent, row)
-		if live != nil {
-			b.locked(func() { live.logs[process.ID] = row.LogPath })
-		}
 		out = append(out, process)
 	}
 	// One list: the agent's kept-running processes are its processes too.
@@ -1371,10 +1466,11 @@ func (b *appBackend) FollowProcess(id string, follow bool) error {
 	if _, _, ok := appServiceID(id); ok {
 		return b.serviceFollow(id, follow)
 	}
-	path, err := b.processLog(id)
+	_, row, err := b.processRow(id)
 	if err != nil {
 		return err
 	}
+	path := row.LogPath
 	var stop *appFollow
 	start := false
 	b.locked(func() {
@@ -1384,7 +1480,9 @@ func (b *appBackend) FollowProcess(id string, follow bool) error {
 			stop = current
 			delete(b.follows, id)
 		case follow && current == nil && !b.closing:
-			b.follows[id] = &appFollow{stop: make(chan struct{}), done: make(chan struct{})}
+			f := &appFollow{stop: make(chan struct{}), done: make(chan struct{})}
+			f.processState(row.State)
+			b.follows[id] = f
 			start = true
 		}
 	})
@@ -1395,47 +1493,11 @@ func (b *appBackend) FollowProcess(id string, follow bool) error {
 	if start {
 		var f *appFollow
 		b.locked(func() { f = b.follows[id] })
-		from, _ := appCountLines(path)
-		guard.Go("app/follow", func() { b.follow(id, path, from, f) })
+		reader := &appFollowReader{}
+		_ = reader.start(path)
+		guard.Go("app/follow", func() { b.follow(id, path, reader, f) })
 	}
 	return nil
-}
-
-// appCountLines is how many complete lines a spool holds now.
-func appCountLines(path string) (int, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return 0, nil
-	}
-	defer file.Close()
-	reader := bufio.NewReaderSize(file, 64<<10)
-	n := 0
-	for {
-		if _, err := reader.ReadString('\n'); err != nil {
-			return n, nil
-		}
-		n++
-	}
-}
-
-// follow tails one spool until it is unfollowed or the backend closes.
-func (b *appBackend) follow(id, path string, from int, f *appFollow) {
-	defer close(f.done)
-	ticker := time.NewTicker(appFollowEvery)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-f.stop:
-			return
-		case <-ticker.C:
-		}
-		lines, next, err := appReadLines(path, from, appOutputLines)
-		if err != nil || len(lines) == 0 {
-			continue
-		}
-		from = next
-		b.emit.Emit(appwire.EventProcessOutput, appwire.ProcessOutput{ID: id, Lines: lines})
-	}
 }
 
 // StopProcess stops one running process.
@@ -1448,10 +1510,11 @@ func (b *appBackend) StopProcess(id string) error {
 		return err
 	}
 	job := row.ID
-	_, live, err := b.heldLive(agent)
+	_, live, endLive, err := b.borrowLive(agent)
 	if err != nil {
 		return err
 	}
+	defer endLive()
 	// An older engine cannot prove the run's identity or whether a committed
 	// render refused its stop. Never turn that unknown into a successful Cancel.
 	if served, err := b.stampedStop(live, id, job); served {
@@ -1470,7 +1533,13 @@ func (b *appBackend) RerunProcess(id string) (appwire.Process, error) {
 		return appwire.Process{}, err
 	}
 	job := row.ID
-	_, live, err := b.heldLive(agent)
+	a, err := b.find(agent)
+	if err != nil {
+		return appwire.Process{}, err
+	}
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	_, live, err := b.heldLiveLocked(a)
 	if err != nil {
 		return appwire.Process{}, err
 	}
@@ -1506,14 +1575,46 @@ func (b *appBackend) watchLong(id string, live *appLive, turn uint64, started ti
 // so, and the task arrives on its own as task.changed with the move's notice.
 // A reply that ends before it could move leaves a notice saying so.
 func (b *appBackend) MoveToTask(agent string, turn uint64) (appwire.MoveResult, error) {
-	a, err := b.findCrewOwner(agent)
+	a, endRead, err := b.findCrewOwner(agent)
 	if err != nil {
 		return appwire.MoveResult{}, err
 	}
+	defer endRead()
+	result, proposed, err := b.moveToTaskGated(a, agent, turn)
+	if proposed == nil {
+		return result, err
+	}
+	// ActOnTask takes this same gate for its own admission.
+	if err := b.ActOnTask(proposed.ID, "start", "", ""); err != nil {
+		return appwire.MoveResult{}, err
+	}
+	proposed.Proposed = false
+	return appwire.MoveResult{Task: proposed}, nil
+}
+
+// moveToTaskGated admits the move holding the agent's gate. A reply whose
+// task card already waits answers that task, to be started once the gate is
+// free; any other running reply is asked to move while the gate stays held.
+func (b *appBackend) moveToTaskGated(a *appAgent, agent string, turn uint64) (appwire.MoveResult, *appwire.Task, error) {
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	if err := b.workAllowed(a); err != nil {
+		return appwire.MoveResult{}, nil, err
+	}
 	live := b.liveOf(a)
-	// A TASK THE REPLY ALREADY PROPOSED IS THE TASK IT MOVES TO. While its card
-	// waits, the reply is parked on the person's answer and reaches no step at
-	// which it could move, so moving it is saying yes to the card.
+	if proposed := b.proposedTask(live); proposed != nil {
+		return appwire.MoveResult{}, proposed, nil
+	}
+	result, err := b.moveLiveReply(live, agent, turn)
+	return result, nil, err
+}
+
+// proposedTask is the newest top-level task the running reply proposed and the
+// person has not settled. A TASK THE REPLY ALREADY PROPOSED IS THE TASK IT
+// MOVES TO: while its card waits, the reply is parked on the person's answer
+// and reaches no step at which it could move, so moving it is saying yes to
+// the card.
+func (b *appBackend) proposedTask(live *appLive) *appwire.Task {
 	var proposed *appwire.Task
 	b.locked(func() {
 		if live == nil {
@@ -1526,13 +1627,12 @@ func (b *appBackend) MoveToTask(agent string, turn uint64) (appwire.MoveResult, 
 			}
 		}
 	})
-	if proposed != nil {
-		if err := b.ActOnTask(proposed.ID, "start", "", ""); err != nil {
-			return appwire.MoveResult{}, err
-		}
-		proposed.Proposed = false
-		return appwire.MoveResult{Task: proposed}, nil
-	}
+	return proposed
+}
+
+// moveLiveReply asks the running reply to move to a task and waits briefly for
+// the task to appear. Callers hold the agent's gate.
+func (b *appBackend) moveLiveReply(live *appLive, agent string, turn uint64) (appwire.MoveResult, error) {
 	known := map[string]bool{}
 	running := false
 	b.locked(func() {
@@ -1621,12 +1721,16 @@ func (b *appBackend) Sleep() error {
 		}
 	})
 	for _, a := range agents {
-		live := b.liveOf(a)
-		if live == nil {
-			continue
-		}
 		var id string
 		b.locked(func() { id = a.view.ID })
+		_, live, endRead, err := b.borrowExisting(id)
+		if err != nil {
+			continue
+		}
+		if live == nil {
+			endRead()
+			continue
+		}
 		rows, err := b.runningJobs(live)
 		if err == nil {
 			for _, row := range rows {
@@ -1642,6 +1746,7 @@ func (b *appBackend) Sleep() error {
 			view = a.view
 		})
 		live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
+		endRead()
 	}
 	return powerErr
 }
@@ -1690,11 +1795,46 @@ func (b *appBackend) Wake() error {
 // Factory presence follows the native power door, not whether a step's chat is
 // open. Never hold the local-host lock while contacting its elected service.
 func (b *appBackend) factoryPower(asleep bool) error {
-	b.local.mu.Lock()
-	host := b.local.host
-	b.local.mu.Unlock()
+	host := b.local.currentHost()
 	if host == nil {
 		return nil
 	}
 	return host.power(context.Background(), asleep)
+}
+
+// currentHost answers the elected local factory service, if any.
+func (l *appLocalFactory) currentHost() *appFactoryHost {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.host
+}
+
+// appProcessListWait is how long processes.list waits for the engine holding a
+// conversation before it answers from the conversation's record instead. The
+// app asks with a two-second bound at quit, so this stays well under it.
+const appProcessListWait = time.Second
+
+// appLiveJobNotices asks conv for its processes and reports whether it
+// answered within wait. A late answer is dropped; the call itself is not
+// cancelled, because the door takes no context, and ends with its connection.
+func appLiveJobNotices(conv interface {
+	JobNotices() ([]session.JobNotice, error)
+}, wait time.Duration) ([]session.JobNotice, bool, error) {
+	type answer struct {
+		rows []session.JobNotice
+		err  error
+	}
+	done := make(chan answer, 1)
+	guard.Go("app/process-list", func() {
+		rows, err := conv.JobNotices()
+		done <- answer{rows, err}
+	})
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	select {
+	case got := <-done:
+		return got.rows, true, got.err
+	case <-timer.C:
+		return nil, false, nil
+	}
 }

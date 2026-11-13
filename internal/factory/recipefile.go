@@ -329,8 +329,16 @@ func parseStageLine(line string) (st Stage, whys []string, ok bool) {
 		st.Kind = StageChat
 	}
 	st.On = true
+	if st.Until == UntilNoNewFailures && !IsTestConversation(st) {
+		st.Until = UntilGreen
+	}
 	for _, f := range knobs {
+		previousUntil := st.Until
 		f(&st)
+		if st.Until == UntilNoNewFailures && !IsTestConversation(st) {
+			whys = append(whys, "until "+UntilNoNewFailures+" is only available on the Test conversation")
+			st.Until = previousUntil
+		}
 	}
 	return st, whys, true
 }

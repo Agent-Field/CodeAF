@@ -10,7 +10,7 @@ running anything.
      bundle that the driver would have written, rather than throwing away a run
      that has already been paid for.
   2. BACKFILL. When a road column is added or corrected — `escalated` was added
-     after wave 1 had landed — every earlier cell can be re-read against the new
+     after a run has finished — every earlier cell can be re-read against the new
      reader instead of being left with a blank column or, worse, re-run and
      quietly compared against rows measured on a different day.
 

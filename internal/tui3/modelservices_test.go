@@ -38,7 +38,7 @@ func installModelServiceShelf(a *app, dir string) {
 		if err != nil {
 			return nil, err
 		}
-		rows := surfaceModels(models.ModelsNow())
+		rows := surfaceModels(models.ModelsNow(), true)
 		held[service.Source.ID] = append([]Model(nil), rows...)
 		if err := WriteModelCacheFor(service.Source.ID, service.Address, rows); err != nil {
 			return nil, err
@@ -738,8 +738,8 @@ func renamedRelistedApp(t *testing.T, model string) *app {
 	a.adoptModelConnectResult(a.beginModelConnect(first)().(modelConnectResultMsg))
 	a.switchModel("homelab/"+model, 0)
 
-	// THE RENAME: an edit draft whose Written moved, exactly what the name step
-	// builds on an answer that differs from the stored one.
+	// THE RENAME: an edit draft whose Written moved, exactly what the name
+	// step builds on an answer that differs from the stored one.
 	persisted := config.PersistedSources(dir)
 	if len(persisted) != 1 {
 		t.Fatalf("the connect did not persist exactly one row: %+v", persisted)
@@ -1365,6 +1365,7 @@ func TestDisconnectingAServiceLeavesTheConversationOnSomethingItCanReach(t *test
 			a := modelServiceTestAppWithAgent(t, dir, agent.Model(), sources,
 				[]Model{{ID: config.DefaultModel}}, agent)
 			a.disconnectModelService("deepseek")
+			acknowledgeModelChanges(t, a)
 			if got := noteSaying(t, a, "is disconnected"); got != "deepseek-direct is disconnected · its models are gone from the picker" {
 				t.Fatalf("disconnect acknowledgement = %q", got)
 			}
@@ -1673,6 +1674,7 @@ func TestDisconnectingReplacesTheLiveClientBeforeTheNextRequest(t *testing.T) {
 	drainModelServiceTurn(t, agent, "before disconnect")
 	a := modelServiceTestAppWithAgent(t, dir, agent.Model(), sources, []Model{{ID: config.DefaultModel}}, agent)
 	a.disconnectModelService("deepseek")
+	acknowledgeModelChanges(t, a)
 	drainModelServiceTurn(t, agent, "after disconnect")
 	if got := completionRequests(directServer); len(got) != 1 || got[0].Bearer != "Bearer sk-direct-1234567890" {
 		t.Fatalf("removed service received another request or wrong bearer: %+v", got)
@@ -1908,7 +1910,7 @@ func TestASettleWithNothingToSpendLeavesTheConnectPanelWhereItWas(t *testing.T) 
 }
 
 // customConnectionApp is the picker-grouping fixture: the default service plus
-// the two custom connections homelab (id custom) and studio (id custom-studio),
+// the two custom connections homelab (id custom) and a second custom service (id custom-studio),
 // in persisted order, with each connection's own model list served from held by
 // the connection id. A connection missing from held has no model list, which is
 // the empty group the notice row stands for.

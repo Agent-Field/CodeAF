@@ -3,13 +3,17 @@ package identity
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
+	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/sqliteuri"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	_ "modernc.org/sqlite" // reads the memory graph, which is a SQLite file
 )
@@ -57,8 +61,61 @@ func (r rules) of(name string) judge {
 // never is for what a start makes again on demand: keys, caches, locks, logs.
 func never(string) (bool, error) { return false, nil }
 
+// catalogCache delegates cache naming to its owner instead of treating every
+// model-catalog-prefixed file as disposable startup state.
+func catalogCache(path string) (bool, error) {
+	return !catalog.IsCacheName(filepath.Base(path)), nil
+}
+
+// pickerCache uses the same filename boundary as the window that writes it.
+func pickerCache(path string) (bool, error) {
+	return !catalog.IsPickerCacheName(filepath.Base(path)), nil
+}
+
 // unknown is the judge of a name nobody declared, and it is always use.
 func unknown(string) (bool, error) { return true, nil }
+
+// startupInventory admits the platform and locations recorded before any call.
+// Observed tools, notes and all other fields still count as work.
+func startupInventory(path string) (bool, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return true, err
+	}
+	var inv struct {
+		V         uint16
+		Platform  struct{ OS, Arch string }
+		Workspace string
+		ChatDir   string `json:"chat_dir"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&inv) != nil || inv.V != 1 {
+		return true, nil
+	}
+	return decoder.Decode(new(json.RawMessage)) != io.EOF, nil
+}
+
+// unopenedRepository keeps even deleted or staged project work from being
+// mistaken for the empty repository made when an owned chat first opens.
+//
+// ANY NAME GIT PRINTS IS WORK. The names are read NUL-terminated and never
+// trimmed: a file named only with spaces, staged and then deleted, printed a
+// blank line that trimming discarded, and the repository passed as untouched.
+// For the startup repository both listings print nothing at all.
+func unopenedRepository(path string) (bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	for _, args := range [][]string{{"log", "--all", "--format=", "--name-only", "-z"}, {"ls-files", "--cached", "-z"}} {
+		cmd := exec.CommandContext(ctx, "git", append([]string{"--no-optional-locks"}, args...)...) //codeaf:plumbing An empty owned repository contains no saved or staged files.
+		cmd.Dir = filepath.Dir(path)
+		raw, err := cmd.Output()
+		if err != nil || len(raw) > 0 {
+			return true, err
+		}
+	}
+	return false, nil
+}
 
 // empty is for what holds the person's words and bytes when it holds any: a
 // file with no bytes, or a folder of such files.

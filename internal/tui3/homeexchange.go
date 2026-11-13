@@ -10,7 +10,7 @@ package tui3
 // pressing enter started a whole conversation, and home's list filled up with
 // one-off errands that were finished; a chat that was simply not stored would
 // have been worse, because "why did I get this reminder?" must open the thing
-// that made it (docs/AMBIENT.md Part 5).
+// that made it.
 //
 // So there is a THIRD door, and this file is all of it:
 //
@@ -335,6 +335,14 @@ type homeExchange struct {
 	// live is the reply being streamed into, and -1 between turns.
 	live    int
 	working bool
+	// Streams are read one at a time, including turns started by the session.
+	stream    <-chan session.Event
+	streams   []<-chan session.Event
+	wakes     <-chan (<-chan session.Event)
+	stopWakes func()
+	// Parked messages keep their attachments until the preceding reply ends.
+	parks   []parked
+	sending bool
 	// card is the automation card waiting for an answer, and nil when none is.
 	card *session.AutomationNotice
 	// askAt is where the last draw PUT the answers of that question, as pane row
@@ -492,11 +500,17 @@ type (
 	}
 	// errandClosedMsg is the stream ending.
 	errandClosedMsg struct{ ex *homeExchange }
+	errandWokenMsg  struct {
+		ex   *homeExchange
+		ch   <-chan session.Event
+		open bool
+	}
 )
 
 func (m errandStartedMsg) errand() *homeExchange { return m.ex }
 func (m errandEventMsg) errand() *homeExchange   { return m.ex }
 func (m errandClosedMsg) errand() *homeExchange  { return m.ex }
+func (m errandWokenMsg) errand() *homeExchange   { return m.ex }
 
 // errandUpdate folds one of those messages in.
 //
@@ -526,26 +540,31 @@ func (a *app) errandUpdate(msg errandMsg) tea.Cmd {
 	}()
 	switch m := msg.(type) {
 	case errandStartedMsg:
+		ex.sending = false
 		if m.err != nil {
-			ex.working = false
 			ex.rows = append(ex.rows, exchangeRow{kind: exchangeNote, text: m.err.Error()})
+		} else if m.ch != nil {
+			ex.streams = append(ex.streams, m.ch)
+		}
+		return a.nextErrand(ex)
+	case errandWokenMsg:
+		if !m.open {
+			ex.wakes = nil
 			return nil
 		}
-		if m.ch == nil {
-			// A steering submit: the running turn took the message and the
-			// caller got a closed channel, exactly as session.Agent documents.
-			return nil
+		if m.ch != nil {
+			ex.streams = append(ex.streams, m.ch)
 		}
-		return waitErrand(ex, m.ch)
+		return tea.Batch(waitErrand(ex, nil), a.nextErrand(ex))
 	case errandEventMsg:
-		// The fold first, then the next read. Both, always: an event that told
-		// the pane nothing still has to be followed by the one that does.
 		cmd := a.errandEvent(ex, m.ev)
 		return tea.Batch(cmd, waitErrand(ex, m.ch))
 	case errandClosedMsg:
+		ex.stream = nil
 		ex.working = false
 		ex.closeReply()
 		ex.dropPermits()
+		return a.nextErrand(ex)
 	}
 	return nil
 }
@@ -586,6 +605,16 @@ func (a *app) holdsExchange(ex *homeExchange) bool {
 // their `wait` prefix (tui3_test.go's blockingCommands). Spelled errandWait, it
 // was billed as work that always finishes.
 func waitErrand(ex *homeExchange, ch <-chan session.Event) tea.Cmd {
+	if ch == nil {
+		lane := ex.wakes
+		if lane == nil {
+			return nil
+		}
+		return func() tea.Msg {
+			stream, open := <-lane
+			return errandWokenMsg{ex: ex, ch: stream, open: open}
+		}
+	}
 	return func() tea.Msg {
 		ev, ok := <-ch
 		if !ok {
@@ -1147,6 +1176,9 @@ func (a *app) fileExchange(ex *homeExchange) {
 	if ex.working {
 		ex.agent.InterruptFor(session.StopByLeaving)
 	}
+	if ex.stopWakes != nil {
+		ex.stopWakes()
+	}
 	_ = ex.agent.Close()
 }
 
@@ -1247,6 +1279,11 @@ func (a *app) askHereWith(text string, orders ErrandOrders) tea.Cmd {
 		spoke:   text, began: now, said: now,
 		turnBegan: now,
 	}
+	if waker, ok := agent.(leavableWaker); ok {
+		ex.wakes, ex.stopWakes = waker.WatchWakes()
+	} else if waker, ok := agent.(wakeAgent); ok {
+		ex.wakes = waker.Wakes()
+	}
 	// AND HOME'S TRAY COMES WITH THE SENTENCE, because the sentence came out of
 	// home's box and the pictures were dropped into it (imagepaste.go). They move
 	// rather than being copied: two trays holding one file would be two answers
@@ -1273,7 +1310,7 @@ func (a *app) askHereWith(text string, orders ErrandOrders) tea.Cmd {
 	// exchange and shown a preview of something else.
 	h.pointExchange(ex)
 	a.touch()
-	return tea.Batch(errandSend(ex, text), a.wake())
+	return tea.Batch(errandSend(ex, text), waitErrand(ex, nil), a.wake())
 }
 
 // errandSend is one Submit, off the update loop for the reason [app.submit] is:
@@ -1286,7 +1323,16 @@ func errandSend(ex *homeExchange, text string) tea.Cmd {
 	// may have added to while the request was being built.
 	chips := ex.chips
 	ex.chips = nil
+	return errandSendChips(ex, text, chips)
+}
+
+// errandSendChips sends the message's own tray, leaving a newer draft intact.
+func errandSendChips(ex *homeExchange, text string, chips []chip) tea.Cmd {
+	ex.sending = true
 	return func() tea.Msg {
+		if err := waitModelSelection(errandContext(), ex.agent); err != nil {
+			return errandStartedMsg{ex: ex, err: err}
+		}
 		if len(chips) == 0 {
 			ch, err := ex.agent.Submit(errandContext(), text)
 			return errandStartedMsg{ex: ex, ch: ch, err: err}
@@ -1320,7 +1366,7 @@ func errandSentence(text string, chips []chip) string {
 // errandPlace is which project an errand belongs to, and which bucket a
 // promotion of it would land in.
 //
-// It is docs/AMBIENT.md Part 5's proposal in both of its halves. THE PROJECT
+// It is the implementation Part 5's proposal in both of its halves. THE PROJECT
 // UNDER THE CURSOR is the first: walking ↑ onto a project's row and pressing the
 // chord is how somebody says "this one", and it is the same gesture that already
 // means "this one" everywhere else on this column. AND THE `elsewhere` LIMIT IS
@@ -1666,6 +1712,14 @@ func (a *app) exchangeEnter(ex *homeExchange) tea.Cmd {
 	text = errandSentence(text, ex.chips)
 	ex.rows = append(ex.rows, exchangeRow{kind: exchangeSaid, text: text})
 	ex.said = a.now()
+	if ex.working || ex.sending || ex.stream != nil {
+		ex.parks = append(ex.parks, parked{text: text, chips: ex.chips})
+		ex.chips = nil
+		// Pending work keeps the pane moving even if the previous turn has
+		// settled before its stream closes or Submit returns.
+		ex.working = true
+		return a.wake()
+	}
 	ex.startTurn(a.now())
 	return tea.Batch(errandSend(ex, text), a.wake())
 }
@@ -1676,7 +1730,7 @@ func (a *app) exchangeEnter(ex *homeExchange) tea.Cmd {
 // THE SIGNAL HAS TO EXIST BEFORE THE ANSWER DOES. A follow-up typed into a
 // settled exchange used to draw the sentence and then nothing at all until the
 // first token arrived seconds later — which is a person pressing enter and
-// watching a still screen, the exact complaint this lane exists to answer. The
+// watching a still screen, the exact complaint this implementation exists to answer. The
 // state word, the clock and the strip all hang off these three fields, so they
 // are set the moment the words leave the box.
 func (ex *homeExchange) startTurn(now time.Time) {
@@ -1755,6 +1809,9 @@ func (a *app) promoteExchange(ex *homeExchange) tea.Cmd {
 	// and the close failing is not a reason to keep somebody out of their own
 	// conversation: the transcript is flushed on every line, so what is lost is
 	// a buffered tail and not the record.
+	if ex.stopWakes != nil {
+		ex.stopWakes()
+	}
 	if err := ex.agent.Close(); err != nil {
 		h.say(err.Error(), "")
 	}
@@ -2389,7 +2446,7 @@ func (a *app) exchangeTail(ex *homeExchange, spins bool) string {
 		return mark + " " + word
 	default:
 		// AN EXCHANGE THAT IS OVER WEARS THE SETTLED MARK, through the one door
-		// every mark comes through (docs/design/icons/DESIGN.md).
+		// every mark comes through.
 		glyph := a.icon(tokens.GSettled)
 		word := homeAskAnsweredTail
 		if ex.saved {

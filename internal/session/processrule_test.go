@@ -469,7 +469,7 @@ func TestTheManualSaysAStoppedWorkerGetsItsOwnRowAndNoLongerDeniesIt(t *testing.
 		// The row, in the words tui3 draws it in. THE ROW LOST ITS BRANCH CLAUSE
 		// AND ITS `!` with the task-states wave: the tier word leads, the reason
 		// rides beside it, and `branch kept` is a fact of its own rather than a
-		// suffix welded onto the sentence (docs/design/task-states/DESIGN.md).
+		// suffix welded onto the sentence.
 		"incomplete · would not write its notes down",
 		// The landing note, in the words taskNote writes it in — the tier word
 		// first, then the title, then the reason ([TaskReasonOf]).

@@ -136,14 +136,8 @@ func placeHoverMoved(at, cursor *int, next, row int, a *app) bool {
 // walkPage is `tab` and `shift+tab`: the next place, and round again from the
 // last.
 //
-// IT USED TO ASK WHETHER THE NEXT ROOM WOULD LET IT IN. Tasks refused on a
-// machine that had run no work and standing refused with no orders on it, so
-// `tab` walked into the refusal, was put straight back where it started, and did
-// it again on the next press — on a fresh machine the circle had one member and
-// the key read as broken, which is what the owner met ("left right does not seem
-// to move tabs, only shift does", shift+tab happening to land on settings, which
-// always opened). The walk answered it by asking a `pageReady` before turning any
-// handle.
+// IT USED TO ASK WHETHER THE NEXT ROOM WOULD LET IT IN. The walk answered it by asking a
+// `pageReady` before turning any handle.
 //
 // EVERY ROOM OPENS NOW (pages.go's [app.showPage]), so there is nothing to ask:
 // the next place is the next place, and a room with nothing in it spends the

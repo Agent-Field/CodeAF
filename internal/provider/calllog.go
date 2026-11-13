@@ -42,6 +42,7 @@ const (
 	learnedCacheControlRefused     = "cache_control_refused"
 	learnedReasoningBudgetRefused  = "reasoning_budget_refused"
 	learnedReasoningReplayRefused  = "reasoning_replay_refused"
+	learnedReasoningUnsupported    = "reasoning_unsupported"
 )
 
 type callTagKey struct{}
@@ -459,13 +460,14 @@ func (c *Client) record(facts recordFacts) {
 	// opened and a connection torn halfway through a reply each left a row
 	// saying the call cost nothing. Over the ten days to 2026-09-10 that was
 	// 1,884 of 1,887 in-stream failures: $201.15 of recorded spend with $0.00
-	// attributed to anything that went wrong (docs/design/recovery/census-
+	// attributed to anything that went wrong (the implementation
 	// 20260910.md §8, finding 6).
 	//
 	// The tokens were generated and the provider counted them. Whether this
 	// process could USE the answer is a different question from what it cost,
 	// and only one of the two is a fact about the money.
 	if facts.response != nil {
+		record.GenerationID = canonicalGenerationID(facts.response.ID)
 		record.Finish = FinishReason(facts.response)
 		if usage := facts.response.Usage; usage != nil {
 			record.PromptTokens = usage.PromptTokens
@@ -662,7 +664,7 @@ func firstTokenAfter(began, first time.Time) time.Duration {
 // finishes over the ten days to 2026-09-10, and every per-lane belief this
 // build holds — velocity, strikes, pacing, the sheet's own uptime — has been
 // written against the asked-for name, which is how a machine gets struck for
-// another machine's refusal (docs/design/recovery/DESIGN.md §1's third
+// another machine's refusal (the implementation §1's third
 // reading). Filling an empty `served` with `lane` would make that disagreement
 // permanently invisible, so it is never done.
 func recordedServed(facts recordFacts, body callKnobs) string {

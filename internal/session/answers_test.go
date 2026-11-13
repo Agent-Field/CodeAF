@@ -369,7 +369,7 @@ func TestTheKeysMeanWhatTheChipsSay(t *testing.T) {
 // The `ask` lane has no entry in [AnswerOptions] and never will: its answers are
 // the ones the model wrote on the question, so the kind's table has nothing to
 // say about them. [WriteAnswer] used to read that empty table as a refusal, and
-// every chip home drew off [PresenceQuestion.Options] for this lane came back
+// every chip home drew off [PresenceQuestion.Options] for this test came back
 // `could not leave that answer` when it was pressed.
 func TestAModelsOwnQuestionTravelsInPresenceAndAnAnswerComesBack(t *testing.T) {
 	agent, dir := questionSession(t, "eeee1111eeee2222", func(config *Config) {

@@ -9,7 +9,7 @@
 // AgentField node: a control plane carried its calls, a router key it held
 // paid for its models, and a coding-agent binary ran each of its agent
 // sessions. It was copied into codeaf once, at the tag codeaf-absorb (47d57d7),
-// and lives on only here (docs/design/security-audit/ABSORB.md). Its algorithm
+// and lives on only here. Its algorithm
 // — the phases, the twelve hunters, the four-agent proof chain, the prompts —
 // is in the packages below this one and is its own; what it runs on is
 // codeaf's (internal/agentsession).
@@ -58,9 +58,9 @@ var Stages = []string{stageStarting, stageRecon, stageHunt, stageProve, stageRem
 
 // stageWords is the stages in a person's words, for the task's row.
 //
-// THEY ARE sec-af's OWN PHASE NAMES, the words its notes on the page already
-// use (`RECON phase complete`), so the row, the page's step headings and the
-// notes under them say one thing (the owner's call, 2026-10-05).
+// THEY ARE sec-af's OWN PHASE NAMES, the words its notes on the page already use (`RECON
+// phase complete`), so the row, the page's step headings and the notes under them say one
+// thing.
 var stageWords = map[string]string{
 	stageStarting:    "starting",
 	stageRecon:       "recon",

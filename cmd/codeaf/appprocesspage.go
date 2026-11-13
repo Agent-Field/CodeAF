@@ -13,7 +13,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"path/filepath"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
@@ -67,15 +66,16 @@ func (b *appBackend) PageProcesses(ctx context.Context, ask appwire.ProcessPageA
 	if err != nil {
 		return nil, err
 	}
-	a, err := b.findCrewOwner(ask.Agent)
+	a, endRead, err := b.findCrewOwner(ask.Agent)
 	if err != nil {
 		return nil, err
 	}
+	defer endRead()
 	var transcript string
 	b.locked(func() { transcript = a.transcript })
 	convDir := ""
 	if transcript != "" {
-		convDir = filepath.Dir(transcript)
+		convDir = session.DirOf(transcript)
 	}
 	owner := appProcessOwner{
 		agent: ask.Agent, live: b.liveOf(a), convDir: convDir,
@@ -464,15 +464,16 @@ func (b *appBackend) processRecord(ctx context.Context, id string, legacyList bo
 	if !ok {
 		return session.JobNotice{}, "", appwire.Errorf(appwire.CodeBadParams, "%s is not a process id", id)
 	}
-	a, err := b.findCrewOwner(agent)
+	a, endRead, err := b.findCrewOwner(agent)
 	if err != nil {
 		return session.JobNotice{}, "", err
 	}
+	defer endRead()
 	var transcript string
 	b.locked(func() { transcript = a.transcript })
 	convDir := ""
 	if transcript != "" {
-		convDir = filepath.Dir(transcript)
+		convDir = session.DirOf(transcript)
 	}
 	var record session.JobNotice
 	found := false

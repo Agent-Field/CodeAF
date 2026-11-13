@@ -18,6 +18,7 @@ package tui3
 // slice of [session.Agent] this file needs.
 
 import (
+	"strconv"
 	"strings"
 	"time"
 
@@ -151,7 +152,7 @@ func (a *app) refreshRunSummary() tea.Cmd {
 }
 
 // planStateWord maps one store status onto the ONE state word a row wears
-// (docs/design/task-states/DESIGN.md: a row says what a person does next, never
+// (the implementation: a row says what a person does next, never
 // a machinery word).
 //
 // THE STORE'S VOCABULARY IS NOT THE SURFACE'S. `ready` and `claimed` are the
@@ -174,6 +175,9 @@ func planStateWord(row session.PlanTaskRow) string {
 	}
 	if row.Interrupted {
 		return "interrupted"
+	}
+	if row.Undriven && row.Status == "ready" {
+		return "queued"
 	}
 	switch strings.TrimSpace(row.Status) {
 	case "pending":
@@ -220,6 +224,9 @@ func planStatus(row session.PlanTaskRow) session.TaskStatus {
 			Tier: session.TaskTierMoving, Presence: session.TaskPresenceQueued,
 			Word: planStateWord(row), On: session.TaskWaitMachine, Reason: row.Hold,
 		}
+	}
+	if row.Undriven && store == "ready" {
+		store = "pending"
 	}
 	switch strings.TrimSpace(store) {
 	case "pending":
@@ -655,15 +662,19 @@ func planStoreDraws(rows []tasksMineRow, plan []session.PlanTaskRow) ([]tasksMin
 		return rows, nil
 	}
 	held := make(map[string]bool, len(plan))
+	history := make(map[tasksKey]bool)
 	for _, task := range plan {
 		if id := strings.TrimSpace(task.ID); id != "" {
 			held[id] = true
+		}
+		if task.HistoricalRun != 0 {
+			history[tasksKey{session: task.HistoricalSession, id: strconv.FormatUint(task.HistoricalRun, 10)}] = true
 		}
 	}
 	kept := make([]tasksMineRow, 0, len(rows))
 	replaced := make(map[tasksKey]bool)
 	for _, row := range rows {
-		if held[strings.TrimSpace(row.planTask)] {
+		if held[strings.TrimSpace(row.planTask)] || history[tasksKeyOf(row.entry)] {
 			replaced[tasksKeyOf(row.entry)] = true
 			continue
 		}

@@ -12,11 +12,13 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
+	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/teams"
@@ -67,7 +69,7 @@ func TestFactoryTalkMakesOneConversationInTheItemsTeamUnderFactory(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"#" + strconv.Itoa(first) + " · fix the ledger double count", "repo web", "factory_item", "factory_run", "stages:",
+	for _, want := range []string{"job " + strconv.Itoa(first) + " · fix the ledger double count", "repo web", "factory_item", "factory_run", "stages:",
 		"[factory item #" + strconv.Itoa(first) + "]", talkBlockKnow, talkBlockDo, talkBlockShape, talkBlockSay} {
 		if !strings.Contains(string(data), want) {
 			t.Errorf("the opening brief lacks %q:\n%s", want, data)
@@ -101,7 +103,7 @@ func TestFactoryTalkMakesOneConversationInTheItemsTeamUnderFactory(t *testing.T)
 	key, _ := filepath.EvalSymlinks(chat)
 	found := false
 	for _, team := range f.Teams {
-		if team.Name == "#"+strconv.Itoa(first)+" · fix the ledger double count" && team.Holds(filepath.Clean(key)) {
+		if team.Name == "job "+strconv.Itoa(first)+" · fix the ledger double count" && team.Holds(filepath.Clean(key)) {
 			found = true
 		}
 	}
@@ -224,7 +226,7 @@ func TestFactoryItemDoorOfANilStoreIsNil(t *testing.T) {
 // bank's own words.
 func TestFactoryRecipeDoorSaysTheStagesAKindRuns(t *testing.T) {
 	st, web, _ := talkLab(t)
-	door := recipeDoor(st, web).(fileRecipeDoor)
+	door := recipeDoor(st, web).(roadRecipeDoor).fileRecipeDoor
 	names, err := door.Stages(context.Background(), "web", factory.KindIssue)
 	if err != nil || strings.Join(names, " ") != strings.Join(pipeline.Defaults().Pipeline[factory.KindIssue], " ") {
 		t.Fatalf("stages = %v, %v", names, err)
@@ -240,7 +242,7 @@ func TestFactoryTalkMarker(t *testing.T) {
 	if got := talkMarker(factory.Item{ID: 1}); got != "[factory item #1]" {
 		t.Errorf("a floor-numbered item = %q", got)
 	}
-	if got := talkMarker(factory.Item{ID: 7, Num: 1540}); got != "[factory item #1540 · 7]" {
+	if got := talkMarker(factory.Item{Tier: factory.TierOwner, ID: 7, Num: 1540}); got != "[factory item #1540 · 7]" {
 		t.Errorf("a forge-numbered item = %q", got)
 	}
 	brief := talkBrief(factory.Item{ID: 3, Repo: "web", Title: "t", Notes: []string{"the fixture is flaky"}}, factory.DefaultRecipe())
@@ -249,7 +251,119 @@ func TestFactoryTalkMarker(t *testing.T) {
 			t.Errorf("an item with no budget and no thinking says %q", line)
 		}
 	}
-	if !strings.HasPrefix(brief, "[factory item #3]\nYou are the manager of #3 in web.\n") || !strings.Contains(brief, "\n\n#3 · t\nrepo web") || !strings.Contains(brief, "note for the stages: the fixture is flaky") {
+	if !strings.HasPrefix(brief, "[factory item #3]\nYou are the manager of job 3 in web.\n") || !strings.Contains(brief, "\n\njob 3 · t\nrepo web") || !strings.Contains(brief, "note for the stages: the fixture is flaky") {
 		t.Errorf("brief = %q", brief)
+	}
+}
+
+// A STEP THE CARD REMOVES LEAVES THE RUN, AND A STEP IT MOVES RUNS IN ITS NEW
+// PLACE, whether the job is queued (its phases were laid when it was queued)
+// or running: the card goes through the door a person's step edit takes, which
+// lays the run's phases not yet begun again from the steps. The phases that
+// began keep their place and state.
+func TestFactoryItemDoorLaysARemovedOrMovedStepOutOfTheRun(t *testing.T) {
+	st, web, _ := talkLab(t)
+	door := itemDoor(st, web).(storeItemDoor)
+	ctx := context.Background()
+	phases := func(it factory.Item) string {
+		var out []string
+		for _, ph := range it.Stream.Phases {
+			out = append(out, ph.Name+":"+string(ph.State))
+		}
+		return strings.Join(out, " ")
+	}
+	for name, c := range map[string]struct {
+		begun   int
+		removed string
+		moved   string
+	}{
+		"queued":  {0, "plan:pending approve:pending write:pending test:pending proof:pending", "plan:pending approve:pending test:pending write:pending proof:pending"},
+		"running": {2, "plan:done approve:done write:pending test:pending proof:pending", "plan:done approve:done test:pending write:pending proof:pending"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			id, err := st.Add(ctx, factory.Item{Repo: "web", Title: "fix the ledger double count", Kind: factory.KindIssue,
+				Cap: 5, Stages: factory.CopyStages(factory.DefaultRecipe().For(factory.KindIssue))})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := st.Update(id, func(it *factory.Item) error {
+				if err := factoryrun.QueueItem(it, time.Now()); err != nil {
+					return err
+				}
+				for i := range c.begun {
+					it.Stream.Phases[i].State = factory.PhaseDone
+				}
+				if c.begun > 0 {
+					it.State = factory.StateRunning
+				}
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			got, err := door.Apply(ctx, id, session.ItemChange{Edit: factory.PlanEdit{Remove: []string{"review"}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if p := phases(got); p != c.removed {
+				t.Fatalf("after the removal the run is %s, want %s", p, c.removed)
+			}
+			got, err = door.Apply(ctx, id, session.ItemChange{Edit: factory.PlanEdit{Move: []factory.Moved{{Stage: "test", After: "approve"}}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if p := phases(got); p != c.moved {
+				t.Fatalf("after the move the run is %s, want %s", p, c.moved)
+			}
+			// A change that leaves the steps alone leaves the run alone.
+			if got, err = door.Apply(ctx, id, session.ItemChange{Cap: 9}); err != nil || phases(got) != c.moved || got.Cap != 9 {
+				t.Fatalf("a budget change = %s %v (%v)", phases(got), got.Cap, err)
+			}
+		})
+	}
+}
+
+// One manager per job: asks that race, as the runner and the app's job chats do
+// when a job starts, all get the same conversation, and no other is made to join
+// the job's team and wake on its replies.
+func TestRacingAsksMakeOneManager(t *testing.T) {
+	st, web, profile := talkLab(t)
+	id, err := st.Create(factory.Item{Repo: "web", Kind: factory.KindIssue, Title: "fix the ledger", State: factory.StateNew})
+	if err != nil {
+		t.Fatal(err)
+	}
+	maker := talkMaker(st, web, profile)
+	var wg sync.WaitGroup
+	chats := make([]string, 3)
+	begin := make(chan struct{})
+	for i := range chats {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-begin
+			chat, err := maker(context.Background(), id)
+			if err != nil {
+				t.Error(err)
+			}
+			chats[i] = chat
+		}()
+	}
+	close(begin)
+	wg.Wait()
+	if chats[0] == "" || chats[0] != chats[1] || chats[1] != chats[2] {
+		t.Fatalf("three asks made %q", chats)
+	}
+	got, err := st.Get(id.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Talk != chats[0] {
+		t.Fatalf("the job holds %q, the asks got %q", got.Talk, chats[0])
+	}
+	made, err := os.ReadDir(filepath.Dir(filepath.Dir(chats[0])))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(made) != 1 {
+		t.Fatalf("%d conversations on disk, want 1", len(made))
 	}
 }

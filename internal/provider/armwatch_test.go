@@ -10,7 +10,7 @@ import (
 // ── WHAT ONE ARM'S ROW SAYS ABOUT ITSELF ────────────────────────────────────
 
 // TestTheRowSaysWhichBoundReallyEndedTheAttempt is `deadline_ms` stopping being
-// fiction (`docs/design/recovery/DESIGN.md` §7, and the seam R0's call log
+// fiction (`the implementation` §7, and the seam R0's call log
 // reads).
 //
 // WHAT THE FIELD MEANT AND WHAT EVERY READER TOOK IT TO MEAN were two different

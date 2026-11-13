@@ -25,7 +25,7 @@ package session
 // measured as waste rather than as help: a turn with one job out and twenty-one
 // tool results paid for the same three facts twenty-one times, about three
 // kilobytes of transcript per turn, and three hands out made it nineteen
-// (docs/design/prompt-diet/DESIGN.md §1). A batch of parallel calls is the worst
+//. A batch of parallel calls is the worst
 // of it — six results rendered within the same second are six copies of one
 // identical line.
 //

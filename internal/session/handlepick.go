@@ -16,7 +16,7 @@ import (
 // A member's handle, chosen by the conversation's own title model.
 //
 // A handle is ONE lowercase word naming what the conversation is about:
-// @security for "santosh dev2 branch code complexity & security review",
+// @security for "example dev2 branch code complexity & security review",
 // @milestones for "CodeAF repo issue tags & milestones", @gravity for "quantum
 // gravity research updates / session monitor". The word list in internal/teams
 // ([teams.DeriveHandle]) guesses one at once, so a member is addressable the
@@ -156,7 +156,7 @@ func (a *Agent) chooseTeamHandles(ctx context.Context, title, model string) {
 	a.team.mu.Lock()
 	keys := a.teamKeysLocked()
 	a.team.mu.Unlock()
-	file, err := teams.Load(profile)
+	file, err := teamView(profile, keys)
 	if err != nil {
 		return
 	}
@@ -165,7 +165,7 @@ func (a *Agent) chooseTeamHandles(ctx context.Context, title, model string) {
 			continue
 		}
 		var old, now string
-		err := teams.Update(profile, func(f *teams.File) error {
+		err := teams.UpdateOpen(profile, func(f *teams.File) error {
 			// Made again under the store's lock, against the file as it is now:
 			// a person may have typed a handle since the roles were read.
 			var err error

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -13,7 +14,10 @@ import (
 
 func TestChangeIncludesCommittedStagedUnstagedAndUntrackedFiles(t *testing.T) {
 	dir := gitRig(t)
-	base := changeBase(dir, factory.Item{Kind: factory.KindIssue})
+	base, err := changeBase(dir, factory.Item{Kind: factory.KindIssue})
+	if err != nil {
+		t.Fatal(err)
+	}
 	mustGit(t, dir, "checkout", "-q", "-b", "factory/change")
 	write := func(path, content string) {
 		t.Helper()
@@ -75,7 +79,11 @@ func TestChangeForPRIncludesItsOriginalDiff(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	change, err := readChange(dir, changeBase(dir, it))
+	base, err := changeBase(dir, it)
+	if err != nil {
+		t.Fatal(err)
+	}
+	change, err := readChange(dir, base)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,5 +179,49 @@ func TestApprovedCommitMessageStaysInsidePublicBoundary(t *testing.T) {
 	msg := mustGit(t, dir, "log", "-1", "--format=%B")
 	if strings.Contains(msg, "private-person") || !strings.Contains(msg, "[local home]/notes") || !strings.Contains(msg, "codeaf@users.noreply.github.com") {
 		t.Fatalf("commit message: %q", msg)
+	}
+}
+
+// A WRITE THAT CHANGED NOTHING IS NOT DONE. The 2026-11 factory-demo run on
+// #94 reported write done on a clean checkout; test and review passed on the
+// unchanged tree and only publishing found nothing to commit. A step that
+// only reads (plan here) still finishes on a clean checkout.
+func TestAWriteThatLeavesTheCheckoutUnchangedIsNotDone(t *testing.T) {
+	dir := gitRig(t)
+	mustGit(t, dir, "checkout", "-q", "-b", "factory/empty")
+	var writes, tests atomic.Int32
+	var second string
+	g := newRig(t, map[factory.StageKind]Executor{
+		factory.StageChat: ExecutorFunc(func(_ context.Context, job Job) (factory.StageResult, error) {
+			if job.Stage.Name == "write" {
+				if writes.Add(1) == 2 && job.Last != nil {
+					second = job.Last.Output
+				}
+			}
+			return factory.StageResult{Done: true, Output: job.Stage.Name + " is done"}, nil
+		}),
+		factory.StageCheck: ExecutorFunc(func(context.Context, Job) (factory.StageResult, error) {
+			tests.Add(1)
+			return factory.StageResult{Done: true}, nil
+		}),
+	}, func(o *Options) { o.RepoDir = func(string) string { return dir } })
+	write := chat("write")
+	write.Max = 2
+	id := g.add("empty write", chat("plan"), write, factory.Stage{Name: "test", Kind: factory.StageCheck, Ask: "true"})
+	if err := g.r.Launch(id); err != nil {
+		t.Fatal(err)
+	}
+	it := g.wait(id, "asking about write", func(it factory.Item) bool {
+		return it.State == factory.StateNeedsYou && it.QKind == factory.QKindOutOfAttempts
+	})
+	if writes.Load() != 2 || tests.Load() != 0 {
+		t.Fatalf("write ran %d rounds and test ran %d times", writes.Load(), tests.Load())
+	}
+	q := "write is not done after 2 rounds: the checkout has no change from where the run began · try again, send it back, or stop the job?"
+	if it.Question != q || !strings.HasPrefix(second, "the checkout has no change from where the run began\n") {
+		t.Fatalf("question %q, round 2 read %q", it.Question, second)
+	}
+	if plan, w := it.Stream.Phases[0], it.Stream.Phases[1]; plan.State != factory.PhaseDone || w.State != factory.PhaseWaiting {
+		t.Fatalf("plan = %s, write = %s", plan.State, w.State)
 	}
 }

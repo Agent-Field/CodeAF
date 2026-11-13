@@ -50,9 +50,7 @@
 // TextWithPalette additionally remaps raw ANSI-16 SGR color codes (the
 // classic 30-37/40-47/90-97/100-107 families) through a caller-supplied
 // Table, so a tool's own colors cohere with ours instead of clashing with
-// whatever the token layer eventually defines (Wave 2). The mechanism
-// lands now; Identity is the only table anyone plugs in until then, and
-// calling with Identity is a single 16-int array compare — no extra
+// the token layer. Calling with Identity uses a single 16-int array compare — no extra
 // allocation, no second pass over the text.
 package sanitize
 
@@ -88,8 +86,8 @@ const (
 type Table [16]int
 
 // Identity is the zero-cost default palette: every color maps to itself.
-// Wave 2's token layer plugs a real Table in here; until then every caller
-// either omits the palette (Text) or passes Identity explicitly.
+// Callers can omit the palette (Text), pass Identity explicitly, or supply a
+// remapping table from the token layer.
 var Identity = Table{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
 
 // IsIdentity reports whether t performs no remapping. Callers holding a

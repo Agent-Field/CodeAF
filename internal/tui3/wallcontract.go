@@ -9,7 +9,7 @@ import (
 
 // ── THE WALL AND ITS TEAMS: THE SHAPES THE THREE HALVES AGREE ON ───────────
 //
-// The wall is a full-frame grid of all saved conversations plus live tabs,
+// The wall is a full-frame grid of the library or the current strip's tabs,
 // each drawn from a cached live or saved transcript tail. A team is a named
 // set of conversations that the tab strip can be narrowed to.
 //
@@ -106,6 +106,7 @@ const wallTailCap = 40
 
 // wallView is everything the painter needs, and nothing it may go and get.
 type wallView struct {
+	openTabs bool
 	// team is the active team's id, "" for All, and teams is every team in
 	// the order the Teams row draws them.
 	team  string
@@ -353,6 +354,7 @@ type wallState struct {
 	// (walltail.go's [app.wallFrontMoved]).
 	frontVer                  wallFrontVer
 	on                        bool
+	openTabs                  bool
 	focus                     int
 	scroll                    int
 	cols                      int

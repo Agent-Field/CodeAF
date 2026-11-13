@@ -2,7 +2,7 @@ package tui3
 
 // ── A QUICK NODE, AS THIS SURFACE DRAWS IT ──────────────────────────────────
 //
-// A quick task (session's TaskKindQuick, docs/design/quick-task/DESIGN.md) is
+// A quick task (session's TaskKindQuick, the implementation) is
 // work that runs WHERE THE PERSON IS: the caller's own folder, no worktree, no
 // branch, no merge and no landing of its own — its last message is its answer.
 // So everything this column and this card usually say about a delivery is a

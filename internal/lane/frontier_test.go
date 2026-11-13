@@ -81,7 +81,7 @@ func TestASightingOnlyLaneIsNotRefusedForWhatNobodyPublished(t *testing.T) {
 // law, and it is the half that MOVED. A published `Tools: false` used to end the
 // argument; it is now a prior, because the flag has been measured wrong — the
 // 2026-09-10 screenshot has GMICloud gated out of a tool request while it was
-// serving that same task's tool calls (docs/design/recovery/DESIGN.md §1).
+// serving that same task's tool calls.
 func TestARowThatSaysNoToToolsIsDemotedAndNotRefused(t *testing.T) {
 	belief := seenOnly(scriptedModel, "Morph", 6409)
 	belief.Facts = Facts{Tools: false, Quant: "fp8", MaxOut: 8_000, Context: 128_000, Uptime5m: 100, PriceOut: 0.0000009}

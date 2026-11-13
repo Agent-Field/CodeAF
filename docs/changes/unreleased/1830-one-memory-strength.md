@@ -20,6 +20,6 @@ invalidates:
   - "The model's forget asked for approval. It is seeded allow beside remember, because both say what they did in the conversation and the Memories tab takes it back."
 ---
 
-The owner asked for the simplest memory that can be trusted: what the model
+Memory should be simple and trustworthy: what the model
 knows about a person is what the Memories tab shows, every change says so
 in the conversation, and every change can be taken back.

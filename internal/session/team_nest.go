@@ -2,7 +2,7 @@ package session
 
 // ── NESTED TEAMS: SUB-TEAMS, CONFLICTS, ONE LEVEL, AND THE GLOBAL MANAGER ────
 //
-// The rulings (c-5, c-6, c-7; docs/design/conversations-and-teams/DESIGN.md,
+// The rulings (c-5, c-6, c-7; the implementation,
 // section 8): work is handed down a tree of teams and decisions travel up it.
 // This file is the session's half of the tree:
 //
@@ -146,7 +146,7 @@ func (e errNest) Error() string { return string(e) }
 // teamStartSubTeam makes the child team under team, moves in the members
 // named, and writes the start that opens its manager. It answers what to hand
 // the model and whether that is a refusal.
-func (a *Agent) teamStartSubTeam(ctx context.Context, team teams.Team, role teamRole, handle, brief, name string, moving []string, prov teams.Provenance) (string, bool) {
+func (a *Agent) teamStartSubTeam(ctx context.Context, team teams.Team, role teamRole, handle, brief, name string, moving []string, model string, prov teams.Provenance) (string, bool) {
 	profile := a.config.teamProfile()
 	name = strings.Join(strings.Fields(name), " ")
 	if name == "" {
@@ -206,7 +206,7 @@ func (a *Agent) teamStartSubTeam(ctx context.Context, team teams.Team, role team
 			}
 			members = append(members, m)
 		}
-		child := teams.Team{ID: teams.NewID(), Name: name, Parent: parent.ID, Made: time.Now()}
+		child := teams.Team{ID: teams.NewID(), Name: name, Parent: parent.ID, Made: time.Now(), CreatedBy: teams.ConversationName(role.key)}
 		f.Teams = append(f.Teams, child)
 		if share := f.SubTeamCap(parent.ID, d); share > 0 {
 			if err := f.SetSettings(child.ID, func(s *teams.Settings) { s.CapUSDDay = &share }); err != nil {
@@ -248,7 +248,7 @@ func (a *Agent) teamStartSubTeam(ctx context.Context, team teams.Team, role team
 	// here, where the membership was written. A refusal returned above and
 	// wrote nothing.
 	_ = teams.WriteMoveNotices(profile, movedIn)
-	start := teams.Entry{Kind: teams.KindStart, From: teams.FromManager, To: handle, Text: brief, Team: childID, Approval: a.ResolvedApprovalPosture(), Provenance: prov}
+	start := teams.Entry{Kind: teams.KindStart, From: teams.FromManager, To: handle, Text: brief, Team: childID, Approval: a.ResolvedApprovalPosture(), Provenance: prov, Model: model}
 	startID, err := teams.AppendTrafficID(profile, team.ID, start)
 	if err != nil {
 		return "The team " + strconv.Quote(name) + " was made, but its manager's start could not be written to the traffic: " + err.Error(), true
@@ -302,7 +302,7 @@ func subTeamBriefLine(file *teams.File, entry teams.Entry, brief string) string 
 func (a *Agent) claimSubTeams(profile string, claims []subTeamClaim) {
 	for _, claim := range claims {
 		var why string
-		err := teams.Update(profile, func(f *teams.File) error {
+		err := teams.UpdateOpen(profile, func(f *teams.File) error {
 			child, ok := f.Team(claim.team)
 			if !ok || child.Closed() {
 				why = "the team is gone or closed"
@@ -544,6 +544,12 @@ func (a *Agent) teamRaiseTool(ctx context.Context, args json.RawMessage) (string
 	if role.handle == "" {
 		return "You have no handle in " + strconv.Quote(role.name) + " yet, so the decider could not tell who raised it. It is given once this conversation has a title.", true, nil
 	}
+	// A party may be anywhere in the open tree (a sibling team, another top
+	// team), which this conversation's own view does not hold: the open teams
+	// are read for the parties and the manager common to them.
+	if open, err := teams.LoadOpen(profile); err == nil {
+		file = open
+	}
 	parties := []teams.Party{{Key: role.key, Handle: role.handle, Team: role.id, Context: strings.TrimSpace(parsed.Context)}}
 	partyKeys := []string{role.key}
 	for _, words := range parsed.Parties {
@@ -587,6 +593,13 @@ func (a *Agent) teamRaiseTool(ctx context.Context, args json.RawMessage) (string
 	}
 	if origin == "" {
 		origin = role.id
+	}
+	// A remote decider cannot read this computer's packet or its wake. Refuse
+	// before Raise records either, rather than claiming it reached a manager.
+	if manager, ok := lca.Member(lca.Manager); ok {
+		if refusal := a.teamDeliveryRefusal(ctx, []teams.Member{manager}); refusal != "" {
+			return refusal, true, nil
+		}
 	}
 	prov := turnOriginFrom(ctx).provenance(role.key)
 	raised, err := teams.RaiseFrom(profile, teams.Packet{
@@ -657,7 +670,7 @@ func partyTold(role teamRole, entry teams.Entry, p teams.Packet) string {
 // (team/@handle, or a handle only one conversation under team has), for a
 // read. false is nobody there.
 func readableBelow(profile string, team teams.Team, words string) (teams.Member, bool) {
-	file, err := teams.Load(profile)
+	file, err := teams.LoadSubtree(profile, team.ID)
 	if err != nil {
 		return teams.Member{}, false
 	}
@@ -690,6 +703,17 @@ func readableBelow(profile string, team teams.Team, words string) (teams.Member,
 // to, marked with the sub-team it came from, and that manager roused.
 func (a *Agent) teamPostUp(team teams.Team, role teamRole, entry teams.Entry) (string, bool, error) {
 	profile := a.config.teamProfile()
+	if a.teamsSharing() {
+		if file, _, _, _ := a.teamSnapshot(profile); file != nil {
+			if boss, ok := file.Team(role.boss); ok {
+				if m, ok := boss.Member(boss.Manager); ok {
+					if refusal := a.teamDeliveryRefusal(context.Background(), []teams.Member{m}); refusal != "" {
+						return refusal, true, nil
+					}
+				}
+			}
+		}
+	}
 	entry.Member = role.key
 	entry.Text = fmt.Sprintf("(from %q, a team under yours with no manager of its own) %s", team.Name, entry.Text)
 	// THE LINE'S OWN NUMBER AND ITS TEAM'S ID ARE IN THE ANSWER, as for a post

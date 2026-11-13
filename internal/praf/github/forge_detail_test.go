@@ -75,7 +75,7 @@ func TestFilesChecksAndOneIssue(t *testing.T) {
 		t.Fatalf("files %+v %v", files, err)
 	}
 	state, runs, err := c.CheckRuns(context.Background(), "o", "r", "s")
-	if err != nil || state != ChecksFailed || len(runs) != 2 || runs[0] != (CheckRun{Name: "build", Status: "completed", Conclusion: "failure", URL: "u1"}) || runs[1].Status != "queued" {
+	if err != nil || state != ChecksFailed || len(runs) != 2 || runs[0] != (CheckRun{Source: "check_run", Name: "build", Status: "completed", Conclusion: "failure", URL: "u1"}) || runs[1].Status != "queued" {
 		t.Fatalf("checks %q %+v %v", state, runs, err)
 	}
 	if s, err := c.Checks(context.Background(), "o", "r", "s"); err != nil || s != ChecksFailed {

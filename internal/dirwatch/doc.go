@@ -2,8 +2,9 @@
 // shows the directory learns of another device's change when it happens rather
 // than by asking on a timer.
 //
-// The socket carries one fact: the directory's version. It never carries
-// records, so a frame is only ever a reason to read the list once. This package
+// The socket carries directory versions, presence hints and committed hold
+// receipts. Versions prompt a fresh list read; receipts cover only an exact
+// lease and never replace an authority read. This package
 // owns the connection (dialling, keeping it alive, noticing it died, coming
 // back with jittered waits) and nothing else; what to do with a new version,
 // and what to do while the socket is down, stay with the surface that draws
@@ -27,8 +28,8 @@
 //     the relay closed because it went quiet (CloseSilent) is dialled again at
 //     once. The set is empty while
 //     State.Up is false, because the relay names who is online only when a
-//     socket opens. A surface draws "● spark" for a name in Online and
-//     "○ dumb" otherwise, and reads the last time a device was seen from the
+//     socket opens. A surface draws "● laptop" for a name in Online and
+//     "○ desktop" otherwise, and reads the last time a device was seen from the
 //     device record's last_seen.
 //   - State.Joined lists the newest MaxJoined device-joined events, oldest
 //     first, each with a Seq that only rises. A surface remembers the newest

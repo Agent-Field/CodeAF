@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -66,6 +67,33 @@ func loadTitles(t *testing.T, seam factory.Seam) []string {
 		titles = append(titles, it.Title)
 	}
 	return titles
+}
+
+// TestThisProcessDoesNotReadItsOwnQueueToFindTheFactory: the worker asks
+// which factory to pull from every second. When the receipt names this
+// process, that question is the file. Reading /v1/queue to confirm it
+// renders every stored job on each pass.
+func TestThisProcessDoesNotReadItsOwnQueueToFindTheFactory(t *testing.T) {
+	st := attachLab(t)
+	var hits atomic.Int32
+	seam := factory.LocalSeam(st, time.Now())
+	load := seam.Load
+	seam.Load = func() (factory.Snapshot, error) { hits.Add(1); return load() }
+	target, err := serveFactoryHere(st, seam)
+	if err != nil {
+		t.Fatal(err)
+	}
+	address := target.url
+	hits.Store(0)
+	for range 5 {
+		target, ok := liveFactoryDiscovery()
+		if !ok || target.url != address {
+			t.Fatalf("discovery = %+v %v, want %s", target, ok, address)
+		}
+	}
+	if got := hits.Load(); got != 0 {
+		t.Fatalf("finding this process's factory read the queue %d times", got)
+	}
 }
 
 // WITH NOTHING SERVING, THE WINDOW SERVES: a loopback service in this
@@ -242,4 +270,18 @@ func sealFactoryPeople(t *testing.T) {
 			delete(factoryPeopleCaches.profiles, profile)
 		}
 	})
+}
+
+func TestDiscoveryRejectsAReusedPIDWithoutAnOwnedServer(t *testing.T) {
+	st := attachLab(t)
+	body, err := json.Marshal(factoryDiscovery{URL: "http://127.0.0.1:1", PID: os.Getpid()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writeFactoryPrivate(filepath.Join(st.Root(), "serve.json"), body); err != nil {
+		t.Fatal(err)
+	}
+	if target, ok := liveFactoryDiscovery(); ok {
+		t.Fatalf("reused PID trusted a dead server: %+v", target)
+	}
 }

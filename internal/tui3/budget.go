@@ -11,7 +11,7 @@ import (
 
 // `/budget` — THE KEYBOARD DOOR ONTO THE LIMITS.
 //
-// It is a door and not a second editor (docs/design/spending/DESIGN.md): bare,
+// It is a door and not a second editor: bare,
 // it opens the Spending tab with the cursor on the row a person almost always
 // means; with an amount, it writes THROUGH THE SAME REGISTRY ROW the tab writes
 // through, so what /budget lands and what the panel lands are byte-identical.

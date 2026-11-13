@@ -141,6 +141,9 @@ type engineFleet struct {
 	// assembled the surface: the readings that are about the engine's machine
 	// rather than about one conversation (hostOptions fills it).
 	machine machineReadings
+	// poolErrands is this launch's handle, also retained by its owned closer.
+	// Keeping it on the fleet makes the window's lifetime explicit.
+	poolErrands *poolErrands
 
 	mu    sync.Mutex
 	conns []*engineConn
@@ -355,13 +358,17 @@ func (f *engineFleet) takeAll() []*engineConn {
 func (f *engineFleet) bundle(conn *engineConn, welcome remote.Welcome) tui3.Conversation {
 	agent := &besideAgent{countingAgent: &countingAgent{Agent: conn.client.Agent()}, conn: conn, fleet: f}
 	link := hostLink(newHostSeams(conn.client))
+	draft := ""
+	if f.machine.draft != "" {
+		draft = tui3.ChatDraftFile(filepath.Dir(f.machine.draft), f.dest, welcome.Workspace, welcome.SessionFile)
+	}
 	conv := tui3.Conversation{
 		Agent:       agent,
 		SessionFile: welcome.SessionFile,
 		Workspace:   welcome.Workspace,
 		Resumed:     welcome.Resumed,
 		Notice:      hostEntryNotice(welcome),
-		DraftFile:   f.machine.draft,
+		DraftFile:   draft,
 		History:     f.machine.history,
 		Link:        &link,
 		TaskRoom:    agent.TaskRoom,
@@ -450,6 +457,7 @@ func (b *besideAgent) Detach() error {
 func hostLink(seams hostSeams) tui3.LinkSeam {
 	return tui3.LinkSeam{
 		Note:           seams.Link,
+		SendRefusal:    seams.SendRefusal,
 		EngineBuild:    seams.EngineBuild,
 		Ping:           seams.Ping,
 		Notice:         seams.Notice,

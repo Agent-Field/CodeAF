@@ -2,12 +2,8 @@ package tui3
 
 // FILES IN THE BROWSER — the one listing both kinds of row come out of.
 //
-// folderpick.go opened as a chooser of DIRECTORIES, and that is half of what
-// the owner asked for: a person deciding what this conversation is about is
-// nearly always looking at a folder and a file in the same window — the
-// repository, and the log inside it. So the middle column lists both, and which
-// kind of row the cursor is on is what decides what the action row offers
-// (folderact.go).
+// So the middle column lists both, and which kind of row the cursor is on is what decides
+// what the action row offers (folderact.go).
 //
 // THE TWO KINDS ARE KEPT APART IN THE STRUCT AND NOT IN A FLAG PER ROW.
 // [folderListing.names] is still exactly what it was — the subdirectories, in

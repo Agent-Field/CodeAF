@@ -12,7 +12,7 @@ import (
 
 // ── THE WAITING LAWS ────────────────────────────────────────────────────────
 //
-// `docs/design/waiting/DESIGN.md` is the design and this file is the half of it
+// `the implementation` is the design and this file is the half of it
 // the build holds. Each law is named as a sentence and each of them fails with
 // a file name and a line number, in the convention `structure_test.go` set.
 //
@@ -31,8 +31,7 @@ func installed(t *testing.T) control.Factory {
 	build := Controller()
 	if build == nil {
 		t.Fatal("no waiting controller is installed — SetController is never called in a shipped file, " +
-			"so every token-generating call falls through to the bare stream loop " +
-			"(docs/design/waiting/DESIGN.md, lane W2)")
+			"so every token-generating call falls through to the bare stream loop")
 	}
 	return build
 }
@@ -244,8 +243,7 @@ func TestBeliefsDecayWhenUnobserved(t *testing.T) {
 	Default().Reset()
 	hierarchy, ok := Default().Ledger().(Hierarchy)
 	if !ok {
-		t.Fatal("the ledger does not answer the hierarchy's door — there is no chain to decay " +
-			"(docs/design/waiting/DESIGN.md, lane W1)")
+		t.Fatal("the ledger does not answer the hierarchy's door — there is no chain to decay")
 	}
 	id := ID{Model: "vendor/model", Lane: "somebody"}
 	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)

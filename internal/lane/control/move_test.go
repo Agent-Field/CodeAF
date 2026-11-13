@@ -106,7 +106,7 @@ func TestNextWalksTheMachinesBeforeItChangesTheRequest(t *testing.T) {
 }
 
 // TestNextNeverRepeatsAMove is the second clause of the rule
-// (docs/design/recovery/DESIGN.md §3): a move is a (machine, shape, model)
+// : a move is a (machine, shape, model)
 // triple and the plan refuses one it has already made. It is asked of every
 // shape of plan there is rather than of one, because the census's measured
 // failure — 53% of chains never leaving the lane they started on — was a
@@ -255,7 +255,7 @@ func TestANilMoveLogIsEmptyAndDecidesNothing(t *testing.T) {
 // growing. A ceiling over the whole key names no machine, so it adds nothing to
 // the next body, so the next body is the one that was just refused — which is
 // the same bytes to the same machine, the one thing the design forbids
-// (docs/design/recovery/DESIGN.md §3).
+// .
 //
 // THE MEASURED FAILURE this pins is exactly that: seven sends of identical
 // bytes behind a doubling wait, because [Next] answered every one of them with

@@ -2,7 +2,7 @@ package session
 
 // automation_run.go is what one run of an automation does, as
 // [automation.Runner]: a watch's look and its judgment, and a piece of work run
-// unattended. docs/design/automations/DESIGN.md, "A run".
+// unattended. the implementation, "A run".
 //
 // A RUN IS THE PERSON'S OWN CONVERSATION, DONE LATER. Its configuration is built
 // by the same assembly a conversation's is (the door hands it in), so it has
@@ -27,6 +27,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/processgroup"
 	"io"
 	"io/fs"
 	"os"
@@ -41,7 +42,6 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/automation"
-	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	procexec "github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/lane"
@@ -168,19 +168,22 @@ func (r *automationRunner) Look(ctx context.Context, item automation.Automation)
 // it replaces did not do. A failing command is evidence, not an error: "is CI
 // red" is often answered by an exit status.
 func automationLookCommand(ctx context.Context, workspace, command string) (automation.Sight, error) {
-	shell, args, shellErr := jobShell()
+	if err := markTaskStorageUncertain(workspace); err != nil {
+		return automation.Sight{}, err
+	}
+	shell, args, shellErr := jobShell(command)
 	if shellErr != nil {
 		return automation.Sight{}, shellErr
 	}
 	// I0: an automation look has host access but still uses the command runner.
 	process, err := procexec.Host.In(workspace).Command(ctx, procexec.ExecRequest{
-		Argv: append([]string{shell}, append(args, command)...), Env: bare.StreamingEnv(),
+		Argv: append([]string{shell}, args...), Env: bare.StreamingEnv(),
 		Group: procexec.GroupSession, WaitDelay: 2 * time.Second,
 	})
 	if err != nil {
 		return automation.Sight{}, fmt.Errorf("could not run the command: %w", err)
 	}
-	output, err := process.CombinedOutput()
+	output, err := processgroup.CombinedOutput(process)
 	seen := string(output)
 	switch {
 	case errors.Is(ctx.Err(), context.DeadlineExceeded):
@@ -387,6 +390,7 @@ func (r *automationRunner) lookTool(ctx context.Context, item automation.Automat
 	cfg.Automations = nil
 	cfg.Memory = nil
 	cfg.automationID = item.ID
+	cfg.bindUsageLedger()
 	agent := &Agent{config: cfg, model: cfg.Model, id: NewSessionID()}
 	agent.jobs = newJobRegistry(cfg.Workspace, cfg.droppingsPlace(), agent.enqueueJobNote, agent.enqueueWatchNote)
 	agent.jobs.notifyQuiet = agent.enqueueJobNoteQuiet
@@ -447,6 +451,9 @@ func (r *automationRunner) Judge(ctx context.Context, item automation.Automation
 	var response *ai.Response
 	var model string
 	for _, candidate := range models {
+		if err := DailyLimitReached(cfg); err != nil {
+			return automation.Judgment{}, err
+		}
 		var client Completer
 		client, model, err = r.judgeClient(cfg, candidate)
 		if err != nil {
@@ -532,7 +539,7 @@ func (r *automationRunner) judgeClient(cfg Config, model string) (Completer, str
 // one they did; the check used to stop there with `no API key`, every fifteen
 // minutes, while the model they talk to could have answered it.
 func automationJudgeModels(cfg Config) ([]string, error) {
-	rungs, err := roles.Ladder(roles.Source(cfg.RolesSource), roles.RoleSentinel, cfg.Model)
+	rungs, err := readerFor(cfg, cfg.Model).Ladder(roles.RoleSentinel, cfg.Model)
 	if err != nil {
 		return nil, err
 	}
@@ -697,12 +704,8 @@ func (r *automationRunner) setUpWork(item automation.Automation, run automation.
 	// task, which that check passes over because the conversation that started
 	// the task asked first; nothing asked before an automation's run, so it is
 	// asked here, before anything — a worktree included — is made for it.
-	//
-	// A WATCH'S JUDGMENT IS NOT HELD TO IT. A look costs a fraction of a cent,
-	// and a refused look is news, so holding looks to the limit would raise a
-	// notification every few minutes until midnight to save pennies.
-	if line, reached := automationDailyLimitReached(cfg.ProfileDir); reached {
-		setup.refused = line
+	if err := DailyLimitReached(cfg); err != nil {
+		setup.refused = err.Error()
 		return setup, nil
 	}
 	if item.Worktree {
@@ -718,34 +721,6 @@ func (r *automationRunner) setUpWork(item automation.Automation, run automation.
 		ID: place.ID(), Title: item.Title, Workspace: item.Workspace, Model: setup.cfg.Model, Created: time.Now(),
 	})
 	return setup, nil
-}
-
-// automationSpentToday is what the machine has spent today, read off the usage
-// ledger. It is a variable so a test can stand in a figure without writing to a
-// ledger every other test in the package reads.
-var automationSpentToday = spentTodayOnLedgerChecked
-
-// automationDailyLimitReached answers the line a run of work stops on when the
-// person's daily spending limit is reached, the same reading a conversation's
-// turn makes. No limit is no refusal; one that cannot be read is.
-func automationDailyLimitReached(profileDir string) (string, bool) {
-	daily, err := config.DailyBudgetUSDAt(profileDir)
-	if err != nil {
-		// A LIMIT NOBODY CAN READ IS NOT NO LIMIT: the run waits.
-		return "the daily spending limit could not be read · /budget day sets it", true
-	}
-	if daily <= 0 {
-		return "", false
-	}
-	spent, err := automationSpentToday()
-	if err != nil {
-		return spendAccountingUnread, true
-	}
-	if spent < daily {
-		return "", false
-	}
-	return fmt.Sprintf("today's spending limit is reached · %s spent of %s · /budget day changes it",
-		railMoney(spent), railMoney(daily)), true
 }
 
 // workEnd is how a run's turn ended, read off its events.
@@ -849,7 +824,7 @@ func automationWorktree(cfg Config, item automation.Automation) (taskTree, error
 			Folder: item.Workspace, Dir: tree.dir, Branch: tree.branch, Root: tree.root,
 			Home: tree.home, HomeSha: tree.homeSha, Mode: TaskModeWorktree, Cut: time.Now(),
 		})
-		return SaveMeta(cfg.Place.Dir, meta)
+		return saveMetaLocked(cfg.Place.Dir, meta)
 	})
 	if err != nil {
 		return taskTree{}, fmt.Errorf("record the worktree %s on %s: %w", tree.dir, tree.branch, err)

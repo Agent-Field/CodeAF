@@ -8,7 +8,7 @@ import (
 
 // ── ONE BUDGET, ONE ORDER, ONE OWNER ────────────────────────────────────────
 //
-// THE MEASURED FAILURE (docs/design/recovery/DESIGN.md §2 problem 1). Eleven
+// THE MEASURED FAILURE. Eleven
 // controllers on one request path each owned a budget none of the others could
 // see: three transport faults, six or sixty paced sends, four arms, one ladder
 // arm, seven relaxation rungs, two models, and four different wall clocks over
@@ -43,7 +43,7 @@ type Move struct {
 	Kind MoveKind
 	// Model is the model this move is on. The dispatcher never changes it —
 	// there is exactly one model hop in this build and it belongs to the
-	// session (docs/design/recovery/DESIGN.md §4) — so every move of one plan
+	// session — so every move of one plan
 	// carries the same name, and it is here so a row can say which.
 	Model string
 	// Lane is the machine, spelled as the wire spells it.
@@ -220,7 +220,7 @@ func (l *MoveLog) Count() int {
 // Next is the ONE place this build decides what a failed call does next, and it
 // is a pure function of the plan and what has already been tried.
 //
-// ITS ORDER IS THE RULE'S ORDER (docs/design/recovery/DESIGN.md §3 and §4):
+// ITS ORDER IS THE RULE'S ORDER:
 //
 //  1. another machine in the serving set, best belief first;
 //  2. the same machine after its own comeback, ONLY if it is the last one, and

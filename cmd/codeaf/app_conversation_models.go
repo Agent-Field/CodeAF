@@ -49,6 +49,17 @@ func enableAppConversationModels(conv any, desired ...*session.ConversationModel
 	return err
 }
 
+// appOlderHostModels is what a person reads when a host from before the
+// main/fallback pair holds their conversation.
+const appOlderHostModels = "An older codeaf engine holds this conversation, so its models can't be changed here. Stop that engine, then open this chat again to change them."
+
+// appOlderHost says an engine answered from before the door that was called.
+// The name is all that crosses the wire, as for every other older door
+// (internal/remote/client.go).
+func appOlderHost(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "no such method")
+}
+
 func appModelSwitchEntry(id string, n session.ModelSwitch) appwire.Entry {
 	return appwire.Entry{ID: "model-switch-" + n.ID, Agent: id, At: n.At, Kind: appwire.EntryNotice, Text: n.Text, Quiet: true, NoticeKind: "model_switch"}
 }
@@ -57,6 +68,17 @@ func appModelSwitchEntry(id string, n session.ModelSwitch) appwire.Entry {
 // remain behind the existing lent-stage fence. This intentionally bypasses only
 // the old job-wide model preference, never those other controls.
 func (b *appBackend) SetConversationModels(id string, pair session.ConversationModels) (appwire.Agent, error) {
+	return b.setConversationModels(id, pair, false)
+}
+
+// SetConversationMain is agents.set_models with no fallback named: the main
+// model moves and the conversation keeps the fallback it has, read from its
+// own engine under the same gate, so nothing a client left out is cleared.
+func (b *appBackend) SetConversationMain(id, main string) (appwire.Agent, error) {
+	return b.setConversationModels(id, session.ConversationModels{Main: main}, true)
+}
+
+func (b *appBackend) setConversationModels(id string, pair session.ConversationModels, keepFallback bool) (appwire.Agent, error) {
 	a, err := b.find(id)
 	if err != nil {
 		return appwire.Agent{}, err
@@ -74,7 +96,17 @@ func (b *appBackend) SetConversationModels(id string, pair session.ConversationM
 	if !ok {
 		return appwire.Agent{}, fmt.Errorf("main/fallback selection requires a newer engine")
 	}
+	if keepFallback {
+		if identity, ok := live.conn.Conv.(interface{ ModelIdentity() session.ModelIdentity }); ok {
+			if current := identity.ModelIdentity().Models; current != nil {
+				pair.Fallback = current.Fallback
+			}
+		}
+	}
 	notes, err := door.SetConversationModels(pair)
+	if appOlderHost(err) {
+		return appwire.Agent{}, appwire.Errorf(appwire.CodeUnknownMethod, "%s", appOlderHostModels)
+	}
 	if err != nil {
 		return appwire.Agent{}, err
 	}

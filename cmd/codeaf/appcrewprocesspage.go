@@ -564,9 +564,14 @@ func crewRosterOf(ctx context.Context, teams []teamstore.Team, sel crewSelection
 	return out, nil
 }
 
-// roster reads the stored teams once and the selection's roster from them.
+// roster reads the stored teams once and the selection's roster from them:
+// one crew's corner of the tree (the crew, the crews above and below it, its
+// members' other crews), open or closed, or for every crew the open ones.
 func (b *appBackend) crewRoster(ctx context.Context, sel crewSelection) (*crewRoster, error) {
 	file, err := b.teamsSnapshot(ctx)
+	if !sel.all && err == nil {
+		file, err = teamstore.LoadAround(b.crewProfile(), sel.crew)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -882,9 +887,13 @@ func (b *appBackend) crewOwnerPage(ctx context.Context, o crewOwner, n int) (*ap
 			a = candidate
 		}
 	})
-	if a != nil && b.crewKeeps(o.id) {
-		if _, _, err := b.heldLive(o.id); err != nil {
+	// A member the person closed is read as saved: opening it would take it
+	// out of Closed.
+	if a != nil {
+		if _, endLive, err := b.findCrewOwner(o.id); err != nil {
 			return nil, err
+		} else {
+			defer endLive()
 		}
 	}
 	var live *appLive
@@ -892,7 +901,7 @@ func (b *appBackend) crewOwnerPage(ctx context.Context, o crewOwner, n int) (*ap
 	b.locked(func() {
 		if a := b.agents[o.id]; a != nil && a.live != nil && a.transcript != "" && a.transcript == o.file {
 			live = a.live
-			convDir = filepath.Dir(a.transcript)
+			convDir = session.DirOf(a.transcript)
 		}
 	})
 	src := appProcessOwner{agent: o.id, live: live, convDir: convDir}

@@ -110,9 +110,7 @@ func TestTheRightArrowOpensTheRowsVerbsOnEveryPlace(t *testing.T) {
 	}
 }
 
-// AND NEITHER ARROW IS A TAB KEY, ON ANY OF THE SEVEN. This is the audit the
-// owner's "left right does not seem to move tabs" asks for, written as the law
-// it protects: `tab`/`shift+tab` walk the rooms, `shift+←→↑↓` are the time
+// AND NEITHER ARROW IS A TAB KEY, ON ANY OF THE SEVEN. The navigation law is: `tab`/`shift+tab` walk the rooms, `shift+←→↑↓` are the time
 // window (SCREEN 3d), and the plain arrows keep whatever they already meant on
 // the place a person is standing on.
 func TestThePlainArrowsSwitchNoPlaceAnywhere(t *testing.T) {

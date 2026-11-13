@@ -45,7 +45,7 @@ package tui3
 //
 // ── THE LAW THIS FILE IS THE ENFORCEMENT OF ─────────────────────────────────
 //
-//   - PRESENCE-AWARE DELIVERY. docs/design/questions/DESIGN.md: "On the page:
+//   - PRESENCE-AWARE DELIVERY. the implementation: "On the page:
 //     pinned now. On home or another page: in the row, plus the chip. Away
 //     ([awayAfter], 10m without a key): dial resolves what it may and records
 //     DecidedBy: dial; the rest go to home and the phone; the terminal bell

@@ -58,7 +58,7 @@ type handleFixture struct {
 }
 
 var handleTitles = map[string]string{
-	"review":    "santosh dev2 branch code complexity & security review",
+	"review":    "dev dev2 branch code complexity & security review",
 	"reviewing": "CodeAF repo issue tags & milestones",
 	"session":   "quantum gravity research updates / session monitor",
 	"lexer":     "rewrite the lexer",

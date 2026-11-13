@@ -173,7 +173,7 @@ const (
 
 // Evidence is everything the boundary is allowed to reason from.
 //
-// It is deliberately small and deliberately dumb: booleans and counts that the
+// It is deliberately small and deliberately simple: booleans and counts that the
 // call site reads off the helpers it already has ([provider.RefusalFrom],
 // [provider.CutFrom], a tally the work carries), never an error to be
 // re-grepped here. A second pattern list in this package would be a second
@@ -256,7 +256,7 @@ type Evidence struct {
 	//
 	// IT IS CARRIED RATHER THAN INFERRED. `Status >= 400 && Upstream == ""` was
 	// the inference, and it was made in three places with three different lists
-	// of exceptions bolted onto it — which is the defect docs/design/recovery
+	// of exceptions bolted onto it — which is the defect the implementation
 	// §2.6 counts. The transport decides it once, at its refusal door
 	// ([provider.APIError.OurRequest]), and it travels here as a fact.
 	OurBytes bool
@@ -289,13 +289,13 @@ type Evidence struct {
 	// with its budget declared spent, never [Work]: a turn that reads it as the
 	// work ends with the router's own sentence on the screen while a chain the
 	// person configured sits unasked, which is the failure
-	// docs/design/recovery/DESIGN.md §5 is written about.
+	// the implementation §5 is written about.
 	Spent bool
 
 	// OutOfTime says the CALLER'S OWN DEADLINE is gone: the plan's give-up, in
 	// the person's time (`lane.Role.GiveUp` scaled by [Limits.Patience]), which
 	// is the one thing that bounds how long a failing request may go on
-	// recovering (docs/design/recovery/DESIGN.md §4).
+	// recovering.
 	//
 	// IT IS THE COUNT'S REPLACEMENT AND NOT THE LADDER'S. `TransportAttempts`
 	// used to answer "is there another try in this" from a number; the number is
@@ -458,8 +458,7 @@ type Evidence struct {
 // identically, nothing can be taken off the next body, and the only moves left
 // are a wait and then another model.
 //
-// THE MEASURED FAILURE IS THE ORDER THIS REPLACED (2026-09-11 14:39–14:41, the
-// owner's own task on deepseek/deepseek-v4.1-flash). `Status == 429` was asked
+// A per-machine rate limit must remain distinct from an account rate limit. `Status == 429` was asked
 // before `Upstream != ""`, so a per-machine `(via Wafer: … temporarily
 // rate-limited upstream)` rode the account-limiter road — wait, double, send the
 // same order again — for eight sends and ninety seconds, while six other

@@ -16,6 +16,25 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/verification"
 )
 
+func measureStageReceipt(t *testing.T, file, root, id, command, output string, exit int) {
+	t.Helper()
+	bin := t.TempDir()
+	stub := fmt.Sprintf("#!/bin/sh\nprintf '%%s' %s\nexit %d\n", repairShellQuote(output), exit)
+	if err := os.WriteFile(filepath.Join(bin, "go"), []byte(stub), 0700); err != nil {
+		t.Fatal(err)
+	}
+	wrapped, err := verification.PrepareCallIn(file, "", command, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := exec.Command("bash", "-c", wrapped)
+	run.Dir = root
+	run.Env = append(os.Environ(), "PATH="+bin+":"+os.Getenv("PATH"))
+	if out, err := run.CombinedOutput(); err != nil && exit == 0 {
+		t.Fatalf("measured fixture: %s: %v", out, err)
+	}
+}
+
 func TestStageCommandReceiptsPreserveCwdAndExcludeSummaryPASS(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "transcript.jsonl")
 	journal := `{"role":"assistant","toolCalls":[{"id":"t1","function":{"name":"bash","arguments":"{\"command\":\"cd nested && GOPROXY=direct go test -race -v ./internal/retrieval\"}"}}]}
@@ -24,9 +43,14 @@ func TestStageCommandReceiptsPreserveCwdAndExcludeSummaryPASS(t *testing.T) {
 	if err := os.WriteFile(file, []byte(journal), 0600); err != nil {
 		t.Fatal(err)
 	}
-	c := stageConversation{file: file, dir: "/checkout"}
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "nested"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	measureStageReceipt(t, file, root, "t1", "cd nested && GOPROXY=direct go test -race -v ./internal/retrieval", "--- PASS: TestA (0s)\n--- PASS: TestA/sub (0s)\n--- PASS: TestB (0s)\nPASS\n", 0)
+	c := stageConversation{file: file, dir: root}
 	notes, counts := c.ExecutionNotes()
-	if len(notes) != 1 || !strings.Contains(notes[0], "GOPROXY=direct") || !strings.Contains(notes[0], `"cwd":"/checkout"`) || counts == nil || counts.Passed != 3 {
+	if !strings.Contains(strings.Join(notes, "\n"), "GOPROXY=direct") || !strings.Contains(strings.Join(notes, "\n"), `"cwd":"`+root+`"`) || counts == nil || counts.Passed != 3 {
 		t.Fatalf("receipt: %v %+v", notes, counts)
 	}
 }
@@ -43,7 +67,11 @@ func TestStageReceiptsKeepLargestCommandAndResolveRerunFailures(t *testing.T) {
 	if err := os.WriteFile(file, []byte(journal), 0600); err != nil {
 		t.Fatal(err)
 	}
-	c := stageConversation{file: file, dir: "/checkout"}
+	root := t.TempDir()
+	measureStageReceipt(t, file, root, "a", "go test -v ./...", "--- PASS: TestA (0s)\n--- PASS: TestB (0s)\n--- PASS: TestC (0s)\nPASS\n", 0)
+	measureStageReceipt(t, file, root, "b", "go test -v -run TestA ./...", "--- FAIL: TestA (0s)\nFAIL\n", 1)
+	measureStageReceipt(t, file, root, "c", "go test -v -run TestA ./...", "--- PASS: TestA (0s)\nPASS\n", 0)
+	c := stageConversation{file: file, dir: root}
 	notes, counts := c.ExecutionNotes()
 	if counts == nil || counts.Passed != 3 || counts.Command != "go test -v ./..." {
 		t.Fatalf("a later subset replaced full command: %+v", counts)
@@ -52,6 +80,40 @@ func TestStageReceiptsKeepLargestCommandAndResolveRerunFailures(t *testing.T) {
 		if strings.HasPrefix(n, "Unresolved verification") {
 			t.Fatal("successful rerun did not resolve failure", notes)
 		}
+	}
+}
+
+func TestVerificationFailureKeyFollowsMeasuredChecksAndCheckout(t *testing.T) {
+	root, file, run := repairCheckFixture(t)
+	c := stageConversation{file: file, dir: root, verification: &receiptStageDoor{requireFresh: true}}
+	key := func() string {
+		t.Helper()
+		_, _, failureKey := c.VerificationEvidence()
+		return failureKey
+	}
+	const failedCheck = "CHECK_EXIT=1 cargo test --test cli regression"
+	run(failedCheck)
+	first := key()
+	if first == "" {
+		t.Fatal("missing identity for measured failure")
+	}
+	run(failedCheck)
+	if next := key(); next != first {
+		t.Fatal("repeating the same check changed its failure identity")
+	}
+	if err := os.WriteFile(filepath.Join(root, "code.txt"), []byte("updated"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if key() != "" {
+		t.Fatal("stale failure was counted on the edited checkout")
+	}
+	run(failedCheck)
+	if next := key(); next == "" || next == first {
+		t.Fatal("current failure was not bound to the edited checkout")
+	}
+	run("cargo test --test cli regression")
+	if key() != "" {
+		t.Fatal("passing check still counted as a measured blocker")
 	}
 }
 

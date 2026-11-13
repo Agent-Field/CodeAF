@@ -63,7 +63,7 @@ var levelSpread = [Levels]float64{1.2, 0.9, 0.6, 0.5}
 // event lasts, a model's size and shape in hours, and the world's pace in a day.
 //
 // They are the only numbers here that are guesses about how fast the world
-// changes rather than about how fast a lane is, and `bench/lanelab` fits them
+// changes rather than about how fast a lane is, and `the benchmark harness` fits them
 // against replayed sightings.
 var levelHalfLife = [Levels]time.Duration{
 	LevelWorld: 24 * time.Hour,
@@ -136,7 +136,7 @@ type subject [Levels]string
 // say. Sharing it out left the pair believed BETWEEN the world's pace and the
 // published one: a lane the sheet published at 430 ms predicted about 1.2 s,
 // because μ holds most of the variance and may not move, so the level that may
-// took a sixth of the difference. `bench/lanelab` measured what that cost — the
+// took a sixth of the difference. `the benchmark harness` measured what that cost — the
 // controller wanted a second request on a lane it had been told was fast.
 //
 // So a published row's levels take the WHOLE difference between the row and

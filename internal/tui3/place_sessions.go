@@ -1,7 +1,6 @@
 package tui3
 
 import (
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -23,7 +22,7 @@ import (
 // the one door the roster's column has onto here.
 //
 // The methods on [tasksPlace] are shaped for the `place` contract the switcher is
-// settling into (docs/design/home-rethink/ARCHITECTURE.md): close, body, stops,
+// settling into: close, body, stops,
 // enter, window, note, hint, changed. Where the rest of the surface already
 // spells one of them under an older name, that name survives beside it as a
 // one-line call — the seam the refactor lane deletes when the interface lands,
@@ -37,6 +36,9 @@ import (
 // cursor is a line of that walk rather than a count of items the frame would
 // have to re-derive.
 type tasksPlace struct {
+	// paint is shared only while this body's immutable snapshot is being drawn.
+	// It is discarded before any input, fold, filter, or engine update can run.
+	paint *tasksReading
 	// actionNote reports the last explicit row action, including write failures.
 	actionNote string
 	cursor     int
@@ -341,17 +343,35 @@ func (p *tasksPlace) lineOf(a *app, want tasksKey) (int, bool) {
 // place is holding at this instant.
 func (p *tasksPlace) filtered(a *app) tasksReading {
 	r := p.reading
-	undeletedItems := r.items[:0:0]
-	for _, item := range r.items {
-		if !a.deletedSessionRows[tasksKeyOf(item.entry)] && !a.deletedSessionRows[tasksChatKey(item.row.ID)] {
-			undeletedItems = append(undeletedItems, item)
+	undeletedItems := r.items
+	if len(a.deletedSessionRows) > 0 {
+		for i, item := range r.items {
+			if a.deletedSessionRows[tasksKeyOf(item.entry)] || a.deletedSessionRows[tasksChatKey(item.row.ID)] {
+				if len(undeletedItems) == len(r.items) {
+					undeletedItems = make([]tasksItem, 0, len(r.items)-1)
+					undeletedItems = append(undeletedItems, r.items[:i]...)
+				}
+				continue
+			}
+			if len(undeletedItems) != len(r.items) {
+				undeletedItems = append(undeletedItems, item)
+			}
 		}
 	}
 	r.items = undeletedItems
-	undeletedChats := r.chats[:0:0]
-	for _, row := range r.chats {
-		if !a.deletedSessionRows[tasksChatKey(row.ID)] {
-			undeletedChats = append(undeletedChats, row)
+	undeletedChats := r.chats
+	if len(a.deletedSessionRows) > 0 {
+		for i, row := range r.chats {
+			if a.deletedSessionRows[tasksChatKey(row.ID)] {
+				if len(undeletedChats) == len(r.chats) {
+					undeletedChats = make([]session.SessionRow, 0, len(r.chats)-1)
+					undeletedChats = append(undeletedChats, r.chats[:i]...)
+				}
+				continue
+			}
+			if len(undeletedChats) != len(r.chats) {
+				undeletedChats = append(undeletedChats, row)
+			}
 		}
 	}
 	r.chats = undeletedChats
@@ -510,9 +530,7 @@ func (a *app) taskSheetSelfRow() session.SessionRow {
 		Model:      a.model,
 		Workspace:  a.workspace,
 	}
-	if file := row.Transcript; file != "" {
-		row.ID = filepath.Base(filepath.Dir(file))
-	}
+	row.ID = taskSessionOf(row.Transcript)
 	row.Open, row.Live = true, true
 	row.Presence.State = a.taskSheetSelfState()
 	return row
@@ -541,8 +559,7 @@ func (a *app) taskSheetSelfState() session.PresenceState {
 // the bug this whole reading exists to stop telling.
 //
 // A NODE THE INDEX ALREADY CARRIES IS LEFT TO THE INDEX. The file's row is the
-// richer of the two — it has the outcome, the branch, the transcript and the
-// files, none of which the graph keeps — and [session.Agent.TaskIndex] has
+// richer of the two — it also has the saved transcript — and [session.Agent.TaskIndex] has
 // already merged this session's live state over it, so it is no staler either.
 // What the graph contributes is the work no row anywhere names yet.
 // AND A WINDOW THAT CANNOT NAME ITSELF LEAVES ITS OWN NODES TO THE GRAPH. The
@@ -581,7 +598,8 @@ func (a *app) taskSheetOwnRows() []session.TaskIndexEntry {
 		if label == "" {
 			label = node.title
 		}
-		rows = append(rows, session.TaskIndexEntry{
+		rows = append(rows, a.currentTaskEntry(session.TaskIndexEntry{
+			Computer: node.computer, Unreachable: node.unreachable, RanElsewhere: node.ranElsewhere,
 			ID:        strconv.FormatUint(node.id, 10),
 			Parent:    node.parent,
 			Label:     label,
@@ -597,7 +615,7 @@ func (a *app) taskSheetOwnRows() []session.TaskIndexEntry {
 			// The program the node's work was handed to, so the row drawn off it
 			// wears the badge the node's own row does (programbadge.go).
 			Program: a.nodeProgram(node),
-		})
+		}))
 	}
 	return rows
 }
@@ -720,6 +738,9 @@ func (a *app) taskSheetFiltering() bool { return a.taskSheetFilter() != "" }
 // remember is asking about the whole of the machine's work — and a section a
 // query empties is not drawn at all ([tasksReading.lay] states that half).
 func (a *app) tasksFiltered() tasksReading {
+	if a.taskSheet.paint != nil {
+		return *a.taskSheet.paint
+	}
 	// IT IS THE ONE DOOR ONTO THE READING, so the freshness check hangs here:
 	// every path that draws, counts, moves the cursor or answers a key comes
 	// through this function, and a check on one of them would be the page fresh
@@ -1550,11 +1571,10 @@ func tasksTop(lines []tasksLine, cursor, top, room int) int {
 // note is the one line the place says on its rule, and it says ONE THING: that
 // the query has emptied the page.
 //
-// THE COUNT IS OFF THE RULE. It used to read `9 finished today · 191 earlier`
-// there, and the body already says every one of those numbers on its section
-// headings — the same partition, a few rows up, on a page a person is looking
-// at (the owner's ruling, 2026-09-17). A figure said twice on one frame is the
-// defect the model's colon suffix made once (effortchip.go).
+// THE COUNT IS OFF THE RULE. It used to read `9 finished today · 191 earlier` there, and
+// the body already says every one of those numbers on its section headings — the same
+// partition, a few rows up, on a page a person is looking at. A figure said twice on one
+// frame is the defect the model's colon suffix made once (effortchip.go).
 //
 // THE FILTER IS NOT SAID BACK HERE EITHER. This line used to carry `filter ·
 // zzz` because the box a person was typing into was invisible, so the only

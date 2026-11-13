@@ -391,7 +391,7 @@ func (g *TaskGraph) stuckWordLocked(node *TaskNode, known map[uint64]bool) strin
 // THE SECOND ONE IS THE TIER'S WORD AND NOT THIS FILE'S (task_status.go's
 // [taskWordYourCall]). `needs your look` was one surface's private spelling of
 // the state every other surface now calls your call, and it is deleted
-// (docs/design/task-states/DESIGN.md). It carries its "is" because it lands in
+// . It carries its "is" because it lands in
 // the middle of a sentence rather than on a row — "which is your call" — and a
 // word that reads as a row and nowhere else is a word this line cannot use.
 func waitWord(state TaskState) string {

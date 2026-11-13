@@ -12,8 +12,7 @@ import pathlib
 import re
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
-FRAMES = ROOT / "docs/design/polish/frames"
+FRAMES = pathlib.Path("/tmp/codeaf-frames")
 SIZE = re.compile(r"^(?P<name>.+?)\.(?P<w>\d+)x(?P<h>\d+)\.txt$")
 
 # The four sizes every surface is judged at, widest first, so a gallery row
@@ -122,8 +121,8 @@ def main() -> int:
                            for w, h in ORDER if (w, h) in pairs[name])
         out.append(f"- `{name}` — {sizes or 'no standard size'}")
 
-    (FRAMES.parent / "GALLERY.md").write_text("\n".join(out) + "\n")
-    print(f"docs/design/polish/GALLERY.md — {len(fixed)} surfaces paired, {len(only)} not yet")
+    (FRAMES / "GALLERY.md").write_text("\n".join(out) + "\n")
+    print(f"/tmp/codeaf-frames/GALLERY.md — {len(fixed)} surfaces paired, {len(only)} not yet")
     return 0
 
 

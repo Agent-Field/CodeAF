@@ -1,28 +1,21 @@
 package session
 
-// deliverable_write.go is where a deliverable is born: the seams that SEE a
-// file created, and the one rule they all share.
+// deliverable_write.go records the bytes observed at file mutation seams.
 //
-// THE RULE. A new file of a deliverable kind is a deliverable. An edit to a
-// file that already existed is a change and never a deliverable; a log, a read
-// and an attachment are neither. "New" is observed, not guessed: the write
-// seam looks at the path BEFORE the tool runs and records only if nothing was
-// there.
+// Successful write and edit mutations inside the deliverable roots are
+// deliverables. Rewriting a recorded path updates its identity and bytes.
 //
-// THE ROADS THAT SEE CREATION (and the ones that do not) are listed in
-// docs/changes/unreleased/0-app-deliverables.md. `write` and the five media
-// tools are seams. `bash` is a seam ONLY for a path the model declared in its
+// The write, edit and media tools observe their own writes. `bash` observes
+// only a picture the model declared in its
 // `outputs` argument (shell_outputs.go): the engine looked at that path before
-// and after the one command. Any other file a shell (or a task worker) created
-// is NOT recorded today. That is a stated gap, not a quiet one; a task's added
-// files and an owned workspace's untracked files are the two roads a later
-// change can observe from git.
+// and after the one command. Other shell-created files are not recorded.
 
 import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -78,6 +71,7 @@ func (a *Agent) authoredFact(ctx context.Context, file *DeliverableFile, from []
 	fact := DeliverableFact{
 		ID: NewDeliverableID(), At: time.Now().UTC(),
 		Turn: askedMessageID(ctx), Run: runIdentity(ctx),
+		Call: callIDFrom(ctx),
 		From: boundedFrom(from), State: state, Origin: DeliverOriginAgent,
 		Authored: true, File: file, Kept: kept,
 	}
@@ -87,17 +81,20 @@ func (a *Agent) authoredFact(ctx context.Context, file *DeliverableFile, from []
 	return fact
 }
 
-// recordWritten records a file the write tool has just CREATED. It is called by
+// recordWritten records a file the write or edit tool just wrote. It is called by
 // the tool itself, inside the file's mutation queue, with the exact bytes it
 // wrote and the descriptor's own view of the file, so authorship, hash and
 // identity are one fact of one write and nothing is read back from a disk
-// someone else could have changed. An overwrite (Created false) records nothing.
+// someone else could have changed. An overwrite updates the recorded path.
 // Every failure is silence, for RecordArtifact's reason.
 func (a *Agent) recordWritten(ctx context.Context, event bare.WriteEvent) {
-	if !event.Created || event.Info == nil {
+	if event.Info == nil {
 		return
 	}
 	if a.config.InTask {
+		if !event.Created {
+			return
+		}
 		// A worker has no session of its own: only the sink its owning
 		// conversation gave it can record, and as that conversation.
 		a.recordTaskWritten(ctx, writtenFile(event))
@@ -109,42 +106,25 @@ func (a *Agent) recordWritten(ctx context.Context, event bare.WriteEvent) {
 	}
 	canonical := canonicalFile(event.Path)
 	kind := deliverableKindExt(canonical)
-	if kind == "" || !withinAny(a.deliverableRoots(), canonical) {
+	if !withinAny(a.deliverableRoots(), canonical) {
 		return
+	}
+	if kind == "" {
+		kind = shareKindFile
 	}
 	file := identityOf(canonical, event.Info)
 	sum := sha256.Sum256(event.Content)
 	file.SHA256 = hex.EncodeToString(sum[:])
 	fact := a.authoredFact(ctx, file, nil)
 	artifact := Artifact{Path: canonical, Session: session, Title: filepath.Base(canonical), Kind: kind, Created: time.Now()}
-	switch kind {
-	case "image", "audio", "video":
-		// A media file is also a media source, from the SAME row: its facts come
-		// from the bytes in hand, and an extension alone is only a name.
-		media := GeneratedMedia(canonical, event.Content, "")
-		if mediaKindOf(media.MIME) != kind {
-			return
-		}
-		media.Canonical, media.Bytes, media.ModNS = canonical, file.Bytes, file.ModNS
-		media.CtimeNS, media.Dev, media.Ino = file.CtimeNS, file.Dev, file.Ino
-		media.Run, media.Tool, media.Message = runIdentity(ctx), callIDFrom(ctx), askedMessageID(ctx)
-		file.MIME = media.MIME
-		artifact.Deliver = &fact
-		if id, written := recordMediaRow(index, artifact, media); id != "" {
-			a.emitArtifactChange(written)
-		}
-		return
-	}
+	attachWrittenMedia(ctx, &artifact, file, event.Content)
 	artifact.Deliver = &fact
-	if written, ok := recordArtifactRow(index, artifact); ok {
+	if written, ok := recordWrittenArtifact(index, artifact); ok {
 		a.emitArtifactChange(written)
 	}
 }
 
-// deliverableWrite wraps the write tool: the same tool, handed an observer that
-// makes a NEW file a deliverable. The creation is proved by the tool's own
-// exclusive create inside its mutation queue (internal/exec/bare), never by a
-// look taken before it.
+// deliverableWrite observes successful mutations inside the tool's queue.
 func (a *Agent) deliverableWrite(inner bare.Tool) bare.Tool {
 	wrapped := inner
 	wrapped.Execute = func(ctx context.Context, args json.RawMessage) (string, bool, error) {
@@ -178,3 +158,24 @@ func (a *Agent) generatedDeliverable(path string, fact MediaFact) *DeliverableFa
 
 // writtenFile is the write tool's event as the task recorder takes it.
 type writtenFile = bare.WriteEvent
+
+// attachWrittenMedia publishes facts from the exact authored bytes and descriptor.
+func attachWrittenMedia(ctx context.Context, artifact *Artifact, file *DeliverableFile, content []byte) {
+	file.MIME = http.DetectContentType(content[:min(len(content), 512)])
+	switch artifact.Kind {
+	case "image", "audio", "video":
+		// A media file is also a media source, from the SAME row: its facts come
+		// from the bytes in hand, and an extension alone is only a name.
+		media := GeneratedMedia(artifact.Path, content, "")
+		if mediaKindOf(media.MIME) != artifact.Kind {
+			artifact.Kind = shareKindFile
+			break
+		}
+		media.Canonical, media.Bytes, media.ModNS = artifact.Path, file.Bytes, file.ModNS
+		media.CtimeNS, media.Dev, media.Ino = file.CtimeNS, file.Dev, file.Ino
+		media.Run, media.Tool, media.Message = runIdentity(ctx), callIDFrom(ctx), askedMessageID(ctx)
+		file.MIME = media.MIME
+		media.ID = NewMediaID()
+		artifact.Media = &media
+	}
+}

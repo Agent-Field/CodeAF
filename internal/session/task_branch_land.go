@@ -25,10 +25,10 @@ package session
 // the facts as they stand are what the person is told.
 //
 // IT RUNS NO PROGRAM IT CANNOT NAME. A configured merge driver or filter is a
-// program whose identity cannot be bound, so a repository with either is
-// refused rather than merged around. The hooks git will run are bound by their
-// bytes and shown before the person confirms; a hook that changed since the
-// plan makes the land refuse.
+// program whose identity cannot be bound, so a merge driver or a filter used
+// by a path the land writes or compares is refused. The hooks git will run are
+// bound by their bytes and shown before the person confirms; a hook that
+// changed since the plan makes the land refuse.
 //
 // IT MERGES THE COMMIT THE PLAN NAMED, not whatever the branch name points at
 // by the time git runs, so a branch that moves between the plan and the merge
@@ -52,6 +52,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/filelock"
+	"github.com/Agent-Field/codeaf/internal/gitpolicy"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
 )
 
@@ -139,9 +140,10 @@ type TaskBranchLandPlan struct {
 	CountsKnown  bool
 	CountsCapped bool
 	Hooks        []LandHook
-	// config and copies are bound by the revision and never shown.
-	config string
-	copies string
+	// config, attributes and copies are bound by the revision and never shown.
+	config     string
+	attributes string
+	copies     string
 	// settings is the configuration the digest in config was taken of.
 	settings landConfigFacts
 }
@@ -229,7 +231,7 @@ func landEnv() []string {
 // --auto` after a merge: a pre-auto-gc hook the plan never named, and a gc that
 // detaches into a session of its own where no group kill reaches it. The
 // settings ride GIT_CONFIG_PARAMETERS into every git those gits start.
-var landQuiet = []string{"-c", "core.fsmonitor=false", "-c", "maintenance.auto=false", "-c", "gc.auto=0"}
+var landQuiet = gitpolicy.WithoutAutoMaintenance("-c", "core.fsmonitor=false")
 
 // landCapture keeps what git writes up to max, and past it stops the git: the
 // write fails and the read's own context is cancelled.
@@ -259,29 +261,50 @@ func (c *landCapture) Write(p []byte) (int, error) {
 // submodules starts gits of its own, and one of them holding the output open
 // would hold the read open with it. So git and everything it starts are one
 // process group, killed together when the time runs out; WaitDelay ends the
-// wait on any pipe a survivor still holds; and stderr is not a pipe at all.
+// wait on any pipe a survivor still holds; both output streams are bounded.
 func landRead(ctx context.Context, dir string, max int, args ...string) ([]byte, int, error) {
+	out, _, code, err := landReadInput(ctx, dir, max, nil, args...)
+	return out, code, err
+}
+
+// landReadInput also supplies a bounded question on stdin and keeps diagnostics.
+// Attribute reads must inspect diagnostics because git can warn and exit zero.
+func landReadInput(ctx context.Context, dir string, max int, input []byte, args ...string) ([]byte, []byte, int, error) {
+	return landReadInputEnv(ctx, dir, max, input, nil, args...)
+}
+
+// landReadInputEnv appends private command settings after landCommand has
+// stripped inherited Git variables, so scratch reads cannot borrow an index.
+func landReadInputEnv(ctx context.Context, dir string, max int, input []byte, env []string, args ...string) ([]byte, []byte, int, error) {
 	ctx, cancel := context.WithTimeout(ctx, deliverGitCallMax)
 	defer cancel()
 	command := landCommand(ctx, dir, append(append([]string{"--no-optional-locks"}, landQuiet...), args...)...)
+	if len(env) > 0 {
+		if command.Env == nil {
+			command.Env = os.Environ()
+		}
+		command.Env = append(command.Env, env...)
+	}
 	capture := &landCapture{max: max, cancel: cancel}
-	command.Stdout, command.Stderr = capture, nil
+	diagnostics := &landCapture{max: max, cancel: cancel}
+	command.Stdin = bytes.NewReader(input)
+	command.Stdout, command.Stderr = capture, diagnostics
 	processgroup.Configure(command)
 	command.Cancel = func() error { return processgroup.Kill(command.Process.Pid) }
 	command.WaitDelay = time.Second
-	err := command.Run()
+	err := processgroup.Run(command)
 	code, ran := gitExit(err)
 	switch {
-	case capture.over:
-		return nil, -1, refuseLand(LandTooLarge, "git said more about this repository than a land reads")
+	case capture.over, diagnostics.over:
+		return nil, nil, -1, refuseLand(LandTooLarge, "git said more about this repository than a land reads")
 	case ctx.Err() != nil, errors.Is(err, exec.ErrWaitDelay):
-		return nil, -1, ErrLandBusy
+		return nil, nil, -1, ErrLandBusy
 	case ran:
-		return capture.data, code, nil
+		return capture.data, diagnostics.data, code, nil
 	case err != nil:
-		return nil, -1, err
+		return nil, nil, -1, err
 	}
-	return capture.data, 0, nil
+	return capture.data, diagnostics.data, 0, nil
 }
 
 // landLine is a read whose answer is one line that must exit zero.
@@ -299,8 +322,10 @@ func landLine(ctx context.Context, dir string, args ...string) (string, error) {
 func isOid(s string) bool { return len(s) >= 40 && isHex(s) }
 
 // PlanTaskBranchLand reads and binds what landing branch into the
-// conversation's checkout would do. It writes nothing but the objects
-// merge-tree adds to the object store, which nothing refers to.
+// conversation's checkout would do. It may write the objects merge-tree adds
+// to the object store, which nothing refers to. An older Git
+// also gets a temporary index in a private temporary directory outside the
+// repository, removed before the plan returns.
 func PlanTaskBranchLand(ctx context.Context, place Place, workspace, branch string) (TaskBranchLandPlan, error) {
 	return readLandPlan(ctx, place, workspace, branch)
 }
@@ -313,6 +338,7 @@ func readLandPlan(ctx context.Context, place Place, workspace, branch string) (T
 		landState,
 		landTarget,
 		landHistory,
+		landFilters,
 		landWork,
 	} {
 		if err := phase(ctx, &plan); err != nil {
@@ -602,8 +628,9 @@ func (c landConfigFacts) on(key string) bool {
 	return len(c.values[key]) > 0 && c.get(key) == ""
 }
 
-// refusal is the configuration a land will not merge under: a merge driver or
-// a filter (a program whose identity cannot be bound) and a sparse checkout.
+// refusal is the configuration a land will not merge under: a merge driver
+// (a program whose identity cannot be bound) and a sparse checkout. Filters
+// are checked against the paths the land writes or compares in landFilters.
 func (c landConfigFacts) refusal() *LandRefusal {
 	keys := make([]string, 0, len(c.values))
 	for key := range c.values {
@@ -623,8 +650,6 @@ func (c landConfigFacts) refusal() *LandRefusal {
 		switch {
 		case section == "merge" && variable == "driver":
 			return refuseLand(LandCustomMerge, "this repository names its own merge program, and a land runs only git's built-in merges")
-		case section == "filter" && (variable == "clean" || variable == "smudge" || variable == "process"):
-			return refuseLand(LandFilter, "this repository runs a filter program on its files, and a land cannot vouch for it")
 		}
 	}
 	if c.on("core.sparsecheckout") {
@@ -733,17 +758,41 @@ func landTaskCopies(ctx context.Context, root, branch, branchHead string) (strin
 				bound = append(bound, path+"\x00missing")
 				continue
 			}
-			paths, err := landStatus(ctx, path)
+			stamp, err := landTaskCopyStamp(ctx, path, branch, branchHead)
 			if err != nil {
 				return "", err
 			}
-			if len(paths) > 0 {
-				return "", refuseLand(LandTaskCopyDirty, "the task's own copy of "+branch+" has work that is not on the branch", paths...)
-			}
-			bound = append(bound, path+"\x00clean")
+			bound = append(bound, stamp)
 		}
 	}
 	return strings.Join(bound, "\x01"), nil
+}
+
+// landTaskCopyStamp binds the copy's configuration and filter attributes only
+// after confirming it has no work beyond the branch being landed.
+func landTaskCopyStamp(ctx context.Context, path, branch, branchHead string) (string, error) {
+	config, err := landConfig(ctx, path)
+	if err != nil {
+		return "", err
+	}
+	attributes := ""
+	if len(landFilterDrivers(config)) > 0 {
+		compared, err := landFilterPaths(ctx, path, branchHead, branchHead)
+		if err != nil {
+			return "", err
+		}
+		if attributes, err = landFilterAttributes(ctx, path, config, compared, ""); err != nil {
+			return "", err
+		}
+	}
+	paths, err := landStatus(ctx, path)
+	if err != nil {
+		return "", err
+	}
+	if len(paths) > 0 {
+		return "", refuseLand(LandTaskCopyDirty, "the task's own copy of "+branch+" has work that is not on the branch", paths...)
+	}
+	return path + "\x00clean\x00" + config.digest + "\x00" + attributes, nil
 }
 
 // landBranchChange reads what the branch changes from its base: a submodule
@@ -919,7 +968,7 @@ func (p TaskBranchLandPlan) digest() string {
 	sum := sha256.New()
 	put := func(s string) { fmt.Fprintf(sum, "%d:%s;", len(s), s) }
 	for _, s := range []string{"land/1", p.Task, p.Branch, p.BranchHead, p.Base, p.Target, p.Head, p.Root, p.GitDir, p.CommonDir,
-		strconv.FormatBool(p.FastForward), p.Tree, p.config, p.copies} {
+		strconv.FormatBool(p.FastForward), p.Tree, p.config, p.attributes, p.copies} {
 		put(s)
 	}
 	for _, hook := range p.Hooks {
@@ -1028,7 +1077,7 @@ func landMerge(plan TaskBranchLandPlan) (TaskBranchLanded, error) {
 	processgroup.Configure(command)
 	command.Cancel = func() error { return processgroup.Kill(command.Process.Pid) }
 	command.WaitDelay = 2 * time.Second
-	runErr := command.Run()
+	runErr := processgroup.Run(command)
 	timedOut := ctx.Err() != nil
 
 	facts := readLandFacts(plan)

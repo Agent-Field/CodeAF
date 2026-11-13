@@ -1,6 +1,6 @@
 package tui3
 
-// WHERE THE WORK STARTS FROM, said before it runs (docs/CHAT-V3.md, Decision
+// WHERE THE WORK STARTS FROM, said before it runs (the implementation, Decision
 // 26): a node over a repository gets a worktree cut from HEAD, so the edits a
 // person has not committed are not in it — which is a surprise worth spending on
 // the proposal instead of on the merge.

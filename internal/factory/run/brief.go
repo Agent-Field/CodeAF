@@ -1,11 +1,13 @@
 package run
 
 import (
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/publish"
 )
 
 // ── WHAT A STEP IS TOLD ABOUT ITS ITEM ─────────────────────────────────────
@@ -35,19 +37,45 @@ func stageRole(job Job) string {
 		return ""
 	}
 	on := itemNoun(job.Item)
-	if ref := job.Item.Ref(); ref != "" && on != "" {
-		on += " " + ref
+	if ref := job.Item.Ref(); ref != "" {
+		on = strings.TrimSpace(on + " " + ref)
 	}
 	line := "You are the " + name + " step of a codeaf run"
 	if on != "" {
 		line += " on " + on
 	}
-	return line + ". The line above is this step's goal. What you need is below and in your work tree: work from them, not the network."
+	line += ". The line above is this step's goal. What you need is below and in your work tree: work from them, not the network."
+	if checksVerification(job.Stage) {
+		line += "\n\nRun checks required by the repository and relevant to this change. Run each required command on its own in the foreground in the job checkout so the tool can capture its exit. Avoid pipes, background jobs and wrapper scripts for these receipts. Do not change unrelated code to make a check pass."
+		if base := testBaselineCommit(job); base != "" {
+			line += "\n\nFor Go tests, run go test -json -count=1 with the relevant package and test arguments. If an assertion fails, run that same command from the same repository-relative directory in a separate clean detached worktree at the pinned base commit " + base + ". Use direct commands, with at most a leading cd. Avoid environment assignments, redirects and pipes. Report any verified base failures separately, keep their failing exit visible, and leave any new or unverified failure unresolved. If you cannot make that comparison, report the failing check as it is and do not work around it: when your round ends the factory runs each failing Go test on the base commit itself, and a failure that is already there does not count against you."
+		} else {
+			line += " If a failure also occurs on the unchanged base, report the measured comparison separately and leave the check unresolved."
+		}
+		if accepted := factory.AcceptedFailures(job.Item); len(accepted) > 0 {
+			if len(accepted) > acceptedBriefMost {
+				accepted = append(accepted[:acceptedBriefMost:acceptedBriefMost], fmt.Sprintf("and %d more", len(accepted)-acceptedBriefMost))
+			}
+			line += "\n\nThe owner accepted these as they stand on an earlier step. They are not yours to fix, they do not count against this step, and you do not need to run them again:\n- " + strings.Join(accepted, "\n- ")
+		}
+	}
+	return line
+}
+
+func testBaselineCommit(job Job) string {
+	base := strings.TrimSpace(job.Item.ChangeBase)
+	if factory.AllowsBaselineFailures(job.Stage, job.Item) && publish.ValidCommit(base) {
+		return base
+	}
+	return ""
 }
 
 // itemNoun is what the item is, in words: `pull request`, `issue`, "" for
 // work with no forge kind.
 func itemNoun(it factory.Item) string {
+	if it.Num == 0 && factory.IsIssueJob(it) {
+		return ""
+	}
 	switch it.Kind {
 	case factory.KindPR:
 		return "pull request"
@@ -78,7 +106,11 @@ func itemContext(job Job) [][]string {
 	if n := itemNoun(it); n != "" {
 		head = n + " " + head
 	}
-	paras := [][]string{{head, itemFacts(it), itemLinked(it), cutBody(it.Body)}}
+	var issue string
+	if it.Num == 0 && factory.IsIssueJob(it) {
+		issue = "This job has no GitHub issue. Its job id is local to the factory, not an issue number."
+	}
+	paras := [][]string{{head, issue, itemFacts(it), itemLinked(it), cutBody(it.Body)}}
 	if files := changedFiles(it); len(files) > 0 {
 		paras = append(paras, files)
 	}
@@ -272,3 +304,6 @@ func earlierInTree(job Job) string {
 // changeBaseShown is how much of the run's starting commit the brief spells:
 // enough for git to find it, short enough to read.
 const changeBaseShown = 12
+
+// acceptedBriefMost is how many accepted shortfalls a step's brief lists.
+const acceptedBriefMost = 8

@@ -369,7 +369,7 @@ func TestEveryNavWordSaysWhatItOpens(t *testing.T) {
 	}
 	drive(t, a, tea.MouseMotionMsg{X: a.wall.door.from, Y: tabStripRow})
 	all := a.footHint(a.width)
-	if !strings.Contains(all, "grid of all your conversations") || strings.Contains(all, placeFor(pageChats).about()) {
+	if !strings.Contains(all, "grid of tabs in this view") || strings.Contains(all, placeFor(pageChats).about()) {
 		t.Fatalf("`▦ All` does not say it is the grid of open tabs: %q", all)
 	}
 }
@@ -449,7 +449,7 @@ func TestTheCountThatWantsYouNeverLeavesTheNav(t *testing.T) {
 	a.width = 80
 	a.navMemo = navMemo{}
 	row := plain(a.navLine(80, a.pal))
-	if !placeWordsInOrder(row, "Home", "Chats", "AI teams", "Activity", "Memories", "More") || !a.navMore.span.pressable() {
+	if !placeWordsInOrder(row, "Home", "Chats", "AI teams", "Activity", "Memory", "More") || !a.navMore.span.pressable() {
 		t.Fatalf("at 80 the short count cost a place: %q", row)
 	}
 	if !strings.HasSuffix(strings.TrimRight(row, " "), "2 ? · $1.20") {

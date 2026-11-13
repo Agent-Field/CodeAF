@@ -157,7 +157,7 @@ func (h *heldSet) answered(kind string, id uint64, text string) {
 // window — each a new arrival number, each handed the answered card again by
 // [heldSet.waitingFor], with [heldSet.outstanding] still counting it so the
 // conversation read `waiting · your call` and home counted it in `want you`
-// (2026-09-11, reported by the owner).
+// A displaced window must release its held input.
 //
 // So the room is reconciled against the QUESTION'S OWN LIFE instead
 // ([session.Agent.OpenQuestions] is the whole of it — raised through one door,

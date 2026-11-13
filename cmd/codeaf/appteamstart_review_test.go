@@ -19,6 +19,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/session"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
+	"github.com/Agent-Field/codeaf/internal/teams/teamstest"
 )
 
 func reviewGoalSends(h *startHarness, goal string) int {
@@ -59,28 +60,19 @@ func TestReviewR1ReplayTreatsAReadFailureAsNew(t *testing.T) {
 	if _, err := h.b.CrewUpdate(appwire.CrewUpdate{ID: first.Crew.ID, Name: &renamed}); err != nil {
 		t.Fatal(err)
 	}
-	path := teamstore.Path(h.b.profileDir)
-	good, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// The teams file is unreadable for the repeat's look, and whole again by
+	// The teams store is unreadable for the repeat's look, and whole again by
 	// the time anything would be minted (a transient read failure).
-	if err := os.WriteFile(path, []byte("{not json"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	restore := teamstest.Break(t, h.b.profileDir, []byte("{not a database"))
 	mint := h.b.mint
 	h.b.mint = func(w string) (string, error) {
-		_ = os.WriteFile(path, good, 0o600)
+		restore()
 		return mint(w)
 	}
 	second, err2 := h.b.CrewStart(ask)
 	if err2 == nil && !second.Start.Replayed {
 		h.rec.waitFor(t, 5*time.Second, reviewTurnDoneFor(second.Start.Manager))
 	}
-	if err := os.WriteFile(path, good, 0o600); err != nil {
-		t.Fatal(err)
-	}
+	restore()
 	teams, sends := len(h.file(t).Open()), reviewGoalSends(h, "ship the docs")
 	if teams != 1 || sends != 1 || (err2 == nil && !second.Start.Replayed) {
 		t.Fatalf("DEFECT R1: same request_id after a transient read failure: err=%v replayed=%v crews=%d goal sent %d times", err2, second.Start.Replayed, teams, sends)

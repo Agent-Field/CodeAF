@@ -2,7 +2,7 @@
 # anywhere else — so a stale copy can't shadow a fresh one.
 BINARY := bin/codeaf
 
-.PHONY: all build build-check build-cross app-sidecar app-sidecars debug demo-home clean-run embed manual-pack-law furrow test test-focus test-report test-quick test-tooling test-touched test-touched-preflight pr-ready test-laws test-carried-help test-belt-pages fmt-check test-packed-manual manual-gates test-remote test-e2e test-e2e-tui vet check size clean \
+.PHONY: all build build-check build-cross app-sidecar app-sidecar-reverse app-sidecars debug demo-home clean-run embed manual-pack-law furrow test test-focus test-report test-quick test-tooling test-touched test-touched-preflight pr-ready test-laws test-carried-help test-belt-pages fmt-check test-packed-manual manual-gates test-remote test-e2e test-e2e-tui vet check size clean \
         changelog changelog-new changelog-check changelog-preview
 
 # What the shipped binary is allowed to weigh, in bytes, checked in beside the
@@ -18,6 +18,14 @@ BUILD_DIRTY := $(shell if test -n "$$(git status --porcelain --untracked-files=n
 BUILD_AT := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 BUILDINFO := github.com/Agent-Field/codeaf/internal/buildinfo
 BUILD_STAMP := -X $(BUILDINFO).rev=$(BUILD_REV) -X $(BUILDINFO).dirty=$(BUILD_DIRTY) -X $(BUILDINFO).builtAt=$(BUILD_AT)
+# The GitHub OAuth app the first run's browser sign-in uses. Its client ID is
+# not a secret; a build without one simply has no browser sign-in (the gh
+# login and a pasted token still work). Set it from the environment or the
+# command line: make app-sidecar CODEAF_GITHUB_CLIENT_ID=Ov23li...
+CODEAF_GITHUB_CLIENT_ID ?=
+ifneq ($(strip $(CODEAF_GITHUB_CLIENT_ID)),)
+BUILD_STAMP += -X github.com/Agent-Field/codeaf/internal/factory/github.clientID=$(strip $(CODEAF_GITHUB_CLIENT_ID))
+endif
 MANUAL_TAG := codeaf_packed_manual
 
 # The packed corpora — the two manuals. Each folder is the source of truth and
@@ -46,8 +54,8 @@ embed: manual-pack-law
 
 # ── the furrow that rides inside ────────────────────────────────────────────
 #
-# Unix builds carry furrow, so the build fetches it before producing codeaf.
-# Windows embeds the native engine through the same artifact door.
+# Every release platform carries furrow, including native Windows, so the build
+# fetches it before producing codeaf.
 # This step downloads the release pinned in
 # internal/furrowbin/pin.json for whatever platform is being built for, checks
 # it against the sha256 the pin names, keeps it in a gitignored third_party/
@@ -61,9 +69,10 @@ embed: manual-pack-law
 # build that produced a codeaf without furrow inside it.
 #
 # On a machine with no network, point it at an artifact already on disk — the
-# explicit artifact is a developer override; the normal fetch checks the pin:
+# explicit artifact is a developer override and announces the pinned version it
+# replaces; the normal fetch checks the pin:
 #
-#   make furrow FURROW_ARTIFACT=~/.agentfield/bin/furrow
+#   make furrow FURROW_ARTIFACT=/path/to/furrow-linux-amd64
 #
 # THE TARGET IS READ FIRST AND THEN UNSET. A cross-compiling build sets GOOS and
 # GOARCH for codeaf, and the fetcher has to know them — but it must not be built
@@ -140,14 +149,25 @@ SHARDS ?= $(shell count=$$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null ||
 # (scripts/one-suite.sh says why): each heavy package holds it for its whole
 # sharded run, and a `./...` run holds it for the rest of the tree as well, so
 # two sessions' tree runs still cannot stack. Focused and lighter runs stay
-# independent.
-HEAVY_PKGS := internal/tui3 internal/session
+# independent. cmd/codeaf joined them on 2026-11-05: run whole, it passed the
+# fifteen-minute package ceiling on the four-vCPU runner once pull requests into
+# app/v3 began running the gate (#2432 timed out at 900s), so it is sharded too.
+HEAVY_PKGS := internal/tui3 internal/session cmd/codeaf
 LOCKED_PKGS := ./... $(addprefix ./,$(HEAVY_PKGS)) $(addsuffix /,$(addprefix ./,$(HEAVY_PKGS)))
 FRESH_FLAG := $(if $(filter $(LOCKED_PKGS),$(PKGS)),-count=1)
 SUITE_LOCK := ./scripts/one-suite.sh
 TREE_LOCK := $(if $(filter ./...,$(PKGS)),$(SUITE_LOCK))
 
-test:
+# EVERY TEST TARGET STAGES THE PINNED FURROW FIRST. The seal, sync and cell
+# proofs run codeaf's own engine — the embedded copy, never one on PATH — and a
+# test binary built from a tree with nothing staged carries none, so those
+# proofs skip (internal/cell/celltest.Engine says which and why). A skip is right
+# for a plain `go test` on a laptop and wrong for the gate, which is these
+# targets: staging here is what makes "green" include them, and test-touched
+# and the pull request's touched legs reach it through scripts/touched-verdict.py,
+# which runs this target. It is the same fetch `build` depends on, so it fails
+# loudly offline and accepts FURROW_ARTIFACT exactly as a build does.
+test: furrow
 	@set -u; \
 	module="$$(go list -m)" || exit 1; \
 	packages="$$(go list $(PKGS))" || exit 1; \
@@ -182,7 +202,7 @@ test:
 # One named regression is the fastest trustworthy edit loop. RUN is required:
 # an omitted selector must not silently turn a focused command into a full
 # package run. The ordinary test target still owns the ledger and timeout.
-test-focus:
+test-focus: furrow
 	@test -n "$(RUN)" || { echo "usage: make test-focus PKGS=./internal/pkg RUN='^TestName$$'"; exit 2; }
 	go test -timeout $(TEST_TIMEOUT) $(TEST_FLAGS) -run '$(RUN)' $(TEST_SKIP) $(PKGS)
 
@@ -216,6 +236,10 @@ test-tooling:
 	bash scripts/touched-verdict_test.sh
 	bash scripts/one-suite_test.sh
 	bash scripts/shard-test_test.sh
+	bash scripts/relay-fingerprint_test.sh
+	bash scripts/relay-wrangler-config_test.sh
+	bash scripts/raft-proof-footprint_test.sh
+	bash scripts/relay-deploy_test.sh
 	bash bench/canary/lib/repo_test.sh
 
 manual-gates:
@@ -374,8 +398,14 @@ demo-home: build
 clean-run: build
 	@scripts/clean-run.sh
 
+# VET ALSO COMPILES THE TESTS FOR WINDOWS. `go build` never compiles a test file,
+# so a test that calls a Unix-only symbol (syscall.Mkfifo, a helper from a
+# _unix.go file) breaks the Windows test build without any gate seeing it. The
+# Windows pass type-checks the same packages with GOOS=windows; it costs about
+# 30 seconds on a cold cache and 2 on a warm one.
 vet:
 	go vet ./...
+	GOOS=windows go vet ./...
 
 # ── the size ratchet ────────────────────────────────────────────────────────
 #
@@ -453,12 +483,20 @@ check: vet fmt-check test test-packed-manual size build-cross
 # requires Go 1.27 and this module is on 1.26, so v0.17 is the newest that
 # builds here; move both together when the module's Go line moves.
 #
+# A CRASH MUST BE READABLE. garble's -tiny removes everything the runtime prints,
+# so a panic or a fatal error ends the engine with exit status 2 and no words at
+# all, and the desktop app's log has nothing to keep. Without it a report names
+# hashed functions and files; `make app-sidecar-reverse` turns those back. That
+# needs the build's own seed, so each build makes one and keeps it in APP_SEED_DIR,
+# named for the commit, the target and the start of the checksum of the binary as built
+# (signing changes that checksum, so find it by commit). The seed is what undoes the hashing:
+# it goes in neither the repository nor anything that ships.
+#
 #   make app-sidecar APP_GOOS=darwin APP_GOARCH=arm64   # one triple
 #   make app-sidecars                                   # all four
 #
-# Windows has no pinned furrow, so — as release.yml does — a Windows sidecar is
-# built without one and codeaf answers ErrNotEmbedded where furrow would be asked.
-# It is also built WITHOUT garble: Microsoft Defender quarantined the garbled
+# Windows carries its pinned native furrow, just as release.yml does.
+# It is built WITHOUT garble: Microsoft Defender quarantined the garbled
 # binary on first run as "a virus or potentially unwanted software" (2026-10-19).
 # release.yml's Windows codeaf is a plain go build too.
 # It is not in app-sidecars' loop: the desktop app ships for macOS and Linux, and
@@ -469,6 +507,8 @@ GARBLE := bin/tools/garble-$(GARBLE_VERSION)
 APP_GOOS ?= $(shell go env GOOS)
 APP_GOARCH ?= $(shell go env GOARCH)
 APP_DIST := dist/app
+GARBLE_FLAGS := -literals
+APP_SEED_DIR ?= $(HOME)/.codeaf-build-seeds
 
 $(GARBLE):
 	@mkdir -p $(@D)/garble-$(GARBLE_VERSION).d
@@ -476,7 +516,7 @@ $(GARBLE):
 	mv $(@D)/garble-$(GARBLE_VERSION).d/garble $@
 	rmdir $(@D)/garble-$(GARBLE_VERSION).d
 
-app-sidecar: embed $(GARBLE)
+app-sidecar: embed $(if $(filter windows,$(APP_GOOS)),,$(GARBLE))
 	@set -eu; \
 	case "$(APP_GOOS)/$(APP_GOARCH)" in \
 		darwin/arm64) triple=aarch64-apple-darwin ;; \
@@ -486,18 +526,37 @@ app-sidecar: embed $(GARBLE)
 		windows/amd64) triple=x86_64-pc-windows-msvc ;; \
 		*) printf 'app-sidecar: no desktop target for %s/%s\n' "$(APP_GOOS)" "$(APP_GOARCH)" >&2; exit 1 ;; \
 	esac; \
-	ext=""; build="$(GARBLE) -literals -tiny build"; \
+	env -u GOOS -u GOARCH go run ./internal/furrowbin/cmd/fetch -goos=$(APP_GOOS) -goarch=$(APP_GOARCH); \
+	ext=""; seed=""; \
 	if [ "$(APP_GOOS)" = windows ]; then \
-		rm -f internal/furrowbin/cache/furrow-*.gz; \
 		ext=".exe"; build="go build"; \
 	else \
-		env -u GOOS -u GOARCH go run ./internal/furrowbin/cmd/fetch -goos=$(APP_GOOS) -goarch=$(APP_GOARCH); \
+		case " $${GOFLAGS:-} " in *" -x "*|*" -n "*) \
+			echo 'app-sidecar: -x and -n print the seed; unset them' >&2; exit 1 ;; esac; \
+		seed=$$(head -c 8 /dev/urandom | base64 | tr -d '=\n'); \
+		build="$(GARBLE) -seed=$$seed $(GARBLE_FLAGS) build"; \
 	fi; \
 	mkdir -p $(APP_DIST); \
 	CGO_ENABLED=0 GOOS=$(APP_GOOS) GOARCH=$(APP_GOARCH) $$build \
 		-tags=$(MANUAL_TAG) -trimpath -ldflags="-s -w $(BUILD_STAMP)" \
 		-o $(APP_DIST)/codeaf-$$triple$$ext ./cmd/codeaf; \
+	if [ -n "$$seed" ]; then \
+		sum=$$(shasum -a 256 $(APP_DIST)/codeaf-$$triple 2>/dev/null || sha256sum $(APP_DIST)/codeaf-$$triple); \
+		sum=$$(printf '%s' "$$sum" | cut -c1-16); \
+		umask 077; mkdir -p "$(APP_SEED_DIR)"; \
+		printf 'seed=%s\nrev=%s\ntarget=%s/%s\n' "$$seed" "$(BUILD_REV)" "$(APP_GOOS)" "$(APP_GOARCH)" \
+			> "$(APP_SEED_DIR)/$(BUILD_REV)-$(APP_GOOS)-$(APP_GOARCH)-$$sum.seed"; \
+		printf 'app-sidecar: seed kept as %s.seed\n' "$(BUILD_REV)-$(APP_GOOS)-$(APP_GOARCH)-$$sum"; \
+	fi; \
 	printf 'app-sidecar: %s\n' "$(APP_DIST)/codeaf-$$triple$$ext"
+
+# Reads a crash report from a shipped build, in a checkout of that build's commit:
+#   make app-sidecar-reverse SEED=<seed file> LOG=<file holding the report>
+app-sidecar-reverse: $(GARBLE)
+	@seed=$$(sed -n 's/^seed=//p' "$(SEED)"); \
+	target=$$(sed -n 's/^target=//p' "$(SEED)"); \
+	CGO_ENABLED=0 GOOS=$${target%/*} GOARCH=$${target#*/} $(GARBLE) -seed=$$seed $(GARBLE_FLAGS) reverse \
+		-tags=$(MANUAL_TAG) ./cmd/codeaf "$(LOG)"
 
 app-sidecars:
 	@for target in darwin/arm64 darwin/amd64 linux/amd64 linux/arm64; do \
@@ -542,7 +601,7 @@ changelog:
 # ── THE CALL CENSUS ─────────────────────────────────────────────────────────
 #
 # `make census` reads the model-call log this build always writes and prints
-# docs/design/recovery/DESIGN.md §1 as markdown. It is the instrument that
+# a Markdown summary. It is the instrument that
 # design's §8 asks for: five waves of recovery work each move a number in that
 # table, and without a committed measurement every one of them is an argument
 # about anecdotes.
@@ -568,7 +627,7 @@ census:
 # by the regret it would have paid over ten days of the model-call log this build
 # already writes. Every change to the machine chooser in the week to 2026-09-11
 # was argued from a screenshot and a ten-row grep; this is the instrument that
-# ends that, and docs/design/recovery/DESIGN.md §8 is where a change is required
+# ends that, and a change is required
 # to cite it.
 #
 #   make replay                             this machine's own log and journal

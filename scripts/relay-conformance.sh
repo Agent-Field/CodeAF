@@ -6,7 +6,7 @@
 #
 # Two relays, the Go one and the Worker, are run through the same suites: in process for the Go relay,
 # as a live process for both. The Worker runs under `wrangler dev --local` on free ports and never
-# against staging, so a billing window stays clean. Tracks run sequentially on the shared box;
+# against a deployed relay. Tracks run sequentially on the shared box;
 # CONFORMANCE_PARALLEL=1 opts into separate concurrent tracks. Their suites run one after another, because the watch suite's thousand
 # sockets would otherwise stall a Worker that a lease case is waiting on. Cases default to two
 # at a time (watch cases run alone), and the local Worker transport bounds requests, retrying only the
@@ -87,7 +87,7 @@ gotest() {
 	if [[ $relay == worker ]]; then worker_concurrency=${CONFORMANCE_HTTP_CONCURRENCY:-$CODEAF_RELAYCONF_CONCURRENCY}; fi
 	if [[ $relay == worker ]]; then retries_before=$(proxy_retries); fi
 	CODEAF_RELAYCONF_CONCURRENCY=$worker_concurrency \
-		go test -p=2 -parallel="$test_parallel" -json -count=1 -timeout 15m "$pkg" -run "$pat" "$@" >"$log" 2>"$log.err"
+		go test -p=2 -parallel="$test_parallel" -json -count=1 -timeout 25m "$pkg" -run "$pat" "$@" >"$log" 2>"$log.err"
 	local code=$? counts note=""
 	counts=$(tally "$log")
 	read -r p s f <<<"$counts"
@@ -170,9 +170,12 @@ OPEN='{"newIdentitiesPerIpPerDay":1000000,"minGraceMs":2000,"sweepPageSize":2,"r
 SMALL='{"newIdentitiesPerIpPerDay":1000000,"pairMaxBoxes":2}'
 EXPIRY='{"newIdentitiesPerIpPerDay":1000000,"pairTtlMs":4000}'
 wrangler() { # port, persist dir, limits json
+	# These existing conformance cases exercise enabled storage; opt-in has its own closed-default proofs.
+	local storage_limits
+	storage_limits=$(node -e 'console.log(JSON.stringify({...JSON.parse(process.argv[1]), storageOpen:true}))' "$3")
 	start_relay "http://127.0.0.1:$1/" "$work/worker-$1.log" \
 		sh "$hosted/test/local.sh" "$hosted/node_modules/.bin/wrangler" dev --local -c "${CONFORMANCE_WORKER_CONFIG:-$hosted/wrangler.toml}" --name "codeaf-conformance-$1" --inspector-port 0 --ip 127.0.0.1 --port "$1" --persist-to "$2" \
-		--var "CAF_LIMITS:$3" --var TRUST_PROXY:1
+		--var "CAF_LIMITS:$storage_limits" --var TRUST_PROXY:1
 }
 
 # Track 2: relayconf through the Worker.

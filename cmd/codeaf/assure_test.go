@@ -534,7 +534,7 @@ func TestTheRoundCapStillBoundsEvenACitedLineage(t *testing.T) {
 // round; it settles nothing about whether the work landed, because no ruling
 // about a citation makes missing work appear. The DeepSWE sweep exited 0 seven
 // times out of eight over the second kind, each time with a review that was
-// right (bench/deepswe/AUTOPSY.md, docs/design/gate/SETTLEMENT.md §2).
+// right.
 func TestOnlyARefusalCheckedAgainstTheWorldDeliversWhole(t *testing.T) {
 	graph := openCacheStore(t)
 	for name, test := range map[string]struct {

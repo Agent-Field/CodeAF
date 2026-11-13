@@ -206,10 +206,9 @@ func TestTheChordIsAbsentOnATerminalThatCannotSpellIt(t *testing.T) {
 
 // ── discoverability ─────────────────────────────────────────────────────────
 
-// THE FOOT DOES NOT NAME THE CHORD (the owner's call, 2026-09-30). The chord
-// still works wherever the terminal can send it — the tests above drive it —
-// but the running-turn line teaches plain enter alone, and the key sheet is
-// where ctrl+shift+enter is written down.
+// THE FOOT DOES NOT NAME THE CHORD. The chord still works wherever the terminal can send
+// it — the tests above drive it — but the running-turn line teaches plain enter alone, and
+// the key sheet is where ctrl+shift+enter is written down.
 func TestTheRunningFootDoesNotNameTheChord(t *testing.T) {
 	a, _ := bargeable(t, "reading the tree. ")
 

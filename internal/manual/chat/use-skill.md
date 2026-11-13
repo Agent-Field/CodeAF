@@ -39,8 +39,8 @@ opens the one a request fits, even when the request shares no words with it.
 
 ## Can you use skills with memory off
 
-Yes. Skills do not depend on the `notice things to remember` setting (the
-`memory.enabled` row): turning it off stops only codeaf keeping lines on its own,
+Yes. Skills do not depend on the `learn from chats and jobs` setting (the
+`memory.enabled` row): turning it off stops automatic memory model calls,
 and the shelf lives in the same database memory uses either way. Only when that
 database could not be opened at all does codeaf build a shelf of its own at
 launch from the skill folders on disk, and throw it away when the
@@ -49,6 +49,24 @@ message still carries the skills that suit it, `use_skill` is still on the belt,
 and `/skill` still attaches them. The procedures codeaf saved after watching
 them run live in that database, so without it only the skills in folders are on
 the shelf.
+
+## Why can't you use my skills
+
+Skills work with automatic memory saving off: `memory.enabled` does not disable
+them. If a skill is missing, open `/skill` and check its row for a warning, or
+type `/skill <folder>` to attach it directly. The folder needs a readable
+`SKILL.md` with a name and description. A missing file or invalid frontmatter
+can keep it off the shelf. After adding or editing a skill in a scanned folder,
+open a new conversation so discovery reads it again.
+
+For a Claude Code plugin skill, the plugin must be installed and enabled in
+Claude Code; browsing a marketplace is not installation. If two skills share a
+name, the higher-precedence copy wins. The page `skills-from-other-tools`
+explains those folders and precedence rules.
+
+A message with a picture does not automatically carry skill instructions, even
+for an attached skill. Send the picture, then send the instruction in a message
+of its own; the model can still open the skill with `use_skill`.
 
 ## Where the shelf comes from
 

@@ -276,3 +276,40 @@ func fileSize(t *testing.T, path string) int64 {
 	must(t, err)
 	return info.Size()
 }
+
+// A PACKET'S LINES GO OUT THOUGH A READ FAILS. Raising, deciding and sending
+// up read the packet's lineage, and its lines and a conflict's ruling go to
+// the teams that read holds; only a party's team outside it is read again, and
+// that read failing costs that team's line alone.
+func TestAPacketsLinesSurviveAFailedRead(t *testing.T) {
+	failing := func(string, ...string) (*File, error) { return nil, errors.New("the store is busy") }
+	old := teamsByID
+	t.Cleanup(func() { teamsByID = old })
+
+	dir := packetTeams(t)
+	teamsByID = failing
+	p, err := Raise(dir, conflict())
+	must(t, err)
+	_, err = Decide(dir, p.ID, FromManager, "1", "matches the rest")
+	must(t, err)
+	entries, _ := ReadTraffic(dir, "bbbbbbbbbbbb", "", 0)
+	if len(entries) != 4 || entries[0].Kind != KindPacket || entries[1].State != PacketDecided ||
+		!IsRuling(entries[2]) || entries[2].To != "web" || !IsRuling(entries[3]) || entries[3].To != "api" {
+		t.Fatalf("traffic %+v", entries)
+	}
+
+	// A party below the lineage: its team's line needs the read, and only it
+	// is lost.
+	dir = t.TempDir()
+	teamsByID = old
+	siblings(t, dir)
+	p = conflictBetween(t, dir)
+	teamsByID = failing
+	_, err = Decide(dir, p.ID, "boss", "1", "the other endpoints take JSON")
+	must(t, err)
+	for team, want := range map[string]int{"pppppppppppp": 2, "aaaaaaaaaaaa": 3, "bbbbbbbbbbbb": 1} {
+		if log, _ := ReadTraffic(dir, team, "", 0); len(log) != want {
+			t.Fatalf("%s has %d lines, want %d: %+v", team, len(log), want, log)
+		}
+	}
+}

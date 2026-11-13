@@ -75,6 +75,15 @@ func testFabricClientScope(t *testing.T, r *Rig) {
 		fabricCall(t, r, client, "GET", route, nil, 401)
 	}
 	fabricCall(t, r, client, "PUT", "/v1/dir/devices/"+client.dev.ID(), map[string]any{"V": 1}, 401)
+	fabricCall(t, r, client, "POST", "/v1/dir/cells/chat", map[string]any{"head": "h"}, 401)
+	fabricCall(t, r, client, "POST", "/v1/dir/cells/chat/acquire", map[string]any{}, 401)
+	fabricCall(t, r, client, "POST", "/v1/dir/cells/chat/publish", map[string]any{"fence": 1, "old_head": "h", "head": "h2"}, 401)
+	fabricCall(t, r, client, "POST", "/v1/dir/cells/chat/release", map[string]any{"fence": 1}, 401)
+	fabricCall(t, r, client, "POST", "/v1/dir/vault", map[string]any{"old": "", "new": "v"}, 401)
+	fabricCall(t, r, client, "POST", "/v1/dir/devices/"+full.dev.ID()+"/revoke", nil, 401)
+	fabricCall(t, r, client, "POST", "/v1/store/has", map[string]any{"rids": []string{}}, 401)
+	fabricCall(t, r, full, "PUT", "/v1/dir/devices/"+full.dev.ID(), map[string]any{"V": 1, "kind": "client"}, 400)
+	fabricCall(t, r, full, "PUT", "/v1/dir/devices/"+full.dev.ID(), map[string]any{"V": 1, "methods": []string{"chat.read"}}, 400)
 	fabricCall(t, r, full, "PUT", path, map[string]any{"cert": client.Cert(), "methods": []string{}}, 409)
 	if r.Restart != nil {
 		r.Restart()

@@ -52,7 +52,7 @@ func workerSetupAs(t *testing.T, login string) *workerFixture {
 	seam := factory.Seam{Load: func() (factory.Snapshot, error) {
 		items, err := st.List()
 		return factory.Snapshot{Items: items}, err
-	}, Answer: lease.NewDoors(desk).Answer}
+	}, Answer: lease.NewDoors(desk).Answer, Stop: lease.NewDoors(desk).Stop}
 	if login != "" {
 		seam.GitHub = func(context.Context) (factory.GitHubLink, error) {
 			return factory.GitHubLink{Login: login}, nil
@@ -369,6 +369,9 @@ func TestWorkerDiffReportsOneQuestionOnTheWire(t *testing.T) {
 			stamp := time.Unix(0, f.clock.Load()).UTC()
 			want := []api.Question{{Text: cur.Question, State: "open", Kind: wantKind, FromStep: stage,
 				With: factory.AskedYou, Options: cur.Asking.Options, Pick: "yes", Why: cur.Asking.Why, At: &stamp}}
+			if kind == "cap" {
+				want[0].NextLimit = 5
+			}
 			if !reflect.DeepEqual(got.Questions, want) {
 				t.Fatalf("GET job questions = %+v; want %+v", got.Questions, want)
 			}
@@ -665,4 +668,20 @@ func TestWorkerLiveChatHeaderReachesMainJob(t *testing.T) {
 	if saved.Stream.Phases[0].Chat != "/worker/proof/transcript.jsonl" || saved.Stream.Phases[0].Result != nil {
 		t.Fatalf("missing live chat: %+v", saved.Stream.Phases[0])
 	}
+}
+
+// THE SAME COMPUTER ATTACHING AGAIN does not leave its old registrations
+// behind: once they are quiet past the offline limit, the next attach forgets
+// them, and a forgotten credential is no longer a worker.
+func TestReattachingTheSameComputerLeavesOneRegistrationPerLiveSlot(t *testing.T) {
+	f := workerSetup(t)
+	first := f.attach(t, "sam")
+	second := f.attach(t, "sam")
+	f.clock.Add(int64(2 * lease.OfflineAfter))
+	third := f.attach(t, "sam")
+	for _, gone := range []api.WorkerAttached{first, second} {
+		f.request(t, "GET", "/v1/workers/pull", gone.Credential, nil, http.StatusUnauthorized, nil)
+	}
+	f.add(t, "sam")
+	f.pull(t, third)
 }

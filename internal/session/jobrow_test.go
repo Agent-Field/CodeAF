@@ -64,7 +64,7 @@ func awaitJob(t *testing.T, lane <-chan Event, want JobState) JobNotice {
 
 // ── the job appears ─────────────────────────────────────────────────────────
 
-// THE OWNER'S SCENARIO, REDUCED TO ITS ONE MISSING FACT: a command started in
+// THE REGRESSION SCENARIO, REDUCED TO ITS ONE MISSING FACT: a command started in
 // the background is put in front of whoever is drawing live work, carrying the
 // command and its log, from the moment it starts.
 func TestABackgroundCommandIsPublishedToTheSurface(t *testing.T) {

@@ -1,12 +1,15 @@
 package serve
 
 import (
+	"context"
 	"fmt"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"github.com/Agent-Field/codeaf/internal/factory/run"
 	"net/http"
+	"strings"
+	"time"
 )
 
 func (h *Handler) setAutonomy(w http.ResponseWriter, r *http.Request, it factory.Item, mode string) {
@@ -48,7 +51,7 @@ func (h *Handler) setAutonomy(w http.ResponseWriter, r *http.Request, it factory
 // Critical questions, fixed gates, failed publication and exhausted spending
 // stay visible. Only normal progression reaches the existing approval door.
 func automaticApprovalAllowed(it factory.Item) bool {
-	if !factory.Automatic(it) || factory.AutonomyBlockReason(it) != "" {
+	if !factory.Automatic(it) || factory.AutonomyBlockReason(it) != "" || !factory.ManagerMayPass(it) {
 		return false
 	}
 	a := factory.JobApproval(it)
@@ -67,7 +70,7 @@ func automaticApprovalAllowed(it factory.Item) bool {
 		}
 		return a.Kind == "proof" && len(it.Proof) > 0 && run.ApprovalRefused(&it, false) == nil
 	}
-	if it.State != factory.StateNeedsYou || it.QKind != factory.QKindApprove || a.Kind != "plan" {
+	if it.State != factory.StateNeedsYou || it.QKind != factory.QKindApprove || (a.Kind != "plan" && a.Kind != "step") {
 		return false
 	}
 	if it.Stream == nil || it.Stream.Cur < 0 || it.Stream.Cur >= len(it.Stream.Phases) {
@@ -84,7 +87,8 @@ func automaticApprovalAllowed(it factory.Item) bool {
 
 // The service records automatic decisions, exactly as manual decisions; the
 // worker never fabricates its own approval trailer. No visible UI is needed.
-func (h *Handler) prepareAutomaticApprovals(items []factory.Item) []factory.Item {
+func (h *Handler) prepareAutomaticApprovals(items []factory.Item) ([]factory.Item, error) {
+	h.judgePasses(items)
 	candidate := false
 	for _, it := range items {
 		if h.automaticApprovalAllowed(it) && factory.JobApproval(it).State == "waiting" {
@@ -93,11 +97,11 @@ func (h *Handler) prepareAutomaticApprovals(items []factory.Item) []factory.Item
 		}
 	}
 	if !candidate {
-		return items
+		return items, nil
 	}
 	unlock, err := h.lockConsent()
 	if err != nil {
-		return items
+		return items, err
 	}
 	defer unlock()
 	for i, candidate := range items {
@@ -105,7 +109,10 @@ func (h *Handler) prepareAutomaticApprovals(items []factory.Item) []factory.Item
 			continue
 		}
 		cur, e := h.config.Store.Get(candidate.ID)
-		if e != nil || !h.automaticApprovalAllowed(cur) {
+		if e != nil {
+			return items, e
+		}
+		if !h.automaticApprovalAllowed(cur) {
 			continue
 		}
 		a := factory.JobApproval(cur)
@@ -119,7 +126,7 @@ func (h *Handler) prepareAutomaticApprovals(items []factory.Item) []factory.Item
 		} else if h.seam.Answer == nil {
 			continue
 		}
-		a.State, a.Automatic, a.DecidedBy = "approving", true, cur.Person()
+		a.State, a.Automatic, a.DecidedBy = "approving", true, ""
 		a.At, a.UndoUntil, a.Commit = h.clock().UTC(), h.clock().UTC(), cur.HeadCommit
 		if e = h.config.Store.Update(cur.ID, func(saved *factory.Item) error {
 			if !h.automaticApprovalAllowed(*saved) || saved.HeadCommit != cur.HeadCommit {
@@ -128,11 +135,15 @@ func (h *Handler) prepareAutomaticApprovals(items []factory.Item) []factory.Item
 			saved.Approval = a
 			saved.MergePolicy = nil
 			return nil
-		}); e == nil {
-			items[i], _ = h.config.Store.Get(cur.ID)
+		}); e != nil {
+			return items, e
+		}
+		items[i], e = h.config.Store.Get(cur.ID)
+		if e != nil {
+			return items, e
 		}
 	}
-	return items
+	return items, nil
 }
 
 func (h *Handler) automaticApprovalAllowed(it factory.Item) bool {
@@ -141,4 +152,79 @@ func (h *Handler) automaticApprovalAllowed(it factory.Item) bool {
 	}
 	sw, err := h.config.Store.RepoSwitch()
 	return err == nil && !sw.Off(factory.RepoOf(it))
+}
+
+// judgePasses asks the manager's judgement of every waiting `manager when …`
+// approval that Auto would otherwise pass and that has none yet, in the
+// background: the answer is kept on the job ([factory.Item.PassJudge]) and
+// the job timer runs again, which passes the approval on a yes and leaves it
+// to a person, with the manager's reason, on a no. A JUDGE THAT CANNOT
+// ANSWER IS A NO: no model, a refused call or an unreadable reply leaves the
+// approval to a person.
+func (h *Handler) judgePasses(items []factory.Item) {
+	for _, it := range items {
+		if !factory.Automatic(it) || factory.AutonomyBlockReason(it) != "" {
+			continue
+		}
+		cond, ok := factory.NeedsPassJudgement(it)
+		if !ok {
+			continue
+		}
+		st, _, _ := factory.WaitingGateStage(it)
+		key := factory.PassJudgeKey(it, st, cond)
+		h.judgingMu.Lock()
+		if h.judging == nil {
+			h.judging = map[int]string{}
+		}
+		if h.judging[it.ID] == key {
+			h.judgingMu.Unlock()
+			continue
+		}
+		h.judging[it.ID] = key
+		h.judgingMu.Unlock()
+		h.jobsBusy.Add(1)
+		go func(it factory.Item, cond, key string) {
+			defer h.jobsBusy.Done()
+			defer func() {
+				h.judgingMu.Lock()
+				if h.judging[it.ID] == key {
+					delete(h.judging, it.ID)
+				}
+				h.judgingMu.Unlock()
+			}()
+			j := factory.PassJudgement{Key: key, Why: "there was no model to judge it with"}
+			if h.config.PassJudge != nil {
+				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+				a, err := h.config.PassJudge.Judge(ctx, cond, factory.PassEvidence(it))
+				cancel()
+				switch {
+				case err != nil:
+					j.Why = "it could not be judged: " + strings.TrimSuffix(err.Error(), ".")
+				default:
+					j.Yes, j.Why, j.Model = a.Yes, a.Why, a.Model
+				}
+			}
+			j.At = h.clock().UTC()
+			_ = h.config.Store.Update(it.ID, func(cur *factory.Item) error {
+				st, _, ok := factory.WaitingGateStage(*cur)
+				if !ok {
+					return nil
+				}
+				if k, c := factory.PassOf(st); k != factory.PassManagerWhen || factory.PassJudgeKey(*cur, st, c) != key {
+					return nil
+				}
+				cp := j
+				cur.PassJudge = &cp
+				return nil
+			})
+			h.jobsMu.Lock()
+			closed := h.jobsClosed
+			h.jobsMu.Unlock()
+			if !closed {
+				held, _ := h.leases()
+				h.settleJobs(true, held)
+				h.scheduleJobTimer()
+			}
+		}(it, cond, key)
+	}
 }

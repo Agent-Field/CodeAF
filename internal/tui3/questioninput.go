@@ -10,7 +10,7 @@ import (
 
 // THE FOUR SHAPES BELOW A QUESTION, which is rung six of the ladder:
 // "structured input — blanks · checklist · this-or-this · dial, never free text
-// where a key would do" (docs/design/questions/DESIGN.md).
+// where a key would do".
 //
 // WHY THE RUNG EXISTS AT ALL. A question whose answer is "postgres, port 5432,
 // keep the old file" asked as free text is a question the model has to parse,
@@ -748,11 +748,10 @@ func (a *app) questionDialFace(width int) string {
 		return a.pal.ink(strconv.Itoa(in.notch+1) + " of " + strconv.Itoa(in.notches) +
 			questionSep + in.dialWord())
 	}
-	// With words, the dial IS its words: the one it is on wears the POINTER and
-	// the weight, the rest are dim. The brackets it used to wear were punctuation
-	// standing in for a mark this surface has ([tokens.GPointer], the same one
-	// every answer's row uses for "here"), and the amber they were painted in
-	// belongs to that mark now (owner ruling 2026-09-11, colour pick C).
+	// With words, the dial IS its words: the one it is on wears the POINTER and the weight,
+	// the rest are dim. The brackets it used to wear were punctuation standing in for a mark
+	// this surface has ([tokens.GPointer], the same one every answer's row uses for "here"),
+	// and the amber they were painted in belongs to that mark now.
 	if len(in.dial.Labels) > 0 {
 		parts := make([]string, 0, len(in.dial.Labels))
 		for i, label := range in.dial.Labels {

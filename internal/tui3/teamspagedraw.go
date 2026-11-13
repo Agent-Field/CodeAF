@@ -975,7 +975,8 @@ func (a *app) teamsEmpty(d *teamsDraw, width, height int) []string {
 // recorded in frame cells.
 func (a *app) teamsBody(width, room int) []placeRow {
 	a.tp.recent = a.teamsRecentTimes()
-	defer func() { a.tp.recent = nil }()
+	a.tp.homesPending = true
+	defer func() { a.tp.recent, a.tp.homes, a.tp.homesPending = nil, nil, false }()
 	d := &teamsDraw{a: a}
 	a.tp.table = teamsTableRect{}
 	a.teamsSettle()

@@ -98,16 +98,26 @@ func (a *Agent) appRunRow(id uint64) (TaskNotice, bool) {
 	return graph.runRowLocked(id)
 }
 
-// appRunView is one run row as the app's task.
+// appRunView is one run row as the app's task, opening the plan for itself.
 func (a *Agent) appRunView(row TaskNotice, cap float64) AppTaskView {
+	stores, plan, closeStores := a.openPlanReadHandles()
+	defer closeStores()
+	return a.appRunViewIn(row, cap, &planTaskRead{stores: stores, plan: plan})
+}
+
+// appRunViewIn is one run row as the app's task, read from stores a listing
+// has already opened.
+func (a *Agent) appRunViewIn(row TaskNotice, cap float64, read *planTaskRead) AppTaskView {
 	if _, held := a.appHeldRuns.Load(row.ID); held && !row.State.settled() {
 		row.Paused = true
 	}
 	view := AppTaskView{
-		ID: strconv.FormatUint(row.ID, 10), Title: row.Title, Brief: row.Brief, State: appRunRowState(row),
+		Retryable: row.Retryable,
+		ID:        strconv.FormatUint(row.ID, 10), Title: row.Title, Brief: row.Brief, State: appRunRowState(row),
 		Model: row.Model, Cap: cap, Spent: row.CostUSD, Result: row.Report, Files: append([]string{}, row.Changed...),
 		Elapsed: int64(row.Elapsed.Seconds()), Deadline: row.Deadline, Held: row.Paused, Version: 1, Origin: "asked",
 	}
+	view.Group = row.Run
 	view.Source, view.FinishedAt = cloneSource(row.Source), row.EndedAt
 	view.RunProgram, view.Ending, view.Branch = appRunFacts(row)
 	view.Dismissed = view.State == "failed" && row.Ending != TaskEndingStopped && a.tasker().isDismissed(view.ID)
@@ -117,7 +127,7 @@ func (a *Agent) appRunView(row TaskNotice, cap float64) AppTaskView {
 	for _, id := range row.DependsOn {
 		view.Waits = append(view.Waits, strconv.FormatUint(id, 10))
 	}
-	a.appRunDetail(&view, appRunRowKey(row))
+	a.appRunDetail(&view, appRunRowKey(row), read)
 	switch {
 	case row.park != nil || a.taskRouting.isParked(row.ID):
 		view.RoutingState = TaskRoutingBlocked
@@ -135,16 +145,26 @@ func (a *Agent) appRunView(row TaskNotice, cap float64) AppTaskView {
 // appRunDetail fills what the row does not carry from the run's store: the
 // person's notes with the step each was read at, the worker's steps, and the
 // step count.
-func (a *Agent) appRunDetail(view *AppTaskView, key string) {
-	stores, _, closeStores := a.openPlanReadHandles()
-	defer closeStores()
-	for _, store := range stores {
+//
+// The stores are the plan's read handles, opened once for the whole listing:
+// opening one reads the whole plan, and a listing draws a row for every run.
+func (a *Agent) appRunDetail(view *AppTaskView, key string, read *planTaskRead) {
+	for _, store := range read.stores {
 		task := store.Task(key)
 		if task == nil {
 			continue
 		}
+		appRunStoreEnding(view, store, task)
+		if view.State == "running" && task.Status == plandb.StatusReady {
+			row := PlanTaskRow{Status: string(task.Status)}
+			a.markPlanMachineHold(&row, store.Path(), task.ID == store.RootID())
+			if row.Undriven {
+				view.State = "waiting"
+			}
+		}
 		dir := filepath.Dir(store.Path())
-		steps, reads := appTrajectorySteps(filepath.Join(plandb.TaskDir(dir, key), planTrajectoryFile), appTaskStepsMax)
+		trajectory := read.trajectory(planTrajectoryPath(dir, key), true)
+		steps, reads := trajectory.app, trajectory.reads
 		view.Steps = steps
 		view.WorkLog = appTrajectoryLines(steps)
 		if len(steps) > 0 {
@@ -170,6 +190,31 @@ func (a *Agent) appRunDetail(view *AppTaskView, key string) {
 		}
 		return
 	}
+}
+
+// appRunStoreEnding lets the stop's store write take effect before the last
+// worker return publishes the run row. A stale notice cannot reopen ended work.
+func appRunStoreEnding(view *AppTaskView, store *plandb.Store, task *plandb.Task) {
+	if view.State != "running" && view.State != "waiting" && view.State != "paused" {
+		return
+	}
+	switch task.Status {
+	case plandb.StatusDone:
+		if !store.Stopped() {
+			return
+		}
+		view.State = "done"
+	case plandb.StatusCancelled:
+		view.State = "failed"
+		if planTaskStopped(store, task) {
+			view.State, view.Ending = "stopped", string(TaskEndingStopped)
+		}
+	case plandb.StatusFailed:
+		view.State = "failed"
+	default:
+		return
+	}
+	view.FinishedAt = task.CompletedAt
 }
 
 // appTrajectoryLines is a run's steps as the worded tail a model reads, kept
@@ -200,6 +245,8 @@ func appTrajectoryLines(steps []AppTaskStep) []string {
 // appRunAction is a person's verb on a run row.
 func (a *Agent) appRunAction(row TaskNotice, intent AppTaskIntent) (SteerReceipt, error) {
 	switch intent.Action {
+	case "retry":
+		return SteerReceipt{}, a.RetryTask(row.ID)
 	case "note", "brief":
 		if strings.TrimSpace(intent.Text) == "" {
 			return SteerReceipt{}, errors.New("words required")

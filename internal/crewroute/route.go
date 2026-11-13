@@ -12,7 +12,7 @@
 //
 // ── WHY IT ROUTES ON THE CLASS OF WORK ──
 //
-// The design is in docs/design/model-pool/pareto-crewing.pdf. The rule it
+// The design is in the implementation. The rule it
 // follows: narrow fixes use the cheapest qualified crew, and open-ended work
 // gets a stronger checker, the one seat worth paying for there. The policy is
 // read off a table ([prior]) rather than written into branches: classify the
@@ -39,6 +39,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/money"
 )
 
 // AutoEscalate is whether a crew is ever made stronger without somebody
@@ -1485,9 +1487,15 @@ func ShortModel(id string) string {
 	return id
 }
 
-// Money spells a task's dollars: three places under a dollar, where the
-// difference between routed crews lives, and two above it.
+// Money keeps sub-cent costs readable through the shared money floor, with
+// three places below a dollar and two above it.
 func Money(usd float64) string {
+	if usd <= 0 {
+		return ""
+	}
+	if usd < 0.01 {
+		return money.SubCent(usd)
+	}
 	if usd >= 1 {
 		return fmt.Sprintf("$%.2f", usd)
 	}

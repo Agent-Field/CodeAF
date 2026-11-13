@@ -15,15 +15,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 )
 
 // sourcedAgent is a conversation with a checkpoint behind it, an auto-approving
 // proposal road and a runner that lands every node as asked.
-func sourcedAgent(t *testing.T, steps []step, land TaskState) (*Agent, string, string) {
+func sourcedAgent(t *testing.T, completer Completer, land TaskState) (*Agent, string, string) {
 	t.Helper()
 	journal, checkpoint := journalIn(t)
-	completer := &routedCompleter{parent: steps}
+	if completer == nil {
+		completer = &scriptedCompleter{}
+	}
 	agent, _ := newTestAgent(t, completer, func(config *Config) {
 		config.AskConsent = false
 		config.TaskAutoApproveSeconds = 0
@@ -33,13 +36,21 @@ func sourcedAgent(t *testing.T, steps []step, land TaskState) (*Agent, string, s
 	return agent, journal, checkpoint
 }
 
-func sendAndWait(t *testing.T, agent *Agent, words string) {
+func sendAndWait(t *testing.T, agent *Agent, words string, settled <-chan struct{}) {
 	t.Helper()
 	events, err := agent.Submit(context.Background(), words)
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
 	collect(t, events)
+	select {
+	case <-settled:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the submitted message did not produce a settled task")
+	}
+	// Submit can subscribe to a completion wake already in flight. Its stream
+	// ending does not mean the turn answering the queued message has ended.
+	waitForQuiet(t, agent)
 }
 
 // heardAs puts a message where the session records the person's words and marks
@@ -63,15 +74,44 @@ func sourceOfNode(t *testing.T, agent *Agent, id uint64) *TaskSource {
 // A TASK PROPOSED WHILE ANSWERING A MESSAGE CARRIES THAT MESSAGE, TWO MESSAGES
 // ARE TWO BLOCKS, AND THE CHECKPOINT AND A REOPEN KEEP BOTH.
 func TestAProposedTaskCarriesTheMessageItWasMadeFromAndKeepsItAcrossAReopen(t *testing.T) {
-	agent, _, checkpoint := sourcedAgent(t, []step{
-		proposeCall("Sweep the calls", "replace every call to Frobnicate"), finalText("handed off"),
-		proposeCall("Audit the pricing", "read the pricing module"), finalText("handed off"),
-		proposeCall("Audit the tax", "read the tax module"), finalText("handed off"),
-	}, TaskFailed)
 	first, second := "sweep the Frobnicate calls", "now audit the pricing code"
-	sendAndWait(t, agent, first)
-	sendAndWait(t, agent, second)
-	sendAndWait(t, agent, second) // the same sentence typed again is another message
+	proposals := []step{
+		proposeCall("Sweep the calls", "replace every call to Frobnicate"),
+		proposeCall("Audit the pricing", "read the pricing module"),
+		proposeCall("Audit the tax", "read the tax module"),
+	}
+	// A completion wake can arrive before the next Submit. Answer it from
+	// the request, so it cannot consume a proposal meant for a later message.
+	completer := &scriptedCompleter{aside: func(messages []ai.Message) (*ai.Response, bool) {
+		if isNameCall(messages) || isCaptionCall(messages) || isTitleCall(messages) {
+			return textResponse(""), true
+		}
+		heard, proposed := 0, 0
+		for _, message := range messages {
+			if message.Role == "user" && (messageText(message) == first || messageText(message) == second) {
+				heard++
+			}
+			for _, call := range message.ToolCalls {
+				if call.Function.Name == "propose_task" {
+					proposed++
+				}
+			}
+		}
+		if heard > proposed && proposed < len(proposals) {
+			response, _ := proposals[proposed](context.Background(), messages)
+			return response, true
+		}
+		return textResponse("handed off"), true
+	}}
+	agent, _, checkpoint := sourcedAgent(t, completer, TaskFailed)
+	settled := make(chan struct{}, len(proposals))
+	stubbedGraph(agent, func(node *TaskNode) {
+		node.graph.complete(node, TaskFailed)
+		settled <- struct{}{}
+	})
+	sendAndWait(t, agent, first, settled)
+	sendAndWait(t, agent, second, settled)
+	sendAndWait(t, agent, second, settled) // the same sentence typed again is another message
 
 	a, b, c := sourceOfNode(t, agent, 1), sourceOfNode(t, agent, 2), sourceOfNode(t, agent, 3)
 	if a == nil || b == nil || c == nil {
@@ -532,5 +572,25 @@ func TestExplicitUnknownSourceNeverFallsBackToANewerMessage(t *testing.T) {
 	graph.admit(graph.reserve(), taskSpec{title: "legacy promotion", brief: "b", acceptance: "a", sourceCaptured: true})
 	if got := graph.node(1).source(); got != nil {
 		t.Fatalf("explicit captured unknown took current source %+v", got)
+	}
+}
+
+// A moved chat may retain only its run receipt. The read-only page and listing
+// must keep the desktop's message identity without a local plan database.
+func TestHistoricalPlanRowsAndPagesKeepTheirRecordedSource(t *testing.T) {
+	place := Place{Dir: filepath.Join(t.TempDir(), sourceOwner)}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.SessionFile, config.Place, config.ProfileDir = place.Transcript(), place, t.TempDir()
+	})
+	source := &TaskSource{ID: "s#retained", Kind: TaskSourceMessage, Text: "finish the migration"}
+	agent.graph().keepRunRows(7, []TaskNotice{{ID: 7, Title: "retained task", State: TaskDone,
+		PlanTask: "t-history-7", Source: source}})
+	rows := agent.PlanTasks()
+	if len(rows) != 1 || rows[0].Source == nil || rows[0].Source.ID != source.ID || rows[0].Source.Text != source.Text {
+		t.Fatalf("historical task lost its message identity: %+v", rows)
+	}
+	page, ok := agent.PlanTaskPage("t-history-7")
+	if !ok || !page.Historical || page.Row.Source == nil || page.Row.Source.ID != source.ID {
+		t.Fatalf("historical page lost its message identity: %+v, %v", page, ok)
 	}
 }

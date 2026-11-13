@@ -14,6 +14,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/session"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
+	"github.com/Agent-Field/codeaf/internal/teams/teamstest"
 )
 
 // unionKey is a conversation's transcript path; its owner is the directory name.
@@ -208,9 +209,8 @@ func TestTeamsScopePagesEveryOwnerAndWritesNothing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(teamstore.Path(profile), raw, 0o600); err != nil {
-		t.Fatal(err)
-	}
+	teamstest.Write(t, profile, raw)
+	stamp := teamstore.Stamp(profile)
 
 	want := map[string]bool{}
 	for _, owner := range append(append([]string{"g", "loose"}, a...), b...) {
@@ -276,8 +276,8 @@ func TestTeamsScopePagesEveryOwnerAndWritesNothing(t *testing.T) {
 	if _, err := backend.ListDeliverables(appwire.DeliverablesQuery{Scope: appwire.ScopeTeams, Crew: "nope"}); err == nil {
 		t.Error("an unknown top answered")
 	}
-	if after, _ := os.ReadFile(teamstore.Path(profile)); string(after) != string(raw) {
-		t.Error("the teams file was changed")
+	if teamstore.Stamp(profile) != stamp {
+		t.Error("the teams store was changed")
 	}
 }
 

@@ -19,7 +19,7 @@ import (
 //
 // A subharness is a named program for a narrow kind of work that comes round
 // again — "the weekly marketing for company X", "chase a flaky test"
-// (docs/SUBHARNESS-PRD.md §1). It takes a typed input and answers a typed
+//. It takes a typed input and answers a typed
 // output, and the thing a person has to do before one runs is settle that
 // input. So this file is two surfaces and they are ONE OVERLAY:
 //
@@ -1242,7 +1242,7 @@ type subStartedMsg struct {
 // THE RUN IS PRESENTED BY THE TASK ROAD AND NOT BY THIS FILE. What comes back is
 // the node's id and its title — the pair [session.Agent.StartTask] answers — so
 // the roster row, the room, the journal and the ✕ are the ones every other task
-// already has (docs/SUBHARNESS-PRD.md §9). This surface says the receipt and
+// already has. This surface says the receipt and
 // gets out of the way.
 func (a *app) runSubharness() tea.Cmd {
 	c := a.subPage.card

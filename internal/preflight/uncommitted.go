@@ -17,7 +17,7 @@ const gitLookBound = 2 * time.Second
 func Uncommitted(dir string) []string {
 	ctx, cancel := context.WithTimeout(context.Background(), gitLookBound)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, "git", "-C", dir, "status", "--porcelain", "-z").Output() //codeaf:plumbing read-only status look at the folder a chat arrived in
+	out, err := exec.CommandContext(ctx, "git", "--no-optional-locks", "-C", dir, "status", "--porcelain", "-z").Output() //codeaf:plumbing read-only status look at the folder a chat arrived in
 	if err != nil {
 		return nil
 	}

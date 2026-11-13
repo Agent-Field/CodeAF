@@ -37,9 +37,8 @@ import (
 //
 // THE ENGINE HOLDS THE WORD AND SOMEBODY ELSE BUILDS THE GATE. A policy is built
 // from three settings rows resolved through the project layer, which is
-// cmd/codeaf's knowledge and not this package's (approvalgate.go says why the
-// gate is pushed rather than re-read). So the door onto the rows is handed in
-// as [Config.ApprovalGate], and [Agent.SetApprovalPosture] asks it for the
+// cmd/codeaf's knowledge and not this package's. So the door onto the rows is
+// handed in as [Config.ApprovalGate], and [Agent.SetApprovalPosture] asks it for the
 // finished policy the way a consent card's banked rule already does — the same
 // v3Policy, the same rows, the same floors. A session with no such door has no
 // dial: the surface asks [Agent.ApprovalDial] and draws no control, which is
@@ -168,6 +167,8 @@ func (a *Agent) SetApprovalPosture(posture string) error {
 	if build == PostureAuto {
 		build = ""
 	}
+	a.approvalMu.Lock()
+	defer a.approvalMu.Unlock()
 	policy, guardian, err := gate.Build(build)
 	if err != nil {
 		return err
@@ -180,6 +181,14 @@ func (a *Agent) SetApprovalPosture(posture string) error {
 	a.approvalPosture = word
 	a.guardianOverride = &guardian
 	a.mu.Unlock()
+	// The launcher restores the saved dial through this door. Applying the
+	// gate in memory must not turn an unchanged preference into a meta write
+	// (and therefore an identity migration) just because a chat was opened.
+	if a.config.Place.Dir != "" {
+		if meta, err := LoadMeta(a.config.Place.Dir); err == nil && meta.Approval == word {
+			return nil
+		}
+	}
 	// Written through the same door every other fact about this conversation is
 	// written through, so the file keeps one shape and one writer.
 	a.stampApproval()
@@ -195,10 +204,19 @@ func (a *Agent) SetApprovalPosture(posture string) error {
 // the rows' own, and a rule banked under `--yolo` keeps the flag's open gate
 // exactly as it did before this scope existed.
 func (a *Agent) RebuildApprovalGate() error {
+	_, err := a.refreshApprovalGate()
+	return err
+}
+
+func (a *Agent) refreshApprovalGate() (*approval.Policy, error) {
 	gate := a.config.ApprovalGate
 	if gate == nil {
-		return errNoApprovalDial
+		return nil, errNoApprovalDial
 	}
+	a.approvalMu.Lock()
+	defer a.approvalMu.Unlock()
+	// Serialize the settings read through publication and snapshot selection.
+	// A tool must not fall back to an older policy while another build waits.
 	a.mu.Lock()
 	stored := a.approvalPosture
 	a.mu.Unlock()
@@ -210,19 +228,18 @@ func (a *Agent) RebuildApprovalGate() error {
 		build = ""
 	}
 	policy, guardian, err := gate.Build(build)
-	if err != nil {
-		return err
-	}
-	if policy == nil {
-		return errors.New("the rules could not be rebuilt")
+	if err == nil && policy == nil {
+		err = errors.New("the rules could not be rebuilt")
 	}
 	a.mu.Lock()
-	a.approvalPolicy = policy
-	if stored != "" {
-		a.guardianOverride = &guardian
+	defer a.mu.Unlock()
+	if err == nil {
+		a.approvalPolicy = policy
+		if stored != "" {
+			a.guardianOverride = &guardian
+		}
 	}
-	a.mu.Unlock()
-	return nil
+	return a.approvalPolicyLocked(), err
 }
 
 // guardianOn is whether the small model stands in on this session right now:
@@ -243,7 +260,14 @@ func (a *Agent) guardianOn() bool {
 // stampApproval writes the posture down the moment it changes, for
 // [Agent.stampEffort]'s reason: a person who opens the gate and closes the
 // terminal before saying anything else must find it open when they come back.
-func (a *Agent) stampApproval() { a.stampMeta() }
+func (a *Agent) stampApproval() {
+	if metaStampSettling != nil {
+		metaStampSettling()
+	}
+	a.metaStamp().settle()
+	dir, snapshot := a.metaSnapshotAt()
+	a.updateMeta(dir, snapshot, func(meta *Meta) { meta.Approval = snapshot.Approval })
+}
 
 func knownPosture(word string) bool {
 	for _, known := range ApprovalPostures {

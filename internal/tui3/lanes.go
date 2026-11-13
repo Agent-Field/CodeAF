@@ -1193,14 +1193,10 @@ func (a *app) modelIdentity(id string) string {
 // and — while a lane is pinned — `@` and that lane:
 // `deepseek/deepseek-v4-flash@cloudflare`.
 //
-// A PIN IS AN INSTRUCTION THAT CHANGES EVERY FUTURE REQUEST, and until this the
-// chrome never said it. The picker's row said `via inception` only while the
-// picker was open, the status rider said `via …` only for ten minutes after an
-// answer, and the frame's head read `mercury-2.5 · ⠿ auto` — whose `auto` is the
-// thinking rung, which the owner read as "lane: auto" and concluded the pin had
-// failed (2026-09-10). So the pin rides the one word every place that names the
-// model already draws: the seam, the status row's identity and the phone deck's
-// chip all take it from here, and none of them spells it.
+// A PIN IS AN INSTRUCTION THAT CHANGES EVERY FUTURE REQUEST, and until this the chrome
+// never said it. So the pin rides the one word every place that names the model already
+// draws: the seam, the status row's identity and the phone deck's chip all take it from
+// here, and none of them spells it.
 //
 // On `auto` and `openrouter` it adds nothing — the emptiness law: a choice left
 // to the router is the unremarkable state and says no word.
@@ -1285,19 +1281,13 @@ func (a *app) openPickerFromChip() {
 // retraction: the rescue this line promised has itself been refused, so the
 // promise goes and what is left is the fact.
 //
-// AND ALL THREE ARE ABOUT AN ANSWER THAT IS FINISHED, which is why the phase
-// clock takes the segment away from them while a request is actually in flight
-// (render.go's [app.servedRider]). These read the past tense; that reads the
-// present one.
-// timed says whether the answer's own figures — the wait before its first word
-// and, while a turn runs, how fast it was written — ride after the machine's
-// name. The sheet's `served` row wants them (statusdeck.go); THE SEAM DOES NOT.
-// On 2026-09-10 the owner read `via relace · 1.3s · 79 t/s` on the seam while
-// an answer was being written and took the figure for the live rate, which by
-// then stood at the right edge of the status row as `34 tok/s` (render.go's
-// [app.liveRiderAt]) — one frame, two rates, and the one beside the model was
-// the LAST answer's average. Who served is attribution and belongs beside the
-// model; how fast is a claim about now and has one place on the frame.
+// AND ALL THREE ARE ABOUT AN ANSWER THAT IS FINISHED, which is why the phase clock takes
+// the segment away from them while a request is actually in flight (render.go's
+// [app.servedRider]). These read the past tense; that reads the present one. timed says
+// whether the answer's own figures — the wait before its first word and, while a turn
+// runs, how fast it was written — ride after the machine's name. The sheet's `served` row
+// wants them (statusdeck.go); THE SEAM DOES NOT. Who served is attribution and belongs
+// beside the model; how fast is a claim about now and has one place on the frame.
 //
 // IT IS THE SHEET'S READING, AND THE SHEET KEEPS THE OLD SUPPRESSION: the row
 // above `served` there is the model's whole routing address, vendor and all, so
@@ -1315,11 +1305,10 @@ const (
 	// `served` row and the phone deck's identity, said shorter when the row
 	// is tight.
 	riderVia riderStyle = iota
-	// riderBeside is ` (relace)`: the machine written onto the model's own
-	// cell on the seam — `deepseek-v4-flash (relace)` — whole or nothing, and
-	// never aged out. The owner's ruling of 2026-09-17: the model and the
-	// machine answering for it are one fact, read as one word, and the last
-	// machine to answer stays named until another does.
+	// riderBeside is ` (relace)`: the machine written onto the model's own cell on the seam —
+	// `deepseek-v4-flash (relace)` — whole or nothing, and never aged out. The model and the
+	// machine answering for it are one fact, read as one word, and the last machine to answer
+	// stays named until another does.
 	riderBeside
 )
 
@@ -1335,13 +1324,12 @@ func riderWords(style riderStyle, machine, tail string) string {
 // talkLaneRider is the conversation's rider ON THE SEAM: who is answering, with
 // no figures, and WHOEVER SERVED.
 //
-// live is the machine the request in flight has named ([PhaseNews.Lane]), and
-// it is asked for here because the sighting is only posted when a whole step
-// has FINISHED. So the first answer in a conversation, and a follow-up sent
-// after the last sighting had aged out ([servedWindow]), drew no `via` at all
-// for as long as the answer was being written — while the phase clock already
-// knew exactly who was writing it. The owner's ruling is that `via` is always on
-// the seam; a sighting that is not posted yet is not a reason to break it.
+// live is the machine the request in flight has named ([PhaseNews.Lane]), and it is asked
+// for here because the sighting is only posted when a whole step has FINISHED. So the
+// first answer in a conversation, and a follow-up sent after the last sighting had aged
+// out ([servedWindow]), drew no `via` at all for as long as the answer was being written —
+// while the phase clock already knew exactly who was writing it. `via` is always
+// on the seam; a sighting that is not posted yet is not a reason to break it.
 func (a *app) talkLaneRider() string {
 	live := ""
 	if news, ok := a.livePhase(); ok {
@@ -1390,11 +1378,10 @@ func (a *app) roomLaneRider() string {
 // the default service — right by accident, and wrong the day the default is
 // a direct one.
 //
-// named is the id the row beside it spells IN FULL, read for one thing only —
-// the rule that a machine the id already carries is not said twice. Only the
-// sheet passes one ([app.laneRider]); the seam and a room spell a basename, so
-// the vendor is not on the screen and they pass nothing (the owner's ruling of
-// 2026-09-09: the machine always on the seam).
+// named is the id the row beside it spells IN FULL, read for one thing only — the rule
+// that a machine the id already carries is not said twice. Only the sheet passes one
+// ([app.laneRider]); the seam and a room spell a basename, so the vendor is not on the
+// screen and they pass nothing.
 //
 // live is the machine the request in flight has named, or "" — see
 // [app.talkLaneRider] for why it outranks the last answer's sighting.

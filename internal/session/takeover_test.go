@@ -1,6 +1,7 @@
 package session
 
 import (
+	"github.com/Agent-Field/codeaf/internal/knowledge"
 	"os"
 	"path/filepath"
 	"testing"
@@ -129,6 +130,11 @@ func TestARequestOlderThanTheRunningTurnWaitsForIt(t *testing.T) {
 // one left by a window that died asking.
 func TestAWithdrawnOrStaleTakeoverIsIgnored(t *testing.T) {
 	agent, dir := questionSession(t, "takeover", nil)
+	// THE BEAT IS STOPPED FIRST. Its folder watch answers a live request as soon
+	// as AskTakeover publishes it, which is right for a window that is waiting,
+	// and under load it could win the race against the withdrawal below. The
+	// drain under test is the same one the beat runs, called here by hand.
+	agent.stopPresence()
 	if err := AskTakeover(dir); err != nil {
 		t.Fatal(err)
 	}
@@ -161,5 +167,17 @@ func drainRoster(lane <-chan Event) {
 		case <-time.After(100 * time.Millisecond):
 			return
 		}
+	}
+}
+
+// Contract A1 lets a displaced reader answer retirement without its old heartbeat.
+func TestTakeoverReadAnswersWithoutThePresenceHeartbeat(t *testing.T) {
+	agent, dir := questionSession(t, "displaced", func(config *Config) { config.knowledgeReadVault = knowledge.Open(t.TempDir()) })
+	agent.stopPresence()
+	if err := AskTakeover(dir); err != nil {
+		t.Fatal(err)
+	}
+	if !agent.TakeoverAsked() {
+		t.Fatal("a holder without its presence heartbeat ignored retirement")
 	}
 }

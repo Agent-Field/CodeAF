@@ -376,6 +376,9 @@ func wallHint(v wallView, ascii bool) string {
 		// tab steps through the teams rather than naming one, so no key is
 		// offered for a single segment.
 		if h.id == "" {
+			if v.openTabs {
+				return "Show the tabs in this view"
+			}
 			return "Show all saved conversations"
 		}
 		// The team's segment counts what is open here, and the hint says what
@@ -496,18 +499,19 @@ func wallNewTeamHint(marked int) string {
 	return "Select conversations for a new team"
 }
 
-// wallEmptyRow is the whisper an empty wall draws, with the way back beside it
-// as a button, centred.
+// wallEmptyRow is the whisper an empty grid draws, with the way back beside it
+// as a button, centred, in the scope it was opened.
 func wallEmptyRow(pal palette, v wallView, width, y int) (string, []wallHit) {
+	word := wallEmptyText(v)
 	btn := wallButton{act: wallActBack, label: wallKeysFor(pal.ascii).back + " Back", key: "esc"}
-	ww, bw := ansi.StringWidth(wallEmptyWord), wallButtonW(btn)
+	ww, bw := ansi.StringWidth(word), wallButtonW(btn)
 	if ww+3+bw > width {
-		word := ansi.Truncate(wallEmptyWord, width, "")
-		return strings.Repeat(" ", (width-ansi.StringWidth(word))/2) + pal.dim(word), nil
+		cut := ansi.Truncate(word, width, "")
+		return strings.Repeat(" ", (width-ansi.StringWidth(cut))/2) + pal.dim(cut), nil
 	}
 	left := (width - ww - 3 - bw) / 2
 	s, _, hits := wallLay(pal, []wallButton{btn}, v.hover, left+ww+3, y, 1)
-	return strings.Repeat(" ", left) + pal.dim(wallEmptyWord) + "   " + s, hits
+	return strings.Repeat(" ", left) + pal.dim(word) + "   " + s, hits
 }
 
 // wallNoneRow is what a narrowed grid with nothing in it says, centred on

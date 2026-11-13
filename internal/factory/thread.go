@@ -25,18 +25,21 @@ type Message struct {
 
 // Question keeps an open ask or its answered history in the same wire shape.
 type Question struct {
-	Text     string     `json:"text"`
-	About    string     `json:"about,omitempty"`
-	FromStep string     `json:"from_step,omitempty"`
-	RoutedTo string     `json:"routed_to,omitempty"`
-	State    string     `json:"state"`
-	Answer   *Answer    `json:"answer,omitempty"`
-	Kind     string     `json:"kind,omitempty"`
-	With     string     `json:"with,omitempty"`
-	Options  []string   `json:"options,omitempty"`
-	Pick     string     `json:"pick,omitempty"`
-	Why      string     `json:"why,omitempty"`
-	At       *time.Time `json:"at,omitempty"`
+	Text     string  `json:"text"`
+	About    string  `json:"about,omitempty"`
+	FromStep string  `json:"from_step,omitempty"`
+	RoutedTo string  `json:"routed_to,omitempty"`
+	State    string  `json:"state"`
+	Answer   *Answer `json:"answer,omitempty"`
+	Kind     string  `json:"kind,omitempty"`
+	With     string  `json:"with,omitempty"`
+	// Person is a step's question it marked as one only a person can answer
+	// ([Asked.Person]); the manager is never given it.
+	Person  bool       `json:"person,omitempty"`
+	Options []string   `json:"options,omitempty"`
+	Pick    string     `json:"pick,omitempty"`
+	Why     string     `json:"why,omitempty"`
+	At      *time.Time `json:"at,omitempty"`
 	// Limit, Spent and NextLimit are a cap question's numbers, derived when
 	// the job is read. NextLimit is the cap a yes would allow.
 	Limit     float64 `json:"limit,omitempty"`

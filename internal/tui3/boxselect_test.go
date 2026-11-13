@@ -1,9 +1,6 @@
 package tui3
 
-// SELECTING TEXT IN A BOX, AND TAKING BACK WHAT WAS TYPED. The two halves of
-// what the owner asked for: "i am unable to select text with highlight from
-// input bar in all places … it acts like normal text", and "maybe even ctrl+z
-// as well like undo or redo like shift z".
+// SELECTING TEXT IN A BOX, AND TAKING BACK WHAT WAS TYPED.
 
 import (
 	"strings"

@@ -55,7 +55,7 @@ type errandCall struct {
 	// left is what [context.Context.Deadline] said was still to come. A ladder
 	// that hands its first rung an even share of the errand's patience gives it
 	// half; a ladder that bounds the ERRAND gives it nearly all of it, and no
-	// clock on the test machine can turn one of those readings into the other.
+	// clock in a test run can turn one of those readings into the other.
 	left time.Duration
 }
 

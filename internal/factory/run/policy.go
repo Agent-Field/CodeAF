@@ -2,7 +2,6 @@ package run
 
 import (
 	"strings"
-	"unicode"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 )
@@ -22,8 +21,8 @@ const (
 // shapeOf reads one policy line into a shape, ignoring case, punctuation and
 // the spacing between words.
 func shapeOf(line string) policyShape {
-	switch normPolicy(line) {
-	case "tests pass before anything posts":
+	switch factory.PolicyWords(line) {
+	case factory.EveryCheckPolicy:
 		return shapeTestsFirst
 	case "a strangers pr never runs write":
 		return shapeStrangerWrite
@@ -35,21 +34,6 @@ func shapeOf(line string) policyShape {
 		return shapeNeverClose
 	}
 	return shapeUnknown
-}
-
-func normPolicy(s string) string {
-	var b strings.Builder
-	for _, r := range strings.ToLower(s) {
-		switch {
-		case r == '\'' || r == '’':
-			// an apostrophe vanishes: stranger's is strangers.
-		case unicode.IsLetter(r) || unicode.IsDigit(r):
-			b.WriteRune(r)
-		default:
-			b.WriteByte(' ')
-		}
-	}
-	return strings.Join(strings.Fields(b.String()), " ")
 }
 
 // UnknownPolicy returns the lines no code applies. They are for a model's
@@ -77,11 +61,11 @@ func PolicyAllows(policy []string, it factory.Item, action factory.Action, prior
 	for _, line := range policy {
 		switch shapeOf(line) {
 		case shapeTestsFirst:
-			if !checksGreen(it, prior) {
+			if !checksGreen(it, prior) && !(factory.PublishedAnyway(it) && !testClaimFailed(prior)) {
 				return false, line
 			}
 		case shapeNoStranger:
-			if action.Verb == "comment" && it.Tier == factory.TierStranger {
+			if action.Verb == "comment" && it.RefusesWrite() {
 				return false, line
 			}
 		case shapePRNeedsGreen:
@@ -92,17 +76,6 @@ func PolicyAllows(policy []string, it factory.Item, action factory.Action, prior
 			if action.Verb == "close" {
 				return false, line
 			}
-		}
-	}
-	return true, ""
-}
-
-// PolicyAllowsStage is the loop's half: it refuses a stage before it runs.
-// Only `a stranger's PR never runs write` speaks here.
-func PolicyAllowsStage(policy []string, it factory.Item, stage factory.Stage) (bool, string) {
-	for _, line := range policy {
-		if shapeOf(line) == shapeStrangerWrite && stage.Name == "write" && it.Tier == factory.TierStranger {
-			return false, line
 		}
 	}
 	return true, ""
@@ -134,11 +107,16 @@ func testClaimFailed(prior []factory.StageResult) bool {
 
 // checksGreen: every check result exited 0 and no test claim failed.
 func checksGreen(it factory.Item, prior []factory.StageResult) bool {
+	for i, st := range it.Stages {
+		if st.Kind == factory.StageCheck && skippedCheck(it, i) {
+			return false
+		}
+	}
 	if testClaimFailed(prior) {
 		return false
 	}
 	for _, i := range checkIndexes(it, prior) {
-		if prior[i].Exit != 0 {
+		if !prior[i].Done || prior[i].Exit != 0 || skippedCheck(it, i) {
 			return false
 		}
 	}
@@ -147,6 +125,14 @@ func checksGreen(it factory.Item, prior []factory.StageResult) bool {
 
 // someCheckGreen: a check ran and passed, and nothing failed.
 func someCheckGreen(it factory.Item, prior []factory.StageResult) bool {
+	// Prior omits skipped steps. Keep the stage indexes aligned with those results.
+	stages := make([]factory.Stage, 0, len(it.Stages))
+	for i, st := range it.Stages {
+		if !skippedCheck(it, i) {
+			stages = append(stages, st)
+		}
+	}
+	it.Stages = stages
 	if !checksGreen(it, prior) {
 		return false
 	}
@@ -161,4 +147,56 @@ func someCheckGreen(it factory.Item, prior []factory.StageResult) bool {
 		}
 	}
 	return false
+}
+
+// A skipped phase has no measured exit, even if an old result remains on disk.
+func skippedCheck(it factory.Item, index int) bool {
+	if it.Stream != nil {
+		for _, ph := range it.Stream.Phases {
+			if ph.Name == it.Stages[index].Name {
+				return ph.State == factory.PhaseSkipped
+			}
+		}
+	}
+	return false
+}
+
+// skippedPolicyWait names the choices available for missing check evidence.
+func skippedPolicyWait(it factory.Item) string {
+	if it.Stream == nil {
+		return ""
+	}
+	var reasons []string
+	back := ""
+	for i, ph := range it.Stream.Phases {
+		if ph.Kind != factory.StageCheck || ph.State != factory.PhaseSkipped {
+			continue
+		}
+		reasons = append(reasons, "check "+ph.Name+" was skipped ("+strings.TrimPrefix(ph.SkipReason, "skipping "+ph.Name+": ")+")")
+		if len(reasons) == 1 {
+			if prev := factory.PreviousWork(it.Stream.Phases, i); prev >= 0 {
+				back = it.Stream.Phases[prev].Name
+			}
+		}
+	}
+	if len(reasons) == 0 {
+		return ""
+	}
+	action := "Stop the job and revise the pipeline before starting a new job."
+	if back != "" {
+		action = "Rerun from " + back + " after revising the change files to match, or stop the job."
+	}
+	if factory.SkippedChecksIdentity(it) != "" {
+		action = "Publish anyway, " + strings.ToLower(action[:1]) + action[1:]
+	}
+	return " Publishing waits: " + strings.Join(reasons, "; ") + ". " + action
+}
+
+func skippedPolicyQuestion(it factory.Item, res factory.StageResult) string {
+	for _, claim := range res.Claims {
+		if claim.Medium == "policy" && !claim.OK && shapeOf(claim.Evidence) == shapeTestsFirst {
+			return strings.TrimSpace(skippedPolicyWait(it))
+		}
+	}
+	return ""
 }

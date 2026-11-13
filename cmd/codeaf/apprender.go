@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"path/filepath"
 	"reflect"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
@@ -62,15 +61,16 @@ func (b *appBackend) renderDir(a *appAgent) string {
 	if transcript == "" {
 		return ""
 	}
-	return filepath.Dir(transcript)
+	return session.DirOf(transcript)
 }
 
 // ListRenders pages the conversation's whole render history, newest first.
 func (b *appBackend) ListRenders(agent, cursor string, limit int) (appwire.RenderPage, error) {
-	a, err := b.findCrewOwner(agent)
+	a, endRead, err := b.findCrewOwner(agent)
 	if err != nil {
 		return appwire.RenderPage{}, err
 	}
+	defer endRead()
 	var page session.RenderPage
 	engine, unsupported := b.renderEngine(a)
 	switch {
@@ -93,10 +93,11 @@ func (b *appBackend) ListRenders(agent, cursor string, limit int) (appwire.Rende
 
 // GetRender answers one render by its stable id from the whole history.
 func (b *appBackend) GetRender(agent, id string) (appwire.Render, error) {
-	a, err := b.findCrewOwner(agent)
+	a, endRead, err := b.findCrewOwner(agent)
 	if err != nil {
 		return appwire.Render{}, err
 	}
+	defer endRead()
 	var record session.RenderRecord
 	engine, unsupported := b.renderEngine(a)
 	switch {
@@ -116,10 +117,11 @@ func (b *appBackend) GetRender(agent, id string) (appwire.Render, error) {
 // CancelRender stops a running render. It needs the conversation held: a render
 // can only be running in a process that holds it.
 func (b *appBackend) CancelRender(agent, id string) (appwire.RenderCancel, error) {
-	a, err := b.findCrewOwner(agent)
+	a, endRead, err := b.findCrewOwner(agent)
 	if err != nil {
 		return appwire.RenderCancel{}, err
 	}
+	defer endRead()
 	engine, unsupported := b.renderEngine(a)
 	switch {
 	case unsupported:

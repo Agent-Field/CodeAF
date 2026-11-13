@@ -55,7 +55,7 @@ func Clean(typed string) (string, error) {
 }
 
 // Default is the host name with any domain cut off, so a list of two laptops
-// reads `spark` and not `spark.local.example.com`. A machine that cannot say its
+// reads `laptop` and not `laptop.local.example.com`. A machine that cannot say its
 // host name is "a device".
 func Default() string {
 	host, err := os.Hostname()
@@ -122,3 +122,8 @@ func Set(dir, typed string) (string, error) {
 }
 
 func path(dir string) string { return filepath.Join(dir, fileName) }
+
+// DistinctName is the devices page's label when computers share a shown name.
+func DistinctName(name, id string) string {
+	return name + " #" + id[max(len(id)-TailLength, 0):]
+}

@@ -118,7 +118,7 @@ type brainOptions struct {
 	// the gate judging one was told the run had left nothing behind and refused
 	// a delivery whose files were on disk and in this registry the whole time
 	// (2026-08-29, bench/deepswe textual s5 and igel s5;
-	// docs/design/gate/SETTLEMENT.md §5).
+	// the implementation §5).
 	produced artifactRecord
 	// consent answers the price question for a desk with nobody at it. Nil is
 	// the ordinary desk: it asks, and the job waits.
@@ -174,7 +174,8 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: settings.ProfileDir,
 	})
 	seatCrewRows(modelCatalog.ModelsNow)
-	wirePoolIndex(settings.ProfileDir)
+	held := wirePoolIndex(settings.ProfileDir)
+	brain.closing(func() { stopPoolErrands(held) })
 	if opts.seats != nil {
 		applySeats(&settings, *opts.seats)
 	} else {
@@ -954,6 +955,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// Every call this leaf makes, banked under its node as the provider
 		// answers. See leafBanker.
 		banker := newLeafBanker(graph, node.ID)
+		banker.receipts = &brain.background
 		var spent exec.Usage
 		// The same spend with its per-turn shape kept, accumulated across every
 		// attempt this node makes. See leafShape.
@@ -1810,7 +1812,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 						// summary, a missing explanation — which is the case
 						// Compose was built for and which writing really does
 						// fix. See revision.GroundedInTheWorld, and
-						// docs/design/gate/SETTLEMENT.md §8.
+						// the implementation §8.
 						evidence.PolishClosed = revision.RepairClosed(closed, unmet, reread, evidence.Unmoved)
 						outcome.Verdict = provider.ReadingSemanticFailure
 						revised = true
@@ -2672,10 +2674,14 @@ func atLeastZero(count int) int {
 // and a leaf whose calls were banked here is a leaf whose total is already on
 // disk (see resident.ExecResult.SpendBanked).
 type leafBanker struct {
-	graph  *store.Store
-	nodeID string
-	mutex  sync.Mutex
-	rows   int
+	usageLedger string
+	// Cancelled arms can still owe receipts after the worker lands. Join them
+	// within the brain's existing background stop bound before closing its store.
+	receipts *sync.WaitGroup
+	graph    *store.Store
+	nodeID   string
+	mutex    sync.Mutex
+	rows     int
 	// total is what this banker has actually written, so the landing can journal
 	// the REMAINDER rather than the whole — see leafSpend.
 	total exec.Usage
@@ -2686,7 +2692,7 @@ type leafBanker struct {
 }
 
 func newLeafBanker(graph *store.Store, nodeID string) *leafBanker {
-	return &leafBanker{graph: graph, nodeID: nodeID}
+	return &leafBanker{graph: graph, nodeID: nodeID, usageLedger: session.UsageLedgerPath()}
 }
 
 // bank writes one call's row. It is called from the provider's decode, which is
@@ -2728,7 +2734,7 @@ func (b *leafBanker) reconciled(receipt provider.Reconciled) {
 		return
 	}
 	if !receipt.Found {
-		session.RecordUnbilledCall(session.UsageLedgerPath(), session.UsageLine{Task: b.nodeID, Model: receipt.Model})
+		session.RecordUnbilledCall(b.usageLedger, session.UsageLine{Task: b.nodeID, Model: receipt.Model})
 		return
 	}
 	b.bank(receipt.Billed)
@@ -2755,6 +2761,12 @@ func armBilling(ctx context.Context, banker *leafBanker) context.Context {
 		return ctx
 	}
 	ctx = provider.WithCallNode(ctx, banker.nodeID)
+	if banker.receipts != nil {
+		ctx = provider.WithReceiptSettlement(ctx, func() func() {
+			banker.receipts.Add(1)
+			return banker.receipts.Done
+		})
+	}
 	ctx = provider.WithBilling(ctx, banker.bank)
 	return provider.WithReconcile(ctx, banker.reconciled)
 }
@@ -2785,7 +2797,7 @@ func leafShape(shape []exec.TurnUsage, outcome *exec.Outcome) []exec.TurnUsage {
 //
 // ONE RECORD. The settlement narrates this list under the deliverable and the
 // delivery gate is held to it, and for a while those were two different lists —
-// see brainOptions.produced and docs/design/gate/SETTLEMENT.md §5. An interface
+// see brainOptions.produced and the implementation §5. An interface
 // rather than the concrete registry so that chat.go, which every driver shares,
 // does not learn the errand's own type.
 type artifactRecord interface {
@@ -3218,7 +3230,7 @@ func gateEvidence(node store.Node, spec plan.Spec, outcome *exec.Outcome, artifa
 		// gate needs the rosters, not the failures: which checks exist is what
 		// answers whether anything exercises what the request asked for, and
 		// which checks stopped existing is what catches a worker deleting the
-		// test that was failing it. See docs/design/gate/ACCEPTANCE.md.
+		// test that was failing it. See the implementation.
 		evidence.Verification = outcome.Verification
 		// And the account of the work itself, when the worker kept one: the
 		// files it changed and the checks it ran. The gate that used to be
@@ -3336,9 +3348,7 @@ func withDocumentAttachmentBrief(brief string, paths []string) string {
 }
 
 // liveClient and messageClientPool are internal/provider/pool's Client and
-// Pool. The provider seam moved out of this file in the Wave 1 dissolution;
-// these names stay because they are what this package's own prose has always
-// called them, and an alias is the whole of the difference.
+// Pool. These aliases keep the local names consistent with the provider pool.
 type (
 	liveClient        = pool.Client
 	messageClientPool = pool.Pool
@@ -5126,7 +5136,7 @@ type owedPlanSpend struct {
 // two-to-eight character alphanumeric extension opening with a letter. The
 // extension's shape is what keeps prose out — "e.g.", "i.e.", "vs.", "1.5x" and
 // version numbers all fail it — and the stem's character class is what lets a
-// path through, because "docs/JOURNEY.md" names a file exactly as "report.md"
+// path through, because "the implementation" names a file exactly as "report.md"
 // does.
 var namedFileInAsk = regexp.MustCompile(`[\w.\-/]*\w\.[A-Za-z][A-Za-z0-9]{1,7}\b`)
 

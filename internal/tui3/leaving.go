@@ -30,9 +30,8 @@ import (
 //     [workOutlivesExit]), which is most of what the warning sentence existed
 //     to say.
 //
-// What is genuinely spent is the WARNING: a person who leaves with tasks running
-// in this process is no longer told so first. That is the trade, and it is the
-// one the owner asked for — the key means leave.
+// What is genuinely spent is the WARNING: a person who leaves with tasks running in this
+// process is no longer told so first.
 
 // ── WHAT LEAVES WITH YOU ────────────────────────────────────────────────────
 

@@ -26,14 +26,11 @@ func placeMoneyInk(pal palette) func(string) string { return pal.money }
 // (homepanel_needs.go), spelled once here because the group line, the fold and
 // the manual all quote it.
 //
-// THE WORD IS THE WHOLE EXPLANATION. The difference between a row that has
-// stopped a conversation and a landing nobody has looked at used to be spelled
-// under every landing — `landed unchecked · enter to look`, the same sub-line on
-// nine rows (owner, 2026-09-11) — then once, as a clause at the group line's
-// right margin (`finished, nobody has checked it`). The owner cut the clause on
-// 2026-09-15: `unread` says it in one word, the way a mailbox does, and the
-// group line carries neither a clause nor a count. The rows under it are one
-// line each.
+// THE WORD IS THE WHOLE EXPLANATION. The difference between a row that has stopped a
+// conversation and a landing nobody has looked at used to be spelled under every landing —
+// `landed unchecked · enter to look`, the same sub-line on nine rows — then once, as a
+// clause at the group line's right margin (`finished, nobody has checked it`). The rows
+// under it are one line each.
 const needsCheckWord = "unread"
 
 // ── THE FIVE-LEVEL SCALE (SCREEN 2a) ────────────────────────────────────────

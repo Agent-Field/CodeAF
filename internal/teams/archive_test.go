@@ -2,7 +2,6 @@ package teams
 
 import (
 	"errors"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -98,7 +97,7 @@ func TestArchivePersistsAndReopenClearsIt(t *testing.T) {
 		must(t, f.Archive(archP, time.Unix(300, 0)))
 		return f.Archive(archA, time.Unix(300, 0))
 	}))
-	raw, err := os.ReadFile(Path(dir))
+	raw, err := storedRaw(dir)
 	must(t, err)
 	if strings.Count(string(raw), `"archived_at"`) != 2 {
 		t.Fatalf("archived_at is not on disk for both: %s", raw)
@@ -121,7 +120,7 @@ func TestArchivePersistsAndReopenClearsIt(t *testing.T) {
 			t.Fatalf("%s after reopen: %+v", id, team)
 		}
 	}
-	if raw, _ := os.ReadFile(Path(dir)); strings.Contains(string(raw), "archived_at") {
+	if raw, _ := storedRaw(dir); strings.Contains(string(raw), "archived_at") {
 		t.Fatalf("a reopened team still carries the mark: %s", raw)
 	}
 }
@@ -132,15 +131,15 @@ func TestArchiveKeepsUnknownFields(t *testing.T) {
 	dir := t.TempDir()
 	family(t, dir)
 	must(t, Update(dir, func(f *File) error { return f.Disband(archB, time.Unix(1, 0), "") }))
-	raw, err := os.ReadFile(Path(dir))
+	raw, err := storedRaw(dir)
 	must(t, err)
 	patched := strings.Replace(string(raw), `"id": "`+archB+`"`, `"id": "`+archB+`","future":{"x":1}`, 1)
 	if patched == string(raw) {
 		patched = strings.Replace(string(raw), `"id":"`+archB+`"`, `"id":"`+archB+`","future":{"x":1}`, 1)
 	}
-	must(t, os.WriteFile(Path(dir), []byte(patched), 0o600))
+	must(t, storeRaw(dir, []byte(patched)))
 	must(t, Update(dir, func(f *File) error { return f.Archive(archB, time.Unix(2, 0)) }))
-	after, _ := os.ReadFile(Path(dir))
+	after, _ := storedRaw(dir)
 	if !strings.Contains(string(after), `"future"`) || !strings.Contains(string(after), `"archived_at"`) {
 		t.Fatalf("a field was lost: %s", after)
 	}

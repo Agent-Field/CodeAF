@@ -12,11 +12,20 @@
 // two lines and none of them knows this package exists. Nothing here is an app
 // API, a port, or a protocol field.
 //
-// The knobs are three environment variables, all read once, at start:
+// The knobs are four environment variables, all read once, at start:
 //
 //	CODEAF_DIAGNOSTIC_PROFILE_DIR      absolute path of a private directory
 //	CODEAF_DIAGNOSTIC_PROFILE_SECONDS  optional, whole seconds 1..60, default 30
+//	CODEAF_DIAGNOSTIC_PROFILE_DELAY    optional, whole seconds 1..3600 before the window opens
 //	CODEAF_DIAGNOSTIC_PROFILE_HEAP     optional, exactly "1" to also write a heap profile
+//
+// THE DELAY IS FOR A STEADY STATE. A window that opens at start measures the
+// start: an engine that idles at a fifth of a core after twenty minutes spends
+// its first minute opening conversations, and a profile of that minute names
+// the wrong cost (the seventh live A+B run could not profile its idle engine
+// for exactly this reason). With a delay, nothing is created and no profiler
+// runs until it has passed; the directory is still checked at start, so a
+// wrong one is refused while the developer is watching.
 //
 // A variable that is set and wrong is REFUSED ([Start] returns an *Error whose
 // text is a fixed sentence): a developer who asked for a profile and silently
@@ -52,6 +61,7 @@ const (
 	EnvDir     = "CODEAF_DIAGNOSTIC_PROFILE_DIR"
 	EnvSeconds = "CODEAF_DIAGNOSTIC_PROFILE_SECONDS"
 	EnvHeap    = "CODEAF_DIAGNOSTIC_PROFILE_HEAP"
+	EnvDelay   = "CODEAF_DIAGNOSTIC_PROFILE_DELAY"
 
 	// DefaultSeconds is the interval when EnvSeconds is unset; MinSeconds and
 	// MaxSeconds bound it. A profile is a measurement of a window, and an
@@ -59,6 +69,9 @@ const (
 	DefaultSeconds = 30
 	MinSeconds     = 1
 	MaxSeconds     = 60
+	// MaxDelaySeconds bounds the wait before the window: long enough for any
+	// steady state a developer is after, short enough to be a choice.
+	MaxDelaySeconds = 3600
 
 	// FilePrefix and FileSuffix make the files findable: codeaf-cpu-*.pprof and
 	// codeaf-heap-*.pprof.
@@ -86,7 +99,9 @@ type Lookup func(name string) (value string, set bool)
 type Config struct {
 	Dir      string
 	Duration time.Duration
-	Heap     bool
+	// Delay is how long after start the window opens; zero is at once.
+	Delay time.Duration
+	Heap  bool
 }
 
 // Enabled reports whether any profiling was asked for.
@@ -104,11 +119,18 @@ func ParseConfig(lookup Lookup) (Config, error) {
 	}
 	cfg := Config{Dir: dir, Duration: DefaultSeconds * time.Second}
 	if raw, _ := lookup(EnvSeconds); raw != "" {
-		n, ok := parseSeconds(raw)
+		n, ok := parseSeconds(raw, MaxSeconds)
 		if !ok {
 			return Config{}, refuse(fmt.Sprintf("the duration must be a whole number of seconds from %d to %d", MinSeconds, MaxSeconds))
 		}
 		cfg.Duration = time.Duration(n) * time.Second
+	}
+	if raw, _ := lookup(EnvDelay); raw != "" {
+		n, ok := parseSeconds(raw, MaxDelaySeconds)
+		if !ok {
+			return Config{}, refuse(fmt.Sprintf("the delay must be a whole number of seconds from %d to %d", MinSeconds, MaxDelaySeconds))
+		}
+		cfg.Delay = time.Duration(n) * time.Second
 	}
 	switch raw, _ := lookup(EnvHeap); raw {
 	case "", "0":
@@ -121,8 +143,8 @@ func ParseConfig(lookup Lookup) (Config, error) {
 }
 
 // parseSeconds accepts plain ASCII digits only: no sign, no space, no unit.
-func parseSeconds(raw string) (int, bool) {
-	if len(raw) > 2 {
+func parseSeconds(raw string, most int) (int, bool) {
+	if len(raw) > len(strconv.Itoa(most)) {
 		return 0, false
 	}
 	for _, r := range raw {
@@ -131,7 +153,7 @@ func parseSeconds(raw string) (int, bool) {
 		}
 	}
 	n, err := strconv.Atoi(raw)
-	if err != nil || n < MinSeconds || n > MaxSeconds {
+	if err != nil || n < MinSeconds || n > most {
 		return 0, false
 	}
 	return n, true
@@ -179,6 +201,42 @@ func start(ctx context.Context, cfg Config, warn func(string)) (*Session, error)
 	if err := preparePrivateDir(cfg.Dir); err != nil {
 		return nil, err
 	}
+	if cfg.Delay > 0 {
+		ctx, cancel := context.WithCancel(ctx)
+		s := &Session{cfg: cfg, warn: warn, cancel: cancel, done: make(chan struct{})}
+		go s.later(ctx)
+		return s, nil
+	}
+	return begin(ctx, cfg, warn)
+}
+
+// later is the single goroutine of a delayed session: it waits out the delay,
+// then opens the window as an immediate session would and waits for it. A
+// session stopped during the delay leaves nothing behind. A failure to open
+// the window, which an immediate session would have refused, is a fixed
+// sentence to warn.
+func (s *Session) later(ctx context.Context) {
+	defer close(s.done)
+	timer := time.NewTimer(s.cfg.Delay)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+	case <-ctx.Done():
+		return
+	}
+	cfg := s.cfg
+	cfg.Delay = 0
+	inner, err := begin(ctx, cfg, s.warn)
+	if err != nil {
+		s.warn("diagnostic profile: the delayed window could not be opened")
+		return
+	}
+	<-inner.done
+}
+
+// begin opens the window now: the CPU file, the profiler, and the goroutine
+// that ends it.
+func begin(ctx context.Context, cfg Config, warn func(string)) (*Session, error) {
 	nonce, err := newNonce()
 	if err != nil {
 		return nil, refuse("a unique file name could not be drawn")

@@ -12,7 +12,7 @@ package session
 // conversation — was built on a sentence the executor wrote about itself.
 //
 // That is the failure mode LongHorizon-Harness names in one line
-// (harness-research-notes.md §1, arXiv:2608.01964): task state is updated ONLY
+//: task state is updated ONLY
 // from independent audit evidence, and executor self-reports never flip a
 // record to completed. An agent that has spent forty steps on a change is the
 // worst available judge of whether the change works — not because it lies, but
@@ -455,7 +455,7 @@ const (
 // defect the three tiers were drawn to end.
 //
 // `finished, but needs your look — ` WAS THIS LEAD AND IT IS DELETED as
-// person-facing text (docs/design/task-states/DESIGN.md). It named a state no
+// person-facing text. It named a state no
 // surface calls that any more, and it said the same sentence for a branch that
 // would not merge as for work nobody could check.
 //
@@ -1782,7 +1782,7 @@ func checkerConclusion(node *TaskNode, fallback string) string {
 // instruction — its goal, its constraints, the conventions it was told to
 // follow — and an auditor reading it starts grading effort and intention. The
 // acceptance is the contract (Argus's two-tier goal contract,
-// harness-research-notes.md §1: the objective moves only with authority), and
+// the implementation §1: the objective moves only with authority), and
 // it is the SAME frozen text the node was finished against. The node's own last
 // words are included as a CLAIM, labelled as one: it is the thing under audit,
 // not evidence about it.
@@ -3106,10 +3106,9 @@ func refutedLine(why string, by TaskAskOwner) string {
 // is what the checker would have been built on anyway — this is a question about
 // where to go next, and a build with nothing to resolve simply has nowhere.
 func (a *Agent) auditorModel() string {
-	a.mu.Lock()
-	source, model := a.config.RolesSource, a.model
-	a.mu.Unlock()
-	judge, err := roles.Resolve(roles.Source(source), roles.RoleAuditor, model)
+	reader := a.roleModels()
+	model := reader.model
+	judge, err := reader.Resolve(roles.RoleAuditor, model)
 	if err != nil {
 		return model
 	}
@@ -3159,7 +3158,7 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor, on str
 	a.mu.Unlock()
 	nodeRung := node.effortRung()
 
-	judge, err := roles.Resolve(roles.Source(parent.RolesSource), roles.RoleAuditor, model)
+	judge, err := readerFor(parent, model).Resolve(roles.RoleAuditor, model)
 	if err != nil {
 		return nil, err
 	}
@@ -3212,6 +3211,7 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor, on str
 		// belt is what actually constrains this agent: there is no hand here
 		// that writes. AskConsent is off and InTask is on for the node's own
 		// reason — there is nobody in a worktree to ask.
+		// An unreadable profile still requires a person, just as it does for a worker.
 		ApprovalPolicy: &approval.Policy{Default: approval.ActionAllow},
 		AskConsent:     false,
 		InTask:         true,

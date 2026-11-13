@@ -28,19 +28,15 @@ import (
 //
 // ── IT IS DRAWN ALWAYS, AND THE HUE CARRIES THE WARNING ────────────────────
 //
-// The status row used to carry `YOLO` and NOTHING ELSE — drawn only when the
-// gate was open, on the reasoning that a permanent "safe" badge is a badge
-// nobody reads (render.go's old NEGATIVE-SPACE SAFETY). That law was right
-// about a badge and wrong about a control: A CONTROL THAT IS INVISIBLE UNTIL
-// YOU HAVE ALREADY USED IT IS NOT A CONTROL, which is the ruling that put
-// `⠿ auto` on every fresh conversation (owner ruling 2026-09-11, effortchip.go).
-// So the cell is drawn at every posture, and what the old law protected is
-// kept by the PAINT rather than by the presence: `asks` and `guardian` are dim
-// furniture like the rest of the seam, and `YOLO` and `refuses` wear the bad
-// hue for as long as they are true — loud for what they mean, exactly as the
-// badge was. The word `YOLO` is kept because it is the one the flag, the
-// manual and the owner all use; a chip that said `allow` would be a third
-// spelling of one fact.
+// The status row used to carry `YOLO` and NOTHING ELSE — drawn only when the gate was
+// open, on the reasoning that a permanent "safe" badge is a badge nobody reads
+// (render.go's old NEGATIVE-SPACE SAFETY). That law was right about a badge and wrong
+// about a control: A CONTROL THAT IS INVISIBLE UNTIL YOU HAVE ALREADY USED IT IS NOT A
+// CONTROL, which is the ruling that put `⠿ auto` on every fresh conversation. So the cell
+// is drawn at every posture, and what the old law protected is kept by the PAINT rather
+// than by the presence: `asks` and `guardian` are dim furniture like the rest of the seam,
+// and `YOLO` and `refuses` wear the bad hue for as long as they are true — loud for what
+// they mean, exactly as the badge was.
 //
 // THE BADGE IS OFF THE STATUS ROW WHILE THE SEAM CARRIES A GATE CELL. One fact
 // spelled in two places on one frame is the defect the colon suffix made once
@@ -51,15 +47,9 @@ import (
 // cell, and on those frames the old badge — `YOLO`, only when the gate is
 // open — is still on the status row ([app.approvalSegment]).
 //
-// AND THE GREETING DRAWS NEITHER. The welcome box stands where the
-// conversation will be, with no seam over it, and the badge used to be the one
-// thing on that frame saying the gate was open. It was a red word in the
-// bottom-left corner of an otherwise empty screen, and the owner asked for it
-// to go (2026-09-17): the seam goes up with the cell on it the moment the
-// greeting goes — the first keystroke on every later greeting, the first
-// message on the very first one ([app.spendWelcome]) — so the fact is never
-// more than one message away. The row says nothing while the greeting is up,
-// whatever the posture.
+// AND THE GREETING DRAWS NEITHER. The welcome box stands where the conversation will be,
+// with no seam over it, and the badge used to be the one thing on that frame saying the
+// gate was open. The row says nothing while the greeting is up, whatever the posture.
 //
 // ── THE WHEEL HAS THREE STOPS AND `deny` IS NOT ONE OF THEM ────────────────
 //
@@ -71,7 +61,7 @@ import (
 //
 // ── THE CHORD IS alt+a ────────────────────────────────────────────────────
 //
-// Approvals takes `alt+a` at the owner's request; the pending-question door
+// Approvals takes `alt+a`; the pending-question door
 // moves to `alt+y`. The router, hints and manual exchange the roles together
 // so a question waiting in the background cannot intercept the approval key.
 //

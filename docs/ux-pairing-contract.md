@@ -150,11 +150,12 @@ Called by an already-paired device of the identity that is approving.
 }
 ```
 
-Effect, in this order and in one turn of the identity object: verify `cert` is for the request's
-`device`; write the Device record (as `PUT /v1/dir/devices/{id}` would, `created` set by the relay to
-directory time); bump the directory version (watchers hear `{"v":N}`); emit `joined` (section 5); set
-the request `approved` with `grant`. A retry of the same approve with the same `device` is `204`
-(idempotent). Answer `204`.
+Verify `cert` is for the request's `device`. Commit the device authorization, Device record,
+sealed decision and delivery outbox together through the identity's Raft group; `created` uses
+committed directory time. The directory version advances only after application. Deliver the
+recorded approval and `grant` to the request object afterward, and emit `joined` (section 5).
+Interrupted delivery resumes from the same recorded decision. An identical approve retries
+idempotently and answers `204`; no grant becomes visible before its authorization commits.
 
 | Status | err | When |
 |---|---|---|
@@ -181,9 +182,15 @@ Any paired device may approve or deny; the first decision wins.
     "dev_B": { "online": false, "last_seen": 1789999000000 } } }
 ```
 
-One entry per non-revoked device in the directory. Cost: reads socket state only, no storage write.
-Answers with `Codeaf-Dir-Version` like `/v1/dir/list`. Used at app open and as the fallback for a client
-whose socket is down.
+One entry per non-revoked device whose advisory socket presence is known. After presence
+memory starts or restarts, an unobserved device is omitted for one default presence window
+(75 seconds), then reads offline if it has not returned. An observed socket's actual lapse
+still reports offline during that window. Both native and hosted relays apply this rule;
+stored `last_seen` alone is not evidence that a computer stopped during a relay restart.
+Authorization and directory rows pass a fresh majority read; sampling current committed
+time can also write coordination state. Answers with `Codeaf-Dir-Version` like `/v1/dir/list`.
+Compatibility clients use this on app open or when their watch is down. A joined Home follows
+its local applied learner for display hints; taking or publishing still requires fresh authority.
 
 ### 3.6 Limits: `GET /v1/link/limits` (open)
 
@@ -220,7 +227,8 @@ Rules:
 - `created` is set by the relay on first write of a device id and never changes afterward; a client
   value is ignored.
 - `last_seen` is set only by the relay: at watch connect (hello) and at watch close. It is not written
-  per ping, so an open quiet socket costs no storage write. A client value is ignored.
+  per ping, and a client value is ignored. An idle presence-only socket does not write ownership;
+  a socket naming held chats still needs separate committed renewals and hold-until receipts.
 - `platform` is client-supplied, same value set as section 1, written by self-registration or approve.
 - Rename and `caps` changes keep using `PUT /v1/dir/devices/{id}` (self only). `Revoked` is still set
   only by revoke.
@@ -242,8 +250,9 @@ frames. An event frame has a string key `t` and no key `v`:
 {"t":"revoked","device":"dev_B","at":1790000700000}
 ```
 
-- `joined`: sent to every open event socket of the identity (the new device itself excluded) in the same
-  turn as the approve. The directory version also moves, so a client that only lists still sees it.
+- `joined`: sent to every open event socket of the identity (the new device itself excluded) after
+  the approval's device record and decision commit. The directory version also moves, so a client
+  that only lists still sees it.
   The UI string is "<name> is now paired", decoded from `name` with the metadata key.
 - `presence`: sent to the other event sockets when the first socket of a device opens (`online:true`)
   and when its last socket closes (`online:false`). A device is online iff it holds at least one open

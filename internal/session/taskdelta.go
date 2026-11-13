@@ -591,6 +591,18 @@ func (a *Agent) refreshElsewhere(ctx context.Context) {
 	mine := a.sessionID()
 	a.mu.Unlock()
 
+	// A conversation scoped to its own work drops an earlier block too, so the
+	// next reading follows the stored choice without advancing the told stamp.
+	if a.ownWorkOnly() {
+		a.mu.Lock()
+		if !a.closed {
+			a.elsewhereTold = nil
+			a.elsewhereText = ""
+		}
+		a.mu.Unlock()
+		return
+	}
+
 	dir := strings.TrimSpace(a.config.Place.Dir)
 	now := time.Now()
 	since := LastTold(dir)
@@ -616,7 +628,7 @@ func (a *Agent) refreshElsewhere(ctx context.Context) {
 	// (steer_grace.go) true of this goroutine: a reading still in flight when
 	// [Agent.Close] runs either owes its stamp BEFORE `closed` is set — and the
 	// close's own settle then lands it — or finds the door shut and leaves the
-	// folder alone. Measured on the Spark, 2026-09-12: thirteen runs in five
+	// folder alone. Measured in a test run, 2026-09-12: thirteen runs in five
 	// thousand of one asklane fixture failed as `TempDir RemoveAll cleanup:
 	// directory not empty`, and the file left behind was this stamp.
 	//

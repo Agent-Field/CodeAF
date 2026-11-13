@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# THE SCREEN DRIVE FOR THE QUESTION VIEWS (lane P, tracking issue #830).
+# THE SCREEN DRIVE FOR THE QUESTION VIEWS.
 #
 # It opens THIS worktree's own binary in a tmux session of its own, on a home of
 # its own, with one of questiondemo.go's fixtures named in the environment, and

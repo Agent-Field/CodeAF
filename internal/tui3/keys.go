@@ -11,7 +11,7 @@ import (
 // A pinned lane is a person's instruction, so when it goes quiet this build asks
 // rather than overrides: the phase clock says `coreweave is slow · switch to
 // auto? (y)` and `y` fires the rescue the controller would have fired anyway,
-// to the lane the frontier already named (docs/design/waiting/DESIGN.md §E).
+// to the lane the frontier already named.
 //
 // IT IS A LETTER, AND THAT IS THE WHOLE OF WHY THIS FILE IS CAREFUL. Somebody
 // typing a sentence is writing their next message, not answering a question, and

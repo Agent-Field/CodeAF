@@ -12,7 +12,7 @@
 //
 // A dry run prints every key it would delete; a run deletes them and prints how
 // many. Run the dry run first, then the delete, then publish — see
-// docs/design/model-pool/RUNBOOK.md.
+// the implementation.
 
 import { execFileSync } from 'node:child_process';
 

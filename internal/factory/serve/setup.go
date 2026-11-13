@@ -1,13 +1,16 @@
 package serve
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,12 +24,25 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
+	"github.com/Agent-Field/codeaf/internal/gitpolicy"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	forge "github.com/Agent-Field/codeaf/internal/praf/github"
 	"github.com/Agent-Field/codeaf/internal/redact"
 )
 
 const setupWait = 40 * time.Second
+
+// setupVerbContinue ends reading before every selected repository is read.
+const setupVerbContinue = "continue"
+
+// setupReadSkipped is the read state of a selected repository whose reading
+// Continue ended: whatever it already brought stays held in Backlog, and the
+// rest of its issues were never read.
+const setupReadSkipped = "skipped"
+
+// githubKBPerMB turns the repository size GitHub quotes in kilobytes into the
+// megabytes setup shows.
+const githubKBPerMB = 1024
 
 // setupState keeps only public facts. Credentials remain behind the host's existing GitHub door.
 type setupState struct {
@@ -99,12 +115,44 @@ func (h *Handler) setupTokenRefused(ctx context.Context, token string) bool {
 
 // setupJSON follows only fixed GitHub API paths; no client-supplied host receives a credential.
 func (h *Handler) setupJSON(ctx context.Context, path, token string, out any) (*http.Response, error) {
+	resp, _, err := h.setupJSONChanged(ctx, path, token, out)
+	return resp, err
+}
+
+func (h *Handler) setupJSONChanged(ctx context.Context, path, token string, out any) (*http.Response, bool, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", "https://api.github.com"+path, nil)
+	if err != nil {
+		return nil, false, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("User-Agent", "codeaf-factory")
+	client := h.githubClient()
+	resp, changed, err := forge.ReadHTTP(&client, req, "")
+	if err != nil {
+		return nil, false, errors.New("GitHub is unavailable")
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return resp, false, githubStatusError(resp.StatusCode)
+	}
+	err = json.NewDecoder(io.LimitReader(resp.Body, 8<<20)).Decode(out)
+	return resp, changed, err
+}
+
+// setupGraphQL posts one GraphQL payload as the setup's token and answers the
+// body of a 200; anything else is an error and its body is not read.
+func (h *Handler) setupGraphQL(ctx context.Context, token string, payload any) ([]byte, error) {
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.github.com/graphql", bytes.NewReader(raw))
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "codeaf-factory")
 	client := h.githubClient()
 	resp, err := client.Do(req)
@@ -113,10 +161,9 @@ func (h *Handler) setupJSON(ctx context.Context, path, token string, out any) (*
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		return resp, githubStatusError(resp.StatusCode)
+		return nil, githubStatusError(resp.StatusCode)
 	}
-	err = json.NewDecoder(io.LimitReader(resp.Body, 8<<20)).Decode(out)
-	return resp, err
+	return io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 }
 
 // commonOwner names the owner every discovered repository shares, or "" when
@@ -164,6 +211,7 @@ func (h *Handler) reconnectSetupIfNeeded(ctx context.Context, out *setupState) {
 }
 
 func (h *Handler) discoverSetup(ctx context.Context, out *setupState) error {
+	previousIdentity := out.View.GitHub.Handle
 	clearSetupConnection(out)
 	out.View.GitHub.GH = nil
 	if h.seam.GHLogin != nil && h.mode() == api.FactorySolo {
@@ -192,7 +240,11 @@ func (h *Handler) discoverSetup(ctx context.Context, out *setupState) error {
 	// A source already learned for a repository survives rediscovery. It is
 	// carried over, never re-fetched: discovery makes no per-repository call.
 	known := map[string]*string{}
+	counts := map[string]api.SetupRepo{}
 	for _, r := range out.View.Repos {
+		if strings.EqualFold(previousIdentity, user.Login) {
+			counts[r.ID] = r
+		}
 		if r.Pipeline != nil {
 			known[r.ID] = r.Pipeline
 		}
@@ -206,16 +258,27 @@ func (h *Handler) discoverSetup(ctx context.Context, out *setupState) error {
 	if err != nil {
 		return err
 	}
+	allUnchanged := true
+	var available []factory.RepoInfo
 	for page := 1; page <= 100; page++ {
 		var rows []struct {
-			FullName string `json:"full_name"`
-			Open     int    `json:"open_issues_count"`
-			Archived bool   `json:"archived"`
+			FullName string    `json:"full_name"`
+			Private  bool      `json:"private"`
+			Pushed   time.Time `json:"pushed_at"`
+			Open     int       `json:"open_issues_count"`
+			Archived bool      `json:"archived"`
+			SizeKB   int       `json:"size"`
 		}
-		if _, err = h.setupJSON(ctx, fmt.Sprintf("/user/repos?per_page=100&sort=pushed&page=%d", page), token, &rows); err != nil {
-			return err
+		_, changed, readErr := h.setupJSONChanged(ctx, fmt.Sprintf("/user/repos?per_page=100&sort=pushed&page=%d", page), token, &rows)
+		allUnchanged = allUnchanged && !changed
+		if readErr != nil {
+			return readErr
 		}
+
 		for _, row := range rows {
+			if _, ok := counts[row.FullName]; !ok {
+				allUnchanged = false
+			}
 			if !store.RepoName(row.FullName) {
 				continue
 			}
@@ -223,7 +286,10 @@ func (h *Handler) discoverSetup(ctx context.Context, out *setupState) error {
 			if err != nil {
 				return err
 			}
-			repo := api.SetupRepo{ID: row.FullName, FullName: row.FullName, OpenIssues: row.Open, Archived: row.Archived, Selected: slices.Contains(watched, row.FullName), Read: "next", Clone: "missing", SuggestedCheckout: filepath.Join(userHome, "code", strings.ReplaceAll(row.FullName, "/", "-"))}
+			repo := api.SetupRepo{ID: row.FullName, FullName: row.FullName, OpenIssues: row.Open, Archived: row.Archived, Selected: slices.Contains(watched, row.FullName), Read: "next", Clone: "missing", CloneMB: (row.SizeKB + githubKBPerMB - 1) / githubKBPerMB, SuggestedCheckout: filepath.Join(userHome, "code", strings.ReplaceAll(row.FullName, "/", "-"))}
+			if previous, ok := counts[row.FullName]; ok && !changed {
+				repo.OpenIssues, repo.OpenIssuesExact = previous.OpenIssues, previous.OpenIssuesExact
+			}
 			if dir := dirs[strings.ToLower(row.FullName)]; dir != "" {
 				repo.Checkout = &dir
 				repo.Clone = "found"
@@ -234,6 +300,8 @@ func (h *Handler) discoverSetup(ctx context.Context, out *setupState) error {
 			// never "defaults".
 			repo.Pipeline = known[row.FullName]
 			out.View.Repos = append(out.View.Repos, repo)
+			owner, name, _ := strings.Cut(row.FullName, "/")
+			available = append(available, factory.RepoInfo{Full: row.FullName, Name: name, Owner: owner, Private: row.Private, Pushed: row.Pushed, Open: row.Open})
 		}
 		if len(rows) < 100 {
 			break
@@ -241,6 +309,29 @@ func (h *Handler) discoverSetup(ctx context.Context, out *setupState) error {
 		if page == 100 {
 			return errors.New("GitHub repository list exceeds the setup limit")
 		}
+	}
+	if !allUnchanged {
+		names := make([]string, len(out.View.Repos))
+		for i, repo := range out.View.Repos {
+			names[i] = repo.ID
+		}
+		exact := forge.OpenIssueCounts(ctx, names, func(ctx context.Context, payload any) ([]byte, error) { return h.setupGraphQL(ctx, token, payload) })
+		for i, n := range exact {
+			out.View.Repos[i].OpenIssues, out.View.Repos[i].OpenIssuesExact = available[i].Open, false
+			if n != nil {
+				out.View.Repos[i].OpenIssues, out.View.Repos[i].OpenIssuesExact = *n, true
+			}
+		}
+	}
+	for i, repo := range out.View.Repos {
+		if repo.OpenIssuesExact {
+			n := repo.OpenIssues
+			available[i].OpenIssues = &n
+		}
+	}
+	factory.AttachCheckouts(available, func(repo string) string { return dirs[strings.ToLower(repo)] })
+	if err := h.config.Store.SetAvailableRepos(store.AvailableRepos{Identity: strings.ToLower(user.Login), Credential: fmt.Sprintf("%x", sha256.Sum256([]byte(token))), ReadAt: h.clock().UTC(), Repos: available}); err != nil {
+		return err
 	}
 	out.View.GitHub.VisibleRepos = len(out.View.Repos)
 	out.View.GitHub.Organization = commonOwner(out.View.Repos)
@@ -255,24 +346,20 @@ func (h *Handler) factorySetup(w http.ResponseWriter, r *http.Request) {
 	if !h.requireOperator(w, r) || !h.requireVerb(w, h.config.Store != nil) {
 		return
 	}
+	var body api.FactorySetupRequest
+	if r.Method == "POST" && !h.decode(w, r, &body, false) {
+		return
+	}
+	id, err := setupID(r.PathValue("id"), body.ID)
+	if err != nil {
+		h.fail(w, 422, err.Error())
+		return
+	}
+	continuing := body.Verb == setupVerbContinue && h.stopSetupReader(id)
 	h.setupMu.Lock()
 	defer h.setupMu.Unlock()
-	id := r.PathValue("id")
-	var body api.FactorySetupRequest
-	if r.Method == "POST" {
-		if !h.decode(w, r, &body, false) {
-			return
-		}
-		if id == "" {
-			id = body.ID
-		} else if body.ID != "" && body.ID != id {
-			h.fail(w, 422, "setup id does not match the route")
-			return
-		}
-	}
-	if id == "" {
-		h.fail(w, 422, "setup needs a factory id")
-		return
+	if continuing {
+		h.setupContinuing = false
 	}
 	out, err := h.loadSetup(id)
 	if h.failed(w, err) {
@@ -313,6 +400,59 @@ func (h *Handler) factorySetup(w http.ResponseWriter, r *http.Request) {
 	}
 	h.startSetup(out)
 	h.write(w, 200, out.View)
+}
+
+// setupID is the setup the request names, by its route or its body, which
+// must agree when both name one.
+func setupID(route, body string) (string, error) {
+	switch {
+	case route != "" && body != "" && body != route:
+		return "", errors.New("setup id does not match the route")
+	case route != "":
+		return route, nil
+	case body != "":
+		return body, nil
+	}
+	return "", errors.New("setup needs a factory id")
+}
+
+// stopSetupReader stops a reader that is still reading issues and waits until
+// it has saved its last page and let go of the poller lock, so Continue
+// decides from what was really read. A clone is never stopped by it. It
+// answers whether it stopped one; the caller then holds setupContinuing and
+// gives it up once it holds setupMu again.
+func (h *Handler) stopSetupReader(id string) bool {
+	cancel, done := h.setupReader(id)
+	if cancel == nil {
+		return false
+	}
+	cancel()
+	<-done
+	if continueGapHook != nil {
+		continueGapHook()
+	}
+	return true
+}
+
+// continueGapHook runs in tests only, after a stopped reader has let go and
+// before its Continue takes the setup lock, so a test can place a request in
+// that gap without depending on the scheduler. It is nil in production.
+var continueGapHook func()
+
+// setupReader is the running reader's stop and finish, or nothing when no
+// reader is reading issues, another Continue is already stopping it, or
+// Continue would be refused anyway, so a refused Continue leaves reading
+// running. Taking the stop also takes setupContinuing, which keeps any other
+// request from starting a reader before this Continue saves its step.
+func (h *Handler) setupReader(id string) (context.CancelFunc, chan struct{}) {
+	h.setupMu.Lock()
+	defer h.setupMu.Unlock()
+	saved, err := h.loadSetup(id)
+	if !h.setupBusy || h.setupContinuing || err != nil || saved.View.State != "reading" || !slices.ContainsFunc(saved.View.Repos, setupReadWhole) {
+		return nil, nil
+	}
+	h.setupContinuing = true
+	return h.setupCancel, h.setupDone
 }
 
 func (h *Handler) setupAction(ctx context.Context, out *setupState, body api.FactorySetupRequest) error {
@@ -383,7 +523,13 @@ func (h *Handler) setupAction(ctx context.Context, out *setupState, body api.Fac
 					return errors.New("codeaf could not keep this GitHub connection")
 				}
 			}
-			credentials.Set("github", token)
+			// A pasted token is handed to the app to keep (Keep); gh's own
+			// token is held for this launch only, since gh keeps it.
+			if body.Source == "gh" {
+				credentials.Set("github", token)
+			} else {
+				credentials.Keep("github", token)
+			}
 		} else {
 			if token != "" {
 				if err := h.setupScope(ctx, token); err != nil {
@@ -422,6 +568,8 @@ func (h *Handler) setupAction(ctx context.Context, out *setupState, body api.Fac
 		}
 		// New repositories become watched only after their imports are held, so a poll cannot start them first.
 		out.View.State = "reading"
+	case setupVerbContinue:
+		return h.continueSetup(out)
 	case "retry_read", "retry":
 		if out.View.State != "reading" || repo == nil || repo.Read != "waiting" || h.clock().Sub(out.Waiting[repo.ID]) < setupWait {
 			return errors.New("This repo is still waiting")
@@ -485,7 +633,7 @@ func (h *Handler) setupAction(ctx context.Context, out *setupState, body api.Fac
 }
 
 func (h *Handler) keepSetupCheckout(ctx context.Context, repo, path string) error {
-	out, err := exec.CommandContext(ctx, "git", "-C", path, "remote", "get-url", "origin").Output()
+	out, err := exec.CommandContext(ctx, "git", gitpolicy.WithoutAutoMaintenance("-C", path, "remote", "get-url", "origin")...).Output()
 	if err != nil {
 		return errors.New("Choose an existing GitHub checkout")
 	}
@@ -498,7 +646,7 @@ func (h *Handler) keepSetupCheckout(ctx context.Context, repo, path string) erro
 
 // startSetup keeps ingestion and cloning alive when a window leaves. Each completed step is saved before the next.
 func (h *Handler) startSetup(out setupState) {
-	if h.setupBusy || h.setupClosed {
+	if h.setupBusy || h.setupClosed || h.setupContinuing {
 		return
 	}
 	todo := out.View.State == "reading" && slices.ContainsFunc(out.View.Repos, func(r api.SetupRepo) bool { return r.Selected && (r.Read == "next" || r.Read == "reading") })
@@ -596,28 +744,69 @@ func (h *Handler) runSetup(ctx context.Context, out setupState) {
 			return
 		}
 	}
-	if out.View.State == "reading" && !slices.ContainsFunc(out.View.Repos, func(r api.SetupRepo) bool { return r.Selected && r.Read != "done" && r.Read != "empty" }) {
-		selected := []string{}
-		for _, repo := range out.View.Repos {
-			if repo.Selected {
-				selected = append(selected, repo.ID)
-			}
-		}
-		h.reposMu.Lock()
-		err := h.config.Store.SetRepos(selected)
-		h.reposMu.Unlock()
-		if err != nil {
+	if out.View.State == "reading" && !slices.ContainsFunc(out.View.Repos, setupReadPending) {
+		if err := h.finishSetupReading(&out); err != nil {
 			words := redact.Secrets(err.Error())
 			out.View.GitHub.Error = &words
-			_ = h.setupProgress(out)
-			return
-		}
-		out.View.State = "done"
-		if slices.ContainsFunc(out.View.Repos, func(r api.SetupRepo) bool { return r.Selected && r.Clone != "found" }) {
-			out.View.State = "checkouts"
 		}
 	}
 	_ = h.setupProgress(out)
+}
+
+// setupReadWhole is a selected repository whose open issues were all read.
+func setupReadWhole(r api.SetupRepo) bool {
+	return r.Selected && (r.Read == "done" || r.Read == "empty")
+}
+
+// setupReadPending is a selected repository not yet read whole.
+func setupReadPending(r api.SetupRepo) bool { return r.Selected && !setupReadWhole(r) }
+
+// continueSetup ends reading now. Repositories already read keep their state;
+// every other selected one stops being read and says skipped. At least one
+// repository must be read whole, because setup watches only those.
+func (h *Handler) continueSetup(out *setupState) error {
+	if out.View.State != "reading" {
+		return errors.New("Continue ends reading; setup is not reading")
+	}
+	if !slices.ContainsFunc(out.View.Repos, setupReadWhole) {
+		return errors.New("Wait until one repo is read")
+	}
+	for i := range out.View.Repos {
+		repo := &out.View.Repos[i]
+		if setupReadPending(*repo) {
+			repo.Read, repo.ResumesAt, repo.WaitingS = setupReadSkipped, nil, 0
+			delete(out.Waiting, repo.ID)
+		}
+	}
+	return h.finishSetupReading(out)
+}
+
+// finishSetupReading watches the repositories read whole and moves setup on
+// to checkouts, or to done when every selected one already has its checkout.
+// New repositories become watched only after their imports are held, so a
+// poll cannot start them first: a repository whose reading was skipped stays
+// unwatched, because a poll would bring its unread issues in unheld.
+func (h *Handler) finishSetupReading(out *setupState) error {
+	watched := []string{}
+	for _, repo := range out.View.Repos {
+		if setupReadWhole(repo) {
+			watched = append(watched, repo.ID)
+		}
+	}
+	if err := h.setSetupRepos(watched); err != nil {
+		return err
+	}
+	out.View.State = "done"
+	if slices.ContainsFunc(out.View.Repos, func(r api.SetupRepo) bool { return r.Selected && r.Clone != "found" }) {
+		out.View.State = "checkouts"
+	}
+	return nil
+}
+
+func (h *Handler) setSetupRepos(repos []string) error {
+	h.reposMu.Lock()
+	defer h.reposMu.Unlock()
+	return h.config.Store.SetRepos(repos)
 }
 
 // setupPipelineSource reads the one selected repository's pipeline through the
@@ -656,7 +845,7 @@ func (h *Handler) cloneSetupRepo(ctx context.Context, repo, path string) error {
 		return err
 	}
 	// Git obtains credentials from the person's credential helper; no token enters argv or a remote URL.
-	cmd := exec.CommandContext(ctx, "git", "clone", "--", "https://github.com/"+repo+".git", path)
+	cmd := exec.CommandContext(ctx, "git", gitpolicy.WithoutAutoMaintenance("clone", "--", "https://github.com/"+repo+".git", path)...)
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 	token, err := h.setupToken(ctx)
 	if err != nil {
@@ -683,6 +872,7 @@ func (h *Handler) ingestSetupRepo(ctx context.Context, repo *api.SetupRepo, curs
 		return nil, errors.New("GitHub is not connected")
 	}
 	count := repo.ReadCount
+	tiers := setupTiers{h: h, token: token, repo: repo.ID, seen: map[string]factory.Tier{}}
 	for page := max(1, cursor); page <= 1000; page++ {
 		var rows []struct {
 			Number  int             `json:"number"`
@@ -728,7 +918,7 @@ func (h *Handler) ingestSetupRepo(ctx context.Context, repo *api.SetupRepo, curs
 			for _, label := range row.Labels {
 				labels = append(labels, label.Name)
 			}
-			item := factory.Item{Repo: repo.ID, Num: row.Number, Title: row.Title, Body: row.Body, URL: row.URL, Created: row.Created, Kind: factory.KindIssue, Origin: factory.OriginForge, Author: row.User.Login, Labels: labels, SetupHeld: true}
+			item := factory.Item{Repo: repo.ID, Num: row.Number, Title: row.Title, Body: row.Body, URL: row.URL, Created: row.Created, Kind: factory.KindIssue, Origin: factory.OriginForge, Author: row.User.Login, Tier: tiers.of(ctx, row.User.Login), Labels: labels, SetupHeld: true}
 			if row.Assignees != nil {
 				item.SourceAssignees = []string{}
 				for _, a := range *row.Assignees {
@@ -747,7 +937,7 @@ func (h *Handler) ingestSetupRepo(ctx context.Context, repo *api.SetupRepo, curs
 			return nil, err
 		}
 		if len(rows) < 100 {
-			repo.OpenIssues = count
+			repo.OpenIssues, repo.OpenIssuesExact = count, true
 			return nil, nil
 		}
 	}
@@ -855,4 +1045,50 @@ func (h *Handler) scheduleSetupDeadline(out setupState) {
 			h.startSetup(saved)
 		}
 	})
+}
+
+// setupTiers records, for each issue read in at setup, whether its author
+// may write to the repository, as the GitHub source does on every poll:
+// the signed-in person is the owner, write, maintain or admin access is a
+// collaborator, and anything else, or no answer, is a stranger.
+type setupTiers struct {
+	h     *Handler
+	token string
+	repo  string
+	me    *string
+	seen  map[string]factory.Tier
+}
+
+func (s *setupTiers) of(ctx context.Context, login string) factory.Tier {
+	if login == "" {
+		return factory.TierStranger
+	}
+	key := strings.ToLower(login)
+	if t, ok := s.seen[key]; ok {
+		return t
+	}
+	if s.me == nil {
+		var user struct {
+			Login string `json:"login"`
+		}
+		_, _ = s.h.setupJSON(ctx, "/user", s.token, &user)
+		s.me = &user.Login
+	}
+	t := factory.TierStranger
+	if *s.me != "" && strings.EqualFold(*s.me, login) {
+		t = factory.TierOwner
+	} else {
+		var p struct {
+			Permission string `json:"permission"`
+			RoleName   string `json:"role_name"`
+		}
+		if _, err := s.h.setupJSON(ctx, "/repos/"+s.repo+"/collaborators/"+url.PathEscape(login)+"/permission", s.token, &p); err == nil {
+			switch {
+			case p.RoleName == "maintain", p.Permission == "admin", p.Permission == "maintain", p.Permission == "write":
+				t = factory.TierCollab
+			}
+		}
+	}
+	s.seen[key] = t
+	return t
 }

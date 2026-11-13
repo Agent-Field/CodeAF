@@ -46,47 +46,9 @@ type workfold struct {
 	phase bool
 }
 
-// deckFolds is the chips ONE PAGE draws, resolved through the lens's fold style
-// (lens.go's [folders]).
-//
-// ── THE LAW THIS USED TO STATE, AND THE RULING THAT REVERSED IT ─────────────
-//
-// ~~A ROOM FOLDS NOTHING. The chip is an affordance of the conversation and it
-// earns its place there. A turn out in the thread is a question somebody asked
-// and the answer they were given, and the machinery between the two is work
-// they delegated precisely so they would not have to watch it — so it
-// collapses, and the page reads back as the exchange it was. A room is the
-// opposite errand. It is the page somebody opened BECAUSE they want to read the
-// machinery, and a node's whole life is one long turn with a report at the end
-// of it — so the same rule swallowed the entire page the instant the node
-// stopped running, leaving `▸ worked · 10 tool calls · ctrl+e` and the report
-// under it. It is stated as an absence of folds rather than as a fold that
-// opens itself, because [deck.workOpen] is the READER'S own answer and a
-// default that had to be inverted for one kind of page would give that map two
-// meanings.~~
-//
-//	> RULED BY THE OWNER, 2026-09-01 (issue #252, ruling 1): FOLD THE PAST.
-//	> "The task page folds settled work into phase chips by default; the
-//	> machinery stays one keypress away (ctrl+e / scroll-up). This reverses
-//	> the written law at workfold.go:26-52 … and the three tests pinning it."
-//
-// THE ARGUMENT THE RULING ENCODES, because the struck text above is a good
-// argument for the wrong page. It optimises the RARE visit — the audit — at the
-// cost of the common one. A person goes to a task to steer and to check, not to
-// read a transcript, and a page built on the premise that every call must be
-// read is the industry's linear machinery scroll reproduced one level down. The
-// reversal was possible without giving up the audit because the old law's own
-// objection — a chip per TURN swallows a page that is one turn — is answered by
-// folding per PHASE instead ([derivePhaseFolds]): settled machinery and its
-// narration collapse together, while the latest paragraph and live frontier
-// remain visible. And [deck.workOpen] keeps its one meaning: chips default shut
-// and the reader's expansion is still the reader's.
-//
-// THE DOORS, all three, because DISCOVERABILITY BEFORE PURITY: `ctrl+e` opens
-// the newest chip ([app.toggleLatestWorkfold]), a click opens any of them
-// (app.go's [app.press]), and a scroll up at the top of a room opens the one
-// nearest the top (room.go's [app.roomUnfoldAtTop]) — which is what keeps the
-// disclosure ladder from dead-ending (docs/THREAD-UX.md).
+// deckFolds resolves a page's chips through its lens fold style. Settled task
+// work folds into phase chips by default so the result is readable; ctrl+e and
+// scrolling keep the details reachable.
 func (a *app) deckFolds(d deck) map[int]workfold {
 	fold, ok := folders[d.lens.foldPast]
 	if !ok {

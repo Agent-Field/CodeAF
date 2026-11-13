@@ -46,7 +46,9 @@ async function requestMessage({ method, uri, time }, body) {
   return enc.encode(`${REQ_LABEL}${method}\n${uri}\n${time}\n${hex(await sha256(body))}`);
 }
 
-const withinSkew = (time, now) => /^-?\d+$/.test(time) && Math.abs(now - Number(time)) <= SKEW_MS;
+export function checkTime(time, now) {
+  if (!/^-?\d+$/.test(time) || Math.abs(now - Number(time)) > SKEW_MS) throw new Refusal('skew', 'clock');
+}
 
 /**
  * checkCert is the half of verification that needs no body: the headers are present and the
@@ -74,7 +76,7 @@ export async function checkCert(headers) {
 export async function checkRequest(caller, req, body, nowMs) {
   const msg = await requestMessage({ method: req.method, uri: req.uri, time: caller.time }, body);
   if (!(await verifySig(await importKey(caller.devicePub), fromB64Url(caller.sig), msg))) throw unauthorized('bad signature');
-  if (!withinSkew(caller.time, nowMs)) throw new Refusal('skew', 'clock');
+  checkTime(caller.time, nowMs);
   return { identity: caller.identity, device: caller.device };
 }
 

@@ -36,6 +36,8 @@ func TestTheManualMentionsEveryToolOnTheBelt(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	agent.config.Memory = db
+	agent.config.Interactive = true
+	agent.config.Place = Place{Dir: t.TempDir()}
 	// AND THE AUTOMATIONS STORE IS OPENED, for the shelf's reason. `automation` is
 	// on the belt only where a store sits behind it (automation_tool.go), and every
 	// conversation door hands one in — so a gate that built the belt without one

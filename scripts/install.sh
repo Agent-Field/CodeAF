@@ -209,6 +209,8 @@ print_guide() {
   if [[ -n "$hint" ]]; then
     if [[ -n "$edited" ]]; then
       printf '  %s%d%s  Open a new terminal, or run this to use %s here:\n' "$ACCENT" "$n" "$RESET" "$command_name"
+    elif [[ "$OS" == "windows" ]]; then
+      printf '  %s%d%s  Run this to add %s to your Windows user PATH, then open a new terminal:\n' "$ACCENT" "$n" "$RESET" "$command_name"
     else
       printf '  %s%d%s  Put %s on your PATH by adding this to your shell profile:\n' "$ACCENT" "$n" "$RESET" "$command_name"
     fi
@@ -922,6 +924,18 @@ link_into_path() {
 # the one line a person has to paste sits beside the words that say why.
 PATH_HINT=""
 PATH_FILE=""
+if [[ "$OS" == "windows" ]]; then
+  # Git Bash paths need their native spelling in the Windows user PATH.
+  native_bin=$(cygpath -aw -- "$INSTALL_DIR" 2>/dev/null) || native_bin=$(cd "$INSTALL_DIR" && pwd -W)
+  quoted_bin=${native_bin//\'/\'\'}
+  path_command="\$ErrorActionPreference = 'Stop'; \$codeafBin = '$quoted_bin'; \$userPath = [Environment]::GetEnvironmentVariable('Path', 'User'); if (-not ((\$userPath -split ';') | Where-Object { \$_.TrimEnd([char[]]'\\/') -ieq \$codeafBin.TrimEnd([char[]]'\\/') })) { \$nextPath = if ([string]::IsNullOrEmpty(\$userPath)) { \$codeafBin } else { \$userPath.TrimEnd(';') + ';' + \$codeafBin }; [Environment]::SetEnvironmentVariable('Path', \$nextPath, 'User') }"
+  printf -v quoted_command '%q' "$path_command"
+  PATH_HINT="powershell.exe -NoProfile -Command $quoted_command"
+  if [[ "$NO_MODIFY_PATH" != "1" ]] && powershell.exe -NoProfile -Command "$path_command" >/dev/null 2>&1; then
+    step_ok "PATH" "Windows user PATH is ready; open a new terminal"
+    PATH_HINT=""
+  fi
+fi
 if [[ "$OS" != "windows" ]] && ! path_has_dir; then
   export_line="export PATH=\"$INSTALL_DIR:\$PATH\""
   PATH_HINT="$export_line"

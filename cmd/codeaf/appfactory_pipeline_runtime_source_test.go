@@ -118,7 +118,8 @@ func TestPipelineSourceCopiesAllFourWordsOfAnAttestedRuntimeFile(t *testing.T) {
 	if p := by["plan"]; p.When != "thin" || p.Effort != "cheap" || p.Fanout != "per-file" || p.Kind != "" || p.Locked {
 		t.Fatalf("%+v", p)
 	}
-	if s := by["test"]; s.Kind != "check" || !s.Locked {
+	// A check is not locked: its command is edited like a prompt.
+	if s := by["test"]; s.Kind != "check" || s.Locked {
 		t.Fatalf("%+v", s)
 	}
 	raw, _ := json.Marshal(got)
@@ -205,7 +206,7 @@ func TestPipelineSourceDoesNotBelieveAClaimTheStepsContradict(t *testing.T) {
 		"effort dropped":       func(m map[string]any) { delete(stepNamed(m, "plan"), "effort") },
 		"fanout altered":       func(m map[string]any) { stepNamed(m, "plan")["fanout"] = "per-claim" },
 		"kind chat made check": func(m map[string]any) { stepNamed(m, "plan")["kind"] = "check" },
-		"check unlocked":       func(m map[string]any) { stepNamed(m, "test")["locked"] = false },
+		"check locked":         func(m map[string]any) { stepNamed(m, "test")["locked"] = true },
 		"chat locked":          func(m map[string]any) { stepNamed(m, "plan")["locked"] = true },
 		"word invented":        func(m map[string]any) { stepNamed(m, "plan")["fanout"] = "per-file " },
 	}

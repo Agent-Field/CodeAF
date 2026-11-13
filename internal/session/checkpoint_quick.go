@@ -37,7 +37,7 @@ package session
 // ── THE ITEMS ARE THE PARTS, AND THAT IS WHY NO BRIEF IS WRITTEN ──
 //
 // A quick node has a `line` and `items` and nothing else to open on
-// (docs/design/quick-task/DESIGN.md). The line is the person's own sentence — the
+//. The line is the person's own sentence — the
 // one document on this road nobody writes — and the items are the drawing, read
 // out in the order it was drawn. That is already the account of what is left, so
 // [Agent.writeHandoff] is not called and the carry ladder is not walked: a

@@ -19,7 +19,7 @@ func TestRecentSessionsListsThisDirectorysConversations(t *testing.T) {
 		t.Fatal(err)
 	}
 	// One folder per conversation, named by its id, with the journal inside it:
-	// the layout the door writes (docs/CHAT-V3.md, Decision 26).
+	// the layout the door writes.
 	write := func(id string, lines ...string) string {
 		folder := filepath.Join(bucket, id)
 		if err := os.MkdirAll(folder, 0o700); err != nil {

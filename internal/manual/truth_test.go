@@ -30,7 +30,7 @@ import (
 // is written here ONCE as a sentence with a hole in it, the hole is filled from
 // the code that owns the figure at test time, and the page must contain the
 // result. Move the constant and every page still carrying the old figure goes
-// red, named, with the owner beside it — which is the whole of what a person
+// red, named, with the source beside it — which is the whole of what a person
 // fixing it needs to know.
 //
 // IT IS A TABLE AND NOT A TEST PER FACT. One bespoke test per number is how the
@@ -63,7 +63,7 @@ type quotedIn struct {
 }
 
 // staleIn finds every page still carrying one of this fact's sentences around a
-// figure the owner has moved past.
+// figure the implementation has moved past.
 //
 // It scans the WHOLE corpus rather than the pages listed above, because a
 // sentence that wandered to a page nobody remembered to list is exactly the case

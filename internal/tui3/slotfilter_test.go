@@ -177,7 +177,7 @@ func TestTheHintSlotFollowsTheKeyboard(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "openai/gpt-4.1-mini"})
 
 	a.copy.on = true
-	if got := a.hintWord(); got != "v select · a block · y yank · esc" {
+	if got := a.hintWord(); got != "↑↓ move · v select · a block · enter copy · esc" {
 		t.Fatalf("copy mode offered %q", got)
 	}
 	// And the handed-over pointer leads even copy mode, because the key that

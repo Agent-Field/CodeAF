@@ -2,8 +2,10 @@ package worker
 
 import (
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/lease"
 )
 
 // TestCapacityLimitsAndRetirement pins the shared bound and the retire rule:
@@ -36,5 +38,17 @@ func TestCapacityLimitsAndRetirement(t *testing.T) {
 	c.set(-5)
 	if c.limit != 1 {
 		t.Fatalf("limit = %d, want at least one slot", c.limit)
+	}
+}
+
+// A worker attached needing a provider is told there is nothing to do for as
+// long as it runs, so it asks again rarely instead of every second.
+func TestAQuickEmptyPullWaitsLongerWhileTheWorkerNeedsSomething(t *testing.T) {
+	if got := quickEmptyPullWait(api.WorkerAttach{}); got != time.Second {
+		t.Fatalf("a ready worker waits %v after an empty pull, want 1s", got)
+	}
+	needs := quickEmptyPullWait(api.WorkerAttach{Needs: api.RunnerNeedsProvider})
+	if needs < 5*time.Second || needs >= lease.OfflineAfter/2 {
+		t.Fatalf("a worker needing a provider waits %v; want a slow ask well inside the offline window %v", needs, lease.OfflineAfter)
 	}
 }

@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -158,6 +159,37 @@ func TestAFileRecordedTwiceIsOneRow(t *testing.T) {
 	}
 	if list[0].title != "the second name" {
 		t.Fatalf("the row says %q, want the newest record", list[0].title)
+	}
+}
+
+func TestFilesLimitCountsDistinctPathsAfterRewrites(t *testing.T) {
+	root := t.TempDir()
+	var rows []session.Artifact
+	for i := range filesKept + 1 {
+		name := fmt.Sprintf("report-%03d.md", i)
+		path := filepath.Join(root, name)
+		if err := os.WriteFile(path, []byte("report"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		rows = append(rows, session.Artifact{Path: path, Title: name, Created: time.Unix(int64(i+1), 0)})
+	}
+	latest := rows[len(rows)-1]
+	latest.Title = "latest rewrite"
+	for range filesKept {
+		rows = append(rows, latest)
+	}
+	a := madeApp(t, madeIndex(t, rows...))
+	typeLine(t, a, "/files")
+	if !a.shelf.open || len(a.shelf.all) != filesKept {
+		t.Fatalf("/files retained %d distinct paths after 200 rewrites, want %d", len(a.shelf.all), filesKept)
+	}
+	if a.shelf.all[0].title != "latest rewrite" || a.shelf.all[len(a.shelf.all)-1].path != rows[1].Path {
+		t.Fatalf("/files lost newest-first distinct paths: first %+v, last %+v", a.shelf.all[0], a.shelf.all[len(a.shelf.all)-1])
+	}
+	for _, row := range a.shelf.all {
+		if row.gone || row.path == rows[0].Path {
+			t.Fatalf("/files included a missing file or exceeded its distinct-path limit: %+v", row)
+		}
 	}
 }
 

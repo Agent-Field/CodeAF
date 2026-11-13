@@ -6,12 +6,12 @@
 # Runs bin/codeaf against a demo home on a PRIVATE tmux socket (never the shared
 # server other sessions are using), in a window pinned to exactly <cols>x<rows>,
 # sends each key with a settle pause, and writes the visible pane to
-# docs/design/polish/frames/<name>.<cols>x<rows>.txt (plain) and .ans (colour).
+# /tmp/codeaf-frames/<name>.<cols>x<rows>.txt (plain) and .ans (colour).
 set -uo pipefail
 
 ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
 HOME_DIR="${DEMO_HOME:?set DEMO_HOME}"
-OUT="${OUT:-$ROOT/docs/design/polish/frames}"
+OUT="${OUT:-/tmp/codeaf-frames/}"
 BIN="${BIN:-$ROOT/bin/codeaf}"
 SOCK="${SOCK:-polish}"
 SETTLE="${SETTLE:-0.7}"

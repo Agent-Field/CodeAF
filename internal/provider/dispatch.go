@@ -34,7 +34,7 @@ import (
 // next, and the one place a request for a completion reaches the wire
 // (`TestOneDispatcherSendsForACompletion`).
 //
-// WHAT IT REPLACED (docs/design/recovery/DESIGN.md §2 problem 1 and §4). Eleven
+// WHAT IT REPLACED. Eleven
 // controllers on one request path each owned a budget none of the others could
 // see — three transport faults here, six or sixty paced sends here, two minutes
 // or ten of pacing here, eight free moves here, four arms in hedge.go, seven
@@ -69,7 +69,7 @@ const (
 
 // ── THE BODY IS WRITTEN PER ATTEMPT, NOT PER CALL ───────────────────────────
 //
-// THE MEASURED FAILURE (the census, docs/design/recovery/census-20260910.md §6).
+// THE MEASURED FAILURE (the census, the implementation §6).
 // This loop used to be handed one encoded body above it and send those same
 // bytes again on every attempt. The bytes carry `provider.order`, `provider.only`
 // and `provider.ignore`, so "again" meant "to the same machine": 53 % of the
@@ -273,11 +273,6 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		// trace (the document parser) has none to name.
 		if knobs.trace == nil {
 			return nil, &UnsupportedAttemptSurfaceError{SurfaceDocument, "this send carries no attempt identity"}
-		}
-	}
-	if gate := c.config.RouteGate; gate != nil {
-		if err := gate(ctx, c.modelFor(request), callTag(ctx)); err != nil {
-			return nil, err
 		}
 	}
 	var lastErr error
@@ -658,6 +653,15 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			cancelAttempt()
 			return nil, err
 		}
+		// Recheck after every wait, including the limiter, because another call
+		// may have spent the daily allowance while this attempt was queued.
+		if gate := c.config.RouteGate; gate != nil {
+			if err := gate(ctx, c.modelFor(request), callTag(ctx)); err != nil {
+				sharedLimiter.release(false, 0)
+				cancelAttempt()
+				return nil, &AttemptDeniedError{Cause: err}
+			}
+		}
 		// THE ONE PLACE A SEND IS ADMITTED: after the request is built and the
 		// limiter has let it through, and before anything is written to the log
 		// or the watchdog, so a refusal leaves no trace of a send that never was.
@@ -714,6 +718,9 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			// A cancelled or expired parent is a decision, not a fault. Retrying
 			// it would burn the remaining deadline on calls that cannot land.
 			if ctx.Err() != nil {
+				if sent.Load() {
+					c.settle(ctx, c.modelFor(request), nil, receiptTornReason, 0, knobs.trace)
+				}
 				return nil, fmt.Errorf("execute request: %w", err)
 			}
 			// A TRANSPORT MAY KNOW THE CREDENTIAL IT OWNS IS FINISHED. That is
@@ -808,15 +815,13 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		// ── A REFUSAL THAT NAMED A MACHINE IS THAT MACHINE'S, AND THE OTHERS
 		// HAVE SAID NOTHING ─────────────────────────────────────────────────
 		//
-		// THE OWNER'S RULING, 2026-09-10: "that is in OpenRouter, that does not
-		// matter — if we get any such error or error in general we need to
-		// recover." An account-policy 404 and a 400 the router RELAYED from the
-		// endpoint it picked are neither a person's mistake nor a fact about the
-		// model: they are one machine saying no, and the answer to them is the
-		// same walk a 429 gets. Until this line they ended the call, and the
-		// rotation that eventually moved was the SESSION's — three whole turns
-		// apart, each learning the same fact over again through the ledger
-		// (refusal_test.go's `TestThreeAttemptsAfterAnUpstreamRefusalReach…`).
+		// An account-policy 404 and a 400 the
+		// router RELAYED from the endpoint it picked are neither a person's mistake nor a fact
+		// about the model: they are one machine saying no, and the answer to them is the same
+		// walk a 429 gets. Until this line they ended the call, and the rotation that eventually
+		// moved was the SESSION's — three whole turns apart, each learning the same fact over
+		// again through the ledger (refusal_test.go's
+		// `TestThreeAttemptsAfterAnUpstreamRefusalReach…`).
 		//
 		// A REFUSAL THAT NAMED NOBODY IS NOT THIS. That one is the router
 		// reading our own bytes and saying no, and every machine alive will say
@@ -848,8 +853,9 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		}
 		// A context refusal needs a smaller request, even when the router names
 		// the machine that refused it. Return it to the conversation before an
-		// endpoint walk can resend the same oversized bytes.
-		if failure, ok := RefusalFrom(apiError(response.StatusCode, peek)); ok && failure.Overflow {
+		// endpoint walk can resend the same oversized bytes. A model capability
+		// refusal also belongs to its one repair rather than an endpoint walk.
+		if failure, ok := RefusalFrom(apiError(response.StatusCode, peek)); ok && (failure.Overflow || failure.ReasoningUnsupported) {
 			response.Body = rewound(peek, response.Body)
 			sharedLimiter.release(false, 0)
 			return response, nil
@@ -955,7 +961,7 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		//
 		// THE COMEBACK TIME GOES ON IT TOO, because it is the only thing that
 		// makes a repeated send to a refusing machine legal
-		// (docs/design/recovery/DESIGN.md §3). It was recorded on not one row in
+		//. It was recorded on not one row in
 		// the ten days to 2026-09-10, so eleven hundred paced refusals could not
 		// be checked against what the provider itself had asked for.
 		c.record(recordFacts{
@@ -968,6 +974,11 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		// never reaches the endpoint walk or model chain: it either takes the one
 		// configured metered door, once, or returns its typed pause immediately.
 		if refusal.Kind == refusalPlanPaused {
+			detail := planPauseDetail(refusal.Reset, c.config.PlanOverflowDoor)
+			now := c.clock()
+			postPhase(PhaseNews{Phase: PhasePlanPaused, Detail: detail, Since: now, At: now,
+				Model: c.modelFor(request), SourceID: c.config.SourceID, PlanReset: refusal.Reset,
+				Role: RoleFrom(ctx), Session: SessionFrom(ctx), Subject: NodeFrom(ctx)})
 			useOverflow := c.config.OverflowOnPlanPause &&
 				strings.TrimSpace(c.config.PlanOverflow) != "" && !usingOverflow &&
 				claimPlanOverflow(ctx)
@@ -982,9 +993,7 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 				pacedSince = time.Time{}
 				continue
 			}
-			detail := planPauseDetail(refusal.Reset, c.config.PlanOverflowDoor)
-			now := c.clock()
-			notePhase(ctx, c.modelFor(request), PhasePlanPaused, detail, now, now, "")
+
 			return nil, &PlanPauseError{
 				Reset: refusal.Reset, OverflowDoor: c.config.PlanOverflowDoor, Cause: lastErr,
 			}
@@ -994,8 +1003,8 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		}
 		// ── "NOT YET" IS ANSWERED BY GOING SOMEWHERE ELSE ───────────────────
 		//
-		// THE OWNER'S RULING, 2026-09-10: a person must never work around a 429
-		// by switching models themselves. So the three moves, in this order.
+		// The recovery rule: a person must never work around a 429 by switching models themselves.
+		// So the three moves, in this order.
 		//
 		// FIRST, ANOTHER MACHINE, AT ONCE. The refusing machine is off the next
 		// body and the next body goes out with no backoff at all — see [moved].
@@ -1208,7 +1217,7 @@ func demandedThisOne(knobs callKnobs, lane string) bool {
 //
 // IT ASKS [control.Next] FOR EACH RUNG AND WALKS NOTHING ITSELF. It used to be
 // endpoints.go's own `for _, step := range c.relaxationPlan(...)`, which is the
-// seventh of the eleven budgets docs/design/recovery/DESIGN.md §2 counts: a loop
+// seventh of the eleven budgets the implementation §2 counts: a loop
 // with a private length, under a deadline that could not see it, beside a move
 // generator that already knew the rungs. The rungs are the plan's
 // ([control.Plan.Shapes], written from [Client.relaxationPlan], which is still
@@ -1506,7 +1515,7 @@ func attemptContext(ctx context.Context, stream bool) (context.Context, context.
 // are worth asking again.
 //
 // IT IS NO LONGER THE WHOLE ANSWER FOR A 4XX, and that is the change of
-// docs/design/recovery/DESIGN.md §3: "a 4xx is a request we built wrong" is true
+// the implementation §3: "a 4xx is a request we built wrong" is true
 // only of a 4xx the ROUTER answered for itself. One it RELAYED is an endpoint's
 // verdict on this request, and the model's other endpoints have said nothing —
 // see [relayedByAMachine] and the walk in [Client.send].

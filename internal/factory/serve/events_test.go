@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -72,6 +74,53 @@ func TestStoreWriteProducesOneChangedEvent(t *testing.T) {
 	case extra := <-events:
 		t.Fatalf("a store write produced a second event: %q", extra)
 	case <-time.After(400 * time.Millisecond):
+	}
+}
+
+// TestAHeartbeatDoesNotAnnounceAJobChange is the idle watch. Writing the
+// runner file is how presence is saved. It must not show up as a job
+// change, or every waiting pull re-reads the floor. A real job write still
+// does.
+func TestAHeartbeatDoesNotAnnounceAJobChange(t *testing.T) {
+	root := t.TempDir()
+	st, err := store.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := config
+	cfg.Root = root
+	cfg.Store = st
+	h := serve.New(factory.FixtureSeam(now), cfg)
+	s := httptest.NewServer(h)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer func() {
+		cancel()
+		s.Close()
+		h.Close()
+	}()
+	events := make(chan string, 4)
+	ready := make(chan struct{})
+	go collectEvents(ctx, t, s.URL+"/v1/events", ready, events)
+	select {
+	case <-ready:
+	case <-time.After(3 * time.Second):
+		t.Fatal("event stream did not answer")
+	}
+	if err := os.WriteFile(filepath.Join(root, "runners.json"), []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case got := <-events:
+		t.Fatalf("a heartbeat announced a job change: %q", got)
+	case <-time.After(700 * time.Millisecond):
+	}
+	if _, err := st.Create(factory.Item{Title: "real"}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-events:
+	case <-time.After(3 * time.Second):
+		t.Fatal("a new job produced no changed event")
 	}
 }
 

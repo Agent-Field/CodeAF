@@ -62,8 +62,8 @@ func (a *app) teamsAncestryName(t team) string {
 // can also have unread messages. Counts describe this team's own memberships.
 func (a *app) teamsOverviewState(t team) string {
 	working, asking, failed, unread := 0, 0, 0, 0
-	for _, r := range a.teamsCrew(t) {
-		switch r.word {
+	for _, m := range a.teamsCrewMembers(t) {
+		switch a.teamsMemberWord(t, m, a.teamsMember(m)) {
 		case "working":
 			working++
 		case "asking":
@@ -71,7 +71,7 @@ func (a *app) teamsOverviewState(t team) string {
 		case "failed":
 			failed++
 		}
-		if a.unreadChats[r.key] {
+		if a.unreadChats[m.Key] {
 			unread++
 		}
 	}
@@ -160,6 +160,10 @@ func (a *app) teamsOverviewGrid(d *teamsDraw, teams []team, width, x, y int, com
 	}
 	out := make([]string, 0, height)
 	for row := 0; row < height; row++ {
+		if !d.visible(y+row, 1) {
+			out = append(out, "")
+			continue
+		}
 		var parts []string
 		for _, stack := range stacks {
 			line := ""
@@ -195,11 +199,13 @@ func (a *app) teamsOverviewCard(d *teamsDraw, t team, width, x, y int, compact b
 		dot = a.pal.accent(wallGlyphsFor(a.pal.ascii).marked)
 	}
 	add(dot + " " + a.pal.bold(a.pal.ink(t.Name)))
-	count := itoa(len(t.Members)) + " conversations"
-	if len(t.Members) == 1 {
-		count = "1 conversation"
+	if len(t.Members) > 0 {
+		count := itoa(len(t.Members)) + " conversations"
+		if len(t.Members) == 1 {
+			count = "1 conversation"
+		}
+		add(a.pal.dim(count))
 	}
-	add(a.pal.dim(count))
 	if t.Closed() {
 		add(a.pal.dim("closed " + a.teamsDot() + " read-only history"))
 	} else {
@@ -218,11 +224,9 @@ func (a *app) teamsOverviewCard(d *teamsDraw, t team, width, x, y int, compact b
 		if m.Handle != "" {
 			name = "@" + m.Handle
 		}
-		title := m.Word
-		for _, r := range a.teamsCrew(t) {
-			if r.manager {
-				title = r.title
-			}
+		title := strings.TrimSpace(m.Word)
+		if row, known := a.tp.world[m.File]; known && strings.TrimSpace(row.Title) != "" {
+			title = row.Title
 		}
 		word := a.pal.dim("Manager ") + a.teamsConversationLabel(name, m.Key, m.File, inner-8)
 		if !t.Closed() && !a.tp.previews[m.Key].missing {
@@ -246,13 +250,21 @@ func (a *app) teamsOverviewCard(d *teamsDraw, t team, width, x, y int, compact b
 			if preview.missing {
 				words = "Conversation unavailable"
 			}
+			elsewhere := a.teamsElsewhere(m)
+			if elsewhere != "" {
+				words = "Chat is on " + elsewhere
+			}
 			parts := wrap(words, inner)
 			for i := 0; i < 2; i++ {
 				line := ""
 				if i < len(parts) {
 					line = parts[i]
 				}
-				add(a.pal.ink(line))
+				if elsewhere != "" {
+					add(a.pal.dim(line))
+				} else {
+					add(a.pal.ink(line))
+				}
 			}
 		}
 	} else if !t.Closed() {
@@ -282,13 +294,18 @@ func (a *app) teamsOverviewCard(d *teamsDraw, t team, width, x, y int, compact b
 			}
 		}
 	}
-	card := wallCardBuild(a.pal, "", lines, x, y, width, 1, 0)
+	// Offscreen cards still contribute their height and keyboard stops. Their
+	// borders and row padding are painted only when the viewport reaches them.
+	rows := make([]string, len(lines)+2)
+	if d.visible(y, len(rows)) {
+		rows = wallCardBuild(a.pal, "", lines, x, y, width, 1, 0).rows
+	}
 	// Background and frame clicks use the team's door, after every narrower
 	// alias and descendant target. The border itself never changes emphasis.
-	for row := range card.rows {
+	for row := range rows {
 		target := selectTarget
 		target.x0, target.x1, target.y = x, x+width, y+row
 		d.targets = append(d.targets, target)
 	}
-	return card.rows
+	return rows
 }

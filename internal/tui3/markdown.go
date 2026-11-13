@@ -1215,7 +1215,7 @@ func taskLinkHotInk(pal palette, s string) string { return pal.underline(pal.ink
 //	OSC   ESC ] … BEL | ESC \    the hyperlink around a path (pathlink.go)
 //
 // AN OSC HAS TO BE SWALLOWED WHOLE OR IT IS NOT SWALLOWED AT ALL. Its payload
-// is ordinary printable bytes — `8;;file:///Users/x/main.go` — so a walk that
+// is ordinary printable bytes — `8;;file:///workspace/main.go` — so a walk that
 // stopped after `ESC ]` would count twenty-six cells of URI as text, and every
 // caller of [flatten] indexes a row by those counts. Task references would land
 // on the wrong columns and [paintLinks] would splice an SGR into the middle of a

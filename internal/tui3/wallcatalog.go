@@ -21,7 +21,7 @@ type wallSavedReadMsg struct {
 }
 
 func (a *app) wallCatalogRead() tea.Cmd {
-	if !a.wall.on || a.wall.catalogBusy {
+	if !a.wall.on || a.wall.openTabs || a.wall.catalogBusy {
 		return nil
 	}
 	now := a.now()
@@ -151,8 +151,17 @@ func (a *app) wallTakeSavedRead(msg wallSavedReadMsg) {
 	a.touch()
 }
 
-// The cached catalog includes dismissed tabs. Current strip records refresh
-// live identities, while saved metadata supplies state and cost for other cards.
+// All shares the strip's membership and ordering, including its selected team.
+// The separate Chats library still includes saved and dismissed conversations.
 func (a *app) wallCandidates() []conversationCandidate {
+	if a.wall.openTabs {
+		var out []conversationCandidate
+		for _, tab := range a.teamStripTabs(a.tabList()) {
+			if !tab.start && !tab.work && tab.key != "" && !a.conversationDeleted(tab.file) {
+				out = append(out, conversationCandidate{tab: tab})
+			}
+		}
+		return out
+	}
 	return a.conversationCatalogMerge(a.wall.catalog)
 }

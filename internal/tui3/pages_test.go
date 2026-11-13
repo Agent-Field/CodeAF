@@ -66,7 +66,7 @@ func TestThePlacesAreOneList(t *testing.T) {
 	}
 	// AND alt+0 IS NOTHING, rather than a tenth place: the eight digits are the
 	// seven rooms and the way back to the chats, teams second and the chats
-	// third (the owner's order).
+	// third (the specified order).
 	if _, ok := placeDigit("alt+0"); ok {
 		t.Fatal("alt+0 reaches a place that does not exist")
 	}
@@ -317,7 +317,7 @@ func TestTheMapDrawsInTheCellsThatWereAlreadyThere(t *testing.T) {
 	// after the six with theirs: the map is the one surface whose job is to show
 	// every key, so `alt+7`…`alt+8` are on it.
 	if bar := after[navRow]; !strings.Contains(bar, "1 Home") || !strings.Contains(bar, "2 AI teams") || !strings.Contains(bar, "3 Chats") ||
-		!strings.Contains(bar, "6 Settings") || !strings.Contains(bar, "7 Automations") || !strings.Contains(bar, "8 Memories") || strings.Contains(bar, "9 search") {
+		!strings.Contains(bar, "6 Settings") || !strings.Contains(bar, "7 Automations") || !strings.Contains(bar, "8 Memory") || strings.Contains(bar, "9 search") {
 		t.Fatalf("the map put no numbers on the tab bar: %q", bar)
 	}
 	// AND THE CHORD LIST IS THE HINT LINE.
@@ -670,11 +670,10 @@ func TestAnAmbiguousPrefixOffersNoPlaceAtAll(t *testing.T) {
 
 // ── the palette ─────────────────────────────────────────────────────────────
 
-// WAITING ON YOU IS ONE COLOUR ON EVERY SCREEN. Home used to say it in two — a
-// violet question hue on the strip and the amber on the finished-needs-your-look
-// glyph — and it settled on the amber; since the owner's colour ruling of
-// 2026-09-11 the CONVERSATION says it in the same amber too, so `ask` and `warn`
-// are one hue wherever either is asked for (styles.go's [palette.ask]).
+// WAITING ON YOU IS ONE COLOUR ON EVERY SCREEN. Home used to say it in two — a violet
+// question hue on the strip and the amber on the finished-needs-your-look glyph — and it
+// settled on the amber; since the CONVERSATION says it in the same amber too, so `ask` and
+// `warn` are one hue wherever either is asked for (styles.go's [palette.ask]).
 func TestWaitingOnYouIsOneColourOnHome(t *testing.T) {
 	a := placeApp(t)
 	pal := a.pal
@@ -820,12 +819,12 @@ func TestTheTabBarCarriesTheFourAtEveryUsableWidth(t *testing.T) {
 	a := placeApp(t)
 	for _, width := range []int{86, 120, 200} {
 		bar := navPlaces(a, width, false)
-		if !placeWordsInOrder(bar, "Home", "Chats", "AI teams", "Activity", "Memories", "Automations", "Spend", "Settings") {
+		if !placeWordsInOrder(bar, "Home", "Chats", "AI teams", "Activity", "Memory", "Automations", "Spend", "Settings") {
 			t.Fatalf("at %d columns the bar is not the eight places in order: %q", width, bar)
 		}
 	}
 	bar := navPlaces(a, 80, false)
-	if !placeWordsInOrder(bar, "Home", "Chats", "AI teams", "Activity", "Memories", "Automations") {
+	if !placeWordsInOrder(bar, "Home", "Chats", "AI teams", "Activity", "Memory", "Automations") {
 		t.Fatalf("at 80 columns the bar does not keep the automations beside memory: %q", bar)
 	}
 	if !pagesHold(a.navMore.folded, pageSpend) || !pagesHold(a.navMore.folded, pageSettings) {
@@ -837,7 +836,7 @@ func TestTheTabBarCarriesTheFourAtEveryUsableWidth(t *testing.T) {
 	if a.page == pageAutomations {
 		t.Fatal("the lab opened on the automations, which proves nothing about the bar at rest")
 	}
-	if bar := navPlaces(a, 120, false); !strings.Contains(bar, "Memories  Automations  Spend") {
+	if bar := navPlaces(a, 120, false); !strings.Contains(bar, "Memory  Automations  Spend") {
 		t.Fatalf("at rest the bar does not carry the automations between memory and spend: %q", bar)
 	}
 }

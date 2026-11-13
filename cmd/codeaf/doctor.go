@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/calllog"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/env"
@@ -16,16 +18,20 @@ import (
 	"github.com/Agent-Field/codeaf/internal/store"
 )
 
+var doctorKeyClient = http.DefaultClient
+
 // doctorSnapshot is everything doctor reports.
 //
 // Two rows it used to carry are gone with the v1 resident's scheduler
-// (docs/design/automations/DESIGN.md): `background timer`, which read the
+// : `background timer`, which read the
 // operating-system timer that scheduler installed, and `standing`, which
 // counted its charters beside the questions still waiting on an answer.
 // Nothing installs a timer any more and nothing makes a charter, so a row
 // about either could only ever read "not installed" and nothing — a reading
 // of machinery that is not there.
 type doctorSnapshot struct {
+	ProviderKey   appwire.ProviderKeyHealth
+	Checks        []appwire.ReadinessCheck
 	BrainPath     string
 	BrainSize     int64
 	BrainExists   bool
@@ -43,7 +49,10 @@ type doctorSnapshot struct {
 	Key keyReport
 	// Cells is what the cells' working files hold against the disk budget, "" when
 	// they hold nothing.
-	Cells string
+	Cells       string
+	EngineStore []string
+	SyncIssues  []string
+	Fixes       []string
 }
 
 // fallbackKeyEnv is the compatibility variable [config.Load] accepts for an
@@ -87,11 +96,12 @@ func runDoctor(args []string) error {
 func runDoctorWith(args []string, output io.Writer, dailyBudget float64) error {
 	flags := commandFlags("doctor")
 	database := flags.String("db", defaultChatDB(), storeFlagHelp)
+	fix := flags.Bool("fix", false, "repair safe engine store and sync state")
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {
-		return fmt.Errorf("usage: codeaf doctor [--db path]")
+		return fmt.Errorf("usage: codeaf doctor [--db path] [--fix]")
 	}
 	path, err := expandHome(strings.TrimSpace(*database))
 	if err != nil {
@@ -127,7 +137,14 @@ func runDoctorWith(args []string, output io.Writer, dailyBudget float64) error {
 	// The key is read from the same profile, and for the same reason: `--db`
 	// moves the store and moves nothing about who this machine can talk to.
 	snapshot.Key = readKeyReport(strings.TrimSpace(env.Get(config.ProfileDirEnv)))
+	address := config.DefaultBaseURL
+	if settings, loadErr := config.LoadKeyless(); loadErr == nil {
+		address = settings.BaseURL
+	}
+	snapshot.ProviderKey = probeKeyHealth(doctorKeyClient, address, config.APIKeyAt(config.ProfileDir()))
+	snapshot.Checks = machineReadiness()
 	snapshot.Cells = cellsUsage()
+	snapshot.EngineStore, snapshot.SyncIssues, snapshot.Fixes = inspectAndRepairDoctor(*fix)
 	_, err = io.WriteString(output, formatDoctor(snapshot))
 	return err
 }
@@ -244,11 +261,30 @@ func formatDoctor(snapshot doctorSnapshot) string {
 		"store", brain,
 		"resident", snapshot.Resident,
 		"spend", spend)
+	if snapshot.ProviderKey.State != "" {
+		block += fmt.Sprintf("%-16s %s", "provider key", snapshot.ProviderKey.State)
+		if snapshot.ProviderKey.Message != "" {
+			block += " · " + snapshot.ProviderKey.Message
+		}
+		block += "\n"
+	}
+	for _, check := range snapshot.Checks {
+		block += fmt.Sprintf("%-16s %s · %s · %s\n", check.Name, check.State, check.Message, check.Fix)
+	}
 	if snapshot.Cells != "" {
 		block += fmt.Sprintf("%-16s %s\n", "cells", snapshot.Cells)
 	}
 	if line := formatCallLog(snapshot.CallLog); line != "" {
 		block += fmt.Sprintf("%-16s %s\n", "model calls", line)
+	}
+	for _, line := range snapshot.EngineStore {
+		block += fmt.Sprintf("%-16s %s\n", "engine store", line)
+	}
+	for _, line := range snapshot.SyncIssues {
+		block += fmt.Sprintf("%-16s %s\n", "sync", line)
+	}
+	for _, line := range snapshot.Fixes {
+		block += line + "\n"
 	}
 	return block
 }

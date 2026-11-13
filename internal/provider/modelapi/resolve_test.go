@@ -14,7 +14,7 @@ func routerAccount() modelsource.Set {
 	return modelsource.NewSet(modelsource.Connected{Source: source, Key: "sk-or-v1-routerkey0000000000", Address: source.Address})
 }
 
-// proxyOnly is the owner's machine: no OpenRouter key, and one service of
+// proxyOnly is a machine with no OpenRouter key, and one service of
 // their own — an OpenAI-compatible proxy on this machine — that carries every
 // conversation.
 func proxyOnly() modelsource.Set {

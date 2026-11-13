@@ -11,11 +11,14 @@ import (
 // retireCheckpointForks preserves the checkpoint whenever retirement fails.
 // Closed conversations retry landed copies; only litter reaping may remove
 // unfinished copies. Children go first so their grounds are still available.
+// A fork retired once is remembered beside the checkpoint and never asked
+// about again ([placeRetiredForks]).
 func retireCheckpointForks(ctx context.Context, dir string, landedOnly bool, note func(string)) bool {
 	nodes, ok := checkpointForks(dir, note)
 	if !ok {
 		return false
 	}
+	retired := loadRetiredForks(dir)
 	asked := map[string]bool{}
 	for _, record := range nodes {
 		if contextDone(ctx) {
@@ -33,6 +36,9 @@ func retireCheckpointForks(ctx context.Context, dir string, landedOnly bool, not
 			continue
 		}
 		asked[key] = true
+		if retired.holds(tree) {
+			continue
+		}
 		if !sessionOwnsForkDirectory(dir, tree.dir) {
 			note(fmt.Sprintf("sweep: cannot retire fork %s outside its session trees", tree.universe))
 			return false
@@ -46,6 +52,9 @@ func retireCheckpointForks(ctx context.Context, dir string, landedOnly bool, not
 			return false
 		}
 		note(fmt.Sprintf("sweep: retired fork %s of %s", tree.universe, tree.ground))
+		if err := retired.remember(dir, tree); err != nil {
+			note(fmt.Sprintf("sweep: could not remember retiring fork %s: %v", tree.universe, err))
+		}
 	}
 	return !contextDone(ctx)
 }

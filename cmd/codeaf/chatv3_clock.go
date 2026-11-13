@@ -1,7 +1,7 @@
 package main
 
 // chatv3_clock.go is the process side of automations (internal/automation;
-// docs/design/automations/DESIGN.md): `codeaf clock`, the one process that runs
+// the implementation): `codeaf clock`, the one process that runs
 // them while a codeaf window is open, and the window's half — holding presence
 // for as long as it is open and starting a clock when none is running.
 //
@@ -290,7 +290,7 @@ func runClock(args []string) error {
 		cfg, _, _, err := v3ConfigFor(proc, v3Options{Interactive: true}, workspace, session.Place{}, "", nil)
 		return cfg, err
 	}, store.Root())
-	clock := &automation.Clock{Store: store, Presence: automation.NewPresence(root), Runner: runner, Log: logf, Env: clockEnvironment(root)}
+	clock := &automation.Clock{Store: store, Presence: automation.NewPresence(root), Runner: runner, Log: logf, Env: clockEnvironment(root), Orphaned: parentGone()}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -303,6 +303,18 @@ func runClock(args []string) error {
 		return nil
 	}
 	return err
+}
+
+// parentGone says the process that started this one has ended: on unix an
+// orphan is handed to another parent, so its parent's pid changes. A clock
+// started by no window it could outlive (a parent of pid 1, or a system that
+// does not hand orphans on) never answers yes.
+func parentGone() func() bool {
+	parent := os.Getppid()
+	if parent <= 1 {
+		return nil
+	}
+	return func() bool { return os.Getppid() != parent }
 }
 
 // clockRereadKeys puts the profile's key and connected services, as they are on
@@ -370,16 +382,7 @@ func openV3ClockProcess() (*v3Process, func(), error) {
 		LaunchDir:         workspace,
 	}
 	proc.Skills, proc.skillsDir = v3SkillShelf(proc.Memory)
-	stop := func() {
-		processStop()
-		if memory != nil {
-			_ = memory.Close()
-		}
-		if search != nil && search != memory {
-			_ = search.Close()
-		}
-	}
-	return proc, stop, nil
+	return proc, proc.closeAll, nil
 }
 
 // retireWhenReplaced ends the clock when its own binary has been replaced and

@@ -11,7 +11,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
-// ── THE LIVE PANELS (docs/design/home-mission-control/DESIGN.md §3 P1–P3) ───
+// ── THE LIVE PANELS ───
 
 // liveLab is a machine with two conversations of its own in one project and a
 // third somewhere else, opened at a hundred and twenty by forty-five — two
@@ -109,8 +109,8 @@ func TestNeedsYouOrdersTheWaitsAndDrawsAnswersOnTheTopRowOnly(t *testing.T) {
 	if rows[1].sub != "needs your ok to run bash" || rows[1].right != "3h" {
 		t.Fatalf("the top row is not the gate's own sentence with its age: %+v", rows[0])
 	}
-	// THE SENTENCE AND THE CHIPS ARE DRAWN UNDER THE ROW BEING READ, and at
-	// rest a row is its mark, its title and its wait (owner, 2026-09-17).
+	// THE SENTENCE AND THE CHIPS ARE DRAWN UNDER THE ROW BEING READ, and at rest a row is its
+	// mark, its title and its wait.
 	frame := homeText(a)
 	if under := homeLineAfter(frame, "Pricing Site"); strings.Contains(under, "needs your ok") || strings.Contains(under, "allow once") {
 		t.Fatalf("the top row draws its sentence with nobody reading it:\n%s", frame)
@@ -144,10 +144,9 @@ func TestNeedsYouCarriesATaskWaitingOnYourCall(t *testing.T) {
 		FilesChanged: 3})
 	a := l.open()
 	rows := homeAttentionRows(a)
-	// THE MARGIN IS WHEN IT LANDED AND NOTHING ELSE; its description leads with
-	// the thread it belongs to, spelled as `threads` spells it (owner,
-	// 2026-09-17), then the files it wrote (owner, 2026-09-15: the right margin
-	// of every field row is a time). It used to read `3 files · 30m`.
+	// THE MARGIN IS WHEN IT LANDED AND NOTHING ELSE; its description leads with the thread it
+	// belongs to, spelled as `threads` spells it, then the files it wrote. It used to read `3
+	// files · 30m`.
 	if len(rows) != 1 || rows[0].title != "fix the flaky sieve" || rows[0].right != "30m" || rows[0].thread != "Prime Sieve" || !strings.HasPrefix(rows[0].sub, "3 files · ") {
 		t.Fatalf("the task's call is not a one-line row of needs you with its files in its description: %+v", rows)
 	}
@@ -417,7 +416,7 @@ func (cancelFake) Cancel(string) (string, error) { return "stopping", nil }
 // it. A task's part is on its record and not on this panel.
 func TestSinceYouLeftNamesEachLandedTaskAndFile(t *testing.T) {
 	l := newLiveLab(t)
-	l.task("-alpha", session.TaskIndexEntry{ID: "1", SessionID: "aaaa000000000002", Label: "spark fleet ssh audit", Title: "spark fleet ssh audit",
+	l.task("-alpha", session.TaskIndexEntry{ID: "1", SessionID: "aaaa000000000002", Label: "tower fleet ssh audit", Title: "tower fleet ssh audit",
 		Status: string(session.TaskDone), Outcome: "2 hosts up, 1 not", Cost: 0.42,
 		EndedAt: l.now.Add(-3 * time.Hour)})
 	l.task("-alpha", session.TaskIndexEntry{ID: "2", SessionID: "aaaa000000000002", Label: "port the parser", Title: "port the parser",
@@ -432,7 +431,7 @@ func TestSinceYouLeftNamesEachLandedTaskAndFile(t *testing.T) {
 	a.readSwitchLedger()
 	a.home.build()
 	rows := panelRows(a, panelLeft)
-	want := []string{"made apartments-minto.md", "port the parser · lost the connection", "spark fleet ssh audit · 2 hosts up, 1 not"}
+	want := []string{"made apartments-minto.md", "port the parser · lost the connection", "tower fleet ssh audit · 2 hosts up, 1 not"}
 	if len(rows) != len(want) {
 		t.Fatalf("since you left drew %d lines, want %d:\n%s", len(rows), len(want), homeText(a))
 	}
@@ -441,9 +440,9 @@ func TestSinceYouLeftNamesEachLandedTaskAndFile(t *testing.T) {
 			t.Fatalf("line %d is %q, want %q", i, rows[i].title, title)
 		}
 	}
-	// THE MARGIN IS WHEN EACH HAPPENED, and the conversation a file was made in
-	// and what a task cost are the rows' descriptions (owner, 2026-09-15). They
-	// used to be the margins — a name on one row, money on the next.
+	// THE MARGIN IS WHEN EACH HAPPENED, and the conversation a file was made in and what a
+	// task cost are the rows' descriptions. They used to be the margins — a name on one row,
+	// money on the next.
 	if rows[0].right != "1h" || rows[1].right != "2h" || rows[2].right != "3h" {
 		t.Fatalf("the right margins are not when each happened: %+v", rows)
 	}
@@ -458,7 +457,7 @@ func TestSinceYouLeftNamesEachLandedTaskAndFile(t *testing.T) {
 // A LANDED TASK'S LINE IS A DOOR INTO ITS RECORD.
 func TestSinceYouLeftOpensALandedTasksRecord(t *testing.T) {
 	l := newLiveLab(t)
-	l.task("-alpha", session.TaskIndexEntry{ID: "1", SessionID: "aaaa000000000002", Label: "spark fleet ssh audit", Title: "spark fleet ssh audit",
+	l.task("-alpha", session.TaskIndexEntry{ID: "1", SessionID: "aaaa000000000002", Label: "tower fleet ssh audit", Title: "tower fleet ssh audit",
 		Status: string(session.TaskDone), Outcome: "all up", EndedAt: l.now.Add(-time.Hour)})
 	a := l.open()
 	a.home.seen = l.now.Add(-4 * time.Hour)
