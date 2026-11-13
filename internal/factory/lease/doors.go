@@ -309,6 +309,13 @@ func stopLocked(history *record.Record, doc *document, held *Lease, id int, it *
 		if cutHere && it.Failure != nil && it.Failure.Code == factory.CodeStopped {
 			it.Failure = nil
 		}
+		// AND ITS ASK GOES WITH THE RUN IT CUT, as a person's stop takes
+		// it down: it was put to the old person, by a run that no longer
+		// runs. Left standing, the job in Backlog showed waiting_since,
+		// which the desktop app's full read keyed as a wait on a person.
+		if cutHere {
+			it.Asking = nil
+		}
 	}
 	it.Publishing = false
 	_, pendingSignals := doc.Signals[id]

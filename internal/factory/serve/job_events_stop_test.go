@@ -141,6 +141,24 @@ func TestJobEventsStopRoadsAgreeWithFactoryJob(t *testing.T) {
 		{"reassign a running job", "running", func(t *testing.T, s *stopJob) { s.door(t, "change_assignee", `{"assignee":"mei"}`) }, api.StateBacklog, nil},
 		{"reassign a job at its plan gate", "gate", func(t *testing.T, s *stopJob) { s.door(t, "change_assignee", `{"assignee":"mei"}`) }, api.StateBacklog, nil},
 		{"unassign a running job", "running", func(t *testing.T, s *stopJob) { s.door(t, "unassign", "") }, api.StateBacklog, nil},
+		// A JOB HANDED ON TAKES ITS ASK DOWN, as a person's stop does: the
+		// ask was the cut run's, put to the old person. Left standing, it
+		// gave the Backlog job waiting_since, which the desktop app's full
+		// read keyed as a wait on a person.
+		{"reassign a job out of attempts", "stuck", func(t *testing.T, s *stopJob) { s.door(t, "change_assignee", `{"assignee":"mei"}`) }, api.StateBacklog, nil},
+		{"unassign a job at its plan gate", "gate", func(t *testing.T, s *stopJob) { s.door(t, "unassign", "") }, api.StateBacklog, nil},
+		{"unassign a job out of attempts", "stuck", func(t *testing.T, s *stopJob) { s.door(t, "unassign", "") }, api.StateBacklog, nil},
+		// No reset cuts a run that already failed, so the unassign's own
+		// write takes down the ask the failed run left.
+		{"unassign a failed job that still asks", "stuck", func(t *testing.T, s *stopJob) {
+			s.report(t, api.WorkerReport{Steps: []api.StepReport{{Name: "plan", State: string(factory.PhaseFailed), Round: 1,
+				Failure: &api.Failure{Code: factory.CodeToolError, Detail: "the worktree is gone", Next: factory.FailureStopped, At: time.Unix(0, s.f.clock.Load()).UTC()}}}})
+			s.f.request(t, "POST", s.lease+"/done", s.worker.Credential, api.WorkerDone{State: api.StateBacklog}, 200, nil)
+			if it, err := s.f.st.Get(s.job.ID); err != nil || it.Asking == nil || it.Failure == nil {
+				t.Fatalf("the failed job does not still ask: asking %+v, failure %+v, %v", it.Asking, it.Failure, err)
+			}
+			s.door(t, "unassign", "")
+		}, api.StateBacklog, []string{"failed:" + factory.CodeToolError}},
 		{"a step fails on its runner", "running", func(t *testing.T, s *stopJob) {
 			s.report(t, api.WorkerReport{Steps: []api.StepReport{{Name: "plan", State: string(factory.PhaseFailed), Round: 1,
 				Failure: &api.Failure{Code: factory.CodeToolError, Detail: "the worktree is gone", Next: factory.FailureStopped, At: time.Unix(0, s.f.clock.Load()).UTC()}}}})
@@ -191,6 +209,11 @@ func checkStopRoad(t *testing.T, shape string, road func(*testing.T, *stopJob), 
 		t.Errorf("factory.job reads %s (failure %+v, person_stopped %v), outcomes %v; want %s and %v",
 			job.State, job.Failure, stored.PersonStopped != nil && *stored.PersonStopped, kinds, state, want)
 	}
+	// A job that waits on nobody shows no wait: no needs_you, and no
+	// waiting_since from an ask the road left standing.
+	if job.State != api.StateNeedsYou && (job.WaitingSince != nil || job.NeedsYou != nil) {
+		t.Errorf("factory.job reads %s but waits: waiting_since %v, needs_you %+v (asking %+v)", job.State, job.WaitingSince, job.NeedsYou, stored.Asking)
+	}
 	// What the desktop app keys a failed job by agrees with what was recorded.
 	if job.State == api.StateNeedsYou && job.Failure != nil {
 		if len(got.Events) != 1 || !got.Events[0].At.Equal(job.Failure.At) {
@@ -228,7 +251,8 @@ func outcomeKey(e live.Outcome) string {
 // fullReadKeys is the same occurrences formed from factory.job, by the rule
 // PROTOCOL.md's job outcomes section gives a full read: a failure is a failed
 // job only in needs_you, or on a done job when it is no stop; a wait is keyed
-// only on a job with no failure.
+// only on a job in needs_you with no failure, from needs_you, or from
+// waiting_since when needs_you is absent (the desktop app's fallback).
 func fullReadKeys(j api.Job) []string {
 	stamp := func(t time.Time) string { return t.UTC().Format(time.RFC3339Nano) }
 	var keys []string
@@ -242,8 +266,12 @@ func fullReadKeys(j api.Job) []string {
 	if f := j.Failure; f != nil && (j.State == api.StateNeedsYou || j.State == api.StateDone && f.Code != factory.CodeStopped) {
 		keys = append(keys, "failed:"+stamp(f.At))
 	}
-	if n := j.NeedsYou; n != nil && j.State == api.StateNeedsYou && j.Failure == nil && !n.Since.IsZero() {
-		keys = append(keys, "needs_you:"+n.Kind+":"+stamp(n.Since))
+	if j.State == api.StateNeedsYou && j.Failure == nil {
+		if n := j.NeedsYou; n != nil && !n.Since.IsZero() {
+			keys = append(keys, "needs_you:"+n.Kind+":"+stamp(n.Since))
+		} else if j.WaitingSince != nil && !j.WaitingSince.IsZero() {
+			keys = append(keys, "needs_you:"+stamp(*j.WaitingSince))
+		}
 	}
 	return keys
 }
