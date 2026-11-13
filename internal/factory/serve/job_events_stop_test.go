@@ -9,6 +9,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/live"
+	"github.com/Agent-Field/codeaf/internal/factory/run"
 )
 
 // stopJob is a job on the Factory service, started by its person (the start
@@ -35,7 +36,13 @@ func newStopJob(t *testing.T, shape string) *stopJob {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := f.st.Update(it.ID, func(cur *factory.Item) error { factory.ClearPersonStop(cur); return nil }); err != nil {
+	if err := f.st.Update(it.ID, func(cur *factory.Item) error {
+		factory.ClearPersonStop(cur)
+		if shape == "budget" {
+			cur.Cap, cur.Autonomy = 1, factory.AutonomyAuto
+		}
+		return nil
+	}); err != nil {
 		t.Fatal(err)
 	}
 	s := &stopJob{f: f, worker: worker, job: it, path: fmt.Sprintf("/v1/jobs/%d", it.ID)}
@@ -46,6 +53,9 @@ func newStopJob(t *testing.T, shape string) *stopJob {
 	case "gate":
 		s.report(t, api.WorkerReport{Steps: []api.StepReport{{Name: "plan", State: string(factory.PhaseDone), Round: 1}}})
 		s.report(t, api.WorkerReport{Question: &api.Question{Kind: factory.QKindApprove, FromStep: factory.ApproveName, Text: "plan is ready · continue, or send it back?"}})
+	case "budget":
+		s.report(t, api.WorkerReport{Steps: []api.StepReport{{Name: "plan", State: string(factory.PhaseRunning), Round: 1}}})
+		s.report(t, api.WorkerReport{Cost: 1.5, Question: &api.Question{Kind: "cap", FromStep: "plan", Text: "budget of $1 reached · job total $1.50 · raise it to $5, or stop?"}})
 	case "stuck":
 		s.report(t, api.WorkerReport{Steps: []api.StepReport{{Name: "plan", State: string(factory.PhaseRunning), Round: 1}}})
 		s.report(t, api.WorkerReport{Question: &api.Question{Kind: factory.QKindOutOfAttempts, FromStep: "plan", Text: "plan is out of attempts · try once more?"}})
@@ -67,6 +77,34 @@ func (s *stopJob) door(t *testing.T, verb, body string) {
 		payload = rawJSON(body)
 	}
 	s.f.request(t, "POST", s.path+"/"+verb, "", payload, 200, nil)
+}
+
+// runnerStops is the runner's own end of a run its loop stopped on a
+// person's answer: the loop's stop write on its copy of the job (the same
+// write as run.StopItem's), what the worker reports from it (run.Diff, in the
+// wire's words) and its done, answered with the statuses given.
+func (s *stopJob) runnerStops(t *testing.T, reported, done int) {
+	t.Helper()
+	mirror, err := s.f.st.Get(s.job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The runner's copy still waits where the person answered it.
+	mirror.State, mirror.Stream.Phases[mirror.Stream.Cur].State = factory.StateNeedsYou, factory.PhaseWaiting
+	stopped := mirror
+	stopped.Stream = &factory.Stream{}
+	*stopped.Stream = *mirror.Stream
+	stopped.Stream.Phases = append([]factory.Phase(nil), mirror.Stream.Phases...)
+	s.f.clock.Add(int64(time.Second))
+	if err := run.StopItem(&stopped, time.Unix(0, s.f.clock.Load()).UTC()); err != nil {
+		t.Fatal(err)
+	}
+	report, ok := run.Diff(mirror, stopped)
+	if !ok {
+		t.Fatal("the runner's stop has nothing to report")
+	}
+	s.f.request(t, "POST", s.lease+"/report", s.worker.Credential, api.FromRunReport(report), reported, nil)
+	s.f.request(t, "POST", s.lease+"/done", s.worker.Credential, api.WorkerDone{State: api.StateBacklog}, done, nil)
 }
 
 type rawJSON string
@@ -158,5 +196,33 @@ func checkStopRoad(t *testing.T, shape string, road func(*testing.T, *stopJob), 
 		if len(got.Events) != 1 || !got.Events[0].At.Equal(job.Failure.At) {
 			t.Errorf("factory.job's failure at %s, outcomes %+v", job.Failure.At, got.Events)
 		}
+	}
+}
+
+// A STOP THE RUNNER'S LOOP MADE IS THE PERSON'S STOP ON THE SERVED COPY TOO.
+// A person's cancel to a step out of attempts, or no to the budget, reaches
+// the runner that holds the job; its loop ends the run on its own copy, marks
+// the stop as the person's there, and reports the cut step to the service,
+// whose copy is the one factory.job reads and outcomes are recorded from. The
+// mark never travelled: the served copy, cleared of any earlier stop by its
+// Start, read as a failed job in Needs you while the runner's copy waited in
+// Backlog, and the outcomes (nothing) disagreed with factory.job (failed).
+func TestJobEventsRunnerMadeStopsAgreeWithFactoryJob(t *testing.T) {
+	for _, tt := range []struct {
+		name, shape, answer string
+		reported, done      int
+	}{
+		{"cancel out of attempts", "stuck", `{"choice":"cancel_job"}`, 200, 200},
+		// The job is still over its budget when the runner reports the stop,
+		// so the service keeps the report and withdraws the lease (409), and
+		// the runner's done finds no lease.
+		{"no to the budget", "budget", `{"yes":false}`, 409, 409},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			checkStopRoad(t, tt.shape, func(t *testing.T, s *stopJob) {
+				s.door(t, "answer", tt.answer)
+				s.runnerStops(t, tt.reported, tt.done)
+			}, api.StateBacklog, nil)
+		})
 	}
 }

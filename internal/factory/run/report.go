@@ -577,6 +577,15 @@ func reportStep(it *factory.Item, step factory.StageReport, now time.Time) error
 			f.Step = step.Name
 		}
 		factory.StampFailure(it, f)
+		// A STOP THE RUNNER'S LOOP MADE IS A PERSON'S STOP HERE TOO. Only a
+		// person's word writes a failure coded stopped on a runner (a cancel
+		// out of attempts, a no to the budget, a no with nothing to send
+		// back to); its mark stays on the runner's copy, which no report
+		// carries, and this copy read the job as failed in Needs you.
+		if f.Code == factory.CodeStopped {
+			factory.MarkPersonStopped(it)
+			it.Asking = nil
+		}
 	}
 	return nil
 }
