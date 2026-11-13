@@ -244,6 +244,21 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.capabilities` | `in.Empty` | `FactoryCapabilities` |
 | `factory.intake_add` | `in.FactoryIntakeParams` | `inbox.Result` |
 | `factory.features` | `in.FactoryRef` | `FactoryFeatures` |
+| `factory.teams` | `in.OrgConn` | `OrgTeams` |
+| `factory.team_create` | `in.OrgTeamCreateParams` | `OrgTeam` |
+| `factory.team_rename` | `in.OrgTeamRenameParams` | `OrgTeam` |
+| `factory.team_delete` | `in.OrgTeamParams` | `Empty` |
+| `factory.team_member_add` | `in.OrgTeamMemberParams` | `OrgTeam` |
+| `factory.team_member_remove` | `in.OrgTeamMemberParams` | `OrgTeam` |
+| `factory.org_workstreams` | `in.OrgConn` | `OrgWorkstreams` |
+| `factory.org_workstream` | `in.OrgWorkstreamParams` | `OrgWorkstream` |
+| `factory.org_workstream_create` | `in.OrgWorkstreamCreateParams` | `OrgWorkstream` |
+| `factory.org_workstream_update` | `in.OrgWorkstreamUpdateParams` | `OrgWorkstream` |
+| `factory.org_workstream_delete` | `in.OrgWorkstreamParams` | `Empty` |
+| `factory.org_workstream_owner` | `in.OrgWorkstreamOwnerParams` | `OrgWorkstream` |
+| `factory.org_workstream_shares` | `in.OrgWorkstreamSharesParams` | `OrgWorkstreamShared` |
+| `factory.org_workstream_share_preview` | `in.OrgWorkstreamSharePreviewParams` | `OrgSharePreview` |
+| `factory.org_workstream_import` | `in.OrgWorkstreamImportParams` | `OrgWorkstream` |
 | `factory.detach` | `in.FactoryRef` | `Empty` |
 | `factory.job` | `in.FactoryJobParams` | `Job` |
 | `factory.job_approve` | `in.FactoryJobApproveParams` | `FactoryJobActed` |
@@ -397,6 +412,27 @@ the model. Only the factory's operator may set them (`forbidden` otherwise).
 `expect` is the three values as last read; a factory that keeps others answers
 `stale` and changes nothing. A refused value is `bad_params` before anything is
 sent; an unconfirmed write is `uncertain`.
+
+An engine whose hello carries `org_teams` and `org_workstreams` reads and changes an
+organization's teams and workstreams, which live only on its `codeaf factory serve`
+server; the engine keeps no copy. Each method takes `connection` (the factory
+connection id; `factory` is read when it is absent) and is one request with the
+caller's session: `factory.teams` `GET /v1/teams`, `factory.team_create {name}`
+`POST /v1/teams`, `factory.team_rename {team, name}` `PATCH /v1/teams/{id}`,
+`factory.team_delete {team}` `DELETE /v1/teams/{id}`, `factory.team_member_add` and
+`factory.team_member_remove {team, handle}` `PUT`/`DELETE /v1/teams/{id}/members/{handle}`;
+`factory.org_workstreams` `GET /v1/workstreams`, `factory.org_workstream {id}`,
+`factory.org_workstream_create` `POST /v1/workstreams`, `factory.org_workstream_update
+{id, rev, ...patch}` `PATCH` with `If-Match: rev`, `factory.org_workstream_delete {id}`,
+`factory.org_workstream_owner {id, kind, owner}` `PUT .../owner`,
+`factory.org_workstream_shares {id, teams, include_linked}` `PUT .../shares`,
+`factory.org_workstream_share_preview {id, teams}` `GET .../shares/preview?teams=`, and
+`factory.org_workstream_import {from_local_id, name, ...}` `POST /v1/workstreams/import`.
+The answer is the server's, in its own shape (lists are `[]`, never null). Ids are
+checked before anything is sent (`bad_params`); the server's refusal keeps its status:
+403 `forbidden`, 409 `conflict`, 412 `conflict` with `detail.reason` `stale` (read the
+workstream again). A write that may have happened is `uncertain`. `factory.me` also
+answers `teams`, the ids of the teams the person is in (`[]` from an older server).
 
 An engine whose hello carries `factory.group_policy` and `factory.waits_set`
 (and capabilities `group_policy: true`, `waits_on: true`) serves go-aheads the

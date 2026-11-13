@@ -201,8 +201,19 @@ type FactoryList struct {
 }
 
 // FactoryRef names one attached factory, by the id factory.list gave.
+// Connection is the same id under the organization methods' word
+// (factory_org.go); a read takes either, and factory wins when both are sent.
 type FactoryRef struct {
-	Factory string `json:"factory"`
+	Factory    string `json:"factory"`
+	Connection string `json:"connection,omitempty"`
+}
+
+// ref is the connection id the request names, by either word.
+func (r FactoryRef) ref() string {
+	if id := strings.TrimSpace(r.Factory); id != "" {
+		return id
+	}
+	return strings.TrimSpace(r.Connection)
 }
 
 // FactoryAttachParams attaches a factory. Token is an access token the person
@@ -353,6 +364,9 @@ type FactoryMe struct {
 	// older factory that says nothing reads as false.
 	GitHubSignInAvailable bool `json:"github_sign_in_available"`
 	InviteAvailable       bool `json:"invite_available"`
+	// Teams are the ids of the organization's teams this person is in, as
+	// the server's /v1/me says; [] from a server older than teams.
+	Teams []string `json:"teams"`
 }
 
 // NewFactoryMe narrows the factory's HTTP identity to the public view. Sign-in
@@ -371,6 +385,7 @@ func NewFactoryMe(me api.Me) FactoryMe {
 	if out.Scopes == nil {
 		out.Scopes = []string{}
 	}
+	out.Teams = []string{}
 	return out
 }
 
@@ -463,7 +478,7 @@ func factoryRead[R any](name string, read func(Factory, context.Context, string)
 		if err != nil {
 			return nil, err
 		}
-		id, err := factoryID(p.Factory)
+		id, err := factoryID(p.ref())
 		if err != nil {
 			return nil, err
 		}
