@@ -496,5 +496,22 @@ func Overlaps(a, b Item) bool {
 
 // CanRunAsNew says the work has ended, so a person may start its request anew.
 func CanRunAsNew(it Item) bool {
-	return RunEnded(it) || JobState(it) == "done"
+	return RunEnded(it) || JobState(it) == "done" || runCut(it)
+}
+
+// runCut says a change of assignee or an unassign stopped the job's run and
+// nothing has started it again: the job is new, its run ended, and the step
+// the stop cut says it was stopped. The job carries no failure of its own
+// (the reset hands it on as nobody's failure), so [RunEnded] does not say it.
+//
+// A HANDED-ON JOB STILL OFFERS RUN AS NEW. It did while the reset left its
+// stop on the job as a failure; when the reset stopped doing that, Run as new
+// went with it, for a run that had ended all the same.
+func runCut(it Item) bool {
+	s := it.Stream
+	if it.State != StateNew || s == nil || s.Ended.IsZero() || s.Cur < 0 || s.Cur >= len(s.Phases) {
+		return false
+	}
+	f := s.Phases[s.Cur].Failure
+	return f != nil && f.Code == CodeStopped
 }

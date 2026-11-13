@@ -521,6 +521,7 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.sign_in_start` | `in.FactorySignInStartParams` | `FactorySignIn` |
 | `factory.sign_out` | `in.FactoryAdminParams` | `FactoryAdminDone` |
 | `factory.spend_by_model` | `in.FactorySpendByModelParams` | `FactorySpendByModel` |
+| `factory.events_since` | `in.FactoryEventsSinceParams` | `FactoryEvents` |
 | `factory.usage_by_model` | `in.FactoryUsageParams` | `FactoryUsage` |
 | `factory.spend_by_repo` | `in.FactorySpendByRepoParams` | `FactorySpendByRepo` |
 | `factory.spending` | `in.FactoryRef` | `FactorySpending` |
@@ -902,6 +903,76 @@ On the worker HTTP interface, a revoked lease still returns HTTP 409. Retry or
 manual takeover adds `X-Codeaf-Lease-Withdrawn: 1`, so the worker cancels its old
 execution without reporting a person's Stop. The latest withdrawn lease is
 retained per worker until that worker pulls again.
+
+An engine whose hello carries `factory.job_events` and whose capabilities
+answer `job_events: true` serves `factory.events_since
+{factory, after?, limit?, follow?}`. `factory` is required; `after`, when
+present, is an integer at least zero. An absent cursor requests an initial
+reset; zero requests the beginning. `limit` is 1–500, or 0/omitted for 100.
+Invalid parameters answer `bad_params`. An engine without the Factory outcome
+reader answers `unknown_method` and does not announce the feature.
+
+The result is `{factory, supported, events, cursor, reset, more}`. `events`
+is always an array, in increasing `seq` order, and includes only jobs the
+caller may see; the cursor also advances past hidden outcomes. It does not
+advance past an outcome whose repository GitHub could not answer for just
+now (a 5xx, a failed connection or a spent GitHub rate limit, which
+is never kept as a denial): the page ends before it with
+`more: true`, and a read that would start at it fails (the Factory's HTTP
+503, the engine's `engine` error) so the caller reads again later from the
+same cursor. The cursor
+belongs to the Factory and survives an engine restart. `more: true` asks for
+another read after `cursor`. With no further outcomes, `cursor` is the latest
+position. Other Factory errors retain their usual codes. A Factory older
+than `GET /v1/job-events` answers `supported: false` with an empty event array
+and no error; following does not start for that answer.
+
+Each event is `{factory, seq, kind, job, at, title?, group?, how?, reason?,
+need?, code?, step?, pr_number?, pr_url?}`. `kind` is `finished`, `merged`,
+`failed` or `needs_you`. `how` describes a non-merge finish; merged outcomes
+carry the PR number and URL; failures carry code and step; needs-you outcomes
+carry need and reason. Titles are limited to 200 bytes at a rune boundary.
+A `failed` outcome is a new failure on a job that `factory.job` then shows
+as `needs_you`, or a failure other than `stopped` on a `done` job. A job a
+person stopped, by any door or by an answer that stops it, and a job a
+change of assignee stopped, read `backlog` and record nothing; a Close or
+Reject records only its `finished`. A change of assignee or an unassign
+also takes down the question the cut run asked, so the job shows no
+`waiting_since`. A `needs_you` outcome is recorded only for a job with no
+failure on it, once per wait: its `at` is the job's `needs_you.since`, which
+is when that wait began (its failure's, question's or step's own time, or,
+for a wait with none, such as a start held for approval, a take-over or an
+AgentField run's approval, the moment the Factory saw it begin) and does not
+move while the job waits with the same need and question, however many
+writes the job takes. A client that forms the same occurrences
+from a full `factory.job` read keys `failure` as a failed job only when
+`state` is `needs_you`, or `done` with a code other than `stopped`, and keys
+a wait only when `state` is `needs_you` and the job has no `failure`, from
+`needs_you` (or `waiting_since` when `needs_you` is absent): the `stopped`
+failure a `backlog` job (a person's stop) or a closed or rejected job
+carries is not a failed job, a failed job's own wait is its `failed`
+occurrence, and a job in any other state waits on nobody.
+The Factory records outcomes at job updates even with no app connected and
+keeps the newest 2,000 independently of its live notifications.
+
+`reset: true` means read the Factory's current state once, then continue from
+the returned cursor. A reset has no events. It occurs on an initial read,
+an expired or replaced cursor, or a gap caused by an older writer. Cursor
+zero on an empty record is caught up and does not reset repeatedly. A gap
+resets once: the Factory read that finds it closes it, and the returned
+cursor is past it.
+
+`follow: true` starts one follower per attached Factory. A later outcome is
+pushed as `factory.event` with the same `FactoryEvent` shape and sequence.
+The push is a prompt copy: the app can always read again from its own cursor.
+Repeated follow calls raise the follower's cursor without duplicating it.
+A follower takes reset cursors silently; the app's own read observes resets.
+After a reset that leaves its cursor where it was (a Factory without the gap
+repair resets every read during a gap), the follower waits 2 seconds,
+doubling to a minute while that repeats, before it reads again.
+Closing the engine or detaching the Factory ends following. The Factory HTTP
+read takes `after`, `limit` and optional `wait` seconds (0–15, default 0),
+returning on an outcome or reset when a watch is available.
 
 An engine whose hello carries `factory.spend_by_model` (and capabilities
 `spend_by_model: true`) serves `factory.spend_by_model {factory, from, to}`:
@@ -2042,6 +2113,7 @@ and the reply is empty.
 | `entry.added` | `EntryAdded` |
 | `factory.jobs_changed` | `FactoryJobsChanged` |
 | `factory.sessions_changed` | `Empty` |
+| `factory.event` | `FactoryEvent` |
 | `hello` | `Hello` |
 | `inbox.added` | `InboxAddedEvent` |
 | `inbox.counts` | `InboxCounts` |
@@ -2514,7 +2586,8 @@ Hello feature `factory.job_run_as_new` adds
 `expect.version` must be positive and guards the source job. The engine
 sends one `POST /v1/jobs/{id}/run-as-new {assignee?, expect?}`. The factory
 applies the same ownership and repository guards as `run_again`, and accepts
-failed, stopped, closed and done jobs. Running work is refused.
+failed, stopped, closed and done jobs, and a job whose run a change of
+assignee or an unassign cut. Running work is refused.
 
 The reply is `FactoryJobActed` with `action: "run_as_new"` and `job` naming the
 NEW job; `current` reads that job. The HTTP answer is `{factory, id}` with the

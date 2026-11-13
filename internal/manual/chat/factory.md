@@ -836,6 +836,12 @@ A job owned by this factory has one manager, however many asks race to open it. 
 
 To go on from a step that was cut instead, keeping the steps before it and the money spent, run that step again (try again) rather than starting the job.
 
+## a job stopped by your answer or by a new assignee — cancel, no to the budget, change of assignee, Backlog
+
+While a runner holds the job, a cancel to a step out of attempts, a no to the budget question and a send back with no earlier step to go back to stop it as **Stop** does, on your own machine and on a team factory alike: the job says `Stopped by you`, waits in Backlog and is not in Needs you or its count. A cancel to a job no runner holds does the same. **Carry on**, **Start** or **Run again** run it again.
+
+Changing the assignee of a running or waiting job, or unassigning it, stops its run too. The job then waits in Backlog for its new person with nothing failed on it and no question waiting, and the step it cut says it was stopped. **Run as new** starts its request again as a new job. A job whose step failed by itself is different: it waits in Needs you with the failure on it.
+
 ## reject an approval — end a job with your words, Reject versus Ask for changes, rejected jobs
 
 **Reject** answers a job that waits on your approval (a plan, an approve step, a start that asked first, or a step whose run paused for an approval) with a no that ends the job. Your words are kept on it. The job is done and closed here, its work and spending kept and nothing on GitHub changed. The run's waiting step is closed, so it no longer reads waiting. It leaves Needs you and its count, and no routing rule or label ever starts it again. Its page says `Rejected` with `Rejected · <your words>`, and **Reopen** or **Run as new** are the ways back. It never offers to carry on.

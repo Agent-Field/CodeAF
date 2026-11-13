@@ -844,6 +844,13 @@ type Item struct {
 	// on. It is kept on the item so a question sent to the person outlives a
 	// pause and a restart; nil is none.
 	Asking *Asked
+	// NeedsAt is when the job's current wait on a person began (the job reads
+	// needs_you), from the store's write that began it ([NoteWait]): the clock
+	// [NeedsSince] reads for a wait with no clock of its own, such as a start
+	// held for approval, a take-over, an AgentField run's approval, a Stop
+	// undone, a failed merge or a pull request's review. Zero while the job
+	// waits on nobody.
+	NeedsAt time.Time `json:",omitzero"`
 	// ManagerAnswer confirms the last durable decision independently of lease delivery.
 	ManagerAnswer *ManagerAnswer `json:",omitempty"`
 	// Briefs are the job's brief versions ([BriefVersion]), oldest first, at

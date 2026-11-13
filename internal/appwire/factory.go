@@ -175,6 +175,9 @@ type FactoryCapabilities struct {
 	// factory.spend_by_model). True only for an engine that implements
 	// [FactoryModelSpender]; a factory older than the route answers not found.
 	SpendByModel bool `json:"spend_by_model"`
+	// JobEvents: factory.events_since is served and factory.event is pushed
+	// (feature factory.job_events); a factory older than the route answers supported false.
+	JobEvents bool `json:"job_events"`
 	// RepoFacts: factory.repo_facts is served (feature factory.repo_facts).
 	// True only for an engine that implements [FactoryRepoFactsReader]; a
 	// factory older than the route answers not found.

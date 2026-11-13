@@ -363,12 +363,13 @@ func (st *Store) Save(it factory.Item) error {
 		if isTierProjection(it.Failure) {
 			it.Failure = current.Item.Failure
 		}
+		factory.NoteWait(current.Item, &it, st.now())
 		st.retainOutput(&it)
 		data, err := marshalDoc(nextDoc(current, it, rev))
 		if err != nil {
 			return err
 		}
-		err = live.Commit(st.root, live.Changes(current.Item, it, st.now()), func() error {
+		err = live.Commit(st.root, append(live.Changes(current.Item, it, st.now()), live.Outcomes(current.Item, it, st.now())...), func() error {
 			return st.writeItem(st.ItemPath(it.ID), data)
 		})
 		was, wrote = current.Item, err == nil
@@ -541,6 +542,9 @@ func (st *Store) update(id int, mode writeMode, expect *int, change func(*factor
 		if err := json.Unmarshal(raw, &it); err != nil {
 			return err
 		}
+		// The callback edits its own decoded copy, so before is the whole prior
+		// job, and outcomes compare it as it was: a partial copy read a waiting
+		// gate as a step's hold and recorded the wait again on every write.
 		before := current.Item
 		before.Stages = factory.CopyStages(it.Stages)
 		// In-place PR and failure edits must not rewrite the prior event facts.
@@ -586,6 +590,7 @@ func (st *Store) update(id int, mode writeMode, expect *int, change func(*factor
 		}
 		factory.RecordIssueTouch(before, &it)
 		factory.NoteChanges(before, &it, now)
+		factory.NoteWait(before, &it, now)
 		st.retainOutput(&it)
 		rev := current.Revision
 		if mode.bump {
@@ -595,7 +600,7 @@ func (st *Store) update(id int, mode writeMode, expect *int, change func(*factor
 		if err != nil {
 			return err
 		}
-		err = live.Commit(st.root, live.Changes(before, it, now), func() error {
+		err = live.Commit(st.root, append(live.Changes(before, it, now), live.Outcomes(before, it, now)...), func() error {
 			return st.writeItem(st.ItemPath(id), data)
 		})
 		was, after, wrote = before, it, err == nil
@@ -708,6 +713,8 @@ func (st *Store) CheckActionExpected(id, expected int) error {
 func nextDoc(before doc, it factory.Item, revision int) doc {
 	prior, next := before.Item, it
 	prior.Changed, next.Changed = time.Time{}, time.Time{}
+	// The wait's clock is the store's bookkeeping, as Changed is.
+	prior.NeedsAt, next.NeedsAt = time.Time{}, time.Time{}
 	prior.BriefWriting, next.BriefWriting = nil, nil
 	return doc{Revision: revision,
 		BudgetRevision: revisionSince(before.BudgetRevision, revision, before.Item.Cap != it.Cap),

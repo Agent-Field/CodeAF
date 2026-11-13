@@ -152,6 +152,7 @@ var Lost = map[string]string{
 	"Item.RouteRefused":   "the service's own mark that a refused routing rule's activity row was written once; the row itself is the record a surface reads",
 	"Item.RepoSetBy":      "who gave the job its repository is the service's own routing input, read where the intake runs; the repository itself crosses as repo",
 	"Item.OverLimit":      "known gap: crosses as over_limit only while the job is queued, which is the only time it means anything; a round trip of any other state loses it",
+	"Item.NeedsAt":        "each store's own clock of when the job's wait on a person began, kept at its writes (factory.NoteWait); it crosses as needs_you.since for a wait with no clock of its own",
 }
 
 // cloneBlocked is a copy of a job's block, so a job and the item it came from

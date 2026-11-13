@@ -247,7 +247,13 @@ func AnswerUnheld(it *factory.Item, yes bool, words string, now time.Time) error
 		ph := &it.Stream.Phases[i]
 		switch factory.OutOfAttemptsChoice(yes, words) {
 		case factory.ChoiceCancel:
+			// A CANCEL IS THE PERSON'S STOP, as the Stop door's is: the job
+			// waits in Backlog and asks nothing. Without the mark it read as
+			// a failed job waiting on them ("Stopped by you" in Needs you)
+			// once a Start had taken an earlier stop down.
 			stopStored(it, now)
+			factory.MarkPersonStopped(it)
+			it.Asking = nil
 			return nil
 		case factory.ChoiceSendBack:
 			prev := factory.PreviousWork(it.Stream.Phases, i)

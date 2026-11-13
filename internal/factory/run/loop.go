@@ -2411,7 +2411,16 @@ func (lp *floorLoop) stop(c *loopCtl) {
 			// stopped, and it stays. Every other stop the loop makes is a
 			// person's, the Stop door or a no to an approve step, to a step out
 			// of rounds or to the budget, and endRun records it as theirs.
+			person := it.Failure == nil
 			cut = endRun(it, now, it.Failure)
+			// AND THE JOB IS THEIRS TO START AGAIN, in Backlog, as after the
+			// Stop door: a cancel or a no is the same decision. Unmarked, a
+			// job a Start had cleared of an earlier stop read as failed and
+			// waiting on them.
+			if person {
+				factory.MarkPersonStopped(it)
+				it.Asking = nil
+			}
 			return nil
 		})
 		if err == nil {

@@ -376,11 +376,31 @@ func yesNoOptions(options []string) bool {
 	return (a == "yes" && b == "no") || (a == "no" && b == "yes")
 }
 
-// NeedsSince is when this wait started: the landed stream's end, the ask's
-// clock, the current step's clock, then the job's own stamps.
+// NeedsSince is when this wait started: the failure's clock, a failed
+// publish's, the landed stream's end, the ask's clock, the current step's
+// clock, then when the store saw the wait begin ([Item.NeedsAt]), then the
+// job's own stamps.
+//
+// A WAIT WITH NO CLOCK OF ITS OWN WAITS FROM WHEN IT BEGAN, NOT FROM THE LAST
+// WRITE. It read Changed, which every stamped write moves: a rename, a
+// priority, a budget or a note on a start held for approval, a take-over, an
+// AgentField run's approval or a Stop undone each recorded another needs_you
+// outcome the desktop app took for a new wait, and moved factory.job's
+// needs_you.since with it.
+//
+// A FAILED PUBLISH WAITS FROM THE MOMENT IT FAILED, whatever state the job's
+// copy is in. On a Factory service the runner's report of the failure arrives
+// while the copy still runs the publish, and the runner's done lands the job
+// after it: read by the state, one refusal waited first from the current
+// step's clock and then from the landed run's end, two waits recorded for one
+// refusal, and a publish retried and refused again waited from the run's end
+// as the first refusal had.
 func NeedsSince(it Item) time.Time {
 	if it.Failure != nil && !it.Failure.At.IsZero() {
 		return it.Failure.At
+	}
+	if p := it.PublishStatus; p != nil && p.State == "failed" && !p.At.IsZero() {
+		return p.At
 	}
 	if it.State == StateLanded && it.Stream != nil && !it.Stream.Ended.IsZero() {
 		return it.Stream.Ended
@@ -391,10 +411,34 @@ func NeedsSince(it Item) time.Time {
 	if it.Stream != nil && it.Stream.Cur >= 0 && it.Stream.Cur < len(it.Stream.Phases) && !it.Stream.Phases[it.Stream.Cur].At.IsZero() {
 		return it.Stream.Phases[it.Stream.Cur].At
 	}
+	if !it.NeedsAt.IsZero() {
+		return it.NeedsAt
+	}
 	if !it.Changed.IsZero() {
 		return it.Changed
 	}
 	return it.Created
+}
+
+// NoteWait keeps [Item.NeedsAt] across one write of the job, from before to
+// it: a wait this write began is stamped now, a wait that goes on keeps its
+// clock, and a job that waits on nobody has none. A wait goes on while the job
+// reads needs_you with the same need, question kind and question; anything
+// else is a new wait. Every store write calls it, so no road that puts a job
+// in front of a person has to remember a clock.
+func NoteWait(before Item, it *Item, now time.Time) {
+	switch {
+	case JobState(*it) != "needs_you":
+		it.NeedsAt = time.Time{}
+	case JobState(before) != "needs_you" || NeedsKind(before) != NeedsKind(*it) || before.QKind != it.QKind || before.Question != it.Question:
+		it.NeedsAt = now
+	case !before.NeedsAt.IsZero():
+		it.NeedsAt = before.NeedsAt
+	default:
+		// A wait written before this clock was kept goes on from the clock
+		// it showed, so its next write records no second wait.
+		it.NeedsAt = NeedsSince(before)
+	}
 }
 
 // GitHubIssue is a job that started from a GitHub issue. A number alone is
