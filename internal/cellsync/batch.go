@@ -562,7 +562,11 @@ func (b *Batcher) publish(ctx context.Context, head string) error {
 				}
 				return b.resolve(ctx)
 			}
-			return err
+			// THE HEARTBEAT IS THIS PUBLISH'S RELAY STEP, so its failure is the
+			// same owed upload a failed advance reports: the turns are durable
+			// here and only their upload is pending. Returned bare, a quit with
+			// the relay down reported a confirmed local save as lost.
+			return syncwords.UploadFailure(err)
 		}
 	}
 	ex, err := b.Publisher.publish(ctx, &d, head, b.info())

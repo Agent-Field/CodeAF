@@ -14,6 +14,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
@@ -245,6 +246,25 @@ func TestBatcherRecoversAfterOutageLongerThanLease(t *testing.T) {
 	got := r.head(cellID)
 	if got.Head != h2 || got.Lease.Fence != 1 || got.Lease.Device != devA || got.Lease.Expires <= r.clock.Now().UnixMilli() || superseded != 0 {
 		t.Fatalf("cell %+v, superseded %d", got, superseded)
+	}
+}
+
+// TestBatcherRecoveringHeartbeatFailureIsAnOwedUpload proves that a heartbeat
+// failing while the batcher recovers reports the same owed upload a failed
+// publish does. The heartbeat is the relay step of that publish: the turns are
+// durable on this computer and only their upload is pending, which is how a
+// quit with the relay down tells a confirmed local save from a lost one.
+func TestBatcherRecoveringHeartbeatFailureIsAnOwedUpload(t *testing.T) {
+	r := newRig(t)
+	b := r.batcher()
+	r.publishFirst(map[string]string{"a": "0"})
+	note(b, r.seal(map[string]string{"a": "1"}))
+
+	r.dirA.set(directory.ErrUnreachable)
+	b.flush(context.Background())
+	err := b.Close(context.Background())
+	if err == nil || !syncwords.UploadPending(err) {
+		t.Fatalf("a recovering publish with the relay down returned %v, want an owed upload", err)
 	}
 }
 
