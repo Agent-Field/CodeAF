@@ -137,7 +137,9 @@ func TestOrgWorkstreamAgentEventsAreRelayed(t *testing.T) {
 		func(e appwire.FactoryOrgWorkstreamAgent) bool {
 			return e.Entry != nil && e.Entry.Seq == 7 && e.Entry.Text == "Done." && e.Entry.By == "mia" && e.State == nil
 		},
-		func(e appwire.FactoryOrgWorkstreamAgent) bool { return e.State != nil && e.State.State == "idle" && e.Entry == nil },
+		func(e appwire.FactoryOrgWorkstreamAgent) bool {
+			return e.State != nil && e.State.State == "idle" && e.Entry == nil
+		},
 	} {
 		select {
 		case e := <-heard:

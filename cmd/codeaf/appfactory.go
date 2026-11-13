@@ -177,7 +177,7 @@ type appFactoryHub struct {
 	// orgAgent relays a line of an organization workstream's server agent,
 	// or what it is doing now; nil drops it.
 	orgAgent func(appwire.FactoryOrgWorkstreamAgent)
-	orgRetry    time.Duration
+	orgRetry time.Duration
 	// docFollow is each followed live document, keyed by connection and
 	// document, and docEvent relays what they carry (appfactory_org_docs.go);
 	// a hub with no docEvent follows none.

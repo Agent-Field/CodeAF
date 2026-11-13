@@ -177,7 +177,9 @@ func TestServerAgentAnswersEveryoneWhoCanEdit(t *testing.T) {
 	if ws.Pages[at].BodyMD != "Retry three times with backoff." || ws.Pages[at].UpdatedBy != "mia" {
 		t.Fatalf("retries page %+v", ws.Pages[at])
 	}
-	if !slices.ContainsFunc(ws.Pages, func(p api.WorkstreamPage) bool { return p.Title == "Runbook" && strings.Contains(p.BodyMD, "Page someone") }) {
+	if !slices.ContainsFunc(ws.Pages, func(p api.WorkstreamPage) bool {
+		return p.Title == "Runbook" && strings.Contains(p.BodyMD, "Page someone")
+	}) {
 		t.Fatalf("no runbook in %+v", ws.Pages)
 	}
 	if n := len(ws.Decisions); n != 1 || ws.Decisions[0].State != "proposed" || ws.Decisions[0].By != "mia" {

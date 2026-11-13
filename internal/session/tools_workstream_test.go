@@ -16,7 +16,9 @@ type fakeWorkstreamDoor struct {
 	decided []string
 }
 
-func (f *fakeWorkstreamDoor) Workstream(context.Context) (factory.OrgWorkstream, error) { return f.ws, nil }
+func (f *fakeWorkstreamDoor) Workstream(context.Context) (factory.OrgWorkstream, error) {
+	return f.ws, nil
+}
 func (f *fakeWorkstreamDoor) WritePage(_ context.Context, page, title, body string) (string, error) {
 	f.written = append(f.written, page+"|"+title+"|"+body)
 	return "wrote it", nil
@@ -49,7 +51,7 @@ func TestAWorkstreamAgentCarriesOnlyItsWorkstream(t *testing.T) {
 func TestWorkstreamPagesReadsAndWritesThroughTheDoor(t *testing.T) {
 	budget := 5.0
 	door := &fakeWorkstreamDoor{ws: factory.OrgWorkstream{Name: "Webhook reliability", Stage: "building", BudgetUSD: &budget,
-		Pages: []factory.WorkstreamPage{{ID: "pg_1", Title: "Retries", Kind: "page", BodyMD: strings.Repeat("r", workstreamPageCut+10)}},
+		Pages:     []factory.WorkstreamPage{{ID: "pg_1", Title: "Retries", Kind: "page", BodyMD: strings.Repeat("r", workstreamPageCut+10)}},
 		Decisions: []factory.WorkstreamDecision{{ID: "dc_1", Text: "Use backoff.", State: "kept", By: "abir"}}}}
 	tool := (&Agent{config: Config{Workstream: door}}).workstreamTool()
 	call := func(args string) (string, bool) {
