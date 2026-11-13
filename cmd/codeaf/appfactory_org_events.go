@@ -27,6 +27,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/guard"
 )
 
 // appOrgRetryMost is the longest wait between reopening a dropped stream.
@@ -63,7 +64,7 @@ func (h *appFactoryHub) followOrg(id, token string) {
 	ctx, cancel := context.WithCancel(context.Background())
 	f := &appOrgFollow{cancel: cancel, token: token}
 	h.orgFollow[id] = f
-	go h.runOrgFollow(ctx, id, f)
+	guard.Go("app/factory org events", func() { h.runOrgFollow(ctx, id, f) })
 }
 
 // stopOrgFollowLocked ends id's follower, if any.
