@@ -39,21 +39,27 @@ func (h *Handler) jobWorkstreamID(it factory.Item) string {
 	return ""
 }
 
-// jobPersonalVerbs are doors that write only the caller's own facts or ask a
-// question of the job without changing it, so seeing the job is enough.
+// jobPersonalVerbs are doors that write only the caller's own facts, ask a
+// question of the job without changing it, or speak as the caller somewhere
+// that judges them itself, so seeing the job is enough: dismiss hides the job
+// from the caller alone, and issue_comment posts on GitHub with the caller's
+// own grant, which GitHub refuses in its own words when it will not have it.
 var jobPersonalVerbs = map[string]bool{
-	"follow":     true,
-	"brief_seen": true,
-	"scout":      true,
+	"follow":        true,
+	"brief_seen":    true,
+	"scout":         true,
+	"dismiss":       true,
+	"issue_comment": true,
 }
 
-// jobDeskVerbs are the lease desk's own doors. On a job that has a person the
-// desk already refuses everyone else, naming who holds it, so this gate steps
-// aside; on a job with no person yet, taking it still needs edit on its
-// workstream.
+// jobDeskVerbs are the doors that make the caller the job's person, or let it
+// go. On a job that has a person each already refuses everyone else, naming
+// who holds it (409 with the taker), so this gate steps aside; on a job with
+// no person yet, taking it still needs edit on its workstream.
 var jobDeskVerbs = map[string]bool{
-	"take":    true,
-	"release": true,
+	"take":         true,
+	"release":      true,
+	"assign_to_me": true,
 }
 
 // profileless is true for a sign-in that names no one: a counted link secret
