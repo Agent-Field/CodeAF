@@ -148,6 +148,8 @@ func (h *Handler) liveForViewer(r *http.Request, e live.Event) (live.Event, bool
 	case "machine", "runner":
 		viewer := h.machineViewer(r)
 		return e, viewer != "" && factory.NormalizeHandle(e.Handle) == viewer
+	case api.EventWorkstreamChanged, api.EventWorkstreamRemoved:
+		return h.workstreamEventForViewer(r, e)
 	case "activity":
 		var event record.Event
 		if json.Unmarshal(e.Data, &event) != nil {
