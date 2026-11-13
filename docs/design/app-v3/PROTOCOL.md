@@ -402,8 +402,9 @@ sent; an unconfirmed write is `uncertain`.
 An engine whose hello carries `factory.group_policy` and `factory.waits_set`
 (and capabilities `group_policy: true`, `waits_on: true`) serves go-aheads the
 factory follows by itself. `factory.features {factory}` answers `{features}`, what
-that one factory keeps (`GET /v1/features`): `group_policy` and `waits_on`, or `[]`
-from a factory older than the route. `factory.policy_get {factory, group}` and
+that one factory keeps (`GET /v1/features`): `group_policy` and `waits_on` (a factory
+with a store), `keyed_create` (the keyed create rule below), or `[]` from a factory
+older than the route. `factory.policy_get {factory, group}` and
 `factory.policy_set {factory, group, stopped, allowances}` (`GET /v1/policy?group=`,
 `PUT /v1/policy`) answer `{group, version?, stopped, owner?, updated_at?, spent_usd,
 allowances: [{id, jobs, cap_usd, ends_at, spent_usd, state}]}`; a set replaces the
@@ -435,7 +436,10 @@ already running.
 A Factory job create (`POST /v1/jobs`, or `POST /v1/issues` when it opens the
 GitHub issue first) sent with an `Idempotency-Key` header is remembered for 24
 hours per caller, route and key, and a resend with the same key never makes a
-second job or issue. An answer given before the create wrote anything carries
+second job or issue. A Factory with this rule lists `keyed_create` in
+`GET /v1/features`; an older one keeps every keyed answer, a refusal or a 5xx
+included, for 24 hours, so an engine sends a create key only to a Factory that
+lists it. An answer given before the create wrote anything carries
 the response header `X-Codeaf-Phase: pre-mutation` and is not kept, so the same
 key runs the create again. Such answers are refusals of the request (a bad field,
 a repository the caller cannot see or that is off, a missing pipeline), sign-in and

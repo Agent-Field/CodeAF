@@ -15,7 +15,8 @@ import (
 // ([Features]). A factory older than these answers 404, which a client reads
 // as "this factory does not have it".
 
-// The words GET /v1/features answers.
+// The words GET /v1/features answers, with [FeatureKeyedCreate]
+// (keyed_create.go).
 const (
 	// FeatureGroupPolicy: the factory keeps group policies and starts the jobs
 	// they cover by itself.
