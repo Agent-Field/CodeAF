@@ -284,7 +284,7 @@ func (s fileSnap) floorInput(name string) bool {
 // registry, the live record, the sources' poll record, which the intake
 // rewrites on every poll whether or not a job arrived, and the event log.
 func lookBookkeeping(name string) bool {
-	return name == registryFile || name == live.File || name == sourcesFile || name == eventsFile || name == store.WorkstreamsFile
+	return name == registryFile || name == live.File || name == sourcesFile || name == eventsFile || store.IsWorkstreamsFile(name)
 }
 
 // eventsFile is the factory's event log ([record.Record]), appended to and
