@@ -683,6 +683,10 @@ func (h *Handler) setWorkstreamShares(w http.ResponseWriter, r *http.Request) {
 			next.Owner = owner
 		}
 		switch {
+		case body.Private != nil && *body.Private && (body.Shares == nil || len(*body.Shares) == 0):
+			// Making it private takes it from everyone it was shared with; a
+			// teams list sent beside it for an older server is not a share.
+			next.Shares = []factory.Share{}
 		case body.Shares != nil:
 			next.Shares = withoutOwnerShare(shares, next.Owner)
 		case body.Teams != nil:
@@ -750,6 +754,22 @@ func (h *Handler) previewWorkstreamShares(w http.ResponseWriter, r *http.Request
 		h.fail(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
+	// ?shares=team:tm_1:edit,person:abir:view names the shares being added,
+	// with roles; ?teams= is the older teams-only form, each as edit.
+	adding := factory.TeamShares(teams)
+	for _, one := range strings.Split(r.URL.Query().Get("shares"), ",") {
+		if one = strings.TrimSpace(one); one == "" {
+			continue
+		}
+		kind, rest, _ := strings.Cut(one, ":")
+		id, role, _ := strings.Cut(rest, ":")
+		adding = append(adding, factory.Share{Kind: kind, ID: id, Role: role})
+	}
+	adding, err = h.cleanShares(adding, api.WorkstreamOwner{})
+	if err != nil {
+		h.fail(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
 	all, err := h.config.Store.Workstreams()
 	if h.failed(w, err) {
 		return
@@ -759,7 +779,7 @@ func (h *Handler) previewWorkstreamShares(w http.ResponseWriter, r *http.Request
 		return
 	}
 	out := api.WorkstreamSharePreview{Linked: []api.WorkstreamSummary{}}
-	for _, linked := range linkedToShare(all, ws, factory.TeamShares(teams), v) {
+	for _, linked := range linkedToShare(all, ws, adding, v) {
 		out.Linked = append(out.Linked, workstreamSummary(linked, counts[linked.ID], v))
 	}
 	h.write(w, http.StatusOK, out)

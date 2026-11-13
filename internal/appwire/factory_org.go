@@ -283,8 +283,9 @@ type OrgWorkstreamSharesParams struct {
 // OrgWorkstreamSharePreviewParams asks what sharing with teams would add.
 type OrgWorkstreamSharePreviewParams struct {
 	OrgConn
-	ID    string   `json:"id"`
-	Teams []string `json:"teams"`
+	ID     string     `json:"id"`
+	Teams  []string   `json:"teams"`
+	Shares []OrgShare `json:"shares,omitempty"`
 }
 
 // OrgWorkstreamPackage is a Personal workstream moving into the organization,
@@ -637,7 +638,20 @@ func init() {
 		if err != nil {
 			return OrgRequest{}, err
 		}
-		return OrgRequest{Method: http.MethodGet, Path: path + "/shares/preview?teams=" + url.QueryEscape(strings.Join(teams, ","))}, nil
+		shares, err := orgShareList(p.Shares)
+		if err != nil {
+			return OrgRequest{}, err
+		}
+		query := "?teams=" + url.QueryEscape(strings.Join(teams, ","))
+		if len(shares) > 0 {
+			// The shares being added, with roles, as kind:id:role.
+			added := make([]string, 0, len(shares))
+			for _, s := range shares {
+				added = append(added, s.Kind+":"+s.ID+":"+s.Role)
+			}
+			query += "&shares=" + url.QueryEscape(strings.Join(added, ","))
+		}
+		return OrgRequest{Method: http.MethodGet, Path: path + "/shares/preview" + query}, nil
 	}), func(s *OrgSharePreview) { s.Linked = summaries(s.Linked) })
 	methods["factory.org_workstream_import"] = filled(orgMethod[OrgWorkstreamImportParams, OrgWorkstream]("factory.org_workstream_import", func(p OrgWorkstreamImportParams) (OrgRequest, error) {
 		name, err := orgName(p.Name)

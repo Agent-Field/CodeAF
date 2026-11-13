@@ -16,7 +16,7 @@ import "github.com/Agent-Field/codeaf/internal/factory"
 //	DELETE /v1/workstreams/{id}               -> 204, soft; ?purge=1 operator only
 //	PUT    /v1/workstreams/{id}/owner         WorkstreamOwner -> Workstream
 //	PUT    /v1/workstreams/{id}/shares        WorkstreamSharesPut -> WorkstreamShared, 412 on a stale rev
-//	GET    /v1/workstreams/{id}/shares/preview?teams=a,b -> WorkstreamSharePreview
+//	GET    /v1/workstreams/{id}/shares/preview?shares=team:a:edit,person:b:view (or ?teams=a,b) -> WorkstreamSharePreview
 //	POST   /v1/workstreams/import             WorkstreamPackage -> Workstream
 //
 // Every change is published on the event stream as a [WorkstreamEvent].
@@ -128,7 +128,8 @@ type WorkstreamPatch struct {
 //     each as edit, person shares kept. Sending neither keeps the shares.
 //   - Owner, when sent, gives it to that person or team first.
 //   - Private, when sent, sets whether only its owner reaches it: true needs a
-//     person owner and no shares. A non-empty share list on a private
+//     person owner, and takes it from everyone it was shared with (a non-empty
+//     Shares beside it is refused). A non-empty share list on a private
 //     workstream makes it not private.
 //   - Rev, when sent, must be the rev the caller read, or 412.
 //   - IncludeLinked shares the workstreams it links to with the same people

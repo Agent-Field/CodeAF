@@ -1,6 +1,6 @@
 ---
 kind: changed
-title: Organization workstreams are shared with people or teams as view, comment, edit or full, and can be private
+title: Org workstreams share to people or teams as view, comment, edit or full, and can be private
 pr: 2637
 surface: [factory, app]
 invalidates:

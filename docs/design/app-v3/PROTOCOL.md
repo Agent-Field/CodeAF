@@ -435,7 +435,7 @@ caller's session: `factory.teams` `GET /v1/teams`, `factory.team_create {name}`
 `factory.org_workstream_owner {id, kind, owner}` `PUT .../owner`,
 `factory.org_workstream_shares {id, shares?, teams?, owner?, private?, rev?, include_linked}`
 `PUT .../shares`,
-`factory.org_workstream_share_preview {id, teams}` `GET .../shares/preview?teams=`, and
+`factory.org_workstream_share_preview {id, teams?, shares?}` `GET .../shares/preview?teams=&shares=kind:id:role,...`, and
 `factory.org_workstream_import {from_local_id, name, ...}` `POST /v1/workstreams/import`.
 The answer is the server's, in its own shape (lists are `[]`, never null). Ids are
 checked before anything is sent (`bad_params`); the server's refusal keeps its status:

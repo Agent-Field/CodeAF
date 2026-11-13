@@ -98,7 +98,9 @@ func TestAPrivateWorkstreamIsANameToTheOperator(t *testing.T) {
 		t.Fatal("a shared workstream stayed private")
 	}
 	o.do(t, "owner", "GET", path, -1, nil, 200, nil)
-	o.do(t, "santosh", "PUT", path+"/shares", -1, api.WorkstreamSharesPut{Private: &yes, Shares: &[]factory.Share{}}, 200, &shared)
+	// private:true alone takes it from everyone, even with an older server's
+	// teams list sent beside it.
+	o.do(t, "santosh", "PUT", path+"/shares", -1, api.WorkstreamSharesPut{Private: &yes, Teams: []string{"tm_platform"}}, 200, &shared)
 	if !shared.Workstream.Private {
 		t.Fatal("a workstream made private again is not")
 	}
@@ -239,4 +241,25 @@ func TestARemovedPersonsWorkstreamsGoToAnHeir(t *testing.T) {
 	if got := o.get(t, "mia", theirs.ID); len(got.Shares) != 0 {
 		t.Fatalf("a gone person kept a share: %+v", got.Shares)
 	}
+}
+
+// THE PREVIEW NAMES WHAT ADDING THESE SHARES WOULD REACH: a linked workstream
+// a share would give more to, and never a private one.
+func TestTheSharePreviewTakesPeopleAndRoles(t *testing.T) {
+	o := newWSOrg(t)
+	a := o.create(t, "santosh", api.WorkstreamNew{Name: "A"})
+	b := o.create(t, "santosh", api.WorkstreamNew{Name: "B"})
+	c := o.create(t, "santosh", api.WorkstreamNew{Name: "C", Private: true})
+	o.do(t, "santosh", "PUT", "/v1/workstreams/"+b.ID+"/shares", -1, sharesPut(factory.Share{Kind: "person", ID: "abir", Role: "edit"}), 200, nil)
+	o.do(t, "santosh", "PATCH", "/v1/workstreams/"+a.ID, a.Rev, map[string]any{"links": []string{b.ID, c.ID}}, 200, nil)
+	var preview api.WorkstreamSharePreview
+	o.do(t, "santosh", "GET", "/v1/workstreams/"+a.ID+"/shares/preview?shares=person:abir:view", -1, nil, 200, &preview)
+	if len(preview.Linked) != 0 {
+		t.Fatalf("abir already edits B, and C is private: %+v", preview.Linked)
+	}
+	o.do(t, "santosh", "GET", "/v1/workstreams/"+a.ID+"/shares/preview?shares=person:abir:full", -1, nil, 200, &preview)
+	if len(preview.Linked) != 1 || preview.Linked[0].ID != b.ID {
+		t.Fatalf("preview = %+v", preview.Linked)
+	}
+	o.do(t, "santosh", "GET", "/v1/workstreams/"+a.ID+"/shares/preview?shares=person:abir:boss", -1, nil, 422, nil)
 }
