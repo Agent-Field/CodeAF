@@ -3,11 +3,13 @@ package serve
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/route"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
@@ -79,6 +81,7 @@ func (h *Handler) routes(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
+	h.recordOrg(r, record.RoutesChanged, "changed routing", orgObjectFactory, fmt.Sprintf("%d rules", len(saved)))
 	h.write(w, 200, store.KeptRoutes{Rules: saved, RulesChange: by})
 }
 

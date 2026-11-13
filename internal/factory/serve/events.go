@@ -150,12 +150,17 @@ func (h *Handler) liveForViewer(r *http.Request, e live.Event) (live.Event, bool
 		return e, viewer != "" && factory.NormalizeHandle(e.Handle) == viewer
 	case api.EventWorkstreamChanged, api.EventWorkstreamRemoved:
 		return h.workstreamEventForViewer(r, e)
+	case api.EventPresence:
+		return h.presenceForViewer(r, e)
 	case "activity":
 		var event record.Event
 		if json.Unmarshal(e.Data, &event) != nil {
 			return e, false
 		}
 		if _, filter := h.repoAccess(r, nil); (filter || h.workstreamsMatter()) && len(h.filterAudit(r, []record.Event{event})) != 1 {
+			return e, false
+		}
+		if len(h.orgRecordVisible(r, []record.Event{event})) != 1 {
 			return e, false
 		}
 		data, err := json.Marshal(h.recordForViewer(r, event))

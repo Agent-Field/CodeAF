@@ -178,7 +178,7 @@ func (h *Handler) operatorRevokePerson(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// A person the operator removes leaves every team with their sign-ins.
-	if h.failed(w, h.leaveEveryTeam(handle)) {
+	if h.failed(w, h.leaveEveryTeam(r, handle)) {
 		return
 	}
 	h.finish(w, h.operatorEvent(r, record.SessionsRevoked, "person:"+handle, "jobs moved to Unassigned"))

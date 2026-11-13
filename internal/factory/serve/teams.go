@@ -138,7 +138,8 @@ func (h *Handler) createTeam(w http.ResponseWriter, r *http.Request) {
 	if h.teamFailed(w, err) {
 		return
 	}
-	h.teamChanged(made.ID)
+	h.recordTeam(r, made.ID, "created team", name)
+	h.teamChanged(r, made.ID)
 	h.write(w, http.StatusOK, made)
 }
 
@@ -161,7 +162,8 @@ func (h *Handler) renameTeam(w http.ResponseWriter, r *http.Request) {
 	if h.teamFailed(w, err) {
 		return
 	}
-	h.teamChanged(id)
+	h.recordTeam(r, id, "renamed team", name)
+	h.teamChanged(r, id)
 	h.write(w, http.StatusOK, saved)
 }
 
@@ -195,7 +197,8 @@ func (h *Handler) deleteTeam(w http.ResponseWriter, r *http.Request) {
 	if h.teamFailed(w, err) {
 		return
 	}
-	h.teamChanged(id)
+	h.recordTeam(r, id, "deleted team", "")
+	h.teamChanged(r, id)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -226,7 +229,8 @@ func (h *Handler) addTeamMember(w http.ResponseWriter, r *http.Request) {
 	if h.teamFailed(w, err) {
 		return
 	}
-	h.teamChanged(id)
+	h.recordTeam(r, id, "added to team", "@"+handle)
+	h.teamChanged(r, id)
 	h.write(w, http.StatusOK, saved)
 }
 
@@ -243,14 +247,15 @@ func (h *Handler) removeTeamMember(w http.ResponseWriter, r *http.Request) {
 	if h.teamFailed(w, err) {
 		return
 	}
-	h.teamChanged(id)
+	h.recordTeam(r, id, "removed from team", "@"+handle)
+	h.teamChanged(r, id)
 	h.write(w, http.StatusOK, saved)
 }
 
 // leaveEveryTeam takes a person out of every team they are in. Removing a
 // person from the organization calls it, so no team keeps naming someone who
 // can no longer sign in, and a returning person starts in no team.
-func (h *Handler) leaveEveryTeam(handle string) error {
+func (h *Handler) leaveEveryTeam(r *http.Request, handle string) error {
 	handle = factory.NormalizeHandle(handle)
 	if h.config.Store == nil || handle == "" {
 		return nil
@@ -273,7 +278,8 @@ func (h *Handler) leaveEveryTeam(handle string) error {
 		return err
 	}
 	for _, id := range left {
-		h.teamChanged(id)
+		h.recordTeam(r, id, "removed from team", "@"+handle)
+		h.teamChanged(r, id)
 	}
 	return nil
 }
@@ -352,12 +358,16 @@ func (h *Handler) isMember(handle string) bool {
 // teamChanged publishes {"kind":"team.changed","id"} on the event stream. The
 // change is already saved; a live record that cannot be written costs the
 // desks a prompt refresh, never the change, so it is not an error here.
-func (h *Handler) teamChanged(id string) {
+func (h *Handler) teamChanged(r *http.Request, id string) {
 	root := h.eventRoot()
 	if root == "" {
 		return
 	}
-	_ = live.Append(root, live.New(api.TeamChangedKind, 0, api.OrgChanged{Kind: api.TeamChangedKind, ID: id}))
+	by := ""
+	if r != nil {
+		by = h.orgActor(r)
+	}
+	_ = live.Append(root, live.New(api.TeamChangedKind, 0, api.OrgChanged{Kind: api.TeamChangedKind, ID: id, By: by}))
 }
 
 // nameTaken is whether another team than except already has name, ignoring case.

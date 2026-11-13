@@ -330,13 +330,13 @@ func TestOrgWorkstreamEventsReachOnlyItsPeople(t *testing.T) {
 		return string(out.Data), ok
 	}
 	data, ok := sees("santosh", last)
-	if !ok || data != `{"kind":"workstream.changed","id":"`+webhook.ID+`"}` {
+	if !ok || data != `{"kind":"workstream.changed","id":"`+webhook.ID+`","by":"abir"}` {
 		t.Fatalf("santosh, just taken off the share: %q %v", data, ok)
 	}
 	if _, ok := sees("santosh", removed); ok {
 		t.Fatal("santosh heard about Design's workstream")
 	}
-	if data, ok := sees("mia", removed); !ok || data != `{"kind":"workstream.removed","id":"`+brand.ID+`"}` {
+	if data, ok := sees("mia", removed); !ok || data != `{"kind":"workstream.removed","id":"`+brand.ID+`","by":"mia"}` {
 		t.Fatalf("mia's removal: %q %v", data, ok)
 	}
 	if _, ok := sees("owner", removed); !ok {

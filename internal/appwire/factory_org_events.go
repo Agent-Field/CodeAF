@@ -32,6 +32,9 @@ type FactoryOrgChanged struct {
 	Connection string `json:"connection"`
 	Kind       string `json:"kind" enum:"team.changed,workstream.changed,workstream.removed"`
 	ID         string `json:"id"`
+	// By is the handle of the person who made the change, as the server
+	// stamped it; empty on a resync and from a server older than presence.
+	By string `json:"by,omitempty"`
 }
 
 func init() {

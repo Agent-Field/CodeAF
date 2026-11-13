@@ -6,8 +6,10 @@ package main
 // on its event stream (GET /v1/events) as {"kind","id"}, already filtered to
 // what the caller may see. This half follows that stream for a connection
 // once the connection has answered an organization method, and relays exactly
-// those three kinds as factory.org_changed, tagged with the connection, so a
-// window showing that organization reads again instead of polling.
+// those three kinds as factory.org_changed, tagged with the connection and the
+// person who made the change, so a window showing that organization reads
+// again instead of polling. Who is on an item now (`presence`) is relayed the
+// same way as factory.org_presence.
 //
 // THE FOLLOWER SPEAKS ONLY WITH THE SIGN-IN IT WAS STARTED WITH. A sign-in
 // that changes, ends or is refused ends it before anything more is relayed,
@@ -197,12 +199,14 @@ func (h *appFactoryHub) orgStream(ctx context.Context, origin, id string, f *app
 func (h *appFactoryHub) relayOrg(id string, f *appOrgFollow, kind, data string) bool {
 	var out []appwire.FactoryOrgChanged
 	switch kind {
+	case api.EventPresence:
+		return h.relayPresence(id, f, data)
 	case api.TeamChangedKind, api.EventWorkstreamChanged, api.EventWorkstreamRemoved:
 		var body api.OrgChanged
 		if json.Unmarshal([]byte(data), &body) != nil || body.ID == "" {
 			return true
 		}
-		out = append(out, appwire.FactoryOrgChanged{Connection: id, Kind: kind, ID: body.ID})
+		out = append(out, appwire.FactoryOrgChanged{Connection: id, Kind: kind, ID: body.ID, By: body.By})
 	case "changed":
 		if data != "*" {
 			return true
@@ -219,5 +223,27 @@ func (h *appFactoryHub) relayOrg(id string, f *appOrgFollow, kind, data string) 
 	for _, e := range out {
 		h.orgChanged(e)
 	}
+	return true
+}
+
+// relayPresence emits who is on one organization item now, exactly as the
+// server sent it to this sign-in. It is false when f may no longer relay.
+func (h *appFactoryHub) relayPresence(id string, f *appOrgFollow, data string) bool {
+	var body api.Presence
+	if json.Unmarshal([]byte(data), &body) != nil || body.Item.Kind == "" || body.Item.ID == "" {
+		return true
+	}
+	if !h.stillFollowing(id, f) {
+		return false
+	}
+	if h.orgPresence == nil {
+		return true
+	}
+	here := make([]appwire.OrgPresenceHere, 0, len(body.Here))
+	for _, p := range body.Here {
+		here = append(here, appwire.OrgPresenceHere{Handle: p.Handle, Part: p.Part, Editing: p.Editing})
+	}
+	h.orgPresence(appwire.FactoryOrgPresence{Connection: id,
+		Item: appwire.OrgPresenceItem{Kind: body.Item.Kind, ID: body.Item.ID}, Here: here})
 	return true
 }

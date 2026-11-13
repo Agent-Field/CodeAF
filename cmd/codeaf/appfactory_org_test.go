@@ -102,6 +102,11 @@ func (o *orgServer) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		orgJSON(w, 200, map[string]any{"handle": "santosh", "name": "Santosh", "avatar_url": "", "operator": o.operator,
 			"mode": api.FactoryTeam, "contract": api.Contract, "teams": mine})
+	case r.URL.Path == "/v1/presence" && r.Method == http.MethodPost:
+		orgJSON(w, 200, map[string]any{"item": o.lastBody["item"], "here": []map[string]any{{"handle": "santosh", "part": o.lastBody["part"], "editing": o.lastBody["editing"]}}})
+	case len(parts) == 4 && parts[1] == "workstreams" && parts[3] == "activity" && r.Method == http.MethodGet:
+		orgJSON(w, 200, map[string]any{"id": parts[2], "events": []map[string]any{{"id": "evt_1", "at": "2026-11-13T12:00:00Z", "kind": "workstream_changed",
+			"verb": "changed workstream", "object": "workstream:" + parts[2], "handle": "abir", "detail": "purpose", "actor": map[string]any{"kind": "person", "name": "@abir"}}}})
 	case len(parts) >= 2 && parts[1] == "teams":
 		o.serveTeams(w, r, parts[2:])
 	case len(parts) >= 2 && parts[1] == "workstreams":
