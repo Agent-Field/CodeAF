@@ -695,13 +695,22 @@ A `failed` outcome is a new failure on a job that `factory.job` then shows
 as `needs_you`, or a failure other than `stopped` on a `done` job. A job a
 person stopped, by any door or by an answer that stops it, and a job a
 change of assignee stopped, read `backlog` and record nothing; a Close or
-Reject records only its `finished`. A `needs_you` outcome is recorded only
-for a job with no failure on it. A client that forms the same occurrences
+Reject records only its `finished`. A change of assignee or an unassign
+also takes down the question the cut run asked, so the job shows no
+`waiting_since`. A `needs_you` outcome is recorded only for a job with no
+failure on it, once per wait: its `at` is the job's `needs_you.since`, which
+is when that wait began (its failure's, question's or step's own time, or,
+for a wait with none, such as a start held for approval, a take-over or an
+AgentField run's approval, the moment the Factory saw it begin) and does not
+move while the job waits with the same need and question, however many
+writes the job takes. A client that forms the same occurrences
 from a full `factory.job` read keys `failure` as a failed job only when
 `state` is `needs_you`, or `done` with a code other than `stopped`, and keys
-`needs_you` only when the job has no `failure`: the `stopped` failure a
-`backlog` job (a person's stop) or a closed or rejected job carries is not a
-failed job, and a failed job's own wait is its `failed` occurrence.
+a wait only when `state` is `needs_you` and the job has no `failure`, from
+`needs_you` (or `waiting_since` when `needs_you` is absent): the `stopped`
+failure a `backlog` job (a person's stop) or a closed or rejected job
+carries is not a failed job, a failed job's own wait is its `failed`
+occurrence, and a job in any other state waits on nobody.
 The Factory records outcomes at job updates even with no app connected and
 keeps the newest 2,000 independently of its live notifications.
 
@@ -2255,7 +2264,8 @@ Hello feature `factory.job_run_as_new` adds
 `expect.version` must be positive and guards the source job. The engine
 sends one `POST /v1/jobs/{id}/run-as-new {assignee?, expect?}`. The factory
 applies the same ownership and repository guards as `run_again`, and accepts
-failed, stopped, closed and done jobs. Running work is refused.
+failed, stopped, closed and done jobs, and a job whose run a change of
+assignee or an unassign cut. Running work is refused.
 
 The reply is `FactoryJobActed` with `action: "run_as_new"` and `job` naming the
 NEW job; `current` reads that job. The HTTP answer is `{factory, id}` with the
