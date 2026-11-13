@@ -433,7 +433,8 @@ caller's session: `factory.teams` `GET /v1/teams`, `factory.team_create {name}`
 `factory.org_workstream_create` `POST /v1/workstreams`, `factory.org_workstream_update
 {id, rev, ...patch}` `PATCH` with `If-Match: rev`, `factory.org_workstream_delete {id}`,
 `factory.org_workstream_owner {id, kind, owner}` `PUT .../owner`,
-`factory.org_workstream_shares {id, teams, include_linked}` `PUT .../shares`,
+`factory.org_workstream_shares {id, shares?, teams?, owner?, private?, rev?, include_linked}`
+`PUT .../shares`,
 `factory.org_workstream_share_preview {id, teams}` `GET .../shares/preview?teams=`, and
 `factory.org_workstream_import {from_local_id, name, ...}` `POST /v1/workstreams/import`.
 The answer is the server's, in its own shape (lists are `[]`, never null). Ids are
@@ -488,6 +489,29 @@ client left or lapsed); and `factory.org_doc_closed {connection, doc, reason}`,
 `removed` (the page was deleted) or `gone` (no longer visible, or signed out).
 Document updates do NOT travel on `GET /v1/events`, whose durable window of 200 events
 keystrokes would flush.
+
+With `org_roles` in hello, a workstream's access is roles. A workstream row carries
+`shares` `[{kind:"person"|"team", id, role}]` with `role` one of `view`, `comment`,
+`edit`, `full` (each grants the ones before it), `private` (only its person owner
+reaches it) and `my_role`, the caller's role. The owner holds `full`. `view` reads,
+`edit` changes its words and approves its go-aheads, `full` archives it and changes
+its owner, shares or privacy. The operator holds `view` on every workstream that is
+not private and may change its owner or shares. For someone else's private
+workstream the operator gets a name-only row (`my_role` `""`, id, name, stage, owner,
+`private`, `updated_at`, zero counts, no shares), and `factory.org_workstream` on it
+answers `not_found`. `shared_with` is still answered: the team ids among `shares`.
+`factory.org_workstream_shares` lands in one save on the server: `shares` (the whole
+list) when sent, else `teams` (the older call: each team as `edit`, person shares
+kept); `owner` when sent; `private` when sent (`true` needs a person owner and takes
+it from everyone it was shared with; beside a non-empty `shares` it is a 422); a non-empty `shares` on a private workstream
+makes it not private; `rev` when sent must be the rev read, else `conflict`/`stale`.
+`factory.org_workstream_create` takes `private`. The server signs every decision that
+is new or changed (`by` is the caller, `at` is now) and ignores the client's values,
+and an import's `created_by` is always the caller. An import's `links` may name the
+Personal ids of workstreams the same person already moved in; they are linked by
+their organization ids, and a later import is linked from earlier ones that named it.
+When the operator removes a person, their workstreams go to `?heir=<handle>` or the
+operator, and they leave every share; each change is a `workstream.changed` event.
 
 The event `factory.org_changed` `{connection, kind, id}` says a team or workstream
 changed on an organization's server, so a window showing that organization reads it

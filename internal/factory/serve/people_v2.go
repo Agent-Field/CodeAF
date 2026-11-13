@@ -1,6 +1,7 @@
 package serve
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -174,14 +175,27 @@ func (h *Handler) operatorRevokePerson(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusUnprocessableEntity, "person handle must be a GitHub handle")
 		return
 	}
+	heir, ok := h.workstreamHeir(w, r, handle)
+	if !ok {
+		return
+	}
 	if h.failed(w, h.revokePerson(r, handle)) {
 		return
 	}
-	// A person the operator removes leaves every team with their sign-ins.
+	// A person the operator removes leaves every team with their sign-ins,
+	// and their workstreams go to an heir rather than keep a gone owner.
 	if h.failed(w, h.leaveEveryTeam(r, handle)) {
 		return
 	}
-	h.finish(w, h.operatorEvent(r, record.SessionsRevoked, "person:"+handle, "jobs moved to Unassigned"))
+	given, err := h.handOnWorkstreams(handle, heir, h.orgActor(r))
+	if h.failed(w, err) {
+		return
+	}
+	detail := "jobs moved to Unassigned"
+	if given > 0 {
+		detail += fmt.Sprintf("; %d workstreams given to @%s", given, heir)
+	}
+	h.finish(w, h.operatorEvent(r, record.SessionsRevoked, "person:"+handle, detail))
 }
 
 // revokePerson ends sign-ins and runner credentials before ownership is made available again.
