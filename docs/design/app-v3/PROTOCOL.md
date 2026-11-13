@@ -695,7 +695,13 @@ A `failed` outcome is a new failure on a job that `factory.job` then shows
 as `needs_you`, or a failure other than `stopped` on a `done` job. A job a
 person stopped, by any door or by an answer that stops it, and a job a
 change of assignee stopped, read `backlog` and record nothing; a Close or
-Reject records only its `finished`.
+Reject records only its `finished`. A `needs_you` outcome is recorded only
+for a job with no failure on it. A client that forms the same occurrences
+from a full `factory.job` read keys `failure` as a failed job only when
+`state` is `needs_you`, or `done` with a code other than `stopped`, and keys
+`needs_you` only when the job has no `failure`: the `stopped` failure a
+`backlog` job (a person's stop) or a closed or rejected job carries is not a
+failed job, and a failed job's own wait is its `failed` occurrence.
 The Factory records outcomes at job updates even with no app connected and
 keeps the newest 2,000 independently of its live notifications.
 
