@@ -19,6 +19,9 @@ import "github.com/Agent-Field/codeaf/internal/factory"
 //	GET    /v1/workstreams/{id}/shares/preview?shares=team:a:edit,person:b:view (or ?teams=a,b) -> WorkstreamSharePreview
 //	POST   /v1/workstreams/import             WorkstreamPackage -> Workstream
 //
+// Its parts (pages one at a time, versions, plan, wakes, suggestions, jobs,
+// unarchive, spend) have their own routes: workstream_parts.go.
+//
 // Every change is published on the event stream as a [WorkstreamEvent].
 
 // The stages a workstream can be in.
@@ -86,7 +89,13 @@ type Workstream struct {
 	Sources   []WorkstreamSource   `json:"sources"`
 	Links     []string             `json:"links"`
 	GoAheads  []PolicyAllowance    `json:"go_aheads"`
-	CreatedBy string               `json:"created_by"`
+	// Jobs are the factory jobs on this server that belong to it.
+	Jobs []int `json:"jobs"`
+	// BudgetUSD is what it may spend (absent: no budget); SpendUSD what has
+	// been posted against it.
+	BudgetUSD *float64 `json:"budget_usd,omitempty"`
+	SpendUSD  float64  `json:"spend_usd"`
+	CreatedBy string   `json:"created_by"`
 }
 
 // WorkstreamList is GET /v1/workstreams's answer.
@@ -118,6 +127,8 @@ type WorkstreamPatch struct {
 	Decisions *[]WorkstreamDecision `json:"decisions,omitempty"`
 	Sources   *[]WorkstreamSource   `json:"sources,omitempty"`
 	Links     *[]string             `json:"links,omitempty"`
+	// BudgetUSD sets what it may spend; a negative number clears it.
+	BudgetUSD *float64 `json:"budget_usd,omitempty"`
 }
 
 // WorkstreamSharesPut is PUT /v1/workstreams/{id}/shares's body, and it lands
@@ -172,11 +183,18 @@ type WorkstreamPackage struct {
 	CreatedBy   string               `json:"created_by,omitempty"`
 }
 
-// WorkstreamEvent is the payload a workstream change publishes.
+// WorkstreamEvent is the payload a workstream change publishes. Part names
+// which part changed (Part* constants), PartID which one, By who changed it and
+// Rev the part's rev after; all four are absent on an older server's event.
 type WorkstreamEvent struct {
-	Kind string `json:"kind"`
-	ID   string `json:"id"`
+	Kind   string `json:"kind"`
+	ID     string `json:"id"`
+	Part   string `json:"part,omitempty"`
+	PartID string `json:"part_id,omitempty"`
 	// By is the handle of the person who made the change, stamped by the
 	// server from the sign-in.
-	By string `json:"by,omitempty"`
+	By  string `json:"by,omitempty"`
+	Rev int    `json:"rev,omitempty"`
+	// Deleted is true when the part named was removed (a page).
+	Deleted bool `json:"deleted,omitempty"`
 }

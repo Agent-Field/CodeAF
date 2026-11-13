@@ -69,6 +69,7 @@ func (h *Handler) workstreamRoutes() {
 	h.route("/v1/workstreams/{id}/shares", map[string]http.HandlerFunc{http.MethodPut: h.setWorkstreamShares})
 	h.route("/v1/workstreams/{id}/shares/preview", map[string]http.HandlerFunc{http.MethodGet: h.previewWorkstreamShares})
 	h.route("/v1/workstreams/{id}/activity", map[string]http.HandlerFunc{http.MethodGet: h.workstreamActivity})
+	h.workstreamPartRoutes()
 }
 
 // ── who is asking ──
@@ -142,7 +143,7 @@ func (h *Handler) listWorkstreams(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	store.SortWorkstreams(seen)
-	counts, err := h.workstreamCounts()
+	counts, err := h.workstreamCounts(all)
 	if h.failed(w, err) {
 		return
 	}
@@ -186,18 +187,29 @@ func (h *Handler) findWorkstream(w http.ResponseWriter, r *http.Request) (factor
 type workstreamCount struct{ needsYou, merged, total int }
 
 // workstreamCounts reads the factory's jobs once and counts them by the
-// go-ahead group that started them, which on the desk is the workstream.
-func (h *Handler) workstreamCounts() (map[string]workstreamCount, error) {
+// workstream they belong to: the one that took the job in by membership, or
+// else the go-ahead group that started it, which on the desk is the workstream.
+func (h *Handler) workstreamCounts(all factory.OrgWorkstreams) (map[string]workstreamCount, error) {
 	items, err := h.config.Store.List()
 	if err != nil {
 		return nil, err
 	}
+	member := map[int]string{}
+	for id, ws := range all {
+		for _, job := range ws.Jobs {
+			member[job] = id
+		}
+	}
 	out := map[string]workstreamCount{}
 	for _, it := range items {
-		if !strings.HasPrefix(it.PolicyGroup, workstreamIDPrefix) {
+		group, ok := member[it.ID]
+		if !ok {
+			group = it.PolicyGroup
+		}
+		if !strings.HasPrefix(group, workstreamIDPrefix) {
 			continue
 		}
-		c := out[it.PolicyGroup]
+		c := out[group]
 		c.total++
 		if factory.Merged(it) {
 			c.merged++
@@ -205,7 +217,7 @@ func (h *Handler) workstreamCounts() (map[string]workstreamCount, error) {
 		if it.State == factory.StateNeedsYou {
 			c.needsYou++
 		}
-		out[it.PolicyGroup] = c
+		out[group] = c
 	}
 	return out, nil
 }
@@ -256,7 +268,7 @@ func (h *Handler) workstreamBody(ws factory.OrgWorkstream, v Viewer) (api.Workst
 	}
 	var c workstreamCount
 	for _, it := range items {
-		if it.PolicyGroup != ws.ID {
+		if it.PolicyGroup != ws.ID && !slices.Contains(ws.Jobs, it.ID) {
 			continue
 		}
 		c.total++
@@ -273,8 +285,15 @@ func (h *Handler) workstreamBody(ws factory.OrgWorkstream, v Viewer) (api.Workst
 	} else if ok {
 		goAheads = api.PolicyOf(p, items, h.clock()).Allowances
 	}
+	spend, err := h.config.Store.WorkstreamSpend()
+	if err != nil {
+		return api.Workstream{}, err
+	}
 	return api.Workstream{
 		WorkstreamSummary: workstreamSummary(ws, c, v),
+		Jobs:              nonNil(ws.Jobs),
+		BudgetUSD:         ws.BudgetUSD,
+		SpendUSD:          spend[ws.ID],
 		Purpose:           ws.Purpose,
 		Pages:             nonNil(ws.Pages),
 		Decisions:         nonNil(ws.Decisions),
@@ -483,7 +502,12 @@ func (h *Handler) patchWorkstream(w http.ResponseWriter, r *http.Request) {
 			cur.Pages = stampPages(*body.Pages, before.Pages, v.Handle, now)
 		}
 		if body.Decisions != nil {
-			cur.Decisions = stampDecisions(*body.Decisions, before.Decisions, v.Handle, now, false)
+			// A decision left out is kept as superseded, and the server
+			// stamps whoever changed one.
+			cur.Decisions = stampDecisions(supersedeDropped(*body.Decisions, before.Decisions), before.Decisions, v.Handle, now, false)
+		}
+		if body.BudgetUSD != nil {
+			cur.BudgetUSD = budgetOf(*body.BudgetUSD)
 		}
 		if body.Sources != nil {
 			cur.Sources = *body.Sources
@@ -774,7 +798,7 @@ func (h *Handler) previewWorkstreamShares(w http.ResponseWriter, r *http.Request
 	if h.failed(w, err) {
 		return
 	}
-	counts, err := h.workstreamCounts()
+	counts, err := h.workstreamCounts(all)
 	if h.failed(w, err) {
 		return
 	}
