@@ -817,6 +817,9 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 	if !h.decode(w, r, &body, false) {
 		return
 	}
+	if !h.checkNewJobExtras(w, r, &body) {
+		return
+	}
 	if strings.TrimSpace(body.Repo) == "" || strings.TrimSpace(body.Title) == "" {
 		h.fail(w, http.StatusUnprocessableEntity, "new job requires repo and title")
 		return
@@ -958,6 +961,9 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, h.stampAsk(r, id, body)) {
 		return
 	}
+	if h.failed(w, h.stampNewJobExtras(r, id, body)) {
+		return
+	}
 	if selected != nil && h.failed(w, h.config.Store.Update(id, func(it *factory.Item) error {
 		it.Stages = factory.CopyStages(selected)
 		if decided {
@@ -986,7 +992,7 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 }
 
 // stampAsk records the app's ask on a job this factory's store holds.
-// The body carries the person's words, never a cap.
+// The initial budget and attachments are stamped separately after these words.
 func (h *Handler) stampAsk(r *http.Request, id int, body api.NewJob) error {
 	if h.config.Store == nil {
 		return nil

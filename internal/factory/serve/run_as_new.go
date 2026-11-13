@@ -31,7 +31,7 @@ func (h *Handler) runAsNew(w http.ResponseWriter, r *http.Request, source factor
 	next := factory.Item{
 		FromJob: source.ID, Repo: source.Repo, Product: source.Product, Kind: factory.KindIssue,
 		Title: source.Title, Body: source.Body, Origin: factory.OriginChat, Tier: factory.TierOwner,
-		State: factory.StateNew, Autonomy: source.Autonomy, Manual: source.Manual, Cap: source.Cap,
+		State: factory.StateNew, Autonomy: source.Autonomy, Manual: source.Manual, Cap: source.Cap, CapChosen: source.CapChosen,
 		Stages: factory.CopyStages(source.Stages), Model: source.Model, Starter: factory.NormalizeHandle(who),
 		SourceIssue: source.SourceIssue,
 	}

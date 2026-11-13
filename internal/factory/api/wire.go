@@ -418,6 +418,11 @@ type JobReadSize struct {
 
 // Job is one unit of work on the floor (code: [factory.Item]).
 type Job struct {
+	// Group and Milestone are opaque labels supplied at creation.
+	Group     string `json:"group,omitempty"`
+	Milestone string `json:"milestone,omitempty"`
+	// Context lists attachment metadata; only worker admission includes its text.
+	Context []JobContext `json:"context,omitempty"`
 	// RoundCostTables advertises table support only on worker admission.
 	RoundCostTables bool `json:"round_cost_tables,omitempty"`
 	// FailureSummaries advertises, on worker admission only, that this factory
@@ -425,6 +430,7 @@ type Job struct {
 	// than it decodes reports strictly and refuses the whole one that carries it.
 	FailureSummaries bool   `json:"failure_summaries,omitempty"`
 	FromJob          int    `json:"from_job,omitempty"`
+	SplitFrom        int    `json:"split_from,omitempty"`
 	SourceIssue      string `json:"source_issue,omitempty"`
 	// RunOn is the AgentField reasoner that runs this job, "<node>.<reasoner>",
 	// and AgentField the run once it was dispatched; both absent on a job
@@ -901,6 +907,9 @@ type JobDesk struct {
 	ChangedAt time.Time `json:"changed_at"`
 	Triage    Triage    `json:"triage"`
 	Cap       float64   `json:"cap,omitempty"`
+	// CapChosen travels so a runner's read of the rules after its clone keeps a
+	// person's budget ([factory.Item.CapChosen]).
+	CapChosen bool      `json:"cap_chosen,omitempty"`
 	Policy    []Claim   `json:"policy,omitempty"`
 	Marked    bool      `json:"marked,omitempty"`
 	Labels    []string  `json:"labels,omitempty"`

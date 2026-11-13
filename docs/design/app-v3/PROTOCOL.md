@@ -387,7 +387,7 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.access_sign_in` | `in.FactoryAccessParams` | `FactoryAccess` |
 | `factory.activity` | `in.FactoryActivityParams` | `FactoryActivity` |
 | `factory.attach` | `in.FactoryAttachParams` | `FactoryConnection` |
-| `factory.capabilities` | `in.Empty` | `FactoryCapabilities` |
+| `factory.capabilities` | `in.FactoryCapabilitiesParams` | `FactoryCapabilities` |
 | `factory.intake_add` | `in.FactoryIntakeParams` | `inbox.Result` |
 | `factory.features` | `in.FactoryRef` | `FactoryFeatures` |
 | `factory.detach` | `in.FactoryRef` | `Empty` |
@@ -406,6 +406,7 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.job_send` | `in.FactoryJobSendParams` | `FactoryJobSent` |
 | `factory.job_close` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_control` | `in.FactoryJobControlParams` | `FactoryJobActed` |
+| `factory.job_context_set` | `in.FactoryJobContextSetParams` | `FactoryJobActed` |
 | `factory.job_create` | `in.FactoryJobCreateParams` | `FactoryJobActed` |
 | `factory.job_dismiss` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_drop` | `in.FactoryJobDropParams` | `FactoryJobActed` |
@@ -611,6 +612,68 @@ terminal chips or changes budget, approval steps, rounds, effort or security.
 The job title alone supplies the draft PR title. Existing jobs are not rewritten.
 The method, reply, `factory.job_actions` hello feature and error codes are unchanged.
 Factories without the separate-title capability retain their prior behavior.
+
+`factory.job_create` also accepts these optional fields. Engine capabilities are
+`create_issue`, `create_group` (group and milestone), `create_budget`,
+`create_key`, `create_split_from` and `job_context` (the separate attachment write
+below). Each is true when the engine carries that feature end to end; an older
+engine omits it or answers false. These flags describe the engine; the attached
+Factory may still be older than a feature. `create_key` alone also describes one
+Factory: `factory.capabilities` takes an optional `factory`, and `create_key` is
+true only in an answer naming a Factory whose `GET /v1/features` lists
+`keyed_create` (it keeps a keyed create's answer only once the create wrote
+something). Without `factory`, or for a Factory that does not list it or cannot
+be asked, `create_key` is false. A Factory without the word keeps every keyed
+answer, a refusal or a 5xx included, for 24 hours, so the engine never sends it
+a key: it asks the Factory again on every create with a key, and to a Factory
+that does not list `keyed_create` that create answers `conflict` with
+`detail.reason: "factory_too_old"` and no create is sent. A create without a key
+is sent as before and asks nothing.
+
+| Parameter | Rule |
+| --- | --- |
+| `open_issue` | Boolean, default false. True sends `POST /v1/issues`: open one GitHub issue using only `title` and `text`, then create the job tied to its number. False sends `POST /v1/jobs` and opens no issue. |
+| `group`, `milestone` | Opaque labels, trimmed, at most 200 characters each, with no control characters. Empty means none. |
+| `budget` | Initial job budget in USD: one of the standard steps, 5, 10, 20 or 30. Recorded as a budget action before starting; a start now or later keeps it instead of taking the pipeline default. |
+| `key` | A create key of 1–128 characters from `[A-Za-z0-9._:-]`, sent only as the create request's `Idempotency-Key` header, and only to a Factory that lists `keyed_create`. `key: ""` is the same as no key (`omitempty`): no header is sent. |
+| `split_from` | Integer at least 1, naming a job held by the same Factory that the caller can see. Stores the job this new job was split from. An explicit zero or negative number is `bad_params` before sending. |
+
+The Factory stores group and milestone outside the description.
+`factory.job`, queue rows and `current` carry the labels when present.
+Those reads also carry `split_from` when supplied, omitted otherwise. The parent
+job stays unchanged. The new job's own activity adds one line, `split from #N`.
+Split lineage leaves normal pipeline stamping, step briefs and run-as-new
+cleanup behavior in effect; it is stored separately from `from_job`.
+
+A missing or hidden `split_from` parent is the same Factory 422 refusal, mapped
+to `bad_params`, before any job or GitHub issue is made, including with
+`open_issue: true`.
+
+Bad extras answer `bad_params`, naming the field and limit, before anything is
+sent. The Factory also validates extras before opening an issue or making a job.
+A Factory's 422 strict-decoder refusal of `group`, `milestone`, `budget`,
+`issue` or `split_from`, or the issue create route missing (a 405 there, or a 404
+whose body is the Factory's `factory endpoint not found` or is not its JSON),
+answers `conflict`
+with `detail.reason: "factory_too_old"` and the existing update instruction:
+"This factory doesn't support that yet; nothing was changed. Update the factory
+to use it." No fallback request is sent. Any other 404 on the issue create route,
+such as the Factory's own "repository not found" for a repository the caller
+cannot see, stays `not_found` with the Factory's words. A 501 stays `engine` with
+"this factory does not provide that action"; GitHub and sign-in refusals retain
+their existing mapping. A timeout or 5xx stays `uncertain`.
+
+The reply is unchanged: `FactoryJobActed` with `action: "create"`, `job` and
+optional `current`. On a Factory that lists `keyed_create`, a resend with the
+same key within 24 hours does not make a second job or issue; a different key
+creates a separate job. After an `uncertain` create, resend the same key, never
+a new one, and if the answer is still uncertain read the queue before trying
+again. Two limits remain: the Factory matches a resend by its exact
+`Authorization` and `Cookie` headers, so one sent under a new bearer or a
+rotated session cookie runs as a new create, and it saves the answer only after
+the create has committed, so a Factory that stops between the two runs the
+resend again. With none of the new fields, the route, body and absent
+idempotency header are unchanged.
 
 
 An engine whose hello carries `factory.stop_any_version` accepts
@@ -1428,6 +1491,36 @@ with wire code `conflict`, typed outcome `refused`, and the message
 "this job has no GitHub issue to comment on". It makes no GitHub call.
 The existing `factory.remote` and `factory.issue_comment` hello features
 continue to apply; no method, parameter or reply field is added.
+
+## factory.job_context_set
+
+Hello feature `factory.job_context` and capability `job_context` announce this
+write. `factory.job_create` refuses `context` as an unknown field.
+
+| Parameter | Rule |
+| --- | --- |
+| `factory`, `job` | One attached Factory and a positive job number. |
+| `expect` | Required `expect.version` from the job read; stale versions answer `stale` without changing attachments. |
+| `context` | Required list of at most 20 `{title, markdown, source?}` attachments. Title is 1–200 characters after trimming; markdown must contain more than whitespace (blank markdown is `bad_params` "context markdown must be non-empty"); source is at most 500 characters. Total markdown is at most 100,000 characters, separate from the 20,000-character `text` limit. `[]` clears attachments. |
+
+The engine sends one `POST /v1/jobs/{id}/context` with `{context, expect}`.
+The job must be in Backlog or queued with no run (no stream): before its first
+run, or after Bring back cleared its last one, so its next run reads it. Caller rules
+match model edits: solo callers, the job's person, or anyone when no person is
+assigned. A begun job answers `conflict`: "The job has started; its steps
+already read their context." Malformed attachments answer `bad_params` before
+transport. The Factory validates again and records one activity per replacement.
+
+Job, queue and `current` reads list `context: [{title, source?}]` only.
+Worker admission carries full markdown. A non-skipped conversation `plan`,
+otherwise the first non-skipped conversation, receives every attachment whole
+after notes as reference material. Without a stream only eligible stages count.
+Other steps receive none; attachments never enter a GitHub issue, PR or comment.
+
+Reply: `FactoryJobActed` with `action: "context_set"`, `job`, optional `current`.
+The mux's 404/405 (including "factory endpoint not found") means `conflict` with
+`detail.reason: "factory_too_old"`; JSON "job not found" stays `not_found`.
+A lost answer or 5xx is `uncertain`. The engine never re-sends the write.
 
 ## files methods
 
