@@ -49,6 +49,9 @@ type Me struct {
 	Access                string          `json:"access"`
 	PollingEvery          string          `json:"polling_every,omitempty"`
 	ServedBy              string          `json:"served_by"`
+	// Teams are the ids of the organization's teams this person is in. An
+	// older server omits it; this one always sends a list.
+	Teams []string `json:"teams"`
 }
 
 // Device describes the code to enter on GitHub and the opaque code to poll here.
