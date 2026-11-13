@@ -184,28 +184,44 @@ func TestAKeyedAnswerAfterAWriteIsReplayed(t *testing.T) {
 	}
 }
 
-// C3: Successful and definitive refusal answers still replay for 24 hours
-// in memory and across a store-backed restart, then expire as before.
-func TestKeyedSuccessAndRefusalsStillReplay(t *testing.T) {
-	for _, durable := range []bool{false, true} {
-		for _, status := range []int{200, 422} {
-			t.Run(strconv.Itoa(status)+storeName(durable), func(t *testing.T) {
+// C3: A keyed answer that is kept replays for 24 hours, in memory and across a
+// store-backed restart, then expires. Each request goes through the marker
+// ServeHTTP sets (servedKeyed), so this is what the route really does: a job
+// create's success, whose handler cleared the marker before making the job,
+// and a refusal of a job verb that is not marked (markPreMutation), such as
+// approve, which keeps every keyed answer as before. A job create's own
+// refusal is marked and is not kept (TestAKeyedServerErrorRunsAgainOnRetry,
+// and on the real handler TestAKeyedCreateThatWroteNothingRunsAgain).
+func TestAKeptKeyedAnswerReplaysForADay(t *testing.T) {
+	for _, route := range []struct {
+		name, path string
+		status     int
+		write      bool // the handler clears the marker, as before a write
+	}{
+		{"a job create's success", "/v1/jobs", http.StatusCreated, true},
+		{"an unmarked verb's refusal", "/v1/jobs/7/approve", http.StatusUnprocessableEntity, false},
+		{"an unmarked verb's conflict", "/v1/jobs/7/approve", http.StatusConflict, false},
+	} {
+		for _, durable := range []bool{false, true} {
+			t.Run(route.name+storeName(durable), func(t *testing.T) {
 				h, clock := transientReplayHandler(t, durable)
 				calls := 0
-				h.mux.HandleFunc("/v1/jobs", func(w http.ResponseWriter, _ *http.Request) {
+				h.mux.HandleFunc(route.path, func(w http.ResponseWriter, _ *http.Request) {
 					calls++
-					w.WriteHeader(status)
+					if route.write {
+						clearPhase(w)
+					}
+					w.WriteHeader(route.status)
 					_, _ = w.Write([]byte(strconv.Itoa(calls)))
 				})
 				for attempt := range 3 {
-					w := httptest.NewRecorder()
-					h.idempotent(w, transientKeyedRequest("/v1/jobs"))
+					w := servedKeyed(h, transientKeyedRequest(route.path))
 					wantCalls := 1
 					if attempt == 2 {
 						wantCalls = 2
 					}
-					if w.Code != status || w.Body.String() != strconv.Itoa(wantCalls) || calls != wantCalls {
-						t.Fatalf("attempt %d = %d %q calls=%d, want status=%d calls=%d", attempt, w.Code, w.Body.String(), calls, status, wantCalls)
+					if w.Code != route.status || w.Body.String() != strconv.Itoa(wantCalls) || calls != wantCalls || w.Header().Get(api.PhaseHeader) != "" {
+						t.Fatalf("attempt %d = %d %q phase=%q calls=%d, want status=%d calls=%d", attempt, w.Code, w.Body.String(), w.Header().Get(api.PhaseHeader), calls, route.status, wantCalls)
 					}
 					if attempt == 0 {
 						*clock = clock.Add(24*time.Hour - time.Nanosecond)

@@ -103,6 +103,7 @@ type keyedCreate struct {
 	*v2Jobs
 	github   *issueGitHub
 	news     atomic.Int64
+	newJobs  atomic.Int64 // of news, those made through NewJob
 	launches atomic.Int64
 	launch   func(int) error
 	pipeline func() (pipeline.File, error)
@@ -140,6 +141,19 @@ func newKeyedCreate(t *testing.T) *keyedCreate {
 	return k
 }
 
+// literal makes jobs through the seam's NewJob, the door an app create with a
+// separate title takes, instead of New.
+func (k *keyedCreate) literal(t *testing.T) {
+	t.Helper()
+	k.seam.NewJob = func(repo, title, text string) (int, error) {
+		k.news.Add(1)
+		k.newJobs.Add(1)
+		it, err := k.st.Create(factory.Item{State: factory.StateNew, Repo: repo, Title: title, Body: text, Kind: factory.KindIssue, Origin: factory.OriginTerminal})
+		return it.ID, err
+	}
+	reopenJobs(t, k.v2Jobs)
+}
+
 func (k *keyedCreate) jobs(t *testing.T) int {
 	t.Helper()
 	items, err := k.st.List()
@@ -163,6 +177,7 @@ func TestAKeyedCreateAnsweredAfterItsWriteIsReplayed(t *testing.T) {
 		status           int
 		issues, jobs     int
 		launches         int64
+		literal          bool // the job is made through NewJob, not New
 	}{
 		{name: "GitHub made the issue and its answer was lost", path: "/v1/issues", body: `{"repo":"acme/api","title":"Fix it","text":"brief","source":"app"}`,
 			arm: func(k *keyedCreate) { k.github.set("lost") }, heal: func(k *keyedCreate) { k.github.set("") },
@@ -180,9 +195,22 @@ func TestAKeyedCreateAnsweredAfterItsWriteIsReplayed(t *testing.T) {
 			},
 			heal:   func(*keyedCreate) {},
 			status: http.StatusInternalServerError, jobs: 1, launches: 1},
+		{name: "the job was made through NewJob and its start failed", path: "/v1/jobs", body: `{"repo":"acme/api","title":"Fix it","text":"brief","source":"app","start":"now"}`,
+			arm: func(k *keyedCreate) {
+				launch := k.launch
+				k.launch = func(id int) error {
+					k.launch = launch
+					return errors.New("the runner pool is unavailable")
+				}
+			},
+			heal:   func(*keyedCreate) {},
+			status: http.StatusInternalServerError, jobs: 1, launches: 1, literal: true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			k := newKeyedCreate(t)
+			if c.literal {
+				k.literal(t)
+			}
 			c.arm(k)
 			first := keyedRequest(k.h, c.path, c.body, "workstream:5:ws_ab:3:d_1")
 			checkJSON(t, first, c.status)
@@ -202,6 +230,9 @@ func TestAKeyedCreateAnsweredAfterItsWriteIsReplayed(t *testing.T) {
 			}
 			if got := k.launches.Load(); got != c.launches {
 				t.Fatalf("starts = %d, want %d", got, c.launches)
+			}
+			if c.literal && k.newJobs.Load() != 1 {
+				t.Fatalf("NewJob made %d jobs, want the one job made through it", k.newJobs.Load())
 			}
 		})
 	}
@@ -245,6 +276,17 @@ func TestAKeyedCreateThatWroteNothingRunsAgain(t *testing.T) {
 				}
 			},
 			status: http.StatusUnprocessableEntity, words: "pipeline not found", issues: 1},
+		{name: "a job create refusal the person fixed", path: "/v1/jobs", body: `{"repo":"acme/api","title":"Fix it","text":"brief","source":"app","pipeline":"triage"}`,
+			arm: func(*keyedCreate) {},
+			heal: func(k *keyedCreate) {
+				read := k.pipeline
+				k.pipeline = func() (pipeline.File, error) {
+					p, err := read()
+					p.Pipeline[factory.Kind("triage")] = []string{"write"}
+					return p, err
+				}
+			},
+			status: http.StatusUnprocessableEntity, words: "pipeline not found"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			k := newKeyedCreate(t)
@@ -287,15 +329,25 @@ func TestAKeyedCreateThatWroteNothingRunsAgain(t *testing.T) {
 // An unkeyed create carries the same marker: present on a refusal before any
 // write, gone once the job exists.
 func TestAnUnkeyedCreateSaysWhetherItWroteAnything(t *testing.T) {
-	k := newKeyedCreate(t)
-	refused := verbRequest(k.h, "POST", "/v1/jobs", `{"repo":"acme/api"}`)
-	checkJSON(t, refused, http.StatusUnprocessableEntity)
-	if phaseOf(refused) != api.PhasePreMutation {
-		t.Fatalf("refusal phase %q", phaseOf(refused))
-	}
-	made := verbRequest(k.h, "POST", "/v1/jobs", `{"repo":"acme/api","title":"Fix it"}`)
-	checkJSON(t, made, http.StatusCreated)
-	if phaseOf(made) != "" {
-		t.Fatalf("made job phase %q", phaseOf(made))
+	for _, literal := range []bool{false, true} {
+		t.Run(map[bool]string{false: "New", true: "NewJob"}[literal], func(t *testing.T) {
+			k := newKeyedCreate(t)
+			if literal {
+				k.literal(t)
+			}
+			refused := verbRequest(k.h, "POST", "/v1/jobs", `{"repo":"acme/api"}`)
+			checkJSON(t, refused, http.StatusUnprocessableEntity)
+			if phaseOf(refused) != api.PhasePreMutation {
+				t.Fatalf("refusal phase %q", phaseOf(refused))
+			}
+			made := verbRequest(k.h, "POST", "/v1/jobs", `{"repo":"acme/api","title":"Fix it","source":"app"}`)
+			checkJSON(t, made, http.StatusCreated)
+			if phaseOf(made) != "" {
+				t.Fatalf("made job phase %q", phaseOf(made))
+			}
+			if want := map[bool]int64{false: 0, true: 1}[literal]; k.newJobs.Load() != want {
+				t.Fatalf("NewJob made %d jobs, want %d", k.newJobs.Load(), want)
+			}
+		})
 	}
 }
