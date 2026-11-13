@@ -32,8 +32,12 @@ chown codeaf:codeaf "$config.new"; chmod 600 "$config.new"; mv "$config.new" "$c
 
 # Never copy over a binary that may be running: remove it, then install.
 systemctl stop codeaf-org 2>/dev/null || true
-rm -f /usr/local/bin/codeaf
+rm -f /usr/local/bin/codeaf /usr/local/bin/canvas
 install -m 755 "$here/codeaf" /usr/local/bin/codeaf
+# canvas-core's `canvas`, beside codeaf where the server looks for it: the
+# organization's canvases are kept by it (factory/canvasrpc). Without it the
+# server keeps no canvases and says so in its log.
+[ -f "$here/canvas" ] && install -m 755 "$here/canvas" /usr/local/bin/canvas
 install -m 644 "$here/codeaf-org.service" /etc/systemd/system/codeaf-org.service
 sed "s/{HOST}/$host/" "$here/Caddyfile" > /etc/caddy/Caddyfile
 systemctl daemon-reload

@@ -154,6 +154,8 @@ func (h *Handler) liveForViewer(r *http.Request, e live.Event) (live.Event, bool
 		return h.presenceForViewer(r, e)
 	case api.EventAgentEntry, api.EventAgentState:
 		return h.agentForViewer(r, e)
+	case api.EventCanvasChanged, api.EventCanvasRemoved:
+		return h.canvasEventForViewer(r, e)
 	case "activity":
 		var event record.Event
 		if json.Unmarshal(e.Data, &event) != nil {

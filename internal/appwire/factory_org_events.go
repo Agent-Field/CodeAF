@@ -25,12 +25,16 @@ const EventFactoryOrgChanged = "factory.org_changed"
 // read factory.teams), "workstream.changed" (made, changed, moved owner or
 // shares; read factory.org_workstream {id}, which may now answer not_found
 // when it is no longer shared with you) or "workstream.removed" (archived or
-// purged; drop it). An empty ID means the stream dropped and the server could
-// not replay what was missed: every team or workstream of that kind may have
+// purged; drop it), "canvas.changed" (a canvas was made, written, shared or
+// renamed; Seq is the seq it reached and By the handle who wrote it, so a
+// window already at Seq reads nothing, else factory.org_canvas_ops since what
+// it has) or "canvas.removed" (deleted, or no longer shared with you; drop
+// it). An empty ID means the stream dropped and the server could
+// not replay what was missed: every team, workstream or canvas of that kind may have
 // changed, so read the whole list again.
 type FactoryOrgChanged struct {
 	Connection string `json:"connection"`
-	Kind       string `json:"kind" enum:"team.changed,workstream.changed,workstream.removed"`
+	Kind       string `json:"kind" enum:"team.changed,workstream.changed,workstream.removed,canvas.changed,canvas.removed"`
 	ID         string `json:"id"`
 	// Part, PartID, By, Rev and Deleted say which part of a workstream changed
 	// ("page", "versions", "plan", "wakes", "suggestions", "jobs", "spend" or
@@ -43,6 +47,8 @@ type FactoryOrgChanged struct {
 	By      string `json:"by,omitempty"`
 	Rev     int    `json:"rev,omitempty"`
 	Deleted bool   `json:"deleted,omitempty"`
+	// Seq is the seq a canvas reached (canvas.changed only).
+	Seq int64 `json:"seq,omitempty"`
 }
 
 func init() {

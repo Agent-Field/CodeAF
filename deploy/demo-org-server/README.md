@@ -16,6 +16,16 @@ scripts/demo-org-server-teardown.sh               # after the demo: deletes the 
 choose where. A redeploy keeps the server's state and its access token, so
 nobody is signed out by an update.
 
+## Canvases
+
+The organization's canvases are kept by canvas-core's `canvas` program, installed
+beside codeaf as `/usr/local/bin/canvas`. The deploy builds it as a static
+linux/amd64 binary from the desk repository (`DESK_REPO`, default `~/af-desk-rail`,
+at `DESK_REF`, default `origin/work/rail-personal`), through `cargo zigbuild` on a
+machine that is not linux/amd64 (`cargo install cargo-zigbuild` and a `zig` on PATH),
+or takes one already built from `CANVAS_BIN`. Without it the server starts, logs
+`this organization keeps no canvases`, and leaves the canvas routes off.
+
 ## Claiming it and joining it
 
 1. The operator link is printed in the service log at each start until somebody

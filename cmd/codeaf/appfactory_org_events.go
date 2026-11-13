@@ -215,13 +215,20 @@ func (h *appFactoryHub) relayOrg(id string, f *appOrgFollow, kind, data string) 
 		}
 		out = append(out, appwire.FactoryOrgChanged{Connection: id, Kind: kind, ID: body.ID,
 			Part: body.Part, PartID: body.PartID, By: body.By, Rev: body.Rev, Deleted: body.Deleted})
+	case api.EventCanvasChanged, api.EventCanvasRemoved:
+		var body api.CanvasEvent
+		if json.Unmarshal([]byte(data), &body) != nil || body.ID == "" {
+			return true
+		}
+		out = append(out, appwire.FactoryOrgChanged{Connection: id, Kind: kind, ID: body.ID, Seq: body.Seq, By: body.By})
 	case "changed":
 		if data != "*" {
 			return true
 		}
 		out = append(out,
 			appwire.FactoryOrgChanged{Connection: id, Kind: api.TeamChangedKind},
-			appwire.FactoryOrgChanged{Connection: id, Kind: api.EventWorkstreamChanged})
+			appwire.FactoryOrgChanged{Connection: id, Kind: api.EventWorkstreamChanged},
+			appwire.FactoryOrgChanged{Connection: id, Kind: api.EventCanvasChanged})
 	default:
 		return true
 	}
