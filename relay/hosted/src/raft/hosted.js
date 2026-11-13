@@ -348,7 +348,7 @@ export class HostedIdentity {
       await this.rememberRetirement(state.identity);
       if(this.notifiedVersion!==version){this.watchers.broadcast(String(version));this.notifiedVersion=version;}
       if(state.identity.rotation){this.watchers.closeAll(CLOSE_ROTATED,'rotated');for(const device of this.pendingIO.keys())this.stopIO(device,'rotated');}
-      for(const device of state.revoked){this.watchers.closeDevice(device,CLOSE_REVOKED,'revoked');this.stopIO(device,'revoked');}
+      for(const device of state.revoked){this.tenant.fabric.revokeClient(device);this.watchers.closeDevice(device,CLOSE_REVOKED,'revoked');this.stopIO(device,'revoked');}
     }
     if(this.retireAt)await this.armAlarm(this.retireAt);
   }
@@ -451,10 +451,14 @@ export class HostedIdentity {
   async barrierOutbox(after,limit){const b=await this.barrier();return (await this.members.get(b.node).hostView(b.index,'outbox','',after)).rows.slice(0,limit);}
   projectJSON(kind,raw){return projectRecord(this.runtime,kind,raw);}
   project(kind,raw){return JSON.parse(this.projectJSON(kind,raw));}
-  async authorize(device,certificate,write=false,fresh=false){
+  async authorize(device,certificate,write=false,fresh=false,allowClient=false){
     await this.wakeMaintenance();
     const b=await this.readAuthority(fresh),root=await this.readView(b,'state','identity'),actor=await this.readView(b,'state','device/'+segment(device));
-    const r=response(this.runtime.call(frame(32).blob(root.raw).blob(actor.raw??new Uint8Array()).str(device).str(certificate).u32(write?1:0).finish()));requireOK(r.str());r.end();this.noteSeen(device);return {barrier:b,app:root.app,identity:this.project('identity',root.raw)};
+    const actorRec=actor.raw?this.project('device',actor.raw):null;
+    if(!allowClient&&actorRec?.kind==='client')throw new Wire('unauthorized',401);
+    const r=response(this.runtime.call(frame(32).blob(root.raw).blob(actor.raw??new Uint8Array()).str(device).str(certificate).u32((write?1:0)|(allowClient?2:0)).finish()));requireOK(r.str());r.end();
+    if(actorRec?.kind!=='client')this.noteSeen(device);
+    return {barrier:b,app:root.app,identity:this.project('identity',root.raw),actor:actorRec};
   }
   async recheckAuthority(previous,device,certificate,write,fresh){
     const current=await this.readAuthority(fresh);
@@ -807,6 +811,7 @@ export class HostedIdentity {
         if(this.retireAt)await this.armAlarm(this.retireAt);
         if(q.command.change.revoke){
           const device=q.command.change.revoke.device;
+          this.tenant.fabric.revokeClient(device);
           this.watchers.announce({t:'revoked',device},device);this.watchers.closeDevice(device,CLOSE_REVOKED,'revoked');
         }
       }
@@ -848,9 +853,34 @@ export class HostedIdentity {
     const storage=unwrap(await this.env.IDENTITY.get(this.env.IDENTITY.idFromName(successor)).inheritStorage(approval?.storage==='on'?approval:null));
     return json({successor,storage});
   }
+  async serveFabric(c,route,fresh=false){
+    const {request,device,body}=c,cert=request.headers.get('codeaf-cert'),targetDevice=route.args[0];
+    await this.ensure(fromBase64Url(request.headers.get('codeaf-identity')));
+    await this.wakeMaintenance();
+    const authority=await this.authorize(device,cert,route.write,fresh,true),b=authority.barrier;
+    const now=this.readNow(authority.app.now);
+    checkTime(request.headers.get('codeaf-time'),now);
+    const ids=new Set([device,targetDevice]);
+    if(request.method==='POST'&&body.length){
+      try{const parsed=JSON.parse(dec.decode(body));if(typeof parsed?.target==='string'&&parsed.target&&parsed.target!=='any')ids.add(parsed.target);}catch{}
+    }
+    const devices={};
+    if(authority.actor)devices[device]=authority.actor;
+    for(const id of ids){
+      if(id===device||!id)continue;
+      const row=await this.readView(b,'state','device/'+segment(id));
+      if(row.raw)devices[id]=this.project('device',row.raw);
+    }
+    if(devices[targetDevice]?.revoked)this.tenant.fabric.revokeClient(targetDevice);
+    const dir={read:(kind,id)=>(kind==='devices'?devices[id]:undefined)};
+    const reply=await this.tenant.fabric.withClockAndDir(now,dir,()=>route.handler(c,route.args));
+    return this.finishRead(b,reply);
+  }
   async dispatch(c,route){
-    if(new URL(c.request.url).pathname==='/v1/store/handoff')return this.operation(()=>this.retryRead(fresh=>this.handoff(c,fresh)));
-    if(!new URL(c.request.url).pathname.startsWith('/v1/store/'))return this.operation(()=>c.request.method==='GET'?this.retryRead(fresh=>this.serve(c,route,fresh)):this.serve(c,route));
+    const path=new URL(c.request.url).pathname;
+    if(path==='/v1/store/handoff')return this.operation(()=>this.retryRead(fresh=>this.handoff(c,fresh)));
+    if(route.fabric&&!(c.request.method==='PUT'&&/^\/v1\/clients\/[^/]+$/.test(path)))return this.operation(()=>this.retryRead(fresh=>this.serveFabric(c,route,fresh)));
+    if(!path.startsWith('/v1/store/'))return this.operation(()=>c.request.method==='GET'?this.retryRead(fresh=>this.serve(c,route,fresh)):this.serve(c,route));
     const cert=c.request.headers.get('codeaf-cert');
     const ticket=await this.operation(()=>this.retryRead(async fresh=>{
       await this.ensure(fromBase64Url(c.request.headers.get('codeaf-identity')));
@@ -915,6 +945,10 @@ export class HostedIdentity {
         asGrant(approval.grant,this.tenant.limits.linkMaxGrant);
       }
     }
+    if(request.method==='PUT'&&/^\/v1\/clients\/[^/]+$/.test(path)){
+      await this.authorize(device,cert,true,true);
+      await this.tenant.fabric.validateRegisterClient({targetDevice:decodeURIComponent(route.args[0]),body,identityHeader:request.headers.get('codeaf-identity')});
+    }
     let raw;try{raw=v1Command(this.runtime,this.manifest.config.cluster,this.readNow(),this.proof(request,body));}catch{throw new Wire('bad_request',400);}
     if(join)await this.effects.admit(joinBox,joinCode,Date.now());
     const result=await this.commitV1(raw);
@@ -927,6 +961,7 @@ export class HostedIdentity {
     }
     if(path.endsWith('/revoke')){
       const device=decodeURIComponent(route.args[0]);
+      this.tenant.fabric.revokeClient(device);
       this.watchers.announce({t:'revoked',device},device);this.watchers.closeDevice(device,CLOSE_REVOKED,'revoked');
     }
     if(path.endsWith('/release')||path.endsWith('/archive'))return empty();

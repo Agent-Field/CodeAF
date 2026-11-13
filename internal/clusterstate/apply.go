@@ -166,6 +166,9 @@ func Dependencies(c Command) []RecordKey {
 	if m.PutDevice != nil {
 		keys = append(keys, DeviceKey(m.PutDevice.ID))
 	}
+	if m.RegisterClient != nil {
+		keys = append(keys, DeviceKey(m.RegisterClient.Device), AuthorityKey(m.RegisterClient.Device))
+	}
 	if m.Revoke != nil {
 		keys = append(keys, DeviceKey(m.Revoke.Device))
 	}
@@ -412,6 +415,10 @@ func evaluateCommand(c Command, meta ApplicationMeta, read ReadRecord, paged boo
 		out.Result.Code = Revoked
 		return out, nil
 	}
+	if actor.Kind == "client" {
+		out.Result.Code = Unauthorized
+		return out, nil
+	}
 	// Worker incarnation and scope precede dedup so an old successful result
 	// cannot restart activity after a process replacement, expiry or revocation.
 	if auth.Worker != nil {
@@ -517,7 +524,7 @@ func evaluateCommand(c Command, meta ApplicationMeta, read ReadRecord, paged boo
 				if Decode(d, &seen) != nil {
 					return out, ErrDependency
 				}
-				if !seen.Revoked {
+				if !seen.Revoked && seen.Kind != "client" {
 					seen.LastSeen = out.Now
 					put(DeviceKey(c.Change.DeviceSeen.Device), seen)
 				}
@@ -741,8 +748,42 @@ func applyMutation(c Command, now int64, identity IdentityRec, rows map[RecordKe
 		return OK
 	case m.PutDevice != nil:
 		v := m.PutDevice
+		if v.Device.Kind != "" || len(v.Device.Methods) > 0 {
+			return BadRequest
+		}
 		old, had := device(v.ID)
 		put(DeviceKey(v.ID), Stamped(old, had, v.Device, now))
+		return OK
+	case m.RegisterClient != nil:
+		v := m.RegisterClient
+		if !validClientDeviceID(v.Device) || len(v.Name) > MaxClientName || len(v.Methods) > MaxClientMethods {
+			return BadRequest
+		}
+		seen := map[string]bool{}
+		for _, method := range v.Methods {
+			if !validFabricName(method) || seen[method] {
+				return BadRequest
+			}
+			seen[method] = true
+		}
+		if _, had := device(v.Device); had || rows[AuthorityKey(v.Device)] != nil || v.Device == c.Actor {
+			return Exists
+		}
+		if PersonalCertificate(identity, v.Device, v.Cert) != nil {
+			return BadRequest
+		}
+		var methods []string
+		if len(v.Methods) > 0 {
+			methods = append([]string(nil), v.Methods...)
+		}
+		put(DeviceKey(v.Device), Device{
+			V:       1,
+			Kind:    "client",
+			Methods: methods,
+			Name:    v.Name,
+			AddedBy: identity.Identity,
+			Created: now,
+		})
 		return OK
 	case m.Revoke != nil:
 		v := m.Revoke
@@ -842,6 +883,9 @@ func applyMutation(c Command, now int64, identity IdentityRec, rows map[RecordKe
 			old, had := device(v.Device)
 			if old.Revoked {
 				return Revoked
+			}
+			if old.Kind == "client" || v.Record.Kind != "" || len(v.Record.Methods) > 0 {
+				return BadRequest
 			}
 			public, e := JoinCertificate(identity, request, v.Cert)
 			if e != nil || validGrant(v.Grant) == false {

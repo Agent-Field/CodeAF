@@ -135,6 +135,7 @@ func RevokeOf(target Device, caller, targetID string) (Device, error) {
 // relay-owned fields are never taken from the client: Revoked and LastSeen stay
 // as stored, and Created is the time of the first write.
 func Stamped(old Device, had bool, d Device, now int64) Device {
+	d.Kind, d.Methods = old.Kind, old.Methods
 	d.Revoked, d.LastSeen, d.Created = old.Revoked, old.LastSeen, old.Created
 	if !had {
 		d.Created = now

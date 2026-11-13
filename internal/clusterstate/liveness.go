@@ -75,6 +75,9 @@ func renewHolds(c Command, now int64, rows map[RecordKey][]byte, put func(Record
 	if actor.Revoked {
 		return Revoked
 	}
+	if actor.Kind == "client" {
+		return Unauthorized
+	}
 	if auth.Worker != nil {
 		var identity IdentityRec
 		if Decode(rows[IdentityKey()], &identity) != nil {
