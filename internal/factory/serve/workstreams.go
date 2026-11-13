@@ -69,62 +69,28 @@ func (h *Handler) workstreamRoutes() {
 
 // ── who is asking ──
 
-// wsViewer is the caller as the workstream rules see them.
-type wsViewer struct {
-	handle   string
-	operator bool
-	solo     bool
-	teams    map[string]bool
-}
+// wsViewer is the caller as the workstream routes see them: the access core's
+// [Viewer] (item_access.go), kept under this name for the routes that use it.
+type wsViewer = Viewer
 
-func (h *Handler) wsViewer(r *http.Request) (wsViewer, error) {
-	who, err := h.callerHandle(r)
-	if err != nil {
-		return wsViewer{}, err
-	}
-	v := wsViewer{handle: factory.NormalizeHandle(who), solo: h.mode() == api.FactorySolo, teams: map[string]bool{}}
-	v.operator = v.solo || h.isOperator(r)
-	if v.handle != "" {
-		for _, team := range h.Membership().TeamsOf(v.handle) {
-			v.teams[team] = true
-		}
-	}
-	return v, nil
-}
+func (h *Handler) wsViewer(r *http.Request) (wsViewer, error) { return h.itemViewer(r) }
 
-func (v wsViewer) owns(w factory.OrgWorkstream) bool {
-	switch w.Owner.Kind {
-	case api.OwnerPerson:
-		return v.handle != "" && factory.NormalizeHandle(w.Owner.ID) == v.handle
-	case api.OwnerTeam:
-		return v.teams[w.Owner.ID]
-	}
-	return false
+// canSee and canWrite are the core's view and edit on a workstream. canGovern
+// (change its owner or shares) is full, or the operator on one that is not
+// private: the operator keeps the organization's workstreams owned and shared
+// rightly without being their writer, and never governs what they cannot read.
+func (v Viewer) canSee(w factory.OrgWorkstream) bool {
+	return can(v, workstreamItem(w), factory.RoleView)
 }
-
-func (v wsViewer) sharedIn(w factory.OrgWorkstream) bool {
-	for _, team := range w.SharedWith {
-		if v.teams[team] {
-			return true
-		}
-	}
-	return false
+func (v Viewer) canWrite(w factory.OrgWorkstream) bool {
+	return can(v, workstreamItem(w), factory.RoleEdit)
 }
-
-func (v wsViewer) canSee(w factory.OrgWorkstream) bool {
-	return v.operator || v.owns(w) || v.sharedIn(w)
-}
-
-func (v wsViewer) canWrite(w factory.OrgWorkstream) bool {
-	return v.solo || v.owns(w) || v.sharedIn(w)
-}
-
-func (v wsViewer) canGovern(w factory.OrgWorkstream) bool {
-	return v.operator || v.owns(w)
+func (v Viewer) canGovern(w factory.OrgWorkstream) bool {
+	return can(v, workstreamItem(w), factory.RoleFull) || (v.Operator && !w.Private)
 }
 
 // orgWorkstreamAccess is whether id names an organization workstream and
-// whether the caller may see and write it; known is false, with no error, when
+// whether the caller may view and edit it; known is false, with no error, when
 // it names none: a go-ahead group that is not an organization workstream keeps
 // the rules it always had.
 func (h *Handler) orgWorkstreamAccess(r *http.Request, id string) (known, see, write bool, err error) {
@@ -243,7 +209,7 @@ func (h *Handler) workstreamCounts() (map[string]workstreamCount, error) {
 func workstreamSummary(ws factory.OrgWorkstream, c workstreamCount) api.WorkstreamSummary {
 	out := api.WorkstreamSummary{
 		ID: ws.ID, Name: ws.Name, Stage: ws.Stage, Owner: ws.Owner,
-		SharedWith: nonNil(ws.SharedWith),
+		SharedWith: factory.ShareTeams(ws.Shares),
 		NeedsYou:   c.needsYou, Merged: c.merged, Total: c.total,
 		UpdatedAt: ws.UpdatedAt.UTC().Format(time.RFC3339Nano), Rev: ws.Rev,
 	}
@@ -323,7 +289,7 @@ func (h *Handler) createWorkstream(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
-	owner := api.WorkstreamOwner{Kind: api.OwnerPerson, ID: v.handle}
+	owner := api.WorkstreamOwner{Kind: api.OwnerPerson, ID: v.Handle}
 	if body.Owner != nil {
 		owner = *body.Owner
 	}
@@ -332,7 +298,7 @@ func (h *Handler) createWorkstream(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
-	if !v.operator && !(owner.Kind == api.OwnerPerson && owner.ID == v.handle) && !(owner.Kind == api.OwnerTeam && v.teams[owner.ID]) {
+	if !v.Operator && !(owner.Kind == api.OwnerPerson && owner.ID == v.Handle) && !(owner.Kind == api.OwnerTeam && v.Teams[owner.ID]) {
 		h.fail(w, http.StatusForbidden, "you can make a workstream owned by you or by a team you are in")
 		return
 	}
@@ -340,7 +306,7 @@ func (h *Handler) createWorkstream(w http.ResponseWriter, r *http.Request) {
 	ws := factory.OrgWorkstream{
 		Name: body.Name, Stage: body.Stage, Purpose: body.Purpose, Owner: owner,
 		Pages: body.Pages, Decisions: body.Decisions, Sources: body.Sources, Links: body.Links,
-		CreatedBy: v.handle, CreatedAt: now, UpdatedAt: now,
+		CreatedBy: v.Handle, CreatedAt: now, UpdatedAt: now,
 	}
 	if ws.Stage == "" {
 		ws.Stage = api.WorkstreamShaping
@@ -364,7 +330,7 @@ func (h *Handler) importWorkstream(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
-	if v.handle == "" {
+	if v.Handle == "" {
 		h.fail(w, http.StatusUnprocessableEntity, "a workstream moves in as someone's; sign in first")
 		return
 	}
@@ -375,14 +341,14 @@ func (h *Handler) importWorkstream(w http.ResponseWriter, r *http.Request) {
 	}
 	createdBy := factory.NormalizeHandle(body.CreatedBy)
 	if createdBy == "" {
-		createdBy = v.handle
+		createdBy = v.Handle
 	}
 	now := h.clock().UTC()
 	ws := factory.OrgWorkstream{
 		Name: body.Name, Stage: body.Stage, Purpose: body.Purpose,
-		Owner: api.WorkstreamOwner{Kind: api.OwnerPerson, ID: v.handle},
+		Owner: api.WorkstreamOwner{Kind: api.OwnerPerson, ID: v.Handle},
 		Pages: body.Pages, Decisions: body.Decisions, Sources: body.Sources, Links: body.Links,
-		CreatedBy: createdBy, FromLocalID: body.FromLocalID, ImportedBy: v.handle,
+		CreatedBy: createdBy, FromLocalID: body.FromLocalID, ImportedBy: v.Handle,
 		CreatedAt: now, UpdatedAt: now,
 	}
 	if ws.Stage == "" {
@@ -393,7 +359,7 @@ func (h *Handler) importWorkstream(w http.ResponseWriter, r *http.Request) {
 
 // saveNewWorkstream checks ws, gives it an id and keeps it, answering 201.
 func (h *Handler) saveNewWorkstream(w http.ResponseWriter, r *http.Request, ws factory.OrgWorkstream, v wsViewer, imported bool) {
-	if err := cleanWorkstream(&ws, v.handle, ws.CreatedAt); err != nil {
+	if err := cleanWorkstream(&ws, v.Handle, ws.CreatedAt); err != nil {
 		h.fail(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
@@ -478,7 +444,7 @@ func (h *Handler) patchWorkstream(w http.ResponseWriter, r *http.Request) {
 			cur.Stage = *body.Stage
 		}
 		if body.Pages != nil {
-			cur.Pages = stampPages(*body.Pages, before.Pages, v.handle, now)
+			cur.Pages = stampPages(*body.Pages, before.Pages, v.Handle, now)
 		}
 		if body.Decisions != nil {
 			cur.Decisions = *body.Decisions
@@ -492,7 +458,7 @@ func (h *Handler) patchWorkstream(w http.ResponseWriter, r *http.Request) {
 				return nil, err
 			}
 		}
-		if err := cleanWorkstream(&cur, v.handle, now); err != nil {
+		if err := cleanWorkstream(&cur, v.Handle, now); err != nil {
 			return nil, err
 		}
 		cur.UpdatedAt = now
@@ -515,7 +481,7 @@ func (h *Handler) deleteWorkstream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	purge := r.URL.Query().Get("purge") == "1"
-	if purge && !v.operator {
+	if purge && !v.Operator {
 		h.fail(w, http.StatusForbidden, "only the operator can remove a workstream for good")
 		return
 	}
@@ -583,7 +549,7 @@ func (h *Handler) setWorkstreamOwner(w http.ResponseWriter, r *http.Request) {
 		cur.Owner, cur.UpdatedAt = owner, now
 		// The owning team sees the workstream already; a share with it as well
 		// would only show it twice under the same team.
-		cur.SharedWith = slices.DeleteFunc(slices.Clone(cur.SharedWith), func(t string) bool { return owner.Kind == api.OwnerTeam && t == owner.ID })
+		cur.Shares = withoutOwnerShare(cur.Shares, owner)
 		all[cur.ID] = cur
 		return []string{cur.ID}, nil
 	})
@@ -627,17 +593,17 @@ func (h *Handler) setWorkstreamShares(w http.ResponseWriter, r *http.Request) {
 			return nil, errWorkstreamNoGovern
 		}
 		var changed []string
-		next := withoutOwner(teams, cur.Owner)
-		if !slices.Equal(next, sortedTeams(cur.SharedWith)) {
+		next := withTeamShares(cur.Shares, teams, cur.Owner)
+		if !slices.Equal(next, cur.Shares) {
 			befores[cur.ID] = cur
-			cur.SharedWith, cur.UpdatedAt = next, now
+			cur.Shares, cur.UpdatedAt = next, now
 			all[cur.ID] = cur
 			changed = append(changed, cur.ID)
 		}
 		if body.IncludeLinked {
 			for _, linked := range linkedToShare(all, cur, teams, v) {
 				befores[linked.ID] = linked
-				linked.SharedWith, linked.UpdatedAt = withoutOwner(append(slices.Clone(linked.SharedWith), teams...), linked.Owner), now
+				linked.Shares, linked.UpdatedAt = addTeamShares(linked.Shares, teams, linked.Owner), now
 				all[linked.ID] = linked
 				changed = append(changed, linked.ID)
 				also = append(also, linked.ID)
@@ -702,7 +668,7 @@ func linkedToShare(all factory.OrgWorkstreams, ws factory.OrgWorkstream, teams [
 			continue
 		}
 		for _, t := range teams {
-			if !(linked.Owner.Kind == api.OwnerTeam && linked.Owner.ID == t) && !slices.Contains(linked.SharedWith, t) {
+			if !(linked.Owner.Kind == api.OwnerTeam && linked.Owner.ID == t) && !hasShare(linked.Shares, factory.ShareToTeam, t) {
 				out = append(out, linked)
 				break
 			}
@@ -787,6 +753,48 @@ func sortedTeams(teams []string) []string {
 // withoutOwner is teams sorted, once each, less the owning team.
 func withoutOwner(teams []string, owner api.WorkstreamOwner) []string {
 	return slices.DeleteFunc(sortedTeams(teams), func(t string) bool { return owner.Kind == api.OwnerTeam && t == owner.ID })
+}
+
+// withoutOwnerShare is shares less any naming owner, who holds full already.
+func withoutOwnerShare(shares []factory.Share, owner api.WorkstreamOwner) []factory.Share {
+	return nonNil(slices.DeleteFunc(slices.Clone(shares), func(s factory.Share) bool { return s.Kind == owner.Kind && s.ID == owner.ID }))
+}
+
+// hasShare is whether shares name kind:id.
+func hasShare(shares []factory.Share, kind, id string) bool {
+	return slices.ContainsFunc(shares, func(s factory.Share) bool { return s.Kind == kind && s.ID == id })
+}
+
+// withTeamShares answers the old teams-only share list: the teams in it, as
+// edit unless a team already holds another role, replace the team shares, and
+// the person shares are kept as they are.
+func withTeamShares(shares []factory.Share, teams []string, owner api.WorkstreamOwner) []factory.Share {
+	out := []factory.Share{}
+	for _, t := range sortedTeams(teams) {
+		role := factory.RoleEdit
+		if at := slices.IndexFunc(shares, func(s factory.Share) bool { return s.Kind == factory.ShareToTeam && s.ID == t }); at >= 0 {
+			role = shares[at].Role
+		}
+		out = append(out, factory.Share{Kind: factory.ShareToTeam, ID: t, Role: role})
+	}
+	for _, s := range shares {
+		if s.Kind != factory.ShareToTeam {
+			out = append(out, s)
+		}
+	}
+	return withoutOwnerShare(out, owner)
+}
+
+// addTeamShares is shares with every team of teams that it does not name yet
+// added as edit; a team it already names keeps its role.
+func addTeamShares(shares []factory.Share, teams []string, owner api.WorkstreamOwner) []factory.Share {
+	out := slices.Clone(shares)
+	for _, t := range sortedTeams(teams) {
+		if !hasShare(out, factory.ShareToTeam, t) {
+			out = append(out, factory.Share{Kind: factory.ShareToTeam, ID: t, Role: factory.RoleEdit})
+		}
+	}
+	return withoutOwnerShare(out, owner)
 }
 
 // teamKnown is whether this organization keeps team, members or not. A team
@@ -952,7 +960,7 @@ func cleanWorkstream(ws *factory.OrgWorkstream, who string, now time.Time) error
 		}
 	}
 	ws.Pages, ws.Decisions, ws.Sources = nonNil(ws.Pages), nonNil(ws.Decisions), nonNil(ws.Sources)
-	ws.Links, ws.SharedWith = nonNil(slices.Compact(ws.Links)), nonNil(ws.SharedWith)
+	ws.Links, ws.Shares, ws.SharedWith = nonNil(slices.Compact(ws.Links)), nonNil(ws.Shares), nil
 	return nil
 }
 
@@ -977,28 +985,17 @@ func plainWords(field, s string, least, most int) error {
 // stream sends only kind and id ([api.WorkstreamEvent]).
 type workstreamLive struct {
 	api.WorkstreamEvent
-	Persons []string `json:"persons,omitempty"`
-	Teams   []string `json:"teams,omitempty"`
+	itemAudience
 }
 
 // publishWorkstreams records one workstream event. A record that cannot be
 // written loses only the push: the change is kept, and the next read finds it.
 func (h *Handler) publishWorkstreams(kind string, before *factory.OrgWorkstream, after factory.OrgWorkstream) {
-	e := workstreamLive{WorkstreamEvent: api.WorkstreamEvent{Kind: kind, ID: after.ID}}
-	add := func(ws factory.OrgWorkstream) {
-		switch ws.Owner.Kind {
-		case api.OwnerPerson:
-			e.Persons = append(e.Persons, ws.Owner.ID)
-		case api.OwnerTeam:
-			e.Teams = append(e.Teams, ws.Owner.ID)
-		}
-		e.Teams = append(e.Teams, ws.SharedWith...)
-	}
+	items := []Item{workstreamItem(after)}
 	if before != nil {
-		add(*before)
+		items = append(items, workstreamItem(*before))
 	}
-	add(after)
-	e.Persons, e.Teams = sortedTeams(e.Persons), sortedTeams(e.Teams)
+	e := workstreamLive{WorkstreamEvent: api.WorkstreamEvent{Kind: kind, ID: after.ID}, itemAudience: audienceOf(items...)}
 	_ = live.Append(h.eventRoot(), live.New(kind, 0, e))
 }
 
@@ -1010,14 +1007,7 @@ func (h *Handler) workstreamEventForViewer(r *http.Request, e live.Event) (live.
 		return e, false
 	}
 	v, err := h.wsViewer(r)
-	if err != nil {
-		return e, false
-	}
-	visible := v.operator || slices.Contains(stored.Persons, v.handle) && v.handle != ""
-	for _, t := range stored.Teams {
-		visible = visible || v.teams[t]
-	}
-	if !visible {
+	if err != nil || !v.hears(stored.itemAudience) {
 		return e, false
 	}
 	data, err := json.Marshal(stored.WorkstreamEvent)

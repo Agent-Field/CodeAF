@@ -1,6 +1,9 @@
 package factory
 
-import "time"
+import (
+	"slices"
+	"time"
+)
 
 // ── AN ORGANIZATION'S WORKSTREAMS ──────────────────────────────────────────
 //
@@ -17,17 +20,25 @@ import "time"
 // counts every save, so a writer that read an older one is refused rather
 // than silently overwriting what someone else wrote.
 type OrgWorkstream struct {
-	ID         string               `json:"id"`
-	Name       string               `json:"name"`
-	Stage      string               `json:"stage"`
-	Owner      WorkstreamOwner      `json:"owner"`
-	SharedWith []string             `json:"shared_with"`
-	Purpose    string               `json:"purpose"`
-	Pages      []WorkstreamPage     `json:"pages"`
-	Decisions  []WorkstreamDecision `json:"decisions"`
-	Sources    []WorkstreamSource   `json:"sources"`
-	Links      []string             `json:"links"`
-	CreatedBy  string               `json:"created_by"`
+	ID    string          `json:"id"`
+	Name  string          `json:"name"`
+	Stage string          `json:"stage"`
+	Owner WorkstreamOwner `json:"owner"`
+	// Shares are who else may reach it, and with which role ([Share]).
+	Shares []Share `json:"shares"`
+	// SharedWith is the teams-only share list kept before roles. The store
+	// folds it into Shares as edit on every read ([OrgWorkstream.FoldShares])
+	// and never writes it again.
+	SharedWith []string `json:"shared_with,omitempty"`
+	// Private is an item only its owner reaches: it has a person owner and
+	// no shares, and the operator sees that it exists but never what it says.
+	Private   bool                 `json:"private,omitempty"`
+	Purpose   string               `json:"purpose"`
+	Pages     []WorkstreamPage     `json:"pages"`
+	Decisions []WorkstreamDecision `json:"decisions"`
+	Sources   []WorkstreamSource   `json:"sources"`
+	Links     []string             `json:"links"`
+	CreatedBy string               `json:"created_by"`
 	// FromLocalID is the Personal workstream an import came from, and
 	// ImportedBy who moved it in: together they make a repeated import answer
 	// the copy already made instead of making a second one.
@@ -84,3 +95,17 @@ var (
 	WorkstreamDecisionState = []string{"kept", "proposed", "superseded"}
 	WorkstreamSourceKinds   = []string{"repo", "url", "file", "chat"}
 )
+
+// FoldShares moves the old teams-only SharedWith into Shares as edit, once,
+// so every reader after the store sees one share list.
+func (w *OrgWorkstream) FoldShares() {
+	for _, s := range TeamShares(w.SharedWith) {
+		if !slices.ContainsFunc(w.Shares, func(cur Share) bool { return cur.Kind == s.Kind && cur.ID == s.ID }) {
+			w.Shares = append(w.Shares, s)
+		}
+	}
+	w.SharedWith = nil
+	if w.Shares == nil {
+		w.Shares = []Share{}
+	}
+}
