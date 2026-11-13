@@ -330,9 +330,12 @@ func appTaskOfView(agent string, view session.AppTaskView) appwire.Task {
 	if n != 0 {
 		id = appTaskID(agent, n)
 	}
-	task := appwire.Task{Retryable: view.Retryable, ID: id, Agent: agent, Title: view.Title, Result: redact.Secrets(view.Result), Files: appFiles(view.Files), BudgetUSD: appFigure(view.Cap), SpentUSD: appFigure(view.Spent)}
-	if p, err := strconv.ParseUint(view.Parent, 10, 64); err == nil && p != 0 {
-		task.Parent = appTaskID(agent, p)
+	task := appwire.Task{Retryable: view.Retryable, ID: id, Agent: agent, Group: view.Group, Parent: view.Parent, Title: view.Title, Result: redact.Secrets(view.Result), Files: appFiles(view.Files), BudgetUSD: appFigure(view.Cap), SpentUSD: appFigure(view.Spent)}
+	if p, err := strconv.ParseUint(view.Parent, 10, 64); err == nil {
+		task.Parent = ""
+		if p != 0 {
+			task.Parent = appTaskID(agent, p)
+		}
 	}
 	switch view.State {
 	case "waiting", "paused":

@@ -138,7 +138,7 @@ func NewBeltWorker(config Config, completer Completer, task *plandb.Task, storeP
 	// back — and a shim that never landed is a seat that cannot run, because
 	// every `plandb` its worker runs would resolve to whatever shares the
 	// machine's PATH and write a plan this run would never read.
-	plan := &planState{path: storePath, root: rootID}
+	plan := &planState{path: storePath, root: rootID, task: task.ID}
 	if err := plan.armShim(); err != nil {
 		_ = agent.Close()
 		return nil, fmt.Errorf("arm the plandb shim: %w", err)
@@ -198,11 +198,12 @@ func workerJournalName() string {
 // the run's own ask reached the store as the ROOT task's description. A leaf
 // handed only the paraphrase inherits its omissions and cannot notice: on two
 // runs of one objective the planner dropped the same bullet, and only the leaf
-// that read the person's own sentence carried it. So one section of a non-root
-// worker's document carries that sentence VERBATIM — the leaf reads the whole
+// that read the person's own sentence carried it. So a descendant's document
+// carries that sentence verbatim — the leaf reads the whole
 // ask even though it owns one part, and where the ask and its work order
 // disagree about a requirement it owns, the ask wins and the leaf says so in
-// its report.
+// its report. A joined handoff establishes its own ask; its descendants read
+// that assignment, while its own work order already carries it.
 //
 // THE ROOT'S OWN DOCUMENT IS UNCHANGED: its work order IS the ask, so there is
 // nothing to put beside it. The section is absent there, and absent when the
@@ -229,6 +230,10 @@ func BeltWorkerBrief(store *plandb.Store, task *plandb.Task, root, resume bool, 
 		strings.Join(task.Deliverables, "\n"),
 		task.Acceptance,
 		"", AdmissionContext{}, taskOrigin{}, taskCopy{})
+	if task.Title != "" {
+		identity, rest, _ := strings.Cut(doc, "\n")
+		doc = identity + "\n" + task.Title + "\n" + rest
+	}
 	// The runtime's directory is authority, while the work order may still
 	// quote the source checkout. Preserve those words and explain their scope
 	// before the worker sees them, as the checker already does for its probes.
@@ -238,12 +243,10 @@ func BeltWorkerBrief(store *plandb.Store, task *plandb.Task, root, resume bool, 
 		identity, work, _ := strings.Cut(doc, "\n\n")
 		doc = identity + "\n\n" + assignment + "\n\n" + work
 	}
-	// THE ASK, FOR EVERY LEAF AND ONLY A LEAF. The section is absent on the
-	// root's own document (its work order is the ask) and absent when the store
-	// holds no root row to read it from, which is the emptiness law and not a
-	// special case.
+	// Descendants inherit their assignment's ask. A joined assignment's own
+	// work order already carries it, just as the run root's does.
 	if !root {
-		if ask := runRootAsk(store); ask != "" {
+		if ask := runTaskAsk(store, task); ask != "" {
 			doc = withReport(doc, askSection(ask))
 		}
 	}
@@ -280,8 +283,8 @@ func BeltWorkerBrief(store *plandb.Store, task *plandb.Task, root, resume bool, 
 	return doc
 }
 
-// The heading, the rule and the bound over the run root's own words, carried
-// on every leaf's document ([BeltWorkerBrief]). The heading is the belt pages'
+// The heading, the rule and the bound over an assignment's own words, carried
+// on its descendants' documents ([BeltWorkerBrief]). The heading is the belt pages'
 // own Markdown voice; the rule is the one sentence that says what the section
 // is for.
 const (
@@ -295,7 +298,7 @@ const (
 	askSectionLimit = 16 << 10
 )
 
-// askSection lays out the run root's own words: the heading, the one sentence
+// askSection lays out the assignment's own words: the heading, the one sentence
 // saying what they are for, and the description VERBATIM — unedited and
 // untrimmed, bounded only by [askSectionLimit], which marks its cut.
 func askSection(ask string) string {
@@ -333,6 +336,20 @@ If no declared command can be run, answer "check: <one sentence>" instead.
 
 One line. A requirement you could not test is one you did not prove.
 `
+
+// runTaskAsk selects the nearest independent joined assignment, falling back
+// to the root for work the root's own worker or reviewer added.
+func runTaskAsk(store *plandb.Store, task *plandb.Task) string {
+	if store == nil || task == nil || task.JoinedAssignment {
+		return ""
+	}
+	for parent := store.Task(task.ParentID); parent != nil && parent.ID != store.RootID(); parent = store.Task(parent.ParentID) {
+		if parent.JoinedAssignment {
+			return parent.Description
+		}
+	}
+	return runRootAsk(store)
+}
 
 // runRootAsk answers the run root's description as the store keeps it — the
 // person's own ask, seeded on the root row — or "" when there is no root to

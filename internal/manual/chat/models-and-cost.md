@@ -827,6 +827,9 @@ unchecked rather than on a bill ten times its estimate.
 Only the checker's own calls count toward that ceiling, whatever model the worker or
 planner runs, including a crew whose three seats use one model. The ceiling follows
 the checker when it moves to another model.
+Each check in a run starts with its own checker ceiling. An earlier check's actual
+cost does not raise the estimate held against a later check's ceiling. Every check's
+spend still counts toward the whole run's per-task limit and the day's limits.
 
 This cap is the crew's own. The day's limit under `/settings` → Spending counts everything
 codeaf spends, and still applies.
@@ -842,7 +845,9 @@ Every priced call of one task — each seat's, on every model, and the helpers m
 counts against one figure: what the task has spent, plus every call of it still on its
 way, plus what this call is expected to cost. A call that would pass the limit is not made,
 and the task stops on `this task reached its $5 limit · raise it in /crew`, with what it had
-done so far. The checker's own ceiling still applies inside it.
+done so far. The checker's own ceiling still applies inside it. A raise you give one task
+in the app, when its models need more than the limit, is that task's limit, even while it
+runs, and the sentence names the raised amount.
 
 `-yes-spend` does not lift it. `codeaf do` holds every run to the same limit, with or
 without a routed crew; the flag answers the day's questions and the plan-price question,

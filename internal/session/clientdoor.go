@@ -771,6 +771,7 @@ func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose,
 	// task's guard's (taskcrew.go), and the person's turn is theirs.
 	var helper *SpendGuard
 	var held float64
+	var reservation spendReservation
 	if purpose != purposeTurn && !isCrewSeatCall(ctx) {
 		task := crewTaskOf(ctx)
 		if err := task.beginCall(); err != nil {
@@ -784,7 +785,7 @@ func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose,
 		}
 		helper = a.helperGuard(task)
 		var err error
-		if held, err = helper.before(ctx, model, messages, options); err != nil {
+		if held, err = helper.before(ctx, model, messages, options, &reservation); err != nil {
 			return nil, model, err
 		}
 		if helper != nil {
@@ -860,7 +861,7 @@ func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose,
 		actual = response.Model
 	}
 	if helper != nil {
-		helper.after(ctx, model, response, held)
+		helper.after(ctx, model, response, held, &reservation)
 		crewTaskOf(ctx).addHelperSpend(response)
 	}
 	return response, called, err

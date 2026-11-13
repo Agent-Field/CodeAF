@@ -1981,6 +1981,10 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		if err := node.appBoundary(ctx); err != nil {
 			return nil, model, err
 		}
+		if action := node.treeSpendLimit(); action != "" {
+			node.end(TaskEndingCostLimit)
+			return nil, model, ErrSpendStopped{Action: action}
+		}
 		if a.config.taskCapUSD > 0 && node.spend() >= a.config.taskCapUSD {
 			return nil, model, ErrSpendStopped{Action: config.CrewTaskCapAction(a.config.taskCapUSD)}
 		}

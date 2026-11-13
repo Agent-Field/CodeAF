@@ -3518,6 +3518,11 @@ type Agent struct {
 	// [Agent.factoryLead]), asked of its run door and kept once known.
 	lead  factoryLeadSeat
 	usage Usage
+	// foldedTaskUSD is the part of usage's dollars that is other tasks' bills
+	// folded in when they landed ([Agent.foldTaskUsage]). Those dollars are
+	// already on their own task's row, so a task tree's spend total takes them
+	// off this worker's figure to count each dollar once ([TaskNode.treeOwnSpend]).
+	foldedTaskUSD float64
 	// answered is the session's money once per model that ANSWERED it, every
 	// call banked under the name the response itself gave (competence.go's
 	// [Agent.AnsweredUsage]). It sums to usage's figures call for call.
