@@ -268,11 +268,6 @@ func descends(pages []factory.WorkstreamPage, page, pid string) bool {
 	return false
 }
 
-// liveDocs is the live-document relay's half that a page deletion reaches:
-// the document's log goes with the page. A server built without the relay
-// has no documents to drop.
-type liveDocs interface{ dropDoc(doc string) error }
-
 // deleteWorkstreamPage removes one page. The pages under it move up to its
 // parent rather than going with it, its versions are let go, and its live
 // document is dropped.
@@ -302,12 +297,11 @@ func (h *Handler) deleteWorkstreamPage(w http.ResponseWriter, r *http.Request) {
 	if h.partRefused(w, err) {
 		return
 	}
-	// The page is gone whatever happens next; versions or a document left
-	// behind are unreachable, never wrong.
+	// The page is gone whatever happens next; its versions and its live
+	// document (log, snapshot, carets) go with it, and one left behind by a
+	// failed drop is unreachable, never wrong.
 	_ = h.config.Store.DropPageVersions(ws.ID, pid)
-	if docs, ok := any(h).(liveDocs); ok {
-		_ = docs.dropDoc("ws/" + ws.ID + "/page/" + pid)
-	}
+	_ = h.dropDoc("ws/" + ws.ID + "/page/" + pid)
 	h.recordWorkstream(r, ws.ID, "removed page", pid)
 	h.publishWorkstreamPart(saved, api.PartPage, pid, h.orgActor(r), 0, true)
 	h.writeWorkstream(w, http.StatusOK, saved)

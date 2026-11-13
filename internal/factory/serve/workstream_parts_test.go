@@ -367,3 +367,26 @@ func TestOrgPartChangesAreInTheActivity(t *testing.T) {
 		t.Fatalf("activity %v; want it to end %v", got, want)
 	}
 }
+
+// DELETING A PAGE DROPS ITS LIVE DOCUMENT: the log a person typed into does
+// not outlive the page.
+func TestDeletingAPageDropsItsDocument(t *testing.T) {
+	o := newWSOrg(t)
+	webhook, _, _, _ := o.orgScene(t)
+	base := "/v1/workstreams/" + webhook.ID
+	var ws api.Workstream
+	o.do(t, "abir", "POST", base+"/pages", -1, api.PageNew{Title: "Retries"}, 201, &ws)
+	doc := "ws/" + webhook.ID + "/page/" + ws.Pages[0].ID
+	o.do(t, "abir", "POST", "/v1/docs/"+doc+"/updates", -1, api.DocUpdatePost{Update: b64("hello"), Seed: true}, 200, nil)
+	docs, err := o.h.docStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st, err := docs.Since(doc, 0); err != nil || st.Seq != 1 {
+		t.Fatalf("the document was not kept: %+v %v", st, err)
+	}
+	o.do(t, "santosh", "DELETE", base+"/pages/"+ws.Pages[0].ID, -1, nil, 200, nil)
+	if st, err := docs.Since(doc, 0); err != nil || st.Seq != 0 {
+		t.Fatalf("the document outlived its page: %+v %v", st, err)
+	}
+}
