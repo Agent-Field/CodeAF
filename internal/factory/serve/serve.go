@@ -255,6 +255,8 @@ type Handler struct {
 	// kinds presence knows with who may view each.
 	presenceDesk  presenceDesk
 	presenceKinds map[string]presenceKind
+	// canvasFrames caches each canvas's live node ids for its frame documents.
+	canvasFrames canvasFrames
 	// docs is the organization's live documents (docs.go).
 	docs docService
 }

@@ -309,3 +309,56 @@ func (o *wsOrg) raw(t *testing.T, who, method, path string, body any) *httptest.
 	o.h.ServeHTTP(w, r)
 	return w
 }
+
+// THE WORDS IN A FRAME ARE THE CANVAS'S: a frame's document is found only by
+// those who may view the canvas and only while the frame is on it, written
+// only with edit, and dropped when the frame or the whole canvas is deleted.
+func TestAFramesWordsFollowItsCanvas(t *testing.T) {
+	o := canvasOrg(t)
+	var cv map[string]any
+	o.do(t, "santosh", "POST", "/v1/canvases", -1, api.CanvasNew{Title: "Words", Shares: []factory.Share{{Kind: "person", ID: "abir", Role: "view"}}}, 201, &cv)
+	id := cv["id"].(string)
+	path := "/v1/canvases/" + id
+	o.do(t, "santosh", "POST", path+"/ops", -1, ops(
+		`{"t":"put","id":"f_words0000000","type":"frame","props":{"kind":"board","name":"Words"}}`,
+		`{"t":"put","id":"f_other0000000","type":"frame","props":{"kind":"board","name":"Other"}}`,
+	), 200, nil)
+	doc := "canvas/" + id + "/frame/f_words0000000"
+	other := "canvas/" + id + "/frame/f_other0000000"
+	var up api.DocUpdated
+	o.do(t, "santosh", "POST", "/v1/docs/"+doc+"/updates", -1, api.DocUpdatePost{Update: b64("hello"), Seed: true}, 200, &up)
+	o.do(t, "santosh", "POST", "/v1/docs/"+other+"/updates", -1, api.DocUpdatePost{Update: b64("there"), Seed: true}, 200, nil)
+	if up.Seq != 1 || up.By != "santosh" {
+		t.Fatalf("stamped %+v", up)
+	}
+
+	// abir views: reads, cannot write. mia is not shared: absent. A frame
+	// the canvas does not have is absent too.
+	var st api.DocState
+	o.do(t, "abir", "GET", "/v1/docs/"+doc, -1, nil, 200, &st)
+	if st.Seq != 1 || st.CanEdit {
+		t.Fatalf("abir reads %+v", st)
+	}
+	o.do(t, "abir", "POST", "/v1/docs/"+doc+"/updates", -1, api.DocUpdatePost{BaseSeq: 1, Update: b64("x")}, 403, nil)
+	o.do(t, "mia", "GET", "/v1/docs/"+doc, -1, nil, 404, nil)
+	o.do(t, "santosh", "GET", "/v1/docs/canvas/"+id+"/frame/f_nothere000000", -1, nil, 404, nil)
+
+	// Deleting the frame drops its words; putting it back starts empty.
+	o.do(t, "santosh", "POST", path+"/ops", -1, ops(`{"t":"del","id":"f_words0000000"}`), 200, nil)
+	o.do(t, "santosh", "GET", "/v1/docs/"+doc, -1, nil, 404, nil)
+	o.do(t, "santosh", "POST", path+"/ops", -1, ops(`{"t":"put","id":"f_words0000000","type":"frame","props":{"kind":"board","name":"Again"}}`), 200, nil)
+	o.do(t, "santosh", "GET", "/v1/docs/"+doc, -1, nil, 200, &st)
+	if st.Seq != 0 || len(st.Updates) != 0 {
+		t.Fatalf("a deleted frame's words came back: %+v", st)
+	}
+
+	// Deleting the canvas drops every frame's words.
+	o.do(t, "santosh", "DELETE", path, -1, nil, 204, nil)
+	store, err := o.h.docStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if left, err := store.Since(other, 0); err != nil || left.Seq != 0 {
+		t.Fatalf("a deleted canvas's words were kept: %+v %v", left, err)
+	}
+}

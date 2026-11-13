@@ -88,6 +88,9 @@ func (h *Handler) canvasRoutes() {
 		// exactly those who may view it.
 		h.presenceKinds[api.PresenceCanvas] = h.canvasViewable
 	}
+	// The text inside a frame is a live document whose access is the
+	// canvas's (canvas_docs.go).
+	h.SetCanvasDocAccess(h.canvasDocAccess)
 }
 
 // canvasViewable is whether the caller of r may view canvas id; an id that
@@ -497,6 +500,7 @@ func (h *Handler) deleteCanvas(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	nodes := h.nodesBeforeRemoval(r.Context(), c.ID)
 	_, err := h.config.Store.EditCanvases(func(all factory.OrgCanvases) (bool, error) {
 		delete(all, c.ID)
 		return true, nil
@@ -507,6 +511,7 @@ func (h *Handler) deleteCanvas(w http.ResponseWriter, r *http.Request) {
 	// The record is gone first, so nobody can reach the folder while it is
 	// being removed; a folder that cannot be removed is only disk.
 	_ = os.RemoveAll(filepath.Join(h.config.Canvas.Root, c.ID))
+	h.dropCanvasDocs(c.ID, nodes, nil)
 	h.publishCanvas(r.Context(), api.EventCanvasRemoved, &c, c, v.Handle)
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -604,6 +609,16 @@ func cleanCanvasOps(raw []json.RawMessage, v Viewer, now time.Time) (ops []map[s
 	return ops, handsOnly, nil
 }
 
+// deletesNodes is whether a cleaned batch deletes any node.
+func deletesNodes(ops []map[string]any) bool {
+	for _, op := range ops {
+		if op["t"] == "del" {
+			return true
+		}
+	}
+	return false
+}
+
 func slicesContains(list []string, s string) bool {
 	for _, x := range list {
 		if x == s {
@@ -661,6 +676,10 @@ func (h *Handler) applyCanvasOps(w http.ResponseWriter, r *http.Request) {
 			Ops     []json.RawMessage `json:"ops"`
 		} `json:"conflict"`
 	}
+	var before map[string]bool
+	if deletesNodes(ops) {
+		before = h.nodesBeforeRemoval(r.Context(), c.ID)
+	}
 	if h.canvasFailed(w, h.rpc(r.Context(), c.ID, map[string]any{"cmd": "apply", "actor": canvasActor(v), "base_seq": body.BaseSeq, "ops": ops}, &out)) {
 		return
 	}
@@ -672,6 +691,7 @@ func (h *Handler) applyCanvasOps(w http.ResponseWriter, r *http.Request) {
 		c = h.touchCanvas(c, v)
 	}
 	h.publishCanvasSeq(api.EventCanvasChanged, c, v.Handle, out.Seq)
+	h.dropRemovedNodes(r.Context(), c.ID, before)
 	out.Ops = nonNil(out.Ops)
 	h.write(w, http.StatusOK, out.CanvasOps)
 }
@@ -731,11 +751,13 @@ func (h *Handler) restoreCanvas(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var out api.CanvasOps
+	before := h.nodesBeforeRemoval(r.Context(), c.ID)
 	if h.canvasFailed(w, h.rpc(r.Context(), c.ID, map[string]any{"cmd": "restore", "actor": canvasActor(v), "version": r.PathValue("vid")}, &out)) {
 		return
 	}
 	c = h.touchCanvas(c, v)
 	h.publishCanvasSeq(api.EventCanvasChanged, c, v.Handle, out.Seq)
+	h.dropRemovedNodes(r.Context(), c.ID, before)
 	out.Ops = nonNil(out.Ops)
 	h.write(w, http.StatusOK, out)
 }
@@ -917,6 +939,7 @@ func (h *Handler) publishCanvas(ctx context.Context, kind string, before *factor
 			seq = s.Seq
 		}
 	}
+	h.canvasFrames.forget(after.ID)
 	items := []Item{canvasItem(after)}
 	if before != nil {
 		items = append(items, canvasItem(*before))
@@ -932,6 +955,7 @@ func (h *Handler) publishCanvasSeq(kind string, c factory.OrgCanvas, by string, 
 		h.publishCanvas(context.Background(), kind, nil, c, by)
 		return
 	}
+	h.canvasFrames.forget(c.ID)
 	e := canvasLive{CanvasEvent: api.CanvasEvent{Kind: kind, ID: c.ID, Seq: seq, By: by}, itemAudience: audienceOf(canvasItem(c))}
 	_ = live.Append(h.eventRoot(), live.New(kind, 0, e))
 }
