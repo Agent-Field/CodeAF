@@ -109,18 +109,31 @@ func (h *appFactoryHub) stillFollowingDoc(id, doc string, f *appDocFollow) bool 
 // endDocFollow removes f and, when it ended on its own rather than by
 // unfollow, says why.
 func (h *appFactoryHub) endDocFollow(id, doc string, f *appDocFollow, reason string) {
+	mine, emit := h.forgetDocFollow(id, doc, f)
+	f.cancel()
+	if mine && reason != "" && emit != nil {
+		emit(appwire.EventFactoryOrgDocClosed, appwire.FactoryOrgDocClosed{Connection: id, Doc: doc, Reason: reason})
+	}
+}
+
+// forgetDocFollow removes f when it is still doc's follow, and answers
+// whether it was and where its events go.
+func (h *appFactoryHub) forgetDocFollow(id, doc string, f *appDocFollow) (bool, func(string, any)) {
 	h.mu.Lock()
+	defer h.mu.Unlock()
 	key := docFollowKey(id, doc)
 	mine := h.docFollow[key] == f
 	if mine {
 		delete(h.docFollow, key)
 	}
-	emit := h.docEvent
-	h.mu.Unlock()
-	f.cancel()
-	if mine && reason != "" && emit != nil {
-		emit(appwire.EventFactoryOrgDocClosed, appwire.FactoryOrgDocClosed{Connection: id, Doc: doc, Reason: reason})
-	}
+	return mine, h.docEvent
+}
+
+// docEmitter is where followed documents' events go, nil for nowhere.
+func (h *appFactoryHub) docEmitter() func(string, any) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.docEvent
 }
 
 func (h *appFactoryHub) followDocStream(ctx context.Context, id, doc string, f *appDocFollow, since int64) {
@@ -233,9 +246,7 @@ func (h *appFactoryHub) docStream(ctx context.Context, origin, id, doc string, f
 // relayDoc emits one event. seq is the update's when one was relayed; stop
 // is "lagged" (reopen), "removed" (end) or "".
 func (h *appFactoryHub) relayDoc(id, doc, kind, data string) (int64, string) {
-	h.mu.Lock()
-	emit := h.docEvent
-	h.mu.Unlock()
+	emit := h.docEmitter()
 	if emit == nil {
 		return 0, "gone"
 	}
