@@ -174,8 +174,8 @@ type appFactoryHub struct {
 	orgChanged func(appwire.FactoryOrgChanged)
 	// orgPresence relays who is on an organization item now; nil drops it.
 	orgPresence func(appwire.FactoryOrgPresence)
-	orgRetry   time.Duration
-	closed     bool
+	orgRetry    time.Duration
+	closed      bool
 }
 
 // newAppFactoryHub is a registry whose HTTP client takes no ambient proxy,
