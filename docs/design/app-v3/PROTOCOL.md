@@ -267,6 +267,24 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.org_doc_aware` | `in.OrgDocAwareParams` | `Empty` |
 | `factory.org_doc_follow` | `in.OrgDocParams` | `Empty` |
 | `factory.org_doc_unfollow` | `in.OrgDocParams` | `Empty` |
+| `factory.org_workstream_page_create` | `in.OrgPageCreateParams` | `OrgWorkstream` |
+| `factory.org_workstream_page_update` | `in.OrgPageUpdateParams` | `OrgWorkstream` |
+| `factory.org_workstream_page_delete` | `in.OrgPageParams` | `OrgWorkstream` |
+| `factory.org_workstream_page_versions` | `in.OrgPageParams` | `OrgPageVersions` |
+| `factory.org_workstream_page_version` | `in.OrgPageVersionParams` | `OrgPageVersion` |
+| `factory.org_workstream_page_snapshot` | `in.OrgPageSnapshotParams` | `OrgPageVersion` |
+| `factory.org_workstream_page_restore` | `in.OrgPageVersionParams` | `OrgPageVersion` |
+| `factory.org_workstream_plan_get` | `in.OrgWorkstreamParams` | `OrgWorkstreamPlan` |
+| `factory.org_workstream_plan_set` | `in.OrgPlanSetParams` | `OrgWorkstreamPlan` |
+| `factory.org_workstream_wakes` | `in.OrgWorkstreamParams` | `OrgWorkstreamWakes` |
+| `factory.org_workstream_wake_add` | `in.OrgWakeAddParams` | `json.RawMessage` |
+| `factory.org_workstream_wake_update` | `in.OrgWakeUpdateParams` | `json.RawMessage` |
+| `factory.org_workstream_suggestions` | `in.OrgSuggestionsParams` | `OrgWorkstreamSuggestions` |
+| `factory.org_workstream_suggestion_add` | `in.OrgSuggestionAddParams` | `json.RawMessage` |
+| `factory.org_workstream_suggestion_update` | `in.OrgSuggestionUpdateParams` | `json.RawMessage` |
+| `factory.org_workstream_job_add` | `in.OrgWorkstreamJobParams` | `OrgWorkstream` |
+| `factory.org_workstream_job_remove` | `in.OrgWorkstreamJobParams` | `OrgWorkstream` |
+| `factory.org_workstream_unarchive` | `in.OrgWorkstreamParams` | `OrgWorkstream` |
 | `factory.detach` | `in.FactoryRef` | `Empty` |
 | `factory.job` | `in.FactoryJobParams` | `Job` |
 | `factory.job_approve` | `in.FactoryJobApproveParams` | `FactoryJobActed` |
@@ -489,6 +507,34 @@ client left or lapsed); and `factory.org_doc_closed {connection, doc, reason}`,
 `removed` (the page was deleted) or `gone` (no longer visible, or signed out).
 Document updates do NOT travel on `GET /v1/events`, whose durable window of 200 events
 keystrokes would flush.
+An engine whose hello carries `org_workstream_parts` changes one part of an
+organization workstream at a time, so two people changing two different parts never
+refuse each other. A page's BODY is not one of them (it is a live document); these keep
+a page's place, title, kind and saved versions. `factory.org_workstream_page_create
+{id, title, kind?, parent?, index?}` `POST .../pages`, `factory.org_workstream_page_update
+{id, page, rev, title?, kind?, parent?, index?}` `PATCH .../pages/{page}` with `If-Match`
+the PAGE's `rev` (every page carries one), `factory.org_workstream_page_delete {id, page}`
+(its pages move up to its parent) — each answers the workstream. Versions:
+`factory.org_workstream_page_versions {id, page}` (newest first, without words),
+`factory.org_workstream_page_version {id, page, version}` (with `body_md` and `state`),
+`factory.org_workstream_page_snapshot {id, page, body_md, state?, reason}` (`reason`
+`idle` or `manual`; the same words twice answer the version already kept) and
+`factory.org_workstream_page_restore {id, page, version}`, which keeps the old words as
+a new version by the caller and answers them so the caller's editor applies them to the
+live document. `factory.org_workstream_plan_get {id}` answers `{plan, rev}` (`null` and
+`0` before the first) and `factory.org_workstream_plan_set {id, rev, plan}` replaces it
+(`rev` 0 for the first). `factory.org_workstream_wakes {id}`, `_wake_add {id, wake}` and
+`_wake_update {id, wake_id, rev, wake}`, and the same three for suggestions
+(`_suggestions {id, page?}`, `_suggestion_add`, `_suggestion_update {id, suggestion_id,
+rev, suggestion}`), keep the desk's own objects with the server's `id`, `rev`, `by`, `at`,
+`updated_by` and `updated_at` on top; an update merges one level deep and `null`
+removes a key. `factory.org_workstream_job_add` and `_job_remove {id, job}` keep which
+factory jobs (by number) belong to it, one workstream per job; the workstream answers
+`jobs`. `factory.org_workstream_unarchive {id}` brings an archived one back. The
+workstream also answers `budget_usd` (set with `factory.org_workstream_update
+{budget_usd}`, negative clears) and `spend_usd`, the spend posted against it. A
+decision a patch leaves out is kept as `superseded`, never deleted. Every author is
+the server's.
 
 With `org_roles` in hello, a workstream's access is roles. A workstream row carries
 `shares` `[{kind:"person"|"team", id, role}]` with `role` one of `view`, `comment`,
@@ -521,7 +567,10 @@ server's three organization kinds, already filtered to what this person may see:
 `kind` `team.changed` (a team was made, renamed, deleted or its members changed;
 read `factory.teams`), `workstream.changed` (made, edited, owner or shares changed;
 read `factory.org_workstream {id}`, which answers `not_found` once it is no longer
-visible) or `workstream.removed` (archived or purged; drop it). `connection` is the
+visible) or `workstream.removed` (archived or purged; drop it). A `workstream.changed` from a
+server with `org_workstream_parts` also carries `part` (`page`, `versions`, `plan`,
+`wakes`, `suggestions`, `jobs`, `spend` or `workstream`), `part_id`, `by`, `rev` and
+`deleted`, so a window can read just that part. `connection` is the
 id the methods take. For example:
 
 ```json

@@ -30,9 +30,33 @@ import (
 // factory has one person, who may do everything.
 
 // jobWorkstreamID is the organization workstream the job belongs to, "" for
-// none. THIS IS THE ONE PLACE that answers it: the go-ahead group that started
-// the job, which on the desk is the workstream.
-func (h *Handler) jobWorkstreamID(it factory.Item) string {
+// none. THIS IS THE ONE PLACE that answers it: the workstream that took the job
+// in by membership (PUT /v1/workstreams/{id}/jobs/{job}), or else the go-ahead
+// group that started the job, which on the desk is the workstream.
+func (h *Handler) jobWorkstreamID(it factory.Item) string { return h.jobWorkstreamOf(it, nil) }
+
+// jobUnreadable is the workstream a job is held under when its membership
+// cannot be read: no workstream has that id, so nobody but the operator gets
+// through. A store that cannot answer must not open a job to every reader.
+const jobUnreadable = workstreamIDPrefix + "unreadable"
+
+// jobWorkstreamOf is jobWorkstreamID with every job's membership read once
+// (member, from [store.Store.JobWorkstreams]) for a caller that asks about
+// many jobs; nil looks this one job up.
+func (h *Handler) jobWorkstreamOf(it factory.Item, member map[int]string) string {
+	if h.config.Store != nil && it.ID > 0 {
+		if member == nil {
+			id, ok, err := h.config.Store.WorkstreamOfJob(it.ID)
+			if err != nil {
+				return jobUnreadable
+			}
+			if ok {
+				return id
+			}
+		} else if id, ok := member[it.ID]; ok {
+			return id
+		}
+	}
 	if strings.HasPrefix(it.PolicyGroup, workstreamIDPrefix) {
 		return it.PolicyGroup
 	}
@@ -100,8 +124,15 @@ func (h *Handler) workstreamsMatter() bool {
 // one read per workstream, not one per job. A failed read hides the job.
 func (h *Handler) jobSight(r *http.Request) func(factory.Item) bool {
 	seen := map[string]bool{}
+	var member map[int]string
+	if h.config.Store != nil {
+		// Read once for every job this sight is asked about; a read that
+		// fails leaves member nil, and each job is looked up (and held when
+		// that fails too).
+		member, _ = h.config.Store.JobWorkstreams()
+	}
 	return func(it factory.Item) bool {
-		id := h.jobWorkstreamID(it)
+		id := h.jobWorkstreamOf(it, member)
 		if id == "" {
 			return true
 		}
