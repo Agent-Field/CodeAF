@@ -90,14 +90,6 @@ type OrgCanvasParams struct {
 	ID string `json:"id"`
 }
 
-// OrgShare gives a person (handle) or a team (id) a role: view, comment,
-// edit or full.
-type OrgShare struct {
-	Kind string `json:"kind" enum:"person,team"`
-	ID   string `json:"id"`
-	Role string `json:"role" enum:"view,comment,edit,full"`
-}
-
 // OrgCanvasCreateParams makes a canvas. Owner left out is the caller.
 type OrgCanvasCreateParams struct {
 	OrgConn
@@ -223,23 +215,6 @@ func orgCanvasTitle(value string) (string, error) {
 	return value, nil
 }
 
-func checkOrgShares(shares []OrgShare) ([]OrgShare, error) {
-	out := make([]OrgShare, 0, len(shares))
-	for _, s := range shares {
-		switch s.Role {
-		case "view", "comment", "edit", "full":
-		default:
-			return nil, Errorf(CodeBadParams, "a share's role is view, comment, edit or full")
-		}
-		o := OrgOwner{Kind: s.Kind, ID: s.ID}
-		if err := checkOrgOwner(&o); err != nil {
-			return nil, err
-		}
-		out = append(out, OrgShare{Kind: o.Kind, ID: o.ID, Role: s.Role})
-	}
-	return out, nil
-}
-
 func withFactoryOrgCanvasFeature(hello Hello, e Engine) Hello {
 	if _, ok := e.(Factory); !ok {
 		return hello
@@ -273,7 +248,7 @@ func init() {
 				return OrgRequest{}, err
 			}
 		}
-		shares, err := checkOrgShares(p.Shares)
+		shares, err := orgShareList(p.Shares)
 		if err != nil {
 			return OrgRequest{}, err
 		}
@@ -382,7 +357,7 @@ func init() {
 		if err != nil {
 			return OrgRequest{}, err
 		}
-		shares, err := checkOrgShares(p.Shares)
+		shares, err := orgShareList(p.Shares)
 		if err != nil {
 			return OrgRequest{}, err
 		}
@@ -417,7 +392,7 @@ func init() {
 				return OrgRequest{}, Errorf(CodeBadParams, "an asset is named by the sha256 of its bytes")
 			}
 		}
-		shares, err := checkOrgShares(p.Shares)
+		shares, err := orgShareList(p.Shares)
 		if err != nil {
 			return OrgRequest{}, err
 		}
