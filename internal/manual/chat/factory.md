@@ -1196,8 +1196,8 @@ and details:
 `create_budget` and `create_key`; an older engine omits a flag or reports
 false, and the attached Factory can still be older. A 422 refusing unknown
 `group`, `milestone`, `budget` or HTTP `issue`, or a Factory without
-`/v1/issues` (a 405, or a 404 saying `factory endpoint not found`), answers
-`conflict` with `detail.reason: "factory_too_old"`:
+`/v1/issues` (a 405, or a 404 saying `factory endpoint not found` or not in
+the Factory's JSON), answers `conflict` with `detail.reason: "factory_too_old"`:
 "This factory doesn't support that yet; nothing was changed. Update the factory
 to use it." No fallback create is sent. The Factory's own 404 "repository not
 found" (your GitHub can't see it) stays `not_found`. Invalid fields answer
