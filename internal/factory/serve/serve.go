@@ -24,6 +24,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/canvasrpc"
 	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
@@ -178,6 +179,9 @@ type Config struct {
 	// SpentToday is the runner's day figure when this process holds the
 	// ledger. Nil uses the floor's own reading of the same rule.
 	SpentToday func() float64
+	// Canvas runs canvas-core for the organization's canvases (`canvas
+	// rpc`). Nil keeps no canvases: the /v1/canvases routes are left off.
+	Canvas *canvasrpc.Sidecar
 }
 
 // Handler keeps the seam and host identity together for every response.
@@ -251,6 +255,8 @@ type Handler struct {
 	// kinds presence knows with who may view each.
 	presenceDesk  presenceDesk
 	presenceKinds map[string]presenceKind
+	// canvasFrames caches each canvas's live node ids for its frame documents.
+	canvasFrames canvasFrames
 	// docs is the organization's live documents (docs.go).
 	docs docService
 }
@@ -325,6 +331,9 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.docRoutes()
 	h.orgKeyRoutes()
 	h.agentRoutes()
+	// After presence and the documents, so a canvas registers its own
+	// presence kind and the canvas half of the documents' access.
+	h.canvasRoutes()
 	if config.Store != nil {
 		// A team that owns an organization workstream cannot be deleted.
 		h.SetTeamOwnership(config.Store)

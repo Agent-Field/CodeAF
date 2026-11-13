@@ -58,7 +58,7 @@ fi
 git -C "$repo" fetch --quiet origin
 rev=$(git -C "$repo" rev-parse --short=9 "$ref")
 work=$(mktemp -d); stage=$(mktemp -d)
-trap 'git -C "$repo" worktree remove --force "$work/src" >/dev/null 2>&1 || true; rm -rf "$work" "$stage"' EXIT
+trap 'git -C "$repo" worktree remove --force "$work/src" >/dev/null 2>&1 || true; git -C "${DESK_REPO:-$HOME/af-desk-rail}" worktree remove --force "$work/desk" >/dev/null 2>&1 || true; rm -rf "$work" "$stage"' EXIT
 git -C "$repo" worktree add --quiet --detach "$work/src" "$rev"
 (
   cd "$work/src"
@@ -69,6 +69,25 @@ git -C "$repo" worktree add --quiet --detach "$work/src" "$rev"
   CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -tags=codeaf_packed_manual -trimpath \
     -ldflags="-s -w $stamp" -o "$stage/codeaf" ./cmd/codeaf
 )
+# The organization's canvases are kept by canvas-core's `canvas` program
+# (the desk repository's crates/canvas), shipped beside codeaf: a static
+# linux/amd64 build. CANVAS_BIN names one already built; otherwise it is built
+# from DESK_REPO at DESK_REF, through cargo-zigbuild when this machine is not
+# linux/amd64.
+canvas_bin=${CANVAS_BIN:-}
+if [ -z "$canvas_bin" ]; then
+  desk=${DESK_REPO:-$HOME/af-desk-rail}
+  desk_ref=${DESK_REF:-origin/work/rail-personal}
+  git -C "$desk" fetch --quiet origin
+  git -C "$desk" worktree add --quiet --detach "$work/desk" "$desk_ref"
+  target=x86_64-unknown-linux-musl
+  build=build
+  [ "$(uname -s)/$(uname -m)" = "Linux/x86_64" ] || build=zigbuild
+  (cd "$work/desk" && CARGO_TARGET_DIR="$work/canvas-target" cargo "$build" --quiet --release -p canvas-core --bin canvas --target "$target")
+  canvas_bin="$work/canvas-target/$target/release/canvas"
+  git -C "$desk" worktree remove --force "$work/desk"
+fi
+install -m 755 "$canvas_bin" "$stage/canvas"
 cp "$repo"/deploy/demo-org-server/{install.sh,codeaf-org.service,Caddyfile} "$stage/"
 
 # ── install and restart ──────────────────────────────────────────────────────

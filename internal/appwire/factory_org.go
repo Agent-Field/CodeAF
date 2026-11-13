@@ -50,6 +50,13 @@ type OrgRequest struct {
 	// IdempotencyKey, when set, is sent as Idempotency-Key so a POST that is
 	// sent again answers what it answered the first time (spend, once).
 	IdempotencyKey string
+	// RawBody is sent as it is, typed ContentType, instead of Body as JSON
+	// (a canvas asset's bytes).
+	RawBody     []byte
+	ContentType string
+	// MaxAnswer is the most the answer may be; zero is the carrier's usual
+	// bound. A canvas's snapshot or op log, or an asset, may be larger.
+	MaxAnswer int64
 }
 
 // FactoryOrg is the engine's half: carry req to the connection id with the
