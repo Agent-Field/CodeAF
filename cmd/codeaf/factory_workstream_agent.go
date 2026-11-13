@@ -17,20 +17,33 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"path/filepath"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
-// factoryWorkstreamAgentBase is where the runner's model API is, "" for the
-// default model source (OpenRouter, the one provider an organization key is
-// kept for). Tests point it at a fake.
+// factoryWorkstreamAgentBase is where the runner's model API is: tests point
+// it at a fake; otherwise it is CODEAF_BASE_URL when the server's process was
+// started with one (an operator's own proxy in front of OpenRouter), else ""
+// for the default model source, OpenRouter, the one provider an organization
+// key is kept for. The server profile's own base_url is NOT read: it belongs
+// to whoever signs in to the machine, and the organization's key must never
+// be sent somewhere that profile chose.
 var factoryWorkstreamAgentBase = ""
+
+func factoryWorkstreamAgentBaseURL() string {
+	if factoryWorkstreamAgentBase != "" {
+		return factoryWorkstreamAgentBase
+	}
+	return strings.TrimSpace(env.Get("CODEAF_BASE_URL"))
+}
 
 // factoryWorkstreamAgent answers one message to a workstream's server agent.
 func factoryWorkstreamAgent(st *store.Store, load func() (config.Config, error)) serve.AgentRunner {
@@ -40,7 +53,7 @@ func factoryWorkstreamAgent(st *store.Store, load func() (config.Config, error))
 			SessionFile: filepath.Join(turn.Dir, "talk.jsonl"),
 			ProfileDir:  filepath.Join(turn.Dir, "profile"),
 			Model:       factoryWorkstreamAgentModel(st, load),
-			APIKey:      turn.Key, BaseURL: factoryWorkstreamAgentBase,
+			APIKey:      turn.Key, BaseURL: factoryWorkstreamAgentBaseURL(),
 			OneModel: true, DeterministicNames: true, CompactEnabled: true,
 			System:     factoryWorkstreamAgentSystem(turn.Name),
 			Workstream: turn.Door,
@@ -98,9 +111,31 @@ func factoryWorkstreamAgent(st *store.Store, load func() (config.Config, error))
 	}
 }
 
-// factoryAgentStepWords is one step as a person reads it: the tool's own gloss
-// ("read", "write pg_…"), never its arguments whole.
+// factoryAgentStepWords is one step as a person reads it ("read the
+// workstream", "made the page Retry runbook"), never the call's arguments
+// whole: a page's words are the page's, not the conversation's.
 func factoryAgentStepWords(e session.Event) string {
+	var args struct {
+		Ask   string `json:"ask"`
+		Title string `json:"title"`
+	}
+	if e.Tool == session.WorkstreamPagesTool && json.Unmarshal([]byte(e.Args), &args) == nil {
+		switch args.Ask {
+		case "read":
+			return "read the workstream"
+		case "page":
+			return "read a page"
+		case "write":
+			return "wrote a page"
+		case "new":
+			if title := strings.TrimSpace(args.Title); title != "" {
+				return "made the page " + title
+			}
+			return "made a page"
+		case "decide":
+			return "proposed a decision"
+		}
+	}
 	if hint := strings.TrimSpace(e.Hint); hint != "" {
 		return hint
 	}

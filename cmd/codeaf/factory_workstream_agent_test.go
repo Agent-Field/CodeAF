@@ -115,7 +115,7 @@ func TestTheServerAgentIsASessionWithTheOrgKeyAndOneTool(t *testing.T) {
 	if strings.Join(door.pages, ";") != "Runbook:Page someone." {
 		t.Fatalf("the door saw %v", door.pages)
 	}
-	if len(steps) != 2 || !strings.HasPrefix(steps[0], api.AgentEntryStep+"|"+session.WorkstreamPagesTool+"|") || steps[1] != api.AgentEntryAgent+"||Made the runbook." {
+	if len(steps) != 2 || !strings.HasPrefix(steps[0], api.AgentEntryStep+"|"+session.WorkstreamPagesTool+"|made the page Runbook") || steps[1] != api.AgentEntryAgent+"||Made the runbook." {
 		t.Fatalf("steps %q", steps)
 	}
 	if end.USD < 0.039 || end.USD > 0.041 {
