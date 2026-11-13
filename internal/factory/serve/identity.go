@@ -32,7 +32,7 @@ func (h *Handler) meBody(profile api.Profile, id string) api.Me {
 	}
 	return api.Me{Factory: h.factory, CodeafVersion: h.factory.Version, Contract: api.Contract,
 		Profile: profile, SessionID: id, Mode: h.mode(), Runners: []api.Runner{}, Machines: []api.Machine{}, TakesUnassigned: map[string]bool{},
-		Access: h.accessMode(), PollingEvery: h.pollingEvery(), ServedBy: h.servedBy()}
+		Access: h.accessMode(), PollingEvery: h.pollingEvery(), ServedBy: h.servedBy(), Teams: []string{}}
 }
 
 func (h *Handler) teamAllows(handle string) bool {

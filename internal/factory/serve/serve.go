@@ -217,6 +217,11 @@ type Handler struct {
 	// skips the decode while those files and the clock still say so.
 	floorKept floorLook
 
+	// teamOwnership answers whether a team owns a workstream (teams.go);
+	// nil means no team owns any.
+	teamOwnershipMu sync.Mutex
+	teamOwnership   TeamOwnership
+
 	seam    factory.Seam
 	areas   repoAreas
 	config  Config
@@ -303,6 +308,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.read("/v1/spend/models", h.spendModels)
 	h.jobVerbs()
 	h.goAheadRoutes()
+	h.teamRoutes()
 	h.jobScreens()
 	h.scheduleJobTimer()
 	if config.Store != nil {
@@ -910,6 +916,7 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body.TakesUnassigned = takes
+	body.Teams = h.Membership().TeamsOf(handle)
 	h.write(w, http.StatusOK, body)
 }
 
