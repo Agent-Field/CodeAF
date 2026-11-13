@@ -484,6 +484,7 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.read_on_arrival` | `in.FactoryReadOnArrivalParams` | `FactoryReadOnArrival` |
 | `factory.rename` | `in.FactoryRenameParams` | `Empty` |
 | `factory.repo_facts` | `in.FactoryRepoFactsParams` | `FactoryRepoFacts` |
+| `factory.repo_issues` | `in.FactoryRepoIssuesParams` | `FactoryRepoIssues` |
 | `factory.repo_read` | `in.FactoryRepoReadParams` | `FactoryRepoRead` |
 | `factory.repo_set` | `in.FactoryRepoSetParams` | `FactoryRepoSetDone` |
 | `factory.repos` | `in.FactoryRef` | `FactoryRepos` |
@@ -1047,6 +1048,52 @@ last `months` calendar months (1 to 12, default 3) by the rule of
 `factory.job_area`, and jobs stuck on one step for a day or more. At most 20
 areas and 20 stuck steps are answered, busiest first (at most 97 facts);
 `truncated` counts the rest. A repository the caller cannot read is not found.
+
+An engine whose hello carries `factory.repo_issues` and whose capabilities
+answer `repo_issues: true` serves `factory.repo_issues {factory, repo, since?,
+page?}`. `repo` is `owner/name`, `since` is RFC 3339 (absent means no lower
+bound), and `page` is 1–10, default 1. It reads only `GET
+/v1/repos/{owner}/{repo}/issues?since=&page=` through the caller's Factory
+connection. The route accepts only those two query keys, once each, and uses
+the caller's GitHub sign-in, or a solo Factory's own profile.
+
+The result is `{factory, repo, issues, rows, newest?}`. `issues` contains at
+most 50 entries, oldest update first, in every state: `{id, number, title,
+body, url, state, created_at, updated_at, body_cut?}`. `id` is GitHub's int64
+issue identity, `url` is its HTML URL, and `state` is `open` or `closed`.
+`body` is cut at 8,192 bytes on a rune boundary; `body_cut: true` marks a
+cut. Pull requests are excluded from `issues`, but `rows` counts all rows
+GitHub returned (0–50) and `newest` is their latest `updated_at`, including
+pull requests. An empty result has `issues: []`, `rows: 0` and no `newest`.
+
+Invalid params are `bad_params` before any request. A repository the caller
+cannot see, or GitHub's repository 404, is `not_found`. A spent GitHub rate
+limit on the visibility check or issues request is `busy` with
+`detail.retry_at` in RFC 3339: GitHub's `Retry-After` hint, or its
+`X-RateLimit-Reset` when `X-RateLimit-Remaining` is `0` or absent, the later
+of the two when both apply. A secondary limit, which leaves requests
+remaining, therefore never waits for the primary window's reset.
+Every GitHub HTTP 429 is a rate limit, even without headers; a 403 is a
+rate limit only with `X-RateLimit-Remaining: 0` or `Retry-After`.
+A rate-limited visibility check is not cached as a repository denial.
+Until `retry_at`, and for at most the ten-minute visibility cache life, the
+Factory answers that GitHub token's uncached repository checks as the same
+rate limit without asking GitHub; the next check after that asks again.
+Without a usable reset or retry hint, `detail.retry_at` is one minute after
+the Factory's clock.
+A sign-in the Factory accepts but that has no GitHub access the route can use
+(a pasted access token with no GitHub sign-in, or a solo Factory whose host
+has no GitHub profile) gets HTTP 401 with reason `github_expired` and no
+bearer challenge. The engine answers `github_expired` for it, and for any 401
+from this route without a `WWW-Authenticate` challenge, and keeps the sign-in.
+Only the Factory's sign-in gate refusing the bearer, which always challenges,
+is `signed_out`; that forgets a restored sign-in as every read does.
+A Factory missing the route is `conflict` with
+`detail.reason: "factory_too_old"`; its own
+"repository not found" remains `not_found`. An engine without the reader
+answers `unknown_method`.
+The route itself stores nothing and appends no activity; the Factory's
+ordinary per-request housekeeping runs as it does for every authenticated request.
 
 An engine whose hello carries the feature `factory.pipeline_pr_update` (and
 capabilities `pipeline_pr_update: true`) lets `factory.pipeline_pr` take `pr`,

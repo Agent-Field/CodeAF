@@ -28,6 +28,9 @@ type viewerState struct {
 	people map[string]memberMemory
 	grants map[string]repoGrant
 	github map[string]string
+	// limits holds GitHub's spent rate limit per token hash. It is kept apart
+	// from grants: a limit says nothing about any one repository.
+	limits map[string]repoLimit
 }
 
 type memberMemory struct {
@@ -41,11 +44,19 @@ type repoGrant struct {
 	until time.Time
 }
 
+// repoLimit is GitHub's own retry time for a token, used until the earlier of
+// that time and one visibility TTL, so a far-off retry time is checked again.
+type repoLimit struct {
+	retry time.Time
+	until time.Time
+}
+
 func newViewerState() *viewerState {
 	return &viewerState{
 		people: map[string]memberMemory{},
 		grants: map[string]repoGrant{},
 		github: map[string]string{},
+		limits: map[string]repoLimit{},
 	}
 }
 
@@ -188,18 +199,30 @@ func (h *Handler) repoVisible(r *http.Request, name string) bool {
 
 func (h *Handler) repoAllowed(r *http.Request, token, key string) bool {
 	sum := sha256.Sum256([]byte(token))
-	cacheKey := hex.EncodeToString(sum[:]) + "\n" + key
+	who := hex.EncodeToString(sum[:])
+	cacheKey := who + "\n" + key
 	now := h.now()
 	if h.viewer != nil {
 		h.viewer.mu.Lock()
 		grant, ok := h.viewer.grants[cacheKey]
+		limit := h.viewer.limits[who]
 		h.viewer.mu.Unlock()
 		if ok && now.Before(grant.until) {
 			return grant.allow
 		}
+		// GitHub said this token's limit is spent: until its retry time every
+		// uncached repository answers that, without asking GitHub again.
+		if now.Before(limit.until) {
+			h.githubLimitMet(r, limit.retry)
+			return false
+		}
 	}
-	allow, cache := h.askRepo(r, token, key)
-	if cache && h.viewer != nil {
+	allow, cache, retry := h.askRepo(r, token, key)
+	switch {
+	case !retry.IsZero():
+		h.githubLimitMet(r, retry)
+		h.viewer.limit(who, retry, h.now())
+	case cache && h.viewer != nil:
 		h.viewer.mu.Lock()
 		h.viewer.grants[cacheKey] = repoGrant{allow: allow, until: h.now().Add(repoVisibilityTTL)}
 		h.viewer.mu.Unlock()
@@ -207,24 +230,55 @@ func (h *Handler) repoAllowed(r *http.Request, token, key string) bool {
 	return allow
 }
 
-// askRepo is GitHub's own answer for this token. A 5xx or a transport failure
-// is not cached: the next read tries again. 200 is readable; anything else
-// definitive is not.
-func (h *Handler) askRepo(r *http.Request, token, key string) (allow, cache bool) {
+// limit keeps GitHub's retry time for a token for at most one visibility TTL,
+// and drops limits that have ended.
+func (v *viewerState) limit(who string, retry, now time.Time) {
+	if v == nil {
+		return
+	}
+	until := now.Add(repoVisibilityTTL)
+	if retry.Before(until) {
+		until = retry
+	}
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	for hash, old := range v.limits {
+		if !now.Before(old.until) {
+			delete(v.limits, hash)
+		}
+	}
+	v.limits[who] = repoLimit{retry: retry, until: until}
+}
+
+// githubLimitMet tells this request's repository route to answer retry_at.
+func (h *Handler) githubLimitMet(r *http.Request, retry time.Time) {
+	if state, ok := r.Context().Value(authErrorKey{}).(*authErrorState); ok {
+		state.githubRetryAt = retry
+	}
+}
+
+// askRepo is GitHub's own answer for this token. A 5xx or transport failure
+// is not cached: the next read tries again. A spent limit returns GitHub's
+// retry time instead of an answer. 200 is readable; anything else definitive
+// is not.
+func (h *Handler) askRepo(r *http.Request, token, key string) (allow, cache bool, retry time.Time) {
 	owner, name, ok := strings.Cut(key, "/")
 	if !ok || owner == "" || name == "" {
-		return false, true
+		return false, true, time.Time{}
 	}
 	endpoint := "https://api.github.com/repos/" + url.PathEscape(owner) + "/" + url.PathEscape(name)
-	status, err := h.githubStatus(r, http.MethodGet, endpoint, token)
+	status, header, err := h.githubVisibilityStatus(r, endpoint, token)
 	if status == http.StatusUnauthorized {
 		h.endGitHub(r, token)
-		return false, false
+		return false, false, time.Time{}
 	}
 	if err != nil || status >= 500 {
-		return false, false
+		return false, false, time.Time{}
 	}
-	return status == http.StatusOK, true
+	if githubLimitSpent(status, header) {
+		return false, false, h.repoIssuesRetryAt(header)
+	}
+	return status == http.StatusOK, true, time.Time{}
 }
 
 // forViewer narrows a floor to the repositories this caller can read.
