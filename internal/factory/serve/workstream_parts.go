@@ -181,7 +181,8 @@ func (h *Handler) createWorkstreamPage(w http.ResponseWriter, r *http.Request) {
 	if h.partRefused(w, err) {
 		return
 	}
-	h.publishWorkstreamPart(saved, api.PartPage, page.ID, v.Handle, 1, false)
+	h.recordWorkstream(r, ws.ID, "added page", page.ID)
+	h.publishWorkstreamPart(saved, api.PartPage, page.ID, h.orgActor(r), 1, false)
 	h.writeWorkstream(w, http.StatusCreated, saved)
 }
 
@@ -240,7 +241,15 @@ func (h *Handler) patchWorkstreamPage(w http.ResponseWriter, r *http.Request) {
 	if h.partRefused(w, err) {
 		return
 	}
-	h.publishWorkstreamPart(saved, api.PartPage, pid, v.Handle, pageRev, false)
+	verb := "changed page"
+	switch {
+	case body.Title != nil:
+		verb = "renamed page"
+	case body.Parent != nil || body.Index != nil:
+		verb = "moved page"
+	}
+	h.recordWorkstream(r, ws.ID, verb, pid)
+	h.publishWorkstreamPart(saved, api.PartPage, pid, h.orgActor(r), pageRev, false)
 	h.writeWorkstream(w, http.StatusOK, saved)
 }
 
@@ -299,7 +308,8 @@ func (h *Handler) deleteWorkstreamPage(w http.ResponseWriter, r *http.Request) {
 	if docs, ok := any(h).(liveDocs); ok {
 		_ = docs.dropDoc("ws/" + ws.ID + "/page/" + pid)
 	}
-	h.publishWorkstreamPart(saved, api.PartPage, pid, v.Handle, 0, true)
+	h.recordWorkstream(r, ws.ID, "removed page", pid)
+	h.publishWorkstreamPart(saved, api.PartPage, pid, h.orgActor(r), 0, true)
 	h.writeWorkstream(w, http.StatusOK, saved)
 }
 
@@ -393,7 +403,7 @@ func (h *Handler) savePageVersion(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusUnprocessableEntity, "a version may hold at most 256 KiB of words and 512 KiB of state")
 		return
 	}
-	h.keepVersion(w, ws, page, v, store.PageVersion{BodyMD: body.BodyMD, State: body.State, Reason: body.Reason})
+	h.keepVersion(w, r, ws, page, v, store.PageVersion{BodyMD: body.BodyMD, State: body.State, Reason: body.Reason})
 }
 
 // restorePageVersion brings an older version back as the newest one, by the
@@ -416,13 +426,14 @@ func (h *Handler) restorePageVersion(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusNotFound, "version not found")
 		return
 	}
-	h.keepVersion(w, ws, page, v, store.PageVersion{BodyMD: old.BodyMD, State: old.State, Reason: "restore", RestoredFrom: old.Version})
+	h.keepVersion(w, r, ws, page, v, store.PageVersion{BodyMD: old.BodyMD, State: old.State, Reason: "restore", RestoredFrom: old.Version})
 }
 
 // keepVersion saves one version by the caller, refreshes the page's
 // plain-text mirror (what search, export and agents read) without moving any
-// rev, and answers the version whole.
-func (h *Handler) keepVersion(w http.ResponseWriter, ws factory.OrgWorkstream, page factory.WorkstreamPage, v wsViewer, ver store.PageVersion) {
+// rev, and answers the version whole. A version saved on idle is not recorded
+// (one arrives every thirty seconds anyone types); a restore is.
+func (h *Handler) keepVersion(w http.ResponseWriter, r *http.Request, ws factory.OrgWorkstream, page factory.WorkstreamPage, v wsViewer, ver store.PageVersion) {
 	now := h.clock().UTC()
 	ver.At, ver.By, ver.Title = now.Format(time.RFC3339Nano), v.Handle, page.Title
 	saved, added, err := h.config.Store.AddPageVersion(ws.ID, page.ID, ver)
@@ -454,7 +465,10 @@ func (h *Handler) keepVersion(w http.ResponseWriter, ws factory.OrgWorkstream, p
 	if cur, ok := after[ws.ID]; ok {
 		ws = cur
 	}
-	h.publishWorkstreamPart(ws, api.PartVersions, page.ID, v.Handle, saved.Version, false)
+	if ver.RestoredFrom != 0 {
+		h.recordWorkstream(r, ws.ID, "restored page", page.ID+" version "+strconv.Itoa(ver.RestoredFrom))
+	}
+	h.publishWorkstreamPart(ws, api.PartVersions, page.ID, h.orgActor(r), saved.Version, false)
 	h.write(w, http.StatusCreated, versionWire(saved))
 }
 
@@ -503,7 +517,8 @@ func (h *Handler) putWorkstreamPlan(w http.ResponseWriter, r *http.Request) {
 	if h.partRefused(w, err) {
 		return
 	}
-	h.publishWorkstreamPart(ws, api.PartPlan, store.PartPlan, v.Handle, p.Rev, false)
+	h.recordWorkstream(r, ws.ID, "changed plan", "")
+	h.publishWorkstreamPart(ws, api.PartPlan, store.PartPlan, h.orgActor(r), p.Rev, false)
 	w.Header().Set("ETag", strconv.Itoa(p.Rev))
 	h.write(w, http.StatusOK, planWire(p, true))
 }
@@ -512,12 +527,12 @@ func (h *Handler) putWorkstreamPlan(w http.ResponseWriter, r *http.Request) {
 
 // partKind is one list of desk-shaped parts kept beside a workstream.
 type partKind struct {
-	part, prefix, list string
+	part, prefix, list, one string
 }
 
 var (
-	wakesPart       = partKind{part: store.PartWakes, prefix: "wk_", list: "wakes"}
-	suggestionsPart = partKind{part: store.PartSuggestions, prefix: "sg_", list: "suggestions"}
+	wakesPart       = partKind{part: store.PartWakes, prefix: "wk_", list: "wakes", one: "wake"}
+	suggestionsPart = partKind{part: store.PartSuggestions, prefix: "sg_", list: "suggestions", one: "suggestion"}
 )
 
 // partStampKeys are the fields the server writes over a part's body.
@@ -610,7 +625,8 @@ func (h *Handler) addPart(k partKind) http.HandlerFunc {
 		if h.partRefused(w, err) {
 			return
 		}
-		h.publishWorkstreamPart(ws, k.part, p.ID, v.Handle, p.Rev, false)
+		h.recordWorkstream(r, ws.ID, "added "+k.one, p.ID)
+		h.publishWorkstreamPart(ws, k.part, p.ID, h.orgActor(r), p.Rev, false)
 		h.write(w, http.StatusCreated, partWire(ws.ID, p))
 	}
 }
@@ -659,7 +675,8 @@ func (h *Handler) patchPart(k partKind) http.HandlerFunc {
 		if h.partRefused(w, err) {
 			return
 		}
-		h.publishWorkstreamPart(ws, k.part, p.ID, v.Handle, p.Rev, false)
+		h.recordWorkstream(r, ws.ID, "changed "+k.one, p.ID)
+		h.publishWorkstreamPart(ws, k.part, p.ID, h.orgActor(r), p.Rev, false)
 		h.write(w, http.StatusOK, partWire(ws.ID, p))
 	}
 }
@@ -733,11 +750,15 @@ func (h *Handler) addWorkstreamJob(w http.ResponseWriter, r *http.Request) {
 	if h.partRefused(w, err) {
 		return
 	}
-	jobID := strconv.Itoa(job)
+	jobID, by := strconv.Itoa(job), h.orgActor(r)
 	for _, id := range left {
-		h.publishWorkstreamPart(saved[id], api.PartJobs, jobID, v.Handle, saved[id].Rev, true)
+		h.recordWorkstream(r, id, "removed job", "job "+jobID)
+		h.publishWorkstreamPart(saved[id], api.PartJobs, jobID, by, saved[id].Rev, true)
 	}
-	h.publishWorkstreamPart(saved[ws.ID], api.PartJobs, jobID, v.Handle, saved[ws.ID].Rev, false)
+	if len(left) > 0 || saved[ws.ID].Rev != ws.Rev {
+		h.recordWorkstream(r, ws.ID, "added job", "job "+jobID)
+		h.publishWorkstreamPart(saved[ws.ID], api.PartJobs, jobID, by, saved[ws.ID].Rev, false)
+	}
 	h.writeWorkstream(w, http.StatusOK, saved[ws.ID])
 }
 
@@ -764,7 +785,8 @@ func (h *Handler) removeWorkstreamJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if saved.Rev != before.Rev {
-		h.publishWorkstreamPart(saved, api.PartJobs, strconv.Itoa(job), v.Handle, saved.Rev, true)
+		h.recordWorkstream(r, ws.ID, "removed job", "job "+strconv.Itoa(job))
+		h.publishWorkstreamPart(saved, api.PartJobs, strconv.Itoa(job), h.orgActor(r), saved.Rev, true)
 	}
 	h.writeWorkstream(w, http.StatusOK, saved)
 }
@@ -804,7 +826,8 @@ func (h *Handler) unarchiveWorkstream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if saved[ws.ID].Rev != before.Rev {
-		h.publishWorkstreamPart(saved[ws.ID], api.PartWorkstream, ws.ID, v.Handle, saved[ws.ID].Rev, false)
+		h.recordWorkstream(r, ws.ID, "unarchived workstream", "")
+		h.publishWorkstreamPart(saved[ws.ID], api.PartWorkstream, ws.ID, h.orgActor(r), saved[ws.ID].Rev, false)
 	}
 	h.writeWorkstream(w, http.StatusOK, saved[ws.ID])
 }
@@ -857,7 +880,8 @@ func (h *Handler) postWorkstreamSpend(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
-	h.publishWorkstreamPart(ws, api.PartSpend, "", v.Handle, 0, false)
+	h.recordWorkstream(r, ws.ID, "posted spend", strconv.FormatFloat(body.USD, 'f', -1, 64)+" USD")
+	h.publishWorkstreamPart(ws, api.PartSpend, "", h.orgActor(r), 0, false)
 	h.write(w, http.StatusOK, api.WorkstreamSpend{SpendUSD: total, BudgetUSD: ws.BudgetUSD})
 }
 

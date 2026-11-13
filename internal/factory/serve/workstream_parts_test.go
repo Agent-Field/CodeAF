@@ -337,3 +337,33 @@ func TestAJobStaysInAWorkstreamYouCannotWrite(t *testing.T) {
 	}
 	o.do(t, "abir", "PUT", "/v1/workstreams/"+webhook.ID+"/jobs/"+job, -1, nil, 403, nil)
 }
+
+// THE ACTIVITY NAMES EVERY PART CHANGE AND WHO MADE IT, in order, and never an
+// idle version.
+func TestOrgPartChangesAreInTheActivity(t *testing.T) {
+	o := newWSOrg(t)
+	webhook, _, _, _ := o.orgScene(t)
+	base := "/v1/workstreams/" + webhook.ID
+	var ws api.Workstream
+	o.do(t, "abir", "POST", base+"/pages", -1, api.PageNew{Title: "Retries"}, 201, &ws)
+	pid := ws.Pages[0].ID
+	o.do(t, "santosh", "POST", base+"/pages/"+pid+"/versions", -1, api.PageVersionNew{BodyMD: "a", Reason: "idle"}, 201, nil)
+	o.do(t, "santosh", "POST", base+"/pages/"+pid+"/restore", -1, api.PageRestore{Version: 1}, 201, nil)
+	o.do(t, "abir", "PUT", base+"/plan", 0, map[string]any{"plan": map[string]any{}}, 200, nil)
+	var activity struct {
+		Events []struct {
+			Verb   string `json:"verb"`
+			Handle string `json:"handle"`
+			Detail string `json:"detail"`
+		} `json:"events"`
+	}
+	o.do(t, "abir", "GET", base+"/activity", -1, nil, 200, &activity)
+	var got []string
+	for _, e := range activity.Events {
+		got = append(got, e.Handle+" "+e.Verb)
+	}
+	want := []string{"abir added page", "santosh restored page", "abir changed plan"}
+	if len(got) < 3 || !slices.Equal(got[len(got)-3:], want) {
+		t.Fatalf("activity %v; want it to end %v", got, want)
+	}
+}

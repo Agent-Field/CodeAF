@@ -528,7 +528,12 @@ func (h *Handler) patchWorkstream(w http.ResponseWriter, r *http.Request) {
 	if h.workstreamRefused(w, err) {
 		return
 	}
-	h.recordWorkstream(r, ws.ID, "changed workstream", patchedFields(body))
+	if fields := patchedFields(body); fields != "" || body.BudgetUSD == nil {
+		h.recordWorkstream(r, ws.ID, "changed workstream", fields)
+	}
+	if body.BudgetUSD != nil {
+		h.recordWorkstream(r, ws.ID, "set budget", "")
+	}
 	h.publishWorkstreams(api.EventWorkstreamChanged, h.orgActor(r), &before, saved[ws.ID])
 	h.writeWorkstream(w, http.StatusOK, saved[ws.ID], v)
 }
