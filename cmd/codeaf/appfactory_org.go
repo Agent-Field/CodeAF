@@ -33,7 +33,9 @@ func (b *appBackend) FactoryOrgCall(ctx context.Context, id string, req appwire.
 	}
 	write := req.Method != http.MethodGet
 	var body io.Reader
-	if req.Body != nil {
+	if req.RawBody != nil {
+		body = bytes.NewReader(req.RawBody)
+	} else if req.Body != nil {
 		raw, err := json.Marshal(req.Body)
 		if err != nil {
 			return appwire.Errorf(appwire.CodeBadParams, "that is not a request an organization can take")
@@ -46,7 +48,9 @@ func (b *appBackend) FactoryOrgCall(ctx context.Context, id string, req appwire.
 	}
 	r.Header.Set("Accept", "application/json")
 	r.Header.Set("User-Agent", "codeaf-app")
-	if body != nil {
+	if req.RawBody != nil {
+		r.Header.Set("Content-Type", req.ContentType)
+	} else if body != nil {
 		r.Header.Set("Content-Type", "application/json")
 	}
 	if req.IfMatch != "" {
@@ -68,8 +72,13 @@ func (b *appBackend) FactoryOrgCall(ctx context.Context, id string, req appwire.
 	defer resp.Body.Close()
 	// A workstream carries its pages whole, so the answer may be larger than
 	// a job write's; it is still bounded, and refused rather than cut.
-	data, err := io.ReadAll(io.LimitReader(resp.Body, appFactoryBody+1))
-	if err != nil || int64(len(data)) > appFactoryBody {
+	most := int64(appFactoryBody)
+	if req.MaxAnswer > most {
+		// A canvas's snapshot, op log or asset is allowed more.
+		most = req.MaxAnswer
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, most+1))
+	if err != nil || int64(len(data)) > most {
 		if write {
 			return appwire.Errorf(appwire.CodeUncertain, "the organization's answer could not be read; the change may have happened, so read it again before trying again")
 		}
@@ -93,6 +102,11 @@ func (b *appBackend) FactoryOrgCall(ctx context.Context, id string, req appwire.
 	// The connection answers as an organization, so its changes are
 	// followed from here on (appfactory_org_events.go).
 	h.followOrg(id, token)
+	if raw, ok := out.(*appwire.OrgBytes); ok {
+		// An asset is its bytes, not JSON.
+		raw.Data, raw.Type = data, resp.Header.Get("Content-Type")
+		return nil
+	}
 	if reply.status == http.StatusNoContent || len(bytes.TrimSpace(data)) == 0 || out == nil {
 		return nil
 	}
@@ -128,9 +142,19 @@ func orgFailure(r appFactoryReply, write bool) error {
 	case r.status == http.StatusConflict:
 		e := appwire.Errorf(appwire.CodeConflict, "%s", or("the organization refused that as things stand"))
 		// A live document's refusals say what to do next by their reason
-		// (seeded, reset, snapshot_needed), so the desk is told it.
+		// (seeded, reset, snapshot_needed), so the desk is told it. A canvas
+		// write into a frame another person's hand is on carries who holds it
+		// and the ops the writer has not seen; they ride in detail so the desk
+		// catches up without another read.
+		var hand appwire.OrgCanvasConflict
 		if reason := orgDocReason(r); reason != "" {
 			e.Detail = &appwire.FactoryRefusal{Reason: reason}
+		} else if json.Unmarshal(bytes.TrimSpace(r.body), &hand) == nil && hand.Frame != "" && hand.Holder != "" {
+			hand.Reason = "conflict"
+			if hand.Ops == nil {
+				hand.Ops = []json.RawMessage{}
+			}
+			e.Detail = &hand
 		}
 		// Someone else drives the workstream's agent: name them, so the desk
 		// says "santosh is driving" instead of a refusal.

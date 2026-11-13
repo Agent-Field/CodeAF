@@ -296,6 +296,23 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.org_workstream_agent` | `in.OrgWorkstreamAgentParams` | `OrgWorkstreamAgent` |
 | `factory.org_workstream_agent_send` | `in.OrgWorkstreamAgentSendParams` | `OrgWorkstreamAgent` |
 | `factory.org_workstream_agent_stop` | `in.OrgWorkstreamParams` | `OrgWorkstreamAgent` |
+| `factory.org_canvases` | `in.OrgConn` | `OrgCanvasList` |
+| `factory.org_canvas_get` | `in.OrgCanvasParams` | `json.RawMessage` |
+| `factory.org_canvas_create` | `in.OrgCanvasCreateParams` | `json.RawMessage` |
+| `factory.org_canvas_update` | `in.OrgCanvasUpdateParams` | `json.RawMessage` |
+| `factory.org_canvas_delete` | `in.OrgCanvasParams` | `Empty` |
+| `factory.org_canvas_snapshot` | `in.OrgCanvasParams` | `json.RawMessage` |
+| `factory.org_canvas_ops` | `in.OrgCanvasOpsParams` | `OrgCanvasOps` |
+| `factory.org_canvas_apply` | `in.OrgCanvasApplyParams` | `OrgCanvasOps` |
+| `factory.org_canvas_versions` | `in.OrgCanvasParams` | `OrgCanvasVersions` |
+| `factory.org_canvas_version_create` | `in.OrgCanvasVersionParams` | `json.RawMessage` |
+| `factory.org_canvas_restore` | `in.OrgCanvasRestoreParams` | `OrgCanvasOps` |
+| `factory.org_canvas_marks` | `in.OrgCanvasParams` | `OrgCanvasMarks` |
+| `factory.org_canvas_mark_create` | `in.OrgCanvasMarkParams` | `json.RawMessage` |
+| `factory.org_canvas_shares` | `in.OrgCanvasSharesParams` | `json.RawMessage` |
+| `factory.org_canvas_import` | `in.OrgCanvasImportParams` | `json.RawMessage` |
+| `factory.org_canvas_asset_get` | `in.OrgCanvasAssetParams` | `OrgCanvasAssetData` |
+| `factory.org_canvas_asset_put` | `in.OrgCanvasAssetPutParams` | `json.RawMessage` |
 | `factory.detach` | `in.FactoryRef` | `Empty` |
 | `factory.job` | `in.FactoryJobParams` | `Job` |
 | `factory.job_approve` | `in.FactoryJobApproveParams` | `FactoryJobActed` |
@@ -489,8 +506,9 @@ was already kept, not an error); `factory.org_doc_aware {client, state}` `POST
 for 30 s unless sent again. `update`, `state` and `snapshot.state` are base64. Seeing the
 parent item (`view`) reads, follows and sends awareness; `edit` sends updates and
 snapshots; an archived workstream's pages are read-only; a document whose parent you
-cannot see is `not_found`, as is every canvas document until canvases live on the
-server. Refusals: `conflict` with `detail.reason` `seeded` (a `seed: true` update into a
+cannot see is `not_found`; a canvas frame's document follows its canvas (`org_canvases`):
+found when the canvas is visible and the frame is in its snapshot, read with `view`, written
+with `edit`, and dropped when the frame or the canvas is deleted. Refusals: `conflict` with `detail.reason` `seeded` (a `seed: true` update into a
 document that has content: read it instead), `reset` (`base_seq` or a snapshot's `seq`
 is past the server's head: the document was reset, read it again) or `snapshot_needed`
 (see compaction); `bad_params` before anything is sent past 256 KiB per update, 2 MiB
@@ -618,15 +636,46 @@ The server's `agent.entry {id, entry}` and `agent.state {id, state, ...}` reach 
 who can see the workstream and are relayed as `factory.org_workstream_agent
 {connection, id, entry?, state?}`.
 
+An engine whose hello carries `org_canvases` reads and writes an organization's
+canvases, which live on its server and are kept there by canvas-core (`canvas rpc`), so
+every canvas shape on these methods is canvas-core's own, passed through unchanged — the
+same snapshot, op, op record, version and mark the desk reads for a Personal canvas. Each
+takes `connection` and, but for the list, create and import, `id` (`cv_` and twelve
+letters or digits): `factory.org_canvases` `GET /v1/canvases` (`{canvases}`, each the
+canvas-core summary plus `owner`, `shares`, `private`, `my_role`, `seq`, `updated_by`, or
+a `name_only` row of a private canvas for the operator), `factory.org_canvas_get`,
+`factory.org_canvas_create {title, owner?, shares?, private?}`, `factory.org_canvas_update
+{title?, trashed?}`, `factory.org_canvas_delete`, `factory.org_canvas_snapshot`,
+`factory.org_canvas_ops {since}` → `{seq, ops}`, `factory.org_canvas_apply {base_seq, ops}`
+→ `{seq, ops}` (the records written, each stamped `person:<handle>` by the server),
+`factory.org_canvas_versions`, `factory.org_canvas_version_create {label?}`,
+`factory.org_canvas_restore {version}` → `{seq, ops}`, `factory.org_canvas_marks` (each
+mark with `by`), `factory.org_canvas_mark_create {mark}`, `factory.org_canvas_shares
+{shares:[{kind, id, role}], owner?, private?}`, `factory.org_canvas_import {snapshot,
+assets:[{sha, data, type, name}], from_local_id, title?}` (a laptop canvas moving in once;
+again answers the first), `factory.org_canvas_asset_get {sha}` → `{data, type}` and
+`factory.org_canvas_asset_put {sha, data, type, name?}` (`data` is base64). Roles: `view`
+reads; `comment` adds marks and takes a hand; `edit` writes ops, versions and restores;
+`full` shares, trashes and deletes; a canvas you cannot view is `not_found`. A hand is a
+lease op `{t:"lease", frame, actor:"", until:"hand"}` (`until:""` lets go); `member`,
+`wait`, `proposal` and `suggest` ops and reserved meta keys are `bad_params`. A write
+into, or a hand on, a frame another person's hand is on is `conflict` with
+`detail: {reason:"conflict", frame, holder, seq, ops}`, `ops` being every record after
+`base_seq`. Text inside a frame is not these ops: it is a shared document (`org_docs`).
+
 The event `factory.org_changed` `{connection, kind, id}` says a team or workstream
 changed on an organization's server, so a window showing that organization reads it
 again instead of polling. Once a connection has answered any of the methods above,
 the engine follows its `GET /v1/events` with the same session and relays the
-server's three organization kinds, already filtered to what this person may see:
+server's organization kinds, already filtered to what this person may see:
 `kind` `team.changed` (a team was made, renamed, deleted or its members changed;
 read `factory.teams`), `workstream.changed` (made, edited, owner or shares changed;
 read `factory.org_workstream {id}`, which answers `not_found` once it is no longer
-visible) or `workstream.removed` (archived or purged; drop it). A `workstream.changed` from a
+visible), `workstream.removed` (archived or purged; drop it), `canvas.changed` (a canvas
+was made, written, renamed or shared; it also carries `seq`, the seq it reached, and `by`,
+the handle that wrote it, so a window already at `seq` reads nothing and any other reads
+`factory.org_canvas_ops {since}`) or `canvas.removed` (deleted or no longer shared with
+you; drop it). A `workstream.changed` from a
 server with `org_workstream_parts` also carries `part` (`page`, `versions`, `plan`,
 `wakes`, `suggestions`, `jobs`, `spend` or `workstream`), `part_id`, `by`, `rev` and
 `deleted`, so a window can read just that part. `connection` is the
