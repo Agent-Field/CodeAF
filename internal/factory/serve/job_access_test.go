@@ -164,3 +164,42 @@ func TestJobsOfAWorkstreamYouCannotSeeAreAbsent(t *testing.T) {
 		t.Fatalf("a sign-in with no profile stopped santosh's job: %d %s", w.Code, w.Body)
 	}
 }
+
+// ROLES DECIDE, NOT SIGHT ALONE: abir with a view share sees santosh's job and
+// is refused stopping it, and with an edit share may; the operator cannot see a
+// job of santosh's private workstream at all.
+func TestAViewShareSeesTheJobButCannotStopIt(t *testing.T) {
+	o := jobOrg(t)
+	_, launch, _, _ := o.orgScene(t)
+	job := o.santoshJob(t, launch.ID)
+	set := func(edit func(*factory.OrgWorkstream)) {
+		t.Helper()
+		if _, err := o.st.EditWorkstreams(func(all factory.OrgWorkstreams) ([]string, error) {
+			ws := all[launch.ID]
+			edit(&ws)
+			all[launch.ID] = ws
+			return []string{launch.ID}, nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	set(func(ws *factory.OrgWorkstream) {
+		ws.Shares = []factory.Share{{Kind: factory.ShareToPerson, ID: "abir", Role: factory.RoleView}}
+	})
+	if got := o.floor(t, "abir"); !slices.Contains(got, job.Title) {
+		t.Fatalf("abir with view does not see the job: %q", got)
+	}
+	o.do(t, "abir", "POST", jobPath(job, "stop"), -1, map[string]any{}, 403, nil)
+
+	set(func(ws *factory.OrgWorkstream) {
+		ws.Shares = []factory.Share{{Kind: factory.ShareToPerson, ID: "abir", Role: factory.RoleEdit}}
+	})
+	o.do(t, "abir", "POST", jobPath(job, "stop"), -1, map[string]any{}, 200, nil)
+
+	set(func(ws *factory.OrgWorkstream) { ws.Shares, ws.Private = nil, true })
+	if got := o.floor(t, "owner"); slices.Contains(got, job.Title) {
+		t.Fatalf("the operator sees a private workstream's job: %q", got)
+	}
+	o.do(t, "owner", "GET", "/v1/jobs/"+itoa(job.ID), -1, nil, 404, nil)
+}
