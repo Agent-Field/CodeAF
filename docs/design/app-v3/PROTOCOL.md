@@ -259,6 +259,8 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.org_workstream_shares` | `in.OrgWorkstreamSharesParams` | `OrgWorkstreamShared` |
 | `factory.org_workstream_share_preview` | `in.OrgWorkstreamSharePreviewParams` | `OrgSharePreview` |
 | `factory.org_workstream_import` | `in.OrgWorkstreamImportParams` | `OrgWorkstream` |
+| `factory.org_presence` | `in.OrgPresenceParams` | `OrgPresence` |
+| `factory.org_workstream_activity` | `in.OrgActivityParams` | `OrgActivity` |
 | `factory.detach` | `in.FactoryRef` | `Empty` |
 | `factory.job` | `in.FactoryJobParams` | `Job` |
 | `factory.job_approve` | `in.FactoryJobApproveParams` | `FactoryJobActed` |
@@ -471,6 +473,42 @@ with `id` `""`: read both lists again. A dropped stream is otherwise reopened wi
 `Last-Event-ID`, so nothing is lost. Following ends when the connection is detached,
 its sign-in changes, ends or is refused, or the engine stops; the next organization
 method starts it again.
+
+An engine whose hello carries `org_presence` also says who is in an organization
+item and who changed it. Every `factory.org_changed` carries `by`, the handle of the
+person who made the change as the server stamped it from the sign-in (`""` on a
+resync and from an older server).
+
+`factory.org_presence {item: {kind, id}, part?, editing?, left?, client?}` is
+`POST /v1/presence`, a heartbeat the desk sends every 10 s while the item is open:
+`kind` is `workstream` (or `canvas`, on a server that keeps canvases), `part` the
+page or frame the person is on (`""` for the item itself), `editing` whether they
+are typing in it, `client` a window id so two windows of one person are told apart,
+and `left: true` once when the item closes. A person not heard from for 30 s has
+left. The answer is `{item, here: [{handle, part, editing}]}`, who is on it now,
+one row per person and part. An item the caller may not view is `not_found`. The
+server publishes only a CHANGE to that list (an arrival, a move to another part,
+editing starting or stopping, a leaving or a silence), relayed as the event
+`factory.org_presence {connection, item, here}` to those who may view the item:
+
+```json
+{"event":"factory.org_presence","seq":813,"data":{"connection":"fc_acme","item":{"kind":"workstream","id":"ws_01JD…"},"here":[{"handle":"santosh","part":"pg_retry","editing":true}]}}
+```
+
+Presence is not kept: a restarted server knows nobody until the next beat. Carets
+inside a document are not presence; they travel with that document's awareness.
+
+`factory.org_workstream_activity {id, since?, limit?}` is
+`GET /v1/workstreams/{id}/activity`: every recorded change to the workstream and its
+go-aheads, oldest first (at most 500, the newest), as
+`{id, events: [{id, at, kind, verb, object, handle, detail, actor}], people}`. `verb`
+is the words a person reads (`created workstream`, `changed workstream`, `changed
+sharing`, `changed owner`, `archived workstream`, `changed go-aheads`, and the page,
+plan and job verbs); `detail` names the fields that changed, never their words;
+`handle` is who made it, stamped by the server. A workstream the caller cannot see is
+`not_found`. Changes to teams and to the factory's rules, routing, spending defaults
+and settings are recorded the same way and read in the factory's activity list
+(`object` `team:<id>` or `factory`).
 
 An engine whose hello carries `factory.group_policy` and `factory.waits_set`
 (and capabilities `group_policy: true`, `waits_on: true`) serves go-aheads the
@@ -1801,6 +1839,7 @@ and the reply is empty.
 | `entry.added` | `EntryAdded` |
 | `factory.jobs_changed` | `FactoryJobsChanged` |
 | `factory.org_changed` | `FactoryOrgChanged` |
+| `factory.org_presence` | `FactoryOrgPresence` |
 | `factory.sessions_changed` | `Empty` |
 | `hello` | `Hello` |
 | `inbox.added` | `InboxAddedEvent` |

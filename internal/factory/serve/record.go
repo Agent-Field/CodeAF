@@ -42,7 +42,7 @@ func (h *Handler) audit(w http.ResponseWriter, r *http.Request) {
 	// Redacted before the filters and the kind rewrite below: a machine name
 	// must not be probeable through ?on=runner:<id>, and Took is what carries
 	// the old machine detail.
-	events = filterActivity(r, h.recordsForViewer(r, events))
+	events = filterActivity(r, h.recordsForViewer(r, h.orgRecordVisible(r, events)))
 	if h.authFailed(w, r) {
 		return
 	}

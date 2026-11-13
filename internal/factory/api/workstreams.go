@@ -146,4 +146,7 @@ type WorkstreamPackage struct {
 type WorkstreamEvent struct {
 	Kind string `json:"kind"`
 	ID   string `json:"id"`
+	// By is the handle of the person who made the change, stamped by the
+	// server from the sign-in.
+	By string `json:"by,omitempty"`
 }

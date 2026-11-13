@@ -7,6 +7,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/record"
 )
 
 // goAheadRoutes are the doors of group policies and of waits-on
@@ -115,6 +116,11 @@ func (h *Handler) policy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = st.NudgePoll()
+	detail := fmt.Sprintf("%d allowed", len(saved.Allowances))
+	if saved.Stopped {
+		detail = "stopped"
+	}
+	h.recordOrg(r, record.PolicyChanged, "changed go-aheads", orgObjectPolicy+group, detail)
 	h.writePolicy(w, saved)
 }
 

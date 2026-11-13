@@ -8,7 +8,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/Agent-Field/codeaf/internal/factory/route"
 	"net"
 	"net/http"
 	"net/netip"
@@ -19,6 +18,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/factory/route"
 
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -234,6 +235,11 @@ type Handler struct {
 	machines       map[string]machineRow
 	machinesTimer  *time.Timer
 	machinesClosed bool
+
+	// Who has an organization item open (org_presence.go), and the item
+	// kinds presence knows with who may view each.
+	presenceDesk  presenceDesk
+	presenceKinds map[string]presenceKind
 }
 
 // New binds the seam's reads and verbs; absent doors refuse rather than panic.
@@ -302,6 +308,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.goAheadRoutes()
 	h.teamRoutes()
 	h.workstreamRoutes()
+	h.presenceRoutes()
 	if config.Store != nil {
 		// A team that owns an organization workstream cannot be deleted.
 		h.SetTeamOwnership(config.Store)
@@ -383,6 +390,9 @@ func (h *Handler) Close() {
 			h.machinesTimer.Stop()
 		}
 		h.machinesMu.Unlock()
+	}
+	if h != nil {
+		h.closePresence()
 	}
 	if h != nil && h.watch != nil {
 		h.watch.stop()
