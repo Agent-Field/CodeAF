@@ -84,12 +84,16 @@ func (h *Handler) policy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// A go-ahead for an organization workstream spends that workstream's
-	// budget, so approving one needs write access to it, the operator's
-	// included; any other group keeps the rule below.
-	if known, allowed, err := h.orgWorkstreamWrite(r, group); h.failed(w, err) {
+	// budget, so approving one needs edit on it, the operator's included.
+	// WHO KEEPS IT IS THE WORKSTREAM'S ACCESS, NOT WHOEVER SAVED FIRST: on a
+	// team's workstream the first teammate to approve must not lock out the
+	// rest, so the first-writer rule below is for other groups only.
+	orgWorkstream, allowed, err := h.orgWorkstreamWrite(r, group)
+	if h.failed(w, err) {
 		return
-	} else if known && !allowed {
-		h.fail(w, http.StatusForbidden, "only its owner and the teams it is shared with can approve this workstream's go-aheads")
+	}
+	if orgWorkstream && !allowed {
+		h.fail(w, http.StatusForbidden, "only its owner and those it is shared with for edit can approve this workstream's go-aheads")
 		return
 	}
 	who, err := h.callerHandle(r)
@@ -99,7 +103,7 @@ func (h *Handler) policy(w http.ResponseWriter, r *http.Request) {
 	who = factory.NormalizeHandle(who)
 	operator := h.mode() == api.FactorySolo || h.isOperator(r)
 	saved, err := st.ChangePolicy(group, func(cur *factory.GroupPolicy) error {
-		if cur.Owner != "" && who != cur.Owner && !operator {
+		if !orgWorkstream && cur.Owner != "" && who != cur.Owner && !operator {
 			return errPolicyNotYours
 		}
 		cur.Stopped, cur.Allowances, cur.UpdatedAt = body.Stopped, body.Allowances, h.clock().UTC()

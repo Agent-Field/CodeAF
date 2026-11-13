@@ -236,8 +236,15 @@ func (o *orgServer) serveStreams(w http.ResponseWriter, r *http.Request, rest []
 			orgJSON(w, 200, s)
 		case len(rest) == 2 && rest[1] == "shares" && r.Method == http.MethodPut:
 			s.SharedWith = []string{}
-			for _, t := range o.lastBody["teams"].([]any) {
+			teams, _ := o.lastBody["teams"].([]any)
+			for _, t := range teams {
 				s.SharedWith = append(s.SharedWith, t.(string))
+			}
+			shares, _ := o.lastBody["shares"].([]any)
+			for _, sh := range shares {
+				if m := sh.(map[string]any); m["kind"] == "team" {
+					s.SharedWith = append(s.SharedWith, m["id"].(string))
+				}
 			}
 			also := []string{}
 			if o.lastBody["include_linked"] == true {
@@ -270,10 +277,11 @@ func attachOrg(t *testing.T) (*orgServer, *factoryWire, string) {
 	return o, wire, conn.ID
 }
 
-// THE ENGINE SAYS IT SERVES TEAMS AND ORG WORKSTREAMS, by the desk's two words.
+// THE ENGINE SAYS IT SERVES TEAMS, ORG WORKSTREAMS AND ROLES, by the desk's
+// words.
 func TestOrgMethodsAreAnnouncedInHello(t *testing.T) {
 	_, wire, _ := attachOrg(t)
-	for _, word := range []string{`"org_teams"`, `"org_workstreams"`} {
+	for _, word := range []string{`"org_teams"`, `"org_workstreams"`, `"org_roles"`} {
 		if !strings.Contains(wire.hello, word) {
 			t.Fatalf("hello lacks %s: %s", word, wire.hello)
 		}
@@ -417,6 +425,15 @@ func TestOrgWorkstreamsForwardToTheServer(t *testing.T) {
 	if strings.Join(shared.Workstream.SharedWith, ",") != "tm_1,tm_2" || strings.Join(shared.AlsoShared, ",") != linked.ID {
 		t.Fatalf("shared = %+v", shared)
 	}
+	// The share sheet's one call: people and teams with roles, the owner, the
+	// privacy and the rev all go in one body, and teams left out stay out.
+	wire.must("factory.org_workstream_shares", c(map[string]any{"id": ws.ID, "rev": 4, "private": false,
+		"owner":  map[string]any{"kind": "person", "id": "santosh"},
+		"shares": []map[string]any{{"kind": "person", "id": "@abir", "role": "view"}, {"kind": "team", "id": "tm_1", "role": "full"}}}), &shared)
+	body, _ := json.Marshal(o.lastBody)
+	if string(body) != `{"include_linked":false,"owner":{"id":"santosh","kind":"person"},"private":false,"rev":4,"shares":[{"id":"abir","kind":"person","role":"view"},{"id":"tm_1","kind":"team","role":"full"}]}` {
+		t.Fatalf("shares body = %s", body)
+	}
 	wire.must("factory.org_workstream_delete", c(map[string]any{"id": linked.ID}), nil)
 
 	var moved appwire.OrgWorkstream
@@ -429,7 +446,7 @@ func TestOrgWorkstreamsForwardToTheServer(t *testing.T) {
 		"POST /v1/workstreams", "POST /v1/workstreams", "GET /v1/workstreams", "GET /v1/workstreams/" + ws.ID,
 		"PATCH /v1/workstreams/" + ws.ID, "PATCH /v1/workstreams/" + ws.ID, "PATCH /v1/workstreams/" + ws.ID,
 		"PATCH /v1/workstreams/" + ws.ID, "PUT /v1/workstreams/" + ws.ID + "/owner",
-		"GET /v1/workstreams/" + ws.ID + "/shares/preview?teams=tm_1%2Ctm_2", "PUT /v1/workstreams/" + ws.ID + "/shares",
+		"GET /v1/workstreams/" + ws.ID + "/shares/preview?teams=tm_1%2Ctm_2", "PUT /v1/workstreams/" + ws.ID + "/shares", "PUT /v1/workstreams/" + ws.ID + "/shares",
 		"DELETE /v1/workstreams/" + linked.ID, "POST /v1/workstreams/import",
 	}
 	if got := o.seen(); strings.Join(got, "|") != strings.Join(want, "|") {
@@ -455,6 +472,9 @@ func TestOrgMethodsRefuseBadIdsBeforeSending(t *testing.T) {
 		{"factory.org_workstream_update", map[string]any{"connection": id, "id": "ws_1", "name": "x"}},
 		{"factory.org_workstream_owner", map[string]any{"connection": id, "id": "ws_1", "kind": "robot", "owner": "x"}},
 		{"factory.org_workstream_shares", map[string]any{"connection": id, "id": "ws_1", "teams": []string{"a,b"}}},
+		{"factory.org_workstream_shares", map[string]any{"connection": id, "id": "ws_1", "shares": []map[string]any{{"kind": "person", "id": "abir", "role": "admin"}}}},
+		{"factory.org_workstream_shares", map[string]any{"connection": id, "id": "ws_1", "shares": []map[string]any{{"kind": "robot", "id": "x", "role": "view"}}}},
+		{"factory.org_workstream_shares", map[string]any{"connection": id, "id": "ws_1", "shares": []map[string]any{{"kind": "person", "id": "a/b", "role": "view"}}}},
 		{"factory.org_workstream_import", map[string]any{"connection": id, "name": "x"}},
 	} {
 		wire.mustFail(tc.method, tc.params, appwire.CodeBadParams)
