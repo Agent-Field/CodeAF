@@ -402,20 +402,42 @@ func (st *Store) TeamOwnsWorkstream(team string) (bool, error) {
 }
 
 // WorkstreamOfJob is the workstream job belongs to by membership, and false
-// when it belongs to none.
+// when it belongs to none. SQLite reads the membership without decoding a
+// workstream, because every job gate asks it.
 func (st *Store) WorkstreamOfJob(job int) (string, bool, error) {
-	all, err := st.Workstreams()
-	if err != nil {
+	db, err := st.wsDB(false)
+	if err != nil || db == nil {
 		return "", false, err
 	}
-	for id, w := range all {
-		for _, j := range w.Jobs {
-			if j == job {
-				return id, true, nil
-			}
-		}
+	var id string
+	err = db.QueryRow(`SELECT w.id FROM workstreams w, json_each(w.doc, '$.jobs') j WHERE j.value = ? LIMIT 1`, job).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
 	}
-	return "", false, nil
+	return id, err == nil, err
+}
+
+// JobWorkstreams is every job's workstream by membership, read once.
+func (st *Store) JobWorkstreams() (map[int]string, error) {
+	out := map[int]string{}
+	db, err := st.wsDB(false)
+	if err != nil || db == nil {
+		return out, err
+	}
+	rows, err := db.Query(`SELECT w.id, j.value FROM workstreams w, json_each(w.doc, '$.jobs') j`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		var job int
+		if err := rows.Scan(&id, &job); err != nil {
+			return nil, err
+		}
+		out[job] = id
+	}
+	return out, rows.Err()
 }
 
 // SortWorkstreams orders ws newest change first, the id breaking a tie so the

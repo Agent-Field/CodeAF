@@ -178,3 +178,28 @@ func TestOrgWorkstreamMirrorPartsSpendAndPurge(t *testing.T) {
 		t.Fatalf("a purge left %v %v %v", list, parts, spend)
 	}
 }
+
+// A JOB'S WORKSTREAM BY MEMBERSHIP is read without decoding workstreams, one
+// job or all of them.
+func TestOrgWorkstreamOfJob(t *testing.T) {
+	st, _ := Open(t.TempDir())
+	if id, ok, err := st.WorkstreamOfJob(7); ok || err != nil || id != "" {
+		t.Fatal(id, ok, err)
+	}
+	if _, err := st.EditWorkstreams(func(all factory.OrgWorkstreams) ([]string, error) {
+		all["ws_a"] = factory.OrgWorkstream{Name: "A", Jobs: []int{7, 9}}
+		all["ws_b"] = factory.OrgWorkstream{Name: "B"}
+		return []string{"ws_a", "ws_b"}, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if id, ok, err := st.WorkstreamOfJob(9); !ok || err != nil || id != "ws_a" {
+		t.Fatal(id, ok, err)
+	}
+	if _, ok, _ := st.WorkstreamOfJob(8); ok {
+		t.Fatal("job 8 is in no workstream")
+	}
+	if all, err := st.JobWorkstreams(); err != nil || len(all) != 2 || all[7] != "ws_a" {
+		t.Fatal(all, err)
+	}
+}

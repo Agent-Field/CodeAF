@@ -3,6 +3,7 @@ package serve
 import (
 	"encoding/json"
 	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -295,4 +296,44 @@ func TestOrgPartsFollowTheRole(t *testing.T) {
 	o.do(t, "abir", "POST", base+"/wakes", -1, map[string]any{}, 403, nil)
 	o.do(t, "abir", "POST", base+"/pages/"+ws.Pages[0].ID+"/versions", -1, api.PageVersionNew{BodyMD: "x", Reason: "idle"}, 403, nil)
 	o.do(t, "mia", "GET", base+"/plan", -1, nil, 404, nil)
+}
+
+// A JOB TAKEN INTO A WORKSTREAM BY MEMBERSHIP FOLLOWS THAT WORKSTREAM: abir
+// sees and stops it while it is in Webhook reliability (Platform's), and it
+// leaves his floor once santosh moves it into his own private one.
+func TestAJobsMembershipDecidesWhoReachesIt(t *testing.T) {
+	o := jobOrg(t)
+	webhook, _, _, _ := o.orgScene(t)
+	private := o.create(t, "santosh", api.WorkstreamNew{Name: "Private launch"})
+	it := o.santoshJob(t, "")
+	job := strconv.Itoa(it.ID)
+	o.do(t, "santosh", "PUT", "/v1/workstreams/"+webhook.ID+"/jobs/"+job, -1, nil, 200, nil)
+	if !slices.Contains(o.floor(t, "abir"), it.Title) {
+		t.Fatal("abir, in Platform, cannot see the job in Platform's workstream")
+	}
+	o.do(t, "abir", "POST", jobPath(it, "stop"), -1, map[string]any{}, 200, nil)
+	o.do(t, "santosh", "PUT", "/v1/workstreams/"+private.ID+"/jobs/"+job, -1, nil, 200, nil)
+	if slices.Contains(o.floor(t, "abir"), it.Title) {
+		t.Fatal("abir still sees a job in santosh's private workstream")
+	}
+}
+
+// A JOB CANNOT BE TAKEN OUT OF A WORKSTREAM BY SOMEONE WHO CANNOT WRITE IT.
+func TestAJobStaysInAWorkstreamYouCannotWrite(t *testing.T) {
+	o := jobOrg(t)
+	webhook, launch, _, _ := o.orgScene(t)
+	it := o.santoshJob(t, "")
+	job := strconv.Itoa(it.ID)
+	o.do(t, "santosh", "PUT", "/v1/workstreams/"+launch.ID+"/jobs/"+job, -1, nil, 200, nil)
+	// abir cannot see santosh's launch plan, so the job is not his to move.
+	o.do(t, "abir", "PUT", "/v1/workstreams/"+webhook.ID+"/jobs/"+job, -1, nil, 404, nil)
+	if _, err := o.st.EditWorkstreams(func(all factory.OrgWorkstreams) ([]string, error) {
+		w := all[launch.ID]
+		w.Shares = []factory.Share{{Kind: "person", ID: "abir", Role: "view"}}
+		all[launch.ID] = w
+		return []string{launch.ID}, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	o.do(t, "abir", "PUT", "/v1/workstreams/"+webhook.ID+"/jobs/"+job, -1, nil, 403, nil)
 }

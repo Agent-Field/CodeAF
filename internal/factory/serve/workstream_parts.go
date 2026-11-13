@@ -674,15 +674,16 @@ func (h *Handler) jobOf(w http.ResponseWriter, r *http.Request) (int, bool) {
 		return 0, false
 	}
 	it, err := h.config.Store.Get(n)
-	if err != nil || !h.repoVisible(r, itemRepo(it)) {
+	if err != nil || !h.repoVisible(r, itemRepo(it)) || !h.jobVisible(r, it) {
 		h.fail(w, http.StatusNotFound, "job not found")
 		return 0, false
 	}
 	return n, true
 }
 
-// addWorkstreamJob puts a job in the workstream. A job is in at most one
-// workstream, so it leaves any other; that one changes too and says so.
+// addWorkstreamJob puts a job the caller can see in the workstream. A job is
+// in at most one workstream, so it leaves any other, which the caller must be
+// able to write too; that one changes as well and says so.
 func (h *Handler) addWorkstreamJob(w http.ResponseWriter, r *http.Request) {
 	ws, v, ok := h.writablePart(w, r)
 	if !ok {
@@ -710,6 +711,11 @@ func (h *Handler) addWorkstreamJob(w http.ResponseWriter, r *http.Request) {
 		}
 		for id, other := range all {
 			if id != ws.ID && slices.Contains(other.Jobs, job) {
+				// Taking a job out of a workstream is a change to it, so
+				// one you can only read keeps its job.
+				if !v.canWrite(other) {
+					return nil, errWorkstreamNoWrite
+				}
 				other.Jobs = slices.DeleteFunc(slices.Clone(other.Jobs), func(j int) bool { return j == job })
 				other.UpdatedAt = now
 				all[id] = other
