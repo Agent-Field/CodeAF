@@ -142,6 +142,19 @@ func orgFailure(r appFactoryReply, write bool) error {
 		if json.Unmarshal(bytes.TrimSpace(r.body), &held) == nil && held.Driver != nil && held.Driver.Handle != "" {
 			e.Detail = &appwire.FactoryRefusal{Reason: "driving", By: "@" + strings.TrimPrefix(held.Driver.Handle, "@")}
 		}
+		// The server's agent is answering someone else's message: name them,
+		// so the desk says whose answer to wait for.
+		var busy struct {
+			Reason string `json:"reason"`
+			By     string `json:"by"`
+		}
+		if json.Unmarshal(bytes.TrimSpace(r.body), &busy) == nil && busy.Reason == "busy" {
+			refusal := &appwire.FactoryRefusal{Reason: "busy"}
+			if busy.By != "" {
+				refusal.By = "@" + strings.TrimPrefix(busy.By, "@")
+			}
+			e.Detail = refusal
+		}
 		return e
 	case write && r.status >= 500:
 		const maybe = "the change may have happened, so read it again before trying again"
