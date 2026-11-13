@@ -324,9 +324,14 @@ func TestAppFactoryJobActionsTwoPeopleAgainstTheRealServer(t *testing.T) {
 			t.Fatalf("4 refused writes made %d POSTs (a refusal was retried or skipped)", got)
 		}
 
-		// STALE: alice read the job, then bob changes its priority.
+		// STALE: alice read the job, then its priority changes under her.
 		old := alice.guard(t, n)
-		bob.act(t, "factory.job_set_priority", n, map[string]any{"priority": "urgent"})
+		// E5 (WAVE2 §1c hole 1): bob is not alice's job's person, edits no
+		// workstream it is in and is not the operator, so he cannot re-prioritise
+		// it; the change that makes alice's read stale is her own, from another
+		// window.
+		bob.refused(t, "factory.job_set_priority", bob.params(t, n, map[string]any{"priority": "urgent"}), appwire.CodeForbidden)
+		alice.act(t, "factory.job_set_priority", n, map[string]any{"priority": "urgent"})
 		posts = f.postCount()
 		msg, d := alice.refused(t, "factory.job_set_priority", map[string]any{"factory": alice.conn.ID, "job": n, "priority": "low", "expect": old}, appwire.CodeStale)
 		if d == nil || d.Reason != "stale" || d.NowState == "" || msg == "" {
@@ -398,8 +403,10 @@ func TestAppFactoryJobActionsTwoPeopleAgainstTheRealServer(t *testing.T) {
 		if alice.job(t, n).State != api.StateBacklog {
 			t.Fatal("a stopped job is not in Backlog")
 		}
-		// Undo is the stopper's alone.
-		bob.w.mustFail("factory.job_undo", bob.params(t, n, nil), appwire.CodeConflict)
+		// Undo is the stopper's and the job person's. E5 (WAVE2 §1c hole 1):
+		// bob is neither, edits no workstream the job is in and is not the
+		// operator, so he is refused at the door before Undo looks.
+		bob.w.mustFail("factory.job_undo", bob.params(t, n, nil), appwire.CodeForbidden)
 		undone := alice.act(t, "factory.job_undo", n, nil)
 		if undone.Current == nil || undone.Current.State != api.StateQueued {
 			t.Fatalf("undo: %+v", undone.Current)
@@ -444,7 +451,9 @@ func TestAppFactoryJobActionsTwoPeopleAgainstTheRealServer(t *testing.T) {
 			t.Fatal("approval ran before Undo")
 		}
 		// Only the approver can withdraw it, and it withdraws the whole thing.
-		bob.w.mustFail("factory.job_undo", bob.params(t, ask.ID, nil), appwire.CodeConflict)
+		// E5 (WAVE2 §1c hole 1): bob cannot change alice's job at all, so he is
+		// refused at the door before Undo looks.
+		bob.w.mustFail("factory.job_undo", bob.params(t, ask.ID, nil), appwire.CodeForbidden)
 		alice.act(t, "factory.job_undo", ask.ID, nil)
 		f.clock.advance(factory.ApprovalUndo)
 		alice.job(t, ask.ID)
