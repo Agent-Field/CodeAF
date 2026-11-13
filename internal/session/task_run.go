@@ -65,10 +65,11 @@ package session
 // ── WHY A NODE NEVER ASKS ──
 //
 // There is nobody to ask. Its approval posture is composed from the same
-// [approval.Policy] the conversation uses — allow everything, with the critical
+// approval machinery the conversation uses — allow everything, with the critical
 // table (rm -rf /, mkfs, a redirect onto a raw disk, shutdown) still a floor
-// under it — and where a conversation would raise a question, the node reads a
-// refusal it can act on. That is exactly consent.go's law for a headless run,
+// under it and any profile read failure carried forward. Where a conversation
+// would raise a question, the node reads a refusal it can act on.
+// That is exactly consent.go's law for a headless run,
 // said in the node's own words.
 
 import (
@@ -284,6 +285,9 @@ type TaskNode struct {
 	// App holds are checkpointed with the node, so a restart never grants a resume.
 	app     appTaskRecord
 	appWake chan struct{}
+	// storageBlocked records a writer whose bounded shutdown has not finished.
+	storageBlocked bool
+
 	// Continuation choices preserve the completed attempt until work is reopened.
 	nextModel  string
 	nextEffort *string
@@ -348,6 +352,8 @@ type TaskNode struct {
 	admit sync.Mutex
 
 	spec taskSpec
+	// Only the root holds the tree's fixed admission ceiling.
+	treeLimit *nodeTreeLimit
 	// kind is what sort of node this is ([TaskKind]), settled at admission from
 	// the spec and never touched again. It is a FIELD rather than a question put
 	// to the spec because a node restored from a checkpoint has no spec worth
@@ -373,6 +379,8 @@ type TaskNode struct {
 	// guarded by the graph's lock and written once.
 	Ground string
 	Mode   TaskMode
+	// These identities bind restored legacy and nested task worlds to their owners.
+	WorkspaceURI, ChatURI, ProjectURI, GroundURI, RootURI string
 	// Home is the branch the root checkout was on when this node's branch was
 	// cut. It is the fixed side of the moved-checkout question at landing time;
 	// absence is ordinary for a checkpoint written before this field existed.
@@ -664,6 +672,12 @@ type TaskNode struct {
 	// reaches the project index (task_index.go) and the node's own notice on the
 	// way past.
 	cost float64
+	// folded is the part of cost that is OTHER nodes' bills: a part this node's
+	// worker proposed runs on that worker and folds into it when it lands, so the
+	// worker's total, and then this node's, already holds the part. The part's
+	// own row keeps its bill too, which is right for each row and wrong for a
+	// sum, so a tree's spend total takes this off ([TaskNode.treeOwnSpend]).
+	folded float64
 	// checkedOn is the model the node's checking pass ran on, read off the
 	// auditor when its spend folds in (task_audit.go) and empty when there was
 	// none — a node that never reached a check, or one whose check could not
@@ -846,10 +860,9 @@ type TaskNode struct {
 	// now, including the ones nobody has picked up. So the fact is written down
 	// on its own rather than inferred from a pointer that no longer means it.
 	claimed bool
-	// stopped marks a node a PERSON ended (cancel.go). It is set BEFORE the
-	// context is cut, so that the landing this stop causes already knows whose
-	// decision it was — a flag written afterwards would be a flag the update
-	// announcing the end raced past.
+	// stopped marks cancellation before the context is cut, so the landing
+	// already knows it must keep partial work. The ending distinguishes a
+	// person's Stop from a time limit they set.
 	stopped bool
 	// handed is the receipt for THIS SESSION'S own hand-over press: the person
 	// asked codeaf to decide this one card, and the note that asks it has been
@@ -1129,6 +1142,8 @@ type TaskGraph struct {
 	// at rest — every claim is released by the admission it authorized or by the
 	// proposal that came to nothing.
 	claims map[uint64]int
+	// Pending titles stay reserved until their own proposal lands or withdraws.
+	childTitles map[uint64][]string
 
 	// run executes one node to completion and calls [TaskGraph.complete] when
 	// it lands. It is a field rather than a method so the graph can be exercised
@@ -1452,7 +1467,7 @@ func (g *TaskGraph) admit(id uint64, spec taskSpec) TaskState {
 	refused := g.quitting || g.deleted[spec.parent]
 	if g.deleted[spec.parent] {
 		g.deleted[id] = true
-		g.releaseChildLocked(spec.parent)
+		g.releaseChildLocked(spec.parent, spec.title)
 		g.mu.Unlock()
 		return TaskFailed
 	}
@@ -1465,8 +1480,9 @@ func (g *TaskGraph) admit(id uint64, spec taskSpec) TaskState {
 	g.order = append(g.order, id)
 	// The node counts itself from here, so the slot its proposal was holding
 	// goes back (see [TaskGraph.claimChild]).
-	g.releaseChildLocked(spec.parent)
+	g.releaseChildLocked(spec.parent, spec.title)
 	g.mu.Unlock()
+	g.setNodeTreeLimit(node)
 
 	// ADMISSION IS A TRANSITION, and it is checkpointed before the frontier turns
 	// rather than after: a process killed between these two lines still resumes
@@ -1497,7 +1513,7 @@ func (g *TaskGraph) admit(id uint64, spec taskSpec) TaskState {
 // model fanning out emits its propose_task calls in one batch, which is exactly
 // the moment this cap is for. Every one of them would read the same count and
 // every one of them would pass.
-func (g *TaskGraph) claimChild(parent uint64) string {
+func (g *TaskGraph) claimChild(parent uint64, titles ...string) string {
 	if parent == 0 {
 		// The conversation's own work is not fanned out and is not capped: the
 		// person is watching every proposal go by and can stop any of them.
@@ -1505,19 +1521,29 @@ func (g *TaskGraph) claimChild(parent uint64) string {
 	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	if refusal := g.nodeGrowthRefusalLocked(parent, titles); refusal != "" {
+		return refusal
+	}
+	count := max(1, len(titles))
 	held := g.claims[parent]
 	for _, node := range g.nodes {
 		if node != nil && node.parent == parent {
 			held++
 		}
 	}
-	if held >= taskFanLimit {
+	if held+count > taskFanLimit {
 		return fmt.Sprintf("no: you have already handed out %d pieces of this work, which is as many as one task may. Do the rest in your own hands, or finish these and report what is left undone.", taskFanLimit)
 	}
 	if g.claims == nil {
 		g.claims = make(map[uint64]int, 1)
 	}
-	g.claims[parent]++
+	g.claims[parent] += count
+	if !bashBeltAsked() && len(titles) > 0 {
+		if g.childTitles == nil {
+			g.childTitles = make(map[uint64][]string)
+		}
+		g.childTitles[parent] = append(g.childTitles[parent], titles...)
+	}
 	return ""
 }
 
@@ -1535,17 +1561,18 @@ func (g *TaskGraph) claimChild(parent uint64) string {
 // never come and the run's ending cancels it first. The pass runs OUTSIDE the
 // lock: it takes the plan gate before the graph's mu, and nothing may hold
 // that mu while asking for the gate.
-func (g *TaskGraph) releaseChild(parent uint64) {
+func (g *TaskGraph) releaseChild(parent uint64, titles ...string) {
 	g.mu.Lock()
 	freed := g.claims[parent] > 0
-	g.releaseChildLocked(parent)
+	g.releaseChildLocked(parent, titles...)
 	g.mu.Unlock()
 	if freed {
 		g.planPulse()
 	}
 }
 
-func (g *TaskGraph) releaseChildLocked(parent uint64) {
+func (g *TaskGraph) releaseChildLocked(parent uint64, titles ...string) {
+	g.releaseChildTitleLocked(parent, titles)
 	if parent == 0 || g.claims == nil {
 		return
 	}
@@ -1574,6 +1601,17 @@ func (g *TaskGraph) children(parent uint64) []*TaskNode {
 	return kids
 }
 
+func (g *TaskGraph) wakeBudgetForWork(starting []*TaskNode) {
+	if len(starting) > 0 && g.home != nil {
+		g.home.wakeBudgetForWork()
+	}
+	for _, node := range starting {
+		if node.owner != nil && node.owner != g.home {
+			node.owner.wakeBudgetForWork()
+		}
+	}
+}
+
 // runFrontier is the scheduler, and it is the whole of it.
 //
 // One pass: fail every queued node whose dependencies cannot be met, start
@@ -1594,6 +1632,7 @@ func (g *TaskGraph) children(parent uint64) []*TaskNode {
 // call when nothing can move: the cost of a pass with nothing to do is one lock
 // and a walk of the order slice.
 func (g *TaskGraph) runFrontier() {
+	g.prepareNodeTreeLimits()
 	// The machine is READ before the lock and at most once a pass: a handful of
 	// small file reads behind a one-second cache, and the graph's lock is held
 	// by everything that announces a node — no reading of /proc belongs under
@@ -1682,6 +1721,7 @@ func (g *TaskGraph) runFrontier() {
 	// quit has started waiting on it.
 	g.runners.Add(len(starting))
 	g.mu.Unlock()
+	g.wakeBudgetForWork(starting)
 
 	// A machine hold is the one hold nothing will come along and lift.
 	if machineHeld {
@@ -2292,6 +2332,9 @@ func (n *TaskNode) wasStopped() bool {
 func (n *TaskNode) stoppedLead() string {
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
+	if n.ending == TaskEndingTimeLimit {
+		return conversationTimeLimitReason
+	}
 	return stopBecause(taskStoppedWord, n.stopReason)
 }
 
@@ -3048,6 +3091,9 @@ func (n *TaskNode) leavings() (report string, changed []string, branch, merge st
 // the node's changes live in that directory, and pretending otherwise would
 // merge an empty branch and call it done.
 func (n *TaskNode) workingCopy(place Place, workspace string) (taskTree, error) {
+	if tree, known, err := n.ownedWorkingCopy(context.Background(), place, workspace); known {
+		return tree, err
+	}
 	n.graph.mu.Lock()
 	dir, branch, merge := n.worktree, n.branch, n.merge
 	n.graph.mu.Unlock()
@@ -3098,6 +3144,78 @@ func (n *TaskNode) workingCopy(place Place, workspace string) (taskTree, error) 
 	return n.ladderRecord(taskTree{dir: dir, root: root, branch: branch, place: place, ground: ground, mode: mode}), nil
 }
 
+// ownedWorkingCopy resolves recorded identities before touching cached paths.
+// Unknown identities fail closed; they never cause a replacement task copy.
+func (n *TaskNode) ownedWorkingCopy(ctx context.Context, place Place, workspace string) (taskTree, bool, error) {
+	n.graph.mu.Lock()
+	record := &TaskCopyRecord{URI: n.WorkspaceURI, ChatURI: n.ChatURI, ProjectURI: n.ProjectURI,
+		GroundURI: n.GroundURI,
+		RootURI:   n.RootURI, Dir: n.worktree, Branch: n.branch, Ground: n.Ground, Mode: n.Mode}
+	merge := n.merge
+	n.graph.mu.Unlock()
+	if record.URI == "" {
+		return taskTree{}, false, nil
+	}
+	dir, err := resolveOwnedWorkspace(record, place)
+	if err != nil {
+		return taskTree{}, true, fmt.Errorf("resolve its working copy identity: %w", err)
+	}
+	ground, root := record.Ground, ""
+	if record.GroundURI != "" {
+		ground, err = resolveOwnedGround(record.GroundURI, record)
+	} else if record.ProjectURI != "" {
+		ground, err = resolveOwnedProject(record.ProjectURI)
+	}
+	if err != nil {
+		return taskTree{}, true, fmt.Errorf("resolve its task ground: %w", err)
+	}
+	root, err = ownedTaskLandingRoot(record, ground, workspace)
+	if err != nil {
+		return taskTree{}, true, err
+	}
+	if err := ensureTaskStorage(ctx, place, dir); err != nil {
+		return taskTree{}, true, fmt.Errorf("restore its compact working copy: %w", err)
+	}
+	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+		return taskTree{}, true, fmt.Errorf("its working copy is gone from %s", dir)
+	}
+	branch := record.Branch
+	if mark, released := rememberedRelease(dir); released && branch != "" && strings.TrimSpace(mark.Branch) != "" {
+		branch = mark.Branch
+	}
+	n.graph.mu.Lock()
+	n.worktree, n.Ground = dir, ground
+	n.graph.mu.Unlock()
+	return n.ladderRecord(taskTree{dir: dir, root: root, ground: ground, mode: record.Mode, branch: branch, merge: merge, place: place}), true, nil
+}
+
+func ownedTaskLandingRoot(record *TaskCopyRecord, ground, workspace string) (string, error) {
+	var root string
+	var err error
+	if record.RootURI != "" {
+		root, err = resolveOwnedGround(record.RootURI, record)
+		if err != nil {
+			return "", fmt.Errorf("resolve its landing root: %w", err)
+		}
+	} else if record.Branch != "" && record.Mode != TaskModeMirror {
+		var ok bool
+		root, ok = repositoryRoot(ground)
+		if !ok {
+			root, ok = repositoryRoot(workspace)
+		}
+		if !ok {
+			return "", fmt.Errorf("its recorded task ground is no longer a repository")
+		}
+	}
+	return root, nil
+}
+
+func registerPreparedTaskTree(tree *taskTree, err *error, place Place) {
+	if *err == nil {
+		*tree, *err = registerOwnedWorkspace(*tree, place)
+	}
+}
+
 // ladderRecord puts back what the ground ladder wrote down about a node's world
 // (groundladder.go), on a tree that was rebuilt from the record rather than
 // carved in this run.
@@ -3116,6 +3234,8 @@ func (n *TaskNode) ladderRecord(tree taskTree) taskTree {
 	tree.rung, tree.seal, tree.base, tree.universe = n.Rung, n.Seal, n.Base, n.Universe
 	tree.checkBase = n.CheckBase
 	tree.home, tree.homeSha = n.Home, n.HomeSha
+	tree.uri, tree.chatURI, tree.projectURI = n.WorkspaceURI, n.ChatURI, n.ProjectURI
+	tree.groundURI, tree.rootURI = n.GroundURI, n.RootURI
 	return tree
 }
 
@@ -3462,6 +3582,17 @@ func (n *TaskNode) addSpend(used Usage) {
 	n.graph.mu.Unlock()
 }
 
+// addFolded records dollars of the node's bill that are other nodes' bills
+// ([TaskNode.folded]).
+func (n *TaskNode) addFolded(usd float64) {
+	if n == nil || usd <= 0 {
+		return
+	}
+	n.graph.mu.Lock()
+	n.folded += usd
+	n.graph.mu.Unlock()
+}
+
 // setTree records where the node is working, the moment it has somewhere to
 // work. It is the one write that makes an interrupt recoverable: a node killed
 // mid-run has a branch and a directory on disk, and this is where the checkpoint
@@ -3469,6 +3600,8 @@ func (n *TaskNode) addSpend(used Usage) {
 func (n *TaskNode) setTree(tree taskTree) {
 	n.graph.mu.Lock()
 	n.worktree = tree.dir
+	n.WorkspaceURI, n.ChatURI, n.ProjectURI = tree.uri, tree.chatURI, tree.projectURI
+	n.GroundURI, n.RootURI = tree.groundURI, tree.rootURI
 	n.branch = tree.branch
 	n.merge = tree.merge
 	// THE RECORD IS WHAT HAPPENED AND NOT WHAT WAS PLANNED. The ground and the
@@ -3808,11 +3941,16 @@ func (n *TaskNode) noticeLocked(cost float64) TaskNotice {
 		Dismissed: n.graph.dismissed[strconv.FormatUint(n.id, 10)] && n.state == TaskFailed && !n.stopped && n.endingLocked() != TaskEndingStopped && !n.app.Declined,
 		Title:     n.spec.title,
 		// Reopened task pages need the contract even when no proposal card survives.
-		Brief:      n.spec.brief,
-		Summary:    n.spec.summary,
-		Acceptance: n.spec.acceptance,
-		Kind:       n.kind,
-		Where:      where,
+		Brief:        n.spec.brief,
+		Summary:      n.spec.summary,
+		Acceptance:   n.spec.acceptance,
+		Kind:         n.kind,
+		Where:        where,
+		WorkspaceURI: n.WorkspaceURI,
+		ChatURI:      n.ChatURI,
+		ProjectURI:   n.ProjectURI,
+		GroundURI:    n.GroundURI,
+		RootURI:      n.RootURI,
 		// AND WHICH PROJECT THAT DIRECTORY IS A COPY OF, on every update and not
 		// only on the proposal: a row drawn from a checkpoint, a roster replayed
 		// after a resize and a card watching work land all ask the same question,
@@ -3842,7 +3980,7 @@ func (n *TaskNode) noticeLocked(cost float64) TaskNotice {
 		Mending:     n.mend,
 		Waiting:     waiting,
 		Settling:    n.resolutionInFlightLocked(),
-		Stopped:     n.stopped,
+		Stopped:     n.stopped && n.endingLocked() == TaskEndingStopped,
 		Ending:      n.endingLocked(),
 		// AND WHAT CLASHED, WHICH ROAD PUT IT THERE, AND WHOSE DECISION IT IS. None
 		// of the three is derivable from anything else on this notice: the names
@@ -3887,16 +4025,15 @@ func (n *TaskNode) endingNow() TaskEnding {
 }
 
 // endingLocked is the ending a notice and a record carry, with the graph held.
-// A node a person stopped carries [TaskEndingStopped] whether or not anything
-// wrote it — the flag was the whole of that fact before the ending existed, and
-// it stays the source of it.
+// A cancelled node keeps a typed time-limit ending. Older cancellations with
+// only the stopped flag retain the person's Stop reading.
 func (n *TaskNode) endingLocked() TaskEnding {
 	// A NODE MACHINERY CUT WHERE IT STOOD IS STILL RUNNING AND STILL HAS A REASON.
 	// The paused road leaves the state alone so recovery resumes the node, and it
 	// used to carry no ending at all — so a reader could not tell a node machinery
 	// had cut from one still being worked. The ending is surfaced for a running
 	// node exactly as it is for a failed one; every other state still carries none,
-	// and the flag a person's stop sets outranks the field wherever it is.
+	// and cancellation retains the cause recorded before its context was cut.
 	if n.state == TaskRunning {
 		return n.ending
 	}
@@ -3904,6 +4041,9 @@ func (n *TaskNode) endingLocked() TaskEnding {
 		return ""
 	}
 	if n.stopped {
+		if n.ending == TaskEndingTimeLimit {
+			return n.ending
+		}
 		return TaskEndingStopped
 	}
 	return n.ending
@@ -4915,12 +5055,15 @@ func (a *Agent) readsTheDecisionLocked(node *TaskNode) bool {
 // A surface reading both sees an in-turn update on both, exactly as a surface
 // holding two Submit channels sees each event on each (see [Agent.Submit]).
 func (a *Agent) emitTaskUpdate(notice TaskNotice) {
-	notice.Retryable = a.tasker().retrySupported(notice.ID)
+	if notice.Run == "" {
+		notice.Retryable = a.tasker().retrySupported(notice.ID)
+	}
 
 	// WHETHER THE PERSON HID IT is the graph's fact, said on the one door every
 	// move goes through, so no road that builds a notice by hand can un-hide a task
 	// by forgetting to say so (task_dismiss.go).
 	notice.Dismissed = notice.State == TaskFailed && !notice.Stopped && notice.Ending != TaskEndingStopped && a.tasker().isDismissed(strconv.FormatUint(notice.ID, 10))
+	notice = a.withWorker(notice)
 	event := Event{Kind: EventTaskUpdate, Tool: "propose_task", Task: &notice}
 	a.mu.Lock()
 	hub := a.hub
@@ -5080,6 +5223,7 @@ func (a *Agent) replayTaskRoster(stream *eventStream) {
 	defer graph.mu.Unlock()
 	for i, node := range nodes {
 		notice := node.noticeLocked(costs[i])
+		notice = a.withWorker(notice)
 		stream.send(Event{Kind: EventTaskUpdate, Tool: "propose_task", Task: &notice})
 	}
 	// AND THE ADAPTIVE RUNS GO OUT UNDER THE SAME HOLD, for the same reason and
@@ -5117,6 +5261,7 @@ func (a *Agent) replayTaskRoster(stream *eventStream) {
 			stream.send(Event{Kind: EventJobUpdate, Job: &job})
 			continue
 		}
+		row = a.withWorker(row)
 		stream.send(Event{Kind: EventTaskUpdate, Tool: "propose_task", Task: &row})
 	}
 }
@@ -5266,6 +5411,7 @@ func (a *Agent) runTaskNode(node *TaskNode) {
 	// road where it did not — and this is what answers the two bodies that are
 	// not a worker in a worktree.
 	node.graph.planStopLandedChildren(node.id)
+	a.parkTaskStorage(node, state, taskLog(listed))
 	node.graph.complete(node, state)
 	// AND WHATEVER IS LEFT WAITING ON A DECIDER WHO HAS GONE HOME.
 	// [TaskGraph.stopChildren] deliberately leaves settled children alone, and a
@@ -5476,10 +5622,18 @@ func (a *Agent) openTaskWorld(ctx context.Context, node *TaskNode, log io.Writer
 	// checkout this node's branch comes off, which for a part is its parent's
 	// worktree.
 	place := a.familyPlace(node)
-	tree, resumed := node.resumeTree(place, a.config.Workspace)
-	var err error
-	if !resumed {
-		tree, err = prepareTaskTreeForNode(ctx, place, a.config.Workspace, a.journalID(), node)
+	tree, known, err := node.ownedWorkingCopy(ctx, place, a.config.Workspace)
+	if !known {
+		if restoreErr := a.ensureNodeStorage(ctx, node); restoreErr != nil {
+			node.end(TaskEndingError)
+			node.finish("could not restore its compact working copy: "+restoreErr.Error(), nil, "", "")
+			return taskTree{}, false
+		}
+		var resumed bool
+		tree, resumed = node.resumeTree(place, a.config.Workspace)
+		if !resumed {
+			tree, err = prepareTaskTreeForNode(ctx, place, a.config.Workspace, a.journalID(), node)
+		}
 	}
 	if err != nil {
 		node.end(TaskEndingError)
@@ -5715,6 +5869,7 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 			return
 		}
 		_ = child.Close()
+		rememberTaskWriters(node, child)
 		a.foldTaskUsage(node, child)
 		// The fold moved this child's whole tally onto the node, so the bill
 		// stops naming it — a price read now comes off the frozen figure, and a
@@ -6328,6 +6483,9 @@ func (n *TaskNode) landingFacts(merge string) TaskFacts {
 // resumeTree reuses the durable working copy after a process interruption, and
 // after a person asked to continue a settled node ([Agent.ContinueTask]).
 func (n *TaskNode) resumeTree(place Place, workspace string) (taskTree, bool) {
+	if tree, known, err := n.ownedWorkingCopy(context.Background(), place, workspace); known {
+		return tree, err == nil
+	}
 	n.graph.mu.Lock()
 	dir, branch, merge, interrupted, continuing := n.worktree, n.branch, n.merge, n.interrupted, n.continuing
 	n.graph.mu.Unlock()
@@ -6439,7 +6597,7 @@ func keptWork(tree taskTree, title string, changed []string, sign gitSignature) 
 	case problem != "":
 		return mergeAborted, changed
 	}
-	saved, problem, _ := commitTaskWork(tree.dir, title, changed, sign, tree.bashBelt)
+	saved, problem, _ := commitTaskWork(tree.dir, title, changed, sign, tree.bashBelt, true)
 	changed = alsoChanged(changed, saved)
 	// THE INHERITANCE COMES BACK OUT OF A KEPT BRANCH TOO, for the reason it does
 	// at a merge (groundladder.go): what the sentence offers the person is the
@@ -6476,6 +6634,9 @@ func (t taskTree) releaseKept() {
 // releaseKeptLocked is the same cleanup for a caller already holding the root
 // lock, which is the conflict arm inside [taskTree.comeHome].
 func (t taskTree) releaseKeptLocked() {
+	if retainTaskStorage(t) {
+		return
+	}
 	left := leftBehind(t.dir)
 	rememberLeftBehind(t.dir, left)
 	if t.ownRepository() {
@@ -6597,6 +6758,9 @@ func branchIsThere(repo, name string) bool {
 // and worktree repair binds that pointer to the retained directory. A failed
 // registration therefore cannot erase or partly relocate the user's leavings.
 func (t taskTree) reopenReleased() (taskTree, bool, string) {
+	if err := ensureTaskStorage(context.Background(), t.place, t.dir); err != nil {
+		return t, false, "its compact working copy could not be restored: " + err.Error()
+	}
 	mark, released := t.releaseIdentity()
 	if !released {
 		return t, false, ""
@@ -7456,11 +7620,16 @@ func firstLines(text string, n int) string {
 // node on the way past — this is the only moment anybody can ask a child agent
 // what it cost, because the line after this one closes it.
 func (a *Agent) foldTaskUsage(node *TaskNode, child *Agent) {
-	used := child.Usage()
+	child.mu.Lock()
+	used, folded := child.usage, child.foldedTaskUSD
+	child.mu.Unlock()
 	// The node keeps the WHOLE tally, not just the money. One widening here
 	// covers every fold there is — the worker, each repair round, the auditor,
 	// a harness design thread — because all of them arrive through this door.
+	// The parts the child had folded in travel with its money, so the node
+	// still knows which of its dollars are other rows' bills.
 	node.addSpend(used)
+	node.addFolded(folded)
 	if used.Input == 0 && used.Output == 0 && used.CostUSD == 0 {
 		return
 	}
@@ -7481,6 +7650,14 @@ func (a *Agent) foldTaskUsage(node *TaskNode, child *Agent) {
 		CacheCreationInputTokens: used.CacheWrite,
 		Cost:                     &cost,
 	}}, child.Model(), used.Calls)
+	// THE LEDGER NOW HOLDS THIS NODE'S BILL A SECOND TIME, inside its own
+	// total, while the node's row keeps it too. Marked here, in the same fold,
+	// a tree total that reads both counts it once.
+	if cost > 0 && ledger != nil {
+		ledger.mu.Lock()
+		ledger.foldedTaskUSD += cost
+		ledger.mu.Unlock()
+	}
 	// The books on disk are told as the node's tally reaches them, for the
 	// reason [Agent.driveBeltRun] stamps a run's: home takes the larger of the
 	// stamped books and the index rows, and that is exact only while meta.json
@@ -7695,7 +7872,8 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 	}
 
 	taskCapUSD, _ := config.CrewTaskSpendCap(parent.ProfileDir)
-	child, err := a.newChildAgent(Config{
+	workspaceURI, logOwnerURI := node.workspaceIdentity()
+	childConfig := Config{
 		// Search authority follows the work without enabling memory writes.
 		ConversationHistory: parent.conversationHistory(),
 		// AND THE CONVERSATION'S MEMORY, READ-ONLY. A worker has no brain of its
@@ -7745,6 +7923,7 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// answer is settled here, once, while the family's is in hand.
 		ownSpace:      standingInOwnSpace(family, dir),
 		Workspace:     dir,
+		WorkspaceURI:  workspaceURI,
 		Model:         model,
 		APIKey:        parent.APIKey,
 		BaseURL:       parent.BaseURL,
@@ -7785,6 +7964,7 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// turns an allow into a "prompt" for the handful of shapes that destroy
 		// a disk or drop the machine, and a prompt in a node is a refusal it can
 		// read (consent.go, InTask) — never a question and never a hang.
+		// An unreadable profile also requires a person because saved denials are unknown.
 		ApprovalPolicy: &approval.Policy{Default: approval.ActionAllow},
 		AskConsent:     false,
 		InTask:         true,
@@ -7910,12 +8090,13 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// audited by a different rule than the conversation would be the setting
 		// meaning two things (task_audit.go).
 		TaskAudit: parent.TaskAudit,
-		// AND SO DOES WHETHER THE SIGNATURE NAMES THE MODEL. A node commits —
-		// its landing writes one ([commitTaskWorkAs]) and its worker may write
-		// more with `bash` — and the `attribution.model` row is the person's
-		// answer for their whole machine. A node is handed no ProfileDir
-		// (Config.ProfileDir says why), so a child that did not carry this
-		// would name the model for somebody who had turned the name off.
+		// AND SO DOES WHETHER THE WORK IS SIGNED AND WHETHER THE SIGNATURE NAMES
+		// THE MODEL. A node commits — its landing writes one ([commitTaskWorkAs])
+		// and its worker may write more with `bash` — and both attribution rows
+		// are the person's answer for their whole machine. A node is handed no
+		// ProfileDir (Config.ProfileDir says why), so a child that did not carry
+		// these would sign or name the model for somebody who had turned them off.
+		AttributionOff:      parent.AttributionOff,
 		AttributionModelOff: parent.AttributionModelOff,
 		// And so does who decides a landing nobody could check. A parent node's
 		// own agent is the reader of its children's landing notes, so a family
@@ -7947,11 +8128,33 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// asks the node it was armed on. This line is only the person's yes
 		// travelling with the work.
 		Divide: parent.Divide,
-	})
+	}
+	if childConfig.WorkspaceURI != "" {
+		if err := os.MkdirAll(filepath.Dir(journal), 0700); err != nil {
+			return nil, err
+		}
+	}
+	var logOwners []string
+	if logOwnerURI != "" {
+		logOwners = []string{logOwnerURI}
+	}
+	if err := configureOwnedWorker(&childConfig, filepath.Dir(journal), logOwners...); err != nil {
+		return nil, err
+	}
+	child, err := a.newChildAgent(childConfig)
 	if err != nil {
 		return nil, err
 	}
 	return child, nil
+}
+
+func (n *TaskNode) workspaceIdentity() (string, string) {
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	if n.WorkspaceURI != "" {
+		return n.WorkspaceURI, n.ChatURI
+	}
+	return n.ProjectURI, n.ChatURI
 }
 
 // seatTaskModelLocked answers the model a task worker may actually start on,
@@ -7976,7 +8179,7 @@ func (a *Agent) seatTaskModelLocked(node *TaskNode, parent Config, model, on str
 	if !known || supported {
 		return model, nil
 	}
-	fallback, resolveErr := roles.Resolve(roles.Source(parent.RolesSource), roles.RoleWorker, a.model)
+	fallback, resolveErr := readerFor(parent, a.model).Resolve(roles.RoleWorker, a.model)
 	if resolveErr != nil || strings.EqualFold(strings.TrimSpace(fallback), strings.TrimSpace(model)) {
 		return "", fmt.Errorf("model %s does not support tool use, and the worker tier resolves to the same model", model)
 	}
@@ -8179,6 +8382,10 @@ func taskLog(listed *job) io.Writer {
 
 // taskTree is where one node works and how its work comes home.
 type taskTree struct {
+	portableBaselineDigest string
+	workspaceSet           *WorkspaceSet
+	// Stable local identity survives a path relocation; it grants no cleanup authority.
+	uri, chatURI, projectURI, groundURI, rootURI string
 	// dir is the node's workspace: a worktree, or the person's own directory
 	// when there is no repository.
 	dir string
@@ -8314,8 +8521,21 @@ func prepareTaskTree(place Place, workspace, session string, id uint64, title st
 // its parent froze the family tree at, which the ladder cuts from instead of
 // sealing a tree that has moved since (task_divide_wip.go). Empty for everything
 // that is not a part, which is almost every task.
-func prepareTaskTreeAt(ctx context.Context, place Place, workspace, session string, id uint64, title, where, frozen string) (taskTree, error) {
+func prepareTaskTreeAt(ctx context.Context, place Place, workspace, session string, id uint64, title, where, frozen string) (tree taskTree, err error) {
+	defer registerPreparedTaskTree(&tree, &err, place)
+	if err := ensureTaskStorage(ctx, place, workspace); err != nil {
+		return taskTree{}, err
+	}
 	where = strings.TrimSpace(where)
+	if WorkspaceOwnershipEnabled(place) {
+		ground, err := ownershipTaskGround(where, workspace)
+		if err != nil {
+			return taskTree{}, err
+		}
+		if root, ok := repositoryRoot(ground); !ok || !hasCommit(root) {
+			return prepareTaskTreeOn(ctx, place, workspace, session, id, title, taskStand{dir: ground, mode: ownershipPlainMode(ground)})
+		}
+	}
 	if root, ok := whereInsideRepository(where, workspace); where != "" && ok {
 		return cutTaskWorktree(ctx, place, root, session, id, title, frozen)
 	}
@@ -8509,8 +8729,20 @@ func cutWorktreeFrom(place Place, root, dir, branch string, mode os.FileMode, fr
 // that admits a node does not resolve one — a subharness run, a design, a graph
 // scripted by a test — and the tree they get is the tree they always got, with
 // its ground filled in from the repository it was actually cut from.
-func prepareTaskTreeOn(ctx context.Context, place Place, workspace, session string, id uint64, title string, stand taskStand) (taskTree, error) {
+func prepareTaskTreeOn(ctx context.Context, place Place, workspace, session string, id uint64, title string, stand taskStand) (tree taskTree, err error) {
+	if stand.workspaceSet != nil {
+		return prepareWorkspaceSet(ctx, place, id, title, *stand.workspaceSet)
+	}
+	return prepareSingletonTaskTreeOn(ctx, place, workspace, session, id, title, stand)
+}
+
+func prepareSingletonTaskTreeOn(ctx context.Context, place Place, workspace, session string, id uint64, title string, stand taskStand) (tree taskTree, err error) {
+	defer registerPreparedTaskTree(&tree, &err, place)
+	if err := ensureTaskStorage(ctx, place, stand.dir); err != nil {
+		return taskTree{}, err
+	}
 	ground := canonicalPath(strings.TrimSpace(stand.dir))
+	stand.mode = preparedTaskMode(place, ground, stand.mode)
 	if ground == "" {
 		// A PART REACHES THIS ROAD AND ITS FREEZE HAS TO TRAVEL WITH IT. A part
 		// admitted by `divide_work` carries no ground of its own (task_divide.go
@@ -8540,6 +8772,9 @@ func prepareTaskTreeOn(ctx context.Context, place Place, workspace, session stri
 		// read. Copying the world in would be the opposite of what was asked.
 		return taskTree{dir: dir, merge: mergeInPlace, ground: ground, mode: stand.mode}, nil
 	case TaskModeMirror:
+		if err := ensureOwnedMirrorGround(place, ground); err != nil {
+			return taskTree{}, err
+		}
 		dir, mode := taskOwnFolder(place, workspace, session, id)
 		tree, err := carveGround(ctx, groundOrder{
 			place:   place,
@@ -8566,6 +8801,10 @@ func prepareTaskTreeOn(ctx context.Context, place Place, workspace, session stri
 	}
 	root, ok := repositoryRoot(ground)
 	if !ok || !hasCommit(root) {
+		if WorkspaceOwnershipEnabled(place) {
+			stand.mode = TaskModeMirror
+			return prepareTaskTreeOn(ctx, place, workspace, session, id, title, stand)
+		}
 		// The ground turned out to have no history to branch from between the
 		// proposal and this moment, or never had one. The honest answer is the one
 		// the old road gives: work in it and say so, rather than claim a branch
@@ -8589,7 +8828,7 @@ func mirrorGround(ground, dir string) string {
 	walk = func(relative string) string {
 		entries, err := os.ReadDir(filepath.Join(ground, filepath.FromSlash(relative)))
 		if err != nil {
-			return ""
+			return "this folder could not be copied for the task: " + err.Error()
 		}
 		for _, entry := range entries {
 			child := entry.Name()
@@ -8605,11 +8844,19 @@ func mirrorGround(ground, dir string) string {
 			source := filepath.Join(ground, filepath.FromSlash(child))
 			target := filepath.Join(dir, filepath.FromSlash(child))
 			if entry.IsDir() {
-				if err := os.MkdirAll(target, 0o755); err != nil {
+				info, err := entry.Info()
+				if err != nil {
+					return "this folder could not be copied for the task: " + err.Error()
+				}
+				if err := os.MkdirAll(target, 0o700); err != nil {
 					return "this folder could not be copied for the task: " + err.Error()
 				}
 				if problem := walk(child); problem != "" {
 					return problem
+				}
+				mode := info.Mode() & (os.ModePerm | os.ModeSetuid | os.ModeSetgid | os.ModeSticky)
+				if err := os.Chmod(target, mode); err != nil {
+					return "this folder could not be copied for the task: " + err.Error()
 				}
 				continue
 			}
@@ -8780,7 +9027,7 @@ func (t taskTree) comeHome(title string, wrote []string, sign gitSignature) (str
 	// they are — what is on that disk is the only copy of the work there is
 	// (task_land_unsaved.go). Going on used to merge a branch holding nothing and
 	// then remove the directory the work was in.
-	if _, problem, why := commitTaskWork(t.dir, title, wrote, sign, t.bashBelt); problem != "" {
+	if _, problem, why := commitTaskWork(t.dir, title, wrote, sign, t.bashBelt, true); problem != "" {
 		return mergeAborted, unsavedSentence(t.dir, problem), nil, why
 	}
 	// THE INHERITANCE GOES BACK OUT BEFORE THE WORK COMES IN. A branch carved
@@ -9185,8 +9432,8 @@ func nonEmptyLines(out string) []string {
 // be staged into, the index could not be read, or git refused the commit. A
 // landing read them as nothing to do, merged a branch holding nothing and
 // removed the working copy the work was sitting in (task_land_unsaved.go, #255).
-func commitTaskWork(dir, title string, wrote []string, sign gitSignature, bashBelt bool) ([]string, string, landingRefusal) {
-	saved, _, why, err := commitTaskWorkAs(dir, "task: "+clip(firstLine(title), 72), wrote, sign, bashBelt)
+func commitTaskWork(dir, title string, wrote []string, sign gitSignature, bashBelt, ownedCopy bool) ([]string, string, landingRefusal) {
+	saved, _, why, err := commitTaskWorkAs(dir, "task: "+clip(firstLine(title), 72), wrote, sign, bashBelt, ownedCopy)
 	if err != nil {
 		return nil, firstLine(err.Error()), why
 	}
@@ -9218,7 +9465,7 @@ func commitTaskWork(dir, title string, wrote []string, sign gitSignature, bashBe
 // the edits, or — at a division — pin a world believing it held work that was
 // still on the floor. A caller that cannot act on the answer may still discard
 // it; a caller that can is now able to.
-func commitTaskWorkAs(dir, message string, wrote []string, sign gitSignature, bashBelt bool) ([]string, string, landingRefusal, error) {
+func commitTaskWorkAs(dir, message string, wrote []string, sign gitSignature, bashBelt, ownedCopy bool) ([]string, string, landingRefusal, error) {
 	if problem, why := stageTaskWork(dir, wrote, bashBelt); problem != "" {
 		return nil, "", why, errors.New(problem)
 	}
@@ -9234,10 +9481,16 @@ func commitTaskWorkAs(dir, message string, wrote []string, sign gitSignature, ba
 		// what it always held.
 		return nil, "", refusedNothing, nil
 	}
-	if !repositoryRefusesTrailers(dir) {
+	if !sign.off && !repositoryRefusesTrailers(dir) {
 		message = signed(message, sign)
 	}
-	if out, err := git(dir, append(codeafGitIdentity(),
+	// The run engine also uses this commit road in a person's own folder.
+	// Only a caller that owns the copy can suppress detached maintenance.
+	runGit := git
+	if ownedCopy {
+		runGit = privateGit
+	}
+	if out, err := runGit(dir, append(codeafGitIdentity(),
 		"commit", "--no-verify", "-m", message)...); err != nil {
 		// A COMMIT THAT WOULD NOT GO IS USUALLY ABOUT THE COMMIT — a signature it
 		// could not make, a ref it could not lock, a rule the repository holds —
@@ -9586,10 +9839,9 @@ func gitWith(dir string, environment []string, args ...string) (string, error) {
 	return gitContext(context.Background(), dir, environment, args...)
 }
 
-// gitContext is [gitWith] under a context, for a command somebody may have to
-// stop before git answers ([worktreeDirtIn]'s watch). The refusal of an empty
-// directory and the pinned environment live here, so there is one copy of
-// each; every other spelling of a git call in this package is a wrapper of it.
+// gitContext keeps cancellation, directory admission and the pinned environment
+// together. Bounded standard output is separate from diagnostics so warnings
+// cannot become object identities.
 func gitContext(ctx context.Context, dir string, environment []string, args ...string) (string, error) {
 	// A COMMAND WITH NO DIRECTORY RUNS WHEREVER THE PROCESS HAPPENS TO BE.
 	//
@@ -9609,7 +9861,7 @@ func gitContext(ctx context.Context, dir string, environment []string, args ...s
 	if strings.TrimSpace(dir) == "" {
 		return "", errors.New("git: no directory to run in")
 	}
-	command := exec.CommandContext(ctx, "git", args...)
+	command := exec.CommandContext(ctx, "git", append([]string{"--no-optional-locks"}, args...)...)
 	command.Dir = dir
 	// A pager or an editor in the middle of a merge would hang a node forever on
 	// a terminal it does not have.
@@ -9772,4 +10024,25 @@ func mergePaths(kept, added []string) []string {
 		kept = append(kept, path)
 	}
 	return kept
+}
+
+func ownershipTaskGround(where, workspace string) (string, error) {
+	if where == "" || strings.EqualFold(where, "in place") {
+		return workspace, nil
+	}
+	ground, err := resolveTaskWhere(where, workspace)
+	if err != nil {
+		return "", fmt.Errorf("task workspace: %w", err)
+	}
+	return ground, nil
+}
+
+func ensureOwnedMirrorGround(place Place, ground string) error {
+	if !WorkspaceOwnershipEnabled(place) {
+		return nil
+	}
+	if err := os.MkdirAll(ground, 0o755); err != nil {
+		return fmt.Errorf("task project: %w", err)
+	}
+	return nil
 }

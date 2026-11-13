@@ -102,10 +102,9 @@ type Fetcher interface {
 // one bad response becomes this process's memory problem.
 const maxSheetBytes = 1 << 20
 
-// sheetTTL is how old a cached sheet may be before [Beat] fetches at open. It
-// is the same five minutes the beat runs on, so a session that opens a minute
-// after the last one closed starts from that session's reading rather than
-// paying for the same aggregate twice.
+// sheetTTL is the refresh interval and the threshold for idle routing. A
+// startup or returning selection inside it reuses the cached reading rather
+// than paying for the same aggregate twice.
 const sheetTTL = 5 * time.Minute
 
 // ── HOW THIS BUILD LEARNS THAT A BASE HAS LANES ─────────────────────────────
@@ -512,6 +511,20 @@ func PrefsCarriedHere() bool {
 	own.mu.RLock()
 	defer own.mu.RUnlock()
 	return own.carries == prefUnasked || own.carries == prefCarries
+}
+
+// PrefsRefused reports whether base has given the terminal no: a refusal that
+// named the `provider` field. It only reads; [HeardPrefsRefused] files it. A
+// refusal stands, so routing through such a base is no reason to wake the beat.
+func PrefsRefused(base string) bool {
+	own, ok := Default().Sheet().(*sheet)
+	if !ok {
+		return false
+	}
+	base = trimBase(base)
+	own.mu.RLock()
+	defer own.mu.RUnlock()
+	return base != "" && own.base == base && own.carries == prefRefused
 }
 
 // HeardPrefsCarried, HeardPrefsSilent and HeardPrefsRefused are the three
@@ -950,8 +963,9 @@ var errSheetMoved = errors.New("lane: the sheet moved while it was being read")
 
 // ── THE BEAT ────────────────────────────────────────────────────────────────
 
-// Beat refreshes models' sheets every `every` until ctx is done, and primes the
-// ledger from every reading it gets.
+// Beat warms models' sheets at startup, then refreshes every `every` while
+// routing has occurred within that interval. Idle beats wait without a timer;
+// [Registry.RecordRouting] wakes them for a background catch-up when stale.
 //
 // IT STARTS NOTHING. Nothing in this package ever runs a goroutine of its own:
 // a session that wants a beat runs this in one it owns and can stop, which is
@@ -966,8 +980,8 @@ var errSheetMoved = errors.New("lane: the sheet moved while it was being read")
 // symptom but slowness. Priming here means a fresh sheet always reaches the
 // belief, in the one place a sheet is ever fresh.
 //
-// The first pass skips a model whose cached sheet is younger than the interval,
-// so opening a session a minute after closing one costs nothing — and it primes
+// The startup pass skips a model whose cached sheet is younger than the
+// interval, so reopening can use it without another fetch — and it primes
 // from that cached reading anyway, because a prior read off the disk is worth
 // exactly as much as one off the wire.
 func Beat(ctx context.Context, s Sheet, models []string, every time.Duration) {
@@ -1003,46 +1017,101 @@ func Beat(ctx context.Context, s Sheet, models []string, every time.Duration) {
 	fresh, canAge := s.(interface {
 		freshness(string, time.Time) (time.Duration, bool)
 	})
-	for _, model := range models {
-		if canAge {
-			if age, ok := fresh.freshness(model, time.Now()); ok && age < every {
-				primeFrom(s, model)
-				continue
+	r := Default()
+	// The idle threshold is the existing refresh interval.
+	routing := &routingBeat{every: every, catchup: make(chan struct{}, 1)}
+	unwatch := r.watchRouting(routing)
+	defer unwatch()
+	last := make(map[string]time.Time)
+	refresh := func(model string, staleOnly bool) bool {
+		if staleOnly {
+			if at, ok := last[model]; ok {
+				if time.Since(at) < every {
+					return false
+				}
+			} else if canAge {
+				if age, ok := fresh.freshness(model, time.Now()); ok && age < every {
+					last[model] = time.Now().Add(-age)
+					primeFrom(s, model)
+					return false
+				}
 			}
 		}
-		if ctx.Err() != nil {
-			return
-		}
 		refreshAndPrime(ctx, s, model)
+		last[model] = time.Now()
+		return true
 	}
-	ticker := time.NewTicker(every)
-	defer ticker.Stop()
+	round := func(staleOnly bool) bool {
+		refreshed := false
+		for _, model := range models {
+			if ctx.Err() != nil {
+				break
+			}
+			// A periodic round stops at idle; an admitted catch-up is retained.
+			if !staleOnly && time.Since(r.lastRouting()) >= every {
+				break
+			}
+			refreshed = refresh(model, staleOnly) || refreshed
+		}
+		return refreshed
+	}
+	// Startup still warms every model, even before the first selection.
+	round(true)
+	next := time.Now().Add(every)
+	catchUp := func() {
+		if round(true) || !time.Now().Before(next) {
+			next = time.Now().Add(every)
+		}
+	}
+	timer := time.NewTimer(every)
+	timer.Stop()
+	defer timer.Stop()
 	for {
+		routed := r.lastRouting()
+		now := time.Now()
+		var tick <-chan time.Time
+		if !routed.IsZero() && now.Sub(routed) < every {
+			// The idle deadline can precede the next periodic reading.
+			due := next
+			if idleAt := routed.Add(every); idleAt.Before(due) {
+				due = idleAt
+			}
+			timer.Reset(time.Until(due))
+			tick = timer.C
+		} else {
+			timer.Stop()
+		}
 		select {
 		case <-ctx.Done():
 			return
+		case <-routing.catchup:
+			if routing.owed.Swap(false) {
+				catchUp()
+			}
 		case model := <-queue:
-			// A MODEL THAT ARRIVES HERE JOINS THE ROUND AND IS FETCHED AT ONCE.
-			// Both halves are the point: at once, because somebody is about to
-			// send to it, and joined, because the next half hour of its sheet is
-			// worth as much as the first minute. A nil queue is a channel that
-			// never fires, which is what a bench's own sheet gets.
-			//
-			// A MODEL THIS ROUND ALREADY HOLDS IS NOT FETCHED AGAIN. It arrives
-			// here from a door that joined this beat rather than running one, and
-			// the sheet it would fetch is the one this beat read a moment ago.
+			// New models are fetched at once, even while routing is idle.
 			joined := withModel(models, model)
-			if len(joined) == len(models) {
+			if len(joined) != len(models) {
+				models = joined
+				refresh(model, false)
+			}
+		case <-tick:
+			started := time.Now()
+			routed := r.lastRouting()
+			// Activity is read first: its publication follows the owed flag.
+			// Catch-up takes priority even before its wake is posted.
+			if routing.owed.Swap(false) {
+				catchUp()
 				continue
 			}
-			models = joined
-			refreshAndPrime(ctx, s, model)
-		case <-ticker.C:
-			for _, model := range models {
-				if ctx.Err() != nil {
-					return
-				}
-				refreshAndPrime(ctx, s, model)
+			if started.Sub(routed) >= every || started.Before(next) {
+				continue
+			}
+			round(false)
+			next = next.Add(every)
+			// Keep one missed tick, as the original ticker did.
+			if !started.Before(next) {
+				next = next.Add((started.Sub(next)/every + 1) * every)
 			}
 		}
 	}

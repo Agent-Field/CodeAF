@@ -24,6 +24,8 @@ const FailurePrefix = "Unresolved verification command failed:"
 // observer could not be fitted. A model's later success claim cannot erase it.
 const SetupFailurePrefix = "Could not record verification:"
 
+var checkContextNames = [...]string{"GOOS", "GOARCH", "GOFLAGS", "CGO_ENABLED", "GOWORK", "GORACE", "NODE_ENV", "PYTEST_ADDOPTS"}
+
 const originalCommandPrefix = "# codeaf-check-original:"
 const observerShellGuard = `if [ -n "${BASH_VERSION-}" ]; then`
 
@@ -42,6 +44,9 @@ type Check struct {
 	CallID             string     `json:"call_id,omitempty"`
 	Source             string     `json:"source,omitempty"`
 	OwnerRoot          string     `json:"owner_root,omitempty"`
+	GitRoot            string     `json:"git_root,omitempty"`
+	GitCommonDir       string     `json:"git_common_dir,omitempty"`
+	CleanDetachedBase  bool       `json:"clean_detached_base,omitempty"`
 	Diagnostic         bool       `json:"diagnostic,omitempty"`
 	DiagnosticReason   string     `json:"diagnostic_reason,omitempty"`
 	Problem            string     `json:"problem,omitempty"`
@@ -96,10 +101,10 @@ func (c Check) Key() string {
 	if len(c.Args) == 0 {
 		return "incomplete:" + c.Source + ":" + c.ID
 	}
-	args := c.Args
+	args := portableCheckArgs(c.Args)
 	if len(args) > 1 && args[0] == "go" && args[1] == "test" {
 		args = make([]string, 0, len(c.Args))
-		for i, arg := range c.Args {
+		for i, arg := range portableCheckArgs(c.Args) {
 			if arg == "-args" {
 				args = append(args, c.Args[i:]...)
 				break
@@ -121,15 +126,15 @@ func (c Check) Key() string {
 func (c Check) Label() string {
 	if len(c.Args) == 0 {
 		if c.Command != "" {
-			return c.Command
+			return OwedCommand(c.Command)
 		}
 		return "incomplete recorded check"
 	}
 	parts := make([]string, len(c.Args))
-	for i, arg := range c.Args {
+	for i, arg := range portableCheckArgs(c.Args) {
 		parts[i] = quote(arg)
 	}
-	return strings.Join(parts, " ") + " (in " + c.Cwd + ")"
+	return strings.Join(parts, " ") + " (in " + c.Cwd + ")" + missingCheckPath(portableCheckArgs(c.Args))
 }
 
 func quote(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'" }
@@ -142,6 +147,13 @@ func quote(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\\''") +
 func Prepare(transcript, command string) (string, error) {
 	return PrepareIn(transcript, "", command)
 }
+
+// ReceiptRoot is the folder a step's check receipts are written in, beside
+// its transcript. THE FENCE AROUND A STEP MUST LET IT WRITE HERE
+// ([executor.FenceOptions.Receipts]): the wrapped check makes its receipt
+// from inside the fenced shell, and the transcript lives in codeaf's home,
+// outside the job's checkout.
+func ReceiptRoot(transcript string) string { return transcript + ".checks" }
 
 // PrepareIn assigns an explicit canonical worktree boundary to this tool call.
 // Descendant fixtures may still emit diagnostics, but cannot create obligations
@@ -158,7 +170,7 @@ func PrepareCallIn(transcript, ownerDir, command, callID string) (string, error)
 	if transcript == "" {
 		return command, nil
 	}
-	root := transcript + ".checks"
+	root := ReceiptRoot(transcript)
 	if err := os.MkdirAll(root, 0700); err != nil {
 		return "", err
 	}
@@ -190,9 +202,20 @@ func PrepareCallIn(transcript, ownerDir, command, callID string) (string, error)
 	// settings distinguish checks that happen to have identical argv.
 	// The Unix shell resolver also permits sh without Bash. That shell keeps
 	// its original execution path and journal evidence; export -f is Bash-only.
+	var contextFields []string
+	for _, name := range checkContextNames {
+		contextFields = append(contextFields, `"${`+name+`-}"`)
+	}
 	prefix := observerShellGuard + "\n" + shell.CargoPathSetup() + worktreeStateFunction + `
+_codeaf_clean_detached_base() {
+ local _codeaf_ignored
+ command git -C "$_codeaf_root" symbolic-ref --quiet HEAD >/dev/null 2>&1
+ [ "$?" = 1 ] || return 1
+ _codeaf_ignored=$(command git -C "$_codeaf_root" ls-files --others --ignored --exclude-standard --directory 2>/dev/null) || return 1
+ [ -z "$_codeaf_ignored" ]
+}
 _codeaf_check() {
- local _codeaf_file _codeaf_status _codeaf_cwd _codeaf_root _codeaf_scope
+ local _codeaf_file _codeaf_status _codeaf_cwd _codeaf_root _codeaf_scope _codeaf_base_clean=no
  _codeaf_file=$(command mktemp ` + quote(shell.ListPath(filepath.Join(dir, "check-XXXXXX"))) + `) || return 125
  _codeaf_cwd=$(pwd -P) || return 125
  _codeaf_scope=owned
@@ -202,15 +225,32 @@ _codeaf_check() {
   if [ -n "$_codeaf_root" ]; then
    _codeaf_root=$(cd "$_codeaf_root" && pwd -P) || return 125
    if [ "$_codeaf_root" != ` + quote(owner) + ` ]; then _codeaf_scope=diagnostic; fi
+   if [ "$1:${2-}" = go:test ]; then
+    case " $* " in
+     *' -json '*|*' -json=true '*)
+      local _codeaf_common
+      _codeaf_common=$(command git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || _codeaf_common=
+      if [ -n "$_codeaf_common" ]; then
+       _codeaf_common=$(cd "$_codeaf_common" && pwd -P) || _codeaf_common=
+       printf '%s\0' "$_codeaf_root" "$_codeaf_common" > "$_codeaf_file.worktree.tmp" &&
+        ` + atomicMoveCommand() + ` "$_codeaf_file.worktree.tmp" "$_codeaf_file.worktree" || :
+       if [ "$_codeaf_scope" = diagnostic ] && _codeaf_clean_detached_base; then _codeaf_base_clean=yes; fi
+      fi;;
+    esac
+   fi
   fi
  fi
  printf '%s\n' "$_codeaf_scope" > "$_codeaf_file.scope.tmp" && ` + atomicMoveCommand() + ` "$_codeaf_file.scope.tmp" "$_codeaf_file.scope" || return 125
- printf '%s\0' "$_codeaf_cwd" "${GOOS-}" "${GOARCH-}" "${GOFLAGS-}" "${CGO_ENABLED-}" "${GOWORK-}" "${GORACE-}" "${NODE_ENV-}" "${PYTEST_ADDOPTS-}" "$@" > "$_codeaf_file.tmp" && ` + atomicMoveCommand() + ` "$_codeaf_file.tmp" "$_codeaf_file" || return 125
+ printf '%s\0' "$_codeaf_cwd" ` + strings.Join(contextFields, " ") + ` "$@" > "$_codeaf_file.tmp" && ` + atomicMoveCommand() + ` "$_codeaf_file.tmp" "$_codeaf_file" || return 125
  if ! _codeaf_worktree_state > "$_codeaf_file.before.tmp"; then : > "$_codeaf_file.before.tmp"; fi
  ` + atomicMoveCommand() + ` "$_codeaf_file.before.tmp" "$_codeaf_file.before" || return 125
  if ( export -nf ` + observerNames() + `; command "$@" ); then _codeaf_status=0; else _codeaf_status=$?; fi
  if ! _codeaf_worktree_state > "$_codeaf_file.after.tmp"; then : > "$_codeaf_file.after.tmp"; fi
  ` + atomicMoveCommand() + ` "$_codeaf_file.after.tmp" "$_codeaf_file.after" || return 125
+ if [ "$_codeaf_base_clean" = yes ] && _codeaf_clean_detached_base; then
+  printf 'clean\n' > "$_codeaf_file.base-clean.tmp" &&
+   ` + atomicMoveCommand() + ` "$_codeaf_file.base-clean.tmp" "$_codeaf_file.base-clean" || :
+ fi
  printf '%s\n' "$_codeaf_status" > "$_codeaf_file.exit.tmp" && ` + atomicMoveCommand() + ` "$_codeaf_file.exit.tmp" "$_codeaf_file.exit" || return 125
  return "$_codeaf_status"
 }
@@ -327,7 +367,7 @@ func Read(transcript string) ([]Check, error) {
 				c.Problem = err.Error()
 			} else {
 				fields := strings.Split(string(raw), "\x00")
-				if len(fields) < 11 || fields[len(fields)-1] != "" {
+				if len(fields) < len(checkContextNames)+3 || fields[len(fields)-1] != "" {
 					// Legacy writers can expose a partial argument file. It is a running
 					// record until a terminal commit makes malformed metadata an error.
 					if terminal {
@@ -335,8 +375,8 @@ func Read(transcript string) ([]Check, error) {
 					}
 				} else {
 					c.Cwd = fields[0]
-					c.Context = fields[1:9]
-					c.Args = fields[9 : len(fields)-1]
+					c.Context = fields[1 : 1+len(checkContextNames)]
+					c.Args = fields[1+len(checkContextNames) : len(fields)-1]
 				}
 			}
 			if c.OwnerRoot != "" {
@@ -354,6 +394,17 @@ func Read(transcript string) ([]Check, error) {
 				} else if terminal {
 					c.Problem = "owned check scope unavailable"
 				}
+			}
+			// Worktree metadata is optional for ordinary checks and mandatory for
+			// baseline matching. Legacy receipts still prove their original exits.
+			if raw, err := os.ReadFile(path + ".worktree"); err == nil {
+				parts := strings.Split(string(raw), "\x00")
+				if len(parts) == 3 && parts[2] == "" && filepath.IsAbs(parts[0]) && filepath.IsAbs(parts[1]) {
+					c.GitRoot, c.GitCommonDir = filepath.Clean(parts[0]), filepath.Clean(parts[1])
+				}
+			}
+			if raw, err := os.ReadFile(path + ".base-clean"); err == nil {
+				c.CleanDetachedBase = string(raw) == "clean\n"
 			}
 			c.Before, err = readSnapshot(path + ".before")
 			if err != nil && terminal {

@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -40,11 +41,9 @@ import (
 // is drawn in the harness's lane and every gate a wake passes (the spend rail,
 // the wall, a closed or stopped session) still decides whether it may run.
 //
-// THE WATCH LIVES WITH THE CONVERSATION, ON THE ENGINE. Every conversation is
-// an [Agent] in the process that holds its journal (the workspace's session
-// host, locally and over --host alike), and the Traffic log is the one channel
-// between conversations (team.go), so each conversation watches the log for
-// itself. It costs, per tick of [teamWatchEvery]:
+// The process shares one watch across its open conversations. Each keeps its
+// own traffic cursors, but a conversation with no team is checked only when
+// the shared teams stamp changes. It costs, per tick of [teamWatchEvery]:
 //
 //   - while a turn runs, one stat of each managed member team's log, and a
 //     read only when it moves, so a manager's stop can reach a headless member;
@@ -174,17 +173,7 @@ func (a *Agent) watchTeamTraffic(profile string) {
 	if a.config.teamWatchManual {
 		return
 	}
-	guard.Go("team traffic wake", func() { a.teamWatchLoop(profile) })
-}
-
-func (a *Agent) teamWatchLoop(profile string) {
-	ticker := time.NewTicker(teamWatchInterval())
-	defer ticker.Stop()
-	for range ticker.C {
-		if !a.teamWatchTick(profile, time.Now()) {
-			return
-		}
-	}
+	teamTraffic.add(a, profile)
 }
 
 // teamWatchTick is one look, and false once the session has closed.
@@ -225,7 +214,9 @@ func (a *Agent) teamWatchTick(profile string, now time.Time) bool {
 				teamFinishedAfterReply(profile, role.id, entry) {
 				continue
 			}
-			if teamWakes(role, entry) || teamPacketWakes(profile, role, entry) {
+			// Membership can arrive after the fresh-session watch expires.
+			// Its own start still owes this member its first turn.
+			if a.teamOwnStart(role, entry) || teamWakes(role, entry) || teamPacketWakes(profile, role, entry) {
 				waking = append(waking, entry)
 			}
 		}
@@ -578,6 +569,12 @@ func (a *Agent) teamWakeManager(profile string, roles []teamRole, batch map[stri
 // reports whether a turn was started (or one was already running, which takes
 // the note at its next boundary), and why not when neither.
 func (a *Agent) teamWakeWith(text string) (bool, string) {
+	if why := a.automaticFactoryRefusal(); why != "" {
+		return false, why
+	}
+	if err := a.CheckWork(); err != nil {
+		return false, err.Error()
+	}
 	note := userMessage{message: textMessage("user", strings.TrimSpace(text)), wake: true, authored: true}
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -793,7 +790,8 @@ type memoStamp struct {
 	taken time.Time
 }
 
-// sharedTeamsStamp is the teams file's stamp, at most [teamWatchEvery] old.
+// sharedTeamsStamp is the teams store's stamp ([teamsStampOf]), at most
+// [teamWatchEvery] old.
 func sharedTeamsStamp(profile string) fileStamp {
 	path := teams.Path(profile)
 	teamsStampMemo.mu.Lock()
@@ -804,7 +802,7 @@ func sharedTeamsStamp(profile string) fileStamp {
 	if held, ok := teamsStampMemo.at[path]; ok && time.Since(held.taken) < teamWatchInterval() {
 		return held.stamp
 	}
-	stamp := stampOf(path)
+	stamp := teamsStampOf(profile)
 	teamsStampMemo.at[path] = memoStamp{stamp: stamp, taken: time.Now()}
 	return stamp
 }
@@ -838,9 +836,15 @@ func SetTeamResume(open func(file, workspace string) error) {
 // closed over by the goroutine below: the note it may write when the wake fails
 // is stamped with THAT turn, not with whichever turn this conversation is in
 // when the wake gives up. A wake nothing caused (a watch tick) passes none.
-func (a *Agent) teamRouse(profile string, team teams.Team, wakes bool, targets []teams.Member, answers string, prov teams.Provenance) {
+//
+// A target on another computer cannot be woken from here: that refusal is
+// returned, and nothing is opened.
+func (a *Agent) teamRouse(profile string, team teams.Team, wakes bool, targets []teams.Member, answers string, prov teams.Provenance) string {
+	if refusal := a.teamDeliveryRefusal(context.Background(), targets); refusal != "" {
+		return refusal
+	}
 	if profile == "" || !wakes || len(targets) == 0 {
-		return
+		return ""
 	}
 	a.team.mu.Lock()
 	self := append([]string(nil), a.teamKeysLocked()...)
@@ -853,7 +857,7 @@ func (a *Agent) teamRouse(profile string, team teams.Team, wakes bool, targets [
 		absent = append(absent, member)
 	}
 	if len(absent) == 0 {
-		return
+		return ""
 	}
 	guard.Go("team rouse", func() {
 		for _, member := range absent {
@@ -873,6 +877,7 @@ func (a *Agent) teamRouse(profile string, team teams.Team, wakes bool, targets [
 			}
 		}
 	})
+	return ""
 }
 
 // rouseMember opens one conversation when nothing holds it, and says why not

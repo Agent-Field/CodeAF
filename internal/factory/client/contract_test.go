@@ -12,6 +12,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/factorytest"
+	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
 type contractVerb struct {
@@ -232,8 +233,12 @@ func TestContractCoversEverySeamVerb(t *testing.T) {
 			// Take and release are owned by the lease desk and have no Seam
 			// equivalent; the serve tests cover them against the real store.
 			// Merge is the factory's gate and the lease's signal, covered the
-			// same way (internal/factory/serve/merge_test.go).
-			if !strings.Contains(" take release retry_publish merge model start_now run_again restore dismiss assign_to_me change_assignee unassign nudge priority raise_budget undo ", " "+verb.Name+" ") {
+			// same way (internal/factory/serve/merge_test.go). Close and reopen
+			// keep a job's work locally and are the floor's own
+			// (internal/factory/serve/close_test.go).
+			// Publish anyway is covered by the authenticated app action and runner post
+			// contracts (cmd/codeaf/appfactory_publish_anyway_test.go).
+			if !strings.Contains(" take release retry_publish publish_anyway merge model start_now run_again run-as-new pr-ready stop-after-step spend_answer restore dismiss assign_to_me change_assignee unassign nudge priority raise_budget undo close reopen ", " "+verb.Name+" ") {
 				t.Errorf("new server-owned verb %q needs a contract", verb.Name)
 			}
 			continue
@@ -242,4 +247,36 @@ func TestContractCoversEverySeamVerb(t *testing.T) {
 			t.Errorf("%s has no direct/client contract case", verb.Name)
 		}
 	}
+}
+
+// Terminal New stays a sentence even when it contains a blank line.
+func TestSeparateJobTitleIsLiteral(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	remote := factorytest.ServeInProcess(t, factory.LocalSeam(st, floorNow))
+	id, err := remote.New("owner/repo", "Fix tests\n\nauto $5")
+	if err != nil {
+		t.Fatal(err)
+	}
+	snap, err := remote.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, it := range snap.Items {
+		if it.ID != id {
+			continue
+		}
+		if it.Title != "Fix tests" || it.Cap != 5 {
+			t.Fatalf("terminal job = %q cap %v", it.Title, it.Cap)
+		}
+		for _, step := range it.Stages {
+			if factory.IsApprove(step) {
+				t.Fatal("terminal auto chip did not remove approvals")
+			}
+		}
+		return
+	}
+	t.Fatal("new terminal job absent from floor")
 }

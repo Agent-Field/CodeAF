@@ -1,7 +1,7 @@
 ---
 kind: internal
 title: Reuse unchanged engine plan and task-index reads and expire idle journal records
-pr: 1933
+pr: 1936
 surface: [engine, docs]
 invalidates:
   - Unchanged plan reads previously reloaded the whole plan; matching database stamps now reuse it while committed writes still refresh the next read.

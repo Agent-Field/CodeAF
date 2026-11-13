@@ -622,6 +622,11 @@ type Answer struct {
 	// the person taking the work over rather than by an answer to it. It is
 	// meaningful on [QuestionSubharnessAsk] alone.
 	TakingOver bool `json:"takingOver,omitempty"`
+	// Kept is where a credential typed into a secret question went instead of
+	// into this answer (secret_request.go). It carries the file and when it
+	// stops being readable, never one byte of what was typed, so it may travel
+	// wherever an answer travels.
+	Kept *KeptSecret `json:"kept,omitempty"`
 	// Revises says this is a NEW ANSWER TO A QUESTION ALREADY SETTLED — the
 	// person changing their mind from the receipt — rather than a second click
 	// on a question somebody else has already answered.

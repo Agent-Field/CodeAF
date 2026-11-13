@@ -1,8 +1,10 @@
 // One identity's namespace: its directory, its frames, its quota, and the relay's own count of
 // what the identity asked of it. Route handlers talk to this and to nothing beneath it.
+import { LegacySource } from './raft/legacy.js';
 import { Directory } from './directory.js';
 import { Quota } from './limits.js';
 import { Meta } from './meta.js';
+import { StorageAccess } from './storage.js';
 import { Stats } from './stats.js';
 import { encode } from './frame.js';
 import { rotateBy, rotationView } from './rotation.js';
@@ -12,7 +14,7 @@ import { Wire } from './wire.js';
 
 // How long Has waits for the puts in flight before it fails: a stuck put must not hang Has,
 // and must not make it lie (a "no" would make the client send a frame that is about to land).
-const HAS_WAIT_MS = 30_000;
+export const HAS_WAIT_MS = 30_000;
 
 // The cell key id of the frame that answers a batch get: the answer belongs to no cell, so all zeros.
 const MANY_KEY_ID = '0'.repeat(32);
@@ -22,8 +24,9 @@ const MANY_KEY_ID = '0'.repeat(32);
 const servedOf = (range, size) => (range ? Math.min(range.length ?? Infinity, size - range.offset) : size);
 
 export class Tenant {
-  constructor({ identity, sql, bucket, clock, policy, limits, flight, arm, watchers, reserve = async () => {} }) {
+  constructor({ identity, legacyAdmission, sql, bucket, clock, policy, limits, flight, arm, watchers, reserve = async () => {} }) {
     this.identity = identity;
+    this.legacyAdmission = legacyAdmission;
     this.reserve = reserve;
     this.clock = clock;
     this.limits = limits;
@@ -32,16 +35,22 @@ export class Tenant {
     this.watchers = watchers;
     this.dir = new Directory(sql, identity, clock, policy, watchers);
     this.quota = new Quota(sql, limits);
-    this.store = new R2Store(bucket, sql, identity);
     this.meta = new Meta(sql);
+    this.storage = new StorageAccess(this.meta, limits);
+    this.store = new R2Store(bucket, sql, identity, () => this.storage.assert());
     this.stats = new Stats(this.meta, () => arm(clock() + limits.statsFlushMs));
   }
+
+  // The host serializes this handoff with full request handlers, including
+  // pairing delivery awaits, before invoking any source migration stage.
+  migration(storage, runtime) { return new LegacySource(storage, this.dir, runtime, this.legacyAdmission); }
 
   /**
    * putFrame validates the frame, stores it unless it is over quota, and counts it once. A frame
    * the store already holds costs the identity nothing, so a client that resends is never refused for it.
    */
   async putFrame(bytes) {
+    this.storage.assert();
     this.stats.add({ puts: 1, bytes_in: bytes.length });
     const frame = await sealFrame(bytes);
     const cost = { size: frame.size, objects: frame.objects.length };
@@ -104,10 +113,11 @@ export class Tenant {
   }
 
   /** watch opens a socket for `device` that is told the directory's version now and on every visible change, and that vouches for the leases it names in `holds`. `beat` is the period it declared its pings at (contract 21.12.3). */
-  watch(device, { holds, beat, events = false }) {
+  watch(device, { holds, beat, events = false, receipts = false }) {
+    this.dir.assertLegacy();
     const now = this.clock();
     this.dir.seen(device, now);
-    return this.watchers.accept(device, this.dir.version, now, { holds, beat, events });
+    return this.watchers.accept(device, this.dir.version, now, { holds, beat, events, receipts });
   }
 
   /** join stores the device a paired device approved, and tells the identity's other sockets it joined. */
@@ -150,3 +160,9 @@ export class Tenant {
     return this.dir.rotation()?.retire_at;
   }
 }
+
+// This facade is assembled only for a Raft-owned namespace after migration.
+// Keeping it separate prevents constructing or invoking the legacy SQL writer
+// on the authoritative application path.
+export { RaftDirectoryFacade } from './raft/directory.js';
+export { RaftEffectsFacade, RaftBlobTenant } from './raft/effects.js';

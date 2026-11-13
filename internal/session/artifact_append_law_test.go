@@ -5,6 +5,7 @@ import (
 	"go/parser"
 	"go/token"
 	"path/filepath"
+	"slices"
 	"testing"
 )
 
@@ -27,17 +28,20 @@ func TestArtifactIndexHasOneAppendFunnel(t *testing.T) {
 }
 
 func artifactAppendViolations(path string, file *ast.File) (funnels int, violations []token.Pos) {
-	otherStores := map[string]string{
-		"answers.go":      "deliverAnswer",
-		"groundladder.go": "hideFurrowMarker",
-		"memory.go":       "appendMemoryFailureLog",
-		"memoryledger.go": "appendMemoryRow",
-		"plandb_plan.go":  "TaskGraph.planNote",
-		"question.go":     "Agent.recordDecision",
-		"renderlog.go":    "renderLedger.append",
-		"sessionfile.go":  "openSessionFile",
-		"task_index.go":   "appendTaskIndex",
-		"usage_ledger.go": "openUsageLedger",
+	otherStores := map[string][]string{
+		"answers.go":      {"deliverAnswer"},
+		"groundladder.go": {"hideFurrowMarker"},
+		"memory.go":       {"appendMemoryFailureLog"},
+		"memoryledger.go": {"appendMemoryRow"},
+		"plandb_plan.go":  {"TaskGraph.planNote"},
+		"question.go":     {"Agent.recordDecision"},
+		"renderlog.go":    {"renderLedger.append"},
+		"sessionfile.go":  {"openSessionFile", "sessionFile.appendLine"},
+		"task_index.go":   {"appendTaskIndex"},
+		// A remote task's mirrored money and step events are their own ledgers.
+		"task_remote_money.go":  {"appendRemoteUsage"},
+		"task_remote_record.go": {"remoteStepMirror.append"},
+		"usage_ledger.go":       {"openUsageLedger"},
 	}
 	ast.Inspect(file, func(node ast.Node) bool {
 		flag, ok := node.(*ast.Ident)
@@ -47,7 +51,7 @@ func artifactAppendViolations(path string, file *ast.File) (funnels int, violati
 		owner := enclosingFunction(file, flag.Pos())
 		if path == "artifact_append.go" && owner == "appendArtifactIndex" {
 			funnels++
-		} else if owner == "" || otherStores[path] != owner {
+		} else if owner == "" || !slices.Contains(otherStores[path], owner) {
 			violations = append(violations, flag.Pos())
 		}
 		return true

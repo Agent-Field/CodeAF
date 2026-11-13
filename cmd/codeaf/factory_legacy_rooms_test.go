@@ -13,6 +13,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
+	"github.com/Agent-Field/codeaf/internal/teams/teamstest"
 )
 
 type legacyRig struct {
@@ -106,8 +107,7 @@ func (r *legacyRig) teams() map[string]teamstore.Team {
 
 func (r *legacyRig) teamsBytes() []byte {
 	r.t.Helper()
-	raw, _ := os.ReadFile(teamstore.Path(r.profile))
-	return raw
+	return teamstest.JSON(r.t, r.profile)
 }
 
 func (r *legacyRig) reconcile() { factoryStampStore(r.profile, r.st) }

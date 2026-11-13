@@ -3,13 +3,151 @@ package cellstore
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/executor"
 )
+
+func TestSealWatchChangesSignalQueuedSentences(t *testing.T) {
+	var w SealWatch
+	changes := w.Changes()
+	if changes == nil || changes != w.Changes() || w.Owed() {
+		t.Fatal("zero-value watch must have one stable wake channel and owe nothing")
+	}
+	for _, step := range []struct {
+		speak   func()
+		failing bool
+	}{
+		{func() { w.Note("file kept out") }, false},
+		{func() { w.Report(errors.New("disk full")) }, true},
+		{func() { w.Report(nil) }, false},
+	} {
+		step.speak()
+		select {
+		case <-changes:
+		default:
+			t.Fatal("queued sentence did not signal")
+		}
+		if !w.Owed() || w.Take() == "" {
+			t.Fatal("a queued sentence must be owed until it is taken")
+		}
+		if w.Owed() != step.failing {
+			t.Fatalf("after the sentence was taken, owed=%v; want %v (only a failure stays owed)", w.Owed(), step.failing)
+		}
+	}
+}
+
+func TestSealWatchChangesCoalesceABurstBeforeSubscription(t *testing.T) {
+	var w SealWatch
+	for range 10 {
+		w.Note("file kept out")
+	}
+	changes := w.Changes()
+	select {
+	case <-changes:
+	default:
+		t.Fatal("news queued before subscription lost its wake")
+	}
+	select {
+	case <-changes:
+		t.Fatal("a burst must leave only one pending wake")
+	default:
+	}
+	for range 10 {
+		if !w.Owed() || w.Take() != "file kept out" {
+			t.Fatal("coalescing wakes lost a sentence")
+		}
+	}
+	if w.Owed() || w.Take() != "" {
+		t.Fatal("drained watch still has a sentence")
+	}
+}
+
+func TestSealWatchChangesDoNotSignalSay(t *testing.T) {
+	var said []string
+	w := SealWatch{Say: func(line string) { said = append(said, line) }}
+	changes := w.Changes()
+	w.Note("file kept out")
+	w.Report(errors.New("disk full"))
+	w.Report(nil)
+	if len(said) != 3 || w.Take() != "" {
+		t.Fatalf("Say must receive sentences without queueing them: %q", said)
+	}
+	select {
+	case <-changes:
+		t.Fatal("a sentence handed to Say woke a queue reader")
+	default:
+	}
+}
+
+func TestSealWatchOwedDoesNotDiscoverRecovery(t *testing.T) {
+	c := newCell(t)
+	if err := os.WriteFile(rel(c, ".cell/transcript.jsonl"), []byte("reply\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var w SealWatch
+	w.TrackTurn(c.Root)
+	w.Report(errors.New("disk full"))
+	w.Take()
+	if _, err := (&fakeEngine{}).engine(t).Seal(t.Context(), c, TurnInfo{}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-w.Changes():
+	default:
+	}
+	if !w.Owed() {
+		t.Fatal("a failing watch is owed a look")
+	}
+	select {
+	case <-w.Changes():
+		t.Fatal("Owed discovered the recovery and queued it")
+	default:
+	}
+	if w.Failing() || !w.Owed() || !strings.Contains(w.Take(), "sealing works again") || w.Owed() {
+		t.Fatal("Failing must still discover recovery after Owed left it alone")
+	}
+}
+
+func TestSealWatchConcurrentNews(t *testing.T) {
+	var w SealWatch
+	var workers sync.WaitGroup
+	workers.Add(2)
+	go func() {
+		defer workers.Done()
+		for range 1000 {
+			w.Note("file kept out")
+		}
+	}()
+	go func() {
+		defer workers.Done()
+		for range 1000 {
+			w.Owed()
+			select {
+			case <-w.Changes():
+			default:
+			}
+		}
+	}()
+	taken := 0
+	for range 1000 {
+		if w.Take() != "" {
+			taken++
+		}
+	}
+	workers.Wait()
+	for w.Take() != "" {
+		taken++
+	}
+	if taken != 1000 || w.Owed() {
+		t.Fatalf("concurrent reader received %d sentences, want 1000 and none pending", taken)
+	}
+}
 
 func TestSealWatchFailureIsVisibleAndSaidOnce(t *testing.T) {
 	var w SealWatch
@@ -166,5 +304,118 @@ func TestWithNoticesSendsTheGuardsLineToTheSurface(t *testing.T) {
 	e.Guard.notify("one line")
 	if len(said) != 1 || said[0] != "one line" {
 		t.Fatalf("guard notice went elsewhere: %q", said)
+	}
+}
+
+func TestWaitingArmsOnlyTheInitialIdleChat(t *testing.T) {
+	tails := make(chan struct{}, 2)
+	ends := 0
+	watch := &SealWatch{Quiet: 10 * time.Millisecond, OnTail: func() { tails <- struct{}{} }, OnTurnEnd: func() { ends++ }}
+	watch.Waiting()
+	if ends != 0 {
+		t.Fatal("initial waiting pretended a foreground turn ended")
+	}
+	watch.Wrote()
+	select {
+	case <-tails:
+	case <-time.After(time.Second):
+		t.Fatal("initial idle write was not sealed")
+	}
+	watch.TurnStarted()
+	watch.Waiting() // Startup notification cannot rearm a running foreground turn.
+	watch.Wrote()
+	select {
+	case <-tails:
+		t.Fatal("waiting rearmed an active turn")
+	case <-time.After(50 * time.Millisecond):
+	}
+	watch.TurnEnded()
+	if ends != 1 {
+		t.Fatal("actual turn end was lost")
+	}
+}
+
+// Contract A3 keeps an unrelated seal from announcing recovery of this chat.
+func TestSealWatchWaitsForItsOwnTurnAndPublish(t *testing.T) {
+	c := newCell(t)
+	transcript := rel(c, ".cell/transcript.jsonl")
+	if err := os.WriteFile(transcript, []byte("the unsaved reply\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	engine := (&fakeEngine{}).engine(t)
+	engine.Identity = Identity{Device: "this-computer", Fence: 1}
+	var watch SealWatch
+	watch.TrackTurn(c.Root)
+	watch.Report(errors.New("turn seal failed"))
+	watch.Take()
+	other := newCell(t)
+	if _, err := engine.Seal(t.Context(), other, TurnInfo{}); err != nil {
+		t.Fatal(err)
+	}
+	watch.Report(nil)
+	if !watch.Failing() || watch.Take() != "" {
+		t.Fatal("unrelated successful seal claimed recovery")
+	}
+	saved, err := engine.Seal(t.Context(), c, TurnInfo{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	watch.Report(nil)
+	if !watch.Failing() || watch.Take() != "" {
+		t.Fatal("unpublished turn claimed recovery")
+	}
+	if err := NotePublished(c, saved.Turn.ID); err != nil {
+		t.Fatal(err)
+	}
+	watch.Report(nil)
+	if watch.Failing() || !strings.Contains(watch.Take(), "sealing works again") || watch.Take() != "" {
+		t.Fatal("own saved and published turn did not say recovery once")
+	}
+	watch.Report(nil)
+	if watch.Take() != "" {
+		t.Fatal("recovery repeated")
+	}
+}
+
+// Contract A3 also waits for publication when startup sealed before its first fence.
+func TestSealWatchStartupTurnStillWaitsForPublish(t *testing.T) {
+	c := newCell(t)
+	if err := os.WriteFile(rel(c, ".cell/transcript.jsonl"), []byte("startup reply\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	release := RequirePublication(c)
+	defer release()
+	var watch SealWatch
+	watch.TrackTurn(c.Root)
+	watch.Report(errors.New("startup turn failed"))
+	watch.Take()
+	saved, err := (&fakeEngine{}).engine(t).Seal(t.Context(), c, TurnInfo{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	watch.Report(nil)
+	if !watch.Failing() || watch.Take() != "" {
+		t.Fatal("startup seal claimed recovery before publishing")
+	}
+	if err := NotePublished(c, saved.Turn.ID); err != nil {
+		t.Fatal(err)
+	}
+	if watch.Failing() || !strings.Contains(watch.Take(), "sealing works again") {
+		t.Fatal("published startup turn did not recover")
+	}
+}
+
+// A retired watch still seals what is written while the agent waits: retiring
+// ends the delivery of sentences, never the trailing seal a later write is owed.
+func TestARetiredSealWatchStillSealsALaterWrite(t *testing.T) {
+	sealed := make(chan struct{}, 1)
+	w := &SealWatch{Quiet: time.Millisecond, OnTail: func() { sealed <- struct{}{} }}
+	w.Waiting()
+	w.Retire()
+	w.Wrote()
+	select {
+	case <-sealed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("a write after retirement was never sealed")
 	}
 }

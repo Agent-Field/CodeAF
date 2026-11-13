@@ -51,7 +51,7 @@ func TestJudgeSweepStopsAndJoinsAtRealProcessClose(t *testing.T) {
 		close(release)
 		<-wrote
 		t.Fatal("Close returned while the judge sweep could still write")
-	case <-time.After(1 * time.Second):
+	case <-time.After(30 * time.Millisecond):
 	}
 	close(release)
 	<-wrote
@@ -123,7 +123,7 @@ func TestJudgeSweepCannotCrossHomesAndLaterProcessStartsItsOwn(t *testing.T) {
 			t.Fatalf("survivor wrote under %q, want second home", got)
 		}
 		t.Fatal("first Close returned while its sweep could write into the second home")
-	case <-time.After(1 * time.Second):
+	case <-time.After(30 * time.Millisecond):
 	}
 	close(firstRelease)
 	<-writes
@@ -148,7 +148,7 @@ func TestJudgeSweepCannotCrossHomesAndLaterProcessStartsItsOwn(t *testing.T) {
 		close(secondRelease)
 		<-writes
 		t.Fatal("second Close returned while its sweep could still write")
-	case <-time.After(1 * time.Second):
+	case <-time.After(30 * time.Millisecond):
 	}
 	close(secondRelease)
 	<-writes

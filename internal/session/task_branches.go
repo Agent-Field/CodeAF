@@ -224,7 +224,7 @@ func readAtMost(ctx context.Context, path string, max int64) ([]byte, error) {
 // one step not interrupted midway: it is bounded by taskBranchRecordsMax, and
 // the clock is asked before and after it.
 func ownedTaskBranches(ctx context.Context, place Place) ([]namedBranch, error) {
-	content, err := readAtMost(ctx, place.join(placeTasks), taskBranchRecordsMax)
+	content, err := readAtMost(ctx, place.Tasks(), taskBranchRecordsMax)
 	switch {
 	case os.IsNotExist(err):
 		return nil, nil
@@ -234,7 +234,7 @@ func ownedTaskBranches(ctx context.Context, place Place) ([]namedBranch, error) 
 		return nil, fmt.Errorf("%w: %v", ErrTaskBranchRecords, err)
 	}
 	var deleted map[string]bool
-	raw, err := readAtMost(ctx, place.join(taskDeletedFile), taskBranchTombstonesMax)
+	raw, err := readAtMost(ctx, place.truth(taskDeletedFile), taskBranchTombstonesMax)
 	switch {
 	case os.IsNotExist(err):
 	case errors.Is(err, ErrTaskBranchRecordsTooLarge), errors.Is(err, errTaskBranchTime):

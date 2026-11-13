@@ -40,7 +40,7 @@ func unseenReviews(pr *PullRequest, handled map[string]string) int {
 // Acknowledgement belongs to a completed repair, not admission to the queue.
 // Feedback arriving during execution remains unseen for the next observation.
 func AcknowledgeReview(it *Item) {
-	if it.FollowUp == nil {
+	if StoppedByPerson(*it) || it.FollowUp == nil {
 		return
 	}
 	f := it.FollowUp
@@ -59,7 +59,7 @@ func AcknowledgeReview(it *Item) {
 	}
 }
 func ReviewPauseRecoverable(it Item) bool {
-	if it.FollowUp == nil || it.Manual || !Automatic(it) || it.Publishing || it.DoneHow != "" || it.Stream == nil || it.Stream.Paused || it.Cap <= JobSpent(it) {
+	if it.FollowUp == nil || it.Manual || !Automatic(it) || it.Publishing || it.DoneHow != "" || it.Stream == nil || it.Stream.Paused || it.Cap <= JobLifetimeSpent(it) {
 		return false
 	}
 	if it.Failure != nil && it.Failure.Code == CodeStopped {
@@ -79,7 +79,7 @@ func ReviewPauseRecoverable(it Item) bool {
 // ReleaseVerificationPause grants one bounded recheck after a concrete guard
 // correction. It never accepts a repair or repeats publication by itself.
 func ReleaseVerificationPause(it *Item, now time.Time) {
-	if it.FollowUp == nil {
+	if it.FollowUp == nil || RecoveryPaused(*it) {
 		return
 	}
 	f := it.FollowUp

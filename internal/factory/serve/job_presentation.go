@@ -1,6 +1,7 @@
 package serve
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"time"
@@ -9,13 +10,50 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 )
 
+// hostGitHubToken is the host's token answer for one request. A queue presents
+// every job, and each presentation asks the same question; resolving it inside
+// that loop starts one gh process per stored item.
+type hostGitHubToken struct{ has bool }
+
+type hostGitHubTokenKey struct{}
+
+// rememberHostToken resolves the solo host token at most once and returns the
+// request that carries the answer. Later presentations of the same request
+// read it instead of asking again.
+func (h *Handler) rememberHostToken(r *http.Request) *http.Request {
+	if _, ok := r.Context().Value(hostGitHubTokenKey{}).(hostGitHubToken); ok {
+		return r
+	}
+	has := false
+	if h.mode() == api.FactorySolo && h.config.GitHubToken != nil {
+		session, _ := h.credential(r)
+		if session.githubToken == "" {
+			has = h.config.GitHubToken(r.Context()) != ""
+		}
+	}
+	return r.WithContext(context.WithValue(r.Context(), hostGitHubTokenKey{}, hostGitHubToken{has}))
+}
+
 // presentJob is the job as a READER sees it: the worker's view below with the
 // runner-local conversation paths withheld. Every queue, job and mutation
 // reply goes through here; only the worker pull skips the withholding.
 func (h *Handler) presentJob(r *http.Request, j *api.Job) {
 	h.presentWorkerJob(r, j)
+	if decisionPaused(j) {
+		var answered []api.Question
+		for _, question := range j.Questions {
+			if question.Answer != nil {
+				answered = append(answered, question)
+			}
+		}
+		j.Questions = answered
+	}
 	withholdChats(j)
 	withholdTalk(j)
+}
+
+func decisionPaused(j *api.Job) bool {
+	return j.State == api.StateNeedsYou && j.StatePresentation.Kind == "paused"
 }
 
 // withholdTalk drops the manager conversation's session FILE PATH from the
@@ -79,10 +117,16 @@ func stepNamesChat(s api.Step) bool {
 	return false
 }
 
+func (h *Handler) recoveryPauseAvailable() bool {
+	return h.config.ServedBy == "app" && h.mode() == api.FactorySolo && h.seam.Hold != nil &&
+		h.workers != nil && h.workers.desk != nil
+}
+
 // presentWorkerJob runs after solo permissions and presence have narrowed the
 // job. A button appears only when its engine door can handle the current facts.
 func (h *Handler) presentWorkerJob(r *http.Request, j *api.Job) {
 	api.PresentJob(j)
+	api.PlainStepNotes(j)
 	h.redactMachines(r, j)
 	active := j.State == api.StateRunning || j.State == api.StateQueued || j.State == api.StateNeedsYou
 	owner := j.Can.Stop || j.Can.Run || j.Can.RunAgain || j.Can.CancelJob
@@ -104,17 +148,27 @@ func (h *Handler) presentWorkerJob(r *http.Request, j *api.Job) {
 	publishing := j.Publishing != nil && (j.Publishing.State == "queued" || j.Publishing.State == "pushing")
 	mutable := j.State != api.StateDone && !publishing
 	j.Controls.StopStep = owner && active && stoppable && mutable && h.workers != nil && h.workers.desk != nil
-	j.Controls.RerunStep = owner && step && rerunnable && mutable && h.workers != nil && h.workers.desk != nil
-	j.Controls.EditSteps = owner && mutable && !j.Ready && h.seam.Edit != nil
+	j.Controls.RerunStep = owner && step && rerunnable && mutable && !decisionPaused(j) && h.workers != nil && h.workers.desk != nil
+	j.Controls.EditSteps = owner && mutable && !j.Ready && h.seam.Edit != nil && !decisionPaused(j)
 	j.Controls.ChangeAssignee = j.Can.ChangeAssignee && h.config.Store != nil
 	// The plan's target and the caller's right to answer are the job's own
 	// facts (api.CanFor); whether this factory takes the revision is its own.
-	j.Can.RejectPlan = j.Can.RejectPlan && h.servesPlanRevision()
+	// An AgentField run's Reject goes to its control plane through the app's
+	// own door (factory.AgentFieldPause), never through this plan revision.
+	afPause := j.NeedsYou != nil && j.NeedsYou.Question != nil && j.NeedsYou.Question.Kind == factory.QKindAgentField
+	j.Can.RejectPlan = j.Can.RejectPlan && (afPause || h.servesPlanRevision())
+	j.Can.SpendAnswer = j.Can.SpendAnswer && h.seam.SpendAnswer != nil
+	j.Can.Hold = j.Can.Hold && h.seam.Hold != nil && (j.State != api.StateNeedsYou || h.recoveryPauseAvailable())
+	j.Can.Resume = j.Can.Resume && h.seam.Hold != nil
 	local := j.Desk != nil && j.Desk.Origin != string(factory.OriginForge)
 	session, _ := h.credential(r)
 	hasToken := session.githubToken != ""
-	if !hasToken && h.mode() == api.FactorySolo && h.config.GitHubToken != nil {
-		hasToken = h.config.GitHubToken(r.Context()) != ""
+	if !hasToken {
+		if answer, ok := r.Context().Value(hostGitHubTokenKey{}).(hostGitHubToken); ok {
+			hasToken = answer.has
+		} else if h.mode() == api.FactorySolo && h.config.GitHubToken != nil {
+			hasToken = h.config.GitHubToken(r.Context()) != ""
+		}
 	}
 	j.Controls.Sync = owner && ((local && hasToken && h.config.Store != nil) || (!local && h.seam.Refresh != nil))
 }
@@ -152,7 +206,17 @@ func (h *Handler) redactMachines(r *http.Request, j *api.Job) {
 	proven := func(machine string) bool {
 		return machine != "" && (machine == live || h.callersOnlyMachine(caller, machine))
 	}
-	if !proven(j.Runner) {
+	// An AgentField job's runner is its node and the machine the node named
+	// to the control plane, which every viewer of the run may see; it is not a
+	// machine id from this factory's roster, so there is nothing to prove.
+	if strings.TrimSpace(j.RunOn) == "" && !proven(j.Runner) {
+		if j.StatePresentation.Kind == api.WaitingForComputer && j.Runner != "" {
+			j.StatePresentation.Title = "Waiting for its computer"
+			j.StatePresentation.Detail = "Waiting for the computer its work is on, which is not running now."
+		} else if j.StatePresentation.Kind == api.WaitingForComputer && !mine(j.AssignedTo) {
+			j.StatePresentation.Title = "Waiting for a computer"
+			j.StatePresentation.Detail = "Waiting for a computer to come back. None that can take this job is running now."
+		}
 		j.Runner = ""
 	}
 	if j.Failure != nil && (!proven(j.Failure.Machine) || !proven(j.Failure.Runner)) {

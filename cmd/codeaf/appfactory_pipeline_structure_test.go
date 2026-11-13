@@ -12,8 +12,8 @@ import (
 
 // ── add_step, remove_step and move_step through the engine ──────────────────
 //
-// editTestFile's issue pipeline is [plan approve write proof]; pr and ci are
-// the shipped defaults.
+// editTestFile's issue pipeline is [plan approve write proof]. E5 follows the
+// issue-only contract in a71691760d (0-factory-issues-only.md).
 
 func addEdit(kind, name, after, prompt string) appwire.FactoryPipelineEdit {
 	return appwire.FactoryPipelineEdit{Op: "add_step", Pipeline: kind, Name: name, After: str(after), Prompt: str(prompt)}
@@ -52,7 +52,7 @@ func TestStructuralPreviewReadsNothingAndWritesNothing(t *testing.T) {
 		Before: []string{"plan", "approve", "write", "proof"}, After: []string{"plan", "write", "approve", "lint", "proof"}}}) {
 		t.Fatalf("order %+v", s.Order)
 	}
-	if !reflect.DeepEqual(s.Added, []string{"lint"}) || len(s.Counts) != 3 || s.Counts[0] != (appwire.FactoryPipelineCount{Pipeline: "issue", Steps: 5}) {
+	if !reflect.DeepEqual(s.Added, []string{"lint"}) || len(s.Counts) != 1 || s.Counts[0] != (appwire.FactoryPipelineCount{Pipeline: "issue", Steps: 5}) {
 		t.Fatalf("added %v counts %+v", s.Added, s.Counts)
 	}
 	// write now runs before the person answers, and the preview says so.

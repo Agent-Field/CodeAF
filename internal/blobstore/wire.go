@@ -16,15 +16,19 @@ var wireErrors = []struct {
 	status int
 	err    error
 }{
+	{"storage_off", http.StatusForbidden, wireauth.ErrStorageOff},
 	{"bad_frame", http.StatusBadRequest, ErrBadFrame},
 	{"bad_rid", http.StatusBadRequest, ErrBadRID},
 	{"too_many", http.StatusBadRequest, ErrTooMany},
 	{"not_found", http.StatusNotFound, ErrNotFound},
 	{"range_not_satisfiable", http.StatusRequestedRangeNotSatisfiable, errRange},
 	{"conflict", http.StatusConflict, ErrConflict},
+	// Shared capacity precedes ErrFull because the decoder preserves both matches.
+	{"relay_storage_full", http.StatusInsufficientStorage, wireauth.ErrRelayFull},
 	{"full", http.StatusInsufficientStorage, ErrFull},
 	{"damaged", http.StatusInternalServerError, ErrDamaged},
 	{"unreachable", http.StatusServiceUnavailable, ErrUnreachable},
+	{"unreachable", http.StatusServiceUnavailable, wireauth.ErrUnavailable},
 	{"rate_limited", http.StatusTooManyRequests, wireauth.ErrRateLimited},
 	{"too_many_identities", http.StatusTooManyRequests, wireauth.ErrTooManyIdentities},
 	{"skew", http.StatusUnauthorized, wireauth.ErrSkew},
@@ -32,9 +36,8 @@ var wireErrors = []struct {
 	{"rotated", http.StatusGone, wireauth.ErrRotated},
 	{"gone", http.StatusGone, wireauth.ErrGone},
 	{"unauthorized", http.StatusUnauthorized, wireauth.ErrUnauthorized},
-	// Hosted deployment brakes reuse the client's existing retry and full handling.
+	// The admission brake reuses the client's retry handling without changing the server's rate-limit code.
 	{"relay_admission_full", http.StatusTooManyRequests, wireauth.ErrRateLimited},
-	{"relay_storage_full", http.StatusInsufficientStorage, ErrFull},
 }
 
 // codeOf finds the row for err; ok is false for an error the wire has no name for.
@@ -51,6 +54,10 @@ func codeOf(err error) (code string, status int, ok bool) {
 func errOf(code string) error {
 	for _, row := range wireErrors {
 		if row.code == code {
+			if row.err == wireauth.ErrRelayFull {
+				// Existing store callers still match the general full error.
+				return ErrRelayFull
+			}
 			return row.err
 		}
 	}
@@ -94,11 +101,18 @@ func LimitOf(err error) int64 {
 
 // statsBody is the answer to GET /v1/store/stats.
 type statsBody struct {
-	Puts     int64 `json:"puts"`
-	Gets     int64 `json:"gets"`
-	Has      int64 `json:"has"`
-	BytesIn  int64 `json:"bytes_in"`
-	BytesOut int64 `json:"bytes_out"`
+	Storage           string `json:"storage,omitempty"`
+	Puts              int64  `json:"puts"`
+	Gets              int64  `json:"gets"`
+	Has               int64  `json:"has"`
+	BytesIn           int64  `json:"bytes_in"`
+	BytesOut          int64  `json:"bytes_out"`
+	StoredBytes       *int64 `json:"stored_bytes,omitempty"`
+	StoredObjects     *int64 `json:"stored_objects,omitempty"`
+	FramesToday       *int64 `json:"frames_today,omitempty"`
+	LimitBytes        *int64 `json:"limit_bytes,omitempty"`
+	LimitObjects      *int64 `json:"limit_objects,omitempty"`
+	LimitFramesPerDay *int64 `json:"limit_frames_per_day,omitempty"`
 }
 
 type putAnswer struct {

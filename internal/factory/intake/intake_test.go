@@ -40,10 +40,12 @@ func TestPollUsesLabelSizeAndBudgetWithoutAnAIRead(t *testing.T) {
 		{"auth directory", "start:\n  labels: [agent-ready]\n  never: [auth/**]\n", "update auth/", "S", "auth/**", false},
 		{"budget", "default_budget: 3\nstart:\n  labels: [agent-ready]\n  max_cost: 2\n", "fix docs", "S", "job budget $3 is over $2", false},
 		{"large", "start:\n  labels: [agent-ready]\n  max_size: M\n", "fix docs", "L", "this one is L", false},
-		{"path rule", "start:\n  labels: [agent-ready]\n  ask_first: [touches auth/**]\n", "fix auth/keys.go", "S", "touches auth/**", false},
+		{"path rule", "start:\n  labels: [agent-ready]\n  ask_first: [touches auth/**]\n", "fix auth/keys.go", "S", "protected · auth/** · auth/keys.go", false},
 		{"unknown rule asks", "start:\n  labels: [agent-ready]\n  ask_first: [changes secrets]\n", "fix docs", "S", "changes secrets", false},
 		{"unmatched path", "start:\n  labels: [agent-ready]\n  ask_first: [touches auth/**]\n", "fix docs/readme.md", "S", "", true},
-		{"missing size", "start:\n  labels: [agent-ready]\n", "fix docs", "", "no size label", false},
+		{"missing size reads as M", "start:\n  labels: [agent-ready]\n", "fix docs", "", "", true},
+		{"missing size over the limit", "start:\n  labels: [agent-ready]\n  max_size: S\n", "fix docs", "", "this one is M", false},
+		{"missing size label when sizes are labels", "start:\n  labels: [agent-ready]\nsize:\n  issue: label\n", "fix docs", "", "no size label", false},
 		{"no start block", "rules: [keep changes small]\n", "fix docs", "S", "", false},
 	}
 	for _, tc := range cases {
@@ -67,7 +69,7 @@ func TestPollUsesLabelSizeAndBudgetWithoutAnAIRead(t *testing.T) {
 			if tc.size != "" {
 				labels = append(labels, "size:"+tc.size)
 			}
-			src := source{[]factory.Item{{Repo: "owner/repo", Num: 1, Kind: factory.KindIssue, Tier: factory.TierOwner, Title: "Incoming job", Body: tc.body, Labels: labels, Triage: factory.Triage{Size: "XL", Est: 999, Priority: 1, StartJudged: true, StartMatched: []string{}}}}}
+			src := source{[]factory.Item{{Repo: "owner/repo", Num: 1, Kind: factory.KindIssue, Tier: factory.TierOwner, Title: "Incoming job", Body: tc.body, Labels: labels, Triage: factory.Triage{Size: "XL", Priority: 1, StartJudged: true, StartMatched: []string{}}}}}
 			if _, err := github.PollOnce(ctx, src, st, "", func() time.Time { return time.Unix(100, 0) }); err != nil {
 				t.Fatal(err)
 			}
@@ -99,6 +101,10 @@ func TestPollUsesLabelSizeAndBudgetWithoutAnAIRead(t *testing.T) {
 				if started != 1 || it.State != factory.StateQueued || len(events) != 1 || events[0].Kind != record.AutoStarted {
 					t.Fatalf("started %d item %+v events %+v", started, it, events)
 				}
+				// The start check passed, and the job says so for its ◆ row.
+				if it.RuleChecks == nil || it.RuleChecks.Start != factory.CheckPassed {
+					t.Fatalf("start check %+v", it.RuleChecks)
+				}
 			case tc.reason != "":
 				if started != 0 || it.State != factory.StateNeedsYou || it.QKind != factory.QKindAskFirst || !strings.Contains(it.Question, "Approval needed: start") || !strings.Contains(it.Question, tc.reason) || len(events) != 1 || events[0].Kind != record.AskedFirst {
 					t.Fatalf("item %+v events %+v", it, events)
@@ -106,9 +112,15 @@ func TestPollUsesLabelSizeAndBudgetWithoutAnAIRead(t *testing.T) {
 				if api.FromItem(it).Approval.Matched != it.AskedFirstReason {
 					t.Fatal("matched rule lost")
 				}
+				if c := api.FromItem(it).RuleChecks; c == nil || c.Start != factory.CheckAsked {
+					t.Fatalf("start check %+v", c)
+				}
 			default:
 				if started != 0 || it.State != factory.StateNew || len(events) != 0 {
 					t.Fatalf("no automatic start %+v %+v", it, events)
+				}
+				if it.RuleChecks != nil {
+					t.Fatalf("a job nobody started was judged: %+v", it.RuleChecks)
 				}
 			}
 		})
@@ -134,9 +146,9 @@ func TestStoppedJobStaysStoppedUntilPersonRunsIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Unix(100, 0)
-	it, err := st.Create(factory.Item{Repo: "owner/repo", Num: 1, Kind: factory.KindIssue,
+	it, err := st.Create(factory.Item{Repo: "owner/repo", Num: 1, Kind: factory.KindIssue, Tier: factory.TierOwner,
 		State: factory.StateNew, Labels: []string{"agent-ready", "size:S"},
-		Triage: factory.Triage{TriagedAt: now, Size: "S", Est: 1}})
+		Triage: factory.Triage{TriagedAt: now, Size: "S"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,7 +230,7 @@ func TestFirstRunImportsNeverStartFromMatchingLabels(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Unix(100, 0)
-	_, err = st.Create(factory.Item{Repo: "owner/repo", Kind: factory.KindIssue, State: factory.StateNew, SetupHeld: true, Labels: []string{"ready", "size:S"}, Triage: factory.Triage{Size: "S", TriagedAt: now, Est: 0.1}})
+	_, err = st.Create(factory.Item{Repo: "owner/repo", Kind: factory.KindIssue, State: factory.StateNew, SetupHeld: true, Labels: []string{"ready", "size:S"}, Triage: factory.Triage{Size: "S", TriagedAt: now}})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,9 +16,13 @@ import (
 // HTTP is a Store that lives behind the store wire (contract §3). Every
 // request is signed, so the far side knows whose namespace it is.
 type HTTP struct {
-	base string
-	sign wireauth.Sign
-	hc   *http.Client
+	// CanStore screens uploads locally while leaving the read wire available.
+	CanStore func() bool
+	// OnStorageOff remembers a refusal immediately for other local uploaders.
+	OnStorageOff func()
+	base         string
+	sign         wireauth.Sign
+	hc           *http.Client
 
 	// deadline sizes each request's time limit from its body; a test swaps it
 	// to make a modest frame time out.
@@ -35,8 +40,14 @@ func NewHTTP(base string, sign wireauth.Sign, hc *http.Client) *HTTP {
 
 // PutFrame implements Store.
 func (c *HTTP) PutFrame(ctx context.Context, frame []byte) (FrameID, error) {
+	if c.CanStore != nil && !c.CanStore() {
+		return "", wireauth.ErrStorageOff
+	}
 	var out putAnswer
 	if err := c.doJSON(ctx, http.MethodPost, pathFrames, frame, &out); err != nil {
+		if errors.Is(err, wireauth.ErrStorageOff) && c.OnStorageOff != nil {
+			c.OnStorageOff()
+		}
 		return "", err
 	}
 	return out.Frame, nil
@@ -129,16 +140,20 @@ func (c *HTTP) Has(ctx context.Context, rids []string) ([]bool, error) {
 	return out.Have, nil
 }
 
-// Stats asks the server for its own count of this identity's requests.
+// Stats asks the server for this identity's request counts and any stored totals it reports.
 func (c *HTTP) Stats(ctx context.Context) (Counts, error) {
 	var out statsBody
 	err := c.doJSON(ctx, http.MethodGet, pathStats, nil, &out)
 	return Counts(out), err
 }
 
-// Counts is the server's tally for one identity since it started.
+// Counts holds request counters and optional stored totals for one identity.
+// Nil totals distinguish an older or self-hosted relay from a reported zero.
 type Counts struct {
-	Puts, Gets, Has, BytesIn, BytesOut int64
+	Storage                                     string
+	Puts, Gets, Has, BytesIn, BytesOut          int64
+	StoredBytes, StoredObjects, FramesToday     *int64
+	LimitBytes, LimitObjects, LimitFramesPerDay *int64
 }
 
 func (c *HTTP) doJSON(ctx context.Context, method, path string, body []byte, into any) error {
@@ -161,6 +176,19 @@ func (c *HTTP) do(ctx context.Context, method, path string, body []byte) ([]byte
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrUnreachable, err)
 	}
+	traffic := trafficOf(ctx)
+	if traffic != nil {
+		traffic.Begin()
+		defer traffic.End()
+	}
+	if traffic != nil && len(body) > 0 {
+		// A replayed body (a retried connection) reports its bytes again; the
+		// caller counts what moved, not what was new.
+		req.GetBody = func() (io.ReadCloser, error) {
+			return io.NopCloser(trafficReader{r: bytes.NewReader(body), w: traffic}), nil
+		}
+		req.Body, _ = req.GetBody()
+	}
 	c.sign(req, body)
 	resp, err := c.hc.Do(req)
 	if err != nil {
@@ -168,7 +196,11 @@ func (c *HTTP) do(ctx context.Context, method, path string, body []byte) ([]byte
 	}
 	defer resp.Body.Close()
 	limit.answering(resp.ContentLength)
-	answer, err := io.ReadAll(io.LimitReader(resp.Body, MaxFrame+1))
+	var got io.Reader = resp.Body
+	if traffic != nil {
+		got = trafficReader{r: got, w: traffic, down: true}
+	}
+	answer, err := io.ReadAll(io.LimitReader(got, MaxFrame+1))
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrUnreachable, err)
 	}
@@ -180,16 +212,43 @@ func (c *HTTP) do(ctx context.Context, method, path string, body []byte) ([]byte
 
 // answerError turns a non-200 answer into an error: the code the server named,
 // else a 5xx as "unreachable" (the server is not doing its job now, so
-// callers degrade), else a plain error carrying the status. A refusal keeps the
-// Retry-After the relay sent with it.
+// callers degrade) that is also ErrAnswered when the server itself answered
+// rather than a gateway in front of it, else a plain error carrying the
+// status. A refusal keeps the Retry-After the relay sent with it.
 func answerError(status int, h http.Header, answer []byte) error {
 	var e errBody
 	_ = json.Unmarshal(answer, &e)
 	if named := errOf(e.Err); named != nil {
 		return Capped(wireauth.Wait(fmt.Errorf("%w (%d)", named, status), h), e.LimitBytes)
 	}
+	if status >= 500 && !gatewayStatus(status) {
+		return answered{status}
+	}
 	if status >= 500 {
 		return fmt.Errorf("%w: server answered %d", ErrUnreachable, status)
 	}
 	return fmt.Errorf("blobstore: server refused with %d %q", status, e.Err)
+}
+
+// answered is an unnamed 5xx answer from a server that was reached. Its text
+// says the server answered, as the person's line does, and keeps the status.
+type answered struct{ status int }
+
+func (a answered) Error() string { return fmt.Sprintf("blobstore: server answered %d", a.status) }
+
+func (a answered) Is(target error) bool { return target == ErrUnreachable || target == ErrAnswered }
+
+// gatewayStatus is a 5xx a proxy or the network edge in front of the server
+// answers for it: bad gateway, unavailable, gateway timeout, and a CDN's own
+// origin-down codes (Cloudflare's 520-527 and 530), and an intercepting
+// proxy's sign-in wall (511). The server itself was not reached, so it stays
+// plain unreachable.
+func gatewayStatus(status int) bool {
+	switch {
+	case status == http.StatusBadGateway, status == http.StatusServiceUnavailable, status == http.StatusGatewayTimeout, status == http.StatusNetworkAuthenticationRequired:
+		return true
+	case status >= 520 && status <= 527, status == 530:
+		return true
+	}
+	return false
 }

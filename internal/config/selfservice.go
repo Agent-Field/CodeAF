@@ -115,8 +115,9 @@ var selfServiceGuards = map[string]string{
 	KeyTeamsWake: guardPressure,
 
 	KeyTaskAudit: guardProof,
-	// The signature itself has no row; what is left of it is whether the
-	// `Assisted-by` line names the model, and that is the person's to decide.
+	// Whether work that leaves this machine is signed, and whether the
+	// `Assisted-by` line names the model, are the person's to decide.
+	KeyAttribution:      guardSignature,
 	KeyAttributionModel: guardSignature,
 
 	// The credential fields that are not [Setting.Secret] rows. Google's id is

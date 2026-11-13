@@ -26,6 +26,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
 // dialWithin is replaceable by the dead-relay test because WSL2 mirrored
@@ -37,6 +39,8 @@ var dialWithin = HandshakeWithin
 var (
 	// ErrUnreachable is the relay itself not answering.
 	ErrUnreachable = errors.New("relay: cannot be reached")
+	// ErrStruggling means the service answered but could not finish the request.
+	ErrStruggling = errors.New("relay: service unavailable")
 	// ErrNoMachine is the relay answering that nothing is registered under
 	// that name right now.
 	ErrNoMachine = errors.New("relay: no machine connected under that name")
@@ -45,6 +49,9 @@ var (
 	ErrNameTaken = errors.New("relay: that name is already connected")
 	// ErrTooMany is a rate limit, either door.
 	ErrTooMany = errors.New("relay: too many connections from here")
+	// ErrNoDoor is a relay that answers but offers no machine door: a sync
+	// service that only stores, or one from before machines could register.
+	ErrNoDoor = errors.New("relay: that service does not offer machine connections")
 )
 
 // Registration is a machine's held connection to the relay and the surfaces
@@ -93,6 +100,9 @@ func Register(ctx context.Context, service string, private *ecdh.PrivateKey) (*R
 	carrier.onFrame = func() { _ = conn.SetReadDeadline(time.Now().Add(IdleAfter)) }
 	_ = conn.SetReadDeadline(time.Now().Add(IdleAfter))
 	go carrier.pump()
+	if alive, ok := conn.(pinger); ok {
+		go proveAlive(carrier, alive)
+	}
 	return &Registration{name: name, carrier: carrier, conn: conn}, nil
 }
 
@@ -139,29 +149,61 @@ func Dial(ctx context.Context, service, name string) (io.ReadWriteCloser, error)
 }
 
 // upgrade dials the service and takes the connection over.
+//
+// The carrier rides a WebSocket first, because a WebSocket is the one upgrade
+// every front end passes: the hosted relay is a Cloudflare Worker, which
+// answers no other. A relay from before that door answers a WebSocket with
+// 426, and this end then takes the raw upgrade it always spoke, so a
+// self-hosted relay keeps working without being upgraded.
 func upgrade(ctx context.Context, service, path string, header http.Header) (net.Conn, error) {
 	address, err := url.Parse(strings.TrimSpace(service))
 	if err != nil || address.Host == "" || (address.Scheme != "http" && address.Scheme != "https") {
-		return nil, fmt.Errorf("%q is not a relay address — it looks like https://relay.example.com", service)
+		return nil, fmt.Errorf("%q is not a sync service URL — it looks like https://relay.example.com", service)
 	}
+	// The relay address may carry a path of its own (https://host/fabric), and
+	// the door is beneath it, as every other client's route is. Refusals name
+	// the full base address with that path intact so a mistyped prefix is
+	// visible in the error.
+	base := (&url.URL{
+		Scheme: address.Scheme,
+		Host:   address.Host,
+		Path:   strings.TrimRight(address.Path, "/"),
+	}).String()
+	door := *address
+	door.Path = wireauth.Endpoint(address.Path, path)
+	door.RawPath, door.RawQuery, door.Fragment = "", "", ""
 
+	conn, err := upgradeWebSocket(ctx, &door, base, path, header)
+	if !errors.Is(err, errRawOnly) {
+		return conn, err
+	}
+	return upgradeRaw(ctx, &door, base, path, header)
+}
+
+// upgradeRaw is the original carrier: an HTTP upgrade to [Protocol] on one TCP
+// connection.
+func upgradeRaw(ctx context.Context, address *url.URL, base, path string, header http.Header) (net.Conn, error) {
 	dialer := &net.Dialer{Timeout: dialWithin}
 	conn, err := dialer.DialContext(ctx, "tcp", hostPort(address))
 	if err != nil {
-		return nil, fmt.Errorf("%w: %s", ErrUnreachable, address.Host)
+		return nil, fmt.Errorf("%w: %s", ErrUnreachable, base)
 	}
+	// A caller can stop a probe while an older relay is silent during HTTP upgrade.
+	raw := conn
+	stopClosing := context.AfterFunc(ctx, func() { _ = raw.Close() })
+	defer stopClosing()
 	if address.Scheme == "https" {
 		secure := tls.Client(conn, &tls.Config{ServerName: address.Hostname()})
 		if err := secure.HandshakeContext(ctx); err != nil {
 			_ = conn.Close()
-			return nil, fmt.Errorf("%w: %s", ErrUnreachable, address.Host)
+			return nil, fmt.Errorf("%w: %s", ErrUnreachable, base)
 		}
 		conn = secure
 	}
 
 	request := &http.Request{
 		Method: http.MethodGet,
-		URL:    &url.URL{Path: path},
+		URL:    &url.URL{Path: address.Path},
 		Host:   address.Host,
 		Header: header.Clone(),
 		Proto:  "HTTP/1.1", ProtoMajor: 1, ProtoMinor: 1,
@@ -169,31 +211,25 @@ func upgrade(ctx context.Context, service, path string, header http.Header) (net
 	request.Header.Set("Upgrade", Protocol)
 	request.Header.Set("Connection", "Upgrade")
 
-	_ = conn.SetDeadline(time.Now().Add(HandshakeWithin))
+	deadline := time.Now().Add(HandshakeWithin)
+	if until, ok := ctx.Deadline(); ok && until.Before(deadline) {
+		deadline = until
+	}
+	_ = conn.SetDeadline(deadline)
 	if err := request.Write(conn); err != nil {
 		_ = conn.Close()
-		return nil, fmt.Errorf("%w: %s", ErrUnreachable, address.Host)
+		return nil, fmt.Errorf("%w: %s", ErrUnreachable, base)
 	}
 	reader := bufio.NewReader(conn)
 	response, err := http.ReadResponse(reader, request)
 	if err != nil {
 		_ = conn.Close()
-		return nil, fmt.Errorf("%w: %s", ErrUnreachable, address.Host)
+		return nil, fmt.Errorf("%w: %s", ErrUnreachable, base)
 	}
 	if response.StatusCode != http.StatusSwitchingProtocols {
 		said := strings.TrimSpace(readBounded(response.Body))
 		_ = conn.Close()
-		switch response.StatusCode {
-		case http.StatusNotFound:
-			return nil, ErrNoMachine
-		case http.StatusTooManyRequests:
-			return nil, ErrTooMany
-		default:
-			if said == "" {
-				said = response.Status
-			}
-			return nil, errors.New(said)
-		}
+		return nil, refusal(base, path, response.StatusCode, said)
 	}
 	_ = conn.SetDeadline(time.Time{})
 	// A 101 has no body, so there should be nothing left in the reader — but
@@ -203,6 +239,48 @@ func upgrade(ctx context.Context, service, path string, header http.Header) (net
 		return &joinedConn{Conn: conn, head: io.MultiReader(io.LimitReader(reader, int64(reader.Buffered())), conn)}, nil
 	}
 	return conn, nil
+}
+
+// refusal turns a relay's non-101 answer into the fact a caller above can act
+// on. ONLY A RELAY'S OWN SENTENCE IS PASSED ON: an upstream proxy, WAF or
+// web server answering with HTML or its own 4xx/5xx body becomes a one-sentence
+// fact naming the relay address with its base path, never the raw body.
+func refusal(base, path string, status int, said string) error {
+	switch {
+	case status == http.StatusNotFound && path != EnginePath && said == "no machine is connected under that name":
+		return ErrNoMachine
+	case status == http.StatusNotFound && (strings.HasPrefix(said, "{") || said == "not a relay door"):
+		// The relay answers, but not at a machine door: the hosted wire's JSON
+		// not_found, or a self-hosted relay hit outside its two paths.
+		return fmt.Errorf("%w: %s", ErrNoDoor, base)
+	case status == http.StatusTooManyRequests:
+		return ErrTooMany
+	case status == http.StatusServiceUnavailable && strings.Contains(said, "connections open, which is as many as the relay carries at once"):
+		// Older self-hosted relays answered 503 when a machine reached its
+		// stream ceiling; that machine is busy, not unreachable.
+		return ErrTooMany
+	case status >= 500:
+		return upstreamFailure{base: base, status: status}
+	case relaySentence(said):
+		return errors.New(said)
+	default:
+		return fmt.Errorf("the sync service at %s refused this connection (%d) — check the address it was given", base, status)
+	}
+}
+
+// relaySentence reports whether said is one of the plain-text validation
+// sentences our own relay doors write before upgrading. Anything else — HTML
+// from a proxy, a captive portal, or an upstream web server — is withheld.
+func relaySentence(said string) bool {
+	switch said {
+	case "that is not a machine name",
+		"that name does not belong to that key",
+		"that key is not readable",
+		"that key is not a usable machine key":
+		return true
+	}
+	return strings.HasPrefix(said, "a machine key is 32 bytes and that one is ") ||
+		strings.HasPrefix(said, "this door speaks ")
 }
 
 // joinedConn is a connection whose first bytes were already read into a buffer.
@@ -230,3 +308,16 @@ func readBounded(body io.ReadCloser) string {
 	said, _ := io.ReadAll(io.LimitReader(body, 512))
 	return string(said)
 }
+
+// upstreamFailure preserves the base unreachable class and records that an HTTP
+// response arrived, so presentation can choose service-recovery guidance.
+type upstreamFailure struct {
+	base   string
+	status int
+}
+
+func (e upstreamFailure) Error() string {
+	return fmt.Sprintf("%s: %s answered %d", ErrUnreachable, e.base, e.status)
+}
+func (e upstreamFailure) Unwrap() error   { return ErrUnreachable }
+func (e upstreamFailure) HTTPStatus() int { return e.status }

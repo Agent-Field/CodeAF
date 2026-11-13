@@ -1,0 +1,1 @@
+{"title":"AFNODE: add a Len method to Ledger","body":"In ledger.go add func (l *Ledger) Len() int and a table test.","external_id":"ops-77","repo":"santoshkumarradha/factory-demo","labels":["ops"],"priority":"p1","trust":"owner","source":"github"}

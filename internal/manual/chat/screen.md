@@ -53,7 +53,7 @@ once the session has tasks to come back to and no running-turn line owns that ro
 
 **Seven places take the whole frame instead of sharing it**, at every width: home, AI
 teams, activity, automations, memory, spend and settings. All seven are on the tab bar with
-the way back to the chats, `Home  Chats  AI teams  Activity  Memories  Automations  Spend
+the way back to the chats, `Home  Chats  AI teams  Activity  Memory  Automations  Spend
 Settings`; `tab` walks the rooms on the bar.
 `alt+1` … `alt+8` (`opt+1` … `opt+8` on a Mac) jump straight to any of those seven or back
 to the chats from wherever you are standing, a place or a conversation — by number and not
@@ -117,7 +117,7 @@ navigation from reading. The strip is that chat's row. Home, teams, sessions, sp
 settings and every other place do not draw it:
 
 ```
- >● codeaf   home  chats  AI teams  activity  memories  automations  spend  settings                 $1.20 / $20 · thu 10:31pm
+ >● codeaf   home  chats  AI teams  activity  memory  automations  spend  settings                 $1.20 / $20 · thu 10:31pm
      openrouter price scrape       Refactor the rail scope...      Shipping the parser ×   +   ▦ All
   ──────────────────────────────────────────────────────────────────────────────────────────────────
 ```
@@ -228,6 +228,39 @@ change what Enter opens. Without color both markers remain visible; ASCII mode u
 straight corners and a plain dot. Short windows give up inner vertical space before
 the selected row.
 
+## Desktop conversation names, short tab names, vague first messages and personal renames
+
+The desktop asks the configured `title` model for a name in 2–4 words and at most
+24 characters. It asks for sentence case with proper nouns kept, as in
+"Release review" and "Why is CI slow?". It puts the distinguishing word first,
+using your own words and names, and reads up to 20 other currently open conversation
+names at each naming call to avoid repeats. Renamed, closed and archived tabs
+are reflected in the next call.
+Your first message, or attached file names when you type nothing, supplies the
+placeholder while naming runs. The placeholder can use up to 40 characters.
+
+If your first message has fewer than four words, or the model gives a generic
+name, the engine looks for a concrete topic in the first three finished
+exchanges. Each check uses your opening message, that exchange's message and
+the opening 400 characters of its reply. A vague exchange keeps the current
+name. Echoing a vague opening, such as "Look at this", keeps the original
+placeholder exactly as written. A greeting or empty request needs a topic or
+file from you before the model can replace that placeholder. The first concrete
+topic earns one final model
+name. If all three stay vague, the opening name stays and later messages do not
+restart naming.
+
+Only a handled naming answer advances the check cursor. Each check reads the
+first unchecked finished exchange from the conversation history, among the
+first three. Cancelling leaves that exchange eligible after reopening, so you
+can say "continue" without repeating its topic. The remaining cursor and final
+naming decision survive reopening the conversation. A name you choose yourself stops this process, even while a
+model answer is on its way.
+
+A model name longer than 24 characters ends at the last whole word that fits,
+without an ellipsis. If no word fits, the model gets one request to answer
+shorter. An unusable shorter answer leaves the current name in place.
+
 ## What is my chat called before it has a name — unnamed tab, when does a chat get its name, how do I rename this conversation, why it no longer says Untitled
 
 **Naming starts when your first message is accepted.** The small model on the `title`
@@ -301,21 +334,24 @@ last tab to Home leaves its connection in place.
 
 ## Closing a tab versus quitting codeaf — /quit and ctrl+c
 
-**Quitting is a different act from closing a tab.** `ctrl+w` and `×` take a view off the
-row, and a working one is answered by the card below. `/quit` and `ctrl+c` end the whole
-program, ask
-their own question about work in flight, and act on every conversation this window holds
-at once. Closing a tab never quits codeaf, and quitting is not what any of the card's
-three answers does. An automation running is no reason to ask: closing codeaf pauses it,
-and a run it cut off runs again when a window is next open (*Automations*).
+`/quit` closes the conversation in front and asks about its work in flight.
+If this window holds another conversation, codeaf stays open with that conversation.
+Only quitting the last held conversation ends the program. `ctrl+c` ends the whole program,
+asks its own question about work in flight, and acts on every conversation this window holds.
+`ctrl+w` and `×` take a view off the row; a working conversation offers the close card below.
+Closing a tab never quits codeaf. An automation running is no reason to ask: closing codeaf
+pauses it, and a run it cut off runs again when a window is next open (*Automations*).
 The session cancels its routing-cache refresh and waits for that refresh's remaining
 local writes before shutdown completes.
+The process also waits up to about 50 milliseconds for its lane-note writer
+and final flush. If that deadline passes, it prints
+`codeaf: lane saving timed out; quitting without waiting further` and exits.
 
 On the switcher card, `ctrl+w` closes a selected background tab while keeping
 its work running, and that row drops behind the fold. For the current conversation it uses the same close card when
 work is active. On New chat it closes
 the start page and parks its unfinished first message. Stop on a task page
-ends that task; `/quit` ends the program.
+ends that task; `/quit` closes the conversation in front, leaving codeaf open while another conversation is held.
 
 ## Keep running, stop work or cancel — what keep running does when you close a tab on a chat that is still working
 
@@ -1469,7 +1505,7 @@ The top line is the program's name and the places on the left, and the machine's
 signs on the right:
 
 ```
- >● codeaf   home  chats  AI teams  activity  memories  automations  spend  settings   2 want you · 4 moving · $0.55 / $20 · thu 1:11pm
+ >● codeaf   home  chats  AI teams  activity  memory  automations  spend  settings   2 want you · 4 moving · $0.55 / $20 · thu 1:11pm
 ```
 
 When there is not room for all of it, things give way **one at a time, in a fixed order**:
@@ -2011,7 +2047,7 @@ This works everywhere a path appears in codeaf's own text:
   attached a picture to, and the `Transcript: file:///…` line an `@task` mention
   leaves behind.
 - **in codeaf's dim `·` notes** — `/status`'s `file` row, `/help`'s `session · …`,
-  `exported · …`, `resumed …`, `new session · …`.
+  `exported · …`, `resumed …`. A new chat says `new conversation · proj-a`, using the project’s base name without a transcript path.
 - **on a tool row** — the target of a `read`, an `edit` or a `write`, and the file name
   above an edit's diff, even when the row was too narrow to show the whole path.
 - **the dim line under a picture**, which is the picture's whole absolute path.
@@ -2089,8 +2125,8 @@ below is drawn as plain text on purpose:
   they arrived. Sweeping them for pathish words would underline half a test log. What
   **is** linked on a tool card is the part codeaf wrote itself: the call's own target.
 - **Everything on a task's page and inside a task's room** — that is the `/history`
-  page and a room both. A task works in its own copy of your folder, so `internal/tui3/app.go`
-  on one of those rows means THAT tree's copy and not this one's, and a link built
+  page and a room both. A task works in a folder of its own, so `internal/tui3/app.go`
+  on one of those rows means a file in THAT folder and not this one's, and a link built
   against the wrong tree opens a file with the right name and the wrong contents. The
   `/history` page names no file paths of its own anyway: a row says what a task did and
   which branch it left behind, never where its journal is.
@@ -4358,3 +4394,8 @@ A generated title containing model control tokens is rejected. The initial
 prompt remains the provisional name until a usable title is generated. Old
 saved titles containing these tokens are also ignored when read; the conversation
 and its messages remain intact.
+
+## Why a finished reading caption stops counting time
+
+When reading is handed to a quick task, its tool rows finish as soon as the answer
+returns. Their elapsed time stays fixed while the conversation is idle.

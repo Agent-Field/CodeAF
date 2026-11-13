@@ -4,15 +4,15 @@
 
 A **place** is a full-screen view in codeaf. The main bar groups your daily work first, then utilities:
 
-`Home` · `Chats` · `AI teams` · `Activity` · `Memories` · `Automations` · `Spend` · `Settings`
+`Home` · `Chats` · `AI teams` · `Activity` · `Memory` · `Automations` · `Spend` · `Settings`
 
-AI teams groups AI chats around ongoing work, with an optional AI manager. Activity shows work across chats and delegated tasks. Memories is always available, including before anything has been saved, and Automations stands beside it from the first launch — `/automations` and `alt+7` reach it too. Eight words need 86 columns; on a narrower frame the words on the right fold behind `more ▾`, which opens onto exactly the ones it folded.
+AI teams groups AI chats around ongoing work, with an optional AI manager. Activity shows work across chats and delegated tasks. Memory is always available, including before anything has been saved, and Automations stands beside it from the first launch — `/automations` and `alt+7` reach it too. Eight words need 86 columns; on a narrower frame the words on the right fold behind `more ▾`, which opens onto exactly the ones it folded.
 
 They are drawn on the **top line of every page**, right after the `codeaf` wordmark, on a
 place and in a conversation alike. This manual still calls that row of words **the bar**:
 
 ```
- >● codeaf   Home  Chats  AI teams  Activity  Memories  Automations  Spend  Settings      3 moving · $1.20
+ >● codeaf   Home  Chats  AI teams  Activity  Memory  Automations  Spend  Settings      3 moving · $1.20
 ──────────────────────────────────────────────────────────────────────────────────────────
 ```
 
@@ -424,7 +424,7 @@ The label between the arrows is the control and the reading at once, so the span
 screen once and the keys that move it are beside it. A place with no window to move answers
 those keys with nothing rather than with something that is not drawn, and so does a terminal
 too narrow to draw the control — and the zoom is bound only where its own clause fits, for
-the same reason. **Memories and automations have no time window**; their `shift+<arrow>` keys
+the same reason. **Memory and automations have no time window**; their `shift+<arrow>` keys
 do nothing.
 
 ## What the right arrow does on a row — the verbs, and why letters are safe there
@@ -520,7 +520,7 @@ Neither of them ever ends in `…`, and neither ever cuts inside a word.
 
 Press `alt+.` and the whole key map appears **in the cells you were already reading**:
 
-- the bar shows the established shortcut numbers beside each destination: `1 Home`, `3 Chats`, `2 AI teams`, `4 Activity`, `8 Memories`, `5 Spend`, `6 Settings`, followed by `7 Automations`, which the bar otherwise draws only while you are in it. Visual order does not change shortcut destinations.
+- the bar shows the established shortcut numbers beside each destination: `1 Home`, `3 Chats`, `2 AI teams`, `4 Activity`, `8 Memory`, `5 Spend`, `6 Settings`, followed by `7 Automations`, which the bar otherwise draws only while you are in it. Visual order does not change shortcut destinations.
 - the hint line becomes the chord list
 
 `?` over an empty box draws the same map, which is what that key means on a place — show me
@@ -604,6 +604,7 @@ The confirmation defaults to `cancel`; `delete` permanently deletes the selected
 A conversation deletes its transcript and every task underneath it. A task deletes only
 its own records and descendants. Deleting a leaf subtask deletes only that subtask.
 Surviving siblings and their conversations remain. Deleted records cannot be recovered by search or reopened.
+Permanent deletion is available on Windows, macOS and Linux.
 
 `n new in project`, `o open folder`, and `p copy project` use the selected task's owner project.
 Folder actions are local. Permanent deletion is also available over a connection when
@@ -640,11 +641,239 @@ saved the place is its heading over
 It has the slot the standing orders page had: standing orders are gone, `/standing` is not a
 command any more, and *Automations* has the whole of what replaced them.
 
-## memories — what is held true, and the Memories tab (it was called Memory)
+## Knowledge from saved chats inside Memory
+
+Open Memory and click **Knowledge** or press `alt+u` to switch from saved
+preferences to your knowledge base. Click **Saved memory** to return.
+These view switches underline while hovered. Build and Search controls highlight
+under the pointer; the surrounding description stays passive.
+
+If saved chats already exist, click **Build knowledge base** or press Enter.
+Build turns automatic memory on and saves that choice. The first build uses saved chats across all projects, including archived chats
+and saved task reports.
+**Building knowledge base… You can keep chatting.** shows that work continues
+in the background. You can leave Memory, change chats, and return later; pages
+appear after the initial history has been processed and organized. New chats
+can continue arriving while that initial collection is built. While nothing
+new arrives the background build looks for new chats less and less often, at
+most every 30 seconds; pressing **Build knowledge base** looks at once.
+
+## Closing a chat waits for knowledge capture
+
+Closing a chat cancels its knowledge scanners and learning from stopped jobs
+before waiting up to 10 seconds total for them to finish. If a writer misses
+that deadline, close logs its kind (scanner or compiler), journal and profile
+identities, and elapsed wait, then returns. The identities are hashes of paths.
+A database write already in progress can finish later as a whole transaction.
+Saved journals remain available for later recovery. Learning owned by an active
+job keeps running across stage chat closes under that job's existing budget
+and cancellation rules.
+
+## Knowledge build progress and concurrency
+
+Build progress separates **History imported** from **Sources processed**. Each
+shows completed items, its current total, and a percentage for that stage.
+Importing all saved chats and task reports does not mean their sources have all
+been processed. Totals
+can grow as more chats arrive; these percentages are counts, not estimates of
+elapsed time or overall completion. **Organizing knowledge pages…** means the
+sources have been processed and page organization is still finishing.
+
+The build runs in the background, so reading Memory and changing chats remain
+available while it waits for a model response. One compiler owns each profile
+at a time: ordered batches use earlier claims to resolve later corrections,
+and completed publications are saved together. Opening another window does not
+start a duplicate compiler for the same profile.
+
+If there is no chat history, the reader says **Knowledge will populate as you
+chat.** Automatic learning is on by default unless you saved off. Use
+**Build knowledge base** to populate it from saved chats; this also saves on. A profile has one knowledge base; changing project does not change vaults.
+
+## Reading knowledge pages, links and sources
+
+The native Go compiler stores sources, progress, pages, search, and human changes
+in SQLite. Python and developer tools are not required.
+
+The knowledge reader has a folder tree and articles. Underlined `[[Topic]]`
+references open linked pages when clicked. `ctrl+l` lists connected pages; arrows
+choose one and Enter opens it. Left returns to the previous page. Hover highlights
+tree rows and brightens linked text; a click or Enter opens the selected page.
+
+Click **Collapse all** or press `ctrl+left` to fold the entire folder tree.
+Click **Expand all** or press `ctrl+right` to reveal every folder. Both actions
+clear the search filter and leave the current article open. Opening one parent
+after collapsing everything keeps its nested folders folded.
+
+Sources stay folded behind a clickable `Sources` row. Press `ctrl+o` to read the
+original quotations with speaker and readable date; repeated references to the
+same source are grouped. Click Return to article or press Escape to restore the reading
+position. `pgup` and `pgdn` scroll the reader. Tab keeps its normal meaning of
+moving to the next main place.
+
+Click **Edit** on an article, or press `ctrl+e`, to edit its Markdown and
+`[[Topic]]` links. `ctrl+s` saves; Escape cancels. Saved edits are marked
+`Edited by you · your additions have no source` and remain separate from machine-written updates. Original
+sources describe the article's background and do not verify your additions. New
+evidence flags the edited page for review without replacing your words. Saving
+the reviewed page acknowledges that evidence.
+
+Click **Delete**, or press `ctrl+d`, to review a named deletion confirmation.
+Enter or Escape cancels by default. Click **Delete page** or press `ctrl+d`
+again to confirm. Deletion removes the knowledge page; original chats remain.
+
+## Automatic knowledge capture and background updates
+
+New saved user messages, human-facing assistant replies, and substantive saved
+task reports across projects feed the profile's knowledge base. Tool transport,
+internal control notes, injected task briefs, and replayed compaction windows
+are excluded. Deleted chats and tasks are excluded. Original text and source
+identity stay available for citations. Task reports remain attributed reports,
+not independent proof. Unsaved chats are not imported.
+
+Open chats share consent checks. A database refresh for one chat does not hold
+up another chat whose consent check is still current. Each source is checked
+against current consent before capture.
+
+Pages organize lasting concepts under short headings in a two-level folder tree.
+New material first considers existing pages and sections; related evidence
+updates the same page, while a distinct concept can receive a new page. Issue
+and work-session details remain linked evidence. Organization follows the actual
+subjects in your chats, without fixed project categories.
+
+## Memory spending and factory job pauses
+
+Memory model requests appear in Spending under the `memory` role. Requests
+owned by a factory job also count toward that job's spending and budget.
+
+A memory charge cannot undo a successful step. Completed work stays done;
+the next unfinished step checks the job's full spending before it starts.
+Delegated task reports feed their owning job's memory pass and keep their citations.
+Older job ownership markers still exclude paused and ended jobs from idle learning.
+
+If a call is interrupted before its price arrives, codeaf asks for the provider's
+receipt in the background. Quitting before that recovery finishes can leave the
+charge missing from Spending. This limit also applies to ordinary chat calls;
+pending receipt recovery does not survive application quit.
+
+The application process owns the background worker for ordinary saved chats.
+Closing Memory or changing chats does not stop it. When codeaf stops, captured sources and checkpoints stay
+in the database; the next running codeaf process resumes unfinished work.
+
+## Memory background compiler batching and retries
+
+The initial build processes a fixed collection of admitted history before
+organizing it. Independent page drafts and refreshes can run two at a time;
+source updates and publication remain ordered. Large concepts stay on one page;
+writing processes their evidence in sequential parts, with at most 160 claims
+per initial part. Refresh parts use at most 80 claims and target 14,000 serialized
+claim characters; a single larger claim remains complete. Each refresh part has
+its own step and source-reading budget, so total work grows with the evidence.
+A final pass keeps the core overview concise by selecting reviewed paragraphs;
+the complete source detail stays in linked evidence rather than expanding the
+overview after every update.
+## Factory job memory waits, pauses and skipped steps
+
+Factory jobs wait at most two seconds for memory after a finished turn. An
+unfinished pass continues with that job while the next step works. A job has at
+most one pass running; later turns do not queue more. Pause, Stop and the job's
+end cancel it, including a request in flight. Paid receipts still charge the job.
+While a job stays paused, no new paid memory request is admitted. This also
+applies to memory from the job's own conversation outside a stage. Resume does
+not start a memory burst: pending sources wait for the next finished job turn,
+using the same one-pass rule.
+The worker can remain occupied briefly after work finishes to report those prices.
+Paid memory that finishes after its stage closes stays in that stage’s saved
+spending total. Reopening after that memory finishes restores the full paid total.
+Quit cancels the pass. The worker allows up to five additional seconds to settle
+paid calls through its existing accounting receipt before deleting its local job
+copy. Receipts arriving after shutdown are not guaranteed to reach the job; pending
+receipt recovery does not survive quit. Saved sources stay pending for its next finished turn, and
+idle learning never takes over a job's sources. The next admitted pass also
+includes earlier steps skipped while another pass was running. Unchanged source input
+reuses completed receipts. Extraction, page organization and evidence review can
+require separate model requests in that compilation. Sources and completed
+progress survive cancellation for a later active turn.
+
+Ordinary memory with no owning job belongs to the application process. Closing
+one chat does not stop its background build; quitting the application cancels
+that build. Its saved sources remain available for recovery on a later launch.
+
+## Ordinary saved chat memory batching
+
+Later updates to ordinary saved chats combine turns into
+normal model requests, without OpenRouter's Batch API. A batch becomes eligible
+after 30 seconds without new sources, when its oldest source reaches 120 seconds,
+or when its context limit is reached. These thresholds do not include provider
+time or retries. Each extraction uses at most 64 source spans and 24,000 source
+characters.
+
+Search runs against the database index. Idle background checks do not launch
+refinement without pending sources. Failed ordinary-chat requests retain pending
+work and completed progress. For unchanged input, the background build allows
+three compilation attempts in total, including the first attempt. The count
+survives quitting and restarting. While attempts remain, the failure says
+`Completed progress is retained; retrying automatically.` After three failed
+attempts, automatic retries stop; use **Build** or add new sources to start a new
+count. A successful compilation clears the count. One compilation attempt can
+make several model requests, so this is an attempt limit rather than a
+three-request spending cap. Jobs keep their own retry and accounting rules.
+
+Unreadable chats do not prevent other chats from being processed; their
+incomplete status remains visible. The Knowledge view over `--host` is not
+supported.
+
+Settings → Models → **knowledge** (`knowledge.model`) selects the OpenRouter
+model for the next compilation. The default is `deepseek/deepseek-v4.1-flash`.
+The compiler checks the returned model ID and rejects substitutions. Each
+paid call appears in Spend, including empty and unusable answers. At the daily
+limit the job line says `Knowledge build paused: daily limit reached · $1 spent
+of $1 · /budget day changes it` with your actual figures, followed by the
+retained-progress and automatic-retry message. No new compiler call starts
+until the limit is raised or the local day changes; retries back off.
+
+Stable source IDs prevent duplicate records during retries and journal recovery. A failed or interrupted provider request can still incur charges;
+retry safety does not mean every network request is billed only once.
+
+## Repeated paid knowledge failures and retry pauses
+
+After an unusable paid knowledge answer, repeating the identical request within
+two seconds says `knowledge retry paused:` followed by the failure reason. This
+short pause lasts while that vault is open, including its job-owned work.
+Reopening still respects the saved three-attempt limit for ordinary builds.
+
+Ordinary builds wait five seconds after the first failure, doubling the delay
+up to 120 seconds. **Build** or new sources resets the attempt count. A job's
+failed compilation is retried only by its owner, with its own receipts.
+
+## Updating existing knowledge pages and sections
+
+Reviewed additions and new core drafts are checked for relevance to the specific
+concept, then compared with the existing guide. A shared project is not enough
+to make a paragraph fit. This also applies to updates without answered questions. Missing details belong
+in the section that already explains the topic. Repeated explanations and
+one-off run, issue, or machine reports remain linked evidence. A distinct lasting
+topic can receive a new section.
+
+Useful additions to existing sections are woven into the section prose,
+consolidating overlapping explanations instead of appending another summary. Separate checks require support for the new prose and preservation of
+the useful meaning of every input, including still-supported existing guidance.
+Unchanged sections remain intact where possible. The reading word limit is a
+target: preserving reviewed useful meaning takes priority over trimming to fit.
+Oversized integration inputs stop before the integration request; earlier
+bounded selection may already have incurred charges.
+If an update fails these checks, the previous
+published guide stays visible. Original source records and citations remain
+available. Human edits and deleted pages keep their existing protection.
+
+Existing built libraries receive the same cleanup in the background after an
+upgrade; their saved history is not imported again for that cleanup. Editorial
+model work can incur charges, while unchanged validated work can be reused.
+
+## memories — what is held true, and the Memory tab
 
 The lines codeaf keeps in front of every conversation — what you told it, what the model
 kept, and what it noticed. `/memory` and `/memories` open it, and so do `alt+8` and
-`Memories`, the fifth word on the tab bar — the numbers kept their old places, so the fifth
+`Memory`, the fifth word on the tab bar — the numbers kept their old places, so the fifth
 word is not `alt+5`. It is always on the bar, between `Activity` and `Automations`; until
 2026-10-14 its word was `Memory`, and typing `memory` on home still finds it.
 
@@ -674,6 +903,9 @@ one`, and the foot is `tab next place · esc`.
 What this machine has cost, by the day, by the model, and by what it was for. `alt+5` opens
 it. It reads one machine-wide ledger — a line per model call — so the figures are the bill
 and not an estimate.
+
+Windows records the same per-call history and enforces the same daily spending limit
+as macOS and Linux. Opening Spend does not pause recording new calls.
 
 **It is the whole machine and not this session**, which is why a figure here can be larger
 than anything this conversation did: every window, every task and every automation run on
@@ -770,7 +1002,7 @@ the line):
 6. and then the day's figure itself.
 
 **The count of things waiting on you never goes.** `2 ?` outlasts the money and the places,
-at every width. With activity and spending to show, an 80-column bar keeps daily work and Memories visible, while Spend and Settings remain under `more`. The menu preserves their names and shortcuts. Wider windows show all main destinations; narrower windows progressively fold them while keeping the current destination visible.
+at every width. With activity and spending to show, an 80-column bar keeps daily work and Memory visible, while Spend and Settings remain under `more`. The menu preserves their names and shortcuts. Wider windows show all main destinations; narrower windows progressively fold them while keeping the current destination visible.
 
 **`more ▾` is a door.** Click it and a small menu hangs under it listing exactly the places it
 folded, each with its key (`spend  alt+5`, `settings  alt+6`). The pointer lights a row and a
@@ -781,7 +1013,7 @@ anywhere off the menu, puts it away and leaves everything else as it was.
 bar's cursor is on or a place wearing a count. `alt+1`…`alt+8` still go straight to a place
 whether or not its word is on the row, and the numbers never move — nor do they follow the
 bar's order: home `alt+1`, AI teams `alt+2`, chats `alt+3`, activity `alt+4`, spend `alt+5`,
-settings `alt+6`, automations `alt+7`, memories `alt+8`.
+settings `alt+6`, automations `alt+7`, Memory `alt+8`.
 
 The tab strip, drawn only inside a chat, keeps its own narrowing: long names are cut at a word,
 the names shrink until every tab fits, then the strip scrolls with `‹` `›`, and `+3` counts
@@ -984,3 +1216,13 @@ the model list, and Enter applies the selected model.
 ## Where the Settings search cursor appears
 
 Settings draws its search field above the rows. The cursor follows your query there; model pickers use their own visible filter, and a connection key entry keeps its cursor inside the key field. The bottom row remains the navigation hints.
+
+## Cancelled model calls, missing charges and provider receipts
+
+Stopping a model call does not undo work the provider has already charged for.
+codeaf asks for a final receipt when the provider supplies a generation ID and
+supports receipt lookup. If lookup fails, measured usage received before the stop
+is retained. A receipt and that fallback cannot charge the same attempt twice.
+Helper calls retain their generation IDs too. Without measured usage or a
+retrievable receipt, the charge stays unknown. Text token estimates are approximate
+telemetry; they are not booked as money.

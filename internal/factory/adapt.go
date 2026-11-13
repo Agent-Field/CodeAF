@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -12,7 +13,8 @@ import (
 // layers change what an item runs: a stage's `when`, read off the item's
 // triage with no judgment at all ([Fits]); the plan stage, which may add,
 // switch on and skip stages within the bounds below; and the person, whose
-// keys change anything. The recipe gives each kind ONE WORD saying how much
+// keys change anything. The manager and the person may also remove a stage
+// from one job and move one, within the same bounds. The recipe gives each kind ONE WORD saying how much
 // freedom plan has, written after the kind in its section heading:
 //
 //	## issue · adapt   plan may change the stages within the bounds (the default)
@@ -66,28 +68,52 @@ type Added struct {
 	After string
 }
 
+// Moved is one stage an edit moves, by name, and the stage it now goes after:
+// After is a stage's name, and "" puts it first. A move is of ONE JOB'S steps;
+// the repository's pipeline moves through its own editor
+// (internal/factory/pipeline/edit_structure.go), whose rules this one mirrors.
+type Moved struct {
+	Stage string
+	After string
+}
+
 // RunEdit is THE ONE EDIT to an item's stages, whoever makes it: the manager
 // before a run, the plan stage during one, the person from settings or in
 // words. A run is a short program of one-word stages, and this is the whole
 // of what may change about it; there is no field for the cap, the
-// rounds or the fanout, so an edit can never raise what an item may spend.
+// fanout, and its rounds only as Max below: the person's, at most
+// [StepTriesMost], so an edit can never raise what an item may spend past a
+// bound the person chose.
 //
 //   - Add is new conversation stages, each placed after a named stage, or
 //     an approve step (named approve, or of kind gate), where the run holds
 //     for the person.
+//   - Label is a new display label for a stage, by name; empty clears it.
 //   - Ask is a new ask for a stage, by name.
 //   - Thinking is a stage's thinking, by name: "", cheap or strong.
+//   - Max is how many tries a conversation stage gets, by name: 1 to
+//     [StepTriesMost]. Only the person sets it.
+//   - Model is the model a stage runs on, by name: a model id, or "" for the
+//     job's. Only the person picks it, and only for a conversation.
 //   - On switches a stage on by name, an off one included.
-//   - Skip switches a stage off by name.
+//   - Skip switches a stage off by name; it stays in the job, off.
+//   - Remove takes a stage out of this job by name: it is gone from the job's
+//     steps, not off, and nothing else about the job or its pipeline changes.
+//   - Move puts a stage after another by name, or first.
 //   - Why is one line saying why, recorded last and kept on every stage the
 //     edit touches.
 //   - By is who edits: manager, plan or you; "" is plan.
 type RunEdit struct {
 	Add      []Added
+	Label    map[string]string
 	Ask      map[string]string
 	Thinking map[string]string
+	Max      map[string]int
+	Model    map[string]string
 	On       []string
 	Skip     []string
+	Remove   []string
+	Move     []Moved
 	Why      string
 	By       string
 }
@@ -95,7 +121,8 @@ type RunEdit struct {
 // Empty says the edit changes nothing. A reason with no change is nothing to
 // record.
 func (e RunEdit) Empty() bool {
-	return len(e.Add) == 0 && len(e.Ask) == 0 && len(e.Thinking) == 0 && len(e.On) == 0 && len(e.Skip) == 0
+	return len(e.Add) == 0 && len(e.Label) == 0 && len(e.Ask) == 0 && len(e.Thinking) == 0 && len(e.Max) == 0 && len(e.Model) == 0 && len(e.On) == 0 && len(e.Skip) == 0 &&
+		len(e.Remove) == 0 && len(e.Move) == 0
 }
 
 // editors are the words for who may edit a run's stages.
@@ -112,12 +139,15 @@ func (e RunEdit) who() string {
 // PlanEdit is the plan stage's edit as it was before [RunEdit]: added stages
 // as bare stages whose ask carries its own time word. It stays, with
 // [Adapt], for one release so code written against it keeps compiling; it
-// is a RunEdit by plan ([PlanEdit.RunEdit]).
+// is a RunEdit by plan ([PlanEdit.RunEdit]). Remove and Move are the item
+// card's (`factory_item`); the plan stage's own `plan_edit` never names them.
 type PlanEdit struct {
-	Add  []Stage
-	On   []string
-	Skip []string
-	Why  string
+	Add    []Stage
+	On     []string
+	Skip   []string
+	Remove []string
+	Move   []Moved
+	Why    string
 }
 
 // Empty says the edit changes nothing.
@@ -125,7 +155,7 @@ func (e PlanEdit) Empty() bool { return e.RunEdit().Empty() }
 
 // RunEdit is the same edit in the one shape, by plan.
 func (e PlanEdit) RunEdit() RunEdit {
-	out := RunEdit{On: e.On, Skip: e.Skip, Why: e.Why, By: ByPlan}
+	out := RunEdit{On: e.On, Skip: e.Skip, Remove: e.Remove, Move: e.Move, Why: e.Why, By: ByPlan}
 	for _, st := range e.Add {
 		out.Add = append(out.Add, Added{Stage: st})
 	}
@@ -139,7 +169,8 @@ const (
 	// EditBeforeRun is an edit before anything has run: the manager's
 	// program for the item, or the person's. Any stage's ask and thinking
 	// may change, a stage may be added after any other, switched on, or
-	// skipped unless it is proof or a stage the policy names.
+	// skipped, removed or moved unless it is proof or a stage the policy
+	// names.
 	EditBeforeRun EditMode = "before run"
 	// EditInRun is an edit while the item runs: the same, but a stage that
 	// is done or running is never touched and nothing is added before one,
@@ -170,27 +201,45 @@ func Adapt(it Item, edit PlanEdit, recipe Recipe) (Item, []string, error) {
 //   - an added stage is a conversation with an ask;
 //   - an ask is at most [AskMost] cells, and thinking is "", cheap or strong;
 //   - the stage named proof and a stage a policy line names are never
-//     skipped; an approve step ([IsApprove]) may be added or skipped like
-//     any stage that is not fixed;
+//     skipped, removed or moved; an approve step ([IsApprove]) may be added
+//     or skipped like any stage that is not fixed;
+//   - A PERSON'S ROW STAYS WHERE THE PERSON PUT IT: only you remove or move
+//     an approve step, as only you skip one, so nobody else reorders the
+//     places the run holds for you. A conversation may be moved across one,
+//     as the repository's pipeline editor allows
+//     (internal/factory/pipeline/edit_structure.go);
+//   - only you remove or move a post, which posts outward, as that editor
+//     locks one; and a post is never moved before the proof or the approve
+//     step it stood after, so nothing posts before what holds it;
 //   - a stage that is done or running (or waiting on the person, or failed)
-//     is never changed, and nothing is added before one;
+//     is never changed, removed or moved, and nothing is added or moved
+//     before one;
+//   - nothing is moved after proof but a person's approve step, which does no
+//     work, and a post, which publishes what proof saw, for the reason
+//     nothing is added there: proof has to see it;
+//   - a stage the edit removes is not also changed, placed after, or moved by
+//     the same edit, a stage is moved once in one edit, a step does not go
+//     after itself, and a job keeps at least one step;
 //   - A FIXED STAGE ([Stage.Fixed], [StageFixed]) BINDS EVERYONE, YOU TOO:
-//     its ask and thinking are never changed and it is never skipped, and
-//     the refusal is [FixedRefusal]'s sentence. Switching it on is allowed.
+//     its ask and thinking are never changed and it is never skipped,
+//     removed or moved, and the refusal is [FixedRefusal]'s sentence.
+//     Switching it on is allowed.
 //
 // In a run ([EditInRun]) the recipe's adapt word holds for everyone but you:
 // under `fixed` every change is refused, and under `ask` an approve step
 // stands after plan, so the person ratifies the change before anything after
-// plan runs.
+// plan runs. Before a run `fixed` holds for everyone but you too.
 //
 // The lines start with who (`manager`, `plan`, `you`) and say `set <name>:
 // <ask>`, `set <name> thinking <word>`, `added <name>` (`added <name> after
 // <stage>` when the edit named the stage), `switched on <name>`, `skipped
-// <name>`, in that order, each in the order the edit names them, and `why:
-// <why>` last when the edit says why. They are appended to [Item.Adapted] on
-// the item answered, and returned so a caller may log them too; a caller
-// never appends them a second time. Every stage added or changed carries By
-// and Why.
+// <name>`, `removed <name>`, `moved <name> after <stage>` (`moved <name>
+// first`), in that order, each in the order the edit names them, and `why:
+// <why>` last when the edit says why. A move to where the stage already
+// stands is no change and says nothing. They are appended to [Item.Adapted]
+// on the item answered, and returned so a caller may log them too; a caller
+// never appends them a second time. Every stage added, changed or moved
+// carries By and Why; a removed stage is gone, and its line is its record.
 func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (out Item, outLines []string, err error) {
 	// The HTTP door needs to distinguish a bounded refusal from a failed store write.
 	defer func() {
@@ -218,8 +267,18 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (out Item, outLines 
 		kind = KindIssue
 	}
 	adapt := AdaptFree
-	if mode == EditInRun && who != ByYou {
-		adapt = recipe.AdaptFor(kind)
+	if who != ByYou {
+		word := recipe.AdaptFor(kind)
+		// THE FACTORY'S OWN WORD TRAVELS WITH THE JOB ([Item.House]) and can
+		// only tighten the repository's, whichever machine runs the edit.
+		if it.House != nil {
+			word, _ = StricterAdapt(word, it.House.Adapt)
+		}
+		// BEFORE A RUN ONLY `fixed` BINDS: steps that may never change are
+		// not the manager's to change ahead of the run either.
+		if mode == EditInRun || word == AdaptFixed {
+			adapt = word
+		}
 	}
 	if adapt == AdaptFixed {
 		return it, nil, fmt.Errorf("the recipe for %s is fixed; %s may not change the stages", kind, who)
@@ -256,7 +315,12 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (out Item, outLines 
 	refuse := func(format string, args ...any) { errs = append(errs, fmt.Errorf(format, args...)) }
 	var lines []string
 	say := func(l string) { lines = append(lines, who+" "+l) }
+	// touched is every stage, by stored name, that an earlier part of this
+	// edit changed, placed a stage after, or moved: a removal of one of them
+	// would leave a line about a stage the job no longer has.
+	touched := map[string]bool{}
 	mark := func(i int, stageWhy string) {
+		touched[stages[i].Name] = true
 		stages[i].By = who
 		if stageWhy = oneLine(stageWhy); stageWhy == "" {
 			stageWhy = why
@@ -280,6 +344,27 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (out Item, outLines 
 		return -1
 	}
 
+	for _, name := range sortedKeys(e.Label) {
+		i := find(name, "set")
+		if i < 0 {
+			continue
+		}
+		label, err := CleanStepLabel(e.Label[name])
+		switch {
+		case err != nil:
+			refuse("%s", err.Error())
+		case fixed(i) && label != stages[i].Label:
+			errs = append(errs, FixedRefusal(stages[i].Name))
+		case started[stages[i].Name]:
+			refuse("%s may not change %s, which has already run", who, stages[i].Name)
+		case workAfterProof(i) && label != stages[i].Label:
+			refuse("%s may not change %s, which comes after proof", who, stages[i].Name)
+		case label != stages[i].Label:
+			stages[i].Label = label
+			mark(i, "")
+			say("set " + stages[i].Name + " label: " + label)
+		}
+	}
 	for _, name := range sortedKeys(e.Ask) {
 		i := find(name, "set")
 		if i < 0 {
@@ -287,6 +372,10 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (out Item, outLines 
 		}
 		ask := oneLine(e.Ask[name])
 		switch {
+		// A CHECK'S ASK IS A SHELL COMMAND: only the person changes what runs
+		// on their checkout, never a model that read the issue.
+		case stages[i].Kind == StageCheck && who != ByYou && ask != stages[i].Ask:
+			refuse("only the person may change the command of %s, a check", stages[i].Name)
 		case fixed(i) && ask != stages[i].Ask:
 			errs = append(errs, FixedRefusal(stages[i].Name))
 		case started[stages[i].Name]:
@@ -328,10 +417,90 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (out Item, outLines 
 			}
 		}
 	}
+	for _, name := range sortedKeys(e.Max) {
+		i := find(name, "set")
+		if i < 0 {
+			continue
+		}
+		tries := e.Max[name]
+		switch {
+		// HOW MANY TRIES A STEP GETS IS WHAT IT MAY SPEND, so it is the
+		// person's alone, and bounded.
+		case who != ByYou:
+			refuse("only the person sets how many tries a step gets")
+		case tries < 1 || tries > StepTriesMost:
+			refuse("%s", ErrStepTries.Error())
+		case stages[i].Kind == StageCheck || IsApprove(stages[i]):
+			refuse("%s is a check or an approval; only a conversation step's tries change here", stages[i].Name)
+		case fixed(i) && tries != max(stages[i].Max, 1):
+			errs = append(errs, FixedRefusal(stages[i].Name))
+		case started[stages[i].Name]:
+			refuse("%s may not change %s, which has already run", who, stages[i].Name)
+		case workAfterProof(i) && tries != max(stages[i].Max, 1):
+			refuse("%s may not change %s, which comes after proof", who, stages[i].Name)
+		case tries != max(stages[i].Max, 1):
+			stages[i].Max = tries
+			mark(i, "")
+			say("set " + stages[i].Name + " tries " + strconv.Itoa(tries))
+		}
+	}
+	for _, name := range sortedKeys(e.Model) {
+		i := find(name, "set")
+		if i < 0 {
+			continue
+		}
+		model := strings.TrimSpace(e.Model[name])
+		switch {
+		// THE MODEL A STEP RUNS ON IS THE PERSON'S PICK: it is what the step
+		// costs, so neither the manager nor the plan chooses it.
+		case who != ByYou:
+			refuse("only the person picks the model a step runs on")
+		case !ModelID(model):
+			refuse("%s", ErrModelID.Error())
+		case stages[i].Kind == StageCheck || IsApprove(stages[i]):
+			refuse("%s is a check or an approval and runs no model", stages[i].Name)
+		case fixed(i) && model != stages[i].Model:
+			errs = append(errs, FixedRefusal(stages[i].Name))
+		case started[stages[i].Name]:
+			refuse("%s may not change %s, which has already run", who, stages[i].Name)
+		case workAfterProof(i) && model != stages[i].Model:
+			refuse("%s may not change %s, which comes after proof", who, stages[i].Name)
+		case model != stages[i].Model:
+			stages[i].Model = model
+			mark(i, "")
+			if model == "" {
+				model = "usual"
+			}
+			say("set " + stages[i].Name + " model " + model)
+		}
+	}
 	for _, add := range e.Add {
+		// A CHECK RUNS A SHELL COMMAND in the job's checkout, so only the
+		// person adds one; the manager and the plan add conversations.
+		if add.Stage.Kind == StageCheck && who != ByYou {
+			refuse("only the person may add a check to a job; %s adds conversations", who)
+			continue
+		}
 		st, when, bad := plannedStage(add.Stage)
 		if bad != nil {
 			refuse("%s", bad.Error())
+			continue
+		}
+		if st.Until == UntilNoNewFailures && (who != ByYou || !AllowsBaselineFailures(st, it)) {
+			refuse("only the person may add an issue Test conversation that stops on %s", UntilNoNewFailures)
+			continue
+		}
+		// A MODEL NAMES THE STEP IT ADDS. A sentence with no `name:` is named
+		// by its first meaningful word ([StageSentence]), which is a fair
+		// guess under a person's own typing and a junk step under a model's:
+		// the manager's "Immediately after write, run go vet" became a step
+		// called Immediately, placed before proof, on factory-demo#168. So a
+		// manager or plan add whose only name is that guess, and the guess is
+		// no step codeaf ships or the job's recipe has, is refused in words
+		// the model reads and can act on.
+		if who != ByYou && st.Kind == StageChat && !IsApprove(st) && strings.TrimSpace(add.Stage.Name) == "" &&
+			!StageNameGiven(add.Stage.Ask) && !KnownStepName(st.Name, recipe, kind) {
+			refuse("the step %q has no name of its own, and %q, its first word, is not a step; give it one word before a colon, as \"vet: run go vet ./...\"", oneLine(add.Stage.Ask), st.Name)
 			continue
 		}
 		// THE PLACE IS RESOLVED THROUGH THE SAME UNIQUE LOOKUP AS EVERY OTHER
@@ -392,6 +561,9 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (out Item, outLines 
 		stages = next
 		mark(at, add.Stage.Why)
 		if anchor != "" {
+			touched[anchor] = true
+		}
+		if anchor != "" {
 			say("added " + st.Name + " after " + anchor)
 		} else {
 			say("added " + st.Name)
@@ -432,6 +604,130 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (out Item, outLines 
 			stages[i].On = false
 			mark(i, "")
 			say("skipped " + st.Name)
+		}
+	}
+	for _, name := range e.Remove {
+		i := find(name, "remove")
+		if i < 0 {
+			continue
+		}
+		st := stages[i]
+		switch {
+		case fixed(i):
+			errs = append(errs, FixedRefusal(st.Name))
+		case IsProofStage(st):
+			refuse("%s may not remove %s; proof vouches for the work before it", who, st.Name)
+		case IsApprove(st) && who != ByYou:
+			refuse("only you may remove %s, where the run holds for you", st.Name)
+		case st.Kind == StagePost && who != ByYou:
+			refuse("only you may remove %s, which posts outward", st.Name)
+		case policyNames(recipe.Policy, st.Name):
+			refuse("%s may not remove %s; the policy names it", who, st.Name)
+		case started[st.Name]:
+			refuse("%s may not remove %s, which has already run", who, st.Name)
+		case touched[st.Name]:
+			refuse("%s is changed by the same edit, so it is not removed", st.Name)
+		// AN EMPTY JOB IS NOT AN EMPTY RUN: a job with no steps of its own
+		// is given its recipe's again (above), so its last step stays.
+		case len(stages) == 1:
+			refuse("a job keeps at least one step; %s is its last", st.Name)
+		default:
+			stages = append(append([]Stage(nil), stages[:i]...), stages[i+1:]...)
+			say("removed " + st.Name)
+		}
+	}
+	moved := map[string]bool{}
+	for _, mv := range e.Move {
+		i := find(mv.Stage, "move")
+		if i < 0 {
+			continue
+		}
+		st := stages[i]
+		// THE PLACE IS FOUND BY THE SAME UNIQUE LOOKUP AS EVERY NAME, and kept
+		// in its stored spelling; "" is first.
+		anchor := ""
+		if after := strings.TrimSpace(mv.After); after != "" {
+			j := find(after, "move after")
+			if j < 0 {
+				continue
+			}
+			if j == i {
+				refuse("a step does not go after itself; %s stays where it is", st.Name)
+				continue
+			}
+			anchor = stages[j].Name
+		}
+		switch {
+		case fixed(i):
+			errs = append(errs, FixedRefusal(st.Name))
+			continue
+		case IsProofStage(st):
+			refuse("%s may not move %s; proof vouches for the work before it", who, st.Name)
+			continue
+		case IsApprove(st) && who != ByYou:
+			refuse("only you may move %s, where the run holds for you", st.Name)
+			continue
+		case st.Kind == StagePost && who != ByYou:
+			refuse("only you may move %s, which posts outward", st.Name)
+			continue
+		case policyNames(recipe.Policy, st.Name):
+			refuse("%s may not move %s; the policy names it", who, st.Name)
+			continue
+		case started[st.Name]:
+			refuse("%s may not move %s, which has already run", who, st.Name)
+			continue
+		case moved[st.Name]:
+			refuse("%s is moved once in one edit", st.Name)
+			continue
+		}
+		moved[st.Name] = true
+		rest := append(append([]Stage(nil), stages[:i]...), stages[i+1:]...)
+		at := 0
+		if anchor != "" {
+			at = StageIndex(rest, anchor) + 1
+		}
+		if at == i {
+			// Where it already stands: no change, and nothing to say.
+			continue
+		}
+		next := insertStage(rest, at, st)
+		// A POST STANDS AFTER PROOF, where a proved change is published, so it
+		// is not refused there; it is never moved before the proof or the
+		// approve step it stood after: nothing posts before what holds it.
+		if p := firstProof(next); p >= 0 && at > p && !IsApprove(st) && st.Kind != StagePost {
+			refuse("%s may not move %s after proof; proof has to see it", who, st.Name)
+			continue
+		}
+		// NOR IS WHAT HOLDS A POST MOVED AFTER IT: an approval (or proof)
+		// moved after a post it stood before lets the post go first as surely
+		// as moving the post would.
+		if post := passedPost(stages[i+1:], next[:at]); post != "" && (IsApprove(st) || IsProofStage(st)) {
+			refuse("%s may not move %s after %s; nothing posts before what holds it", who, st.Name, post)
+			continue
+		}
+		blocked := false
+		for _, later := range next[at+1:] {
+			if started[later.Name] {
+				refuse("%s may not move %s before %s, which has already run", who, st.Name, later.Name)
+				blocked = true
+				break
+			}
+			if st.Kind == StagePost && (IsProofStage(later) || IsApprove(later)) && StageIndex(stages[:i], later.Name) >= 0 {
+				refuse("%s may not move %s before %s; nothing posts before what holds it", who, st.Name, later.Name)
+				blocked = true
+				break
+			}
+		}
+		if blocked {
+			continue
+		}
+		stages = next
+		mark(at, "")
+		if anchor != "" {
+			touched[anchor] = true
+			say("moved " + st.Name + " after " + anchor)
+		} else {
+			say("moved " + st.Name + " first")
 		}
 	}
 	if len(errs) > 0 {
@@ -477,14 +773,28 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (out Item, outLines 
 const ProofName = "proof"
 
 // IsProofStage says whether a stage is a proof conversation: the one named
-// proof, a send-back's prove*, or any stage that runs until proven, whatever
-// it is called. Checks and posts are NOT proof here, though their claims reach
+// proof, a name starting with prove other than [proveWordsNotProof], or any
+// stage that runs until proven, whatever it is called.
+// Checks and posts are NOT proof here, though their claims reach
 // the sheet: they can precede legitimate work, so they never freeze an edit.
 // The run loop's sheet maker asks this same question so the two cannot drift.
 func IsProofStage(st Stage) bool {
 	name := strings.ToLower(strings.TrimSpace(st.Name))
-	return name == ProofName || strings.HasPrefix(name, "prove") ||
-		strings.TrimSpace(st.Until) == UntilProven
+	if name == ProofName || strings.TrimSpace(st.Until) == UntilProven {
+		return true
+	}
+	return strings.HasPrefix(name, "prove") && !proveWordsNotProof[name]
+}
+
+// proveWordsNotProof are ordinary words that start with prove. It is a stopgap:
+// explicit step roles replace it. Any other name starting with prove stays
+// proof, because a pipeline's stored names have lost their hyphens, so prove-it
+// arrives here as proveit, and an unknown word on the safe side stays locked.
+var proveWordsNotProof = map[string]bool{
+	"provenance": true,
+	"proved":     true,
+	"prover":     true,
+	"provers":    true,
 }
 
 // firstProof is the index of the earliest proof stage, or -1.
@@ -495,6 +805,18 @@ func firstProof(stages []Stage) int {
 		}
 	}
 	return -1
+}
+
+// passedPost is the first post among ahead (the steps a moved step now
+// follows) that stood among after (the steps it followed before), "" when
+// there is none: the post the move would let go before it.
+func passedPost(after, ahead []Stage) string {
+	for _, st := range ahead {
+		if st.Kind == StagePost && StageIndex(after, st.Name) >= 0 {
+			return st.Name
+		}
+	}
+	return ""
 }
 
 // proofStarted says whether any proof phase has begun. A phase counts when its
@@ -560,7 +882,7 @@ func StageFixed(stages []Stage, i int, recipe Recipe, kind Kind) bool {
 
 // sortedKeys is a map's keys in order, so an edit's lines read the same on
 // every run.
-func sortedKeys(m map[string]string) []string {
+func sortedKeys[V any](m map[string]V) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {
 		out = append(out, k)
@@ -574,7 +896,48 @@ func sortedKeys(m map[string]string) []string {
 // knows, with no gate of its own, named by one word. when is where its ask's
 // time word puts it. bad says what is wrong with it, and is nil when nothing
 // is.
+// plannedCheck is a check added to one run: its ask is the command, run as
+// written; it stops on done, clean, green or proven (green when it says none)
+// and takes no effort or fanout, since no model reads it. Max is its rounds,
+// zero for one.
+func plannedCheck(add Stage, place string) (Stage, string, error) {
+	st := add
+	st.Ask = strings.TrimSpace(oneLine(add.Ask))
+	switch {
+	case strings.TrimSpace(add.Name) == "":
+		return Stage{}, "", errors.New("a check added to a run needs a name")
+	case st.Ask == "":
+		return Stage{}, "", errors.New("a check added to a run needs the command it runs")
+	case askCells(st.Ask) > AskMost:
+		return Stage{}, "", ErrAskTooLong
+	case st.Effort != "" || st.Fanout != "":
+		return Stage{}, "", errors.New("a check runs a command, not a model; it takes no effort or fanout")
+	case st.Max < 0 || st.Max > CheckRoundsMost:
+		return Stage{}, "", fmt.Errorf("a check runs from 1 to %d rounds", CheckRoundsMost)
+	}
+	switch strings.ToLower(strings.TrimSpace(st.Until)) {
+	case "":
+		st.Until = UntilGreen
+	case UntilDone, UntilClean, UntilGreen, UntilProven:
+		st.Until = strings.ToLower(strings.TrimSpace(st.Until))
+	default:
+		return Stage{}, "", errors.New("a check stops on done, clean, green or proven")
+	}
+	st.Name = strings.ToLower(strings.TrimSpace(add.Name))
+	st.Kind, st.On = StageCheck, true
+	st.OldGate, st.OldGateWhen = "", ""
+	st.Proof = nil
+	return st, place, nil
+}
+
+// CheckRoundsMost is the most rounds a check added to one run may take.
+const CheckRoundsMost = 9
+
 func plannedStage(add Stage) (st Stage, when string, bad error) {
+	add.When = strings.ToLower(strings.TrimSpace(add.When))
+	if add.When != "" && !oneOf(add.When, WhenWords) {
+		return Stage{}, "", fmt.Errorf("when is one of %s", strings.Join(WhenWords, ", "))
+	}
 	// AN APPROVE STEP IS ADDED BY ITS NAME OR ITS KIND, and has no ask: the
 	// person is the step. Its place is the ask's time word or the edit's
 	// after, as any stage's is.
@@ -584,14 +947,18 @@ func plannedStage(add Stage) (st Stage, when string, bad error) {
 	rest = strings.TrimSuffix(rest, " step")
 	if add.Kind == StageGate || ApproveWord(strings.ToLower(strings.TrimSpace(add.Name))) || ApproveWord(rest) {
 		a := Approve(nil)
-		if w := strings.ToLower(strings.TrimSpace(add.When)); w != "" && oneOf(w, WhenWords) {
-			a.When = w
-		}
+		// A NEWLY ADDED APPROVE STEP IS A PERSON'S ([PassForNewApprove]).
+		a.Pass = PassForNewApprove
+		a.When = add.When
+		a.Label = strings.TrimSpace(add.Label)
 		a.Why, a.By = add.Why, add.By
 		return a, place, nil
 	}
+	if add.Kind == StageCheck {
+		return plannedCheck(add, place)
+	}
 	if add.Kind != "" && add.Kind != StageChat {
-		return Stage{}, "", errors.New("a stage added to a run is a conversation, not a " + string(add.Kind) + " stage")
+		return Stage{}, "", errors.New("a stage added to a run is a conversation or a check, not a " + string(add.Kind) + " stage")
 	}
 	parsed, when, err := StageSentence(strings.TrimSpace(add.Ask))
 	if err != nil && strings.TrimSpace(add.Name) == "" {
@@ -695,3 +1062,26 @@ type EditRefusal struct{ Cause error }
 
 func (e EditRefusal) Error() string { return e.Cause.Error() }
 func (e EditRefusal) Unwrap() error { return e.Cause }
+
+// adaptRank orders the adapt words from the most freedom to the least: "" and
+// adapt let the plan reshape within the bounds, ask makes a person ratify it,
+// fixed lets nobody but the person change the steps.
+func adaptRank(m AdaptMode) int {
+	switch m {
+	case AdaptAsk:
+		return 1
+	case AdaptFixed:
+		return 2
+	}
+	return 0
+}
+
+// StricterAdapt is want when it gives the plan no more freedom than have, and
+// have (false) when want would loosen it: a personal file or the factory may
+// tighten a repository's adapt word, never loosen it.
+func StricterAdapt(have, want AdaptMode) (AdaptMode, bool) {
+	if adaptRank(want) < adaptRank(have) {
+		return have, false
+	}
+	return want, true
+}

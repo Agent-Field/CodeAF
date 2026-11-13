@@ -51,6 +51,9 @@ func TestLiveEventsKeepContractOneAndSmallPayloads(t *testing.T) {
 			it.State, it.PullRequest = factory.StateShipped, &factory.PullRequest{State: factory.PROpen, ReviewDecision: "changes_requested"}
 		case factory.NeedsApprovePlan:
 			it.QKind = factory.QKindApprove
+		case factory.NeedsApproveStep:
+			it.QKind = factory.QKindApprove
+			it.Stream = &factory.Stream{Cur: 1, Phases: []factory.Phase{{Name: "write", State: factory.PhaseDone, Round: 1}, {Name: "test", State: factory.PhaseWaiting}}}
 		case factory.NeedsApproveStart:
 			it.QKind = factory.QKindAskFirst
 		case factory.NeedsSpendingLimit:

@@ -45,7 +45,9 @@ const (
 	// peek.go admits only transcript-shaped .jsonl files, and sweep.go descends
 	// only into directories, so neither conversation scan can mistake it for a
 	// conversation or a thing to reap.
-	placeMetaLock     = "meta.lock"
+	placeMetaLock = "meta.lock"
+	// MetaLockName is the empty lock file kept beside conversation metadata.
+	MetaLockName      = placeMetaLock
 	placeNodeJournals = "tasks"
 	placeLogs         = "logs"
 	placeTrees        = cell.TreesDir
@@ -236,6 +238,13 @@ type Meta struct {
 	// ID is the session's id — the same 16-hex id the transcript header
 	// carries, and the folder's name.
 	ID string `json:"id"`
+	// ChatURI is stable conversation identity carried in the sealed truth.
+	ChatURI string `json:"chat_uri,omitempty"`
+	// AgentIdentity is the agent's DID (agent_identity.go): written with the
+	// conversation's first identity write after it opens, and never replaced.
+	// It is bound to ID, so a copy or branch that takes a new id mints its own.
+	AgentIdentity   *AgentIdentity   `json:"agent_identity,omitempty"`
+	WorkspacePolicy *WorkspacePolicy `json:"workspace_policy,omitempty"`
 	// Title is what a picker row says. Empty until something names the
 	// session; an empty title marks a session the launch groom may reuse.
 	Title string `json:"title,omitempty"`
@@ -265,6 +274,9 @@ type Meta struct {
 	Owned bool `json:"owned,omitempty"`
 	// Model is the conversation's model at last save, for the picker row.
 	Model string `json:"model,omitempty"`
+	// ModelProvider identifies the selected model's service even before its
+	// first call, when execution history cannot identify a custom alias.
+	ModelProvider string `json:"modelProvider,omitempty"`
 	// Build names the codeaf that most recently wrote this identity.
 	Build string `json:"build,omitempty"`
 	// Effort is the rung on the effort ladder this conversation was set to —
@@ -285,6 +297,9 @@ type Meta struct {
 	// a gate a person opened from inside a conversation must be open when they
 	// come back to it.
 	Approval string `json:"approval,omitempty"`
+	// Scope is conversation when the model is told only about its own work.
+	// Project or absence keeps the project's reading of other conversations' work.
+	Scope string `json:"scope,omitempty"`
 	// Created is when the session was minted.
 	Created time.Time `json:"created"`
 	// LastUserAt is when the PERSON last said something. Resume order is on
@@ -292,6 +307,14 @@ type Meta struct {
 	// file is not a person returning to a conversation
 	// (internal/store/session_rooms.go holds the original of this law).
 	LastUserAt time.Time `json:"lastUserAt,omitempty"`
+	// LastReplyAt is when the conversation last FINISHED SPEAKING TO THE
+	// PERSON: a turn that sealed on an answer, a harness run's report among
+	// them. A turn that ended on tool steps or thinking alone does not move it.
+	// It is stamped beside the spend at the seal (placemeta.go's
+	// [Agent.stampSealed]) so a surface can say "something new here" without
+	// opening the journal. Zero is a conversation that has not answered since
+	// the field arrived.
+	LastReplyAt time.Time `json:"lastReplyAt,omitempty"`
 	// SpentUSD and Tokens are WHAT THE TALKING HAS COST — this conversation's
 	// own running total, every turn and every auxiliary call beside it, as
 	// [Usage] holds it while the session is open.
@@ -302,7 +325,8 @@ type Meta struct {
 	// asking about every conversation on the machine (world.go) reads a folder,
 	// a meta.json and a presence file per session and must not grow a transcript
 	// scan per row — so the running total is stamped here at the end of every
-	// turn (placemeta.go's [Agent.stampSpend]) and read from here.
+	// turn and after a late receipt (placemeta.go's [Agent.stampSpend]) and read
+	// from here.
 	//
 	// Zero is "nobody has said", exactly as an absent Title is, and every
 	// surface draws nothing for it rather than $0.00 (the emptiness law).
@@ -427,7 +451,7 @@ func SetArchived(dir string, archived bool) error {
 			return nil
 		}
 		meta.Archived = archived
-		return SaveMeta(dir, meta)
+		return saveMetaLocked(dir, meta)
 	})
 }
 
@@ -454,7 +478,7 @@ func SetTaskArchived(dir, sessionID, taskID string, archived bool) error {
 		} else {
 			delete(meta.ArchivedTasks, taskID)
 		}
-		return SaveMeta(dir, meta)
+		return saveMetaLocked(dir, meta)
 	})
 }
 
@@ -463,11 +487,43 @@ func SetTaskArchived(dir, sessionID, taskID string, archived bool) error {
 // cell layout the truth-only fields go to .cell/ first and meta.json keeps the
 // summary alone, so no field lives in two files.
 func SaveMeta(dir string, meta Meta) error {
+	return withMetaLock(dir, func() error { return saveMetaLocked(dir, meta) })
+}
+
+// saveMetaLocked preserves immutable identity while a metadata transaction holds the lock.
+func saveMetaLocked(dir string, meta Meta) error {
 	if strings.TrimSpace(dir) == "" {
 		return fmt.Errorf("save session meta: no session directory")
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("save session meta: %w", err)
+	}
+	current, err := LoadMeta(dir)
+	if err != nil {
+		return fmt.Errorf("read session identity: %w", err)
+	}
+	if err := validateWorkspacePolicy(meta.WorkspacePolicy); err != nil {
+		return err
+	}
+	if current.WorkspacePolicy != nil {
+		if meta.WorkspacePolicy != nil && *meta.WorkspacePolicy != *current.WorkspacePolicy {
+			return fmt.Errorf("save session meta: workspace policy cannot be replaced")
+		}
+		meta.WorkspacePolicy = current.WorkspacePolicy
+	}
+	if current.ChatURI != "" {
+		if meta.ChatURI != "" && meta.ChatURI != current.ChatURI {
+			return fmt.Errorf("save session meta: conversation identity cannot be replaced")
+		}
+		meta.ChatURI = current.ChatURI
+	}
+	if meta.Scope == "" {
+		meta.Scope = current.Scope
+	}
+	meta.AgentIdentity = keptAgentIdentity(current, meta)
+	meta.AgentIdentity, err = protectAgentIdentity(meta.AgentIdentity)
+	if err != nil {
+		return fmt.Errorf("save agent identity: %w", err)
 	}
 	// K3: schema paths use slashes even when their source machine is Windows.
 	for _, field := range []*string{&meta.Workspace, &meta.Origin, &meta.FromWorkspace} {
@@ -497,6 +553,16 @@ func writeJSONAtomic(path string, v any) error {
 	raw, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		return err
+	}
+	switch value := v.(type) {
+	case Meta:
+		if value.AgentIdentity != nil {
+			raw = value.AgentIdentity.PreserveJSON(raw)
+		}
+	case SessionTruth:
+		if value.AgentIdentity != nil {
+			raw = value.AgentIdentity.PreserveJSON(raw)
+		}
 	}
 	raw = append(raw, '\n')
 	if sameFileBytes(path, raw) {

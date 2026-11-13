@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
@@ -48,6 +49,13 @@ type ModelSelection struct {
 }
 
 type Job struct {
+	// BeforeWrite rechecks current job and lease authority for external writes.
+	BeforeWrite func(context.Context) error
+	// Lifetime ends with the job, rather than with one stage round.
+	Lifetime context.Context
+	// PendingSpend retains the existing worker report path while owned work
+	// can still bank a receipt. Calling the returned function settles one unit.
+	PendingSpend func() func()
 	// Item is the item as it stands when the round starts.
 	Item factory.Item
 	// Stage is the stage being run and Index its place in Item.Stages.
@@ -75,6 +83,10 @@ type Job struct {
 	Last *factory.StageResult
 	// Dir is the repository's checkout on this machine, "" when unknown.
 	Dir string
+	// Rules are the sentences every step must follow: the repository's own
+	// `rules` and the factory's (the job's [factory.Item.House]), in that
+	// order, each once. A chat step's brief quotes them; nil says nothing.
+	Rules []string
 	// Steer delivers the person's words while the round runs; a chat stage
 	// hands them to its conversation, a check ignores them.
 	Steer <-chan string
@@ -86,6 +98,8 @@ type Job struct {
 	// Progress relays brief human-facing Follow PR updates to the job conversation.
 	// It is nil for other stages and never authorizes an action or accepts proof.
 	Progress func(line string)
+	// SyncPRBase integrates the live PR base in a write-capable Follow PR round.
+	SyncPRBase func(context.Context) (string, error)
 	// Verification publishes engine-owned running check facts, not chat prose.
 	Verification func(*factory.StepVerification)
 	// Spend reports model cost the round incurred, in dollars, as it happens.
@@ -98,6 +112,13 @@ type Job struct {
 	// CarryOn is what the carried-on chat is told besides the carry-on note:
 	// the answers given while the step was paused ([factory.Phase.Carry]).
 	CarryOn []string
+	// Continuing says this round is the one a restart cut short and picked up
+	// again, the same round going on rather than a new start (the step was
+	// running at that round when the restart revived the job). A step that
+	// runs off this machine — an AgentField run it follows — reads the end
+	// its run already reached as this round's, never as a reason to begin a
+	// second run.
+	Continuing bool
 	// Opened is told the conversation's id the moment a chat stage has one,
 	// so the item keeps the stage's chat before the round ends and a pause or
 	// a restart can come back to it. Nil is nobody listening.
@@ -145,6 +166,19 @@ type Event struct {
 // Options builds a [Runner].
 type Options struct {
 	Store *store.Store
+	// Remote runs a RunOn job (factory.Item.RunOn) on AgentField instead of
+	// its own steps, and returns when the run has ended: nil when it
+	// succeeded, the run's error when it failed. It keeps the job's steps,
+	// chats and spend up to date as the run goes. Its context ends when the
+	// person stops the job, and it cancels the run then. Nil refuses a RunOn
+	// job with the words below.
+	Remote func(ctx context.Context, job int) error
+	// AgentFieldAnswer carries a person's decision on an AgentField run's
+	// pause to the control plane, as the runner that started the run (the
+	// one that holds its key and owns it there): nil when it was taken or the
+	// first answer already stood, an error to try again on the next beat. Nil
+	// here refuses the answer with [NoRemoteWords].
+	AgentFieldAnswer func(ctx context.Context, job int, d factory.AgentFieldDecision) error
 	// Exec maps a stage kind to what runs it. A missing kind fails its stage.
 	Exec map[factory.StageKind]Executor
 	// Benches is how many items may run at once; 0 is unbounded.
@@ -162,9 +196,16 @@ type Options struct {
 	// comes from it and its error fails the round with its sentence; when it
 	// is nil, Dir is RepoDir's. The workdir lane added it, additively.
 	Workdir func(it factory.Item) (dir string, err error)
-	// Recipe answers the repo's recipe (its file, else the default), which
-	// the plan stage's edits are bounded by.
-	Recipe func(repo string) factory.Recipe
+	// Recipe answers the recipe one job is bounded by: its rules, the plan
+	// stage's edits and a post's policy. It reads the factory's copy the job
+	// carries first, else its repository's file, else the default
+	// (pipeline.JobFile). Nil bounds a job by the copy it carries alone.
+	Recipe func(it factory.Item) factory.Recipe
+	// RulesAfterClone reads the repository's rules again for a job that could
+	// not read them at its start because the repository was not here yet
+	// ([factory.StartRules.Pending]). It answers as a start's read does. Nil
+	// leaves such a job held at its plan.
+	RulesAfterClone func(ctx context.Context, it factory.Item) (pipeline.File, error)
 	// Source answers the item's source for a post stage, nil when none.
 	Source func(repo string) factory.Source
 	// Publisher resolves the assignee's account and one credential for both
@@ -175,7 +216,7 @@ type Options struct {
 	// approval is carried out ([Runner.Publish]); the wire hands [GitPush]
 	// with the person's token. Nil publishes nothing: an approval then fails
 	// with the sentence that this machine cannot push.
-	Push func(dir, branch string) error
+	Push func(dir, branch string, before ...func() error) error
 	// Git commits an approved item's worktree ([Runner.Publish]); nil is
 	// [ExecGit].
 	Git Git
@@ -222,6 +263,11 @@ type Options struct {
 	// turn that answers nothing all send the question to the person. The
 	// inbox lane added it, additively.
 	Inbox func(ctx context.Context, it factory.Item, q factory.Asked) (InboxReply, error)
+	// FailureSummary is one cheap turn of the job's manager writing a failed
+	// step's one-line headline from its failure, when the step gave none
+	// ([factory.FailureSummaryAsk]); it is spent and booked as the job's own
+	// conversation. Nil leaves such a failure without a summary.
+	FailureSummary func(ctx context.Context, it factory.Item, f factory.Failure) (string, error)
 	// Record receives a step_failed event when a step errors. Nil keeps the
 	// failure on the job and writes no audit line. The worker's mirror
 	// leaves this nil; the factory that accepts the report writes the event.
@@ -231,7 +277,10 @@ type Options struct {
 // PublishTarget keeps one attempt's GitHub writes on the same person's account.
 type PublishTarget struct {
 	Source factory.Source
-	Push   func(dir, branch string) error
+	Push   func(dir, branch string, before ...func() error) error
+	// Git reads and moves the remote with Push's own credential when a push is
+	// refused; nil uses the runner's Git.
+	Git Git
 }
 
 // InboxReply is the manager's answer to a step's question: Answer is its
@@ -246,8 +295,8 @@ type InboxReply struct {
 // it. THE LOOP ASKS AFTER EVERY ROUND whether the cap is reached, and when it
 // is, it parks the item on CapQuestion's sentence; the money decides nothing.
 type Pool interface {
-	// Spend is the Job.Spend hook for one item.
-	Spend(id int) func(usd float64)
+	// SpendRound is the Job.Spend hook for one item and logical round.
+	SpendRound(id int, step string, round int) func(usd float64)
 	// CapReached says whether the item has spent what its cap allows.
 	CapReached(it factory.Item) bool
 	// CapQuestion is the sentence the item waits on, and its QKind.
@@ -266,8 +315,11 @@ type Runner struct {
 	// loopOnce makes floor, the state machine's own state (loop.go), on the
 	// first door anybody calls, so New stays the one-line constructor the
 	// lanes were handed.
-	loopOnce sync.Once
-	floor    *floorLoop
+	loopOnce      sync.Once
+	floor         *floorLoop
+	stepBegins    sync.Map
+	stopReaders   sync.Map
+	publishChecks sync.Map
 }
 
 // New makes a runner. It starts nothing until Launch.

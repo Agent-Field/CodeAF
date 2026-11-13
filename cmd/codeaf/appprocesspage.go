@@ -13,7 +13,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"path/filepath"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
@@ -76,7 +75,7 @@ func (b *appBackend) PageProcesses(ctx context.Context, ask appwire.ProcessPageA
 	b.locked(func() { transcript = a.transcript })
 	convDir := ""
 	if transcript != "" {
-		convDir = filepath.Dir(transcript)
+		convDir = session.DirOf(transcript)
 	}
 	owner := appProcessOwner{
 		agent: ask.Agent, live: b.liveOf(a), convDir: convDir,
@@ -474,7 +473,7 @@ func (b *appBackend) processRecord(ctx context.Context, id string, legacyList bo
 	b.locked(func() { transcript = a.transcript })
 	convDir := ""
 	if transcript != "" {
-		convDir = filepath.Dir(transcript)
+		convDir = session.DirOf(transcript)
 	}
 	var record session.JobNotice
 	found := false

@@ -398,15 +398,21 @@ func TestStopAllOnANotHeldConversationNeverOpensItOrInventsAnEmptyJobSnapshot(t 
 }
 
 func TestProcessActionsOpensALightCrewOwnerOnce(t *testing.T) {
-	b, _, paths, opens := lazyBackend(t, 1)
+	b, rec, paths, opens := lazyBackend(t, 1)
 	b.crews()
 	job := session.JobNotice{ID: 41, Kind: session.JobKindCommand, State: session.JobDone, Started: time.UnixMilli(1700000000000)}
 	seedRecords(t, filepath.Dir(paths[0]), job)
 	engine := &actorEngine{fakeConversation: &fakeConversation{}, record: job, facts: session.ProcessActions{
 		Record: job, Rerun: session.ProcessAction{Available: true},
 	}}
+	entered, release := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	releaseOpen := func() { once.Do(func() { close(release) }) }
+	defer releaseOpen()
 	opener := b.open
 	b.open = func(ask appOpenAsk) (*appConn, error) {
+		close(entered)
+		<-release
 		conn, err := opener(ask)
 		if err == nil {
 			conn.Conv = engine
@@ -414,17 +420,460 @@ func TestProcessActionsOpensALightCrewOwnerOnce(t *testing.T) {
 		return conn, err
 	}
 	id := appProcessID(appAgentID(paths[0]), job)
+	first := make(chan struct{})
+	go func() {
+		defer close(first)
+		got, err := b.ProcessActions(context.Background(), id)
+		if err != nil || !got.Rerun.Available {
+			t.Errorf("opening caller's actions: %+v %v", got, err)
+		}
+	}()
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the owner was never asked to open")
+	}
+	t.Log("interleaving: first actions caller entered the opener; owner publication is blocked")
 	var wg sync.WaitGroup
 	for range 12 {
 		wg.Go(func() {
 			got, err := b.ProcessActions(context.Background(), id)
+			if err != nil || got.State != appwire.ProcessEnded || got.Rerun.Available || got.Rerun.Reason != appwire.ProcessActionNotHeld {
+				t.Errorf("opening owner's saved actions: %+v %v", got, err)
+			}
+		})
+	}
+	answersWithin(t, 2*time.Second, "actions while the owner opens", wg.Wait)
+	t.Log("interleaving: concurrent reads returned ended and not_held without waiting for the opener")
+	releaseOpen()
+	rec.waitFor(t, 5*time.Second, func(event string, data any) bool {
+		changed, ok := data.(appwire.AgentChanged)
+		return event == appwire.EventAgentChanged && ok && changed.Agent.ID == appAgentID(paths[0])
+	})
+	t.Log("interleaving: opener released; agent.changed received")
+	<-first
+	// The readiness event, rather than another caller's timing, makes an
+	// owner-backed answer available to every subsequent read.
+	for range 12 {
+		wg.Go(func() {
+			got, err := b.ProcessActions(context.Background(), id)
 			if err != nil || !got.Rerun.Available {
-				t.Errorf("light owner's actions: %+v %v", got, err)
+				t.Errorf("ready owner's actions: %+v %v", got, err)
 			}
 		})
 	}
 	wg.Wait()
 	if got := opens.Load(); got != 1 {
 		t.Fatalf("concurrent actions opened %d owners", got)
+	}
+}
+
+// A PERSON'S STOP-ALL DURING AN OPEN STOPS WHAT THE OWNER HOLDS. The stop waits
+// for the open that is under way, so held jobs are stopped rather than reported
+// unknown. An open that never ends costs only the wait: the receipt then says
+// what is left is unknown, and the method's own deadline still holds.
+func TestStopAllDuringAnOwnersOpen(t *testing.T) {
+	setup := func(t *testing.T) (*appBackend, string, *actorEngine, chan struct{}, chan struct{}) {
+		b, _, paths, _ := lazyBackend(t, 1)
+		b.crews()
+		job := session.JobNotice{ID: 41, Kind: session.JobKindCommand, State: session.JobRunning, Started: time.UnixMilli(1700000000000)}
+		seedRecords(t, filepath.Dir(paths[0]), job)
+		engine := &actorEngine{fakeConversation: &fakeConversation{}, record: job, receipt: session.ProcessStopReceipt{Eligible: 1, Stopped: 1}}
+		entered, release := make(chan struct{}), make(chan struct{})
+		opener := b.open
+		b.open = func(ask appOpenAsk) (*appConn, error) {
+			close(entered)
+			<-release
+			conn, err := opener(ask)
+			if err == nil {
+				conn.Conv = engine
+			}
+			return conn, err
+		}
+		id := appProcessID(appAgentID(paths[0]), job)
+		go func() { _, _ = b.ProcessActions(context.Background(), id) }()
+		select {
+		case <-entered:
+		case <-time.After(5 * time.Second):
+			t.Fatal("the owner was never asked to open")
+		}
+		return b, appAgentID(paths[0]), engine, entered, release
+	}
+	t.Run("the open ends", func(t *testing.T) {
+		b, agent, _, _, release := setup(t)
+		answered := make(chan *appwire.ProcessStopAllResult, 1)
+		go func() {
+			res, err := b.StopAllProcesses(context.Background(), appwire.ProcessStopAllAsk{Agent: agent})
+			if err != nil {
+				t.Errorf("stop-all: %v", err)
+			}
+			answered <- res
+		}()
+		time.Sleep(100 * time.Millisecond)
+		close(release)
+		select {
+		case res := <-answered:
+			if res == nil || res.Stopped != 1 || res.RemainingUnknown {
+				t.Fatalf("a stop-all during an open did not stop what the owner holds: %+v", res)
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatal("stop-all never answered")
+		}
+	})
+	t.Run("the open is stuck", func(t *testing.T) {
+		b, agent, _, _, release := setup(t)
+		defer close(release)
+		ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+		defer cancel()
+		began := time.Now()
+		res, err := b.StopAllProcesses(ctx, appwire.ProcessStopAllAsk{Agent: agent})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if took := time.Since(began); took > 2*time.Second {
+			t.Fatalf("a stuck open held the stop past its deadline: %v", took)
+		}
+		if !res.RemainingUnknown || res.Stopped != 0 {
+			t.Fatalf("a stuck open's receipt claims too much: %+v", res)
+		}
+	})
+}
+
+// stopAllWatchGate holds initialization after the owner has been published.
+type stopAllWatchGate struct {
+	*actorEngine
+	entered, release chan struct{}
+}
+
+func (e *stopAllWatchGate) WatchTaskUpdates() (<-chan session.Event, func()) {
+	close(e.entered)
+	<-e.release
+	return e.actorEngine.WatchTaskUpdates()
+}
+
+func TestStopAllTimeoutSkipsLatePublishedOwner(t *testing.T) {
+	b, _, paths, _ := lazyBackend(t, 1)
+	b.crews()
+	engine := &stopAllWatchGate{
+		actorEngine: &actorEngine{fakeConversation: &fakeConversation{}, receipt: session.ProcessStopReceipt{Eligible: 1, Stopped: 1}},
+		entered:     make(chan struct{}), release: make(chan struct{}),
+	}
+	entered, release, opened := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	var releaseOnce, watchOnce sync.Once
+	releaseOpen := func() { releaseOnce.Do(func() { close(release) }) }
+	releaseWatch := func() { watchOnce.Do(func() { close(engine.release) }) }
+	opener := b.open
+	b.open = func(ask appOpenAsk) (*appConn, error) {
+		close(entered)
+		<-release
+		conn, err := opener(ask)
+		if err == nil {
+			conn.Conv = engine
+		}
+		return conn, err
+	}
+	agent := appAgentID(paths[0])
+	go func() { defer close(opened); _, _ = b.OpenAgent(agent) }()
+	defer func() { releaseOpen(); releaseWatch(); <-opened }()
+	<-entered
+	w := newSvcWorld(t)
+	b.attachServices(w.sup)
+	row := w.keep(t, agent, service.PolicyOnFailure)
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	answered := make(chan *appwire.ProcessStopAllResult, 1)
+	go func() {
+		res, err := b.StopAllProcesses(ctx, appwire.ProcessStopAllAsk{Agent: agent})
+		if err != nil {
+			t.Errorf("stop-all: %v", err)
+		}
+		answered <- res
+	}()
+	// Services establish that stop-all has begun while the opener is blocked.
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		got, err := w.sup.Get(agent, row.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !got.Running && !got.Stopping {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("services waited for the opener")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	releaseOpen()
+	<-engine.entered
+	if ctx.Err() != nil {
+		t.Fatal("publication window was not reached before the deadline")
+	}
+	res := <-answered
+	if ctx.Err() != context.DeadlineExceeded {
+		t.Fatal("stop-all skipped the wait for owner publication")
+	}
+	releaseWatch()
+	<-opened
+	engine.mu.Lock()
+	called := engine.returned
+	engine.mu.Unlock()
+	if called || res == nil || res.Eligible != 0 || res.Stopped != 0 || !res.RemainingUnknown || !res.Partial {
+		t.Fatalf("timeout must skip actor and report zero jobs, unknown and partial: actor_called=%t receipt=%+v", called, res)
+	}
+}
+
+// stopAllTitleGate holds initialization before the live owner is published.
+type stopAllTitleGate struct {
+	*actorEngine
+	entered, release chan struct{}
+}
+
+func (e *stopAllTitleGate) Title() string {
+	close(e.entered)
+	<-e.release
+	return ""
+}
+
+func TestStopAllOwnerLookupOpensOnlyKeptOwnersWithinDeadline(t *testing.T) {
+	t.Run("post-open publication deadline", func(t *testing.T) {
+		b, _, paths, _ := lazyBackend(t, 1)
+		b.crews()
+		engine := &stopAllTitleGate{
+			actorEngine: &actorEngine{fakeConversation: &fakeConversation{}},
+			entered:     make(chan struct{}), release: make(chan struct{}),
+		}
+		opener := b.open
+		b.open = func(ask appOpenAsk) (*appConn, error) {
+			conn, err := opener(ask)
+			if err == nil {
+				conn.Conv = engine
+			}
+			return conn, err
+		}
+		agent := appAgentID(paths[0])
+		opened := make(chan struct{})
+		go func() { defer close(opened); _, _ = b.OpenAgent(agent) }()
+		<-engine.entered
+		defer func() { close(engine.release); <-opened }()
+		w := newSvcWorld(t)
+		b.attachServices(w.sup)
+		row := w.keep(t, agent, service.PolicyOnFailure)
+		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+		defer cancel()
+		answered := make(chan *appwire.ProcessStopAllResult, 1)
+		go func() {
+			res, err := b.StopAllProcesses(ctx, appwire.ProcessStopAllAsk{Agent: agent})
+			if err != nil {
+				t.Errorf("stop-all: %v", err)
+			}
+			answered <- res
+		}()
+		select {
+		case res := <-answered:
+			if ctx.Err() != context.DeadlineExceeded {
+				t.Error("stop-all skipped the wait for owner publication")
+			}
+			if res == nil || !res.RemainingUnknown || !res.Partial || res.Stopped != 0 || res.ServicesStopped != 1 {
+				t.Errorf("initializing owner's receipt: %+v", res)
+			}
+		case <-time.After(300 * time.Millisecond):
+			t.Error("stop-all exceeded its 50ms deadline while Title held initialization")
+		}
+		got, err := w.sup.Get(agent, row.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Running || got.Stopping {
+			t.Errorf("services waited for initialization: running=%t stopping=%t", got.Running, got.Stopping)
+		}
+	})
+	t.Run("non-kept conversation stays cold", func(t *testing.T) {
+		b, _, paths, opens := lazyBackend(t, 1)
+		res, err := b.StopAllProcesses(context.Background(), appwire.ProcessStopAllAsk{Agent: appAgentID(paths[0])})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := opens.Load(); got != 0 {
+			t.Errorf("stop-all opened %d cold owners", got)
+		}
+		if res == nil || !res.RemainingUnknown || !res.Partial || res.Stopped != 0 {
+			t.Errorf("cold owner's receipt: %+v", res)
+		}
+	})
+	t.Run("cold kept open respects deadline and retries join it", func(t *testing.T) {
+		b, _, paths, opens := lazyBackend(t, 1)
+		b.crews()
+		agent := appAgentID(paths[0])
+		entered, release, finished := make(chan struct{}), make(chan struct{}), make(chan struct{})
+		engine := &actorEngine{fakeConversation: &fakeConversation{}, receipt: session.ProcessStopReceipt{Eligible: 1, Stopped: 1}}
+		opener := b.open
+		b.open = func(ask appOpenAsk) (*appConn, error) {
+			close(entered)
+			<-release
+			conn, err := opener(ask)
+			if err == nil {
+				conn.Conv = engine
+			}
+			return conn, err
+		}
+		var releaseOnce sync.Once
+		releaseOpen := func() { releaseOnce.Do(func() { close(release) }) }
+		defer func() { releaseOpen(); <-finished }()
+		w := newSvcWorld(t)
+		b.attachServices(w.sup)
+		row := w.keep(t, agent, service.PolicyOnFailure)
+		var done <-chan struct{}
+		for attempt := range 3 {
+			ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+			answered := make(chan *appwire.ProcessStopAllResult, 1)
+			go func() {
+				res, err := b.StopAllProcesses(ctx, appwire.ProcessStopAllAsk{Agent: agent})
+				if err != nil {
+					t.Errorf("stop-all: %v", err)
+				}
+				answered <- res
+			}()
+			if attempt == 0 {
+				select {
+				case <-entered:
+					if ctx.Err() != nil {
+						t.Error("cold opener missed the deadline")
+					}
+				case <-answered:
+					cancel()
+					close(finished)
+					t.Fatal("stop-all skipped the cold opener")
+				case <-time.After(time.Second):
+					cancel()
+					close(finished)
+					t.Fatal("cold opener was never reached")
+				}
+				a := mustFind(t, b, agent)
+				b.locked(func() { done = a.openDone })
+				go func() { <-done; close(finished) }()
+			}
+			select {
+			case res := <-answered:
+				if ctx.Err() != context.DeadlineExceeded {
+					t.Error("stop-all skipped its owner wait")
+				}
+				if res == nil || res.Stopped != 0 || !res.Partial || !res.RemainingUnknown {
+					t.Errorf("stuck cold receipt: %+v", res)
+				}
+				if attempt == 0 && (res == nil || res.ServicesStopped != 1) {
+					t.Errorf("services did not stop independently: %+v", res)
+				}
+			case <-time.After(300 * time.Millisecond):
+				t.Error("stop-all exceeded its 50ms deadline")
+			}
+			cancel()
+			a := mustFind(t, b, agent)
+			b.locked(func() {
+				if a.openDone != done {
+					t.Error("retry did not join the existing open")
+				}
+			})
+		}
+		got, err := w.sup.Get(agent, row.ID)
+		if err != nil || got.Running || got.Stopping {
+			t.Errorf("service still running before open release: %+v %v", got, err)
+		}
+		if opens.Load() != 0 {
+			t.Error("blocked opener was released early")
+		}
+		releaseOpen()
+		<-finished
+		if opens.Load() != 1 {
+			t.Errorf("retries opened %d owners, want one", opens.Load())
+		}
+		engine.mu.Lock()
+		called := engine.returned
+		engine.mu.Unlock()
+		if called {
+			t.Error("timed-out stop called the job actor")
+		}
+	})
+}
+
+func TestStopAllColdCrewOwnerStopsRunningJob(t *testing.T) {
+	h := newRealActionHarnessSaying(t, "")
+	a := mustFind(t, h.b, h.agent)
+	if _, _, err := h.b.ensure(a); err != nil {
+		t.Fatal(err)
+	}
+	real, ok := session.LiveAgentFor(a.transcript)
+	if !ok {
+		t.Fatal("no real owner")
+	}
+	rememberStageAgent(real)
+	defer forgetStageAgent(real)
+	job := session.JobNotice{ID: 41, Kind: session.JobKindCommand, State: session.JobDone, Command: "sleep 30", StartedBy: session.JobStartedByChat, Dir: h.cwd, Started: time.UnixMilli(1700000000000), Ended: time.UnixMilli(1700000001000)}
+	seedRecords(t, filepath.Dir(a.transcript), job)
+	running, err := real.RerunProcessAt(context.Background(), job.ID, job.Started.UnixMilli())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer real.StopConversationProcesses(context.Background())
+	if running.State != session.JobRunning {
+		t.Fatalf("job not running: %+v", running)
+	}
+	b := newFakeBackend(newAppRecorder(), appOpenInProcess)
+	defer b.Close()
+	run := newAppCrewRun()
+	close(run.ready)
+	close(run.done)
+	run.held[h.agent] = []string{"test-crew"}
+	b.crewRun = run
+	cold := mustFind(t, b, h.agent)
+	if b.liveOf(cold) != nil {
+		t.Fatal("owner is not cold")
+	}
+	res, err := b.StopAllProcesses(context.Background(), appwire.ProcessStopAllAsk{Agent: h.agent})
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := real.JobNotices()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range after {
+		if row.ID == running.ID && row.State == session.JobRunning {
+			t.Errorf("sleep 30 still running after stop-all: %+v", res)
+		}
+	}
+	if res.Stopped != 1 || res.RemainingUnknown {
+		t.Fatalf("cold crew owner missed running job: %+v", res)
+	}
+}
+
+func TestStopAllLeavesClosedOrClosingCrewOwnerCold(t *testing.T) {
+	for _, state := range []string{"closed", "closing"} {
+		t.Run(state, func(t *testing.T) {
+			b, _, paths, opens := lazyBackend(t, 1)
+			b.crews()
+			agent := appAgentID(paths[0])
+			if state == "closed" {
+				if err := b.state.write(func(f *appStateFile) error {
+					if f.Closed == nil {
+						f.Closed = map[string]time.Time{}
+					}
+					f.Closed[agent] = time.Now()
+					return nil
+				}); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				b.locked(func() { b.closing = true })
+				defer b.locked(func() { b.closing = false })
+			}
+			res, err := b.StopAllProcesses(context.Background(), appwire.ProcessStopAllAsk{Agent: agent})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if opens.Load() != 0 || res.Stopped != 0 || !res.RemainingUnknown || !res.Partial {
+				t.Fatalf("%s owner reopened or claims complete: opens=%d receipt=%+v", state, opens.Load(), res)
+			}
+		})
 	}
 }

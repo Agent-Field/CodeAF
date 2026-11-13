@@ -3,6 +3,7 @@ package appwire
 import (
 	"context"
 	"encoding/json"
+	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -34,6 +35,23 @@ import (
 //     parser and encoder the pull request route uses, so what is shown is what is
 //     committed, comments dropped and layout rewritten as that encoder does.
 //
+// Behind feature factory.pipeline_edit_rules the two methods also edit the
+// file's OWN lists and a file that is not there yet:
+//
+//   - the source carries rules, ask_first and never, the lines the repository's
+//     file itself holds (never the factory's house rules), for the states file
+//     and missing;
+//   - a missing file is editable: the source describes the shipped default
+//     pipeline the repository runs without one (text "", nothing in_file), and
+//     a preview with base_text "" applies the edits to those defaults and
+//     answers the whole file the pull request creates;
+//   - set_list {list, lines} replaces one of rules, ask_first and never whole,
+//     and the preview answers lists, every list whose lines changed.
+//
+// An engine that does not announce the word answers exactly as before: no
+// lists, a missing file not editable, and set_list or an empty base_text
+// refused as bad_params.
+//
 // NEITHER METHOD OPENS A PULL REQUEST, CREATES A BRANCH OR WRITES A FILE. The
 // next step is factory.pipeline_pr with the preview's text and the source's
 // base_sha as expected_base_sha.
@@ -42,9 +60,16 @@ import (
 // text byte for byte: reformatting alone is not a change and offers nothing to
 // write.
 
+// FeatureFactoryPipelineEditLabel announces labels on set_step and add_step.
+const FeatureFactoryPipelineEditLabel = "factory.pipeline_edit_label"
+
 // FeatureFactoryPipelineEdit is announced in hello when the engine serves
 // factory.pipeline_source and factory.pipeline_preview.
 const FeatureFactoryPipelineEdit = "factory.pipeline_edit"
+
+// FeatureFactoryTestBaseline announces the built-in Test comparison rule on
+// this engine. Remote factories advertise their own shipped recipe.
+const FeatureFactoryTestBaseline = "factory.test_baseline"
 
 // FeatureFactoryPipelineEditRuntime is announced beside FeatureFactoryPipelineEdit
 // when this engine decodes when, effort and fanout in a preview AND refuses to
@@ -59,6 +84,84 @@ const FeatureFactoryPipelineEditRuntime = "factory.pipeline_edit_runtime"
 // does not announce it refuses the three verbs as bad_params, as before they
 // existed.
 const FeatureFactoryPipelineEditStructure = "factory.pipeline_edit_structure"
+
+// FeatureFactoryPipelineEditRules is announced beside FeatureFactoryPipelineEdit
+// when this engine carries the file's own rules, ask_first and never on the
+// source, previews set_list, and edits a missing file from the shipped
+// defaults (an editable missing source, and a preview of base_text ""). It says
+// nothing about any remote: rules and start were keys every YAML-reading
+// factory parsed before this, and the pull request route already creates a
+// file the default branch does not have.
+const FeatureFactoryPipelineEditRules = "factory.pipeline_edit_rules"
+
+// FeatureFactoryPipelineEditSettings is announced beside FeatureFactoryPipelineEditRules
+// when this engine carries the file's adapt word, start labels and start limits
+// on the source, and previews set_adapt, set_fixed, set_start and a set_list of
+// the labels list. It says nothing about any remote: adapt, fixed and start are
+// keys every YAML-reading factory parsed before this.
+const FeatureFactoryPipelineEditSettings = "factory.pipeline_edit_settings"
+
+// FeatureFactoryPipelineEditChecks is announced beside FeatureFactoryPipelineEditStructure
+// when this engine previews an add_step of kind check (a step whose prompt is a
+// shell command and whose exit code is the evidence) and a set_step of a
+// check's command. A check spells `kind`, a runtime key, so the preview takes it
+// only for a file its factory attested, as it does when, effort and fanout.
+const FeatureFactoryPipelineEditChecks = "factory.pipeline_edit_checks"
+
+// FeatureFactoryPipelineEditApprovers is announced beside FeatureFactoryPipelineEditSettings
+// when this engine previews set_approver: who an approve step (or a gate)
+// waits on, "@handle", operator, or "" for the job's person. A step that
+// names one spells `who`, a runtime key, so the preview takes it only for a
+// file its factory attested. The source's steps then carry their who.
+const FeatureFactoryPipelineEditApprovers = "factory.pipeline_edit_approvers"
+
+// FeatureFactoryPipelineEditPass is announced beside FeatureFactoryPipelineEditSettings
+// when this engine previews set_pass and pass on an added gate: who may pass
+// an approve step, person, manager, or `manager when <condition>`. A step that
+// says one spells `pass`, a runtime key, so the preview takes it only for a
+// file its factory attested. The source's steps then carry their pass.
+const FeatureFactoryPipelineEditPass = "factory.pipeline_edit_pass"
+
+// FeatureFactoryPipelineEditAdaptKind is announced beside FeatureFactoryPipelineEditSettings
+// when this engine previews set_adapt with a pipeline (one word for one
+// pipeline, the file then writing `adapt:` as a map of kind to word) and its
+// sources carry adapt_kinds. A map is a key a factory older than it does not
+// read, so a preview that writes or keeps one is taken only for a file its
+// factory attested, as the other runtime keys are.
+const FeatureFactoryPipelineEditAdaptKind = "factory.pipeline_edit_adapt_kind"
+
+// FeatureFactoryPipelineEditRename is announced beside FeatureFactoryPipelineEditStructure
+// when this engine previews rename_step {name, to}: one step under a new name
+// in every pipeline that lists it, in the required list and in its own
+// definition. The preview's structure then carries renamed.
+const FeatureFactoryPipelineEditRename = "factory.pipeline_edit_rename"
+
+// FeatureFactoryPipelineEditGates is announced beside FeatureFactoryPipelineEditStructure
+// when this engine previews an add_step of kind gate: an approval put in one
+// pipeline, with an optional prompt the person reads. A gate spells `kind`, a
+// runtime key, so the preview takes it only for a file its factory attested.
+// Who on that add_step ("@handle", operator, or "" for the job's person) is
+// taken only when FeatureFactoryPipelineEditApprovers is announced too.
+const FeatureFactoryPipelineEditGates = "factory.pipeline_edit_gates"
+
+// FeatureFactoryPipelineEditAgentField is announced beside
+// FeatureFactoryPipelineEditStructure when this engine previews an add_step of
+// kind agentfield: a step that runs a reasoner on the AgentField control
+// plane, its prompt the reasoner (node.reasoner) and its optional input a map
+// of the reasoner's field names to text with the job's {placeholders}. It
+// spells `kind` and `input`, runtime keys, so the preview takes it only for a
+// file its factory attested.
+const FeatureFactoryPipelineEditAgentField = "factory.pipeline_edit_agentfield"
+
+// FeatureFactoryPipelineEditPipelines is announced beside
+// FeatureFactoryPipelineEditStructure when this engine previews the three
+// verbs that make, rename and remove a whole named pipeline:
+// add_pipeline {name, steps | from}, remove_pipeline {name} and
+// rename_pipeline {name, to}. pr, ci and issue are never one of their names
+// (issue is always there; pr and ci are the factory's lists for pull request
+// and CI jobs). The preview's structure then carries pipelines. The same
+// verbs edit the factory's library (factory.library_preview).
+const FeatureFactoryPipelineEditPipelines = "factory.pipeline_edit_pipelines"
 
 const (
 	// factoryPipelineSourceBudget covers the three GitHub reads of the route,
@@ -79,32 +182,74 @@ const (
 	PipelineSourceInvalid  = api.PipelineEditInvalid
 	PipelineSourceTooLarge = api.PipelineEditTooLarge
 
-	PipelineEditSetStep    = pipeline.OpSetStep
-	PipelineEditSetBudget  = pipeline.OpSetBudget
-	PipelineEditAddStep    = pipeline.OpAddStep
-	PipelineEditRemoveStep = pipeline.OpRemoveStep
-	PipelineEditMoveStep   = pipeline.OpMoveStep
+	PipelineEditSetStep     = pipeline.OpSetStep
+	PipelineEditSetBudget   = pipeline.OpSetBudget
+	PipelineEditAddStep     = pipeline.OpAddStep
+	PipelineEditRemoveStep  = pipeline.OpRemoveStep
+	PipelineEditMoveStep    = pipeline.OpMoveStep
+	PipelineEditSetList     = pipeline.OpSetList
+	PipelineEditSetAdapt    = pipeline.OpSetAdapt
+	PipelineEditSetFixed    = pipeline.OpSetFixed
+	PipelineEditSetStart    = pipeline.OpSetStart
+	PipelineEditSetApprover = pipeline.OpSetApprover
+	PipelineEditSetPass     = pipeline.OpSetPass
+	PipelineEditRenameStep  = pipeline.OpRenameStep
+
+	PipelineEditAddPipeline    = pipeline.OpAddPipeline
+	PipelineEditRemovePipeline = pipeline.OpRemovePipeline
+	PipelineEditRenamePipeline = pipeline.OpRenamePipeline
+
+	PipelineListRules    = pipeline.ListRules
+	PipelineListAskFirst = pipeline.ListAskFirst
+	PipelineListNever    = pipeline.ListNever
+	PipelineListLabels   = pipeline.ListLabels
 )
 
 // FactoryPipelineSourceParams names the repository whose file is read.
+//
+// Ref, behind feature factory.pipeline_source_ref, reads an OPEN PIPELINE PULL
+// REQUEST of that repository instead of its default branch: the pull request's
+// number in decimal ("42"), resolved to its head when the read is made, or the
+// 40-hex commit at its head. The pull request must be open, from a branch of
+// the same repository into its default branch, and change only the pipeline
+// file; anything else is refused (conflict). The answer's base_sha is then that
+// head, which factory.pipeline_preview takes as base_sha and
+// factory.pipeline_pr takes as expected_head_sha with pr.
 type FactoryPipelineSourceParams struct {
 	Factory string `json:"factory"`
 	Repo    string `json:"repo"`
+	Ref     string `json:"ref,omitempty"`
 }
 
 // FactoryPipelineSource is the pinned file. It repeats the connection and the
 // repository that were asked for. BaseSHA is the default-branch commit the file
 // was read at, to be passed back to the preview and to factory.pipeline_pr.
-// Text is the raw file for the states file and invalid. Editable is true only
-// for state file, and only then is the rest, the parse of Text, present.
+// Text is the raw file for the states file and invalid. Editable is true for
+// state file, and only then is the rest, the parse of Text, present.
+//
+// Behind feature factory.pipeline_edit_rules, Editable is true for state missing
+// too: Text is "", the rest describes the shipped default pipeline the
+// repository runs without a file (budget_in_file false, every pipeline and step
+// in_file false), and the preview takes base_text "" for it. Rules, AskFirst
+// and Never are then present, always arrays (`[]` when empty), for the states
+// file and missing: the lines the repository's file itself holds under rules,
+// start.ask_first and start.never, never the factory's house rules, and empty
+// for a missing file. Without the feature they are absent.
 type FactoryPipelineSource struct {
 	Factory       string `json:"factory"`
 	Repo          string `json:"repo"`
 	Path          string `json:"path"`
 	DefaultBranch string `json:"default_branch"`
 	BaseSHA       string `json:"base_sha"`
-	CanPush       bool   `json:"can_push"`
-	Archived      bool   `json:"archived"` // always present; an archived repository refuses a pull request whatever can_push says
+	// Ref and PR, behind feature factory.pipeline_source_ref, are the ref
+	// asked for and the pull request it named; with them BaseSHA is that pull
+	// request's head. Both are absent from a read of the default branch, and
+	// an engine without the feature refuses ref, so an answer without them is
+	// never a read of a pull request.
+	Ref      string `json:"ref,omitempty"`
+	PR       int    `json:"pr,omitempty"`
+	CanPush  bool   `json:"can_push"`
+	Archived bool   `json:"archived"` // always present; an archived repository refuses a pull request whatever can_push says
 	// RuntimeFields is true only when the factory itself said so in this read:
 	// its parser reads a step's kind, when, effort and fanout and its runner
 	// obeys them. Always present. The steps carry those words only then.
@@ -119,12 +264,56 @@ type FactoryPipelineSource struct {
 	Pipelines     []api.PipelineEditKind `json:"pipelines,omitempty"`
 	Steps         []api.PipelineEditStep `json:"steps,omitempty"`
 	Fixed         []string               `json:"fixed,omitempty"`
+	Rules         *[]string              `json:"rules,omitempty"`
+	AskFirst      *[]string              `json:"ask_first,omitempty"`
+	Never         *[]string              `json:"never,omitempty"`
+	// Behind feature factory.pipeline_edit_settings, for the states file and
+	// missing, always present: Adapt is the file's adapt word ("" when it says
+	// none, which is adapt), Labels its start labels (`[]` when none), and
+	// MaxSize and MaxCost its start limits as the parser reads them, the
+	// defaults when it says none.
+	Adapt   *string   `json:"adapt,omitempty"`
+	Labels  *[]string `json:"labels,omitempty"`
+	MaxSize *string   `json:"max_size,omitempty"`
+	MaxCost *float64  `json:"max_cost,omitempty"`
+	// AdaptKinds, behind feature factory.pipeline_edit_adapt_kind, for the
+	// states file and missing, always present: each pipeline's adapt word
+	// when the file writes one per pipeline (Adapt is then ""), `{}` when it
+	// writes one word or none. A kind it does not name is adapt.
+	AdaptKinds *map[string]string `json:"adapt_kinds,omitempty"`
+
+	// Behind feature factory.pipeline_copy (factory_pipeline_copy.go):
+	//
+	// THE SOURCE IS WHAT THIS FACTORY RUNS. When the factory keeps its own
+	// copy of the file, FactoryCopy says who saved it, when, and how main's
+	// file compares (missing or differs), and text and everything parsed from
+	// it are THE COPY's, in state file: an edit starts from the steps the
+	// factory's jobs run, and a pull request of them still pins base_sha,
+	// main's commit. Main "same" says main's file now says the same and the
+	// copy cleared itself on this read: the source is main's file again.
+	// Absent, the factory keeps no copy and the source is main's file.
+	//
+	// CopyVersion is the copy's version (kept or not), from 1, that
+	// factory.pipeline_copy_set and _clear name as expect.version. Can says
+	// whether this caller may save or stop the copy; an app offers the action
+	// only when it says so. Both are absent without the feature, and from a
+	// factory that keeps no store.
+	//
+	// A REFUSED READ STILL SAYS THE COPY: when the file cannot be shown (the
+	// factory's read failed, or the copy spells words the factory did not
+	// vouch for), the error's detail is a [FactoryPipelineSourceRefusal]
+	// whenever the factory keeps a copy, so the app can still offer Stop.
+	FactoryCopy *FactoryPipelineCopy `json:"factory_copy,omitempty"`
+	CopyVersion int                  `json:"copy_version,omitempty"`
+	Can         *FactoryPipelineCan  `json:"can,omitempty"`
 }
 
 // FactoryPipelineEdit is one structured edit. set_step names a step and at
 // least one of prompt, until, max, when, effort and fanout; set_budget names
-// only value. A field the verb does not take is bad_params, and there is no kind
-// field at all: it is rejected as unknown. An omitted field is not sent: until ""
+// only value. A field the verb does not take is bad_params. Kind belongs to
+// add_step alone: chat, the default; check, whose prompt is the command it runs
+// (feature factory.pipeline_edit_checks); or gate, an approval whose prompt is
+// optional (feature factory.pipeline_edit_gates). No edit changes a step's kind. An omitted field is not sent: until ""
 // is a request to clear it, which the file format may refuse, and when, effort or
 // fanout "" clears that word back to the default.
 //
@@ -134,23 +323,73 @@ type FactoryPipelineSource struct {
 // one goes after in that list, "" for first; add_step and move_step require it,
 // so a position is always said and never assumed. add_step also requires a
 // prompt; there is no kind on it either, so an added step is a chat.
+//
+// List and Lines belong to set_list alone (feature factory.pipeline_edit_rules),
+// and are bad_params on every other verb. List is rules, ask_first or never;
+// Lines is required and is every line the list holds after the edit, in order,
+// [] to clear it. Each line is trimmed, one line of at most 300 characters, and
+// is in the list once (ignoring case for rules and ask_first, exactly for
+// never); a list holds at most 40 lines and is set once per preview.
 type FactoryPipelineEdit struct {
-	Op       string   `json:"op" enum:"set_step,set_budget,add_step,remove_step,move_step"`
-	Name     string   `json:"name,omitempty"`
-	Pipeline string   `json:"pipeline,omitempty"`
-	After    *string  `json:"after,omitempty"`
-	Prompt   *string  `json:"prompt,omitempty"`
-	Until    *string  `json:"until,omitempty"`
-	Max      *int     `json:"max,omitempty"`
-	When     *string  `json:"when,omitempty"`
-	Effort   *string  `json:"effort,omitempty"`
-	Fanout   *string  `json:"fanout,omitempty"`
-	Value    *float64 `json:"value,omitempty"`
+	Op       string  `json:"op" enum:"set_step,set_budget,add_step,remove_step,move_step,set_list,set_adapt,set_fixed,set_start,set_approver,set_pass,rename_step,add_pipeline,remove_pipeline,rename_pipeline"`
+	Name     string  `json:"name,omitempty"`
+	Pipeline string  `json:"pipeline,omitempty"`
+	After    *string `json:"after,omitempty"`
+	Kind     *string `json:"kind,omitempty" enum:"chat,check,gate,agentfield"`
+	// Input belongs to an add_step of kind agentfield alone (feature
+	// factory.pipeline_edit_agentfield): the reasoner's field names to text
+	// with the job's {placeholders}; omitted sends the default mapping.
+	Input  map[string]string `json:"input,omitempty"`
+	Prompt *string           `json:"prompt,omitempty"`
+	Label  *string           `json:"label,omitempty"`
+	Until  *string           `json:"until,omitempty"`
+	Max    *int              `json:"max,omitempty"`
+	When   *string           `json:"when,omitempty"`
+	Effort *string           `json:"effort,omitempty"`
+	Fanout *string           `json:"fanout,omitempty"`
+	Value  *float64          `json:"value,omitempty"`
+	List   string            `json:"list,omitempty" enum:"rules,ask_first,never,labels"`
+	Lines  []string          `json:"lines,omitempty"`
+	// Behind feature factory.pipeline_edit_settings: Adapt belongs to set_adapt
+	// (adapt, ask or fixed); Fixed, with Name, to set_fixed (true marks the step
+	// required); MaxSize and MaxCost to set_start, which names one or both. The
+	// list labels (start.labels) is set_list's under the same feature. With
+	// feature factory.pipeline_edit_adapt_kind, set_adapt may name a Pipeline
+	// the file lists: that pipeline alone takes the word and every other keeps
+	// its own. Without Pipeline the word is the whole file's again.
+	Adapt   *string  `json:"adapt,omitempty"`
+	Fixed   *bool    `json:"fixed,omitempty"`
+	MaxSize *string  `json:"max_size,omitempty"`
+	MaxCost *float64 `json:"max_cost,omitempty"`
+	// Who belongs to set_approver, with Name, and to an add_step of kind gate
+	// (feature factory.pipeline_edit_approvers, and factory.pipeline_edit_gates
+	// for the add_step): "@handle", operator, or "".
+	Who *string `json:"who,omitempty"`
+	// Pass belongs to set_pass, with Name, and to an add_step of kind gate
+	// (feature factory.pipeline_edit_pass): person, manager, or
+	// `manager when <condition>`. A gate added without one is a person's.
+	Pass *string `json:"pass,omitempty"`
+	// To belongs to rename_step, with Name (feature
+	// factory.pipeline_edit_rename): the step's new name, spelled as a step
+	// is (2 to 32 of a-z, 0-9 and inner hyphens; 2 to 12 once hyphens are
+	// removed), and no step the file or the shipped steps define. It belongs
+	// to rename_pipeline too (feature factory.pipeline_edit_pipelines): the
+	// pipeline's new name.
+	To string `json:"to,omitempty"`
+	// Steps and From belong to add_pipeline alone (feature
+	// factory.pipeline_edit_pipelines), whose Name is the new pipeline's:
+	// Steps is its list in order, each a step the file or codeaf defines (or
+	// approve), or From names a pipeline the file holds whose list it starts
+	// as a copy of. One of the two, never both.
+	Steps []string `json:"steps,omitempty"`
+	From  string   `json:"from,omitempty"`
 }
 
 // FactoryPipelinePreviewParams is the file as factory.pipeline_source gave it
 // (BaseText, BaseSHA) and the edits to apply. The engine reads nothing: the
-// preview is a function of these params.
+// preview is a function of these params. BaseText is required; "" is a
+// repository with no file, and is taken only behind feature
+// factory.pipeline_edit_rules.
 type FactoryPipelinePreviewParams struct {
 	Factory  string                `json:"factory"`
 	Repo     string                `json:"repo"`
@@ -163,6 +402,7 @@ type FactoryPipelinePreviewParams struct {
 // omitted when empty, so a preview of a legacy file is byte for byte what it was
 // before they existed.
 type FactoryPipelineStepValues struct {
+	Label  string `json:"label,omitempty"`
 	Prompt string `json:"prompt"`
 	Until  string `json:"until"`
 	Max    int    `json:"max"`
@@ -212,17 +452,46 @@ type FactoryPipelineGateChange struct {
 	After    []string `json:"after"`
 }
 
+// FactoryPipelineRename is one step a rename_step gave a new name.
+type FactoryPipelineRename struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+
 // FactoryPipelineStructure is the structural half of a preview, present only
-// when an edit was add_step, remove_step or move_step. Order is every pipeline
+// when an edit was add_step, remove_step, move_step or rename_step. Renamed is
+// every rename_step, in edit order, and absent when there was none. Order is every pipeline
 // whose list changed, Added every step definition the file did not hold before,
 // Counts every pipeline's length after the edit, Gates every person whose
 // run-up changed. All four are always arrays, empty when nothing applies. There
 // is no loop count: the file has no loop.
 type FactoryPipelineStructure struct {
-	Order  []FactoryPipelineOrderChange `json:"order"`
-	Added  []string                     `json:"added"`
-	Counts []FactoryPipelineCount       `json:"counts"`
-	Gates  []FactoryPipelineGateChange  `json:"gates"`
+	Order   []FactoryPipelineOrderChange `json:"order"`
+	Added   []string                     `json:"added"`
+	Counts  []FactoryPipelineCount       `json:"counts"`
+	Gates   []FactoryPipelineGateChange  `json:"gates"`
+	Renamed []FactoryPipelineRename      `json:"renamed,omitempty"`
+	// Pipelines is every add_pipeline, remove_pipeline and rename_pipeline,
+	// in edit order, and absent when there was none.
+	Pipelines []FactoryPipelineKindChange `json:"pipelines,omitempty"`
+}
+
+// FactoryPipelineKindChange is one pipeline an edit made, removed or renamed:
+// op is the verb, pipeline its name (the old one for a rename), to a rename's
+// new name, and steps the list it holds afterwards (absent once removed).
+type FactoryPipelineKindChange struct {
+	Op       string   `json:"op" enum:"add_pipeline,remove_pipeline,rename_pipeline"`
+	Pipeline string   `json:"pipeline"`
+	To       string   `json:"to,omitempty"`
+	Steps    []string `json:"steps,omitempty"`
+}
+
+// FactoryPipelineListChange is one list whose lines the edit changed: every
+// line it held before and every line it holds after, in order.
+type FactoryPipelineListChange struct {
+	List   string   `json:"list" enum:"rules,ask_first,never"`
+	Before []string `json:"before"`
+	After  []string `json:"after"`
 }
 
 // FactoryPipelinePreview is the exact outcome of an edit, without writing it.
@@ -236,6 +505,12 @@ type FactoryPipelineStructure struct {
 // the committed file does not. Both are false when not Changed. Structure is
 // absent unless an edit was structural, so a preview of field edits is byte for
 // byte what it was before the structural edits existed.
+//
+// Lists is present whenever an edit was set_list, and absent otherwise: every
+// list whose lines changed, in the order rules, ask_first, never, `[]` when
+// none did. For base_text "" (no file yet) a changed Text is the whole file the
+// pull request creates, and FormatRewritten and CommentsDropped are false: there
+// was no layout and no comment to lose. An unchanged one is "", as the base was.
 type FactoryPipelinePreview struct {
 	Factory         string                       `json:"factory"`
 	Repo            string                       `json:"repo"`
@@ -248,6 +523,20 @@ type FactoryPipelinePreview struct {
 	Steps           []FactoryPipelineStepChange  `json:"steps"`
 	Budget          *FactoryPipelineBudgetChange `json:"budget,omitempty"`
 	Structure       *FactoryPipelineStructure    `json:"structure,omitempty"`
+	Lists           *[]FactoryPipelineListChange `json:"lists,omitempty"`
+	// Settings is present whenever an edit was set_adapt, set_fixed or
+	// set_start, and absent otherwise: every setting whose words changed, in
+	// the order adapt, fixed, max_size, max_cost, `[]` when none did.
+	Settings *[]FactoryPipelineSettingChange `json:"settings,omitempty"`
+}
+
+// FactoryPipelineSettingChange is one setting an edit changed, in the words the
+// file reads: adapt's word, the required steps joined ", ", the size letter,
+// the dollars.
+type FactoryPipelineSettingChange struct {
+	Setting string `json:"setting" enum:"adapt,fixed,max_size,max_cost,approvers"`
+	Before  string `json:"before"`
+	After   string `json:"after"`
 }
 
 // FactoryPipelineEditRefusal is the Detail of a preview refused as bad_params.
@@ -285,30 +574,160 @@ type FactoryPipelineStructureEditor interface {
 	PipelineStructureEdits()
 }
 
+// FactoryPipelineRulesEditor is implemented ONLY by an editor whose source
+// carries the file's own lists and describes a missing file from the shipped
+// defaults, and whose preview applies set_list and takes an empty base.
+// Without it set_list and base_text "" are refused before the engine is asked,
+// the lists are not on a source, a missing file is not editable, and the
+// feature is not announced.
+type FactoryPipelineRulesEditor interface {
+	PipelineRulesEdits()
+}
+
+// FactoryPipelineSettingsEditor is implemented ONLY by a rules editor whose
+// source carries adapt, labels, max_size and max_cost and whose preview
+// applies set_adapt, set_fixed, set_start and the labels list. Without it those
+// are refused before the engine is asked, the settings are not on a source,
+// and the feature is not announced.
+type FactoryPipelineSettingsEditor interface {
+	PipelineSettingsEdits()
+}
+
+// FactoryPipelineChecksEditor is implemented ONLY by a structure editor whose
+// preview applies an add_step of kind check. Without it a kind is refused
+// before the engine is asked, and the feature is not announced.
+type FactoryPipelineChecksEditor interface {
+	PipelineCheckEdits()
+}
+
+// FactoryPipelineRenameEditor is implemented ONLY by a structure editor whose
+// preview applies rename_step. Without it rename_step is refused before the
+// engine is asked, and the feature is not announced.
+type FactoryPipelineRenameEditor interface {
+	PipelineRenameEdits()
+}
+
+// FactoryPipelineGatesEditor is implemented ONLY by a structure editor whose
+// preview applies an add_step of kind gate. Without it a gate is refused
+// before the engine is asked, and the feature is not announced.
+type FactoryPipelineGatesEditor interface {
+	PipelineGateEdits()
+}
+
+// FactoryPipelineAgentFieldEditor is implemented ONLY by a structure editor
+// whose preview applies an add_step of kind agentfield. Without it such a
+// step is refused before the engine is asked, and the feature is not
+// announced.
+type FactoryPipelineAgentFieldEditor interface {
+	PipelineAgentFieldEdits()
+}
+
+// FactoryPipelinePipelinesEditor is implemented ONLY by a structure editor
+// whose preview applies add_pipeline, remove_pipeline and rename_pipeline.
+// Without it the three verbs are refused before the engine is asked, and the
+// feature is not announced.
+type FactoryPipelinePipelinesEditor interface {
+	PipelinePipelineEdits()
+}
+
+// FactoryPipelineApproversEditor is implemented ONLY by a settings editor whose
+// preview applies set_approver. Without it set_approver is refused before the
+// engine is asked, and the feature is not announced.
+type FactoryPipelineApproversEditor interface {
+	PipelineApproverEdits()
+}
+
+// FactoryPipelinePassEditor is implemented ONLY by a settings editor whose
+// preview applies set_pass and pass on an added gate. Without it both are
+// refused before the engine is asked, and the feature is not announced.
+type FactoryPipelinePassEditor interface {
+	PipelinePassEdits()
+}
+
+// FactoryPipelineAdaptKindEditor is implemented ONLY by a settings editor whose
+// preview applies set_adapt with a pipeline and whose source carries
+// adapt_kinds. Without it a pipeline on set_adapt is refused before the engine
+// is asked, adapt_kinds is not on a source, and the feature is not announced.
+type FactoryPipelineAdaptKindEditor interface {
+	PipelineAdaptKindEdits()
+}
+
+// FactoryPipelineLabelEditor marks an editor that applies and previews labels.
+type FactoryPipelineLabelEditor interface {
+	PipelineLabelEdits()
+}
+
+// FactoryPipelineBaselineEditor marks an editor with the Test baseline rule.
+type FactoryPipelineBaselineEditor interface {
+	PipelineTestBaseline()
+}
+
 func withFactoryPipelineEditFeature(hello Hello, e Engine) Hello {
 	if _, ok := e.(Factory); !ok {
 		return hello
 	}
 	if _, ok := e.(FactoryPipelineEditor); ok {
 		hello = withFeature(hello, FeatureFactoryPipelineEdit)
+		if _, baseline := e.(FactoryPipelineBaselineEditor); baseline {
+			hello = withFeature(hello, FeatureFactoryTestBaseline)
+		}
+		if _, labels := e.(FactoryPipelineLabelEditor); labels {
+			hello = withFeature(hello, FeatureFactoryPipelineEditLabel)
+		}
 		if _, guarded := e.(FactoryPipelineRuntimeGuard); guarded {
 			hello = withFeature(hello, FeatureFactoryPipelineEditRuntime)
 		}
 		if _, structural := e.(FactoryPipelineStructureEditor); structural {
 			hello = withFeature(hello, FeatureFactoryPipelineEditStructure)
+			if _, checks := e.(FactoryPipelineChecksEditor); checks {
+				hello = withFeature(hello, FeatureFactoryPipelineEditChecks)
+			}
+			if _, rename := e.(FactoryPipelineRenameEditor); rename {
+				hello = withFeature(hello, FeatureFactoryPipelineEditRename)
+			}
+			if _, gates := e.(FactoryPipelineGatesEditor); gates {
+				hello = withFeature(hello, FeatureFactoryPipelineEditGates)
+			}
+			if _, af := e.(FactoryPipelineAgentFieldEditor); af {
+				hello = withFeature(hello, FeatureFactoryPipelineEditAgentField)
+			}
+			if _, kinds := e.(FactoryPipelinePipelinesEditor); kinds {
+				hello = withFeature(hello, FeatureFactoryPipelineEditPipelines)
+			}
+		}
+		if _, rules := e.(FactoryPipelineRulesEditor); rules {
+			hello = withFeature(hello, FeatureFactoryPipelineEditRules)
+			if _, settings := e.(FactoryPipelineSettingsEditor); settings {
+				hello = withFeature(hello, FeatureFactoryPipelineEditSettings)
+				if _, approvers := e.(FactoryPipelineApproversEditor); approvers {
+					hello = withFeature(hello, FeatureFactoryPipelineEditApprovers)
+				}
+				if _, pass := e.(FactoryPipelinePassEditor); pass {
+					hello = withFeature(hello, FeatureFactoryPipelineEditPass)
+				}
+				if _, kinds := e.(FactoryPipelineAdaptKindEditor); kinds {
+					hello = withFeature(hello, FeatureFactoryPipelineEditAdaptKind)
+				}
+			}
 		}
 	}
 	return hello
 }
 
 // PipelineEditOps converts wire edits to the pipeline package's, unchanged.
-// Kind is left nil on purpose: a step's kind is a permission change that no
-// preview shows, so the wire has no way to send one.
+// Kind is carried for add_step alone: a set_step that names one is refused
+// here, since changing an existing step's kind is a permission change no
+// preview shows.
 func PipelineEditOps(edits []FactoryPipelineEdit) []pipeline.EditOp {
 	ops := make([]pipeline.EditOp, len(edits))
 	for i, e := range edits {
-		ops[i] = pipeline.EditOp{Op: e.Op, Name: e.Name, Pipeline: e.Pipeline, After: e.After, Prompt: e.Prompt, Until: e.Until, Max: e.Max,
-			When: e.When, Effort: e.Effort, Fanout: e.Fanout, Value: e.Value}
+		var kind *string
+		if e.Op == PipelineEditAddStep || e.Kind != nil {
+			kind = e.Kind
+		}
+		ops[i] = pipeline.EditOp{Op: e.Op, Name: e.Name, Pipeline: e.Pipeline, After: e.After, Kind: kind, Label: e.Label, Prompt: e.Prompt, Until: e.Until, Max: e.Max,
+			When: e.When, Effort: e.Effort, Fanout: e.Fanout, Value: e.Value, List: e.List, Lines: e.Lines,
+			Adapt: e.Adapt, Fixed: e.Fixed, MaxSize: e.MaxSize, MaxCost: e.MaxCost, Who: e.Who, Pass: e.Pass, To: e.To, Steps: e.Steps, From: e.From, Input: e.Input}
 	}
 	return ops
 }
@@ -328,17 +747,52 @@ func checkPipelineRepo(factory, repo string) (string, string, error) {
 	return id, owner + "/" + name, nil
 }
 
-// CheckPipelineSource bounds the read without asking anyone.
+var pipelineSourcePRNumber = regexp.MustCompile(`^[1-9][0-9]{0,8}$`)
+
+// CheckPipelineSource bounds the read without asking anyone. Ref is trimmed
+// and folded to lower case, and must be a pull request number or a commit.
 func CheckPipelineSource(p FactoryPipelineSourceParams) (FactoryPipelineSourceParams, error) {
 	var err error
-	p.Factory, p.Repo, err = checkPipelineRepo(p.Factory, p.Repo)
-	return p, err
+	if p.Factory, p.Repo, err = checkPipelineRepo(p.Factory, p.Repo); err != nil {
+		return p, err
+	}
+	p.Ref = strings.ToLower(strings.TrimSpace(p.Ref))
+	if p.Ref != "" && !pipelineSourcePRNumber.MatchString(p.Ref) && !ValidPipelinePRCommit(p.Ref) {
+		return p, Errorf(CodeBadParams, "ref must be a pull request number such as \"42\" or a 40-character commit SHA")
+	}
+	return p, nil
+}
+
+// FeatureFactoryPipelineSourceRef is announced in hello when
+// factory.pipeline_source takes ref.
+const FeatureFactoryPipelineSourceRef = "factory.pipeline_source_ref"
+
+// FactoryPipelineSourceRefReader marks a [FactoryPipelineEditor] whose
+// FactoryPipelineSource also reads a pipeline pull request by ref.
+type FactoryPipelineSourceRefReader interface {
+	PipelineSourceRefs()
+}
+
+func servesPipelineSourceRef(e Engine) bool {
+	_, editor := e.(FactoryPipelineEditor)
+	_, factory := e.(Factory)
+	_, reader := e.(FactoryPipelineSourceRefReader)
+	return editor && factory && reader
+}
+
+func withFactoryPipelineSourceRefFeature(hello Hello, e Engine) Hello {
+	if servesPipelineSourceRef(e) {
+		hello = withFeature(hello, FeatureFactoryPipelineSourceRef)
+	}
+	return hello
 }
 
 // CheckPipelinePreview bounds the preview without asking anyone: the base, the
 // pinned commit, and every edit on its own (verb, fields, name, value bounds).
 // Whether a step exists or is locked depends on the base and is the engine's to
-// say. BaseText and the edits' texts are forwarded exactly.
+// say. BaseText and the edits' texts are forwarded exactly. A BaseText of ""
+// (no file yet) passes here; whether the engine takes one is the method's to
+// say ([checkRulesServed]).
 func CheckPipelinePreview(p FactoryPipelinePreviewParams) (FactoryPipelinePreviewParams, error) {
 	var err error
 	if p.Factory, p.Repo, err = checkPipelineRepo(p.Factory, p.Repo); err != nil {
@@ -349,8 +803,8 @@ func CheckPipelinePreview(p FactoryPipelinePreviewParams) (FactoryPipelinePrevie
 		return p, Errorf(CodeBadParams, "base_sha must be a 40-character commit SHA")
 	}
 	switch {
-	case strings.TrimSpace(p.BaseText) == "":
-		return p, Errorf(CodeBadParams, "base_text is required")
+	case p.BaseText != "" && strings.TrimSpace(p.BaseText) == "":
+		return p, Errorf(CodeBadParams, "base_text is the file as read, or \"\" when there is none")
 	case len(p.BaseText) > PipelinePreviewTextMax:
 		return p, Errorf(CodeBadParams, "base_text is at most %d bytes", PipelinePreviewTextMax)
 	case !utf8.ValidString(p.BaseText):
@@ -396,6 +850,10 @@ func pipelineSourceMethod(name string) method {
 		if err := decodeStrict(name, raw, &p); err != nil {
 			return nil, err
 		}
+		// An engine without the word keeps the field it never had.
+		if p.Ref != "" && !servesPipelineSourceRef(e) {
+			return nil, Errorf(CodeBadParams, "%s: unknown field \"ref\"", name)
+		}
 		if p, err = CheckPipelineSource(p); err != nil {
 			return nil, err
 		}
@@ -405,6 +863,8 @@ func pipelineSourceMethod(name string) method {
 		if err != nil {
 			return nil, err
 		}
+		out = shapeRulesSource(e, out)
+		out = shapeSettingsSource(e, out)
 		return &out, nil
 	})
 }
@@ -422,10 +882,44 @@ func pipelinePreviewMethod(name string) method {
 		if err := decodeStrict(name, raw, &p); err != nil {
 			return nil, err
 		}
+		// base_text "" is a request about a repository with no file, so it
+		// has to be said: an omitted base is not that request.
+		var keys map[string]json.RawMessage
+		if json.Unmarshal(raw, &keys) != nil || keys["base_text"] == nil || string(keys["base_text"]) == "null" {
+			return nil, Errorf(CodeBadParams, "base_text is required")
+		}
+		if _, labels := e.(FactoryPipelineLabelEditor); !labels {
+			for _, edit := range p.Edits {
+				if edit.Label != nil {
+					return nil, Errorf(CodeBadParams, "this engine does not edit pipeline labels")
+				}
+			}
+		}
 		if p, err = CheckPipelinePreview(p); err != nil {
 			return nil, err
 		}
 		if err := checkStructureServed(e, p.Edits); err != nil {
+			return nil, err
+		}
+		if err := checkRenameServed(e, p.Edits); err != nil {
+			return nil, err
+		}
+		if err := checkPipelinesServed(e, p.Edits); err != nil {
+			return nil, err
+		}
+		if err := checkChecksServed(e, p.Edits); err != nil {
+			return nil, err
+		}
+		if err := checkRulesServed(e, p); err != nil {
+			return nil, err
+		}
+		if err := checkSettingsServed(e, p.Edits); err != nil {
+			return nil, err
+		}
+		if err := checkApproversServed(e, p.Edits); err != nil {
+			return nil, err
+		}
+		if err := checkAdaptKindServed(e, p.Edits); err != nil {
 			return nil, err
 		}
 		ctx, cancel := factoryCall()
@@ -436,6 +930,20 @@ func pipelinePreviewMethod(name string) method {
 		}
 		if out.Steps == nil {
 			out.Steps = []FactoryPipelineStepChange{}
+		}
+		// lists is on the answer exactly when a set_list was asked for, so an
+		// older preview answers byte for byte what it always did.
+		switch {
+		case !anySetList(p.Edits):
+			out.Lists = nil
+		case out.Lists == nil || *out.Lists == nil:
+			out.Lists = &[]FactoryPipelineListChange{}
+		}
+		switch {
+		case !anySetting(p.Edits):
+			out.Settings = nil
+		case out.Settings == nil || *out.Settings == nil:
+			out.Settings = &[]FactoryPipelineSettingChange{}
 		}
 		return &out, nil
 	})
@@ -456,6 +964,293 @@ func checkStructureServed(e Engine, edits []FactoryPipelineEdit) error {
 	return nil
 }
 
+// checkRenameServed refuses rename_step to an editor that has not said it
+// previews one.
+func checkRenameServed(e Engine, edits []FactoryPipelineEdit) error {
+	_, rename := e.(FactoryPipelineRenameEditor)
+	_, structural := e.(FactoryPipelineStructureEditor)
+	if rename && structural {
+		return nil
+	}
+	for i, edit := range edits {
+		if edit.Op == PipelineEditRenameStep {
+			return Errorf(CodeBadParams, "edit %d: this engine does not rename a step", i)
+		}
+	}
+	return nil
+}
+
+// checkPipelinesServed refuses add_pipeline, remove_pipeline and
+// rename_pipeline to an editor that has not said it previews them.
+func checkPipelinesServed(e Engine, edits []FactoryPipelineEdit) error {
+	_, kinds := e.(FactoryPipelinePipelinesEditor)
+	_, structural := e.(FactoryPipelineStructureEditor)
+	if kinds && structural {
+		return nil
+	}
+	for i, edit := range edits {
+		switch edit.Op {
+		case PipelineEditAddPipeline, PipelineEditRemovePipeline, PipelineEditRenamePipeline:
+			return Errorf(CodeBadParams, "edit %d: this engine does not make, rename or remove a pipeline", i)
+		}
+	}
+	return nil
+}
+
+// checkChecksServed refuses a kind to an editor that has not said it previews
+// that kind (a check, a gate), and a kind on any verb but add_step to every
+// editor. Chat, the default, needs no word.
+func checkChecksServed(e Engine, edits []FactoryPipelineEdit) error {
+	_, checks := e.(FactoryPipelineChecksEditor)
+	_, gates := e.(FactoryPipelineGatesEditor)
+	_, af := e.(FactoryPipelineAgentFieldEditor)
+	for i, edit := range edits {
+		var kind string
+		if edit.Kind != nil {
+			kind = strings.ToLower(strings.TrimSpace(*edit.Kind))
+		}
+		switch {
+		case edit.Kind == nil:
+		case edit.Op != PipelineEditAddStep:
+			return Errorf(CodeBadParams, "edit %d: only add_step names a kind", i)
+		case kind == "gate" && !gates:
+			return Errorf(CodeBadParams, "edit %d: this engine does not add an approval", i)
+		case kind == "agentfield" && !af:
+			return Errorf(CodeBadParams, "edit %d: this engine does not add an AgentField step", i)
+		case kind == "agentfield":
+		case kind != "gate" && kind != "chat" && kind != "" && !checks:
+			return Errorf(CodeBadParams, "edit %d: this engine does not add a check", i)
+		}
+	}
+	return nil
+}
+
+// checkRulesServed refuses a set_list, or a base of "" (no file yet), to an
+// editor that has not said it previews one: the same bad_params an unknown verb
+// and an empty base always were.
+func checkRulesServed(e Engine, p FactoryPipelinePreviewParams) error {
+	if _, ok := e.(FactoryPipelineRulesEditor); ok {
+		return nil
+	}
+	if p.BaseText == "" {
+		return Errorf(CodeBadParams, "base_text is required")
+	}
+	for i, edit := range p.Edits {
+		if edit.Op == PipelineEditSetList {
+			return Errorf(CodeBadParams, "edit %d: this engine does not set a list", i)
+		}
+	}
+	return nil
+}
+
+// checkSettingsServed refuses a settings edit, or a set_list of the labels, to
+// an editor that has not said it previews one.
+func checkSettingsServed(e Engine, edits []FactoryPipelineEdit) error {
+	if _, ok := e.(FactoryPipelineSettingsEditor); ok {
+		if _, rules := e.(FactoryPipelineRulesEditor); rules {
+			return nil
+		}
+	}
+	for i, edit := range edits {
+		if settingOp(edit.Op) || (edit.Op == PipelineEditSetList && edit.List == PipelineListLabels) {
+			return Errorf(CodeBadParams, "edit %d: this engine does not set adapt, required steps or start limits", i)
+		}
+	}
+	return nil
+}
+
+// checkApproversServed refuses who, on set_approver or on an added gate, to an
+// editor that has not said it previews one.
+func checkApproversServed(e Engine, edits []FactoryPipelineEdit) error {
+	if _, ok := e.(FactoryPipelinePassEditor); !ok {
+		for i, edit := range edits {
+			if edit.Op == PipelineEditSetPass || edit.Pass != nil {
+				return Errorf(CodeBadParams, "edit %d: this engine does not say who may pass an approval", i)
+			}
+		}
+	}
+	if _, ok := e.(FactoryPipelineApproversEditor); ok {
+		return nil
+	}
+	for i, edit := range edits {
+		if edit.Op == PipelineEditSetApprover || edit.Who != nil {
+			return Errorf(CodeBadParams, "edit %d: this engine does not name who an approval waits on", i)
+		}
+	}
+	return nil
+}
+
+// checkAdaptKindServed refuses set_adapt for one pipeline to an editor that
+// has not said it previews one.
+func checkAdaptKindServed(e Engine, edits []FactoryPipelineEdit) error {
+	if _, ok := e.(FactoryPipelineAdaptKindEditor); ok {
+		return nil
+	}
+	for i, edit := range edits {
+		if edit.Op == PipelineEditSetAdapt && edit.Pipeline != "" {
+			return Errorf(CodeBadParams, "edit %d: this engine sets one adapt word for the whole file, not one per pipeline", i)
+		}
+	}
+	return nil
+}
+
+func settingOp(op string) bool {
+	return op == PipelineEditSetAdapt || op == PipelineEditSetFixed || op == PipelineEditSetStart || op == PipelineEditSetApprover || op == PipelineEditSetPass
+}
+
+func anySetting(edits []FactoryPipelineEdit) bool {
+	for _, edit := range edits {
+		if settingOp(edit.Op) {
+			return true
+		}
+	}
+	return false
+}
+
+// shapeSettingsSource holds a source to its feature: with it, a file or a
+// missing source always carries the four settings; without it, or in any other
+// state, none.
+func shapeSettingsSource(e Engine, out FactoryPipelineSource) FactoryPipelineSource {
+	_, settings := e.(FactoryPipelineSettingsEditor)
+	_, rules := e.(FactoryPipelineRulesEditor)
+	_, kinds := e.(FactoryPipelineAdaptKindEditor)
+	if !settings || !rules || (out.State != PipelineSourceFile && out.State != PipelineSourceMissing) || !out.Editable {
+		out.Adapt, out.Labels, out.MaxSize, out.MaxCost, out.AdaptKinds = nil, nil, nil, nil, nil
+		return out
+	}
+	switch {
+	case !kinds:
+		out.AdaptKinds = nil
+	case out.AdaptKinds == nil || *out.AdaptKinds == nil:
+		out.AdaptKinds = &map[string]string{}
+	}
+	if out.Adapt == nil {
+		out.Adapt = new(string)
+	}
+	if out.Labels == nil || *out.Labels == nil {
+		out.Labels = &[]string{}
+	}
+	if out.MaxSize == nil {
+		size := pipeline.DefaultMaxSize
+		out.MaxSize = &size
+	}
+	if out.MaxCost == nil {
+		cost := pipeline.DefaultMaxCost
+		out.MaxCost = &cost
+	}
+	return out
+}
+
+func anySetList(edits []FactoryPipelineEdit) bool {
+	for _, edit := range edits {
+		if edit.Op == PipelineEditSetList {
+			return true
+		}
+	}
+	return false
+}
+
+// shapeRulesSource holds a source to its feature. Without the rules feature it
+// carries no lists and a missing file is not editable, as before the feature;
+// with it, a file or a missing source always carries all three lists, `[]`
+// when empty, and no other state carries any.
+func shapeRulesSource(e Engine, out FactoryPipelineSource) FactoryPipelineSource {
+	_, rules := e.(FactoryPipelineRulesEditor)
+	if !rules || (out.State != PipelineSourceFile && out.State != PipelineSourceMissing) {
+		out.Rules, out.AskFirst, out.Never = nil, nil, nil
+		if !rules && out.State == PipelineSourceMissing && out.Editable {
+			out.Editable = false
+			out.DefaultBudget, out.BudgetInFile, out.Pipelines, out.Steps, out.Fixed = 0, false, nil, nil, nil
+		}
+		return out
+	}
+	for _, list := range []**[]string{&out.Rules, &out.AskFirst, &out.Never} {
+		if *list == nil || **list == nil {
+			*list = &[]string{}
+		}
+	}
+	return out
+}
+
 // factoryPipelineEditMethods is the table of the two methods, for the tests
 // that walk it.
 var factoryPipelineEditMethods = map[string]method{}
+
+// PipelineStepValues is what a step says, on the wire.
+func PipelineStepValues(v pipeline.StepView) FactoryPipelineStepValues {
+	return FactoryPipelineStepValues{Label: v.Label, Prompt: v.Prompt, Until: v.Until, Max: v.Max, When: v.When, Effort: v.Effort, Fanout: v.Fanout}
+}
+
+// PipelineStructureOf is the structural half of a preview on the wire, every
+// list an array however empty, and nil for a preview with no structural edit:
+// a field edit's answer is byte for byte what it always was. Pipelines is
+// present only when an edit made, renamed or removed a pipeline.
+func PipelineStructureOf(ed pipeline.Edited) *FactoryPipelineStructure {
+	if !ed.Structural {
+		return nil
+	}
+	s := &FactoryPipelineStructure{Order: []FactoryPipelineOrderChange{}, Added: append([]string{}, ed.Added...),
+		Counts: []FactoryPipelineCount{}, Gates: []FactoryPipelineGateChange{}}
+	for _, o := range ed.Order {
+		s.Order = append(s.Order, FactoryPipelineOrderChange{Pipeline: o.Pipeline, Before: append([]string{}, o.Before...), After: append([]string{}, o.After...)})
+	}
+	for _, c := range ed.Counts {
+		s.Counts = append(s.Counts, FactoryPipelineCount{Pipeline: c.Pipeline, Steps: c.Steps})
+	}
+	for _, g := range ed.Gates {
+		s.Gates = append(s.Gates, FactoryPipelineGateChange{Pipeline: g.Pipeline, Gate: g.Gate, Before: append([]string{}, g.Before...), After: append([]string{}, g.After...)})
+	}
+	for _, rn := range ed.Renamed {
+		s.Renamed = append(s.Renamed, FactoryPipelineRename{From: rn.From, To: rn.To})
+	}
+	for _, k := range ed.Pipelines {
+		s.Pipelines = append(s.Pipelines, FactoryPipelineKindChange{Op: k.Op, Pipeline: k.Pipeline, To: k.To, Steps: append([]string{}, k.Steps...)})
+	}
+	return s
+}
+
+// PipelineEditRefusal is the wire error for an edit the file cannot take. The
+// words are fixed from the code (and whether the refusal is about a whole
+// pipeline rather than a step); the text of the edit or the file is not echoed.
+func PipelineEditRefusal(factoryID, repo string, bad *pipeline.EditError) *Error {
+	words := map[string]string{
+		pipeline.EditBaseInvalid:      "That file does not read cleanly, so it cannot be edited here.",
+		pipeline.EditBadOp:            "That edit is not one this editor makes.",
+		pipeline.EditLocked:           "That step is locked and cannot be edited.",
+		pipeline.EditUnknownStep:      "That is not a step in this pipeline.",
+		pipeline.EditBadValue:         "That value is out of bounds.",
+		pipeline.EditTooLarge:         "The edited file would be too large for a pull request.",
+		pipeline.EditNotRepresentable: "The pipeline file cannot hold that edit as asked.",
+	}[bad.Code]
+	if bad.Pipeline {
+		// A REFUSAL ABOUT A WHOLE PIPELINE SAYS PIPELINE: an add_step to a
+		// pipeline the file does not have once read "That is not a step in
+		// this pipeline", which named the wrong thing.
+		switch bad.Code {
+		case pipeline.EditUnknownStep:
+			words = "That pipeline is not in this file."
+		case pipeline.EditLocked:
+			words = "That pipeline's name is the factory's own; a pipeline of yours takes another."
+		case pipeline.EditBadValue:
+			words = "That pipeline name is taken or cannot be used."
+		}
+	}
+	// A STEP THAT CLASHES IS NAMED. The file already defines a step of that
+	// name with other words; "out of bounds" told the person nothing they
+	// could act on. The name passed the step-name check before it got here.
+	if bad.Code == pipeline.EditBadValue && !bad.Pipeline && pipeline.KindNamed(bad.Clash) {
+		words = "There is already a step named " + bad.Clash + " with other words. Pick another name, or add it with the words it has."
+	}
+	if words == "" {
+		bad = &pipeline.EditError{Code: pipeline.EditBadOp, Op: -1}
+		words = "That edit is not one this editor makes."
+	}
+	detail := FactoryPipelineEditRefusal{Factory: factoryID, Repo: repo, Code: bad.Code}
+	if bad.Op >= 0 {
+		op := bad.Op
+		detail.Op = &op
+	}
+	err := Errorf(CodeBadParams, "%s", words+" Nothing was written.")
+	err.Detail = detail
+	return err
+}

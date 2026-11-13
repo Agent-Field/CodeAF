@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -10,11 +11,10 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
-// A JOB'S CONVERSATIONS ARE ITS OWN PAGE'S. Reading them makes the job's agent
-// once (the same one on every read after), keeps it on the job, holds it open
+// A job's page returns its existing manager on every read and holds it open
 // for the app, lists no step that has not run, and starts nothing; another
 // factory's chats are not this engine's to answer.
-func TestAJobsChatsAreItsAgentMadeOnceAndItsStepsThatRan(t *testing.T) {
+func TestAJobsChatsAreItsExistingAgentAndItsStepsThatRan(t *testing.T) {
 	s := newLocalSetup(t)
 	// The app opens a conversation through its opener; this one holds a fake.
 	s.backend.open = func(ask appOpenAsk) (*appConn, error) {
@@ -22,10 +22,11 @@ func TestAJobsChatsAreItsAgentMadeOnceAndItsStepsThatRan(t *testing.T) {
 	}
 	st := s.start()
 	floor := s.backend.local.host.floor
-	it, err := floor.Create(factory.Item{Repo: "acme/api", Num: 7, Title: "Fix the ledger", Kind: factory.KindIssue, State: factory.StateNew})
+	it, err := floor.Create(factory.Item{Tier: factory.TierOwner, Repo: "acme/api", Num: 7, Title: "Fix the ledger", Kind: factory.KindIssue, State: factory.StateNew})
 	if err != nil {
 		t.Fatal(err)
 	}
+	makeJobManager(t, s, it.ID)
 	var first appwire.FactoryJobChats
 	s.must("factory.job_chats", map[string]any{"factory": st.Factory, "job": it.ID}, &first)
 	if first.Agent == "" || len(first.Steps) != 0 {
@@ -108,7 +109,7 @@ func TestAJobsChatsNameEachFinishedRoundsChat(t *testing.T) {
 	latest, latestID := jobConversation(t)
 	t0 := time.Date(2026, 10, 19, 9, 0, 0, 0, time.UTC)
 	floor := s.backend.local.host.floor
-	it, err := floor.Create(factory.Item{Repo: "acme/api", Num: 8, Title: "Review it", Kind: factory.KindIssue, State: factory.StateRunning,
+	it, err := floor.Create(factory.Item{Tier: factory.TierOwner, Repo: "acme/api", Num: 8, Title: "Review it", Kind: factory.KindIssue, State: factory.StateRunning,
 		Stream: &factory.Stream{Phases: []factory.Phase{
 			{Name: "review", Kind: factory.StageChat, State: factory.PhaseDone, Round: 3, Chat: latest, Started: t0.Add(9 * time.Minute), At: t0.Add(12 * time.Minute),
 				Rounds: []factory.RoundLine{
@@ -136,14 +137,16 @@ func TestAJobsChatsNameEachFinishedRoundsChat(t *testing.T) {
 	}
 }
 
-func TestFinishedStageChatKeepsItsExecutionModel(t *testing.T) {
+// E5: a71691760d (factory-close-and-default-fallback.md) makes a saved
+// conversation's model authoritative; execution history must not replace it.
+func TestFinishedStageChatKeepsItsSavedModel(t *testing.T) {
 	s := newLocalSetup(t)
 	s.backend.open = func(ask appOpenAsk) (*appConn, error) {
 		return &appConn{Conv: &fakeConversation{model: "profile/default"}, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() {}}, nil
 	}
 	st := s.start()
 	transcript, id := jobConversation(t)
-	it, err := s.backend.local.host.floor.Create(factory.Item{Repo: "acme/api", Num: 9, Title: "Fix it", Kind: factory.KindIssue, State: factory.StateNeedsYou,
+	it, err := s.backend.local.host.floor.Create(factory.Item{Tier: factory.TierOwner, Repo: "acme/api", Num: 9, Title: "Fix it", Kind: factory.KindIssue, State: factory.StateNeedsYou,
 		Stream: &factory.Stream{Phases: []factory.Phase{{Name: "plan", Kind: factory.StageChat, State: factory.PhaseDone, Chat: transcript, Result: &factory.StageResult{Model: "vendor/strong"}}}}})
 	if err != nil {
 		t.Fatal(err)
@@ -155,7 +158,7 @@ func TestFinishedStageChatKeepsItsExecutionModel(t *testing.T) {
 		t.Fatal(err)
 	}
 	view, _, err := s.backend.ensure(a)
-	if err != nil || view.Model != "vendor/strong" {
+	if err != nil || view.Model != "profile/default" {
 		t.Fatalf("model=%s err=%v", view.Model, err)
 	}
 }
@@ -170,10 +173,11 @@ func TestFactoryChatRefreshKeepsThePersonsModelPair(t *testing.T) {
 	st := s.start()
 	floor := s.backend.local.host.floor
 	step, _ := jobConversation(t)
-	it, err := floor.Create(factory.Item{Repo: "acme/api", Kind: factory.KindIssue, Num: 9, State: factory.StateRunning, Model: "prior/main", Stream: &factory.Stream{Phases: []factory.Phase{{Name: "write", Kind: factory.StageChat, Chat: step, State: factory.PhaseDone, Result: &factory.StageResult{Model: "prior/execution"}}}}})
+	it, err := floor.Create(factory.Item{Tier: factory.TierOwner, Repo: "acme/api", Kind: factory.KindIssue, Num: 9, State: factory.StateRunning, Model: "prior/main", Stream: &factory.Stream{Phases: []factory.Phase{{Name: "write", Kind: factory.StageChat, Chat: step, State: factory.PhaseDone, Result: &factory.StageResult{Model: "prior/execution"}}}}})
 	if err != nil {
 		t.Fatal(err)
 	}
+	makeJobManager(t, s, it.ID)
 	var chats appwire.FactoryJobChats
 	read := func() { s.must("factory.job_chats", map[string]any{"factory": st.Factory, "job": it.ID}, &chats) }
 	read()
@@ -193,5 +197,13 @@ func TestFactoryChatRefreshKeepsThePersonsModelPair(t *testing.T) {
 		if a.view.ModelIdentity == nil || a.view.ModelIdentity.Models == nil || a.view.ModelIdentity.Models.Main != "chosen/main" || a.view.ModelIdentity.Models.Fallback != "chosen/backup" {
 			t.Fatalf("chat refresh overwrote an explicit model pair: %+v", a.view.ModelIdentity)
 		}
+	}
+}
+
+// makeJobManager explicitly creates the existing manager a read fixture needs.
+func makeJobManager(t *testing.T, s *localSetup, job int) {
+	t.Helper()
+	if _, err := s.backend.local.host.seam.Talk(context.Background(), job); err != nil {
+		t.Fatal(err)
 	}
 }

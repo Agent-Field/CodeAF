@@ -68,7 +68,7 @@ func TestC10ChatDoesNotSendCustomPairingCodeToAnotherService(t *testing.T) {
 		return pair.Approver{}, nil
 	}
 	_, err := door.Pending(t.Context(), "https://chosen.example/p/k7m2q9xd#AAAAAAAAAAAAAAAAAAAAAA")
-	if err == nil || !strings.Contains(err.Error(), "approve it in a terminal") {
+	if err == nil || !strings.Contains(err.Error(), "that link is waiting on chosen.example, but this computer syncs through configured.example — on the new device run: codeaf pair --via https://configured.example") {
 		t.Fatalf("different service link was not explained: %v", err)
 	}
 }

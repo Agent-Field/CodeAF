@@ -177,7 +177,7 @@ func (b *appBackend) startCloseWatch() {
 		// out its claim too, so a live foreign holder is never driven.
 		delay := time.Duration(0)
 		if p, ok := session.ReadSessionPresenceAnyAge(pending.dir); ok && p.PID != os.Getpid() {
-			delay = max(delay, p.UpdatedAt.Add(session.PresenceWindow+appClosePresenceMargin).Sub(b.now()))
+			delay = max(delay, p.UpdatedAt.Add(p.Window()+appClosePresenceMargin).Sub(b.now()))
 		}
 		r.stopPending = append(r.stopPending, b.after(delay, func() {
 			defer guard.Recover("app/close-pending")
@@ -223,7 +223,7 @@ func (b *appBackend) watchCloseClaim(dir string) {
 // scheduleCloseLocked only installs a timer; even a due callback runs outside
 // the registry lock. A stopped backend cancels every outstanding timer.
 func (b *appBackend) scheduleCloseLocked(path string, c *appCloseClaim) {
-	delay := max(time.Duration(0), c.presence.UpdatedAt.Add(session.PresenceWindow+appClosePresenceMargin).Sub(b.now()))
+	delay := max(time.Duration(0), c.presence.UpdatedAt.Add(c.presence.Window()+appClosePresenceMargin).Sub(b.now()))
 	c.stop = b.after(delay, func() {
 		defer guard.Recover("app/close-claim")
 		b.checkCloseClaim(path, c)
@@ -257,7 +257,7 @@ func (b *appBackend) closeClaimDue(path string, c *appCloseClaim) (refresh, dead
 	case current.PID != c.presence.PID && current.PID != os.Getpid():
 		delete(r.claims, path)
 		return true, false, false
-	case current.PID != os.Getpid() && b.now().Sub(c.presence.UpdatedAt) <= session.PresenceWindow:
+	case current.PID != os.Getpid() && b.now().Sub(c.presence.UpdatedAt) <= c.presence.Window():
 		b.scheduleCloseLocked(path, c)
 		return false, false, false
 	}
@@ -310,8 +310,10 @@ func (b *appBackend) refreshElsewhere(a *appAgent) {
 func (b *appBackend) refreshElsewhereWith(a *appAgent, watch bool) {
 	var dir string
 	b.locked(func() {
-		if a.live == nil && a.transcript != "" {
-			dir = filepath.Dir(a.transcript)
+		// AN AGENT THIS PROCESS IS OPENING IS ITS OWN WORD: the disk has not
+		// heard of its turn yet, and reading it there said idle mid-start.
+		if a.live == nil && a.transcript != "" && !a.opening && !a.starting {
+			dir = session.DirOf(a.transcript)
 		}
 	})
 	if dir == "" {
@@ -326,9 +328,13 @@ func (b *appBackend) refreshElsewhereWith(a *appAgent, watch bool) {
 		if p.State == session.PresenceWaiting {
 			state = appwire.StateNeedsYou
 		}
+		// What it said over there rides with its state, so a question put
+		// or answered elsewhere reads here as agents.list reads it.
+		b.noteElsewhere(a)
 		var view appwire.Agent
 		changed := false
 		b.locked(func() {
+			view = a.view
 			if a.live == nil && a.view.State != state {
 				a.view.State = state
 				view, changed = a.view, true
@@ -336,6 +342,8 @@ func (b *appBackend) refreshElsewhereWith(a *appAgent, watch bool) {
 		})
 		if changed {
 			b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
+		} else {
+			b.restateUnread(view.ID)
 		}
 		return
 	}
@@ -347,6 +355,9 @@ func (b *appBackend) refreshElsewhereWith(a *appAgent, watch bool) {
 }
 
 func (b *appBackend) correctCloseState(a *appAgent, stamp time.Time) {
+	// A turn that sealed on an answer elsewhere is said with the idle it
+	// ended in, never a stale read beside it.
+	b.noteElsewhere(a)
 	r := &b.closeRecovery
 	var view appwire.Agent
 	emit := false
@@ -370,7 +381,11 @@ func (b *appBackend) correctCloseState(a *appAgent, stamp time.Time) {
 	})
 	if emit {
 		b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
+		return
 	}
+	var id string
+	b.locked(func() { id = a.view.ID })
+	b.restateUnread(id)
 }
 
 // locked scopes a registry operation so an absorbed panic cannot strand it.
@@ -463,8 +478,15 @@ func (b *appBackend) carryCloseWork(a *appAgent, work appCloseWork) {
 	r.attempted["pending/"+id] = true
 	tasks := b.closeRunningTasks(a, work.presence)
 	if resume {
-		_, _, err = b.ensure(a)
+		_, _, err = b.keepOpen(a)
 		live := b.liveOf(a)
+		if errors.Is(err, errAppKeptClosed) {
+			// Closed by the person since: the work waits for their own open.
+			undo()
+			delete(r.attempted, attempt)
+			r.attempted["pending/"+id] = alreadyHandled
+			return
+		}
 		if appCloseOwnershipConflict(err) || (live != nil && !live.conn.Assembled) {
 			undo()
 			delete(r.attempted, attempt)
@@ -616,7 +638,7 @@ func appCloseOwnershipConflict(err error) bool {
 func (b *appBackend) abandonCloseToHolder(a *appAgent) bool {
 	var transcript string
 	b.locked(func() { transcript = a.transcript })
-	p, fresh := session.ReadSessionPresence(filepath.Dir(transcript), b.now())
+	p, fresh := session.ReadSessionPresence(session.DirOf(transcript), b.now())
 	if !fresh || p.PID == os.Getpid() {
 		return false
 	}
@@ -637,7 +659,7 @@ func (b *appBackend) abandonCloseToHolder(a *appAgent) bool {
 	if changed {
 		b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 	}
-	b.watchCloseClaim(filepath.Dir(transcript))
+	b.watchCloseClaim(session.DirOf(transcript))
 	return true
 }
 
@@ -683,7 +705,7 @@ func (b *appBackend) resetCloseAfterPerson(a *appAgent) (bool, error) {
 	if last.IsZero() {
 		return false, nil
 	}
-	meta, err := session.LoadMeta(filepath.Dir(transcript))
+	meta, err := session.LoadMeta(session.DirOf(transcript))
 	if err != nil {
 		return false, err
 	}
@@ -834,7 +856,9 @@ func (b *appBackend) heldTaskViews(a *appAgent) (map[string]appwire.Task, error)
 			}
 		}
 	})
-	if live != nil && live.conn.Assembled {
+	// A lent stage lives in this process too, and may have parked a card before the
+	// hold began, when no event could carry it here.
+	if live != nil && (live.conn.Assembled || live.conn.Lent) {
 		tasks, err := live.conn.Conv.AppTasks()
 		if err != nil {
 			return nil, err
@@ -851,6 +875,9 @@ func (b *appBackend) heldTaskViews(a *appAgent) (map[string]appwire.Task, error)
 // Deleted journals keep their directory for deliverables. Only their lifetime
 // marker, not directory existence alone, can establish that work is still owed.
 func appCloseConversationExists(dir string) bool {
+	if appChatStaging(dir) {
+		return false
+	}
 	if _, err := os.Stat(filepath.Join(dir, teams.ConversationDeletedFile)); !os.IsNotExist(err) {
 		return false
 	}

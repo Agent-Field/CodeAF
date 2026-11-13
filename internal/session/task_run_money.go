@@ -27,6 +27,7 @@ import (
 // charged — zero where the service reports no price, which is a call nobody
 // could price and never a free one.
 type RunCharge struct {
+	CallID    string
 	Model     string
 	TokensIn  int
 	TokensOut int

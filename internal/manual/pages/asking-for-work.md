@@ -7,6 +7,13 @@ colleague, and the front desk decides where it goes.
 > "Find out which of our dependencies changed licence this year."
 > "Read this contract and tell me what I'm agreeing to."
 
+## Reports, native Windows paths and downstream workers
+
+When a worker names an absolute report path in its result, downstream workers
+and the front desk can find that report using the host's native paths. On
+Windows this includes drive and UNC paths; drive-letter case and slash style
+do not create a second copy of the same report.
+
 ## Reflex or compiled
 
 Two shapes of work exist, and codeaf chooses between them for you.
@@ -107,11 +114,13 @@ deliverable like a deck or a report. A repository that forbids AI trailers wins
 — its CONTRIBUTING or policy is honoured and the worker tells you it left the
 signature out.
 
-It cannot be turned off: the `attribution` setting and `CODEAF_ATTRIBUTION`
-are gone, and a profile still holding either is told so when codeaf starts. The
-one part you can turn off is the model's name — the **model in commits** row
-(`attribution.model`) under **sharing**, or `CODEAF_ATTRIBUTION_MODEL` from your
-shell — and then the first line is just `Assisted-by: CodeAF`.
+Signing is on by default. Turn it off altogether with the **attribution** row
+(`attribution`) under **sharing** in `/settings`, or `CODEAF_ATTRIBUTION=off`
+from your shell, and codeaf adds no trailers or footers and tells the worker not
+to add AI attribution lines of its own. To keep signing while hiding only the
+model's name, turn off **model in commits** (`attribution.model`) under
+**sharing**, or set `CODEAF_ATTRIBUTION_MODEL=0`, and the first line is just
+`Assisted-by: CodeAF`.
 
 ## Where a coding worker actually works, and what happens to work that was not brought back
 

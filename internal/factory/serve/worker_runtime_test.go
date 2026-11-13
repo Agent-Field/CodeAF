@@ -68,3 +68,34 @@ func TestWorkerRuntimeHeaderRejectsInvalidMetadata(t *testing.T) {
 		}
 	}
 }
+
+func TestWorkerReportKeepsVerificationFailureKeyWithoutChangingLegacyJSON(t *testing.T) {
+	f := workerSetup(t)
+	job := f.add(t, "sam")
+	attached := f.attach(t, "sam")
+	pulled := f.pull(t, attached)
+	cli := client.Open(f.server.URL, "").Worker(attached.Credential)
+	key := strings.Repeat("a", 64)
+	report := api.FromRunReport(factory.RunReport{Stages: []factory.StageReport{
+		{Name: "proof", State: factory.PhaseRunning, Round: 1, Result: &factory.StageResult{
+			Exit: 1, Output: "A check failed.", VerificationFailureKey: key,
+		}},
+	}})
+	request, err := client.PrepareWorkerReport(report, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(request.Body), "verification_failure_key") || report.Steps[0].Result.VerificationFailureKey != key {
+		t.Fatal("preparing the report changed its input or strict legacy JSON")
+	}
+	if err := cli.ReportPrepared(context.Background(), pulled.Lease.ID, request); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := f.st.Get(job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := saved.Stream.Phases[0].Result; got == nil || got.VerificationFailureKey != key {
+		t.Fatal("Factory lost the check identity needed after the worker restarts")
+	}
+}

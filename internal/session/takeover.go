@@ -55,6 +55,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 )
 
 // takeoverName is the request, inside one session's folder, beside presence.json.
@@ -133,7 +135,7 @@ func AskTakeover(sessionDir string) error {
 		os.Remove(name)
 		return err
 	}
-	if err := os.Rename(name, TakeoverPath(dir)); err != nil {
+	if err := fsreplace.Rename(name, TakeoverPath(dir)); err != nil {
 		os.Remove(name)
 		return err
 	}
@@ -260,6 +262,9 @@ func (a *Agent) announceTakeover() {
 // TakeoverAsked reports that another window has asked for this session and it
 // has not been let go of yet. It is what a surface that missed the event asks.
 func (a *Agent) TakeoverAsked() bool {
+	// A displaced reader may have stopped its presence heartbeat. The holder
+	// still reads the request when its host asks whether it should retire.
+	a.drainTakeover()
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.takenOver

@@ -28,6 +28,9 @@ type viewerState struct {
 	people map[string]memberMemory
 	grants map[string]repoGrant
 	github map[string]string
+	// limits holds GitHub's spent rate limit per token hash. It is kept apart
+	// from grants: a limit says nothing about any one repository.
+	limits map[string]repoLimit
 }
 
 type memberMemory struct {
@@ -41,11 +44,19 @@ type repoGrant struct {
 	until time.Time
 }
 
+// repoLimit is GitHub's own retry time for a token, used until the earlier of
+// that time and one visibility TTL, so a far-off retry time is checked again.
+type repoLimit struct {
+	retry time.Time
+	until time.Time
+}
+
 func newViewerState() *viewerState {
 	return &viewerState{
 		people: map[string]memberMemory{},
 		grants: map[string]repoGrant{},
 		github: map[string]string{},
+		limits: map[string]repoLimit{},
 	}
 }
 
@@ -136,6 +147,15 @@ func repoKeys(s factory.Snapshot) []string {
 // false for the owner: loopback without a GitHub profile, and the host token.
 // A signed-in profile with no token still filters, and sees nothing.
 func (h *Handler) repoAccess(r *http.Request, keys []string) (map[string]bool, bool) {
+	allow, _, filter := h.repoAccessDecided(r, keys)
+	return allow, filter
+}
+
+// repoAccessDecided is [Handler.repoAccess] that also names the keys GitHub
+// gave no answer for just now (a 5xx, a failed connection, a spent rate
+// limit or an ended sign-in): those read as not allowed, and are not known
+// to be.
+func (h *Handler) repoAccessDecided(r *http.Request, keys []string) (allow, unknown map[string]bool, filter bool) {
 	var session accessSession
 	var ok bool
 	if trial, isTrial := r.Context().Value(trialSessionKey{}).(*accessSession); isTrial {
@@ -147,20 +167,20 @@ func (h *Handler) repoAccess(r *http.Request, keys []string) (map[string]bool, b
 		// An ended sign-in never falls back to the owner's unfiltered view,
 		// including when a long-lived event stream outlasts its credential.
 		if state, ok := r.Context().Value(authErrorKey{}).(*authErrorState); ok && state.err != nil {
-			return map[string]bool{}, true
+			return map[string]bool{}, nil, true
 		}
-		return nil, false
+		return nil, nil, false
 	}
 	if session.profile == nil || session.profile.Handle == "" {
-		return nil, false
+		return nil, nil, false
 	}
 	token := session.githubToken
 	if token == "" && h.viewer != nil {
 		token = h.viewer.token(session.profile.Handle)
 	}
-	allow := map[string]bool{}
+	allow = map[string]bool{}
 	if token == "" {
-		return allow, true
+		return allow, nil, true
 	}
 	seen := map[string]bool{}
 	for _, key := range keys {
@@ -169,12 +189,19 @@ func (h *Handler) repoAccess(r *http.Request, keys []string) (map[string]bool, b
 			continue
 		}
 		seen[key] = true
-		allow[key] = h.repoAllowed(r, token, key)
+		known := false
+		allow[key], known = h.repoAllowed(r, token, key)
+		if !known {
+			if unknown == nil {
+				unknown = map[string]bool{}
+			}
+			unknown[key] = true
+		}
 		if state, ok := r.Context().Value(authErrorKey{}).(*authErrorState); ok && state.err != nil {
 			break
 		}
 	}
-	return allow, true
+	return allow, unknown, true
 }
 
 func (h *Handler) repoVisible(r *http.Request, name string) bool {
@@ -186,45 +213,91 @@ func (h *Handler) repoVisible(r *http.Request, name string) bool {
 	return name != "" && allow[name]
 }
 
-func (h *Handler) repoAllowed(r *http.Request, token, key string) bool {
+// repoAllowed is GitHub's answer for this token and key, kept for a while.
+// known is false when GitHub gave no answer just now; allow is then false.
+func (h *Handler) repoAllowed(r *http.Request, token, key string) (allow, known bool) {
 	sum := sha256.Sum256([]byte(token))
-	cacheKey := hex.EncodeToString(sum[:]) + "\n" + key
+	who := hex.EncodeToString(sum[:])
+	cacheKey := who + "\n" + key
 	now := h.now()
 	if h.viewer != nil {
 		h.viewer.mu.Lock()
 		grant, ok := h.viewer.grants[cacheKey]
+		limit := h.viewer.limits[who]
 		h.viewer.mu.Unlock()
 		if ok && now.Before(grant.until) {
-			return grant.allow
+			return grant.allow, true
+		}
+		// GitHub said this token's limit is spent: until its retry time every
+		// uncached repository answers that, without asking GitHub again. A
+		// limit says nothing about the repository, so it is not known.
+		if now.Before(limit.until) {
+			h.githubLimitMet(r, limit.retry)
+			return false, false
 		}
 	}
-	allow, cache := h.askRepo(r, token, key)
-	if cache && h.viewer != nil {
+	allow, cache, retry := h.askRepo(r, token, key)
+	switch {
+	case !retry.IsZero():
+		h.githubLimitMet(r, retry)
+		h.viewer.limit(who, retry, h.now())
+	case cache && h.viewer != nil:
 		h.viewer.mu.Lock()
 		h.viewer.grants[cacheKey] = repoGrant{allow: allow, until: h.now().Add(repoVisibilityTTL)}
 		h.viewer.mu.Unlock()
 	}
-	return allow
+	return allow, cache
 }
 
-// askRepo is GitHub's own answer for this token. A 5xx or a transport failure
-// is not cached: the next read tries again. 200 is readable; anything else
-// definitive is not.
-func (h *Handler) askRepo(r *http.Request, token, key string) (allow, cache bool) {
+// limit keeps GitHub's retry time for a token for at most one visibility TTL,
+// and drops limits that have ended.
+func (v *viewerState) limit(who string, retry, now time.Time) {
+	if v == nil {
+		return
+	}
+	until := now.Add(repoVisibilityTTL)
+	if retry.Before(until) {
+		until = retry
+	}
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	for hash, old := range v.limits {
+		if !now.Before(old.until) {
+			delete(v.limits, hash)
+		}
+	}
+	v.limits[who] = repoLimit{retry: retry, until: until}
+}
+
+// githubLimitMet tells this request's repository route to answer retry_at.
+func (h *Handler) githubLimitMet(r *http.Request, retry time.Time) {
+	if state, ok := r.Context().Value(authErrorKey{}).(*authErrorState); ok {
+		state.githubRetryAt = retry
+	}
+}
+
+// askRepo is GitHub's own answer for this token. A 5xx or transport failure
+// is not cached: the next read tries again. A spent limit returns GitHub's
+// retry time instead of an answer. 200 is readable; anything else definitive
+// is not.
+func (h *Handler) askRepo(r *http.Request, token, key string) (allow, cache bool, retry time.Time) {
 	owner, name, ok := strings.Cut(key, "/")
 	if !ok || owner == "" || name == "" {
-		return false, true
+		return false, true, time.Time{}
 	}
 	endpoint := "https://api.github.com/repos/" + url.PathEscape(owner) + "/" + url.PathEscape(name)
-	status, err := h.githubStatus(r, http.MethodGet, endpoint, token)
+	status, header, err := h.githubVisibilityStatus(r, endpoint, token)
 	if status == http.StatusUnauthorized {
 		h.endGitHub(r, token)
-		return false, false
+		return false, false, time.Time{}
 	}
 	if err != nil || status >= 500 {
-		return false, false
+		return false, false, time.Time{}
 	}
-	return status == http.StatusOK, true
+	if githubLimitSpent(status, header) {
+		return false, false, h.repoIssuesRetryAt(header)
+	}
+	return status == http.StatusOK, true, time.Time{}
 }
 
 // forViewer narrows a floor to the repositories this caller can read.
@@ -235,10 +308,13 @@ func (h *Handler) askRepo(r *http.Request, token, key string) (allow, cache bool
 // the returned snapshot is still the whole floor.
 func (h *Handler) forViewer(r *http.Request, s factory.Snapshot) (factory.Snapshot, string, bool) {
 	// Watched repositories belong in the picker before their first job exists.
-	// Preserve existing recipe facts and add only missing watched names.
+	// Preserve existing recipe facts and add only missing watched names, each
+	// with what its own pipeline says, so a first job can state its budget.
 	if h.config.Store != nil {
 		if watched, err := h.config.Store.Repos(); err == nil {
-			s = withWatchedRepos(s, watched)
+			known := len(s.Repos)
+			s = withWatchedRepos(s, watched, h.config.Store.CheckoutDir)
+			h.readRecipes(s.Repos[known:])
 		}
 	}
 	allow, filter := h.repoAccess(r, repoKeys(s))
@@ -254,7 +330,11 @@ func (h *Handler) forViewer(r *http.Request, s factory.Snapshot) (factory.Snapsh
 	return narrowView(s, allow), "", false
 }
 
-func withWatchedRepos(s factory.Snapshot, watched []string) factory.Snapshot {
+// withWatchedRepos adds each watched repository the floor has no job in yet,
+// with the folder the store records for it: setup records a clone or a
+// person's own folder before the first job exists, and that row must read
+// checked out like one with jobs.
+func withWatchedRepos(s factory.Snapshot, watched []string, checkout func(repo string) string) factory.Snapshot {
 	seen := map[string]bool{}
 	for _, repo := range s.Repos {
 		seen[strings.ToLower(repo.Name)] = true
@@ -265,9 +345,38 @@ func withWatchedRepos(s factory.Snapshot, watched []string) factory.Snapshot {
 		if name != "" && !seen[name] {
 			s.Repos = append(s.Repos, factory.Repo{Name: name})
 			seen[name] = true
+			s.Checkouts = withCheckout(s.Checkouts, name, checkout(name))
 		}
 	}
 	return s
+}
+
+// withCheckout is checkouts with repo's folder added, a copy so the
+// snapshot's own map is never written; an empty folder adds nothing.
+func withCheckout(checkouts map[string]string, repo, dir string) map[string]string {
+	if dir == "" {
+		return checkouts
+	}
+	out := make(map[string]string, len(checkouts)+1)
+	for k, v := range checkouts {
+		out[k] = v
+	}
+	out[repo] = dir
+	return out
+}
+
+// readRecipes fills in each repository's recipe, the same read a repository
+// with jobs gets on the floor. A read that fails leaves the repository listed
+// with no recipe: a figure nobody chose is never shown.
+func (h *Handler) readRecipes(repos []factory.Repo) {
+	if h.seam.RecipeAt == nil {
+		return
+	}
+	for i := range repos {
+		if recipe, _, _, err := h.seam.RecipeAt(repos[i].Name); err == nil {
+			repos[i].Recipe, repos[i].Habits = recipe, recipe.Habits
+		}
+	}
 }
 
 func anyAllowed(allow map[string]bool) bool {
@@ -334,7 +443,6 @@ func narrowView(s factory.Snapshot, allow map[string]bool) factory.Snapshot {
 	out := s
 	items := make([]factory.Item, 0, len(s.Items))
 	ids := map[int]bool{}
-	var daily float64
 	for _, it := range s.Items {
 		key := itemRepo(it)
 		if key == "" || !allow[key] {
@@ -342,9 +450,6 @@ func narrowView(s factory.Snapshot, allow map[string]bool) factory.Snapshot {
 		}
 		items = append(items, it)
 		ids[it.ID] = true
-		if it.Stream != nil {
-			daily += it.Stream.Spent
-		}
 	}
 	repos := make([]factory.Repo, 0, len(s.Repos))
 	for _, repo := range s.Repos {
@@ -354,7 +459,7 @@ func narrowView(s factory.Snapshot, allow map[string]bool) factory.Snapshot {
 	}
 	out.Items = items
 	out.Repos = repos
-	out.Daily = daily
+	out.Daily = factory.DailySpent(items, s.Now)
 	out.Shift = factory.Shift{Since: s.Shift.Since}
 	today, week := factory.MergedCounts(items, s.Now)
 	out.Shift.MergedToday, out.Shift.MergedWeek = today, week

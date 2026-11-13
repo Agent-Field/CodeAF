@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 )
@@ -102,10 +101,10 @@ func TestAFIFOIsNeverOpened(t *testing.T) {
 	dir := t.TempDir()
 	l := newAppNoticeLog(dir)
 	record, indexPath, _ := l.paths("a1")
-	if err := syscall.Mkfifo(record, 0o600); err != nil {
+	if err := mkfifo(record, 0o600); err != nil {
 		t.Skip(err)
 	}
-	if err := syscall.Mkfifo(indexPath, 0o600); err != nil {
+	if err := mkfifo(indexPath, 0o600); err != nil {
 		t.Skip(err)
 	}
 	done := make(chan error, 1)

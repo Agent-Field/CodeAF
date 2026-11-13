@@ -275,11 +275,6 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			return nil, &UnsupportedAttemptSurfaceError{SurfaceDocument, "this send carries no attempt identity"}
 		}
 	}
-	if gate := c.config.RouteGate; gate != nil {
-		if err := gate(ctx, c.modelFor(request), callTag(ctx)); err != nil {
-			return nil, err
-		}
-	}
 	var lastErr error
 	// The wait is sized for the reply the request PERMITS — the caller's answer
 	// plus the thinking pass's room — and not for the caller's figure alone.
@@ -658,6 +653,15 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			cancelAttempt()
 			return nil, err
 		}
+		// Recheck after every wait, including the limiter, because another call
+		// may have spent the daily allowance while this attempt was queued.
+		if gate := c.config.RouteGate; gate != nil {
+			if err := gate(ctx, c.modelFor(request), callTag(ctx)); err != nil {
+				sharedLimiter.release(false, 0)
+				cancelAttempt()
+				return nil, &AttemptDeniedError{Cause: err}
+			}
+		}
 		// THE ONE PLACE A SEND IS ADMITTED: after the request is built and the
 		// limiter has let it through, and before anything is written to the log
 		// or the watchdog, so a refusal leaves no trace of a send that never was.
@@ -714,6 +718,9 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			// A cancelled or expired parent is a decision, not a fault. Retrying
 			// it would burn the remaining deadline on calls that cannot land.
 			if ctx.Err() != nil {
+				if sent.Load() {
+					c.settle(ctx, c.modelFor(request), nil, receiptTornReason, 0, knobs.trace)
+				}
 				return nil, fmt.Errorf("execute request: %w", err)
 			}
 			// A TRANSPORT MAY KNOW THE CREDENTIAL IT OWNS IS FINISHED. That is
@@ -846,8 +853,9 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		}
 		// A context refusal needs a smaller request, even when the router names
 		// the machine that refused it. Return it to the conversation before an
-		// endpoint walk can resend the same oversized bytes.
-		if failure, ok := RefusalFrom(apiError(response.StatusCode, peek)); ok && failure.Overflow {
+		// endpoint walk can resend the same oversized bytes. A model capability
+		// refusal also belongs to its one repair rather than an endpoint walk.
+		if failure, ok := RefusalFrom(apiError(response.StatusCode, peek)); ok && (failure.Overflow || failure.ReasoningUnsupported) {
 			response.Body = rewound(peek, response.Body)
 			sharedLimiter.release(false, 0)
 			return response, nil
@@ -966,6 +974,11 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		// never reaches the endpoint walk or model chain: it either takes the one
 		// configured metered door, once, or returns its typed pause immediately.
 		if refusal.Kind == refusalPlanPaused {
+			detail := planPauseDetail(refusal.Reset, c.config.PlanOverflowDoor)
+			now := c.clock()
+			postPhase(PhaseNews{Phase: PhasePlanPaused, Detail: detail, Since: now, At: now,
+				Model: c.modelFor(request), SourceID: c.config.SourceID, PlanReset: refusal.Reset,
+				Role: RoleFrom(ctx), Session: SessionFrom(ctx), Subject: NodeFrom(ctx)})
 			useOverflow := c.config.OverflowOnPlanPause &&
 				strings.TrimSpace(c.config.PlanOverflow) != "" && !usingOverflow &&
 				claimPlanOverflow(ctx)
@@ -980,9 +993,7 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 				pacedSince = time.Time{}
 				continue
 			}
-			detail := planPauseDetail(refusal.Reset, c.config.PlanOverflowDoor)
-			now := c.clock()
-			notePhase(ctx, c.modelFor(request), PhasePlanPaused, detail, now, now, "")
+
 			return nil, &PlanPauseError{
 				Reset: refusal.Reset, OverflowDoor: c.config.PlanOverflowDoor, Cause: lastErr,
 			}

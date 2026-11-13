@@ -1,5 +1,9 @@
 # Contributor rules
 
+Start with the [contributor guide](../../CONTRIBUTING.md). These pages own
+repository policy; [documentation ownership](../DOCUMENTATION.md) explains where
+product, developer and historical knowledge belongs.
+
 | Page | Purpose |
 | --- | --- |
 | [branching.md](branching.md) | Contribution branches and promotion pointers |

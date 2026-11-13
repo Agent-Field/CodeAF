@@ -6,16 +6,20 @@ import (
 	"time"
 )
 
-// RecoveryLimit bounds automatic restarts of one interrupted step. The window
-// also bounds waiting for a runner; neither limit applies to an explicit retry.
+// RecoveryLimit bounds automatic restarts of one interrupted step, IN
+// ATTEMPTS: a step that keeps working between short connection losses is not
+// out of retries because the clock moved. RunnerReturnWindow bounds only the
+// wait for a runner to come back after a retry is queued (a laptop lid closed
+// for a few minutes is not a person's problem). RecoveryWindow is the worker's
+// own bound on re-delivering a report. None applies to an explicit retry.
 const RecoveryLimit = 3
+const RunnerReturnWindow = 15 * time.Minute
 const RecoveryWindow = 2 * time.Minute
 
 // StepRecovery belongs to the service, not to a worker report. Its attempt count
 // survives a service restart and repeated runner losses, until this step succeeds
 // or the person deliberately tries again. No publication or merge is replayed.
 type StepRecovery struct {
-	RunningAt time.Time `json:"running_at,omitzero"`
 	BlockedBy string    `json:"blocked_by,omitempty"`
 	BlockedAt time.Time `json:"blocked_at,omitzero"`
 	Step      string    `json:"step"`
@@ -39,13 +43,15 @@ func TransientStepFailure(f *Failure) bool {
 // starting another attempt, and by lease admission before a worker can take it.
 func RecoveryBlockReason(it Item) string {
 	switch {
+	case StoppedByPerson(it):
+		return PersonStopReason
 	case !Automatic(it):
 		return "Automatic retry paused because the job is in Manual. Try again when ready."
 	case it.Publishing:
 		return "Publication may have started. Check its outcome before retrying publication."
 	case JobState(it) == "done" || it.Stream == nil:
 		return "This run has ended."
-	case it.Cap <= 0 || JobSpent(it) >= it.Cap:
+	case it.Cap <= 0 || JobLifetimeSpent(it) >= it.Cap:
 		return "Job budget reached. Raise Budget before trying again."
 	}
 	return ""
@@ -54,6 +60,9 @@ func RecoveryBlockReason(it Item) string {
 // PlanStepRecovery records a wait once per failure. It never starts execution;
 // the lease door does that after checking ownership, the lease and current mode.
 func PlanStepRecovery(it *Item, now time.Time) bool {
+	if StoppedByPerson(*it) || RecoveryPaused(*it) {
+		return false
+	}
 	f, rec := it.Failure, it.Recovery
 	if !IsIssueJob(*it) || JobState(*it) == "done" || it.State == StateDismissed {
 		if rec != nil {
@@ -64,7 +73,7 @@ func PlanStepRecovery(it *Item, now time.Time) bool {
 	}
 	if rec != nil && rec.State == "running" && it.Stream != nil {
 		for _, ph := range it.Stream.Phases {
-			if ph.Name == rec.Step && ph.State == PhaseDone {
+			if ph.Name == rec.Step && (ph.State == PhaseDone || ph.State == PhaseSkipped) {
 				it.Recovery = nil
 				return true
 			}
@@ -76,18 +85,15 @@ func PlanStepRecovery(it *Item, now time.Time) bool {
 	}
 	if rec != nil && rec.State == "exhausted" && rec.BlockedBy == "budget" && RecoveryBlockReason(*it) == "" && rec.Attempts < rec.Limit && TransientStepFailure(f) && f.Step == rec.Step && it.Asking == nil && (it.Question == "" || it.QKind == NeedsRunnerOffline || it.QKind == "cap") && !it.Stream.Paused {
 		cp := *rec
-		// Time spent waiting for more budget is not time spent attempting a
-		// recovery. Preserve the remaining window and cumulative attempts.
-		if !cp.BlockedAt.IsZero() {
-			cp.Deadline = cp.Deadline.Add(now.Sub(cp.BlockedAt))
-		}
-		if now.Before(cp.Deadline) {
-			cp.State, cp.Reason, cp.BlockedBy = "waiting", "Budget restored; retrying the interrupted step.", ""
-			cp.NextAt = now
-			cp.BlockedAt = time.Time{}
-			it.Recovery = &cp
-			return true
-		}
+		// Time spent waiting for more budget is not an attempt: the attempts
+		// left are what they were when the budget ran out.
+		// The runner wait starts over too: a worker that held the job while
+		// the budget was raised is not out of time for the minutes it waited.
+		cp.State, cp.Reason, cp.BlockedBy = "waiting", "Budget restored; retrying the interrupted step.", ""
+		cp.NextAt, cp.Deadline = now, now.Add(RunnerReturnWindow)
+		cp.BlockedAt = time.Time{}
+		it.Recovery = &cp
+		return true
 	}
 	if rec != nil && rec.State == "queued" {
 		if why := RecoveryBlockReason(*it); why != "" || !now.Before(rec.Deadline) {
@@ -95,8 +101,9 @@ func PlanStepRecovery(it *Item, now time.Time) bool {
 			if why == "" {
 				why = "The runner did not return within the automatic retry window. Try again when ready."
 			}
-			cp.State, cp.Reason = "exhausted", why
-			if it.Cap <= 0 || JobSpent(*it) >= it.Cap {
+			// A retry that was never claimed is exhausted, not a new worker failure.
+			cp.State, cp.Reason, cp.LastAt = "exhausted", why, now
+			if it.Cap <= 0 || JobLifetimeSpent(*it) >= it.Cap {
 				cp.BlockedBy, cp.BlockedAt = "budget", now
 			}
 			it.Recovery, it.State = &cp, StateNeedsYou
@@ -120,27 +127,23 @@ func PlanStepRecovery(it *Item, now time.Time) bool {
 		return false
 	}
 	if rec == nil || rec.Step != f.Step {
-		rec = &StepRecovery{Step: f.Step, Limit: RecoveryLimit, Deadline: now.Add(RecoveryWindow)}
+		rec = &StepRecovery{Step: f.Step, Limit: RecoveryLimit, Deadline: now.Add(RunnerReturnWindow)}
 	}
 	cp := *rec
-	if cp.State == "running" && !cp.RunningAt.IsZero() && now.After(cp.RunningAt) {
-		cp.Deadline = cp.Deadline.Add(now.Sub(cp.RunningAt))
-		cp.RunningAt = time.Time{}
-	}
 	cp.LastAt, cp.Reason = f.At, f.Detail
 	if why := RecoveryBlockReason(*it); why != "" {
 		cp.State, cp.Reason = "exhausted", why
-		if it.Cap <= 0 || JobSpent(*it) >= it.Cap {
+		if it.Cap <= 0 || JobLifetimeSpent(*it) >= it.Cap {
 			cp.BlockedBy, cp.BlockedAt = "budget", now
 		}
-	} else if cp.Attempts >= cp.Limit || !now.Before(cp.Deadline) {
+	} else if cp.Attempts >= cp.Limit {
 		cp.State, cp.Reason = "exhausted", fmt.Sprintf("Automatic recovery stopped after %d of %d retries. Try again to make another attempt.", cp.Attempts, cp.Limit)
 	} else {
+		// EVERY NEW FAILURE GETS A FRESH RUNNER WAIT: a deadline left over
+		// from an earlier wait would end a retry that ran for an hour within
+		// a minute of its next drop, with attempts left.
 		delay := []time.Duration{2 * time.Second, 5 * time.Second, 15 * time.Second}[cp.Attempts]
-		cp.State, cp.NextAt = "waiting", now.Add(delay)
-		if cp.NextAt.After(cp.Deadline) {
-			cp.NextAt = cp.Deadline
-		}
+		cp.State, cp.NextAt, cp.Deadline = "waiting", now.Add(delay), now.Add(RunnerReturnWindow)
 	}
 	it.Recovery = &cp
 	return true

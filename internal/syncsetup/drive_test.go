@@ -3,7 +3,6 @@ package syncsetup
 import (
 	"context"
 	"errors"
-	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,19 +11,20 @@ import (
 	"slices"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellstats"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	cellstoretest "github.com/Agent-Field/codeaf/internal/cellstore/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellsync"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/directory/directorytest"
 	"github.com/Agent-Field/codeaf/internal/executor"
-	"github.com/Agent-Field/codeaf/internal/furrow"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/relayserve"
@@ -32,23 +32,41 @@ import (
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
-// skewedClock is the relay's clock: the wall clock plus an offset a test moves
-// to let a lease run out without waiting for it. The offset stays well inside
-// the five minutes a signed request may be off by.
-type skewedClock struct{ offsetMs atomic.Int64 }
+// driveClock keeps lease expiry and maintenance on the same explicit timeline.
+// Starting near wall time keeps ordinary client signatures within clock skew.
+type driveClock struct{ *directorytest.FakeClock }
 
-func (c *skewedClock) Now() time.Time {
-	return time.Now().Add(time.Duration(c.offsetMs.Load()) * time.Millisecond)
+func (c *driveClock) advance(d time.Duration) { c.Advance(d) }
+
+// C7 allows another computer to acquire exactly when the relay's lease expires.
+func TestC7LeaseExpiresAtRelayDeadline(t *testing.T) {
+	r := newDriveRig(t)
+	ctx := t.Context()
+	created, err := r.a.Dir.Create(ctx, r.cell.ID, directory.CellInit{Head: head})
+	mustNil(t, err)
+	r.clock.advance(directory.LeaseTTL - time.Millisecond)
+	before, err := r.b.Dir.Cell(ctx, r.cell.ID)
+	mustNil(t, err)
+	if before.Now != created.Now+directory.LeaseTTL.Milliseconds()-1 {
+		t.Fatalf("relay time before expiry = %d, want %d", before.Now, created.Now+directory.LeaseTTL.Milliseconds()-1)
+	}
+	if _, err := r.b.Dir.Acquire(ctx, r.cell.ID, directory.AcquireOpts{}); !errors.Is(err, directory.ErrLeaseHeld) {
+		t.Fatalf("acquire before expiry = %v, want lease held", err)
+	}
+	r.clock.advance(time.Millisecond)
+	taken, err := r.b.Dir.Acquire(ctx, r.cell.ID, directory.AcquireOpts{})
+	mustNil(t, err)
+	if taken.Now != created.Cell.Lease.Expires || taken.Cell.Lease.Fence != created.Cell.Lease.Fence+1 || taken.Cell.Lease.Device != r.b.Device.ID() {
+		t.Fatalf("acquire at expiry = %+v, original lease %+v", taken, created.Cell.Lease)
+	}
 }
-
-func (c *skewedClock) advance(d time.Duration) { c.offsetMs.Add(d.Milliseconds()) }
 
 // driveRig is one identity on two machines and a real relay with a store, in
 // this process. Machine A is the one that chats.
 type driveRig struct {
 	t      *testing.T
 	bin    string
-	clock  *skewedClock
+	clock  *driveClock
 	store  string // the relay's --store directory
 	svc    *relayserve.Service
 	url    string // where the relay answers
@@ -63,13 +81,11 @@ type driveRig struct {
 func newDriveRig(t *testing.T, wrap ...func(http.Handler) http.Handler) *driveRig {
 	t.Helper()
 	celltest.RequireEngine(t)
-	bin, err := furrow.ResolveOwned()
-	if err != nil {
-		t.Skipf("no engine binary: %v", err)
-	}
-	clock := &skewedClock{}
-	storeDir := t.TempDir()
-	svc := relayserve.New(relayserve.Config{Store: storeDir, Now: clock.Now, Grace: directory.GraceBounds{Min: time.Second, Max: time.Hour, Default: 10 * time.Second}})
+	bin := celltest.Engine(t)
+	clock := &driveClock{directorytest.NewFakeClock()}
+	clock.Advance(time.Since(clock.Now()))
+	storeDir := cellstoretest.EngineDir(t)
+	svc := relayserve.New(relayserve.Config{Store: storeDir, Now: clock.Now, After: clock.After, Grace: directory.GraceBounds{Min: time.Second, Max: time.Hour, Default: 10 * time.Second}})
 	t.Cleanup(func() { _ = svc.Close() })
 	handler := svc.Handler
 	for _, one := range wrap {
@@ -96,7 +112,6 @@ func newDriveRig(t *testing.T, wrap ...func(http.Handler) http.Handler) *driveRi
 	r.engine = cellstore.EngineFor(r.work)
 	r.engine.DataRoot, r.engine.Binary = t.TempDir(), bin
 	r.engine.Transport = cellstore.Spawn{Binary: bin}
-	t.Cleanup(cellstore.StopSpawned)
 	t.Cleanup(session.CloseUsage)
 	return r
 }
@@ -149,6 +164,35 @@ func openSync(t *testing.T, home string) *Sync {
 	return s
 }
 
+// spokenFixture records a person's command before a publication fixture seals its work.
+// An unused chat intentionally does not appear on other computers.
+func (r *driveRig) spokenFixture() {
+	r.t.Helper()
+	seat, err := cellstore.SeatOver(executor.HostBound, r.cell, r.work, nil, nil,
+		func(cellstore.Engine) cellstore.Store { return r.engine })
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	agent, err := session.New(session.Config{Workspace: r.work, Place: session.Place{Dir: r.cell.Root, Workspace: r.work}, SessionFile: session.Place{Dir: r.cell.Root}.Transcript(), Seat: seat, Model: "stub/chat", APIKey: "stub", BaseURL: "http://127.0.0.1:1"})
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	events, err := agent.SubmitBash(r.t.Context(), "! true")
+	if err != nil {
+		agent.Close()
+		r.t.Fatal(err)
+	}
+	for event := range events {
+		if event.Kind == session.EventError {
+			agent.Close()
+			r.t.Fatal(event.Text)
+		}
+	}
+	if err := agent.Close(); err != nil {
+		r.t.Fatal(err)
+	}
+}
+
 // chat is A's conversation: a seat whose every tool call seals through the
 // drive side, gated the way the door gates it, and a scripted model that writes
 // one file per call.
@@ -177,10 +221,12 @@ func (r *driveRig) startChat(notices *noticeLog) *chat {
 	return &chat{r: r, drive: drive, seat: executor.Gated(seat, drive.Gate)}
 }
 
-// say is one scripted model turn: it writes a file and the seat seals the call.
+// say is one scripted model turn: it records a reply, writes a file and seals the call.
 func (c *chat) say() error {
 	c.calls++
 	name := filepath.Join(c.r.work, "note"+string(rune('a'+c.calls))+".txt")
+	// Publication ignores unused chats, so each scripted reply must reach the transcript.
+	appendTo(c.r.t, transcriptOf(c.r.cell), "{\"type\":\"message\",\"role\":\"assistant\",\"content\":\"fixture turn\"}\n")
 	call := executor.Call{Tool: "bash", Args: []byte(`{"command":"echo"}`)}
 	return c.seat.Around(context.Background(), call, func() ([]byte, bool) {
 		return nil, os.WriteFile(name, []byte("turn "+name), 0o600) != nil
@@ -228,6 +274,7 @@ func waitFor(t *testing.T, what string, ok func() bool) {
 // D1 keeps the engine's published ledger beside its shared objects.
 func TestDriveSidePublishesTurns(t *testing.T) {
 	r := newDriveRig(t)
+	r.spokenFixture()
 	var notices noticeLog
 	c := r.startChat(&notices)
 	c.mustSay()
@@ -286,6 +333,8 @@ func countFiles(t *testing.T, dir string) (n int) {
 // C5 also requires the kept work to be announced rather than silently forked.
 func TestDriveSideSupersededStopsTools(t *testing.T) {
 	r := newDriveRig(t)
+	// Suppress watches and heartbeats so A can seal its next call before discovering the takeover.
+	r.a.Dir = offlineDir{Client: r.a.Dir, down: func() bool { return true }}
 	ctx := context.Background()
 	var notices noticeLog
 	c := r.startChat(&notices)
@@ -308,12 +357,13 @@ func TestDriveSideSupersededStopsTools(t *testing.T) {
 	c.mustSay() // A does not know yet; this turn is unpublished
 	want := chatlist.Superseded("laptop")
 	waitFor(t, "A to learn it was superseded", func() bool { _, viewer := c.drive.Viewer(); return viewer })
+	// The early viewer notice precedes branching, so wait for the kept-work notice too.
+	kept := chatlist.KeptEdits(1, "tower")
+	waitFor(t, "the superseded and kept-work lines to be shown", func() bool {
+		return notices.last() == want && notices.has(kept)
+	})
 	if line, _ := c.drive.Viewer(); line != want {
 		t.Fatalf("line = %q, want %q", line, want)
-	}
-	waitFor(t, "the superseded line to be shown", func() bool { return notices.last() == want })
-	if kept := chatlist.KeptEdits(1, "tower"); !notices.has(kept) {
-		t.Fatalf("the displaced window silently kept a branch; notices = %v, want %q", notices.all(), kept)
 	}
 
 	v, err := r.a.Dir.Cell(ctx, r.cell.ID)
@@ -358,6 +408,7 @@ func assertBranch(t *testing.T, r *driveRig, turns uint32) {
 // published, then the lease is given back so another machine takes over at once.
 func TestDriveSideCloseReleasesTheLease(t *testing.T) {
 	r := newDriveRig(t)
+	r.spokenFixture()
 	ctx := context.Background()
 	var notices noticeLog
 	c := r.startChat(&notices)
@@ -381,10 +432,7 @@ func TestDriveSideCloseReleasesTheLease(t *testing.T) {
 // fence 0, and nothing is written under the home's sync directory.
 func TestDriveSideOffIsStageZero(t *testing.T) {
 	celltest.RequireEngine(t)
-	bin, err := furrow.ResolveOwned()
-	if err != nil {
-		t.Skipf("no engine binary: %v", err)
-	}
+	bin := celltest.Engine(t)
 	hosted(t, "") // a build with no default relay: empty now means the built-in one
 	t.Setenv(home.EnvVar, t.TempDir())
 	h := t.TempDir()
@@ -419,6 +467,7 @@ func TestDriveSideOffIsStageZero(t *testing.T) {
 // that machine, and nothing of it runs here: no batcher, no lease taken.
 func TestDriveSideStartsAsViewerWhenHeld(t *testing.T) {
 	r := newDriveRig(t)
+	r.spokenFixture()
 	var notices noticeLog
 	c := r.startChat(&notices)
 	c.mustSay()
@@ -449,6 +498,16 @@ func TestDriveSideStartsAsViewerWhenHeld(t *testing.T) {
 // daemon's socket appearing shows the daemon, and not the spawn, served them.
 func TestDriveSidePublishesOverTheDefaultDaemon(t *testing.T) {
 	r := newDriveRig(t)
+	if runtime.GOOS != "windows" {
+		// The rig has not opened an engine transport yet. A short home keeps
+		// its socket inside the home even with macOS's small address limit.
+		short, err := os.MkdirTemp("/tmp", "cds")
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.RemoveAll(short) })
+		t.Setenv(home.EnvVar, short)
+	}
 	t.Setenv("CODEAF_ENGINE_DAEMON", "")
 	r.engine.Transport = nil
 	t.Cleanup(func() { stopDaemons(t) })
@@ -506,6 +565,7 @@ func TestARefusalReachesTheChatAsItsSentence(t *testing.T) {
 // was killed before its last upload left behind.
 func TestDriveSideUploadsTurnsASealedRunNeverSent(t *testing.T) {
 	r := newDriveRig(t)
+	r.spokenFixture()
 	seat, err := cellstore.SeatOver(executor.HostBound, r.cell, r.work, nil, nil, func(cellstore.Engine) cellstore.Store { return r.engine })
 	if err != nil {
 		t.Fatal(err)

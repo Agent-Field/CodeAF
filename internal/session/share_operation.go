@@ -34,6 +34,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Agent-Field/codeaf/internal/filelock"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 )
 
 const (
@@ -93,13 +94,15 @@ type ShareProvenance struct {
 // SharePlannedRow is one immutable planned deliverable id for a normalised
 // path. Ids are minted when the pending receipt is written, before any append.
 //
-// Row is the EXACT index row that id is appended as, written once by Plan
-// from the inspected bytes and never rewritten. A pending receipt has none,
+// Row is the exact inspected row, written once by Plan and never rewritten.
+// AlreadyRecorded rows retain those inspected facts but are never appended. A pending receipt has none,
 // which is how a replay knows no append can have happened yet.
 type SharePlannedRow struct {
 	ID   string    `json:"id"`
 	Path string    `json:"path"`
 	Row  *Artifact `json:"row,omitempty"`
+	// AlreadyRecorded freezes the no-op decision so retries never publish it.
+	AlreadyRecorded bool `json:"already_recorded,omitempty"`
 }
 
 // ShareReceipt is the durable operation record scoped to one session and
@@ -542,19 +545,14 @@ func replaceShareReceipt(dir string, raw []byte) error {
 	if err := errors.Join(writeErr, syncErr, closeErr); err != nil {
 		return err
 	}
-	if err := os.Rename(name, filepath.Join(dir, shareOpReceipt)); err != nil {
+	if err := fsreplace.Rename(name, filepath.Join(dir, shareOpReceipt)); err != nil {
 		return err
 	}
 	return syncShareOpDir(dir)
 }
 
 func syncShareOpDir(dir string) error {
-	d, err := os.Open(dir)
-	if err != nil {
-		return err
-	}
-	defer d.Close()
-	if err := d.Sync(); err != nil && !errors.Is(err, os.ErrInvalid) {
+	if err := fsreplace.SyncDir(dir); err != nil && !errors.Is(err, os.ErrInvalid) {
 		return err
 	}
 	return nil

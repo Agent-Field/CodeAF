@@ -1,7 +1,6 @@
 package teams
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,9 +15,9 @@ func TestTeamSpendSharesMembershipReadAndInvalidatesOnChanges(t *testing.T) {
 	key := filepath.Join("/srv/sessions", "0123456789abcdef", "transcript.jsonl")
 	must(t, Save(dir, []Team{{ID: "aaaaaaaaaaaa", Members: []Member{{Key: key}}}, {ID: "bbbbbbbbbbbb"}}))
 	writeLedger(t, ledger, line("2026-09-24", 1, keySessionForTest(key), ""))
-	spendTeams.Lock()
-	before := spendTeams.reads
-	spendTeams.Unlock()
+	teamSpendResults.mu.Lock()
+	before := teamSpendResults.reads
+	teamSpendResults.mu.Unlock()
 	var wg sync.WaitGroup
 	for i := 0; i < 16; i++ {
 		wg.Add(1)
@@ -30,9 +29,9 @@ func TestTeamSpendSharesMembershipReadAndInvalidatesOnChanges(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	spendTeams.Lock()
-	reads := spendTeams.reads - before
-	spendTeams.Unlock()
+	teamSpendResults.mu.Lock()
+	reads := teamSpendResults.reads - before
+	teamSpendResults.mu.Unlock()
 	if reads != 1 {
 		t.Fatalf("unchanged membership snapshot loaded %d times, want once", reads)
 	}
@@ -55,15 +54,6 @@ func TestTeamSpendSharesMembershipReadAndInvalidatesOnChanges(t *testing.T) {
 	must(t, err)
 	if new.USD != 0 {
 		t.Fatal("membership snapshot crossed profile boundary")
-	}
-	// A legacy file arriving after a missing-profile reading must still migrate.
-	legacy, err := json.Marshal(map[string]any{"spaces": []Team{{ID: "bbbbbbbbbbbb", Members: []Member{{Key: key}}}}})
-	must(t, err)
-	must(t, os.WriteFile(legacyPath(other), legacy, 0o600))
-	new, err = TeamSpendIn(other, ledger, "bbbbbbbbbbbb", "2026-09-24")
-	must(t, err)
-	if new.USD != 3 {
-		t.Fatal("cached absence hid the legacy membership file", new.USD)
 	}
 }
 

@@ -4,7 +4,8 @@ import { Directory } from '../src/directory.js';
 import { STAGE1 } from '../src/rules.js';
 import { windowMs } from '../src/limits.js';
 import { parseBeat } from '../src/presence.js';
-import { CLOSE_REVOKED, CLOSE_ROTATED, CLOSE_SILENT, Watchers } from '../src/watch.js';
+import { parseHolds } from '../src/vouch.js';
+import { CLOSE_REVOKED, CLOSE_ROTATED, CLOSE_SILENT, Watchers, CommittedWatchers } from '../src/watch.js';
 import { memorySql } from './sql.js';
 import { init } from './helpers.js';
 
@@ -170,7 +171,7 @@ function platform() {
 }
 
 /** A relay of watchers over the stand-in, answering the response the 101 would carry. */
-function relay() {
+function relay(WatchType = Watchers) {
   const real = { Date: Date.now, Pair: globalThis.WebSocketPair, Response: globalThis.Response };
   const clock = { now: 5_000_000 };
   const p = platform();
@@ -187,7 +188,7 @@ function relay() {
   Date.now = () => clock.now;
   const armed = [];
   const stamped = [];
-  const watchers = new Watchers(p.ctx, 1000, 90_000, (at) => armed.push(at), (d, at) => stamped.push([d, at]));
+  const watchers = new WatchType(p.ctx, 1000, 90_000, (at) => armed.push(at), (d, at) => stamped.push([d, at]));
   const restore = () => ((Date.now = real.Date), (globalThis.WebSocketPair = real.Pair), (globalThis.Response = real.Response));
   const dial = (device, beat, events = false) => {
     const answer = watchers.accept(device, 1, clock.now, { holds: [], beat, events });
@@ -299,3 +300,22 @@ test('an attachment from before presence reads as a live-by-default beat of 30 a
     r.clock.now += 1_001;
     assert.deepEqual([...r.watchers.online()], []);
   }));
+
+
+// R22 preserves advisory presence without giving old clients a socket-only
+// lease promise. Fresh platform evidence still needs the committed bridge.
+test('R22 consensus watch supplies evidence without lifted leases or a vouch header',()=>{
+ const r=relay(CommittedWatchers);
+ try{
+  const answer=r.watchers.accept('dev_a',1,r.clock.now,{holds:parseHolds(['chat:7'],16),beat:10,receipts:true});
+  assert.equal(answer.headers.get('Codeaf-Presence'),'1');assert.equal(answer.headers.get('Codeaf-Vouch'),null);
+  r.clock.now+=10000;r.p.open[0].pinged=r.clock.now;
+  const evidence=r.watchers.holdEvidence(r.clock.now);assert.equal(evidence[0].device,'dev_a');assert.equal(evidence[0].seenAt,r.clock.now);assert.deepEqual(evidence[0].holds,[{cell:'chat',fence:'7'}]);
+  const before=r.p.open[0].sent.length;evidence[0].send('{"holds":[]}');assert.equal(r.p.open[0].sent.length,before+1);
+  r.watchers.accept('dev_old',1,r.clock.now,{holds:parseHolds(['chat:7'],16),beat:10});
+  const old=r.watchers.holdEvidence(r.clock.now)[1];old.send('{"holds":[]}');assert.equal(r.p.open[1].sent.length,1,'old client received a frame it cannot decode');
+  assert.equal(r.watchers.vouchedUntil('dev_a','chat',7),0);
+  r.p.ctx.getWebSocketAutoResponseTimestamp=()=>{throw Error('closing')};
+  assert.equal(r.watchers.holdEvidence(r.clock.now)[0].seenAt,0,'unreadable timestamp invented fresh ownership evidence');
+ }finally{r.restore()}
+});

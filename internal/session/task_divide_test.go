@@ -1120,14 +1120,20 @@ func TestAStoppedPartsSpendStillReachesTheSessionLedger(t *testing.T) {
 
 func TestADivisionWiderThanTheCapIsRefusedWholeRatherThanHalfTaken(t *testing.T) {
 	nest := newDivideNest(t, wideBrief, 0)
-	// Four parts already handed out leaves room for one, and a division of
-	// three is not a division of one.
-	for i := 0; i < taskFanLimit-1; i++ {
-		if answer := nest.divide(t, divideArgs(wideEvidence, 2)); i == 0 && !strings.Contains(answer, "split into") {
+	// Distinct parts leave room for two, so a division of three cannot fit.
+	for i := 0; i < (taskFanLimit-1)/2; i++ {
+		parts := []dividePart{
+			{Title: fmt.Sprintf("Existing north %d", i), Summary: "s", Brief: "b", Acceptance: "a"},
+			{Title: fmt.Sprintf("Existing south %d", i), Summary: "s", Brief: "b", Acceptance: "a"},
+		}
+		if answer := nest.divide(t, divideArgsFor(wideEvidence, parts...)); i == 0 && !strings.Contains(answer, "split into") {
 			t.Fatalf("the first division was refused: %q", answer)
 		}
 	}
 	before := nest.graph.children(nest.parent.id)
+	if len(before) != taskFanLimit-2 {
+		t.Fatalf("the fixture admitted %d distinct parts, want %d", len(before), taskFanLimit-2)
+	}
 	answer := nest.divide(t, divideArgs(wideEvidence, 3))
 	if !strings.Contains(answer, "as many as one task may") {
 		t.Fatalf("the worker was told %q, want the cap said in the words it is said in everywhere else", answer)

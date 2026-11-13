@@ -10,7 +10,7 @@ import (
 
 func TestNeedsYouKindsContractTwo(t *testing.T) {
 	want := []string{
-		"approve_start", "approve_plan", "approve_proof", "question", "budget", "out_of_rounds", "publish_failed", "runner_offline", "failed", "changes_requested", "conflict",
+		"approve_start", "approve_plan", "approve_step", "approve_proof", "question", "budget", "out_of_rounds", "publish_failed", "runner_offline", "failed", "changes_requested", "conflict",
 	}
 	if !reflect.DeepEqual(factory.NeedsYouKinds, want) {
 		t.Fatalf("kinds = %v", factory.NeedsYouKinds)
@@ -39,7 +39,7 @@ func TestNeedsYouKindsQuestionsAndWhoMayAnswer(t *testing.T) {
 		{"publish", factory.Item{ID: 3, State: factory.StateLanded, PublishError: "protected", Changed: when}, factory.NeedsPublishFailed, factory.WhoJobPerson, ""},
 		{"cap", factory.Item{ID: 4, State: factory.StateNeedsYou, Question: "budget?", QKind: "cap", Cap: 5, Starter: "raj", Changed: when, Stream: &factory.Stream{Spent: 5, Cur: 0, Phases: []factory.Phase{{Name: "write"}}}}, factory.NeedsSpendingLimit, factory.WhoJobPerson, ""},
 		{"rounds", factory.Item{ID: 5, State: factory.StateNeedsYou, Question: "try once more, send it back, or cancel the job?", QKind: factory.QKindOutOfAttempts, Starter: "raj", Stream: step}, factory.NeedsOutOfAttempts, factory.WhoJobPerson, factory.AskOptions},
-		{"text", factory.Item{ID: 6, State: factory.StateNeedsYou, Question: "which file?", QKind: "step", Stream: step}, factory.NeedsQuestion, factory.WhoAnyoneWithRepo, factory.QuestionText},
+		{"step", factory.Item{ID: 6, State: factory.StateNeedsYou, Question: "which file?", QKind: factory.QKindStep, Stream: step}, factory.NeedsQuestion, factory.WhoAnyoneWithRepo, factory.QKindStep},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -94,7 +94,7 @@ func itoa(n int) string {
 	return string(b[i:])
 }
 
-func TestSpendingLimitIsTheDoubledCap(t *testing.T) {
+func TestSpendingLimitIsTheNextAllowedBudget(t *testing.T) {
 	j := FromItem(factory.Item{
 		ID: 4, State: factory.StateNeedsYou, Question: "budget of $5 reached", QKind: "cap", Cap: 5, Starter: "raj",
 		Stream: &factory.Stream{Spent: 5, Cur: 0, Phases: []factory.Phase{{Name: "write"}}},

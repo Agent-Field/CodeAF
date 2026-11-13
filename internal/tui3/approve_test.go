@@ -3,6 +3,7 @@ package tui3
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -99,7 +100,7 @@ func TestApproveCardShowsWhoIsAsking(t *testing.T) {
 	r.slash("/pair " + testLink)
 	r.until("the card", func() bool { c, ok := a.pair.card.(*approveCard); return ok && c.req != nil })
 	got := plain(frame(a))
-	for _, want := range []string{"tower", "Linux", "$", "Check number 4821", "asked 2m ago", "min left"} {
+	for _, want := range []string{"tower", "Linux", "△", "Check number 4821", "asked 2m ago", "min left"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("card lacks %q:\n%s", want, got)
 		}
@@ -189,7 +190,7 @@ func devicesFake() *fakeApprovals {
 	}}
 }
 
-func TestDeviceListShowsPresenceAndRevokesWithOneKey(t *testing.T) {
+func TestDeviceListShowsPresenceAndConfirmsRemoval(t *testing.T) {
 	door := devicesFake()
 	a, r := approveApp(t, door)
 	r.slash("/devices")
@@ -207,7 +208,7 @@ func TestDeviceListShowsPresenceAndRevokesWithOneKey(t *testing.T) {
 	if !strings.Contains(plain(frame(a)), devicesOwnRow) {
 		t.Fatalf("r on this device said nothing:\n%s", plain(frame(a)))
 	}
-	r.press("down", "down", "r")
+	r.press("down", "down", "r", "y")
 	r.until("revoked", func() bool { return strings.Contains(plain(frame(a)), "tower was removed") })
 	if door.did() != "revoke:dev_B" {
 		t.Fatalf("door: %s", door.did())
@@ -334,7 +335,7 @@ func TestARevokedRowNeverShowsAnOnlineDot(t *testing.T) {
 	a.dirFeed = stillFeed{online: []string{"dev_B"}}
 	r.slash("/devices")
 	r.until("the list", func() bool { c, ok := a.pair.card.(*deviceCard); return ok && c.loaded })
-	r.press("down", "r")
+	r.press("down", "r", "y")
 	r.until("revoked", func() bool { return strings.Contains(plain(frame(a)), "was removed") })
 	got := plain(frame(a))
 	if !strings.Contains(got, "○ tower") || strings.Contains(got, "● tower") || !strings.Contains(got, "removed") {
@@ -381,5 +382,54 @@ func TestOpenDeviceListMarksADeviceAnotherComputerRevoked(t *testing.T) {
 	r.until("revoked row", func() bool { return strings.Contains(plain(frame(a)), "tower     Linux  removed") })
 	if strings.Contains(plain(frame(a)), "● tower") {
 		t.Fatalf("a revoked computer shows online:\n%s", plain(frame(a)))
+	}
+}
+
+// T2: a timed-out answer blames neither the devices nor the person, and says the
+// answer may already have landed, so a retry is not offered as the remedy.
+func TestApproveTimeoutSaysTheAnswerMayHaveArrived(t *testing.T) {
+	late := fmt.Errorf("answer: %w", context.DeadlineExceeded)
+	if got := approveFailure(late, true); got != approveUnsure {
+		t.Fatalf("answer timeout = %q, want %q", got, approveUnsure)
+	}
+	if got := approveFailure(late, false); got != approveSlow {
+		t.Fatalf("lookup timeout = %q, want %q", got, approveSlow)
+	}
+	for _, line := range []string{approveSlow, approveUnsure} {
+		if strings.Contains(line, "your devices") {
+			t.Errorf("%q blames devices that take no part", line)
+		}
+	}
+	refused := errors.New("that request was already answered")
+	if got := approveFailure(refused, true); got != refused.Error() {
+		t.Fatalf("door sentence = %q, want it as it is", got)
+	}
+}
+
+// T2: a decline that timed out is the plain retry. A declined device never
+// shows in /devices, so pointing there would leave nothing to check.
+func TestDeclineTimeoutIsAPlainRetry(t *testing.T) {
+	a, _ := approveApp(t, &fakeApprovals{})
+	card := &approveCard{req: &PendingDevice{Name: "laptop"}, working: true}
+	a.showCard(card)
+	late := fmt.Errorf("deny: %w", context.DeadlineExceeded)
+	decidedMsg{card: card, req: *card.req, approved: false, err: late}.land(a)
+	if card.line != approveSlow {
+		t.Fatalf("decline timeout = %q, want %q", card.line, approveSlow)
+	}
+	decidedMsg{card: card, req: *card.req, approved: true, err: late}.land(a)
+	if card.line != approveUnsure {
+		t.Fatalf("approve timeout = %q, want %q", card.line, approveUnsure)
+	}
+}
+
+// T1: an answer the door found still waiting after a timeout was not decided,
+// so it is the plain retry, not "may still have arrived".
+func TestApproveThatDidNotArriveIsAPlainRetry(t *testing.T) {
+	if got := approveFailure(ErrAnswerNotArrived, true); got != approveSlow {
+		t.Fatalf("not arrived = %q, want %q", got, approveSlow)
+	}
+	if approveAnswerTimeout < 2*approveTimeout {
+		t.Fatalf("an answer's %v cannot cover the record, the decision and the lookup", approveAnswerTimeout)
 	}
 }

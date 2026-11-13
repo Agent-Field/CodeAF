@@ -174,7 +174,8 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: settings.ProfileDir,
 	})
 	seatCrewRows(modelCatalog.ModelsNow)
-	wirePoolIndex(settings.ProfileDir)
+	held := wirePoolIndex(settings.ProfileDir)
+	brain.closing(func() { stopPoolErrands(held) })
 	if opts.seats != nil {
 		applySeats(&settings, *opts.seats)
 	} else {
@@ -954,6 +955,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// Every call this leaf makes, banked under its node as the provider
 		// answers. See leafBanker.
 		banker := newLeafBanker(graph, node.ID)
+		banker.receipts = &brain.background
 		var spent exec.Usage
 		// The same spend with its per-turn shape kept, accumulated across every
 		// attempt this node makes. See leafShape.
@@ -2672,10 +2674,14 @@ func atLeastZero(count int) int {
 // and a leaf whose calls were banked here is a leaf whose total is already on
 // disk (see resident.ExecResult.SpendBanked).
 type leafBanker struct {
-	graph  *store.Store
-	nodeID string
-	mutex  sync.Mutex
-	rows   int
+	usageLedger string
+	// Cancelled arms can still owe receipts after the worker lands. Join them
+	// within the brain's existing background stop bound before closing its store.
+	receipts *sync.WaitGroup
+	graph    *store.Store
+	nodeID   string
+	mutex    sync.Mutex
+	rows     int
 	// total is what this banker has actually written, so the landing can journal
 	// the REMAINDER rather than the whole — see leafSpend.
 	total exec.Usage
@@ -2686,7 +2692,7 @@ type leafBanker struct {
 }
 
 func newLeafBanker(graph *store.Store, nodeID string) *leafBanker {
-	return &leafBanker{graph: graph, nodeID: nodeID}
+	return &leafBanker{graph: graph, nodeID: nodeID, usageLedger: session.UsageLedgerPath()}
 }
 
 // bank writes one call's row. It is called from the provider's decode, which is
@@ -2728,7 +2734,7 @@ func (b *leafBanker) reconciled(receipt provider.Reconciled) {
 		return
 	}
 	if !receipt.Found {
-		session.RecordUnbilledCall(session.UsageLedgerPath(), session.UsageLine{Task: b.nodeID, Model: receipt.Model})
+		session.RecordUnbilledCall(b.usageLedger, session.UsageLine{Task: b.nodeID, Model: receipt.Model})
 		return
 	}
 	b.bank(receipt.Billed)
@@ -2755,6 +2761,12 @@ func armBilling(ctx context.Context, banker *leafBanker) context.Context {
 		return ctx
 	}
 	ctx = provider.WithCallNode(ctx, banker.nodeID)
+	if banker.receipts != nil {
+		ctx = provider.WithReceiptSettlement(ctx, func() func() {
+			banker.receipts.Add(1)
+			return banker.receipts.Done
+		})
+	}
 	ctx = provider.WithBilling(ctx, banker.bank)
 	return provider.WithReconcile(ctx, banker.reconciled)
 }

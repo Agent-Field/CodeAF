@@ -16,6 +16,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
+	"github.com/Agent-Field/codeaf/internal/gitpolicy"
 )
 
 // ── WHERE AN ITEM'S WORK LIVES: A WORKTREE AND A BRANCH PER ITEM ───────────
@@ -56,7 +57,7 @@ type ExecGit struct {
 
 // Run runs `git -C dir args...`. A failure's error is gits last line.
 func (g ExecGit) Run(dir string, args ...string) (string, error) {
-	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	cmd := exec.Command("git", gitpolicy.WithoutAutoMaintenance(append([]string{"-C", dir}, args...)...)...)
 	cmd.Env = append(gitEnv(g.Token), "GIT_TERMINAL_PROMPT=0")
 	out, err := cmd.CombinedOutput()
 	text := strings.TrimSpace(string(out))
@@ -350,6 +351,30 @@ func (w *Workdirs) listed(checkout, dir string) bool {
 	return false
 }
 
+// heldIn is the worktree of checkout, inside this work root, that has branch
+// checked out, or "". An earlier release named the job's folder differently
+// (the repository's display name, not its slug), so the folder [Workdirs.Dir]
+// names is not the only one a job's branch can be held in. Only a folder under
+// the work root counts: a person's own worktree is never removed.
+func (w *Workdirs) heldIn(checkout, branch string) string {
+	out, err := w.git.Run(checkout, "worktree", "list", "--porcelain")
+	if err != nil {
+		return ""
+	}
+	root, dir := samePath(w.root), ""
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if p, ok := strings.CutPrefix(line, "worktree "); ok {
+			dir = p
+		} else if line == "branch refs/heads/"+branch {
+			if rel, err := filepath.Rel(root, samePath(dir)); err == nil && rel != "." && !strings.HasPrefix(rel, "..") && !strings.Contains(rel, string(filepath.Separator)) {
+				return dir
+			}
+		}
+	}
+	return ""
+}
+
 func samePath(p string) string {
 	p = filepath.Clean(p)
 	if r, err := filepath.EvalSymlinks(p); err == nil {
@@ -404,15 +429,19 @@ var ErrNoRemote = errors.New("no remote to push to")
 
 // GitPush is the post stage's push over git: `git push -u origin <branch>`
 // from dir, after checking there is an `origin` at all. NEVER A FORCE-PUSH:
-// the refspec is the bare branch, so a remote branch that moved refuses the
-// push and the person decides.
-func GitPush(git Git) func(dir, branch string) error {
+// a remote branch that moved refuses the push, and [placeRejected] decides.
+func GitPush(git Git) func(dir, branch string, before ...func() error) error {
 	if git == nil {
 		git = ExecGit{}
 	}
-	return func(dir, branch string) error {
+	return func(dir, branch string, before ...func() error) error {
 		if _, err := git.Run(dir, "remote", "get-url", "origin"); err != nil {
 			return ErrNoRemote
+		}
+		for _, check := range before {
+			if err := check(); err != nil {
+				return err
+			}
 		}
 		output, err := git.Run(dir, "push", "-u", "origin", branch)
 		if err != nil && strings.TrimSpace(output) != "" {
@@ -449,7 +478,7 @@ func StoreLog(st *store.Store, clock func() time.Time) func(it factory.Item, lin
 // digits of its ref, or for an item with no number (a CI run) its ref and its
 // id, so two of those never share a worktree.
 func itemDigits(it factory.Item) string {
-	ref := it.Ref()
+	ref := it.KeyRef()
 	if d, ok := strings.CutPrefix(ref, "#"); ok {
 		return d
 	}
@@ -583,12 +612,21 @@ func (w *Workdirs) Discard(it factory.Item, checkout string) error {
 			return fmt.Errorf("could not delete the folder of %s: %s", it.Ref(), lastLine(err.Error()))
 		}
 	}
+	// The scratch folder beside it goes with it (scratch.go).
+	if scratch := ScratchDir(dir); scratch != "" {
+		_ = os.RemoveAll(scratch)
+	}
 	if it.Kind == factory.KindPR {
 		return nil
 	}
 	branch := w.ownBranch(it)
 	if _, err := w.git.Run(repo, "rev-parse", "--verify", "--quiet", "refs/heads/"+branch); err != nil {
 		return nil
+	}
+	if held := w.heldIn(repo, branch); held != "" {
+		if _, err := w.git.Run(repo, "worktree", "remove", "--force", held); err != nil {
+			return fmt.Errorf("could not delete the folder of %s: %s", it.Ref(), lastLine(err.Error()))
+		}
 	}
 	if _, err := w.git.Run(repo, "branch", "-D", branch); err != nil {
 		return fmt.Errorf("could not delete the branch of %s: %s", it.Ref(), lastLine(err.Error()))

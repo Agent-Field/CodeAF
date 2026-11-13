@@ -58,3 +58,34 @@ func TestJobChatsIsRegisteredAnnouncedAndAbsentWithoutItsEngine(t *testing.T) {
 		}
 	}
 }
+
+type jobSenderEngine struct{ chatsEngine }
+
+func (*jobSenderEngine) FactoryJobSend(_ context.Context, p FactoryJobSendParams) (FactoryJobSent, error) {
+	return FactoryJobSent{Agent: "manager1", Turn: 1}, nil
+}
+
+func TestJobSendIsAnnouncedAndRegistered(t *testing.T) {
+	e := &jobSenderEngine{}
+	h := withFactoryJobChatsFeature(Hello{}, e)
+	found := false
+	for _, f := range h.Features {
+		if f == FeatureFactoryJobSend {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("hello missing first-send capability: %v", h.Features)
+	}
+	out, err := methods[FeatureFactoryJobSend].call(e, json.RawMessage(`{"factory":"factory_local","job":12,"text":"Please check"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := json.Marshal(out)
+	if err != nil || string(got) != `{"agent":"manager1","turn":1}` {
+		t.Fatalf("first send = %s, %v", got, err)
+	}
+	if _, err := methods[FeatureFactoryJobSend].call(&chatsEngine{}, json.RawMessage(`{"factory":"factory_local","job":12,"text":"Please check"}`)); wireCode(t, err) != CodeUnknownMethod {
+		t.Fatalf("unsupported sender: %v", err)
+	}
+}

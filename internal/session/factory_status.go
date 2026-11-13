@@ -17,6 +17,11 @@ type ManagerStatusDoor interface {
 	AnswerPending(context.Context, string, string, string) (string, error)
 }
 
+// ManagerPlanRejecter sends only the reviewed plan back through the typed door.
+type ManagerPlanRejecter interface {
+	RejectPendingPlan(context.Context, string, string, string) (string, error)
+}
+
 func (a *Agent) factoryStatusTool() bare.Tool {
 	return bare.Tool{Name: "factory_status", Description: "Read authoritative saved status of the ONE job this conversation manages: completed steps, current blocker, live worker, last progress and supported next action. Read this first for progress questions and before answering a persisted decision. No model, workspace investigation or repair is started.", Schema: json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`), Execute: func(ctx context.Context, _ json.RawMessage) (string, bool, error) {
 		d, ok := a.runDoorForTurn().(ManagerStatusDoor)
@@ -54,7 +59,8 @@ func (a *Agent) ReadFactoryStatus(ctx context.Context, text string) (string, boo
 	if err != nil {
 		return "", true, err
 	}
-	return strings.Split(status.Text, "\nPending question ID:")[0], true, nil
+	text = strings.Split(status.Text, "\nPending question ID:")[0]
+	return strings.Split(text, factory.ManagerActionsMarker)[0], true, nil
 }
 
 func factoryStatusStream(text string) <-chan Event {

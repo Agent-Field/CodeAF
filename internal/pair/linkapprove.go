@@ -27,6 +27,8 @@ type Approver struct {
 	// BeforeApprove publishes the approving computer before the grant becomes
 	// visible, so Paired. cannot precede its device record on the joiner's list.
 	BeforeApprove func(context.Context) error
+	// AfterApprove refreshes local account information only after the grant succeeds.
+	AfterApprove func(context.Context)
 }
 
 // Asking is one device waiting to be let in, as the approving person sees it.
@@ -92,7 +94,13 @@ func (a Approver) Approve(ctx context.Context, as Asking) error {
 			return err
 		}
 	}
-	return phraseDecision(a.Dir.ApproveRequest(ctx, as.Ref.Code, body))
+	if err := a.Dir.ApproveRequest(ctx, as.Ref.Code, body); err != nil {
+		return phraseDecision(err)
+	}
+	if a.AfterApprove != nil {
+		a.AfterApprove(ctx)
+	}
+	return nil
 }
 
 // Deny turns the asking device down.

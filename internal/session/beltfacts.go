@@ -94,6 +94,11 @@ func (c Config) mayWatch() bool {
 // agent, so the belt and the page cannot disagree about the verb).
 func (c Config) mayAsk() bool { return !c.readingTask() && !c.mayBashBelt() }
 
+// mayRequestSecret says whether `request_secret` belongs on this belt: where
+// `ask` does, and only when somebody is there to type into its box
+// (secret_request.go).
+func (c Config) mayRequestSecret() bool { return c.mayAsk() && c.Interactive }
+
 // mayProposeTask says whether the task pair — `propose_task` and the `tasks`
 // window onto what it started — belongs on this belt: always in a conversation,
 // and in a node only when it was handed the conversation's graph and is not
@@ -169,15 +174,10 @@ func (c Config) mayAutomate() bool {
 	return !c.readingTask() && c.automationStore() != nil && c.AutomationRun == nil && !c.InTask
 }
 
-// signsGitWork says whether the attribution law belongs on this belt. A reading
-// cannot make a commit, so it has no signing instructions. It used to be the
-// person's `attribution` row, which is gone (2026-09-23): codeaf signs every
-// commit it writes. It used to
-// carry a second half too — a fork's hand was told nothing because its `bash`
-// was rebuilt read-only — and that half went with `fork` itself. Every ordinary
-// shape still carries a `bash` that could make a commit. It stays a predicate
-// because the belt-fact table is written in predicates.
-func (c Config) signsGitWork() bool { return !c.readingTask() }
+// signsGitWork says whether the attribution law belongs on this belt: a reading
+// cannot make a commit, and every other shape signs unless the person turned
+// attribution off ([Config.AttributionOff]).
+func (c Config) signsGitWork() bool { return !c.readingTask() && !c.AttributionOff }
 
 // assistedByModel is the model this belt's `Assisted-by` line names: the model
 // the page is rendered for, or nothing when the person turned the model's name
@@ -195,10 +195,12 @@ func (c Config) assistedByModel() string {
 // the same two trailer lines the model is told to write
 // (internal/exec's [exec.AttributionTrailers]).
 //
-// ITS ZERO VALUE STILL SIGNS, with the bare `Assisted-by: CodeAF` line. The
-// repository's CONTRIBUTING rule is checked at the commit door, not represented
-// by a value here. This value carries only whether the line names a model.
+// ITS ZERO VALUE STILL SIGNS, with the bare `Assisted-by: CodeAF` line. When
+// off is true, sign and signOnce leave the message unchanged.
 type gitSignature struct {
+	// off is the person's `attribution` row turned off: no trailer lines are
+	// added at all.
+	off bool
 	// named is the person's `attribution.model` row: whether the line names
 	// the model at all.
 	named bool
@@ -232,17 +234,21 @@ func signedModel(node *TaskNode) string {
 // none — the spelling a record that outlives the agent keeps it in
 // ([ProgramFolder.SignModel]).
 func (s gitSignature) namedModel() string {
-	if !s.named {
+	if s.off || !s.named {
 		return ""
 	}
 	return s.model
 }
 
 // sign is a commit message as the harness leaves it: one blank line, then the
-// two trailer lines. The files where the harness writes its OWN commits import
-// os/exec as `exec`, which is why they reach internal/exec's one spelling of
-// the block through here rather than by name.
+// two trailer lines, or the message unchanged when attribution is off. The
+// files where the harness writes its OWN commits import os/exec as `exec`,
+// which is why they reach internal/exec's one spelling of the block through
+// here rather than by name.
 func (s gitSignature) sign(message string) string {
+	if s.off {
+		return message
+	}
 	model := ""
 	if s.named {
 		model = s.model
@@ -251,8 +257,12 @@ func (s gitSignature) sign(message string) string {
 }
 
 // signOnce preserves lines a worker already wrote and supplies only the
-// missing attribution, through the same model choice as the harness's commits.
+// missing attribution, through the same model choice as the harness's commits,
+// or leaves the message unchanged when attribution is off.
 func (s gitSignature) signOnce(message string) string {
+	if s.off {
+		return message
+	}
 	model := ""
 	if s.named {
 		model = s.model
@@ -261,13 +271,17 @@ func (s gitSignature) signOnce(message string) string {
 }
 
 // signsGitWork is the signature a live agent's own commits carry, off the same
-// two facts the sentence the model is told is rendered from — the model the
-// conversation is on NOW, and the person's model-name row — so that the
-// harness's commits and the model's own read the same. The commits a landing
-// writes are not on any belt; nobody is asked about them (task_run.go's
-// [signed]).
+// facts the sentence the model is told is rendered from — whether attribution
+// is off, the model the conversation is on NOW, and the person's model-name
+// row — so that the harness's commits and the model's own read the same. The
+// commits a landing writes are not on any belt; nobody is asked about them
+// (task_run.go's [signed]).
 func (a *Agent) signsGitWork() gitSignature {
-	return gitSignature{named: !a.config.AttributionModelOff, model: a.Model()}
+	return gitSignature{
+		off:   a.config.AttributionOff,
+		named: !a.config.AttributionModelOff,
+		model: a.Model(),
+	}
 }
 
 // mayDesignHarness says whether the two harness hands belong on this belt
@@ -376,6 +390,15 @@ var beltFacts = []beltFact{{
 	holds:   Config.mayAsk,
 	shelved: "- `ask` waits in the `questions` group; `load_capability` fetches it.",
 }, {
+	// THE FENCE IS SAID BEFORE IT IS MET (internal/executor's fence.go). A
+	// fenced run that is not told reaches for `brew install` or `docker pull`,
+	// is refused, and spends turns finding out; an unfenced one is told
+	// nothing, because nothing is different for it.
+	holds: Config.fenced,
+	// It is one short line because every byte of it is in the widest prefix
+	// (prefixbudget_test.go); the refusal sentence itself says the rest.
+	present: "- No brew/docker here.",
+}, {
 	// THE CLOCK, whose second sentence is the one place the session facts named a
 	// conditional verb for everybody. The first sentence is true of every shape —
 	// the `Project` footer is rendered for all of them — and the second would be
@@ -393,7 +416,7 @@ var beltFacts = []beltFact{{
 }, {
 	tools: []string{"propose_task", "tasks"},
 	holds: Config.mayProposeTask,
-	present: "- ON `propose_task` NEVER NAME THE METHOD: a task is always given its own copy, so \"work in this repo directly\", a branch or a checkout is never yours to specify.\n" +
+	present: "- ON `propose_task` NEVER NAME THE METHOD: a task gets a folder of its own, so \"work in this repo directly\", a branch or a checkout is never yours to specify.\n" +
 		"- Earlier work referred to but not pointed at (\"the reconciler task\", \"same as before\"): call `tasks` with their words BEFORE answering.\n" +
 		// AND THE TWO TRIGGERS THAT LOST THEIR HOME when the tool descriptions
 		// gave up their routing prose.
@@ -506,15 +529,17 @@ var beltFacts = []beltFact{{
 	// a landing writes is not the model's and carries the same two lines without
 	// being told (task_run.go's [commitTaskWorkAs]).
 	//
-	// A reading needs no absent wording because it cannot commit. The law's commit
-	// sentence spells both trailer lines in their order, with the `Assisted-by`
-	// one left as a slot the render fills from the model this page is for
-	// ([Config.assistedByModel]) — so the law is the one place both lines are
-	// said, and the page does not say them a second time.
+	// A reading uses [readingPrompt] rather than this belt, and cannot commit.
+	// The law's commit sentence spells both trailer lines in their order, with
+	// the `Assisted-by` one left as a slot the render fills from the model this
+	// page is for ([Config.assistedByModel]). When the person turns attribution
+	// off, the absent case carries [exec.AttributionOffLaw] so a model that has
+	// seen AI trailers in training is explicitly told not to invent any of its
+	// own.
 	tools:   []string{"bash"},
 	holds:   Config.signsGitWork,
 	present: "- " + exec.AttributionLaw,
-	absent:  "",
+	absent:  "- " + exec.AttributionOffLaw,
 }}
 
 // handoffFacts is `## Work or words`: the ways work leaves this turn, composed
@@ -566,8 +591,8 @@ var handoffFacts = []beltFact{{
 	present: "You are one mind with a clock, and two ways to put more minds on the work run\n" +
 		"beside you. A `quick_task` is a copy of your abilities working where you stand:\n" +
 		"it starts the instant you ask, reads and writes in this same folder, and its\n" +
-		"last message comes back to you as a note. A `propose_task` is a worker in a copy\n" +
-		"of the folder, checked and merged when it finishes, that outlives this window.\n" +
+		"last message comes back to you as a note. A `propose_task` is a worker in a folder\n" +
+		"of its own, checked and merged when it finishes, that outlives this window.\n" +
 		"Both are yours to steer and to stop, and both wake you when they land.\n" +
 		"\n" +
 		"So WEIGH THE CLOCK BEFORE YOU BEGIN, and again each time the material shows you\n" +
@@ -593,7 +618,7 @@ var handoffFacts = []beltFact{{
 		"so fold them as they arrive. When nothing independent of what you handed out\n" +
 		"remains, end your turn. That is how you wait.",
 	oneRoad: "You are one mind with a clock, and ONE way to put more minds on the work:\n" +
-		"`propose_task`. Each is a worker in a copy of the folder, checked when it\n" +
+		"`propose_task`. Each is a worker in a folder of its own, checked when it\n" +
 		"finishes, that outlives this window. The first opens a run; every one after it\n" +
 		"while that run lives joins the same run as another task of it, and so does a\n" +
 		"`/task` the person types. SEVERAL PROPOSALS IN ONE MESSAGE ARE HOW YOU WORK IN\n" +
@@ -628,7 +653,7 @@ var handoffFacts = []beltFact{{
 	// A STAGE IS TOLD THE ONE ROAD IT HAS, in the goal paragraph's own words, and
 	// no picture of a quick task it does not carry.
 	stage: "You are one mind with a clock, and one way to put more minds on the work beside\n" +
-		"you: `propose_task`, a worker in a copy of the folder, checked and merged when it\n" +
+		"you: `propose_task`, a worker in a folder of its own, checked and merged when it\n" +
 		"finishes. It is yours to steer and to stop, and it wakes you when it lands. This\n" +
 		"conversation is one step of a factory job, so it has no quick tasks: what you\n" +
 		"would read and carry on with, you read yourself.\n" +
@@ -878,6 +903,9 @@ func promptWithBeltFacts(config Config) string {
 	// rather than by giving every token a hand-tuned surrounding.
 	for strings.Contains(page, "\n\n\n") {
 		page = strings.ReplaceAll(page, "\n\n\n", "\n\n")
+	}
+	if config.mayNameTaskComputer() && config.mayProposeTask() {
+		page += "\n\nA task that works in its own copy can run on a paired computer. The optional `computer` argument on `propose_task` names its shown name; omitted uses Run tasks on, whose default is this computer. A remote task runs alone; wait for it to finish before proposing more work."
 	}
 	return page
 }

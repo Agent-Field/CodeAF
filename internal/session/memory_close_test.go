@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // ── NO MEMORY PASS OUTLIVES THE SESSION ─────────────────────────────────────
@@ -81,7 +82,11 @@ func TestClosedSessionHasNoMemoryPassStillWritingTheStore(t *testing.T) {
 			usageWriterFor(UsageLedgerPath())
 			synctest.Test(t, func(t *testing.T) {
 				reflexes := newHeldReflex()
-				agent, brain := brainAgent(t, reflexes, nil)
+				agent, brain := brainAgent(t, reflexes, func(config *Config) {
+					// Lane refreshes use process-global networking, outside this
+					// memory-lifetime test and its controlled synctest bubble.
+					config.Routing = provider.RoutingOff
+				})
 
 				collect(t, mustSubmit(t, agent, "the release train leaves on Thursdays"))
 				<-reflexes.entered

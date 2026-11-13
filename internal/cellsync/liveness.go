@@ -1,8 +1,7 @@
 package cellsync
 
-// Liveness is a watch socket that can vouch for the leases this process holds
-// . While it does, the relay counts the socket's
-// pings as the holder's proof of life, so the Batcher need not heartbeat.
+// Liveness follows committed lease-renewal receipts over the watch socket.
+// Presence alone never suppresses the Batcher's ordinary heartbeat.
 type Liveness interface {
 	// Keep names the lease of cell at fence on the socket and answers how to
 	// read whether it is vouched for. The socket dials again to name it.
@@ -11,9 +10,8 @@ type Liveness interface {
 
 // Keeping is one lease as the socket names it.
 type Keeping interface {
-	// Healthy is true only while the relay is certain to be vouching: the
-	// socket is open, the relay said it vouches, the socket names this lease,
-	// and it showed a sign of life lately. Anything less, and the holder beats.
+	// Healthy requires a recent committed receipt for this cell and fence,
+	// with enough hold-until time left for an ordinary heartbeat on expiry.
 	Healthy() bool
 	// Changes signals, without blocking, that Healthy may have changed.
 	Changes() <-chan struct{}

@@ -206,6 +206,9 @@ func (a *Agent) backgroundBash(inner bare.Tool) bare.Tool {
 					}
 				}
 			}
+			if err := markTaskStorageUncertain(a.config.Workspace); err != nil {
+				return "could not record shell writer uncertainty: " + err.Error(), true, nil
+			}
 			var parsed struct {
 				Command     string           `json:"command"`
 				Background  bool             `json:"background"`

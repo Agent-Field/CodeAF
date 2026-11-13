@@ -58,7 +58,11 @@ func (f *actionFactory) deskNow() time.Time {
 	return f.clock.now()
 }
 
-func startActionFactory(t *testing.T) *actionFactory {
+func startActionFactory(t *testing.T) *actionFactory { return startActionFactoryWith(t, nil) }
+
+// startActionFactoryWith is startActionFactory whose server config more
+// changes first, for a door the plain factory does not serve.
+func startActionFactoryWith(t *testing.T, more func(*serve.Config)) *actionFactory {
 	t.Helper()
 	f := &actionFactory{clock: &factoryClock{at: time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)}, github: newFakeGitHub()}
 	var err error
@@ -79,7 +83,8 @@ func startActionFactory(t *testing.T) *actionFactory {
 			return factory.Snapshot{Items: items}, err
 		},
 		Launch: func(id int) error { f.launched.Add(1); return doors.Launch(id) },
-		Stop:   doors.Stop, Answer: doors.Answer, SignOff: doors.SignOff,
+		Hold:   doors.Hold,
+		Stop:   doors.Stop, Answer: doors.Answer, SpendAnswer: doors.SpendAnswer, SignOff: doors.SignOff,
 		SendBack: func(id int, words string) error { f.sentBack.Store(words); return nil },
 		New: func(repo, words string) (int, error) {
 			title, _, _ := strings.Cut(words, "\n")
@@ -87,11 +92,15 @@ func startActionFactory(t *testing.T) *actionFactory {
 			return it.ID, err
 		},
 	}
-	h := serve.New(seam, serve.Config{
+	config := serve.Config{
 		Version: "test", Name: "Acme factory", ServedBy: "factory", AccessToken: testHostToken, Mode: api.FactoryTeam,
 		GitHubClientID: "client", GitHubHTTPClient: f.github.client(), Now: f.clock.now, Store: f.st, Record: f.rec, Root: f.st.Root(),
 		LeaseOptions: lease.Options{Now: f.deskNow, Record: f.rec},
-	})
+	}
+	if more != nil {
+		more(&config)
+	}
+	h := serve.New(seam, config)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			f.mu.Lock()
@@ -387,7 +396,7 @@ func TestAppFactoryJobActionsTwoPeopleAgainstTheRealServer(t *testing.T) {
 		}
 		alice.act(t, "factory.job_stop", n, nil)
 		if alice.job(t, n).State != api.StateBacklog {
-			t.Fatal("stop did not return the job to the backlog")
+			t.Fatal("a stopped job is not in Backlog")
 		}
 		// Undo is the stopper's alone.
 		bob.w.mustFail("factory.job_undo", bob.params(t, n, nil), appwire.CodeConflict)
@@ -399,6 +408,24 @@ func TestAppFactoryJobActionsTwoPeopleAgainstTheRealServer(t *testing.T) {
 		alice.act(t, "factory.job_stop", n, nil)
 		f.clock.advance(factory.ApprovalUndo)
 		alice.w.mustFail("factory.job_undo", alice.params(t, n, nil), appwire.CodeConflict)
+	})
+
+	t.Run("hold, resume and start now", func(t *testing.T) {
+		queued := f.create(t, factory.Item{State: factory.StateQueued, Assignee: "alice"})
+		bob.refused(t, "factory.job_hold", bob.params(t, queued.ID, nil), appwire.CodeForbidden)
+		held := alice.act(t, "factory.job_hold", queued.ID, nil)
+		if held.Action != appwire.JobActHold || held.Current == nil || !held.Current.Held || !held.Current.Can.Resume {
+			t.Fatalf("hold: %+v", held)
+		}
+		resumed := alice.act(t, "factory.job_resume", queued.ID, nil)
+		if resumed.Current == nil || resumed.Current.Held || !resumed.Current.Can.Hold || !resumed.Current.Can.StartNow {
+			t.Fatalf("resume: %+v", resumed.Current)
+		}
+		launched := f.launched.Load()
+		now := alice.act(t, "factory.job_start", queued.ID, nil)
+		if f.launched.Load() != launched || now.Current == nil || !now.Current.OverLimit || now.Current.Can.StartNow {
+			t.Fatalf("start now on a queued job: launched %d more, %+v", f.launched.Load()-launched, now.Current)
+		}
 	})
 
 	t.Run("approval waits its Undo window and then acts once", func(t *testing.T) {
@@ -489,6 +516,26 @@ func TestAppFactoryJobActionsTwoPeopleAgainstTheRealServer(t *testing.T) {
 		rerun := alice.act(t, "factory.job_step_rerun", running.ID, map[string]any{"step": "build"})
 		if rerun.Action != appwire.JobActStepRerun {
 			t.Fatalf("step rerun: %+v", rerun)
+		}
+	})
+
+	// RUN AGAIN FROM HERE WITH ANOTHER MODEL: the rerun carries a model this
+	// engine offers, in its listed spelling, and the factory keeps it on the
+	// step; one the engine does not offer is refused before anything is sent.
+	t.Run("a rerun names the model the step runs on", func(t *testing.T) {
+		running := f.create(t, factory.Item{State: factory.StateRunning, Assignee: "alice",
+			Stages: []factory.Stage{{Name: "build", Kind: factory.StageChat, Ask: "build it", On: true}},
+			Stream: &factory.Stream{Phases: []factory.Phase{{Name: "build", Kind: factory.StageChat, State: factory.PhaseRunning}}}})
+		alice.act(t, "factory.job_step_stop", running.ID, map[string]any{"step": "build"})
+		alice.w.backend.listModels = func() ([]appwire.Model, error) {
+			return []appwire.Model{{ID: "vendor/new", Provider: "openrouter"}}, nil
+		}
+		defer func() { alice.w.backend.listModels = nil }()
+		alice.w.mustFail("factory.job_step_rerun", alice.params(t, running.ID, map[string]any{"step": "build", "model": "vendor/nowhere"}), appwire.CodeBadParams)
+		alice.act(t, "factory.job_step_rerun", running.ID, map[string]any{"step": "build", "model": "Vendor/New"})
+		cur, err := f.st.Get(running.ID)
+		if err != nil || cur.Stages[0].Model != "vendor/new" || cur.Stream.Phases[0].State != factory.PhasePending {
+			t.Fatalf("rerun on another model: %+v %+v %v", cur.Stages, cur.Stream.Phases, err)
 		}
 	})
 
@@ -586,11 +633,11 @@ func TestAppFactoryJobActionOnAClosedFactoryIsUnreachable(t *testing.T) {
 	// Force a fresh dial: an idle connection closed during shutdown can instead
 	// return EOF, which is correctly uncertain after a write might have left.
 	b.factoryHub().client.CloseIdleConnections()
-	_, err := b.FactoryJobStart(context.Background(), appwire.FactoryJobActionParams{Factory: conn.ID, Job: 1, Expect: &api.Expect{Version: ptr(1)}})
+	_, err := b.FactoryJobStart(context.Background(), appwire.FactoryJobStartParams{Factory: conn.ID, Job: 1, Expect: &api.Expect{Version: ptr(1)}})
 	if got := wireCodeOf(t, err); got != appwire.CodeUnreachable {
 		t.Fatalf("code %q (%v)", got, err)
 	}
-	if _, err := b.FactoryJobStart(context.Background(), appwire.FactoryJobActionParams{Factory: "factory_nope", Job: 1, Expect: &api.Expect{Version: ptr(1)}}); wireCodeOf(t, err) != appwire.CodeNotFound {
+	if _, err := b.FactoryJobStart(context.Background(), appwire.FactoryJobStartParams{Factory: "factory_nope", Job: 1, Expect: &api.Expect{Version: ptr(1)}}); wireCodeOf(t, err) != appwire.CodeNotFound {
 		t.Fatalf("an unknown factory: %v", err)
 	}
 }
@@ -617,7 +664,7 @@ func TestAppFactoryJobActionsSpeakOnlyTheFactorysRoutes(t *testing.T) {
 	ctx := context.Background()
 	v := &api.Expect{Version: ptr(7)}
 	f := conn.ID
-	b.FactoryJobStart(ctx, appwire.FactoryJobActionParams{Factory: f, Job: 4, Expect: v})
+	b.FactoryJobStart(ctx, appwire.FactoryJobStartParams{Factory: f, Job: 4, Expect: v})
 	b.FactoryJobDrop(ctx, appwire.FactoryJobDropParams{Factory: f, Job: 4, Discard: true, Expect: v})
 	b.FactoryJobRestore(ctx, appwire.FactoryJobActionParams{Factory: f, Job: 4, Expect: v})
 	b.FactoryJobRunAgain(ctx, appwire.FactoryJobActionParams{Factory: f, Job: 4, Expect: v})

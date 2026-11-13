@@ -18,6 +18,11 @@ import (
 
 func (h *Handler) v2Routes() {
 	h.route("/v1/settings", map[string]http.HandlerFunc{http.MethodGet: h.runnerPolicy, http.MethodPatch: h.runnerPolicy})
+	h.route("/v1/rules", map[string]http.HandlerFunc{http.MethodGet: h.houseRules, http.MethodPut: h.houseRules})
+	h.route("/v1/routes", map[string]http.HandlerFunc{http.MethodGet: h.routes, http.MethodPut: h.routes})
+	h.route("/v1/pipeline-library", map[string]http.HandlerFunc{http.MethodGet: h.pipelineLibrary, http.MethodPut: h.pipelineLibrary})
+	h.route("/v1/routes/test", map[string]http.HandlerFunc{http.MethodPost: h.routesTest})
+	h.route("/v1/spending", map[string]http.HandlerFunc{http.MethodGet: h.spending, http.MethodPatch: h.spending})
 	h.read("/v1/runners", h.runnersDirectory)
 	h.route("/v1/runners/attach", map[string]http.HandlerFunc{http.MethodPost: h.attachWorker})
 	h.read("/v1/runners/pull", h.pullWorker)
@@ -27,6 +32,7 @@ func (h *Handler) v2Routes() {
 	h.route("/v1/runners/leases/{lease}/heartbeat", map[string]http.HandlerFunc{http.MethodPost: h.heartbeatWorker})
 	h.route("/v1/runners/leases/{lease}/report", map[string]http.HandlerFunc{http.MethodPost: h.reportWorker})
 	h.route("/v1/runners/leases/{lease}/done", map[string]http.HandlerFunc{http.MethodPost: h.doneWorker})
+	h.route("/v1/runners/leases/{lease}/handback", map[string]http.HandlerFunc{http.MethodPost: h.handBackWorker})
 	h.route("/v1/runners/recover/{id}", map[string]http.HandlerFunc{http.MethodPost: h.recoverWorkerReport, http.MethodGet: h.workerRecoveryStatus})
 	h.read("/v1/people", h.peopleDirectory)
 	h.route("/v1/people/{handle}/sessions", map[string]http.HandlerFunc{http.MethodDelete: h.operatorRevokePerson})
@@ -80,6 +86,10 @@ func (h *Handler) runnerList(r *http.Request, owner string) ([]api.Runner, error
 				got.State = api.RunnerAsleep
 			} else if !h.clock().Before(row.Last.Add(h.runnerOfflineAfter())) {
 				got.State = api.RunnerOffline
+			} else if row.Needs != "" {
+				// The same test the pull withholds leases on, so a runner that
+				// takes no job never reads as idle.
+				got.State, got.Reason = row.Needs, api.RunnerNeedReason(row.Needs)
 			}
 			for _, checkout := range row.Checkouts {
 				if h.repoVisible(r, checkout.Repo) {
@@ -217,13 +227,32 @@ func (h *Handler) runnerSettings(w http.ResponseWriter, r *http.Request) {
 // named "self" can ever collide with PUT /v1/runners/{runner}) a runner's own credential with the capacity its owner
 // saved. The worker polls it to follow a raise or a lowering without a
 // restart. Person tokens never reach it (workerPath), and the body names
-// nothing but this machine's own number.
+// nothing but this machine's own number and how many jobs started now may
+// run above it.
 func (h *Handler) runnerSelf(w http.ResponseWriter, r *http.Request) {
 	if !h.workerReady(w) {
 		return
 	}
-	h.write(w, http.StatusOK, api.RunnerSelf{Slots: requestWorker(r).Slots})
+	self := requestWorker(r)
+	over := 0
+	if h.workers != nil && h.workers.desk != nil {
+		n, err := h.workers.desk.OverLimit(self)
+		if h.failed(w, err) {
+			return
+		}
+		over = n
+	}
+	asleep := false
+	if h.workers != nil {
+		h.workers.mu.RLock()
+		asleep = h.workers.machineAsleepLocked(self)
+		h.workers.mu.RUnlock()
+	}
+	h.write(w, http.StatusOK, api.RunnerSelf{Slots: self.Slots, OverLimit: over, Asleep: asleep})
 }
+
+// registryFile is the runner registry's document under the factory root.
+const registryFile = "runners.json"
 
 // saveRegistry persists only credential hashes and public runner facts under the service lock.
 func (s *workerService) saveRegistry() error {
@@ -250,22 +279,39 @@ func (s *workerService) saveRegistry() error {
 	if err = f.Close(); err != nil {
 		return err
 	}
-	return os.Rename(f.Name(), filepath.Join(s.st.Root(), "runners.json"))
+	if err = os.Rename(f.Name(), filepath.Join(s.st.Root(), registryFile)); err != nil {
+		return err
+	}
+	for key, row := range s.credentials {
+		row.persistedLast = row.Last
+		s.credentials[key] = row
+	}
+	s.savedAt = s.now()
+	return nil
+}
+
+// readRegistry is the saved registry, empty when none was ever saved.
+func readRegistry(root string) (map[string]registeredWorker, error) {
+	rows := map[string]registeredWorker{}
+	data, err := os.ReadFile(filepath.Join(root, registryFile))
+	if errors.Is(err, os.ErrNotExist) {
+		return rows, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err = json.Unmarshal(data, &rows); err != nil {
+		return nil, err
+	}
+	return rows, nil
 }
 
 func (s *workerService) loadRegistry() error {
 	if s.st == nil {
 		return nil
 	}
-	data, err := os.ReadFile(filepath.Join(s.st.Root(), "runners.json"))
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
+	rows, err := readRegistry(s.st.Root())
 	if err != nil {
-		return err
-	}
-	rows := map[string]registeredWorker{}
-	if err = json.Unmarshal(data, &rows); err != nil {
 		return err
 	}
 	for key, row := range rows {
@@ -281,6 +327,7 @@ func (s *workerService) loadRegistry() error {
 		// them against the cap, so nothing running is cancelled.
 		row.Slots = grantedRunnerSlots(row.Slots)
 		row.Worker.Slots = row.Slots
+		row.persistedLast = row.Last
 		s.credentials[hash] = row
 	}
 	return nil

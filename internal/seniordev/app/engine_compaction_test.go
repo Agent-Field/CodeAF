@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/gitidentity"
 	"github.com/Agent-Field/codeaf/internal/seniordev/engine/calc"
 	"github.com/Agent-Field/codeaf/internal/seniordev/engine/msgmodel"
 	"github.com/Agent-Field/codeaf/internal/seniordev/engine/orclient"
@@ -201,7 +202,7 @@ func gitIn(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	command := exec.Command("git", append([]string{
 		"-c", "user.name=t", "-c", "user.email=t@example.com",
-	}, args...)...)
+	}, gitidentity.PrivateArgs(args...)...)...)
 	command.Dir = dir
 	out, err := command.CombinedOutput()
 	if err != nil {

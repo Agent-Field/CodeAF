@@ -3106,11 +3106,29 @@ func (a *app) windowFor(id string) int {
 // fires at a fraction of it, so a session that switched to a 1M model without
 // saying so would keep compacting as if it were on the 128k one it started on.
 func (a *app) switchModel(id string, window int) {
-	a.agent.SetModel(id)
-	a.model = a.agent.Model()
-	if a.model == "" {
-		a.model = id
+	a.deferredModelRename = nil
+	if a.pendingModelSelection != nil {
+		select {
+		case <-a.pendingModelSelection:
+		default:
+			a.queueModelChange(id, window, false, a.creditSwitching, nil)
+			return
+		}
 	}
+	a.agent.SetModel(id)
+	a.modelSwitched(id, window, true)
+}
+
+func (a *app) modelSwitched(id string, window int, remember bool) {
+	if model := a.agent.Model(); model != "" {
+		id = model
+	}
+	a.displayModelSwitched(id, window, remember)
+}
+
+// Queued selections paint on the gesture, before the engine acknowledges them.
+func (a *app) displayModelSwitched(id string, window int, remember bool) {
+	a.model = id
 	// The new model's dial is learned HERE rather than left to the frame clock,
 	// so the status row names it on the very frame the switch lands on
 	// (reasoninglevel.go states the three moments that are seeded and why).
@@ -3125,7 +3143,9 @@ func (a *app) switchModel(id string, window int) {
 		// this number (see [app.ctxPercent]).
 		a.ctxWindow = window
 	}
-	a.rememberModel(a.model)
+	if remember {
+		a.rememberModel(a.model)
+	}
 	a.refreshCreditWarnings()
 	if a.chatCreditWarning != "" {
 		a.askCredits(credits.PaidSwitch)
@@ -3207,7 +3227,7 @@ func (a *app) pickerKey(msg tea.KeyPressMsg) tea.Cmd {
 			// one of them asked for that model on that machine, and pinning a
 			// lane under a model they are not talking to would be a setting
 			// that took effect the next time they happened to switch.
-			if chosen.ID != a.model {
+			if chosen.ID != a.model || chosen.ID != a.configuredModel() {
 				a.switchModel(chosen.ID, chosen.ContextLength)
 			}
 			a.applyLaneChoice(chosen.ID, row, a.pick.lanes)

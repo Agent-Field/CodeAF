@@ -49,9 +49,6 @@ type FactoryNotice struct {
 	Repo  string
 	Kind  string
 	Size  string
-	// Estimate is the model's guess at what the work will cost, in dollars.
-	// ZERO IS NO GUESS and draws nothing (the emptiness law).
-	Estimate float64
 	// Item is the floor's own id, set on EventFactoryAdded and zero on a
 	// proposal.
 	Item int
@@ -217,6 +214,20 @@ type JobChatDoor interface {
 	Chat(transcript string) JobChat
 }
 
+// JobModelSpend is a job budget that records which model a priced call ran
+// on. SpendModel books the same dollars Spend does, plus the model, the call
+// count and the measured tokens. A budget that is only a JobChat still takes
+// the dollars; the model on that call stays unknown.
+type JobModelSpend interface {
+	SpendModel(usd float64, model string, calls, input, output int)
+}
+
+// JobMemorySpend is a job budget that keeps optional learning's portion of the
+// job's spend apart, beside the model that answered the call.
+type JobMemorySpend interface {
+	SpendMemoryModel(usd float64, model string, calls, input, output int)
+}
+
 // JobChat is one job's chat's half of the job's money.
 type JobChat interface {
 	// Spend adds usd, one call's dollars, to the job's spend. THE CALL IS
@@ -226,6 +237,21 @@ type JobChat interface {
 	// Refusal is the sentence a turn is refused with once the job's budget is
 	// spent, and "" while the turn may start.
 	Refusal() string
+}
+
+// JobLedgerName is the optional half of a [JobChat] that names the job its
+// calls are spent for, as `owner/name#number`, so every ledger row of the
+// job's family carries it ([UsageLine.FactoryJob]).
+type JobLedgerName interface {
+	FactoryJob() string
+}
+
+// factoryJobName is the job this agent's calls are spent for, "" for none.
+func (a *Agent) factoryJobName() string {
+	if named, ok := a.jobBudgetOf().(JobLedgerName); ok {
+		return strings.TrimSpace(named.FactoryJob())
+	}
+	return ""
 }
 
 // jobChatOf is the job this conversation is the own chat of, asked of the
@@ -247,7 +273,8 @@ func (c Config) mayItem() bool { return !c.readingTask() && c.FactoryItem != nil
 // ItemChange is what one item card changes, every field optional and the
 // zero value of each one "leave it as it is".
 type ItemChange struct {
-	// Edit is the stages: sentences to add, names to skip or switch on.
+	// Edit is the stages: sentences to add, names to skip, switch on or
+	// remove, and stages to move.
 	Edit factory.PlanEdit
 	// Cap is the item's budget in dollars (the person's word); zero leaves it.
 	Cap float64
@@ -275,11 +302,15 @@ func (c ItemChange) Empty() bool {
 // filled so an older build decoding this reads something; it is ONE stage's
 // thinking (the first that has not run), and is read only when Thinking is nil,
 // as in a notice persisted before the map.
+//
+// Off is the stages the item has but does not run, in order. A stage removed
+// while it was off changes no other fact, so the card reads its removal here.
 type ItemFacts struct {
 	Stages   []string
 	Cap      float64
 	Effort   string
 	Thinking map[string]string `json:",omitempty"`
+	Off      []string          `json:",omitempty"`
 }
 
 // ItemNotice is the item card. It is the payload of EventItemProposal (ID is
@@ -294,10 +325,13 @@ type ItemNotice struct {
 	Item int
 	Ref  string
 	// Add, Skip and On are the stages as the model asked: stage sentences to
-	// add, and stage names to skip or switch on.
-	Add  []string
-	Skip []string
-	On   []string
+	// add, and stage names to skip or switch on. Remove is stage names to take
+	// out of the item, and Move stages to put after another (or first).
+	Add    []string
+	Skip   []string
+	On     []string
+	Remove []string        `json:",omitempty"`
+	Move   []factory.Moved `json:",omitempty"`
 	// Cap and Effort are the chips as the model asked; empty or zero is
 	// unchanged.
 	Cap    float64

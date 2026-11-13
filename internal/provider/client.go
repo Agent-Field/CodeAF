@@ -50,6 +50,9 @@ type Config struct {
 	// explicitly accepts an empty key. The ordinary keyless client remains the
 	// first-run state and refuses before the wire.
 	KeyOptional bool
+	// DropRefusedEffort lets a task or Factory client repair an explicit thinking refusal
+	// without teaching other clients or processes on this home.
+	DropRefusedEffort bool
 	// BillingDoor is the person-facing name of a bound road. Empty is a service
 	// with one road and preserves every older status line.
 	BillingDoor string
@@ -144,8 +147,10 @@ type Config struct {
 type Client struct {
 	// Unsupported stream-usage options are remembered per endpoint, never per model.
 	streamUsageUnsupported sync.Map
-	config                 Config
-	http                   *http.Client
+	// A task's refusal is local to this client and never enters persisted quirks.
+	refusedEffort sync.Map
+	config        Config
+	http          *http.Client
 	// stream is the same client with the total deadline removed. A streamed
 	// answer is bounded by silence, not by duration — see send.
 	stream *http.Client
@@ -634,6 +639,12 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 	}
 	model := c.modelFor(request)
 	peek, readErr := io.ReadAll(io.LimitReader(response.Body, maxErrorPeek))
+	// The reasoning repair has already had its one attempt. A persistent
+	// capability refusal cannot be cured by widening endpoint preferences.
+	if readErr == nil && response.StatusCode == http.StatusBadRequest && refusesReasoning(peek) {
+		response.Body = rewound(peek, response.Body)
+		return response, nil
+	}
 	// WHETHER THE BASE UNDERSTANDS THE `provider` FIELD AT ALL IS ASKED BEFORE
 	// ANYTHING ELSE (#433), because until it is answered nothing below this line
 	// is reading the right refusal. It is a QUESTION here and an answer only
@@ -812,12 +823,24 @@ func (c *Client) sendRepaired(ctx context.Context, request *ai.Request, knobs ca
 		// The compatible usage option earns only its own repair. Peeking at an
 		// unrelated refusal must not admit it to the older learning road.
 		repairable := response.StatusCode == http.StatusBadRequest && c.repairable(model, knobs)
-		if !foreign && !repairable && !(streamUsage && usageRefusalStatus) {
+		dropEffort := (c.config.DropRefusedEffort || knobs.effort.dropRefused) && c.refusedEffortRepairable(model, knobs, response.StatusCode)
+		if !foreign && !repairable && !dropEffort && !(streamUsage && usageRefusalStatus) {
 			return response, nil
 		}
 		peek, readErr := io.ReadAll(io.LimitReader(response.Body, maxErrorPeek))
 		switch {
 		case readErr != nil:
+		case dropEffort && !repaired["refused_effort"] && refusesRequestedEffort(peek):
+			c.record(recordFacts{
+				ctx: ctx, request: request, knobs: knobs, stream: stream,
+				attempt: c.attemptsSoFar(knobs), began: began,
+				status: response.StatusCode, err: apiError(response.StatusCode, peek), responseBody: peek,
+			})
+			c.refusedEffort.Store(normalizeModel(model), true)
+			repaired["refused_effort"] = true
+			began = logNow()
+			response, err = c.resend(ctx, request, knobs, stream, response)
+			continue
 		case foreign && !repaired["foreign_reasoning"] && refusesForeignReasoning(peek):
 			// THE WORDS STILL GO; ONLY THE OTHER MODEL'S THINKING STAYS HOME. A
 			// sidecar tagged with its model never gets here (reasoning.go's
@@ -873,6 +896,17 @@ func (c *Client) sendRepaired(ctx context.Context, request *ai.Request, knobs ca
 		response.Body = rewound(peek, response.Body)
 		return response, nil
 	}
+}
+
+// A task child may repair only an effort it actually sent, on the model's
+// precise refusal. Other 400s remain the provider's own error.
+func (c *Client) refusedEffortRepairable(model string, knobs callKnobs, status int) bool {
+	return status == http.StatusBadRequest && !knobs.relaxed.has(relaxReasoning) && c.resolveEffort(model, knobs.effort) != EffortNone
+}
+
+func refusesRequestedEffort(body []byte) bool {
+	text := strings.ToLower(string(body))
+	return strings.Contains(text, "does not support thinking") || strings.Contains(text, "does not support reasoning")
 }
 
 // resend closes a refused answer and sends the request again as the knobs now
@@ -1599,8 +1633,55 @@ func (c *Client) completeWithMessagesStreaming(
 	// transport can unblock it (the same reasoning transport.go's idle watchdog
 	// gives). It is deferred so every path releases the request goroutine,
 	// including the ordinary clean end.
-	guardCtx, cutStream := context.WithCancel(ctx)
+	//
+	// A STREAM THAT RECONCILES RECEIPTS WAITS BRIEFLY FOR ITS GENERATION ID
+	// BEFORE IT TAKES THE CALLER'S CANCEL. The first SSE frame is what names the
+	// generation, and a provider that has accepted the request has already begun
+	// billing it; cutting the socket before that frame lands throws the id away
+	// and leaves [Client.settle] nothing to ask a receipt for, so the charge is
+	// in no book at all (#2566). So the guard no longer inherits the caller's
+	// cancel outright: a call nobody reconciles — or a direct service, which has
+	// no receipt route to ask — is still cut the instant the caller lets go, and
+	// one that does reconcile is cut when its first frame names the id or after
+	// [receiptStreamIDWait] on a silent wire, whichever comes first. A deadline
+	// expiring is a cancel like any other and gets the same hold.
+	//
+	// THE CUT CARRIES THE CALLER'S OWN CAUSE. The transport reports a cancelled
+	// request as its context's cause, and that cause is the door that ended the
+	// call — the person's stop, a call wall's ran-out-of-time — which every row
+	// and every error above this one reads. A guard cut on the caller's behalf
+	// therefore cancels with [context.Cause] of the caller, exactly what the
+	// child context this used to be inherited; the stall watch's own cuts stay
+	// plain cancellations, as they were.
+	if err := ctx.Err(); err != nil {
+		return nil, false, err
+	}
+	guardCtx, cutStreamCause := context.WithCancelCause(context.WithoutCancel(ctx))
+	cutStream := func() { cutStreamCause(nil) }
 	defer cutStream()
+	cutForCaller := func() { cutStreamCause(context.Cause(ctx)) }
+	var haveStreamID atomic.Bool
+	var holdTimer atomic.Pointer[time.Timer]
+	defer func() {
+		if timer := holdTimer.Load(); timer != nil {
+			timer.Stop()
+		}
+	}()
+	stopCallerCancel := context.AfterFunc(ctx, func() {
+		if c.config.Direct || reconcileFrom(ctx) == nil || haveStreamID.Load() {
+			cutForCaller()
+			return
+		}
+		holdTimer.Store(time.AfterFunc(receiptStreamIDWait, cutForCaller))
+		// The id may have landed between the check above and the timer being
+		// armed; the decode loop only cuts once it can see the caller has gone,
+		// so the second look here is what keeps that interleaving from waiting
+		// out the whole hold.
+		if haveStreamID.Load() {
+			cutForCaller()
+		}
+	})
+	defer stopCallerCancel()
 	// Resolved once and held, because every row this stream writes is built
 	// from them and the trace inside them is what counts its attempts
 	// (calllog.go).
@@ -1891,6 +1972,16 @@ func (c *Client) completeWithMessagesStreaming(
 			response.ID = chunk.ID
 			response.Object = chunk.Object
 			response.Created = chunk.Created
+			// THE ID IS WHAT THE HOLD WAS WAITING FOR. Once it is known the
+			// receipt can be asked for whatever happens next, so a caller who
+			// has already let go is let go of now rather than at the end of
+			// [receiptStreamIDWait].
+			if response.ID != "" {
+				haveStreamID.Store(true)
+				if ctx.Err() != nil {
+					cutForCaller()
+				}
+			}
 		}
 		if chunk.Model != "" {
 			if response.Model != chunk.Model {
@@ -1976,6 +2067,7 @@ func (c *Client) completeWithMessagesStreaming(
 			// word of answer is not an endpoint that took a minute to respond.
 			if firstToken.IsZero() && (choice.Delta.Content != "" || choice.Delta.thinking() || len(choice.Delta.ToolCalls) > 0) {
 				firstToken = c.clock()
+				replyStarted(ctx)
 			}
 			// THE MODEL WRITING IS THE ONLY THING THAT COUNTS AS PROGRESS. A
 			// token of answer, a token of thought, a fragment of a call — the
@@ -2125,6 +2217,11 @@ func (c *Client) completeWithMessagesStreaming(
 					thoughtRecord.WriteString(workingText)
 				}
 				observer(StreamEvent{Kind: StreamReasoning, Delta: workingText, FromAnswer: true, Session: session})
+			}
+			// STEPS ANOTHER PROGRAM ALREADY RAN are handed up as they finish,
+			// in order with the words around them ([StreamStepsRan]).
+			if len(choice.Delta.Steps) > 0 {
+				observer(StreamEvent{Kind: StreamStepsRan, Delta: string(choice.Delta.Steps), Session: session})
 			}
 			for _, fragment := range choice.Delta.ToolCalls {
 				// A response that asked for a call is a response that behaved,
@@ -2444,7 +2541,7 @@ func (c *Client) StreamComplete(ctx context.Context, prompt string, options ...a
 			}
 			c.record(recordFacts{ctx: ctx, request: request, knobs: rawKnobs, stream: true,
 				began: began, status: httpResponse.StatusCode, response: response, err: terminalErr})
-			if finished {
+			if finished && terminalErr == nil && !failedFinish {
 				c.billAnswered(ctx, c.modelFor(request), response, rawKnobs.trace.usageObservation.outputBytes, rawKnobs.trace)
 			} else {
 				c.settle(ctx, c.modelFor(request), response, receiptTornReason, rawKnobs.trace.usageObservation.outputBytes, rawKnobs.trace)
@@ -2624,6 +2721,8 @@ func adaptiveCompletionTimeout(maxTokens int, configuredFloor time.Duration) tim
 // somebody and the refusal are both in the JSON it sent: `error.metadata`
 // carries `provider_name` and `raw`, and this client threw them away.
 type APIError struct {
+	// ReasoningUnsupported is a permanent model capability refusal.
+	ReasoningUnsupported bool
 	// Status is the refusal's HTTP status, or the normalized gateway failure
 	// for an in-band error that supplied no status of its own.
 	Status int
@@ -2762,6 +2861,9 @@ func (e *APIError) UpstreamFault() bool {
 func (e *APIError) OurRequest() bool {
 	if e == nil {
 		return false
+	}
+	if e.ReasoningUnsupported {
+		return true
 	}
 	// AN EMPTY ACCOUNT IS OURS TO STOP WHOEVER WAS ASKED, so this is read
 	// before the two "nobody was asked" answers below. A payment refusal is a
@@ -2927,6 +3029,9 @@ func apiError(status int, payload []byte) error {
 	// built and is therefore true of every APIError this build makes, including
 	// the ones a stream raises in-band.
 	failure.Overflow = overflowRefusal(status, failure.Code, failure.Message, failure.Raw)
+	if status == http.StatusBadRequest && refusesReasoning(payload) {
+		failure.ReasoningUnsupported = true
+	}
 	readContextLimit(failure)
 	return failure
 }

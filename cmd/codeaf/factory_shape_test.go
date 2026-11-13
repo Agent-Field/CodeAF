@@ -31,16 +31,16 @@ func TestTheManagersBriefIsTheFiveBlocksThenTheFacts(t *testing.T) {
 	lines := strings.Split(brief, "\n")
 	want := []string{
 		"[factory item #12]",
-		"You are the manager of #12 in acme/web.",
+		"You are the manager of job 12 in acme/web.",
 		"You know: the issue and its comments, what codeaf read of it, the repository's recipe, policy and habits, the checkout, and what the person has said here.",
 		talkBlockDo,
 		talkBlockBrief,
-		"Shape the run with factory_run: stages are one lowercase word each, at most nine. Each stage has an ask that says what done looks like, a loop (until, rounds, fanout) and one line of why. Keep the recipe's stages unless the item says otherwise; change asks before adding stages; add a stage only for work no existing stage covers. Never drop proof. An approve step is where the run holds until the person says continue: keep the recipe's, add one (named approve) after a stage the person wants to read first, and skip one only when the person asks. Nothing posts outward before an approve step.",
+		"Shape the run with factory_run: stages are one lowercase word each, at most nine. Each stage has an ask that says what done looks like, a loop (until, rounds, fanout) and one line of why. Keep the recipe's stages unless the item says otherwise; change asks before adding stages; add a stage only for work no existing stage covers. When the person asks to remove or delete a stage, remove it (it leaves this job; skip only switches it off), and move a stage when they ask for another order. Never drop, remove or move proof. An approve step is where the run holds until the person says continue: keep the recipe's, add one (named approve) after a stage the person wants to read first, and leave skipping, removing or moving one to the person. Nothing posts outward before an approve step, unless factory_status says the job is in Auto, which passes routine approve steps by itself.",
 		talkBlockInbox,
-		"Say what you set in three lines at most, then stop. Do not narrate.",
+		talkBlockSay,
 		talkRecipeLaw,
 		"",
-		"#12 · fix the ledger double count",
+		"job 12 · fix the ledger double count",
 	}
 	if len(lines) < len(want) {
 		t.Fatalf("brief = %q", brief)

@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	forge "github.com/Agent-Field/codeaf/internal/praf/github"
+	"net/http"
 	"net/http/httptest"
 	"slices"
 	"strings"
@@ -128,7 +130,7 @@ func newV2Jobs(t *testing.T) *v2Jobs {
 			return factory.Snapshot{Items: items}, err
 		},
 		GitHub: func(context.Context) (factory.GitHubLink, error) { return factory.GitHubLink{Login: f.person}, nil },
-		Launch: doors.Launch, Stop: doors.Stop, Answer: doors.Answer, SignOff: doors.SignOff,
+		Launch: doors.Launch, Stop: doors.Stop, Hold: doors.Hold, Answer: doors.Answer, SignOff: doors.SignOff,
 	}
 	f.cfg = serve.Config{Mode: api.FactoryTeam, Address: config.Address, Version: config.Version, Store: f.st, Record: f.rec, Now: clock, LeaseOptions: lease.Options{Now: clock, Record: f.rec},
 		Pipeline: func(context.Context, string, string) (pipeline.File, error) {
@@ -182,10 +184,9 @@ func TestV2RunStopUndoAndStartNow(t *testing.T) {
 	if j := f.read(t, it); j.State != "queued" || j.Budget != 4 {
 		t.Fatalf("run %+v", j)
 	}
-	// A QUEUED JOB HAD NO STEP TO CUT: its stop takes it out of the queue and
-	// back to Backlog, with no stop mark, where Start picks it up.
+	// A queued job has no failed step, but Stop still withdraws its authority.
 	f.post(t, it, "stop", "", 200)
-	if j := f.read(t, it); j.State != "backlog" || j.Failure != nil || j.NeedsYou != nil || j.StatePresentation.Title != "Backlog" || !j.Can.Run || !j.Can.Undo || j.Can.Stop {
+	if j := f.read(t, it); j.State != "backlog" || j.Failure != nil || j.NeedsYou != nil || j.StatePresentation.Title != "Stopped by you" || !j.Can.StartNow || j.Desk == nil || (j.Desk.PersonStopped == nil || !*j.Desk.PersonStopped) || !j.Can.Undo || j.Can.Stop {
 		t.Fatalf("stop %+v", j)
 	}
 	f.post(t, it, "undo", "", 200)
@@ -503,7 +504,7 @@ func TestV2BringBackDiscardsWhatCameBackFirst(t *testing.T) {
 // no drop left on it, a start works, and the poll treats it as any other item.
 func TestV2RestoreBringsADroppedJobBackToBacklog(t *testing.T) {
 	f := newV2Jobs(t)
-	it := f.create(t, factory.Item{Num: 8, Origin: factory.OriginForge, State: factory.StateNew, Assignee: "sam"})
+	it := f.create(t, factory.Item{Tier: factory.TierOwner, Num: 8, Origin: factory.OriginForge, State: factory.StateNew, Assignee: "sam"})
 	if f.read(t, it).Can.Restore {
 		t.Fatal("a job that was never dropped offers Bring back")
 	}
@@ -546,14 +547,15 @@ func TestV2RestoreBringsADroppedJobBackToBacklog(t *testing.T) {
 	}
 }
 
-// A JOB BROUGHT BACK IS A FRESH JOB, AS IF IT HAD NEVER RUN: no steps run, $0
-// spent, no failure, change, commits, runner or pull request, and nothing said
-// about it before: no conversation, nothing heard, no notes, no crew, and its
-// steps are the repository's recipe again. What the job is stays: its issue,
-// assignee, priority, budget, model and activity. The earlier pull request is
-// forgotten, never closed, and the receipt names it. The job's conversations
-// are deleted by the job as it stood, so the delete reaches exactly the ones
-// it recorded.
+// A JOB BROUGHT BACK IS A FRESH JOB IN BACKLOG, AS IF IT HAD NEVER RUN: no
+// steps run, $0 spent, no failure, change, commits, runner or pull request, and
+// nothing said about it before: no conversation, nothing heard, no notes, no
+// briefs, no crew, and its steps are the repository's recipe again. A person's
+// Stop of the old run does not hold the fresh job in Needs you. What the job is
+// stays: its issue, assignee, priority, budget, model and activity. The earlier
+// pull request is forgotten, never closed, and the receipt names it. The job's
+// conversations are deleted by the job as it stood, so the delete reaches
+// exactly the ones it recorded.
 func TestV2RestoreGivesAFreshBacklogJob(t *testing.T) {
 	f := newV2Jobs(t)
 	stages := []factory.Stage{
@@ -578,11 +580,16 @@ func TestV2RestoreGivesAFreshBacklogJob(t *testing.T) {
 		PullRequest:     &factory.PullRequest{Number: 90, URL: pr, State: factory.PROpen},
 		Activity:        []factory.Event{{At: now, What: factory.EventArrived}},
 		WorktreeMachine: "mac-1",
+		SpentBefore:     1.5, AskedFirstReason: "size", LastRecoveryResume: "factory-retry:old",
+		Briefs: []factory.BriefVersion{{Rev: 1, AfterStep: "plan"}}, BriefSeen: map[string]int{"sam": 1},
 	})
+	if before, err := f.st.Get(it.ID); err != nil || !factory.StoppedByPerson(before) {
+		t.Fatalf("the dropped job is not one a person stopped: %+v %v", before, err)
+	}
 	f.post(t, it, "restore", "", 200)
 	j := f.read(t, it)
-	if j.State != "backlog" || j.Cost != 0 || j.Failure != nil || j.Change != nil || j.HeadCommit != "" || j.Runner != "" || j.PR != nil || len(j.Claims) != 0 || j.DoneHow != "" {
-		t.Fatalf("not fresh: state %s cost %v failure %+v change %+v head %q runner %q pr %+v claims %+v", j.State, j.Cost, j.Failure, j.Change, j.HeadCommit, j.Runner, j.PR, j.Claims)
+	if j.State != "backlog" || (j.Desk != nil && j.Desk.PersonStopped != nil && *j.Desk.PersonStopped) || !j.Can.StartNow || j.Cost != 0 || j.LifetimeCost != 0 || j.Failure != nil || j.Change != nil || j.HeadCommit != "" || j.Runner != "" || j.PR != nil || len(j.Claims) != 0 || j.DoneHow != "" {
+		t.Fatalf("not fresh: state %s cost %v lifetime %v failure %+v change %+v head %q runner %q pr %+v claims %+v", j.State, j.Cost, j.LifetimeCost, j.Failure, j.Change, j.HeadCommit, j.Runner, j.PR, j.Claims)
 	}
 	recipe := pipeline.Defaults().Recipe().For(factory.KindIssue)
 	if len(j.Steps) != len(recipe) {
@@ -600,8 +607,11 @@ func TestV2RestoreGivesAFreshBacklogJob(t *testing.T) {
 	if err != nil || cur.Stream != nil || cur.ChangeBase != "" || cur.Body != "the issue's words" || cur.Model != "acme/model-1" || len(cur.Activity) == 0 || cur.Activity[0].What != factory.EventArrived {
 		t.Fatalf("stored %+v %v", cur, err)
 	}
-	if cur.Talk != "" || !cur.Heard.IsZero() || len(cur.Thread) != 0 || len(cur.Notes) != 0 || len(cur.Adapted) != 0 {
-		t.Fatalf("something said before survived: talk %q heard %v thread %+v notes %+v adapted %+v", cur.Talk, cur.Heard, cur.Thread, cur.Notes, cur.Adapted)
+	if cur.Talk != "" || !cur.Heard.IsZero() || len(cur.Thread) != 0 || len(cur.Notes) != 0 || len(cur.Adapted) != 0 || len(cur.Briefs) != 0 || len(cur.BriefSeen) != 0 {
+		t.Fatalf("something said before survived: talk %q heard %v thread %+v notes %+v adapted %+v briefs %+v seen %+v", cur.Talk, cur.Heard, cur.Thread, cur.Notes, cur.Adapted, cur.Briefs, cur.BriefSeen)
+	}
+	if factory.StoppedByPerson(cur) || cur.AskedFirstReason != "" || cur.LastRecoveryResume != "" || cur.SpentBefore != 0 {
+		t.Fatalf("something of the old run survived: stopped %v asked %q resume %q spent %v", factory.StoppedByPerson(cur), cur.AskedFirstReason, cur.LastRecoveryResume, cur.SpentBefore)
 	}
 	for i, s := range cur.Stages {
 		if s.Name != recipe[i].Name || s.Ask != recipe[i].Ask || s.By != recipe[i].By {
@@ -620,6 +630,57 @@ func TestV2RestoreGivesAFreshBacklogJob(t *testing.T) {
 	events, _ := f.rec.Since(context.Background(), time.Time{})
 	if len(events) != 1 || events[0].Kind != record.Restored || events[0].Detail != "earlier pr · "+pr {
 		t.Fatalf("events %+v", events)
+	}
+}
+
+// AN ISSUE CLOSED SINCE THE DROP STAYS DROPPED: Bring back reads the one item
+// on GitHub first, refuses in one sentence, and touches nothing of the job. An
+// issue reopened since comes back, and a GitHub that cannot be reached never
+// stops a Bring back.
+func TestV2RestoreOfAnIssueClosedSinceStaysDropped(t *testing.T) {
+	f := newV2Jobs(t)
+	f.h.Close()
+	standing := map[int]string{}
+	f.cfg.Recheck = func(_ context.Context, it factory.Item) (factory.SourceStanding, error) {
+		if it.Num == 404 {
+			return factory.SourceStanding{}, fmt.Errorf("dial tcp: no route")
+		}
+		return factory.SourceStanding{How: standing[it.Num]}, nil
+	}
+	f.h = serve.New(f.seam, f.cfg)
+
+	closed := f.create(t, factory.Item{Num: 21, Origin: factory.OriginForge, State: factory.StateDismissed, DoneHow: "dropped", DoneAt: now, Assignee: "sam",
+		Talk: "/places/job-21/transcript.jsonl", SpentBefore: .25})
+	standing[21] = github.StandingClosed
+	w := f.post(t, closed, "restore", "", 409)
+	var refusal struct {
+		Error    string `json:"error"`
+		NowState string `json:"now_state"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &refusal)
+	if refusal.Error != "#21 was closed on GitHub, so it stays dropped." || refusal.NowState != "done" {
+		t.Fatalf("refusal %+v", refusal)
+	}
+	if cur, err := f.st.Get(closed.ID); err != nil || cur.DoneHow != "dropped" || cur.Talk != closed.Talk || cur.SpentBefore != .25 {
+		t.Fatalf("a refused Bring back changed the job: %+v %v", cur, err)
+	}
+	if asked := f.chats.asked(); len(asked) != 0 {
+		t.Fatalf("a refused Bring back deleted conversations: %+v", asked)
+	}
+	if events, _ := f.rec.Since(context.Background(), time.Time{}); len(events) != 0 {
+		t.Fatalf("a refused Bring back was recorded: %+v", events)
+	}
+
+	standing[21] = ""
+	f.post(t, closed, "restore", "", 200)
+	if j := f.read(t, closed); j.State != "backlog" {
+		t.Fatalf("an issue reopened since did not come back: %+v", j)
+	}
+
+	away := f.create(t, factory.Item{Num: 404, Origin: factory.OriginForge, State: factory.StateDismissed, DoneHow: "dropped", DoneAt: now, Assignee: "sam"})
+	f.post(t, away, "restore", "", 200)
+	if j := f.read(t, away); j.State != "backlog" {
+		t.Fatalf("a GitHub that cannot be reached stopped a Bring back: %+v", j)
 	}
 }
 
@@ -671,12 +732,12 @@ func TestV2StartRechecksTheItemOnGitHub(t *testing.T) {
 	f := newV2Jobs(t)
 	f.h.Close()
 	standing, reads := map[int]string{}, map[int]int{}
-	f.cfg.Recheck = func(_ context.Context, it factory.Item) (string, error) {
+	f.cfg.Recheck = func(_ context.Context, it factory.Item) (factory.SourceStanding, error) {
 		reads[it.Num]++
 		if it.Num == 404 {
-			return "", fmt.Errorf("dial tcp: no route")
+			return factory.SourceStanding{}, fmt.Errorf("dial tcp: no route")
 		}
-		return standing[it.Num], nil
+		return factory.SourceStanding{How: standing[it.Num]}, nil
 	}
 	f.h = serve.New(f.seam, f.cfg)
 
@@ -865,9 +926,20 @@ func TestV2ClosedPRRunAgainAndMergedRefusal(t *testing.T) {
 	if j := f.read(t, it); j.DoneHow != "closed" || j.State != "done" {
 		t.Fatalf("closed %+v", j)
 	}
+	// What the last run's change check found, on its head.
+	if err := f.st.Update(it.ID, func(cur *factory.Item) error {
+		cur.HeadCommit = "c0ffee"
+		cur.SetPublishCheck(factory.CheckPassed)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
 	f.post(t, it, "run_again", "", 200)
 	if f.read(t, it).State != "queued" {
 		t.Fatal("Run again did not queue")
+	}
+	if cur, err := f.st.Get(it.ID); err != nil || (cur.RuleChecks != nil && (cur.RuleChecks.Publish != "" || cur.RuleChecks.PublishHead != "")) {
+		t.Fatalf("the last run's change check survived Run again: %+v %v", cur.RuleChecks, err)
 	}
 	merged := f.create(t, factory.Item{State: factory.StateShipped, Assignee: "sam", PullRequest: &factory.PullRequest{State: factory.PRMerged}})
 	f.post(t, merged, "run_again", "", 409)
@@ -906,6 +978,30 @@ func TestSoloUnassignedPlanApprovalKeepsUndoAndNoAssignment(t *testing.T) {
 	stored, err := f.st.Get(it.ID)
 	if err != nil || stored.Person() != "" {
 		t.Fatalf("solo approval invented an owner: %+v %v", stored, err)
+	}
+}
+
+// A HELD START A PERSON APPROVES IS THEIRS: on a solo factory the job a rule
+// held (nobody on it) launches with the approver as its starter, so Auto has
+// an owner at the plan.
+func TestSoloApprovedHeldStartBelongsToTheApprover(t *testing.T) {
+	f := newV2Jobs(t)
+	f.h.Close()
+	f.cfg.Mode = api.FactorySolo
+	f.h = serve.New(f.seam, f.cfg)
+	it := f.create(t, factory.Item{State: factory.StateNeedsYou, Question: "Approval needed: start · ask first · touch auth/", QKind: factory.QKindAskFirst, AskedFirstReason: "ask first · touch auth/", Autonomy: factory.AutonomyAuto, Cap: 3})
+	f.post(t, it, "approve", "{}", 200)
+	f.clock.Add(int64(factory.ApprovalUndo))
+	if j := f.read(t, it); j.Approval == nil || j.Approval.State != "approved" {
+		t.Fatalf("approval did not settle: %+v", j.Approval)
+	}
+	stored, err := f.st.Get(it.ID)
+	if err != nil || stored.Person() != "sam" {
+		t.Fatalf("an approved held start has person %q: %v", stored.Person(), err)
+	}
+	stored.State, stored.QKind = factory.StateNeedsYou, factory.QKindApprove
+	if why := factory.AutonomyBlockReason(stored); strings.Contains(why, "owner is required") {
+		t.Fatalf("Auto still wants an owner: %q", why)
 	}
 }
 
@@ -1054,7 +1150,7 @@ func TestJobBudgetCanBeLoweredButNotBelowRecordedSpend(t *testing.T) {
 }
 
 func TestV2BudgetChangePreservesManualDecisionAndNudgesObservation(t *testing.T) {
-	for _, mode := range []string{"auto", "manual", "takeover", "critical"} {
+	for _, mode := range []string{"auto", "auto asked", "manual", "manual asked", "takeover", "critical", "other ask", "manual-approval", "manual-question"} {
 		t.Run(mode, func(t *testing.T) {
 			f := newV2Jobs(t)
 			it := f.create(t, factory.Item{State: factory.StateNeedsYou, Cap: 5, Autonomy: factory.AutonomyAuto, Assignee: "sam", QKind: "cap", Question: "Budget reached", Stream: &factory.Stream{Spent: 5}})
@@ -1067,6 +1163,21 @@ func TestV2BudgetChangePreservesManualDecisionAndNudgesObservation(t *testing.T)
 				case "critical":
 					cur.QKind = "scope"
 					cur.Question = "Choose the public API"
+				case "auto asked", "manual asked":
+					cur.Asking = &factory.Asked{Question: cur.Question, With: factory.AskedYou}
+					if mode == "manual asked" {
+						cur.Autonomy = factory.AutonomyManual
+					}
+				case "other ask":
+					cur.Asking = &factory.Asked{Question: "Choose the public API", With: factory.AskedYou}
+				case "manual-approval":
+					cur.Autonomy = factory.AutonomyManual
+					cur.QKind = factory.QKindApprove
+					cur.Question = "Approve the plan?"
+				case "manual-question":
+					cur.Autonomy = factory.AutonomyManual
+					cur.QKind = "scope"
+					cur.Question = "Choose the public API"
 				}
 				return nil
 			})
@@ -1075,13 +1186,183 @@ func TestV2BudgetChangePreservesManualDecisionAndNudgesObservation(t *testing.T)
 			if got.Cap != 10 || got.Stream.Spent != 5 || f.st.PollNudged().IsZero() {
 				t.Fatal("cap did not persist or wake observation")
 			}
-			if mode == "auto" {
-				if got.State != factory.StateQueued || got.Question != "" {
+			// A raise above spend answers only the cap's own ask, on Auto or Manual.
+			// Take over and any other question stay with the person.
+			if mode == "auto" || mode == "auto asked" || mode == "manual" || mode == "manual asked" {
+				if got.State != factory.StateQueued || got.Question != "" || got.Asking != nil {
 					t.Fatal("automatic cap recovery stranded")
 				}
-			} else if got.State != factory.StateNeedsYou || got.Question == "" {
+			} else if want := map[string]string{"manual-approval": "Approve the plan?", "manual-question": "Choose the public API", "critical": "Choose the public API"}[mode]; got.State != factory.StateNeedsYou || got.Question == "" || (want != "" && got.Question != want) {
 				t.Fatal("budget edit erased a separate user decision")
 			}
 		})
+	}
+}
+
+// START NOW ON A QUEUED JOB IS ONE SLOT ABOVE JOBS AT ONCE and launches
+// nothing, while a start from Backlog waits its turn; Hold keeps a queued job
+// from starting until Resume, and each is a person's recorded decision.
+func TestV2StartNowPassesTheLimitOnceAndHoldWaitsForResume(t *testing.T) {
+	f := newV2Jobs(t)
+	backlog := f.create(t, factory.Item{State: factory.StateNew, Assignee: "sam"})
+	f.post(t, backlog, "start_now", "", 200)
+	if cur, _ := f.st.Get(backlog.ID); cur.OverLimit || cur.State != factory.StateQueued {
+		t.Fatalf("a start from backlog passed the limit %+v", cur)
+	}
+	f.post(t, backlog, "start_now", "", 200)
+	if j := f.read(t, backlog); !j.OverLimit || j.Can.StartNow || j.StatePresentation.Title != "Starting now" {
+		t.Fatalf("started-now job reads %+v", j)
+	}
+
+	queued := f.create(t, factory.Item{State: factory.StateNew, Assignee: "sam"})
+	f.post(t, queued, "run", "", 200)
+	j := f.read(t, queued)
+	if j.OverLimit || !j.Can.StartNow || !j.Can.Hold || j.Can.Resume {
+		t.Fatalf("queued job reads %+v", j)
+	}
+	f.post(t, queued, "pause", "", 200)
+	if j := f.read(t, queued); !j.Held || j.Can.Hold || !j.Can.Resume || j.StatePresentation.Title != "Held" {
+		t.Fatalf("held job reads %+v", j)
+	}
+	f.post(t, queued, "resume", "", 200)
+	if j := f.read(t, queued); j.Held || !j.Can.Hold || j.State != "queued" {
+		t.Fatalf("resumed job reads %+v", j)
+	}
+	f.post(t, queued, "pause", "", 200)
+	f.post(t, queued, "start_now", "", 200)
+	cur, _ := f.st.Get(queued.ID)
+	if !cur.OverLimit || cur.State != factory.StateQueued || cur.Stream == nil || cur.Stream.Paused {
+		t.Fatalf("start now on a held queued job %+v", cur)
+	}
+	events, _ := f.rec.Since(context.Background(), time.Time{})
+	var kinds []string
+	for _, e := range events {
+		if e.Job == queued.ID {
+			kinds = append(kinds, e.Kind+":"+e.Detail)
+		}
+	}
+	want := []string{"started:", "held:", "resumed:", "held:", "started:above Jobs at once"}
+	if strings.Join(kinds, ",") != strings.Join(want, ",") {
+		t.Fatalf("recorded %v, want %v", kinds, want)
+	}
+}
+
+// A PERSON'S CONTINUE AT THE CAP QUEUES AN UNHELD JOB AGAIN. No runner holds
+// the job, but its copy still carries the cap question as an open ask (the
+// worker that raised it has let go). The person's continue takes the ask down
+// and queues the job, rather than leaving it waiting on them.
+func TestAPersonsContinueAtTheCapQueuesAnUnheldJobAgain(t *testing.T) {
+	f := newV2Jobs(t)
+	it := f.create(t, factory.Item{State: factory.StateNeedsYou, Cap: 10, Autonomy: factory.AutonomyAuto, Assignee: "sam", QKind: "cap", Question: "Budget reached", Stream: &factory.Stream{Spent: 5}})
+	_ = f.st.Update(it.ID, func(cur *factory.Item) error {
+		cur.Asking = &factory.Asked{Question: cur.Question, With: factory.AskedYou}
+		return nil
+	})
+	f.post(t, it, "answer", `{"yes":true,"words":"continue"}`, 200)
+	got, _ := f.st.Get(it.ID)
+	if got.State != factory.StateQueued || got.Question != "" || got.QKind != "" || got.Asking != nil {
+		t.Fatalf("a person's continue left the job %s with question %q kind %q asking %v", got.State, got.Question, got.QKind, got.Asking != nil)
+	}
+}
+
+func TestClosedStartReportsConcurrentRowState(t *testing.T) {
+	f := newV2Jobs(t)
+	f.h.Close()
+	it := f.create(t, factory.Item{Num: 12, Origin: factory.OriginForge, State: factory.StateNew, Assignee: "sam"})
+	f.cfg.Recheck = func(context.Context, factory.Item) (factory.SourceStanding, error) {
+		if err := f.st.Update(it.ID, func(cur *factory.Item) error { cur.State = factory.StateQueued; return nil }); err != nil {
+			t.Fatal(err)
+		}
+		return factory.SourceStanding{How: github.StandingClosed}, nil
+	}
+	f.h = serve.New(f.seam, f.cfg)
+	w := f.post(t, it, "start_now", "", 409)
+	var refusal struct {
+		NowState string `json:"now_state"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &refusal); err != nil {
+		t.Fatal(err)
+	}
+	if refusal.NowState != "queued" {
+		t.Fatalf("refusal reports %q, want current queued state", refusal.NowState)
+	}
+	if got, _ := f.st.Get(it.ID); got.State != factory.StateQueued {
+		t.Fatal("start check moved concurrent work")
+	}
+}
+
+func TestReviewStartRejectsChangedIdentity(t *testing.T) {
+	f := newV2Jobs(t)
+	f.h.Close()
+	it := f.create(t, factory.Item{Num: 12, Origin: factory.OriginForge, State: factory.StateNew, Assignee: "sam", GitHubIssueID: 1001})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"id":9001,"number":12,"state":"closed"}`)
+	}))
+	defer srv.Close()
+	client := forge.NewClient("fixture").WithBaseURL(srv.URL)
+	f.cfg.Recheck = func(ctx context.Context, row factory.Item) (factory.SourceStanding, error) {
+		return github.Standing(ctx, client, row)
+	}
+	f.h = serve.New(f.seam, f.cfg)
+	w := f.post(t, it, "start_now", "", 409)
+	if !strings.Contains(w.Body.String(), "now identifies a different GitHub issue") {
+		t.Fatalf("untrue mismatch refusal: %s", w.Body)
+	}
+	got, _ := f.st.Get(it.ID)
+	if got.State != factory.StateNew {
+		t.Fatalf("different issue identity finished row: pinned=1001 answer=9001 state=%s", got.State)
+	}
+}
+
+func TestReviewStartPinsFirstDirectIdentity(t *testing.T) {
+	f := newV2Jobs(t)
+	f.h.Close()
+	it := f.create(t, factory.Item{Num: 12, Origin: factory.OriginForge, State: factory.StateNew, Assignee: "sam"})
+	f.cfg.Recheck = func(context.Context, factory.Item) (factory.SourceStanding, error) {
+		return factory.SourceStanding{How: github.StandingClosed, IssueID: 1001}, nil
+	}
+	f.h = serve.New(f.seam, f.cfg)
+	f.post(t, it, "start_now", "", 409)
+	got, _ := f.st.Get(it.ID)
+	if got.GitHubIssueID != 1001 {
+		t.Fatalf("Start lost first direct identity: got=%d want=1001", got.GitHubIssueID)
+	}
+	replacement := got
+	replacement.GitHubIssueID, replacement.Title, replacement.DoneHow = 9001, "replacement issue", ""
+	if err := github.Merge(f.st, github.Name, []factory.Item{replacement}); err != nil {
+		t.Fatal(err)
+	}
+	after, _ := f.st.Get(it.ID)
+	if after.GitHubIssueID != 1001 || after.Title != got.Title {
+		t.Fatal("replacement listing overwrote Start's pinned row")
+	}
+}
+
+func TestReviewOpenStartKeepsFirstIdentity(t *testing.T) {
+	f := newV2Jobs(t)
+	f.h.Close()
+	it := f.create(t, factory.Item{Num: 12, Origin: factory.OriginForge, State: factory.StateNew, Assignee: "sam"})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"id":1001,"number":12,"state":"open"}`)
+	}))
+	defer srv.Close()
+	client := forge.NewClient("fixture").WithBaseURL(srv.URL)
+	f.cfg.Recheck = func(ctx context.Context, row factory.Item) (factory.SourceStanding, error) {
+		return github.Standing(ctx, client, row)
+	}
+	f.h = serve.New(f.seam, f.cfg)
+	f.post(t, it, "run", "", 200)
+	got, _ := f.st.Get(it.ID)
+	if got.GitHubIssueID != 1001 {
+		t.Errorf("open Start lost first direct identity: got=%d want=1001", got.GitHubIssueID)
+	}
+	replacement := got
+	replacement.GitHubIssueID, replacement.Title, replacement.DoneHow = 9001, "replacement issue", ""
+	if err := github.Merge(f.st, github.Name, []factory.Item{replacement}); err != nil {
+		t.Fatal(err)
+	}
+	after, _ := f.st.Get(it.ID)
+	if after.GitHubIssueID != 1001 || after.Title != got.Title {
+		t.Errorf("replacement listing overwrote started row: id=%d title=%q", after.GitHubIssueID, after.Title)
 	}
 }

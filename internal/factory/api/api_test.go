@@ -163,6 +163,10 @@ func TestEveryFieldRoundTrips(t *testing.T) {
 			break
 		}
 	}
+	// Tool identity travels in the existing tone through worker reports and
+	// derives the optional desk kind without adding a persisted field.
+	want.Items[0].Stream.Log[0].Tone = "tool"
+	want.Items[0].Stream.Log[0].Text = "bash go test"
 	got := wire(t, want)
 	for _, d := range diff(reflect.ValueOf(want), reflect.ValueOf(got), "Snapshot") {
 		t.Error(d)
@@ -492,7 +496,7 @@ func TestQuestionKindsOptionsAndCapNumbers(t *testing.T) {
 		Stream: &factory.Stream{Spent: 4.5, Cur: 0, Phases: []factory.Phase{{Name: "write"}}},
 	}
 	qs := FromItem(capJob).Questions
-	if len(qs) != 1 || qs[0].Kind != "cap" || qs[0].Limit != 4 || qs[0].Spent != 4.5 || qs[0].NextLimit != 8 {
+	if len(qs) != 1 || qs[0].Kind != "cap" || qs[0].Limit != 4 || qs[0].Spent != 4.5 || qs[0].NextLimit != 5 {
 		t.Fatalf("cap question %+v", qs)
 	}
 	if !reflect.DeepEqual(qs[0].Options, []string{"yes", "no"}) {

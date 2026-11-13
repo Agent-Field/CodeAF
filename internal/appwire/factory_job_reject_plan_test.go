@@ -67,8 +67,6 @@ func TestJobRejectPlanRefusesWhatCannotBeARequestBeforeTheEngine(t *testing.T) {
 	long := strings.Repeat("é", api.MaxRejectPlanWords+1)
 	exact := strings.Repeat("é", api.MaxRejectPlanWords)
 	for name, params := range map[string]string{
-		"no words":       `{"factory":"f","job":2,` + planGuard + `}`,
-		"blank words":    `{"factory":"f","job":2,"words":" \n\t ",` + planGuard + `}`,
 		"too many words": `{"factory":"f","job":2,"words":"` + long + `",` + planGuard + `}`,
 		"no expect":      `{"factory":"f","job":2,"words":"x"}`,
 		"no version":     `{"factory":"f","job":2,"words":"x","expect":{"state":"needs_you"}}`,
@@ -84,6 +82,14 @@ func TestJobRejectPlanRefusesWhatCannotBeARequestBeforeTheEngine(t *testing.T) {
 		e := &rejectEngine{}
 		if _, err := methods["factory.job_reject_plan"].call(e, json.RawMessage(params)); wireCode(t, err) != CodeBadParams || len(e.got) != 0 {
 			t.Errorf("%s: %v, engine handed %d", name, err, len(e.got))
+		}
+	}
+	// No words passes the wire: an AgentField run's Reject takes none, and the
+	// engine refuses a bare no on a plan of its own.
+	for _, params := range []string{`{"factory":"f","job":2,` + planGuard + `}`, `{"factory":"f","job":2,"words":" \n\t ",` + planGuard + `}`} {
+		e := &rejectEngine{}
+		if _, err := methods["factory.job_reject_plan"].call(e, json.RawMessage(params)); err != nil || len(e.got) != 1 || e.got[0].Words != "" {
+			t.Fatalf("no words: %v %+v", err, e.got)
 		}
 	}
 	// 4000 characters are allowed whatever their bytes, and words are trimmed.

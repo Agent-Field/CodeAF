@@ -1,6 +1,7 @@
 package api
 
 import (
+	"maps"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -19,8 +20,25 @@ const LiveCapacityHeaderValue = "1"
 // factories still receive its results and costs without an unknown JSON field.
 const StepModelsHeader = "X-Codeaf-Step-Models"
 
+// ModelSpendHeader carries the priced calls by model beside a report. The
+// report body stays free of the field, so a factory older than it still
+// accepts the cost and the results.
+const ModelSpendHeader = "X-Codeaf-Model-Spend"
+
 // StepChatsHeader publishes live chat identities without breaking older strict servers.
 const StepChatsHeader = "X-Codeaf-Step-Chats"
+
+// LeaseWithdrawnHeader marks a rejected lease as replaced by retry or manual
+// control, so its worker cancels execution without reporting a person's Stop.
+const LeaseWithdrawnHeader = "X-Codeaf-Lease-Withdrawn"
+
+// LeaseStoppedHeader marks a rejected lease as ended by a person's Stop,
+// distinct from an expired or handed-back hold.
+const LeaseStoppedHeader = "X-Codeaf-Lease-Stopped"
+
+// SignalAcksHeader opts into retained delivery. Its JSON IDs acknowledge handled
+// signals; an older factory ignores the header and still receives an empty body.
+const SignalAcksHeader = "X-Codeaf-Signal-Acks"
 
 // WorkerAttach names the machine and its person; consent to unassigned work
 // is explicit and applies only to each named repository.
@@ -41,6 +59,11 @@ type WorkerAttach struct {
 	OS              string          `json:"os,omitempty"`
 	CodeafVersion   string          `json:"codeaf_version,omitempty"`
 	TakesUnassigned map[string]bool `json:"takes_unassigned,omitempty"`
+	// Needs is a runner state word naming what this worker lacks before it
+	// can run a step, such as [RunnerNeedsProvider]; empty when it lacks
+	// nothing. The factory leases nothing to a worker that needs something,
+	// and its runner list shows that state instead of idle.
+	Needs string `json:"needs,omitempty"`
 }
 
 // WorkerAttached returns the credential only at registration, so reads of
@@ -55,8 +78,9 @@ type WorkerAttached struct {
 	Slots int `json:"slots,omitempty"`
 }
 
-// WorkerReport carries incremental results. Cost is newly incurred dollars,
-// so a result's own cost is descriptive and is not added a second time.
+// WorkerReport carries incremental results. For table-bearing steps, Cost is
+// newly incurred spending outside their tables. Legacy reports carry all newly
+// incurred dollars in Cost; their result costs remain descriptive.
 type WorkerReport struct {
 	FollowUp   *factory.PRFollowUp `json:"follow_up,omitempty"`
 	Change     *factory.Change     `json:"change,omitempty"`
@@ -81,6 +105,13 @@ type WorkerReport struct {
 	Room       string       `json:"room,omitempty"`  // desk: the item team's id (Stream.Room), write-once
 	// Merge is what the runner's merge did: merging, merged or failed.
 	Merge *WorkerMerge `json:"merge,omitempty"`
+	// AgentField is a run_on job's AgentField run as the runner recorded it.
+	AgentField *factory.AgentFieldRun `json:"agentfield,omitempty"`
+	// AgentFieldSteps are the runs behind the job's agentfield steps, by step.
+	AgentFieldSteps map[string]*factory.AgentFieldRun `json:"agentfield_steps,omitempty"`
+	// Models is the report's model split. It is not part of the JSON body;
+	// [ModelSpendHeader] carries it.
+	Models []factory.ModelUse `json:"-"`
 }
 
 // WorkerMerge is [factory.MergeReport] on the wire.
@@ -94,6 +125,8 @@ type WorkerMerge struct {
 // StepReport carries the last round's full result without exposing Go names.
 // rounds is every finished try. failure is set when this step errored.
 type StepReport struct {
+	SkipReason   string                    `json:"skip_reason,omitempty"`
+	RoundCosts   map[int]float64           `json:"round_costs,omitempty"`
 	RoundLimit   int                       `json:"round_limit,omitempty"`
 	Verification *factory.StepVerification `json:"verification,omitempty"`
 	Chat         string                    `json:"chat,omitempty"`
@@ -111,17 +144,19 @@ type StepReport struct {
 
 // StepResult preserves the evidence that later steps need after a restart.
 type StepResult struct {
-	PublishSummary []string                `json:"publish_summary,omitempty"`
-	Repair         *factory.CIRepairResult `json:"repair,omitempty"`
-	Tests          *factory.TestCounts     `json:"tests,omitempty"`
-	Done           bool                    `json:"done"`
-	Findings       int                     `json:"findings,omitempty"`
-	Claims         []Claim                 `json:"claims,omitempty"`
-	Output         string                  `json:"output,omitempty"`
-	Exit           int                     `json:"exit,omitempty"`
-	Notes          []string                `json:"notes,omitempty"`
-	Cost           float64                 `json:"cost,omitempty"`
-	Chat           string                  `json:"chat,omitempty"`
+	VerificationFailureKey string                  `json:"verification_failure_key,omitempty"`
+	Files                  []string                `json:"files,omitzero"`
+	PublishSummary         []string                `json:"publish_summary,omitempty"`
+	Repair                 *factory.CIRepairResult `json:"repair,omitempty"`
+	Tests                  *factory.TestCounts     `json:"tests,omitempty"`
+	Done                   bool                    `json:"done"`
+	Findings               int                     `json:"findings,omitempty"`
+	Claims                 []Claim                 `json:"claims,omitempty"`
+	Output                 string                  `json:"output,omitempty"`
+	Exit                   int                     `json:"exit,omitempty"`
+	Notes                  []string                `json:"notes,omitempty"`
+	Cost                   float64                 `json:"cost,omitempty"`
+	Chat                   string                  `json:"chat,omitempty"`
 }
 
 // stepResultWire is one step's report in the wire's words, both ways a
@@ -131,21 +166,24 @@ type StepResult struct {
 // StepReport.Model on a worker report). A plan's edit never crosses (the
 // runner applies it as the round ends, and the kept result drops it), nor do
 // Reports and Inferred: they are folded into the round's summary line where
-// the round ran, and that line crosses (steps[].rounds). A field added here is
+// the round ran, and that line crosses (steps[].rounds). Summary stays too: it is written
+// onto the step's failure (Failure.Summary), which crosses only to a factory that admits it
+// ([ReportAdmits.FailureSummaries]). A field added here is
 // one a factory older than it refuses a worker's whole report for.
 func stepResultWire(r factory.StageResult) *StepResult {
-	return &StepResult{Repair: r.Repair, PublishSummary: r.PublishSummary, Tests: r.Tests, Done: r.Done, Findings: r.Findings, Claims: mapList(r.Claims, fromClaim),
+	return &StepResult{VerificationFailureKey: r.VerificationFailureKey, Files: r.Files, Repair: r.Repair, PublishSummary: r.PublishSummary, Tests: r.Tests, Done: r.Done, Findings: r.Findings, Claims: mapList(r.Claims, fromClaim),
 		Output: r.Output, Exit: r.Exit, Notes: r.Notes, Cost: r.Spent, Chat: r.Chat}
 }
 
 // stageResultItem is [stepResultWire] read back.
 func stageResultItem(r StepResult) factory.StageResult {
-	return factory.StageResult{Repair: r.Repair, PublishSummary: r.PublishSummary, Tests: r.Tests, Done: r.Done, Findings: r.Findings, Claims: mapList(r.Claims, toClaim),
+	return factory.StageResult{VerificationFailureKey: r.VerificationFailureKey, Files: r.Files, Repair: r.Repair, PublishSummary: r.PublishSummary, Tests: r.Tests, Done: r.Done, Findings: r.Findings, Claims: mapList(r.Claims, toClaim),
 		Output: r.Output, Exit: r.Exit, Notes: r.Notes, Spent: r.Cost, Chat: r.Chat}
 }
 
 // WorkerJob is the job as the worker holding its lease pulls it: [FromItem],
-// with each step that ran carrying its whole last report.
+// with each step that ran carrying its whole last report, and the factory's
+// copy of the pipeline file it runs whole ([Job.PipelineCopy]).
 //
 // A RUNNER THAT TAKES A JOB ON MUST KNOW WHAT CAME BEFORE. A job moves to
 // another machine when its worker goes away, and the runner there rebuilds
@@ -157,6 +195,17 @@ func stageResultItem(r StepResult) factory.StageResult {
 // only the lease holder may read (serve's withholdChats).
 func WorkerJob(it factory.Item) Job {
 	j := FromItem(it)
+	j.RoundCostTables, j.FailureSummaries = true, true
+	for i := range j.Context {
+		j.Context[i].Markdown = it.Context[i].Markdown
+	}
+	// The runner runs the file the job carries, so it is sent whole here.
+	j.PipelineCopy = it.PipelineCopy.Clone()
+	// The read written before work is what every step is told the issue
+	// asks, so the runner that holds the job is sent it.
+	if v, ok := factory.FirstReadOf(it); ok {
+		j.FirstRead = &v
+	}
 	if it.Stream == nil {
 		return j
 	}
@@ -168,7 +217,8 @@ func WorkerJob(it factory.Item) Job {
 			continue
 		}
 		if k < len(it.Stream.Phases) {
-			if r := it.Stream.Phases[k].Result; r != nil {
+			j.Steps[i].RoundCosts = maps.Clone(it.Stream.Phases[k].RoundCosts)
+			if r := it.Stream.Phases[k].Result; r != nil && it.Stream.Phases[k].State != factory.PhaseSkipped {
 				j.Steps[i].Report = stepResultWire(*r)
 			}
 		}
@@ -186,13 +236,13 @@ type WorkerDone struct {
 
 // ToWorkerReport is the single vocabulary boundary for worker writes.
 func ToWorkerReport(r WorkerReport) factory.RunReport {
-	out := factory.RunReport{FollowUp: r.FollowUp, HeadCommit: r.HeadCommit, Publishing: r.Publishing, Change: r.Change, ChangeBase: r.ChangeBase, Thread: r.Thread, Delivered: r.Delivered, Cost: r.Cost, Claims: mapList(r.Claims, toClaim), Talk: r.Talk, Notes: r.Notes, Publish: r.Publish, CommentURL: r.CommentURL, Room: r.Room}
+	out := factory.RunReport{FollowUp: r.FollowUp, HeadCommit: r.HeadCommit, Publishing: r.Publishing, Change: r.Change, ChangeBase: r.ChangeBase, Thread: r.Thread, Delivered: r.Delivered, Cost: r.Cost, Claims: mapList(r.Claims, toClaim), Talk: r.Talk, Notes: r.Notes, Publish: r.Publish, CommentURL: r.CommentURL, Room: r.Room, Models: r.Models, AgentField: r.AgentField, AgentFieldSteps: r.AgentFieldSteps}
 	if r.Pipeline != nil {
 		stages, stream := unsteps(Job{Steps: r.Pipeline, Desk: &JobDesk{Run: &Run{}}})
 		out.Pipeline = &factory.PipelineChange{Stages: stages, Phases: stream.Phases}
 	}
 	for _, s := range r.Steps {
-		stage := factory.StageReport{Name: s.Name, Chat: s.Chat, State: factory.PhaseState(s.State), Round: s.Round, RoundLimit: s.RoundLimit, Verification: s.Verification, Failure: failureItem(s.Failure), Rounds: roundsItem(s.Rounds)}
+		stage := factory.StageReport{RoundCosts: maps.Clone(s.RoundCosts), Name: s.Name, Chat: s.Chat, SkipReason: s.SkipReason, State: factory.PhaseState(s.State), Round: s.Round, RoundLimit: s.RoundLimit, Verification: s.Verification, Failure: failureItem(s.Failure), Rounds: roundsItem(s.Rounds)}
 		if s.StartedAt != nil {
 			stage.Started = *s.StartedAt
 		}
@@ -207,7 +257,7 @@ func ToWorkerReport(r WorkerReport) factory.RunReport {
 		out.Log = append(out.Log, factory.LogLine{At: l.At, Tone: l.Tone, Text: l.Text})
 	}
 	if q := r.Question; q != nil {
-		out.Question = &factory.Asked{Stage: q.FromStep, Question: q.Text, Options: q.Options, Pick: q.Pick, Why: q.Why}
+		out.Question = &factory.Asked{Stage: q.FromStep, Question: q.Text, Options: q.Options, Pick: q.Pick, Why: q.Why, Person: q.Person}
 		if q.At != nil {
 			out.Question.At = *q.At
 		}
@@ -220,21 +270,69 @@ func ToWorkerReport(r WorkerReport) factory.RunReport {
 	return out
 }
 
+// ReportAdmits is what the factory that handed out a job said a worker's report
+// may carry beyond the established body. Each field is one the factory set on
+// the pulled job; a factory too old to set it reads reports strictly, so A FIELD
+// IT DID NOT ADMIT IS LEFT OFF rather than sent for it to refuse the whole report.
+type ReportAdmits struct {
+	// RoundCostTables is [Job.RoundCostTables]: per-round spending tables.
+	RoundCostTables bool
+	// FailureSummaries is [Job.FailureSummaries]: a failure's one-line summary.
+	FailureSummaries bool
+}
+
+// ReportAdmits reads the admissions off a pulled job.
+func (j Job) ReportAdmits() ReportAdmits {
+	return ReportAdmits{RoundCostTables: j.RoundCostTables, FailureSummaries: j.FailureSummaries}
+}
+
 // FromRunReport is the worker's half of the same boundary: what its runner
-// wrote, in the wire's words. [ToWorkerReport] reads it back.
-func FromRunReport(r factory.RunReport) WorkerReport {
+// wrote, in the wire's words, limited to what the factory admitted ([ReportAdmits];
+// none given admits nothing). Without table admission, Cost includes table
+// spending; incremental delivery replaces it with the full job-spend delta from
+// its acknowledged snapshot.
+func FromRunReport(r factory.RunReport, admits ...ReportAdmits) WorkerReport {
+	var admit ReportAdmits
+	if len(admits) > 0 {
+		admit = admits[0]
+	}
+	acceptsTables := admit.RoundCostTables
 	out := WorkerReport{FollowUp: r.FollowUp, HeadCommit: r.HeadCommit, Publishing: r.Publishing, Change: r.Change, ChangeBase: r.ChangeBase, Thread: r.Thread, Delivered: r.Delivered, Cost: r.Cost, Claims: mapList(r.Claims, fromClaim), Talk: r.Talk, Notes: r.Notes,
-		Log: mapList(r.Log, fromLog), Publish: r.Publish, CommentURL: r.CommentURL, Room: r.Room}
+		Log: mapList(r.Log, fromLog), Publish: r.Publish, CommentURL: r.CommentURL, Room: r.Room, Models: r.Models, AgentField: r.AgentField, AgentFieldSteps: r.AgentFieldSteps}
+	// Keep the existing log vocabulary on the worker wire.
+	for i := range out.Log {
+		if out.Log[i].Kind == "tool" {
+			out.Log[i].Tone = "tool"
+		}
+		out.Log[i].Kind = ""
+	}
 	if p := r.Pipeline; p != nil {
 		out.Pipeline = steps(factory.Item{Stages: p.Stages, Stream: &factory.Stream{Phases: p.Phases}})
 	}
 	for _, s := range r.Stages {
-		step := StepReport{Name: s.Name, Chat: s.Chat, State: string(s.State), Round: s.Round, RoundLimit: s.RoundLimit, Verification: s.Verification, StartedAt: timeOrNil(s.Started), Failure: failureWireOrNil(s.Failure), Rounds: roundsWire(s.Rounds)}
+		step := StepReport{RoundCosts: maps.Clone(s.RoundCosts), Name: s.Name, Chat: s.Chat, SkipReason: s.SkipReason, State: string(s.State), Round: s.Round, RoundLimit: s.RoundLimit, Verification: s.Verification, StartedAt: timeOrNil(s.Started), Failure: failureWireOrNil(s.Failure), Rounds: roundsWire(s.Rounds)}
 		if res := s.Result; res != nil {
 			step.Result = stepResultWire(*res)
 			step.Model = res.Model
 		}
+		if !acceptsTables {
+			// Keep the established body for strict older factories.
+			for _, spent := range step.RoundCosts {
+				out.Cost += spent
+			}
+			step.RoundCosts = nil
+		}
 		out.Steps = append(out.Steps, step)
+	}
+	withoutTryResults(out.Pipeline, out.Steps)
+	if !admit.FailureSummaries {
+		// Keep the established failure body for strict older factories.
+		for i := range out.Pipeline {
+			out.Pipeline[i].Failure = withoutSummary(out.Pipeline[i].Failure)
+		}
+		for i := range out.Steps {
+			out.Steps[i].Failure = withoutSummary(out.Steps[i].Failure)
+		}
 	}
 	if q := r.Question; q != nil {
 		out.Question = &Question{FromStep: q.Stage, Text: q.Question, Options: q.Options, Pick: q.Pick, Why: q.Why, Kind: r.QuestionKind, At: timeOrNil(q.At)}
@@ -286,12 +384,20 @@ type WorkerHeartbeat struct {
 // (yes, words), steer (words), recheck, budget, model, reply, publish, merge
 // or stop (internal/factory/lease's Signal* names).
 type WorkerSignal struct {
-	Automatic *bool   `json:"automatic,omitempty"`
-	Budget    float64 `json:"budget,omitempty"`
-	ID        string  `json:"id,omitempty"`
-	Verb      string  `json:"verb"`
-	Yes       bool    `json:"yes,omitempty"`
-	Words     string  `json:"words,omitempty"`
+	Delivery      string            `json:"delivery,omitempty"`
+	PublishAnyway *factory.Approval `json:"publish_anyway,omitempty"`
+	Automatic     *bool             `json:"automatic,omitempty"`
+	Budget        float64           `json:"budget,omitempty"`
+	ID            string            `json:"id,omitempty"`
+	Verb          string            `json:"verb"`
+	Yes           bool              `json:"yes,omitempty"`
+	Words         string            `json:"words,omitempty"`
+	// Execution, Decision and By are an AgentField answer's (lease
+	// SignalAgentField): the waiting execution, the control plane's word
+	// for the answer, and the handle of the person who gave it.
+	Execution string `json:"execution,omitempty"`
+	Decision  string `json:"decision,omitempty"`
+	By        string `json:"by,omitempty"`
 }
 
 type WorkerLease struct {
@@ -304,4 +410,15 @@ type WorkerLease struct {
 	Machine    string    `json:"machine,omitempty"`
 	Handle     string    `json:"handle"`
 	ExpiresAt  time.Time `json:"expires_at"`
+}
+
+// withoutSummary is a copy of f with no one-line summary, so the caller's
+// failure is never changed under it.
+func withoutSummary(f *Failure) *Failure {
+	if f == nil || f.Summary == "" {
+		return f
+	}
+	c := *f
+	c.Summary = ""
+	return &c
 }

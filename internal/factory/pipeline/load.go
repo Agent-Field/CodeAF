@@ -1,6 +1,7 @@
 package pipeline
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/gitpolicy"
 )
 
 // maxFileBytes is how large a pipeline file may be. A recipe is a page, not a
@@ -97,6 +99,7 @@ func MergePersonal(repo File, personal string, err error) (File, error) {
 	// The repository text stays the file that was read. The personal file
 	// is named beside it so a client can say which lines came from home.
 	merged.Text = repo.Text
+	merged.Copy = repo.Copy.Clone()
 	merged.Personal = true
 	merged.PersonalText = pf.Text
 	return merged, err
@@ -126,6 +129,9 @@ func readPersonal(path string) (*File, error) {
 func readCheckout(dir string) (text, from, kind string, err error) {
 	if strings.TrimSpace(dir) == "" {
 		return "", "", "", errors.New("no checkout")
+	}
+	if err := gitWorks(dir); err != nil {
+		return "", factory.FromMainBranch, "", err
 	}
 	if ref := defaultBranch(dir); ref != "" {
 		if t, ok, err := show(dir, ref, RepoFile); err != nil {
@@ -158,11 +164,16 @@ func show(dir, ref, rel string) (string, bool, error) {
 	if err != nil {
 		return "", false, err
 	}
-	spec := ref + ":" + rel
-	if _, err := gitOut(dir, "cat-file", "-e", spec); err != nil {
+	// ls-tree answers nothing for a path that isn't there and fails when git
+	// can't read the tree: only the first is a repository with no file.
+	listed, err := gitOut(dir, "ls-tree", ref, "--", rel)
+	if err != nil {
+		return "", false, fmt.Errorf("git could not read %s: %w", rel, err)
+	}
+	if strings.TrimSpace(listed) == "" {
 		return "", false, nil
 	}
-	out, err := gitOut(dir, "show", spec)
+	out, err := gitOut(dir, "show", ref+":"+rel)
 	if err != nil {
 		return "", false, err
 	}
@@ -204,6 +215,23 @@ func cleanRel(rel string) (string, error) {
 	return rel, nil
 }
 
+// gitWorks refuses a checkout whose git folder no longer answers, which would
+// otherwise read as a folder with no branch and so no file. A plain folder has
+// no git to ask, and neither has a .git folder holding no repository.
+func gitWorks(dir string) error {
+	info, err := os.Stat(filepath.Join(dir, ".git"))
+	if err != nil {
+		return nil
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".git", "objects")); info.IsDir() && err != nil {
+		return nil
+	}
+	if _, err := gitOut(dir, "rev-parse", "--git-dir"); err != nil {
+		return fmt.Errorf("git could not read this checkout: %w", err)
+	}
+	return nil
+}
+
 // defaultBranch is the checkout's main branch as a ref git can read, or ""
 // when there is none: origin/HEAD's target, else main, else master.
 func defaultBranch(dir string) string {
@@ -228,7 +256,7 @@ func gitOut(dir string, args ...string) (string, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), gitWait)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
+	cmd := exec.CommandContext(ctx, "git", gitpolicy.WithoutAutoMaintenance(append([]string{"-C", dir}, args...)...)...)
 	for _, kv := range os.Environ() {
 		if strings.HasPrefix(kv, "GIT_DIR=") || strings.HasPrefix(kv, "GIT_WORK_TREE=") || strings.HasPrefix(kv, "GIT_INDEX_FILE=") {
 			continue
@@ -305,6 +333,11 @@ func Merge(repo, personal File) (File, []Problem) {
 	for name, step := range personal.Steps {
 		probs = tightenStep(&out, repo, name, step, probs)
 	}
+	if personal.set.adapt {
+		if !tightenAdapt(&out, repo, personal) {
+			probs = append(probs, Problem{Where: "adapt", Why: "ignored; a personal file cannot let the plan reshape more than the repository allows"})
+		}
+	}
 	if personal.set.mergeAuto {
 		if personal.Merge.Auto && !repo.Merge.Auto {
 			probs = append(probs, Problem{Where: "merge.auto", Why: "ignored; a personal file cannot turn auto-merge on"})
@@ -320,6 +353,65 @@ func Merge(repo, personal File) (File, []Problem) {
 	probs = append(append([]Problem{}, personal.Problems...), probs...)
 	out.Problems = append(out.Problems, probs...)
 	return out, probs
+}
+
+// tightenAdapt applies a personal adapt to out, and says whether it did. One
+// personal word tightens every pipeline; a personal map tightens the kinds it
+// names. Either is ignored whole when it would loosen any pipeline.
+func tightenAdapt(out *File, repo, personal File) bool {
+	if len(repo.AdaptKinds) == 0 && len(personal.AdaptKinds) == 0 {
+		next, ok := factory.StricterAdapt(repo.Adapt, personal.Adapt)
+		if ok {
+			out.Adapt = next
+		}
+		return ok
+	}
+	have := repo.adaptByKind()
+	by := map[factory.Kind]factory.AdaptMode{}
+	for _, kind := range adaptKinds(repo, personal) {
+		next := cmp.Or(have[kind], factory.AdaptFree)
+		if w := personalAdapt(personal, kind); w != "" {
+			var ok bool
+			if next, ok = factory.StricterAdapt(next, w); !ok {
+				return false
+			}
+		}
+		if next != factory.AdaptFree {
+			by[kind] = next
+		}
+	}
+	out.Adapt, out.AdaptKinds = "", by
+	return true
+}
+
+// personalAdapt is the word a personal file says for one kind, "" for none.
+func personalAdapt(f File, kind factory.Kind) factory.AdaptMode {
+	if len(f.AdaptKinds) > 0 {
+		return f.AdaptKinds[kind]
+	}
+	return f.Adapt
+}
+
+// adaptKinds is every kind the files' pipelines or adapt maps name, issue
+// first.
+func adaptKinds(files ...File) []factory.Kind {
+	seen := map[factory.Kind]bool{factory.KindIssue: true}
+	out := []factory.Kind{factory.KindIssue}
+	add := func(kind factory.Kind) {
+		if !seen[kind] {
+			seen[kind] = true
+			out = append(out, kind)
+		}
+	}
+	for _, f := range files {
+		for kind := range f.AdaptKinds {
+			add(kind)
+		}
+		for kind := range f.Pipeline {
+			add(kind)
+		}
+	}
+	return out
 }
 
 func tightenLabels(repo, personal []string, probs []Problem) ([]string, []Problem) {
@@ -455,6 +547,12 @@ func untilTighten(repo, personal string) (string, bool) {
 	if personal == "" || strings.EqualFold(personal, repo) {
 		return repo, true
 	}
+	if strings.EqualFold(repo, factory.UntilNoNewFailures) && strings.EqualFold(personal, factory.UntilGreen) {
+		return personal, true
+	}
+	if strings.EqualFold(personal, factory.UntilNoNewFailures) {
+		return repo, false
+	}
 	switch strings.ToLower(repo) {
 	case "", "done", "the step says it is done":
 		return personal, true
@@ -552,12 +650,17 @@ func hasFold(list []string, want string) bool {
 func cloneFile(f File) File {
 	out := f
 	out.markdownAdapt = copyAdapt(f.markdownAdapt)
+	out.AdaptKinds = copyAdapt(f.AdaptKinds)
 	out.Start.Labels = append([]string(nil), f.Start.Labels...)
 	out.Start.Never = append([]string(nil), f.Start.Never...)
 	out.Start.AskFirst = append([]string(nil), f.Start.AskFirst...)
 	out.Fixed = append([]string(nil), f.Fixed...)
 	out.Rules = append([]string(nil), f.Rules...)
+	out.House.Rules = append([]string(nil), f.House.Rules...)
+	out.House.AskFirst = append([]string(nil), f.House.AskFirst...)
+	out.House.Never = append([]string(nil), f.House.Never...)
 	out.Problems = append([]Problem(nil), f.Problems...)
+	out.Copy = f.Copy.Clone()
 	out.Pipeline = map[factory.Kind][]string{}
 	for kind, names := range f.Pipeline {
 		out.Pipeline[kind] = append([]string(nil), names...)

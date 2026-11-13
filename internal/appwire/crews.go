@@ -1,6 +1,7 @@
 package appwire
 
 import (
+	"encoding/json"
 	"strings"
 	"time"
 )
@@ -147,6 +148,10 @@ type Crew struct {
 	// had when the crew was made, each with the agent that owned it then.
 	HistoryTasks []CrewHistoryTask `json:"history_tasks,omitempty"`
 	Items        []CrewItem        `json:"items,omitempty"`
+	// CreatedBy is who made the crew: "person", or the conversation id of the
+	// agent whose team_start made it. Absent for a crew made before this was
+	// kept.
+	CreatedBy string `json:"created_by,omitempty"`
 }
 
 // CrewHistoryTask is one task from before a crew was made. Task is its id in
@@ -316,14 +321,32 @@ type Role struct {
 
 // ProposalHelper is one helper a proposal would start.
 type ProposalHelper struct {
-	Handle string `json:"handle"`
-	Role   string `json:"role,omitempty"`
-	Brief  string `json:"brief"`
-	Model  string `json:"model,omitempty"`
+	Team      string `json:"team,omitempty"`
+	ReportsTo string `json:"reports_to,omitempty"`
+	Handle    string `json:"handle"`
+	Role      string `json:"role,omitempty"`
+	Brief     string `json:"brief"`
+	Model     string `json:"model,omitempty"`
+}
+
+type ProposalTeam struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Lead string `json:"lead"`
+}
+
+// CrewProposalDelta is one validated NDJSON object, numbered from one per proposal.
+type CrewProposalDelta struct {
+	Agent string          `json:"agent"`
+	Seq   int             `json:"seq"`
+	Line  json.RawMessage `json:"line"`
 }
 
 // Proposal is an agent's proposal to become a crew (app layer).
 type Proposal struct {
+	Later     bool             `json:"later,omitempty"`
+	Teams     []ProposalTeam   `json:"teams,omitempty"`
+	Note      string           `json:"note,omitempty"`
 	ID        string           `json:"id"`
 	Agent     string           `json:"agent"`
 	Name      string           `json:"name"`
@@ -420,6 +443,9 @@ type CrewMessage struct {
 	ClientID    string        `json:"client_id"`
 	Attachments []string      `json:"attachments,omitempty"`
 	Reads       []MessageRead `json:"reads,omitempty"`
+	// From names who sent the message on the person's behalf, as agents.send's
+	// from does.
+	From string `json:"from,omitempty"`
 	// Submission is refused: a crew message carries no pictures.
 	Submission *MessageSubmission `json:"submission,omitempty"`
 }
@@ -619,6 +645,11 @@ var crewMethods = map[string]method{
 		if err := refuseSubmission(p.Submission, "crews.message"); err != nil {
 			return nil, err
 		}
+		from, err := CheckMessageFrom(p.From)
+		if err != nil {
+			return nil, err
+		}
+		p.From = from
 		entry, err := c.CrewMessage(p)
 		if err != nil {
 			return nil, err

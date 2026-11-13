@@ -1,9 +1,17 @@
 # Commands you type in a terminal
 
-## Is there a newer version — update codeaf — update a dev build — /update
+## codeaf cluster status when the sync service cannot be reached
 
-Every launch of a release build checks the newest release of the channel it
-follows, and what happens next depends on the build:
+If the service cannot be reached, `codeaf cluster status` exits with a failure
+status and uses the same sentence as `codeaf devices`:
+`the sync service at <address> cannot be reached from here — check this computer's network`.
+The address is your configured sync service. Check this computer's network
+and that the service is running, then try the command again.
+
+## Is there a newer version — update codeaf — update a dev build — keep a dev build up to date — latest dev — /update — why does it say this every time I start
+
+Every launch of a release build checks whether there is a newer version: the
+newest release of the channel it follows. What happens next depends on the build:
 
 - A released codeaf — a stable tag, in a file named `codeaf` — with `automatic
   updates` on (the default) installs the newest stable release BEFORE the chat
@@ -179,7 +187,13 @@ exactly once, or what it fetched is not a shell script, it answers 502.
 Building from source needs nothing published: clone the repository, run `make build`,
 then run `bin/codeaf` from the checkout.
 
-The installer writes `~/.codeaf/bin/codeaf`, adds it to your shell profile, and
+On Windows, run the Bash installer from Git Bash. It installs `codeaf.exe` and
+adds its native bin folder to the Windows user PATH only when missing, preserving
+existing entries. Open a new terminal afterward. If the update fails, or you use
+`--no-modify-path`, the guide prints the exact `powershell.exe -NoProfile -Command`
+line to run from Git Bash, then open a new terminal.
+
+On macOS and Linux the installer writes `~/.codeaf/bin/codeaf`, adds it to your shell profile, and
 when a folder already on `PATH` is writable (`~/.local/bin`, `~/bin`, or
 `/usr/local/bin`) it links `codeaf` there too, so the command works in the same
 terminal with nothing to paste. It never replaces anything there but its own link:
@@ -353,12 +367,18 @@ or from the call's clock.
 Keys pasted into the codeaf desktop app are kept in the Mac's keychain, not by codeaf.
 The app hands them to `codeaf app` at every launch and that process holds them in memory
 only: while it runs, a key never reaches the profile's `config.json`, and a provider the
-app disconnected is not quietly reconnected from a key in the profile or the shell. A
-rejected key is reported in the provider's own words and status code. Which providers the
+app disconnected is not quietly reconnected from a key in the profile or the shell. A key
+the provider rejects is reported in the provider's own words and status code; one codeaf
+turns away itself (an OpenRouter management key) says why in codeaf's words. Which providers the
 app connects, and how, is *Connecting a provider from the app* below. The GitHub token
 pasted while setting up the app's factory is kept the same way and handed back at every
 launch, so the factory stays connected after a restart; choosing gh's own login keeps only
-that choice, and gh keeps its token.
+that choice, and gh keeps its token. The same is true of a Jira token and of an AgentField
+control plane's API key (and the node secret codeaf made for it): codeaf hands each one to
+the app to keep in the keychain when it is connected, the app hands it back at the next
+launch, and disconnecting removes the kept copy too. An app older than this does not keep
+them, and then the factory's Jira or AgentField connection is gone after a restart until it
+is connected again.
 
 The app's day cap is the profile's daily limit, the same one `/budget day` sets: setup,
 Settings and the terminal all read and change that one figure, and a cap an older app
@@ -375,6 +395,23 @@ days before an agent reads closed) and its setup progress live in `app/state.jso
 codeaf's home folder, so quitting setup halfway resumes there; the day cap is not among
 them, because it is the profile's.
 
+## Desktop setup model default and provider key health
+
+On every OS, fresh setup supplies the same default model as the CLI. A saved
+model remains the person's choice. The app wire's `setup.get` and `health.check`
+include optional `provider_key`: `state` is `ok`, `invalid`, or `unknown`, with
+`checked_at` after a check finishes. Starting the engine makes no key-check
+request. codeaf checks it once in the background when setup or health is first
+read, using OpenRouter's key auth endpoint with a two-second deadline. A handover
+of the app's stored key also starts the check. Reads never wait for it and say
+`unknown` until it completes; later reads and turns do not repeat it. A key or
+address change starts a new check. `codeaf doctor` checks directly on every OS.
+Linux and macOS desk reads run no git or gh commands; Windows health reads also
+report machine readiness.
+A real-turn 401 also marks that key invalid. An invalid key says
+`Your OpenRouter key stopped working. Sign in again.` Offline or a timeout means
+`unknown` and does not prevent starting.
+
 ## Connecting a provider from the app — Ollama, a custom endpoint, Codex, regions
 
 The app's setup and its Settings offer every provider `/connect` offers, in the
@@ -386,7 +423,9 @@ browser and nothing else. Setup connects as many of them as you like, one after 
 or none at all, and Settings connects one later; with none connected, setup says there
 are no models yet instead of offering a default.
 
-OpenRouter's key is checked with one request and ten seconds to answer. Every other
+OpenRouter's key is checked against OpenRouter's own record of it before its models are
+listed, so a revoked or made-up key, or a management key, is turned away rather than
+reported as working; all of its requests share ten seconds to answer. Every other
 provider is checked the way `/connect` checks it: its model list, a one-token call where
 it has none, and for a provider with a coding plan each way of paying in turn, plan
 first. What the check found besides the key — the region, the plan the key opened, the
@@ -420,6 +459,9 @@ lines it added and removed. A command still going shows its last three lines,
 and twelve once it ends. A command's whole output is kept on this Mac for a
 week under the app's folder in codeaf's home, so it can be opened after the
 reply ends, or after the app restarts.
+
+Live step events also carry the conversation's spend so far when it is known
+and positive; the saved conversation total can catch up after the reply ends.
 
 ## The desktop app's conversation — steer or queue, the decision dock, and notes to a task
 
@@ -474,6 +516,22 @@ and a model sent to a member as a message), a member's own budget, pausing a
 member (its own turns are stopped until you resume it), and an agent's
 proposal to bring in helpers.
 
+## Idle desktop chats, recovery checks and crew traffic
+
+While the desktop app is open, startup checks every saved candidate for work
+awaiting recovery. After startup, chats with live factory stages, kept or
+starting services, crew holds or due retries are checked every two seconds.
+Chats seen live in the last 10 minutes also keep these prompt checks after
+closing. Crew traffic and team changes retain their immediate file-watch checks.
+
+Other closed chats are checked in small batches, so every quiet chat's presence,
+tasks, team and process files are checked within a minute, allowing one extra
+two-second tick at the boundary. New work wakes the chat on its next check.
+These checks also find missed changes when file watching is unavailable or a
+work directory disappears and is re-created. Watcher errors still trigger an
+immediate crew check. The app watches shared crew directories; saved chats do
+not each add file watches.
+
 ## Closing, archiving and renaming agents in the desktop app — and finding one
 
 In the desktop app, Move to Closed lets an agent's conversation go and takes it
@@ -512,6 +570,24 @@ by quit". Automations are not touched by a quit and fire again once the app is
 open. A conversation the app joined in a terminal window is that window's, and
 quitting the app only lets go of it.
 
+The app waits for local saving, publishes the newest saved turn and releases its
+hold so another computer can continue. Each saving boundary waits up to 30 seconds.
+A successful save is quiet; a definite final-save failure is kept in the engine
+log and leaves unsaved turns on this computer. A chat whose folder was deleted
+while it was open, such as a finished job's checkout, has nothing left to save
+there and is not a failure.
+
+A reply stopped by a quit still has its cost recorded. The app asks the router
+for that call's price once more, for at most two seconds, and waits at most
+three seconds in all; a price the router has not worked out yet is recorded as
+unpriced, with its tokens, instead of holding the quit.
+
+Crew members follow the same quit and resume rules. A member still opening
+does not hold up quitting for optional file cleanup; its files are kept.
+Closing the desktop's input pipe starts the same bounded shutdown as a first
+SIGTERM, including while the engine is waiting for a lock. A second SIGTERM
+ends the process immediately.
+
 ## When the desktop app closes unexpectedly — a reply stuck working, carrying on after it closed
 
 If the desktop app closes unexpectedly during a reply, opening it again carries
@@ -547,8 +623,8 @@ When the app closes, or its window is killed, the codeaf behind it leaves by
 itself: it never keeps working without the app. It lets go of this machine's
 factory first (a running job stops the way a quit stops it and goes back to the
 queue), then stops its replies and processes, which carry on when the app opens
-again. Leaving takes at most 30 seconds, and a second SIGTERM or SIGINT ends it
-at once.
+again. Leaving takes at most two minutes, including the final saving waits.
+A second SIGTERM or SIGINT ends it at once.
 
 If the app is opened again before the last one has let go, the factory on this
 machine is listed as not answering with the words "Another codeaf on this
@@ -585,6 +661,13 @@ conversation lives in another folder's terminal (a crew member a manager
 started). If it cannot reach that terminal it says the conversation is open in
 another codeaf window rather than opening it twice.
 
+If that window accepts a connection but does not answer, the app waits up to
+five seconds across all candidate windows, then shows “Couldn’t open chat”:
+“This chat didn’t answer from the other codeaf window. Try again, or continue
+there.” Choose “Try again” when that window answers again. A failed open sends
+no message, takes over no work and leaves the terminal's conversation alone.
+The five-second limit ends with the handshake; joined replies can run longer.
+
 A joined conversation keeps the rules of the window that opened it, because
 they are how it behaves for everyone: a proposed task's clock, a choice's
 clock, moving a running reply to a task, naming, and saving proposed reminders
@@ -618,9 +701,11 @@ by default on Linux and macOS on every build. Native Windows is supported too; a
 
 ## codeaf pair — show a code, or use one, from the terminal
 
-**`codeaf pair approve <link>`** compares the four-digit check number and asks `a / d`: only `a` approves, and `d`, Esc, Enter or anything else decline. Code pairing keeps its `y / n` question.
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
-**`codeaf pair`** on a new computer asks to join your devices and shows a link to approve from a computer that is already in (`codeaf pair approve <link>`); **`codeaf pair --code`** shows a code that gives your chats to another computer. **`codeaf pair <code>`** uses a code that another computer showed, for example `codeaf pair 42-715-302`. `CODEAF_SYNC_URL=<url>` or `--via <url>` keeps the invitation on that service's own pairing page and includes `--via` in the token command; it never prints the hosted page link for a self-hosted invitation. `--via <url>` names the sync address to go through, and `--replace` lets this computer drop chats of its own for the ones it is given. The page *Pairing your chats with a second computer* has the whole story.
+**`codeaf pair approve <link>`** compares the four-digit check number and asks `y / n`: only `y` or `yes` approves, and `d`, Esc, Enter or anything else decline. Code pairing keeps its `y / n` question.
+
+**`codeaf pair`** on a new computer asks to join your devices and shows a link to approve from a computer that is already in (`codeaf pair approve <link>`); **`codeaf pair --code`** shows a code that gives your chats to another computer. **`codeaf pair <code>`** uses a code that another computer showed, for example `codeaf pair 42-715-302`. `CODEAF_SYNC_URL=<url>` or `--via <url>` keeps the invitation on that service's own pairing page and includes `--via` in the token command; it never prints the hosted page link for a self-hosted invitation. `--via <url>` names the sync address to go through, and a solo computer with submitted chats refuses ordinary pairing and explains `--replace`. Terminal pairing prints “Paired with <name>. Run codeaf to open your chats.” Start codeaf again to share existing chats, saved keys, memory and preferences in the background; reopen after an interruption to resume. A computer with local work refuses and changes nothing. Explicit `--replace` confirms replacement: local chats stay here but stop syncing, shared memories and settings clear, and local provider keys stay here. The page *Pairing your chats with a second computer* has the whole story.
 
 ## The architecture map — codeaf atlas [map], /atlas [map], what talks to what, how two computers pair and continue a chat
 
@@ -686,7 +771,7 @@ both use the cell the current folder is in.
 
 ## Do moving chats restrict commands, network access or installs
 
-New chats declare `host-bound`: shell commands run on this computer with the network and the same access as any program you run. Moving chats does not change that access. `/setup` compares the tools a chat used with this machine and can install missing tools or rebuild folders left behind by a move; it is not needed for ordinary network access. A cell already declared sandboxed by an earlier build keeps that class.
+New interactive chats declare `host-bound`: shell commands run on this computer with the network and the same access as any program you run. `codeaf chat --once`, `codeaf exec` and factory steps are limited to their own folder instead ("What an unattended run may touch"). Moving chats does not change that access. `/setup` compares the tools a chat used with this machine and can install missing tools or rebuild folders left behind by a move; it is not needed for ordinary network access. A cell already declared sandboxed by an earlier build keeps that class.
 
 ## Your identity — codeaf identity show, export and import
 
@@ -715,7 +800,7 @@ be read. A wrong passphrase and a damaged blob get the same refusal.
 computer you keep: a new root, every chat and your saved keys sealed again under it, and the
 old identity deleted by the relay after the grace period. It is how a lost computer is locked
 out for good. It asks first and says what it costs; `--abandon` stops a rotation that has not
-switched yet. Read *Locking out a lost computer for good*.
+switched yet. With hosted sync storage off it still completes, without resealing uploads: chats stay on your computers and the old stored frames wait for grace-period erasure. With storage on, successor proof carries approval unless the new identity already has its own setting. Read *Locking out a lost computer for good*.
 
 Each machine also has its own device key, made the first time and never exported. Your
 identity signs a small certificate for it, so two machines share one id but keep separate
@@ -726,21 +811,29 @@ key the first time the identity is made on that machine.
 
 ## List your chats on every machine — codeaf cell list --all, and what its lines mean
 
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+
 **`codeaf cell list --all`** prints every chat you have on any of your machines, one line
-each: id, title, device, where it runs (`running on <device>`, `<device> offline`,
+each: id, title, device, where it runs (`held on <device>`, `<device> offline`,
 `<K> turns from <device>: discard`, or `-` for one held here or let go), and how
 long ago its last saved turn was. It needs no terminal UI, so it works over ssh. Without
 `--all` it prints the usage line. With sync off (`CODEAF_SYNC_URL=off`, or no relay to sync through) it prints
-`sync is off: set CODEAF_SYNC_URL to your relay's address` and lists nothing. With a relay
+`sync is off: set CODEAF_SYNC_URL to your sync service's address` and lists nothing. With a relay
 set but no identity on this machine it prints
 `this machine has no identity yet: codeaf identity import` and lists nothing, and when the
-other machines cannot be reached it starts with `other machines unreachable`.
+other machines cannot be reached it starts with `the sync service is not answering`.
 
 ## A different sync setting on an existing engine
 
-The engine keeps its sync setting from startup. Changing `CODEAF_SYNC_URL` to another address or `off` retires an idle engine before opening a chat and says `the engine restarted to pick up this terminal's sync setting`. If another window or work still uses it, the new window refuses to attach: `the engine for this folder started with a different environment than this terminal and is still in use — close its other windows or let its work finish, or run codeaf engine --stop --workspace <folder>`. The command names the exact folder. Let that work finish or stop the engine explicitly before reopening with the new setting.
+The engine keeps its sync setting from startup. Changing `CODEAF_SYNC_URL` to another address or `off` retires an idle engine before opening a chat and says `the engine restarted to pick up this terminal's sync setting`. If another window or work still uses it, the new window refuses to attach: `the background engine for this folder started with a different environment than this terminal and is still in use — codeaf chat --no-host opens this window on its own and leaves the other one running; or, after work finishes, close every window for this workspace and reopen. To stop now (interrupts active turns and tasks), run codeaf engine --stop --workspace <folder>`. The command names the exact folder.
 
-## Sync your chats between machines — CODEAF_SYNC_URL and CODEAF_SYNC_INTERVAL_MS
+To use the new setting at once without touching the other window, run `codeaf chat --no-host`, with `--session <path>` to open a particular chat; for example `CODEAF_SYNC_URL=off codeaf chat --no-host`. That window runs its own engine in this terminal and ends with it.
+
+Only a terminal that sets `CODEAF_SYNC_URL` itself is asking for a different relay. A window with the variable unset — `codeaf chat --host` reaching this computer over ssh, whose shell usually does not carry what you exported, or a terminal you never set it in — joins the running engine and its relay as it is. It restarts the engine only when the relay a pairing saved on this computer has changed since the engine started.
+
+## Sync your chats between machines — what is CODEAF_SYNC_URL, and CODEAF_SYNC_INTERVAL_MS
+
+Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
@@ -748,6 +841,8 @@ Older chats move through an independent copy. Once paired, codeaf prepares chats
 
 These environment settings are not rows in `/settings`. `CODEAF_SYNC_URL=off` stops relay
 traffic; new chats still keep their local cells.
+
+## What is CODEAF_SYNC_URL — the sync service address or off
 
 **`CODEAF_SYNC_URL`** is the relay's address, like `http://host:8787`, or the word `off`.
 Plain `http` is for trying it out inside an ssh tunnel; later the relay needs TLS. Unset, it
@@ -760,6 +855,8 @@ Starting the app creates a local solo identity when a relay is configured. It se
 to the relay until pairing; that identity alone does not connect your other computers.
 
 ## How often chat turns sync — CODEAF_SYNC_INTERVAL_MS
+
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 After pairing, codeaf sends sealed chat turns to the relay configured by `CODEAF_SYNC_URL`.
 
@@ -777,7 +874,7 @@ show your chats on the other machines once both machines share an identity and t
 With sync on, the chat you are typing in sends each saved turn to your relay, and holds the chat
 for this machine while it is open. Closing the chat sends what is left and lets go of it, so your
 other machine can pick it up at once. If this machine sleeps or loses its connection, presence stops answering; the other computers mark it offline after 25 seconds of silence, within 30 seconds. The lease itself expires after about ninety seconds, and an explicit continue can take it sooner.
-You do not have to wait for that: press enter on a chat that says `running on <device>` on another
+You do not have to wait for that: press enter on a chat that says `held on <device>` on another
 machine and continue it there, and it is taken at once (see "Continue a chat here that another
 machine left" in home).
 
@@ -823,6 +920,8 @@ type `--export`, so a report on its own writes no file and sends nothing.
 
 ## Free disk from old conversations — codeaf cell gc and the cell disk budget
 
+At launch, codeaf removes unfinished older-chat scratch copies untouched for a week only when their original transcript remains, their copy lock is free, and they have no ready marker or sealed history. Completed copies stay.
+
 **`codeaf cell gc [--dry-run]`** (when cells are available) frees disk from finished
 conversations. A conversation that codeaf keeps its own working folder for has files that
 can always be written back from what codeaf sealed. `gc` removes those working files of
@@ -835,7 +934,7 @@ minutes, and one with a call still in flight or not yet sealed are passed over, 
 says why beside each. Your own project folders are never removed: a conversation
 working in a folder of yours is passed over with "workspace is yours", however much disk
 you are short of. What stays is the conversation itself (its transcript and history),
-so it still lists and opens, and opening one writes its files back, byte for byte. Nothing is removed automatically when opening a chat, while idle or on a timer. The budget is the default for explicit gc only. A fresh snapshot is checked by restoring it into a temporary folder. Only top-level entries that match that restored copy byte for byte are removed. Withheld secrets, `.furrowpolicy` exclusions, rebuildable dependency folders and any directory containing excluded files stay in place. The policy file and the lockfiles (or their containing folders) stay too, so reopening preserves those exclusions. `--dry-run`
+so it still lists and opens, and opening one writes its files back, byte for byte. These sealed working files are removed only by explicit gc, not automatically when opening a chat, while idle or on a timer. The budget is the default for explicit gc only. A fresh snapshot is checked by restoring it into a temporary folder. Only top-level entries that match that restored copy byte for byte are removed. Withheld secrets, `.furrowpolicy` exclusions, rebuildable dependency folders and any directory containing excluded files stay in place. The policy file and the lockfiles (or their containing folders) stay too, so reopening preserves those exclusions. `--dry-run`
 removes nothing and prints the exact top-level paths that would go (it still checks a fresh capture):
 
 ```
@@ -992,6 +1091,18 @@ and it is in the `blocked_on` field of `--json`. Answer it inside the ask itself
 again, or bring the work to `codeaf` where it can be answered.
 
 Asking for help is never a failure: `--help` on any verb exits 0.
+
+## chat --once --json — watched chat token usage and spending
+
+`codeaf chat --once --json` prints one result object with `ok`, `stop`,
+`answer`, `model` and `error`. Empty answer, model and error fields are omitted.
+It also carries the same accounting fields as `codeaf exec --json`:
+`tokens: {"in": 100, "out": 20}` and `spend_usd: 0.125`.
+These total this invocation's model calls, including steering turns and calls
+settled while closing. Resuming a saved conversation excludes earlier usage.
+A failure after paid work still carries its tokens and spending. Unmeasured
+usage is zero; it does not establish that an unpriced call was free.
+The watched door keeps its existing `stop: "done"` or `"error"` meanings.
 
 ## The --json result object — one shape, three commands
 
@@ -1453,9 +1564,12 @@ the copy built into the binary. Your runs can improve the shared measurements. N
 the machine — what is shared is a measurement of the run, not the work. One
 setting answers for all of it, `model_pool` in `/settings`, with three
 values: `on` reads and sends, `read` uses the pool and sends nothing, `off`
-does neither. It defaults to `on`. `CODEAF_MODEL_POOL` pins the same word
-from the shell, and on a CI machine with neither set codeaf reads but does
-not send. **The telemetry off switch stops the pool sending too**:
+does neither. It defaults to `off`, including in CI: no pool judge calls,
+pool routing or pool records. Each role still follows your task-model and
+tier settings, and in Auto the router picks from your allowed models.
+`CODEAF_MODEL_POOL=on` or a saved `model_pool = on` enables it; an earlier
+explicit choice stays honoured. A missing or blank saved word means you never
+chose and stays off. `CODEAF_MODEL_POOL` pins the same word from the shell. **The telemetry off switch stops the pool sending too**:
 `CODEAF_TELEMETRY=off`, `DO_NOT_TRACK=1` or the `telemetry` switch in `/settings` caps the
 pool at `read` — it wins over an explicit `on` — and `codeaf pool status`
 then says `mode read · telemetry`.
@@ -1466,7 +1580,7 @@ codeaf pool [show|status|verify] [--json] [--key key]
 
 `show` — also what bare `codeaf pool` prints — is the reading form: the mode
 and the addresses in force with the word saying where each came from
-(`default`, `setting`, `env`, `ci`, or `telemetry` when the telemetry off switch capped
+(`default`, `setting`, `env`, or `telemetry` when the telemetry off switch capped
 sending), then what index is cached, how old
 it is and how many cells it holds, or `no index cached yet · built-in
 seed of <date>`. The binary carries a seed index of scored runs, shown until a fresher
@@ -1502,6 +1616,12 @@ that lands just after you paste a key into first-run setup is scored with that k
 A task that lands while there is no key at all is not judged. It is not marked
 judged either, so the next start scores it once a key exists.
 
+Quitting cancels unfinished scoring and waits at most one second for the pool's
+background work to stop. A cancelled score is left pending; the next ordinary launch retries
+it. After quitting, that pool work sends no new requests and writes no files, even if
+a late response arrives. A cancelled push keeps its unsent rows in `outbox.jsonl`
+for the next push. Scores saved before you quit stay saved.
+
 With `model_pool` on, the rows leave for the relay after each judged run and
 once more at start-up, under this install's own nonce and nothing else. The
 index is fetched once a day, checked against the key built into the binary —
@@ -1535,6 +1655,10 @@ own keypair, and `CODEAF_MODEL_POOL_RELAY_URL` with `models.pool.public_key`
 `codeaf services` lists the long-running processes started here and not yet stopped — a dev
 server, a watcher — one per line, tab separated: the name, the status, how long it has been
 up, what is watched for health, and where its log is.
+
+A shell command that has already finished keeps any background server or watcher
+it left running when the turn ends. Interrupting a command that is still running
+stops the command and its child processes.
 
 ```
 dev-server	running	2h	port:5173	/tmp/dev.log
@@ -1887,7 +2011,7 @@ a negative count is refused too. The command's own usage follows the line, and t
 short block of labelled rows. It needs no key and spends nothing.
 
 ```
-codeaf doctor [--db path]
+codeaf doctor [--db path] [--fix]
 ```
 
 Every row is labelled in the words a developer would search for:
@@ -1900,7 +2024,7 @@ spend            rail $20.00
 model calls      /home/you/.codeaf/logs/calls.jsonl · 26 KiB
 ```
 
-`key` comes first: whether this machine can reach a model at all, and where the key came
+`key` comes first: whether a default-service key is present, and where it came
 from — never the key itself. `store` names the file the journal and every derived table
 live in, and how big it is — `· not created` on a machine that has not made one yet. `spend`
 is the day against its limit, and `model calls` is where the call log is and what it
@@ -1918,6 +2042,50 @@ machine that counted, which is the opposite of the truth.
 
 That command is about this *install*. `/status` in the chat is about the conversation you
 are in. They are related and they are not the same reading.
+
+## Doctor provider key, git identity, gh sign-in and Windows Git Bash checks
+
+On every OS, `codeaf doctor` checks OpenRouter key auth without making a model call. Its
+`provider key` row reports `ok`, `invalid`, or `unknown`; an offline endpoint or a
+two-second timeout is `unknown`. An invalid key says
+`Your OpenRouter key stopped working. Sign in again.` Connect OpenRouter again.
+The `key` row above it still names the credential's source without printing it.
+
+Doctor on every OS, and the app wire's `health.check` on Windows, report git availability,
+`git config user.name`, `git config user.email`, and `gh auth status`. Each command
+has a two-second deadline. Fix identity with
+`git config --global user.name "Your Name"` and
+`git config --global user.email "you@example.com"`. Fix gh sign-in with
+`gh auth login --web`. Missing gh is information; install GitHub CLI when you need
+GitHub workflows. These probes inherit your normal environment, including
+`GH_TOKEN`; model shells continue to filter credentials.
+
+On Linux and macOS, desk setup and health reads run no git or gh commands,
+so they cannot prompt for access to gh credentials in the login Keychain. These
+command checks run only when you explicitly run `codeaf doctor`. Missing gh
+does not change its exit code.
+
+On Windows the same health checks use codeaf's shell resolver to find native Git
+Bash. Install Git for Windows or set `CODEAF_BASH` to its `bash.exe`. A package
+manager's git shim lookup has its own three-second ceiling. WSL's launcher does
+not count as Git Bash. Windows sign-in links and file opens use the Windows
+file protocol handler.
+
+## I deleted my codeaf home while the engine was stopping
+
+A running process remembers its original home directory. If you remove it or
+replace it with a different directory, attempts to make an identity or device
+refuse with `codeaf home was removed or replaced; restart codeaf to use the current folder`.
+Late saving work does not make a new identity there. If the engine is already
+stopping and still closing chats, it exits promptly when its original home is
+removed. With the home intact, stopping keeps its usual saving order and limits.
+A new process can still create a home on first use.
+
+## Repair a busy engine store or sync state — codeaf doctor --fix
+
+When an engine store lock or cross-computer sync issue exists on this computer, `codeaf doctor` adds `engine store` and `sync` rows naming a busy store holder (`busy · held by <command>, pid <pid>`), an `unfinished continue · chat <id>`, `duplicate rows · chat <id>`, or a `lapsed hold on this computer · chat <id>`. Healthy stores and clean sync state print nothing.
+
+Without `--fix`, `codeaf doctor` changes nothing. `codeaf doctor --fix` releases unfinished continues started by this computer, and retires duplicate branch copies whose turns are all already in the main chat, printing one `fixed:` line for each repair. A store lock whose process has ended is already free, so doctor neither reports nor removes it, and a busy store waits for its holder to finish or quit. It never touches another computer's live hold and never deletes a turn that exists only in the copy or scratch folder it inspects.
 
 ## codeaf help, and the verbs that take no flags at all
 
@@ -1984,3 +2152,59 @@ command says `nothing is being kept running.`
 For the current chat's background commands, watches or renders, use `/processes`
 in that chat. Click a process to open its log. The sidebar shows only running
 processes; finished logs remain available on demand without an ended count.
+
+## Desktop app quit and saving helpers
+
+Saving helpers started by the desktop app use a one-minute idle limit. While a
+reply is running or a save is still in progress, the app's engine sends a light
+health request about every 20 seconds to the helpers it started, so they stay
+ready. An idle app sends none: its saving helper exits after about one minute
+and stops using the processor, and the next save starts it again, which can add
+a short delay to that save. These requests never start or restart a helper, and
+failures are ignored.
+
+After the engine quits or is killed, the requests stop. Its saving helpers exit
+by themselves after about one minute without activity. Quit sends no shutdown
+request to a saving helper, so another window can continue saving through it;
+that activity delays its idle exit. A real saving operation starts a helper again
+when needed.
+
+A helper already running when the app connects keeps its existing idle limit.
+Terminal and command-line helpers keep their normal ten-minute idle limit.
+
+## Crew proposals in the desktop app stream beside the chat
+
+**Bring in helpers** asks the conversation's own model about the work without
+starting a turn or changing the chat's history or model context. The proposal
+arrives in complete lines, with its size and name before its helpers. Proposal
+generation asks for reasoning to be off, or the lowest level the provider supports.
+Your chat's reasoning setting stays the same. The default
+is the smallest useful crew, usually one to three helpers. Separate teams are
+proposed only for separate streams of work that each need multiple people.
+
+The final **Bring in helpers** ask still offers **Make the crew**, **Edit**, and
+**Keep it one agent**. If the stream stops after at least one helper, the ask
+keeps those helpers and says "Stopped after 2 helpers", with the actual count.
+An answer with no usable helpers leaves one quiet notice. Handles are limited to
+12 characters. Longer model-proposed handles are shortened at the last hyphen
+that fits, or to the first 12 characters, with numbering for clashes.
+
+Accepting a proposal keeps this conversation as manager and creates one flat
+crew. All helpers are seated under their approved handles before creation returns.
+Duplicate helper handles are refused before a crew is made. An automatic manager
+handle that clashes with a helper gets a free handle; the manager remains the same
+conversation. If setup fails after the crew is made, accepting the same proposal
+continues seating its missing helpers and reuses their original starts. Repeating
+a completed acceptance returns the same crew. Proposed reporting handles are recorded on members. Team groups do not
+create nested crews yet.
+
+## Log what codeaf asks GitHub (CODEAF_GITHUB_LOG, rate limit)
+
+Set `CODEAF_GITHUB_LOG` to a file to get one JSON line for each GitHub request
+codeaf makes: when, which factory route or loop caused it (`caller`), the method,
+the endpoint with names taken out (`/repos/:owner/:repo/issues/:n`), the status,
+and the rate limit GitHub reported (`res`, `rem`, `used`). A 304 does not count
+against the limit. `"m":"GH"` is a `gh` the engine ran. It is off by default. It
+never holds a token, a query, a body, a repository name or a file path. A `gh` run
+by an agent's own shell command is not in it: a jump in `used` between two lines
+that the lines do not explain was spent somewhere else on the same account.

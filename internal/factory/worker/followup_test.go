@@ -53,7 +53,7 @@ func TestQueuedCIRepairCrossesTheWorkerWireAndRetainsItsPR(t *testing.T) {
 					return factory.StageResult{Done: true, Tests: &factory.TestCounts{Passed: 2}, Claims: []factory.Claim{{Text: "regression test passes", OK: true, Evidence: "focused test", Medium: "test"}}}, nil
 				})}
 			})
-			it := factory.Item{Repo: "api", Num: 12, Kind: factory.KindIssue, Title: "Repair CI", State: factory.StateShipped, Publish: "pr", HeadCommit: head, Change: &factory.Change{Files: []factory.ChangedFile{{Path: "app.go"}}}, PullRequest: &factory.PullRequest{Number: 7, State: factory.PROpen, URL: "https://github.com/acme/api/pull/7", HeadSHA: head, ChecksRead: true, Checks: factory.PRChecks{Failed: 1}}, Stages: []factory.Stage{{Name: "proof", Kind: factory.StageChat}}, Stream: &factory.Stream{Phases: []factory.Phase{{Name: "proof", Kind: factory.StageChat, State: factory.PhaseDone}}}}
+			it := factory.Item{Tier: factory.TierOwner, Repo: "api", Num: 12, Kind: factory.KindIssue, Title: "Repair CI", State: factory.StateShipped, Publish: "pr", HeadCommit: head, Cap: 3, Change: &factory.Change{Files: []factory.ChangedFile{{Path: "app.go"}}}, PullRequest: &factory.PullRequest{Number: 7, State: factory.PROpen, URL: "https://github.com/acme/api/pull/7", HeadSHA: head, ChecksRead: true, Checks: factory.PRChecks{Failed: 1}}, Stages: []factory.Stage{{Name: "proof", Kind: factory.StageChat}}, Stream: &factory.Stream{Phases: []factory.Phase{{Name: "proof", Kind: factory.StageChat, State: factory.PhaseDone}}}}
 			factory.WatchPublishedPR(&it)
 			factory.QueueCIFollowUp(&it, time.Now())
 			saved, err := g.st.Create(it)

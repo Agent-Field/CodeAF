@@ -133,11 +133,15 @@ func appFileName(id string) string {
 
 // appToolKind is a call's kind, read off the engine's own family for the
 // tool and the account it acts through, never a list kept here.
-func appToolKind(tool, service string) string {
+func appToolKind(tool, service string, declared ...session.ActionCategory) string {
 	if service != "" {
 		return appwire.ToolConnector
 	}
-	switch session.ActionCategoryForTool(tool) {
+	category := session.ActionCategoryForTool(tool)
+	if len(declared) > 0 && declared[0] != "" {
+		category = declared[0]
+	}
+	switch category {
 	case session.ActionSearch:
 		if strings.HasPrefix(tool, "web_") {
 			return appwire.ToolWeb
@@ -198,6 +202,7 @@ func (b *appBackend) newTurnCalls(a *appAgent) {
 
 // callBegan records a call that began and answers its row.
 func (b *appBackend) callBegan(a *appAgent, agent string, turn uint64, event session.Event, title string) appwire.TurnTool {
+	category := b.clientToolEventCategory(a, event)
 	log := b.callLog(a)
 	var workspace string
 	b.locked(func() { workspace = a.view.Workspace })
@@ -227,7 +232,7 @@ func (b *appBackend) callBegan(a *appAgent, agent string, turn uint64, event ses
 		}
 		c.run = event.RunID
 		c.tool, c.args, c.hint, c.title, c.turn = event.Tool, event.Args, event.Hint, title, turn
-		kind := appToolKind(event.Tool, event.Service)
+		kind := appToolKind(event.Tool, event.Service, category)
 		if c.facts.Ask != "" {
 			kind = appwire.ToolAsksFirst
 		}
@@ -293,6 +298,13 @@ func (b *appBackend) rowLocked(agent string, c *appCall) appwire.TurnTool {
 	row := appwire.TurnTool{RunID: c.run, Agent: agent, Turn: c.turn, Call: c.id, Name: c.tool, Title: c.title, Phase: phase, OK: c.ok, Summary: c.summary, Detail: c.detail}
 	row.ToolFacts = c.factsLocked()
 	return row
+}
+
+// sayTool reads the live meter only after the caller has released its locks,
+// because a local conversation's Usage takes the session agent's lock.
+func (live *appLive) sayTool(row appwire.TurnTool) {
+	row.SpentUSD = appFigure(live.conn.Conv.Usage().CostUSD)
+	live.box.Event(appwire.EventTurnTool, row)
 }
 
 // factsLocked is a call's facts with its tail as it stands: three lines while
@@ -389,6 +401,7 @@ func (b *appBackend) callFinished(a *appAgent, event session.Event) {
 
 // callEnded records a call's end and answers its row.
 func (b *appBackend) callEnded(a *appAgent, agent string, turn uint64, event session.Event, title, summary, detail string, ok bool) appwire.TurnTool {
+	category := b.clientToolEventCategory(a, event)
 	log := b.callLog(a)
 	process := ""
 	if ok && !event.HarnessMade && !event.Refused && !event.RejectedBeforeRun {
@@ -399,7 +412,7 @@ func (b *appBackend) callEnded(a *appAgent, agent string, turn uint64, event ses
 		c := log.calls[event.CallID]
 		if c == nil {
 			c = &appCall{id: event.CallID, tool: event.Tool, args: event.Args, turn: turn}
-			c.facts.Kind = appToolKind(event.Tool, "")
+			c.facts.Kind = appToolKind(event.Tool, "", category)
 			if event.CallID != "" {
 				log.calls[event.CallID] = c
 				log.order = append(log.order, event.CallID)
@@ -468,7 +481,7 @@ func (b *appBackend) callAsked(a *appAgent, agent string, live *appLive, call, a
 		row = b.rowLocked(agent, c)
 	})
 	if known {
-		live.box.Event(appwire.EventTurnTool, row)
+		live.sayTool(row)
 	}
 }
 
@@ -517,7 +530,7 @@ func (b *appBackend) tickTools(a *appAgent, agent string, live *appLive) func() 
 				}
 			})
 			for _, row := range rows {
-				live.box.Event(appwire.EventTurnTool, row)
+				live.sayTool(row)
 			}
 		}
 	})
@@ -627,7 +640,7 @@ func (b *appBackend) appEntryFacts(a *appAgent, item session.DisplayEntry) appwi
 	facts.MediaAttempt = item.ToolResult.MediaAttempt()
 	var workspace string
 	b.locked(func() { workspace = a.view.Workspace })
-	facts.Kind = appToolKind(item.Tool, "")
+	facts.Kind = appToolKind(item.Tool, "", b.clientToolEventCategory(a, session.Event{Tool: item.Tool}))
 	facts.Input = appToolInput(facts.Kind, item.Tool, item.Args, item.Hint, workspace)
 	if path, adds, dels, ok := tui3.ToolFileChange(item.Tool, item.Args); ok {
 		facts.Files = []appwire.FileChange{{Path: path, Add: adds, Del: dels}}

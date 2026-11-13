@@ -215,13 +215,14 @@ func (h *actionHarness) agent() string {
 
 // actionWire is a client of the real appwire.Server.
 type actionWire struct {
-	t       *testing.T
-	in      *io.PipeWriter
-	mu      sync.Mutex
-	next    int
-	waiting map[int]chan actionFrame
-	hello   []string
-	stop    sync.Once
+	replyWithin time.Duration
+	t           *testing.T
+	in          *io.PipeWriter
+	mu          sync.Mutex
+	next        int
+	waiting     map[int]chan actionFrame
+	hello       []string
+	stop        sync.Once
 }
 
 type actionFrame struct {
@@ -292,10 +293,14 @@ func (w *actionWire) call(method string, params any) (json.RawMessage, *appwire.
 	if _, err := io.WriteString(w.in, line); err != nil {
 		w.t.Fatal(err)
 	}
+	within := w.replyWithin
+	if within <= 0 {
+		within = 30 * time.Second
+	}
 	select {
 	case f := <-ch:
 		return f.Result, f.Error
-	case <-time.After(30 * time.Second):
+	case <-time.After(within):
 		w.t.Fatalf("%s: no answer", method)
 		return nil, nil
 	}

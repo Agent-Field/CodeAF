@@ -33,6 +33,10 @@ import (
 // the span it covered, the last thing anybody said on it, and where its record
 // lives.
 type PlanTaskRow struct {
+	// HistoricalRun and HistoricalSession identify the retained run receipt
+	// before its roster notice arrives, without guessing from its title.
+	HistoricalRun     uint64 `json:",omitempty"`
+	HistoricalSession string `json:",omitempty"`
 	// Done, Running, Queued, Failed and Total summarize every task below a run root.
 	// They stay zero on ordinary task rows. Claimed work is running; pending and
 	// ready work is queued. Total includes every descendant store row.
@@ -57,8 +61,11 @@ type PlanTaskRow struct {
 	// driving its run when the next request arrived ([planTaskInterrupted]). It
 	// crosses remote reads as row data, the way Stopped does.
 	Interrupted bool
-	Seat        string
-	Parent      string
+	// Undriven marks ready work retained after its run's supervisor left this
+	// conversation. Its status stays ready for a later continuation.
+	Undriven bool `json:",omitempty"`
+	Seat     string
+	Parent   string
 	// Depth is the row's level below the page task; direct children are zero.
 	Depth int
 	// Waits is the tasks this row is held behind that are not its parent: the ids
@@ -147,6 +154,9 @@ func (row PlanTaskRow) StateWord() string {
 	if row.Interrupted {
 		return taskWordInterrupted
 	}
+	if row.Undriven && row.Status == string(plandb.StatusReady) {
+		return taskWordQueued
+	}
 	if row.Hold != "" && (row.Status == string(plandb.StatusReady) || row.Status == string(plandb.StatusRunning)) {
 		return taskWordQueued
 	}
@@ -185,7 +195,11 @@ type PlanTaskNote struct {
 // the description that is its work order, every note left on it, and the steps
 // its worker recorded.
 type PlanTaskPage struct {
-	Row PlanTaskRow
+	// Historical pages are retained receipts and accept no task actions.
+	Historical bool `json:",omitempty"`
+	// Worker is the transferred worker conversation for a historical page.
+	Worker []DisplayEntry `json:",omitempty"`
+	Row    PlanTaskRow
 	// Models are the run's accepted seats, including on a child page and before
 	// any spend was saved. Row.Model remains the ledger's historical reading.
 	Models      []PlanTaskModel `json:",omitempty"`
@@ -304,7 +318,7 @@ func (a *Agent) PlanTasks() []PlanTaskRow {
 func (a *Agent) planTasksIn(read *planTaskRead) []PlanTaskRow {
 	stores, plan := read.stores, read.plan
 	if len(stores) == 0 {
-		return nil
+		return a.historicalPlanRows(nil)
 	}
 	var rows []PlanTaskRow
 	copies := a.planDisplayRunCopy()
@@ -347,6 +361,7 @@ func (a *Agent) planTasksIn(read *planTaskRead) []PlanTaskRow {
 			}
 		}
 	}
+	rows = a.historicalPlanRows(rows)
 	if rows == nil {
 		return []PlanTaskRow{}
 	}
@@ -406,11 +421,13 @@ func (a *Agent) planTaskPageFor(id string, withProgram bool) (PlanTaskPage, plan
 	stores, plan, closeStores := a.openPlanReadHandles()
 	defer closeStores()
 	if len(stores) == 0 {
-		return PlanTaskPage{}, planProgramSource{}, false
+		page, ok := a.historicalPlanPage(id)
+		return page, planProgramSource{}, ok
 	}
 	store, task := planTaskIn(stores, plan.chat, id)
 	if task == nil {
-		return PlanTaskPage{}, planProgramSource{}, false
+		page, ok := a.historicalPlanPage(id)
+		return page, planProgramSource{}, ok
 	}
 	dir := filepath.Dir(store.Path())
 	spend := planSpendByTask(store.Path())
@@ -471,6 +488,9 @@ func (a *Agent) planTaskPageFor(id string, withProgram bool) (PlanTaskPage, plan
 	if usage, ok := planUsageByTask(store.Path())[task.ID]; ok {
 		pageRow.Model, pageRow.Tokens = usage.model, usage.tokens
 	}
+	if pageRow.Model == "" {
+		pageRow.Model = a.planWorkerRecordedModel(task.ID)
+	}
 	source := planProgramSource{dir: dir, id: task.ID, carried: carried[task.ID], copies: copies.or(pageRow.Folder)}
 	var program *PlanProgram
 	if withProgram {
@@ -496,11 +516,13 @@ func (a *Agent) planTaskPageFor(id string, withProgram bool) (PlanTaskPage, plan
 	}, source, true
 }
 
-// markPlanMachineHold copies only this row's refused start. An archived store
-// and a worker already running have no admission to wait for.
+// markPlanMachineHold copies this row's refused start and whether its run
+// still drives ready work. Archived work has no supervisor or admission here.
 func (a *Agent) markPlanMachineHold(row *PlanTaskRow, path string, root bool) {
 	a.beltMu.Lock()
 	run := a.beltRun
+	live := run != nil && !run.ending && run.store != nil && filepath.Clean(run.store.Path()) == filepath.Clean(path)
+	row.Undriven = row.Status == string(plandb.StatusReady) && !live
 	pending := run != nil && run.pending
 	held := run != nil && (pending || run.machineHeld[row.ID]) && run.store != nil && filepath.Clean(run.store.Path()) == filepath.Clean(path)
 	a.beltMu.Unlock()
@@ -534,7 +556,7 @@ func (a *Agent) markPlanInterrupted(row *PlanTaskRow) {
 			if notice.State == TaskInterrupted {
 				row.Interrupted = true
 			}
-			if notice.RecoveredCompletion {
+			if notice.RecoveredCompletion || localRunConflict(*notice) {
 				row.Status = string(notice.State)
 				row.Ended = notice.EndedAt
 				if notice.CostUSD > row.USD {

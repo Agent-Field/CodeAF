@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -44,6 +43,10 @@ type pendingDelivery struct {
 	RecoveryNextAt   time.Time
 	RetrySeen        time.Time
 }
+
+// admissionWaitTimeout includes queueing, pending deltas and the admission report.
+// Leave scheduling room for one full five-second request without multiplying waits.
+const admissionWaitTimeout = 5500 * time.Millisecond
 
 const deliveryRequestTimeout = 5 * time.Second
 const deliveryControlAttempts = 3
@@ -116,7 +119,11 @@ func (j *job) prepareDelivery(cur factory.Item, report factory.RunReport) (*pend
 	if err != nil {
 		return nil, err
 	}
-	p.Request, err = client.PrepareWorkerReport(api.FromRunReport(report), key)
+	wire := api.FromRunReport(report, j.admits)
+	if !j.admits.RoundCostTables {
+		wire.Cost = max(0, factory.JobSpent(cur)-factory.JobSpent(j.sent))
+	}
+	p.Request, err = client.PrepareWorkerReport(wire, key)
 	if err != nil {
 		return nil, err
 	}
@@ -137,7 +144,7 @@ func reportRetryable(err error) bool {
 	if !errors.As(err, &refused) {
 		return true
 	}
-	return refused.Status >= 500 || refused.Status == http.StatusRequestTimeout || refused.Status == http.StatusTooManyRequests
+	return api.WorkerResendable(refused.Status)
 }
 
 func (j *job) sendRequest(ctx context.Context, request client.PreparedWorkerReport) error {
@@ -157,7 +164,7 @@ func (j *job) sendPending(ctx context.Context) bool {
 	}
 	if p.Room != nil && !p.RoomSettled {
 		err := j.sendRequest(ctx, *p.Room)
-		if gone(err) {
+		if j.lostLease(err) {
 			return false
 		}
 		if err != nil && reportRetryable(err) {
@@ -171,7 +178,7 @@ func (j *job) sendPending(ctx context.Context) bool {
 	}
 	if !p.Empty {
 		err := j.sendRequest(ctx, p.Request)
-		if gone(err) {
+		if j.lostLease(err) {
 			return false
 		}
 		if err != nil {
@@ -187,6 +194,7 @@ func (j *job) sendPending(ctx context.Context) bool {
 	// This snapshot, rather than a later mirror read, is the acknowledged
 	// baseline. New work becomes a new delta only after this exact request lands.
 	j.sent = p.Snapshot
+	j.quiet = quietFlush{}
 	j.mu.Lock()
 	for _, id := range p.Delivered {
 		j.acknowledged[id] = true
@@ -221,7 +229,9 @@ func (j *job) retryDelivery(ctx context.Context) bool {
 }
 
 func (j *job) blockDelivery(reason string) {
+	j.mu.Lock()
 	j.blocked = reason
+	j.mu.Unlock()
 	if j.pending != nil {
 		j.pending.Reason = reason
 		_ = j.retainDeliverySnapshot()
@@ -232,7 +242,7 @@ func (j *job) blockDelivery(reason string) {
 	if cancel != nil {
 		cancel()
 	}
-	_ = j.o.Runner.Stop(j.id)
+	j.o.Runner.Withdraw(j.id)
 }
 
 // Retain the latest recorded mirror separately from the frozen request. This is
@@ -285,9 +295,16 @@ func (j *job) reportBlocked(ctx context.Context) bool {
 	}
 	j.controlTries++
 	err := j.sendRequest(ctx, *j.control)
-	if gone(err) {
+	if j.lostLease(err) {
 		return false
 	}
 	j.controlSent = err == nil
 	return true
+}
+
+// deliveryBlocked is the reporting state read by the heartbeat's signal path.
+func (j *job) deliveryBlocked() bool {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return j.blocked != ""
 }

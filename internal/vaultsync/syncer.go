@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/keys"
+	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
 // magic leads every vault object; the store refuses any object without a known
@@ -33,6 +35,8 @@ type VaultFile interface {
 	PutAt(id string, e keys.Entry, at time.Time) error
 	Delete(id string) error
 	Deleted(id string) (bool, error)
+	// Removed lists the tombstoned slot ids under a prefix, in one read.
+	Removed(prefix string) ([]string, error)
 }
 
 // ErrTampered reports a vault object whose bytes do not hash to its id.
@@ -41,6 +45,8 @@ var ErrTampered = errors.New("vaultsync: the vault object does not match its id 
 // Syncer moves one identity's vault between this device and the store. The
 // vault object is the sealed vault.enc, so the store never sees a secret.
 type Syncer struct {
+	// StorageOn prevents an upload round while the last relay answer is closed.
+	StorageOn func() bool
 	Store     blobstore.Store
 	Dir       directory.Client
 	Vault     VaultFile
@@ -57,6 +63,9 @@ type Syncer struct {
 // third device pushed in between, pulls again and pushes once more; a second
 // loss is returned, since looping would only hide a busy directory.
 func (s Syncer) Push(ctx context.Context) error {
+	if s.StorageOn != nil && !s.StorageOn() {
+		return wireauth.ErrStorageOff
+	}
 	if err := s.Capture(); err != nil {
 		return err
 	}
@@ -81,6 +90,17 @@ func (s Syncer) publish(ctx context.Context, old string) error {
 	if err != nil {
 		return err
 	}
+	// Pairing may switch the home after the pull. Never send the new set's
+	// saved keys through clients still bound to the old set.
+	var envelope struct {
+		CellKeyID string `json:"cell_key_id"`
+	}
+	if err := json.Unmarshal(enc, &envelope); err != nil {
+		return err
+	}
+	if envelope.CellKeyID != s.CellKeyID {
+		return keys.ErrOtherKey
+	}
 	return s.PushSealed(ctx, enc, old)
 }
 
@@ -89,6 +109,9 @@ func (s Syncer) publish(ctx context.Context, old string) error {
 // new identity's relay with the vault resealed for it, which no local file
 // holds yet.
 func (s Syncer) PushSealed(ctx context.Context, enc []byte, old string) error {
+	if s.StorageOn != nil && !s.StorageOn() {
+		return wireauth.ErrStorageOff
+	}
 	obj := append(bytes.Clone(magic), enc...)
 	rid := ridOf(obj)
 	if err := s.put(ctx, rid, obj); err != nil || rid == old {
@@ -126,18 +149,34 @@ func (s Syncer) pull(ctx context.Context) (string, error) {
 	if err != nil || rid == "" {
 		return "", err
 	}
+	return rid, s.pullAt(ctx, rid)
+}
+
+// PullAt merges the content named by the learner's durable applied state. The
+// caller uses this only as a change hint; it grants no coordination authority.
+func (s Syncer) PullAt(ctx context.Context, rid string) error {
+	if err := s.each(Carrier.captureEdits); err != nil {
+		return err
+	}
+	if rid == "" {
+		return nil
+	}
+	return s.pullAt(ctx, rid)
+}
+
+func (s Syncer) pullAt(ctx context.Context, rid string) error {
 	obj, err := s.Store.Get(ctx, rid)
 	if err != nil {
-		return "", err
+		return err
 	}
 	enc, err := verified(rid, obj)
 	if err != nil {
-		return "", err
+		return err
 	}
 	if err := s.Vault.Merge(enc); err != nil {
-		return "", err
+		return err
 	}
-	return rid, s.restoreCarried()
+	return s.restoreCarried()
 }
 
 // verified returns the vault.enc inside obj when obj hashes to rid.

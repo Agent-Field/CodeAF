@@ -160,6 +160,10 @@ func (a *app) teamsOverviewGrid(d *teamsDraw, teams []team, width, x, y int, com
 	}
 	out := make([]string, 0, height)
 	for row := 0; row < height; row++ {
+		if !d.visible(y+row, 1) {
+			out = append(out, "")
+			continue
+		}
 		var parts []string
 		for _, stack := range stacks {
 			line := ""
@@ -195,11 +199,13 @@ func (a *app) teamsOverviewCard(d *teamsDraw, t team, width, x, y int, compact b
 		dot = a.pal.accent(wallGlyphsFor(a.pal.ascii).marked)
 	}
 	add(dot + " " + a.pal.bold(a.pal.ink(t.Name)))
-	count := itoa(len(t.Members)) + " conversations"
-	if len(t.Members) == 1 {
-		count = "1 conversation"
+	if len(t.Members) > 0 {
+		count := itoa(len(t.Members)) + " conversations"
+		if len(t.Members) == 1 {
+			count = "1 conversation"
+		}
+		add(a.pal.dim(count))
 	}
-	add(a.pal.dim(count))
 	if t.Closed() {
 		add(a.pal.dim("closed " + a.teamsDot() + " read-only history"))
 	} else {
@@ -244,13 +250,21 @@ func (a *app) teamsOverviewCard(d *teamsDraw, t team, width, x, y int, compact b
 			if preview.missing {
 				words = "Conversation unavailable"
 			}
+			elsewhere := a.teamsElsewhere(m)
+			if elsewhere != "" {
+				words = "Chat is on " + elsewhere
+			}
 			parts := wrap(words, inner)
 			for i := 0; i < 2; i++ {
 				line := ""
 				if i < len(parts) {
 					line = parts[i]
 				}
-				add(a.pal.ink(line))
+				if elsewhere != "" {
+					add(a.pal.dim(line))
+				} else {
+					add(a.pal.ink(line))
+				}
 			}
 		}
 	} else if !t.Closed() {
@@ -280,13 +294,18 @@ func (a *app) teamsOverviewCard(d *teamsDraw, t team, width, x, y int, compact b
 			}
 		}
 	}
-	card := wallCardBuild(a.pal, "", lines, x, y, width, 1, 0)
+	// Offscreen cards still contribute their height and keyboard stops. Their
+	// borders and row padding are painted only when the viewport reaches them.
+	rows := make([]string, len(lines)+2)
+	if d.visible(y, len(rows)) {
+		rows = wallCardBuild(a.pal, "", lines, x, y, width, 1, 0).rows
+	}
 	// Background and frame clicks use the team's door, after every narrower
 	// alias and descendant target. The border itself never changes emphasis.
-	for row := range card.rows {
+	for row := range rows {
 		target := selectTarget
 		target.x0, target.x1, target.y = x, x+width, y+row
 		d.targets = append(d.targets, target)
 	}
-	return card.rows
+	return rows
 }

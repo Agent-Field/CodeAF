@@ -85,9 +85,10 @@ type appWorkGraph struct {
 	crews crewMemo
 }
 
-// crewMemo is the crews' file as last read, by its stamp.
+// crewMemo is the crews last read for one crew's graph, by the store's stamp.
 type crewMemo struct {
 	stamp string
+	scope string
 	file  *teamstore.File
 }
 
@@ -252,7 +253,7 @@ func (b *appBackend) agentPlan(plan *graphPlan, id string) error {
 // crewPlan is the plan of a crew scope: the crew, every crew under it, and
 // every conversation that is a member of any of them.
 func (b *appBackend) crewPlan(plan *graphPlan) error {
-	file, sig, err := workGraphs.crewFile(b.crewProfile())
+	file, sig, err := workGraphs.crewFile(b.crewProfile(), plan.scope.ID)
 	if err != nil {
 		return err
 	}
@@ -309,24 +310,26 @@ func (g *appWorkGraph) locked(fn func()) {
 	fn()
 }
 
-// crewFile is the crews' file, parsed once per change of the file.
-func (g *appWorkGraph) crewFile(profile string) (*teamstore.File, string, error) {
+// crewFile is what crew id's graph reads of the crews ([teamstore.LoadAround]:
+// it, the crews around it and its members' other crews), read once per change
+// of the store ([teamstore.Stamp]).
+func (g *appWorkGraph) crewFile(profile, id string) (*teamstore.File, string, error) {
 	g.init()
-	sig := session.FileStamp(teamstore.Path(profile))
+	sig := teamstore.Stamp(profile)
 	var held *teamstore.File
 	g.locked(func() {
-		if g.crews.file != nil && g.crews.stamp == sig {
+		if g.crews.file != nil && g.crews.stamp == sig && g.crews.scope == id {
 			held = g.crews.file
 		}
 	})
 	if held != nil {
 		return held, sig, nil
 	}
-	file, err := teamstore.Load(profile)
+	file, err := teamstore.LoadAround(profile, id)
 	if err != nil {
 		return nil, "", err
 	}
-	g.locked(func() { g.crews = crewMemo{stamp: sig, file: file} })
+	g.locked(func() { g.crews = crewMemo{stamp: sig, scope: id, file: file} })
 	return file, sig, nil
 }
 

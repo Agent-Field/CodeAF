@@ -1,6 +1,7 @@
 package pipeline
 
 import (
+	"maps"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -15,12 +16,20 @@ import (
 // effort or fanout spells those keys and meets the runtime seal like any other
 // edit that does.
 //
-// THE ROWS A PERSON DEPENDS ON STAY WHERE THEY ARE. approve, any step of another
-// kind (a check's shell command, a post's forge verb, a gate's person) and any
-// name under fixed are locked: none is added, removed or moved here, so the
-// order of those rows among themselves never changes. That is this editor's
-// policy, matching the board's fixed rows; a reviewed pull request to the file
-// is the file changing, which is how the law changes.
+// THE ROWS A PERSON DEPENDS ON STAY WHERE THEY ARE. approve, a post's forge
+// verb, a gate's person and any name under fixed are locked: none is removed
+// or moved here, so the order of those rows among themselves never changes.
+// A NEW PERSON MAY BE ADDED: add_step of kind gate puts an approval in one
+// pipeline, waiting on whom its who names ("@handle", operator, or "" for the
+// job's person), with an optional prompt the person reads. A gate is a person,
+// so it takes no until, rounds, effort or fanout, and once in the file it is
+// locked like every other person. A CHECK IS NOT ONE OF THEM: its prompt is a
+// shell command whose exit code is the evidence, and add_step may add one
+// (kind check) as it adds a chat, through the same reviewed pull request that
+// would add it by hand. A check takes no effort or fanout (no model reads it)
+// and stops only on done, clean, green or proven, the words its runner checks.
+// That is this editor's policy, matching the board's fixed rows; a reviewed
+// pull request to the file is the file changing, which is how the law changes.
 //
 // A CHAT STEP MAY CROSS A PERSON, AND THE PREVIEW SAYS SO. Moving, adding or
 // removing a chat step before a gate changes what runs unattended before that
@@ -76,18 +85,19 @@ type GateChange struct {
 
 // checkStructure bounds add_step, remove_step and move_step without the file.
 // Each names a pipeline and a step; add_step and move_step name After, the step
-// it goes after, with "" for first; add_step alone takes a prompt (required)
-// and until, max, when, effort and fanout. No structural edit takes a kind or a
-// value: a step added here is a chat.
+// it goes after, with "" for first; add_step alone takes a prompt (required
+// but for a gate) and until, max, when, effort and fanout, and a kind: chat
+// (the default), check or gate, and who for a gate. No other structural edit
+// takes a kind, and none takes a value.
 func checkStructure(i int, op EditOp) (EditOp, *EditError) {
-	if op.Kind != nil || op.Value != nil {
-		return op, refuseEdit(EditBadOp, i, "%s takes no kind and no value; a step added here is a chat", op.Op)
+	if op.Value != nil || (op.Kind != nil && op.Op != OpAddStep) {
+		return op, refuseEdit(EditBadOp, i, "%s takes no kind and no value; only add_step names a kind", op.Op)
 	}
 	if op.Pipeline == "" {
 		return op, refuseEdit(EditBadOp, i, "%s names a pipeline", op.Op)
 	}
 	if !stepNamed(op.Pipeline) {
-		return op, refuseEdit(EditUnknownStep, i, "that is not a pipeline name")
+		return op, refusePipeline(EditUnknownStep, i, "that is not a pipeline name")
 	}
 	if !stepNamed(op.Name) {
 		return op, refuseEdit(EditUnknownStep, i, "that is not a step name")
@@ -129,8 +139,32 @@ func checkAnchor(i int, op EditOp) *EditError {
 }
 
 func checkAddStep(i int, op EditOp) (EditOp, *EditError) {
-	if op.Prompt == nil {
+	if op.Kind != nil {
+		k, ok := kindWord(*op.Kind)
+		if !ok || (k != "" && k != string(factory.StageCheck) && k != string(factory.StageGate) && k != string(factory.StageAgentField)) {
+			return op, refuseEdit(EditBadValue, i, "a step added here is a chat, a check, a gate or an agentfield step")
+		}
+		op.Kind = &k
+	}
+	if bad := checkAgentFieldWords(i, &op); bad != nil {
+		return op, bad
+	}
+	if op.Prompt == nil && !addsGate(op) {
 		return op, refuseEdit(EditBadValue, i, "add_step needs a prompt")
+	}
+	kind := ""
+	if op.Kind != nil {
+		kind = *op.Kind
+	}
+	if op.Until != nil && unsupportedBaselinePolicy(op.Name, kind, *op.Until) {
+		return op, refuseEdit(EditBadValue, i, "%s", baselinePolicyScope)
+	}
+	if bad := checkCheckWords(i, op); bad != nil {
+		return op, bad
+	}
+	op, bad := checkGateWords(i, op)
+	if bad != nil {
+		return op, bad
 	}
 	word, err := factory.StageWord(strings.ReplaceAll(op.Name, "-", ""))
 	if err != nil {
@@ -142,8 +176,102 @@ func checkAddStep(i int, op EditOp) (EditOp, *EditError) {
 	return checkStepFields(i, op)
 }
 
+// checkCheckWords refuses what a check cannot hold: effort and fanout (no
+// model reads it), and an until its runner does not check.
+func checkCheckWords(i int, op EditOp) *EditError {
+	if op.Kind == nil || *op.Kind != string(factory.StageCheck) {
+		return nil
+	}
+	if (op.Effort != nil && *op.Effort != "") || (op.Fanout != nil && *op.Fanout != "") {
+		return refuseEdit(EditBadValue, i, "a check runs a command, not a model; it takes no effort or fanout")
+	}
+	if op.Until != nil {
+		if _, free := mechanicalUntil(*op.Until); free {
+			return refuseEdit(EditBadValue, i, "a check stops on done, clean, green or proven")
+		}
+	}
+	return nil
+}
+
+// checkAgentFieldWords holds an added agentfield step to what it is: a
+// reasoner (its prompt, node.reasoner) and an input of the job's facts; no
+// model reads it, so it takes no until, rounds, effort or fanout.
+func checkAgentFieldWords(i int, op *EditOp) *EditError {
+	if op.Kind == nil || *op.Kind != string(factory.StageAgentField) {
+		return nil
+	}
+	if op.Prompt == nil {
+		return refuseEdit(EditBadValue, i, "an agentfield step names its reasoner as its prompt: node.reasoner")
+	}
+	target, err := factory.AgentFieldTargetWord(*op.Prompt)
+	if err != nil {
+		return refuseEdit(EditBadValue, i, "an agentfield step names its reasoner as node.reasoner: %s", err.Error())
+	}
+	op.Prompt = &target
+	if op.Until != nil || op.Max != nil || (op.Effort != nil && *op.Effort != "") || (op.Fanout != nil && *op.Fanout != "") {
+		return refuseEdit(EditBadValue, i, "an agentfield step runs a reasoner, not a model; it takes no until, max, effort or fanout")
+	}
+	if len(op.Input) > 40 {
+		return refuseEdit(EditTooLarge, i, "an agentfield step's input names at most 40 fields")
+	}
+	clean := make(map[string]string, len(op.Input))
+	for k, v := range op.Input {
+		k = strings.TrimSpace(k)
+		if k == "" || len(k) > 64 || len(v) > 4000 {
+			return refuseEdit(EditBadValue, i, "an input field is a name of at most 64 characters with text of at most 4000")
+		}
+		if bad := factory.AgentFieldInputProblem(v); bad != "" {
+			return refuseEdit(EditBadValue, i, "input.%s: %s", k, bad)
+		}
+		clean[k] = v
+	}
+	if op.Input != nil {
+		op.Input = clean
+	}
+	return nil
+}
+
+// addsGate says whether an add_step adds a person.
+func addsGate(op EditOp) bool {
+	return op.Kind != nil && *op.Kind == string(factory.StageGate)
+}
+
+// checkGateWords refuses who on any added step but a gate, and on a gate what
+// a person cannot hold: until and rounds (it stops when they answer), effort
+// and fanout (no model reads it). It answers who as the file spells it.
+func checkGateWords(i int, op EditOp) (EditOp, *EditError) {
+	if !addsGate(op) {
+		if op.Who != nil {
+			return op, refuseEdit(EditBadOp, i, "only a gate added here names who it waits on")
+		}
+		if op.Pass != nil {
+			return op, refuseEdit(EditBadOp, i, "only a gate added here says who may pass it")
+		}
+		return op, nil
+	}
+	if op.Pass != nil {
+		w, ok := factory.PassWord(*op.Pass)
+		if !ok {
+			return op, refuseEdit(EditBadValue, i, "pass is person, manager, or manager when <a condition of at most %d characters>", factory.PassWhenMost)
+		}
+		op.Pass = &w
+	}
+	if op.Until != nil || op.Max != nil || (op.Effort != nil && *op.Effort != "") || (op.Fanout != nil && *op.Fanout != "") {
+		return op, refuseEdit(EditBadValue, i, "a gate is a person; it takes no until, rounds, effort or fanout")
+	}
+	if op.Who == nil {
+		return op, nil
+	}
+	w, ok := factory.ApproverWord(*op.Who)
+	if !ok {
+		return op, refuseEdit(EditBadValue, i, "who is @handle, operator, or \"\" for the job's person")
+	}
+	op.Who = &w
+	return op, nil
+}
+
 func stepFieldsNamed(op EditOp) bool {
-	return op.Prompt != nil || op.Until != nil || op.Max != nil || op.When != nil || op.Effort != nil || op.Fanout != nil
+	return op.Label != nil || op.Prompt != nil || op.Until != nil || op.Max != nil || op.When != nil || op.Effort != nil || op.Fanout != nil
 }
 
 // structure applies one structural edit to its pipeline's list. A pipeline row
@@ -153,7 +281,7 @@ func (st *editState) structure(i int, op EditOp) *EditError {
 	kind := factory.Kind(op.Pipeline)
 	list, ok := st.out.Pipeline[kind]
 	if !ok {
-		return refuseEdit(EditUnknownStep, i, "%s is not a pipeline in this file", op.Pipeline)
+		return refusePipeline(EditUnknownStep, i, "%s is not a pipeline in this file", op.Pipeline)
 	}
 	row := op.Pipeline + "\x00" + op.Name
 	if st.placed[row] {
@@ -186,7 +314,11 @@ func (st *editState) addStep(i int, list []string, op EditOp) ([]string, *EditEr
 	if st.named[op.Name] {
 		return nil, refuseEdit(EditBadOp, i, "%s is edited by a set_step too; a step added here takes its fields on the add_step", op.Name)
 	}
-	if lockedStep(st.out, op.Name) {
+	// A GATE THE FILE ALREADY DEFINES may be listed in another pipeline: one
+	// more place a person answers takes nothing away from anyone ([define]
+	// still holds it to its own words).
+	gate := addsGate(op) && st.out.Steps[op.Name].Kind == string(factory.StageGate)
+	if lockedStep(st.out, op.Name) && !gate {
 		return nil, refuseEdit(EditLocked, i, "%s is locked and is not added here", op.Name)
 	}
 	if other := sameStage(list, op.Name); other != "" {
@@ -211,19 +343,38 @@ func (st *editState) addStep(i int, list []string, op EditOp) ([]string, *EditEr
 // edit names already says the same; its other fields are the definition's own.
 func (st *editState) define(i int, op EditOp) *EditError {
 	have, exists := st.out.Steps[op.Name]
+	want := have
+	if op.Prompt != nil {
+		want.Prompt, want.wrotePrompt = *op.Prompt, true
+	}
+	if op.Kind != nil {
+		want.Kind = *op.Kind
+	}
+	if op.Who != nil {
+		want.Who = *op.Who
+	}
+	if op.Input != nil {
+		want.Input = maps.Clone(op.Input)
+	}
+	switch {
+	case op.Pass != nil:
+		want.Pass = *op.Pass
+	case !exists && addsGate(op):
+		// A NEWLY ADDED APPROVE STEP IS A PERSON'S unless the edit says
+		// otherwise: neither Auto nor the manager passes it.
+		want.Pass = factory.PassForNewApprove
+	}
+	setStepWords(&want, op)
 	if !exists {
-		s := Step{Prompt: *op.Prompt, wrotePrompt: true}
-		setStepWords(&s, op)
-		st.out.Steps[op.Name] = s
+		st.out.Steps[op.Name] = want
 		st.newSteps = append(st.newSteps, op.Name)
 		return nil
 	}
-	want := have
-	want.Prompt = *op.Prompt
-	setStepWords(&want, op)
-	if want.Prompt != have.Prompt || want.Until != have.Until || want.Max != have.Max ||
-		want.When != have.When || want.Effort != have.Effort || want.Fanout != have.Fanout {
-		return refuseEdit(EditBadValue, i, "%s is already a step with other words; pick another name or add it as it is", op.Name)
+	if want.Label != have.Label || want.Kind != have.Kind || want.Prompt != have.Prompt || want.Until != have.Until || want.Max != have.Max ||
+		want.When != have.When || want.Effort != have.Effort || want.Fanout != have.Fanout || want.Who != have.Who || want.Pass != have.Pass || !maps.Equal(want.Input, have.Input) {
+		bad := refuseEdit(EditBadValue, i, "%s is already a step with other words; pick another name or add it as it is", op.Name)
+		bad.Clash = op.Name
+		return bad
 	}
 	return nil
 }
@@ -365,10 +516,16 @@ func (st *editState) proofEnded(kind string, first int, list []string) *EditErro
 // edit kept proof), unless this preview placed it there. A base proof row a
 // set_step made ordinary chat is work like any other.
 func (st *editState) strayAfterProof(kind, name string) bool {
+	_, placed := st.placedAt[kind+"\x00"+name]
+	// A CHECK THIS EDIT PUT AFTER PROOF runs a command on work the sheet has
+	// already vouched for; one the file already had there keeps its place.
+	if st.out.Steps[name].Kind == string(factory.StageCheck) {
+		return placed
+	}
 	if isPerson(st.out, name) || st.out.Steps[name].Kind != "" {
 		return false
 	}
-	if _, placed := st.placedAt[kind+"\x00"+name]; placed {
+	if placed {
 		return true
 	}
 	return !lockedStep(st.out, name) && !(proofStep(st.base, name) && proofStep(st.out, name))
@@ -431,14 +588,25 @@ func (st *editState) structureFacts(res *Edited) {
 	res.Structural = true
 	res.Order, res.Counts, res.Gates = []OrderChange{}, []KindCount{}, []GateChange{}
 	res.Added = append([]string{}, st.newSteps...)
+	res.Renamed = append([]Rename{}, st.renames...)
+	res.Pipelines = append([]PipelineChange{}, st.kinds...)
 	for _, kind := range sortedKinds(st.out) {
-		before, after := st.base.Pipeline[factory.Kind(kind)], st.out.Pipeline[factory.Kind(kind)]
+		// A renamed pipeline is compared with its list under its old name, so
+		// a rename alone moves no step.
+		was := kind
+		if from, ok := st.renamedKinds[kind]; ok {
+			was = from
+		}
+		before, after := st.base.Pipeline[factory.Kind(was)], st.out.Pipeline[factory.Kind(kind)]
+		if before == nil {
+			before = []string{}
+		}
 		res.Counts = append(res.Counts, KindCount{Pipeline: kind, Steps: len(after)})
 		if strings.Join(before, "\n") == strings.Join(after, "\n") {
 			continue
 		}
 		res.Order = append(res.Order, OrderChange{Pipeline: kind, Before: append([]string{}, before...), After: append([]string{}, after...)})
-		res.Gates = append(res.Gates, gateChanges(st.out, kind, before, after)...)
+		res.Gates = append(res.Gates, gateChanges(st.out, kind, st.renamedAs(before), after)...)
 	}
 }
 

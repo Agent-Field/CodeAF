@@ -24,6 +24,10 @@ func QueueItem(it *factory.Item, now time.Time) error {
 		return err
 	}
 	if err := strangerWrites(*it); err != nil {
+		var refused WriteAccessRefusal
+		if errors.As(err, &refused) {
+			factory.StampFailure(it, refused.Failure(*it, now))
+		}
 		return err
 	}
 	it.State = factory.StateQueued
@@ -39,6 +43,9 @@ func QueueItem(it *factory.Item, now time.Time) error {
 	it.PublishError = ""
 	it.Question, it.QKind = "", ""
 	it.Proof, it.Policy = nil, nil
+	if it.Stream != nil && begun(it.Stream) {
+		factory.ClearJobRun(it)
+	}
 	it.Stream = freshStream(it, now)
 	it.Note(now, "Run started")
 	loopSay(it, now, "said", "queued")
@@ -68,6 +75,9 @@ func StoredPaused(it factory.Item) bool { return storedPaused(it) }
 // ResumeItem takes a paused job that no worker holds off pause and puts it
 // back in the queue; the worker that pulls it goes on at the step it stopped in.
 func ResumeItem(it *factory.Item, now time.Time) error {
+	if err := factory.CheckPersonStop(*it); err != nil {
+		return err
+	}
 	if !storedPaused(*it) {
 		return fmt.Errorf("%s is not paused", it.Ref())
 	}
@@ -77,15 +87,68 @@ func ResumeItem(it *factory.Item, now time.Time) error {
 	return nil
 }
 
+// PauseItem holds a running job that no worker holds. Its work, step and
+// conversation stay in place until ResumeItem queues that same step again.
+func PauseItem(it *factory.Item, now time.Time) error {
+	if it.State != factory.StateRunning || factory.JobState(*it) != "running" || it.Publishing {
+		return fmt.Errorf("%s is not running", it.Ref())
+	}
+	if it.Stream == nil {
+		it.Stream = freshStream(it, now)
+	}
+	it.Stream.Paused = true
+	loopSay(it, now, "said", sayPaused)
+	return nil
+}
+
+// HoldQueued holds a queued job that no worker holds yet where it is: it
+// keeps its place, and no worker takes it until [ResumeItem] lets it go on.
+// A Start now waiting on it is withdrawn, because the hold is the later word.
+func HoldQueued(it *factory.Item, now time.Time) error {
+	if it.State != factory.StateQueued {
+		return fmt.Errorf("%s is not queued", it.Ref())
+	}
+	if it.Stream == nil {
+		it.Stream = freshStream(it, now)
+	}
+	it.Stream.Paused = true
+	it.OverLimit = false
+	loopSay(it, now, "said", sayPaused)
+	return nil
+}
+
 // AnswerHeld takes the question down from a job a worker holds: the worker's
 // runner hears the answer through the lease and logs it. An approve step is
 // passed (yes) or sent back to wait (no) here, because only a person's door
 // moves it. Passing it stamps the step's finish, which the brief's clock reads.
 func AnswerHeld(it *factory.Item, yes bool, now time.Time, words ...string) error {
+	if err := factory.CheckPersonStop(*it); err != nil {
+		return err
+	}
+	answerWords := ""
+	if len(words) > 0 {
+		answerWords = words[0]
+	}
+	if err := followAnswerRefusal(*it, yes, answerWords); err != nil {
+		return err
+	}
 	if it.State != factory.StateNeedsYou || strings.TrimSpace(it.Question) == "" {
 		return fmt.Errorf("%s is not waiting on you", it.Ref())
 	}
 	qkind := it.QKind
+	asking := ""
+	if it.Asking != nil {
+		asking = it.Asking.Stage
+	}
+	if qkind == factory.QKindSpendStopped {
+		it.StopAfterStep = false
+		it.Question, it.QKind, it.Asking = "", "", nil
+		it.State = factory.StateRunning
+		if !yes {
+			stopSpendingItem(it, now)
+		}
+		return nil
+	}
 	answer := ""
 	if len(words) > 0 {
 		answer = words[0]
@@ -95,7 +158,19 @@ func AnswerHeld(it *factory.Item, yes bool, now time.Time, words ...string) erro
 	it.Question, it.QKind = "", ""
 	it.Asking = nil
 	s := it.Stream
-	if s == nil || s.Cur < 0 || s.Cur >= len(s.Phases) || s.Phases[s.Cur].State != factory.PhaseWaiting {
+	if s == nil {
+		return nil
+	}
+	// AN APPROVAL PASSES THE APPROVE STEP IT ANSWERS, wherever the current
+	// step points: a record whose current step was moved off the waiting
+	// approve step (the owner's #22) still has exactly one approve step
+	// waiting, and that is the one the yes is for.
+	if qkind == factory.QKindApprove {
+		if g := waitingGate(s, asking); g >= 0 {
+			s.Cur = g
+		}
+	}
+	if s.Cur < 0 || s.Cur >= len(s.Phases) || s.Phases[s.Cur].State != factory.PhaseWaiting {
 		return nil
 	}
 	if yes && qkind == factory.QKindApprove {
@@ -103,13 +178,17 @@ func AnswerHeld(it *factory.Item, yes bool, now time.Time, words ...string) erro
 	}
 	ph := &s.Phases[s.Cur]
 	switch {
-	case ph.Kind != factory.StageGate:
+	case ph.Kind != factory.StageGate && (yes || qkind != factory.QKindApprove || !factory.WaitingToStart(*ph)):
 		setPhaseState(ph, factory.PhaseRunning, now)
 	case yes:
 		setPhaseState(ph, factory.PhaseDone, now)
+		factory.StampPassed(it, s.Cur)
+		loopSay(it, now, "ok", passedLine(ph.Name, ph.Passed))
 	default:
 		setPhaseState(ph, factory.PhasePending, now)
 	}
+	// Who was passing it is spent by any answer to the approval.
+	it.Passing = nil
 	return nil
 }
 
@@ -144,12 +223,37 @@ func grantFreshLoop(it *factory.Item, ph *factory.Phase) {
 // nothing here starts a run: the job is queued for a worker to pull. Every
 // other question is kept for the step's next round, as KeepAnswer does.
 func AnswerUnheld(it *factory.Item, yes bool, words string, now time.Time) error {
+	if err := factory.CheckPersonStop(*it); err != nil {
+		return err
+	}
+	if err := followAnswerRefusal(*it, yes, words); err != nil {
+		return err
+	}
+	if it.QKind == "cap" && factory.IsContinue(yes, words) {
+		ReleaseCap(it, now)
+		return nil
+	}
+	if it.QKind == factory.QKindSpendStopped {
+		if err := AnswerHeld(it, yes, now, words); err != nil {
+			return err
+		}
+		if yes {
+			it.State = factory.StateQueued
+		}
+		return nil
+	}
 	if it.QKind == factory.QKindOutOfAttempts && it.State == factory.StateNeedsYou && it.Stream != nil && it.Stream.Cur >= 0 && it.Stream.Cur < len(it.Stream.Phases) {
 		i := it.Stream.Cur
 		ph := &it.Stream.Phases[i]
 		switch factory.OutOfAttemptsChoice(yes, words) {
 		case factory.ChoiceCancel:
+			// A CANCEL IS THE PERSON'S STOP, as the Stop door's is: the job
+			// waits in Backlog and asks nothing. Without the mark it read as
+			// a failed job waiting on them ("Stopped by you" in Needs you)
+			// once a Start had taken an earlier stop down.
 			stopStored(it, now)
+			factory.MarkPersonStopped(it)
+			it.Asking = nil
 			return nil
 		case factory.ChoiceSendBack:
 			prev := factory.PreviousWork(it.Stream.Phases, i)
@@ -157,6 +261,12 @@ func AnswerUnheld(it *factory.Item, yes bool, words string, now time.Time) error
 				return fmt.Errorf("there is no previous work step to send back")
 			}
 			rewindToStep(it, i, prev, factory.SendBackReason(words), now)
+		case factory.ChoiceAccept:
+			if !factory.OffersAccept(*it) {
+				return errors.New(sayNotAcceptable)
+			}
+			acceptStored(it, i, factory.StuckReason(it.Question), now)
+			words = ""
 		default:
 			incomplete := ph.Verification != nil && ph.Verification.State == "incomplete"
 			grantAdditionalRound(it, yes, words)
@@ -196,11 +306,13 @@ func AnswerUnheld(it *factory.Item, yes bool, words string, now time.Time) error
 		return nil
 	}
 	if prev < 0 {
-		// Take down the question before stopping, as the warm runner does.
+		// Nothing to send back to: the no is a rejection that ends the job, as
+		// the warm runner's is. Take down the question before stopping.
 		if err := AnswerHeld(it, false, now); err != nil {
 			return err
 		}
 		stopStored(it, now)
+		it.EndRejected("", words, now)
 		return nil
 	}
 	words = strings.TrimSpace(words)
@@ -221,6 +333,48 @@ func AnswerUnheld(it *factory.Item, yes bool, words string, now time.Time) error
 // answer: the waiting step must be a non-gate step holding a finished result,
 // and the step right after it must be a pending gate. Anything else is left
 // exactly as it was and takes the ordinary path.
+// passedLine is the run's line for an approve step passed: `approve passed by
+// the manager · the plan names two files`, `approve passed by @ada`.
+func passedLine(name string, p *factory.Passed) string {
+	who := "a person"
+	switch {
+	case p == nil:
+	case p.By == factory.PassedByManager:
+		who = "the manager"
+	case p.Handle != "":
+		who = "@" + strings.TrimPrefix(p.Handle, "@")
+	}
+	line := name + " passed by " + who
+	if p != nil && strings.TrimSpace(p.Why) != "" {
+		line += " · " + strings.TrimSpace(p.Why)
+	}
+	return line
+}
+
+// waitingGate is the approve step an approval answers when the current step is
+// not a waiting one: the waiting approve step the question names, else the
+// only approve step waiting; -1 when the current step already waits or no
+// single approve step does.
+func waitingGate(s *factory.Stream, stage string) int {
+	if s.Cur >= 0 && s.Cur < len(s.Phases) && s.Phases[s.Cur].State == factory.PhaseWaiting {
+		return -1
+	}
+	found := -1
+	for i, ph := range s.Phases {
+		if ph.Kind != factory.StageGate || ph.State != factory.PhaseWaiting {
+			continue
+		}
+		if stage != "" && ph.Name == stage {
+			return i
+		}
+		if found >= 0 {
+			return -1
+		}
+		found = i
+	}
+	return found
+}
+
 func repairMisfiledGate(s *factory.Stream) {
 	ph := &s.Phases[s.Cur]
 	if ph.Kind == factory.StageGate || ph.Result == nil || !ph.Result.Done || s.Cur+1 >= len(s.Phases) {
@@ -235,9 +389,22 @@ func repairMisfiledGate(s *factory.Stream) {
 	s.Cur++
 }
 
+// ReleaseCap takes down the budget question of a job no runner waits on and
+// queues it again: its step carries on from where the cap stopped it.
+func ReleaseCap(it *factory.Item, now time.Time) {
+	it.Question, it.QKind, it.Asking = "", "", nil
+	it.State = factory.StateQueued
+	if s := it.Stream; s != nil && s.Cur >= 0 && s.Cur < len(s.Phases) && s.Phases[s.Cur].State == factory.PhaseWaiting {
+		setPhaseState(&s.Phases[s.Cur], factory.PhaseRunning, now)
+	}
+}
+
 // KeepAnswer is an answer to a job no worker holds any more: it is kept for
 // the step's next round, as the Runner keeps it, and the job is queued again.
 func KeepAnswer(it *factory.Item, yes bool, words string, now time.Time) error {
+	if err := factory.CheckPersonStop(*it); err != nil {
+		return err
+	}
 	if it.Asking == nil || it.Asking.With != factory.AskedYou {
 		return fmt.Errorf("%s is not waiting on you", it.Ref())
 	}
@@ -306,4 +473,43 @@ func PlanRevision(it factory.Item) error {
 		return refusePlanShape
 	}
 	return refusePlanFirstStep
+}
+
+// sayNotAcceptable refuses an accept the job does not offer.
+const sayNotAcceptable = "this step cannot be accepted as it stands: try again, send it back, or stop the job"
+
+// AcceptRefusal is the refusal of an accept the job does not offer.
+func AcceptRefusal() error { return errors.New(sayNotAcceptable) }
+
+// acceptStored is the person's accept, written on the item: step i is done
+// as it stands, with what was accepted kept on its result
+// ([factory.AcceptStep]). It answers the line said about it. The held runner
+// makes the same write on its own copy (loop.go's accept).
+func acceptStored(it *factory.Item, i int, why string, now time.Time) string {
+	ph := &it.Stream.Phases[i]
+	what := factory.AcceptStep(ph, why)
+	setPhaseState(ph, factory.PhaseDone, now)
+	ph.Left = 0
+	ph.Note = acceptedNote(what)
+	line := ph.Name + " accepted as it stands: " + strings.Join(what, "; ")
+	loopSay(it, now, "said", line)
+	return line
+}
+
+// acceptedNote is the step's own line once accepted: `accepted with 3 failing
+// checks`, or `accepted as it stands` when what fell short was not a check.
+func acceptedNote(what []string) string {
+	checks := 0
+	for _, w := range what {
+		if strings.HasSuffix(w, " · failed") {
+			checks++
+		}
+	}
+	switch {
+	case checks == 1:
+		return "accepted with 1 failing check"
+	case checks > 1:
+		return fmt.Sprintf("accepted with %d failing checks", checks)
+	}
+	return "accepted as it stands"
 }

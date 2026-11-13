@@ -252,38 +252,54 @@ func (b *appBackend) restingTasks(a *appAgent, id string) ([]appwire.Task, error
 		b.restSlots <- struct{}{}
 		defer func() { <-b.restSlots }()
 	}
-	a.gate.Lock()
-	stamp := b.restStamp(a)
-	live := b.liveOf(a)
-	if live == nil && b.memberQuiet(a) {
-		if tasks, ok := b.restMemo.get(id, stamp); ok {
-			a.gate.Unlock()
-			return tasks, nil
-		}
-		if tasks, ok := appRestRead(id, stamp); ok && b.restStamp(a) == stamp && b.restMemo.put(id, stamp, tasks) {
-			a.gate.Unlock()
-			return tasks, nil
-		}
-	}
-	if _, _, err := b.heldLiveLocked(a); err != nil {
-		a.gate.Unlock()
+	tasks, cached, tidied, stamp, wasLive, endRead, err := b.restingTasksAdmit(a, id)
+	if err != nil {
 		return nil, err
 	}
-	endRead := b.pinReader(a)
+	if cached {
+		return tasks, nil
+	}
+	if tidied {
+		return b.listTasksHeld(a, id)
+	}
 	defer endRead()
-	b.locked(func() { a.restRead = true })
-	a.gate.Unlock()
-	tasks, err := b.listTasksHeld(a, id)
+	tasks, err = b.listTasksHeld(a, id)
 	// Returning the last reference may close the conversation. Its writes must
 	// also match the pre-open snapshot; no post-release stamp can certify rows.
 	endRead()
 	if err != nil {
 		return nil, err
 	}
-	if live == nil && stamp != "" && b.restStamp(a) == stamp && b.memberRests(a) && b.restMemo.put(id, stamp, tasks) {
+	if !wasLive && stamp != "" && b.restStamp(a) == stamp && b.memberRests(a) && b.restMemo.put(id, stamp, tasks) {
 		appRestWrite(id, stamp, tasks)
 	}
 	return tasks, nil
+}
+
+func (b *appBackend) restingTasksAdmit(a *appAgent, id string) (tasks []appwire.Task, cached, tidied bool, stamp string, wasLive bool, endRead func(), err error) {
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	if b.tidied(id) || b.isClosing() {
+		return nil, false, true, "", false, nil, nil
+	}
+	stamp = b.restStamp(a)
+	live := b.liveOf(a)
+	if live == nil && b.memberQuiet(a) {
+		if tasks, ok := b.restMemo.get(id, stamp); ok {
+			return tasks, true, false, "", false, nil, nil
+		}
+		if tasks, ok := appRestRead(id, stamp); ok && b.restStamp(a) == stamp && b.restMemo.put(id, stamp, tasks) {
+			return tasks, true, false, "", false, nil, nil
+		}
+	}
+	if _, _, err := b.heldLiveLocked(a); err != nil {
+		return nil, false, false, "", false, nil, err
+	}
+	endRead = b.pinReader(a)
+	if live == nil {
+		b.locked(func() { a.restRead = true })
+	}
+	return nil, false, false, stamp, live != nil, endRead, nil
 }
 
 // appRestFile is a remembered task list on disk: under the cache root, so
@@ -474,9 +490,7 @@ func (b *appBackend) letRestingGo(a *appAgent) bool {
 	if running || b.liveNeedsYou(live) || b.serviceKeeps(id) || !appLiveWorkSettled(live) {
 		return false
 	}
-	b.locked(func() { a.crewHeld = false })
-	b.release(a)
-	return true
+	return b.releaseIdle(a)
 }
 
 // appLiveWorkSettled re-reads work under the admission gate. Foreground state and

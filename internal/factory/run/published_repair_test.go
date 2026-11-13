@@ -26,7 +26,7 @@ func TestPublishedRepairRecheckReturnsToMonitoringWithoutAnotherCommit(t *testin
 				return completedRepairReport(head), nil
 			})}, func(o *Options) {
 				o.Workdir = func(factory.Item) (string, error) { return dir, nil }
-				o.Push = func(string, string) error { t.Error("an unchanged PR was pushed"); return nil }
+				o.Push = func(string, string, ...func() error) error { t.Error("an unchanged PR was pushed"); return nil }
 			})
 			id := g.add("recheck published fix", chat("proof"))
 			if err := g.st.Update(id, func(it *factory.Item) error {

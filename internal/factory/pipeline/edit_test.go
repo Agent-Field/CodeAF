@@ -289,7 +289,9 @@ func TestRefusals(t *testing.T) {
 		{"twice the budget", editBase, []EditOp{{Op: OpSetBudget, Value: f(2)}, {Op: OpSetBudget, Value: f(3)}}, EditBadOp, 1},
 		{"second edit bad", editBase, []EditOp{{Op: OpSetStep, Name: "write", Max: i(2)}, {Op: OpSetStep, Name: "approve", Max: i(2)}}, EditLocked, 1},
 		{"malformed base", "pipeline: [", []EditOp{{Op: OpSetBudget, Value: f(2)}}, EditBaseInvalid, -1},
-		{"empty base", "", []EditOp{{Op: OpSetBudget, Value: f(2)}}, EditBaseInvalid, -1},
+		// "" is no file and edits the shipped defaults (edit_lists_test.go); a
+		// file of blanks is a blank file.
+		{"blank base", " \n", []EditOp{{Op: OpSetBudget, Value: f(2)}}, EditBaseInvalid, -1},
 		{"base with a problem", "model: x\n", []EditOp{{Op: OpSetBudget, Value: f(2)}}, EditBaseInvalid, -1},
 		// A built-in step's until cannot be cleared: the reader puts the shipped
 		// one back, so the file could not hold the edit.

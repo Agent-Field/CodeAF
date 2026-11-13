@@ -4,6 +4,8 @@ import (
 	"errors"
 	"io/fs"
 	"os"
+
+	"github.com/Agent-Field/codeaf/internal/inventory/layout"
 )
 
 // Pristine says whether the home holds nothing but what starting codeaf makes:
@@ -30,10 +32,22 @@ func Pristine(home string) (bool, error) {
 // holds rather than by its name.
 var startupRules = rules{
 	File: never, DeviceFile: never, legacyKeyFile: never, soloFile: never,
+	"vault.enc.lock": never, "pair-sharing.pending": never,
 	"config.json": never, "config.json.lock": never, "notices.json": never,
+	// The pairing name prompt writes this before checking whether the home can join.
+	"device-name":          never,
+	"teams.json.lock":      never,
+	"app.lock":             never,
+	"model-catalog-*.json": catalogCache, // Provider catalog caches are fetched again on demand.
+	"knowledge": within(rules{
+		".worker.lock":         never,
+		".discovery-asked":     never, // the Memory page asking the worker for a count
+		"knowledge.sqlite":     knowledgeStartup,
+		"knowledge.sqlite-wal": never, "knowledge.sqlite-shm": never,
+	}),
 	"catalog.json": never, "model-catalog.json": never, "model-quirks.json": never,
 	"credits.json": never, "logs": never, "bin": never, "cache": never,
-	"chat.log": empty, "cas": empty,
+	"chat.log": never, "cas": empty,
 	"graph.db": bareGraph, "graph.db-wal": never, "graph.db-shm": never,
 	"pool": within(rules{
 		"doc.json": never, "doc.sig": never, "install": never,
@@ -41,7 +55,12 @@ var startupRules = rules{
 	}),
 	"telemetry": within(rules{"first_run": never, "install_id": never, "notice_seen": never}),
 	"v3": within(rules{
-		"history.jsonl": onlyCommands, "models.json": never, "lanes.json": never, "lanes.json.lock": never,
+		"automations": within(rules{
+			"automations.db":     automationStartup,
+			"automations.db-wal": never, "automations.db-shm": never,
+			"clock.lock": never, "clock.log": never, "environment.salt": never, "windows": never,
+		}),
+		"history.jsonl": onlyCommands, "models*.json": pickerCache, "lanes.json": never, "lanes.json.lock": never,
 		"lanes.log": never, "lanes": never, // provider facts fetched from the model catalogue, fetched again on demand
 		"draft-*.json": untypedDraft, "hosts": never, "standing": never,
 		"stores": within(rules{
@@ -57,9 +76,12 @@ var started = within(startupRules)
 // withinSession is one chat folder: its bookkeeping is made again on demand and
 // its transcript and memories are the chat itself.
 var withinSession = within(rules{
-	"meta.json": never, "presence.json": never,
+	"meta.json": never, "meta.lock": never, "presence.json": never,
+	// An owned chat starts with an empty repository before any request is sent.
+	"work": within(rules{".git": unopenedRepository}),
 	".cell": within(rules{
-		"meta.json": never, "session.json": never, "env": empty,
+		"meta.json": never, "session.json": never, ".furrowpolicy": never,
+		"env":            within(rules{layout.File: startupInventory}),
 		"memories.jsonl": empty, "transcript.jsonl": noTurns,
 	}),
 })

@@ -18,14 +18,15 @@ import (
 
 // offVerbs are the job doors that make the factory work on a job: start or
 // run it, run a step again, carry it on from a pause, publish it, merge it,
-// send it back, run its checks again, or open it on GitHub. postJob refuses
+// send it back, run its checks again, open it on GitHub, or comment on its
+// issue. postJob refuses
 // each of them, before anything is read or written, for a job whose
 // repository is off. A door that only reads, stops, drops or changes who a job
 // is for stays open: a person may still tidy a job that nothing works on.
 var offVerbs = map[string]bool{
-	"run": true, "start_now": true, "run_again": true, "steps/{sid}/rerun": true, "resume": true,
-	"approve": true, "retry_publish": true, "merge": true, "request_changes": true, "recheck": true,
-	"sync": true,
+	"run": true, "start_now": true, "run_again": true, "run-as-new": true, "steps/{sid}/rerun": true, "resume": true,
+	"publish_anyway": true, "approve": true, "retry_publish": true, "merge": true, "request_changes": true, "recheck": true,
+	"sync": true, "issue_comment": true, "pr-ready": true,
 }
 
 // repoSwitch is the switch the store keeps. A factory with no store of its
@@ -79,7 +80,8 @@ func onlyOn(s factory.Snapshot, sw factory.RepoSwitch) factory.Snapshot {
 // capability that cannot work is absent, not broken.
 func offJob(j *api.Job) {
 	j.RepoOff = true
-	j.Can.Run, j.Can.StartNow, j.Can.RunAgain = false, false, false
-	j.Can.Approve, j.Can.RetryPublish, j.Can.Merge = false, false, false
+	j.Can.RunAsNew = false
+	j.Can.Run, j.Can.StartNow, j.Can.RunAgain, j.Can.Resume = false, false, false, false
+	j.Can.Approve, j.Can.RetryPublish, j.Can.Merge, j.Can.PRReady = false, false, false, false
 	j.Controls.RerunStep, j.Controls.Sync = false, false
 }

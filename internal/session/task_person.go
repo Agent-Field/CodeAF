@@ -72,6 +72,9 @@ type taskJudgeVerdict struct {
 // WHAT IS STILL THEIRS, WORD FOR WORD, is the summary under the row and the
 // request the worker is told outranks anything a model wrote.
 func (a *Agent) StartTask(ctx context.Context, brief string, solo bool) (uint64, string, string, error) {
+	if err := a.CheckWork(); err != nil {
+		return 0, "", "", err
+	}
 	brief = strings.TrimSpace(brief)
 	if brief == "" {
 		return 0, "", "", errors.New("a task needs a brief")
@@ -85,7 +88,7 @@ func (a *Agent) StartTask(ctx context.Context, brief string, solo bool) (uint64,
 	// A TYPED TASK IS ITS OWN SOURCE: the command's words, captured here once so
 	// both roads below record the same directive (task_source.go).
 	ctx = withTaskSource(ctx, a.directiveSource(brief))
-	if bashBeltAsked() {
+	if bashBeltAsked() || a.taskComputerPreference() {
 		return a.startTaskRun(ctx, brief, solo, "")
 	}
 	return a.startTaskLegacy(ctx, brief, solo)

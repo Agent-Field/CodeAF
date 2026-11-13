@@ -466,6 +466,9 @@ func (a *app) runSendOffered() bool {
 // the same predicate as its key, so a word in this line is a working gesture on
 // the frame that drew it.
 func (a *app) runHint() string {
+	if a.conversationOpening {
+		return "esc cancel opening"
+	}
 	if a.questionWriting() {
 		// WHILE THE BOX IS A QUESTION'S, THE QUESTION'S ROW IS THE HINT.
 		// `enter steers it in · esc interrupt` over a box whose enter answers

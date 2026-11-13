@@ -81,6 +81,7 @@ func TestFactorySeamNamesGitHubOnlyWhileItPolls(t *testing.T) {
 
 // startFactoryPoll over no store starts nothing and does not spend the once.
 func TestFactoryPollOverNoStoreStartsNothing(t *testing.T) {
+	freshEngineFactoryStore(t)
 	startFactoryPoll(nil, "")
 	ran := false
 	factoryPoll.Do(func() { ran = true })
@@ -204,7 +205,7 @@ func TestFactorySeamRefreshWithNoGitHub(t *testing.T) {
 	}
 	seam := factorySeam(st, "", t.TempDir())
 	ctx := context.Background()
-	forgeID, _ := st.Add(ctx, factory.Item{Title: "from github", Repo: "api", Product: "acme", Num: 3, Origin: factory.OriginForge})
+	forgeID, _ := st.Add(ctx, factory.Item{Tier: factory.TierOwner, Title: "from github", Repo: "api", Product: "acme", Num: 3, Origin: factory.OriginForge})
 	mineID, _ := st.Add(ctx, factory.Item{Title: "typed", Repo: "api", Origin: factory.OriginTerminal})
 	_ = st.Annotate(mineID, func(it *factory.Item) error { it.Triage.Read = "a read"; return nil })
 	if err := seam.Refresh(ctx, forgeID); err == nil || !strings.Contains(err.Error(), "not connected") {

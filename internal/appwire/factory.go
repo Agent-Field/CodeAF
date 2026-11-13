@@ -34,6 +34,9 @@ import (
 // FeatureFactory is announced in hello when the engine serves factory.*.
 const FeatureFactory = "factory.remote"
 
+// FeatureFactoryPlanFilesAnswer announces structured plan files on step reads.
+const FeatureFactoryPlanFilesAnswer = "factory.plan_files_answer"
+
 // The states a connection is seen in.
 const (
 	FactoryOK            = "ok"
@@ -69,6 +72,23 @@ const factoryCallBudget = 25 * time.Second
 // FactoryCapabilities is what this engine can do about a factory, stated
 // plainly so an unsupported verb is absent from the screen and not broken.
 type FactoryCapabilities struct {
+	// CreateIssue carries the create request's explicit GitHub issue choice.
+	CreateIssue bool `json:"create_issue"`
+	// CreateGroup carries group and milestone labels on a new job.
+	CreateGroup bool `json:"create_group"`
+	// CreateBudget carries a new job's explicit initial budget.
+	CreateBudget bool `json:"create_budget"`
+	// JobContext replaces context attachments before a job's first run.
+	JobContext bool `json:"job_context"`
+	// CreateKey carries the caller's create key as Idempotency-Key. Unlike
+	// the other flags it also speaks for one factory: it is true only in an
+	// answer to factory.capabilities {factory} when that factory's GET
+	// /v1/features lists api.FeatureKeyedCreate. An older factory keeps every
+	// keyed answer, a refusal or a 5xx included, for a day, so the engine
+	// never sends it a key and an answer naming no factory says false.
+	CreateKey bool `json:"create_key"`
+	// CreateSplitFrom carries the job a new job was split from.
+	CreateSplitFrom bool `json:"create_split_from"`
 	// Contract is the factory API contract this engine speaks.
 	Contract int `json:"contract"`
 	// Remote: attach to, read and sign in to a factory served elsewhere.
@@ -110,10 +130,27 @@ type FactoryCapabilities struct {
 	// [FactoryRunnerAdmin]; whether THIS factory and THIS computer can take the
 	// change is read from factory.runners (slots_policy, live_capacity).
 	RunnerManage bool `json:"runner_manage"`
+	// Rules: factory.rules and factory.rules_set are served (feature
+	// factory.rules). True only for an engine that implements
+	// [FactoryRulesKeeper]; whether THIS caller may change them is the
+	// operator's answer, read from factory.me.
+	Rules bool `json:"rules"`
 	// PipelinePR: factory.pipeline_pr is served (feature factory.pipeline_pr).
 	// True only for an engine that implements [FactoryPipelineOpener]; whether
 	// THIS caller holds a sign-in and GitHub access is answered by the call.
 	PipelinePR bool `json:"pipeline_pr"`
+	// PipelinePRUpdate: factory.pipeline_pr takes pr and adds a commit to that
+	// open pull request (feature factory.pipeline_pr_update). True only for an
+	// engine that implements [FactoryPipelinePRUpdater].
+	PipelinePRUpdate bool `json:"pipeline_pr_update"`
+	// PipelineSourceRef: factory.pipeline_source takes ref and reads an open
+	// pipeline pull request's head (feature factory.pipeline_source_ref). True
+	// only for an engine that implements [FactoryPipelineSourceRefReader].
+	PipelineSourceRef bool `json:"pipeline_source_ref"`
+	// PipelinePRs: factory.pipeline_prs is served (feature
+	// factory.pipeline_prs). True only for an engine that implements
+	// [FactoryPipelinePRLister]. It reads and writes nothing else.
+	PipelinePRs bool `json:"pipeline_prs"`
 	// PipelineEdit: factory.pipeline_source and factory.pipeline_preview are
 	// served (feature factory.pipeline_edit). True only for an engine that
 	// implements [FactoryPipelineEditor]. Neither writes anything.
@@ -125,8 +162,42 @@ type FactoryCapabilities struct {
 	// move_step (feature factory.pipeline_edit_structure). True only for an
 	// engine that implements [FactoryPipelineStructureEditor].
 	PipelineEditStructure bool `json:"pipeline_edit_structure"`
-	MaxConnections        int  `json:"max_connections"`
-	MaxFlows              int  `json:"max_flows"`
+	// PipelineEditRules: this engine carries the file's own rules, ask_first
+	// and never on the source, previews set_list, and edits a missing file
+	// from the shipped defaults (feature factory.pipeline_edit_rules). True
+	// only for an engine that implements [FactoryPipelineRulesEditor].
+	PipelineEditRules bool `json:"pipeline_edit_rules"`
+	// SpendByRepo: factory.spend_by_repo is served (feature
+	// factory.spend_by_repo). True only for an engine that implements
+	// [FactorySpender]; a factory older than the route answers not found.
+	SpendByRepo bool `json:"spend_by_repo"`
+	// SpendByModel: factory.spend_by_model is served (feature
+	// factory.spend_by_model). True only for an engine that implements
+	// [FactoryModelSpender]; a factory older than the route answers not found.
+	SpendByModel bool `json:"spend_by_model"`
+	// JobEvents: factory.events_since is served and factory.event is pushed
+	// (feature factory.job_events); a factory older than the route answers supported false.
+	JobEvents bool `json:"job_events"`
+	// RepoFacts: factory.repo_facts is served (feature factory.repo_facts).
+	// True only for an engine that implements [FactoryRepoFactsReader]; a
+	// factory older than the route answers not found.
+	RepoFacts bool `json:"repo_facts"`
+	// RepoIssues reads one repository's GitHub issues through its Factory.
+	RepoIssues bool `json:"repo_issues"`
+	// RepoRead: factory.repo_read is served (feature factory.repo_read). True
+	// only for an engine that implements [FactoryRepoReader]; whether the
+	// factory has a checkout of a repository is answered by the call.
+	RepoRead bool `json:"repo_read"`
+	// GroupPolicy: factory.policy_get and factory.policy_set are served (feature
+	// factory.group_policy). True only for an engine that implements
+	// [FactoryGoAheads]; whether ONE factory keeps policies is its
+	// factory.features answer.
+	GroupPolicy bool `json:"group_policy"`
+	// WaitsOn: factory.waits_set is served (feature factory.waits_set), on the
+	// same terms as GroupPolicy.
+	WaitsOn        bool `json:"waits_on"`
+	MaxConnections int  `json:"max_connections"`
+	MaxFlows       int  `json:"max_flows"`
 }
 
 // FactoryConnection is one attached factory. URL is an origin with no path,
@@ -144,6 +215,21 @@ type FactoryConnection struct {
 	// is set only on this machine's own factory while another live codeaf
 	// holds its election, so it cannot be served here yet.
 	Reason string `json:"reason,omitempty"`
+}
+
+// FactoryCapabilitiesParams is factory.capabilities' request. Factory is
+// optional: named, the answer's create_key says whether a create key may be
+// sent to that one factory; every other flag describes the engine alone.
+type FactoryCapabilitiesParams struct {
+	Factory string `json:"factory,omitempty"`
+}
+
+// FactoryCreateKeys is an engine that sends a create key, and only to a
+// factory that says keyed_create. FactoryKeepsCreateKeys asks that factory
+// now; a factory that cannot be asked is false. An engine without it never
+// answers create_key true.
+type FactoryCreateKeys interface {
+	FactoryKeepsCreateKeys(ctx context.Context, id string) bool
 }
 
 // FactoryList is factory.list's answer.
@@ -193,14 +279,19 @@ type FactoryRepo struct {
 	Owner   string    `json:"owner"`
 	Private bool      `json:"private"`
 	Pushed  time.Time `json:"pushed"`
-	Open    int       `json:"open"`
+	// Open is GitHub's open_issues_count: open issues AND pull requests.
+	Open int `json:"open"`
+	// OpenIssues is open issues without pull requests, absent when the
+	// factory did not say (an older factory, or GitHub would not count them).
+	OpenIssues *int `json:"open_issues,omitempty"`
 }
 
 // FactoryRepos is factory.repos' answer.
 type FactoryRepos struct {
-	Factory   api.Factory   `json:"factory"`
-	Watched   []string      `json:"watched"`
-	Available []FactoryRepo `json:"available"`
+	AvailableReadAt time.Time     `json:"available_read_at,omitzero"`
+	Factory         api.Factory   `json:"factory"`
+	Watched         []string      `json:"watched"`
+	Available       []FactoryRepo `json:"available"`
 }
 
 // FactoryPipeline is factory.pipeline's answer: the repository's pipeline as
@@ -349,6 +440,7 @@ type Factory interface {
 func withFactoryFeature(hello Hello, e Engine) Hello {
 	if _, ok := e.(Factory); ok {
 		hello = withFeature(hello, FeatureFactory)
+		hello = withFeature(hello, FeatureFactoryPlanFilesAnswer)
 	}
 	return hello
 }
@@ -447,7 +539,7 @@ func factoryAccess(name string, call func(Factory, context.Context, string, stri
 }
 
 var factoryMethods = map[string]method{
-	"factory.capabilities": typed(func(e Engine, _ Empty) (*FactoryCapabilities, error) {
+	"factory.capabilities": typed(func(e Engine, p FactoryCapabilitiesParams) (*FactoryCapabilities, error) {
 		f, err := factoryOf(e, "factory.capabilities")
 		if err != nil {
 			return nil, err
@@ -455,6 +547,11 @@ var factoryMethods = map[string]method{
 		ctx, cancel := factoryCall()
 		defer cancel()
 		out, err := f.FactoryCapabilities(ctx)
+		// create_key is this route's to answer, for one named factory only.
+		out.CreateKey = false
+		if k, ok := f.(FactoryCreateKeys); ok && err == nil && strings.TrimSpace(p.Factory) != "" {
+			out.CreateKey = k.FactoryKeepsCreateKeys(ctx, strings.TrimSpace(p.Factory))
+		}
 		return &out, err
 	}),
 	"factory.list": typed(func(e Engine, _ Empty) (*FactoryList, error) {

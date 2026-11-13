@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -22,14 +24,14 @@ func TestIssueOnlyUpgradeErasesStandalonePRJobsAndKeepsLinkedPRs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	issue, err := floor.Create(factory.Item{Kind: factory.KindIssue, Repo: "acme/api", Num: 59, Title: "keep issue", State: factory.StateShipped, Publish: "pr", PullRequest: &factory.PullRequest{Number: 65, State: factory.PROpen, URL: "https://github.com/acme/api/pull/65"}, FollowUp: &factory.PRFollowUp{Kind: "ci", State: "watching", Limit: 2}})
+	issue, err := floor.Create(factory.Item{Tier: factory.TierOwner, Kind: factory.KindIssue, Repo: "acme/api", Num: 59, Title: "keep issue", State: factory.StateShipped, Publish: "pr", PullRequest: &factory.PullRequest{Number: 65, State: factory.PROpen, URL: "https://github.com/acme/api/pull/65"}, FollowUp: &factory.PRFollowUp{Kind: "ci", State: "watching", Limit: 2}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := floor.ForgetPRJob(issue.ID); err == nil {
 		t.Fatal("cleanup accepted an issue job")
 	}
-	pr, err := floor.Create(factory.Item{Kind: factory.KindPR, Repo: "acme/api", Num: 65, Title: "erase PR job", State: factory.StateQueued, Assignee: "owner"})
+	pr, err := floor.Create(factory.Item{Tier: factory.TierOwner, Kind: factory.KindPR, Repo: "acme/api", Num: 65, Title: "erase PR job", State: factory.StateQueued, Assignee: "owner"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +136,7 @@ func TestIssueOnlyUpgradeRemovesWorkForOrphanWorkerPRSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pr, err := mirror.Create(factory.Item{Kind: factory.KindPR, Repo: "acme/api", Num: 81, Title: "old remote PR"})
+	pr, err := mirror.Create(factory.Item{Tier: factory.TierOwner, Kind: factory.KindPR, Repo: "acme/api", Num: 81, Title: "old remote PR"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,5 +166,61 @@ func TestIssueOnlyUpgradeRemovesWorkForOrphanWorkerPRSnapshot(t *testing.T) {
 		if _, err := os.Stat(p); !os.IsNotExist(err) {
 			t.Fatalf("worker PR retained %s: %v", p, err)
 		}
+	}
+}
+
+// A PR JOB THE CLEAN-UP CANNOT FORGET NOW IS KEPT WHOLE, its history with it,
+// and the others still go: one such job once stopped the clean-up at every
+// launch, and the factory with it.
+func TestAPRJobThatCannotBeForgottenIsKeptWholeAndTheRestGo(t *testing.T) {
+	s := newLocalSetup(t)
+	floor, err := store.Open(v3FactoryRoot())
+	if err != nil {
+		t.Fatal(err)
+	}
+	held, err := floor.Create(factory.Item{Tier: factory.TierOwner, Kind: factory.KindPR, Repo: "acme/api", Num: 70, Title: "held PR job"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	free, err := floor.Create(factory.Item{Tier: factory.TierOwner, Kind: factory.KindPR, Repo: "acme/api", Num: 71, Title: "free PR job"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	history, err := record.Open(floor, record.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, it := range []factory.Item{held, free} {
+		if _, err := history.Append(context.Background(), record.Event{Kind: record.Started, Job: it.ID}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// This live process holds the first in its worker mirror.
+	mirror, err := store.Open(filepath.Join(floor.Root(), "workers", strconv.Itoa(os.Getpid()), "here"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := mirror.Save(held); err != nil {
+		t.Fatal(err)
+	}
+	if err := forgetFactoryPRJobs(context.Background(), floor, s.backend.localProfile()); err == nil {
+		t.Fatal("the held job was not named")
+	}
+	if _, err := floor.Get(held.ID); err != nil {
+		t.Fatalf("the held job is gone: %v", err)
+	}
+	if _, err := floor.Get(free.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("the free job was kept: %v", err)
+	}
+	events, err := history.Since(context.Background(), time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	kept := map[int]bool{}
+	for _, e := range events {
+		kept[e.Job] = true
+	}
+	if !kept[held.ID] || kept[free.ID] {
+		t.Fatalf("history kept %v, want only job %d", kept, held.ID)
 	}
 }

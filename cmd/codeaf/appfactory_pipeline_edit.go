@@ -29,14 +29,25 @@ package main
 // caller was given by SOURCE. There is no route to call, so there is nothing to
 // send, and the base a caller brings is never trusted beyond what the parser
 // reads of it.
+//
+// A MISSING FILE IS DESCRIBED HERE, NOT BY THE FACTORY. The route says only
+// that the default branch has no file, and that stays the only shape believed
+// of it. The engine then describes the shipped defaults itself
+// ([pipeline.InspectDefaults]), the same File its preview applies a base of ""
+// to, so the source and the preview of a missing file can never disagree. The
+// file the pull request then creates is this engine's defaults plus the edit;
+// it is reviewed like any other, and the factory's own runner reads it as a
+// file from then on.
 
 import (
 	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"maps"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -47,7 +58,15 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 )
 
-var _ appwire.FactoryPipelineEditor = (*appBackend)(nil)
+var (
+	_ appwire.FactoryPipelineEditor          = (*appBackend)(nil)
+	_ appwire.FactoryPipelineSourceRefReader = (*appBackend)(nil)
+)
+
+// PipelineSourceRefs marks this backend as one whose source reads an open
+// pipeline pull request by ref, which lets hello announce
+// factory.pipeline_source_ref.
+func (b *appBackend) PipelineSourceRefs() {}
 
 const (
 	appFactoryPipelineSourceSuffix = "/pipeline/edit-source"
@@ -74,9 +93,10 @@ func (b *appBackend) FactoryPipelineSource(ctx context.Context, p appwire.Factor
 		return appwire.FactoryPipelineSource{}, err
 	}
 	// THE FACTORY'S CLAIM IS REMEMBERED, per caller, repository, commit and exact
-	// text, and only for a file this engine accepted whole. The preview and the
-	// pull request look it up; the app's own booleans are never consulted.
-	if out.RuntimeFields && out.State == appwire.PipelineSourceFile && out.Editable {
+	// text, and only for a file this engine accepted whole, or for no file at
+	// all (text ""). The preview and the pull request look it up; the app's own
+	// booleans are never consulted.
+	if out.RuntimeFields && (out.State == appwire.PipelineSourceFile || out.State == appwire.PipelineSourceMissing) && out.Editable {
 		h.recordRuntime(p.Factory, who.row.URL, who.token, p.Repo, out.BaseSHA, out.Text)
 	}
 	h.touch(p.Factory)
@@ -93,6 +113,9 @@ func (b *appBackend) readPipelineSource(ctx context.Context, who adminWho, p app
 	}
 	owner, name, _ := strings.Cut(p.Repo, "/")
 	path := appFactoryRepoRoute + url.PathEscape(owner) + "/" + url.PathEscape(name) + appFactoryPipelineSourceSuffix
+	if p.Ref != "" {
+		path += "?ref=" + url.QueryEscape(p.Ref)
+	}
 	client := *h.client
 	client.Timeout = appFactoryPipelineSourceTimeout
 	r, err := h.linkDoWith(ctx, &client, who, http.MethodGet, path, nil, appFactoryPipelineSourceLimit)
@@ -117,13 +140,60 @@ var errPipelineSourceRuntimeUnattested = appwire.Errorf(appwire.CodeEngine, "thi
 
 var errPipelineSourceUnreadable = appwire.Errorf(appwire.CodeEngine, "the factory sent a pipeline file this app cannot use; nothing was written")
 
-// classifyPipelineSource believes a reply only in its documented shape.
+// classifyPipelineSource believes a reply only in its documented shape. A read
+// it refuses, for any reason, still carries the copy the factory keeps
+// ([withKeptCopy]), so the person can stop using it.
 func classifyPipelineSource(r linkReply, p appwire.FactoryPipelineSourceParams) (appwire.FactoryPipelineSource, error) {
+	out, err := classifyPipelineSourceReply(r, p)
+	if err != nil {
+		return appwire.FactoryPipelineSource{}, withKeptCopy(err, r, p)
+	}
+	return out, nil
+}
+
+// withKeptCopy is err with, as its Detail, the copy of the repository's steps
+// the factory said it keeps ([appwire.FactoryPipelineSourceRefusal]): A COPY
+// STILL RUNS WHEN ITS FILE CANNOT BE SHOWN, whether the factory's read failed
+// (its failure says the copy) or this engine refused what it read (a copy
+// that spells words the factory did not vouch for, or does not read), and
+// without its version the app could never stop it. Only who saved it, when,
+// the version and the caller's Can are taken, and only in their documented
+// shape: a copy that names no time or version, or that cleared itself on this
+// read (main "same"), adds nothing, and an error that already has a Detail
+// keeps it.
+func withKeptCopy(err error, r linkReply, p appwire.FactoryPipelineSourceParams) error {
+	var we *appwire.Error
+	if r.bodyBad || !errors.As(err, &we) || we.Detail != nil {
+		return err
+	}
+	var said struct {
+		FactoryCopy *api.PipelineCopyState `json:"factory_copy"`
+		CopyVersion int                    `json:"copy_version"`
+		Can         *api.PipelineCan       `json:"can"`
+	}
+	if json.Unmarshal(r.body, &said) != nil || said.FactoryCopy == nil || said.FactoryCopy.At.IsZero() || said.CopyVersion < 1 {
+		return err
+	}
+	main := said.FactoryCopy.Main
+	if main != "" && main != api.PipelineCopyMainMissing && main != api.PipelineCopyMainDiffers {
+		return err
+	}
+	detail := appwire.FactoryPipelineSourceRefusal{Factory: p.Factory, Repo: p.Repo, CopyVersion: said.CopyVersion,
+		FactoryCopy: &appwire.FactoryPipelineCopy{By: cleanLinkText(said.FactoryCopy.By, 64), At: said.FactoryCopy.At.UTC(), Main: main}}
+	if said.Can != nil {
+		detail.Can = &appwire.FactoryPipelineCan{UseOnFactory: said.Can.UseOnFactory}
+	}
+	out := *we
+	out.Detail = detail
+	return &out
+}
+
+func classifyPipelineSourceReply(r linkReply, p appwire.FactoryPipelineSourceParams) (appwire.FactoryPipelineSource, error) {
 	if r.bodyBad {
 		return appwire.FactoryPipelineSource{}, errPipelineSourceUnreadable
 	}
 	if r.status != http.StatusOK {
-		return appwire.FactoryPipelineSource{}, pipelineSourceFailure(r)
+		return appwire.FactoryPipelineSource{}, pipelineSourceFailure(r, p)
 	}
 	var got api.PipelineEditSource
 	if json.Unmarshal(r.body, &got) != nil {
@@ -146,15 +216,19 @@ func classifyPipelineSource(r linkReply, p appwire.FactoryPipelineSourceParams) 
 	case string(rf) != "false":
 		return appwire.FactoryPipelineSource{}, errPipelineSourceUnreadable
 	}
-	if got.Repo != p.Repo || got.Path != factory.PipelineFile || !appwire.ValidPipelinePRCommit(got.BaseSHA) || !plainBranchName(got.DefaultBranch) {
+	if got.Repo != p.Repo || got.Path != factory.PipelineFile || !appwire.ValidPipelinePRCommit(got.BaseSHA) || !plainBranchName(got.DefaultBranch) ||
+		!pipelineSourceReadAsked(got, p) {
 		return appwire.FactoryPipelineSource{}, errPipelineSourceUnreadable
 	}
 	out := appwire.FactoryPipelineSource{Factory: p.Factory, Repo: p.Repo, Path: got.Path, DefaultBranch: got.DefaultBranch,
-		BaseSHA: got.BaseSHA, CanPush: got.CanPush, Archived: got.Archived, RuntimeFields: runtimeClaim, State: got.State}
+		BaseSHA: got.BaseSHA, Ref: got.Ref, PR: got.PR, CanPush: got.CanPush, Archived: got.Archived, RuntimeFields: runtimeClaim, State: got.State}
 
 	// What a state may carry. A field of another state is a contradiction.
 	parsed := func(s api.PipelineEditSource) []byte {
 		s.Factory, s.Repo, s.Path, s.DefaultBranch, s.BaseSHA, s.CanPush, s.Archived, s.RuntimeFields, s.State, s.Editable, s.Text, s.Problems = api.Factory{}, "", "", "", "", false, false, false, "", false, "", nil
+		// The factory's own copy is read on its own (pipelineSourceCopy), and
+		// what a ref read names by pipelineSourceReadAsked.
+		s.FactoryCopy, s.CopyVersion, s.Can, s.Ref, s.PR = nil, 0, nil, "", 0
 		raw, _ := json.Marshal(s)
 		return raw
 	}
@@ -163,6 +237,18 @@ func classifyPipelineSource(r linkReply, p appwire.FactoryPipelineSourceParams) 
 	case api.PipelineEditMissing, api.PipelineEditTooLarge:
 		if got.Editable || got.Text != "" || len(got.Problems) > 0 || !bytes.Equal(parsed(got), parsed(bare)) {
 			return appwire.FactoryPipelineSource{}, errPipelineSourceUnreadable
+		}
+		if got.State == api.PipelineEditMissing {
+			// No file: the shipped defaults are what the repository runs, and
+			// what an edit starts from (a preview of base_text "").
+			src := pipeline.InspectDefaults()
+			var local api.PipelineEditSource
+			local.SetParsed(src)
+			out.Editable = true
+			out.DefaultBudget, out.BudgetInFile = local.DefaultBudget, local.BudgetInFile
+			out.Pipelines, out.Steps, out.Fixed = local.Pipelines, local.Steps, local.Fixed
+			out.Rules, out.AskFirst, out.Never = &src.Rules, &src.AskFirst, &src.Never
+			pipelineSettings(&out, src)
 		}
 	case api.PipelineEditInvalid, api.PipelineEditFile:
 		if len(got.Text) > pipeline.EditTextMax || !utf8.ValidString(got.Text) {
@@ -197,10 +283,36 @@ func classifyPipelineSource(r linkReply, p appwire.FactoryPipelineSourceParams) 
 		out.Editable = true
 		out.DefaultBudget, out.BudgetInFile = local.DefaultBudget, local.BudgetInFile
 		out.Pipelines, out.Steps, out.Fixed = local.Pipelines, local.Steps, local.Fixed
+		// The file's own lines, read by this engine's parser from Text alone:
+		// the factory's house rules are never in the file.
+		out.Rules, out.AskFirst, out.Never = &src.Rules, &src.AskFirst, &src.Never
+		pipelineSettings(&out, src)
 	default:
 		return appwire.FactoryPipelineSource{}, errPipelineSourceUnreadable
 	}
+	// THE FACTORY'S OWN COPY, when it keeps one, is what its jobs run, so it
+	// is the source an edit starts from (appfactory_pipeline_copy.go).
+	if err := pipelineSourceCopy(&out, got, runtimeClaim); err != nil {
+		return appwire.FactoryPipelineSource{}, err
+	}
 	return out, nil
+}
+
+// pipelineSourceReadAsked is true when the answer is the read that was asked
+// for: a default-branch read names no ref or pull request; a ref read echoes
+// the ref, names the pull request (the one a number asked for) and the head
+// a commit asked for, and never carries the factory's copy, which is main's.
+func pipelineSourceReadAsked(got api.PipelineEditSource, p appwire.FactoryPipelineSourceParams) bool {
+	if p.Ref == "" {
+		return got.Ref == "" && got.PR == 0
+	}
+	if got.Ref != p.Ref || got.PR <= 0 || got.FactoryCopy != nil || got.CopyVersion != 0 {
+		return false
+	}
+	if appwire.ValidPipelinePRCommit(p.Ref) {
+		return got.BaseSHA == p.Ref
+	}
+	return strconv.Itoa(got.PR) == p.Ref
 }
 
 // cleanPipelineProblems words the engine's own reading of a file that does not
@@ -221,7 +333,7 @@ func cleanPipelineProblems(in []string) []string {
 func knownPipelineSourceStage(stage string) bool {
 	switch stage {
 	case api.PipelineEditStageCredential, api.PipelineEditStageRequest, api.PipelineEditStageRepository,
-		api.PipelineEditStageBase, api.PipelineEditStageFile:
+		api.PipelineEditStageBase, api.PipelineEditStageHead, api.PipelineEditStageFile:
 		return true
 	}
 	return false
@@ -231,7 +343,7 @@ func knownPipelineSourceStage(stage string) bool {
 // words are fixed here: the factory's own may echo a path or a token. A reply
 // that is not the route's typed failure (a proxy, the shared gate) goes through
 // the same fixed-words mapper the other factory doors use.
-func pipelineSourceFailure(r linkReply) error {
+func pipelineSourceFailure(r linkReply, p appwire.FactoryPipelineSourceParams) error {
 	var f api.PipelineEditSourceFailure
 	typed := json.Unmarshal(r.body, &f) == nil && pipelinePRRequestID.MatchString(f.RequestID) && knownPipelineSourceStage(f.Stage) &&
 		(f.GitHubStatus == 0 || (f.GitHubStatus >= 100 && f.GitHubStatus <= 599)) && r.status >= 400 && r.status < 600
@@ -241,6 +353,10 @@ func pipelineSourceFailure(r linkReply) error {
 	switch {
 	case r.status == http.StatusUnauthorized || f.Stage == api.PipelineEditStageCredential:
 		return appwire.Errorf(appwire.CodeGitHubExpired, "GitHub access for this sign-in is missing or expired; reconnect GitHub.")
+	case f.Stage == api.PipelineEditStageHead:
+		return appwire.Errorf(appwire.CodeConflict, "that is not an open pull request of this repository that changes only its pipeline, or its head has moved; read it again.")
+	case f.Stage == api.PipelineEditStageRequest && p.Ref != "":
+		return appwire.Errorf(appwire.CodeBadParams, "this factory cannot read a pull request's pipeline; update the factory.")
 	case f.Stage == api.PipelineEditStageRequest:
 		return appwire.Errorf(appwire.CodeBadParams, "the factory would not take that request as it is.")
 	case r.status == http.StatusNotFound:
@@ -305,46 +421,72 @@ func (b *appBackend) FactoryPipelinePreview(ctx context.Context, p appwire.Facto
 			}
 		}
 		out.Steps = append(out.Steps, appwire.FactoryPipelineStepChange{Name: c.Name, Fields: c.Fields,
-			Before: pipelineStepValues(c.Before), After: pipelineStepValues(c.After)})
+			Before: appwire.PipelineStepValues(c.Before), After: appwire.PipelineStepValues(c.After)})
 	}
 	if ed.Budget != nil {
 		out.Budget = &appwire.FactoryPipelineBudgetChange{Before: ed.Budget.Before, After: ed.Budget.After}
 	}
-	out.Structure = pipelineStructure(ed)
+	out.Structure = appwire.PipelineStructureOf(ed)
+	out.Lists = pipelineLists(ed)
+	out.Settings = pipelineSettingChanges(ed)
 	return out, nil
 }
 
-// pipelineStructure is the structural half of a preview on the wire, every
-// list an array however empty, and nil for a preview with no structural edit:
-// a field edit's answer is byte for byte what it always was.
-func pipelineStructure(ed pipeline.Edited) *appwire.FactoryPipelineStructure {
-	if !ed.Structural {
-		return nil
+// pipelineSettings puts the file's own settings, read by this engine's parser
+// from Text alone, on a source.
+func pipelineSettings(out *appwire.FactoryPipelineSource, src pipeline.Source) {
+	adapt, size, cost := src.Adapt, src.MaxSize, src.MaxCost
+	labels := append([]string{}, src.Labels...)
+	kinds := maps.Clone(src.AdaptKinds)
+	if kinds == nil {
+		kinds = map[string]string{}
 	}
-	s := &appwire.FactoryPipelineStructure{Order: []appwire.FactoryPipelineOrderChange{}, Added: append([]string{}, ed.Added...),
-		Counts: []appwire.FactoryPipelineCount{}, Gates: []appwire.FactoryPipelineGateChange{}}
-	for _, o := range ed.Order {
-		s.Order = append(s.Order, appwire.FactoryPipelineOrderChange{Pipeline: o.Pipeline, Before: append([]string{}, o.Before...), After: append([]string{}, o.After...)})
-	}
-	for _, c := range ed.Counts {
-		s.Counts = append(s.Counts, appwire.FactoryPipelineCount{Pipeline: c.Pipeline, Steps: c.Steps})
-	}
-	for _, g := range ed.Gates {
-		s.Gates = append(s.Gates, appwire.FactoryPipelineGateChange{Pipeline: g.Pipeline, Gate: g.Gate, Before: append([]string{}, g.Before...), After: append([]string{}, g.After...)})
-	}
-	return s
+	out.Adapt, out.Labels, out.MaxSize, out.MaxCost, out.AdaptKinds = &adapt, &labels, &size, &cost, &kinds
 }
 
+// pipelineSettingChanges is the settings half of a preview on the wire, nil for
+// a preview with no settings edit.
+func pipelineSettingChanges(ed pipeline.Edited) *[]appwire.FactoryPipelineSettingChange {
+	if !ed.SettingsEdited {
+		return nil
+	}
+	out := []appwire.FactoryPipelineSettingChange{}
+	for _, c := range ed.Settings {
+		out = append(out, appwire.FactoryPipelineSettingChange{Setting: c.Setting, Before: c.Before, After: c.After})
+	}
+	return &out
+}
+
+// pipelineLists is the list half of a preview on the wire, every list an array
+// however empty, and nil for a preview with no set_list: such an answer is byte
+// for byte what it always was.
+func pipelineLists(ed pipeline.Edited) *[]appwire.FactoryPipelineListChange {
+	if !ed.Listed {
+		return nil
+	}
+	out := []appwire.FactoryPipelineListChange{}
+	for _, l := range ed.Lists {
+		out = append(out, appwire.FactoryPipelineListChange{List: l.List, Before: append([]string{}, l.Before...), After: append([]string{}, l.After...)})
+	}
+	return &out
+}
+
+// PipelineLabelEdits attests that this preview applies label edits.
+func (*appBackend) PipelineLabelEdits() {}
+
+func (*appBackend) PipelineTestBaseline() {}
+
 func pipelineStepValues(v pipeline.StepView) appwire.FactoryPipelineStepValues {
-	return appwire.FactoryPipelineStepValues{Prompt: v.Prompt, Until: v.Until, Max: v.Max, When: v.When, Effort: v.Effort, Fanout: v.Fanout}
+	return appwire.FactoryPipelineStepValues{Label: v.Label, Prompt: v.Prompt, Until: v.Until, Max: v.Max, When: v.When, Effort: v.Effort, Fanout: v.Fanout}
 }
 
 // firstRuntimeEdit is the position of the first edit that names when, effort or
-// fanout, or -1. An explicit empty value counts: clearing a word is a runtime
+// fanout, adds a step of a kind other than chat (it writes `kind`), or sets
+// adapt for one pipeline (it writes `adapt:` as a map), or -1. An explicit empty value counts: clearing a word is a runtime
 // edit too, and so does an add_step that spells one for the step it adds.
 func firstRuntimeEdit(edits []appwire.FactoryPipelineEdit) int {
 	for i, e := range edits {
-		if e.When != nil || e.Effort != nil || e.Fanout != nil {
+		if e.When != nil || e.Effort != nil || e.Fanout != nil || (e.Kind != nil && *e.Kind != "" && *e.Kind != "chat") || (e.Who != nil && *e.Who != "") || (e.Op == appwire.PipelineEditSetAdapt && e.Pipeline != "") {
 			return i
 		}
 	}
@@ -354,25 +496,5 @@ func firstRuntimeEdit(edits []appwire.FactoryPipelineEdit) int {
 // pipelineEditRefusal is the wire error for an edit the file cannot take. The
 // words are fixed from the code; the text of the edit or the file is not echoed.
 func pipelineEditRefusal(p appwire.FactoryPipelinePreviewParams, bad *pipeline.EditError) error {
-	words := map[string]string{
-		pipeline.EditBaseInvalid:      "That file does not read cleanly, so it cannot be edited here.",
-		pipeline.EditBadOp:            "That edit is not one this editor makes.",
-		pipeline.EditLocked:           "That step is locked and cannot be edited.",
-		pipeline.EditUnknownStep:      "That is not a step in this pipeline.",
-		pipeline.EditBadValue:         "That value is out of bounds.",
-		pipeline.EditTooLarge:         "The edited file would be too large for a pull request.",
-		pipeline.EditNotRepresentable: "The pipeline file cannot hold that edit as asked.",
-	}[bad.Code]
-	if words == "" {
-		bad = &pipeline.EditError{Code: pipeline.EditBadOp, Op: -1}
-		words = "That edit is not one this editor makes."
-	}
-	detail := appwire.FactoryPipelineEditRefusal{Factory: p.Factory, Repo: p.Repo, Code: bad.Code}
-	if bad.Op >= 0 {
-		op := bad.Op
-		detail.Op = &op
-	}
-	err := appwire.Errorf(appwire.CodeBadParams, "%s", words+" Nothing was written.")
-	err.Detail = detail
-	return err
+	return appwire.PipelineEditRefusal(p.Factory, p.Repo, bad)
 }

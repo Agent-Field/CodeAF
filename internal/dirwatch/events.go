@@ -117,7 +117,7 @@ func (v view) forgotten() view {
 // through the view, and any other frame is a version.
 func (fr Frame) apply(st *State, v *view) {
 	switch {
-	case fr.Pong:
+	case fr.Pong, fr.Holds != nil:
 	case fr.Event != nil:
 		*v = v.withEvent(*fr.Event)
 		st.Online, st.Joined = v.online, v.joined

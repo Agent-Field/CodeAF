@@ -99,7 +99,7 @@ A tile reads top to bottom:
   same as the conversation itself
 - a small **activity line** on the bottom border while there is activity to show
 
-A conversation this window can only show as a snapshot (over a shared connection only the one
+A conversation this window can only show as a saved copy (over a shared connection only the one
 in front is live) says `seen 6m ago` and draws no spinner.
 
 **A tile that needs you** has the amber border, the only amber in the view, and its body ends
@@ -358,11 +358,13 @@ or `no file matches`. After a chosen mention, a space or punctuation such as
 
 ## Where teams are kept
 
-Teams are saved in your profile, in `teams.json`, every time one changes, and never in
-`config.json`. Over `--host` that is the far machine's profile, where the conversations run. A `spaces.json` from an earlier build is read once, its groups keep their
-names, members and colours, and it is renamed to `spaces.json.migrated`. A teams file that
-cannot be read is moved aside as `teams.json.unreadable-<number>` rather than written over,
-so nothing you made is lost.
+Teams are saved in your profile, in `teams.db`, every time one changes, and never in
+`config.json`. Over `--host` that is the far machine's profile, where the conversations run.
+A change writes only the teams it touched, and nothing but a full disk limits how many
+teams, members or briefs the store holds. A `teams.json` or `spaces.json` from an earlier
+build is not read: teams made before the store start over, and the old file is left where
+it is. A teams store that cannot be read is moved aside as `teams.db.unreadable-<number>`
+rather than written over, so nothing you made is lost.
 
 ## The wall said my team was not saved
 
@@ -427,18 +429,20 @@ cleanup is omitted from the saved conversation grid and membership pickers.
 
 No. Deleting a conversation removes its transcript, task records and team memberships. Memories
 already saved for a user, project or machine remain available, with their source identity.
-Use the Memories tab to forget a saved memory separately. Deleting a team also preserves those memories.
+Use the Memory tab to forget a saved memory separately. Deleting a team also preserves those memories.
 
 
 ## Ask the chat to start another chat on a different model
 
 Ask “start another chat on kimi-k3 to read the README.” Load the `chats` capability group if needed. The `start_chat` tool takes
 `brief`, the complete first message, and `model`, a catalog ID or unique model name.
-Omitting `model` uses the requesting chat's current model. An unknown or ambiguous
-name is refused before any chat opens. The new chat opens behind the current one,
+Omitting `model` saves the requesting chat's configured model in the new chat.
+When that model is not listed, the new chat runs for now on the replacement the
+requesting chat is using, or else on the first listed model, without saving it.
+An unknown or ambiguous name is refused before any chat opens. The new chat opens behind the current one,
 with its model and approval posture set before its first message. Your focus stays
 in the original chat. Its receipt confirms the request; the terminal reports whether
-it actually opened. This needs an attached interactive terminal that can open chats; app-only sessions do not offer this tool.
+it actually opened with `started chat · <model>`, naming the model the new chat runs on. This needs an attached interactive terminal that can open chats; app-only sessions do not offer this tool.
 Only one attached window can claim each request, so delivery to several windows or
 replay does not open copies. A failed launcher is not retried automatically; ask again
 to issue a new request. A new independent chat does not report its answer back here automatically; use a task
@@ -447,3 +451,153 @@ when that is the desired handoff.
 For a teammate, the manager's `team_start` also takes `model`, including for a new
 sub-team's manager. Omitting it keeps the profile default. Neither tool rewrites the
 profile or changes the requesting chat's model.
+
+## Do my teams show on my other computer?
+
+Team sharing is on by default for paired computers and needs sync storage approval on the hosted service (Settings → Devices → sync storage). Use
+**Settings → General → share teams**. Sharing includes teams, members, handles, the
+manager and team settings, plus recent Traffic as read-only history. Team changes
+show within a few seconds, even with no chat open. The Teams dropdown, Teams page
+and `@` list refresh without a restart.
+Both computers need to be running codeaf and able to reach the relay. An
+unpaired computer or a computer with sharing off keeps its teams to itself.
+Turning it off on either computer stops sharing between them: that computer
+stops sending and receiving teams and Traffic. What was already exchanged stays,
+including teams and encrypted copies in the vault.
+
+Open a member whose chat is on another paired computer to see
+`Continue this chat here?` on Home. Choose **continue here** to move the chat
+and open it. Choose **leave it there** to stay on Home with nothing changed.
+A chat that is not shared names the computer that has it: open it there. Until
+its name is known, it says `the other computer`. Under `--host` or `--at`, a
+member on another computer shows that notice; open it on its computer.
+
+A local member opens through the same path as its chat on Home, without an added
+ownership lookup or relay refusal. A chat positively known to be elsewhere still
+needs continuation.
+
+A send to one member or manager whose chat is known to be on another computer
+is refused: it would not reach that chat. Continue the chat here first, then
+send again. A room post or send to several members still reaches local members
+and names anyone not reached, such as `Not reached: @web (on desktop).` If every
+recipient is elsewhere, nothing is written. If the relay is unavailable, local messages still work. A local message may
+wait while this computer finishes sending an earlier change to the relay.
+
+## Will deleting a team on my laptop delete it on my desktop?
+
+Team sharing is on by default for paired computers and needs sync storage approval on the hosted service (Settings → Devices → sync storage). With **Settings → General →
+share teams** enabled on both computers, a deleted team stays deleted. A desktop that was
+offline catches up when it reconnects. Renaming its old copy while offline does
+not bring the team back. Deleting a team does not delete its conversations.
+Turning it off on either computer stops sharing between them. An unpaired
+computer keeps its teams to itself.
+
+Edits to different members or different parts of a team can both survive. If
+both computers change the same detail, the later change wins. Teams appear in
+creation order on both computers. Conflicting handles and parents are repaired
+consistently, and a removed member cannot remain the manager.
+
+## Does Traffic sync between computers?
+
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+
+Traffic sharing is on by default for paired computers through **Settings → General →
+share teams**. Turning it off on either computer stops sharing between them.
+Traffic from another computer shows its newest history, up to 32 lines per team and at most 16 KiB per team. Across all teams, each computer shares
+at most 64 KiB, with the most recently active teams first. It can take up to
+about 2 minutes to appear. Text longer than 2 KiB is shortened, with ` …` at
+the end. Your original local lines keep their full text.
+
+This is history only: it cannot be answered or acted on here. It never delivers
+a directive or question, starts or stops a chat, or wakes a member here. Replies
+within the shared history stay linked. As a computer shares newer lines, its
+older lines leave this view. They remain on the computer that wrote them until
+its ordinary log rotation.
+
+A send only to chats known to be elsewhere is refused. A send with local
+recipients is written once and names those not reached. Open a remote chat and
+choose **continue here** on Home before sending to it. Under `--host` or `--at`,
+open it on its computer. Decision details, spending records and working copies
+do not travel with Traffic. A decision or escalation whose recipient is
+elsewhere is refused before it changes anything. An unpaired computer or one
+with sharing off keeps its Traffic to itself. A history link that cannot find its message says it is
+on the other computer's history.
+
+## How do I turn on team sharing?
+
+Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
+
+Team sharing is on by default for paired computers. If it was turned off, open
+**Settings → General → share teams** on that computer and choose **on** to resume.
+Sharing exchanges teams, members, manager choices and settings, and recent Traffic as read-only history
+while the switch stays enabled on both paired computers.
+This setting belongs to each computer and does not follow synced preferences.
+An unpaired computer or one with sharing off keeps its teams to itself.
+
+Once both computers share teams, team changes arrive within a few seconds while
+codeaf runs and can reach the relay; recent Traffic can take about 2 minutes.
+Turn **share teams** to **off** to stop all team sharing immediately. Teams already received stay as they are.
+
+## Stop sharing teams with my other computer
+
+Team sharing is on by default for paired computers and needs sync storage approval on the hosted service (Settings → Devices → sync storage). Open **Settings → General →
+share teams** on either computer and choose **off**. Turning it off on either computer stops sharing
+teams, members, manager choices and settings, and recent Traffic between them immediately.
+That computer stops sending and receiving teams and Traffic. Teams already received
+stay as they are, including encrypted copies in the vault. Local chats and Traffic
+remain available. Retained history from the other computer is hidden until sharing resumes.
+This choice stays on that computer and does not follow synced preferences.
+An unpaired computer keeps its teams to itself.
+
+To resume sharing, choose **on** on any computer where you turned it off. Both
+computers need to be running codeaf and able to reach the relay. Team changes
+arrive within a few seconds; recent Traffic can take about 2 minutes.
+
+## First team sharing: backup, duplicate names and global managers
+
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+
+Paired computers exchange teams automatically while **Settings → General →
+share teams** is on, its default. An unpaired computer is unaffected. Before the
+first exchange, this computer keeps a copy of its teams as
+`teams.before-sharing.json` beside the original, once, never replacing an earlier
+copy. If that copy cannot be saved, incoming team changes wait and a sync notice
+says it will try again.
+
+If both computers had a team with the same name, both appear with their names
+unchanged. Rename one in its Settings to tell them apart.
+
+If both computers had a global manager, the older global team stays global. The
+other becomes an ordinary team under it and keeps its active manager. That
+manager is not added to former-manager history just because the team changed.
+When a conflicting appointment must be cleared, it is recorded in former-manager
+history only if that slot is empty or already holds the same appointment. An
+existing former appointment stays; the copy made before the first exchange keeps
+the original teams. Review manager choices in Teams.
+
+## Does a shared team's spending cap cover both computers?
+
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+
+A team's spending cap counts spending on each computer separately. Sharing the
+team and its cap does not combine the usage meters. A member continued on the
+other computer is metered there, while members still running here count here.
+For example, a $5 team cap uses separate local totals on the two computers.
+Review spending on each computer when work is split between them.
+
+## Pairing with replace: what happens to my teams?
+
+With share teams on, pairing with `--replace` puts this computer's teams aside,
+and the newly joined computers supply the team list. Local chats and Traffic stay
+here. The receipt says where the teams went:
+`This computer's teams were set aside to <path>.`
+That copy is named `teams.db.unreadable-<timestamp>` beside the original (or the
+older layout's equivalent name). Keep it to recover the original teams.
+
+The chat and a terminal ask before replacement, even when this computer has teams
+and no chats: `Pair with your other devices? This computer's existing chats stay
+here but stop syncing; shared memories and settings are cleared; with share teams on, teams are set
+aside while the other devices supply theirs. Provider keys saved on this computer
+stay here.` Only an explicit yes proceeds (`y` or `yes` in a terminal). Without a
+terminal, `--replace` goes ahead without asking and prints the receipt. With share
+teams off, replacement leaves this computer's teams as they are.

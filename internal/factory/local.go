@@ -8,10 +8,12 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 )
 
 // ItemStore is what the local seam needs of a store of items, and
@@ -73,6 +75,9 @@ func LocalSeam(st ItemStore, started time.Time, opts ...LocalOption) Seam {
 			if keeper, ok := st.(ReadCoster); ok && err == nil {
 				snap.LastReadCost, _, _ = keeper.ReadCost()
 			}
+			if keeper, ok := st.(ScoutCoster); ok && err == nil {
+				snap.ScoutPrice, _ = keeper.ScoutPrice()
+			}
 			// WHERE EACH REPOSITORY IS CHECKED OUT is read with the floor, so
 			// `r` can see an item has nowhere to run before it starts one
 			// ([Snapshot.Checkouts]). Only a seam told where repositories are
@@ -85,6 +90,14 @@ func LocalSeam(st ItemStore, started time.Time, opts ...LocalOption) Seam {
 		New: func(repo, words string) (int, error) {
 			return localNew(st, repo, words, time.Now(), o.recipe(strings.TrimSpace(repo)))
 		},
+		NewJob: func(repo, title, text string) (int, error) {
+			it, err := localJob(repo, title, text, time.Now(), o.recipe(strings.TrimSpace(repo)))
+			if err != nil {
+				return 0, err
+			}
+			made, err := st.Create(it)
+			return made.ID, err
+		},
 		Dismiss: func(id int) error {
 			return st.Update(id, func(it *Item) error {
 				it.State = StateDismissed
@@ -96,6 +109,7 @@ func LocalSeam(st ItemStore, started time.Time, opts ...LocalOption) Seam {
 				return errors.New("a budget is never below nothing")
 			}
 			return st.Update(id, func(it *Item) error {
+				TouchIssue(it)
 				it.Cap = usd
 				return nil
 			})
@@ -155,7 +169,16 @@ func LocalSeam(st ItemStore, started time.Time, opts ...LocalOption) Seam {
 	// THE EDIT DOOR knows by itself which bounds apply: an item none of whose
 	// stages has started is shaped before its run, and one with a stage begun
 	// is edited in its run, the tail only.
+	//
+	// WITH A RUNNER THAT EDITS STEPS ITSELF ([StepEditDoor], the lease's
+	// doors) the edit goes through it, as a person's edit on the factory
+	// does: a step removed leaves the run's phases not yet begun and a step
+	// moved runs in its new place, whether the job is queued or running, and
+	// a worker running it from its own copy is withdrawn.
 	seam.Edit = func(_ context.Context, id int, e RunEdit) (Item, []string, error) {
+		if door, ok := o.runner.(StepEditDoor); ok {
+			return door.EditSteps(id, e, o.itemRecipe(st, id))
+		}
 		var out Item
 		var lines []string
 		err := st.Update(id, func(it *Item) error {
@@ -163,7 +186,7 @@ func LocalSeam(st ItemStore, started time.Time, opts ...LocalOption) Seam {
 			if len(startedStages(*it)) > 0 {
 				mode = EditInRun
 			}
-			next, l, err := Edit(*it, e, o.recipe(it.Repo), mode)
+			next, l, err := Edit(*it, e, o.jobRecipe(*it), mode)
 			if err != nil {
 				return err
 			}
@@ -262,6 +285,14 @@ func WithRepositoryRecipeLoader(load func(repo, dir string) (Recipe, []Problem, 
 	return func(o *localOptions) { o.loadRepoRecipe = load }
 }
 
+// WithJobRecipeLoader reads the recipe one job is bounded by: the file it was
+// decided on (the factory's copy it carries, [Item.PipelineCopy], else main's
+// file), else, before that, its repository's (pipeline.JobFile). Without it a job is bounded by its
+// repository's read alone.
+func WithJobRecipeLoader(load func(it Item, dir string) (Recipe, []Problem, error)) LocalOption {
+	return func(o *localOptions) { o.loadJobRecipe = load }
+}
+
 func (o localOptions) defaultRecipe() Recipe {
 	if o.loadRecipe != nil {
 		r, _, _ := o.loadRecipe("")
@@ -279,6 +310,7 @@ func (o localOptions) load(dir string) (Recipe, []Problem, error) {
 
 type localOptions struct {
 	loadRepoRecipe func(string, string) (Recipe, []Problem, error)
+	loadJobRecipe  func(Item, string) (Recipe, []Problem, error)
 	loadRecipe     func(string) (Recipe, []Problem, error)
 	files          RecipeFiles
 	runner         RunnerDoors
@@ -314,6 +346,11 @@ type ReadCoster interface {
 	ReadCost() (last, avg float64, err error)
 }
 
+// ScoutCoster is a store that keeps what Look closer costs.
+type ScoutCoster interface {
+	ScoutPrice() (float64, error)
+}
+
 // annotator is a store that can write an item without stamping Changed,
 // which is how a read taken off for a refresh leaves the row's age alone.
 type annotator interface {
@@ -339,6 +376,14 @@ const (
 func localRefresh(seam *Seam, st ItemStore, refetch func(context.Context, Item) error) {
 	busy, _ := st.(BusyKeeper)
 	refresh := func(ctx context.Context, it Item) error {
+		write := st.Update
+		if a, ok := st.(annotator); ok {
+			write = a.Annotate
+		}
+		if err := write(it.ID, func(cur *Item) error { TouchIssue(cur); return nil }); err != nil {
+			return err
+		}
+
 		if busy != nil {
 			_ = busy.SetBusy(it.ID, BusyRefreshing)
 			defer func() { _ = busy.SetBusy(it.ID, "") }()
@@ -423,7 +468,8 @@ func localRefresh(seam *Seam, st ItemStore, refetch func(context.Context, Item) 
 // localTalk is the Talk door: the item's conversation when it has one, and
 // otherwise one made by maker and kept on the item. ONE PER ITEM: the store's
 // read-modify-write keeps the first conversation written, so two asks that
-// raced to make one both answer the same file.
+// raced to make one both answer the same file. Creation alone is system
+// activity; accepted personal messages record their touch separately.
 func localTalk(ctx context.Context, st ItemStore, id int, maker func(context.Context, Item) (string, error)) (string, error) {
 	it, err := localItem(st, id)
 	if err != nil {
@@ -492,13 +538,28 @@ func (o localOptions) recipe(repo string) Recipe {
 	return r
 }
 
-// itemRecipe is the recipe of the repository item id is on, read before the
-// store's update so no git read happens inside it; the default recipe when
-// the item or its folder is not known.
+// itemRecipe is the recipe item id is bounded by ([localOptions.jobRecipe]),
+// read before the store's update so no git read happens inside it; the
+// default recipe when the item or its folder is not known.
 func (o localOptions) itemRecipe(st ItemStore, id int) Recipe {
 	it, err := localItem(st, id)
 	if err != nil {
 		return DefaultRecipe()
+	}
+	return o.jobRecipe(it)
+}
+
+// jobRecipe is the recipe one job is bounded by: the job loader's, which reads
+// the file the job was decided on first, else its repository's
+// ([localOptions.recipe]).
+func (o localOptions) jobRecipe(it Item) Recipe {
+	if o.loadJobRecipe != nil && it.Repo != "" {
+		dir := ""
+		if o.dirs != nil {
+			dir = strings.TrimSpace(o.dirs(it.Repo))
+		}
+		r, _, _ := o.loadJobRecipe(it, dir)
+		return r
 	}
 	return o.recipe(it.Repo)
 }
@@ -538,7 +599,6 @@ func localLoad(st ItemStore, started, now time.Time, recipe func(repo string) Re
 	}
 	seen := map[string]bool{}
 	var names []string
-	y, m, d := now.Date()
 	for _, it := range items {
 		if it.Repo != "" && !seen[it.Repo] {
 			seen[it.Repo] = true
@@ -547,12 +607,8 @@ func localLoad(st ItemStore, started, now time.Time, recipe func(repo string) Re
 		if it.State == StateRunning {
 			snap.Benches++
 		}
-		if it.Stream != nil {
-			if sy, sm, sd := it.Changed.In(now.Location()).Date(); sy == y && sm == m && sd == d {
-				snap.Daily += it.Stream.Spent
-			}
-		}
 	}
+	snap.Daily = DailySpent(items, now)
 	sort.Strings(names)
 	for _, name := range names {
 		r := recipe(name)
@@ -561,21 +617,14 @@ func localLoad(st ItemStore, started, now time.Time, recipe func(repo string) Re
 	return snap, nil
 }
 
-// localNew makes an item from words typed on the floor. The chips lift out
-// (a cap, a gate word, a round count, an effort, a security pass) and what is left,
-// tidied, is the title. The stages are the repo's recipe for an issue, with
-// the chips written onto them: rounds onto review, the effort onto write,
-// security switched on or added.
-func localNew(st ItemStore, repo, words string, now time.Time, recipe Recipe) (int, error) {
-	repo = strings.TrimSpace(repo)
+// localJob keeps separate fields literal; only localNew reads terminal chips.
+func localJob(repo, title, text string, now time.Time, recipe Recipe) (Item, error) {
+	repo, title = strings.TrimSpace(repo), strings.TrimSpace(title)
 	if repo == "" {
-		return 0, errors.New("say which repository the work is on")
+		return Item{}, ErrNoRepo
 	}
-	c := Lift(words)
-	security, rest := LiftSecurity(c.Rest)
-	title := TidyWords(rest)
 	if title == "" {
-		return 0, errors.New("say what the work is, not only how")
+		return Item{}, errors.New("say what the work is, not only how")
 	}
 	it := Item{
 		Autonomy: AutonomyAuto,
@@ -588,11 +637,43 @@ func localNew(st ItemStore, repo, words string, now time.Time, recipe Recipe) (i
 		State:    StateNew,
 		Created:  now,
 		Changed:  now,
-		Cap:      c.Cap,
-		Ask:      &JobAsk{Text: title, At: now, Source: AskTUI},
+		Body:     text,
+		Ask:      &JobAsk{Text: text, At: now, Source: AskTUI},
 		Triage:   Triage{Type: GuessType(title)},
 		Stages:   CopyStages(recipe.For(KindIssue)),
 	}
+	return it, nil
+}
+
+var liftedAskSeparators = regexp.MustCompile(`(?:\s+[,;:])+`)
+
+func askAfterLifting(words, rest string) string {
+	rest = strings.TrimSpace(rest)
+	if rest == strings.TrimSpace(words) {
+		return rest
+	}
+	rest = liftedAskSeparators.ReplaceAllString(rest, "")
+	return strings.TrimRightFunc(rest, func(r rune) bool {
+		return unicode.IsSpace(r) || r == ',' || r == ';' || r == ':'
+	})
+}
+
+// localNew makes an item from words typed on the floor. The chips lift out
+// (a cap, a gate word, a round count, an effort, a security pass) and what is left,
+// tidied, is the title. The stages are the repo's recipe for an issue, with
+// the chips written onto them: rounds onto review, the effort onto write,
+// security switched on or added.
+func localNew(st ItemStore, repo, words string, now time.Time, recipe Recipe) (int, error) {
+	c := Lift(words)
+	security, rest := LiftSecurity(c.Rest)
+	title := TidyWords(rest)
+	it, err := localJob(repo, title, askAfterLifting(words, rest), now, recipe)
+	if err != nil {
+		return 0, err
+	}
+	// The ask drops orphan chip separators; the title alone is tidied.
+	it.Body = ""
+	it.Cap = c.Cap
 	// THE GATE WORDS PLACE APPROVE STEPS ([ApproveForGate]): `plan first`
 	// one after plan, `ship it` one before the result, `self-ship` none, so
 	// the item ships itself on green proof. A fixed approve stays.
@@ -652,13 +733,7 @@ func localSettings(seam *Seam, st ItemStore, o localOptions) {
 				return watched, nil, err
 			}
 			available, err := list(ctx)
-			// EACH REPOSITORY CARRIES WHERE IT IS CHECKED OUT, when this
-			// machine knows, because the floor's stages run only there.
-			if o.dirs != nil {
-				for i := range available {
-					available[i].Dir = strings.TrimSpace(o.dirs(available[i].Full))
-				}
-			}
+			AttachCheckouts(available, o.dirs)
 			return watched, available, err
 		}
 		seam.SetRepos = keeper.SetRepos
@@ -843,6 +918,15 @@ type RunnerDoors interface {
 	Reverify(id int) error
 }
 
+// StepEditDoor is a runner's own edit of a job's steps (internal/factory/lease's
+// Doors.EditSteps): the edit under recipe's bounds, the run's phases not yet
+// begun laid again from the edited steps, and a worker running the job from
+// its own copy withdrawn. The seam's Edit goes through it when its runner has
+// one.
+type StepEditDoor interface {
+	EditSteps(id int, edit RunEdit, recipe Recipe) (Item, []string, error)
+}
+
 // HoldDoor is the pause with its intent said ([Seam.Hold]): on holds, off goes
 // on, and an ask already true changes nothing. internal/factory/run's *Runner
 // answers it; a runner that does not leaves the seam's Hold door absent.
@@ -871,6 +955,11 @@ func localRunner(seam *Seam, o localOptions) {
 		seam.Hold = h.Hold
 	}
 	seam.Answer = r.Answer
+	if s, ok := r.(interface {
+		SpendAnswer(int, int, bool, func(Item) error) (Item, error)
+	}); ok {
+		seam.SpendAnswer = s.SpendAnswer
+	}
 	seam.Steer = r.Steer
 	seam.SignOff = r.SignOff
 	seam.SendBack = r.SendBack

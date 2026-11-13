@@ -45,6 +45,7 @@ func (h *HTTP) List(ctx context.Context) (l Listing, err error) {
 	hdr, err := h.doHeader(ctx, http.MethodGet, dirBase+"/list", nil, &l)
 	if err == nil {
 		l.Version, _ = strconv.ParseUint(hdr.Get(VersionHeader), 10, 64)
+		headTakeServices.Store(h.serviceKey(), hdr.Get(HeadTakeHeader) == "1")
 	}
 	return l, err
 }
@@ -53,11 +54,15 @@ func (h *HTTP) Cell(ctx context.Context, id string) (v CellView, err error) {
 	hdr, err := h.doHeader(ctx, http.MethodGet, cellPath(id, ""), nil, &v)
 	if err == nil {
 		conditionalServices.Store(h.serviceKey(), hdr.Get(ConditionalTakeHeader) == "1")
+		headTakeServices.Store(h.serviceKey(), hdr.Get(HeadTakeHeader) == "1")
 	}
 	return v, err
 }
 
 func (h *HTTP) PutDevice(ctx context.Context, id string, d Device) error {
+	if !h.Notes() {
+		d.Outbox, d.Took = nil, nil
+	}
 	return h.do(ctx, http.MethodPut, dirBase+"/devices/"+url.PathEscape(id), d, nil)
 }
 
@@ -70,16 +75,48 @@ func (h *HTTP) SetVault(ctx context.Context, old, next string) error {
 }
 
 func (h *HTTP) Create(ctx context.Context, id string, in CellInit) (v CellView, err error) {
+	if in.SavedAt != 0 && !h.savedTurnTimes(ctx, id) {
+		in.SavedAt = 0
+	}
+	if in.Folder != "" && !h.chatFolders(ctx, id) {
+		in.Folder = ""
+	}
 	return v, h.do(ctx, http.MethodPost, cellPath(id, ""), in, &v)
 }
 
 func (h *HTTP) Acquire(ctx context.Context, id string, o AcquireOpts) (v CellView, err error) {
-	if o.Force || o.RequireConditional {
+	// Only displacing a live holder needs the promise. A take of a lapsed lease
+	// is safe on every service: an older one still refuses a live holder
+	// atomically, raises the fence, and answers the head the caller compares
+	// with the one it saw, so a person is never kept from their own chat (#2072).
+	if o.Force {
 		if err := h.requireConditionalTake(ctx, id); err != nil {
 			return v, err
 		}
 	}
+	if o.Expect != nil && o.Expect.Head != "" {
+		if supported, _ := headTakeServices.Load(h.serviceKey()); supported != true {
+			if _, err := h.Cell(ctx, id); err != nil {
+				return v, err
+			}
+			if supported, _ = headTakeServices.Load(h.serviceKey()); supported != true {
+				return v, ErrConditionalTake
+			}
+		}
+	}
 	return v, h.do(ctx, http.MethodPost, cellPath(id, "acquire"), o, &v)
+}
+
+// HeadTakeHeader advertises atomic saved-head checks on conditional takes.
+const HeadTakeHeader = "Codeaf-Head-Takes"
+
+var headTakeServices sync.Map
+
+// HeadTakes reports the service's last advertised atomic head-check support.
+// Callers omit head observations on older relays, preserving their take wire.
+func (h *HTTP) HeadTakes() bool {
+	known, _ := headTakeServices.Load(h.serviceKey())
+	return known == true
 }
 
 // ConditionalTakeHeader is the service's promise that a take compares the
@@ -92,6 +129,65 @@ const ConditionalTakeHeader = "codeaf-conditional-takes"
 // its absence is checked again before each take, so a service updated while
 // codeaf runs moves chats at the next attempt instead of after a restart.
 var conditionalServices sync.Map
+
+// SavedTurnTimeHeader advertises optional sealed-head timestamps. Older
+// relays strictly decode signed bodies, so clients omit the field without it.
+const SavedTurnTimeHeader = "Codeaf-Saved-Turn-Times"
+
+var savedTimeServices sync.Map
+
+// UploadProgressHeader advertises a beat's optional upload progress, which
+// the record keeps on its lease. Clients send it only to a relay that says so.
+const UploadProgressHeader = "Codeaf-Upload-Progress"
+
+var uploadProgressServices sync.Map
+
+// WorkingBeatsHeader advertises a beat's optional working flag, which the
+// record keeps on its lease. Clients send it only to a relay that says so.
+const WorkingBeatsHeader = "Codeaf-Working-Beats"
+
+var workingServices sync.Map
+
+// ChatNotesHeader advertises a device record's optional outbox and took
+// lists, which carry a message from one computer to the chat another holds.
+// Older relays strictly decode signed bodies, so a device record carries them
+// only to a relay that says so.
+const ChatNotesHeader = "Codeaf-Chat-Notes"
+
+var noteServices sync.Map
+
+// Notes reports whether this relay keeps a device record's outbox and took
+// lists, as its last answer said; false until it has answered once.
+func (h *HTTP) Notes() bool {
+	known, _ := noteServices.Load(h.serviceKey())
+	return known == true
+}
+
+// ChatFoldersHeader advertises a record's optional sealed folder name. Older
+// relays strictly decode signed bodies, so clients omit the field without it.
+const ChatFoldersHeader = "Codeaf-Chat-Folders"
+
+var chatFolderServices sync.Map
+
+func (h *HTTP) chatFolders(ctx context.Context, id string) bool {
+	if known, ok := chatFolderServices.Load(h.serviceKey()); ok {
+		return known == true
+	}
+	_, _ = h.Cell(ctx, id)
+	known, _ := chatFolderServices.Load(h.serviceKey())
+	return known == true
+}
+
+func (h *HTTP) savedTurnTimes(ctx context.Context, id string) bool {
+	if known, ok := savedTimeServices.Load(h.serviceKey()); ok {
+		return known == true
+	}
+	// Ordinary startup and drive reads already teach the capability. A direct
+	// first publish probes once; inability to learn it keeps the older wire.
+	_, _ = h.Cell(ctx, id)
+	known, _ := savedTimeServices.Load(h.serviceKey())
+	return known == true
+}
 
 func (h *HTTP) serviceKey() string { return strings.TrimRight(h.base, "/") }
 
@@ -109,10 +205,23 @@ func (h *HTTP) requireConditionalTake(ctx context.Context, id string) error {
 }
 
 func (h *HTTP) Heartbeat(ctx context.Context, id string, b Beat) (v CellView, err error) {
+	// Ordinary reads teach the capability; a beat never probes for it.
+	if known, _ := uploadProgressServices.Load(h.serviceKey()); known != true {
+		b.UploadSent, b.UploadTotal = 0, 0
+	}
+	if known, _ := workingServices.Load(h.serviceKey()); known != true {
+		b.Working = false
+	}
 	return v, h.do(ctx, http.MethodPost, cellPath(id, "heartbeat"), b, &v)
 }
 
 func (h *HTTP) Publish(ctx context.Context, id string, p Publish) (v CellView, err error) {
+	if p.SavedAt != 0 && !h.savedTurnTimes(ctx, id) {
+		p.SavedAt = 0
+	}
+	if p.Folder != "" && !h.chatFolders(ctx, id) {
+		p.Folder = ""
+	}
 	return v, h.do(ctx, http.MethodPost, cellPath(id, "publish"), p, &v)
 }
 
@@ -164,9 +273,17 @@ func (h *HTTP) doHeader(ctx context.Context, method, path string, in, out any) (
 	h.sign(req, body)
 	resp, err := h.hc.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrUnreachable, err)
+		return nil, fmt.Errorf("%w: %w", ErrUnreachable, err)
 	}
 	defer resp.Body.Close()
+	// Open pairing routes share this transport but carry no directory capabilities.
+	if strings.HasPrefix(path, dirBase+"/") && resp.StatusCode < http.StatusInternalServerError {
+		savedTimeServices.Store(h.serviceKey(), resp.Header.Get(SavedTurnTimeHeader) == "1")
+		uploadProgressServices.Store(h.serviceKey(), resp.Header.Get(UploadProgressHeader) == "1")
+		workingServices.Store(h.serviceKey(), resp.Header.Get(WorkingBeatsHeader) == "1")
+		noteServices.Store(h.serviceKey(), resp.Header.Get(ChatNotesHeader) == "1")
+		chatFolderServices.Store(h.serviceKey(), resp.Header.Get(ChatFoldersHeader) == "1")
+	}
 	if resp.StatusCode >= 300 {
 		return resp.Header, refusal(resp)
 	}
@@ -199,6 +316,13 @@ func refusal(resp *http.Response) error {
 	}
 	if resp.StatusCode == http.StatusNotFound {
 		return ErrTooOld
+	}
+	if resp.StatusCode >= http.StatusInternalServerError {
+		// Coordination can refuse before a directory handler has an error
+		// body. It is the same retryable refusal the coded answer names, not
+		// an unreachable network, so closing releases retry it and nothing
+		// tells a person to check a connection that works.
+		return fmt.Errorf("%w: %s", wireauth.ErrUnavailable, resp.Status)
 	}
 	return fmt.Errorf("directory: %s", resp.Status)
 }

@@ -2,7 +2,6 @@ package session
 
 import (
 	"errors"
-	"path/filepath"
 	"strings"
 )
 
@@ -39,7 +38,7 @@ func SeedConversation(path, cwd, title, note string) error {
 	if !journal.appendNote(textMessage("user", note), noteMarks{}) {
 		return errors.New("the opening note could not be written")
 	}
-	dir := filepath.Dir(path)
+	dir := DirOf(path)
 	if title = strings.TrimSpace(title); title != "" {
 		if meta, err := LoadMeta(dir); err == nil && strings.TrimSpace(meta.ID) != "" {
 			meta.Title = title
@@ -53,7 +52,7 @@ func SeedConversation(path, cwd, title, note string) error {
 // meta id when the journal sits in a session folder, and "" (a fresh id) when
 // it does not, which is [openSessionFile]'s own rule for a flat file.
 func sessionIDOfFolder(path string) string {
-	meta, err := LoadMeta(filepath.Dir(path))
+	meta, err := LoadMeta(DirOf(path))
 	if err != nil {
 		return ""
 	}

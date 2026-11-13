@@ -18,8 +18,10 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/manual"
 	"github.com/Agent-Field/codeaf/internal/teams"
+	"github.com/Agent-Field/codeaf/internal/teams/teamstest"
 )
 
 // teamFixture is one profile with one team in it: a manager conversation, a
@@ -124,6 +126,10 @@ func teamAgent(t *testing.T, fixture teamFixture, transcript string, completer C
 	}
 	agent, _ := newTestAgent(t, completer, func(config *Config) {
 		config.ProfileDir = fixture.profile
+		config.TeamsPaired = func() bool {
+			_, err := identity.Load(home.Dir())
+			return err == nil && !identity.Solo(home.Dir())
+		}
 		config.SessionFile = transcript
 		config.Place = Place{Dir: filepath.Dir(transcript)}
 		if mutate != nil {
@@ -209,21 +215,12 @@ func TestTeamRoleDemotionRemovesOnlyLostVerbsAndRearmingAppends(t *testing.T) {
 	if last[len(last)-1].Name != teamCloseReportToolName || !holds(manager, teamSendToolName) {
 		t.Fatal("manager verbs were not rearmed at the tail")
 	}
-	path := teams.Path(fixture.profile)
-	original, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, []byte("["), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	restore := teamstest.Break(t, fixture.profile, []byte("["))
 	manager.teamBoundary()
 	if !holds(manager, teamSendToolName) {
 		t.Fatal("an unreadable teams file removed the last known manager verbs")
 	}
-	if err := os.WriteFile(path, original, 0o600); err != nil {
-		t.Fatal(err)
-	}
+	restore()
 	if err := teams.Update(fixture.profile, func(f *teams.File) error {
 		return f.RemoveMember(fixture.teamID, convKeyOf(t, fixture.manager))
 	}); err != nil {
@@ -245,9 +242,7 @@ func TestTeamToolsLeaveWhenTheTeamsFileIsGone(t *testing.T) {
 	fixture := newTeamFixture(t, true)
 	manager := teamAgent(t, fixture, fixture.manager, nil, nil)
 	manager.teamBoundary()
-	if err := os.Remove(teams.Path(fixture.profile)); err != nil {
-		t.Fatal(err)
-	}
+	teamstest.Hide(t, fixture.profile)
 	manager.teamBoundary()
 	for _, name := range teamToolNames {
 		if holds(manager, name) {

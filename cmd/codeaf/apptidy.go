@@ -14,7 +14,6 @@ package main
 // every conversation's words are indexed in for messages.
 
 import (
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -33,7 +32,7 @@ type appRenamer interface {
 func (b *appBackend) tidyMarks(view *appwire.Agent, archived bool) {
 	// A CONVERSATION AT WORK OR WAITING ON THE PERSON IS SAID AS SUCH, whatever
 	// mark it carries: a terminal may be working in an agent the app closed.
-	held := b.held(view.ID) || view.State == appwire.StateWorking || view.State == appwire.StateNeedsYou
+	held := b.held(view.ID) || view.State == appwire.StateStarting || view.State == appwire.StateWorking || view.State == appwire.StateNeedsYou
 	_ = b.state.read(func(f *appStateFile) {
 		if at, ok := f.Closed[view.ID]; ok && !held {
 			at := at
@@ -59,6 +58,7 @@ func (b *appBackend) tidyMarks(view *appwire.Agent, archived bool) {
 
 // ListAgentsIn is agents.list with its state and query.
 func (b *appBackend) ListAgentsIn(workspace, state, query string) ([]appwire.Agent, error) {
+	b.keepUnreadFrom()
 	all, err := b.ListAgents(workspace)
 	if err != nil {
 		return nil, err
@@ -86,6 +86,17 @@ func (b *appBackend) ListAgentsIn(workspace, state, query string) ([]appwire.Age
 			continue
 		}
 		out = append(out, a)
+	}
+	for i := range out {
+		// The list already read saved spend in its disk row.
+		b.sayingUnread(func() {
+			b.dressUnreadLocked(&out[i])
+			b.locked(func() {
+				if a := b.agents[out[i].ID]; a != nil {
+					a.saidSpend = out[i].SpentUSD
+				}
+			})
+		})
 	}
 	return out, nil
 }
@@ -121,7 +132,9 @@ func (b *appBackend) MoveToClosed(ids []string) error {
 // Archive: what the agent kept running is fenced and stopped FIRST, and an
 // agent whose process would not stop is left exactly as it was, open and
 // unmarked, with the error saying which. mark runs after the conversation is
-// let go and before the fence is released, so nothing starts in between.
+// let go and before the fence is released, so nothing starts in between, and
+// under the agent's gate, so no open lands between the two: an open waiting
+// on the gate finds the mark (a warm one is then refused, appwire.WarmOpener).
 // Only this agent's own services are touched.
 func (b *appBackend) closeOne(a *appAgent, mark func() error) error {
 	var agentID string
@@ -130,8 +143,41 @@ func (b *appBackend) closeOne(a *appAgent, mark func() error) error {
 	if err := b.stopAgentServices(agentID); err != nil {
 		return err
 	}
-	b.closeAgent(a)
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	b.closeAgentLocked(a)
 	return mark()
+}
+
+// tidied says the app's state marks the agent closed or archived.
+func (b *appBackend) tidied(id string) bool {
+	marked := false
+	_ = b.state.read(func(f *appStateFile) {
+		_, closed := f.Closed[id]
+		_, archived := f.Archived[id]
+		marked = closed || archived
+	})
+	return marked
+}
+
+// errAppKeptClosed is keepOpen's answer for an agent the person closed or
+// archived.
+var errAppKeptClosed = appwire.Errorf(appwire.CodeConflict, "closed by the person; only their own open takes it out")
+
+// keepOpen is ensure for what holds an agent open by itself, never at the
+// person's word (a crew's keeper, the roads that carry on work a quit or a
+// dead holder left): an agent the person closed or archived is left as it is,
+// unopened, since an open takes it out of Closed. The mark is read under the
+// agent's gate, where a close writes it, so a close that lands first is seen.
+func (b *appBackend) keepOpen(a *appAgent) (appwire.Agent, bool, error) {
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	var id string
+	b.locked(func() { id = a.view.ID })
+	if b.tidied(id) {
+		return appwire.Agent{}, false, errAppKeptClosed
+	}
+	return b.ensureLocked(a)
 }
 
 // Archive closes each agent and puts it away.
@@ -146,7 +192,7 @@ func (b *appBackend) Archive(ids []string) error {
 			var transcript string
 			b.locked(func() { transcript = a.transcript })
 			if transcript != "" {
-				if err := session.SetArchived(filepath.Dir(transcript), true); err != nil {
+				if err := session.SetArchived(session.DirOf(transcript), true); err != nil {
 					return appEngineError(err)
 				}
 			}
@@ -183,7 +229,7 @@ func (b *appBackend) Reopen(id string) (appwire.Agent, error) {
 		archived = archived || marked
 	})
 	if archived && transcript != "" {
-		if err := session.SetArchived(filepath.Dir(transcript), false); err != nil {
+		if err := session.SetArchived(session.DirOf(transcript), false); err != nil {
 			return appwire.Agent{}, appEngineError(err)
 		}
 	}
@@ -198,13 +244,7 @@ func (b *appBackend) Reopen(id string) (appwire.Agent, error) {
 
 // unmarkTidy forgets that an agent was closed or archived: it is open again.
 func (b *appBackend) unmarkTidy(id string) {
-	known := false
-	_ = b.state.read(func(f *appStateFile) {
-		_, closed := f.Closed[id]
-		_, archived := f.Archived[id]
-		known = closed || archived
-	})
-	if !known {
+	if !b.tidied(id) {
 		return
 	}
 	_ = b.state.write(func(f *appStateFile) error {
@@ -243,6 +283,9 @@ func (b *appBackend) Rename(id, title string) (appwire.Agent, error) {
 			live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 		}
 	})
+	// The answer says unread as agent.changed does, so a window that takes
+	// it over its row keeps the agent's dot.
+	view.Unread = b.unreadOf(view.ID)
 	return view, nil
 }
 
@@ -275,11 +318,12 @@ func (b *appBackend) sayAgent(a *appAgent) appwire.Agent {
 	var view appwire.Agent
 	b.locked(func() { view = a.view })
 	b.tidyMarks(&view, view.State == appwire.StateArchived)
+	b.dressUnread(&view)
 	b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 	return view
 }
 
-// SearchAll finds the query among agents, crews, tasks and what was said.
+// SearchAll finds the query among agents, crews, tasks, messages and factory jobs.
 func (b *appBackend) SearchAll(query string, perGroup int) ([]appwire.HitGroup, error) {
 	needle := strings.ToLower(query)
 	agents, err := b.ListAgents("")
@@ -315,7 +359,7 @@ func (b *appBackend) SearchAll(query string, perGroup int) ([]appwire.HitGroup, 
 			}
 		}
 	}
-	return []appwire.HitGroup{agentHits, crewHits, taskHits, messageHits}, nil
+	return []appwire.HitGroup{agentHits, crewHits, taskHits, messageHits, {Kind: appwire.HitJob, Hits: b.SearchJobs(query, perGroup)}}, nil
 }
 
 // appKnownTime is a time to put on the wire, and nil for the zero time, which
@@ -360,11 +404,21 @@ func (b *appBackend) searchTasks(query string, limit int) []appwire.Hit {
 type appSearchWords func(terms string, limit int) ([]store.ConversationHit, error)
 
 // dress lays what this process knows now over an agent about to be said: the
-// crews it is a member of, its live line, and working while a turn it holds
-// is running. A queued agent.changed reaches the window after the moment it
-// was made, so it is dressed with the state as it is when it goes out; it is
-// only ever moved up from idle, never down from what a road said.
+// crews it is a member of, its live line, unread and the spend saved on disk.
+// A queued agent.changed reaches the window after the moment it was made,
+// so it is dressed when it goes out. Only its working state is moved up from
+// idle, never down from what a road said; saved spend can decrease after resume.
 func (b *appBackend) dress(view *appwire.Agent) {
+	b.dressState(view)
+	b.sayingUnread(func() {
+		b.dressSpendLocked(view)
+		b.dressUnreadLocked(view)
+	})
+}
+
+// dressState is [appBackend.dress] short of unread and saved spend, which an
+// agent.changed works out in the same step it is said in (appInboxTap.Emit).
+func (b *appBackend) dressState(view *appwire.Agent) {
 	view.Crews = b.crewsOf(view.ID)
 	// Its own budget as the app's file keeps it (appbudget.go); the open
 	// conversation's own reading is agents.budget.get's, never a list's.
@@ -376,12 +430,14 @@ func (b *appBackend) dress(view *appwire.Agent) {
 		if a == nil {
 			return
 		}
+		view.Location = a.view.Location
 		live := a.live
 		if live != nil && live.running && view.State == appwire.StateIdle && !live.needsYou() {
 			view.State = appwire.StateWorking
 		}
 		view.Line = agentLineLocked(a, view.State)
 	})
+	b.dressChatLocation(view)
 }
 
 // agentLineLocked is an agent's live one-liner for its state: the step it is

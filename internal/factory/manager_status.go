@@ -16,20 +16,49 @@ var ErrNotManager = errors.New("this conversation is not the manager of any item
 // PendingQuestionID identifies the decision, not the frequently changing job
 // document. Polling or spending updates cannot expire it; a new ask or round can.
 func PendingQuestionID(it Item) string {
-	if it.Asking == nil || it.Asking.With != AskedYou || it.State != StateNeedsYou || it.QKind != "step" {
+	if StoppedByPerson(it) {
 		return ""
 	}
-	round := 0
-	if it.Stream != nil && it.Stream.Cur >= 0 && it.Stream.Cur < len(it.Stream.Phases) {
-		round = it.Stream.Phases[it.Stream.Cur].Round
+	if it.State != StateNeedsYou || strings.TrimSpace(it.Question) == "" || (it.QKind == "step" && it.Asking == nil) {
+		return ""
+	}
+	round, stage, at := 0, "", time.Time{}
+	if it.Asking != nil {
+		if it.Asking.With != AskedYou {
+			return ""
+		}
+		stage, at = it.Asking.Stage, it.Asking.At
+	}
+	var rounds []int
+	if it.Stream != nil {
+		if it.Stream.Cur >= 0 && it.Stream.Cur < len(it.Stream.Phases) {
+			ph := it.Stream.Phases[it.Stream.Cur]
+			round = ph.Round
+			if stage == "" && it.QKind != "step" {
+				stage = ph.Name
+			}
+		}
+		// A gate's own round can stay zero when the preceding step runs again.
+		if it.QKind != "step" {
+			for _, ph := range it.Stream.Phases {
+				rounds = append(rounds, ph.Round)
+			}
+		}
 	}
 	body, _ := json.Marshal(struct {
 		ID, Round         int
 		Stage, Kind, Text string
 		At                time.Time
-	}{it.ID, round, it.Asking.Stage, it.QKind, it.Question, it.Asking.At})
+		Rounds            []int `json:",omitempty"`
+	}{it.ID, round, stage, it.QKind, it.Question, at, rounds})
 	return fmt.Sprintf("step-%x", sha256.Sum256(body))
 }
+
+// ManagerActionsMarker begins the part of a status only the manager reads: how
+// to act on a decision through its tools. A status read straight to the person
+// ([session.Agent.ReadFactoryStatus]) stops before it, as before the pending
+// question's id.
+const ManagerActionsMarker = "\nManager actions: "
 
 // ManagerStatus is a read of saved runner facts, never a model's reconstruction
 // from old chat prose. It does not start a worker, extend budget or answer an ask.
@@ -40,6 +69,19 @@ type ManagerStatus struct {
 }
 
 func StatusForManager(it Item, held bool, now time.Time) ManagerStatus {
+	return StatusForManagerHold(it, held, false, now)
+}
+
+// StatusForManagerHold is [StatusForManager] knowing whether the live hold is
+// thread-only: the manager answering a reply runs no step and takes no
+// execution slot, so it is never described as the step running.
+func StatusForManagerHold(it Item, held, threadOnly bool, now time.Time) ManagerStatus {
+	return StatusForManagerWaiting(it, held, threadOnly, "", now)
+}
+
+// StatusForManagerWaiting is [StatusForManagerHold] knowing what a queued job
+// is really waiting for, when the factory can say.
+func StatusForManagerWaiting(it Item, held, threadOnly bool, waitingFor string, now time.Time) ManagerStatus {
 	out := ManagerStatus{At: now, QuestionID: PendingQuestionID(it)}
 	var done []string
 	step := "pipeline"
@@ -47,18 +89,21 @@ func StatusForManager(it Item, held bool, now time.Time) ManagerStatus {
 	if it.Stream != nil {
 		for _, ph := range it.Stream.Phases {
 			if ph.State == PhaseDone {
-				done = append(done, ph.Name)
+				done = append(done, StepWords(it, ph.Name))
 			}
 		}
 		if it.Stream.Cur >= 0 && it.Stream.Cur < len(it.Stream.Phases) {
 			current = &it.Stream.Phases[it.Stream.Cur]
-			step = current.Name
+			step = StepWords(it, current.Name)
 		}
 	}
 	if len(done) > 0 {
 		out.Text = "Completed: " + strings.Join(done, ", ") + ".\n"
 	}
 	switch {
+	case StoppedByPerson(it):
+		out.QuestionID = ""
+		out.Text += PersonStopReason
 	case it.DoneHow == "closed_locally":
 		out.Text += "Job closed locally. Work and spending are kept. Reopen to continue; nothing is running."
 	case it.DoneHow == "dropped":
@@ -67,16 +112,34 @@ func StatusForManager(it Item, held bool, now time.Time) ManagerStatus {
 		out.Text += "PR is " + it.PullRequest.State + ". No pipeline work is running."
 	case it.Manual:
 		out.Text += "Pipeline is under manual control. Resume pipeline when ready."
+	case PausedDecision(it):
+		out.QuestionID = ""
+		out.Text += "The job is paused. " + DecisionPauseWords
+	case RecoveryPaused(it):
+		out.Text += step + " is paused. Send “Try again” here to retry the step, or “Try again: …” to include instructions."
 	case it.Question != "":
-		out.Text += step + " is waiting: " + it.Question + "\nNo step work is running while this decision waits. Answer here or use the job's decision controls."
+		out.Text += step + " is waiting: " + it.Question + "\nNo step work is running while this decision waits."
+		if it.QKind == QKindOutOfAttempts {
+			out.Text += " Use the job's decision controls."
+		} else {
+			out.Text += " Answer here or use the job's decision controls."
+		}
 	case it.Failure != nil:
 		out.Text += step + " stopped: " + it.Failure.Detail + "\nUse Try again to retry this step within the job budget."
 	case it.FollowUp != nil && (it.FollowUp.State == "healthy" || it.FollowUp.State == "watching" || it.FollowUp.State == "needs_you"):
 		out.Text += it.FollowUp.Reason
 	case it.Stream != nil && it.Stream.Paused:
 		out.Text += step + " is paused. Resume pipeline to continue."
+	case it.State == StateQueued && waitingFor != "":
+		out.Text += step + " is queued. " + waitingFor
+	case it.State == StateQueued && held && threadOnly:
+		out.Text += step + " is queued; waiting for an available execution slot. Answering a reply in this thread does not take one. Change Jobs at once in Settings → Factory → Your computers."
+	case it.State == StateQueued && it.OverLimit:
+		out.Text += step + " is starting now, above Jobs at once this one time."
 	case it.State == StateQueued:
-		out.Text += step + " is queued; waiting for an available execution slot. Configure Jobs at once in Settings → Factory concurrency. Idle PR monitoring does not use an execution slot."
+		out.Text += step + " is queued; waiting for an available execution slot. Change Jobs at once in Settings → Factory → Your computers. Idle PR monitoring does not use an execution slot."
+	case it.State == StateRunning && held && threadOnly:
+		out.Text += step + " is not running: only a reply in this thread is being answered, which takes no execution slot. Use Try again to recover the step."
 	case it.State == StateRunning && held:
 		out.Text += step + " is running on its worker."
 	case it.State == StateRunning:
@@ -89,8 +152,26 @@ func StatusForManager(it Item, held bool, now time.Time) ManagerStatus {
 	if current != nil && !current.At.IsZero() {
 		out.Text += "\nLast recorded step progress: " + current.At.UTC().Format(time.RFC3339) + "."
 	}
+	facts, guide := managerFactsLines(it)
+	for _, line := range facts {
+		out.Text += "\n" + line
+	}
+	decisions, actions := managerPRDecision(it)
+	actions = append(guide, actions...)
+	for _, line := range decisions {
+		out.Text += "\n" + line
+	}
 	if out.QuestionID != "" {
-		out.Text += "\nPending question ID: " + out.QuestionID + ". Use factory_answer with this question_id to save the person's decision, including a delegated choice. A tool failure means the decision was not saved; never describe it as answered."
+		out.Text += "\nPending question ID: " + out.QuestionID + "."
+		if it.QKind != QKindOutOfAttempts {
+			out.Text += " Use factory_answer with this question_id to save the person's decision, including a delegated choice. Report only the saved outcome the tool confirms. On refusal, explain that the action did not happen. If the outcome is unconfirmed, read status before retrying."
+		}
+	}
+	if back, ok := PlanSendsBack(it); ok && out.QuestionID != "" {
+		out.Text += " To request changes, call factory_answer with action=reject_plan, this question_id and the person's words in answer. This sends the plan back to " + back + "; that step runs again with the words and approval is requested again afterward. Report only the outcome the tool confirms."
+	}
+	if len(actions) > 0 {
+		out.Text += ManagerActionsMarker + strings.Join(actions, " ")
 	}
 	return out
 }

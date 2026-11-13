@@ -661,6 +661,11 @@ type Withdrawal struct {
 	By AskerKind `json:"by,omitempty"`
 	// At is when.
 	At time.Time `json:"at,omitzero"`
+	// Started says the question's own clock took its pick and the work it
+	// asked about is starting: a proposal nobody answered in time. It rides on
+	// the withdrawal itself because a surface reads the questions and the tasks
+	// on two lanes, and the task's own update may reach it after this does.
+	Started bool `json:"started,omitempty"`
 }
 
 // Exchange is one round of asking back: a person's question about one of the
@@ -980,9 +985,13 @@ func (q Question) Check(records []DecisionRecord) error {
 // another, and a record keyed on the head alone would answer for every file a
 // session ever touched. A question with no subject at all matches only records
 // that had none either.
+//
+// AND A CREDENTIAL IS NEVER DECIDED. Asking for a token again is asking for a
+// new one — the first expired, or was wrong — and the record of the first
+// answer carries no value that could stand in for it (secret_request.go).
 func decidedAlready(records []DecisionRecord, q Question) (DecisionRecord, bool) {
 	head := questionFold(q.Head)
-	if head == "" {
+	if head == "" || q.SecretAnswer() {
 		return DecisionRecord{}, false
 	}
 	for at := len(records) - 1; at >= 0; at-- {
@@ -1852,11 +1861,23 @@ func (a *Agent) WithdrawQuestion(kind QuestionKind, token, reason string) {
 // once that lock is down (steerquestion.go), and there must not be two spellings
 // of what a withdrawal looks like.
 func (a *Agent) sayWithdrawn(q Question, reason string) {
-	q.Withdrawn = &Withdrawal{
-		Reason: strings.TrimSpace(reason),
-		By:     q.Asker.Kind,
-		At:     time.Now(),
+	a.sayWithdrawal(q, Withdrawal{Reason: strings.TrimSpace(reason), By: q.Asker.Kind, At: time.Now()})
+}
+
+// withdrawStarted retires a proposal its clock has just started, saying so on
+// the withdrawal ([Withdrawal.Started]). It claims the words first, so the
+// lane's own letting-go finds nothing and says nothing a second time.
+func (a *Agent) withdrawStarted(q Question) {
+	claimed, said := a.claimQuestion(q.Kind, q.Token(), false)
+	if !said {
+		return
 	}
+	a.sayWithdrawal(claimed, Withdrawal{Reason: questionGoneReason(claimed), By: claimed.Asker.Kind, At: time.Now(), Started: true})
+}
+
+// sayWithdrawal says one withdrawal, whole, to every surface.
+func (a *Agent) sayWithdrawal(q Question, withdrawal Withdrawal) {
+	q.Withdrawn = &withdrawal
 	a.emitQuestion(EventQuestionWithdrawn, q, nil)
 	// AND EVERY OTHER WINDOW LEARNS AT ONCE, for the reason the raise does
 	// ([Agent.raiseQuestion]): a question that is no longer being asked must not
@@ -2224,6 +2245,7 @@ func (a *Agent) applyToLane(answer Answer) error {
 			// The answers are on the row with their keys; the box is words.
 			a.ResolveTask(answer.ID, TaskAnswer{
 				Approved: true, Redirect: words, Model: answer.Blanks[TaskModelBlank],
+				Computer: answer.Blanks[TaskComputerBlank],
 			})
 			return nil
 		}
@@ -2247,6 +2269,7 @@ func (a *Agent) applyToLane(answer Answer) error {
 			// option, which is what the card was showing.
 			task := action.Task
 			task.Model = answer.Blanks[TaskModelBlank]
+			task.Computer = answer.Blanks[TaskComputerBlank]
 			a.ResolveTask(answer.ID, task)
 		}
 		return nil
@@ -2681,7 +2704,9 @@ const ConsentFallbackReason = "it will not run this without your word"
 // to one of those is read as a decline (connect.go) and a chip that means no
 // while reading yes is worse than no chip.
 func (a *Agent) connectQuestion(id string, ask connectAsk) Question {
-	return a.said(QuestionConnect, id, ConnectQuestion(id, ask.name, ask.needsKey, "", ask.secret))
+	q := ConnectQuestion(id, ask.name, ask.needsKey, "", ask.secret)
+	q.Subject.Name = ask.service
+	return a.said(QuestionConnect, id, q)
 }
 
 // ConnectQuestion is that object, and it is ONE BUILDER for the two roads it
@@ -2935,6 +2960,10 @@ func (a *Agent) proposalQuestion(id uint64, notice TaskNotice) Question {
 // [TaskAnswer.Model] straight back out of it, so a label spelled twice would be
 // a choice somebody made and nothing acted on.
 const TaskModelBlank = "model"
+
+// TaskComputerBlank carries the card's placement choice through the ordinary
+// answer. Sharing the label keeps the surface and admission on the same choice.
+const TaskComputerBlank = "computer"
 
 // TaskModelPrompt is the sentence the hole sits in, with `{model}` where the
 // hole goes — so what a person reads is `run it on [ anthropic/claude-opus-5 ▾ ]`

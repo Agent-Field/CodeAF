@@ -490,7 +490,11 @@ func TestAFamilyWorkingInThePersonsOwnRepositoryIsNeverCommittedInto(t *testing.
 	dirty := gitOut(t, repo, "status", "--porcelain")
 
 	nest := newDivideNest(t, wideBrief, 0)
+	// Under the session lock: the furrow question started at construction reads
+	// this field from its own goroutine.
+	nest.node.mu.Lock()
 	nest.node.config.Workspace = repo
+	nest.node.mu.Unlock()
 	nest.parent.setTree(taskTree{dir: repo, ground: repo, merge: mergeInPlace,
 		mode: TaskModeInPlace, rung: GroundRungHere})
 	nest.parent.noteWrote("repro.txt")
@@ -528,7 +532,7 @@ func TestAPartRestoredFromACheckpointStandsInTheFrozenWorld(t *testing.T) {
 		t.Fatalf("prepareTaskTreeOn for the parent: %v", err)
 	}
 	writeFile(t, filepath.Join(tree.dir, "repro.txt"), "the failing case\n")
-	saved, _, _, err := commitTaskWorkAs(tree.dir, wipCheckpointMessage("the whole job"), []string{"repro.txt"}, gitSignature{}, false)
+	saved, _, _, err := commitTaskWorkAs(tree.dir, wipCheckpointMessage("the whole job"), []string{"repro.txt"}, gitSignature{}, false, true)
 	if err != nil {
 		t.Fatalf("the checkpoint would not commit: %v", err)
 	}

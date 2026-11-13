@@ -46,6 +46,7 @@ func chatPage(config Config, now time.Time) string {
 	fmt.Fprintf(&out, "- Workstation: %s/%s\n", runtime.GOOS, runtime.GOARCH)
 	fmt.Fprintf(&out, "- Working directory: %s\n", config.Workspace)
 	out.WriteString(shell.PromptFact())
+	out.WriteString(stateHomeFact(config))
 	out.WriteString(nowLine(now))
 	return out.String()
 }

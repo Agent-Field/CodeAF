@@ -120,7 +120,7 @@ func initOwnedRepository(work string) error {
 // an editor would hang a launch on a terminal it is about to hand to the
 // surface.
 func gitIn(dir string, args ...string) (string, error) {
-	command := exec.Command("git", args...)
+	command := exec.Command("git", append([]string{"--no-optional-locks"}, args...)...)
 	command.Dir = dir
 	command.Env = append(os.Environ(), "GIT_PAGER=cat", "GIT_EDITOR=true", "GIT_TERMINAL_PROMPT=0")
 	out, err := command.CombinedOutput()

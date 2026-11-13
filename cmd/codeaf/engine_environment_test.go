@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -63,8 +64,13 @@ func environmentChild(t *testing.T, workspace, key string) *exec.Cmd {
 	// The test-binary state guard quarantines the root inherited at birth.
 	// Choose the real fixture after init, exactly as the in-process tests do.
 	cmd.Env = env.EnvironWithout("CODEAF_HOME")
-	cmd.Stdout = os.Stderr
-	cmd.Stderr = os.Stderr
+	// The child is a whole test binary, so its own "--- SKIP" and "PASS" lines
+	// would reach this binary's output as test results of their own, and the
+	// shard runner rightly refuses a package that reports results it never
+	// listed. Its output is kept and shown only when this test fails.
+	var output bytes.Buffer
+	cmd.Stdout = &output
+	cmd.Stderr = &output
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -78,6 +84,9 @@ func environmentChild(t *testing.T, workspace, key string) *exec.Cmd {
 		_ = cmd.Process.Kill()
 		select {
 		case <-done:
+			if t.Failed() {
+				t.Logf("child host output:\n%s", output.String())
+			}
 		case <-time.After(5 * time.Second):
 			t.Error("child host did not exit")
 		}
@@ -464,7 +473,7 @@ func TestEnvironmentStopCommandQuotesTheWorkspaceForTheShell(t *testing.T) {
 		t.Run(workspace, func(t *testing.T) {
 			note := differentEngineEnvironmentSentence(workspace)
 			_, command, ok := strings.Cut(note, "), run ")
-			if !ok || !strings.Contains(note, "after work finishes, close every window for this workspace and reopen") || !strings.Contains(note, "To stop now (interrupts active turns and tasks)") {
+			if !ok || !strings.Contains(note, "codeaf chat --no-host opens this window on its own") || !strings.Contains(note, "after work finishes, close every window for this workspace and reopen") || !strings.Contains(note, "To stop now (interrupts active turns and tasks)") {
 				t.Fatalf("busy note does not explain the recovery: %s", note)
 			}
 			// Keep the production command's complete shell argument text. Only

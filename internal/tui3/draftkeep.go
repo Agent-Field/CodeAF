@@ -13,6 +13,9 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // AN UNSENT LINE OUTLIVES THE WINDOW, AND IT COMES BACK TO THE READER IT WAS
@@ -202,23 +205,22 @@ type draftKeepFile struct {
 
 // ── who a record belongs to ─────────────────────────────────────────────────
 
-// draftOwnerOf is one conversation's durable identity: the machine, the project
-// and the transcript.
-//
-// THE TRANSCRIPT PATH ALONE IS NOT AN IDENTITY. A session opened over a
-// connection names a file on the far machine (host.go), and two machines
-// mounting the same path mean two different conversations; so does the same
-// relative journal reached through two projects. Restoring task 7 across that
-// gap is the misdelivery this wave exists to end, one connection wider.
+// draftOwnerOf follows an identified chat across copied folders. Older journals
+// without a chat identity remain scoped to their machine, project and path.
 func draftOwnerOf(host, workspace, file string) string {
 	if strings.TrimSpace(file) == "" {
 		return ""
+	}
+	if dir, ok := session.FolderOf(file); ok && cell.ValidID(filepath.Base(dir)) {
+		return strings.TrimSpace(host) + draftChatOwner + filepath.Base(dir)
 	}
 	return strings.TrimSpace(host) + "\x00" + filepath.Clean(workspace) + "\x00" + filepath.Clean(file)
 }
 
 // draftUnnamedOwner marks an identity that is a WINDOW and not a conversation.
 const draftUnnamedOwner = "\x00window\x00"
+
+const draftChatOwner = "\x00chat\x00"
 
 // draftWindowOwnerOf is the identity of a conversation with no transcript to be
 // named after: the draft file, which is this window's and this conversation's
@@ -330,7 +332,19 @@ func readDraftKeep(path string) (draftKeep, draftKeepRead) {
 	if keep.Version > draftKeepVersion {
 		return draftKeep{}, draftKeepStrange
 	}
+	keep.Owner = currentDraftOwner(keep.Owner)
+	for i := range keep.Slots {
+		keep.Slots[i].Owner = currentDraftOwner(keep.Slots[i].Owner)
+	}
 	return keep, draftKeepFound
+}
+
+// currentDraftOwner also recognizes records written before a copy moved folders.
+func currentDraftOwner(owner string) string {
+	if parts := strings.Split(owner, "\x00"); len(parts) == 3 {
+		return draftOwnerOf(parts[0], parts[1], parts[2])
+	}
+	return owner
 }
 
 // keepStrangeAside moves a record this build cannot read out of the way, under a
@@ -522,6 +536,7 @@ func draftSendsIn(keep draftKeep) map[string]bool {
 // draftSave is one save of one conversation: the record, and the plain-text
 // export beside it.
 type draftSave struct {
+	unread   bool
 	keepPath string
 	textPath string
 	keep     draftKeep
@@ -577,6 +592,9 @@ func (s draftSave) commit() error {
 	// older record back over the newer one.
 	if draftOvertaken(s.keepPath, s.rev) {
 		return errDraftSuperseded
+	}
+	if s.unread {
+		return errors.New("saved draft has not been restored")
 	}
 	if err := putDraftKeep(s.keepPath, s.keep); err != nil {
 		return err
@@ -1012,13 +1030,52 @@ func (a *app) everyComposer() map[recipient]composerState {
 // here — so that whichever goroutine eventually writes it, the saves land in the
 // order the person made them ([draftWrites]).
 func (a *app) draftSaveOf(text string) draftSave {
+	key := a.draftFile + "\x00" + a.draftKeepOwner()
+	if !a.draftLoaded[key] && !a.hasUnreadDraft() {
+		a.claimDraftComposer()
+	}
 	return draftSave{
+		unread:   !a.draftLoaded[key],
 		keepPath: draftKeepPath(a.draftFile),
 		textPath: a.draftFile,
 		keep:     a.draftKeepBuild(text),
 		text:     text,
 		rev:      claimDraftRev(draftKeepPath(a.draftFile)),
 	}
+}
+
+// claimDraftComposer records that a restore or the person's own edit or send
+// made this composer authoritative. Only a passive save of an untouched,
+// unrestored composer must leave the saved words alone.
+func (a *app) claimDraftComposer() {
+	if a.draftFile == "" {
+		return
+	}
+	if a.draftLoaded == nil {
+		a.draftLoaded = map[string]bool{}
+	}
+	a.draftLoaded[a.draftFile+"\x00"+a.draftKeepOwner()] = true
+}
+
+// hasUnreadDraft protects a saved composer until this conversation has read it.
+// A fresh window must also respect orphaned records it has not reunited yet.
+func (a *app) hasUnreadDraft() bool {
+	if readDraft(a.draftFile) != "" {
+		return true
+	}
+	if keep, how := readDraftKeep(draftKeepPath(a.draftFile)); how == draftKeepStrange || (how == draftKeepFound && !keep.empty()) {
+		return true
+	}
+	paths, _ := filepath.Glob(filepath.Join(filepath.Dir(a.draftFile), "draft-*.json"))
+	for _, path := range paths {
+		if path == draftKeepPath(a.draftFile) || draftWindowAlive(path) {
+			continue
+		}
+		if keep, how := readDraftKeep(path); how == draftKeepFound && a.speaksFor(keep) && !keep.empty() {
+			return true
+		}
+	}
+	return false
 }
 
 // keepDrafts is the whole write, off the event loop.
@@ -1038,6 +1095,11 @@ func (s draftSave) command() tea.Cmd {
 	return func() tea.Msg {
 		return draftKeptMsg{path: s.keepPath, rev: s.rev, err: s.commit()}
 	}
+}
+
+func fileHasDraftSlots(path string) bool {
+	keep, how := readDraftKeep(path)
+	return how == draftKeepStrange || (how == draftKeepFound && !keep.empty()) || readDraft(draftExportPath(path)) != ""
 }
 
 // stowDrafts is the crash insurance for a conversation this window is HOLDING
@@ -1095,6 +1157,7 @@ func (a *app) stowDrafts(conv Conversation, side *aside) {
 	}
 	sortKeptSlots(keep.Slots)
 	save := draftSave{
+		unread:   !a.draftLoaded[conv.DraftFile+"\x00"+owner] && fileHasDraftSlots(path),
 		keepPath: path,
 		textPath: conv.DraftFile,
 		keep:     keep,
@@ -1106,6 +1169,11 @@ func (a *app) stowDrafts(conv Conversation, side *aside) {
 	}
 	if err := save.commit(); err != nil {
 		a.noteDraftKeepFailed(err)
+	} else {
+		if a.draftLoaded == nil {
+			a.draftLoaded = map[string]bool{}
+		}
+		a.draftLoaded[conv.DraftFile+"\x00"+owner] = true
 	}
 }
 
@@ -1124,7 +1192,13 @@ func (a *app) stowDrafts(conv Conversation, side *aside) {
 // THE BOX IS EMPTY; falling through to the plain file there is how a sentence
 // that was sent came back, because the export is written after the record and a
 // crash between the two leaves it holding the words the record has just spent.
-func (a *app) layKeptDrafts() {
+// Taking a named chat restores only its own saved composers; an orphaned plain
+// draft from a window that is gone is adopted only by an ordinary opening in
+// its directory, never by a chat arriving through a take.
+func (a *app) layKeptDrafts(allowUnowned bool) {
+	if a.draftFile == "" {
+		return
+	}
 	states := map[recipient]composerState{}
 	a.keptFrom, a.keptElsewhere = a.draftFile, nil
 
@@ -1134,10 +1208,9 @@ func (a *app) layKeptDrafts() {
 	if keep, how := readDraftKeep(draftKeepPath(a.draftFile)); how == draftKeepFound {
 		a.keptElsewhere, _ = a.takeKeptSlots(keep, states)
 		settled = a.speaksFor(keep)
-		// A shared connection reuses this window's store across selections.
-		// Its plain export belongs to the record's owner; falling back to it
-		// would put the outgoing chat's unsent text into an empty incoming chat.
-		if a.shared && namedConversation(keep.Owner) {
+		// A named record is the whole answer. Its plain export belongs to that
+		// recorded chat, so it cannot supply missing words for another chat.
+		if namedConversation(keep.Owner) {
 			settled = true
 		}
 	}
@@ -1148,7 +1221,7 @@ func (a *app) layKeptDrafts() {
 
 	// Only then the plain file, which is all an older build or a stranger's
 	// orphan can offer ([app.legacyDraftText]).
-	if _, held := states[mainRecipient]; !held && !settled {
+	if _, held := states[mainRecipient]; !held && !settled && allowUnowned {
 		if text := a.legacyDraftText(); text != "" {
 			runes := []rune(text)
 			states[mainRecipient] = composerState{box: editor{value: runes, cursor: len(runes)}}
@@ -1163,6 +1236,7 @@ func (a *app) layKeptDrafts() {
 		a.keepComposer(who, state)
 	}
 
+	a.claimDraftComposer()
 	if err := a.draftSaveOf(a.mainDraftText()).commit(); err != nil {
 		// The words are on the screen and this window is holding them; what failed
 		// is the promise that they would outlive it. Nothing is pruned — every line
@@ -1186,6 +1260,9 @@ func (a *app) layKeptDrafts() {
 // to this one would be migrating a recipient because two directories matched.
 func (a *app) legacyDraftText() string {
 	text := readDraft(a.draftFile)
+	if strings.Contains(a.draftKeepOwner(), draftChatOwner) {
+		return text
+	}
 	if text == "" && draftFirstHere(a.draftFile, a.workspace) {
 		text = adoptDraft(a.draftFile, a.workspace)
 	}
@@ -1241,12 +1318,12 @@ func (a *app) takeKeptSlots(keep draftKeep, into map[recipient]composerState) (l
 // back the sentence that clearing spent. Older records are left exactly where
 // they are — never read for this conversation again, never deleted.
 func (a *app) reuniteDrafts(into map[recipient]composerState) ([]draftKeepFile, bool) {
-	if a.draftKeepOwner() == "" || a.draftFile == "" || strings.TrimSpace(a.workspace) == "" {
+	if a.draftKeepOwner() == "" || a.draftFile == "" {
 		return nil, false
 	}
 	own := draftKeepPath(a.draftFile)
 	directory := filepath.Dir(a.draftFile)
-	candidates, err := filepath.Glob(filepath.Join(directory, draftPrefix(a.workspace)+"*.json"))
+	candidates, err := filepath.Glob(filepath.Join(directory, "draft-*.json"))
 	if err != nil {
 		return nil, false
 	}

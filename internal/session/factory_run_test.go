@@ -212,3 +212,30 @@ func TestRunEditAddsAnApproveStepWithNoAsk(t *testing.T) {
 		t.Fatal("a conversation stage with no ask was taken")
 	}
 }
+
+// THE MANAGER REMOVES AND MOVES: a step the person no longer wants leaves the
+// job (remove), not only switches off (skip), and a move says where it goes,
+// "" being first; a move with no place never reaches the door.
+func TestFactoryRunCarriesRemoveAndMove(t *testing.T) {
+	door := &fakeRunDoor{lines: []string{"manager removed pretest", "manager moved docs first"}}
+	a := &Agent{config: Config{FactoryRun: door}}
+	out, isErr := runToolCall(t, a, `{"remove":[" Pretest "],"move":[{"stage":"docs","after":""}]}`)
+	if isErr || out != "manager removed pretest · moved docs first" {
+		t.Fatalf("answered %q (%v)", out, isErr)
+	}
+	e := door.edits[0]
+	if len(e.Remove) != 1 || e.Remove[0] != "pretest" || len(e.Move) != 1 || e.Move[0] != (factory.Moved{Stage: "docs", After: ""}) || e.By != factory.ByManager {
+		t.Fatalf("edit = %+v", e)
+	}
+	if out, isErr := runToolCall(t, a, `{"move":[{"stage":"docs"}]}`); !isErr || !strings.Contains(out, "move docs needs after") {
+		t.Fatalf("a move with no place = %q (%v)", out, isErr)
+	}
+	if len(door.edits) != 1 {
+		t.Fatalf("a refused move reached the door: %+v", door.edits)
+	}
+	for _, word := range []string{"remove", "move"} {
+		if !strings.Contains(factoryRunSchemaJSON(), `"`+word+`"`) || !strings.Contains(factoryRunDescription, word) {
+			t.Fatalf("the tool does not offer %s", word)
+		}
+	}
+}

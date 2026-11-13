@@ -305,7 +305,11 @@ func (a *app) layout(width int) []row {
 		if !ok {
 			line, ok = a.ellipsis()
 			if ok && !a.workFoldOpen(a.conversation(), a.turn) && !a.unfolded[a.turn] {
-				line = a.activityLine("  " + a.shimmer("Working"))
+				word := "Working"
+				if a.conversationOpening {
+					word = conversationOpeningState
+				}
+				line = a.activityLine("  " + a.shimmer(word))
 			}
 		}
 	}
@@ -406,17 +410,20 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 	if len(lives) > 0 {
 		showActivity = false
 	}
+	appendVirtualDisclosure := func(f workfold) {
+		if wasUser || wasBlock {
+			gap()
+		}
+		out = append(out, row{text: a.pal.dim(fit(a.workfoldLabel(d, f), max(0, width-workIndentCols(width)))), entry: -1, hit: hitWorkFold, turn: f.key})
+		if a.workFoldOpen(d, f.key) {
+			out = append(out, a.completionRows(f.completions, max(0, width-workIndentCols(width)))...)
+		}
+		wasCluster, wasBlock, wasUser, wasNote = true, false, false, false
+	}
 	for i := 0; i < len(es); i++ {
 		e := &es[i]
 		if f, ok := folds[i]; ok && f.virtual {
-			if wasUser || wasBlock {
-				gap()
-			}
-			out = append(out, row{text: a.pal.dim(fit(a.workfoldLabel(d, f), max(0, width-workIndentCols(width)))), entry: -1, hit: hitWorkFold, turn: f.key})
-			if a.workFoldOpen(d, f.key) {
-				out = append(out, a.completionRows(f.completions, max(0, width-workIndentCols(width)))...)
-			}
-			wasCluster, wasBlock, wasUser, wasNote = true, false, false, false
+			appendVirtualDisclosure(f)
 		}
 		if e.completion != nil {
 			continue
@@ -624,6 +631,13 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 			end := i + 1
 			for end < len(es) && es[end].kind == entryDone {
 				end++
+			}
+			// Later landings can own disclosures too, even when the whole
+			// batch suppresses their superseded decision cards.
+			for at := i + 1; at < end; at++ {
+				if f, ok := folds[at]; ok && f.virtual {
+					appendVirtualDisclosure(f)
+				}
 			}
 			if cards := a.doneCluster(d, nil, i, end, width); len(cards) > 0 {
 				gap()
@@ -3287,6 +3301,9 @@ func (a *app) warmSegmentShort() string {
 // it is waiting for them. "your call" rather than "your answer" because it is
 // shorter and because it is what it is.
 func (a *app) stateWord() (string, string) {
+	if a.conversationOpening {
+		return conversationOpeningState, a.pal.accent(conversationOpeningState)
+	}
 	// COPY OUTRANKS EVERYTHING, because it is the only state on this line that is
 	// about the KEYBOARD rather than about the turn. While the viewport is frozen
 	// the keys do something else entirely (copymode.go), and a status line that

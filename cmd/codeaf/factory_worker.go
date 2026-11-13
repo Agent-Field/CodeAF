@@ -36,6 +36,9 @@ type factoryWorkerDial struct {
 	mu      sync.Mutex
 	floor   *store.Store
 	resolve func() (factoryTarget, error)
+	// awake says this machine has not said it is going to sleep. Nil never
+	// corrects the factory.
+	awake func() bool
 }
 
 func newFactoryWorkerDial(floor *store.Store, resolve func() (factoryTarget, error)) *factoryWorkerDial {
@@ -61,7 +64,9 @@ func (d *factoryWorkerDial) dial(slot int) *client.WorkerClient {
 // credential, never a person's token. Slot 0 always runs, so it is the one
 // credential a live worker is sure to hold. Anything short of a clear answer
 // (not attached yet, an older factory, no factory) is "unknown" so the worker
-// keeps the capacity it has.
+// keeps the capacity it has. Each queued job a person said to start now adds
+// one slot until a worker takes it; the factory, not this count, keeps every
+// other job inside the owner's number.
 func (d *factoryWorkerDial) desiredSlots(ctx context.Context) (int, bool) {
 	w := d.dial(0)
 	if w == nil || w.Credential() == "" {
@@ -71,7 +76,13 @@ func (d *factoryWorkerDial) desiredSlots(ctx context.Context) (int, bool) {
 	if err != nil || self.Slots < 1 {
 		return 0, false
 	}
-	return min(self.Slots, api.MaxRunnerSlots), true
+	// A WAKE THAT NEVER ARRIVED MENDS HERE. The factory refuses a computer it has
+	// asleep every job, and a single wake can be lost to a restart or a slow
+	// answer; a runner that was not told to sleep corrects it on its next read.
+	if self.Asleep && d.awake != nil && d.awake() {
+		_ = w.Presence(ctx, false)
+	}
+	return min(self.Slots+max(self.OverLimit, 0), api.MaxRunnerSlots), true
 }
 
 // creds is the credentials cached for base, one per slot.
@@ -81,7 +92,13 @@ func (d *factoryWorkerDial) creds(base string) []string {
 	return d.readCreds()[base]
 }
 
-// keep caches slot's credential for w's factory; "" forgets it.
+// keep caches slot's credential for w's factory; "" forgets it. THIS
+// MACHINE'S OWN FACTORY LISTENS ON A NEW PORT AT EACH START, so saving a
+// credential for a loopback factory forgets the other loopback addresses that
+// nothing listens on any more: those factories are gone, and their credentials
+// would otherwise pile up forever. One that still listens (a second local
+// factory, or a team factory reached through a tunnel on localhost) is kept,
+// and a factory elsewhere is never touched.
 func (d *factoryWorkerDial) keep(slot int, w *client.WorkerClient) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -92,6 +109,13 @@ func (d *factoryWorkerDial) keep(slot int, w *client.WorkerClient) {
 		return
 	}
 	all := d.readCreds()
+	if factoryLoopback(w.Base()) {
+		for base := range all {
+			if base != w.Base() && factoryLoopback(base) && !factoryListening(base) {
+				delete(all, base)
+			}
+		}
+	}
 	creds := all[w.Base()]
 	for len(creds) <= slot {
 		creds = append(creds, "")
@@ -178,6 +202,22 @@ func (d *factoryWorkerDial) attach(ctx context.Context, person factory.Seam) (ap
 		Machine: machine, Name: name + " (pid " + strconv.Itoa(os.Getpid()) + ")", Handle: handle,
 		OS: runtime.GOOS, CodeafVersion: buildinfo.String(), TakesUnassigned: takes, Kind: kind, Slots: factoryBenches(), Checkouts: checkouts,
 	}, nil
+}
+
+// factoryListening says something still accepts connections at base's
+// address. A loopback port nobody listens on refuses at once, so the wait is
+// only for a listener that is slow to accept.
+func factoryListening(base string) bool {
+	u, err := url.Parse(base)
+	if err != nil || u.Port() == "" {
+		return false
+	}
+	conn, err := net.DialTimeout("tcp", u.Host, 250*time.Millisecond)
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
 }
 
 // factoryLoopback says base is a factory on this machine.

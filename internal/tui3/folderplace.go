@@ -290,8 +290,12 @@ func (a *app) openTargetContextPick(query string, files bool) tea.Cmd {
 // surface has a layer to undraw, routed through one door so none of the ways out
 // can leave the layer behind.
 func (a *app) closeFolderSheet() tea.Cmd {
-	home := a.folder.forTarget
+	home := a.folder.forTarget || a.folder.chooseFolder != nil
+	cancelChoose := a.folder.cancelChoose
 	a.folder.close()
+	if cancelChoose != nil {
+		cancelChoose()
+	}
 	a.touch()
 	if home {
 		return tea.Batch(tea.ClearScreen, a.openHome())
@@ -923,6 +927,11 @@ func (a *app) tookFolderKids(msg folderKidsMsg) tea.Cmd {
 	if !a.folder.took(msg.path, msg.read) {
 		return nil
 	}
+	// A typed leaf can arrive after the parent listing was requested. Walking
+	// clears the filter, so explicit navigation keeps its own cursor.
+	if a.folder.browsing && msg.path == a.folder.cols.dir {
+		a.folder.browseSync(a.resolvePath)
+	}
 	a.touch()
 	// A LEVEL ARRIVING CAN MAKE THE NEXT ONE WORTH ASKING FOR — the parent of
 	// the level that just landed is not known until the level is, and neither is
@@ -1181,6 +1190,8 @@ func (a *app) tookFolderStore(msg folderStoreMsg) tea.Cmd {
 	marks, pane := a.folder.marks, a.folder.pane
 	paneTop, paneLeft := a.folder.paneTop, a.folder.paneLeft
 	forTarget, forWorkspace := a.folder.forTarget, a.folder.forWorkspace
+	chooseFolder, chooseTitle := a.folder.chooseFolder, a.folder.chooseTitle
+	cancelChoose := a.folder.cancelChoose
 	a.folder.start(a.folderCandidates(), a.tilde)
 	a.folder.filter, a.folder.facts = filter, facts
 	a.folder.kids, a.folder.asking, a.folder.hidden = kids, asking, hidden
@@ -1193,6 +1204,8 @@ func (a *app) tookFolderStore(msg folderStoreMsg) tea.Cmd {
 	// chosen on it went to the conversation BEHIND home. Its sheet holds nothing
 	// either, for the reason that function gives.
 	a.folder.forTarget, a.folder.forWorkspace = forTarget, forWorkspace
+	a.folder.chooseFolder, a.folder.chooseTitle = chooseFolder, chooseTitle
+	a.folder.cancelChoose = cancelChoose
 	if !forTarget && !forWorkspace {
 		a.markFolderHeld()
 	}

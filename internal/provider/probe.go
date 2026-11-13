@@ -252,18 +252,20 @@ func (c *Client) ProbeLanes(ctx context.Context, model string) {
 	if refuseObserved(ctx, SurfaceProbe) != nil {
 		return
 	}
-	// SIMPLE ROUTING BUYS NO MEASUREMENTS. A probe exists to teach the belief
+	// Off and simple routing buy no measurements. A probe exists to teach the belief
 	// which machine to choose, and under this row choosing is the person's
 	// row and nothing else — so a probe would spend real money on an answer
 	// no request will ever read.
-	if c.routing() == RoutingSimple {
+	if strategy := c.routing(); strategy == RoutingOff || strategy == RoutingSimple {
 		return
 	}
 	model = strings.TrimSpace(model)
 	if model == "" {
 		return
 	}
-	choice := lanes.Default().Chooser().Choose(LaneTalkAsk(model, laneNow()))
+	now := laneNow()
+	lanes.Default().RecordRouting()
+	choice := lanes.Default().Chooser().Choose(LaneTalkAsk(model, now))
 	head := make([]string, 0, probeHead)
 	for _, scored := range choice.Frontier {
 		if scored.ID.Lane == "" {

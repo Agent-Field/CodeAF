@@ -65,10 +65,16 @@ func (h *Handler) recoverWorkerReport(w http.ResponseWriter, r *http.Request) {
 	}
 	saved, already, err := h.workers.desk.ReconcileReport(id, requestWorker(r), body.OriginalLease, digest, body.AdditionalCost, func(it *factory.Item, receipt *factory.WorkerReportReceipt) error {
 		if receipt != nil {
-			if it.Stream == nil {
-				return fmt.Errorf("the acknowledged report no longer has a spending ledger")
+			delta := body.AdditionalCost - receipt.AdditionalCost
+			if receipt.Cleared {
+				// The job was brought back fresh since: the money is the
+				// factory's, not the fresh job's.
+				it.SpentCleared += delta
+			} else if receipt.Archived {
+				it.SpentBefore += delta
+			} else {
+				factory.AddChatSpend(it, delta)
 			}
-			it.Stream.Spent += body.AdditionalCost - receipt.AdditionalCost
 			receipt.AdditionalCost = body.AdditionalCost
 			return nil
 		}
@@ -93,7 +99,7 @@ func (h *Handler) recoverWorkerReport(w http.ResponseWriter, r *http.Request) {
 			it.State = factory.StateQueued
 			it.Stream.Ended = time.Time{}
 		}
-		it.ReportReceipts = append(it.ReportReceipts, factory.WorkerReportReceipt{Digest: digest, At: h.workers.now(), AdditionalCost: body.AdditionalCost})
+		it.ReportReceipts = append(it.ReportReceipts, factory.WorkerReportReceipt{Digest: digest, Lease: body.OriginalLease, Machine: requestWorker(r).Machine, Handle: factory.NormalizeHandle(requestWorker(r).Handle), At: h.workers.now(), AdditionalCost: body.AdditionalCost})
 		if len(it.ReportReceipts) > factory.WorkerReportReceiptsMost {
 			it.ReportReceipts = append([]factory.WorkerReportReceipt(nil), it.ReportReceipts[len(it.ReportReceipts)-factory.WorkerReportReceiptsMost:]...)
 		}
@@ -129,7 +135,7 @@ func retainedWorkerReport(body api.WorkerRecovery) (factory.RunReport, string, e
 			return factory.RunReport{}, "", fmt.Errorf("retained result header names must be canonical")
 		}
 		switch http.CanonicalHeaderKey(name) {
-		case "Idempotency-Key", api.StepModelsHeader, api.StepChatsHeader, api.StepRuntimeHeader:
+		case "Idempotency-Key", api.StepModelsHeader, api.StepChatsHeader, api.StepRuntimeHeader, api.ModelSpendHeader:
 		default:
 			return factory.RunReport{}, "", fmt.Errorf("retained results contain an unsupported header")
 		}
@@ -162,7 +168,7 @@ func retainedWorkerReport(body api.WorkerRecovery) (factory.RunReport, string, e
 // Recovery saves completed work, rather than granting an old worker permission
 // to publish, merge, answer a human decision or replace a newer phase attempt.
 func validateRetainedReport(it factory.Item, report factory.RunReport) error {
-	if it.State != factory.StateNeedsYou || it.QKind != "results_not_saved" || it.Manual || it.DoneHow != "" || it.Publishing || it.Stream == nil || it.Stream.Paused || it.Merging != nil || it.Approval != nil && it.Approval.State == "approving" {
+	if it.State != factory.StateNeedsYou || it.QKind != "results_not_saved" || it.Manual || it.DoneHow != "" || it.Publishing || it.Stream == nil || it.Stream.Paused || factory.RecoveryPaused(it) || it.Merging != nil || it.Approval != nil && it.Approval.State == "approving" {
 		return fmt.Errorf("only the current internal result-save block can be reconciled")
 	}
 	if it.Asking != nil && (it.Asking.Stage != "" || it.Asking.Question != it.Question) {

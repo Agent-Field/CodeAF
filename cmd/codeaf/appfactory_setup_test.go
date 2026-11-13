@@ -20,6 +20,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 const setupSecret = "setup-secret-token-0123456789"
@@ -33,10 +34,15 @@ type setupGitHub struct {
 
 func (g *setupGitHub) client(t *testing.T) *http.Client {
 	return &http.Client{Transport: roundTripper(func(r *http.Request) (*http.Response, error) {
+		// A GraphQL query is recorded as QUERY: it reads, though it is a POST.
+		verb, query := r.Method, graphQLRead(r)
+		if query {
+			verb = "QUERY"
+		}
 		g.mu.Lock()
-		g.requests = append(g.requests, r.Method+" "+r.URL.Path)
+		g.requests = append(g.requests, verb+" "+r.URL.Path)
 		g.mu.Unlock()
-		if r.Method != http.MethodGet {
+		if r.Method != http.MethodGet && !query {
 			t.Errorf("setup wrote to GitHub: %s %s", r.Method, r.URL)
 		}
 		if r.URL.Host != "api.github.com" {
@@ -70,6 +76,7 @@ func (g *setupGitHub) seen() []string {
 // login instead of a call to /user.
 func offlineLocal(b *appBackend, g *setupGitHub, t *testing.T) {
 	b.local.githubHTTP = g.client(t)
+	b.local.pollSource = noPoll
 	b.local.rules = func(context.Context, string, string) (pipeline.File, error) { return pipeline.File{}, os.ErrNotExist }
 	b.local.seamHook = func(seam factory.Seam) factory.Seam {
 		seam.GitHub = func(context.Context) (factory.GitHubLink, error) { return factory.GitHubLink{Login: "owner"}, nil }
@@ -91,7 +98,7 @@ type localSetup struct {
 // the process only git on its PATH.
 func useLocalHome(t *testing.T) (appHome, userHome, decoy string) {
 	t.Helper()
-	appHome, userHome, decoy = t.TempDir(), t.TempDir(), t.TempDir()
+	appHome, userHome, decoy = testHome(t), testHome(t), testHome(t)
 	// The unix socket of a solo host is short-pathed; t.TempDir can be long.
 	t.Setenv(home.EnvVar, appHome)
 	t.Setenv("HOME", userHome)
@@ -103,6 +110,15 @@ func useLocalHome(t *testing.T) (appHome, userHome, decoy string) {
 	}
 	restore := config.UseAppCredentials(config.NewAppCredentials())
 	t.Cleanup(restore)
+	ledger := session.UsageLedgerPath()
+	// Later backend cleanups release their agents before this shared writer stops.
+	t.Cleanup(func() {
+		if !session.StopUsageWriter(ledger) {
+			t.Error("factory usage writer did not stop before home cleanup")
+		}
+	})
+	// Errand catalog reads can start the shared process and its profile writers.
+	freshEngineProcess(t)
 	return appHome, userHome, decoy
 }
 
@@ -270,7 +286,7 @@ func TestLocalFactorySetupWalksGitHubReposIssuesAndCheckoutsStartingNothing(t *t
 		t.Fatalf("expected the two issues as Backlog jobs: %+v", q.Jobs)
 	}
 	for _, r := range s.github.seen() {
-		if !strings.HasPrefix(r, "GET ") {
+		if !strings.HasPrefix(r, "GET ") && !strings.HasPrefix(r, "QUERY ") {
 			t.Fatalf("GitHub request %q", r)
 		}
 	}

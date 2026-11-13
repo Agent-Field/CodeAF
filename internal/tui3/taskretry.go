@@ -28,7 +28,7 @@ type taskRetriedMsg struct {
 // Retry belongs to the owning conversation and only to work the engine can resume.
 func (a *app) taskCanRetry(entry session.TaskIndexEntry) bool {
 	node := a.taskSheetNodeFor(&entry)
-	if node == nil || node.state != session.TaskFailed || node.run != "" || a.taskSheet.awayOwner.on {
+	if node == nil || node.state != session.TaskFailed || node.run != "" && !node.retryable || a.taskSheet.awayOwner.on {
 		return false
 	}
 	// A PROGRAM'S TASK IS NEVER RETRIED: the engine's retry reopens one of its
@@ -37,8 +37,12 @@ func (a *app) taskCanRetry(entry session.TaskIndexEntry) bool {
 		return false
 	}
 	switch node.kind {
-	case session.TaskKindJob, session.TaskKindAdaptive:
+	case session.TaskKindJob:
 		return false
+	case session.TaskKindAdaptive:
+		if !node.retryable {
+			return false
+		}
 	}
 	if _, ok := a.agent.(taskRetryDoor); !ok {
 		return false
@@ -90,10 +94,16 @@ func (a *app) taskRetried(msg taskRetriedMsg) {
 // The live graph overrides a saved landing while preserving its transcript and identity.
 func (a *app) currentTaskEntry(entry session.TaskIndexEntry) session.TaskIndexEntry {
 	node := a.taskSheetNodeFor(&entry)
+	// An older node may predate the executor in the saved row. Only a named
+	// placement or an explicit local replacement can supersede that fact.
+	if node != nil && (node.computerKnown || node.computer != "" || node.remote != nil && node.remote.Abandoned) {
+		entry.Status, entry.Ending = string(node.state), node.ending
+		entry.Computer, entry.Unreachable, entry.RanElsewhere = node.computer, node.unreachable, node.ranElsewhere
+	}
 	if node != nil && node.crew != nil {
 		entry.Crew = node.crew
 	}
-	if node != nil && node.crew != nil {
+	if node != nil {
 		entry.Status, entry.Ending = string(node.state), node.ending
 		entry.Parent = node.parent
 		if node.report != "" {

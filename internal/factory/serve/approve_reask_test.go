@@ -13,9 +13,9 @@ import (
 
 // TestSoloSettledPlanApprovalNeverCoversTheNextAsk pins the old-consent law over
 // HTTP in solo mode: a plan approval that settled answers the question it was
-// given for, and when the worker asks the gate again the job reads "waiting"
-// with Approve available, the second approve writes a SECOND receipt behind its
-// own five-second window, and Undo works only inside that window.
+// given for. A later ask keeps the decided approval visible and offers Approve
+// for the new ask. A second approval writes its own receipt behind its own
+// five-second window, and Undo works only inside that window.
 func TestSoloSettledPlanApprovalNeverCoversTheNextAsk(t *testing.T) {
 	f := newV2Jobs(t)
 	f.h.Close()
@@ -42,8 +42,8 @@ func TestSoloSettledPlanApprovalNeverCoversTheNextAsk(t *testing.T) {
 		t.Fatal(err)
 	}
 	j := f.read(t, it)
-	if j.Approval == nil || j.Approval.State != "waiting" || !j.Can.Approve {
-		t.Fatalf("the old consent covers the new ask: approval=%+v can=%+v", j.Approval, j.Can)
+	if j.Approval == nil || j.Approval.State != "approved" || j.Approval.DecidedBy != "sam" || !j.Can.Approve {
+		t.Fatalf("the decision or the new ask was lost: approval=%+v can=%+v", j.Approval, j.Can)
 	}
 
 	f.post(t, it, "approve", "{}", 200)

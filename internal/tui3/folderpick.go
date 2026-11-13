@@ -45,6 +45,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 
@@ -206,6 +207,12 @@ type folderPick struct {
 	forTarget bool
 	// forWorkspace chooses the current conversation's one-shot project anchor.
 	forWorkspace bool
+	// chooseFolder makes the existing single-folder picker answer one local
+	// receiver mapping rather than change the conversation's workspace.
+	chooseFolder func(string) tea.Cmd
+	chooseTitle  string
+	// cancelChoose restores the waiting draft when a folder choice is abandoned.
+	cancelChoose func()
 
 	// hidden reveals the dot-directories and the names the `@` walk prunes.
 	// It is off by default and it is a person's own act — alt+h, or a name
@@ -367,7 +374,7 @@ func folderPathish(query string) bool {
 		return false
 	case query == "~", query == ".", query == "..":
 		return true
-	case strings.HasPrefix(query, "/"), strings.HasPrefix(query, "~/"),
+	case filepath.IsAbs(query), strings.HasPrefix(query, "/"), strings.HasPrefix(query, "~/"),
 		strings.HasPrefix(query, "./"), strings.HasPrefix(query, "../"):
 		return true
 	}
@@ -637,7 +644,7 @@ func (f *folderPick) browseSync(resolve func(string) string) {
 		return
 	}
 	dir, leaf := typed, ""
-	if !strings.HasSuffix(typed, "/") {
+	if !os.IsPathSeparator(typed[len(typed)-1]) {
 		dir, leaf = pathHead(typed)
 	}
 	// A NAME BEGINNING WITH A DOT IS SOMEBODY REACHING FOR A HIDDEN FOLDER, and
@@ -649,7 +656,7 @@ func (f *folderPick) browseSync(resolve func(string) string) {
 		f.forget()
 	}
 	want := filepath.Clean(resolve(dir))
-	if want != f.cols.dir {
+	if !sameFolderPath(want, f.cols.dir) {
 		f.browseAt(want, "")
 	}
 	// AND THE CURSOR FOLLOWS THE HALF-TYPED NAME. A person typing `~/code/ag`
@@ -673,15 +680,30 @@ func (f *folderPick) browseSync(resolve func(string) string) {
 // after the last separator. A path with no separator at all is all name, under
 // the directory the caller resolves "" to.
 func pathHead(typed string) (string, string) {
-	cut := strings.LastIndex(typed, "/")
-	if cut < 0 {
+	if runtime.GOOS != "windows" {
+		cut := strings.LastIndex(typed, "/")
+		if cut < 0 {
+			return typed, ""
+		}
+		head := typed[:cut]
+		if head == "" {
+			head = "/"
+		}
+		return head, typed[cut+1:]
+	}
+	dir, leaf := filepath.Split(typed)
+	if dir == "" {
 		return typed, ""
 	}
-	head := typed[:cut]
-	if head == "" {
-		head = "/"
+	return filepath.Clean(dir), leaf
+}
+
+func sameFolderPath(a, b string) bool {
+	if runtime.GOOS != "windows" {
+		return a == b
 	}
-	return head, typed[cut+1:]
+	rel, err := filepath.Rel(a, b)
+	return err == nil && rel == "."
 }
 
 // A FILE IS NOT SOMEWHERE TO GO. The right arrow navigates directories; a file
@@ -1403,6 +1425,11 @@ func (g folderGeom) actionAt() int { return g.action }
 // matters most here (folderact.go's header).
 func (f *folderPick) actionWord(path string, dir bool) string {
 	switch {
+	case f.chooseFolder != nil:
+		if dir {
+			return "use local folder · "
+		}
+		return "choose a folder · "
 	case f.forWorkspace:
 		if dir {
 			return "set workspace · "

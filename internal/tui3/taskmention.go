@@ -202,6 +202,7 @@ func (a *app) adoptFarTaskRows(rows []session.TaskIndexEntry) {
 		node.label = firstNonEmpty(strings.TrimSpace(row.Title), strings.TrimSpace(row.Label))
 		node.title = taskTitleOf(node.label, "", id)
 		node.state = session.TaskState(row.Status)
+		node.computer, node.unreachable, node.ranElsewhere = row.Computer, row.Unreachable, row.RanElsewhere
 		if row.Live() {
 			a.anchorFarLiveNode(node, row)
 		} else {

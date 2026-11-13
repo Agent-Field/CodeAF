@@ -66,6 +66,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/approval"
 )
 
 // writeAllowanceCalls is HOW MANY WRITE-SHAPED CALLS a turn may land under the
@@ -321,7 +322,7 @@ func bashWritesInside(root, command string) []string {
 		seen[clean] = true
 		wrote = append(wrote, clean)
 	}
-	for _, segment := range taskSegments(command) {
+	for _, segment := range approval.CommandWords(command) {
 		words, assignments := taskSegmentHead(stripRedirections(segment))
 		if len(words) == 0 {
 			continue

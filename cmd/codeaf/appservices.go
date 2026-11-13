@@ -518,6 +518,9 @@ func (b *appBackend) answerInboxItem(id, agent, ask string, answer appwire.AskAn
 	if !ok {
 		return b.AnswerAskWith(agent, ask, answer)
 	}
+	if err := appValidateServiceAnswer(answer.Option); err != nil {
+		return err
+	}
 	local, _, _ := strings.Cut(episode, ".")
 	process := agent + ":" + local
 	var err error
@@ -538,6 +541,14 @@ func (b *appBackend) answerInboxItem(id, agent, ask string, answer appwire.AskAn
 		})
 	}
 	return err
+}
+
+func appValidateServiceAnswer(option string) error {
+	switch option {
+	case appwire.OptionRestart, appwire.OptionStop:
+		return nil
+	}
+	return appwire.Errorf(appwire.CodeBadParams, "a kept-running process is answered restart or stop")
 }
 
 // laterServiceItem puts a service's line aside, or back. It answers false

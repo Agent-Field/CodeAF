@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/serve"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
@@ -24,7 +25,7 @@ import (
 //   - a paused run goes on with the same step in the same chat ([factory.Seam.Hold]);
 //   - a run held at an approve step goes past it ([factory.Seam.Answer] with
 //     yes), which the tool's description reserves for the person's own clear
-//     word in the chat;
+//     word in the chat, unless a rule holds the plan for the person;
 //   - anything else (a running item, a queued one, a question that is not an
 //     approve step, a run that is over) changes nothing and says why.
 //
@@ -39,7 +40,9 @@ const (
 	sayStartResumed   = "%s resumed"
 	sayStartContinued = "%s went past %s"
 	sayStartRunning   = "%s is already running"
-	sayStartQueued    = "%s is queued · waiting for an available execution slot. Configure Jobs at once in Settings → Factory concurrency."
+	sayStartQueued    = "%s is queued · waiting for an available execution slot. Change Jobs at once in Settings → Factory → Your computers."
+	sayStartRuleHold  = "%s waits on the person · a rule asks first: %s. Only they can approve it, on the job"
+	sayStartApprover  = "%s waits on %s, whom the pipeline names to approve it. Only they can, on the job"
 )
 
 // startItem starts, resumes or continues the run of item it on st. ITS LAUNCH
@@ -49,7 +52,10 @@ const (
 // same sentence.
 func startItem(st *store.Store, workspace, profileDir string, it factory.Item) (string, error) {
 	dirs := factoryRepoDirs(st, workspace)
-	seam := factoryCheckouts(factory.LocalSeam(st, time.Now(), factoryRunnerDoors(st), factoryPipelineOption(), factory.WithRepoDirs(dirs)), st, dirs, factoryTokenOf(factoryProfile(profileDir)))
+	seam := factoryCheckouts(factory.LocalSeam(st, time.Now(), factoryRunnerDoors(st), factoryPipelineOption(st), factory.WithRepoDirs(dirs)), st, dirs, factoryTokenOf(factoryProfile(profileDir)))
+	if err := factory.CheckPersonStop(it); err != nil {
+		return "", err
+	}
 	ref := it.Ref()
 	switch it.State {
 	case factory.StateLanded:
@@ -59,6 +65,15 @@ func startItem(st *store.Store, workspace, profileDir string, it factory.Item) (
 	case factory.StateNeedsYou:
 		if it.QKind != factory.QKindApprove {
 			return "", fmt.Errorf("%s waits on a question, not an approve step · answer it, or ask the person", ref)
+		}
+		// A PLAN A RULE HOLDS IS THE PERSON'S TO APPROVE ([factory.Item.RuleHold]):
+		// they said to be asked, so the manager's word is not theirs.
+		if it.RuleHold != "" {
+			return "", fmt.Errorf(sayStartRuleHold, ref, it.RuleHold)
+		}
+		// AN APPROVAL THAT NAMES SOMEONE ELSE IS THEIRS ([factory.NamesOtherApprover]).
+		if factory.NamesOtherApprover(it) {
+			return "", fmt.Errorf(sayStartApprover, ref, factory.WaitingApprover(it))
 		}
 		if seam.Answer == nil {
 			return "", errors.New("this window cannot reach the factory's runner")
@@ -82,6 +97,9 @@ func startItem(st *store.Store, workspace, profileDir string, it factory.Item) (
 			return fmt.Sprintf(sayStartResumed, ref), nil
 		}
 		if it.State == factory.StateQueued {
+			if wait := serve.QueuedWait(st, it, time.Now()); wait != "" {
+				return ref + " is queued. " + wait, nil
+			}
 			return fmt.Sprintf(sayStartQueued, ref), nil
 		}
 		return fmt.Sprintf(sayStartRunning, ref), nil

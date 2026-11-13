@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/teams/teamstest"
 
 	"os"
 	"path/filepath"
@@ -38,7 +39,7 @@ func TestTeamFileOnTheOrdinaryLaunchIsTheProfilesOwn(t *testing.T) {
 func TestTeamCorruptFileErrorsAndIsNotClobbered(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, teamsFile)
-	bad := []byte("{not json")
+	bad := []byte("{not a database")
 	if err := os.WriteFile(path, bad, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -228,9 +229,7 @@ func TestTeamRoundTripKeepsUnknownFieldsAndTheManager(t *testing.T) {
 	dir := t.TempDir()
 	in := `{"version":2,"teams":[{"id":"abcdefabcdef","name":"harbor","parent":"","members":[{"key":"k1","file":"","where":"","word":""}],` +
 		`"manager":"k1","hue":120,"tier":1,"made":"2026-09-20T10:00:00Z","pinned":true,"rules":{"quiet":["k2"]}}]}`
-	if err := os.WriteFile(filepath.Join(dir, teamsFile), []byte(in), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	teamstest.Write(t, dir, []byte(in))
 	got, err := loadTeams(dir, nil)
 	if err != nil || len(got) != 1 {
 		t.Fatalf("loaded %+v %v", got, err)
@@ -241,7 +240,7 @@ func TestTeamRoundTripKeepsUnknownFieldsAndTheManager(t *testing.T) {
 	if err := saveTeams(dir, got); err != nil {
 		t.Fatal(err)
 	}
-	raw, _ := os.ReadFile(filepath.Join(dir, teamsFile))
+	raw := teamstest.JSON(t, dir)
 	var disk struct {
 		Teams []map[string]json.RawMessage `json:"teams"`
 	}
@@ -261,7 +260,7 @@ func TestTeamRoundTripKeepsUnknownFieldsAndTheManager(t *testing.T) {
 		t.Fatal(err)
 	}
 	teamsFlush(t, a)
-	raw, _ = os.ReadFile(filepath.Join(dir, teamsFile))
+	raw = teamstest.JSON(t, dir)
 	if !strings.Contains(string(raw), `"pinned": true`) || !strings.Contains(string(raw), `"manager": "k1"`) || !strings.Contains(string(raw), `"dock"`) {
 		t.Fatalf("an edit dropped what it did not know:\n%s", raw)
 	}

@@ -618,6 +618,9 @@ var errStageStays = errors.New("a factory step's reply stays in its step")
 // running stage to a person (cmd/codeaf's app_lend.go), and this is the one
 // door through which their move would have reached it.
 func (a *Agent) MoveTurnToTask() error {
+	if err := a.CheckWork(); err != nil {
+		return err
+	}
 	if a.config.mayStage() {
 		return errStageStays
 	}
@@ -1873,14 +1876,8 @@ func unbracket(stage string) string {
 // unless `--one-model` put the conversation's own model there (auxiliary.go).
 // A session with no client at all is the same answer for the other reason.
 func (a *Agent) markReaderAbsent() bool {
-	a.mu.Lock()
-	source, floor := a.config.RolesSource, ""
-	if a.config.OneModel {
-		floor = a.model
-	}
-	a.mu.Unlock()
 	if a.hasClient() {
-		if _, err := roles.Ladder(roles.Source(source), roles.RoleMarkReader, floor); err == nil {
+		if _, err := a.roleLadder(roles.RoleMarkReader, ""); err == nil {
 			return false
 		}
 	}

@@ -58,6 +58,11 @@ func NewMoney(st *store.Store, ledger func(item int, usd float64), clock func() 
 // Spend is the hook for Job.Spend of item id. A cost of nothing, or less, is
 // not recorded.
 func (m *Money) Spend(id int) func(usd float64) {
+	return m.SpendRound(id, "", 0)
+}
+
+// SpendRound books a step receipt together with its job charge.
+func (m *Money) SpendRound(id int, step string, round int) func(usd float64) {
 	return func(usd float64) {
 		if m == nil || usd <= 0 {
 			return
@@ -69,7 +74,7 @@ func (m *Money) Spend(id int) func(usd float64) {
 				if it.Stream == nil {
 					it.Stream = &factory.Stream{}
 				}
-				addCost(it, usd)
+				spendRound(it, step, round, usd)
 				it.Stream.Activity = bump(it.Stream.Activity, slide)
 				return nil
 			})
@@ -140,11 +145,21 @@ func bump(a []int, hours int) []int {
 // new run always has.
 func freshStream(it *factory.Item, now time.Time) *factory.Stream {
 	spent := it.ChatSpent
+	models := it.ChatModels
 	if s := it.Stream; s != nil && !begun(s) {
 		spent += s.Spent
+		models = factory.JoinModelUses(models, s.Models)
 	}
 	it.ChatSpent = 0
-	return &factory.Stream{Started: now, Phases: loopPhases(*it), Spent: spent}
+	it.ChatModels = nil
+	return &factory.Stream{Started: now, Phases: loopPhases(*it), Spent: spent, Models: models}
+}
+
+// Ran says whether it has run at all: a step of its run started a round, or
+// its steps were reshaped by a plan. A job queued and not yet taken has a run
+// laid out and has not run, so its steps are still a person's to choose.
+func Ran(it factory.Item) bool {
+	return len(it.Adapted) > 0 || (it.Stream != nil && begun(it.Stream))
 }
 
 // begun says whether any step of the stream has started a round.
@@ -161,16 +176,19 @@ func begun(s *factory.Stream) bool {
 // with once the job's budget is spent: the figure, the budget and the door,
 // in the shape of the conversation limit's own line. The manual quotes it
 // (internal/manual/chat/factory-stage-conversations.md).
-const ChatBudgetReached = "job budget reached · %s spent of %s · raise the job's budget to go on"
+const ChatBudgetReached = "job budget reached · job total %s of %s · raise the job's budget to go on"
 
 // ChatRefusal is why the job's own conversation may not start another turn,
 // "" while it may. A budget question does not exempt owned calls from this
 // limit; raising the cap through the job controls permits work again.
 func ChatRefusal(it factory.Item) string {
+	if it.RefusesWrite() {
+		return (WriteAccessRefusal{Step: "chat"}).Error()
+	}
 	if it.DoneHow == "closed_locally" {
 		return "job closed locally; Reopen to continue with its work and spending kept"
 	}
-	spent := factory.JobSpent(it)
+	spent := factory.JobLifetimeSpent(it)
 	if it.Cap <= 0 || spent < it.Cap {
 		return ""
 	}
@@ -180,13 +198,14 @@ func ChatRefusal(it factory.Item) string {
 // CapReached is whether the item has spent what its cap allows. No cap (0) is
 // never reached.
 func (m *Money) CapReached(it factory.Item) bool {
-	return it.Cap > 0 && it.Stream != nil && it.Stream.Spent >= it.Cap
+	return it.Cap > 0 && factory.JobLifetimeSpent(it) >= it.Cap
 }
 
 // CapQuestion is the sentence the item waits on, and its QKind.
 func (m *Money) CapQuestion(it factory.Item) (q string, kind string) {
-	c := dollars(it.Cap)
-	return "budget of " + c + " reached · " + c + " more, or stop?", "cap"
+	spent := factory.JobLifetimeSpent(it)
+	q = "budget of " + dollars(it.Cap) + " reached · job total " + dollars(spent) + " · "
+	return q + "raise it to " + dollars(factory.NextJobCap(it)) + ", or stop?", "cap"
 }
 
 func dollars(usd float64) string {

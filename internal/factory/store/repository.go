@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/gitpolicy"
 )
 
 // repositoryIDs separates a machine's checkout aliases from GitHub identities.
@@ -65,7 +66,7 @@ func (st *Store) repositoryIdentities() (repositoryIDs, error) {
 		full := strings.ToLower(strings.TrimSpace(key))
 		if !RepoName(full) {
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-			out, err := exec.CommandContext(ctx, "git", "-C", records[key], "remote", "get-url", "origin").Output()
+			out, err := exec.CommandContext(ctx, "git", gitpolicy.WithoutAutoMaintenance("-C", records[key], "remote", "get-url", "origin")...).Output()
 			cancel()
 			full = ""
 			if err == nil {
@@ -178,12 +179,12 @@ func (st *Store) migrateRepository(d doc, ids repositoryIDs) (doc, error) {
 		if !ids.canonicalItem(&d.Item) {
 			return nil
 		}
-		d.Revision++
+		d = nextDoc(current, d.Item, current.Revision+1)
 		data, err := marshalDoc(d)
 		if err != nil {
 			return err
 		}
-		return writeAtomic(st.ItemPath(d.Item.ID), data)
+		return st.writeItem(st.ItemPath(d.Item.ID), data)
 	})
 	return d, err
 }

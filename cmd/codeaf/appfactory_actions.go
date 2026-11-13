@@ -38,6 +38,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/agentfield"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/redact"
 )
@@ -48,6 +49,8 @@ var _ appwire.FactoryActor = (*appBackend)(nil)
 const (
 	factoryVerbStart         = "start_now"
 	factoryVerbStop          = "stop"
+	factoryVerbHold          = "pause"
+	factoryVerbResume        = "resume"
 	factoryVerbDismiss       = "dismiss"
 	factoryVerbDrop          = "drop"
 	factoryVerbRestore       = "restore"
@@ -97,6 +100,17 @@ func (h *appFactoryHub) write(ctx context.Context, id, path string, body any) (a
 // post is the one send behind every job write: it returns the body of a
 // factory's yes, and a refusal or an unconfirmed outcome as the wire error.
 func (h *appFactoryHub) post(ctx context.Context, id, path string, body any) ([]byte, error) {
+	return h.sendWrite(ctx, h.client, http.MethodPost, id, path, body)
+}
+
+// postWith is [appFactoryHub.post] on another client, for the one write
+// that may take longer than the hub's own timeout (Look closer).
+func (h *appFactoryHub) postWith(ctx context.Context, client *http.Client, id, path string, body any) ([]byte, error) {
+	return h.sendWrite(ctx, client, http.MethodPost, id, path, body)
+}
+
+// sendWrite is the one write: method (POST or PATCH) with body to path.
+func (h *appFactoryHub) sendWrite(ctx context.Context, client *http.Client, method, id, path string, body any) ([]byte, error) {
 	row, token, err := h.credentialed(ctx, id)
 	if err != nil {
 		return nil, err
@@ -105,17 +119,18 @@ func (h *appFactoryHub) post(ctx context.Context, id, path string, body any) ([]
 	if err != nil {
 		return nil, appwire.Errorf(appwire.CodeBadParams, "that is not a request a factory can take")
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, row.URL+path, bytes.NewReader(raw))
+	req, err := http.NewRequestWithContext(ctx, method, row.URL+path, bytes.NewReader(raw))
 	if err != nil {
 		return nil, appwire.Errorf(appwire.CodeBadParams, "that is not a request a factory can take")
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "codeaf-app")
+	setFactoryCreateKey(req)
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-	resp, err := h.client.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, appFactoryWriteError(err)
 	}
@@ -130,7 +145,7 @@ func (h *appFactoryHub) post(ctx context.Context, id, path string, body any) ([]
 		return nil, appwire.Errorf(appwire.CodeUncertain, "the factory's answer is too large to read; read the job before trying again")
 	}
 	if reply.status < 200 || reply.status >= 300 {
-		return nil, appFactoryActionFailure(reply)
+		return nil, factoryJobContextFailure(req, reply)
 	}
 	h.touch(id)
 	return data, nil
@@ -165,6 +180,7 @@ func appFactoryActionFailure(r appFactoryReply) error {
 		CurrentCommit string     `json:"current_commit"`
 		HeadCommit    string     `json:"head_commit"`
 		JobPerson     string     `json:"job_person"`
+		Outcome       string     `json:"outcome"`
 		RequestID     string     `json:"request_id"`
 	}
 	_ = json.Unmarshal(bytes.TrimSpace(r.body), &body)
@@ -180,6 +196,7 @@ func appFactoryActionFailure(r appFactoryReply) error {
 		NowState: clean(body.NowState), Taker: clean(body.Taker), Machine: clean(body.Machine),
 		ApprovedBy: clean(body.ApprovedBy), Event: clean(body.Event), Commit: clean(body.Commit),
 		CurrentCommit: clean(body.CurrentCommit), HeadCommit: clean(body.HeadCommit), RequestID: clean(body.RequestID),
+		Outcome: refusalOutcome(body.Outcome),
 	}
 	words := clean(body.Error)
 	refused := func(code, fallback string) error {
@@ -210,11 +227,31 @@ func appFactoryActionFailure(r appFactoryReply) error {
 		// written) goes in front of the warning instead of being dropped.
 		const maybe = "the action may have happened, so read the job before trying again"
 		if words != "" {
-			return appwire.Errorf(appwire.CodeUncertain, "%s · %s", words, maybe)
+			return withOutcome(appwire.Errorf(appwire.CodeUncertain, "%s · %s", words, maybe), detail)
 		}
-		return appwire.Errorf(appwire.CodeUncertain, "the factory failed while acting; %s", maybe)
+		return withOutcome(appwire.Errorf(appwire.CodeUncertain, "the factory failed while acting; %s", maybe), detail)
 	}
-	return appFactoryFailure(r)
+	return withOutcome(appFactoryFailure(r), detail)
+}
+
+// refusalOutcome is the factory's word for whether a comment was posted, or
+// "" for any other word (and from a factory older than the field).
+func refusalOutcome(word string) string {
+	if word == api.CommentRefused || word == api.CommentUnknown {
+		return word
+	}
+	return ""
+}
+
+// withOutcome carries the typed detail on a refusal that says whether
+// anything was posted, so the app can switch on it whatever the status was.
+// A refusal without an outcome is left exactly as it was.
+func withOutcome(err error, detail *appwire.FactoryRefusal) error {
+	var e *appwire.Error
+	if detail.Outcome != "" && errors.As(err, &e) && e.Detail == nil {
+		e.Detail = detail
+	}
+	return err
 }
 
 // acted builds the answer to a successful write: what the factory said, and
@@ -254,12 +291,35 @@ type guardBody struct {
 	Expect *api.Expect `json:"expect,omitempty"`
 }
 
-func (b *appBackend) FactoryJobStart(ctx context.Context, p appwire.FactoryJobActionParams) (appwire.FactoryJobActed, error) {
-	return b.jobWrite(ctx, p.Factory, appwire.JobActStart, p.Job, factoryVerbStart, guardBody{p.Expect})
+// FactoryJobStart is Start. A picked pipeline goes to the factory with it,
+// which reads its file and refuses one it does not list; a factory older than
+// the pick refuses the unknown field, so a pick is never dropped on the way.
+func (b *appBackend) FactoryJobStart(ctx context.Context, p appwire.FactoryJobStartParams) (appwire.FactoryJobActed, error) {
+	return b.jobWrite(ctx, p.Factory, appwire.JobActStart, p.Job, factoryVerbStart, struct {
+		Expect   *api.Expect `json:"expect,omitempty"`
+		Pipeline string      `json:"pipeline,omitempty"`
+	}{p.Expect, p.Pipeline})
 }
+
+// FactoryJobPipelineStarts marks this backend as one that sends a picked
+// pipeline on start and create, which is what lets hello announce
+// factory.start_pipeline.
+func (b *appBackend) FactoryJobPipelineStarts() {}
 
 func (b *appBackend) FactoryJobStop(ctx context.Context, p appwire.FactoryJobActionParams) (appwire.FactoryJobActed, error) {
 	return b.jobWrite(ctx, p.Factory, appwire.JobActStop, p.Job, factoryVerbStop, guardBody{p.Expect})
+}
+
+// FactoryJobHold holds a queued job or pauses a running step, keeping its
+// work and conversation. Only the job's person may hold it.
+func (b *appBackend) FactoryJobHold(ctx context.Context, p appwire.FactoryJobActionParams) (appwire.FactoryJobActed, error) {
+	return b.jobWrite(ctx, p.Factory, appwire.JobActHold, p.Job, factoryVerbHold, guardBody{p.Expect})
+}
+
+// FactoryJobResume continues a paused step in its conversation when possible.
+// It takes a free slot through the queue, waiting when all slots are busy.
+func (b *appBackend) FactoryJobResume(ctx context.Context, p appwire.FactoryJobActionParams) (appwire.FactoryJobActed, error) {
+	return b.jobWrite(ctx, p.Factory, appwire.JobActResume, p.Job, factoryVerbResume, guardBody{p.Expect})
 }
 
 func (b *appBackend) FactoryJobDismiss(ctx context.Context, p appwire.FactoryJobActionParams) (appwire.FactoryJobActed, error) {
@@ -318,6 +378,12 @@ func (b *appBackend) FactoryJobSetBudget(ctx context.Context, p appwire.FactoryJ
 // it for its Undo window before it acts; the answer carries that window, and
 // FactoryJobUndo is how the same person withdraws it inside it.
 func (b *appBackend) FactoryJobApprove(ctx context.Context, p appwire.FactoryJobApproveParams) (appwire.FactoryJobActed, error) {
+	if out, handled, err := b.answerAgentField(ctx, p.Factory, p.Job, appwire.JobActApprove, agentfield.DecisionApproved, p.Words, p.Expect); handled {
+		return out, err
+	}
+	if out, handled, err := b.answerStepQuestion(ctx, p.Factory, p.Job, p.Words, p.Expect); handled {
+		return out, err
+	}
 	return b.jobWrite(ctx, p.Factory, appwire.JobActApprove, p.Job, factoryVerbApprove, api.Approve{Words: p.Words, Commit: p.Commit, Edited: p.Edited, Expect: p.Expect})
 }
 
@@ -326,6 +392,9 @@ func (b *appBackend) FactoryJobUndo(ctx context.Context, p appwire.FactoryJobAct
 }
 
 func (b *appBackend) FactoryJobRequestChanges(ctx context.Context, p appwire.FactoryJobChangesParams) (appwire.FactoryJobActed, error) {
+	if out, handled, err := b.answerAgentField(ctx, p.Factory, p.Job, appwire.JobActRequestChanges, agentfield.DecisionRequestChanges, p.Words, p.Expect); handled {
+		return out, err
+	}
 	return b.jobWrite(ctx, p.Factory, appwire.JobActRequestChanges, p.Job, factoryVerbRequestChange, struct {
 		Words  string      `json:"words"`
 		Expect *api.Expect `json:"expect,omitempty"`
@@ -355,6 +424,7 @@ func (b *appBackend) FactoryJobSetModel(ctx context.Context, p appwire.FactoryJo
 	if err == nil {
 		// The job's agent reads the job's model too (appfactory_chats.go).
 		b.jobAgentModel(p.Factory, p.Job)
+		b.briefEdited(p.Factory, p.Job)
 	}
 	return acted, err
 }
@@ -363,11 +433,27 @@ func (b *appBackend) FactoryJobStepStop(ctx context.Context, p appwire.FactoryJo
 	return b.jobWrite(ctx, p.Factory, appwire.JobActStepStop, p.Job, "steps/"+stepSegment(p.Step)+"/stop", guardBody{p.Expect})
 }
 
+// FactoryJobStepRerun is run again from here: the step and every step after it
+// go back to pending on the factory. A model, when named, is one models.list
+// offers, sent in its spelling ([appBackend.offeredStepModels]).
 func (b *appBackend) FactoryJobStepRerun(ctx context.Context, p appwire.FactoryJobStepParams) (appwire.FactoryJobActed, error) {
-	return b.jobWrite(ctx, p.Factory, appwire.JobActStepRerun, p.Job, "steps/"+stepSegment(p.Step)+"/rerun", struct {
+	model := ""
+	if p.Model != "" {
+		offered, err := b.offeredStepModels(map[string]string{p.Step: p.Model})
+		if err != nil {
+			return appwire.FactoryJobActed{}, err
+		}
+		model = offered[p.Step]
+	}
+	acted, err := b.jobWrite(ctx, p.Factory, appwire.JobActStepRerun, p.Job, "steps/"+stepSegment(p.Step)+"/rerun", struct {
 		Expect *api.Expect `json:"expect,omitempty"`
 		Words  string      `json:"words,omitempty"`
-	}{p.Expect, p.Words})
+		Model  string      `json:"model,omitempty"`
+	}{p.Expect, p.Words, model})
+	if model != "" && unknownFactoryField(err, "model") {
+		return appwire.FactoryJobActed{}, factoryTooOld()
+	}
+	return acted, err
 }
 
 // stepSegment is a step name as one path segment. The name was checked to
@@ -375,14 +461,10 @@ func (b *appBackend) FactoryJobStepRerun(ctx context.Context, p appwire.FactoryJ
 func stepSegment(name string) string { return url.PathEscape(name) }
 
 // FactoryJobCreate makes a job. It is a backlog job unless the person asked for
-// "now", opens no GitHub issue, and asks no model for anything.
+// "now", opens an issue only when asked, and asks no model for anything.
 func (b *appBackend) FactoryJobCreate(ctx context.Context, p appwire.FactoryJobCreateParams) (appwire.FactoryJobActed, error) {
 	h := b.factoryHub()
-	body := api.NewJob{Repo: p.Repo, Title: p.Title, Text: p.Text, Source: factory.AskApp, Assignee: p.Assignee}
-	if p.Start == "now" {
-		body.Start = "now"
-	}
-	a, err := h.write(ctx, p.Factory, "/v1/jobs", body)
+	a, err := h.createJob(ctx, p)
 	if err != nil {
 		return appwire.FactoryJobActed{}, err
 	}
@@ -392,4 +474,17 @@ func (b *appBackend) FactoryJobCreate(ctx context.Context, p appwire.FactoryJobC
 		return appwire.FactoryJobActed{}, appwire.Errorf(appwire.CodeUncertain, "the factory made a job but did not say which; read the queue before trying again")
 	}
 	return h.acted(ctx, p.Factory, appwire.JobActCreate, a.ID, a), nil
+}
+
+// FactoryJobPRReady marks the job's draft ready with the caller's credential.
+func (b *appBackend) FactoryJobPRReady(ctx context.Context, p appwire.FactoryJobActionParams) (appwire.FactoryJobActed, error) {
+	return b.jobWrite(ctx, p.Factory, appwire.JobActPRReady, p.Job, "pr-ready", guardBody{p.Expect})
+}
+
+// FactoryJobRunAsNew starts a separate job and answers its new number.
+func (b *appBackend) FactoryJobRunAsNew(ctx context.Context, p appwire.FactoryJobRunAsNewParams) (appwire.FactoryJobActed, error) {
+	return b.jobWrite(ctx, p.Factory, appwire.JobActRunAsNew, p.Job, "run-as-new", struct {
+		Assignee *string     `json:"assignee,omitempty"`
+		Expect   *api.Expect `json:"expect,omitempty"`
+	}{p.Assignee, p.Expect})
 }

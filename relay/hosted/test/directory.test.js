@@ -25,6 +25,23 @@ test('create makes a held cell, and a second create is refused', () => {
   assert.equal(code(() => dir.create('c1', init(), 'dev_b')), 'exists');
 });
 
+test('R2 saved_at follows the sealed head independently of publication and release', () => {
+  const { dir, clock } = open();
+  dir.create('c1', { ...init(), saved_at: 700_000 }, 'dev_a');
+  assert.equal(dir.cell('c1').cell.saved_at, 700_000);
+  clock.now += 10_000;
+  const p = { fence: 1, old_head: 'h0', head: 'h1', size: 1, class: 'work', pending: 0, saved_at: 800_000 };
+  dir.publish('c1', 'dev_a', p);
+  assert.equal(dir.cell('c1').cell.saved_at, 800_000);
+  assert.equal(dir.cell('c1').cell.durable_at, 1_010_000);
+  dir.release('c1', 'dev_a', 1);
+  assert.equal(dir.cell('c1').cell.saved_at, 800_000);
+  dir.publish('c1', 'dev_a', { ...p, old_head: 'h1', saved_at: undefined });
+  assert.equal(dir.cell('c1').cell.saved_at, 800_000);
+  dir.publish('c1', 'dev_a', { ...p, old_head: 'h1', head: 'h2', saved_at: undefined });
+  assert.equal(dir.cell('c1').cell.saved_at, undefined);
+});
+
 test('a live lease refuses another device, an expired one does not, force takes a live one', () => {
   const { dir, clock } = open();
   dir.create('c1', init(), 'dev_a');
@@ -143,4 +160,69 @@ test('C31 released time records a quit but background preparation stays quiet', 
   const acquired=dir.acquire(id,'dev_a');
   dir.release(id,'dev_a',acquired.cell.lease.fence,true);
   assert.equal(dir.cell(id).cell.lease.released_at,0);
+});
+
+
+ test('latest frame hints clear on old-client publish and never enter lists', () => {
+ const {dir}=open();
+ const frame_hints=[{id:'a'.repeat(64),bytes:42}];
+ const {cell}=dir.create('hints',{...init(),frame_hints},'dev_a');
+ assert.deepEqual(cell.frame_hints,frame_hints);
+ assert.equal(dir.list().cells.hints.frame_hints,undefined);
+ const next=dir.publish('hints','dev_a',{fence:1,old_head:cell.head,head:'new',size:1,class:'work',pending:0});
+ assert.equal(next.cell.frame_hints,undefined);
+ });
+
+test('frame hints reject duplicate, unsafe integer and over-budget metadata', () => {
+ for(const hints of [[{id:'a'.repeat(64),bytes:65536}],[{id:'a'.repeat(64),bytes:Number.MAX_SAFE_INTEGER+1}],[{id:'a'.repeat(64),bytes:1},{id:'a'.repeat(64),bytes:1}]]) {
+  const {dir}=open();const {cell}=dir.create('bad-hints',{...init(),frame_hints:hints},'dev_a');assert.equal(cell.frame_hints,undefined);
+ }
+});
+
+// Mirrors clusterstate.TestRecordKeepsItsFolder through the stored directory.
+test('a sealed folder survives publish, release and reopening, and a named folder replaces it', () => {
+  const sql = memorySql();
+  const dir = new Directory(sql, 'id_t', () => 1000, AMENDED);
+  dir.create('c1', { ...init(), folder: 'sealed-folder' }, 'dev_a');
+  assert.equal(dir.cell('c1').cell.folder, 'sealed-folder');
+  const p = { fence: 1, old_head: 'h0', head: 'h0', size: 1, class: 'work', pending: 0 };
+  for (const folder of [undefined, '', null]) {
+    dir.publish('c1', 'dev_a', { ...p, folder });
+    assert.equal(dir.cell('c1').cell.folder, 'sealed-folder');
+  }
+  dir.publish('c1', 'dev_a', { ...p, folder: 'other' });
+  dir.release('c1', 'dev_a', 1);
+  const reopened = new Directory(sql, 'id_t', () => 2000, AMENDED);
+  assert.equal(reopened.cell('c1').cell.folder, 'other');
+  assert.equal(reopened.list().cells.c1.folder, 'other');
+});
+
+test('folder is an optional opaque string with no additional size or ciphertext restriction', () => {
+  for (const folder of [undefined, '', null, 'not-a-ciphertext', 'x'.repeat(128 * 1024)]) {
+    const { dir } = open();
+    dir.create('c1', { ...init(), folder }, 'dev_a');
+    assert.equal(dir.cell('c1').cell.folder, folder || undefined);
+    dir.publish('c1', 'dev_a', { fence: 1, old_head: 'h0', head: 'h1', folder });
+    assert.equal(dir.cell('c1').cell.folder, folder || undefined);
+  }
+});
+
+test('non-string folders are refused before create or publish changes the record', () => {
+  for (const folder of [1, false, [], {}]) {
+    const { dir } = open();
+    assert.equal(code(() => dir.create('c1', { ...init(), folder }, 'dev_a')), 'bad_request');
+    assert.equal(code(() => dir.cell('c1')), 'not_found');
+    const before = dir.create('c1', { ...init(), folder: 'sealed' }, 'dev_a').cell;
+    assert.equal(code(() => dir.publish('c1', 'dev_a', { fence: 1, old_head: 'h0', head: 'h1', folder })), 'bad_request');
+    assert.deepEqual(dir.cell('c1').cell, before);
+  }
+});
+
+test('stale fences and heads cannot change a folder', () => {
+  const { dir } = open();
+  const before = dir.create('c1', { ...init(), folder: 'sealed' }, 'dev_a').cell;
+  for (const [fence, old_head, want] of [[2, 'h0', 'fence_stale'], [1, 'wrong', 'head_moved']]) {
+    assert.equal(code(() => dir.publish('c1', 'dev_a', { fence, old_head, head: 'h1', folder: 'other' })), want);
+    assert.deepEqual(dir.cell('c1').cell, before);
+  }
 });

@@ -212,6 +212,12 @@ func (a *Agent) belt() []bare.Tool {
 	}
 	tools = append(tools, a.documentTool(), a.jobsTool(), a.manualTool())
 	tools = append(tools, a.askTool())
+	// request_secret, only where a person can answer: headless, a credential
+	// question has nobody to type into it, and a verb that can only ever come
+	// back "nobody to ask" is a verb this belt does not carry.
+	if a.config.mayRequestSecret() {
+		tools = append(tools, a.requestSecretTool())
+	}
 	// watch, on the predicate the prompt's own `watch` sentence is composed
 	// from (beltfacts.go): a node has no conversation for a delta to arrive in.
 	if a.config.mayWatch() {
@@ -285,6 +291,7 @@ func (a *Agent) belt() []bare.Tool {
 	// index, or the sink a worker was built with — and is absent elsewhere.
 	tools = append(tools, a.shareTools()...)
 	tools = append(tools, a.memoryTools()...)
+	tools = append(tools, a.knowledgeTools()...)
 	// An owned conversation has no project until the person names one. The
 	// anchoring hand exists only in that state; after it succeeds the rebuilt
 	// belt omits it, because a capability whose job is already done is absent.
@@ -333,7 +340,7 @@ func (a *Agent) belt() []bare.Tool {
 	// (tools_capabilities.go). It removes no capability and adds none: a machine
 	// with no media models still has no media group, and a shelf with nothing on
 	// it puts no verb on this belt at all.
-	return a.shelveDeferred(tools)
+	return a.appendClientTools(a.shelveDeferred(tools))
 }
 
 // toolDefinitions builds the wire form of the belt, carrying each tool's

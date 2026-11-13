@@ -467,11 +467,21 @@ func (b *appBackend) SessionAct(ask appwire.ActionAsk) (appwire.ActionReceipt, e
 		return r, err
 	}
 
-	_, live, endLive, err := b.admitLive(ask.Agent)
+	a, err := b.find(ask.Agent)
 	if err != nil {
 		return appwire.ActionReceipt{}, err
 	}
-	defer endLive()
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	_, live, err := b.heldLiveLocked(a)
+	if err != nil {
+		return appwire.ActionReceipt{}, err
+	}
+	if ask.Action == appwire.ActionTaskStart || ask.Action == appwire.ActionProgramStart {
+		if err := b.workAllowed(a); err != nil {
+			return appwire.ActionReceipt{}, err
+		}
+	}
 	run, err := b.actionRun(live.conn.Conv, ask)
 	if err != nil {
 		return appwire.ActionReceipt{}, err

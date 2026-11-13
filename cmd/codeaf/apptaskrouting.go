@@ -41,11 +41,16 @@ func (b *appBackend) ActOnTaskRouting(p appwire.TaskRoutingActParams) (appwire.T
 	if !ok {
 		return appwire.TaskRoutingActResult{}, appwire.Errorf(appwire.CodeBadParams, "%s is not a task id", p.ID)
 	}
-	_, live, endLive, err := b.admitLive(agent)
+	a, err := b.find(agent)
 	if err != nil {
 		return appwire.TaskRoutingActResult{}, err
 	}
-	defer endLive()
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	_, live, err := b.heldLiveLocked(a)
+	if err != nil {
+		return appwire.TaskRoutingActResult{}, err
+	}
 	act := session.TaskRoutingAction{Kind: p.Action, Rerun: p.Rerun, RaiseCapUSD: p.RaiseCapUSD, ChangeCount: p.ChangeCount}
 	if len(p.Picks) > 0 {
 		act.Picks = map[crewroute.Seat]string{}

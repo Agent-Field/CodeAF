@@ -23,7 +23,7 @@ type ModelIdentity struct {
 
 func (a *Agent) modelIdentityLocked() ModelIdentity {
 	s := a.modelIdentity
-	s.Selected = a.model
+	s.Selected = a.configuredModelLocked()
 	if a.conversationModels != nil {
 		pair := *a.conversationModels
 		s.Models = &pair
@@ -84,7 +84,9 @@ func (a *Agent) startConversationModelRequest(model, provider string, pair Conve
 	previous := a.modelIdentity.Requested
 	var notice *ModelSwitch
 	isFallback := pair.Main != "" && model == pair.Fallback
-	if pair.Main != "" && (isFallback && (a.fallbackNoticeOwed || previous != model) || previous != "" && previous != model) {
+	continued := !isFallback && model == a.continuedModelNoticed
+	a.continuedModelNoticed = ""
+	if pair.Main != "" && !continued && (isFallback && (a.fallbackNoticeOwed || previous != model) || previous != "" && previous != model) {
 		text := "Using main model " + model + "."
 		if model == pair.Fallback {
 			text = "Main model " + pair.Main + " failed. Using fallback model " + model + "."

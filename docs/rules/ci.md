@@ -2,13 +2,21 @@
 
 ## Pull request checks
 
-`PR gate` (`ci.yml`) runs on pull requests and pushes to `dev`. The required
-`check` status combines the light gate and successful touched-package checks.
+`PR gate` (`ci.yml`) runs on pull requests into `dev`, `app/v3` and
+`santos/dev2`, and pushes to `dev` and `santos/dev2`. The required `check`
+status combines the light gate and successful touched-package checks.
+Pull requests compare against their exact base SHA, so an `app/v3` PR selects
+packages and attributes failures against `app/v3`, rather than `dev`.
 
 The light gate builds and vets all Go packages, checks formatting, generates
 and tests packed manuals, validates change entries, and runs manual coverage,
 structural laws, carried-program help and belt-page checks. Structural laws are
 selected through `go/ast` or `go/parser` imports by `scripts/laws.sh`.
+
+`windows native tests` runs the named tests in `.github/windows-native-tests.txt`
+on `windows-latest` with Git for Windows, an isolated home and short temp paths.
+Every listed test passed natively when it was added. The job is advisory: it is
+not part of `check` until it has stayed green.
 
 Touched packages use `scripts/touched-packages.sh` to map the committed diff to
 root-module packages. Module changes select the whole tree; changes without Go
@@ -27,7 +35,8 @@ make pr-ready
 Use focused tests during editing. `test-quick` is the light gate. `pr-ready`
 adds touched-package tests and, when applicable, tooling acceptance. Commit Go
 and module edits first; the selector compares committed history against
-`origin/dev`, or `BASE=<commit>`. Complete heavy suites take a shared per-machine
+`origin/dev`, or `BASE=<commit>`. For an `app/v3` PR, run
+`BASE=origin/app/v3 make pr-ready`. Complete heavy suites take a shared per-machine
 lock; use focused checks while another full suite is running.
 
 Use `make check` for intentional full-tree validation. It runs the tests,
@@ -57,9 +66,19 @@ of tests exempted from passing on a clean checkout.
 `Full check` (`ci-full.yml`) runs nightly and validates promotion candidates.
 It runs full tests, cross builds and container-based remote checks; binary size
 is reported separately. `Promote to staging` requires a successful fresh Full
-check on its exact candidate before moving the pointer. `Release` guards branch
-ancestry, tests the applicable release surface and publishes platform builds.
-Inspect workflow definitions and live branch rules for current required checks.
+check on its exact candidate before moving the pointer. `Release` (`release.yml`)
+guards branch ancestry, tests the applicable release surface, builds platform
+binaries, and runs the `relay` job before `publish`. The `relay` job hashes the
+hosted relay's inputs with `scripts/relay-fingerprint.sh`, skips when the live
+Worker's deployment tag already matches, otherwise generates the channel's
+Wrangler configuration with `scripts/relay-wrangler-config.sh`, creates the
+channel's R2 bucket if needed, deploys the channel's Worker (`caf-fabric-dev` on
+`dev`, `caf-fabric-staging` on `staging`, `caf-fabric` on `main` and `stable`
+when the repository variable `RELAY_DEPLOY_PRODUCTION` is `true`), proves the
+live service with `internal/relay/hosted_test.go` (`CODEAF_RELAY_HOSTED_URL`)
+and `codeaf-release service --url`, and rolls back to the recorded prior version
+id and stops `publish` if verification fails. Inspect workflow definitions and
+live branch rules for current required checks.
 
 CI does not run the race detector. Run `go test -race` on the affected package
 when investigating a concurrency issue. A green ordinary test run does not

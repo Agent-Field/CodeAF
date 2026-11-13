@@ -73,3 +73,33 @@ func TestPipedFailureIsNotReportedAsSuccess(t *testing.T) {
 		t.Fatalf("failed check masked: %v %v %q", err, isError, text)
 	}
 }
+
+// A reader that stops early is not a failed command. `git log | head` kills
+// its writer with SIGPIPE, which pipefail alone reports as 141; every other
+// failing stage must still fail.
+func TestAnEarlyReaderIsNotAFailureButEveryOtherStageIs(t *testing.T) {
+	bash := bareBash(t)
+	for _, tc := range []struct {
+		command string
+		want    string // "" means success
+	}{
+		{"yes x | head -1", ""},
+		{"false | tail -20", "1"},
+		{"false | yes | head -1", "1"},
+		{"yes x | head -1 | false", "1"},
+		{"set -e; yes x | head -1; echo after", "141"},
+		{"yes x | head -1 && false", "141"},
+	} {
+		args, _ := json.Marshal(map[string]string{"command": tc.command})
+		text, isError, err := bash.Execute(context.Background(), args)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if tc.want == "" && isError {
+			t.Errorf("%q failed: %q", tc.command, text)
+		}
+		if tc.want != "" && (!isError || !strings.Contains(text, "Command exited with code "+tc.want)) {
+			t.Errorf("%q answered isError=%v %q, want code %s", tc.command, isError, text, tc.want)
+		}
+	}
+}

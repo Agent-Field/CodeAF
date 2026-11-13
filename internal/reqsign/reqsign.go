@@ -15,12 +15,13 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/clusterstate"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
 // Skew is how far a request's time may be from the receiver's clock.
-const Skew = 5 * time.Minute
+const Skew = time.Duration(clusterstate.V1SkewMillis) * time.Millisecond
 
 // The four headers of a signed request.
 const (
@@ -29,8 +30,6 @@ const (
 	HeaderTime     = "Codeaf-Time"
 	HeaderSig      = "Codeaf-Sig"
 )
-
-const msgLabel = "codeaf-req-v1\n"
 
 // Signer is the sending side: a device and the identity key that vouches for it.
 type Signer interface {
@@ -68,8 +67,7 @@ func IDOf(identityKey ed25519.PublicKey) string {
 // message is what the device signs: the method, the path with its query, the
 // time and the body's hash, so none of them can change in flight.
 func message(r *http.Request, at string, body []byte) []byte {
-	sum := sha256.Sum256(body)
-	return []byte(msgLabel + r.Method + "\n" + r.URL.RequestURI() + "\n" + at + "\n" + hex.EncodeToString(sum[:]))
+	return clusterstate.V1SigningMessage(r.Method, r.URL.RequestURI(), at, body)
 }
 
 // Sign stamps r with the four headers, timed at now.
@@ -152,4 +150,14 @@ func SignFor(s Signer, now func() time.Time) wireauth.Sign {
 // AuthenticateAt is the wire seam's Authenticate, bound to a clock.
 func AuthenticateAt(now func() time.Time) wireauth.Authenticate {
 	return func(r *http.Request, body []byte) (string, string, error) { return Verify(r, body, now()) }
+}
+
+// Capture retains only the original public proof and body. The caller first
+// authenticates ingress; committed application independently checks this copy.
+func Capture(r *http.Request, body []byte) (clusterstate.V1Request, error) {
+	p, err := readProof(r)
+	if err != nil {
+		return clusterstate.V1Request{}, err
+	}
+	return clusterstate.V1Request{Method: r.Method, URI: r.URL.RequestURI(), IdentityKey: append([]byte(nil), p.identityKey...), Certificate: r.Header.Get(HeaderCert), At: p.at, Signature: append([]byte(nil), p.sig...), Body: append([]byte(nil), body...)}, nil
 }

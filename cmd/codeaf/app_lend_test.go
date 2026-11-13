@@ -202,6 +202,20 @@ func TestTheAppLendsItsOwnLiveFactoryStageInsteadOfRefusingIt(t *testing.T) {
 	backend.state = &appState{path: filepath.Join(root, "app", appStateName)}
 	backend.profileDir = profile
 	t.Cleanup(func() { backend.Close() })
+	// The card is parked before the app holds the stage, as it is whenever the app
+	// reaches a stage after the stage has asked its question.
+	lendWaitFor(t, "the stage to park its proposal", func() bool {
+		views, err := live.AppTasks()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, view := range views {
+			if view.State == "proposed" && strings.Contains(view.Title, "read the ledger") {
+				return true
+			}
+		}
+		return false
+	})
 	agent := appAgentID(transcript)
 	run := backend.crews()
 	lendWaitFor(t, "the crew to hold the live stage", func() bool {
@@ -623,6 +637,8 @@ func TestALentStageKeepsTheFactorysModelPostureAndBudget(t *testing.T) {
 	usd := 5.0
 	_, err = r.backend.SetAgentBudget(appwire.AgentBudgetSet{ID: r.agent, USD: &usd})
 	conflict("SetAgentBudget", err)
+	_, err = r.backend.SetApprovalPosture(r.agent, "allow")
+	conflict("SetApprovalPosture", err)
 	conflict("RaiseCap", r.backend.RaiseCap(appwire.CapRaise{Scope: appwire.CapAgent, ID: r.agent, ToUSD: 9, For: appwire.RaiseGood}))
 	conflict("memberRole", r.backend.memberRole(r.spec.Team, r.agent, "reviewer", "Review it.", "other/model"))
 	if role := r.backend.roleNamed("reviewer"); role != nil {

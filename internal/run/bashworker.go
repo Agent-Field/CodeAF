@@ -19,6 +19,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/agentdid"
+	"github.com/Agent-Field/codeaf/internal/effort"
 	procexec "github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/provider"
@@ -56,9 +58,11 @@ import (
 // CODEAF_TASK_BELT names the older belt, so on that road not one byte of any
 // prompt, belt or landing changes — nothing constructs this worker.
 type BashWorker struct {
-	store     *plandb.Store
-	workspace string
-	model     string
+	profileDir   string
+	store        *plandb.Store
+	workspace    string
+	model        string
+	conversation string
 	// always is the memory section over this place — every line kept for the
 	// person, this machine and this project — rendered by the door
 	// ([session.MemoryWorld]) and closed on by the worker's brief. It is the
@@ -81,14 +85,51 @@ type BashWorker struct {
 	// Zero is no ceiling. spendPreauthorized is the person's `--yes-spend` /
 	// `CODEAF_PREAUTHORIZE_SPEND=1` standing permission to spend past it, lifting
 	// that one limit the same way `doSpendGuard` lifts it from the crew guard.
-	dailyBudgetUSD     float64
-	spendPreauthorized bool
+	dailyBudgetUSD      float64
+	spendPreauthorized  bool
+	attributionOff      bool
+	attributionModelOff bool
 	// seat carries the cell execution boundary into every worker call.
-	seat procexec.Seat
+	seat         procexec.Seat
+	workspaceURI string
+	workspaceSet *session.WorkspaceSet
+	// agentDID is the conversation's agent DID; each worker acts as
+	// `<agentDID>#w<n>` ([workerDID]). Empty leaves workers with no identity.
+	agentDID string
+	// The task door carries the settled task's controls into this child run.
+	taskEffort effort.Rung
+	noProgress int
 }
 
 // WorkerOption changes how a worker is built; the zero set is the host worker.
 type WorkerOption func(*BashWorker)
+
+// WithConversation attributes every worker call to the chat that started it.
+func WithConversation(id string) WorkerOption {
+	return func(w *BashWorker) { w.conversation = id }
+}
+
+// WithTaskControls carries an explicitly settled task's controls without
+// changing this computer's saved defaults or spending permission.
+func WithTaskControls(rung effort.Rung, noProgress int) WorkerOption {
+	return func(w *BashWorker) { w.taskEffort = rung; w.noProgress = noProgress }
+}
+
+// WithWorkspaceURI carries the admitted identity without deriving it from a path.
+func WithWorkspaceURI(uri string) WorkerOption {
+	return func(w *BashWorker) { w.workspaceURI = uri }
+}
+
+// WithWorkspaceSet carries the prototype's explicitly admitted root routes.
+func WithWorkspaceSet(set *session.WorkspaceSet) WorkerOption {
+	return func(w *BashWorker) { w.workspaceSet = set.Clone() }
+}
+
+// WithAgentDID names the conversation whose run this is, so each worker acts
+// as that conversation's worker for its task rather than as nobody.
+func WithAgentDID(did string) WorkerOption {
+	return func(w *BashWorker) { w.agentDID = strings.TrimSpace(did) }
+}
 
 // WithSeat runs the worker's tool calls on seat.
 func WithSeat(seat procexec.Seat) WorkerOption {
@@ -144,7 +185,11 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 		}
 	}
 	agent, err := session.NewBeltWorker(session.Config{
+		Effort:           w.taskEffort,
+		ApprovalGate:     session.BeltWorkerApprovalGate(w.profileDir),
 		Workspace:        w.workspace,
+		WorkspaceURI:     w.workspaceURI,
+		WorkspaceSet:     w.workspaceSet.Clone(),
 		Model:            w.model,
 		Seat:             w.seat,
 		WaitForBeltSteps: true,
@@ -157,13 +202,17 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 		DailyBudgetUSD:      w.dailyBudgetUSD,
 		DailyBudgetResolved: true,
 		SpendPreauthorized:  w.spendPreauthorized,
-	}, w.completer, &task, w.store.Path(), w.store.RootID())
+		WorkerDID:           workerDID(w.store, task, w.agentDID),
+		AttributionOff:      w.attributionOff,
+		AttributionModelOff: w.attributionModelOff,
+	}, w.completer, &task, w.store.Path(), w.store.RootID(), w.conversation)
 	if err != nil {
 		return Report{}, err
 	}
 	var receipts workerReceipts
 	defer func() {
 		used := settledWorkerUsage(agent, &receipts)
+		observeStorageProof(ctx, agent.TaskStorageQuiescent())
 		rep.USD, rep.TokensIn, rep.TokensOut = used.CostUSD, used.Input, used.Output
 		w.recordSpend(task.ID, used, agent.AnsweredUsage(), agent.Answers())
 	}()
@@ -182,6 +231,9 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 	// on the harness's own note, because a round only begins again when the last
 	// one ended on words with no action.
 	brief := session.BeltWorkerBrief(w.store, &task, task.ID == w.store.RootID(), len(past) > 0, WakeClause(runCtx), w.always, w.workspace)
+	if w.workspaceSet != nil {
+		brief += "\n\n" + w.workspaceSet.WorkerInstructions()
+	}
 	// noAction counts replies in a row that carried no tool call. A reply that
 	// did call a tool resets the run to one — its own trailing words are the
 	// first of the new run — and the fourth in a row fails the task.
@@ -214,6 +266,10 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 	// the store and still unread until a turn takes them, so a refused splice
 	// leaves it to the next boundary rather than to this carry.
 	var owed []string
+	stalledAfter := sameStepNote + sameStepEnd
+	if w.noProgress > 0 {
+		stalledAfter = w.noProgress
+	}
 	// notes holds the ids of this task's notes THIS WORKER has already been
 	// handed. THE MARK IS THE WORKER'S ALONE and lives only for the life of the
 	// loop: a person opening the task's page reads the same notes without
@@ -357,7 +413,7 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 							owed = append(owed, sameStepSpoken())
 						}
 					}
-					if same >= sameStepNote+sameStepEnd {
+					if same >= stalledAfter {
 						// A TASK THE STORE SAYS IS BLOCKED ON ANOTHER TASK goes to
 						// the parking the belt already has rather than an ending:
 						// `plandb wait` refuses a wait with nothing open, so a park
@@ -367,7 +423,7 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 						// work. The worker was told before the ending came, so
 						// the park is not the first the worker hears of the law.
 						if _, waitErr := w.store.Wait(task.ID, task.ID); waitErr == nil {
-							ending = storeEnding{kind: endingWait, reason: fmt.Sprintf("waiting: the same command came back with the same answer %d times in a row", sameStepNote+sameStepEnd)}
+							ending = storeEnding{kind: endingWait, reason: fmt.Sprintf("waiting: the same command came back with the same answer %d times in a row", stalledAfter)}
 							stop()
 						} else {
 							stalled = true
@@ -491,7 +547,7 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 			// figure counts the whole run of identical steps, the three that
 			// brought the note and the three that followed it, because that is
 			// what a person opening the record counts.
-			reason := fmt.Sprintf("the same command came back with the same answer %d times in a row: the work was not moving", sameStepNote+sameStepEnd)
+			reason := fmt.Sprintf("the same command came back with the same answer %d times in a row: the work was not moving", stalledAfter)
 			if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, ExitsRecorded: true, Steps: steps, Reason: reason}); err != nil {
 				return Report{Steps: steps}, err
 			}
@@ -1140,4 +1196,27 @@ func holdWhileHeld(ctx context.Context, store *plandb.Store, taskID string) {
 		case <-time.After(heldPoll):
 		}
 	}
+}
+
+// workerDID is who the worker on task acts as: the conversation's DID with the
+// number of the row the person and the conversation know this work by. A task
+// handed to a run keeps its row's number as its store id, so that number is
+// the task's own; a task the run split off under one has no number of its own
+// and acts as the row it was split from, which is the only task anybody
+// outside the run asked for.
+func workerDID(store *plandb.Store, task plandb.Task, did string) string {
+	if did == "" {
+		return ""
+	}
+	seen := map[string]bool{}
+	for at := &task; at != nil && !seen[at.ID]; at = store.Task(at.ParentID) {
+		seen[at.ID] = true
+		if n, err := strconv.ParseUint(strings.TrimPrefix(at.ID, "t-"), 10, 64); err == nil && n > 0 {
+			return agentdid.Worker(did, n)
+		}
+		if at.ParentID == "" {
+			break
+		}
+	}
+	return ""
 }

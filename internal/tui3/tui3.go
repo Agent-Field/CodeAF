@@ -48,10 +48,12 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/credits"
+	"github.com/Agent-Field/codeaf/internal/knowledge"
 	"github.com/Agent-Field/codeaf/internal/leave"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -427,6 +429,14 @@ type CodexFlow interface {
 
 // Options configures one surface.
 type Options struct {
+	// TaskComputers is absent where this conversation cannot place tasks on
+	// paired computers, so the surface can leave those controls out together.
+	TaskComputers session.TaskComputers
+	// Knowledge is the native vault on this machine. Hosted windows leave it nil.
+	Knowledge *knowledge.Vault
+	// WaitForRelease is a local lifecycle hint. A coordinating terminal must
+	// join its idle chat releases before its coordination member can stop.
+	WaitForRelease func() bool
 	// CellsUnavailable is resolved before the surface starts, so paint never
 	// probes an engine and unsupported capabilities have no live doors.
 	CellsUnavailable string
@@ -434,6 +444,21 @@ type Options struct {
 	// machine that syncs nothing, and home then draws nothing extra: the
 	// sessions panel is exactly what it was (homepanel_machines.go).
 	Machines chatlist.Source
+	// DeviceID identifies this computer even before the first device listing.
+	DeviceID string
+	// SaveFailure keeps a close failure for the terminal's restored screen.
+	// The callback may run outside the update loop.
+	SaveFailure func(error)
+	// SavingNotices retains final sentences until the screen is restored on quit.
+	SavingNotices func([]string)
+	// ClosingStarted retains pending cleanup until the restored terminal can report it.
+	ClosingStarted func(<-chan struct{})
+	// SavingDurability retains local-save receipt predicates for chats being closed.
+	SavingDurability func(func() bool)
+	// SavingCompatibility retains whether each remote engine negotiated saving receipts.
+	SavingCompatibility func(func() bool)
+	// ForceQuit cancels that wait when a second interrupt asks to leave immediately.
+	ForceQuit func()
 	// Takeover continues a chat from another machine here. Nil is a machine
 	// that cannot, and the offer is then absent rather than failing
 	// (homepanel_continue.go).
@@ -442,6 +467,13 @@ type Options struct {
 	// (pair.go). Nil is a connection that cannot, and /pair then says so in one
 	// sentence while the first-run screen leaves its code field out.
 	Pairing Pairing
+	// TeamsPaired supplies this computer's pairing gate at preference adoption.
+	TeamsPaired func() bool
+	// SyncService names the service selected for this chat's sync notices.
+	SyncService string
+	// SyncStats reads the selected relay only when /status is requested.
+	// Nil leaves sync space absent for connections that cannot report it.
+	SyncStats func(context.Context) (blobstore.Counts, error)
 	// Approvals answers a new device's request to join and revokes devices
 	// (approve.go, devices.go). Nil is a connection that cannot, and the
 	// screens are then absent.
@@ -451,6 +483,10 @@ type Options struct {
 	// (homeband_addmachine.go). Nil is a connection that cannot count, and the
 	// card is then absent.
 	Fleet Fleet
+	// NotShared reads how many of this computer's chats the other computers
+	// cannot list yet (notshared.go), and false while it is not known. Nil
+	// draws no sentence.
+	NotShared func() (NotShared, bool)
 	// Branches is what a branch row can do. A nil verb is absent from the row.
 	Branches BranchActions
 	// Notices is the desk a goroutine outside the surface puts a sentence on
@@ -1315,6 +1351,7 @@ func Run(ctx context.Context, opts Options) error {
 	defer listenForNews(surface.news)()
 	defer surface.news.close()
 	defer surface.noticeBell.close()
+	defer func() { surface.useSeal(SealSeam{}) }()
 	defer surface.leaving.close()
 	// AND THE DOOR LINE ENDS WITH THE WINDOW, after what is already in it has
 	// been asked (offloop.go): a person's last keystroke before they close a

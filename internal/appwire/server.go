@@ -39,6 +39,12 @@ type Server struct {
 	// the queue, so no frame is ever sent on a closed channel.
 	mu     sync.RWMutex
 	closed bool
+	// greeted is whether the hello has been queued. Until it has, every other
+	// frame waits in early: the app refuses a connection whose first line is
+	// not the hello, and the backend can emit before Serve has built it (a
+	// slow start's idle sweep, a crew opening its members).
+	greeted bool
+	early   []frame
 
 	wrote chan struct{}
 	err   error
@@ -114,19 +120,62 @@ func (s *Server) Emit(event string, data any) {
 	s.send(frame{event: event, data: data})
 }
 
+// EmitContext lets a lifecycle-owned background sender cancel its queue wait.
+// Cancellation drops that event; frames already queued keep their wire order.
+func (s *Server) EmitContext(ctx context.Context, event string, data any) {
+	s.sendContext(ctx, frame{event: event, data: data})
+}
+
 func (s *Server) send(f frame) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if s.closed {
+	s.sendContext(context.Background(), f)
+}
+
+func (s *Server) sendContext(ctx context.Context, f frame) {
+	if ctx.Err() != nil {
 		return
 	}
-	s.frames <- f
+	put := func(f frame) {
+		select {
+		case <-ctx.Done():
+		case s.frames <- f:
+		}
+	}
+	s.mu.RLock()
+	if s.greeted || s.closed {
+		defer s.mu.RUnlock()
+		if !s.closed {
+			put(f)
+		}
+		return
+	}
+	s.mu.RUnlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	switch {
+	case s.closed:
+	case s.greeted:
+		put(f)
+	case f.event == EventHello:
+		s.greeted = true
+		put(f)
+		for _, held := range s.early {
+			put(held)
+		}
+		s.early = nil
+	default:
+		s.early = append(s.early, f)
+	}
 }
 
 // finish closes the queue and waits for every queued line to be written.
 func (s *Server) finish() {
 	s.mu.Lock()
 	if !s.closed {
+		// A server that never said hello still writes what was emitted to it.
+		for _, held := range s.early {
+			s.frames <- held
+		}
+		s.early = nil
 		s.closed = true
 		close(s.frames)
 	}
@@ -148,10 +197,16 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, hello Hello, engine En
 	hello.Contract = Contract
 	hello = withFeature(hello, FeatureAgentEffortRungs)
 	hello = withCollectionsFeature(hello, engine)
+	hello = withKnowledgeFeature(hello, engine)
 	hello = withMessageReadsFeature(hello, engine)
+	hello = withEntryAuthorFeature(hello, engine)
 	hello = withWorkGraphFeature(hello, engine)
 	hello = withSlashCatalogFeature(hello, engine)
+	hello = withSyncFeatures(hello, engine)
 	hello = withSkillsFeatures(hello, engine)
+	hello = withPluginsFeature(hello, engine)
+	hello = withHealthFeature(hello, engine)
+	hello = withManualCorpusFeature(hello, engine)
 	hello = withMachinePolicyFeatures(hello, engine)
 	hello = withSessionActionsFeature(hello, engine)
 	hello = withRunHarnessFeature(hello, engine)
@@ -159,24 +214,97 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, hello Hello, engine En
 	hello = withCrewsOverviewFeature(hello, engine)
 	hello = withCrewsOrganizeFeature(hello, engine)
 	hello = withReplySuggestionFeature(hello, engine)
+	hello = withUnreadFeature(hello, engine)
+	hello = withAgentScopeFeature(hello, engine)
+	hello = withErrandFeature(hello, engine)
+	hello = withClientToolsFeature(hello, engine)
+	hello = withAsksDrawnFeature(hello, engine)
+	hello = withTaskModelsAuxiliaryFeature(hello, engine)
+	hello = withMemorySettingsFeature(hello, engine)
+	hello = withTaskModelsInsightFeature(hello, engine)
 	hello = withProcessFeatures(hello, engine)
 	hello = withProcessActionFeature(hello, engine)
 	hello = withMemoryAppliesFeature(hello, engine)
+	hello = withDevicesFeatures(hello, engine)
+	hello = withPairFeatures(hello, engine)
+	hello = withChatsFeatures(hello, engine)
 	hello = withFactoryFeature(hello, engine)
+	hello = withSearchJobsFeature(hello, engine)
 	hello = withFactoryActorFeature(hello, engine)
+	hello = withFactoryIntakeFeature(hello, engine)
+	hello = withFactoryJobContextFeature(hello, engine)
+	hello = withFactoryJobStepRerunModelFeature(hello, engine)
 	hello = withFactoryJobStepEditFeature(hello, engine)
+	hello = withFactoryJobStepEditMaxFeature(hello, engine)
+	hello = withFactoryJobStepEditWhenFeature(hello, engine)
+	if _, ok := engine.(Factory); ok {
+		hello = withFeature(hello, FeatureFactoryStepSkipped)
+	}
+	hello = withFactoryJobStepEditModelFeature(hello, engine)
+	hello = withFactoryIssueCommentFeature(hello, engine)
 	hello = withFactoryJobRejectPlanFeature(hello, engine)
+	hello = withFactoryJobRejectFeature(hello, engine)
+	hello = withFactoryJobPRReadyFeature(hello, engine)
+	hello = withFactoryJobBriefSeenFeature(hello, engine)
+	hello = withFactoryPublishAnywayFeature(hello, engine)
+	hello = withFactoryAcceptStepFeature(hello, engine)
 	hello = withFactoryJobChatsFeature(hello, engine)
+	hello = withFactoryAgentFieldRunFeature(hello, engine)
+	hello = withFactoryAgentFieldReasonersFeature(hello, engine)
+	hello = withFactoryJobAnswerFeature(hello, engine)
+	hello = withFactoryForemanOpenFeature(hello, engine)
+	hello = withFactoryJobProtectedFeature(hello, engine)
+	hello = withFactoryEffortModelsFeature(hello, engine)
+	hello = withFactoryUsageFeature(hello, engine)
+	hello = withFactoryEstimateFeature(hello, engine)
+	hello = withFactoryScoutFeature(hello, engine)
+	hello = withFactoryReadOnArrivalFeature(hello, engine)
+	hello = withFactoryReadFeature(hello, engine)
+	hello = withFactoryEstimateNewFeature(hello, engine)
+	hello = withFactoryJobBriefFeature(hello, engine)
+	hello = withFactoryRepoReadFeature(hello, engine)
+	hello = withFactoryJobBriefWriterFeature(hello, engine)
+	hello = withFactoryRepoReadFeature(hello, engine)
+	hello = withFactoryJobBriefSpotFeature(hello, engine)
+	hello = withFactoryJobFollowFeature(hello, engine)
+	hello = withFactoryTryResultFeature(hello, engine)
+	hello = withFactoryRepoCheckoutFeature(hello, engine)
+	hello = withFactoryJobAreaFeature(hello, engine)
+	hello = withFactoryJobSetRepoFeature(hello, engine)
+	hello = withFactoryJobFactsFeatures(hello, engine)
 	hello = withFactoryRenameFeature(hello, engine)
+	hello = withFactoryJiraFeature(hello, engine)
+	hello = withFactoryAgentFieldFeature(hello, engine)
+	hello = withFactoryAgentFieldTriggersFeature(hello, engine)
 	hello = withFactoryRefreshFeature(hello, engine)
 	hello = withFactoryLocalFeature(hello, engine)
+	hello = withFactorySetupContinueFeature(hello, engine)
+	hello = withFactorySetupGitHubFeature(hello, engine)
+	hello = withFactorySetupFolderCheckFeature(hello, engine)
 	hello = withOrdersMadeFeature(hello, engine)
 	hello = withFactoryAdminFeature(hello, engine)
+	hello = withFactorySessionsFeature(hello, engine)
+	hello = withCredentialsFeature(hello, engine)
 	hello = withFactoryLinksFeature(hello, engine)
 	hello = withFactoryReposManageFeature(hello, engine)
 	hello = withFactoryRunnerManageFeature(hello, engine)
+	hello = withFactoryRulesFeature(hello, engine)
+	hello = withFactoryRoutesFeature(hello, engine)
+	hello = withFactoryAISearchFeature(hello, engine)
+	hello = withFactoryLibraryFeature(hello, engine)
+	hello = withFactorySpendingFeature(hello, engine)
+	hello = withFactoryGoAheadFeature(hello, engine)
 	hello = withFactoryPipelinePRFeature(hello, engine)
+	hello = withFactoryPipelinePRUpdateFeature(hello, engine)
+	hello = withFactoryPipelinePRsFeature(hello, engine)
 	hello = withFactoryPipelineEditFeature(hello, engine)
+	hello = withFactoryPipelineSourceRefFeature(hello, engine)
+	hello = withFactoryPipelineCopyFeature(hello, engine)
+	hello = withFactoryRepoIssuesFeature(hello, engine)
+	hello = withFactorySpendByRepoFeature(hello, engine)
+	hello = withFactorySpendByModelFeature(hello, engine)
+	hello = withFactoryJobEventsFeature(hello, engine)
+	hello = withFactoryRepoFactsFeature(hello, engine)
 	s.Emit(EventHello, hello)
 	if warmer, ok := engine.(Warmer); ok {
 		go warmer.Warm()
@@ -294,7 +422,9 @@ func (s *Server) handle(ctx context.Context, line []byte, engine Engine, infligh
 // methods is the dispatch table. shutdown is not in it: it is answered by the
 // loop itself, because it ends the loop.
 var methods = map[string]method{
-	"ping": typed(func(Engine, struct{}) (*Empty, error) { return &Empty{}, nil }),
+	"agents.tools_set":   typed(setClientTools),
+	"agents.tool_result": typed(answerClientTool),
+	"ping":               typed(func(Engine, struct{}) (*Empty, error) { return &Empty{}, nil }),
 	"agents.list": typed(func(e Engine, p AgentsListParams) (*AgentsResult, error) {
 		// A STATE AND A QUERY are answered by an engine that keeps them.
 		if t, ok := e.(Tidier); ok {
@@ -322,6 +452,25 @@ var methods = map[string]method{
 		if err := CheckAttachSources(p.Attachments); err != nil {
 			return nil, err
 		}
+		if p.Effort != "" {
+			rung, ok := effort.Parse(p.Effort)
+			if !ok {
+				return nil, Errorf(CodeBadParams, "effort is low, medium or high")
+			}
+			p.Effort = rung.String()
+		}
+		if p.ApprovalPosture != "" {
+			posture, ok := AppApprovalPosture(p.ApprovalPosture)
+			if !ok {
+				return nil, Errorf(CodeBadParams, "approval_posture is ask, guardian, allow or auto")
+			}
+			p.ApprovalPosture = posture
+		}
+		createdBy, err := CheckCreatedBy(p.CreatedBy)
+		if err != nil {
+			return nil, err
+		}
+		p.CreatedBy = createdBy
 		agent, err := e.CreateAgent(p)
 		if err != nil {
 			return nil, err
@@ -345,12 +494,28 @@ var methods = map[string]method{
 		return &EntriesResult{nonNil(entries), more}, nil
 	}),
 	"agents.set_models": typed(func(e Engine, p struct {
-		ID       string `json:"id"`
-		Main     string `json:"main"`
-		Fallback string `json:"fallback"`
+		ID   string `json:"id"`
+		Main string `json:"main"`
+		// Fallback LEFT OUT KEEPS THE CONVERSATION'S CURRENT FALLBACK; an
+		// explicit "" is no fallback. A client that changes only the main
+		// model cannot wipe the fallback by not naming it.
+		Fallback *string `json:"fallback,omitempty"`
 	}) (*agentResult, error) {
 		if strings.TrimSpace(p.ID) == "" || strings.TrimSpace(p.Main) == "" {
 			return nil, Errorf(CodeBadParams, "choose a conversation and main model")
+		}
+		if p.Fallback == nil {
+			keeper, ok := e.(interface {
+				SetConversationMain(string, string) (Agent, error)
+			})
+			if !ok {
+				return nil, Errorf(CodeBadParams, "keeping the fallback requires a newer engine; send fallback")
+			}
+			agent, err := keeper.SetConversationMain(p.ID, p.Main)
+			if err != nil {
+				return nil, err
+			}
+			return &agentResult{agent}, nil
 		}
 		door, ok := e.(interface {
 			SetConversationModels(string, session.ConversationModels) (Agent, error)
@@ -358,7 +523,7 @@ var methods = map[string]method{
 		if !ok {
 			return nil, Errorf(CodeBadParams, "main/fallback selection requires a newer engine")
 		}
-		agent, err := door.SetConversationModels(p.ID, session.ConversationModels{Main: p.Main, Fallback: p.Fallback})
+		agent, err := door.SetConversationModels(p.ID, session.ConversationModels{Main: p.Main, Fallback: *p.Fallback})
 		if err != nil {
 			return nil, err
 		}
@@ -404,6 +569,31 @@ var methods = map[string]method{
 		}
 		return &agentResult{agent}, nil
 	}),
+	// Block is never set from the app: it is Settings' answer, and a chat that
+	// wants it follows Settings. auto hands the conversation back to Settings.
+	"agents.set_approval_posture": typed(func(e Engine, p struct {
+		ID      string `json:"id"`
+		Posture string `json:"posture" enum:"ask,guardian,allow,auto"`
+	}) (*agentResult, error) {
+		if strings.TrimSpace(p.ID) == "" {
+			return nil, Errorf(CodeBadParams, "agents.set_approval_posture needs an id")
+		}
+		posture, ok := AppApprovalPosture(p.Posture)
+		if !ok {
+			return nil, Errorf(CodeBadParams, "posture is ask, guardian, allow or auto")
+		}
+		door, ok := e.(interface {
+			SetApprovalPosture(id, posture string) (Agent, error)
+		})
+		if !ok {
+			return nil, Errorf(CodeBadParams, "approval postures require a newer engine")
+		}
+		agent, err := door.SetApprovalPosture(p.ID, posture)
+		if err != nil {
+			return nil, err
+		}
+		return &agentResult{agent}, nil
+	}),
 	"agents.retry": typed(func(e Engine, p IDParams) (*TurnResult, error) {
 		id, err := required("id", p.ID)
 		if err != nil {
@@ -436,12 +626,24 @@ var methods = map[string]method{
 		}
 		return &SpendResult{spend}, nil
 	}),
-	"agents.open": typed(func(e Engine, p IDParams) (*agentResult, error) {
+	"agents.open": typed(func(e Engine, p struct {
+		ID string `json:"id"`
+		// Warm is a window's guess at a view: it never reopens a closed agent ([WarmOpener]).
+		Warm bool `json:"warm,omitempty"`
+	}) (*agentResult, error) {
 		id, err := required("id", p.ID)
 		if err != nil {
 			return nil, err
 		}
-		agent, err := e.OpenAgent(id)
+		open := e.OpenAgent
+		if p.Warm {
+			w, ok := e.(WarmOpener)
+			if !ok {
+				return nil, Errorf(CodeBadParams, "a warm open requires a newer engine")
+			}
+			open = w.WarmAgent
+		}
+		agent, err := open(id)
 		if err != nil {
 			return nil, err
 		}
@@ -457,16 +659,22 @@ var methods = map[string]method{
 		// Submission names which attachments go as pictures and what was marked
 		// on them (media_submission.go).
 		Submission *MessageSubmission `json:"submission,omitempty"`
+		// From names who sent the message on the person's behalf, such as
+		// "afi"; the entry keeps it and the model is told in one line.
+		From string `json:"from,omitempty"`
 	}) (*TurnResult, error) {
 		if strings.TrimSpace(p.ID) == "" {
 			return nil, Errorf(CodeBadParams, "agents.send needs an id")
+		}
+		from, err := CheckMessageFrom(p.From)
+		if err != nil {
+			return nil, err
 		}
 		// Attachments alone are a message: their words are the turn's.
 		if strings.TrimSpace(p.Text) == "" && len(p.Attachments) == 0 {
 			return nil, Errorf(CodeBadParams, "agents.send needs some text")
 		}
 		var turn uint64
-		var err error
 		if p.Submission != nil {
 			// THE PICTURES ARE SENT WITH THE MESSAGE OR THE MESSAGE IS NOT SENT: an
 			// engine with no door for them refuses before it reads anything, and
@@ -481,24 +689,24 @@ var methods = map[string]method{
 			if err := p.Submission.Check(p.Attachments); err != nil {
 				return nil, err
 			}
-			receipt, err := c.SendComposed(p.ID, AgentMessage{Text: p.Text, Said: p.Said, ClientID: p.ClientID, Attachments: p.Attachments, Reads: p.Reads, Submission: p.Submission})
+			receipt, err := c.SendComposed(p.ID, AgentMessage{Text: p.Text, Said: p.Said, ClientID: p.ClientID, Attachments: p.Attachments, Reads: p.Reads, Submission: p.Submission, From: from})
 			if err != nil {
 				return nil, err
 			}
 			return &TurnResult{Turn: receipt.Turn, MessageID: receipt.MessageID, Delivery: receipt.Delivery, SeenBy: receipt.SeenBy, Queued: receipt.Queued}, nil
 		}
-		if p.Said != nil || len(p.Reads) > 0 {
+		if p.Said != nil || len(p.Reads) > 0 || from != "" {
 			// WHAT THE MESSAGE CARRIED IS SENT WITH IT OR NOT AT ALL: an engine
 			// with no door for it refuses, rather than running the words and
 			// keeping a message the person did not send.
 			s, ok := e.(MessageSender)
 			if !ok {
-				return nil, Errorf(CodeUnknownMethod, "this engine does not serve agents.send with said or reads")
+				return nil, Errorf(CodeUnknownMethod, "this engine does not serve agents.send with said, reads or from")
 			}
 			if err := CheckAttachIDs(p.Attachments); err != nil {
 				return nil, err
 			}
-			turn, err = s.SendMessage(p.ID, AgentMessage{Text: p.Text, Said: p.Said, ClientID: p.ClientID, Attachments: p.Attachments, Reads: p.Reads})
+			turn, err = s.SendMessage(p.ID, AgentMessage{Text: p.Text, Said: p.Said, ClientID: p.ClientID, Attachments: p.Attachments, Reads: p.Reads, From: from})
 		} else if len(p.Attachments) > 0 {
 			t, terr := talker(e, "agents.send with attachments")
 			if terr != nil {

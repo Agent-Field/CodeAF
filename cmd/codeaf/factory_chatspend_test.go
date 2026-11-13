@@ -219,3 +219,75 @@ func TestAJobsChatReadsItsBudgetAgainOnlyWhenTheJobChanges(t *testing.T) {
 		t.Fatalf("after the job was spent elsewhere the refusal was %q, want %q", chat.Refusal(), want)
 	}
 }
+
+func TestManagerBudgetReadOutageHoldsOnlyNewWork(t *testing.T) {
+	st, talk := chatSpendFloor(t)
+	it, err := st.Create(factory.Item{Repo: "acme/api", Talk: talk, Cap: 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	budget := jobChatDoorOf(st).Chat(talk)
+	if budget == nil {
+		t.Fatal("manager budget missing")
+	}
+	path := st.ItemPath(it.ID)
+	saved := path + ".unread"
+	if err := os.Rename(path, saved); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Rename(saved, path) }()
+	if why := budget.Refusal(); why != "job budget could not be read; new work held" {
+		t.Fatalf("uncertain manager budget: %q", why)
+	}
+	if err := os.Rename(saved, path); err != nil {
+		t.Fatal(err)
+	}
+	if why := budget.Refusal(); why != "" {
+		t.Fatalf("recovered manager budget stayed held: %q", why)
+	}
+}
+
+// AN OPEN JOB CHAT'S BUDGET WATCH LISTS NO FOLDER WHILE THE MIRRORS ARE AS
+// THEY WERE. Every job chat asks where its job's money is every few seconds,
+// and each asking globbed the workers' folders. The mirror folders are listed
+// once; a worker's mirror that appears, or a job it takes, is found at once.
+func TestAJobChatsHoldersListTheMirrorFoldersOncePerChangeOfThem(t *testing.T) {
+	st, talk := chatSpendFloor(t)
+	it, err := st.Create(factory.Item{Repo: "acme/api", Title: "fix it", State: factory.StateQueued, Cap: 5, Talk: talk})
+	if err != nil {
+		t.Fatal(err)
+	}
+	chat := &jobChat{floor: st, id: it.ID}
+	if got := chat.holders(); len(got) != 1 || got[0] != st {
+		t.Fatalf("no worker runs it, yet its money is in %d places", len(got))
+	}
+	mirror := thisWorkersMirror(t, st)
+	if got := chat.holders(); len(got) != 1 {
+		t.Fatalf("an empty mirror holds the job: %d places", len(got))
+	}
+	held := it
+	held.State = factory.StateRunning
+	if err := mirror.Save(held); err != nil {
+		t.Fatal(err)
+	}
+	was := mirrorListings.Load()
+	for range 20 {
+		if got := chat.holders(); len(got) != 2 || got[0].Root() != mirror.Root() {
+			t.Fatalf("the mirror running the job was not found first: %d places", len(got))
+		}
+	}
+	if n := mirrorListings.Load() - was; n > 1 {
+		t.Fatalf("twenty askings listed the unchanged mirror folders %d times; want at most once", n)
+	}
+	// A second factory's mirror appears beside the first: found on the next asking.
+	second, err := store.Open(filepath.Join(filepath.Dir(mirror.Root()), "fedcba9876543210"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := second.Save(held); err != nil {
+		t.Fatal(err)
+	}
+	if got := chat.holders(); len(got) != 3 {
+		t.Fatalf("the new mirror was not found: %d places", len(got))
+	}
+}

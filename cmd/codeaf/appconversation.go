@@ -125,8 +125,10 @@ func (b *appBackend) DeleteAgent(id string) error {
 	if err != nil {
 		return err
 	}
-	b.lockRelease(a)
+	a.gate.Lock()
 	defer a.gate.Unlock()
+	b.lockRelease(a)
+	defer b.locked(func() { a.releasing = false })
 	_, live, err := b.heldLiveLocked(a)
 	if err != nil {
 		return err

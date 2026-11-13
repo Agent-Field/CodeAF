@@ -570,6 +570,9 @@ func refuse(code, format string, args ...any) error {
 // checked, then the task's scope — waiting, not started, or a recorded run —
 // applies it, and the answer is the task as it stands after.
 func (a *Agent) TaskRoutingAct(ctx context.Context, id string, act TaskRoutingAction) (TaskRoutingResult, error) {
+	if err := a.CheckWork(); err != nil {
+		return TaskRoutingResult{}, err
+	}
 	n, err := strconv.ParseUint(strings.TrimSpace(id), 10, 64)
 	if err != nil || n == 0 {
 		return TaskRoutingResult{}, refuse(TaskRoutingNotFound, "no such task")
@@ -997,9 +1000,11 @@ func (a *Agent) actOnLiveCrew(n uint64, crew *taskCrew, act TaskRoutingAction) (
 		return nil, err
 	}
 	if raise > 0 && crew.guard != nil {
-		crew.guard.mu.Lock()
-		crew.guard.TaskCap = raise
-		crew.guard.mu.Unlock()
+		crew.guard.raiseTaskCap(raise)
+		// AND THE RUN THAT IS GOING RISES WITH IT. Its engine was handed the
+		// old ceiling when it started, and a raise that reached only the guard
+		// left the run stopped at the figure the person had just raised.
+		a.raiseLiveRunCap(crew, raise)
 	}
 	if crew.persist != nil {
 		if err := crew.persist(); err != nil {
@@ -1565,6 +1570,9 @@ func (a *Agent) actOnParked(ctx context.Context, n uint64, act TaskRoutingAction
 // RetryParkedTask starts a waiting task from where it stood. Still no model
 // keeps it waiting, with the new reason.
 func (a *Agent) RetryParkedTask(n uint64) error {
+	if err := a.CheckWork(); err != nil {
+		return err
+	}
 	a.loadParked(n)
 	parked := a.taskRouting.take(n)
 	if parked == nil {

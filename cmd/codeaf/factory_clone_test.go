@@ -247,6 +247,17 @@ func TestFactoryLaunchRefusesOnlyWhatCannotBeCloned(t *testing.T) {
 	if err := seam.Launch(it.ID); !errors.As(err, &needs) || err.Error() != "acme/api isn't checked out on this machine · "+factory.CheckoutNeedsGitHub || len(launched) != 0 {
 		t.Fatalf("a launch that cannot clone = %v, launched %v", err, launched)
 	}
+	// A job that runs elsewhere launches with no checkout and no way to
+	// clone: this machine only follows its run.
+	remote, err := st.Create(factory.Item{Repo: "api", Title: "remote", State: factory.StateNew,
+		Stages: []factory.Stage{{Name: "build", Kind: factory.StageAgentField, Target: "builder.build", On: true}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := seam.Launch(remote.ID); err != nil || len(launched) != 1 {
+		t.Fatalf("a launch of a job that runs elsewhere = %v, launched %v", err, launched)
+	}
+	launched = nil
 	setToken("tok")
 	if err := seam.Launch(it.ID); err != nil || len(launched) != 1 {
 		t.Fatalf("a launch the runner will clone for = %v, launched %v", err, launched)

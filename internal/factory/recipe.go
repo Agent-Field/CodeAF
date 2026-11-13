@@ -75,17 +75,17 @@ var defaultLists = map[Kind][]string{
 // else, and a pipeline file that set only a shipped step's `max:` would drop
 // it without a word, since a file's step carries its own runtime words.
 var shippedStages = []Stage{
-	{Name: "plan", Kind: StageChat, Ask: "read the issue and the code it names; write a plan and the list of files it will touch", Until: UntilDone, Max: 2, On: true},
+	{Name: "plan", Kind: StageChat, Ask: "understand the issue and relevant code; write a plan and the list of files it will touch", Until: UntilDone, Max: 2, On: true},
 	{Name: ApproveName, Kind: StageGate, On: true},
 	{Name: "write", Kind: StageChat, Ask: "make the change in the checkout", Until: UntilDone, Max: 2, On: true},
-	{Name: "test", Kind: StageChat, Ask: "run the tests the change implies; fix what fails", Until: UntilGreen, Max: 3, On: true},
-	{Name: "review", Kind: StageChat, Ask: "review the diff as a careful colleague; fix what you find", Until: UntilClean, Max: 3, On: true},
+	{Name: "test", Kind: StageChat, Ask: "run the tests the change implies; fix failures introduced by the change", Until: UntilNoNewFailures, Max: 3, On: true},
+	{Name: "review", Kind: StageChat, Ask: "review the diff against the issue and repository standards; fix substantive findings", Until: UntilClean, Max: 3, On: true},
 	{Name: "security", Kind: StageChat, Ask: "review for injection, authz, secrets handling", Until: UntilClean, Max: 3, On: true},
 	{Name: "proof", Kind: StageChat, Ask: "show each claim in its own medium", Until: UntilProven, Max: 3, On: true, Fixed: true},
 	{Name: "read", Kind: StageChat, Ask: "read the change at its head and the thread; say what it does and what it risks", Until: UntilDone, Max: 2, On: true},
 	{Name: "checks", Kind: StageChat, Ask: "run what the claims imply", Until: UntilDone, Max: 2, On: true},
 	{Name: "bisect", Kind: StageChat, Ask: "find the change the red runs started at", Until: UntilDone, Max: 2, On: true},
-	{Name: "fix", Kind: StageChat, Ask: "make the smallest change that turns the red runs green", Until: UntilDone, Max: 2, On: true},
+	{Name: "fix", Kind: StageChat, Ask: "reproduce the failure and fix its cause", Until: UntilDone, Max: 2, On: true},
 }
 
 // ShippedStages is every stage codeaf ships, in order, each a fresh copy.
@@ -218,6 +218,23 @@ func stageName(ask string) string {
 // rather than the colon quietly becoming part of the ask.
 var stageNamed = regexp.MustCompile(`^([\pL\pN]+(?:\s+[\pL\pN]+)?)\s*:(?:\s+|$)`)
 
+// StageNameGiven says the stage sentence words names its stage itself, with a
+// `name:` after any place clause, rather than leaving [StageSentence] to take
+// the ask's first meaningful word.
+func StageNameGiven(words string) bool {
+	_, rest := stagePlacementOf(words)
+	return stageNamed.MatchString(rest)
+}
+
+// KnownStepName says name is a step that exists apart from the sentence that
+// asked for it: one codeaf ships, or one of the recipe this job runs under.
+func KnownStepName(name string, recipe Recipe, kind Kind) bool {
+	if _, ok := ShippedStage(name); ok {
+		return true
+	}
+	return len(stageMatches(recipe.For(kind), name)) > 0
+}
+
 // StageSentence reads a typed stage sentence: an optional place
 // (`after review,`, `before proof,`, `first,`, `last,`), an optional one-word
 // name with a colon (`arch:`), and the ask. `after review, arch: read it for
@@ -236,7 +253,7 @@ func StageSentence(words string) (Stage, string, error) {
 		}
 		name, rest = w, rest[len(m[0]):]
 	}
-	ask := strings.Trim(strings.TrimSpace(rest), " ,:;.")
+	ask := strings.TrimSpace(rest)
 	if ask == "" {
 		return Stage{}, when, errors.New("say what the stage should do")
 	}
@@ -327,8 +344,8 @@ func AddStageWords(stages []Stage, words string) []Stage {
 }
 
 // The until words are a stage's exit contract: the condition a runner checks
-// after each round before it lets the item go on to the next stage. THESE FOUR
-// ARE THE WHOLE VOCABULARY. The recipe file accepts no other word after
+// after each round before it lets the item go on to the next stage. The
+// recipe file accepts no other word after
 // `until`, so every word a person can write maps to a check in [Met] from the
 // day it is written, and a word nobody taught the runner can never be banked.
 //
@@ -336,15 +353,28 @@ func AddStageWords(stages []Stage, words string) []Stage {
 //   - clean: the stage reported done with zero findings.
 //   - proven: every claim on the item has evidence, and there is at least one.
 //   - green: the check stage's command ran to an exit, and the exit was 0.
+//   - no new failures: Test's verification gate accepted the check receipts.
 const (
-	UntilDone   = "done"
-	UntilClean  = "clean"
-	UntilProven = "proven"
-	UntilGreen  = "green"
+	UntilDone          = "done"
+	UntilClean         = "clean"
+	UntilProven        = "proven"
+	UntilGreen         = "green"
+	UntilNoNewFailures = "no new failures"
 )
 
 // untilWords is the until vocabulary in the order the manual names it.
-var untilWords = []string{UntilDone, UntilClean, UntilProven, UntilGreen}
+var untilWords = []string{UntilDone, UntilClean, UntilProven, UntilGreen, UntilNoNewFailures}
+
+// IsTestConversation identifies the Test step that can use UntilNoNewFailures.
+func IsTestConversation(s Stage) bool {
+	return strings.EqualFold(s.Name, "test") && (s.Kind == StageChat || s.Kind == "")
+}
+
+// AllowsBaselineFailures limits baseline comparison to issue work before publish.
+func AllowsBaselineFailures(s Stage, it Item) bool {
+	return s.Until == UntilNoNewFailures && IsTestConversation(s) && IsIssueJob(it) &&
+		it.PullRequest == nil && it.FollowUp == nil && !it.Publishing && it.PublishStatus == nil
+}
 
 // StageResult is what one round of a stage hands back to the runner, which
 // fills it and asks [Met] whether the stage may stop. There is no runner yet;
@@ -361,6 +391,9 @@ type StageResult struct {
 	Checkpoint bool `json:"-"`
 	// ExecutionBlocked names a mechanical interruption, not a failed assertion.
 	ExecutionBlocked string `json:"-"`
+	// VerificationFailureKey identifies measured blockers on the current checkout.
+	// It is collected by the engine and carries no authority to pass a step.
+	VerificationFailureKey string `json:",omitempty"`
 
 	PublishSummary []string        `json:",omitempty"`
 	Repair         *CIRepairResult `json:",omitempty"`
@@ -369,15 +402,20 @@ type StageResult struct {
 	Done     bool
 	Findings int
 	Claims   []Claim
-	Output   string
-	Exit     int
+	// Files is the plan model's repository-relative file list. Nil means the
+	// answer predates the field or omitted it; an empty list stays unknown.
+	Files  []string
+	Output string
+	Exit   int
 	// Notes are sentences the stage leaves for the stages after it; the
 	// runner folds them into the next job's Notes.
 	Notes []string
 	// Edit is a plan stage's proposal to change the item's stages, applied by
 	// the runner through Adapt under the recipe's adapt word; nil otherwise.
 	Edit *PlanEdit
-	// Spent is what the round cost in dollars, 0 when nothing was priced.
+	// Spent is cumulative dollars for this logical round, including resumed
+	// work and descendants, 0 when nothing was priced. Repeated reports replace
+	// that round's table entry; they are not additional spending.
 	Spent float64
 	// SpendRecorded means the live meter already booked each provider receipt.
 	SpendRecorded bool `json:"-"`
@@ -398,6 +436,9 @@ type StageResult struct {
 	// one, from its brief, its last message and its change. It is judged like
 	// any other, and [RoundSummary] says whose words it is.
 	Inferred bool `json:",omitempty"`
+	// Summary is the step's own one-line account of how it ended, for a
+	// failure's headline ([Failure.Summary]); "" when it gave none.
+	Summary string `json:",omitempty"`
 }
 
 // Met says whether a round's result meets the stage's until. An empty until
@@ -487,6 +528,8 @@ func judge(s Stage, r StageResult) (met bool, fault string) {
 		return r.Done && r.Findings == 0, ""
 	case UntilGreen:
 		return r.Done && r.Exit == 0, ""
+	case UntilNoNewFailures:
+		return IsTestConversation(s) && r.Done && r.Exit == 0, ""
 	case UntilProven:
 		// A CLAIM MARKED OK WITH NOTHING SHOWING IT is at fault whatever done
 		// says: it is the one claim that reads as shown and is not, and the

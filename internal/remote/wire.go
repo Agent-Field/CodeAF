@@ -17,6 +17,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -392,6 +393,9 @@ import (
 // are new. The number moves because a version-21 engine would answer the
 // place's move as "no such method" — a key that did nothing, and a person told
 // so in words that were not true.
+//
+// ClientTools.Set and ClientTool.Answer ride version 22 behind Welcome.ClientTools.
+// Like the other welcome capabilities, absence preserves the existing wire.
 const Version = 22
 
 // AND THE NEWS FRAMES RIDE THAT SAME NUMBER, for the reason the places methods
@@ -416,7 +420,8 @@ const Version = 22
 type Frame struct {
 	// Kind says what this frame is: "hello", "welcome", "call", "result",
 	// "event", "closed", "facts", "task", "design", "question", "phase", "lane",
-	// "turn", "driver", "moved", "fatal".
+	// "turn", "driver", "moved", "fatal", "sideAskDelta", "clientToolCall",
+	// "clientToolEnded". The two client-tool kinds answer nothing.
 	//
 	// "facts", "task", "design", "question", "phase" and "lane" are the KINDS
 	// THAT ANSWER NOTHING. The third and fourth are version 11's harness lane
@@ -450,6 +455,17 @@ type Frame struct {
 	// Error is a call that failed, on "result" frames, and the reason on
 	// "fatal" frames.
 	Error string `json:"error,omitempty"`
+	// WorkRefusal preserves ownership facts beside the unchanged error sentence.
+	WorkRefusal *executor.WorkRefusal `json:"workRefusal,omitempty"`
+	// LocalSaved confirms a completed local close on a saving reply.
+	LocalSaved bool `json:"localSaved,omitempty"`
+	// SyncPending distinguishes an upload failure after the local close succeeded.
+	SyncPending bool `json:"syncPending,omitempty"`
+	StorageOff  bool `json:"storageOff,omitempty"`
+	// SavingNotices arrive with closing and session-swap replies after live delivery ends.
+	SavingNotices []string `json:"savingNotices,omitempty"`
+	// UnsavedTranscript preserves a recovery location on a failed saving reply.
+	UnsavedTranscript string `json:"unsavedTranscript,omitempty"`
 
 	// Seq is this event's position in its stream, counting from 1, on "event"
 	// and "closed" frames only.
@@ -625,6 +641,7 @@ const (
 	// [MethodPlanSpend]'s reason — an engine that does not know it answers
 	// "no such method", and the tab draws the absence sentence it already
 	// drew for an engine with no door.
+	MethodOpenPlanTaskWork  = "OpenPlanTaskWork"  // PlanTaskArgs → PlanTaskWorkResult; explicit storage reopen
 	MethodPlanTaskWork      = "PlanTaskWork"      // PlanTaskArgs → PlanTaskWorkResult
 	MethodPlanNote          = "PlanNote"          // PlanTextArgs → nothing
 	MethodPlanPause         = "PlanPause"         // PlanTaskArgs → nothing
@@ -724,6 +741,8 @@ const (
 	// machines would mix clocks that need not agree and would not measure the
 	// path the person is actually waiting on.
 	MethodPing = "Ping" // nothing → nothing
+	// MethodCheckWork reads the existing ownership gate before an app claims an action.
+	MethodCheckWork = "CheckWork" // nothing → nothing (or the viewer refusal)
 
 	// MethodPlacesTask is ONE ROW of that record, read deeper than the walk
 	// reads it: the last thing that piece of work said, out of the journal it
@@ -895,10 +914,21 @@ func (l *LaunchShape) Same(other *LaunchShape) bool {
 	return mine == theirs
 }
 
+// DetachArgs lets a coordinating terminal join its idle chat releases before
+// stopping its member. Ordinary windows retain their asynchronous departure.
+type DetachArgs struct {
+	WaitRelease bool `json:"wait_release,omitempty"`
+}
+
 // Hello is the client's first frame ("hello"). Workspace is the path AS TYPED
 // after the colon — empty means the engine's own home — and the engine answers
 // with the path it resolved.
 type Hello struct {
+	// SyncNoticeWords requests the current sync-notice vocabulary; absence keeps
+	// the sentences older surfaces recognize for outage and removal recovery.
+	SyncNoticeWords bool `json:"syncNoticeWords,omitempty"`
+	// LocalSavingReceipts permits an optional acknowledgment before remote upload waits.
+	LocalSavingReceipts bool `json:"localSavingReceipts,omitempty"`
 	// SessionInstance scopes Resume cursors to the live owner that issued them.
 	SessionInstance string `json:"sessionInstance,omitempty"`
 
@@ -1074,6 +1104,10 @@ type StreamCursor struct {
 // Welcome is the server's answer ("welcome"): the facts a surface needs before
 // its first frame, which are the same facts newApp reads off a local agent.
 type Welcome struct {
+	// ClientTools says this holder forwards connection-owned client tools.
+	ClientTools bool `json:"clientTools,omitempty"`
+	// WorkAdmission says this engine exposes the session's ownership gate.
+	WorkAdmission bool `json:"workAdmission,omitempty"`
 	// UserMessages is counted from the engine's replay, so an attaching app
 	// need not parse the journal again just to allocate visible message IDs.
 	UserMessages *int `json:"userMessages,omitempty"`
@@ -1099,6 +1133,10 @@ type Welcome struct {
 	// engine, which would drop the field unread: a call carrying one is refused
 	// before it is sent rather than run without the correlation it asked for.
 	MessageClientIDs bool `json:"messageClientIds,omitempty"`
+	// MessageFrom says this engine keeps a submission's From on the person's
+	// own line ([session.Submission.From]); a call carrying one is refused
+	// before it is sent to an engine that has not said so.
+	MessageFrom bool `json:"messageFrom,omitempty"`
 	// HarnessRequests says this engine exposes the picked-harness turn door.
 	HarnessRequests bool `json:"harnessRequests,omitempty"`
 	// AttachmentSources says this engine keeps [session.MessageAttachment.Source],
@@ -1106,6 +1144,12 @@ type Welcome struct {
 	// an older engine, which would drop it unread: a call carrying one is refused
 	// before it is sent.
 	AttachmentSources bool `json:"attachmentSources,omitempty"`
+	// LocalSavingReceipts acknowledges the surface's optional saving capability.
+	LocalSavingReceipts bool `json:"localSavingReceipts,omitempty"`
+	// SyncService names the service that saves this chat across computers.
+	SyncService string `json:"syncService,omitempty"`
+	// Machine supplies the serving computer's chosen name for the remote window bar.
+	Machine string `json:"machine,omitempty"`
 	// SessionInstance identifies this live conversation owner, not its durable
 	// transcript. A replaced engine can reopen the same file with stream IDs
 	// starting over, so a returning surface must forget the previous owner IDs.
@@ -1123,6 +1167,9 @@ type Welcome struct {
 	// Note is a sentence worth showing once — "session open elsewhere, started
 	// a new one" travels here.
 	Note string `json:"note,omitempty"`
+	// Interrupted keeps the per-command opening warnings typed. They also
+	// remain in Note for terminal surfaces that predate this field.
+	Interrupted []string `json:"interrupted,omitempty"`
 	// ApprovalMode is the engine machine's own answer to "does a tool run
 	// without asking" (internal/config's ToolApprovalModeAt) — "allow" or
 	// empty. A REMOTE YOLO BADGE MUST NAME THE ENGINE'S POSTURE, NOT THIS
@@ -1277,8 +1324,12 @@ type Welcome struct {
 	SteerOwner bool `json:"steerOwner,omitempty"`
 	// TaskSetup advertises task-scoped model and thinking controls.
 	// TaskRetry advertises retrying incomplete tasks in place.
-	TaskRetry bool `json:"taskRetry,omitempty"`
-	TaskSetup bool `json:"taskSetup,omitempty"`
+	TaskRetry     bool `json:"taskRetry,omitempty"`
+	TaskWorkspace bool `json:"taskWorkspace,omitempty"`
+	TaskSetup     bool `json:"taskSetup,omitempty"`
+	// TaskComputers enables named starts, proposal choices and local recovery.
+	// Absence keeps these controls off a window attached to an older engine.
+	TaskComputers bool `json:"taskComputers,omitempty"`
 	// TaskSettle says this engine can be ASKED TO DECIDE A LANDING — accept, not
 	// right, one more merge round, the hand-over and the take-back
 	// ([MethodTaskSettle]).
@@ -1410,6 +1461,8 @@ type Welcome struct {
 	// Organize's folder pass alone.
 	TeamAsk         bool `json:"teamAsk,omitempty"`
 	ReplySuggestion bool `json:"replySuggestion,omitempty"`
+	// Errand says this engine runs [methodErrand] for the agent it has open.
+	Errand bool `json:"errand,omitempty"`
 
 	// News says this engine SENDS THE STATUS LINE'S NEWS — the "phase" and
 	// "lane" frames the live rate and the `via <machine>` rider are drawn from
@@ -1473,6 +1526,8 @@ type Welcome struct {
 	// refused at this end before anything is written — never answered by
 	// sending the question as a turn instead.
 	SideAsk bool `json:"sideAsk,omitempty"`
+	// SideAskStream adds ephemeral text deltas to the side ask.
+	SideAskStream bool `json:"sideAskStream,omitempty"`
 	// Setup says this engine's conversation answers [MethodSetupPlan] and
 	// [MethodSubmitSetup] (setup.go), for [Welcome.Folders]'s reason: a
 	// *remote.Agent always has the methods. ABSENCE IS false, and the surface
@@ -1572,6 +1627,9 @@ type SubmitArgs struct {
 	// ClientID is the door's opaque name for the message
 	// ([session.Submission.ClientID]); correlation only, never idempotency.
 	ClientID string `json:"clientId,omitempty"`
+	// From names who sent the message on the person's behalf
+	// ([session.Submission.From]).
+	From string `json:"from,omitempty"`
 	// Creation is the creation context the door stated for this accepted
 	// message ([session.Submission.Creation]): absent is UNKNOWN, {} an explicit
 	// none, {"team":id} the exact team. An engine built before it ignores the
@@ -1584,7 +1642,7 @@ type SubmitArgs struct {
 // and FollowUp each take one; a marked call is kept with its mark or refused
 // whole, and never run as its words alone.
 func (a SubmitArgs) marked() bool {
-	return a.Queued || a.ClientID != "" || a.Said != nil || len(a.Attachments) > 0 || len(a.Reads) > 0 || a.composed()
+	return a.Queued || a.ClientID != "" || a.From != "" || a.Said != nil || len(a.Attachments) > 0 || len(a.Reads) > 0 || a.composed()
 }
 
 // composed is whether the call carries pictures or an annotation, which only a
@@ -1593,12 +1651,12 @@ func (a SubmitArgs) composed() bool { return len(a.Media) > 0 || a.Annotation !=
 
 // submission is the call as the agent's own door for a mark takes it.
 func (a SubmitArgs) submission() session.Submission {
-	return session.Submission{Text: a.Text, Said: a.Said, Attachments: a.Attachments, Reads: a.Reads, Media: a.Media, Annotation: a.Annotation, Queued: a.Queued, ClientID: a.ClientID, Creation: creationCopy(a.Creation)}
+	return session.Submission{Text: a.Text, Said: a.Said, Attachments: a.Attachments, Reads: a.Reads, Media: a.Media, Annotation: a.Annotation, Queued: a.Queued, ClientID: a.ClientID, From: a.From, Creation: creationCopy(a.Creation)}
 }
 
 // argsOf is a submission as the wire carries it.
 func argsOf(message session.Submission) SubmitArgs {
-	return SubmitArgs{Text: message.Text, Said: message.Said, Attachments: message.Attachments, Reads: message.Reads, Media: message.Media, Annotation: message.Annotation, Queued: message.Queued, ClientID: message.ClientID, Creation: creationCopy(message.Creation)}
+	return SubmitArgs{Text: message.Text, Said: message.Said, Attachments: message.Attachments, Reads: message.Reads, Media: message.Media, Annotation: message.Annotation, Queued: message.Queued, ClientID: message.ClientID, From: message.From, Creation: creationCopy(message.Creation)}
 }
 
 // creationCopy is a creation context that shares nothing with c, nil for nil:

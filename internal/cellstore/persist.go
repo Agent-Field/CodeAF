@@ -55,6 +55,9 @@ func (e Engine) composeExtra(c cell.Cell) error {
 	if e.Compose == nil || e.cellDir(c) == "" {
 		return nil
 	}
+	if scoped, ok := e.Compose.(interface{ ComposeWorkspace(cell.Cell, string) error }); ok {
+		return scoped.ComposeWorkspace(c, e.workspace(c))
+	}
 	return e.Compose.Compose(c)
 }
 

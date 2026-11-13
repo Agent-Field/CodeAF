@@ -406,6 +406,14 @@ func (r linkReply) provedNoWrite() bool {
 	return r.status >= 400 && r.status < 500 || r.status == http.StatusNotImplemented
 }
 
+// factoryTooOld is the refusal of something the connected factory is too old
+// to serve. The app learns what THIS ENGINE can do from hello, not what the
+// factory can, so an older factory's own "no such route" or "unknown field" is
+// said as what it is, never as a repository it cannot see. Nothing was changed.
+func factoryTooOld() error {
+	return appwire.Errorf(appwire.CodeConflict, "This factory doesn't support that yet; nothing was changed. Update the factory to use it.")
+}
+
 // linkRefusal is the wire error for a refusal. Its words are fixed: the
 // factory's own prose is never passed on, since it may echo an id or a path.
 // Only the documented expiry reason is read from a 401.

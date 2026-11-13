@@ -11,6 +11,13 @@ import (
 // from the directory. It is the fact the home card that offers another machine
 // waits on.
 func (s *Sync) FleetSize(ctx context.Context) (int, error) {
+	current, err := s.currentDisplaySync()
+	if err != nil {
+		return 0, err
+	}
+	if current != s {
+		return current.FleetSize(ctx)
+	}
 	l, err := s.list(ctx)
 	if err != nil {
 		return 0, err
@@ -27,6 +34,13 @@ func (s *Sync) FleetSize(ctx context.Context) (int, error) {
 // Roster lists the devices that are not revoked, this one first, with the names
 // opened, for the row that shows who is online.
 func (s *Sync) Roster(ctx context.Context) ([]chatlist.Device, error) {
+	current, err := s.currentDisplaySync()
+	if err != nil {
+		return nil, err
+	}
+	if current != s {
+		return current.Roster(ctx)
+	}
 	l, err := s.list(ctx)
 	if err != nil {
 		return nil, err

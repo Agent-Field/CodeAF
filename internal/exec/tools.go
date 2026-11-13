@@ -17,6 +17,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/ctxbudget"
 	"github.com/Agent-Field/codeaf/internal/env"
@@ -25,6 +26,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/rtk"
 	commandshell "github.com/Agent-Field/codeaf/internal/shell"
 	"github.com/Agent-Field/codeaf/internal/store"
+	"github.com/Agent-Field/codeaf/internal/textfile"
 )
 
 // The base tool set is five tools, and the count is the design. Pull-only
@@ -1595,9 +1597,8 @@ func (t *Toolbox) runShell(ctx context.Context, command string, seconds int, rtk
 	runCtx, cancel := context.WithTimeout(ctx, time.Duration(seconds)*time.Second)
 	defer cancel()
 	var environment []string
-	// The login shell may rewrite inherited PATH while reading its profile.
-	// Export inside that shell so a shelf is added without changing the rest of
-	// the environment; the bare path still runs without a shelf.
+	// The Unix login shell may rewrite PATH while reading its profile. Export
+	// shelves inside that shell; Windows inherits PATH without a login profile.
 	if t.history != nil {
 		if bin, err := store.SkillsBinDir(); err == nil {
 			environment = os.Environ()
@@ -1646,7 +1647,7 @@ func (t *Toolbox) runShell(ctx context.Context, command string, seconds int, rtk
 	// the notice that ends up in context names a command that actually works.
 	collected := newCappedOutput(strip, t.budgets.spill, t.budgets.preview, t.openSpill)
 	res, err := executor.For(runCtx).In(t.workspace.Root()).Exec(runCtx, executor.ExecRequest{
-		Argv: []string{bash, "-o", "pipefail", "-lc", command}, Env: environment,
+		Argv: append([]string{bash}, commandshell.ForegroundArgs(bash, command)...), Env: environment,
 		WaitDelay: 3 * time.Second, Combined: true, Stream: true,
 	}, func(c executor.Chunk) { _, _ = collected.Write(c.Data) })
 	if res.Status != "" {
@@ -1670,9 +1671,13 @@ func exitCode(res executor.ExecResult, err error) int {
 }
 
 func (t *Toolbox) write(args map[string]any) Result {
-	path, text := stringArg(args, "path"), stringArg(args, "text")
+	path := stringArg(args, "path")
 	if path == "" {
 		return errorf("write needs path")
+	}
+	text, ok := args["text"].(string)
+	if !ok {
+		return errorf("write needs text as a string (use text, not content; an empty string is allowed)")
 	}
 	full, err := t.workspace.Resolve(path)
 	if err != nil {
@@ -1681,7 +1686,15 @@ func (t *Toolbox) write(args map[string]any) Result {
 	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 		return errorf("could not create directory: %v", err)
 	}
-	if err := os.WriteFile(full, []byte(text), 0o644); err != nil {
+	original, err := textfile.ReadForWrite(full)
+	if err != nil && !os.IsNotExist(err) {
+		return errorf("could not read %s: %v", path, err)
+	}
+	content, err := textfile.WriteContent(original, text)
+	if err != nil {
+		return errorf("could not write %s: %v", path, err)
+	}
+	if err := os.WriteFile(full, content, 0o644); err != nil {
 		return errorf("could not write %s: %v", path, err)
 	}
 	t.workspace.Record(t.leaf, full)
@@ -1735,7 +1748,18 @@ func (t *Toolbox) edit(args map[string]any) Result {
 	if err != nil {
 		return errorf("could not read %s: %v", path, err)
 	}
-	body := string(data)
+	body, encoding, err := textfile.Decode(data)
+	if err != nil {
+		return errorf("could not read %s: %v", path, err)
+	}
+	ending := textfile.DetectLineEnding(body)
+	if encoding.PreserveLineEndings() {
+		body = textfile.NormalizeToLF(body)
+		for i := range edits {
+			edits[i].old = textfile.NormalizeToLF(edits[i].old)
+			edits[i].new = textfile.NormalizeToLF(edits[i].new)
+		}
+	}
 	// Every span is located in the original before any of them is applied, which
 	// is what makes the edits independent and what lets an overlap be a refusal
 	// rather than a race between two Replace calls.
@@ -1770,7 +1794,11 @@ func (t *Toolbox) edit(args map[string]any) Result {
 		at = s.end
 	}
 	updated.WriteString(body[at:])
-	if err := os.WriteFile(full, []byte(updated.String()), 0o644); err != nil {
+	content := updated.String()
+	if encoding.PreserveLineEndings() {
+		content = textfile.RestoreLineEndings(content, ending)
+	}
+	if err := os.WriteFile(full, encoding.Encode(content), 0o644); err != nil {
 		return errorf("could not write %s: %v", path, err)
 	}
 	t.workspace.Record(t.leaf, full)
@@ -1968,6 +1996,10 @@ const AllowProviderKeysInShell = "CODEAF_ALLOW_PROVIDER_KEYS_IN_SHELL"
 // reads it without exporting it — so stripping the environment is the whole
 // fix; there is nothing there to leave behind.
 //
+// AND WHAT APPLIES TO A PROVIDER KEY APPLIES TO EVERY OTHER CREDENTIAL. The same
+// opt-in keeps them, for a machine whose only GitHub login is GH_TOKEN and whose
+// agent shells have to use it.
+//
 // A NIL SLICE IS THE PARENT'S ENVIRONMENT. runShell and the background-job
 // registry leave cmd.Env unset on the benchmarked bare path, which inherits
 // everything; the caller must now hand a real, stripped environment, so a nil
@@ -1980,8 +2012,30 @@ func JobShellEnv(environment []string) []string {
 	environment = replaceEnv(environment, "TMUX_TMPDIR", jobTmuxDir())
 	if env.Get(AllowProviderKeysInShell) == "" {
 		environment = withoutEnv(environment, config.ProviderKeyEnvNames()...)
+		environment = withoutSecretEnv(environment)
 	}
 	return environment
+}
+
+// withoutSecretEnv drops what is named like a credential, by the same reading the
+// credential floor uses (internal/approval's SecretEnvName).
+//
+// THE ENGINE KEEPS ITS OWN COPY. It reads GH_TOKEN and its siblings from its own
+// process and hands a token to one git call at a time, so its GitHub calls, pushes
+// and publishing are unaffected. A shell's `gh` signs in from its own store, and
+// ssh reaches its agent through SSH_AUTH_SOCK, which is not named like a secret.
+//
+// A SECRET THE PERSON PUT IN THE VAULT STILL ARRIVES. The executor adds those
+// after this ([executor.Local]), because keeping one there is a person saying this
+// project's commands may have it.
+func withoutSecretEnv(environment []string) []string {
+	kept := make([]string, 0, len(environment))
+	for _, entry := range environment {
+		if name, _, _ := strings.Cut(entry, "="); !approval.SecretEnvName(name) {
+			kept = append(kept, entry)
+		}
+	}
+	return kept
 }
 
 // withoutEnv drops the named variables from an environment slice. It is

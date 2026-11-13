@@ -58,7 +58,7 @@ func TestPublishingKeepsAffinityAndApprovalAcrossDisconnection(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if err := f.desk.Apply(held.ID, held.Worker, !finishing, func(it *factory.Item) error {
+				if err := f.desk.Apply(held.ID, held.Worker, !finishing, false, func(it *factory.Item) error {
 					it.State = factory.StateLanded
 					it.Proof = []factory.Claim{{Text: "build passes", OK: true}}
 					return nil
@@ -116,7 +116,7 @@ func TestPublishingKeepsAffinityAndApprovalAcrossDisconnection(t *testing.T) {
 					if _, err := f.open(t).Pull(machineWorker("back-online", "laptop")); !errors.Is(err, lease.ErrNoJob) {
 						t.Fatalf("offline publish retried without its person: %v", err)
 					}
-					if err := f.desk.Apply(publisher.ID, publisher.Worker, true, func(*factory.Item) error { t.Error("expired publisher wrote a receipt"); return nil }); !errors.Is(err, lease.ErrNoLease) {
+					if err := f.desk.Apply(publisher.ID, publisher.Worker, true, false, func(*factory.Item) error { t.Error("expired publisher wrote a receipt"); return nil }); !errors.Is(err, lease.ErrNoLease) {
 						t.Fatalf("expired report = %v", err)
 					}
 					if err := lease.NewDoors(f.open(t)).Answer(it.ID, true, factory.ChoiceTryOnceMore); err != nil {
@@ -133,7 +133,7 @@ func TestPublishingKeepsAffinityAndApprovalAcrossDisconnection(t *testing.T) {
 					t.Fatal(err)
 				}
 				assertPublish(publisher)
-				if err := f.desk.Apply(publisher.ID, publisher.Worker, true, func(it *factory.Item) error {
+				if err := f.desk.Apply(publisher.ID, publisher.Worker, true, false, func(it *factory.Item) error {
 					it.State = factory.StateShipped
 					it.PullRequest = &factory.PullRequest{Number: 7, URL: "https://example.com/pull/7"}
 					return nil

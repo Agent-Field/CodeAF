@@ -188,8 +188,9 @@ ChatGPT plan, Ollama and any OpenAI-compatible endpoint.
 
 ## Model Pool
 
-Installs can pool what they have measured about models. It is on by
-default: what an install sends is computed, text-free numbers about the models
+Installs can pool what they have measured about models. It is off by
+default. Turn it on with `model_pool = on` in settings or
+`CODEAF_MODEL_POOL=on`. When enabled, what an install sends is computed, text-free numbers about the models
 it ran (role, model, a number, which model judged, door, size bucket, day) under
 a per-install nonce, never code,
 prompts, paths or an identity, and `codeaf pool status` shows exactly what is
@@ -286,7 +287,8 @@ Sixteen of ours fit in half a gigabyte; claude's fourth tab alone needs more.
 
 - `codeaf manual`, or `alt+.` for the key map. The manual ships in the binary and the chat reads it too.
 - [Guide](docs/GUIDE.md): every flag, key, slash command and exit code.
-- [docs/](docs/README.md): architecture, headless, remote, limits.
+- [Documentation map](docs/README.md): product manuals, developer architecture, contracts and history.
+- [Contributing](CONTRIBUTING.md): setup, validation and pull requests.
 
 ## Telemetry
 

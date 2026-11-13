@@ -15,6 +15,7 @@ package github
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -52,15 +53,17 @@ const listPages = 10
 // the issues list that are pull requests, which the source skips there and
 // reads from the pulls list instead.
 type Issue struct {
-	Number  int
-	Title   string
-	Body    string
-	User    string
-	Labels  []string
-	Created time.Time
-	Updated time.Time
-	URL     string
-	Pull    bool
+	ID         int64
+	Redirected bool
+	Number     int
+	Title      string
+	Body       string
+	User       string
+	Labels     []string
+	Created    time.Time
+	Updated    time.Time
+	URL        string
+	Pull       bool
 	// Comments is how many comments the issue has, as the list says it; the
 	// comments themselves are [client.IssueComments]'s.
 	Comments int
@@ -69,8 +72,7 @@ type Issue struct {
 	// non-nil and empty means GitHub said nobody is assigned. The deprecated
 	// singular assignee field is never read: it is only the first of these.
 	Assignees []string
-	// State is GitHub's word, open or closed. Only [client.Issue] fills it:
-	// the lists are of open issues alone, so their rows leave it empty.
+	// State is GitHub's word, open or closed.
 	State string
 }
 
@@ -132,6 +134,9 @@ type RepoInfo struct {
 	// Open is the API's open_issues_count, which counts open issues and open
 	// pull requests together, and -1 when the API left it out.
 	Open int
+	// OpenIssues is how many issues are open, WITHOUT pull requests, and nil
+	// when GitHub did not say: never 0 in place of an answer.
+	OpenIssues *int
 }
 
 // CheckState is what the checks on one commit add up to.
@@ -160,6 +165,7 @@ type labelJSON struct {
 }
 
 type issueJSON struct {
+	ID          int64       `json:"id"`
 	Number      int         `json:"number"`
 	Title       string      `json:"title"`
 	Body        *string     `json:"body"`
@@ -302,7 +308,16 @@ func readRetryable(err error) bool {
 }
 
 // read is one GET under the read discipline, conditional when etag is set.
+// A caller with no tag of its own reads through the process's read cache.
 func (c *client) read(ctx context.Context, rawurl, etag string) ([]byte, string, error) {
+	if etag != "" {
+		return c.readTagged(ctx, rawurl, etag)
+	}
+	return c.cachedRead(rawurl, 0, func(etag string) ([]byte, string, error) { return c.readTagged(ctx, rawurl, etag) })
+}
+
+// readTagged is one GET with its retries, conditional when etag is set.
+func (c *client) readTagged(ctx context.Context, rawurl, etag string) ([]byte, string, error) {
 	headers, err := c.headersForRepo(ctx, "", "")
 	if err != nil {
 		return nil, "", err
@@ -317,7 +332,9 @@ func (c *client) read(ctx context.Context, rawurl, etag string) ([]byte, string,
 			return nil, "", err
 		}
 		lastErr = err
-		if attempt == readAttempts-1 {
+		// A LIMIT THAT OUTLASTS ONE PAUSE IS AN ANSWER: every try before
+		// the reset is refused the same way, and sleeping only holds the caller.
+		if attempt == readAttempts-1 || rateSpentPastPause(err) {
 			break
 		}
 		if serr := c.sleep(ctx, c.pause(err, time.Duration(2*(attempt+1))*time.Second)); serr != nil {
@@ -356,6 +373,13 @@ func (c *client) write(ctx context.Context, method, rawurl string, payload any) 
 
 // pause is the wait before the next try: what GitHub asked for when it said,
 // capped at [maxRateSleep], and the fallback otherwise.
+// rateSpentPastPause is a rate limit whose reset is further off than the
+// longest pause a read takes.
+func rateSpentPastPause(err error) bool {
+	var apiErr *APIError
+	return errors.As(err, &apiErr) && apiErr.RetryAfter > maxRateSleep
+}
+
 func (c *client) pause(err error, fallback time.Duration) time.Duration {
 	var apiErr *APIError
 	if errors.As(err, &apiErr) && apiErr.RetryAfter > 0 {
@@ -374,7 +398,16 @@ func (c *client) repoURL(owner, repo, rest string) string {
 // says that page has not changed the answer is [ErrNotModified] and nothing
 // else was read. The tag that comes back is for next time.
 func (c *client) ListIssues(ctx context.Context, owner, repo string, since time.Time, etag string) ([]Issue, string, error) {
-	q := url.Values{"state": {"open"}, "sort": {"updated"}, "direction": {"desc"}, "per_page": {"100"}}
+	return c.listIssues(ctx, owner, repo, since, etag, "open")
+}
+
+// ListIssueChanges includes closures without walking history before since.
+func (c *client) ListIssueChanges(ctx context.Context, owner, repo string, since time.Time, etag string) ([]Issue, string, error) {
+	return c.listIssues(ctx, owner, repo, since, etag, "all")
+}
+
+func (c *client) listIssues(ctx context.Context, owner, repo string, since time.Time, etag, state string) ([]Issue, string, error) {
+	q := url.Values{"state": {state}, "sort": {"updated"}, "direction": {"desc"}, "per_page": {"100"}}
 	if !since.IsZero() {
 		q.Set("since", since.UTC().Format(time.RFC3339))
 	}
@@ -399,10 +432,10 @@ func (c *client) ListIssues(ctx context.Context, owner, repo string, since time.
 		}
 		for _, r := range rows {
 			out = append(out, Issue{
-				Number: r.Number, Title: r.Title, Body: deref(r.Body), User: r.User.Login,
+				ID: r.ID, Number: r.Number, Title: r.Title, Body: deref(r.Body), User: r.User.Login,
 				Labels: labelNames(r.Labels), Created: r.CreatedAt, Updated: r.UpdatedAt,
 				URL: r.HTMLURL, Pull: r.PullRequest != nil, Comments: r.Comments,
-				Assignees: assigneeLogins(r.Assignees),
+				Assignees: assigneeLogins(r.Assignees), State: r.State,
 			})
 		}
 		if len(rows) < 100 {
@@ -498,10 +531,18 @@ func (c *client) RequiredReviews(ctx context.Context, owner, repo, branch string
 	if branch == "" {
 		return 0, nil
 	}
-	body, _, err := c.read(ctx, c.repoURL(owner, repo, "/branches/"+url.PathEscape(branch)+"/protection"), "")
+	endpoint := c.repoURL(owner, repo, "/branches/"+url.PathEscape(branch)+"/protection")
+	if cache.policyUnreadable(c.token, endpoint) {
+		return 0, nil
+	}
+	body, _, err := c.read(ctx, endpoint, "")
 	if err != nil {
 		var apiErr *APIError
-		if PolicyUnavailable(err) || (errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound) {
+		if PolicyUnavailable(err) {
+			cache.notePolicyUnreadable(c.token, endpoint)
+			return 0, nil
+		}
+		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
 			return 0, nil
 		}
 		return 0, err
@@ -525,10 +566,21 @@ func (c *client) RequiredReviews(ctx context.Context, owner, repo, branch string
 // may not read the list) is "none" and no error, because it is an answer: the
 // factory then trusts the author as a stranger, which is the safe direction.
 func (c *client) Permission(ctx context.Context, owner, repo, user string) (string, error) {
+	p, err := c.PermissionStrict(ctx, owner, repo, user)
+	var apiErr *APIError
+	if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusForbidden && !readRetryable(err) {
+		return "none", nil
+	}
+	return p, err
+}
+
+// PermissionStrict preserves forbidden responses as lookup failures. A missing
+// collaborator (404) is definitive and resolves to none.
+func (c *client) PermissionStrict(ctx context.Context, owner, repo, user string) (string, error) {
 	body, _, err := c.read(ctx, c.repoURL(owner, repo, "/collaborators/"+url.PathEscape(user)+"/permission"), "")
 	if err != nil {
 		var apiErr *APIError
-		if errors.As(err, &apiErr) && (apiErr.StatusCode == http.StatusNotFound || (apiErr.StatusCode == http.StatusForbidden && !readRetryable(err))) {
+		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
 			return "none", nil
 		}
 		return "", err
@@ -551,7 +603,8 @@ func (c *client) Me(ctx context.Context) (string, error) {
 	if c.token == "" {
 		return "", nil
 	}
-	body, _, err := c.read(ctx, c.baseURL+"/user", "")
+	url := c.baseURL + "/user"
+	body, _, err := c.cachedRead(url, identityFresh, func(etag string) ([]byte, string, error) { return c.readTagged(ctx, url, etag) })
 	if err != nil {
 		return "", err
 	}
@@ -575,9 +628,12 @@ func (c *client) Checks(ctx context.Context, owner, repo, sha string) (CheckStat
 func (c *client) Repos(ctx context.Context) ([]RepoInfo, error) {
 	q := url.Values{"affiliation": {"owner,collaborator,organization_member"}, "per_page": {"100"}, "sort": {"pushed"}}
 	var out []RepoInfo
+	allUnchanged := true
 	for page := 1; page <= listPages; page++ {
 		q.Set("page", strconv.Itoa(page))
-		body, _, err := c.read(ctx, c.baseURL+"/user/repos?"+q.Encode(), "")
+		pageURL := c.baseURL + "/user/repos?" + q.Encode()
+		body, _, changed, err := c.cachedReadChanged(pageURL, 0, func(etag string) ([]byte, string, error) { return c.readTagged(ctx, pageURL, etag) })
+		allUnchanged = allUnchanged && !changed
 		if err != nil {
 			return nil, err
 		}
@@ -604,7 +660,87 @@ func (c *client) Repos(ctx context.Context) ([]RepoInfo, error) {
 		}
 	}
 	sort.SliceStable(out, func(a, b int) bool { return out[a].Pushed.After(out[b].Pushed) })
+	rawPages, _ := json.Marshal(out)
+	revision := fmt.Sprintf("%x", sha256.Sum256(rawPages))
+	countsKey := keyOf(c.token, c.baseURL+"/user/repos#counts")
+	if previous, ok := cache.get(countsKey); ok && allUnchanged && previous.etag == revision {
+		var kept []RepoInfo
+		if json.Unmarshal(previous.body, &kept) == nil {
+			return kept, nil
+		}
+	}
+	c.fillOpenIssues(ctx, out)
+	if raw, err := json.Marshal(out); err == nil && len(raw) <= readCacheBody {
+		cache.put(countsKey, readRow{body: raw, etag: revision})
+	}
 	return out, nil
+}
+
+// OpenIssuesBatch is how many repositories one GraphQL request counts, so a
+// list costs one more request per REST page it took.
+const OpenIssuesBatch = 100
+
+// fillOpenIssues sets each repository's OpenIssues from [OpenIssueCounts]. A
+// batch GitHub refuses, or a repository it does not answer, stays nil: the
+// count is an extra, and the list never fails or guesses for want of it.
+func (c *client) fillOpenIssues(ctx context.Context, repos []RepoInfo) {
+	if c.token == "" {
+		return
+	}
+	headers, _ := c.headersForRepo(ctx, "", "")
+	names := make([]string, len(repos))
+	for i, r := range repos {
+		names[i] = r.Owner + "/" + r.Name
+	}
+	counts := OpenIssueCounts(ctx, names, func(ctx context.Context, payload any) ([]byte, error) {
+		return c.request(ctx, http.MethodPost, c.baseURL+"/graphql", headers, payload, 30*time.Second)
+	})
+	for i := range repos {
+		repos[i].OpenIssues = counts[i]
+	}
+}
+
+// OpenIssueCounts is how many issues alone are open in each "owner/name" of
+// repos, counted by GraphQL where REST's open_issues_count adds pull
+// requests in. post sends one GraphQL payload and answers its body; it is
+// called once per [OpenIssuesBatch] repositories with aliases over
+// repository(owner,name){issues(states:OPEN){totalCount}}, never once per
+// repository. A count GitHub did not give, because the batch failed or the
+// repository was not answered, is nil.
+func OpenIssueCounts(ctx context.Context, repos []string, post func(ctx context.Context, payload any) ([]byte, error)) []*int {
+	out := make([]*int, len(repos))
+	for start := 0; start < len(repos); start += OpenIssuesBatch {
+		batch := repos[start:min(start+OpenIssuesBatch, len(repos))]
+		params := make([]string, len(batch))
+		fields := make([]string, len(batch))
+		vars := make(map[string]any, 2*len(batch))
+		for i, full := range batch {
+			k := strconv.Itoa(i)
+			owner, name, _ := strings.Cut(full, "/")
+			params[i] = "$o" + k + ":String!,$n" + k + ":String!"
+			fields[i] = "r" + k + ":repository(owner:$o" + k + ",name:$n" + k + "){issues(states:OPEN){totalCount}}"
+			vars["o"+k], vars["n"+k] = owner, name
+		}
+		query := "query(" + strings.Join(params, ",") + "){" + strings.Join(fields, " ") + "}"
+		raw, err := post(ctx, map[string]any{"query": query, "variables": vars})
+		var reply struct {
+			Data map[string]*struct {
+				Issues struct {
+					TotalCount int `json:"totalCount"`
+				} `json:"issues"`
+			} `json:"data"`
+		}
+		if err != nil || json.Unmarshal(raw, &reply) != nil {
+			continue
+		}
+		for i := range batch {
+			if r := reply.Data["r"+strconv.Itoa(i)]; r != nil {
+				n := r.Issues.TotalCount
+				out[start+i] = &n
+			}
+		}
+	}
+	return out
 }
 
 // Comment posts body as a comment on issue or pull request number.
@@ -711,5 +847,11 @@ func (c *client) WithBaseURL(base string) *client {
 // WithSleep replaces the pause between tries, so a test does not wait.
 func (c *client) WithSleep(sleep func(context.Context, time.Duration) error) *client {
 	c.sleepFn = sleep
+	return c
+}
+
+// WithHTTPClient uses the supplied transport for this client's GitHub requests.
+func (c *client) WithHTTPClient(client *http.Client) *client {
+	c.httpClient = client
 	return c
 }

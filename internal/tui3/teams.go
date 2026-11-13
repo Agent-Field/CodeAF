@@ -49,12 +49,8 @@ import (
 // [app.teamsEnsure], on an opening (the wall, an alt+digit, the strip chip);
 // every function a frame calls reads only what that loaded.
 
-// teamsFile is the file's name inside the profile directory, and
-// teamsLegacyFile the first build's.
-const (
-	teamsFile       = teamstore.FileName
-	teamsLegacyFile = teamstore.LegacyFileName
-)
+// teamsFile is the store's name inside the profile directory.
+const teamsFile = teamstore.FileName
 
 // teamNameCells is the widest a suggested name may be, in cells.
 const teamNameCells = session.OrganizeNameCells
@@ -395,6 +391,16 @@ func (a *app) teamAdopt(teams []team) {
 		teams[i].Made = teams[i].Made.Round(0)
 	}
 	a.wall.teams = teams
+	// An already-open @ list holds its own ranked catalog, so adopting a
+	// changed file must refresh that reading as well as the dropdown.
+	if a.teamsShare && a.comp.open {
+		a.fillMentions()
+		a.comp.rank()
+	}
+	if a.teamsShare && a.home.comp.open {
+		a.fillHomeMentions()
+		a.home.comp.rank()
+	}
 	if a.wall.activeID != "" && teamIndex(teams, a.wall.activeID) < 0 {
 		a.wall.activeID = ""
 	}

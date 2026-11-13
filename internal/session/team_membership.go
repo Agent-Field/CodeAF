@@ -66,7 +66,7 @@ func (a *Agent) teamAddTool(ctx context.Context, args json.RawMessage) (string, 
 	if where == "" {
 		where = row.Workspace
 	}
-	err := teams.Update(a.config.teamProfile(), func(f *teams.File) error {
+	err := teams.UpdateOpen(a.config.teamProfile(), func(f *teams.File) error {
 		current, ok := f.Team(t.ID)
 		if !ok || current.Closed() || current.Manager != role.key {
 			return fmt.Errorf("this conversation no longer manages the selected team")
@@ -95,7 +95,7 @@ func (a *Agent) teamRemoveTool(ctx context.Context, args json.RawMessage) (strin
 	if m.Key == t.Manager || t.Root {
 		return "Appoint a replacement manager through Teams before removing this manager.", true, nil
 	}
-	err := teams.Update(a.config.teamProfile(), func(f *teams.File) error {
+	err := teams.UpdateOpen(a.config.teamProfile(), func(f *teams.File) error {
 		current, ok := f.Team(t.ID)
 		if !ok || current.Closed() || current.Manager != role.key {
 			return fmt.Errorf("this conversation no longer manages the selected team")

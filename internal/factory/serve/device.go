@@ -233,7 +233,7 @@ func (h *Handler) pollDevice(w http.ResponseWriter, r *http.Request) {
 				if h.failed(w, e) {
 					return
 				}
-				snap = withWatchedRepos(snap, watched)
+				snap = withWatchedRepos(snap, watched, h.config.Store.CheckoutDir)
 			}
 			allowed := len(snap.Repos) == 0
 			for _, repo := range snap.Repos {

@@ -152,6 +152,15 @@ func (a *Agent) executeAsk(ctx context.Context, raw json.RawMessage) (string, bo
 	if err := decodeToolArguments(raw, &in); err != nil {
 		return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 	}
+	return a.raiseAsk(ctx, in)
+}
+
+// raiseAsk is `ask` once its arguments are read. It is a seam of its own
+// because `request_secret` (secret_request.go) is this same question with a
+// shape the engine writes instead of the model: one lane, one park, one answer
+// door, so a credential is never a second kind of question a surface has to
+// learn.
+func (a *Agent) raiseAsk(ctx context.Context, in askArguments) (string, bool, error) {
 	// A PICK WITH NO KEY IS NO PICK. A model that writes `pick: {key: ""}` with
 	// "their taste decides it" beside it has declined to recommend, which the
 	// object spells as a nil pick; refusing it as a pick that names nothing
@@ -192,19 +201,41 @@ func (a *Agent) executeAsk(ctx context.Context, raw json.RawMessage) (string, bo
 	// A CHOICE WITH A SUGGESTED ANSWER RUNS ON THE SURFACE'S CLOCK when the
 	// surface asked for one and the project set nothing for choices itself; a
 	// choice with no suggestion has nothing for a clock to take, and stays.
+	//
+	// AND IT RUNS ONLY ONCE A SURFACE HAS DRAWN THE CARD. The surface's clock is
+	// a countdown on a card, so until a surface says it drew it ("asks.shown",
+	// [Agent.StartQuestionClock]) the question waits with no clock, blocking or
+	// not: a suggestion is never taken for somebody no surface showed it to. A
+	// project's own row is the person's choice and runs from the raise.
+	surfaceClock := false
 	if secs := a.config.ChoiceClockSeconds; secs > 0 && q.Ask == AskChoice && q.Pick != nil && q.Policy.Kind == PolicyAsk {
 		if _, set := a.readAutonomy()[AskChoice]; !set {
 			q.Policy = Policy{Kind: PolicyRecommendThenAuto, After: time.Duration(secs) * time.Second}
+			surfaceClock = true
 		}
 	}
 	if q.Stakes == StakesIrreversible {
 		q.Policy = Policy{Kind: PolicyAsk}
+		surfaceClock = false
 	}
-	if q.Policy.Kind == PolicyRecommendThenAuto {
+	// A CREDENTIAL IS ONLY EVER THE PERSON'S TO TYPE. No clock takes a pick for
+	// them, no default answers it, and nobody else is asked first: a manager
+	// model answering a step's question would type the key into its own
+	// transcript, which is exactly where it must never be.
+	if q.SecretAnswer() {
+		q.Pick, q.Policy, surfaceClock = nil, Policy{Kind: PolicyAsk}, false
+	}
+	if q.Policy.Kind == PolicyRecommendThenAuto && !surfaceClock {
 		q.Deadline = time.Now().Add(q.Policy.After)
 	}
 	if err := q.Check(a.Decisions()); err != nil {
 		return askRefusedLead + err.Error(), false, nil
+	}
+	if q.SecretAnswer() {
+		if !a.config.Interactive {
+			return "your call: " + strings.TrimSpace(q.Head) + " (nobody to ask, so nothing was asked for)", false, nil
+		}
+		return a.parkAsk(ctx, q, theirs, in.Blocking, false)
 	}
 	// A FACTORY STEP'S QUESTION GOES TO ITS ITEM'S MANAGER FIRST, and the
 	// call waits for the answer, the manager's or the person's
@@ -261,7 +292,14 @@ func (a *Agent) executeAsk(ctx context.Context, raw json.RawMessage) (string, bo
 		a.emitQuestion(EventQuestionAnswered, q, &answer)
 		return askAnswerText(q, answer, theirs, nil), false, nil
 	}
-	open := &askOpen{q: q, theirs: theirs}
+	return a.parkAsk(ctx, q, theirs, in.Blocking, surfaceClock)
+}
+
+// parkAsk puts the question on screen and, where the turn waits on it, waits
+// for the answer.
+func (a *Agent) parkAsk(ctx context.Context, q Question, theirs map[string]string, blocking askBlocking, surfaceClock bool) (string, bool, error) {
+	id := q.ID
+	open := &askOpen{q: q, theirs: theirs, deferred: surfaceClock}
 	a.mu.Lock()
 	wait := a.asked.parkLocked(open)
 	a.mu.Unlock()
@@ -281,7 +319,7 @@ func (a *Agent) executeAsk(ctx context.Context, raw json.RawMessage) (string, bo
 	// clock at all while the timer lived in the select below.
 	a.startAskClock(open)
 	if wait == nil {
-		if !in.Blocking.waits() {
+		if !blocking.waits() {
 			// THE ASKER SAID ITS TURN DOES NOT WAIT. The question stays up, the
 			// turn carries on around it, and the answer arrives as a message
 			// ([Agent.deliverAskAnswer]).
@@ -387,6 +425,18 @@ func (a *Agent) retireTurnQuestions() {
 // answer to the call parked on the question, or — where the question outlived
 // its call — to the model as a message.
 func (a *Agent) answerAsk(answer Answer) error {
+	// A CREDENTIAL BECOMES A FILE BEFORE ANYTHING ELSE TOUCHES THE ANSWER. This
+	// is the one door every surface's answer to the model's own question comes
+	// through, and both of its roads — the call parked on the question and the
+	// message to a turn that moved on — render whatever leaves here, so the
+	// typed words are swapped for the file's path at the top and neither road
+	// can see them (secret_request.go).
+	a.mu.Lock()
+	asked := a.asked.atLocked(answer.ID)
+	a.mu.Unlock()
+	if asked != nil && asked.q.SecretAnswer() {
+		answer = keepSecretAnswer(asked.q, answer)
+	}
 	if !AnswerResolves(answer) {
 		// AN ASK-BACK TAKES THE CALL OFF THE QUESTION AND LEAVES THE QUESTION.
 		// It is one question with two answers coming: the words now, the
@@ -400,9 +450,15 @@ func (a *Agent) answerAsk(answer Answer) error {
 			return nil
 		}
 		// They asked back about a question that is already standing on its own,
-		// so there is no call to come back. The words go to the model as words;
-		// the question is untouched.
-		a.enqueueSteering(askBackNote(open.q, answer))
+		// so there is no call to come back. This conversation's own model owes
+		// the explanation: the person just asked it, so there is nobody for the
+		// principal to find. Their words leave the decision open, including on
+		// a viewer; the answer mark does not grant permission for tools.
+		note := wakeNote(askBackNote(open.q, answer))
+		note.answer = true
+		// Keep the answer mark through the turn's final drain.
+		note.batch = false
+		a.enqueueNote(note)
 		return nil
 	}
 	// THE SETTLE AND THE HANDOVER ARE ONE LOCKED STEP (askwait.go's

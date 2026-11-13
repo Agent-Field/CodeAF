@@ -8,12 +8,14 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"net"
 	"time"
 
 	"golang.org/x/crypto/nacl/box"
 
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/identity"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
@@ -24,7 +26,10 @@ type LinkUI interface {
 }
 
 // Fleet is what a device sees of the identity it just joined.
-type Fleet struct{ Devices, Workspaces int }
+type Fleet struct {
+	Devices, Workspaces int
+	With                string
+}
 
 // LinkJoining is this computer as the device that asks to join.
 type LinkJoining struct {
@@ -80,11 +85,18 @@ func (j LinkJoining) free() (LinkJoining, error) {
 	if _, err := identity.Load(j.Home); err != nil {
 		return j, nil
 	}
+	// A removed paired computer may be returning to its own identity. The
+	// approved grant is checked by adoptWithDevice before any local switch.
+	if j.Revoked && !identity.Solo(j.Home) {
+		return j, nil
+	}
 	fresh, err := identity.Joinable(j.Home)
-	if err != nil || !fresh {
+	if err != nil {
 		return j, ErrDifferentChats
 	}
-	j.MergeState = true
+	if !fresh {
+		return j, differentChats(j.Home)
+	}
 	return j, nil
 }
 
@@ -188,12 +200,17 @@ func (a *asker) install(ctx context.Context, j LinkJoining, g LinkGrant) (LinkJo
 	if err != nil {
 		return LinkJoined{}, err
 	}
-	joined, err := adopt(j.Joining, g.Grant)
+	joined, err := adoptWithDevice(j.Joining, g.Grant, &dev)
 	if err != nil {
-		return LinkJoined{}, err
+		return LinkJoined{Joined: joined}, err
 	}
-	if err := identity.Install(j.Home, g.Identity, dev); err != nil {
-		return LinkJoined{}, err
+	// Explicit re-pairing installs the approved device even in the same set,
+	// so a removed device can return without changing the shared identity.
+	if !joined.Already || j.Replace {
+		if err := identity.Install(j.Home, g.Identity, dev); err != nil {
+			return LinkJoined{Joined: joined}, err
+		}
+		joined.Already = false
 	}
 	fleet, err := j.Pull(ctx)
 	if err != nil {
@@ -204,7 +221,10 @@ func (a *asker) install(ctx context.Context, j LinkJoining, g LinkGrant) (LinkJo
 
 // phraseLink turns what the directory said into the one sentence for it.
 func phraseLink(err error, host string) error {
+	var network net.Error
 	switch {
+	case errors.Is(err, context.DeadlineExceeded), errors.As(err, &network) && network.Timeout():
+		return ServiceTimeout(err, host)
 	case errors.Is(err, directory.ErrRequestGone):
 		return ErrLinkExpired
 	case errors.Is(err, directory.ErrRateLimited):
@@ -214,7 +234,7 @@ func phraseLink(err error, host string) error {
 	case errors.Is(err, directory.ErrTooOld):
 		return ErrRelayTooOld
 	case errors.Is(err, directory.ErrUnreachable):
-		return CannotReachHost(host)
+		return syncwords.Explain(err, host)
 	}
-	return err
+	return syncwords.Explain(err, host)
 }

@@ -86,9 +86,9 @@ func TestTheConversationWearsThePlacesHead(t *testing.T) {
 		if !strings.HasPrefix(head[0], " "+plain(a.pal.wordmark(a.width))) || !strings.HasSuffix(head[0], pulse) {
 			t.Fatalf("at %dx%d the chat's first row is not the nav with the pulse at its end:\n%q", size.w, size.h, head[0])
 		}
-		words := []string{"Home", "Chats", "AI teams", "Activity", "Memories", "Automations", "Spend", "Settings"}
+		words := []string{"Home", "Chats", "AI teams", "Activity", "Memory", "Automations", "Spend", "Settings"}
 		if size.w == 80 {
-			words = []string{"Home", "Chats", "AI teams", "Activity", "Memories", "More"}
+			words = []string{"Home", "Chats", "AI teams", "Activity", "Memory", "More"}
 		}
 		if !placeWordsInOrder(head[0], words...) {
 			t.Fatalf("at %dx%d the chat's first row does not carry the places:\n%q", size.w, size.h, head[0])

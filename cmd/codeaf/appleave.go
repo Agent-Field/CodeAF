@@ -27,8 +27,13 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/cellstore"
 )
 
 const (
@@ -38,7 +43,9 @@ const (
 	// appLeaveWait is how long the careful wrap-up may take before the process
 	// ends regardless: the factory's runner and its service each get their own
 	// stop wait, the conversations theirs, and a running process its grace.
-	appLeaveWait = 2*appLocalStopWait + appReleaseWait + appQuitGraceS*time.Second
+	// Local sealing, final publication and the grouped disk flush each retain
+	// their complete saving bound before a forced exit can cut them off.
+	appLeaveWait = 2*appLocalStopWait + appReleaseWait + appQuitGraceS*time.Second + 3*cellstore.SealWithin
 )
 
 // watchAppParent calls gone once the process that started this one has ended,
@@ -95,4 +102,36 @@ func leaveWithin(ctx context.Context, left, returned <-chan struct{}, wait time.
 func appLeaveNow() {
 	fmt.Fprintf(os.Stderr, "codeaf app: still leaving after %s; ending now\n", appLeaveWait)
 	os.Exit(1)
+}
+
+// surviveBrokenPipes makes a write to a pipe whose reader has gone fail with
+// EPIPE instead of ending the process. Go ends a program that writes to a
+// broken stdout or stderr unless it asked for SIGPIPE; the app's pipes are
+// both, and the engine may outlive the app (a crash, or a quit's wrap-up).
+// It asks with Notify, never Ignore: an ignored SIGPIPE is inherited across
+// exec, so every shell, tool and server this engine starts would lose it
+// (`producer | head` would never end). The channel is never read; Notify
+// drops a signal its channel has no room for.
+func surviveBrokenPipes() { signal.Notify(make(chan os.Signal, 1), syscall.SIGPIPE) }
+
+// appLeaveSlowLap is how long one part of the wrap-up may take before the
+// engine says so on stderr.
+const appLeaveSlowLap = time.Second
+
+// leaveLaps times the parts of the wrap-up, and names on stderr each one that
+// took longer than [appLeaveSlowLap]. A WRAP-UP THAT IS SLOW SAYS WHERE. The
+// fifth live A+B run's engine took about 45 seconds to leave after SIGTERM,
+// and nothing it wrote said which part it was waiting on; the same shape on a
+// rig (a step mid-command, cells on) left in under half a second.
+func leaveLaps() func(part string) { return leaveLapsTo(os.Stderr, time.Now) }
+
+func leaveLapsTo(w io.Writer, now func() time.Time) func(part string) {
+	last := now()
+	return func(part string) {
+		at := now()
+		if took := at.Sub(last); took > appLeaveSlowLap {
+			fmt.Fprintf(w, "codeaf app: leaving: %s took %s\n", part, took.Round(100*time.Millisecond))
+		}
+		last = at
+	}
 }

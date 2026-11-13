@@ -481,6 +481,9 @@ func (c *chooser) wantSheet(model string) {
 // Choose is the whole of the decision: age, gate, prune, sample, rank, and say
 // why in one sentence.
 func (c *chooser) Choose(req Request) Choice {
+	if !req.Typical {
+		Default().RecordRouting()
+	}
 	// A TIER IS NOT A DEPLOYMENT. `model:high` is the same seventeen machines as
 	// `model` and the ledger files them under the bare id ([BareModel]), so the
 	// request is bared here — once, before anything is looked up — and every

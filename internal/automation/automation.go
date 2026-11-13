@@ -384,7 +384,11 @@ type Run struct {
 	AutomationID string `json:"automationId"`
 	// Due is the slot this run was for; for a run asked for now, the moment
 	// it was asked.
-	Due      time.Time `json:"due"`
+	Due time.Time `json:"due"`
+	// Asked is when the run began to wait on the person, which for one the
+	// clock parked late is long after its slot. It is zero for a run that
+	// never asked, and for one an older build parked (store_asked.go).
+	Asked    time.Time `json:"asked,omitzero"`
 	Why      Why       `json:"why"`
 	Phase    Phase     `json:"phase"`
 	Started  time.Time `json:"started,omitempty"`

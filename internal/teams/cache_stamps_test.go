@@ -68,7 +68,7 @@ func TestTrafficStampSharesReadsResumesAndResets(t *testing.T) {
 func TestTeamLoadSharesParsedFileAndReturnsIndependentMembers(t *testing.T) {
 	dir := t.TempDir()
 	must(t, Save(dir, []Team{{ID: "aaaaaaaaaaaa", Name: "crew", Members: []Member{{Key: "/session/a", Handle: "one"}}}}))
-	before := teamFiles.Reads()
+	before := storeReads.Load()
 	var wg sync.WaitGroup
 	for range 24 {
 		wg.Go(func() {
@@ -81,8 +81,8 @@ func TestTeamLoadSharesParsedFileAndReturnsIndependentMembers(t *testing.T) {
 		})
 	}
 	wg.Wait()
-	if teamFiles.Reads()-before != 1 {
-		t.Fatalf("team reads=%d want 1", teamFiles.Reads()-before)
+	if got := storeReads.Load() - before; got != 0 {
+		t.Fatalf("team reads=%d want 0: the save left the rows it wrote held", got)
 	}
 	f, err := Load(dir)
 	must(t, err)

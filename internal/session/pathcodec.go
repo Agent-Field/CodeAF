@@ -1,13 +1,13 @@
 package session
 
 // pathcodec.go is how a sealed file names a folder. A path written into .cell/
-// travels to machines where the folder is somewhere else, so it is never
-// absolute (law L1): it is a base's NAME and the remainder beneath it, spelled
+// travels to machines where the folder is somewhere else, so when possible
+// it is a base's name and the remainder beneath it, spelled
 // "workspace:sub/dir". One codec encodes every path on save and resolves every
 // one on load; a writer supplies the fields, never the spelling.
 //
 // A path under no base (another drive, a system folder) has no honest relative
-// spelling: it is machine-local by nature and is not persisted.
+// spelling, so it stays absolute rather than losing the person's choice.
 
 import (
 	"os"
@@ -46,12 +46,14 @@ func (c pathCodec) encode(abs string) (string, bool) {
 			return b.name + refSeparator + filepath.ToSlash(rel), true
 		}
 	}
+	if filepath.IsAbs(abs) {
+		return abs, true
+	}
 	return "", false
 }
 
-// resolve is encode's inverse. A value that is already absolute is a file an
-// older build wrote, and it stands as written; a name no base answers to is
-// unresolvable.
+// resolve is encode's inverse. An absolute value stands as written even if
+// the folder is absent on this machine; a name no base answers to is unresolvable.
 func (c pathCodec) resolve(ref string) (string, bool) {
 	if filepath.IsAbs(ref) {
 		return ref, true

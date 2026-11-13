@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -25,9 +26,12 @@ import (
 	"unicode"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/factory/verification"
+	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // loopLogMost is how many lines a stream keeps, the newest last: the same
@@ -93,9 +97,14 @@ type floorLoop struct {
 
 // loopCtl is one item's controls, reached by the doors.
 type loopCtl struct {
-	id              int
-	ctx             context.Context
-	cancel          context.CancelFunc
+	id     int
+	ctx    context.Context
+	cancel context.CancelFunc
+	// cause cancels ctx with why; a person's Stop cancels it with
+	// [factory.ErrPersonStopped] first ([StoppedHere]), and every other end
+	// (a withdrawn lease, the engine closing) with none.
+	cause           context.CancelCauseFunc
+	spending        sync.WaitGroup
 	steer           chan string
 	modelSelections chan ModelSelection
 	modelMu         sync.Mutex
@@ -104,6 +113,9 @@ type loopCtl struct {
 	// step; askMu keeps one question at a time.
 	wmu   sync.Mutex
 	askMu sync.Mutex
+	// pauseMu keeps pause writes and paid round admission in order without
+	// taking floorLoop.mu inside a store callback.
+	pauseMu sync.Mutex
 	// reverify says the control runs the checks again, holding no bench.
 	reverify bool
 	// hearMu keeps one reading of the manager conversation at a time
@@ -114,6 +126,12 @@ type loopCtl struct {
 	phase      int
 	phaseAt    time.Time
 	phaseSpent float64
+	// revived is one more than the phase that was running when a restart's
+	// revive gave the item this control again, 0 for none. ITS FIRST ROUND HERE IS THE SAME
+	// ROUND GOING ON, NOT A NEW START: it keeps the start the round already
+	// had and does not say "<step> started" a second time under "resumed".
+	// Only the item's own goroutine reads it after revive sets it.
+	revived int
 	// inboxMu keeps one step's question at a time with the manager and the
 	// person (inbox.go).
 	inboxMu sync.Mutex
@@ -121,14 +139,14 @@ type loopCtl struct {
 	// Guarded by floorLoop.mu.
 	pending     string // the question the item waits on: "" is none
 	paused      bool
-	resume      chan struct{}
 	roundCancel context.CancelFunc
 	// opened is the chat the round now running opened, and carry the chat a
 	// pause cut short, which the next round continues rather than replaces.
-	opened   string
-	carry    string
-	benchNo  int
-	released bool
+	opened       string
+	carry        string
+	benchNo      int
+	released     bool
+	releasedDone chan struct{}
 	// finishing says the final proof write is in progress, under floorLoop.mu.
 	finishing bool
 }
@@ -173,6 +191,9 @@ func (r *Runner) Launch(id int) error {
 	if err != nil {
 		return err
 	}
+	if err := factory.CheckPersonStop(it); err != nil {
+		return err
+	}
 	// A PAUSED ITEM'S LAUNCH IS ITS RUN: the one top-bar button resumes it.
 	if done, err := r.resumePaused(it); done || err != nil {
 		return err
@@ -186,6 +207,19 @@ func (r *Runner) Launch(id int) error {
 		}
 	}
 	if err := strangerWrites(it); err != nil {
+		if saveErr := st.Update(id, func(it *factory.Item) error {
+			if launchable(*it) == nil {
+				if refusal := strangerWrites(*it); refusal != nil {
+					var denied WriteAccessRefusal
+					if errors.As(refusal, &denied) {
+						factory.StampFailure(it, denied.Failure(*it, r.now()))
+					}
+				}
+			}
+			return nil
+		}); saveErr != nil {
+			return saveErr
+		}
 		return err
 	}
 	lp.mu.Lock()
@@ -193,8 +227,8 @@ func (r *Runner) Launch(id int) error {
 		lp.mu.Unlock()
 		return AlreadyRunning(it.Ref())
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	c := &loopCtl{id: id, ctx: ctx, cancel: cancel, steer: make(chan string, 16), modelSelections: make(chan ModelSelection, 1), answers: make(chan loopAnswer, 1), phase: -1}
+	ctx, cause := context.WithCancelCause(context.Background())
+	c := &loopCtl{id: id, ctx: ctx, cancel: func() { cause(nil) }, cause: cause, steer: make(chan string, 16), modelSelections: make(chan ModelSelection, 1), answers: make(chan loopAnswer, 1), phase: -1}
 	lp.ctls[id] = c
 	lp.results[id] = map[int]factory.StageResult{}
 	lp.notes[id] = nil
@@ -235,7 +269,17 @@ func (r *Runner) Launch(id int) error {
 		it.PublishError = ""
 		it.Question, it.QKind = "", ""
 		it.Proof, it.Policy = nil, nil
+		if it.Stream != nil && begun(it.Stream) {
+			factory.ClearJobRun(it)
+		}
 		it.Stream = freshStream(it, now)
+		if strings.TrimSpace(it.RunOn) != "" {
+			// An AgentField job's steps are its run's calls, made as they come.
+			// The pipeline it was filed with goes too: a step left there would
+			// be made into a phase with its stock words, and a run step of the
+			// same name (`plan`) would wear them.
+			it.Stages, it.Stream.Phases, it.AgentField = nil, nil, nil
+		}
 		loopSay(it, now, "said", "queued")
 		loopSay(it, now, "fail", unmade)
 		return nil
@@ -248,25 +292,86 @@ func (r *Runner) Launch(id int) error {
 	return nil
 }
 
-// strangerWrites refuses a run that would write from a stranger's words.
-// A STRANGER'S WORDS ARE DRAFTED ON, NEVER WRITTEN FROM, without a person:
-// the write stage is the one that changes the repository.
-func strangerWrites(it factory.Item) error {
-	if it.Tier != factory.TierStranger {
-		return nil
+const refuseStrangerWrite = factory.WriteAccessRefusalWords
+
+// WriteAccessRefusal stops a stranger's job before a step that can write.
+type WriteAccessRefusal struct {
+	Step   string
+	Reason string
+	before *factory.Phase
+}
+
+func (e WriteAccessRefusal) Error() string {
+	if e.Reason != "" {
+		return e.Reason
 	}
-	for _, s := range it.Stages {
-		if s.On && s.Name == "write" && factory.Fits(s, it) {
-			return errors.New("a stranger's work does not run write in this factory")
+	return refuseStrangerWrite
+}
+
+// Failure keeps prior rounds without counting the refusal as an attempt.
+// Lookup retry details stay in memory; the saved refusal keeps its usual words.
+func (e WriteAccessRefusal) Failure(it factory.Item, at time.Time) factory.Failure {
+	attempts := 0
+	var phases []factory.Phase
+	if it.Stream != nil {
+		phases = it.Stream.Phases
+	}
+	if e.before != nil {
+		phases = []factory.Phase{*e.before}
+	}
+	for _, ph := range phases {
+		if ph.Name == e.Step {
+			attempts = ph.Round
+			// A pending phase can already name its next, untried round.
+			if ph.State == factory.PhasePending {
+				attempts = max(0, attempts-1)
+			}
+			if ph.Failure != nil && ph.Failure.Detail == refuseStrangerWrite {
+				attempts = ph.Failure.Attempts
+			}
+			break
+		}
+	}
+	return factory.Failure{Step: e.Step, Code: factory.CodeToolError, Detail: refuseStrangerWrite, Attempts: attempts, Machine: it.WorktreeMachine, Next: factory.FailureStopped, At: at}
+}
+
+func strangerStage(it factory.Item, st factory.Stage) error {
+	if st.CanWrite() {
+		return CheckWriteAccess(it, st.Name)
+	}
+	return nil
+}
+
+func strangerWrites(it factory.Item) error {
+	for _, st := range it.Stages {
+		if runsIn(it, st) {
+			if err := strangerStage(it, st); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
+}
+
+func (lp *floorLoop) allowRound(c *loopCtl, st factory.Stage) bool {
+	it, err := lp.r.opts.Store.Get(c.id)
+	if err == nil {
+		err = lp.r.allowWrite(c.ctx, it, st)
+	}
+	if err != nil {
+		lp.failStop(c, st.Name, err)
+		return false
+	}
+	return true
 }
 
 // launchable says whether an item may be launched from where it stands: new,
 // dismissed, or never put anywhere yet. A dropped job is refused with its way
 // back ([factory.RefuseDropped]).
 func launchable(it factory.Item) error {
+	if err := factory.CheckPersonStop(it); err != nil {
+		return err
+	}
 	if err := factory.RequireIssueJob(it); err != nil {
 		return err
 	}
@@ -291,20 +396,40 @@ func launchable(it factory.Item) error {
 }
 
 // loopPhases compiles an item's stages into its phases, in order: a stage
-// that is on and fits the item is a pending phase, and one that does not is
-// left out. The tail is re-read at each round: what has not started yet is
+// that is on and fits the item is a pending phase. File conditions stay
+// pending until their turn; other nonmatching stages are left out. The tail is re-read at each round: what has not started yet is
 // compiled again from the item's stages as they stand then ([tailPhases]), so
 // the manager's edit during a run (its own `factory_run`) reaches the stages
 // after it.
 func loopPhases(it factory.Item) []factory.Phase {
 	var out []factory.Phase
 	for _, s := range it.Stages {
-		if !s.On || !factory.Fits(s, it) {
+		if !runsIn(it, s) {
 			continue
 		}
 		out = append(out, factory.Phase{Name: s.Name, Kind: kindOf(s), State: factory.PhasePending, Note: s.Ask})
 	}
 	return out
+}
+
+// runsIn says whether stage s belongs in the run, retaining file conditions
+// until their turn: on and fitting it, or
+// the plan's approve step turned off while the rules the job started under
+// guard paths ([forcedGate]).
+func runsIn(it factory.Item, s factory.Stage) bool {
+	return (s.On || forcedGate(it, s)) && (factory.FileCondition(s) || factory.Fits(s, it))
+}
+
+// forcedGate says whether s is the plan's approve step ([factory.PlanGateStage])
+// turned off under rules that guard paths ([pipeline.GuardsPaths]). TURNING
+// THE APPROVAL OFF DOES NOT TURN A RULE OFF: the step runs anyway, and passes
+// on its own unless the plan touches what a rule guards ([floorLoop.approve]).
+func forcedGate(it factory.Item, s factory.Stage) bool {
+	if s.On || !factory.IsApprove(s) || !pipeline.GuardsPaths(it.StartRules) {
+		return false
+	}
+	g := factory.PlanGateStage(it.Stages)
+	return g >= 0 && it.Stages[g].Name == s.Name
 }
 
 func kindOf(s factory.Stage) factory.StageKind {
@@ -358,6 +483,9 @@ func (lp *floorLoop) release(c *loopCtl) {
 		return
 	}
 	c.released = true
+	if c.releasedDone != nil {
+		close(c.releasedDone)
+	}
 	if c.benchNo > 0 && lp.bench[c.benchNo] == c.id {
 		delete(lp.bench, c.benchNo)
 	}
@@ -411,6 +539,12 @@ func (lp *floorLoop) move(c *loopCtl, stage string, kind EventKind, text string,
 		return errLoopStopped
 	}
 	if err := lp.r.opts.Store.Update(c.id, func(it *factory.Item) error {
+		if err := factory.CheckPersonStop(*it); err != nil {
+			return err
+		}
+		if kind != EventQueued && it.State == factory.StateNew && it.Stream != nil && !it.Stream.Ended.IsZero() {
+			return errLoopStopped
+		}
 		if it.Stream == nil {
 			it.Stream = &factory.Stream{}
 		}
@@ -449,6 +583,7 @@ func (lp *floorLoop) say(c *loopCtl, tone, text string) {
 // order, and lands the item.
 func (lp *floorLoop) drive(c *loopCtl) {
 	defer lp.release(c)
+	defer c.settleSpend()
 	if c.reverify {
 		lp.reverifyRun(c)
 		return
@@ -458,6 +593,12 @@ func (lp *floorLoop) drive(c *loopCtl) {
 		it.Stream.Bench = c.benchNo
 		return nil
 	}); err != nil {
+		return
+	}
+	// A JOB RUN BY AN AGENTFIELD REASONER is handed to that run whole: its
+	// steps are the run's own calls, written by Remote as they happen.
+	if it, err := lp.r.opts.Store.Get(c.id); err == nil && strings.TrimSpace(it.RunOn) != "" {
+		lp.driveRemote(c)
 		return
 	}
 	// THE FIRST STAGE RUNS FIRST, with the item's stages as they stand. No
@@ -473,6 +614,9 @@ func (lp *floorLoop) drive(c *loopCtl) {
 		if err != nil || it.Stream == nil {
 			return
 		}
+		if !lp.stopSpending(c, it) {
+			return
+		}
 		i := nextPhase(it.Stream.Phases)
 		if i >= 0 && it.Stream.Phases[i].Name == factory.FollowPRStep && it.PullRequest == nil {
 			lp.land(c)
@@ -480,6 +624,13 @@ func (lp *floorLoop) drive(c *loopCtl) {
 		}
 
 		if i < 0 {
+			// A PIPELINE THAT ONLY RUNS ON AGENTFIELD ENDS AS ITS RUNS DO: it
+			// made no change here for a person to approve, so there is no
+			// proof to land on (a pull request its run opened is the job's).
+			if factory.AgentFieldPipeline(it) {
+				lp.shipAgentField(c)
+				return
+			}
 			lp.land(c)
 			return
 		}
@@ -493,7 +644,7 @@ func (lp *floorLoop) drive(c *loopCtl) {
 // is one a person said to skip, and is finished too.
 func nextPhase(ph []factory.Phase) int {
 	for i, p := range ph {
-		if p.State != factory.PhaseDone && p.State != factory.PhaseFailed {
+		if p.State != factory.PhaseDone && p.State != factory.PhaseSkipped && p.State != factory.PhaseFailed {
 			return i
 		}
 	}
@@ -551,7 +702,6 @@ func (lp *floorLoop) askIn(ctx context.Context, c *loopCtl, i int, pending, qkin
 				// the worker sends names the gate and not the step before it.
 				// A worker still cannot pass the gate: only the person's door does.
 				it.Stream.Cur = i
-				dropSettledPlanApproval(it)
 			}
 			if note != "" {
 				ph.Note = note
@@ -632,44 +782,124 @@ func (lp *floorLoop) approve(c *loopCtl, i int, name string) bool {
 	prev := factory.PreviousWork(ph, i)
 	last := true
 	for _, p := range ph[i+1:] {
-		if p.State != factory.PhaseDone && p.State != factory.PhaseFailed {
+		if p.State != factory.PhaseDone && p.State != factory.PhaseSkipped && p.State != factory.PhaseFailed {
 			last = false
 			break
 		}
 	}
 	// Even Auto gates wait for the service's recorded decision. A worker's
 	// cached mode cannot bypass a Manual switch committed on the factory.
+	//
+	// THE LANDING IS NOT A PASS. This step once marked itself done here, and
+	// on a worker (which never reports an approve step) it stayed "to come"
+	// while Auto published past it. It now lands with the step waiting
+	// ([factory.LandingGate]), and only the proof approval passes it. One
+	// switched off still passes quietly, as if it were not there.
 	if last {
-		now := lp.r.now()
-		return lp.write(c, func(it *factory.Item) error {
-			setPhaseState(&it.Stream.Phases[i], factory.PhaseDone, now)
-			return nil
-		}) == nil
+		if st, index := lp.stageAt(it, i); index >= 0 && !st.On {
+			return lp.finish(c, i, name, "")
+		}
+		lp.land(c)
+		return false
 	}
 	prevName := ""
 	if prev >= 0 {
 		prevName = ph[prev].Name
 	}
+	// THE PLAN IS CHECKED AGAINST THE RULES THE JOB STARTED UNDER: a planned
+	// file that an ask-first path or a never path names makes this approval a
+	// person's, even in Auto ([factory.AutonomyBlockReason]). The plan's
+	// approval is the one after the plan, whatever the step before it is
+	// called ([factory.PlanGate]).
+	hold := ""
+	if factory.PlanGate(ph) == i {
+		hold = pipeline.PlanHold(it.StartRules, factory.PlanFilesOf(it))
+	}
+	if hold != it.RuleHold {
+		if lp.write(c, func(saved *factory.Item) error { saved.RuleHold = hold; return nil }) != nil {
+			return false
+		}
+		it.RuleHold = hold
+	}
+	st, index := lp.stageAt(it, i)
+	// AN APPROVAL TURNED OFF RUNS ONLY FOR THE RULES ([forcedGate]): with
+	// nothing they guard in the plan it passes as if it were not there.
+	if index >= 0 && !st.On && hold == "" {
+		return lp.finish(c, i, name, "")
+	}
 	said := ""
-	if factory.Automatic(it) {
-		st, _ := lp.stageAt(it, i)
-		if !st.Fixed {
-			said = "Auto requested routine approval to continue after " + prevName + "."
+	if factory.Automatic(it) && hold == "" {
+		// WHAT THE MANAGER SAYS IS WHO MAY PASS IT ([factory.PassOf]).
+		switch kind, cond := factory.PassOf(st); {
+		case st.Fixed:
+		case kind == factory.PassPerson:
+			said = "Only a person can pass this approval after " + prevName + "; it waits for them."
+		case kind == factory.PassManagerWhen:
+			said = "The manager passes this approval after " + prevName + " when " + strings.TrimSuffix(cond, ".") + "."
+		default:
+			said = "The manager may pass this approval to continue after " + prevName + "."
 		}
 	}
-	a, ok := lp.ask(c, i, "approve", factory.QKindApprove, factory.ApproveQuestion(prevName), factory.PhaseWaiting, "", said)
+	question := factory.ApproveQuestion(prevName)
+	if hold != "" && it.StartRules != nil && it.StartRules.UnreadWhy != "" {
+		question += " · " + it.StartRules.UnreadWhy
+	}
+	a, ok := lp.ask(c, i, "approve", factory.QKindApprove, question, factory.PhaseWaiting, "", said)
 	if !ok {
 		return false
 	}
 	switch {
 	case a.yes:
+		if hold != "" {
+			_ = lp.write(c, func(saved *factory.Item) error { saved.RuleHold = ""; return nil })
+		}
 		lp.addNote(c.id, a.words)
-		return lp.finish(c, i, name, "")
+		if !lp.finish(c, i, name, "") {
+			return false
+		}
+		// WHO PASSED IT is kept on the step, from the door that answered.
+		_ = lp.write(c, func(saved *factory.Item) error {
+			if i < len(saved.Stream.Phases) && saved.Stream.Phases[i].State == factory.PhaseDone {
+				// A worker's copy never hears who passed it (the service's
+				// does, and says so); only a door that said so is said here.
+				said := saved.Passing != nil
+				factory.StampPassed(saved, i)
+				if said {
+					loopSay(saved, lp.r.now(), "ok", passedLine(name, saved.Stream.Phases[i].Passed))
+				}
+			}
+			return nil
+		})
+		return true
 	case prev < 0:
-		lp.stop(c)
+		// NOTHING TO SEND BACK TO: the no is a rejection, and it ends the job
+		// ([factory.Item.EndRejected]) rather than leaving it stopped with a
+		// carry-on that would only ask the same question again.
+		_ = lp.write(c, func(saved *factory.Item) error { saved.Passing = nil; return nil })
+		lp.reject(c, a.words)
 		return false
 	}
+	_ = lp.write(c, func(saved *factory.Item) error { saved.Passing = nil; return nil })
 	return lp.back(c, i, prev, a.words)
+}
+
+// askBeforeStep is Manual's word before step i. A yes leaves the step running,
+// so the drive loop's next pass runs it without asking again; a no sends back
+// the work before it. Either way the drive loop carries on from the store.
+func (lp *floorLoop) askBeforeStep(c *loopCtl, i int, name string) bool {
+	a, ok := lp.ask(c, i, "approve", factory.QKindApprove, factory.NextStepQuestion(name), factory.PhaseWaiting, "", "")
+	if !ok {
+		return false
+	}
+	if a.yes {
+		lp.addNote(c.id, a.words)
+		return true
+	}
+	it, err := lp.r.opts.Store.Get(c.id)
+	if err != nil || it.Stream == nil {
+		return false
+	}
+	return lp.back(c, i, factory.PreviousWork(it.Stream.Phases, i), a.words)
 }
 
 // back sends the run from the approve step at i to the step at prev with the
@@ -697,6 +927,7 @@ func (lp *floorLoop) back(c *loopCtl, i, prev int, words string) bool {
 // at i wait again, prev in a new round, and the run's current step is prev.
 // It answers prev's name.
 func rewindToStep(it *factory.Item, i, prev int, words string, now time.Time) string {
+	it.PublishAnyway = nil
 	for _, k := range []int{prev, i} {
 		setPhaseState(&it.Stream.Phases[k], factory.PhasePending, now)
 		it.Stream.Phases[k].Left = 0
@@ -761,6 +992,64 @@ func (lp *floorLoop) finish(c *loopCtl, i int, name, note string) bool {
 	return true
 }
 
+// accept finishes phase i as it stands, on the person's word: what fell
+// short is kept on the step's result as accepted ([factory.AcceptStep]), where
+// later steps' guards, their briefs and the pull request read it.
+func (lp *floorLoop) accept(c *loopCtl, i int, name, why string) bool {
+	now := lp.r.now()
+	line := ""
+	var kept *factory.StageResult
+	err := lp.move(c, name, EventDone, "", func(it *factory.Item) error {
+		if it.Stream == nil || i >= len(it.Stream.Phases) {
+			return errors.New("the accepted step is gone")
+		}
+		line = acceptStored(it, i, why, now)
+		if r := it.Stream.Phases[i].Result; r != nil {
+			copied := *r
+			copied.Notes = append([]string(nil), r.Notes...)
+			kept = &copied
+		}
+		return nil
+	})
+	if err != nil {
+		return false
+	}
+	lp.mu.Lock()
+	if kept != nil {
+		// The steps after this one read the accepted notes, not the unresolved ones.
+		if lp.results[c.id] != nil {
+			res := lp.results[c.id][i]
+			res.Notes = kept.Notes
+			lp.results[c.id][i] = res
+		}
+		accepted := map[string]bool{}
+		for _, n := range kept.Notes {
+			if rest, ok := strings.CutPrefix(n, factory.AcceptedPrefix); ok {
+				accepted[strings.TrimSpace(rest)] = true
+			}
+		}
+		var notes []string
+		for _, n := range lp.notes[c.id] {
+			if rest, ok := strings.CutPrefix(n, verification.FailurePrefix); ok {
+				rest = strings.TrimSpace(rest)
+				if !accepted[rest] {
+					// An earlier round's failure this step has since cleared.
+					continue
+				}
+				n = factory.AcceptedPrefix + " " + rest
+				if slices.Contains(notes, n) {
+					continue
+				}
+			}
+			notes = append(notes, n)
+		}
+		lp.notes[c.id] = notes
+	}
+	lp.mu.Unlock()
+	lp.tellStep(c.id, line, &factory.StepProgress{Step: name, Round: 0, Event: factory.ProgressDone})
+	return true
+}
+
 // skip leaves phase i failed and goes on, as the person said.
 func (lp *floorLoop) skip(c *loopCtl, i int, name string) bool {
 	now := lp.r.now()
@@ -784,9 +1073,35 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 	st, index := lp.stageAt(it, i)
 	name := st.Name
 
+	// File conditions are decided only at the step, after earlier rounds have
+	// recorded their change. A skipped phase is finished and keeps its reason.
+	if factory.FileCondition(st) && !factory.Fits(st, it) {
+		reason := "skipping " + name + ": when " + st.When + " does not match the change files"
+		if (it.Change == nil || len(it.Change.Files) == 0) && len(it.Files) == 0 {
+			reason = "skipping " + name + ": when " + st.When + " does not match the triage area"
+		}
+		now := lp.r.now()
+		return lp.write(c, func(it *factory.Item) error {
+			ph := &it.Stream.Phases[i]
+			skipPhase(it, ph, reason, now)
+			lp.mu.Lock()
+			delete(lp.results[c.id], i)
+			lp.mu.Unlock()
+			it.Stream.Cur = i
+			loopSay(it, now, "said", reason)
+			return nil
+		}) == nil
+	}
+
 	// AN APPROVE STEP IS A PERSON, so their answer is the step: nothing runs it.
 	if st.Kind == factory.StageGate {
 		return lp.approve(c, i, name)
+	}
+	if !lp.allowRound(c, st) {
+		return false
+	}
+	if factory.AsksBeforeStep(it, i) {
+		return lp.askBeforeStep(c, i, name)
 	}
 
 	exec := lp.r.opts.Exec[kindOf(st)]
@@ -809,7 +1124,7 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 		if !lp.held(c) {
 			return false
 		}
-		if !lp.capCheck(c, i, name) {
+		if !lp.capCheck(c, i, name, -1) {
 			return false
 		}
 		if factory.IsCIRepairStage(st) && !lp.refreshPRRound(c, i) {
@@ -818,7 +1133,7 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 		// WHAT THE PERSON TOLD THE MANAGER SINCE THE LAST ROUND IS THIS
 		// ROUND'S STEER, read at the boundary so the brief carries it.
 		lp.hear(c)
-		if c.ctx.Err() != nil {
+		if c.ctx.Err() != nil || !lp.allowRound(c, st) {
 			return false
 		}
 		kind, text := EventStarted, fmt.Sprintf("%s · round %d", name, round)
@@ -832,7 +1147,10 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 		resume := c.carry
 		c.carry, c.opened = "", ""
 		lp.mu.Unlock()
+		continuing := c.revived == i+1
+		c.revived = 0
 		var carried []string
+		var before factory.Phase
 		if err := lp.move(c, name, kind, text, func(it *factory.Item) error {
 			it.State = factory.StateRunning
 			if it.FollowUp != nil && (it.FollowUp.State == "queued" || it.FollowUp.State == "running" || factory.IsCIRepairStage(st)) {
@@ -848,6 +1166,7 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			// that round (a pause cut it): the step asks again if it must.
 			dropStaleAsk(it)
 			ph := &it.Stream.Phases[i]
+			before = *ph
 			setPhaseState(ph, factory.PhaseRunning, now)
 			ph.Round = round
 			ph.RoundLimit = limit
@@ -855,7 +1174,13 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			// A ROUND BEGINS WHERE ITS CHAT DOES: a fresh chat is a fresh start,
 			// and a round carrying on in the chat a pause cut short keeps the
 			// start it had (one that never recorded one takes this one).
-			if resume == "" || ph.Started.IsZero() {
+			// A ROUND A RESTART CUT SHORT AND REVIVE PICKED UP is the same
+			// round going on, whether or not it has a chat to carry: a step
+			// run off this machine (an AgentField run it follows) has none,
+			// and re-taking its lease must not move the step's start.
+			if continuing && ph.State == factory.PhaseRunning && before.State == factory.PhaseRunning && before.Round == round && !before.Started.IsZero() {
+				ph.Started = before.Started
+			} else if resume == "" || ph.Started.IsZero() {
 				ph.Started = now
 			}
 			// A step that is running again is no longer the failed step.
@@ -883,14 +1208,35 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			if cur, err := lp.r.opts.Store.Get(c.id); err == nil && cur.Stream != nil {
 				c.phaseSpent = cur.Stream.Spent
 			}
-			lp.tellStep(c.id, fmt.Sprintf(sayStarted, name), &factory.StepProgress{Step: name, Round: round, Event: factory.ProgressStarted})
+			// A REVIVED ROUND ALREADY SAID IT STARTED, before the restart; the
+			// chat reads "resumed" for it and nothing more.
+			if !(continuing && before.State == factory.PhaseRunning && before.Round == round) {
+				lp.tellStep(c.id, fmt.Sprintf(sayStarted, name), &factory.StepProgress{Step: name, Round: round, Event: factory.ProgressStarted})
+			} else if !before.Started.IsZero() {
+				c.phaseAt = before.Started
+			}
+		}
+		if begin, ok := lp.r.stepBegins.Load(c.id); ok {
+			step := factory.StageReport{Name: name, State: factory.PhaseRunning, Round: round}
+			if err := begin.(func(context.Context, factory.StageReport) error)(c.ctx, step); err != nil {
+				lp.r.Withdraw(c.id)
+				return false
+			}
 		}
 		job := lp.job(c, st, index, i, round)
 		job.Resume, job.Opened, job.CarryOn = resume, lp.opened(c, i), carried
+		job.Continuing = continuing && before.State == factory.PhaseRunning && before.Round == round
 		if job.Progress != nil {
 			job.Progress(followProgressStart(job))
 		}
-		res, again, err := lp.round(c, exec, job)
+		var res factory.StageResult
+		var again bool
+		var err error
+		if cached := cachedCheckoutRefusal(job); cached != nil {
+			res = *cached
+		} else {
+			res, again, err = lp.round(c, exec, job, before)
+		}
 		if c.ctx.Err() != nil {
 			return false
 		}
@@ -898,26 +1244,42 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			continue
 		}
 		if err != nil {
-			// A step that errored is a failure, not a question. The job stops.
+			// A step that errored is a failure, not a question. The job stops,
+			// AND WHAT THE STEP REPORTED BEFORE IT FAILED STAYS ON IT: its
+			// output, files, claims and notes are the person's to read beside
+			// the failure (a link the step reported among them).
+			lp.keepFailedResult(c, i, res)
 			lp.failStop(c, name, err)
+			lp.summarizeFailure(c.id, res.Summary)
 			return false
 		}
 		if res.Spent > 0 && !res.SpendRecorded {
-			job.Spend(res.Spent)
+			spent := 0.0
+			if job.Item.Stream != nil {
+				for _, ph := range job.Item.Stream.Phases {
+					if ph.Name == st.Name {
+						spent = ph.RoundCosts[round]
+						break
+					}
+				}
+			}
+			job.Spend(max(0, res.Spent-spent))
 		}
 		readiness := factory.IsCIRepairStage(st) && job.Item.FollowUp != nil && job.Item.FollowUp.Kind == "readiness"
 		if factory.IsCIRepairStage(st) && !readiness {
 			res = lp.completedPublishedRepair(job.Item, res)
 		}
-		if !readiness && factory.IsCIRepairStage(st) && job.Item.PullRequest != nil && job.Item.PullRequest.FeedbackTracked && res.Done && res.Repair != nil && res.Repair.Decision == "no_change" {
+		if !readiness && factory.IsCIRepairStage(st) && res.Done && res.Repair != nil && res.Repair.Decision == "no_change" && lp.requiresExactFollowReview(job.Item) {
 			candidate := res
 			repair := *res.Repair
 			repair.Decision = "fixed"
 			candidate.Repair = &repair
 			if checked := lp.completedPublishedRepair(job.Item, candidate); checked.Repair.Decision != "no_change" {
+				receipts := followRefusalNotes(job, res)
 				res.Done, res.Exit = false, 1
 				res.Output = "The no-change review needs a complete assessment of current feedback on the clean published head. " + res.Output
-				res.Notes = append(res.Notes, verification.FailurePrefix+" current-head feedback review is incomplete or the checkout changed")
+				res.Notes = append(res.Notes, verification.FailurePrefix+" "+noChangeReviewRefusal)
+				res.Notes = append(res.Notes, receipts...)
 			}
 		}
 		if readiness && (res.Repair == nil || (res.Repair.Decision != "needs_repair" && res.Repair.Decision != "needs_you")) && verificationReason(res) == "" {
@@ -931,8 +1293,15 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 				res.Notes = append(res.Notes, verification.FailurePrefix+" final review report: "+why)
 			}
 		}
+		res = unchangedWrite(st, job, res)
 		lp.fold(c, it, st, i, res)
-		if !lp.capCheck(c, i, name) {
+		// Completed work is recorded before the next step asks for admission.
+		// Optional memory charges cannot turn this phase back into waiting.
+		memoryBefore := -1.0
+		if factory.Met(st, res) {
+			memoryBefore = job.Item.MemorySpent
+		}
+		if !lp.capCheck(c, i, name, memoryBefore) {
 			return false
 		}
 		if res.JobBudgetStopped {
@@ -984,7 +1353,7 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 		}
 		if readiness {
 			if res.Repair != nil && res.Repair.Decision == "needs_repair" && strings.TrimSpace(res.Repair.Reason) != "" {
-				if !lp.capCheck(c, i, name) {
+				if !lp.capCheck(c, i, name, -1) {
 					return false
 				}
 				if e := lp.write(c, func(cur *factory.Item) error {
@@ -1015,7 +1384,7 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 		if !readiness && factory.IsCIRepairStage(st) && res.Done && res.Exit == 0 && res.Findings == 0 && verificationReason(res) == "" && res.Repair != nil && res.Repair.Decision == "no_change" {
 			fresh, _ := lp.r.opts.Store.Get(c.id)
 			if fresh.PullRequest == nil || factory.PRHasRepairableCheckFailure(fresh.PullRequest) || fresh.PullRequest.Conflict {
-				lp.parkCI(c, i, "The PR still has failing checks or conflicts and no repair was verified. "+res.Repair.Reason)
+				lp.parkCI(c, i, "The PR still has failing checks or conflicts and no checked repair was made. "+res.Repair.Reason)
 			} else {
 				_ = lp.move(c, "", EventShipped, "Following PR", func(it *factory.Item) error {
 					if it.Question != "" || it.Asking != nil {
@@ -1026,6 +1395,7 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 					it.Question, it.QKind = "", ""
 					it.Asking = nil
 					it.FollowUp.State, it.FollowUp.Reason, it.FollowUp.Request = "watching", "No additional code changes needed. "+res.Repair.Reason+" Watching CI, review feedback and conflicts; merge remains yours.", ""
+					it.FollowUp.BaseSyncSHA = ""
 					it.Stream.Phases[i].State = factory.PhaseWaiting
 					it.Stream.Phases[i].Note = it.FollowUp.Reason
 					it.Stream.Ended = lp.r.now()
@@ -1044,9 +1414,12 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 		if factory.Met(st, res) {
 			return lp.finish(c, i, name, "")
 		}
+		sameFailedChecks := !factory.IsCIRepairStage(st) && res.VerificationFailureKey != "" && before.Result != nil && res.VerificationFailureKey == before.Result.VerificationFailureKey
 		if reason := verificationReason(res); reason != "" {
 			retry := fmt.Sprintf("Verification blocked: %s. Retrying round %d of %d.", reason, round+1, limit)
-			if round >= limit {
+			if sameFailedChecks {
+				retry = "The same checks failed on the unchanged checkout. Waiting for your decision."
+			} else if round >= limit {
 				retry = "Verification blocked: " + reason + ". Automatic rounds exhausted; waiting for your decision."
 			}
 			_ = lp.write(c, func(it *factory.Item) error {
@@ -1069,23 +1442,47 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			c.carry = res.Chat
 			lp.mu.Unlock()
 		}
-		if round >= limit {
+		if round >= limit || sameFailedChecks {
 			back := false
 			if cur, getErr := lp.r.opts.Store.Get(c.id); getErr == nil && cur.Stream != nil {
 				back = factory.PreviousWork(cur.Stream.Phases, i) >= 0
 			}
 			note, why := stepShort(name, st, round, res)
+			if sameFailedChecks {
+				note, why = name+" is waiting because the same checks failed on the unchanged checkout", "see the step results for the failed checks"
+			}
 			q := note
 			if why != "" {
 				q += ": " + why
 			}
-			q += " · " + stepShortChoices(back)
+			// ACCEPT IS HEARD ONLY WHERE IT IS OFFERED ([factory.AcceptableStep]):
+			// anywhere else the question is asked again, never read as a stop.
+			acceptable := false
+			if cur, getErr := lp.r.opts.Store.Get(c.id); getErr == nil {
+				acceptable = factory.AcceptableStep(cur, i)
+			}
+			q += " · " + stepChoices(back, acceptable)
+			if st.Kind == factory.StagePost {
+				if reason := skippedPolicyQuestion(job.Item, res); reason != "" {
+					q = reason
+				}
+			}
 			// OUT OF ATTEMPTS IS A QUESTION, not a failed step. The phase waits.
-			a, ok := lp.ask(c, i, "rounds", factory.QKindOutOfAttempts, q, factory.PhaseWaiting, note, askLine("", q))
-			if !ok {
-				return false
+			var a loopAnswer
+			for {
+				var ok bool
+				a, ok = lp.ask(c, i, "rounds", factory.QKindOutOfAttempts, q, factory.PhaseWaiting, note, askLine("", q))
+				if !ok {
+					return false
+				}
+				if acceptable || factory.OutOfAttemptsChoice(a.yes, a.words) != factory.ChoiceAccept {
+					break
+				}
+				lp.tell(c.id, sayNotAcceptable)
 			}
 			switch factory.OutOfAttemptsChoice(a.yes, a.words) {
+			case factory.ChoiceAccept:
+				return lp.accept(c, i, name, factory.StuckReason(q))
 			case factory.ChoiceSendBack:
 				cur, getErr := lp.r.opts.Store.Get(c.id)
 				if getErr != nil || cur.Stream == nil {
@@ -1106,14 +1503,72 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			}
 			lp.addNote(c.id, words)
 			round++
-			limit = round
+			limit = max(limit, round)
 			_ = lp.write(c, func(it *factory.Item) error { it.Stream.Phases[i].RoundLimit = limit; return nil })
 			continue
+		}
+		// A FAILING CHECK SENDS THE WORK BACK TO THE CHAT BEFORE IT: running the
+		// same command again would fail the same way, so the conversation that
+		// made the change gets the failure and another round, and the check runs
+		// after it. The check keeps its own count; once its max is spent the
+		// person is asked, above.
+		if kindOf(st) == factory.StageCheck {
+			if prev := lp.chatBefore(c, i); prev >= 0 {
+				return lp.checkBack(c, i, prev, round, checkFailure(st, res))
+			}
 		}
 		lp.say(c, "fail", fmt.Sprintf("%s %d/%d: %s · going again", name, round, limit, shortfall(res)))
 		round++
 	}
 }
+
+// chatBefore is the finished conversation step a failing check at i sends
+// its work back to: the last finished step before it, when that is a chat;
+// -1 otherwise (a check first in its pipeline, or one after another check).
+func (lp *floorLoop) chatBefore(c *loopCtl, i int) int {
+	cur, err := lp.r.opts.Store.Get(c.id)
+	if err != nil || cur.Stream == nil {
+		return -1
+	}
+	prev := factory.PreviousWork(cur.Stream.Phases, i)
+	if prev < 0 {
+		return -1
+	}
+	if k := cur.Stream.Phases[prev].Kind; k != "" && k != factory.StageChat {
+		return -1
+	}
+	return prev
+}
+
+// checkBack is [floorLoop.back] for a failing check: the chat at prev runs
+// again with the failure as its note, and the check's next run is its next
+// round, so its max bounds how often the work goes round.
+func (lp *floorLoop) checkBack(c *loopCtl, i, prev, round int, words string) bool {
+	if lp.write(c, func(it *factory.Item) error {
+		it.Stream.Phases[i].Round = round + 1
+		return nil
+	}) != nil {
+		return false
+	}
+	return lp.back(c, i, prev, words)
+}
+
+// checkFailure is what a failing check tells the chat it sends back to: the
+// command, how it ended, and the last of what it printed.
+func checkFailure(st factory.Stage, res factory.StageResult) string {
+	out := strings.TrimSpace(res.Output)
+	if lines := strings.Split(out, "\n"); len(lines) > checkBackLines {
+		out = strings.Join(lines[len(lines)-checkBackLines:], "\n")
+	}
+	head := fmt.Sprintf("the check `%s` failed (%s)", strings.TrimSpace(st.Ask), shortfall(res))
+	if out == "" {
+		return head + "; make it pass"
+	}
+	return head + "; make it pass. Its output ended:\n" + out
+}
+
+// checkBackLines is how much of a failing check's output goes back with it.
+const checkBackLines = 20
 
 // stepShort is what the person reads about a step that ended without its
 // until holding: the note the step keeps, and why, "" when the note says it.
@@ -1141,24 +1596,60 @@ func stepShort(name string, st factory.Stage, round int, res factory.StageResult
 	if until == "" {
 		until = factory.UntilDone
 	}
+	if until == factory.UntilNoNewFailures {
+		note := name + " verification is incomplete"
+		if st.Max > 1 {
+			note += " after " + roundsWord(round)
+		}
+		return note, shortfall(res)
+	}
 	if st.Max > 1 {
-		return fmt.Sprintf("%s is not %s after %s", name, until, roundsWord(round)), shortfall(res)
+		return fmt.Sprintf("%s is not %s after %s", name, until, roundsWord(round)), personShortfall(res)
 	}
 	if until == factory.UntilDone && !res.Done {
 		return name + " did not finish", firstLine(res.Output)
 	}
-	return name + " is not " + until, shortfall(res)
+	return name + " is not " + until, personShortfall(res)
+}
+
+// personShortfall is [shortfall] as the person's question says it. A CHECK
+// THAT WAS NOT CONFIRMED IS COUNTED IN A SENTENCE, NEVER QUOTED: its command
+// is a shell line that starts by changing into the worktree's full path,
+// which the Needs you row printed whole. The commands stay on
+// the step's own record ([shortfall]), which its chat and its next round read.
+func personShortfall(res factory.StageResult) string {
+	n := 0
+	for _, note := range res.Notes {
+		if strings.HasPrefix(note, verification.FailurePrefix) {
+			n++
+		}
+	}
+	switch {
+	case n == 1:
+		return "1 check it ran was not confirmed to pass"
+	case n > 1:
+		return strconv.Itoa(n) + " checks it ran were not confirmed to pass"
+	}
+	return shortfall(res)
 }
 
 // stepShortChoices is the end of that question: what the person may do, with
 // send it back only when there is a finished step before this one to send the
 // work back to. The answers are the same tokens either way
 // ([factory.OutOfAttemptOptions]); stopping is the job's own Stop.
-func stepShortChoices(back bool) string {
+func stepShortChoices(back bool) string { return stepChoices(back, false) }
+
+// stepChoices is [stepShortChoices] with accept, where the step may be taken
+// as it stands ([factory.AcceptableStep]).
+func stepChoices(back, accept bool) string {
+	words := []string{"try again"}
 	if back {
-		return "try again, send it back, or stop the job?"
+		words = append(words, "send it back")
 	}
-	return "try again, or stop the job?"
+	if accept {
+		words = append(words, "accept it as it stands")
+	}
+	return strings.Join(words, ", ") + ", or stop the job?"
 }
 
 // roundsWord is a count of rounds as a person says it, `1 round` and `2
@@ -1176,59 +1667,57 @@ func shortfall(res factory.StageResult) string {
 	if reason := verificationReason(res); reason != "" {
 		return "verification blocked: " + reason
 	}
-	switch {
-	case !res.Done:
-		return "no result"
-	case res.Findings == 1:
-		return "1 finding"
-	case res.Findings > 1:
-		return strconv.Itoa(res.Findings) + " findings"
-	case res.Exit != 0:
-		return "exit " + strconv.Itoa(res.Exit)
+	if !res.Done && strings.HasPrefix(res.Output, sayWriteUnchanged+"\n") {
+		return sayWriteUnchanged
 	}
-	shown := 0
-	for _, cl := range res.Claims {
-		if cl.OK && strings.TrimSpace(cl.Evidence) != "" {
-			shown++
-		}
-	}
-	if len(res.Claims) == 0 {
-		return "no claims"
-	}
-	return fmt.Sprintf("%d of %d claims shown", shown, len(res.Claims))
+	return factory.Shortfall(res)
 }
 
-// held waits while the item is paused, and answers false when it stopped.
+// held ends a paused drive so its bench and worker lease can serve another
+// job. The saved stream keeps the interrupted step for the ordinary resume path.
 func (lp *floorLoop) held(c *loopCtl) bool {
+	c.pauseMu.Lock()
+	defer c.pauseMu.Unlock()
 	lp.mu.Lock()
-	paused, resume := c.paused, c.resume
+	paused := c.paused
 	lp.mu.Unlock()
-	if !paused {
-		return c.ctx.Err() == nil
+	if paused {
+		// Resume must see this drive draining before it can leave the pause lock.
+		c.cancel()
 	}
-	select {
-	case <-resume:
-		return c.ctx.Err() == nil
-	case <-c.ctx.Done():
-		return false
-	}
+	return !paused && c.ctx.Err() == nil
 }
 
 // round runs one round under its own ctx, which a pause cancels. again is a
 // round a pause cut short: the same round goes on when the item is run
 // again, in the same chat when it had one (c.carry).
-func (lp *floorLoop) round(c *loopCtl, exec Executor, job Job) (res factory.StageResult, again bool, err error) {
+func (lp *floorLoop) round(c *loopCtl, exec Executor, job Job, before factory.Phase) (res factory.StageResult, again bool, err error) {
+	it, err := lp.r.opts.Store.Get(c.id)
+	if err == nil {
+		err = lp.r.allowWrite(c.ctx, it, job.Stage)
+	}
+	if err != nil {
+		var refused WriteAccessRefusal
+		if errors.As(err, &refused) {
+			refused.before = &before
+			err = refused
+		}
+		return res, false, err
+	}
 	rctx, cancel := context.WithCancel(c.ctx)
 	defer cancel()
+	c.pauseMu.Lock()
 	lp.mu.Lock()
 	if c.paused {
 		// Paused before it began: the chat it was to carry on waits for run.
 		c.carry = job.Resume
 		lp.mu.Unlock()
+		c.pauseMu.Unlock()
 		return res, true, nil
 	}
 	c.roundCancel = cancel
 	lp.mu.Unlock()
+	c.pauseMu.Unlock()
 	// The manager can spend while a shell/check stage is running too. Every
 	// check executor owns this context. Chat agents use their live family meter
 	// so cancellation still returns the round's precise cost and chat identity.
@@ -1255,8 +1744,8 @@ func (lp *floorLoop) round(c *loopCtl, exec Executor, job Job) (res factory.Stag
 					cancel()
 					return
 				}
-				if it.Cap > 0 && factory.JobSpent(it) >= it.Cap {
-					budgetStop <- fmt.Sprintf(ChatBudgetReached, loopUSD(factory.JobSpent(it)), loopUSD(it.Cap))
+				if it.Cap > 0 && factory.JobLifetimeSpent(it) >= it.Cap {
+					budgetStop <- fmt.Sprintf(ChatBudgetReached, loopUSD(factory.JobLifetimeSpent(it)), loopUSD(it.Cap))
 					cancel()
 					return
 				}
@@ -1357,7 +1846,23 @@ func (lp *floorLoop) job(c *loopCtl, st factory.Stage, index, i, round int) Job 
 	// THE ROUND RUNS IN THE ITEM'S OWN WORKTREE when the floor makes one
 	// (workdir.go), else in the repository's checkout; a worktree that could
 	// not be made fails the round rather than running in the person's tree.
-	dir, dirErr := lp.jobDir(it)
+	// AN AGENTFIELD STEP WORKS ON ITS NODE, NOT HERE: it gets no folder on
+	// this machine, so a run on AgentField never clones the repository here.
+	var dir string
+	var dirErr error
+	if kindOf(st) != factory.StageAgentField {
+		dir, dirErr = lp.jobDir(it)
+	}
+	if dirErr == nil {
+		it = lp.settleRules(c, it)
+	}
+	if dirErr == nil {
+		fresh, err := lp.r.opts.Store.Get(c.id)
+		dirErr = err
+		if dirErr == nil {
+			dirErr = lp.r.allowWrite(c.ctx, fresh, st)
+		}
+	}
 	if dirErr == nil && factory.IsCIRepairStage(st) {
 		dirErr = lp.reconcilePR(it, dir)
 	}
@@ -1390,12 +1895,18 @@ func (lp *floorLoop) job(c *loopCtl, st factory.Stage, index, i, round int) Job 
 		}
 	}
 	if dirErr == nil && dir != "" && it.ChangeBase == "" {
-		if base := changeBase(dir, it); base != "" {
+		base, err := changeBase(dir, it)
+		if err != nil {
+			dirErr = err
+		} else if base != "" {
 			it.ChangeBase = base
 			_ = lp.write(c, func(saved *factory.Item) error { saved.ChangeBase = base; return nil })
 		}
 	}
 	return Job{
+		BeforeWrite:     func(ctx context.Context) error { return lp.r.publishBoundary(ctx, c.id) },
+		Lifetime:        c.ctx,
+		PendingSpend:    c.pendingSpend,
 		Item:            it,
 		Stage:           st,
 		Index:           index,
@@ -1405,13 +1916,21 @@ func (lp *floorLoop) job(c *loopCtl, st factory.Stage, index, i, round int) Job 
 		PriorNames:      priorNames,
 		Last:            last,
 		Dir:             dir,
+		Rules:           JobRules(lp.r.opts.Recipe, it),
 		dirErr:          dirErr,
 		Steer:           c.steer,
 		ModelSelections: c.modelSelections,
-		Log:             func(line string) { lp.say(c, "thought", line) },
-		Progress:        lp.followProgress(c, st, i, round),
-		Verification:    lp.verificationProgress(c, i, round),
-		Spend:           lp.spender(c),
+		Log: func(line string) {
+			tone := "thought"
+			if strings.HasPrefix(line, factory.ToolCaptionPrefix) {
+				tone, line = "tool", strings.TrimPrefix(line, factory.ToolCaptionPrefix)
+			}
+			lp.say(c, tone, line)
+		},
+		Progress:     lp.followProgress(c, st, i, round),
+		SyncPRBase:   lp.baseSyncAction(c, it, st, dir),
+		Verification: lp.verificationProgress(c, i, round),
+		Spend:        lp.spender(c, st.Name, round),
 		Ask: func(ctx context.Context, q factory.Asked) (string, error) {
 			return lp.inbox(ctx, c, i, stageLabel(st), q)
 		},
@@ -1420,9 +1939,9 @@ func (lp *floorLoop) job(c *loopCtl, st factory.Stage, index, i, round int) Job 
 
 // spender is the Job.Spend hook: the money's when there is one, else the
 // loop's own plain reckoning onto Stream.Spent.
-func (lp *floorLoop) spender(c *loopCtl) func(usd float64) {
+func (lp *floorLoop) spender(c *loopCtl, step string, round int) func(usd float64) {
 	if p := lp.r.opts.Pool; p != nil {
-		return p.Spend(c.id)
+		return p.SpendRound(c.id, step, round)
 	}
 	return func(usd float64) {
 		if usd <= 0 {
@@ -1432,21 +1951,45 @@ func (lp *floorLoop) spender(c *loopCtl) func(usd float64) {
 			if it.Stream == nil {
 				it.Stream = &factory.Stream{}
 			}
-			addCost(it, usd)
+			spendRound(it, step, round, usd)
 			return nil
 		})
 	}
 }
 
+// spendRound writes the job charge and its round receipt atomically, so a
+// worker report cannot mistake the interval between them for manager spending.
+func spendRound(it *factory.Item, step string, round int, usd float64) {
+	addCost(it, usd)
+	for i := range it.Stream.Phases {
+		ph := &it.Stream.Phases[i]
+		if step != "" && ph.Name == step {
+			ph.RecordRoundSpend(round, ph.RoundCosts[round]+usd)
+			break
+		}
+	}
+}
+
 // capCheck parks the item when its budget is reached after a round: yes raises
-// the budget by as much again, no stops it. It answers false when it stopped.
-func (lp *floorLoop) capCheck(c *loopCtl, i int, name string) bool {
+// the budget to the next allowed amount above spend, no stops it.
+// It answers false when it stopped.
+func (lp *floorLoop) capCheck(c *loopCtl, i int, name string, memoryBefore float64) bool {
 	it, err := lp.r.opts.Store.Get(c.id)
 	if err != nil {
 		return false
 	}
-	reached := it.Cap > 0 && it.Stream != nil && it.Stream.Spent >= it.Cap
-	q, kind := "budget of "+loopUSD(it.Cap)+" reached · "+loopUSD(it.Cap)+" more, or stop?", "cap"
+	// The person's skipped-check decision permits this forge write without
+	// granting any model spending.
+	if factory.PublishedAnyway(it) && it.Stream.Phases[i].Kind == factory.StagePost {
+		return true
+	}
+	if memoryBefore >= 0 && it.Stream != nil {
+		stream := *it.Stream
+		stream.Spent -= max(0, it.MemorySpent-memoryBefore)
+		it.Stream = &stream
+	}
+	reached := it.Cap > 0 && factory.JobLifetimeSpent(it) >= it.Cap
+	q, kind := (*Money)(nil).CapQuestion(it)
 	if p := lp.r.opts.Pool; p != nil {
 		reached = p.CapReached(it)
 		if reached {
@@ -1465,10 +2008,16 @@ func (lp *floorLoop) capCheck(c *loopCtl, i int, name string) bool {
 		return false
 	}
 	now := lp.r.now()
-	return lp.write(c, func(it *factory.Item) error {
+	line := ""
+	if err := lp.write(c, func(it *factory.Item) error {
 		NoteContinue(it, now)
+		line = "budget raised to " + loopUSD(it.Cap) + " · carrying on"
 		return nil
-	}) == nil
+	}); err != nil {
+		return false
+	}
+	lp.tell(c.id, line)
+	return true
 }
 
 // NoteContinue raises this job's cap when the spend has reached it, and says
@@ -1478,14 +2027,24 @@ func NoteContinue(it *factory.Item, now time.Time) bool {
 	if !factory.ContinueJob(it) {
 		return false
 	}
-	loopSay(it, now, "said", "budget raised to "+loopUSD(it.Cap)+" · carrying on")
+	NoteBudgetRaised(it, now)
 	return true
+}
+
+// NoteBudgetRaised records the selected cap at the door that changes it.
+// The waiting runner separately says this confirmation into the conversation.
+func NoteBudgetRaised(it *factory.Item, now time.Time) {
+	loopSay(it, now, "said", "budget raised to "+loopUSD(it.Cap)+" · carrying on")
 }
 
 // failStop records a step that errored and stops the job. The failure is not
 // a question: nobody is asked to skip it.
 func (lp *floorLoop) failStop(c *loopCtl, step string, err error) {
 	now := lp.r.now()
+	if lp.rejectedHere(c, step, now) {
+		lp.stop(c)
+		return
+	}
 	code, detail := factory.ClassifyFailure(err.Error())
 	var attempts int
 	var machine string
@@ -1499,7 +2058,12 @@ func (lp *floorLoop) failStop(c *loopCtl, step string, err error) {
 				}
 			}
 		}
-		factory.StampFailure(it, factory.NewFailure(step, code, detail, machine, factory.FailureStopped, attempts, now))
+		failure := factory.NewFailure(step, code, detail, machine, factory.FailureStopped, attempts, now)
+		var refused WriteAccessRefusal
+		if errors.As(err, &refused) {
+			failure = refused.Failure(*it, now)
+		}
+		factory.StampFailure(it, failure)
 		return nil
 	})
 	if lp.r.opts.Record != nil {
@@ -1508,6 +2072,90 @@ func (lp *floorLoop) failStop(c *loopCtl, step string, err error) {
 		})
 	}
 	lp.stop(c)
+}
+
+// rejectedHere ends step as a person's Reject ends the step it answered, when
+// the run behind it ended on that no ([factory.AgentFieldRejectedEnd]): the
+// step reads failed, with NO FAILURE ON IT OR ON THE JOB and no step_failed
+// event, exactly as [factory.Item.EndRejected] leaves a native approve step.
+// The control plane cancels a rejected run at once, so its follower returns
+// that cancel as the step's error ("the AgentField run cancelled:
+// approval_rejected: …"); recorded as a tool_error, it read on the desk's
+// rail as a step that failed, not one the person rejected. The factory ends
+// the job Rejected with the person's words when it reads the run's end. IT IS
+// KEYED ON THE RUN'S DECISION, NEVER ON A PIPELINE'S OR A STEP'S NAME.
+func (lp *floorLoop) rejectedHere(c *loopCtl, step string, now time.Time) bool {
+	rejected := false
+	_ = lp.write(c, func(it *factory.Item) error {
+		if _, ok := factory.AgentFieldRejectedEnd(*it); !ok {
+			return nil
+		}
+		rejected = true
+		if it.Stream == nil {
+			return nil
+		}
+		for i := range it.Stream.Phases {
+			ph := &it.Stream.Phases[i]
+			if ph.Name == step || ph.State == factory.PhaseRunning || ph.State == factory.PhaseWaiting {
+				ph.State, ph.At, ph.Verification, ph.Failure = factory.PhaseFailed, now, nil, nil
+			}
+		}
+		if f := it.Failure; f != nil && f.Code != factory.CodeStopped {
+			it.Failure = nil
+		}
+		return nil
+	})
+	return rejected
+}
+
+// summarizeFailure gives the job's failure its one-line headline
+// ([factory.Failure.Summary]): the step's own summary when it gave one, else
+// one line the job's manager writes from the failure's words
+// ([Options.FailureSummary]), asked once, off the stop's path, so a slow or
+// failed turn never holds the stop. A line that comes back after the job was
+// run again is dropped ([factory.SetFailureSummary]).
+func (lp *floorLoop) summarizeFailure(id int, given string) {
+	it, err := lp.r.opts.Store.Get(id)
+	if err != nil || it.Failure == nil || it.Failure.Summary != "" {
+		return
+	}
+	at := it.Failure.At
+	if given = factory.FailureSummary(given); given != "" {
+		_ = lp.r.opts.Store.Update(id, func(cur *factory.Item) error { factory.SetFailureSummary(cur, at, given); return nil })
+		return
+	}
+	write := lp.r.opts.FailureSummary
+	if write == nil {
+		return
+	}
+	failure := *it.Failure
+	guard.Go("factory/failure-summary", func() {
+		ctx, cancel := context.WithTimeout(context.Background(), lp.shapeWait())
+		defer cancel()
+		line, err := write(ctx, it, failure)
+		if err != nil {
+			return
+		}
+		_ = lp.r.opts.Store.Update(id, func(cur *factory.Item) error { factory.SetFailureSummary(cur, at, line); return nil })
+	})
+}
+
+// keepFailedResult writes a failed round's result onto its step when the
+// step reported anything before it failed, so the failure never takes the
+// step's outputs with it. A round that reported nothing leaves the step's
+// earlier result as it was.
+func (lp *floorLoop) keepFailedResult(c *loopCtl, i int, res factory.StageResult) {
+	if strings.TrimSpace(res.Output) == "" && len(res.Files) == 0 && len(res.Claims) == 0 && len(res.Notes) == 0 && len(res.PublishSummary) == 0 {
+		return
+	}
+	kept := res
+	kept.Done = false
+	_ = lp.write(c, func(it *factory.Item) error {
+		if it.Stream != nil && i >= 0 && i < len(it.Stream.Phases) {
+			it.Stream.Phases[i].Result = &kept
+		}
+		return nil
+	})
 }
 
 // fold writes what a round said onto the item: its result for the stages
@@ -1530,14 +2178,16 @@ func (lp *floorLoop) fold(c *loopCtl, before factory.Item, st factory.Stage, i i
 
 	var recipe factory.Recipe
 	if res.Edit != nil {
-		if lp.r.opts.Recipe != nil {
-			recipe = lp.r.opts.Recipe(before.Repo)
-		} else {
+		var ok bool
+		if recipe, ok = jobRecipe(lp.r.opts.Recipe, before); !ok {
 			recipe = factory.DefaultRecipe()
 		}
 	}
 	now := lp.r.now()
 	_ = lp.write(c, func(it *factory.Item) error {
+		if !res.Checkpoint {
+			it.Stream.Phases[i].RecordRoundSpend(it.Stream.Phases[i].Round, res.Spent)
+		}
 		foldResult(it, st, i, res, now)
 		if res.Edit == nil {
 			return nil
@@ -1566,7 +2216,7 @@ func retail(it factory.Item, phases []factory.Phase, i int) []factory.Phase {
 		return append(out, phases[i+1:]...)
 	}
 	for _, s := range it.Stages[from+1:] {
-		if !s.On || !factory.Fits(s, it) {
+		if !runsIn(it, s) {
 			continue
 		}
 		out = append(out, factory.Phase{Name: s.Name, Kind: kindOf(s), State: factory.PhasePending, Note: s.Ask})
@@ -1656,7 +2306,19 @@ func (lp *floorLoop) land(c *loopCtl) {
 		}
 		// Commit before opening proof so approval names the work being shown.
 		if lp.r.opts.Workdir != nil {
+			if err := lp.r.allowWrite(c.ctx, it, factory.Stage{Name: "land", Kind: factory.StageCheck}); err != nil {
+				lp.failStop(c, "land", err)
+				return
+			}
 			if dir, err := lp.r.opts.Workdir(it); err == nil {
+				fresh, readErr := lp.r.opts.Store.Get(c.id)
+				if readErr == nil {
+					readErr = lp.r.allowWrite(c.ctx, fresh, factory.Stage{Name: "land", Kind: factory.StageCheck})
+				}
+				if readErr != nil {
+					lp.failStop(c, "land", readErr)
+					return
+				}
 				git := lp.r.opts.Git
 				if git == nil {
 					git = ExecGit{}
@@ -1674,7 +2336,7 @@ func (lp *floorLoop) land(c *loopCtl) {
 				if head, err := git.Run(dir, "rev-parse", "HEAD"); err == nil {
 					_ = lp.write(c, func(saved *factory.Item) error {
 						saved.HeadCommit = strings.TrimSpace(head)
-						if change, e := readChange(dir, saved.ChangeBase); e == nil {
+						if change, e := readChange(dir, followChangeBase(git, dir, *saved)); e == nil {
 							saved.Change = change
 						}
 						return nil
@@ -1704,7 +2366,7 @@ func (lp *floorLoop) land(c *loopCtl) {
 				lp.tell(c.id, "Follow PR repair and proof are complete. Auto is preparing the recorded update to the existing PR; merge remains your decision.")
 				return
 			}
-			lp.tell(c.id, fmt.Sprintf("CI repair and proof are complete. Approval needed: push the verified commit to existing PR #%d. Press Approve to update it.", it.PullRequest.Number))
+			lp.tell(c.id, fmt.Sprintf("CI repair and proof are complete. Approval needed: push the checked commit to existing PR #%d. Press Approve to update it.", it.PullRequest.Number))
 		} else {
 			if it, e := lp.r.opts.Store.Get(c.id); e == nil && factory.Automatic(it) {
 				lp.tell(c.id, sayAutoLanded)
@@ -1736,6 +2398,9 @@ func clean(it factory.Item) bool {
 func (lp *floorLoop) stop(c *loopCtl) {
 	c.wmu.Lock()
 	first := c.ctx.Err() == nil
+	if c.cause != nil {
+		c.cause(factory.ErrPersonStopped)
+	}
 	c.cancel()
 	if first {
 		now := lp.r.now()
@@ -1746,7 +2411,16 @@ func (lp *floorLoop) stop(c *loopCtl) {
 			// stopped, and it stays. Every other stop the loop makes is a
 			// person's, the Stop door or a no to an approve step, to a step out
 			// of rounds or to the budget, and endRun records it as theirs.
+			person := it.Failure == nil
 			cut = endRun(it, now, it.Failure)
+			// AND THE JOB IS THEIRS TO START AGAIN, in Backlog, as after the
+			// Stop door: a cancel or a no is the same decision. Unmarked, a
+			// job a Start had cleared of an earlier stop read as failed and
+			// waiting on them.
+			if person {
+				factory.MarkPersonStopped(it)
+				it.Asking = nil
+			}
 			return nil
 		})
 		if err == nil {
@@ -1765,35 +2439,56 @@ func (lp *floorLoop) stop(c *loopCtl) {
 	}
 }
 
+// Withdraw cancels execution whose lease was replaced, without recording a
+// person's Stop or changing the replacement's state. Cleanup keeps its bench
+// until the executor has finished, just as Stop does.
+func (r *Runner) Withdraw(id int) {
+	lp := r.loop()
+	c := lp.ctl(id)
+	if c == nil {
+		return
+	}
+	c.wmu.Lock()
+	c.cancel()
+	c.wmu.Unlock()
+	lp.mu.Lock()
+	queued := c.benchNo == 0 && !c.reverify
+	lp.mu.Unlock()
+	if queued {
+		lp.release(c)
+	}
+}
+
 // Stop ends a stream and keeps its branch; the item returns to new.
 func (r *Runner) Stop(id int) error {
 	lp := r.loop()
 	if c := lp.ctl(id); c != nil {
-		lp.stop(c)
-		return nil
-	}
-	it, err := r.opts.Store.Get(id)
-	if err != nil {
-		return err
-	}
-	switch it.State {
-	case factory.StateQueued, factory.StateRunning, factory.StateNeedsYou:
-		// AN ITEM NOBODY IS RUNNING IS NOT RUNNING, whatever its document
-		// says: a process that died mid-round left it so, and stop puts it
-		// back where a person can launch it again.
-		now := r.now()
-		var cut *factory.StepProgress
 		if err := r.opts.Store.Update(id, func(it *factory.Item) error {
-			cut = endRun(it, now, nil)
+			factory.MarkPersonStopped(it)
+			it.Asking = nil
 			return nil
 		}); err != nil {
 			return err
 		}
-		lp.emit(id, "", EventStopped, "stopped")
-		lp.tellStep(id, sayStopped, cut)
+		lp.stop(c)
 		return nil
 	}
-	return fmt.Errorf("%s is not running", it.Ref())
+	now := r.now()
+	var cut *factory.StepProgress
+	if err := r.opts.Store.Update(id, func(it *factory.Item) error {
+		if !factory.UnderWay(*it) {
+			return fmt.Errorf("%s is not running", it.Ref())
+		}
+		cut = endRun(it, now, nil)
+		factory.MarkPersonStopped(it)
+		it.Asking = nil
+		return nil
+	}); err != nil {
+		return err
+	}
+	lp.emit(id, "", EventStopped, "stopped")
+	lp.tellStep(id, sayStopped, cut)
+	return nil
 }
 
 // stopStored is a person's stop with no run to cancel. A failure the job
@@ -1801,38 +2496,74 @@ func (r *Runner) Stop(id int) error {
 // by the stop, the newer fact.
 func stopStored(it *factory.Item, now time.Time) { endRun(it, now, nil) }
 
+// StoppedHere says a step's ctx ended because the job was stopped here: a
+// person's Stop, a rejection, a failed step stopping its run. Any other end
+// (the engine closing, a lease withdrawn) is not one.
+//
+// WORK THAT RUNS ELSEWHERE IS CANCELLED ONLY BY A STOP. An executor whose step
+// runs on another machine reads this when its ctx ends: a stop cancels the
+// remote work, and anything else lets go of it, so quitting this engine never
+// cancels a run that does not run here. The next engine start follows it
+// again.
+func StoppedHere(ctx context.Context) bool {
+	return errors.Is(context.Cause(ctx), factory.ErrPersonStopped)
+}
+
+// reject is a person's no that ends the job: the run stops as [floorLoop.stop]
+// stops it, and the job is then closed as rejected with their words, so it
+// leaves Needs you and no rule starts it again.
+func (lp *floorLoop) reject(c *loopCtl, words string) {
+	lp.stop(c)
+	now := lp.r.now()
+	_ = lp.r.opts.Store.Update(c.id, func(it *factory.Item) error {
+		if it.DoneHow == "" {
+			it.EndRejected("", words, now)
+		}
+		return nil
+	})
+}
+
 // endRun is the one write every stop makes, with a run to cancel or without:
 // the job is new again and the stream ends with its branch kept. why is the
 // failure that ended the run; nil is a person's stop. A STOP IS ONE FACT ON
 // BOTH PATHS: the loop's own stop and a stop of a job no runner here holds
 // write exactly this.
 //
-// A PERSON'S STOP IS MARKED ONLY WHERE IT CUT A STEP. A step under way
+// A stopped-step failure is recorded only where Stop cut a step. The durable
+// person-stop record also covers queued jobs and completed proof. A step under way
 // (running or waiting) is failed with [stoppedByYou], and the job carries the
 // same stop, so it never reads as a fresh job with a step still running, and
 // running that step again carries on from it. A job stopped before any step
 // began (queued) or after the last one ended (landed) lost nothing: it is
-// simply back in the backlog with no failure, where a start picks it up.
+// stopped with no failed step; a person's Start grants execution again.
 //
 // It answers the step the stop cut, for the manager's `stopped` line: failed
 // when why is the step's own error, stopped when it is a person's; nil when it
 // cut none, and the line is then about the job.
 func endRun(it *factory.Item, now time.Time, why *factory.Failure) *factory.StepProgress {
+	opened := why == nil && it.State == factory.StateShipped && it.PublishStatus != nil && it.PublishStatus.State == "opened"
 	event := factory.ProgressStopped
 	if why != nil {
 		event = factory.ProgressFailed
 	}
 	var cut *factory.StepProgress
 	it.Failure = why
+	if why == nil {
+		it.StopAfterStep = false
+	}
 	it.Recovery = nil
 	it.Approval = nil
 	it.PublishError = ""
 	it.Publishing = false
+	it.PublishStatus = nil
 	it.State = factory.StateNew
 	it.Question, it.QKind = "", ""
 	s := it.Stream
 	if s == nil {
-		return nil
+		// A stop at the start gate still needs an end record, even though
+		// no step began and there is no step failure to keep.
+		s = &factory.Stream{}
+		it.Stream = s
 	}
 	if s.Cur >= 0 && s.Cur < len(s.Phases) {
 		ph := &s.Phases[s.Cur]
@@ -1851,6 +2582,12 @@ func endRun(it *factory.Item, now time.Time, why *factory.Failure) *factory.Step
 	}
 	s.Ended = now
 	s.Paused = false
+	if opened && it.PullRequest != nil {
+		it.State = factory.StateShipped
+		it.MarkPublishing("opened", "", "", now)
+		loopSay(it, now, "said", stoppedPRWords(it.PullRequest.URL))
+		return cut
+	}
 	loopSay(it, now, "fail", "stopped · branch kept")
 	return cut
 }
@@ -1898,6 +2635,9 @@ func (r *Runner) Hold(id int, on bool) error {
 	if err != nil {
 		return err
 	}
+	if err := factory.CheckPersonStop(it); err != nil {
+		return err
+	}
 	if err := factory.RequireIssueJob(it); err != nil {
 		return err
 	}
@@ -1920,32 +2660,49 @@ func (r *Runner) Hold(id int, on bool) error {
 	return r.setPaused(c, func(bool) bool { return on })
 }
 
-// setPaused moves the control to the paused state want answers for the one
-// it is in, under the loop's lock, and says the word on the stream and into
-// the manager's conversation only when that changed anything.
+// setPaused saves a pause before exposing it to the drive. Round admission
+// waits for the write, so a failed save leaves execution unchanged.
 func (r *Runner) setPaused(c *loopCtl, want func(was bool) bool) error {
 	lp := r.loop()
-	id := c.id
-	paused, changed := func() (bool, bool) {
+	c.pauseMu.Lock()
+	lp.mu.Lock()
+	paused := want(c.paused)
+	unchanged := paused == c.paused
+	// A WITHDRAWN CONTROL IS ENDING, NOT RUNNING. A step edit withdraws the
+	// worker running a job (Runner.Withdraw cancels the control without a
+	// pause), and the next lease lays the job out paused at its step and asks
+	// to go on. The old control is still here while its round lets go of a
+	// model call, and it was never paused, so "go on" read as unchanged and was
+	// dropped: the old drive then ended and nothing ran the job, which the next
+	// worker gave back to Backlog (the live managers lane, job 61). A
+	// cancelled control asked to go on on a job the store holds paused is the
+	// same handover as a cut pause: wait for it, then revive the job.
+	handover := false
+	if !paused && !c.paused && c.ctx.Err() != nil && !c.reverify {
+		lp.mu.Unlock()
+		it, err := r.opts.Store.Get(c.id)
+		handover = err == nil && storedPaused(it) && factory.CheckPersonStop(it) == nil
 		lp.mu.Lock()
-		defer lp.mu.Unlock()
-		next := want(c.paused)
-		if next == c.paused {
-			return next, false
+	}
+	if !paused && (c.paused || handover) && c.ctx.Err() != nil {
+		if c.releasedDone == nil {
+			c.releasedDone = make(chan struct{})
 		}
-		c.paused = next
-		if next {
-			c.resume = make(chan struct{})
-			if c.roundCancel != nil {
-				c.roundCancel()
-			}
-		} else if c.resume != nil {
-			close(c.resume)
-			c.resume = nil
+		done, released := c.releasedDone, c.released
+		lp.mu.Unlock()
+		c.pauseMu.Unlock()
+		if !released {
+			<-done
 		}
-		return next, true
-	}()
-	if !changed {
+		it, err := r.opts.Store.Get(c.id)
+		if err != nil {
+			return err
+		}
+		return r.revive(it)
+	}
+	lp.mu.Unlock()
+	if unchanged {
+		c.pauseMu.Unlock()
 		return nil
 	}
 	kind, word := EventResumed, sayResumed
@@ -1953,14 +2710,23 @@ func (r *Runner) setPaused(c *loopCtl, want func(was bool) bool) error {
 		kind, word = EventPaused, sayPaused
 	}
 	now := r.now()
-	if err := lp.move(c, "", kind, word, func(it *factory.Item) error {
+	if err := lp.write(c, func(it *factory.Item) error {
 		it.Stream.Paused = paused
 		loopSay(it, now, "said", word)
 		return nil
 	}); err != nil {
+		c.pauseMu.Unlock()
 		return err
 	}
-	lp.tell(id, word)
+	lp.mu.Lock()
+	c.paused = paused
+	if paused && c.roundCancel != nil {
+		c.roundCancel()
+	}
+	lp.mu.Unlock()
+	c.pauseMu.Unlock()
+	lp.emit(c.id, "", kind, word)
+	lp.tell(c.id, word)
 	return nil
 }
 
@@ -1997,6 +2763,9 @@ func (r *Runner) resumePaused(it factory.Item) (done bool, err error) {
 // it paused) a control again and puts it back on a bench. It goes on at the
 // phase and round it stopped in, and the phase's chat is carried on.
 func (r *Runner) revive(it factory.Item) error {
+	if err := factory.CheckPersonStop(it); err != nil {
+		return err
+	}
 	lp := r.loop()
 	id := it.ID
 	if r.opts.Rail != nil && r.opts.SpentToday != nil {
@@ -2009,10 +2778,11 @@ func (r *Runner) revive(it factory.Item) error {
 		lp.mu.Unlock()
 		return AlreadyRunning(it.Ref())
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	c := &loopCtl{id: id, ctx: ctx, cancel: cancel, steer: make(chan string, 16), modelSelections: make(chan ModelSelection, 1), answers: make(chan loopAnswer, 1), phase: -1}
+	ctx, cause := context.WithCancelCause(context.Background())
+	c := &loopCtl{id: id, ctx: ctx, cancel: func() { cause(nil) }, cause: cause, steer: make(chan string, 16), modelSelections: make(chan ModelSelection, 1), answers: make(chan loopAnswer, 1), phase: -1}
 	if i := nextPhase(it.Stream.Phases); i >= 0 && it.Stream.Phases[i].State == factory.PhaseRunning {
 		c.carry = strings.TrimSpace(it.Stream.Phases[i].Chat)
+		c.revived = i + 1
 	}
 	lp.ctls[id] = c
 	if lp.results[id] == nil {
@@ -2021,7 +2791,7 @@ func (r *Runner) revive(it factory.Item) error {
 		lp.results[id] = map[int]factory.StageResult{}
 		lp.notes[id] = nil
 		for i, ph := range it.Stream.Phases {
-			if ph.Result == nil {
+			if ph.State == factory.PhaseSkipped || ph.Result == nil {
 				continue
 			}
 			lp.results[id][i] = *ph.Result
@@ -2033,20 +2803,45 @@ func (r *Runner) revive(it factory.Item) error {
 		}
 	}
 	lp.mu.Unlock()
+	// The lease door already said an explicit Resume before queueing this run.
+	log := it.Stream.Log
+	resumeSaid := len(log) > 0 && log[len(log)-1].Text == sayResumed
+	// "RESUMED" IS SAID ONLY WHEN A STEP GOES ON WORKING. A runner that takes
+	// a job back after a restart revives it through this same door, and a job
+	// that only waits on an AgentField run's approval, or has no step left to
+	// run, resumes nothing: saying so put a stray "resumed" in its chat on
+	// every restart.
+	if nextPhase(it.Stream.Phases) < 0 || it.QKind == factory.QKindAgentField {
+		resumeSaid = true
+	}
+	line := sayResumed
+	if i := nextPhase(it.Stream.Phases); i >= 0 {
+		ph := it.Stream.Phases[i]
+		// The saved action also identifies retries that retain a running
+		// Plan chat. Ordinary continuation keeps its resumed wording.
+		log := it.Stream.Log
+		if len(log) > 0 && strings.HasPrefix(log[len(log)-1].Text, stepRerunLog) {
+			line = fmt.Sprintf(sayTrying, ph.Name)
+		}
+	}
 	now := r.now()
-	err := lp.move(c, "", EventResumed, sayResumed, func(it *factory.Item) error {
+	err := lp.move(c, "", EventResumed, line, func(it *factory.Item) error {
 		if !storedPaused(*it) {
 			return fmt.Errorf("%s is not paused", it.Ref())
 		}
 		it.Stream.Paused = false
-		loopSay(it, now, "said", sayResumed)
+		if !resumeSaid {
+			loopSay(it, now, "said", line)
+		}
 		return nil
 	})
 	if err != nil {
 		lp.forget(c)
 		return err
 	}
-	lp.tell(id, sayResumed)
+	if !resumeSaid {
+		lp.tell(id, line)
+	}
 	lp.enqueue(c)
 	return nil
 }
@@ -2063,6 +2858,9 @@ func (r *Runner) notRunning(id int) error {
 func (r *Runner) Answer(id int, yes bool, words string) error {
 	it, err := r.opts.Store.Get(id)
 	if err != nil {
+		return err
+	}
+	if err := followAnswerRefusal(it, yes, words); err != nil {
 		return err
 	}
 	if it.State == factory.StateNeedsYou && it.QKind == factory.QKindAskFirst {
@@ -2082,6 +2880,9 @@ func (r *Runner) Answer(id int, yes bool, words string) error {
 		if err != nil {
 			return err
 		}
+		if c == nil && it.QKind == factory.QKindSpendStopped {
+			return r.answerStoppedSpending(id, yes, words)
+		}
 		// A STEP'S QUESTION THE PERSON HOLDS outlives the round that asked
 		// it (a pause, a restart): the answer is kept for the step's next
 		// round (inbox.go).
@@ -2094,6 +2895,9 @@ func (r *Runner) Answer(id int, yes bool, words string) error {
 	c.pending = ""
 	lp.mu.Unlock()
 	if err := r.opts.Store.Update(id, func(it *factory.Item) error {
+		if err := followAnswerRefusal(*it, yes, words); err != nil {
+			return err
+		}
 		grantAdditionalRound(it, yes, words)
 		return nil
 	}); err != nil {
@@ -2215,8 +3019,17 @@ func (r *Runner) SignOff(id int, edited bool) (bool, error) {
 // HTTP door runs it before writing an approval, so a claim that is not shown
 // never leaves a receipt the publish door would then refuse.
 func ApprovalRefused(it *factory.Item, edited bool) error {
+	if err := factory.CheckPersonStop(*it); err != nil {
+		return err
+	}
 	if it.State != factory.StateLanded {
 		return fmt.Errorf("%s has not landed", it.Ref())
+	}
+	// NOTHING PUBLISHES PAST AN APPROVE STEP NOBODY PASSED, whatever the mode:
+	// Auto passes routine steps through their own door, never by landing past
+	// them.
+	if gate := factory.UnpassedGate(*it); gate != "" {
+		return fmt.Errorf("%s has an approve step nobody has passed yet: %s", it.Ref(), gate)
 	}
 	if it.FollowUp != nil && it.FollowUp.Kind == "readiness" && !factory.ReadinessPending(*it) {
 		return errors.New("final readiness review is incomplete")
@@ -2258,6 +3071,13 @@ func approveStored(it *factory.Item, edited bool, now time.Time) error {
 		return err
 	}
 	it.Question, it.QKind = "", ""
+	// The proof approval is the answer the landing's approve step waited for.
+	if g := factory.LandingGate(*it); g >= 0 {
+		setPhaseState(&it.Stream.Phases[g], factory.PhaseDone, now)
+		factory.StampPassed(it, g)
+		loopSay(it, now, "ok", passedLine(it.Stream.Phases[g].Name, it.Stream.Phases[g].Passed))
+	}
+	it.Passing = nil
 	if factory.ReadinessPending(*it) {
 		it.Note(now, "Ready-for-review transition approved · head "+it.HeadCommit)
 	} else if edited {
@@ -2327,8 +3147,8 @@ func (r *Runner) SendBack(id int, words string) error {
 		lp.release(previous)
 		previous.wmu.Unlock()
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	c := &loopCtl{id: id, ctx: ctx, cancel: cancel, steer: make(chan string, 16), modelSelections: make(chan ModelSelection, 1), answers: make(chan loopAnswer, 1), phase: -1}
+	ctx, cause := context.WithCancelCause(context.Background())
+	c := &loopCtl{id: id, ctx: ctx, cancel: func() { cause(nil) }, cause: cause, steer: make(chan string, 16), modelSelections: make(chan ModelSelection, 1), answers: make(chan loopAnswer, 1), phase: -1}
 	lp.ctls[id] = c
 	lp.mu.Unlock()
 	now := r.now()
@@ -2368,7 +3188,7 @@ func sendBackStored(it *factory.Item, words string, now time.Time) (string, erro
 	}
 	at := 0
 	for k, p := range s.Phases {
-		if p.State == factory.PhaseDone {
+		if p.State == factory.PhaseDone || p.State == factory.PhaseSkipped {
 			at = k + 1
 		}
 	}
@@ -2428,8 +3248,8 @@ func (r *Runner) Reverify(id int) error {
 		lp.release(previous)
 		previous.wmu.Unlock()
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	c := &loopCtl{id: id, ctx: ctx, cancel: cancel, steer: make(chan string, 16), modelSelections: make(chan ModelSelection, 1), answers: make(chan loopAnswer, 1), reverify: true, phase: -1}
+	ctx, cause := context.WithCancelCause(context.Background())
+	c := &loopCtl{id: id, ctx: ctx, cancel: func() { cause(nil) }, cause: cause, steer: make(chan string, 16), modelSelections: make(chan ModelSelection, 1), answers: make(chan loopAnswer, 1), reverify: true, phase: -1}
 	lp.ctls[id] = c
 	lp.mu.Unlock()
 	now := r.now()
@@ -2461,6 +3281,10 @@ func (lp *floorLoop) reverifyRun(c *loopCtl) {
 			continue
 		}
 		st, index := lp.stageAt(it, i)
+		st.Kind = factory.StageCheck
+		if !lp.allowRound(c, st) {
+			return
+		}
 		exec := lp.r.opts.Exec[factory.StageCheck]
 		if exec == nil {
 			lp.say(c, "fail", fmt.Sprintf("codeaf cannot run a %s stage here", factory.StageCheck))
@@ -2473,6 +3297,9 @@ func (lp *floorLoop) reverifyRun(c *loopCtl) {
 			return
 		}
 		job := lp.job(c, st, index, i, ph.Round+1)
+		if !lp.allowRound(c, st) {
+			return
+		}
 		res, err := runIn(c.ctx, exec, job)
 		if c.ctx.Err() == nil && job.dirErr == nil {
 			lp.recordChange(c, job, res)
@@ -2565,4 +3392,100 @@ func (lp *floorLoop) retailTail(c *loopCtl) {
 		}
 		return nil
 	})
+}
+
+func (c *loopCtl) pendingSpend() func() {
+	c.spending.Add(1)
+	return c.spending.Done
+}
+
+// Work is already visibly finished. Cancel compilation first, then leave its
+// existing periodic worker reports alive until the resulting receipts land.
+func (c *loopCtl) settleSpend() {
+	c.cancel()
+	settled := make(chan struct{})
+	go func() { c.spending.Wait(); close(settled) }()
+	// ReceiptWait starts when a cancelled call queues its receipt. One second
+	// lets that call unwind before the provider's own bounded schedule starts.
+	timer := time.NewTimer(provider.ReceiptWait + time.Second)
+	defer timer.Stop()
+	select {
+	case <-settled:
+	case <-timer.C:
+	}
+}
+
+// AnswerAgentField is the worker's door for a person's answer to an
+// AgentField run's pause, which reaches it as a lease signal: the decision is
+// sent to the control plane through [Options.AgentFieldAnswer] whether or not
+// the run is being followed here now, because the control plane holds the
+// pause, not this runner.
+func (r *Runner) AnswerAgentField(id int, d factory.AgentFieldDecision) error {
+	if r.opts.AgentFieldAnswer == nil {
+		return errors.New(NoRemoteWords)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), agentFieldAnswerWait)
+	defer cancel()
+	return r.opts.AgentFieldAnswer(ctx, id, d)
+}
+
+// agentFieldAnswerWait bounds one try at carrying an answer to the control
+// plane; a try that runs out is tried again on the next beat.
+const agentFieldAnswerWait = 30 * time.Second
+
+// NoRemoteWords refuses a RunOn job on a factory with no AgentField behind it.
+const NoRemoteWords = "this job runs on AgentField and this factory is not connected to AgentField"
+
+// driveRemote runs a RunOn job through Options.Remote and lands its ending
+// the way a job's own steps would: done, needs you with the run's words, or
+// left to the person's Stop.
+// shipAgentField ends a job whose pipeline only runs on AgentField
+// ([factory.AgentFieldPipeline]): done, as a run_on job is when its run is.
+func (lp *floorLoop) shipAgentField(c *loopCtl) {
+	now := lp.r.now()
+	_ = lp.write(c, func(it *factory.Item) error {
+		it.State = factory.StateShipped
+		it.Question, it.QKind = "", ""
+		it.Asking = nil
+		if it.Stream != nil {
+			it.Stream.Ended = now
+		}
+		it.DoneAt = factory.AgentFieldEnded(*it, now)
+		words := "the AgentField run finished"
+		if it.PullRequest != nil && it.PullRequest.URL != "" {
+			words += " and opened " + it.PullRequest.URL
+		} else if factory.AgentFieldNothingChanged(*it) {
+			// NOTHING WENT OUT, and the log says why rather than "finished".
+			words = factory.AgentFieldNothingToChange
+		}
+		loopSay(it, now, "said", words)
+		return nil
+	})
+	lp.emit(c.id, "", EventLanded, "done")
+}
+
+func (lp *floorLoop) driveRemote(c *loopCtl) {
+	if lp.r.opts.Remote == nil {
+		lp.failStop(c, "agentfield", errors.New(NoRemoteWords))
+		return
+	}
+	err := lp.r.opts.Remote(c.ctx, c.id)
+	if c.ctx.Err() != nil {
+		return
+	}
+	if err != nil {
+		lp.failStop(c, "agentfield", err)
+		return
+	}
+	now := lp.r.now()
+	_ = lp.write(c, func(it *factory.Item) error {
+		it.State = factory.StateShipped
+		if it.Stream != nil {
+			it.Stream.Ended = now
+		}
+		it.DoneAt = factory.RunOnEnded(*it, now)
+		loopSay(it, now, "said", "the AgentField run finished")
+		return nil
+	})
+	lp.emit(c.id, "", EventLanded, "done")
 }

@@ -25,6 +25,9 @@ test('a rate limit admits its share per window, names the wait, and starts over 
 test('deployment numbers override the defaults', () => {
   assert.equal(limitsOf({}).framesPerDay, DEFAULTS.framesPerDay);
   assert.equal(limitsOf({ CAF_LIMITS: '{"framesPerDay":3}' }).framesPerDay, 3);
+  assert.equal(limitsOf({}).globalHardStoreBytes, Infinity);
+  assert.equal(limitsOf({ CAF_LIMITS: '{"globalHardStoreBytes":0}' }).globalHardStoreBytes, 0);
+  assert.equal(limitsOf({ CAF_LIMITS: '{"globalHardStoreBytes":123}' }).globalHardStoreBytes, 123);
 });
 
 function quota(over = {}) {

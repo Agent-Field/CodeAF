@@ -63,13 +63,15 @@ type Feed struct {
 	// redial asks the serving loop to end the socket it has and dial again.
 	redial chan struct{}
 
-	mu     sync.Mutex
-	state  State
-	events view      // what the events told; State.Online and State.Joined are its two parts
-	heard  time.Time // when the open socket last showed a sign of life
-	subs   map[*sub]struct{}
-	cancel context.CancelFunc
-	done   chan struct{}
+	mu        sync.Mutex
+	state     State
+	events    view // what the events told; State.Online and State.Joined are its two parts
+	receipts  []HoldReceipt
+	receiptAt time.Time
+	heard     time.Time // when the open socket last showed a sign of life
+	subs      map[*sub]struct{}
+	cancel    context.CancelFunc
+	done      chan struct{}
 }
 
 // newFeed builds a feed that is not yet connected.
@@ -117,7 +119,14 @@ func (f *Feed) leave(s *sub) (last bool) {
 func (f *Feed) snapshot() State {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return f.state
+	st := f.state
+	// A suspended timer cannot keep presence fresh. Read-time expiry also covers
+	// a blocked write and the first frame after this computer wakes from sleep.
+	now := f.clock.Now()
+	if st.Up && (f.heard.IsZero() || now.Before(f.heard) || now.Sub(f.heard) >= DeadAfter) {
+		st.Up, st.Vouching, st.Online = false, false, nil
+	}
+	return st
 }
 
 // set replaces the state and wakes the followers when it differs.
@@ -126,7 +135,7 @@ func (f *Feed) set(edit func(*State)) {
 	defer f.mu.Unlock()
 	before := f.state
 	edit(&f.state)
-	if f.state.equal(before) {
+	if f.state.equal(before) && len(f.receipts) == 0 {
 		return
 	}
 	for s := range f.subs {
@@ -236,9 +245,13 @@ func (f *Feed) serve(ctx context.Context, s Stream) error {
 	defer cancel()
 	defer f.set(func(st *State) {
 		st.Up, st.Vouching = false, false
+		f.receipts = nil
 		f.events = f.events.forgotten()
 		st.Online = f.events.online
 	})
+	f.mu.Lock()
+	f.heard = time.Time{}
+	f.mu.Unlock()
 	f.drainKick()
 	in := pump(ctx, s)
 	k := newKeeper(f.clock)
@@ -249,6 +262,13 @@ func (f *Feed) serve(ctx context.Context, s Stream) error {
 		case r := <-in:
 			if r.err != nil {
 				return r.err
+			}
+			last := f.lastHeard()
+			now := f.clock.Now()
+			if !last.IsZero() && (now.Before(last) || now.Sub(last) >= DeadAfter) {
+				// A late pong is not a replacement roster. Subscribe again before
+				// believing any presence retained from the stalled connection.
+				return errDead
 			}
 			f.hear(r.frame, vouching)
 			k.heard()
@@ -295,6 +315,10 @@ func (f *Feed) hear(fr Frame, vouching bool) {
 	f.retry.reset()
 	f.mu.Lock()
 	f.heard = f.clock.Now()
+	if fr.Holds != nil {
+		f.receipts = slices.Clone(fr.Holds)
+		f.receiptAt = f.heard
+	}
 	f.mu.Unlock()
 	f.set(func(st *State) {
 		st.Up, st.Vouching = true, vouching

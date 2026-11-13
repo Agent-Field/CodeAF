@@ -37,6 +37,11 @@ type appProcessActor interface {
 // a second for the answer to cross back.
 const appProcessStopWait = session.ProcessStopAllWait + time.Second
 
+// appStopAllOpenWait bounds how long a stop-all waits for an open under way
+// before it answers that what is left is unknown: what its one deadline leaves
+// after the jobs' own stop, so an owner that arrives last still gets that time.
+const appStopAllOpenWait = appwire.ProcessStopAllCeiling - session.ProcessStopAllWait
+
 // appProcessStampMS is a process id's start stamp as Unix milliseconds, zero
 // for an id written without one.
 func appProcessStampMS(stamp string) (int64, bool) {
@@ -133,7 +138,7 @@ func (b *appBackend) ProcessActions(ctx context.Context, id string) (*appwire.Pr
 		var transcript string
 		b.locked(func() { transcript = a.transcript })
 		if transcript != "" {
-			convDir = filepath.Dir(transcript)
+			convDir = session.DirOf(transcript)
 		}
 	}
 	res.State = appProcessBase(agent, record).State
@@ -272,11 +277,10 @@ func (b *appBackend) StopAllProcesses(ctx context.Context, ask appwire.ProcessSt
 		return nil, err
 	}
 	agent := ask.Agent
-	a, endRead, err := b.findCrewOwner(agent)
+	a, err := b.find(agent)
 	if err != nil {
 		return nil, err
 	}
-	defer endRead()
 	admitted := false
 	b.locked(func() {
 		if b.stoppingAll == nil {
@@ -290,10 +294,9 @@ func (b *appBackend) StopAllProcesses(ctx context.Context, ask appwire.ProcessSt
 		return nil, appwire.Errorf(appwire.CodeBusy, "this agent's processes are already being stopped")
 	}
 	defer b.locked(func() { delete(b.stoppingAll, agent) })
-	// A stop never opens an agent to manufacture an empty registry. A missing
-	// held owner cannot prove its saved jobs ended; local kept services still
-	// have their own supervisor and are stopped independently below.
-	live := b.liveOf(a)
+	// A kept crew's light record can represent jobs still running elsewhere.
+	// Only the jobs' side restores that owner, so services never wait for it.
+	var live *appLive
 	res := &appwire.ProcessStopAllResult{
 		Agent: agent, Scope: appwire.ProcessScopeAgent,
 		NotStopped: []string{}, ServicesNotStopped: []string{}, Unsupported: []string{},
@@ -308,18 +311,20 @@ func (b *appBackend) StopAllProcesses(ctx context.Context, ask appwire.ProcessSt
 		jobsErr  error
 		services appStopServices
 	)
-	if live != nil {
-		wg.Add(1)
-		guard.Go("stop-all-jobs", func() {
-			defer wg.Done()
-			actor, can := live.conn.Conv.(appProcessActor)
-			if !can {
-				jobsErr = remote.ErrProcessActionsUnserved
-				return
-			}
-			jobs, jobsErr = actor.StopConversationProcesses(ctx)
-		})
-	}
+	wg.Add(1)
+	guard.Go("stop-all-jobs", func() {
+		defer wg.Done()
+		live = b.liveOnceOpened(ctx, a)
+		if live == nil {
+			return
+		}
+		actor, can := live.conn.Conv.(appProcessActor)
+		if !can {
+			jobsErr = remote.ErrProcessActionsUnserved
+			return
+		}
+		jobs, jobsErr = actor.StopConversationProcesses(ctx)
+	})
 	wg.Add(1)
 	guard.Go("stop-all-services", func() {
 		defer wg.Done()
@@ -356,6 +361,57 @@ func (b *appBackend) StopAllProcesses(ctx context.Context, ask appwire.ProcessSt
 	}
 	res.Partial = res.Unenumerated > 0 || res.RemainingUnknown || len(res.Unsupported) > 0
 	return res, nil
+}
+
+// liveOnceOpened restores a cold kept owner or joins its existing open. The
+// completion signal covers publication and watchers, so a timed-out attempt
+// cannot stop jobs through an owner that becomes ready later.
+func (b *appBackend) liveOnceOpened(ctx context.Context, a *appAgent) *appLive {
+	wait, cancel := context.WithTimeout(ctx, appStopAllOpenWait)
+	defer cancel()
+	if wait.Err() != nil {
+		return nil
+	}
+	var id string
+	b.locked(func() { id = a.view.ID })
+	kept := b.crewKeeps(id)
+	var live *appLive
+	var opened chan struct{}
+	start := false
+	b.locked(func() {
+		if kept && !b.closing && a.live == nil && !a.opening {
+			a.opening = true
+			a.openDone = make(chan struct{})
+			start = true
+		}
+		live, opened = a.live, a.openDone
+	})
+	if start {
+		guard.Go("stop-all-open", func() {
+			// keepOpen checks the person's close under the gate before opening.
+			_, _, _ = b.keepOpen(a)
+			b.locked(func() {
+				// A tidy refusal precedes ensureLocked's completion cleanup.
+				if a.openDone == opened {
+					a.opening = false
+					a.openDone = nil
+					close(opened)
+				}
+			})
+		})
+	}
+	if opened == nil {
+		return live
+	}
+	select {
+	case <-opened:
+		if wait.Err() != nil {
+			return nil
+		}
+		return b.liveOf(a)
+	case <-wait.Done():
+		return nil
+	}
 }
 
 // appStopServices is what stopping one agent's services did.

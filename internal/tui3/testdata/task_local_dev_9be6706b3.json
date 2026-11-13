@@ -1,0 +1,41 @@
+{
+  "done": {
+    "Background work": "  \u001b[38;5;252mCreate hello.txt\u001b[39m\u001b[38;5;243m · done\u001b[39m\u001b[38;5;243m · \u001b[39m\u001b[38;5;146mopen result\u001b[39m",
+    "Tasks": " \u001b[38;5;110m✓\u001b[39m \u001b[38;5;252mCreate hello.txt\u001b[39m                                                                                                                                                          \u001b[38;5;243mdone\u001b[39m                       ",
+    "accepted conversation card": "\u001b[38;5;243m╭─ ? \u001b[39m  \u001b[38;5;243m ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\u001b[39m\n\u001b[38;5;243m╰─ \u001b[39m\u001b[38;5;243mapproved\u001b[39m",
+    "compact Tasks": "   \u001b[38;5;243mdone · now\u001b[39m",
+    "conversation landing": "\u001b[38;5;110m✓\u001b[39m \u001b[38;5;243m◆\u001b[39m \u001b[38;5;252mCreate hello.txt\u001b[39m\u001b[38;5;243m · done · ctrl+o\u001b[39m",
+    "conversation phase": "",
+    "conversation rail": "",
+    "open conversation landing": "\u001b[38;5;110m✓\u001b[39m \u001b[38;5;243m◆\u001b[39m \u001b[38;5;252mCreate hello.txt\u001b[39m\u001b[38;5;243m · done\u001b[39m",
+    "task page": "\u001b[38;5;252mdone · landed moments ago\u001b[39m",
+    "task preview": "\u001b[1m\u001b[38;5;252mCreate hello.txt\u001b[39m\u001b[22m\n\u001b[38;5;110m✓\u001b[39m \u001b[38;5;243mdone\u001b[39m\n\n\u001b[38;5;243mmoments ago\u001b[39m\n\n\u001b[1m\u001b[38;5;186menter\u001b[39m\u001b[22m\u001b[38;5;186m open\u001b[39m",
+    "task room": "done"
+  },
+  "failed": {
+    "Background work": "  \u001b[38;5;252mCreate hello.txt\u001b[39m\u001b[38;5;243m · incomplete\u001b[39m\u001b[38;5;243m · \u001b[39m\u001b[38;5;146mopen result\u001b[39m",
+    "Tasks": " \u001b[38;5;173m✕\u001b[39m \u001b[38;5;252mCreate hello.txt\u001b[39m                                                                                                                                                          \u001b[38;5;243mincomplete\u001b[39m                 ",
+    "accepted conversation card": "\u001b[38;5;243m╭─ ? \u001b[39m  \u001b[38;5;243m ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\u001b[39m\n\u001b[38;5;243m╰─ \u001b[39m\u001b[38;5;243mapproved\u001b[39m",
+    "compact Tasks": "   \u001b[38;5;243mincomplete · a fault · now\u001b[39m",
+    "conversation landing": "\u001b[38;5;173m✕\u001b[39m \u001b[38;5;243m◆\u001b[39m \u001b[38;5;252mCreate hello.txt\u001b[39m\u001b[38;5;243m · incomplete · ctrl+o\u001b[39m",
+    "conversation phase": "",
+    "conversation rail": "\u001b[38;5;173mincomplete · a fault\u001b[39m",
+    "open conversation landing": "\u001b[38;5;173m✕\u001b[39m \u001b[38;5;243m◆\u001b[39m \u001b[38;5;252mCreate hello.txt\u001b[39m\u001b[38;5;243m · incomplete\u001b[39m\n\u001b[38;5;243m  a fault\u001b[39m",
+    "task page": "\u001b[38;5;252mincomplete · stopped moments ago\u001b[39m",
+    "task preview": "\u001b[1m\u001b[38;5;252mCreate hello.txt\u001b[39m\u001b[22m\n\u001b[38;5;173m✕\u001b[39m \u001b[38;5;243mincomplete · a fault\u001b[39m\n\n\u001b[38;5;243mmoments ago\u001b[39m\n\n\u001b[1m\u001b[38;5;186menter\u001b[39m\u001b[22m\u001b[38;5;186m open\u001b[39m",
+    "task room": "incomplete"
+  },
+  "running": {
+    "Background work": "  \u001b[38;5;252mCreate hello.txt\u001b[39m\u001b[38;5;243m · running\u001b[39m\u001b[38;5;243m · \u001b[39m\u001b[38;5;146mopen result\u001b[39m",
+    "Home watched Tasks": " \u001b[38;5;146m◐\u001b[39m \u001b[38;5;252mCreate hello.txt\u001b[39m                                                                                                                                      \u001b[38;5;243manother window\u001b[39m             ",
+    "Home watched compact Tasks": "   \u001b[38;5;243mworking · another window · another window\u001b[39m",
+    "Tasks": " \u001b[38;5;146m◐\u001b[39m \u001b[38;5;252mCreate hello.txt\u001b[39m                                                                                                                                                          \u001b[38;5;243mworking\u001b[39m                    ",
+    "accepted conversation card": "\u001b[38;5;243m╭─ ? \u001b[39m  \u001b[38;5;243m ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\u001b[39m\n\u001b[38;5;243m╰─ \u001b[39m\u001b[38;5;243mapproved\u001b[39m",
+    "compact Tasks": "   \u001b[38;5;243mworking\u001b[39m",
+    "conversation phase": "",
+    "conversation rail": "",
+    "task page": "\u001b[38;5;252mworking\u001b[39m",
+    "task preview": "\u001b[1m\u001b[38;5;252mCreate hello.txt\u001b[39m\u001b[22m\n\u001b[38;5;146m◐\u001b[39m \u001b[38;5;243mworking\u001b[39m\n\n\u001b[1m\u001b[38;5;186menter\u001b[39m\u001b[22m\u001b[38;5;186m open\u001b[39m",
+    "task room": "working"
+  }
+}

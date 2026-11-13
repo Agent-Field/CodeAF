@@ -10,6 +10,11 @@ former names only in a manual section whose heading contains “old name”.
 
 ## Repository map
 
+Start with the [contributor guide](CONTRIBUTING.md), the
+[current architecture map](docs/ARCHITECTURE.md) and
+[documentation ownership](docs/DOCUMENTATION.md). Product answers belong in the
+shipped manual; developer knowledge and historical designs have separate indexes.
+
 - `internal/tui3`: the live chat surface, entered through `cmd/codeaf/chatv3.go`.
 - `internal/session`: the chat engine, turn loop, tools and tasks.
 - `internal/tui2`: shared components used by the current surface.

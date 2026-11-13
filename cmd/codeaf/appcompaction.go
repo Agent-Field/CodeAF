@@ -241,9 +241,7 @@ func (b *appBackend) CompactAgent(id string) error {
 		b.locked(func() { live.compacting = false })
 		return appwire.Errorf(appwire.CodeBusy, "too many compactions are running; ask again in a moment")
 	}
-	a.gate.Lock()
-	endWorker := b.pinReader(a)
-	a.gate.Unlock()
+	endWorker := b.pinReaderGated(a)
 	guard.Go("app/compact", func() {
 		defer endWorker()
 		defer func() {

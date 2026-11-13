@@ -13,6 +13,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/teams"
+	"github.com/Agent-Field/codeaf/internal/teams/teamstest"
 )
 
 func TestARecordedRoomIsMadeOnAMachineThatNeverSawIt(t *testing.T) {
@@ -50,7 +51,7 @@ func TestARecordedRoomIsMadeOnAMachineThatNeverSawIt(t *testing.T) {
 	if !ok || !parent.FactoryManaged || len(f.Teams) != 2 {
 		t.Fatal("missing dedicated factory parent")
 	}
-	if !room.Members[0].FactoryStage || room.Members[0].FactoryBrief != "Actual opening instructions." {
+	if m, err := teams.WithBriefs(profile, room.ID, room.Members[0]); err != nil || !m.FactoryStage || m.FactoryBrief != "Actual opening instructions." {
 		t.Fatal("stage brief not recorded")
 	}
 	kept, err := st.Get(it.ID)
@@ -92,10 +93,7 @@ func TestARecordedRoomNeverAdoptsACollidingLocalCrew(t *testing.T) {
 			}); err != nil {
 				t.Fatal(err)
 			}
-			before, err := os.ReadFile(teams.Path(profile))
-			if err != nil {
-				t.Fatal(err)
-			}
+			before := teamstest.JSON(t, profile)
 			it, err := st.Create(factory.Item{Repo: "work", Title: "collision", Stream: &factory.Stream{Room: id}})
 			if err != nil {
 				t.Fatal(err)
@@ -114,10 +112,7 @@ func TestARecordedRoomNeverAdoptsACollidingLocalCrew(t *testing.T) {
 			if !called {
 				t.Fatal("collision blocked approved work")
 			}
-			after, err := os.ReadFile(teams.Path(profile))
-			if err != nil {
-				t.Fatal(err)
-			}
+			after := teamstest.JSON(t, profile)
 			if !bytes.Equal(before, after) {
 				t.Fatal("colliding local crew changed")
 			}
@@ -181,9 +176,9 @@ func TestADropDeletesOnlyTheJobsOwnCrewAndConversations(t *testing.T) {
 	talk, stage, earlier, mine := conversation("job-talk"), conversation("job-stage"), conversation("job-stage-round-1"), conversation("mine")
 	round := conversation("job-write-round-1")
 	otherTalk, otherStage, lead := conversation("other-talk"), conversation("other-stage"), conversation("my-lead")
-	job := factory.Item{ID: 41, Num: 41, Repo: "acme/api", Title: "Total double-counts", Talk: talk,
+	job := factory.Item{Tier: factory.TierOwner, ID: 41, Num: 41, Repo: "acme/api", Title: "Total double-counts", Talk: talk,
 		Stream: &factory.Stream{Room: teams.NewID(), Phases: []factory.Phase{{Name: "write", Chat: stage, Rounds: []factory.RoundLine{{Round: 1, Chat: round}}}}}}
-	other := factory.Item{ID: 42, Num: 42, Repo: "acme/api", Title: "Another job", Talk: otherTalk,
+	other := factory.Item{Tier: factory.TierOwner, ID: 42, Num: 42, Repo: "acme/api", Title: "Another job", Talk: otherTalk,
 		Stream: &factory.Stream{Room: teams.NewID(), Phases: []factory.Phase{{Name: "write", Chat: otherStage}}}}
 	parent, crew := teams.NewID(), teams.NewID()
 	if err := teams.Save(profile, []teams.Team{
@@ -252,7 +247,7 @@ func TestADropDeletesOnlyTheJobsOwnCrewAndConversations(t *testing.T) {
 func TestADropFindsTheCrewOfAJobThatNeverRan(t *testing.T) {
 	places, profile, conversation := bringBackFixture(t)
 	talk, lead := conversation("job-talk"), conversation("my-lead")
-	job := factory.Item{ID: 7, Num: 7, Repo: "acme/api", Title: "Never ran", Talk: talk}
+	job := factory.Item{Tier: factory.TierOwner, ID: 7, Num: 7, Repo: "acme/api", Title: "Never ran", Talk: talk}
 	parent, room, crew := teams.NewID(), teams.NewID(), teams.NewID()
 	if err := teams.Save(profile, []teams.Team{
 		{ID: parent, Name: factoryTeamName, FactoryManaged: true},
@@ -282,7 +277,7 @@ func TestADropFindsTheCrewOfAJobThatNeverRan(t *testing.T) {
 func TestADropClosesACrewItCannotDelete(t *testing.T) {
 	places, profile, conversation := bringBackFixture(t)
 	talk, helper := conversation("job-talk"), conversation("helper")
-	job := factory.Item{ID: 41, Num: 41, Repo: "acme/api", Title: "Total double-counts", Talk: talk, Stream: &factory.Stream{Room: teams.NewID()}}
+	job := factory.Item{Tier: factory.TierOwner, ID: 41, Num: 41, Repo: "acme/api", Title: "Total double-counts", Talk: talk, Stream: &factory.Stream{Room: teams.NewID()}}
 	parent, nested := teams.NewID(), teams.NewID()
 	if err := teams.Save(profile, []teams.Team{
 		{ID: parent, Name: factoryTeamName, FactoryManaged: true},

@@ -11,11 +11,13 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/inventory"
 )
 
 const reasonGitIgnored = "git ignores them"
 const ignoredReadFailure = "cannot read which folders Git ignores here"
+const gitCeilingVar = "GIT_CEILING_DIRECTORIES"
 
 // gitIgnored keeps a rebuild instruction from naming a lockfile that will not
 // arrive. Tracked exceptions are deliberately honored by Git's default check.
@@ -23,7 +25,7 @@ const ignoredReadFailure = "cannot read which folders Git ignores here"
 func gitIgnored(tree, path string) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", "check-ignore", "-q", "--", path) //codeaf:plumbing A rebuild needs the lockfile in the capture.
+	cmd := exec.CommandContext(ctx, "git", "--no-optional-locks", "check-ignore", "-q", "--", path) //codeaf:plumbing A rebuild needs the lockfile in the capture.
 	cmd.Dir = tree
 	_, err := cmd.Output()
 	if err == nil {
@@ -44,7 +46,7 @@ func gitIgnored(tree, path string) bool {
 func ignoredDirectories(tree string) ([]string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z") //codeaf:plumbing Git names ignored directories without opening them.
+	cmd := exec.CommandContext(ctx, "git", "--no-optional-locks", "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z") //codeaf:plumbing Git names ignored directories without opening them.
 	cmd.Dir = tree
 	raw, err := cmd.Output()
 	if err != nil {
@@ -65,7 +67,7 @@ func ignoredDirectories(tree string) ([]string, error) {
 	}
 	// ls-files may collapse a directory whose only child is an ignored file.
 	// Pruning that directory would hide config/.env.local from the vault.
-	check := exec.CommandContext(ctx, "git", "check-ignore", "--stdin", "-z") //codeaf:plumbing Only an ignored directory itself can bypass the secret screen.
+	check := exec.CommandContext(ctx, "git", "--no-optional-locks", "check-ignore", "--stdin", "-z") //codeaf:plumbing Only an ignored directory itself can bypass the secret screen.
 	check.Dir = tree
 	check.Stdin = strings.NewReader(strings.Join(candidates, "\x00") + "\x00")
 	checked, err := check.Output()
@@ -84,8 +86,10 @@ func ignoredDirectories(tree string) ([]string, error) {
 	return dirs, nil
 }
 
+// hasGitMarker keeps a failed Git call from licensing ignored files, while a
+// tree with no surrounding repository still works when Git is unavailable.
 func hasGitMarker(tree string) bool {
-	for dir := filepath.Clean(tree); ; dir = filepath.Dir(dir) {
+	for dir := canonicalTree(tree); ; dir = filepath.Dir(dir) {
 		if _, err := os.Lstat(filepath.Join(dir, ".git")); err == nil || os.IsPermission(err) {
 			return true
 		}
@@ -93,6 +97,24 @@ func hasGitMarker(tree string) bool {
 			return false
 		}
 	}
+}
+
+// gitScope asks Git because ceiling entries, symlinks and the starting directory
+// have discovery rules of their own. An unexpected failure keeps native ignore
+// protection enabled rather than licensing capture of ignored private files.
+func gitScope(tree string) (repository, fenced bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", "--no-optional-locks", "rev-parse", "--show-toplevel") //codeaf:plumbing Capture must use Git's actual discovery boundary.
+	cmd.Dir = tree
+	if _, err := cmd.Output(); err != nil {
+		var exit *exec.ExitError
+		if errors.As(err, &exit) && strings.Contains(string(exit.Stderr), "not a git repository") {
+			return false, env.Value(gitCeilingVar) != ""
+		}
+		return hasGitMarker(tree), false
+	}
+	return true, false
 }
 
 // ignoredPaths reads only the engine's paths. Older counts and newer summary

@@ -10,7 +10,9 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 )
 
 // Brancher turns turns that lost their lease into a new cell (L12). Nothing is
@@ -33,7 +35,11 @@ type Brancher struct {
 // not. What an earlier refused publish already uploaded is reused, because
 // objects are content-addressed.
 func (b Brancher) Branch(ctx context.Context, from *Driving, head string, turns uint32, in PublishInfo) (string, error) {
-	_, frames, err := b.Publisher.uploadPlan(ctx, from.Cell, head)
+	savedAt, err := cellstore.SavedAt(from.Cell, head)
+	if err != nil {
+		return "", err
+	}
+	_, frames, err := b.Publisher.uploadPlan(ctx, from.Cell, head, false)
 	if err != nil {
 		return "", err
 	}
@@ -47,10 +53,11 @@ func (b Brancher) Branch(ctx context.Context, from *Driving, head string, turns 
 	}
 	_, err = b.Dir.Create(ctx, id, directory.CellInit{
 		Head: head, Class: in.Class, Title: in.Title, Size: in.Size, Keys: in.Keys,
+		SavedAt:    savedAt,
 		ParentCell: from.ID(), OrphanTurns: turns, Frames: plan,
 	})
 	if err != nil {
-		return "", err
+		return "", syncwords.UploadFailure(err)
 	}
 	if err := b.Map.Set(from.ID(), id); err != nil {
 		return "", err
@@ -97,6 +104,21 @@ func (m *BranchMap) Set(old, next string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.m[old] = next
+	return m.save()
+}
+
+// Remove restores the requested chat's identity without discarding its kept
+// branch or any other chat's redirect.
+func (m *BranchMap) Remove(id string) error {
+	if m == nil {
+		return nil
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.m[id]; !ok {
+		return nil
+	}
+	delete(m.m, id)
 	return m.save()
 }
 

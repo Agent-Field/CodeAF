@@ -1,0 +1,10 @@
+{
+  "commit": "5a65274e364e4f83bbf2bdcae9f103f4210450d5",
+  "path": "internal/directory",
+  "sha256": {
+    "http.go": "cfc2527428b29ad080a22e5239bb2ca0cfe30ecbe4be04ab3f0f5b39175a5a8d",
+    "client.go": "663253ed2352bc4c2e1372dfb837132800694550db50d1cdbfcdd64471ba4478",
+    "records.go": "a253b30a5a6aa423f434e2f0260ab9d0a04838369a79d53f6829706991ff47df",
+    "wire.go": "eecbaa325d4808374a19cee0b1178ea0b28e20636a1520f9ed93bf55145948e7"
+  }
+}

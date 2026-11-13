@@ -42,6 +42,7 @@ package main
 // cannot work must still take a remote session.
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -155,7 +156,10 @@ func runRemoteEngine(args []string) error {
 			return quietRefusal(remote.Refuse(os.Stdout, stale.reason))
 		}
 	}
+	stopStorage := syncsetup.StartStorageRefresh(context.Background(), home.Dir())
+	defer stopStorage()
 	err := remote.Serve(os.Stdin, os.Stdout, remote.Options{
+		SyncService: chatSyncService(),
 		Boot: func(hello remote.Hello) (*remote.Engine, error) {
 			return bootEngine(hello, *workspace, *file)
 		},
@@ -429,9 +433,11 @@ func nothingHolds(workspace string) bool {
 
 // differentEngineEnvironmentSentence names the host's workspace so the command
 // stops the folder actually holding the old environment, including from Home.
+// It offers --no-host first: that opens this window with this terminal's
+// environment and never interrupts the other window (#2072).
 func differentEngineEnvironmentSentence(workspace string) string {
 	stop := engineStopWords(workspace)
-	return "the background engine for this folder started with a different environment than this terminal and is still in use — after work finishes, close every window for this workspace and reopen. To stop now (interrupts active turns and tasks), run " + stop
+	return "the background engine for this folder started with a different environment than this terminal and is still in use — codeaf chat --no-host opens this window on its own and leaves the other one running; or, after work finishes, close every window for this workspace and reopen. To stop now (interrupts active turns and tasks), run " + stop
 }
 
 // settleCellsMode checks the capability of an already-running host before
@@ -922,6 +928,8 @@ func placesWord(n int) string {
 // the machine is in exactly the state that was asked for — and this process was
 // started by another one that is about to dial the socket either way.
 func runEngineHost(workspaceFlag, sessionFlag string) error {
+	stopStorage := syncsetup.StartStorageRefresh(context.Background(), home.Dir())
+	defer stopStorage()
 	workspace, err := engineWorkspace(workspaceFlag)
 	if err != nil {
 		return err
@@ -943,7 +951,8 @@ func runEngineHost(workspaceFlag, sessionFlag string) error {
 		return fmt.Errorf("open %s: %w", workspace, err)
 	}
 	err = enginehost.Run(workspace, enginehost.Options{
-		Cells: cell.Available(),
+		HomeRemoved: func() { os.Exit(0) },
+		Cells:       cell.Available(),
 		Boot: func(hello remote.Hello) (*remote.Engine, error) {
 			return bootEngine(hello, workspace, sessionFlag)
 		}, // usage writer owner: see CloseUsage after the host returns
@@ -1038,7 +1047,7 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 	if err := os.Chdir(workspace); err != nil {
 		return nil, fmt.Errorf("open %s: %w", workspace, err)
 	}
-	return assembleEngine(hello, workspace, sessionFlag, "")
+	return assembleEngine(hello, workspace, sessionFlag, "", nil)
 }
 
 // assembleEngine is [bootEngine] after the chdir: the conversation built for a
@@ -1046,7 +1055,7 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 // because it holds conversations in several workspaces in one process and so
 // cannot move the process into any one of them; it names the launch directory a
 // new conversation records, which is otherwise the process's own.
-func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string) (*remote.Engine, error) {
+func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string, siblingNames func() []string) (*remote.Engine, error) {
 	// ONE PROCESS, ONE WORKSPACE — and, when this process is a host, SEVERAL
 	// CONVERSATIONS IN IT. The process half of a launch is opened once and
 	// shared ([openEngineProcess]): the profile, the model catalog, the harness
@@ -1085,6 +1094,16 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 	// and it is the one fact the shared assembly cannot know for itself.
 	cfg := launch.Config
 	cfg.AskConsent = !hello.Headless
+	// A HEADLESS HELLO IS --once THROUGH A HOST, and is fenced as --once is
+	// (fence.go). A later hello that is not headless cannot join it: the
+	// server refuses a mismatch (internal/remote's server.go).
+	if hello.Headless {
+		fence, err := unattendedFence(launch.Workspace, launch.Settings.ProfileDir)
+		if err != nil {
+			return nil, err
+		}
+		cfg.Fence = fence
+	}
 	// The app's one supervisor of kept-running processes, when this process
 	// is the app's (appservices.go); every other engine has none.
 	cfg.Services = appServiceDoor.Load()
@@ -1147,7 +1166,7 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 	}
 	// `factory_floor`, now that the hello has settled which conversation this
 	// is: on the foreman's belt and no other (factory_foreman.go).
-	cfg.Floor = foremanFloorDoor(floorStore, workspace, cfg.SessionFile)
+	cfg.Floor = foremanFloorDoor(floorStore, workspace, proc.ProfileDir, cfg.SessionFile)
 
 	// THE THREE ROAD-DEPENDENT CAPABILITIES ARE DECIDED IN ONE PLACE, and this
 	// door no longer keeps its own answer to any of them (chatv3_lanes.go). Each
@@ -1165,6 +1184,7 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 	// Harnesses and RunHarness, properties of the machine that the shared
 	// assembly fills for every door.
 	cfg, open := v3Shape(cfg, v3LanesOverWire())
+	open, clientTools := appClientToolsEngineOpener(open)
 
 	// AND AUTOMATIONS ARE ON, which is the one capability on this list that a
 	// connection does not take away. The store arrives already filled, from the
@@ -1190,6 +1210,7 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 	// with ([session.Config.IntentNames]); the legacy deterministic flag remains a separate no-model policy.
 	if hello.Launch != nil {
 		cfg.IntentNames = hello.Launch.IntentNames
+		cfg.IntentSiblingNames = siblingNames
 		cfg.DeterministicNames = hello.Launch.DeterministicNames
 		cfg.HandOverOnAsk = hello.Launch.HandOverOnAsk
 		cfg.TeamListeningSince = hello.Launch.TeamListeningSince
@@ -1227,7 +1248,7 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 		agent.SetReasoning(level)
 	}
 	transcript, resumed := launch.SessionFile, launch.Resumed
-	if notice != "" || hello.New {
+	if cfg.SessionFile != launch.SessionFile || hello.New {
 		// The session file moved under us, so the welcome has to name the new
 		// one — everything the surface prints about this conversation comes off
 		// that frame. A minted conversation is the same fact said on purpose: it
@@ -1238,6 +1259,12 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 	proc.warmModels("engine/models", agent, launch.Model)
 
 	return &remote.Engine{
+		EntryNotice: func(file string) string {
+			return v3UpgradeNotice(v3PlaceOf(file, workspace).Dir, true)
+		},
+		ClientTools: clientTools,
+		TeamsPaired: teamPaired,
+		SyncService: chatSyncService(),
 		ReleaseOnLeave: func(current remote.WrappedAgent) bool {
 			built, ok := current.(*session.Agent)
 			if !ok {
@@ -1263,8 +1290,18 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 		Closed: func(closed remote.WrappedAgent) {
 			if built, ok := closed.(*session.Agent); ok {
 				proc.forget(built)
-				syncDrives.closeCell(v3PlaceOf(built.SessionPath(), workspace).ID())
 			}
+		},
+		FinishSaving: func(closed remote.WrappedAgent) error {
+			if built, ok := closed.(*session.Agent); ok {
+				ctx, cancel := context.WithTimeout(context.Background(), v3ReceiptWait)
+				defer cancel()
+				if err := built.WaitReceipts(ctx); err != nil {
+					return session.SavingError(built.SessionPath(), err)
+				}
+				return session.SavingError(built.SessionPath(), syncDrives.closeCell(v3PlaceOf(built.SessionPath(), workspace).ID()))
+			}
+			return nil
 		},
 		// A linked-local surface writes a banked approval into this profile and
 		// carries ConsentRule on the answer already crossing the wire. Rebuild
@@ -1279,6 +1316,7 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 		SessionFile:       transcript,
 		Resumed:           resumed,
 		Note:              v3Interrupted(cfg, notice),
+		Interrupted:       v3InterruptedLines(cfg),
 		// The shape this conversation ended up with, for the surface to compare
 		// against what it asked for. It is the shape that was APPLIED, so a
 		// hello that joined a conversation somebody else opened reads the other
@@ -1311,7 +1349,7 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 			if err != nil {
 				return nil, "", err
 			}
-			fresh.Floor = foremanFloorDoor(floorStore, workspace, fresh.SessionFile)
+			fresh.Floor = foremanFloorDoor(floorStore, workspace, proc.ProfileDir, fresh.SessionFile)
 			// THROUGH THE SAME BUILDER THE BOOT CONVERSATION WAS OPENED WITH, so
 			// a conversation started by /new over a connection is not a lesser
 			// one than the conversation it replaced: the adaptive runner is
@@ -1338,7 +1376,7 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 			if err != nil {
 				return nil, false, err
 			}
-			earlier.Floor = foremanFloorDoor(floorStore, workspace, earlier.SessionFile)
+			earlier.Floor = foremanFloorDoor(floorStore, workspace, proc.ProfileDir, earlier.SessionFile)
 			// Whether the file was found is asked BEFORE it is opened, because
 			// opening it creates it: a path nobody has written yet is a new
 			// conversation, and the surface says so on its first line.
@@ -1503,14 +1541,12 @@ func engineLaunchOptions(hello remote.Hello, workspace, sessionFlag string) v3Op
 // For the pipe engine this changes nothing at all: one conversation calls it
 // once, exactly as before.
 //
-// A FAILED OPEN IS FINAL FOR EVERY DOOR BUT THE APP. A pipe or a host reads its
-// key from the environment and the profile before it serves anything, so the
-// open that failed for the want of one would fail the same way again. The app
-// is handed its keys over the wire AFTER it has started ([appBackend.SetKey]),
-// so the open that ran before the key arrived is not the answer for the rest of
-// the process: [openAppEngineProcess] tries it again. A success is never
-// replaced, and mu makes every opener wait for the one in flight, so two
-// callers can never build two process halves.
+// A FAILED OPEN IS TRIED AGAIN. The app is handed its keys over the wire AFTER
+// it has started ([appBackend.SetKey]), and a host's first connection can
+// precede its first vault pull, so the open that failed then is not the answer
+// for the rest of the process. A success is never replaced, and mu makes every
+// opener wait for the one in flight, so two callers can never build two
+// process halves.
 var engineProcess struct {
 	mu    sync.Mutex
 	tried bool
@@ -1518,22 +1554,22 @@ var engineProcess struct {
 	err   error
 }
 
-func openEngineProcess() (*v3Process, error) { return openEngineProcessRetrying(false) }
-
-// openAppEngineProcess is [openEngineProcess] for the app, where a process half
-// that failed to open is opened again by the next caller rather than handed
-// back as the same error for as long as the window stays open.
-func openAppEngineProcess() (*v3Process, error) { return openEngineProcessRetrying(true) }
-
-func openEngineProcessRetrying(retryFailed bool) (*v3Process, error) {
+// openEngineProcess opens the process half once and keeps only a success. A
+// first connection can precede the serving computer's first vault pull, and the
+// app is handed its keys after it has started, so a failed open is tried again
+// by the next caller rather than handed back for the rest of the process.
+func openEngineProcess() (*v3Process, error) {
 	engineProcess.mu.Lock()
 	defer engineProcess.mu.Unlock()
-	if !engineProcess.tried || (retryFailed && engineProcess.proc == nil) {
+	if engineProcess.proc == nil {
 		engineProcess.proc, engineProcess.err = openV3Process("engine")
 		engineProcess.tried = true
 	}
 	return engineProcess.proc, engineProcess.err
 }
+
+// openAppEngineProcess is [openEngineProcess] for the app's doors.
+func openAppEngineProcess() (*v3Process, error) { return openEngineProcess() }
 
 // openedEngineProcess is the process half when it is already open, and nil
 // when it is not; it never opens one. A key that moves while nothing is open
@@ -1549,9 +1585,21 @@ func openedEngineProcess() *v3Process {
 // road has returned. In particular, closeAll cancels and joins model discovery
 // before the engine process can exit or its profile can be reused.
 func closeEngineProcess() {
-	if proc := openedEngineProcess(); proc != nil {
+	if proc := takeEngineProcess(); proc != nil {
 		proc.closeAll()
 	}
+}
+
+// takeEngineProcess empties the process slot and hands back what it held, so
+// the next open starts afresh and only one caller closes the old one.
+func takeEngineProcess() *v3Process {
+	engineProcess.mu.Lock()
+	defer engineProcess.mu.Unlock()
+	proc := engineProcess.proc
+	engineProcess.tried = false
+	engineProcess.proc = nil
+	engineProcess.err = nil
+	return proc
 }
 
 // engineWorkspace resolves the directory the surface asked for.

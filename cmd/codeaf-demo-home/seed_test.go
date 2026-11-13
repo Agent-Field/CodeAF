@@ -31,6 +31,9 @@ import (
 
 func TestTheDemoHomeFillsEveryPlace(t *testing.T) {
 	dir := t.TempDir()
+	// Contract 5–7: close the fixture's cached handles before removing its home.
+	t.Cleanup(teamstore.Close)
+	t.Cleanup(func() { session.StopUsageWriter(filepath.Join(dir, ".codeaf", "v3", session.UsageLedgerName)) })
 	// THE REAL CLOCK, DELIBERATELY, and it is the only safe reading of it here:
 	// half of what this test checks is the two live rows, and a presence file is
 	// believed for three heartbeats measured against the wall — so a fixture
@@ -605,6 +608,8 @@ func TestTheDemoHomesLedgersStayInsideTheirOwnDays(t *testing.T) {
 	} {
 		t.Run(moment.name, func(t *testing.T) {
 			dir := t.TempDir()
+			t.Cleanup(teamstore.Close)
+			t.Cleanup(func() { session.StopUsageWriter(filepath.Join(dir, ".codeaf", "v3", session.UsageLedgerName)) })
 			built, err := seedDemoHome(dir, moment.at)
 			if err != nil {
 				t.Fatalf("seed the demo home: %v", err)

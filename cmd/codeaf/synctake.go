@@ -2,14 +2,21 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"log"
+	"net/url"
+	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/automation"
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/dirwatch"
@@ -31,6 +38,9 @@ var surfaceNotices = tui3.NewNotices()
 // when it cannot start, it adds nothing and the home screen must not fail to
 // start over a relay setting: every seam stays nil, and a nil seam is absent.
 func wireSync(o *tui3.Options) {
+	if o.Host != "" {
+		return
+	}
 	if o.Notices == nil {
 		o.Notices = surfaceNotices
 	}
@@ -39,17 +49,17 @@ func wireSync(o *tui3.Options) {
 		return
 	}
 	if o.Machines == nil {
-		o.Machines = s
+		o.Machines = surfaceMachines{s}
 	}
+	o.DeviceID = s.Device.ID()
 	if o.Fleet == nil {
 		o.Fleet = s
 	}
-	take := takeover{s.Continuer(cellstore.EngineFor(""), syncsetup.TakeOptions{
-		DeviceName: deviceName(),
-		RootFor:    takeRootFor,
-		BucketFor:  takeCopyBucket,
-		Notify:     surfaceNotices.Say,
-	})}
+	if o.NotShared == nil {
+		o.NotShared = terminalNotShared
+	}
+	moving := &takeProgress{}
+	take := takeover{c: chatContinuer(s, surfaceNotices.Say, moving.report), moving: moving}
 	if o.Takeover == nil {
 		o.Takeover = take
 	}
@@ -61,6 +71,151 @@ func wireSync(o *tui3.Options) {
 	}
 	guard.Go("sync/standing", func() { checkStanding(s.Home, s.Dir, surfaceNotices.SayHomeOnce) })
 	guard.Go("sync/standing-live", func() { watchStanding(s.Home, s.Follow, surfaceNotices.SayHomeOnce) })
+}
+
+// surfaceMachines keeps display hints out of the decision to send a message.
+type surfaceMachines struct{ *syncsetup.Sync }
+
+// RowsAt enriches branch rows with whether their turns already exist in the
+// local main chat, off the surface loop, so Home can tell when discarding a
+// collapsed copy loses nothing.
+func (s surfaceMachines) RowsAt(ctx context.Context) ([]chatlist.Row, uint64, error) {
+	if !syncsetup.Resolve(s.Home).On() {
+		return nil, 0, nil
+	}
+	rows, version, err := s.Sync.RowsAt(ctx)
+	if err != nil || len(rows) == 0 {
+		return rows, version, err
+	}
+	markLocalRedundantBranches(rows)
+	return rows, version, nil
+}
+
+// SendLease withholds saved sync hold receipts while sync is off or quiet so a
+// local chat never mistakes an earlier sync lease for another device holding it.
+func (s surfaceMachines) SendLease(id string) (string, uint64, error) {
+	if !syncsetup.Resolve(s.Home).On() || (!s.Removed() && syncsetup.Quiet(s.Home)) {
+		return "", 0, os.ErrNotExist
+	}
+	return s.Sync.SendLease(id)
+}
+
+func (s surfaceMachines) Rows(ctx context.Context) ([]chatlist.Row, error) {
+	rows, _, err := s.RowsAt(ctx)
+	return rows, err
+}
+
+func markLocalRedundantBranches(rows []chatlist.Row) {
+	byCell := make(map[string]chatlist.Row, len(rows))
+	hasBranch := false
+	for _, r := range rows {
+		byCell[r.Cell] = r
+		if r.Status == chatlist.Branch && r.Parent != "" && r.Head != "" {
+			hasBranch = true
+		}
+	}
+	if !hasBranch {
+		return
+	}
+	turnSets := map[string]map[string]bool{}
+	turnsOf := func(id string) map[string]bool {
+		if set, seen := turnSets[id]; seen {
+			return set
+		}
+		var set map[string]bool
+		if c, err := openCellByID(id); err == nil {
+			if logRecs, err := cellstore.Log(c); err == nil {
+				set = make(map[string]bool, len(logRecs))
+				for _, rec := range logRecs {
+					set[rec.Turn.ID] = true
+				}
+			}
+		}
+		turnSets[id] = set
+		return set
+	}
+	for i := range rows {
+		if rows[i].Status != chatlist.Branch || rows[i].Parent == "" || rows[i].Head == "" {
+			continue
+		}
+		root := rows[i].Parent
+		for hops := 0; root != "" && hops < 16; hops++ {
+			parent, ok := byCell[root]
+			if !ok || parent.Status != chatlist.Branch || parent.Parent == "" || parent.Parent == root {
+				break
+			}
+			root = parent.Parent
+		}
+		if turns := turnsOf(root); turns[rows[i].Head] {
+			rows[i].BranchRedundant = true
+		}
+	}
+}
+
+// RowsForChatSend uses a live writer's receipt or a never-shared chat before asking the relay.
+// A known outage keeps unknown copies unsent without repeating the network wait.
+func (s surfaceMachines) RowsForChatSend(ctx context.Context, file string, offline, holding bool) ([]chatlist.Row, uint64, bool, error) {
+	if !syncsetup.Resolve(s.Home).On() {
+		return nil, 0, true, nil
+	}
+	root := session.DirOf(file)
+	id := filepath.Base(root)
+	if s.Removed() {
+		if c, err := cell.OpenAt(root, id); err == nil {
+			if shared, err := cellstore.Shared(c); err == nil && !shared {
+				return nil, 0, true, directory.ErrRevoked
+			}
+		}
+		return nil, 0, false, directory.ErrRevoked
+	}
+	if syncsetup.Quiet(s.Home) {
+		return nil, 0, true, nil
+	}
+	remote, fence, leaseErr := s.SendLease(id)
+	if holding && leaseErr == nil && fence != 0 {
+		return []chatlist.Row{{Cell: remote, Status: chatlist.Here, Mine: true, Fence: fence}}, 0, true, nil
+	}
+	if c, err := cell.OpenAt(root, id); err == nil && (leaseErr != nil || fence == 0) {
+		shared, err := cellstore.Shared(c)
+		if err == nil && !shared {
+			return nil, 0, true, nil
+		}
+	}
+	if offline {
+		return nil, 0, false, directory.ErrUnreachable
+	}
+	rows, version, err := s.RowsForSend(ctx)
+	// Storage-off chats save locally without an uploading writer, even after their hold expires.
+	return rows, version, !s.StorageAllowed(), err
+}
+
+func (s surfaceMachines) RowsForSend(ctx context.Context) ([]chatlist.Row, uint64, error) {
+	if !syncsetup.Resolve(s.Home).On() {
+		return nil, 0, nil
+	}
+	if s.Relay != "" {
+		current, ok, err := syncsetup.Open(s.Home)
+		if err != nil {
+			return nil, 0, err
+		}
+		if !ok {
+			return nil, 0, nil
+		}
+		s.Sync = current
+	}
+	if s.Removed() {
+		return nil, 0, directory.ErrRevoked
+	}
+	if syncsetup.Quiet(s.Home) {
+		return nil, 0, nil
+	}
+	l, err := s.Dir.List(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	key := directory.MetadataKey(s.Identity.CellKey())
+	open := func(sealed string) (string, error) { return directory.OpenName(key, sealed) }
+	return chatlist.Rows(l, s.Device.ID(), open), l.Version, nil
 }
 
 // standingWithin bounds the launch-time check so a silent relay costs nothing.
@@ -126,7 +281,51 @@ func standingRefusal(err error) error {
 
 // takeover is the surface's Taker over the take side: what a takeover reports,
 // in the shape the surface knows.
-type takeover struct{ c *syncsetup.Continuer }
+type takeover struct {
+	c      *syncsetup.Continuer
+	moving *takeProgress
+}
+
+// takeProgress is how far the terminal's one running continue has got.
+type takeProgress struct {
+	mu   sync.Mutex
+	cell string
+	at   tui3.MoveProgress
+	ok   bool
+}
+
+func (p *takeProgress) start(cell string) {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.cell, p.ok = cell, false
+}
+
+func (p *takeProgress) report(m syncsetup.MoveProgress) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.at, p.ok = tui3.MoveProgress{Step: m.Step, Done: m.Done, Total: m.Total}, true
+}
+
+// MoveProgress says how far the continue of cell has got.
+func (t takeover) MoveProgress(cell string) (tui3.MoveProgress, bool) {
+	if t.moving == nil {
+		return tui3.MoveProgress{}, false
+	}
+	t.moving.mu.Lock()
+	defer t.moving.mu.Unlock()
+	return t.moving.at, t.moving.ok && t.moving.cell == cell
+}
+
+// surfaceTakeError names a stalled continue in the terminal's words.
+func surfaceTakeError(err error) error {
+	if errors.Is(err, syncsetup.ErrMoveStalled) {
+		return fmt.Errorf("%w: %w", tui3.ErrMoveStalled, err)
+	}
+	return err
+}
 
 var _ tui3.Taker = takeover{}
 
@@ -138,12 +337,23 @@ func (t takeover) Take(ctx context.Context, id string) (tui3.Taken, error) {
 // acquire, so its consent cannot displace a holder that arrived meanwhile.
 func (t takeover) TakeSeen(ctx context.Context, id string, seen *directory.LeaseExpectation) (tui3.Taken, error) {
 	began := time.Now()
+	t.moving.start(id)
 	got, err := t.c.TakeSeen(ctx, id, seen)
 	elapsed := time.Since(began)
 	if err != nil {
-		return tui3.Taken{}, err
+		return tui3.Taken{}, surfaceTakeError(err)
 	}
 	return surfaceTaken(got, elapsed), nil
+}
+
+func (t takeover) TakeSeenWithWorkspaceRoots(ctx context.Context, id string, seen *directory.LeaseExpectation, roots map[string]string) (tui3.Taken, error) {
+	began := time.Now()
+	t.moving.start(id)
+	got, err := t.c.TakeSeenWithWorkspaceRoots(ctx, id, seen, roots)
+	if err != nil {
+		return tui3.Taken{}, surfaceTakeError(err)
+	}
+	return surfaceTaken(got, time.Since(began)), nil
 }
 
 func (t takeover) OpenBranch(ctx context.Context, id string) (tui3.Taken, error) {
@@ -156,24 +366,35 @@ func (t takeover) OpenBranch(ctx context.Context, id string) (tui3.Taken, error)
 }
 
 func surfaceTaken(got syncsetup.Continued, elapsed time.Duration) tui3.Taken {
-	return tui3.Taken{Kept: got.Taken.Kept, KeptTurns: got.KeptTurns, Device: got.Device, TaskCopies: got.TaskCopies, Resume: got.Resume, Transcript: filepath.Join(got.Taken.Cell.Root, cell.TranscriptPath), Elapsed: elapsed}
+	return tui3.Taken{Fence: got.Taken.Driving.Fence, Head: got.Taken.Driving.Head, AlreadyHere: got.AlreadyHere, LocalOnly: got.LocalOnly, Kept: got.Taken.Kept, KeptTurns: got.KeptTurns, Device: got.Device, TaskCopies: got.TaskCopies, Resume: got.Resume, Transcript: filepath.Join(got.Taken.Cell.Root, cell.TranscriptPath), Elapsed: elapsed}
 }
 
 // takeRootFor is where this machine keeps the chat with an id: the folder it
 // already has, found where a chat keeps it, and otherwise a folder in the
 // bucket of chats that belong to no project, where a chat that arrives from
 // another machine is at home.
-func takeRootFor(id string) string {
-	if c, err := openCellByID(id); err == nil {
+func takeRootFor(id string) string { return takeRootForAt(home.Dir(), id) }
+
+func takeRootForAt(dir, id string) string {
+	if c, err := openCellByIDAt(dir, id); err == nil {
 		return c.Root
 	}
-	return filepath.Join(home.Join("v3", "projects", "copies"), id)
+	return filepath.Join(dir, "v3", "projects", "copies", id)
 }
 
 // takeCopyBucket files each copy under the folder it came from, apart from
-// conversations that work in this computer's own folder of the same name.
-func takeCopyBucket(origin string) string {
-	return home.Join("v3", "projects", "copy-"+encodeWorkspace(origin))
+// conversations that work in this computer's own folder of the same name. A
+// chat's origin grows with every move, so an uncapped bucket name stops working
+// at the filesystem's 255-byte component limit.
+func takeCopyBucket(origin string) string { return takeCopyBucketAt(home.Dir(), origin) }
+
+func takeCopyBucketAt(dir, origin string) string {
+	name := "copy-" + encodeWorkspace(origin)
+	if len(name) > 255 {
+		digest := sha256.Sum256([]byte(filepath.Clean(origin)))
+		name = "copy-" + hex.EncodeToString(digest[:])
+	}
+	return filepath.Join(dir, "v3", "projects", name)
 }
 
 // deviceName is what this machine is called in a sentence about it: the name a
@@ -212,4 +433,38 @@ func (t takeover) SafeToContinue(ctx context.Context, id, current string, automa
 		log.Printf("continue %s needs a choice: local files, conversation or tool work changed", id)
 	}
 	return !dirty, err
+}
+
+// chatContinuer is the shared CLI and app continuation assembly.
+// chatContinuer is the terminal's continue: it stops when nothing comes
+// through for syncsetup.MoveIdleWithin, and tells onMove how far it has got.
+func chatContinuer(s *syncsetup.Sync, notify func(string), onMove func(syncsetup.MoveProgress)) *syncsetup.Continuer {
+	return s.Continuer(cellstore.EngineFor(""), syncsetup.TakeOptions{
+		DeviceName: devname.Name(s.Home),
+		RootFor:    func(id string) string { return takeRootForAt(s.Home, id) },
+		BucketFor:  func(origin string) string { return takeCopyBucketAt(s.Home, origin) },
+		Notify:     notify,
+		OnMove:     onMove,
+		IdleWithin: syncsetup.MoveIdleWithin,
+	})
+}
+
+// chatMover is chatContinuer for a move the app watches.
+func chatMover(s *syncsetup.Sync, onMove func(syncsetup.MoveProgress)) *syncsetup.Continuer {
+	return chatContinuer(s, nil, onMove)
+}
+
+// ReleaseUnused leaves the installed files and kept work intact, just as closing
+// a chat does, while returning an abandoned automatic acquisition to the directory.
+func (t takeover) ReleaseUnused(ctx context.Context, id string, fence uint64) error {
+	return t.c.ReleaseUnused(ctx, id, fence)
+}
+
+// RelayHost names the endpoint without exposing a path or credentials in chat copy.
+func (s surfaceMachines) RelayHost() string {
+	parsed, err := url.Parse(s.Relay)
+	if err != nil {
+		return ""
+	}
+	return parsed.Hostname()
 }

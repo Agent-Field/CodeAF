@@ -7,6 +7,9 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/approval"
+	codeafexec "github.com/Agent-Field/codeaf/internal/exec"
 )
 
 // The head's hands, for the two seconds a person would not have thought about.
@@ -141,12 +144,16 @@ func (run *beltRun) bash(args map[string]any) (string, bool) {
 	if err != nil {
 		return err.Error(), true
 	}
+	if read, hit := approval.DefaultCredentialScope(root).Command(command); hit {
+		return read.Message(), true
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), run.head.bashWindowOf())
 	defer cancel()
 	shell := exec.CommandContext(ctx, "sh", "-c", command)
 	shell.Dir = root
 	shell.WaitDelay = bashWaitDelay
+	shell.Env = codeafexec.JobShellEnv(nil)
 	output, runErr := shell.CombinedOutput()
 
 	// The receipt is written from what happened and never from what was asked

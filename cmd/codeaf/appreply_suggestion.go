@@ -13,10 +13,10 @@ func (b *appBackend) SuggestReply(ctx context.Context, p appwire.ReplySuggestion
 	if err != nil {
 		return appwire.ReplySuggestion{}, err
 	}
-	defer endRead()
 	if live == nil {
 		return appwire.ReplySuggestion{}, nil
 	}
+	defer endRead()
 	door, ok := live.conn.Conv.(interface {
 		SuggestReply(context.Context, string) (string, error)
 	})

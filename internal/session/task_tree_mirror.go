@@ -52,7 +52,11 @@ package session
 // own machinery where they live. Parts of such a parent go on sharing the
 // directory, which is what "here" means.
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/taskcopy"
+)
 
 // openFamilyTree makes a mirrored family tree into the repository its parts cut
 // their worktrees off, and hands the tree back either way.
@@ -108,7 +112,11 @@ func familyTreeIsOpen(dir string) bool {
 // so everything this stages is already inside that cap and no second bound is
 // needed here.
 func openFamilyRepository(dir string) string {
-	if out, err := git(dir, "init", "--quiet"); err != nil {
+	return openFamilyRepositoryWithPolicy(dir, nil)
+}
+
+func openFamilyRepositoryWithPolicy(dir string, withheld []string) string {
+	if out, err := privateGit(dir, "init", "--quiet"); err != nil {
 		return familyTreeProblem(out, err)
 	}
 	// EVERYTHING IN THE COPY GOES IN, ignore rules included (`--force`). A
@@ -118,7 +126,11 @@ func openFamilyRepository(dir string) string {
 	// belong to machinery rather than to anybody's world — a task's private
 	// metadata and furrow's bookkeeping — exactly as [sealGroundWork] keeps them
 	// out of the world it hands a child.
-	addArgs := []string{"add", "--all", "--force", "--", "."}
+	addArgs := []string{"add", "--all", "--force"}
+	addArgs = append(addArgs, "--", ".")
+	for _, name := range withheld {
+		addArgs = append(addArgs, ":(exclude,literal)"+name)
+	}
 	for _, dropping := range taskDroppingNames() {
 		addArgs = append(addArgs, ":(exclude)"+dropping)
 	}
@@ -136,11 +148,14 @@ func openFamilyRepository(dir string) string {
 	// commit somebody's global settings would sign is a passphrase prompt on a
 	// terminal nobody is watching — neither is a thing to lose a family tree
 	// over, and neither commit is the person's to answer for.
-	if out, err := git(dir, append(codeafGitIdentity(),
+	if out, err := privateGit(dir, append(codeafGitIdentity(),
 		"-c", "commit.gpgsign=false",
 		"commit", "--quiet", "--no-verify", "--allow-empty",
 		"-m", familyTreeCommitMessage)...); err != nil {
 		return familyTreeProblem(out, err)
+	}
+	if err := taskcopy.MarkIndependentBaseline(dir); err != nil {
+		return familyTreeProblem("", err)
 	}
 	return ""
 }

@@ -8,10 +8,10 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
-	"github.com/Agent-Field/codeaf/internal/furrow"
 	"github.com/Agent-Field/codeaf/internal/lawcheck"
 )
 
@@ -29,7 +29,7 @@ func TestCellLayoutKeepsTruthUnderTheCellDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, field := range []string{"effort", "approval", "archived", "places", "launchDir"} {
+	for _, field := range []string{"model", "modelProvider", "modelIdentity", "effort", "approval", "archived", "places", "launchDir"} {
 		if strings.Contains(string(raw), `"`+field+`"`) {
 			t.Errorf("meta.json still holds %s:\n%s", field, raw)
 		}
@@ -44,18 +44,25 @@ func TestCellLayoutKeepsTruthUnderTheCellDir(t *testing.T) {
 // Seal a session, materialize ONLY the sealed tree (workspace plus .cell/) into
 // a fresh folder, and open it: the dials and cursors are the same.
 // C27.7 exercises this behaviour without an opt-in switch.
-func TestSealedTreeCarriesTheSessionTruth(t *testing.T) {
-	// The suite pins furrow away; this proof uses the explicit test engine.
-	t.Setenv(furrow.BinaryEnvVar, os.Getenv("CODEAF_TEST_FURROW"))
-	bin, err := furrow.ResolveBinary()
-	if err != nil {
-		t.Skipf("no engine binary: %v", err)
-	}
+func TestSealedTreeCarriesTheSessionTruthC1bModelChoice(t *testing.T) {
+	bin := sealEngine(t)
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	here := newSealMachine(t)
 	there := newSealMachine(t)
 	dir := sessionInCell(t, here)
+	// RunLandedTasks opens its own default-config agent here, and closing it
+	// stamps that agent's effort and approval over the seeded truth: put the
+	// seed back, so the round trip below is checked against what was seeded.
+	seed, err := LoadMeta(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed.Model, seed.ModelProvider = "fixture/current", "openrouter"
+	seed.ModelIdentity = &ModelIdentity{Selected: seed.Model, Models: &ConversationModels{Main: seed.Model, Fallback: "fixture/backup"}}
 	RunLandedTasks(t, dir, "map the parser") // tasks.json holds journal paths the law must see
+	if err := SaveMeta(dir, seed); err != nil {
+		t.Fatal(err)
+	}
 	c, err := cell.OpenAt(dir, filepath.Base(dir))
 	if err != nil {
 		t.Fatal(err)
@@ -79,8 +86,11 @@ func TestSealedTreeCarriesTheSessionTruth(t *testing.T) {
 	if err != nil || meta.Effort != "high" || meta.Approval != "allow" || !meta.Archived || len(meta.ArchivedTasks) != 1 {
 		t.Errorf("truth meta = %+v, %v", meta, err)
 	}
-	assertResolvedHere(t, meta, freshDir, there)
-	assertNoAbsolutePaths(t, filepath.Join(freshDir, cellStateDir))
+	if meta.Model != seed.Model || meta.ModelProvider != seed.ModelProvider || meta.ModelIdentity == nil || !reflect.DeepEqual(meta.ModelIdentity.Models, seed.ModelIdentity.Models) {
+		t.Fatalf("C1b sealed model choice = %+v, identity=%+v", meta, meta.ModelIdentity)
+	}
+	assertResolvedHere(t, meta, freshDir, there, filepath.Join(here.other, "elsewhere"))
+	assertNoAbsolutePaths(t, filepath.Join(freshDir, cellStateDir), filepath.Join(here.other, "elsewhere"))
 	place := Place{Dir: freshDir}
 	a, _ := newTestAgent(t, &scriptedCompleter{}, func(cfg *Config) {
 		cfg.Place = Place{Dir: freshDir, Workspace: freshWorkspace}
@@ -101,7 +111,25 @@ func sealAndMaterialize(t *testing.T, bin, dir string, c cell.Cell, from, to sea
 	t.Helper()
 	workspace := from.workspace
 	putFile(t, filepath.Join(workspace, "main.go"), "package main\n")
-	e := cellstore.Engine{Binary: bin, DataRoot: t.TempDir(), Workspace: workspace}
+	freshDir = filepath.Join(t.TempDir(), c.ID)
+	dataRoot := t.TempDir()
+	// A short owned socket path also fits macOS AF_UNIX's path limit.
+	socketDir, err := os.MkdirTemp("", "seal-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(socketDir) })
+	daemon := cellstore.Daemon{Binary: bin, Socket: filepath.Join(socketDir, "engine.sock")}
+	// This helper owns the native store and daemon. Join its final flush before
+	// TempDir removes the store; package-wide shutdown happens after test cleanup.
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := daemon.Stop(ctx); err != nil {
+			t.Errorf("stop owned sealing daemon: %v", err)
+		}
+	})
+	e := cellstore.Engine{Binary: bin, DataRoot: dataRoot, Workspace: workspace, Transport: daemon}
 	sealed, err := e.Seal(context.Background(), c, cellstore.TurnInfo{})
 	if err != nil {
 		t.Fatal(err)
@@ -110,7 +138,6 @@ func sealAndMaterialize(t *testing.T, bin, dir string, c cell.Cell, from, to sea
 	// A fresh machine: an empty workspace and an empty cell, attached to the
 	// same store, then restored to the sealed turn.
 	freshWorkspace = to.workspace
-	freshDir = filepath.Join(t.TempDir(), c.ID)
 	if err := os.MkdirAll(filepath.Join(freshDir, cellStateDir), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +147,7 @@ func sealAndMaterialize(t *testing.T, bin, dir string, c cell.Cell, from, to sea
 	if err != nil {
 		t.Fatal(err)
 	}
-	there := cellstore.Engine{Binary: bin, DataRoot: e.DataRoot, Workspace: freshWorkspace}
+	there := cellstore.Engine{Binary: bin, DataRoot: e.DataRoot, Workspace: freshWorkspace, Transport: daemon}
 	if _, err := there.Seal(context.Background(), target, cellstore.TurnInfo{}); err != nil {
 		t.Fatal(err)
 	}
@@ -144,8 +171,8 @@ func newSealMachine(t *testing.T) sealMachine {
 func (m sealMachine) live(t *testing.T) { t.Setenv("HOME", m.home) }
 
 // The sealed truth names folders by base, so opened on another sealMachine it
-// stands on THAT sealMachine's folders; a place under no base was not persisted.
-func assertResolvedHere(t *testing.T, meta Meta, dir string, m sealMachine) {
+// stands on that machine's folders, while a place under no base stays absolute.
+func assertResolvedHere(t *testing.T, meta Meta, dir string, m sealMachine, outside string) {
 	t.Helper()
 	if want := filepath.Join(m.workspace, "cmd"); meta.LaunchDir != want {
 		t.Errorf("launchDir = %q, want %q", meta.LaunchDir, want)
@@ -154,7 +181,7 @@ func assertResolvedHere(t *testing.T, meta Meta, dir string, m sealMachine) {
 	for _, p := range meta.Places {
 		places = append(places, p.Path)
 	}
-	if want := []string{filepath.Join(m.home, "proj"), filepath.Join(m.workspace, "sub")}; !reflect.DeepEqual(places, want) {
+	if want := []string{filepath.Join(m.home, "proj"), filepath.Join(m.workspace, "sub"), outside}; !reflect.DeepEqual(places, want) {
 		t.Errorf("places = %q, want %q", places, want)
 	}
 	want := StandingTree{Folder: filepath.Join(m.home, "proj"), Dir: filepath.Join(dir, placeTrees, "a"),
@@ -164,18 +191,25 @@ func assertResolvedHere(t *testing.T, meta Meta, dir string, m sealMachine) {
 	}
 }
 
-// L1 over the sealed directory: no file the harness wrote there names an
-// absolute path. The transcript is the journal of what was said and is exempt
-// from being rewritten; everything else is state the harness owns.
-func assertNoAbsolutePaths(t *testing.T, stateDir string) {
+// Encodable paths stay relative throughout the sealed directory. Only the
+// explicitly expected machine-local paths in session.json may remain absolute.
+func assertNoAbsolutePaths(t *testing.T, stateDir string, outside ...string) {
 	t.Helper()
 	found, err := lawcheck.NoAbsolutePathsUnder(stateDir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for file, bad := range found {
-		if len(bad) > 0 {
-			t.Errorf(".cell/%s persists absolute paths: %q", file, bad)
+		for _, path := range bad {
+			allowed := false
+			if file == placeMetaTruth {
+				for _, expected := range outside {
+					allowed = allowed || path == expected
+				}
+			}
+			if !allowed {
+				t.Errorf(".cell/%s persists an unexpected absolute path: %q", file, path)
+			}
 		}
 	}
 }
@@ -202,7 +236,7 @@ func sessionInCell(t *testing.T, m sealMachine) string {
 	meta.Places = []PlaceRef{
 		{Path: filepath.Join(m.home, "proj"), Arrival: PlaceSaid},
 		{Path: filepath.Join(m.workspace, "sub"), Arrival: PlaceKept},
-		{Path: filepath.Join(m.other, "elsewhere"), Arrival: PlaceKept}, // under no base: not persisted
+		{Path: filepath.Join(m.other, "elsewhere"), Arrival: PlaceKept},
 	}
 	meta.Trees = []StandingTree{{
 		Folder: filepath.Join(m.home, "proj"), Dir: filepath.Join(c.Root, placeTrees, "a"),
@@ -243,11 +277,7 @@ func slurp(t *testing.T, path string) string {
 // folder's own node journals.
 // C27.7 exercises this behaviour without an opt-in switch.
 func TestSealedTreeCarriesTaskHistory(t *testing.T) {
-	t.Setenv(furrow.BinaryEnvVar, os.Getenv("CODEAF_TEST_FURROW"))
-	bin, err := furrow.ResolveBinary()
-	if err != nil {
-		t.Skipf("no engine binary: %v", err)
-	}
+	bin := sealEngine(t)
 	here, there := newSealMachine(t), newSealMachine(t)
 	dir := sessionInCell(t, here)
 	RunLandedTasks(t, dir, "map the parser", "fix the reconciler")
@@ -271,7 +301,7 @@ func TestSealedTreeCarriesTaskHistory(t *testing.T) {
 	for _, row := range got {
 		byID[row.ID] = row
 	}
-	assertNoAbsolutePaths(t, filepath.Join(freshDir, cellStateDir))
+	assertNoAbsolutePaths(t, filepath.Join(freshDir, cellStateDir), filepath.Join(here.other, "elsewhere"))
 	for _, row := range want {
 		moved := byID[row.ID]
 		if moved.Title != row.Title || moved.Status != row.Status || moved.Outcome != row.Outcome {

@@ -11,12 +11,26 @@ package gitidentity
 import (
 	"path/filepath"
 	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/gitpolicy"
 )
 
 const (
 	Name  = "codeaf"
 	Email = "agentfield-bot@users.noreply.github.com"
 )
+
+// ConfigArgs supplies the identity for commits codeaf creates.
+func ConfigArgs() []string {
+	return []string{"-c", "user.name=" + Name, "-c", "user.email=" + Email}
+}
+
+// PrivateArgs keeps commands in disposable copies from leaving a detached Git
+// maintenance process writing after their owner starts walking or removing them.
+// Callers must keep the person's working repository on its ordinary Git path.
+func PrivateArgs(args ...string) []string {
+	return gitpolicy.WithoutAutoMaintenance(args...)
+}
 
 // Environment makes Git attribute a model-written commit to the run even
 // when the repository carries the person's user.name and user.email.

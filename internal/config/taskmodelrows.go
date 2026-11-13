@@ -7,12 +7,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/claudemodel"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
 // THE TASK MODELS AS A PERSON CONFIGURES THEM: EVERY MODEL ON EVERY ROUTE.
@@ -93,6 +95,9 @@ type TaskModelRole struct {
 	Pin      *CrewPin
 	Warning  string
 	Eligible int
+	// Default is the model an unpinned role runs on because the engine chose
+	// it ([InsightDefault]); nil when it follows its tier.
+	Default *CrewPin
 }
 
 // TaskModelsState is the whole configuration, read at one moment.
@@ -106,7 +111,13 @@ type TaskModelsState struct {
 	One        *CrewPin
 	OneWarning string
 	Roles      map[crewroute.Seat]TaskModelRole
-	Providers  []TaskModelProvider
+	// Auxiliary is the small-jobs model ([TaskAuxiliaryPinAt]): no Pin while
+	// the build's own default answers.
+	Auxiliary TaskModelRole
+	// Insight is the page AI's rows ([InsightRoles]), pinned in the role pins
+	// row.
+	Insight   map[roles.Role]TaskModelRole
+	Providers []TaskModelProvider
 }
 
 // ErrTaskModelsRead is a read that could not finish inside its context.
@@ -166,6 +177,15 @@ func taskModelRowsWith(ctx context.Context, profileDir string, health crewHealth
 		if err := ctx.Err(); err != nil {
 			return nil, ErrTaskModelsRead
 		}
+		if p.ID == claudemodel.ID {
+			// CLAUDE CODE IS THREE CHOICES, NOT A COPY OF THE CATALOG. It
+			// answers to Opus, Sonnet and Haiku whatever dated ids the shared
+			// catalog lists, and it is offered whether or not that catalog was
+			// ever read, so a person with only a Claude plan still has rows.
+			// A pin seats it; the router never does on its own.
+			out = append(out, claudeCodeRows(p, rule, health)...)
+			continue
+		}
 		for _, entry := range models {
 			if built++; built%taskModelRowCheck == 0 && ctx.Err() != nil {
 				return nil, ErrTaskModelsRead
@@ -211,6 +231,32 @@ func taskModelRowsWith(ctx context.Context, profileDir string, health crewHealth
 		}
 	}
 	return out, nil
+}
+
+// claudeCodeRows are the Claude Code service's rows: one per model it answers
+// to, seatable in every seat, on the person's plan and never weighed by Auto.
+func claudeCodeRows(p CrewProvider, rule crewroute.Allowed, health crewHealth) []TaskModelRow {
+	var out []TaskModelRow
+	for _, m := range claudemodel.Models() {
+		model := crewroute.Model{ID: claudemodel.ID + "/" + m.ID, Context: m.ContextLength, Tools: true}
+		row := TaskModelRow{Model: model, Name: m.Name, Provider: p.ID, Kind: crewroute.Plan, Send: m.ID, Seats: map[crewroute.Seat]bool{}}
+		for _, seat := range crewroute.Seats {
+			row.Seats[seat] = true
+		}
+		row.Allowed = rule.AdmitsOn(model, p.ID)
+		providerDown := !p.On || health.disconnected[p.ID]
+		row.Available = !providerDown
+		switch {
+		case !row.Allowed:
+			row.Reason = crewroute.RejectNotAllowed
+		case providerDown:
+			row.Reason = crewroute.RejectProviderUnavailable
+		default:
+			row.Reason = crewroute.RejectRouteUnavailable
+		}
+		out = append(out, row)
+	}
+	return out
 }
 
 // taskCatalogModel is one model of the catalog, once per lineage.
@@ -314,7 +360,7 @@ func taskModelProviders(profileDir string, rows []TaskModelRow, health crewHealt
 	candidates := append([]modelsource.Source{modelsource.DefaultSource(DefaultBaseURL)}, modelsource.Vendored()...)
 	for _, source := range candidates {
 		id := strings.ToLower(source.ID)
-		if seen[id] || source.KeyOptional || modelsource.IsCustomID(source.ID) || id == "codex" {
+		if seen[id] || source.KeyOptional || modelsource.IsCustomID(source.ID) || id == "codex" || id == "claude-code" {
 			continue
 		}
 		seen[id] = true
@@ -329,7 +375,7 @@ func taskModelProviders(profileDir string, rows []TaskModelRow, health crewHealt
 // any of them does. THE CAPS ARE NOT AMONG THEM: they are the Spending
 // settings' rows, and a budget change is not a change to the task models.
 func taskModelsKeys() []string {
-	keys := []string{KeyCrewAllowed, KeyCrewProvidersOff, KeyCrewFreeRoutes, KeyTaskModelsMode, KeyTaskModelsOne,
+	keys := []string{KeyCrewAllowed, KeyCrewProvidersOff, KeyCrewFreeRoutes, KeyTaskModelsMode, KeyTaskModelsOne, KeyTierLowModel, KeyModelRoles,
 		legacyKeyCrew, legacyKeyCrewPick, legacyKeyCrewSource}
 	for _, seat := range crewroute.Seats {
 		keys = append(keys, tierKeyFor(CrewSeatTier(seat)), crewRouteKey(seat))
@@ -435,8 +481,59 @@ func taskModelsOnce(ctx context.Context, profileDir, revision string) (TaskModel
 		}
 		state.Roles[seat] = role
 	}
+	state.Auxiliary = taskAuxiliaryRole(profileDir, providers, rows, &rule, health)
+	state.Insight = taskInsightRoles(profileDir, providers, rows, &rule, health)
 	state.Providers = taskModelProviders(profileDir, rows, health)
 	return state, rows, nil
+}
+
+// TaskAuxiliaryPinAt is the small-jobs model a person chose, read off the
+// small-work tier row, with the provider whose route it is sent through.
+// False while the row is unset or `auto`, when the build's own default
+// ([DefaultLowModel]) answers.
+func TaskAuxiliaryPinAt(profileDir string) (CrewPin, bool) {
+	written, held := persistedString(profileDir, KeyTierLowModel)
+	if !held {
+		return CrewPin{}, false
+	}
+	pin, auto, err := ParseCrewPin(written)
+	if auto || err != nil {
+		return CrewPin{}, false
+	}
+	if pin.Provider == "" {
+		pin.Provider = resolveCrewPin(pin, CrewProvidersAt(profileDir)).Provider
+	}
+	return pin, true
+}
+
+// taskAuxiliaryRole is the small-jobs role as the task models read it: its
+// pin, a warning on the pin as every role pin carries one, and how many
+// available models it could be pinned to.
+func taskAuxiliaryRole(profileDir string, providers []CrewProvider, rows []TaskModelRow, rule *crewroute.Allowed, health crewHealth) TaskModelRole {
+	var pin *CrewPin
+	if held, ok := TaskAuxiliaryPinAt(profileDir); ok {
+		pin = &held
+	}
+	return taskErrandRole(pin, providers, rows, rule, health)
+}
+
+// taskErrandRole is a role no task seat stands behind, as the task models read
+// it: its pin and the warning on it, and how many available models it could
+// be pinned to.
+func taskErrandRole(pin *CrewPin, providers []CrewProvider, rows []TaskModelRow, rule *crewroute.Allowed, health crewHealth) TaskModelRole {
+	role := TaskModelRole{}
+	seen := map[string]bool{}
+	for _, row := range rows {
+		if row.Available && !seen[crewroute.Lineage(row.Model.ID)] {
+			seen[crewroute.Lineage(row.Model.ID)] = true
+			role.Eligible++
+		}
+	}
+	if pin != nil {
+		role.Pin = pin
+		role.Warning = taskPinWarning(providers, rows, *pin, rule, health)
+	}
+	return role
 }
 
 // taskPinWarning is what is wrong with a saved pin, or nothing. A rule is
@@ -486,6 +583,21 @@ type TaskModelsChange struct {
 	Pins map[crewroute.Seat]*CrewPin
 	// Ticks are rows allowed or not, each one model on one provider.
 	Ticks []TaskModelTick
+	// Served is the door's own answer to "does this provider serve this
+	// model", from the list it offers models from, with the id as that list
+	// spells it, or nil when the door has none. A pin the rows below do not
+	// hold is accepted when Served finds the model offered there, so the list a
+	// person picked from never refuses its own entry; the rows still spell a
+	// model they do hold.
+	Served func(model, provider string) (string, bool)
+	// AuxiliarySet says the change names the small-jobs model: Auxiliary is
+	// the model, or nil for the build's own default.
+	AuxiliarySet bool
+	Auxiliary    *CrewPin
+	// RolePins holds a page-AI role ([InsightRoles]) only when the change
+	// names it; nil gives the role back to its family, or insight back to
+	// its default or tier.
+	RolePins map[roles.Role]*CrewPin
 }
 
 // TaskModelTick is one row ticked or unticked.
@@ -566,7 +678,7 @@ func taskModelsValues(ctx context.Context, profileDir string, change TaskModelsC
 	}
 	one, haveOne := TaskOneModelAt(profileDir)
 	if change.One != nil {
-		pin, err := taskModelsPin(rows, providers, *change.One, "the one model")
+		pin, err := taskModelsPin(rows, providers, change.Served, *change.One, "the one model")
 		if err != nil {
 			return nil, err
 		}
@@ -605,7 +717,7 @@ func taskModelsValues(ctx context.Context, profileDir string, change TaskModelsC
 			values[tier], values[route] = removeProfileKey, removeProfileKey
 			continue
 		}
-		pin, err := taskModelsPin(rows, providers, *ref, "the "+string(seat)+" pin")
+		pin, err := taskModelsPin(rows, providers, change.Served, *ref, "the "+string(seat)+" pin")
 		if err != nil {
 			return nil, err
 		}
@@ -620,6 +732,30 @@ func taskModelsValues(ctx context.Context, profileDir string, change TaskModelsC
 			values[route] = pin.String()
 		}
 	}
+	if change.AuxiliarySet {
+		values[KeyTierLowModel] = removeProfileKey
+		if ref := change.Auxiliary; ref != nil {
+			pin, err := taskModelsPin(rows, providers, change.Served, *ref, "the auxiliary pin")
+			if err != nil {
+				return nil, err
+			}
+			route := resolveCrewPin(pin, providers)
+			if !crewPinAdmitted(rule, pin.Model, route.Provider) {
+				return nil, refuse("%s is not allowed on %s · allow it before pinning it", pin.Model, taskProviderName(providers, route.Provider))
+			}
+			// THE ROW HOLDS THE MODEL AS IT IS SENT, because every reader of a
+			// tier row sends what it reads; the provider is read back from the
+			// route that send takes ([TaskAuxiliaryPinAt]).
+			values[KeyTierLowModel] = route.Send
+		}
+	}
+	if len(change.RolePins) > 0 {
+		row, err := insightPinsRow(profileDir, rows, providers, change, rule)
+		if err != nil {
+			return nil, err
+		}
+		values[KeyModelRoles] = row
+	}
 	if pinned || values[KeyCrewAllowed] != nil {
 		// A profile carrying retired crew rows is migrated in the same write,
 		// as every crew writer does.
@@ -633,8 +769,9 @@ func taskModelsValues(ctx context.Context, profileDir string, change TaskModelsC
 }
 
 // taskModelsPin is a reference checked against the rows: a model a connected
-// provider lists, on the provider named.
-func taskModelsPin(rows []TaskModelRow, providers []CrewProvider, ref CrewPin, what string) (CrewPin, error) {
+// provider lists, on the provider named, or one the door's own list serves
+// there ([TaskModelsChange.Served]).
+func taskModelsPin(rows []TaskModelRow, providers []CrewProvider, served func(model, provider string) (string, bool), ref CrewPin, what string) (CrewPin, error) {
 	id := strings.TrimSpace(ref.Model)
 	if err := ValidateTierValue(id); err != nil {
 		return CrewPin{}, refuse("%s: %v", what, err)
@@ -646,6 +783,11 @@ func taskModelsPin(rows []TaskModelRow, providers []CrewProvider, ref CrewPin, w
 		}
 	}
 	row, ok := taskRowFor(rows, pinBase(id), provider)
+	if !ok && served != nil {
+		if listed, offered := served(pinBase(id), provider); offered {
+			return CrewPin{Model: listed, Provider: provider}, nil
+		}
+	}
 	if !ok {
 		if provider == "" {
 			return CrewPin{}, refuse("%s: %s is not a model any connected provider lists", what, id)

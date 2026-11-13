@@ -114,12 +114,6 @@ func TestRegistryCoversEveryUserFacingEnvironmentPin(t *testing.T) {
 	for _, name := range OperatorEnvPins {
 		registered[name] = true
 	}
-	// A RETIRED ROW'S VARIABLE IS READ ONLY TO BE TOLD IT IS GONE
-	// ([retiredRowEnv]), which is the opposite of a pin: nothing it says is
-	// obeyed, so it has no row to be.
-	for _, name := range retiredRowEnv {
-		registered[name] = true
-	}
 
 	pattern := regexp.MustCompile(`CODEAF_[A-Z0-9_]+`)
 	root := repositoryRoot(t)
@@ -382,16 +376,75 @@ func TestSettingEditorsRefuseNonsenseInPlainLanguage(t *testing.T) {
 	}
 }
 
+// THE ATTRIBUTION ROW defaults on, turns signing off when requested, and obeys
+// the shell pin.
+func TestTheAttributionRowDefaultsOnAndTurnsSigningOff(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CODEAF_ATTRIBUTION", "")
+	rows := registry(t, dir)
+	row, ok := rows.Row(KeyAttribution)
+	if !ok {
+		t.Fatalf("%s is not registered", KeyAttribution)
+	}
+	if KeyAttribution != "attribution" || row.Label != "attribution" ||
+		row.Env != "CODEAF_ATTRIBUTION" || row.Category != CategoryInterface || row.Kind != SettingBool {
+		t.Fatalf("the attribution row = %+v", row)
+	}
+	if want := "On, codeaf signs the commits, pull requests, issues and comments it writes; off, it adds no marks."; row.Hint != want || AttributionHint != want {
+		t.Fatalf("hint = %q, want %q", row.Hint, want)
+	}
+	if !PreferenceKey(KeyAttribution) {
+		t.Fatal("attribution is not a preference key")
+	}
+	if row.SelfService() {
+		t.Fatal("attribution must not be self-service")
+	}
+	if row.Value() != "on" || !AttributionAt(dir) {
+		t.Fatalf("attribution is not on by default: %q", row.Value())
+	}
+	if err := row.Apply("off"); err != nil {
+		t.Fatal(err)
+	}
+	if AttributionAt(dir) {
+		t.Fatal("off still leaves attribution enabled")
+	}
+	if reread, _ := registry(t, dir).Row(KeyAttribution); reread.Value() != "off" {
+		t.Fatalf("the reread row lost the persisted choice: %q", reread.Value())
+	}
+	if err := row.Apply("on"); err != nil {
+		t.Fatal(err)
+	}
+	if !AttributionAt(dir) {
+		t.Fatal("on did not turn attribution back on")
+	}
+	if err := row.Apply("off"); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("CODEAF_ATTRIBUTION", "on")
+	if !AttributionAt(dir) {
+		t.Fatal("the environment lost to the persisted file")
+	}
+	pinned, _ := registry(t, dir).Row(KeyAttribution)
+	if name, isPinned := pinned.PinnedBy(); !isPinned || name != "CODEAF_ATTRIBUTION" {
+		t.Fatalf("the attribution row did not report its pin: %q", name)
+	}
+	t.Setenv("CODEAF_ATTRIBUTION", "off")
+	if AttributionAt(dir) {
+		t.Fatal("CODEAF_ATTRIBUTION=off did not turn attribution off")
+	}
+	t.Setenv("CODEAF_ATTRIBUTION", "sure")
+	if !AttributionAt(dir) {
+		t.Fatal("a malformed pin did not fall back to the default")
+	}
+}
+
 // THE MODEL'S NAME IN THE `Assisted-by` LINE is on until someone says
-// otherwise, off leaves the line bare, and the shell still wins. The signature
-// itself is not a row at all.
+// otherwise, off leaves the line bare, and the shell still wins.
 func TestTheModelNameRowDefaultsOnAndTurnsOnlyTheNameOff(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("CODEAF_ATTRIBUTION_MODEL", "")
 	rows := registry(t, dir)
-	if _, ok := rows.Row("attribution"); ok {
-		t.Fatal("the attribution row is still registered, so signing can still be turned off")
-	}
 	row, ok := rows.Row(KeyAttributionModel)
 	if !ok {
 		t.Fatalf("%s is not registered", KeyAttributionModel)
@@ -1331,7 +1384,7 @@ func TestThePromptProfileRowRoundTripsAndItsPinWinsForOneLaunch(t *testing.T) {
 // three words poolcfg.Resolve accepts from the environment, so a row and a
 // shell spell one thing — and the resolver in this package is the one place
 // the process environment is read for the pool.
-func TestTheModelPoolRowDefaultsToOnAndFollowsItsStoredWordAndItsPin(t *testing.T) {
+func TestTheModelPoolRowDefaultsToOffAndFollowsItsStoredWordAndItsPin(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("CODEAF_MODEL_POOL", "")
 	t.Setenv("CI", "")
@@ -1348,10 +1401,10 @@ func TestTheModelPoolRowDefaultsToOnAndFollowsItsStoredWordAndItsPin(t *testing.
 	if row.Category != CategoryModels || row.Kind != SettingChoice || row.Label != "model pool" {
 		t.Fatalf("model pool row = %+v", row)
 	}
-	if row.Value() != "on" {
-		t.Fatalf("the pool does not default to on: %q", row.Value())
+	if row.Value() != "off" {
+		t.Fatalf("the pool does not default to off: %q", row.Value())
 	}
-	if got := ModelPoolAt(dir); got.Mode != poolcfg.On || got.Source.Mode != "default" {
+	if got := ModelPoolAt(dir); got.Mode != poolcfg.Off || got.Source.Mode != "default" {
 		t.Fatalf("an untouched profile resolved %+v", got)
 	}
 
@@ -1393,8 +1446,8 @@ func TestTheModelPoolRowDefaultsToOnAndFollowsItsStoredWordAndItsPin(t *testing.
 	if err := writeProfileValue(dir, KeyModelPool, "maybe"); err != nil {
 		t.Fatal(err)
 	}
-	if got := ModelPoolAt(dir); got.Mode != poolcfg.On {
-		t.Fatalf("a stale word did not fall back to on: %+v", got)
+	if got := ModelPoolAt(dir); got.Mode != poolcfg.Off {
+		t.Fatalf("a stale word did not fall back to off: %+v", got)
 	}
 }
 

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/ctxbudget"
 	"github.com/Agent-Field/codeaf/internal/env"
+	"github.com/Agent-Field/codeaf/internal/money"
 	"github.com/Agent-Field/codeaf/internal/pool/poolcfg"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
@@ -112,7 +114,7 @@ const (
 	KeyDocumentEngine = "document_engine"
 	KeyVisionModel    = "vision_model"
 	// KeyModelPool is the stored word the pool's resolver takes: the same three
-	// answers the CODEAF_MODEL_POOL pin and a CI environment may give it
+	// answers the CODEAF_MODEL_POOL pin may give it
 	// (internal/pool/poolcfg). The resolver beside the search rows is the one
 	// place the process environment is read for the pool.
 	KeyModelPool = "model_pool"
@@ -121,6 +123,7 @@ const (
 	// key the binary carries. The environment pin CODEAF_MODEL_POOL_PUBLIC_KEY
 	// outranks it, through the same resolver.
 	KeyModelPoolPublicKey = "models.pool.public_key"
+	KeyAttribution        = "attribution"
 	KeyAttributionModel   = "attribution.model"
 	KeySplitPct           = "split_pct"
 
@@ -186,6 +189,8 @@ const (
 	// and keeps the derivation; the other two words are the person overruling
 	// it, in the same words [EnvPromptProfile] takes.
 	KeyPromptProfile = "prompt.profile"
+
+	KeyKnowledgeModel = "knowledge.model"
 
 	KeyTierLowModel  = "models.tiers.low"
 	KeyTierHighModel = "models.tiers.high"
@@ -293,6 +298,8 @@ const (
 	KeyWork = "ui.work"
 	// KeyIcons selects the step icon repertoire independently of colour.
 	KeyIcons = "ui.icons"
+	// KeyTeamsShare stays local because every computer chooses whether its teams travel.
+	KeyTeamsShare = "teams.share"
 	// KeyTaskAudit is whether an independent auditor verifies each task node
 	// before its work may merge (internal/session's task_audit.go). It sits
 	// beside the guardian because both spend a model on the person's behalf:
@@ -327,13 +334,8 @@ const (
 	// as the default, silently, the way any word this build does not know reads
 	// ([TaskStartAt]).
 	KeyTaskStart = "task.start"
-	// KeyMemoryEnabled is whether codeaf NOTICES things worth keeping on its
-	// own (internal/session's memory.go): after a turn the person typed, one
-	// small call may keep one line they said, and says so. It governs nothing
-	// else — the lines a person kept ride every conversation whether it is on
-	// or off, and /remember works either way — and it is read live, so a change
-	// applies from the next turn without a restart. The key keeps its old
-	// spelling because profiles on disk carry it.
+	// KeyMemoryEnabled controls automatic learning from chats and jobs.
+	// Saved knowledge and explicit keeps remain available while it is off.
 	KeyMemoryEnabled = "memory.enabled"
 
 	KeyModelRoles = "models.roles"
@@ -442,6 +444,13 @@ const (
 	// before the row existed: a node is the same worker doing the same job
 	// somewhere quieter.
 	KeyTaskModel = "task.model"
+
+	// KeyTaskRunsOn remembers a device rather than its name, so a rename does
+	// not move the person's default. Blank keeps tasks on this computer.
+	KeyTaskRunsOn = "task.runs_on"
+
+	// TaskRunsHere is the setting's empty value in the person's words.
+	TaskRunsHere = "this computer"
 
 	// KeyTaskSettle is WHO DECIDES a task that finished but that nobody could
 	// check (internal/session's task_contract.go). It sits under `task.` beside
@@ -679,14 +688,13 @@ const (
 	MemoryOn  = "on"
 )
 
-// MemoryModes lists them, on first — which is the default. A colleague who
-// forgot every preference you stated the moment you closed the window would be
-// one you had to brief again every morning, and the calls that carry this are
-// the cheapest the surface makes.
+// MemoryModes lists the default first; saved choices remain authoritative.
 var MemoryModes = []string{MemoryOn, MemoryOff}
 
-// DefaultMemory is on.
 const DefaultMemory = MemoryOn
+
+// MemoryCostNote is the cost disclosure shared by settings surfaces.
+const MemoryCostNote = "Learns from chats and jobs so later work can use what you learned. On by default; uses extra model calls on your key. See actual costs in Spending."
 
 // The prompt profile's three answers, and they are three rather than two
 // because the honest default is not a size at all: it is "work it out". A row
@@ -1031,10 +1039,19 @@ var OperatorEnvPins = []string{
 	// people who build the page; a row offering to hide your real floor behind a
 	// fixture is not a preference, so plumbing.
 	"CODEAF_FACTORY_FIXTURE",
+	// The desktop's bundled launch marks a trusted local window with
+	// CODEAF_APP_LOCAL_GUI; the engine consumes it at start. It is launch
+	// plumbing a person never sets, not a preference.
+	"CODEAF_APP_LOCAL_GUI",
 	// Factory worker routing and stage posture are launch plumbing, not
 	// editable profile preferences.
 	"CODEAF_FACTORY_BENCHES",
 	"CODEAF_FACTORY_POSTURE",
+	// The fence widening a launcher hands an unattended run (jailallow.go).
+	"CODEAF_JAIL_ALLOW",
+	// What a fenced command is told about itself; codeaf sets it, nobody reads
+	// it back as a preference.
+	"CODEAF_FENCED",
 	"CODEAF_FACTORY_NO_WORKER",
 	"CODEAF_BASE_URL",
 	// These two addresses make the real Codex browser and backend roads
@@ -1049,10 +1066,28 @@ var OperatorEnvPins = []string{
 	// for the plainest reason there is: it decides which store the sheet
 	// itself is being read out of.
 	"CODEAF_HOME",
+	// The harness supplies the admitted working-root identity to each execution.
+	// This runtime association is not an editable placement preference.
+	"CODEAF_WORKSPACE_URI",
+	// The engine hands each command the identity of the agent running it
+	// (internal/agentdid). It names who acted, so it is never a preference.
+	"CODEAF_AGENT_DID",
+	// These switches select unfinished ownership and archive lifecycles in an
+	// explicit prototype profile; they are not persisted settings. The archive
+	// executable path is operator plumbing, like CODEAF_FURROW below.
+	"CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP",
+	"CODEAF_PROTOTYPE_TASK_STORAGE",
+	"CODEAF_PROTOTYPE_ARCHIVE_BINARY",
+	// CODEAF_CLAUDE_BIN names the Claude Code program when `claude` on PATH is
+	// a shell alias a child process cannot start (internal/claudeagent). It is
+	// an executable path, so it is plumbing like the archive binary above.
+	"CODEAF_CLAUDE_BIN",
 	// CODEAF_RELAY points a headless peer at the relay this host pairs through
 	// (internal/pair). It is an address, so it is plumbing for the same reason
-	// CODEAF_BASE_URL is.
+	// CODEAF_BASE_URL is. CODEAF_RELAY_ADMIN_KEY names the operator seed file
+	// for the standalone relay-admin tool (cmd/codeaf-relay-admin).
 	"CODEAF_RELAY",
+	"CODEAF_RELAY_ADMIN_KEY",
 	// CODEAF_FURROW names a furrow to use instead of the one codeaf carries
 	// (internal/furrow). A path to a program is plumbing.
 	"CODEAF_FURROW",
@@ -1125,6 +1160,19 @@ var OperatorEnvPins = []string{
 	// line. Plumbing rather than a row for the plainest reason there is: a row
 	// would persist a preference this binary cannot act on.
 	"CODEAF_INSTALL_NAME",
+	// The dev box's one-time setup values (internal/devbox). They are service
+	// variables Terraform hands the box's boot script for its first join, and
+	// codeaf never reads them from its own environment: Go spells them only to
+	// find them in the Terraform state and remove them once the box answers. A
+	// row would persist a pairing code and a private key, so plumbing.
+	"CODEAF_DEVBOX_CODE",
+	"CODEAF_DEVBOX_REMOTE_KEY",
+	"CODEAF_DEVBOX_REMOTE_DEVICES",
+	// CODEAF_SERVE_SYNC asks `codeaf serve` to keep the identity's saved keys,
+	// settings and presence in step (internal/syncsetup). A dev box's boot
+	// script sets it for the one process it starts; it is one launch's posture
+	// rather than a preference, so plumbing, like CODEAF_NO_AUTOMATIONS.
+	"CODEAF_SERVE_SYNC",
 	// The two pins on the model-call log (internal/calllog). CODEAF_CALL_LOG
 	// switches it off or moves the file; CODEAF_CALL_LOG_BODIES adds the whole
 	// request and response to every line. Plumbing rather than settings rows,
@@ -1193,11 +1241,24 @@ var OperatorEnvPins = []string{
 	// answers. It is plumbing: diagnostic output a preference sheet has no
 	// business persisting.
 	"CODEAF_WIRE_LOG",
+	// CODEAF_GITHUB_LOG names a file for one line per GitHub request
+	// (internal/githubcalls). It is for measuring one run's rate-limit spend, so
+	// it is not a setting anyone keeps.
+	"CODEAF_GITHUB_LOG",
+	// CODEAF_GITHUB_CLIENT_ID names the GitHub app the factory's browser
+	// sign-in asks for a device code (internal/factory/github). It is a
+	// build-time identity the release normally bakes in, so it is not a
+	// setting a person keeps.
+	"CODEAF_GITHUB_CLIENT_ID",
+	// CODEAF_GITHUB_LOGIN_URL points that same sign-in at a stand-in GitHub for
+	// tests. It is test plumbing, never a preference.
+	"CODEAF_GITHUB_LOGIN_URL",
 	// Opt-in developer profiling output and its bounded capture controls. These
 	// are process instrumentation, not persisted model or user preferences.
 	"CODEAF_DIAGNOSTIC_PROFILE_DIR",
 	"CODEAF_DIAGNOSTIC_PROFILE_SECONDS",
 	"CODEAF_DIAGNOSTIC_PROFILE_HEAP",
+	"CODEAF_DIAGNOSTIC_PROFILE_DELAY",
 	// CODEAF_QUESTION_DEMO names one of the fixture questions the question page
 	// draws itself with (internal/tui3's questiondemo.go), so that a page whose
 	// real questions do not exist yet can be SEEN full rather than only through
@@ -1387,11 +1448,14 @@ const (
 	// would genuinely want to see priced first. 0 never asks.
 	DefaultPlanConsentUSD = 100.0
 
+	// DefaultAttribution signs commits, pull requests, issues and comments by
+	// default so work the person did not type is readable as such unless they
+	// turn attribution off.
+	DefaultAttribution = true
+
 	// DefaultAttributionModel names the model in the `Assisted-by` line by
 	// default, because the line is provenance and the model is the part of it
-	// somebody auditing the history later actually wants. The signature itself
-	// has no row and no off: work the person did not type is always readable as
-	// such (internal/exec's AttributionLaw).
+	// somebody auditing the history later actually wants.
 	DefaultAttributionModel = true
 
 	// The divider clamps so neither pane can be set into uselessness. The TUI
@@ -1727,6 +1791,9 @@ func (s Setting) PinnedBy() (string, bool) {
 	if strings.TrimSpace(env.Value(s.Env)) == "" {
 		return "", false
 	}
+	if strings.HasPrefix(s.Env, "CODEAF_") {
+		return env.Spelling(s.Env)
+	}
 	return s.Env, true
 }
 
@@ -1770,6 +1837,9 @@ type SettingGroup struct {
 // own: the running model slots and the surface's own divider preference.
 type SettingsOptions struct {
 	ProfileDir string
+	// Include omits controls unavailable to the caller from discovery and writes.
+	// Nil keeps the full registry for callers that supply their own presentation.
+	Include func(key string) bool
 
 	// ModelValue and SetModel front the model slots. They stay in the chat
 	// prefs file; the registry does not migrate them.
@@ -1823,9 +1893,23 @@ type Settings struct {
 // divider has nowhere to be written without [SettingsOptions.SaveSplitPct], and
 // a read-only divider is not a row somebody can read — it is a control whose
 // only behaviour is to refuse.
+//
+// [SettingsOptions.Include] is the caller's own narrowing, applied after the
+// build: a control the caller cannot offer at all (Run tasks on, in a
+// conversation with no task computers) is left out of discovery and writes
+// alike, rather than listed and refused.
 func NewSettings(options SettingsOptions) *Settings {
 	registry := &Settings{options: options}
 	registry.rows = registry.build()
+	if options.Include != nil {
+		rows := registry.rows[:0]
+		for _, row := range registry.rows {
+			if options.Include(row.Key) {
+				rows = append(rows, row)
+			}
+		}
+		registry.rows = rows
+	}
 	for index := range registry.rows {
 		registry.rows[index].write = registry.announce(registry.rows[index].Key, registry.rows[index].write)
 	}
@@ -1965,8 +2049,8 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyModelPool, Category: CategoryModels, Kind: SettingChoice,
 			Label: "model pool", Env: "CODEAF_MODEL_POOL", Choices: ModelPoolChoices,
-			Hint: "codeaf picks your models from the public Model Pool, and your runs improve it. " +
-				"On by default: what leaves is computed, text-free numbers under a per-install nonce, " +
+			Hint: "Off by default: no pool judging, recommendations or sharing. Task roles still follow your task-model settings. " +
+				"on: use and contribute computed, text-free numbers under a per-install nonce, " +
 				"never code, prompts or paths. read: use the pool, send nothing. off: neither " +
 				"(CODEAF_MODEL_POOL=off for one run).",
 			read:  func() string { return ModelPoolAt(dir).Mode.String() },
@@ -2252,6 +2336,18 @@ func (s *Settings) build() []Setting {
 			read:  func() string { return IconsAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyIcons, raw, IconModes) },
 		},
+		Setting{
+			Key: KeyTeamsShare, Category: CategoryInterface, Kind: SettingChoice,
+			Label: "share teams", Choices: teamsShareChoices,
+			Hint: "Share teams, their members and settings, and recent Traffic as read-only history with your other computers (pairing required). On by default; turning it off on either computer stops sharing.",
+			read: func() string {
+				if TeamsShareAt(dir) {
+					return "on"
+				}
+				return "off"
+			},
+			write: func(raw string) error { return writeChoice(dir, KeyTeamsShare, raw, teamsShareChoices) },
+		},
 		// Before the audit row, because it comes first in the life of a task: this
 		// says what STARTS when you type /task, the audit row says what has to be
 		// true before what started is allowed to land.
@@ -2269,11 +2365,10 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyTaskAudit, Category: CategoryTasks, Kind: SettingChoice,
 			Label: "task audit", Choices: TaskAuditModes,
-			Hint: "when on, every task node's work is checked by an independent read-only " +
-				"auditor — it runs the repo's own verification and reads the diff — before " +
-				"anything may merge into your branch. Off trusts the node's own report and " +
-				"merges unaudited. On is the default: the audit is what 'done' means, and it " +
-				"roughly doubles a small task's model cost.",
+			Hint: "when on, a separate read-only checker runs the repository's checks and reads " +
+				"the diff before a task's work may merge into your branch. When off, codeaf " +
+				"trusts the task's own report, merges its work and lands done without this check. " +
+				"On is the default and roughly doubles a small task's model cost.",
 			read:  func() string { return TaskAuditAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyTaskAudit, raw, TaskAuditModes) },
 		},
@@ -2295,15 +2390,8 @@ func (s *Settings) build() []Setting {
 		},
 		Setting{
 			Key: KeyMemoryEnabled, Category: CategoryPractice, Kind: SettingChoice,
-			Label: "notice things to remember", Choices: MemoryModes,
-			// THE ONE SPELLING OF WHAT THIS ROW DOES: the settings panel reads it
-			// as the row's detail and the settings tool reads it as its hint, so
-			// the two cannot disagree. Off comes first because it is what a
-			// person scanning the row needs to know before anything else.
-			Hint: "Off stops only the noticing: what you keep with /remember still rides every " +
-				"conversation, and nothing saved is deleted. On, after a turn you typed, codeaf may " +
-				"keep one line you said that should hold everywhere — a preference, a rule, a " +
-				"correction — and tells you; the Memories tab shows, forgets and puts back any of it.",
+			Label: "learn from chats and jobs", Choices: MemoryModes,
+			Hint:  MemoryCostNote + " Off stops automatic learning; nothing saved is deleted, and saved knowledge and /remember stay available. A call already in flight finishes and is billed.",
 			read:  func() string { return MemoryAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyMemoryEnabled, raw, MemoryModes) },
 		},
@@ -2389,6 +2477,13 @@ func (s *Settings) build() []Setting {
 		// in — and none of them is a rule about how this conversation's own calls
 		// are made.
 		Setting{
+			Key: KeyTaskRunsOn, Category: CategoryTasks, Kind: SettingText,
+			Label: "Run tasks on", EmptyLabel: TaskRunsHere,
+			Hint:  "The paired computer for tasks that work in their own copy. Leave it blank for " + TaskRunsHere + ".",
+			read:  func() string { return TaskRunsOnAt(dir) },
+			write: func(raw string) error { return WriteTaskRunsOn(dir, raw) },
+		},
+		Setting{
 			Key: KeyTaskModel, Category: CategoryTasks, Kind: SettingText,
 			Label: "task model", EmptyLabel: "the crew's worker",
 			Hint: "the model a task's worker runs on when you have not asked for another one — " +
@@ -2462,6 +2557,15 @@ func (s *Settings) build() []Setting {
 				"`:high` to ask it to think that hard: `moonshotai/kimi-k3:high`.",
 			read:  func() string { return crewSeatRow(dir, crewroute.Planner) },
 			write: func(raw string) error { return SetCrewPin(dir, crewroute.Planner, raw) },
+		},
+		Setting{
+			Key: KeyKnowledgeModel, Category: CategoryModels, Kind: SettingText,
+			Label: "knowledge", EmptyLabel: DefaultKnowledgeModel,
+			Hint: "the OpenRouter model that learns and organizes project knowledge in the background. Changes apply to the next compilation; your conversation model stays separate. Blank restores the default.",
+			read: func() string { return KnowledgeModelAt(dir) },
+			write: func(raw string) error {
+				return writeText(dir, KeyKnowledgeModel, strings.TrimSpace(raw))
+			},
 		},
 		Setting{
 			Key: KeyModelRoles, Category: CategoryModels, Kind: SettingText,
@@ -2670,11 +2774,17 @@ func (s *Settings) build() []Setting {
 			},
 		},
 		Setting{
+			Key: KeyAttribution, Category: CategoryInterface, Kind: SettingBool,
+			Label: "attribution", Env: "CODEAF_ATTRIBUTION",
+			Hint:  AttributionHint,
+			read:  func() string { return formatBool(AttributionAt(dir)) },
+			write: func(raw string) error { return writeBool(dir, KeyAttribution, raw) },
+		},
+		Setting{
 			Key: KeyAttributionModel, Category: CategoryInterface, Kind: SettingBool,
 			Label: "model in commits", Env: "CODEAF_ATTRIBUTION_MODEL",
-			// ONE SHORT SENTENCE, AND IT IS THE TWO LINES. The signature itself is
-			// not a row any more — codeaf always signs what it writes — so the only
-			// thing left to choose is whether the `Assisted-by` line names the
+			// ONE SHORT SENTENCE, AND IT IS THE TWO LINES. When attribution is
+			// on, this row chooses whether the `Assisted-by` line names the
 			// model, and the hint shows both answers rather than describing them.
 			// internal/exec's test holds these bytes to the line exec writes.
 			Hint:  AttributionModelHint,
@@ -2797,7 +2907,7 @@ func SpentFigure(usd float64) string {
 // MoneyFloor is the smallest amount any surface writes as a figure: a hundredth
 // of a cent, four places after the point. It is the number [SubCent] compares
 // against AND the number it prints, so it is spelled once.
-const MoneyFloor = 0.0001
+const MoneyFloor = money.Floor
 
 // SubCent is how a positive amount SMALLER THAN A CENT is written, everywhere.
 //
@@ -2809,10 +2919,7 @@ const MoneyFloor = 0.0001
 // was spent, which is the emptiness law's failure turned inside out. Every
 // sub-cent figure is written here now, and the floor never rounds to a lie.
 func SubCent(usd float64) string {
-	if usd < MoneyFloor/2 {
-		return "<" + fmt.Sprintf("$%.4f", MoneyFloor)
-	}
-	return fmt.Sprintf("$%.4f", usd)
+	return money.SubCent(usd)
 }
 
 // spentTodayReceipt is the day's spend beside the day's ceiling (13). Nil seam
@@ -3129,6 +3236,26 @@ func PlanConsentUSDAt(profileDir string) (float64, error) {
 // it does, and the fix for a knob with no reader is to delete the knob, not to
 // leave it turning. When the learning loop that wants them lands it brings its
 // own rows, and the completeness gate will make sure of it.
+
+// AttributionHint is the `attribution` row's hint: what codeaf signs when the
+// row is on, and what it leaves unmarked when the row is off.
+const AttributionHint = "On, codeaf signs the commits, pull requests, issues and comments it writes; off, it adds no marks."
+
+// AttributionAt resolves whether codeaf signs the commits, pull requests,
+// issues and comments it writes. A malformed pin reads as the default rather
+// than refusing a launch over a toggle.
+func AttributionAt(profileDir string) bool {
+	if raw := strings.TrimSpace(env.Get("CODEAF_ATTRIBUTION")); raw != "" {
+		if value, err := parseBool(raw); err == nil {
+			return value
+		}
+		return DefaultAttribution
+	}
+	if value, ok := persistedBool(profileDir, KeyAttribution); ok {
+		return value
+	}
+	return DefaultAttribution
+}
 
 // AttributionModelHint is the `attribution.model` row's hint: what the line
 // says with the row on, and what it says with the row off.
@@ -3593,7 +3720,10 @@ func knownDocumentEngine(engine string) bool {
 // absent setting uses YOLO; an unrecognised persisted value still asks, so a
 // garbled setting does not widen a previously selected posture.
 func ToolApprovalModeAt(profileDir string) string {
-	values, _ := readProfileConfig(profileDir)
+	values, err := ReadProfileApprovalConfig(profileDir)
+	if err != nil {
+		return "prompt"
+	}
 	return toolApprovalMode(values, DefaultToolApprovalMode)
 }
 
@@ -3623,7 +3753,7 @@ func HeadlessToolApprovalModeAt(workspace, profileDir string) (string, error) {
 	} else if found {
 		return project.ResolveString(profileDir, KeyToolApprovalMode)
 	}
-	values, err := readProfileConfig(profileDir)
+	values, err := ReadProfileApprovalConfig(profileDir)
 	if err != nil {
 		return "", err
 	}
@@ -3828,14 +3958,50 @@ func TaskStartAt(profileDir string) string {
 	return DefaultTaskStart
 }
 
-// MemoryAt resolves the memory row to its word, default on.
+// MemoryAt resolves the learning switch, retaining an explicit saved choice.
 func MemoryAt(profileDir string) string {
-	if value, ok := persistedString(profileDir, KeyMemoryEnabled); ok {
-		if value = strings.TrimSpace(value); value != "" {
-			return value
-		}
+	enabled, _ := MemorySettingAt(profileDir)
+	if enabled {
+		return MemoryOn
 	}
-	return DefaultMemory
+	return MemoryOff
+}
+
+// MemorySettingAt reads saved words and booleans, and whether one was saved.
+func MemorySettingAt(profileDir string) (enabled, saved bool) {
+	values, err := readProfileConfigStrict(profileDir)
+	if err != nil {
+		return false, false
+	}
+	raw, present := values[KeyMemoryEnabled]
+	if !present {
+		return DefaultMemory == MemoryOn, false
+	}
+	var value any
+	if json.Unmarshal(raw, &value) != nil {
+		return false, false
+	}
+	switch choice := value.(type) {
+	case string:
+		switch strings.TrimSpace(choice) {
+		case MemoryOn:
+			return true, true
+		case MemoryOff:
+			return false, true
+		}
+	case bool:
+		return choice, true
+	}
+	return false, false
+}
+
+// WriteMemoryEnabled saves an explicit choice through the shared profile writer.
+func WriteMemoryEnabled(profileDir string, enabled bool) error {
+	word := MemoryOff
+	if enabled {
+		word = MemoryOn
+	}
+	return writeProfileValue(profileDir, KeyMemoryEnabled, word)
 }
 
 // PromptProfileAt resolves the prompt-profile row to its word: the environment
@@ -3865,10 +4031,7 @@ func PromptProfileAt(profileDir string) string {
 	return DefaultPromptProfile
 }
 
-// MemoryEnabledAt is [MemoryAt] as the bool the v3 door reads before it opens a
-// brain at all: memory off is a session handed no store, which is what makes
-// "no block and no calls" a property of the wiring rather than a branch every
-// caller has to remember (internal/session's memory.go states the law).
+// MemoryEnabledAt reads automatic learning live; saved lines remain readable.
 func MemoryEnabledAt(profileDir string) bool {
 	return MemoryAt(profileDir) == MemoryOn
 }
@@ -4286,6 +4449,27 @@ func TaskModelAt(profileDir string) string {
 		return strings.TrimSpace(value)
 	}
 	return ""
+}
+
+// TaskRunsOnAt reads the stable placement preference. A removed device is
+// resolved to this computer by the session against its current roster.
+func TaskRunsOnAt(profileDir string) string {
+	value, _ := persistedString(profileDir, KeyTaskRunsOn)
+	return strings.TrimSpace(value)
+}
+
+// WriteTaskRunsOn accepts only a device identity. The computer picker resolves
+// shown names before reaching this writer, keeping renames harmless.
+func WriteTaskRunsOn(profileDir, raw string) error {
+	value := strings.TrimSpace(raw)
+	if value != "" {
+		hexID, ok := strings.CutPrefix(value, "dev_")
+		_, err := hex.DecodeString(hexID)
+		if !ok || len(hexID) != 32 || err != nil {
+			return fmt.Errorf("choose a paired computer or %s", TaskRunsHere)
+		}
+	}
+	return writeText(profileDir, KeyTaskRunsOn, value)
 }
 
 // ConsentTimeoutAt resolves the approval countdown, in seconds. 0 is a clock

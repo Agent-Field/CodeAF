@@ -8,6 +8,7 @@
     "dev": "sh test/local.sh wrangler dev --local --var TRUST_PROXY:1 --var 'CAF_LIMITS:{\"newIdentitiesPerIpPerDay\":1000000,\"pairTtlMs\":4000}'"
   },
   "devDependencies": {
-    "wrangler": "^4.144.0"
+    "wrangler": "^4.144.0",
+    "ws": "8.21.0"
   }
 }

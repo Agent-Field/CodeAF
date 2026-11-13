@@ -12,6 +12,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
+	"github.com/Agent-Field/codeaf/internal/githubcalls"
 	forge "github.com/Agent-Field/codeaf/internal/praf/github"
 	"github.com/Agent-Field/codeaf/internal/redact"
 )
@@ -62,6 +63,7 @@ func Poll(ctx context.Context, src factory.Source, st *store.Store, every time.D
 	if src == nil || st == nil || every <= 0 {
 		return
 	}
+	ctx = githubcalls.WithCaller(ctx, "poll")
 	cursor := ""
 	wait := time.Duration(0)
 	failed := 0
@@ -117,6 +119,9 @@ func Backoff(every time.Duration, failed int) time.Duration {
 // folded; the cursor is what Read answered, so the failed repository is read
 // again from its old mark next tick.
 func PollOnce(ctx context.Context, src factory.Source, st *store.Store, cursor string, now func() time.Time) (string, error) {
+	if real, ok := src.(*Source); ok {
+		st.SetTierResolver(real.ResolveTier)
+	}
 	repos, err := st.Repos()
 	if err != nil {
 		return cursor, err
@@ -152,17 +157,24 @@ func PollOnce(ctx context.Context, src factory.Source, st *store.Store, cursor s
 		k.SetSink(func(items []factory.Item) { _ = Merge(st, name, items) })
 		defer k.SetSink(nil)
 	}
+	before, err := st.ListSaved()
+	if err != nil {
+		return cursor, err
+	}
 	items, next, readErr := src.Read(ctx, cursor)
 	mergeErr := Merge(st, src.Name(), items)
+	if real, ok := src.(*Source); ok && readErr == nil && mergeErr == nil {
+		mergeErr = real.reconcileClosed(ctx, st, repos, before, items)
+	}
 	at := now()
 	meta, _ := st.SourceMeta(src.Name())
 	meta.Tried = at
 	meta.Polling = false
 	meta.Reading, meta.Read, meta.Of, meta.Items = "", 0, 0, 0
-	if readErr == nil {
+	if pollErr := errors.Join(readErr, mergeErr); pollErr == nil {
 		meta.Polled, meta.Trouble = at, ""
 	} else {
-		meta.Trouble = TroubleWords(readErr)
+		meta.Trouble = TroubleWords(pollErr)
 	}
 	_ = st.SetSourceMeta(src.Name(), meta)
 	// FOLLOW-UP IS ITS OWN READ. A merged or closed pull request is gone from
@@ -187,6 +199,14 @@ func TroubleWords(err error) string {
 			return "token refused"
 		case http.StatusNotFound:
 			return "repository not found"
+		case http.StatusTooManyRequests:
+			return "rate limited"
+		case http.StatusForbidden:
+			// GitHub also answers 403 for a spent limit; only one that says
+			// when to come back is a limit and not a refusal.
+			if apiErr.RetryAfter > 0 {
+				return "rate limited"
+			}
 		}
 	}
 	return "not reachable"
@@ -220,7 +240,7 @@ func Merge(st *store.Store, origin string, items []factory.Item) error {
 	if len(items) == 0 {
 		return nil
 	}
-	have, err := st.List()
+	have, err := st.ListSaved()
 	if err != nil {
 		return err
 	}
@@ -237,11 +257,26 @@ func Merge(st *store.Store, origin string, items []factory.Item) error {
 		}
 		in.SourceAssignees = factory.NormalizeSourceAssignees(in.SourceAssignees)
 		if old, ok := index[itemKey(in)]; ok {
+			if old.GitHubIssueID != 0 && old.GitHubIssueID != in.GitHubIssueID {
+				continue
+			}
+			if in.DoneHow == StandingClosed && (old.GitHubIssueID != 0 || in.GitHubIssueID == 0) {
+				continue
+			}
 			if !forgeChanged(old, in) {
 				continue
 			}
 			at := time.Now()
 			errs = append(errs, st.Update(old.ID, func(it *factory.Item) error {
+				if it.GitHubIssueID != 0 && it.GitHubIssueID != in.GitHubIssueID {
+					return nil
+				}
+				if it.GitHubIssueID == 0 {
+					it.GitHubIssueID = in.GitHubIssueID
+				}
+				if in.DoneHow == StandingClosed {
+					return nil
+				}
 				words := it.Title != in.Title || it.Body != in.Body
 				labels := !sameLabels(it.Labels, in.Labels)
 				switch {
@@ -262,15 +297,21 @@ func Merge(st *store.Store, origin string, items []factory.Item) error {
 				if words || labels {
 					it.Note(at, factory.EventChanged)
 				}
+				// A START HELD FOR ITS LABELS IS ASKED AGAIN when they change
+				// (a size label added, a start label put on), so the rules
+				// decide the new labels rather than the ones they held.
+				if labels {
+					factory.ReaskStart(it)
+				}
 				it.Title, it.Body = in.Title, in.Body
 				it.Labels = append([]string(nil), in.Labels...)
 				it.Checks = in.Checks
 				if in.URL != "" {
 					it.URL = in.URL
 				}
-				if in.Comments != nil {
-					it.Comments = in.Comments
-				}
+				// Every new comment goes to the job's manager here, the one
+				// place the floor learns of it ([factory.ReadComments]).
+				factory.ReadComments(it, in.Comments, at)
 				if in.Kind != factory.KindPR || in.Files != nil {
 					it.Diff = in.Diff
 				}
@@ -304,6 +345,9 @@ func Merge(st *store.Store, origin string, items []factory.Item) error {
 			}))
 			continue
 		}
+		if in.DoneHow == StandingClosed {
+			continue
+		}
 		in.ID = 0
 		if in.Autonomy == "" {
 			in.Autonomy = factory.AutonomyAuto
@@ -316,6 +360,8 @@ func Merge(st *store.Store, origin string, items []factory.Item) error {
 			in.Places = []string{in.Repo}
 		}
 		in.Activity = nil
+		// The comments an issue arrives with are its context, never news.
+		factory.ReadComments(&in, in.Comments, time.Now())
 		in.Note(time.Now(), factory.EventArrived)
 		made, err := st.Create(in)
 		if err == nil {
@@ -335,6 +381,9 @@ func itemKey(it factory.Item) string {
 func forgeChanged(old, in factory.Item) bool {
 	// A pull request handed over before its files were read says nothing
 	// about its files or line counts.
+	if old.GitHubIssueID == 0 && in.GitHubIssueID != 0 {
+		return true
+	}
 	detailed := in.Kind != factory.KindPR || in.Files != nil
 	if old.Draft != in.Draft || old.Title != in.Title || old.Body != in.Body || old.Checks != in.Checks || (detailed && old.Diff != in.Diff) {
 		return true

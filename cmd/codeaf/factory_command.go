@@ -13,12 +13,14 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/intake"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
@@ -39,11 +41,15 @@ type factoryDiscovery struct {
 	App   bool   `json:"app,omitempty"`
 }
 
+// factoryRemovedDoor is what `codeaf factory add` and `codeaf factory webhook`
+// answer now that the factory takes no work from a command or a script.
+const factoryRemovedDoor = "codeaf factory add and codeaf factory webhook were removed: file work in the desktop app, connect GitHub or Jira there, or send custom triggers through AgentField"
+
 func runFactory(args []string) error {
 	verb := "serve"
 	if len(args) > 0 {
 		switch args[0] {
-		case "serve", "steps", "convert", "token", "revoke", "revoke-sessions", "name":
+		case "serve", "steps", "convert", "token", "revoke", "revoke-sessions", "name", "add", "webhook":
 			verb, args = args[0], args[1:]
 		}
 	}
@@ -62,6 +68,14 @@ func runFactory(args []string) error {
 	}
 	if verb == "token" {
 		return runFactoryToken(args)
+	}
+	// THE FACTORY HAS NO PROGRAMMATIC DOOR OF ITS OWN. Work is filed in the
+	// desktop app, by a built-in connector set up there with clicks (GitHub,
+	// Jira), or through AgentField; `add` and `webhook` were removed with the
+	// open intake, and are named here only so a person who remembers them is
+	// told where the work goes now.
+	if verb == "add" || verb == "webhook" {
+		return wrongCall(factoryRemovedDoor)
 	}
 	if verb == "name" {
 		return runFactoryName(args)
@@ -123,9 +137,13 @@ func serveFactory(ctx context.Context, configPath, listen string, out io.Writer,
 	if err != nil {
 		return err
 	}
-	if err := forgetFactoryPRJobs(ctx, st, config.ProfileDir()); err != nil {
-		return err
-	}
+	// Old PR jobs are forgotten behind the service, which never waits on it
+	// (appFactoryHost.tidy); one that cannot be cleaned stays for the next start.
+	guard.Go("factory/tidy", func() {
+		if err := forgetFactoryPRJobs(ctx, st, config.ProfileDir()); err != nil {
+			fmt.Fprintf(os.Stderr, "codeaf factory: some old PR jobs are kept for the next start: %v\n", err)
+		}
+	})
 	cfg, err := factoryHostConfigAt(configPath, false)
 	if err != nil {
 		return err
@@ -152,20 +170,38 @@ func serveFactory(ctx context.Context, configPath, listen string, out io.Writer,
 	defer listener.Close()
 	// The server reads GitHub through its own grant while each caller's
 	// signed-in identity supplies Activity and job ownership.
-	seam := factoryServerSeam(st, factoryTokensPath(configPath))
+	limit := newGitHubLimit(os.Stderr)
+	cfg.githubLimit = limit
+	seam := factoryServerSeam(st, factoryTokensPath(configPath), limit)
 	service, err := startFactoryService(ctx, st, seam, listener, cfg.AccessToken, factoryTokensPath(configPath), cfg)
 	if err != nil {
 		return err
 	}
 	defer service.close()
-	operatorLink := service.operatorLink
 	// THE SERVER HAS NO CONVERSATION, so its launch supplies the model pin
 	// on the same parent the desk's worker uses. Triage reads it for every request.
 	setFactoryModelPin(model, oneModel)
-	startFactoryTriage(ctx, st)
-	startFactoryServerPoll(ctx, st, factoryTokensPath(configPath))
+	// A JOB A START RULE STARTS ON A TEAM SERVER IS ITS OPERATOR'S.
+	operator := factoryOperatorOwner(factoryTokensPath(configPath))
+	startFactoryTriage(ctx, st, func(st *store.Store) *intake.Intake { return factoryIntakeOwned(st, operator) })
+	// A GO-AHEAD ON A TEAM SERVER IS FOLLOWED BY THE SERVER ITSELF, after every
+	// poll tick, so the jobs it covers start with no app attached.
+	stopPoll := startFactoryServerPoll(ctx, st, factoryTokensPath(configPath), limit, func(ctx context.Context) error {
+		return factoryIntakeOwned(st, operator).GoAheads(ctx)
+	})
+	defer stopPoll()
 	server, done := service.server, service.done
+	// READY MEANS USABLE: the operator link's row is written before the
+	// address is printed; only naming its GitHub login waits on GitHub.
+	operatorRow, err := service.handler.MintOperatorLink(cfg.operatorRecovery)
+	if err != nil {
+		return err
+	}
 	if _, err := fmt.Fprintln(out, service.public); err != nil {
+		return err
+	}
+	operatorLink, err := factoryOperatorLink(ctx, service.handler, operatorRow, limit)
+	if err != nil && ctx.Err() == nil {
 		return err
 	}
 	if operatorLink.URL != "" {
@@ -200,15 +236,15 @@ func serveFactory(ctx context.Context, configPath, listen string, out io.Writer,
 type factoryService struct {
 	// url is the address this machine's own clients dial, which serve.json
 	// names; public is the one a person is given. They differ when TLS is on.
-	url          string
-	public       string
-	notes        []string
-	operatorLink api.AccessLink
-	server       *http.Server
-	door         *http.Server
-	handler      *serve.Handler
-	done         chan error
-	discovery    string
+	url       string
+	public    string
+	notes     []string
+	server    *http.Server
+	running   atomic.Bool
+	door      *http.Server
+	handler   *serve.Handler
+	done      chan error
+	discovery string
 }
 
 // startFactoryService serves seam on listener and writes serve.json, the
@@ -263,10 +299,17 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 		// and the conversations and crew kept on this machine, never anything
 		// on GitHub, so the team server does it too.
 		Folders: newFactoryJobFolders(st), DeleteChats: factoryDeleteJobChats(config.ProfileDir(), st), Mode: mode, OperatorLogin: host.OperatorLogin, TrustedProxies: secure.proxies, Name: host.Name, GitHubClientID: host.GitHubClientID, Team: host.Team, Address: public, AccessToken: token, TokensPath: tokensPath, Store: st, Root: st.Root(), Record: history,
-		ServedBy: servedBy, PollingEvery: poll,
+		ServedBy: servedBy, PollingEvery: poll, GitHubLimit: host.githubLimit.resets,
+		Scout: factoryScoutLook(st, config.Load), Read: factoryClickRead(st, config.Load),
+		// A `manager when …` approval's condition is judged by the floor's AI
+		// filter, as a routing rule's question is.
+		PassJudge:     factoryJudge(st, config.Load),
 		PersonProfile: factoryPeople().Profile, PersonKnown: factoryPeople().Known, CodeOwners: factoryPeople().Owners,
 		Pipeline: func(ctx context.Context, repo, dir string) (pipeline.File, error) {
-			return factoryRules().Load(ctx, repo, dir, home.Join("factory.yaml"))
+			return factoryPipelineRead(ctx, st, repo, dir)
+		},
+		JobPipeline: func(ctx context.Context, it factory.Item, dir string) (pipeline.File, error) {
+			return factoryJobRead(ctx, st, it, dir)
 		},
 	}
 	if servedBy == "factory" && mode == api.FactoryTeam {
@@ -274,14 +317,6 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 		handlerConfig.ChangeAssignee = nil
 	}
 	handler := serve.New(seam, handlerConfig)
-	var operatorLink api.AccessLink
-	if host.operatorLinks {
-		operatorLink, err = handler.NewOperatorLink(ctx, host.operatorRecovery)
-		if err != nil {
-			handler.Close()
-			return nil, err
-		}
-	}
 	server := &http.Server{
 		Handler: handler, ReadHeaderTimeout: 10 * time.Second,
 		// Long polls and change streams must end with the service, otherwise
@@ -290,7 +325,7 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 	}
 	// Every listener reports its end here; only the first is read, so the
 	// channel holds one per listener and none of them blocks on the send.
-	s := &factoryService{url: address, public: public, operatorLink: operatorLink, server: server, handler: handler, done: make(chan error, 2),
+	s := &factoryService{url: address, public: public, server: server, handler: handler, done: make(chan error, 2),
 		discovery: filepath.Join(st.Root(), "serve.json")}
 	served := listener
 	if secure.on() {
@@ -304,7 +339,12 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 			"; access tokens and sign-in sessions cross the network unencrypted. Serve HTTPS with tls: auto and a domain, "+
 			"or put a reverse proxy that serves HTTPS in front and list it in trusted_proxies (the manual: hosting a team factory over HTTPS)")
 	}
-	guard.Go("factory HTTP service", func() { s.done <- server.Serve(served) })
+	s.running.Store(true)
+	guard.Go("factory HTTP service", func() {
+		err := server.Serve(served)
+		s.running.Store(false)
+		s.done <- err
+	})
 	body, err := json.Marshal(factoryDiscovery{URL: s.url, PID: os.Getpid(), Token: token})
 	if err == nil {
 		err = writeFactoryPrivate(s.discovery, append(body, '\n'))
@@ -360,12 +400,14 @@ func (s *factoryService) serveTLS(ctx context.Context, secure factoryTLS, listen
 // close stops serving and takes the receipt down, so nobody discovers a
 // service that is gone.
 func (s *factoryService) close() {
+	s.running.Store(false)
 	_ = os.Remove(s.discovery)
 	_ = s.server.Close()
 	if s.door != nil {
 		_ = s.door.Close()
 	}
 	s.handler.Close()
+	stopFactoryLoaders("")
 }
 
 // factoryFileLock coordinates service discovery and token writes across

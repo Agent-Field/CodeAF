@@ -308,6 +308,20 @@ forgotten or put back. A rule for all future work — `always run the tests befo
 commit` — is a memory like any other. There is no `/forget` command: forget on the tab,
 or ask.
 
+### Attribution in commits and pull requests
+
+By default codeaf signs the commits it writes and the commits a task's workers
+make with `Assisted-by: CodeAF (<model>)` (bare `Assisted-by: CodeAF` on the
+worker harness) and `Co-Authored-By: CodeAF <267109073+agentfield-bot@users.noreply.github.com>`,
+adds a `Drafted with CodeAF` footer to pull request and issue bodies, and adds a
+small `<sub>drafted with CodeAF</sub>` line to its first comment in a thread.
+Turn all attribution marks off with the `attribution` row in `/settings` (under
+`General`) or `CODEAF_ATTRIBUTION=off`; turn off only the model name in
+`Assisted-by` with `attribution.model` (**model in commits**) or
+`CODEAF_ATTRIBUTION_MODEL=off`. A `CONTRIBUTING` file in the repository root,
+`.github/` or `docs/` that forbids AI trailers or co-author lines is also obeyed
+automatically.
+
 ## Models, keys, and spending
 
 On the default OpenRouter endpoint, key resolution is `OPENROUTER_API_KEY`, then
@@ -399,7 +413,7 @@ but it reaches the network for the catalog and stops with
 
 </details>
 
-See [the headless contract](docs/HEADLESS.md) and [automations].
+See [the headless contract](HEADLESS.md) and [automations](../internal/manual/chat/automations.md).
 
 ## Work on another machine
 
@@ -420,7 +434,7 @@ paired devices; `codeaf devices revoke <name> [--all]` revokes access.
 Current boundary: spend, search and memory pages still read local files, and inside a
 remote task room steering, stopping and model changes are absent.
 
-Read [remote access](docs/REMOTE.md) and its [testing guide](docs/remote-access-testing.md).
+Read [remote access](REMOTE.md) and its [testing guide](remote-access-testing.md).
 
 ## Contributing
 
@@ -434,11 +448,11 @@ make demo-home    # a throwaway home with something on every page
 make changelog-new PR=<n> KIND=<kind> SLUG=<slug>
 ```
 
-Read the [branching rules](docs/rules/branching.md), the [change-entry rules](docs/rules/changelog.md)
-and [AGENTS.md](AGENTS.md) before contributing.
+Read the [branching rules](rules/branching.md), the [change-entry rules](rules/changelog.md)
+and [AGENTS.md](../AGENTS.md) before contributing.
 
 ## Documentation
 
-Start with [the documentation map](docs/README.md); the enduring references are the
-[design language](docs/DESIGN-LANGUAGE.md), [remote access](docs/REMOTE.md), the
-[headless contract](docs/HEADLESS.md) and [automations].
+Start with [the documentation map](README.md); the enduring references are the
+[design language](DESIGN-LANGUAGE.md), [remote access](REMOTE.md), the
+[headless contract](HEADLESS.md) and [automations](../internal/manual/chat/automations.md).

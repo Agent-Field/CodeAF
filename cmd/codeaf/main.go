@@ -30,31 +30,37 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/delegate/builtin"
-	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
-	lanes "github.com/Agent-Field/codeaf/internal/lane"
+	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/plan"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/relayserve"
 	"github.com/Agent-Field/codeaf/internal/router"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/teams"
 	"github.com/Agent-Field/codeaf/internal/telemetry"
 	"github.com/Agent-Field/codeaf/internal/trace"
 	codeupdate "github.com/Agent-Field/codeaf/internal/update"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+var flushFinalSaves = cellstore.Flush
+
 func main() {
 	// THE DEVELOPER-ONLY PROFILE STARTS FIRST AND STOPS LAST, and is inert
 	// unless CODEAF_DIAGNOSTIC_PROFILE_DIR is set (diagnostics.go).
 	stopDiagnostics := startDiagnostics()
-	home.Adopt(log.Printf)
-	// CODEAF SCHEDULES NOTHING ON THE MACHINE. The timers the feature that
-	// automations replaced installed are taken off this login on every start,
-	// whoever installed them (internal/automation's legacy.go).
-	automation.RemoveOldTimers()
+	if startupMaintenanceNeeded(os.Args[1:]) {
+		home.Adopt(log.Printf)
+		// CODEAF SCHEDULES NOTHING ON THE MACHINE. Real starts remove the
+		// timers installed by the feature that automations replaced.
+		automation.RemoveOldTimers()
+	}
+	home.Witness(home.Dir())
 	registerRunningCLI()
 	code := execute()
+	// The teams store folds its WAL back in as it closes (internal/teams).
+	teams.Close()
 	stopDiagnostics()
 	os.Exit(code)
 }
@@ -195,13 +201,13 @@ func surfaceProcs(ncpu int) int {
 // one calm sentence over a restored terminal instead of spilling a goroutine
 // dump across the screen the user was working in.
 func execute() (code int) {
+	prepareFinalReport()
 	// Every CLI door shares this exit, including verbs with no session to close.
 	// C28 requires their grouped call and turn records to reach disk too.
 	defer func() {
 		ctx, cancel := context.WithTimeout(context.Background(), cellstore.SealWithin)
 		defer cancel()
-		if err := cellstore.Flush(ctx); err != nil {
-			fmt.Fprintln(os.Stderr, "codeaf: could not finish saving this chat:", err)
+		if !finishFinalSaving(ctx) {
 			if code == 0 {
 				code = 1
 			}
@@ -246,16 +252,13 @@ func execute() (code int) {
 	// log's close and therefore runs before it, so a compaction that had to be
 	// deferred still has somewhere to say so.
 	beliefs, stopBeliefs := context.WithCancel(context.Background())
-	defer func() {
-		stopBeliefs()
-		lanes.Flush()
-	}()
+	beliefsDone := startLaneSaving(beliefs)
+	defer finishLaneSaving(stopBeliefs, beliefsDone)
 	// AND THE LANE-SHEET BEAT RIDES THE SAME LIFETIME. It is started later, at
 	// the one seam every surface measures through (lanebeat.go), and it is a
 	// goroutine of exactly this shape: process-wide, nobody's request, stopped
 	// at the same exit.
 	laneBeatCtx = beliefs
-	guard.Go("lanes/persist", func() { lanes.Persist(beliefs) })
 	err := run()
 	var status exitStatus
 	switch {
@@ -341,6 +344,10 @@ func run() error {
 		// whoever hosts the relay and not typed in a conversation, so like
 		// `engine` it is absent from the usage text.
 		return relayserve.Main(os.Args[2:])
+	case "cluster":
+		return runCluster(os.Args[2:])
+	case "devbox":
+		return runDevbox(os.Args[2:])
 	case "devices":
 		// Who is allowed to open a conversation here, and the door for taking
 		// that back. REVOKING IS THIS MACHINE'S DECISION AND ONLY THIS
@@ -597,7 +604,7 @@ Look at what happened — read-only, no key, nothing spent
       the models this machine will use, and what each has been measured at
   codeaf pool [show|status|verify] [--json] [--key key]
       the Model Pool: what is resolved and cached; verify fetches with a key
-  codeaf doctor [--db path]
+  codeaf doctor [--db path] [--fix]
       is this install healthy, and where does it keep things
   codeaf manual
       every page of codeaf's own manual, one per line
@@ -625,14 +632,16 @@ Housekeeping — changes state on disk or on the network
   codeaf pair [--via url] [--name name]
       add this device to yours: shows a link to approve from one you use
   codeaf pair approve <link-or-code> | <code> [--replace] | --code
-      approve a new device; or use or show a six-digit code for your chats
-  codeaf serve [--workspace path] [--via url]
+      approve a device; or use or show a code such as ` + pair.ExampleChatCode + ` for your chats
+  codeaf devbox up | down <name> · status [<name>]  [--yes] [--dir D]
+      an always-on computer of yours on your own Railway account
+  codeaf serve [--workspace path] [--via url] [--take-tasks]
       be reachable from your other devices without ssh, with a pairing code
-  codeaf devices
+  codeaf devices | codeaf cluster status
       list your devices and the ones that can use this machine
   codeaf devices revoke <name> [--all] | rename <name>
       remove one (cannot undo what a device holds), or name this one
-  codeaf factory [serve|name|steps|convert|token|revoke|revoke-sessions]
+  codeaf factory [serve|add|name|steps|convert|token|revoke|revoke-sessions]
   codeaf attach <url> | codeaf detach | codeaf runner join <link>
       a team factory: host it (` + factoryDefaultListen + `), use it, or run its jobs here
   codeaf notebook [--db path]
@@ -667,8 +676,7 @@ Examples:
     codeaf logs --tail 20 --model anthropic/claude-opus-4
     codeaf chat --host devbox:~/src/api   the chat here, the work over there
 
-Every command answers ` + "`codeaf <command> --help`" + ` with its own line and its flags.
-The environment table is ` + "`codeaf help env`" + ` — every variable and its default.`
+Every command answers ` + "`codeaf <command> --help`" + ` with its own line and its flags.`
 
 // environmentText is the reference half of the old `--help`: every variable a
 // person can set, and what it defaults to.
@@ -756,6 +764,8 @@ A variable that pins a ` + "`/settings`" + ` row wins over that row.
   CODEAF_PREAUTHORIZE_SPEND
                        1 spends past the day's limit without stopping a
                        headless run to ask
+  CODEAF_SYNC_URL      sync service for your chats; off disables syncing
+  CODEAF_RELAY         sync service override for pairing and remote connections
   CODEAF_HOME          the whole state root — journal, workspace, CAS, craft,
                        profiles, catalog, skills (default ~/.codeaf). Move it
                        to run a disposable store that touches nothing of yours.
@@ -771,6 +781,9 @@ A variable that pins a ` + "`/settings`" + ` row wins over that row.
                        also record each call's whole request and response —
                        your prompts included. Off by default, and for one run
                        at a time.
+  CODEAF_GITHUB_LOG    a file: one line per GitHub request, by endpoint and
+                       status, with the rate limit GitHub reported. Names,
+                       paths and tokens are not written. Off by default.
   CODEAF_TELEMETRY    on (default). off turns the anonymous usage counts off;
                        docs/TELEMETRY.md in the repository says what they are,
                        DO_NOT_TRACK=1 does the same, and so does the telemetry
@@ -902,7 +915,8 @@ func runPlanNew(name string, args []string) error {
 	if err != nil {
 		return err
 	}
-	useAutoSeats(settings)
+	held := useAutoSeats(settings)
+	defer stopPoolErrands(held)
 	seats := doorSeats(settings, *model, *planModel, goal)
 	applySeats(&settings, seats)
 	workClient, err := settings.Client()
@@ -1082,7 +1096,8 @@ func runRevise(name string, args []string) error {
 	if err != nil {
 		return err
 	}
-	useAutoSeats(settings)
+	held := useAutoSeats(settings)
+	defer stopPoolErrands(held)
 	seats := doorSeats(settings, *model, *planModel, graph.Goal+"\n\n"+event)
 	applySeats(&settings, seats)
 	workClient, err := settings.Client()

@@ -1,6 +1,6 @@
 # Running on another machine
 
-## Can I run it on another computer — what --host is, running this on my dev box over ssh
+## Can I run it on another computer?
 
 `--host` runs the chat surface on the machine you are sitting at, and runs the
 conversation on another machine, over ssh.
@@ -9,6 +9,8 @@ Everything about the conversation happens over there: the workspace, the files, 
 it runs, the model key, the session file. Your terminal keeps the screen, the keyboard and
 your draft. The two halves talk to each other with a small line-based protocol over the
 ssh pipes; you never see it.
+
+## What --host is, running this on my dev box over ssh
 
 ```
 codeaf chat --host devbox
@@ -104,9 +106,7 @@ pkill -f '[s]sh -T .* localhost codeaf engine'
 ```
 
 The status line grows its `connection` segment, the surface redials itself, and the answer
-continues rather than restarting. Send something while it is down and the message is not
-lost quietly — it comes back as `submit failed: reconnecting to localhost — try that again
-in a moment`, and pressing enter again once it is back sends it.
+continues rather than restarting. Enter while it is down sends nothing and keeps the full draft in the box. It says `not sent — still reconnecting to localhost; enter sends it once the link is back`. Press Enter again after it is back to send; reconnecting never sends automatically.
 
 ## The far machine says a different version — when the connection cannot be made
 
@@ -305,29 +305,28 @@ knowing even where you cannot answer it from this window.
 A **reading** window — one opened only to watch a task's page — is refused these keys on
 purpose, and says `this window is reading this conversation, not typing into it`.
 
-## How do I work on the same conversation from two computers — another window, and another machine
+## How do I work on the same conversation from two computers — open multiple terminals and have things just transfer
+
+Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time; opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
 
-These are two different things and they are easy to run together.
-
 **Another window** is a second codeaf on the *same* machine holding a conversation you can
 see on home. Its row says `another window` in the right margin — and `another window · enter
 brings it here` while the cursor is on it. `enter` on it never opens a
-second copy — one conversation, one writer — but it does something better: it **moves** the
-conversation into this terminal. Two presses, the row says `coming here` while it is on its
+second copy: it **moves** the conversation into this terminal, keeping one writer. Two presses, the row says `coming here` while it is on its
 way, and the other window lands on whatever else it was holding. *Continue a conversation
-from another terminal*, on the home page, is the whole of it. (The old answer here was "go
-to that terminal, or start a new conversation here", which is no longer the only way.)
+from another terminal*, on the home page, is the whole of it.
+
+## Another machine with --host — attach to the conversation without copying it
 
 **Another machine** is `--host`. The conversation lives over there and your terminal
 *attaches* to it: what you type crosses the wire, the work runs on that machine, and the
 answer comes back. Close the lid and the turn keeps going if the far end is a session host;
 open a terminal somewhere else, attach to the same session, and you are back in it with the
-gap replayed. That is what "it just transfers and works" actually is — attaching, not
-copying, and the place a conversation lives never moves.
+gap replayed. Attaching does not copy the conversation or change where it lives.
 
 **And the places are neither.** They are a listing of one machine's disk, and they follow the
 machine your session is on. Nothing about them opens a second window or moves a conversation.
@@ -475,7 +474,7 @@ does not claim the far registry is empty.
 
 The memory commands are different: this build carries the connected engine's memory state
 and memory doors. `/memory <query>` and `/memories` read that machine's store, while
-`/remember` and the Memories tab write it. When that machine's memory store could not be
+`/remember` and the Memory tab write it. When that machine's memory store could not be
 opened, they say exactly:
 `memory is unavailable on this machine · the store could not be opened`.
 
@@ -502,10 +501,11 @@ name the connected machine, and say to change the crew there:
 ## How does remember over host know whether memory is on?
 
 The connection's welcome says whether the connected engine has its memory store open,
-and the memory commands use that engine's store. `/remember` and the Memories tab write there;
-`/memories` and `/memory <query>` read there. Memory has no off switch — the far
-machine's `notice things to remember` row decides only whether that engine keeps lines
-on its own — so the one refusal is a store that would not open:
+and the memory commands use that engine's store. `/remember` and the Memory tab write there;
+`/memories` and `/memory <query>` read there. The far machine's
+`learn from chats and jobs` row controls automatic learning and defaults on unless saved off.
+Saved lines remain readable and `/remember` still works while off. A store that
+would not open says:
 `memory is unavailable on this machine · the store could not be opened`.
 
 ## Does subharness know whether the remote machine has saved programs?
@@ -618,7 +618,7 @@ The task roster lists this far conversation's work. Its rows come from the far
     bytes to the far conversation's `attachments/` folder. Generated and viewed pictures
     take the reverse road automatically so their far bytes can be painted in this terminal.
 
-## Reminders and watches over --host — they work, and they are that machine's automations
+## Where does a reminder I set up over --host actually run — reminders, watches and that machine's automations
 
 `remind me at 6`, `tell me when CI on main goes red` and `every Monday post the standup`
 all work over `--host` and `--at`. The conversation over there proposes the automation, its
@@ -942,3 +942,23 @@ resolution. This distinction applies inside tmux too.
 Windows cannot replace the running bridge in place. When a newer engine needs a
 different version, this launch stops cleanly and names the installed program’s
 update command. It leaves the existing conversation and its windows running.
+
+
+## A disconnected message stays in the box — not sent, reconnecting or connection gone
+
+While `chat --host` reconnects, Enter keeps your words and attachments in the
+message box and starts no turn. For localhost it says
+`not sent — still reconnecting to localhost; enter sends it once the link is back`.
+Press Enter after the link returns; it never sends automatically.
+
+When `chat --at` has lost its connection, Enter likewise keeps your draft. With
+a computer named desk-b it says `not sent — the connection to desk-b is gone; your words are still in the box. Run the same command to pick the conversation back up`.
+The computer’s chosen name is used when available.
+
+## An old latency disappears — ping age in --host and --at
+
+A measured round trip appears in the connection bar, for example `desk-b · 1ms`.
+Pings are five seconds apart. After six seconds without an answered ping, the
+latency disappears, including while the next ping is still waiting. The next
+answer restores the reading. This is a link measurement, not proof that sync
+or chat ownership is available.

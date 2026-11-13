@@ -8,7 +8,6 @@ import (
 	"errors"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -77,7 +76,7 @@ func (e *appDeliverEnv) agent(id string) *appDeliverAgent {
 	if a, err := e.b.find(id); err == nil {
 		var workspace string
 		e.b.locked(func() { workspace = a.view.Workspace })
-		place := session.Place{Dir: filepath.Dir(a.transcript), Owned: true}
+		place := session.Place{Dir: session.DirOf(a.transcript), Owned: true}
 		out = &appDeliverAgent{
 			roots:     []string{workspace, place.Work(), place.Artifacts()},
 			folders:   []string{place.Work(), place.Artifacts()},
@@ -234,29 +233,22 @@ func (b *appBackend) deliverScope(q appwire.DeliverablesQuery) (map[string]bool,
 		}
 		return map[string]bool{q.Agent: true}, nil
 	case "crew":
-		for _, closed := range []bool{false, true} {
-			crews, err := b.CrewList(closed)
-			if err != nil {
-				return nil, err
-			}
-			for _, crew := range crews {
-				if crew.ID != q.Crew {
-					continue
-				}
-				members := map[string]bool{}
-				for _, member := range crew.Members {
-					members[member.Agent] = true
-				}
-				if q.Member != "" {
-					if !members[q.Member] {
-						return nil, appwire.Errorf(appwire.CodeNotFound, "%s is not a member of this crew", q.Member)
-					}
-					return map[string]bool{q.Member: true}, nil
-				}
-				return members, nil
-			}
+		// The one crew, open or closed, read by id.
+		crew, err := b.CrewGet(q.Crew)
+		if err != nil {
+			return nil, err
 		}
-		return nil, appwire.Errorf(appwire.CodeNotFound, "there is no crew %s", q.Crew)
+		members := map[string]bool{}
+		for _, member := range crew.Members {
+			members[member.Agent] = true
+		}
+		if q.Member != "" {
+			if !members[q.Member] {
+				return nil, appwire.Errorf(appwire.CodeNotFound, "%s is not a member of this crew", q.Member)
+			}
+			return map[string]bool{q.Member: true}, nil
+		}
+		return members, nil
 	case appwire.ScopeTeams:
 		// The teams union is resolved against the request's own deadline
 		// (listTeamsUnion); falling through here would read as every conversation.

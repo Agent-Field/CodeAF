@@ -33,9 +33,9 @@ type Engine interface {
 	// reach so far, and leaves every other file, which may be waiting for a
 	// frame that has not landed. A take calls it while frames still download.
 	ImportPartial(ctx context.Context, c cell.Cell, head, inbox string) (int, error)
-	// Holds reports whether this device already holds objects of c that the
-	// relay holds too: its ledger for this relay is not empty. A device that
-	// does has most of the chat's history and wants only a delta (contract
+	// Holds reports whether this device has already held this chat's history.
+	// Activity for another chat in a shared store says nothing about this one.
+	// A warm chat wants only its delta (contract
 	// §22.5), so priming it with the chat's whole frame plan would download
 	// what it has.
 	Holds(c cell.Cell) bool

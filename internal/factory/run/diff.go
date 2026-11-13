@@ -2,6 +2,7 @@ package run
 
 import (
 	"encoding/json"
+	"maps"
 	"reflect"
 	"slices"
 	"strings"
@@ -46,10 +47,26 @@ func Diff(prev, cur factory.Item) (factory.RunReport, bool) {
 		r.Log = unlanded(r.Log)
 	}
 	if spent := cs.Spent - ps.Spent; spent > 0 {
-		r.Cost = spent
+		// Table growth is booked by ApplyReport. Cost carries only work
+		// outside those steps, such as the manager's own calls.
+		for _, ph := range cs.Phases {
+			if ph.RoundCosts == nil {
+				continue
+			}
+			before := 0.0
+			for _, old := range ps.Phases {
+				if old.Name == ph.Name {
+					before = old.StepCost()
+					break
+				}
+			}
+			spent -= max(0, ph.StepCost()-before)
+		}
+		r.Cost = max(0, spent)
 	}
+	r.Models = modelDelta(ps.Models, cs.Models)
 	r.Claims = append(claimsMoved(prev.Proof, cur.Proof), claimsMoved(prev.Policy, cur.Policy)...)
-	r.Question, r.QuestionKind = asked(prev, cur)
+	r.Question, r.QuestionKind = asked(prev, cur, r.Log)
 	if cur.PullRequest != nil && !reflect.DeepEqual(prev.PullRequest, cur.PullRequest) {
 		pr := *cur.PullRequest
 		r.PR = &pr
@@ -70,6 +87,20 @@ func Diff(prev, cur factory.Item) (factory.RunReport, bool) {
 		r.Notes = append([]string(nil), cur.Notes[len(prev.Notes):]...)
 	}
 	r.Merge = mergeMoved(prev, cur)
+	if cur.AgentField != nil && !reflect.DeepEqual(prev.AgentField, cur.AgentField) {
+		run := *cur.AgentField
+		r.AgentField = &run
+	}
+	for name, run := range cur.AgentFieldSteps {
+		if run == nil || reflect.DeepEqual(prev.AgentFieldSteps[name], run) {
+			continue
+		}
+		if r.AgentFieldSteps == nil {
+			r.AgentFieldSteps = map[string]*factory.AgentFieldRun{}
+		}
+		cp := *run
+		r.AgentFieldSteps[name] = &cp
+	}
 	// Retry counters reset when local work completes, including publication
 	// and observed-head rechecks. Transport identity stays on the held attempt;
 	// the service derives acknowledgement from the accepted completion.
@@ -80,6 +111,40 @@ func Diff(prev, cur factory.Item) (factory.RunReport, bool) {
 	}
 	r.Log = without(r.Log, echoes(prev, r))
 	return r, !reflect.DeepEqual(r, factory.RunReport{})
+}
+
+// modelDelta is what cur recorded since prev, per model. A model whose
+// figures did not grow is left out. A drop is not reported: a new run starts
+// its own split on the server when the run is queued.
+func modelDelta(prev, cur []factory.ModelUse) []factory.ModelUse {
+	old := map[string]factory.ModelUse{}
+	for _, row := range prev {
+		old[row.Model] = row
+	}
+	var out []factory.ModelUse
+	for _, row := range cur {
+		was := old[row.Model]
+		d := factory.ModelUse{
+			Model: row.Model, USD: row.USD - was.USD, Calls: row.Calls - was.Calls,
+			Input: row.Input - was.Input, Output: row.Output - was.Output,
+		}
+		if d.USD < 0 {
+			d.USD = 0
+		}
+		if d.Calls < 0 {
+			d.Calls = 0
+		}
+		if d.Input < 0 {
+			d.Input = 0
+		}
+		if d.Output < 0 {
+			d.Output = 0
+		}
+		if d.USD > 0 || d.Calls > 0 || d.Input > 0 || d.Output > 0 {
+			out = append(out, d)
+		}
+	}
+	return out
 }
 
 // echoes are the log lines the server writes itself when it applies r (a
@@ -166,14 +231,14 @@ func stepsMoved(prev, cur []factory.Phase) []factory.StageReport {
 	var out []factory.StageReport
 	for _, ph := range cur {
 		old, seen := was[ph.Name]
-		if seen && old.Chat == ph.Chat && old.State == ph.State && old.Round == ph.Round && old.RoundLimit == ph.RoundLimit && reflect.DeepEqual(old.Verification, ph.Verification) && old.Started.Equal(ph.Started) && reflect.DeepEqual(old.Result, ph.Result) && reflect.DeepEqual(old.Rounds, ph.Rounds) && reflect.DeepEqual(old.Failure, ph.Failure) {
+		if seen && reflect.DeepEqual(old.RoundCosts, ph.RoundCosts) && old.SkipReason == ph.SkipReason && old.Chat == ph.Chat && old.State == ph.State && old.Round == ph.Round && old.RoundLimit == ph.RoundLimit && reflect.DeepEqual(old.Verification, ph.Verification) && old.Started.Equal(ph.Started) && reflect.DeepEqual(old.Result, ph.Result) && reflect.DeepEqual(old.Rounds, ph.Rounds) && reflect.DeepEqual(old.Failure, ph.Failure) {
 			continue
 		}
-		if ph.Kind == factory.StageGate {
+		if ph.Kind == factory.StageGate && ph.State != factory.PhaseSkipped {
 			continue
 		}
-		step := factory.StageReport{Name: ph.Name, Chat: ph.Chat, State: ph.State, Round: ph.Round, RoundLimit: ph.RoundLimit, Verification: ph.Verification, Started: ph.Started}
-		if ph.Result != nil && (!seen || !reflect.DeepEqual(old.Result, ph.Result)) {
+		step := factory.StageReport{RoundCosts: maps.Clone(ph.RoundCosts), Name: ph.Name, Chat: ph.Chat, SkipReason: ph.SkipReason, State: ph.State, Round: ph.Round, RoundLimit: ph.RoundLimit, Verification: ph.Verification, Started: ph.Started}
+		if ph.State != factory.PhaseSkipped && ph.Result != nil && (!seen || !reflect.DeepEqual(old.Result, ph.Result)) {
 			res := *ph.Result
 			res.Edit = nil
 			step.Result = &res
@@ -226,11 +291,19 @@ func claimsMoved(prev, cur []factory.Claim) []factory.Claim {
 
 // asked is the question cur puts to the person, when it is a new one: the
 // step it came from, its words and options, and its kind.
-func asked(prev, cur factory.Item) (*factory.Asked, string) {
+func asked(prev, cur factory.Item, lines []factory.LogLine) (*factory.Asked, string) {
 	if cur.State != factory.StateNeedsYou || strings.TrimSpace(cur.Question) == "" {
 		return nil, ""
 	}
-	if prev.State == factory.StateNeedsYou && prev.Question == cur.Question {
+	// AN AGENTFIELD RUN'S APPROVAL TRAVELS AS THE RUN: the factory reads the
+	// wait off the run record it is sent ([SyncAgentFieldWait]).
+	if cur.QKind == factory.QKindAgentField {
+		return nil, ""
+	}
+	// THE SAME WORDS CAN BE A NEW ASK: a step sent back can finish between two
+	// reports, and the factory took the answered question down. Its new log line
+	// is what tells the two apart.
+	if prev.State == factory.StateNeedsYou && prev.Question == cur.Question && !askedAgain(lines, cur.Question) {
 		return nil, ""
 	}
 	q := factory.Asked{Question: cur.Question}
@@ -239,5 +312,19 @@ func asked(prev, cur factory.Item) (*factory.Asked, string) {
 	} else if s := cur.Stream; s != nil && s.Cur >= 0 && s.Cur < len(s.Phases) {
 		q.Stage = s.Phases[s.Cur].Name
 	}
+	if cur.QKind == factory.QKindSpendStopped {
+		q.Stage = ""
+		q.Options = []string{"yes", "no"}
+	}
 	return &q, cur.QKind
+}
+
+// askedAgain says the new log lines hold this question's ask.
+func askedAgain(lines []factory.LogLine, question string) bool {
+	for _, l := range lines {
+		if l.Tone == "ask" && l.Text == question {
+			return true
+		}
+	}
+	return false
 }
