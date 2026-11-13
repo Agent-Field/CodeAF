@@ -95,7 +95,7 @@ func TestTwoPeopleWriteOneCanvasInDifferentFrames(t *testing.T) {
 
 	// Each sees the other's ops.
 	var seen canvasOps
-	o.do(t, "abir", "GET", path+"/ops?since="+itoa(base.Seq), -1, nil, 200, &seen)
+	o.do(t, "abir", "GET", path+"/ops?since="+seqText(base.Seq), -1, nil, 200, &seen)
 	var byS bool
 	for _, r := range seen.Ops {
 		byS = byS || r.Actor == "person:santosh" && strings.Contains(string(r.Op), "santosh typing")
@@ -231,7 +231,7 @@ func TestCanvasEventsReachOnlyItsPeople(t *testing.T) {
 		e, ok := o.h.liveForViewer(r, last)
 		return string(e.Data), ok
 	}
-	want := `{"kind":"canvas.changed","id":"` + id + `","seq":` + itoa(out.Seq) + `,"by":"abir"}`
+	want := `{"kind":"canvas.changed","id":"` + id + `","seq":` + seqText(out.Seq) + `,"by":"abir"}`
 	if got, ok := sees("santosh"); !ok || got != want {
 		t.Fatalf("santosh: %s %v; want %s", got, ok, want)
 	}
@@ -269,7 +269,7 @@ func TestCanvasImportMovesALaptopCanvasInOnce(t *testing.T) {
 	}
 }
 
-func itoa(n int64) string { return strconv.FormatInt(n, 10) }
+func seqText(n int64) string { return strconv.FormatInt(n, 10) }
 
 // raw sends one request as who and answers the recorder whatever its status.
 func (o *wsOrg) raw(t *testing.T, who, method, path string, body any) *httptest.ResponseRecorder {
