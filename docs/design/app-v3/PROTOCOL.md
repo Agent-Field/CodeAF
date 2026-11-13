@@ -434,6 +434,28 @@ checked before anything is sent (`bad_params`); the server's refusal keeps its s
 workstream again). A write that may have happened is `uncertain`. `factory.me` also
 answers `teams`, the ids of the teams the person is in (`[]` from an older server).
 
+The event `factory.org_changed` `{connection, kind, id}` says a team or workstream
+changed on an organization's server, so a window showing that organization reads it
+again instead of polling. Once a connection has answered any of the methods above,
+the engine follows its `GET /v1/events` with the same session and relays the
+server's three organization kinds, already filtered to what this person may see:
+`kind` `team.changed` (a team was made, renamed, deleted or its members changed;
+read `factory.teams`), `workstream.changed` (made, edited, owner or shares changed;
+read `factory.org_workstream {id}`, which answers `not_found` once it is no longer
+visible) or `workstream.removed` (archived or purged; drop it). `connection` is the
+id the methods take. For example:
+
+```json
+{"event":"factory.org_changed","seq":812,"data":{"connection":"fc_acme","kind":"workstream.changed","id":"ws_01JD…"}}
+```
+
+An empty `id` means the stream dropped and the server could not replay what was
+missed; the engine then sends one `team.changed` and one `workstream.changed`, both
+with `id` `""`: read both lists again. A dropped stream is otherwise reopened with
+`Last-Event-ID`, so nothing is lost. Following ends when the connection is detached,
+its sign-in changes, ends or is refused, or the engine stops; the next organization
+method starts it again.
+
 An engine whose hello carries `factory.group_policy` and `factory.waits_set`
 (and capabilities `group_policy: true`, `waits_on: true`) serves go-aheads the
 factory follows by itself. `factory.features {factory}` answers `{features}`, what
@@ -443,7 +465,9 @@ from a factory older than the route. `factory.policy_get {factory, group}` and
 `PUT /v1/policy`) answer `{group, version?, stopped, owner?, updated_at?, spent_usd,
 allowances: [{id, jobs, cap_usd, ends_at, spent_usd, state}]}`; a set replaces the
 group's whole policy and its caller becomes its owner (on a team, only the owner or
-the operator may change one someone keeps: `forbidden`). `group` is 1–200 plain
+the operator may change one someone keeps: `forbidden`). When `group` is an organization workstream's id, only those who can see that
+workstream read its policy (`not_found` otherwise, as for the workstream itself) and only
+those who can write it set one (`forbidden`). `group` is 1–200 plain
 characters; at most 50 allowances, each a distinct id of 1–64 of `A–Z a–z 0–9 . _ : -`,
 1–200 distinct job numbers, a cap above 0 and at most 10,000, and an RFC 3339
 `ends_at`, kept as sent; anything else is `bad_params` before it is sent. `state` is
@@ -1760,6 +1784,7 @@ and the reply is empty.
 | `devices.changed` | `DevicesResult` |
 | `entry.added` | `EntryAdded` |
 | `factory.jobs_changed` | `FactoryJobsChanged` |
+| `factory.org_changed` | `FactoryOrgChanged` |
 | `factory.sessions_changed` | `Empty` |
 | `hello` | `Hello` |
 | `inbox.added` | `InboxAddedEvent` |

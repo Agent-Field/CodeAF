@@ -51,6 +51,15 @@ func (h *Handler) policy(w http.ResponseWriter, r *http.Request) {
 			h.fail(w, http.StatusUnprocessableEntity, err.Error())
 			return
 		}
+		// An organization workstream's go-aheads are read only by those who
+		// can see the workstream; anyone else is answered as though it did
+		// not exist, the same 404 its own route gives.
+		if known, see, _, err := h.orgWorkstreamAccess(r, group); h.failed(w, err) {
+			return
+		} else if known && !see {
+			h.fail(w, http.StatusNotFound, errWorkstreamGone.Error())
+			return
+		}
 		p, ok, err := st.Policy(group)
 		if h.failed(w, err) {
 			return
