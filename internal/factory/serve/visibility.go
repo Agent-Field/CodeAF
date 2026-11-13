@@ -152,8 +152,9 @@ func (h *Handler) repoAccess(r *http.Request, keys []string) (map[string]bool, b
 }
 
 // repoAccessDecided is [Handler.repoAccess] that also names the keys GitHub
-// gave no answer for just now (a 5xx, a failed connection or an ended
-// sign-in): those read as not allowed, and are not known to be.
+// gave no answer for just now (a 5xx, a failed connection, a spent rate
+// limit or an ended sign-in): those read as not allowed, and are not known
+// to be.
 func (h *Handler) repoAccessDecided(r *http.Request, keys []string) (allow, unknown map[string]bool, filter bool) {
 	var session accessSession
 	var ok bool

@@ -227,6 +227,14 @@ type scriptGitHub struct {
 	hits  int
 	// down names repositories GitHub cannot answer for just now (503).
 	down map[string]bool
+	// limited names repositories whose check meets a spent rate limit.
+	limited map[string]limitAnswer
+}
+
+// limitAnswer is GitHub's answer to a request over its rate limit.
+type limitAnswer struct {
+	status int
+	header http.Header
 }
 
 func (g *scriptGitHub) client() *http.Client {
@@ -265,6 +273,10 @@ func (g *scriptGitHub) client() *http.Client {
 			}
 			if g.down[full] {
 				status = http.StatusServiceUnavailable
+			}
+			if limit, ok := g.limited[full]; ok {
+				body = `{"message":"API rate limit exceeded"}`
+				return &http.Response{StatusCode: limit.status, Body: io.NopCloser(strings.NewReader(body)), Header: limit.header.Clone()}, nil
 			}
 			body = `{}`
 		default:

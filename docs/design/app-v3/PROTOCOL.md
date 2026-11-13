@@ -828,7 +828,8 @@ The result is `{factory, supported, events, cursor, reset, more}`. `events`
 is always an array, in increasing `seq` order, and includes only jobs the
 caller may see; the cursor also advances past hidden outcomes. It does not
 advance past an outcome whose repository GitHub could not answer for just
-now (a 5xx or a failed connection): the page ends before it with
+now (a 5xx, a failed connection or a spent GitHub rate limit, which
+is never kept as a denial): the page ends before it with
 `more: true`, and a read that would start at it fails (the Factory's HTTP
 503, the engine's `engine` error) so the caller reads again later from the
 same cursor. The cursor

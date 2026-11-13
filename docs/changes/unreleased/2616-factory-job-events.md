@@ -47,7 +47,8 @@ A job left failed and waiting on a person records `failed`, whatever its
 failure's code. `group` stays empty until jobs carry one. The
 cursor checks which jobs the caller may see from each job's saved copy, so
 reading it looks up no author access on GitHub. An outcome whose repository
-GitHub could not answer for just now is not passed as hidden: the page ends
+GitHub could not answer for just now (a 5xx, a failed connection, or a spent
+rate limit, until its retry time) is not passed as hidden: the page ends
 before it, and a read that would start at it answers try again (HTTP 503)
 from the same cursor.
 
