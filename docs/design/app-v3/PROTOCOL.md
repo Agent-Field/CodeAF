@@ -496,7 +496,11 @@ optional `current`. On a Factory that lists `keyed_create`, a resend with the
 same key within 24 hours does not make a second job or issue; a different key
 creates a separate job. After an `uncertain` create, resend the same key, never
 a new one, and if the answer is still uncertain read the queue before trying
-again. With none of the new fields, the route, body and absent
+again. Two limits remain: the Factory matches a resend by its exact
+`Authorization` and `Cookie` headers, so one sent under a new bearer or a
+rotated session cookie runs as a new create, and it saves the answer only after
+the create has committed, so a Factory that stops between the two runs the
+resend again. With none of the new fields, the route, body and absent
 idempotency header are unchanged.
 
 

@@ -1223,7 +1223,10 @@ every create with a key; to a Factory without the word such a create answers
 Where the key is sent, a resend with the same key within 24 hours does not make
 a second job or GitHub issue; a new key makes a separate job. After an
 `uncertain` create, resend the same key; if it is still uncertain, read the
-queue first. Without a key there is no replay protection.
+queue first. Two limits: a resend after signing in again, or under a new
+session cookie, is a different caller and makes a new job; and if the Factory
+stops after making the job but before saving its answer, a resend runs again.
+Without a key there is no replay protection.
 
 ## Split a failed job into smaller jobs — split_from lineage
 

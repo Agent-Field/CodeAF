@@ -40,7 +40,10 @@ create key: `create_key` is false and a create with a key is refused as too old
 before anything is sent. A Factory older than #2619 keeps every keyed answer for
 24 hours, a refusal or 5xx included, so a resend after one could never succeed;
 it never gets a key. With #2619, a create that wrote nothing runs again on the
-same key, and an answer given after the job or issue was made is replayed.
+same key, and an answer given after the job or issue was made is replayed. A
+resend under a new bearer or session cookie is not matched, and a Factory that
+stops after committing a create but before saving its answer runs the resend
+again.
 
 Carried from #2415 and #2429, which merged only into the closed integration
 branch of #2306.
