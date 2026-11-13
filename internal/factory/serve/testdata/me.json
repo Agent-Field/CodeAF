@@ -21,5 +21,6 @@
   "served_by": "factory",
   "mode": "team",
   "operator": false,
-  "runners": []
+  "runners": [],
+  "teams": []
 }
