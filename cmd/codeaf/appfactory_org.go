@@ -52,6 +52,9 @@ func (b *appBackend) FactoryOrgCall(ctx context.Context, id string, req appwire.
 	if req.IfMatch != "" {
 		r.Header.Set("If-Match", req.IfMatch)
 	}
+	if req.IdempotencyKey != "" {
+		r.Header.Set("Idempotency-Key", req.IdempotencyKey)
+	}
 	if token != "" {
 		r.Header.Set("Authorization", "Bearer "+token)
 	}
@@ -128,6 +131,16 @@ func orgFailure(r appFactoryReply, write bool) error {
 		// (seeded, reset, snapshot_needed), so the desk is told it.
 		if reason := orgDocReason(r); reason != "" {
 			e.Detail = &appwire.FactoryRefusal{Reason: reason}
+		}
+		// Someone else drives the workstream's agent: name them, so the desk
+		// says "santosh is driving" instead of a refusal.
+		var held struct {
+			Driver *struct {
+				Handle string `json:"handle"`
+			} `json:"driver"`
+		}
+		if json.Unmarshal(bytes.TrimSpace(r.body), &held) == nil && held.Driver != nil && held.Driver.Handle != "" {
+			e.Detail = &appwire.FactoryRefusal{Reason: "driving", By: "@" + strings.TrimPrefix(held.Driver.Handle, "@")}
 		}
 		return e
 	case write && r.status >= 500:

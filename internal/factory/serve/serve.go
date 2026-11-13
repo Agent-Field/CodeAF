@@ -177,6 +177,9 @@ type Config struct {
 
 // Handler keeps the seam and host identity together for every response.
 type Handler struct {
+	// drivers holds each organization workstream's driver hand
+	// (workstream_driver.go).
+	drivers driverHands
 	// workerSettled is when a runner's request last settled the floor
 	// ([Handler.workerSettleDue]).
 	workerSettleMu sync.Mutex

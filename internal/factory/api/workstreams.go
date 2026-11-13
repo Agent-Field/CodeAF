@@ -18,6 +18,8 @@ import "github.com/Agent-Field/codeaf/internal/factory"
 //	PUT    /v1/workstreams/{id}/shares        WorkstreamSharesPut -> WorkstreamShared, 412 on a stale rev
 //	GET    /v1/workstreams/{id}/shares/preview?shares=team:a:edit,person:b:view (or ?teams=a,b) -> WorkstreamSharePreview
 //	POST   /v1/workstreams/import             WorkstreamPackage -> Workstream
+//	PUT    /v1/workstreams/{id}/driver        -> WorkstreamDriver, take or keep the hand; 409 names who holds it
+//	DELETE /v1/workstreams/{id}/driver        -> 204, let go (the holder, its owner or the operator)
 //
 // Its parts (pages one at a time, versions, plan, wakes, suggestions, jobs,
 // unarchive, spend) have their own routes: workstream_parts.go.
@@ -96,6 +98,30 @@ type Workstream struct {
 	BudgetUSD *float64 `json:"budget_usd,omitempty"`
 	SpendUSD  float64  `json:"spend_usd"`
 	CreatedBy string   `json:"created_by"`
+	// Driver is who is driving its agent now, absent when nobody is.
+	Driver *WorkstreamDriver `json:"driver,omitempty"`
+}
+
+// DriverHandSeconds is how long a workstream's driver hand lasts unless its
+// holder renews it: a desk renews it while its window is open, so a laptop
+// that closes or loses the network lets go on its own within this long.
+const DriverHandSeconds = 90
+
+// WorkstreamDriver is who holds a workstream's driver hand: the one person
+// whose laptop runs its agent while the organization runs agents on its
+// drivers' laptops. Since is when they took it and Until when it lapses unless
+// renewed (RFC 3339).
+type WorkstreamDriver struct {
+	Handle string `json:"handle"`
+	Since  string `json:"since"`
+	Until  string `json:"until"`
+	TTL    int    `json:"ttl_s"`
+}
+
+// WorkstreamDriverHeld is the 409 a take answers while someone else drives.
+type WorkstreamDriverHeld struct {
+	Error  string           `json:"error"`
+	Driver WorkstreamDriver `json:"driver"`
 }
 
 // WorkstreamList is GET /v1/workstreams's answer.
