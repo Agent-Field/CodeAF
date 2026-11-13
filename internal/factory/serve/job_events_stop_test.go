@@ -197,6 +197,55 @@ func checkStopRoad(t *testing.T, shape string, road func(*testing.T, *stopJob), 
 			t.Errorf("factory.job's failure at %s, outcomes %+v", job.Failure.At, got.Events)
 		}
 	}
+	// A full read after a reset forms no occurrence the outcomes never had:
+	// an app that followed them already holds a receipt for each one.
+	zero := int64(0)
+	all, err := live.ReadOutcomes(s.f.st.Root(), &zero, 500)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorded := map[string]bool{}
+	for _, e := range all.Events {
+		recorded[outcomeKey(e)] = true
+	}
+	for _, key := range fullReadKeys(job) {
+		if !recorded[key] {
+			t.Errorf("a full read of factory.job keys %s, which no outcome recorded (%v)", key, recorded)
+		}
+	}
+}
+
+// outcomeKey is the occurrence key the desktop app forms from an outcome
+// (workstream_watch_event).
+func outcomeKey(e live.Outcome) string {
+	at := e.At.UTC().Format(time.RFC3339Nano)
+	if e.Kind == "needs_you" {
+		return "needs_you:" + e.Need + ":" + at
+	}
+	return e.Kind + ":" + at
+}
+
+// fullReadKeys is the same occurrences formed from factory.job, by the rule
+// PROTOCOL.md's job outcomes section gives a full read: a failure is a failed
+// job only in needs_you, or on a done job when it is no stop; a wait is keyed
+// only on a job with no failure.
+func fullReadKeys(j api.Job) []string {
+	stamp := func(t time.Time) string { return t.UTC().Format(time.RFC3339Nano) }
+	var keys []string
+	merged := j.PR != nil && j.PR.MergedAt != nil && !j.PR.MergedAt.IsZero()
+	if merged {
+		keys = append(keys, "merged:"+stamp(*j.PR.MergedAt))
+	}
+	if j.State == api.StateDone && !j.DoneAt.IsZero() && !merged && j.DoneHow != "merged" {
+		keys = append(keys, "finished:"+stamp(j.DoneAt))
+	}
+	if f := j.Failure; f != nil && (j.State == api.StateNeedsYou || j.State == api.StateDone && f.Code != factory.CodeStopped) {
+		keys = append(keys, "failed:"+stamp(f.At))
+	}
+	if n := j.NeedsYou; n != nil && j.State == api.StateNeedsYou && j.Failure == nil && !n.Since.IsZero() {
+		keys = append(keys, "needs_you:"+n.Kind+":"+stamp(n.Since))
+	}
+	return keys
 }
 
 // A STOP THE RUNNER'S LOOP MADE IS THE PERSON'S STOP ON THE SERVED COPY TOO.
