@@ -42,12 +42,15 @@ type OrgWorkstream struct {
 	// FromLocalID is the Personal workstream an import came from, and
 	// ImportedBy who moved it in: together they make a repeated import answer
 	// the copy already made instead of making a second one.
-	FromLocalID string     `json:"from_local_id,omitempty"`
-	ImportedBy  string     `json:"imported_by,omitempty"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
-	ArchivedAt  *time.Time `json:"archived_at,omitempty"`
-	Rev         int        `json:"rev"`
+	FromLocalID string `json:"from_local_id,omitempty"`
+	ImportedBy  string `json:"imported_by,omitempty"`
+	// FromLocalLinks are the laptop ids an import linked to, kept so a linked
+	// workstream that moves in later is linked by its new id too.
+	FromLocalLinks []string   `json:"from_local_links,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
+	ArchivedAt     *time.Time `json:"archived_at,omitempty"`
+	Rev            int        `json:"rev"`
 }
 
 // OrgWorkstreams are every organization workstream, by id.

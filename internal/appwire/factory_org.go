@@ -26,7 +26,9 @@ import (
 // an arbitrary path or body. The engine's half ([FactoryOrg]) only carries a
 // built request to a connection.
 //
-// An engine that serves them says "org_teams" and "org_workstreams" in hello.
+// An engine that serves them says "org_teams" and "org_workstreams" in hello,
+// and "org_roles" when shares carry people and roles and a workstream can be
+// private (factory.org_workstream_shares takes shares, owner, private, rev).
 // Whether ONE organization's server has the routes is its own answer: an older
 // server's 404 is passed on as not_found.
 
@@ -34,6 +36,7 @@ import (
 const (
 	FeatureOrgTeams       = "org_teams"
 	FeatureOrgWorkstreams = "org_workstreams"
+	FeatureOrgRoles       = "org_roles"
 )
 
 // OrgRequest is one built request to an organization's server: the method,
@@ -75,19 +78,32 @@ type OrgOwner struct {
 	ID   string `json:"id"`
 }
 
-// OrgWorkstreamSummary is a workstream as a list shows it.
+// OrgShare gives one person (handle) or team (id) a role on a workstream:
+// view, comment, edit or full.
+type OrgShare struct {
+	Kind string `json:"kind"`
+	ID   string `json:"id"`
+	Role string `json:"role"`
+}
+
+// OrgWorkstreamSummary is a workstream as a list shows it. MyRole is the
+// caller's role; "" is the operator's name-only row for someone's private
+// workstream, whose content the server answers 404.
 type OrgWorkstreamSummary struct {
-	ID         string   `json:"id"`
-	Name       string   `json:"name"`
-	Stage      string   `json:"stage"`
-	Owner      OrgOwner `json:"owner"`
-	SharedWith []string `json:"shared_with"`
-	NeedsYou   int      `json:"needs_you"`
-	Merged     int      `json:"merged"`
-	Total      int      `json:"total"`
-	UpdatedAt  string   `json:"updated_at,omitempty"`
-	ArchivedAt string   `json:"archived_at,omitempty"`
-	Rev        int      `json:"rev"`
+	ID         string     `json:"id"`
+	Name       string     `json:"name"`
+	Stage      string     `json:"stage"`
+	Owner      OrgOwner   `json:"owner"`
+	SharedWith []string   `json:"shared_with"`
+	Shares     []OrgShare `json:"shares"`
+	Private    bool       `json:"private"`
+	MyRole     string     `json:"my_role"`
+	NeedsYou   int        `json:"needs_you"`
+	Merged     int        `json:"merged"`
+	Total      int        `json:"total"`
+	UpdatedAt  string     `json:"updated_at,omitempty"`
+	ArchivedAt string     `json:"archived_at,omitempty"`
+	Rev        int        `json:"rev"`
 }
 
 // OrgPage is one page of a workstream.
@@ -205,6 +221,7 @@ type OrgWorkstreamParams struct {
 // OrgWorkstreamNew is a workstream to make. Owner left out is the caller.
 type OrgWorkstreamNew struct {
 	Name      string        `json:"name"`
+	Private   bool          `json:"private,omitempty"`
 	Purpose   string        `json:"purpose,omitempty"`
 	Stage     string        `json:"stage,omitempty"`
 	Owner     *OrgOwner     `json:"owner,omitempty"`
@@ -248,19 +265,27 @@ type OrgWorkstreamOwnerParams struct {
 	Owner string `json:"owner"`
 }
 
-// OrgWorkstreamSharesParams sets the teams a workstream is shared with.
+// OrgWorkstreamSharesParams sets who a workstream is shared with, in one save
+// on the server: Shares (people and teams with roles) when sent, else Teams
+// (each as edit, the older call); Owner and Private when sent; Rev, when sent,
+// must be the rev read or the call is a stale conflict.
 type OrgWorkstreamSharesParams struct {
 	OrgConn
-	ID            string   `json:"id"`
-	Teams         []string `json:"teams"`
-	IncludeLinked bool     `json:"include_linked"`
+	ID            string      `json:"id"`
+	Shares        *[]OrgShare `json:"shares,omitempty"`
+	Teams         []string    `json:"teams"`
+	Owner         *OrgOwner   `json:"owner,omitempty"`
+	Private       *bool       `json:"private,omitempty"`
+	Rev           *int        `json:"rev,omitempty"`
+	IncludeLinked bool        `json:"include_linked"`
 }
 
 // OrgWorkstreamSharePreviewParams asks what sharing with teams would add.
 type OrgWorkstreamSharePreviewParams struct {
 	OrgConn
-	ID    string   `json:"id"`
-	Teams []string `json:"teams"`
+	ID     string     `json:"id"`
+	Teams  []string   `json:"teams"`
+	Shares []OrgShare `json:"shares,omitempty"`
 }
 
 // OrgWorkstreamPackage is a Personal workstream moving into the organization,
@@ -340,6 +365,33 @@ func orgTeamList(teams []string) ([]string, error) {
 	return out, nil
 }
 
+// orgShareList checks shares: a person by handle or a team by id, each with
+// one of the four roles.
+func orgShareList(shares []OrgShare) ([]OrgShare, error) {
+	out := make([]OrgShare, 0, len(shares))
+	for _, s := range shares {
+		var err error
+		switch s.Kind {
+		case "person":
+			s.ID, err = orgHandle(s.ID)
+		case "team":
+			s.ID, err = orgSegment("shares", s.ID)
+		default:
+			err = Errorf(CodeBadParams, `a share's kind must be "person" or "team"`)
+		}
+		if err != nil {
+			return nil, err
+		}
+		switch s.Role {
+		case "view", "comment", "edit", "full":
+		default:
+			return nil, Errorf(CodeBadParams, "a share's role must be view, comment, edit or full")
+		}
+		out = append(out, s)
+	}
+	return out, nil
+}
+
 func orgWorkstreamPath(id string) (string, error) {
 	id, err := orgSegment("id", id)
 	if err != nil {
@@ -365,6 +417,7 @@ func withFactoryOrgFeature(hello Hello, e Engine) Hello {
 	if _, ok := e.(FactoryOrg); ok {
 		hello = withFeature(hello, FeatureOrgTeams)
 		hello = withFeature(hello, FeatureOrgWorkstreams)
+		hello = withFeature(hello, FeatureOrgRoles)
 	}
 	return hello
 }
@@ -407,7 +460,7 @@ func orgMethod[P interface{ id() (string, error) }, R any](name string, build fu
 // The answers' lists are lists on the wire, never null.
 func (t *OrgTeam) fill() { t.Members = nonNil(t.Members) }
 func (s *OrgWorkstreamSummary) fill() {
-	s.SharedWith = nonNil(s.SharedWith)
+	s.SharedWith, s.Shares = nonNil(s.SharedWith), nonNil(s.Shares)
 }
 func (w *OrgWorkstream) fill() {
 	w.OrgWorkstreamSummary.fill()
@@ -542,14 +595,35 @@ func init() {
 		if err != nil {
 			return OrgRequest{}, err
 		}
-		teams, err := orgTeamList(p.Teams)
-		if err != nil {
-			return OrgRequest{}, err
-		}
+		// Only what the app sent is forwarded: teams left out is not "no
+		// teams", or a call that only changes the owner would unshare it.
 		body := struct {
-			Teams         []string `json:"teams"`
-			IncludeLinked bool     `json:"include_linked"`
-		}{teams, p.IncludeLinked}
+			Shares        *[]OrgShare `json:"shares,omitempty"`
+			Teams         *[]string   `json:"teams,omitempty"`
+			Owner         *OrgOwner   `json:"owner,omitempty"`
+			Private       *bool       `json:"private,omitempty"`
+			Rev           *int        `json:"rev,omitempty"`
+			IncludeLinked bool        `json:"include_linked"`
+		}{Owner: p.Owner, Private: p.Private, Rev: p.Rev, IncludeLinked: p.IncludeLinked}
+		switch {
+		case p.Shares != nil:
+			shares, err := orgShareList(*p.Shares)
+			if err != nil {
+				return OrgRequest{}, err
+			}
+			body.Shares = &shares
+		case p.Teams != nil:
+			teams, err := orgTeamList(p.Teams)
+			if err != nil {
+				return OrgRequest{}, err
+			}
+			body.Teams = &teams
+		}
+		if body.Owner != nil {
+			if err := checkOrgOwner(body.Owner); err != nil {
+				return OrgRequest{}, err
+			}
+		}
 		return OrgRequest{Method: http.MethodPut, Path: path + "/shares", Body: body}, nil
 	}), func(s *OrgWorkstreamShared) {
 		s.Workstream.fill()
@@ -564,7 +638,20 @@ func init() {
 		if err != nil {
 			return OrgRequest{}, err
 		}
-		return OrgRequest{Method: http.MethodGet, Path: path + "/shares/preview?teams=" + url.QueryEscape(strings.Join(teams, ","))}, nil
+		shares, err := orgShareList(p.Shares)
+		if err != nil {
+			return OrgRequest{}, err
+		}
+		query := "?teams=" + url.QueryEscape(strings.Join(teams, ","))
+		if len(shares) > 0 {
+			// The shares being added, with roles, as kind:id:role.
+			added := make([]string, 0, len(shares))
+			for _, s := range shares {
+				added = append(added, s.Kind+":"+s.ID+":"+s.Role)
+			}
+			query += "&shares=" + url.QueryEscape(strings.Join(added, ","))
+		}
+		return OrgRequest{Method: http.MethodGet, Path: path + "/shares/preview" + query}, nil
 	}), func(s *OrgSharePreview) { s.Linked = summaries(s.Linked) })
 	methods["factory.org_workstream_import"] = filled(orgMethod[OrgWorkstreamImportParams, OrgWorkstream]("factory.org_workstream_import", func(p OrgWorkstreamImportParams) (OrgRequest, error) {
 		name, err := orgName(p.Name)
