@@ -1047,6 +1047,13 @@ using the same working root. Older admitted cache locations remain in use;
 `/cache` includes them in its size and lists them before an explicit clean.
 Temporary files and saved work are outside the cache cleanup.
 
+The desktop engine also keeps rebuildable task-list answers in
+`~/.codeaf/cache/app-tasks`, capped at 96 MiB total and 256 files. Oldest files
+are evicted first. The engine prunes entries for missing or deleted conversations
+on its first inventory scan and once per minute while running; deleting a
+conversation in the app drops its entry immediately. Cleaning this cache makes
+the next task listing rebuild its answer.
+
 With nothing in it, `/cache` answers `the cache is empty · ~/.codeaf/cache`.
 
 **The cache is not your conversations.** Conversation history, tasks, settings and

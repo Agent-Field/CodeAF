@@ -377,7 +377,14 @@ func (a *Agent) fillMetaLocked(meta Meta) Meta {
 //
 // EVERY FAILURE IS SILENCE, for this file's stated reason: the rung is a
 // convenience and the session is the record.
-func (a *Agent) stampEffort() { a.stampMeta() }
+func (a *Agent) stampEffort() {
+	if metaStampSettling != nil {
+		metaStampSettling()
+	}
+	a.metaStamp().settle()
+	dir, snapshot := a.metaSnapshotAt()
+	a.updateMeta(dir, snapshot, func(meta *Meta) { meta.Effort = snapshot.Effort })
+}
 
 // stampPlaces writes the folders this conversation is about down the moment the
 // set changes, for [Agent.stampEffort]'s reason: a person who names a place and
@@ -399,9 +406,12 @@ func (a *Agent) stampPlaces() { a.stampMeta() }
 // bytes, and it happens once per file first written rather than once per write.
 func (a *Agent) stampTrees() { a.stampMeta() }
 
-// stampMeta updates the configuration and working context those three stamps
-// share. The transaction reads the latest title and spending from disk and
-// preserves them; this snapshot owns only model, effort, approval, places and trees.
+// stampMeta updates the configuration and working context [Agent.stampPlaces]
+// and [Agent.stampTrees] share. The transaction reads the latest title and
+// spending from disk and preserves them; this snapshot owns only model, effort,
+// approval, places and trees. [Agent.stampEffort] and [Agent.stampApproval]
+// settle the same way but patch only their own field, so restoring a dial when a
+// conversation opens leaves the file untouched when nothing moved (#1933).
 // EVERY FAILURE IS SILENCE, for this file's stated reason.
 //
 // AN EARLIER DEFERRED STAMP LANDS FIRST. [Agent.stampUserLocked] captures the

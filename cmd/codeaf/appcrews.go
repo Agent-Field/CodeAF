@@ -893,19 +893,21 @@ func (b *appBackend) isHeld(agent string) bool {
 // crewMemberOpen holds a started member's conversation and gives it the
 // approval posture its start named, or else its manager's.
 func (b *appBackend) crewMemberOpen(manager teamstore.Member, handle, agent, posture string) {
-	a, live, err := b.heldLive(agent)
+	a, live, endLive, err := b.borrowLive(agent)
 	if err != nil {
 		if !b.isClosing() {
 			b.crewNote(manager, "could not start @"+handle+": "+err.Error())
 		}
 		return
 	}
+	defer endLive()
 	// A manager the person closed since is not opened to read its posture:
 	// its saved word is read instead.
 	if posture == "" {
-		_, mlive, err := b.keptLive(appMemberAgent(manager))
+		_, mlive, endManager, err := b.borrowKeptLive(appMemberAgent(manager))
 		switch {
 		case err == nil:
+			defer endManager()
 			if door, ok := mlive.conn.Conv.(appPostureDoor); ok {
 				posture = door.ResolvedApprovalPosture()
 			}

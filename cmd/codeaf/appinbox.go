@@ -423,10 +423,11 @@ func (b *appBackend) AnswerInbox(id, option, text, why, scope string) (time.Time
 		if err != nil {
 			return time.Time{}, err
 		}
-		a, err := b.findCrewOwner(agent)
+		a, endRead, err := b.findCrewOwner(agent)
 		if err != nil {
 			return time.Time{}, err
 		}
+		defer endRead()
 		var refused error
 		b.locked(func() {
 			if a.live == nil {
@@ -552,10 +553,11 @@ func (b *appBackend) LaterInbox(id string, later bool) error {
 		b.emit.Emit(appwire.EventAskOpened, appwire.AskOpened{Ask: ask})
 		return nil
 	}
-	a, err := b.findCrewOwner(agent)
+	a, endRead, err := b.findCrewOwner(agent)
 	if err != nil {
 		return err
 	}
+	defer endRead()
 	live := b.liveOf(a)
 	if live == nil {
 		return appwire.Errorf(appwire.CodeNotFound, "the Inbox item %s is no longer waiting", id)
