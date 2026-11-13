@@ -143,14 +143,7 @@ func (h *Handler) ifMatch(w http.ResponseWriter, r *http.Request) (int, bool) {
 func (h *Handler) publishWorkstreamPart(ws factory.OrgWorkstream, part, partID, by string, rev int, deleted bool) {
 	e := workstreamLive{WorkstreamEvent: api.WorkstreamEvent{
 		Kind: api.EventWorkstreamChanged, ID: ws.ID, Part: part, PartID: partID, By: by, Rev: rev, Deleted: deleted,
-	}}
-	switch ws.Owner.Kind {
-	case api.OwnerPerson:
-		e.Persons = []string{ws.Owner.ID}
-	case api.OwnerTeam:
-		e.Teams = []string{ws.Owner.ID}
-	}
-	e.Teams = sortedTeams(append(e.Teams, ws.SharedWith...))
+	}, itemAudience: audienceOf(workstreamItem(ws))}
 	_ = live.Append(h.eventRoot(), live.New(api.EventWorkstreamChanged, 0, e))
 }
 
@@ -174,7 +167,7 @@ func (h *Handler) createWorkstreamPage(w http.ResponseWriter, r *http.Request) {
 	}
 	page := factory.WorkstreamPage{
 		ID: "pg_" + id, Title: strings.TrimSpace(body.Title), Kind: body.Kind, Parent: body.Parent,
-		UpdatedAt: now.Format(time.RFC3339Nano), UpdatedBy: v.handle, Rev: 1,
+		UpdatedAt: now.Format(time.RFC3339Nano), UpdatedBy: v.Handle, Rev: 1,
 	}
 	_, saved, err := h.editPart(ws.ID, v, func(cur *factory.OrgWorkstream, _ factory.OrgWorkstreams) (bool, error) {
 		at := len(cur.Pages)
@@ -183,12 +176,12 @@ func (h *Handler) createWorkstreamPage(w http.ResponseWriter, r *http.Request) {
 		}
 		cur.Pages = slices.Insert(cur.Pages, at, page)
 		cur.UpdatedAt = now
-		return true, cleanWorkstream(cur, v.handle, now)
+		return true, cleanWorkstream(cur, v.Handle, now)
 	})
 	if h.partRefused(w, err) {
 		return
 	}
-	h.publishWorkstreamPart(saved, api.PartPage, page.ID, v.handle, 1, false)
+	h.publishWorkstreamPart(saved, api.PartPage, page.ID, v.Handle, 1, false)
 	h.writeWorkstream(w, http.StatusCreated, saved)
 }
 
@@ -233,7 +226,7 @@ func (h *Handler) patchWorkstreamPage(w http.ResponseWriter, r *http.Request) {
 			p.Parent = *body.Parent
 		}
 		p.Rev++
-		p.UpdatedAt, p.UpdatedBy = now.Format(time.RFC3339Nano), v.handle
+		p.UpdatedAt, p.UpdatedBy = now.Format(time.RFC3339Nano), v.Handle
 		pageRev = p.Rev
 		cur.Pages[at] = p
 		if body.Index != nil {
@@ -242,12 +235,12 @@ func (h *Handler) patchWorkstreamPage(w http.ResponseWriter, r *http.Request) {
 			cur.Pages = slices.Insert(cur.Pages, to, p)
 		}
 		cur.UpdatedAt = now
-		return true, cleanWorkstream(cur, v.handle, now)
+		return true, cleanWorkstream(cur, v.Handle, now)
 	})
 	if h.partRefused(w, err) {
 		return
 	}
-	h.publishWorkstreamPart(saved, api.PartPage, pid, v.handle, pageRev, false)
+	h.publishWorkstreamPart(saved, api.PartPage, pid, v.Handle, pageRev, false)
 	h.writeWorkstream(w, http.StatusOK, saved)
 }
 
@@ -306,7 +299,7 @@ func (h *Handler) deleteWorkstreamPage(w http.ResponseWriter, r *http.Request) {
 	if docs, ok := any(h).(liveDocs); ok {
 		_ = docs.dropDoc("ws/" + ws.ID + "/page/" + pid)
 	}
-	h.publishWorkstreamPart(saved, api.PartPage, pid, v.handle, 0, true)
+	h.publishWorkstreamPart(saved, api.PartPage, pid, v.Handle, 0, true)
 	h.writeWorkstream(w, http.StatusOK, saved)
 }
 
@@ -431,7 +424,7 @@ func (h *Handler) restorePageVersion(w http.ResponseWriter, r *http.Request) {
 // rev, and answers the version whole.
 func (h *Handler) keepVersion(w http.ResponseWriter, ws factory.OrgWorkstream, page factory.WorkstreamPage, v wsViewer, ver store.PageVersion) {
 	now := h.clock().UTC()
-	ver.At, ver.By, ver.Title = now.Format(time.RFC3339Nano), v.handle, page.Title
+	ver.At, ver.By, ver.Title = now.Format(time.RFC3339Nano), v.Handle, page.Title
 	saved, added, err := h.config.Store.AddPageVersion(ws.ID, page.ID, ver)
 	if h.failed(w, err) {
 		return
@@ -451,7 +444,7 @@ func (h *Handler) keepVersion(w http.ResponseWriter, ws factory.OrgWorkstream, p
 		}
 		cur.Pages = slices.Clone(cur.Pages)
 		cur.Pages[at].BodyMD = ver.BodyMD
-		cur.Pages[at].UpdatedAt, cur.Pages[at].UpdatedBy = ver.At, v.handle
+		cur.Pages[at].UpdatedAt, cur.Pages[at].UpdatedBy = ver.At, v.Handle
 		all[ws.ID] = cur
 		return []string{ws.ID}, nil
 	})
@@ -461,7 +454,7 @@ func (h *Handler) keepVersion(w http.ResponseWriter, ws factory.OrgWorkstream, p
 	if cur, ok := after[ws.ID]; ok {
 		ws = cur
 	}
-	h.publishWorkstreamPart(ws, api.PartVersions, page.ID, v.handle, saved.Version, false)
+	h.publishWorkstreamPart(ws, api.PartVersions, page.ID, v.Handle, saved.Version, false)
 	h.write(w, http.StatusCreated, versionWire(saved))
 }
 
@@ -506,11 +499,11 @@ func (h *Handler) putWorkstreamPlan(w http.ResponseWriter, r *http.Request) {
 	if h.partRefused(w, err) {
 		return
 	}
-	p, err := h.config.Store.PutPart(ws.ID, store.PartPlan, store.PartPlan, rev, v.handle, h.clock(), doc)
+	p, err := h.config.Store.PutPart(ws.ID, store.PartPlan, store.PartPlan, rev, v.Handle, h.clock(), doc)
 	if h.partRefused(w, err) {
 		return
 	}
-	h.publishWorkstreamPart(ws, api.PartPlan, store.PartPlan, v.handle, p.Rev, false)
+	h.publishWorkstreamPart(ws, api.PartPlan, store.PartPlan, v.Handle, p.Rev, false)
 	w.Header().Set("ETag", strconv.Itoa(p.Rev))
 	h.write(w, http.StatusOK, planWire(p, true))
 }
@@ -613,11 +606,11 @@ func (h *Handler) addPart(k partKind) http.HandlerFunc {
 		if h.failed(w, err) {
 			return
 		}
-		p, err := h.config.Store.PutPart(ws.ID, k.part, k.prefix+id, 0, v.handle, now, doc)
+		p, err := h.config.Store.PutPart(ws.ID, k.part, k.prefix+id, 0, v.Handle, now, doc)
 		if h.partRefused(w, err) {
 			return
 		}
-		h.publishWorkstreamPart(ws, k.part, p.ID, v.handle, p.Rev, false)
+		h.publishWorkstreamPart(ws, k.part, p.ID, v.Handle, p.Rev, false)
 		h.write(w, http.StatusCreated, partWire(ws.ID, p))
 	}
 }
@@ -662,11 +655,11 @@ func (h *Handler) patchPart(k partKind) http.HandlerFunc {
 		if h.partRefused(w, err) {
 			return
 		}
-		p, err := h.config.Store.PutPart(ws.ID, k.part, cur.ID, rev, v.handle, h.clock(), doc)
+		p, err := h.config.Store.PutPart(ws.ID, k.part, cur.ID, rev, v.Handle, h.clock(), doc)
 		if h.partRefused(w, err) {
 			return
 		}
-		h.publishWorkstreamPart(ws, k.part, p.ID, v.handle, p.Rev, false)
+		h.publishWorkstreamPart(ws, k.part, p.ID, v.Handle, p.Rev, false)
 		h.write(w, http.StatusOK, partWire(ws.ID, p))
 	}
 }
@@ -736,9 +729,9 @@ func (h *Handler) addWorkstreamJob(w http.ResponseWriter, r *http.Request) {
 	}
 	jobID := strconv.Itoa(job)
 	for _, id := range left {
-		h.publishWorkstreamPart(saved[id], api.PartJobs, jobID, v.handle, saved[id].Rev, true)
+		h.publishWorkstreamPart(saved[id], api.PartJobs, jobID, v.Handle, saved[id].Rev, true)
 	}
-	h.publishWorkstreamPart(saved[ws.ID], api.PartJobs, jobID, v.handle, saved[ws.ID].Rev, false)
+	h.publishWorkstreamPart(saved[ws.ID], api.PartJobs, jobID, v.Handle, saved[ws.ID].Rev, false)
 	h.writeWorkstream(w, http.StatusOK, saved[ws.ID])
 }
 
@@ -765,7 +758,7 @@ func (h *Handler) removeWorkstreamJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if saved.Rev != before.Rev {
-		h.publishWorkstreamPart(saved, api.PartJobs, strconv.Itoa(job), v.handle, saved.Rev, true)
+		h.publishWorkstreamPart(saved, api.PartJobs, strconv.Itoa(job), v.Handle, saved.Rev, true)
 	}
 	h.writeWorkstream(w, http.StatusOK, saved)
 }
@@ -805,7 +798,7 @@ func (h *Handler) unarchiveWorkstream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if saved[ws.ID].Rev != before.Rev {
-		h.publishWorkstreamPart(saved[ws.ID], api.PartWorkstream, ws.ID, v.handle, saved[ws.ID].Rev, false)
+		h.publishWorkstreamPart(saved[ws.ID], api.PartWorkstream, ws.ID, v.Handle, saved[ws.ID].Rev, false)
 	}
 	h.writeWorkstream(w, http.StatusOK, saved[ws.ID])
 }
@@ -850,7 +843,7 @@ func (h *Handler) postWorkstreamSpend(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusUnprocessableEntity, "Idempotency-Key may have at most 200 characters")
 		return
 	}
-	s := store.Spend{At: h.clock().UTC().Format(time.RFC3339Nano), By: v.handle, USD: body.USD, Chat: body.Chat, Key: key}
+	s := store.Spend{At: h.clock().UTC().Format(time.RFC3339Nano), By: v.Handle, USD: body.USD, Chat: body.Chat, Key: key}
 	if body.Job != nil {
 		s.Job = *body.Job
 	}
@@ -858,7 +851,7 @@ func (h *Handler) postWorkstreamSpend(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
-	h.publishWorkstreamPart(ws, api.PartSpend, "", v.handle, 0, false)
+	h.publishWorkstreamPart(ws, api.PartSpend, "", v.Handle, 0, false)
 	h.write(w, http.StatusOK, api.WorkstreamSpend{SpendUSD: total, BudgetUSD: ws.BudgetUSD})
 }
 

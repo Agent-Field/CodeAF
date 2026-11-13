@@ -272,3 +272,27 @@ func (o *wsOrg) doKey(t *testing.T, who, path, key string, body json.RawMessage,
 		}
 	}
 }
+
+// A VIEW SHARE READS EVERY PART AND CHANGES NONE.
+func TestOrgPartsFollowTheRole(t *testing.T) {
+	o := newWSOrg(t)
+	launch := o.create(t, "santosh", api.WorkstreamNew{Name: "Launch plan"})
+	if _, err := o.st.EditWorkstreams(func(all factory.OrgWorkstreams) ([]string, error) {
+		w := all[launch.ID]
+		w.Shares = []factory.Share{{Kind: "person", ID: "abir", Role: "view"}}
+		all[launch.ID] = w
+		return []string{launch.ID}, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	base := "/v1/workstreams/" + launch.ID
+	var ws api.Workstream
+	o.do(t, "santosh", "POST", base+"/pages", -1, api.PageNew{Title: "Brief"}, 201, &ws)
+	o.do(t, "abir", "GET", base+"/plan", -1, nil, 200, nil)
+	o.do(t, "abir", "GET", base+"/pages/"+ws.Pages[0].ID+"/versions", -1, nil, 200, nil)
+	o.do(t, "abir", "POST", base+"/pages", -1, api.PageNew{Title: "mine"}, 403, nil)
+	o.do(t, "abir", "PUT", base+"/plan", 0, map[string]any{"plan": map[string]any{}}, 403, nil)
+	o.do(t, "abir", "POST", base+"/wakes", -1, map[string]any{}, 403, nil)
+	o.do(t, "abir", "POST", base+"/pages/"+ws.Pages[0].ID+"/versions", -1, api.PageVersionNew{BodyMD: "x", Reason: "idle"}, 403, nil)
+	o.do(t, "mia", "GET", base+"/plan", -1, nil, 404, nil)
+}
