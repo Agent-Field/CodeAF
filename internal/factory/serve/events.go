@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"net/http"
 	"strconv"
@@ -141,6 +142,9 @@ func (h *Handler) viewerWantsLive(r *http.Request, e live.Event) bool {
 // so replay cursors do not move.
 func (h *Handler) liveForViewer(r *http.Request, e live.Event) (live.Event, bool) {
 	switch e.Kind {
+	case api.TeamChangedKind:
+		// Every member sees every team, so every member hears it change.
+		return e, true
 	case "machine", "runner":
 		viewer := h.machineViewer(r)
 		return e, viewer != "" && factory.NormalizeHandle(e.Handle) == viewer

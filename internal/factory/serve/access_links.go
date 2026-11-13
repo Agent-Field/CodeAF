@@ -162,6 +162,9 @@ func (h *Handler) revokeAccessLink(w http.ResponseWriter, r *http.Request) {
 			if h.failed(w, h.revokePerson(r, member.Profile.Handle)) {
 				return
 			}
+			if h.failed(w, h.leaveEveryTeam(member.Profile.Handle)) {
+				return
+			}
 		}
 	}
 	h.finish(w, h.operatorEvent(r, record.LinkRevoked, "link:"+r.PathValue("id"), "access link revoked"))
