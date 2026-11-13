@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/docs"
 )
@@ -152,9 +153,10 @@ func (h *Handler) docAccess(r *http.Request, d docRef) (found, view, edit bool, 
 	return false, false, false, nil
 }
 
-// pageDocAccess maps a page document onto its workstream. THIS IS THE ONE
-// PLACE the workstream rules are read for documents, so the access core's
-// can(view|edit) replaces these two lines when it lands.
+// pageDocAccess maps a page document onto its workstream through the access
+// core: view reads and follows the page and sends a caret, edit sends updates
+// and snapshots. A private workstream's operator row is a name, never its
+// pages, so the operator reads a private page's document as absent.
 func (h *Handler) pageDocAccess(r *http.Request, d docRef) (found, view, edit bool, err error) {
 	if h.config.Store == nil || !strings.HasPrefix(d.parent, workstreamIDPrefix) {
 		return false, false, false, nil
@@ -163,14 +165,15 @@ func (h *Handler) pageDocAccess(r *http.Request, d docRef) (found, view, edit bo
 	if err != nil || !ok {
 		return false, false, false, err
 	}
-	v, err := h.wsViewer(r)
+	v, err := h.itemViewer(r)
 	if err != nil {
 		return false, false, false, err
 	}
-	if !v.canSee(ws) || !slices.ContainsFunc(ws.Pages, func(p api.WorkstreamPage) bool { return p.ID == d.child }) {
+	it := workstreamItem(ws)
+	if !can(v, it, factory.RoleView) || !slices.ContainsFunc(ws.Pages, func(p api.WorkstreamPage) bool { return p.ID == d.child }) {
 		return false, false, false, nil
 	}
-	return true, true, v.canWrite(ws) && ws.ArchivedAt == nil, nil
+	return true, true, can(v, it, factory.RoleEdit) && ws.ArchivedAt == nil, nil
 }
 
 // openDoc parses the path and checks the caller may at least see it; the

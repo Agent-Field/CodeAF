@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/redact"
 )
 
@@ -122,7 +123,13 @@ func orgFailure(r appFactoryReply, write bool) error {
 	case r.status == http.StatusForbidden:
 		return appwire.Errorf(appwire.CodeForbidden, "%s", or("the organization does not let you do that"))
 	case r.status == http.StatusConflict:
-		return appwire.Errorf(appwire.CodeConflict, "%s", or("the organization refused that as things stand"))
+		e := appwire.Errorf(appwire.CodeConflict, "%s", or("the organization refused that as things stand"))
+		// A live document's refusals say what to do next by their reason
+		// (seeded, reset, snapshot_needed), so the desk is told it.
+		if reason := orgDocReason(r); reason != "" {
+			e.Detail = &appwire.FactoryRefusal{Reason: reason}
+		}
+		return e
 	case write && r.status >= 500:
 		const maybe = "the change may have happened, so read it again before trying again"
 		if words != "" {
@@ -131,6 +138,19 @@ func orgFailure(r appFactoryReply, write bool) error {
 		return appwire.Errorf(appwire.CodeUncertain, "the organization failed while changing it; %s", maybe)
 	}
 	return appFactoryFailure(r)
+}
+
+// orgDocReason is a live document's refusal reason, "" for any other.
+func orgDocReason(r appFactoryReply) string {
+	var body struct {
+		Reason string `json:"reason"`
+	}
+	_ = json.Unmarshal(bytes.TrimSpace(r.body), &body)
+	switch body.Reason {
+	case api.DocReasonSeeded, api.DocReasonReset, api.DocReasonSnapshotNeeded:
+		return body.Reason
+	}
+	return ""
 }
 
 // orgWords is the server's own sentence, with secrets taken out and cut to

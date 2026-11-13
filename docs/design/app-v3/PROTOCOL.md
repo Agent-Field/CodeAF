@@ -261,6 +261,12 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.org_workstream_import` | `in.OrgWorkstreamImportParams` | `OrgWorkstream` |
 | `factory.org_presence` | `in.OrgPresenceParams` | `OrgPresence` |
 | `factory.org_workstream_activity` | `in.OrgActivityParams` | `OrgActivity` |
+| `factory.org_doc_read` | `in.OrgDocParams` | `OrgDocState` |
+| `factory.org_doc_send` | `in.OrgDocSendParams` | `OrgDocUpdated` |
+| `factory.org_doc_snapshot` | `in.OrgDocSnapshotParams` | `OrgDocSnapshotKept` |
+| `factory.org_doc_aware` | `in.OrgDocAwareParams` | `Empty` |
+| `factory.org_doc_follow` | `in.OrgDocParams` | `Empty` |
+| `factory.org_doc_unfollow` | `in.OrgDocParams` | `Empty` |
 | `factory.detach` | `in.FactoryRef` | `Empty` |
 | `factory.job` | `in.FactoryJobParams` | `Job` |
 | `factory.job_approve` | `in.FactoryJobApproveParams` | `FactoryJobActed` |
@@ -435,6 +441,53 @@ checked before anything is sent (`bad_params`); the server's refusal keeps its s
 403 `forbidden`, 409 `conflict`, 412 `conflict` with `detail.reason` `stale` (read the
 workstream again). A write that may have happened is `uncertain`. `factory.me` also
 answers `teams`, the ids of the teams the person is in (`[]` from an older server).
+
+An engine whose hello carries `org_docs` carries an organization's **live documents**:
+the Yjs documents two people type into at once, a workstream page
+`ws/<workstream>/page/<page>` or the text of a canvas frame
+`canvas/<canvas>/frame/<frame>`. The server keeps, per document, an append-only log of
+opaque Yjs updates stamped `seq`, `by`, `at`, plus the latest client-made snapshot and
+the `seq` it covers; it never parses Yjs. Each method takes `connection` and `doc`:
+`factory.org_doc_read {since}` `GET /v1/docs/{doc}?since=` answers `{doc, seq,
+snapshot, updates, awareness, can_edit, compact}` (load `snapshot` when it is set, then
+apply `updates` in order; `seq` is what to follow from);
+`factory.org_doc_send {base_seq, update, seed?}` `POST .../updates` answers the stamp
+`{doc, seq, by, at, compact}`; `factory.org_doc_snapshot {seq, state}` `PUT
+.../snapshot` answers `{doc, seq, kept}` (`kept` false: a snapshot at or past `seq`
+was already kept, not an error); `factory.org_doc_aware {client, state}` `POST
+.../awareness` sends this client's y-protocols awareness state (`null`: it left), true
+for 30 s unless sent again. `update`, `state` and `snapshot.state` are base64. Seeing the
+parent item (`view`) reads, follows and sends awareness; `edit` sends updates and
+snapshots; an archived workstream's pages are read-only; a document whose parent you
+cannot see is `not_found`, as is every canvas document until canvases live on the
+server. Refusals: `conflict` with `detail.reason` `seeded` (a `seed: true` update into a
+document that has content: read it instead), `reset` (`base_seq` or a snapshot's `seq`
+is past the server's head: the document was reset, read it again) or `snapshot_needed`
+(see compaction); `bad_params` before anything is sent past 256 KiB per update, 2 MiB
+per snapshot, 4 KiB per awareness state; `busy` (HTTP 429, `Retry-After: 1`) past 30 updates a second (burst
+120) or 10 awareness states a second (burst 20) per person per document.
+
+**Compaction.** The client compacts; the server only keeps. Past 500 updates or 512 KiB
+since the snapshot, every answer says `compact: true`: an editor posts
+`Y.encodeStateAsUpdate` as the snapshot with the `seq` it has applied. Past 5000 updates
+or 2 MiB the server refuses new updates with `snapshot_needed` until one arrives. A kept
+snapshot drops the updates it covers. **Versions** are E2's: on 30 s idle the client that
+wrote last posts the snapshot here and then `POST /v1/workstreams/{id}/pages/{pid}/versions
+{body_md, state, reason:"idle"}` there; a restore answers `{body_md, state}` and the
+restorer applies it as an ordinary update, so collaborators see it live.
+
+`factory.org_doc_follow {since}` keeps the document's stream (`GET
+/v1/docs/{doc}/events?since=`) open with the same session and relays it until
+`factory.org_doc_unfollow`, the connection is detached, or its sign-in changes or ends:
+`factory.org_doc_update {connection, doc, seq, by, at, update, snapshot}` in `seq` order,
+never skipping one (a stream that drops or falls behind is reopened from the last `seq`
+relayed and the server replays the rest; a replay that starts behind the snapshot opens
+with the snapshot, `snapshot: true`, applied the same way with `Y.applyUpdate`);
+`factory.org_doc_awareness {connection, doc, by, client, state, at}` (`state` null: the
+client left or lapsed); and `factory.org_doc_closed {connection, doc, reason}`,
+`removed` (the page was deleted) or `gone` (no longer visible, or signed out).
+Document updates do NOT travel on `GET /v1/events`, whose durable window of 200 events
+keystrokes would flush.
 
 The event `factory.org_changed` `{connection, kind, id}` says a team or workstream
 changed on an organization's server, so a window showing that organization reads it
@@ -1840,6 +1893,9 @@ and the reply is empty.
 | `factory.jobs_changed` | `FactoryJobsChanged` |
 | `factory.org_changed` | `FactoryOrgChanged` |
 | `factory.org_presence` | `FactoryOrgPresence` |
+| `factory.org_doc_awareness` | `FactoryOrgDocAwareness` |
+| `factory.org_doc_closed` | `FactoryOrgDocClosed` |
+| `factory.org_doc_update` | `FactoryOrgDocUpdate` |
 | `factory.sessions_changed` | `Empty` |
 | `hello` | `Hello` |
 | `inbox.added` | `InboxAddedEvent` |

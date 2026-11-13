@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 )
 
@@ -26,6 +27,23 @@ func docOrg(t *testing.T) (o *wsOrg, page, hidden string) {
 	o.do(t, "mia", "PATCH", "/v1/workstreams/"+brand.ID, brand.Rev, map[string]any{"pages": []api.WorkstreamPage{{Title: "Voice", Kind: "page"}}}, 200, &got)
 	hidden = "ws/" + brand.ID + "/page/" + got.Pages[0].ID
 	return o, page, hidden
+}
+
+// ws is the workstream id of a page document.
+func ws(doc string) string { return strings.Split(doc, "/")[1] }
+
+// setShares keeps a workstream's shares and privacy as given, straight in the
+// store: the roles a share route will grant, without waiting on its wire.
+func (o *wsOrg) setShares(t *testing.T, id string, shares []factory.Share, private bool) {
+	t.Helper()
+	if _, err := o.st.EditWorkstreams(func(all factory.OrgWorkstreams) ([]string, error) {
+		w := all[id]
+		w.Shares, w.Private = shares, private
+		all[id] = w
+		return []string{id}, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func b64(s string) string { return base64.StdEncoding.EncodeToString([]byte(s)) }
@@ -83,9 +101,22 @@ func TestAPageDocumentIsItsWorkstreams(t *testing.T) {
 		t.Fatalf("behind the snapshot reads %+v", st)
 	}
 
+	// A view share reads and follows, never writes; a private workstream's
+	// page is the operator's to see exist, never to read.
+	o.setShares(t, ws(page), []factory.Share{{Kind: factory.ShareToPerson, ID: "mia", Role: factory.RoleView}, {Kind: factory.ShareToTeam, ID: "tm_platform", Role: factory.RoleEdit}}, false)
+	o.do(t, "mia", "GET", "/v1/docs/"+page, -1, nil, 200, &st)
+	if st.CanEdit {
+		t.Fatal("a view share can edit")
+	}
+	o.do(t, "mia", "POST", "/v1/docs/"+page+"/updates", -1, api.DocUpdatePost{BaseSeq: 2, Update: b64("x")}, 403, nil)
+	o.do(t, "mia", "POST", "/v1/docs/"+page+"/awareness", -1, api.DocAwarenessPost{Client: 1, State: ptr(b64("c"))}, 204, nil)
+	o.setShares(t, ws(page), nil, true)
+	o.do(t, "owner", "GET", "/v1/docs/"+page, -1, nil, 404, nil)
+	o.do(t, "mia", "GET", "/v1/docs/"+page, -1, nil, 404, nil)
+	o.setShares(t, ws(page), []factory.Share{{Kind: factory.ShareToTeam, ID: "tm_platform", Role: factory.RoleEdit}}, false)
+
 	// Archived: still read, never written.
-	ws := strings.Split(page, "/")[1]
-	o.do(t, "abir", "DELETE", "/v1/workstreams/"+ws, -1, nil, 204, nil)
+	o.do(t, "abir", "DELETE", "/v1/workstreams/"+ws(page), -1, nil, 204, nil)
 	o.do(t, "abir", "GET", "/v1/docs/"+page, -1, nil, 200, &st)
 	if st.CanEdit {
 		t.Fatal("an archived page is still editable")
