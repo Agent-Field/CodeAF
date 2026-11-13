@@ -36,9 +36,10 @@ func (h *Handler) readJobs(w http.ResponseWriter, r *http.Request) {
 	for _, id := range body.Jobs {
 		seen[id] = false
 	}
+	sight := h.jobSight(r)
 	for _, it := range s.Items {
 		if _, asked := seen[it.ID]; asked {
-			seen[it.ID] = factory.IsIssueJob(it) && h.repoVisible(r, itemRepo(it))
+			seen[it.ID] = factory.IsIssueJob(it) && h.repoVisible(r, itemRepo(it)) && sight(it)
 		}
 	}
 	if h.authFailed(w, r) {

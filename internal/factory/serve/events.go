@@ -155,7 +155,7 @@ func (h *Handler) liveForViewer(r *http.Request, e live.Event) (live.Event, bool
 		if json.Unmarshal(e.Data, &event) != nil {
 			return e, false
 		}
-		if _, filter := h.repoAccess(r, nil); filter && len(h.filterAudit(r, []record.Event{event})) != 1 {
+		if _, filter := h.repoAccess(r, nil); (filter || h.workstreamsMatter()) && len(h.filterAudit(r, []record.Event{event})) != 1 {
 			return e, false
 		}
 		data, err := json.Marshal(h.recordForViewer(r, event))

@@ -449,6 +449,22 @@ id the methods take. For example:
 {"event":"factory.org_changed","seq":812,"data":{"connection":"fc_acme","kind":"workstream.changed","id":"ws_01JD…"}}
 ```
 
+**A job in an organization workstream answers to that workstream.** A job belongs to
+the workstream whose go-ahead started it (`desk.policy_group` `ws_…`). On a team
+factory, every `POST /v1/jobs/{id}/<verb>` (stop, steer, priority, prioritize, reply,
+nudge, recheck, request_changes, undo and the rest) needs the job's person, `edit` on
+its workstream, or the operator; a job with no person needs `edit` on its workstream.
+`follow`, `brief_seen` and `scout` only need sight of the job, and `take`/`release`
+keep the lease desk's own person rule. A job outside every workstream with a person is
+changed only by that person or the operator (it used to be anyone who could read the
+repository). The refusal is 403 `reason: "not_job_person"`, `error` "only @santosh and
+people who can edit this job's workstream can do this" (`job_person` absent when the
+job has none). Undo of a stop is allowed to whoever stopped it and to the job's person.
+A job is seen only with read on its repository AND `view` on its workstream: the
+queue, `GET /v1/jobs/{id}` (404), the record and `activity`/job events leave it out.
+A sign-in whose token row names no one sees no workstream job and acts as no one's
+person, where it used to read as the server machine's own GitHub login.
+
 An empty `id` means the stream dropped and the server could not replay what was
 missed; the engine then sends one `team.changed` and one `workstream.changed`, both
 with `id` `""`: read both lists again. A dropped stream is otherwise reopened with

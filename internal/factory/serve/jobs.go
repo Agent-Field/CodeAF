@@ -943,7 +943,9 @@ func (h *Handler) undoJob(w http.ResponseWriter, r *http.Request, it factory.Ite
 			cur.Merging = nil
 			return nil
 		}
-		if u := cur.StopUndo; u != nil && now.Before(u.Until) && u.By == who && cur.State == factory.StateNew {
+		// A stop is undone by whoever stopped it or by the job's own person, so
+		// an editor who stopped someone's job never leaves it stuck for them.
+		if u := cur.StopUndo; u != nil && now.Before(u.Until) && (u.By == who || (who != "" && factory.NormalizeHandle(who) == cur.Person())) && cur.State == factory.StateNew {
 			// Undo restores the work snapshot, but receipts may have arrived
 			// since Stop. Keep those dollars on the same run.
 			restored := u.Stream

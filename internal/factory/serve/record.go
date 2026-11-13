@@ -36,7 +36,7 @@ func (h *Handler) audit(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
-	if viewer {
+	if viewer || h.workstreamsMatter() {
 		events = h.filterAudit(r, events)
 	}
 	// Redacted before the filters and the kind rewrite below: a machine name
