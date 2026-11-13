@@ -26,6 +26,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -48,16 +49,26 @@ func factoryWorkstreamAgentBaseURL() string {
 // factoryWorkstreamAgent answers one message to a workstream's server agent.
 func factoryWorkstreamAgent(st *store.Store, load func() (config.Config, error)) serve.AgentRunner {
 	return func(ctx context.Context, turn serve.AgentTurn) (serve.AgentTurnEnd, error) {
-		agent, err := session.New(session.Config{
+		profile := filepath.Join(turn.Dir, "profile")
+		cfg, err := applyV3Governance(session.Config{
 			Workspace:   filepath.Join(turn.Dir, "work"),
 			SessionFile: filepath.Join(turn.Dir, "talk.jsonl"),
-			ProfileDir:  filepath.Join(turn.Dir, "profile"),
-			Model:       factoryWorkstreamAgentModel(st, load),
+			ProfileDir:  profile,
+			Model:       factoryWorkstreamAgentModel(st, load, profile),
 			APIKey:      turn.Key, BaseURL: factoryWorkstreamAgentBaseURL(),
-			OneModel: true, DeterministicNames: true, CompactEnabled: true,
+			DeterministicNames: true, CompactEnabled: true,
 			System:     factoryWorkstreamAgentSystem(turn.Name),
 			Workstream: turn.Door,
-		})
+		}, profile, true, true)
+		// THE GATE IS THE DOOR, NOT AN APPROVAL ASK. Nobody sits in front of
+		// the server to answer one, and the belt's one tool checks on every
+		// write that the person being answered may change the workstream; so
+		// the posture is allow (yolo), and ONE MODEL, as the folder's empty
+		// profile would have it anyway.
+		if err != nil {
+			return serve.AgentTurnEnd{}, err
+		}
+		agent, err := session.New(cfg)
 		if err != nil {
 			return serve.AgentTurnEnd{}, err
 		}
@@ -71,13 +82,13 @@ func factoryWorkstreamAgent(st *store.Store, load func() (config.Config, error))
 		// way a person's stop interrupts it, and its stream then ends.
 		stopped := make(chan struct{})
 		defer close(stopped)
-		go func() {
+		guard.Go("factory workstream agent stop", func() {
 			select {
 			case <-ctx.Done():
 				agent.Interrupt()
 			case <-stopped:
 			}
-		}()
+		})
 		var said strings.Builder
 		say := func() {
 			if text := strings.TrimSpace(said.String()); text != "" {
@@ -143,8 +154,9 @@ func factoryAgentStepWords(e session.Event) string {
 }
 
 // factoryWorkstreamAgentModel is the model the server's agent answers on: the
-// factory's default model, else this server's own model, else codeaf's.
-func factoryWorkstreamAgentModel(st *store.Store, load func() (config.Config, error)) string {
+// factory's default model, else this server's own model, else the bottom rung
+// every headless seat stands on, read for the agent's own profile.
+func factoryWorkstreamAgentModel(st *store.Store, load func() (config.Config, error), profileDir string) string {
 	if st != nil {
 		if spending, err := st.Spending(); err == nil && strings.TrimSpace(spending.DefaultModel) != "" {
 			return spending.DefaultModel
@@ -155,7 +167,7 @@ func factoryWorkstreamAgentModel(st *store.Store, load func() (config.Config, er
 			return settings.Model
 		}
 	}
-	return config.DefaultModel
+	return config.ChatDefaultAt(profileDir)
 }
 
 // factoryWorkstreamAgentSystem is what the server's agent is told it is.

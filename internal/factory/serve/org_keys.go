@@ -5,6 +5,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/modelsource"
+
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
@@ -93,6 +95,6 @@ func (h *Handler) orgModelKey() string {
 	if h.config.Store == nil {
 		return ""
 	}
-	key, _ := h.config.Store.OrgKey("openrouter")
+	key, _ := h.config.Store.OrgKey(modelsource.DefaultID)
 	return key
 }

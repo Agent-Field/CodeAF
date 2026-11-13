@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/modelsource"
 )
 
 // ── THE ORGANIZATION'S MODEL KEYS ──────────────────────────────────────────
@@ -24,7 +26,7 @@ import (
 
 // OrgKeyProviders are the providers a key may be kept for. The server's
 // runner calls models through the default model source, which is OpenRouter.
-var OrgKeyProviders = []string{"openrouter"}
+var OrgKeyProviders = []string{modelsource.DefaultID}
 
 // OrgKey is one key as a screen may see it.
 type OrgKey struct {
