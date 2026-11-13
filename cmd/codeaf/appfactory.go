@@ -165,9 +165,16 @@ type appFactoryHub struct {
 	keptChanged func()
 	// linkSt is the invitations the engine holds and the lists it owes
 	// (appfactory_links.go), made by the first use.
-	linkSt    *linkState
-	jobEvents *appFactoryJobEvents
-	closed    bool
+	linkSt *linkState
+	// orgFollow is each connection's organization event follower and
+	// orgChanged relays what it hears (appfactory_org_events.go); a hub with
+	// no orgChanged follows nothing. orgRetry is the first wait before a
+	// dropped stream is reopened (one second when zero).
+	orgFollow  map[string]*appOrgFollow
+	orgChanged func(appwire.FactoryOrgChanged)
+	orgRetry   time.Duration
+	jobEvents  *appFactoryJobEvents
+	closed     bool
 }
 
 // newAppFactoryHub is a registry whose HTTP client takes no ambient proxy,
@@ -199,6 +206,7 @@ func (b *appBackend) factoryHub() *appFactoryHub {
 		b.factories = newAppFactoryHub()
 		b.factories.resume = b.resumeLocal
 		b.factories.keptChanged = func() { b.emit.Emit(appwire.EventFactorySessionsChanged, appwire.Empty{}) }
+		b.factories.orgChanged = func(e appwire.FactoryOrgChanged) { b.emit.Emit(appwire.EventFactoryOrgChanged, e) }
 	})
 	return b.factories
 }
@@ -227,6 +235,7 @@ func (h *appFactoryHub) forgetAll() {
 	h.signIns = map[string]*appFactorySignIn{}
 	h.links = map[string]*appFactoryLink{}
 	h.runtimeOK = nil
+	h.stopAllOrgFollowLocked()
 	h.dropAllHeldLocked()
 }
 
@@ -1040,6 +1049,7 @@ func (b *appBackend) FactoryDetach(_ context.Context, id string) error {
 	h.forgetKeptLocked(id)
 	delete(h.seen, id)
 	h.dropHeldLocked(id)
+	h.stopOrgFollowLocked(id)
 	for key, flow := range h.signIns {
 		if flow.factory == id {
 			delete(h.signIns, key)

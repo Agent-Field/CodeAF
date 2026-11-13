@@ -353,3 +353,33 @@ func TestGoAheadOnOrgWorkstreamNeedsWriteAccess(t *testing.T) {
 		t.Fatalf("go_aheads = %+v", ws.GoAheads)
 	}
 }
+
+// READING AN ORGANIZATION WORKSTREAM'S GO-AHEADS NEEDS SIGHT OF IT: its owner,
+// its teams, the teams it is shared with and the operator read them; anyone
+// else is answered 404, exactly as the workstream's own route answers them.
+// A group that is no organization workstream is read by anyone, as before.
+func TestGoAheadReadOnOrgWorkstreamNeedsSight(t *testing.T) {
+	o := newWSOrg(t)
+	webhook, launch, pricing, brand := o.orgScene(t)
+	read := func(who, group string, status int) {
+		t.Helper()
+		o.do(t, who, "GET", "/v1/policy?group="+group, -1, nil, status, nil)
+	}
+	read("abir", webhook.ID, 200)   // in the owning team
+	read("mia", webhook.ID, 200)    // in a team it is shared with
+	read("santosh", launch.ID, 200) // its owner
+	read("owner", brand.ID, 200)    // the operator
+	read("abir", launch.ID, 404)    // someone else's
+	read("santosh", brand.ID, 404)  // a team santosh is not in
+	read("abir", pricing.ID, 404)   // shared with nobody abir is with
+	read("abir", "ws_missing", 200) // no such workstream: an ordinary group
+	read("mia", "some-desk-group", 200)
+	var gone, hidden struct {
+		Error string `json:"error"`
+	}
+	o.do(t, "santosh", "GET", "/v1/workstreams/"+brand.ID, -1, nil, 404, &gone)
+	o.do(t, "santosh", "GET", "/v1/policy?group="+brand.ID, -1, nil, 404, &hidden)
+	if gone.Error == "" || hidden.Error != gone.Error {
+		t.Fatalf("a hidden workstream's policy said %q where the workstream says %q", hidden.Error, gone.Error)
+	}
+}

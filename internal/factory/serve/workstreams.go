@@ -123,23 +123,29 @@ func (v wsViewer) canGovern(w factory.OrgWorkstream) bool {
 	return v.operator || v.owns(w)
 }
 
-// orgWorkstreamWrite is whether id names an organization workstream and
-// whether the caller may write it; known is false, with no error, when it
-// names none: a go-ahead group
-// that is not an organization workstream keeps the rules it always had.
-func (h *Handler) orgWorkstreamWrite(r *http.Request, id string) (known, allowed bool, err error) {
+// orgWorkstreamAccess is whether id names an organization workstream and
+// whether the caller may see and write it; known is false, with no error, when
+// it names none: a go-ahead group that is not an organization workstream keeps
+// the rules it always had.
+func (h *Handler) orgWorkstreamAccess(r *http.Request, id string) (known, see, write bool, err error) {
 	if h.config.Store == nil || !strings.HasPrefix(id, workstreamIDPrefix) {
-		return false, false, nil
+		return false, false, false, nil
 	}
 	w, ok, err := h.config.Store.Workstream(id)
 	if err != nil || !ok {
-		return false, false, err
+		return false, false, false, err
 	}
 	v, err := h.wsViewer(r)
 	if err != nil {
-		return true, false, err
+		return true, false, false, err
 	}
-	return true, v.canWrite(w), nil
+	return true, v.canSee(w), v.canWrite(w), nil
+}
+
+// orgWorkstreamWrite is orgWorkstreamAccess's write half.
+func (h *Handler) orgWorkstreamWrite(r *http.Request, id string) (known, allowed bool, err error) {
+	known, _, allowed, err = h.orgWorkstreamAccess(r, id)
+	return known, allowed, err
 }
 
 // ── reads ──
