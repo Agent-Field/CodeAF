@@ -35,6 +35,8 @@ type TeamMembership interface {
 // TeamOwnership says whether a team owns a workstream. A team that owns one
 // carries its budget and go-ahead approval, so it cannot be deleted while it
 // does. The org workstreams lane fills it; with none set a team owns nothing.
+// IT IS ASKED WHILE THE TEAMS LOCK IS HELD, so it may read teams but must never
+// change them: a write from inside it would wait on itself.
 type TeamOwnership interface {
 	TeamOwnsWorkstream(team string) (bool, error)
 }
