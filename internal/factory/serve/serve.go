@@ -301,6 +301,11 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.jobVerbs()
 	h.goAheadRoutes()
 	h.teamRoutes()
+	h.workstreamRoutes()
+	if config.Store != nil {
+		// A team that owns an organization workstream cannot be deleted.
+		h.SetTeamOwnership(config.Store)
+	}
 	h.jobScreens()
 	h.scheduleJobTimer()
 	if config.Store != nil {

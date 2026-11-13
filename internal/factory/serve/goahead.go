@@ -73,6 +73,15 @@ func (h *Handler) policy(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
+	// A go-ahead for an organization workstream spends that workstream's
+	// budget, so approving one needs write access to it, the operator's
+	// included; any other group keeps the rule below.
+	if known, allowed, err := h.orgWorkstreamWrite(r, group); h.failed(w, err) {
+		return
+	} else if known && !allowed {
+		h.fail(w, http.StatusForbidden, "only its owner and the teams it is shared with can approve this workstream's go-aheads")
+		return
+	}
 	who, err := h.callerHandle(r)
 	if h.failed(w, err) {
 		return
