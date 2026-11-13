@@ -506,6 +506,73 @@ func TestNodeTreeLimitRefusesBeforeCheckpointWrites(t *testing.T) {
 	nodeTreeCostEnding(t, root, action)
 }
 
+// C4: a part a worker proposed runs on that worker and folds its bill into it
+// when it lands, so the parent's own spend already holds the part. The tree
+// total counts every dollar once: the part, and a grandchild two levels down,
+// are not counted again in each worker they folded into.
+func TestNodeTreeSpendCountsAPartFoldedIntoItsOwnerOnce(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "node")
+	useTaskUsageHome(t)
+	n := newNest(t, nil, nil)
+	root := n.parent
+	n.node.usage.CostUSD = 1
+	n.handOut(t, "Read the law")
+	part := nodeTreeChild(t, n.graph, root.id, "Read the law")
+	if part.owner != n.node || n.graph.runner(part) != n.node {
+		t.Fatal("the part is not owned by the worker that proposed it")
+	}
+	partWorker := n.workerFor(t, part)
+	n.handOutFrom(t, partWorker, "Read the examples")
+	grandchild := nodeTreeChild(t, n.graph, part.id, "Read the examples")
+	if grandchild.owner != partWorker {
+		t.Fatal("the grandchild is not owned by the part's worker")
+	}
+	grandWorker := n.workerFor(t, grandchild)
+	partWorker.usage.CostUSD = 2
+	grandWorker.usage.CostUSD = .5
+	// Real spend is $1 + $2 + $0.50 = $3.50 at every point below.
+	limit := func(ceiling float64) string {
+		n.graph.mu.Lock()
+		root.treeLimit = &nodeTreeLimit{CeilingUSD: ceiling}
+		n.graph.mu.Unlock()
+		return root.treeSpendLimit()
+	}
+	land := func(node *TaskNode, worker *Agent) {
+		node.openRoom().speaking(nil)
+		n.graph.runner(node).foldTaskUsage(node, worker)
+	}
+	for _, step := range []struct {
+		name string
+		land func()
+	}{
+		{"before any fold", func() {}},
+		{"grandchild folded into the part's worker", func() { land(grandchild, grandWorker) }},
+		{"part folded into the root's worker", func() { land(part, partWorker) }},
+	} {
+		step.land()
+		if action := limit(4); action != "" {
+			t.Fatalf("%s: $3.50 of real spend was refused under a $4 tree limit: %s", step.name, action)
+		}
+		if action := limit(3.5); action != config.CrewTaskCapAction(3.5) {
+			t.Fatalf("%s: $3.50 of real spend passed a $3.50 tree limit: %q", step.name, action)
+		}
+	}
+}
+
+// nodeTreeChild is the one node under parent with title.
+func nodeTreeChild(t *testing.T, g *TaskGraph, parent uint64, title string) *TaskNode {
+	t.Helper()
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	for _, id := range g.order {
+		if node := g.nodes[id]; node != nil && node.parent == parent && node.spec.title == title {
+			return node
+		}
+	}
+	t.Fatalf("no task %q under %d", title, parent)
+	return nil
+}
+
 func nodeTreeReadResponse(id string, cost float64) *ai.Response {
 	response := toolResponse(id, "read", `{"path":"rules.txt"}`)
 	response.Usage.Cost = &cost

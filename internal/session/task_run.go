@@ -672,6 +672,12 @@ type TaskNode struct {
 	// reaches the project index (task_index.go) and the node's own notice on the
 	// way past.
 	cost float64
+	// folded is the part of cost that is OTHER nodes' bills: a part this node's
+	// worker proposed runs on that worker and folds into it when it lands, so the
+	// worker's total, and then this node's, already holds the part. The part's
+	// own row keeps its bill too, which is right for each row and wrong for a
+	// sum, so a tree's spend total takes this off ([TaskNode.treeOwnSpend]).
+	folded float64
 	// checkedOn is the model the node's checking pass ran on, read off the
 	// auditor when its spend folds in (task_audit.go) and empty when there was
 	// none — a node that never reached a check, or one whose check could not
@@ -3573,6 +3579,17 @@ func (n *TaskNode) addSpend(used Usage) {
 	n.output += used.Output
 	n.cacheRead += used.CacheRead
 	n.cacheWrite += used.CacheWrite
+	n.graph.mu.Unlock()
+}
+
+// addFolded records dollars of the node's bill that are other nodes' bills
+// ([TaskNode.folded]).
+func (n *TaskNode) addFolded(usd float64) {
+	if n == nil || usd <= 0 {
+		return
+	}
+	n.graph.mu.Lock()
+	n.folded += usd
 	n.graph.mu.Unlock()
 }
 
@@ -7603,11 +7620,16 @@ func firstLines(text string, n int) string {
 // node on the way past — this is the only moment anybody can ask a child agent
 // what it cost, because the line after this one closes it.
 func (a *Agent) foldTaskUsage(node *TaskNode, child *Agent) {
-	used := child.Usage()
+	child.mu.Lock()
+	used, folded := child.usage, child.foldedTaskUSD
+	child.mu.Unlock()
 	// The node keeps the WHOLE tally, not just the money. One widening here
 	// covers every fold there is — the worker, each repair round, the auditor,
 	// a harness design thread — because all of them arrive through this door.
+	// The parts the child had folded in travel with its money, so the node
+	// still knows which of its dollars are other rows' bills.
 	node.addSpend(used)
+	node.addFolded(folded)
 	if used.Input == 0 && used.Output == 0 && used.CostUSD == 0 {
 		return
 	}
@@ -7628,6 +7650,14 @@ func (a *Agent) foldTaskUsage(node *TaskNode, child *Agent) {
 		CacheCreationInputTokens: used.CacheWrite,
 		Cost:                     &cost,
 	}}, child.Model(), used.Calls)
+	// THE LEDGER NOW HOLDS THIS NODE'S BILL A SECOND TIME, inside its own
+	// total, while the node's row keeps it too. Marked here, in the same fold,
+	// a tree total that reads both counts it once.
+	if cost > 0 && ledger != nil {
+		ledger.mu.Lock()
+		ledger.foldedTaskUSD += cost
+		ledger.mu.Unlock()
+	}
 	// The books on disk are told as the node's tally reaches them, for the
 	// reason [Agent.driveBeltRun] stamps a run's: home takes the larger of the
 	// stamped books and the index rows, and that is exact only while meta.json

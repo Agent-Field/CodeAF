@@ -2352,7 +2352,8 @@ A routed crew refuses a call that would cross its per-task limit. Reaching the r
 ceiling ends workers in flight and starts no more.
 On the node belt, the saved ceiling survives restarts; reaching it refuses each worker's
 next request, queued workers spend nothing, and in-flight calls finish without
-cancellation. When the per-task limit binds, the report says `this task reached its $5 limit · raise it in /crew` (with your configured
+cancellation. Every dollar counts once, including a part's spend inside the worker that
+proposed it. When the per-task limit binds, the report says `this task reached its $5 limit · raise it in /crew` (with your configured
 amount). Raise it with `/crew cap task <$>`, then rerun the remaining work with `/task`.
 When the conversation's smaller limit binds, the report names that amount and `/settings`.
 Continuing a run is for interrupted work; a settled dollar-limit ending needs a rerun.

@@ -431,7 +431,11 @@ type taskRecord struct {
 	// carried a bill, which resumes as zero — the same thing an unpriced model
 	// leaves behind, and the same thing every surface here already draws as
 	// nothing rather than as "$0.00".
-	CostUSD    float64        `json:"costUsd,omitempty"`
+	CostUSD float64 `json:"costUsd,omitempty"`
+	// FoldedUSD is the part of CostUSD that is other nodes' bills, folded in
+	// when the parts this node's worker proposed landed ([TaskNode.folded]). A
+	// restored tree's spend total counts those dollars once, on their own rows.
+	FoldedUSD  float64        `json:"foldedUsd,omitempty"`
 	TreeLimit  *nodeTreeLimit `json:"tree_limit,omitempty"`
 	Input      int            `json:"input,omitempty"`
 	Output     int            `json:"output,omitempty"`
@@ -1180,7 +1184,7 @@ func (g *TaskGraph) document() taskDocument {
 // documentLocked is the same reading with the graph's lock already held, for the
 // admission that publishes and writes under one hold of it
 // ([TaskGraph.admitWritten]).
-func (g *TaskGraph) documentLocked(bills ...map[uint64]float64) taskDocument {
+func (g *TaskGraph) documentLocked(bills ...map[uint64]nodeBill) taskDocument {
 	document := taskDocument{Type: taskDocumentType, Version: taskFileVersion, Seq: g.seq}
 	for _, id := range g.order {
 		node := g.nodes[id]
@@ -1190,7 +1194,8 @@ func (g *TaskGraph) documentLocked(bills ...map[uint64]float64) taskDocument {
 		record := node.recordLocked()
 		if len(bills) > 0 {
 			// A fold after the live snapshot may already have raised the frozen bill.
-			record.CostUSD = max(record.CostUSD, bills[0][id])
+			record.CostUSD = max(record.CostUSD, bills[0][id].spend)
+			record.FoldedUSD = max(record.FoldedUSD, bills[0][id].folded)
 		}
 		document.Nodes = append(document.Nodes, record)
 	}
@@ -1460,6 +1465,7 @@ func (n *TaskNode) recordLocked() taskRecord {
 		StartedAt:      n.started,
 		EndedAt:        n.ended,
 		CostUSD:        n.cost,
+		FoldedUSD:      n.folded,
 		TreeLimit:      n.treeLimit,
 		Input:          n.input,
 		Output:         n.output,
@@ -2403,6 +2409,7 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		started:        record.StartedAt,
 		ended:          record.EndedAt,
 		cost:           record.CostUSD,
+		folded:         record.FoldedUSD,
 		treeLimit:      record.TreeLimit,
 		input:          record.Input,
 		output:         record.Output,

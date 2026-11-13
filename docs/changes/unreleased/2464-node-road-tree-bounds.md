@@ -10,4 +10,6 @@ invalidates:
 The duplicate check uses the plan store's title normalization, so both task roads compare
 work the same way. The tree total is the lower of the per-task limit (crew.task_cap) and
 the conversation's remaining limit; reaching it stops the whole tree and names the limit.
+Each dollar counts once: a part's bill folded into the worker that proposed it is not
+counted again in that worker, and the checkpoint keeps which part of a bill was folded.
 A typed task starts its own tree. The default road is unchanged.

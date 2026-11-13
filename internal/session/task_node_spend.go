@@ -15,9 +15,15 @@ type nodeTreeLimit struct {
 	ConversationCapUSD float64 `json:"conversation_cap_usd,omitempty"`
 }
 
+// nodeBill is one node's live bill and the part of it that is other nodes'
+// bills folded in ([TaskNode.folded]), read together for a checkpoint.
+type nodeBill struct {
+	spend, folded float64
+}
+
 // nodeTreeBills snapshots live bills before a checkpoint takes the graph lock.
 // Atomic direction and app writes need the same unfolded costs as ordinary saves.
-func (g *TaskGraph) nodeTreeBills() map[uint64]float64 {
+func (g *TaskGraph) nodeTreeBills() map[uint64]nodeBill {
 	if bashBeltAsked() {
 		return nil
 	}
@@ -29,11 +35,43 @@ func (g *TaskGraph) nodeTreeBills() map[uint64]float64 {
 		}
 	}
 	g.mu.Unlock()
-	bills := make(map[uint64]float64, len(nodes))
+	bills := make(map[uint64]nodeBill, len(nodes))
 	for _, node := range nodes {
-		bills[node.id] = node.spend()
+		bills[node.id] = node.liveBill()
 	}
 	return bills
+}
+
+// liveBill is [TaskNode.spend] with the folded part beside it, both read off
+// the same frozen figures and the same live worker.
+func (n *TaskNode) liveBill() nodeBill {
+	n.graph.mu.Lock()
+	room, bill := n.room, nodeBill{spend: n.cost, folded: n.folded}
+	n.graph.mu.Unlock()
+	child := room.speaker()
+	if child == nil {
+		// The bill names the worker until its fold, as [TaskNode.spend] reads it.
+		child = room.billed()
+	}
+	if child != nil {
+		child.mu.Lock()
+		bill.spend += child.usage.CostUSD
+		bill.folded += child.foldedTaskUSD
+		child.mu.Unlock()
+	}
+	return bill
+}
+
+// treeOwnSpend is what this node itself spent toward its tree's total: its bill
+// without the parts that folded into it, which their own nodes count.
+//
+// A CHILD'S BILL IS IN ITS PARENT TOO. A part runs on the worker that proposed
+// it and folds into that worker when it lands, so a sum of every node's
+// [TaskNode.spend] counted a child twice and a grandchild three times, and a
+// tree stopped at a fraction of its limit.
+func (n *TaskNode) treeOwnSpend() float64 {
+	bill := n.liveBill()
+	return bill.spend - bill.folded
 }
 
 func (g *TaskGraph) prepareNodeTreeLimits() {
@@ -62,7 +100,7 @@ func (g *TaskGraph) setNodeTreeLimit(node *TaskNode) {
 	if saved == nil {
 		for _, member := range g.nodes {
 			if member != nil && g.nodeRootLocked(member.id) == node.id {
-				spent += member.cost
+				spent += member.cost - member.folded
 			}
 		}
 	}
@@ -90,8 +128,9 @@ func (g *TaskGraph) setNodeTreeLimit(node *TaskNode) {
 	g.mu.Unlock()
 }
 
-// treeSpendLimit reads the same bills as the per-node boundary. Collect under
-// the graph lock, then release it before spend takes that lock for each node.
+// treeSpendLimit reads the same bills as the per-node boundary, each dollar
+// once ([TaskNode.treeOwnSpend]). Collect under the graph lock, then release it
+// before each node's bill takes that lock.
 func (n *TaskNode) treeSpendLimit() string {
 	if bashBeltAsked() {
 		return ""
@@ -117,7 +156,7 @@ func (n *TaskNode) treeSpendLimit() string {
 	}
 	spent := 0.0
 	for _, node := range nodes {
-		spent += node.spend()
+		spent += node.treeOwnSpend()
 	}
 	if spent < limit.CeilingUSD {
 		return ""
