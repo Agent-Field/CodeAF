@@ -79,8 +79,19 @@ func TestServiceStopDoorsRecordNoFailedOutcome(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if stored.Failure == nil || stored.Failure.Code != factory.CodeStopped {
-				t.Fatalf("the door cut no step: failure %+v", stored.Failure)
+			// The door cut the step it found under way: the stop is on that step.
+			cut := stored.Stream.Phases[stored.Stream.Cur].Failure
+			if cut == nil || cut.Code != factory.CodeStopped {
+				t.Fatalf("the door cut no step: step %+v", stored.Stream.Phases[stored.Stream.Cur])
+			}
+			// The job carries it too, except after a reset: a reset hands the
+			// job on in Backlog, and the stop is nobody's failure there.
+			if tt.name == "reset before a reassignment" {
+				if stored.Failure != nil || factory.JobState(stored) != "backlog" {
+					t.Fatalf("the reset left failure %+v, state %s", stored.Failure, factory.JobState(stored))
+				}
+			} else if stored.Failure == nil || stored.Failure.Code != factory.CodeStopped {
+				t.Fatalf("the door left no stop on the job: failure %+v", stored.Failure)
 			}
 			cursor := before.Cursor
 			after, err := live.ReadOutcomes(f.store.Root(), &cursor, 100)

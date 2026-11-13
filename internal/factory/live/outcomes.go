@@ -56,7 +56,7 @@ func Outcomes(before, after factory.Item, now time.Time) []Event {
 	if factory.JobState(after) == "done" && factory.JobState(before) != "done" && !merged && factory.JobDoneHow(after) != "merged" {
 		out = append(out, newOutcome(after, Outcome{Kind: "finished", At: outcomeTime(after.DoneAt, now), How: factory.JobDoneHow(after)}))
 	}
-	if f := after.Failure; f != nil && !personStop(after) && (before.Failure == nil || !before.Failure.At.Equal(f.At)) {
+	if f := after.Failure; f != nil && failedJob(after) && (before.Failure == nil || !before.Failure.At.Equal(f.At)) {
 		out = append(out, newOutcome(after, Outcome{Kind: "failed", At: f.At, Code: f.Code, Step: f.Step}))
 	}
 	if needsOutcome(before, after) {
@@ -65,16 +65,27 @@ func Outcomes(before, after factory.Item, now time.Time) []Event {
 	return out
 }
 
-// personStop says the job's failure is a person's decision, not a failed job.
-// EVERY ROAD THAT ENDS A RUN ON A PERSON'S WORD writes it as a failure coded
-// stopped on the step it cut and on the job: Stop at a gate or in a step, a
-// step's own Stop, a no to the stop after a step, Close, Reject, the reset
-// before a reassignment and a cancel out of attempts. Read as a failure it was
-// recorded as failed, which the desktop app answers by waking the agent for a
-// failed job. A job a person stopped waits in Backlog ([factory.JobState]),
-// and the history record skips the same failure.
-func personStop(it factory.Item) bool {
-	return it.Failure.Code == factory.CodeStopped || factory.StoppedByPerson(it)
+// failedJob says the job's failure is a failed job, as factory.job then reads
+// it. A FAILED OUTCOME SAYS WHAT factory.job SAYS: the desktop app wakes its
+// agent for a failed job from either, so they must agree. Every road that
+// ends a run writes a failure coded stopped on the step it cut and on the
+// job; what the job then is decides:
+//   - in Backlog ([factory.StoppedByPerson]): a person's own stop, by a door
+//     or by an answer, or a reassignment that handed the job on. Nothing.
+//   - in Needs you: the job failed and waits on a person, whatever the code.
+//   - done: a Close or Reject ended it, and its finished outcome says so; a
+//     stop there is that finish. Any other failure on a done job is kept.
+//
+// The code alone said too much: a stopped failure on a job that reads Needs
+// you was recorded as nothing while factory.job showed a failed job.
+func failedJob(it factory.Item) bool {
+	switch factory.JobState(it) {
+	case "backlog":
+		return false
+	case "done":
+		return it.Failure.Code != factory.CodeStopped
+	}
+	return true
 }
 
 func needsOutcome(before, after factory.Item) bool {

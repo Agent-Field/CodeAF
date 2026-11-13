@@ -691,6 +691,11 @@ need?, code?, step?, pr_number?, pr_url?}`. `kind` is `finished`, `merged`,
 `failed` or `needs_you`. `how` describes a non-merge finish; merged outcomes
 carry the PR number and URL; failures carry code and step; needs-you outcomes
 carry need and reason. Titles are limited to 200 bytes at a rune boundary.
+A `failed` outcome is a new failure on a job that `factory.job` then shows
+as `needs_you`, or a failure other than `stopped` on a `done` job. A job a
+person stopped, by any door or by an answer that stops it, and a job a
+change of assignee stopped, read `backlog` and record nothing; a Close or
+Reject records only its `finished`.
 The Factory records outcomes at job updates even with no app connected and
 keeps the newest 2,000 independently of its live notifications.
 

@@ -352,3 +352,44 @@ func TestHealOutcomesClosesOnlyAGap(t *testing.T) {
 		t.Fatalf("an outcome after the gap: %+v", got)
 	}
 }
+
+// A FAILED OUTCOME SAYS WHAT factory.job SAYS OF THE JOB. A failure coded
+// stopped is a failed job when the job then reads Needs you, as factory.job
+// shows it to the desktop app; nothing in Backlog (a person's stop); and only
+// the finish when a Close or Reject ended the job. Any other failure on a done
+// job is still recorded.
+func TestFailedOutcomeFollowsTheJobState(t *testing.T) {
+	now := time.Date(2026, 11, 12, 19, 0, 0, 0, time.UTC)
+	stop := &factory.Failure{Step: "plan", Code: factory.CodeStopped, Next: factory.FailureStopped, At: now}
+	yes, no := true, false
+	before := factory.Item{ID: 1, State: factory.StateRunning, PersonStopped: &no}
+	for _, tt := range []struct {
+		name  string
+		after factory.Item
+		state string
+		want  []string
+	}{
+		{"a stop that leaves the job waiting on a person", factory.Item{ID: 1, State: factory.StateNew, PersonStopped: &no, Failure: stop}, "needs_you", []string{"failed"}},
+		{"a person's stop", factory.Item{ID: 1, State: factory.StateNew, PersonStopped: &yes, Failure: stop}, "backlog", nil},
+		{"an old record's stop", factory.Item{ID: 1, State: factory.StateNew, Failure: stop}, "backlog", nil},
+		{"a Close", factory.Item{ID: 1, State: factory.StateNew, PersonStopped: &yes, Failure: stop, DoneHow: "closed_locally", DoneAt: now}, "done", []string{"finished"}},
+		{"a failure on a merged job", factory.Item{ID: 1, PullRequest: &factory.PullRequest{State: factory.PRMerged}, Failure: &factory.Failure{Code: factory.CodeToolError, At: now}}, "done", []string{"merged", "failed"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := factory.JobState(tt.after); got != tt.state {
+				t.Fatalf("the job reads %s, want %s", got, tt.state)
+			}
+			var kinds []string
+			for _, e := range live.Outcomes(before, tt.after, now) {
+				var got live.Outcome
+				if err := json.Unmarshal(e.Data, &got); err != nil {
+					t.Fatal(err)
+				}
+				kinds = append(kinds, got.Kind)
+			}
+			if !reflect.DeepEqual(kinds, tt.want) {
+				t.Fatalf("recorded %v, want %v", kinds, tt.want)
+			}
+		})
+	}
+}

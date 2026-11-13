@@ -122,3 +122,84 @@ func TestLoopPersonStopsRecordNoOutcome(t *testing.T) {
 		}
 	})
 }
+
+// AN ANSWER THAT STOPS THE JOB IS THE PERSON'S STOP, on the runner's own
+// copy of the job as at the Stop door: a cancel to a step out of rounds and a
+// no to the budget end the run, and the job waits in Backlog asking nothing,
+// with no outcome. The job here was started by a person (a Start takes any
+// earlier stop down, factory.ClearPersonStop), which is the copy a runner
+// pulls from a Factory service; the loop's stop left it reading as a failed
+// job waiting on that person ("Stopped by you" in Needs you).
+func TestLoopAnswersThatStopLeaveTheJobInBacklog(t *testing.T) {
+	stopped := func(it factory.Item) bool {
+		return it.State == factory.StateNew && it.Stream != nil && !it.Stream.Ended.IsZero()
+	}
+	started := func(t *testing.T, g *rig, id int) {
+		t.Helper()
+		if err := g.st.Update(id, func(it *factory.Item) error { factory.ClearPersonStop(it); return nil }); err != nil {
+			t.Fatal(err)
+		}
+		if err := g.r.Launch(id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	check := func(t *testing.T, g *rig, id int, cursor int64, step, need string) {
+		t.Helper()
+		it := g.wait(id, "stopped by the answer", stopped)
+		cut := it.Stream.Phases[it.Stream.Cur]
+		if cut.Name != step || cut.Failure == nil || cut.Failure.Code != factory.CodeStopped {
+			t.Fatalf("the answer cut no step: %+v", cut)
+		}
+		if factory.JobState(it) != "backlog" || !factory.StoppedByPerson(it) {
+			t.Errorf("the stopped job reads %s (failure %+v, person stopped %v), want backlog", factory.JobState(it), it.Failure, factory.StoppedByPerson(it))
+		}
+		// The stop records nothing. (The runner's copy of a loop's wait has
+		// no clock of its own, so a write before the answer may record that
+		// same wait again; this copy's outcomes are never served.)
+		after, _ := outcomesAfter(t, g, cursor)
+		for _, e := range after {
+			if e.Kind != "needs_you" || e.Need != need || !e.At.Before(cut.Failure.At) {
+				t.Errorf("the answer's stop recorded %+v", e)
+			}
+		}
+	}
+	t.Run("cancel a step out of rounds", func(t *testing.T) {
+		g := newRig(t, map[factory.StageKind]Executor{
+			factory.StageChat: ExecutorFunc(func(context.Context, Job) (factory.StageResult, error) {
+				return factory.StageResult{Done: true, Findings: 2}, nil
+			}),
+		}, nil)
+		review := chat("review")
+		review.Until, review.Max = "clean", 1
+		id := g.add("cancel when stuck", review, chat("proof"))
+		started(t, g, id)
+		g.wait(id, "out of rounds", func(it factory.Item) bool {
+			return it.State == factory.StateNeedsYou && it.QKind == factory.QKindOutOfAttempts
+		})
+		_, cursor := outcomesAfter(t, g, 0)
+		if err := g.r.Answer(id, false, factory.ChoiceCancel); err != nil {
+			t.Fatal(err)
+		}
+		check(t, g, id, cursor, "review", factory.NeedsOutOfAttempts)
+	})
+	t.Run("no to the budget", func(t *testing.T) {
+		g := newRig(t, map[factory.StageKind]Executor{
+			factory.StageChat: ExecutorFunc(func(context.Context, Job) (factory.StageResult, error) {
+				res := done("")
+				res.Spent = 1.5
+				return res, nil
+			}),
+		}, nil)
+		id := g.add("no more money", chat("write"), chat("proof"))
+		if err := g.st.Update(id, func(it *factory.Item) error { it.Cap = 1; return nil }); err != nil {
+			t.Fatal(err)
+		}
+		started(t, g, id)
+		g.wait(id, "at its budget", func(it factory.Item) bool { return it.State == factory.StateNeedsYou && it.QKind == "cap" })
+		_, cursor := outcomesAfter(t, g, 0)
+		if err := g.r.Answer(id, false, ""); err != nil {
+			t.Fatal(err)
+		}
+		check(t, g, id, cursor, "write", factory.NeedsSpendingLimit)
+	})
+}
