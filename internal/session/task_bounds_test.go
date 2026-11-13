@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -222,6 +223,66 @@ func TestALiveRaiseLiftsTheRunningTreeCeiling(t *testing.T) {
 	}
 	if spec.CostCeiling == nil || spec.CostCeiling() != 9 {
 		t.Fatal("the engine's ceiling did not rise with the raise")
+	}
+}
+
+// THE PER-TASK LIMIT IS SAID ONCE, WHERE THE PERSON LOOKS. A run its tree's
+// dollar ceiling ended leads the row's report and the outcome note with the
+// limit's sentence, and carries it as the crew's stop — the line under the row
+// and the task's place in the Tasks column. Whether the engine's ceiling cut
+// the run with no call refused (the hand test: the root had written its result
+// and the outcome word was the generic one) or the crew's guard refused the
+// root's own call (which made the same sentence the worker's failure), the
+// sentence is said exactly once in each.
+func TestAPerTaskLimitEndingSaysItsSentenceOnceWhereThePersonLooks(t *testing.T) {
+	want := config.CrewTaskCapAction(config.CrewTaskCapDefault)
+	for _, tc := range []struct {
+		name    string
+		summary RunSummary
+	}{
+		{"the engine's ceiling cut it", RunSummary{Outcome: "ran and did not finish", Result: "Wrote a.txt, b.txt and c.txt", Limit: RunLimitCost}},
+		{"the guard refused the root", RunSummary{Outcome: runLimitSentence, Failure: want, Limit: RunLimitCost}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("CODEAF_TASK_BELT", "bash")
+			useTaskUsageHome(t)
+			double := newBeltRunDouble("")
+			double.summary = tc.summary
+			double.leaveOpen = true
+			registerBeltRunEngine(t, double)
+			dir := t.TempDir()
+			agent, _ := newTestAgent(t, beltRunCompleter{text: "Wrote a.txt, b.txt and c.txt"}, func(c *Config) {
+				c.Workspace = newTestRepo(t)
+				c.Place = Place{Dir: dir}
+				c.SessionFile = filepath.Join(dir, placeTranscript)
+				c.ProfileDir = t.TempDir()
+				c.AskConsent = false
+				c.RouteCrew = func(config.CrewAsk) (crewroute.Decision, error) { return liveDecision(), nil }
+			})
+			id, _, _, err := agent.StartTask(context.Background(), "Write three files a.txt, b.txt and c.txt", false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			<-double.entered
+			endBeltRun(t, agent, double)
+			row, found := runRowOf(agent.graph(), id)
+			if !found || row.Ending != TaskEndingCostLimit || strings.Count(row.Report, want) != 1 || !strings.HasPrefix(row.Report, want) {
+				t.Fatalf("the row's report does not lead with the limit exactly once:\n%s\n%+v", row.Report, row)
+			}
+			if row.Crew == nil || row.Crew.Stopped != want {
+				t.Fatalf("the row's crew does not stop on the limit, so nothing draws it under the row: %+v", row.Crew)
+			}
+			store := beltRunStoreAt(t, dir)
+			defer store.Close()
+			said, led := 0, false
+			for _, note := range store.Notes(strconv.FormatUint(id, 10), 0) {
+				said += strings.Count(note.Body, want)
+				led = led || strings.HasPrefix(note.Body, want+" · ")
+			}
+			if said != 1 || !led {
+				t.Fatalf("the outcome note says the limit %d times, leading=%v: %+v", said, led, store.Notes(strconv.FormatUint(id, 10), 0))
+			}
+		})
 	}
 }
 

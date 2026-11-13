@@ -126,7 +126,34 @@ func (run *beltRun) taskLimitWords(summary RunSummary) string {
 	return ""
 }
 
+// taskLimitEnding is the summary a run's ending is told from. When the tree's
+// per-task ceiling ended the run, the limit's sentence is the account the
+// ending leads with, in the place a worker's failure stands
+// ([runEndingWords]), exactly once.
+//
+// THE SENTENCE WAS ADDED, NOT PLACED. It was appended to whatever the ending
+// already said, so a run the engine's ceiling cut with no call refused led with
+// the generic "ran and did not finish" and kept the sentence on a second line,
+// and a run whose root the crew's guard refused at the same limit said it
+// twice: once as the worker's failure and again appended.
+func (run *beltRun) taskLimitEnding(summary RunSummary) RunSummary {
+	if words := run.taskLimitWords(summary); words != "" {
+		summary.Failure = words
+	}
+	return summary
+}
+
+// stopCrewAtTaskLimit records the per-task limit as the routed crew's stop
+// when the tree's ceiling ended the run. The crew's stop is what draws the
+// sentence under the run's row and lists the task as needing the person: the
+// engine's ceiling can end a run before any seat's call is refused, and then
+// nothing else would say why it stopped or how to raise it.
+func (run *beltRun) stopCrewAtTaskLimit(summary RunSummary) {
+	if words := run.taskLimitWords(summary); words != "" {
+		run.crew.stoppedOn(words)
+	}
+}
+
 func (run *beltRun) outcomeNote(summary RunSummary, landing RunLanding, span time.Duration) string {
-	line := beltRunOutcomeNote(run.store, run.root, summary, landing, span)
-	return withReport(line, run.taskLimitWords(summary))
+	return beltRunOutcomeNote(run.store, run.root, run.taskLimitEnding(summary), landing, span)
 }

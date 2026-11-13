@@ -1112,6 +1112,19 @@ func (a *Agent) stopCrew(run *beltRun, err error) error {
 	return crewStopped{action: stopped.Action, cause: err}
 }
 
+// stoppedOn records action as the crew's stop when nothing stopped it yet. A
+// stop a seat's refusal already recorded ([Agent.stopCrew]) stands.
+func (c *taskCrew) stoppedOn(action string) {
+	if c == nil || strings.TrimSpace(action) == "" {
+		return
+	}
+	c.mu.Lock()
+	if c.decision.Stopped == "" {
+		c.decision.Stopped = action
+	}
+	c.mu.Unlock()
+}
+
 // guardTaskCap is the per-task limit the crew's guard holds now, with every
 // raise the person gave it; zero for no crew or no limit.
 func (c *taskCrew) guardTaskCap() float64 {

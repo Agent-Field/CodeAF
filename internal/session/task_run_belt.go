@@ -2127,6 +2127,7 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 
 // Completion keeps landing, the final summary and the outcome note in their original order.
 func (a *Agent) completeBeltRun(ctx context.Context, engine RunEngine, run *beltRun, summary RunSummary) {
+	run.stopCrewAtTaskLimit(summary)
 	var landing RunLanding
 	if summary.KeepCopy {
 		// Refusing a transfer leaves the copy ready, not the plan still running.
@@ -2654,8 +2655,8 @@ func cancelledByRunEnding(store *plandb.Store, id uint64) bool {
 // the row and the conversation's note are built from, so the two cannot name
 // two different endings.
 func (a *Agent) beltRunNotice(run *beltRun, summary RunSummary, landing RunLanding) TaskNotice {
+	summary = run.taskLimitEnding(summary)
 	state, report := run.noticeResultWords(summary, landing)
-	report = withReport(report, run.taskLimitWords(summary))
 	notice := TaskNotice{
 		ID: run.row, Title: run.title, State: state,
 		// A LIMIT ITS PERSON SET IS THE ROW'S ENDING, so the reason a surface
