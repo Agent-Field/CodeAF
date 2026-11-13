@@ -123,7 +123,7 @@ var OrgVerbs = map[string][]string{
 	RulesChanged:    {"changed rules"},
 	RoutesChanged:   {"changed routing"},
 	SpendingChanged: {"changed spending defaults"},
-	SettingsChanged: {"changed settings"},
+	SettingsChanged: {"changed settings", "set model key", "removed model key"},
 }
 
 // IsOrgKind is whether kind is one of the organization's own changes.

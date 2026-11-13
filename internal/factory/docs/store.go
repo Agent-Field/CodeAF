@@ -267,6 +267,16 @@ func (s *Store) Since(doc string, since int64) (State, error) {
 	return st, rows.Err()
 }
 
+// Head is doc's last seq: 0 for a document nothing was ever written into.
+func (s *Store) Head(doc string) (int64, error) {
+	var head int64
+	err := s.db.QueryRow(`SELECT head FROM docs WHERE doc = ?`, doc).Scan(&head)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	return head, err
+}
+
 // PutSnapshot keeps state as the document's snapshot covering seq, and drops
 // the updates it covers. A snapshot at or behind the one kept is not an
 // error, because two desks may compact at once: kept is false and nothing

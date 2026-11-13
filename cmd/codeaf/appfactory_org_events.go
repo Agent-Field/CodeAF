@@ -206,6 +206,8 @@ func (h *appFactoryHub) relayOrg(id string, f *appOrgFollow, kind, data string) 
 	switch kind {
 	case api.EventPresence:
 		return h.relayPresence(id, f, data)
+	case api.EventAgentEntry, api.EventAgentState:
+		return h.relayAgent(id, f, data)
 	case api.TeamChangedKind, api.EventWorkstreamChanged, api.EventWorkstreamRemoved:
 		var body api.WorkstreamEvent
 		if json.Unmarshal([]byte(data), &body) != nil || body.ID == "" {
@@ -251,5 +253,30 @@ func (h *appFactoryHub) relayPresence(id string, f *appOrgFollow, data string) b
 	}
 	h.orgPresence(appwire.FactoryOrgPresence{Connection: id,
 		Item: appwire.OrgPresenceItem{Kind: body.Item.Kind, ID: body.Item.ID}, Here: here})
+	return true
+}
+
+// relayAgent emits one line of a workstream's server agent, or what it is
+// doing now, exactly as the server sent it to this sign-in. It is false when f
+// may no longer relay.
+func (h *appFactoryHub) relayAgent(id string, f *appOrgFollow, data string) bool {
+	var body api.AgentEvent
+	if json.Unmarshal([]byte(data), &body) != nil || body.ID == "" || (body.Entry == nil && body.AgentState == nil) {
+		return true
+	}
+	if !h.stillFollowing(id, f) {
+		return false
+	}
+	if h.orgAgent == nil {
+		return true
+	}
+	out := appwire.FactoryOrgWorkstreamAgent{Connection: id, ID: body.ID}
+	if e := body.Entry; e != nil {
+		out.Entry = &appwire.OrgAgentEntry{Seq: e.Seq, At: e.At, Kind: e.Kind, By: e.By, Text: e.Text, Tool: e.Tool, Failed: e.Failed, Turn: e.Turn}
+	}
+	if s := body.AgentState; s != nil {
+		out.State = &appwire.OrgAgentState{State: s.State, Turn: s.Turn, For: s.For, Since: s.Since}
+	}
+	h.orgAgent(out)
 	return true
 }

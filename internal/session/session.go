@@ -2559,6 +2559,12 @@ type Config struct {
 	// foremanFloorDoor), on a launch that has a Factory door.
 	Floor FloorDoor
 
+	// Workstream is an organization server's door onto the ONE workstream
+	// this conversation is the agent of (tools_workstream.go). NIL IS NO
+	// DOOR. When it is set the belt is `workstream_pages` and nothing else:
+	// the server's agent touches no shell, file or machine.
+	Workstream WorkstreamDoor
+
 	// factoryWindow overrides how long one factory card holds its tool call
 	// open, for tests that watch the window end. Zero is [factoryCardWindow].
 	factoryWindow time.Duration
