@@ -233,7 +233,64 @@ func (h *Handler) askRepo(r *http.Request, token, key string) (allow, cache bool
 // viewer gets recomputed job totals, and since-counters cleared, because
 // those counters are not stored per repository. The bool is true when
 // the returned snapshot is still the whole floor.
+//
+// A job its workstream hides from the caller is then taken out the same way,
+// with the totals recomputed over what is left (job_access.go).
 func (h *Handler) forViewer(r *http.Request, s factory.Snapshot) (factory.Snapshot, string, bool) {
+	out, reason, whole := h.forViewerRepos(r, s)
+	if !h.workstreamsMatter() || len(out.Items) == 0 {
+		return out, reason, whole
+	}
+	sight := h.jobSight(r)
+	keep := make(map[int]bool, len(out.Items))
+	for _, it := range out.Items {
+		if sight(it) {
+			keep[it.ID] = true
+		}
+	}
+	if len(keep) == len(out.Items) {
+		return out, reason, whole
+	}
+	return keepJobs(out, keep), reason, false
+}
+
+// keepJobs is s with only the jobs keep names, and every job total recomputed
+// over those, the item half of narrowView.
+func keepJobs(s factory.Snapshot, keep map[int]bool) factory.Snapshot {
+	out := s
+	items := make([]factory.Item, 0, len(keep))
+	for _, it := range s.Items {
+		if keep[it.ID] {
+			items = append(items, it)
+		}
+	}
+	out.Items = items
+	out.Daily = factory.DailySpent(items, s.Now)
+	out.Shift = factory.Shift{Since: s.Shift.Since}
+	today, week := factory.MergedCounts(items, s.Now)
+	out.Shift.MergedToday, out.Shift.MergedWeek = today, week
+	out.BusyAll = ""
+	out.LastReadCost = 0
+	if s.Busy != nil {
+		next := map[int]string{}
+		for id, word := range s.Busy {
+			if keep[id] {
+				next[id] = word
+			}
+		}
+		out.Busy = next
+	}
+	marked := make([]int, 0, len(s.Marked))
+	for _, id := range s.Marked {
+		if keep[id] {
+			marked = append(marked, id)
+		}
+	}
+	out.Marked = marked
+	return out
+}
+
+func (h *Handler) forViewerRepos(r *http.Request, s factory.Snapshot) (factory.Snapshot, string, bool) {
 	// Watched repositories belong in the picker before their first job exists.
 	// Preserve existing recipe facts and add only missing watched names, each
 	// with what its own pipeline says, so a first job can state its budget.
@@ -480,12 +537,17 @@ func (h *Handler) filterAudit(r *http.Request, events []record.Event) []record.E
 	}
 	byID := map[int]string{}
 	keys := make([]string, 0, len(snap.Items))
+	sight := h.jobSight(r)
+	hidden := map[int]bool{}
 	for _, it := range snap.Items {
 		key := itemRepo(it)
 		byID[it.ID] = key
 		keys = append(keys, key)
+		// A job its workstream hides drops its events exactly as a job gone
+		// from the floor does (job_access.go).
+		hidden[it.ID] = !sight(it)
 	}
-	allow, _ := h.repoAccess(r, keys)
+	allow, filter := h.repoAccess(r, keys)
 	out := make([]record.Event, 0, len(events))
 	for _, event := range events {
 		if event.Job == 0 && strings.HasPrefix(event.Object, "repo:") && !h.repoVisible(r, strings.TrimPrefix(event.Object, "repo:")) {
@@ -494,7 +556,10 @@ func (h *Handler) filterAudit(r *http.Request, events []record.Event) []record.E
 		if event.Job == 0 && event.Kind == record.ReposChanged && event.Object == "factory" {
 			continue
 		}
-		if event.Job == 0 || allow[byID[event.Job]] {
+		if event.Job != 0 && hidden[event.Job] {
+			continue
+		}
+		if event.Job == 0 || !filter || allow[byID[event.Job]] {
 			out = append(out, event)
 		}
 	}
@@ -505,7 +570,7 @@ func (h *Handler) filterAudit(r *http.Request, events []record.Event) []record.E
 // see. A "*" tick still wakes a re-read: the read itself is filtered, and
 // the tick does not name a repository.
 func (h *Handler) viewerWantsTick(r *http.Request, data string) bool {
-	if _, filter := h.repoAccess(r, nil); !filter {
+	if _, filter := h.repoAccess(r, nil); !filter && !h.workstreamsMatter() {
 		return true
 	}
 	data = strings.TrimSpace(data)
@@ -522,7 +587,7 @@ func (h *Handler) viewerWantsTick(r *http.Request, data string) bool {
 	}
 	for _, it := range snap.Items {
 		if it.ID == id {
-			return h.repoVisible(r, itemRepo(it))
+			return h.repoVisible(r, itemRepo(it)) && h.jobVisible(r, it)
 		}
 	}
 	return false
