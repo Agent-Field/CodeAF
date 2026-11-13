@@ -838,7 +838,7 @@ To go on from a step that was cut instead, keeping the steps before it and the m
 
 ## a job stopped by your answer or by a new assignee — cancel, no to the budget, change of assignee, Backlog
 
-A cancel to a step out of attempts, a no to the budget question and a send back with no earlier step to go back to stop the job as **Stop** does, on your own machine and on a team factory alike: the job says `Stopped by you`, waits in Backlog and is not in Needs you or its count. **Carry on**, **Start** or **Run again** run it again.
+While a runner holds the job, a cancel to a step out of attempts, a no to the budget question and a send back with no earlier step to go back to stop it as **Stop** does, on your own machine and on a team factory alike: the job says `Stopped by you`, waits in Backlog and is not in Needs you or its count. A cancel to a job no runner holds does the same. **Carry on**, **Start** or **Run again** run it again.
 
 Changing the assignee of a running or waiting job, or unassigning it, stops its run too. The job then waits in Backlog for its new person with nothing failed on it, and the step it cut says it was stopped. A job whose step failed by itself is different: it waits in Needs you with the failure on it.
 
