@@ -1,7 +1,7 @@
 ---
 kind: added
 title: an organization's server runs its workstreams' agents with the organization's own model key
-pr: 0
+pr: 2641
 surface: [engine, factory]
 invalidates:
   - "Was true: `agent_runner: server` was always refused (422) and `agent_runners` was always `[driver]`. Is true now: `codeaf factory serve` runs workstream agents itself, and offers `server` once the operator has given it a model key; choosing it lets go of every driver's hand."
