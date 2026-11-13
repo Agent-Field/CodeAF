@@ -28,17 +28,79 @@ func (a *Agent) taskRunCost(run *beltRun, cost float64) float64 {
 	if run.delegate != nil {
 		return cost
 	}
-	taskCap, _ := config.CrewTaskSpendCap(a.config.ProfileDir)
+	taskCap := a.runTaskCap(run)
 	spent := 0.0
 	if run.store != nil {
 		spent = storeSpent(run.store)
 	}
 	// Every dispatch passes here, including continuation. The ending names
-	// the configured cap, while the engine receives only its unspent allowance.
+	// the cap the tree runs under, while the engine receives only its unspent
+	// allowance.
+	run.costMu.Lock()
+	defer run.costMu.Unlock()
+	run.treeSpent, run.treeOffer = spent, cost
 	run.costCeiling = taskCap
 	allowance, conversation := taskTreeCost(taskCap, spent, cost)
 	run.conversationCostLimit = conversation
 	return allowance
+}
+
+// runTaskCap is the per-task cap a tree runs under: the profile's, or the
+// higher figure the person raised this task to.
+//
+// A RAISE THE PERSON GAVE IS THE CEILING. A raise reaches the task as the
+// hand-off's wish ([crewWish.taskCap]) and, for a routed task, as its crew's
+// guard, which a rerun's raise and an earlier live change also wrote. The tree
+// ceiling read the profile's cap alone, so a task the person raised to $8
+// stopped at $5 and told them to raise a limit they had just raised.
+func (a *Agent) runTaskCap(run *beltRun) float64 {
+	taskCap, _ := config.CrewTaskSpendCap(a.config.ProfileDir)
+	return max(taskCap, run.taskCap, run.crew.guardTaskCap())
+}
+
+// treeAllowance is the engine's dollar allowance as it stands now: what the
+// dispatch handed it, or more once the person raised the cap while the run
+// was going ([RunSpec.CostCeiling]).
+func (run *beltRun) treeAllowance() float64 {
+	run.costMu.Lock()
+	defer run.costMu.Unlock()
+	allowance, _ := taskTreeCost(run.costCeiling, run.treeSpent, run.treeOffer)
+	return allowance
+}
+
+// liveCostCeiling is the ceiling the engine reads while the run goes
+// ([RunSpec.CostCeiling]); nil for a program's run, which keeps its own.
+func (run *beltRun) liveCostCeiling() func() float64 {
+	if run.delegate != nil {
+		return nil
+	}
+	return run.treeAllowance
+}
+
+// raiseTaskCap lifts a running tree to the cap the person raised its task to.
+// The engine reads the new allowance at its next spend reading, and the ending
+// names the raised figure. A cap no higher than the tree's moves nothing.
+func (run *beltRun) raiseTaskCap(capUSD float64) {
+	if run == nil || run.delegate != nil {
+		return
+	}
+	run.costMu.Lock()
+	defer run.costMu.Unlock()
+	if capUSD <= run.costCeiling {
+		return
+	}
+	run.costCeiling = capUSD
+	_, run.conversationCostLimit = taskTreeCost(capUSD, run.treeSpent, run.treeOffer)
+}
+
+// raiseLiveRunCap lifts the running tree whose crew the person just raised.
+func (a *Agent) raiseLiveRunCap(crew *taskCrew, capUSD float64) {
+	a.beltMu.Lock()
+	run := a.beltRun
+	a.beltMu.Unlock()
+	if run != nil && crew != nil && run.crew == crew {
+		run.raiseTaskCap(capUSD)
+	}
 }
 
 // taskTreeCost chooses the same remaining allowance for either task road.
@@ -52,8 +114,14 @@ func taskTreeCost(taskCap, spent, cost float64) (float64, bool) {
 }
 
 func (run *beltRun) taskLimitWords(summary RunSummary) string {
-	if run.delegate == nil && summary.Limit == RunLimitCost && run.costCeiling > 0 && !run.conversationCostLimit {
-		return config.CrewTaskCapAction(run.costCeiling)
+	if run.delegate != nil || summary.Limit != RunLimitCost {
+		return ""
+	}
+	run.costMu.Lock()
+	ceiling, conversation := run.costCeiling, run.conversationCostLimit
+	run.costMu.Unlock()
+	if ceiling > 0 && !conversation {
+		return config.CrewTaskCapAction(ceiling)
 	}
 	return ""
 }

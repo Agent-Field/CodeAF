@@ -2350,6 +2350,9 @@ Continuing interrupted work keeps what the same tree already spent: only the uns
 part of its per-task limit remains available.
 A routed crew refuses a call that would cross its per-task limit. Reaching the run's
 ceiling ends workers in flight and starts no more.
+On the run road, a raise you give one task in the app, when its models need more than the
+cap, is that task's ceiling: before it starts, on a rerun, and while it runs, when the
+running tree's ceiling rises with it. The ending then names the raised amount.
 On the node belt, the saved ceiling survives restarts; reaching it refuses each worker's
 next request, queued workers spend nothing, and in-flight calls finish without
 cancellation. Every dollar counts once, including a part's spend inside the worker that

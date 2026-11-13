@@ -267,9 +267,7 @@ func (a *Agent) routeTaskCrew(ctx context.Context, row uint64, title, brief stri
 		crew.taskPins[seat] = true
 	}
 	crew.guard = crewSpendGuard(a.config.ProfileDir, decision, true)
-	if wish.taskCap > crew.guard.TaskCap && crew.guard.TaskCap > 0 {
-		crew.guard.TaskCap = wish.taskCap
-	}
+	crew.guard.raiseTaskCap(wish.taskCap)
 	crew.guard.Day = a.crewDay()
 	crew.day, crew.dayAtStart = a.crewDay(), a.crewDay().Total()
 	a.crews.put(row, crew)
@@ -1112,6 +1110,16 @@ func (a *Agent) stopCrew(run *beltRun, err error) error {
 	crew.mu.Unlock()
 	a.republishCrew(run, decision, stopped.Action)
 	return crewStopped{action: stopped.Action, cause: err}
+}
+
+// guardTaskCap is the per-task limit the crew's guard holds now, with every
+// raise the person gave it; zero for no crew or no limit.
+func (c *taskCrew) guardTaskCap() float64 {
+	if c == nil || c.guard == nil {
+		return 0
+	}
+	taskCap, _ := c.guard.taskLimit()
+	return taskCap
 }
 
 // crewStopped is a seat with nowhere left to go: its text is the one action,

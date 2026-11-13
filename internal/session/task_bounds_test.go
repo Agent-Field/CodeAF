@@ -133,6 +133,98 @@ func TestConversationRunSpecsHaveATreeSpendCeiling(t *testing.T) {
 	}
 }
 
+// A RAISE THE PERSON GAVE IS THE TREE'S CEILING. A task whose cap was raised
+// before it started — by a proposal's raise_cap_usd, routed into its crew's
+// guard — runs under the raised figure, and its ending names that figure,
+// with and without a routed crew.
+func TestARaisedProposalRunsUnderItsRaisedTreeCeiling(t *testing.T) {
+	for _, routed := range []bool{true, false} {
+		t.Run(fmt.Sprint("routed=", routed), func(t *testing.T) {
+			useTaskUsageHome(t)
+			agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+				c.ProfileDir = t.TempDir()
+				c.Interactive = true
+				if routed {
+					c.RouteCrew = func(config.CrewAsk) (crewroute.Decision, error) { return liveDecision(), nil }
+				}
+			})
+			const id = 3
+			if err := agent.actOnProposal(id, TaskRoutingAction{Kind: TaskRoutingAuto, RaiseCapUSD: 8}); err != nil {
+				t.Fatal(err)
+			}
+			ctx := withCrewWish(t.Context(), agent.proposalCrewWish(id, crewWish{}))
+			run := &beltRun{row: id}
+			if routed {
+				crew, err := agent.routeTaskCrew(ctx, id, "Update fixtures", "update every fixture")
+				if err != nil {
+					t.Fatal(err)
+				}
+				if crew.guard.TaskCap != 8 {
+					t.Fatalf("the crew's guard did not take the raise: %v", crew.guard.TaskCap)
+				}
+				run.crew = crew
+			}
+			run.wishedFrom(ctx)
+			spec := agent.beltRunSpec(run, "the work")
+			if spec.CostUSD != 8 {
+				t.Fatalf("a task raised to $8 runs under a $%v tree ceiling", spec.CostUSD)
+			}
+			summary := RunSummary{Outcome: runLimitSentence, Limit: RunLimitCost}
+			if got, want := run.taskLimitWords(summary), config.CrewTaskCapAction(8); got != want {
+				t.Fatalf("the raised task's ending says %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+// A RAISE GIVEN WHILE THE TASK RUNS LIFTS THE RUNNING TREE TOO. The live
+// change raises the crew's guard and the ceiling the engine was handed when
+// the run started, so the run is not stopped at the old figure, and the
+// ending names the figure the person raised it to.
+func TestALiveRaiseLiftsTheRunningTreeCeiling(t *testing.T) {
+	useTaskUsageHome(t)
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.ProfileDir = t.TempDir()
+		c.Interactive = true
+		c.RouteCrew = func(config.CrewAsk) (crewroute.Decision, error) {
+			d := liveDecision()
+			for i := range d.Crew {
+				d.Crew[i].Model, d.Crew[i].Send, d.Crew[i].EstUSD = "opus-"+string(d.Crew[i].Seat), "opus-"+string(d.Crew[i].Seat), 3
+			}
+			return d, nil
+		}
+	})
+	crew := liveCrew(config.CrewTaskCapDefault)
+	crew.guard.TaskAction = config.CrewTaskCapAction(config.CrewTaskCapDefault)
+	run := &beltRun{row: 1, crew: crew}
+	spec := agent.beltRunSpec(run, "the work")
+	if spec.CostUSD != config.CrewTaskCapDefault {
+		t.Fatalf("the run started under $%v, want the $5 cap", spec.CostUSD)
+	}
+	agent.beltMu.Lock()
+	agent.beltRun = run
+	agent.beltMu.Unlock()
+	defer func() {
+		agent.beltMu.Lock()
+		agent.beltRun = nil
+		agent.beltMu.Unlock()
+	}()
+	if _, err := agent.actOnLiveCrew(1, crew, TaskRoutingAction{Kind: TaskRoutingBest, RaiseCapUSD: 9}); err != nil {
+		t.Fatal(err)
+	}
+	want := config.CrewTaskCapAction(9)
+	if crew.guard.TaskCap != 9 || crew.guard.TaskAction != want {
+		t.Fatalf("the guard holds $%v and says %q after a raise to $9", crew.guard.TaskCap, crew.guard.TaskAction)
+	}
+	summary := RunSummary{Outcome: runLimitSentence, Limit: RunLimitCost}
+	if got := run.taskLimitWords(summary); got != want {
+		t.Fatalf("a run raised to $9 ends saying %q, want %q", got, want)
+	}
+	if spec.CostCeiling == nil || spec.CostCeiling() != 9 {
+		t.Fatal("the engine's ceiling did not rise with the raise")
+	}
+}
+
 // L-LOOP C4b: the existing report, outcome note and ending carry the stop.
 func TestPerTaskTreeLimitNamesTheLimitAndHowToRaiseIt(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {

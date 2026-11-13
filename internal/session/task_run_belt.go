@@ -156,6 +156,11 @@ type RunSpec struct {
 	// conversation spend from the same finite allowance.
 	Slots   int
 	CostUSD float64
+	// CostCeiling, when set, is CostUSD as it stands now. A person who raises
+	// a running task's cap raises the figure it reads, and the engine stops at
+	// the raised figure rather than the one the run started under; it never
+	// reads lower than CostUSD. Nil for every run nothing can raise.
+	CostCeiling func() float64
 	// Elapsed is the conversation time still available when this run starts.
 	// Zero means no time ceiling, matching the run engine's Limits contract.
 	Elapsed time.Duration
@@ -461,6 +466,17 @@ type beltRun struct {
 	spent                                        float64
 	costCeiling, timeCeiling                     float64
 	conversationCostLimit, conversationTimeLimit bool
+	// taskCap is the per-task cap the person raised this task to before it
+	// started ([crewWish.taskCap]); zero keeps the profile's. treeSpent and
+	// treeOffer are what the tree had spent before this dispatch and the
+	// conversation's remainder at it, which a raise while the run is going
+	// recomputes the engine's allowance from ([beltRun.raiseTaskCap]). costMu
+	// guards them, with an ordinary task's costCeiling and
+	// conversationCostLimit, because a live raise writes them while the engine
+	// reads them.
+	taskCap              float64
+	costMu               sync.Mutex
+	treeSpent, treeOffer float64
 	// delegate and folder belong to the program's one run.
 	delegate *delegate.Delegate
 	folder   *ProgramFolder
@@ -864,9 +880,11 @@ func (a *Agent) prepareBeltRunStart(ctx context.Context, id uint64, title, brief
 
 // wishedFrom keeps what the hand-off that started a program's run asked of it
 // beyond its brief ([programWish]) and the crew word it carried ([crewWish]),
-// so a held run that is readied later still has them.
+// with the per-task cap the person raised it to, so a held run that is
+// readied later still has them.
 func (run *beltRun) wishedFrom(ctx context.Context) {
 	run.worker = crewWishOf(ctx).worker
+	run.taskCap = crewWishOf(ctx).taskCap
 	if run.delegate == nil {
 		return
 	}
@@ -1149,6 +1167,7 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 		WorkspaceSet: cloneWorkspaceSet(run.tree.workspaceSet),
 		Slots:        a.config.TaskParallel,
 		CostUSD:      cost,
+		CostCeiling:  run.liveCostCeiling(),
 		Elapsed:      wallLeft,
 		// The step cap a node of this session's own tree carries, so a run
 		// worker and a node worker stop at the same figure.

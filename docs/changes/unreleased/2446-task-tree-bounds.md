@@ -12,7 +12,9 @@ Growth refusals are atomic across concurrent workers and leave a refused batch u
 Countdown-approved proposals joining a live run obey the same gate; explicit approval and
 typed tasks keep their existing join authority. Task-cap call refusals stop the entire run
 as a dollar-limit ending, while a checker's own ceiling remains local to its check. The
-report names the configured task limit and `/crew` when that ceiling binds. Delegated
+report names the task limit and `/crew` when that ceiling binds. A per-task raise the
+person gave (a proposal's or a rerun's `raise_cap_usd`, or a running task's live change)
+is that tree's ceiling, and a live raise lifts the running engine's ceiling too. Delegated
 programs retain their own ceilings.
 
 Continuing an interrupted run subtracts its persisted spend from the task allowance

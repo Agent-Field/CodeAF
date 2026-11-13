@@ -230,3 +230,44 @@ func TestCompletedRootStillWinsOverTheElapsedSignal(t *testing.T) {
 		t.Fatalf("completed root lost to elapsed signal: %s limit=%s result=%q root=%+v context=%v", outcome, supervisor.limitHit, supervisor.rootResult, store.Task(store.RootID()), ctx.Err())
 	}
 }
+
+// A RAISE WHILE THE RUN IS GOING IS THE LIMIT FROM THEN ON. The run started
+// under $1; the person raised the task to $2 while its worker worked, so the
+// worker's $1.25 does not end the run, and the same run without the raise
+// still stops at $1.
+func TestARaisedCostCeilingIsReadWhileTheRunGoes(t *testing.T) {
+	for _, raise := range []bool{false, true} {
+		t.Run(fmt.Sprint("raised=", raise), func(t *testing.T) {
+			store := boundedRunStore(t, "Single task")
+			var ceiling atomic.Value
+			ceiling.Store(1.0)
+			factory := func(plandb.Task) Worker {
+				return workerFunc(func(ctx context.Context, task plandb.Task) (Report, error) {
+					if task.Role == plandb.RoleCheck {
+						return Report{Result: "holds: read the result", Steps: 1}, nil
+					}
+					if raise {
+						ceiling.Store(2.0)
+					}
+					bankSpend(ctx, 1.25)
+					select {
+					case <-ctx.Done():
+						return Report{USD: 1.25}, ctx.Err()
+					case <-time.After(passInterval * 3):
+					}
+					return Report{Result: "finished the work", Steps: 1, USD: 1.25}, nil
+				})
+			}
+			limits := Limits{CostUSD: 1, CostCeiling: func() float64 { return ceiling.Load().(float64) }, ReviewRound: true}
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			outcome, summary := Start(ctx, Spec{Store: store, Workspace: t.TempDir(), Slots: 1, Factory: factory, Limits: limits})
+			if raise && (outcome != OutcomeDone || summary.Limit != "") {
+				t.Fatalf("a run raised to $2 stopped at its old $1: %s %+v", outcome, summary)
+			}
+			if !raise && (outcome != OutcomeLimit || summary.Limit != LimitCost) {
+				t.Fatalf("a run never raised went past its $1: %s %+v", outcome, summary)
+			}
+		})
+	}
+}

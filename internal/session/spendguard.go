@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/provider"
 )
@@ -348,6 +349,32 @@ func (g *SpendGuard) tally() *SpendTask {
 	return g.Task
 }
 
+// taskLimit is the per-task limit and the sentence a call it stops ends on,
+// read together, because a person's raise moves both while calls are made
+// ([SpendGuard.raiseTaskCap]).
+func (g *SpendGuard) taskLimit() (float64, string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.TaskCap, g.TaskAction
+}
+
+// raiseTaskCap lifts the per-task limit to the cap the person raised this
+// task to, and the sentence a call it stops ends on names the raised figure:
+// a refusal at $8 that said "$5 limit" sent the person to raise a limit they
+// had just raised. A guard with no per-task limit, or a cap no higher, is left
+// as it is.
+func (g *SpendGuard) raiseTaskCap(capUSD float64) {
+	if g == nil {
+		return
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.TaskCap <= 0 || capUSD <= g.TaskCap {
+		return
+	}
+	g.TaskCap, g.TaskAction = capUSD, config.CrewTaskCapAction(capUSD)
+}
+
 // seatTally holds one seat's spend and in-flight estimates across model changes.
 func (g *SpendGuard) seatTally(seat crewroute.Seat) *SpendTask {
 	g.mu.Lock()
@@ -459,8 +486,8 @@ func (g *SpendGuard) before(ctx context.Context, model string, messages []ai.Mes
 				return 0, ErrSpendStopped{Action: capAction}
 			}
 		}
-		if g.TaskCap > 0 && g.tally().Total() >= g.TaskCap {
-			return 0, ErrSpendStopped{Action: g.TaskAction, TaskLimit: true}
+		if taskCap, taskAction := g.taskLimit(); taskCap > 0 && g.tally().Total() >= taskCap {
+			return 0, ErrSpendStopped{Action: taskAction, TaskLimit: true}
 		}
 		if seat := crewSeatOf(ctx); g.SeatCeilings[seat] > 0 && g.ceilingTally(ctx, seat).Total() >= g.SeatCeilings[seat] {
 			ceiling := g.SeatCeilings[seat]
@@ -493,11 +520,12 @@ func (g *SpendGuard) before(ctx context.Context, model string, messages []ai.Mes
 		}
 	}
 	task := g.tally()
-	if _, fits := task.hold(est, g.TaskCap); !fits {
+	taskCap, taskAction := g.taskLimit()
+	if _, fits := task.hold(est, taskCap); !fits {
 		if ceiling > 0 {
 			ceilingTally.settle(ceilingEst, 0)
 		}
-		return 0, ErrSpendStopped{Action: g.TaskAction, TaskLimit: true}
+		return 0, ErrSpendStopped{Action: taskAction, TaskLimit: true}
 	}
 	held, fits, readErr := day.holdChecked(model, est, capUSD)
 	if !fits {
