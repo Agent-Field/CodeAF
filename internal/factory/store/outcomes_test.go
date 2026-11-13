@@ -505,3 +505,127 @@ func TestStoredOutcomesFromInPlaceNestedUpdates(t *testing.T) {
 		})
 	}
 }
+
+// E1: a wait with no clock of its own is one needs-you outcome, however many
+// writes it outlasts. These waits have no failure, no ask clock and no step
+// clock: a failed merge (which has no need kind at all), a pull request's
+// review or conflict, and a take-over. Each read its since from Changed, so a
+// priority, a budget, a rename or a note each recorded another one.
+func TestStoredClocklessWaitOncePerWait(t *testing.T) {
+	shipped := factory.Item{State: factory.StateShipped, Title: "A shipped job", PullRequest: &factory.PullRequest{State: factory.PROpen, Number: 7}}
+	running := factory.Item{State: factory.StateRunning, Title: "A running job", Stream: &factory.Stream{Cur: 0, Phases: []factory.Phase{
+		{Name: "plan", Kind: factory.StageChat, State: factory.PhaseRunning, Round: 1},
+	}}}
+	tests := []struct {
+		name    string
+		initial factory.Item
+		wait    func(*factory.Item)
+		need    string
+	}{
+		{"a failed merge", shipped, func(it *factory.Item) { it.Merging = &factory.MergeRun{State: factory.MergeFailed} }, ""},
+		{"changes requested", shipped, func(it *factory.Item) { it.PullRequest.ReviewDecision = "changes_requested" }, factory.NeedsChangesRequested},
+		{"a conflict", shipped, func(it *factory.Item) { it.PullRequest.Conflict = true }, factory.NeedsConflict},
+		{"a take-over", running, func(it *factory.Item) {
+			it.Manual, it.State = true, factory.StateNeedsYou
+			it.Question, it.QKind = "Automation paused.", "manual"
+		}, factory.NeedsQuestion},
+	}
+	writes := []func(*factory.Item){
+		func(it *factory.Item) { it.Priority = &factory.JobPriority{Value: "high", SetBy: "sam"} },
+		func(it *factory.Item) { it.Cap = 10 },
+		func(it *factory.Item) { it.Title = "Renamed while waiting" },
+		func(it *factory.Item) { it.Notes = append(it.Notes, "a note") },
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			st, err := store.Open(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			it, err := st.Create(tt.initial)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := st.Update(it.ID, func(cur *factory.Item) error { tt.wait(cur); return nil }); err != nil {
+				t.Fatal(err)
+			}
+			began, err := st.Get(it.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			since := factory.NeedsSince(began)
+			for i, w := range writes {
+				time.Sleep(time.Millisecond)
+				if err := st.Update(it.ID, func(cur *factory.Item) error { w(cur); return nil }); err != nil {
+					t.Fatal(err)
+				}
+				stored, err := st.Get(it.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if api.FromItem(stored).State != "needs_you" || factory.NeedsKind(stored) != tt.need || !factory.NeedsSince(stored).Equal(since) {
+					t.Fatalf("write %d: state %s, need %q since %s, want %q since %s", i+1, api.FromItem(stored).State, factory.NeedsKind(stored), factory.NeedsSince(stored), tt.need, since)
+				}
+			}
+			zero := int64(0)
+			got, err := live.ReadOutcomes(st.Root(), &zero, 100)
+			if err != nil || got.Reset || len(got.Events) != 1 {
+				t.Fatalf("one wait recorded %d outcomes: %+v %v", len(got.Events), got.Events, err)
+			}
+			if e := got.Events[0]; e.Kind != "needs_you" || e.Need != tt.need || !e.At.Equal(since) {
+				t.Fatalf("outcome %+v, the wait began %s", e, since)
+			}
+		})
+	}
+}
+
+// E1: the clock a wait keeps is that wait's. A wait that ends and another
+// that begins record two outcomes at two clocks, and a waiting job written
+// before the clock was kept goes on from the clock it showed, so the first
+// write after an upgrade records no second wait.
+func TestStoredWaitClockIsEachWaits(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	shown := time.Date(2026, 11, 12, 9, 0, 0, 0, time.UTC)
+	// A held start as an earlier binary left it: no NeedsAt, its since its Changed.
+	it, err := st.Create(factory.Item{State: factory.StateNeedsYou, QKind: factory.QKindAskFirst, Question: "Approval needed: start", Title: "A held job", Created: shown})
+	if err != nil {
+		t.Fatal(err)
+	}
+	update := func(change func(*factory.Item)) factory.Item {
+		t.Helper()
+		time.Sleep(time.Millisecond)
+		if err := st.Update(it.ID, func(cur *factory.Item) error { change(cur); return nil }); err != nil {
+			t.Fatal(err)
+		}
+		stored, err := st.Get(it.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return stored
+	}
+	if got := update(func(cur *factory.Item) { cur.Title = "Renamed" }); !factory.NeedsSince(got).Equal(shown) {
+		t.Fatalf("an old wait moved on its first write: since %s, showed %s", factory.NeedsSince(got), shown)
+	}
+	// Approved: it runs, then its person takes it over.
+	update(func(cur *factory.Item) { cur.State, cur.QKind, cur.Question = factory.StateRunning, "", "" })
+	took := update(func(cur *factory.Item) {
+		cur.Manual, cur.State = true, factory.StateNeedsYou
+		cur.Question, cur.QKind = "Automation paused.", "manual"
+	})
+	if !factory.NeedsSince(took).After(shown) || !took.NeedsAt.Equal(factory.NeedsSince(took)) {
+		t.Fatalf("a new wait kept the old clock: since %s, needs_at %s", factory.NeedsSince(took), took.NeedsAt)
+	}
+	if done := update(func(cur *factory.Item) {
+		cur.Manual, cur.State, cur.Question, cur.QKind = false, factory.StateQueued, "", ""
+	}); !done.NeedsAt.IsZero() {
+		t.Fatalf("a job waiting on nobody keeps a wait clock: %s", done.NeedsAt)
+	}
+	zero := int64(0)
+	got, err := live.ReadOutcomes(st.Root(), &zero, 100)
+	if err != nil || got.Reset || len(got.Events) != 1 || got.Events[0].Need != factory.NeedsQuestion || !got.Events[0].At.Equal(took.NeedsAt) {
+		t.Fatalf("outcomes %+v %v, want the take-over's one at %s", got.Events, err, took.NeedsAt)
+	}
+}

@@ -363,6 +363,7 @@ func (st *Store) Save(it factory.Item) error {
 		if isTierProjection(it.Failure) {
 			it.Failure = current.Item.Failure
 		}
+		factory.NoteWait(current.Item, &it, st.now())
 		st.retainOutput(&it)
 		data, err := marshalDoc(nextDoc(current, it, rev))
 		if err != nil {
@@ -589,6 +590,7 @@ func (st *Store) update(id int, mode writeMode, expect *int, change func(*factor
 		}
 		factory.RecordIssueTouch(before, &it)
 		factory.NoteChanges(before, &it, now)
+		factory.NoteWait(before, &it, now)
 		st.retainOutput(&it)
 		rev := current.Revision
 		if mode.bump {
@@ -711,6 +713,8 @@ func (st *Store) CheckActionExpected(id, expected int) error {
 func nextDoc(before doc, it factory.Item, revision int) doc {
 	prior, next := before.Item, it
 	prior.Changed, next.Changed = time.Time{}, time.Time{}
+	// The wait's clock is the store's bookkeeping, as Changed is.
+	prior.NeedsAt, next.NeedsAt = time.Time{}, time.Time{}
 	prior.BriefWriting, next.BriefWriting = nil, nil
 	return doc{Revision: revision,
 		BudgetRevision: revisionSince(before.BudgetRevision, revision, before.Item.Cap != it.Cap),
