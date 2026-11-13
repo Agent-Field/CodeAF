@@ -65,6 +65,8 @@ const afStopDrain = 15 * time.Second
 
 var afRemoteEvery = 500 * time.Millisecond
 
+const afStepOpenedPullRequest = "finished and opened "
+
 // afClient is the part of the control plane client a remote run uses.
 type afClient interface {
 	Dispatch(ctx context.Context, target string, input any, owner string) (agentfield.Dispatched, error)
@@ -292,11 +294,15 @@ func (r *afRemote) Step(ctx context.Context, job factoryrun.Job) (factory.StageR
 	// in Manual or Auto alike. A round begun afresh after the step read its
 	// run's end (Run again, Try again, Reopen) starts a run of its own.
 	if run == nil || run.ExecutionID == "" || (!run.Ended.IsZero() && !afRoundsRun(job, *run)) {
+		if err := factory.AgentFieldInputReady(it, st); err != nil {
+			return factory.StageResult{}, err
+		}
 		fresh, err := r.dispatch(ctx, client, node, target, afTypedInput(ctx, client, target, factory.AgentFieldInput(it, st)))
 		if err != nil {
 			return factory.StageResult{}, err
 		}
 		fresh.EndOwed = true
+		fresh.PullRequestBefore = it.PullRequest != nil
 		if err := r.items.Update(it.ID, func(it *factory.Item) error {
 			*place.runOf(it) = *fresh
 			return nil
@@ -360,7 +366,10 @@ func (r *afRemote) Step(ctx context.Context, job factoryrun.Job) (factory.StageR
 	}); ok {
 		if raw, err := results.Result(ctx, run.ExecutionID); err == nil {
 			if link, _ := factory.PullRequestIn(raw); link != "" {
-				out += " and opened " + link
+				openedBefore := run.PullRequestBefore || afStepHadPullRequest(it, st)
+				if len(it.Stages) == 1 || !openedBefore {
+					out = afStepOpenedPullRequest + link
+				}
 				opened = true
 				afKeepPullRequest(r.items, it.ID, raw)
 			}
@@ -411,6 +420,32 @@ func (r *afRemote) Step(ctx context.Context, job factoryrun.Job) (factory.StageR
 		}
 	}
 	return factory.StageResult{Done: true, Output: out}, nil
+}
+
+// afStepHadPullRequest recovers attribution for older run records that lack
+// PullRequestBefore. A PR binding required the link before dispatch; an earlier
+// opening receipt also proves another step supplied it before this run.
+func afStepHadPullRequest(it factory.Item, st factory.Stage) bool {
+	if it.PullRequest == nil {
+		return false
+	}
+	for _, value := range st.Input {
+		if strings.Contains(value, "{pr_url}") {
+			return true
+		}
+	}
+	if it.Stream == nil {
+		return false
+	}
+	for _, ph := range it.Stream.Phases {
+		if ph.Name == st.Name {
+			break
+		}
+		if ph.Result != nil && ph.Result.Output == afStepOpenedPullRequest+it.PullRequest.URL {
+			return true
+		}
+	}
+	return false
 }
 
 // afNothingToChange is the end of an agentfield step whose run made no

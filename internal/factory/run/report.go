@@ -711,6 +711,8 @@ func FinishReport(it *factory.Item, state factory.State, now time.Time) error {
 		// to wait on.
 		if strings.TrimSpace(it.RunOn) != "" || factory.AgentFieldPipeline(*it) {
 			it.State = factory.StateShipped
+			// Completion is authoritative here, even when an older worker reports no timestamp.
+			it.DoneAt = factory.AgentFieldEnded(*it, now)
 			it.Question, it.QKind = "", ""
 			it.Asking = nil
 			it.Stream.Ended = now

@@ -399,7 +399,14 @@ func (b *appBackend) startLocalLocked(ctx context.Context, resume bool) error {
 		// A runner, once asked for, serves THIS factory with this launch's own bearer.
 		defaultTarget: func() (factoryTarget, error) { return factoryTarget{address, token}, nil }}
 	floor.SetOutputPolicy(appFactoryOutputPolicy(host.profile))
-	floor.ObserveWrites(b.briefJobChanged)
+	floor.ObserveWrites(func(before, after factory.Item) {
+		b.briefJobChanged(before, after)
+		// Queue filters change after filing too, when a background step waits or ends.
+		if before.State != after.State || before.Question != after.Question || before.QKind != after.QKind ||
+			before.DoneHow != after.DoneHow || !before.DoneAt.Equal(after.DoneAt) {
+			b.emit.Emit(appwire.EventFactoryJobsChanged, appwire.FactoryJobsChanged{Factory: appLocalID, Job: after.ID})
+		}
+	})
 	host.jobFiled = func(job int) {
 		b.emit.Emit(appwire.EventFactoryJobsChanged, appwire.FactoryJobsChanged{Factory: appLocalID, Job: job})
 	}

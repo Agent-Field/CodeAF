@@ -1089,6 +1089,18 @@ again, or bring the work to `codeaf` where it can be answered.
 
 Asking for help is never a failure: `--help` on any verb exits 0.
 
+## chat --once --json — watched chat token usage and spending
+
+`codeaf chat --once --json` prints one result object with `ok`, `stop`,
+`answer`, `model` and `error`. Empty answer, model and error fields are omitted.
+It also carries the same accounting fields as `codeaf exec --json`:
+`tokens: {"in": 100, "out": 20}` and `spend_usd: 0.125`.
+These total this invocation's model calls, including steering turns and calls
+settled while closing. Resuming a saved conversation excludes earlier usage.
+A failure after paid work still carries its tokens and spending. Unmeasured
+usage is zero; it does not establish that an unpriced call was free.
+The watched door keeps its existing `stop: "done"` or `"error"` meanings.
+
 ## The --json result object — one shape, three commands
 
 `--json` on `codeaf do`, `codeaf exec` and `codeaf run` prints **one object on
