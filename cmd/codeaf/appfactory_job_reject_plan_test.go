@@ -264,7 +264,10 @@ func TestAppFactoryRejectPlanAgainstTheRealServer(t *testing.T) {
 	t.Run("a version the person did not read is refused and nothing is written", func(t *testing.T) {
 		job := f.create(t, planJob("alice"))
 		read := alice.job(t, job.ID).Version
-		bob.act(t, "factory.job_set_priority", job.ID, map[string]any{"priority": "urgent"})
+		// E5 (WAVE2 §1c hole 1): only the job's person, an editor of its
+		// workstream or the operator re-prioritises it, so the change that makes
+		// alice's read stale is alice's own, from another window.
+		alice.act(t, "factory.job_set_priority", job.ID, map[string]any{"priority": "urgent"})
 		was := f.hold(t, job.ID)
 		_, d := alice.refused(t, "factory.job_reject_plan", map[string]any{"factory": alice.conn.ID, "job": job.ID, "words": "redo", "expect": map[string]any{"version": read, "state": "needs_you"}}, appwire.CodeStale)
 		if d == nil || d.Reason != "stale" || d.NowState != api.StateNeedsYou {
