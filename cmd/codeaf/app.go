@@ -222,6 +222,7 @@ func runApp(args []string) error {
 	// ONE SUPERVISOR FOR EVERY CONVERSATION THE APP BUILDS (appservices.go).
 	services := openAppServices()
 	appServiceDoor.Store(services)
+	appClientToolsBackend.Store(backend)
 	backend.attachServices(services)
 	// And the press a job's manager makes Merge and Mark ready through, the
 	// job page's own (factory_manager_press.go).
@@ -586,6 +587,7 @@ func appConnOf(client *remote.Client, release func(), assembled bool) *appConn {
 
 // appBackend is the [appwire.Engine] over this process's conversations.
 type appBackend struct {
+	clientTools    appClientTools
 	libraryWatch   sync.Once
 	libraryInboxMu sync.Mutex
 	pluginPauses   map[string]appPluginPause
@@ -1999,6 +2001,9 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 	if door, ok := conn.Conv.(interface{ ModelIdentity() session.ModelIdentity }); ok {
 		state := door.ModelIdentity()
 		modelIdentity = &state
+		if state.Selected != "" {
+			model = state.Selected
+		}
 	}
 	effort := conn.Conv.ReasoningFor(model)
 	if dial, ok := conn.Conv.(interface{ ConversationEffort() string }); ok {
@@ -2052,6 +2057,7 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 		a.crewHeld = a.crewHeld || crewHeld
 		view = a.view
 	})
+	b.holdClientTools(a, live)
 	startTitles()
 	b.flushSync(a)
 	b.locked(func() { view = a.view })
@@ -2994,7 +3000,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 			b.stepMoved(a, live, title)
 			row := b.callBegan(a, id, turn, event, title)
 			row.Summary = event.Hint
-			live.box.Event(appwire.EventTurnTool, row)
+			live.sayTool(row)
 		case session.EventToolOutput:
 			b.callOutput(a, id, live, event)
 		case session.EventToolFinished:
@@ -3013,7 +3019,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 			if title == "" {
 				title = redact.Secrets(tui3.ToolTitle(event.Tool, event.Args, ""))
 			}
-			live.box.Event(appwire.EventTurnTool, b.callEnded(a, id, turn, event, title, summary, appDetail(summary), succeeded))
+			live.sayTool(b.callEnded(a, id, turn, event, title, summary, appDetail(summary), succeeded))
 			b.noteContext(a, live)
 			// THE SEVENTEENTH PROCESS is refused by the engine, and the turn
 			// says so once at its end.
@@ -4671,6 +4677,8 @@ func (b *appBackend) Close() error {
 	if b.leaving != nil {
 		b.leaving()
 	}
+	b.clientTools.disconnect()
+	appClientToolsBackend.CompareAndSwap(b, nil)
 	already := false
 	var waitClosed chan struct{}
 	var crews *appCrewRun

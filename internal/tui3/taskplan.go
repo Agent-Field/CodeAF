@@ -176,6 +176,9 @@ func planStateWord(row session.PlanTaskRow) string {
 	if row.Interrupted {
 		return "interrupted"
 	}
+	if row.Undriven && row.Status == "ready" {
+		return "queued"
+	}
 	switch strings.TrimSpace(row.Status) {
 	case "pending":
 		return "queued"
@@ -221,6 +224,9 @@ func planStatus(row session.PlanTaskRow) session.TaskStatus {
 			Tier: session.TaskTierMoving, Presence: session.TaskPresenceQueued,
 			Word: planStateWord(row), On: session.TaskWaitMachine, Reason: row.Hold,
 		}
+	}
+	if row.Undriven && store == "ready" {
+		store = "pending"
 	}
 	switch strings.TrimSpace(store) {
 	case "pending":

@@ -90,6 +90,8 @@ func New(config Config) (*Agent, error) {
 // parent's account-keyed pool and resolve their own model before their first
 // request, rather than inheriting whichever adapter the parent last used.
 func (a *Agent) newChildAgent(config Config) (*Agent, error) {
+	config.ClientTools = nil
+	config.System = clientToolsWithoutSections(config.System)
 	if pair, ok := a.ConversationModelPair(); ok && config.ConversationModels == nil {
 		pair.Main = config.Model
 		if config.OneModel || pair.Fallback == pair.Main {
@@ -158,6 +160,9 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		config.liveProfile.launch = chosenPromptProfile(config)
 	}
 	config.liveProfile.current.Store(config.profile)
+	// What the page and the tasks description say about other windows follows
+	// the stored scope; a later change is taken at a turn's start (scope.go).
+	config.ownWork = config.readsOwnWorkOnly()
 	system, own := config.System, false
 	if strings.TrimSpace(system) == "" {
 		system, own = renderSystem(config), true
@@ -190,6 +195,9 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	}
 	if config.Place.Dir != "" {
 		if meta, err := LoadMeta(config.Place.Dir); err == nil {
+			if meta.Model == config.Model {
+				agent.modelForNowProvider = meta.ModelProvider
+			}
 			if meta.ModelIdentity != nil {
 				agent.modelIdentity = *meta.ModelIdentity
 				agent.modelIdentity.Active, agent.modelIdentity.Pending = "", false
@@ -295,6 +303,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// hub has to exist before the tools are assembled (connect.go).
 	agent.connect = newConnectHub(config)
 	agent.initKnowledge()
+	agent.ownWorkTold.Store(config.ownWork)
 	agent.tools = agent.belt()
 	definitions, err := toolDefinitions(agent.tools)
 	if err != nil {
@@ -417,9 +426,10 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// not reachable yet.
 		agent.scrubBlindImagePartsLocked(agent.model)
 		// AND IT KEEPS WHAT IT SPENT. The total is the sum of the file's usage
-		// lines (sessionfile.go), so a conversation reopened tomorrow reports the
-		// money it actually cost rather than the money this process has spent so
-		// far — which for a resumed session was always nothing.
+		// lines and late-receipt call lines (sessionfile.go), so a conversation
+		// reopened tomorrow reports the money it actually cost rather than the
+		// money this process has spent so far — which for a resumed session was
+		// always nothing.
 		//
 		// THIS ALSO RESTORES THE SPEND RAIL, and that is the intended change: the
 		// rail is this conversation's own ceiling (rail.go), so a conversation
@@ -427,7 +437,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// the process was a ceiling on a window, not on a conversation.
 		agent.usage = file.RestoredUsage()
 		// AND A JOURNAL WRITTEN BEFORE THE TOTAL WAS KEPT GETS ONE NOW. The sum
-		// above came out of the file's own usage lines, so this costs the read
+		// above came out of the file's own charge records, so this costs the read
 		// of a meta.json and — only when it has no figure at all — one write
 		// (placemeta.go's [Agent.stampRestoredSpend]). Without it a conversation
 		// that has not spoken since the field arrived would read as free on
@@ -800,6 +810,9 @@ func (a *Agent) SetModel(model string) { a.setModel(model) }
 func (a *Agent) setModel(model string) ModelLanding {
 	if pair, ok := a.ConversationModelPair(); ok {
 		pair.Main = model
+		if pair.Main == pair.Fallback {
+			pair.Fallback = ""
+		}
 		_, _ = a.SetConversationModels(pair)
 		return ModelLandsNextRequest
 	}
@@ -824,6 +837,11 @@ func (a *Agent) setModel(model string) ModelLanding {
 	// that said `switching now` and a step that changed nothing (steer.go's
 	// [Agent.ridingNowLocked]).
 	changed := a.ridingNowLocked() != model
+	// An explicit confirmation also withdraws a queued temporary choice.
+	// This only changes the next request; the current call keeps answering.
+	a.spokenModel = ""
+	a.modelForNowConfigured = ""
+	a.modelForNowProvider = ""
 	a.model = model
 	if a.clientPool != nil {
 		a.clientPool.setSeat(model)
@@ -868,6 +886,10 @@ func (a *Agent) SetSources(sources modelsource.Set) {
 		return
 	}
 	a.mu.Lock()
+	// A disconnected source must not erase the saved model's provider identity.
+	if a.modelForNowProvider == "" {
+		a.modelForNowProvider = a.config.serviceFor(a.configuredModelLocked()).Source.ID
+	}
 	a.config.Sources = sources
 	a.clientPool.setSources(sources)
 	if !a.running {
@@ -1436,6 +1458,9 @@ type userMessage struct {
 	// leave it empty, and the turn is then stamped with no person message — an
 	// unknown, never a guess at the latest one.
 	answersMessage string
+	// sourceMessage is the exact recorded message a resumed answer continues.
+	// Only ResumeStoppedTurn sets it; ordinary notes never inherit the latest message.
+	sourceMessage string
 
 	// said is THE PERSON'S OWN WORDS, when what the model reads is not only
 	// them. Empty in every ordinary case, and set where the session writes
@@ -2022,6 +2047,9 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	// (taskpresence.go). The nudge never blocks and never takes a lock, which is
 	// what lets it sit under a.mu here.
 	a.nudgePresence()
+	// AND WHAT THE PAGE SAYS ABOUT OTHER WINDOWS FOLLOWS A CHANGED SCOPE, from
+	// this turn on, as the scope's documentation promises (scope.go).
+	a.followWorkScopeLocked(time.Now())
 	// AND THE CLOCK IN THE PROMPT IS BROUGHT UP TO DATE BEFORE THE TURN OPENS,
 	// when it has gone stale enough to be worth the cold prefix (prompt.go's
 	// clockRefresh says why that is free).
@@ -2056,7 +2084,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	// turn, or one a task or member report opened, has a run and no person
 	// message, which is the truth. A steer that lands later is NOT the opener
 	// and changes nothing here.
-	turnCtx = withTurnOrigin(turnCtx, turnOrigin{run: runIdentity(turnCtx), turn: openingMessage(user)})
+	turnCtx = withTurnOrigin(turnCtx, turnOriginLocked(user, runIdentity(turnCtx)))
 	// AND THE TURN CARRIES THE CREATION CONTEXT the accepting door stated on
 	// its opening message (creation_team.go), only when it stated one: any other
 	// turn leaves the team unknown. Never rewritten from who manages a team now.

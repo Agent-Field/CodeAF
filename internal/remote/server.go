@@ -136,6 +136,8 @@ type WrappedAgent interface {
 type Engine struct {
 	// EntryNotice reads home-owned recovery news when an interactive surface opens.
 	EntryNotice func(string) string
+	// ClientTools is the conversation's connection-owned forwarding door.
+	ClientTools *ClientToolHub
 	// SyncService is the engine's address for chat outage notices.
 	SyncService string
 	// DeltaWindow lets each of this conversation's streams fold streamed text
@@ -1216,6 +1218,7 @@ func (sess *Session) attach(s *server, hello Hello) error {
 // gets around to reporting the end, which may be after the window that replaced
 // it has already been welcomed (held.go states the whole rule).
 func (sess *Session) detach(s *server, deliberate bool) {
+	s.dropClientTools()
 	// THE RAIL'S SUBSCRIPTION GOES WITH THE WINDOW. It is left before anything
 	// else because leaving it is what ends the goroutine pumping frames at a
 	// pipe that is closing (tasklane.go).
@@ -1377,6 +1380,7 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 	}
 	_, workAdmission := sess.agent.(interface{ CheckWork() error })
 	return Welcome{
+		ClientTools:                sess.engine.ClientTools != nil,
 		WorkAdmission:              workAdmission,
 		UserMessages:               users,
 		MessageMarks:               messageMarksKnown(sess.agent),
@@ -1798,6 +1802,14 @@ func (sess *Session) swap(asked *server, build func() (WrappedAgent, string, boo
 	sess.follows = map[uint64]followQueued{}
 	sess.held.forget()
 	sess.engine.SessionFile = file
+	// AND THE APP TOOLS OF THE CONVERSATION LEFT BEHIND STAY WITH IT. The hub
+	// is shared across openings, so without this an app that joined the old
+	// conversation would lend its tools, and its calls, to the new one. It is
+	// done before the new agent is reachable, so its first step already sees
+	// the empty snapshot.
+	if sess.engine.ClientTools != nil {
+		sess.engine.ClientTools.forget(file)
+	}
 	sess.engine.Resumed = resumed
 	// The note belonged to the launch and to nothing after it: a swap the
 	// person asked for is not a session that moved under them.
@@ -1845,6 +1857,7 @@ func (sess *Session) swap(asked *server, build func() (WrappedAgent, string, boo
 // ── one connection ──────────────────────────────────────────────────────────
 
 type server struct {
+	clientToolsGone atomic.Bool
 	// write guards the writer. ONE FRAME IS ONE LINE IS ONE WRITE: a torn frame
 	// is not a slow surface, it is a surface that can never parse this stream
 	// again, so every writer on this process goes through here.
@@ -1989,6 +2002,7 @@ func (s *server) serve(in io.Reader) (err error) {
 	s.ordered = newOrderedLane()
 	go s.ordered.run(s.dispatch)
 	defer func() {
+		s.dropClientTools()
 		s.ordered.close()
 		s.ordered.wait()
 	}()
@@ -2373,6 +2387,8 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		return out, err
 	}
 	switch call.Method {
+	case MethodClientToolsSet, MethodClientToolAnswer:
+		return s.invokeClientTools(call)
 	case MethodProcessList, MethodProcessRerun, MethodProcessPage, MethodProcessRecord,
 		MethodProcessActions, MethodProcessRerunAt, MethodProcessStopAt, MethodProcessStopAll:
 		return serveAppProcesses(agent, call)
@@ -3116,6 +3132,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		return nil, err
 
 	case MethodClose:
+		s.dropClientTools()
 		// The surface said goodbye politely, and it is saying it about the
 		// CONVERSATION rather than about this window — so [server.leave] closes
 		// the session behind it whoever else is attached. The journal is flushed
@@ -3642,6 +3659,9 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	// bargain: a surface that meets it says the sentence its place has always
 	// said rather than waiting on a call nobody is going to answer
 	// (wire_places.go states the law).
+	if payload, handled, err := s.modelForNowCall(agent, call); handled {
+		return payload, err
+	}
 	if payload, handled, err := s.placesCall(call); handled {
 		return payload, err
 	}
@@ -3881,9 +3901,14 @@ func (s *server) sendLocked(frame Frame) error {
 	}
 	if _, err := s.out.Write(line); err != nil {
 		s.dead = true
+		s.dropClientTools()
 		return err
 	}
-	return flushFrame(s.out)
+	err = flushFrame(s.out)
+	if err != nil {
+		s.dropClientTools()
+	}
+	return err
 }
 
 func (s *server) hungUp() bool {

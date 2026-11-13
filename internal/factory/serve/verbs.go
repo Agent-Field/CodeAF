@@ -856,6 +856,9 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !visible {
+		if h.githubVisibilityLimited(w, r) {
+			return
+		}
 		h.fail(w, http.StatusNotFound, "repository not found")
 		return
 	}

@@ -88,6 +88,14 @@ in its own words — and new work never runs inside it. A task handed off in the
 seconds while a run is finishing (its work landing, its summary being written) waits
 until that run is over and then starts its own: it never joins a run on its way out.
 
+## Run subtasks in app task lists
+
+App task lists keep each run's internal tasks under their actual parent. A direct child
+names the run's listed task id; deeper children name their parent's listed id. The
+`parent` field lets a client build that tree instead of counting every internal part as
+another top-level conversation task. When a recorded group is known, the parts carry the
+same group as their run.
+
 ## When does a task run's work come home, including commits its workers made
 
 When a `/task` run on the worker harness ends, any uncommitted work in its copy is committed.
@@ -166,6 +174,9 @@ Each row wears one state word, mapped off the store's own status:
   run cancelled for its own reasons at another moment, keeps `incomplete`.
 - `your call` — the store says `paused`: the task is held at a gate, which is your
   call and nothing else's.
+
+A ready task retained after its run's supervisor leaves reads `queued`; it stays
+available for continuation. Ready rows of a live run keep their usual word.
 
 Beside the word a row may carry the steps its worker recorded and the dollars its
 spend rows hold — each left out when it is nothing.
@@ -505,11 +516,19 @@ has never heard of, one with no words on it, or one that has already landed draw
 
 ## Does a subtask see my original request
 
-Yes — every worker that is not the run's root reads your sentence again, word for
-word, in a section of its page headed *The ask this run serves*. The planner's work
-order is only that worker's one part of it, and where the two disagree about that
-part your words win — a worker that had to go against them says so in its report
-rather than quietly choosing.
+Workers below a person-typed root read your sentence again, word for word, under
+*The ask this run serves*. Proposed assignments carry their own title, work, output
+and done-condition instead of the conversation message. Where that assignment and
+a descendant's work order disagree about its part, the assignment wins and the
+worker says so in its report.
+
+A handoff joined into a live run is its own assignment. Its worker already has
+that work order; its descendants and checks inherit the joined assignment's ask,
+even when the run began with another proposal or a task you typed yourself.
+
+On waking, a worker reads only its own additions as children it dispatched. Other
+work, including joined handoffs, reviews and fixes, is listed separately with an
+instruction not to redo it.
 
 ## Steering a task: notes, pause, cancel, amend, priority
 

@@ -115,8 +115,10 @@ func TestTheRoundARestartPicksUpReadsItsRunsEndInsteadOfStartingAnother(t *testi
 		t.Fatalf("the job does not hold the run's pull request: %+v", end.PullRequest)
 	}
 	// A round begun afresh is a new start and runs again.
-	if _, err := r.Step(context.Background(), factoryrun.Job{Item: it, Stage: stage, Round: 1}); err != nil {
+	if res, err := r.Step(context.Background(), factoryrun.Job{Item: it, Stage: stage, Round: 1}); err != nil {
 		t.Fatalf("fresh round: %v", err)
+	} else if res.Output != "finished and opened https://github.com/santoshkumarradha/factory-demo/pull/298" {
+		t.Errorf("fresh single-step round output=%q", res.Output)
 	}
 	if len(cp.dispatched) != 1 {
 		t.Fatalf("a fresh round of an ended step did not start its own run: %d dispatched", len(cp.dispatched))
