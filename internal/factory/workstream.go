@@ -8,7 +8,7 @@ import (
 // ── AN ORGANIZATION'S WORKSTREAMS ──────────────────────────────────────────
 //
 // An organization's workstreams live on its server (the store keeps them in
-// one document beside the go-ahead policies), never in someone's app. A
+// one SQLite database beside the go-ahead policies), never in someone's app. A
 // workstream has exactly ONE owner, a person or a team, who carries its budget
 // and go-ahead approval, and it can be shared with several teams, the way a
 // label is put on a mail rather than a mail moved into a folder.
@@ -38,7 +38,16 @@ type OrgWorkstream struct {
 	Decisions []WorkstreamDecision `json:"decisions"`
 	Sources   []WorkstreamSource   `json:"sources"`
 	Links     []string             `json:"links"`
-	CreatedBy string               `json:"created_by"`
+	// Jobs are the factory jobs on this server that belong to the workstream,
+	// by id, in the order they were added. A job belongs to at most one
+	// workstream: adding it to another takes it out of the first.
+	Jobs []int `json:"jobs"`
+	// BudgetUSD is what the workstream may spend, nil when it carries no
+	// budget. What it has spent is never kept here: spend is posted by whoever
+	// ran the work, and summing the posts keeps a spend from moving the rev a
+	// writer read.
+	BudgetUSD *float64 `json:"budget_usd,omitempty"`
+	CreatedBy string   `json:"created_by"`
 	// FromLocalID is the Personal workstream an import came from, and
 	// ImportedBy who moved it in: together they make a repeated import answer
 	// the copy already made instead of making a second one.
@@ -72,6 +81,10 @@ type WorkstreamPage struct {
 	Kind      string `json:"kind" jsonschema:"enum=overview,enum=page,enum=decisions,enum=spec,enum=runbook,enum=research"`
 	UpdatedAt string `json:"updated_at"`
 	UpdatedBy string `json:"updated_by"`
+	// Rev counts every change to this one page, so two people changing two
+	// different pages never refuse each other; a page's place in the list is
+	// its order.
+	Rev int `json:"rev"`
 }
 
 // WorkstreamDecision is one decision a workstream keeps.

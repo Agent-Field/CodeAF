@@ -32,9 +32,17 @@ type FactoryOrgChanged struct {
 	Connection string `json:"connection"`
 	Kind       string `json:"kind" enum:"team.changed,workstream.changed,workstream.removed"`
 	ID         string `json:"id"`
-	// By is the handle of the person who made the change, as the server
-	// stamped it; empty on a resync and from a server older than presence.
-	By string `json:"by,omitempty"`
+	// Part, PartID, By, Rev and Deleted say which part of a workstream changed
+	// ("page", "versions", "plan", "wakes", "suggestions", "jobs", "spend" or
+	// "workstream"), which one, who changed it, its rev after, and whether it
+	// was removed. By is the person the server stamped; all are empty on a resync,
+	// and Part, PartID, Rev and Deleted are absent from a team's change and from
+	// an older server, and a window that ignores them reads the whole workstream again.
+	Part    string `json:"part,omitempty"`
+	PartID  string `json:"part_id,omitempty"`
+	By      string `json:"by,omitempty"`
+	Rev     int    `json:"rev,omitempty"`
+	Deleted bool   `json:"deleted,omitempty"`
 }
 
 func init() {

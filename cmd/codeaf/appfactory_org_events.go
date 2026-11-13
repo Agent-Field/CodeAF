@@ -207,11 +207,12 @@ func (h *appFactoryHub) relayOrg(id string, f *appOrgFollow, kind, data string) 
 	case api.EventPresence:
 		return h.relayPresence(id, f, data)
 	case api.TeamChangedKind, api.EventWorkstreamChanged, api.EventWorkstreamRemoved:
-		var body api.OrgChanged
+		var body api.WorkstreamEvent
 		if json.Unmarshal([]byte(data), &body) != nil || body.ID == "" {
 			return true
 		}
-		out = append(out, appwire.FactoryOrgChanged{Connection: id, Kind: kind, ID: body.ID, By: body.By})
+		out = append(out, appwire.FactoryOrgChanged{Connection: id, Kind: kind, ID: body.ID,
+			Part: body.Part, PartID: body.PartID, By: body.By, Rev: body.Rev, Deleted: body.Deleted})
 	case "changed":
 		if data != "*" {
 			return true
