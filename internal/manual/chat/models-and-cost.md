@@ -121,13 +121,23 @@ On a local launch, the opening model comes from the same available chat list as
 is kept only if that model is listed. Otherwise codeaf selects the first available
 chat model in provider order. With only Ollama connected, that is an installed Ollama
 model. With several providers, the default still belongs to their combined list.
-Automatic replacements do not overwrite your saved preference.
+Availability replacements apply only to this run. They do not overwrite the
+conversation's saved model, main/fallback pair or profile model settings. When
+the configured model is listed again, codeaf returns to it automatically.
+Until then the replacement stays while it is listed; a refreshed list that puts
+another model first does not move the conversation. A hidden chat reconciles availability when it next comes to the front.
+Choosing a model yourself, including the replacement already running, saves that
+choice as usual.
 
 While every catalog is cold or empty, no default model is displayed and a message
 stays in the draft. The picker opens with:
 `no available model · connect a provider or refresh /model`.
 When a provider's list arrives, codeaf selects an available model. Press Enter again
-to send the draft. Refreshing a list or removing a connection also replaces a model
+to send the draft. The replacement is displayed immediately, and each send waits
+for that chat's model switch to finish. A failed selection reports
+`could not change model · <reason>`; the message still sends once on the engine's
+current model, and the next availability check retries the selection.
+Refreshing a list or removing a connection also replaces a model
 that is no longer listed; existing requests finish on the model they started with.
 
 Remote sessions keep the engine's opening model; this laptop's catalog does not
