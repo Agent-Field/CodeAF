@@ -31,6 +31,13 @@ An attended window keeps following your other devices while the chat is open, so
 
 If you continue it, the other device's window stops taking new turns and says `<device> continued this chat; this window now only shows it`. The page *Home* has the rest of that card.
 
+## A tool finishes after the chat hold expires — late saves and kept turns
+
+A finished tool call is saved locally even after this computer has noticed its
+hold expired. That late save stays local and is kept as a separate copy when it
+syncs, without replacing the shared chat's saved turn, and a fresh continuation
+is needed for new work.
+
 ## Where an older chat's copy lives — the .moving folder, README.txt, can I delete it
 
 An older chat's copy is kept in a folder called `.moving` beside the original, in codeaf's state folder for that project. The name is historical: nothing in it is a move in progress. It holds the live copies this build writes to, so deleting it deletes those chats. The folder carries a `README.txt` that says so. The originals beside it stay untouched for older codeaf builds.
