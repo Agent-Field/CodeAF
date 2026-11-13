@@ -113,8 +113,13 @@ func taskTreeCost(taskCap, spent, cost float64) (float64, bool) {
 	return cost, conversation
 }
 
+// taskLimitWords is the per-task limit's sentence when the tree's ceiling
+// ended the run, and nothing otherwise. A run the engine ended done is not a
+// limit ending even when its final receipt crossed the ceiling (the engine
+// keeps Limit cost on such a run): it finished, so nothing may say it stopped
+// or hold back its completion.
 func (run *beltRun) taskLimitWords(summary RunSummary) string {
-	if run.delegate != nil || summary.Limit != RunLimitCost {
+	if run.delegate != nil || summary.Limit != RunLimitCost || summary.Outcome == beltRunOutcomeDone {
 		return ""
 	}
 	run.costMu.Lock()

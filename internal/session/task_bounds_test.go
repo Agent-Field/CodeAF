@@ -286,6 +286,54 @@ func TestAPerTaskLimitEndingSaysItsSentenceOnceWhereThePersonLooks(t *testing.T)
 	}
 }
 
+// A run that FINISHED whole is not a limit ending, even when its final receipt
+// crossed the tree's ceiling (the engine ends such a run done with Limit cost;
+// internal/run TestFinishedChildlessRunAtCostLimitStillEndsDone). Its crew
+// keeps no limit stop, so its completion is announced, "run again with a
+// stronger crew" stays offered, and neither its report nor its outcome note
+// says the limit — as on dev.
+func TestAFinishedRunAtItsCeilingIsNoPerTaskLimitStop(t *testing.T) {
+	want := config.CrewTaskCapAction(config.CrewTaskCapDefault)
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	useTaskUsageHome(t)
+	double := newBeltRunDouble("")
+	double.summary = RunSummary{Outcome: beltRunOutcomeDone, Result: "Wrote a.txt, b.txt and c.txt", Limit: RunLimitCost}
+	double.leaveOpen = true
+	registerBeltRunEngine(t, double)
+	dir := t.TempDir()
+	agent, _ := newTestAgent(t, beltRunCompleter{text: "Wrote a.txt, b.txt and c.txt"}, func(c *Config) {
+		c.Workspace = newTestRepo(t)
+		c.Place = Place{Dir: dir}
+		c.SessionFile = filepath.Join(dir, placeTranscript)
+		c.ProfileDir = t.TempDir()
+		c.AskConsent = false
+		c.RouteCrew = func(config.CrewAsk) (crewroute.Decision, error) { return liveDecision(), nil }
+	})
+	id, _, _, err := agent.StartTask(context.Background(), "Write three files a.txt, b.txt and c.txt", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-double.entered
+	endBeltRun(t, agent, double)
+	row, found := runRowOf(agent.graph(), id)
+	if !found {
+		t.Fatal("the run's row is gone")
+	}
+	if row.Crew != nil && row.Crew.Stopped != "" {
+		t.Fatalf("a finished run's crew was stopped on %q, so its completion is never announced", row.Crew.Stopped)
+	}
+	if strings.Contains(row.Report, want) {
+		t.Fatalf("a finished run's report says the per-task limit:\n%s", row.Report)
+	}
+	store := beltRunStoreAt(t, dir)
+	defer store.Close()
+	for _, note := range store.Notes(strconv.FormatUint(id, 10), 0) {
+		if strings.Contains(note.Body, want) {
+			t.Fatalf("a finished run's outcome note says the per-task limit: %s", note.Body)
+		}
+	}
+}
+
 // L-LOOP C4b: the existing report, outcome note and ending carry the stop.
 func TestPerTaskTreeLimitNamesTheLimitAndHowToRaiseIt(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
