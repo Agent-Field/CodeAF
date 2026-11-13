@@ -75,20 +75,176 @@ decides which combinations are accepted.
 | `agents.set_effort` | `{effort, id}` | `agentResult` |
 | `agents.set_model` | `{automatic, id, model}` | `agentResult` |
 | `agents.set_models` | `{fallback, id, main}` | `agentResult` |
+| `agents.set_scope` | `{id, scope}` | `AgentScope` |
 | `agents.since` | `{after, id}` | `Since` |
 | `agents.steer` | `in.sayTo` | `Empty` |
 | `agents.stop` | `in.IDParams` | `Empty` |
 | `agents.suggest_reply` | `in.ReplySuggestionParams` | `ReplySuggestion` |
+
+## Conversation work scope
+
+`agents.set_scope {id, scope}` answers `{id, scope}` with the stored word.
+`project` is the default: the conversation is told about other conversations'
+landed and running work in its folder, as today. `conversation` means it is told
+only about its own work: its turns receive no other-conversation `<elsewhere>`
+block, and its `tasks` tool lists and addresses only its own tasks. Neither the
+other-window running section nor the wider `scope: "everywhere"` section is
+added. Its instructions and the `tasks` tool description say that other
+conversations' work is hidden from it, instead of promising that work. Task
+nodes keep their existing scope.
+
+The choice is stored with the conversation and survives restarts. It takes
+effect from the conversation's next turn, instructions and tool description
+included; a live tasks call also reads the stored choice. Setting it never opens, warms or interrupts the conversation,
+never moves its folder, and never changes its transcript, title, model or tasks.
+The write-safety checks still warn before its own work writes over files other
+conversations are writing. The person's task list is unchanged.
+
+Engines that serve this method announce `agents.scope` in `hello.features`.
+A missing id or a scope other than `project` or `conversation` is `bad_params`;
+an engine without the door answers `unknown_method`. An unknown conversation is
+`not_found`; a lent conversation or one without a local folder is `conflict`.
+No `agent.changed` event is emitted, because the Agent view carries no scope.
+
+## Client tools
+
+The optional features `agents.client_tools` and `agents.client_tools.source`
+appear together in `hello.features` exactly when the engine implements the
+client-tools interface. The latter guarantees message identity on calls whenever
+the running turn answers a message. `agents.client_tools.remote` additionally
+advertises forwarding through a joined conversation's remote connection when
+its holder supports it. Sets belong to this
+stdio connection and one conversation. They are memory-only: register again
+after reconnecting. Attachment does not open the conversation or start a turn.
+Children, workers and clarification conversations inherit neither tools nor
+instructions. Within the same app connection, every join or re-join pushes the
+conversation's current sets to its holder; a roaming link resends them after
+redial only when the welcome identifies the same conversation. A changed
+conversation forgets the old snapshot and ends its calls. When another window
+starts a new conversation or opens another one in the holder, every
+connection's sets for the old conversation are dropped and its calls end, so
+none reach the replacement. A returning owner's
+random token moves its sets to the replacement connection even while the old
+connection remains attached; other owners still face collision checks. A
+conversation returning to this engine uses the registry directly.
+If another computer holds the chat (`Location.Here == false`), attachment still
+validates and stores the sets without opening the conversation. They apply
+when this engine runs it again after "Continue here" or take, without a second
+`agents.tools_set`.
+
+| method | params | result |
+|---|---|---|
+| `agents.tools_set` | `{agent, set, instructions?, deadline_ms?, tools?: [{name, description, input_schema, category}]}` | `{agent, set, tools: [name, ...]}` |
+| `agents.tool_result` | `{call, result: <any JSON>}` or `{call, error: <text>}` | `{accepted: true}` or `{accepted: false}` |
+
+`agents.tools_set` replaces that `agent` + `set` whole; other sets remain.
+Omitted `tools` or `tools: []` removes only that set and returns `tools: []`.
+An agent holds at most 4 sets, 32 tools per set and 64 tools total. All validation
+is atomic: a refusal leaves every set unchanged.
+
+- `set` matches `^[a-z][a-z0-9_.-]{0,63}$`.
+- `name` matches `^[a-z][a-z0-9_]{0,63}$`, unique within and across the agent's sets.
+- `description` is 1–2048 bytes. `input_schema` is a JSON object whose `type`
+  is `"object"`, at most 16 KiB. Schema validation of call arguments is the app's job.
+- `category` is `read`, `edit` or `create` and supplies this conversation's tool
+  category. Reading-only contexts refuse edits and creations. Ordinary tool
+  approval rules apply; attachment is not approval.
+- `instructions` is at most 4096 bytes per set and may be empty. It appears in a
+  section headed `Tools from the app: <set>`. A caller-supplied system page is
+  preserved and receives no section. Ordinary conversations gain no text.
+- `deadline_ms` is 0 (the default 30000) or 1000–120000.
+
+Invalid fields, aggregate limits, duplicates and built-in tool names answer
+`bad_params`; a collision message names the tool. Collision checks include the
+live belt and all classified engine tools. A built-in arriving later wins and
+the colliding client tool leaves the belt. No model request has duplicate names.
+Unknown agents answer `not_found`. A joined holder without forwarding support
+answers `bad_scope`: `client tools need a conversation this engine runs`.
+Holder refusals answer `bad_params` with the holder's message; a failed or timed
+out link answers `unreachable`, leaving the app registry unchanged for retry.
+Different remote connections keep separate sets. The aggregate limits count
+all of them, tool-name collisions are refused atomically, and only the
+connection that owns a set can receive or answer its calls.
+Tools and instructions update at the next step boundary, with client tools at
+the tail after all built-ins.
+
+| event | data |
+|---|---|
+| `agents.tool_call` | `{agent, turn, call, turn_call, source_message_id?, set, name, args: <JSON object>, deadline_ms}` |
+
+`source_message_id` names the message the running turn answers: the same string
+as `Entry.message_id` on that message's chat entry in `agents.read` (and in
+`entry.added` when present). It is captured when the turn starts, never changed
+by a mid-turn steer or note, and survives journal restarts and call replays.
+It is absent when no message can be named exactly. A stopped answer reuses its
+recorded message id. Turns the engine starts itself, including ordinary session
+wakes, mixed batches and a carry-on after a quit or close, carry none.
+With `agents.client_tools.source` advertised,
+an absent field means no such message, rather than an older engine.
+
+One model call emits exactly one `agents.tool_call`. `turn` is the engine's
+process-local conversation counter, which resets after restart;
+`turn_call` matches `turn.tool.call`. `call` is `ct_` followed by 64 lowercase
+hex digits. It is a hash of the whole call: the agent, the provider call id, the
+set, the tool name and the exact argument bytes. The same call dispatched again
+keeps its `call`, including after an engine restart. A provider call id alone
+can repeat: Kimi-family models write their own `name:index` ids, which repeat
+after `agents.rewind` or compaction, and a faulty server can repeat any id. So a
+reused provider id with another tool or other arguments is a new call with its
+own `call` and its own event. Without a provider id the engine mints a random
+`call`, which no later launch repeats. A concurrent redispatch joins the
+pending wait and emits no second event. A settled redispatch returns the saved
+answer without an event for 10 minutes, subject to a maximum of 1024 saved
+answers per connection. Non-object model arguments become an invalid-arguments
+error result without an event.
+
+`agents.tool_result` requires exactly one of `result` and `error`. `result`
+accepts any JSON, including `null`, and reaches the model as compact JSON text,
+cut at 64 KiB with a plain dropped-byte marker. `error` must be a nonempty string
+of at most 4096 bytes and becomes an error tool result:
+`<set> could not do <name>: <text>`. Invalid answers are `bad_params`.
+A pending answer returns `accepted: true`; unknown, late or duplicate ids return
+`accepted: false` without an error or any other effect.
+
+Connection end (EOF, shutdown or context cancellation) disconnects the registry
+before conversations close: all sets are dropped and all pending calls settle
+immediately. These failures reach the model as error tool results, with no
+engine retry.
+
+For forwarded calls, a disconnect observed by the holder immediately removes
+that connection's sets and settles its waits. A link loss the holder cannot
+observe ends at the set's `deadline_ms`. The app drops the pending entry when
+its link ends or the holder reports that the call ended; later results return
+`accepted: false`. Failure text is:
+
+- A stale call after removal or disconnection:
+  `client_unavailable: the app that provides <name> is not connected; nothing was done.`
+- Disconnection during a call:
+  `client_unavailable: the app that provides <name> disconnected before answering; the outcome is unknown, so check before trying again.`
+- Deadline:
+  `client_timeout: the app that provides <name> did not answer within <n>s; the outcome is unknown, so check before trying again.`
+- Turn cancellation: the turn ended before the app answered. The pending entry
+  is dropped immediately and later answers return `accepted: false`.
 
 ## asks methods
 
 | method | params | result |
 |---|---|---|
 | `asks.answer` | `{agent, batch_item, id, later, option, scope, text, why, you_decide}` | `Empty` |
+| `asks.answer_secret` | `{agent, id, secret}` | `Empty` |
 | `asks.defer` | `in.askAt` | `AskResult` |
 | `asks.hold` | `{agent, id}` | `Empty` |
 | `asks.list` | `in.AgentParams` | `AsksResult` |
 | `asks.shown` | `in.askAt` | `AskResult` |
+
+An ask whose answer is a credential carries `secret: {placeholder?, keeps_for_s?}`.
+The app draws one masked box, never shows the value back, and sends it with
+`asks.answer_secret`, a method of its own so a wire trace drops `secret` by name.
+`bad_params` refuses an ask without `secret` and an empty value; to say no, answer
+the ask's Decline option with `asks.answer`, which refuses any `text` on a
+secret ask (`bad_params`) and so never carries the value. `keeps_for_s` is how long the engine
+keeps the value in a private file the agent's commands read (the model's own
+`request_secret`); absent, the value goes to its lane (a connection's key).
 
 ## attachments methods
 
@@ -203,6 +359,7 @@ decides which combinations are accepted.
 | method | params | result |
 |---|---|---|
 | `chats.list` | `{}` | `ChatsResult` |
+| `chats.send` | `ChatSendParams` | `ChatSendResult` |
 
 ## pair methods
 
@@ -230,7 +387,9 @@ decides which combinations are accepted.
 | `factory.access_sign_in` | `in.FactoryAccessParams` | `FactoryAccess` |
 | `factory.activity` | `in.FactoryActivityParams` | `FactoryActivity` |
 | `factory.attach` | `in.FactoryAttachParams` | `FactoryConnection` |
-| `factory.capabilities` | `in.Empty` | `FactoryCapabilities` |
+| `factory.capabilities` | `in.FactoryCapabilitiesParams` | `FactoryCapabilities` |
+| `factory.intake_add` | `in.FactoryIntakeParams` | `inbox.Result` |
+| `factory.features` | `in.FactoryRef` | `FactoryFeatures` |
 | `factory.detach` | `in.FactoryRef` | `Empty` |
 | `factory.job` | `in.FactoryJobParams` | `Job` |
 | `factory.job_approve` | `in.FactoryJobApproveParams` | `FactoryJobActed` |
@@ -241,9 +400,13 @@ decides which combinations are accepted.
 | `factory.job_brief_spot` | `in.FactoryJobBriefSpotParams` | `FactoryJobBriefSpot` |
 | `factory.job_brief_write` | `in.FactoryJobBriefWriteParams` | `FactoryJobBriefWritten` |
 | `factory.job_chats` | `in.FactoryJobChatsParams` | `FactoryJobChats` |
+| `factory.agentfield_run` | `in.FactoryAgentFieldRunParams` | `FactoryAgentFieldRun` |
+| `factory.agentfield_reasoners` | `in.FactoryAgentFieldReasonersParams` | `FactoryAgentFieldReasoners` |
+| `factory.foreman_open` | `in.FactoryRef` | `FactoryForeman` |
 | `factory.job_send` | `in.FactoryJobSendParams` | `FactoryJobSent` |
 | `factory.job_close` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_control` | `in.FactoryJobControlParams` | `FactoryJobActed` |
+| `factory.job_context_set` | `in.FactoryJobContextSetParams` | `FactoryJobActed` |
 | `factory.job_create` | `in.FactoryJobCreateParams` | `FactoryJobActed` |
 | `factory.job_dismiss` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_drop` | `in.FactoryJobDropParams` | `FactoryJobActed` |
@@ -251,12 +414,15 @@ decides which combinations are accepted.
 | `factory.job_hold` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_pr_ready` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_merge` | `in.FactoryJobMergeParams` | `FactoryJobActed` |
+| `factory.job_reject` | `in.FactoryJobRejectParams` | `FactoryJobActed` |
 | `factory.job_reject_plan` | `in.FactoryJobRejectPlanParams` | `FactoryJobActed` |
 | `factory.job_reopen` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_request_changes` | `in.FactoryJobChangesParams` | `FactoryJobActed` |
+| `factory.job_answer` | `in.FactoryJobAnswerParams` | `FactoryJobActed` |
 | `factory.job_restore` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_resume` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_publish_anyway` | `in.FactoryJobActionParams` | `FactoryJobActed` |
+| `factory.job_accept_step` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_retry_publish` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_run_as_new` | `in.FactoryJobRunAsNewParams` | `FactoryJobActed` |
 | `factory.job_run_again` | `in.FactoryJobActionParams` | `FactoryJobActed` |
@@ -265,6 +431,7 @@ decides which combinations are accepted.
 | `factory.job_set_budget` | `in.FactoryJobBudgetParams` | `FactoryJobActed` |
 | `factory.job_set_model` | `in.FactoryJobSetModelParams` | `FactoryJobActed` |
 | `factory.job_set_priority` | `in.FactoryJobPriorityParams` | `FactoryJobActed` |
+| `factory.job_set_repo` | `in.FactoryJobSetRepoParams` | `FactoryJobActed` |
 | `factory.job_start` | `in.FactoryJobStartParams` | `FactoryJobActed` |
 | `factory.job_step_edit` | `in.FactoryJobStepEditParams` | `FactoryJobStepEdited` |
 | `factory.job_step_edits_read` | `in.FactoryJobStepEditsParams` | `FactoryJobStepEdits` |
@@ -283,8 +450,27 @@ decides which combinations are accepted.
 | `factory.local_run` | `in.FactoryLocalParams` | `FactoryLocalStatus` |
 | `factory.local_start` | `in.FactoryLocalParams` | `FactoryLocalStatus` |
 | `factory.local_status` | `in.FactoryLocalParams` | `FactoryLocalStatus` |
+| `factory.agentfield_add_trigger` | `in.FactoryAgentFieldAddTriggerParams` | `FactoryAgentFieldAddedTrigger` |
+| `factory.agentfield_connect` | `in.FactoryAgentFieldConnectParams` | `FactoryAgentFieldStatus` |
+| `factory.agentfield_disconnect` | `in.FactoryRef` | `FactoryAgentFieldStatus` |
+| `factory.agentfield_sources` | `in.FactoryRef` | `FactoryAgentFieldSources` |
+| `factory.agentfield_status` | `in.FactoryRef` | `FactoryAgentFieldStatus` |
+| `factory.agentfield_trigger_add` | `in.FactoryAgentFieldTriggerAddParams` | `FactoryAgentFieldTrigger` |
+| `factory.agentfield_triggers` | `in.FactoryRef` | `FactoryAgentFieldTriggers` |
+| `factory.ai_search` | `in.FactoryAISearchParams` | `FactoryAISearchStarted` |
+| `factory.ai_search_estimate` | `in.FactoryAISearchParams` | `FactoryAISearchEstimate` |
+| `factory.ai_search_status` | `in.FactoryAISearchRunRef` | `FactoryAISearchRun` |
+| `factory.ai_search_stop` | `in.FactoryAISearchRunRef` | `FactoryAISearchRun` |
+| `factory.jira_connect` | `in.FactoryJiraConnectParams` | `FactoryJiraStatus` |
+| `factory.jira_disconnect` | `in.FactoryRef` | `FactoryJiraStatus` |
+| `factory.jira_status` | `in.FactoryRef` | `FactoryJiraStatus` |
+| `factory.library` | `in.FactoryRef` | `FactoryLibrary` |
+| `factory.library_preview` | `in.FactoryLibraryPreviewParams` | `FactoryLibraryPreview` |
+| `factory.library_set` | `in.FactoryLibrarySetParams` | `FactoryLibrary` |
 | `factory.me` | `in.FactoryRef` | `FactoryMe` |
 | `factory.people` | `in.FactoryRef` | `People` |
+| `factory.policy_get` | `in.FactoryPolicyGetParams` | `Policy` |
+| `factory.policy_set` | `in.FactoryPolicySetParams` | `Policy` |
 | `factory.pipeline` | `in.FactoryRepoParams` | `FactoryPipeline` |
 | `factory.pipeline_copy_clear` | `in.FactoryPipelineCopyClearParams` | `FactoryPipelineCopyDone` |
 | `factory.pipeline_copy_set` | `in.FactoryPipelineCopySetParams` | `FactoryPipelineCopyDone` |
@@ -299,12 +485,16 @@ decides which combinations are accepted.
 | `factory.read_on_arrival` | `in.FactoryReadOnArrivalParams` | `FactoryReadOnArrival` |
 | `factory.rename` | `in.FactoryRenameParams` | `Empty` |
 | `factory.repo_facts` | `in.FactoryRepoFactsParams` | `FactoryRepoFacts` |
+| `factory.repo_issues` | `in.FactoryRepoIssuesParams` | `FactoryRepoIssues` |
 | `factory.repo_read` | `in.FactoryRepoReadParams` | `FactoryRepoRead` |
 | `factory.repo_set` | `in.FactoryRepoSetParams` | `FactoryRepoSetDone` |
 | `factory.repos` | `in.FactoryRef` | `FactoryRepos` |
 | `factory.revoke_sessions` | `in.FactoryAdminParams` | `FactoryAdminDone` |
 | `factory.rules` | `in.FactoryRef` | `FactoryRules` |
 | `factory.rules_set` | `in.FactoryRulesSetParams` | `FactoryRules` |
+| `factory.routes` | `in.FactoryRef` | `FactoryRoutes` |
+| `factory.routes_set` | `in.FactoryRoutesSetParams` | `FactoryRoutes` |
+| `factory.routes_test` | `in.FactoryRoutesTestParams` | `FactoryRoutesTried` |
 | `factory.runner_slots` | `in.FactoryRunnerSlotsParams` | `FactoryRunnerSlotsDone` |
 | `factory.runners` | `in.FactoryRef` | `Runners` |
 | `factory.scout` | `in.FactoryScoutParams` | `ScoutLook` |
@@ -317,6 +507,9 @@ decides which combinations are accepted.
 | `factory.setup_continue` | `in.FactoryLocalParams` | `FactorySetupView` |
 | `factory.setup_discover` | `in.FactoryLocalParams` | `FactorySetupView` |
 | `factory.setup_done` | `in.FactoryLocalParams` | `FactorySetupView` |
+| `factory.setup_github_cancel` | `in.FactorySignInFlowParams` | `Empty` |
+| `factory.setup_github_poll` | `in.FactorySignInFlowParams` | `FactorySetupGitHubState` |
+| `factory.setup_github_start` | `in.FactoryLocalParams` | `FactorySignIn` |
 | `factory.setup_folder_check` | `in.FactorySetupFolderCheckParams` | `FactorySetupFolder` |
 | `factory.setup_read` | `in.FactoryLocalParams` | `FactorySetupView` |
 | `factory.setup_retry_read` | `in.FactorySetupRepoParams` | `FactorySetupView` |
@@ -328,10 +521,12 @@ decides which combinations are accepted.
 | `factory.sign_in_start` | `in.FactorySignInStartParams` | `FactorySignIn` |
 | `factory.sign_out` | `in.FactoryAdminParams` | `FactoryAdminDone` |
 | `factory.spend_by_model` | `in.FactorySpendByModelParams` | `FactorySpendByModel` |
+| `factory.events_since` | `in.FactoryEventsSinceParams` | `FactoryEvents` |
 | `factory.usage_by_model` | `in.FactoryUsageParams` | `FactoryUsage` |
 | `factory.spend_by_repo` | `in.FactorySpendByRepoParams` | `FactorySpendByRepo` |
 | `factory.spending` | `in.FactoryRef` | `FactorySpending` |
 | `factory.spending_set` | `in.FactorySpendingSetParams` | `FactorySpending` |
+| `factory.waits_set` | `in.FactoryWaitsSetParams` | `FactoryWaitsSetResult` |
 
 An engine whose hello carries the features `factory.default_budget`,
 `factory.auto_start_cap` and `factory.default_model` serves
@@ -353,6 +548,64 @@ the model. Only the factory's operator may set them (`forbidden` otherwise).
 `stale` and changes nothing. A refused value is `bad_params` before anything is
 sent; an unconfirmed write is `uncertain`.
 
+An engine whose hello carries `factory.group_policy` and `factory.waits_set`
+(and capabilities `group_policy: true`, `waits_on: true`) serves go-aheads the
+factory follows by itself. `factory.features {factory}` answers `{features}`, what
+that one factory keeps (`GET /v1/features`): `group_policy` and `waits_on` (a factory
+with a store), `keyed_create` (the keyed create rule below), or `[]` from a factory
+older than the route. `factory.policy_get {factory, group}` and
+`factory.policy_set {factory, group, stopped, allowances}` (`GET /v1/policy?group=`,
+`PUT /v1/policy`) answer `{group, version?, stopped, owner?, updated_at?, spent_usd,
+allowances: [{id, jobs, cap_usd, ends_at, spent_usd, state}]}`; a set replaces the
+group's whole policy and its caller becomes its owner (on a team, only the owner or
+the operator may change one someone keeps: `forbidden`). `group` is 1–200 plain
+characters; at most 50 allowances, each a distinct id of 1–64 of `A–Z a–z 0–9 . _ : -`,
+1–200 distinct job numbers, a cap above 0 and at most 10,000, and an RFC 3339
+`ends_at`, kept as sent; anything else is `bad_params` before it is sent. `state` is
+`ended` once the policy is stopped or `ends_at` has come, `spent` once the jobs the
+allowance started spent its cap, else `active`. `factory.waits_set {factory, job,
+waits_on, expect?}` (`POST /v1/jobs/{id}/waits_on`) replaces the jobs one job waits on
+(0–20 distinct others on the same factory, no circle) and answers `{factory, job,
+waits_on, current?}`. After every poll — on a team server (`codeaf factory serve`) every
+tick of its own poll, with or without a GitHub grant and with no app attached; on the
+app's own local factory only while the app runs with its runner on (`factory.local_run`,
+which needs `factory.setup_connect` first), never after the app quits — the factory starts a covered job that never ran
+and sits in Backlog once every job it waits on has merged, while one allowance naming
+it is active and the job is not someone else's; each started job holds its budget
+(lowered to what is left of the cap) until it finishes. A started job carries
+`policy_run` (the allowance id) and its start record `auto_started` with detail
+`allowance <id>`; a covered job not yet started carries `blocked {by: waits_on|policy,
+reason, job?, allowance?, since?}` — a full cap reads "its go-ahead's cap is spent" when
+the allowance's jobs spent it and "its go-ahead's cap is held by jobs already running"
+when running jobs only reserve it — and every job answer, `factory.queue` rows included,
+carries `waits_on` and `waiting_on`.
+Stopping, ending or withdrawing an allowance starts nothing further and stops nothing
+already running.
+
+A Factory job create (`POST /v1/jobs`, or `POST /v1/issues` when it opens the
+GitHub issue first) sent with an `Idempotency-Key` header is remembered for 24
+hours per caller, route and key, so a resend with the same key does not make a
+second job or issue, within two limits. The caller is the exact `Authorization`
+and `Cookie` headers: a resend under a new bearer or a rotated session cookie is
+not matched to the first answer and runs as a new create. And the answer is saved
+only after the create has committed, so a Factory that stops between the two runs
+the resend again. A Factory with this rule lists `keyed_create` in
+`GET /v1/features`; an older one keeps every keyed answer, a refusal or a 5xx
+included, for 24 hours, so an engine sends a create key only to a Factory that
+lists it. An answer given before the create wrote anything carries
+the response header `X-Codeaf-Phase: pre-mutation` and is not kept, so the same
+key runs the create again. Such answers are refusals of the request (a bad field,
+a repository the caller cannot see or that is off, a missing pipeline), sign-in and
+read failures, GitHub's own 4xx refusal of the issue, and GitHub not answering
+before the issue request was sent. An answer given once the issue request may
+have reached GitHub or the job exists is replayed unchanged, including a 5xx or
+408. Examples are a lost or 5xx GitHub answer, or a job made whose start failed.
+After an `uncertain` keyed create, resend the same key: a create that wrote nothing
+runs again, and one that did returns its first answer. If that is the same failure
+again, read the queue, since the job or issue may exist. A create without a key is
+never replayed. Worker and runner routes keep their own rule: a 5xx, 408 or 429 is
+never kept, and a report refused as invalid is checked again.
+
 `factory.job_create` keeps `title` trimmed and separate from literal `text`,
 including details whitespace in the job ask and body; empty details stay empty.
 Neither field lifts
@@ -360,6 +613,68 @@ terminal chips or changes budget, approval steps, rounds, effort or security.
 The job title alone supplies the draft PR title. Existing jobs are not rewritten.
 The method, reply, `factory.job_actions` hello feature and error codes are unchanged.
 Factories without the separate-title capability retain their prior behavior.
+
+`factory.job_create` also accepts these optional fields. Engine capabilities are
+`create_issue`, `create_group` (group and milestone), `create_budget`,
+`create_key`, `create_split_from` and `job_context` (the separate attachment write
+below). Each is true when the engine carries that feature end to end; an older
+engine omits it or answers false. These flags describe the engine; the attached
+Factory may still be older than a feature. `create_key` alone also describes one
+Factory: `factory.capabilities` takes an optional `factory`, and `create_key` is
+true only in an answer naming a Factory whose `GET /v1/features` lists
+`keyed_create` (it keeps a keyed create's answer only once the create wrote
+something). Without `factory`, or for a Factory that does not list it or cannot
+be asked, `create_key` is false. A Factory without the word keeps every keyed
+answer, a refusal or a 5xx included, for 24 hours, so the engine never sends it
+a key: it asks the Factory again on every create with a key, and to a Factory
+that does not list `keyed_create` that create answers `conflict` with
+`detail.reason: "factory_too_old"` and no create is sent. A create without a key
+is sent as before and asks nothing.
+
+| Parameter | Rule |
+| --- | --- |
+| `open_issue` | Boolean, default false. True sends `POST /v1/issues`: open one GitHub issue using only `title` and `text`, then create the job tied to its number. False sends `POST /v1/jobs` and opens no issue. |
+| `group`, `milestone` | Opaque labels, trimmed, at most 200 characters each, with no control characters. Empty means none. |
+| `budget` | Initial job budget in USD: one of the standard steps, 5, 10, 20 or 30. Recorded as a budget action before starting; a start now or later keeps it instead of taking the pipeline default. |
+| `key` | A create key of 1–128 characters from `[A-Za-z0-9._:-]`, sent only as the create request's `Idempotency-Key` header, and only to a Factory that lists `keyed_create`. `key: ""` is the same as no key (`omitempty`): no header is sent. |
+| `split_from` | Integer at least 1, naming a job held by the same Factory that the caller can see. Stores the job this new job was split from. An explicit zero or negative number is `bad_params` before sending. |
+
+The Factory stores group and milestone outside the description.
+`factory.job`, queue rows and `current` carry the labels when present.
+Those reads also carry `split_from` when supplied, omitted otherwise. The parent
+job stays unchanged. The new job's own activity adds one line, `split from #N`.
+Split lineage leaves normal pipeline stamping, step briefs and run-as-new
+cleanup behavior in effect; it is stored separately from `from_job`.
+
+A missing or hidden `split_from` parent is the same Factory 422 refusal, mapped
+to `bad_params`, before any job or GitHub issue is made, including with
+`open_issue: true`.
+
+Bad extras answer `bad_params`, naming the field and limit, before anything is
+sent. The Factory also validates extras before opening an issue or making a job.
+A Factory's 422 strict-decoder refusal of `group`, `milestone`, `budget`,
+`issue` or `split_from`, or the issue create route missing (a 405 there, or a 404
+whose body is the Factory's `factory endpoint not found` or is not its JSON),
+answers `conflict`
+with `detail.reason: "factory_too_old"` and the existing update instruction:
+"This factory doesn't support that yet; nothing was changed. Update the factory
+to use it." No fallback request is sent. Any other 404 on the issue create route,
+such as the Factory's own "repository not found" for a repository the caller
+cannot see, stays `not_found` with the Factory's words. A 501 stays `engine` with
+"this factory does not provide that action"; GitHub and sign-in refusals retain
+their existing mapping. A timeout or 5xx stays `uncertain`.
+
+The reply is unchanged: `FactoryJobActed` with `action: "create"`, `job` and
+optional `current`. On a Factory that lists `keyed_create`, a resend with the
+same key within 24 hours does not make a second job or issue; a different key
+creates a separate job. After an `uncertain` create, resend the same key, never
+a new one, and if the answer is still uncertain read the queue before trying
+again. Two limits remain: the Factory matches a resend by its exact
+`Authorization` and `Cookie` headers, so one sent under a new bearer or a
+rotated session cookie runs as a new create, and it saves the answer only after
+the create has committed, so a Factory that stops between the two runs the
+resend again. With none of the new fields, the route, body and absent
+idempotency header are unchanged.
 
 
 An engine whose hello carries `factory.stop_any_version` accepts
@@ -372,6 +687,145 @@ finished or publishing jobs. Ended jobs retain their existing `stale` or
 `conflict` refusal; permissions are unchanged. Replies remain `FactoryJobActed`
 and errors retain their existing codes, including `bad_params` for malformed
 requests. Other job actions retain their guards except Pause and Resume, described below.
+
+`factory.setup_github` in hello features says the engine can connect the
+first run's GitHub in the browser with GitHub's OAuth device flow. It is
+announced only by a build that names an OAuth app (the client ID stamped in at
+build time, or `CODEAF_GITHUB_CLIENT_ID`); without one the three methods are
+`unknown_method` and setup offers the gh login and a pasted token.
+`factory.setup_github_start {caller}` answers `FactorySignIn` (`flow`,
+`factory`, `user_code`, `verification_uri`, `interval`, `expires_in`), the
+shape `factory.sign_in_start` answers; GitHub's device code stays in the engine
+and a second start from the same caller replaces the first. The scope asked
+for is `repo`. `factory.setup_github_poll {flow, caller}` answers
+`{state: pending|signed_in|expired|denied, interval?, message?, github_token?,
+view?}`; a poll sooner than `interval` is answered `pending` without asking
+GitHub, and `slow_down` raises `interval`. On approval the engine connects the
+token exactly as `factory.setup_connect {source: token}` does and only then
+answers `signed_in` with the setup `view` after the connect and the token,
+once, as `github_token`, for the app to keep in its Keychain as it keeps a
+pasted token. It is the only answer of the setup wire that carries a secret. A
+connect that fails is that connect's error, and the flow is over either way.
+`factory.setup_github_cancel {flow, caller}` forgets the flow. Another
+caller's flow, an ended flow and an unknown one are `not_found`.
+
+`factory.intake` in hello features says the engine serves `factory.intake_add`:
+outside work filed as a job through `inbox.Add` in the engine's own process, on
+the factory this engine serves; the factory has no HTTP intake, and another
+factory is `not_found` ("work is filed on the machine that runs the factory; on
+another machine, connect GitHub or Jira there or send it through AgentField").
+Work for a repository that is off is `conflict` with the factory's repo-off words.
+Its params are `{factory, source, external_id, title, body?, url?, author?,
+labels?, priority?, repo?, trust?}`; `source` is a lowercase name (`jira`,
+`inbox:ops`), `priority` is `p0`..`p3`, and `trust` is `owner` (the default),
+`collaborator` or `stranger`, the job's tier; a repeat may lower it, never
+raise it. The pair `(source, external_id)` is
+the identity: a second call updates the job it made and answers `created:
+false`. The reply is `{id, created}`. A malformed entry is `bad_params` with
+the inbox's own sentence.
+
+`factory.agentfield` in hello features says the engine serves the six
+`factory.agentfield_*` methods, which make this machine's factory a node on an
+AgentField control plane so AgentField's triggers are its intake
+(internal/factory/agentfield).
+`factory.agentfield_connect {factory, url, api_key?, base_url, node_id?,
+listen?, trust?}` checks `url` and `api_key` against the control plane's
+`GET /api/v1/sources`, binds the node's listener on `listen` (default:
+`base_url`'s port, on 127.0.0.1 when `base_url` is loopback, else 0.0.0.0),
+registers node `node_id` (default `codeaf-factory`) with reasoners `intake`
+(accepts webhooks), `message` and `status`, and answers `FactoryAgentFieldStatus`
+once the control plane took the registration; a connect that fails any of
+those keeps nothing (`bad_params` for a refused key or registration,
+`unreachable` for a control plane that does not answer). `trust` is the
+ceiling for every entry the node files: `owner`, `collaborator` (default) or
+`stranger`. The registered `base_url` carries a 64-hex address secret
+(`<base_url>/n/<secret>`), the node answers nothing outside it, and neither the
+key nor the secret is ever in a reply. `factory.agentfield_status {factory}`
+answers `{factory, connected, url?, node_id?, base_url?, listen?, trust?,
+key_kept?, listening?, registered_at?, lease_seconds?, lease_until?,
+last_event?, last_event_source?, last_event_what?, last_error?,
+last_error_at?, executions?}`. `factory.agentfield_disconnect {factory}` tells
+the control plane the node is offline, stops the listener and forgets the
+settings, the key and the secret; jobs already filed stay.
+`factory.agentfield_triggers {factory}` is `GET /api/v1/triggers` for this node:
+`{factory, node_id, triggers: [{id, source, reasoner, event_types?, enabled,
+managed_by?, secret_env_var?, ingest_url, events_24h?, failed_24h?,
+last_event_at?}]}`, `ingest_url` being the control plane's `/sources/<id>`.
+`factory.agentfield_sources {factory}` is the control plane's catalog,
+`{factory, sources: [{name, kind, secret_required, config_schema?}]}`.
+`factory.agentfield_trigger_add {factory, source, config?, secret_env_var?,
+event_types?}` is `POST /api/v1/triggers` targeting `<node_id>.intake` and
+answers the trigger. Every method but connect is `conflict` on a factory that
+is not connected, and every method is `not_found` for a factory other than
+this machine's.
+
+`factory.agentfield_triggers` in hello features says the engine also serves
+the trigger page's two calls. `factory.agentfield_triggers {factory}` then
+carries the catalog beside the triggers, `sources: [{name, label, kind,
+secret_required, config_schema?, config_fields?: [{name, label, secret?}],
+event_types?}]` (`event_types` only when the control plane's catalog lists the
+events a source can emit)
+(every source in `factory.agentfield_sources` carries `label` and
+`config_fields?` too), and each trigger adds `entry_source` (the source a job
+it files carries, `agentfield:<source>` with `_` written `-`, what a routing
+rule's `when.sources` names), `label?`, `webhook_url?` (the `ingest_url`,
+absent for a `loop` source such as cron, which nothing posts to) and
+`created_at?`. `factory.agentfield_add_trigger {factory, source,
+event_types?, config?, secret_env_var?}` makes one trigger aimed at
+`<node_id>.intake` and answers `{factory, trigger, setup?: {webhook_url?,
+secret_env_var?}}`. A source the catalog does not have, or one that needs a
+signing secret given no `secret_env_var`, is `bad_params` in words before
+anything is made. `setup.secret` is never filled: AgentField reads a source's
+secret from its own environment variable and never hands one back. A refusal
+of either add never quotes the `config` it was sent.
+
+**A pipeline step that runs on AgentField.** `factory.pipeline_edit_agentfield`
+in hello features says `factory.pipeline_preview` takes an `add_step` of
+`kind: "agentfield"`: `prompt` is the reasoner, `node.reasoner`, and the
+optional `input` maps the reasoner's field names to text with the job's
+`{placeholders}` (`{title}`, `{body}`, `{repo}`, `{repo_url}`, `{base}`,
+`{issue_url}`, `{issue_number}`, `{job}`, `{pr_url}`; a value that is exactly one of them is
+sent as that fact's type, so `{issue_number}` is a number). `{pr_url}` explicitly
+binds the job's first opened PR for a downstream step. Before dispatch, earlier
+phases must be done or skipped, at least one earlier work step must be done,
+and the job must have a PR URL; otherwise the consuming step fails before
+contacting its reasoner. Unmapped default inputs do not gain this field.
+A job's `steps[]`
+read it back as a `StepDef {kind: "agentfield", target, input}`, and the run's
+executions follow it as steps whose `parent` is that step. The job also carries
+`agentfield_steps`, each run by its step's name. `factory.agentfield_reasoners
+{factory}` (hello feature of the same name) lists what such a step may name:
+`{reasoners: [{node, reasoner, target, description?, online, input?: [{name,
+required?, type?}]}], placeholders: [...]}`, read from the control plane's
+`GET /api/v1/nodes`, and `conflict` on a factory that is not connected.
+
+**A run's pause for a person.** A reasoner that pauses for approval puts its job
+in Needs you with `needs_you.question.kind: "agentfield_approval"`,
+`who_can_answer: "job_person"`, and on the question `text`, `body` (the whole
+markdown it asks about), `options: ["Approve","Ask for changes","Reject"]`,
+`from_step` (a step in `steps[]`), `approval_kind` (`plan_review`, `question`,
+`approval`), `node`, `round` (from 1), `previous_body` and `note` (the words
+that asked for this round) from round 2, and `url`. Its id changes with each
+round. `can.approve`, `can.request_changes` and `can.reject_plan` are true. The
+answers are the job verbs: `factory.job_approve {words?}` is the control plane's
+`approved`, `factory.job_request_changes {words}` is `request_changes` with the
+words (required), and `factory.job_reject_plan {words?}` (words may be empty for
+this kind) is `rejected` and stops the job. An answer given first somewhere else
+stands: the job's question comes down, and a late answer is `conflict` with
+"this was already answered somewhere else, and that answer stands".
+
+**A harness step's question.** A codeaf harness step that asks
+(`chat --once --events --steer`) waits for an answer. The factory puts the
+question to the job's manager and then to the person as an ordinary step
+question (`needs_you.question.kind: "step"`, with `options`, `pick` and `why`),
+answered with `factory.job_answer {factory, job, question_id, option?, words?,
+expect: {version, state}}` (hello feature `factory.job_answer`): `question_id`
+is `needs_you.question.id`, `option` one of its `options` by label, `words` the
+person's own; at least one, and with both the step reads `<option>: <words>`.
+It is `FactoryJobActed` with action `answer`. A changed question or a moved job
+is refused as the factory's answer door refuses it, and an
+`agentfield_approval` question is `bad_params` (answer it with the three verbs
+above). This answers any step's question, a native step's too.
 
 `factory.job_pause` in hello features says `factory.job_hold` also pauses a
 running job. Both `factory.job_hold` and `factory.job_resume` take
@@ -449,6 +903,76 @@ On the worker HTTP interface, a revoked lease still returns HTTP 409. Retry or
 manual takeover adds `X-Codeaf-Lease-Withdrawn: 1`, so the worker cancels its old
 execution without reporting a person's Stop. The latest withdrawn lease is
 retained per worker until that worker pulls again.
+
+An engine whose hello carries `factory.job_events` and whose capabilities
+answer `job_events: true` serves `factory.events_since
+{factory, after?, limit?, follow?}`. `factory` is required; `after`, when
+present, is an integer at least zero. An absent cursor requests an initial
+reset; zero requests the beginning. `limit` is 1–500, or 0/omitted for 100.
+Invalid parameters answer `bad_params`. An engine without the Factory outcome
+reader answers `unknown_method` and does not announce the feature.
+
+The result is `{factory, supported, events, cursor, reset, more}`. `events`
+is always an array, in increasing `seq` order, and includes only jobs the
+caller may see; the cursor also advances past hidden outcomes. It does not
+advance past an outcome whose repository GitHub could not answer for just
+now (a 5xx, a failed connection or a spent GitHub rate limit, which
+is never kept as a denial): the page ends before it with
+`more: true`, and a read that would start at it fails (the Factory's HTTP
+503, the engine's `engine` error) so the caller reads again later from the
+same cursor. The cursor
+belongs to the Factory and survives an engine restart. `more: true` asks for
+another read after `cursor`. With no further outcomes, `cursor` is the latest
+position. Other Factory errors retain their usual codes. A Factory older
+than `GET /v1/job-events` answers `supported: false` with an empty event array
+and no error; following does not start for that answer.
+
+Each event is `{factory, seq, kind, job, at, title?, group?, how?, reason?,
+need?, code?, step?, pr_number?, pr_url?}`. `kind` is `finished`, `merged`,
+`failed` or `needs_you`. `how` describes a non-merge finish; merged outcomes
+carry the PR number and URL; failures carry code and step; needs-you outcomes
+carry need and reason. Titles are limited to 200 bytes at a rune boundary.
+A `failed` outcome is a new failure on a job that `factory.job` then shows
+as `needs_you`, or a failure other than `stopped` on a `done` job. A job a
+person stopped, by any door or by an answer that stops it, and a job a
+change of assignee stopped, read `backlog` and record nothing; a Close or
+Reject records only its `finished`. A change of assignee or an unassign
+also takes down the question the cut run asked, so the job shows no
+`waiting_since`. A `needs_you` outcome is recorded only for a job with no
+failure on it, once per wait: its `at` is the job's `needs_you.since`, which
+is when that wait began (its failure's, question's or step's own time, or,
+for a wait with none, such as a start held for approval, a take-over or an
+AgentField run's approval, the moment the Factory saw it begin) and does not
+move while the job waits with the same need and question, however many
+writes the job takes. A client that forms the same occurrences
+from a full `factory.job` read keys `failure` as a failed job only when
+`state` is `needs_you`, or `done` with a code other than `stopped`, and keys
+a wait only when `state` is `needs_you` and the job has no `failure`, from
+`needs_you` (or `waiting_since` when `needs_you` is absent): the `stopped`
+failure a `backlog` job (a person's stop) or a closed or rejected job
+carries is not a failed job, a failed job's own wait is its `failed`
+occurrence, and a job in any other state waits on nobody.
+The Factory records outcomes at job updates even with no app connected and
+keeps the newest 2,000 independently of its live notifications.
+
+`reset: true` means read the Factory's current state once, then continue from
+the returned cursor. A reset has no events. It occurs on an initial read,
+an expired or replaced cursor, or a gap caused by an older writer. Cursor
+zero on an empty record is caught up and does not reset repeatedly. A gap
+resets once: the Factory read that finds it closes it, and the returned
+cursor is past it.
+
+`follow: true` starts one follower per attached Factory. A later outcome is
+pushed as `factory.event` with the same `FactoryEvent` shape and sequence.
+The push is a prompt copy: the app can always read again from its own cursor.
+Repeated follow calls raise the follower's cursor without duplicating it.
+A follower takes reset cursors silently; the app's own read observes resets.
+After a reset that leaves its cursor where it was (a Factory without the gap
+repair resets every read during a gap), the follower waits 2 seconds,
+doubling to a minute while that repeats, before it reads again.
+Closing the engine or detaching the Factory ends following. The Factory HTTP
+read takes `after`, `limit` and optional `wait` seconds (0–15, default 0),
+returning on an outcome or reset when a watch is available.
 
 An engine whose hello carries `factory.spend_by_model` (and capabilities
 `spend_by_model: true`) serves `factory.spend_by_model {factory, from, to}`:
@@ -545,6 +1069,132 @@ the rules were never written, and when the factory last wrote them with a build
 that did not record the change. A write sent with the factory's script
 credential records the factory's operator.
 
+The job search bar's AI search (hello feature `factory.ai_search`) answers a
+person's question in their own words with the jobs it is about.
+`factory.ai_search_estimate {factory, question, jobs?}` asks no model and answers
+`{factory, question, model, items, reused, reads, judge_most, usd_typical?,
+usd_most?}`: `reads` screen reads of 40 items each, at most `judge_most` (60)
+yes/no questions, `reused` items whose answers to this question are already
+kept, and dollars only when the model's price is known. `factory.ai_search`
+with the same params starts one run and answers `{run}` at once; the run reads
+the caller's own queue (issue jobs, not dropped), or only `jobs` (at most 5000
+ids) when sent. `factory.ai_search_status {run}` answers `{run, factory,
+question, words, phase, total, read, related, checked, over?, asked, reused?,
+failed?, usd, model, matches: [{job, ref, title, repo, why, kept?}], error?}`
+where `phase` is `screening`, `judging`, `done`, `failed` or `stopped`, and
+`factory.ai_search_stop {run}` ends it. There is no event: a surface polls
+status. A question is at most 300 characters; a leading `?` is dropped. Every
+call is booked as `factory search`.
+
+An engine whose hello carries the feature `factory.routes` serves
+`factory.routes {factory}` and `factory.routes_set {factory, rules, expect?}`:
+the factory's routing table, an ordered list where the first rule that
+matches an arriving item decides it. A rule is
+`{"name": "...", "when": {sources?, repos?, labels?, authors?, text?,
+priority?}, "then": {repo?, pipeline?, priority?, start, run_on?}}`; every `when` list
+matches when any entry does and an absent one matches anything; `start` is
+`auto`, `ask` or `backlog`; priorities are `p0`..`p3`; repositories are
+`owner/name`. The reply is `{"factory": "...", "rules": [...], "changed_by"?,
+"changed_at"?}`, `rules` always present (`[]` for none). `rules_set` replaces
+the whole table; an omitted `rules` is `bad_params`, a bad rule is
+`bad_params` naming it, only the operator may write (`forbidden`), and an
+`expect` that is not what the factory keeps is `stale` with nothing written.
+A rule's `when` may also carry `ask`, one yes/no question of at most 300
+characters for the factory's judge; a rule with a question matches only on a
+yes kept on the job. `factory.routes_test {factory, rules, limit?}` tries a
+table (need not be the kept one) on the newest `limit` jobs the caller may see
+(default 50, at most 200) and answers `{"factory": "...", "jobs": [{job, ref,
+title, outcome, rule?, why?, reason?}]}`, newest first, where `outcome` is
+`matched`, `pending` (a question with no answer kept yet), `refused` (the rule
+matched, and the repository it sends the job to lists no pipeline of the name
+it gives; `reason` is `routing rule <name>: <repo> has no pipeline <p>`) or
+`none`. It writes nothing and asks no model. `factory.routes_set` refuses, as
+`bad_params` in that same sentence, a rule that names both a repository and a
+pipeline that repository's file (or the factory's copy of it) does not list,
+when the file can be read; one whose file cannot be read now is kept. A rule
+refused while routing never fails the factory's pass: the job stays unrouted
+and its activity gets one `routed` row in that sentence.
+
+With the feature `factory.route_run_on`, a rule's `then` may name `run_on`,
+`"<node>.<reasoner>"`: a job the rule matches is run by that AgentField
+reasoner in place of the factory's steps, needs no repository, and runs as a
+job filed with `run_on` does. Such a rule names no `pipeline` (`bad_params`).
+On this machine's factory `factory.routes_set` checks every `run_on` against
+the reasoners the control plane lists: one it does not have is `bad_params`
+(`routing rule <name>: AgentField has no agent <node.reasoner>; pick one it
+lists`), and a factory not connected to AgentField is `conflict`. A source in
+`when.sources` written `agentfield:*` matches every AgentField source, as
+`agentfield` does.
+
+`factory.job_set_repo` in hello features says the engine serves
+`factory.job_set_repo {factory, job, repo, expect?}`: giving a job that never
+ran its repository (`owner/name`), the way out of Backlog for outside work
+that arrived with none. The factory sets the job's repository and places,
+stamps that repository's steps, keeps that a person chose it (a routing rule's
+repository never moves it again), clears the rule that routed it and routes it
+again at once. It replies `FactoryJobActed` with `action: "set_repo"`. Only
+the operator or the job's person may (`forbidden`); a job that has started is
+`conflict` "This job has already started, so it keeps its repository.", and a
+GitHub issue's job is `conflict` too. A Backlog job with no repository reads
+`state_presentation {kind: "backlog", title: "Waiting for a repository",
+detail: "Say which repository the work is on, or add a routing rule that sends
+it to one."}`, and `factory.job_start` on it is `conflict` "say which
+repository the work is on". `factory.job_start {pipeline}` is taken by a job
+queued and not yet taken: its steps are replaced and its run laid out again
+on them; only a job that ran is `conflict` "This job has already run, so it
+keeps its steps."
+
+An engine whose hello carries the feature `factory.library` serves the
+factory's PIPELINE LIBRARY: named pipelines and the step definitions they use,
+kept by the factory (not by one Mac, not in any repository) for every
+repository it works on, in the same YAML as a repository's
+`.codeaf/factory.yaml`, `pipeline:` and `steps:` only.
+`factory.library {factory}` answers `{"factory": "...", "text": "...",
+"version": 3, "pipelines": [{name, from: "library", steps}], "can": {"change":
+bool}, "changed_by"?, "changed_at"?}` (`GET /v1/pipeline-library`); `text` is
+`""` for an empty library and `version` starts at 1. Everyone signed in may
+read it. `factory.library_set {factory, text, expect: {version}}` replaces it
+whole (`PUT /v1/pipeline-library`): `text` is required (`""` empties it), it is
+parsed by the factory's own parser and kept as its encoder writes it, which
+writes only what the text wrote; a key other than `pipeline` and `steps`, a
+pipeline named `pr` or `ci`, a problem in the file or a step the runner would
+skip is `bad_params`; only the operator may write (`forbidden`); an `expect`
+that is not the kept version is `stale` with nothing written.
+`factory.library_preview {factory, base_text, edits}` applies the same edits
+as `factory.pipeline_preview` (only the verbs that touch `pipeline:` and
+`steps:`: `set_step`, `add_step`, `remove_step`, `move_step`, `rename_step`,
+`set_approver`, `add_pipeline`, `remove_pipeline`, `rename_pipeline`) to a
+library (`base_text` `""` is an empty one) and answers `{factory, text,
+changed, steps, structure?}`, `text` being exactly what `library_set` would
+keep. It writes nothing and asks the factory nothing.
+
+A JOB'S PIPELINE NAME RESOLVES IN ONE ORDER, for `factory.job_start
+{pipeline}`, `factory.job_create {pipeline}`, a routing rule's
+`then.pipeline` and a job's own kind: the repository's file as the factory
+runs it (its own copy when it keeps one, else main's file), then the library,
+then the built-in steps (which name only `issue`). A repository pipeline of
+the same name overrides the library's. A name found nowhere keeps the
+refusals it always had. Behind the same feature `factory.pipeline` carries
+`pipeline.pipelines`, every pipeline a job on that repository can run, each
+`{name, from, steps, over?}` where `from` is `repo`, `factory_copy`,
+`library` or `built_in` and `over` names the lower layers it overrides:
+what "Pick the pipeline" offers. A library pipeline also appears in
+`pipeline.by_kind`.
+
+An engine whose hello carries the feature `factory.pipeline_edit_pipelines`
+(beside `factory.pipeline_edit_structure`) previews three more edits in
+`factory.pipeline_preview`: `add_pipeline {name, steps}` or `{name, from}`
+makes a named pipeline (each step one the file or codeaf defines, or
+`approve`; `from` copies a pipeline the file holds), `remove_pipeline {name}`
+takes one out (its steps' definitions stay) and `rename_pipeline {name, to}`
+renames one. A name is spelled as a step is (2 to 32 lowercase letters, digits
+and inner hyphens); `pr`, `ci` and `issue` are refused as `locked`. A step not
+yet defined is added after `add_pipeline` with `add_step` naming the new
+pipeline, in the same preview. The answer's `structure.pipelines` lists every
+pipeline made, removed or renamed as `{op, pipeline, to?, steps?}`, and the new
+list is in `structure.order`. The pull request route and
+`factory.pipeline_copy_set` take the resulting text as any other.
+
 An engine whose hello carries `factory.repo_facts` serves
 `factory.repo_facts {factory, repo, days?, months?}`: one repository's facts
 counted by the factory over every job it keeps (`GET
@@ -557,6 +1207,52 @@ last `months` calendar months (1 to 12, default 3) by the rule of
 `factory.job_area`, and jobs stuck on one step for a day or more. At most 20
 areas and 20 stuck steps are answered, busiest first (at most 97 facts);
 `truncated` counts the rest. A repository the caller cannot read is not found.
+
+An engine whose hello carries `factory.repo_issues` and whose capabilities
+answer `repo_issues: true` serves `factory.repo_issues {factory, repo, since?,
+page?}`. `repo` is `owner/name`, `since` is RFC 3339 (absent means no lower
+bound), and `page` is 1–10, default 1. It reads only `GET
+/v1/repos/{owner}/{repo}/issues?since=&page=` through the caller's Factory
+connection. The route accepts only those two query keys, once each, and uses
+the caller's GitHub sign-in, or a solo Factory's own profile.
+
+The result is `{factory, repo, issues, rows, newest?}`. `issues` contains at
+most 50 entries, oldest update first, in every state: `{id, number, title,
+body, url, state, created_at, updated_at, body_cut?}`. `id` is GitHub's int64
+issue identity, `url` is its HTML URL, and `state` is `open` or `closed`.
+`body` is cut at 8,192 bytes on a rune boundary; `body_cut: true` marks a
+cut. Pull requests are excluded from `issues`, but `rows` counts all rows
+GitHub returned (0–50) and `newest` is their latest `updated_at`, including
+pull requests. An empty result has `issues: []`, `rows: 0` and no `newest`.
+
+Invalid params are `bad_params` before any request. A repository the caller
+cannot see, or GitHub's repository 404, is `not_found`. A spent GitHub rate
+limit on the visibility check or issues request is `busy` with
+`detail.retry_at` in RFC 3339: GitHub's `Retry-After` hint, or its
+`X-RateLimit-Reset` when `X-RateLimit-Remaining` is `0` or absent, the later
+of the two when both apply. A secondary limit, which leaves requests
+remaining, therefore never waits for the primary window's reset.
+Every GitHub HTTP 429 is a rate limit, even without headers; a 403 is a
+rate limit only with `X-RateLimit-Remaining: 0` or `Retry-After`.
+A rate-limited visibility check is not cached as a repository denial.
+Until `retry_at`, and for at most the ten-minute visibility cache life, the
+Factory answers that GitHub token's uncached repository checks as the same
+rate limit without asking GitHub; the next check after that asks again.
+Without a usable reset or retry hint, `detail.retry_at` is one minute after
+the Factory's clock.
+A sign-in the Factory accepts but that has no GitHub access the route can use
+(a pasted access token with no GitHub sign-in, or a solo Factory whose host
+has no GitHub profile) gets HTTP 401 with reason `github_expired` and no
+bearer challenge. The engine answers `github_expired` for it, and for any 401
+from this route without a `WWW-Authenticate` challenge, and keeps the sign-in.
+Only the Factory's sign-in gate refusing the bearer, which always challenges,
+is `signed_out`; that forgets a restored sign-in as every read does.
+A Factory missing the route is `conflict` with
+`detail.reason: "factory_too_old"`; its own
+"repository not found" remains `not_found`. An engine without the reader
+answers `unknown_method`.
+The route itself stores nothing and appends no activity; the Factory's
+ordinary per-request housekeeping runs as it does for every authenticated request.
 
 An engine whose hello carries the feature `factory.pipeline_pr_update` (and
 capabilities `pipeline_pr_update: true`) lets `factory.pipeline_pr` take `pr`,
@@ -644,6 +1340,48 @@ directory with a trailing slash (`"cli/"`). Under a container directory (`src`,
 first two segments (`"internal/factory/"`), and a file directly inside one is
 the container (`"internal/"`). Every response that carries the job says the
 same area. It is absent when the job changed no file or only files at the root.
+
+### Factory job facts (`factory.job_source`, `factory.job_steps`, `factory.job_runs_on`)
+
+Each fact below is computed once in the engine (`internal/factory`) and sent on
+every job of `factory.queue` and on `factory.job`; a client draws it and never
+derives it again. All are additive; an engine without the word sends none of
+them, which reads as unknown.
+
+- `factory.job_source`:
+  - `source: {name, ref?, url?}` on every job that says where it came from.
+    `name` is `github`, a connector (`jira`), a trigger (`inbox:ops`), or
+    `terminal`/`chat` for a typed job. `ref` is the job's key there in the
+    source's spelling (`owner/repo#147`, `ENG-142`, `A1`); `url` is its address
+    there when the source sent one.
+  - `repo_url`: the repository's address, read off an address the forge gave
+    for it (the job's pull request, then its GitHub issue) so a non-github.com
+    host is kept; `https://github.com/<owner>/<name>` only when neither exists;
+    absent when the job names no `owner/name`. Clients stop building it from
+    `repo`.
+  - `route: {rule, answer?: {yes, why, model?}}`: the routing rule that decided
+    the job, and the AI's answer when that rule asked one. Absent when no rule
+    matched.
+  - `route_declined: [{rule, why, model?}]`: every other rule whose AI question
+    was answered no about this job, in rule-name order. A job no rule started
+    says why with it. Absent when there is none.
+- `factory.job_steps`: `steps_done` and `steps_total`, always present, THE ONE
+  STEP COUNT. The run's steps, then switched-on steps it has not reached; a
+  skipped step counts for neither side. The Brief's `steps_done`/`steps_total`
+  read the same function, and `step.index`/`step.count` stay the run's
+  position, never an "N of M".
+- `factory.job_runs_on`: `runs_on: {model, from}` on a read job (its current
+  conversation step's model, else its next one's, else its default) and on each
+  conversation step that has not finished. It is the resolution the runner
+  opens the step on. `from` names the rung: `step` (a person's pick for the
+  step), `job` (for the job), `one_model` (the runner runs every task on one
+  model), `effort` (the model the step's effort word runs on), `factory` (the
+  factory's default), `worker` (the person's worker model on the runner) or
+  `runner` (the runner's launch model). Absent where this factory cannot know
+  it (no pick, no default, its runner elsewhere). `model` keeps meaning the
+  person's pick for the job, `factory_model` the default it was queued under,
+  and `step.model` the model a step ran on; a worker's report never carries
+  `runs_on`.
 
 An engine whose hello carries the feature `factory.estimate` reads an issue
 with a complexity rubric and measures cost from its own finished jobs; a model
@@ -825,6 +1563,36 @@ with wire code `conflict`, typed outcome `refused`, and the message
 The existing `factory.remote` and `factory.issue_comment` hello features
 continue to apply; no method, parameter or reply field is added.
 
+## factory.job_context_set
+
+Hello feature `factory.job_context` and capability `job_context` announce this
+write. `factory.job_create` refuses `context` as an unknown field.
+
+| Parameter | Rule |
+| --- | --- |
+| `factory`, `job` | One attached Factory and a positive job number. |
+| `expect` | Required `expect.version` from the job read; stale versions answer `stale` without changing attachments. |
+| `context` | Required list of at most 20 `{title, markdown, source?}` attachments. Title is 1–200 characters after trimming; markdown must contain more than whitespace (blank markdown is `bad_params` "context markdown must be non-empty"); source is at most 500 characters. Total markdown is at most 100,000 characters, separate from the 20,000-character `text` limit. `[]` clears attachments. |
+
+The engine sends one `POST /v1/jobs/{id}/context` with `{context, expect}`.
+The job must be in Backlog or queued with no run (no stream): before its first
+run, or after Bring back cleared its last one, so its next run reads it. Caller rules
+match model edits: solo callers, the job's person, or anyone when no person is
+assigned. A begun job answers `conflict`: "The job has started; its steps
+already read their context." Malformed attachments answer `bad_params` before
+transport. The Factory validates again and records one activity per replacement.
+
+Job, queue and `current` reads list `context: [{title, source?}]` only.
+Worker admission carries full markdown. A non-skipped conversation `plan`,
+otherwise the first non-skipped conversation, receives every attachment whole
+after notes as reference material. Without a stream only eligible stages count.
+Other steps receive none; attachments never enter a GitHub issue, PR or comment.
+
+Reply: `FactoryJobActed` with `action: "context_set"`, `job`, optional `current`.
+The mux's 404/405 (including "factory endpoint not found") means `conflict` with
+`detail.reason: "factory_too_old"`; JSON "job not found" stays `not_found`.
+A lost answer or 5xx is `uncertain`. The engine never re-sends the write.
+
 ## files methods
 
 | method | params | result |
@@ -854,8 +1622,32 @@ this start carried on replies or tasks the last quit stopped (`at`,
 `disks` with `free_bytes` and `total_bytes` for the filesystem of the work
 folder (`work_folder`) and of codeaf's home (`codeaf_home`), each with an
 `error` instead when it could not be read, and `factory`, the local factory's
-status as `factory.local_status` shapes it. It reads memory, the app state and
-one filesystem call per disk; it starts nothing. hello says `health.check`.
+status as `factory.local_status` shapes it. On every OS, the optional
+`provider_key`, also returned by `setup.get`, is the launch-cached OpenRouter auth
+reading: `state` is `ok`,
+`invalid`, or `unknown`, `checked_at` is present after a probe finishes, and
+`message` gives the reconnect hint for an invalid key. Starting the engine makes
+no key-check request. codeaf checks it once in the background when setup or health
+is first read, with a two-second deadline. Reads never wait for the auth probe;
+until it completes they say `unknown`. A key handover also starts the check, and
+the cache deduplicates later reads for the same key and address for this launch.
+A real turn's 401 invalidates the matching cached credential. `codeaf doctor`
+checks directly on every OS, only when explicitly invoked.
+
+On Windows, optional `checks` contains the same machine readiness rows as doctor:
+git availability,
+`git config user.name` and `user.email`, gh availability and `gh auth status`,
+and native Git Bash resolution on Windows. Each row has `name`, `state`
+(`ok`, `error`, `info`, or `unknown`), `message` and `fix`. Missing gh is `info`.
+Each command has a two-second timeout and inherits the user's normal environment;
+the shell resolver bounds its git-shim lookup at three seconds. The method opens
+no conversation. Linux and macOS omit `checks` and run no git or gh commands
+on desk setup/health reads, avoiding gh login Keychain prompts. Explicit
+`codeaf doctor` runs machine checks on every OS. Existing wire fields, events and
+saved setup retain their meanings; new fields are optional and old payloads still
+decode. Fresh setup on every OS proposes the CLI default without replacing a
+saved model. Provider health is transient and is not saved in setup. hello says
+`health.check`.
 
 ## inbox methods
 
@@ -875,6 +1667,22 @@ one filesystem call per disk; it starts nothing. hello says `health.check`.
 | `keys.check` | `in.KeyParams` | `KeyCheck` |
 | `keys.remove` | `in.ProviderParams` | `Empty` |
 | `keys.set` | `in.KeyParams` | `Empty` |
+
+A credential a door gives an app-run engine (a pasted GitHub token through
+`factory.setup_connect`, a Jira token, an AgentField key and node secret through
+`factory.agentfield_connect`) is held in memory and handed to the app to keep, BY
+PULL, never on an event: the engine emits an empty `credentials.changed`, and the
+app's core calls `credentials.take`, which answers each change once, the latest per
+provider, as `{changes: [{provider, key}]}` or `{provider, removed: true}`; a change
+not taken within 60 seconds is dropped. The core keeps the key in its secure store
+under `provider` and hands it back at the next launch with `keys.set {provider, key}`,
+which queues nothing. `keys.set` takes `github`, `jira`, `agentfield` and
+`agentfield-node` this way, beside the model providers. Hello announces
+`credentials.take` when the engine serves it.
+
+| method | params | result |
+|---|---|---|
+| `credentials.take` | `Empty` | `CredentialsTaken` |
 
 ## manual methods
 
@@ -1200,6 +2008,14 @@ role pins and checked as the other pins are.
 | `spend.report` | `in.SpendReportParams` | `SpendReportResult` |
 | `spend.today` | `{}` | `SpendResult` |
 
+`spend.report` cells may carry `library_activity`: `learning`, `answers`, or
+`unspecified` for historical memory calls whose activity was not recorded.
+Non-Library calls omit it. These cells are parts of the existing totals, never
+additional charges. The report retains the same date, model and owner filters,
+recorded model names, and unknown-price semantics. Older clients can ignore
+this optional field; older engines provide no Library breakdown.
+
+
 ## sync methods
 
 | method | params | result |
@@ -1249,6 +2065,30 @@ role pins and checked as the other pins are.
 |---|---|---|
 | `work.graph` | `in.GraphRequest` | `GraphResult` |
 
+## Transcript entry author (`agents.entry_author`)
+
+An engine whose hello carries `agents.entry_author` sends `author` on the
+entries it reads from a conversation's transcript (`agents.entries` and
+`entry.added`):
+
+- `person`: a person's message;
+- `engine`: codeaf's own words. These are a factory step's opening
+  instructions (the step conversation's first message), a `[carry on]` nudge
+  in the person's seat (such as a step's reminder to call `stage_result`), the
+  factory runner's progress lines, and the session's quiet notes and
+  compaction summaries;
+- `agent`: the model's answers, updates and tool calls, and a crew's delivery.
+
+A user entry the engine wrote keeps kind `user`, because it is what the model
+reads in the person's seat; `author` says it is not the person's, so a client
+folds it without reading its words. Absent on entries built outside the
+transcript and from an older engine.
+
+`agents.suggest_reply` never offers a draft addressed to the model. A draft
+that names a tool of the conversation's belt (an underscored name such as
+`stage_result`) or opens with `[carry on]` is dropped where drafts are made,
+and the reply is empty.
+
 ## Events
 
 | event | data |
@@ -1261,6 +2101,7 @@ role pins and checked as the other pins are.
 | `pair.changed` | `PairResult` |
 | `collection.changed` | `CollectionChanged` |
 | `compaction.ended` | `CompactionEnded` |
+| `credentials.changed` | `Empty` |
 | `crew.changed` | `CrewChanged` |
 | `crew.log` | `CrewLogEvent` |
 | `crew.proposal.delta` | `CrewProposalDelta` |
@@ -1270,7 +2111,9 @@ role pins and checked as the other pins are.
 | `deliverable.changed` | `DeliverableChanged` |
 | `devices.changed` | `DevicesResult` |
 | `entry.added` | `EntryAdded` |
+| `factory.jobs_changed` | `FactoryJobsChanged` |
 | `factory.sessions_changed` | `Empty` |
+| `factory.event` | `FactoryEvent` |
 | `hello` | `Hello` |
 | `inbox.added` | `InboxAddedEvent` |
 | `inbox.counts` | `InboxCounts` |
@@ -1305,6 +2148,11 @@ role pins and checked as the other pins are.
 | `turn.thinking` | `TurnThinking` |
 | `turn.thinking_done` | `TurnThinkingDone` |
 | `turn.tool` | `TurnTool` |
+
+`turn.tool` optionally carries `spent_usd`, the conversation's live spend when
+the step was said (the same meter as `agents.budget.get`'s `engine.spent_usd`,
+which can be ahead of the saved `Agent.spent_usd`); zero or unknown readings and
+history rows omit it, and absence means the engine did not say.
 
 ## Slash catalogue commands and forms
 
@@ -1473,6 +2321,33 @@ publish, release or acquire. The record's `size`, set by publishers since
 this change, is the bytes of the frames its plan names (`0`: unknown); a move
 shows it as `move.total`. A chat shared in the background gets the bytes its
 upload attempts put.
+
+`working:true` is on a `running` row whose holder said at its last beat that a
+turn is running there; absent while the chat is merely open there, and never
+on any other status. The holder beats as soon as a turn starts, and as soon as
+the ended turn's last saves are published, so a take on seeing the flag drop
+names the newest save. `chats.working` in `hello` says rows can carry
+it. Directory beats carry `working` only to a relay that answers
+`Codeaf-Working-Beats: 1`; the lease keeps it through publishes until the next
+beat, and a release or an acquire clears it. Behind a relay that does not keep
+it, rows never say `working`, so a client says "open there", not "idle there".
+It is display only: `agents.take` does not consult it.
+
+`chats.send {cell, text, client_id?}` leaves a message for whichever computer
+holds the chat; `chats.send` in `hello` says it exists. The message travels in
+this device's own directory record (`outbox`, sealed under the metadata key,
+at most 8 messages of at most 2000 bytes), only to a relay that answers
+`Codeaf-Chat-Notes: 1`; a relay that does not is refused with "This sync
+service can't carry a message to another computer yet." The engine holding the
+chat reads it with the chat list, puts it in that chat's queue (`agents.queue`,
+client id `note:<id>`), so it is sent when the turn there ends or at once when
+none runs, and lists the id in its own record's `took`; the sender then drops
+it. The sender's row carries it in `notes [{id, text, at, state}]`: `waiting`
+while it is in the outbox, then `delivered` once taken, kept while that engine
+runs (20 per chat) and dropped once the chat is here. The
+chat, not the computer, is the address: a message not yet taken goes to
+whichever computer holds the chat when it is read, including the sender after a
+move. Only an engine that keeps the chat list (the app) takes messages.
 
 Before a move, a row says what it would copy: `folder` is the name of the
 folder the chat works in on its holder (absent for a chat in its own private
@@ -1711,7 +2586,8 @@ Hello feature `factory.job_run_as_new` adds
 `expect.version` must be positive and guards the source job. The engine
 sends one `POST /v1/jobs/{id}/run-as-new {assignee?, expect?}`. The factory
 applies the same ownership and repository guards as `run_again`, and accepts
-failed, stopped, closed and done jobs. Running work is refused.
+failed, stopped, closed and done jobs, and a job whose run a change of
+assignee or an unassign cut. Running work is refused.
 
 The reply is `FactoryJobActed` with `action: "run_as_new"` and `job` naming the
 NEW job; `current` reads that job. The HTTP answer is `{factory, id}` with the
@@ -1756,6 +2632,24 @@ manager chat or composer (and discards the returned step chats). They require a
 desktop update before pairing with this engine for jobs without a manager.
 The hello feature is capability advertisement, not client negotiation; it does
 not by itself make those older desktops compatible.
+
+## The factory's own manager (`factory.foreman_open`)
+
+The hello feature `factory.foreman_open` announces the factory-wide manager,
+titled "Factory manager" (the method keeps its `foreman` name, and its team
+handle stays `@foreman`). `factory.foreman_open {factory}` answers `{factory, agent}`: `agent` is
+an agent id the desk opens and sends to like any conversation (`agents.send`).
+The first call makes the conversation; every later call answers the same one.
+Only the factory this engine serves is accepted; any other is `not_found`, as
+`factory.job_chats` refuses it.
+
+The Factory manager reads only the floor of the factory home it belongs to, through
+`factory_floor`: `ask` is `running`, `queue` (not started, most urgent then
+oldest), `waiting`, `shipped` (shipped today, with pull requests and changes),
+`risky`, `cheapest`, `oldest`, `all` or `item`. When the person asks, `start`
+starts one job and `priority` (`p0`–`p3`, with `item`) sets one job's priority,
+each through the same factory verb the job page's own Start and priority send,
+as the person. It never stops, ships, merges or posts.
 ### factory.job_publish_anyway
 
 Hello feature `factory.publish_anyway` advertises this person action. Params:
@@ -1775,6 +2669,24 @@ receives this decision on the existing answer signal and validates the identity
 before resuming. Its `words` carries the server-minted approval trailer; a post
 checks its head and person before using it without a local copy of the ledger.
 Skipped checks stay unmeasured and the PR lists each reason and the person decision.
+
+### factory.job_accept_step
+
+Hello feature `factory.accept_step` advertises this person action. Params:
+`factory`, `job`, and `expect.version`. The result is `FactoryJobActed` with
+`action: "accept_step"` and the current job. The desk shows **Accept** on a
+stuck step only when `can.accept_step` is true.
+
+It is the answer `accept` to an `out_of_rounds` wait: the step counts as
+finished as it stands and the run goes on. The factory offers it only on a step
+that judges the work and reported what it found (Test, Review, Proof), before
+anything is published. A step that makes the work, one that never reported, a
+check the machine could not finish and every wait after publish refuse it.
+
+Each check that was still failing is kept on the step's result as accepted. A
+later step is not blocked by the same check failing in the same words, a new or
+different failure still blocks, and the pull request lists what was accepted.
+Only the person who may answer the job can accept; a manager cannot.
 
 ## plugins methods
 
@@ -1878,3 +2790,38 @@ An answer or withdrawal emits `plugins.needed_done`.
 
 The current account store holds one account per plugin, including Slack.
 It has no plugin call history; a Lately section remains absent.
+
+## Library
+
+Hello feature `knowledge` exposes the same opt-in profile vault as Memory → Knowledge.
+Errors contain no source text or credentials. Stale mutations return `conflict`.
+
+| method | params | result |
+|---|---|---|
+| `knowledge.snapshot` | `{}` | revision, enabled, build counters, pending, model, page heads |
+| `knowledge.read` | `{id}` | current Page including sections, evidence and links |
+| `knowledge.search` | `{query, limit?}` | full-text hits; no model call |
+| `knowledge.recall` | `{question, scope?}` | answer, abstain, citations |
+| `knowledge.edit` | `{id, revision, markdown}` | new revision |
+| `knowledge.rename` | `{id, revision, title}` | new revision; changes only the label, retaining page identity, scope, links and generated learning |
+| `knowledge.delete` | `{id, revision}` | `{}` |
+| `knowledge.build` | `{}` | starts the process-owned build with the profile knowledge model |
+
+| event | data |
+|---|---|
+| `knowledge.changed` | `{revision}`; refresh the snapshot |
+
+| method | params | result |
+|---|---|---|
+| `knowledge.settle` | `{id, revision, conflict, keep, note?}` | `{revision}`; keeps the chosen account and replacement history |
+| `knowledge.source` | `{id, source}` | `{chat, message}`; exact message locator, or `not_found` |
+
+| method | params | result |
+|---|---|---|
+| `knowledge.capture` | `{chat, message, text}` | admits a bounded passage from an actual saved agent reply; requires existing opt-in |
+
+Settings includes `knowledge_model`; `settings.set {knowledge_model}` changes the same profile row the terminal uses. Clearing it restores the default, `deepseek/deepseek-v4.1-flash`. Building the Library never changes a saved model choice.
+
+`knowledge.recall` is an explicit read of saved guides, including while `enabled` is false. It does not enable capture, import chats or publish new knowledge. Automatic memory use remains gated by the profile setting.
+
+Library page detail includes `changes: [{before, after, reason}]` for automatic replacements; `claim_details` and `sources` retain the corresponding claims and chat locators.

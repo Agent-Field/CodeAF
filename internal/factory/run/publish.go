@@ -219,7 +219,7 @@ func (lp *floorLoop) publishRun(c *loopCtl, trailer string) {
 				a.State, a.At = "ready", now
 				it.FollowUp.Readiness = &a
 				it.Note(now, "PR marked ready for review · head "+a.Head+" · "+a.Summary)
-				loopSay(it, now, "ok", fmt.Sprintf("PR #%d marked ready for review · reviewed head %s · %s", receipt.pr.Number, a.Head, a.Summary))
+				loopSay(it, now, "ok", fmt.Sprintf("PR #%d marked ready for review · reviewed commit %s · %s", receipt.pr.Number, shortCommit(a.Head), a.Summary))
 			}
 			factory.WatchPublishedPR(it)
 		}
@@ -237,7 +237,9 @@ func (lp *floorLoop) publishRun(c *loopCtl, trailer string) {
 		lp.emit(c.id, "", EventShipped, "shipped")
 		if receipt.pr != nil {
 			if factory.ReadinessPending(it) && !receipt.pr.Draft {
-				lp.tell(c.id, fmt.Sprintf("PR #%d is ready for review. Final review passed on head %s. Follow PR continues monitoring CI, feedback and conflicts; merge remains your decision.", receipt.pr.Number, it.HeadCommit))
+				// A PERSON READS A COMMIT BY ITS SHORT NAME, as GitHub shows it,
+				// never by its 40 characters.
+				lp.tell(c.id, fmt.Sprintf("PR #%d is ready for review. Final review passed on commit %s. Follow PR continues monitoring CI, feedback and conflicts; merge remains your decision.", receipt.pr.Number, shortCommit(it.HeadCommit)))
 				return
 			}
 			mode := "Manual asks before pushing repairs; enable Auto for automatic checked updates within the job budget."
@@ -245,7 +247,7 @@ func (lp *floorLoop) publishRun(c *loopCtl, trailer string) {
 				mode = "Auto records and pushes checked repairs within the job budget."
 			}
 			if it.PullRequest != nil && it.PullRequest.Number == receipt.pr.Number {
-				lp.tell(c.id, "PR updated: "+receipt.pr.URL+". The verified local repair was pushed. Waiting for GitHub CI on the updated PR; Follow PR continues watching review feedback and conflicts.")
+				lp.tell(c.id, "PR updated: "+receipt.pr.URL+". The checked local repair was pushed. Waiting for GitHub CI on the updated PR; Follow PR continues watching review feedback and conflicts.")
 			} else {
 				if receipt.note != "" {
 					lp.tell(c.id, receipt.note+".")
@@ -323,6 +325,17 @@ func (r *Runner) publish(ctx context.Context, it factory.Item, trailer string) (
 		if it.PullRequest == nil || fresh.Number != it.PullRequest.Number || fresh.State != factory.PROpen || fresh.HeadSHA != it.FollowUp.HeadSHA {
 			return published{}, errors.New("the existing PR closed or its head moved; review it before publishing the repair")
 		}
+		if base := it.FollowUp.BaseSyncSHA; base != "" {
+			if !publish.ValidCommit(base) || fresh.BaseSHA != base {
+				return published{}, errors.New("the PR base moved before publication; update the branch and verify the new head")
+			}
+			if fresh.HeadBranch == "" {
+				return published{}, errors.New("cannot confirm the existing PR branch for the base update")
+			}
+			if it.HeadCommit == "" || TrailerCommit(trailer) == "" {
+				return published{}, errors.New("the PR base update requires approval for an exact verified head")
+			}
+		}
 		existingPR = &fresh
 	}
 	body := PublishBody(it, trailer)
@@ -371,12 +384,20 @@ func (r *Runner) publish(ctx context.Context, it factory.Item, trailer string) (
 			}
 			return published{}, publish.ErrCommitChanged
 		}
+		if existingPR != nil && it.FollowUp.BaseSyncSHA != "" {
+			if _, err := git.Run(dir, "merge-base", "--is-ancestor", it.FollowUp.BaseSyncSHA, approvedHead); err != nil {
+				return published{}, errors.New("the approved head does not include the verified PR base")
+			}
+		}
 	} else if err := commitApproved(git, dir, it, trailer); err != nil {
 		return published{}, err
 	}
-	mode, err := publishMode(git, dir)
-	if err != nil {
-		return published{}, fmt.Errorf("could not compare %s's branch: %w", it.Ref(), err)
+	mode := "pr"
+	if existingPR == nil {
+		mode, err = publishMode(git, dir)
+		if err != nil {
+			return published{}, fmt.Errorf("could not compare %s's branch: %w", it.Ref(), err)
+		}
 	}
 	if mode == "comment" {
 		if err := r.publishBoundary(ctx, it.ID); err != nil {
@@ -500,8 +521,24 @@ func commitApproved(git Git, dir string, it factory.Item, trailer string) error 
 	if strings.TrimSpace(status) == "" {
 		return nil
 	}
-	if _, err := git.Run(dir, "add", "-A"); err != nil {
+	// A COPY OF THE REPOSITORY LEFT IN THE CHECKOUT IS NEVER PUBLISHED
+	// (scratch.go): it is left out of what is staged, and one a step already
+	// committed is taken out of the commit's tree, so the pull request holds
+	// the change alone. The folder stays on disk.
+	copies, err := checkoutCopies(git, dir, it.ChangeBase)
+	if err != nil {
+		return fmt.Errorf("could not read %s's worktree: %w", it.Ref(), err)
+	}
+	if _, err := git.Run(dir, append([]string{"add", "-A", "--"}, excludeCopies(copies)...)...); err != nil {
 		return fmt.Errorf("could not stage %s's work: %w", it.Ref(), err)
+	}
+	for _, top := range copies {
+		if _, err := git.Run(dir, "rm", "-r", "-q", "--cached", "--ignore-unmatch", "--", top); err != nil {
+			return fmt.Errorf("could not leave %s out of %s's work: %w", top, it.Ref(), err)
+		}
+	}
+	if staged, err := git.Run(dir, "diff", "--cached", "--name-only"); err == nil && strings.TrimSpace(staged) == "" {
+		return nil
 	}
 	title := strings.TrimSpace(it.Title)
 	if title == "" {
@@ -597,7 +634,7 @@ func publishBase(git Git, dir string) (string, error) {
 // publishPreview is the worker's proof-gate hint. Publishing measures again
 // after committing, because work can change while the person reads the proof.
 func (r *Runner) publishPreview(it factory.Item) string {
-	if isPull(it) {
+	if isPull(it) || it.PullRequest != nil && it.FollowUp != nil && it.FollowUp.Kind == "pr" {
 		return "pr"
 	}
 	if r.opts.Workdir == nil {

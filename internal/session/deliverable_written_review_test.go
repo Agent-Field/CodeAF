@@ -18,6 +18,8 @@ func TestOverwritePrefersAuthoredIdentityOverNewerShare(t *testing.T) {
 	w := newShareWorld(t)
 	writeNewFile(t, w.agent, "plan.md", "original authored bytes")
 	authored := listDeliverables(t, w.index, DeliverableQuery{}, 10)[0]
+	// Different bytes still create an independent shared identity.
+	w.file(t, "plan.md", []byte("bytes changed outside write"))
 	result, bad := w.share(t, w.shareCall(t, "share-plan"), "share-plan", "plan.md")
 	if bad || len(result.RecordedIDs) != 1 || result.RecordedIDs[0] == authored.ID {
 		t.Fatalf("share did not create an independent identity: %+v", result)
@@ -201,6 +203,7 @@ func TestWrittenGenericFilesSniffMIMEAndPreserveKnownTypes(t *testing.T) {
 			if test.shared {
 				writeNewFile(t, w.agent, "report.pdf", "%PDF-1.7\noriginal\n%%EOF\n")
 				id = listDeliverables(t, w.index, DeliverableQuery{}, 10)[0].ID
+				w.file(t, "report.pdf", []byte("%PDF-1.7\nchanged outside write\n%%EOF\n"))
 				result, bad := w.share(t, w.shareCall(t, "share-pdf"), "share-pdf", "report.pdf")
 				if bad || len(result.RecordedIDs) != 1 {
 					t.Fatalf("share PDF: %+v", result)

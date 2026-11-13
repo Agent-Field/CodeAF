@@ -36,6 +36,10 @@ func startupFile(t *testing.T, home, name, text string) {
 func firstStart(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
+	// This fixture tests joinability, not learning.
+	if err := config.WriteMemoryEnabled(home, false); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := identity.EnsureSolo(home); err != nil {
 		t.Fatal(err)
 	}
@@ -67,6 +71,11 @@ func firstStart(t *testing.T) string {
 	// worker is: a loaded machine must not turn setup into a failure.
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	// Memory off reads no history until the Memory page asks, so the fixture asks.
+	if err := vault.AskDiscovery(); err != nil {
+		cancel()
+		t.Fatal(err)
+	}
 	done := make(chan error, 1)
 	guard.Go("identity/startup-fixture", func() {
 		done <- vault.Run(ctx, session.KnowledgeHistory(filepath.Join(home, "v3/projects")), func() string { return "" })
@@ -78,8 +87,7 @@ func firstStart(t *testing.T) string {
 			<-done
 			t.Fatal(err)
 		}
-		// Memory is off on a first start, so its worker records an empty inventory
-		// as unbuilt and stays that way.
+		// With learning pinned off, the empty inventory stays unbuilt.
 		if snapshot.Build.Phase == knowledge.BuildUnbuilt {
 			break
 		}
@@ -168,6 +176,20 @@ func TestL4Fix2FirstStartCanJoin(t *testing.T) {
 
 // L4-H2: Narrow startup rows must not block the base memory merge, and an
 // unknown graph event must still refuse a move even when its projections are empty.
+// Opening the Memory page with nothing else done is still a first start: the ask
+// it leaves for the knowledge worker is not the person's work.
+func TestL4Fix2AnOpenedMemoryPageCanJoin(t *testing.T) {
+	home := firstStart(t)
+	startupFile(t, home, "knowledge/.discovery-asked", "")
+	joinable, err := identity.Joinable(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !joinable {
+		t.Fatal("the Memory page's ask for a chat count made this home unable to join")
+	}
+}
+
 func TestL4Fix2GraphMemoryRemainsJoinable(t *testing.T) {
 	home := firstStart(t)
 	graph, err := store.Open(filepath.Join(home, "graph.db"))

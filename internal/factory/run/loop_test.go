@@ -271,12 +271,15 @@ func TestAnApproveStepHoldsYesGoesOnNoSendsBack(t *testing.T) {
 		t.Fatal(err)
 	}
 	g.asked(first, "ready to start · continue?")
-	if err := g.r.Answer(first, false, ""); err != nil {
+	if err := g.r.Answer(first, false, "not this one"); err != nil {
 		t.Fatal(err)
 	}
-	it = g.waitState(first, factory.StateNew)
-	if it.Stream == nil || !logHas(it, "stopped · branch kept") || it.Question != "" {
-		t.Fatalf("a no with nothing before did not stop: %+v", it)
+	// A NO WITH NOTHING BEFORE IT IS A REJECTION: the job ends, done, with
+	// the words, and offers no carry-on from the approval it was refused at.
+	it = g.wait(first, "rejected", func(it factory.Item) bool { return it.Rejection != nil })
+	if it.Stream == nil || !logHas(it, "stopped · branch kept") || it.Question != "" || factory.JobState(it) != "done" ||
+		it.Rejection.Words != "not this one" || it.Stream.Ended.IsZero() {
+		t.Fatalf("a no with nothing before did not end the job: %+v", it)
 	}
 
 	// AN APPROVE STEP WITH NOTHING AFTER IT IS THE LANDING: no question
@@ -335,7 +338,7 @@ func TestUntilCleanWithMaxTwoLoopsTwiceThenAsks(t *testing.T) {
 	if err := g.r.Launch(id); err != nil {
 		t.Fatal(err)
 	}
-	q := "review is not clean after 2 rounds: 2 findings · try again, or stop the job?"
+	q := "review is not clean after 2 rounds: 2 findings · try again, accept it as it stands, or stop the job?"
 	it := g.asked(id, q)
 	if calls.Load() != 2 || it.QKind != factory.QKindOutOfAttempts {
 		t.Fatalf("calls %d, kind %q", calls.Load(), it.QKind)
@@ -346,7 +349,7 @@ func TestUntilCleanWithMaxTwoLoopsTwiceThenAsks(t *testing.T) {
 	if err := g.r.Answer(id, true, ""); err != nil {
 		t.Fatal(err)
 	}
-	g.asked(id, "review is not clean after 3 rounds: 2 findings · try again, or stop the job?")
+	g.asked(id, "review is not clean after 3 rounds: 2 findings · try again, accept it as it stands, or stop the job?")
 	if calls.Load() != 3 {
 		t.Fatalf("one more round ran %d calls", calls.Load())
 	}
@@ -394,6 +397,9 @@ func TestAStepThatStoppedSaysWhatHappenedInPlainWords(t *testing.T) {
 			}
 		})
 	}
+	if stepChoices(false, true) != "try again, accept it as it stands, or stop the job?" || stepChoices(true, true) != "try again, send it back, accept it as it stands, or stop the job?" {
+		t.Fatal("accept is not named among the choices")
+	}
 	if stepShortChoices(false) != "try again, or stop the job?" || stepShortChoices(true) != "try again, send it back, or stop the job?" {
 		t.Fatal("the choices offered a step to go back to that is not there")
 	}
@@ -414,7 +420,7 @@ func TestOutOfAttemptsSendBackRunsThePreviousStep(t *testing.T) {
 	if err := g.r.Launch(id); err != nil {
 		t.Fatal(err)
 	}
-	q := "review is not clean: 1 finding · try again, send it back, or stop the job?"
+	q := "review is not clean: 1 finding · try again, send it back, accept it as it stands, or stop the job?"
 	g.asked(id, q)
 	if err := g.r.Answer(id, false, "send_back: use the other file"); err != nil {
 		t.Fatal(err)
@@ -628,7 +634,7 @@ func TestStopBeforeAnyStepBeganKeepsPersonStop(t *testing.T) {
 		t.Fatal(err)
 	}
 	it, _ := g.st.Get(id)
-	if it.State != factory.StateNew || it.Failure != nil || factory.JobState(it) != "needs_you" || !factory.RunEnded(it) || !factory.StoppedByPerson(it) || !logHas(it, "stopped · branch kept") {
+	if it.State != factory.StateNew || it.Failure != nil || factory.JobState(it) != "backlog" || !factory.RunEnded(it) || !factory.StoppedByPerson(it) || !logHas(it, "stopped · branch kept") {
 		t.Fatalf("stopped before any step = %s %+v", factory.JobState(it), it.Failure)
 	}
 	for _, ph := range it.Stream.Phases {
@@ -654,7 +660,7 @@ func assertStoppedByYou(t *testing.T, it factory.Item, step string) {
 			t.Fatalf("the cut step = %+v", ph)
 		}
 	}
-	if factory.JobState(it) != "needs_you" || !factory.RunEnded(it) {
+	if factory.JobState(it) != "backlog" || !factory.RunEnded(it) {
 		t.Fatalf("a stopped job reads %s", factory.JobState(it))
 	}
 }

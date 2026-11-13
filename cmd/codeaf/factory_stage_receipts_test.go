@@ -83,6 +83,40 @@ func TestStageReceiptsKeepLargestCommandAndResolveRerunFailures(t *testing.T) {
 	}
 }
 
+func TestVerificationFailureKeyFollowsMeasuredChecksAndCheckout(t *testing.T) {
+	root, file, run := repairCheckFixture(t)
+	c := stageConversation{file: file, dir: root, verification: &receiptStageDoor{requireFresh: true}}
+	key := func() string {
+		t.Helper()
+		_, _, failureKey := c.VerificationEvidence()
+		return failureKey
+	}
+	const failedCheck = "CHECK_EXIT=1 cargo test --test cli regression"
+	run(failedCheck)
+	first := key()
+	if first == "" {
+		t.Fatal("missing identity for measured failure")
+	}
+	run(failedCheck)
+	if next := key(); next != first {
+		t.Fatal("repeating the same check changed its failure identity")
+	}
+	if err := os.WriteFile(filepath.Join(root, "code.txt"), []byte("updated"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if key() != "" {
+		t.Fatal("stale failure was counted on the edited checkout")
+	}
+	run(failedCheck)
+	if next := key(); next == "" || next == first {
+		t.Fatal("current failure was not bound to the edited checkout")
+	}
+	run("cargo test --test cli regression")
+	if key() != "" {
+		t.Fatal("passing check still counted as a measured blocker")
+	}
+}
+
 // These go through a real shell and the persisted journal/exit receipts rather
 // than giving the collector invented PASS strings or a model's claimed result.
 func TestFactoryVerificationReceiptsDoNotConfuseChecksAndReporting(t *testing.T) {

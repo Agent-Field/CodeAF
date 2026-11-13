@@ -96,6 +96,7 @@ func PublishBody(it Item, trailer string) string {
 	}
 	b.WriteString("\n## Validation\n\n")
 	b.WriteString(SkippedValidation(it))
+	b.WriteString(AcceptedValidation(it))
 	seen := map[string]bool{}
 	for _, cmd := range commands {
 		if seen[cmd] || lastOutcome[cmd] != "passed" {
@@ -137,6 +138,40 @@ func PublishBody(it Item, trailer string) string {
 		b.WriteString("\n\n" + trailer)
 	}
 	return PublicText(b.String())
+}
+
+// AcceptedValidation names, for whoever reviews the pull request, every
+// shortfall the owner accepted on the way: the step, and each check that was
+// still failing or each reason it fell short. Empty when nothing was accepted.
+func AcceptedValidation(it Item) string {
+	var b strings.Builder
+	for _, s := range AcceptedSteps(it) {
+		fmt.Fprintf(&b, "- %s: accepted by the owner as it stands, with these unresolved:\n", s.Step)
+		for i, w := range s.What {
+			if i == acceptedListMost {
+				fmt.Fprintf(&b, "  - and %d more\n", len(s.What)-i)
+				break
+			}
+			fmt.Fprintf(&b, "  - `%s`\n", strings.ReplaceAll(publicAccepted(w), "`", "'"))
+		}
+	}
+	return b.String()
+}
+
+// acceptedListMost is how many accepted shortfalls one step lists.
+const acceptedListMost = 8
+
+var acceptedCheckDir = regexp.MustCompile(` \(in [^)]*\)`)
+
+// publicAccepted is an accepted shortfall as a stranger reads it: the check's
+// own words without the machine's checkout path or shell quoting.
+func publicAccepted(w string) string {
+	w = acceptedCheckDir.ReplaceAllString(w, "")
+	w = strings.ReplaceAll(w, "'", "")
+	if r := []rune(w); len(r) > 300 {
+		w = string(r[:300]) + "…"
+	}
+	return strings.TrimSpace(w)
 }
 
 // SkippedValidation is shared by post stages and the publication preview.

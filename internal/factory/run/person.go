@@ -136,6 +136,10 @@ func AnswerHeld(it *factory.Item, yes bool, now time.Time, words ...string) erro
 		return fmt.Errorf("%s is not waiting on you", it.Ref())
 	}
 	qkind := it.QKind
+	asking := ""
+	if it.Asking != nil {
+		asking = it.Asking.Stage
+	}
 	if qkind == factory.QKindSpendStopped {
 		it.StopAfterStep = false
 		it.Question, it.QKind, it.Asking = "", "", nil
@@ -154,7 +158,19 @@ func AnswerHeld(it *factory.Item, yes bool, now time.Time, words ...string) erro
 	it.Question, it.QKind = "", ""
 	it.Asking = nil
 	s := it.Stream
-	if s == nil || s.Cur < 0 || s.Cur >= len(s.Phases) || s.Phases[s.Cur].State != factory.PhaseWaiting {
+	if s == nil {
+		return nil
+	}
+	// AN APPROVAL PASSES THE APPROVE STEP IT ANSWERS, wherever the current
+	// step points: a record whose current step was moved off the waiting
+	// approve step (the owner's #22) still has exactly one approve step
+	// waiting, and that is the one the yes is for.
+	if qkind == factory.QKindApprove {
+		if g := waitingGate(s, asking); g >= 0 {
+			s.Cur = g
+		}
+	}
+	if s.Cur < 0 || s.Cur >= len(s.Phases) || s.Phases[s.Cur].State != factory.PhaseWaiting {
 		return nil
 	}
 	if yes && qkind == factory.QKindApprove {
@@ -166,9 +182,13 @@ func AnswerHeld(it *factory.Item, yes bool, now time.Time, words ...string) erro
 		setPhaseState(ph, factory.PhaseRunning, now)
 	case yes:
 		setPhaseState(ph, factory.PhaseDone, now)
+		factory.StampPassed(it, s.Cur)
+		loopSay(it, now, "ok", passedLine(ph.Name, ph.Passed))
 	default:
 		setPhaseState(ph, factory.PhasePending, now)
 	}
+	// Who was passing it is spent by any answer to the approval.
+	it.Passing = nil
 	return nil
 }
 
@@ -227,7 +247,13 @@ func AnswerUnheld(it *factory.Item, yes bool, words string, now time.Time) error
 		ph := &it.Stream.Phases[i]
 		switch factory.OutOfAttemptsChoice(yes, words) {
 		case factory.ChoiceCancel:
+			// A CANCEL IS THE PERSON'S STOP, as the Stop door's is: the job
+			// waits in Backlog and asks nothing. Without the mark it read as
+			// a failed job waiting on them ("Stopped by you" in Needs you)
+			// once a Start had taken an earlier stop down.
 			stopStored(it, now)
+			factory.MarkPersonStopped(it)
+			it.Asking = nil
 			return nil
 		case factory.ChoiceSendBack:
 			prev := factory.PreviousWork(it.Stream.Phases, i)
@@ -235,6 +261,12 @@ func AnswerUnheld(it *factory.Item, yes bool, words string, now time.Time) error
 				return fmt.Errorf("there is no previous work step to send back")
 			}
 			rewindToStep(it, i, prev, factory.SendBackReason(words), now)
+		case factory.ChoiceAccept:
+			if !factory.OffersAccept(*it) {
+				return errors.New(sayNotAcceptable)
+			}
+			acceptStored(it, i, factory.StuckReason(it.Question), now)
+			words = ""
 		default:
 			incomplete := ph.Verification != nil && ph.Verification.State == "incomplete"
 			grantAdditionalRound(it, yes, words)
@@ -274,11 +306,13 @@ func AnswerUnheld(it *factory.Item, yes bool, words string, now time.Time) error
 		return nil
 	}
 	if prev < 0 {
-		// Take down the question before stopping, as the warm runner does.
+		// Nothing to send back to: the no is a rejection that ends the job, as
+		// the warm runner's is. Take down the question before stopping.
 		if err := AnswerHeld(it, false, now); err != nil {
 			return err
 		}
 		stopStored(it, now)
+		it.EndRejected("", words, now)
 		return nil
 	}
 	words = strings.TrimSpace(words)
@@ -299,6 +333,48 @@ func AnswerUnheld(it *factory.Item, yes bool, words string, now time.Time) error
 // answer: the waiting step must be a non-gate step holding a finished result,
 // and the step right after it must be a pending gate. Anything else is left
 // exactly as it was and takes the ordinary path.
+// passedLine is the run's line for an approve step passed: `approve passed by
+// the manager · the plan names two files`, `approve passed by @ada`.
+func passedLine(name string, p *factory.Passed) string {
+	who := "a person"
+	switch {
+	case p == nil:
+	case p.By == factory.PassedByManager:
+		who = "the manager"
+	case p.Handle != "":
+		who = "@" + strings.TrimPrefix(p.Handle, "@")
+	}
+	line := name + " passed by " + who
+	if p != nil && strings.TrimSpace(p.Why) != "" {
+		line += " · " + strings.TrimSpace(p.Why)
+	}
+	return line
+}
+
+// waitingGate is the approve step an approval answers when the current step is
+// not a waiting one: the waiting approve step the question names, else the
+// only approve step waiting; -1 when the current step already waits or no
+// single approve step does.
+func waitingGate(s *factory.Stream, stage string) int {
+	if s.Cur >= 0 && s.Cur < len(s.Phases) && s.Phases[s.Cur].State == factory.PhaseWaiting {
+		return -1
+	}
+	found := -1
+	for i, ph := range s.Phases {
+		if ph.Kind != factory.StageGate || ph.State != factory.PhaseWaiting {
+			continue
+		}
+		if stage != "" && ph.Name == stage {
+			return i
+		}
+		if found >= 0 {
+			return -1
+		}
+		found = i
+	}
+	return found
+}
+
 func repairMisfiledGate(s *factory.Stream) {
 	ph := &s.Phases[s.Cur]
 	if ph.Kind == factory.StageGate || ph.Result == nil || !ph.Result.Done || s.Cur+1 >= len(s.Phases) {
@@ -397,4 +473,43 @@ func PlanRevision(it factory.Item) error {
 		return refusePlanShape
 	}
 	return refusePlanFirstStep
+}
+
+// sayNotAcceptable refuses an accept the job does not offer.
+const sayNotAcceptable = "this step cannot be accepted as it stands: try again, send it back, or stop the job"
+
+// AcceptRefusal is the refusal of an accept the job does not offer.
+func AcceptRefusal() error { return errors.New(sayNotAcceptable) }
+
+// acceptStored is the person's accept, written on the item: step i is done
+// as it stands, with what was accepted kept on its result
+// ([factory.AcceptStep]). It answers the line said about it. The held runner
+// makes the same write on its own copy (loop.go's accept).
+func acceptStored(it *factory.Item, i int, why string, now time.Time) string {
+	ph := &it.Stream.Phases[i]
+	what := factory.AcceptStep(ph, why)
+	setPhaseState(ph, factory.PhaseDone, now)
+	ph.Left = 0
+	ph.Note = acceptedNote(what)
+	line := ph.Name + " accepted as it stands: " + strings.Join(what, "; ")
+	loopSay(it, now, "said", line)
+	return line
+}
+
+// acceptedNote is the step's own line once accepted: `accepted with 3 failing
+// checks`, or `accepted as it stands` when what fell short was not a check.
+func acceptedNote(what []string) string {
+	checks := 0
+	for _, w := range what {
+		if strings.HasSuffix(w, " · failed") {
+			checks++
+		}
+	}
+	switch {
+	case checks == 1:
+		return "accepted with 1 failing check"
+	case checks > 1:
+		return fmt.Sprintf("accepted with %d failing checks", checks)
+	}
+	return "accepted as it stands"
 }

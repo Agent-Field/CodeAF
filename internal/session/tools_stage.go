@@ -1,13 +1,14 @@
 package session
 
-// THE TWO VERBS A FACTORY STAGE ENDS WITH.
+// Tools for one factory stage round.
 //
 // A stage conversation (stage_contract.go) is opened by the factory's runner
 // with a brief, and the runner is waiting in code for what it found.
 // `stage_result` is how the conversation says it, and `plan_edit` is how the
 // plan stage proposes a different set of stages for the rest of the item.
+// A Follow PR round may also have `factory_sync_pr_base` for its checkout.
 //
-// ── THE LAWS THIS FILE APPLIES ──
+// ── REPORT AND PLAN EDIT RULES ──
 //
 //   - BOTH ARE ABSENT WITHOUT THE DOOR. [Config.mayStage] is the one
 //     predicate: an ordinary conversation, a task node and every door that is
@@ -92,7 +93,7 @@ func stageFilesField() string {
 
 func planEditSchemaJSON() string {
 	return `{"type":"object","properties":{` +
-		`"add":{"type":"array","items":{"type":"string"},"description":"Stage sentences to add."},` +
+		`"add":{"type":"array","items":{"type":"string"},"description":"Stage sentences to add, each naming its step before a colon, e.g. \"after review, auth: read it for auth holes\"."},` +
 		`"skip":{"type":"array","items":{"type":"string"},"description":"Stage names to switch off."},` +
 		`"on":{"type":"array","items":{"type":"string"},"description":"Stage names to switch on."},` +
 		`"why":{"type":"string","description":"One sentence saying why."}` +
@@ -106,13 +107,17 @@ func init() {
 	glossField["plan_edit"] = "why"
 }
 
-// stageTools is the two verbs, or nothing at all when this conversation is not
-// a stage ([Config.mayStage]).
+// stageTools offers the round's reporting and editing tools, plus checkout
+// sync when the runner provides it.
 func (a *Agent) stageTools() []bare.Tool {
 	if !a.config.mayStage() {
 		return nil
 	}
-	return []bare.Tool{a.stageResultTool(), a.planEditTool()}
+	tools := []bare.Tool{a.stageResultTool(), a.planEditTool()}
+	if door, ok := a.config.Stage.(StagePRBaseSyncer); ok && door.CanSyncPRBase() {
+		tools = append(tools, stagePRBaseSyncTool(door))
+	}
+	return tools
 }
 
 // stageClaim is one claim as the model writes it.

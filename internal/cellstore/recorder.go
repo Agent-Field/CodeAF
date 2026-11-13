@@ -3,9 +3,11 @@ package cellstore
 import (
 	"bufio"
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 	"sync"
@@ -36,6 +38,11 @@ type Options struct {
 	// carries is true at that moment: the inventory uses it to say which of the
 	// chat's commands are still running.
 	Refresh func()
+	// FolderGone, when set, says the chat's folder is no longer on this
+	// computer; a capture that failed then is not reported as a chat that
+	// could not be saved ([ErrWorkspaceGone]). The seat sets it from the
+	// engine it decorates, which is the one that knows the folder.
+	FolderGone func() bool
 }
 
 // Recorder is the one hook (task 0.7): an executor.Executor that logs each
@@ -54,6 +61,8 @@ type Recorder struct {
 	errorMu   sync.Mutex
 	lastError error
 
+	daemonGeneration uint64
+
 	mu      sync.Mutex // serialises seals; guards pending and models
 	pending []Executed
 	models  []ModelCall // model calls since the last seal
@@ -69,18 +78,46 @@ var _ executor.Executor = (*Recorder)(nil)
 // sealed ride the next seal; calls with an intent and no completion are kept
 // for Incomplete and are never run again here (L9).
 func NewRecorder(inner executor.Executor, store Store, c cell.Cell, walPath string, opts Options) (*Recorder, error) {
-	wal, rec, err := OpenWAL(walPath)
+	wal, rec, err := openRecovery(c, walPath)
 	if err != nil {
 		return nil, fmt.Errorf("open call log: %w", err)
 	}
 	wal.owner = c.Root
 	reapOrphans(rec.Incomplete, reapGrace)
 	r := &Recorder{inner: inner, store: store, cell: c, wal: wal, opts: opts,
-		pending: rec.Completed, incomplete: rec.Incomplete}
-	if opts.Async && len(r.pending) > 0 {
+		pending: rec.Completed, models: rec.Models, incomplete: rec.Incomplete, daemonGeneration: daemonClock.Load()}
+	if models, e := unsealedModels(c, r.models); e == nil {
+		r.models = models
+	}
+	if opts.Async && (len(r.pending) > 0 || len(r.models) > 0) {
 		r.hold()
 	}
 	return r, nil
+}
+
+// Receipt publication can survive a crash before WAL cleanup. Shared identities
+// suppress those receipts; anonymous legacy calls cannot be matched by identity.
+func unsealedModels(c cell.Cell, models []ModelCall) ([]ModelCall, error) {
+	if len(models) == 0 {
+		return models, nil
+	}
+	calls, err := ModelCalls(c)
+	if err != nil {
+		return nil, err
+	}
+	booked := map[string]bool{}
+	for _, m := range calls {
+		if m.ID != "" {
+			booked[m.ID] = true
+		}
+	}
+	var pending []ModelCall
+	for _, m := range models {
+		if m.ID == "" || !booked[m.ID] {
+			pending = append(pending, m)
+		}
+	}
+	return pending, nil
 }
 
 // Wrap leaves the executor unchanged when this build cannot move chats, so
@@ -119,7 +156,7 @@ func (r *Recorder) Around(ctx context.Context, call executor.Call, effect execut
 	if err := r.enter(ctx); err != nil {
 		return err
 	}
-	intent := Intent{V: walV, Tool: call.Tool, ArgsHash: hashHex(call.Args), Started: r.now().UnixMilli(),
+	intent := Intent{V: walV, ID: rand.Text(), Tool: call.Tool, ArgsHash: hashHex(call.Args), Started: r.now().UnixMilli(),
 		SideEffect: string(effect), Brief: briefOf(call.Args)}
 	if err := r.wal.Begin(intent); err != nil {
 		return fmt.Errorf("log call intent: %w", err)
@@ -145,10 +182,45 @@ func exitOfFailure(failed bool) int {
 // in the receipt of the turn it was made in.
 func (r *Recorder) NoteModelCall(m executor.ModelCall) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.models = append(r.models, modelCallOf(m))
+	model := modelCallOf(m)
+	for _, pending := range r.models {
+		if model.ID != "" && pending.ID == model.ID {
+			r.mu.Unlock()
+			return
+		}
+	}
+	r.models = append(r.models, model)
+	err := r.wal.recordModels(r.models)
 	if r.opts.Async {
 		r.hold()
+	}
+	r.mu.Unlock()
+	if err != nil {
+		log.Print("model receipt pending; retaining for retry")
+		r.report(err)
+		go r.retryModel(model)
+	}
+}
+
+func (r *Recorder) retryModel(m ModelCall) {
+	for attempt := 0; ; attempt++ {
+		time.Sleep(min(10*time.Millisecond<<min(attempt, 7), time.Second))
+		r.mu.Lock()
+		pending := false
+		for _, model := range r.models {
+			if model.ID == m.ID {
+				pending = true
+				break
+			}
+		}
+		var err error
+		if pending {
+			err = r.wal.recordModels(r.models)
+		}
+		r.mu.Unlock()
+		if !pending || err == nil {
+			return
+		}
 	}
 }
 
@@ -199,7 +271,7 @@ func (r *Recorder) tool() string {
 }
 
 func (r *Recorder) intent(req executor.ExecRequest) Intent {
-	return Intent{V: walV, Tool: r.tool(), ArgsHash: argsHash(req), Started: r.now().UnixMilli(),
+	return Intent{V: walV, ID: rand.Text(), Tool: r.tool(), ArgsHash: argsHash(req), Started: r.now().UnixMilli(),
 		SideEffect: string(executor.Classify(req.Net)), Brief: clip(strings.Join(req.Argv, " "))}
 }
 
@@ -323,6 +395,7 @@ func lastEnd(head *Sealed) int64 {
 // seal takes everything pending into one turn. On failure the batch stays
 // pending and the next call's seal carries it. Callers hold r.mu.
 func (r *Recorder) seal(ctx context.Context) {
+	ctx = context.WithValue(ctx, daemonOwnerKey{}, r.daemonGeneration)
 	if r.opts.Refresh != nil {
 		r.opts.Refresh()
 	}
@@ -335,8 +408,9 @@ func (r *Recorder) seal(ctx context.Context) {
 	}
 	// Ordered turn and receipt writes survive process death. Group commit and
 	// explicit boundaries make both stores durable before work leaves this computer (C28/U1).
+	models := r.models
 	r.pending, r.models = nil, nil
-	r.outcome(r.wal.Sealed(batch))
+	r.outcome(r.wal.Sealed(batch, models...))
 	r.releaseHeld()
 }
 
@@ -351,6 +425,11 @@ func (r *Recorder) outcome(err error) {
 }
 
 func (r *Recorder) report(err error) {
+	// A FOLDER THAT IS GONE IS NOT A CHAT THAT COULD NOT BE SAVED
+	// ([ErrWorkspaceGone]): its calls stay pending and nothing is reported.
+	if errors.Is(err, ErrWorkspaceGone) {
+		return
+	}
 	if err != nil {
 		r.errorMu.Lock()
 		r.lastError = err
@@ -365,7 +444,7 @@ func (r *Recorder) report(err error) {
 // external call (SCHEMAS.md ruling 3): a local one can be re-run.
 func executed(i Intent, res executor.ExecResult, callErr error, ended int64) Executed {
 	e := Executed{
-		Call: Call{Tool: i.Tool, ArgsHash: i.ArgsHash, Started: i.Started, Ended: ended, Exit: exitOf(res, callErr),
+		Call: Call{ID: i.ID, Tool: i.Tool, ArgsHash: i.ArgsHash, Started: i.Started, Ended: ended, Exit: exitOf(res, callErr),
 			StdoutHash: hashHex(res.Stdout), StderrHash: hashHex(res.Stderr), SideEffect: i.SideEffect},
 		Exact:    executor.SnapshotExact(res),
 		Services: serviceRecs(res.Services),

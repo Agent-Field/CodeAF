@@ -332,15 +332,15 @@ func (t Taker) install(ctx context.Context, stage, c cell.Cell, head string) err
 	// copy-ready or copy-offered markers, so installing over a `.moving` copy
 	// root must keep or re-stamp them lest its `.lock` sibling hide the chat or
 	// revive the untouched original.
-	keepCopyReady := exists(filepath.Join(c.Root, filepath.FromSlash(cell.CopyReadyPath))) ||
-		(filepath.Base(filepath.Dir(c.Root)) == ".moving" && exists(c.Root+".lock"))
+	restoreCopyReady, err := cell.PreserveCopyReady(c.Root)
+	if err != nil {
+		return err
+	}
 	offeredFile := filepath.Join(c.Root, filepath.FromSlash(cell.CopyOfferedPath))
 	keepCopyOffered := exists(offeredFile)
 	restoreCopyMarkers := func() error {
-		if keepCopyReady {
-			if err := cell.StampCopyReady(c.Root); err != nil {
-				return err
-			}
+		if err := restoreCopyReady(); err != nil {
+			return err
 		}
 		if keepCopyOffered && !exists(offeredFile) {
 			if err := os.MkdirAll(filepath.Dir(offeredFile), 0o700); err != nil {

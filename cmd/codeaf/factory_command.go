@@ -13,6 +13,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -40,11 +41,15 @@ type factoryDiscovery struct {
 	App   bool   `json:"app,omitempty"`
 }
 
+// factoryRemovedDoor is what `codeaf factory add` and `codeaf factory webhook`
+// answer now that the factory takes no work from a command or a script.
+const factoryRemovedDoor = "codeaf factory add and codeaf factory webhook were removed: file work in the desktop app, connect GitHub or Jira there, or send custom triggers through AgentField"
+
 func runFactory(args []string) error {
 	verb := "serve"
 	if len(args) > 0 {
 		switch args[0] {
-		case "serve", "steps", "convert", "token", "revoke", "revoke-sessions", "name":
+		case "serve", "steps", "convert", "token", "revoke", "revoke-sessions", "name", "add", "webhook":
 			verb, args = args[0], args[1:]
 		}
 	}
@@ -63,6 +68,14 @@ func runFactory(args []string) error {
 	}
 	if verb == "token" {
 		return runFactoryToken(args)
+	}
+	// THE FACTORY HAS NO PROGRAMMATIC DOOR OF ITS OWN. Work is filed in the
+	// desktop app, by a built-in connector set up there with clicks (GitHub,
+	// Jira), or through AgentField; `add` and `webhook` were removed with the
+	// open intake, and are named here only so a person who remembers them is
+	// told where the work goes now.
+	if verb == "add" || verb == "webhook" {
+		return wrongCall(factoryRemovedDoor)
 	}
 	if verb == "name" {
 		return runFactoryName(args)
@@ -171,7 +184,12 @@ func serveFactory(ctx context.Context, configPath, listen string, out io.Writer,
 	// A JOB A START RULE STARTS ON A TEAM SERVER IS ITS OPERATOR'S.
 	operator := factoryOperatorOwner(factoryTokensPath(configPath))
 	startFactoryTriage(ctx, st, func(st *store.Store) *intake.Intake { return factoryIntakeOwned(st, operator) })
-	startFactoryServerPoll(ctx, st, factoryTokensPath(configPath), limit)
+	// A GO-AHEAD ON A TEAM SERVER IS FOLLOWED BY THE SERVER ITSELF, after every
+	// poll tick, so the jobs it covers start with no app attached.
+	stopPoll := startFactoryServerPoll(ctx, st, factoryTokensPath(configPath), limit, func(ctx context.Context) error {
+		return factoryIntakeOwned(st, operator).GoAheads(ctx)
+	})
+	defer stopPoll()
 	server, done := service.server, service.done
 	// READY MEANS USABLE: the operator link's row is written before the
 	// address is printed; only naming its GitHub login waits on GitHub.
@@ -222,6 +240,7 @@ type factoryService struct {
 	public    string
 	notes     []string
 	server    *http.Server
+	running   atomic.Bool
 	door      *http.Server
 	handler   *serve.Handler
 	done      chan error
@@ -282,6 +301,9 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 		Folders: newFactoryJobFolders(st), DeleteChats: factoryDeleteJobChats(config.ProfileDir(), st), Mode: mode, OperatorLogin: host.OperatorLogin, TrustedProxies: secure.proxies, Name: host.Name, GitHubClientID: host.GitHubClientID, Team: host.Team, Address: public, AccessToken: token, TokensPath: tokensPath, Store: st, Root: st.Root(), Record: history,
 		ServedBy: servedBy, PollingEvery: poll, GitHubLimit: host.githubLimit.resets,
 		Scout: factoryScoutLook(st, config.Load), Read: factoryClickRead(st, config.Load),
+		// A `manager when …` approval's condition is judged by the floor's AI
+		// filter, as a routing rule's question is.
+		PassJudge:     factoryJudge(st, config.Load),
 		PersonProfile: factoryPeople().Profile, PersonKnown: factoryPeople().Known, CodeOwners: factoryPeople().Owners,
 		Pipeline: func(ctx context.Context, repo, dir string) (pipeline.File, error) {
 			return factoryPipelineRead(ctx, st, repo, dir)
@@ -317,7 +339,12 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 			"; access tokens and sign-in sessions cross the network unencrypted. Serve HTTPS with tls: auto and a domain, "+
 			"or put a reverse proxy that serves HTTPS in front and list it in trusted_proxies (the manual: hosting a team factory over HTTPS)")
 	}
-	guard.Go("factory HTTP service", func() { s.done <- server.Serve(served) })
+	s.running.Store(true)
+	guard.Go("factory HTTP service", func() {
+		err := server.Serve(served)
+		s.running.Store(false)
+		s.done <- err
+	})
 	body, err := json.Marshal(factoryDiscovery{URL: s.url, PID: os.Getpid(), Token: token})
 	if err == nil {
 		err = writeFactoryPrivate(s.discovery, append(body, '\n'))
@@ -373,12 +400,14 @@ func (s *factoryService) serveTLS(ctx context.Context, secure factoryTLS, listen
 // close stops serving and takes the receipt down, so nobody discovers a
 // service that is gone.
 func (s *factoryService) close() {
+	s.running.Store(false)
 	_ = os.Remove(s.discovery)
 	_ = s.server.Close()
 	if s.door != nil {
 		_ = s.door.Close()
 	}
 	s.handler.Close()
+	stopFactoryLoaders("")
 }
 
 // factoryFileLock coordinates service discovery and token writes across

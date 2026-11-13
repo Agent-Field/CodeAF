@@ -81,7 +81,9 @@ import (
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/agentdid"
 	"github.com/Agent-Field/codeaf/internal/approval"
+	"github.com/Agent-Field/codeaf/internal/claudemodel"
 	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/ctxbudget"
@@ -719,6 +721,13 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) (f
 				reached.drew()
 				hub.send(formed)
 			}
+		case provider.StreamStepsRan:
+			// STEPS THE MODEL'S OWN PROGRAM ALREADY RAN (its own shell and
+			// edits) are written down as calls and results, in order with the
+			// words around them, and drawn as rows. They are on the page, so
+			// they count as read exactly as a word of the answer does.
+			reached.drew()
+			a.recordStepsRan(ctx, hub, event.Delta)
 		case provider.StreamToolCallReady:
 			// ANNOUNCE FIRST, then decide whether it may start. The order is the
 			// meaning: the person sees every call the moment the model finishes
@@ -728,6 +737,11 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) (f
 		}
 	}
 	ctx = provider.WithStreamObserver(ctx, turnObserver)
+	// A MODEL WHOSE OWN PROGRAM RUNS COMMANDS (internal/claudemodel) is handed the
+	// conversation's identity for them, as the commands codeaf runs are.
+	if a.config.actorDID != "" {
+		ctx = claudemodel.WithEnv(ctx, []string{agentdid.AgentDIDEnv + "=" + a.config.actorDID})
+	}
 	// ONE MECHANISM ANSWERS ONE SILENCE, AND IT IS NOT THIS ONE. This loop used
 	// to keep a hedge of its own here: an eight-second timer that, on a request
 	// which had said nothing, sent the whole prompt a second time. The transport
@@ -1003,6 +1017,9 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) (f
 		// asked here only for the sentence it carries ([Agent.markSettleBound]).
 		if count, tripped := a.settleBoundTripped(ctx, &turn, settleCalls); tripped {
 			a.markSettleBound(count)
+			// Keep the step spend without duration or ordinary turn-ending acts;
+			// abandonment can displace this turn while the bound is marked.
+			a.sealSteps(turn, model)
 			return false
 		}
 
@@ -1467,20 +1484,22 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) (f
 		// the fold, the readings that ride beside it — and the law says it is
 		// milliseconds.
 		pace.resultsIn(time.Now())
-		// AND A TURN THIS SESSION HAS ALREADY LET GO OF STOPS HERE, WRITING
-		// NOTHING. [waitBatch] is the one wait in this loop that can return with
-		// its work still running, and everything below this line writes: the tool
-		// messages go into a.messages, which by now belongs to whatever turn the
-		// person started after they stopped this one. A left-behind turn appending
+		// AND A TURN THIS SESSION HAS ALREADY LET GO OF STOPS HERE, KEEPING ONLY
+		// ITS STEP SPEND. [waitBatch] can return with its work still running,
+		// and everything below this line writes: the tool messages go into
+		// a.messages, which belongs to the turn the person started next.
+		// A left-behind turn appending
 		// its results there would be another conversation's transcript growing
 		// tool rows nobody asked for.
 		//
-		// It is read here and nowhere else because this is the only boundary an
-		// abandoned turn can reach — the batch above is what it was parked in, and
-		// its own cleanup already knows to do nothing (agent.go's turnSeq). The
-		// read is non-blocking and costs an ordinary turn one closed-channel test
-		// per tool round.
+		// The local tally holds conversation steps only; on-clock errands already
+		// wrote their own auxiliary usage lines. Bank moved the live meter and
+		// machine ledger, so this writes only the journal seal, with no duration
+		// or ordinary turn-ending acts. Each exit keeps its own seal;
+		// this return cannot reach another ending. Cleanup already knows to leave
+		// the displaced turn alone (agent.go's turnSeq).
 		if abandoned(ctx) {
+			a.sealSteps(turn, model)
 			return false
 		}
 		if severed != nil {
@@ -1499,6 +1518,9 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) (f
 		}
 
 		if a.stageBatchFinal(calls, results) {
+			// Keep the step spend without duration or ordinary turn-ending acts;
+			// abandonment can displace this turn after the batch check above.
+			a.sealSteps(turn, model)
 			return true
 		}
 		// The batch can settle after its result lines and each call's `took`
@@ -1762,10 +1784,19 @@ func (a *Agent) endStoppedTurn(ctx context.Context, hub *eventHub, partial *part
 		}
 		a.journalFailedCall(ctx, model, "", cause, 1, a.requestEstimate())
 		if said := stopSentence(door, stopName(cause)); said != "" {
+			if door == StopByWorkStopped && stopName(cause) != "" && !errors.Is(cause, ErrSpendRail) {
+				a.record(textMessage("assistant", said))
+			}
 			hub.send(Event{Kind: EventNotice, Text: said})
 		}
 	}
-	hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(turn, started, model)})
+	usage := a.sealTurn(turn, started, model)
+	var reached spendRailReached
+	if errors.As(context.Cause(ctx), &reached) {
+		hub.send(Event{Kind: EventError, Err: reached, Usage: usage})
+		return
+	}
+	hub.send(Event{Kind: EventTurnDone, Usage: usage})
 }
 
 // cutDroppedCallNote is WHY a half-arrived tool call is not in the record, in
@@ -1815,11 +1846,11 @@ func (a *Agent) keepSteeredPartial(partial *partialBuffer, reasoning *reasoningB
 // sealTurn stamps the turn's wall duration, folds it into the session total,
 // and writes the turn down.
 //
-// THIS IS THE ONE PLACE A TURN'S COST REACHES THE JOURNAL, and it is here
-// because every turn shape in the package ends through it: the loop above, the
-// harness turn, the orchestrated turn and the image turn, on the answering path
-// and on both failing ones. A write anywhere else would be a turn shape that
-// silently kept no record.
+// Ordinary endings write their cost here: the loop above, the harness turn,
+// the orchestrated turn and the image turn. The abandoned tool-batch, settle-bound
+// and final stage-report exits write only their step seals ([Agent.sealSteps]),
+// without duration or ordinary turn-ending acts that could affect a replacement
+// turn after abandonment.
 //
 // AND IT IS NOT WHERE THE MACHINE'S LEDGER IS WRITTEN, which is the whole of
 // issue #269. A seal is the shape of a TURN — its duration, its place in the
@@ -1842,7 +1873,7 @@ func (a *Agent) sealTurn(turn Usage, started time.Time, model string) Usage {
 	a.mu.Unlock()
 	a.file.appendUsage(turn, model, false, "")
 	// AND THE SESSION'S RUNNING TOTAL IS STAMPED BESIDE IT, for the reason this
-	// function is the one place the journal is written: what a conversation has
+	// function owns ordinary turn endings: what a conversation has
 	// cost is a fact every reader of the machine wants and only the transcript
 	// holds, and a surface listing every session on disk cannot open every
 	// transcript to find it (placemeta.go's [Agent.stampSpend]). A turn that
@@ -1856,6 +1887,25 @@ func (a *Agent) sealTurn(turn Usage, started time.Time, model string) Usage {
 	a.tellTurnEnded()
 	a.noticeSealed()
 	return turn
+}
+
+// sealSteps writes the paid conversation steps of a turn that ends without
+// [Agent.sealTurn]: an abandoned tool batch, a settle bound, or a final stage
+// report. The seal carries no duration, and none of the turn-ending acts run,
+// because after abandonment the session already belongs to the next turn.
+//
+// IT SAVES THE RUNNING TOTAL BESIDE THE SEAL, as an ordinary seal does. The
+// steps banked as turn calls, which [Agent.bank] leaves for the seal to stamp.
+// Without this stamp meta.json kept the figure from before these steps. A
+// restart then restored the larger journal total on the meter while Home and
+// agents.list read the older figure ([Agent.stampRestoredSpend] fills only a
+// missing figure). The stamp is the deferred, coalesced spend write.
+// It reads the live books and writes only the spend fields, so it changes
+// nothing a replacement turn owns.
+func (a *Agent) sealSteps(turn Usage, model string) {
+	turn.Duration = 0
+	a.file.appendUsage(turn, model, false, "")
+	a.stampSpend()
 }
 
 // tellWrote tells the seal watch that the chat's record changed, when it wants
@@ -1916,7 +1966,7 @@ func (a *Agent) completeWithRetry(ctx context.Context, hub *eventHub, model stri
 func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, model string, rung effort.Rung, partial *partialBuffer, reached *reachedThePerson, reasoning *reasoningBuffer, warm *warmBatch, forming *formingBatch, frozenToolHistory int) (*ai.Response, string, error) {
 	// The current provider call is never cancelled by a selection. Every later
 	// outbound attempt observes the newly acknowledged pair.
-	if pair, ok := a.ConversationModelPair(); ok {
+	if pair, ok := a.requestModelPair(); ok {
 		a.mu.Lock()
 		a.fallbackNoticeOwed = true
 		a.mu.Unlock()
@@ -1930,6 +1980,10 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 	if node := a.config.taskControl; node != nil {
 		if err := node.appBoundary(ctx); err != nil {
 			return nil, model, err
+		}
+		if action := node.treeSpendLimit(); action != "" {
+			node.end(TaskEndingCostLimit)
+			return nil, model, ErrSpendStopped{Action: action}
 		}
 		if a.config.taskCapUSD > 0 && node.spend() >= a.config.taskCapUSD {
 			return nil, model, ErrSpendStopped{Action: config.CrewTaskCapAction(a.config.taskCapUSD)}
@@ -2079,7 +2133,7 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// a request boundary: no cancellation and no stale retry chain.
 		{
 			before, paired := requestConversationModels(ctx)
-			if latest, ok := a.ConversationModelPair(); ok && (!paired || latest != before) {
+			if latest, ok := a.requestModelPair(); ok && (!paired || latest != before) {
 				ctx = context.WithValue(ctx, conversationModelsKey{}, latest)
 				if latest.Main != before.Main || model == before.Fallback {
 					takeTheModel(latest.Main, true)
@@ -2319,7 +2373,7 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// unasked in the same session, and that is the road this is.
 		{
 			before, paired := requestConversationModels(ctx)
-			if latest, ok := a.ConversationModelPair(); ok && (!paired || latest != before) {
+			if latest, ok := a.requestModelPair(); ok && (!paired || latest != before) {
 				ctx = context.WithValue(ctx, conversationModelsKey{}, latest)
 				if latest.Main != before.Main {
 					takeTheModel(latest.Main, true)
@@ -3577,7 +3631,7 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 		if service != "" {
 			serviceName = a.serviceName(service)
 		}
-		hub.send(Event{
+		hub.send(a.clientToolEvent(Event{
 			Kind:        EventToolBegin,
 			Tool:        call.Function.Name,
 			Hint:        a.gloss(call),
@@ -3586,7 +3640,7 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 			Batch:       batch,
 			Service:     service,
 			ServiceName: serviceName,
-		})
+		}))
 	}
 
 	// THE NARRATOR ARMS BESIDE THE WORK, not after a long silence. A half-second
@@ -3794,6 +3848,7 @@ func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, cal
 	a.toolsStarted.Add(1)
 	a.toolsInFlight.Add(1)
 	defer a.toolsInFlight.Add(-1)
+	a.wakeBudgetForWork()
 	result := a.dispatchTool(ctx, ep, hub, call, rendered)
 	// Only a call that RAN counts: a door that refused it before it ran, or a
 	// hand withdrawn off the belt, is the harness's own answer and rides on
@@ -3825,10 +3880,20 @@ func (a *Agent) executeRecorded(ctx context.Context, tool bare.Tool, args json.R
 	if mapErr != nil {
 		return "", true, mapErr
 	}
+	// A FENCED RUN'S OWN FILE TOOLS KEEP TO THE FENCE its commands are held
+	// to: they run inside codeaf, where no jail reaches (fencedFileTool).
+	if refusal := fencedFileTool(a.config.fence(), a.config.Workspace, tool.Name, args); refusal != "" {
+		return refusal, true, nil
+	}
 	ctx, spawns := procexec.WithSpawns(ctx)
 	call := procexec.Call{Tool: tool.Name, Args: args, Changed: a.changedBy(tool.Name, args), Spawns: spawns, Deferred: procexec.Deferred(ctx)}
 	logErr := procexec.For(ctx).Around(ctx, call, func() ([]byte, bool) {
 		text, isError, err = tool.Execute(ctx, args)
+		// A COMMAND THE FENCE STOPPED SAYS SO, in the one sentence the model and
+		// the person both read, under the command's own error.
+		if isError && err == nil && a.config.fence() != nil {
+			text = procexec.WithFenceLine(text)
+		}
 		return []byte(text), isError || err != nil
 	})
 	if logErr != nil {
@@ -3977,6 +4042,9 @@ func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, ca
 		return toolResult{text: notice, isError: true, harness: true}
 	}
 	if notice, retired := a.teamRetiredNotice(call.Function.Name); retired {
+		return toolResult{text: notice, isError: true, harness: true}
+	}
+	if notice, retired := a.clientToolRetiredNotice(call.Function.Name); retired {
 		return toolResult{text: notice, isError: true, harness: true}
 	}
 	// A name nobody ever had keeps the old answer, and keeps it word for word:
@@ -4458,8 +4526,9 @@ func utf8RuneStart(b byte) bool { return b&0xC0 != 0x80 }
 // is not a call), whether this was a step of the conversation, and whether its
 // money arrived too late to belong to the turn now running.
 type bankedCall struct {
-	generationID string
-	unpriced     bool
+	libraryActivity string
+	generationID    string
+	unpriced        bool
 	// run is captured from the call's immutable execution context, never the current turn.
 	run    string
 	remote *remoteUsage
@@ -4525,11 +4594,11 @@ func (a *Agent) bank(call bankedCall) {
 	// rather than the one the seat was built on: a fallback mid-run is a
 	// different model doing the work (competence.go).
 	a.answered.add(call.model, call.used)
-	// AND THE RUNNING TURN'S OWN SHARE MOVES ON THE SAME CALL, for this door's
-	// own reason: an abandoned turn never writes the seal that would carry its
-	// cost, so the only honest figure to journal it with is the one accumulated
-	// here (abandon.go's [Agent.Abandon]). It is reset when a turn opens and is
-	// meaningless outside one, which is why it is not exported.
+	// The running turn's last-known spend includes on-clock errands as well as
+	// conversation steps. Abandon records it as evidence only; the loop's local
+	// step tally supplies the seal, and errands write their own auxiliary seals.
+	// It is reset when a turn opens and is meaningless outside one, which is why
+	// it is not exported.
 	if !call.late {
 		a.turnSpend.Input += call.used.Input
 		a.turnSpend.Output += call.used.Output
@@ -4568,6 +4637,16 @@ func (a *Agent) bank(call bankedCall) {
 			}
 		}
 	}
+	// EVERY BILL OUTSIDE A LIVE TURN STAMPS THE FIGURE HOME READS, HERE AND
+	// NOWHERE ELSE. A late receipt, an errand's call, memory work or a remote
+	// task's money can arrive after the turn sealed, and Home must not read less
+	// than /cost (dev #2577). A step of the conversation is stamped once, when
+	// its turn seals or its step seal is written ([Agent.sealSteps]), so a turn
+	// saves its spend once however many calls it made
+	// (app/v3's TestLateRecoveredCancellationSavesCumulativeSpendOnce).
+	if !call.turn {
+		a.stampSpend()
+	}
 }
 
 // reconciled receives the one late answer for a call whose stream ended before
@@ -4576,7 +4655,7 @@ func (a *Agent) bank(call bankedCall) {
 // so the session meter and the machine ledger cannot diverge.
 func (a *Agent) reconciled(receipt provider.Reconciled) {
 	if !receipt.Found || receipt.Billed.Empty() {
-		a.recordUnbilledReceipt(receipt.Model)
+		a.recordUnbilledReceipt(receipt, "")
 		return
 	}
 	used := Usage{
@@ -4610,12 +4689,12 @@ func (a *Agent) reconciled(receipt provider.Reconciled) {
 	// way: EVERY request this session makes writes one, and a request whose
 	// usage block never arrived wrote none — so the journal's call lines summed
 	// to barely half the measured session's bill, and exactly the expensive
-	// half was missing. The row is evidence and never spend; the money moved
-	// through the door above and nowhere else.
+	// half was missing. The live money moved through the door above and nowhere
+	// else; this row is the only record a replay can restore it from, because
+	// late money belongs to no turn seal.
 	a.file.appendCall(armCall(receipt))
-	// A cancelled turn has already sealed. Save the meter now rather than
-	// leaving its late charge out of every reader of meta.json until another turn.
-	a.stampSpend()
+	// A cancelled turn has already sealed, so its late charge is saved by
+	// [Agent.bank]'s stamp above rather than waiting for another turn.
 }
 
 // addUsage folds one response's accounting into the turn and the session, and
@@ -6059,5 +6138,5 @@ func (a *Agent) addUsageAs(response *ai.Response, model string, calls int, role 
 	// The write is outside the lock for the reason [Agent.sealTurn]'s is: the
 	// file has its own, and holding the agent's across a disk write would put
 	// every reader of the session's totals behind it.
-	a.file.appendUsage(aux, model, true, role)
+	a.file.appendUsage(aux, model, true, role, !ledger)
 }

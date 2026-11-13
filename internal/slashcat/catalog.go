@@ -257,11 +257,11 @@ var rows = []Row{
 	// bare row is the one nearly everybody wants, and a single row carrying
 	// [query] would make it unreachable from the list ([app.runMenu] puts a row
 	// that TAKES something into the draft instead of running it).
-	{Name: "memory", Desc: "open the Memories tab", Place: "memory"},
+	{Name: "memory", Desc: "open the Memory tab", Place: "memory"},
 	{Name: "memory", Args: "<words>", Desc: "print the remembered lines those words name"},
-	{Name: "memories", Desc: "open the Memories tab, or print every line kept here"},
+	{Name: "memories", Desc: "open the Memory tab, or print every line kept here"},
 	{Name: "memories", Args: "<words>", Desc: "…only the lines those words name"},
-	// THERE IS NO /forget: a line is forgotten on the Memories tab, where it is
+	// THERE IS NO /forget: a line is forgotten on the Memory tab, where it is
 	// in front of the person rather than guessed at from words (memory.go).
 	{Name: "remember", Args: "<text>", Desc: "keep one line for this project · for you everywhere, from home"},
 	// AND /always, THE SAME ERRAND AS /remember UNDER THE WORD PEOPLE WERE TAUGHT:

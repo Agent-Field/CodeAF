@@ -87,3 +87,31 @@ func (a *Agent) noticeSealed() {
 		hub.send(Event{Kind: EventNotice, Text: said, Told: true})
 	}
 }
+
+// Deferred journal completion still owns the watch after Close returns to the surface.
+func (a *Agent) releaseSealsAfterClose() {
+	pending := func() bool {
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		return a.closeFinalizer
+	}()
+	if !pending && a.releaseSeals != nil {
+		a.releaseSeals()
+	}
+}
+
+// FinishSaving joins the writer's final save only for the conversation that owns it.
+func (a *Agent) FinishSaving() error {
+	if a == nil || a.config.InTask || a.config.Errand || a.config.FinishSaving == nil {
+		return nil
+	}
+	return a.config.FinishSaving()
+}
+
+// TakeSavingNotices retains final-save news independently of the live notice pump.
+func (a *Agent) TakeSavingNotices() []string {
+	if a == nil || a.config.InTask || a.config.Errand || a.config.SavingNotices == nil {
+		return nil
+	}
+	return a.config.SavingNotices()
+}

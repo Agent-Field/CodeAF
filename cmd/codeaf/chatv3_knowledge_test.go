@@ -13,7 +13,6 @@ func TestLocalKnowledgeUsesEngineProfile(t *testing.T) {
 	engineProfile := t.TempDir()
 	surfaceProfile := t.TempDir()
 	t.Setenv("CODEAF_HOME", surfaceProfile)
-	t.Cleanup(func() { stopPoolErrands(engineProfile); stopPoolErrands(surfaceProfile) })
 	options := tui3.Options{}
 	localDoors(&options, remote.Welcome{ProfileDir: engineProfile, PlacesRoot: t.TempDir()}, config.Config{ProfileDir: surfaceProfile})
 	if options.Knowledge == nil || options.Knowledge.Directory() != filepath.Join(engineProfile, "knowledge") {

@@ -50,6 +50,12 @@ const (
 	SignalModel     = "model"
 	SignalAutonomy  = "autonomy"
 	SignalReconcile = "reconcile_results"
+	// SignalAgentField carries a person's answer to an AgentField run's pause
+	// to the runner that started the run, which alone holds the control
+	// plane's key and is the run's owner there: ID is the pause's request,
+	// Execution the waiting execution, Decision the control plane's word,
+	// Words the person's and By their handle.
+	SignalAgentField = "agentfield_answer"
 )
 
 // Signal is one verb a person asked of a job, with the door's own arguments.
@@ -63,6 +69,11 @@ type Signal struct {
 	Verb          string            `json:"verb"`
 	Yes           bool              `json:"yes,omitempty"`
 	Words         string            `json:"words,omitempty"`
+	// Execution, Decision and By are an AgentField answer's
+	// ([SignalAgentField]).
+	Execution string `json:"execution,omitempty"`
+	Decision  string `json:"decision,omitempty"`
+	By        string `json:"by,omitempty"`
 }
 
 // Drain hands the holder of lease id every signal waiting for its job, oldest
@@ -98,7 +109,7 @@ func (d *Desk) drain(id, worker string, publishing bool, acknowledged ...[]strin
 			}
 			return false, err
 		}
-		it, err := d.store.Get(held.Job)
+		it, err := d.store.GetSaved(held.Job)
 		if err != nil {
 			return false, err
 		}
@@ -116,8 +127,13 @@ func (d *Desk) drain(id, worker string, publishing bool, acknowledged ...[]strin
 		var kept []Signal
 		holdSent := false
 		stopped := factory.StoppedByPerson(it)
+		var rejected *Signal
 		for _, s := range doc.Signals[held.Job] {
 			if received(s.Delivery) {
+				if s.Verb == SignalAgentField && s.Decision == factory.AgentFieldRejected {
+					s := s
+					rejected = &s
+				}
 				continue
 			}
 			if stopped && s.Verb == SignalHold {
@@ -150,6 +166,12 @@ func (d *Desk) drain(id, worker string, publishing bool, acknowledged ...[]strin
 		// signal vocabulary so older workers also retry a lost heartbeat reply.
 		if !stopped && !reliable && !publishing && !holdSent && run.StoredPaused(it) {
 			out = append(out, Signal{Verb: SignalHold, Yes: true})
+		}
+		if rejected != nil {
+			// THE RUNNER CARRIED THE PERSON'S REJECT: now the job ends
+			// rejected with their words, and the runner learns it on its
+			// next beat.
+			return true, d.endRejectedAfterCarried(doc, held, rejected.By, rejected.Words)
 		}
 		if len(out) == 0 && len(doc.Signals[held.Job]) == len(kept) {
 			return false, nil
@@ -260,7 +282,7 @@ func (d *Desk) keepPublish(doc *document, job int) error {
 // holder disconnects; normal completion consumes it permanently.
 func (d *Desk) restorePublish(doc *document, job int) error {
 	if held := find(doc, job); held != nil && held.Publish != "" {
-		it, err := d.store.Get(job)
+		it, err := d.store.GetSaved(job)
 		if err != nil && !errors.Is(err, store.ErrNotFound) {
 			return err
 		}
@@ -269,7 +291,7 @@ func (d *Desk) restorePublish(doc *document, job int) error {
 		}
 	}
 	if held := find(doc, job); held != nil && held.Merge != "" {
-		it, err := d.store.Get(job)
+		it, err := d.store.GetSaved(job)
 		if err != nil && !errors.Is(err, store.ErrNotFound) {
 			return err
 		}

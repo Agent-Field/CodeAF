@@ -7,7 +7,7 @@ A relay directory upgrade can briefly pause pairing and chat moves. Retry after 
 
 ## Can my phone lead, be the leader or coordinate my computers?
 
-There is no codeaf phone app yet, so a phone cannot lead yet. A phone browser's pairing page only helps approve a computer; it does not join the phone to the cluster. A joined laptop or desktop with persistent storage and sync on can lead: run `codeaf cluster lead` on that computer and keep codeaf open. `codeaf cluster status` names the current coordinator and the computers deciding changes or keeping copies.
+There is no codeaf phone app yet, so a phone cannot lead yet. A phone browser's pairing page only helps approve a computer; it does not join the phone to the cluster. In this release, the coordinating computer cannot be chosen by hand, even on a joined laptop or desktop with persistent storage. `codeaf cluster status` shows which computer coordinates. Tracked in issue #2559.
 
 A phone would need a supported client, persistent storage, enrollment and a live connection before it could take this role. Those requirements are not a working phone capability today. Leadership coordinates metadata; it does not move a chat or run its tools.
 
@@ -27,7 +27,7 @@ A refused connection, missing route or failed name lookup instead says
 
 ## Joined computers, learner capacity and an outdated build
 
-An open, paired home with sync on joins the hosted relay, or a self-hosted `codeaf relay --store <dir>`, as a durable learner. Its store lives under the home, and reopening reuses its node. Losing that store enrolls a fresh node and retires the old authority. Three anchors vote until a personal computer is explicitly asked to lead, so pairing alone never requires either laptop to stay awake. Joining starts while the paired home is open, or when you ask for `codeaf cluster status`.
+An open, paired home with sync on joins the hosted relay, or a self-hosted `codeaf relay --store <dir>`, as a durable learner. Its store lives under the home, and reopening reuses its node. Losing that store enrolls a fresh node and retires the old authority. Three anchors vote by default, so pairing alone never requires either laptop to stay awake. Joining starts while the paired home is open, or when you ask for `codeaf cluster status`.
 
 If joining has no new data to apply, the client keeps its store for the next retry round instead of polling continuously. A status activation can say `this computer is still joining the cluster; retry shortly; your saved chats are still here`.
 
@@ -35,25 +35,28 @@ The membership protocol admits at most 32 live learners and retains retired reco
 
 ## What is cluster lead — what does codeaf cluster lead do, make this computer the leader
 
-On the hosted relay or a self-hosted `codeaf relay` with storage, run `codeaf cluster lead` on the joined computer that should coordinate. It first catches up, replaces the third anchor’s vote through a joint change, durably finishes that change with the third anchor still learning, and transfers leadership. The voters are then two anchors and this computer. Keep codeaf open to keep its member running; a command used with no open terminal runs its member only for that command. Leadership moves coordination metadata, never chat content or chat ownership.
+No: in this release, the coordinating computer cannot be chosen by hand. `codeaf cluster lead` is unavailable on both the hosted relay and your own relay. It says:
 
-A successful transfer has a terminal receipt. An interrupted command keeps its saved signed request; retrying resumes that request instead of choosing another computer.
+    there is no `codeaf cluster lead`.
+    run `codeaf --help` for every command
+
+`codeaf cluster status` shows which computer coordinates. Tracked in issue #2559. Leadership coordinates metadata; it does not move a chat or change chat ownership. Continue chats through the ordinary continue door.
 
 ## Cluster status — coordinating, deciding and keeping copies
 
-`codeaf cluster status` on the hosted relay, or a self-hosted `codeaf relay` with storage, reports the committed voters and current leader after a fresh majority read. A paired computer joins with persistent storage as a learner before status shows its node. Readiness requires its own durable application through the advertised join position. Status uses device names under `coordinating`, `deciding` and `keeping copies`. When the sync service supplies member labels and a member’s device is absent from your current devices, that member reads `a computer no longer in your devices`. An older sync service that supplies no labels instead shows `another computer`, or a group such as `2 other computers`; missing labels do not mean a device was removed. `--verbose` shows the numeric details for debugging. `codeaf cluster lead` on an unjoined computer says `this computer must join the cluster with persistent storage before it can lead`.
+`codeaf cluster status` on the hosted relay, or a self-hosted `codeaf relay` with storage, reports the committed voters and current leader after a fresh majority read. A paired computer joins with persistent storage as a learner before status shows its node. Readiness requires its own durable application through the advertised join position. Status uses device names under `coordinating`, `deciding` and `keeping copies`. When the sync service supplies member labels and a member’s device is absent from your current devices, that member reads `a computer no longer in your devices`. An older sync service that supplies no labels instead shows `another computer`, or a group such as `2 other computers`; missing labels do not mean a device was removed. `--verbose` shows the numeric details for debugging.
 
 With `--verbose`, Status names `coordinator`, `voting computers`, `this computer`, `learning computers`, `ready computers` and `finishing the change from`. These are debugging details; ordinary status uses device names.
 
 ## Did cluster lead finish — leadership receipt and retry
 
-Do not treat pairing or a saved leadership request as a successful transfer. Success requires the selected computer to be elected, commit its current term and pass a fresh majority read; its terminal receipt says `laptop-a now coordinates your devices`, using that computer’s device name. `--verbose` retains the internal receipt fields for debugging. Retrying `codeaf cluster lead` preserves an already saved signed request. Continue chats through the ordinary continue door.
+In this release, the coordinating computer cannot be chosen by hand. There is no leadership success receipt or retry command to use. `codeaf cluster status` shows which computer coordinates. Tracked in issue #2559. Pairing does not transfer coordination or chat ownership; continue chats through the ordinary continue door.
 
 Three voters tolerate one unavailable member. Losing a majority pauses coordination; saved chats remain. The terminal says `the sync service at 127.0.0.1:8901 is up but cannot agree on changes right now; it usually recovers within a minute`. The coordination API’s refusal is `this cluster cannot coordinate right now; reconnect enough of its voting computers and try again; your saved chats are still here`.
 
 ## Hosted relay while this computer leads
 
-The hosted relay keeps serving directory requests, watches, pairing decisions and worker assignments while this computer leads. It routes signed coordination requests through the computer’s outbound connection and waits for its own durable copy before replying. `codeaf cluster status` on either joined home reports the elected computer and the same three voters.
+If a computer is already coordinating from an earlier release, the hosted relay keeps serving directory requests, watches, pairing decisions and worker assignments while it leads. It routes signed coordination requests through the computer’s outbound connection and waits for its own durable copy before replying. `codeaf cluster status` on either joined home reports the elected computer and the same three voters. This release cannot choose a new personal coordinator by hand.
 
 ## Hosted relay address with a path prefix
 
@@ -65,7 +68,7 @@ Older clients may send an empty frame plan as an omitted field, `null` or `[]`. 
 
 ## Pending leadership request, retry and refusal
 
-A lost reply or restarted home keeps the original signed leadership request. Retry `codeaf cluster lead` to resume it; a pending request cannot choose a different computer. A completed refusal says `the leadership request could not complete; refresh cluster status and try again` and is acknowledged before another request is saved. Only one configuration change can run at a time. A different personal coordinator cannot directly replace an active personal coordinator; let the anchors resume, then request leadership again.
+This release does not offer a command to submit or retry a leadership request, including a request saved by an earlier release. The coordinating computer cannot be chosen by hand. `codeaf cluster status` shows which computer coordinates. Tracked in issue #2559. Saved chats remain available through the ordinary continue door.
 
 ## Clean quit on the leader — quitting the coordinating laptop, do the anchors take over at once
 
@@ -73,7 +76,7 @@ On the hosted relay and a self-hosted relay with storage, a clean terminal quit 
 
 ## What happens if my leader goes away — my leading laptop went to sleep or the leader computer was turned off
 
-When a personal coordinator sleeps, crashes, loses its connection or turns sync off, the two remaining anchor voters can elect a coordinator and restore the third anchor after it catches up. The missing computer need not approve its removal. A returning computer catches up as a learner and does not automatically regain leadership, including after a clean quit: request `codeaf cluster lead` again. Losing a majority pauses coordination and keeps saved chats. The terminal says `the sync service at 127.0.0.1:8901 is up but cannot agree on changes right now; it usually recovers within a minute`. The coordination API’s refusal is `this cluster cannot coordinate right now; reconnect enough of its voting computers and try again; your saved chats are still here`.
+When a personal coordinator sleeps, crashes, loses its connection or turns sync off, the two remaining anchor voters can elect a coordinator and restore the third anchor after it catches up. The missing computer need not approve its removal. A returning computer catches up as a learner and does not automatically regain leadership, including after a clean quit. In this release, the coordinating computer cannot be chosen by hand. Losing a majority pauses coordination and keeps saved chats. The terminal says `the sync service at 127.0.0.1:8901 is up but cannot agree on changes right now; it usually recovers within a minute`. The coordination API’s refusal is `this cluster cannot coordinate right now; reconnect enough of its voting computers and try again; your saved chats are still here`.
 
 Coordination ticks every 5 seconds. The provisioned anchors’ ranked election windows are 6–7 ticks (30–35 seconds), 8–9 ticks (40–45 seconds) and 10–11 ticks (50–55 seconds); other computers use 12–13 ticks (60–65 seconds). Healthy fallback targets about 65 seconds. Scheduling delays or a partition can take longer. Fully idle groups stop periodic ticks only after every voter has applied the same idle barrier; a new operation or a leading computer’s disconnection wakes coordination and needs a fresh majority response.
 
@@ -90,7 +93,11 @@ The sync connection carries presence hints and committed lease acknowledgments. 
 
 ## Does syncing keep sending requests when nothing is happening?
 
-A home that has never paired sends no sync traffic. `CODEAF_SYNC_URL=off` also blocks new sync requests from clients that were opened before the setting changed. Presence pings on an open view are hints; they do not write chat ownership. On the hosted relay and the native relay, an open idle home uses its learner’s applied vault pointer to notice shared memory and preference changes. Local edits are detected locally and pushed on the next state round. Over ten idle minutes, caught-up open homes make zero HTTP requests, zero peer or forwarding frames and zero client attempts, including while one home leads and after it sleeps and the anchors resume. A caught-up idle home sends no recurring state polls or peer keepalives. Home reads its roster and backstop from the local applied directory. Its separate relay watch supplies advisory online presence, pinging every 10 seconds. A computer whose last socket closes is marked offline after a 15-second reconnect grace period; a silent connection is marked offline within 30 seconds. Home can then offer its recent chat before the 90-second lease expires. Continuing a chat and all ownership decisions still use fresh majority reads. A committed change wakes peer delivery and the next state round pulls the changed vault. If an older hosted relay has no learner door, the home keeps its existing five-second state polling. On the consensus directory, a group with no work or held chats can stop its periodic coordination timer after an idle barrier has reached every voter. The first operation wakes coordination and must obtain a fresh majority response. A saved leader address cannot answer that operation by itself. Losing the majority leaves syncing unavailable and keeps local work intact.
+A home that has never paired sends no sync traffic. `CODEAF_SYNC_URL=off` also blocks new sync requests from clients that were opened before the setting changed. Presence pings on an open view are hints; they do not write chat ownership. On the hosted relay and the native relay, an open idle home uses its learner’s applied vault pointer to notice shared memory and preference changes. Local edits are detected locally and pushed on the next state round when sync storage is on. A relay that reports storage off gets one stats request at startup and every ten minutes; unknown hosted addresses use that same closed default. An unanswered custom address gets one startup request. An answer without storage keeps storage on and stops probing; known storage on makes no permission requests. On a relay with a learner door, over ten idle minutes, caught-up open homes with storage on make zero HTTP requests, zero peer or forwarding frames and zero client attempts, including while one home leads and after it sleeps and the anchors resume. A caught-up idle home sends no recurring state polls or peer keepalives.
+
+## How does an idle home notice offline computers and wake coordination?
+
+Home reads its roster and backstop from the local applied directory. Its separate relay watch supplies advisory online presence, pinging every 10 seconds. A computer whose last socket closes is marked offline after a 15-second reconnect grace period; a silent connection is marked offline within 30 seconds. Home can then offer its recent chat before the 90-second lease expires. Continuing a chat and all ownership decisions still use fresh majority reads. A committed change wakes peer delivery and the next state round pulls the changed vault. If an older hosted relay has no learner door, the home keeps its existing five-second state polling. On the consensus directory, a group with no work or held chats can stop its periodic coordination timer after an idle barrier has reached every voter. The first operation wakes coordination and must obtain a fresh majority response. A saved leader address cannot answer that operation by itself. Losing the majority leaves syncing unavailable and keeps local work intact.
 
 ## Hosted idle presence sweeps and sleeping connections
 
@@ -209,6 +216,10 @@ The relay's selected-worker API accepts an original signed command or a signed r
 
 Native and hosted watch connections carry committed receipts to clients that ask for them. Each receipt names the exact chat and ownership number, durable position and hold-until time. Older clients receive their original version and presence frames and keep ordinary heartbeats. A ping without a receipt cannot suppress those heartbeats. A released chat cannot be revived by a delayed ping. Idle presence pings do not start a recurring directory request loop.
 
-## Cluster status or lead after this device was removed
+## Cluster status after this device was removed
 
-On a removed computer, `codeaf cluster status` and `codeaf cluster lead` fail with the same removal and pairing guidance as `codeaf devices`. This applies to the default relay and to your own relay. Pair that computer again with `codeaf pair` to restore access. A removed device is different from a cluster temporarily unable to coordinate.
+On a removed computer, `codeaf cluster status` fails with the same removal and pairing guidance as `codeaf devices`. This applies to the default relay and to your own relay. Pair that computer again with `codeaf pair` to restore access. A removed device is different from a cluster temporarily unable to coordinate. `codeaf cluster lead` is an unknown command in this release, even after pairing again.
+
+## Why shared state waits for sync storage — approval and serving computers
+
+Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request. Eligible serving homes start approval discovery after their first state round; quiet or removed homes do not start it. A stats refusal for a revoked or removed device stops polling.

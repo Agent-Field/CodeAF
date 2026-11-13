@@ -60,6 +60,7 @@ import (
 	"fmt"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/syncwords"
+	"github.com/Agent-Field/codeaf/internal/wireauth"
 	"io"
 	"path/filepath"
 	"sort"
@@ -133,6 +134,10 @@ type WrappedAgent interface {
 // and the locked-file fallback; this package owns nothing about how an agent is
 // made and everything about how one is spoken to.
 type Engine struct {
+	// EntryNotice reads home-owned recovery news when an interactive surface opens.
+	EntryNotice func(string) string
+	// ClientTools is the conversation's connection-owned forwarding door.
+	ClientTools *ClientToolHub
 	// SyncService is the engine's address for chat outage notices.
 	SyncService string
 	// DeltaWindow lets each of this conversation's streams fold streamed text
@@ -437,9 +442,11 @@ type Session struct {
 	localSaved     chan struct{}
 	localSavedOnce sync.Once
 	// closeErr retains the completed saving result for concurrent and repeated departures.
-	closeErr error
+	closeErr     error
+	closeNotices []string
 	// renewalStop ends idle health forwarding when this conversation changes or closes.
 	renewalStop chan struct{}
+	renewalDone chan struct{}
 
 	// generation counts the session swaps. Every pump remembers the generation
 	// it was born in and goes quiet the moment it is not the current one — see
@@ -907,6 +914,18 @@ func (sess *Session) noteClosed(agent WrappedAgent) error {
 	if sess.engine.Closed != nil {
 		sess.engine.Closed(agent)
 	}
+	var lines []string
+	if source, ok := agent.(interface{ TakeSavingNotices() []string }); ok {
+		lines = append(lines, source.TakeSavingNotices()...)
+	}
+	if source, ok := agent.(interface{ TakeSealNotice() string }); ok {
+		for line := source.TakeSealNotice(); line != ""; line = source.TakeSealNotice() {
+			lines = append(lines, line)
+		}
+	}
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+	sess.closeNotices = append(sess.closeNotices, lines...)
 	return err
 }
 
@@ -1199,6 +1218,7 @@ func (sess *Session) attach(s *server, hello Hello) error {
 // gets around to reporting the end, which may be after the window that replaced
 // it has already been welcomed (held.go states the whole rule).
 func (sess *Session) detach(s *server, deliberate bool) {
+	s.dropClientTools()
 	// THE RAIL'S SUBSCRIPTION GOES WITH THE WINDOW. It is left before anything
 	// else because leaving it is what ends the goroutine pumping frames at a
 	// pipe that is closing (tasklane.go).
@@ -1339,6 +1359,14 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 	// this reading in the welcome is what makes an old persistent engine say
 	// it was replaced before somebody has to spend a turn to discover it.
 	note := strings.TrimSpace(sess.engine.Note)
+	if !sess.engine.Headless && sess.engine.EntryNotice != nil {
+		if recovery := sess.engine.EntryNotice(sess.engine.SessionFile); recovery != "" {
+			if note != "" {
+				note += " · "
+			}
+			note += recovery
+		}
+	}
 	if newer := buildinfo.StaleNotice(); newer != "" {
 		if note != "" {
 			note += " · "
@@ -1352,6 +1380,7 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 	}
 	_, workAdmission := sess.agent.(interface{ CheckWork() error })
 	return Welcome{
+		ClientTools:                sess.engine.ClientTools != nil,
 		WorkAdmission:              workAdmission,
 		UserMessages:               users,
 		MessageMarks:               messageMarksKnown(sess.agent),
@@ -1764,6 +1793,7 @@ func (sess *Session) swap(asked *server, build func() (WrappedAgent, string, boo
 	if next == nil {
 		return nil, errors.New("engine: the session swap opened no conversation")
 	}
+	sess.stopRenewals()
 	sess.mu.Lock()
 	previous := sess.agent
 	sess.agent = next
@@ -1772,6 +1802,14 @@ func (sess *Session) swap(asked *server, build func() (WrappedAgent, string, boo
 	sess.follows = map[uint64]followQueued{}
 	sess.held.forget()
 	sess.engine.SessionFile = file
+	// AND THE APP TOOLS OF THE CONVERSATION LEFT BEHIND STAY WITH IT. The hub
+	// is shared across openings, so without this an app that joined the old
+	// conversation would lend its tools, and its calls, to the new one. It is
+	// done before the new agent is reachable, so its first step already sees
+	// the empty snapshot.
+	if sess.engine.ClientTools != nil {
+		sess.engine.ClientTools.forget(file)
+	}
 	sess.engine.Resumed = resumed
 	// The note belonged to the launch and to nothing after it: a swap the
 	// person asked for is not a session that moved under them.
@@ -1819,6 +1857,7 @@ func (sess *Session) swap(asked *server, build func() (WrappedAgent, string, boo
 // ── one connection ──────────────────────────────────────────────────────────
 
 type server struct {
+	clientToolsGone atomic.Bool
 	// write guards the writer. ONE FRAME IS ONE LINE IS ONE WRITE: a torn frame
 	// is not a slow surface, it is a surface that can never parse this stream
 	// again, so every writer on this process goes through here.
@@ -1832,6 +1871,10 @@ type server struct {
 	encoding            string
 	localSavingReceipts bool
 	syncNoticeWords     bool
+	// renewalNotices remain owned by this window until a live write or saving reply.
+	// The session mutex protects the queue; the writer serializes its delivery.
+	renewalNotices []string
+	renewalWrite   <-chan struct{}
 
 	open    func(Hello) (*Session, error)
 	session *Session
@@ -1959,6 +2002,7 @@ func (s *server) serve(in io.Reader) (err error) {
 	s.ordered = newOrderedLane()
 	go s.ordered.run(s.dispatch)
 	defer func() {
+		s.dropClientTools()
 		s.ordered.close()
 		s.ordered.wait()
 	}()
@@ -2261,12 +2305,17 @@ func (s *server) dispatch(call Frame) {
 			result.WorkRefusal = refusal
 		}
 		result.SyncPending = result.LocalSaved && syncwords.UploadPending(err)
+		result.StorageOff = result.SyncPending && errors.Is(err, wireauth.ErrStorageOff)
 		var unsaved *session.UnsavedChatError
 		if errors.As(err, &unsaved) {
 			result.UnsavedTranscript = unsaved.Transcript
 		}
 	}
-	_ = s.send(result)
+	if s.session != nil && (call.Method == MethodClose || call.Method == MethodDetach || call.Method == MethodSessionNew || call.Method == MethodSessionOpen) {
+		_ = s.sendSavingResult(result)
+	} else {
+		_ = s.send(result)
+	}
 	// And only now does a turn opened by that call begin to speak.
 	// ONLY A TURN EVER OPENS A STREAM, so only a turn releases one: two calls
 	// of any other class running at once would race the one slot, and one of
@@ -2338,6 +2387,8 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		return out, err
 	}
 	switch call.Method {
+	case MethodClientToolsSet, MethodClientToolAnswer:
+		return s.invokeClientTools(call)
 	case MethodProcessList, MethodProcessRerun, MethodProcessPage, MethodProcessRecord,
 		MethodProcessActions, MethodProcessRerunAt, MethodProcessStopAt, MethodProcessStopAll:
 		return serveAppProcesses(agent, call)
@@ -3081,6 +3132,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		return nil, err
 
 	case MethodClose:
+		s.dropClientTools()
 		// The surface said goodbye politely, and it is saying it about the
 		// CONVERSATION rather than about this window — so [server.leave] closes
 		// the session behind it whoever else is attached. The journal is flushed
@@ -3607,6 +3659,9 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	// bargain: a surface that meets it says the sentence its place has always
 	// said rather than waiting on a call nobody is going to answer
 	// (wire_places.go states the law).
+	if payload, handled, err := s.modelForNowCall(agent, call); handled {
+		return payload, err
+	}
 	if payload, handled, err := s.placesCall(call); handled {
 		return payload, err
 	}
@@ -3846,9 +3901,14 @@ func (s *server) sendLocked(frame Frame) error {
 	}
 	if _, err := s.out.Write(line); err != nil {
 		s.dead = true
+		s.dropClientTools()
 		return err
 	}
-	return flushFrame(s.out)
+	err = flushFrame(s.out)
+	if err != nil {
+		s.dropClientTools()
+	}
+	return err
 }
 
 func (s *server) hungUp() bool {
@@ -3889,4 +3949,12 @@ func (sess *Session) releasePending() bool {
 	sess.mu.Lock()
 	defer sess.mu.Unlock()
 	return sess.releaseOnIdle
+}
+
+func (sess *Session) takeCloseNotices() []string {
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+	lines := sess.closeNotices
+	sess.closeNotices = nil
+	return lines
 }

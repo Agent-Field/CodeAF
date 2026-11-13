@@ -67,13 +67,20 @@ func JobKey(it Item) string {
 	return fmt.Sprintf("%s#%d", repo, number)
 }
 
-func ValidPriority(value string) bool {
-	return slices.Contains([]string{"urgent", "high", "medium", "low"}, value)
+func ValidPriority(value string) bool { return PriorityShort(value) != "" }
+
+// priorityLevels is THE ONE TABLE of priority spellings, most urgent first:
+// the value a person's mark keeps, the priority:* label and the p0..p3 short
+// form. A level's position is its place in the queue ([PriorityRank]).
+var priorityLevels = []struct{ value, label, short string }{
+	{"urgent", "priority:urgent", "p0"}, {"high", "priority:high", "p1"},
+	{"medium", "priority:medium", "p2"}, {"low", "priority:low", "p3"},
 }
 
 // PriorityFor never consults AI ranking: a person's persisted mark wins over
 // priority:* and p0..p3 issue labels. A "bug" label is a type, not a priority,
-// so it yields no mark: priority is only ever something a person chose.
+// so it yields no mark: priority is only ever something a person chose, or a
+// routing rule the operator wrote chose for them.
 func PriorityFor(it Item) *JobPriority {
 	if it.Priority != nil {
 		p := *it.Priority
@@ -83,15 +90,47 @@ func PriorityFor(it Item) *JobPriority {
 	for _, label := range it.Labels {
 		labels[strings.ToLower(strings.TrimSpace(label))] = true
 	}
-	for _, p := range []struct{ value, label, short string }{
-		{"urgent", "priority:urgent", "p0"}, {"high", "priority:high", "p1"},
-		{"medium", "priority:medium", "p2"}, {"low", "priority:low", "p3"},
-	} {
+	for _, p := range priorityLevels {
 		if labels[p.label] || labels[p.short] {
 			return &JobPriority{Value: p.value}
 		}
 	}
 	return nil
+}
+
+// PriorityShort is the p0..p3 spelling of a priority value, "" for none.
+func PriorityShort(value string) string {
+	for _, p := range priorityLevels {
+		if p.value == value {
+			return p.short
+		}
+	}
+	return ""
+}
+
+// PriorityFromShort is the value a p0..p3 spelling names, false for anything
+// else.
+func PriorityFromShort(short string) (string, bool) {
+	for _, p := range priorityLevels {
+		if p.short == short {
+			return p.value, true
+		}
+	}
+	return "", false
+}
+
+// PriorityRank is the job's place in the queue by priority alone: 0 for urgent
+// (p0) through 3 for low (p3), and 4 for a job with no priority, which runs
+// after every job that has one.
+func PriorityRank(it Item) int {
+	if p := PriorityFor(it); p != nil {
+		for i, level := range priorityLevels {
+			if level.value == p.Value {
+				return i
+			}
+		}
+	}
+	return len(priorityLevels)
 }
 
 // JobSize comes only from the issue's explicit size labels: "size:m" or
@@ -171,8 +210,13 @@ func JobState(it Item) string {
 	if it.DoneHow != "" || it.State == StateDismissed {
 		return "done"
 	}
+	// A JOB A PERSON STOPPED ASKS NOTHING OF ANYONE. It used to read
+	// needs_you, so every Stop (and every Reject that ended as one) added a
+	// row and a count to Needs you for a decision the person had already
+	// made. It waits in Backlog, with its stop on it, for that person's
+	// Carry on, Run again or Close.
 	if StoppedByPerson(it) {
-		return "needs_you"
+		return "backlog"
 	}
 	if it.FollowUp != nil && it.FollowUp.State == "needs_you" && it.PullRequest != nil && it.PullRequest.State == PROpen {
 		return "needs_you"
@@ -240,6 +284,36 @@ func RefuseDropped(it Item) error {
 	return fmt.Errorf("%s %s", it.Ref(), DroppedRefusal)
 }
 
+// EverRan says the job has been started and something of that run is still
+// on it: a step that began, a run that ended, a failure, or a step changed
+// while it ran. A person's Run again or Bring back clears the run first, so a
+// job they restarted reads as never run until it starts once more.
+//
+// AN INTAKE RULE STARTS ONLY A JOB THAT NEVER RAN. A run that failed or was
+// stopped leaves the job new, which is the state a rule's start: auto picks
+// up; read on state alone, the rule started the whole run again by itself,
+// seconds after it failed and once more at the next engine start. Such a job
+// waits in Needs you for a person's Run again, whatever its steps' kind and
+// whatever rule matched it.
+func EverRan(it Item) bool {
+	if it.Failure != nil || len(it.Adapted) > 0 {
+		return true
+	}
+	s := it.Stream
+	if s == nil {
+		return false
+	}
+	if !s.Ended.IsZero() {
+		return true
+	}
+	for _, ph := range s.Phases {
+		if ph.Round > 0 || ph.State != PhasePending {
+			return true
+		}
+	}
+	return false
+}
+
 // RunEnded says the job's last run is over and says why, a step's failure or
 // a person's stop, and nothing has started it again. Such a job has nothing
 // to stop: it waits for a person to start it, run it again or drop it.
@@ -268,7 +342,13 @@ func JobDoneHow(it Item) string {
 
 // JobReason is a finite vocabulary for Needs you and Running.
 func JobReason(it Item) string {
+	if PausedDecision(it) {
+		return "decision_paused"
+	}
 	if JobState(it) == "needs_you" {
+		if RecoveryPaused(it) {
+			return "paused"
+		}
 		if it.PublishError != "" || (it.PublishStatus != nil && it.PublishStatus.State == "failed") {
 			return "publish_failed"
 		}
@@ -295,6 +375,8 @@ func JobReason(it Item) string {
 			return "runner_offline"
 		case NeedsApprovePlan:
 			return "approval_plan"
+		case NeedsApproveStep:
+			return "approval_step"
 		case NeedsApproveProof:
 			return "approval_proof"
 		case NeedsSpendingLimit:
@@ -343,13 +425,19 @@ func JobApproval(it Item) *Approval {
 		kind = "start"
 	case "approval_plan":
 		kind = "plan"
+	case "approval_step":
+		kind = "step"
 	case "approval_proof":
 		kind = "proof"
 	}
 	// A plan approval that settled before the question now asked is the old
 	// consent for an old question; the new ask needs its own approval.
-	settledBefore := kind == "plan" && it.Approval != nil && it.Approval.Kind == "plan" && it.Approval.State == "approved" && it.Asking != nil && it.Asking.At.After(it.Approval.At)
-	if it.Approval != nil && !settledBefore && (kind == "" || it.Approval.Kind == kind) {
+	settledBefore := (kind == "plan" || kind == "step") && it.Approval != nil && it.Approval.Kind == kind && it.Approval.State == "approved" && it.Asking != nil && it.Asking.At.After(it.Approval.At)
+	// An approval still open on a step hold from before the hold had its own
+	// kind was written as a plan approval; it is still that hold's. A SETTLED
+	// plan approval is an earlier gate's consent and never answers this hold.
+	sameKind := it.Approval != nil && (it.Approval.Kind == kind || kind == "step" && it.Approval.Kind == "plan" && it.Approval.State != "approved")
+	if it.Approval != nil && !settledBefore && (kind == "" || sameKind) {
 		a := *it.Approval
 		return &a
 	}
@@ -364,7 +452,7 @@ func JobApproval(it Item) *Approval {
 // a hold nobody has answered goes back; a job a person declined, approved or
 // ran stays where they put it. It reports whether it changed the job.
 func ReaskStart(it *Item) bool {
-	if it.State != StateNeedsYou || it.QKind != QKindAskFirst || it.AskedFirstReason == "" || it.Stream != nil {
+	if it.State != StateNeedsYou || it.QKind != QKindAskFirst || it.AskedFirstReason == "" || it.Stream != nil || PausedDecision(*it) {
 		return false
 	}
 	if it.Approval != nil && it.Approval.State != "waiting" {
@@ -406,24 +494,24 @@ func Overlaps(a, b Item) bool {
 	return false
 }
 
-// PriorityRank orders the four choices and puts an unset default last.
-func PriorityRank(it Item) int {
-	if p := PriorityFor(it); p != nil {
-		switch p.Value {
-		case "urgent":
-			return 0
-		case "high":
-			return 1
-		case "medium":
-			return 2
-		case "low":
-			return 3
-		}
-	}
-	return 4
-}
-
 // CanRunAsNew says the work has ended, so a person may start its request anew.
 func CanRunAsNew(it Item) bool {
-	return RunEnded(it) || JobState(it) == "done"
+	return RunEnded(it) || JobState(it) == "done" || runCut(it)
+}
+
+// runCut says a change of assignee or an unassign stopped the job's run and
+// nothing has started it again: the job is new, its run ended, and the step
+// the stop cut says it was stopped. The job carries no failure of its own
+// (the reset hands it on as nobody's failure), so [RunEnded] does not say it.
+//
+// A HANDED-ON JOB STILL OFFERS RUN AS NEW. It did while the reset left its
+// stop on the job as a failure; when the reset stopped doing that, Run as new
+// went with it, for a run that had ended all the same.
+func runCut(it Item) bool {
+	s := it.Stream
+	if it.State != StateNew || s == nil || s.Ended.IsZero() || s.Cur < 0 || s.Cur >= len(s.Phases) {
+		return false
+	}
+	f := s.Phases[s.Cur].Failure
+	return f != nil && f.Code == CodeStopped
 }

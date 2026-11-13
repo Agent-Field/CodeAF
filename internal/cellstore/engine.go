@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -126,6 +127,9 @@ func (e Engine) Prepare(ctx context.Context, c cell.Cell) error {
 // Seal implements Store: compose the harness-owned files, snapshot the folder,
 // record the turn.
 func (e Engine) Seal(ctx context.Context, c cell.Cell, info TurnInfo) (Sealed, error) {
+	if err := e.workspaceThere(c); err != nil {
+		return Sealed{}, fmt.Errorf("seal: %w", err)
+	}
 	head, err := Head(c)
 	if err != nil {
 		return Sealed{}, fmt.Errorf("seal: read head: %w", err)
@@ -227,6 +231,19 @@ func (e Engine) tree(c cell.Cell) string {
 	return canonicalTree(c.Root)
 }
 
+// workspaceThere is [ErrWorkspaceGone] naming c's folder when it is no longer
+// there, and nil for a folder that is there or a chat that seals its own.
+func (e Engine) workspaceThere(c cell.Cell) error {
+	w := e.workspace(c)
+	if w == "" {
+		return nil
+	}
+	if _, err := os.Lstat(w); errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("%w: %s", ErrWorkspaceGone, w)
+	}
+	return nil
+}
+
 // workspace is the folder the tools of c work in, "" when c's own folder is
 // what is sealed. A folder that holds the home folder is never sealed (see
 // [holdsHome]): its chat seals its own folder, so the conversation is kept and
@@ -298,6 +315,15 @@ func (e Engine) markOwnFolder(c cell.Cell) error {
 // filesystem root: the places a person opens a general chat, which are not a
 // project and whose files are everything they own.
 //
+// THE CODEAF HOME COUNTS AS A HOME FOLDER TOO, with every folder above it. It
+// is codeaf's own state — the graph database, the factory's clones, the key
+// vault this very guard writes into — and never anybody's project. A desk
+// whose factory named it as its jobs' folder had twenty-three chats sweep it
+// on every save, and the vault they fed grew to gigabytes. A chat opened there
+// keeps its conversation and its own folder, exactly as a chat opened in the
+// person's home does; a folder INSIDE the codeaf home (a factory job's own
+// checkout) is a project like any other and is still saved.
+//
 // IT IS DECIDED BY WHERE THE FOLDER IS, NEVER BY WHAT IS IN IT. Counting files
 // or bytes to find a folder too big to save is itself the walk this rule
 // exists to avoid, and a cap would draw its line through somebody's real
@@ -310,6 +336,12 @@ func holdsHome(dir string) bool {
 	if filepath.Dir(tree) == tree {
 		return true
 	}
+	return holdsCodeafHome(dir) || holdsUserHome(tree)
+}
+
+// holdsUserHome reports whether tree, already canonical, is the person's own
+// home folder or a folder above it.
+func holdsUserHome(tree string) bool {
 	house, err := os.UserHomeDir()
 	if err != nil || strings.TrimSpace(house) == "" {
 		login, err := user.Current()
@@ -318,7 +350,21 @@ func holdsHome(dir string) bool {
 		}
 		house = login.HomeDir
 	}
-	absolute, err := filepath.Abs(house)
+	return treeHolds(tree, house)
+}
+
+// holdsCodeafHome reports whether dir is the codeaf home or a folder above it
+// (see [holdsHome]). A seat says a sentence of its own for it, because "your
+// home folder" would name the wrong folder.
+func holdsCodeafHome(dir string) bool {
+	state := strings.TrimSpace(home.Dir())
+	return state != "" && treeHolds(canonicalTree(dir), state)
+}
+
+// treeHolds reports whether tree, already canonical, is target or a folder
+// above it.
+func treeHolds(tree, target string) bool {
+	absolute, err := filepath.Abs(target)
 	if err != nil {
 		return false
 	}

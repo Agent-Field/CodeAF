@@ -89,8 +89,8 @@ func TestSealedTreeCarriesTheSessionTruthC1bModelChoice(t *testing.T) {
 	if meta.Model != seed.Model || meta.ModelProvider != seed.ModelProvider || meta.ModelIdentity == nil || !reflect.DeepEqual(meta.ModelIdentity.Models, seed.ModelIdentity.Models) {
 		t.Fatalf("C1b sealed model choice = %+v, identity=%+v", meta, meta.ModelIdentity)
 	}
-	assertResolvedHere(t, meta, freshDir, there)
-	assertNoAbsolutePaths(t, filepath.Join(freshDir, cellStateDir))
+	assertResolvedHere(t, meta, freshDir, there, filepath.Join(here.other, "elsewhere"))
+	assertNoAbsolutePaths(t, filepath.Join(freshDir, cellStateDir), filepath.Join(here.other, "elsewhere"))
 	place := Place{Dir: freshDir}
 	a, _ := newTestAgent(t, &scriptedCompleter{}, func(cfg *Config) {
 		cfg.Place = Place{Dir: freshDir, Workspace: freshWorkspace}
@@ -171,8 +171,8 @@ func newSealMachine(t *testing.T) sealMachine {
 func (m sealMachine) live(t *testing.T) { t.Setenv("HOME", m.home) }
 
 // The sealed truth names folders by base, so opened on another sealMachine it
-// stands on THAT sealMachine's folders; a place under no base was not persisted.
-func assertResolvedHere(t *testing.T, meta Meta, dir string, m sealMachine) {
+// stands on that machine's folders, while a place under no base stays absolute.
+func assertResolvedHere(t *testing.T, meta Meta, dir string, m sealMachine, outside string) {
 	t.Helper()
 	if want := filepath.Join(m.workspace, "cmd"); meta.LaunchDir != want {
 		t.Errorf("launchDir = %q, want %q", meta.LaunchDir, want)
@@ -181,7 +181,7 @@ func assertResolvedHere(t *testing.T, meta Meta, dir string, m sealMachine) {
 	for _, p := range meta.Places {
 		places = append(places, p.Path)
 	}
-	if want := []string{filepath.Join(m.home, "proj"), filepath.Join(m.workspace, "sub")}; !reflect.DeepEqual(places, want) {
+	if want := []string{filepath.Join(m.home, "proj"), filepath.Join(m.workspace, "sub"), outside}; !reflect.DeepEqual(places, want) {
 		t.Errorf("places = %q, want %q", places, want)
 	}
 	want := StandingTree{Folder: filepath.Join(m.home, "proj"), Dir: filepath.Join(dir, placeTrees, "a"),
@@ -191,18 +191,25 @@ func assertResolvedHere(t *testing.T, meta Meta, dir string, m sealMachine) {
 	}
 }
 
-// L1 over the sealed directory: no file the harness wrote there names an
-// absolute path. The transcript is the journal of what was said and is exempt
-// from being rewritten; everything else is state the harness owns.
-func assertNoAbsolutePaths(t *testing.T, stateDir string) {
+// Encodable paths stay relative throughout the sealed directory. Only the
+// explicitly expected machine-local paths in session.json may remain absolute.
+func assertNoAbsolutePaths(t *testing.T, stateDir string, outside ...string) {
 	t.Helper()
 	found, err := lawcheck.NoAbsolutePathsUnder(stateDir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for file, bad := range found {
-		if len(bad) > 0 {
-			t.Errorf(".cell/%s persists absolute paths: %q", file, bad)
+		for _, path := range bad {
+			allowed := false
+			if file == placeMetaTruth {
+				for _, expected := range outside {
+					allowed = allowed || path == expected
+				}
+			}
+			if !allowed {
+				t.Errorf(".cell/%s persists an unexpected absolute path: %q", file, path)
+			}
 		}
 	}
 }
@@ -229,7 +236,7 @@ func sessionInCell(t *testing.T, m sealMachine) string {
 	meta.Places = []PlaceRef{
 		{Path: filepath.Join(m.home, "proj"), Arrival: PlaceSaid},
 		{Path: filepath.Join(m.workspace, "sub"), Arrival: PlaceKept},
-		{Path: filepath.Join(m.other, "elsewhere"), Arrival: PlaceKept}, // under no base: not persisted
+		{Path: filepath.Join(m.other, "elsewhere"), Arrival: PlaceKept},
 	}
 	meta.Trees = []StandingTree{{
 		Folder: filepath.Join(m.home, "proj"), Dir: filepath.Join(c.Root, placeTrees, "a"),
@@ -294,7 +301,7 @@ func TestSealedTreeCarriesTaskHistory(t *testing.T) {
 	for _, row := range got {
 		byID[row.ID] = row
 	}
-	assertNoAbsolutePaths(t, filepath.Join(freshDir, cellStateDir))
+	assertNoAbsolutePaths(t, filepath.Join(freshDir, cellStateDir), filepath.Join(here.other, "elsewhere"))
 	for _, row := range want {
 		moved := byID[row.ID]
 		if moved.Title != row.Title || moved.Status != row.Status || moved.Outcome != row.Outcome {

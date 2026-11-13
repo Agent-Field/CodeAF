@@ -1,5 +1,6 @@
 // C20 proves the operator brakes on a real Worker: admission, storage, reads and owner erasure.
-// Run on a fresh local relay with globalNewIdentitiesPerDay=2, globalStoreBytes=512 and minGraceMs=2000.
+// Run on a fresh local relay with globalNewIdentitiesPerDay=2, globalStoreBytes=512,
+// globalHardStoreBytes=1024 and minGraceMs=2000.
 import assert from 'node:assert/strict';
 import { newIdentity, newDevice } from './party.js';
 import { frame, rid } from './helpers.js';
@@ -14,10 +15,15 @@ assert.equal(denied.json.err, 'relay_admission_full');
 assert.ok(Number(denied.headers.get('retry-after')) > 0);
 
 const f = frame([rid(1)], 'x'.repeat(250));
-assert.ok(f.bytes.length <= 512 && f.bytes.length * 2 > 512);
+const next = frame([rid(2)], 'x'.repeat(250));
+assert.ok(f.bytes.length * 2 <= 1024 && f.bytes.length * 2 > 512 && f.bytes.length * 3 > 1024);
 const put = (d) => call(d, 'POST', '/v1/store/frames', f.bytes);
 assert.equal((await put(a)).status, 200);
-const full = await put(b);
+assert.equal((await put(b)).status, 200, 'an existing identity keeps writing past the admission ceiling');
+const newcomer = await call(await device(), 'GET', '/v1/dir/list');
+assert.equal(newcomer.status, 507);
+assert.equal(newcomer.json.err, 'relay_storage_full');
+const full = await call(a, 'POST', '/v1/store/frames', next.bytes);
 assert.equal(full.status, 507);
 assert.equal(full.json.err, 'relay_storage_full');
 assert.equal((await put(a)).status, 200, 'an existing frame is free to retry');
@@ -32,7 +38,7 @@ while ((await call(a, 'GET', '/v1/dir/list')).status !== 410) {
   await new Promise((resolve) => setTimeout(resolve, 100));
 }
 // The tombstone precedes the paged sweep, so wait for capacity rather than treating 410 as the sweep's completion.
-while ((await put(b)).status !== 200) {
+while ((await call(b, 'POST', '/v1/store/frames', next.bytes)).status !== 200) {
   assert.ok(Date.now() < deadline, 'erasure did not return global capacity');
   await new Promise((resolve) => setTimeout(resolve, 100));
 }

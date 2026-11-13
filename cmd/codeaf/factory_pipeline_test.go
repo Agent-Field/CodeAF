@@ -11,12 +11,14 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
+	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/home"
@@ -216,6 +218,28 @@ func TestEveryDoorBoundsAJobByTheCopyItCarries(t *testing.T) {
 	if _, _, err := managerEdit(st, dirs)(context.Background(), plain.ID, remove); err != nil {
 		t.Fatalf("the plain job's removal was refused: %v", err)
 	}
+	// THE MANAGER'S EDIT IS ON THE RECORD as the job page's is: one timed
+	// "edited steps" event for the edit that landed, none for the refusal.
+	history, err := record.Open(st, record.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, err := history.Since(context.Background(), time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	edits := map[int]int{}
+	for _, e := range events {
+		if e.Kind == record.StepEdited {
+			edits[e.Job]++
+			if e.At.IsZero() || e.Verb != "edited steps" || e.Detail == "" {
+				t.Fatalf("the manager's edit event is untimed or unnamed: %+v", e)
+			}
+		}
+	}
+	if edits[plain.ID] != 1 || edits[carried.ID] != 0 {
+		t.Fatalf("step-edit events by job = %v, want one for #%d and none for the refused #%d", edits, plain.ID, carried.ID)
+	}
 
 	// A JOB DECIDED ON MAIN'S FILE is bounded by main's file alone, though the
 	// factory keeps a copy now: the doors (which read the store) and the runner
@@ -262,5 +286,67 @@ func TestARunnersReadNeverClearsThisMachinesCopy(t *testing.T) {
 	factoryItemRecipe(nil, dirs, factory.Item{Repo: "owner/repo"})
 	if c, _, err := st.PipelineCopy("owner/repo"); err != nil || c == nil {
 		t.Fatalf("a runner's read cleared this machine's copy: %+v (%v)", c, err)
+	}
+}
+
+type blockingFactoryForge struct {
+	userEntered     chan struct{}
+	contentsEntered chan struct{}
+	release         chan struct{}
+}
+
+func (f *blockingFactoryForge) User(context.Context, string, string) (forge.UserProfile, string, error) {
+	close(f.userEntered)
+	<-f.release
+	return forge.UserProfile{}, "", nil
+}
+
+func (f *blockingFactoryForge) Contents(context.Context, string, string, string, string, string) (string, string, string, error) {
+	close(f.contentsEntered)
+	<-f.release
+	return "", "", "", nil
+}
+
+func TestStopFactoryLoadersClosesStuckLoadersWithinOneBound(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	bound := 120 * time.Millisecond
+	t.Cleanup(factorygithub.ShortenCloseWait(bound))
+
+	fake := &blockingFactoryForge{
+		userEntered:     make(chan struct{}),
+		contentsEntered: make(chan struct{}),
+		release:         make(chan struct{}),
+	}
+	var releaseOnce sync.Once
+	unblock := func() { releaseOnce.Do(func() { close(fake.release) }) }
+	t.Cleanup(unblock)
+
+	people := factorygithub.NewPeopleLoader(func(context.Context) factorygithub.PeopleAPI { return fake }, nil)
+	rules := factorygithub.NewPipelineLoader(func(context.Context) factorygithub.PipelineAPI { return fake })
+
+	people.Known("ada")
+	callerCtx, callerCancel := context.WithCancel(context.Background())
+	callerCancel()
+	if _, err := rules.Load(factorygithub.ShowOnly(callerCtx), "acme/api", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	<-fake.userEntered
+	<-fake.contentsEntered
+
+	profile := factoryProfile("")
+	factoryPeopleCaches.Lock()
+	factoryPeopleCaches.profiles[profile] = people
+	factoryPeopleCaches.Unlock()
+	factoryRuleCaches.Lock()
+	factoryRuleCaches.profiles[profile] = rules
+	factoryRuleCaches.Unlock()
+
+	start := time.Now()
+	stopFactoryLoaders(profile)
+	elapsed := time.Since(start)
+	unblock()
+
+	if elapsed >= 2*bound || elapsed >= 500*time.Millisecond {
+		t.Fatalf("stopFactoryLoaders waited %s with closeWait=%s; want within one bound", elapsed, bound)
 	}
 }

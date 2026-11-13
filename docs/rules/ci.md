@@ -2,13 +2,21 @@
 
 ## Pull request checks
 
-`PR gate` (`ci.yml`) runs on pull requests and pushes to `dev`. The required
-`check` status combines the light gate and successful touched-package checks.
+`PR gate` (`ci.yml`) runs on pull requests into `dev`, `app/v3` and
+`santos/dev2`, and pushes to `dev` and `santos/dev2`. The required `check`
+status combines the light gate and successful touched-package checks.
+Pull requests compare against their exact base SHA, so an `app/v3` PR selects
+packages and attributes failures against `app/v3`, rather than `dev`.
 
 The light gate builds and vets all Go packages, checks formatting, generates
 and tests packed manuals, validates change entries, and runs manual coverage,
 structural laws, carried-program help and belt-page checks. Structural laws are
 selected through `go/ast` or `go/parser` imports by `scripts/laws.sh`.
+
+`windows native tests` runs the named tests in `.github/windows-native-tests.txt`
+on `windows-latest` with Git for Windows, an isolated home and short temp paths.
+Every listed test passed natively when it was added. The job is advisory: it is
+not part of `check` until it has stayed green.
 
 Touched packages use `scripts/touched-packages.sh` to map the committed diff to
 root-module packages. Module changes select the whole tree; changes without Go
@@ -27,7 +35,8 @@ make pr-ready
 Use focused tests during editing. `test-quick` is the light gate. `pr-ready`
 adds touched-package tests and, when applicable, tooling acceptance. Commit Go
 and module edits first; the selector compares committed history against
-`origin/dev`, or `BASE=<commit>`. Complete heavy suites take a shared per-machine
+`origin/dev`, or `BASE=<commit>`. For an `app/v3` PR, run
+`BASE=origin/app/v3 make pr-ready`. Complete heavy suites take a shared per-machine
 lock; use focused checks while another full suite is running.
 
 Use `make check` for intentional full-tree validation. It runs the tests,

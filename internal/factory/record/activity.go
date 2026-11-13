@@ -19,6 +19,8 @@ func enrich(e *Event) {
 	}
 	if e.Verb == "" {
 		switch e.Kind {
+		case ContextSet:
+			e.Verb = "set context"
 		case StepEdited:
 			e.Verb = "edited steps"
 		case StepStopped:
@@ -37,6 +39,10 @@ func enrich(e *Event) {
 			e.Verb = "resumed"
 		case AskedFirst:
 			e.Verb = "asked"
+		case Routed:
+			e.Verb = "routed"
+		case RepoSet:
+			e.Verb = "set repository"
 		case Posted:
 			e.Verb = "published"
 		case RequestChanges:

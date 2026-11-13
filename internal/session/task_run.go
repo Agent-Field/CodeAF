@@ -352,6 +352,8 @@ type TaskNode struct {
 	admit sync.Mutex
 
 	spec taskSpec
+	// Only the root holds the tree's fixed admission ceiling.
+	treeLimit *nodeTreeLimit
 	// kind is what sort of node this is ([TaskKind]), settled at admission from
 	// the spec and never touched again. It is a FIELD rather than a question put
 	// to the spec because a node restored from a checkpoint has no spec worth
@@ -670,6 +672,12 @@ type TaskNode struct {
 	// reaches the project index (task_index.go) and the node's own notice on the
 	// way past.
 	cost float64
+	// folded is the part of cost that is OTHER nodes' bills: a part this node's
+	// worker proposed runs on that worker and folds into it when it lands, so the
+	// worker's total, and then this node's, already holds the part. The part's
+	// own row keeps its bill too, which is right for each row and wrong for a
+	// sum, so a tree's spend total takes this off ([TaskNode.treeOwnSpend]).
+	folded float64
 	// checkedOn is the model the node's checking pass ran on, read off the
 	// auditor when its spend folds in (task_audit.go) and empty when there was
 	// none — a node that never reached a check, or one whose check could not
@@ -852,10 +860,9 @@ type TaskNode struct {
 	// now, including the ones nobody has picked up. So the fact is written down
 	// on its own rather than inferred from a pointer that no longer means it.
 	claimed bool
-	// stopped marks a node a PERSON ended (cancel.go). It is set BEFORE the
-	// context is cut, so that the landing this stop causes already knows whose
-	// decision it was — a flag written afterwards would be a flag the update
-	// announcing the end raced past.
+	// stopped marks cancellation before the context is cut, so the landing
+	// already knows it must keep partial work. The ending distinguishes a
+	// person's Stop from a time limit they set.
 	stopped bool
 	// handed is the receipt for THIS SESSION'S own hand-over press: the person
 	// asked codeaf to decide this one card, and the note that asks it has been
@@ -1135,6 +1142,8 @@ type TaskGraph struct {
 	// at rest — every claim is released by the admission it authorized or by the
 	// proposal that came to nothing.
 	claims map[uint64]int
+	// Pending titles stay reserved until their own proposal lands or withdraws.
+	childTitles map[uint64][]string
 
 	// run executes one node to completion and calls [TaskGraph.complete] when
 	// it lands. It is a field rather than a method so the graph can be exercised
@@ -1458,7 +1467,7 @@ func (g *TaskGraph) admit(id uint64, spec taskSpec) TaskState {
 	refused := g.quitting || g.deleted[spec.parent]
 	if g.deleted[spec.parent] {
 		g.deleted[id] = true
-		g.releaseChildLocked(spec.parent)
+		g.releaseChildLocked(spec.parent, spec.title)
 		g.mu.Unlock()
 		return TaskFailed
 	}
@@ -1471,8 +1480,9 @@ func (g *TaskGraph) admit(id uint64, spec taskSpec) TaskState {
 	g.order = append(g.order, id)
 	// The node counts itself from here, so the slot its proposal was holding
 	// goes back (see [TaskGraph.claimChild]).
-	g.releaseChildLocked(spec.parent)
+	g.releaseChildLocked(spec.parent, spec.title)
 	g.mu.Unlock()
+	g.setNodeTreeLimit(node)
 
 	// ADMISSION IS A TRANSITION, and it is checkpointed before the frontier turns
 	// rather than after: a process killed between these two lines still resumes
@@ -1503,7 +1513,7 @@ func (g *TaskGraph) admit(id uint64, spec taskSpec) TaskState {
 // model fanning out emits its propose_task calls in one batch, which is exactly
 // the moment this cap is for. Every one of them would read the same count and
 // every one of them would pass.
-func (g *TaskGraph) claimChild(parent uint64) string {
+func (g *TaskGraph) claimChild(parent uint64, titles ...string) string {
 	if parent == 0 {
 		// The conversation's own work is not fanned out and is not capped: the
 		// person is watching every proposal go by and can stop any of them.
@@ -1511,19 +1521,29 @@ func (g *TaskGraph) claimChild(parent uint64) string {
 	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	if refusal := g.nodeGrowthRefusalLocked(parent, titles); refusal != "" {
+		return refusal
+	}
+	count := max(1, len(titles))
 	held := g.claims[parent]
 	for _, node := range g.nodes {
 		if node != nil && node.parent == parent {
 			held++
 		}
 	}
-	if held >= taskFanLimit {
+	if held+count > taskFanLimit {
 		return fmt.Sprintf("no: you have already handed out %d pieces of this work, which is as many as one task may. Do the rest in your own hands, or finish these and report what is left undone.", taskFanLimit)
 	}
 	if g.claims == nil {
 		g.claims = make(map[uint64]int, 1)
 	}
-	g.claims[parent]++
+	g.claims[parent] += count
+	if !bashBeltAsked() && len(titles) > 0 {
+		if g.childTitles == nil {
+			g.childTitles = make(map[uint64][]string)
+		}
+		g.childTitles[parent] = append(g.childTitles[parent], titles...)
+	}
 	return ""
 }
 
@@ -1541,17 +1561,18 @@ func (g *TaskGraph) claimChild(parent uint64) string {
 // never come and the run's ending cancels it first. The pass runs OUTSIDE the
 // lock: it takes the plan gate before the graph's mu, and nothing may hold
 // that mu while asking for the gate.
-func (g *TaskGraph) releaseChild(parent uint64) {
+func (g *TaskGraph) releaseChild(parent uint64, titles ...string) {
 	g.mu.Lock()
 	freed := g.claims[parent] > 0
-	g.releaseChildLocked(parent)
+	g.releaseChildLocked(parent, titles...)
 	g.mu.Unlock()
 	if freed {
 		g.planPulse()
 	}
 }
 
-func (g *TaskGraph) releaseChildLocked(parent uint64) {
+func (g *TaskGraph) releaseChildLocked(parent uint64, titles ...string) {
+	g.releaseChildTitleLocked(parent, titles)
 	if parent == 0 || g.claims == nil {
 		return
 	}
@@ -1580,6 +1601,17 @@ func (g *TaskGraph) children(parent uint64) []*TaskNode {
 	return kids
 }
 
+func (g *TaskGraph) wakeBudgetForWork(starting []*TaskNode) {
+	if len(starting) > 0 && g.home != nil {
+		g.home.wakeBudgetForWork()
+	}
+	for _, node := range starting {
+		if node.owner != nil && node.owner != g.home {
+			node.owner.wakeBudgetForWork()
+		}
+	}
+}
+
 // runFrontier is the scheduler, and it is the whole of it.
 //
 // One pass: fail every queued node whose dependencies cannot be met, start
@@ -1600,6 +1632,7 @@ func (g *TaskGraph) children(parent uint64) []*TaskNode {
 // call when nothing can move: the cost of a pass with nothing to do is one lock
 // and a walk of the order slice.
 func (g *TaskGraph) runFrontier() {
+	g.prepareNodeTreeLimits()
 	// The machine is READ before the lock and at most once a pass: a handful of
 	// small file reads behind a one-second cache, and the graph's lock is held
 	// by everything that announces a node — no reading of /proc belongs under
@@ -1688,6 +1721,7 @@ func (g *TaskGraph) runFrontier() {
 	// quit has started waiting on it.
 	g.runners.Add(len(starting))
 	g.mu.Unlock()
+	g.wakeBudgetForWork(starting)
 
 	// A machine hold is the one hold nothing will come along and lift.
 	if machineHeld {
@@ -2298,6 +2332,9 @@ func (n *TaskNode) wasStopped() bool {
 func (n *TaskNode) stoppedLead() string {
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
+	if n.ending == TaskEndingTimeLimit {
+		return conversationTimeLimitReason
+	}
 	return stopBecause(taskStoppedWord, n.stopReason)
 }
 
@@ -3545,6 +3582,17 @@ func (n *TaskNode) addSpend(used Usage) {
 	n.graph.mu.Unlock()
 }
 
+// addFolded records dollars of the node's bill that are other nodes' bills
+// ([TaskNode.folded]).
+func (n *TaskNode) addFolded(usd float64) {
+	if n == nil || usd <= 0 {
+		return
+	}
+	n.graph.mu.Lock()
+	n.folded += usd
+	n.graph.mu.Unlock()
+}
+
 // setTree records where the node is working, the moment it has somewhere to
 // work. It is the one write that makes an interrupt recoverable: a node killed
 // mid-run has a branch and a directory on disk, and this is where the checkpoint
@@ -3932,7 +3980,7 @@ func (n *TaskNode) noticeLocked(cost float64) TaskNotice {
 		Mending:     n.mend,
 		Waiting:     waiting,
 		Settling:    n.resolutionInFlightLocked(),
-		Stopped:     n.stopped,
+		Stopped:     n.stopped && n.endingLocked() == TaskEndingStopped,
 		Ending:      n.endingLocked(),
 		// AND WHAT CLASHED, WHICH ROAD PUT IT THERE, AND WHOSE DECISION IT IS. None
 		// of the three is derivable from anything else on this notice: the names
@@ -3977,16 +4025,15 @@ func (n *TaskNode) endingNow() TaskEnding {
 }
 
 // endingLocked is the ending a notice and a record carry, with the graph held.
-// A node a person stopped carries [TaskEndingStopped] whether or not anything
-// wrote it — the flag was the whole of that fact before the ending existed, and
-// it stays the source of it.
+// A cancelled node keeps a typed time-limit ending. Older cancellations with
+// only the stopped flag retain the person's Stop reading.
 func (n *TaskNode) endingLocked() TaskEnding {
 	// A NODE MACHINERY CUT WHERE IT STOOD IS STILL RUNNING AND STILL HAS A REASON.
 	// The paused road leaves the state alone so recovery resumes the node, and it
 	// used to carry no ending at all — so a reader could not tell a node machinery
 	// had cut from one still being worked. The ending is surfaced for a running
 	// node exactly as it is for a failed one; every other state still carries none,
-	// and the flag a person's stop sets outranks the field wherever it is.
+	// and cancellation retains the cause recorded before its context was cut.
 	if n.state == TaskRunning {
 		return n.ending
 	}
@@ -3994,6 +4041,9 @@ func (n *TaskNode) endingLocked() TaskEnding {
 		return ""
 	}
 	if n.stopped {
+		if n.ending == TaskEndingTimeLimit {
+			return n.ending
+		}
 		return TaskEndingStopped
 	}
 	return n.ending
@@ -5005,7 +5055,9 @@ func (a *Agent) readsTheDecisionLocked(node *TaskNode) bool {
 // A surface reading both sees an in-turn update on both, exactly as a surface
 // holding two Submit channels sees each event on each (see [Agent.Submit]).
 func (a *Agent) emitTaskUpdate(notice TaskNotice) {
-	notice.Retryable = a.tasker().retrySupported(notice.ID)
+	if notice.Run == "" {
+		notice.Retryable = a.tasker().retrySupported(notice.ID)
+	}
 
 	// WHETHER THE PERSON HID IT is the graph's fact, said on the one door every
 	// move goes through, so no road that builds a notice by hand can un-hide a task
@@ -6545,7 +6597,7 @@ func keptWork(tree taskTree, title string, changed []string, sign gitSignature) 
 	case problem != "":
 		return mergeAborted, changed
 	}
-	saved, problem, _ := commitTaskWork(tree.dir, title, changed, sign, tree.bashBelt)
+	saved, problem, _ := commitTaskWork(tree.dir, title, changed, sign, tree.bashBelt, true)
 	changed = alsoChanged(changed, saved)
 	// THE INHERITANCE COMES BACK OUT OF A KEPT BRANCH TOO, for the reason it does
 	// at a merge (groundladder.go): what the sentence offers the person is the
@@ -7568,11 +7620,16 @@ func firstLines(text string, n int) string {
 // node on the way past — this is the only moment anybody can ask a child agent
 // what it cost, because the line after this one closes it.
 func (a *Agent) foldTaskUsage(node *TaskNode, child *Agent) {
-	used := child.Usage()
+	child.mu.Lock()
+	used, folded := child.usage, child.foldedTaskUSD
+	child.mu.Unlock()
 	// The node keeps the WHOLE tally, not just the money. One widening here
 	// covers every fold there is — the worker, each repair round, the auditor,
 	// a harness design thread — because all of them arrive through this door.
+	// The parts the child had folded in travel with its money, so the node
+	// still knows which of its dollars are other rows' bills.
 	node.addSpend(used)
+	node.addFolded(folded)
 	if used.Input == 0 && used.Output == 0 && used.CostUSD == 0 {
 		return
 	}
@@ -7593,6 +7650,14 @@ func (a *Agent) foldTaskUsage(node *TaskNode, child *Agent) {
 		CacheCreationInputTokens: used.CacheWrite,
 		Cost:                     &cost,
 	}}, child.Model(), used.Calls)
+	// THE LEDGER NOW HOLDS THIS NODE'S BILL A SECOND TIME, inside its own
+	// total, while the node's row keeps it too. Marked here, in the same fold,
+	// a tree total that reads both counts it once.
+	if cost > 0 && ledger != nil {
+		ledger.mu.Lock()
+		ledger.foldedTaskUSD += cost
+		ledger.mu.Unlock()
+	}
 	// The books on disk are told as the node's tally reaches them, for the
 	// reason [Agent.driveBeltRun] stamps a run's: home takes the larger of the
 	// stamped books and the index rows, and that is exact only while meta.json
@@ -8025,12 +8090,13 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// audited by a different rule than the conversation would be the setting
 		// meaning two things (task_audit.go).
 		TaskAudit: parent.TaskAudit,
-		// AND SO DOES WHETHER THE SIGNATURE NAMES THE MODEL. A node commits —
-		// its landing writes one ([commitTaskWorkAs]) and its worker may write
-		// more with `bash` — and the `attribution.model` row is the person's
-		// answer for their whole machine. A node is handed no ProfileDir
-		// (Config.ProfileDir says why), so a child that did not carry this
-		// would name the model for somebody who had turned the name off.
+		// AND SO DOES WHETHER THE WORK IS SIGNED AND WHETHER THE SIGNATURE NAMES
+		// THE MODEL. A node commits — its landing writes one ([commitTaskWorkAs])
+		// and its worker may write more with `bash` — and both attribution rows
+		// are the person's answer for their whole machine. A node is handed no
+		// ProfileDir (Config.ProfileDir says why), so a child that did not carry
+		// these would sign or name the model for somebody who had turned them off.
+		AttributionOff:      parent.AttributionOff,
 		AttributionModelOff: parent.AttributionModelOff,
 		// And so does who decides a landing nobody could check. A parent node's
 		// own agent is the reader of its children's landing notes, so a family
@@ -8676,9 +8742,7 @@ func prepareSingletonTaskTreeOn(ctx context.Context, place Place, workspace, ses
 		return taskTree{}, err
 	}
 	ground := canonicalPath(strings.TrimSpace(stand.dir))
-	if WorkspaceOwnershipEnabled(place) && stand.mode == TaskModeFolder {
-		stand.mode = ownershipPlainMode(ground)
-	}
+	stand.mode = preparedTaskMode(place, ground, stand.mode)
 	if ground == "" {
 		// A PART REACHES THIS ROAD AND ITS FREEZE HAS TO TRAVEL WITH IT. A part
 		// admitted by `divide_work` carries no ground of its own (task_divide.go
@@ -8963,7 +9027,7 @@ func (t taskTree) comeHome(title string, wrote []string, sign gitSignature) (str
 	// they are — what is on that disk is the only copy of the work there is
 	// (task_land_unsaved.go). Going on used to merge a branch holding nothing and
 	// then remove the directory the work was in.
-	if _, problem, why := commitTaskWork(t.dir, title, wrote, sign, t.bashBelt); problem != "" {
+	if _, problem, why := commitTaskWork(t.dir, title, wrote, sign, t.bashBelt, true); problem != "" {
 		return mergeAborted, unsavedSentence(t.dir, problem), nil, why
 	}
 	// THE INHERITANCE GOES BACK OUT BEFORE THE WORK COMES IN. A branch carved
@@ -9368,8 +9432,8 @@ func nonEmptyLines(out string) []string {
 // be staged into, the index could not be read, or git refused the commit. A
 // landing read them as nothing to do, merged a branch holding nothing and
 // removed the working copy the work was sitting in (task_land_unsaved.go, #255).
-func commitTaskWork(dir, title string, wrote []string, sign gitSignature, bashBelt bool) ([]string, string, landingRefusal) {
-	saved, _, why, err := commitTaskWorkAs(dir, "task: "+clip(firstLine(title), 72), wrote, sign, bashBelt)
+func commitTaskWork(dir, title string, wrote []string, sign gitSignature, bashBelt, ownedCopy bool) ([]string, string, landingRefusal) {
+	saved, _, why, err := commitTaskWorkAs(dir, "task: "+clip(firstLine(title), 72), wrote, sign, bashBelt, ownedCopy)
 	if err != nil {
 		return nil, firstLine(err.Error()), why
 	}
@@ -9401,7 +9465,7 @@ func commitTaskWork(dir, title string, wrote []string, sign gitSignature, bashBe
 // the edits, or — at a division — pin a world believing it held work that was
 // still on the floor. A caller that cannot act on the answer may still discard
 // it; a caller that can is now able to.
-func commitTaskWorkAs(dir, message string, wrote []string, sign gitSignature, bashBelt bool) ([]string, string, landingRefusal, error) {
+func commitTaskWorkAs(dir, message string, wrote []string, sign gitSignature, bashBelt, ownedCopy bool) ([]string, string, landingRefusal, error) {
 	if problem, why := stageTaskWork(dir, wrote, bashBelt); problem != "" {
 		return nil, "", why, errors.New(problem)
 	}
@@ -9417,10 +9481,16 @@ func commitTaskWorkAs(dir, message string, wrote []string, sign gitSignature, ba
 		// what it always held.
 		return nil, "", refusedNothing, nil
 	}
-	if !repositoryRefusesTrailers(dir) {
+	if !sign.off && !repositoryRefusesTrailers(dir) {
 		message = signed(message, sign)
 	}
-	if out, err := git(dir, append(codeafGitIdentity(),
+	// The run engine also uses this commit road in a person's own folder.
+	// Only a caller that owns the copy can suppress detached maintenance.
+	runGit := git
+	if ownedCopy {
+		runGit = privateGit
+	}
+	if out, err := runGit(dir, append(codeafGitIdentity(),
 		"commit", "--no-verify", "-m", message)...); err != nil {
 		// A COMMIT THAT WOULD NOT GO IS USUALLY ABOUT THE COMMIT — a signature it
 		// could not make, a ref it could not lock, a rule the repository holds —

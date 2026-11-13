@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/agentfield"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
@@ -22,18 +23,21 @@ func (h *Handler) verbs() {
 	s := h.seam
 	h.postJob("run", s.Launch != nil, h.guarded("run", h.onlyOwner(h.startJob)))
 	h.postJob("stop", s.Stop != nil, h.guarded("stop", h.stop))
-	h.postJob("pause", s.Hold != nil, h.guarded("pause", h.holdVerb(true)))
+	h.postJob("pause", s.Hold != nil, h.pauseJob)
 	h.postJob("resume", s.Hold != nil, h.guarded("resume", h.holdVerb(false)))
 	h.postJob("drop", h.config.Store != nil || s.Dismiss != nil, h.onlyOwner(h.drop))
-	h.postJob("answer", s.Answer != nil, h.answer)
+	h.postJob("answer", s.Answer != nil, h.notRunAnswer(h.answer))
 	h.postJob("spend_answer", s.SpendAnswer != nil, h.spendAnswer)
-	h.postJob("reject_plan", h.config.Store != nil && s.Answer != nil, h.rejectPlan)
+	// AN AGENTFIELD RUN'S PAUSE IS ANSWERED WITH THESE THREE VERBS on every
+	// factory (agentfield_answer.go); each falls through to its own door for
+	// every other job.
+	h.postJob("reject_plan", true, h.agentFieldAnswer(agentfield.DecisionRejected, h.rejectPlan, h.config.Store != nil && s.Answer != nil))
 	h.postJob("steer", s.Steer != nil, h.wordsVerb("steer", s.Steer))
-	h.postJob("approve", true, h.approve)
+	h.postJob("approve", true, h.agentFieldAnswer(agentfield.DecisionApproved, h.approve, true))
 	h.postJob("retry_publish", h.config.Store != nil && h.seam.SignOff != nil, h.guarded("retry_publish", h.onlyOwner(h.retryPublish)))
 	h.postJob("merge", h.config.Store != nil, h.onlyOwner(h.mergeJob))
 	h.postJob("pr-ready", h.config.Store != nil, h.onlyOwner(h.prReady))
-	h.postJob("request_changes", s.SendBack != nil, h.recordedWords(s.SendBack, record.RequestChanges))
+	h.postJob("request_changes", true, h.agentFieldAnswer(agentfield.DecisionRequestChanges, h.recordedWords(s.SendBack, record.RequestChanges), s.SendBack != nil))
 	h.postJob("recheck", s.Reverify != nil, h.guarded("recheck", h.idVerb(s.Reverify)))
 	// Take and release are the lease desk's own doors, not seam fields. The
 	// desk exists only after the worker routes open it, so the handler checks then.
@@ -50,7 +54,7 @@ type jobAction func(http.ResponseWriter, *http.Request, factory.Item)
 func (h *Handler) postJob(verb string, exists bool, action jobAction) {
 	h.route("/v1/jobs/{id}/"+verb, map[string]http.HandlerFunc{
 		http.MethodPost: func(w http.ResponseWriter, r *http.Request) {
-			if verb == "publish_anyway" || verb == "sync" || verb == "approve" || verb == "retry_publish" || verb == "merge" || verb == "pr-ready" || verb == "answer" || verb == "spend_answer" || verb == "reject_plan" || verb == "undo" || verb == "assign_to_me" || verb == "change_assignee" || verb == "assignee" || verb == "unassign" {
+			if verb == "pause" || verb == "publish_anyway" || verb == "sync" || verb == "approve" || verb == "retry_publish" || verb == "merge" || verb == "pr-ready" || verb == "answer" || verb == "spend_answer" || verb == "reject_plan" || verb == "undo" || verb == "assign_to_me" || verb == "change_assignee" || verb == "assignee" || verb == "unassign" {
 				unlock, err := h.lockConsent()
 				if h.failed(w, err) {
 					return
@@ -74,9 +78,23 @@ func (h *Handler) postJob(verb string, exists bool, action jobAction) {
 			if offVerbs[verb] && h.refuseOff(w, factory.RepoOf(it), factory.JobState(it)) {
 				return
 			}
+			if decisionAction(verb) && factory.RecoveryPaused(it) {
+				h.finish(w, run.StepControlRefusal(factory.DecisionPauseDetail(it)))
+				return
+			}
 			action(w, r, it)
 		},
 	})
+}
+
+// These actions decide the gate or grant new execution authority. Manager
+// messages and read-only observations are still allowed during the pause.
+func decisionAction(verb string) bool {
+	switch verb {
+	case "answer", "spend_answer", "approve", "reject_plan", "publish_anyway", "retry_publish", "merge", "pr-ready", "request_changes", "recheck", "resume":
+		return true
+	}
+	return false
 }
 
 // take is POST /v1/jobs/{id}/take. It names the connected person on the job
@@ -219,6 +237,33 @@ func (h *Handler) idVerb(door func(int) error) jobAction {
 	}
 }
 
+// pauseJob keeps the ordinary progress-tolerant Pause and binds dismissal of
+// a decision to the exact revision the person saw.
+func (h *Handler) pauseJob(w http.ResponseWriter, r *http.Request, it factory.Item) {
+	var body struct {
+		Expect *api.Expect `json:"expect,omitempty"`
+	}
+	if !h.decode(w, r, &body, true) {
+		return
+	}
+	if body.Expect == nil || (body.Expect.State != api.StateNeedsYou &&
+		!(h.recoveryPauseAvailable() && (body.Expect.Step == factory.FollowPRStep || factory.CanPauseDecision(it)))) {
+		h.holdVerb(true)(w, r, it)
+		return
+	}
+	if !h.requireVerb(w, h.recoveryPauseAvailable()) || !h.owns(w, r, it) || !h.workerReady(w) {
+		return
+	}
+	if body.Expect.Version == nil {
+		h.fail(w, http.StatusUnprocessableEntity, "Pausing a decision requires its saved version.")
+		return
+	}
+	doors := lease.NewDoors(h.workers.desk)
+	h.finish(w, h.recordAction(r, it, record.Held, "", func() error {
+		return doors.PauseRecoveryExpected(it.ID, *body.Expect.Version, it.Person())
+	}))
+}
+
 // holdVerb is pause (on) and resume. Only the job's person may hold or
 // resume its queue or running step, and each action records who made it.
 func (h *Handler) holdVerb(on bool) jobAction {
@@ -261,6 +306,10 @@ func (h *Handler) answer(w http.ResponseWriter, r *http.Request, it factory.Item
 	}
 	yes, words, ok := h.applyChoice(w, body.Yes, body.Words, body.Choice, body.Reason)
 	if !ok {
+		return
+	}
+	if it.QKind == factory.QKindOutOfAttempts && factory.OutOfAttemptsChoice(yes, words) == factory.ChoiceAccept && !factory.OffersAccept(it) {
+		h.refuse(w, http.StatusConflict, run.AcceptRefusal().Error(), "conflict", "", nil, factory.JobState(it))
 		return
 	}
 	if yes && h.config.Store != nil && (it.QKind == factory.QKindApprove || it.QKind == factory.QKindAskFirst) {
@@ -328,6 +377,12 @@ func (h *Handler) applyChoice(w http.ResponseWriter, yes *bool, words, choice, r
 		if strings.TrimSpace(words) == "" {
 			words = factory.ChoiceTryOnceMore
 		}
+	case factory.ChoiceAccept:
+		// The step as it stands. The answer door refuses it where the job
+		// does not offer it ([factory.OffersAccept]).
+		t := true
+		yes = &t
+		words = factory.ChoiceAccept
 	case factory.ChoiceCancel, "stop":
 		f := false
 		yes = &f
@@ -347,7 +402,7 @@ func (h *Handler) applyChoice(w http.ResponseWriter, yes *bool, words, choice, r
 		yes = &f
 		words = factory.ChoiceSendBack + ": " + why
 	default:
-		h.fail(w, http.StatusUnprocessableEntity, "choice must be continue, try_once_more, send_back or cancel_job")
+		h.fail(w, http.StatusUnprocessableEntity, "choice must be continue, try_once_more, send_back, accept or cancel_job")
 		return false, "", false
 	}
 	if yes == nil && factory.IsContinue(false, words) {
@@ -747,12 +802,22 @@ func (h *Handler) reply(w http.ResponseWriter, r *http.Request, it factory.Item)
 	}
 }
 
+// newJob makes one job, opening its GitHub issue first when asked. EVERY ANSWER
+// BEFORE ITS FIRST WRITE CARRIES THE PHASE MARKER (api.PhaseHeader, phase.go):
+// a refusal, the visibility check, a sign-in or read failure, and a GitHub
+// failure before the issue request was sent. The issue request
+// ([Handler.githubJobJSON]) and the job's own make clear it, so everything
+// after them, the stamps, the issue link, the budget and a start, answers
+// unmarked and a keyed resend replays it instead of making another job.
 func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 	if !h.requireVerb(w, h.seam.New != nil || h.seam.NewJob != nil) {
 		return
 	}
 	var body api.NewJob
 	if !h.decode(w, r, &body, false) {
+		return
+	}
+	if !h.checkNewJobExtras(w, r, &body) {
 		return
 	}
 	if strings.TrimSpace(body.Repo) == "" || strings.TrimSpace(body.Title) == "" {
@@ -801,6 +866,9 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !visible {
+		if h.githubVisibilityLimited(w, r) {
+			return
+		}
 		h.fail(w, http.StatusNotFound, "repository not found")
 		return
 	}
@@ -838,15 +906,17 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 		if h.failed(w, err) {
 			return
 		}
+		selected = recipe.Named(body.Pipeline)
 		if h.config.Pipeline != nil {
 			f, err := h.config.Pipeline(r.Context(), body.Repo, dir)
 			if h.failed(w, err) {
 				return
 			}
-			recipe = f.Recipe()
+			// The one resolver: the repository's file, the factory's
+			// library, the built-in steps ([pipeline.File.Resolve]).
+			selected = f.Named(body.Pipeline)
 			copied, decided = f.Copy, true
 		}
-		selected = pipelineStages(recipe, body.Pipeline)
 		if len(selected) == 0 {
 			h.fail(w, 422, "pipeline not found")
 			return
@@ -872,6 +942,7 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 	var err error
 	literal := body.Source == factory.AskApp || body.Source == "hand-off" || body.Text != ""
 	if literal && h.seam.NewJob != nil {
+		clearPhase(w)
 		id, err = h.seam.NewJob(body.Repo, body.Title, body.Text)
 	} else {
 		if !h.requireVerb(w, h.seam.New != nil) {
@@ -881,12 +952,16 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 		if body.Text != "" {
 			words += "\n\n" + body.Text
 		}
+		clearPhase(w)
 		id, err = h.seam.New(body.Repo, words)
 	}
 	if h.failed(w, err) {
 		return
 	}
 	if h.failed(w, h.stampAsk(r, id, body)) {
+		return
+	}
+	if h.failed(w, h.stampNewJobExtras(r, id, body)) {
 		return
 	}
 	if selected != nil && h.failed(w, h.config.Store.Update(id, func(it *factory.Item) error {
@@ -917,7 +992,7 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 }
 
 // stampAsk records the app's ask on a job this factory's store holds.
-// The body carries the person's words, never a cap.
+// The initial budget and attachments are stamped separately after these words.
 func (h *Handler) stampAsk(r *http.Request, id int, body api.NewJob) error {
 	if h.config.Store == nil {
 		return nil

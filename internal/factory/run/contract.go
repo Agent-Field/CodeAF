@@ -98,6 +98,8 @@ type Job struct {
 	// Progress relays brief human-facing Follow PR updates to the job conversation.
 	// It is nil for other stages and never authorizes an action or accepts proof.
 	Progress func(line string)
+	// SyncPRBase integrates the live PR base in a write-capable Follow PR round.
+	SyncPRBase func(context.Context) (string, error)
 	// Verification publishes engine-owned running check facts, not chat prose.
 	Verification func(*factory.StepVerification)
 	// Spend reports model cost the round incurred, in dollars, as it happens.
@@ -110,6 +112,13 @@ type Job struct {
 	// CarryOn is what the carried-on chat is told besides the carry-on note:
 	// the answers given while the step was paused ([factory.Phase.Carry]).
 	CarryOn []string
+	// Continuing says this round is the one a restart cut short and picked up
+	// again, the same round going on rather than a new start (the step was
+	// running at that round when the restart revived the job). A step that
+	// runs off this machine — an AgentField run it follows — reads the end
+	// its run already reached as this round's, never as a reason to begin a
+	// second run.
+	Continuing bool
 	// Opened is told the conversation's id the moment a chat stage has one,
 	// so the item keeps the stage's chat before the round ends and a pause or
 	// a restart can come back to it. Nil is nobody listening.
@@ -157,6 +166,19 @@ type Event struct {
 // Options builds a [Runner].
 type Options struct {
 	Store *store.Store
+	// Remote runs a RunOn job (factory.Item.RunOn) on AgentField instead of
+	// its own steps, and returns when the run has ended: nil when it
+	// succeeded, the run's error when it failed. It keeps the job's steps,
+	// chats and spend up to date as the run goes. Its context ends when the
+	// person stops the job, and it cancels the run then. Nil refuses a RunOn
+	// job with the words below.
+	Remote func(ctx context.Context, job int) error
+	// AgentFieldAnswer carries a person's decision on an AgentField run's
+	// pause to the control plane, as the runner that started the run (the
+	// one that holds its key and owns it there): nil when it was taken or the
+	// first answer already stood, an error to try again on the next beat. Nil
+	// here refuses the answer with [NoRemoteWords].
+	AgentFieldAnswer func(ctx context.Context, job int, d factory.AgentFieldDecision) error
 	// Exec maps a stage kind to what runs it. A missing kind fails its stage.
 	Exec map[factory.StageKind]Executor
 	// Benches is how many items may run at once; 0 is unbounded.
@@ -241,6 +263,11 @@ type Options struct {
 	// turn that answers nothing all send the question to the person. The
 	// inbox lane added it, additively.
 	Inbox func(ctx context.Context, it factory.Item, q factory.Asked) (InboxReply, error)
+	// FailureSummary is one cheap turn of the job's manager writing a failed
+	// step's one-line headline from its failure, when the step gave none
+	// ([factory.FailureSummaryAsk]); it is spent and booked as the job's own
+	// conversation. Nil leaves such a failure without a summary.
+	FailureSummary func(ctx context.Context, it factory.Item, f factory.Failure) (string, error)
 	// Record receives a step_failed event when a step errors. Nil keeps the
 	// failure on the job and writes no audit line. The worker's mirror
 	// leaves this nil; the factory that accepts the report writes the event.

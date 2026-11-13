@@ -32,7 +32,7 @@ func TestAStepsEffortChoosesItsModel(t *testing.T) {
 		{factoryrun.ConversationSpec{StepEffort: "cheap", Model: " vendor/picked "}, false, "vendor/picked"},
 		{factoryrun.ConversationSpec{StepEffort: "strong"}, true, ""},
 	} {
-		if got := factoryStepModel(profile, c.spec, c.one); got != c.want {
+		if got := factoryOpenModel(profile, session.Config{OneModel: c.one}, c.spec); got != c.want {
 			t.Errorf("%+v one-model %v: %q, want %q", c.spec, c.one, got, c.want)
 		}
 	}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -349,5 +350,55 @@ func TestReportRecordedAgentFilterIncludesChatAndOwnedTaskCharges(t *testing.T) 
 	}
 	if query.fingerprint() == (UsageQuery{From: query.From, To: query.To}).fingerprint() {
 		t.Fatal("owner filter does not fence cursors")
+	}
+}
+
+func TestReportRollupReadsOnlyAppendedBytes(t *testing.T) {
+	path := reportRows(t, 1000)
+	q := reportQuery(t, "2026-10-01", "2026-10-31")
+	first, err := QueryUsageReport(path, q, reportZone, UsageReportBudget{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := usageBytesScanned.Load()
+	second, err := QueryUsageReport(path, q, reportZone, UsageReportBudget{})
+	if err != nil || !reflect.DeepEqual(first, second) {
+		t.Fatalf("second report differs: %v", err)
+	}
+	if read := usageBytesScanned.Load() - before; read != 0 {
+		t.Fatalf("unchanged second report scanned %d bytes, want 0", read)
+	}
+
+	appended := []byte(`{"at":"2026-10-03T12:00:00-04:00","day":"2026-10-03","usd":0.125}` + "\n")
+	appendReportBytes(t, path, appended)
+	before = usageBytesScanned.Load()
+	third, err := QueryUsageReport(path, q, reportZone, UsageReportBudget{})
+	if err != nil || third.Totals.Records != 1001 {
+		t.Fatalf("append: %d records, %v", third.Totals.Records, err)
+	}
+	if read := usageBytesScanned.Load() - before; read != int64(len(appended)) {
+		t.Fatalf("append scanned %d bytes, want %d", read, len(appended))
+	}
+}
+
+func TestReportSeparatesLibraryActivityWithoutCountingItTwice(t *testing.T) {
+	chat := reportLine(15, 12, "m/flash", 1)
+	learning := reportLine(15, 12, "m/flash", 2)
+	learning.Role, learning.LibraryActivity = "memory", "learning"
+	answer := reportLine(15, 12, "m/flash", 3)
+	answer.Role, answer.LibraryActivity = "memory", "answers"
+	older := reportLine(15, 12, "m/flash", 4)
+	older.Role = "memory"
+	path := writeLedger(t, []UsageLine{chat, learning, answer, older}, nil, "")
+	report, err := QueryUsageReport(path, reportQuery(t, "2026-10-15", "2026-10-15"), reportZone, UsageReportBudget{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	costs := map[string]float64{}
+	for _, cell := range report.Cells {
+		costs[cell.LibraryActivity] += cell.USD
+	}
+	if report.Totals.USD != 10 || costs[""] != 1 || costs["learning"] != 2 || costs["answers"] != 3 || costs["unspecified"] != 4 {
+		t.Fatalf("total=%v activity=%v; want total 10, chat 1, learning 2, answers 3, unspecified 4", report.Totals.USD, costs)
 	}
 }

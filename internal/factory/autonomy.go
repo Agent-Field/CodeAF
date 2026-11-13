@@ -12,7 +12,7 @@ const AutonomyManual = "manual"
 // Automatic is deliberately false for old records without a saved mode and
 // while Take over has suspended the pipeline. A mode never resumes Take over.
 func Automatic(it Item) bool {
-	return !StoppedByPerson(it) && it.Autonomy == AutonomyAuto && !it.Manual
+	return !StoppedByPerson(it) && it.Autonomy == AutonomyAuto && !it.Manual && !RecoveryPaused(it)
 }
 
 // AsksBeforeStep says Manual holds phase i for the person's word before its
@@ -57,6 +57,9 @@ func CheckAutomaticApproval(it Item) error {
 	if err := CheckPersonStop(it); err != nil {
 		return err
 	}
+	if RecoveryPaused(it) {
+		return fmt.Errorf("%s", DecisionPauseDetail(it))
+	}
 	if it.Approval == nil || !it.Approval.Automatic || it.Approval.State == "approved" {
 		return nil
 	}
@@ -75,6 +78,15 @@ func AutonomyBlockReason(it Item) string {
 	if !Automatic(it) || (it.State != StateNeedsYou && it.State != StateLanded) {
 		return ""
 	}
+	// A ROUTING RULE'S START HOLD IS NOT AUTO STOPPING: nothing ran, so there
+	// is nothing Auto stopped. The job's own question ("Approval needed:
+	// start · routing rule …") is the whole of what it waits on, and a
+	// surface that prefixes this reason with "Auto stopped" would say
+	// something that did not happen. A hold the start labels and factory.yaml
+	// made (a GitHub issue no rule routed) reads exactly as it always has.
+	if it.QKind == QKindAskFirst && it.Route != "" {
+		return ""
+	}
 	if it.Cap <= 0 {
 		return "A job budget is required. Set Budget before continuing."
 	}
@@ -91,6 +103,11 @@ func AutonomyBlockReason(it Item) string {
 	// the person the pipeline asked by name.
 	if NamesOtherApprover(it) {
 		return "This approval waits on " + WaitingApprover(it) + ", whom the pipeline names."
+	}
+	// AN APPROVE STEP SAYS WHO MAY PASS IT: only a person, or the manager
+	// when a condition it judged false ([PassBlockReason]).
+	if why := PassBlockReason(it); why != "" {
+		return why
 	}
 	// A PLAN THAT TOUCHES WHAT A RULE GUARDS IS NEVER ROUTINE: the person said
 	// to be asked, so Auto asks.

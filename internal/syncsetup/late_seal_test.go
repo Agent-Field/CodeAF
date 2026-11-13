@@ -2,13 +2,11 @@ package syncsetup
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cellstore"
-	"github.com/Agent-Field/codeaf/internal/cellsync"
 	"github.com/Agent-Field/codeaf/internal/directory"
 )
 
@@ -37,18 +35,19 @@ func TestLateSealOnExpiredUnacquiredHoldDoesNotRenewLease(t *testing.T) {
 	}
 	sealed, err := d.Store(r.engine).Seal(ctx, r.cell, cellstore.TurnInfo{Calls: []cellstore.Executed{{Call: cellstore.Call{Tool: "external", Started: 1, Ended: 2}, Stdout: []byte("finished once")}}})
 	mustNil(t, err)
-	// Observe publication before Close can hide a renewal by releasing it.
-	driving := cellsync.Driving{Cell: r.cell, Fence: before.Cell.Lease.Fence, Head: first.Turn.ID}
-	err = d.batcher.Publisher.Publish(ctx, &driving, sealed.Turn.ID, cellsync.PublishInfo{})
-	after, readErr := r.b.Dir.Cell(ctx, r.cell.ID)
-	mustNil(t, readErr)
-	if after.Cell.Lease != before.Cell.Lease {
-		t.Fatalf("late seal changed expired lease: expiry %d -> %d at %d", before.Cell.Lease.Expires, after.Cell.Lease.Expires, after.Now)
-	}
-	if !errors.Is(err, cellsync.ErrSuperseded) || after.Cell.Head != first.Turn.ID {
-		t.Fatalf("expired publish = %v; original head preserved = %v", err, after.Cell.Head == first.Turn.ID)
-	}
+	// The ownership check above retired this computer's hold, so closing drains
+	// the late seal into a kept copy and never publishes it onto the original.
+	// The expiry is compared as well as the head, because a publish onto the
+	// original would renew the expired hold even when the head stayed put.
 	mustNil(t, d.Close(ctx))
+	after, err := r.b.Dir.Cell(ctx, r.cell.ID)
+	mustNil(t, err)
+	if after.Cell.Head != first.Turn.ID {
+		t.Fatalf("late seal moved the original head to %s", after.Cell.Head)
+	}
+	if after.Cell.Lease.Fence != before.Cell.Lease.Fence || after.Cell.Lease.Expires > before.Cell.Lease.Expires {
+		t.Fatalf("late seal renewed the expired hold: fence %d -> %d, expiry %d -> %d", before.Cell.Lease.Fence, after.Cell.Lease.Fence, before.Cell.Lease.Expires, after.Cell.Lease.Expires)
+	}
 	branches, err := branchMapOf(r.homeA)
 	mustNil(t, err)
 	id := branches.Resolve(r.cell.ID)

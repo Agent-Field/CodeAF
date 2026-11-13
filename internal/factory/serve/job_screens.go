@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptrace"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -136,6 +138,7 @@ func (h *Handler) readStepEdits(w http.ResponseWriter, r *http.Request) {
 // FS0/FS15 allow only the caller's own.
 func (h *Handler) stepEditsReply(w http.ResponseWriter, r *http.Request, it factory.Item, lines []string) {
 	jobs := []api.Job{h.withVersion(api.FromItem(it))}
+	h.modelsIn(jobs, []factory.Item{it})
 	if _, _, err := h.applyPresence(jobs); h.failed(w, err) {
 		return
 	}
@@ -316,7 +319,7 @@ func (h *Handler) searchIssues(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !h.repoVisible(r, repo) {
-		if !h.authFailed(w, r) {
+		if !h.authFailed(w, r) && !h.githubVisibilityLimited(w, r) {
 			h.fail(w, 404, "repository not found")
 		}
 		return
@@ -350,6 +353,13 @@ func (h *Handler) searchIssues(w http.ResponseWriter, r *http.Request) {
 
 // githubJobJSON uses the signed-in person's credential. Only a solo host may
 // use its local profile; a team's read grant is never used for a write.
+//
+// For a write it is the handler's first change, so it clears the phase marker
+// (api.PhaseHeader) once GitHub may have acted: when the request got a
+// connection, since nothing is sent before that, and when GitHub answered
+// anything but its own 4xx refusal, which makes nothing. A failure before the
+// request was sent, or a refusal, therefore stays marked as having written
+// nothing; a lost answer, a GitHub 5xx or an unreadable receipt does not.
 func (h *Handler) githubJobJSON(w http.ResponseWriter, r *http.Request, method, path string, body any, out any) bool {
 	session, _ := h.credential(r)
 	token := session.githubToken
@@ -368,7 +378,9 @@ func (h *Handler) githubJobJSON(w http.ResponseWriter, r *http.Request, method, 
 			return false
 		}
 	}
-	req, err := http.NewRequestWithContext(r.Context(), method, "https://api.github.com"+path, ioBody(raw))
+	var connected atomic.Bool
+	ctx := httptrace.WithClientTrace(r.Context(), &httptrace.ClientTrace{GotConn: func(httptrace.GotConnInfo) { connected.Store(true) }})
+	req, err := http.NewRequestWithContext(ctx, method, "https://api.github.com"+path, ioBody(raw))
 	if h.failed(w, err) {
 		return false
 	}
@@ -379,10 +391,16 @@ func (h *Handler) githubJobJSON(w http.ResponseWriter, r *http.Request, method, 
 	client := h.githubClient()
 	response, err := client.Do(req)
 	if err != nil {
+		if connected.Load() {
+			clearPhase(w)
+		}
 		h.fail(w, 502, "GitHub isn't answering; retry this job change")
 		return false
 	}
 	defer response.Body.Close()
+	if response.StatusCode < 400 || response.StatusCode >= 500 {
+		clearPhase(w)
+	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		h.fail(w, 502, fmt.Sprintf("GitHub refused this job change (HTTP %d)", response.StatusCode))
 		return false

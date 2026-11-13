@@ -11,15 +11,24 @@ import (
 	"testing"
 )
 
-// I0 and N3 pin unchanged argv through the executor at every shell door. Together with the
-// injected Unix preference tests, this does not require an installed /bin/bash.
+// I0 and N3 pin argv through the executor at every shell door.
+// Unix parity 2 contract items 1–3 keep Unix headless/health argv at the base
+// and Windows foreground non-login plus health resolver/pipefail in thin leaves.
+// Injected Unix preference tests do not require an installed /bin/bash.
 func TestUnixDoorArgv(t *testing.T) {
-	// Bash doors run under PipefailArgs so a failed pipeline stage cannot look
-	// successful while a reader that stopped early is not a failure.
+	// Pipefail remains at command doors except the historical Unix resident
+	// health leaf, whose pipeline status belongs to the last command.
 	for _, tc := range []struct{ file, function, call string }{
-		{"exec/tools.go", "runShell", `append([]string{bash}, commandshell.PipefailArgs(bash, []string{"-lc"}, command)...)`},
+		{"exec/tools.go", "runShell", `append([]string{bash}, commandshell.ForegroundArgs(bash, command)...)`},
 		{"exec/jobs.go", "startBackground", `detachedCommand(executor.For(ctx), jobCtx, r.workspace.Root(), command, environment, logFile, 3*time.Second)`},
 		{"exec/services.go", "detachedCommand", `append([]string{bash}, commandshell.PipefailArgs(bash, []string{"-lc"}, command)...)`},
+		{"resident/services.go", "Healthy", `serviceHealthCommand(service.Health.Value)`},
+		{"resident/services_unix.go", "serviceHealthCommand", `[]string{"bash", "-lc", command}`},
+		{"resident/services_windows.go", "serviceHealthCommand", `shell.Bash()`},
+		{"resident/services_windows.go", "serviceHealthCommand", `append([]string{bash}, shell.PipefailArgs(bash, []string{"-lc"}, command)...)`},
+		{"shell/shell.go", "ForegroundArgs", `flag := "-lc"`},
+		{"shell/shell.go", "ForegroundArgs", "if runtime.GOOS == \"windows\" {\n\tflag = \"-c\"\n}"},
+		{"shell/shell.go", "ForegroundArgs", `PipefailArgs(bash, []string{flag}, command)`},
 		{"exec/bare/tools.go", "getShellConfig", `shell.Preferred()`},
 		{"exec/bare/tools.go", "getShellConfig", `shell.PipefailArgs(program, flags, command)`},
 		{"exec/bare/tools.go", "newBashTool", `append([]string{shell}, shellArgs...)`},
@@ -47,10 +56,12 @@ func TestUnixDoorArgv(t *testing.T) {
 					continue
 				}
 				ast.Inspect(fn.Body, func(n ast.Node) bool {
-					call, ok := n.(ast.Expr)
-					if !ok {
+					switch n.(type) {
+					case ast.Expr, ast.Stmt:
+					default:
 						return true
 					}
+					call := n
 					if node, ok := call.(*ast.CallExpr); ok {
 						if selector, ok := node.Fun.(*ast.SelectorExpr); ok {
 							if pkg, ok := selector.X.(*ast.Ident); ok && pkg.Name == "exec" && strings.HasPrefix(selector.Sel.Name, "Command") {
@@ -72,7 +83,7 @@ func TestUnixDoorArgv(t *testing.T) {
 				t.Errorf("I0: %s bypasses the executor", tc.function)
 			}
 			if !found {
-				t.Fatalf("Unix argv changed: %s must retain %s", tc.function, tc.call)
+				t.Fatalf("Per-OS argv changed: %s must retain %s", tc.function, tc.call)
 			}
 		})
 	}

@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Agent-Field/codeaf/internal/store"
+	"github.com/Agent-Field/codeaf/internal/summarypath"
 )
 
 // A finished job says what it found in two places, and until now the head could
@@ -76,10 +77,10 @@ func (h *Head) artifactSet(node store.Node) []string {
 				continue
 			}
 			path = expandArtifactHome(path)
-			if !filepath.IsAbs(path) || seen[path] || len(paths) == beltArtifactCap {
+			if !filepath.IsAbs(path) || seen[summarypath.Key(path)] || len(paths) == beltArtifactCap {
 				continue
 			}
-			seen[path] = true
+			seen[summarypath.Key(path)] = true
 			paths = append(paths, path)
 		}
 	}
@@ -186,7 +187,7 @@ func artifactPick(paths []string, name string) (string, bool) {
 	cleaned := filepath.Clean(expandArtifactHome(name))
 	base := filepath.Base(cleaned)
 	for _, path := range paths {
-		if path == cleaned {
+		if summarypath.Key(path) == summarypath.Key(cleaned) {
 			return path, true
 		}
 	}

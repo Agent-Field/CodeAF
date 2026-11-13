@@ -20,6 +20,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 const setupSecret = "setup-secret-token-0123456789"
@@ -75,6 +76,7 @@ func (g *setupGitHub) seen() []string {
 // login instead of a call to /user.
 func offlineLocal(b *appBackend, g *setupGitHub, t *testing.T) {
 	b.local.githubHTTP = g.client(t)
+	b.local.pollSource = noPoll
 	b.local.rules = func(context.Context, string, string) (pipeline.File, error) { return pipeline.File{}, os.ErrNotExist }
 	b.local.seamHook = func(seam factory.Seam) factory.Seam {
 		seam.GitHub = func(context.Context) (factory.GitHubLink, error) { return factory.GitHubLink{Login: "owner"}, nil }
@@ -96,7 +98,7 @@ type localSetup struct {
 // the process only git on its PATH.
 func useLocalHome(t *testing.T) (appHome, userHome, decoy string) {
 	t.Helper()
-	appHome, userHome, decoy = t.TempDir(), t.TempDir(), t.TempDir()
+	appHome, userHome, decoy = testHome(t), testHome(t), testHome(t)
 	// The unix socket of a solo host is short-pathed; t.TempDir can be long.
 	t.Setenv(home.EnvVar, appHome)
 	t.Setenv("HOME", userHome)
@@ -108,6 +110,15 @@ func useLocalHome(t *testing.T) (appHome, userHome, decoy string) {
 	}
 	restore := config.UseAppCredentials(config.NewAppCredentials())
 	t.Cleanup(restore)
+	ledger := session.UsageLedgerPath()
+	// Later backend cleanups release their agents before this shared writer stops.
+	t.Cleanup(func() {
+		if !session.StopUsageWriter(ledger) {
+			t.Error("factory usage writer did not stop before home cleanup")
+		}
+	})
+	// Errand catalog reads can start the shared process and its profile writers.
+	freshEngineProcess(t)
 	return appHome, userHome, decoy
 }
 

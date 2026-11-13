@@ -296,6 +296,9 @@ type Meta struct {
 	// a gate a person opened from inside a conversation must be open when they
 	// come back to it.
 	Approval string `json:"approval,omitempty"`
+	// Scope is conversation when the model is told only about its own work.
+	// Project or absence keeps the project's reading of other conversations' work.
+	Scope string `json:"scope,omitempty"`
 	// Created is when the session was minted.
 	Created time.Time `json:"created"`
 	// LastUserAt is when the PERSON last said something. Resume order is on
@@ -513,7 +516,14 @@ func saveMetaLocked(dir string, meta Meta) error {
 		}
 		meta.ChatURI = current.ChatURI
 	}
+	if meta.Scope == "" {
+		meta.Scope = current.Scope
+	}
 	meta.AgentIdentity = keptAgentIdentity(current, meta)
+	meta.AgentIdentity, err = protectAgentIdentity(meta.AgentIdentity)
+	if err != nil {
+		return fmt.Errorf("save agent identity: %w", err)
+	}
 	// K3: schema paths use slashes even when their source machine is Windows.
 	for _, field := range []*string{&meta.Workspace, &meta.Origin, &meta.FromWorkspace} {
 		if windowsSource(*field) {
@@ -540,6 +550,16 @@ func writeJSONAtomic(path string, v any) error {
 	raw, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		return err
+	}
+	switch value := v.(type) {
+	case Meta:
+		if value.AgentIdentity != nil {
+			raw = value.AgentIdentity.PreserveJSON(raw)
+		}
+	case SessionTruth:
+		if value.AgentIdentity != nil {
+			raw = value.AgentIdentity.PreserveJSON(raw)
+		}
 	}
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".meta-*.json")
 	if err != nil {

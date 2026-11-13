@@ -7,24 +7,39 @@ import (
 
 // Reads and the durable job timer both advance recovery; no open desktop is
 // required. The desk rechecks each candidate under its own item and lease locks.
-func (h *Handler) prepareStepRecoveries(items []factory.Item) []factory.Item {
+func (h *Handler) prepareStepRecoveries(items []factory.Item, leases []lease.Lease) ([]factory.Item, error) {
 	if h.workers == nil || h.workers.desk == nil {
-		return items
+		return items, nil
 	}
-	doors := lease.NewDoors(h.workers.desk)
+	desk := h.workers.desk
+	doors := lease.NewDoors(desk)
+	held := make(map[int]bool, len(leases))
+	for _, row := range leases {
+		held[row.Job] = true
+	}
 	updated := false
 	for i, it := range items {
-		if it.Recovery == nil && !factory.TransientStepFailure(it.Failure) {
+		if factory.RecoveryPaused(it) {
 			continue
 		}
-		if changed, err := doors.RecoverAutomatic(it.ID); err == nil && changed {
-			if cur, err := h.config.Store.Get(it.ID); err == nil {
-				items[i], updated = cur, true
+		mayBeLost := !held[it.ID] && desk.MayHaveLostRunner(it)
+		if it.Recovery == nil && !factory.TransientStepFailure(it.Failure) && !mayBeLost {
+			continue
+		}
+		changed, err := doors.RecoverAutomatic(it.ID)
+		if err != nil {
+			return items, err
+		}
+		if changed {
+			cur, err := h.config.Store.Get(it.ID)
+			if err != nil {
+				return items, err
 			}
+			items[i], updated = cur, true
 		}
 	}
 	if updated {
 		h.scheduleJobTimer()
 	}
-	return items
+	return items, nil
 }

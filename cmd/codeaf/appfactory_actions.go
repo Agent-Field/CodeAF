@@ -38,6 +38,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/agentfield"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/redact"
 )
@@ -125,6 +126,7 @@ func (h *appFactoryHub) sendWrite(ctx context.Context, client *http.Client, meth
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "codeaf-app")
+	setFactoryCreateKey(req)
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
@@ -143,7 +145,7 @@ func (h *appFactoryHub) sendWrite(ctx context.Context, client *http.Client, meth
 		return nil, appwire.Errorf(appwire.CodeUncertain, "the factory's answer is too large to read; read the job before trying again")
 	}
 	if reply.status < 200 || reply.status >= 300 {
-		return nil, appFactoryActionFailure(reply)
+		return nil, factoryJobContextFailure(req, reply)
 	}
 	h.touch(id)
 	return data, nil
@@ -376,6 +378,12 @@ func (b *appBackend) FactoryJobSetBudget(ctx context.Context, p appwire.FactoryJ
 // it for its Undo window before it acts; the answer carries that window, and
 // FactoryJobUndo is how the same person withdraws it inside it.
 func (b *appBackend) FactoryJobApprove(ctx context.Context, p appwire.FactoryJobApproveParams) (appwire.FactoryJobActed, error) {
+	if out, handled, err := b.answerAgentField(ctx, p.Factory, p.Job, appwire.JobActApprove, agentfield.DecisionApproved, p.Words, p.Expect); handled {
+		return out, err
+	}
+	if out, handled, err := b.answerStepQuestion(ctx, p.Factory, p.Job, p.Words, p.Expect); handled {
+		return out, err
+	}
 	return b.jobWrite(ctx, p.Factory, appwire.JobActApprove, p.Job, factoryVerbApprove, api.Approve{Words: p.Words, Commit: p.Commit, Edited: p.Edited, Expect: p.Expect})
 }
 
@@ -384,6 +392,9 @@ func (b *appBackend) FactoryJobUndo(ctx context.Context, p appwire.FactoryJobAct
 }
 
 func (b *appBackend) FactoryJobRequestChanges(ctx context.Context, p appwire.FactoryJobChangesParams) (appwire.FactoryJobActed, error) {
+	if out, handled, err := b.answerAgentField(ctx, p.Factory, p.Job, appwire.JobActRequestChanges, agentfield.DecisionRequestChanges, p.Words, p.Expect); handled {
+		return out, err
+	}
 	return b.jobWrite(ctx, p.Factory, appwire.JobActRequestChanges, p.Job, factoryVerbRequestChange, struct {
 		Words  string      `json:"words"`
 		Expect *api.Expect `json:"expect,omitempty"`
@@ -450,14 +461,10 @@ func (b *appBackend) FactoryJobStepRerun(ctx context.Context, p appwire.FactoryJ
 func stepSegment(name string) string { return url.PathEscape(name) }
 
 // FactoryJobCreate makes a job. It is a backlog job unless the person asked for
-// "now", opens no GitHub issue, and asks no model for anything.
+// "now", opens an issue only when asked, and asks no model for anything.
 func (b *appBackend) FactoryJobCreate(ctx context.Context, p appwire.FactoryJobCreateParams) (appwire.FactoryJobActed, error) {
 	h := b.factoryHub()
-	body := api.NewJob{Repo: p.Repo, Title: p.Title, Text: p.Text, Source: factory.AskApp, Assignee: p.Assignee, Pipeline: p.Pipeline}
-	if p.Start == "now" {
-		body.Start = "now"
-	}
-	a, err := h.write(ctx, p.Factory, "/v1/jobs", body)
+	a, err := h.createJob(ctx, p)
 	if err != nil {
 		return appwire.FactoryJobActed{}, err
 	}

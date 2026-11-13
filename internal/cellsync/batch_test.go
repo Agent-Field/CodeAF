@@ -223,6 +223,31 @@ func TestBatcherRidesOutRelayRestart(t *testing.T) {
 	}
 }
 
+func TestBatcherRecoversAfterOutageLongerThanLease(t *testing.T) {
+	r := newRig(t)
+	b := r.batcher()
+	r.publishFirst(map[string]string{"a": "0"})
+	h2 := r.seal(map[string]string{"a": "1"})
+	note(b, h2)
+	var superseded int
+	b.OnSuperseded = func(Superseded) { superseded++ }
+
+	r.dirA.set(directory.ErrUnreachable)
+	r.clock.Advance(directory.LeaseTTL + time.Second)
+	if d := b.flush(context.Background()); d != 2*b.Interval {
+		t.Fatalf("backoff = %v", d)
+	}
+	r.dirA.set(nil)
+	if d := b.flush(context.Background()); d != 0 {
+		t.Fatalf("recovery flush wait = %v, want 0", d)
+	}
+
+	got := r.head(cellID)
+	if got.Head != h2 || got.Lease.Fence != 1 || got.Lease.Device != devA || got.Lease.Expires <= r.clock.Now().UnixMilli() || superseded != 0 {
+		t.Fatalf("cell %+v, superseded %d", got, superseded)
+	}
+}
+
 func TestSkewIsSurfacedOnce(t *testing.T) {
 	r := newRig(t)
 	b := r.batcher()

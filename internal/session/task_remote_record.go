@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 )
 
@@ -51,15 +52,10 @@ func atomicRemoteFile(path string, data []byte) error {
 	if err != nil {
 		return err
 	}
-	if err := os.Rename(file.Name(), path); err != nil {
+	if err := fsreplace.Rename(file.Name(), path); err != nil {
 		return err
 	}
-	directory, err := os.Open(filepath.Dir(path))
-	if err != nil {
-		return err
-	}
-	defer directory.Close()
-	return directory.Sync()
+	return fsreplace.SyncDir(filepath.Dir(path))
 }
 func readRemoteRecord(store *plandb.Store, fallback *TaskRemoteRecord) *TaskRemoteRecord {
 	// A local row is authoritative about being local. A stray task-door file
@@ -152,7 +148,7 @@ func (a *Agent) remoteBeltSpec(run *beltRun, spec RunSpec) RunSpec {
 		if run.remote.Abandoned {
 			return ErrTaskAttemptAbandoned
 		}
-		if err := a.recordUsageLine(bankedCall{model: charge.Model, used: Usage{Input: charge.TokensIn, Output: charge.TokensOut, CacheRead: charge.Cached, Calls: 1, CostUSD: charge.USD}, remote: &remoteUsage{Task: strconv.FormatUint(run.row, 10), Computer: run.remote.Executor.Name, Event: fmt.Sprintf("%s:%d", run.remote.Attempt, seq), Seat: Seat(seat)}}); err != nil {
+		if err := a.recordUsageLine(bankedCall{model: charge.Model, used: Usage{Input: charge.TokensIn, Output: charge.TokensOut, CacheRead: charge.Cached, Calls: 1, CostUSD: charge.USD}, remote: &remoteUsage{CallID: charge.CallID, Task: strconv.FormatUint(run.row, 10), Computer: run.remote.Executor.Name, Event: fmt.Sprintf("%s:%d", run.remote.Attempt, seq), Seat: Seat(seat)}}); err != nil {
 			return err
 		}
 		return a.foldRemoteCharge(fmt.Sprintf("%s:%d", run.remote.Attempt, seq), charge)

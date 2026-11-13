@@ -78,6 +78,9 @@ func renameAlone(ops []EditOp) *EditError {
 		}
 	}
 	for i, op := range ops {
+		if pipelineOp(op.Op) {
+			continue // its names are pipelines', not steps'
+		}
 		for _, n := range []string{op.Name, deref(op.After), op.To} {
 			if at, renamed := owner[n]; n != "" && renamed && at != i {
 				return refuseEdit(EditBadOp, i, "%s is renamed in this preview, so no other edit names it", n)
@@ -106,6 +109,9 @@ func (st *editState) rename(i int, op EditOp) *EditError {
 	step := st.out.Steps[op.Name]
 	if proofStep(st.out, op.Name) || proofStep(File{Steps: map[string]Step{op.To: step}}, op.To) {
 		return refuseEdit(EditLocked, i, "proof is proof by its name and is not renamed from or into")
+	}
+	if unsupportedBaselinePolicy(op.To, step.Kind, step.Until) {
+		step.Until, step.wroteUntil = factory.UntilGreen, true
 	}
 	for kind, list := range st.out.Pipeline {
 		at := indexOf(list, op.Name)

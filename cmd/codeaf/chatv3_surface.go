@@ -11,6 +11,7 @@ import (
 	internalenv "github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/syncsetup"
 	"github.com/Agent-Field/codeaf/internal/teams"
 	"github.com/Agent-Field/codeaf/internal/tui3"
 	codeupdate "github.com/Agent-Field/codeaf/internal/update"
@@ -49,6 +50,8 @@ var (
 // it would lack is everything below, which is why [TestOnlyTheSurfaceHelperRunsTheV3Surface]
 // reads this package's sources rather than trusting the next door to remember.
 func runSurface(ctx context.Context, options tui3.Options) error {
+	stopStorage := syncsetup.StartStorageRefresh(ctx, home.Dir(), false)
+	defer stopStorage()
 	if options.Host == "" {
 		if options.Notices == nil {
 			options.Notices = surfaceNotices
@@ -58,8 +61,16 @@ func runSurface(ctx context.Context, options tui3.Options) error {
 	if options.SyncService == "" && options.Host == "" {
 		options.SyncService = chatSyncService()
 	}
+	if options.SyncStats == nil && options.Host == "" {
+		options.SyncStats = chatSyncStats
+	}
 	forced := armFinalSaving()
-	setFinalSyncService(options.SyncService)
+	var progressAllowed func() bool
+	if options.Host == "" {
+		// Hosted local chats use this pairing; an explicit remote host uses its own.
+		progressAllowed = func() bool { return !syncsetup.ConfirmedRemoved(home.Dir()) }
+	}
+	setFinalSyncService(options.SyncService, progressAllowed)
 	previousCompatibility := options.SavingCompatibility
 	options.SavingCompatibility = func(check func() bool) {
 		retainSavingCompatibility(check)
@@ -79,6 +90,13 @@ func runSurface(ctx context.Context, options tui3.Options) error {
 		recordFinalSaveFailure(err)
 		if previousSaveFailure != nil {
 			previousSaveFailure(err)
+		}
+	}
+	previousNotices := options.SavingNotices
+	options.SavingNotices = func(lines []string) {
+		recordFinalSaveNotices(lines)
+		if previousNotices != nil {
+			previousNotices(lines)
 		}
 	}
 	previousClosing, previousForce := options.ClosingStarted, options.ForceQuit

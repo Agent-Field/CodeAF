@@ -8,11 +8,14 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -32,6 +35,11 @@ const workerPollLimit = 30 * time.Second
 // machine cool; a job queued meanwhile waits at most that long.
 const workerPollEvery = time.Second
 
+// presenceSaveEvery limits heartbeat writes under ordinary settings. A
+// request saves sooner when its persisted beat reaches half the offline
+// timeout, so a restart cannot mistake recently heard runners for silence.
+const presenceSaveEvery = 15 * time.Second
+
 type workerService struct {
 	st          *store.Store
 	desk        *lease.Desk
@@ -40,7 +48,27 @@ type workerService struct {
 	wait        time.Duration
 	mu          sync.RWMutex
 	credentials map[[32]byte]registeredWorker
+	// idle is each worker's last look that found nothing, by the floor it
+	// read ([Handler.idleFloor]): a pull on the same floor looks no again.
+	idle   map[string]idleLook
+	idleMu sync.Mutex
+	// savedAt is when the registry was last written, and sweptAt when a pull
+	// last looked for a restarted runner's rows ([Handler.sweepQuietRunners]).
+	savedAt, sweptAt time.Time
+
+	// savedFile is when the runner file last took a heartbeat. One stamp
+	// covers every row, so a burst of idle pulls writes the file once.
+	savedFile time.Time
 }
+
+// heardSaveEvery is how stale the saved registry's Last may grow. A WORKER'S
+// PRESENCE IS KEPT IN MEMORY AND SAVED AT MOST THIS OFTEN: every request a
+// worker makes moves its Last, and saving the registry on each one rewrote it
+// every few seconds on an idle machine (fifteen slots each re-pulling), which
+// moved the floor folder that every open step chat keyed its stop check on.
+// The page reads the rows in memory; the saved Last only has to outlive a
+// restart, well inside [lease.OfflineAfter].
+const heardSaveEvery = presenceSaveEvery
 
 // registeredWorker retains the machine beside its identity without putting
 // bearer secrets into the floor's public facts. Last is the last request
@@ -67,6 +95,8 @@ type registeredWorker struct {
 	Version string
 	Last    time.Time
 	Worker  lease.Worker
+	// persistedLast is the heartbeat last saved to disk.
+	persistedLast time.Time
 }
 
 type workerKey struct{}
@@ -99,6 +129,7 @@ func (h *Handler) workerRoutes() {
 	h.route("/v1/workers/leases/{lease}/heartbeat", map[string]http.HandlerFunc{http.MethodPost: h.heartbeatWorker})
 	h.route("/v1/workers/leases/{lease}/report", map[string]http.HandlerFunc{http.MethodPost: h.reportWorker})
 	h.route("/v1/workers/leases/{lease}/done", map[string]http.HandlerFunc{http.MethodPost: h.doneWorker})
+	h.route("/v1/workers/leases/{lease}/handback", map[string]http.HandlerFunc{http.MethodPost: h.handBackWorker})
 	h.route("/v1/workers/recover/{id}", map[string]http.HandlerFunc{http.MethodPost: h.recoverWorkerReport, http.MethodGet: h.workerRecoveryStatus})
 }
 
@@ -150,11 +181,31 @@ func (s *workerService) heard(id string, at time.Time) {
 		}
 		row.Last = at
 		s.credentials[key] = row
-		if err := s.saveRegistry(); err != nil {
-			s.err = err
+		// THE FILE WAKES EVERY WAITER when the watch is paying attention
+		// to it. Last is what this process answers presence from, so it
+		// moves on every request. One write per interval records every
+		// row's heartbeat together.
+		if s.savedFile.IsZero() || !at.Before(s.savedFile.Add(presenceSaveEvery)) || !at.Before(row.persistedLast.Add(s.presenceSaveInterval())) {
+			if err := s.saveRegistry(); err != nil {
+				s.err = err
+			} else {
+				s.savedFile = at
+			}
 		}
 		return
 	}
+}
+
+// Persistence follows the configured silence window as well as the ordinary
+// write throttle, so a different slot's write cannot hide an old saved beat.
+func (s *workerService) presenceSaveInterval() time.Duration {
+	timeout := lease.OfflineAfter
+	if s.st != nil {
+		if settings, err := s.st.RunnerSettings(); err == nil {
+			timeout = time.Duration(settings.RunnerTimeoutSeconds) * time.Second
+		}
+	}
+	return min(presenceSaveEvery, timeout/2)
 }
 
 func requestWorker(r *http.Request) lease.Worker {
@@ -356,6 +407,56 @@ func (s *workerService) forgetQuietLocked(worker lease.Worker, held []lease.Leas
 	}
 }
 
+// sweepQuietRunners forgets the rows a restarted runner left behind. A
+// RUNNER THAT RESTARTS ATTACHES EVERY SLOT AGAIN AT ONCE, while the rows of the
+// process it replaced were heard moments before, so the attach keeps them
+// ([workerService.forgetQuietLocked] forgets only quiet ones), and nothing
+// else ever looked again: every restart added a machine's whole set of rows
+// (15 became 30) and the old ones stayed, saying "Last 00:50", for good. An
+// idle pull, which every live slot makes at least once a wait, forgets a row
+// of its own computer and person once that row has been quiet past the runner
+// timeout and holds no lease, exactly as the next attach would. It looks at
+// most once per [heardSaveEvery], and reads the leases only when a row is
+// quiet.
+func (h *Handler) sweepQuietRunners(worker lease.Worker) {
+	s := h.workers
+	now := s.now()
+	s.mu.Lock()
+	if now.Sub(s.sweptAt) < heardSaveEvery && !now.Before(s.sweptAt) {
+		s.mu.Unlock()
+		return
+	}
+	s.sweptAt = now
+	quiet := false
+	for _, row := range s.credentials {
+		if row.Worker.Handle == worker.Handle && row.Worker.Machine == worker.Machine && row.Worker.ID != worker.ID && now.Sub(row.Last) > lease.OfflineAfter {
+			quiet = true
+			break
+		}
+	}
+	s.mu.Unlock()
+	if !quiet {
+		return
+	}
+	offline := h.runnerOfflineAfter()
+	var held []lease.Lease
+	if s.desk != nil {
+		var err error
+		if held, err = s.desk.Live(); err != nil {
+			return
+		}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	before := len(s.credentials)
+	s.forgetQuietLocked(worker, held, offline)
+	if len(s.credentials) != before {
+		if err := s.saveRegistry(); err != nil {
+			s.err = err
+		}
+	}
+}
+
 // machineFor is the attached worker's machine for this handle, or "" when
 // nobody with that handle has registered on this server.
 func (h *Handler) machineFor(handle string) string {
@@ -376,8 +477,10 @@ func (h *Handler) pullWorker(w http.ResponseWriter, r *http.Request) {
 	if !h.workerReady(w) {
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), h.workers.wait)
-	defer cancel()
+	ctx := r.Context()
+	began := time.Now()
+	wait := time.NewTimer(h.workers.wait)
+	defer wait.Stop()
 	// AN OPEN PULL LOOKS AGAIN ONLY WHEN THE FLOOR CHANGED. Every runner slot
 	// holds one open, and a look reads every job on the floor, so a timed
 	// look made an idle machine read slots x jobs documents ten times a
@@ -393,9 +496,13 @@ func (h *Handler) pullWorker(w http.ResponseWriter, r *http.Request) {
 	defer stop()
 	for {
 		if ctx.Err() != nil {
-			if r.Context().Err() == nil {
-				w.WriteHeader(http.StatusNoContent)
-			}
+			return
+		}
+		// The next request renews presence. Re-read a shortened policy on
+		// notification, but never extend the original request's heartbeat.
+		deadline := began.Add(min(h.workers.wait, h.runnerOfflineAfter()/2))
+		if !time.Now().Before(deadline) {
+			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 		// THE SAVED TOGGLE WINS. Attach records what this process was willing
@@ -406,10 +513,9 @@ func (h *Handler) pullWorker(w http.ResponseWriter, r *http.Request) {
 		if h.failed(w, err) {
 			return
 		}
-		// A pull sits open for up to thirty seconds. That wait is the idle
-		// machine's heartbeat: the same sixty-second deadline as a busy runner.
-		h.workers.heard(worker.ID, h.workers.now())
-		h.machineEvents()
+		// Authorization already recorded this request's heartbeat. The
+		// fixed pull deadline makes the next request renew it before expiry.
+		h.sweepQuietRunners(worker)
 		h.workers.mu.RLock()
 		// Authorization captured the worker before this handler (and possibly
 		// before a long-poll wait). A saved lowering governs every new lease,
@@ -430,8 +536,31 @@ func (h *Handler) pullWorker(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
+		floor, idle := h.idleFloor()
+		look := idleLook{floor: floor, slots: worker.Slots, takes: fmt.Sprint(worker.TakesUnassigned)}
+		if idle && h.workers.lookedIdle(worker.ID, look) {
+			h.workers.mu.RUnlock()
+			wait.Reset(time.Until(deadline))
+			select {
+			case <-ctx.Done():
+				if r.Context().Err() == nil {
+					w.WriteHeader(http.StatusNoContent)
+				}
+				return
+			case <-wait.C:
+				w.WriteHeader(http.StatusNoContent)
+				return
+			case <-changed:
+			case <-blind:
+			}
+			continue
+		}
+		pullLooks.Add(1)
 		held, err := h.workers.desk.Pull(worker)
 		h.workers.mu.RUnlock()
+		if idle && errors.Is(err, lease.ErrNoJob) {
+			h.workers.keepIdle(worker.ID, look)
+		}
 		if err == nil {
 			h.pulled(w, r, held)
 			return
@@ -444,16 +573,79 @@ func (h *Handler) pullWorker(w http.ResponseWriter, r *http.Request) {
 			h.workerError(w, err)
 			return
 		}
+		wait.Reset(time.Until(deadline))
 		select {
 		case <-ctx.Done():
-			if r.Context().Err() == nil {
-				w.WriteHeader(http.StatusNoContent)
-			}
+			return
+		case <-wait.C:
+			w.WriteHeader(http.StatusNoContent)
 			return
 		case <-changed:
 		case <-blind:
 		}
 	}
+}
+
+// pullLooks counts the looks pulls made: each one lists and decodes every job.
+var pullLooks atomic.Int64
+
+// idleLook is what a look that found nothing read: the floor's files, the
+// worker's slots and its consent to unassigned work.
+type idleLook struct {
+	floor, takes string
+	slots        int
+}
+
+// idleFloor is the floor a look reads, as one directory read and one stat of
+// each file, and whether it can be trusted to say a look would find the same:
+// true only while no lease is held. A HOLD CAN EXPIRE BY THE CLOCK ALONE, and a
+// look is what requeues it, so with any hold on the floor every pull looks.
+// AN IDLE MACHINE MUST NOT DECODE THE FLOOR TO LEARN NOTHING CHANGED: every
+// runner slot holds a pull open and makes a fresh one each wait, and each look
+// decoded every job on the floor, so fifteen idle slots on a floor of eighty
+// jobs spent a third of the idle engine's CPU finding no work. The pull's own
+// bookkeeping (the runner registry, the live record, the sources' poll record)
+// is no input of a look, so it is not part of the floor.
+func (h *Handler) idleFloor() (string, bool) {
+	if h.workers.desk == nil || h.workers.st == nil {
+		return "", false
+	}
+	unheld, err := h.workers.desk.Unheld()
+	if err != nil || !unheld {
+		return "", false
+	}
+	snap := snapshot(h.workers.st.Root())
+	var b strings.Builder
+	names := make([]string, 0, len(snap.files))
+	for name := range snap.files {
+		if snap.floorInput(name) {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		b.WriteString(name)
+		b.WriteByte(' ')
+		b.WriteString(snap.files[name])
+		b.WriteByte('\n')
+	}
+	return b.String(), true
+}
+
+func (s *workerService) lookedIdle(id string, look idleLook) bool {
+	s.idleMu.Lock()
+	defer s.idleMu.Unlock()
+	last, ok := s.idle[id]
+	return ok && last == look
+}
+
+func (s *workerService) keepIdle(id string, look idleLook) {
+	s.idleMu.Lock()
+	defer s.idleMu.Unlock()
+	if s.idle == nil {
+		s.idle = map[string]idleLook{}
+	}
+	s.idle[id] = look
 }
 
 // floorChanges is a channel that ticks when the factory root changes, and
@@ -502,7 +694,7 @@ func (h *Handler) pulled(w http.ResponseWriter, r *http.Request, held lease.Leas
 func wireSignals(in []lease.Signal) []api.WorkerSignal {
 	out := make([]api.WorkerSignal, len(in))
 	for i, s := range in {
-		out[i] = api.WorkerSignal{Delivery: s.Delivery, PublishAnyway: s.PublishAnyway, Automatic: s.Automatic, Budget: s.Budget, ID: s.ID, Verb: s.Verb, Yes: s.Yes, Words: s.Words}
+		out[i] = api.WorkerSignal{Delivery: s.Delivery, PublishAnyway: s.PublishAnyway, Automatic: s.Automatic, Budget: s.Budget, ID: s.ID, Verb: s.Verb, Yes: s.Yes, Words: s.Words, Execution: s.Execution, Decision: s.Decision, By: s.By}
 	}
 	return out
 }
@@ -531,6 +723,21 @@ func (h *Handler) heartbeatWorker(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.write(w, http.StatusOK, api.WorkerHeartbeat{Factory: h.factory, Lease: workerLease(held), Signals: wireSignals(signals)})
+}
+
+// handBackWorker takes back a hold whose runner is quitting cleanly
+// ([lease.Desk.HandBack]), so the job is on the queue at once instead of
+// after the hold's silence runs out.
+func (h *Handler) handBackWorker(w http.ResponseWriter, r *http.Request) {
+	if !h.workerReady(w) {
+		return
+	}
+	if h.workerError(w, h.workers.desk.HandBack(r.PathValue("lease"), requestWorker(r).ID)) {
+		return
+	}
+	h.write(w, http.StatusOK, struct {
+		Factory api.Factory `json:"factory"`
+	}{h.factory})
 }
 
 func (h *Handler) reportWorker(w http.ResponseWriter, r *http.Request) {
@@ -678,6 +885,17 @@ func (h *Handler) doneWorker(w http.ResponseWriter, r *http.Request) {
 		if run.ExternalPRHeadChecked(*it) {
 			return run.FinishReport(it, state, now)
 		}
+		// A JOB WHOSE WORK RAN ON ANOTHER MACHINE ENDS AS ITS RUN DID
+		// (factory.RunsElsewhere), whatever the record holds. A route that
+		// asks first writes the person's yes to Start as an approval, and
+		// read as consent to publish here it would ship the job down the
+		// native path below, which gives it the factory's Follow PR step:
+		// the job then no longer reads as one whose pull request a run
+		// delivered, the follow never records the head the run left, and
+		// Merge says "no approved commit is recorded" for good (WorkAF r10).
+		if factory.RunsElsewhere(*it) {
+			return run.FinishReport(it, state, now)
+		}
 		// A WORKER NEVER APPROVES: done as shipped is a publish only beside
 		// the job's recorded approval and a reported PR or comment; anything
 		// else is the proof gate's to decide, as it always has been.
@@ -743,6 +961,10 @@ func (h *Handler) workerError(w http.ResponseWriter, err error) bool {
 	case errors.Is(err, lease.ErrWithdrawn):
 		w.Header().Set(api.LeaseWithdrawnHeader, "1")
 		h.fail(w, http.StatusConflict, "lease was withdrawn")
+		return true
+	case errors.Is(err, lease.ErrStopped):
+		w.Header().Set(api.LeaseStoppedHeader, "1")
+		h.fail(w, http.StatusConflict, "lease is no longer live")
 		return true
 	case errors.Is(err, lease.ErrNoLease):
 		h.fail(w, http.StatusConflict, "lease is no longer live")

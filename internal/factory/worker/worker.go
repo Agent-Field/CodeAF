@@ -35,12 +35,21 @@ type Options struct {
 	Keep func(slot int, w *client.WorkerClient)
 	// Attach names the machine, its person and its consent to unassigned work.
 	Attach api.WorkerAttach
+	// Needs reads what this machine lacks before each lease poll. A changed
+	// word refreshes the attachment between jobs, leaving a running lease alone.
+	// Nil keeps Attach.Needs for the life of the worker.
+	Needs func() string
 	// Runner runs the jobs over Mirror.
 	Runner *run.Runner
 	Mirror *store.Store
 	// LocalLease keeps this machine's receipt of a pulled or renewed lease.
 	// An empty lease removes the receipt before the mirror is put away.
 	LocalLease func(base string, lease api.WorkerLease)
+	// CarryStop carries a person's Stop that landed while no runner held the
+	// job to the runs of it that go on elsewhere (an AgentField run on its
+	// control plane), and writes their end. The factory offers such a job to
+	// a runner held to talk only. Nil leaves those runs alone.
+	CarryStop func(context.Context, factory.Item) error
 	// Reply submits words to the manager on this machine. A failed delivery
 	// stays pending; the next heartbeat offers it again.
 	Reply func(context.Context, factory.Item, string) error
@@ -82,11 +91,12 @@ const CapacityEveryDefault = 5 * time.Second
 // slot loops. Lowering never touches a running job: a slot above the limit
 // retires only between jobs, after its last pull returns.
 type capacity struct {
-	mu      sync.Mutex
-	limit   int
-	running map[int]bool
-	wake    chan struct{}
-	jobs    map[int]chan struct{}
+	mu       sync.Mutex
+	limit    int
+	running  map[int]bool
+	wake     chan struct{}
+	jobs     map[int]chan struct{}
+	handBack map[string]bool
 }
 
 // takeJob keeps successive leases from sharing a mirror and runner control.
@@ -208,6 +218,7 @@ func Run(ctx context.Context, opts Options) {
 // slot pulls and runs one job at a time. Failures back off and dial again.
 func (o Options) slot(ctx context.Context, slot int) {
 	wait := time.Duration(0)
+	attachedNeeds, needsKnown := o.Attach.Needs, o.Needs == nil
 	for pause(ctx, wait) {
 		if o.cap.retire(slot) {
 			return
@@ -217,12 +228,17 @@ func (o Options) slot(ctx context.Context, slot int) {
 			wait = backoff(wait)
 			continue
 		}
-		if w.Credential() == "" {
-			attached, err := w.Attach(ctx, o.Attach)
+		attach := o.Attach
+		if o.Needs != nil {
+			attach.Needs = o.Needs()
+		}
+		if w.Credential() == "" || !needsKnown || attach.Needs != attachedNeeds {
+			attached, err := w.Attach(ctx, attach)
 			if err != nil {
 				wait = backoff(wait)
 				continue
 			}
+			attachedNeeds, needsKnown = attach.Needs, true
 			// THE OWNER'S SAVED NUMBER WINS over this process's own default
 			// or environment pin, so a restart resumes at what was chosen.
 			// Only an elastic worker listens; an older factory says nothing.
@@ -234,6 +250,7 @@ func (o Options) slot(ctx context.Context, slot int) {
 			}
 		}
 		o.recoverRetained(ctx, w)
+		o.releaseHandBacks(ctx, w)
 		began := time.Now()
 		pulled, ok, err := w.Pull(ctx)
 		switch {
@@ -245,7 +262,7 @@ func (o Options) slot(ctx context.Context, slot int) {
 		case !ok && time.Since(began) < 200*time.Millisecond:
 			// A pull that came back at once (this worker still holds a job
 			// in another process) must not spin.
-			wait = time.Second
+			wait = quickEmptyPullWait(o.Attach)
 		case !ok:
 			wait = 0
 		default:
@@ -280,6 +297,23 @@ func pause(ctx context.Context, d time.Duration) bool {
 	}
 }
 
+// needsPullEvery is how often a worker that attached needing something (a
+// model provider) asks again. The factory answers it at once with nothing to
+// do for as long as this Run lasts, because the state is read when it
+// attaches, and every pull made the factory settle its whole floor; once a
+// second kept an idle engine busy. Ten seconds keeps the runner's presence well
+// inside the default offline window (lease.OfflineAfter).
+const needsPullEvery = 10 * time.Second
+
+// quickEmptyPullWait is the pause after a pull that came back at once with
+// nothing to do.
+func quickEmptyPullWait(attach api.WorkerAttach) time.Duration {
+	if attach.Needs != "" {
+		return needsPullEvery
+	}
+	return time.Second
+}
+
 func backoff(d time.Duration) time.Duration {
 	return min(max(2*d, time.Second), 30*time.Second)
 }
@@ -288,7 +322,7 @@ func backoff(d time.Duration) time.Duration {
 type job struct {
 	o      Options
 	w      *client.WorkerClient
-	tables bool
+	admits api.ReportAdmits
 	lease  string
 	id     int
 	sent   factory.Item // the mirror as last reported
@@ -304,12 +338,17 @@ type job struct {
 	pending       *pendingDelivery
 	blocked       string
 	withdrawn     bool
+	stopped       bool
+	expiresAt     time.Time
+	missedBeats   int
 	control       *client.PreparedWorkerReport
 	controlTries  int
 	controlSent   bool
 	reconcile     func(string)
 	spendReport   *client.PreparedWorkerReport
 	spendBaseline float64
+	// quiet is the last flush that found nothing to send ([quietFlush]).
+	quiet quietFlush
 }
 
 var admissionRetryWindow = factory.RecoveryWindow
@@ -323,7 +362,7 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 	defer o.cap.releaseJob(it.ID)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	j := &job{tables: pulled.Job.RoundCostTables, o: o, w: w, lease: pulled.Lease.ID, id: it.ID, accepted: map[string]bool{}, acknowledged: map[string]bool{}}
+	j := &job{admits: pulled.Job.ReportAdmits(), o: o, w: w, lease: pulled.Lease.ID, id: it.ID, expiresAt: pulled.Lease.ExpiresAt, accepted: map[string]bool{}, acknowledged: map[string]bool{}}
 	defer j.clearMirror()
 	defer j.keepLocal(api.WorkerLease{Job: it.ID})
 	pulledTalk, pulledNotes := it.Talk, it.Notes
@@ -341,6 +380,20 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 	defer o.Runner.SetPublishCheck(it.ID, nil)
 	if pulled.Lease.ThreadOnly {
 		j.sent = it
+		// A STOP THAT LANDED WITH NO RUNNER HOLDING THE JOB IS CARRIED HERE:
+		// its run going on elsewhere is cancelled before anything else. A
+		// carry that failed keeps the hold until it runs out, and the
+		// factory offers the job again; one that worked lets go at once
+		// unless a reply is waiting.
+		if o.CarryStop != nil && factory.StoppedByPerson(it) && factory.AgentFieldAnyRunLive(it) {
+			if err := o.CarryStop(ctx, it); err != nil {
+				return
+			}
+			if !pendingReply(it) {
+				_ = w.Done(ctx, j.lease, api.WorkerDone{})
+				return
+			}
+		}
 		j.signals(ctx, pulled.Signals)
 		j.converse(ctx)
 		return
@@ -552,7 +605,16 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 				return reportResult{alive: !j.lostLease(err), admitted: err == nil}
 			})
 		case <-ctx.Done():
-			j.drop()
+			// THIS PROCESS IS ENDING, WHICH IS NOT A STOP: the job is let go,
+			// never stopped as its person's, so work it runs elsewhere goes
+			// on (run.StoppedHere reads false), and the lease is handed back
+			// so the job is on the queue at once to be taken or followed
+			// again ([job.handBack]).
+			j.letGo()
+			// The reporter owns the delivery state the hand-back reads; it
+			// ends with this context once its report in flight returns.
+			<-reporterDone
+			j.handBack()
 			return
 		case <-report.C:
 			// Ticks during an in-flight report are skipped, never queued.
@@ -562,6 +624,13 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 		case <-beat.C:
 			if !j.beat(ctx) {
 				j.drop()
+				if !j.wasStopped() {
+					cancel()
+					<-reporterDone
+					if !j.handBack() {
+						o.keepHandBack(j.lease)
+					}
+				}
 				return
 			}
 		}
@@ -630,6 +699,15 @@ func (j *job) flush(ctx context.Context) bool {
 	if j.pending != nil {
 		return j.sendPending(ctx)
 	}
+	// The mirror is looked at before it is read, so a write landing between
+	// the two leaves the newer document under the older stamp and the next
+	// flush reads it again ([quietFlush]).
+	stamp, stampErr := j.o.Mirror.Stamp(j.id)
+	if stampErr == nil && j.quiet.holds(stamp, j.now()) && !j.owesDelivery() {
+		return true
+	}
+	j.quiet = quietFlush{}
+	fullFlushes.Add(1)
 	cur, err := j.o.Mirror.Get(j.id)
 	if err != nil {
 		return true
@@ -673,6 +751,9 @@ func (j *job) flush(ctx context.Context) bool {
 	j.mu.Unlock()
 	ok = ok || len(report.Delivered) > 0
 	if !ok {
+		if stampErr == nil {
+			j.quiet = quietFlush{mirror: stamp, talk: cur.Talk, thread: factorythread.VersionOf(cur.Talk), at: j.now()}
+		}
 		return true
 	}
 	// Later thread or usage updates must still identify a parked budget wait;
@@ -724,27 +805,39 @@ func (j *job) beat(ctx context.Context) bool {
 	if j.lostLease(err) {
 		return false
 	}
-	if err == nil {
-		// A returned ID can still be redelivered; keep it deduplicated until
-		// the factory confirms its removal by omitting it from a successful beat.
-		redelivered := make(map[string]bool, len(hb.Signals))
-		for _, signal := range hb.Signals {
-			redelivered[signal.Delivery] = true
+	if err != nil {
+		j.missedBeats++
+		if (!j.expiresAt.IsZero() && !j.now().Before(j.expiresAt)) || j.missedBeats >= lease.OfflineMisses {
+			j.mu.Lock()
+			j.withdrawn = true
+			j.mu.Unlock()
+			return false
 		}
-		j.mu.Lock()
-		for id := range j.signalPending {
-			if !redelivered[id] {
-				delete(j.signalPending, id)
-			}
-		}
-		for _, id := range acknowledged {
-			if !redelivered[id] {
-				delete(j.signalIDs, id)
-			}
-		}
-		j.mu.Unlock()
-		j.keepLocal(hb.Lease)
+		return true
 	}
+	j.missedBeats = 0
+	if !hb.Lease.ExpiresAt.IsZero() {
+		j.expiresAt = hb.Lease.ExpiresAt
+	}
+	// A returned ID can still be redelivered; keep it deduplicated until
+	// the factory confirms its removal by omitting it from a successful beat.
+	redelivered := make(map[string]bool, len(hb.Signals))
+	for _, signal := range hb.Signals {
+		redelivered[signal.Delivery] = true
+	}
+	j.mu.Lock()
+	for id := range j.signalPending {
+		if !redelivered[id] {
+			delete(j.signalPending, id)
+		}
+	}
+	for _, id := range acknowledged {
+		if !redelivered[id] {
+			delete(j.signalIDs, id)
+		}
+	}
+	j.mu.Unlock()
+	j.keepLocal(hb.Lease)
 	return j.signals(ctx, hb.Signals)
 }
 
@@ -827,12 +920,21 @@ func (j *job) signals(ctx context.Context, signals []api.WorkerSignal) bool {
 			effectErr = r.Answer(j.id, s.Yes, s.Words)
 		case lease.SignalSteer:
 			effectErr = r.Steer(j.id, s.Words)
+		case lease.SignalAgentField:
+			// A PERSON ANSWERED THE RUN'S PAUSE ON THE FACTORY. This runner
+			// started the run, so it carries the answer to the control plane;
+			// a control plane that does not answer now is tried again on the
+			// next beat, because the signal stays until it is acknowledged.
+			effectErr = r.AnswerAgentField(j.id, factory.AgentFieldDecision{RequestID: s.ID, Execution: s.Execution, Decision: s.Decision, Words: s.Words, By: s.By})
 		case lease.SignalModel:
 			effectErr = r.SetModelSelection(j.id, s.Words, s.Automatic)
 		case lease.SignalAutonomy:
 			effectErr = j.o.Mirror.Update(j.id, func(it *factory.Item) error { it.Autonomy = s.Words; return nil })
 		case lease.SignalStop:
 			// Drop asked this machine to stop. Stop keeps the branch.
+			j.mu.Lock()
+			j.stopped = true
+			j.mu.Unlock()
 			if err := r.Stop(j.id); err != nil && !j.signalMoot(s) {
 				return true
 			}
@@ -971,20 +1073,71 @@ func (j *job) converse(ctx context.Context) {
 // the job's folder.
 const StopWait = 5 * time.Second
 
-// drop lets the job go here: the factory stopped it, or this process is
-// ending and the lease will expire into the queue for another worker.
+// letGo is drop for a process that is ending: the job is withdrawn here,
+// never stopped, and the lease is handed back ([job.handBack]) or, failing
+// that, expires into the queue for another worker.
+func (j *job) letGo() {
+	j.mu.Lock()
+	j.withdrawn = true
+	j.mu.Unlock()
+	j.drop()
+}
+
+// drop lets the job go here: the factory stopped it, took its lease back, or
+// this process is ending ([job.letGo]).
 func (j *job) drop() {
 	j.keepLocal(api.WorkerLease{Job: j.id})
-	j.mu.Lock()
-	withdrawn := j.withdrawn
-	j.mu.Unlock()
-	if withdrawn {
-		j.o.Runner.Withdraw(j.id)
-	} else {
+	if j.wasStopped() {
 		_ = j.o.Runner.Stop(j.id)
+	} else {
+		j.o.Runner.Withdraw(j.id)
 	}
 	for deadline := time.Now().Add(StopWait); j.o.Runner.Running(j.id) && time.Now().Before(deadline); {
 		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+func (j *job) wasStopped() bool {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return j.stopped
+}
+
+func (o Options) keepHandBack(leaseID string) {
+	if o.cap == nil || leaseID == "" {
+		return
+	}
+	o.cap.mu.Lock()
+	if o.cap.handBack == nil {
+		o.cap.handBack = map[string]bool{}
+	}
+	o.cap.handBack[leaseID] = true
+	o.cap.mu.Unlock()
+}
+
+func (o Options) releaseHandBacks(ctx context.Context, w *client.WorkerClient) {
+	if o.cap == nil || w == nil {
+		return
+	}
+	o.cap.mu.Lock()
+	leases := make([]string, 0, len(o.cap.handBack))
+	for id := range o.cap.handBack {
+		leases = append(leases, id)
+	}
+	o.cap.mu.Unlock()
+	for _, id := range leases {
+		wait := handBackWait
+		if o.BeatEvery > 0 && o.BeatEvery < lease.HeartbeatEvery {
+			wait = min(wait, max(100*time.Millisecond, o.BeatEvery*4))
+		}
+		hbCtx, cancel := context.WithTimeout(ctx, wait)
+		err := w.HandBack(hbCtx, id)
+		cancel()
+		if err == nil || gone(err) {
+			o.cap.mu.Lock()
+			delete(o.cap.handBack, id)
+			o.cap.mu.Unlock()
+		}
 	}
 }
 
@@ -1016,7 +1169,8 @@ func (j *job) refuse(ctx context.Context, why error) {
 func final(it factory.Item) api.WorkerDone {
 	switch it.State {
 	case factory.StateShipped:
-		if it.PullRequest != nil || it.CommentURL != "" {
+		// A job an AgentField reasoner ran is done when its run is.
+		if it.PullRequest != nil || it.CommentURL != "" || it.RunOn != "" || factory.AgentFieldPipeline(it) {
 			return api.WorkerDone{State: api.StateDone}
 		}
 		return api.WorkerDone{}
@@ -1074,10 +1228,27 @@ func (j *job) settleAccounting(ctx context.Context) {
 }
 
 func (j *job) lostLease(err error) bool {
-	if errors.Is(err, client.ErrLeaseWithdrawn) {
+	if errors.Is(err, client.ErrLeaseStopped) {
+		j.mu.Lock()
+		j.stopped = true
+		j.mu.Unlock()
+	} else if gone(err) {
 		j.mu.Lock()
 		j.withdrawn = true
 		j.mu.Unlock()
 	}
 	return gone(err)
+}
+
+// pendingReply says a person's words wait on the job's manager.
+func pendingReply(it factory.Item) bool {
+	if it.Talk == "" {
+		return false
+	}
+	for _, m := range it.Thread {
+		if m.State == "pending" {
+			return true
+		}
+	}
+	return false
 }

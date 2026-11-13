@@ -159,6 +159,9 @@ func (b *appBackend) steer(agent, text, clientID string, shown *appSending) erro
 	if err != nil {
 		return err
 	}
+	if handled, err := b.agentFieldSteer(a, text); handled {
+		return err
+	}
 	// A STEER WHILE THE AGENT IS STARTING IS KEPT FOR ITS FIRST TURN, which is
 	// on its way and is what the person is correcting; it is given to that
 	// turn the moment it runs ([appBackend.bootSettle]), through this same
@@ -190,6 +193,9 @@ func (b *appBackend) steer(agent, text, clientID string, shown *appSending) erro
 		return err
 	}
 	if _, handled, err := b.tryFactoryStatus(a, text, clientID, shown); handled {
+		return err
+	}
+	if _, handled, err := b.tryFactoryRecovery(a, text, clientID, shown); handled {
 		return err
 	}
 	live := b.liveOf(a)

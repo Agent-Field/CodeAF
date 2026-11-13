@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/filelock"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 )
 
 type Phase string
@@ -217,7 +218,7 @@ func durable(path string, s State) error {
 	if e != nil {
 		return e
 	}
-	defer os.Remove(f.Name())
+	defer fsreplace.Remove(f.Name())
 	if _, e = f.Write(raw); e != nil {
 		f.Close()
 		return e
@@ -229,18 +230,13 @@ func durable(path string, s State) error {
 	if e = f.Close(); e != nil {
 		return e
 	}
-	if e = os.Rename(f.Name(), path); e != nil {
+	if e = fsreplace.Rename(f.Name(), path); e != nil {
 		return e
 	}
 	return syncDir(filepath.Dir(path))
 }
 func syncDir(path string) error {
-	f, e := os.Open(path)
-	if e != nil {
-		return e
-	}
-	defer f.Close()
-	return f.Sync()
+	return fsreplace.SyncDir(path)
 }
 func present(path string) (bool, error) {
 	_, e := os.Lstat(path)

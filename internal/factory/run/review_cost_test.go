@@ -43,7 +43,7 @@ func TestReviewCoalescedWorkerRounds(t *testing.T) {
 	reviewApply(t, &cur, 1, .2025)
 	reviewApply(t, &cur, 2, .0153)
 	report, _ := run.Diff(prev, cur)
-	report = api.ToWorkerReport(api.FromRunReport(report, true))
+	report = api.ToWorkerReport(api.FromRunReport(report, api.ReportAdmits{RoundCostTables: true}))
 	if err := run.ApplyReport(&prev, report, time.Now()); err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +89,7 @@ func TestReviewCoalescedCostPreservesPersonTailEdit(t *testing.T) {
 		t.Fatal(err)
 	}
 	report, _ := run.Diff(reviewItemWithDocs(), cur)
-	report = api.ToWorkerReport(api.FromRunReport(report, true))
+	report = api.ToWorkerReport(api.FromRunReport(report, api.ReportAdmits{RoundCostTables: true}))
 	if err := run.ApplyReport(&prev, report, time.Now()); err != nil {
 		t.Fatal(err)
 	}

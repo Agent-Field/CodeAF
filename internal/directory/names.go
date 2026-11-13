@@ -17,6 +17,7 @@ const MaxTitleBytes = 120
 var (
 	b64      = base64.RawURLEncoding
 	nameAAD  = []byte("codeaf:name:v1")
+	noteAAD  = []byte("codeaf:note:v1")
 	metaInfo = []byte("codeaf:metadata-key:v1")
 
 	errSealedShort = errors.New("directory: sealed name too short")
@@ -29,9 +30,26 @@ func MetadataKey(cellKey []byte) []byte {
 	return mac.Sum(nil)
 }
 
+// MaxNoteBytes is the longest message one computer may leave for a chat
+// another holds. MaxNotes of them fit in a device record well under the
+// relay's command cap once sealed.
+const (
+	MaxNoteBytes = 2000
+	MaxNotes     = 8
+)
+
+// SealNote seals a message's text under the metadata key. Its own
+// associated data keeps a sealed note from being read back as a name.
+func SealNote(key []byte, text string) (string, error) { return seal(key, text, noteAAD) }
+
+// OpenNote reverses SealNote.
+func OpenNote(key []byte, sealed string) (string, error) { return open(key, sealed, noteAAD) }
+
 // SealName encrypts plain under key with a random nonce and returns
 // b64(nonce ‖ ciphertext). The directory never sees the name.
-func SealName(key []byte, plain string) (string, error) {
+func SealName(key []byte, plain string) (string, error) { return seal(key, plain, nameAAD) }
+
+func seal(key []byte, plain string, aad []byte) (string, error) {
 	aead, err := chacha20poly1305.NewX(key)
 	if err != nil {
 		return "", err
@@ -40,11 +58,13 @@ func SealName(key []byte, plain string) (string, error) {
 	if _, err := rand.Read(nonce); err != nil {
 		return "", err
 	}
-	return b64.EncodeToString(aead.Seal(nonce, nonce, []byte(plain), nameAAD)), nil
+	return b64.EncodeToString(aead.Seal(nonce, nonce, []byte(plain), aad)), nil
 }
 
 // OpenName reverses SealName. A wrong key or a changed byte is an error.
-func OpenName(key []byte, sealed string) (string, error) {
+func OpenName(key []byte, sealed string) (string, error) { return open(key, sealed, nameAAD) }
+
+func open(key []byte, sealed string, aad []byte) (string, error) {
 	aead, err := chacha20poly1305.NewX(key)
 	if err != nil {
 		return "", err
@@ -57,7 +77,7 @@ func OpenName(key []byte, sealed string) (string, error) {
 		return "", errSealedShort
 	}
 	nonce, body := raw[:aead.NonceSize()], raw[aead.NonceSize():]
-	plain, err := aead.Open(nil, nonce, body, nameAAD)
+	plain, err := aead.Open(nil, nonce, body, aad)
 	return string(plain), err
 }
 

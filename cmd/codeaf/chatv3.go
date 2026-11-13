@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"io"
 	"os"
 	"path/filepath"
@@ -21,6 +20,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/connect"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/enginehost"
 	"github.com/Agent-Field/codeaf/internal/env"
@@ -37,6 +37,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/store"
 	"github.com/Agent-Field/codeaf/internal/subharness"
+	"github.com/Agent-Field/codeaf/internal/syncsetup"
 	"github.com/Agent-Field/codeaf/internal/trace"
 	"github.com/Agent-Field/codeaf/internal/tui3"
 	codeupdate "github.com/Agent-Field/codeaf/internal/update"
@@ -121,9 +122,17 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		"how many dollars an unattended --yolo session may carry its own work on (env CODEAF_MAX_COST)")
 	debug := flags.Bool("debug", false,
 		debugFlagHelp()+" · /debug turns it on mid-session")
+	// The three live flags of a headless turn (chat_once_live.go).
+	onceEvents := flags.String("events", "", "with --once: copy every line of this conversation's record to this file as it is written")
+	onceSteer := flags.String("steer", "", "with --once: read each line appended to this file as a note into the running turn")
+	onceJSON := flags.Bool("json", false, "with --once: print one machine-readable object {ok, stop, answer, model, error} instead of the reply")
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
+	if (*onceEvents != "" || *onceSteer != "" || *onceJSON) && strings.TrimSpace(*once) == "" {
+		return fmt.Errorf("--events, --steer and --json go with --once")
+	}
+	chatOnceLive = onceLive{events: *onceEvents, steer: *onceSteer, json: *onceJSON}
 	// THE RECORD'S SWITCH IS READ HERE AND THE RUN ID IS MINTED HERE, at the
 	// door, before anything can make a call — because a record written under a
 	// second id, or under none, is a record nothing can be joined to. The id is
@@ -374,6 +383,13 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// neither of them is a gate that quietly opens because the terminal
 		// happens to be a pipe.
 		cfg.AskConsent = false
+		// AND ITS COMMANDS ARE FENCED to the folder it runs in (fence.go):
+		// nobody watches them, so the jail holds what a person would have.
+		fence, err := unattendedFence(workspace, settings.ProfileDir)
+		if err != nil {
+			return err
+		}
+		cfg.Fence = fence
 		// AND NOTHING MAY BE SET UP HERE. An automation spends money at times
 		// nobody chose, so it needs a yes; a headless run has nobody to give
 		// one, and a clock that armed it anyway would be the harness agreeing on
@@ -675,7 +691,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// the top of the conversation — rather than growing surfaces of their
 		// own. An ordinary attended launch with the same file on disk is still
 		// shown nothing whatever.
-		Notice:        v3Interrupted(cfg, joinV3Notices(entryNotice, notice, session.UnattendedNotice(cfg), buildinfo.StaleNotice())),
+		Notice:        v3Interrupted(cfg, joinV3Notices(entryNotice, notice, session.UnattendedNotice(cfg), buildinfo.StaleNotice(), v3UpgradeNotice(cfg.Place.Dir, cfg.Interactive))),
 		ContextWindow: cfg.ContextWindow,
 		History:       recall,
 		DraftFile:     draft,
@@ -884,7 +900,7 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// resolved once, at the door (chatv3_process.go). Everything below this line
 	// is a function of the DIRECTORY this conversation is about, which is the
 	// whole of what makes a launch different from the process it runs in.
-	settings := proc.Settings
+	settings := proc.launchSettings()
 	chosen := v3TalkModel(opts.Model, settings)
 	// WHERE THE PERSON IS STANDING, which is not the same fact as which project
 	// this is: `codeaf` typed in repo/cmd/ is a conversation about the
@@ -932,15 +948,22 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// and the sweep read it themselves at the moment they would ask
 	// ([poolJudgeStandsDown]).
 	if !opts.OneModel {
-		taskLanded = poolJudgeHook(settings, settings.ProfileDir, workspace,
-			config.CrewCatalog, poolJudgeAsk(proc.liveSettings(settings), settings.ProfileDir), time.Now, "task")
+		if config.ModelPoolAt(settings.ProfileDir).CanRead() {
+			held := proc.poolErrands
+			hook := poolJudgeHookContext(held.ctx, settings, settings.ProfileDir,
+				config.CrewCatalog, poolJudgeAsk(proc.liveSettings(settings), settings.ProfileDir), time.Now, "task")
+			taskLanded = func(landing session.TaskLanding) {
+				held.goCtx("pool/judge", func(context.Context) { hook(landing) })
+			}
+		}
 		// The runs a live process would have judged but a process death left unjudged,
 		// and the headless doors that never had this hook: at start, on a goroutine
 		// nobody waits on, judge the resumed session's own final-state nodes and the
 		// pending file's rows, each exactly once, bounded so it never holds the prompt. The
 		// process tracker cancels and joins it at close.
-		poolErrandGoCtx(settings.ProfileDir, "pool/judge-sweep", func(ctx context.Context) {
-			poolJudgeSweepRun(ctx, settings, settings.ProfileDir, found.Place.Tasks(),
+		poolProfile := config.ProfilePath(settings.ProfileDir, "")
+		poolErrandGoCtx(proc.poolErrands, "pool/judge-sweep", func(ctx context.Context) {
+			poolJudgeSweepRun(ctx, settings, poolProfile, found.Place.Tasks(),
 				config.CrewCatalog, poolJudgeAsk(proc.liveSettings(settings), settings.ProfileDir), time.Now)
 		})
 	}
@@ -988,7 +1011,7 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 // resumes the person's newest conversation in a project, and an automation
 // that did that would be writing into somebody's chat.
 func v3ConfigFor(proc *v3Process, opts v3Options, workspace string, place session.Place, transcript string, taskLanded func(session.TaskLanding)) (session.Config, *catalog.Catalog, v3Subharness, error) {
-	settings := proc.Settings
+	settings := proc.launchSettings()
 	chosen := v3TalkModel(opts.Model, settings)
 	// The model catalog and the sub-harness registry, borrowed from the process
 	// rather than opened here (chatv3_process.go states why each must be one).
@@ -1027,6 +1050,10 @@ func v3ConfigFor(proc *v3Process, opts v3Options, workspace string, place sessio
 	}
 
 	cfg := session.Config{
+		// The page names codeaf's own data folder when CODEAF_HOME moved it
+		// ([session.Config.StateHome]), so a model that read `~/.codeaf` in the
+		// manual does not go looking in the person's default home instead.
+		StateHome:      v3StateHome(),
 		TeamComputers:  teamComputers,
 		TeamsPaired:    teamPaired,
 		Workspace:      workspace,
@@ -1481,6 +1508,14 @@ func openV3Agent(cfg session.Config, workspace string, open func(session.Config)
 	}
 	cfg, claim := v3SeatedPending(v3Migrated(cfg))
 	defer claim(false)
+	constructed := false
+	defer func() {
+		if !constructed {
+			if seals, ok := cfg.Seals.(interface{ Retire() }); ok {
+				seals.Retire()
+			}
+		}
+	}()
 	// Restore the gate before construction, so restored work cannot start behind
 	// the profile default. Return the launch config unchanged: a subsequent new
 	// conversation must not inherit this one's saved override.
@@ -1528,9 +1563,15 @@ func openV3Agent(cfg session.Config, workspace string, open func(session.Config)
 		if savedEffort != "" {
 			agent.SetConversationEffort(savedEffort)
 		}
+		constructed = true
 		return agent, cfg, modelNotice, nil
 	}
 	if !errors.Is(err, session.ErrSessionLocked) {
+		// With account storage off, startup is purely local and makes no relay
+		// writes, so retaining the drive lets callers observe watch retirement.
+		if syncsetup.StorageForHome(home.Dir()) == "off" {
+			claim(true)
+		}
 		return nil, cfg, "", err
 	}
 	return nil, cfg, "", &sessionHeldElsewhere{
@@ -1804,16 +1845,16 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo, oneModel boo
 	// law; taskaudit_law_test.go now makes a second reader or an unwired door fail
 	// on the day it lands.
 	cfg.TaskAudit = config.TaskAuditEnabledAt(profileDir)
-	// AND WHETHER THE SIGNATURE ON THE GIT WORK codeaf DOES NAMES THE MODEL,
-	// read here for the reason the audit row above it is read here: every v3
-	// door comes through this function, and a row honoured in the conversation
-	// but not in an automation's run is a row the person cannot trust. The
-	// signature itself has no row: codeaf always signs. PROFILE-ONLY — a
-	// repository that could change what a visitor's commits say about them by
-	// being cloned would be writing into somebody else's provenance. The
-	// CONTRIBUTING file a repository writes still wins over the signature, but
-	// it wins by being read and obeyed, not by rewriting somebody's profile
-	// (internal/exec's AttributionLaw).
+	// AND WHETHER THE SIGNATURE ON THE GIT WORK codeaf DOES IS WRITTEN AT ALL,
+	// OR NAMES THE MODEL, read here for the reason the audit row above it is
+	// read here: every v3 door comes through this function, and a row honoured
+	// in the conversation but not in an automation's run is a row the person
+	// cannot trust. PROFILE-ONLY — a repository that could change what a
+	// visitor's commits say about them by being cloned would be writing into
+	// somebody else's provenance. The CONTRIBUTING file a repository writes
+	// still wins over the signature, but it wins by being read and obeyed, not
+	// by rewriting somebody's profile (internal/exec's AttributionLaw).
+	cfg.AttributionOff = !config.AttributionAt(profileDir)
 	cfg.AttributionModelOff = !config.AttributionModelAt(profileDir)
 	// Whether a reply that comes apart is cut and asked again. PROFILE-ONLY, and
 	// the reason is not trust this time but taste: it is a judgement about
@@ -2874,7 +2915,7 @@ func warmV3Models(ctx context.Context, models *catalog.Catalog, agent *session.A
 	}
 	// THE CLOSE REACHES THE WAIT, and that is the point of the context here: the
 	// catalog's own resolution is a network round-trip on a cold cache, and this
-	// errand rides the profile's start-up tracker ([v3Process.warmModels]), whose
+	// errand rides the process's start-up tracker ([v3Process.warmModels]), whose
 	// context [stopPoolErrands] cancels. A process that closes ends the wait HERE
 	// rather than leaving the write below to land in whatever state root happens
 	// to be current when the rows finally arrive.
@@ -2894,7 +2935,8 @@ func warmV3Models(ctx context.Context, models *catalog.Catalog, agent *session.A
 // terminal ownership. Everything the surface would draw as chrome goes to
 // stderr and only what the model said goes to stdout, so a probe can compare
 // stdout with the sentence it asked for.
-func runChatV3Once(ctx context.Context, cfg session.Config, workspace, text, level string, resumed bool) error {
+func runChatV3Once(ctx context.Context, cfg session.Config, workspace, text, level string, resumed bool) (onceErr error) {
+	var onceFailure error
 	// The leaving road stands before session opening because opening can take
 	// time, and a signal there would otherwise take the default disposition and
 	// skip every defer — the whole of #471. Cancelling the turn is all the
@@ -2930,11 +2972,46 @@ func runChatV3Once(ctx context.Context, cfg session.Config, workspace, text, lev
 	// directory for an OWNED conversation — there it is the session's private
 	// work folder under ~/.codeaf/v3/projects — so the launch's own workspace is
 	// carried in rather than read back off the config.
+	// A LIVE, STEERABLE RUN HAS SOMEONE TO ASK (chat_once_live.go's onceAsker).
+	var asker *onceAsker
+	if chatOnceLive.events != "" && chatOnceLive.steer != "" {
+		asker = newOnceAsker(chatOnceLive.events)
+		cfg.Asker = asker
+	}
 	agent, cfg, notice, err := openV3Agent(cfg, workspace, v3OpenSession)
 	if err != nil {
 		return reported(err)
 	}
 	agent.SetReasoning(level)
+	live := chatOnceLive
+	usageBefore := agent.Usage()
+	var answer *lockedWriter
+	// Closing settles late calls; serialize after both the agent and ledger close.
+	defer func() {
+		if answer == nil {
+			return
+		}
+		failure := onceFailure
+		if failure == nil {
+			failure = onceErr
+		}
+		used := agent.Usage()
+		usage := envelopeUsage{SpendUSD: used.CostUSD - usageBefore.CostUSD,
+			Tokens: envelopeTokens{In: used.Input - usageBefore.Input, Out: used.Output - usageBefore.Output}}
+		writeOnceEnvelope(os.Stdout, answer.String(), cfg.Model, usage, failure)
+	}()
+	// --events' LAST COPY WAITS FOR THE RECORD TO BE CLOSED. Closing the
+	// agent and the usage ledger still writes lines — a background helper's
+	// usage row lands a moment after the answer — and a copy that stopped
+	// before them would leave the watcher's conversation one line short of
+	// this one. Defers run last-in-first-out, so this one, registered before
+	// both closes, runs after them.
+	var finishEvents func()
+	defer func() {
+		if finishEvents != nil {
+			finishEvents()
+		}
+	}()
 	defer session.CloseUsage()
 	if notice != "" {
 		fmt.Fprintln(os.Stderr, notice+": "+cfg.SessionFile)
@@ -2969,11 +3046,24 @@ func runChatV3Once(ctx context.Context, cfg session.Config, workspace, text, lev
 		}
 	})
 
+	var reply io.Writer = os.Stdout
+	if live.json {
+		answer = &lockedWriter{}
+		reply = answer
+	}
+	var steers sync.WaitGroup
+	finishSteer, finishCopy := startOnceLive(agent, cfg.SessionFile, live, asker, reply, os.Stderr, &steers)
+	finishEvents = finishCopy
+	defer finishSteer()
+
 	events, err := agent.Submit(ctx, text)
 	if err != nil {
+		onceFailure = err
 		return reported(err)
 	}
-	failure := drainOnceEvents(events, os.Stdout, os.Stderr)
+	failure := drainOnceEvents(events, reply, os.Stderr)
+	defer func() { steers.Wait() }()
+	onceFailure = failure
 	if wakes == nil {
 		return reported(failure)
 	}
@@ -3002,7 +3092,7 @@ func runChatV3Once(ctx context.Context, cfg session.Config, workspace, text, lev
 				return reported(failure)
 			}
 			settled = false
-			if streamFailure := drainOnceEvents(stream, os.Stdout, os.Stderr); streamFailure != nil {
+			if streamFailure := drainOnceEvents(stream, reply, os.Stderr); streamFailure != nil {
 				failure = streamFailure
 			}
 		case <-ctx.Done():
@@ -3110,4 +3200,13 @@ func v3RecentSessions(bucket string) []tui3.Session {
 		})
 	}
 	return rows
+}
+
+// v3StateHome is codeaf's own data folder when CODEAF_HOME names one other than
+// the person's default, and "" otherwise.
+func v3StateHome() string {
+	if strings.TrimSpace(env.Get(home.EnvVar)) == "" {
+		return ""
+	}
+	return home.Dir()
 }

@@ -2,6 +2,7 @@ package cellstore
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -17,6 +18,12 @@ const SealWithin = executor.DrainWithin
 type captureState struct {
 	done chan struct{}
 	err  error
+	// gone says the chat's folder is no longer on this computer, read when
+	// the failure is asked for rather than when the capture ended: a factory
+	// job closed locally removes its checkout while the chat's capture may be
+	// reading it, so the capture fails part-way through the removal and the
+	// folder is only gone a moment later ([ErrWorkspaceGone]).
+	gone func() bool
 }
 
 var captures = struct {
@@ -89,6 +96,14 @@ func WaitCapture(ctx context.Context, c cell.Cell) error {
 	captures.Lock()
 	err := state.err
 	captures.Unlock()
+	// A FAILED CAPTURE OF A FOLDER THAT IS GONE IS NOT A CHAT THAT COULD NOT BE
+	// SAVED: there is nothing on disk left to keep, the transcript is the
+	// session file's, and the calls stay pending in the WAL. Reporting it made
+	// the ninth live WorkAF round's idle quit exit 1 with "codeaf could not
+	// save this chat" for a job chat whose checkout the job had taken away.
+	if err != nil && state.gone != nil && state.gone() {
+		return nil
+	}
 	return err
 }
 
@@ -178,10 +193,21 @@ func (r *Recorder) scheduleLocked(ctx context.Context) {
 	if r.running != nil {
 		return
 	}
-	state := &captureState{done: make(chan struct{})}
+	state := &captureState{done: make(chan struct{}), gone: r.folderGone}
 	r.running = state.done
 	registerCapture(r.cell.Root, state)
 	guard.Go("save chat", func() { r.runQueued(ctx, state) })
+}
+
+// folderGone reports whether this recorder's chat folder is no longer there:
+// [Options.FolderGone] when the seat said, else a store that knows its folder
+// ([Engine]); any other store says no.
+func (r *Recorder) folderGone() bool {
+	if r.opts.FolderGone != nil {
+		return r.opts.FolderGone()
+	}
+	f, ok := r.store.(interface{ workspaceThere(cell.Cell) error })
+	return ok && errors.Is(f.workspaceThere(r.cell), ErrWorkspaceGone)
 }
 
 func registerCapture(root string, state *captureState) {
@@ -213,6 +239,7 @@ func (r *Recorder) takeRequest() {
 }
 
 func (r *Recorder) capture(ctx context.Context) {
+	ctx = context.WithValue(ctx, daemonOwnerKey{}, r.daemonGeneration)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.asyncMu.Lock()

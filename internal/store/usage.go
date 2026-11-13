@@ -642,9 +642,9 @@ type JobSpend struct {
 	Models []string
 }
 
-// SpendBetween sums recorded cost over an arbitrary window. A zero Until means
-// now; a zero Since means the beginning of the journal. Both bounds are
-// half-open the way every other range read here is: [since, until).
+// SpendBetween sums recorded cost over an arbitrary window. A zero Until includes
+// the current clock reading; a zero Since means the beginning of the journal.
+// Explicit bounds are half-open: [since, until).
 func (s *Store) SpendBetween(since, until time.Time) (SpendWindow, error) {
 	since, until = spendBounds(since, until)
 	window := SpendWindow{Since: since, Until: until}
@@ -1242,7 +1242,9 @@ func (s *Store) MeasuredCostPerRun() (float64, error) {
 
 func spendBounds(since, until time.Time) (time.Time, time.Time) {
 	if until.IsZero() {
-		until = time.Now()
+		// A coarse clock can still equal a completed call's timestamp. Include
+		// that reading without changing an explicitly requested upper boundary.
+		until = time.Now().Add(time.Nanosecond)
 	}
 	if since.After(until) {
 		since = until

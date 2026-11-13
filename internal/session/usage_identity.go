@@ -2,15 +2,81 @@ package session
 
 import (
 	"bufio"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
 	"os"
 	"strings"
 	"time"
+	"unicode/utf8"
 
-	"github.com/Agent-Field/codeaf/internal/filelock"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 )
+
+// UsageLedgerLockSuffix keeps remote append and reconstruction on one process-shared lock.
+const UsageLedgerLockSuffix = ".remote-lock"
+
+// UsageExplicitID returns the explicit call identity on line when one is set:
+// CallID, a remote-event key, or ID.
+func UsageExplicitID(line UsageLine) string {
+	return usageExplicitID(line.CallID, line.RemoteEvent, line.ID)
+}
+
+// usageExplicitID is [UsageExplicitID] over the three fields it reads.
+//
+// THE LEDGER'S IDENTITY SCAN CALLS THIS ONCE PER ROW, so it takes strings rather
+// than the whole row: a writer opening a million-row ledger runs it a million
+// times inside the two-second flush contract (PERF.md, "Usage writer identity
+// startup"), and copying the row twice per call cost that scan about 3% against
+// the build that had no shared identity rule.
+func usageExplicitID(callID, remoteEvent, id string) string {
+	if callID = trimmedUsageID(callID); callID != "" {
+		return callID
+	}
+	if remoteEvent = trimmedUsageID(remoteEvent); remoteEvent != "" {
+		return "remote:" + remoteEvent
+	}
+	return trimmedUsageID(id)
+}
+
+// trimmedUsageID is strings.TrimSpace with the common case answered first: an
+// id that begins and ends with a visible ASCII byte has nothing to trim, and
+// every id this program mints is one.
+func trimmedUsageID(s string) string {
+	if n := len(s); n == 0 || (s[0] > ' ' && s[0] < utf8.RuneSelf && s[n-1] > ' ' && s[n-1] < utf8.RuneSelf) {
+		return s
+	}
+	return strings.TrimSpace(s)
+}
+
+// UsageFingerprint hashes the eight call facts when both At and Session are present.
+func UsageFingerprint(line UsageLine) string {
+	session := strings.TrimSpace(line.Session)
+	if line.At.IsZero() || session == "" {
+		return ""
+	}
+	raw, _ := json.Marshal([]any{
+		line.At.UTC().Format(time.RFC3339Nano),
+		session,
+		line.Model,
+		line.Role,
+		line.Calls,
+		line.Input,
+		line.Output,
+		line.USD,
+	})
+	sum := sha256.Sum256(raw)
+	return "call:" + hex.EncodeToString(sum[:])
+}
+
+// UsageCallID identifies the original worker row independently of the computer,
+// folder or parent that later carries it. Older worker rows need no rewrite:
+// the task transport computes the same identity from their original facts.
+func UsageCallID(line UsageLine) string {
+	return line.ChargeID()
+}
 
 // usageIdentityCursor remembers only identities already read from this open
 // ledger. Each append validates the generation under the same lock as its write,
@@ -30,15 +96,24 @@ var errUsageLedgerReplaced = errors.New("usage ledger replaced during append")
 // append holds one ledger generation stable for a bounded batch. Identities
 // supplied by the recorder avoid decoding the rows it just encoded.
 func (c *usageIdentityCursor) append(file *os.File, rows []usageWrite) (int, error) {
-	if err := filelock.Lock(file, true, false); err != nil {
+	if err := lockUsageIdentityWriter(file); err != nil {
 		return 0, err
 	}
-	defer filelock.Unlock(file)
+	defer unlockUsageIdentityWriter(file)
+	return c.appendLocked(file, rows)
+}
+
+// appendLocked lets journal replay share the ledger generation lock.
+func (c *usageIdentityCursor) appendLocked(file *os.File, rows []usageWrite) (int, error) {
 	reader, err := usageIdentityReader(file)
 	if err != nil {
 		return 0, err
 	}
 	defer reader.Close()
+	if err := lockUsageIdentityReader(reader); err != nil {
+		return 0, err
+	}
+	defer unlockUsageIdentityReader(reader)
 	if err := c.readTail(reader); err != nil {
 		return 0, err
 	}
@@ -153,7 +228,7 @@ func (c *usageIdentityCursor) remember(file *os.File) error {
 // blocked sink retains its ordinary semantics. Both descriptors must name the
 // same inode before any cached identity can suppress this writer's charge.
 func usageIdentityReader(writer *os.File) (*os.File, error) {
-	reader, err := os.Open(writer.Name())
+	reader, err := fsreplace.Open(writer.Name())
 	if err != nil {
 		return nil, err
 	}

@@ -47,6 +47,7 @@ type appChats struct {
 	closed          bool
 	publicationDone chan struct{}
 	publicationWake chan struct{}
+	notes           appNotes
 }
 type appLocalChat struct {
 	agent    string
@@ -91,17 +92,26 @@ func (b *appBackend) runLocalChatPublication(ctx context.Context, now func() tim
 	// offered says the first pass for this binding has run; failing that the
 	// last pass left chats to try again; sharingNow that a first pass is
 	// running; stateFailing that the last pass over keys, memory and
-	// preferences failed. Together they decide the sharing line (say).
+	// preferences failed. Together they decide the sharing line (say), which
+	// is said only to a person with another computer paired (syncsetup's
+	// others.go): with none, there is nobody the chats were not shared with.
 	offered, failing, sharingNow, stateFailing := false, false, false, false
 	refresh := false
 	var stateRetry time.Time
 	var stateBackoff time.Duration
 	sharing := newHomeSharing(b.relayHome())
 	defer sharing.release()
+	var stopStorage func()
+	defer func() {
+		if stopStorage != nil {
+			stopStorage()
+		}
+	}()
 	said := ""
 	say := func() {
 		line := ""
 		switch {
+		case source == nil || !source.OthersPaired():
 		case stateFailing:
 			line = "Saved keys, memory and preferences could not be shared yet; codeaf will try again."
 		case failing:
@@ -166,6 +176,9 @@ func (b *appBackend) runLocalChatPublication(ctx context.Context, now func() tim
 				return true
 			}()
 			if ready && ctx.Err() == nil {
+				if stopStorage == nil && !source.StorageAllowed() {
+					stopStorage = syncsetup.StartStorageRefresh(ctx, source.Home)
+				}
 				shareState()
 				say()
 				// One process publishes for the home (homesharing.go). Every
@@ -369,7 +382,7 @@ func (b *appBackend) publishLocalChats(s *syncsetup.Sync, now func() time.Time) 
 func (b *appBackend) readChats(parent context.Context, s *syncsetup.Sync, feed dirwatch.Follower, emit bool) (appwire.ChatsResult, error) {
 	ctx, cancel := context.WithTimeout(parent, syncsetup.DeviceRequestWithin)
 	defer cancel()
-	rows, version, err := s.RowsAt(ctx)
+	rows, mail, version, err := s.RowsMailAt(ctx)
 	if err != nil {
 		return appwire.ChatsResult{}, appEngineError(err)
 	}
@@ -412,11 +425,16 @@ func (b *appBackend) readChats(parent context.Context, s *syncsetup.Sync, feed d
 		}
 		takeable[r.Cell] = row.CanTake
 		appChatSharing(&row, r)
+		row.Working = !here && r.Working
+		row.Notes = b.appChatNotes(mail, r.Cell, here)
 		if row.Here {
 			row.Status = "here"
 		}
 		out = append(out, row)
 	}
+	// Messages waiting for chats held here go into their queues; the queue
+	// takes its own locks, so this runs apart from the list's.
+	guard.Go("app/chat-notes", func() { b.carryNotes(s, mail, local) })
 	b.chats.markTaking(out, true)
 	cacheFacts := func() {
 		b.chats.mu.Lock()

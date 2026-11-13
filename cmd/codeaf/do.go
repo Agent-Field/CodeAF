@@ -572,6 +572,8 @@ func applyContextLaw(fillPercent, completionReserve int) error {
 // to main, which says it on stderr — an ordinary run has no object to put it in
 // and never wanted one.
 func doErrand(request doRequest) error {
+	// Producers stop before the process-owned usage writers are joined.
+	defer session.CloseUsage()
 	started := time.Now()
 	// The two seats, resolved before anything is opened or built, so the run
 	// says which models it is about to use and on whose authority — and says it
@@ -593,7 +595,8 @@ func doErrand(request doRequest) error {
 		settings, err = config.LoadKeyless()
 	}
 	if err == nil {
-		useAutoSeats(settings)
+		held := useAutoSeats(settings)
+		defer stopPoolErrands(held)
 	}
 	profileDir := config.ProfileDir()
 	// A PROFILE WRITTEN BEFORE CREWS WERE ROUTED IS MIGRATED ONCE, and the one
@@ -3722,7 +3725,7 @@ func runErrand(request doRequest, seats config.Seats) (outcome headlessOutcome, 
 	// are the ones IT changed — the person's own uncommitted edits and untracked
 	// files were there first, still hold what they held, and are none of the
 	// run's business ([session.RunTreeSnapshot]).
-	before := session.SnapshotRunTree(workspace)
+	before := session.SnapshotRunTree(workspace).WithAttribution(config.AttributionAt(settings.ProfileDir))
 	title := topicTitle(request.headline())
 	recordDir, err := doRunStore(request.runStore)
 	if err != nil {

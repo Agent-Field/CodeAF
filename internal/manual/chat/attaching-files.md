@@ -50,7 +50,16 @@ Inside the paste editor, `ctrl+x` does the same thing. There is no recovery afte
 is discarded, though ordinary unsent draft recovery still applies to the rest of the
 message.
 
-## How do I share a file with it — send a file with your message, /attach, photos and images
+## Share a file with it — give codeaf a file to read
+
+To share a file with codeaf, attach it to your next message: `/attach <path>` (or `/upload
+<path>`, the same command) puts the file on the tray above the message box, and it goes with
+the next thing you send. Dropping the file onto the terminal does the same. A bare `/attach`
+opens a browser so you can find the file and look at it first. This is how you hand codeaf a
+log, a CSV, a PDF or a screenshot; "Send a file with your message" below has the path rules
+and the tray, and "Every refusal /attach can give you" has what it says when it cannot.
+
+## Send a file with your message — /attach, how do I share a file with it, how do I share a file with codeaf, photos and images
 
 `/attach <path>` puts an ordinary file — a log, a CSV, a PDF, a stack trace you saved —
 on the tray above the message box, and it goes with the next thing you send.

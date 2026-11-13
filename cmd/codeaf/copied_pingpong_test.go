@@ -380,3 +380,138 @@ func TestCopiedChatTakeRepairsDetachedAdmissionBinding(t *testing.T) {
 	}
 	h.content(b, filepath.Join(b.Root, "work"), "latest after repair")
 }
+
+// Contract C1 and C2 keep three round trips between two homes opening through
+// chatContinuer, with every created path component at most 255 bytes, a stable
+// origin bucket, and existing local roots preserved on return trips.
+func TestThreeRoundTripsBetweenTwoHomesStillOpen(t *testing.T) {
+	rig := newHostedMoveRig(t)
+	rig.work = filepath.Join(t.TempDir(), strings.Repeat("nested-project/", 24), "worktree")
+	if err := os.MkdirAll(rig.work, 0700); err != nil {
+		t.Fatal(err)
+	}
+	originCell, err := cell.CreateIn(filepath.Join(rig.a.Home, "v3", "projects", "origin"), cell.Options{Class: cell.HostBound})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rig.c = originCell
+	rig.ea.Workspace = rig.work
+	rig.ea.DataRoot = filepath.Join(rig.a.Home, "v3", "stores")
+	rig.eb.DataRoot = filepath.Join(rig.b.Home, "v3", "stores")
+	if err := session.SaveMeta(rig.c.Root, session.Meta{ID: rig.c.ID, Workspace: rig.work, Title: "take-back chat"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(session.Place{Dir: rig.c.Root}.Transcript(), []byte(fmt.Sprintf("{\"type\":\"session\",\"version\":1,\"id\":%q}\n{\"type\":\"message\",\"role\":\"user\",\"content\":\"saved question\"}\n{\"type\":\"message\",\"role\":\"assistant\",\"content\":\"1\"}\n", rig.c.ID)), 0600); err != nil {
+		t.Fatal(err)
+	}
+	machine, err := preflight.OpenMachine(rig.c.Root, rig.work)
+	if err != nil {
+		t.Fatal(err)
+	}
+	machine.Observer().Refresh()
+
+	h := &copiedPingPong{
+		hostedMoveRig: rig,
+		initialRoot:   filepath.Join(rig.b.Home, "v3", "projects", "copies", rig.c.ID),
+		realBuckets:   true,
+		door:          "home",
+	}
+	wantBucket := takeCopyBucketAt(h.b.Home, h.work)
+	if got := takeCopyBucketAt(h.b.Home, h.work); got != wantBucket {
+		t.Fatalf("bucket for origin is not stable: got %q, want %q", got, wantBucket)
+	}
+
+	takeViaChatContinuer := func(s *syncsetup.Sync, from string) (cell.Cell, error) {
+		t.Helper()
+		t.Setenv(home.EnvVar, s.Home)
+		root := takeRootForAt(s.Home, h.c.ID)
+		moving := &takeProgress{}
+		taker := takeover{c: chatContinuer(s, surfaceNotices.Say, moving.report), moving: moving}
+		return h.surfaceTake(s, taker, root, "home", from)
+	}
+
+	var bRoot string
+	for round := 1; round <= 3; round++ {
+		fromA := fmt.Sprintf("round-trip A %d", round)
+		h.publishTurn(h.a, h.ea, h.c, h.work, "computer A", fromA)
+
+		beforeB := takeRootForAt(h.b.Home, h.c.ID)
+		if round == 1 && beforeB != h.initialRoot {
+			t.Fatalf("round %d before B take root=%q; want %q", round, beforeB, h.initialRoot)
+		}
+		if round > 1 && beforeB != bRoot {
+			t.Fatalf("round %d before B return takeRootForAt=%q; want existing %q", round, beforeB, bRoot)
+		}
+
+		if err := os.Rename(h.work, h.work+".away"); err != nil {
+			t.Fatal(err)
+		}
+		b, err := takeViaChatContinuer(h.b, "computer A")
+		if renameErr := os.Rename(h.work+".away", h.work); renameErr != nil {
+			t.Fatal(renameErr)
+		}
+		if err != nil {
+			t.Fatalf("round %d B take: %v", round, err)
+		}
+		if b.Root == h.initialRoot {
+			t.Fatalf("round %d B take left copy in unfiled copies root %q", round, b.Root)
+		}
+		if filepath.Dir(b.Root) != wantBucket || takeCopyBucketAt(h.b.Home, h.work) != wantBucket {
+			t.Fatalf("round %d B bucket=%q; want stable %q", round, filepath.Dir(b.Root), wantBucket)
+		}
+		t.Setenv(home.EnvVar, h.b.Home)
+		if got := takeCopyBucket(h.work); got != wantBucket {
+			t.Fatalf("round %d takeCopyBucket=%q; want %q", round, got, wantBucket)
+		}
+		if round == 1 {
+			bRoot = b.Root
+		} else if b.Root != beforeB || takeRootForAt(h.b.Home, h.c.ID) != beforeB {
+			t.Fatalf("round %d B return changed local root: got %q (lookup %q), want %q", round, b.Root, takeRootForAt(h.b.Home, h.c.ID), beforeB)
+		}
+		h.copyRoot = b.Root
+		assertPathComponentsAtMost255(t, b.Root)
+		assertPathComponentsAtMost255(t, h.b.Home)
+		h.content(b, filepath.Join(b.Root, "work"), fromA)
+
+		fromB := fmt.Sprintf("round-trip B %d", round)
+		h.publishTurn(h.b, h.eb, b, filepath.Join(b.Root, "work"), "computer B", fromB)
+
+		beforeA := takeRootForAt(h.a.Home, h.c.ID)
+		if beforeA != h.c.Root {
+			t.Fatalf("round %d before A return takeRootForAt=%q; want existing %q", round, beforeA, h.c.Root)
+		}
+		a, err := takeViaChatContinuer(h.a, "computer B")
+		if err != nil {
+			t.Fatalf("round %d A take: %v", round, err)
+		}
+		if a.Root != beforeA || takeRootForAt(h.a.Home, h.c.ID) != beforeA {
+			t.Fatalf("round %d A return changed local root: got %q (lookup %q), want %q", round, a.Root, takeRootForAt(h.a.Home, h.c.ID), beforeA)
+		}
+		assertPathComponentsAtMost255(t, a.Root)
+		assertPathComponentsAtMost255(t, h.a.Home)
+		h.content(a, h.work, fromB)
+	}
+}
+
+func assertPathComponentsAtMost255(t *testing.T, root string) {
+	t.Helper()
+	for _, part := range strings.Split(filepath.Clean(root), string(filepath.Separator)) {
+		if len(part) > 255 {
+			t.Fatalf("path component %q in %q is %d bytes (> 255)", part, root, len(part))
+		}
+	}
+	err := filepath.WalkDir(root, func(path string, _ os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		for _, part := range strings.Split(filepath.Clean(path), string(filepath.Separator)) {
+			if len(part) > 255 {
+				t.Fatalf("path component %q in %q is %d bytes (> 255)", part, path, len(part))
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk %s: %v", root, err)
+	}
+}

@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/catalog"
+	"github.com/Agent-Field/codeaf/internal/claudeagent"
+	"github.com/Agent-Field/codeaf/internal/claudemodel"
 	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
@@ -205,6 +207,12 @@ func SourceKeyAt(profileDir string, row PersistedSource, src modelsource.Source)
 		}
 		return ""
 	}
+	if strings.EqualFold(strings.TrimSpace(src.ID), claudemodel.ID) {
+		// THE SIGN-IN IS CLAUDE CODE'S, so a connected row carries only the
+		// sentinel. Whether Claude Code is still installed and signed in is
+		// read when a call is made, and a signed-out one refuses that call.
+		return claudemodel.Sentinel
+	}
 	return sourceKeyFromRow(row, src)
 }
 
@@ -214,6 +222,9 @@ func SourceKeyAt(profileDir string, row PersistedSource, src modelsource.Source)
 func CatalogHTTPClient(service modelsource.Connected) *http.Client {
 	if strings.EqualFold(strings.TrimSpace(service.Source.ID), "codex") {
 		return codexauth.Client(service.Home)
+	}
+	if strings.EqualFold(strings.TrimSpace(service.Source.ID), claudemodel.ID) {
+		return claudemodel.Client()
 	}
 	return nil
 }
@@ -249,6 +260,10 @@ func sourceHomes(set modelsource.Set, profileDir string) modelsource.Set {
 		if strings.EqualFold(services[index].Source.ID, "codex") {
 			services[index].Address = codexauth.Backend()
 			services[index].Source.Address = services[index].Address
+		}
+		if strings.EqualFold(services[index].Source.ID, claudemodel.ID) {
+			services[index].Address = claudemodel.Address
+			services[index].Source.Address = claudemodel.Address
 		}
 	}
 	return modelsource.NewSet(services...)
@@ -322,6 +337,9 @@ func resolvedSourceAddress(row PersistedSource, source modelsource.Source) strin
 	if strings.EqualFold(strings.TrimSpace(source.ID), "codex") {
 		return codexauth.Backend()
 	}
+	if strings.EqualFold(strings.TrimSpace(source.ID), claudemodel.ID) {
+		return claudemodel.Address
+	}
 	if modelsource.IsCustomID(source.ID) {
 		return strings.TrimRight(strings.TrimSpace(row.Address), "/")
 	}
@@ -359,6 +377,56 @@ func CodexRememberedModels(service modelsource.Connected, profileDir string) []c
 		}
 	}
 	return rows
+}
+
+// ConnectClaudeCode connects the person's own Claude Code as a model service:
+// its row is kept and the picker is seeded with the models it answers to.
+//
+// THERE IS NO SIGN-IN HERE, because codeaf never holds one. It refuses when
+// Claude Code is not installed or not signed in, with the sentence that says
+// which, so a person is never shown a service that cannot answer.
+func ConnectClaudeCode(ctx context.Context, profileDir string) (modelsource.Outcome, error) {
+	if err := ctx.Err(); err != nil {
+		return modelsource.Outcome{}, err
+	}
+	status := claudeagent.ReadStatus(ctx)
+	switch {
+	case !status.Installed:
+		_, err := claudeagent.Binary()
+		return modelsource.Outcome{}, err
+	case !status.LoggedIn:
+		return modelsource.Outcome{}, errors.New("Claude Code is installed but not signed in: run `claude` once and sign in")
+	}
+	listed := true
+	row := PersistedSource{ID: claudemodel.ID, Written: claudemodel.ID, Listed: &listed}
+	if !AppMode() {
+		row.Key = claudemodel.Sentinel
+	}
+	if err := persistConnectedSource(profileDir, row); err != nil {
+		return modelsource.Outcome{}, err
+	}
+	service, found := ResolveSources(profileDir, "", DefaultBaseURL).ByID(claudemodel.ID)
+	if !found {
+		_ = DisconnectService(profileDir, claudemodel.ID)
+		return modelsource.Outcome{}, errors.New("the Claude Code connection was not saved")
+	}
+	models := claudemodel.Models()
+	if err := catalog.Remember(CatalogOptionsFor(service, profileDir), models); err != nil {
+		_ = DisconnectService(profileDir, claudemodel.ID)
+		return modelsource.Outcome{}, err
+	}
+	// A PROFILE WITH NOTHING ELSE TO TALK WITH TALKS WITH CLAUDE. Connecting
+	// Claude Code as the first service moves new conversations onto it, the way
+	// a first connection of any service does; one that already has a key or a
+	// chosen model keeps it.
+	if strings.TrimSpace(APIKeyAt(profileDir)) == "" && ChatModelAt(profileDir) == "" {
+		_ = WriteChatModel(profileDir, claudemodel.ID+"/"+service.Source.Preferred)
+	}
+	outcome := modelsource.Outcome{Kind: modelsource.OutcomeConnected, Listed: true, Refreshed: true, Models: len(models)}
+	for _, m := range models {
+		outcome.ModelIDs = append(outcome.ModelIDs, m.ID)
+	}
+	return outcome, nil
 }
 
 // ConnectCodex keeps a completed browser sign-in, persists its service row and

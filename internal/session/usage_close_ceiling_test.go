@@ -42,18 +42,13 @@ func TestCloseUsageReturnsUnderTheCeilingWhenAWriterStalls(t *testing.T) {
 	closeRelease := func() { releaseOnce.Do(func() { close(release) }) }
 
 	ledger := filepath.Join(t.TempDir(), "v3", "usage.jsonl")
-	writer := &usageWriter{
-		queue:   make(chan usageWrite, usageQueueDepth),
-		stopped: make(chan struct{}),
-		beforeWrite: func() {
-			blockedOnce.Do(func() { close(blocked) })
-			<-release // park the run loop inside the write path
-		},
-	}
 	usageWritersMu.Lock()
-	usageWriters[ledger] = writer
+	writer := usageWriterForLocked(ledger)
+	writer.beforeWrite = func() {
+		blockedOnce.Do(func() { close(blocked) })
+		<-release // park the run loop inside the write path
+	}
 	usageWritersMu.Unlock()
-	go writer.run(ledger)
 	t.Cleanup(func() {
 		closeRelease()
 		<-writer.stopped
@@ -111,14 +106,7 @@ func TestFlushUsageAndCloseUsageDoNotRace(t *testing.T) {
 	for iter := 0; iter < 200; iter++ {
 		for w := 0; w < 4; w++ {
 			ledger := filepath.Join(base, fmt.Sprintf("u-%d-%d.jsonl", iter, w))
-			writer := &usageWriter{
-				queue:   make(chan usageWrite, usageQueueDepth),
-				stopped: make(chan struct{}),
-			}
-			usageWritersMu.Lock()
-			usageWriters[ledger] = writer
-			usageWritersMu.Unlock()
-			go writer.run(ledger)
+			usageWriterFor(ledger)
 		}
 
 		var wg sync.WaitGroup

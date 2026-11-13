@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -13,18 +12,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
-
-// freshEngineFactoryStore keeps an in-process engine's factory store, opened
-// once per process, from outliving the temporary home of the test that opened it.
-func freshEngineFactoryStore(t *testing.T) {
-	t.Helper()
-	reset := func() {
-		engineFactoryStore.once = sync.Once{}
-		engineFactoryStore.store = nil
-	}
-	reset()
-	t.Cleanup(reset)
-}
 
 // Retry and giving back replace execution; only an explicit Stop is a stop.
 // The real solo worker runs a failing command and reports into the manager
@@ -128,6 +115,31 @@ func TestFactoryRetryActionsDoNotReportStopped(t *testing.T) {
 							t.Fatalf("manager turn failed: %+v", ev.Data)
 						}
 						return true
+					}
+				}
+				return false
+			})
+			var reply string
+			for _, e := range entries() {
+				if e.Turn == turn.Turn && e.Kind == "answer" {
+					reply = e.Text
+				}
+			}
+			if reply == "" {
+				t.Fatal("finished manager turn has no reply")
+			}
+			prior := map[string]bool{}
+			for _, m := range before.Thread {
+				prior[m.ID] = true
+			}
+			// TurnDone precedes the worker report that saves the manager's reply.
+			// Read action versions only after that content write has landed.
+			wait("manager reply is saved on the job", func(j api.Job) bool {
+				if j.Desk != nil {
+					for _, m := range j.Desk.Thread {
+						if !prior[m.ID] && m.From == "manager" && m.Text == reply {
+							return true
+						}
 					}
 				}
 				return false

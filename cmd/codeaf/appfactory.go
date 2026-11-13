@@ -165,8 +165,9 @@ type appFactoryHub struct {
 	keptChanged func()
 	// linkSt is the invitations the engine holds and the lists it owes
 	// (appfactory_links.go), made by the first use.
-	linkSt *linkState
-	closed bool
+	linkSt    *linkState
+	jobEvents *appFactoryJobEvents
+	closed    bool
 }
 
 // newAppFactoryHub is a registry whose HTTP client takes no ambient proxy,
@@ -211,6 +212,7 @@ func (b *appBackend) closeFactories() {
 }
 
 func (h *appFactoryHub) close() {
+	h.stopJobEvents()
 	h.forgetAll()
 	h.client.CloseIdleConnections()
 }
@@ -809,15 +811,30 @@ func (b *appBackend) PipelineCheckEdits() {}
 // rename_step, which is what lets hello announce factory.pipeline_edit_rename.
 func (b *appBackend) PipelineRenameEdits() {}
 
+// PipelinePipelineEdits marks this backend as one whose preview applies
+// add_pipeline, remove_pipeline and rename_pipeline, which is what lets hello
+// announce factory.pipeline_edit_pipelines.
+func (b *appBackend) PipelinePipelineEdits() {}
+
 // PipelineGateEdits marks this backend as one whose preview applies an
 // add_step of kind gate, which is what lets hello announce
 // factory.pipeline_edit_gates.
 func (b *appBackend) PipelineGateEdits() {}
 
+// PipelineAgentFieldEdits marks this backend as one whose preview applies an
+// add_step of kind agentfield, which is what lets hello announce
+// factory.pipeline_edit_agentfield.
+func (b *appBackend) PipelineAgentFieldEdits() {}
+
 // PipelineApproverEdits marks this backend as one whose preview applies
 // set_approver, which is what lets hello announce
 // factory.pipeline_edit_approvers.
 func (b *appBackend) PipelineApproverEdits() {}
+
+// PipelinePassEdits marks this backend as one whose preview applies set_pass
+// and pass on an added gate, which is what lets hello announce
+// factory.pipeline_edit_pass.
+func (b *appBackend) PipelinePassEdits() {}
 
 // PipelineAdaptKindEdits marks this backend as one whose preview applies
 // set_adapt for one pipeline and whose source carries each pipeline's word.
@@ -825,10 +842,11 @@ func (b *appBackend) PipelineAdaptKindEdits() {}
 
 func (b *appBackend) FactoryCapabilities(context.Context) (appwire.FactoryCapabilities, error) {
 	return appwire.FactoryCapabilities{
-		Contract: api.Contract, Remote: true, Registry: true, AccessLinks: true, SignIn: true,
+		Contract: api.Contract, Remote: true, Registry: true, AccessLinks: true, SignIn: true, JobEvents: true,
 		Local: true, Runner: true, Writes: false, Admin: true,
-		Links: true, CopyLink: b.copier().Available(), ReposManage: true, RunnerManage: true, Rules: true, PipelinePR: true, PipelinePRs: true, PipelinePRUpdate: true, PipelineSourceRef: true, SpendByRepo: true, SpendByModel: true, PipelineEdit: true, PipelineEditRuntime: true,
-		PipelineEditStructure: true, PipelineEditRules: true, RepoRead: true, RepoFacts: true, MaxConnections: appwire.MaxFactoryConnections, MaxFlows: appwire.MaxFactoryFlows,
+		Links: true, CopyLink: b.copier().Available(), ReposManage: true, RunnerManage: true, Rules: true, PipelinePR: true, PipelinePRs: true, PipelinePRUpdate: true, PipelineSourceRef: true, SpendByRepo: true, SpendByModel: true, PipelineEdit: true, PipelineEditRuntime: true, CreateIssue: true, CreateGroup: true, CreateBudget: true, JobContext: true, CreateSplitFrom: true,
+		PipelineEditStructure: true, PipelineEditRules: true, RepoRead: true, RepoFacts: true, GroupPolicy: true, WaitsOn: true, MaxConnections: appwire.MaxFactoryConnections, MaxFlows: appwire.MaxFactoryFlows,
+		RepoIssues: true,
 	}, nil
 }
 

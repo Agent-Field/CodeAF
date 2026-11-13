@@ -1,9 +1,9 @@
 package syncsetup
 
 import (
+	"context"
 	"errors"
 	"net/http"
-	"os"
 	"path/filepath"
 	"runtime"
 	"time"
@@ -13,6 +13,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/cellsync"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/reqsign"
 	"github.com/Agent-Field/codeaf/internal/rotate"
@@ -35,9 +36,32 @@ func scratchDir(home string) string { return filepath.Join(home, "rotation-scrat
 // machine; a chat it does not know is fetched into a scratch folder.
 func (s *Sync) Rotation(eng cellstore.Engine, held func(id string) (cell.Cell, bool), name string, say func(string)) rotate.Env {
 	eng.WorkspaceOf = func(c cell.Cell) string { return workspaceOf(c.Root) }
+	hostedRelay := ""
+	if IsHostedRelay(s.Relay) {
+		hostedRelay = normalizeStorageURL(s.Relay)
+	}
 	return rotate.Env{
 		Home: s.Home, Identity: s.Identity, Device: s.Device, Say: say,
-		Connect: s.relayOf,
+		HostedRelay: hostedRelay,
+		Connect:     s.relayOf,
+		StorageAllowed: func(ctx context.Context, successor blobstore.Store) (bool, error) {
+			if !IsHostedRelay(s.Relay) {
+				return true, nil
+			}
+			counts, err := s.Store.(interface {
+				Stats(context.Context) (blobstore.Counts, error)
+			}).Stats(ctx)
+			if err != nil {
+				return false, err
+			}
+			if counts.Storage == "off" || successor == nil {
+				return counts.Storage != "off", nil
+			}
+			next, err := successor.(interface {
+				Stats(context.Context) (blobstore.Counts, error)
+			}).Stats(ctx)
+			return err == nil && next.Storage != "off", err
+		},
 		Engine: func(id identity.Identity) cellsync.Engine {
 			keys := cellstore.SyncKeys{CellKey: id.CellKey(), Dedup: id.DedupSecret()}
 			return landing{Engine: eng.Sync(keys, cellstore.LedgerName(s.Relay, id.ID()))}
@@ -53,14 +77,32 @@ func (s *Sync) Rotation(eng cellstore.Engine, held func(id string) (cell.Cell, b
 }
 
 // Tidy removes what a rotation left to be cleaned: the scratch folders.
-func (s *Sync) Tidy() error { return os.RemoveAll(scratchDir(s.Home)) }
+func (s *Sync) Tidy() error { return fsreplace.RemoveAll(scratchDir(s.Home)) }
 
 // relayOf binds this machine's relay to a signer: the clients of a device of
 // whichever identity it belongs to.
 func (s *Sync) relayOf(sig reqsign.Signer) rotate.Relay {
 	sign := reqsign.SignFor(sig, time.Now)
 	dir := directory.NewHTTP(s.Relay, sign, &http.Client{Timeout: requestTimeout})
-	return rotate.Relay{Dir: dir, Store: blobstore.NewHTTP(s.Relay, sign, &http.Client{}), Gate: directory.Gate{Client: dir}}
+	store := GateStore(blobstore.NewHTTP(s.Relay, sign, &http.Client{}), s.Home, s.Relay, reqsign.IDOf(sig.IdentityKey()))
+	if IsHostedRelay(s.Relay) && reqsign.IDOf(sig.IdentityKey()) != s.Identity.ID() {
+		allowed := store.CanStore
+		legacy := false
+		store.CanStore = func() bool {
+			if legacy || allowed() {
+				return true
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
+			defer cancel()
+			counts, err := store.Stats(ctx)
+			if err == nil && counts.Storage == "" {
+				legacy = true
+				return true
+			}
+			return err == nil && SaveStorage(s.Home, s.Relay, reqsign.IDOf(sig.IdentityKey()), counts.Storage) == nil && allowed()
+		}
+	}
+	return rotate.Relay{Dir: dir, Store: store, Gate: directory.Gate{Client: dir, Store: store, Source: reqsign.IDOf(sig.IdentityKey())}}
 }
 
 // deviceRecord is a device's directory record under id: its name sealed under

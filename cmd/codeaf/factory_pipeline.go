@@ -18,6 +18,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/factory/tokens"
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
 	forge "github.com/Agent-Field/codeaf/internal/praf/github"
 )
@@ -69,6 +70,13 @@ func runFactoryConvert(args []string, out, warnings io.Writer) error {
 	return err
 }
 
+// factoryAfterPoll is what runs after every poll: the start rules, then the
+// go-ahead pass ([intake.Intake.GoAheads]), which starts what a group policy
+// covers once what it waits on has merged. Both read the poll's fresh facts.
+func factoryAfterPoll(in *intake.Intake) func(context.Context) error {
+	return func(ctx context.Context) error { return errors.Join(in.Once(ctx), in.GoAheads(ctx)) }
+}
+
 // factoryIntake reuses the same runner door as a person's Run action: the
 // lease's, which queues the job for whichever worker pulls it.
 func factoryIntake(st *store.Store) *intake.Intake {
@@ -87,6 +95,11 @@ func factoryIntakeOwned(st *store.Store, owner func(context.Context) string) *in
 		}),
 		Owner:  owner,
 		Record: history,
+		// A routing rule's question is answered by the floor's AI filter,
+		// on the factory's default model (a rule names none yet) and booked
+		// as `factory filter`. Every host builds its intake here, so the app,
+		// a team server and the command line all ask the same judge.
+		Judge: factoryJudge(st, config.Load),
 		// An automatic start is looked at closer first, while Read new issues
 		// as they arrive is on.
 		Scout: func(ctx context.Context, id int) error {
@@ -130,7 +143,11 @@ var factoryPeopleCaches = struct {
 }{profiles: map[string]*factorygithub.PeopleLoader{}}
 
 func factoryPeople() *factorygithub.PeopleLoader {
-	profile := factoryProfile("")
+	return factoryPeopleAt("")
+}
+
+func factoryPeopleAt(profileDir string) *factorygithub.PeopleLoader {
+	profile := factoryProfile(profileDir)
 	factoryPeopleCaches.Lock()
 	defer factoryPeopleCaches.Unlock()
 	if loader := factoryPeopleCaches.profiles[profile]; loader != nil {
@@ -138,6 +155,9 @@ func factoryPeople() *factorygithub.PeopleLoader {
 	}
 	loader := factorygithub.NewPeopleLoader(func(ctx context.Context) factorygithub.PeopleAPI {
 		token, _ := factorygithub.TokenAt(ctx, profile)
+		if token == "" {
+			return nil
+		}
 		return forge.NewClient(token)
 	}, nil)
 	factoryPeopleCaches.profiles[profile] = loader
@@ -152,7 +172,11 @@ var factoryRuleCaches = struct {
 }{profiles: map[string]*factorygithub.PipelineLoader{}}
 
 func factoryRules() *factorygithub.PipelineLoader {
-	profile := factoryProfile("")
+	return factoryRulesAt("")
+}
+
+func factoryRulesAt(profileDir string) *factorygithub.PipelineLoader {
+	profile := factoryProfile(profileDir)
 	factoryRuleCaches.Lock()
 	defer factoryRuleCaches.Unlock()
 	if loader := factoryRuleCaches.profiles[profile]; loader != nil {
@@ -167,6 +191,61 @@ func factoryRules() *factorygithub.PipelineLoader {
 	})
 	factoryRuleCaches.profiles[profile] = loader
 	return loader
+}
+
+func stopFactoryLoaders(profileDir string) {
+	keys := []string{factoryProfile(profileDir)}
+	if def := factoryProfile(""); def != keys[0] {
+		keys = append(keys, def)
+	}
+	people, rules := detachFactoryLoaders(keys)
+	var wg sync.WaitGroup
+	for _, loader := range people {
+		wg.Add(1)
+		guard.Go("factory/people-close", func() {
+			defer wg.Done()
+			loader.Close()
+		})
+	}
+	for _, loader := range rules {
+		wg.Add(1)
+		guard.Go("factory/pipeline-close", func() {
+			defer wg.Done()
+			loader.Close()
+		})
+	}
+	wg.Wait()
+}
+
+// detachFactoryLoaders removes the profiles' loaders from both caches and
+// hands them back, so a later reader opens fresh ones and only the caller
+// closes these.
+func detachFactoryLoaders(keys []string) ([]*factorygithub.PeopleLoader, []*factorygithub.PipelineLoader) {
+	return detachPeopleLoaders(keys), detachRuleLoaders(keys)
+}
+
+func detachPeopleLoaders(keys []string) (people []*factorygithub.PeopleLoader) {
+	factoryPeopleCaches.Lock()
+	defer factoryPeopleCaches.Unlock()
+	for _, key := range keys {
+		if loader := factoryPeopleCaches.profiles[key]; loader != nil {
+			delete(factoryPeopleCaches.profiles, key)
+			people = append(people, loader)
+		}
+	}
+	return people
+}
+
+func detachRuleLoaders(keys []string) (rules []*factorygithub.PipelineLoader) {
+	factoryRuleCaches.Lock()
+	defer factoryRuleCaches.Unlock()
+	for _, key := range keys {
+		if loader := factoryRuleCaches.profiles[key]; loader != nil {
+			delete(factoryRuleCaches.profiles, key)
+			rules = append(rules, loader)
+		}
+	}
+	return rules
 }
 
 // factoryPipelineRead is one repository's pipeline as THIS FACTORY runs it,
@@ -240,7 +319,21 @@ func withFactoryHouseRules(st *store.Store, f pipeline.File, err error) (pipelin
 	if serr != nil {
 		return f, fmt.Errorf("%w: %v", pipeline.ErrHouseRulesUnread, serr)
 	}
-	return pipeline.WithSpending(pipeline.WithHouseRules(f, house), spending), err
+	// THE FACTORY'S PIPELINE LIBRARY goes beside every read the same way, so
+	// a Start, a routing rule and a job's own kind all resolve a pipeline's
+	// name through [pipeline.File.Resolve]: the repository's file, then the
+	// library, then the built-in steps. A library that cannot be read fails
+	// the read like the rules do: a rule naming one of its pipelines must
+	// never quietly run something else.
+	kept, lerr := st.PipelineLibrary()
+	if lerr != nil {
+		return f, fmt.Errorf("%w: %v", pipeline.ErrHouseRulesUnread, lerr)
+	}
+	lib, lerr := pipeline.ParseLibrary(kept.Text)
+	if lerr != nil {
+		return f, fmt.Errorf("%w: %v", pipeline.ErrHouseRulesUnread, lerr)
+	}
+	return pipeline.WithLibrary(pipeline.WithSpending(pipeline.WithHouseRules(f, house), spending), lib), err
 }
 
 // factoryProfileOwner is the forge login of this machine's GitHub connection:

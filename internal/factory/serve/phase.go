@@ -31,10 +31,15 @@ func markPreMutation(r *http.Request) bool {
 	}
 	switch r.Method {
 	case http.MethodPost:
-		return r.URL.Path == "/v1/access/links" || r.URL.Path == "/v1/access/revoke-sessions"
+		// A job create, with or without its GitHub issue: exactly /v1/jobs
+		// and /v1/issues. Its marker also decides whether a keyed answer is
+		// kept ([keepReplay]).
+		return r.URL.Path == "/v1/access/links" || r.URL.Path == "/v1/access/revoke-sessions" ||
+			r.URL.Path == "/v1/jobs" || r.URL.Path == "/v1/issues"
 	case http.MethodPut:
-		// The factory's own rules: exactly /v1/rules.
-		if r.URL.Path == "/v1/rules" {
+		// The factory's own rules, its routing table and its pipeline
+		// library: exactly /v1/rules, /v1/routes and /v1/pipeline-library.
+		if r.URL.Path == "/v1/rules" || r.URL.Path == "/v1/routes" || r.URL.Path == "/v1/pipeline-library" {
 			return true
 		}
 		// One runner's settings: exactly /v1/runners/{runner}.

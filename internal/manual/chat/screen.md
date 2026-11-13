@@ -53,7 +53,7 @@ once the session has tasks to come back to and no running-turn line owns that ro
 
 **Seven places take the whole frame instead of sharing it**, at every width: home, AI
 teams, activity, automations, memory, spend and settings. All seven are on the tab bar with
-the way back to the chats, `Home  Chats  AI teams  Activity  Memories  Automations  Spend
+the way back to the chats, `Home  Chats  AI teams  Activity  Memory  Automations  Spend
 Settings`; `tab` walks the rooms on the bar.
 `alt+1` … `alt+8` (`opt+1` … `opt+8` on a Mac) jump straight to any of those seven or back
 to the chats from wherever you are standing, a place or a conversation — by number and not
@@ -117,7 +117,7 @@ navigation from reading. The strip is that chat's row. Home, teams, sessions, sp
 settings and every other place do not draw it:
 
 ```
- >● codeaf   home  chats  AI teams  activity  memories  automations  spend  settings                 $1.20 / $20 · thu 10:31pm
+ >● codeaf   home  chats  AI teams  activity  memory  automations  spend  settings                 $1.20 / $20 · thu 10:31pm
      openrouter price scrape       Refactor the rail scope...      Shipping the parser ×   +   ▦ All
   ──────────────────────────────────────────────────────────────────────────────────────────────────
 ```
@@ -334,21 +334,24 @@ last tab to Home leaves its connection in place.
 
 ## Closing a tab versus quitting codeaf — /quit and ctrl+c
 
-**Quitting is a different act from closing a tab.** `ctrl+w` and `×` take a view off the
-row, and a working one is answered by the card below. `/quit` and `ctrl+c` end the whole
-program, ask
-their own question about work in flight, and act on every conversation this window holds
-at once. Closing a tab never quits codeaf, and quitting is not what any of the card's
-three answers does. An automation running is no reason to ask: closing codeaf pauses it,
-and a run it cut off runs again when a window is next open (*Automations*).
+`/quit` closes the conversation in front and asks about its work in flight.
+If this window holds another conversation, codeaf stays open with that conversation.
+Only quitting the last held conversation ends the program. `ctrl+c` ends the whole program,
+asks its own question about work in flight, and acts on every conversation this window holds.
+`ctrl+w` and `×` take a view off the row; a working conversation offers the close card below.
+Closing a tab never quits codeaf. An automation running is no reason to ask: closing codeaf
+pauses it, and a run it cut off runs again when a window is next open (*Automations*).
 The session cancels its routing-cache refresh and waits for that refresh's remaining
 local writes before shutdown completes.
+The process also waits up to about 50 milliseconds for its lane-note writer
+and final flush. If that deadline passes, it prints
+`codeaf: lane saving timed out; quitting without waiting further` and exits.
 
 On the switcher card, `ctrl+w` closes a selected background tab while keeping
 its work running, and that row drops behind the fold. For the current conversation it uses the same close card when
 work is active. On New chat it closes
 the start page and parks its unfinished first message. Stop on a task page
-ends that task; `/quit` ends the program.
+ends that task; `/quit` closes the conversation in front, leaving codeaf open while another conversation is held.
 
 ## Keep running, stop work or cancel — what keep running does when you close a tab on a chat that is still working
 
@@ -1502,7 +1505,7 @@ The top line is the program's name and the places on the left, and the machine's
 signs on the right:
 
 ```
- >● codeaf   home  chats  AI teams  activity  memories  automations  spend  settings   2 want you · 4 moving · $0.55 / $20 · thu 1:11pm
+ >● codeaf   home  chats  AI teams  activity  memory  automations  spend  settings   2 want you · 4 moving · $0.55 / $20 · thu 1:11pm
 ```
 
 When there is not room for all of it, things give way **one at a time, in a fixed order**:
@@ -2122,8 +2125,8 @@ below is drawn as plain text on purpose:
   they arrived. Sweeping them for pathish words would underline half a test log. What
   **is** linked on a tool card is the part codeaf wrote itself: the call's own target.
 - **Everything on a task's page and inside a task's room** — that is the `/history`
-  page and a room both. A task works in its own copy of your folder, so `internal/tui3/app.go`
-  on one of those rows means THAT tree's copy and not this one's, and a link built
+  page and a room both. A task works in a folder of its own, so `internal/tui3/app.go`
+  on one of those rows means a file in THAT folder and not this one's, and a link built
   against the wrong tree opens a file with the right name and the wrong contents. The
   `/history` page names no file paths of its own anyway: a row says what a task did and
   which branch it left behind, never where its journal is.
@@ -4391,3 +4394,8 @@ A generated title containing model control tokens is rejected. The initial
 prompt remains the provisional name until a usable title is generated. Old
 saved titles containing these tokens are also ignored when read; the conversation
 and its messages remain intact.
+
+## Why a finished reading caption stops counting time
+
+When reading is handed to a quick task, its tool rows finish as soon as the answer
+returns. Their elapsed time stays fixed while the conversation is idle.

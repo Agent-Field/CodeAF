@@ -314,7 +314,7 @@ func (d *nativeNamespace) authority(ctx context.Context, actor string, write boo
 		}
 		return nil
 	})
-	if err != nil && !errors.Is(err, wireauth.ErrRevoked) && !errors.Is(err, wireauth.ErrRotated) {
+	if err != nil && !errors.Is(err, wireauth.ErrUnauthorized) && !errors.Is(err, wireauth.ErrRevoked) && !errors.Is(err, wireauth.ErrRotated) {
 		return errors.Join(wireauth.ErrUnavailable, err)
 	}
 	return err
@@ -398,14 +398,22 @@ func (n *namespaces) authenticate(r *http.Request, body []byte) (string, string,
 	}
 	d, err := n.activate(r.Context(), id, p.IdentityKey)
 	if err != nil {
-		if errors.Is(err, wireauth.ErrGone) {
+		if r.Context().Err() != nil {
+			return "", "", wireauth.ErrUnauthorized
+		}
+		if errors.Is(err, wireauth.ErrGone) || errors.Is(err, wireauth.ErrUnauthorized) {
 			return "", "", err
 		}
 		n.unavailable("directory activation", err)
 		return "", "", errors.Join(wireauth.ErrUnavailable, err)
 	}
 	if err = d.authority(r.Context(), actor, false); err != nil {
-		if errors.Is(err, wireauth.ErrRevoked) {
+		// A caller that left before authentication finished has no authenticated
+		// request to retry. A live caller still receives a real outage as 503.
+		if r.Context().Err() != nil {
+			return "", "", wireauth.ErrUnauthorized
+		}
+		if errors.Is(err, wireauth.ErrRevoked) || errors.Is(err, wireauth.ErrUnauthorized) {
 			return "", "", err
 		}
 		n.unavailable("directory authority", err)

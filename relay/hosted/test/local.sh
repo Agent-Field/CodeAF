@@ -14,6 +14,14 @@ export WRANGLER_NO_SKILLS_UPDATE_PROMPTS=true
 export CLOUDFLARE_CF_FETCH_ENABLED=false
 export WRANGLER_REGISTRY_PATH="$local_state/registry"
 export CI=1
+# A RUNAWAY LOCAL SERVER DIES SMALL. Wrangler's Node process grew to about nine
+# gigabytes across repeated reloads before aborting, and on WSL each abort wrote
+# a crash dump of that size to the Windows drive. A bounded heap ends such a run
+# at a size nobody has to clean up; an explicit caller setting still wins.
+case " ${NODE_OPTIONS:-} " in
+  *" --max-old-space-size="*) ;;
+  *) export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--max-old-space-size=2048" ;;
+esac
 mkdir -p "$XDG_CONFIG_HOME" "$XDG_CACHE_HOME" "$XDG_STATE_HOME" "$local_state/logs"
 child=
 cleanup() {

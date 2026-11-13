@@ -70,6 +70,12 @@ func beltStoppedWhere(branch, ground string, changed []string) string {
 // run's at all: false sends the caller on to the task graph, which is where
 // every other task number lives.
 func (a *Agent) stopBeltRow(id uint64, why string) (string, bool, error) {
+	return a.stopBeltRowForEnding(id, why, TaskEndingStopped)
+}
+
+// stopBeltRowForEnding carries a conversation limit through the same cancellation
+// door as Stop, while keeping the ending distinct on the published receipt.
+func (a *Agent) stopBeltRowForEnding(id uint64, why string, ending TaskEnding) (string, bool, error) {
 	why = strings.TrimSpace(why)
 	for {
 		a.beltMu.Lock()
@@ -87,13 +93,13 @@ func (a *Agent) stopBeltRow(id uint64, why string) (string, bool, error) {
 			run.deliveryMu.Unlock()
 			continue
 		}
-		return a.stopCurrentBeltRow(run, id, why)
+		return a.stopCurrentBeltRow(run, id, why, ending)
 	}
 }
 
 // stopCurrentBeltRow enters holding deliveryMu and beltMu. Both are released
 // with the stop flag, before cancellation, store writes or other work.
-func (a *Agent) stopCurrentBeltRow(run *beltRun, id uint64, why string) (string, bool, error) {
+func (a *Agent) stopCurrentBeltRow(run *beltRun, id uint64, why string, ending TaskEnding) (string, bool, error) {
 	unlock := func() { a.beltMu.Unlock(); run.deliveryMu.Unlock() }
 	if run.row == id {
 		name := taskStopName(id, run.title)
@@ -111,15 +117,22 @@ func (a *Agent) stopCurrentBeltRow(run *beltRun, id uint64, why string) (string,
 			return name + " is already stopping", true, nil
 		}
 		run.stopped, run.stopReason = true, why
+		run.stopEnding = ending
 		cut := run.cut
 		unlock()
 		// THE STORE FIRST, THE CONTEXT NEXT (the header says why). A store that
 		// would not take the write is said on the run's page by whoever settles
 		// it; the context is cut either way, because the person asked for the
 		// spend to end and that is the half nothing else can do for them.
-		if err := run.store.StopRoot(stopBecause(taskStoppedWord, why)); err != nil {
+		var stopErr error
+		if ending == TaskEndingTimeLimit {
+			stopErr = run.store.EndRoot(conversationTimeLimitReason)
+		} else {
+			stopErr = run.store.StopRoot(stopBecause(taskStoppedWord, why))
+		}
+		if stopErr != nil {
 			if g := a.graph(); g != nil {
-				g.planNote("the run's stop could not be written: " + err.Error())
+				g.planNote("the run's stop could not be written: " + stopErr.Error())
 			}
 		}
 		if run.remoteEngine != nil {
@@ -243,6 +256,13 @@ func (a *Agent) endedBeltRow(id uint64, why string) (string, bool, error) {
 			if kept.State == TaskRunning {
 				return a.stopUndrivenRow(id, kept.Parent, why)
 			}
+			stopped, err := a.stopUndrivenRunWork(kept, why)
+			if err != nil {
+				return "", true, err
+			}
+			if stopped {
+				return a.stopUndrivenRow(id, kept.Parent, why)
+			}
 			return taskStopName(id, kept.Title) + " has already finished; there is nothing to stop", true, nil
 		}
 	}
@@ -256,10 +276,9 @@ func (a *Agent) endedBeltRow(id uint64, why string) (string, bool, error) {
 const runRowUndrivenWord = "nothing is driving this task any more, so no worker can read a message; stop it to clear the row"
 
 // stopUndrivenRow settles a run row nothing drives: a row the rail draws
-// running whose run is gone, or whose task the run's plan does not hold. THERE
-// IS NO WORK TO CUT, so the stop is the row's ending and nothing else, written
-// where every run row's ending is written ([Agent.publishRunRow]) so the rail
-// and the conversation read back tomorrow agree that it stopped.
+// running whose run is gone, or whose task the run's plan does not hold. It
+// clears any lingering work in that root's store, then publishes the row's
+// ending where every run row's ending is kept ([Agent.publishRunRow]).
 func (a *Agent) stopUndrivenRow(id, parent uint64, why string) (string, bool, error) {
 	g := a.graph()
 	notice := TaskNotice{ID: id, Parent: parent}
@@ -267,6 +286,9 @@ func (a *Agent) stopUndrivenRow(id, parent uint64, why string) (string, bool, er
 		if kept.ID == id {
 			notice = kept
 		}
+	}
+	if _, err := a.stopUndrivenRunWork(notice, why); err != nil {
+		return "", true, err
 	}
 	notice.State, notice.Stopped = TaskFailed, true
 	notice.Report = stopBecause(taskStoppedWord, why) + " · nothing was driving it any more"
@@ -277,6 +299,30 @@ func (a *Agent) stopUndrivenRow(id, parent uint64, why string) (string, bool, er
 		a.emitTaskUpdate(notice)
 	}
 	return "stopped " + stopBecause(taskStopName(id, notice.Title), why) + " — nothing was driving it any more", true, nil
+}
+
+// stopUndrivenRunWork clears a retained root's lingering workers as well as
+// its stale notice. Fully ended runs and individual joined rows stay as they are.
+func (a *Agent) stopUndrivenRunWork(row TaskNotice, why string) (bool, error) {
+	stopped := false
+	matched := false
+	err := a.planSteer(planStoreID(appRunRowKey(row)), func(store *plandb.Store, task *plandb.Task) error {
+		matched = true
+		if !planStopOpenWork(store, task, []bool{true}) {
+			return nil
+		}
+		if err := store.StopRoot(stopBecause(taskStoppedWord, why)); err != nil {
+			return err
+		}
+		stopped = true
+		return nil
+	}, true)
+	if !matched {
+		// A stale notice can outlive its store; only an attempted store write
+		// can fail this cleanup and prevent the stop receipt.
+		return false, nil
+	}
+	return stopped, err
 }
 
 // sayToRunRowFrom is a message to a row a run owns, and it reports whether the
@@ -369,7 +415,14 @@ func (a *Agent) beltRunRootRow(id string) (uint64, bool) {
 // the one way every ending of it is ([ProgramFolder.Finish]), with the stop's
 // words after its usable message, or below the title as a fallback.
 func (a *Agent) settleStoppedBeltRun(run *beltRun, why string, cut []string) {
+	ending := run.stopEnding
+	if ending == "" {
+		ending = TaskEndingStopped
+	}
 	report := stopBecause(taskStoppedWord, why)
+	if ending == TaskEndingTimeLimit {
+		report = TaskReasonOf(ending, "")
+	}
 	var merge, branch string
 	var changed []string
 	if run.folder != nil {
@@ -431,7 +484,7 @@ func (a *Agent) settleStoppedBeltRun(run *beltRun, why string, cut []string) {
 	// or the engine answered — and not after the kept work was committed
 	// ([Agent.beltRunEndedAt]).
 	notice := TaskNotice{
-		ID: run.row, Title: run.title, State: TaskFailed, Stopped: true,
+		ID: run.row, Title: run.title, State: TaskFailed, Stopped: ending == TaskEndingStopped, Ending: ending,
 		WorkspaceSet: cloneWorkspaceSet(run.tree.workspaceSet),
 		Report:       report, Changed: changed, Merge: merge, Branch: branch, EndedAt: a.beltRunEndedAt(run),
 	}
@@ -446,9 +499,7 @@ func (a *Agent) settleStoppedBeltRun(run *beltRun, why string, cut []string) {
 		}
 	}
 	a.publishRunRow(g, notice)
-	// A JOINED ROW THE STOP TOOK DOWN ENDS WITH THE STOP, NOT AS A FAULT: cut
-	// is the run engine's own typed record of which tasks its ending cut
-	// mid-flight, and the stop is a person, so the law draws those rows with
-	// the stop ending ([Agent.settleJoinedRows], [TaskReasonOf]).
-	a.settleJoinedRows(g, run, notice.EndedAt, TaskEndingStopped, cut)
+	// Joined rows inherit the cancellation's cause, so a time limit names that
+	// limit rather than attributing it to a Stop press or to a worker fault.
+	a.settleJoinedRows(g, run, notice.EndedAt, ending, cut)
 }

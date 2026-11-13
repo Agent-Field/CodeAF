@@ -119,8 +119,8 @@ func (j *job) prepareDelivery(cur factory.Item, report factory.RunReport) (*pend
 	if err != nil {
 		return nil, err
 	}
-	wire := api.FromRunReport(report, j.tables)
-	if !j.tables {
+	wire := api.FromRunReport(report, j.admits)
+	if !j.admits.RoundCostTables {
 		wire.Cost = max(0, factory.JobSpent(cur)-factory.JobSpent(j.sent))
 	}
 	p.Request, err = client.PrepareWorkerReport(wire, key)
@@ -194,6 +194,7 @@ func (j *job) sendPending(ctx context.Context) bool {
 	// This snapshot, rather than a later mirror read, is the acknowledged
 	// baseline. New work becomes a new delta only after this exact request lands.
 	j.sent = p.Snapshot
+	j.quiet = quietFlush{}
 	j.mu.Lock()
 	for _, id := range p.Delivered {
 		j.acknowledged[id] = true
@@ -241,7 +242,7 @@ func (j *job) blockDelivery(reason string) {
 	if cancel != nil {
 		cancel()
 	}
-	_ = j.o.Runner.Stop(j.id)
+	j.o.Runner.Withdraw(j.id)
 }
 
 // Retain the latest recorded mirror separately from the frozen request. This is

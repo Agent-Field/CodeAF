@@ -1,6 +1,7 @@
 package keys
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -13,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/identity"
@@ -66,10 +68,37 @@ type vaultDoc struct {
 	V       uint16            `json:"V"`
 	Secrets map[string]record `json:"secrets"`
 	Updated int64             `json:"updated"` // unix ms
+	// dropped counts the oversized slots opening this document left out
+	// ([vaultDoc.dropOversize]); it is never written.
+	dropped int
 }
+
+// opened counts the local vault documents this process has decrypted.
+var opened atomic.Int64
+
+// Opened is how many times this process has decrypted a vault file from disk.
+// THE IDLE-COST LAW IS WRITTEN AGAINST IT (PERF.md): reading a vault whose
+// bytes have not changed must not pay for the cipher and the decode again.
+func Opened() int64 { return opened.Load() }
 
 // ErrNotFound reports an unknown secret id.
 var ErrNotFound = errors.New("keys: no such secret")
+
+// MaxSlotValue is the largest value one slot of the vault holds, in bytes.
+//
+// THE VAULT CARRIES SECRETS, NOT FILES OF ANY SIZE. The whole vault is one
+// sealed document, so every slot is paid for by every read, every write and
+// every push of it. A withheld file rides in a slot (vaultsync.Files), and the
+// secret guard withholds whatever matches a key's shape, so before this bound
+// a chat whose folder was the codeaf home itself carried graph.db, a git pack
+// and three binaries into the vault: 1.6 GB of slots sealed into a 3.3 GB
+// vault, and one chat flush then cost 22 seconds of CPU and a 34 GB peak on
+// the owner's machine (2026-11-10). A key, a token, a .env or a private key
+// is a few kilobytes; a megabyte is a generous ceiling for any of them.
+const MaxSlotValue = 1 << 20
+
+// ErrTooLarge is the refusal of a value longer than [MaxSlotValue].
+var ErrTooLarge = errors.New("keys: the value is too large for the key vault")
 
 // Vault is the local secret store rooted at a codeaf home.
 type Vault struct {
@@ -127,6 +156,9 @@ func (v *Vault) PutAt(id string, e Entry, at time.Time) error {
 // PutMetadataAt keeps a carrier's optional identity facts beside its value.
 // Older readers still receive the same value and ignore the extra metadata.
 func (v *Vault) PutMetadataAt(id string, e Entry, at time.Time, metadata string) error {
+	if len(e.Value) > MaxSlotValue {
+		return ErrTooLarge
+	}
 	return v.update(func(d *vaultDoc) error {
 		stamp := at.UnixMilli()
 		if previous, exists := d.Secrets[id]; exists {
@@ -336,10 +368,39 @@ func (v *Vault) read() (*vaultDoc, error) {
 		return nil, err
 	}
 	defer unlock()
-	return v.readLocked()
+	return v.readShared()
 }
 
+// readLocked is the stored document as the caller's own copy, free to change
+// and write back. The caller holds the lock.
 func (v *Vault) readLocked() (*vaultDoc, error) {
+	d, err := v.readShared()
+	if err != nil {
+		return nil, err
+	}
+	return d.clone(), nil
+}
+
+// lastOpened is the last vault document this process decrypted from each
+// path: the sealed bytes, the key that opened them, and what they said.
+var lastOpened sync.Map // path -> *openedVault
+
+type openedVault struct {
+	key, blob []byte
+	doc       *vaultDoc
+}
+
+// readShared is the stored document, decrypted again only when the sealed
+// bytes on disk differ from the last bytes this process opened under this
+// key. THE ANSWER IS SHARED AND READ-ONLY: only the read accessors take it,
+// and anything that changes a document goes through readLocked's copy.
+//
+// The comparison is of the bytes themselves, not of a modification time, so
+// no write can hide from it: a document is reused only when it is exactly the
+// document a fresh decrypt would produce. Every chat's sync start captures the
+// vault slot by slot, twice, and paying the cipher and the decode for every
+// slot kept an idle machine busy for minutes after launch (PERF.md).
+func (v *Vault) readShared() (*vaultDoc, error) {
 	blob, err := os.ReadFile(v.path)
 	if errors.Is(err, os.ErrNotExist) {
 		return &vaultDoc{V: 1, Secrets: map[string]record{}}, nil
@@ -347,11 +408,45 @@ func (v *Vault) readLocked() (*vaultDoc, error) {
 	if err != nil {
 		return nil, err
 	}
+	if last, ok := lastOpened.Load(v.path); ok {
+		o := last.(*openedVault)
+		if bytes.Equal(o.key, v.key) && bytes.Equal(o.blob, blob) {
+			return o.doc, nil
+		}
+	}
+	opened.Add(1)
 	d, err := openDoc(v.key, blob)
 	if errors.Is(err, ErrOtherKey) && v.adoptStaged() {
-		return v.readLocked()
+		return v.readShared()
 	}
-	return d, err
+	if err != nil {
+		return nil, err
+	}
+	// A VAULT THAT HELD OVERSIZED SLOTS IS WRITTEN BACK WITHOUT THEM AT ONCE.
+	// openDoc has already left them out of d, and until the file shrinks every
+	// read of it still pays to load and compare the whole of it. Every caller
+	// of readShared holds the vault's lock, so this write is as safe as any.
+	// The document's own stamp is kept: dropping a slot is not an edit, and
+	// older slots may still inherit that stamp. A write that fails leaves the
+	// file as it was and the next open tries again.
+	if d.dropped > 0 {
+		if shrunk, err := sealDoc(v.key, d); err == nil && writeAtomic(v.path, shrunk) == nil {
+			blob = shrunk
+		}
+	}
+	lastOpened.Store(v.path, &openedVault{key: bytes.Clone(v.key), blob: blob, doc: d})
+	return d, nil
+}
+
+// clone is a copy of d whose secrets can change without changing d's. A
+// record holds only values, so copying the map copies everything.
+func (d *vaultDoc) clone() *vaultDoc {
+	c := *d
+	c.Secrets = make(map[string]record, len(d.Secrets))
+	for id, r := range d.Secrets {
+		c.Secrets[id] = r
+	}
+	return &c
 }
 
 // adoptStaged finishes a reseal that stopped between the identity changing and
@@ -383,7 +478,23 @@ func openDoc(key, blob []byte) (*vaultDoc, error) {
 	if d.Secrets == nil {
 		d.Secrets = map[string]record{}
 	}
+	d.dropOversize()
 	return &d, nil
+}
+
+// dropOversize leaves out every slot whose value is longer than
+// [MaxSlotValue] and counts them in d.dropped. Leaving a slot out is not a
+// tombstone: a carrier reads an absent slot as one it was never given and
+// leaves its own copy alone (vaultsync's restore), so no machine loses the file
+// such a slot was carrying. A merged copy from a machine that still holds one
+// is opened through here too, so the slot cannot come back that way.
+func (d *vaultDoc) dropOversize() {
+	for id, r := range d.Secrets {
+		if len(r.Value) > MaxSlotValue {
+			delete(d.Secrets, id)
+			d.dropped++
+		}
+	}
 }
 
 // errUnchanged is what an update function returns when it made no change: the
@@ -411,15 +522,20 @@ func (v *Vault) update(fn func(*vaultDoc) error) error {
 // write seals the document and replaces the vault file atomically. The caller
 // holds the lock and has already set the document's Updated stamp.
 func (v *Vault) write(d *vaultDoc) error {
-	plain, err := json.Marshal(d)
-	if err != nil {
-		return err
-	}
-	blob, err := seal(v.key, plain)
+	blob, err := sealDoc(v.key, d)
 	if err != nil {
 		return err
 	}
 	return writeAtomic(v.path, blob)
+}
+
+// sealDoc is the document as the sealed bytes of vault.enc.
+func sealDoc(key []byte, d *vaultDoc) ([]byte, error) {
+	plain, err := json.Marshal(d)
+	if err != nil {
+		return nil, err
+	}
+	return seal(key, plain)
 }
 
 func ignoreUnchanged(err error) error {

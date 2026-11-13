@@ -27,6 +27,9 @@ func (a *app) taskComputersAvailable() bool {
 	if a.taskComputers == nil {
 		return false
 	}
+	if a.addMachine.known && a.addMachine.size < fleetEnough {
+		return false
+	}
 	if connected, ok := a.agent.(interface{ TaskComputersSupported() bool }); ok {
 		return connected.TaskComputersSupported()
 	}

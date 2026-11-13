@@ -24,7 +24,6 @@ import (
 // The provider's own counter is independent of the knowledge receipts and the
 // Spending ledger. Both compilation and reading use their exported interfaces.
 func TestMemorySpendAndLifecycle(t *testing.T) {
-	s := newLocalSetup(t)
 	t.Run("funnel law", checkMemoryFunnel)
 	var calls atomic.Int64
 	var blockNext atomic.Bool
@@ -97,7 +96,7 @@ func TestMemorySpendAndLifecycle(t *testing.T) {
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"model": model, "choices": []any{map[string]any{"finish_reason": "stop", "message": map[string]any{"content": result}}}, "usage": map[string]any{"prompt_tokens": 4400, "completion_tokens": 100, "cost": 0.01}})
 	}))
-	defer server.Close()
+	t.Cleanup(server.Close)
 	original := http.DefaultTransport
 	originalClient := http.DefaultClient
 	http.DefaultClient = &http.Client{Transport: roundTripper(func(r *http.Request) (*http.Response, error) {
@@ -112,6 +111,7 @@ func TestMemorySpendAndLifecycle(t *testing.T) {
 		return original.RoundTrip(copy)
 	})}
 	t.Cleanup(func() { http.DefaultClient = originalClient })
+	s := newLocalSetup(t)
 	vault := knowledge.Open(filepath.Join(s.home, "profile"))
 	if err := vault.StartBuild(); err != nil {
 		t.Fatal(err)
@@ -179,7 +179,7 @@ func TestMemorySpendAndLifecycle(t *testing.T) {
 				t.Fatal(err)
 			}
 			meter := &stageBudget{floor: floor, item: item}
-			workspace := t.TempDir()
+			workspace := testHome(t)
 			if err := os.MkdirAll(filepath.Join(workspace, "bucket"), 0700); err != nil {
 				t.Fatal(err)
 			}
@@ -389,10 +389,16 @@ func TestMemorySpendAndLifecycle(t *testing.T) {
 				history := &memoryObservedHistory{History: session.KnowledgeHistory(workspace, filepath.Join(s.home, "job-profile")), passes: make(chan struct{}, 4)}
 				ctx, cancel := context.WithCancel(context.Background())
 				done := make(chan error, 1)
+				worker := knowledge.Open(filepath.Join(s.home, "job-profile"))
 				go func() {
-					done <- knowledge.Open(filepath.Join(s.home, "job-profile")).Run(ctx, history, func() string { return "fixture" })
+					done <- worker.Run(ctx, history, func() string { return "fixture" })
 				}()
 				for pass := 0; pass < 2; pass++ {
+					// Memory off inventories only when its saved-chat count is requested.
+					if err := worker.AskDiscovery(); err != nil {
+						cancel()
+						t.Fatal(err)
+					}
 					select {
 					case <-history.passes:
 					case <-time.After(5 * time.Second):
@@ -426,7 +432,7 @@ func TestMemorySpendAndLifecycle(t *testing.T) {
 		}
 	})
 	t.Run("captured job migration", func(t *testing.T) {
-		v := knowledge.Open(t.TempDir())
+		v := knowledge.Open(testHome(t))
 		if err := v.StartBuild(); err != nil {
 			t.Fatal(err)
 		}
@@ -474,7 +480,7 @@ func TestMemorySpendAndLifecycle(t *testing.T) {
 		}
 	})
 	t.Run("unchanged failed input", func(t *testing.T) {
-		v := knowledge.Open(t.TempDir())
+		v := knowledge.Open(testHome(t))
 		if err := v.StartBuild(); err != nil {
 			t.Fatal(err)
 		}
@@ -496,7 +502,7 @@ func TestMemorySpendAndLifecycle(t *testing.T) {
 	t.Run("unchanged refinement", func(t *testing.T) {
 		richModel.Store(true)
 		defer richModel.Store(false)
-		v := knowledge.Open(t.TempDir())
+		v := knowledge.Open(testHome(t))
 		if err := v.StartBuild(); err != nil {
 			t.Fatal(err)
 		}

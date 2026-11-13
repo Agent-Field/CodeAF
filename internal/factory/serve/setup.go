@@ -24,6 +24,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
+	"github.com/Agent-Field/codeaf/internal/gitpolicy"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	forge "github.com/Agent-Field/codeaf/internal/praf/github"
 	"github.com/Agent-Field/codeaf/internal/redact"
@@ -522,7 +523,13 @@ func (h *Handler) setupAction(ctx context.Context, out *setupState, body api.Fac
 					return errors.New("codeaf could not keep this GitHub connection")
 				}
 			}
-			credentials.Set("github", token)
+			// A pasted token is handed to the app to keep (Keep); gh's own
+			// token is held for this launch only, since gh keeps it.
+			if body.Source == "gh" {
+				credentials.Set("github", token)
+			} else {
+				credentials.Keep("github", token)
+			}
 		} else {
 			if token != "" {
 				if err := h.setupScope(ctx, token); err != nil {
@@ -626,7 +633,7 @@ func (h *Handler) setupAction(ctx context.Context, out *setupState, body api.Fac
 }
 
 func (h *Handler) keepSetupCheckout(ctx context.Context, repo, path string) error {
-	out, err := exec.CommandContext(ctx, "git", "-C", path, "remote", "get-url", "origin").Output()
+	out, err := exec.CommandContext(ctx, "git", gitpolicy.WithoutAutoMaintenance("-C", path, "remote", "get-url", "origin")...).Output()
 	if err != nil {
 		return errors.New("Choose an existing GitHub checkout")
 	}
@@ -838,7 +845,7 @@ func (h *Handler) cloneSetupRepo(ctx context.Context, repo, path string) error {
 		return err
 	}
 	// Git obtains credentials from the person's credential helper; no token enters argv or a remote URL.
-	cmd := exec.CommandContext(ctx, "git", "clone", "--", "https://github.com/"+repo+".git", path)
+	cmd := exec.CommandContext(ctx, "git", gitpolicy.WithoutAutoMaintenance("clone", "--", "https://github.com/"+repo+".git", path)...)
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 	token, err := h.setupToken(ctx)
 	if err != nil {

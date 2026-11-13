@@ -73,8 +73,12 @@ type appInboxTap struct {
 func (t *appInboxTap) Emit(event string, data any) {
 	// A QUESTION COUNTS FOR UNREAD BEFORE THE WINDOW HEARS OF IT, so a mark
 	// sent once the window has it is never stamped ahead of it.
+	var opening *appwire.InboxItem
 	if opened, ok := data.(appwire.AskOpened); ok {
 		t.b.noteAsk(opened.Ask)
+		// Store the item before publishing a card the client can answer.
+		item := t.b.inboxOpen(opened.Ask)
+		opening = &item
 	}
 	// EVERY agent.changed IS DRESSED ON ITS WAY OUT, whichever road said it:
 	// its crews, its live line, working while a turn runs, and unread. Its
@@ -91,7 +95,11 @@ func (t *appInboxTap) Emit(event string, data any) {
 	} else {
 		t.next.Emit(event, data)
 	}
-	t.b.inboxSaw(event, data)
+	if opening != nil {
+		t.b.inboxAdded(*opening)
+	} else {
+		t.b.inboxSaw(event, data)
+	}
 	t.b.unreadSaw(data)
 }
 
@@ -117,8 +125,6 @@ func (b *appBackend) inboxSaw(event string, data any) {
 		return
 	}
 	switch v := data.(type) {
-	case appwire.AskOpened:
-		b.inboxOpened(v.Ask)
 	case appwire.AskClosed:
 		id := appInboxID(v.Agent, v.ID)
 		var held *appInboxHeld
@@ -151,6 +157,11 @@ func (b *appBackend) inboxSaw(event string, data any) {
 
 // inboxOpened adds an ask to the Inbox, or says it again as it now stands.
 func (b *appBackend) inboxOpened(ask appwire.Ask) {
+	b.inboxAdded(b.inboxOpen(ask))
+}
+
+// inboxOpen stores an ask before its card is published.
+func (b *appBackend) inboxOpen(ask appwire.Ask) appwire.InboxItem {
 	in := b.inbox
 	id := appInboxID(ask.Agent, ask.ID)
 	var item appwire.InboxItem
@@ -179,7 +190,12 @@ func (b *appBackend) inboxOpened(ask appwire.Ask) {
 			delete(in.closing, id)
 		})
 	}
-	in.next.Emit(appwire.EventInboxAdded, appwire.InboxAddedEvent{Item: item})
+	return item
+}
+
+// inboxAdded keeps Inbox notifications after the event that opened the ask.
+func (b *appBackend) inboxAdded(item appwire.InboxItem) {
+	b.inbox.next.Emit(appwire.EventInboxAdded, appwire.InboxAddedEvent{Item: item})
 	b.inboxCounts()
 }
 
@@ -326,6 +342,7 @@ func (b *appBackend) inboxCounts() {
 // ListInbox answers one of the Inbox's lists, newest first, narrowed by a
 // query over its words and where it comes from.
 func (b *appBackend) ListInbox(list, query string) ([]appwire.InboxItem, appwire.InboxCounts, error) {
+	b.syncLibraryInbox()
 	in := b.inbox
 	query = strings.ToLower(query)
 	matches := func(item appwire.InboxItem) bool {
@@ -388,6 +405,13 @@ func (b *appBackend) AnswerInbox(id, option, text, why, scope string) (time.Time
 			return time.Time{}, appwire.Errorf(appwire.CodeNotFound, "the ask %s is not open; it may have been answered elsewhere", ask)
 		}
 		q := asks[at]
+		// A CREDENTIAL IS NEVER HELD HERE. The Inbox keeps an answer's words for
+		// its hold and shows them back, and a masked box exists only in the
+		// chat, so a secret ask is answered there (asks.answer_secret); its
+		// Decline may still be pressed from here.
+		if q.Secret != nil && words != "" {
+			return time.Time{}, appwire.Errorf(appwire.CodeBadParams, "the ask %s takes a secret; type it into the chat's masked box, not here", ask)
+		}
 		switch q.Subkind {
 		case appwire.SubkindCrewProposal:
 			err = appValidateProposalAnswer(option)
@@ -495,6 +519,9 @@ func (b *appBackend) UndoInbox(id string) error {
 // LaterInbox puts an item aside, or brings it back to waiting; the dock reads
 // the same mark.
 func (b *appBackend) LaterInbox(id string, later bool) error {
+	if strings.HasPrefix(id, "library:") {
+		return b.laterLibraryInbox(id, later)
+	}
 	agent, askID, ok := appInboxSplit(id)
 	if !ok {
 		return appwire.Errorf(appwire.CodeBadParams, "%s is not an Inbox item", id)

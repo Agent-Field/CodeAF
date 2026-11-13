@@ -59,7 +59,7 @@ There is no argument form. The screen is how you name what you want; a command t
 project name would be asking you to type out the very thing home exists to show you.
 
 Home is the **first place on the top line**, right after the `codeaf` wordmark:
-`home  chats  AI teams  activity  memories  automations  spend  settings`.
+`home  chats  AI teams  activity  memory  automations  spend  settings`.
 The **teams page**, right after it, is where your teams and their managers live.
 It still does nothing on its own: no notifications and no alerts. You open it, you see where
 things stand, and you either act on something or leave.
@@ -78,7 +78,7 @@ height is the same on every machine on every day. A blank row separates that pai
 panels below them, which are in the rail only because they are quiet today.
 
 **The rank never moves, only the side.** Within the field and within the rail the order is
-always `sessions`, question rows, `projects`, `since you left`, `spend`,
+always `activity`, question rows, `projects`, `since you left`, `spend`,
 `automations` — so two panels that both fill never swap places.
 
 One column under 110 cells, where every panel is in that one order and there is no rail;
@@ -92,7 +92,7 @@ from home stands there as a card. Nothing else stands in it.
 | Panel | What a row is | `enter` on a row | Dim line when it holds nothing |
 | --- | --- | --- | --- |
 | `projects` | a folder with conversations | no keyboard stop; click selects the next message’s project | never empty — the folder this window opened in is always a row |
-| `sessions` | one of the fifteen most recent conversations | opens the conversation | `your recent conversations appear here` |
+| `activity` | one of the fifteen most recent conversations | opens the conversation | `your recent conversations appear here` |
 | `since you left` | what landed while you were away | opens the record, the file or the place | `what happened while you were away` |
 | `spend` | today, the fortnight, who it went to | nothing — its lines are read, never stood on or pressed; the heading opens the spend place | `every chat and task is priced here` |
 | `automations` | an automation that will run again — a reminder, scheduled work or a watch — soonest first | opens the automations place | `reminders, scheduled work and watches · "remind me at 6" or "every morning at 9"` |
@@ -187,7 +187,7 @@ ages off home.
 as an ordinary line once it has been answered or has aged out of the group.
 
 **On a short frame the whole group folds to one line before any question gives way** —
-`8 unread`. `enter` expands that group; the `sessions` heading opens the activity page.
+`8 unread`. `enter` expands that group; the `activity` heading opens the activity page.
 
 ## Answer from home — a digit answers the question that is drawing its answers
 
@@ -268,9 +268,9 @@ Accepting merges the task's branch and unblocks everything queued behind it. The
 has the whole of it under *Why is the task waiting for me*. **Home is where you find it,
 not where it is settled.**
 
-## Sessions — the fifteen most recent conversations on Home and what is running on this machine right now
+## Activity — recent conversations and sessions, the fifteen most recent conversations on Home and what is running on this machine right now
 
-The **activity** section replaces the old list of individual tasks. It shows up to
+The conversation list under activity replaces the old list of individual tasks. It shows up to
 fifteen conversations across projects, newest conversation activity first, regardless
 of whether they have tasks. Closed conversations remain in history with dim titles.
 Each row uses the full conversation title, truncated to fit, and its age. Selecting a
@@ -289,6 +289,8 @@ updates the tab and the row in Sessions together.
 
 ## A chat is running on my other computer — how does home show it, chats on my other machines, "held on tower", "tower offline", why does it say held on build-box offline, merge / discard
 
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time; opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
@@ -305,6 +307,8 @@ happened. The row says where the chat is only where that tells you something:
 | held by this machine, or let go by everyone | nothing |
 
 ## Why a chat says held on build-box or build-box offline
+
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 For a chat on another paired computer, read the two words apart: `held on build-box` says that computer still holds the chat, including while it is idle, and `build-box offline` says that computer has not answered for 25 seconds (it is switched off, asleep, frozen or offline; the word appears within 30 seconds, and goes at once when it answers again) and has not let the chat go, so the chat's last saved turns are what you would get. The name is only the device's. A chat on a computer that is `offline` can still be continued here; the card says how many turns may still be there. A count of one reads `1 turn`, never `1 turns`. The device is the name you gave that machine. A chat whose name will not open shows
 `untitled`, and a machine whose name will not open shows the first eight characters of
@@ -336,6 +340,8 @@ same rows in a terminal (see "The cell verbs" in running-from-the-terminal).
 
 ## Continue a chat here that another machine left — "tower offline", takeover, "continue here", the chat is running on another computer
 
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time; opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
@@ -354,6 +360,8 @@ question takes the whole screen, with the sentence wrapped.
 
 ## Continue here with unsaved edits, another device continuing first, or an unreachable computer
 
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+
 When continuing a chat from another paired computer:
 
 - If you had unsaved edits to that chat here, they are not overwritten. They are kept as a
@@ -364,6 +372,8 @@ When continuing a chat from another paired computer:
 - With no way to continue set up, an offline row has no `continue here`: enter says its sentence.
 
 ## Is my project folder changed when I continue a chat here — what comes with a continued chat, the files, binary files, file modes, the executable bit, the .env, where the copy lives, no git needed
+
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 Continuing a chat brings all of it: the whole conversation, and every file the chat worked
 on, byte for byte: text and binary files, files that were never in a git repository, the
@@ -391,6 +401,8 @@ identity on this machine, no secrets are fetched and no file is written.
 
 ## Do saved provider keys and credentials follow me to another computer
 
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time; opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
@@ -409,6 +421,8 @@ is kept beside it as `credentials.json.damaged`.
 
 ## Do budgets, settings and model choices move between computers
 
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+
 Your stored model picks, display and approval defaults, and spending-limit values follow your paired computers through the encrypted vault. Each setting merges independently; the later edit wins. Spending counted against a limit stays **per computer**, so a daily limit is not a combined fleet allowance. Local paths, caches, service addresses, automations and operator environment pins stay on their computer.
 
 Person and project memories also follow within a sync round, including lines edited by hand and memories from older chats. Concurrent edits of different lines survive; the later edit of the same line wins. Machine-scoped memories stay local.
@@ -421,11 +435,15 @@ chat while you are still fetching it, this machine keeps exactly what it had.
 
 ## Is my git history sent — secrets in my repo, .git, committed keys, branches
 
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+
 Yes. When you continue a chat on your own paired device, the repository's `.git` travels as it is, including its history, branches, settings and any keys in old commits. Task commits travel too. Git history is sealed end to end between your devices; the relay sees only ciphertext. codeaf does not screen, remove or rewrite committed secrets.
 
 The working-tree guard is separate: a `.env` or source file it recognises as holding a secret is excluded from the chat's file capture and sent only through the encrypted vault. The scanner reads the whole file, including keys past its first MiB. If the secret was committed, its Git copy still travels with the history. An untracked secret file with no committed copy arrives only through the vault.
 
 ## What a move carries and what it leaves behind — job logs, task history, kept branches, do spend and usage numbers sync between computers, memory, withheld folders
+
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 A chat that moves to another computer brings, from the relay and sealed on the way:
 
@@ -436,11 +454,17 @@ A chat that moves to another computer brings, from the relay and sealed on the w
 - what the chat spent: the chat's share of the usage and spend figures is read again from its sealed record on the new computer, so its cost shows there and a rewind never drops it;
 - the memories that chat wrote, kept in the chat's own ledger and read back into the new computer's memory.
 
+## What stays on this computer when a chat moves — does the task history come with the chat to another computer, install folders, secrets and spending limits
+
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+
 The project's task history (the list of finished tasks) and the git bookkeeping inside a task's working copy are not carried: they are made again on the other computer from the chat's own record.
 
 It leaves behind, and lists on the card under `not brought along:`: install folders a lockfile rebuilds (`node_modules`, `.venv`, `target`, `vendor`, `Pods`), files this computer cannot read, and one of two names that differ only in letter case or accent. A read-only folder arrives read-only. A secret file (`.env`) is not in the chat's files: it travels in the key vault. Stored limit values, model picks and personal memory follow separately through the encrypted vault. Spending against limits remains per computer; machine-scoped memory and local paths stay local.
 
 ## Does dist or other gitignored output move — ignored files and secret files
+
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 Untracked Git-ignored output stays on the computer that made it and is named on the arrival card with `(git ignores them)`. It is neither captured locally nor uploaded. Tracked files still move. A wholly ignored directory is not walked or screened; an ignored secret file in an ordinary directory, such as `.env` or `config/.env.local`, is screened and still travels through the key vault to paired computers.
 
@@ -536,7 +560,7 @@ When a chat also has kept branch copies, Home collapses those copies into the ma
 
 ## Why does home show a session id for an untitled chat, untitled conversation, new conversation
 
-**A conversation nothing has named yet reads `new conversation`** on home's sessions
+**A conversation nothing has named yet reads `new conversation`** on home's activity
 list, the same word the activity page uses. It never reads as its session id, including
 the id with its first letter raised (`D53cceead3f99593`). A conversation that has a title
 keeps that title.
@@ -607,7 +631,7 @@ With nothing kept or let go since then, the memory line draws nothing.
 
 ## Threads, open conversations and recently closed chats — the Home list
 
-Home has **one bulleted conversation list under sessions**. It combines this window's
+Home has **one bulleted conversation list under activity**. It combines this window's
 open tabs and saved history, deduplicates them, and shows the fifteen most recent
 conversations, newest first. Bullets show running work and unread replies. The current
 conversation is bold; its description can say `here` and show the last thing you wrote.
@@ -701,7 +725,7 @@ each of those is a panel of its own now.
 | It used to be | It is now |
 | --- | --- |
 | `?` beside a conversation or task | an unanswered question on that row |
-| `◐` rows under them | the `sessions` panel |
+| `◐` rows under them | the `activity` panel |
 | the quiet rows and `▸ 15 more, quiet since 6d` | the conversation list, then `N more` |
 | project headings, `alt+g` | the `projects` panel |
 | the `since you left` ledger above the list | the `since you left` panel |
@@ -719,7 +743,7 @@ every conversation in it, and `ctrl+t` on one of them starts a new one there.
 ## How do I hide the quiet chats — alt+q hide the quiet ones
 
 **You cannot any more, and `alt+q` does nothing.** The panels already keep the quiet
-ones out of the way: `needs you` and `sessions` hold what wants you or is moving, and
+ones out of the way: `needs you` and `activity` hold what wants you or is moving, and
 the conversation list shows the fifteen most recent conversations, with closed ones dimmed. A short frame folds what does not fit behind `N more`. Typing finds any conversation on the machine.
 
 ## Which column am I in — move between the columns on home: ↑↓ walk the field, ←→ open a row's verbs
@@ -731,7 +755,7 @@ Arrow keys skip the rail. Project names there can be clicked to select the next 
 folder; the spend figures and empty-panel hints have no click action.
 
 **The panel the cursor is in marks its heading** with the cursor's ground; the words stay
-where they were. A headed panel such as `sessions` lights its heading when the cursor is
+where they were. A headed panel such as `activity` lights its heading when the cursor is
 inside it. The conversation and question rows have no heading. The row you are on
 wears the same ground and its title goes bold; the row under your mouse pointer wears it too
 while the pointer is on it.
@@ -751,7 +775,7 @@ the row under the cursor. `alt+.` draws the map.
 
 **Because the cursor is in that panel.** The heading of the panel holding the cursor wears
 the cursor's ground — one heading per frame, following the keyboard, and never the mouse.
-Walk into `sessions` and `sessions` is the heading that is marked.
+Walk into `activity` and `activity` is the heading that is marked.
 
 No project is ever drawn darker than another on its own. If one row looks different, it is
 one of two things: the **row under the cursor or the pointer**, which wears the ground and a
@@ -792,7 +816,7 @@ the conversation list has this conversation from its first minute.
 says what would put something there. It goes the moment the first row arrives.
 
 A quiet morning on a busy machine is the same screen with fewer rows: `needs you` whispering,
-`sessions` whispering, the conversation list full, `since you left` holding what ran overnight.
+`activity` whispering, the conversation list full, `since you left` holding what ran overnight.
 There is no accent anywhere when nothing is waiting on you.
 
 Typing works exactly as it does anywhere: `? ask here: "…"` and `+ start a new
@@ -811,7 +835,7 @@ squeezed to their floors in the order below — and the line reads `N fewer`. `e
 folds it. One panel is open at a time; opening a second folds the first. An open panel
 taller than the window shows what fits and its line still counts the rest — `3 fewer · 40
 more` — and names no place, because `enter` on it folds rather than opens. The way to
-those rows is the panel's **heading**: `sessions` opens sessions, `since you left` opens memory,
+those rows is the panel's **heading**: `activity` opens sessions, `since you left` opens memory,
 and `automations` opens automations. Conversations and extra question rows have no heading;
 `projects` opens nothing. The foot under a fold says
 which way it will go: `enter shows the rest`, then `enter folds them`. Opening lasts as long
@@ -819,12 +843,12 @@ as the window; a relaunch starts folded. The fold wears no mark: home spends its
 on the amber `?` and the one moving cell.
 
 **A tall terminal grows the panels**, once every panel has what it naturally shows:
-additional question rows, `since you left` and `projects` to eight rows; `sessions` keeps at most fifteen recent conversations; `automations` from three to five. `spend` never grows. What is left over is air
+additional question rows, `since you left` and `projects` to eight rows; `activity` keeps at most fifteen recent conversations; `automations` from three to five. `spend` never grows. What is left over is air
 under the shorter column.
 
 **A short terminal squeezes them in a fixed order**: `automations` gives way first, then
 `spend`, then `since you left`, then `projects`; the conversation list, the additional
-question rows and `sessions` shrink last. A squeezed panel keeps its heading, the rows that fit and its `N more` line;
+question rows and `activity` shrink last. A squeezed panel keeps its heading, the rows that fit and its `N more` line;
 only when every panel is down to that is a panel dropped — and the panels that are only
 whispering go before any panel with rows, whatever their rank, so a very short window
 (fourteen rows) still shows a conversation you can open rather than a sentence about what
@@ -860,11 +884,11 @@ there is no strip. The rule and a blank come next, three rows, and the page star
 row higher. **Inside a chat** and on every place but home the top line reads:
 
 ```
- >● codeaf   home  chats  AI teams  activity  memories  automations  spend  settings   2 want you · 4 moving · $0.55 / $500 · tue 1:11pm
+ >● codeaf   home  chats  AI teams  activity  memory  automations  spend  settings   2 want you · 4 moving · $0.55 / $500 · tue 1:11pm
 ```
 
 **On home it drops the two counts** and keeps the budget and the clock, because the
-`needs you` and `sessions` panels are those counts, row by row.
+`needs you` and `activity` panels are those counts, row by row.
 
 **On a narrow window the right end gives way first**: the clock, then `4 moving`, then
 the words of `2 want you`, which becomes `2 ?` in the same amber, then the allowance
@@ -893,20 +917,20 @@ another window asks can take up to ten seconds to reach a chat's top line.
 **The money on this line is the money on the spend place and the `spend` panel**, to the
 cent — one reading of one file, wherever you are standing.
 
-## Where did standing and memory go on the tab bar — automations is alt+7, memories alt+8, and the eight words
+## Where did standing and memory go on the tab bar — automations is alt+7, Memory alt+8, and the eight words
 
-The top line reads `home  chats  AI teams  activity  memories  automations  spend  settings`. Each place
+The top line reads `home  chats  AI teams  activity  memory  automations  spend  settings`. Each place
 has a digit of its own: `alt+1` home, `alt+2` AI teams, `alt+3` chats (back to your
 conversation), `alt+4` activity, `alt+5` spend, `alt+6` settings, `alt+7` automations and
-`alt+8` memories. **The numbers are not the bar's order**: each place kept the number it had
-before the bar was regrouped, so memories, the fifth word, is `alt+8`.
+`alt+8` Memory. **The numbers are not the bar's order**: each place kept the number it had
+before the bar was regrouped, so Memory, the fifth word, is `alt+8`.
 
 - **Standing is gone, and automations replaced it.** `/automations` and `alt+7` open the
-  automations place, and its word is always on the bar, between `memories` and `spend`. On a
+  automations place, and its word is always on the bar, between `memory` and `spend`. On a
   frame under 86 columns the bar has no room for all eight words, and `spend` and
   `settings` fold behind `more ▾`. `/standing` and `/orders` are not commands any more — `/standing` answers
   `there is no command called /standing · / lists them`.
-- **Memories is on the bar**, the fifth word, always — on a fresh machine too. `/memory`
+- **Memory is on the bar**, the fifth word, always — on a fresh machine too. `/memory`
   (or `/memories`) and `alt+8` open it.
 
 `tab` returns to Home; `alt+.` shows all eight numbered destinations. Search is on Home:
@@ -999,7 +1023,7 @@ opens the row's verbs and `←` closes them, and with something typed they move 
 **One click is `enter`.** A click on a row opens it, and a click on a fold that names a
 place opens that place. A `projects` row is the one exception: a click on it picks that
 folder for the next message and opens nothing. A click on a panel's **heading** opens the place the heading names:
-`sessions` opens sessions, `since you left` opens memory, `spend` opens spend, and
+`activity` opens sessions, `since you left` opens memory, `spend` opens spend, and
 `automations` opens automations. There is no `needs you` heading. The conversation list has no heading. The `projects` heading opens nothing
 and stays dim. **A heading that opens somewhere underlines on mouse-over.** The
 pointer on a heading moves neither the cursor nor the marked heading.
@@ -1370,7 +1394,7 @@ nothing is reopened and nothing is replayed from cold that does not have to be.
 
 **Yes, it is still running.** A conversation you are not looking at is **not paused**: its
 turn finishes into its own transcript, its tasks run, its background jobs run, its lock is
-held and it keeps writing itself to disk. Its conversation remains available in home's `sessions`
+held and it keeps writing itself to disk. Its conversation remains available in home's `activity`
 panel while they run. A desktop notification tells you when it finishes a turn or stops on
 a question — even while the terminal is focused, because a focused terminal is no longer
 evidence that anybody is looking at *that* conversation.
@@ -1958,10 +1982,14 @@ longest wait at the top of the panel.
 A session that gave no words for what it is waiting on shows no line at all rather than a
 placeholder.
 
-This is read out of a small file each live session keeps in its own folder, refreshed
-when its contents change, touched every ten seconds while unchanged, and believed for
-fifteen seconds after its last write or touch. So a window that was killed, or a laptop that
-closed, stops claiming to need you within a glance.
+This is read out of a small file each live session keeps in its own folder, written the
+moment its contents change. While a session is working, waiting on you or has work out, the
+file is refreshed every seven seconds and believed for fifteen seconds after its last
+refresh, so a window that was killed, or a laptop that closed, stops claiming to need you
+within a glance. An idle session — nothing running, nothing asked — leaves its file alone
+and refreshes it once a minute, and its file is believed for three minutes, so an idle window
+that was killed can still be listed as open for up to three minutes. An older codeaf
+believes every file for fifteen seconds only, so it drops idle sessions between refreshes.
 
 `enter` on the row opens it. **For the ordinary questions you do not have to go at all** —
 see the next section.
@@ -1998,7 +2026,8 @@ into the box, which is a search and a new conversation at the same time.
 **A question raised by _this_ window closes home on its way in**, so the card is on the
 screen you are looking at rather than behind it. Home then says `answered · deny` at the
 foot and the row reads `answered · waiting for it to pick that up` until the other session
-picks it up, on its next heartbeat. **An answer that arrives too late is ignored**, and a
+picks it up — at once, since the session watches its own folder for answers, or on its next
+five-second beat when that watch cannot be kept. **An answer that arrives too late is ignored**, and a
 window that has stopped refreshing for fifteen seconds cannot be answered from here: its
 chips are not drawn.
 
@@ -2197,7 +2226,7 @@ into an ordinary conversation — is on its own page: *Asking from home*.
 
 **The resting home has no card and no right-hand preview at any width.** The columns are
 panels now, and every fact the card carried has a row of its own: what a conversation is
-stopped on is its `needs you` row, what is in flight is its `sessions` rows, what it made is
+stopped on is its `needs you` row, what is in flight is its `activity` rows, what it made is
 a `made <file>` line in `since you left`, and where you left off is the line under the
 `here` row. The facts line is gone — a number is on the row where it is not zero.
 
@@ -2331,18 +2360,18 @@ Fix the nil-map                          3h
 `■ stopped · <what it came to>`, and `✕ incomplete · a fault: <what broke>` — only that
 last one coloured bad. **The word `failed` is nowhere on home.**
 
-On the resting panels, `sessions` names the conversation that owns the work.
+On the resting panels, `activity` names the conversation that owns the work.
 Completed work can also appear under `since you left`.
 
 ## How do I see more tasks on the right — ▸ …5 more tasks
 
 **On the card beside a search, `▸ N more tasks` names the activity page** out at the right
 margin rather than unfolding, because a card is not the place that holds them; `ctrl+.`, or
-`tab` onto `sessions`, is the way there. A band of files or folders with more behind it says
+`tab` onto `activity`, is the way there. A band of files or folders with more behind it says
 `▸ …3 more files`, and a click on that line — or `→` with the strip closed — opens it, and
 `▾ …3 fewer` folds it back. The fold always cuts between tasks, never through one.
 
-**On the resting panels, `sessions` folds as `N more`**, and `enter` on that line opens the
+**On the resting panels, `activity` folds as `N more`**, and `enter` on that line opens the
 panel. The phone sheet folds its work band by family and counts all the
 tasks hidden behind its fold.
 
@@ -2353,7 +2382,7 @@ the task's **record** opens: what it was asked to do, what it came to, the files
 and the tail of its own output. It is the same card `enter` opens on a row of the tasks
 place, so `esc` comes back one layer at a time.
 
-On the resting panels, `enter` on a `sessions` row opens its conversation.
+On the resting panels, `enter` on a `activity` row opens its conversation.
 A pending task decision keeps its answer controls, and a landed line under
 `since you left` opens the task record.
 
@@ -2523,7 +2552,7 @@ and `every chat and task is priced here`. `spend` never grows in a tall window, 
 second panel to give way on a short one. The money is the pulse line's and the spend place's
 to the cent.
 
-## What has this conversation cost — the spend band on the card beside a search
+## What has this home conversation spent — what this chat cost, the spend band on the card beside a search
 
 **A single conversation's bill is on the card beside a search**, on its dim facts line:
 `touched 12 files · spent $1.25 · 34k tokens · last active 12m`. Each clause is independent:
@@ -2533,9 +2562,11 @@ not drawn. The resting panels do not carry it — `spend` is the whole machine's
 **It counts the talking and the work the talking started, in one figure, and each dollar
 once.** The session keeps one set of books: your messages, the answers, the small calls
 beside them, and every task and senior-dev run this conversation started, folded in as each
-one finishes. It writes that total to the session folder at the end of every turn and again
-when a task or run finishes, so home can read it without opening the transcript. The
-project's task index also carries each task's and run's own bill. `spent $1.25` is the larger
+one finishes. It writes that total to the session folder at the end of every turn, when
+a task or run finishes, and when a small call bills after its turn ended. Once that
+write settles, the card includes that late bill just as `/cost` does, including a
+provider receipt recovered after the turn ended or a late task charge, without opening
+the transcript. The project's task index also carries each task's and run's own bill. `spent $1.25` is the larger
 of those two figures, never their sum: the books already hold every finished task and run, so
 adding the index on top would count them twice. While work is still running the index can be
 ahead, and then its figure is the one shown.
@@ -2554,7 +2585,7 @@ phone-width frame is walked one row at a time rather than scanned.
 
 Top to bottom:
 
-1. `sessions`: the fifteen most recent conversations, combining open tabs and saved history without duplicates.
+1. `activity`: the fifteen most recent conversations, combining open tabs and saved history without duplicates.
 2. Additional question rows, without a heading — conversations not already listed above
    and ask-here panes holding a card, from **any** project.
 3. Home ask exchanges retain their own answer rows.
@@ -2632,7 +2663,7 @@ Tap one, or press the key it names. Below width **24** the plain hint line is dr
 ## Main chat versus subtasks — why is the work nested on Home?
 
 A row of the conversation list is the **main conversation**; opening it returns to its chat. The
-conversation also appears in `sessions` while it is among the fifteen most recent.
+conversation also appears in `activity` while it is among the fifteen most recent.
 Its tasks are nested under it in the Sessions tab, and completed work can appear under
 `since you left`.
 
@@ -2644,7 +2675,7 @@ ancestry, and `N more tasks` names the activity page, which holds the full conve
 
 ## What home cannot do yet — stop another window's task, and a something is wrong panel
 
-**Stop a task another window is running.** A `sessions` row held by another terminal says
+**Stop a task another window is running.** A `activity` row held by another terminal says
 `another window` and offers no stop at all — the stop is a door into this window's own
 engine, and a verb that would end the wrong work or fail is left off rather than drawn.
 `enter` brings the conversation here, where `s stop` on its row, or `/stop`, ends it.
@@ -2720,6 +2751,8 @@ from a previous visit cannot replace the current visit's selection or draft.
 
 ## I quit on my laptop and opened my desktop — straight back into the chat
 
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+
 After a clean quit lets a paired computer's chat go, bare `codeaf` on another paired computer continues that chat automatically within 24 hours. You arrive with the `Moved from` banner and the usual `not brought along:` facts; `esc` goes Home.
 
 If the laptop only slept or lost its connection, Home offers its latest chat and `alt+c` continues immediately. When local unsaved edits need to be kept as a branch, the continuation card asks first. Nothing moves automatically while the other computer is running that chat, for a named chat or `--host`/`--at`/`--session`, when another local window holds a chat, or when local unsaved edits need a choice. If the move fails, Home stays open and says why.
@@ -2739,3 +2772,7 @@ An empty new chat on one of your other devices stays off Home until it has a sav
 Turning sync off with `CODEAF_SYNC_URL=off` (or leaving sync off before pairing) means "do not talk to the sync service", never "forget my chats". Home still lists every chat on this computer — chats this version saved and chats from older versions alike — each once, and each opens and can be written.
 
 When an older chat was already copied into this version's store, Home lists and opens that copy even while sync is off, and the untouched original stays on disk beside it. Saved sync hold receipts from an earlier session stay dormant while sync is off, so sending a message in any local chat works without asking the sync service.
+
+## Why are chats and files still on this computer after pairing — sync storage
+
+Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request. Home can list paired devices while uploads wait; an offline computer cannot supply new turns that never reached the service.

@@ -28,6 +28,11 @@ const (
 	FilesOnly
 	// HostBound runs unjailed on the home device.
 	HostBound
+	// Fenced is an unattended agent's work (fence.go): the network open, writes
+	// only inside the job, keys and sign-ins unreadable. It is never declared
+	// by a workspace; a door that runs an agent with nobody watching chooses
+	// it, through [FencedSeat].
+	Fenced
 )
 
 // NetPolicy is the side-effect oracle. The zero value denies the network. It is
@@ -97,6 +102,17 @@ type ExecRequest struct {
 	WaitDelay time.Duration // bound on draining output after exit; zero picks a short default; negative waits without a bound
 	Combined  bool          // stderr shares stdout's pipe, so arrival order is kept
 	Stream    bool          // output goes to onOutput only; the result keeps none of it
+
+	// Fence is the confinement a fenced seat ([WithFence]) stamps on every
+	// call. Local applies it to a call whose workspace is host-bound, making
+	// the call [Fenced]; a sandboxed or files-only workspace keeps its own
+	// class. A caller never sets it: a value set at a call site is the seat's.
+	Fence *Fence
+
+	// Writable names folders a fenced call may also write (fence.go): codeaf's
+	// own record and inbox folders for a program it launched, which live
+	// outside the job. It widens nothing for any other class.
+	Writable []string
 }
 
 // Stream names an output stream.

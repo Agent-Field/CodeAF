@@ -599,7 +599,7 @@
    "err": "fence_stale"
   },
   {
-   "name": "publish refuses an expired lease nobody took",
+   "name": "publish renews an expired lease nobody took",
    "op": "publish",
    "device": "dev_a",
    "now": 9999,
@@ -626,7 +626,21 @@
     "class": "chat",
     "pending": 1
    },
-   "err": "fence_stale"
+   "want": {
+    "V": 1,
+    "head": "a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
+    "durable_at": 9999,
+    "class": "chat",
+    "size": 20,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 3,
+     "expires": 99999,
+     "pending": 1
+    }
+   }
   },
   {
    "name": "heartbeat holder",

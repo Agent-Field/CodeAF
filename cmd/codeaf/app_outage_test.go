@@ -21,6 +21,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	cellstoretest "github.com/Agent-Field/codeaf/internal/cellstore/celltest"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/directory"
@@ -119,6 +120,8 @@ func outageHomes(t *testing.T, relayURL string) (string, string) {
 	t.Setenv(syncsetup.URLVar, relayURL)
 	t.Setenv(syncsetup.IntervalVar, "50")
 	a, b := home.Dir(), e2TempDir(t)
+	cleanupAppChildDaemons(t, a)
+	cleanupAppChildDaemons(t, b)
 	id, err := identity.Ensure(a)
 	if err != nil {
 		t.Fatal(err)
@@ -141,7 +144,7 @@ func outageHomes(t *testing.T, relayURL string) (string, string) {
 			t.Fatal(err)
 		}
 	}
-	t.Cleanup(cellstore.StopSpawned)
+	cellstoretest.EngineDir(t)
 	return a, b
 }
 

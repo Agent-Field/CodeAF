@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -35,11 +36,34 @@ func (a *Agent) SuggestReply(ctx context.Context, material string) (string, erro
 		MaxTokens: 160,
 		Deadline:  ReplySuggestionWait,
 		Cache:     "reply_suggestion",
-	}, func(raw string) (string, string) { return cleanReplySuggestion(raw), "" })
+	}, func(raw string) (string, string) { return cleanReplySuggestion(raw, a.beltNames()...), "" })
 	return answer.Text, err
 }
 
-func cleanReplySuggestion(raw string) string {
+// beltNames is the names of the tools on this conversation's belt, and the
+// factory step's report verb whatever the belt: a job's manager conversation
+// quotes its steps' reminders too.
+func (a *Agent) beltNames() []string {
+	a.armMu.Lock()
+	defer a.armMu.Unlock()
+	names := make([]string, 0, len(a.tools)+1)
+	names = append(names, stageResultToolName)
+	for _, tool := range a.tools {
+		names = append(names, tool.Name)
+	}
+	return names
+}
+
+// cleanReplySuggestion is the draft a person may be offered, "" for none.
+//
+// A DRAFT ADDRESSED TO THE MODEL IS NOT A PERSON'S REPLY, and is dropped here,
+// at the one place drafts are made: one that speaks in codeaf's carry-on voice,
+// or that names one of the conversation's own tools — "Please call stage_result
+// with final true and done false" was offered to a person on the 2026-11-06
+// live run, copied from the factory's reminder to its step. Only a tool name
+// that holds an underscore is matched, so a draft that says "read" or "edit"
+// in a person's words still stands.
+func cleanReplySuggestion(raw string, tools ...string) string {
 	var out struct {
 		Reply string `json:"reply"`
 	}
@@ -50,5 +74,29 @@ func cleanReplySuggestion(raw string) string {
 	if !utf8.ValidString(text) || utf8.RuneCountInString(text) > ReplySuggestionRunes || strings.ContainsAny(text, "\n\r\x00") {
 		return ""
 	}
+	if addressesTheModel(text, tools) {
+		return ""
+	}
 	return text
+}
+
+// addressesTheModel says whether a draft is machinery: the carry-on lead, or
+// a tool of the belt named as a whole word.
+func addressesTheModel(text string, tools []string) bool {
+	if IsCarryOn(text) {
+		return true
+	}
+	words := strings.FieldsFunc(strings.ToLower(text), func(r rune) bool {
+		return !(r == '_' || r >= 'a' && r <= 'z' || r >= '0' && r <= '9')
+	})
+	for _, tool := range tools {
+		tool = strings.ToLower(strings.TrimSpace(tool))
+		if !strings.Contains(tool, "_") {
+			continue
+		}
+		if slices.Contains(words, tool) {
+			return true
+		}
+	}
+	return false
 }

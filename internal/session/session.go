@@ -852,6 +852,8 @@ type Event struct {
 	// a surface reads as "unknown" and never as "nothing happened".
 	Compaction *CompactionFact `json:"Compaction,omitempty"`
 
+	// Tool lifecycle events can also carry the conversation's declared client-tool
+	// category, so surfaces need no name-only guess for those dynamic tools.
 	// Category is the FAMILY OF WORK an EventCaption's sentence is about — one
 	// word from the closed list in actioncategory.go — and it is zero on every
 	// other kind.
@@ -1457,6 +1459,15 @@ type Config struct {
 	// session and never a path. Nil is a session with no cell, whose calls run
 	// on the host; see [Config.seat].
 	Seat procexec.Seat
+	// Fence is the confinement an unattended run's commands get when it has no
+	// cell seat (internal/executor's fence.go): writes only inside the job,
+	// keys and sign-ins unreadable, docker refused, the network open. The
+	// doors that run an agent with nobody at the keyboard set it (a factory
+	// stage, `codeaf chat --once`, a headless engine conversation); an
+	// interactive conversation leaves it nil and runs on the host as before.
+	// The session's own read, write and edit tools are held to it too, because
+	// they run inside codeaf and so outside any jail (fencedFileTool).
+	Fence *procexec.Fence
 	// Interrupted is what the last run of this conversation's cell left
 	// unfinished: the model is told once, on its next turn, that those calls were
 	// cut off (interrupted.go). Nil is nothing to tell.
@@ -1471,6 +1482,10 @@ type Config struct {
 	Seals SealState
 	// Renewals reads the local writer's health so the surface can report an outage.
 	Renewals RenewalState
+	// FinishSaving releases the local writer after the conversation has closed.
+	FinishSaving func() error
+	// SavingNotices supplies sentences from that final release to the closing window.
+	SavingNotices func() []string
 	// AuthKeySource explains a refused worker account without supplying routing
 	// settings to a worker whose completer already owns its endpoint and key.
 	// Nil keeps ordinary sessions on their own profile and source ladder.
@@ -1751,6 +1766,13 @@ type Config struct {
 	TaskAudit bool
 	Guardian  bool
 
+	// AttributionOff is the person's `attribution` row turned off
+	// (internal/config's KeyAttribution, env CODEAF_ATTRIBUTION): the model is
+	// told [exec.AttributionOffLaw] on the belt instead of [exec.AttributionLaw],
+	// and the harness adds no trailers to commits it writes or lands itself. It
+	// is spelled as the OFF state so that its zero value signs by default.
+	AttributionOff bool
+
 	// AttributionModelOff is the person's `attribution.model` row turned off
 	// (internal/config's KeyAttributionModel, env CODEAF_ATTRIBUTION_MODEL):
 	// the `Assisted-by` line in the commits codeaf signs is then the bare
@@ -1758,9 +1780,6 @@ type Config struct {
 	// are — the belt fact the model is told (beltfacts.go's
 	// [Config.assistedByModel]) and the mechanical commit a landing writes
 	// without asking anybody ([Agent.signsGitWork]).
-	//
-	// IT NEVER TURNS SIGNING OFF. The `attribution` row that did is gone
-	// (2026-09-23): codeaf signs every commit, pull request and issue it writes.
 	//
 	// IT IS A RESOLVED BOOL AND NOT A PROFILE PATH, for the reason [TaskAudit]
 	// beside it is: a task node is handed no ProfileDir at all, so the row is
@@ -2492,6 +2511,16 @@ type Config struct {
 	// It is set where FactoryItem is, and on the one turn the runner gives an
 	// item's manager to shape its run.
 	FactoryRun RunDoor
+
+	// StateHome is codeaf's own data folder for this window when it is not
+	// the person's default one (CODEAF_HOME names another), and "" otherwise.
+	// The page states it ([stateHomeFact]) because the manual's pages say
+	// `~/.codeaf` and a model that read them went looking in the person's
+	// default home, the wrong one, while the app ran on another (the
+	// 2026-11-06 audit: the desk's assistant listed the real
+	// `~/.codeaf/graph.db`). It is a fact on the page, not a confinement: the
+	// shell can still reach the person's whole home directory.
+	StateHome string
 	// FactoryWorkRefusal rechecks automatic manager work on a worker mirror.
 	FactoryWorkRefusal func() string
 
@@ -2519,6 +2548,15 @@ type Config struct {
 	// the belt. Only the factory's runner sets it, on a stage round it opened.
 	Stage StageDoor
 
+	// Asker takes this conversation's clarifying questions when it is not a
+	// stage of this machine's factory but someone elsewhere still answers
+	// them: `codeaf chat --once --events --steer`, a step an AgentField node
+	// runs for a WorkAF factory, hands each one to the factory over its events
+	// and waits for the answer on its steer channel. It is asked only when
+	// Stage takes no questions, and IT PUTS NOTHING ON THE BELT: `ask` is the
+	// same verb, with someone to answer it.
+	Asker StageAsker
+
 	// PlanStage requires the plan file list in the stage_result answer schema.
 	PlanStage bool
 	// RepairStage offers the PR repair report in the stage_result answer schema;
@@ -2530,6 +2568,14 @@ type Config struct {
 	// belt. It is set only on the foreman's own conversation (cmd/codeaf's
 	// foremanFloorDoor), on a launch that has a Factory door.
 	Floor FloorDoor
+
+	// ClientTools is the door onto tools an app attached to this conversation. Nil is no door.
+	ClientTools ClientToolDoor
+
+	// ownWork says the page is composed for a conversation told only about its
+	// own work (scope.go). Only the agent sets it, from the scope it last read,
+	// so the page and the tasks description cannot disagree.
+	ownWork bool
 
 	// factoryWindow overrides how long one factory card holds its tool call
 	// open, for tests that watch the window end. Zero is [factoryCardWindow].
@@ -2643,8 +2689,9 @@ type Config struct {
 	// commands act as: the same DID in a conversation, `<did>#w<task id>` in a
 	// task worker (agent_identity.go). A child agent inherits both from the
 	// agent that built it ([Agent.newChildAgent]); no surface sets them.
-	agentDID string
-	actorDID string
+	agentDID      string
+	agentDocument *AgentIdentity
+	actorDID      string
 
 	// WorkerDID is who a run worker's commands act as, `<did>#w<n>`: the
 	// conversation's DID with the task number its row wears. A run builds its
@@ -2711,6 +2758,9 @@ type Config struct {
 	// It is read only when DailyBudgetResolved is true; zero then means unlimited.
 	DailyBudgetUSD float64
 
+	// dailyBudgetAuthority keeps descendants on their owner's live day limit.
+	dailyBudgetAuthority func() (float64, error)
+
 	// DailyBudgetResolved says the daily ceiling was deliberately carried into
 	// this agent. Roots leave it false and read their profile and environment live,
 	// including the ordinary default profile whose ProfileDir is empty. A separate
@@ -2773,6 +2823,9 @@ type Agent struct {
 	rewindUndo *rewindUndo
 	debugRun   string
 
+	budgetWatchOnce   sync.Once
+	budgetWorkStarted chan struct{}
+
 	// toolsInFlight and toolsStarted count this agent's tool calls
 	// ([Agent.executeTool]). A shell output is only vouched for as made by its
 	// own command when no other tool call overlapped it (shell_outputs.go).
@@ -2781,14 +2834,19 @@ type Agent struct {
 	// liveOutputWanted counts the windows that joined this conversation asking
 	// for a shell call's output as it arrives ([Agent.WantLiveToolOutput]),
 	// beside the window that opened it with [Config.LiveToolOutput].
-	liveOutputWanted   atomic.Int32
-	chatStarts         map[string]bool
-	knowledgeMu        sync.RWMutex
+	liveOutputWanted atomic.Int32
+	chatStarts       map[string]bool
+	knowledgeMu      sync.RWMutex
+	// Tests shorten the join deadline without changing other agents.
+	knowledgeCloseWait time.Duration
 	knowledgeRetired   []*knowledgeJournal
 	knowledgeVault     *knowledge.Vault
 	knowledgeJournal   *knowledgeJournal
 	taskComputerPrompt bool
-	remoteAckJobs      sync.WaitGroup
+	// ownWorkTold is the scope the page and the tasks description last told the
+	// model (scope.go). It is atomic because belts are built outside a.mu.
+	ownWorkTold   atomic.Bool
+	remoteAckJobs sync.WaitGroup
 	// knowledgeWake is signalled after each journal line reaches the file.
 	// initKnowledge creates it once before the agent is reachable and never
 	// replaces it, so writers read it without a lock.
@@ -2919,21 +2977,20 @@ type Agent struct {
 	systemAt  time.Time
 	systemOwn bool
 	// tools is the belt and definitions is its wire form, built once at
-	// construction — rebuilding them per step would re-marshal every schema on
-	// the hot path — and thereafter grown only at the tail under armMu
-	// (connect.go), with one exception: the team verbs leave when the role that
-	// gave them does (team.go's [Agent.retireTeamTools]).
+	// construction. Built-ins grow under armMu (connect.go), before the replaceable
+	// client-tool tail. Team verbs leave when their role ends (team.go).
 	//
 	// Both are COPY-ON-WRITE: arming allocates a new array and swaps the header,
 	// so a reader that took a snapshot under armMu may walk it without the lock
 	// and can never see a half-written slice. Nothing already in either is ever
-	// moved or rewritten, and nothing but a team verb is removed, because the
-	// definition block rides at the front of every request and a definition that
-	// shifts re-bills the whole prompt behind it (internal/exec's tools.go states
-	// the law).
+	// moved or rewritten in place. Built-ins keep their order while client sets
+	// can be replaced. The definition block rides at the front of every request,
+	// so a definition that shifts re-bills the whole prompt behind it
+	// (internal/exec's tools.go states the law).
 	presentation *presentationIndex
 	tools        []bare.Tool
 	definitions  []ai.ToolDefinition
+	clientTools  clientToolState
 	// served is what the belt cannot say about the tools an ACCOUNT named
 	// rather than this build (served.go): whose account each one is, what the
 	// account calls it, and which capability governs it. Keyed by the name the
@@ -3155,6 +3212,9 @@ type Agent struct {
 	// the one call that must always be answerable.
 	mu    sync.Mutex
 	model string
+	// modelForNowConfigured retains the saved choice while model serves this run.
+	modelForNowConfigured string
+	modelForNowProvider   string
 	// reasoning is how hard each model is asked to think, by model id, and it
 	// is a MAP rather than a field for the reason agent.go's block states: the
 	// level is a choice about a model, and a /model switch must not carry one
@@ -3458,6 +3518,11 @@ type Agent struct {
 	// [Agent.factoryLead]), asked of its run door and kept once known.
 	lead  factoryLeadSeat
 	usage Usage
+	// foldedTaskUSD is the part of usage's dollars that is other tasks' bills
+	// folded in when they landed ([Agent.foldTaskUsage]). Those dollars are
+	// already on their own task's row, so a task tree's spend total takes them
+	// off this worker's figure to count each dollar once ([TaskNode.treeOwnSpend]).
+	foldedTaskUSD float64
 	// answered is the session's money once per model that ANSWERED it, every
 	// call banked under the name the response itself gave (competence.go's
 	// [Agent.AnsweredUsage]). It sums to usage's figures call for call.
@@ -3552,6 +3617,7 @@ type Agent struct {
 	workStopping   bool
 	workEpoch      uint64
 	workStopReason string
+	workStopEnding TaskEnding
 	workStopDone   chan struct{}
 	// cancel ends the turn in flight AND SAYS WHICH DOOR IT CAME THROUGH. It is
 	// a [context.CancelCauseFunc] rather than a plain one because a turn that
@@ -3637,6 +3703,8 @@ type Agent struct {
 	closingBeltDone <-chan struct{}
 	deletionGrace   time.Duration
 	closeFinalizer  bool
+	// releaseSeals gives back this conversation's share after its last local save.
+	releaseSeals func()
 	// closeDone is closed by [Agent.Close] as its LAST act, and it is what makes
 	// the close complete for everybody rather than only for whoever got there
 	// first.
@@ -4073,6 +4141,9 @@ type Agent struct {
 	// Model choices have a separate writer so coalescing never drops a user stamp.
 	modelStampOnce   sync.Once
 	modelStampWriter *stampWriter
+	// Spend has its own writer so a late bill cannot replace an owed user stamp.
+	spendStampOnce   sync.Once
+	spendStampWriter *stampWriter
 
 	// toldStampWriter is the deferred write the elsewhere reading owes told.json,
 	// and toldStampOnce builds it on the first reading (taskdelta.go). It is its
@@ -4172,11 +4243,22 @@ type Agent struct {
 // seat is the executor this session's tool calls run on. A session with no
 // cell says so by name: it is on the host seat.
 func (c Config) seat() procexec.Seat {
-	if c.Seat == nil {
-		return procexec.Host
+	seat := c.Seat
+	if seat == nil {
+		seat = procexec.Host
 	}
-	return c.Seat
+	// THE FENCE GOES AROUND WHATEVER SEAT THIS IS: the host's, or the cell's
+	// that records each call. Wrapping is idempotent, so a seat this returned
+	// and a door stored back (WithEnvironment) is not fenced twice.
+	return procexec.WithFence(seat, c.Fence)
 }
+
+// fenced is whether this session's commands run fenced, the prompt's predicate.
+func (c Config) fenced() bool { return c.Fence != nil }
+
+// fence is the fence this session's commands and file tools keep to, nil
+// when none.
+func (c Config) fence() *procexec.Fence { return c.Fence }
 
 // seatFor is the seat a turn's tool calls run on: the session's own, or its
 // setup form when the turn is a setup turn (setup.go).

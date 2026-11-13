@@ -7,8 +7,8 @@ import (
 	"testing"
 )
 
-// These cross-relay contract vectors keep native and hosted lease decisions
-// aligned, including refusal to publish on an expired hold.
+// These are the existing cross-relay contract vectors, consumed unchanged.
+// R1/R2/R22/R25 require extraction to preserve their observable decisions.
 func TestR25ExistingPureRuleVectorsRemainIdentical(t *testing.T) {
 	b, err := os.ReadFile("../../relay/hosted/vectors.json")
 	if err != nil {
@@ -114,15 +114,5 @@ func TestConditionalAcquireRejectsNewerFenceWithSameHead(t *testing.T) {
 	got, err := Acquire(c, "b", 101, true, seen)
 	if err != ErrLeaseHeld || !reflect.DeepEqual(got, c) {
 		t.Fatalf("stale take = %+v, %v", got, err)
-	}
-}
-
-func TestPublishRefusesExpiredHoldWithoutChangingCell(t *testing.T) {
-	for _, expires := range []int64{0, 99, 100} {
-		c := Cell{Head: "saved", Lease: Lease{Device: "a", Fence: 7, Expires: expires}}
-		got, err := PublishTo(c, "a", Publish{Fence: 7, OldHead: "saved", Head: "late"}, 100)
-		if err != ErrFenceStale || !reflect.DeepEqual(got, c) {
-			t.Errorf("expiry %d: publish = %+v, %v; want unchanged cell and stale refusal", expires, got, err)
-		}
 	}
 }

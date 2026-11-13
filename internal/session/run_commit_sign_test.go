@@ -70,6 +70,24 @@ func TestSignRunCommitsKeepsAlreadySignedWorkerSHA(t *testing.T) {
 	}
 }
 
+// When attribution is off, worker commits are left at their original object IDs
+// and messages without adding any trailers.
+func TestSignRunCommitsWithAttributionOffLeavesWorkerCommitsUntouched(t *testing.T) {
+	repo := newTestRepo(t)
+	base := strings.TrimSpace(gitOut(t, repo, "rev-parse", "HEAD"))
+	first := runCommitFile(t, repo, "one.txt", "one")
+	count, err := signRunCommits(repo, base, gitSignature{off: true, named: true, model: "deepseek/deepseek-v4-flash"})
+	if err != nil || count != 0 {
+		t.Fatalf("signRunCommits with attribution off = %d, %v; want 0, nil", count, err)
+	}
+	if got := strings.TrimSpace(gitOut(t, repo, "rev-parse", "HEAD")); got != first {
+		t.Fatalf("worker commit sha moved with attribution off: %s -> %s", first, got)
+	}
+	if message := strings.TrimSpace(gitOut(t, repo, "log", "-1", "--format=%B")); message != "one" {
+		t.Fatalf("worker commit message changed with attribution off: %q", message)
+	}
+}
+
 // Contract 3: a merge's outside parent, a tagged commit, and a pushed commit
 // keep their original objects while private descendants can still be signed.
 func TestSignRunCommitsKeepsOtherRefsAndMergeParents(t *testing.T) {

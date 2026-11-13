@@ -413,8 +413,7 @@ func waitForGone(workspace string, within time.Duration) error {
 		conn, err := Dial(workspace)
 		if err == nil {
 			_ = conn.Close()
-		} else if held, err := takeLock(filepath.Join(dir, lockName)); err == nil {
-			_ = releaseLock(held)
+		} else if !hostLockHeld(workspace) {
 			waitForSaves(dir, savesWait)
 			return nil
 		}

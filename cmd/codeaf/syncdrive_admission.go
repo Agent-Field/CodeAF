@@ -37,7 +37,7 @@ type workAdmission struct {
 	checking chan struct{}
 }
 
-func newAdmissionDrive(start func(func()) (*syncsetup.Drive, error)) *liveDrive {
+func newAdmissionDrive(start func(func()) (*syncsetup.Drive, error), notices ...*driveNotices) *liveDrive {
 	check := &workAdmission{}
 	d := newPendingLiveDrive(func(changed func()) (*syncsetup.Drive, error) {
 		drive, err := start(changed)
@@ -45,7 +45,7 @@ func newAdmissionDrive(start func(func()) (*syncsetup.Drive, error)) *liveDrive 
 			check.freshFor(driveWorkFreshFor)
 		}
 		return drive, err
-	})
+	}, notices...)
 	workAdmissions.Store(d, check)
 	return d
 }

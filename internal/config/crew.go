@@ -812,6 +812,8 @@ func CrewProvidersAt(profileDir string) []CrewProvider {
 		case strings.EqualFold(source.ID, "codex"):
 			p.Kind = crewroute.Plan
 			p.Serves = []string{source.Preferred}
+		case strings.EqualFold(source.ID, "claude-code"):
+			p.Kind = crewroute.Plan
 		case strings.EqualFold(source.ID, "ollama"):
 			p.Kind = crewroute.Local
 		case modelsource.IsCustomID(source.ID):

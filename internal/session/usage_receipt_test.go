@@ -38,7 +38,11 @@ func TestABankedCallReachesTheSeatBesideTheLedger(t *testing.T) {
 	if rows[0].ID == "" {
 		t.Fatal("banked call has no ledger identity")
 	}
-	want := procexec.ModelCall{ID: rows[0].ID, Model: "vendor/m", Role: "planner", TokensIn: 900, TokensOut: 30, TokensCached: 400, CostMicroUSD: 12300}
+	id := UsageCallID(rows[0])
+	if id == "" {
+		t.Fatal("ledger call has no portable identity")
+	}
+	want := procexec.ModelCall{ID: rows[0].ID, CallID: id, Model: "vendor/m", Role: "planner", TokensIn: 900, TokensOut: 30, TokensCached: 400, CostMicroUSD: 12300}
 	if seat.got[0] != want {
 		t.Fatalf("got %+v want %+v", seat.got[0], want)
 	}

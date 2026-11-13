@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/publish"
+	"github.com/Agent-Field/codeaf/internal/gitpolicy"
 )
 
 // sayWriteUnchanged is why a write round that reported done is not done. It
@@ -75,6 +77,25 @@ func changeBase(dir string, it factory.Item) (string, error) {
 		}
 	}
 	return base, nil
+}
+
+// A PR diff excludes changes that arrived through its base. The original
+// ChangeBase still identifies the checkout for the pipeline's baseline tests.
+func followChangeBase(git Git, dir string, it factory.Item) string {
+	if it.PullRequest == nil || it.FollowUp == nil {
+		return it.ChangeBase
+	}
+	base := it.FollowUp.BaseSyncSHA
+	if base == "" {
+		base = it.PullRequest.BaseSHA
+	}
+	if publish.ValidCommit(base) {
+		common, err := git.Run(dir, "merge-base", "HEAD", base)
+		if common = strings.TrimSpace(common); err == nil && publish.ValidCommit(common) {
+			return common
+		}
+	}
+	return it.ChangeBase
 }
 
 // readChange includes committed, staged, unstaged and untracked work. Git's
@@ -151,8 +172,22 @@ func readChange(dir, base string) (*factory.Change, error) {
 		}
 		files[path] = f
 	}
+	// A COPY OF THE REPOSITORY LEFT IN THE CHECKOUT IS NOT THE CHANGE
+	// (scratch.go): its files are not counted, judged or shown.
+	var added []string
+	for path, f := range files {
+		if f.Status == "added" {
+			added = append(added, path)
+		}
+	}
+	copies := repoCopies(added, trackedAt(git, dir, base))
+	for path := range files {
+		if inCopy(path, copies) {
+			delete(files, path)
+		}
+	}
 	change := &factory.Change{Branch: strings.TrimSpace(branch)}
-	if patch, e := git.Run(dir, "diff", "--no-ext-diff", "--no-renames", "--no-color", base, "--"); e == nil {
+	if patch, e := git.Run(dir, append([]string{"diff", "--no-ext-diff", "--no-renames", "--no-color", base, "--"}, excludeCopies(copies)...)...); e == nil {
 		if len(patch) > 512000 {
 			patch = patch[:512000]
 			change.PatchTruncated = true
@@ -174,8 +209,15 @@ func readChange(dir, base string) (*factory.Change, error) {
 // recordChange runs on the holding machine after every completed round,
 // including a failed check. A failed read retains the last readable snapshot.
 func (lp *floorLoop) recordChange(c *loopCtl, job Job, res factory.StageResult) {
-	head, headErr := (ExecGit{}).Run(job.Dir, "rev-parse", "HEAD")
-	change, err := readChange(job.Dir, job.Item.ChangeBase)
+	git := ExecGit{}
+	base := job.Item.ChangeBase
+	if factory.IsCIRepairStage(job.Stage) {
+		if current, err := lp.r.opts.Store.Get(c.id); err == nil {
+			base = followChangeBase(git, job.Dir, current)
+		}
+	}
+	head, headErr := git.Run(job.Dir, "rev-parse", "HEAD")
+	change, err := readChange(job.Dir, base)
 	if err != nil {
 		change = nil
 	}
@@ -249,7 +291,7 @@ func validateChange(change *factory.Change) error {
 type changeGit struct{}
 
 func (changeGit) Run(dir string, args ...string) (string, error) {
-	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	cmd := exec.Command("git", gitpolicy.WithoutAutoMaintenance(append([]string{"-C", dir}, args...)...)...)
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 	raw, err := cmd.Output()
 	return string(raw), err

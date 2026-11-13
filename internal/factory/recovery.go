@@ -60,7 +60,7 @@ func RecoveryBlockReason(it Item) string {
 // PlanStepRecovery records a wait once per failure. It never starts execution;
 // the lease door does that after checking ownership, the lease and current mode.
 func PlanStepRecovery(it *Item, now time.Time) bool {
-	if StoppedByPerson(*it) {
+	if StoppedByPerson(*it) || RecoveryPaused(*it) {
 		return false
 	}
 	f, rec := it.Failure, it.Recovery
@@ -101,7 +101,8 @@ func PlanStepRecovery(it *Item, now time.Time) bool {
 			if why == "" {
 				why = "The runner did not return within the automatic retry window. Try again when ready."
 			}
-			cp.State, cp.Reason = "exhausted", why
+			// A retry that was never claimed is exhausted, not a new worker failure.
+			cp.State, cp.Reason, cp.LastAt = "exhausted", why, now
 			if it.Cap <= 0 || JobLifetimeSpent(*it) >= it.Cap {
 				cp.BlockedBy, cp.BlockedAt = "budget", now
 			}

@@ -66,7 +66,25 @@ lifetime on termination. Owner admission is checked before requests and retries;
 Pause and Stop cancel the active call, and no new call starts for a paused or
 ended job. Quit drops compilation, retaining source journals and checkpoints for
 the next finished owned turn. The process worker never takes over owned sources.
-A standalone owned conversation cancels its compilation on Close.
+A standalone owned conversation cancels and joins its compilation on Close.
+After a job is cancelled, closing its stage conversation joins that compiler too.
+Closing an active job's stage does not join or cancel the job-owned compiler.
+Session close cancels current and retired journal scanners and standalone or
+cancelled job compilers before joining them. `knowledgeCloseWait` sets one shared
+10-second deadline for all those writers, including the final local copy. A miss
+logs the writer kind, hashed journal/profile path identities, and elapsed wait,
+then close returns. Compiler lookup uses an atomic pointer so a scanner holding
+its cursor mutex during SQLite I/O cannot block cancellation or the deadline.
+A database operation already in progress may finish after close; capture and
+publication writes remain atomic SQLite transactions. The cap does not bound
+other close phases or an unavailable logging sink.
+
+The profile-wide consent view locks only its cached metadata. SQLite refreshes
+run outside that mutex; a completion channel coalesces readers that need a
+refresh, while readers with a still-current answer can return immediately.
+This also lets fake-clock tests advance while a shared read waits in SQLite.
+Source admission still confirms consent against the database, and in-process
+invalidation still prevents an older generation from satisfying a later read.
 
 One compilation can need several dependent requests: extraction and discovery
 already require two for a small new concept; guide writing and evidence review

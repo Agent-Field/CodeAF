@@ -14,8 +14,6 @@ import (
 	"testing"
 	"testing/synctest"
 	"time"
-
-	"github.com/Agent-Field/codeaf/internal/filelock"
 )
 
 func TestAgentSettlementDrainsQueuedUsage(t *testing.T) {
@@ -23,7 +21,7 @@ func TestAgentSettlementDrainsQueuedUsage(t *testing.T) {
 		t.Run(action, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), UsageLedgerName)
 			agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) { c.usageLedger = path })
-			release := holdUsageLedger(t, path)
+			release := holdUsageProjection(t, path)
 			defer StopUsageWriter(path)
 			// Release before joining the writer, including on a failed assertion.
 			defer release()
@@ -77,7 +75,7 @@ func TestAgentUsageDrainHasACeilingAndEventuallyWrites(t *testing.T) {
 			defer func() { usageFlushLimit = previous }()
 			path := filepath.Join(t.TempDir(), UsageLedgerName)
 			agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) { c.usageLedger = path })
-			release := holdUsageLedger(t, path)
+			release := holdUsageProjection(t, path)
 			defer StopUsageWriter(path)
 			defer release()
 			drops := UsageDrops()
@@ -133,7 +131,7 @@ func TestClosingAnAgentKeepsSharedUsageWriting(t *testing.T) {
 	defer StopUsageWriter(path)
 	// A different ledger must not make either agent's settlement time out.
 	other := filepath.Join(t.TempDir(), UsageLedgerName)
-	release := holdUsageLedger(t, other)
+	release := holdUsageProjection(t, other)
 	defer StopUsageWriter(other)
 	defer release()
 	RecordUsage(other, UsageLine{ID: "other", Input: 1})
@@ -172,21 +170,16 @@ func TestClosingAnAgentKeepsSharedUsageWriting(t *testing.T) {
 	}
 }
 
-// A held file lock stalls the real append path without replacing disk writes.
-func holdUsageLedger(t *testing.T, path string) func() {
+// Projection can stall after the caller has synced its complete journal row.
+func holdUsageProjection(t *testing.T, path string) func() {
 	t.Helper()
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := filelock.Lock(file, true, false); err != nil {
-		file.Close()
-		t.Fatal(err)
-	}
+	release := make(chan struct{})
+	writer := usageWriterFor(path)
+	writer.beforeWrite = func() { <-release }
 	var once sync.Once
-	release := func() { once.Do(func() { _ = filelock.Unlock(file); _ = file.Close() }) }
-	t.Cleanup(release)
-	return release
+	unlock := func() { once.Do(func() { close(release) }) }
+	t.Cleanup(unlock)
+	return unlock
 }
 
 func TestOverlappingSettlementsDrainAFullUsageQueue(t *testing.T) {
@@ -279,7 +272,7 @@ func TestClosingAnAgentWaitsOneCeilingOnAStalledLedger(t *testing.T) {
 	defer func() { usageFlushLimit = previous }()
 	path := filepath.Join(t.TempDir(), UsageLedgerName)
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) { c.usageLedger = path })
-	release := holdUsageLedger(t, path)
+	release := holdUsageProjection(t, path)
 	defer StopUsageWriter(path)
 	defer release()
 	RecordUsage(path, UsageLine{ID: "before-close", Input: 1, USD: .001})
@@ -299,7 +292,7 @@ func TestKeptUsageRowsAreReachedUnderSteadyTraffic(t *testing.T) {
 	writer := usageWriterFor(path)
 	// A slow disk: traffic outruns the writer, so the queue never empties alone.
 	writer.beforeWrite = func() { time.Sleep(5 * time.Millisecond) }
-	release := holdUsageLedger(t, path)
+	release := holdUsageProjection(t, path)
 	defer StopUsageWriter(path)
 	defer release()
 	var issued atomic.Int64
@@ -378,7 +371,7 @@ func TestReachingTheUsageCeilingIsLoggedAndCounted(t *testing.T) {
 	defer log.SetOutput(os.Stderr)
 	path := filepath.Join(t.TempDir(), UsageLedgerName)
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) { c.usageLedger = path })
-	release := holdUsageLedger(t, path)
+	release := holdUsageProjection(t, path)
 	defer StopUsageWriter(path)
 	defer release()
 	drops := UsageDrops()

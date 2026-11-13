@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/claudemodel"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 
 	"charm.land/bubbletea/v2"
@@ -228,7 +229,14 @@ func (p *addProviderPanel) rebuild(probes []LocalServerProbe, catalog []modelsou
 		}
 	}
 	items = append(items, addProviderItem{heading: true, title: "providers"})
+	claudeHere := claudeCodeHere()
 	for _, source := range providerCatalog(catalog) {
+		// THIS MENU OFFERS WHAT FIRST-RUN SETUP OFFERS, by the same rule
+		// (setupProviderRows): a provider whose program is not on this machine
+		// is left off rather than listed to answer that it is missing.
+		if source.ID == claudemodel.ID && !claudeHere {
+			continue
+		}
 		service, held := sources.ByID(source.ID)
 		connected := held && service.HasCredentials()
 		detail := "key"

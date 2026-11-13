@@ -22,10 +22,21 @@ package factory
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"slices"
 	"strings"
 	"time"
 )
+
+// RouteAnswer is a routing rule's AI answer about one item, kept on the item
+// (internal/factory/route.Answer is the same shape; route converts).
+type RouteAnswer struct {
+	Yes   bool      `json:"yes"`
+	Why   string    `json:"why"`
+	Model string    `json:"model,omitempty"`
+	Key   string    `json:"key"`
+	At    time.Time `json:"at"`
+}
 
 // Kind is what a floor item is. It is a string and open: an issue, a pull
 // request, a red CI run, a chore, a standing order's firing, work a chat split
@@ -94,6 +105,9 @@ const (
 	StageCheck StageKind = "check" // a deterministic command; no model
 	StageGate  StageKind = "gate"  // a person: yes, no, or words as the stage's result
 	StagePost  StageKind = "post"  // a source write, consent-gated
+	// StageAgentField runs an AgentField reasoner (Stage.Target) as this
+	// step: the run's executions fold under it ([AgentFieldRun.Stages]).
+	StageAgentField StageKind = "agentfield"
 )
 
 // CanWrite reports whether a stage can change files or write to the source.
@@ -106,23 +120,42 @@ func (s Stage) CanWrite() bool { return s.Kind != StageGate }
 // skipped, dim, with its reason, on an item the condition does not fit.
 type Stage struct {
 	// Label is an optional display name; Name remains the step identity.
-	Label  string    `json:",omitempty"`
-	Name   string    // plan · write · test · review · neaten · security · proof
-	Kind   StageKind // chat unless said otherwise
-	Ask    string    // the sentence as typed; the brief is compiled from it
-	When   string    // "" or always · thin · large · touches auth · has ui
-	Effort string    // "" (the knee) · cheap · strong — the crew's one word
+	Label string `json:",omitempty"`
+	// Parent and Group place a step of an AgentField run in its tree
+	// (AgentFieldRun): Parent is the name of the step that called it, ""
+	// for a top-level step, and steps sharing a Group ran at the same time.
+	// Both are "" on every step this factory runs itself.
+	Parent string `json:",omitempty"`
+	Group  string `json:",omitempty"`
+	// GroupLabel names a group of steps that ran at once in a person's words:
+	// the words its members' labels share ("Investigate"), "" when none.
+	GroupLabel string `json:",omitempty"`
+	// Target and Input are an agentfield step's reasoner ("<node>.<reasoner>")
+	// and its input, each value a string with the job's {placeholders}
+	// ([AgentFieldInput]); nil Input sends the default mapping. Only an
+	// agentfield step carries them.
+	Target string            `json:",omitempty"`
+	Input  map[string]string `json:",omitempty"`
+	Name   string            // plan · write · test · review · neaten · security · proof
+	Kind   StageKind         // chat unless said otherwise
+	Ask    string            // the sentence as typed; the brief is compiled from it
+	When   string            // "" or always · thin · large · touches auth · has ui
+	Effort string            // "" (the knee) · cheap · strong — the crew's one word
 	// Model is the model a person picked for this stage on this job, "" for
 	// the job's own (Item.Model) or the factory's default. Only a
 	// conversation stage carries one; a check and an approval run no model.
 	Model  string `json:",omitempty"`
 	Fanout string // one · per-file · per-finding · per-claim
-	Until  string // done · clean · green · proven
+	Until  string // done · clean · green · proven · no new failures (Test)
 	Max    int    // rounds before it stops and asks; 0 means one
 	// Who is who an approve step waits on ([ApproverWord]): "" the job's
 	// person, "@handle" a named person, operator any of the factory's
 	// operators. Only an approve step carries one.
 	Who string `json:",omitempty"`
+	// Pass is who may pass an approve step ([PassWord]): "" (as manager, for
+	// every pipeline written before it), person, manager, or `manager when
+	// <condition>`. Only an approve step carries one ([PassOf]).
+	Pass string `json:",omitempty"`
 	// OldGate and OldGateWhen are a stage's gate as a file or a document
 	// written before approve steps said it (`gate plan when large`). They are
 	// read, turned into approve steps ([ExpandGates]) and never written.
@@ -172,6 +205,17 @@ func (r Recipe) For(k Kind) []Stage {
 		return s
 	}
 	return r.Stages
+}
+
+// Named is the steps the pipeline called name runs, as a person picks it on
+// start (factory.job_start {pipeline}) or a routing rule names it: the issue
+// pipeline as the runner reads it (its fallback included), any other only
+// when the file lists it, and nil when it does not.
+func (r Recipe) Named(name string) []Stage {
+	if name == string(KindIssue) {
+		return r.For(KindIssue)
+	}
+	return r.ByKind[Kind(name)]
 }
 
 // Triage is the cheap read made on arrival (internal/factory/triage): dim
@@ -332,6 +376,9 @@ type Phase struct {
 	// of the same step clears it, and clears the job's failure for this
 	// step. The record keeps the incident.
 	Failure *Failure `json:",omitempty"`
+	// Passed is who passed an approve step, once it is done ([StampPassed]);
+	// nil on every other step, and again once the step waits or is sent back.
+	Passed *Passed `json:",omitempty"`
 }
 
 // ResultOutputMost is how much of a step's output [Phase.Result] keeps, in
@@ -463,7 +510,43 @@ type PullRequest struct {
 	// HeadBranch is the branch the pull request comes from, which a repair pushes
 	// to: an older branch can leave it named apart from the job's own.
 	HeadBranch string `json:",omitempty"`
+	// Files is the pull request's change as GitHub lists it, read on the
+	// commit FilesHead, at most [PRFilesMost] of FilesTotal. A FILE LIST IS
+	// ONLY EVER ABOUT ITS OWN HEAD: a reader compares FilesHead with HeadSHA
+	// and treats a list for another commit as unknown, never as the change
+	// it is about to merge. No FilesHead is not read yet, never "changes
+	// nothing"; a FilesHead with no files and no FilesTotal is a pull request
+	// GitHub read twice as changing nothing on that head ([PRChangesNothing]).
+	Files      []ChangedFile `json:",omitempty"`
+	FilesTotal int           `json:",omitempty"`
+	FilesHead  string        `json:",omitempty"`
 }
+
+// PRFilesMost is how many of a pull request's files the factory keeps on the
+// job. A change larger than that still says its whole size in FilesTotal.
+const PRFilesMost = 300
+
+// PRChangesNothing says pr was read on its head as a change of no files: an
+// empty pull request (live e2e round 9, #315: a run whose work was already on
+// the base branch opened one with 0 files and read as shipped). Unknown is
+// never empty: a list never read, or read for another head, says nothing.
+func PRChangesNothing(pr *PullRequest) bool {
+	return pr != nil && pr.HeadSHA != "" && pr.FilesHead == pr.HeadSHA && pr.FilesTotal == 0 && len(pr.Files) == 0
+}
+
+// EmptyPRClosedWords is the plain note a job carries when the factory closed
+// the empty pull request it opened, n its number.
+func EmptyPRClosedWords(n int) string {
+	return fmt.Sprintf("Nothing to change: pull request #%d changed no files, so it was closed.", n)
+}
+
+// EmptyPRComment is what the factory says on an empty pull request it opened
+// as it closes it.
+const EmptyPRComment = "Closing this pull request: it changes no files, so there is nothing to merge. The work it was opened for is already on the base branch."
+
+// EmptyPRDetail is the state detail of a job whose pull request changes
+// nothing: no Merge is offered.
+const EmptyPRDetail = "Nothing to change: the pull request changed no files, so there is nothing to merge."
 
 // Item is one row on the floor.
 // QKindAskFirst is an intake question, before a run or any step exists.
@@ -509,6 +592,24 @@ func (it *Item) SetPublishCheck(found string) {
 }
 
 type Item struct {
+	// RunOn is an AgentField reasoner, "<node>.<reasoner>", that runs this job
+	// instead of the factory's own steps. The job is filed, queued, started,
+	// stopped and read exactly as any other; its steps are that run's
+	// top-level calls (agentfield_run.go). Empty is an ordinary job.
+	RunOn string `json:",omitempty"`
+	// AgentField is the AgentField run behind a RunOn job, once dispatched.
+	AgentField *AgentFieldRun `json:",omitempty"`
+	// AgentFieldSteps are the AgentField runs behind the job's agentfield
+	// steps, by step name, once each was dispatched. Unlike AgentField (a
+	// RunOn job's whole run) each keeps its run's executions as its own
+	// Stages and Phases, which fold under that step.
+	AgentFieldSteps map[string]*AgentFieldRun `json:",omitempty"`
+	// Group is the opaque label supplied when the job was made.
+	Group string `json:",omitempty"`
+	// Milestone is the milestone label supplied when the job was made.
+	Milestone string `json:",omitempty"`
+	// Context holds the person's reference attachments outside the description.
+	Context []JobContext `json:",omitempty"`
 	// PublishAnyway preserves the person decision without changing measured proof.
 	PublishAnyway *Approval `json:",omitempty"`
 	// GitHubIssueID pins the permanent issue identity, learned only by a direct read.
@@ -520,8 +621,23 @@ type Item struct {
 
 	// FromJob is the ended job whose request this person started afresh.
 	FromJob int `json:",omitempty"`
+	// SplitFrom is the job this job was split from, independent of run-as-new.
+	SplitFrom int `json:",omitempty"`
 	// SourceIssue is a reference only; it never gives this job a forge identity.
 	SourceIssue string `json:",omitempty"`
+
+	// WaitsOn are the jobs this one waits on, by number: a go-ahead starts it
+	// only once every one of them has merged ([Merged]). A person's own start
+	// never reads it.
+	WaitsOn []int `json:",omitempty"`
+	// PolicyRun is the id of the go-ahead allowance that started this job,
+	// and PolicyGroup the group whose policy holds it ([GroupPolicy]); both ""
+	// for a job no go-ahead started. Its spend counts against that allowance.
+	PolicyRun   string `json:",omitempty"`
+	PolicyGroup string `json:",omitempty"`
+	// Blocked is why a go-ahead that covers this job has not started it yet;
+	// nil when nothing covers it or it started.
+	Blocked *JobBlocked `json:",omitempty"`
 
 	// Followers are the people who follow this job, by normalised handle
 	// (followers.go). Each person reads only whether they follow it.
@@ -538,10 +654,22 @@ type Item struct {
 	Priority    *JobPriority `json:",omitempty"`
 	DismissedBy []string     `json:",omitempty"`
 	DoneHow     string       `json:",omitempty"`
+	// Rejection is the person's decision that ended this job at one of its
+	// approvals, with their words ([Item.EndRejected]); nil for every other
+	// ending. A rejected job is closed here (DoneHow closed_locally).
+	Rejection *Rejection `json:",omitempty"`
 	// Scout is the last Look closer on this job ([Scout]); nil is never.
 	Scout    *Scout    `json:",omitempty"`
 	DoneAt   time.Time `json:",omitempty"`
 	Approval *Approval `json:",omitempty"`
+	// Passing is who is passing the approve step the job waits at, set by the
+	// door that answers it just before the answer goes in and moved onto the
+	// step's phase by the write that passes it ([StampPassed]).
+	Passing *Passed `json:",omitempty"`
+	// PassJudge is the manager's reading of the condition of a `manager when`
+	// approve step the job waits at ([PassJudged]); stale once its key no
+	// longer names the waiting approval.
+	PassJudge *PassJudgement `json:",omitempty"`
 	// PersonStopped survives state resets, expiry of Undo and engine restarts.
 	// Only an explicit person control may clear it.
 	PersonStopped *bool     `json:",omitempty"`
@@ -573,6 +701,31 @@ type Item struct {
 	Author  string
 	Tier    Tier
 	Origin  Origin
+	// SourceRef is the item's own key on a source that is not the forge it is
+	// published to, such as `jira:ENG-142` or `inbox:sentry/8812`. It is how a
+	// second delivery of the same outside item finds the job it already made,
+	// and empty for an item the forge itself reported (docs/design/factory-general).
+	SourceRef string `json:",omitempty"`
+	// Route is the name of the routing rule that decided this item's repository,
+	// pipeline, priority and start ([route.Rule]), empty when none matched.
+	Route string `json:",omitempty"`
+	// RouteRefused is the sentence of the routing rule that matched this item
+	// and could not be applied, because the repository it sends the item to
+	// lists no pipeline of the name the rule gives ("routing rule docs:
+	// acme/api has no pipeline docs"). It is kept so the activity row that
+	// says so is written once, not once a pass, and cleared when a rule
+	// applies. Empty is nothing refused.
+	RouteRefused string `json:",omitempty"`
+	// RepoSetBy is the handle of the person who gave this job its repository
+	// (factory.job_set_repo), empty when its source or a rule did. A PERSON'S
+	// REPOSITORY WINS over a routing rule's, as a person's priority mark wins
+	// over a rule's priority: the rule still decides the pipeline, priority
+	// and start, on the person's repository.
+	RepoSetBy string `json:",omitempty"`
+	// Judged is each routing rule's AI answer about this item, by rule name
+	// ([route.Answer]), kept so a question is asked once per version of the
+	// item's words. nil is never judged.
+	Judged  map[string]RouteAnswer `json:",omitempty"`
 	Synced  bool
 	Created time.Time
 	Changed time.Time
@@ -600,6 +753,10 @@ type Item struct {
 	Stages        []Stage // the item's copy of the recipe, toggled
 	StopAfterStep bool
 	Cap           float64
+	// CapChosen says Cap is a budget a person chose when the job was made,
+	// never a default its start took, so it can equal the default and still
+	// be kept when the job's rules are read after the clone (run.settledCap).
+	CapChosen bool `json:",omitempty"`
 
 	// Assignee is the forge's person; Taker and Starter keep the person who
 	// took or started otherwise unassigned work. Author is never ownership:
@@ -623,6 +780,10 @@ type Item struct {
 	// QKind is why the item is waiting: approve, cap, scope, step, ask_first
 	// or out_of_attempts. The wire's needs_you.kind is derived from this.
 	QKind string
+	// PausedRecoveryQuestion is the identity or revision of the decision a
+	// person dismissed. LastRecoveryResume acknowledges its chat continuation.
+	PausedRecoveryQuestion string `json:",omitempty"`
+	LastRecoveryResume     string `json:",omitempty"`
 	// AskedFirstReason keeps the matched rule visible after the question is answered.
 	AskedFirstReason string `json:",omitempty"`
 	// RuleChecks is what the factory's own two checks found on the job
@@ -683,6 +844,13 @@ type Item struct {
 	// on. It is kept on the item so a question sent to the person outlives a
 	// pause and a restart; nil is none.
 	Asking *Asked
+	// NeedsAt is when the job's current wait on a person began (the job reads
+	// needs_you), from the store's write that began it ([NoteWait]): the clock
+	// [NeedsSince] reads for a wait with no clock of its own, such as a start
+	// held for approval, a take-over, an AgentField run's approval, a Stop
+	// undone, a failed merge or a pull request's review. Zero while the job
+	// waits on nobody.
+	NeedsAt time.Time `json:",omitzero"`
 	// ManagerAnswer confirms the last durable decision independently of lease delivery.
 	ManagerAnswer *ManagerAnswer `json:",omitempty"`
 	// Briefs are the job's brief versions ([BriefVersion]), oldest first, at
@@ -719,6 +887,11 @@ type Item struct {
 	Talk string
 	// SpentBefore holds spending from runs whose work was cleared.
 	SpentBefore float64 `json:",omitempty"`
+	// SpentCleared is what the job had spent when a Bring back made it fresh
+	// ([ForgetJobSpend]). The money was spent, so the factory's spending
+	// totals still count it ([SpentIn]); the job's own total and its budget
+	// start again from nothing and never read it.
+	SpentCleared float64 `json:",omitempty"`
 	// ChatSpent is what Talk spent while the job had no run: the job's chat
 	// before its first Start, in dollars. A JOB'S CHAT SPENDS FROM THE JOB'S
 	// BUDGET, and with no run there is no
@@ -1033,6 +1206,60 @@ type Asked struct {
 	With string
 	// Why is the manager's reason for sending it to the person, "" for none.
 	Why string
+	// Person says the step marked the question as one only a person can
+	// answer (the ask tool's judgement kind): it goes straight to the person,
+	// and the manager is never given a turn on it ([PersonFirst]).
+	Person bool `json:",omitempty"`
+}
+
+// The reasons a step's question goes straight to the person, said where the
+// manager's own reason would be ([Asked.Why]).
+const (
+	WhyManualAsksYou = "Manual: every step question comes to you"
+	WhyOnlyAPerson   = "the step said only a person can answer this"
+)
+
+// PersonFirst is why a step's question skips the job's manager and goes
+// straight to the person, "" when the manager answers first as usual. A job
+// in Manual sends every step question to its person; a question the step
+// marked as needing a person goes to them in every mode. Neither reads a
+// pipeline's or a step's name.
+func PersonFirst(it Item, q Asked) string {
+	switch {
+	case it.Autonomy == AutonomyManual:
+		return WhyManualAsksYou
+	case q.Person:
+		return WhyOnlyAPerson
+	}
+	return ""
+}
+
+// AnsweredBy names who answered a recorded step question ([Question.With]):
+// the job's manager in the person's place, or the person.
+const AnsweredByManager = "manager"
+
+// KeepManagerAnswer records on the job a step's question the manager answered
+// in the person's place, beside the person's own answers
+// ([Item.AnsweredQuestions]), so the job's page can show "Manager answered for
+// you" with a way to override it, and its Brief can say so.
+//
+// AN ANSWER GIVEN FOR THE PERSON IS NEVER INVISIBLE. The manager answering a
+// step's question first is the design; doing it with nothing on the job a
+// person can read was not, and a live run had the manager settle a preference
+// only the person held, twice, with no trace.
+func (it *Item) KeepManagerAnswer(q Asked, answer string, now time.Time) {
+	at := q.At
+	if at.IsZero() {
+		at = now
+	}
+	it.AnsweredQuestions = append(it.AnsweredQuestions, Question{
+		Text: q.Question, FromStep: q.Stage, Kind: "asked", With: AskedManager, State: "answered",
+		Options: append([]string(nil), q.Options...), Pick: q.Pick, At: &at,
+		Answer: &Answer{By: AnsweredByManager, Text: answer, At: now},
+	})
+	if over := len(it.AnsweredQuestions) - AnswersMost; over > 0 {
+		it.AnsweredQuestions = it.AnsweredQuestions[over:]
+	}
 }
 
 // Who holds a step's question ([Asked.With]).

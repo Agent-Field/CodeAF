@@ -49,7 +49,9 @@ import (
 //   - it runs at the ALLOW POSTURE, what --yolo gives, behind the headless
 //     gate ([stageApprovalGate]): a stage that writes must be able to edit and
 //     run things in its checkout, and nothing it does may wait on a person who
-//     is not there;
+//     is not there. The posture opens the gate and NOT the machine: every
+//     command still runs inside the fence (fence.go), which keeps it to its
+//     worktree, its git folder and its own temp and cache folders;
 //   - the doors that raise a card for a person (factory_add, factory_recipe,
 //     factory_item) are taken off, because no person is there to answer one
 //     and a card nobody answers holds the round forever.
@@ -105,8 +107,17 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	if where == "" {
 		where = strings.TrimSpace(m.workspace)
 	}
+	if where == "" && spec.Item.ID > 0 {
+		// A STAGE WITH NO WORKTREE AND A HOST WITH NO FOLDER works in its
+		// job's own empty folder, never in whatever folder the engine started
+		// in (factory_chat_folder.go).
+		where, _ = factoryJobFolder(m.floor, spec.Item.ID)
+	}
 	if where == "" {
 		return nil, errors.New("codeaf does not know which folder this stage's conversation belongs in")
+	}
+	if err := factoryFolderRefusal(m.floor, where); err != nil {
+		return nil, err
 	}
 	bucket, err := v3ProjectDir(where)
 	if err != nil {
@@ -129,6 +140,18 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 		return nil, err
 	}
 	cfg.Workspace = where
+	// A STAGE'S COMMANDS ARE FENCED to its worktree (fence.go): the allow
+	// posture below opens the gate, and the fence is what still holds.
+	// Its check receipts are written beside its transcript, in codeaf's home,
+	// from inside that fence, so their folder is the one place outside the
+	// worktree it also writes (verification.ReceiptRoot).
+	var receipts []string
+	if cfg.SessionFile != "" {
+		receipts = append(receipts, verification.ReceiptRoot(cfg.SessionFile))
+	}
+	if cfg.Fence, err = unattendedFence(where, m.profileDir, receipts...); err != nil {
+		return nil, err
+	}
 	cfg.AutomaticModels = spec.AutomaticModels
 	cfg.Model = factoryOpenModel(m.profileDir, cfg, spec)
 	fallback := appDefaultFallback(m.profileDir)
@@ -136,7 +159,12 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 		fallback = ""
 	}
 	cfg.ConversationModels = &session.ConversationModels{Main: cfg.Model, Fallback: fallback}
-	verification := &receiptStageDoor{StageDoor: spec.Stage, file: cfg.SessionFile, dir: where, repair: spec.VerifyRepair, requireFresh: spec.VerifyChecks}
+	verification := &receiptStageDoor{
+		StageDoor: spec.Stage, file: cfg.SessionFile, dir: where,
+		repair: spec.VerifyRepair, requireFresh: spec.VerifyChecks, baselineCommit: spec.BaselineCommit,
+		accepted:   spec.AcceptedFailures,
+		syncPRBase: spec.SyncPRBase,
+	}
 	cfg.Stage = verification
 	cfg.PlanStage = strings.EqualFold(strings.TrimSpace(spec.VerificationStage), "plan")
 	cfg.RepairStage = factory.IsCIRepairStage(factory.Stage{Name: strings.TrimSpace(spec.VerificationStage)})
@@ -210,7 +238,9 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	}
 	brief := spec.Brief + inheritFactoryChecks(spec, cfg.SessionFile, where)
 	if resumed {
-		brief = session.CarryOn(brief)
+		// The model reads its brief again; the person's chat does not show
+		// the engine's resume prompt as a line they typed.
+		brief = session.ResumedStepBrief(brief)
 	}
 	events, err := agent.Submit(context.WithoutCancel(ctx), brief)
 	if err != nil {
@@ -250,20 +280,6 @@ func (m stageMaker) stageConfig(spec factoryrun.ConversationSpec, bucket, where 
 		return parent, err
 	}
 	return v3PointAt(parent, place)
-}
-
-// stageOpenModel is the model a step opens on: THE STEP'S OR JOB'S OWN, WHEN A
-// PERSON CHOSE ONE, over everything; else the factory's default model; else
-// the launch's. A launch on one model for every task keeps that model rather
-// than the factory's default, which nobody picked for this job.
-func stageOpenModel(cfg session.Config, spec factoryrun.ConversationSpec) string {
-	if model := strings.TrimSpace(spec.Model); model != "" {
-		return model
-	}
-	if model := strings.TrimSpace(spec.FactoryModel); model != "" && !cfg.OneModel {
-		return model
-	}
-	return cfg.Model
 }
 
 // factoryPostureEnv pins the posture a stage conversation runs at, in the

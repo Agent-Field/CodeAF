@@ -25,8 +25,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/knowledge"
 )
 
-func TestMemorySwitchDefaultsOffAndChangesLive(t *testing.T) {
-	t.Run("fresh app job and chat", freshMemoryOffApp)
+func TestMemorySwitchDefaultsOnAndChangesLive(t *testing.T) {
+	t.Run("saved off app job and chat", savedMemoryOffApp)
 	t.Run("saved words and booleans", func(t *testing.T) {
 		for _, value := range []any{"on", "off", true, false} {
 			profile := v3Profile(t, map[string]any{config.KeyMemoryEnabled: value})
@@ -38,7 +38,7 @@ func TestMemorySwitchDefaultsOffAndChangesLive(t *testing.T) {
 		}
 	})
 	t.Run("legacy consent without saved choice", func(t *testing.T) {
-		profile := t.TempDir()
+		profile := testHome(t)
 		vault := knowledge.Open(profile)
 		if err := vault.StartBuild(); err != nil {
 			t.Fatal(err)
@@ -50,16 +50,16 @@ func TestMemorySwitchDefaultsOffAndChangesLive(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if vault.Enabled() || state.Enabled {
-			t.Fatal("legacy vault consent enabled memory without a saved choice")
+		if !vault.Enabled() || !state.Enabled {
+			t.Fatal("home without a saved choice did not use the on default")
 		}
 	})
 	s := newLocalSetup(t)
 	s.backend.emit = s.server
 	profile := config.ProfileDir()
 	vault := knowledge.Open(profile)
-	if config.MemoryEnabledAt(profile) || vault.Enabled() {
-		t.Error("fresh home enables automatic memory without consent")
+	if !config.MemoryEnabledAt(profile) || !vault.Enabled() {
+		t.Error("fresh home did not enable automatic memory by default")
 	}
 	read := func(method string, params any, enabled bool, source string) {
 		t.Helper()
@@ -78,7 +78,7 @@ func TestMemorySwitchDefaultsOffAndChangesLive(t *testing.T) {
 			t.Fatalf("%s memory = %+v, want enabled=%v source=%s and cost disclosure", method, m, enabled, source)
 		}
 	}
-	read("settings.get", struct{}{}, false, "default")
+	read("settings.get", struct{}{}, true, "default")
 	if !strings.Contains(s.hello, "settings.memory") {
 		t.Error("hello omits settings.memory")
 	}
@@ -113,8 +113,7 @@ func TestMemorySwitchDefaultsOffAndChangesLive(t *testing.T) {
 	}
 }
 
-func freshMemoryOffApp(t *testing.T) {
-	s := newLocalSetup(t)
+func savedMemoryOffApp(t *testing.T) {
 	var posts atomic.Int64
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -156,12 +155,13 @@ func freshMemoryOffApp(t *testing.T) {
 		return http.DefaultTransport.RoundTrip(clone)
 	})}
 	t.Cleanup(func() { http.DefaultClient = originalClient })
-	profile := v3Profile(t, map[string]any{config.KeyTaskModelsMode: "one", config.KeyTaskModelsOne: knowledge.Model, "models.tiers.low": knowledge.Model, "models.tiers.reflex": knowledge.Model, "models.roles": ""})
+	s := newLocalSetup(t)
+	profile := v3Profile(t, map[string]any{config.KeyMemoryEnabled: "off", config.KeyTaskModelsMode: "one", config.KeyTaskModelsOne: knowledge.Model, "models.tiers.low": knowledge.Model, "models.tiers.reflex": knowledge.Model, "models.roles": ""})
 	t.Setenv(config.ProfileDirEnv, profile)
 	t.Setenv("OPENROUTER_API_KEY", "fixture")
 	t.Setenv("CODEAF_BASE_URL", server.URL)
 	t.Setenv("CODEAF_MODEL_POOL", "off")
-	callPath := filepath.Join(t.TempDir(), "calls.jsonl")
+	callPath := filepath.Join(testHome(t), "calls.jsonl")
 	t.Setenv(calllog.EnvVar, callPath)
 	freshEngineProcess(t)
 	g := newRunRig(t)
@@ -170,6 +170,7 @@ func freshMemoryOffApp(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(proc.closeAll)
+	t.Cleanup(func() { _ = s.backend.Close() })
 	launch, err := openV3Launch(proc, v3Options{Model: knowledge.Model, OneModel: true, Workspace: g.workspace})
 	if err != nil {
 		t.Fatal(err)
@@ -228,7 +229,7 @@ func freshMemoryOffApp(t *testing.T) {
 	for _, line := range strings.Split(string(raw), "\n") {
 		var row calllog.Record
 		if json.Unmarshal([]byte(line), &row) == nil && (row.Tag == "memory" || row.Tag == "reflex") {
-			t.Errorf("fresh app made memory call: %s", line)
+			t.Errorf("saved-off app made memory call: %s", line)
 		}
 	}
 	if posts.Load() < 2 {
@@ -236,7 +237,7 @@ func freshMemoryOffApp(t *testing.T) {
 	}
 	vault := knowledge.Open(profile)
 	if vault.Enabled() || !vault.EnabledSince().IsZero() {
-		t.Error("background worker armed fresh memory or wrote enabled consent")
+		t.Error("background worker enabled memory despite saved off")
 	}
 	s.must("settings.set", map[string]any{"memory_enabled": true}, nil)
 	events, err = agent.Submit(context.Background(), "Remember that I prefer Cedar queues.")

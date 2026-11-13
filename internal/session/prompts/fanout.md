@@ -22,7 +22,7 @@ a step, not a task. Handing it out is slower than doing it, and it comes back as
 a report you then have to reconcile with your own.
 
 AND THERE IS A LIGHTER SET OF HANDS THAN EITHER. A `quick_task` is a copy of
-your abilities working in YOUR copy of the folder: it starts the instant you
+your abilities working in YOUR working folder: it starts the instant you
 ask, writes where you write, and its last message comes back to you. What must
 be checked and landed on its own is `propose_task`; what you will read and fold
 is quick, and you build and check ONCE, when they are all home.

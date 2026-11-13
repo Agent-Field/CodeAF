@@ -119,3 +119,39 @@ func TestADeclinedStartStaysDeclinedWhenItsLabelsChange(t *testing.T) {
 		t.Fatalf("a declined start ran: started %d, %s", p.started, it.State)
 	}
 }
+
+// A JOB A PERSON BROUGHT BACK WAITS IN BACKLOG FOR A PERSON'S START: the
+// labels that started it the first time do not start the fresh job again.
+func TestABroughtBackJobIsNotStartedByItsLabels(t *testing.T) {
+	f := pipeline.WithHouseRules(pipeline.Defaults(), factory.HouseRules{StartOnItsOwn: true, StartLabels: []string{"agent-ready"}})
+	p := newPickUp(t, f)
+	it := p.poll(t, "agent-ready")
+	if p.started != 1 || it.State != factory.StateQueued {
+		t.Fatalf("started %d, job %s", p.started, it.State)
+	}
+	// Dropped and brought back: the factory's door leaves a fresh Backlog job
+	// and records the Bring back.
+	ctx := context.Background()
+	history, err := record.Open(p.st, record.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := history.Append(ctx, record.Event{Kind: record.Restored, Job: it.ID, Handle: "sam"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.st.Update(it.ID, func(cur *factory.Item) error {
+		cur.State, cur.Stream, cur.StartRules = factory.StateNew, nil, nil
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for range 3 {
+		if err := p.in.Once(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := p.st.Get(it.ID)
+	if err != nil || p.started != 1 || got.State != factory.StateNew || got.AskedFirstReason != "" {
+		t.Fatalf("a brought back job was started or held by its labels: started %d, job %s held %q, %v", p.started, got.State, got.AskedFirstReason, err)
+	}
+}

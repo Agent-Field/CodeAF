@@ -45,7 +45,6 @@ func delayedAppModels(t *testing.T) (*appBackend, *appRecorder, func()) {
 		io.WriteString(w, `{"data":[{"id":"vendor/alpha","name":"Alpha"},{"id":"vendor/beta","name":"Beta"}]}`)
 	}))
 	t.Cleanup(server.Close)
-	t.Cleanup(unblock)
 	t.Setenv("CODEAF_BASE_URL", server.URL)
 	t.Setenv("CODEAF_MODEL", "vendor/alpha")
 	settings, err := config.LoadKeyless()
@@ -62,6 +61,8 @@ func delayedAppModels(t *testing.T) (*appBackend, *appRecorder, func()) {
 	rec := newAppRecorder()
 	backend := newAppBackend(rec, appOpenInProcess)
 	t.Cleanup(func() { backend.Close() })
+	t.Cleanup(models.Close)
+	t.Cleanup(unblock)
 	return backend, rec, unblock
 }
 

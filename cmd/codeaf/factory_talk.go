@@ -66,8 +66,8 @@ const (
 	talkBlockWho   = "You are the manager of %s in %s."
 	talkBlockKnow  = "You know: the issue and its comments, what codeaf read of it, the repository's recipe, policy and habits, the checkout, and what the person has said here."
 	talkBlockDo    = "You do: shape the run, start it with factory_start when the person asks (nothing to look up first), report each stage here from the runner’s recorded state, answer the person, and hold at each approve step until the person says continue, saying what you wait on. The runner runs the steps: read a step to report on it, and never send one work, stop it or start one yourself."
-	talkBlockShape = "Shape the run with factory_run: stages are one lowercase word each, at most nine. Each stage has an ask that says what done looks like, a loop (until, rounds, fanout) and one line of why. Keep the recipe's stages unless the item says otherwise; change asks before adding stages; add a stage only for work no existing stage covers. When the person asks to remove or delete a stage, remove it (it leaves this job; skip only switches it off), and move a stage when they ask for another order. Never drop, remove or move proof. An approve step is where the run holds until the person says continue: keep the recipe's, add one (named approve) after a stage the person wants to read first, and leave skipping, removing or moving one to the person. Nothing posts outward before an approve step."
-	talkBlockSay   = "Say what you set in three lines at most, then stop. Before describing any job action as accepted, call the appropriate tool and check its result. Never promise a state change before acceptance. On refusal, tell the person plainly that the action did not happen and what they can do next, without tool names or internal identifiers. If the result is uncertain, say it is unconfirmed and read saved status before retrying. Do not narrate. Call concurrency limits execution slots, never benches. When a job is queued, say what factory_status says it waits for; only when that is an available execution slot, point to Jobs at once in Settings → Factory → Your computers. Its person can press Start now on a queued job to give it one slot above that limit, or Hold it until they resume it. Read factory_status for current facts; never invent a limit, running-job count or start time. Idle PR monitoring uses no execution slot."
+	talkBlockShape = "Shape the run with factory_run: stages are one lowercase word each, at most nine. Each stage has an ask that says what done looks like, a loop (until, rounds, fanout) and one line of why. Keep the recipe's stages unless the item says otherwise; change asks before adding stages; add a stage only for work no existing stage covers. When the person asks to remove or delete a stage, remove it (it leaves this job; skip only switches it off), and move a stage when they ask for another order. Never drop, remove or move proof. An approve step is where the run holds until the person says continue: keep the recipe's, add one (named approve) after a stage the person wants to read first, and leave skipping, removing or moving one to the person. Nothing posts outward before an approve step, unless factory_status says the job is in Auto, which passes routine approve steps by itself."
+	talkBlockSay   = "Say what you set in three lines at most, then stop. Before describing any job action as accepted, call the appropriate tool and check its result. Never promise a state change before acceptance. On refusal, tell the person plainly that the action did not happen and what they can do next, without tool names or internal identifiers. If the result is uncertain, say it is unconfirmed and read saved status before retrying. Do not narrate. Call concurrency limits execution slots, never benches. When a job is queued, say what factory_status says it waits for; only when that is an available execution slot, point to Jobs at once in Settings → Factory → Your computers. Its person can press Start now on a queued job to give it one slot above that limit, or Hold it until they resume it. Read factory_status for current facts; never invent a limit, running-job count or start time. Idle PR monitoring uses no execution slot. Answer job facts (the step count, whether a step is running or stopped, the job's autonomy, the pull request, its checks and reviews) only from factory_status, and never claim a gate holds the run when it says Autonomy: Auto."
 )
 
 // talkBlockBrief is the block on the job before it starts and on the
@@ -249,7 +249,28 @@ func managerMaker(st *store.Store, workspace, profileDir string) func(context.Co
 // fell back to the folder its window was opened in worked in the app's own
 // home, and a manager there with no checkout cloned the repository into it.
 // The runner clones the repository when the job starts ([talkBlockBrief]).
+// AND NEVER CODEAF'S OWN FOLDER: whatever it answers passes
+// [factoryFolderRefusal] first.
 func talkFolder(st *store.Store, dirs func(string) string, it factory.Item) (string, error) {
+	// A JOB AGENTFIELD RUNS WORKS IN ITS OWN EMPTY FOLDER, whatever is checked
+	// out here: its code runs on the node, so its manager has nothing on this
+	// machine to work in, and a checkout it does not need is only more to
+	// sweep on every save.
+	if factory.RunsElsewhere(it) {
+		return factoryJobFolder(st, it.ID)
+	}
+	where, err := talkCheckoutFolder(st, dirs, it)
+	if err != nil {
+		return "", err
+	}
+	if err := factoryFolderRefusal(st, where); err != nil {
+		return "", err
+	}
+	return where, nil
+}
+
+// talkCheckoutFolder is [talkFolder] for a job that runs on this machine.
+func talkCheckoutFolder(st *store.Store, dirs func(string) string, it factory.Item) (string, error) {
 	if where := strings.TrimSpace(dirs(it.Repo)); where != "" {
 		return where, nil
 	}
@@ -262,11 +283,7 @@ func talkFolder(st *store.Store, dirs func(string) string, it factory.Item) (str
 	if st.Root() == "" || it.ID <= 0 {
 		return "", errors.New("codeaf does not know which folder this item's conversation belongs in")
 	}
-	own := filepath.Join(st.Root(), "chats", strconv.Itoa(it.ID))
-	if err := os.MkdirAll(own, 0o700); err != nil {
-		return "", fmt.Errorf("the item's conversation has no folder: %w", err)
-	}
-	return own, nil
+	return factoryJobFolder(st, it.ID)
 }
 
 // sessionTalk is the runner's [factoryrun.Talk] over internal/session's

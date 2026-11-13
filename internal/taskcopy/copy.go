@@ -37,7 +37,7 @@ func ImportCopyHistory(original, prepared string) error {
 	if !info.Mode().IsRegular() {
 		return errors.New("the task copy's repository link is not a file")
 	}
-	_, err = git(original, "-c", "core.hooksPath=/dev/null", "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", prepared, "HEAD")
+	_, err = privateGit(original, "-c", "core.hooksPath=/dev/null", "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", prepared, "HEAD")
 	return err
 }
 
@@ -77,7 +77,7 @@ func BindLinkedResult(original, prepared string) (undo func() error, err error) 
 	if err != nil {
 		return nil, err
 	}
-	if err := os.RemoveAll(filepath.Join(prepared, ".git")); err != nil {
+	if err := fsreplace.RemoveAll(filepath.Join(prepared, ".git")); err != nil {
 		return nil, err
 	}
 	if err := os.WriteFile(filepath.Join(prepared, ".git"), pointer, info.Mode().Perm()); err != nil {
@@ -106,7 +106,7 @@ func replaceCopyIndex(path string, raw []byte) error {
 	if err != nil {
 		return err
 	}
-	defer os.Remove(file.Name())
+	defer fsreplace.Remove(file.Name())
 	_, writeErr := file.Write(raw)
 	syncErr := file.Sync()
 	closeErr := file.Close()

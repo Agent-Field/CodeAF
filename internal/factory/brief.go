@@ -219,6 +219,9 @@ type BriefVersion struct {
 	InputHash string `json:"input_hash,omitempty"`
 	// Dropped is how many parts of the writer's draft validation dropped.
 	Dropped int `json:"dropped,omitempty"`
+	// BeforeWork says the version is the read of the issue written before any
+	// step reported ([BriefFirstReadSystem]), which every step is then given.
+	BeforeWork bool `json:"before_work,omitempty"`
 }
 
 // BriefWriting is a write of the next version on its way, or the last one
@@ -257,30 +260,11 @@ func LatestBrief(it Item) BriefVersion {
 // BriefStub is the brief made from engine data alone: the issue's line, the
 // steps done of total and the facts, with no blocks and no model.
 func BriefStub(it Item) BriefVersion {
-	done, total := briefProgress(it)
+	done, total := StepCount(it)
 	return BriefVersion{
 		Stub: true, Issue: it.Title, Verdict: briefStubVerdict(it), StepsDone: done, StepsTotal: total,
 		Facts: BriefFacts(it), Blocks: []BriefBlock{}, ChangedKeys: []string{},
 	}
-}
-
-// briefProgress counts a run's phases, or the switched-on steps of a job
-// that has not run.
-func briefProgress(it Item) (done, total int) {
-	if it.Stream != nil && len(it.Stream.Phases) > 0 {
-		for _, p := range it.Stream.Phases {
-			if p.State == PhaseDone {
-				done++
-			}
-		}
-		return done, len(it.Stream.Phases)
-	}
-	for _, s := range it.Stages {
-		if s.On {
-			total++
-		}
-	}
-	return 0, total
 }
 
 // KeepBrief keeps v as the job's newest version: it numbers it, says what

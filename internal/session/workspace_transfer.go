@@ -13,6 +13,7 @@ import (
 	"sort"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/taskcopy"
 	"github.com/Agent-Field/codeaf/internal/workspaceidentity"
@@ -685,18 +686,13 @@ func writeWorkspaceDurable(path string, raw []byte, mode os.FileMode) error {
 	if closeErr != nil {
 		return closeErr
 	}
-	if err := os.Rename(name, path); err != nil {
+	if err := fsreplace.Rename(name, path); err != nil {
 		return err
 	}
 	return syncWorkspaceDirectory(directory)
 }
 func syncWorkspaceDirectory(path string) error {
-	directory, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer directory.Close()
-	return directory.Sync()
+	return fsreplace.SyncDir(path)
 }
 
 // TaskWorkspaceAdmissionNeeded inspects only authenticated incoming metadata.

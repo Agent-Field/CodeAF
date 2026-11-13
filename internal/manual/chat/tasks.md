@@ -10,13 +10,17 @@ engine reports it. Check the running work before starting the same brief again.
 ## What a task is
 
 A task is one self-contained piece of work handed off to run on its own while the
-conversation carries on. It works in a copy of its own — a working copy of your repository, or
-a copy of the folder when the work is about a folder — and reports back when it lands. It
-never inherits the conversation: what it reads is one written brief — your own message, word
-for word, then the work, what to produce and what done means, and a pointer at the
+conversation carries on. It works in a folder of its own and reports back when it lands.
+Projects may be copied; a task that would copy your home folder reads it in place and
+starts with an empty folder. It never inherits the conversation: what it reads is one written brief.
+A task you typed yourself, or one on the older session-tree road, reads your own message word
+for word first, then the work, what to produce and what done means, and a pointer at the
 journal path and line of your original turn so it can read those words in full when the
-restatement was cut. How that is assembled is on the *how tasks run* page, under *What the
-task actually reads* and *Can the task see the original request*. The one exception is a
+restatement was cut. A task the conversation proposed on the run road reads only its own
+assignment — its title, the work, what to produce and what done means — with no message,
+quoted lines or journal pointer, so the proposing model makes it self-contained. How each is
+assembled is on the *how tasks run* page, under *What a proposed task reads*, *What the task
+actually reads* and *Can the task see the original request*. The one exception is a
 **quick task started with `inherit`**, which opens holding the conversation itself — see
 *Can it keep what it read* below.
 
@@ -76,7 +80,7 @@ A task can also break its own brief into smaller tasks when it finds independent
 it, and those are rows of their own on the column, each under what it is doing (see *When a
 task splits its own work*).
 
-**And a copy of its own is the ordinary task, not every task.** The other kind is the
+**And a folder of its own is the ordinary task, not every task.** The other kind is the
 **quick task**: no copy of the folder, no branch, no check and no merge — it works in the
 folder you are already in, and its last message is its answer. It is the next several
 sections, starting with *What a quick task is*. Everything below about briefs, cards,
@@ -165,6 +169,15 @@ and next item move as it does.
 ticks a box. The items belong to the worker; the words belong to you.
 
 ## Why it said waits for task 5 — two quick tasks that would write the same file
+
+File claims accept workspace-relative files, directories and segment globs
+(`*`, `?`, `[...]`), for example `crew-0-*.md`. Wildcards never cross `/` and never match a leading `.` (`*` skips `.git` and
+`.env`; `.env*` names them); a matched
+directory covers its subtree. `**`, `..` segments, absolute glob patterns and
+malformed patterns return a tool refusal so the model can correct the claim.
+Exact absolute paths inside the workspace still normalize to relative paths.
+Symlinks cannot extend a claim outside the workspace. Potentially overlapping
+glob claims wait for each other, even without a concrete matching file name.
 
 A quick task may name the files it intends to write. When it does, and another quick task
 that is running or queued in the same folder has already claimed one of those paths, the
@@ -275,7 +288,7 @@ task; a quick task is now allowed the blank it is supposed to have.
 
 The rule is written once, in the words the model itself reads:
 
-> A task gets its own copy of the folder, is checked, and lands. A quick task works where
+> A task gets a folder of its own, is checked, and lands. A quick task works where
 > you are and its last message is its answer. If you will read the result and carry on,
 > it is quick. If it must be checked and merged on its own, or survive the window
 > closing, it is a task. One edit, one read, one command is a step: do it yourself.
@@ -293,7 +306,7 @@ inside once it has opened the material, and a wide **read** never comes down tha
 
 **And the model is told what each one costs**, rather than given a list of which kinds of
 work go where. Its own instructions describe a quick task as a copy of its abilities
-working where it stands and a task as a worker in a copy of the folder that is checked and
+working where it stands and a task as a worker in a folder of its own that is checked and
 merged, and then the arithmetic: pieces it keeps cost their sum, independent pieces handed
 out in one breath cost the longest of them. Everything on this page follows from that, and
 so does anything this page did not think to list.
@@ -872,7 +885,7 @@ when the row goes `done`. It is on the rail like any other task, so it can be op
 and stopped from there.
 
 **If the reply had written anything at all, none of this applies.** One edit is enough: the
-answer takes the ordinary road above — a task in its own copy of the folder, briefed, checked
+answer takes the ordinary road above — a task in a folder of its own, briefed, checked
 and landed — and its result stays in Tasks.
 
 ## Can it keep what it read — does the moved work start over, why did it stop reading and start a task, inherit
@@ -1843,6 +1856,8 @@ or switching tabs does not announce old completions again.
 Recognizable older standalone receipts also group on reopening, without rewriting
 or deleting the journal. When the original request cannot be established, a collapsed
 background-work group retains the receipt instead of assigning it to a later request.
+A task and its parts share one `background work` group even when their results
+arrive during different turns. Unrelated completions still group by their arrival turn.
 Ambiguous mixed messages and requested alerts remain visible. A pending `your call`
 decision stays visible with its reason and working answer controls until resolved.
 
@@ -1898,6 +1913,8 @@ each its own fact, so a task you ended reads `stopped · branch kept · <branch>
 on a protected branch, was on a different branch than when the work was cut, moved
 to a different commit by your own work after the cut, or was detached. The branch
 named there holds the finished work; the how-tasks-run page explains the exact reason.
+This landing stays visible with `branch kept · <branch>` even when routine
+completed work is folded into `background work`.
 Inspect that branch and keep the delivery workflow you requested. A task finishing
 does not by itself request a merge or a checkout change.
 
@@ -1914,12 +1931,16 @@ git's: `a branch of your repository`, `its own copy of the folder`, or `your own
 the same labels the settled card uses, listed under *Does a task touch my working copy?* in
 *how tasks run*. A landing whose copy codeaf has no record of falls back to `branch`.
 
-Two or more landings in a row become one folded rollup — `✓ 3 tasks done · 9m14s` on one line. Click it or select it and press `ctrl+o` to show a compact
-row per task under it. Any failure in the batch swaps the header to `✕ N tasks landed`; any
-`your call` swaps it to `? N tasks landed`. A task you answered straight after it landed is
-counted once, by what became of it — the `?` goes with the answer. A delivery that did not land also keeps a
-warning on the batch and its individual row. The header's span is wall-clock, first
-spawn to last landing, not the sum of the parts, because tasks run at the same time.
+Routine completions fold into `background work · N tasks · ctrl+e` (or `1 task`).
+Click the disclosure or press `ctrl+e` to see each named task row with its current
+state, such as `done` or `incomplete`, and `open result` to read its report. A task
+you answered is counted once, with its settled state. A landing that still needs
+your call stays visible, as does a landing whose work remains on a kept branch:
+`branch kept · <branch>` names where to find it.
+Each task has one current state: a visible landing card takes the place of its
+completion row. If you dismiss that card, the row remains in `background work`
+or the request's worked disclosure with the newest state and `open result`.
+The same rule applies after reopening the conversation.
 
 ## What an expanded landing card shows — why is the task answer in asterisks, Markdown, the delivery warning, the facts
 
@@ -2312,14 +2333,39 @@ you set it — and under the day's limit above it. An adaptive run they start op
 $100.00 default.
 
 **An ordinary `/task`, or any task codeaf's own worker does, also has a money limit of its own: $5 unless you set another**, shown on the
-Spending tab's `per task` row and set with `/crew cap task <$>`. A call that would spend
-past it is not made, whichever way the ordinary task was started, and the task stops there.
+Spending tab's `per task` row and set with `/crew cap task <$>`. It is one ceiling for the
+task's whole tree; *The per-task limit covers the whole task tree* below says what it
+counts and what happens when it is reached.
 **senior-dev, sec and review have their own dollar and time ceilings for each run**,
 separate from that `per task` row; see each program's page for its defaults and how to
 change them.
 
 Changing the engine's default changes the figure the composer layer opens on; the two are
 meant to be one number and are stated in both places on purpose.
+
+## The per-task limit covers the whole task tree — what happens when a task reaches its $5 limit, raising it with /crew cap task
+
+An ordinary `/task`, or any task codeaf's own worker does, has a money limit of its own:
+$5 unless you set another with `/crew cap task <$>`. On both task roads this is
+one ceiling for the whole tree, including planning and checks. The smaller of that limit
+and the conversation's remaining allowance wins, even when no crew was routed.
+Continuing interrupted work keeps what the same tree already spent: only the unspent
+part of its per-task limit remains available.
+A routed crew refuses a call that would cross its per-task limit. Reaching the run's
+ceiling ends workers in flight and starts no more.
+On the run road, a raise you give one task in the app, when its models need more than the
+cap, is that task's ceiling: before it starts, on a rerun, and while it runs, when the
+running tree's ceiling rises with it. The ending then names the raised amount.
+On the node belt, the saved ceiling survives restarts; reaching it refuses each worker's
+next request, queued workers spend nothing, and in-flight calls finish without
+cancellation. Every dollar counts once, including a part's spend inside the worker that
+proposed it. When the per-task limit binds, the report and its note lead with
+`this task reached its $5 limit · raise it in /crew` (with your amount), said once. On a task
+with a routed crew the same line stands under its row, and the Tasks column lists it as
+needing you.
+Raise it with `/crew cap task <$>`, then rerun the remaining work with `/task`.
+When the conversation's smaller limit binds, the report names that amount and `/settings`.
+Continuing a run is for interrupted work; a settled dollar-limit ending needs a rerun.
 
 ## The + /task row at the foot of the column — starting a task from the side
 
@@ -2406,7 +2452,7 @@ record for you with its `tasks` tool; just ask.
 task writes nothing into the project's file until it lands, so the window next door is the
 only place that work can be read from, and `/history` is the page that reads it.
 
-## The column comes back after a restart — tasks reappear on resume or a switch back
+## The column comes back after a restart — all my tasks disappeared after a restart, tasks reappear on resume or a switch back
 
 **Reopening a conversation re-draws its own tasks, and the jobs it ran.** `/resume`,
 `codeaf resume`, and switching back behind home all rebuild the column from the record:
@@ -2845,8 +2891,9 @@ it had started.
 
 ## Does it know what my other windows are doing — will it notice work from another terminal
 
-Yes, and it is told rather than having to go and ask. When another codeaf window on this
-same directory lands a task, or has one running, codeaf puts a small block into the chat's
+With the default `project` conversation scope, yes: it is told rather than having to
+go and ask. When another codeaf window on this same directory lands a task, or has
+one running, codeaf puts a small block into the chat's
 own context — never on your screen — that reads:
 
 ```
@@ -2883,10 +2930,32 @@ running in another window now:
   told.
 - A **task** is never given this block. A task's brief is its whole world.
 
+## Conversation scope — tell this chat only about its own work
+
+A client can set a saved conversation's scope with `agents.set_scope {id, scope}`.
+`project` is the default: the chat is told about other conversations' landed and
+running work in the same folder. `conversation` means it is told only about its
+own work. No `<elsewhere>` block is added to its turns, and the model's `tasks`
+tool lists only its own tasks. Another conversation's tasks cannot be read by
+name or id, steered or resolved through that tool. The running-in-other-windows
+section and the `scope: "everywhere"` section are absent too. Its instructions
+and the `tasks` tool's description say other windows' work is hidden from it,
+so it does not claim nothing else is running in the folder.
+
+The choice survives a restart and takes effect from the next turn; a tasks call
+also reads the saved choice. Setting it does not open or interrupt the chat,
+move its folder, or change its transcript, title, model or tasks. Set `project`
+to restore the ordinary reading. This setting has no terminal command or UI
+control. The person's `@` task list and task nodes keep their existing behavior.
+
+The checks that warn before this chat's own work writes over files other
+conversations are writing still apply.
+
 ## Asking the chat what else is running on this project right now
 
-Ask it in words. It reads the other windows itself rather than guessing from the project's
-record — which cannot answer, because an ordinary task writes no row there until it lands.
+With `project` conversation scope, ask it in words. It reads the other windows itself
+rather than guessing from the project's record — which cannot answer, because an
+ordinary task writes no row there until it lands.
 What it gets back looks like this:
 
 ```
@@ -3189,6 +3258,9 @@ the outcome sentence; the conversation it came out of; what it ran on and what i
 how many files it changed; where it left the work and where the story is; and then **the
 last thing the task itself said** — the whole report, read off that task's own journal, of
 which the outcome above is the first sentence.
+For a task that just settled in this conversation, `open result` shows its full
+report and changed-file count immediately, including before the saved task list
+refreshes. Reopening the conversation shows the same report and files.
 
 - **`out of <conversation>` names where the work came from**, spelled the way the row on the
   list spells it, so the page is never a smaller answer than the row that opened it. It is
@@ -3843,7 +3915,7 @@ That is why coordination over pieces YOU handed out is not moved into a task (*W
 pieces you handed out does not move your answer*).
 
 Nothing asks you about those. **A sub-task starts without a card:** the countdown card is
-how a person redirects work, and there is nobody inside a task's own copy to show one to, so a
+how a person redirects work, and there is nobody inside a task's own folder to show one to, so a
 task's own proposals begin the moment they are made. What you see instead is the tree.
 
 Where they show up:
@@ -4268,6 +4340,22 @@ splits.
 `task.parallel` still applies to the whole session: pieces queue behind it exactly as
 top-level tasks do.
 
+## Duplicate task titles on the node belt
+
+With `CODEAF_TASK_BELT=node`, `legacy` or `off`, a worker cannot add the same work
+twice anywhere in its task tree. Letter case is ignored; runs of punctuation or
+whitespace fold to one space:
+`Read: the LAW!` and `read-the law` name the same work. Ancestors, siblings, cousins and
+finished tasks all count; a cancelled task's title may be reused. A division naming
+the same work twice is refused whole, before any part starts. Quick tasks use the same
+check. Separate conversation tasks have separate trees; a person's typed task stays
+exempt.
+
+The refusal says `no: this run already has a task named "Read: the LAW!" (7), so nothing
+was added.` It tells the worker to do that work in its own hands, or name different
+work for what is different. The shared tree money limit is described above under
+*The per-task limit covers the whole task tree*.
+
 ## How the bash belt run splits work instead of nesting node tasks
 
 With the switch unset, or `CODEAF_TASK_BELT=bash`, a task uses the run engine instead of the node tree.
@@ -4678,6 +4766,18 @@ and what the task made is committed onto that branch before it lands — so the 
 produced are listed under `changed:` and `git merge task/…` brings them over. The merge is
 never done for you, because only work that was checked reaches your branch.
 
+## Stop a running task and its open run children
+
+Use `x` on the task's row or in its room over an empty box, then choose `stop it`.
+Stopping a run ends every still-open task in its store, including workers mid-step and
+open children whose root already finished. Earlier completed results keep their endings.
+Task lists reflect the store's stop while the last workers return, so those parts no
+longer read as running.
+
+Starting a new run also ends open children retained below an earlier completed root,
+preserving that root's result. A later stop can clear lingering children in an older
+retained store without changing the newer run.
+
 ## Continue task N — keep going on a failed or finished task, No task 1 in this project
 
 When you say `continue task 7` or `keep going on task 7`, the model calls `tasks` with that
@@ -4815,15 +4915,16 @@ stopped being a question — the card draws them beside an answer or not at all.
 line every question leaves, `✓ <the card's head> → accept · you · 14:02 · c change`:
 the pick in the card's own words (`accept`, `not right`, `resolve it`, `drop it`), who
 decided — `you`, `codeaf, on your settings` when the model settled it, `another window`
-when somebody else got there first — and when. The report under the second card then
+when somebody else got there first — and when. The task's retained report then
 leads `you took this as done` or `incomplete — you said it is not finished`. After `[d]`
 nothing is decided yet: the answers stay drawn and the reason row reads `codeaf is
 deciding`.
 
-The card's own head is **not** rewritten — it is the record of how the work came home, kept
-branch and all. What follows is a **second** card, when the task re-settles into `done` or
-`incomplete`, saying what became of the work. The transcript then reads as what happened:
-this landed as your call → you took it as done → `task 7 done · merged`.
+The decision receipt stays visible. When the task settles into `done` or
+`incomplete`, its routine completion folds into `background work`. Open that
+disclosure with `ctrl+e` to read the named task row and its settled state, then
+`open result` to read the report, including the reason it was refused. A landing
+whose work remains on a kept branch stays visible with `branch kept · <branch>`.
 
 **You can also just say so.** "accept task 7", "that one isn't finished" both work: codeaf
 holds the same door through its `tasks` tool, and whichever of the two is used first wins.
@@ -4923,6 +5024,27 @@ consequence beside the one it belongs to. You never press this key blind.
 This road used to read `conflicts with your branch`, which was untrue — there was no branch
 of yours in it — and `[a]` spent a merge round, which merges *branches* and cannot see an
 untracked file at all, so it refused a second time in exactly the same words.
+
+## Resolving a local task's untracked file conflict after restarting
+
+A finished local task whose landing meets your untracked file stays `your call`,
+with its branch kept. Reopening the same conversation after a restart keeps the
+question: `your folder already has files the task wrote: <files>`. It does not
+run the task again or merge anything until you answer.
+
+Choose `a resolve it`, or ask the conversation to accept that task through
+`tasks` with its `id` and `resolve: "accept"`. For example, if both wrote
+`COLLISION.txt`, the task's version lands as `COLLISION.txt` and your exact bytes
+are kept in `COLLISION.txt.yours`. If that name already exists, your copy takes
+the next free name, such as `COLLISION.txt.yours.2`. `n drop it` takes nothing
+and keeps the task's branch.
+
+The task's room and main card both say `your call` until the landing is settled.
+Resolving keeps your bytes even when the workspace and system temporary folder
+live on different filesystems. If a file cannot move, the refusal names the
+filesystem's reason after `could not move your copies:`. If putting a copy back
+fails, `remaining copies are kept in <folder>` names where it is held; keep that
+folder until you have recovered your copy.
 
 ## Tell it something instead of answering — s tell it, and why saying looks good does not accept
 
@@ -5879,3 +6001,16 @@ answer, report, crew models, cost and retry actions in one place. Use `o open fu
 or click that action to open the existing task transcript room. Tasks without routed
 crew details keep their ordinary room door. An old record with no crew details does not
 invent them; reopening its owning conversation restores the details its checkpoint kept.
+
+## A conversation time limit ended my task — incomplete versus stopped
+
+A time limit you set ends the conversation's tasks as `incomplete`, with the reason
+`a time limit you set stopped it`. Pressing Stop yourself ends them as `stopped`.
+This applies to tasks and runs already underway when the conversation reaches its limit.
+
+## A saved run asks me to accept it or say it is not right
+
+If a plan finished before a restart but its final checks and landing were not
+recorded, inspect the saved working copy. On the task page, accept it or say it
+is not right, or ask the conversation to do so. The saved result alone does not
+say that the final checks passed.

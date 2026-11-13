@@ -3,6 +3,7 @@ package tui3
 import (
 	"context"
 	"errors"
+	"github.com/Agent-Field/codeaf/internal/claudemodel"
 	"net/url"
 	"sort"
 	"strings"
@@ -215,6 +216,8 @@ func modelConnectionStatus(source modelsource.Source, held bool) connect.Status 
 		if source.ID == modelsource.DefaultID {
 			need = "browser · key"
 		}
+	case source.ID == claudemodel.ID:
+		need = "your Claude Code sign-in · no key"
 	case modelsource.IsCustomID(source.ID):
 		need = "address · key"
 	case len(source.Regions) > 0:
@@ -237,7 +240,7 @@ func modelConnectionStatus(source modelsource.Source, held bool) connect.Status 
 		ID: modelConnectionID(source.ID), Name: name, Blurb: need,
 		Auth: connect.AuthKey, Category: "models",
 	}
-	if source.ID == "ollama" {
+	if source.ID == "ollama" || source.ID == claudemodel.ID {
 		service.Auth = "none"
 	} else if source.ID == "codex" || source.ID == modelsource.DefaultID {
 		service.Auth = connect.AuthBrowser
@@ -325,6 +328,11 @@ func (a *app) startModelConnect(row connect.Status, fromSheet bool) tea.Cmd {
 			a.connPanel.close()
 		}
 		return a.beginCodexConnect(*draft)
+	case source.ID == claudemodel.ID:
+		// NO KEY IS ASKED FOR: codeaf never holds the `claude` program's
+		// sign-in, so connecting is checking it is here and signed in.
+		a.modelDraft = nil
+		return a.beginClaudeCodeConnect(*draft)
 	default:
 		draft.step = modelConnectKey
 		a.showModelEntry(newModelEntry(row.ID, source.Name, "key", nil, true), fromSheet)
@@ -445,6 +453,39 @@ func (a *app) adoptCodexFlow(msg codexFlowMsg) tea.Cmd {
 		return modelConnectResultMsg{
 			service: "codex", name: "Codex", written: "codex", outcome: outcome,
 			models: models, err: err, browser: true, word: word, setupAttempt: attempt,
+		}
+	}
+}
+
+// beginClaudeCodeConnect connects the person's own `claude` program through the
+// same door the app and `codeaf connect claude-code` use, and keeps its three
+// models with their window, so a conversation on one is measured against
+// Claude's window and not a stranger's default.
+func (a *app) beginClaudeCodeConnect(draft modelConnectDraft) tea.Cmd {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if draft.setupAttempt != nil {
+		ctx = draft.setupAttempt.ctx
+		a.setup.providerBusy = true
+		a.touch()
+	}
+	dir := a.profileDir
+	return func() tea.Msg {
+		outcome, err := config.ConnectClaudeCode(ctx, dir)
+		var models []Model
+		if err == nil {
+			for _, m := range claudemodel.Models() {
+				models = append(models, Model{ID: m.ID, ContextLength: m.ContextLength})
+			}
+			if connected, found := config.ResolveSources(dir, "", "").ByID(claudemodel.ID); found {
+				_ = WriteModelCacheFor(connected.Source.ID, connected.Address, models)
+			}
+		}
+		return modelConnectResultMsg{
+			service: claudemodel.ID, name: claudemodel.Name, written: claudemodel.ID,
+			outcome: outcome, models: models, err: err, setupAttempt: draft.setupAttempt,
 		}
 	}
 }
@@ -950,7 +991,7 @@ func (a *app) adoptModelConnectResult(msg modelConnectResultMsg) {
 					a.deferredModelServiceModel = ""
 				}
 				preferred := connected.Source.PreferredModel(connected.Door, listedModelIDs(a.sourceModels[msg.service]))
-				if next := connected.Qualify(preferred); next != "" && next != strings.TrimSpace(a.model) {
+				if next := connected.Qualify(preferred); next != "" && (next != strings.TrimSpace(a.model) || next != a.configuredModel()) {
 					if a.state == stateWorking {
 						a.deferredModelServiceModel = next
 					} else {
@@ -1011,6 +1052,9 @@ func (a *app) reprefixRenamedModel(oldWritten, newWritten string) string {
 	}
 	if modelUsesService(a.deferredModelServiceModel, oldWritten) {
 		a.deferredModelServiceModel = config.ReprefixModelID(a.deferredModelServiceModel, oldWritten, newWritten)
+	}
+	if a.reprefixTemporaryModel(oldWritten, newWritten) {
+		return ""
 	}
 	if !modelUsesService(a.model, oldWritten) {
 		return ""
@@ -1112,7 +1156,7 @@ func listedModelIDs(models []Model) []string {
 // automatic moves cannot drift into two accounts of what happened.
 func (a *app) moveConversationToConnectedModel(next string) {
 	next = strings.TrimSpace(next)
-	if next == "" || next == strings.TrimSpace(a.model) {
+	if next == "" || next == strings.TrimSpace(a.model) && next == a.configuredModel() {
 		return
 	}
 	was := a.model
@@ -1127,6 +1171,10 @@ func (a *app) moveConversationToConnectedModel(next string) {
 // answering turn has settled. Clearing it first makes the second settle event
 // free and prevents a failed later path from replaying an old connection.
 func (a *app) applyDeferredModelServiceMove() {
+	if rename := a.deferredModelRename; rename != nil {
+		a.deferredModelRename = nil
+		a.applyModelRename(rename)
+	}
 	next := a.deferredModelServiceModel
 	a.deferredModelServiceModel = ""
 	was := a.model
@@ -1172,7 +1220,7 @@ func (a *app) moveConversationOrDefer(id, written string) {
 	// Routing folds case, so an id differing from the running model only in
 	// case is the same pick — the deferred guard above already compares with
 	// EqualFold, and the idle road does too.
-	if !strings.EqualFold(id, strings.TrimSpace(a.model)) {
+	if !strings.EqualFold(id, strings.TrimSpace(a.model)) || !strings.EqualFold(id, a.configuredModel()) {
 		a.moveConversationToConnectedModel(id)
 	}
 }
@@ -1303,7 +1351,7 @@ func (a *app) disconnectModelService(id string) {
 	if !conversationUsed {
 		// The disconnect acknowledgement is the whole answer.
 	} else if next, ok := a.reachableModelAfterDisconnect(); ok {
-		a.switchModel(next, 0)
+		a.useModelForNow(next, 0)
 		a.modelServiceFollowup(serviceMovedWord(was, next))
 	} else {
 		a.modelServiceFollowup(serviceStrandedWord(was))

@@ -431,11 +431,16 @@ type taskRecord struct {
 	// carried a bill, which resumes as zero — the same thing an unpriced model
 	// leaves behind, and the same thing every surface here already draws as
 	// nothing rather than as "$0.00".
-	CostUSD    float64 `json:"costUsd,omitempty"`
-	Input      int     `json:"input,omitempty"`
-	Output     int     `json:"output,omitempty"`
-	CacheRead  int     `json:"cacheRead,omitempty"`
-	CacheWrite int     `json:"cacheWrite,omitempty"`
+	CostUSD float64 `json:"costUsd,omitempty"`
+	// FoldedUSD is the part of CostUSD that is other nodes' bills, folded in
+	// when the parts this node's worker proposed landed ([TaskNode.folded]). A
+	// restored tree's spend total counts those dollars once, on their own rows.
+	FoldedUSD  float64        `json:"foldedUsd,omitempty"`
+	TreeLimit  *nodeTreeLimit `json:"tree_limit,omitempty"`
+	Input      int            `json:"input,omitempty"`
+	Output     int            `json:"output,omitempty"`
+	CacheRead  int            `json:"cacheRead,omitempty"`
+	CacheWrite int            `json:"cacheWrite,omitempty"`
 
 	// Noted says this node's completion note has been handed to the steering
 	// lane. It is what stops a resumed session re-announcing work the transcript
@@ -858,6 +863,9 @@ type runRecord struct {
 	Merge   string     `json:"merge,omitempty"`
 	Result  string     `json:"result,omitempty"`
 	Changed []string   `json:"changed,omitempty"`
+	// The landing question must keep naming the same files after a restart.
+	Conflicts  []string `json:"conflicts,omitempty"`
+	GroundHeld bool     `json:"groundHeld,omitempty"`
 }
 
 // taskDocument is the file: a type tag, a version, the id counter, the nodes in
@@ -997,12 +1005,18 @@ func (s *taskStore) writeLocked(document taskDocument) error {
 		return err
 	}
 
-	if directory := filepath.Dir(s.path); directory != "" && directory != "." {
+	return replaceTaskCheckpoint(s.path, encoded)
+}
+
+// replaceTaskCheckpoint makes stale temporary files private before writing
+// and installs the complete checkpoint only after the file closes successfully.
+func replaceTaskCheckpoint(path string, encoded []byte) error {
+	if directory := filepath.Dir(path); directory != "" && directory != "." {
 		if err := os.MkdirAll(directory, 0o755); err != nil {
 			return err
 		}
 	}
-	temporary := s.path + ".tmp"
+	temporary := path + ".tmp"
 	file, err := os.OpenFile(temporary, os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
@@ -1022,7 +1036,7 @@ func (s *taskStore) writeLocked(document taskDocument) error {
 	if err := errors.Join(writeErr, closeErr); err != nil {
 		return err
 	}
-	if err := fsreplace.Rename(temporary, s.path); err != nil {
+	if err := fsreplace.Rename(temporary, path); err != nil {
 		_ = os.Remove(temporary)
 		return err
 	}
@@ -1116,6 +1130,7 @@ func (g *TaskGraph) admitWritten(take func() directionHeard, drop func(direction
 	}
 	store.mu.Lock()
 	defer store.mu.Unlock()
+	bills := g.nodeTreeBills()
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	heard := take()
@@ -1124,7 +1139,7 @@ func (g *TaskGraph) admitWritten(take func() directionHeard, drop func(direction
 	if !heard.fresh() {
 		return heard, nil
 	}
-	if err := store.writeLocked(g.documentLocked()); err != nil {
+	if err := store.writeLocked(g.documentLocked(bills)); err != nil {
 		drop(heard)
 		return heard, err
 	}
@@ -1150,31 +1165,39 @@ func (g *TaskGraph) dropWritten(drop func()) error {
 	}
 	store.mu.Lock()
 	defer store.mu.Unlock()
+	bills := g.nodeTreeBills()
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	drop()
-	return store.writeLocked(g.documentLocked())
+	return store.writeLocked(g.documentLocked(bills))
 }
 
 // document is the graph as the file sees it, in admission order — the order that
 // makes the frontier deterministic, and the order a person reads the file in.
 func (g *TaskGraph) document() taskDocument {
+	bills := g.nodeTreeBills()
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	return g.documentLocked()
+	return g.documentLocked(bills)
 }
 
 // documentLocked is the same reading with the graph's lock already held, for the
 // admission that publishes and writes under one hold of it
 // ([TaskGraph.admitWritten]).
-func (g *TaskGraph) documentLocked() taskDocument {
+func (g *TaskGraph) documentLocked(bills ...map[uint64]nodeBill) taskDocument {
 	document := taskDocument{Type: taskDocumentType, Version: taskFileVersion, Seq: g.seq}
 	for _, id := range g.order {
 		node := g.nodes[id]
 		if node == nil || g.deleted[id] {
 			continue
 		}
-		document.Nodes = append(document.Nodes, node.recordLocked())
+		record := node.recordLocked()
+		if len(bills) > 0 {
+			// A fold after the live snapshot may already have raised the frozen bill.
+			record.CostUSD = max(record.CostUSD, bills[0][id].spend)
+			record.FoldedUSD = max(record.FoldedUSD, bills[0][id].folded)
+		}
+		document.Nodes = append(document.Nodes, record)
 	}
 	// AND THE ADAPTIVE RUNS' ROWS GO DOWN IN THE SAME DOCUMENT, written by the
 	// same store on the same beats. There is no second writer of tasks.json: a
@@ -1239,6 +1262,8 @@ func runRowRecord(notice TaskNotice) runRecord {
 		Merge:               notice.Merge,
 		Result:              notice.Result,
 		Changed:             append([]string(nil), notice.Changed...),
+		Conflicts:           append([]string(nil), notice.Conflicts...),
+		GroundHeld:          notice.GroundHeld,
 		PlanTask:            notice.PlanTask,
 		RecoveredCompletion: notice.RecoveredCompletion,
 	}
@@ -1291,6 +1316,8 @@ func runRowNotice(record runRecord) TaskNotice {
 		Merge:               record.Merge,
 		Result:              record.Result,
 		Changed:             append([]string(nil), record.Changed...),
+		Conflicts:           append([]string(nil), record.Conflicts...),
+		GroundHeld:          record.GroundHeld,
 		PlanTask:            record.PlanTask,
 		RecoveredCompletion: record.RecoveredCompletion,
 	}
@@ -1438,6 +1465,8 @@ func (n *TaskNode) recordLocked() taskRecord {
 		StartedAt:      n.started,
 		EndedAt:        n.ended,
 		CostUSD:        n.cost,
+		FoldedUSD:      n.folded,
+		TreeLimit:      n.treeLimit,
 		Input:          n.input,
 		Output:         n.output,
 		CacheRead:      n.cacheRead,
@@ -2380,6 +2409,8 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		started:        record.StartedAt,
 		ended:          record.EndedAt,
 		cost:           record.CostUSD,
+		folded:         record.FoldedUSD,
+		treeLimit:      record.TreeLimit,
 		input:          record.Input,
 		output:         record.Output,
 		cacheRead:      record.CacheRead,

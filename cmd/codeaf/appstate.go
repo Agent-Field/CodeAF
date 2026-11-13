@@ -53,7 +53,9 @@ type appRaise struct {
 // appStateFile is the app's file. A nil figure is one nobody set, which reads
 // as its default; a day cap of zero is one the person turned off.
 type appStateFile struct {
-	Setup *appwire.Setup `json:"setup,omitempty"`
+	// LibraryLater keeps a deferred knowledge question in Later across restarts.
+	LibraryLater map[string]bool `json:"library_later,omitempty"`
+	Setup        *appwire.Setup  `json:"setup,omitempty"`
 	// SetupSteps is how many steps the kept setup's step is counted in. A
 	// file kept before setup became three steps has none, and its step is
 	// counted in four ([appSetupStepFromFour]).
@@ -206,6 +208,10 @@ func (s *appState) write(fn func(*appStateFile) error) error {
 // clone is a copy that shares nothing with the file it came from.
 func (f appStateFile) clone() appStateFile {
 	out := f
+	out.LibraryLater = make(map[string]bool, len(f.LibraryLater))
+	for id, later := range f.LibraryLater {
+		out.LibraryLater[id] = later
+	}
 	if f.Setup != nil {
 		setup := *f.Setup
 		out.Setup = &setup
@@ -341,6 +347,7 @@ func appSetupStepFromFour(step appwire.SetupStep) appwire.SetupStep {
 // step one, offering the app's day cap. A setup a four-step build kept is
 // answered in three steps.
 func (b *appBackend) Setup() (appwire.Setup, error) {
+	b.refreshKeyHealth()
 	// The day cap offered is the profile's limit, whatever the saved step says.
 	base, err := b.dayBase()
 	if err != nil {
@@ -355,11 +362,12 @@ func (b *appBackend) Setup() (appwire.Setup, error) {
 			}
 			return
 		}
-		setup = appwire.Setup{Step: appwire.SetupStep{N: 1}}
+		setup = appwire.Setup{Step: appwire.SetupStep{N: 1}, DefaultModel: appDefaultModel()}
 	})
 	if err != nil {
 		return appwire.Setup{}, appEngineError(err)
 	}
+	setup.ProviderKey = b.keyHealth.read()
 	setup.DayCapUSD = appFigure(base)
 	return setup, nil
 }
@@ -368,6 +376,7 @@ func (b *appBackend) Setup() (appwire.Setup, error) {
 // same step. What it chose is also put in force at once: a default model is the
 // profile's default, and a day cap is the app's day cap.
 func (b *appBackend) SetSetup(setup appwire.Setup) (appwire.Setup, error) {
+	setup.ProviderKey = appwire.ProviderKeyHealth{}
 	setup.Provider = strings.ToLower(strings.TrimSpace(setup.Provider))
 	setup.DefaultModel = strings.TrimSpace(setup.DefaultModel)
 	if setup.DefaultModel != "" && setup.DefaultModel != appDefaultModel() {
@@ -399,6 +408,7 @@ func (b *appBackend) SetSetup(setup appwire.Setup) (appwire.Setup, error) {
 	if setup.DefaultModel != "" || setup.DayCapUSD != nil {
 		b.settingsMoved()
 	}
+	setup.ProviderKey = b.keyHealth.read()
 	return setup, nil
 }
 

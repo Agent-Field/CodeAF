@@ -1,11 +1,15 @@
 package lease
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/inbox"
+	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/run"
 )
 
@@ -18,10 +22,9 @@ func (d *Desk) Renew(id, worker string) (Lease, error) {
 		if err != nil {
 			return false, err
 		}
-		held.ExpiresAt = now.Add(d.TTL())
-		held.HeartbeatAt = now
-		renewed = *held
-		return true, nil
+		var dirty bool
+		renewed, dirty = d.renew(held, now)
+		return dirty, nil
 	})
 	return renewed, err
 }
@@ -33,6 +36,19 @@ func (d *Desk) Renew(id, worker string) (Lease, error) {
 // it never admits a running step and retains the existing continue signal path.
 func (d *Desk) Apply(id, worker string, complete, capWait bool, change func(*factory.Item) error) error {
 	blocked := false
+	// THE TWO MOMENTS A JOB'S SOURCE IS TOLD OF — its pull request opened, it
+	// merged — and a stop that needs a person, all arrive here, in a worker's
+	// report. They are told after the write is kept, never inside it
+	// ([inbox.Notify]), so an outside system can neither slow nor fail a job.
+	job, moments := 0, []inbox.Event(nil)
+	observed := func(it *factory.Item, write func(*factory.Item) error) error {
+		mark := inbox.MarkOf(*it)
+		if err := write(it); err != nil {
+			return err
+		}
+		job, moments = it.ID, mark.Moments(*it)
+		return nil
+	}
 	err := d.change(func(doc *document, now time.Time) (bool, error) {
 		held, err := identified(doc, id, worker)
 		if err != nil {
@@ -45,7 +61,7 @@ func (d *Desk) Apply(id, worker string, complete, capWait bool, change func(*fac
 				}
 				if err := d.store.Update(receipt.Lease.Job, func(it *factory.Item) error {
 					if !receipt.Restarted {
-						return change(it)
+						return observed(it, change)
 					}
 					// Validate the old report against an isolated stopped job. Only its
 					// opened PR receipt may cross into the replacement run.
@@ -81,9 +97,39 @@ func (d *Desk) Apply(id, worker string, complete, capWait bool, change func(*fac
 			}
 			return false, err
 		}
+		rejected := false
 		if err := d.store.Update(held.Job, func(it *factory.Item) error {
-			if err := change(it); err != nil {
+			if err := observed(it, change); err != nil {
 				return err
+			}
+			// A RUN THAT ENDED ON THE PERSON'S NO ENDS ITS JOB REJECTED, here
+			// as when the runner acknowledges carrying the Reject: the
+			// control plane cancels a rejected run at once, and the runner's
+			// reading of that cancel may arrive first. It is the person's
+			// decision, never the failed step the cancel reads as.
+			if it.Rejection == nil && it.State != factory.StateShipped {
+				if no, ok := factory.AgentFieldRejectedEnd(*it); ok {
+					history, err := record.Open(d.store, record.Options{Now: d.now})
+					if err != nil {
+						return err
+					}
+					if f := it.Failure; f != nil && f.Code != factory.CodeStopped {
+						it.Failure = nil
+					}
+					// The step it answered carries no failure either, as a
+					// native Reject leaves its step: an older runner stamped
+					// the cancel on it as a tool_error.
+					if it.Stream != nil {
+						for i := range it.Stream.Phases {
+							if f := it.Stream.Phases[i].Failure; f != nil && f.Code != factory.CodeStopped {
+								it.Stream.Phases[i].Failure = nil
+							}
+						}
+					}
+					rejected = true
+					_, err = endRejectedLocked(history, doc, held, held.Job, it, now, no.By, no.Words)
+					return err
+				}
 			}
 			if !complete && holdAtJobBudget(it, now) {
 				blocked = !capWait
@@ -94,10 +140,18 @@ func (d *Desk) Apply(id, worker string, complete, capWait bool, change func(*fac
 					it.DoneHow = "answered"
 					it.DoneAt = now
 				}
+				// A job an AgentField run carried ends when its run does, with
+				// no pull request or comment to stamp it: its end is the run's.
+				if it.State == factory.StateShipped && strings.TrimSpace(it.RunOn) != "" && it.DoneAt.IsZero() {
+					it.DoneAt = factory.RunOnEnded(*it, now)
+				}
 			}
 			return nil
 		}); err != nil {
 			return false, err
+		}
+		if rejected {
+			return true, nil
 		}
 		if blocked {
 			withdraw(doc, *held)
@@ -108,6 +162,9 @@ func (d *Desk) Apply(id, worker string, complete, capWait bool, change func(*fac
 		}
 		return true, d.keepPublish(doc, held.Job)
 	})
+	if err == nil {
+		inbox.Tell(context.Background(), d.store, job, moments)
+	}
 	if err == nil && blocked {
 		return ErrWithdrawn
 	}
@@ -142,6 +199,9 @@ func identified(doc *document, id, worker string) (*Lease, error) {
 	}
 	if id != "" && doc.Withdrawn[worker] == id {
 		return nil, ErrWithdrawn
+	}
+	if id != "" && doc.Stopped[worker] == id {
+		return nil, ErrStopped
 	}
 	return nil, ErrNoLease
 }

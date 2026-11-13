@@ -81,6 +81,17 @@ func (q *commitQueue) background() {
 
 // flush joins the current group commit without holding up record writes on its
 // mutex. Only explicit durability boundaries wait for sync; commands never do.
+//
+// ONE GROUP COMMIT SAVES EVERY CHAT THAT IS WAITING. The slot is one per
+// process, and each flush used to sync only its own chat's records while the
+// rest queued behind it, so a quit closing 48 chats at once paid 48 rounds one
+// after another; on macOS every sync is a full flush of the drive's cache, and
+// the seventh live A+B run's closes stepped up three seconds at a time until
+// the desk killed the engine at thirty. Whoever holds the slot now syncs every
+// chat's pending records, each path once however many chats share it, and a
+// chat whose records that round covered returns without a round of its own.
+// Nothing is acknowledged that was not synced: a chat whose engine could not
+// confirm its snapshot keeps every record owed and is the only one told.
 func (q *commitQueue) flush(ctx context.Context, owner string) error {
 	select {
 	case q.flushing <- struct{}{}:
@@ -90,51 +101,111 @@ func (q *commitQueue) flush(ctx context.Context, owner string) error {
 	defer func() { <-q.flushing }()
 	for {
 		q.mu.Lock()
-		batch := map[commitPath]uint64{}
+		batch := make(map[commitPath]uint64, len(q.pending))
+		owed := false
 		for p, version := range q.pending {
-			if owner == "" || p.owner == owner {
-				batch[p] = version
-			}
+			batch[p] = version
+			owed = owed || owner == "" || p.owner == owner
 		}
 		q.mu.Unlock()
-		if len(batch) == 0 {
+		if !owed {
 			return nil
 		}
+		failed := map[string]error{}
 		// A durable local turn must never outrun the engine snapshot it names.
 		// The background group and explicit boundaries share this dependency (C28).
 		if q.beforeFlush != nil {
-			if err := q.beforeFlush(ctx, owner); err != nil {
-				return err
+			for o := range ownersOf(batch) {
+				if err := q.beforeFlush(ctx, o); err != nil {
+					failed[o] = err
+				}
 			}
 		}
 		// File contents precede directory entries. A rename must not outlive the
 		// replacement WAL's data after power loss (C28).
 		for _, dirs := range []bool{false, true} {
+			// Each path is synced once a pass, however many chats owe it.
+			synced := map[string]error{}
 			for p, version := range batch {
+				if failed[p.owner] != nil {
+					continue
+				}
 				if err := ctx.Err(); err != nil {
 					return err
 				}
-				info, err := os.Stat(p.path)
-				if errors.Is(err, os.ErrNotExist) {
-					if err := missingRecordParent(p.path); err != nil {
-						return fmt.Errorf("save call records: %w", err)
-					}
+				err, done := synced[p.path]
+				if !done {
+					err = q.syncOne(p.path, dirs)
+					synced[p.path] = err
+				}
+				switch {
+				case errors.Is(err, errOtherKind):
+				case err != nil:
+					failed[p.owner] = err
+				default:
 					q.clear(p, version)
-					continue
 				}
-				if err != nil {
-					return fmt.Errorf("save call records: %w", err)
-				}
-				if info.IsDir() != dirs {
-					continue
-				}
-				if err := q.syncPath(p.path); err != nil {
-					return fmt.Errorf("save call records: %w", err)
-				}
-				q.clear(p, version)
 			}
 		}
+		if owner != "" {
+			if err := failed[owner]; err != nil {
+				return err
+			}
+			continue
+		}
+		if err := firstFailure(failed); err != nil {
+			return err
+		}
 	}
+}
+
+// errOtherKind is a path the current pass leaves for the other one: a file
+// during the folders' pass, or a folder during the files'.
+var errOtherKind = errors.New("synced in the other pass")
+
+// syncOne syncs one record path in the pass for its kind. A removed record
+// is cleared: its rename or removal is the parent folder's to keep.
+func (q *commitQueue) syncOne(path string, dirs bool) error {
+	info, err := os.Stat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		if err := missingRecordParent(path); err != nil {
+			return fmt.Errorf("save call records: %w", err)
+		}
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("save call records: %w", err)
+	}
+	if info.IsDir() != dirs {
+		return errOtherKind
+	}
+	if err := q.syncPath(path); err != nil {
+		return fmt.Errorf("save call records: %w", err)
+	}
+	return nil
+}
+
+func ownersOf(batch map[commitPath]uint64) map[string]bool {
+	owners := map[string]bool{}
+	for p := range batch {
+		owners[p.owner] = true
+	}
+	return owners
+}
+
+// firstFailure is one of the failures, the same one for the same set, for a
+// flush of every chat.
+func firstFailure(failed map[string]error) error {
+	first := ""
+	for o := range failed {
+		if first == "" || o < first {
+			first = o
+		}
+	}
+	if first == "" {
+		return nil
+	}
+	return failed[first]
 }
 
 func (q *commitQueue) clear(p commitPath, version uint64) {

@@ -16,10 +16,19 @@ import (
 
 func init() {
 	knowledge.SetUsageRecorder(func(ctx context.Context, billed provider.Billed) {
+		// The provider sends empty figures only when a final receipt was unavailable.
+		// Keep the request and its attribution without guessing a monetary amount.
+		if billed.Empty() {
+			RecordUnbilledCall(UsageLedgerPath(), withUsageBilling(UsageLine{
+				GenerationID: billed.GenerationID, Model: billed.Model, Role: string(lane.RoleMemory),
+				Session: provider.SessionFrom(ctx), LibraryActivity: knowledge.LibraryActivity(ctx),
+			}, billed.Billing))
+			return
+		}
 		RecordUsage(UsageLedgerPath(), withUsageBilling(UsageLine{
 			GenerationID: billed.GenerationID, At: time.Now(), Model: billed.Model, Role: string(lane.RoleMemory), Session: provider.SessionFrom(ctx),
 			Calls: 1, Input: billed.PromptTokens, Output: billed.CompletionTokens, USD: billed.Cost,
-			Price: usagePriceProvider,
+			Price: usagePriceProvider, LibraryActivity: knowledge.LibraryActivity(ctx),
 		}, billed.Billing))
 	})
 }
@@ -47,9 +56,8 @@ func (a *Agent) knowledgeCallContext(ctx context.Context) (context.Context, erro
 	ctx = provider.WithCallNode(ctx, a.id)
 	bill := func(b provider.Billed) {
 		used := Usage{Input: b.PromptTokens, Output: b.CompletionTokens, CacheRead: b.CachedTokens, CostUSD: b.Cost, Calls: 1}
-		a.bank(bankedCall{generationID: b.GenerationID, used: used, model: b.Model, role: string(lane.RoleMemory), ledger: true, late: true, billing: b.Billing, price: usagePriceProvider})
+		a.bank(bankedCall{libraryActivity: knowledge.LibraryActivity(ctx), generationID: b.GenerationID, used: used, model: b.Model, role: string(lane.RoleMemory), ledger: true, late: true, billing: b.Billing, price: usagePriceProvider})
 		a.file.appendUsage(used, b.Model, true, string(lane.RoleMemory))
-		a.stampSpend()
 	}
 	ctx = provider.WithBilling(ctx, bill)
 	if a.config.JobPendingSpend != nil {
@@ -59,7 +67,8 @@ func (a *Agent) knowledgeCallContext(ctx context.Context) (context.Context, erro
 		if r.Found {
 			bill(r.Billed)
 		} else {
-			a.recordUnbilledReceipt(r.Model)
+			r.Tag = string(lane.RoleMemory)
+			a.recordUnbilledReceipt(r, knowledge.LibraryActivity(ctx))
 		}
 	})
 	return a.withReceiptTracking(provider.WithUnmeteredReceipts(ctx)), nil
@@ -113,9 +122,7 @@ func (a *Agent) finishJobKnowledge(ctx context.Context) {
 	compileCtx, cancel := context.WithCancel(context.WithValue(context.WithoutCancel(ctx), jobKnowledgeContextKey{}, true))
 	detach := context.AfterFunc(parent, cancel)
 	work := &jobKnowledgeCompile{cancel: cancel, done: make(chan struct{})}
-	j.mu.Lock()
-	j.compile = work
-	j.mu.Unlock()
+	j.compile.Store(work)
 	settled := func() {}
 	if a.config.JobPendingSpend != nil {
 		settled = a.config.JobPendingSpend()
@@ -166,9 +173,7 @@ func (a *Agent) cancelJobKnowledge() {
 	if j == nil {
 		return
 	}
-	j.mu.Lock()
-	work := j.compile
-	j.mu.Unlock()
+	work := j.compile.Load()
 	if work != nil {
 		work.cancel()
 	}

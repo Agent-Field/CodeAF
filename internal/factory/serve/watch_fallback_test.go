@@ -54,3 +54,30 @@ func TestAFactoryWithoutAWatchWarnsOnceAndLooksSlowly(t *testing.T) {
 		t.Fatalf("an unwatched pull looked %d times in 1.5s, want at most once a second", looks)
 	}
 }
+
+// A root with a live filesystem watch is looked at without being told only
+// as a safety net, never every two seconds: the watch hears every write, and
+// the look lists the root and stats every job in it, which macOS charges for.
+// A root with no watch keeps the quick poll.
+func TestAWatchedRootIsNotReReadEveryTwoSeconds(t *testing.T) {
+	watched := watchRoot(t.TempDir())
+	t.Cleanup(watched.stop)
+	if watched.fs == nil {
+		t.Skip("this host opened no filesystem watch")
+	}
+	if got := watched.pollEvery(); got != changePollWatched || got < 30*time.Second {
+		t.Fatalf("a watched root is looked at every %v, want %v", got, changePollWatched)
+	}
+	newFSWatcher = func() (*fsnotify.Watcher, error) {
+		return nil, fmt.Errorf("inotify_init1: %w", syscall.EMFILE)
+	}
+	t.Cleanup(func() { newFSWatcher = fsnotify.NewWatcher })
+	watchWarned = sync.Once{}
+	log.SetOutput(&bytes.Buffer{})
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	blind := watchRoot(t.TempDir())
+	t.Cleanup(blind.stop)
+	if got := blind.pollEvery(); got != changePoll {
+		t.Fatalf("an unwatched root is looked at every %v, want %v", got, changePoll)
+	}
+}

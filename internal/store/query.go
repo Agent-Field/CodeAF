@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/summarypath"
 )
 
 const nodeColumns = `
@@ -1030,11 +1032,12 @@ func summaryPaths(summary string) []string {
 	var paths []string
 	seen := make(map[string]bool)
 	for _, field := range strings.Fields(summary) {
-		path := strings.Trim(field, `"'(),;:.`)
-		if !strings.HasPrefix(path, "/") || len(path) < 2 || seen[path] {
+		path := summarypath.Parse(field)
+		key := summarypath.Key(path)
+		if path == "" || seen[key] {
 			continue
 		}
-		seen[path] = true
+		seen[key] = true
 		paths = append(paths, path)
 		if len(paths) == summaryPathCap {
 			break

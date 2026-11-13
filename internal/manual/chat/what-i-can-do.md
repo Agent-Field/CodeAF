@@ -93,6 +93,24 @@ adds the content to the end of the file instead of replacing it and reports
 `Appended N lines to <path>; the file now has M lines.` — appending to a file
 that does not exist yet simply creates it.
 
+## UTF-16 files, PowerShell text, BOM and CRLF line endings
+
+`read` decodes UTF-16 little-endian and big-endian files that start with a byte
+order mark (BOM), including files written by Windows PowerShell 5.1. `edit` and
+`write`, including `append:true`, keep that encoding and BOM. Files without a
+UTF-16 BOM retain their existing interpretation; UTF-8 needs no conversion.
+Keeping an existing encoding requires a readable file. Linux and macOS still
+allow a write-only file to be replaced with the exact supplied bytes.
+Reads, edits and appends refuse malformed UTF-16 with an incomplete code unit or
+an unpaired surrogate. Windows also refuses rewriting malformed UTF-16; Linux
+and macOS allow a full rewrite to replace its old bytes.
+
+UTF-16 edits, rewrites and appends keep the file's line-ending style on every OS.
+For other files, chat edits preserve the existing style. Windows rewrites, appends
+and headless edits also preserve that style. On Linux and macOS, `write` keeps
+the supplied bytes exactly, and headless `codeaf do`, `exec` and `run` edits
+continue to match and replace literal text, including CRLF.
+
 ## Why is a written or edited file missing from Files — deliverables in a plain folder
 
 Successful `write` and `edit` calls record files inside the conversation's
@@ -746,8 +764,9 @@ It tries rungs in order and names the one that answered, e.g.
 `<path> is over the 25MB document limit`. A path it cannot open answers
 `could not read <path>`. With no API key on the session:
 `the document rungs are out of reach: this session has no API key — read_document rides this session's own API key and base URL`.
-When every rung fails, each is named, e.g.
-`could not read <path> — native: 402 insufficient credits; cloudflare-ai: no readable text`.
+When every rung fails, each is named and the error points to `read` for local
+text extraction, e.g.
+`could not read <path> — all document parsers failed; native: 402 insufficient credits; cloudflare-ai: no readable text; try read for local text extraction`.
 
 Extraction is remembered for the conversation, so paging through a long document
 costs nothing extra.
@@ -757,6 +776,13 @@ rung only, which is a model's own eyes. When the model you are talking to cannot
 see, that rung is sent to the **looking model** instead of to your blind one, so
 `read_document` reads a photograph on any model. Everything else (PDFs, docx,
 xlsx, pptx) goes to your own model and the parsers, as before.
+
+## Can read_document read a short or one-line office document?
+
+`read_document` accepts complete office text, even a single line. Length alone
+does not trigger another parser. Invalid UTF-8 or binary control characters are
+rejected, so unreadable output still tries the next rung. If every parser fails,
+the error names them and suggests `read` for local text extraction.
 
 ## Can you look at an image, listen to audio or watch a video I have on disk?
 
@@ -1096,7 +1122,7 @@ Yes, in two ways: the transcript itself, and three tools that hold working state
 **outside** the transcript so a compaction cannot lose it.
 
 (Carrying something into a *later* conversation is a different mechanism and has
-its own page — `remember`, `forget`, `/remember`, `/memories` and the Memories tab are on
+its own page — `remember`, `forget`, `/remember`, `/memories` and the Memory tab are on
 what-i-remember.)
 
 **`track`** records one item. Arguments: `text` (required), `kind` (required —
@@ -1309,7 +1335,7 @@ commit trailer, and every credential row. The permissions page lists them exactl
 model that could widen its own restraints would not have any.
 
 Both tools are absent inside a running task, along with `watch`. A task node
-works in a copy of its own with nobody watching it, and a permanent change to your
+works in a folder of its own with nobody watching it, and a permanent change to your
 machine that no transcript ever showed you is the one thing this pair must not be
 able to make. `propose_task` and `tasks` are NOT absent there: a task may hand
 pieces of its own work out, tasks nesting 3 deep at most, and `tasks` shows it those
@@ -1358,7 +1384,11 @@ compacted away, codeaf loads the group again when needed.
 **Yes, with `share_deliverable`.** When a file is something you should get back — a
 chart a script rendered, a report, a PDF, a recording, a spreadsheet, an archive — the
 agent shares it, and it joins this conversation's deliverables marked **shared by** the
-agent. A file made with `write` or by a generator is recorded already and needs no share.
+agent. Files recorded by `write` or a generator need no share. Sharing an unchanged
+authored file reports that it is already among this conversation's deliverables,
+adds no record, emits no update and costs nothing. Other files in the same call
+are still shared. If a script or shell changed the bytes since the authored record,
+sharing records the new version; content hashes decide, not timestamps.
 
 - **Up to 8 files and 64 MiB in all per call**, any regular file kind. A picture, a sound
   or a video is also a media source you can preview; every other file keeps the type its

@@ -47,7 +47,7 @@ func v3TaskComputers(profile string) session.TaskComputers {
 	engine := cellstore.EngineFor("")
 	engine.DataRoot = filepath.Join(profile, "v3", "stores")
 	engine.Guard.Home = profile
-	store := blobstore.NewHTTP(route.URL, reqsign.SignFor(homeSigner{id, device}, time.Now), &http.Client{Timeout: time.Minute})
+	store := syncsetup.GateStore(blobstore.NewHTTP(route.URL, reqsign.SignFor(homeSigner{id, device}, time.Now), &http.Client{Timeout: time.Minute}), profile, route.URL, id.ID())
 	copies := taskdoor.CopyDeps{Root: filepath.Join(profile, "v3", "taskcopies"), Service: route.URL, Identity: id, Device: device, Engine: engine, Store: store}
 	return &taskplace.Computers{Directory: client, Copies: copies, Home: profile}
 }

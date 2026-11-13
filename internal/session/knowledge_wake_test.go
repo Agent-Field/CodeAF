@@ -104,3 +104,33 @@ func TestKnowledgeCapturesAnotherWritersLinesWithinTheSafetyTick(t *testing.T) {
 	}
 	waitForKnowledgePending(t, vault, 3, knowledgeSafetyTick+2*time.Second)
 }
+
+// AN IDLE CHAT WHOSE JOURNAL HAS NOT MOVED IS NOT READ AGAIN (live e2e round 9,
+// idle CPU): every open chat's safety tick opened its journal and asked for
+// consent every five seconds to find nothing new, with dozens of chats open on
+// a desk. A look whose last read reached the end of a journal that has not
+// changed since finds nothing whatever consent says, so it reads nothing.
+func TestAnIdleChatsSafetyTickDoesNotReadAJournalThatHasNotMoved(t *testing.T) {
+	agent := consentChat(t, t.TempDir())
+	path := agent.file.journalName()
+	var reads atomic.Int64
+	hook := func(read string) {
+		if read == path {
+			reads.Add(1)
+		}
+	}
+	previous := knowledgeReadHook.Swap(&hook)
+	t.Cleanup(func() { knowledgeReadHook.Store(previous) })
+	if err := agent.Knowledge().StartBuild(); err != nil {
+		t.Fatal(err)
+	}
+	collect(t, mustSubmit(t, agent, "Explain how the queue keeps work durable"))
+	waitForKnowledgePending(t, agent.Knowledge(), 2, 2*time.Second)
+	// Let the completed turn's catch-up finish before measuring idle reads.
+	time.Sleep(2200 * time.Millisecond)
+	reads.Store(0)
+	time.Sleep(knowledgeSafetyTick + time.Second)
+	if count := reads.Load(); count != 0 {
+		t.Fatalf("an idle chat read its unchanged journal %d times in a safety tick; want none", count)
+	}
+}

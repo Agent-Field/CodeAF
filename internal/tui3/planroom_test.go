@@ -525,3 +525,25 @@ func TestExplicitWorkTabOpensStorageButPollingOnlyReads(t *testing.T) {
 		t.Fatalf("background work poll expanded storage: opens=%d reads=%d", fake.opens, fake.reads)
 	}
 }
+
+// A ROOM WAITING ON THE PERSON'S CALL FOLLOWS THE ANSWER. A task that ended
+// `your call` is ended for the page's other readings, but resolving it settles
+// the store, and the open room must read that rather than keep saying
+// `your call` beside the person's own receipt (the pre-release hand check,
+// F-9c.k1).
+func TestARoomWaitingOnYourCallFollowsTheSettledAnswer(t *testing.T) {
+	row := session.PlanTaskRow{ID: "t-7", Title: "write the file", Status: string(session.TaskUnverified)}
+	page := session.PlanTaskPage{Row: row, Description: "b"}
+	a, fake := planAppWith(t, []session.PlanTaskRow{row}, map[string]session.PlanTaskPage{row.ID: page})
+	openPlanRoomNow(t, a, row.ID)
+	if !a.room.done {
+		t.Fatal("a task waiting on the person's call should read as ended work")
+	}
+	row.Status = "done"
+	page.Row = row
+	fake.setPage(row.ID, page)
+	drive(t, a, planRoomTickMsg{gen: a.room.gen})
+	if got := a.room.plan.page.Row.Status; got != "done" {
+		t.Fatalf("the open room still reads %q after the call was settled", got)
+	}
+}

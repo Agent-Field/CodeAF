@@ -157,3 +157,32 @@ func TestJobBriefSpotReadsItsHunks(t *testing.T) {
 	}
 	checkJSON(t, verbRequest(f.h, "GET", fmt.Sprintf("/v1/jobs/%d/brief/spots/2", it.ID), ""), 404)
 }
+
+// THE "WRITE THE BRIEF" BUTTON IS QUOTED WHAT A READ BEFORE WORK TYPICALLY
+// COSTS on this factory: nothing before one has run, the median once some
+// have, and nothing on a job whose next write would not be such a read.
+func TestJobBriefQuotesTheReadPriceBeforeWork(t *testing.T) {
+	f := newV2Jobs(t)
+	body := "When a worker restarts mid-send, the retry loop sends the message again although the first send landed."
+	fresh := f.create(t, factory.Item{State: factory.StateQueued, Assignee: "sam", Title: "Retries double-send", Body: body})
+	if b := f.brief(t, fresh, "", 200); !b.ReadDue || b.ReadPrice != 0 {
+		t.Fatalf("a factory with no read: due %v, quoted %v", b.ReadDue, b.ReadPrice)
+	}
+	for _, cost := range []float64{0.006, 0.002, 0.004} {
+		read := factory.Item{State: factory.StateQueued, Assignee: "sam", Title: "Another", Body: body}
+		read.KeepBrief(factory.BriefVersion{Verdict: "Read.", BeforeWork: true, CostUSD: cost})
+		f.create(t, read)
+	}
+	if b := f.brief(t, fresh, "", 200); b.ReadPrice != 0.004 {
+		t.Fatalf("price %v, want the median 0.004", b.ReadPrice)
+	}
+	thin := f.create(t, factory.Item{State: factory.StateQueued, Assignee: "sam", Title: "it broke", Body: "It broke again."})
+	worked := f.create(t, factory.Item{State: factory.StateRunning, Assignee: "sam", Title: "Retries double-send", Body: body, Stream: &factory.Stream{Phases: []factory.Phase{
+		{Name: "plan", Kind: factory.StageChat, State: factory.PhaseDone, Result: &factory.StageResult{Done: true}},
+	}}})
+	for _, it := range []factory.Item{thin, worked} {
+		if b := f.brief(t, it, "", 200); b.ReadDue || b.ReadPrice != 0 {
+			t.Errorf("job %d is not a paid read before work: due %v, quoted %v", it.ID, b.ReadDue, b.ReadPrice)
+		}
+	}
+}

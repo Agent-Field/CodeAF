@@ -18,6 +18,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/keys"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/vaultsync"
+	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
 // unknownDevice is said for the machine that took a chat when the directory
@@ -59,12 +60,16 @@ type Drive struct {
 	directoryID   string
 	recordedFence uint64
 
-	cancel          context.CancelFunc
-	done            chan struct{}
-	once            sync.Once
-	closeErr        error
-	publicationDone func()
-	ownership       chan struct{}
+	cancel               context.CancelFunc
+	done                 chan struct{}
+	once                 sync.Once
+	closeErr             error
+	publicationDone      func()
+	watcherCancel        context.CancelFunc
+	watcherDone          chan struct{}
+	ownership            chan struct{}
+	beforeOwnershipCheck func(context.Context) func()
+	afterReleaseInTests  func()
 
 	sent string // fingerprint of the vault as last sent; touched by the flush loop and Close only
 
@@ -93,6 +98,9 @@ type Viewer struct {
 func (s *Sync) Drive(ctx context.Context, eng cellstore.Engine, c cell.Cell, opt DriveOptions) (*Drive, error) {
 	if Quiet(s.Home) {
 		return nil, ErrQuiet
+	}
+	if !s.StorageAllowed() {
+		return nil, wireauth.ErrStorageOff
 	}
 	files, err := s.files(eng, c)
 	if err != nil {
@@ -129,10 +137,19 @@ func (s *Sync) Drive(ctx context.Context, eng cellstore.Engine, c cell.Cell, opt
 	}
 	run, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	d.cancel = cancel
+	watch, cancelWatch := context.WithCancel(run)
+	d.watcherCancel = cancelWatch
+	d.watcherDone = make(chan struct{})
 	go func() {
 		defer close(d.done)
 		var work sync.WaitGroup
-		work.Go(func() { d.followOwnership(run) })
+		work.Go(func() {
+			defer close(d.watcherDone)
+			defer cancelWatch()
+			d.followOwnership(watch)
+		})
+		stopStorage := OnStorageOpened(s.Home, d.StorageOpened)
+		defer stopStorage()
 		_ = d.batcher.Run(run)
 		work.Wait()
 	}()
@@ -195,6 +212,9 @@ func (d *Drive) note(sealed cellstore.Sealed) {
 // see. It is best effort and says nothing when it fails: the fingerprint is then
 // not recorded, so the next flush tries again, and a seal never waits on it.
 func (d *Drive) syncVault(ctx context.Context) {
+	if !d.sync.StorageAllowed() {
+		return
+	}
 	err := d.sync.withVault(func(v vaultsync.Syncer) error {
 		if err := v.Capture(); err != nil {
 			return err
@@ -248,8 +268,7 @@ var ownDeviceWrites sync.Map
 func PutOwnDevice(ctx context.Context, dir directory.Client, id identity.Identity, dev identity.Dev, name string) error {
 	// Chat starts, pairing and the app publisher can arrive together. Compare
 	// and write under one device lock so they cannot publish duplicate rows.
-	value, _ := ownDeviceWrites.LoadOrStore(dev.ID(), &sync.Mutex{})
-	mu := value.(*sync.Mutex)
+	mu := ownDeviceLock(dev.ID())
 	mu.Lock()
 	defer mu.Unlock()
 	rec, err := deviceRecord(id, name)
@@ -261,6 +280,8 @@ func PutOwnDevice(ctx context.Context, dir directory.Client, id identity.Identit
 		return err
 	}
 	if old, ok := listing.Devices[dev.ID()]; ok {
+		// Messages waiting in this record are not the name's to drop.
+		rec.Outbox, rec.Took = old.Outbox, old.Took
 		opened, err := directory.OpenName(directory.MetadataKey(id.CellKey()), old.Name)
 		if err == nil && opened == name && old.V == rec.V && old.Platform == rec.Platform && old.Caps == rec.Caps && old.AddedBy == rec.AddedBy {
 			return nil
@@ -273,7 +294,9 @@ func PutOwnDevice(ctx context.Context, dir directory.Client, id identity.Identit
 // the same upsert every chat start makes ([Sync.putDevice]): a device may only
 // ever write its own record, the name travels sealed under the identity's key,
 // and the relay never learns it.
-func (s *Sync) Rename(ctx context.Context, name string) error { return s.putDevice(ctx, name) }
+func (s *Sync) Rename(ctx context.Context, name string) error {
+	return PutOwnDevice(ctx, s.Dir, s.Identity, s.Device, name)
+}
 
 // driving finds where this chat stands in the directory: no record yet (fence
 // 0), a record this device now holds, or a record another device holds, in
@@ -319,6 +342,11 @@ func (s *Sync) driving(ctx context.Context, c cell.Cell) (cellsync.Driving, stri
 		extends, err := cellstore.Extends(c, view.Cell.Head)
 		if err != nil {
 			return drv, "", err
+		}
+		// An empty head has no stored turns to require from this device's own
+		// expired hold; other devices retain the ordinary ancestry decision.
+		if view.Cell.Head == "" && view.Cell.Lease.Device == s.Device.ID() {
+			extends = true
 		}
 		if !extends {
 			return drv, nonemptyHolder(view.Cell.Lease.Device), nil
@@ -430,7 +458,13 @@ func (d *Drive) loseHold() {
 func (d *Drive) displaced() bool {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	return d.lost || d.viewer.Line != ""
+	return d.stopped || d.lost || d.viewer.Line != ""
+}
+
+func (d *Drive) isStopped() bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.stopped
 }
 
 // becomeViewer is the Batcher's word that another device took the chat over:
@@ -602,7 +636,7 @@ func (d *Drive) CheckLease(ctx context.Context) error {
 	if err := cellstore.WaitCapture(ctx, d.cell); err != nil {
 		return err
 	}
-	if d.batcher == nil {
+	if d.isStopped() || d.batcher == nil {
 		return nil
 	}
 	id, fence := d.batcher.Lease()
@@ -677,6 +711,14 @@ func (d *Drive) Gate() error {
 
 // Idle says the agent stopped to wait for the person: what is sealed and not yet
 // uploaded goes up now. A chat that only views has nothing to upload.
+// Working tells the directory, through the next beat, whether a turn is
+// running on this computer, so another one can say the chat is working here.
+func (d *Drive) Working(on bool) {
+	if d.batcher != nil {
+		d.batcher.Working(on)
+	}
+}
+
 func (d *Drive) Idle() {
 	if d.batcher != nil {
 		go func() {
@@ -770,12 +812,21 @@ func (d *Drive) Close(ctx context.Context) error {
 			return
 		}
 		stop := context.AfterFunc(ctx, d.cancel)
+		// Stop ownership readings before our own release can look like displacement.
+		// The batcher keeps its run context until the final publish has joined.
+		if d.watcherCancel != nil {
+			d.watcherCancel()
+			<-d.watcherDone
+		}
 		if pending == nil && !d.sync.isRemoved() {
 			// Join the publish before stopping its request. Canceling a committed
 			// request can lose its reply and leave the next publish using an old head.
 			d.closeErr = d.batcher.Close(ctx)
 		} else {
 			d.closeErr = pending
+		}
+		if d.afterReleaseInTests != nil {
+			d.afterReleaseInTests()
 		}
 		d.cancel()
 		<-d.done
@@ -800,4 +851,11 @@ func (d *Drive) Close(ctx context.Context) error {
 		}
 	})
 	return d.closeErr
+}
+
+// StorageOpened wakes capacity-halted publication without replacing ownership.
+func (d *Drive) StorageOpened() {
+	if d.batcher != nil {
+		d.batcher.Freed()
+	}
 }

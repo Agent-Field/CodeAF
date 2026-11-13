@@ -521,6 +521,7 @@ func forkGround(ctx context.Context, order groundOrder) (taskTree, error) {
 	}
 	if err != nil {
 		_ = os.RemoveAll(order.dir)
+		removeForkStaging(order.dir)
 		return taskTree{}, err
 	}
 	if order.promise == TaskModeWorktree {
@@ -1112,7 +1113,7 @@ func (t taskTree) replayOwnWork() bool {
 	if strings.TrimSpace(t.base) == "" || strings.TrimSpace(t.dir) == "" {
 		return false
 	}
-	if _, err := git(t.dir, append(codeafGitIdentity(),
+	if _, err := privateGit(t.dir, append(codeafGitIdentity(),
 		"rebase", "--onto", t.base+"^", t.base)...); err == nil {
 		return false
 	}

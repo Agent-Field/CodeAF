@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -20,14 +21,8 @@ import (
 )
 
 func TestMemoryLaterStageDrainsSkippedEvidence(t *testing.T) {
-	s := newLocalSetup(t)
-	s.start()
-	floor := s.backend.local.host.floor
-	item, err := floor.Create(factory.Item{Repo: "acme/api", Cap: 1, State: factory.StateNew})
-	if err != nil {
-		t.Fatal(err)
-	}
 	entered, release, cancelled := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	releaseOnce := sync.OnceFunc(func() { close(release) })
 	var extraction atomic.Int64
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -83,9 +78,17 @@ func TestMemoryLaterStageDrainsSkippedEvidence(t *testing.T) {
 		return http.DefaultTransport.RoundTrip(clone)
 	})}
 	t.Cleanup(func() { http.DefaultClient = original })
+	s := newLocalSetup(t)
+	s.start()
+	floor := s.backend.local.host.floor
+	item, err := floor.Create(factory.Item{Repo: "acme/api", Cap: 1, State: factory.StateNew})
+	if err != nil {
+		t.Fatal(err)
+	}
 	jobCtx, endJob := context.WithCancel(context.Background())
 	t.Cleanup(endJob)
-	root, profile := t.TempDir(), filepath.Join(s.home, "handoff-profile")
+	t.Cleanup(releaseOnce)
+	root, profile := testHome(t), filepath.Join(s.home, "handoff-profile")
 	meter := &stageBudget{floor: floor, item: item}
 	agents := []*session.Agent{}
 	for n := 0; n < 3; n++ {
@@ -146,7 +149,7 @@ func TestMemoryLaterStageDrainsSkippedEvidence(t *testing.T) {
 	if extraction.Load() != 1 {
 		t.Fatal("later stage stacked a compiler")
 	}
-	close(release)
+	releaseOnce()
 	deadline := time.Now().Add(3 * time.Second)
 	for {
 		snapshot, err := vault.Snapshot()

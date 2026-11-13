@@ -72,7 +72,7 @@ older version saved stays in the profile, read by nothing, and is never reported
 as an unknown setting. Internal model slots that this surface cannot
 change are omitted; supported model controls remain in Models.
 
-## General — interface preferences and hints
+## General — interface preferences, hints and share teams between paired computers
 
 **General** contains mouse interaction, completed tool details, tool icons, chat
 switching, the task sidebar and updates. There is no background reminders row: codeaf
@@ -82,7 +82,7 @@ positive: on shows contextual tips, off hides them. Keyboard instructions and
 setting explanations stay visible either way. **Completed tool details** offers
 **collapsed** or **expanded** without changing the meaning of an existing profile.
 
-**Settings → General → share teams** is on by default for paired computers. It
+**Settings → General → share teams** is on by default for paired computers. On the hosted sync service sharing needs sync storage approval (Settings → Devices → sync storage). It
 shares teams, their members and settings, and recent Traffic as read-only history.
 The choice stays on each computer. Turning it off on either computer stops sharing
 between them: that computer stops sending and receiving teams and Traffic. What
@@ -104,27 +104,28 @@ when a subteam is created; it does not redistribute existing budgets.
 
 ## Memory settings — turn memory on, why isn't it learning, what does memory cost
 
-Memory is **off by default**. Turn it on in Settings → Memory: set **learn from
-chats and jobs** to **on** (`memory.enabled`). In the desktop app you can also do
+Memory is **on by default** when no choice has been saved. In Settings → Memory,
+**learn from chats and jobs** controls `memory.enabled`. An explicit saved off
+choice stays off. In the desktop app you can also do
 it from a Factory job's spend area, under Spent: "Memory is off · Turn on…". This
 one switch per home covers noticing useful lines, learning from saved chats, and
 job memory, whose calls count in the job's cost. A saved on or off choice is kept.
 Terminal **Build knowledge base** also saves on and imports saved chats.
 
 When on, memory learns from your chats and jobs so later work can use it, and
-makes extra model calls on your key. On one small test job, memory was **39% of
-the cost ($0.0124 of $0.0315)**, measured live on DeepSeek V4.1 Flash; earlier runs
-of that same job measured **27%** and **38%**. It varies by job, so read these as
-examples and not a forecast for your work. Memory requests appear in Spending.
+makes extra model calls on your key. Costs vary with your chats and jobs;
+Spending shows actual recorded costs rather than a forecast or a percentage
+from an unrelated example.
 
 Off stops automatic memory model calls from the next memory step, with no restart.
 A call already in flight finishes and is billed. Saved knowledge stays readable;
-reading it costs nothing. Kept lines and `/remember` still work. Use `/memory`
-or `/memories` to inspect, fix or forget saved lines.
+reading it costs nothing. Kept lines and `/remember` still work. Use `/memory`,
+`/memories` or the Memory tab (`alt+8`) to inspect, fix, move, forget or put back
+saved lines; the `Open the Memory tab` door goes straight to that tab. Input
+history and unfinished drafts are separate Privacy choices.
 
-An older home with no saved choice now reads off, even if automatic capture was
-previously armed. Nothing saved is deleted. Older terminal Builds with no saved
-choice also read off: they cannot be distinguished from automatic opt-ins.
+Older homes with no saved choice also default on. An explicit saved off choice
+stays off. Invalid saved values read off. Nothing saved is deleted.
 
 ## Permissions, task timers and automatic work
 
@@ -203,6 +204,12 @@ A compilation already running finishes with its original model. The compiler
 verifies the model reported by the provider and rejects substitutions; it never
 falls back to a different model. Existing notes stay intact when you change this
 setting. Turn automatic learning on with the shared Memory setting.
+A new profile whose first saved-chat inventory is empty enables capture automatically.
+A profile with existing eligible history waits for **Build knowledge base** in
+Memory before importing it; capture is profile-wide.
+Compilation is paid model work recorded in Spend, including unusable answers.
+It pauses at the daily limit and resumes automatically after you raise the
+limit with `/budget day` or the local day changes.
 
 ## Unreadable profile settings and saved spending limits
 
@@ -219,3 +226,15 @@ resolution also falls back to prompting. A missing profile keeps its usual defau
 malformed JSON still reports an error. Spending-limit reads and settings writes
 continue to refuse unreadable files unless an explicit daily-limit override supplies
 the spending authority.
+
+## Devices — sync storage, off or on, and request access
+
+Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
+
+A paired account whose service reports storage permission has a **sync storage** row showing **on** or **off**. While **off**, press Enter (`enter request access`) to open a pre-filled GitHub issue. The panel also shows the public request code and link if no browser opens. The code is your identity id (`id_` and 32 hex digits), safe to post and granting nothing by itself. Choosing this row in Settings search clears the search and opens Devices. While **off**, Enter also requests access. While **on**, it opens Devices without offering or making a request. The row is absent with sync off, before pairing, or when the service answers without storage permission. A window already open when you pair checks for the answer within about a minute; an open Settings page then updates its row automatically. The first `/status` after pairing shows the cached dim line `sync storage  off` while storage is off.
+
+## Why Settings says held by an environment variable
+
+A row controlled at launch says `held by <variable> — unset it to change this here`.
+The name is the spelling that supplied the value. Unset that variable and start again
+to change the row in Settings. See Starting codeaf, “The old name”, for older spellings.

@@ -3,6 +3,7 @@ package knowledge_test
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -293,6 +294,78 @@ func failKnowledgeRequests(t *testing.T, calls *atomic.Int32) {
 	})
 }
 
+func TestKnowledgeOrdinaryBuildCapsEveryBilledAnswer(t *testing.T) {
+	for _, shape := range []string{"empty content", "length ceiling", "rejected model", "invalid JSON"} {
+		t.Run(shape, func(t *testing.T) {
+			v := knowledge.Open(t.TempDir())
+			if err := v.StartBuild(); err != nil {
+				t.Fatal(err)
+			}
+			captureRuntimeSource(t, v, "first")
+			var calls atomic.Int32
+			failKnowledgeRequests(t, &calls)
+			failing := http.DefaultTransport
+			http.DefaultTransport = knowledgeTransport(func(r *http.Request) (*http.Response, error) {
+				response, err := failing.RoundTrip(r)
+				if err != nil {
+					return nil, err
+				}
+				defer response.Body.Close()
+				var body map[string]any
+				if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+					return nil, err
+				}
+				choice := body["choices"].([]any)[0].(map[string]any)
+				choice["finish_reason"] = "stop"
+				message := choice["message"].(map[string]any)
+				switch shape {
+				case "empty content":
+					message["content"] = ""
+				case "length ceiling":
+					choice["finish_reason"] = "length"
+					message["content"] = "{"
+					body["usage"] = map[string]any{"prompt_tokens": 10, "completion_tokens": 8000, "completion_tokens_details": map[string]any{"reasoning_tokens": 8000}, "cost": .125}
+				case "rejected model":
+					body["model"] = "fixture/substituted"
+					message["content"] = `{"claims":[]}`
+				case "invalid JSON":
+					message["content"] = "not JSON"
+				}
+				raw, err := json.Marshal(body)
+				response.Body = io.NopCloser(strings.NewReader(string(raw)))
+				return response, err
+			})
+			ctx, cancel := context.WithTimeout(context.Background(), 38*time.Second)
+			defer cancel()
+			if err := v.Run(ctx, runtimeHistory{}, func() string { return "fixture" }); !errors.Is(err, context.DeadlineExceeded) {
+				t.Fatal(err)
+			}
+			state, err := v.Snapshot()
+			if err != nil || calls.Load() != 3 || state.Build.Phase != knowledge.BuildFailed || !strings.HasSuffix(state.Build.Error, "use Build or add new sources.") {
+				t.Fatalf("billed %s must stop at three attempts: calls=%d state=%+v err=%v", shape, calls.Load(), state.Build, err)
+			}
+			t.Logf("%s: paid calls=%d; notice=%q", shape, calls.Load(), state.Build.Error)
+		})
+	}
+}
+
+func TestKnowledgeOrdinaryBuildRetryCapSurvivesRepeatedHandovers(t *testing.T) {
+	profile := t.TempDir()
+	v := knowledge.Open(profile)
+	if err := v.StartBuild(); err != nil {
+		t.Fatal(err)
+	}
+	captureRuntimeSource(t, v, "first")
+	var calls atomic.Int32
+	failKnowledgeRequests(t, &calls)
+	for want := int32(1); want <= 3; want++ {
+		runToKnowledgeFailure(t, knowledge.Open(profile), &calls, want, want == 3)
+	}
+	for restart := 0; restart < 5; restart++ {
+		assertKnowledgeBuildIdle(t, knowledge.Open(profile), &calls, 3)
+	}
+}
+
 func TestKnowledgeMemoryOffDoesNotBuild(t *testing.T) {
 	for _, journals := range [][]knowledge.Journal{nil, {{ID: "saved", Session: "chat", Size: 1}}} {
 		t.Run(fmt.Sprintf("journals=%d", len(journals)), func(t *testing.T) {
@@ -320,8 +393,9 @@ func TestKnowledgeMemoryOffDoesNotBuild(t *testing.T) {
 			if err := v.Flush(context.Background(), "fixture", true); !errors.Is(err, knowledge.ErrDisabled) {
 				t.Fatalf("explicit compilation while off: %v", err)
 			}
+			// No phase at all: with Memory off and nothing asked for, no pass looked.
 			state, err := v.Snapshot()
-			if err != nil || state.Enabled || state.Pending != 0 || len(state.Pages) != 0 || state.Build.Phase != knowledge.BuildUnbuilt || calls.Load() != 0 {
+			if err != nil || state.Enabled || state.Pending != 0 || len(state.Pages) != 0 || state.Build.Phase != "" || calls.Load() != 0 {
 				t.Fatalf("memory off built or opted in: state=%+v calls=%d err=%v", state, calls.Load(), err)
 			}
 		})

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/exec"
 	"github.com/Agent-Field/codeaf/internal/filememo"
 	"github.com/Agent-Field/codeaf/internal/shell"
 )
@@ -322,6 +323,10 @@ func renderSystemAt(config Config, now time.Time) string {
 			out.WriteString("You are codeaf. Shell commands are unavailable here. Explain the shell requirement from Project, and do not claim to run commands. The manual tool can explain Windows setup.\n")
 		} else {
 			out.WriteString(bashWorkerPage())
+			if config.AttributionOff {
+				out.WriteString("\n\n")
+				out.WriteString(exec.AttributionOffLaw)
+			}
 		}
 		out.WriteString(workerFooter(config, now))
 		return out.String()
@@ -336,6 +341,9 @@ func renderSystemAt(config Config, now time.Time) string {
 	// the shape; this conditions the sentences INSIDE one, which is where five
 	// families of tools were being promised to workers that do not carry them.
 	page := strings.TrimRight(promptWithBeltFacts(config), "\n")
+	// AND WHAT IT SAYS ABOUT OTHER WINDOWS FOLLOWS THE CONVERSATION'S SCOPE
+	// (scope.go); a project page is unchanged byte for byte.
+	page = config.scopedElsewhereFact(page)
 	if _, err := shell.Bash(); err != nil {
 		// Unix keeps its exact prompt bytes. On Windows an absent command
 		// tool cannot inherit instructions that promise shell execution.
@@ -400,6 +408,7 @@ func renderSystemAt(config Config, now time.Time) string {
 	}
 
 	out.WriteString(workerFooter(config, now))
+	out.WriteString(clientToolsSection(config))
 	return out.String()
 }
 
@@ -464,6 +473,7 @@ func workerFooter(config Config, now time.Time) string {
 		out.WriteString("- There is no project here: this is the conversation's own space, and it holds only what this conversation has put there.\n")
 	}
 	out.WriteString(shell.PromptFact())
+	out.WriteString(stateHomeFact(config))
 	out.WriteString(nowLine(now))
 
 	// THE PROJECT'S OWN RULES, UNDER THIS PROFILE'S BOUND. Both numbers here are
@@ -606,6 +616,8 @@ func (a *Agent) liveModelConfigLocked() Config {
 	if model := strings.TrimSpace(a.model); model != "" {
 		config.Model = model
 	}
+	// The page names the scope the tasks description was given (scope.go).
+	config.ownWork = a.ownWorkTold.Load()
 	return config
 }
 
@@ -731,4 +743,14 @@ func fenceFor(content string) string {
 		longest = 2
 	}
 	return strings.Repeat("`", longest+1)
+}
+
+// stateHomeFact is the footer's line naming codeaf's own data folder when it
+// is not the default ([Config.StateHome]), and "" when it is.
+func stateHomeFact(config Config) string {
+	where := strings.TrimSpace(config.StateHome)
+	if where == "" {
+		return ""
+	}
+	return "- codeaf's own data folder in this window is " + where + ". Where the manual says ~/.codeaf, it means this folder here; never read or change ~/.codeaf, which belongs to another codeaf home.\n"
 }

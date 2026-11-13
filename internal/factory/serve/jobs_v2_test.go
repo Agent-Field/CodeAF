@@ -186,7 +186,7 @@ func TestV2RunStopUndoAndStartNow(t *testing.T) {
 	}
 	// A queued job has no failed step, but Stop still withdraws its authority.
 	f.post(t, it, "stop", "", 200)
-	if j := f.read(t, it); j.State != "needs_you" || j.Failure != nil || j.NeedsYou != nil || j.StatePresentation.Title != "Stopped by you" || !j.Can.StartNow || j.Desk == nil || (j.Desk.PersonStopped == nil || !*j.Desk.PersonStopped) || !j.Can.Undo || j.Can.Stop {
+	if j := f.read(t, it); j.State != "backlog" || j.Failure != nil || j.NeedsYou != nil || j.StatePresentation.Title != "Stopped by you" || !j.Can.StartNow || j.Desk == nil || (j.Desk.PersonStopped == nil || !*j.Desk.PersonStopped) || !j.Can.Undo || j.Can.Stop {
 		t.Fatalf("stop %+v", j)
 	}
 	f.post(t, it, "undo", "", 200)
@@ -547,14 +547,15 @@ func TestV2RestoreBringsADroppedJobBackToBacklog(t *testing.T) {
 	}
 }
 
-// A JOB BROUGHT BACK IS A FRESH JOB, AS IF IT HAD NEVER RUN: no steps run, $0
-// spent, no failure, change, commits, runner or pull request, and nothing said
-// about it before: no conversation, nothing heard, no notes, no crew, and its
-// steps are the repository's recipe again. What the job is stays: its issue,
-// assignee, priority, budget, model and activity. The earlier pull request is
-// forgotten, never closed, and the receipt names it. The job's conversations
-// are deleted by the job as it stood, so the delete reaches exactly the ones
-// it recorded.
+// A JOB BROUGHT BACK IS A FRESH JOB IN BACKLOG, AS IF IT HAD NEVER RUN: no
+// steps run, $0 spent, no failure, change, commits, runner or pull request, and
+// nothing said about it before: no conversation, nothing heard, no notes, no
+// briefs, no crew, and its steps are the repository's recipe again. A person's
+// Stop of the old run does not hold the fresh job in Needs you. What the job is
+// stays: its issue, assignee, priority, budget, model and activity. The earlier
+// pull request is forgotten, never closed, and the receipt names it. The job's
+// conversations are deleted by the job as it stood, so the delete reaches
+// exactly the ones it recorded.
 func TestV2RestoreGivesAFreshBacklogJob(t *testing.T) {
 	f := newV2Jobs(t)
 	stages := []factory.Stage{
@@ -579,11 +580,16 @@ func TestV2RestoreGivesAFreshBacklogJob(t *testing.T) {
 		PullRequest:     &factory.PullRequest{Number: 90, URL: pr, State: factory.PROpen},
 		Activity:        []factory.Event{{At: now, What: factory.EventArrived}},
 		WorktreeMachine: "mac-1",
+		SpentBefore:     1.5, AskedFirstReason: "size", LastRecoveryResume: "factory-retry:old",
+		Briefs: []factory.BriefVersion{{Rev: 1, AfterStep: "plan"}}, BriefSeen: map[string]int{"sam": 1},
 	})
+	if before, err := f.st.Get(it.ID); err != nil || !factory.StoppedByPerson(before) {
+		t.Fatalf("the dropped job is not one a person stopped: %+v %v", before, err)
+	}
 	f.post(t, it, "restore", "", 200)
 	j := f.read(t, it)
-	if j.State != "needs_you" || j.Desk == nil || (j.Desk.PersonStopped == nil || !*j.Desk.PersonStopped) || !j.Can.StartNow || j.Cost != 0 || j.Failure != nil || j.Change != nil || j.HeadCommit != "" || j.Runner != "" || j.PR != nil || len(j.Claims) != 0 || j.DoneHow != "" {
-		t.Fatalf("not fresh: state %s cost %v failure %+v change %+v head %q runner %q pr %+v claims %+v", j.State, j.Cost, j.Failure, j.Change, j.HeadCommit, j.Runner, j.PR, j.Claims)
+	if j.State != "backlog" || (j.Desk != nil && j.Desk.PersonStopped != nil && *j.Desk.PersonStopped) || !j.Can.StartNow || j.Cost != 0 || j.LifetimeCost != 0 || j.Failure != nil || j.Change != nil || j.HeadCommit != "" || j.Runner != "" || j.PR != nil || len(j.Claims) != 0 || j.DoneHow != "" {
+		t.Fatalf("not fresh: state %s cost %v lifetime %v failure %+v change %+v head %q runner %q pr %+v claims %+v", j.State, j.Cost, j.LifetimeCost, j.Failure, j.Change, j.HeadCommit, j.Runner, j.PR, j.Claims)
 	}
 	recipe := pipeline.Defaults().Recipe().For(factory.KindIssue)
 	if len(j.Steps) != len(recipe) {
@@ -601,8 +607,11 @@ func TestV2RestoreGivesAFreshBacklogJob(t *testing.T) {
 	if err != nil || cur.Stream != nil || cur.ChangeBase != "" || cur.Body != "the issue's words" || cur.Model != "acme/model-1" || len(cur.Activity) == 0 || cur.Activity[0].What != factory.EventArrived {
 		t.Fatalf("stored %+v %v", cur, err)
 	}
-	if cur.Talk != "" || !cur.Heard.IsZero() || len(cur.Thread) != 0 || len(cur.Notes) != 0 || len(cur.Adapted) != 0 {
-		t.Fatalf("something said before survived: talk %q heard %v thread %+v notes %+v adapted %+v", cur.Talk, cur.Heard, cur.Thread, cur.Notes, cur.Adapted)
+	if cur.Talk != "" || !cur.Heard.IsZero() || len(cur.Thread) != 0 || len(cur.Notes) != 0 || len(cur.Adapted) != 0 || len(cur.Briefs) != 0 || len(cur.BriefSeen) != 0 {
+		t.Fatalf("something said before survived: talk %q heard %v thread %+v notes %+v adapted %+v briefs %+v seen %+v", cur.Talk, cur.Heard, cur.Thread, cur.Notes, cur.Adapted, cur.Briefs, cur.BriefSeen)
+	}
+	if factory.StoppedByPerson(cur) || cur.AskedFirstReason != "" || cur.LastRecoveryResume != "" || cur.SpentBefore != 0 {
+		t.Fatalf("something of the old run survived: stopped %v asked %q resume %q spent %v", factory.StoppedByPerson(cur), cur.AskedFirstReason, cur.LastRecoveryResume, cur.SpentBefore)
 	}
 	for i, s := range cur.Stages {
 		if s.Name != recipe[i].Name || s.Ask != recipe[i].Ask || s.By != recipe[i].By {
@@ -621,6 +630,57 @@ func TestV2RestoreGivesAFreshBacklogJob(t *testing.T) {
 	events, _ := f.rec.Since(context.Background(), time.Time{})
 	if len(events) != 1 || events[0].Kind != record.Restored || events[0].Detail != "earlier pr · "+pr {
 		t.Fatalf("events %+v", events)
+	}
+}
+
+// AN ISSUE CLOSED SINCE THE DROP STAYS DROPPED: Bring back reads the one item
+// on GitHub first, refuses in one sentence, and touches nothing of the job. An
+// issue reopened since comes back, and a GitHub that cannot be reached never
+// stops a Bring back.
+func TestV2RestoreOfAnIssueClosedSinceStaysDropped(t *testing.T) {
+	f := newV2Jobs(t)
+	f.h.Close()
+	standing := map[int]string{}
+	f.cfg.Recheck = func(_ context.Context, it factory.Item) (factory.SourceStanding, error) {
+		if it.Num == 404 {
+			return factory.SourceStanding{}, fmt.Errorf("dial tcp: no route")
+		}
+		return factory.SourceStanding{How: standing[it.Num]}, nil
+	}
+	f.h = serve.New(f.seam, f.cfg)
+
+	closed := f.create(t, factory.Item{Num: 21, Origin: factory.OriginForge, State: factory.StateDismissed, DoneHow: "dropped", DoneAt: now, Assignee: "sam",
+		Talk: "/places/job-21/transcript.jsonl", SpentBefore: .25})
+	standing[21] = github.StandingClosed
+	w := f.post(t, closed, "restore", "", 409)
+	var refusal struct {
+		Error    string `json:"error"`
+		NowState string `json:"now_state"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &refusal)
+	if refusal.Error != "#21 was closed on GitHub, so it stays dropped." || refusal.NowState != "done" {
+		t.Fatalf("refusal %+v", refusal)
+	}
+	if cur, err := f.st.Get(closed.ID); err != nil || cur.DoneHow != "dropped" || cur.Talk != closed.Talk || cur.SpentBefore != .25 {
+		t.Fatalf("a refused Bring back changed the job: %+v %v", cur, err)
+	}
+	if asked := f.chats.asked(); len(asked) != 0 {
+		t.Fatalf("a refused Bring back deleted conversations: %+v", asked)
+	}
+	if events, _ := f.rec.Since(context.Background(), time.Time{}); len(events) != 0 {
+		t.Fatalf("a refused Bring back was recorded: %+v", events)
+	}
+
+	standing[21] = ""
+	f.post(t, closed, "restore", "", 200)
+	if j := f.read(t, closed); j.State != "backlog" {
+		t.Fatalf("an issue reopened since did not come back: %+v", j)
+	}
+
+	away := f.create(t, factory.Item{Num: 404, Origin: factory.OriginForge, State: factory.StateDismissed, DoneHow: "dropped", DoneAt: now, Assignee: "sam"})
+	f.post(t, away, "restore", "", 200)
+	if j := f.read(t, away); j.State != "backlog" {
+		t.Fatalf("a GitHub that cannot be reached stopped a Bring back: %+v", j)
 	}
 }
 

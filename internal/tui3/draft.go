@@ -128,6 +128,7 @@ func draftPrefix(workspace string) string {
 // list rather than to what is being typed under it. Nothing was ever relying on
 // this call to do it for them.
 func (a *app) edited() tea.Cmd {
+	a.claimDraftComposer()
 	if len(a.input.value) == 0 {
 		// An empty box is a new draft. Plainness belongs to the sentence that
 		// held it and may not be inherited by the next identical slash word.
@@ -187,6 +188,7 @@ func (a *app) dropDraft() {
 	if a.draftFile == "" {
 		return
 	}
+	a.claimDraftComposer()
 	a.writeDraftsNow("")
 }
 

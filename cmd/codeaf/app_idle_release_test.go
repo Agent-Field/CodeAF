@@ -12,7 +12,9 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
+	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -116,6 +118,12 @@ func TestAppBackgroundE13B2QueuedTaskAcquiresAndSettlesAtStartup(t *testing.T) {
 		}
 		for _, task := range session.ReadSessionTasks(transcript) {
 			if task.ID == 2 && (task.State == session.TaskDone || task.State == session.TaskFailed || task.State == session.TaskUnverified) && !task.EndedAt.IsZero() {
+				// The rig's model answers every call "done", which is no verdict, so
+				// the task lands unverified with that word on its report. A task that
+				// settled without its worker ever running has no such word.
+				if task.State == session.TaskFailed || !strings.Contains(task.Report, "done") {
+					t.Errorf("B2 queued task settled without its worker's answer: %s: %s", task.State, task.Report)
+				}
 				t.Logf("B2 queued task recovered as %s: %s", task.State, task.Report)
 				return true
 			}
@@ -177,19 +185,38 @@ func appIdleReleaseI1I2(t *testing.T, viewed bool, stopped ...bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Naming a vague opener may finish after its turn and publish another head.
+	// Give this idle-release fixture its name before the turn starts.
+	if _, err := a.Rename(agent.ID, "Idle release fixture"); err != nil {
+		t.Fatal(err)
+	}
 	turn, err := a.Send(agent.ID, "! echo before-idle", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	appTurnDoneFor(t, rec, turn)
 	own := appSyncOwn(t)
-	row := idleReleaseRow(t, wire, agent.ID, func(r appwire.ChatRow) bool { return r.Seen.Head != "" })
 	appSyncWait(t, "I1 idle turn settled", func() bool {
 		var idle bool
 		a.locked(func() { idle = a.agents[agent.ID].live != nil && !a.agents[agent.ID].live.running })
 		return idle
 	})
 	var transcript string
+	a.locked(func() { transcript = a.agents[agent.ID].transcript })
+	chat, err := cell.OpenAt(session.DirOf(transcript), agent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A completed turn can still be saving. Baseline the peer only after that
+	// capture is finished and its exact head has reached the directory.
+	if err := cellstore.WaitCapture(t.Context(), chat); err != nil {
+		t.Fatal(err)
+	}
+	head, err := cellstore.Head(chat)
+	if err != nil || head == nil {
+		t.Fatalf("idle setup head = %v, %v", head, err)
+	}
+	row := idleReleaseRow(t, wire, agent.ID, func(r appwire.ChatRow) bool { return r.Seen.Head == head.Turn.ID })
 	if leftover {
 		// Model the old engine's mismatch after its final checkpoint: the
 		// stopped job is in tasks.json, but its process file still says running.
@@ -224,6 +251,14 @@ func appIdleReleaseI1I2(t *testing.T, viewed bool, stopped ...bool) {
 	}
 	acquires.Store(0)
 	releases.Store(0)
+	if leftover {
+		// The two device feeds can report the chat before the asynchronous
+		// lease-holder watch arrives. Include all three startup watches in the
+		// baseline so a late initial dial is not mistaken for an idle restart.
+		appSyncWait(t, "device feeds and initial lease-holder watch", func() bool {
+			return watches.Load() >= 3
+		})
+	}
 	network := [3]int32{watches.Load(), devices.Load(), vaults.Load()}
 	for period := 0; period < 2; period++ {
 		if leftover {

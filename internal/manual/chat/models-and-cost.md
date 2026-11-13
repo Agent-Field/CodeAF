@@ -121,13 +121,23 @@ On a local launch, the opening model comes from the same available chat list as
 is kept only if that model is listed. Otherwise codeaf selects the first available
 chat model in provider order. With only Ollama connected, that is an installed Ollama
 model. With several providers, the default still belongs to their combined list.
-Automatic replacements do not overwrite your saved preference.
+Availability replacements apply only to this run. They do not overwrite the
+conversation's saved model, main/fallback pair or profile model settings. When
+the configured model is listed again, codeaf returns to it automatically.
+Until then the replacement stays while it is listed; a refreshed list that puts
+another model first does not move the conversation. A hidden chat reconciles availability when it next comes to the front.
+Choosing a model yourself, including the replacement already running, saves that
+choice as usual.
 
 While every catalog is cold or empty, no default model is displayed and a message
 stays in the draft. The picker opens with:
 `no available model · connect a provider or refresh /model`.
 When a provider's list arrives, codeaf selects an available model. Press Enter again
-to send the draft. Refreshing a list or removing a connection also replaces a model
+to send the draft. The replacement is displayed immediately, and each send waits
+for that chat's model switch to finish. A failed selection reports
+`could not change model · <reason>`; the message still sends once on the engine's
+current model, and the next availability check retries the selection.
+Refreshing a list or removing a connection also replaces a model
 that is no longer listed; existing requests finish on the model they started with.
 
 Remote sessions keep the engine's opening model; this laptop's catalog does not
@@ -817,6 +827,9 @@ unchecked rather than on a bill ten times its estimate.
 Only the checker's own calls count toward that ceiling, whatever model the worker or
 planner runs, including a crew whose three seats use one model. The ceiling follows
 the checker when it moves to another model.
+Each check in a run starts with its own checker ceiling. An earlier check's actual
+cost does not raise the estimate held against a later check's ceiling. Every check's
+spend still counts toward the whole run's per-task limit and the day's limits.
 
 This cap is the crew's own. The day's limit under `/settings` → Spending counts everything
 codeaf spends, and still applies.
@@ -832,7 +845,9 @@ Every priced call of one task — each seat's, on every model, and the helpers m
 counts against one figure: what the task has spent, plus every call of it still on its
 way, plus what this call is expected to cost. A call that would pass the limit is not made,
 and the task stops on `this task reached its $5 limit · raise it in /crew`, with what it had
-done so far. The checker's own ceiling still applies inside it.
+done so far. The checker's own ceiling still applies inside it. A raise you give one task
+in the app, when its models need more than the limit, is that task's limit, even while it
+runs, and the sentence names the raised amount.
 
 `-yes-spend` does not lift it. `codeaf do` holds every run to the same limit, with or
 without a routed crew; the flag answers the day's questions and the plan-price question,
@@ -1504,7 +1519,8 @@ and your own model rows answer for them (*Automations*).
 `--one-model` the crew line of `/status` and the phone sheet reads `one model` rather than
 `auto`, and `/status` answers its crew line with `one model · every call rides the model
 you are talking to`. The model picker's hint field and the welcome line under the wordmark say
-the same word. All of them read one answer, so none of them can disagree with another.
+the same word. All of them read one answer, including windows attached to an engine or
+opened with `--host` or `--at`, so none of them can disagree with another.
 
 **Your crew is not gone, it is overridden.** Your pins are untouched on disk — this flag
 writes nothing — and the next session started without it draws `crew auto` again exactly as
@@ -1830,6 +1846,8 @@ Yes, a provider may still charge for the prompt and the tokens it produced befor
 was cut. The last usage block never arrives in that case, so codeaf does not guess from the
 text it happened to receive. When the stream named the provider's generation id, codeaf asks
 for that generation's own receipt in the background. Your reply does not wait for this.
+A stop before the first word keeps the stream open at most a tenth of a second, until the
+provider names the generation, so its receipt can still be asked for.
 
 When the receipt arrives, its own cost and token counts move the conversation's meter and add
 one late line to the machine's usage ledger. That line is marked `reconciled`, meaning its
@@ -2468,7 +2486,21 @@ which is the whole machine's ledger rather than this conversation's — it was a
 
 `conversation` and `tasks` are dropped together unless the work has spent something, so a
 conversation that has started no tasks prints `spend` alone. When they are there they add
-up to the line above them, always — that is the whole point of printing them.
+up to the line above them, always — that is the whole point of printing them. The
+same split is shown in a new conversation and after resuming it.
+
+Paid workers from `/task solo` and other local tasks count under `tasks` as
+they spend. Their calls contribute once to `spend`; attributing them to this
+conversation adds no second charge. Both split lines appear when both halves
+have spent money and their sum matches `spend`.
+
+## Reopening a task-only conversation — each model call is counted once
+
+Reopening a conversation whose first paid work was a task does not add those
+worker charges again to the machine's spending ledger. The conversation's total
+includes its tasks, but restoring that total is not another model call. This also
+holds when a task finished before a restart left its saved run marked running,
+and when the conversation already had paid turns of its own.
 
 ## Desktop saved agent spend after stopping a reply
 
@@ -2620,7 +2652,9 @@ Every cost line written into a conversation's transcript is also appended to one
 whole machine, `~/.codeaf/v3/usage.jsonl`, moved by `CODEAF_HOME` like everything else codeaf
 keeps. **One line per model call, written the moment that call's bill comes back** — the
 requests of a turn, and the calls made beside a turn such as naming a session or judging a
-route. Each line carries `calls: 1`, so a turn that used three tools is four lines rather than
+route, and background knowledge compilation. Knowledge calls appear in Spend
+under the model that served them, even if an answer was empty or unusable.
+Each line carries `calls: 1`, so a turn that used three tools is four lines rather than
 one.
 
 **That is why the figure moves while a reply is still being written.** The line is written as
@@ -4321,7 +4355,7 @@ Lean changes four things:
 - Your memories still ride: the `<memory>` block is in front of every
   request, bounded the same as on any window. What is missing is the
   `remember` and `forget` verbs, so the model cannot keep or forget a line
-  itself — it tells you to use `/remember` or the Memories tab, which work as
+  itself — it tells you to use `/remember` or the Memory tab, which work as
   always, and noticing still runs after a turn you typed. The record of what
   was said is untouched, and still searchable.
 
@@ -4396,15 +4430,84 @@ list than on the conversation.
 ## Does the daily budget apply to chat and team tasks?
 
 The daily budget blocks a new chat call when today's recorded spending reaches
-the limit. Task crews and their helpers use it when checking the next call's
-estimated cost. Other conversations' completed usage receipts are read on each
-check, and completed spending resets at the local date boundary. Calls already
-in flight may finish; this is not an atomic reservation across processes.
+the limit. Task crews and their helpers use the same recorded-spend check
+before their next call. Knowledge compilation, task summaries, names, captions,
+memory updates and automation checks use this gate too. Task crews also check
+the next call's estimated cost. Other conversations' completed usage receipts are read on each
+check, and completed spending resets at the local date boundary. When a recorded
+charge reaches the daily limit, new calls are refused. Calls waiting for their
+first reply token are cancelled; calls already replying finish and record their
+full usage. Reasoning and tool-call fragments count as reply tokens. Remaining
+owned work stops after those replies settle. While capped work is moving,
+recorded charges and changes to the saved daily limit are checked at 100 ms
+intervals. Lowering the daily limit below today's recorded spending closes
+admission and applies the same first-token rule within one interval, without
+waiting for another charge. Idle conversations do no
+background budget checking. Starting a model call, tool, background command,
+task, crew or program run checks again, so a charge recorded while idle still
+stops new work without waiting for another charge.
+The chat and work report the limit; raise it with `/budget day 30`, then submit
+again. Only recorded spending closes the cap; usage on an open stream and
+pending receipts do not count until recorded. A stream can continue spending
+past the limit unnoticed while no ledger write crosses it. Spending is assigned
+to the date recorded, including receipts arriving after midnight.
+Detached summaries follow the same first-token rule. Running adaptive workers follow their owner's raised
+daily limit. A sampled job refusal is checked again against the current cap.
+Known-free auxiliary calls can continue despite another conversation's daily spend.
+Partial usage is kept; a cancelled call without usage has unknown cost.
 Use `/budget` to change the limit. Per-conversation and per-task limits still
 apply separately. The default profile and home errands follow the saved
-or environment daily limit too; `/budget day` changes apply on the next turn.
+or environment daily limit too; `/budget day` changes apply on the next check.
+The refusal says `daily limit reached · $1 spent of $1 · /budget day changes it`
+with your actual figures. A task stopped by this limit keeps that same refusal in its
+report and ending card, ahead of any `nothing to land` explanation.
+Knowledge builds retain progress and resume
+automatically after a limit increase or the local day changes; a skipped task
+summary keeps its last reading. `--yes-spend` (or
+`CODEAF_PREAUTHORIZE_SPEND=1`) lifts the daily gate for work started with that
+spending permission.
 Task checks use the same selected daily limit and spending permission as the work
 they check.
+
+
+## Why does a crew with no worker show the daily limit?
+
+An adaptive crew checks recorded daily spending when its run finishes. Its chat
+records the daily-limit notice once even if its planner finishes without starting
+a worker. Raise the limit with `/budget day 30`, then send a new message after the
+old work finishes stopping.
+
+## How far can spending exceed the daily cap while replies finish?
+
+At a recorded daily-cap crossing, calls waiting for their first reply token are
+cancelled. Calls already replying finish, including reasoning and tool-call
+fragments, and record their real usage. No further paid call is admitted.
+
+Spending can exceed the cap by the remaining cost of calls already replying
+at the crossing. There is no fixed dollar bound without per-call provider limits;
+cutting a reply cannot undo its bill. The chat keeps completed replies and tool
+results, then shows the daily-limit notice. Raise the cap and send another message
+after the old work finishes stopping.
+This is not an atomic reservation across processes.
+
+
+## Can I resume while a spending receipt is pending?
+
+Yes, if recorded spending is still below the cap. A stopped call whose price is
+available only through a pending receipt has not added that price to `/cost`
+or today's spending. With no earlier charges the live status row keeps `$0.00`.
+The partial answer stays visible; Stop work says
+`everything running here was stopped, the reply with it`. There is no special
+pending-receipt warning or daily-limit notice during that window. A new explicit
+submission can start without raising the cap.
+
+When the receipt is recorded, a crossing cancels waiting calls, lets replies finish,
+and names the limit.
+For $0.25 recorded against $0.24 it says
+`daily limit reached · $0.25 spent of $0.24 · /budget day changes it`.
+Raise the limit, then submit again. Receipt recovery has a 70-second ceiling
+from queueing, including retries and request time. A receipt that cannot be
+recovered leaves an unknown price; this ceiling does not guarantee a known bill.
 
 ## Is the desktop day cap the same limit as /budget?
 
@@ -4422,21 +4525,19 @@ potentially paid admission instead of being read as zero. Legacy malformed rows
 are still skipped and reported as coverage gaps; their dates are not guessed.
 These totals do not prove a complete bill. Repair the named
 record or explicitly set a valid limit, then retry. Per-task and per-role limits
-remain separate. This is not yet a universal per-request cap: the main chat
-turn can finish after crossing it, and native media has no shared dispatch
-reservation. A monthly cap is not available yet. Provider charges already in
+remain separate. Native media has no shared dispatch reservation. A monthly cap is not available yet. Provider charges already in
 flight can exceed a limit. If startup could not establish the limit, repair it
 and reopen the app before standing orders can start.
 
 ## Why is my conversation blocked
 
-A conversation cannot start another turn after it reaches its conversation budget or this computer's daily spending limit. Both limits apply. Raise the limit named in the refusal with `/budget day 30` or `/budget conversation 30`, then send your message again. Changing one does not reset recorded spending or lift the other. A turn already running may finish above its limit.
+A conversation cannot start another turn after it reaches its conversation budget or this computer's daily spending limit. Both limits apply. Raise the limit named in the refusal with `/budget day 30` or `/budget conversation 30`, then send your message again. Changing one does not reset recorded spending or lift the other. The conversation limit lets a running turn finish; a recorded daily-limit crossing cancels calls waiting for their first token and lets replies finish before stopping owned work. A turn with no call, tool or owned work in flight checks its own limit before work starts. An earlier spending record does not stop that conversation. A refused message shows the daily-limit explanation without starting a provider call.
 
 ## Which budget takes precedence — daily or per conversation, and why my budget command doesn't work while the conversation is still blocked
 
 **Both limits apply; neither overrides the other.** New chat turns stop when
 either limit is reached. The daily limit counts all of today's spending on this
-machine — every conversation and every task, not only this conversation. The
+machine — every conversation, task, helper and knowledge compilation. The
 conversation limit counts that conversation's recorded spending, including
 earlier days.
 
@@ -4474,7 +4575,7 @@ you paste in. It cannot open files, run commands or look anything up, and it wil
 if you ask it to. It is also given a **short chat page** as its instructions instead of
 codeaf's working page — about 2,000 characters rather than 20,000 or more, because the
 working page is almost all about tools — with your memories in front of it as on any
-other page, and no verbs to keep or forget one (`/remember` and the Memories tab still work). Your
+other page, and no verbs to keep or forget one (`/remember` and the Memory tab still work). Your
 project's instruction files (AGENTS.md, CLAUDE.md) are not sent to it. The request-size
 check counts only what is really sent. Pick a model that takes tools (`/model`) when you
 need it to work in your files: the next message goes out with the working page and every
@@ -4583,6 +4684,8 @@ a chain ends after ten requests rather than waiting forever.
 
 ## Do my crew settings follow me to my other computer?
 
+Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
+
 After pairing, crew seat model pins, allowed-model choices, the crew daily cap,
 per-task cap and free-route choice follow synced preferences within a few seconds,
 even with no chat open. Both computers need to be running codeaf and able to reach
@@ -4594,6 +4697,15 @@ and its credentials on the receiving computer; pairing does not install a provid
 The **share teams** switch does not change which crew choices follow preferences.
 Desktop app crews are separate.
 
+## Windows spending history updates while the file is open
+
+On Windows 10 version 1709 or newer with NTFS, saved spending history can be
+replaced while a reader or the spending writer holds it open. Readers finish
+with their earlier view; later charges go to the current history without losing
+earlier charges. Older Windows versions and filesystems that do not support
+this keep Windows' native replacement limits. A persistent file error is still
+reported.
+
 ## Are queued spending records saved when I close a conversation?
 
 Closing a conversation waits for spending records already queued to its ledger,
@@ -4603,7 +4715,64 @@ make closing slower.
 
 Closing waits at most two seconds for the spending ledger, so a stalled ledger can
 add up to two seconds to each close. Pending rows can still be written if the process stays open and
-the mount recovers. If the process exits first, those rows can be lost. Reaching
+the mount recovers. Rows already saved to the pending journal recover on the next start. If both journal and ledger writes fail before exit, those rows can be lost. Reaching
 the limit writes one line to the log with the ledger path and the number of rows
 pending, and those rows count as records not written down until they are written.
 No warning appears on screen.
+
+## Why a tiny crew cost has four decimal places
+
+A known positive crew cost below one cent keeps four decimal places, such as
+`$0.0003`. An amount below the shared display floor reads `<$0.0001`. Unknown
+or zero costs add no figure to the crew line.
+
+## Spending reports, daily rollups and changes to the usage ledger
+
+`spend.report` reports spending by stored local day, model and subject. Both
+range ends are required, covering at most 366 days. Reports refuse more than
+8,192 groups or an estimated 4 MiB of cells rather than dropping groups.
+Unpriced calls and missing receipts remain visible as gaps.
+
+Each cell sums its lines in ledger order. Money totals, including subtotals for
+lines with and without a run, sum cells in report order: day, model, kind,
+subject, root, session, agent and Library activity. The scan and rollup use this same order,
+including for ordinary decimal costs.
+
+A date-only report can reuse daily totals in memory. The first read builds them;
+later reads add complete appended lines, including receipts for earlier days.
+A last line without a newline waits until it is complete. No rollup file is
+written. Restarting codeaf rebuilds the totals on the next report.
+
+Replacing, rotating or shortening the ledger rebuilds the totals. Changes to
+the already-read prefix's first or last 4,096 bytes also trigger a rebuild;
+rewrites confined to the middle of that prefix are not detected.
+
+Reports with additional filters, partial days, a changed time zone, disagreement
+between a stored day and its instant use a full scan.
+Exceeding the rollup's total storage budget or encountering invalid
+figures also uses the scan, preserving each range's existing limits and refusals.
+The retained rollup is limited to one ledger, 8,192 groups and an estimated
+4 MiB of cells; it grows with distinct daily groups, not call count.
+
+## Usage totals after a crash or forced exit
+
+codeaf saves each complete priced usage row in a pending journal before handing
+it to the background ledger writer. On the next start, missing charges are
+replayed once with their original amount, day and ownership. Already booked
+charges are not added again. A successful journal write survives a process
+crash, including forced termination immediately after recording usage. Journal
+sync runs in background batches every 100 ms or 64 rows, whichever comes first.
+On power loss, up to the last 100 ms batch can be lost, as before. Clean close
+drains and syncs before compacting. These guarantees require successful disk
+operations; they cannot recover facts that an older build never saved.
+
+The sidecar is `usage.jsonl.pending-v1.jsonl`, beside `usage.jsonl` in your
+profile's `v3` directory. Startup and clean close compact booked rows out of it.
+Keep this file with the ledger when recovering a profile. If disk writes fail,
+chat continues with its in-memory counters while accounting retries; an unsaved
+row cannot survive process exit.
+
+Model-only calls also keep a local receipt record until sealing succeeds. An
+older build can lose that receipt detail when it rewrites the call log. The
+pending usage journal remains the source for exact money recovery; downgrading
+can lose model-call receipt detail, never money already saved by this journal.

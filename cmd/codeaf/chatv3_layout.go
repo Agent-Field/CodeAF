@@ -677,8 +677,9 @@ func v3ScanBucket(bucket string) (spoken, empty []v3Folder) {
 			}
 		}
 		if v3EmptyUnassignedSession(dir) {
-			// A team's reference keeps it, and so does a store that cannot say.
-			if referenced, err := teams.ConversationReferenced(config.ProfileDir(), place.Transcript()); err == nil && !referenced {
+			// A team or collection reference keeps a blank out of both piles.
+			// So does a store that cannot say whether it is referenced.
+			if referenced, err := teams.ConversationReferenced(config.ProfileDir(), place.Transcript()); err == nil && !referenced && !collectionKeepsConversation(dir) {
 				empty = append(empty, folder)
 			}
 			continue
@@ -710,14 +711,17 @@ func v3ScanBucket(bucket string) (spoken, empty []v3Folder) {
 // A team reference makes an empty conversation intentional, not reusable
 // litter. Only the teams that name this conversation are read (the store's
 // index), and a store that cannot say keeps the folder.
+// A collection reference keeps it too, including when its store cannot be read.
 func v3EmptySession(dir string) bool {
 	referenced, err := teams.ConversationReferenced(config.ProfileDir(), session.Place{Dir: dir}.Transcript())
 	if err != nil || referenced {
 		return false
 	}
-	return v3EmptyUnassignedSession(dir)
+	return v3EmptyUnassignedSession(dir) && !collectionKeepsConversation(dir)
 }
 
+// v3EmptyUnassignedSession reads only content. References decide whether a blank
+// is kept, never whether it is a conversation somebody has spoken in.
 func v3EmptyUnassignedSession(dir string) bool {
 	place := session.Place{Dir: dir, Owned: true}
 	spoken, sure := session.SpokeIn(place.Transcript())
@@ -751,7 +755,7 @@ func v3ReapEmpty(empty []v3Folder, keep string) {
 		}
 		transcript := session.Place{Dir: folder.dir}.Transcript()
 		_ = teams.InspectConversation(config.ProfileDir(), transcript, func(referenced bool) error {
-			if !referenced && !session.InUse(transcript) && v3EmptyUnassignedSession(folder.dir) {
+			if !referenced && !session.InUse(transcript) && v3EmptyUnassignedSession(folder.dir) && !collectionKeepsConversation(folder.dir) {
 				_ = os.RemoveAll(folder.dir)
 			}
 			return nil
@@ -797,6 +801,12 @@ func v3SeatedPending(cfg session.Config) (session.Config, func(bool)) {
 	seat, machine, seals, claim := v3SeatPending(cfg.Place, nil, syncDrives)
 	cfg.Seat, cfg.Interrupted = seat, executor.InterruptedOn(seat)
 	cfg.Renewals = syncDrives.renewalsOf(cfg.Place.ID())
+	cfg.FinishSaving, cfg.SavingNotices = nil, nil
+	if drive := syncDrives.renewalsOf(cfg.Place.ID()); drive != nil {
+		book, id := syncDrives, cfg.Place.ID()
+		cfg.FinishSaving = func() error { return book.closeCell(id) }
+		cfg.SavingNotices = drive.TakeSavingNotices
+	}
 	if machine != nil {
 		cfg.Machine = machine
 	}
@@ -841,12 +851,17 @@ func v3SeatPending(place session.Place, say func(string), drives *driveBook) (ex
 	machine, err := preflight.OpenMachine(c.Root, place.Workspace)
 	watch := &cellstore.SealWatch{Say: say, SyncAddress: chatSyncService()}
 	failed(watch, err)
-	drive, claim := drives.pendingDriveOf(c, cellstore.EngineFor(place.Workspace), watch.SyncReport)
+	drive, claim := drives.pendingDriveOf(c, cellstore.EngineFor(place.Workspace), watch.SyncReport, watch)
 	if drive != nil {
-		watch.OnTurnEnd = drive.Idle // the agent waits for the person: upload what is sealed now
+		// The turn can finish locally while its final capture is still running.
+		watch.OnTurnEnd = func() { drive.TurnEnded(c, watch.Report) }
+		watch.OnTurnStart = func() { drive.Working(true) }
 	}
 	seat, err := cellstore.SeatOver(class, c, place.Workspace, observerOf(machine), watch.Report, driveStore(drive), cellstore.WithNotices(watch.Note), cellstore.WithPipeline(), cellstore.WithWarmCapture())
 	failed(watch, err)
+	if err != nil {
+		watch.Retire()
+	}
 	watch.OnTail = func() { sealTail(seat, drive) }
 	// A fresh seat has no foreground turn in flight. Background tasks may be
 	// the first input; their journal writes need a tail seal even before chat.
@@ -888,6 +903,9 @@ func sealSeamOf(agent any, seals session.SealState) tui3.SealSeam {
 	var seam tui3.SealSeam
 	if seals != nil {
 		seam = tui3.SealSeam{Failing: seals.Failing, Notice: seals.Take}
+	}
+	if watch, ok := seals.(interface{ Listen(func()) func() }); ok {
+		seam.Listen = watch.Listen
 	}
 	if door, ok := agent.(interface{ SealFailing() bool }); ok {
 		seam.Failing = door.SealFailing

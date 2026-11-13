@@ -6,16 +6,24 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 
 Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time; opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
 
-A relay is the small service your computers sync through. There are two kinds. Both speak the same wire: the chat cannot tell them apart.
+A relay is the small service your computers sync through. There are two kinds. Both speak the same wire.
+
+Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
 
 - **A hosted relay** is run for you on a cloud account. You do nothing to run it. You give the chat its address.
 - **Your own relay** is the program `codeaf relay`. You run it on a computer you control.
 
 Either way the relay sees only ciphertext and the short list on "What can the relay see".
 
-**Where sync goes by default.** Unset, each release channel syncs through its own hosted relay: stable releases and release candidates use `https://codeaf.agentfield.ai/fabric`, staging builds use `https://caf-fabric-staging.instrument-santosh.workers.dev`, and dev builds and local builds from source use `https://caf-fabric-dev.instrument-santosh.workers.dev`. Channels do not sync with each other: computers must run the same channel (or set the same `CODEAF_SYNC_URL`) to pair and share chats. A build whose `HostedRelayURL` is empty has no default, and then nothing is copied and pairing says `no sync service is set, so there is nowhere to pair through: set CODEAF_SYNC_URL to its address, or pass --via <address>`. A new home sends no relay requests before completing a pairing or offering a code or link. Reading the add-device instructions does not start sync. Older identities without the quiet marker retain their earlier behavior: see "Is my code sent anywhere before I pair" on the page *Pairing your chats with a second computer*. To use your own relay instead, set `CODEAF_SYNC_URL` as below. Turn sync off with `CODEAF_SYNC_URL=off`; pairing cannot override that with `--via`.
+## Where sync goes by default — stable, staging and dev relay addresses
+
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+
+Unset, each release channel selects its own hosted relay: stable releases and release candidates use `https://codeaf.agentfield.ai/fabric`, staging builds use `https://caf-fabric-staging.instrument-santosh.workers.dev`, and dev builds and local builds from source use `https://caf-fabric-dev.instrument-santosh.workers.dev`. Channels do not sync with each other: computers must run the same channel (or set the same `CODEAF_SYNC_URL`) to pair and share chats. A build whose `HostedRelayURL` is empty has no default, and then nothing is copied and pairing says `no sync service is set, so there is nowhere to pair through: set CODEAF_SYNC_URL to its address, or pass --via <address>`. A new home sends no relay requests before completing a pairing or offering a code or link. Reading the add-device instructions does not start sync. Older identities without the quiet marker retain their earlier behavior: see "Is my code sent anywhere before I pair" on the page *Pairing your chats with a second computer*. To use your own relay instead, set `CODEAF_SYNC_URL` as below. Turn sync off with `CODEAF_SYNC_URL=off`; pairing cannot override that with `--via`.
 
 ## Point codeaf at a relay — CODEAF_SYNC_URL, url or off
+
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
@@ -85,3 +93,12 @@ A timeout says `the sync service at http://127.0.0.1:8901 did not answer in time
 ## A chat keeps working when the sync service is down
 
 A sync outage says `the sync service at 127.0.0.1:8901 is not answering; this chat keeps working here and catches up when it is back`, once per outage. Local saves and rewind keep working. A local save by itself does not prove that syncing recovered. After an actual successful sync call, the chat can say `syncing again`; a sustained renewal outage keeps its existing `this chat is syncing again` recovery line.
+
+## Do chat folder names sync through the hosted relay
+
+The hosted relay and your own current codeaf relay both carry a chat's folder
+name between paired computers. The name is sealed before upload; the relay
+stores opaque text and cannot read it. An older relay that does not advertise
+folder support receives no folder name. Updating that relay enables folder
+sync on the next successful capability check. A publish with no folder name
+keeps the name already stored, as does releasing the chat.

@@ -133,6 +133,55 @@ func (c *client) IssueComments(ctx context.Context, owner, repo string, number, 
 	return got, nil
 }
 
+// PullFile is one file of a pull request's change as GitHub lists it: its
+// path, GitHub's status word (added, modified, removed, renamed, copied,
+// changed or unchanged), its line counts, and the path it had before a rename
+// or copy.
+type PullFile struct {
+	Path      string
+	Status    string
+	Additions int
+	Deletions int
+	Previous  string
+}
+
+// PullFileList reads a pull request's changed files in GitHub's own order, at
+// most most of them, a page of a hundred at a time. Unlike [client.PullFiles]
+// it keeps each file's status, because a reader deciding whether to merge
+// must see what a change removes. GitHub itself stops listing at 3000 files;
+// the pull request's own count ([Pull.Files]) is the whole change's size.
+func (c *client) PullFileList(ctx context.Context, owner, repo string, number, most int) ([]PullFile, error) {
+	const page = 100
+	out := []PullFile{}
+	for n := 1; len(out) < most; n++ {
+		body, _, err := c.read(ctx, c.repoURL(owner, repo, "/pulls/"+strconv.Itoa(number)+"/files?per_page="+strconv.Itoa(page)+"&page="+strconv.Itoa(n)), "")
+		if err != nil {
+			return nil, err
+		}
+		var rows []fileResp
+		if err := json.Unmarshal(body, &rows); err != nil {
+			return nil, err
+		}
+		for _, r := range rows {
+			f := PullFile{Path: r.Filename, Status: "modified", Additions: r.Additions, Deletions: r.Deletions}
+			if r.Status != nil && *r.Status != "" {
+				f.Status = *r.Status
+			}
+			if r.PreviousFilename != nil {
+				f.Previous = *r.PreviousFilename
+			}
+			out = append(out, f)
+		}
+		if len(rows) < page {
+			break
+		}
+	}
+	if len(out) > most {
+		out = out[:most]
+	}
+	return out, nil
+}
+
 // PullFiles reads a pull request's changed files, the most changed first, at
 // most [FilesMost].
 func (c *client) PullFiles(ctx context.Context, owner, repo string, number int) ([]FileChange, error) {

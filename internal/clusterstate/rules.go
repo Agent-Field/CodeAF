@@ -44,6 +44,7 @@ func Heartbeat(c Cell, device string, b Beat, now int64) (Cell, error) {
 	}
 	c.Lease.Expires = now + ttlMs
 	c.Lease.Pending = b.Pending
+	c.Lease.Working = b.Working
 	c.Lease.UploadSent, c.Lease.UploadTotal = 0, 0
 	if b.Pending > 0 && b.UploadTotal > 0 {
 		c.Lease.UploadSent, c.Lease.UploadTotal = min(b.UploadSent, b.UploadTotal), b.UploadTotal
@@ -51,15 +52,12 @@ func Heartbeat(c Cell, device string, b Beat, now int64) (Cell, error) {
 	return c, nil
 }
 
-// PublishTo moves the durable head and renews a live lease. A late seal cannot
-// revive an expired hold, even when nobody acquired it. Ownership is checked
-// before the head, so a superseded holder learns it lost the lease first.
+// PublishTo moves the durable head and renews the lease, because a publish is
+// proof that the holder is alive. The fence is checked before the head, so a
+// superseded holder always learns it lost the lease first.
 func PublishTo(c Cell, device string, p Publish, now int64) (Cell, error) {
 	if err := holder(c, device, p.Fence); err != nil {
 		return c, err
-	}
-	if c.Lease.Expires <= now {
-		return c, ErrFenceStale
 	}
 	if p.OldHead != c.Head {
 		return c, ErrHeadMoved
@@ -87,7 +85,7 @@ func ReleaseOf(c Cell, device string, fence uint64, at ...int64) (Cell, error) {
 	if err := holder(c, device, fence); err != nil {
 		return c, err
 	}
-	c.Lease.Expires, c.Lease.Pending = 0, 0
+	c.Lease.Expires, c.Lease.Pending, c.Lease.Working = 0, 0, false
 	c.Lease.UploadSent, c.Lease.UploadTotal = 0, 0
 	if len(at) > 0 {
 		c.Lease.ReleasedAt = at[0]

@@ -109,13 +109,15 @@ def snap(home, cell, ws, out, aliases=()):
     ledger = read_lines(os.path.join(home, "v3", "usage.jsonl")) or []
     mine = [json.loads(l) for l in ledger if l.strip() and f'"session":"{cell}"' in l]
     # The rebuilt ledger rounds cost to 6 decimals and may name a row's role differently, so rows are keyed by what was spent.
-    s["usage_rows"] = sorted((r["model"], r["calls"], r["in"], r["out"], round(r["usd"], 6)) for r in mine)
-    s["usage_usd"] = round(sum(r["usd"] for r in mine), 6)
+    # The kind labels missing receipts without inventing a measured call.
+    s["usage_rows"] = sorted((r.get("model", ""), r.get("calls", 0), r.get("in", 0), r.get("out", 0), round(r.get("usd", 0), 6), r.get("kind", "")) for r in mine)
+    s["usage_usd"] = round(sum(r.get("usd", 0) for r in mine), 6)
     s["memories_db"] = sqlite_rows(os.path.join(home, "graph.db"), "select * from memories order by 1")
     s["memories_db_cols"] = sqlite_rows(os.path.join(home, "graph.db"), "select name from pragma_table_info('memories')")
     if ws and ws != "-" and os.path.isdir(ws):
         s["workspace"] = workspace(ws, home)
-    json.dump(s, open(out, "w"), indent=1)
+    with open(out, "w") as snapshot:
+        json.dump(s, snapshot, indent=1)
 
 
 def workspace(ws, home):

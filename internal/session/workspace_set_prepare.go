@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/taskcopy"
 	"github.com/Agent-Field/codeaf/internal/workspaceidentity"
@@ -264,7 +265,7 @@ func (a *Agent) keepStoppedWorkspaceSet(run *beltRun) (merge, branch string, cha
 					problem = err.Error()
 				}
 			}
-			saved, saveProblem, _ := commitTaskWork(tree.dir, run.title, rootChanged, a.signsGitWork(), true)
+			saved, saveProblem, _ := commitTaskWork(tree.dir, run.title, rootChanged, a.signsGitWork(), true, true)
 			rootChanged = alsoChanged(rootChanged, saved)
 			if saveProblem != "" {
 				problem = withReport(problem, saveProblem)
@@ -332,7 +333,7 @@ func validateWorkspaceSetSources(ctx context.Context, place Place, request Works
 		if withinDir(use.Source, base) || withinDir(base, use.Source) {
 			return nil, errors.New("workspace source overlaps its owned destination")
 		}
-		if ownershipPlainMode(use.Source) == TaskModeReference {
+		if HoldsHomeFolder(use.Source) {
 			return nil, errors.New("a personal home cannot be copied as a workspace root; select an explicit working folder")
 		}
 	}
@@ -431,15 +432,10 @@ func writeWorkspaceSetPreparation(place Place, id uint64, title string, request 
 	if err != nil {
 		return err
 	}
-	if err := os.Rename(name, filepath.Join(base, workspaceSetPreparationFile)); err != nil {
+	if err := fsreplace.Rename(name, filepath.Join(base, workspaceSetPreparationFile)); err != nil {
 		return err
 	}
-	directory, err := os.Open(base)
-	if err != nil {
-		return err
-	}
-	defer directory.Close()
-	return directory.Sync()
+	return fsreplace.SyncDir(base)
 }
 
 func readWorkspaceSetPreparation(place Place, id uint64) (workspaceSetPreparation, error) {

@@ -160,6 +160,8 @@ func TestSyncEngineSpawnKeepsKeysOffArgvAndInEnv(t *testing.T) {
 		return []byte(contractReplies["want"]), nil
 	}
 	e := syncEngineOver(Spawn{Binary: "engine", Run: run})
+	store := t.TempDir()
+	e.Target = func(c cell.Cell) Target { return Target{Tree: c.Root, DataDir: store} }
 	if _, err := e.Want(context.Background(), cell.Cell{ID: "c1"}, "h"); err != nil {
 		t.Fatal(err)
 	}
@@ -181,6 +183,8 @@ func TestSyncEngineSpawnLeavesKeylessVerbsWithoutKeys(t *testing.T) {
 		return []byte(`{"snapshot":"s"}`), nil
 	}
 	e := syncEngineOver(Spawn{Binary: "engine", Run: run})
+	store := t.TempDir()
+	e.Target = func(c cell.Cell) Target { return Target{Tree: c.Root, DataDir: store} }
 	if err := e.Materialize(context.Background(), cell.Cell{ID: "c1", Root: t.TempDir()}, "h"); err != nil {
 		t.Fatal(err)
 	}

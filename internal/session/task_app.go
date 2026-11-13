@@ -22,6 +22,7 @@ type AppTaskView struct {
 	Retryable bool
 
 	ID, Parent, Title, Brief, State, Model, Origin, Result string
+	Group                                                  string
 	Waits                                                  []string
 	Deadline                                               time.Time
 	Held                                                   bool
@@ -195,6 +196,7 @@ func (g *TaskGraph) writeAppControl(change func() (func(), error)) error {
 		store.mu.Lock()
 		defer store.mu.Unlock()
 	}
+	bills := g.nodeTreeBills()
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	rollback, err := change()
@@ -202,7 +204,7 @@ func (g *TaskGraph) writeAppControl(change func() (func(), error)) error {
 		return err
 	}
 	if store != nil {
-		if err := store.writeLocked(g.documentLocked()); err != nil {
+		if err := store.writeLocked(g.documentLocked(bills)); err != nil {
 			if rollback != nil {
 				rollback()
 			}
@@ -264,6 +266,7 @@ func (a *Agent) AppTasks() ([]AppTaskView, error) {
 	out = a.appGraphTasks(out, cap, graphIDs)
 	// Both projections share the plan gate and each trajectory for this listing.
 	rows := a.appRunRows()
+	aliases := appRunPlanAliases(rows)
 	stores, plan, closeStores := a.openPlanReadHandles()
 	defer closeStores()
 	read := &planTaskRead{stores: stores, plan: plan}
@@ -273,11 +276,17 @@ func (a *Agent) AppTasks() ([]AppTaskView, error) {
 			continue
 		}
 		graphIDs[id] = true
+		graphIDs[planStoreID(appRunRowKey(row))] = true
 		out = append(out, a.appRunViewIn(row, cap, read))
 	}
-	for _, row := range a.planTasksIn(read) {
+	plans := a.planTasksIn(read)
+	groups := appPlanGroups(rows, plans)
+	for _, row := range plans {
 		if graphIDs[row.ID] {
 			continue
+		}
+		if parent := aliases[row.Parent]; parent != "" {
+			row.Parent = parent
 		}
 		state := row.StateWord()
 		if state == "queued" {
@@ -289,7 +298,7 @@ func (a *Agent) AppTasks() ([]AppTaskView, error) {
 		if state == "incomplete" {
 			state = "failed"
 		}
-		out = append(out, AppTaskView{Source: cloneSource(row.Source), Dismissed: state == "failed" && a.tasker().isDismissed(row.ID), ID: row.ID, Parent: row.Parent, Title: row.Title, State: state, Model: row.Model, Cap: cap, Spent: row.USD, Step: row.Steps, Waits: append([]string{}, row.Waits...), Origin: "asked"})
+		out = append(out, AppTaskView{Source: cloneSource(row.Source), Dismissed: state == "failed" && a.tasker().isDismissed(row.ID), ID: row.ID, Parent: row.Parent, Group: groups[row.ID], Title: row.Title, State: state, Model: row.Model, Cap: cap, Spent: row.USD, Step: row.Steps, Waits: append([]string{}, row.Waits...), Origin: "asked"})
 	}
 	out = append(out, a.appProposalViews(cap)...)
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
@@ -423,19 +432,8 @@ func (a *Agent) appTaskAct(intent AppTaskIntent) (SteerReceipt, error) {
 			return SteerReceipt{}, err
 		}
 	}
-	// Answers, stopping, hiding and holding work remain available on a viewer.
-	switch intent.Action {
-	case "cancel", "stop", "hold", "typing", "decline", AppActionDismiss, AppActionRestore:
-	case "decide":
-		if intent.Verb == "not_right" || intent.Verb == "tell" {
-			if err := a.CheckWork(); err != nil {
-				return SteerReceipt{}, err
-			}
-		}
-	default:
-		if err := a.CheckWork(); err != nil {
-			return SteerReceipt{}, err
-		}
+	if err := a.checkAppTaskWork(intent); err != nil {
+		return SteerReceipt{}, err
 	}
 	// DISMISS AND RESTORE ARE ONE GENERIC FACT FOR EVERY ROAD, so they are settled
 	// before the road is chosen (task_dismiss.go).
@@ -449,6 +447,12 @@ func (a *Agent) appTaskAct(intent AppTaskIntent) (SteerReceipt, error) {
 		// Past its proposal a task's model is RetargetTask's promise, not this card's.
 		return SteerReceipt{}, errors.New("that task must be a proposed task to change its model")
 	}
+	return a.appListedTaskAction(id, numeric, intent)
+}
+
+// appListedTaskAction checks the saved row before dispatching an action to
+// its run, plan or graph road, preserving the same stale-state refusal.
+func (a *Agent) appListedTaskAction(id uint64, numeric error, intent AppTaskIntent) (SteerReceipt, error) {
 	row, found, err := a.AppTask(intent.ID)
 	if err != nil {
 		return SteerReceipt{}, err
@@ -472,6 +476,25 @@ func (a *Agent) appTaskAct(intent AppTaskIntent) (SteerReceipt, error) {
 		return a.appTaskNote(node, intent)
 	}
 	return SteerReceipt{}, a.appGraphAction(node, intent, row)
+}
+
+// checkAppTaskWork keeps answers and controls available on a viewer while
+// refusing actions that would start or revise work.
+func (a *Agent) checkAppTaskWork(intent AppTaskIntent) error {
+	switch intent.Action {
+	case "cancel", "stop", "hold", "typing", "decline", AppActionDismiss, AppActionRestore:
+	case "decide":
+		if intent.Verb == "not_right" || intent.Verb == "tell" {
+			if err := a.CheckWork(); err != nil {
+				return err
+			}
+		}
+	default:
+		if err := a.CheckWork(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // appWordAction is whether an action carries the person's words to the task:

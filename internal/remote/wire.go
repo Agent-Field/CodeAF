@@ -393,6 +393,9 @@ import (
 // are new. The number moves because a version-21 engine would answer the
 // place's move as "no such method" — a key that did nothing, and a person told
 // so in words that were not true.
+//
+// ClientTools.Set and ClientTool.Answer ride version 22 behind Welcome.ClientTools.
+// Like the other welcome capabilities, absence preserves the existing wire.
 const Version = 22
 
 // AND THE NEWS FRAMES RIDE THAT SAME NUMBER, for the reason the places methods
@@ -417,7 +420,8 @@ const Version = 22
 type Frame struct {
 	// Kind says what this frame is: "hello", "welcome", "call", "result",
 	// "event", "closed", "facts", "task", "design", "question", "phase", "lane",
-	// "turn", "driver", "moved", "fatal", "sideAskDelta".
+	// "turn", "driver", "moved", "fatal", "sideAskDelta", "clientToolCall",
+	// "clientToolEnded". The two client-tool kinds answer nothing.
 	//
 	// "facts", "task", "design", "question", "phase" and "lane" are the KINDS
 	// THAT ANSWER NOTHING. The third and fourth are version 11's harness lane
@@ -457,6 +461,9 @@ type Frame struct {
 	LocalSaved bool `json:"localSaved,omitempty"`
 	// SyncPending distinguishes an upload failure after the local close succeeded.
 	SyncPending bool `json:"syncPending,omitempty"`
+	StorageOff  bool `json:"storageOff,omitempty"`
+	// SavingNotices arrive with closing and session-swap replies after live delivery ends.
+	SavingNotices []string `json:"savingNotices,omitempty"`
 	// UnsavedTranscript preserves a recovery location on a failed saving reply.
 	UnsavedTranscript string `json:"unsavedTranscript,omitempty"`
 
@@ -1097,6 +1104,8 @@ type StreamCursor struct {
 // Welcome is the server's answer ("welcome"): the facts a surface needs before
 // its first frame, which are the same facts newApp reads off a local agent.
 type Welcome struct {
+	// ClientTools says this holder forwards connection-owned client tools.
+	ClientTools bool `json:"clientTools,omitempty"`
 	// WorkAdmission says this engine exposes the session's ownership gate.
 	WorkAdmission bool `json:"workAdmission,omitempty"`
 	// UserMessages is counted from the engine's replay, so an attaching app

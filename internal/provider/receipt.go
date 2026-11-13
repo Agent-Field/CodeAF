@@ -236,7 +236,7 @@ func (c *Client) settle(ctx context.Context, model string, response *ai.Response
 	if c.config.Direct {
 		if !bankedUsage && response != nil && response.Usage != nil {
 			sink(result)
-		} else if finalReceiptsFrom(ctx) && answerBytes > 0 {
+		} else if !bankedUsage && (ctx.Err() != nil || finalReceiptsFrom(ctx) && answerBytes > 0) {
 			sink(result)
 		}
 		handle.unknown()
@@ -244,9 +244,10 @@ func (c *Client) settle(ctx context.Context, model string, response *ai.Response
 	}
 	// NO ID MEANS NO REQUEST. Text still proves that the call got somewhere and
 	// may be charged, so its missing price is said; without text there is no
-	// generation and nothing honest to count.
+	// generation and nothing honest to count, unless the caller cancelled an
+	// already sent request whose charge is still unknown.
 	if result.Ref == "" {
-		if answerBytes > 0 || (response != nil && response.Usage != nil) {
+		if ctx.Err() != nil || answerBytes > 0 || (response != nil && response.Usage != nil) {
 			sink(result)
 		}
 		handle.unknown()
@@ -366,8 +367,16 @@ func (c *Client) reconcile(work receiptWork) {
 	// last is the newest parsed receipt's verified price. A not-ready all-zero
 	// placeholder stays unknown; a nonempty receipt can state a real zero.
 	last := UnknownCost()
+	// A HURRIED RECEIPT ASKS ONCE MORE AND THEN ANSWERS (receipt_hurry.go).
+	hurry := receiptHurried()
+	final := false
 	for attempt := 0; attempt < receiptAttempts; attempt++ {
-		read := c.readReceiptAt(ctx, result.Ref, base)
+		final = final || hurry.Err() != nil
+		ask, cancelAsk := receiptAskContext(ctx, hurry)
+		read := c.readReceiptAt(ask, result.Ref, base)
+		cancelAsk()
+		// An ask the hurry reached while it was in flight was the last one.
+		final = final || hurry.Err() != nil
 		billed, found, noRoute := read.billed, read.found, read.noRoute
 		if read.parsed {
 			last = read.financial
@@ -403,8 +412,11 @@ func (c *Client) reconcile(work receiptWork) {
 			work.sink(result)
 			return
 		}
+		if final {
+			break
+		}
 		if attempt < len(receiptRetrySchedule) {
-			if err := c.wait(ctx, receiptRetrySchedule[attempt]); err != nil {
+			if _, err := c.pauseReceipt(ctx, hurry, receiptRetrySchedule[attempt]); err != nil {
 				break
 			}
 		}

@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 )
 
 // FirstRunLineFor formats the one sentence a person is told, once, when their
@@ -67,7 +69,7 @@ func (s *Sync) AcknowledgeFirstRun() (bool, error) {
 	_, writeErr := f.WriteString("told\n")
 	closeErr := f.Close()
 	if err := errors.Join(writeErr, closeErr); err != nil {
-		_ = os.Remove(filepath.Join(s.Home, toldFile))
+		_ = fsreplace.Remove(filepath.Join(s.Home, toldFile))
 		return false, err
 	}
 	return true, nil

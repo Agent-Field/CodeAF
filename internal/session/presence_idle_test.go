@@ -24,22 +24,35 @@ func TestIdlePresenceSkipsUnchangedStateAndRefreshesJSON(t *testing.T) {
 	if !os.SameFile(before, after) || !before.ModTime().Equal(after.ModTime()) {
 		t.Fatal("an unchanged idle snapshot replaced or touched its file")
 	}
-	desk.refresh(first.Add(presenceRefresh))
+	// The shared refresh clock ticks every presenceRefresh; an unchanged idle
+	// claim is left alone on every tick until its own refresh is due.
+	for at := first.Add(presenceRefresh); at.Before(first.Add(presenceIdleRefresh)); at = at.Add(presenceRefresh) {
+		desk.refresh(at)
+	}
+	after, _ = os.Stat(path)
+	if !os.SameFile(before, after) {
+		t.Fatal("an unchanged idle claim was rewritten before its idle refresh was due")
+	}
+	desk.refresh(first.Add(presenceIdleRefresh))
 	after, _ = os.Stat(path)
 	later, _ := os.ReadFile(path)
 	if os.SameFile(before, after) || bytes.Equal(raw, later) {
-		t.Fatal("heartbeat did not atomically replace the JSON claim")
+		t.Fatal("idle refresh did not atomically replace the JSON claim")
 	}
-	var oldReader struct {
-		UpdatedAt time.Time `json:"updatedAt"`
+	var claim struct {
+		UpdatedAt    time.Time `json:"updatedAt"`
+		LeaseSeconds int       `json:"leaseSeconds"`
 	}
-	if err := json.Unmarshal(later, &oldReader); err != nil {
+	if err := json.Unmarshal(later, &claim); err != nil {
 		t.Fatal(err)
 	}
-	// A skipped refresh must not expire the claim before the next one lands.
-	next := first.Add(3 * presenceRefresh)
-	if !oldReader.UpdatedAt.After(next.Add(-presenceWindow)) {
-		t.Fatal("an older reader would expire the claim after one missed refresh")
+	if claim.LeaseSeconds != int(presenceIdleWindow/time.Second) {
+		t.Fatalf("an idle claim carries lease %ds, want %s", claim.LeaseSeconds, presenceIdleWindow)
+	}
+	// A skipped idle refresh must not expire the claim before the next lands.
+	next := first.Add(3 * presenceIdleRefresh)
+	if !claim.UpdatedAt.After(next.Add(-presenceIdleWindow)) {
+		t.Fatal("a reader would expire the idle claim after one missed refresh")
 	}
 	desk.refresh(next)
 	if _, ok := ReadSessionPresence(filepath.Dir(path), next); !ok {
@@ -196,7 +209,11 @@ func TestPresenceJSONClockExpiresAndFeedsEveryReader(t *testing.T) {
 	desk := &presenceDesk{agent: agent, path: filepath.Join(dir, presenceName)}
 	desk.write()
 	first := desk.refreshed
-	now := first.Add(presenceWindow + time.Second)
+	// An idle claim outlives the busy window on its own lease.
+	if _, ok := ReadSessionPresence(dir, first.Add(presenceWindow+time.Second)); !ok {
+		t.Fatal("an idle claim expired on the busy window instead of its lease")
+	}
+	now := first.Add(presenceIdleWindow + time.Second)
 	desk.refresh(now)
 	presence, ok := ReadSessionPresence(dir, now)
 	if !ok || !presence.UpdatedAt.Equal(now) {
@@ -209,7 +226,7 @@ func TestPresenceJSONClockExpiresAndFeedsEveryReader(t *testing.T) {
 	if rows := SweepStaleBuilds(root, "different-build", now); len(rows) != 1 {
 		t.Fatalf("build sweep ignored refreshed claim: %+v", rows)
 	}
-	expired := now.Add(presenceWindow + time.Second)
+	expired := now.Add(presenceIdleWindow + time.Second)
 	if _, ok := ReadSessionPresence(dir, expired); ok {
 		t.Fatal("an unrefreshed claim never expired")
 	}
@@ -224,7 +241,7 @@ func TestPresenceFileMtimeCannotReviveAnExpiredClaim(t *testing.T) {
 	path := filepath.Join(dir, presenceName)
 	desk := &presenceDesk{agent: agent, path: path}
 	desk.write()
-	now := desk.refreshed.Add(presenceWindow + time.Second)
+	now := desk.refreshed.Add(presenceIdleWindow + time.Second)
 	if err := os.Chtimes(path, now, now); err != nil {
 		t.Fatal(err)
 	}

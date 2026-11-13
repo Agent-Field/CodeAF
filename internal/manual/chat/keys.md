@@ -49,13 +49,23 @@ A computer removed from your paired devices keeps saving this chat locally.
 Quitting stays quiet and does not try a final relay save; the removal notice
 already explains that the chat stays on this computer until you pair it again.
 
+## The line the terminal prints after you quit, when another device took the chat over
+
+If codeaf learns while closing that another device took the chat, the restored
+terminal says `<device> continued this chat; this window now only shows it`
+once. It keeps this notice even when the full-screen chat has already closed.
+
 ## Quitting while the sync service is slow — waiting for a final save
+
+Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
+
+A removed computer quits quietly; it no longer says it is saving to your other devices.
 
 The screen closes after at most one second while a slow close finishes. The
 launcher keeps its connection open for the final publish and release before it exits.
 A successful quit with nothing waiting stays quiet. While a sync save waits, the restored terminal says `saving this chat to your other devices…`. After about three seconds, a confirmed local save adds `still saving — ctrl+c leaves it saved here`; without that confirmation, it says `still saving on this computer — ctrl+c leaves the written turns here`.
 
-The launcher waits up to 30 seconds for the final saving reply. If only upload is outstanding, the successful receipt is `saved here; it reaches your other devices when the sync service at 127.0.0.1:8901 answers`, using your service's host. Ctrl+c during this restored-terminal wait exits promptly with the same receipt when local saving is confirmed. Without confirmation, it says `saving on this computer has not finished; its written turns stay here` and exits unsuccessfully. Only a failed local write says `codeaf could not save this chat`.
+The launcher waits up to 30 seconds for the final saving reply. If only upload is outstanding, the successful receipt is `saved here; it reaches your other devices when the sync service at 127.0.0.1:8901 answers`, using your service's host. If that pending upload was refused because storage is off, the successful receipt is `saved here; sync storage is off for this account, so it stays on this computer`. Ctrl+c during this restored-terminal wait exits promptly with the same receipt when local saving is confirmed. Without confirmation, it says `saving on this computer has not finished; its written turns stay here` and exits unsuccessfully. Only a failed local write says `codeaf could not save this chat`.
 
 ## One Enter sends — checking which computer holds this chat
 
@@ -578,7 +588,9 @@ second `esc` inside half a second is the rewind's door and `ctrl+c` at rest is t
 out, so neither is free — and you do not need one. The `esc` you already pressed started the
 10-second window, and when it runs out codeaf stops waiting on its own.
 
-**What happens if it will not stop: at 10 seconds** codeaf detaches from the turn: the waits codeaf holds are
+## What happens if it will not stop
+
+**At 10 seconds** codeaf detaches from the turn: the waits codeaf holds are
 ended and whatever request was still open to the model is aborted. A wait that ignores
 being cancelled — a command whose output a grandchild is still holding, say — may run on
 behind the detached turn; what detaching guarantees is that NOTHING IS WAITING FOR IT any
@@ -594,7 +606,7 @@ by then, so a turn nobody waited for is never a turn nobody can account for. Wha
 is already on your spending page either way: codeaf counts money as each request is
 answered rather than when a turn ends.
 
-**You should almost never see this.** Ten seconds is well above the longest ordinary
+**You should almost never see this happen.** Ten seconds is well above the longest ordinary
 letting-go, so the deadline only fires on a turn that was genuinely not going to end. If
 something is wedged even further down, `ctrl+c` at rest still quits and takes the whole
 process with it — but you no longer have to reach for that just to get your prompt back.
@@ -918,7 +930,7 @@ message box, **home's box at the foot of the screen**, the errand pane on home,
 the `something else…` box on a question's own answer row, the settings filter and
 its value editor, the task page's filter, the rewind search, and every filterable
 overlay — the model picker, `/resume`, `/files`, the connect key box, the
-connections panel — and the Memories tab's filter and line editor.
+connections panel — and the Memory tab's filter and line editor.
 
 | Chord | Everywhere |
 |---|---|
@@ -1001,6 +1013,11 @@ a browser.
 
 Your unsent sentence, caret and attachments stay with the conversation. The
 conversation remains in `alt+k` and Home, and reopening restores its tab and draft.
+After a restart, opening from Home or the switcher also restores the saved composer.
+An untouched composer cannot passively replace a saved draft it has not restored.
+Editing, sending or deliberately clearing your own words saves that action;
+sent words do not return as a draft. A blocked passive save includes
+`saved draft has not been restored` in its explanation.
 
 Closing the active tab selects the most recently used remaining open tab. With
 none left, the window goes **Home** with the current session behind it.
@@ -1293,7 +1310,8 @@ file you can read sits beside it.
 - **If it cannot be written, you are told**: `this draft could not be saved`, with the
   reason. A record codeaf cannot read — a later build's, or a half-finished write — is
   never overwritten either; it is moved aside as `<name>.json.unreadable-<number>` and
-  the new one written in its place.
+  the new one written in its place. Editing a new composer preserves that unreadable
+  record beside your new words too.
 - **A task page's line follows its conversation, not the window.** Open that
   conversation tomorrow in a different window and its lines come with it; open a
   different conversation and they are neither shown to you nor deleted.
@@ -2105,7 +2123,7 @@ Only in a conversation, with none of those claiming it and the box empty, is it 
 
 Two claims on `tab` were withdrawn when the places arrived, and both moved to a key that
 points the way they go: **the settings panel** changed its own section with `tab`, and now
-uses `←` and `→` alone; **the memory panel** changed shelf with `tab`, and the Memories tab
+uses `←` and `→` alone; **the memory panel** changed shelf with `tab`, and the Memory tab
 that replaced it has no shelf key at all — `→` opens a group and `←` folds it, as on the
 Activity tab.
 
@@ -2432,11 +2450,11 @@ to filter, `↑↓` to walk, `enter` to use it, `esc` to go back to the layer.
 inside a conversation, and `/home` opens it too.
 
 **There is also a number: `alt+1` (`opt+1` on a Mac).** Home is the first of the eight words on
-the top line, `home  chats  AI teams  activity  memories  automations  spend  settings`, and
+the top line, `home  chats  AI teams  activity  memory  automations  spend  settings`, and
 `alt+1` opens it. **The other numbers do not follow the bar's order** — they kept the
 destinations they had before the bar was regrouped: `alt+2` AI teams, `alt+3` chats,
-`alt+4` activity, `alt+5` spend, `alt+6` settings, `alt+7` automations, `alt+8` memories. So
-memories is the fifth word on the bar and `alt+8`, and automations, the sixth, is `alt+7`.
+`alt+4` activity, `alt+5` spend, `alt+6` settings, `alt+7` automations, `alt+8` Memory. So
+Memory is the fifth word on the bar and `alt+8`, and automations, the sixth, is `alt+7`.
 `alt+.` draws every place with its number, and `/help` lists them the same way, digit by
 digit. `alt+3` is `chats`, the way back to the conversation in front (a new chat when none
 is open); it is not a room, so `tab` steps over it. Hold

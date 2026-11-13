@@ -345,3 +345,31 @@ func TestStopKeepsTheLastPaidBriefWhenAnEarlierWriterReturns(t *testing.T) {
 		t.Fatalf("stopped brief did not retain its paid content and stop reason: %+v", it)
 	}
 }
+
+// A STEP THAT FAILED BEFORE IT REPORTED IS STILL EVIDENCE: a remote step can
+// end failed with no round and no result, and the job's failure is then the
+// only record of that try. The writer reads it as the try's summary, and a
+// brief citing it is kept rather than refused as naming nothing the job has
+// (the fifth live A+B run's job 78 never had its brief updated for this).
+func TestAFailedStepWithNoResultIsItsFailure(t *testing.T) {
+	it := writerJob()
+	it.Stream.Phases[4] = Phase{Name: "proof", Kind: StageChat, State: PhaseFailed, Round: 1}
+	it.Failure = &Failure{Step: "proof", Code: CodeToolError, Detail: "9 of 10 checks passed; no pull request when checked", Next: FailureStopped}
+	var latest string
+	for _, s := range BriefInputOf(it).Steps {
+		if s.Step == "proof" && s.Latest {
+			latest = s.Summary
+		}
+	}
+	if latest != it.Failure.Detail {
+		t.Fatalf("proof's latest summary = %q", latest)
+	}
+	d := BriefDraft{Verdict: "Not done. 9 of 10 checks passed.", VerdictEvidence: evs("proof", 1, "summary")}
+	if v, _, fault := CheckBriefDraft(it, draft(t, d)); fault != "" || v.Verdict == "" {
+		t.Fatalf("verdict %q refused: %q", v.Verdict, fault)
+	}
+	it.Failure.Step = "publish"
+	if _, _, fault := CheckBriefDraft(it, draft(t, d)); fault == "" {
+		t.Fatal("a failure naming another step stood as this step's evidence")
+	}
+}

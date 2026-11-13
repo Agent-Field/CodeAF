@@ -66,6 +66,8 @@ type Batcher struct {
 	beatSent  uint32     // the pending count the directory last heard, from a beat or a publish
 	upload    uploaded   // how far the upload of pending turns has got
 	beatUp    uploaded   // the upload progress the directory last heard
+	working   bool       // a turn is running here now
+	toldWork  bool       // the working flag the directory last heard from a beat
 	closing   bool       // The closing caller owns subsequent publishes and release.
 
 	refusedSince time.Time // when the present run of refusals began; zero while the relay is answering
@@ -78,6 +80,7 @@ type Batcher struct {
 	work  wakeup // tells the flush loop a turn was noted, so an upload can start at once
 	idle  wakeup // asks the flush loop to upload now: the agent stopped to wait for the person
 	freed wakeup // ends a halt: something the relay refused for has changed
+	turns wakeup // a turn started or ended, so the directory hears it now and not at the next tick
 
 	flushMu sync.Mutex // one flush, branch or close at a time
 	backoff time.Duration
@@ -142,9 +145,23 @@ func (b *Batcher) Note(t cellstore.Turn) {
 // never waits, so it is safe to call from the turn's own goroutine.
 func (b *Batcher) Idle() { b.idle.fire() }
 
+// Working says whether a turn is running here. The directory hears it with the
+// next beat, which goes at once when it changes, so another computer can say
+// the chat is working here rather than merely open. It never waits, so it is
+// safe to call from the turn's own goroutine.
+func (b *Batcher) Working(on bool) {
+	b.mu.Lock()
+	changed := b.working != on
+	b.working = on
+	b.mu.Unlock()
+	if changed {
+		b.turns.fire()
+	}
+}
+
 // Freed says something a refusal waited on has changed (space was freed on the
-// relay, say), so a halted chat tries again now instead of waiting for a
-// reopen. It never waits, so it is safe to call from any goroutine.
+// relay, say), so a halted chat tries again now instead of waiting for its
+// hourly retry. It never waits, so it is safe to call from any goroutine.
 func (b *Batcher) Freed() { b.freed.fire() }
 
 // wakeup carries at most one pending request from a caller to a loop. The zero
@@ -266,6 +283,10 @@ func (b *Batcher) beats(ctx context.Context) {
 			handled <- struct{}{}
 		case <-held.changes():
 			b.socketMoved(ctx, &held)
+		case <-b.turns.ch():
+			if !b.toldWorking() {
+				b.beat(ctx)
+			}
 		case <-ctx.Done():
 			return
 		}
@@ -301,7 +322,7 @@ func (b *Batcher) tick(ctx context.Context, held *holding) {
 	if b.takePublished() {
 		return
 	}
-	if !held.covers(b.view, b.toldPending) {
+	if !held.covers(b.view, b.toldPending) || !b.toldWorking() {
 		b.beat(ctx)
 	}
 }
@@ -321,6 +342,18 @@ func (b *Batcher) toldPending(n uint32) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.beatSent == n && b.beatUp == b.uploadFor(n)
+}
+
+// toldWorking says whether the directory has heard all it should of the working
+// flag. A turn starting is told at once. A turn ending is told only once its
+// last turns are published: ANOTHER COMPUTER READS "NOT WORKING" AS "TAKE IT
+// NOW", and a take that names the save point before the turn's own publish is
+// refused as superseded the moment that publish lands. Until then the flag
+// stays on, and the publish that ends pending wakes the beat that clears it.
+func (b *Batcher) toldWorking() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.toldWork == b.working || !b.working && len(b.noted) > 0
 }
 
 func (b *Batcher) tell(n uint32) {
@@ -518,7 +551,20 @@ func (b *Batcher) drain(ctx context.Context) error {
 }
 
 func (b *Batcher) publish(ctx context.Context, head string) error {
-	d, _, _ := b.view()
+	d, pending, stale := b.view()
+	if !stale && b.recovering(d) {
+		if err := b.heartbeat(ctx, d, pending); err != nil {
+			b.renewalResult(d, err)
+			if errors.Is(err, ErrSuperseded) {
+				b.setStale()
+				if b.OnLost != nil {
+					b.OnLost()
+				}
+				return b.resolve(ctx)
+			}
+			return err
+		}
+	}
 	ex, err := b.Publisher.publish(ctx, &d, head, b.info())
 	b.renewalResult(d, err)
 	if errors.Is(err, ErrSuperseded) {
@@ -534,9 +580,30 @@ func (b *Batcher) publish(ctx context.Context, head string) error {
 	b.adopt(d)
 	b.setFlag(&b.published, true)
 	b.tell(0) // a publish always carries the newest turn, so nothing is pending
-	b.recovered()
+	b.recovered(true)
 	turns := b.durable(head)
+	b.turns.fire() // a turn's end waits for this publish before it is told
 	b.emit(Flush{Head: head, Turns: turns, Frames: len(ex.Frames), Objects: ex.Objects, Bytes: ex.Bytes})
+	return nil
+}
+
+// heartbeat renews an existing hold before a recovering publish. An outage
+// longer than the lease TTL expires the stored hold on the relay while leaving
+// the fence unchanged when no other computer took the chat; renewing first lets
+// PublishTo keep its strict expired-hold refusal without branching an
+// un-displaced outage turn.
+func (b *Batcher) heartbeat(ctx context.Context, d Driving, pending uint32) error {
+	up := b.beatUpload(pending)
+	b.mu.Lock()
+	working := b.working || b.toldWork && len(b.noted) > 0
+	b.mu.Unlock()
+	_, err := b.Publisher.Dir.Heartbeat(ctx, d.ID(), directory.Beat{Fence: d.Fence, Pending: pending, UploadSent: uint64(up.sent), UploadTotal: uint64(up.total), Working: working})
+	if err != nil {
+		return refusal(err)
+	}
+	b.mu.Lock()
+	b.beatSent, b.beatUp, b.toldWork = pending, up, working
+	b.mu.Unlock()
 	return nil
 }
 
@@ -550,14 +617,19 @@ func (b *Batcher) beat(ctx context.Context) {
 		return
 	}
 	up := b.beatUpload(pending)
-	_, err := b.Publisher.Dir.Heartbeat(ctx, d.ID(), directory.Beat{Fence: d.Fence, Pending: pending, UploadSent: uint64(up.sent), UploadTotal: uint64(up.total)})
+	b.mu.Lock()
+	// Progress and lease beats must preserve the same end-of-turn ordering
+	// as turn-change beats while the final publication is still pending.
+	working := b.working || b.toldWork && len(b.noted) > 0
+	b.mu.Unlock()
+	_, err := b.Publisher.Dir.Heartbeat(ctx, d.ID(), directory.Beat{Fence: d.Fence, Pending: pending, UploadSent: uint64(up.sent), UploadTotal: uint64(up.total), Working: working})
 	b.renewalResult(d, err)
 	switch {
 	case err == nil:
 		b.mu.Lock()
-		b.beatSent, b.beatUp = pending, up
+		b.beatSent, b.beatUp, b.toldWork = pending, up, working
 		b.mu.Unlock()
-		b.recovered()
+		b.recovered(false)
 	case errors.Is(err, directory.ErrFenceStale):
 		b.lost(ctx, d)
 	default:
@@ -758,10 +830,14 @@ func (b *Batcher) now() time.Time {
 	return time.Now()
 }
 
-// recovered notes that the relay answered, so the next refusal is news again.
-func (b *Batcher) recovered() {
+// A directory heartbeat cannot end an upload-permission refusal episode.
+// Only a successful upload proves that storage has recovered.
+func (b *Batcher) recovered(upload bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	if !upload && b.told == wireauth.ErrStorageOff.Error() {
+		return
+	}
 	b.refusedSince, b.told = time.Time{}, ""
 }
 

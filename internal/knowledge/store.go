@@ -54,8 +54,9 @@ var consentViews sync.Map
 
 type consentView struct {
 	mu             sync.Mutex
+	reading        chan struct{}
 	checked        time.Time
-	enabled        bool
+	readable       bool
 	since          time.Time
 	readGeneration uint64
 	generation     atomic.Uint64
@@ -95,9 +96,11 @@ func (v *Vault) ConfirmConsent() (enabled bool, since time.Time) {
 // consent answers from the shared view while it is younger than maxAge and no
 // consent write of this process came after it; maxAge 0 always reads.
 func (v *Vault) consent(maxAge time.Duration) (enabled bool, since time.Time) {
-	// The setting is read for every memory step, independently of cached metadata.
+	// A failed metadata read must not admit sources or advance their cursors.
+	// Successful reads still check the live setting on every memory step.
 	defer func() {
-		enabled = v.Enabled()
+		learning := v.Enabled()
+		enabled = enabled && learning
 		if !enabled {
 			since = time.Time{}
 		} else if since.IsZero() {
@@ -105,27 +108,44 @@ func (v *Vault) consent(maxAge time.Duration) (enabled bool, since time.Time) {
 		}
 	}()
 	view := v.captureConsentView()
-	view.mu.Lock()
-	defer view.mu.Unlock()
-	now := consentNow()
-	generation := view.generation.Load()
-	if maxAge > 0 && !view.checked.IsZero() && view.readGeneration == generation && now.Sub(view.checked) < maxAge {
-		return view.enabled, view.since
+	for {
+		view.mu.Lock()
+		now := consentNow()
+		generation := view.generation.Load()
+		if maxAge > 0 && !view.checked.IsZero() && view.readGeneration == generation && now.Sub(view.checked) < maxAge {
+			enabled, since = view.readable, view.since
+			view.mu.Unlock()
+			return enabled, since
+		}
+		if reading := view.reading; reading != nil {
+			view.mu.Unlock()
+			<-reading
+			continue
+		}
+		reading := make(chan struct{})
+		view.reading = reading
+		view.mu.Unlock()
+
+		// SQLite can wait for another writer. Keep that wait outside the
+		// view lock so fresh answers remain available and pending readers
+		// share the result through a wait that also lets fake clocks advance.
+		value, err := v.state("config")
+		if err == nil {
+			enabled = true
+			since, _ = time.Parse(time.RFC3339Nano, textValue(value["created_at"]))
+		}
+		view.mu.Lock()
+		view.checked, view.readable, view.since = now, enabled, since
+		view.readGeneration = generation
+		view.reading = nil
+		close(reading)
+		view.mu.Unlock()
+		return enabled, since
 	}
-	// Keep the lock across the read so simultaneous tickers share failures too.
-	value, err := v.state("config")
-	if err == nil {
-		enabled = flag(value["enabled"])
-		since, _ = time.Parse(time.RFC3339Nano, textValue(value["created_at"]))
-	}
-	view.checked, view.enabled, view.since = now, enabled, since
-	view.readGeneration = generation
-	return enabled, since
 }
 
 func (v *Vault) forgetConsent() {
-	// A reader may hold the view lock while SQLite waits for our write to end.
-	// Invalidation must never wait for that reader, including during a worker pass.
+	// Invalidation does not wait for an in-flight read, including during a worker pass.
 	v.captureConsentView().generation.Add(1)
 }
 

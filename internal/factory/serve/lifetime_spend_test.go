@@ -16,24 +16,38 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
 )
 
-func TestBringBackKeepsLifetimeMoney(t *testing.T) {
+// BRING BACK STARTS THE JOB'S MONEY AGAIN (the owner's decision of 2026-11-09):
+// the fresh job reads $0 with its whole budget ahead of it, the factory's
+// spending still counts what the old runs cost, and the old run's report
+// receipts are marked, so usage settling late cannot be booked on the job.
+func TestBringBackStartsTheJobsMoneyAgain(t *testing.T) {
 	for _, stream := range []*factory.Stream{nil, {Spent: .138}} {
 		f := newV2Jobs(t)
-		it := f.create(t, factory.Item{Title: "Keep money", State: factory.StateDismissed, DoneHow: "dropped", ChatSpent: .03, Stream: stream})
+		it := f.create(t, factory.Item{Title: "Fresh money", State: factory.StateDismissed, DoneHow: "dropped", Cap: 1, ChatSpent: .03, SpentBefore: .5, MemorySpent: .01,
+			ReportReceipts: []factory.WorkerReportReceipt{{Digest: "old-report", Lease: "old-lease"}}, Stream: stream})
 		f.post(t, it, "restore", "", 200)
 		saved, err := f.st.Get(it.ID)
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := .03
+		want := .53
 		if stream != nil {
-			want = .168
+			want = .668
 		}
-		if got := factory.JobLifetimeSpent(saved); math.Abs(got-want) > 1e-9 {
-			t.Fatalf("bring back lifetime = %g, want %g", got, want)
+		if got := factory.JobLifetimeSpent(saved); got != 0 || saved.SpentBefore != 0 || saved.MemorySpent != 0 {
+			t.Fatalf("bring back left money on the job: lifetime %g before %g memory %g", got, saved.SpentBefore, saved.MemorySpent)
 		}
-		if saved.Stream != nil || saved.ChatSpent != 0 {
-			t.Fatal("work was not cleared")
+		if saved.Stream != nil || saved.ChatSpent != 0 || len(saved.ReportReceipts) != 1 || !saved.ReportReceipts[0].Archived || !saved.ReportReceipts[0].Cleared {
+			t.Fatalf("work was not cleared: %+v", saved)
+		}
+		if j := f.read(t, it); j.Cost != 0 || j.LifetimeCost != 0 || j.Budget != 1 {
+			t.Fatalf("the fresh job reads cost %g lifetime %g budget %g, want 0, 0 and its budget of 1", j.Cost, j.LifetimeCost, j.Budget)
+		}
+		if math.Abs(saved.SpentCleared-want) > 1e-9 {
+			t.Fatalf("cleared = %g, want %g", saved.SpentCleared, want)
+		}
+		if usd, in := factory.SpentIn(saved, saved.Created.Add(-time.Hour), saved.Created.Add(time.Hour)); !in || math.Abs(usd-want) > 1e-9 {
+			t.Fatalf("the factory's spending counts %g (%v) for the job, want %g", usd, in, want)
 		}
 	}
 }
@@ -267,12 +281,17 @@ func TestArchivedLifetimeSettlementSurvivesClearedOrReplacedMachine(t *testing.T
 			path := fmt.Sprintf("/v1/workers/recover/%d", it.ID)
 			var first api.WorkerRecovered
 			f.request(t, "POST", path, worker.Credential, body, 200, &first)
-			wantRun := 0.0
+			// A JOB BROUGHT BACK IS FRESH: late usage of the run it dropped
+			// settles in the factory's spending, and the job still reads $0.
+			wantRun, wantLifetime := 0.0, 0.0
 			if mode == "restart on another machine" {
-				wantRun = .02
+				wantRun, wantLifetime = .02, .07
 			}
-			if !first.AlreadyApplied || math.Abs(first.Job.LifetimeCost-(wantRun+.05)) > 1e-9 || first.Job.Cost != wantRun {
-				t.Fatalf("late spend: lifetime=%g run=%g replay=%v, want %g/%g/true", first.Job.LifetimeCost, first.Job.Cost, first.AlreadyApplied, wantRun+.05, wantRun)
+			if !first.AlreadyApplied || math.Abs(first.Job.LifetimeCost-wantLifetime) > 1e-9 || first.Job.Cost != wantRun {
+				t.Fatalf("late spend: lifetime=%g run=%g replay=%v, want %g/%g/true", first.Job.LifetimeCost, first.Job.Cost, first.AlreadyApplied, wantLifetime, wantRun)
+			}
+			if saved, err := f.st.Get(it.ID); err != nil || (mode == "drop and bring back") != (math.Abs(saved.SpentCleared-.05) < 1e-9) {
+				t.Fatalf("late spend of a cleared run: the factory's cleared spending is %g: %v", saved.SpentCleared, err)
 			}
 			var stranger api.WorkerAttached
 			f.request(t, "POST", "/v1/workers/attach", "", api.WorkerAttach{Name: "stranger-machine", Machine: "stranger-machine", Handle: "sam"}, 201, &stranger)

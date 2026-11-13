@@ -154,7 +154,7 @@ func (a *Agent) admitImageMessage(ctx context.Context, user userMessage) (events
 		// happens then, not now.
 		a.mixCreationLocked(user)
 		a.steering = append(a.steering, user)
-		events := a.hub.subscribe()
+		events := a.hub.subscribePending(a.stillAskedLocked())
 		a.mu.Unlock()
 		return events, true, nil
 	}

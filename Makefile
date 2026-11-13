@@ -18,6 +18,14 @@ BUILD_DIRTY := $(shell if test -n "$$(git status --porcelain --untracked-files=n
 BUILD_AT := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 BUILDINFO := github.com/Agent-Field/codeaf/internal/buildinfo
 BUILD_STAMP := -X $(BUILDINFO).rev=$(BUILD_REV) -X $(BUILDINFO).dirty=$(BUILD_DIRTY) -X $(BUILDINFO).builtAt=$(BUILD_AT)
+# The GitHub OAuth app the first run's browser sign-in uses. Its client ID is
+# not a secret; a build without one simply has no browser sign-in (the gh
+# login and a pasted token still work). Set it from the environment or the
+# command line: make app-sidecar CODEAF_GITHUB_CLIENT_ID=Ov23li...
+CODEAF_GITHUB_CLIENT_ID ?=
+ifneq ($(strip $(CODEAF_GITHUB_CLIENT_ID)),)
+BUILD_STAMP += -X github.com/Agent-Field/codeaf/internal/factory/github.clientID=$(strip $(CODEAF_GITHUB_CLIENT_ID))
+endif
 MANUAL_TAG := codeaf_packed_manual
 
 # The packed corpora — the two manuals. Each folder is the source of truth and
@@ -141,8 +149,10 @@ SHARDS ?= $(shell count=$$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null ||
 # (scripts/one-suite.sh says why): each heavy package holds it for its whole
 # sharded run, and a `./...` run holds it for the rest of the tree as well, so
 # two sessions' tree runs still cannot stack. Focused and lighter runs stay
-# independent.
-HEAVY_PKGS := internal/tui3 internal/session
+# independent. cmd/codeaf joined them on 2026-11-05: run whole, it passed the
+# fifteen-minute package ceiling on the four-vCPU runner once pull requests into
+# app/v3 began running the gate (#2432 timed out at 900s), so it is sharded too.
+HEAVY_PKGS := internal/tui3 internal/session cmd/codeaf
 LOCKED_PKGS := ./... $(addprefix ./,$(HEAVY_PKGS)) $(addsuffix /,$(addprefix ./,$(HEAVY_PKGS)))
 FRESH_FLAG := $(if $(filter $(LOCKED_PKGS),$(PKGS)),-count=1)
 SUITE_LOCK := ./scripts/one-suite.sh
@@ -228,6 +238,7 @@ test-tooling:
 	bash scripts/shard-test_test.sh
 	bash scripts/relay-fingerprint_test.sh
 	bash scripts/relay-wrangler-config_test.sh
+	bash scripts/raft-proof-footprint_test.sh
 	bash scripts/relay-deploy_test.sh
 	bash bench/canary/lib/repo_test.sh
 
@@ -387,8 +398,14 @@ demo-home: build
 clean-run: build
 	@scripts/clean-run.sh
 
+# VET ALSO COMPILES THE TESTS FOR WINDOWS. `go build` never compiles a test file,
+# so a test that calls a Unix-only symbol (syscall.Mkfifo, a helper from a
+# _unix.go file) breaks the Windows test build without any gate seeing it. The
+# Windows pass type-checks the same packages with GOOS=windows; it costs about
+# 30 seconds on a cold cache and 2 on a warm one.
 vet:
 	go vet ./...
+	GOOS=windows go vet ./...
 
 # ── the size ratchet ────────────────────────────────────────────────────────
 #
