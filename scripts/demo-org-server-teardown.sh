@@ -5,9 +5,9 @@
 # codeaf-teams-demo-* (firewall rules cannot carry labels). The server's state
 # lives on the VM's disk and goes with it. Prints each thing it deletes.
 #
-#   GCP_PROJECT  default openaf-505800
+#   GCP_PROJECT  default openaf-505800, a GCP project id that predates the rename # legacy-name
 set -euo pipefail
-project=${GCP_PROJECT:-openaf-505800}
+project=${GCP_PROJECT:-openaf-505800} # legacy-name
 filter='labels.purpose=codeaf-teams-demo'
 g() { gcloud --project "$project" --quiet "$@"; }
 

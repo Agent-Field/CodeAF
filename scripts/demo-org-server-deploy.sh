@@ -10,12 +10,12 @@
 # cannot carry labels, so they share the name prefix and the network tag), and
 # scripts/demo-org-server-teardown.sh deletes all of it.
 #
-#   GCP_PROJECT  default openaf-505800
+#   GCP_PROJECT  default openaf-505800, a GCP project id that predates the rename # legacy-name
 #   GCP_ZONE     default us-central1-a
 set -euo pipefail
 
 ref=${1:-origin/work/teams}
-project=${GCP_PROJECT:-openaf-505800}
+project=${GCP_PROJECT:-openaf-505800} # legacy-name
 zone=${GCP_ZONE:-us-central1-a}
 region=${zone%-*}
 name=codeaf-teams-demo
