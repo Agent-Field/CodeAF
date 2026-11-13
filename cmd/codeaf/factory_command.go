@@ -19,6 +19,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/canvasrpc"
 	"github.com/Agent-Field/codeaf/internal/factory/intake"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
@@ -311,6 +312,15 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 		JobPipeline: func(ctx context.Context, it factory.Item, dir string) (pipeline.File, error) {
 			return factoryJobRead(ctx, st, it, dir)
 		},
+	}
+	// An organization's canvases are kept by canvas-core, run as the
+	// `canvas` program beside this one (canvasrpc.Find). A server without it
+	// keeps none and says so once; the routes are left off rather than
+	// failing every request.
+	if bin := canvasrpc.Find(); bin != "" {
+		handlerConfig.Canvas = canvasrpc.New(bin, st.CanvasRoot())
+	} else if servedBy == "factory" {
+		fmt.Fprintf(os.Stderr, "codeaf factory serve: no `canvas` program beside codeaf, on PATH or in $%s; this organization keeps no canvases\n", canvasrpc.BinEnv)
 	}
 	if servedBy == "factory" && mode == api.FactoryTeam {
 		// THE TEAM SERVER NEVER WRITES TO GITHUB, even with a host override.
