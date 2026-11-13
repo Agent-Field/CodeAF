@@ -132,9 +132,11 @@ func legacyProjectionJSON(value any) ([]byte, error) {
 // revocation and rotation; socket presence supplies none of that authority.
 func hostedAuthority(d *decoder) ([]byte, error) {
 	identity, device, actor, cert, write := d.blob(), d.blob(), d.str(), d.str(), d.u32()
-	if d.end() != nil || write > 1 {
+	if d.end() != nil || write > 3 {
 		return nil, errFrame
 	}
+	isWrite := write&1 != 0
+	allowClient := write&2 != 0
 	var root cs.IdentityRec
 	var rec cs.Device
 	if cs.Decode(identity, &root) != nil || len(device) > 0 && cs.Decode(device, &rec) != nil {
@@ -145,7 +147,9 @@ func hostedAuthority(d *decoder) ([]byte, error) {
 		code = cs.Unauthorized
 	} else if rec.Revoked {
 		code = cs.Revoked
-	} else if write == 1 && root.Rotation != nil {
+	} else if rec.Kind == "client" && !allowClient {
+		code = cs.Unauthorized
+	} else if isWrite && root.Rotation != nil {
 		code = cs.Rotated
 	}
 	e := encoder{}

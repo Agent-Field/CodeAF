@@ -34,7 +34,37 @@ type v1Certificate struct {
 	Signature string `json:"sig"`
 }
 
-const V1SkewMillis int64 = 5 * 60 * 1000
+const (
+	V1SkewMillis     int64 = 5 * 60 * 1000
+	MaxClientMethods       = 64
+	MaxClientName          = 256
+)
+
+func validClientDeviceID(s string) bool {
+	if len(s) != 36 || !strings.HasPrefix(s, "dev_") {
+		return false
+	}
+	for i := 4; i < len(s); i++ {
+		c := s[i]
+		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+func validFabricName(s string) bool {
+	if len(s) == 0 || len(s) > 128 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if !(c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '_' || c == '.' || c == '-') {
+			return false
+		}
+	}
+	return true
+}
 
 // V1Command translates only the request the device actually signed. It never
 // reads a new holder to manufacture an expectation or signs on the device's behalf.
@@ -262,6 +292,58 @@ func (p V1Request) Mutation() (Mutation, error) {
 		}
 		return Mutation{Rotate: &RotateRequest{Op: v.Op, GraceMS: v.GraceMS}}, nil
 	}
+	if strings.HasPrefix(path, "/v1/clients/") {
+		s := strings.Split(strings.TrimPrefix(path, "/v1/clients/"), "/")
+		if len(s) != 1 || p.Method != "PUT" {
+			return bad()
+		}
+		id, err := v1Segment(s[0])
+		if err != nil || !validClientDeviceID(id) {
+			return bad()
+		}
+		var in struct {
+			Cert    *v1Certificate `json:"cert"`
+			Methods []string       `json:"methods"`
+			Name    string         `json:"name,omitempty"`
+		}
+		if !decode(&in, false) || in.Cert == nil || in.Methods == nil || len(in.Methods) > MaxClientMethods || len(in.Name) > MaxClientName {
+			return bad()
+		}
+		seen := map[string]bool{}
+		for _, m := range in.Methods {
+			if !validFabricName(m) || seen[m] {
+				return bad()
+			}
+			seen[m] = true
+		}
+		certRaw, err := json.Marshal(in.Cert)
+		if err != nil {
+			return bad()
+		}
+		cert := base64.RawURLEncoding.EncodeToString(certRaw)
+		if len(p.IdentityKey) == ed25519.PublicKeySize {
+			ident := IdentityRec{V: 1, Identity: IdentityID(p.IdentityKey), SigningKey: p.IdentityKey}
+			if PersonalCertificate(ident, id, cert) != nil {
+				return bad()
+			}
+		} else {
+			pub, pubErr := hex.DecodeString(in.Cert.Device)
+			sig, sigErr := hex.DecodeString(in.Cert.Signature)
+			if pubErr != nil || sigErr != nil || len(pub) != ed25519.PublicKeySize || len(sig) != ed25519.SignatureSize || in.Cert.V != 1 || in.Cert.Created < 0 || in.Cert.Created > int64(MaxSafeInteger) || DeviceIDOfKey(pub) != id {
+				return bad()
+			}
+		}
+		var methods []string
+		if len(in.Methods) > 0 {
+			methods = append([]string(nil), in.Methods...)
+		}
+		return Mutation{RegisterClient: &ClientRegistration{
+			Device:  id,
+			Cert:    cert,
+			Name:    in.Name,
+			Methods: methods,
+		}}, nil
+	}
 	s := strings.Split(strings.TrimPrefix(path, "/v1/dir/"), "/")
 	if len(s) < 2 || len(s) > 3 || path == strings.TrimPrefix(path, "/v1/dir/") {
 		return bad()
@@ -277,7 +359,7 @@ func (p V1Request) Mutation() (Mutation, error) {
 	if s[0] == "devices" {
 		if p.Method == "PUT" && verb == "" {
 			var v Device
-			if !decode(&v, false) {
+			if !decode(&v, false) || v.Kind != "" || len(v.Methods) > 0 {
 				return bad()
 			}
 			return Mutation{PutDevice: &PutDevice{ID: id, Device: v}}, nil
@@ -297,7 +379,7 @@ func (p V1Request) Mutation() (Mutation, error) {
 				Cert   string `json:"cert"`
 				Grant  string `json:"grant"`
 			}
-			if !decode(&a, false) {
+			if !decode(&a, false) || a.Device.Kind != "" || len(a.Device.Methods) > 0 {
 				return bad()
 			}
 			var cert v1Certificate
@@ -404,6 +486,11 @@ func normalizeV1Mutation(m Mutation) Mutation {
 		}
 		v.Publish.FrameHints = boundedFrameHints(v.Publish.FrameHints)
 		m.Publish = &v
+	}
+	if m.RegisterClient != nil && m.RegisterClient.Methods != nil && len(m.RegisterClient.Methods) == 0 {
+		v := *m.RegisterClient
+		v.Methods = nil
+		m.RegisterClient = &v
 	}
 	return m
 }
