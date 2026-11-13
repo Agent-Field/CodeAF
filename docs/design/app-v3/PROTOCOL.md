@@ -241,7 +241,7 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.access_sign_in` | `in.FactoryAccessParams` | `FactoryAccess` |
 | `factory.activity` | `in.FactoryActivityParams` | `FactoryActivity` |
 | `factory.attach` | `in.FactoryAttachParams` | `FactoryConnection` |
-| `factory.capabilities` | `in.Empty` | `FactoryCapabilities` |
+| `factory.capabilities` | `in.FactoryCapabilitiesParams` | `FactoryCapabilities` |
 | `factory.intake_add` | `in.FactoryIntakeParams` | `inbox.Result` |
 | `factory.features` | `in.FactoryRef` | `FactoryFeatures` |
 | `factory.detach` | `in.FactoryRef` | `Empty` |
@@ -446,14 +446,24 @@ Factories without the separate-title capability retain their prior behavior.
 `create_key`, `create_split_from` and `job_context` (the separate attachment write
 below). Each is true when the engine carries that feature end to end; an older
 engine omits it or answers false. These flags describe the engine; the attached
-Factory may still be older than a feature.
+Factory may still be older than a feature. `create_key` alone also describes one
+Factory: `factory.capabilities` takes an optional `factory`, and `create_key` is
+true only in an answer naming a Factory whose `GET /v1/features` lists
+`keyed_create` (it keeps a keyed create's answer only once the create wrote
+something). Without `factory`, or for a Factory that does not list it or cannot
+be asked, `create_key` is false. A Factory without the word keeps every keyed
+answer, a refusal or a 5xx included, for 24 hours, so the engine never sends it
+a key: it asks the Factory again on every create with a key, and to a Factory
+that does not list `keyed_create` that create answers `conflict` with
+`detail.reason: "factory_too_old"` and no create is sent. A create without a key
+is sent as before and asks nothing.
 
 | Parameter | Rule |
 | --- | --- |
 | `open_issue` | Boolean, default false. True sends `POST /v1/issues`: open one GitHub issue using only `title` and `text`, then create the job tied to its number. False sends `POST /v1/jobs` and opens no issue. |
 | `group`, `milestone` | Opaque labels, trimmed, at most 200 characters each, with no control characters. Empty means none. |
 | `budget` | Initial job budget in USD: one of the standard steps, 5, 10, 20 or 30. Recorded as a budget action before starting; a start now or later keeps it instead of taking the pipeline default. |
-| `key` | A create key of 1–128 characters from `[A-Za-z0-9._:-]`, sent only as the create request's `Idempotency-Key` header. `key: ""` is the same as no key (`omitempty`): no header is sent. |
+| `key` | A create key of 1–128 characters from `[A-Za-z0-9._:-]`, sent only as the create request's `Idempotency-Key` header, and only to a Factory that lists `keyed_create`. `key: ""` is the same as no key (`omitempty`): no header is sent. |
 | `split_from` | Integer at least 1, naming a job held by the same Factory that the caller can see. Stores the job this new job was split from. An explicit zero or negative number is `bad_params` before sending. |
 
 The Factory stores group and milestone outside the description.
@@ -482,11 +492,11 @@ cannot see, stays `not_found` with the Factory's words. A 501 stays `engine` wit
 their existing mapping. A timeout or 5xx stays `uncertain`.
 
 The reply is unchanged: `FactoryJobActed` with `action: "create"`, `job` and
-optional `current`. Within 24 hours, a resend with the same key from the same
-caller never makes a second job or issue on a Factory that keeps keys; a
-different key creates a separate job. After an `uncertain` create, resend the
-same key, never a new one, and if the answer is still uncertain read the queue
-before trying again. With none of the new fields, the route, body and absent
+optional `current`. On a Factory that lists `keyed_create`, a resend with the
+same key within 24 hours does not make a second job or issue; a different key
+creates a separate job. After an `uncertain` create, resend the same key, never
+a new one, and if the answer is still uncertain read the queue before trying
+again. With none of the new fields, the route, body and absent
 idempotency header are unchanged.
 
 

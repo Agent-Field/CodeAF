@@ -7,8 +7,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
+	"net/http/httputil"
+	"net/url"
 	"reflect"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -16,18 +20,83 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 )
 
-// E1: factory.capabilities announces create extras and the separate context write.
+// E1: factory.capabilities announces create extras and the separate context
+// write. create_key alone also speaks for one Factory: it is true only in an
+// answer about a named Factory whose GET /v1/features lists keyed_create, since
+// an older one keeps every keyed answer, refusals and 5xx included, for a day.
 func TestAppFactoryCreateCapabilities(t *testing.T) {
-	w := newFactoryWire(t, testFactoryHub(t))
-	var got map[string]any
-	w.must("factory.capabilities", map[string]any{}, &got)
-	for _, flag := range []string{"create_issue", "create_group", "create_budget", "job_context", "create_key"} {
-		if got[flag] != true {
-			t.Errorf("%s = %v", flag, got[flag])
+	keyed := startStub(t, featuresStub(`{"features":["keyed_create","group_policy"]}`, http.StatusOK))
+	plain := startStub(t, featuresStub(`{"features":["group_policy","waits_on"]}`, http.StatusOK))
+	older := startStub(t, featuresStub(`{"error":"`+api.EndpointNotFound+`"}`, http.StatusNotFound))
+	broken := startStub(t, featuresStub(`{"error":"store is busy"}`, http.StatusInternalServerError))
+	hub := testFactoryHub(t)
+	b, keyedConn := attachStub(t, hub, keyed, actionTestCredential)
+	ids := map[string]string{"keyed": keyedConn.ID}
+	for name, s := range map[string]*stubFactory{"plain": plain, "older": older, "broken": broken} {
+		conn, err := b.FactoryAttach(context.Background(), s.srv.URL, actionTestCredential)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids[name] = conn.ID
+	}
+	w := wireOver(t, b)
+	for _, c := range []struct {
+		name, factory string
+		key           bool
+	}{
+		{"no factory named", "", false},
+		{"a factory that says keyed_create", ids["keyed"], true},
+		{"a factory that does not say it", ids["plain"], false},
+		{"a factory older than /v1/features", ids["older"], false},
+		{"a factory whose features cannot be read", ids["broken"], false},
+		{"a factory this engine does not hold", "factory_nope", false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			params := map[string]any{}
+			if c.factory != "" {
+				params["factory"] = c.factory
+			}
+			var got map[string]any
+			w.must("factory.capabilities", params, &got)
+			for _, flag := range []string{"create_issue", "create_group", "create_budget", "job_context"} {
+				if got[flag] != true {
+					t.Errorf("%s = %v", flag, got[flag])
+				}
+			}
+			if got["create_key"] != c.key {
+				t.Fatalf("create_key = %v, want %v", got["create_key"], c.key)
+			}
+			if _, exists := got["create_context"]; exists {
+				t.Fatal("obsolete create_context capability")
+			}
+		})
+	}
+}
+
+// stubRequests is how many requests the stub saw that start with prefix.
+func stubRequests(s *stubFactory, prefix string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := 0
+	for _, r := range s.requests {
+		if strings.HasPrefix(r, prefix) {
+			n++
 		}
 	}
-	if _, exists := got["create_context"]; exists {
-		t.Fatal("obsolete create_context capability")
+	return n
+}
+
+// featuresStub answers GET /v1/features with body and status and refuses
+// everything else, so a test sees any request it did not expect.
+func featuresStub(body string, status int) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/v1/features" {
+			w.WriteHeader(status)
+			io.WriteString(w, body)
+			return
+		}
+		w.WriteHeader(http.StatusTeapot)
+		io.WriteString(w, `{"error":"unexpected request"}`)
 	}
 }
 
@@ -39,7 +108,11 @@ func TestAppFactoryCreateRoutesBodyAndKey(t *testing.T) {
 			stub := startStub(t, func(w http.ResponseWriter, r *http.Request) {
 				if r.Method == http.MethodGet {
 					if r.Header.Get("Idempotency-Key") != "" {
-						t.Error("key leaked to the follow-up read")
+						t.Error("key leaked to a read")
+					}
+					if r.URL.Path == "/v1/features" {
+						io.WriteString(w, `{"features":["keyed_create"]}`)
+						return
 					}
 					io.WriteString(w, `{"job_id":"j","version":1}`)
 					return
@@ -182,10 +255,114 @@ func TestAppFactoryCreateInvalidExtrasSendNothing(t *testing.T) {
 	}
 }
 
-// E10: a key forwarded through the real wire and store-backed Factory makes one job.
+// A CREATE KEY GOES ONLY TO A FACTORY THAT SAYS keyed_create. An older one
+// keeps every keyed answer for a day, a refusal or a 5xx included, so a draft
+// it refused once could not launch again under its key. A keyed create to it
+// is refused as too old and sends no create at all; an unkeyed create still
+// goes, and never asks the Factory what it keeps.
+func TestAppFactoryCreateKeyGoesOnlyToAFactoryThatSaysSo(t *testing.T) {
+	for _, c := range []struct {
+		name, features, code string
+		status               int
+		keyed                bool
+	}{
+		{"says keyed_create", `{"features":["group_policy","keyed_create"]}`, "", http.StatusOK, true},
+		{"does not say it", `{"features":["group_policy","waits_on"]}`, appwire.CodeConflict, http.StatusOK, false},
+		{"says nothing", `{"features":[]}`, appwire.CodeConflict, http.StatusOK, false},
+		{"older than /v1/features", `{"error":"` + api.EndpointNotFound + `"}`, appwire.CodeConflict, http.StatusNotFound, false},
+		{"cannot say now", `{"error":"store is busy"}`, appwire.CodeEngine, http.StatusInternalServerError, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			var mu sync.Mutex
+			var keys []string
+			stub := startStub(t, func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodGet && r.URL.Path == "/v1/features" {
+					w.WriteHeader(c.status)
+					io.WriteString(w, c.features)
+					return
+				}
+				if r.Method == http.MethodGet {
+					io.WriteString(w, `{"id":9,"version":1}`)
+					return
+				}
+				mu.Lock()
+				keys = append(keys, r.Header.Get("Idempotency-Key"))
+				mu.Unlock()
+				io.WriteString(w, `{"factory":{"name":"Stub"},"id":9}`)
+			})
+			b, conn := attachStub(t, testFactoryHub(t), stub, actionTestCredential)
+			wire := wireOver(t, b)
+			// A factory this engine does not hold is not_found, key or not.
+			wire.mustFail("factory.job_create", map[string]any{"factory": "factory_nope", "repo": "o/r", "title": "Fix", "key": "k"}, appwire.CodeNotFound)
+			p := map[string]any{"factory": conn.ID, "repo": "o/r", "title": "Fix", "key": "workstream:2:ws:5:draft"}
+			if c.keyed {
+				wire.must("factory.job_create", p, &appwire.FactoryJobActed{})
+				if len(keys) != 1 || keys[0] != "workstream:2:ws:5:draft" {
+					t.Fatalf("creates sent with keys %q, want one with the key", keys)
+				}
+			} else {
+				wire.mustFail("factory.job_create", p, c.code)
+				_, err := b.FactoryJobCreate(context.Background(), appwire.FactoryJobCreateParams{Factory: conn.ID, Repo: "o/r", Title: "Fix", Key: "workstream:2:ws:5:draft"})
+				if len(keys) != 0 {
+					t.Fatalf("a keyed create reached a factory that did not say keyed_create: keys %q", keys)
+				}
+				var refusal *appwire.Error
+				if c.code == appwire.CodeConflict {
+					if !errors.As(err, &refusal) || refusal.Error() != factoryTooOld().Error() {
+						t.Fatalf("refusal %v, want the too-old words", err)
+					}
+					if d, _ := refusal.Detail.(*appwire.FactoryRefusal); d == nil || d.Reason != appwire.FactoryReasonTooOld {
+						t.Fatalf("refusal detail %#v, want reason %s", refusal.Detail, appwire.FactoryReasonTooOld)
+					}
+				}
+			}
+			delete(p, "key")
+			before := stubRequests(stub, "GET /v1/features")
+			wire.must("factory.job_create", p, &appwire.FactoryJobActed{})
+			mu.Lock()
+			defer mu.Unlock()
+			if last := keys[len(keys)-1]; last != "" {
+				t.Fatalf("an unkeyed create carried key %q", last)
+			}
+			if after := stubRequests(stub, "GET /v1/features"); after != before {
+				t.Fatal("an unkeyed create asked the factory what it keeps")
+			}
+		})
+	}
+}
+
+// E10: a key forwarded through the real wire and store-backed Factory makes
+// one job when the Factory says keyed_create, and is never sent to the same
+// Factory when it does not say so. A front door adds or hides the word, so this
+// holds with this branch's Factory and with one that says it itself.
 func TestAppFactoryCreateKeyReplaysJobNumber(t *testing.T) {
 	f := startActionFactory(t)
-	p := signedIn(t, f, 1, "alice")
+	var mu sync.Mutex
+	var keys []string
+	front := func(say bool) string {
+		target, _ := url.Parse(f.URL)
+		proxy := httputil.NewSingleHostReverseProxy(target)
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodGet && r.URL.Path == "/v1/features" {
+				words := []string{"group_policy", "waits_on"}
+				if say {
+					words = append(words, "keyed_create")
+				}
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(map[string][]string{"features": words})
+				return
+			}
+			if r.Method == http.MethodPost && r.URL.Path == "/v1/jobs" {
+				mu.Lock()
+				keys = append(keys, r.Header.Get("Idempotency-Key"))
+				mu.Unlock()
+			}
+			proxy.ServeHTTP(w, r)
+		}))
+		t.Cleanup(srv.Close)
+		return srv.URL
+	}
+	p := signedInAt(t, f, front(true), 1, "alice")
 	params := map[string]any{"factory": p.conn.ID, "repo": "acme/api", "title": "Fix", "key": "k1"}
 	first := p.act2(t, "factory.job_create", params)
 	second := p.act2(t, "factory.job_create", params)
@@ -201,5 +378,15 @@ func TestAppFactoryCreateKeyReplaysJobNumber(t *testing.T) {
 	items, err = f.st.List()
 	if err != nil || len(items) != 2 || third.Job == first.Job {
 		t.Fatalf("different key: jobs=%d number=%d err=%v", len(items), third.Job, err)
+	}
+	if len(keys) != 3 || keys[0] != "k1" || keys[2] != "k2" {
+		t.Fatalf("keys the factory got: %q", keys)
+	}
+
+	old := signedInAt(t, f, front(false), 2, "bob")
+	msg, refusal := old.refused(t, "factory.job_create", map[string]any{"factory": old.conn.ID, "repo": "acme/api", "title": "Fix", "key": "k3"}, appwire.CodeConflict)
+	items, err = f.st.List()
+	if msg != factoryTooOld().(*appwire.Error).Message || refusal == nil || refusal.Reason != appwire.FactoryReasonTooOld || err != nil || len(items) != 2 || len(keys) != 3 {
+		t.Fatalf("a keyed create to a factory that does not say keyed_create: %q %+v, jobs=%d, keys %q", msg, refusal, len(items), keys)
 	}
 }

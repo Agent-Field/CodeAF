@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"strings"
 
@@ -28,12 +27,7 @@ func (b *appBackend) FactoryJobContextSet(ctx context.Context, p appwire.Factory
 func factoryJobContextFailure(req *http.Request, reply appFactoryReply) error {
 	if req.Method == http.MethodPost && strings.HasPrefix(req.URL.Path, "/v1/jobs/") && strings.HasSuffix(req.URL.Path, "/context") &&
 		(reply.status == http.StatusNotFound || reply.status == http.StatusMethodNotAllowed) && missingRouteBody(reply.body) {
-		err := factoryTooOld()
-		var e *appwire.Error
-		if errors.As(err, &e) {
-			e.Detail = &appwire.FactoryRefusal{Reason: appwire.FactoryReasonTooOld}
-		}
-		return err
+		return tooOldRefusal()
 	}
 	return factoryCreateFailure(req, reply)
 }

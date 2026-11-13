@@ -80,7 +80,12 @@ type FactoryCapabilities struct {
 	CreateBudget bool `json:"create_budget"`
 	// JobContext replaces context attachments before a job's first run.
 	JobContext bool `json:"job_context"`
-	// CreateKey carries the caller's create key as Idempotency-Key.
+	// CreateKey carries the caller's create key as Idempotency-Key. Unlike
+	// the other flags it also speaks for one factory: it is true only in an
+	// answer to factory.capabilities {factory} when that factory's GET
+	// /v1/features lists api.FeatureKeyedCreate. An older factory keeps every
+	// keyed answer, a refusal or a 5xx included, for a day, so the engine
+	// never sends it a key and an answer naming no factory says false.
 	CreateKey bool `json:"create_key"`
 	// CreateSplitFrom carries the job a new job was split from.
 	CreateSplitFrom bool `json:"create_split_from"`
@@ -205,6 +210,21 @@ type FactoryConnection struct {
 	// is set only on this machine's own factory while another live codeaf
 	// holds its election, so it cannot be served here yet.
 	Reason string `json:"reason,omitempty"`
+}
+
+// FactoryCapabilitiesParams is factory.capabilities' request. Factory is
+// optional: named, the answer's create_key says whether a create key may be
+// sent to that one factory; every other flag describes the engine alone.
+type FactoryCapabilitiesParams struct {
+	Factory string `json:"factory,omitempty"`
+}
+
+// FactoryCreateKeys is an engine that sends a create key, and only to a
+// factory that says keyed_create. FactoryKeepsCreateKeys asks that factory
+// now; a factory that cannot be asked is false. An engine without it never
+// answers create_key true.
+type FactoryCreateKeys interface {
+	FactoryKeepsCreateKeys(ctx context.Context, id string) bool
 }
 
 // FactoryList is factory.list's answer.
@@ -514,7 +534,7 @@ func factoryAccess(name string, call func(Factory, context.Context, string, stri
 }
 
 var factoryMethods = map[string]method{
-	"factory.capabilities": typed(func(e Engine, _ Empty) (*FactoryCapabilities, error) {
+	"factory.capabilities": typed(func(e Engine, p FactoryCapabilitiesParams) (*FactoryCapabilities, error) {
 		f, err := factoryOf(e, "factory.capabilities")
 		if err != nil {
 			return nil, err
@@ -522,6 +542,11 @@ var factoryMethods = map[string]method{
 		ctx, cancel := factoryCall()
 		defer cancel()
 		out, err := f.FactoryCapabilities(ctx)
+		// create_key is this route's to answer, for one named factory only.
+		out.CreateKey = false
+		if k, ok := f.(FactoryCreateKeys); ok && err == nil && strings.TrimSpace(p.Factory) != "" {
+			out.CreateKey = k.FactoryKeepsCreateKeys(ctx, strings.TrimSpace(p.Factory))
+		}
 		return &out, err
 	}),
 	"factory.list": typed(func(e Engine, _ Empty) (*FactoryList, error) {

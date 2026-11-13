@@ -1190,7 +1190,7 @@ and details:
 | `open_issue` | Boolean, default false: create a job without opening an issue. True opens one GitHub issue using only the title and details, then ties the job to its number. |
 | `group`, `milestone` | Opaque labels, trimmed, at most 200 characters each, with no control characters. Omitted or empty means none; labels stay outside the description and appear on job and queue reads. |
 | `budget` | Initial USD limit: 5, 10, 20 or 30. Recorded before starting and kept on an immediate or later start. Omission keeps the usual pipeline/Factory default ($5 when neither sets one). |
-| `key` | Retry key: 1–128 characters from `[A-Za-z0-9._:-]`, sent as the create's `Idempotency-Key` header. Omitted or `key: ""` sends no header. |
+| `key` | Retry key: 1–128 characters from `[A-Za-z0-9._:-]`, sent as the create's `Idempotency-Key` header, only to a Factory that lists `keyed_create` (next section). Omitted or `key: ""` sends no header. |
 
 `factory.capabilities` flags are `create_issue`, `create_group` (both labels),
 `create_budget` and `create_key`; an older engine omits a flag or reports
@@ -1201,13 +1201,29 @@ false, and the attached Factory can still be older. A 422 refusing unknown
 "This factory doesn't support that yet; nothing was changed. Update the factory
 to use it." No fallback create is sent. The Factory's own 404 "repository not
 found" (your GitHub can't see it) stays `not_found`. Invalid fields answer
-`bad_params` before a write.
+`bad_params` before a write. Context is a separate `factory.job_context_set`
+write after creation, not a create field.
 
-Within 24 hours, a resend with the same key from the same caller never makes a
-second job or GitHub issue; a new key makes a separate job. After an
+## Retry key on a job create — create_key, keyed_create, resend after uncertain
+
+A create key goes only to a Factory whose `GET /v1/features` lists
+`keyed_create`: it keeps a keyed create's answer only once the create wrote
+something, so a refusal or a failure before any write runs again under the same
+key. An older Factory keeps every keyed answer for 24 hours, refusals and
+server errors included, so a create it refused once could not run again under
+its key for a day.
+
+`factory.capabilities {factory}` answers `create_key: true` only when that
+Factory lists `keyed_create`. Without `factory`, or for a Factory that does not
+list it or cannot be asked, `create_key` is false: send no key there, and read
+the queue after an `uncertain` create. The engine asks the Factory again on
+every create with a key; to a Factory without the word such a create answers
+`conflict` with `detail.reason: "factory_too_old"`, and nothing is sent.
+
+Where the key is sent, a resend with the same key within 24 hours does not make
+a second job or GitHub issue; a new key makes a separate job. After an
 `uncertain` create, resend the same key; if it is still uncertain, read the
-queue first. Without a key there is no replay protection. Context is a separate
-`factory.job_context_set` write after creation, not a create field.
+queue first. Without a key there is no replay protection.
 
 ## Split a failed job into smaller jobs — split_from lineage
 

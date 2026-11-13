@@ -1,6 +1,7 @@
 package appwire
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -25,6 +26,7 @@ func TestCreateExtrasSchema(t *testing.T) {
 		"in.FactoryJobCreateParams":     {"open_issue", "group", "milestone", "budget", "key"},
 		"in.FactoryJobContextSetParams": {"factory", "job", "expect", "context"},
 		"in.FactoryJobContext":          {"title", "markdown", "source"},
+		"in.FactoryCapabilitiesParams":  {"factory"},
 	} {
 		for _, field := range fields {
 			if _, ok := schema.Defs[def].Properties[field]; !ok {
@@ -37,6 +39,54 @@ func TestCreateExtrasSchema(t *testing.T) {
 	}
 	if _, ok := schema.Defs["FactoryCapabilities"].Properties["create_context"]; ok {
 		t.Fatal("capabilities still advertise create_context")
+	}
+}
+
+// keyedFactoryEngine sends create keys, and only to the factory named "keyed".
+// It claims create_key on its own as well, which the route must not believe.
+type keyedFactoryEngine struct {
+	factoryEngine
+	asked []string
+}
+
+func (f *keyedFactoryEngine) FactoryCapabilities(context.Context) (FactoryCapabilities, error) {
+	return FactoryCapabilities{Remote: true, CreateKey: true}, nil
+}
+
+func (f *keyedFactoryEngine) FactoryKeepsCreateKeys(_ context.Context, id string) bool {
+	f.asked = append(f.asked, id)
+	return id == "keyed"
+}
+
+// create_key IS TRUE ONLY FOR A NAMED FACTORY THAT SAYS keyed_create: the
+// route asks the engine about that one factory, trimmed, and an answer naming
+// none, or from an engine that cannot ask, says false whatever the engine's
+// own answer claimed.
+func TestCapabilitiesAnswerCreateKeyForOneNamedFactory(t *testing.T) {
+	for _, c := range []struct {
+		params string
+		want   bool
+		asked  []string
+	}{
+		{`{}`, false, nil},
+		{`null`, false, nil},
+		{`{"factory":"  "}`, false, nil},
+		{`{"factory":" keyed "}`, true, []string{"keyed"}},
+		{`{"factory":"older"}`, false, []string{"older"}},
+	} {
+		eng := &keyedFactoryEngine{}
+		out, err := methods["factory.capabilities"].call(eng, json.RawMessage(c.params))
+		if err != nil {
+			t.Fatalf("%s: %v", c.params, err)
+		}
+		caps := out.(*FactoryCapabilities)
+		if caps.CreateKey != c.want || !caps.Remote || strings.Join(eng.asked, ",") != strings.Join(c.asked, ",") {
+			t.Fatalf("%s: create_key=%v remote=%v asked %q; want create_key=%v asked %q", c.params, caps.CreateKey, caps.Remote, eng.asked, c.want, c.asked)
+		}
+	}
+	out, err := methods["factory.capabilities"].call(&factoryEngine{}, json.RawMessage(`{"factory":"keyed"}`))
+	if err != nil || out.(*FactoryCapabilities).CreateKey {
+		t.Fatalf("an engine that cannot ask a factory answered create_key: %+v %v", out, err)
 	}
 }
 
