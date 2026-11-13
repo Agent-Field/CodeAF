@@ -64,7 +64,7 @@ func (h *appFactoryHub) followOrg(id, token string) {
 	ctx, cancel := context.WithCancel(context.Background())
 	f := &appOrgFollow{cancel: cancel, token: token}
 	h.orgFollow[id] = f
-	guard.Go("app/factory org events", func() { h.runOrgFollow(ctx, id, f) })
+	guard.Go("app/factory org events", func() { h.followOrgStream(ctx, id, f) })
 }
 
 // stopOrgFollowLocked ends id's follower, if any.
@@ -100,7 +100,7 @@ func (h *appFactoryHub) stillFollowing(id string, f *appOrgFollow) bool {
 	return !h.closed && h.orgFollow[id] == f && h.tokenLocked(id) == f.token
 }
 
-func (h *appFactoryHub) runOrgFollow(ctx context.Context, id string, f *appOrgFollow) {
+func (h *appFactoryHub) followOrgStream(ctx context.Context, id string, f *appOrgFollow) {
 	defer h.endOrgFollow(id, f)
 	first := h.orgRetry
 	if first <= 0 {
