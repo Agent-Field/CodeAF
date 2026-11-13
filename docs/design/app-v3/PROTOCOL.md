@@ -290,6 +290,12 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.org_workstream_drive` | `in.OrgWorkstreamParams` | `OrgWorkstreamDriver` |
 | `factory.org_workstream_let_go` | `in.OrgWorkstreamParams` | `Empty` |
 | `factory.org_workstream_spend` | `in.OrgWorkstreamSpendParams` | `OrgWorkstreamSpend` |
+| `factory.org_keys` | `in.OrgConn` | `OrgKeys` |
+| `factory.org_key_set` | `in.OrgKeySetParams` | `OrgKey` |
+| `factory.org_key_delete` | `in.OrgKeyParams` | `Empty` |
+| `factory.org_workstream_agent` | `in.OrgWorkstreamAgentParams` | `OrgWorkstreamAgent` |
+| `factory.org_workstream_agent_send` | `in.OrgWorkstreamAgentSendParams` | `OrgWorkstreamAgent` |
+| `factory.org_workstream_agent_stop` | `in.OrgWorkstreamParams` | `OrgWorkstreamAgent` |
 | `factory.detach` | `in.FactoryRef` | `Empty` |
 | `factory.job` | `in.FactoryJobParams` | `Job` |
 | `factory.job_approve` | `in.FactoryJobApproveParams` | `FactoryJobActed` |
@@ -569,8 +575,9 @@ workstream's agent runs. `factory.org_agent_runner` `GET /v1/settings` answers
 `{agent_runner, agent_runners}`: the operator's choice, `driver` (on the laptop of the
 person driving the workstream, their engine and model key) or `server` (on the
 organization's server with keys the operator set there), and the choices that server
-offers; an older server reads as `driver` of `[driver]`. Today every server offers only
-`driver`. `factory.org_agent_runner_set {agent_runner}` `PATCH /v1/settings` is the
+offers; an older server reads as `driver` of `[driver]`. A server offers `server` once it runs
+agents (`codeaf factory serve` does) AND the operator has given it a model key; choosing
+`server` lets go of every driver's hand. `factory.org_agent_runner_set {agent_runner}` `PATCH /v1/settings` is the
 operator's alone (`forbidden` otherwise); a choice not offered is refused by the server.
 While it is `driver`, one person at a time drives a workstream's agent through its
 driver hand: `factory.org_workstream_drive {id}` `PUT /v1/workstreams/{id}/driver` takes
@@ -583,6 +590,33 @@ answers `driver` while someone holds it. `factory.org_workstream_spend {id, usd,
 job?, chat?}` `POST /v1/workstreams/{id}/spend` posts what the driver's agent spent,
 with `key` sent as `Idempotency-Key` so a retry counts once, and answers `{spend_usd,
 budget_usd}`; the server names the spender from the session.
+
+An engine whose hello carries `org_agent_server` speaks to the organization's own
+model keys and to a workstream's agent on the server. `factory.org_keys` `GET
+/v1/org/keys`, `factory.org_key_set {provider, key}` `PUT /v1/org/keys/{provider}` and
+`factory.org_key_delete {provider}` `DELETE` are the operator's alone; the only provider
+is `openrouter`, and a key is answered back only as `{provider, last4, set_at,
+set_by}`, never whole. In `server` mode every workstream has one agent on the server,
+run with that key as an ordinary engine conversation whose one tool is
+`workstream_pages` (read the workstream and one page, write a page, make a page,
+propose a decision; no shell, files, repository or machine). `factory.org_workstream_agent
+{id, since?}` `GET /v1/workstreams/{id}/agent?since=` (`view`) answers `{id, state,
+turn?, for?, since?, entries, seq, can_talk, cannot?}`: `state` is `idle`, `working`
+(`for` is whose message) or `stopping` (`for` is who stopped it); `entries` are the
+lines after `since` (at most 200), each `{seq, at, kind, by?, text, tool?, failed?,
+turn}` with `kind` `person`, `agent`, `step` or `note`; `cannot` is the one sentence
+saying why an editor cannot talk now (another runner mode, no key, archived, budget
+spent), absent for a viewer. `factory.org_workstream_agent_send {id, text}` `POST
+.../agent/messages` (`edit`, 1–16384 bytes) answers 202 with the agent working; while
+it answers someone else the refusal is `conflict` with `detail.reason` `busy` and
+`detail.by` `@handle`. `factory.org_workstream_agent_stop {id}` `POST .../agent/stop`
+(`edit`) stops it. The agent writes as the person who asked (their rights are checked
+on every write); a page whose live document exists is not written over, the text is
+kept as a page version with `reason` `agent`; a decision is added `proposed`. What a
+turn spent is posted to the workstream's spend under the asker with `chat` `agent`.
+The server's `agent.entry {id, entry}` and `agent.state {id, state, ...}` reach those
+who can see the workstream and are relayed as `factory.org_workstream_agent
+{connection, id, entry?, state?}`.
 
 The event `factory.org_changed` `{connection, kind, id}` says a team or workstream
 changed on an organization's server, so a window showing that organization reads it
@@ -1991,6 +2025,7 @@ and the reply is empty.
 | `factory.jobs_changed` | `FactoryJobsChanged` |
 | `factory.org_changed` | `FactoryOrgChanged` |
 | `factory.org_presence` | `FactoryOrgPresence` |
+| `factory.org_workstream_agent` | `FactoryOrgWorkstreamAgent` |
 | `factory.org_doc_awareness` | `FactoryOrgDocAwareness` |
 | `factory.org_doc_closed` | `FactoryOrgDocClosed` |
 | `factory.org_doc_update` | `FactoryOrgDocUpdate` |

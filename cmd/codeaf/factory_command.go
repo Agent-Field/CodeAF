@@ -298,6 +298,9 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 		Folders: newFactoryJobFolders(st), DeleteChats: factoryDeleteJobChats(config.ProfileDir(), st), Mode: mode, OperatorLogin: host.OperatorLogin, TrustedProxies: secure.proxies, Name: host.Name, GitHubClientID: host.GitHubClientID, Team: host.Team, Address: public, AccessToken: token, TokensPath: tokensPath, Store: st, Root: st.Root(), Record: history,
 		ServedBy: servedBy, PollingEvery: poll, GitHubLimit: host.githubLimit.resets,
 		Scout: factoryScoutLook(st, config.Load), Read: factoryClickRead(st, config.Load),
+		// The organization's workstream agents, when the operator runs them
+		// on this server with the organization's own key.
+		WorkstreamAgent: factoryWorkstreamAgent(st, config.Load),
 		// A `manager when …` approval's condition is judged by the floor's AI
 		// filter, as a routing rule's question is.
 		PassJudge:     factoryJudge(st, config.Load),

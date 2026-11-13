@@ -83,6 +83,14 @@ func (d *driverHands) drop(id string, now time.Time) bool {
 	return held && now.Before(cur.until)
 }
 
+// dropAll lets go of every hand: the organization stopped running agents on
+// its drivers' laptops.
+func (d *driverHands) dropAll() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.held = nil
+}
+
 func driverWire(hand driverHand) api.WorkstreamDriver {
 	return api.WorkstreamDriver{
 		Handle: hand.handle,

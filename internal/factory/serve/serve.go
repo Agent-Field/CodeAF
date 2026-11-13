@@ -108,6 +108,11 @@ type Config struct {
 	// pass), so a job a person just gave a repository is routed without
 	// waiting for the next poll. Nil leaves it to that poll, which is nudged.
 	Route func(context.Context) error
+	// WorkstreamAgent answers a message to an organization workstream's agent
+	// on this server (workstream_agent.go), with the organization's own model
+	// key. Nil is a server that runs no agents: it never offers "server" as
+	// where they run.
+	WorkstreamAgent AgentRunner
 	// Pipeline reads the same repository rules as intake, including personal limits.
 	Pipeline func(context.Context, string, string) (pipeline.File, error)
 	// JobPipeline reads the pipeline one job is bounded by, with the same
@@ -180,6 +185,9 @@ type Handler struct {
 	// drivers holds each organization workstream's driver hand
 	// (workstream_driver.go).
 	drivers driverHands
+	// agentDesk holds each organization workstream's server agent and its
+	// conversation (workstream_agent.go).
+	agentDesk agentDesk
 	// workerSettled is when a runner's request last settled the floor
 	// ([Handler.workerSettleDue]).
 	workerSettleMu sync.Mutex
@@ -315,6 +323,8 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.workstreamRoutes()
 	h.presenceRoutes()
 	h.docRoutes()
+	h.orgKeyRoutes()
+	h.agentRoutes()
 	if config.Store != nil {
 		// A team that owns an organization workstream cannot be deleted.
 		h.SetTeamOwnership(config.Store)
@@ -350,6 +360,7 @@ func (h *Handler) root(w http.ResponseWriter, r *http.Request) {
 // a change after Close is not delivered.
 func (h *Handler) Close() {
 	if h != nil {
+		h.closeAgents()
 		h.closeDocs()
 		h.reposRead.mu.Lock()
 		h.reposRead.closed = true

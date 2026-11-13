@@ -34,6 +34,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		page     string
 	}{
 		{"how do I give you my API key safely", "giving-a-password-or-token"},
+		{"run the workstream agent on the organization's server instead of a laptop", "organization-workstream-agent"},
+		{"where do I put the organization's model key for the server", "organization-workstream-agent"},
+		{"can the server's workstream agent run commands or change the repository", "organization-workstream-agent"},
+		{"the agent is still answering someone else, how do I stop it", "organization-workstream-agent"},
 		{"can Claude Code make a canvas", "claude-code-provider"},
 		{"does Claude Code see my codeaf skills", "claude-code-provider"},
 		{"Claude Code's edits don't show as rows in the chat", "claude-code-provider"},

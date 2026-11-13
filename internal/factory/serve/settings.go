@@ -51,8 +51,11 @@ func (h *Handler) runnerPolicy(w http.ResponseWriter, r *http.Request) {
 		if body.AgentRunner != nil {
 			choice := strings.TrimSpace(*body.AgentRunner)
 			if !slices.Contains(h.agentRunners(), choice) {
+				if choice == factory.AgentRunnerServer && h.config.WorkstreamAgent != nil {
+					return errors.New("the server runs agents with the organization's model key; add one first")
+				}
 				if choice == factory.AgentRunnerServer {
-					return errors.New("this organization's server cannot run agents yet; they run on the laptop of whoever drives the workstream")
+					return errors.New("this organization's server cannot run agents; they run on the laptop of whoever drives the workstream")
 				}
 				return errors.New(`agent_runner is "driver" or "server"`)
 			}
@@ -65,15 +68,23 @@ func (h *Handler) runnerPolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.recordOrg(r, record.SettingsChanged, "changed settings", orgObjectFactory, "")
+	if factory.AgentRunnerOf(settings.AgentRunner) == factory.AgentRunnerServer {
+		// The server runs every workstream's agent now; nobody drives one.
+		h.drivers.dropAll()
+	}
 	h.machineEvents()
 	h.write(w, 200, h.settingsView(settings))
 }
 
 // agentRunners is where this server can run an organization workstream's
 // agent. Every organization can run it on its driver's laptop. Running it on
-// the server needs the server runner (WAVE2.md §4.3), which this build does
-// not have yet, so the choice is ABSENT rather than offered and failing.
+// the server needs the server runner (workstream_agent.go) AND a model key
+// the operator handed it (org_keys.go); without both the choice is ABSENT
+// rather than offered and failing.
 func (h *Handler) agentRunners() []string {
+	if h.serverAgentServed() {
+		return []string{factory.AgentRunnerDriver, factory.AgentRunnerServer}
+	}
 	return []string{factory.AgentRunnerDriver}
 }
 

@@ -152,6 +152,12 @@ func (a *Agent) belt() []bare.Tool {
 	if a.config.mayBashBelt() {
 		return a.bashBelt()
 	}
+	// AN ORGANIZATION SERVER'S WORKSTREAM AGENT CARRIES ITS ONE TOOL AND NO
+	// OTHER, and no shelf a loader could reach (tools_workstream.go).
+	if a.config.mayWorkstream() {
+		a.clearShelf()
+		return []bare.Tool{a.workstreamTool()}
+	}
 	// A MODEL WITH NO TOOLS CARRIES NO BELT, and no shelf a loader could reach
 	// either: the catalog says it cannot call one (chatpage.go).
 	if a.config.promptProfile().chat() {
