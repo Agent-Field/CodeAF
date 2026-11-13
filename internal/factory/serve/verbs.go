@@ -78,6 +78,11 @@ func (h *Handler) postJob(verb string, exists bool, action jobAction) {
 			if offVerbs[verb] && h.refuseOff(w, factory.RepoOf(it), factory.JobState(it)) {
 				return
 			}
+			// THE ONE PLACE A JOB'S DOOR MEETS ITS WORKSTREAM: its person, an
+			// editor of its workstream or the operator (job_access.go).
+			if !h.mayChangeJob(w, r, it, verb) {
+				return
+			}
 			if decisionAction(verb) && factory.RecoveryPaused(it) {
 				h.finish(w, run.StepControlRefusal(factory.DecisionPauseDetail(it)))
 				return

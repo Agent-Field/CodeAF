@@ -121,8 +121,9 @@ func (h *Handler) routesTest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	seen := items[:0]
+	sight := h.jobSight(r)
 	for _, it := range items {
-		if factory.IsIssueJob(it) && h.repoVisible(r, itemRepo(it)) {
+		if factory.IsIssueJob(it) && h.repoVisible(r, itemRepo(it)) && sight(it) {
 			seen = append(seen, it)
 		}
 	}

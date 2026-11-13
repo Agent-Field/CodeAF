@@ -21,9 +21,19 @@ type wsOrg struct {
 	tokens map[string]string
 }
 
-func newWSOrg(t *testing.T) *wsOrg {
+// newWSOrg takes doors to give the seam before the server opens, so a test
+// can reach a verb (stop, steer) the plain fixture leaves closed.
+func newWSOrg(t *testing.T, doors ...func(*factory.Seam)) *wsOrg {
 	t.Helper()
 	f := peopleV2Setup(t, api.FactoryTeam)
+	if len(doors) > 0 {
+		for _, door := range doors {
+			door(&f.seam)
+		}
+		f.h.Close()
+		f.h = New(f.seam, f.cfg)
+		t.Cleanup(f.h.Close)
+	}
 	// The desk's org scene, kept the way the teams routes keep it: santosh is
 	// in Platform and Growth, abir in Platform, mia in Growth and Design.
 	if err := f.st.ChangeTeams(func(all *[]store.Team) error {
