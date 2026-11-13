@@ -155,10 +155,11 @@ func (b *appBackend) steer(agent, text, clientID string, shown *appSending) erro
 		return appEngineError(err)
 	}
 	b.resetCloseResumes(agent)
-	a, err := b.findCrewOwner(agent)
+	a, endRead, err := b.findCrewOwner(agent)
 	if err != nil {
 		return err
 	}
+	defer endRead()
 	if handled, err := b.agentFieldSteer(a, text); handled {
 		return err
 	}
@@ -342,10 +343,11 @@ func (b *appBackend) queue(agent, text, clientID string, shown *appSending) ([]a
 	if err := (session.Submission{ClientID: clientID}).Check(); err != nil {
 		return nil, appEngineError(err)
 	}
-	a, err := b.findCrewOwner(agent)
+	a, endRead, err := b.findCrewOwner(agent)
 	if err != nil {
 		return nil, err
 	}
+	defer endRead()
 	// An agent still starting has its first turn on its way: a message
 	// queued now waits for that turn's end, like any other. It is queued
 	// before the gate, which the open holds for as long as it takes; the
@@ -471,11 +473,12 @@ func (b *appBackend) EditQueuedMessage(agent, id string, message appwire.AgentMe
 	if err != nil {
 		return nil, err
 	}
-	a, err := b.find(agent)
+	_, live, endRead, err := b.borrowExisting(agent)
 	if err != nil {
 		return nil, err
 	}
-	if live := b.liveOf(a); live != nil && !appKeepsQueuedMarks(live.conn.Conv) {
+	defer endRead()
+	if live != nil && !appKeepsQueuedMarks(live.conn.Conv) {
 		return nil, appwire.Errorf(appwire.CodeUnknownMethod, "this conversation cannot keep a queued message's said or reads")
 	}
 	return b.changeQueue(agent, id, func(a *appAgent, at int) {
@@ -697,10 +700,11 @@ func (b *appBackend) AnswerAskWith(agent, id string, answer appwire.AskAnswer) e
 	if handled, err := b.answerCrewAsk(agent, id, answer.Option, answer.Text, answer.Why); handled {
 		return err
 	}
-	a, err := b.findCrewOwner(agent)
+	a, endRead, err := b.findCrewOwner(agent)
 	if err != nil {
 		return err
 	}
+	defer endRead()
 	live := b.liveOf(a)
 	if live == nil {
 		return b.AnswerAsk(agent, id, answer.Option, answer.Text)
@@ -798,10 +802,11 @@ const appDecideMark = "decide:"
 // HoldAsk stops an ask's clock through its owning lane. Proposed tasks keep
 // their task action; the model's questions use the engine's question hold.
 func (b *appBackend) HoldAsk(agent, id string) error {
-	a, err := b.findCrewOwner(agent)
+	a, endRead, err := b.findCrewOwner(agent)
 	if err != nil {
 		return err
 	}
+	defer endRead()
 	live := b.liveOf(a)
 	if live == nil {
 		return appwire.Errorf(appwire.CodeNotFound, "the ask %s is not open", id)
@@ -1849,10 +1854,11 @@ func (b *appBackend) TaskEntries(id, before string, limit int) ([]appwire.Entry,
 	if !ok {
 		return nil, false, appwire.Errorf(appwire.CodeBadParams, "%s is not a task id", id)
 	}
-	a, live, err := b.heldLive(agent)
+	a, live, endLive, err := b.borrowLive(agent)
 	if err != nil {
 		return nil, false, err
 	}
+	defer endLive()
 	n, err := strconv.ParseUint(local, 10, 64)
 	if err != nil {
 		return nil, false, appwire.Errorf(appwire.CodeBadParams, "%s is not a task id", id)

@@ -1011,6 +1011,10 @@ func (s *taskStore) writeLocked(document taskDocument) error {
 // replaceTaskCheckpoint makes stale temporary files private before writing
 // and installs the complete checkpoint only after the file closes successfully.
 func replaceTaskCheckpoint(path string, encoded []byte) error {
+	raw := append(encoded, '\n')
+	if sameFileBytes(path, raw) {
+		return nil
+	}
 	if directory := filepath.Dir(path); directory != "" && directory != "." {
 		if err := os.MkdirAll(directory, 0o755); err != nil {
 			return err
@@ -1031,7 +1035,7 @@ func replaceTaskCheckpoint(path string, encoded []byte) error {
 		file.Close()
 		return err
 	}
-	_, writeErr := file.Write(append(encoded, '\n'))
+	_, writeErr := file.Write(raw)
 	closeErr := file.Close()
 	if err := errors.Join(writeErr, closeErr); err != nil {
 		return err
@@ -1934,6 +1938,7 @@ func (a *Agent) recoverTasks() {
 
 	graph := a.graph()
 	recovery := graph.rehydrate(document, a.config.Workspace, a.settlePolicy())
+	graph.prepareNodeTreeLimits()
 	// The consume-once receipt reaches the disk BEFORE anything else happens: a
 	// second crash between here and the first turn must not hand the same
 	// interrupt to a second recovery.

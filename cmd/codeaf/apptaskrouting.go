@@ -22,10 +22,11 @@ func (b *appBackend) TaskRouting(id string, changes int) (appwire.TaskRouting, e
 	if !ok {
 		return appwire.TaskRouting{}, appwire.Errorf(appwire.CodeBadParams, "%s is not a task id", id)
 	}
-	_, live, err := b.heldLive(agent)
+	_, live, endLive, err := b.borrowLive(agent)
 	if err != nil {
 		return appwire.TaskRouting{}, err
 	}
+	defer endLive()
 	view, err := live.conn.Conv.TaskRouting(local, changes)
 	if err != nil {
 		return appwire.TaskRouting{}, appRoutingError(err)
@@ -40,7 +41,13 @@ func (b *appBackend) ActOnTaskRouting(p appwire.TaskRoutingActParams) (appwire.T
 	if !ok {
 		return appwire.TaskRoutingActResult{}, appwire.Errorf(appwire.CodeBadParams, "%s is not a task id", p.ID)
 	}
-	_, live, err := b.heldLive(agent)
+	a, err := b.find(agent)
+	if err != nil {
+		return appwire.TaskRoutingActResult{}, err
+	}
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	_, live, err := b.heldLiveLocked(a)
 	if err != nil {
 		return appwire.TaskRoutingActResult{}, err
 	}
@@ -294,10 +301,11 @@ func (b *appBackend) TaskRoutingOptions(id string) (appwire.TaskRoutingOptionsVi
 	if !ok {
 		return appwire.TaskRoutingOptionsView{}, appwire.Errorf(appwire.CodeBadParams, "%s is not a task id", id)
 	}
-	_, live, err := b.heldLive(agent)
+	_, live, endLive, err := b.borrowLive(agent)
 	if err != nil {
 		return appwire.TaskRoutingOptionsView{}, err
 	}
+	defer endLive()
 	got, err := live.conn.Conv.TaskRoutingOptions(local)
 	if err != nil {
 		return appwire.TaskRoutingOptionsView{}, appRoutingError(err)
