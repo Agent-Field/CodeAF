@@ -65,6 +65,7 @@ func (h *Handler) workstreamRoutes() {
 	h.route("/v1/workstreams/{id}/owner", map[string]http.HandlerFunc{http.MethodPut: h.setWorkstreamOwner})
 	h.route("/v1/workstreams/{id}/shares", map[string]http.HandlerFunc{http.MethodPut: h.setWorkstreamShares})
 	h.route("/v1/workstreams/{id}/shares/preview", map[string]http.HandlerFunc{http.MethodGet: h.previewWorkstreamShares})
+	h.route("/v1/workstreams/{id}/activity", map[string]http.HandlerFunc{http.MethodGet: h.workstreamActivity})
 }
 
 // ── who is asking ──
@@ -391,7 +392,12 @@ func (h *Handler) saveNewWorkstream(w http.ResponseWriter, r *http.Request, ws f
 		h.writeWorkstream(w, http.StatusOK, *again)
 		return
 	}
-	h.publishWorkstreams(api.EventWorkstreamChanged, nil, saved[ws.ID])
+	verb := "created workstream"
+	if imported {
+		verb = "imported workstream"
+	}
+	h.recordWorkstream(r, ws.ID, verb, "")
+	h.publishWorkstreams(api.EventWorkstreamChanged, h.orgActor(r), nil, saved[ws.ID])
 	h.writeWorkstream(w, http.StatusCreated, saved[ws.ID])
 }
 
@@ -468,8 +474,26 @@ func (h *Handler) patchWorkstream(w http.ResponseWriter, r *http.Request) {
 	if h.workstreamRefused(w, err) {
 		return
 	}
-	h.publishWorkstreams(api.EventWorkstreamChanged, &before, saved[ws.ID])
+	h.recordWorkstream(r, ws.ID, "changed workstream", patchedFields(body))
+	h.publishWorkstreams(api.EventWorkstreamChanged, h.orgActor(r), &before, saved[ws.ID])
 	h.writeWorkstream(w, http.StatusOK, saved[ws.ID])
+}
+
+// patchedFields names the fields a patch sent, never their words: the record
+// is read by people who may not see the workstream's content tomorrow.
+func patchedFields(body api.WorkstreamPatch) string {
+	var out []string
+	for _, f := range []struct {
+		name string
+		sent bool
+	}{{"name", body.Name != nil}, {"purpose", body.Purpose != nil}, {"stage", body.Stage != nil},
+		{"pages", body.Pages != nil}, {"decisions", body.Decisions != nil}, {"sources", body.Sources != nil},
+		{"links", body.Links != nil}} {
+		if f.sent {
+			out = append(out, f.name)
+		}
+	}
+	return changedFields(out...)
 }
 
 // deleteWorkstream archives a workstream: it leaves every list and keeps its
@@ -512,7 +536,12 @@ func (h *Handler) deleteWorkstream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if purge || before.ArchivedAt == nil {
-		h.publishWorkstreams(api.EventWorkstreamRemoved, &before, before)
+		verb := "archived workstream"
+		if purge {
+			verb = "deleted workstream"
+		}
+		h.recordWorkstream(r, ws.ID, verb, "")
+		h.publishWorkstreams(api.EventWorkstreamRemoved, h.orgActor(r), &before, before)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -557,7 +586,8 @@ func (h *Handler) setWorkstreamOwner(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if saved[ws.ID].Rev != before.Rev {
-		h.publishWorkstreams(api.EventWorkstreamChanged, &before, saved[ws.ID])
+		h.recordWorkstream(r, ws.ID, "changed owner", owner.Kind+" "+owner.ID)
+		h.publishWorkstreams(api.EventWorkstreamChanged, h.orgActor(r), &before, saved[ws.ID])
 	}
 	h.writeWorkstream(w, http.StatusOK, saved[ws.ID])
 }
@@ -615,7 +645,8 @@ func (h *Handler) setWorkstreamShares(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for id, before := range befores {
-		h.publishWorkstreams(api.EventWorkstreamChanged, &before, saved[id])
+		h.recordWorkstream(r, id, "changed sharing", strings.Join(saved[id].SharedWith, ", "))
+		h.publishWorkstreams(api.EventWorkstreamChanged, h.orgActor(r), &before, saved[id])
 	}
 	body2, err := h.workstreamBody(saved[ws.ID])
 	if h.failed(w, err) {
@@ -990,12 +1021,12 @@ type workstreamLive struct {
 
 // publishWorkstreams records one workstream event. A record that cannot be
 // written loses only the push: the change is kept, and the next read finds it.
-func (h *Handler) publishWorkstreams(kind string, before *factory.OrgWorkstream, after factory.OrgWorkstream) {
+func (h *Handler) publishWorkstreams(kind, by string, before *factory.OrgWorkstream, after factory.OrgWorkstream) {
 	items := []Item{workstreamItem(after)}
 	if before != nil {
 		items = append(items, workstreamItem(*before))
 	}
-	e := workstreamLive{WorkstreamEvent: api.WorkstreamEvent{Kind: kind, ID: after.ID}, itemAudience: audienceOf(items...)}
+	e := workstreamLive{WorkstreamEvent: api.WorkstreamEvent{Kind: kind, ID: after.ID, By: factory.NormalizeHandle(by)}, itemAudience: audienceOf(items...)}
 	_ = live.Append(h.eventRoot(), live.New(kind, 0, e))
 }
 

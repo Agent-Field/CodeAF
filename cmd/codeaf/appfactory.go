@@ -172,6 +172,8 @@ type appFactoryHub struct {
 	// dropped stream is reopened (one second when zero).
 	orgFollow  map[string]*appOrgFollow
 	orgChanged func(appwire.FactoryOrgChanged)
+	// orgPresence relays who is on an organization item now; nil drops it.
+	orgPresence func(appwire.FactoryOrgPresence)
 	orgRetry   time.Duration
 	closed     bool
 }
@@ -206,6 +208,7 @@ func (b *appBackend) factoryHub() *appFactoryHub {
 		b.factories.resume = b.resumeLocal
 		b.factories.keptChanged = func() { b.emit.Emit(appwire.EventFactorySessionsChanged, appwire.Empty{}) }
 		b.factories.orgChanged = func(e appwire.FactoryOrgChanged) { b.emit.Emit(appwire.EventFactoryOrgChanged, e) }
+		b.factories.orgPresence = func(e appwire.FactoryOrgPresence) { b.emit.Emit(appwire.EventFactoryOrgPresence, e) }
 	})
 	return b.factories
 }

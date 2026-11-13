@@ -26,4 +26,7 @@ const TeamChangedKind = "team.changed"
 type OrgChanged struct {
 	Kind string `json:"kind"`
 	ID   string `json:"id"`
+	// By is the handle of the person who made the change, stamped by the
+	// server from the sign-in; empty only for a change no person made.
+	By string `json:"by,omitempty"`
 }

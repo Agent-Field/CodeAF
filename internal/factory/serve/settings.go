@@ -7,6 +7,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
+	"github.com/Agent-Field/codeaf/internal/factory/record"
 )
 
 func (h *Handler) runnerPolicy(w http.ResponseWriter, r *http.Request) {
@@ -50,6 +51,7 @@ func (h *Handler) runnerPolicy(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, 422, err.Error())
 		return
 	}
+	h.recordOrg(r, record.SettingsChanged, "changed settings", orgObjectFactory, "")
 	h.machineEvents()
 	h.write(w, 200, settings)
 }
