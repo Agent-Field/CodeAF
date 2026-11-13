@@ -293,6 +293,7 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, hello Hello, engine En
 	hello = withFactoryOrgFeature(hello, engine)
 	hello = withFactoryOrgPresenceFeature(hello, engine)
 	hello = withFactoryOrgDocsFeature(hello, engine)
+	hello = withFactoryOrgPartsFeature(hello, engine)
 	hello = withFactoryPipelinePRFeature(hello, engine)
 	hello = withFactoryPipelinePRUpdateFeature(hello, engine)
 	hello = withFactoryPipelinePRsFeature(hello, engine)

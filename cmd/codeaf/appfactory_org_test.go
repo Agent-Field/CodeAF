@@ -35,6 +35,9 @@ type orgServer struct {
 	// empty one drops that stream. opened receives each opening's headers.
 	frames chan string
 	opened chan http.Header
+	// answer, when set, answers a request before the contract's own routes:
+	// a status of 0 leaves it to them.
+	answer func(method, uri string) (int, any)
 }
 
 func startOrgServer(t *testing.T) *orgServer {
@@ -88,6 +91,12 @@ func (o *orgServer) serve(w http.ResponseWriter, r *http.Request) {
 	o.lastBody = nil
 	if raw, _ := io.ReadAll(r.Body); len(raw) > 0 {
 		_ = json.Unmarshal(raw, &o.lastBody)
+	}
+	if o.answer != nil {
+		if status, body := o.answer(r.Method, r.URL.RequestURI()); status != 0 {
+			orgJSON(w, status, body)
+			return
+		}
 	}
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
 	switch {

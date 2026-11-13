@@ -115,6 +115,9 @@ type OrgPage struct {
 	Kind      string `json:"kind"`
 	UpdatedAt string `json:"updated_at,omitempty"`
 	UpdatedBy string `json:"updated_by,omitempty"`
+	// Rev is the page's own rev, which factory.org_workstream_page_update is
+	// guarded by.
+	Rev int `json:"rev,omitempty"`
 }
 
 // OrgDecision is one decision a workstream keeps.
@@ -144,7 +147,13 @@ type OrgWorkstream struct {
 	Sources   []OrgSource       `json:"sources"`
 	Links     []string          `json:"links"`
 	GoAheads  []json.RawMessage `json:"go_aheads"`
-	CreatedBy string            `json:"created_by,omitempty"`
+	// Jobs are the factory jobs on that server that belong to it.
+	Jobs []int `json:"jobs"`
+	// BudgetUSD is what it may spend (absent: no budget); SpendUSD what has
+	// been posted against it.
+	BudgetUSD *float64 `json:"budget_usd,omitempty"`
+	SpendUSD  float64  `json:"spend_usd,omitempty"`
+	CreatedBy string   `json:"created_by,omitempty"`
 }
 
 // OrgWorkstreams is factory.org_workstreams's answer: those visible to the
@@ -247,6 +256,8 @@ type OrgWorkstreamPatch struct {
 	Decisions *[]OrgDecision `json:"decisions,omitempty"`
 	Sources   *[]OrgSource   `json:"sources,omitempty"`
 	Links     *[]string      `json:"links,omitempty"`
+	// BudgetUSD sets what it may spend; a negative number clears it.
+	BudgetUSD *float64 `json:"budget_usd,omitempty"`
 }
 
 // OrgWorkstreamUpdateParams is a patch guarded by the rev it was read at.
@@ -465,7 +476,7 @@ func (s *OrgWorkstreamSummary) fill() {
 func (w *OrgWorkstream) fill() {
 	w.OrgWorkstreamSummary.fill()
 	w.Pages, w.Decisions, w.Sources = nonNil(w.Pages), nonNil(w.Decisions), nonNil(w.Sources)
-	w.Links, w.GoAheads = nonNil(w.Links), nonNil(w.GoAheads)
+	w.Links, w.GoAheads, w.Jobs = nonNil(w.Links), nonNil(w.GoAheads), nonNil(w.Jobs)
 }
 
 // filled wraps a method so its answer's lists are never null.
