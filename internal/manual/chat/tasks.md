@@ -12,12 +12,15 @@ engine reports it. Check the running work before starting the same brief again.
 A task is one self-contained piece of work handed off to run on its own while the
 conversation carries on. It works in a folder of its own and reports back when it lands.
 Projects may be copied; a task that would copy your home folder reads it in place and
-starts with an empty folder. It never inherits the conversation: what it reads is one written brief —
-the work, what to produce, what done means, your own message word for word, and a pointer at the
+starts with an empty folder. It never inherits the conversation: what it reads is one written brief.
+A task you typed yourself, or one on the older session-tree road, reads your own message word
+for word first, then the work, what to produce and what done means, and a pointer at the
 journal path and line of your original turn so it can read those words in full when the
-restatement was cut. A proposal on the run road puts its own work first; a task you typed
-yourself keeps your message first. How that is assembled is on the *how tasks run* page, under *What the
-task actually reads* and *Can the task see the original request*. The one exception is a
+restatement was cut. A task the conversation proposed on the run road reads only its own
+assignment — its title, the work, what to produce and what done means — with no message,
+quoted lines or journal pointer, so the proposing model makes it self-contained. How each is
+assembled is on the *how tasks run* page, under *What a proposed task reads*, *What the task
+actually reads* and *Can the task see the original request*. The one exception is a
 **quick task started with `inherit`**, which opens holding the conversation itself — see
 *Can it keep what it read* below.
 
