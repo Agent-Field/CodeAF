@@ -17,7 +17,10 @@ sent, carries `X-Codeaf-Phase: pre-mutation` and is not kept. A resend with the
 same key then runs the create again and succeeds once the cause has passed.
 An answer given once the issue request may have reached GitHub, or once the job
 exists, is still replayed for 24 hours, a 5xx or 408 included, so a resend
-never makes a second job or GitHub issue. Unkeyed creates carry the same marker.
+under the same sign-in does not make a second job or GitHub issue. Two gaps
+remain: a resend under a new bearer or session cookie is a different caller,
+and a Factory that stops after the create commits but before its answer is
+saved runs the resend again. Unkeyed creates carry the same marker.
 Worker and runner routes keep their rule: a 5xx, 408 or 429 is never kept.
 
 `GET /v1/features` (`factory.features`) lists `keyed_create`, so an engine can

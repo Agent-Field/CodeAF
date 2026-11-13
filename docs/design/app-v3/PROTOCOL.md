@@ -435,8 +435,12 @@ already running.
 
 A Factory job create (`POST /v1/jobs`, or `POST /v1/issues` when it opens the
 GitHub issue first) sent with an `Idempotency-Key` header is remembered for 24
-hours per caller, route and key, and a resend with the same key never makes a
-second job or issue. A Factory with this rule lists `keyed_create` in
+hours per caller, route and key, so a resend with the same key does not make a
+second job or issue, within two limits. The caller is the exact `Authorization`
+and `Cookie` headers: a resend under a new bearer or a rotated session cookie is
+not matched to the first answer and runs as a new create. And the answer is saved
+only after the create has committed, so a Factory that stops between the two runs
+the resend again. A Factory with this rule lists `keyed_create` in
 `GET /v1/features`; an older one keeps every keyed answer, a refusal or a 5xx
 included, for 24 hours, so an engine sends a create key only to a Factory that
 lists it. An answer given before the create wrote anything carries
