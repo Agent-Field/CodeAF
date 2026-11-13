@@ -240,6 +240,8 @@ type Handler struct {
 	// kinds presence knows with who may view each.
 	presenceDesk  presenceDesk
 	presenceKinds map[string]presenceKind
+	// docs is the organization's live documents (docs.go).
+	docs docService
 }
 
 // New binds the seam's reads and verbs; absent doors refuse rather than panic.
@@ -309,6 +311,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.teamRoutes()
 	h.workstreamRoutes()
 	h.presenceRoutes()
+	h.docRoutes()
 	if config.Store != nil {
 		// A team that owns an organization workstream cannot be deleted.
 		h.SetTeamOwnership(config.Store)
@@ -344,6 +347,7 @@ func (h *Handler) root(w http.ResponseWriter, r *http.Request) {
 // a change after Close is not delivered.
 func (h *Handler) Close() {
 	if h != nil {
+		h.closeDocs()
 		h.reposRead.mu.Lock()
 		h.reposRead.closed = true
 		if h.reposRead.cancel != nil {
