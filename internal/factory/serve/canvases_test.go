@@ -5,8 +5,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http/httptest"
-	"os"
 	"os/exec"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -266,6 +266,29 @@ func TestCanvasImportMovesALaptopCanvasInOnce(t *testing.T) {
 	o.do(t, "abir", "POST", "/v1/canvases/import", -1, body, 201, &abirs)
 	if abirs["id"] == first["id"] {
 		t.Fatal("abir's import answered santosh's canvas")
+	}
+}
+
+// WHO IS IN A CANVAS, AND ON WHICH FRAME: abir in santosh's shared canvas
+// sees santosh on his frame; mia, who it is not shared with, gets 404 for a
+// heartbeat and hears none of it.
+func TestCanvasPresenceSaysWhoIsOnWhichFrame(t *testing.T) {
+	o := canvasOrg(t)
+	var cv map[string]any
+	o.do(t, "santosh", "POST", "/v1/canvases", -1, api.CanvasNew{Title: "Board", Shares: []factory.Share{{Kind: "person", ID: "abir", Role: "edit"}}}, 201, &cv)
+	id := cv["id"].(string)
+	o.beat(t, "santosh", page(id, "canvas", "f_santosh0000a", true), 200)
+	got := o.beat(t, "abir", page(id, "canvas", "f_abir00000000", false), 200)
+	want := []api.PresenceHere{{Handle: "abir", Part: "f_abir00000000"}, {Handle: "santosh", Part: "f_santosh0000a", Editing: true}}
+	if !reflect.DeepEqual(got.Here, want) {
+		t.Fatalf("here: %+v; want %+v", got.Here, want)
+	}
+	o.beat(t, "mia", page(id, "canvas", "f_santosh0000a", false), 404)
+	if seen := o.presenceSeen(t, "mia"); len(seen) != 0 {
+		t.Fatalf("mia heard a canvas she cannot see: %+v", seen)
+	}
+	if seen := o.presenceSeen(t, "abir"); len(seen) == 0 {
+		t.Fatal("abir heard nobody")
 	}
 }
 
