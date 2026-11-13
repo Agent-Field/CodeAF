@@ -423,9 +423,10 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// not reachable yet.
 		agent.scrubBlindImagePartsLocked(agent.model)
 		// AND IT KEEPS WHAT IT SPENT. The total is the sum of the file's usage
-		// lines (sessionfile.go), so a conversation reopened tomorrow reports the
-		// money it actually cost rather than the money this process has spent so
-		// far — which for a resumed session was always nothing.
+		// lines and late-receipt call lines (sessionfile.go), so a conversation
+		// reopened tomorrow reports the money it actually cost rather than the
+		// money this process has spent so far — which for a resumed session was
+		// always nothing.
 		//
 		// THIS ALSO RESTORES THE SPEND RAIL, and that is the intended change: the
 		// rail is this conversation's own ceiling (rail.go), so a conversation
@@ -433,7 +434,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// the process was a ceiling on a window, not on a conversation.
 		agent.usage = file.RestoredUsage()
 		// AND A JOURNAL WRITTEN BEFORE THE TOTAL WAS KEPT GETS ONE NOW. The sum
-		// above came out of the file's own usage lines, so this costs the read
+		// above came out of the file's own charge records, so this costs the read
 		// of a meta.json and — only when it has no figure at all — one write
 		// (placemeta.go's [Agent.stampRestoredSpend]). Without it a conversation
 		// that has not spoken since the field arrived would read as free on

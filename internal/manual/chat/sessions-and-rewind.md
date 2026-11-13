@@ -292,8 +292,9 @@ line types are `session` (the header: version, id, working directory, model, tim
 `message`, `compaction`, `rewind`, `title`, `usage` and `call`. Message content is written
 as text. A `usage` line records what one piece of work cost, and on a resume those lines
 are added back up — which is why the bill survives a restart. A `call` line records one
-request's own shape and is **never** added up: the money on it is already counted in the
-`usage` line that closed its turn.
+request's own shape and is normally **not** added up: the money on it is already counted in
+the `usage` line that closed its turn. The exception is a late receipt, a `call` line marked
+with an `arm`: its money is in no `usage` line, so a resume adds it once.
 
 The session id is 16 random hex characters, minted when the file is created and replayed
 unchanged on every resume — that is what keeps one conversation one identity across days.
@@ -310,20 +311,26 @@ exactly `[image /path/to/file — file changed or gone]`.
 
 Yes. Every piece of work that cost money appends a `usage` line to the transcript, carrying
 the model it ran on, tokens in and out, cache read and cache write, the money, how many
-requests it took and how long it lasted.
+requests it took and how long it lasted. A late receipt writes a marked `call` line instead
+(below).
 
 There is one line per **completed turn**, and one more for each call made beside a turn —
 naming the conversation, the memory reflex, the check on a reply, a task's fold-up, a
-planner, a harness run. Those are marked `aux` so a reader can tell the turn itself from
-the work done around it. A turn that spent nothing writes no line at all, because a zero is
-absence, not a fact worth a line.
+planner, a harness run. Those are marked `aux`. A second-stage stop that lets go of a
+turn while tools still run also saves its paid conversation steps in a `usage` seal,
+without duration. It saves the conversation's new total to `meta.json` too, which is
+what Home reads, so that figure matches the transcript after a restart. Its `abandoned`
+line records the stop and last-known spend as evidence; it is never added to the bill.
+A turn that spent nothing writes no usage line. Older transcripts without that step
+seal cannot restore the missing steps.
 
 One exception to "one line per turn": a turn that was answered by **more than one model**
 — the model hopped mid-turn — writes **one line per model that answered**, each with that
 model's own tokens and money. A single sum could only name one of them, and naming the one
 standing at the end would hand the whole turn's bill to the wrong model.
 
-**On a resume these lines are added up, and that sum is the session's totals.** So `/cost`,
+**On a resume these lines, and the marked late-receipt `call` lines below, are added up,
+and that sum is the session's totals.** So `/cost`,
 `/status` and the status line show what the whole conversation has spent across every
 restart, not only what has happened since you reopened it. The spend ceiling reads the same
 sum — see the spending pages for what that means the day after you reach one.
@@ -354,11 +361,11 @@ provider's own **receipt** is fetched afterwards, the request writes its line th
 with `arm`: `hedge` for a rescue arm, `reconciled` for any other late receipt. A receipt
 names no endpoint, so the line leaves that field out rather than guess.
 
-These lines are **evidence, never spending**. Nothing adds them up, `/cost` does not read
+Ordinary call lines are **evidence, never spending**. Nothing adds them up, `/cost` does not read
 them, and a resume ignores them entirely, because every dollar on them is already in the
 `usage` line that sealed the turn. They are there so a question about *shape* — what does a
 mostly-cached request actually cost here — can be read out of the file instead of guessed
-at.
+at. A line with an `arm` is the exception: its money is in no seal, so a resume adds it once.
 
 ## Picking up where you left off
 
