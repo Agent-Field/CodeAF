@@ -1048,22 +1048,13 @@ func (b *appBackend) FactoryDetach(_ context.Context, id string) error {
 // ── reads ──────────────────────────────────────────────────────────────────
 
 func (b *appBackend) FactoryMe(ctx context.Context, id string) (appwire.FactoryMe, error) {
-	var me struct {
-		api.Me
-		// Teams is the organization's word for the teams this person is in
-		// (the Teams wave's /v1/me); an older server leaves it out.
-		Teams []string `json:"teams"`
-	}
+	var me api.Me
 	if err := b.factoryHub().read(ctx, id, "/v1/me", appFactorySmall, &me); err != nil {
 		return appwire.FactoryMe{}, err
 	}
 	// The session's id is the factory's handle on a credential, so it never
 	// leaves; NewFactoryMe keeps only whether one existed.
-	out := appwire.NewFactoryMe(me.Me)
-	if me.Teams != nil {
-		out.Teams = me.Teams
-	}
-	return out, nil
+	return appwire.NewFactoryMe(me), nil
 }
 
 func (b *appBackend) FactoryQueue(ctx context.Context, id string) (api.Queue, error) {

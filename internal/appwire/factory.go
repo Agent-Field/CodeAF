@@ -385,7 +385,7 @@ func NewFactoryMe(me api.Me) FactoryMe {
 	if out.Scopes == nil {
 		out.Scopes = []string{}
 	}
-	out.Teams = []string{}
+	out.Teams = append([]string{}, me.Teams...)
 	return out
 }
 
