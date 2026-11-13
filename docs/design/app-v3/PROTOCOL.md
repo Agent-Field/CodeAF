@@ -549,8 +549,9 @@ sent; an unconfirmed write is `uncertain`.
 An engine whose hello carries `factory.group_policy` and `factory.waits_set`
 (and capabilities `group_policy: true`, `waits_on: true`) serves go-aheads the
 factory follows by itself. `factory.features {factory}` answers `{features}`, what
-that one factory keeps (`GET /v1/features`): `group_policy` and `waits_on`, or `[]`
-from a factory older than the route. `factory.policy_get {factory, group}` and
+that one factory keeps (`GET /v1/features`): `group_policy` and `waits_on` (a factory
+with a store), `keyed_create` (the keyed create rule below), or `[]` from a factory
+older than the route. `factory.policy_get {factory, group}` and
 `factory.policy_set {factory, group, stopped, allowances}` (`GET /v1/policy?group=`,
 `PUT /v1/policy`) answer `{group, version?, stopped, owner?, updated_at?, spent_usd,
 allowances: [{id, jobs, cap_usd, ends_at, spent_usd, state}]}`; a set replaces the
@@ -578,6 +579,30 @@ when running jobs only reserve it — and every job answer, `factory.queue` rows
 carries `waits_on` and `waiting_on`.
 Stopping, ending or withdrawing an allowance starts nothing further and stops nothing
 already running.
+
+A Factory job create (`POST /v1/jobs`, or `POST /v1/issues` when it opens the
+GitHub issue first) sent with an `Idempotency-Key` header is remembered for 24
+hours per caller, route and key, so a resend with the same key does not make a
+second job or issue, within two limits. The caller is the exact `Authorization`
+and `Cookie` headers: a resend under a new bearer or a rotated session cookie is
+not matched to the first answer and runs as a new create. And the answer is saved
+only after the create has committed, so a Factory that stops between the two runs
+the resend again. A Factory with this rule lists `keyed_create` in
+`GET /v1/features`; an older one keeps every keyed answer, a refusal or a 5xx
+included, for 24 hours, so an engine sends a create key only to a Factory that
+lists it. An answer given before the create wrote anything carries
+the response header `X-Codeaf-Phase: pre-mutation` and is not kept, so the same
+key runs the create again. Such answers are refusals of the request (a bad field,
+a repository the caller cannot see or that is off, a missing pipeline), sign-in and
+read failures, GitHub's own 4xx refusal of the issue, and GitHub not answering
+before the issue request was sent. An answer given once the issue request may
+have reached GitHub or the job exists is replayed unchanged, including a 5xx or
+408. Examples are a lost or 5xx GitHub answer, or a job made whose start failed.
+After an `uncertain` keyed create, resend the same key: a create that wrote nothing
+runs again, and one that did returns its first answer. If that is the same failure
+again, read the queue, since the job or issue may exist. A create without a key is
+never replayed. Worker and runner routes keep their own rule: a 5xx, 408 or 429 is
+never kept, and a report refused as invalid is checked again.
 
 `factory.job_create` keeps `title` trimmed and separate from literal `text`,
 including details whitespace in the job ask and body; empty details stay empty.

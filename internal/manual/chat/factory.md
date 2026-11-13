@@ -1165,6 +1165,15 @@ The new job gets its own branch and conversations when it runs. It starts with n
 
 This is a person's Start: the same model, checkout, repository switch and start refusals apply. If Start is refused, no new job remains. Accepted work waits for runner capacity under the usual Jobs at once limit. Omitting an assignee starts it as the caller's job; an explicit assignee names the new job's person.
 
+## Resending a create with the same key — retry key, Idempotency-Key, uncertain create, no second job
+
+A job create sent to a Factory with an `Idempotency-Key` header is remembered for 24 hours, per caller, route (`/v1/jobs`, or `/v1/issues` when it opens the GitHub issue) and key. A Factory with this rule lists `keyed_create` in `GET /v1/features`, and an engine sends a create key only to such a Factory: an older one keeps every keyed answer, refusals and server errors included, for a day. A resend with the same key does not make a second job or GitHub issue:
+
+- An answer given before anything was written is not kept, so the same key runs the create again. That covers every refusal of the request (a bad field, a repository you can't see or that is off, a pipeline that doesn't exist), a sign-in or read failure, GitHub refusing the issue, and GitHub not answering before the issue request was sent. Fix the cause and resend the same key. These answers carry the response header `X-Codeaf-Phase: pre-mutation`.
+- An answer given once the issue request may have reached GitHub, or once the job exists, is replayed as it was, success or failure. That includes a server error: GitHub's answer to the issue request was lost or was an error, or the job was made and its start failed. If a resend gets the same failure back, the first attempt may have made the job or the issue, so read the queue before trying again. A new key would make another job.
+
+Two limits remain. The caller is the exact sign-in the request carried, so a resend after signing in again or under a new session cookie is not matched and runs as a new create. The answer is saved just after the create commits, so if the Factory stops in between, a resend runs again. A create without a key is never replayed: sending it again makes another job.
+
 ## App job title and details — literal words, auto-save, budgets and hand-off
 
 Creating a job with a separate title in the app, or handing off an agent,

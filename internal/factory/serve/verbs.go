@@ -802,6 +802,13 @@ func (h *Handler) reply(w http.ResponseWriter, r *http.Request, it factory.Item)
 	}
 }
 
+// newJob makes one job, opening its GitHub issue first when asked. EVERY ANSWER
+// BEFORE ITS FIRST WRITE CARRIES THE PHASE MARKER (api.PhaseHeader, phase.go):
+// a refusal, the visibility check, a sign-in or read failure, and a GitHub
+// failure before the issue request was sent. The issue request
+// ([Handler.githubJobJSON]) and the job's own make clear it, so everything
+// after them, the stamps, the issue link, the budget and a start, answers
+// unmarked and a keyed resend replays it instead of making another job.
 func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 	if !h.requireVerb(w, h.seam.New != nil || h.seam.NewJob != nil) {
 		return
@@ -932,6 +939,7 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 	var err error
 	literal := body.Source == factory.AskApp || body.Source == "hand-off" || body.Text != ""
 	if literal && h.seam.NewJob != nil {
+		clearPhase(w)
 		id, err = h.seam.NewJob(body.Repo, body.Title, body.Text)
 	} else {
 		if !h.requireVerb(w, h.seam.New != nil) {
@@ -941,6 +949,7 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 		if body.Text != "" {
 			words += "\n\n" + body.Text
 		}
+		clearPhase(w)
 		id, err = h.seam.New(body.Repo, words)
 	}
 	if h.failed(w, err) {
