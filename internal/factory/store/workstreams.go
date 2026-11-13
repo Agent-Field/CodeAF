@@ -39,6 +39,10 @@ func (st *Store) Workstreams() (factory.OrgWorkstreams, error) {
 	if out == nil {
 		out = factory.OrgWorkstreams{}
 	}
+	for id, w := range out {
+		w.FoldShares()
+		out[id] = w
+	}
 	return out, nil
 }
 
