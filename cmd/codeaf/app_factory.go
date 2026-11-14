@@ -83,6 +83,11 @@ type appFactoryHost struct {
 	loopMu               sync.Mutex
 	loopsOn, loopsClosed bool
 	loops                sync.WaitGroup
+	closeDone            chan struct{}
+	// closed is set by the first close, for readers that hold mu rather than
+	// loopMu. The context is not that signal: a host built to serve only (no
+	// election, no model work) is given a context already cancelled.
+	closed atomic.Bool
 	// afterRead is the intake pass the running read loops run after each
 	// poll, nil while none run; a person's door that wants a job routed now
 	// ([appFactoryHost.routeNow]) runs the same one.
@@ -113,13 +118,25 @@ func newAppFactoryHost(ctx context.Context, root, address, token string, credent
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(ctx)
-	workspace, _ := os.Getwd()
+	// THE ENGINE'S WORKING DIRECTORY IS ONLY A FALLBACK, and never when it is
+	// the codeaf home: a desk starts its engine wherever it likes, ~/.codeaf
+	// included, and every chat that fell back to it swept codeaf's own state
+	// (factory_chat_folder.go).
+	cwd, _ := os.Getwd()
+	workspace := factoryHostWorkspace(cwd)
 	h := &appFactoryHost{ctx: ctx, cancel: cancel, done: make(chan struct{}), floor: floor, address: address, token: token, workspace: workspace, profile: config.ProfileDir(), credentials: credentials}
 	floor.SetOutputPolicy(appFactoryOutputPolicy(h.profile))
 	guard.Go("app/factory worker", func() { defer close(h.done); h.workers() })
 	return h, nil
 }
 func (h *appFactoryHost) close() {
+	done, first := h.claimClose()
+	if !first {
+		<-done
+		return
+	}
+	defer close(done)
+
 	h.cancel()
 	<-h.done
 	// THE READ LOOPS END BEFORE THE FLOOR IS LET GO, so no poll or triage
@@ -133,6 +150,7 @@ func (h *appFactoryHost) close() {
 	// would break the no-write-after-close law.
 	h.stopLoops()
 	h.stopAgentField()
+	stopFactoryLoaders(h.profile)
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.handler != nil {
@@ -143,19 +161,42 @@ func (h *appFactoryHost) close() {
 		if json.Unmarshal(body, &saved) == nil && saved.URL == h.address && saved.PID == os.Getpid() {
 			_ = os.Remove(path)
 		}
+		h.handler = nil
 	}
 	if h.closeDiscovery != nil {
 		h.closeDiscovery()
+		h.closeDiscovery = nil
 	}
 	if h.release != nil {
 		h.release()
+		h.release = nil
 	}
 }
+
+// claimClose makes the first caller of close the one that tears the host down,
+// and hands every later caller the channel that closes when it has. The read
+// loops are forbidden in the same critical section, so none starts after the
+// first close began.
+func (h *appFactoryHost) claimClose() (done chan struct{}, first bool) {
+	h.loopMu.Lock()
+	defer h.loopMu.Unlock()
+	if h.closeDone != nil {
+		return h.closeDone, false
+	}
+	h.closeDone = make(chan struct{})
+	h.loopsClosed = true
+	h.closed.Store(true)
+	return h.closeDone, true
+}
+
 func (h *appFactoryHost) solo(_ context.Context) (http.Handler, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.handler != nil {
 		return h.handler, nil
+	}
+	if h.closed.Load() {
+		return nil, errors.New("the solo factory is closing")
 	}
 	trace := filepath.Join(h.floor.Root(), "startup.log")
 	began := time.Now()
@@ -208,7 +249,7 @@ func (h *appFactoryHost) solo(_ context.Context) (http.Handler, error) {
 		// A drop deletes the job's local branch and folder on this machine,
 		// and its conversations and crew.
 		Folders: newFactoryJobFolders(h.floor), DeleteChats: factoryDeleteJobChats(h.profile, h.floor),
-		PersonProfile: factoryPeople().Profile, PersonKnown: factoryPeople().Known, CodeOwners: factoryPeople().Owners})
+		PersonProfile: factoryPeopleAt(h.profile).Profile, PersonKnown: factoryPeopleAt(h.profile).Known, CodeOwners: factoryPeopleAt(h.profile).Owners})
 	closeDiscovery, err := serveAppFactoryDiscovery(h.floor.Root(), factoryTarget{h.address, h.token})
 	if err != nil {
 		handler.Close()
@@ -587,8 +628,12 @@ func (h *appFactoryHost) workers() {
 		cancel context.CancelFunc
 		done   chan struct{}
 		token  string
+		// needs is what the runner attached lacking ([appFactoryHost.needs]),
+		// stored by runWorker as it attaches.
+		needs *atomic.Value
 	}
 	active := map[string]running{}
+	generation := config.SettingsGeneration()
 	defer func() {
 		for _, run := range active {
 			run.cancel()
@@ -602,6 +647,17 @@ func (h *appFactoryHost) workers() {
 		for _, target := range h.targets() {
 			wanted[target.url] = target
 		}
+		// A RUNNER READS WHAT IT LACKS ONCE, WHEN IT ATTACHES. The app hands
+		// this engine its provider key a moment after launch, often after the
+		// runner attached, and such a runner refused every job until the
+		// engine restarted. A settings change that supplies what it lacked
+		// attaches it again; nothing is leased to a runner that lacks a
+		// provider, so no work is cut.
+		recheck := false
+		if g := config.SettingsGeneration(); g != generation {
+			generation, recheck = g, true
+		}
+		var needsNow *string
 		for address, run := range active {
 			select {
 			case <-run.done:
@@ -610,7 +666,17 @@ func (h *appFactoryHost) workers() {
 			default:
 			}
 			target, ok := wanted[address]
-			if !ok || target.token != run.token {
+			stale := !ok || target.token != run.token
+			if !stale && recheck {
+				stale = runnerGainedWhatItLacked(run.needs, func() string {
+					if needsNow == nil {
+						n := h.needs()
+						needsNow = &n
+					}
+					return *needsNow
+				})
+			}
+			if stale {
 				run.cancel()
 				<-run.done
 				delete(active, address)
@@ -622,8 +688,9 @@ func (h *appFactoryHost) workers() {
 			}
 			ctx, cancel := context.WithCancel(h.ctx)
 			done := make(chan struct{})
-			active[address] = running{cancel, done, target.token}
-			guard.Go("app/factory slots", func() { defer close(done); h.runWorker(ctx, target) })
+			needs := &atomic.Value{}
+			active[address] = running{cancel, done, target.token, needs}
+			guard.Go("app/factory slots", func() { defer close(done); h.runWorker(ctx, target, needs) })
 		}
 		select {
 		case <-h.ctx.Done():
@@ -632,7 +699,20 @@ func (h *appFactoryHost) workers() {
 		}
 	}
 }
-func (h *appFactoryHost) runWorker(ctx context.Context, target factoryTarget) {
+
+// runnerGainedWhatItLacked is whether a runner that attached lacking something
+// (attached holds what, once it attached) would now attach lacking nothing.
+func runnerGainedWhatItLacked(attached *atomic.Value, now func() string) bool {
+	if attached == nil {
+		return false
+	}
+	was, _ := attached.Load().(string)
+	return was != "" && now() == ""
+}
+
+// runWorker runs this machine's runner against target and stores in needs
+// what it attached lacking.
+func (h *appFactoryHost) runWorker(ctx context.Context, target factoryTarget, needs *atomic.Value) {
 	sum := sha256.Sum256([]byte(target.url))
 	mirror, err := store.Open(filepath.Join(h.floor.Root(), "workers", strconv.Itoa(os.Getpid()), hex.EncodeToString(sum[:8])))
 	if err != nil {
@@ -656,7 +736,7 @@ func (h *appFactoryHost) runWorker(ctx context.Context, target factoryTarget) {
 	}
 	// A JOB FILED WITH run_on IS RUN BY ITS AGENTFIELD REASONER, over this
 	// factory's own connection, and kept here as an ordinary job.
-	remote := &afRemote{items: mirror, floor: h.floor, workspace: h.workspace, conn: h.agentFieldConn, news: afTellNews}
+	remote := &afRemote{items: mirror, floor: h.floor, conn: h.agentFieldConn, news: afTellNews}
 	runner := buildFactoryRunnerWith(mirror, h.floor, h.workspace, h.profile, maker, turns, remote.Run, factoryrun.ExecutorFunc(remote.Step), remote.Answer)
 	dial := h.runnerDial(target)
 	machine, _ := os.Hostname()
@@ -694,7 +774,17 @@ func (h *appFactoryHost) runWorker(ctx context.Context, target factoryTarget) {
 			kind = api.RunnerThisMac
 		}
 	}
-	factoryworker.Run(ctx, factoryworker.Options{Dial: dial.dial, Keep: dial.keep, Attach: api.WorkerAttach{Machine: machine, Name: machine, Handle: me.Handle, OS: runtime.GOOS, CodeafVersion: buildinfo.String(), Kind: kind, Slots: factoryBenches(), Checkouts: checkouts, TakesUnassigned: takes, Needs: h.needs()}, Slots: factoryBenches(), Desired: dial.desiredSlots, Runner: runner, Mirror: mirror, DeliveryRoot: filepath.Join(h.floor.Root(), "worker-reports"), LocalFactory: target.url == h.address || (me.Mode == api.FactorySolo && factoryLoopback(target.url)), LocalLease: factoryLocalLease(mirror), CarryStop: remote.CarryStop, Reply: func(ctx context.Context, it factory.Item, words string) error {
+	// The worker asks before every lease poll (#2596), and each answer is also
+	// left where the lost-runner recovery reads it (#2570), so that reader sees
+	// the word the runner last attached with rather than the one it started with.
+	lacks := func() string {
+		word := h.needs()
+		if needs != nil {
+			needs.Store(word)
+		}
+		return word
+	}
+	factoryworker.Run(ctx, factoryworker.Options{Dial: dial.dial, Keep: dial.keep, Attach: api.WorkerAttach{Machine: machine, Name: machine, Handle: me.Handle, OS: runtime.GOOS, CodeafVersion: buildinfo.String(), Kind: kind, Slots: factoryBenches(), Checkouts: checkouts, TakesUnassigned: takes}, Needs: lacks, Slots: factoryBenches(), Desired: dial.desiredSlots, Runner: runner, Mirror: mirror, DeliveryRoot: filepath.Join(h.floor.Root(), "worker-reports"), LocalFactory: target.url == h.address || (me.Mode == api.FactorySolo && factoryLoopback(target.url)), LocalLease: factoryLocalLease(mirror), CarryStop: remote.CarryStop, Reply: func(ctx context.Context, it factory.Item, words string) error {
 		_, err := turns.through(ctx, it, words, nil)
 		return err
 	}})

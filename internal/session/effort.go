@@ -96,6 +96,12 @@ func (a *Agent) SetConversationEffortChecked(rung string) (bool, error) {
 		return false, err
 	}
 	func() { a.mu.Lock(); defer a.mu.Unlock(); a.effort = parsed }()
+	// Reapplying a stored dial on resume changes memory, not the chat's files.
+	if a.config.Place.Dir != "" {
+		if meta, err := LoadMeta(a.config.Place.Dir); err == nil && meta.Effort == parsed.String() {
+			return true, nil
+		}
+	}
 	// Written through the same door every other fact about this conversation is
 	// written through, so the file keeps one shape and one writer.
 	a.stampEffort()

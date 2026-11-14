@@ -17,7 +17,7 @@ func (e CloseRefusal) Error() string { return string(e) }
 // Close revokes the lease and ends the job atomically, preserving its branch,
 // chats, PR, steps and accounting. Old worker reports cannot resurrect it.
 func (d *Doors) Close(id int, revision *int, who string) error {
-	return d.updateAt(id, revision, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
+	return d.updateAt(id, revision, false, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
 		if factory.JobState(*it) == "done" {
 			return false, CloseRefusal(fmt.Sprintf("%s is already closed", it.Ref()))
 		}
@@ -37,6 +37,7 @@ func (d *Doors) Close(id int, revision *int, who string) error {
 		it.State, it.Marked, it.Manual = factory.StateNew, false, true
 		it.Publishing, it.Approval, it.StopUndo, it.Recovery = false, nil, nil, nil
 		it.Question, it.QKind, it.Asking = "", "", nil
+		it.PausedRecoveryQuestion = ""
 		for i := range it.Thread {
 			if it.Thread[i].State == "pending" {
 				it.Thread[i].State = "cancelled"
@@ -51,7 +52,7 @@ func (d *Doors) Close(id int, revision *int, who string) error {
 			}
 		}
 		if held != nil {
-			release(doc, id)
+			stopRelease(doc, *held)
 		}
 		it.Note(now, "Closed locally; work and spending kept. GitHub unchanged.")
 		return held != nil, nil
@@ -72,7 +73,7 @@ const RejectRefusal = "is not waiting on an approval · Stop or Close end it ins
 // paused for an approval somewhere else. Nothing here reads a pipeline's or a
 // step's name.
 func (d *Doors) Reject(id int, revision *int, who, words string) error {
-	return d.updateAt(id, revision, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
+	return d.updateAt(id, revision, false, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
 		if factory.JobState(*it) == "done" {
 			return false, CloseRefusal(fmt.Sprintf("%s is already closed", it.Ref()))
 		}
@@ -91,7 +92,7 @@ func (d *Doors) Reject(id int, revision *int, who, words string) error {
 			}
 		}
 		if held != nil {
-			release(doc, id)
+			stopRelease(doc, *held)
 		}
 		return held != nil, nil
 	})

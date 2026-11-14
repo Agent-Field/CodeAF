@@ -532,7 +532,7 @@ func TestAPartRestoredFromACheckpointStandsInTheFrozenWorld(t *testing.T) {
 		t.Fatalf("prepareTaskTreeOn for the parent: %v", err)
 	}
 	writeFile(t, filepath.Join(tree.dir, "repro.txt"), "the failing case\n")
-	saved, _, _, err := commitTaskWorkAs(tree.dir, wipCheckpointMessage("the whole job"), []string{"repro.txt"}, gitSignature{}, false)
+	saved, _, _, err := commitTaskWorkAs(tree.dir, wipCheckpointMessage("the whole job"), []string{"repro.txt"}, gitSignature{}, false, true)
 	if err != nil {
 		t.Fatalf("the checkpoint would not commit: %v", err)
 	}

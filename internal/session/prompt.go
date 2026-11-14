@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/exec"
 	"github.com/Agent-Field/codeaf/internal/filememo"
 	"github.com/Agent-Field/codeaf/internal/shell"
 )
@@ -322,6 +323,10 @@ func renderSystemAt(config Config, now time.Time) string {
 			out.WriteString("You are codeaf. Shell commands are unavailable here. Explain the shell requirement from Project, and do not claim to run commands. The manual tool can explain Windows setup.\n")
 		} else {
 			out.WriteString(bashWorkerPage())
+			if config.AttributionOff {
+				out.WriteString("\n\n")
+				out.WriteString(exec.AttributionOffLaw)
+			}
 		}
 		out.WriteString(workerFooter(config, now))
 		return out.String()
@@ -336,6 +341,9 @@ func renderSystemAt(config Config, now time.Time) string {
 	// the shape; this conditions the sentences INSIDE one, which is where five
 	// families of tools were being promised to workers that do not carry them.
 	page := strings.TrimRight(promptWithBeltFacts(config), "\n")
+	// AND WHAT IT SAYS ABOUT OTHER WINDOWS FOLLOWS THE CONVERSATION'S SCOPE
+	// (scope.go); a project page is unchanged byte for byte.
+	page = config.scopedElsewhereFact(page)
 	if _, err := shell.Bash(); err != nil {
 		// Unix keeps its exact prompt bytes. On Windows an absent command
 		// tool cannot inherit instructions that promise shell execution.
@@ -400,6 +408,7 @@ func renderSystemAt(config Config, now time.Time) string {
 	}
 
 	out.WriteString(workerFooter(config, now))
+	out.WriteString(clientToolsSection(config))
 	return out.String()
 }
 
@@ -607,6 +616,8 @@ func (a *Agent) liveModelConfigLocked() Config {
 	if model := strings.TrimSpace(a.model); model != "" {
 		config.Model = model
 	}
+	// The page names the scope the tasks description was given (scope.go).
+	config.ownWork = a.ownWorkTold.Load()
 	return config
 }
 

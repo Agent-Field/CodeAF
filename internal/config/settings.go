@@ -12,6 +12,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/ctxbudget"
 	"github.com/Agent-Field/codeaf/internal/env"
+	"github.com/Agent-Field/codeaf/internal/money"
 	"github.com/Agent-Field/codeaf/internal/pool/poolcfg"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
@@ -122,7 +123,9 @@ const (
 	// key the binary carries. The environment pin CODEAF_MODEL_POOL_PUBLIC_KEY
 	// outranks it, through the same resolver.
 	KeyModelPoolPublicKey = "models.pool.public_key"
+	KeyAttribution        = "attribution"
 	KeyAttributionModel   = "attribution.model"
+	KeyIdleHandoff        = "idle_handoff"
 	KeySplitPct           = "split_pct"
 
 	// The two rows the v3 chat surface keeps on disk BESIDE the conversation:
@@ -1082,8 +1085,10 @@ var OperatorEnvPins = []string{
 	"CODEAF_CLAUDE_BIN",
 	// CODEAF_RELAY points a headless peer at the relay this host pairs through
 	// (internal/pair). It is an address, so it is plumbing for the same reason
-	// CODEAF_BASE_URL is.
+	// CODEAF_BASE_URL is. CODEAF_RELAY_ADMIN_KEY names the operator seed file
+	// for the standalone relay-admin tool (cmd/codeaf-relay-admin).
 	"CODEAF_RELAY",
+	"CODEAF_RELAY_ADMIN_KEY",
 	// CODEAF_FURROW names a furrow to use instead of the one codeaf carries
 	// (internal/furrow). A path to a program is plumbing.
 	"CODEAF_FURROW",
@@ -1444,12 +1449,20 @@ const (
 	// would genuinely want to see priced first. 0 never asks.
 	DefaultPlanConsentUSD = 100.0
 
+	// DefaultAttribution signs commits, pull requests, issues and comments by
+	// default so work the person did not type is readable as such unless they
+	// turn attribution off.
+	DefaultAttribution = true
+
 	// DefaultAttributionModel names the model in the `Assisted-by` line by
 	// default, because the line is provenance and the model is the part of it
-	// somebody auditing the history later actually wants. The signature itself
-	// has no row and no off: work the person did not type is always readable as
-	// such (internal/exec's AttributionLaw).
+	// somebody auditing the history later actually wants.
 	DefaultAttributionModel = true
+
+	// DefaultIdleHandoff leaves an open chat's hold on the computer that
+	// holds it and keeps remote chats waiting for Continue here unless the
+	// person turns idle handoff on.
+	DefaultIdleHandoff = false
 
 	// The divider clamps so neither pane can be set into uselessness. The TUI
 	// reads these so the drag, the [ ] nudge, and the sheet agree.
@@ -1783,6 +1796,9 @@ func (s Setting) PinnedBy() (string, bool) {
 	}
 	if strings.TrimSpace(env.Value(s.Env)) == "" {
 		return "", false
+	}
+	if strings.HasPrefix(s.Env, "CODEAF_") {
+		return env.Spelling(s.Env)
 	}
 	return s.Env, true
 }
@@ -2355,11 +2371,10 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyTaskAudit, Category: CategoryTasks, Kind: SettingChoice,
 			Label: "task audit", Choices: TaskAuditModes,
-			Hint: "when on, every task node's work is checked by an independent read-only " +
-				"auditor — it runs the repo's own verification and reads the diff — before " +
-				"anything may merge into your branch. Off trusts the node's own report and " +
-				"merges unaudited. On is the default: the audit is what 'done' means, and it " +
-				"roughly doubles a small task's model cost.",
+			Hint: "when on, a separate read-only checker runs the repository's checks and reads " +
+				"the diff before a task's work may merge into your branch. When off, codeaf " +
+				"trusts the task's own report, merges its work and lands done without this check. " +
+				"On is the default and roughly doubles a small task's model cost.",
 			read:  func() string { return TaskAuditAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyTaskAudit, raw, TaskAuditModes) },
 		},
@@ -2765,16 +2780,29 @@ func (s *Settings) build() []Setting {
 			},
 		},
 		Setting{
+			Key: KeyAttribution, Category: CategoryInterface, Kind: SettingBool,
+			Label: "attribution", Env: "CODEAF_ATTRIBUTION",
+			Hint:  AttributionHint,
+			read:  func() string { return formatBool(AttributionAt(dir)) },
+			write: func(raw string) error { return writeBool(dir, KeyAttribution, raw) },
+		},
+		Setting{
 			Key: KeyAttributionModel, Category: CategoryInterface, Kind: SettingBool,
 			Label: "model in commits", Env: "CODEAF_ATTRIBUTION_MODEL",
-			// ONE SHORT SENTENCE, AND IT IS THE TWO LINES. The signature itself is
-			// not a row any more — codeaf always signs what it writes — so the only
-			// thing left to choose is whether the `Assisted-by` line names the
+			// ONE SHORT SENTENCE, AND IT IS THE TWO LINES. When attribution is
+			// on, this row chooses whether the `Assisted-by` line names the
 			// model, and the hint shows both answers rather than describing them.
 			// internal/exec's test holds these bytes to the line exec writes.
 			Hint:  AttributionModelHint,
 			read:  func() string { return formatBool(AttributionModelAt(dir)) },
 			write: func(raw string) error { return writeBool(dir, KeyAttributionModel, raw) },
+		},
+		Setting{
+			Key: KeyIdleHandoff, Category: CategoryInterface, Kind: SettingBool,
+			Label: "idle handoff", Env: "CODEAF_IDLE_HANDOFF",
+			Hint:  IdleHandoffHint,
+			read:  func() string { return formatBool(IdleHandoffAt(dir)) },
+			write: func(raw string) error { return writeBool(dir, KeyIdleHandoff, raw) },
 		},
 		// The ssh carrier is local surface policy, so its overrides live beside
 		// the other interface choices. Keeping them in the registry matters more
@@ -2892,7 +2920,7 @@ func SpentFigure(usd float64) string {
 // MoneyFloor is the smallest amount any surface writes as a figure: a hundredth
 // of a cent, four places after the point. It is the number [SubCent] compares
 // against AND the number it prints, so it is spelled once.
-const MoneyFloor = 0.0001
+const MoneyFloor = money.Floor
 
 // SubCent is how a positive amount SMALLER THAN A CENT is written, everywhere.
 //
@@ -2904,10 +2932,7 @@ const MoneyFloor = 0.0001
 // was spent, which is the emptiness law's failure turned inside out. Every
 // sub-cent figure is written here now, and the floor never rounds to a lie.
 func SubCent(usd float64) string {
-	if usd < MoneyFloor/2 {
-		return "<" + fmt.Sprintf("$%.4f", MoneyFloor)
-	}
-	return fmt.Sprintf("$%.4f", usd)
+	return money.SubCent(usd)
 }
 
 // spentTodayReceipt is the day's spend beside the day's ceiling (13). Nil seam
@@ -3225,6 +3250,26 @@ func PlanConsentUSDAt(profileDir string) (float64, error) {
 // leave it turning. When the learning loop that wants them lands it brings its
 // own rows, and the completeness gate will make sure of it.
 
+// AttributionHint is the `attribution` row's hint: what codeaf signs when the
+// row is on, and what it leaves unmarked when the row is off.
+const AttributionHint = "On, codeaf signs the commits, pull requests, issues and comments it writes; off, it adds no marks."
+
+// AttributionAt resolves whether codeaf signs the commits, pull requests,
+// issues and comments it writes. A malformed pin reads as the default rather
+// than refusing a launch over a toggle.
+func AttributionAt(profileDir string) bool {
+	if raw := strings.TrimSpace(env.Get("CODEAF_ATTRIBUTION")); raw != "" {
+		if value, err := parseBool(raw); err == nil {
+			return value
+		}
+		return DefaultAttribution
+	}
+	if value, ok := persistedBool(profileDir, KeyAttribution); ok {
+		return value
+	}
+	return DefaultAttribution
+}
+
 // AttributionModelHint is the `attribution.model` row's hint: what the line
 // says with the row on, and what it says with the row off.
 const AttributionModelHint = "On, commits say `Assisted-by: CodeAF (<model>)`; off, `Assisted-by: CodeAF`."
@@ -3254,6 +3299,28 @@ func AssistedByModelAt(profileDir, model string) string {
 		return ""
 	}
 	return model
+}
+
+// IdleHandoffHint is the `idle_handoff` row's hint: what happens when an open
+// shared chat goes idle with the row on, and what happens with it off. It never
+// says "pair": that word is how a person searching settings finds the Devices
+// tab, and a General row matching it took the search there instead.
+const IdleHandoffHint = "On, an idle chat shared with your other computers releases its hold after upload and free shared chats open here without asking; off, open chats keep their hold and remote chats wait for Continue here."
+
+// IdleHandoffAt resolves whether an idle chat on a paired computer releases its
+// hold to the relay after upload and whether free shared chats auto-open. A
+// malformed pin reads as the default rather than refusing a launch over a toggle.
+func IdleHandoffAt(profileDir string) bool {
+	if raw := strings.TrimSpace(env.Get("CODEAF_IDLE_HANDOFF")); raw != "" {
+		if value, err := parseBool(raw); err == nil {
+			return value
+		}
+		return DefaultIdleHandoff
+	}
+	if value, ok := persistedBool(profileDir, KeyIdleHandoff); ok {
+		return value
+	}
+	return DefaultIdleHandoff
 }
 
 // HistoryEnabledAt resolves whether the v3 chat surface records what was typed

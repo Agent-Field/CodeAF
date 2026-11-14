@@ -113,13 +113,24 @@ func TestTeamPairedFollowsPairingAndSyncOff(t *testing.T) {
 	if teamPaired() {
 		t.Fatal("missing identity was paired")
 	}
-	if _, err := identity.EnsureSolo(root); err != nil {
+	id, err := identity.EnsureSolo(root)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if teamPaired() {
 		t.Fatal("solo identity was paired")
 	}
 	if err := identity.EndSolo(root); err != nil {
+		t.Fatal(err)
+	}
+	relay := syncsetup.Resolve(root)
+	if err := syncsetup.SaveStorage(root, relay.URL, id.ID(), "off"); err != nil {
+		t.Fatal(err)
+	}
+	if teamPaired() {
+		t.Fatal("paired identity with storage off was team-paired")
+	}
+	if err := syncsetup.SaveStorage(root, relay.URL, id.ID(), "on"); err != nil {
 		t.Fatal(err)
 	}
 	if !teamPaired() {

@@ -95,6 +95,20 @@ To start a new conversation already pointed at a project, `/project` on the home
 screen picks the folder the next one opens in — `/project ~/code/parser`, or bare
 for the browser.
 
+## Do attached folders survive a restart or a move to another computer?
+
+A folder you add with `/folder` stays with this conversation across a restart,
+including a sibling of the workspace or a folder on another drive. The
+`folder · ~/code/agentfield` confirmation records the folder before it appears
+above your message box.
+
+Folders under the conversation, workspace or home directory follow those roots
+when you continue on another computer. A folder outside those roots keeps its
+exact absolute path. Its contents are not copied. If that path is absent on the
+other computer, the folder stays attached and the model is told
+`NOT on this disk right now`. Reopening or saving there does not replace or
+forget that path. Remove the attachment and choose a local folder if needed.
+
 ## The add context sheet over --host — another machine, over ssh
 
 Over `--host`, a bare `/attach` opens the add context sheet on the machine you are sitting

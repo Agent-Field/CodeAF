@@ -4,10 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/Agent-Field/codeaf/internal/guard"
-	"github.com/Agent-Field/codeaf/internal/home"
-	"github.com/Agent-Field/codeaf/internal/syncsetup"
-	"github.com/Agent-Field/codeaf/internal/syncwords"
 	"os"
 	"os/signal"
 	"strings"
@@ -15,7 +11,11 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/syncsetup"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 )
 
 const quitSaveFailedWord = "codeaf could not save this chat; unsaved turns stay on this computer and return on the next start if this computer still holds the chat."
@@ -24,12 +24,14 @@ const quitSavingWord = "saving this chat to your other devices…"
 const quitStillSavingWord = "still saving — ctrl+c leaves it saved here"
 const quitStillLocalWord = "still saving on this computer — ctrl+c leaves the written turns here"
 const quitLegacySavingWord = "codeaf is still saving this chat in the background; unsaved turns stay on this computer."
-const quitSavedHereWord = "saved here; it reaches your other devices when the sync service at %s answers"
+const quitStorageOffWord = syncwords.SavedStorageOff
+const quitSavedHereWord = syncwords.SavedHerePending
 
 // finalSaving keeps one failure until cleanup has returned the terminal.
 var finalSaving struct {
 	sync.Mutex
 	failure         error
+	notices         []string
 	surface         bool
 	finishing       bool
 	address         string
@@ -52,6 +54,7 @@ func armFinalSaving() chan struct{} {
 	finalSaving.Lock()
 	defer finalSaving.Unlock()
 	finalSaving.surface = true
+	finalSaving.notices = nil
 	finalSaving.finishing = false
 	finalSaving.address = ""
 	finalSaving.progressAllowed = nil
@@ -178,7 +181,7 @@ func recordFinalSaveFailure(err error) {
 	}
 	if syncwords.UploadPending(err) {
 		finalSaving.finishing = true
-		if finalSaving.failure == nil {
+		if finalSaving.failure == nil || syncwords.UploadPending(finalSaving.failure) && syncwords.SavedWithStorageOff(err) {
 			finalSaving.failure = err
 		}
 		return
@@ -237,6 +240,17 @@ func finishFinalSaving(ctx context.Context) (ok bool) {
 	}
 	err, surface, finishing, address, checks, legacy := takeFinalReport()
 	defer func() { completeFinalReport(done, ok) }()
+	lines := takeFinalSaveNotices()
+	if len(lines) > 0 {
+		stopFinalSaveProgress()
+		terminal := os.Stderr
+		if surface {
+			terminal = os.Stdout
+		}
+		for _, line := range lines {
+			fmt.Fprintln(terminal, line)
+		}
+	}
 	if err == nil && !finishing {
 		return true
 	}
@@ -267,8 +281,8 @@ func finishFinalSaving(ctx context.Context) (ok bool) {
 
 // finalSaveWords distinguishes durable local turns from a failed local write.
 func finalSaveWords(err error, finishing bool, address string) (string, bool) {
-	if syncwords.UploadPending(err) {
-		return fmt.Sprintf(quitSavedHereWord, syncwords.Host(address)), true
+	if line := syncwords.SavedHereWords(err, address); line != "" {
+		return line, true
 	}
 	if (err == nil && finishing) || errors.Is(err, session.ErrSavingUnanswered) {
 		return "saving on this computer has not finished; its written turns stay here", false
@@ -477,4 +491,30 @@ func setFinalSyncService(address string, allowed func() bool) {
 	defer finalSaving.Unlock()
 	finalSaving.address = address
 	finalSaving.progressAllowed = allowed
+}
+
+// recordFinalSaveNotices keeps each closing sentence until terminal restoration.
+func recordFinalSaveNotices(lines []string) {
+	finalSaving.Lock()
+	defer finalSaving.Unlock()
+	for _, line := range lines {
+		found := false
+		for _, previous := range finalSaving.notices {
+			if previous == line {
+				found = true
+				break
+			}
+		}
+		if line != "" && !found {
+			finalSaving.notices = append(finalSaving.notices, line)
+		}
+	}
+}
+
+func takeFinalSaveNotices() []string {
+	finalSaving.Lock()
+	defer finalSaving.Unlock()
+	lines := finalSaving.notices
+	finalSaving.notices = nil
+	return lines
 }

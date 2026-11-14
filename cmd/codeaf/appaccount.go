@@ -823,7 +823,7 @@ func (b *appBackend) keysMoved(provider string) {
 // connected provider this process has no list for yet — most often the one
 // just connected — through the terminal's own door ([v3ModelShelf.warmAll]),
 // so models.list offers its models as the terminal's picker would. It is
-// seated on the profile's errand tracker, so a close waits for it.
+// seated on the process's errand tracker, so a close waits for it.
 func (b *appBackend) warmProviderModels() {
 	if !b.assembled.Load() || b.isClosing() {
 		return
@@ -836,9 +836,30 @@ func (b *appBackend) warmProviderModels() {
 		return
 	}
 	done := make(chan struct{})
-	b.locked(func() { b.providerWarm = done })
-	poolErrandGoCtx(proc.ProfileDir, "app/provider-models", func(ctx context.Context) {
-		defer close(done)
+	var prev chan struct{}
+	stopped := false
+	b.locked(func() {
+		if b.closing {
+			stopped = true
+			return
+		}
+		prev = b.providerWarm
+		b.providerWarm = done
+	})
+	if stopped {
+		close(done)
+		return
+	}
+	poolErrandGoCtx(proc.poolErrands, "app/provider-models", func(ctx context.Context) {
+		defer func() {
+			if prev != nil {
+				select {
+				case <-prev:
+				case <-ctx.Done():
+				}
+			}
+			close(done)
+		}()
 		proc.Shelf.warmAll(ctx, true, proc.noteServiceModels)
 	})
 }

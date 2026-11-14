@@ -45,7 +45,11 @@ func SeatOver(class executor.Class, c cell.Cell, workspace string, obs executor.
 		}
 	}
 	if workspace != "" && engine.workspace(c) == "" {
-		engine.Guard.notify(homeFolderWord)
+		if holdsCodeafHome(workspace) && !holdsUserHome(canonicalTree(workspace)) {
+			engine.Guard.notify(codeafHomeWord)
+		} else {
+			engine.Guard.notify(homeFolderWord)
+		}
 	}
 	var store Store = engine
 	if over != nil {
@@ -65,6 +69,11 @@ func SeatOver(class executor.Class, c cell.Cell, workspace string, obs executor.
 // homeFolderWord is said once when a chat opens in a folder that holds the home
 // folder: the conversation is saved, the folder's files are not.
 const homeFolderWord = "this folder holds your home folder, so its files are not saved with this chat · rewind brings back the conversation only · open codeaf in a project folder to save its files"
+
+// codeafHomeWord is [homeFolderWord] for a chat whose folder is codeaf's own
+// folder (the codeaf home) or a folder above it: its files are codeaf's state,
+// never a project, so they are not saved with the chat.
+const codeafHomeWord = "this folder holds codeaf's own folder, so its files are not saved with this chat · rewind brings back the conversation only · open codeaf in a project folder to save its files"
 
 // notifyHistoryOff records the sentence on the chat, so reopening a seat
 // cannot repeat it. A notice must never make tools wait on saved history.

@@ -13,6 +13,11 @@ func SetProgramAnswerAttribution(folder *ProgramFolder, named bool) error {
 	if folder == nil {
 		return nil
 	}
+	if folder.Unsigned {
+		folder.NoAttribution = true
+		folder.SignModel = ""
+		return nil
+	}
 	// A log that cannot be read cannot prove that the configured seat answered.
 	folder.NoAttribution = true
 	folder.SignModel = ""

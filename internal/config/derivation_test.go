@@ -125,10 +125,14 @@ var settingReaders = map[string]string{
 	KeyPlanConsent:       "PlanConsentUSD",
 	KeyDocumentEngine:    "DocumentEngine",
 	KeyVisionModel:       "VisionModel",
+	// The attribution row names the resolver every door asks whether this
+	// launch signs what it writes.
+	KeyAttribution: "AttributionAt",
 	// The model-name row names the one resolver every door turns it into a
 	// name through: the leaf loops' doors hand [AssistedByModelAt]'s answer to
 	// the attribution line.
 	KeyAttributionModel: "AssistedByModelAt",
+	KeyIdleHandoff:      "IdleHandoffAt",
 	// The pool row is read through [ModelPoolAt] since the telemetry off switch
 	// started capping the pool at read: `codeaf pool` calls [ModelPoolResolved]
 	// with its injected environment (`codeaf telemetry` did too, until the

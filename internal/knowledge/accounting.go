@@ -27,6 +27,9 @@ func memoryBilling(ctx context.Context) context.Context {
 	usageRecorder.RLock()
 	record := usageRecorder.record
 	usageRecorder.RUnlock()
+	if calls := callsFrom(ctx); calls.record != nil {
+		record = func(_ context.Context, b provider.Billed) { calls.record(b) }
+	}
 	if record == nil {
 		return ctx
 	}

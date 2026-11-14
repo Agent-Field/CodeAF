@@ -18,6 +18,8 @@ export const PRESENCE = { maxBeat: 60, defaultBeat: 30, windowFactor: 2.5 };
 export const windowMs = (beat) => beat * 1000 * PRESENCE.windowFactor;
 
 export const DEFAULTS = {
+  // Hosted storage remains closed until an account is approved or the operator opens it.
+  storageOpen: false,
   // One identity.
   storeBytes: 5 * GiB, // Maximum stored bytes per identity.
   storeObjects: 5_000_000, // the index is rows in the identity's SQLite, so this is a backstop; the byte cap rules
@@ -38,7 +40,10 @@ export const DEFAULTS = {
   newIdentitiesPerIpPerDay: 200,
   // Deployment-wide brakes are opt-in through CAF_LIMITS; zero closes the corresponding door.
   globalNewIdentitiesPerDay: Infinity,
+  // Shared storage closes admission only, so existing identities retain their own storage allowances.
   globalStoreBytes: Infinity,
+  // The emergency stop refuses every identity's new frames while preserving held frames and erasure.
+  globalHardStoreBytes: Infinity,
   // The pairing mailbox, for callers that have no identity yet.
   pairTtlMs: 10 * 60_000,
   pairMaxMsg: 4 << 10,
@@ -65,7 +70,7 @@ export const DEFAULTS = {
 export function limitsOf(env) {
   const table = { ...DEFAULTS, ...JSON.parse(env.CAF_LIMITS ?? '{}') };
   // A device may come back to its code until the code's life ends, so the default quarantine is one life.
-  return { ...table, plateQuarantineMs: table.plateQuarantineMs ?? table.pairTtlMs };
+  return { ...table, storageOpen: [true, 1, 'true', '1'].includes(table.storageOpen), plateQuarantineMs: table.plateQuarantineMs ?? table.pairTtlMs };
 }
 
 /**
@@ -111,6 +116,20 @@ export class Quota {
   today(now) {
     const row = this.sql.exec('SELECT day, frames, bytes, objects FROM usage').one();
     return { ...row, frames: row.day === Math.floor(now / DAY_MS) ? row.frames : 0 };
+  }
+
+  /** snapshot reads held totals without rolling the stored day or listing the bucket. */
+  snapshot(now) {
+    const used = this.today(now);
+    const answer = { stored_bytes: used.bytes, stored_objects: used.objects, frames_today: used.frames };
+    for (const [field, limit] of [
+      ['limit_bytes', this.limits.storeBytes],
+      ['limit_objects', this.limits.storeObjects],
+      ['limit_frames_per_day', this.limits.framesPerDay],
+    ]) {
+      if (Number.isFinite(limit)) answer[field] = limit;
+    }
+    return answer;
   }
 
   /** admit throws full when storing `frame` ({size, objects}) would pass a stored ceiling, naming the byte ceiling when that is the one. */

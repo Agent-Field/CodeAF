@@ -14,7 +14,9 @@ import (
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/dirwatch"
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/handoff"
 	"github.com/Agent-Field/codeaf/internal/pair"
@@ -92,17 +94,26 @@ func (b *appBackend) runLocalChatPublication(ctx context.Context, now func() tim
 	// offered says the first pass for this binding has run; failing that the
 	// last pass left chats to try again; sharingNow that a first pass is
 	// running; stateFailing that the last pass over keys, memory and
-	// preferences failed. Together they decide the sharing line (say).
+	// preferences failed. Together they decide the sharing line (say), which
+	// is said only to a person with another computer paired (syncsetup's
+	// others.go): with none, there is nobody the chats were not shared with.
 	offered, failing, sharingNow, stateFailing := false, false, false, false
 	refresh := false
 	var stateRetry time.Time
 	var stateBackoff time.Duration
 	sharing := newHomeSharing(b.relayHome())
 	defer sharing.release()
+	var stopStorage func()
+	defer func() {
+		if stopStorage != nil {
+			stopStorage()
+		}
+	}()
 	said := ""
 	say := func() {
 		line := ""
 		switch {
+		case source == nil || !source.OthersPaired():
 		case stateFailing:
 			line = "Saved keys, memory and preferences could not be shared yet; codeaf will try again."
 		case failing:
@@ -167,6 +178,9 @@ func (b *appBackend) runLocalChatPublication(ctx context.Context, now func() tim
 				return true
 			}()
 			if ready && ctx.Err() == nil {
+				if stopStorage == nil && !source.StorageAllowed() {
+					stopStorage = syncsetup.StartStorageRefresh(ctx, source.Home)
+				}
 				shareState()
 				say()
 				// One process publishes for the home (homesharing.go). Every
@@ -394,7 +408,7 @@ func (b *appBackend) readChats(parent context.Context, s *syncsetup.Sync, feed d
 		_, installed := local[r.Cell]
 		here := r.Mine && (r.Status == chatlist.Here || installed)
 		row := appwire.ChatRow{Cell: r.Cell, Title: r.Title, Here: here, Status: string(r.Status), Seen: appwire.Seen{Device: r.DeviceID, Fence: r.Fence, Head: r.Head}, CanTake: !here && r.Head != ""}
-		row.CanOpen = r.AutoOpen && r.Head != ""
+		row.CanOpen = s.IdleHandoffAllowed() && r.AutoOpen && r.Head != ""
 		if service, ok := s.Dir.(interface{ HeadTakes() bool }); ok && !service.HeadTakes() {
 			row.Seen.Head = ""
 		}
@@ -747,6 +761,17 @@ func (b *appBackend) cachedChatLocation(id string) *appwire.Location {
 		return nil
 	}
 	return chatLocation(row)
+}
+
+func (b *appBackend) idleHandoffEnabled() bool {
+	profile := strings.TrimSpace(b.profileDir)
+	if profile == "" {
+		profile = strings.TrimSpace(env.Get(config.ProfileDirEnv))
+	}
+	if profile == "" {
+		profile = b.relayHome()
+	}
+	return config.IdleHandoffAt(profile) && syncsetup.StorageForHome(b.relayHome()) != "off"
 }
 
 func (b *appBackend) dressChatLocation(view *appwire.Agent) {

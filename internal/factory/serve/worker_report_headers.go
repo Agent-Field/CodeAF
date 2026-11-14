@@ -56,6 +56,12 @@ func workerReportHeaders(body *api.WorkerReport, headers http.Header) error {
 		for i := range body.Steps {
 			if state, ok := runtime[body.Steps[i].Name]; ok {
 				body.Steps[i].RoundLimit, body.Steps[i].Verification = state.RoundLimit, state.Verification
+				if state.VerificationFailureKey != "" {
+					if body.Steps[i].Result == nil {
+						return fmt.Errorf("verification failure key requires a step result")
+					}
+					body.Steps[i].Result.VerificationFailureKey = state.VerificationFailureKey
+				}
 			}
 		}
 	}

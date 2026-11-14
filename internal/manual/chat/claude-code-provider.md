@@ -2,13 +2,19 @@
 
 ## Claude Code as a provider — use my Claude plan, no API key, connect Claude Code
 
-Settings › Models & providers lists **Claude Code** beside OpenRouter and ChatGPT. It asks for no key: Check finds the `claude` program and its sign-in (it says, for example, `Found Claude Code 2.1.319 · signed in · Claude Max plan`), and Connect adds three models — `claude-code/opus`, `claude-code/sonnet` and `claude-code/haiku`.
+Settings › Models & providers lists **Claude Code** beside OpenRouter and ChatGPT. It asks for no key: Check finds the `claude` program and its sign-in (it says, for example, `Found Claude Code 2.1.319 · signed in · Claude Max plan`), and Connect adds its models: `claude-code/opus`, `claude-code/sonnet` and `claude-code/haiku`, and versions of each.
 
 Connected, the row reads `Signed in · Claude Max plan · no API key`; the plan is shown only when Claude Code reports it. Not installed, it reads `Not installed on this computer` and offers Check again, not Connect. First run leads with a Claude Code card only when Claude Code is installed and signed in.
 
-In the terminal, `codeaf connect claude-code` does the same check and prints, for example, `claude-code is connected · Claude Code 2.1.319 · Claude Max plan · models: claude-code/opus, claude-code/sonnet, claude-code/haiku`; `codeaf connect` then lists `claude-code · connected · your Claude Code sign-in`. In the chat, `/connect` shows a Claude Code row tagged `your Claude Code sign-in · no key`, and choosing it connects without asking for a key. The chat's first-run provider list and its later add-a-provider menu show Claude Code only when the `claude` program is installed on this computer; `/connect` always lists it. If Claude Code is missing or signed out, all three say so instead of connecting.
+In the terminal, `codeaf connect claude-code` does the same check and prints, for example, `claude-code is connected · Claude Code 2.1.319 · Claude Max plan · models: claude-code/opus, claude-code/sonnet, claude-code/haiku and 6 versions`; `codeaf connect` then lists `claude-code · connected · your Claude Code sign-in`. In the chat, `/connect` shows a Claude Code row tagged `your Claude Code sign-in · no key`, and choosing it connects without asking for a key. The chat's first-run provider list and its later add-a-provider menu show Claude Code only when the `claude` program is installed on this computer; `/connect` always lists it. If Claude Code is missing or signed out, all three say so instead of connecting.
 
 Nothing is billed per call on a Claude plan, so these models show `on your Claude plan` instead of a price, and they add nothing to codeaf's spending.
+
+## Which Claude version runs — choose Haiku 5.5 or Haiku 4.5, Opus, Sonnet, pin a version
+
+`claude-code/opus`, `claude-code/sonnet` and `claude-code/haiku` run whichever version your installed Claude Code maps that word to. An older Claude Code maps a word to an older model — `haiku` may be Haiku 4.5 — and updating Claude Code (`claude update`) moves it.
+
+To hold a seat to one version, pick a version row. Each family lists its two newest: `claude-code/claude-opus-5-5`, `claude-code/claude-opus-5`, `claude-code/claude-sonnet-5-5`, `claude-code/claude-sonnet-5`, `claude-code/claude-haiku-5-5` and `claude-code/claude-haiku-4-5`. A version row is sent to Claude Code under exactly that name, in a conversation, for a crew member and for a task handed to `claude`. Whether it runs depends on your Claude plan; a version your plan does not include fails as any unavailable model does.
 
 ## How a conversation on Claude Code works — Claude Code does the work with its own tools
 

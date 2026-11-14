@@ -32,6 +32,10 @@ const StepChatsHeader = "X-Codeaf-Step-Chats"
 // control, so its worker cancels execution without reporting a person's Stop.
 const LeaseWithdrawnHeader = "X-Codeaf-Lease-Withdrawn"
 
+// LeaseStoppedHeader marks a rejected lease as ended by a person's Stop,
+// distinct from an expired or handed-back hold.
+const LeaseStoppedHeader = "X-Codeaf-Lease-Stopped"
+
 // SignalAcksHeader opts into retained delivery. Its JSON IDs acknowledge handled
 // signals; an older factory ignores the header and still receives an empty body.
 const SignalAcksHeader = "X-Codeaf-Signal-Acks"
@@ -140,18 +144,19 @@ type StepReport struct {
 
 // StepResult preserves the evidence that later steps need after a restart.
 type StepResult struct {
-	Files          []string                `json:"files,omitzero"`
-	PublishSummary []string                `json:"publish_summary,omitempty"`
-	Repair         *factory.CIRepairResult `json:"repair,omitempty"`
-	Tests          *factory.TestCounts     `json:"tests,omitempty"`
-	Done           bool                    `json:"done"`
-	Findings       int                     `json:"findings,omitempty"`
-	Claims         []Claim                 `json:"claims,omitempty"`
-	Output         string                  `json:"output,omitempty"`
-	Exit           int                     `json:"exit,omitempty"`
-	Notes          []string                `json:"notes,omitempty"`
-	Cost           float64                 `json:"cost,omitempty"`
-	Chat           string                  `json:"chat,omitempty"`
+	VerificationFailureKey string                  `json:"verification_failure_key,omitempty"`
+	Files                  []string                `json:"files,omitzero"`
+	PublishSummary         []string                `json:"publish_summary,omitempty"`
+	Repair                 *factory.CIRepairResult `json:"repair,omitempty"`
+	Tests                  *factory.TestCounts     `json:"tests,omitempty"`
+	Done                   bool                    `json:"done"`
+	Findings               int                     `json:"findings,omitempty"`
+	Claims                 []Claim                 `json:"claims,omitempty"`
+	Output                 string                  `json:"output,omitempty"`
+	Exit                   int                     `json:"exit,omitempty"`
+	Notes                  []string                `json:"notes,omitempty"`
+	Cost                   float64                 `json:"cost,omitempty"`
+	Chat                   string                  `json:"chat,omitempty"`
 }
 
 // stepResultWire is one step's report in the wire's words, both ways a
@@ -166,13 +171,13 @@ type StepResult struct {
 // ([ReportAdmits.FailureSummaries]). A field added here is
 // one a factory older than it refuses a worker's whole report for.
 func stepResultWire(r factory.StageResult) *StepResult {
-	return &StepResult{Files: r.Files, Repair: r.Repair, PublishSummary: r.PublishSummary, Tests: r.Tests, Done: r.Done, Findings: r.Findings, Claims: mapList(r.Claims, fromClaim),
+	return &StepResult{VerificationFailureKey: r.VerificationFailureKey, Files: r.Files, Repair: r.Repair, PublishSummary: r.PublishSummary, Tests: r.Tests, Done: r.Done, Findings: r.Findings, Claims: mapList(r.Claims, fromClaim),
 		Output: r.Output, Exit: r.Exit, Notes: r.Notes, Cost: r.Spent, Chat: r.Chat}
 }
 
 // stageResultItem is [stepResultWire] read back.
 func stageResultItem(r StepResult) factory.StageResult {
-	return factory.StageResult{Files: r.Files, Repair: r.Repair, PublishSummary: r.PublishSummary, Tests: r.Tests, Done: r.Done, Findings: r.Findings, Claims: mapList(r.Claims, toClaim),
+	return factory.StageResult{VerificationFailureKey: r.VerificationFailureKey, Files: r.Files, Repair: r.Repair, PublishSummary: r.PublishSummary, Tests: r.Tests, Done: r.Done, Findings: r.Findings, Claims: mapList(r.Claims, toClaim),
 		Output: r.Output, Exit: r.Exit, Notes: r.Notes, Spent: r.Cost, Chat: r.Chat}
 }
 
@@ -191,6 +196,9 @@ func stageResultItem(r StepResult) factory.StageResult {
 func WorkerJob(it factory.Item) Job {
 	j := FromItem(it)
 	j.RoundCostTables, j.FailureSummaries = true, true
+	for i := range j.Context {
+		j.Context[i].Markdown = it.Context[i].Markdown
+	}
 	// The runner runs the file the job carries, so it is sent whole here.
 	j.PipelineCopy = it.PipelineCopy.Clone()
 	// The read written before work is what every step is told the issue

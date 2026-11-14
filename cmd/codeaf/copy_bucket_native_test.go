@@ -19,6 +19,7 @@ import (
 
 func TestCopyBucket_D3_TenNativeMovesKeepExistingRoots(t *testing.T) {
 	celltest.RequireEngine(t)
+	t.Setenv("CODEAF_IDLE_HANDOFF", "on")
 	h := newHostedMoveRig(t)
 	c, err := cell.CreateIn(filepath.Join(h.a.Home, "v3", "projects", "original"), cell.Options{Class: cell.HostBound})
 	if err != nil {

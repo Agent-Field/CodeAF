@@ -107,8 +107,17 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	if where == "" {
 		where = strings.TrimSpace(m.workspace)
 	}
+	if where == "" && spec.Item.ID > 0 {
+		// A STAGE WITH NO WORKTREE AND A HOST WITH NO FOLDER works in its
+		// job's own empty folder, never in whatever folder the engine started
+		// in (factory_chat_folder.go).
+		where, _ = factoryJobFolder(m.floor, spec.Item.ID)
+	}
 	if where == "" {
 		return nil, errors.New("codeaf does not know which folder this stage's conversation belongs in")
+	}
+	if err := factoryFolderRefusal(m.floor, where); err != nil {
+		return nil, err
 	}
 	bucket, err := v3ProjectDir(where)
 	if err != nil {
@@ -150,7 +159,12 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 		fallback = ""
 	}
 	cfg.ConversationModels = &session.ConversationModels{Main: cfg.Model, Fallback: fallback}
-	verification := &receiptStageDoor{StageDoor: spec.Stage, file: cfg.SessionFile, dir: where, repair: spec.VerifyRepair, requireFresh: spec.VerifyChecks}
+	verification := &receiptStageDoor{
+		StageDoor: spec.Stage, file: cfg.SessionFile, dir: where,
+		repair: spec.VerifyRepair, requireFresh: spec.VerifyChecks, baselineCommit: spec.BaselineCommit,
+		accepted:   spec.AcceptedFailures,
+		syncPRBase: spec.SyncPRBase,
+	}
 	cfg.Stage = verification
 	cfg.PlanStage = strings.EqualFold(strings.TrimSpace(spec.VerificationStage), "plan")
 	cfg.RepairStage = factory.IsCIRepairStage(factory.Stage{Name: strings.TrimSpace(spec.VerificationStage)})

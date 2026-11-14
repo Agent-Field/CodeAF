@@ -1,12 +1,13 @@
 package main
 
 import (
-	"github.com/Agent-Field/codeaf/internal/home"
-	"github.com/Agent-Field/codeaf/internal/session"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 func TestIdleOpen_R5_3_DistinctCopyOrigins(t *testing.T) {

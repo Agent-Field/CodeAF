@@ -72,6 +72,7 @@ func TestIdleRelease_R10b_UncertainOwnFenceKeepsDraftUntilLapsedRetry(t *testing
 }
 
 func r10RetryTakeBack(t *testing.T, first error, unknown int) {
+	t.Setenv("CODEAF_IDLE_HANDOFF", "on")
 	source := &r10RetrySource{continuationListing: &continuationListing{row: chatlist.Row{Cell: heldCell, Status: chatlist.Idle, Mine: true, Released: true, AutoOpen: true, Fence: 2, Head: "saved", DeviceID: "A"}}}
 	taker := &fakeTaker{}
 	a, old := heldLab(t, source, taker)

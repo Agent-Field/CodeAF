@@ -34,6 +34,8 @@ func TestReadPlanWorkIsTheCopysOwnChangesWithoutTheHarnessFiles(t *testing.T) {
 		}
 	}
 	run("init", "-q")
+	run("config", "--local", "maintenance.auto", "false")
+	run("config", "--local", "gc.auto", "0")
 	write("load.go", "old line\n")
 	run("add", "load.go")
 	run("commit", "-q", "-m", "base")
@@ -131,6 +133,8 @@ func TestReadPlanWorkReadsAGivenBackCopyOffItsBranch(t *testing.T) {
 		}
 	}
 	run("init", "-q")
+	run("config", "--local", "maintenance.auto", "false")
+	run("config", "--local", "gc.auto", "0")
 	write(root, "README.md", "the ground\n")
 	run("add", "README.md")
 	run("commit", "-q", "-m", "base")

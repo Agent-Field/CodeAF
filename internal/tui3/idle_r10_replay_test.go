@@ -43,6 +43,7 @@ func (w *r10OrderingWriter) CheckWorkContext(context.Context) error {
 // The drive matrix proves preservation and fence effects. This matrix crosses
 // those outcomes with Home history at the real Enter and composer boundary.
 func TestIdleOpen_R10_RecoveryOrderingPriorHomeMatrix(t *testing.T) {
+	t.Setenv("CODEAF_IDLE_HANDOFF", "on")
 	for _, relay := range []string{"live", "lapsed"} {
 		for _, posture := range []string{"idle", "working"} {
 			for _, pending := range []string{"none", "some"} {
@@ -156,6 +157,7 @@ func (*r10ReplayWriter) CheckWorkContext(context.Context) error {
 }
 
 func TestIdleOpen_R10_Run1PriorHomeMatrix(t *testing.T) {
+	t.Setenv("CODEAF_IDLE_HANDOFF", "on")
 	for _, prior := range []bool{false, true} {
 		for _, recovered := range []string{"lapsed", "revived", "released"} {
 			t.Run(map[bool]string{false: "prior_Home_other_holder_no", true: "prior_Home_other_holder_yes"}[prior]+"/"+recovered, func(t *testing.T) {
@@ -215,6 +217,7 @@ func TestIdleOpen_R10_Run1PriorHomeMatrix(t *testing.T) {
 }
 
 func TestIdleOpen_R10_Run1AfterFailedOtherChatMove(t *testing.T) {
+	t.Setenv("CODEAF_IDLE_HANDOFF", "on")
 	source := &r10ReplaySource{continuationListing: &continuationListing{row: chatlist.Row{Cell: heldCell, Title: "I", Mine: true, DeviceID: "A", Status: chatlist.Here, Fence: 2, Head: "saved"}}, clock: directorytest.NewFakeClock(), priorHome: true, receipt: true}
 	taker := &returningTaker{}
 	taker.err = directory.ErrUnreachable

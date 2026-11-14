@@ -59,7 +59,7 @@ func (v *Vault) compile(ctx context.Context, key string, force bool) (err error)
 		return err
 	}
 	defer db.Close()
-	model := compilerModel{ctx: ctx, root: v.root, key: key, model: knowledgeModel(v.profile), db: db, calls: v.calls}
+	model := compilerModel{ctx: ctx, root: v.root, key: key, model: knowledgeModel(v.profile), db: db, calls: v.calls, repeats: v.repeats}
 	defer func() {
 		message := ""
 		if err != nil {

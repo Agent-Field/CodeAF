@@ -61,8 +61,11 @@ type PlanTaskRow struct {
 	// driving its run when the next request arrived ([planTaskInterrupted]). It
 	// crosses remote reads as row data, the way Stopped does.
 	Interrupted bool
-	Seat        string
-	Parent      string
+	// Undriven marks ready work retained after its run's supervisor left this
+	// conversation. Its status stays ready for a later continuation.
+	Undriven bool `json:",omitempty"`
+	Seat     string
+	Parent   string
 	// Depth is the row's level below the page task; direct children are zero.
 	Depth int
 	// Waits is the tasks this row is held behind that are not its parent: the ids
@@ -150,6 +153,9 @@ func (row PlanTaskRow) StateWord() string {
 	}
 	if row.Interrupted {
 		return taskWordInterrupted
+	}
+	if row.Undriven && row.Status == string(plandb.StatusReady) {
+		return taskWordQueued
 	}
 	if row.Hold != "" && (row.Status == string(plandb.StatusReady) || row.Status == string(plandb.StatusRunning)) {
 		return taskWordQueued
@@ -510,11 +516,13 @@ func (a *Agent) planTaskPageFor(id string, withProgram bool) (PlanTaskPage, plan
 	}, source, true
 }
 
-// markPlanMachineHold copies only this row's refused start. An archived store
-// and a worker already running have no admission to wait for.
+// markPlanMachineHold copies this row's refused start and whether its run
+// still drives ready work. Archived work has no supervisor or admission here.
 func (a *Agent) markPlanMachineHold(row *PlanTaskRow, path string, root bool) {
 	a.beltMu.Lock()
 	run := a.beltRun
+	live := run != nil && !run.ending && run.store != nil && filepath.Clean(run.store.Path()) == filepath.Clean(path)
+	row.Undriven = row.Status == string(plandb.StatusReady) && !live
 	pending := run != nil && run.pending
 	held := run != nil && (pending || run.machineHeld[row.ID]) && run.store != nil && filepath.Clean(run.store.Path()) == filepath.Clean(path)
 	a.beltMu.Unlock()
@@ -548,7 +556,7 @@ func (a *Agent) markPlanInterrupted(row *PlanTaskRow) {
 			if notice.State == TaskInterrupted {
 				row.Interrupted = true
 			}
-			if notice.RecoveredCompletion {
+			if notice.RecoveredCompletion || localRunConflict(*notice) {
 				row.Status = string(notice.State)
 				row.Ended = notice.EndedAt
 				if notice.CostUSD > row.USD {

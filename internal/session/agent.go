@@ -90,6 +90,8 @@ func New(config Config) (*Agent, error) {
 // parent's account-keyed pool and resolve their own model before their first
 // request, rather than inheriting whichever adapter the parent last used.
 func (a *Agent) newChildAgent(config Config) (*Agent, error) {
+	config.ClientTools = nil
+	config.System = clientToolsWithoutSections(config.System)
 	if pair, ok := a.ConversationModelPair(); ok && config.ConversationModels == nil {
 		pair.Main = config.Model
 		if config.OneModel || pair.Fallback == pair.Main {
@@ -158,6 +160,9 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		config.liveProfile.launch = chosenPromptProfile(config)
 	}
 	config.liveProfile.current.Store(config.profile)
+	// What the page and the tasks description say about other windows follows
+	// the stored scope; a later change is taken at a turn's start (scope.go).
+	config.ownWork = config.readsOwnWorkOnly()
 	system, own := config.System, false
 	if strings.TrimSpace(system) == "" {
 		system, own = renderSystem(config), true
@@ -169,7 +174,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		watch.TrackTurn(config.Place.Dir)
 	}
 	agent := &Agent{
-		workWake:           make(chan struct{}, 1),
+		budgetWorkStarted:  make(chan struct{}, 1),
 		taskComputerPrompt: config.mayNameTaskComputer(),
 		config:             config,
 		receipts:           config.receipts,
@@ -190,6 +195,9 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	}
 	if config.Place.Dir != "" {
 		if meta, err := LoadMeta(config.Place.Dir); err == nil {
+			if meta.Model == config.Model {
+				agent.modelForNowProvider = meta.ModelProvider
+			}
 			if meta.ModelIdentity != nil {
 				agent.modelIdentity = *meta.ModelIdentity
 				agent.modelIdentity.Active, agent.modelIdentity.Pending = "", false
@@ -267,6 +275,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// belongs beside the transcript of the conversation that commissioned it, not
 	// in the repository it borrowed to work in (landing.go).
 	agent.jobs = newJobRegistry(config.Workspace, config.droppingsPlace(), agent.enqueueJobNote, agent.enqueueWatchNote)
+	agent.jobs.workStarted = agent.wakeBudgetForWork
 	agent.jobs.stage = config.mayStage()
 	agent.jobs.notifyQuiet = agent.enqueueJobNoteQuiet
 	agent.jobs.notifyUnowed = agent.enqueueJobNoteUnowed
@@ -294,6 +303,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// hub has to exist before the tools are assembled (connect.go).
 	agent.connect = newConnectHub(config)
 	agent.initKnowledge()
+	agent.ownWorkTold.Store(config.ownWork)
 	agent.tools = agent.belt()
 	definitions, err := toolDefinitions(agent.tools)
 	if err != nil {
@@ -416,9 +426,10 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// not reachable yet.
 		agent.scrubBlindImagePartsLocked(agent.model)
 		// AND IT KEEPS WHAT IT SPENT. The total is the sum of the file's usage
-		// lines (sessionfile.go), so a conversation reopened tomorrow reports the
-		// money it actually cost rather than the money this process has spent so
-		// far — which for a resumed session was always nothing.
+		// lines and late-receipt call lines (sessionfile.go), so a conversation
+		// reopened tomorrow reports the money it actually cost rather than the
+		// money this process has spent so far — which for a resumed session was
+		// always nothing.
 		//
 		// THIS ALSO RESTORES THE SPEND RAIL, and that is the intended change: the
 		// rail is this conversation's own ceiling (rail.go), so a conversation
@@ -426,7 +437,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// the process was a ceiling on a window, not on a conversation.
 		agent.usage = file.RestoredUsage()
 		// AND A JOURNAL WRITTEN BEFORE THE TOTAL WAS KEPT GETS ONE NOW. The sum
-		// above came out of the file's own usage lines, so this costs the read
+		// above came out of the file's own charge records, so this costs the read
 		// of a meta.json and — only when it has no figure at all — one write
 		// (placemeta.go's [Agent.stampRestoredSpend]). Without it a conversation
 		// that has not spoken since the field arrived would read as free on
@@ -508,6 +519,10 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// AND THIS PROCESS SAYS IT HOLDS THIS CONVERSATION. It is how a lane knows
 	// somebody is waiting on it, and how the memory pass finds the one room to
 	// say its line in (livesessions.go). Close erases it.
+	// Every conversation using a watch owns its lifetime, including independently running errands.
+	if watch, ok := config.Seals.(interface{ Adopt() func() }); ok {
+		agent.releaseSeals = watch.Adopt()
+	}
 	registerLiveSession(agent)
 	// AND WHAT WAS ANSWERED WHILE NOBODY WAS HOME IS ANSWERED NOW. An answer left
 	// on this conversation's doorstep rides the presence heartbeat
@@ -829,6 +844,9 @@ func (a *Agent) SetModelChecked(model string) error {
 func (a *Agent) setModel(model string) ModelLanding {
 	if pair, ok := a.ConversationModelPair(); ok {
 		pair.Main = model
+		if pair.Main == pair.Fallback {
+			pair.Fallback = ""
+		}
 		_, _ = a.SetConversationModels(pair)
 		return ModelLandsNextRequest
 	}
@@ -853,6 +871,11 @@ func (a *Agent) setModel(model string) ModelLanding {
 	// that said `switching now` and a step that changed nothing (steer.go's
 	// [Agent.ridingNowLocked]).
 	changed := a.ridingNowLocked() != model
+	// An explicit confirmation also withdraws a queued temporary choice.
+	// This only changes the next request; the current call keeps answering.
+	a.spokenModel = ""
+	a.modelForNowConfigured = ""
+	a.modelForNowProvider = ""
 	a.model = model
 	if a.clientPool != nil {
 		a.clientPool.setSeat(model)
@@ -897,6 +920,10 @@ func (a *Agent) SetSources(sources modelsource.Set) {
 		return
 	}
 	a.mu.Lock()
+	// A disconnected source must not erase the saved model's provider identity.
+	if a.modelForNowProvider == "" {
+		a.modelForNowProvider = a.config.serviceFor(a.configuredModelLocked()).Source.ID
+	}
 	a.config.Sources = sources
 	a.clientPool.setSources(sources)
 	if !a.running {
@@ -1122,8 +1149,8 @@ func (a *Agent) SetContextWindow(tokens int) {
 // EVERY call returns a live channel, steering included. The in-flight turn
 // owns an event hub, and a steering Submit subscribes a fresh channel to it:
 // the caller sees the turn's events from its own subscribe point onward and
-// the close at EventTurnDone. There is no replay — a surface that submits per
-// message is watching the turn from where it spoke, not re-reading it — and a
+// the close at EventTurnDone. Only still-waiting cards are replayed, so the
+// caller can answer a question already on the turn; reply text is not replayed. A
 // surface holding both channels sees each event on each, which is what a
 // per-message caller wants and what a whole-session reader must de-duplicate.
 func (a *Agent) Submit(ctx context.Context, text string) (<-chan Event, error) {
@@ -1247,7 +1274,7 @@ func (a *Agent) submitUser(ctx context.Context, user userMessage) (<-chan Event,
 		// returned channel live rather than a coin flip: the turn's goroutine
 		// clears running under this same lock BEFORE it closes the hub, so
 		// running == true here means the hub cannot already be closed.
-		events := a.hub.subscribe()
+		events := a.hub.subscribePending(a.stillAskedLocked())
 		a.mu.Unlock()
 		return events, nil
 	}
@@ -1467,6 +1494,9 @@ type userMessage struct {
 	// leave it empty, and the turn is then stamped with no person message — an
 	// unknown, never a guess at the latest one.
 	answersMessage string
+	// sourceMessage is the exact recorded message a resumed answer continues.
+	// Only ResumeStoppedTurn sets it; ordinary notes never inherit the latest message.
+	sourceMessage string
 
 	// said is THE PERSON'S OWN WORDS, when what the model reads is not only
 	// them. Empty in every ordinary case, and set where the session writes
@@ -2053,6 +2083,9 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	// (taskpresence.go). The nudge never blocks and never takes a lock, which is
 	// what lets it sit under a.mu here.
 	a.nudgePresence()
+	// AND WHAT THE PAGE SAYS ABOUT OTHER WINDOWS FOLLOWS A CHANGED SCOPE, from
+	// this turn on, as the scope's documentation promises (scope.go).
+	a.followWorkScopeLocked(time.Now())
 	// AND THE CLOCK IN THE PROMPT IS BROUGHT UP TO DATE BEFORE THE TURN OPENS,
 	// when it has gone stale enough to be worth the cold prefix (prompt.go's
 	// clockRefresh says why that is free).
@@ -2087,7 +2120,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	// turn, or one a task or member report opened, has a run and no person
 	// message, which is the truth. A steer that lands later is NOT the opener
 	// and changes nothing here.
-	turnCtx = withTurnOrigin(turnCtx, turnOrigin{run: runIdentity(turnCtx), turn: openingMessage(user)})
+	turnCtx = withTurnOrigin(turnCtx, turnOriginLocked(user, runIdentity(turnCtx)))
 	// AND THE TURN CARRIES THE CREATION CONTEXT the accepting door stated on
 	// its opening message (creation_team.go), only when it stated one: any other
 	// turn leaves the team unknown. Never rewritten from who manages a team now.
@@ -2753,6 +2786,7 @@ func (f sessionCompleter) FallbackModels(model string) []string {
 // inside a tool must not hold the process open, and past the grace the journal
 // simply stops accepting writes rather than writing to a closed descriptor.
 func (a *Agent) Close() (saveErr error) {
+	defer a.releaseSealsAfterClose()
 	defer func() { saveErr = SavingError(a.config.SessionFile, saveErr) }()
 	forgetLiveJournal(a)
 	// A pass a surface asked for outside any turn ends with the conversation.
@@ -4845,6 +4879,25 @@ func (h *eventHub) subscribe() <-chan Event {
 	}
 	h.subscribers = append(h.subscribers, stream)
 	h.mu.Unlock()
+	return stream.out
+}
+
+// subscribePending joins the live tail and replays only questions still waiting
+// for an answer, so a late sender can answer a card without repeating the reply.
+func (h *eventHub) subscribePending(asking map[string]bool) <-chan Event {
+	stream := newEventStream()
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.closed {
+		stream.close()
+		return stream.out
+	}
+	for _, event := range h.backlog {
+		if key, asks := questionAsked(event); asks && asking[key] {
+			stream.send(event)
+		}
+	}
+	h.subscribers = append(h.subscribers, stream)
 	return stream.out
 }
 

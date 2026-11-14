@@ -210,6 +210,12 @@ type Handler struct {
 	// key, so one approval is never judged twice at once.
 	judgingMu sync.Mutex
 	judging   map[int]string
+	// floorList, when set, is how a test counts floor reads. A real handler
+	// leaves it nil and reads the store.
+	floorList func(*store.Store) ([]factory.Item, error)
+	// floorKept is the last look that found nothing due. A later request
+	// skips the decode while those files and the clock still say so.
+	floorKept floorLook
 
 	seam    factory.Seam
 	areas   repoAreas
@@ -261,10 +267,12 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.read("/v1/jobs/{id}", h.job)
 	h.read("/v1/jobs/{id}/thread", h.thread)
 	h.read("/v1/events", h.events)
+	h.read("/v1/job-events", h.jobEvents)
 	h.route("/v1/repos", map[string]http.HandlerFunc{http.MethodGet: h.repos, http.MethodPut: h.setRepos})
 	h.read("/v1/repos/{owner}/{repo}/pipeline", h.pipeline)
 	h.read("/v1/repos/{owner}/{repo}/pipeline/edit-source", h.pipelineEditSource)
 	h.read("/v1/repos/{owner}/{repo}/read", h.repoRead)
+	h.read("/v1/repos/{owner}/{repo}/issues", h.repoIssues)
 	h.read("/v1/repos/{owner}/{repo}/pipeline/prs", h.pipelinePRs)
 	h.read("/v1/repos/{owner}/{repo}/dryrun", h.dryrun)
 	h.read("/v1/repos/{owner}/{repo}/estimate", h.estimateNew)
@@ -444,14 +452,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if workerPath(r.URL.Path) || r.URL.Path == "/v1/workers/attach" || r.URL.Path == "/v1/runners/attach" {
 		defer h.machineEvents()
 	}
-	// Expiry precedes snapshot reads so the first response already shows Needs you.
-	if h.workers != nil && h.workers.desk != nil {
-		if _, err := h.leases(); h.failed(w, err) {
-			return
-		}
+	// Settle missing or expired holds before reading job state.
+	held, err := h.leases()
+	if h.failed(w, err) {
+		return
 	}
 	if !workerPath(r.URL.Path) || h.workerSettleDue(workerSettleWindow(r.URL.Path)) {
-		h.settleJobs(r.Method == http.MethodPost)
+		h.settleJobs(r.Method == http.MethodPost, held)
 	}
 	h.idempotent(w, r)
 }
@@ -612,6 +619,9 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 			q.Since.SpentToday = h.config.SpentToday()
 		}
 	}
+	// One token lookup for the whole list. Presenting each job would otherwise
+	// ask again, and the host's answer can start a process.
+	r = h.rememberHostToken(r)
 	for i := range q.Jobs {
 		h.presentJob(r, &q.Jobs[i])
 	}
@@ -791,6 +801,9 @@ func (h *Handler) splitRepo(w http.ResponseWriter, r *http.Request) (owner, repo
 		return "", "", false
 	}
 	if !visible {
+		if h.githubVisibilityLimited(w, r) {
+			return "", "", false
+		}
 		h.fail(w, http.StatusNotFound, "repository not found")
 		return "", "", false
 	}

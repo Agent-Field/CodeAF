@@ -33,6 +33,7 @@ func TestIdleRelease_R5_1_RealTerminalSettingsAndMemoryReachReceiver(t *testing.
 	idleRealTerminal(t, true)
 }
 func idleRealTerminal(t *testing.T, settings bool) {
+	t.Setenv("CODEAF_IDLE_HANDOFF", "on")
 	service := relayserve.New(relayserve.Config{Store: t.TempDir()})
 	t.Cleanup(func() { _ = service.Close() })
 	h := newHostedMoveRig(t, func(http.Handler) http.Handler { return service.Handler })
@@ -217,6 +218,7 @@ func idleRealTerminal(t *testing.T, settings bool) {
 }
 
 func TestIdleRelease_R6_RealTerminalOpeningSavedChatReleases(t *testing.T) {
+	t.Setenv("CODEAF_IDLE_HANDOFF", "on")
 	service := relayserve.New(relayserve.Config{Store: t.TempDir()})
 	t.Cleanup(func() { _ = service.Close() })
 	h := newHostedMoveRig(t, func(http.Handler) http.Handler { return service.Handler })

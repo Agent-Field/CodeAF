@@ -138,18 +138,31 @@ export class Directory {
   putDevice(id, device) {
     // A device's outbox and took lists carry messages between its computers (Codeaf-Chat-Notes); both stay short.
     if ((device.outbox?.length ?? 0) > MAX_NOTES || (device.took?.length ?? 0) > MAX_TOOK) throw refuse('bad_request');
+    if ((device.kind ?? '') !== '' || (device.methods?.length ?? 0) > 0) throw refuse('bad_request');
     this.write('devices', id, this.#kept(id, { ...device, revoked: this.revoked(id) }));
+  }
+
+  /** putClientDevice writes the record of a scoped client device. */
+  putClientDevice(id, device) {
+    this.write('devices', id, { ...this.#kept(id, { ...device, revoked: false }), kind: 'client', methods: device.methods });
   }
 
   /** approveDevice writes the record of a device a paired device approved, and answers what was stored. */
   approveDevice(id, device) {
+    if ((device.kind ?? '') !== '' || (device.methods?.length ?? 0) > 0) throw refuse('bad_request');
     return this.write('devices', id, this.#kept(id, { ...device, revoked: false }));
   }
 
   #kept(id, doc) {
     const before = this.read('devices', id);
-    const { created: _c, last_seen: _l, ...own } = doc;
-    return { ...own, created: before ? before.created : this.clock(), last_seen: before?.last_seen };
+    const { created: _c, last_seen: _l, kind: _k, methods: _m, ...own } = doc;
+    return {
+      ...own,
+      ...(before?.kind && { kind: before.kind }),
+      ...(before?.methods?.length && { methods: before.methods }),
+      created: before ? before.created : this.clock(),
+      last_seen: before?.last_seen,
+    };
   }
 
   /** seen stamps when the device last held a watch socket (hello or close). Only the relay writes it; it moves no version (contract 4). */

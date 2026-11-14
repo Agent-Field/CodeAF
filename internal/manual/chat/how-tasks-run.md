@@ -305,7 +305,7 @@ furrow keeps its own ids in. codeaf adds that name to your repository's
 file is local to your checkout — it is not committed, not pushed, and nobody else working
 on the project sees it.
 
-## A task that never started — its brief went stale, its world did not match, stale ground, my task failed before it did anything, expects
+## A task that never started — its brief went stale, its world did not match, stale ground, my task failed before it did anything, my task worked on an old version of the file, expects
 
 A brief can name files and symbols of a world that is not in the folder the task gets: a
 file that moved, a folder somebody renamed, a change that was still uncommitted somewhere
@@ -1502,7 +1502,10 @@ files. Staging happens once, so every look judges the same tree. In a workspace 
 not a repository the checker is told
 `This workspace is not a repository, so there is no diff to read: check the files themselves.`
 
-This is controlled by `task.audit`, **on by default**, and settable in your profile only.
+This is controlled by `task.audit`, **on by default**, shown in Settings under Tasks
+as `review task results`. When on, a separate read-only checker runs the repository's
+checks and reads the diff before work may merge. When off, the task `lands done`
+without that check.
 With it off, the gate stands open, the task's own account merges, the task lands done, and
 the report is marked `nothing checked this work: the task.audit setting is off` above the
 task's own words. There are no correction rounds at all.
@@ -3059,15 +3062,64 @@ A missing argument comes back as an ordinary result, never an error:
 `deliverable` and `acceptance`, in that order. Unparseable JSON answers
 `Invalid arguments: ` and the parse error.
 
-There is a sixth part the model is **not** asked for and cannot leave out: your own
-message. See the next section.
+For a proposed run, the model must put all needed context in those arguments. The
+worker receives that assignment without your conversation message or its journal pointer.
+
+## Task tree limits, duplicate tasks and proposals that auto-start
+
+A run worker can hand out work at most two levels below its run's root task. A run can
+hold at most 20 counted tasks: the root, checks seated by the review round and cancelled
+tasks do not consume those slots. A task a worker creates with `--role check` still
+counts. These are runaway stops, not a target for how much work to hand out.
+
+Each worker can add at most **five** tasks in total, excluding cancelled additions.
+Finished and archived additions still count. A `task pivot` counts what survives it: the
+open tasks it replaces hold no slot and no title for their replacements. Joined handoffs, review checks and fix tasks
+created by the engine do not spend that worker's five slots.
+
+Every worker-created task must be under that worker's own task. `plandb add` without
+`--parent` uses its own task; an explicit different parent is refused. A worker can split
+or pivot only its own task, and insert only beside one of its own children. A refusal
+adds nothing and tells it to do the remaining work itself or report it undone. Your own
+unbound CLI still defaults to the run root.
+
+## Duplicate task titles and countdown proposals joining a run
+
+A worker's `plandb add`, `split`, `task insert` or `task pivot` also refuses a title already
+used anywhere in that run, including its own task and the root. Titles are compared in
+lower case with runs of punctuation and whitespace folded to one space. Cancelled titles,
+and the titles of open tasks a pivot is replacing, can be reused. A duplicate within one batch, or a batch that would cross either tree
+limit, refuses the whole batch: nothing is added and nothing can start from it. The
+refusal tells the worker to do its own work or report what remains undone.
+
+A proposal that joins a live run because its countdown expired obeys the same growth
+rules. A refusal settles its card as not started. Choosing to start it yourself, or typing
+`/task`, retains your ability to join work beyond the count limit. Every ordinary run
+still has its whole-tree per-task dollar ceiling. Your own `codeaf plandb` commands with
+no run bound retain their existing behavior; the growth refusal applies to run workers.
+
+## What a proposed task reads — its own title, work, output and done-condition
+
+A task the conversation proposed on the run road receives its title, **THE WORK**,
+**WHAT TO PRODUCE** and **DONE WHEN**. Your conversation message, surrounding quotes,
+earlier call evidence and pointer to the original journal line are not included. This
+applies whether the countdown starts the proposal or you approve it yourself. The
+proposing model must make the assignment self-contained.
+
+Every worker opens on its own task id and title. A child reads its assignment's ask
+later as context. A proposal joined into an existing run keeps its own assignment
+for its workers and checks; they do not inherit the other task's root description.
+A task you typed yourself, such as `/task`, keeps its existing brief. The older
+session-tree road keeps its existing conversation context and journal pointers.
 
 ## What the task actually reads — does it see what I said?
 
-Yes. Your own message travels with the work, word for word.
+For a task you typed yourself or a task on the older session-tree road, your own message
+travels with the work, word for word. Proposed runs use the assignment-only document above.
 
-A task's first and only message is assembled by codeaf from these parts, under headings, in
-this order:
+A task you typed yourself keeps your message first. Its opening document is assembled by
+codeaf from these parts, under headings, in this order; the older session-tree road uses
+this order too:
 
 ```
 WHAT THE PERSON ASKED FOR, IN THEIR OWN WORDS
@@ -3156,7 +3208,7 @@ Long messages are cut at 6000 bytes and the cut is marked with `…`, so a task 
 handed a shortened version of what you said can see that it was. The brief then names the
 journal path and line of your original turn, so the worker can read the uncut words itself.
 
-A task the model hands out from **inside** another task inherits the same words: there is
+On the older session-tree road, a task handed out from **inside** another task inherits the same words: there is
 nobody inside a task's own folder to type a new message, so the sentence that started the family is what
 every task under it reads.
 
@@ -3188,7 +3240,8 @@ question to answer. Most steering is that, and it moves no target.
 
 ## Can the task see the original request — does the task know what I originally said, can a task read my full message when the brief is cut
 
-Yes. The brief is still the contract — the task is not handed this conversation — but it is
+For a person-typed task or the older session-tree road, yes. Proposed runs receive no
+original-message pointer. The brief is still the contract — the task is not handed this conversation — but it is
 handed an address: the filesystem path of the session journal and the line where your turn
 began. The worker already has `read` and `grep`, so that pointer is enough.
 
@@ -3209,7 +3262,7 @@ it must ship is still what the brief says.
 **An empty pointer draws nothing.** A task restored from a checkpoint written before this
 existed has no origin section. Unknown is absent, not a guessed path.
 
-A task handed out from inside another task, and every part of a division, inherit the same
+On the older session-tree road, a task handed out from inside another task and every part of a division inherit the same
 pointer — they still point at your turn, never at the parent task's own journal.
 
 ## The optional arguments on propose_task
@@ -3239,6 +3292,10 @@ A task handed to a program such as senior-dev cannot wait at all, because it sta
 moment it is approved: its `depends_on` may name only work that has already landed. A
 program's run that ended done may be named by any task; one still going may not.
 
+## Choosing a task's model and tool-call checkpoints — propose_task model and max_steps
+
+These optional arguments choose the task's model and checkpoint size. Bad values return a refusal the model can correct.
+
 **`model`** — which model this task runs on. Set only when you asked for a particular model
 or class of model for this work. Left out, the task runs on `task.model` if set, otherwise
 on whatever model the conversation is on at the moment of admission — settled once, then
@@ -3250,6 +3307,8 @@ all), circling gets a landing turn — the task writes the deliverable from what
 and only then a stop with `stopped: 200 steps and no finish`, the number being the
 checkpoint that was in force. A negative value answers `Invalid arguments: max_steps cannot
 be negative`. Zero or absent means the default.
+
+## Which checks can propose_task run — quotes and shell characters
 
 **`checks`** — the repeatable verification, described in *What propose_task needs from you*
 above. Each entry must be ONE rerunnable command, and one that even a permit-everything
@@ -3265,7 +3324,11 @@ that ends the line, refuses it. The refusal names the character and says what pa
 expands commands in "<the check>". Such a character may stand only inside a single-quoted
 argument, where it is text`. The checker's own shell reads a command the same way, so a
 check admitted here is one the checker can run, and what it must never run is stopped at
-both. A check that leads with a directory change
+both.
+
+## Where task checks run and how long a check can be — propose_task checks and divide_work
+
+The optional `checks` argument names rerunnable commands. A check that leads with a directory change
 (`cd <folder> && <command>`) is refused like any other composition, and its refusal ends
 with the form that passes: `A check runs from the root of the task's own copy: leave the
 directory change out and name each file by its path`. It is never quietly repaired, because
@@ -3276,17 +3339,21 @@ rerunnable command: this check is 1001 bytes and a check may be at most 1000`. T
 part declares is taken off all of them and given once to the task that divided them, which
 is the only one that can honestly make it after its parts are home.
 
+## Why does a task say the call was refused — invalid arguments and repeated proposals
+
 Proposals refused side by side in one reply are ONE attempt, and a refusal they share
 counts once: three refused together for one reason are not three repeats, and a refusal
 whose words changed is not the same failure again, so neither earns the note about
 repeating a call.
 
-That refusal, and every `Invalid arguments:` sentence like it, is mail for the model, not
+A check refusal, and every `Invalid arguments:` sentence like it, is mail for the model, not
 for you: the row in the conversation reads only `the call was refused`, the task's card
 reads `not started · the call was refused`, and the sentence itself — the field name, the
 quoted command, the repair — stays in the tool's own result, where the model reads it and
 fixes the call, and behind `ctrl+o` on that row for you if you ask. A command that genuinely
 ran and failed is the opposite case, and its row still opens with its own output.
+
+## How many task calls can make no progress — propose_task no_progress and restarts
 
 **`no_progress`** — how many tool calls in a row may teach nothing, ask nothing new, save nothing and leave
 nothing new in its working copy before the task is stopped as spinning. Default **6**. On the
@@ -3298,7 +3365,7 @@ The same number is also **how many calls in a row may produce byte-identical con
 the second look is asked about it** — the repeat checkpoint above. That one stops nothing on
 its own: raising `no_progress` for work that is legitimately repetitive moves both.
 
-Both step limits are recorded in the checkpoint, so they survive a restart along with the
+Both `max_steps` and `no_progress` are recorded in the checkpoint, so they survive a restart along with the
 rest of the task.
 
 ## Does a long request lose requirements when work is checked or handed off?
@@ -3520,7 +3587,20 @@ as that task. The desktop app reads the DID in the agent list as `did`, and
 each task's own name as `worker`, so it can release whatever that task held
 once the task ends.
 
-The DID is a name, not a credential: no key is kept and nothing is signed with it.
+New conversations retain an Ed25519 signing key and a separate X25519 encryption
+key in encrypted custody inside their cell. The versioned identity document
+travels with the chat; paired computers with the same cell key can open it.
+Commands and the agent list receive only the public DID, never private keys.
+
+The engine can sign statements for a versioned purpose and open material sealed
+to the companion encryption key. A signature can be checked with the DID alone;
+it does not verify for a different purpose. These are engine APIs, not shell
+commands or a new tool on the agent's belt.
+
+Older public-only identities upgrade on the next metadata write, never just by
+opening the conversation. Their DID stays the same. Their discarded signing key
+cannot be recovered, so signing remains unavailable; the upgrade adds encryption.
+An identity document from a newer build is preserved without rewriting it.
 
 ## Git automatic maintenance and repository growth
 

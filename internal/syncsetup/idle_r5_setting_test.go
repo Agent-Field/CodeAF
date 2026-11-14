@@ -1,10 +1,11 @@
 package syncsetup
 
 import (
-	"github.com/Agent-Field/codeaf/internal/directory"
-	"github.com/Agent-Field/codeaf/internal/session"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 func TestIdleRelease_R5_1_SettingAfterIdleReleaseSurvivesOpen(t *testing.T) {

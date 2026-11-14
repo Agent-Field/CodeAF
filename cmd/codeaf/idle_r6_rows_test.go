@@ -19,6 +19,7 @@ import (
 func r6AppRow(t *testing.T, released bool) (appwire.ChatRow, directory.CellView, directory.CellView) {
 	t.Helper()
 	celltest.Available(t)
+	t.Setenv("CODEAF_IDLE_HANDOFF", "on")
 	var offset atomic.Int64
 	service := relayserve.New(relayserve.Config{Store: t.TempDir(), Now: func() time.Time {
 		return time.Now().Add(time.Duration(offset.Load()))

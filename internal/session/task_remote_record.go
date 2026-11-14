@@ -148,7 +148,7 @@ func (a *Agent) remoteBeltSpec(run *beltRun, spec RunSpec) RunSpec {
 		if run.remote.Abandoned {
 			return ErrTaskAttemptAbandoned
 		}
-		if err := a.recordUsageLine(bankedCall{model: charge.Model, used: Usage{Input: charge.TokensIn, Output: charge.TokensOut, CacheRead: charge.Cached, Calls: 1, CostUSD: charge.USD}, remote: &remoteUsage{Task: strconv.FormatUint(run.row, 10), Computer: run.remote.Executor.Name, Event: fmt.Sprintf("%s:%d", run.remote.Attempt, seq), Seat: Seat(seat)}}); err != nil {
+		if err := a.recordUsageLine(bankedCall{model: charge.Model, used: Usage{Input: charge.TokensIn, Output: charge.TokensOut, CacheRead: charge.Cached, Calls: 1, CostUSD: charge.USD}, remote: &remoteUsage{CallID: charge.CallID, Task: strconv.FormatUint(run.row, 10), Computer: run.remote.Executor.Name, Event: fmt.Sprintf("%s:%d", run.remote.Attempt, seq), Seat: Seat(seat)}}); err != nil {
 			return err
 		}
 		return a.foldRemoteCharge(fmt.Sprintf("%s:%d", run.remote.Attempt, seq), charge)

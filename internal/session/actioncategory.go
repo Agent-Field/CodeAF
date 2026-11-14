@@ -246,7 +246,7 @@ func ActionCategoryForTool(tool string) ActionCategory {
 		return ActionBrowse
 
 	// Moving bytes or state from one place to another.
-	case "workspace_restore", "workspace_merge":
+	case "workspace_restore", "workspace_merge", stagePRBaseSyncToolName:
 		return ActionTransfer
 
 	// Saying something to a person.

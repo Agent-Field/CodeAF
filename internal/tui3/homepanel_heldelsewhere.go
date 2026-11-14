@@ -69,6 +69,7 @@ type ownershipReadMsg struct {
 	ownFence        uint64
 	proof           bool
 	local           bool
+	extends         bool
 	// fresh records the directory answer even when admission then proves a local hold.
 	fresh bool
 	// notHeld prevents a saved receipt from reviving a displaced writer offline.
@@ -247,8 +248,12 @@ func (a *app) checkBeforeSendWith(resume func() tea.Cmd) tea.Cmd {
 		}
 		for _, row := range rows {
 			if row.Cell == remote && (row.Status == chatlist.Idle || row.Status == chatlist.Off || hold.retryIdle && row.Mine) {
-				if head, _ := cellstore.Head(cell.Cell{ID: id, Root: session.DirOf(file)}); head != nil {
+				at := cell.Cell{ID: id, Root: session.DirOf(file)}
+				if head, _ := cellstore.Head(at); head != nil {
 					msg.head = head.Turn.ID
+				}
+				if msg.local && row.Mine && row.Head != "" {
+					msg.extends, _ = cellstore.Extends(at, row.Head)
 				}
 				break
 			}
@@ -360,6 +365,10 @@ func (a *app) resumeOwnedSend(msg ownershipReadMsg) tea.Cmd {
 			fence = msg.fence
 		}
 		if !msg.reopen && row.Status == chatlist.Here && row.Fence == fence && !(msg.notHeld && (held.awaitingWriter || msg.writerStopped) && !msg.local) && (!held.blocked || held.seen && row.Mine && !held.failed) {
+			if held.awaitingWriter {
+				held.awaitingWriter = false
+				a.machineRead.sendHolds[id] = held
+			}
 			if held.blocked {
 				held.blocked, held.seen = false, false
 				a.machineRead.sendHolds[id] = held
@@ -373,7 +382,8 @@ func (a *app) resumeOwnedSend(msg ownershipReadMsg) tea.Cmd {
 		// A failed move to a different chat can block this window too. An
 		// unchanged own fence may recover through the full conditional reopen;
 		// it never authorizes reuse of the writer that the failure stopped.
-		if row.Mine && (msg.ownFence == 0 || row.Fence == msg.ownFence) && (!held.blocked || msg.ownFence != 0) && (msg.reopen || held.blocked || !row.AutoOpen && (row.Status == chatlist.Idle || row.Status == chatlist.Off)) && row.Head != "" {
+		localHead := row.Head != "" && (row.Head == msg.head || (a.idleOpenEnabled() || msg.reopen) && row.Mine) || row.Mine && (row.Head == "" || msg.local && msg.extends)
+		if row.Mine && (msg.ownFence == 0 || row.Fence == msg.ownFence) && (!held.blocked || msg.ownFence != 0) && (msg.reopen || held.blocked || !row.AutoOpen && (row.Status == chatlist.Idle || row.Status == chatlist.Off)) && localHead {
 			if _, ok := a.taker.(conditionalTaker); ok {
 				draft := a.mainComposer()
 				return a.takeRemoteState(homeTakenMsg{row: row, draft: &draft, send: msg.resume})
@@ -487,6 +497,8 @@ func (a *app) failedTake(msg homeTakenMsg) string {
 // safety reading has not started a take and must not cancel one already running.
 func (a *app) continueFailure(msg homeTakenMsg) string {
 	switch {
+	case errors.Is(msg.err, syncwords.ErrContinueStorageOff):
+		return syncwords.ErrContinueStorageOff.Error()
 	case errors.Is(msg.err, directory.ErrLeaseHeld):
 		return lostRaceWord
 	case errors.Is(msg.err, ErrMoveStalled):

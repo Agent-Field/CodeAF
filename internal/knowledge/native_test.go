@@ -172,18 +172,21 @@ func TestKnowledgeCompilationKeepsExplicitGenerationControls(t *testing.T) {
 	}
 	original := http.DefaultTransport
 	t.Cleanup(func() { http.DefaultTransport = original })
+	// Transport assertions report without exiting the provider worker, which
+	// must return its response to let Flush finish even when an assertion fails.
 	http.DefaultTransport = knowledgeTransport(func(r *http.Request) (*http.Response, error) {
 		var body map[string]any
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			t.Fatal(err)
+			t.Error(err)
 		}
+		// R1 uses EffortOff, whose wire contract explicitly disables reasoning.
 		reasoning, ok := body["reasoning"].(map[string]any)
-		if !ok || reasoning["effort"] != "none" || body["max_tokens"] != float64(8000) || body["temperature"] != float64(0) {
-			t.Fatalf("knowledge generation controls changed: reasoning=%v max_tokens=%v temperature=%v", body["reasoning"], body["max_tokens"], body["temperature"])
+		if !ok || reasoning["enabled"] != false || len(reasoning) != 1 || body["max_tokens"] != float64(8000) || body["temperature"] != float64(0) {
+			t.Errorf("knowledge generation controls changed: reasoning=%v max_tokens=%v temperature=%v", body["reasoning"], body["max_tokens"], body["temperature"])
 		}
 		format, ok := body["response_format"].(map[string]any)
 		if !ok || format["type"] != "json_object" {
-			t.Fatalf("structured response mode missing: %+v", body["response_format"])
+			t.Errorf("structured response mode missing: %+v", body["response_format"])
 		}
 		raw, _ := json.Marshal(map[string]any{"model": body["model"], "choices": []any{map[string]any{"finish_reason": "stop", "message": map[string]any{"content": `{"claims":[]}`}}}})
 		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(bytes.NewReader(raw))}, nil

@@ -46,6 +46,7 @@ type nativeNamespace struct {
 	now      func() time.Time
 	grace    directory.GraceBounds
 	identity clusterstate.IdentityRec
+	root     string
 }
 
 func (d *nativeNamespace) Feed() *directory.Feed { return d.feed }
@@ -187,7 +188,7 @@ func (n *namespaces) activate(ctx context.Context, id string, root []byte) (*nat
 	if cfg.Grace != nil {
 		grace = directory.GraceBounds{Min: time.Duration(cfg.Grace.Min) * time.Millisecond, Max: time.Duration(cfg.Grace.Max) * time.Millisecond, Default: time.Duration(cfg.Grace.Default) * time.Millisecond}
 	}
-	d = &nativeNamespace{V1Directory: &raftdirectory.V1Directory{Host: host, Cluster: cfg.Cluster, Now: n.now, Grace: grace}, identity: clusterstate.IdentityRec{V: 1, Identity: id, SigningKey: cfg.SigningKey}, host: host, feed: feed, links: n.links.(*directory.Links), now: n.now, grace: grace}
+	d = &nativeNamespace{V1Directory: &raftdirectory.V1Directory{Host: host, Cluster: cfg.Cluster, Now: n.now, Grace: grace}, identity: clusterstate.IdentityRec{V: 1, Identity: id, SigningKey: cfg.SigningKey}, host: host, feed: feed, links: n.links.(*directory.Links), now: n.now, grace: grace, root: n.root}
 	d.effects = raftdirectory.Effects{Host: host, Cluster: cfg.Cluster, Actor: clusterstate.DeviceIDOfKey(cfg.EffectsKey), Key: ed25519.PrivateKey(provision.Effects)}
 	if err = host.InitializeMembership(ctx, ed25519.PrivateKey(provision.Anchors[0])); err != nil {
 		d.Close()
@@ -282,6 +283,7 @@ func (d *nativeNamespace) project(s *raftstore.SQLite, a raftstore.Application) 
 					return err
 				}
 				st.Stopped[string(id)] = true
+				_ = d.purgeFabric(string(id))
 			}
 		}
 	}
@@ -289,7 +291,22 @@ func (d *nativeNamespace) project(s *raftstore.SQLite, a raftstore.Application) 
 	return nil
 }
 
+func (d *nativeNamespace) purgeFabric(dev string) error {
+	if d.root == "" || !fabricDevice.MatchString(dev) {
+		return nil
+	}
+	err := os.Remove(filepath.Join(d.root, "fabric", d.identity.Identity, dev+".json"))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return err
+}
+
 func (d *nativeNamespace) authority(ctx context.Context, actor string, write bool) error {
+	return d.authorityClient(ctx, actor, write, false)
+}
+
+func (d *nativeNamespace) authorityClient(ctx context.Context, actor string, write, allowClient bool) error {
 	err := d.host.Inspect(ctx, func(ctx context.Context, s *raftstore.SQLite, a raftstore.Application) error {
 		keys := []raftstore.Key{{Namespace: raftstore.State, Key: clusterstate.IdentityKey().Key}, {Namespace: raftstore.State, Key: clusterstate.DeviceKey(actor).Key}}
 		rows, _, err := s.Read(ctx, a.Applied, keys)
@@ -308,16 +325,76 @@ func (d *nativeNamespace) authority(ctx context.Context, actor string, write boo
 			if dev.Revoked {
 				return wireauth.ErrRevoked
 			}
+			if !allowClient && dev.Kind == "client" {
+				return wireauth.ErrUnauthorized
+			}
 		}
 		if write && identity.Rotation != nil {
 			return wireauth.ErrRotated
 		}
 		return nil
 	})
-	if err != nil && !errors.Is(err, wireauth.ErrRevoked) && !errors.Is(err, wireauth.ErrRotated) {
+	if err != nil && !errors.Is(err, wireauth.ErrUnauthorized) && !errors.Is(err, wireauth.ErrRevoked) && !errors.Is(err, wireauth.ErrRotated) {
 		return errors.Join(wireauth.ErrUnavailable, err)
 	}
 	return err
+}
+
+func (d *nativeNamespace) fabricListing(ctx context.Context) (directory.Listing, error) {
+	var out directory.Listing
+	out.Devices = map[string]directory.Device{}
+	err := d.host.Inspect(ctx, func(ctx context.Context, s *raftstore.SQLite, a raftstore.Application) error {
+		key := raftstore.Key{Namespace: raftstore.State, Key: clusterstate.IdentityKey().Key}
+		rows, _, err := s.Read(ctx, a.Applied, []raftstore.Key{key})
+		if err != nil {
+			return err
+		}
+		if err = clusterstate.Decode(rows[key], &out.Identity); err != nil {
+			return err
+		}
+		after := "device/"
+		for {
+			page, _, err := s.ScanPage(ctx, a.Applied, raftstore.State, after)
+			if err != nil || len(page) == 0 {
+				return err
+			}
+			for _, r := range page {
+				after = r.Key.Key
+				if !strings.HasPrefix(after, "device/") {
+					return nil
+				}
+				var dev clusterstate.Device
+				if err = clusterstate.Decode(r.Value, &dev); err != nil {
+					return err
+				}
+				id, err := hex.DecodeString(strings.TrimPrefix(after, "device/"))
+				if err != nil {
+					return err
+				}
+				out.Devices[string(id)] = dev
+			}
+		}
+	})
+	return out, err
+}
+
+func (d *nativeNamespace) commitFabricV1(ctx context.Context, actor string, r *http.Request, body []byte) error {
+	p, err := reqsign.Capture(r, body)
+	if err != nil {
+		return directory.ErrUnauthorized
+	}
+	cmd, err := clusterstate.V1Command(d.Cluster, d.now().UnixMilli(), p)
+	if err != nil {
+		return directory.ErrBadRequest
+	}
+	if cmd.Actor != actor {
+		return directory.ErrUnauthorized
+	}
+	res, err := d.host.CommitV1(ctx, cmd)
+	if err != nil {
+		return err
+	}
+	return directory.ResultError(res.Code)
 }
 
 // SubscribeWatch retains the certificate from this exact authenticated socket,
@@ -386,6 +463,14 @@ func (d *nativeNamespace) seen(device string, at int64) error {
 // Every signature is checked before allocating storage or looking up authority.
 // The actor then comes from that proof for both the initial and post-I/O check.
 func (n *namespaces) authenticate(r *http.Request, body []byte) (string, string, error) {
+	return n.authenticateClient(r, body, false)
+}
+
+func (n *namespaces) authenticateFabric(r *http.Request, body []byte) (string, string, error) {
+	return n.authenticateClient(r, body, true)
+}
+
+func (n *namespaces) authenticateClient(r *http.Request, body []byte, allowClient bool) (string, string, error) {
 	id, actor, err := reqsign.Verify(r, body, n.now())
 	if err != nil {
 		return "", "", err
@@ -398,14 +483,22 @@ func (n *namespaces) authenticate(r *http.Request, body []byte) (string, string,
 	}
 	d, err := n.activate(r.Context(), id, p.IdentityKey)
 	if err != nil {
-		if errors.Is(err, wireauth.ErrGone) {
+		if r.Context().Err() != nil {
+			return "", "", wireauth.ErrUnauthorized
+		}
+		if errors.Is(err, wireauth.ErrGone) || errors.Is(err, wireauth.ErrUnauthorized) {
 			return "", "", err
 		}
 		n.unavailable("directory activation", err)
 		return "", "", errors.Join(wireauth.ErrUnavailable, err)
 	}
-	if err = d.authority(r.Context(), actor, false); err != nil {
-		if errors.Is(err, wireauth.ErrRevoked) {
+	if err = d.authorityClient(r.Context(), actor, false, allowClient); err != nil {
+		// A caller that left before authentication finished has no authenticated
+		// request to retry. A live caller still receives a real outage as 503.
+		if r.Context().Err() != nil {
+			return "", "", wireauth.ErrUnauthorized
+		}
+		if errors.Is(err, wireauth.ErrRevoked) || errors.Is(err, wireauth.ErrUnauthorized) {
 			return "", "", err
 		}
 		n.unavailable("directory authority", err)

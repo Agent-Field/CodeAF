@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -573,8 +572,7 @@ func TestAppTakeET2(t *testing.T) {
 		t.Fatalf("unknown chat: %+v", missing)
 	}
 	_, failure := w.call("agents.take", appwire.TakeParams{Cell: chat, Seen: appwire.Seen{Device: before.Cell.Lease.Device, Fence: 0}})
-	want := fmt.Sprintf(chatlist.PickedUpAgain, chatlist.DeviceName(nil, before.Cell.Lease.Device, nil))
-	if failure == nil || failure.Code != appwire.CodeConflict || failure.Message != want || !strings.Contains(string(e2JSON(failure.Detail)), "holder_changed") {
+	if failure == nil || failure.Code != appwire.CodeConflict || failure.Message != chatlist.LostRace || !strings.Contains(string(e2JSON(failure.Detail)), "holder_changed") {
 		t.Fatalf("stale consent: %+v", failure)
 	}
 	after, err := s.Dir.Cell(context.Background(), chat)

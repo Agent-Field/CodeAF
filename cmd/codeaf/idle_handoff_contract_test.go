@@ -31,6 +31,7 @@ type idleAppContract struct {
 func newIdleAppContract(t *testing.T, wrappers ...func(http.Handler) http.Handler) *idleAppContract {
 	t.Helper()
 	celltest.RequireEngine(t)
+	t.Setenv("CODEAF_IDLE_HANDOFF", "on")
 	relay := e2WireRelay(t, wrappers...)
 	t.Setenv(syncsetup.URLVar, relay.URL)
 	b, rec, model, workspace := appSyncBackend(t)
@@ -57,6 +58,44 @@ func (f *idleAppContract) released(t *testing.T) directory.CellView {
 		return err == nil && view.Cell.Head != "" && view.Cell.Lease.Expires == 0
 	})
 	return view
+}
+
+func TestIdleHandoff_DefaultOff_AppRetainsHoldAndRefusesAutoOpen(t *testing.T) {
+	celltest.RequireEngine(t)
+	t.Setenv("CODEAF_IDLE_HANDOFF", "")
+	relay := e2WireRelay(t)
+	t.Setenv(syncsetup.URLVar, relay.URL)
+	b, rec, _, workspace := appSyncBackend(t)
+	_, peerHome := outageHomes(t, relay.URL)
+	t.Cleanup(func() { _ = b.Close() })
+	agent, err := mustCreate(t, b, appwire.CreateAsk{Workspace: workspace})
+	if err != nil {
+		t.Fatal(err)
+	}
+	turn, err := b.Send(agent.ID, "! echo default-off-seed", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	appTurnDoneFor(t, rec, turn)
+	own := appSyncOwn(t)
+	appSyncWait(t, "published head on relay", func() bool {
+		v, err := own.Dir.Cell(t.Context(), agent.ID)
+		return err == nil && v.Cell.Head != ""
+	})
+	time.Sleep(150 * time.Millisecond)
+	v, err := own.Dir.Cell(t.Context(), agent.ID)
+	if err != nil || v.Cell.Lease.Expires == 0 || v.Cell.Lease.Expires <= v.Now {
+		t.Fatalf("default-off app released its idle hold: %+v, %v", v, err)
+	}
+	if err := b.Close(); err != nil {
+		t.Fatal(err)
+	}
+	peer := e2StartApp(t, peerHome)
+	t.Cleanup(func() { e2Quit(t, peer) })
+	row := outageChatRow(t, peer, agent.ID, func(row appwire.ChatRow) bool { return row.Status == "idle" })
+	if row.CanOpen || !row.CanTake || row.Here {
+		t.Fatalf("default-off released remote row offered auto-open: %+v", row)
+	}
 }
 
 func TestIdleRelease_C1_C3_AppSendReacquiresBeforeModelCall(t *testing.T) {

@@ -23,7 +23,7 @@ type ModelIdentity struct {
 
 func (a *Agent) modelIdentityLocked() ModelIdentity {
 	s := a.modelIdentity
-	s.Selected = a.model
+	s.Selected = a.configuredModelLocked()
 	if a.conversationModels != nil {
 		pair := *a.conversationModels
 		s.Models = &pair

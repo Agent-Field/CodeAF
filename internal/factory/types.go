@@ -146,7 +146,7 @@ type Stage struct {
 	// conversation stage carries one; a check and an approval run no model.
 	Model  string `json:",omitempty"`
 	Fanout string // one · per-file · per-finding · per-claim
-	Until  string // done · clean · green · proven
+	Until  string // done · clean · green · proven · no new failures (Test)
 	Max    int    // rounds before it stops and asks; 0 means one
 	// Who is who an approve step waits on ([ApproverWord]): "" the job's
 	// person, "@handle" a named person, operator any of the factory's
@@ -604,6 +604,12 @@ type Item struct {
 	// RunOn job's whole run) each keeps its run's executions as its own
 	// Stages and Phases, which fold under that step.
 	AgentFieldSteps map[string]*AgentFieldRun `json:",omitempty"`
+	// Group is the opaque label supplied when the job was made.
+	Group string `json:",omitempty"`
+	// Milestone is the milestone label supplied when the job was made.
+	Milestone string `json:",omitempty"`
+	// Context holds the person's reference attachments outside the description.
+	Context []JobContext `json:",omitempty"`
 	// PublishAnyway preserves the person decision without changing measured proof.
 	PublishAnyway *Approval `json:",omitempty"`
 	// GitHubIssueID pins the permanent issue identity, learned only by a direct read.
@@ -615,6 +621,8 @@ type Item struct {
 
 	// FromJob is the ended job whose request this person started afresh.
 	FromJob int `json:",omitempty"`
+	// SplitFrom is the job this job was split from, independent of run-as-new.
+	SplitFrom int `json:",omitempty"`
 	// SourceIssue is a reference only; it never gives this job a forge identity.
 	SourceIssue string `json:",omitempty"`
 
@@ -745,6 +753,10 @@ type Item struct {
 	Stages        []Stage // the item's copy of the recipe, toggled
 	StopAfterStep bool
 	Cap           float64
+	// CapChosen says Cap is a budget a person chose when the job was made,
+	// never a default its start took, so it can equal the default and still
+	// be kept when the job's rules are read after the clone (run.settledCap).
+	CapChosen bool `json:",omitempty"`
 
 	// Assignee is the forge's person; Taker and Starter keep the person who
 	// took or started otherwise unassigned work. Author is never ownership:
@@ -768,6 +780,10 @@ type Item struct {
 	// QKind is why the item is waiting: approve, cap, scope, step, ask_first
 	// or out_of_attempts. The wire's needs_you.kind is derived from this.
 	QKind string
+	// PausedRecoveryQuestion is the identity or revision of the decision a
+	// person dismissed. LastRecoveryResume acknowledges its chat continuation.
+	PausedRecoveryQuestion string `json:",omitempty"`
+	LastRecoveryResume     string `json:",omitempty"`
 	// AskedFirstReason keeps the matched rule visible after the question is answered.
 	AskedFirstReason string `json:",omitempty"`
 	// RuleChecks is what the factory's own two checks found on the job
@@ -828,6 +844,13 @@ type Item struct {
 	// on. It is kept on the item so a question sent to the person outlives a
 	// pause and a restart; nil is none.
 	Asking *Asked
+	// NeedsAt is when the job's current wait on a person began (the job reads
+	// needs_you), from the store's write that began it ([NoteWait]): the clock
+	// [NeedsSince] reads for a wait with no clock of its own, such as a start
+	// held for approval, a take-over, an AgentField run's approval, a Stop
+	// undone, a failed merge or a pull request's review. Zero while the job
+	// waits on nobody.
+	NeedsAt time.Time `json:",omitzero"`
 	// ManagerAnswer confirms the last durable decision independently of lease delivery.
 	ManagerAnswer *ManagerAnswer `json:",omitempty"`
 	// Briefs are the job's brief versions ([BriefVersion]), oldest first, at
@@ -864,6 +887,11 @@ type Item struct {
 	Talk string
 	// SpentBefore holds spending from runs whose work was cleared.
 	SpentBefore float64 `json:",omitempty"`
+	// SpentCleared is what the job had spent when a Bring back made it fresh
+	// ([ForgetJobSpend]). The money was spent, so the factory's spending
+	// totals still count it ([SpentIn]); the job's own total and its budget
+	// start again from nothing and never read it.
+	SpentCleared float64 `json:",omitempty"`
 	// ChatSpent is what Talk spent while the job had no run: the job's chat
 	// before its first Start, in dollars. A JOB'S CHAT SPENDS FROM THE JOB'S
 	// BUDGET, and with no run there is no

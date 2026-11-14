@@ -98,6 +98,7 @@ var floorNow = time.Now
 
 type floorLook struct {
 	at   time.Time
+	dir  os.FileInfo
 	jobs map[int]os.FileInfo
 }
 
@@ -113,7 +114,13 @@ func floorJobFiles(root string) (map[int]os.FileInfo, error) {
 	floorLooks.mu.Lock()
 	defer floorLooks.mu.Unlock()
 	now := floorNow()
-	if l, ok := floorLooks.by[root]; ok && now.Sub(l.at) < floorLookEvery {
+	dir, err := os.Stat(root)
+	if err != nil {
+		return nil, err
+	}
+	// A job can gain this chat during the shared interval. Its atomic rename
+	// invalidates the look immediately, before a negative memo can admit work.
+	if l, ok := floorLooks.by[root]; ok && now.Sub(l.at) < floorLookEvery && sameFileInfo(l.dir, dir) {
 		return l.jobs, nil
 	}
 	entries, err := os.ReadDir(root)
@@ -136,7 +143,7 @@ func floorJobFiles(root string) (map[int]os.FileInfo, error) {
 		}
 		jobs[id] = info
 	}
-	floorLooks.by[root] = floorLook{at: now, jobs: jobs}
+	floorLooks.by[root] = floorLook{at: now, dir: dir, jobs: jobs}
 	return jobs, nil
 }
 
@@ -255,4 +262,23 @@ func (m *stopCheckMemo) forget(key string) {
 // different file; size and modification time also catch a write in place.
 func sameFileInfo(then, now os.FileInfo) bool {
 	return then != nil && now != nil && os.SameFile(then, now) && then.Size() == now.Size() && then.ModTime().Equal(now.ModTime())
+}
+
+// WatchedRefusal is AutomaticRefusal for the watcher that looks ten times a
+// second for as long as a job's chat is open. It costs one look at the floor's
+// folder, not a read of every job ([store.Store.TalkStop]). What grants work
+// still asks AutomaticRefusal.
+func (d seamRunDoor) WatchedRefusal(conversation string) string {
+	want := sameFileKey(conversation)
+	if want == "" || d.st == nil {
+		return ""
+	}
+	manager, stopped, err := d.st.TalkStop(want)
+	if err != nil {
+		return "job could not be read; automatic work stopped"
+	}
+	if manager && stopped {
+		return factory.PersonStopReason
+	}
+	return ""
 }

@@ -267,9 +267,7 @@ func (a *Agent) routeTaskCrew(ctx context.Context, row uint64, title, brief stri
 		crew.taskPins[seat] = true
 	}
 	crew.guard = crewSpendGuard(a.config.ProfileDir, decision, true)
-	if wish.taskCap > crew.guard.TaskCap && crew.guard.TaskCap > 0 {
-		crew.guard.TaskCap = wish.taskCap
-	}
+	crew.guard.raiseTaskCap(wish.taskCap)
 	crew.guard.Day = a.crewDay()
 	crew.day, crew.dayAtStart = a.crewDay(), a.crewDay().Total()
 	a.crews.put(row, crew)
@@ -470,7 +468,8 @@ func (c crewSeatCompleter) completeSeat(ctx context.Context, key string, message
 			}
 			continue
 		}
-		held, err := crew.guard.before(ctx, current, messages, options)
+		var reservation spendReservation
+		held, err := crew.guard.before(ctx, current, messages, options, &reservation)
 		if err != nil {
 			// THE CALL THAT WOULD CROSS THE LINE IS NOT MADE, and the line
 			// says which line it met — never "/redo stronger".
@@ -491,7 +490,7 @@ func (c crewSeatCompleter) completeSeat(ctx context.Context, key string, message
 		callCtx = withDispatchObserver(callCtx, sent.tell)
 		response, err := c.agent.completeWithModel(provider.WithoutPatientRateLimits(asCrewSeatCall(callCtx)), purposeInherited, messages, current, options...)
 		failedAt := time.Now()
-		crew.guard.after(ctx, current, response, held)
+		crew.guard.after(ctx, current, response, held, &reservation)
 		if err == nil {
 			c.agent.crewAnswered(c.run, current, seat)
 			return response, nil
@@ -920,18 +919,28 @@ func (a *Agent) healthyModel(ctx context.Context, purpose callPurpose, model str
 func (c Config) routeGate(send, wire string) func(context.Context, string, string) error {
 	dir := c.ProfileDir
 	return func(ctx context.Context, model, tag string) error {
+		asked := strings.TrimSpace(model)
+		if asked == "" || asked == wire {
+			asked = send
+		}
+		if admit, _ := ctx.Value(budgetAdmissionKey{}).(func(context.Context, string) error); admit != nil {
+			if err := admit(ctx, asked); err != nil {
+				return err
+			}
+		}
 		if err := factoryCallRefusal(ctx); err != nil {
 			return err
+		}
+		if tag != string(purposeTurn) && !c.dailyModelExempt(asked) {
+			if err := DailyLimitReached(c); err != nil {
+				return err
+			}
 		}
 		if c.RouteCrew == nil {
 			return nil
 		}
 		if isCrewSeatCall(ctx) || tag == string(purposeTurn) {
 			return nil
-		}
-		asked := strings.TrimSpace(model)
-		if asked == "" || asked == wire {
-			asked = send
 		}
 		if config.CrewRouteAnswers(dir, asked) {
 			return nil
@@ -1101,6 +1110,29 @@ func (a *Agent) stopCrew(run *beltRun, err error) error {
 	crew.mu.Unlock()
 	a.republishCrew(run, decision, stopped.Action)
 	return crewStopped{action: stopped.Action, cause: err}
+}
+
+// stoppedOn records action as the crew's stop when nothing stopped it yet. A
+// stop a seat's refusal already recorded ([Agent.stopCrew]) stands.
+func (c *taskCrew) stoppedOn(action string) {
+	if c == nil || strings.TrimSpace(action) == "" {
+		return
+	}
+	c.mu.Lock()
+	if c.decision.Stopped == "" {
+		c.decision.Stopped = action
+	}
+	c.mu.Unlock()
+}
+
+// guardTaskCap is the per-task limit the crew's guard holds now, with every
+// raise the person gave it; zero for no crew or no limit.
+func (c *taskCrew) guardTaskCap() float64 {
+	if c == nil || c.guard == nil {
+		return 0
+	}
+	taskCap, _ := c.guard.taskLimit()
+	return taskCap
 }
 
 // crewStopped is a seat with nowhere left to go: its text is the one action,

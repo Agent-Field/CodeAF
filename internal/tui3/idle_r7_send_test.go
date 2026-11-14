@@ -46,6 +46,7 @@ func (s *r7SendSource) RowsForChatSend(ctx context.Context, _ string, offline, h
 
 func r7ReleasedWindow(t *testing.T) (*app, *fakeAgent, *r7SendSource) {
 	t.Helper()
+	t.Setenv("CODEAF_IDLE_HANDOFF", "on")
 	source := &r7SendSource{walkSendSource: walkSendSource{&continuationListing{row: chatlist.Row{Cell: heldCell, Status: chatlist.Idle, Mine: true, Released: true, AutoOpen: true, Fence: 2, Head: "saved", DeviceID: "A"}}}}
 	a, old := heldLab(t, source, &fakeTaker{})
 	keepSurfaceWorkersInTest(t, a)

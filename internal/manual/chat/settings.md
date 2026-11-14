@@ -72,7 +72,7 @@ older version saved stays in the profile, read by nothing, and is never reported
 as an unknown setting. Internal model slots that this surface cannot
 change are omitted; supported model controls remain in Models.
 
-## General — interface preferences and hints
+## General — interface preferences, hints and share teams between paired computers
 
 **General** contains mouse interaction, completed tool details, tool icons, chat
 switching, the task sidebar and updates. There is no background reminders row: codeaf
@@ -82,7 +82,7 @@ positive: on shows contextual tips, off hides them. Keyboard instructions and
 setting explanations stay visible either way. **Completed tool details** offers
 **collapsed** or **expanded** without changing the meaning of an existing profile.
 
-**Settings → General → share teams** is on by default for paired computers. It
+**Settings → General → share teams** is on by default for paired computers. On the hosted sync service sharing needs sync storage approval (Settings → Devices → sync storage). It
 shares teams, their members and settings, and recent Traffic as read-only history.
 The choice stays on each computer. Turning it off on either computer stops sharing
 between them: that computer stops sending and receiving teams and Traffic. What
@@ -90,6 +90,8 @@ was already exchanged stays, including encrypted copies in the vault. Received
 history is hidden while sharing is off and is kept for when it is turned back
 on. Unpaired computers are unaffected. A missing or empty choice reads on; a
 damaged configuration or invalid value reads off, as shown in Settings.
+
+**Settings → General → idle handoff** (`idle_handoff`, environment `CODEAF_IDLE_HANDOFF`) is **off by default**. While off, open idle chats keep renewing their hold and released remote chats use **Continue here**. Turn it on in Settings or with `CODEAF_IDLE_HANDOFF=1` so paired idle chats release their hold about 2 seconds after upload and released shared chats open directly on Home and through `agents.open` (`can_open`).
 
 ## AI teams settings versus an individual AI team
 
@@ -119,8 +121,10 @@ from an unrelated example.
 
 Off stops automatic memory model calls from the next memory step, with no restart.
 A call already in flight finishes and is billed. Saved knowledge stays readable;
-reading it costs nothing. Kept lines and `/remember` still work. Use `/memory`
-or `/memories` to inspect, fix or forget saved lines.
+reading it costs nothing. Kept lines and `/remember` still work. Use `/memory`,
+`/memories` or the Memory tab (`alt+8`) to inspect, fix, move, forget or put back
+saved lines; the `Open the Memory tab` door goes straight to that tab. Input
+history and unfinished drafts are separate Privacy choices.
 
 Older homes with no saved choice also default on. An explicit saved off choice
 stays off. Invalid saved values read off. Nothing saved is deleted.
@@ -202,6 +206,12 @@ A compilation already running finishes with its original model. The compiler
 verifies the model reported by the provider and rejects substitutions; it never
 falls back to a different model. Existing notes stay intact when you change this
 setting. Turn automatic learning on with the shared Memory setting.
+A new profile whose first saved-chat inventory is empty enables capture automatically.
+A profile with existing eligible history waits for **Build knowledge base** in
+Memory before importing it; capture is profile-wide.
+Compilation is paid model work recorded in Spend, including unusable answers.
+It pauses at the daily limit and resumes automatically after you raise the
+limit with `/budget day` or the local day changes.
 
 ## Unreadable profile settings and saved spending limits
 
@@ -218,3 +228,15 @@ resolution also falls back to prompting. A missing profile keeps its usual defau
 malformed JSON still reports an error. Spending-limit reads and settings writes
 continue to refuse unreadable files unless an explicit daily-limit override supplies
 the spending authority.
+
+## Devices — sync storage, off or on, and request access
+
+Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
+
+A paired account whose service reports storage permission has a **sync storage** row showing **on** or **off**. While **off**, press Enter (`enter request access`) to open a pre-filled GitHub issue. The panel also shows the public request code and link if no browser opens. The code is your identity id (`id_` and 32 hex digits), safe to post and granting nothing by itself. Choosing this row in Settings search clears the search and opens Devices. While **off**, Enter also requests access. While **on**, it opens Devices without offering or making a request. The row is absent with sync off, before pairing, or when the service answers without storage permission. A window already open when you pair checks for the answer within about a minute; an open Settings page then updates its row automatically. The first `/status` after pairing shows the cached dim line `sync storage  off` while storage is off.
+
+## Why Settings says held by an environment variable
+
+A row controlled at launch says `held by <variable> — unset it to change this here`.
+The name is the spelling that supplied the value. Unset that variable and start again
+to change the row in Settings. See Starting codeaf, “The old name”, for older spellings.

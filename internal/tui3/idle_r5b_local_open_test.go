@@ -28,6 +28,7 @@ func (s *r5bHomeSource) RowsForSend(ctx context.Context) ([]chatlist.Row, uint64
 
 func r5bLocalHome(t *testing.T, source *r5bHomeSource, alreadyOpen bool) (*app, string, *walkOpenTaker) {
 	t.Helper()
+	t.Setenv("CODEAF_IDLE_HANDOFF", "on")
 	lab := newHomeLab(t)
 	file := lab.session("project", heldCell, "Mine", lab.workspace("project"), time.Now())
 	standing := ""

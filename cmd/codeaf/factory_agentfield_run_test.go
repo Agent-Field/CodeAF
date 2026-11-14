@@ -391,7 +391,7 @@ func TestAnAgentFieldStepReadsExactlyLikeANativeStep(t *testing.T) {
 	cp := &afFakeCP{tree: afNode("exec-root", "handle_ticket", "running", "2026-11-07T12:00:00Z", "",
 		afNode("exec-inv", "investigate", "running", "2026-11-07T12:00:01Z", ""))}
 	cp.relayLines("exec-inv", lines, false)
-	r := &afRemote{items: st, floor: st, workspace: workspace, conn: func() (afClient, string, bool) { return cp, "workaf", true }}
+	r := &afRemote{items: st, floor: st, conn: func() (afClient, string, bool) { return cp, "workaf", true }}
 	if ended, _ := r.sync(context.Background(), cp, it.ID, cp.tree); ended {
 		t.Fatal("the run ended while it was running")
 	}
@@ -444,7 +444,6 @@ func TestAnAgentFieldStepReadsExactlyLikeANativeStep(t *testing.T) {
 // plane holds nothing for the step.
 func TestAnOfflineFactoryGetsEveryLineOnceAndThePipeEmpties(t *testing.T) {
 	appDayProfile(t)
-	workspace := t.TempDir()
 	st, it := afJob(t)
 	var lines [][]byte
 	for i := range 40 {
@@ -454,7 +453,7 @@ func TestAnOfflineFactoryGetsEveryLineOnceAndThePipeEmpties(t *testing.T) {
 	cp := &afFakeCP{relayDown: 3, ackDown: 1, tree: afNode("exec-root", "handle_ticket", "running", "2026-11-07T12:00:00Z", "",
 		afNode("exec-inv", "investigate", "running", "2026-11-07T12:00:01Z", ""))}
 	cp.relayLines("exec-inv", append([][]byte{header}, lines...), true)
-	r := &afRemote{items: st, floor: st, workspace: workspace, conn: func() (afClient, string, bool) { return cp, "workaf", true }}
+	r := &afRemote{items: st, floor: st, conn: func() (afClient, string, bool) { return cp, "workaf", true }}
 	for range 8 {
 		r.sync(context.Background(), cp, it.ID, cp.tree)
 	}
@@ -482,7 +481,7 @@ func TestAnOfflineFactoryGetsEveryLineOnceAndThePipeEmpties(t *testing.T) {
 	cp.mu.Lock()
 	cp.held["exec-inv"] = []agentfield.RelayEntry{{Seq: 5, Kind: "line", Data: lines[3]}}
 	cp.mu.Unlock()
-	again := &afRemote{items: st, floor: st, workspace: workspace, conn: r.conn}
+	again := &afRemote{items: st, floor: st, conn: r.conn}
 	again.sync(context.Background(), cp, it.ID, cp.tree)
 	if n := len(afRecordLines(t, mirror)); n != 1+len(lines) {
 		t.Fatalf("a restarted reader wrote a line twice: %d lines", n)
@@ -522,7 +521,7 @@ func TestAnAgentFieldRunFoldsIntoStepsAndBack(t *testing.T) {
 	appDayProfile(t)
 	st, it := afJob(t)
 	cp := &afFakeCP{tree: root}
-	r := &afRemote{items: st, floor: st, workspace: t.TempDir(), conn: func() (afClient, string, bool) { return cp, "workaf", true }}
+	r := &afRemote{items: st, floor: st, conn: func() (afClient, string, bool) { return cp, "workaf", true }}
 	r.sync(context.Background(), cp, it.ID, root)
 	job, _ := st.Get(it.ID)
 	if job.Stream.Cur != 3 {
@@ -596,7 +595,7 @@ func TestARunOnJobDispatchesFollowsAndEndsWithItsRun(t *testing.T) {
 			// that ended over a minute ago with nothing relayed is no longer
 			// read (afDrainAfter), so a wall clock past that minute would
 			// never read the lines the node relays after the stop.
-			r := &afRemote{items: st, floor: floor, workspace: t.TempDir(), conn: func() (afClient, string, bool) { return cp, "workaf-node", true },
+			r := &afRemote{items: st, floor: floor, conn: func() (afClient, string, bool) { return cp, "workaf-node", true },
 				now: func() time.Time { return afTime("2026-11-07T12:00:03Z") }}
 			ctx, cancel := context.WithCancelCause(context.Background())
 			defer cancel(nil)
@@ -723,7 +722,7 @@ func TestTheFactoryRunnerHandsARunOnJobToItsRun(t *testing.T) {
 	cp := &afFakeCP{tree: afNode("exec-root", "handle_ticket", "running", "2026-11-07T12:00:00Z", "",
 		afNode("e-t", "triage", "succeeded", "2026-11-07T12:00:01Z", "2026-11-07T12:00:02Z"),
 		afNode("e-i", "investigate", "running", "2026-11-07T12:00:03Z", ""))}
-	remote := &afRemote{items: g.st, floor: g.st, workspace: g.workspace, conn: func() (afClient, string, bool) { return cp, "workaf", true }}
+	remote := &afRemote{items: g.st, floor: g.st, conn: func() (afClient, string, bool) { return cp, "workaf", true }}
 	r := buildFactoryRunnerWith(g.st, g.st, g.workspace, t.TempDir(), nil, nil, remote.Run, factoryrun.ExecutorFunc(remote.Step), remote.Answer)
 	stopAll(t, g.st, r)
 	id, err := g.st.Add(context.Background(), factory.Item{Title: "refund never arrived", Body: "order 1182", Tier: factory.TierOwner, RunOn: "support.handle_ticket"})
@@ -943,7 +942,7 @@ func TestAMirrorOpenedBeforeItsFirstLineHasOneHeader(t *testing.T) {
 	appDayProfile(t)
 	workspace := t.TempDir()
 	st, it := afJob(t)
-	r := &afRemote{items: st, floor: st, workspace: workspace}
+	r := &afRemote{items: st, floor: st}
 	m := r.mirror(it, "exec-inv", "investigate", true)
 	if m == nil {
 		t.Fatal("no mirror was minted")
@@ -974,7 +973,6 @@ func TestAMirrorOpenedBeforeItsFirstLineHasOneHeader(t *testing.T) {
 // and out of order; the record keeps each (execution, seq) once, in order.
 func TestAReplayedBatchIsKeptOnce(t *testing.T) {
 	appDayProfile(t)
-	workspace := t.TempDir()
 	st, it := afJob(t)
 	line := func(n int) json.RawMessage {
 		return json.RawMessage(fmt.Sprintf(`{"type":"message","role":"assistant","content":"line %d","timestamp":"2026-11-07T12:00:00Z"}`, n))
@@ -986,7 +984,7 @@ func TestAReplayedBatchIsKeptOnce(t *testing.T) {
 		{Seq: 2, Kind: "line", Data: line(1)},
 		{Seq: 3, Kind: "line", Data: line(2)},
 	}}
-	r := &afRemote{items: st, floor: st, workspace: workspace}
+	r := &afRemote{items: st, floor: st}
 	r.sync(context.Background(), cp, it.ID, cp.tree)
 	if n := cp.heldCount("exec-inv"); n != 0 {
 		t.Fatalf("the first batch was not acked: %d held", n)
@@ -996,7 +994,7 @@ func TestAReplayedBatchIsKeptOnce(t *testing.T) {
 	cp.held["exec-inv"] = []agentfield.RelayEntry{{Seq: 4, Kind: "line", Data: line(3)}, {Seq: 3, Kind: "line", Data: line(2)},
 		{Seq: 2, Kind: "line", Data: line(1)}, {Seq: 4, Kind: "line", Data: line(3)}}
 	cp.mu.Unlock()
-	again := &afRemote{items: st, floor: st, workspace: workspace}
+	again := &afRemote{items: st, floor: st}
 	again.sync(context.Background(), cp, it.ID, cp.tree)
 	got, _ := st.Get(it.ID)
 	kept := afRecordLines(t, got.Stream.Phases[0].Chat)
@@ -1026,7 +1024,7 @@ func TestARunThatEndedIsReadToItsLastLine(t *testing.T) {
 	cp := &afFakeCP{tree: afNode("exec-root", "handle_ticket", "succeeded", "2026-11-07T12:00:00Z", "2026-11-07T12:00:09Z",
 		afNode("e-d", "draft_reply", "succeeded", "2026-11-07T12:00:01Z", "2026-11-07T12:00:08Z"))}
 	cp.relayLines("e-d", [][]byte{[]byte(`{"type":"message","role":"user","content":"draft it","timestamp":"2026-11-07T12:00:01Z"}`)}, false)
-	r := &afRemote{items: st, floor: st, workspace: t.TempDir(), conn: func() (afClient, string, bool) { return cp, "workaf", true }}
+	r := &afRemote{items: st, floor: st, conn: func() (afClient, string, bool) { return cp, "workaf", true }}
 	done := make(chan error, 1)
 	go func() { done <- r.Run(context.Background(), it.ID) }()
 	time.Sleep(60 * time.Millisecond)
@@ -1077,7 +1075,7 @@ func TestAStepsSchemaRetryIsReadToItsOwnEnd(t *testing.T) {
 		agentfield.RelayEntry{Seq: 6, Kind: "line", Data: retryHeader},
 		agentfield.RelayEntry{Seq: 7, Kind: "line", Data: retry})
 	cp.mu.Unlock()
-	r := &afRemote{items: st, floor: st, workspace: t.TempDir(), conn: func() (afClient, string, bool) { return cp, "workaf", true }}
+	r := &afRemote{items: st, floor: st, conn: func() (afClient, string, bool) { return cp, "workaf", true }}
 	done := make(chan error, 1)
 	go func() { done <- r.Run(context.Background(), it.ID) }()
 	time.Sleep(80 * time.Millisecond)

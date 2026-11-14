@@ -21,6 +21,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/keys"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/vaultsync"
+	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
 // unknownDevice is said for the machine that took a chat when the directory
@@ -56,6 +57,7 @@ type Drive struct {
 	idleNotices   atomic.Bool
 	idleRequested atomic.Bool
 	idlePrepared  atomic.Bool
+	working       atomic.Bool
 	workMu        sync.Mutex // Admission and voluntary release cannot cross each other.
 	activity      atomic.Uint64
 	released      atomic.Bool
@@ -83,12 +85,16 @@ type Drive struct {
 	directoryID   string
 	recordedFence uint64
 
-	cancel          context.CancelFunc
-	done            chan struct{}
-	once            sync.Once
-	closeErr        error
-	publicationDone func()
-	ownership       chan struct{}
+	cancel               context.CancelFunc
+	done                 chan struct{}
+	once                 sync.Once
+	closeErr             error
+	publicationDone      func()
+	watcherCancel        context.CancelFunc
+	watcherDone          chan struct{}
+	ownership            chan struct{}
+	beforeOwnershipCheck func(context.Context) func()
+	afterReleaseInTests  func()
 
 	sent string // Fingerprint of the last sent vault, guarded by vaultMu.
 
@@ -118,6 +124,9 @@ func (s *Sync) Drive(ctx context.Context, eng cellstore.Engine, c cell.Cell, opt
 	if Quiet(s.Home) {
 		return nil, ErrQuiet
 	}
+	if !s.StorageAllowed() {
+		return nil, wireauth.ErrStorageOff
+	}
 	files, err := s.files(eng, c)
 	if err != nil {
 		return nil, err
@@ -133,7 +142,7 @@ func (s *Sync) Drive(ctx context.Context, eng cellstore.Engine, c cell.Cell, opt
 	if err := s.putDevice(ctx, opt.DeviceName); err != nil {
 		return nil, err
 	}
-	d.syncVault(ctx)
+	_ = d.syncVault(ctx)
 	drv, held, err := s.driving(ctx, c)
 	if err != nil {
 		return nil, err
@@ -161,11 +170,20 @@ func (s *Sync) Drive(ctx context.Context, eng cellstore.Engine, c cell.Cell, opt
 	}
 	run, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	d.run, d.cancel = run, cancel
+	watch, cancelWatch := context.WithCancel(run)
+	d.watcherCancel = cancelWatch
+	d.watcherDone = make(chan struct{})
 	started = true
 	go func() {
 		defer close(d.done)
 		var work sync.WaitGroup
-		work.Go(func() { d.followOwnership(run) })
+		work.Go(func() {
+			defer close(d.watcherDone)
+			defer cancelWatch()
+			d.followOwnership(watch)
+		})
+		stopStorage := OnStorageOpened(s.Home, d.StorageOpened)
+		defer stopStorage()
 		_ = d.batcher.Run(run)
 		work.Wait()
 	}()
@@ -232,6 +250,12 @@ func (d *Drive) syncVault(ctx context.Context) error { return d.syncVaultRound(c
 func (d *Drive) syncIdleVault(ctx context.Context) error { return d.syncVaultRound(ctx, true) }
 
 func (d *Drive) syncVaultRound(ctx context.Context, idle bool) error {
+	if !d.sync.StorageAllowed() {
+		if idle {
+			return wireauth.ErrStorageOff
+		}
+		return nil
+	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -296,7 +320,7 @@ func (d *Drive) flushed() func(cellsync.Flush) {
 		}
 		ctx, cancel := context.WithTimeout(parent, requestTimeout)
 		defer cancel()
-		d.syncVault(ctx)
+		_ = d.syncVault(ctx)
 	}
 }
 
@@ -387,6 +411,11 @@ func (s *Sync) driving(ctx context.Context, c cell.Cell) (cellsync.Driving, stri
 		extends, err := cellstore.Extends(c, view.Cell.Head)
 		if err != nil {
 			return drv, "", err
+		}
+		// An empty head has no stored turns to require from this device's own
+		// expired hold; other devices retain the ordinary ancestry decision.
+		if view.Cell.Head == "" && view.Cell.Lease.Device == s.Device.ID() {
+			extends = true
 		}
 		if !extends {
 			return drv, nonemptyHolder(view.Cell.Lease.Device), nil
@@ -498,7 +527,13 @@ func (d *Drive) loseHold() {
 func (d *Drive) displaced() bool {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	return d.lost || d.viewer.Line != ""
+	return d.stopped || d.lost || d.viewer.Line != ""
+}
+
+func (d *Drive) isStopped() bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.stopped
 }
 
 // becomeViewer is the Batcher's word that another device took the chat over:
@@ -521,6 +556,11 @@ func (d *Drive) becomeViewer(s cellsync.Superseded) {
 			return
 		}
 		if err == nil && v.Cell.Lease.Expires <= v.Now {
+			if d.canReacquireWorking(v, d.batcher.Fence()) {
+				if ok, reacquireErr := d.reacquireWorking(ctx, v); reacquireErr == nil && ok {
+					return
+				}
+			}
 			d.availableAfter(held, v.Cell.Lease)
 			return
 		}
@@ -641,13 +681,18 @@ func (d *Drive) RenewalStatus() (time.Time, time.Duration, bool) {
 		return time.Time{}, 0, false
 	}
 	d.mu.Lock()
-	// A voluntary idle release stops renewals, not this writer's installation.
-	// Home must finish its startup wait so the first send can check ownership
-	// and conditionally acquire a new fence through ConfirmWork.
-	inactive := d.stopped || d.lost || d.viewer.Line != "" && !(d.released.Load() && d.viewer.Line == chatlist.Available)
+	// A voluntary idle release or an expired own hold stops renewals, not this
+	// writer's installation. Home must finish its startup wait so the first send
+	// can check ownership and either conditionally acquire a new fence through
+	// ConfirmWork or reopen the cell.
+	available := !d.stopped && d.viewer.Line == chatlist.Available
+	inactive := d.stopped || (d.lost || d.viewer.Line != "") && !available
 	d.mu.Unlock()
 	if inactive {
 		return time.Time{}, 0, false
+	}
+	if available && !d.released.Load() {
+		return time.Time{}, directory.HeartbeatEvery, false
 	}
 	return d.batcher.RenewalStatus()
 }
@@ -682,7 +727,7 @@ func (d *Drive) CheckLease(ctx context.Context) error {
 	if err := cellstore.WaitCapture(ctx, d.cell); err != nil {
 		return err
 	}
-	if d.batcher == nil {
+	if d.isStopped() || d.batcher == nil {
 		return nil
 	}
 	id, fence := d.batcher.Lease()
@@ -696,6 +741,11 @@ func (d *Drive) CheckLease(ctx context.Context) error {
 		return nil
 	}
 	if err == nil && v.Cell.Lease.Expires <= v.Now {
+		if d.canReacquireWorking(v, fence) {
+			if ok, reacquireErr := d.reacquireWorking(ctx, v); reacquireErr == nil && ok {
+				return nil
+			}
+		}
 		if !d.released.Load() {
 			d.retireHold(ctx, held)
 		}
@@ -772,6 +822,7 @@ func (d *Drive) Gate() error {
 // Working tells the directory, through the next beat, whether a turn is
 // running on this computer, so another one can say the chat is working here.
 func (d *Drive) Working(on bool) {
+	d.working.Store(on)
 	if d.batcher != nil {
 		d.batcher.Working(on)
 	}
@@ -793,14 +844,16 @@ func (d *Drive) Idle() {
 			return
 		}
 		d.batcher.Idle()
-		d.scheduleIdle(activity)
+		if d.idleHandoffAllowed() {
+			d.scheduleIdle(activity)
+		}
 	}()
 }
 
 func (d *Drive) scheduleIdle(activity uint64) {
 	d.idleMu.Lock()
 	defer d.idleMu.Unlock()
-	if d.idleClosed || activity != d.activity.Load() {
+	if d.idleClosed || activity != d.activity.Load() || !d.idleHandoffAllowed() {
 		return
 	}
 	if d.idleStop != nil {
@@ -907,12 +960,21 @@ func (d *Drive) Close(ctx context.Context) error {
 			return
 		}
 		stop := context.AfterFunc(ctx, d.cancel)
+		// Stop ownership readings before our own release can look like displacement.
+		// The batcher keeps its run context until the final publish has joined.
+		if d.watcherCancel != nil {
+			d.watcherCancel()
+			<-d.watcherDone
+		}
 		if pending == nil && !d.sync.isRemoved() {
 			// Join the publish before stopping its request. Canceling a committed
 			// request can lose its reply and leave the next publish using an old head.
 			d.closeErr = d.batcher.Close(ctx)
 		} else {
 			d.closeErr = pending
+		}
+		if d.afterReleaseInTests != nil {
+			d.afterReleaseInTests()
 		}
 		d.cancel()
 		<-d.done
@@ -923,7 +985,7 @@ func (d *Drive) Close(ctx context.Context) error {
 			d.closeErr = pending
 		}
 		if pending == nil && !removed {
-			d.syncVault(ctx)
+			_ = d.syncVault(ctx)
 		}
 		d.scope.Settle() // a publish that failed after the last flush line still counts
 		if d.closeErr == nil {
@@ -937,4 +999,11 @@ func (d *Drive) Close(ctx context.Context) error {
 		}
 	})
 	return d.closeErr
+}
+
+// StorageOpened wakes capacity-halted publication without replacing ownership.
+func (d *Drive) StorageOpened() {
+	if d.batcher != nil {
+		d.batcher.Freed()
+	}
 }

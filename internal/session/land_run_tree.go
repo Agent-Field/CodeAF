@@ -7,6 +7,8 @@ import (
 	"slices"
 	"sort"
 	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/config"
 )
 
 // LandRunTree commits a run's own working copy onto the branch it is checked
@@ -35,21 +37,29 @@ import (
 // with CODEAF_TASK_BELT naming the node belt would change a landing for one nobody
 // composed. With the flag off this refuses and touches nothing.
 //
-// ATTRIBUTION IS ON UNLESS CONTRIBUTING FORBIDS IT. The same two trailer
-// lines are added to worker commits and the landing commit. model is the one
-// the `Assisted-by` line names; empty leaves it bare because this door does
-// not know which model each worker used.
+// ATTRIBUTION IS ON UNLESS TURNED OFF OR CONTRIBUTING FORBIDS IT. The same two
+// trailer lines are added to worker commits and the landing commit when
+// attribution is on. model is the one the `Assisted-by` line names; empty
+// leaves it bare because this door does not know which model each worker used.
 func LandRunTree(dir, base, title, model string) (branch string, changed []string, refusal string, err error) {
+	sign := gitSignature{
+		off:   !config.AttributionAt(config.ProfileDir()),
+		named: model != "",
+		model: model,
+	}
+	return landRunTreeWithSignature(dir, base, title, sign)
+}
+
+func landRunTreeWithSignature(dir, base, title string, sign gitSignature) (branch string, changed []string, refusal string, err error) {
 	if !bashBeltAsked() {
 		return "", nil, "", errors.New("the bash belt is off: CODEAF_TASK_BELT names the node belt")
 	}
-	sign := gitSignature{named: model != "", model: model}
 	// A plumbing failure leaves the original branch intact. The work must still
 	// come home, so report the signing problem and continue the landing.
 	if _, err := signRunCommits(dir, base, sign); err != nil {
 		log.Printf("codeaf: could not sign the run's commits: %v", err)
 	}
-	saved, problem, why := commitTaskWork(dir, title, nil, sign, true)
+	saved, problem, why := commitTaskWork(dir, title, nil, sign, true, false)
 	if problem != "" {
 		if why == refusedByTheTree {
 			// The place itself would not take the write, and asking again would

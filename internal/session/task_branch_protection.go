@@ -30,6 +30,12 @@ func codeafGitIdentity() []string {
 	return gitidentity.ConfigArgs()
 }
 
+// privateGit belongs to copies whose owner must be able to walk or remove them
+// as soon as a command returns, without a detached maintenance child racing it.
+func privateGit(dir string, args ...string) (string, error) {
+	return git(dir, gitidentity.PrivateArgs(args...)...)
+}
+
 // protectedBranchNames is THE ONE LIST of branch names automatic task landing leaves unchanged.
 // The manual names every entry and a structural test holds that page against
 // this value, so changing the policy cannot leave the person reading an older

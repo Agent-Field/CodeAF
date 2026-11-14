@@ -36,6 +36,7 @@ func TestIdleRelease_R10b_RealTerminalLostReplyRecoversAfterLapse(t *testing.T) 
 
 func r10TerminalSequence(t *testing.T, rounds int, loseReply bool) {
 	t.Helper()
+	t.Setenv("CODEAF_IDLE_HANDOFF", "on")
 	var clockOffset atomic.Int64
 	now := func() time.Time { return time.Now().Add(time.Duration(clockOffset.Load())) }
 	store := t.TempDir()

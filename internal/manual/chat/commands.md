@@ -29,10 +29,12 @@ restores the ordinary prompt. Combined stdout/stderr appears as plain text while
 the command runs, preserving line breaks and indentation. Wide lines wrap; terminal
 control sequences are removed for safe display. The command and output remain in
 history after reopening. The model waits for your next message before responding.
-In a chat that can move between computers, file changes from `!` are included in
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage). In a chat that can move between computers, file changes from `!` are included in
 its next saved turn, just like changes from the model's shell commands.
 A failed command keeps its output and exit status too. Shell paths, `@` names and
 slash words remain literal, not mentions or send tags.
+
+## What can ! shell commands do — input, timeouts, approvals and workspace permissions
 
 Commands receive no interactive input or terminal. Use non-interactive flags;
 editors, prompts and terminal apps are not supported. Each command starts a fresh
@@ -292,7 +294,7 @@ command).
 | `/review` | — | `[<pull request>] [what to focus on] \| post <report>` | when this build or far engine carries review, reviews a GitHub pull request (its link, `owner/repo#N` or `#N`), or with nothing after it the current branch's; `post <report>` posts a review it wrote, on your yes. It changes no files |
 | `/sec` | — | `[changes [since <ref>]] [quick \| thorough]` | when this build or far engine carries sec, audits the whole repository for security problems, or with `changes` only the branch's changes; with nothing after it, the whole repository. It changes no files |
 | `/skill` | `/skills` | — | opens the skill shelf under the message box; enter toggles a skill, and its chip stays attached across messages |
-| `/memory` | `/memories` | — | opens the Memories tab (`alt+8`) |
+| `/memory` | `/memories` | — | opens the Memory tab (`alt+8`) |
 | `/memory` | `/memories` | `<words>` | prints the remembered lines those words name into the conversation |
 | `/remember` | `/always` | `<text>` | keeps one line in front of every conversation: for this project, or for you everywhere when typed on home or in a conversation with no project; it says `remembered · <text> · <where>` |
 | `/always` | — | — | prints every line kept here — on home, the ones that hold everywhere |
@@ -334,6 +336,8 @@ command).
 | `/budget` | `/limits` | `<row> <amount>` | sets one by name: `day`, `conversation`, `plan` |
 
 ## Pairing commands — /pair, /pair <code>, /sync, /link and /laptop
+
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 | Command | Aliases | Argument | Effect |
 |---|---|---|---|
@@ -391,14 +395,14 @@ Under the table `/help` prints the keys that have no slash command, including
 rows, directly under the `tab` row:
 
 ```
-alt+1…8        go to a place · 1 home · 2 AI teams · 3 chats · 4 activity · 5 spend · 6 settings · 7 automations · 8 memories
+alt+1…8        go to a place · 1 home · 2 AI teams · 3 chats · 4 activity · 5 spend · 6 settings · 7 automations · 8 memory
 alt+.          on a place: what else is here · every key that place has, drawn
                on a place, tab is the next place · esc back
 ```
 
 On a Mac those read `opt+1…8` and `opt+.`; the substitution happens once, at the moment of
 drawing, and the words are the same. The digits follow that list, not the bar's
-left-to-right order: `alt+8` is memories, and `alt+7` is automations, which is on the bar
+left-to-right order: `alt+8` is Memory, and `alt+7` is automations, which is on the bar
 only while you are in it.
 
 **One gesture, one spelling.** Wherever the sheet names the escape key it writes `esc
@@ -1043,6 +1047,13 @@ using the same working root. Older admitted cache locations remain in use;
 `/cache` includes them in its size and lists them before an explicit clean.
 Temporary files and saved work are outside the cache cleanup.
 
+The desktop engine also keeps rebuildable task-list answers in
+`~/.codeaf/cache/app-tasks`, capped at 96 MiB total and 256 files. Oldest files
+are evicted first. The engine prunes entries for missing or deleted conversations
+on its first inventory scan and once per minute while running; deleting a
+conversation in the app drops its entry immediately. Cleaning this cache makes
+the next task listing rebuild its answer.
+
 With nothing in it, `/cache` answers `the cache is empty · ~/.codeaf/cache`.
 
 **The cache is not your conversations.** Conversation history, tasks, settings and
@@ -1077,7 +1088,7 @@ deletes anything; `codeaf cache clean --yes` skips the question for scripts.
 
 **What `/cache clean` will not do:** it does not delete conversations, reset the
 dashboard, or forget memories. To start a fresh conversation the command is `/new`;
-a memory is forgotten on the Memories tab (`→` then `f`, or `delete`), or by asking. There is no
+a memory is forgotten on the Memory tab (`→` then `f`, or `delete`), or by asking. There is no
 `/forget` command any more.
 
 ## /model — pick a model
@@ -1957,11 +1968,11 @@ Settings now groups controls by what you want to change:
 General holds appearance, input and updates. Models holds model selection and
 advanced routing/context controls. Memory holds `learn from chats and jobs` —
 automatic memory learning, on by default unless saved off, with its extra model-call cost — and a link to
-the Memories tab. Tasks controls delegated work; AI teams sets defaults
+the Memory tab. Tasks controls delegated work; AI teams sets defaults
 for groups of AI chats. Permissions controls approvals. Spending holds limits.
 Connections holds accounts, keys, web search and remote connection settings.
 Devices lists your paired computers, renames this one, removes another, and starts
-`/pair` from `Add another device`.
+`/pair` from `Add another device`. A paired account on a relay that reports storage permission also has `sync storage`: when off, Enter opens a request and shows its code and link, including from Settings search. Self-hosted storage needs no request.
 Privacy holds history, drafts and data-sharing choices.
 
 Old saved keys and values are unchanged. Search accepts old labels and keys,
@@ -2325,3 +2336,7 @@ nothing was left behind, `/setup` says so and does nothing.
 `/setup now` starts a **setup turn**: the agent installs the installable items and brings back what a move left behind, into user space. A new chat's commands already have the network and this computer's ordinary access; `/setup` is not needed to open the network or to install outside the workspace. Each setup call asks first unless approvals are open (`--yolo` or the allow posture), or the arrival card already approved that exact listed command. The setup approval floor still applies in a host-bound chat. Calls are recorded as external and the turn says `Setup` in `codeaf cell log`.
 
 Limits: a setup turn is never replayed on another machine (the agent does it again there), never attempts impossible items, and can be rewound like any turn. When it ends, codeaf looks at what is now on this machine and updates the record. Existing cells keep their declared class: an older sandboxed cell still has its folder limits and opens its network for the setup turn only. Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first. A compatible furrow engine is required. Without a cell there is nothing to set up.
+
+## Why pairing commands do not turn on sync storage — request access in Devices
+
+Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.

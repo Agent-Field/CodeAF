@@ -44,6 +44,7 @@ func (t *walkNoRestore) OpenAvailable(ctx context.Context, id string, _ *directo
 }
 
 func TestIdleRelease_C3_D1_NativeTerminalModelSendReacquiresInPlace(t *testing.T) {
+	t.Setenv("CODEAF_IDLE_HANDOFF", "on")
 	celltest.RequireEngine(t)
 	h := newHostedMoveRig(t)
 	if err := h.b.Rename(t.Context(), "laptop"); err != nil {

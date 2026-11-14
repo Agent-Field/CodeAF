@@ -22,10 +22,11 @@ import (
 //
 // While connected, and only then, the node:
 //
-//   - registers with the control plane (POST /api/v1/nodes) as a fresh
-//     instance — EVERY START IS A NEW instance_id, so the control plane knows
-//     a restarted factory from a running one — registering again when the
-//     control plane has forgotten it;
+//   - registers with the control plane (POST /api/v1/nodes) under THE
+//     FLOOR'S instance_id (instance.go) — ONE INSTANCE ACROSS EVERY RESTART,
+//     because a new one tells the control plane the old process and its work
+//     are gone, and it fails every execution the node still holds — and
+//     registers again when the control plane has forgotten it;
 //   - OPENS THE LINK (link.go): one WebSocket it dials out and keeps, with
 //     reconnect and backoff. Dispatches and cancels come down it, so a
 //     factory behind NAT needs NO listening port. With no base_url the node
@@ -220,7 +221,8 @@ func (n *Node) start(ctx context.Context) error {
 			return errors.New("the factory could not listen on " + s.Listen + " for AgentField: " + redact.Secrets(err.Error()))
 		}
 	}
-	instance, err := newInstance()
+	client := &Client{URL: s.URL, Key: sec.Key, HTTP: n.Conn.HTTP}
+	instance, err := n.instanceFor(ctx, client, s.NodeID)
 	if err != nil {
 		if listener != nil {
 			listener.Close()
@@ -228,7 +230,7 @@ func (n *Node) start(ctx context.Context) error {
 		return err
 	}
 	ctx, cancel := context.WithCancel(context.WithoutCancel(ctx))
-	r := &running{ctx: ctx, cancel: cancel, done: make(chan struct{}), linkDone: make(chan struct{}), settings: s, secrets: sec, client: &Client{URL: s.URL, Key: sec.Key, HTTP: n.Conn.HTTP}, instance: instance, began: n.now(), registered: make(chan struct{}), seen: newSeenSet(10000)}
+	r := &running{ctx: ctx, cancel: cancel, done: make(chan struct{}), linkDone: make(chan struct{}), settings: s, secrets: sec, client: client, instance: instance, began: n.now(), registered: make(chan struct{}), seen: newSeenSet(10000)}
 	r.mux = n.routes(r)
 	if listener != nil {
 		r.server = &http.Server{Handler: Guarded(sec.Token, sec.Legacy, viaHTTP(n, r.mux)), ReadHeaderTimeout: 10 * time.Second, BaseContext: func(net.Listener) context.Context { return ctx }}

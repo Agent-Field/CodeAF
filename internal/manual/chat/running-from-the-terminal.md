@@ -460,6 +460,9 @@ and twelve once it ends. A command's whole output is kept on this Mac for a
 week under the app's folder in codeaf's home, so it can be opened after the
 reply ends, or after the app restarts.
 
+Live step events also carry the conversation's spend so far when it is known
+and positive; the saved conversation total can catch up after the reply ends.
+
 ## The desktop app's conversation — steer or queue, the decision dock, and notes to a task
 
 In the desktop app a message typed while the agent works can steer or queue.
@@ -698,6 +701,8 @@ by default on Linux and macOS on every build. Native Windows is supported too; a
 
 ## codeaf pair — show a code, or use one, from the terminal
 
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+
 **`codeaf pair approve <link>`** compares the four-digit check number and asks `y / n`: only `y` or `yes` approves, and `d`, Esc, Enter or anything else decline. Code pairing keeps its `y / n` question.
 
 **`codeaf pair`** on a new computer asks to join your devices and shows a link to approve from a computer that is already in (`codeaf pair approve <link>`); **`codeaf pair --code`** shows a code that gives your chats to another computer. **`codeaf pair <code>`** uses a code that another computer showed, for example `codeaf pair 42-715-302`. `CODEAF_SYNC_URL=<url>` or `--via <url>` keeps the invitation on that service's own pairing page and includes `--via` in the token command; it never prints the hosted page link for a self-hosted invitation. `--via <url>` names the sync address to go through, and a solo computer with submitted chats refuses ordinary pairing and explains `--replace`. Terminal pairing prints “Paired with <name>. Run codeaf to open your chats.” Start codeaf again to share existing chats, saved keys, memory and preferences in the background; reopen after an interruption to resume. A computer with local work refuses and changes nothing. Explicit `--replace` confirms replacement: local chats stay here but stop syncing, shared memories and settings clear, and local provider keys stay here. The page *Pairing your chats with a second computer* has the whole story.
@@ -795,7 +800,7 @@ be read. A wrong passphrase and a damaged blob get the same refusal.
 computer you keep: a new root, every chat and your saved keys sealed again under it, and the
 old identity deleted by the relay after the grace period. It is how a lost computer is locked
 out for good. It asks first and says what it costs; `--abandon` stops a rotation that has not
-switched yet. Read *Locking out a lost computer for good*.
+switched yet. With hosted sync storage off it still completes, without resealing uploads: chats stay on your computers and the old stored frames wait for grace-period erasure. With storage on, successor proof carries approval unless the new identity already has its own setting. Read *Locking out a lost computer for good*.
 
 Each machine also has its own device key, made the first time and never exported. Your
 identity signs a small certificate for it, so two machines share one id but keep separate
@@ -805,6 +810,8 @@ A vault made before identities existed keeps working: its old key becomes the id
 key the first time the identity is made on that machine.
 
 ## List your chats on every machine — codeaf cell list --all, and what its lines mean
+
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 **`codeaf cell list --all`** prints every chat you have on any of your machines, one line
 each: id, title, device, where it runs (`working on <device>`, `held on <device>`, `<device> offline`,
@@ -824,7 +831,9 @@ To use the new setting at once without touching the other window, run `codeaf ch
 
 Only a terminal that sets `CODEAF_SYNC_URL` itself is asking for a different relay. A window with the variable unset — `codeaf chat --host` reaching this computer over ssh, whose shell usually does not carry what you exported, or a terminal you never set it in — joins the running engine and its relay as it is. It restarts the engine only when the relay a pairing saved on this computer has changed since the engine started.
 
-## Sync your chats between machines — CODEAF_SYNC_URL and CODEAF_SYNC_INTERVAL_MS
+## Sync your chats between machines — what is CODEAF_SYNC_URL, and CODEAF_SYNC_INTERVAL_MS
+
+Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
@@ -832,6 +841,8 @@ Older chats move through an independent copy. Once paired, codeaf prepares chats
 
 These environment settings are not rows in `/settings`. `CODEAF_SYNC_URL=off` stops relay
 traffic; new chats still keep their local cells.
+
+## What is CODEAF_SYNC_URL — the sync service address or off
 
 **`CODEAF_SYNC_URL`** is the relay's address, like `http://host:8787`, or the word `off`.
 Plain `http` is for trying it out inside an ssh tunnel; later the relay needs TLS. Unset, it
@@ -844,6 +855,8 @@ Starting the app creates a local solo identity when a relay is configured. It se
 to the relay until pairing; that identity alone does not connect your other computers.
 
 ## How often chat turns sync — CODEAF_SYNC_INTERVAL_MS
+
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 After pairing, codeaf sends sealed chat turns to the relay configured by `CODEAF_SYNC_URL`.
 
@@ -858,7 +871,7 @@ show your chats on the other machines once both machines share an identity and t
 
 ## Why did my tool call not run after I continued the chat on my laptop — closing the chat, the view-only window, kept branch and clock warning
 
-With sync on, the chat you are typing in sends each saved turn to your sync service. With two or more paired machines, an idle chat lets go of its hold about 2 seconds after it goes idle once everything is saved, and closing the chat sends what is left and lets go of it too, so another machine can open it directly on Home or through `agents.open` with no Continue-here step. New work in the window that released it takes it back in place if nobody else took it; unpaired, sync-off and single-device homes keep their hold while open. If this machine sleeps or loses its connection while still holding the chat, presence stops answering; the other machines mark it offline after 25 seconds of silence, within 30 seconds. The lease itself expires after about ninety seconds (after which another paired machine still asks Continue here, including when the holder was working; a window whose hold merely lapsed admits nothing until you continue it).
+With sync on, the chat you are typing in sends each saved turn to your sync service, and by default (`idle handoff` is off by default; turn it on in **Settings → General → idle handoff** or with `CODEAF_IDLE_HANDOFF=1`) holds the chat for this machine while it is open. Closing the chat sends what is left and lets go of it, and with `idle handoff` on in two or more paired machines an idle chat also lets go of its hold about 2 seconds after it goes idle once everything is saved, so another machine can continue it (or with `idle handoff` on open it directly on Home or through `agents.open` with no Continue-here step). New work in the window that released it takes it back in place if nobody else took it; unpaired, sync-off, single-device and default (`idle handoff` off) homes keep their hold while open. If this machine sleeps or loses its connection while still holding the chat, presence stops answering; the other machines mark it offline after 25 seconds of silence, within 30 seconds. The lease itself expires after about ninety seconds (after which another paired machine still asks Continue here, including when the holder was working; a window whose hold merely lapsed admits nothing until you reopen or continue it).
 You do not have to wait for expiry while a hold is still live: press enter on a chat that says `working on <device>`, `held on <device>` or `<device> offline` on another
 machine and choose **Move here** / **Continue here**, and it is taken at once (see "Continue a chat here that another
 machine left" in home).
@@ -1076,6 +1089,18 @@ and it is in the `blocked_on` field of `--json`. Answer it inside the ask itself
 again, or bring the work to `codeaf` where it can be answered.
 
 Asking for help is never a failure: `--help` on any verb exits 0.
+
+## chat --once --json — watched chat token usage and spending
+
+`codeaf chat --once --json` prints one result object with `ok`, `stop`,
+`answer`, `model` and `error`. Empty answer, model and error fields are omitted.
+It also carries the same accounting fields as `codeaf exec --json`:
+`tokens: {"in": 100, "out": 20}` and `spend_usd: 0.125`.
+These total this invocation's model calls, including steering turns and calls
+settled while closing. Resuming a saved conversation excludes earlier usage.
+A failure after paid work still carries its tokens and spending. Unmeasured
+usage is zero; it does not establish that an unpriced call was free.
+The watched door keeps its existing `stop: "done"` or `"error"` meanings.
 
 ## The --json result object — one shape, three commands
 
@@ -1588,6 +1613,12 @@ cost. The judge asks with the key the install holds at that moment, so a task
 that lands just after you paste a key into first-run setup is scored with that key.
 A task that lands while there is no key at all is not judged. It is not marked
 judged either, so the next start scores it once a key exists.
+
+Quitting cancels unfinished scoring and waits at most one second for the pool's
+background work to stop. A cancelled score is left pending; the next ordinary launch retries
+it. After quitting, that pool work sends no new requests and writes no files, even if
+a late response arrives. A cancelled push keeps its unsent rows in `outbox.jsonl`
+for the next push. Scores saved before you quit stay saved.
 
 With `model_pool` on, the rows leave for the relay after each judged run and
 once more at start-up, under this install's own nonce and nothing else. The

@@ -29,6 +29,7 @@ func (s *r5HomeSource) RowsForSend(ctx context.Context) ([]chatlist.Row, uint64,
 }
 
 func TestIdleOpen_R5_RestartedHomeTakesFreeChatOnFirstOpen(t *testing.T) {
+	t.Setenv("CODEAF_IDLE_HANDOFF", "on")
 	for _, expires := range []int64{0, 500} {
 		for _, cached := range []bool{false, true} {
 			name := map[bool]string{false: "first directory read pending", true: "previous own hold cached"}[cached]
@@ -104,6 +105,7 @@ func TestIdleOpen_R5_RestartedHomeTakesFreeChatOnFirstOpen(t *testing.T) {
 }
 
 func TestIdleOpen_R5_LocalRowKeepsLiveConsentAndUnpairedOpening(t *testing.T) {
+	t.Setenv("CODEAF_IDLE_HANDOFF", "on")
 	for _, mode := range []string{"live", "unpaired", "unreachable", "own free"} {
 		t.Run(mode, func(t *testing.T) {
 			row := chatlist.Row{Cell: heldCell, Status: chatlist.Running, DeviceID: "B", Device: "laptop", Fence: 3, Head: "newest"}

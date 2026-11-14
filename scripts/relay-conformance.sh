@@ -31,6 +31,7 @@ suites=(
 	"bigtake:^TestBigTakeBack$"
 	"watch:^TestWatchConformance$"
 	"lease:^TestLeaseConformance$"
+	"fabric:^TestFabricConformance$"
 )
 
 pids=()
@@ -147,6 +148,7 @@ track_go() {
 	gotest go-inproc rotation ./internal/relayserve 'Rotated|Frozen|Retire|Sweep'
 	gotest go-inproc watch ./internal/relayserve '^TestWatch'
 	gotest go-inproc lease ./internal/relayserve '^TestLease'
+	gotest go-inproc fabric ./internal/relayserve '^TestFabricConformance$'
 	fi
 	local relay_bin=${CONFORMANCE_CODEAF:-$root/bin/codeaf}
 	# An explicit candidate avoids rebuilding a binary the caller has already prepared with make build.
@@ -168,9 +170,12 @@ OPEN='{"newIdentitiesPerIpPerDay":1000000,"minGraceMs":2000,"sweepPageSize":2,"r
 SMALL='{"newIdentitiesPerIpPerDay":1000000,"pairMaxBoxes":2}'
 EXPIRY='{"newIdentitiesPerIpPerDay":1000000,"pairTtlMs":4000}'
 wrangler() { # port, persist dir, limits json
+	# These existing conformance cases exercise enabled storage; opt-in has its own closed-default proofs.
+	local storage_limits
+	storage_limits=$(node -e 'console.log(JSON.stringify({...JSON.parse(process.argv[1]), storageOpen:true}))' "$3")
 	start_relay "http://127.0.0.1:$1/" "$work/worker-$1.log" \
 		sh "$hosted/test/local.sh" "$hosted/node_modules/.bin/wrangler" dev --local -c "${CONFORMANCE_WORKER_CONFIG:-$hosted/wrangler.toml}" --name "codeaf-conformance-$1" --inspector-port 0 --ip 127.0.0.1 --port "$1" --persist-to "$2" \
-		--var "CAF_LIMITS:$3" --var TRUST_PROXY:1
+		--var "CAF_LIMITS:$storage_limits" --var TRUST_PROXY:1
 }
 
 # Track 2: relayconf through the Worker.

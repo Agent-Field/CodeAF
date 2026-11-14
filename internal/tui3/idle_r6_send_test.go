@@ -24,6 +24,7 @@ func (a *r6OfflineSendAgent) CheckWork() error {
 }
 
 func TestIdleRelease_R6_ReleasedWindowOfflineSendSaysWhy(t *testing.T) {
+	t.Setenv("CODEAF_IDLE_HANDOFF", "on")
 	source := walkSendSource{&continuationListing{row: chatlist.Row{Cell: heldCell, Status: chatlist.Idle, Mine: true, Released: true, AutoOpen: true, Fence: 2, Head: "saved", DeviceID: "A"}}}
 	taker := &fakeTaker{}
 	a, old := heldLab(t, source, taker)
@@ -60,6 +61,7 @@ func TestIdleRelease_R6_ReleasedWindowOfflineSendSaysWhy(t *testing.T) {
 }
 
 func TestIdleOpen_R6_LapsedWorkingSendKeepsTheCard(t *testing.T) {
+	t.Setenv("CODEAF_IDLE_HANDOFF", "on")
 	source := walkSendSource{&continuationListing{row: chatlist.Row{Cell: heldCell, Status: chatlist.Off, Fence: 2, Head: "saved", DeviceID: "B"}}}
 	taker := &returningTaker{}
 	a, old := heldLab(t, source, taker)

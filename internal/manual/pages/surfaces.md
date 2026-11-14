@@ -77,8 +77,9 @@ cursor is not in the input. It is a single column of grouped rows: **models**
 (all eight slots, plus the Model Pool row — `on` reads and sends, `read`
 uses the pool and sends nothing, `off` does neither), **money & limits**
 (the daily budget), **documents & vision** (the reading
-rung and the model that looks at images), **sharing** (attribution.model — whether
-the line codeaf always signs its commits with names the model), and
+rung and the model that looks at images), **sharing** (`attribution` — whether
+codeaf signs its commits, pull requests, issues and comments at all — and
+`attribution.model`, whether the `Assisted-by` line names the model), and
 **appearance** (the chat/rail split).
 
 `↑/↓` or `j/k` move, enter changes the focused row, `esc` closes an open editor

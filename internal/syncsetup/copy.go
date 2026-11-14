@@ -251,7 +251,9 @@ func (s *Sync) PublishLocalChats(ctx context.Context, now func() time.Time, say 
 		}
 		pending.retryAt = now().Add(pending.backoff)
 		failures = errors.Join(failures, err)
-		if say != nil {
+		// Said only to a person with another computer to read the chat on
+		// (others.go): with none paired there is nobody it was not shared with.
+		if say != nil && s.OthersPaired() {
 			say(cell.Cell{ID: id, Root: pending.root}, "This chat could not be shared yet. It is still saved here; codeaf will try again.")
 		}
 	}

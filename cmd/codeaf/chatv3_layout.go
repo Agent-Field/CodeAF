@@ -801,6 +801,12 @@ func v3SeatedPending(cfg session.Config) (session.Config, func(bool)) {
 	seat, machine, seals, claim := v3SeatPending(cfg.Place, nil, syncDrives)
 	cfg.Seat, cfg.Interrupted = seat, executor.InterruptedOn(seat)
 	cfg.Renewals = syncDrives.renewalsOf(cfg.Place.ID())
+	cfg.FinishSaving, cfg.SavingNotices = nil, nil
+	if drive := syncDrives.renewalsOf(cfg.Place.ID()); drive != nil {
+		book, id := syncDrives, cfg.Place.ID()
+		cfg.FinishSaving = func() error { return book.closeCell(id) }
+		cfg.SavingNotices = drive.TakeSavingNotices
+	}
 	if machine != nil {
 		cfg.Machine = machine
 	}
@@ -845,7 +851,7 @@ func v3SeatPending(place session.Place, say func(string), drives *driveBook) (ex
 	machine, err := preflight.OpenMachine(c.Root, place.Workspace)
 	watch := &cellstore.SealWatch{Say: say, SyncAddress: chatSyncService()}
 	failed(watch, err)
-	drive, claim := drives.pendingDriveOf(c, cellstore.EngineFor(place.Workspace), watch.SyncReport)
+	drive, claim := drives.pendingDriveOf(c, cellstore.EngineFor(place.Workspace), watch.SyncReport, watch)
 	if drive != nil {
 		drive.setIdleCheck(watch.IdleReady)
 		watch.OnMetadataWrite = drive.SavedMetadata
@@ -855,6 +861,9 @@ func v3SeatPending(place session.Place, say func(string), drives *driveBook) (ex
 	}
 	seat, err := cellstore.SeatOver(class, c, place.Workspace, observerOf(machine), watch.Report, driveStore(drive), cellstore.WithNotices(watch.Note), cellstore.WithPipeline(), cellstore.WithWarmCapture())
 	failed(watch, err)
+	if err != nil {
+		watch.Retire()
+	}
 	watch.OnTail = func() { sealTail(seat, drive) }
 	// A fresh seat has no foreground turn in flight. Background tasks may be
 	// the first input; their journal writes need a tail seal even before chat.
@@ -896,6 +905,9 @@ func sealSeamOf(agent any, seals session.SealState) tui3.SealSeam {
 	var seam tui3.SealSeam
 	if seals != nil {
 		seam = tui3.SealSeam{Failing: seals.Failing, Notice: seals.Take}
+	}
+	if watch, ok := seals.(interface{ Listen(func()) func() }); ok {
+		seam.Listen = watch.Listen
 	}
 	if door, ok := agent.(interface{ SealFailing() bool }); ok {
 		seam.Failing = door.SealFailing

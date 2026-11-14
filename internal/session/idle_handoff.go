@@ -87,7 +87,7 @@ func (a *Agent) idleForHandoff() bool {
 		jobs.mu.Unlock()
 	}
 	// Readiness must never join deferred disk work on an admission boundary.
-	if !a.metaStamp().idle() || !a.modelStamp().idle() || !a.toldStamp().idle() || !a.treesAhead().Idle() {
+	if !a.metaStamp().idle() || !a.modelStamp().idle() || !a.spendStamp().idle() || !a.toldStamp().idle() || !a.treesAhead().Idle() {
 		return false
 	}
 	for _, store := range []*fixStore{a.fixShelfFor().project, a.fixShelfFor().global} {

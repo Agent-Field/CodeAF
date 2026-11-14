@@ -21,13 +21,6 @@ import (
 func TestMemoryCompileTailLifecycle(t *testing.T) {
 	for _, end := range []string{"pause", "job end", "session close"} {
 		t.Run(end, func(t *testing.T) {
-			s := newLocalSetup(t)
-			s.start()
-			floor := s.backend.local.host.floor
-			item, err := floor.Create(factory.Item{Repo: "acme/api", Title: "Cedar memory", Cap: 1, State: factory.StateNew})
-			if err != nil {
-				t.Fatal(err)
-			}
 			entered, cancelled := make(chan struct{}), make(chan struct{})
 			var memoryCalls atomic.Int64
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -79,8 +72,15 @@ func TestMemoryCompileTailLifecycle(t *testing.T) {
 				return transport.RoundTrip(clone)
 			})}
 			t.Cleanup(func() { http.DefaultClient = original })
+			s := newLocalSetup(t)
+			s.start()
+			floor := s.backend.local.host.floor
+			item, err := floor.Create(factory.Item{Repo: "acme/api", Title: "Cedar memory", Cap: 1, State: factory.StateNew})
+			if err != nil {
+				t.Fatal(err)
+			}
 			meter := &memoryDelayedJobBudget{stageBudget: &stageBudget{floor: floor, item: item}}
-			workspace := t.TempDir()
+			workspace := testHome(t)
 			agent, err := session.New(session.Config{Workspace: workspace, SessionFile: filepath.Join(workspace, "chat.jsonl"), ProfileDir: filepath.Join(s.home, "memory-profile"), Model: knowledge.Model, APIKey: "fixture", BaseURL: server.URL, JobBudget: meter, Unattended: true, DeterministicNames: true})
 			if err != nil {
 				t.Fatal(err)

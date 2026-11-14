@@ -6,6 +6,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/codeaf/internal/chatlist"
+	"github.com/Agent-Field/codeaf/internal/config"
 )
 
 const homeLocalOpenTimeout = chatlist.OpenReadTimeout
@@ -15,6 +16,16 @@ type homeLocalOpenMsg struct {
 	fromFile   string
 	generation uint64
 	reading    homeMachinesMsg
+}
+
+func (a *app) idleOpenEnabled() bool {
+	if gate, ok := a.taker.(interface{ IdleHandoffAllowed() bool }); ok {
+		return gate.IdleHandoffAllowed()
+	}
+	if gate, ok := a.machines.(interface{ IdleHandoffAllowed() bool }); ok {
+		return gate.IdleHandoffAllowed()
+	}
+	return config.IdleHandoffAt("")
 }
 
 // homeLocalReadNeeded limits restart recovery to ambiguous display readings.

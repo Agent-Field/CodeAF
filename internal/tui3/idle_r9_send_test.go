@@ -201,7 +201,7 @@ func TestIdleOpen_R9_RelayOutcomes(t *testing.T) {
 func TestIdleOpen_R9_FreeHigherOwnFenceNeedsConsent(t *testing.T) {
 	for _, status := range []chatlist.Status{chatlist.Here, chatlist.Idle, chatlist.Off} {
 		t.Run(string(status), func(t *testing.T) {
-			a, agent, source := r8OwnLiveWindow(t, false)
+			a, agent, source := r8OwnLiveWindow(t, true)
 			taker := &returningTaker{}
 			a.taker = taker
 			source.change(func(row *chatlist.Row) {
@@ -311,6 +311,129 @@ func TestIdleOpen_R9_RetiredReceiptProbeKeepsWordsOnFailure(t *testing.T) {
 			arrived, ok := a.agent.(*switchAgent)
 			if !ok || taker.seen == nil || taker.seen.Device != "A" || taker.seen.Fence != 2 || len(old.sent) != 0 || len(arrived.sent) != 1 || arrived.sent[0] != words || !a.input.empty() || source.reads != 2 {
 				t.Fatalf("receipt recovery did not reopen and send: agent=%T take=%+v old=%v box=%q reads=%d", a.agent, taker.seen, old.sent, a.input.String(), source.reads)
+			}
+		})
+	}
+}
+
+type p9xBashAgent struct {
+	*r9SendAgent
+	bashSent []string
+	bashErr  error
+}
+
+func (a *p9xBashAgent) SubmitBash(_ context.Context, line string) (<-chan session.Event, error) {
+	a.bashSent = append(a.bashSent, line)
+	if a.bashErr != nil {
+		return nil, a.bashErr
+	}
+	ch := make(chan session.Event)
+	close(ch)
+	return ch, nil
+}
+
+func (a *switchAgent) SubmitBash(ctx context.Context, line string) (<-chan session.Event, error) {
+	return a.Submit(ctx, line)
+}
+
+func TestIdleOpen_P9X1_BashCommandRunsOwnershipCheckAndKeepsWords(t *testing.T) {
+	t.Run("offline refusal keeps bash line in box and prints one line", func(t *testing.T) {
+		a, old, source := r8OwnLiveWindow(t, false)
+		bash := &p9xBashAgent{r9SendAgent: &r9SendAgent{r8SendAgent: old, reopen: true}}
+		a.agent = bash
+		source.holding, source.err = false, syscall.ECONNREFUSED
+		source.change(func(row *chatlist.Row) { row.Status = chatlist.Idle })
+		const cmdLine = "!sleep 400"
+		a.input.setText(cmdLine)
+		drive(t, a, key("enter"))
+		if len(bash.bashSent) != 0 || a.input.String() != cmdLine {
+			t.Fatalf("offline bash bypassed checkBeforeSend: bashSent=%v box=%q", bash.bashSent, a.input.String())
+		}
+		if notes := strings.Join(noteTexts(a), "\n"); strings.Count(notes, chatlist.TakeBackUnreachable)+strings.Count(notes, "has not answered; your message is still in the box") != 1 {
+			t.Fatalf("offline bash refusal must print one line: %v", noteTexts(a))
+		}
+	})
+
+	t.Run("held elsewhere raises Continue here and keeps bash line in box", func(t *testing.T) {
+		a, old, source := r8OwnLiveWindow(t, false)
+		bash := &p9xBashAgent{r9SendAgent: &r9SendAgent{r8SendAgent: old}}
+		a.agent = bash
+		source.holding = false
+		source.change(func(row *chatlist.Row) {
+			row.Mine, row.DeviceID, row.Device, row.Status, row.Fence = false, "B", "laptop", chatlist.Running, 3
+		})
+		const cmdLine = "!sleep 400"
+		a.input.setText(cmdLine)
+		drive(t, a, key("enter"))
+		if len(bash.bashSent) != 0 || !a.at(pageHome) || !strings.Contains(homeText(a), continueAsk) || a.input.String() != cmdLine {
+			t.Fatalf("displaced bash did not offer Continue here: bashSent=%v home=%v box=%q", bash.bashSent, a.at(pageHome), a.input.String())
+		}
+	})
+
+	t.Run("engine refusal puts bash line back in box and prints one line", func(t *testing.T) {
+		bash := &p9xBashAgent{r9SendAgent: &r9SendAgent{r8SendAgent: &r8SendAgent{fakeAgent: &fakeAgent{model: "a/b"}}}, bashErr: errors.New(chatlist.Available)}
+		a := newTestApp(bash)
+		keepSurfaceWorkersInTest(t, a)
+		const cmdLine = "!sleep 400"
+		a.input.setText(cmdLine)
+		msg := runSubmit(t, a.enter())
+		a.adopt(msg)
+		if a.input.String() != cmdLine {
+			t.Fatalf("refused bash line lost from box: got %q want %q", a.input.String(), cmdLine)
+		}
+		if notes := strings.Join(noteTexts(a), "\n"); strings.Count(notes, chatlist.Available) != 1 {
+			t.Fatalf("refused bash must print one line: %v", noteTexts(a))
+		}
+	})
+}
+
+func TestIdleOpen_P9X2_DisplacedKeptBranchReopensOnEnterForPlainAndBash(t *testing.T) {
+	for _, words := range []string{"!sleep 400", "plain message after kept branch"} {
+		t.Run(words, func(t *testing.T) {
+			a, old, source := r8OwnLiveWindow(t, false)
+			bash := &p9xBashAgent{r9SendAgent: &r9SendAgent{r8SendAgent: old, reopen: true}}
+			a.agent = bash
+			source.holding = false
+			// Simulate P9-X: J was taken via openTaken (awaitingWriter: true),
+			// then its own lease at f4 lapsed and the aborted turn was branched
+			// into a kept copy (so local head is "orphan-turn" != relay head "saved").
+			a.machineRead.sendHolds = map[string]sendHold{heldCell: {fence: 4, awaitingWriter: true}}
+			source.change(func(row *chatlist.Row) {
+				row.Status, row.Mine, row.DeviceID, row.Fence, row.Head = chatlist.Idle, true, "A", 4, "saved"
+				row.Released, row.AutoOpen = false, false
+			})
+			path := filepath.Join(session.DirOf(a.file), ".cell", "adopted.json")
+			if err := os.WriteFile(path, []byte(`{"V":1,"head":"orphan-turn","turns_size":0}`), 0600); err != nil {
+				t.Fatal(err)
+			}
+			taker := &returningTaker{}
+			taker.taken = Taken{Transcript: a.file, Fence: 5, Head: "orphan-turn"}
+			taker.on = func(string) {
+				source.change(func(row *chatlist.Row) {
+					row.Status, row.Fence, row.Head = chatlist.Here, 5, "orphan-turn"
+				})
+			}
+			a.taker = taker
+			// First Enter while relay is unreachable must print one refusal line and keep words.
+			source.err = syscall.ECONNREFUSED
+			a.input.setText(words)
+			drive(t, a, key("enter"))
+			if a.input.String() != words || taker.seen != nil || len(old.sent) != 0 || len(bash.bashSent) != 0 {
+				t.Fatalf("refused Enter spent words or took early: box=%q seen=%+v", a.input.String(), taker.seen)
+			}
+			if notes := strings.Join(noteTexts(a), "\n"); strings.Count(notes, chatlist.TakeBackUnreachable)+strings.Count(notes, "has not answered; your message is still in the box") != 1 {
+				t.Fatalf("refused Enter must print one line, got: %v", noteTexts(a))
+			}
+
+			// Next Enter after relay answers takes the reopen road on the original cell.
+			source.err = nil
+			drive(t, a, key("enter"))
+			if taker.seen == nil || taker.seen.Device != "A" || taker.seen.Fence != 4 || len(taker.cells) != 1 || taker.cells[0] != heldCell {
+				t.Fatalf("Enter did not reopen original cell at f4: cells=%v seen=%+v", taker.cells, taker.seen)
+			}
+			arrived, ok := a.agent.(*switchAgent)
+			if !ok || len(arrived.sent) != 1 || arrived.sent[0] != words || !a.input.empty() || a.at(pageHome) {
+				t.Fatalf("reopen did not run %q on replacement session: agent=%T sent=%v box=%q notes=%v", words, a.agent, arrived.sent, a.input.String(), noteTexts(a))
 			}
 		})
 	}

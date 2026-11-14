@@ -111,11 +111,14 @@ const UsageLedgerName = "usage.jsonl"
 
 // ChargeID names the paid event independently of its ledger row. Remote events
 // retain this identity in old ledgers whose row IDs were unrelated or absent.
+//
+// It IS [UsageCallID], written out here so the explicit-id path reads the three
+// fields in place and copies the row only when it must fingerprint it.
 func (line UsageLine) ChargeID() string {
-	if line.RemoteEvent != "" {
-		return "\x00remote:" + line.RemoteEvent
+	if id := usageExplicitID(line.CallID, line.RemoteEvent, line.ID); id != "" {
+		return id
 	}
-	return line.ID
+	return UsageFingerprint(line)
 }
 
 // usageDayLayout is the LOCAL calendar day a line belongs to, as an ISO date.
@@ -132,19 +135,22 @@ func (c *Config) bindUsageLedger() {
 	if c.usageLedger == "" {
 		c.usageLedger = UsageLedgerPath()
 	}
+	prepareUsage(c.usageLedger)
 }
 
 // UsageLedgerPath resolves the current home's ledger. Accounting owners capture
 // it at creation and pass that path to RecordUsage, including after quit.
 func UsageLedgerPath() string { return home.Join("v3", UsageLedgerName) }
 
-// UsageLine is one model call as the ledger remembers it.
+// UsageLine is one model call or missing-receipt marker in the ledger.
 //
 // Every field is a fact somebody asked for by name on the spend page, and there
 // is nothing here that is not: which day, which model, what for, how many calls,
 // how many tokens, how much money, and the three ids that say what the money was
 // spent ON — a conversation, a piece of work, an automation.
 type UsageLine struct {
+	// Kind separates missing-receipt markers from measured calls.
+	Kind string `json:"kind,omitempty"`
 	// GenerationID links this call to its provider receipt.
 	GenerationID string `json:"generation_id,omitempty"`
 	// ID names this one row, once, so two readers that meet the same row — a
@@ -178,6 +184,8 @@ type UsageLine struct {
 	// supplied one. Older, auxiliary, or late receipt rows may have no identity;
 	// absence must never be read as a single aggregate run.
 	Run string `json:"run,omitempty"`
+	// CallID follows a paid call through worker, mirrored and reconstructed rows.
+	CallID string `json:"call_id,omitempty"`
 	// Computer and RemoteEvent identify a mirrored call independently of cursor
 	// checkpoints, so a replay cannot charge the same call twice.
 	Computer    string `json:"computer,omitempty"`
@@ -224,7 +232,7 @@ type UsageLine struct {
 	// field is kept rather than dropped because rows written before issue #269
 	// carry a whole turn's worth on one line — an observed `calls: 41` — and a
 	// reader summing a year of this file has to be able to add those honestly.
-	// Nothing this build writes says anything but 1.
+	// Missing-receipt markers carry zero; measured calls carry one.
 	Calls int `json:"calls,omitempty"`
 	// Input and Output are the tokens. The cache split is deliberately not here:
 	// this file answers "how much and on what", and the four-way breakdown with
@@ -565,15 +573,20 @@ var usageFlushLimit = 2 * time.Second
 // The flush travels through the SAME queue as the rows, which is what makes it
 // an answer about them rather than a race with them.
 type usageWrite struct {
-	id   string
-	line []byte
-	done chan struct{}
+	row       *UsageLine
+	journaled bool
+	id        string
+	line      []byte
+	done      chan struct{}
 }
 
 // usageWriter is one ledger file's background writer.
 type usageWriter struct {
 	queue        chan usageWrite
 	stopped      chan struct{}
+	journalWake  chan struct{}
+	journalStop  chan struct{}
+	journalDone  chan struct{}
 	path         string
 	beforeWrite  func()
 	admitted     atomic.Int64 // rows taken in, in writing order
@@ -616,10 +629,7 @@ func countUnbilledCall() { unbilledCalls.Add(1) }
 // node banker but no [Agent] method to receive the reconciliation.
 func CountUnbilledCall() { countUnbilledCall() }
 
-// usageWriters is the writer per path, and usageWritersMu guards the map ALONE.
-// It is never held across a file operation, so [RecordUsage] can never be made
-// to wait on a disk by another caller's write — the property the process-wide
-// append mutex this replaced could not offer.
+// usageWritersMu guards only admission, never journal I/O or projection.
 //
 // A writer, once started, lives as long as the process. There is one path in an
 // ordinary run and a handful in a test binary, so the map is bounded in practice
@@ -642,14 +652,42 @@ func usageWriterForLocked(path string) *usageWriter {
 		return writer
 	}
 	writer := &usageWriter{
-		path:     path,
-		queue:    make(chan usageWrite, usageQueueDepth),
-		stopped:  make(chan struct{}),
-		overflow: make(map[chan struct{}]struct{}),
+		path:        path,
+		queue:       make(chan usageWrite, usageQueueDepth),
+		stopped:     make(chan struct{}),
+		journalWake: make(chan struct{}, 1),
+		journalStop: make(chan struct{}),
+		journalDone: make(chan struct{}),
+		overflow:    make(map[chan struct{}]struct{}),
 	}
 	usageWriters[path] = writer
+	go writer.journalLoop(path)
 	go writer.run(path)
 	return writer
+}
+
+// The journal inherits the shared writer's lifetime and clock context, rather
+// than the recording caller's. Its separate loop can sync while projection stalls.
+func (w *usageWriter) journalLoop(path string) {
+	defer close(w.journalDone)
+	pending := pendingUsage(path)
+	for {
+		select {
+		case <-w.journalWake:
+			pending.startSync(path)
+		case <-w.journalStop:
+			pending.startSync(path)
+			pending.finishSync()
+			return
+		}
+	}
+}
+
+func (w *usageWriter) wakeJournal() {
+	select {
+	case w.journalWake <- struct{}{}:
+	default:
+	}
 }
 
 // pendingOverflow captures the writes already admitted without waiting under a
@@ -664,64 +702,85 @@ func (w *usageWriter) pendingOverflow() []chan struct{} {
 	return pending
 }
 
-// run drains the queue forever, holding ONE descriptor open across rows.
-//
-// The descriptor is opened lazily and dropped on the first write that fails, so
-// a replaced or removed pathname reopens and retries the same row once. Other
-// filesystem failures drop the descriptor and count that row in UsageDrops;
-// the next row tries a fresh descriptor without blocking the turn.
+// run projects journaled rows in order. Failed rows stay in memory with capped
+// backoff; close can reach its deadline while the journal keeps the durable copy.
 func (w *usageWriter) run(path string) {
-	var file *os.File
-	var identities usageIdentityCursor
 	defer close(w.stopped)
 	defer func() {
-		if file != nil {
-			_ = file.Close()
-		}
+		close(w.journalStop)
+		<-w.journalDone
+		RecoverUsage(path)
 	}()
+	var identities usageIdentityCursor
 	write := func(rows []usageWrite) {
 		charges := 0
 		for _, row := range rows {
-			if row.line != nil {
+			if row.line != nil || row.row != nil {
 				charges++
 			}
 		}
 		if charges == 0 {
 			return
 		}
-		defer w.rowsHandled(int64(charges))
 		if w.beforeWrite != nil {
 			w.beforeWrite()
 		}
-		if file == nil {
-			file = openUsageLedger(path)
-			if file == nil {
-				usageDropped.Add(int64(charges))
+		delay := time.Duration(0)
+		for {
+			var err error
+			for i := range rows {
+				row := &rows[i]
+				if row.row != nil && row.line == nil {
+					var payload []byte
+					payload, err = json.Marshal(*row.row)
+					if err == nil {
+						row.line = append(payload, '\n')
+					}
+				}
+				if err == nil && len(row.line) > usageLineBytes {
+					err = errors.New("usage row exceeds reader limit")
+				}
+				if err == nil && row.line != nil && !row.journaled {
+					var needsSync bool
+					needsSync, err = pendingUsage(path).append(path, *row)
+					if err == nil {
+						row.journaled = true
+						if needsSync {
+							w.wakeJournal()
+						}
+					}
+				}
+				if err != nil {
+					break
+				}
+			}
+			written := 0
+			if err == nil {
+				file := openUsageLedger(path)
+				if file == nil {
+					err = errors.New("open usage ledger")
+				} else {
+					written, err = identities.append(file, rows)
+					// The pending journal owns background durability. Sync the ledger
+					// before compaction, rather than stalling every projection batch.
+					file.Close()
+				}
+			}
+			if err == nil {
+				w.rowsHandled(int64(charges))
+				for range written {
+					announceUsageWritten()
+				}
 				return
 			}
-		}
-		// One append holds complete rows under the same ledger lock. Batching
-		// amortizes generation validation without delaying a quiet writer.
-		written, err := identities.append(file, rows)
-		if errors.Is(err, errUsageLedgerReplaced) || errors.Is(err, fs.ErrNotExist) {
-			_ = file.Close()
-			file = openUsageLedger(path)
 			identities = usageIdentityCursor{}
-			if file == nil {
-				usageDropped.Add(int64(charges))
-				return
+			for _, row := range rows {
+				if row.line != nil || row.row != nil {
+					pendingUsage(path).failed(row.id)
+				}
 			}
-			written, err = identities.append(file, rows)
-		}
-		if err != nil {
-			usageDropped.Add(int64(charges))
-			_ = file.Close()
-			file = nil
-			identities = usageIdentityCursor{}
-			return
-		}
-		for range written {
-			announceUsageWritten()
+			delay = nextUsageRetryDelay(delay)
+			time.Sleep(delay)
 		}
 	}
 	batch := make([]usageWrite, 0, usageWriteBatchSize)
@@ -739,7 +798,7 @@ func (w *usageWriter) run(path string) {
 			close(work.done)
 			continue
 		}
-		if work.line != nil {
+		if work.line != nil || work.row != nil {
 			batch = append(batch, work)
 			if len(batch) == usageWriteBatchSize || len(w.queue) == 0 {
 				flush()
@@ -790,16 +849,18 @@ func announceUsageWritten() {
 	}
 }
 
-// openUsageLedger opens one ledger for appending, creating its directory, and
-// answers nil where it could not — the caller drops the row for [RecordUsage]'s
-// reason and tries again on the next one.
-func openUsageLedger(path string) *os.File {
+// openUsageLedger opens the current generation; a failed open leaves rows pending.
+func openUsageLedger(path string, mode ...int) *os.File {
 	if directory := filepath.Dir(path); directory != "" && directory != "." {
 		if err := os.MkdirAll(directory, 0o700); err != nil {
 			return nil
 		}
 	}
-	file, err := fsreplace.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	flags := os.O_CREATE | os.O_WRONLY | os.O_APPEND
+	if len(mode) != 0 {
+		flags = mode[0] | os.O_APPEND
+	}
+	file, err := fsreplace.OpenFile(path, flags, 0o600)
 	if err != nil {
 		return nil
 	}
@@ -1043,15 +1104,9 @@ func detachUsageWriters() []*usageWriter {
 	return writers
 }
 
-// RecordUsage queues one line. Every failure is silence, for
-// [RecordArtifact]'s reason: the caller has just finished a piece of a person's
-// turn, and there is nothing it could usefully do with the news that a spending
-// record could not be written — least of all tell them about it mid-sentence.
-//
-// A LINE THAT SPENT NOTHING IS NOT WRITTEN, which is [sessionFile.appendUsage]'s
-// own guard kept here as well rather than trusted: this file is appended to from
-// more than one door over its life, and a zero row in a spending ledger is worse
-// than no row — it is a day that looks measured and was not.
+// RecordUsage writes a complete row to its journal before queueing ledger
+// projection. Disk errors are logged and retried without failing the caller's chat.
+// Calls with no money or tokens do not create ledger rows.
 func RecordUsage(path string, line UsageLine) {
 	// Every live producer is modern, even when it has no saved-call identity.
 	// Only imported historical calls may cover the old ordered prefix.
@@ -1080,22 +1135,41 @@ func queueUsage(path string, line UsageLine) {
 	}
 	// Agent accounting shares an identity with its saved call before enqueueing.
 	// Other callers get a fresh row identity here ([UsageLine.ID]).
+	if id := strings.TrimSpace(line.CallID); id != "" && strings.TrimSpace(line.ID) == "" {
+		line.ID = id
+	}
 	if strings.TrimSpace(line.ID) == "" {
 		line.ID = newUsageRowID()
 	} else {
 		line.SharedID = true
 	}
-	payload, err := json.Marshal(line)
-	if err != nil {
-		dropUsageRow()
-		return
+	if strings.TrimSpace(line.RemoteEvent) != "" {
+		line.SharedID = true
 	}
-	// Overflow is kept for the writer, so a saturated queue never discards a
-	// charge and the caller still never waits on the disk.
+	prepareUsage(path)
+	payload, err := json.Marshal(line)
+	work := usageWrite{id: line.ChargeID(), row: &line}
+	needsSync := false
+	if err == nil {
+		work.line = append(payload, '\n')
+		if len(work.line) <= usageLineBytes {
+			needsSync, err = pendingUsage(path).append(path, work)
+		} else {
+			err = errors.New("usage row exceeds reader limit")
+		}
+	}
+	if err == nil {
+		work.journaled = true
+	} else {
+		pendingUsage(path).failed(work.id)
+	}
 	usageWritersMu.Lock()
 	writer := usageWriterForLocked(path)
-	work := usageWrite{id: line.ChargeID(), line: append(payload, '\n')}
+
 	writer.admitted.Add(1)
+	if needsSync {
+		writer.wakeJournal()
+	}
 	// While rows are kept, new ones join them: the queue can then only shrink,
 	// so steady traffic can't hold the kept rows back.
 	if !writer.keepingRows() {
@@ -1210,6 +1284,7 @@ func ReadUsage(path string, since time.Time) ([]UsageLine, error) {
 	if strings.TrimSpace(path) == "" {
 		return nil, nil
 	}
+	prepareUsage(path)
 	file, err := os.Open(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
@@ -1353,6 +1428,7 @@ func (a *Agent) recordUsageLine(call bankedCall) error {
 	if remote := call.remote; remote != nil {
 		line.SharedID = true
 		line.Task, line.Computer, line.RemoteEvent = remote.Task, remote.Computer, remote.Event
+		line.CallID = remote.CallID
 		line.Seat = remote.Seat
 		return appendRemoteUsage(path, line)
 	}
@@ -1471,6 +1547,7 @@ func (c *UsageCache) Read(since time.Time) ([]UsageLine, error) {
 	if path == "" {
 		path = UsageLedgerPath()
 	}
+	prepareUsage(path)
 	info, err := os.Stat(path)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
@@ -1569,28 +1646,36 @@ func (c *UsageCache) since(floor time.Time) []UsageLine {
 func RecordUnbilledCall(path string, line UsageLine) {
 	countUnbilledCall()
 	line.Unbilled = true
+	line.Kind = procexec.UnbilledMarkerKind
 	line.SharedID = true
 	RecordUsage(path, line)
 }
 
 // recordUnbilledReceipt uses the same ownership fields as an ordinary usage row.
-func (a *Agent) recordUnbilledReceipt(model string) {
+func (a *Agent) recordUnbilledReceipt(receipt provider.Reconciled, activity string) {
 	path := a.config.usageLedger
 	a.mu.Lock()
 	owner := a.sessionID()
 	a.mu.Unlock()
-	RecordUnbilledCall(path, UsageLine{
-		Session: owner, Model: model, Task: usageTaskID(a.config.taskID),
+	line := UsageLine{
+		ID: newUsageRowID(), Kind: procexec.UnbilledMarkerKind, Unbilled: true,
+		GenerationID: strings.TrimSpace(receipt.Ref),
+		Session:      owner, Model: receipt.Model, Role: receipt.Tag, Task: usageTaskID(a.config.taskID),
 		Root: a.config.rootSession, Automation: a.config.automationID, Workspace: a.config.Workspace,
-		FactoryJob: a.factoryJobName(),
-	})
+		FactoryJob: a.factoryJobName(), LibraryActivity: activity,
+	}
+	line = withUsageBilling(line, receipt.Billing)
+	RecordUnbilledCall(path, line)
+	procexec.NoteModelCall(a.config.seat(), modelCallOf(line, Usage{}))
 }
 
 // modelCallOf is the receipt's word for one ledger row: the same call, seen
 // from the seat that seals the turn it was made in.
 func modelCallOf(line UsageLine, used Usage) procexec.ModelCall {
+	id := UsageCallID(line)
 	return procexec.ModelCall{
-		ID: line.ID, Model: line.Model, Role: line.Role,
+		ID: id, CallID: id, Model: line.Model, Role: line.Role,
+		Kind: line.Kind, Billing: line.Billing, BillingBasis: line.BillingBasis, Unbilled: line.Unbilled, FactoryJob: line.FactoryJob,
 		TokensIn: line.Input, TokensOut: line.Output, TokensCached: used.CacheRead,
 		CostMicroUSD: int64(math.Round(line.USD * microPerUSD)),
 	}
@@ -1598,3 +1683,11 @@ func modelCallOf(line UsageLine, used Usage) procexec.ModelCall {
 
 // microPerUSD is the receipt's money unit: whole millionths of a dollar.
 const microPerUSD = 1e6
+
+// modelCalls preserves the legacy default without inventing a call for a marker.
+func (line UsageLine) modelCalls() int {
+	if line.Kind == procexec.UnbilledMarkerKind {
+		return 0
+	}
+	return max(line.Calls, 1)
+}

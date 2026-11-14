@@ -179,12 +179,12 @@ func (st *Store) migrateRepository(d doc, ids repositoryIDs) (doc, error) {
 		if !ids.canonicalItem(&d.Item) {
 			return nil
 		}
-		d.Revision++
+		d = nextDoc(current, d.Item, current.Revision+1)
 		data, err := marshalDoc(d)
 		if err != nil {
 			return err
 		}
-		return writeAtomic(st.ItemPath(d.Item.ID), data)
+		return st.writeItem(st.ItemPath(d.Item.ID), data)
 	})
 	return d, err
 }

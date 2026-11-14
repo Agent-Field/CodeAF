@@ -8,7 +8,11 @@ import "time"
 // It is not writable through worker reports.
 type WorkerReportReceipt struct {
 	// Archived means this receipt belongs to work cleared from the job.
-	Archived       bool `json:",omitempty"`
+	Archived bool `json:",omitempty"`
+	// Cleared means a Bring back made the job fresh after this report: usage
+	// that settles late for it is the factory's spending ([Item.SpentCleared])
+	// and never the fresh job's.
+	Cleared        bool `json:",omitempty"`
 	Digest         string
 	Lease          string `json:",omitempty"`
 	Machine        string `json:",omitempty"`

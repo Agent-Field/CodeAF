@@ -31,9 +31,6 @@ func r10OrderingMatrix() []r9Cell {
 							want := "same_fence_upload"
 							if order == "observation_first" {
 								want = "retire_keep_reopen"
-								if observer == "confirm" {
-									want = "retire_upload_reopen"
-								}
 							}
 							table = append(table, r9Cell{relay: relay, local: "holding", service: "down_then_answering", turn: turn, unpublished: pending, inFlight: call, ordering: order, observer: observer, want: want})
 						}
@@ -178,13 +175,10 @@ func r10Ordering(t *testing.T, c r9Cell) {
 		}
 	} else {
 		wantHead := first.Cell.Head
-		if c.observer == "confirm" {
-			wantHead = latest
-		}
 		if after.Cell.Head != wantHead || d.Gate() == nil {
 			t.Fatal("retirement overwrote the shared head or revived admission")
 		}
-		if turns > 0 && c.observer == "check" {
+		if turns > 0 {
 			kept, err := dir.Client.Cell(ctx, "kept-chat")
 			mustNil(t, err)
 			if kept.Cell.Head != latest || kept.Cell.ParentCell != d.cell.ID || kept.Cell.OrphanTurns == 0 {
@@ -213,8 +207,7 @@ func r10Ordering(t *testing.T, c r9Cell) {
 			if string(words) != want {
 				t.Fatalf("B lost kept work: %q", words)
 			}
-		}
-		if c.observer == "confirm" || turns == 0 {
+		} else {
 			if _, err := dir.Client.Cell(ctx, "kept-chat"); err == nil {
 				t.Fatal("cell unexpectedly branched")
 			}

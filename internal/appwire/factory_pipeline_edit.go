@@ -67,6 +67,10 @@ const FeatureFactoryPipelineEditLabel = "factory.pipeline_edit_label"
 // factory.pipeline_source and factory.pipeline_preview.
 const FeatureFactoryPipelineEdit = "factory.pipeline_edit"
 
+// FeatureFactoryTestBaseline announces the built-in Test comparison rule on
+// this engine. Remote factories advertise their own shipped recipe.
+const FeatureFactoryTestBaseline = "factory.test_baseline"
+
 // FeatureFactoryPipelineEditRuntime is announced beside FeatureFactoryPipelineEdit
 // when this engine decodes when, effort and fanout in a preview AND refuses to
 // preview them for a factory that did not attest them. It says nothing about any
@@ -653,12 +657,20 @@ type FactoryPipelineLabelEditor interface {
 	PipelineLabelEdits()
 }
 
+// FactoryPipelineBaselineEditor marks an editor with the Test baseline rule.
+type FactoryPipelineBaselineEditor interface {
+	PipelineTestBaseline()
+}
+
 func withFactoryPipelineEditFeature(hello Hello, e Engine) Hello {
 	if _, ok := e.(Factory); !ok {
 		return hello
 	}
 	if _, ok := e.(FactoryPipelineEditor); ok {
 		hello = withFeature(hello, FeatureFactoryPipelineEdit)
+		if _, baseline := e.(FactoryPipelineBaselineEditor); baseline {
+			hello = withFeature(hello, FeatureFactoryTestBaseline)
+		}
 		if _, labels := e.(FactoryPipelineLabelEditor); labels {
 			hello = withFeature(hello, FeatureFactoryPipelineEditLabel)
 		}

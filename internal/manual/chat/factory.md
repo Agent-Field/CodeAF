@@ -120,6 +120,35 @@ Search does not start a stopped local factory. Factories have a shared
 1.5-second search deadline; a slow or unavailable factory contributes no results
 for that search, while the other results remain available.
 
+## idle runners — waiting for queued work
+
+An idle runner keeps its pull request open for up to 30 seconds, or half the
+saved runner timeout when that is shorter, so it renews presence before being
+counted offline. It wakes when
+the factory's files change, including work queued by another process, and asks
+again after the deadline. The service uses the same filesystem notifications
+as the live factory view; it does not repeatedly decode finished jobs while
+waiting. Filesystem changes are batched for 100 milliseconds. If filesystem
+notifications are unavailable or their stream fails or closes, a fallback checks for changes every 500
+milliseconds and reads each job file. While notifications are working, that
+fallback only checks whether the directory itself changed, so a quiet floor
+is not read file by file. Ownership, consent and capacity are checked again
+before any job is handed out. A runner in the same process as the service
+does not re-read the job list just to find that service. Reading the job
+list asks once whether this machine has a GitHub token, not once per job.
+A request does not decode every job just to see that nothing is due. It
+looks again when a job, a lease, or the repository list changes, or when a
+saved deadline arrives. A runner heartbeat is kept in memory and is not
+rewritten to the runner file on every check, and that write is not
+announced as a job change, so it does not wake the other pulls. The file
+is saved on the next heartbeat request after 15 seconds since the previous
+heartbeat save, or when that runner’s last saved heartbeat is at least half
+the configured offline timeout old, whichever comes first. This is
+request-triggered; it does not run a separate save timer. Slots and sleep
+are read on the next pull.
+A job list that has not
+changed is not decoded again.
+
 ## codeaf factory serve — host a team factory, listen address and HTTPS
 
 `codeaf factory` (the same as `codeaf factory serve`) runs the service and prints the address to give people, plus one operator access link. It listens on `127.0.0.1:7420` unless `--listen host:port` says otherwise, or the `listen` key of `~/.codeaf/factory/config.yaml` does (`--config path` picks another file). It runs no job itself: Run queues a job, and a runner that has joined pulls it. With no runner attached a job stays queued.
@@ -218,7 +247,9 @@ A runner runs only its owner's jobs, with its owner's keys; keys are shown by na
 
 ### a runner's model provider — needs a model provider, provider base URL is required
 
-A joined runner runs every step with the model provider of its own codeaf home: the same service, base URL and key `codeaf chat` on that home would use, from the shell (`OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `CODEAF_BASE_URL`) or from the home's saved key and connected services. Nothing is entered again at `runner join`; `--model` and `--one-model` only choose the model. A home with no provider configured joins and shows on the factory's runner list as **needs a model provider** (state `needs_provider`), and the factory leases it no step, so queued jobs wait for a runner that can run them instead of failing with "provider base URL is required". Add a key on that home, then stop and run `codeaf runner join` again: the state is read when the runner attaches.
+A joined runner runs every step with the model provider of its own codeaf home: the same service, base URL and key `codeaf chat` on that home would use, from the shell (`OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `CODEAF_BASE_URL`) or from the home's saved key and connected services. Nothing is entered again at `runner join`; `--model` and `--one-model` only choose the model. A home with no provider configured joins and shows on the factory's runner list as **needs a model provider** (state `needs_provider`), and the factory leases it no step, so queued jobs wait for a runner that can run them instead of failing with "provider base URL is required".
+
+Add or remove a key on that home: the runner rereads its provider before each lease poll and updates this state within one poll, without restarting. The app's `keys.set` and `keys.remove` update its running factory runner the same way. Replacing a usable key keeps queued work available, and changing a key leaves a step already running alone.
 
 ## from chat to the factory — factory_add, factory_recipe, factory_item and the manager's tools
 
@@ -629,6 +660,22 @@ Interrupting the turn takes the card down unanswered, and so does leaving it for
 
 What changed in the terminal chat: it used to draw no `factory_item` card, and the call sat at `running factory_item` until you interrupted. It now draws a plain question block with the same box, keys and receipt as any other card, not a special item card. The card shows only rows that would change, so a fixed or begun step is absent from it; the chat is told afterwards which steps were left as they were. A yes sent from the desktop app with text attached is read as a correction and changes nothing. The `factory_add` and `factory_recipe` cards are not drawn here, so those calls wait until the turn is interrupted or 15 minutes pass.
 
+## update a PR branch — bring it up to date with its base in Follow PR
+
+In the job's manager chat, ask **Update the PR branch** or **Bring the PR up to
+date with its base**. You can also steer Follow PR with that request while it
+runs. Factory reads the live base of the job's existing pull request, merges
+that commit into the job's checkout and resolves any conflicts it can. It runs
+the relevant checks on the updated checkout. If the PR already includes the
+base, no branch update is needed.
+
+Factory pushes the tested commit to the same pull request through the existing
+publication approval. Auto handles routine updates within the budget, and
+Manual asks. GitHub checks the new head again. If the base or head moves during
+verification, Follow PR needs to verify the new candidate before publishing.
+Merging the pull request still follows the job's separate merge setting and
+checks.
+
 ## ready for review — draft PR, final review, automatic recovery, Resume pipeline
 
 When current-head CI passes, Follow PR checks the actual PR diff, description,
@@ -732,13 +779,50 @@ says `paused`, then `resumed`; both actions record who made them. If a heartbeat
 reply is lost, the factory repeats its current hold on later heartbeats. Resume
 supersedes an older hold still waiting to be collected.
 
-Only the job's person may pause or resume it. A job waiting for you, finished
-or publishing cannot be paused. Pause releases its Jobs at once slot after
+Only the job's person may pause or resume it. The running-job Pause control
+applies to active steps. Pause releases its Jobs at once slot after
 the cancelled round's work and spending are saved, so another job can run.
 The app wire keeps the paused job's `state` as `running`, with the Paused
 presentation and Resume available. Resume changes `state` to `queued` until a
 worker takes it. A queued job's **Hold** still keeps it from starting and uses
 no running slot.
+
+## dismiss a Factory decision and resume from the manager chat
+
+In WorkAF, **Pause job and close decision** (×) closes the decision and
+pauses the job. Factory keeps the checkout, step results, pending decision
+and spending across relaunches. Ask the manager for status while paused.
+
+Send **Resume** in the manager chat to lift the pause. If Follow PR was
+running, it continues from the saved work. An approval or merge still needs
+its own consent.
+
+For a stuck step before publication, **Try again** queues a retry of that
+step. Send **Try again: check the focused tests first** to include instructions.
+Factory checks the job's remaining budget before queuing the retry.
+
+**Accept as is** takes a stuck Test, Review or Proof step as it stands, and the
+job carries on. It is offered when the step reported what it found and fell
+short of its rule: a check still failing, a finding still open, a claim not
+shown. Typing `accept` in the manager chat does the same. Only the job's person
+can accept; a manager cannot. Each check that was still failing is kept on the
+step as accepted, a later step is not stopped by that same failure, and the
+pull request lists what was accepted. A new or different failure still stops
+the job. Plan and Write cannot be accepted, nor can a step that never reported.
+
+A Test step that ends with failing Go tests has them compared with the job's
+base commit by the factory itself: it runs each failing `go test` on the
+checkout and on a clean copy of the base. A test that already fails on the base
+does not count against the job, and the step's report says so. A test the
+change broke still does. This applies to Test under `until: no new failures`
+(the default); `until: green` stays strict.
+
+## message a step from the job chat
+
+**Tell it…** focuses the job chat composer. Sending the message closes the
+decision you were looking at. Factory can ask again when it has a new decision.
+To address a step, type **@Test Check the base version** or select a recipient
+from the @ menu. Click the receipt or open the step's chat to read its reply.
 
 ## stop a job and start it again — Stop, Undo a stop, Run again, stopped by you, what a stopped job keeps
 
@@ -751,6 +835,12 @@ no running slot.
 A job owned by this factory has one manager, however many asks race to open it. A remote job running here may still get separate managers from its Talk door and its runner; those opens are not deduplicated. Every conversation owned by a job, including an extra manager left by an earlier build, spends from that job’s budget. Its model calls appear on the job and count toward its cap, wherever its working folder is. Reopening a conversation does not charge its saved calls again.
 
 To go on from a step that was cut instead, keeping the steps before it and the money spent, run that step again (try again) rather than starting the job.
+
+## a job stopped by your answer or by a new assignee — cancel, no to the budget, change of assignee, Backlog
+
+While a runner holds the job, a cancel to a step out of attempts, a no to the budget question and a send back with no earlier step to go back to stop it as **Stop** does, on your own machine and on a team factory alike: the job says `Stopped by you`, waits in Backlog and is not in Needs you or its count. A cancel to a job no runner holds does the same. **Carry on**, **Start** or **Run again** run it again.
+
+Changing the assignee of a running or waiting job, or unassigning it, stops its run too. The job then waits in Backlog for its new person with nothing failed on it and no question waiting, and the step it cut says it was stopped. **Run as new** starts its request again as a new job. A job whose step failed by itself is different: it waits in Needs you with the failure on it.
 
 ## reject an approval — end a job with your words, Reject versus Ask for changes, rejected jobs
 
@@ -767,6 +857,16 @@ Reject refuses a job that waits on no approval with `is not waiting on an approv
 A job whose run failed or was stopped is never started again by a routing rule's `start: auto`, by a start label, or by the factory starting up. A rule starts only a job that has never run. A failed job waits in Needs you with the failure on it until a person presses **Try again** or **Run again**, or takes it over. This holds for every kind of step and every rule. What the failed step reported before it failed, such as its output, its files or a link it gave, stays on that step beside the failure.
 
 A failure also gets a one-line headline of at most 90 characters, such as `9 of 10 checks passed · failed: no pull request when checked`, above its full text. It is the step's own summary when the step gave one. Otherwise the job's manager writes it from the failure's words in one cheap turn, and what that turn costs is booked on the job like any other manager turn. A job run again in the meantime keeps no stale line. If there is no manager to ask, the headline stays empty and the full text is shown.
+## Waiting job actions and stale versions — job moved on while you looked
+
+Give back, try again, send back, stop job, stop step and control mode changes
+still accept your action if only brief-writing status or an unchanged worker
+report moved the version after you read it. Approval, publication and plan
+revision still require the exact version you read. A change to
+the job's state, assignment, budget, steps, question or result still refuses with
+"job moved on while you looked"; read the job again before deciding. A newly
+kept brief or a late manager reply also requires a fresh read. Older saved jobs keep strict version
+checks until the new engine records bookkeeping after a read.
 
 ## Stop after the job moves on or starts publishing
 
@@ -1013,6 +1113,11 @@ GitHub observations continue while a repair is paused. The job shows pending fee
 
 ## runner recovery window — running time versus waiting for reconnect
 
+If a runner loses its hold on an active step, Factory shows the interruption
+when the job is next read. An old job saved as **Running** without a runner
+is treated the same way. In Auto, Factory can queue another attempt on the
+computer with the job's worktree. In Manual, the job asks you to try again.
+
 Automatic interrupted-step recovery allows three retries, counted in attempts, not minutes: a long step that loses its connection a few times keeps its retries however long it has run. The only clock is for the runner: a queued retry waits up to 15 minutes for its runner to come back, so a laptop closed briefly does not turn into needs you. A computer that went to sleep holds its job for 24 hours at most; after that the job is queued again like any silent hold. Waiting, backoff and attempts survive restarts and never replay uncertain publication. A person's explicit Retry remains available after exhaustion; saved checks and previous work are retained.
 
 ## quit codeaf while a job runs — the job is handed back and picked up at once after a restart
@@ -1066,6 +1171,15 @@ The new job gets its own branch and conversations when it runs. It starts with n
 
 This is a person's Start: the same model, checkout, repository switch and start refusals apply. If Start is refused, no new job remains. Accepted work waits for runner capacity under the usual Jobs at once limit. Omitting an assignee starts it as the caller's job; an explicit assignee names the new job's person.
 
+## Resending a create with the same key — retry key, Idempotency-Key, uncertain create, no second job
+
+A job create sent to a Factory with an `Idempotency-Key` header is remembered for 24 hours, per caller, route (`/v1/jobs`, or `/v1/issues` when it opens the GitHub issue) and key. A Factory with this rule lists `keyed_create` in `GET /v1/features`, and an engine sends a create key only to such a Factory: an older one keeps every keyed answer, refusals and server errors included, for a day. A resend with the same key does not make a second job or GitHub issue:
+
+- An answer given before anything was written is not kept, so the same key runs the create again. That covers every refusal of the request (a bad field, a repository you can't see or that is off, a pipeline that doesn't exist), a sign-in or read failure, GitHub refusing the issue, and GitHub not answering before the issue request was sent. Fix the cause and resend the same key. These answers carry the response header `X-Codeaf-Phase: pre-mutation`.
+- An answer given once the issue request may have reached GitHub, or once the job exists, is replayed as it was, success or failure. That includes a server error: GitHub's answer to the issue request was lost or was an error, or the job was made and its start failed. If a resend gets the same failure back, the first attempt may have made the job or the issue, so read the queue before trying again. A new key would make another job.
+
+Two limits remain. The caller is the exact sign-in the request carried, so a resend after signing in again or under a new session cookie is not matched and runs as a new create. The answer is saved just after the create commits, so if the Factory stops in between, a resend runs again. A create without a key is never replayed: sending it again makes another job.
+
 ## App job title and details — literal words, auto-save, budgets and hand-off
 
 Creating a job with a separate title in the app, or handing off an agent,
@@ -1080,6 +1194,108 @@ request takes its title from the job title alone.
 Terminal factory sentences still read those words as chips. Existing jobs are
 not rewritten; this applies when a new job is created. Factories without the
 separate-title creation capability retain their existing creation behavior.
+
+## Creating a job with an issue, group, milestone, budget and retry key
+
+`factory.job_create` accepts these optional fields alongside the job's title
+and details:
+
+| Field | Bounds and default |
+| --- | --- |
+| `open_issue` | Boolean, default false: create a job without opening an issue. True opens one GitHub issue using only the title and details, then ties the job to its number. |
+| `group`, `milestone` | Opaque labels, trimmed, at most 200 characters each, with no control characters. Omitted or empty means none; labels stay outside the description and appear on job and queue reads. |
+| `budget` | Initial USD limit: 5, 10, 20 or 30. Recorded before starting and kept on an immediate or later start. Omission keeps the usual pipeline/Factory default ($5 when neither sets one). |
+| `key` | Retry key: 1–128 characters from `[A-Za-z0-9._:-]`, sent as the create's `Idempotency-Key` header, only to a Factory that lists `keyed_create` (next section). Omitted or `key: ""` sends no header. |
+
+`factory.capabilities` flags are `create_issue`, `create_group` (both labels),
+`create_budget` and `create_key`; an older engine omits a flag or reports
+false, and the attached Factory can still be older. A 422 refusing unknown
+`group`, `milestone`, `budget` or HTTP `issue`, or a Factory without
+`/v1/issues` (a 405, or a 404 saying `factory endpoint not found` or not in
+the Factory's JSON), answers `conflict` with `detail.reason: "factory_too_old"`:
+"This factory doesn't support that yet; nothing was changed. Update the factory
+to use it." No fallback create is sent. The Factory's own 404 "repository not
+found" (your GitHub can't see it) stays `not_found`. Invalid fields answer
+`bad_params` before a write. Context is a separate `factory.job_context_set`
+write after creation, not a create field.
+
+## Retry key on a job create — create_key, keyed_create, resend after uncertain
+
+A create key goes only to a Factory whose `GET /v1/features` lists
+`keyed_create`: it keeps a keyed create's answer only once the create wrote
+something, so a refusal or a failure before any write runs again under the same
+key. An older Factory keeps every keyed answer for 24 hours, refusals and
+server errors included, so a create it refused once could not run again under
+its key for a day.
+
+`factory.capabilities {factory}` answers `create_key: true` only when that
+Factory lists `keyed_create`. Without `factory`, or for a Factory that does not
+list it or cannot be asked, `create_key` is false: send no key there, and read
+the queue after an `uncertain` create. The engine asks the Factory again on
+every create with a key; to a Factory without the word such a create answers
+`conflict` with `detail.reason: "factory_too_old"`, and nothing is sent.
+
+Where the key is sent, a resend with the same key within 24 hours does not make
+a second job or GitHub issue; a new key makes a separate job. After an
+`uncertain` create, resend the same key; if it is still uncertain, read the
+queue first. Two limits: a resend after signing in again, or under a new
+session cookie, is a different caller and makes a new job; and if the Factory
+stops after making the job but before saving its answer, a resend runs again.
+Without a key there is no replay protection.
+
+## Split a failed job into smaller jobs — split_from lineage
+
+When creating smaller jobs from a failed job, `factory.job_create` accepts
+optional `split_from`: an integer job number of at least 1 on the same Factory.
+Engines that carry it announce `create_split_from: true` in
+`factory.capabilities`.
+
+Each new job remembers that number. Its job read, queue row and create reply's
+`current` carry `split_from`; a job created without it omits the field. The new
+job's own activity adds one line such as `split from #80`. The parent job stays
+unchanged. The smaller job follows the normal creation, pipeline and start
+rules; its steps read its own brief and details.
+
+An explicit zero or negative number answers `bad_params` before the engine
+sends anything. The Factory also requires the parent to exist and be visible
+to the caller. A missing or hidden parent answers `bad_params` before any job
+or GitHub issue is made, including when `open_issue: true` was requested.
+
+An older Factory that refuses the `split_from` field answers `conflict` with
+`detail.reason: "factory_too_old"`; update that Factory. Nothing is made, and
+the engine sends no fallback create.
+
+## Job context attachments before the first run
+
+`factory.job_context_set` replaces the reference material attached to one job.
+Send `factory`, `job`, the `expect.version` from the job you read, and `context`.
+An empty list clears the attachments. Engines announce `factory.job_context`
+in hello and `job_context` in `factory.capabilities`. Job creation does not
+accept `context`; create the job in Backlog, attach context, then start it.
+
+Context can be changed in Backlog or while queued while the job has no run:
+before its first run, or after Bring back cleared its last one. Once a run has
+begun, the Factory refuses with "The job has started; its steps already read
+their context." A stale version changes nothing: read the job again.
+The same caller rule as model edits applies: in a team Factory the
+job's person may edit, or anyone when no person is assigned; solo allows it.
+
+Attach at most 20 items, each with a title, markdown and optional source label,
+path or URL. Titles are 1–200 characters after trimming, sources at most 500,
+and markdown must contain more than whitespace: blank markdown is refused with
+"context markdown must be non-empty". All markdown together is at most 100,000
+characters, separate from the job description's 20,000-character limit.
+Job and queue reads show only titles and sources.
+
+The first eligible conversation named `plan` reads the whole attachments as
+reference material; if no such plan runs, the first eligible conversation reads
+them. Disabled, excluded and skipped plans do not take context away from that
+conversation. Other steps receive none. Attachments do not override the job or
+step instructions and never enter a GitHub issue, pull request or comment.
+
+An older Factory without the context route answers `conflict` with reason
+`factory_too_old`; update it. A lost answer is `uncertain`: the engine sends the
+write once, so read the job before deciding what to do next.
 
 ## Job Brief inputs — later requests, answers and saved notes
 
@@ -1100,13 +1316,13 @@ A new request makes an earlier Brief out of date.
 
 The Brief is written for the person who owns the job, in plain words. Its headings and its text never use the factory's internal words for checking and reviewing: the writer is told so, and every word it drafts is put into plain words before the Brief is kept, so a heading about what was checked reads `What the checks found`, checked work reads "checked", and the Brief's headline is the job's outcome. A proof's command, a file path and a step's name are left exactly as written.
 
-## Job Brief after proof, publishing and an out of date line
+## Job Brief after a blocked step, proof, publishing and an out of date line
 
-The job's Brief refreshes when proof waits for your publication approval and
+The job's Brief refreshes when a blocked step needs your decision, when proof waits for your publication approval, and
 after publication opens or updates a pull request or posts a comment. It also
 refreshes when the job ships, its PR merges or closes without merge, or the run
 fails. A publication failure refreshes it too. Updates within 10 seconds
-are taken as one. An approval or end update waits if an earlier Brief is still
+are taken as one. A decision, approval or end update waits if an earlier Brief is still
 being written. Stop settles the Brief without a model call, including for queued
 jobs and jobs stopped at the start gate. Its status stays `failed` for older
 desks, and `failure_kind: "stopped"` identifies a person's Stop separately from a
@@ -1115,7 +1331,7 @@ failed refresh. Only a person's Stop sets this field. The reason is
 The last paid Brief stays visible; no paid refresh runs until a person starts the job. Auto skips the intermediate proof update when approval can
 proceed automatically; an exception that waits on you still gets an update.
 
-These approval and end updates bypass the ordinary brief cost guard, and their
+These decision, approval and end updates bypass the ordinary brief cost guard, and their
 model cost still counts toward the job's spend. A normal manual job gets two
 additional writes: at proof approval and after publication. Ordinary step
 updates remain subject to the $0.03 per-version and 5% spend-share guard.
@@ -1235,6 +1451,20 @@ App job and queue reads show only saved spending. Ledger tags and workspace
 paths can be shared by jobs from different factories, so ledger recovery is
 disabled. Older jobs show what their saved fields know. Earlier money recorded
 only in the ledger cannot be placed safely and is not added to a job.
+
+
+## Factory per-job model spending after taking a chat
+
+Taking a chat to another computer keeps each newly saved call's stated billing,
+billing basis, job, and missing-receipt flag. Factory spending by model and job
+can therefore include those imported calls on the receiving computer. A missing
+receipt with no token figures stays labeled unbilled and adds no measured model
+call or dollars. Call-only CSV exports leave these markers out.
+
+Taking a chat does not charge its calls again or change a job's saved run or
+lifetime spending. Receipts from older builds keep their dollars, but missing
+billing facts and job names stay unknown. Already imported rows are not enriched
+by a later take.
 
 
 ## Opening a job without touching it and sending its first message

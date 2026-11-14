@@ -253,6 +253,13 @@ func (in *Intake) decide(ctx context.Context, it factory.Item, book estimate.Boo
 		return nil
 	}
 	if decision.Start {
+		// The closer look is paid for, so a job that may not start on its own
+		// is not looked at first.
+		if err := in.canStart(ctx, it); errors.Is(err, errMoved) {
+			return nil
+		} else if err != nil {
+			return err
+		}
 		if looked, ok := in.lookFirst(ctx, it); ok {
 			it = looked
 			decision = startDecision(f, it, Cost(book, it), routed)
@@ -440,6 +447,12 @@ func (in *Intake) lookFirst(ctx context.Context, it factory.Item) (factory.Item,
 // canStart reads the stop history under the job's update lock, so a stop
 // after Once listed the backlog still wins. Only a person's Run door may
 // restart a job they stopped; labels never restore that permission.
+//
+// A JOB A PERSON BROUGHT BACK WAITS IN BACKLOG FOR A PERSON'S START. Bring
+// back makes it fresh, and the rules that started or held it the first time
+// would do so again the moment it returned: started, it runs and spends before
+// the person has looked at it; held, it goes straight to Needs you. Neither is
+// the Backlog they brought it back to.
 func (in *Intake) canStart(ctx context.Context, it factory.Item) error {
 	if factory.StoppedByPerson(it) || factory.EverRan(it) || it.SetupHeld || factory.JobState(it) == "done" {
 		return errMoved
@@ -452,7 +465,7 @@ func (in *Intake) canStart(ctx context.Context, it factory.Item) error {
 		return err
 	}
 	for _, event := range events {
-		if event.Job == it.ID && (event.Kind == record.Stopped || event.Kind == record.ClosedLocally) {
+		if event.Job == it.ID && (event.Kind == record.Stopped || event.Kind == record.ClosedLocally || event.Kind == record.Restored) {
 			return errMoved
 		}
 	}

@@ -3128,7 +3128,7 @@ func (a *app) homeOpenLine(line homeLine) tea.Cmd {
 	}
 	// A missing reading or stale own hold can hide a free chat after restart.
 	// An open window or an answered display needs no ownership round trip.
-	if !a.homeTakeOpening && a.taker != nil && !a.hosted() && !a.machineRead.computerRemoved {
+	if a.idleOpenEnabled() && !a.homeTakeOpening && a.taker != nil && !a.hosted() && !a.machineRead.computerRemoved {
 		if a.machineRead.down || a.machineRead.err != nil {
 			return a.homeOpenLocalLine(line)
 		}

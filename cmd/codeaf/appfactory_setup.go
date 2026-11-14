@@ -147,8 +147,9 @@ type appLocalFactory struct {
 	server    *http.Server
 	// runner is true once factory.local_run started the worker loop, and
 	// runnerDone closes when that loop has returned.
-	runner     bool
-	runnerDone chan struct{}
+	runner      bool
+	runnerDone  chan struct{}
+	closingDone chan struct{}
 	// githubHTTP, rules, seamHook and parent are test seams set before the
 	// first start. parent, when set, is the conversation config the runner
 	// opens its stages from, as a terminal launch hands one to its worker.
@@ -176,7 +177,7 @@ func (b *appBackend) startLocal(ctx context.Context) error {
 	l := &b.local
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.closed {
+	if l.closed || b.isClosing() {
 		return appwire.Errorf(appwire.CodeClosed, "the engine is stopping")
 	}
 	if !l.running || l.host == nil {
@@ -232,7 +233,7 @@ func (b *appBackend) resumeLocalServe(ctx context.Context) bool {
 	l := &b.local
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.closed || l.running {
+	if l.closed || l.running || b.isClosing() {
 		return false
 	}
 	rows, err := b.factoryHub().snapshot()
@@ -302,7 +303,7 @@ func (b *appBackend) localRunnable() (string, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	switch {
-	case l.closed:
+	case l.closed || b.isClosing():
 		return "", appwire.Errorf(appwire.CodeClosed, "the engine is stopping")
 	case !l.running:
 		return "", appwire.Errorf(appwire.CodeNotFound, "the factory on this machine is not started")
@@ -317,7 +318,7 @@ func (b *appBackend) startLocalRunner() (appwire.FactoryLocalStatus, error) {
 	l := &b.local
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.closed || !l.running || l.host == nil {
+	if l.closed || !l.running || l.host == nil || b.isClosing() {
 		return appwire.FactoryLocalStatus{}, appwire.Errorf(appwire.CodeClosed, "the engine is stopping")
 	}
 	if !l.runner {
@@ -389,11 +390,23 @@ func (b *appBackend) startLocalLocked(ctx context.Context, resume bool) error {
 	done := make(chan struct{})
 	close(done)
 	address := "http://" + listener.Addr().String()
-	host := &appFactoryHost{ctx: hostCtx, cancel: cancel, done: done, floor: floor, address: address, token: token, workspace: home.Dir(), profile: b.localProfile(), credentials: newFactorySessions(), quiet: true, githubHTTP: l.githubHTTP, rules: l.rules, seamHook: l.seamHook, parent: l.parent, pollSource: l.pollSource, newIntake: l.newIntake,
+	// THE DESK'S FACTORY HAS NO WORKSPACE. It named the codeaf home here once,
+	// and every chat of a job with no checkout — each AgentField step, the
+	// foreman — worked in ~/.codeaf and swept codeaf's own state on every
+	// save. Those chats now work in their job's own empty folder
+	// (factory_chat_folder.go).
+	host := &appFactoryHost{ctx: hostCtx, cancel: cancel, done: done, floor: floor, address: address, token: token, workspace: "", profile: b.localProfile(), credentials: newFactorySessions(), quiet: true, githubHTTP: l.githubHTTP, rules: l.rules, seamHook: l.seamHook, parent: l.parent, pollSource: l.pollSource, newIntake: l.newIntake,
 		// A runner, once asked for, serves THIS factory with this launch's own bearer.
 		defaultTarget: func() (factoryTarget, error) { return factoryTarget{address, token}, nil }}
 	floor.SetOutputPolicy(appFactoryOutputPolicy(host.profile))
-	floor.ObserveWrites(b.briefJobChanged)
+	floor.ObserveWrites(func(before, after factory.Item) {
+		b.briefJobChanged(before, after)
+		// Queue filters change after filing too, when a background step waits or ends.
+		if before.State != after.State || before.Question != after.Question || before.QKind != after.QKind ||
+			before.DoneHow != after.DoneHow || !before.DoneAt.Equal(after.DoneAt) {
+			b.emit.Emit(appwire.EventFactoryJobsChanged, appwire.FactoryJobsChanged{Factory: appLocalID, Job: after.ID})
+		}
+	})
 	host.jobFiled = func(job int) {
 		b.emit.Emit(appwire.EventFactoryJobsChanged, appwire.FactoryJobsChanged{Factory: appLocalID, Job: job})
 	}
@@ -515,10 +528,21 @@ func (h *appFactoryHub) releaseLocal(id string) {
 // closeLocalFactory ends what start began. It is idempotent and runs before
 // the registry is closed, so the bearer it held is let go with the service.
 func (b *appBackend) closeLocalFactory() {
-	server, host, id, running, runnerDone := b.takeLocal()
+	if b.briefs != nil {
+		b.briefs.stop()
+	}
+	server, host, id, running, runnerDone, done := b.takeLocal()
+	if done == nil {
+		return
+	}
+	defer func() {
+		b.clearLocalClosing()
+		close(done)
+	}()
 	if host != nil {
 		// THE RUNNER STOPS FIRST, so no worker is dialling a service that is
 		// going away; and it is waited for only so long.
+		host.forbidLoops()
 		host.cancel()
 		if runnerDone != nil {
 			select {
@@ -545,16 +569,42 @@ func (b *appBackend) closeLocalFactory() {
 	}
 }
 
-// takeLocal marks the local factory closed and hands over what it held.
-func (b *appBackend) takeLocal() (server *http.Server, host *appFactoryHost, id string, running bool, runnerDone chan struct{}) {
+// takeLocal marks the local factory closed and hands over what it held. A
+// second caller while the first is still tearing down waits for the first.
+func (b *appBackend) takeLocal() (server *http.Server, host *appFactoryHost, id string, running bool, runnerDone, done chan struct{}) {
+	var wait chan struct{}
+	server, host, id, running, runnerDone, done, wait = b.takeLocalLocked()
+	if wait != nil {
+		<-wait
+	}
+	return
+}
+
+// takeLocalLocked is takeLocal's critical section: it either claims the
+// teardown and hands over what the factory held, or answers the channel of the
+// teardown already under way.
+func (b *appBackend) takeLocalLocked() (server *http.Server, host *appFactoryHost, id string, running bool, runnerDone, done, wait chan struct{}) {
 	l := &b.local
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	if l.closingDone != nil {
+		return nil, nil, "", false, nil, nil, l.closingDone
+	}
+	done = make(chan struct{})
+	l.closingDone = done
 	l.closed = true
 	server, host, id, running, runnerDone = l.server, l.host, l.id, l.running, l.runnerDone
 	l.server, l.host, l.running, l.id, l.origin = nil, nil, false, "", ""
 	l.runner, l.runnerDone = false, nil
 	return
+}
+
+// clearLocalClosing ends a teardown's claim once it has finished.
+func (b *appBackend) clearLocalClosing() {
+	l := &b.local
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.closingDone = nil
 }
 
 // ── the CLI's attachment ───────────────────────────────────────────────────

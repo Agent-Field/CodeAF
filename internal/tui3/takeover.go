@@ -592,7 +592,7 @@ func (a *app) takeOver() tea.Cmd {
 		a.dropParked()
 		a.writeDraftsNow(a.leavingDraft())
 		a.retainSavingDurability([]Agent{a.agent})
-		return closeConversationLater(a.agent, session.StopByTakeover, a.saveFailure, a.closingStarted, nil)
+		return closeConversationLater(a.agent, session.StopByTakeover, a.saveFailure, a.closingStarted, nil, a.syncService)
 	}
 	a.dropParked()
 	if a.draftFile != "" {
@@ -666,8 +666,11 @@ func (a *app) resumeStoppedTurn() tea.Cmd {
 	if !ok || a.stream != nil {
 		return nil
 	}
-	gen, ctx := a.gen, a.ctx
+	gen, ctx, agent := a.gen, a.ctx, a.agent
 	return func() tea.Msg {
+		if err := waitModelSelection(ctx, agent); err != nil {
+			return nil
+		}
 		events, resumed := door.ResumeStoppedTurn(ctx)
 		if events == nil {
 			return nil

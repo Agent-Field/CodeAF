@@ -432,7 +432,7 @@ func (c *client) listIssues(ctx context.Context, owner, repo string, since time.
 		}
 		for _, r := range rows {
 			out = append(out, Issue{
-				Number: r.Number, Title: r.Title, Body: deref(r.Body), User: r.User.Login,
+				ID: r.ID, Number: r.Number, Title: r.Title, Body: deref(r.Body), User: r.User.Login,
 				Labels: labelNames(r.Labels), Created: r.CreatedAt, Updated: r.UpdatedAt,
 				URL: r.HTMLURL, Pull: r.PullRequest != nil, Comments: r.Comments,
 				Assignees: assigneeLogins(r.Assignees), State: r.State,

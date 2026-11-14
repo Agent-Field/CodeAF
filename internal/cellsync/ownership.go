@@ -113,6 +113,50 @@ func (b *Batcher) Reacquire(ctx context.Context, seen directory.CellView) (bool,
 	return true, nil
 }
 
+// ReacquireWorking conditionally reacquires an in-flight turn's own lapsed
+// lease in place (Fence+1) when no other computer has taken the chat and the
+// published head on the relay still matches this batcher's base head.
+func (b *Batcher) ReacquireWorking(ctx context.Context, seen directory.CellView) (bool, error) {
+	if err := lockOwnership(ctx, &b.flushMu); err != nil {
+		return false, err
+	}
+	defer b.flushMu.Unlock()
+	if err := lockOwnership(ctx, &b.renewMu); err != nil {
+		return false, err
+	}
+	defer b.renewMu.Unlock()
+	d, pending, stale := b.view()
+	if b.isClosing() || stale || d.Fence == 0 || seen.Cell.Lease.Fence != d.Fence || d.Head != seen.Cell.Head || seen.Cell.Lease.Expires > seen.Now {
+		return false, nil
+	}
+	v, err := b.Publisher.Dir.Acquire(ctx, d.ID(), directory.AcquireOpts{
+		RequireConditional: true,
+		Expect:             &directory.LeaseExpectation{Device: seen.Cell.Lease.Device, Fence: seen.Cell.Lease.Fence},
+	})
+	if err != nil {
+		return false, err
+	}
+	if v.Cell.Head != d.Head {
+		return false, b.Publisher.Dir.Release(ctx, d.ID(), v.Cell.Lease.Fence)
+	}
+	d.Fence, d.Frames, d.Size = v.Cell.Lease.Fence, v.Cell.Frames, v.Cell.Size
+	b.mu.Lock()
+	*b.Driving = d
+	b.stale, b.released, b.renewalEnded = false, false, false
+	b.acquireUncertain = false
+	b.beatSent, b.beatUp, b.toldWork = 0, uploaded{}, false
+	b.renewalSince = time.Time{}
+	b.mu.Unlock()
+	b.recovered(false)
+	b.renewalChanged()
+	b.leaseChanged.fire()
+	b.turns.fire()
+	if pending > 0 {
+		b.work.fire()
+	}
+	return true, nil
+}
+
 // ReleaseIdle releases only a fully published head. The caller excludes new
 // work and seals; all uploads have already finished. Contended publisher or
 // heartbeat locks retain the hold for a later attempt instead of admission.

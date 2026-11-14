@@ -62,8 +62,14 @@ func serviceRec(pid int, argv []string, ports []int) ServiceRec {
 
 // modelCallOf is a model call as the receipt holds it.
 func modelCallOf(m executor.ModelCall) ModelCall {
-	return ModelCall{ID: m.ID, Model: m.Model, Role: m.Role, TokensIn: uint32(m.TokensIn), TokensOut: uint32(m.TokensOut),
-		TokensCached: uint32(m.TokensCached), CostMicroUSD: m.CostMicroUSD}
+	id := m.ExplicitID()
+	return ModelCall{
+		ID: id, CallID: id, Model: m.Model, Role: m.Role,
+		TokensIn: uint32(m.TokensIn), TokensOut: uint32(m.TokensOut),
+		TokensCached: uint32(m.TokensCached), CostMicroUSD: m.CostMicroUSD,
+		Kind: m.Kind, Billing: m.Billing, BillingBasis: m.BillingBasis,
+		Unbilled: m.Unbilled, FactoryJob: m.FactoryJob,
+	}
 }
 
 // SealedCall is a model call and the instant of the seal that recorded it.
@@ -72,7 +78,8 @@ type SealedCall struct {
 	SealedAtMs int64
 }
 
-// ModelCalls is every model call the cell ever sealed, oldest first. The chain
+// ModelCalls is every model call and accounting marker the cell ever sealed,
+// oldest first. Kind distinguishes markers from measured calls. The chain
 // is append-only (L12), so a rewound-past turn's calls are still here: spend
 // already paid never disappears.
 //

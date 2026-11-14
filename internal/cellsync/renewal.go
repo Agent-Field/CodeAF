@@ -16,6 +16,15 @@ func (b *Batcher) RenewalStatus() (time.Time, time.Duration, bool) {
 	return b.renewalSince, directory.HeartbeatEvery, held
 }
 
+// recovering reports whether seen is an active hold recovering from an
+// unreachable relay.
+func (b *Batcher) recovering(seen Driving) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return seen.Fence != 0 && b.Driving.ID() == seen.ID() && b.Driving.Fence == seen.Fence &&
+		!b.stale && !b.released && !b.renewalEnded && !b.renewalSince.IsZero()
+}
+
 // renewalResult belongs only to the hold the request actually renewed.
 // Late replies from a displaced writer cannot report recovery for a new hold.
 func (b *Batcher) renewalResult(seen Driving, err error) {

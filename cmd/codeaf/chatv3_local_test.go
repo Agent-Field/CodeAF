@@ -43,7 +43,6 @@ func TestPlainLaunchReadsClosedTeamReportFromEngineProfile(t *testing.T) {
 	t.Setenv("CODEAF_PROFILE_DIR", surfaceProfile)
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv(config.APIKeyEnv, "not-a-real-key")
-	t.Cleanup(func() { stopPoolErrands(surfaceProfile) })
 	const harbor = "0a0a0a0a0a0a"
 	if err := teamstore.Save(engineProfile, []teamstore.Team{{ID: harbor, Name: "harbor", Manager: "hm",
 		Members: []teamstore.Member{{Key: "hm", Handle: "boss"}}}}); err != nil {
@@ -227,11 +226,6 @@ func TestAPlainLaunchKeepsThisMachinesDoorsWhileAHostLaunchDoesNot(t *testing.T)
 	t.Setenv("CODEAF_PROFILE_DIR", surfaceProfile)
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv(config.APIKeyEnv, "not-a-real-key")
-	// hostOptions wires the pool's start-up errands on the terminal's profile;
-	// the doors exit the process behind them, this test does not, so it closes
-	// them through the seam the process's own close uses (poolindex.go) before
-	// the profile is removed.
-	t.Cleanup(func() { stopPoolErrands(surfaceProfile) })
 	if err := config.WriteSources(engineProfile, []config.PersistedSource{{
 		ID: "custom", Written: "engine-service", Address: "https://engine.example/v1", Key: "engine-key", Order: 1,
 	}}); err != nil {
@@ -246,7 +240,9 @@ func TestAPlainLaunchKeepsThisMachinesDoorsWhileAHostLaunchDoesNot(t *testing.T)
 
 	client := hostedClient(t)
 	welcome := remote.Welcome{Version: remote.Version, Workspace: "/srv/app", ProfileDir: engineProfile}
-	local, settings := hostOptions(onePipeFleet("", client), welcome, false)
+	localFleet := onePipeFleet("", client)
+	t.Cleanup(localFleet.closeAll)
+	local, settings := hostOptions(localFleet, welcome, false)
 	localDoors(&local, welcome, settings)
 
 	if local.Connections == nil || local.Harnesses == nil || local.SaveApproval == nil ||
@@ -301,7 +297,9 @@ func TestAPlainLaunchKeepsThisMachinesDoorsWhileAHostLaunchDoesNot(t *testing.T)
 		}
 	}
 
-	hosted, _ := hostOptions(onePipeFleet("devbox", client), welcome, false)
+	hostedFleet := onePipeFleet("devbox", client)
+	t.Cleanup(hostedFleet.closeAll)
+	hosted, _ := hostOptions(hostedFleet, welcome, false)
 	if hosted.Connections != nil || hosted.Harnesses != nil || hosted.SaveApproval != nil ||
 		hosted.SaveBashApproval != nil || hosted.SaveModel != nil || !hosted.Sources.Empty() ||
 		hosted.ApplyModelSources != nil || hosted.ConnectCodex != nil || hosted.ReadCredits != nil || hosted.ImplicitTalk {
@@ -317,16 +315,15 @@ func TestPlainEngineModelDoorsRefreshEveryConnectedProvider(t *testing.T) {
 	t.Setenv("CODEAF_PROFILE_DIR", profile)
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv(config.APIKeyEnv, "default-key")
-	t.Cleanup(func() { stopPoolErrands(profile) })
 	defaultServer := sourcestub.New("openai/gpt-4.1-mini")
-	defer defaultServer.Close()
+	t.Cleanup(defaultServer.Close)
 	t.Setenv("CODEAF_BASE_URL", defaultServer.URL())
 	var listed atomic.Int32
 	direct := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		listed.Add(1)
 		_, _ = w.Write([]byte(`{"data":[{"id":"direct-chat"}]}`))
 	}))
-	defer direct.Close()
+	t.Cleanup(direct.Close)
 	if err := config.WriteSources(profile, []config.PersistedSource{{
 		ID: "custom", Written: "direct", Address: direct.URL, Key: "direct-key", Order: 1,
 	}}); err != nil {
@@ -334,7 +331,9 @@ func TestPlainEngineModelDoorsRefreshEveryConnectedProvider(t *testing.T) {
 	}
 	client := hostedClient(t)
 	welcome := remote.Welcome{Version: remote.Version, ProfileDir: profile, Workspace: t.TempDir()}
-	options, settings := hostOptions(onePipeFleet("", client), welcome, false)
+	fleet := onePipeFleet("", client)
+	t.Cleanup(fleet.closeAll)
+	options, settings := hostOptions(fleet, welcome, false)
 	localDoors(&options, welcome, settings)
 	if options.ModelsForService == nil || options.RefreshModelsForService == nil ||
 		options.RefreshAllModels == nil || options.WarmEmptyProviders == nil || options.SubscribeServiceModels == nil {

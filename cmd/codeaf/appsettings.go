@@ -22,6 +22,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/store"
@@ -305,7 +306,7 @@ func (b *appBackend) ExportSpend(from, to time.Time) (string, error) {
 	w := csv.NewWriter(file)
 	_ = w.Write([]string{"at", "day", "conversation", "model", "role", "seat", "calls", "input_tokens", "output_tokens", "usd"})
 	for _, line := range lines {
-		if !line.At.Before(to) || line.At.Before(from) {
+		if line.Kind == executor.UnbilledMarkerKind || !line.At.Before(to) || line.At.Before(from) {
 			continue
 		}
 		_ = w.Write([]string{

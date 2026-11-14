@@ -246,6 +246,14 @@ repair, which competes for the same finite capacity; returning to monitoring
 releases it. The capacity, queue projection and monitoring-lease regressions in
 `internal/factory/serve`, `lease` and `worker` defend this separation.
 
+## Unchanged factory listing
+
+`TestListDoesNotDecodeAnUnchangedFloor` permits at most **100 allocations**
+for a cached one-item listing. It allows stat metadata, including inode and
+change time, while rejecting another JSON decode. Chmod changes ctime and
+must invalidate the cache, so changing permissions cannot simulate an
+unchanged document.
+
 ## Tool process identity in history
 
 `DisplayEntry` is bounded at **328 bytes** on a 64-bit machine. The process
@@ -416,6 +424,14 @@ The writer batches at most 128 already admitted rows per ledger lock. A quiet
 queue flushes immediately, and flush/close barriers follow completed writes.
 Identity generation checks and duplicate suppression still run under that lock.
 
+The writer owns a separate journal loop that waits for coalesced admission
+wakes while idle. It starts batch synchronizers in the process writer's clock
+scope, independently of a blocked ledger projection, and joins the final sync
+before recovery and shutdown. `TestJournalSyncStaysWithTheProcessWriterAcrossCallerScopes`
+records and joins from a shorter caller scope, then checks the public ledger's
+single unchanged charge. The journal interval and row threshold remain
+`usageSyncInterval` and `usageSyncRows`.
+
 ## Factory signal acknowledgement bounds
 
 Each worker heartbeat sends at most 256 unconfirmed signal delivery IDs. A failed
@@ -440,17 +456,12 @@ to leave every waiting frame file untouched on a repeat.
 
 ## Idle factory manager checks
 
-Every open job manager and every open step asks whether its job was stopped or
-its budget reached (`watchJobBudget` in `internal/session/job_budget.go`): ten
-times a second (`jobBudgetLiveEvery`) while it owns work in flight — a turn, a
-running background command, an unfinished task — and once every five seconds
-(`jobBudgetIdleEvery`, the presence beat) while it owns none, since there is
-then nothing a Stop or a spent budget could cut short and the next model call
-is checked at its own boundary. An idle watch sleeps that whole interval on one
-timer rather than waking every 100 ms; a turn opening, a command starting and
-every presence nudge wake it onto the live cadence at once (`wakeWorkWatch`).
-`TestIdleManagerBudgetWatchLooksOnceABeat`: an idle manager looks at most once
-in 950 ms, and at least three times in 500 ms once a command runs.
+Every open job manager checks its saved job budget once when opened. Thereafter
+`watchJobBudget` polls at `budgetPollEvery` (100 ms) only while capped model
+calls, commands or delegated work are moving. An idle manager holds no timer;
+new work wakes the watch and each model boundary checks admission again.
+`TestIdleManagerBudgetWatchLooksOnceABeat` retains the initial-check and active-work
+bounds. Daily cap detection follows settled ledger writes, within one active poll.
 
 Neither check may decode a job document that has not changed since it last
 looked. `seamRunDoor.AutomaticRefusal` (`cmd/codeaf/factory_person_stop.go`)
@@ -475,8 +486,12 @@ floor folder: the folder's time moves with every file renamed into it (the
 runner registry, a lease heartbeat, the sources' poll record), which made every
 open step chat list and decode every job every few seconds. It is answered from
 one look at the floor's job files (`floorJobFiles`: one directory read and one
-stat per job, shared by every conversation for `floorLookEvery`, 100 ms) and
-reads only a job document that changed. `TestAStepChatsStopCheckDecodesNothingWhileTheFloorChurns`:
+stat per job, shared by every conversation for `floorLookEvery`, 100 ms while
+the directory is unchanged) and reads only a job document that changed. Each
+admission stats the directory before reusing that look, so an atomic job rename
+invalidates it immediately. `TestAutomaticRefusalSeesHandoverBeforeNextFloorInterval`
+freezes the shared clock and requires a newly assigned stopped job to refuse
+the next admission. `TestAStepChatsStopCheckDecodesNothingWhileTheFloorChurns`:
 fifty checks while the registry is rewritten decode none (`factoryStopCheckDecodes`);
 one changed job costs one decode, and a job that takes the conversation is seen
 on the next look.
@@ -492,6 +507,20 @@ before, 0 after, while each chat's sync start still captures and pushes once.
 `TestAVaultReadSeesEveryWrite` pins visibility across handles, deletes and
 aborted updates.
 
+That bound still reads and compares the whole file on every read, so the
+vault's size is the cost of every look: one slot holds at most
+`keys.MaxSlotValue` (1 MiB). A larger `Put` is refused (`ErrTooLarge`), a
+withheld file too large for a slot is never read and never travels
+(`internal/vaultsync/files.go`), and a vault opened with an oversized slot,
+from an earlier build or a merge, sheds it and is written back at once. On
+the owner's machine a chat folder that was the codeaf home carried 1.6 GB of
+withheld files into a 3.3 GB vault; one chat flush's capture and two
+fingerprints then cost 22.6 s CPU, about 257 GB allocated and a 34 GB peak.
+After the bound the same vault opens once, shrinks to 8.4 MB, and a flush
+costs about 60 ms. `TestAnOversizedSlotIsShedOnOpenWithoutATombstone`,
+`TestAMergeDoesNotTakeAnOversizedSlot` and
+`TestAWithheldFileTooLargeForTheVaultStaysWhereItIs` pin it.
+
 ## Idle open conversations
 
 An open conversation that is idle — nothing running, nothing asked — costs no
@@ -506,7 +535,7 @@ system call between its heartbeats (`internal/session/taskpresence.go`):
   shared directory watch reports a write there (`presenceDoorstepEvent`), and
   otherwise once a minute (`presenceQuietPass`); a folder the watch cannot see
   is knocked on every five-second beat as before.
-- Its job's budget watch (above) sleeps five seconds at a time.
+- Its job's budget watch (above) holds no timer while idle.
 
 `TestAnIdleChatWritesNothingBetweenHeartbeats` drives one desk on fake shared
 clocks through a minute of beats and refreshes and fails on any rewrite before
@@ -532,7 +561,7 @@ a second is named on stderr with its two halves:
 `store.Store.read` (every `Get`, `List`, `ListSaved` and update of a job
 document) decodes a document only when its file changed since the process last
 read it (`internal/factory/store/readcache.go`): one stat, compared on
-`os.SameFile`, size, modification time and mode — every store write renames a
+`os.SameFile`, size, modification time, change time, inode and mode — every store write renames a
 fresh file into place — answers an unchanged document from a process-wide
 cache, deep-copied (`deepCopy`) so no caller shares anything with the next. The
 cache is the process's, not a `Store`'s, since many doors open their own store
@@ -756,6 +785,52 @@ The macOS 60 s steady profile fell from 3.03% to 2.10% of a core. What remains
 is the factory's lease reads on runner requests (17%) and the chat presence
 beat (13%). The rig does not follow a live AgentField run, which the live
 round's idle did; the AgentField write above is that path's share.
+
+## Resident memory of the desktop engine
+
+`codeaf app` holds a conversation in memory only while something needs it. The
+method and measurements are in [docs/perf/memory-2026-10-24.md](docs/perf/memory-2026-10-24.md).
+
+- **Members at rest are read, not held.** `tasks.list`, `asks.list` and
+  `processes.list` on a member of an open crew answer from its files when its
+  presence shows no working turn, question, task or process, no service is kept
+  and no stage is lent. `tasks.list` builds the owner-backed list by holding the
+  conversation for the length of one read (at most `appRestReads` = 2 at once),
+  then keeps it under a stamp of the files it was built from: in memory up to
+  `appRestMemoBytes` = 24 MiB (least recently read first; a list larger than
+  that is not kept), and as `<home>/cache/app-tasks/<agent>.json` for the
+  next launch, valid for the same build and the same stamp only. Disk storage
+  keeps at most `appRestDiskTotalBytes` = 96 MiB and `appRestDiskEntries` = 256
+  files, evicting oldest writes first. The inventory is scanned on first use and
+  every `appRestDiskScanEvery` = 1 minute by the idle sweep, which also prunes
+  missing or deleted agents; writes update the inventory without directory scans.
+  Agent deletion removes both entries immediately. Byte-identical settled task
+  checkpoints preserve their identity on open, so snapshot validation can admit
+  conversations with saved tasks. Owner-overlay failures propagate and are
+  never cached; reader completion is deferred and one-shot. Record, rest and
+  project-index admission share the two-second mtime/ctime settling guard.
+  `TestAppReadingAnIdleCrewMemberDoesNotKeepItsConversation` and
+  `TestAppReadsARestingMembersTasksFromTheCacheAfterARelaunch` pin the opens.
+- **A crew member with nothing in flight is let go after `appAgentIdle`** like any
+  other conversation; the crew opens it again for traffic.
+- **Journal records** (`RecordCache`) keep at most `recordCacheEntries` = 8
+  records and drop one not read for `recordCacheIdle` = 30 s. The 256 MiB byte
+  budget and the 16 MiB per-file limit are unchanged.
+- **The project task index** keeps the decoded rows of the last
+  `taskIndexKeptPaths` = 4 indexes of at most `taskIndexKeptBytes` = 4 MiB each.
+- **Plan reads** (`plandb.Store`) reload the plan only when SQLite's
+  `data_version` or the database/log stamp moved.
+  `TestRepeatedReadsOfAnUnchangedPlanLoadItOnce` allows 3 MiB for 200 reads.
+  `TestAppTasksOpensThePlanOnceForAllTheRunRows` allows 16 MiB to list 150 rows.
+- **The collector percent follows the live heap** (`memtrim.go`): the app starts
+  at Go's default percent 100. The governor selects 400 for a small heap, and a
+  larger one is given the percent that
+  lets about `heapHeadroom` = 32 MiB of garbage build up, never below
+  `heapGCMin` = 10. An explicit `GOGC` decides instead. When more than 48 MiB
+  and half of the live heap is held and unused, `debug.FreeOSMemory` runs, at most
+  once a minute. macOS keeps freed pages in a process's resident size until it
+  needs them (`MADV_FREE_REUSABLE`), so `ps` RSS shows the peak of a burst while
+  the footprint (`vmmap --summary`, Activity Monitor) shows what is held.
 
 ## Paired idle save certification
 

@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/filelock"
+	"github.com/Agent-Field/codeaf/internal/upgradenotice"
 )
 
 // copyCheckpoint is a process-death seam; production never pauses construction.
@@ -104,6 +105,30 @@ func StampCopyReady(root string) error {
 		return err
 	}
 	return errors.Join(f.Sync(), f.Close())
+}
+
+// PreserveCopyReady keeps this computer's original-copy baseline across a tree restore.
+// Snapshots omit local markers, so recreating only their names loses the older-turn notice.
+func PreserveCopyReady(root string) (func() error, error) {
+	path := filepath.Join(root, filepath.FromSlash(CopyReadyPath))
+	raw, err := os.ReadFile(path)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	keep := err == nil
+	if !keep && filepath.Base(filepath.Dir(root)) == ".moving" {
+		_, lockErr := os.Stat(root + ".lock")
+		keep = lockErr == nil
+	}
+	return func() error {
+		if !keep {
+			return nil
+		}
+		if len(raw) > 0 {
+			return upgradenotice.Write(path, raw)
+		}
+		return StampCopyReady(root)
+	}, nil
 }
 
 // hasSealedTurns reports whether root already holds a cell with at least one
@@ -207,6 +232,12 @@ func CopyLegacy(ctx context.Context, original string, prepare func(context.Conte
 		return Cell{}, err
 	}
 	copyCheckpoint("copied")
+	// The independent journal is the exact history imported, before its header changes.
+	baseline, err := readCopySource(filepath.Join(root, legacyTranscript), -1)
+	if err != nil {
+		return Cell{}, err
+	}
+	baseline.Original = original
 	// Migration operates solely on the independent copy. No source inode is
 	// shared, even for files the migration itself links inside that copy.
 	if err := MigrateLegacy(root); err != nil {
@@ -224,7 +255,11 @@ func CopyLegacy(ctx context.Context, original string, prepare func(context.Conte
 	if err := ctx.Err(); err != nil {
 		return Cell{}, err
 	}
-	if err := StampCopyReady(root); err != nil {
+	ready, err := json.Marshal(baseline)
+	if err != nil {
+		return Cell{}, err
+	}
+	if err := upgradenotice.Write(filepath.Join(root, CopyReadyPath), append(ready, '\n')); err != nil {
 		return Cell{}, err
 	}
 	copyCheckpoint("published")

@@ -790,6 +790,7 @@ The full list is `codeaf help env`. What matters headless:
 | `CODEAF_EXEC_BUDGET` | unset | `codeaf exec` only: the token budget when `--token-budget` was not passed. |
 | `CODEAF_EXEC_TIMEOUT` | unset | `codeaf exec` only: the wall when `--timeout` was not passed, as a duration or a bare number of seconds. A typed flag always wins over all three; see section 2. |
 | `CODEAF_EXIT_CODES` | unset | `legacy` restores `codeaf exec`'s old 2/3/4/5/6 exit codes for one release and changes nothing else. |
+| `CODEAF_ATTRIBUTION` | `on` | `off` (`0`, `false`) stops codeaf from adding `Assisted-by` and `Co-Authored-By` trailers to commits and tells the worker not to add AI attribution lines to commits, pull requests, issues or comments. `CODEAF_ATTRIBUTION_MODEL=off` hides only the model name while keeping attribution on. |
 
 A variable set in the environment always wins over the `/settings` sheet, and
 that row reads read-only in the sheet rather than fighting your shell.

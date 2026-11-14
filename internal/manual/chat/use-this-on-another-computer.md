@@ -2,15 +2,17 @@
 
 ## How do I use this on my laptop — pair a second computer with a code, connect another computer, and log in on a new machine
 
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time. Older chats appear on the other computer once opened here: opening one prepares and shares its copy, regardless of its age. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
 
 There is no account and no password to log in with. You pair: a code on one screen, typed on the other.
 
-You learn one thing here: **a code shown on a screen you own, typed on the other computer.**
+Use a code shown on a screen you own.
 
-The computer that has your chats shows the code. The other computer types it. After that, both computers have the same chats.
+The computer that has your chats shows the code. The other computer types it. After that, both computers share the identity; chats copy between them only when sync storage is on.
 
 This page is the code way. A new computer can also ask to join and be approved from a link, with a four-digit check: the page *Adding a computer to your devices, approving it, and removing it* tells it.
 
@@ -35,22 +37,28 @@ The code is good for 10 minutes. It works once.
 ## Share my conversation with my other computer
 
 Pair the computers with `/pair` or `codeaf pair`. A computer with submitted
-chats requires `--replace`. An idle chat lets go about 2 seconds after going idle once saved to the sync service, so an explicitly released chat opens directly on the other computer (Enter on terminal Home, or `agents.open` on `can_open` rows in the app) with no Continue-here step; **Move here** or **Continue here** moves one another computer still holds or whose hold merely lapsed, including when its holder was working.
+chats requires `--replace`. On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage). By default (`idle handoff` is off by default; turn it on in **Settings → General → idle handoff** or with `CODEAF_IDLE_HANDOFF=1`), **Continue here** moves a conversation to the other computer. With `idle handoff` on, an idle chat lets go about 2 seconds after going idle once saved to the sync service, and an explicitly released chat opens directly on the other computer (Enter on terminal Home, or `agents.open` on `can_open` rows in the app) with no Continue-here step; **Move here** or **Continue here** moves one another computer still holds or whose hold merely lapsed, including when its holder was working.
 
-## Sync my chats — how to sync between paired computers
+## Sync my chats — get my chats on my other computer, how to sync between paired computers
+
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine.
-Pair both computers first with `codeaf pair` or `/pair`, on Linux, macOS or native Windows. New chats save their turns locally and sync them to your paired
-computers through the saved or hosted relay. `CODEAF_SYNC_URL=off` stops relay traffic.
-Older chats become movable through independent copies after pairing; their original layout and files stay untouched for older builds. Chats active in the last 30 days are prepared in the background. Older chats appear on the other computer once opened here, regardless of their age. A never-paired home sends no relay requests.
+Pair both computers first with `codeaf pair` or `/pair`, on Linux, macOS or native Windows. New chats save their turns locally and sync them to your paired computers through the saved or hosted relay when storage is on. `CODEAF_SYNC_URL=off` stops relay traffic. A never-paired home sends no relay requests.
+
+## Do older chats sync after pairing — independent copies and untouched originals
+
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+
+Older chats become movable through independent copies after pairing; their original layout and files stay untouched for older builds. Chats active in the last 30 days are prepared in the background, and opening any other older chat here prepares its copy so it appears on the other computer regardless of its age. A never-paired home sends no relay requests.
 
 ## My idle chat was continued on another computer — sending, queueing, steering and retrying
 
 Before accepting new work, an open synced chat checks who holds it if its last confirmation is older than 2 seconds (back-to-back sends reuse it). The read waits at most 750 ms; sending cancels idle handoff preparation immediately without extending that deadline, and tasks recheck after slow preparation. If the sync service is unreachable, a window that still holds its chat keeps working locally and waits 30 seconds before asking again; a released window must confirm ownership first or leave your work unsent.
 
-With two or more paired computers, an idle chat lets go about 2 seconds after going idle once its journal, working files, shared memory and settings are on the sync service (excluding rebuildable folders). Its window stays open as a reader; running turns, queued or steering work, tasks, jobs, unsaved writes and failed uploads keep the hold. A released chat opens directly on another paired computer with no Continue-here step (Enter on terminal Home, or `agents.open` on `can_open` rows); a live hold or a lapsed hold on another computer asks with **Move here** or **Continue here**. New work in the window that released its own idle hold takes the unchanged chat back in place with no prompt, keeping local install folders without a setup card; a newer saved head or a hold that merely lapsed admits nothing until you open or continue it.
+By default (**Settings → General → idle handoff** is off), open idle chats keep renewing their hold and a released remote chat asks **Continue here**. When you turn **idle handoff** on in `/settings` or with `CODEAF_IDLE_HANDOFF=1` with two or more paired computers, an idle chat lets go about 2 seconds after going idle once its journal, working files, shared memory and settings are on the sync service (excluding rebuildable folders). Its window stays open as a reader; running turns, queued or steering work, tasks, jobs, unsaved writes and failed uploads keep the hold. With `idle handoff` on, a released chat opens directly on another paired computer with no Continue-here step (Enter on terminal Home, or `agents.open` on `can_open` rows); a live hold or a lapsed hold on another computer asks with **Move here** or **Continue here**. New work in the window that released its own idle hold takes the unchanged chat back in place with no prompt, keeping local install folders without a setup card; a newer saved head or a hold that merely lapsed admits nothing until you open or continue it.
 
-If another computer continued the chat, this window only shows it: sending, queueing, steering and retrying refuse before saving words or calling a model, naming that computer, while existing questions and stop still work. Sync-off, unpaired and single-computer homes are unchanged and add no network wait.
+If another computer continued the chat, this window only shows it: sending, queueing, steering and retrying refuse before saving words or calling a model, naming that computer, while existing questions and stop still work. Sync-off, unpaired, single-computer and default (`idle handoff` off) homes keep their hold while open.
 
 ## What does /laptop do — the laptop command pairs chats with my other computer; /pair, /sync and /link
 
@@ -139,7 +147,9 @@ that code did not work, or it timed out; ask for a new one
 
 A code that ran out of time (10 minutes) says the same. Ask for a new code with `/pair` on the computer that has your chats.
 
-Other things you can meet, each in one sentence:
+## Why did pairing fail — wrong code shape, expired code, another device or network limits
+
+These are other code-pairing refusals, each in one sentence:
 
 A code with the wrong shape is refused before anything is sent:
 
@@ -193,9 +203,11 @@ too many pairings from this network; wait 7 min
 
 ## What the pairing shares — the other computer holds everything this one holds
 
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
-**Pairing gives the other computer your whole identity.** Your chats, your saved keys and your sync are all part of it. The other computer now holds everything that this computer holds.
+**Pairing gives the other computer your whole identity.** Your chats, your saved keys and your sync are all part of it. The other computer receives the identity keys; saved chats and vault content still need enabled sync storage to copy.
 
 It is not a view of your chats. It is a copy of you. Pair only a computer you own and trust.
 
@@ -285,13 +297,15 @@ writes made after the replacement was installed.
 
 ## I got a new laptop — move my chats to a new machine
 
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 1. On the old computer, type `/pair`.
 2. On the new computer, run `codeaf pair <code>`, or type `/pair <code>` in the chat, or type the code on the first screen.
 3. Compare the three words. Answer `y` on the old computer.
 
-The new computer now has your chats. If both computers are on the same relay, chats sync between them. Read *Sync your chats between machines* in the terminal page for the sync settings.
+The new computer now has your identity. If both computers are on the same relay and storage is enabled, chats sync between them. Read *Sync your chats between machines* in the terminal page for the sync settings.
 
 There is no phone app for continuing chats. A phone browser can open the `/p/` pairing-link page, but that page only shows the approval command and a link for a computer with codeaf installed; it does not turn the browser into a paired device. Use a supported desktop or server build to pair and continue chats.
 
@@ -366,8 +380,8 @@ The first-run line about the hosted relay is said once, when chats are first cop
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
-Your chats live on your own computer first. They are also copied, sealed,
-to a relay, so your other computers can open them. Which relay is one setting,
+Your chats live on your own computer first. When sync storage is enabled they are also copied, sealed,
+to the relay, so your other computers can open them. Which relay is one setting,
 `CODEAF_SYNC_URL`, and there is no sign-in and no account:
 
 - **Unset** uses this build's channel relay when it has one — `https://codeaf.agentfield.ai/fabric` on stable releases and release candidates, `https://caf-fabric-staging.instrument-santosh.workers.dev` on staging builds, and `https://caf-fabric-dev.instrument-santosh.workers.dev` on dev builds and local builds from source — and says so once, in one
@@ -383,13 +397,17 @@ to a relay, so your other computers can open them. Which relay is one setting,
   *Reaching a machine with a pairing code*). The hosted relay and your own speak the same way, so
   nothing else changes.
 
+## Is my code private on the relay — encrypted chats, files and visible metadata
+
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+
 **Is my code private?** Everything a chat holds, its turns and the files it saved, is sealed
 on your computer with a key only your own computers have, before it is sent. The relay keeps
 ciphertext: it cannot read your messages, your code, or even the names of your chats. It can
 see that an identity's devices talk to it, when, and how many bytes. Turning it off
 stops new copies going, and a relay you run is yours to empty.
 
-## The relay — what it sees, your own relay, and turning pairing off
+## The relay — what it sees, your own relay, and turning pairing off; sync is off, CODEAF_SYNC_URL=off, pairing needs a sync address
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
@@ -471,6 +489,8 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 
 ## Which door do I use — pairing, --at or --host
 
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 - **The same chats on both computers:** pair them with `/pair`. This page.
@@ -481,13 +501,15 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 
 ## Moving chats on Windows — vault permissions, refused names, symlinks, hard links, WSL and every build
 
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 `CODEAF_SYNC_URL=off` stops relay traffic; local chats still keep their saved turns.
 Older chats move through independent copies after pairing. Their original files and layout remain untouched for older builds. Nothing is deleted automatically to save disk.
 
 Native Windows moves chats with the native engine, just like Linux and macOS.
-Opening a free paired chat directly (or choosing Continue here when another computer still holds it) installs the saved chat while other chats stay open. You can send
+Continue here (or opening a free paired chat directly when `idle handoff` is on) installs the saved chat while other chats stay open. You can send
 from the installed copy and open or continue it back on your other computer.
 Install Git for Windows to run commands; codeaf uses Git Bash, never the WSL launcher.
 A build with no compatible engine keeps moving chats absent and says
@@ -520,6 +542,8 @@ and existing remote access still work. Use a build carrying the newer engine, or
 `CODEAF_FURROW` at one and restart.
 
 ## Does a CA certificate bundle stay out as a private key — cacert.pem
+
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
@@ -560,6 +584,12 @@ Once this computer has its own saved pairing keys, a sent turn, tracked work, a 
 
 ## What happens to chats made with chat --once before the first pairing?
 
-If this computer has no saved pairing keys yet — for example it has only ever run `codeaf chat --once` — those chats are kept when it first pairs without `--replace`, and pairing does not discard or hide them. They are not sent at the moment of pairing. The next time codeaf's window opens on this computer, each one is saved for syncing and appears on your other computers' Home, where it opens directly because no computer holds it.
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+
+If this computer has no saved pairing keys yet — for example it has only ever run `codeaf chat --once` — those chats are kept when it first pairs without `--replace`, and pairing does not discard or hide them. They are not sent at the moment of pairing. The next time codeaf's window opens on this computer, each one is saved for syncing and appears on your other computers' Home, where it can be continued (or opened directly when `idle handoff` is turned on, because no computer holds it).
 
 A computer that already has its own saved pairing keys follows the local-work refusal and explicit `--replace` rules above.
+
+## Why pairing alone does not copy saved chats — sync storage access
+
+Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.

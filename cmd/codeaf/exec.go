@@ -120,7 +120,8 @@ func runExec(args []string) error {
 	// that took the flag and then resolved it differently from every other door
 	// would be the parity it claims in name only. Only the work seat is printed,
 	// because only the work seat runs anything.
-	useAutoSeats(settings)
+	held := useAutoSeats(settings)
+	defer stopPoolErrands(held)
 	seats := doorSeats(settings, *model, *planModel, prompt)
 	applySeats(&settings, seats)
 	fmt.Fprintln(os.Stderr, seats.Work.Report())
@@ -170,6 +171,7 @@ func runExec(args []string) error {
 	}
 
 	linear := exec.NewLinear(client, space, web, *maxTurns, *maxTokens, deadline).
+		WithAttribution(config.AttributionAt(settings.ProfileDir)).
 		WithAssistedBy(config.AssistedByModelAt(settings.ProfileDir, settings.Model)).
 		WithContextLength(modelCatalog.ContextLength(settings.Model))
 	// NO OUTCOME IS CARRIED AS NO OUTCOME, all the way to the ladder. This used

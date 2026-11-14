@@ -242,7 +242,7 @@ func (j *job) blockDelivery(reason string) {
 	if cancel != nil {
 		cancel()
 	}
-	_ = j.o.Runner.Stop(j.id)
+	j.o.Runner.Withdraw(j.id)
 }
 
 // Retain the latest recorded mirror separately from the frozen request. This is

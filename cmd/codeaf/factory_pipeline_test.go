@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -285,5 +286,67 @@ func TestARunnersReadNeverClearsThisMachinesCopy(t *testing.T) {
 	factoryItemRecipe(nil, dirs, factory.Item{Repo: "owner/repo"})
 	if c, _, err := st.PipelineCopy("owner/repo"); err != nil || c == nil {
 		t.Fatalf("a runner's read cleared this machine's copy: %+v (%v)", c, err)
+	}
+}
+
+type blockingFactoryForge struct {
+	userEntered     chan struct{}
+	contentsEntered chan struct{}
+	release         chan struct{}
+}
+
+func (f *blockingFactoryForge) User(context.Context, string, string) (forge.UserProfile, string, error) {
+	close(f.userEntered)
+	<-f.release
+	return forge.UserProfile{}, "", nil
+}
+
+func (f *blockingFactoryForge) Contents(context.Context, string, string, string, string, string) (string, string, string, error) {
+	close(f.contentsEntered)
+	<-f.release
+	return "", "", "", nil
+}
+
+func TestStopFactoryLoadersClosesStuckLoadersWithinOneBound(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	bound := 120 * time.Millisecond
+	t.Cleanup(factorygithub.ShortenCloseWait(bound))
+
+	fake := &blockingFactoryForge{
+		userEntered:     make(chan struct{}),
+		contentsEntered: make(chan struct{}),
+		release:         make(chan struct{}),
+	}
+	var releaseOnce sync.Once
+	unblock := func() { releaseOnce.Do(func() { close(fake.release) }) }
+	t.Cleanup(unblock)
+
+	people := factorygithub.NewPeopleLoader(func(context.Context) factorygithub.PeopleAPI { return fake }, nil)
+	rules := factorygithub.NewPipelineLoader(func(context.Context) factorygithub.PipelineAPI { return fake })
+
+	people.Known("ada")
+	callerCtx, callerCancel := context.WithCancel(context.Background())
+	callerCancel()
+	if _, err := rules.Load(factorygithub.ShowOnly(callerCtx), "acme/api", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	<-fake.userEntered
+	<-fake.contentsEntered
+
+	profile := factoryProfile("")
+	factoryPeopleCaches.Lock()
+	factoryPeopleCaches.profiles[profile] = people
+	factoryPeopleCaches.Unlock()
+	factoryRuleCaches.Lock()
+	factoryRuleCaches.profiles[profile] = rules
+	factoryRuleCaches.Unlock()
+
+	start := time.Now()
+	stopFactoryLoaders(profile)
+	elapsed := time.Since(start)
+	unblock()
+
+	if elapsed >= 2*bound || elapsed >= 500*time.Millisecond {
+		t.Fatalf("stopFactoryLoaders waited %s with closeWait=%s; want within one bound", elapsed, bound)
 	}
 }

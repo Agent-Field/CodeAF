@@ -49,18 +49,20 @@ func TestTheLeafFinalMessageIsTheArtifactAndNeverAPlan(t *testing.T) {
 func TestEveryLeafVariantCarriesTheAnswerFirstLaw(t *testing.T) {
 	const law = "is the deliverable itself,\nnot a report about it"
 	for name, build := range map[string]struct {
-		assistedBy string
-		task       Task
+		assistedBy     string
+		attributionOff bool
+		task           Task
 	}{
 		"a bare leaf":                       {task: Task{}},
 		"a leaf under the attribution law":  {assistedBy: "deepseek/deepseek-v4-flash", task: Task{}},
+		"a leaf with attribution off":       {assistedBy: "deepseek/deepseek-v4-flash", attributionOff: true, task: Task{}},
 		"a reflex":                          {task: Task{Reflex: true}},
 		"a leaf with a generated method":    {task: Task{Contract: "Read the filings first."}},
 		"a reflex with a generated method":  {task: Task{Reflex: true, Contract: "Read the filings first."}},
 		"the deliverable owner of a fanout": {assistedBy: "deepseek/deepseek-v4-flash", task: Task{Contract: contractOfASink}},
 	} {
 		t.Run(name, func(t *testing.T) {
-			linear := &Linear{assistedBy: build.assistedBy}
+			linear := &Linear{assistedBy: build.assistedBy, attributionOff: build.attributionOff}
 			system := linear.system(build.task, nil)
 			if !strings.Contains(system, law) {
 				t.Fatalf("the answer-first law is missing from %s", name)

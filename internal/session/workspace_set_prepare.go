@@ -265,7 +265,7 @@ func (a *Agent) keepStoppedWorkspaceSet(run *beltRun) (merge, branch string, cha
 					problem = err.Error()
 				}
 			}
-			saved, saveProblem, _ := commitTaskWork(tree.dir, run.title, rootChanged, a.signsGitWork(), true)
+			saved, saveProblem, _ := commitTaskWork(tree.dir, run.title, rootChanged, a.signsGitWork(), true, true)
 			rootChanged = alsoChanged(rootChanged, saved)
 			if saveProblem != "" {
 				problem = withReport(problem, saveProblem)

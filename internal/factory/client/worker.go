@@ -26,6 +26,9 @@ var ErrLeaseGone = errors.New("factory worker: the lease is gone")
 // ErrLeaseWithdrawn is a retry or manual handover, rather than a person's Stop.
 var ErrLeaseWithdrawn = fmt.Errorf("factory worker: execution withdrawn: %w", ErrLeaseGone)
 
+// ErrLeaseStopped is a lease revoked by a person's Stop.
+var ErrLeaseStopped = fmt.Errorf("factory worker: stopped by person: %w", ErrLeaseGone)
+
 // Refusal is a request the factory read and refused, in its own sentence, as
 // opposed to one that never reached it.
 type Refusal struct {
@@ -177,8 +180,17 @@ func PrepareWorkerReport(report api.WorkerReport, key string) (PreparedWorkerRep
 			models[report.Steps[i].Name] = model
 			report.Steps[i].Model = ""
 		}
-		if report.Steps[i].RoundLimit > 0 || report.Steps[i].Verification != nil {
-			runtime[report.Steps[i].Name] = api.StepRuntime{RoundLimit: report.Steps[i].RoundLimit, Verification: report.Steps[i].Verification}
+		var verificationFailureKey string
+		if result := report.Steps[i].Result; result != nil && result.VerificationFailureKey != "" {
+			copy := *result
+			verificationFailureKey, copy.VerificationFailureKey = copy.VerificationFailureKey, ""
+			report.Steps[i].Result = &copy
+		}
+		if report.Steps[i].RoundLimit > 0 || report.Steps[i].Verification != nil || verificationFailureKey != "" {
+			runtime[report.Steps[i].Name] = api.StepRuntime{
+				RoundLimit: report.Steps[i].RoundLimit, Verification: report.Steps[i].Verification,
+				VerificationFailureKey: verificationFailureKey,
+			}
 		}
 		report.Steps[i].RoundLimit, report.Steps[i].Verification = 0, nil
 	}
@@ -299,6 +311,9 @@ func (w *WorkerClient) sendWith(ctx context.Context, method, path, bearer string
 		}
 		if resp.Header.Get(api.LeaseWithdrawnHeader) == "1" {
 			return resp.StatusCode, ErrLeaseWithdrawn
+		}
+		if resp.Header.Get(api.LeaseStoppedHeader) == "1" {
+			return resp.StatusCode, ErrLeaseStopped
 		}
 		return resp.StatusCode, ErrLeaseGone
 	case resp.StatusCode < 200 || resp.StatusCode >= 300:

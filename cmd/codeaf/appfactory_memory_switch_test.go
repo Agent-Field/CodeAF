@@ -38,7 +38,7 @@ func TestMemorySwitchDefaultsOnAndChangesLive(t *testing.T) {
 		}
 	})
 	t.Run("legacy consent without saved choice", func(t *testing.T) {
-		profile := t.TempDir()
+		profile := testHome(t)
 		vault := knowledge.Open(profile)
 		if err := vault.StartBuild(); err != nil {
 			t.Fatal(err)
@@ -114,7 +114,6 @@ func TestMemorySwitchDefaultsOnAndChangesLive(t *testing.T) {
 }
 
 func savedMemoryOffApp(t *testing.T) {
-	s := newLocalSetup(t)
 	var posts atomic.Int64
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -156,12 +155,13 @@ func savedMemoryOffApp(t *testing.T) {
 		return http.DefaultTransport.RoundTrip(clone)
 	})}
 	t.Cleanup(func() { http.DefaultClient = originalClient })
+	s := newLocalSetup(t)
 	profile := v3Profile(t, map[string]any{config.KeyMemoryEnabled: "off", config.KeyTaskModelsMode: "one", config.KeyTaskModelsOne: knowledge.Model, "models.tiers.low": knowledge.Model, "models.tiers.reflex": knowledge.Model, "models.roles": ""})
 	t.Setenv(config.ProfileDirEnv, profile)
 	t.Setenv("OPENROUTER_API_KEY", "fixture")
 	t.Setenv("CODEAF_BASE_URL", server.URL)
 	t.Setenv("CODEAF_MODEL_POOL", "off")
-	callPath := filepath.Join(t.TempDir(), "calls.jsonl")
+	callPath := filepath.Join(testHome(t), "calls.jsonl")
 	t.Setenv(calllog.EnvVar, callPath)
 	freshEngineProcess(t)
 	g := newRunRig(t)
@@ -170,6 +170,7 @@ func savedMemoryOffApp(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(proc.closeAll)
+	t.Cleanup(func() { _ = s.backend.Close() })
 	launch, err := openV3Launch(proc, v3Options{Model: knowledge.Model, OneModel: true, Workspace: g.workspace})
 	if err != nil {
 		t.Fatal(err)

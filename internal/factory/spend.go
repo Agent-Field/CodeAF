@@ -54,6 +54,7 @@ func JobLifetimeSpent(it Item) float64 {
 // ClearJobRun keeps the money before clearing the run and its pre-run chat.
 // Calling it again cannot book the same money twice.
 func ClearJobRun(it *Item) {
+	it.PausedRecoveryQuestion = ""
 	it.SpentBefore += it.ChatSpent
 	if it.Stream != nil {
 		it.SpentBefore += it.Stream.Spent
@@ -64,6 +65,22 @@ func ClearJobRun(it *Item) {
 	it.Stream = nil
 	it.ChatSpent = 0
 	it.ChatModels = nil
+}
+
+// ForgetJobSpend starts the job's money again from nothing, for a job a Bring
+// back makes fresh: its total reads $0 and its whole budget is ahead of it.
+// What it had spent moves to SpentCleared, which only the factory's spending
+// totals read ([SpentIn]). The receipts of the old run's reports are marked
+// Cleared, so usage that settles late for one of them follows the money there
+// and is never booked on the fresh job.
+func ForgetJobSpend(it *Item) {
+	ClearJobRun(it)
+	it.SpentCleared += it.SpentBefore
+	it.SpentBefore, it.MemorySpent = 0, 0
+	for i := range it.ReportReceipts {
+		it.ReportReceipts[i].Cleared = true
+	}
+	it.ReportRetryAt = time.Time{}
 }
 
 // JobUnworked says nothing has been done on the job: no start, taker, run,
@@ -291,9 +308,11 @@ func SpendRange(from, to string, loc *time.Location) (start, end time.Time, err 
 
 // SpentIn is the job's whole spend ([JobLifetimeSpent]) when it is placed ([SpentAt])
 // in [start, end), and false when it spent nothing or is placed outside. It is
-// the one placement rule every spend-by-day read counts by.
+// the one placement rule every spend-by-day read counts by. What a Bring back
+// cleared from the job (SpentCleared) is still money the factory spent, so it
+// is counted here and nowhere else.
 func SpentIn(it Item, start, end time.Time) (float64, bool) {
-	usd, at := JobLifetimeSpent(it), SpentAt(it)
+	usd, at := JobLifetimeSpent(it)+it.SpentCleared, SpentAt(it)
 	return usd, usd > 0 && !at.Before(start) && at.Before(end)
 }
 

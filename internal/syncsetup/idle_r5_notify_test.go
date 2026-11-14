@@ -2,18 +2,20 @@ package syncsetup
 
 import (
 	"context"
-	"github.com/Agent-Field/codeaf/internal/cellstore"
-	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/cellstore"
+	"github.com/Agent-Field/codeaf/internal/chatlist"
 )
 
 func TestIdleRelease_R5_4_IdleNoticeCannotOvertakeReacquire(t *testing.T)   { idleR5Notice(t, true) }
 func TestIdleRelease_R5_4_UnchangedFreeObservationKeepsNotice(t *testing.T) { idleR5Notice(t, false) }
 func idleR5Notice(t *testing.T, reacquire bool) {
+	t.Setenv("CODEAF_IDLE_HANDOFF", "on")
 	h := newTwoHomes(t)
 	mustNil(t, h.b.putDevice(t.Context(), nameB))
 	var current atomic.Pointer[Drive]

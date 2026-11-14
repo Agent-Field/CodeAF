@@ -9,6 +9,7 @@ import (
 )
 
 func TestIdleOpen_R6_LapsedWhileWorkingKeepsTheCard(t *testing.T) {
+	t.Setenv("CODEAF_IDLE_HANDOFF", "on")
 	listing := directory.Listing{Now: 1000, Devices: map[string]directory.Device{"A": {}, "B": {}}, Cells: map[string]directory.Cell{
 		heldCell: {Head: "saved", Lease: directory.Lease{Device: "A", Fence: 7, Expires: 500, Working: true}},
 	}}
@@ -23,6 +24,7 @@ func TestIdleOpen_R6_LapsedWhileWorkingKeepsTheCard(t *testing.T) {
 }
 
 func TestIdleOpen_R6_ReleasedStillOpensDirectly(t *testing.T) {
+	t.Setenv("CODEAF_IDLE_HANDOFF", "on")
 	listing := directory.Listing{Now: 1000, Devices: map[string]directory.Device{"A": {}, "B": {}}, Cells: map[string]directory.Cell{
 		heldCell: {Head: "saved", Lease: directory.Lease{Device: "A", Fence: 7, ReleasedAt: 500}},
 	}}

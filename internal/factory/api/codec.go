@@ -111,13 +111,17 @@ func ToSnapshot(q Queue, jobs []Job) factory.Snapshot {
 // Lost names the Go fields the wire does not carry, and why. The round-trip
 // test reads it, so a field is either carried or named here.
 var Lost = map[string]string{
-	"Item.Passing":       "service-owned: who is passing the waiting approve step, set by the approval door just before its answer and moved onto the step's phase (Step.passed carries the result)",
-	"Item.PassJudge":     "service-owned: the manager's judgement of a manager-when approval, read only by the service that decides Auto (its reason reaches the job as needs_you's words)",
-	"Item.GitHubIssueID": "service-owned permanent GitHub identity; workers send RunReport deltas through run.ApplyReport, never replacement Items",
-	"Item.SourceClosed":  "service-owned automatic close provenance; RunReport has no such field; starting work clears it through TouchIssue",
-	"Item.PersonTouched": "service-owned reconciliation exclusion; RunReport cannot replace it; store.RecordIssueTouch preserves ownership",
+	"JobContext.Markdown":         "attachment text is private to worker admission; ordinary job and queue reads carry only title and source",
+	"Item.PausedRecoveryQuestion": "the service owns the paused decision identity; readers see the paused presentation",
+	"Item.LastRecoveryResume":     "the service's private acknowledgment for a repeated chat retry",
+	"Item.Passing":                "service-owned: who is passing the waiting approve step, set by the approval door just before its answer and moved onto the step's phase (Step.passed carries the result)",
+	"Item.PassJudge":              "service-owned: the manager's judgement of a manager-when approval, read only by the service that decides Auto (its reason reaches the job as needs_you's words)",
+	"Item.GitHubIssueID":          "service-owned permanent GitHub identity; workers send RunReport deltas through run.ApplyReport, never replacement Items",
+	"Item.SourceClosed":           "service-owned automatic close provenance; RunReport has no such field; starting work clears it through TouchIssue",
+	"Item.PersonTouched":          "service-owned reconciliation exclusion; RunReport cannot replace it; store.RecordIssueTouch preserves ownership",
 
 	"Item.MemorySpent":             "runner-local provenance already included in total cost; completed-round checks compare only charges since local admission, so readers and a newly admitted worker need no historical split",
+	"Item.SpentCleared":            "the service's own record of what a Bring back cleared from the job; only the factory's spending totals read it (GET /v1/spend/*), and a job never carries it, so a fresh job reads $0",
 	"Snapshot.People":              "the queue projects identities onto mentioned handles only; unrelated cached profiles do not cross",
 	"Item.PlannedFiles":            "the cache never crosses: the wire's planned_files is derived from the plan step's result (factory.PlanFilesOf), which does",
 	"Item.BriefSeen":               "each person's own: the caller's crosses as brief_seen (ForViewer), and nobody else's ever does",
@@ -148,6 +152,7 @@ var Lost = map[string]string{
 	"Item.RouteRefused":   "the service's own mark that a refused routing rule's activity row was written once; the row itself is the record a surface reads",
 	"Item.RepoSetBy":      "who gave the job its repository is the service's own routing input, read where the intake runs; the repository itself crosses as repo",
 	"Item.OverLimit":      "known gap: crosses as over_limit only while the job is queued, which is the only time it means anything; a round trip of any other state loses it",
+	"Item.NeedsAt":        "each store's own clock of when the job's wait on a person began, kept at its writes (factory.NoteWait); it crosses as needs_you.since for a wait with no clock of its own",
 }
 
 // cloneBlocked is a copy of a job's block, so a job and the item it came from
@@ -166,7 +171,8 @@ func FromItem(it factory.Item) Job {
 		factory.MarkPersonStopped(&it)
 	}
 	j := Job{
-		FromJob: it.FromJob, SourceIssue: it.SourceIssue, RunOn: it.RunOn, AgentField: it.AgentField, AgentFieldSteps: it.AgentFieldSteps,
+		Group: it.Group, Milestone: it.Milestone, Context: mapList(it.Context, fromJobContext),
+		FromJob: it.FromJob, SplitFrom: it.SplitFrom, SourceIssue: it.SourceIssue, RunOn: it.RunOn, AgentField: it.AgentField, AgentFieldSteps: it.AgentFieldSteps,
 		WaitsOn: append([]int(nil), it.WaitsOn...), PolicyRun: it.PolicyRun, Blocked: cloneBlocked(it.Blocked),
 		Recovery: it.Recovery, Autonomy: it.Autonomy, AutonomyWhy: factory.AutonomyBlockReason(it), FollowUp: it.FollowUp, Manual: it.Manual, Effort: it.Effort,
 		SetupHeld: it.SetupHeld, Held: heldInQueue(it), OverLimit: it.OverLimit && it.State == factory.StateQueued,
@@ -203,6 +209,9 @@ func FromItem(it factory.Item) Job {
 	j.ReadSize = readSize(it)
 	j.PR = fromPR(it.PullRequest)
 	j.Merge = jobMerge(it)
+	if factory.PausedDecision(it) {
+		j.State = StateNeedsYou
+	}
 	if j.State == "" {
 		j.State = string(it.State)
 	}
@@ -244,6 +253,9 @@ func FromItem(it factory.Item) Job {
 }
 
 func needsYou(it factory.Item) *NeedsYou {
+	if factory.RecoveryPaused(it) {
+		return nil
+	}
 	kind := factory.NeedsKind(it)
 	if kind == "" {
 		return nil
@@ -369,7 +381,7 @@ func firstNonBlank(v ...string) string {
 func itQuestionID(id int) string { return fmt.Sprintf("q%d", id) }
 
 func spendingLimit(it factory.Item) *SpendingLimit {
-	if factory.NeedsKind(it) != factory.NeedsSpendingLimit {
+	if factory.RecoveryPaused(it) || factory.NeedsKind(it) != factory.NeedsSpendingLimit {
 		return nil
 	}
 	spent := factory.JobLifetimeSpent(it)
@@ -430,11 +442,15 @@ func CanFor(it factory.Item, caller string, clocks ...time.Time) Can {
 	if it.DoneHow == "closed_locally" {
 		return Can{Reopen: owner, RunAsNew: owner}
 	}
+	if factory.RecoveryPaused(it) {
+		return Can{Close: owner, Stop: owner && active, Drop: owner, RaiseBudget: owner, Reply: a.Reply}
+	}
 	// START NOW ON A QUEUED JOB IS THE ONE PASS ABOVE JOBS AT ONCE, so a job
 	// already given it is not offered it again.
 	queued := state == StateQueued && it.State == factory.StateQueued
 	running := state == StateRunning && it.State == factory.StateRunning && !it.Publishing
 	held := (queued || running) && it.Stream != nil && it.Stream.Paused
+	holdDecision := factory.CanPauseRecovery(it)
 	// AN AGENTFIELD RUN'S APPROVAL IS THE JOB'S PERSON'S: approve, ask for
 	// changes with words, or reject — the three answers the control plane
 	// takes, carried to it by the runner that started the run.
@@ -444,7 +460,7 @@ func CanFor(it factory.Item, caller string, clocks ...time.Time) Can {
 	}
 	can := Can{
 		Run: owner && state == StateBacklog, StartNow: owner && (state == StateBacklog || queued && !it.OverLimit),
-		Hold: owner && (queued || running) && !held, Resume: owner && held,
+		Hold: owner && ((queued || running) && !held || holdDecision), Resume: owner && held,
 		Close: owner && state != StateDone, Stop: owner && active, Dismiss: factory.NormalizeHandle(caller) != "", Drop: owner && state != StateDone,
 		ChangeAssignee: person != "" && factory.NormalizeHandle(caller) == person, Unassign: person != "" && factory.NormalizeHandle(caller) == person, Nudge: person != "", RaiseBudget: owner, StopAfterStep: owner && factory.MayStopAfterStep(it),
 		Undo:          (it.Approval != nil && it.Approval.State == "approving" && now.Before(it.Approval.UndoUntil) && it.Approval.DecidedBy == factory.NormalizeHandle(caller)) || (it.StopUndo != nil && now.Before(it.StopUndo.Until) && it.StopUndo.By == factory.NormalizeHandle(caller)) || (it.Merging != nil && it.Merging.State == factory.MergeAsked && now.Before(it.Merging.UndoUntil) && it.Merging.By == factory.NormalizeHandle(caller)),
@@ -452,6 +468,7 @@ func CanFor(it factory.Item, caller string, clocks ...time.Time) Can {
 		RetryPublish: a.RetryPublish, Answer: answer, AssignToMe: a.AssignToMe, Reply: a.Reply,
 		SpendAnswer: owner && it.State == factory.StateNeedsYou && it.QKind == factory.QKindSpendStopped,
 		RejectPlan:  answer && planSendsBack(it),
+		AcceptStep:  answer && factory.OffersAccept(it),
 		Reject:      (answer || approve) && factory.WaitsOnApproval(it),
 		PRReady:     owner && factory.NormalizeHandle(caller) != "" && factory.OffersMarkReady(it),
 		Merge:       owner && factory.NormalizeHandle(caller) != "" && factory.MergeGate(it, factory.MergeAsk{By: caller}).OK,
@@ -593,7 +610,8 @@ func ToItem(j Job) factory.Item {
 		d = &JobDesk{}
 	}
 	it := factory.Item{
-		FromJob: j.FromJob, SourceIssue: j.SourceIssue, RunOn: j.RunOn, AgentField: j.AgentField, AgentFieldSteps: j.AgentFieldSteps,
+		Group: j.Group, Milestone: j.Milestone, Context: mapList(j.Context, toJobContext),
+		FromJob: j.FromJob, SplitFrom: j.SplitFrom, SourceIssue: j.SourceIssue, RunOn: j.RunOn, AgentField: j.AgentField, AgentFieldSteps: j.AgentFieldSteps,
 		WaitsOn: append([]int(nil), j.WaitsOn...), PolicyRun: j.PolicyRun, PolicyGroup: d.PolicyGroup, Blocked: cloneBlocked(j.Blocked),
 		Recovery: j.Recovery, Autonomy: j.Autonomy, FollowUp: j.FollowUp, Manual: j.Manual, Effort: j.Effort,
 		SetupHeld: j.SetupHeld, StopAfterStep: j.StopAfterStep,
@@ -608,7 +626,7 @@ func ToItem(j Job) factory.Item {
 		Assignee: d.Assignee, Starter: d.Starter, Taker: d.Taker,
 		SourceAssignees: slices.Clone(d.Assignees),
 		Tier:            factory.Tier(d.Tier), Origin: factory.Origin(d.Origin), SourceRef: d.SourceRef, Synced: d.Synced, Changed: d.ChangedAt,
-		Triage: toTriage(d.Triage), Cap: d.Cap,
+		Triage: toTriage(d.Triage), Cap: d.Cap, CapChosen: d.CapChosen,
 		Proof: mapList(j.Claims, toClaim), Policy: mapList(d.Policy, toClaim),
 		Marked: d.Marked, Labels: d.Labels, Checks: d.Checks, Diff: d.Diff,
 		Adapted: d.Adapted, Notes: d.Notes, Talk: d.Talk, Heard: d.Heard, Thread: d.Thread,
@@ -924,7 +942,7 @@ func fromDesk(it factory.Item) *JobDesk {
 		Assignee: it.Assignee, Starter: it.Starter, Taker: it.Taker,
 		Assignees: slices.Clone(it.SourceAssignees),
 		Tier:      string(it.Tier), Origin: string(it.Origin), Synced: it.Synced, ChangedAt: it.Changed,
-		Triage: fromTriage(it.Triage), Cap: it.Cap, Policy: mapList(it.Policy, fromClaim),
+		Triage: fromTriage(it.Triage), Cap: it.Cap, CapChosen: it.CapChosen, Policy: mapList(it.Policy, fromClaim),
 		Marked: it.Marked, Labels: it.Labels, Checks: it.Checks, Diff: it.Diff,
 		Adapted: it.Adapted, Notes: it.Notes, Talk: it.Talk, Thread: it.Thread, Heard: it.Heard,
 		Comments: mapList(it.Comments, FromComment), CommentReads: slices.Clone(it.CommentReads), Files: mapList(it.Files, fromFile),
@@ -1144,7 +1162,7 @@ func annotateQuestion(q *Question, it factory.Item) {
 		q.NextLimit = factory.NextJobCap(it)
 	}
 	if it.QKind == factory.QKindOutOfAttempts && len(q.Options) == 0 {
-		q.Options = append([]string(nil), factory.OutOfAttemptOptions...)
+		q.Options = factory.OutOfAttemptChoices(it)
 	}
 	if len(q.Options) == 0 && it.Asking == nil && (q.Kind == "cap" || q.Kind == "max_rounds") {
 		q.Options = []string{"yes", "no"}
@@ -1225,6 +1243,10 @@ func runStep(s Step, p factory.Phase) Step {
 	s.SkipReason = p.SkipReason
 	s.RoundLimit, s.Verification = p.RoundLimit, p.Verification
 	s.InRun, s.State, s.Round, s.Note, s.Tasks = true, string(p.State), p.Round, p.Note, p.Tasks
+	// Keep the interrupted attempt in the run, but its checks are no longer live.
+	if p.State == factory.PhaseRunning && p.Failure != nil && p.Failure.Code == factory.CodeMachineLost && p.Failure.Next == factory.FailureStopped {
+		s.State, s.Verification = StepWaiting, nil
+	}
 	s.LeftMS, s.Chat, s.Handle = p.Left.Milliseconds(), p.Chat, p.Handle
 	if string(p.Kind) != s.Kind {
 		s.RunKind = string(p.Kind)

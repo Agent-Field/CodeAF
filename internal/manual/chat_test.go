@@ -425,10 +425,16 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"stop adding a co-author trailer to my commits", "permissions"},
 		{"does it sign every comment it leaves on my pull request", "permissions"},
 		{"what is the small drafted with line under its comment", "permissions"},
-		// the user’s rulings on #1410 (2026-09-24): signing has no off, a
-		// person who had turned it off is told so, and a task landed on the
-		// worker harness, the belt tasks run on by default, names no model.
+		// Attribution can be turned off with the attribution row or
+		// CODEAF_ATTRIBUTION=off, and a task landed on the worker harness, the
+		// belt tasks run on by default, names no model.
 		{"I turned attribution off before, why are my commits signed again", "permissions"},
+		{"how do I remove Co-Authored-By CodeAF from my commits", "permissions"},
+		{"turn off attribution", "permissions"},
+		{"stop codeaf signing my commits", "permissions"},
+		{"remove the drafted with CodeAF footer from my pull requests", "permissions"},
+		{"can I disable the Assisted-by trailer", "permissions"},
+		{"what does CODEAF_ATTRIBUTION do", "permissions"},
 		{"why does the commit my task landed not name the model", "permissions"},
 		// AND THE TASK PROPOSAL AS IT IS DRAWN NOW that it is that block too
 		// (internal/tui3's task.go), asked the four ways somebody meets the
@@ -3285,9 +3291,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"codeaf relay --listen --store how do I run my own relay", "relay-hosted-or-your-own"},
 		{"is there a docker image for the relay", "relay-hosted-or-your-own"},
 		{"is there a storage limit on the relay", "relay-limits-and-refusals"},
+		{"how much sync space am I using", "relay-limits-and-refusals"},
+		{"how close am I to the relay limit", "relay-limits-and-refusals"},
+		{"how big is my relay storage", "relay-limits-and-refusals"},
 		{"why does my chat not sync and say nothing, is the relay full", "relay-limits-and-refusals"},
 		{"what is the limit on new identities from one network", "relay-limits-and-refusals"},
-		{"the chat says the relay has no room left", "relay-limits-and-refusals"},
+		{"the chat says your sync space is full", "relay-limits-and-refusals"},
+		{"my sync space is full, how do I free it?", "relay-limits-and-refusals"},
+		{"does deleting a chat free sync space?", "relay-limits-and-refusals"},
 		{"the relay is asking this computer to slow down", "relay-limits-and-refusals"},
 		{"I lost all my computers, can I recover my chats", "losing-every-device"},
 		{"is there a codeaf identity rotate", "losing-every-device"},
@@ -3641,6 +3652,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"route jobs to an AgentField reasoner with no repository", "factory-agentfield"},
 		{"is there an SDK for the factory", "factory-agentfield"},
 		{"send a comment to a job from outside", "factory-agentfield"},
+		{"the engine restarted, did my AgentField execution fail", "factory-agentfield"},
 		{"how does my tool add more details to a factory job it filed", "factory-agentfield"},
 		{"check the status of a factory job from my script", "factory-agentfield"},
 		{"set a webhook for a source", "factory-agentfield"},
@@ -3699,6 +3711,44 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 				pages = append(pages, section.Page)
 			}
 			t.Errorf("%q should reach %s; it reached %v", ask.question, ask.page, pages)
+		}
+	}
+}
+
+func TestMemoryTabNameAndMemoriesQuestions(t *testing.T) {
+	for _, name := range Chat().Pages() {
+		page, _ := Chat().Page(name)
+		page = strings.Join(strings.Fields(page), " ")
+		if strings.Contains(page, "Memories tab") || strings.Contains(page, "memories tab") {
+			t.Errorf("%s calls the Memory tab Memories", name)
+		}
+	}
+	for _, question := range []string{"where are my memories", "how do I see what codeaf remembers about me"} {
+		found := false
+		for _, section := range Chat().Search(question, DefaultResults) {
+			if section.Page == "what-i-remember" && strings.Contains(section.Body, "Memory") {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%q did not reach the Memory answer", question)
+		}
+	}
+}
+
+func TestTaskLandingManualMatchesFoldedPresentation(t *testing.T) {
+	page, ok := Chat().Page("tasks")
+	if !ok {
+		t.Fatal("missing tasks page")
+	}
+	for _, obsolete := range []string{"✓ 3 tasks done", "✕ N tasks landed", "? N tasks landed", "report under the second card", "a **second** card"} {
+		if strings.Contains(page, obsolete) {
+			t.Errorf("task manual still promises %q", obsolete)
+		}
+	}
+	for _, fact := range []string{"background work · N tasks · ctrl+e", "named task row", "branch kept · <branch>"} {
+		if !strings.Contains(page, fact) {
+			t.Errorf("task manual does not explain %q", fact)
 		}
 	}
 }
@@ -4994,5 +5044,75 @@ func TestChatTeamSharingSafetyAnswers(t *testing.T) {
 			}
 			t.Fatalf("no self-contained answer to %q includes %v", tc.query, tc.facts)
 		})
+	}
+}
+
+func TestStorageOptInManualQuestions(t *testing.T) {
+	for _, question := range []string{
+		"how do I turn on sync storage",
+		"why don't my chats sync to my other computer",
+		"request access to sync storage",
+		"does the relay store my chats",
+	} {
+		found := false
+		for _, section := range Chat().Search(question, DefaultResults) {
+			if section.Page == "relay-what-it-stores-and-sees" && strings.Contains(section.Body, "off by default") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%q did not reach the hosted storage approval answer", question)
+		}
+	}
+}
+
+func TestStorageOptInSettingsAndTeamsQuestions(t *testing.T) {
+	for _, probe := range []struct{ question, page, heading string }{
+		{"Settings General share teams between paired computers", "settings", "General —"},
+		{"Team sharing and Traffic on another computer", "team-manager", "Team sharing and Traffic"},
+		{"Shared team spending caps and continued members", "team-manager", "Shared team spending caps"},
+	} {
+		t.Run(probe.question, func(t *testing.T) {
+			for _, section := range Chat().Search(probe.question, DefaultResults) {
+				if section.Page == probe.page && strings.HasPrefix(section.Title, probe.heading) {
+					if !strings.Contains(section.Body, "sync storage approval") {
+						t.Fatalf("approval missing: %s", section.Body)
+					}
+					return
+				}
+			}
+			t.Fatalf("%q did not reach %s / %s", probe.question, probe.page, probe.heading)
+		})
+	}
+}
+
+func TestKnowledgeSpendingAndAutomaticCaptureManual(t *testing.T) {
+	for page, phrases := range map[string][]string{
+		"settings":        {"capture automatically", "existing eligible history waits", "paid model work recorded in Spend", "/budget day"},
+		"models-and-cost": {"background knowledge compilation", "task summaries", "daily limit reached", "summary keeps its last reading"},
+		"places":          {"Each\npaid call appears in Spend", "Knowledge build paused: daily limit reached", "retained-progress and automatic-retry"},
+		"automations":     {"no new paid check starts once it is reached"},
+	} {
+		text, ok := Chat().Page(page)
+		if !ok {
+			t.Fatalf("missing page %s", page)
+		}
+		for _, phrase := range phrases {
+			if !strings.Contains(text, phrase) {
+				t.Errorf("%s does not explain %q", page, phrase)
+			}
+		}
+	}
+	for _, query := range []string{"knowledge compilation Spend daily limit", "new profile knowledge capture automatically"} {
+		found := false
+		for _, section := range Chat().Search(query, DefaultResults) {
+			if section.Page == "settings" || section.Page == "models-and-cost" {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("knowledge question missed its settings/cost answer: %q", query)
+		}
 	}
 }

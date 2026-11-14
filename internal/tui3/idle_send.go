@@ -16,7 +16,7 @@ import (
 // The drive checks ownership and its saved head before an in-place retake.
 // An ordinary retired writer instead requires a conditional reopen.
 func resumeIdleSend(ctx context.Context, agent Agent, source chatlist.Source, msg ownershipReadMsg, blocked bool) ownershipReadMsg {
-	if blocked || msg.reading.err != nil {
+	if blocked || msg.reading.err != nil || msg.notHeld && msg.local {
 		return msg
 	}
 	receipts, ok := source.(sendLeaseSource)
@@ -117,7 +117,7 @@ func resumeIdleSend(ctx context.Context, agent Agent, source chatlist.Source, ms
 // ownLiveRow routes an unheld window or a receipt-only local row through the
 // drive's admission decision before any words leave the box.
 func (msg ownershipReadMsg) ownLiveRow(row chatlist.Row) bool {
-	return (msg.notHeld || msg.local && row.DeviceID == "") && row.Mine && row.Status == chatlist.Here && row.Fence != 0 && (msg.ownFence == 0 || row.Fence == msg.ownFence)
+	return (!msg.local && msg.notHeld || msg.local && row.DeviceID == "") && row.Mine && row.Status == chatlist.Here && row.Fence != 0 && (msg.ownFence == 0 || row.Fence == msg.ownFence)
 }
 
 func (a *app) refuseIdleSend(msg ownershipReadMsg) bool {

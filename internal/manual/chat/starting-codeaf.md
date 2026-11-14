@@ -837,3 +837,30 @@ without printing it. A key saved by `codeaf connect openrouter` or `/settings`
 reaches a conversation when you next open it or switch models;
 `OPENROUTER_API_KEY` still wins. `your key was not accepted for this model` means
 the provider refused the key; doctor helps find the source to replace.
+
+## Chats on another computer and hosted sync storage
+
+Pairing and live `--at` access work while hosted sync storage is off. Hosted storage is off by default while its privacy terms are being finished, so chats and files stay on this computer until approval. After pairing, request access in Settings → Devices → sync storage → enter. The panel shows the public request code and link as well as opening a browser. Sync starts by itself after a background reading sees approval; `/status` refreshes it without holding up the chat. A self-hosted `codeaf relay --store <directory>` needs no request.
+
+## Sync storage is off — a notice in an open chat
+
+A paired account with storage off sees `sync storage is off for this account, so chats stay on this computer; request access in Settings under Devices` once when that chat first tries to sync. If access is withdrawn after syncing starts, the chat shows it once again. This appears in the window showing the chat, including an already-open window. Your chats keep saving on this computer.
+
+## Starting after an upgrade — standing orders and rules from an earlier version
+
+Standing orders and rules stored by an earlier chat version were not carried over.
+If this home's `v3/standing/` contains old items, its first interactive launch
+shows a notice once on Home and in the conversation: `They were not carried over.`
+The notice says `Recreate schedules in /automations and rules with /remember.`
+
+The list is `<codeaf home>/v3/standing-upgrade-report.txt`, normally
+`~/.codeaf/v3/standing-upgrade-report.txt`. It gives each item's original words,
+instruction, workspace, schedule, status and source file. Paused and retired items
+are separate from active counts; unreadable and unknown-format files are named
+without guessing. The report is saved before the home remembers the notice. If
+saving fails, a later interactive launch tries again. Headless starts do not
+consume it. A remote home's notice and report belong to that remote home.
+
+The old `v3/standing/` is untouched. Recreate schedules in `/automations` and rules
+with `/remember`, checking their scope and limits. Nothing is imported or run
+from the report, and a home without old items has no notice.

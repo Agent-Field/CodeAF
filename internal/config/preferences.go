@@ -17,7 +17,7 @@ func PreferenceKey(key string) bool {
 		KeyTaskAudit, KeyReplyGuard, KeyTaskStart, KeyMemoryEnabled, KeyPromptProfile,
 		KeyTierLowModel, KeyTierHighModel, KeyTierWorkerModel, KeyTierReflexModel,
 		KeyTierMastermindModel, KeyKnowledgeModel, KeyModelRoles, KeyModelFallbacks, KeyRouting,
-		KeyVisionModel, KeyDocumentEngine, KeyAttributionModel, KeyContextFill,
+		KeyVisionModel, KeyDocumentEngine, KeyAttribution, KeyAttributionModel, KeyIdleHandoff, KeyContextFill,
 		KeyCompletionReserve, KeyWorkingSet, KeyContextReuse:
 		return true
 	}

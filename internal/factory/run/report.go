@@ -121,6 +121,12 @@ func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) erro
 		}
 		f := *it.FollowUp
 		f.State, f.Reason, f.BlockedBy = report.FollowUp.State, report.FollowUp.Reason, report.FollowUp.BlockedBy
+		if base := report.FollowUp.BaseSyncSHA; base != "" {
+			if report.FollowUp.Kind != "pr" || !publish.ValidCommit(base) {
+				return fmt.Errorf("invalid PR base update")
+			}
+			f.BaseSyncSHA = base
+		}
 		if f.Kind == "readiness" && report.FollowUp.Kind == "pr" && report.FollowUp.Readiness == nil {
 			f.Kind = "pr"
 			f.Readiness = nil
@@ -224,6 +230,7 @@ func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) erro
 		// arriving in flight remains pending; no worker-supplied map overwrites it.
 		factory.AcknowledgeReview(it)
 		it.FollowUp.Request = ""
+		it.FollowUp.BaseSyncSHA = ""
 		if it.QKind == "results_not_saved" {
 			it.Question, it.QKind = "", ""
 			it.Asking = nil
@@ -373,8 +380,18 @@ func reportQuestion(it *factory.Item, question *factory.Asked, kind string, now 
 	if strings.TrimSpace(q.Question) == "" {
 		return fmt.Errorf("question requires text")
 	}
+	// THE SAME WAIT SENT AGAIN KEEPS ITS CLOCK. A worker parked at its budget
+	// sends the cap question again, with no clock of its own, on every later
+	// report that carries thread messages, usage or acknowledgements, so the
+	// factory still reads it as parked. Stamped with each report's arrival,
+	// the one wait moved: needs_you.since moved with it, and every report
+	// recorded another needs-you outcome that read as a new wait.
+	again := sameWait(*it, q, kind)
 	if q.At.IsZero() {
 		q.At = now
+		if again {
+			q.At = it.Asking.At
+		}
 	}
 	q.With = factory.AskedYou
 	if q.Stage != "" && kind != factory.QKindSpendStopped {
@@ -391,8 +408,32 @@ func reportQuestion(it *factory.Item, question *factory.Asked, kind string, now 
 	if it.QKind == "" {
 		it.QKind = qkindStep
 	}
-	loopSay(it, now, "ask", q.Question)
+	if !again {
+		loopSay(it, now, "ask", q.Question)
+	}
 	return nil
+}
+
+// sameWait says q is the question the job already waits on, sent again: the
+// person's ask still stands (an answer takes it down), of the same kind, at
+// the same step, in the same words. A budget wait is the same wait in new
+// words too: its sentence names the cap, and the factory rewords it when a
+// raise falls short and keeps the ask's clock (the lease's holdAtJobBudget).
+func sameWait(it factory.Item, q factory.Asked, kind string) bool {
+	a := it.Asking
+	if a == nil || a.With != factory.AskedYou || a.At.IsZero() || it.State != factory.StateNeedsYou {
+		return false
+	}
+	if kind == "" {
+		kind = qkindStep
+	}
+	if it.QKind != kind {
+		return false
+	}
+	if kind != factory.QKindSpendStopped && a.Stage != q.Stage {
+		return false
+	}
+	return kind == "cap" || a.Question == q.Question
 }
 
 func reportPR(it *factory.Item, receipt *factory.PullRequest) error {
@@ -536,6 +577,15 @@ func reportStep(it *factory.Item, step factory.StageReport, now time.Time) error
 			f.Step = step.Name
 		}
 		factory.StampFailure(it, f)
+		// A STOP THE RUNNER'S LOOP MADE IS A PERSON'S STOP HERE TOO. Only a
+		// person's word writes a failure coded stopped on a runner (a cancel
+		// out of attempts, a no to the budget, a no with nothing to send
+		// back to); its mark stays on the runner's copy, which no report
+		// carries, and this copy read the job as failed in Needs you.
+		if f.Code == factory.CodeStopped {
+			factory.MarkPersonStopped(it)
+			it.Asking = nil
+		}
 	}
 	return nil
 }
@@ -704,6 +754,8 @@ func FinishReport(it *factory.Item, state factory.State, now time.Time) error {
 		// to wait on.
 		if strings.TrimSpace(it.RunOn) != "" || factory.AgentFieldPipeline(*it) {
 			it.State = factory.StateShipped
+			// Completion is authoritative here, even when an older worker reports no timestamp.
+			it.DoneAt = factory.AgentFieldEnded(*it, now)
 			it.Question, it.QKind = "", ""
 			it.Asking = nil
 			it.Stream.Ended = now

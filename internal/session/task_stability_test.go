@@ -50,7 +50,11 @@ func TestALocalTaskKeepsItsRunLandingAndRecords(t *testing.T) {
 	if strings.Contains(spec.Store.Task(spec.Store.RootID()).Description, "\n\nChecks\n") {
 		t.Fatal("a local plan row gained the remote Checks section")
 	}
-	if result, refused := approveRemoteProposal(t, a, args); refused || !strings.Contains(result, "joined") {
+	// A countdown-started proposal titled like work already in the run is
+	// refused (task tree bounds), so the join exercised here is different work.
+	joinArgs := args
+	joinArgs.Title, joinArgs.Summary = "Repair import", "Repair the import failure"
+	if result, refused := approveRemoteProposal(t, a, joinArgs); refused || !strings.Contains(result, "joined") {
 		t.Fatalf("local join changed: %q, refused=%v", result, refused)
 	}
 	close(local.release)
@@ -174,7 +178,8 @@ func TestALocalTaskStopRecoveryAndReopenUseTheOriginalRoad(t *testing.T) {
 	}
 	waitRemoteRun(t, second)
 	row, _ := runRowOf(second.graph(), id)
-	if row.State != TaskFailed || !row.Stopped || row.Ending != "" || row.EndedAt.IsZero() || !strings.HasPrefix(row.Report, "stopped") {
+	// R5 records the cancellation cause explicitly, including the person's Stop.
+	if row.State != TaskFailed || !row.Stopped || row.Ending != TaskEndingStopped || row.EndedAt.IsZero() || !strings.HasPrefix(row.Report, "stopped") {
 		t.Fatalf("local stop changed its original ending: %+v", row)
 	}
 	if err := second.Close(); err != nil {

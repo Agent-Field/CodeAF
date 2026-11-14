@@ -140,7 +140,8 @@ var runFactoryRunner = func(ctx context.Context, attached factoryAttachment, out
 	if err != nil {
 		return err
 	}
-	workspace, _ := os.Getwd()
+	cwd, _ := os.Getwd()
+	workspace := factoryHostWorkspace(cwd)
 	sessions := factorySessions(newFactorySessions())
 	sessions.SetFactorySession(attached.URL, attached.Token)
 	host := &appFactoryHost{ctx: ctx, floor: st, workspace: workspace, profile: config.ProfileDir(), credentials: sessions, pin: factoryWorkerParent}

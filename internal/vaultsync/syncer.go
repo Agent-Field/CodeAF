@@ -13,6 +13,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/keys"
+	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
 // magic leads every vault object; the store refuses any object without a known
@@ -44,6 +45,8 @@ var ErrTampered = errors.New("vaultsync: the vault object does not match its id 
 // Syncer moves one identity's vault between this device and the store. The
 // vault object is the sealed vault.enc, so the store never sees a secret.
 type Syncer struct {
+	// StorageOn prevents an upload round while the last relay answer is closed.
+	StorageOn func() bool
 	Store     blobstore.Store
 	Dir       directory.Client
 	Vault     VaultFile
@@ -60,6 +63,9 @@ type Syncer struct {
 // third device pushed in between, pulls again and pushes once more; a second
 // loss is returned, since looping would only hide a busy directory.
 func (s Syncer) Push(ctx context.Context) error {
+	if s.StorageOn != nil && !s.StorageOn() {
+		return wireauth.ErrStorageOff
+	}
 	if err := s.Capture(); err != nil {
 		return err
 	}
@@ -103,6 +109,9 @@ func (s Syncer) publish(ctx context.Context, old string) error {
 // new identity's relay with the vault resealed for it, which no local file
 // holds yet.
 func (s Syncer) PushSealed(ctx context.Context, enc []byte, old string) error {
+	if s.StorageOn != nil && !s.StorageOn() {
+		return wireauth.ErrStorageOff
+	}
 	obj := append(bytes.Clone(magic), enc...)
 	rid := ridOf(obj)
 	if err := s.put(ctx, rid, obj); err != nil || rid == old {

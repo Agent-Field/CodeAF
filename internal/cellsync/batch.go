@@ -166,8 +166,8 @@ func (b *Batcher) Working(on bool) {
 }
 
 // Freed says something a refusal waited on has changed (space was freed on the
-// relay, say), so a halted chat tries again now instead of waiting for a
-// reopen. It never waits, so it is safe to call from any goroutine.
+// relay, say), so a halted chat tries again now instead of waiting for its
+// hourly retry. It never waits, so it is safe to call from any goroutine.
 func (b *Batcher) Freed() { b.freed.fire() }
 
 // wakeup carries at most one pending request from a caller to a loop. The zero
@@ -561,7 +561,24 @@ func (b *Batcher) drain(ctx context.Context) error {
 }
 
 func (b *Batcher) publish(ctx context.Context, head string) error {
-	d, _, _ := b.view()
+	d, pending, stale := b.view()
+	if !stale && b.recovering(d) {
+		if err := b.heartbeat(ctx, d, pending); err != nil {
+			b.renewalResult(d, err)
+			if errors.Is(err, ErrSuperseded) {
+				b.setStale()
+				if b.OnLost != nil {
+					b.OnLost()
+				}
+				return b.resolve(ctx)
+			}
+			// THE HEARTBEAT IS THIS PUBLISH'S RELAY STEP, so its failure is the
+			// same owed upload a failed advance reports: the turns are durable
+			// here and only their upload is pending. Returned bare, a quit with
+			// the relay down reported a confirmed local save as lost.
+			return syncwords.UploadFailure(err)
+		}
+	}
 	ex, err := b.Publisher.publish(ctx, &d, head, b.info())
 	b.renewalResult(d, err)
 	if errors.Is(err, ErrSuperseded) {
@@ -577,10 +594,30 @@ func (b *Batcher) publish(ctx context.Context, head string) error {
 	b.adopt(d)
 	b.setFlag(&b.published, true)
 	b.tell(0) // a publish always carries the newest turn, so nothing is pending
-	b.recovered()
+	b.recovered(true)
 	turns := b.durable(head)
 	b.turns.fire() // a turn's end waits for this publish before it is told
 	b.emit(Flush{Head: head, Turns: turns, Frames: len(ex.Frames), Objects: ex.Objects, Bytes: ex.Bytes})
+	return nil
+}
+
+// heartbeat renews an existing hold before a recovering publish. An outage
+// longer than the lease TTL expires the stored hold on the relay while leaving
+// the fence unchanged when no other computer took the chat; renewing first lets
+// PublishTo keep its strict expired-hold refusal without branching an
+// un-displaced outage turn.
+func (b *Batcher) heartbeat(ctx context.Context, d Driving, pending uint32) error {
+	up := b.beatUpload(pending)
+	b.mu.Lock()
+	working := b.working || b.toldWork && len(b.noted) > 0
+	b.mu.Unlock()
+	_, err := b.Publisher.Dir.Heartbeat(ctx, d.ID(), directory.Beat{Fence: d.Fence, Pending: pending, UploadSent: uint64(up.sent), UploadTotal: uint64(up.total), Working: working})
+	if err != nil {
+		return refusal(err)
+	}
+	b.mu.Lock()
+	b.beatSent, b.beatUp, b.toldWork = pending, up, working
+	b.mu.Unlock()
 	return nil
 }
 
@@ -610,7 +647,7 @@ func (b *Batcher) beat(ctx context.Context) {
 		b.mu.Lock()
 		b.beatSent, b.beatUp, b.toldWork = pending, up, working
 		b.mu.Unlock()
-		b.recovered()
+		b.recovered(false)
 	case errors.Is(err, directory.ErrFenceStale):
 		b.lost(ctx, d)
 	default:
@@ -819,10 +856,14 @@ func (b *Batcher) now() time.Time {
 	return time.Now()
 }
 
-// recovered notes that the relay answered, so the next refusal is news again.
-func (b *Batcher) recovered() {
+// A directory heartbeat cannot end an upload-permission refusal episode.
+// Only a successful upload proves that storage has recovered.
+func (b *Batcher) recovered(upload bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	if !upload && b.told == wireauth.ErrStorageOff.Error() {
+		return
+	}
 	b.refusedSince, b.told = time.Time{}, ""
 }
 

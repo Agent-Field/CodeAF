@@ -249,6 +249,21 @@ exactly as they do with no exchange on screen. **The pane follows the cursor.**
 `continue as a conversation` is reached with `↓` inside the pane and left again with `↑`,
 `tab` or `esc`.
 
+## Sending a follow-up while the ask here reply is streaming
+
+Type in the pane's `type a follow-up` box and press `enter`. If the reply is
+still being written, your message waits for that reply to finish, then runs as
+the next turn. Several follow-ups run in the order you sent them. The current
+reply keeps streaming once, without repeated or interleaved words. Sending a
+follow-up keeps the spinner and clock moving before its reply arrives, even
+while the previous reply is finishing.
+
+A follow-up sent after the reply finishes starts at once. Its automation card
+appears in this same pane and is answerable here, including when the session
+starts another turn to finish answering you. A card already waiting remains
+answerable when you send another message. Once all replies finish, the pane
+stops showing `thinking` or `writing`; a card still waiting says `waiting on you`.
+
 ## What the line under the ask here pane says — the box, the answers, a follow-up and the way back
 
 While the pane has the keyboard the hint reads `enter sends a follow-up · tab or esc back to

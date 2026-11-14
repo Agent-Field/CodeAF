@@ -118,6 +118,12 @@ func TestAppBackgroundE13B2QueuedTaskAcquiresAndSettlesAtStartup(t *testing.T) {
 		}
 		for _, task := range session.ReadSessionTasks(transcript) {
 			if task.ID == 2 && (task.State == session.TaskDone || task.State == session.TaskFailed || task.State == session.TaskUnverified) && !task.EndedAt.IsZero() {
+				// The rig's model answers every call "done", which is no verdict, so
+				// the task lands unverified with that word on its report. A task that
+				// settled without its worker ever running has no such word.
+				if task.State == session.TaskFailed || !strings.Contains(task.Report, "done") {
+					t.Errorf("B2 queued task settled without its worker's answer: %s: %s", task.State, task.Report)
+				}
 				t.Logf("B2 queued task recovered as %s: %s", task.State, task.Report)
 				return true
 			}
@@ -195,10 +201,6 @@ func appIdleReleaseI1I2(t *testing.T, viewed bool, stopped ...bool) {
 		a.locked(func() { idle = a.agents[agent.ID].live != nil && !a.agents[agent.ID].live.running })
 		return idle
 	})
-	appSyncWait(t, "paired idle hold released before sweeping", func() bool {
-		view, err := own.Dir.Cell(t.Context(), agent.ID)
-		return err == nil && view.Cell.Lease.Expires == 0
-	})
 	var transcript string
 	a.locked(func() { transcript = a.agents[agent.ID].transcript })
 	chat, err := cell.OpenAt(session.DirOf(transcript), agent.ID)
@@ -214,7 +216,7 @@ func appIdleReleaseI1I2(t *testing.T, viewed bool, stopped ...bool) {
 	if err != nil || head == nil {
 		t.Fatalf("idle setup head = %v, %v", head, err)
 	}
-	row := idleReleaseRow(t, wire, agent.ID, func(r appwire.ChatRow) bool { return r.Seen.Head == head.Turn.ID && r.Status == "idle" })
+	row := idleReleaseRow(t, wire, agent.ID, func(r appwire.ChatRow) bool { return r.Seen.Head == head.Turn.ID })
 	if leftover {
 		// Model the old engine's mismatch after its final checkpoint: the
 		// stopped job is in tasks.json, but its process file still says running.
@@ -238,9 +240,7 @@ func appIdleReleaseI1I2(t *testing.T, viewed bool, stopped ...bool) {
 	}
 	peer.waitFor(t, 10*time.Second, func(_ string, data any) bool {
 		changed, ok := data.(appwire.ChatChanged)
-		// Release preserves head and fence. Wait for its idle status too,
-		// rather than matching an earlier live row with the same receipt.
-		return ok && changed.Chat.Cell == agent.ID && changed.Chat.Seen == row.Seen && changed.Chat.Status == row.Status && changed.Chat.Online != nil && *changed.Chat.Online
+		return ok && changed.Chat.Cell == agent.ID && changed.Chat.Seen == row.Seen && changed.Chat.Online != nil && *changed.Chat.Online
 	})
 	peer.mu.Lock()
 	cursor := len(peer.events)
@@ -305,8 +305,12 @@ func appIdleReleaseI1I2(t *testing.T, viewed bool, stopped ...bool) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		wantReleases := int32(1)
+		if viewed {
+			wantReleases = 0
+		}
 		live := v.Cell.Lease.Expires > v.Now
-		if live || v.Cell.Lease.Fence != row.Seen.Fence || acquires.Load() != 0 || releases.Load() != 0 {
+		if live != viewed || v.Cell.Lease.Fence != row.Seen.Fence || acquires.Load() != 0 || releases.Load() != wantReleases {
 			t.Fatalf("I1/I2 period %d: lease=%+v acquires=%d releases=%d", period+1, v.Cell.Lease, acquires.Load(), releases.Load())
 		}
 		if leftover {
@@ -316,13 +320,10 @@ func appIdleReleaseI1I2(t *testing.T, viewed bool, stopped ...bool) {
 		}
 	}
 	if viewed {
-		// Keeping the open conversation no longer keeps its paired idle hold.
-		// The release keeps the same fence until the next work admission.
-		var kept bool
-		a.locked(func() { kept = a.agents[agent.ID].live != nil })
-		if !kept || before.Cell.Lease.Expires != 0 {
-			t.Fatal("I1 open reader was closed or still held its idle lease")
-		}
+		appSyncWait(t, "I1 open idle hold to renew beyond its original deadline", func() bool {
+			v, err := own.Dir.Cell(t.Context(), agent.ID)
+			return err == nil && v.Cell.Lease.Expires > before.Cell.Lease.Expires
+		})
 		if acquires.Load() != 0 || releases.Load() != 0 {
 			t.Fatalf("I1 renewal acquired=%d released=%d", acquires.Load(), releases.Load())
 		}
@@ -331,12 +332,14 @@ func appIdleReleaseI1I2(t *testing.T, viewed bool, stopped ...bool) {
 	changes := 0
 	for _, data := range peer.data[cursor:] {
 		if changed, ok := data.(appwire.ChatChanged); ok && changed.Chat.Cell == agent.ID {
-			t.Logf("I2 row changed during quiet measurement: %+v", changed.Chat)
 			changes++
 		}
 	}
 	peer.mu.Unlock()
-	wantChanges := 0
+	wantChanges := 1
+	if viewed {
+		wantChanges = 0
+	}
 	if changes != wantChanges {
 		t.Fatalf("I2 idle chat emitted %d changes, want %d", changes, wantChanges)
 	}
@@ -354,7 +357,7 @@ func appIdleReleaseI1I2(t *testing.T, viewed bool, stopped ...bool) {
 		for range 2 {
 			time.Sleep(250 * time.Millisecond)
 			v, err := own.Dir.Cell(t.Context(), agent.ID)
-			if err != nil || v.Cell.Lease.Fence != row.Seen.Fence || acquires.Load() != 0 || releases.Load() != 0 {
+			if err != nil || v.Cell.Lease.Fence != row.Seen.Fence || acquires.Load() != 0 || releases.Load() != 1 {
 				t.Fatalf("B1/B3 restart acquired: lease=%+v acquires=%d releases=%d err=%v", v.Cell.Lease, acquires.Load(), releases.Load(), err)
 			}
 		}
@@ -371,6 +374,9 @@ func appIdleReleaseI1I2(t *testing.T, viewed bool, stopped ...bool) {
 	}
 	appTurnDoneFor(t, rec, turn)
 	wantFence, wantAcquires := row.Seen.Fence+1, int32(1)
+	if viewed {
+		wantFence, wantAcquires = row.Seen.Fence, 0
+	}
 	newRow := idleReleaseRow(t, wire, agent.ID, func(r appwire.ChatRow) bool { return r.Seen.Fence == wantFence && r.Seen.Head != row.Seen.Head })
 	if acquires.Load() != wantAcquires || newRow.Holder == nil || newRow.Holder.ID != own.Device.ID() {
 		t.Fatalf("I1 send: row=%+v acquires=%d", newRow, acquires.Load())

@@ -101,7 +101,7 @@ func (n *namespaces) erase(id string) error {
 			failed = errors.Join(failed, err)
 		}
 	}
-	return errors.Join(failed, os.RemoveAll(filepath.Join(n.root, "blobs", id)), os.RemoveAll(filepath.Join(n.root, "raft", id)))
+	return errors.Join(failed, os.RemoveAll(filepath.Join(n.root, "blobs", id)), os.RemoveAll(filepath.Join(n.root, "fabric", id)), os.RemoveAll(filepath.Join(n.root, "raft", id)))
 }
 
 // forget closes the identity's open directory, if it has one.

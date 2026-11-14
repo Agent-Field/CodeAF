@@ -14,33 +14,45 @@ import (
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 	"github.com/Agent-Field/codeaf/internal/syncwords"
+	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
 // liveDrive is the drive side of one chat, started when it can be. A chat opens
 // before its computer is paired, and /pair inside the chat then makes the
 // identity that sync needs; a drive side fixed at open would leave that chat
 // unsynced until the next restart. So the chat's seat holds a liveDrive, which
-// asks again at each seal, gate and idle for as long as the one thing missing
-// is the identity, and goes on with the real drive from the call that finds it.
+// asks again at each seal, gate and idle while local setup is missing. A refusal
+// that time or capacity can cure also arms a timer, so pending turns upload even
+// when the person leaves the chat open without saving another turn.
 type liveDrive struct {
-	start func() (*syncsetup.Drive, error)
+	start   func() (*syncsetup.Drive, error)
+	now     func() time.Time
+	after   func(time.Duration, func()) func() bool
+	say     func(string)
+	notices *driveNotices
 	// transcript identifies the retained turns if this writer's final publish fails.
 	transcript string
+	localGate  *localToolGate
 
 	// published is visible before idle release is enabled. Settings must not
 	// wait for installation or catch-up disk work under mu.
-	published atomic.Pointer[syncsetup.Drive]
-	mu        sync.Mutex
-	drive     *syncsetup.Drive
-	working   bool   // A turn may start before asynchronous startup finishes.
-	turn      uint64 // A newer turn retires the previous capture waiter.
-	parked    bool   // Startup awaits a journal owner.
-	waiting   bool   // sync is on and only an identity, or the end of solo, is missing
-	ready     chan struct{}
-	attempted bool
-	closed    bool
-	retry     *time.Timer
-	retryWait time.Duration
+	published      atomic.Pointer[syncsetup.Drive]
+	mu             sync.Mutex
+	drive          *syncsetup.Drive
+	working        bool   // A turn may start before asynchronous startup finishes.
+	turn           uint64 // A newer turn retires the previous capture waiter.
+	parked         bool   // Startup awaits a journal owner.
+	storageWaiting bool
+	waiting        bool // local setup or a retryable failure still permits another attempt
+	ready          chan struct{}
+	attempted      bool
+	closed         bool
+	retry          *time.Timer
+	retryAt        time.Time
+	retryWait      time.Duration
+	stopRetry      func() bool
+	refusedSince   time.Time
+	told           error
 	// changes coalesces local health updates for the host's cached surface state.
 	changes     chan struct{}
 	idleCheck   func() bool
@@ -49,17 +61,42 @@ type liveDrive struct {
 
 // newLiveDrive starts the drive side behind the first paint. Local startup
 // screening stays off the surface loop; saving and new tools wait for ownership.
-func newLiveDrive(start func(func()) (*syncsetup.Drive, error)) *liveDrive {
-	l := newPendingLiveDrive(start)
+func newLiveDrive(start func(func()) (*syncsetup.Drive, error), notices ...*driveNotices) *liveDrive {
+	l := newPendingLiveDrive(start, notices...)
 	l.begin()
 	return l
 }
 
 // newPendingLiveDrive reserves the startup boundary before journal ownership is known.
-func newPendingLiveDrive(start func(func()) (*syncsetup.Drive, error)) *liveDrive {
-	l := &liveDrive{changes: make(chan struct{}, 1), parked: true, ready: make(chan struct{})}
+func newPendingLiveDrive(start func(func()) (*syncsetup.Drive, error), notices ...*driveNotices) *liveDrive {
+	l := &liveDrive{
+		changes: make(chan struct{}, 1),
+		parked:  true,
+		ready:   make(chan struct{}),
+		now:     time.Now,
+		say:     surfaceNotices.SayHomeOnce,
+		after:   func(d time.Duration, fn func()) func() bool { return time.AfterFunc(d, fn).Stop },
+	}
+	if len(notices) > 0 && notices[0] != nil {
+		l.notices = notices[0]
+		l.say = l.notices.refuse
+	}
 	l.start = func() (*syncsetup.Drive, error) { return start(l.renewalChanged) }
 	return l
+}
+
+func (l *liveDrive) nowTime() time.Time {
+	if l.now != nil {
+		return l.now()
+	}
+	return time.Now()
+}
+
+func (l *liveDrive) afterFunc(d time.Duration, fn func()) func() bool {
+	if l.after != nil {
+		return l.after(d, fn)
+	}
+	return time.AfterFunc(d, fn).Stop
 }
 
 // try starts the drive side if it is not running and an identity is there now.
@@ -68,9 +105,22 @@ func newPendingLiveDrive(start func(func()) (*syncsetup.Drive, error)) *liveDriv
 func (l *liveDrive) try() {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.parked || l.closed || l.drive != nil || l.ready != nil || (l.attempted && !l.waiting) || (l.waiting && !syncsetup.MayTalk(home.Dir())) {
+	if l.parked || l.closed || l.storageWaiting || l.drive != nil || l.ready != nil || (l.attempted && !l.waiting) || (l.waiting && !syncsetup.MayTalk(home.Dir())) {
 		return
 	}
+	// Seals and idle notifications cannot shorten the relay's requested wait.
+	if !l.retryAt.IsZero() && l.nowTime().Before(l.retryAt) {
+		return
+	}
+	if l.stopRetry != nil {
+		l.stopRetry()
+		l.stopRetry = nil
+	}
+	if l.retry != nil {
+		l.retry.Stop()
+		l.retry = nil
+	}
+	l.retryAt = time.Time{}
 	l.ready = make(chan struct{})
 	l.launch(l.ready)
 }
@@ -139,7 +189,37 @@ func (l *liveDrive) install(d *syncsetup.Drive, err error, ready chan struct{}) 
 	l.ready = nil
 	l.drive, l.waiting, l.attempted = d, errors.Is(err, syncsetup.ErrNoIdentity) || errors.Is(err, syncsetup.ErrQuiet) || syncwords.NetworkFailure(err), true
 	l.published.Store(d)
+	if d == nil && !l.closed {
+		if r, ok := cellsync.RefusalOf(err); ok {
+			now := l.nowTime()
+			if l.refusedSince.IsZero() {
+				l.refusedSince = now
+			}
+			if l.told != r.Is && now.Sub(l.refusedSince) >= r.Quiet {
+				l.told = r.Is
+				if l.say != nil {
+					l.say(r.Say(err))
+				}
+			}
+			if wait, retry := r.StartupWait(l.retryWait, cellsync.DefaultInterval, err); retry {
+				l.waiting = true
+				l.retryWait, l.retryAt = wait, now.Add(wait)
+				if errors.Is(err, wireauth.ErrStorageOff) {
+					l.storageWaiting = true
+					cancel := syncsetup.WaitStorage(home.Dir(), l.storageOpened)
+					l.stopRetry = func() bool { cancel(); return true }
+				} else {
+					l.stopRetry = l.afterFunc(wait, l.try)
+				}
+			}
+		}
+	}
 	if d != nil {
+		if l.notices != nil {
+			l.notices.clear()
+		}
+		l.told = nil
+		l.refusedSince = time.Time{}
 		d.Working(l.working)
 		d.SetIdleCheck(l.idleReady)
 		d.CatchUp()
@@ -232,6 +312,9 @@ func (l *liveDrive) renewalChanged() {
 // pending reads the startup boundary without holding the mutex while waiting
 // for its network work to finish.
 func (l *liveDrive) pending() <-chan struct{} {
+	if l == nil {
+		return nil
+	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return l.ready
@@ -245,7 +328,7 @@ func (l *liveDrive) current() *syncsetup.Drive {
 	return l.drive
 }
 
-// Gate is the drive side's gate: nothing is refused until a drive side exists.
+// Gate checks shared ownership even while account storage has no uploading writer.
 func (l *liveDrive) Gate() error {
 	// A failed service startup falls back to this call's local writer. Retrying
 	// belongs to the next call, or an outage would trap this one in a retry loop.
@@ -260,6 +343,9 @@ func (l *liveDrive) Gate() error {
 			return err
 		}
 		return d.Gate()
+	}
+	if l.localGate != nil {
+		return l.localGate.Gate()
 	}
 	return nil
 }
@@ -334,6 +420,12 @@ func (l *liveDrive) Store(e cellstore.Engine) cellstore.Store {
 
 // Close ends the drive side if one ever started.
 func (l *liveDrive) Close(ctx context.Context) error {
+	if l.notices != nil {
+		l.notices.beginClose()
+	}
+	if l.localGate != nil {
+		l.localGate.Close()
+	}
 	ready := func() <-chan struct{} {
 		l.mu.Lock()
 		defer l.mu.Unlock()
@@ -342,6 +434,10 @@ func (l *liveDrive) Close(ctx context.Context) error {
 		if l.retry != nil {
 			l.retry.Stop()
 			l.retry = nil
+		}
+		if l.stopRetry != nil {
+			l.stopRetry()
+			l.stopRetry = nil
 		}
 		return l.ready
 	}()
@@ -371,7 +467,7 @@ func (l *liveDrive) superseded() bool {
 		return true
 	}
 	if d == nil {
-		return false
+		return l.localGate != nil && l.localGate.superseded()
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), holdsLeaseWithin)
 	defer cancel()
@@ -435,6 +531,11 @@ func (s lateStore) Seal(ctx context.Context, c cell.Cell, info cellstore.TurnInf
 	if err != nil {
 		return cellstore.Sealed{}, err
 	}
+	// Admission ends when the local window becomes a viewer. A seal already
+	// admitted still finishes, preserving work accepted before the refusal.
+	if used == nil && s.live.localGate != nil && s.live.localGate.superseded() {
+		return cellstore.Sealed{}, cellstore.ErrReadOnly
+	}
 	sealed, err := store.Seal(ctx, c, info)
 	if err == nil {
 		s.live.catchUpAfter(used)
@@ -450,4 +551,30 @@ func (l *liveDrive) catchUpAfter(used *syncsetup.Drive) {
 	if l.drive != nil && l.drive != used {
 		l.drive.CatchUp()
 	}
+}
+
+// storageOpened shortens only a capacity wait; it never replaces an active writer.
+func (l *liveDrive) storageOpened() {
+	if l.notices != nil {
+		l.notices.clearStorageOff()
+	}
+	if d := l.endStorageWait(); d != nil {
+		d.StorageOpened()
+	} else {
+		l.try()
+	}
+}
+
+// endStorageWait clears the storage wait and its retry timer under the lock and
+// answers the running drive, if there is one, so waking it happens outside.
+func (l *liveDrive) endStorageWait() *syncsetup.Drive {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.storageWaiting = false
+	if l.stopRetry != nil {
+		l.stopRetry()
+		l.stopRetry = nil
+	}
+	l.retryAt = time.Time{}
+	return l.drive
 }

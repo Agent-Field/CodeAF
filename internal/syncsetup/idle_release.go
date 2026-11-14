@@ -15,12 +15,18 @@ import (
 // idleReleaseWithin bounds the final, upload-free ownership boundary.
 const idleReleaseWithin = 250 * time.Millisecond
 
+func (d *Drive) idleHandoffAllowed() bool {
+	return d != nil && d.sync != nil && d.sync.IdleHandoffAllowed()
+}
+
 func (d *Drive) SetIdleCheck(check func() bool) {
 	func() { d.workMu.Lock(); defer d.workMu.Unlock(); d.idleCheck = check }()
 	// A restored terminal can already be idle without another foreground turn.
 	if d.batcher != nil {
 		d.idleRequested.Store(true)
-		d.scheduleIdle(d.activity.Load())
+		if d.idleHandoffAllowed() {
+			d.scheduleIdle(d.activity.Load())
+		}
 	}
 }
 
@@ -40,7 +46,7 @@ func (d *Drive) BeginWork() bool {
 // SavedMetadata resumes a paired chat's requested idle certification. It does
 // not trigger ordinary publication; readiness excludes settings and live work.
 func (d *Drive) SavedMetadata() {
-	if d.idleRequested.Load() && d.paired() {
+	if d.idleRequested.Load() && d.idleHandoffAllowed() && d.paired() {
 		d.scheduleIdle(d.activity.Load())
 	}
 }
@@ -93,6 +99,9 @@ func (d *Drive) stopIdle(ctx context.Context) error {
 func (d *Drive) releaseWhenIdle(ctx context.Context, activity uint64) {
 	wait := cellstore.TailQuiet
 	for {
+		if !d.idleHandoffAllowed() {
+			return
+		}
 		if !d.paired() {
 			select {
 			case <-ctx.Done():
@@ -156,7 +165,7 @@ func (d *Drive) prepareIdle(ctx context.Context, activity uint64) (*cellstore.Sa
 	}
 	check, finished := d.idleState(activity)
 	d.workMu.Unlock()
-	if finished || d.sync.isRemoved() || Quiet(d.sync.Home) {
+	if finished || !d.idleHandoffAllowed() || d.sync.isRemoved() || Quiet(d.sync.Home) {
 		return nil, true, nil
 	}
 	// A private unpublished chat has no hold to release. Do not add captures
@@ -235,7 +244,7 @@ func (d *Drive) releaseIdle(parent context.Context, activity uint64) (bool, erro
 	d.committing.Store(true)
 	defer d.committing.Store(false)
 	check, finished := d.idleState(activity)
-	if finished {
+	if finished || !d.idleHandoffAllowed() {
 		return true, nil
 	}
 	if ctx.Err() != nil || !d.paired() || check != nil && !check() {

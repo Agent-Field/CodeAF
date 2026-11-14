@@ -27,7 +27,7 @@ GitHub token is. In the desktop app they are held in memory only and never
 written to disk: the engine hands them to the app, and the app hands them over
 again each time it starts the engine. A key or token the app hands over after
 the factory has started (its keychain answered late) restarts the node with it
-at once, registering as a new instance; the same one handed over again changes
+at once, under the same instance; the same one handed over again changes
 nothing. Outside the app they are kept in the
 profile, owner-readable only. They never reach a log, Disconnect forgets them,
 and they are never sent back. The desk has no settings screen to connect AgentField yet:
@@ -81,7 +81,9 @@ The node registers three reasoners, each with a JSON Schema:
 - `status`: `{source, id}` or `{job}` answers `{job, state, steps_done, steps_total,
   route?, pr_url?, question?, updated}`.
 
-Every restart of the factory registers again as a new instance.
+Every restart of the factory registers again under the SAME instance: the
+instance belongs to the factory's home (kept in `agentfield-instance.json`
+beside its jobs), not to the engine process. See "the engine restarted" below.
 
 **The link.** The node opens one WebSocket to the control plane
 (`/api/v1/nodes/<id>/link`, the API key as its bearer, never in the URL) and
@@ -211,6 +213,31 @@ the execution in AgentField stops the job, as a person's Stop does. An event
 that files nothing completes its execution at once with the reason as the
 result.
 
+## the engine restarted, crashed or the app quit — what happens to my AgentField execution
+
+Nothing AgentField can see. The app's engine may stop and start again (a
+crash, the Mac sleeping, the app quit and opened again, a late key restarting
+the node): the job keeps its place on disk, and so does the list of
+AgentField executions waiting on it. The engine registers again under the
+instance it always uses, so AgentField does not take the restart for a new
+process and does not fail the executions with "agent_restart_orphaned". Its
+first lease lists them as still in flight, it reports where each job stands
+now, and each execution later gets its job's real result.
+
+A factory that last ran on a build that registered a new instance per start
+adopts the instance AgentField holds when it first starts with executions
+open, so the upgrade itself loses none.
+
+An engine down for hours (the Mac asleep overnight) is covered too, by a
+control plane that holds an offline node's executions: the factory registers
+saying its work outlives its engine, so while its lease is expired its
+executions stay running, up to the control plane's offline ceiling (7 days by
+default), and its next lease picks them up again. An older control plane
+ignores that and keeps its stale timeout (30 minutes by default): an
+execution nothing touched for that long is failed, and an engine that is down
+cannot touch it. Once failed, it stays failed; the job itself goes on in the
+factory.
+
 ## why didn't my AgentField trigger make a job
 
 Look at `factory.agentfield_status`: `last_event_what` says what became of the
@@ -310,6 +337,11 @@ page and step rail, Start and Stop.
 
 The node's developer writes nothing for any of this: a reasoner that calls
 `a.Harness(...)` on the codeaf provider is watched and steerable by itself.
+The watched `chat --once --json` result includes `tokens.in`, `tokens.out` and
+`spend_usd`, with the same names and types as `exec --json`. They total the
+invocation after closing settles usage, including work before a failure; a
+resumed conversation excludes earlier invocations. A remote accounting client
+can read these totals from stdout without adding up live usage events.
 
 ## the names of an AgentField run's steps — why parallel steps read the same, a call's subject, a label tag
 
@@ -345,12 +377,17 @@ node, so the cap is only what the job page shows beside it.
   step, never the factory's pipeline (`plan`) or a wait for a runner.
 - **Running**, its step is the run's own current step.
 - **Ended**, `done_at` is when the run ended on AgentField (else when this
-  factory saw it end), so it sorts and reads like any finished job.
+  factory saw it end), so it sorts and reads like any finished job. This also
+  applies to pipelines of AgentField steps and person gates, including a
+  successful answer with no pull request. The finish time stays after restart.
 
 A job a trigger files is announced on the app's wire as
 `factory.jobs_changed {factory, job}`, once when it is filed and once after
 the intake pass, so a Backlog on screen can read it again at once instead of
-on its next refresh.
+on its next refresh. Later committed state, question and completion changes
+also announce the job. A background person gate therefore appears in Needs you
+without waiting for the periodic refresh; unchanged progress sends no extra
+queue notification.
 
 ## where did this job come from, and where does it run — the AgentField node, its machine, reasoner, trigger and labels
 
@@ -399,6 +436,21 @@ the record then shows it as your steer. Refusals, word for word:
 Only codeaf harness steps can be steered. A plain reasoner's step has no chat
 at all, so there is no box to type in.
 
+## which folder an AgentField job's chat works in — not ~/.codeaf, an empty folder of the job's own
+
+A job AgentField runs — a `run_on` job, or a pipeline whose steps all run on
+AgentField — never runs its code on this machine, so its chats need no project.
+Each step's chat, and the job's own conversation, work in the job's own empty
+folder under the factory (`~/.codeaf/v3/factory/chats/<job>`), whatever folder
+the desk or engine was started in and whatever checkout this machine knows.
+
+No factory chat ever works in codeaf's own folder (`~/.codeaf`), a folder above
+it, or a folder inside it that is not one job's own worktree, clone or empty
+folder. A chat that would is refused: "a factory chat cannot work in codeaf's own
+folder", with the folder named. A local job is unchanged: its chats work in its
+checkout or worktree. The foreman, on a factory started with no project folder,
+works in an empty `chats/foreman` folder of its own.
+
 ## run a step on AgentField — an agentfield step in a pipeline, a reasoner that builds an issue, node.reasoner and its input
 
 A pipeline step can be a run on AgentField: `kind: agentfield` in
@@ -421,7 +473,7 @@ steps:
 
 `input` maps the reasoner's own field names to the job's facts: `{title}`,
 `{body}`, `{repo}`, `{repo_url}`, `{base}`, `{issue_url}`, `{issue_number}`,
-`{job}`. Each value is sent in the type the reasoner's input says for its
+`{job}`, and the downstream result binding `{pr_url}` (below). Each value is sent in the type the reasoner's input says for its
 field (`{issue_number}` is a number for a number field), and one that is a
 fact alone is left out when the job has none. An object or a yes/no field is written
 as its JSON text (`config: '{"check_ci": false}'`, `plan_review: "true"`). With no `input` the
@@ -442,6 +494,40 @@ opened; how that reads is under "an AgentField step that did not succeed". A pip
 when its runs do, with no proof to approve, and needs no checkout on this
 machine: its job never says it is cloning the repository here, and Start is not
 refused because this machine cannot clone it. The same is true of a `run_on` job.
+
+## build then review in one pipeline — pass the opened pull request as {pr_url}
+
+An AgentField step can pass the job's opened pull request to a later step:
+
+```yaml
+pipeline:
+  build-review: [build, review]
+steps:
+  build:
+    kind: agentfield
+    target: planner.build_issue
+    input:
+      title: "{title}"
+      repo_url: "{repo_url}"
+      issue_number: "{issue_number}"
+  review:
+    kind: agentfield
+    target: pr-af.review
+    input:
+      pr_url: "{pr_url}"
+```
+
+Saving the library accepts the binding before a PR exists. The build finishes
+before review starts; review receives the job's first opened PR URL, following
+the existing rule that later results never replace that PR. Earlier phases
+must be done or skipped, with at least one completed work step before the
+consumer. A build that succeeds without opening a PR stops at review before
+contacting its reasoner, with: "this step needs {pr_url}: finish an earlier
+work step that opens a pull request first".
+
+The binding also works inside text (`"Review {pr_url}"`). It is sent only
+when explicitly mapped: a step with no `input` keeps its existing default
+fields. A standalone review can still receive a literal PR URL.
 
 ## give an AgentField step its input in the app — the pipeline editor's input fields, plan_review, config, a field the reasoner does not list
 
@@ -501,8 +587,15 @@ never from a pipeline's or a step's name:
   failed: <reason>" or "<step> was cancelled: <reason>".
 
 The run's whole report, command output included, is kept as the step's
-output: open the step to read it in full. A step that finished reads
-"<step> · done · finished", or "finished and opened <pull request link>".
+output: open the step to read it in full.
+
+## a finished AgentField step — which step opened the pull request
+
+A step that finished reads
+"<step> · done · finished". When that step supplied the job's first pull
+request, it reads "finished and opened <pull request link>". A later step,
+including review using `{pr_url}`, reads "finished" even if its result repeats
+the link; the first pull request stays on the job.
 
 ## a failed, rejected or stopped job on disk — its file says so; a step reads as its label
 
@@ -591,14 +684,18 @@ which keeps the one approval: if it was answered first somewhere else (hax, the
 control plane's page) the job's question comes down by itself, and a late
 answer says "this was already answered somewhere else, and that answer stands".
 
-## restart while an AgentField step runs — the run goes on, not a retry, no "interrupted" round
+## restart or lost worker lease while an AgentField step runs — what happens to a remote build if the worker loses its job, the run goes on, not a retry, no "interrupted" round
 
-Restarting codeaf, or its runner going away, while an agentfield step's run is
-still going on the control plane interrupts nothing: the run keeps going there.
-The job waits for its runner again ("Waiting to start"), and the runner that
-takes it follows that same run. There is no second run, no "interrupted"
-round, no "trying <step> again", and no automatic retry is spent, however many
-times it restarts. Only a person's Stop cancels the run.
+Restarting codeaf, its runner going away, or a worker losing its lease (a
+heartbeat that answers "lease is no longer live" or cannot reach the queue in
+time) while an agentfield step's run is still going on the control plane
+interrupts nothing: the run keeps going there and receives no cancel-tree call.
+The job waits for its runner again ("Waiting to start"), never shown as stopped
+by you, and the next lease of the job follows that same run (same run id) to
+its end without dispatching a second build. There is no "interrupted" round, no
+"trying <step> again", and no automatic retry is spent, however many times it
+restarts or re-attaches. Only a person's Stop cancels the run, posting
+cancel-tree once.
 
 This holds wherever the job was when its runner went away: running, or
 waiting in Needs you on the run's approval. A job whose run goes on with no
@@ -714,3 +811,20 @@ does every question of a job in Manual.
   own checkout and their own temp and cache folders. They cannot read keys and
   sign-ins or use docker unless `"jail.allow"` says so ("What an unattended run
   may touch").
+
+## factory runner control socket directory — isolated launches and long TMPDIR
+
+The local factory shares its runner's in-memory sessions through a private
+control socket. Set `CODEAF_FACTORY_RUNTIME_DIR` to an absolute runtime base
+to isolate it, for example to the same value as your launch's `TMPDIR`.
+Every process sharing that factory profile must use the same override.
+The socket lives in an owner-only `codeaf-runners-<user id>` directory with
+mode 0700; the socket itself is 0600. Its name is a hash of the state root,
+so different profiles have different sockets.
+
+With no override, the stable base remains `/tmp`, including on macOS and
+when `TMPDIR` changes, so a new process can still share an already running
+older runner. An override that makes the socket path 100 bytes or longer
+falls back to that base and says that the Unix socket path limit was exceeded.
+Choose a shorter override to keep the socket inside your isolated directory.
+A symlink in place of the private user directory is refused.

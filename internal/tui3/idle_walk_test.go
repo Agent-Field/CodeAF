@@ -45,6 +45,7 @@ func (a *walkSendAgent) CheckWork() error {
 }
 
 func TestIdleRelease_C3_D1_TerminalModelSendKeepsTheOpenWorkspace(t *testing.T) {
+	t.Setenv("CODEAF_IDLE_HANDOFF", "on")
 	for _, moved := range []bool{false, true} {
 		t.Run(map[bool]string{false: "own release", true: "another computer wins"}[moved], func(t *testing.T) {
 			source := walkSendSource{&continuationListing{row: chatlist.Row{Cell: heldCell, Status: chatlist.Idle, Mine: true, Released: true, AutoOpen: true, Fence: 2, Head: "saved", DeviceID: "A"}}}
@@ -125,6 +126,7 @@ func (t *walkOpenTaker) OpenAvailable(_ context.Context, _ string, seen *directo
 	return Taken{Transcript: t.file, Fence: 4, Head: "newest", Device: "laptop"}, nil
 }
 func TestIdleOpen_C6_D2_LocalViewerRowPullsTheReleasedHead(t *testing.T) {
+	t.Setenv("CODEAF_IDLE_HANDOFF", "on")
 	source := &continuationListing{row: chatlist.Row{Cell: heldCell, Status: chatlist.Running, Device: "laptop", DeviceID: "B", Fence: 3, Head: "newest"}}
 	taker := &walkOpenTaker{source: source}
 	a, old := heldLab(t, source, taker)
@@ -170,6 +172,7 @@ func TestIdleOpen_C6_D2_LocalViewerRowPullsTheReleasedHead(t *testing.T) {
 }
 
 func TestIdleOpen_C7_D2_LocalViewerKeepsLiveHoldChoice(t *testing.T) {
+	t.Setenv("CODEAF_IDLE_HANDOFF", "on")
 	source := &continuationListing{row: chatlist.Row{Cell: heldCell, Status: chatlist.Idle, Released: true, AutoOpen: true, Device: "laptop", DeviceID: "B", Fence: 3, Head: "newest"}}
 	taker := &walkOpenTaker{source: source}
 	a, _ := heldLab(t, source, taker)

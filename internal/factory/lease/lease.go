@@ -61,6 +61,9 @@ var (
 // ErrWithdrawn is a replaced lease, still refused as no longer live.
 var ErrWithdrawn = fmt.Errorf("factory lease: execution withdrawn: %w", ErrNoLease)
 
+// ErrStopped is a lease revoked by a person's Stop, still refused as no longer live.
+var ErrStopped = fmt.Errorf("factory lease: stopped by person: %w", ErrNoLease)
+
 // Lease is the persisted and wire shape, so the worker and person survive a
 // server restart without a second registry becoming the ownership authority.
 type Lease struct {
@@ -324,11 +327,12 @@ func (d *Desk) reserve(doc *document, worker Worker, taken *Lease) error {
 		// its manager, but only the locked job can authorize running steps.
 		taken.ThreadOnly = factory.StoppedByPerson(*it) || it.State != factory.StateQueued && !owesFollow(*it) || paused(*it)
 		delete(doc.Withdrawn, worker.ID)
+		delete(doc.Stopped, worker.ID)
 		doc.Leases = append(doc.Leases, *taken)
 		if err := d.write(*doc); err != nil {
 			return err
 		}
-		if it.WorktreeMachine == "" {
+		if it.WorktreeMachine == "" && !factory.AgentFieldPipeline(*it) && strings.TrimSpace(it.RunOn) == "" {
 			it.WorktreeMachine = taken.Machine
 		}
 		if !taken.ThreadOnly {
@@ -376,6 +380,10 @@ func budgetHoldOf(it factory.Item) budgetHold {
 func holdAtJobBudget(it *factory.Item, now time.Time) bool {
 	if it.Cap <= 0 || factory.JobLifetimeSpent(*it) < it.Cap || approvedWriteOnly(*it) {
 		return false
+	}
+	// The held recovery decision stays in place even if the budget drops below spend.
+	if factory.RecoveryPaused(*it) {
+		return true
 	}
 	// A stopped job keeps its Stop and waits on a person. It gets no cap question:
 	// a person starts it again, and is asked then.
@@ -639,49 +647,24 @@ func (d *Desk) queueJob(id int, lost time.Time, machine string) error {
 		if it.State != factory.StateRunning || paused(*it) {
 			return unchanged
 		}
-		it.State = factory.StateQueued
 		if lost.IsZero() {
-			return nil
-		}
-		step := ""
-		attempts := 1
-		if it.Stream != nil && it.Stream.Cur >= 0 && it.Stream.Cur < len(it.Stream.Phases) {
-			ph := it.Stream.Phases[it.Stream.Cur]
-			step = ph.Name
-			if ph.Round > attempts {
-				attempts = ph.Round
-			}
-		}
-		if machine == "" {
-			machine = it.WorktreeMachine
-		}
-		if it.Publishing {
-			step = "publishing"
-		}
-		// RE-ATTACHING TO A LIVE REMOTE RUN IS NOT A RETRY. A step whose
-		// AgentField run goes on at the control plane never ran here, so a
-		// runner that went away (an engine restart, a lid closed) interrupted
-		// nothing: the job waits for a runner again exactly as when one lets
-		// go, and the runner that takes it follows the same run. No failure
-		// is stamped, so no automatic retry is spent and the step keeps its
-		// round.
-		// NOR IS A RUN THAT ENDED ON THE CONTROL PLANE BEFORE ITS STEP DID
-		// HERE: a quit seconds after the run finished leaves its end on the
-		// record and the step running, and the runner that takes the job
-		// reads that end as the step's (factory.AgentFieldRunOwed). It was
-		// never "offline mid-step".
-		if !it.Publishing && factory.AgentFieldRunOwed(*it, step) {
-			return nil
-		}
-		it.State = factory.StateNeedsYou
-		it.QKind = factory.NeedsRunnerOffline
-		it.Question = "Runner went offline mid-step"
-		failed = factory.NewFailure(step, factory.CodeMachineLost, "Runner went offline mid-step", machine, factory.FailureStopped, attempts, lost)
-		factory.StampFailure(it, failed)
-		if it.FollowUp != nil {
-			cp := *it.FollowUp
-			cp.State, cp.Reason = "needs_you", failed.Detail
-			it.FollowUp = &cp
+			it.State = factory.StateQueued
+		} else if !it.Publishing && factory.AgentFieldRunOwed(*it, currentStepName(*it)) {
+			// RE-ATTACHING TO A LIVE REMOTE RUN IS NOT A RETRY. A step whose
+			// AgentField run goes on at the control plane never ran here, so a
+			// runner that went away (an engine restart, a lid closed) interrupted
+			// nothing: the job waits for a runner again exactly as when one lets
+			// go, and the runner that takes it follows the same run. No failure
+			// is stamped, so no automatic retry is spent and the step keeps its
+			// round.
+			// NOR IS A RUN THAT ENDED ON THE CONTROL PLANE BEFORE ITS STEP DID
+			// HERE: a quit seconds after the run finished leaves its end on the
+			// record and the step running, and the runner that takes the job
+			// reads that end as the step's (factory.AgentFieldRunOwed). It was
+			// never "offline mid-step".
+			it.State = factory.StateQueued
+		} else {
+			failed = markRunnerLost(it, lost, machine)
 		}
 		return nil
 	})
@@ -691,18 +674,54 @@ func (d *Desk) queueJob(id int, lost time.Time, machine string) error {
 	if err != nil {
 		return err
 	}
-	// ONLY A FAILURE IS RECORDED AS ONE. A hold that ran out on a live remote
-	// run stamped none (it goes on, and the next runner follows it), and an
-	// event for it read " ·  · " on every job a restarted runner took back.
-	if !lost.IsZero() && failed.Code != "" && d.record != nil {
+	d.recordRunnerLost(id, failed)
+	return nil
+}
+
+// currentStepName is the name of the step the job is on, empty when none.
+func currentStepName(it factory.Item) string {
+	if it.Stream != nil && it.Stream.Cur >= 0 && it.Stream.Cur < len(it.Stream.Phases) {
+		return it.Stream.Phases[it.Stream.Cur].Name
+	}
+	return ""
+}
+
+func markRunnerLost(it *factory.Item, now time.Time, machine string) factory.Failure {
+	step := ""
+	attempts := 1
+	if it.Stream != nil && it.Stream.Cur >= 0 && it.Stream.Cur < len(it.Stream.Phases) {
+		ph := it.Stream.Phases[it.Stream.Cur]
+		step, attempts = ph.Name, max(1, ph.Round)
+	}
+	if machine == "" {
+		machine = it.WorktreeMachine
+	}
+	if it.Publishing {
+		step = "publishing"
+	}
+	const reason = "Runner went offline mid-step"
+	it.State, it.QKind, it.Question = factory.StateNeedsYou, factory.NeedsRunnerOffline, reason
+	failed := factory.NewFailure(step, factory.CodeMachineLost, reason, machine, factory.FailureStopped, attempts, now)
+	factory.StampFailure(it, failed)
+	if it.FollowUp != nil {
+		cp := *it.FollowUp
+		cp.State, cp.Reason = "needs_you", failed.Detail
+		it.FollowUp = &cp
+	}
+	return failed
+}
+
+func (d *Desk) recordRunnerLost(id int, failed factory.Failure) {
+	if failed.Code != "" && d.record != nil {
 		_, _ = d.record.Append(context.Background(), record.Event{
 			Kind: record.StepFailed, Job: id, Detail: failed.Code + " · " + failed.Step + " · " + failed.Next,
 		})
 	}
-	return nil
 }
 
-func paused(it factory.Item) bool { return it.Stream != nil && it.Stream.Paused }
+func paused(it factory.Item) bool {
+	return factory.RecoveryPaused(it) || it.Stream != nil && it.Stream.Paused
+}
 
 // AsleepCeiling bounds how long a lease is kept for a computer that went to
 // sleep holding it. Sleep keeps the job on its computer through a night; a

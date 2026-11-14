@@ -257,8 +257,10 @@ func appTakeRefusal(ctx context.Context, s *syncsetup.Sync, id string, seen *dir
 		return err
 	}
 	wire := appTakeError(err).(*appwire.Error)
-	if fresh, readErr := s.Dir.Cell(ctx, id); readErr == nil && fresh.Cell.Lease.Device == seen.Device && fresh.Cell.Lease.Fence > seen.Fence {
-		wire.Message = fmt.Sprintf(chatlist.PickedUpAgain, appHolderName(ctx, s, fresh.Cell.Lease.Device))
+	if seen != nil && seen.Fence > 0 {
+		if fresh, readErr := s.Dir.Cell(ctx, id); readErr == nil && fresh.Cell.Lease.Device == seen.Device && fresh.Cell.Lease.Fence > seen.Fence {
+			wire.Message = fmt.Sprintf(chatlist.PickedUpAgain, appHolderName(ctx, s, fresh.Cell.Lease.Device))
+		}
 	}
 	return wire
 }

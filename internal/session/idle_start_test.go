@@ -3,11 +3,12 @@ package session
 import (
 	"context"
 	"errors"
-	"github.com/Agent-Field/codeaf/internal/cellstore"
-	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/cellstore"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 )
 
 func TestIdleRelease_C2_ParkedTaskRetainsOwnership(t *testing.T) {

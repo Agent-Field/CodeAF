@@ -23,8 +23,8 @@ import (
 )
 
 // SessionTruth is the part of [Meta] that lives in the sealed tree, as
-// .cell/session.json holds it. Every path in it is spelled against a named
-// base (pathcodec.go), never absolute.
+// .cell/session.json holds it. Paths use a named base when possible; paths
+// outside every base retain their absolute spelling (pathcodec.go).
 type SessionTruth struct {
 	V               uint16           `json:"V"`
 	ChatURI         string           `json:"chat_uri,omitempty"`

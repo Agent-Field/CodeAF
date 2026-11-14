@@ -46,7 +46,7 @@ func (*appBackend) ChatLocationsKnown() bool { return true }
 func (b *appBackend) useSyncDrives(book *driveBook) {
 	b.locked(func() { b.drives = book })
 	book.idleCheck = b.idleForRelay
-	book.notices = &driveNotices{
+	book.notices = &appDriveNotices{
 		firstRun: b.syncStarted,
 		say:      func(c cell.Cell, line string) { b.syncFact(c, appSyncFact{line: line}) },
 		viewer: func(c cell.Cell, viewer syncsetup.Viewer) {

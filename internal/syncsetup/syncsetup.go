@@ -216,7 +216,7 @@ func buildAt(home, base string, id identity.Identity, dev identity.Dev, interval
 		Interval:   interval,
 	}
 	s.Dir = &deviceDirectory{HTTP: directory.NewHTTP(base, sign, s.ClusterHTTP(&http.Client{Timeout: requestTimeout})), home: home, binding: deviceBindingFor(base, id, dev)}
-	s.Store = blobstore.NewHTTP(base, sign, s.ClusterHTTP(&http.Client{}))
+	s.Store = GateStore(blobstore.NewHTTP(base, sign, s.ClusterHTTP(&http.Client{})), home, base, id.ID())
 	return s
 }
 
@@ -261,7 +261,13 @@ func (s *Sync) RowsMailAt(ctx context.Context) ([]chatlist.Row, Mail, uint64, er
 	}
 	key := directory.MetadataKey(s.Identity.CellKey())
 	open := func(sealed string) (string, error) { return directory.OpenName(key, sealed) }
-	return chatlist.Rows(l, s.Device.ID(), open), MailOf(l, s.Device.ID(), key), l.Version, nil
+	rows := chatlist.Rows(l, s.Device.ID(), open)
+	if !s.IdleHandoffAllowed() {
+		for i := range rows {
+			rows[i].AutoOpen = false
+		}
+	}
+	return rows, MailOf(l, s.Device.ID(), key), l.Version, nil
 }
 
 // Follow joins this process's change feed for the identity on this relay, so a

@@ -133,6 +133,9 @@ func (l *PipelineLoader) load(ctx context.Context, repo, dir, personal string, b
 func (l *PipelineLoader) ask(repo, dir string) *ask {
 	return l.asking.start(repo, "factory/pipeline read", func(ctx context.Context) {
 		seen := l.read(ctx, repo, dir)
+		if errors.Is(ctx.Err(), context.Canceled) {
+			return
+		}
 		l.mu.Lock()
 		defer l.mu.Unlock()
 		if previous, known := l.repos[repoKey(repo)]; known && ctx.Err() != nil {
@@ -141,6 +144,15 @@ func (l *PipelineLoader) ask(repo, dir string) *ask {
 		seen.at = l.now()
 		l.repos[repoKey(repo)] = seen
 	})
+}
+
+// Close cancels any background pipeline read and waits up to [closeWait] for it
+// to finish.
+func (l *PipelineLoader) Close() {
+	if l == nil {
+		return
+	}
+	l.asking.close(closeWait)
 }
 
 func (l *PipelineLoader) read(ctx context.Context, repo, dir string) pipelineRead {
@@ -163,6 +175,9 @@ func (l *PipelineLoader) read(ctx context.Context, repo, dir string) pipelineRea
 		tag = previous.tag
 	}
 	text, sha, tag, err := l.absent.contents(ctx, api, l.now(), owner, name, pipeline.RepoFile, tag)
+	if errors.Is(ctx.Err(), context.Canceled) {
+		return pipelineRead{err: ctx.Err()}
+	}
 	if errors.Is(err, forge.ErrNotModified) {
 		return previous
 	}
@@ -174,12 +189,18 @@ func (l *PipelineLoader) read(ctx context.Context, repo, dir string) pipelineRea
 			tag = previous.tag
 		}
 		text, sha, tag, err = l.absent.contents(ctx, api, l.now(), owner, name, factory.RecipeFile, tag)
+		if errors.Is(ctx.Err(), context.Canceled) {
+			return pipelineRead{err: ctx.Err()}
+		}
 		if errors.Is(err, forge.ErrNotModified) {
 			return previous
 		}
 		if missing(err) {
 			if err := l.absent.repoAnswers(ctx, api, l.now(), owner, name); err != nil {
 				return l.failure(dir, err)
+			}
+			if errors.Is(ctx.Err(), context.Canceled) {
+				return pipelineRead{err: ctx.Err()}
 			}
 			f := pipeline.Defaults()
 			f.Source = pipeline.SourceDefaults

@@ -65,6 +65,8 @@ const afStopDrain = 15 * time.Second
 
 var afRemoteEvery = 500 * time.Millisecond
 
+const afStepOpenedPullRequest = "finished and opened "
+
 // afClient is the part of the control plane client a remote run uses.
 type afClient interface {
 	Dispatch(ctx context.Context, target string, input any, owner string) (agentfield.Dispatched, error)
@@ -115,9 +117,11 @@ func (p afPlace) recorded(it factory.Item) *factory.AgentFieldRun {
 
 // afRemote runs RunOn jobs for one runner.
 type afRemote struct {
-	items     *store.Store // the runner's jobs
-	floor     *store.Store // the factory a step's conversation is owned by
-	workspace string
+	items *store.Store // the runner's jobs
+	// floor is the factory a step's conversation is owned by, and whose
+	// `chats/<job>` folder each step's conversation works in
+	// ([factoryJobFolder]): the step runs on its node, never here.
+	floor *store.Store
 	// conn is the control plane now, and the node id this factory is; false
 	// while the factory is not connected.
 	conn func() (afClient, string, bool)
@@ -125,9 +129,10 @@ type afRemote struct {
 	news func(file string)
 	now  func() time.Time
 
-	mu    sync.Mutex
-	files map[string]*afMirror // by execution id
-	drain map[string]bool      // executions with nothing more to read
+	mu        sync.Mutex
+	files     map[string]*afMirror // by execution id
+	drain     map[string]bool      // executions with nothing more to read
+	cancelled map[string]bool      // run ids already cancelled on the control plane
 	// asked is when each waiting execution's approval was last read, so a
 	// pause is read once and then again only every afApprovalEvery.
 	asked map[string]time.Time
@@ -289,11 +294,15 @@ func (r *afRemote) Step(ctx context.Context, job factoryrun.Job) (factory.StageR
 	// in Manual or Auto alike. A round begun afresh after the step read its
 	// run's end (Run again, Try again, Reopen) starts a run of its own.
 	if run == nil || run.ExecutionID == "" || (!run.Ended.IsZero() && !afRoundsRun(job, *run)) {
+		if err := factory.AgentFieldInputReady(it, st); err != nil {
+			return factory.StageResult{}, err
+		}
 		fresh, err := r.dispatch(ctx, client, node, target, afTypedInput(ctx, client, target, factory.AgentFieldInput(it, st)))
 		if err != nil {
 			return factory.StageResult{}, err
 		}
 		fresh.EndOwed = true
+		fresh.PullRequestBefore = it.PullRequest != nil
 		if err := r.items.Update(it.ID, func(it *factory.Item) error {
 			*place.runOf(it) = *fresh
 			return nil
@@ -318,6 +327,14 @@ func (r *afRemote) Step(ctx context.Context, job factoryrun.Job) (factory.StageR
 				}
 				return nil
 			})
+			if r.floor != nil && r.floor != r.items {
+				_ = r.floor.Update(it.ID, func(it *factory.Item) error {
+					if run := place.recorded(*it); run != nil {
+						run.EndOwed = false
+					}
+					return nil
+				})
+			}
 		}
 	}()
 	if err := r.follow(ctx, client, it.ID, run.RunID, place); err != nil {
@@ -349,7 +366,10 @@ func (r *afRemote) Step(ctx context.Context, job factoryrun.Job) (factory.StageR
 	}); ok {
 		if raw, err := results.Result(ctx, run.ExecutionID); err == nil {
 			if link, _ := factory.PullRequestIn(raw); link != "" {
-				out += " and opened " + link
+				openedBefore := run.PullRequestBefore || afStepHadPullRequest(it, st)
+				if len(it.Stages) == 1 || !openedBefore {
+					out = afStepOpenedPullRequest + link
+				}
 				opened = true
 				afKeepPullRequest(r.items, it.ID, raw)
 			}
@@ -402,6 +422,32 @@ func (r *afRemote) Step(ctx context.Context, job factoryrun.Job) (factory.StageR
 	return factory.StageResult{Done: true, Output: out}, nil
 }
 
+// afStepHadPullRequest recovers attribution for older run records that lack
+// PullRequestBefore. A PR binding required the link before dispatch; an earlier
+// opening receipt also proves another step supplied it before this run.
+func afStepHadPullRequest(it factory.Item, st factory.Stage) bool {
+	if it.PullRequest == nil {
+		return false
+	}
+	for _, value := range st.Input {
+		if strings.Contains(value, "{pr_url}") {
+			return true
+		}
+	}
+	if it.Stream == nil {
+		return false
+	}
+	for _, ph := range it.Stream.Phases {
+		if ph.Name == st.Name {
+			break
+		}
+		if ph.Result != nil && ph.Result.Output == afStepOpenedPullRequest+it.PullRequest.URL {
+			return true
+		}
+	}
+	return false
+}
+
 // afNothingToChange is the end of an agentfield step whose run made no
 // change: the step is done — nothing failed, nothing is the person's to fix —
 // and its output is [factory.AgentFieldNothingToChange], which the job's read
@@ -451,6 +497,36 @@ func afRoundsRun(job factoryrun.Job, run factory.AgentFieldRun) bool {
 // onto the factory's own job, exactly as [afRemote.follow] does for a Stop
 // that reached a runner following the run. A control plane it cannot reach is
 // an error, and the job is offered again once this hold runs out.
+func (r *afRemote) claimCancelTree(runID string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.cancelled[runID] {
+		return false
+	}
+	if r.cancelled == nil {
+		r.cancelled = map[string]bool{}
+	}
+	r.cancelled[runID] = true
+	return true
+}
+
+func (r *afRemote) releaseCancelTree(runID string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.cancelled, runID)
+}
+
+func (r *afRemote) cancelTreeOnce(ctx context.Context, client afClient, runID string) error {
+	if !r.claimCancelTree(runID) {
+		return nil
+	}
+	if err := client.CancelTree(ctx, runID); err != nil {
+		r.releaseCancelTree(runID)
+		return err
+	}
+	return nil
+}
+
 func (r *afRemote) CarryStop(ctx context.Context, it factory.Item) error {
 	client, _, ok := r.conn()
 	if !ok {
@@ -459,6 +535,9 @@ func (r *afRemote) CarryStop(ctx context.Context, it factory.Item) error {
 	jobs := r.items
 	if r.floor != nil {
 		jobs = r.floor
+		if fresh, err := r.floor.Get(it.ID); err == nil {
+			it = fresh
+		}
 	}
 	type live struct {
 		run   string
@@ -480,7 +559,7 @@ func (r *afRemote) CarryStop(ctx context.Context, it factory.Item) error {
 	}
 	for _, l := range runs {
 		cancelCtx, cancel := context.WithTimeout(ctx, afStopDrain)
-		err := client.CancelTree(cancelCtx, l.run)
+		err := r.cancelTreeOnce(cancelCtx, client, l.run)
 		if err == nil {
 			r.readToEnd(cancelCtx, client, l.run, it.ID, jobs, l.place)
 		}
@@ -614,7 +693,7 @@ func (r *afRemote) follow(ctx context.Context, client afClient, job int, runID s
 			}
 			// THE PERSON'S STOP STOPS THE WHOLE RUN, not only this reading.
 			cancelCtx, cancel := context.WithTimeout(context.Background(), afStopDrain)
-			_ = client.CancelTree(cancelCtx, runID)
+			_ = r.cancelTreeOnce(cancelCtx, client, runID)
 			// AND THE RUN IS STILL READ TO ITS END. A step's last lines reach
 			// the control plane after the stop, and the control plane holds
 			// them until this factory acks them: a reader that went home at
@@ -1163,7 +1242,7 @@ func (r *afRemote) pull(ctx context.Context, client afClient, it factory.Item, s
 		_ = client.RelayAck(ctx, exec, through)
 		return nil
 	}
-	if err := m.append(lines, r.workspace); err != nil {
+	if err := m.append(lines, r.stepFolder(it)); err != nil {
 		return m // unkept and unacked: the next reading asks from after again
 	}
 	switch last {
@@ -1272,11 +1351,19 @@ func (r *afRemote) mirror(it factory.Item, exec, step string, make bool) *afMirr
 	if !make {
 		return nil
 	}
-	bucket, err := v3ProjectDir(r.workspace)
+	// A STEP'S CONVERSATION WORKS IN THE JOB'S OWN EMPTY FOLDER. Its code ran
+	// on the node, so it has nothing on this machine to work in, and the
+	// engine's working directory — the codeaf home itself, for the desk — is
+	// the one folder it must never have: every save of the chat swept it.
+	where := r.stepFolder(it)
+	if where == "" || factoryFolderRefusal(r.floor, where) != nil {
+		return nil
+	}
+	bucket, err := v3ProjectDir(where)
 	if err != nil {
 		return nil
 	}
-	place, err := v3MintSession(bucket, r.workspace, r.workspace, false)
+	place, err := v3MintSession(bucket, where, where, false)
 	if err != nil {
 		return nil
 	}
@@ -1292,7 +1379,7 @@ func (r *afRemote) mirror(it factory.Item, exec, step string, make bool) *afMirr
 	// the record empty writes a header of its own — so a header left for the
 	// first relayed line to bring would land second, and the record would
 	// open twice. The node's own header is then skipped as a repeat.
-	if os.WriteFile(file, append(afLocalHeader(nil, m.id, afHeaderCwd(file, r.workspace)), '\n'), 0o600) != nil {
+	if os.WriteFile(file, append(afLocalHeader(nil, m.id, afHeaderCwd(file, where)), '\n'), 0o600) != nil {
 		return nil
 	}
 	m.header = true
@@ -1301,6 +1388,16 @@ func (r *afRemote) mirror(it factory.Item, exec, step string, make bool) *afMirr
 	}
 	r.files[exec] = m
 	return m
+}
+
+// stepFolder is the folder every step conversation of it works in: the job's
+// own empty folder under the owning floor, "" when there is none to make.
+func (r *afRemote) stepFolder(it factory.Item) string {
+	dir, err := factoryJobFolder(r.floor, it.ID)
+	if err != nil {
+		return ""
+	}
+	return dir
 }
 
 func afHasHeader(file string) bool {

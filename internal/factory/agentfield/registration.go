@@ -133,6 +133,16 @@ func Reasoners() []Reasoner {
 // given and probes no other address, because the address a person typed is
 // the one their network routes.
 //
+// THE METADATA GOES UNDER "custom": the control plane keeps only
+// deployment, performance and custom from a registration's metadata and
+// drops every other key without a word. holds_executions_offline tells it
+// the factory's work outlives its process (the job is on the floor, the
+// promise to report in the side table), so while the node's lease is
+// expired — the engine down, the Mac asleep — its executions stay running
+// instead of being timed out as stale, and on the next lease the ones it
+// lists as inflight are released. A control plane without that support
+// ignores the key.
+//
 // AN EMPTY base_url IS A LINK-ONLY NODE: the control plane has no address to
 // dial or probe, and reaches it only down the link it opens.
 func RegistrationFor(s Settings, instance, version, build string) Registration {
@@ -147,7 +157,10 @@ func RegistrationFor(s Settings, instance, version, build string) Registration {
 		CallbackDiscovery: map[string]any{
 			"mode": "manual",
 		},
-		Metadata: map[string]any{"codeaf": map[string]any{"kind": "factory", "build": build, "trust_ceiling": string(s.Trust)}},
+		Metadata: map[string]any{"custom": map[string]any{
+			"holds_executions_offline": true,
+			"codeaf":                   map[string]any{"kind": "factory", "build": build, "trust_ceiling": string(s.Trust)},
+		}},
 	}
 	r.CommunicationConfig.Protocols = []string{"link"}
 	if s.BaseURL != "" {

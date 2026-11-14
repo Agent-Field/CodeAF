@@ -653,6 +653,8 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			cancelAttempt()
 			return nil, err
 		}
+		// Recheck after every wait, including the limiter, because another call
+		// may have spent the daily allowance while this attempt was queued.
 		if gate := c.config.RouteGate; gate != nil {
 			if err := gate(ctx, c.modelFor(request), callTag(ctx)); err != nil {
 				sharedLimiter.release(false, 0)
@@ -716,6 +718,9 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			// A cancelled or expired parent is a decision, not a fault. Retrying
 			// it would burn the remaining deadline on calls that cannot land.
 			if ctx.Err() != nil {
+				if sent.Load() {
+					c.settle(ctx, c.modelFor(request), nil, receiptTornReason, 0, knobs.trace)
+				}
 				return nil, fmt.Errorf("execute request: %w", err)
 			}
 			// A TRANSPORT MAY KNOW THE CREDENTIAL IT OWNS IS FINISHED. That is

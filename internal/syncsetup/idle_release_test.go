@@ -23,6 +23,7 @@ import (
 
 func idleContractChat(t *testing.T, h *twoHomes) *openChat {
 	t.Helper()
+	t.Setenv("CODEAF_IDLE_HANDOFF", "on")
 	mustNil(t, h.b.putDevice(t.Context(), nameB))
 	c := h.openA()
 	// Knowledge capture needs a complete timestamp to advance past this seed
@@ -85,6 +86,192 @@ func TestIdleRelease_C1_PairedIdleReleasesUploadedTurns(t *testing.T) {
 	idleContractReleased(t, r, c.drive, uploadedIdleReleaseWithin)
 	if _, _, err := r.a.SendLease(r.cell.ID); !os.IsNotExist(err) {
 		t.Fatalf("C1 released writer retains send permission: %v", err)
+	}
+}
+
+func TestIdleRelease_DefaultOff_RetainsHoldAndRequiresContinueHere(t *testing.T) {
+	h := newTwoHomes(t)
+	mustNil(t, h.b.putDevice(t.Context(), nameB))
+	c := h.openA()
+	appendTo(t, transcriptOf(h.cell), fmt.Sprintf(`{"type":"message","role":"user","content":"default off retains hold","timestamp":%q}`+"\n", h.clock.Now().UTC().Format(time.RFC3339Nano)))
+	_, err := c.drive.Store(h.engine).Seal(t.Context(), h.cell, cellstore.TurnInfo{})
+	mustNil(t, err)
+	h.durable(h.cell.ID, h.cell)
+
+	// With idle handoff unset (default false), Idle() must be a no-op and retain the lease.
+	c.drive.Idle()
+	finished, err := c.drive.releaseIdle(t.Context(), c.drive.activity.Load())
+	if err != nil || !finished || c.drive.IdleReleased() {
+		t.Fatalf("default-off releaseIdle = %v, %v, released=%v", finished, err, c.drive.IdleReleased())
+	}
+	v, err := h.a.Dir.Cell(t.Context(), h.cell.ID)
+	mustNil(t, err)
+	if v.Cell.Lease.Expires <= v.Now || c.drive.Gate() != nil {
+		t.Fatalf("default-off idle chat released its hold: %+v, gate=%v", v.Cell.Lease, c.drive.Gate())
+	}
+
+	// Even when the chat is explicitly released on the relay, B's Rows() and RowsForSend()
+	// must report AutoOpen: false when idle handoff is off by default.
+	mustNil(t, h.a.Dir.Release(t.Context(), h.cell.ID, v.Cell.Lease.Fence))
+	rows, err := h.b.Rows(t.Context())
+	mustNil(t, err)
+	found := false
+	for _, row := range rows {
+		if row.Cell == h.cell.ID {
+			found = true
+			if row.AutoOpen {
+				t.Fatalf("default-off Rows() set AutoOpen=true on %+v", row)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("did not find cell %s in B's rows", h.cell.ID)
+	}
+}
+
+func TestIdleRelease_StorageOff_RefusesReleaseAndAutoOpen(t *testing.T) {
+	t.Setenv("CODEAF_IDLE_HANDOFF", "on")
+	h := newTwoHomes(t)
+	mustNil(t, h.b.putDevice(t.Context(), nameB))
+	c := h.openA()
+	appendTo(t, transcriptOf(h.cell), fmt.Sprintf(`{"type":"message","role":"user","content":"storage off guard","timestamp":%q}`+"\n", h.clock.Now().UTC().Format(time.RFC3339Nano)))
+	_, err := c.drive.Store(h.engine).Seal(t.Context(), h.cell, cellstore.TurnInfo{})
+	mustNil(t, err)
+	h.durable(h.cell.ID, h.cell)
+
+	mustNil(t, SaveStorage(h.homeA, h.a.Relay, h.a.Identity.ID(), "off"))
+	mustNil(t, SaveStorage(h.homeB, h.b.Relay, h.b.Identity.ID(), "off"))
+	confirmed, err := c.drive.ConfirmWork(t.Context())
+	if err != nil || !confirmed {
+		t.Fatalf("ConfirmWork before storage-off check = %v, %v", confirmed, err)
+	}
+	c.drive.Idle()
+	finished, err := c.drive.releaseIdle(t.Context(), c.drive.activity.Load())
+	if err != nil || !finished || c.drive.IdleReleased() {
+		t.Fatalf("storage-off releaseIdle = %v, %v, released=%v", finished, err, c.drive.IdleReleased())
+	}
+	v, err := h.a.Dir.Cell(t.Context(), h.cell.ID)
+	mustNil(t, err)
+	if v.Cell.Lease.Expires <= v.Now {
+		t.Fatalf("storage-off idle chat released its hold: %+v", v.Cell.Lease)
+	}
+	mustNil(t, h.a.Dir.Release(t.Context(), h.cell.ID, v.Cell.Lease.Fence))
+	rows, err := h.b.Rows(t.Context())
+	mustNil(t, err)
+	for _, row := range rows {
+		if row.Cell == h.cell.ID && row.AutoOpen {
+			t.Fatalf("storage-off Rows() set AutoOpen=true on %+v", row)
+		}
+	}
+}
+
+func TestIdleRelease_P9X2_DisplacedBranchReopensAndReusesKeptCopy(t *testing.T) {
+	h := newTwoHomes(t)
+	c := idleContractChat(t, h)
+	d := c.drive
+	d.cancel()
+	<-d.done
+	origView, err := h.a.Dir.Cell(t.Context(), h.cell.ID)
+	mustNil(t, err)
+
+	// Seal an unpublished turn locally on A while A's hold expires, then let Displaced
+	// branch it into a kept copy on the relay and record J -> B in branches.json.
+	h.block.set(true)
+	c.mustSay("orphaned turn kept in branch")
+	h.clock.advance(directory.LeaseTTL + time.Second)
+	mustNil(t, d.CheckLease(t.Context()))
+	h.block.set(false)
+	mustNil(t, d.batcher.Close(t.Context()))
+
+	branches, err := branchMapOf(h.homeA)
+	mustNil(t, err)
+	keptID := branches.Resolve(h.cell.ID)
+	if keptID == h.cell.ID {
+		t.Fatal("Displaced did not record a kept branch in branches.json")
+	}
+
+	// Reopening the original chat J via TakeSeen must reuse keptID without creating
+	// a second branch on the relay, clear J -> keptID from branches.json, and restore J.
+	seen, err := h.a.Dir.Cell(t.Context(), h.cell.ID)
+	mustNil(t, err)
+	got, err := h.continuerA().TakeSeen(t.Context(), h.cell.ID, &directory.LeaseExpectation{Device: seen.Cell.Lease.Device, Fence: seen.Cell.Lease.Fence})
+	mustNil(t, err)
+	if got.Taken.Kept != keptID {
+		t.Fatalf("TakeSeen Kept = %q, want reused %q", got.Taken.Kept, keptID)
+	}
+	if got.KeptTurns != 0 {
+		t.Fatalf("TakeSeen re-announced KeptTurns = %d for already-branched copy", got.KeptTurns)
+	}
+	if got.Taken.Driving.Head != origView.Cell.Head || got.Taken.Driving.Fence != origView.Cell.Lease.Fence+1 {
+		t.Fatalf("TakeSeen restored head=%s fence=%d, want head=%s fence=%d", got.Taken.Driving.Head, got.Taken.Driving.Fence, origView.Cell.Head, origView.Cell.Lease.Fence+1)
+	}
+	listing, err := h.a.Dir.List(t.Context())
+	mustNil(t, err)
+	branchCount := 0
+	for _, cell := range listing.Cells {
+		if cell.ParentCell == h.cell.ID {
+			branchCount++
+		}
+	}
+	if branchCount != 1 {
+		t.Fatalf("relay has %d branches for %s, want 1", branchCount, h.cell.ID)
+	}
+	branches, err = branchMapOf(h.homeA)
+	mustNil(t, err)
+	if branches.Resolve(h.cell.ID) != h.cell.ID {
+		t.Fatalf("TakeSeen left %s mapped to %s in branches.json", h.cell.ID, branches.Resolve(h.cell.ID))
+	}
+}
+
+func TestIdleRelease_P9X3_RunningTurnReacquiresLapsedOwnHoldInPlace(t *testing.T) {
+	h := newTwoHomes(t)
+	c := idleContractChat(t, h)
+	d := c.drive
+	d.SetIdleCheck(func() bool { return false })
+	d.Working(true)
+	defer d.Working(false)
+
+	var before directory.CellView
+	for {
+		var err error
+		before, err = h.a.Dir.Cell(t.Context(), h.cell.ID)
+		mustNil(t, err)
+		if before.Cell.Lease.Working {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	// Simulate relay outage + restart / clock jump so the running turn's own hold
+	// is observed as lapsed with no other computer holding the chat.
+	h.clock.advance(directory.LeaseTTL + time.Second)
+	mustNil(t, d.CheckLease(t.Context()))
+
+	if d.Gate() != nil {
+		t.Fatalf("running turn lost admission instead of reacquiring in place: %v", d.Gate())
+	}
+	after, err := h.a.Dir.Cell(t.Context(), h.cell.ID)
+	mustNil(t, err)
+	if after.Cell.Lease.Device != h.a.Device.ID() || after.Cell.Lease.Fence != before.Cell.Lease.Fence+1 || after.Cell.Lease.Expires <= after.Now {
+		t.Fatalf("running turn did not conditionally reacquire Fence+1 in place: before=%+v after=%+v", before.Cell.Lease, after.Cell.Lease)
+	}
+	if _, receiptFence, err := h.a.SendLease(h.cell.ID); err != nil || receiptFence != before.Cell.Lease.Fence+1 {
+		t.Fatalf("SendLease after in-place reacquire = %d, %v; want %d", receiptFence, err, before.Cell.Lease.Fence+1)
+	}
+	// Finish the turn and verify it publishes on the original chat with zero copy branches.
+	c.mustSay("turn completed after in-place reacquire")
+	h.durable(h.cell.ID, h.cell)
+	published, err := h.a.Dir.Cell(t.Context(), h.cell.ID)
+	mustNil(t, err)
+	if published.Cell.Head != h.head() {
+		t.Fatalf("turn after in-place reacquire did not publish on original chat: relay=%s local=%s", published.Cell.Head, h.head())
+	}
+	listing, err := h.a.Dir.List(t.Context())
+	mustNil(t, err)
+	for _, cell := range listing.Cells {
+		if cell.ParentCell == h.cell.ID {
+			t.Fatalf("in-place reacquire unexpectedly created a copy branch: %+v", cell)
+		}
 	}
 }
 
@@ -256,6 +443,7 @@ func (c *idleRequests) since(n int) []idleRequest {
 }
 
 func TestIdleRelease_C10_SingleDeviceAddsNoRequests(t *testing.T) {
+	t.Setenv("CODEAF_IDLE_HANDOFF", "on")
 	var idle, control idleRequests
 	h := newTwoHomes(t, idle.wrap)
 	baseline := newTwoHomes(t, control.wrap)

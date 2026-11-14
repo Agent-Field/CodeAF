@@ -109,6 +109,16 @@ func (d *Drive) ConfirmWork(ctx context.Context) (bool, error) {
 	// Preserving orphaned work in a branch does not revive this displaced
 	// window. A deliberate reopen owns that branch through a new drive.
 	if id != d.directoryID {
+		v, err := d.sync.Dir.Cell(ctx, d.directoryID)
+		d.retakeOffline.Store(syncwords.NetworkFailure(err) || errors.Is(err, context.DeadlineExceeded))
+		if err != nil {
+			return false, err
+		}
+		if v.Cell.Lease.Device == d.sync.Device.ID() {
+			d.availableAfterWithin(ctx, held, v.Cell.Lease)
+		} else {
+			d.confirmHolder(ctx, v.Cell.Lease)
+		}
 		return false, nil
 	}
 	v, err := d.sync.Dir.Cell(ctx, id)
@@ -136,6 +146,14 @@ func (d *Drive) ConfirmWork(ctx context.Context) (bool, error) {
 		d.batcher.RetireFence(id, fence)
 		return false, nil
 	case workReopen:
+		if d.canReacquireWorking(v, fence) {
+			if ok, err := d.reacquireWorking(ctx, v); err != nil || ok {
+				return ok, err
+			}
+		}
+		if !d.released.Load() {
+			d.retireHold(ctx, held)
+		}
 		d.availableAfterWithin(ctx, held, lease)
 		d.batcher.RetireFence(id, fence)
 		return false, nil
@@ -181,6 +199,43 @@ func (d *Drive) ConfirmWork(ctx context.Context) (bool, error) {
 	}
 }
 
+func (d *Drive) canReacquireWorking(v directory.CellView, fence uint64) bool {
+	if d == nil || d.batcher == nil || !d.working.Load() || d.released.Load() || d.displaced() {
+		return false
+	}
+	if d.run == nil || d.run.Err() != nil {
+		return false
+	}
+	lease := v.Cell.Lease
+	return lease.Device == d.sync.Device.ID() && lease.Fence == fence && lease.Expires > 0 && lease.Expires <= v.Now
+}
+
+func (d *Drive) reacquireWorking(ctx context.Context, v directory.CellView) (bool, error) {
+	if err := cellstore.Captured(ctx, d.cell); err != nil {
+		return false, err
+	}
+	extends, err := cellstore.Extends(d.cell, v.Cell.Head)
+	if err == nil && v.Cell.Head == "" && v.Cell.Lease.Device == d.sync.Device.ID() {
+		extends = true
+	}
+	if err != nil || !extends {
+		return false, err
+	}
+	resumed, err := d.batcher.ReacquireWorking(ctx, v)
+	if errors.Is(err, directory.ErrLeaseHeld) || errors.Is(err, directory.ErrFenceStale) || errors.Is(err, directory.ErrConditionalTake) {
+		return false, nil
+	}
+	if err != nil || !resumed {
+		return false, err
+	}
+	if err := d.confirmSendLease(ctx); err != nil {
+		return false, err
+	}
+	d.resumeViewerWithin(ctx)
+	d.ownershipNotice(ctx, d.noticeVersion.Add(1), Viewer{})
+	return true, nil
+}
+
 type workOwnership uint8
 
 const (
@@ -223,13 +278,17 @@ func (d *Drive) confirmHolder(ctx context.Context, lease directory.Lease) {
 	name := chatlist.DeviceName(nil, lease.Device, nil)
 	if lease.Device == "" {
 		name = unknownDevice
-	} else if listing, err := d.sync.Dir.List(ctx); err == nil {
+	}
+	if l, err := d.sync.Dir.List(ctx); err == nil {
 		key := directory.MetadataKey(d.sync.Identity.CellKey())
-		name = chatlist.DeviceName(listing.Devices, lease.Device, func(sealed string) (string, error) { return directory.OpenName(key, sealed) })
+		name = chatlist.DeviceName(l.Devices, lease.Device, func(sealed string) (string, error) {
+			return directory.OpenName(key, sealed)
+		})
 	}
 	viewer := Viewer{ID: lease.Device, Name: name, Line: chatlist.Superseded(name)}
 	d.mu.Lock()
-	if d.viewer == viewer || !d.idleNotices.Load() && d.viewer.Line != "" {
+	d.lost = true
+	if !d.idleNotices.Load() && d.viewer.Line != "" {
 		d.mu.Unlock()
 		return
 	}

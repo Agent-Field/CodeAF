@@ -1633,8 +1633,55 @@ func (c *Client) completeWithMessagesStreaming(
 	// transport can unblock it (the same reasoning transport.go's idle watchdog
 	// gives). It is deferred so every path releases the request goroutine,
 	// including the ordinary clean end.
-	guardCtx, cutStream := context.WithCancel(ctx)
+	//
+	// A STREAM THAT RECONCILES RECEIPTS WAITS BRIEFLY FOR ITS GENERATION ID
+	// BEFORE IT TAKES THE CALLER'S CANCEL. The first SSE frame is what names the
+	// generation, and a provider that has accepted the request has already begun
+	// billing it; cutting the socket before that frame lands throws the id away
+	// and leaves [Client.settle] nothing to ask a receipt for, so the charge is
+	// in no book at all (#2566). So the guard no longer inherits the caller's
+	// cancel outright: a call nobody reconciles — or a direct service, which has
+	// no receipt route to ask — is still cut the instant the caller lets go, and
+	// one that does reconcile is cut when its first frame names the id or after
+	// [receiptStreamIDWait] on a silent wire, whichever comes first. A deadline
+	// expiring is a cancel like any other and gets the same hold.
+	//
+	// THE CUT CARRIES THE CALLER'S OWN CAUSE. The transport reports a cancelled
+	// request as its context's cause, and that cause is the door that ended the
+	// call — the person's stop, a call wall's ran-out-of-time — which every row
+	// and every error above this one reads. A guard cut on the caller's behalf
+	// therefore cancels with [context.Cause] of the caller, exactly what the
+	// child context this used to be inherited; the stall watch's own cuts stay
+	// plain cancellations, as they were.
+	if err := ctx.Err(); err != nil {
+		return nil, false, err
+	}
+	guardCtx, cutStreamCause := context.WithCancelCause(context.WithoutCancel(ctx))
+	cutStream := func() { cutStreamCause(nil) }
 	defer cutStream()
+	cutForCaller := func() { cutStreamCause(context.Cause(ctx)) }
+	var haveStreamID atomic.Bool
+	var holdTimer atomic.Pointer[time.Timer]
+	defer func() {
+		if timer := holdTimer.Load(); timer != nil {
+			timer.Stop()
+		}
+	}()
+	stopCallerCancel := context.AfterFunc(ctx, func() {
+		if c.config.Direct || reconcileFrom(ctx) == nil || haveStreamID.Load() {
+			cutForCaller()
+			return
+		}
+		holdTimer.Store(time.AfterFunc(receiptStreamIDWait, cutForCaller))
+		// The id may have landed between the check above and the timer being
+		// armed; the decode loop only cuts once it can see the caller has gone,
+		// so the second look here is what keeps that interleaving from waiting
+		// out the whole hold.
+		if haveStreamID.Load() {
+			cutForCaller()
+		}
+	})
+	defer stopCallerCancel()
 	// Resolved once and held, because every row this stream writes is built
 	// from them and the trace inside them is what counts its attempts
 	// (calllog.go).
@@ -1925,6 +1972,16 @@ func (c *Client) completeWithMessagesStreaming(
 			response.ID = chunk.ID
 			response.Object = chunk.Object
 			response.Created = chunk.Created
+			// THE ID IS WHAT THE HOLD WAS WAITING FOR. Once it is known the
+			// receipt can be asked for whatever happens next, so a caller who
+			// has already let go is let go of now rather than at the end of
+			// [receiptStreamIDWait].
+			if response.ID != "" {
+				haveStreamID.Store(true)
+				if ctx.Err() != nil {
+					cutForCaller()
+				}
+			}
 		}
 		if chunk.Model != "" {
 			if response.Model != chunk.Model {
@@ -2010,6 +2067,7 @@ func (c *Client) completeWithMessagesStreaming(
 			// word of answer is not an endpoint that took a minute to respond.
 			if firstToken.IsZero() && (choice.Delta.Content != "" || choice.Delta.thinking() || len(choice.Delta.ToolCalls) > 0) {
 				firstToken = c.clock()
+				replyStarted(ctx)
 			}
 			// THE MODEL WRITING IS THE ONLY THING THAT COUNTS AS PROGRESS. A
 			// token of answer, a token of thought, a fragment of a call — the

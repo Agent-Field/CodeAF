@@ -340,7 +340,7 @@ func TestIdleRelease_R9_StateMatrix(t *testing.T) {
 				after, readErr := dir.Client.Cell(t.Context(), d.cell.ID)
 				mustNil(t, readErr)
 				other := c.relay == "other_live" || c.relay == "other_released" || c.relay == "other_lapsed"
-				if other || c.local == "expired" {
+				if other || c.local == "expired" || c.want == "reopen" {
 					kept, keptErr := dir.Client.Cell(t.Context(), "kept-chat")
 					if keptErr != nil || kept.Cell.Head != head.Turn.ID || kept.Cell.ParentCell != d.cell.ID || after.Cell.Head != before.Cell.Head || after.Cell.Lease != before.Cell.Lease {
 						t.Fatalf("takeover lost kept turns or changed the winner: kept=%+v error=%v after=%+v", kept, keptErr, after)
@@ -354,6 +354,9 @@ func TestIdleRelease_R9_StateMatrix(t *testing.T) {
 				if c.want == "reopen" || c.local == "expired" {
 					if confirmed, err := d.ConfirmWork(t.Context()); err != nil || confirmed || d.Gate() == nil {
 						t.Fatalf("draining a late seal restored admission: confirmed=%v error=%v gate=%v", confirmed, err, d.Gate())
+					}
+					if other {
+						<-dir.notices
 					}
 				}
 			}
@@ -456,19 +459,13 @@ func r9LateSeal(t *testing.T, c r9Cell, observation string) {
 	branches, err := branchMapOf(r.homeA)
 	mustNil(t, err)
 	id := branches.Resolve(r.cell.ID)
-	if c.relay == "lapsed" && observation == "confirm" {
-		if id != r.cell.ID || after.Cell.Head != sealed.Turn.ID || after.Cell.Lease.Fence != before.Cell.Lease.Fence || after.Cell.Lease.Expires <= after.Now {
-			t.Fatal("late seal did not publish at the unchanged expired fence")
-		}
-	} else {
-		if id == r.cell.ID || after.Cell.Head != winner.Cell.Head || after.Cell.Lease != winner.Cell.Lease {
-			t.Fatal("late seal lost its branch or changed the winner's head or lease")
-		}
-		kept, err := dir.Client.Cell(ctx, id)
-		mustNil(t, err)
-		if kept.Cell.Head != sealed.Turn.ID || kept.Cell.ParentCell != r.cell.ID || kept.Cell.OrphanTurns != 1 {
-			t.Fatal("kept branch did not preserve the completed call")
-		}
+	if id == r.cell.ID || after.Cell.Head != winner.Cell.Head || after.Cell.Lease != winner.Cell.Lease {
+		t.Fatal("late seal lost its branch or changed the winner's head or lease")
+	}
+	kept, err := dir.Client.Cell(ctx, id)
+	mustNil(t, err)
+	if kept.Cell.Head != sealed.Turn.ID || kept.Cell.ParentCell != r.cell.ID || kept.Cell.OrphanTurns != 1 {
+		t.Fatal("kept branch did not preserve the completed call")
 	}
 	if d.batcher.Pending() != 0 {
 		t.Fatal("successful preservation left the call pending")

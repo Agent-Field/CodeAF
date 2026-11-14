@@ -35,11 +35,11 @@ type runRig struct {
 
 func newRunRig(t *testing.T) runRig {
 	t.Helper()
-	st, err := store.Open(filepath.Join(t.TempDir(), "factory"))
+	st, err := store.Open(filepath.Join(testHome(t), "factory"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	workspace := filepath.Join(t.TempDir(), "api")
+	workspace := filepath.Join(testHome(t), "api")
 	if err := os.MkdirAll(workspace, 0o700); err != nil {
 		t.Fatal(err)
 	}

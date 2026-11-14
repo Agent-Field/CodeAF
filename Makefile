@@ -238,6 +238,7 @@ test-tooling:
 	bash scripts/shard-test_test.sh
 	bash scripts/relay-fingerprint_test.sh
 	bash scripts/relay-wrangler-config_test.sh
+	bash scripts/raft-proof-footprint_test.sh
 	bash scripts/relay-deploy_test.sh
 	bash bench/canary/lib/repo_test.sh
 
@@ -397,8 +398,14 @@ demo-home: build
 clean-run: build
 	@scripts/clean-run.sh
 
+# VET ALSO COMPILES THE TESTS FOR WINDOWS. `go build` never compiles a test file,
+# so a test that calls a Unix-only symbol (syscall.Mkfifo, a helper from a
+# _unix.go file) breaks the Windows test build without any gate seeing it. The
+# Windows pass type-checks the same packages with GOOS=windows; it costs about
+# 30 seconds on a cold cache and 2 on a warm one.
 vet:
 	go vet ./...
+	GOOS=windows go vet ./...
 
 # ── the size ratchet ────────────────────────────────────────────────────────
 #

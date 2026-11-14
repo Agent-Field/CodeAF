@@ -744,9 +744,6 @@ func (a *Agent) completeWithModel(ctx context.Context, purpose callPurpose, mess
 // missing default-service key moved the call onto the live seat; asking the pool
 // a second time afterwards could observe a different model or source set.
 func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose, messages []ai.Message, model string, options ...ai.Option) (*ai.Response, string, error) {
-	if err := factoryCallRefusal(ctx); err != nil {
-		return nil, model, err
-	}
 	// Job ownership also covers personal manager turns and reopened stages.
 	// Keep recovery on the call so shared clients retain ordinary refusals.
 	if a.jobBudgetOf() != nil {
@@ -760,12 +757,21 @@ func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose,
 	if _, paired := requestConversationModels(ctx); !paired && (!a.foregroundModelCall(purpose) || a.automaticModelsAllowed()) {
 		model = a.healthyModel(ctx, purpose, model)
 	}
+	if purpose != purposeTurn && !a.config.dailyModelExempt(model) {
+		if err := DailyLimitReached(a.config); err != nil {
+			return nil, model, err
+		}
+	}
+	if err := a.admitModelCall(ctx, model); err != nil {
+		return nil, model, err
+	}
 	// A HELPER'S CALL IS PRICED LIKE A SEAT'S: against the crew's day cap —
 	// and, made for a task, that task's limit — before it is made, and on the
 	// day after. A crew seat's own call is its
 	// task's guard's (taskcrew.go), and the person's turn is theirs.
 	var helper *SpendGuard
 	var held float64
+	var reservation spendReservation
 	if purpose != purposeTurn && !isCrewSeatCall(ctx) {
 		task := crewTaskOf(ctx)
 		if err := task.beginCall(); err != nil {
@@ -779,7 +785,7 @@ func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose,
 		}
 		helper = a.helperGuard(task)
 		var err error
-		if held, err = helper.before(ctx, model, messages, options); err != nil {
+		if held, err = helper.before(ctx, model, messages, options, &reservation); err != nil {
 			return nil, model, err
 		}
 		if helper != nil {
@@ -842,12 +848,20 @@ func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose,
 		ctx = provider.WithServedModel(ctx, a.servedModel)
 		defer func() { a.endModelRequest(actual) }()
 	}
+	ctx, releaseProgress := a.withBudgetProgress(ctx, called)
+	defer releaseProgress()
 	response, err := client.CompleteWithMessages(toldItsWindow(ctx), materializeImageRefs(messages), append(options, ai.WithModel(wire))...)
+	if response == nil {
+		// A call the daily stop cancelled carries the limit as its cause.
+		if why := context.Cause(ctx); IsDailyLimit(why) {
+			err = why
+		}
+	}
 	if response != nil && response.Model != "" {
 		actual = response.Model
 	}
 	if helper != nil {
-		helper.after(ctx, model, response, held)
+		helper.after(ctx, model, response, held, &reservation)
 		crewTaskOf(ctx).addHelperSpend(response)
 	}
 	return response, called, err

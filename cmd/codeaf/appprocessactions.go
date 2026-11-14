@@ -87,10 +87,11 @@ func (b *appBackend) ProcessActions(ctx context.Context, id string) (*appwire.Pr
 	if err != nil {
 		return nil, err
 	}
-	a, err := b.findCrewOwner(agent)
+	a, endRead, err := b.findCrewOwner(agent)
 	if err != nil {
 		return nil, err
 	}
+	defer endRead()
 	res := &appwire.ProcessActionsResult{ID: id, Kind: appwire.ProcessKindJob}
 	var record session.JobNotice
 	unknown := ""

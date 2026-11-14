@@ -93,6 +93,7 @@ func TestIdleRelease_R8_UncertainReleaseRetakesOnSend(t *testing.T) {
 // the saved state, while the memory directory and clock control ownership.
 func r8IdleDrive(t *testing.T) (*Drive, *r8ReleaseDirectory) {
 	t.Helper()
+	t.Setenv("CODEAF_IDLE_HANDOFF", "on")
 	celltest.RequireEngine(t)
 	clock := directorytest.NewFakeClock()
 	d := sameComputerDrive(t, clock.Now)

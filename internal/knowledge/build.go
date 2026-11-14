@@ -87,6 +87,7 @@ func (v *Vault) StartBuild() error {
 	job["request"] = time.Now().UTC().Format(time.RFC3339Nano)
 	job["phase"] = string(BuildRunning)
 	job["error"] = ""
+	job["build_attempts"] = 0
 	if err = saveState(tx, "job", job); err != nil {
 		return err
 	}
@@ -256,6 +257,11 @@ func markJobSessions(db *sql.DB, journals []Journal) error {
 }
 
 func (v *Vault) runPass(ctx context.Context, history History, key func() string, lastInventory *string) error {
+	// Memory off costs one look at the setting and one at the ask: no saved chat
+	// is read, and no database opened, until the Memory page asks for a count.
+	if !v.Enabled() && !v.takeDiscoveryAsk() {
+		return nil
+	}
 	journals, err := history.Inventory(ctx)
 	if err != nil {
 		return err
@@ -271,7 +277,8 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 		return err
 	}
 	if !v.Enabled() {
-		// Discovery is local. No inventory, including an empty one, opts in.
+		// Discovery is local, and asked for. No inventory, including an empty
+		// one, opts in.
 		fingerprint := identity(journals)
 		if textValue(job["inventory_hash"]) == fingerprint {
 			return nil
@@ -403,15 +410,36 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 	if err = db.QueryRow("SELECT count(*) FROM events WHERE partition='profile'").Scan(&total); err != nil {
 		return err
 	}
-	var latest int64
-	var admitted int
-	var arrived float64
-	if err = db.QueryRow("SELECT coalesce(max(rowid),0),count(*),coalesce(max(arrived),0) FROM events WHERE partition='profile' AND coalesce(json_extract(payload,'$.job'),0)=0").Scan(&latest, &admitted, &arrived); err != nil {
+	// THE TEXT CROSSES INTO GO ONLY FOR A LEGACY SOURCE WITH NO STORED HASH. Every
+	// capture since provenance records its content hash, and this runs on every
+	// pass, so copying each source's text here would churn a large vault's whole
+	// history every few seconds.
+	rows, err := db.Query("SELECT id,coalesce(json_extract(payload,'$.provenance.content_hash'),''),CASE WHEN coalesce(json_extract(payload,'$.provenance.content_hash'),'')='' THEN coalesce(json_extract(payload,'$.text'),'') ELSE '' END FROM events WHERE partition='profile' AND coalesce(json_extract(payload,'$.job'),0)=0 ORDER BY id")
+	if err != nil {
+		return err
+	}
+	var input []any
+	for rows.Next() {
+		var id, contentHash, legacyText string
+		if err = rows.Scan(&id, &contentHash, &legacyText); err != nil {
+			rows.Close()
+			return err
+		}
+		if contentHash == "" {
+			contentHash = identity(legacyText)
+		}
+		input = append(input, []any{id, contentHash})
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
 		return err
 	}
 	// An empty vault has no build input or retry budget to persist.
 	if total > 0 {
-		attemptInput := identity([]any{latest, admitted, arrived, job["request"], knowledgeProjectionVersion})
+		// Content and source identities survive handover, independent of arrival
+		// times and batch progress. A person's Build resets the count explicitly.
+		attemptInput := identity([]any{input, knowledgeProjectionVersion})
 		if job["build_input"] != attemptInput {
 			job["build_input"] = attemptInput
 			job["build_attempts"] = 0
@@ -486,4 +514,23 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 		job["phase"] = string(BuildWaiting)
 	}
 	return saveState(db, "job", job)
+}
+
+// discoveryAsk is the file that says the Memory page asked for a count.
+const discoveryAsk = ".discovery-asked"
+
+// AskDiscovery asks the worker, in whichever process runs it, to count the
+// saved chats while Memory is off. The Memory page asks when it opens; nothing
+// reads saved chats with Memory off until then.
+func (v *Vault) AskDiscovery() error {
+	if err := os.MkdirAll(v.root, 0700); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(v.root, discoveryAsk), nil, 0600)
+}
+
+// takeDiscoveryAsk says whether a count was asked for, and clears the ask first,
+// so one that arrives during the count is answered by another count.
+func (v *Vault) takeDiscoveryAsk() bool {
+	return os.Remove(filepath.Join(v.root, discoveryAsk)) == nil
 }

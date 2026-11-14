@@ -983,6 +983,19 @@ no turns at all is not offered again either, because there is nothing for a next
 carry on from, and it says that instead: `…with none of its work recorded, so there was
 nothing for another attempt to carry on from`.
 
+## What do and exec wait for at shutdown — usage writes after a timeout
+
+`codeaf do` closes the process's usage writers after its workers stop, including
+when the run times out. With `CODEAF_TASK_BELT=node`, cancelled workers' admitted
+receipt accounting joins inside the existing five-second background stop wait.
+Usage shutdown has a separate two-second bound. With a responsive provider and
+disk, the command returns after those accounting writes finish. A stalled
+provider or disk can exhaust a bound; complete rows already in the pending usage
+journal remain recoverable on restart.
+
+`codeaf exec` also closes its usage writer before returning, under the same
+two-second usage shutdown bound.
+
 ## How long a headless run gets — the `-timeout` wall, how long does codeaf do wait, can I write 5m or 2h
 
 `codeaf do` runs under a hard wall, and `-timeout` is where you set it. **Left alone it is
@@ -1327,7 +1340,7 @@ has not finished, and the acceptance line is where you see that.
 
 **And the record always says what was read, whoever read it.** The two readings above
 are taken by the worker that does the work; when the worker took no reading — nothing to
-size one against, or no room left to afford one — the check at the end of the job takes its
+size one against, or no capacity left to afford one — the check at the end of the job takes its
 own reading of the tree it is judging.
 Either way there is a row in the run's record saying what ran, what it named — or, when
 there was no reading, which of the reasons it was: your project declares no way of checking

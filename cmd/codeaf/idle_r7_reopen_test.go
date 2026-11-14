@@ -11,7 +11,7 @@ import (
 )
 
 func TestIdleRelease_R7_Reopen_AfterFailedCloseInstallsNewWriter(t *testing.T) {
-	cfg, c := spokenDoorChat(t)
+	cfg, c := spokenDoorChatWithPairing(t, true)
 	_, _, _ = heldChatRelay(t, c.ID)
 	book := syncDrives
 	takeFinalSaveFailure()

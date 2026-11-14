@@ -23,6 +23,16 @@ JS
 
 start() { # port, extra wrangler args
   port=$1; shift
+  # Existing storage scenarios use an open service; targeted storage tests prove the closed default.
+  remaining=$#
+  while [ "$remaining" -gt 0 ]; do
+    argument=$1; shift
+    case "$argument" in
+      CAF_LIMITS:*) argument="CAF_LIMITS:$(node -e 'console.log(JSON.stringify({...JSON.parse(process.argv[1]), storageOpen:true}))' "${argument#CAF_LIMITS:}")" ;;
+    esac
+    set -- "$@" "$argument"
+    remaining=$((remaining - 1))
+  done
   persist="$work/$port"
   if [ "$port" = "${scenario_port:-}" ]; then persist=$scenario_state; fi
   : >"$work/$port.log"

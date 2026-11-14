@@ -143,6 +143,9 @@ func TestSettingsOrganizationCaretAndMemoryDoor(t *testing.T) {
 	if len(a.sheet.items) == 0 || !a.sheet.items[0].memoryDoor {
 		t.Fatal("Memory has no inspect door")
 	}
+	if got := a.sheet.items[0].meta.label; got != "Open the Memory tab" {
+		t.Fatalf("inspect door names the wrong tab: %q", got)
+	}
 	a.sheet.cursor = 0
 	a.activate()
 	if !a.at(pageMemory) {

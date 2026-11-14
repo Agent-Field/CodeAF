@@ -186,6 +186,14 @@ func (a *Agent) SetApprovalPosture(posture string) error {
 	a.approvalPosture = word
 	a.guardianOverride = &guardian
 	a.mu.Unlock()
+	// The launcher restores the saved dial through this door. Applying the
+	// gate in memory must not turn an unchanged preference into a meta write
+	// (and therefore an identity migration) just because a chat was opened.
+	if a.config.Place.Dir != "" {
+		if meta, err := LoadMeta(a.config.Place.Dir); err == nil && meta.Approval == word {
+			return nil
+		}
+	}
 	// Written through the same door every other fact about this conversation is
 	// written through, so the file keeps one shape and one writer.
 	a.stampApproval()
@@ -257,7 +265,14 @@ func (a *Agent) guardianOn() bool {
 // stampApproval writes the posture down the moment it changes, for
 // [Agent.stampEffort]'s reason: a person who opens the gate and closes the
 // terminal before saying anything else must find it open when they come back.
-func (a *Agent) stampApproval() { a.stampMeta() }
+func (a *Agent) stampApproval() {
+	if metaStampSettling != nil {
+		metaStampSettling()
+	}
+	a.metaStamp().settle()
+	dir, snapshot := a.metaSnapshotAt()
+	a.updateMeta(dir, snapshot, func(meta *Meta) { meta.Approval = snapshot.Approval })
+}
 
 func knownPosture(word string) bool {
 	for _, known := range ApprovalPostures {
