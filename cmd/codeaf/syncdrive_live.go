@@ -36,7 +36,7 @@ type liveDrive struct {
 
 	// published is visible before idle release is enabled. Settings must not
 	// wait for installation or catch-up disk work under mu.
-	published atomic.Pointer[syncsetup.Drive]
+	published      atomic.Pointer[syncsetup.Drive]
 	mu             sync.Mutex
 	drive          *syncsetup.Drive
 	working        bool   // A turn may start before asynchronous startup finishes.

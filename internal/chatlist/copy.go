@@ -28,9 +28,9 @@ const (
 	// TakeBackUnreachable explains why a released writer keeps a send unsent.
 	TakeBackUnreachable = Unreachable + ", so this chat cannot be taken back yet; your words are still in the box"
 	ReadTimedOut        = "the sync service did not answer in time"
-	SyncPaused      = syncwords.UnknownOutage
-	SyncRestored    = "this chat is syncing again"
-	ClockOff        = "this computer's clock is off by more than 5 minutes"
+	SyncPaused          = syncwords.UnknownOutage
+	SyncRestored        = "this chat is syncing again"
+	ClockOff            = "this computer's clock is off by more than 5 minutes"
 
 	DevicesQuiet  = "Only this computer is here. Add another computer by pairing from a terminal with `codeaf pair`."
 	RemoveSelf    = "that is this device — remove it from another of your devices instead"
