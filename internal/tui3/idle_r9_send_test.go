@@ -332,10 +332,6 @@ func (a *p9xBashAgent) SubmitBash(_ context.Context, line string) (<-chan sessio
 	return ch, nil
 }
 
-func (a *switchAgent) SubmitBash(ctx context.Context, line string) (<-chan session.Event, error) {
-	return a.Submit(ctx, line)
-}
-
 func TestIdleOpen_P9X1_BashCommandRunsOwnershipCheckAndKeepsWords(t *testing.T) {
 	t.Run("offline refusal keeps bash line in box and prints one line", func(t *testing.T) {
 		a, old, source := r8OwnLiveWindow(t, false)
