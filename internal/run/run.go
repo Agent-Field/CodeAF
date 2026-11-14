@@ -913,7 +913,17 @@ func (s *Supervisor) absorb(ret workerReturn) {
 		// stops the run from ever completing, not a row.
 		if ret.err != nil {
 			root := s.store.Task(ret.task.ID)
-			if root.Status == plandb.StatusDone {
+			var refusedOnly refusedOnlyCompletionError
+			if errors.As(ret.err, &refusedOnly) {
+				// A WORKER CANNOT TURN REFUSED-ONLY WORK INTO DONE BY WRITING
+				// `plandb done` before it returns. The store mutation arrives first,
+				// but the trajectory fact arrives with the return and outranks that
+				// false completion: the run's outcome is incomplete, carries the
+				// boundary's refusal, and no review is seated for work that did not
+				// run (#1351). A successful recovery never returns this typed error.
+				s.rootFailed = true
+				s.rootFailure = refusedOnly.Error()
+			} else if root.Status == plandb.StatusDone {
 				// FINISHED WORK GETS A REVIEW ROUND BEFORE THE RUN MAY ANSWER
 				// DONE. The store's ending stands even when its worker later
 				// returns an error, including the result the review must read.

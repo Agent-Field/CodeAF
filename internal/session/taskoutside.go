@@ -127,7 +127,18 @@ func (g taskGroundGuard) PreAction(_ context.Context, _ *episode, _ *eventHub, c
 			return call, toolResult{}, true
 		}
 		path, shown, ok := g.agent.mutatingPath(call)
-		if !ok || g.agent.taskMayWrite(path) {
+		if !ok {
+			return call, toolResult{}, true
+		}
+		// `write` AND `edit` NAME THEIR TARGET WITHOUT A SHELL. The bash road
+		// below protects the ground's `.git`; letting these hands take the
+		// direct road around it would leave the same history writable through
+		// another tool. Ask on the real spelling too, so a symlink to `.git` is
+		// not the spelling that gets through (#1351).
+		if metadata := groundMetadataDir(ground); metadata != "" && protectedGroundMetadata(metadata, path, true) {
+			return call, toolResult{text: g.agent.taskOutsideRefusal("replacing " + metadata), isError: true}, false
+		}
+		if g.agent.taskMayWrite(path) {
 			return call, toolResult{}, true
 		}
 		return call, toolResult{text: g.agent.taskOutsideRefusal(shown), isError: true}, false
@@ -381,13 +392,8 @@ func outsideScopeAim(ground, command string, allowed func(string) bool) string {
 	cwd := ground
 	for _, segment := range approval.CommandWords(command) {
 		words, assignments := taskSegmentHead(stripRedirections(segment))
-		for index, word := range segment {
-			if index+1 < len(segment) && fileWriteRedirection(word, segment[index+1]) {
-				target := resolvePath(cwd, segment[index+1])
-				if !allowed(target) {
-					return "writing to " + target
-				}
-			}
+		if aimed := redirectionAimedOutside(ground, cwd, segment, allowed); aimed != "" {
+			return aimed
 		}
 		if len(words) == 0 {
 			continue
@@ -404,12 +410,354 @@ func outsideScopeAim(ground, command string, allowed func(string) bool) string {
 			}
 			return "git " + verb + " in " + dir
 		default:
+			if aimed := replacedGroundMetadata(ground, cwd, program, rest); aimed != "" {
+				return aimed
+			}
 			if aimed := writeAimedOutsideScope(cwd, program, rest, allowed); aimed != "" {
 				return aimed
 			}
 		}
 	}
 	return ""
+}
+
+// redirectionAimedOutside answers the first file a segment's redirection would
+// write that the task may not write, and "" when every one of them is the task's.
+//
+// A REDIRECTION INTO THE GROUND'S OWN `.git` IS THE METADATA LAW'S, NOT THE PATH
+// LAW'S: `echo ref: x > .git/HEAD` is inside the ground and would pass a check
+// that only asked where it was aimed, so it is answered first, in the same
+// sentence [replacedGroundMetadata] gives the hands that name `.git`.
+func redirectionAimedOutside(ground, cwd string, segment []string, allowed func(string) bool) string {
+	for index, word := range segment {
+		if index+1 >= len(segment) || !fileWriteRedirection(word, segment[index+1]) {
+			continue
+		}
+		target := resolvePath(cwd, segment[index+1])
+		if metadata := groundMetadataDir(ground); metadata != "" && protectedGroundMetadata(metadata, target, true) {
+			return "replacing " + metadata
+		}
+		if !allowed(target) {
+			return "writing to " + target
+		}
+	}
+	return ""
+}
+
+// replacedGroundMetadata answers the ground's own `.git` when a hand would remove,
+// move, overwrite or rewrite it, and "" when it would not (#1351).
+//
+// THE PATH LAW CANNOT SEE THIS ON ITS OWN, and that is the whole defect. It
+// asks whether a path is inside the folder the task may write in, and a
+// repository's `.git` always is, because it sits inside the tree it belongs to.
+// So a worker that ran `rm -rf .git` on the folder it was given passed every
+// check, and the history was gone, which is the data loss; the `git init` and
+// `git commit` in the parent that followed were already refused, but by then
+// they had nothing left to save.
+//
+// IT IS ASKED OF THE SAME HANDS THE PATH LAW READS ([writesEveryOperand],
+// [writesItsLastOperand], an in-place sed or perl, and a redirection, which
+// [outsideScopeAim] asks beside it), so it closes exactly the shapes that name
+// `.git` and claims nothing more: a script that deletes it by itself is the
+// blind spot this file already says it has. Git's own verbs are not hands here:
+// `git commit` and `git checkout` write inside `.git` on the task's behalf, and
+// that is the work, so they are answered by the git guard as before.
+//
+// AN OPERAND IS THE METADATA WHEN IT IS `.git` OR UNDER IT, OR WHEN IT HOLDS
+// IT. Removing the ground itself (`rm -rf .`, `rm -rf <ground>`) takes `.git`
+// with it, so it is refused by the same sentence; a file elsewhere in the
+// ground is untouched by this and stays the task's to change.
+func replacedGroundMetadata(ground, cwd, program string, rest []string) string {
+	metadata := groundMetadataDir(ground)
+	if metadata == "" {
+		return ""
+	}
+	operands := commandOperands(rest)
+	switch {
+	case program == "sed" || program == "perl":
+		if !inPlaceEdit(rest) {
+			return ""
+		}
+		return protectedMetadataOperand(metadata, cwd, operands, false, true)
+	case program == "rm" || program == "rmdir" || program == "unlink":
+		// These hands remove the named entry. An ancestor takes `.git` with
+		// it, but a final symlink is only unlinked; a path below a directory
+		// symlink still follows its parent into the real metadata.
+		return protectedMetadataOperand(metadata, cwd, operands, true, false)
+	case program == "mv":
+		return movedGroundMetadata(metadata, cwd, operands)
+	case writesItsLastOperand[program]:
+		return copiedGroundMetadata(metadata, cwd, program, rest, operands)
+	case writesEveryOperand[program]:
+		// mkdir/chmod/touch on `.` are ordinary upkeep, not replacement of
+		// everything the directory contains. Only a protected metadata path
+		// they name directly is held.
+		return protectedMetadataOperand(metadata, cwd, operands, false, true)
+	default:
+		return ""
+	}
+}
+
+// protectedMetadataOperand answers the first operand that names protected git
+// metadata. When holding is true, an ancestor that would take `.git` with it
+// counts too. Shell globs are expanded against cwd before the comparison: the
+// shell turns `.g?t` and `.[g]it` into `.git`, so the guard must read the same
+// target rather than the unexpanded spelling (#2097 review).
+func protectedMetadataOperand(metadata, cwd string, operands []string, holding, followFinal bool) string {
+	for _, operand := range operands {
+		for _, target := range expandedOperand(cwd, operand) {
+			if protectedGroundMetadata(metadata, target, followFinal) ||
+				holding && holdsGroundMetadata(metadata, target) {
+				return "replacing " + metadata
+			}
+		}
+	}
+	return ""
+}
+
+// expandedOperand is the path or paths the shell hands one filesystem command.
+// An unmatched pattern stays itself, exactly as an ordinary shell leaves it.
+func expandedOperand(cwd, operand string) []string {
+	target := resolvePath(cwd, operand)
+	if !strings.ContainsAny(operand, "*?[") {
+		return []string{target}
+	}
+	matches, err := filepath.Glob(target)
+	if err != nil || len(matches) == 0 {
+		return []string{target}
+	}
+	return matches
+}
+
+// movedGroundMetadata reads mv's two sides differently. Every operand but the
+// last is a source and removing a source directory removes any `.git` under it;
+// the last is a destination, where `mv old.py .` merely adds a file to the
+// repository and must stay allowed. A source actually named `.git` and moved
+// into the repository root is the one destination-directory form that installs
+// metadata and is refused too.
+func movedGroundMetadata(metadata, cwd string, operands []string) string {
+	if len(operands) == 0 {
+		return ""
+	}
+	last := len(operands) - 1
+	for index, operand := range operands {
+		targets := expandedOperand(cwd, operand)
+		if index < last {
+			// Moving a source removes it, but moving a symlink removes only the
+			// link. A path below a directory symlink still resolves through it.
+			for _, target := range targets {
+				if protectedGroundMetadata(metadata, target, false) || holdsGroundMetadata(metadata, target) {
+					return "replacing " + metadata
+				}
+			}
+			continue
+		}
+		for _, target := range targets {
+			if last == 0 && (protectedGroundMetadata(metadata, target, false) || holdsGroundMetadata(metadata, target)) {
+				return "replacing " + metadata
+			}
+			if last > 0 && protectedGroundMetadata(metadata, target, true) {
+				return "replacing " + metadata
+			}
+		}
+	}
+	if last > 0 && destinationInstallsMetadata(metadata, cwd, operands[:last], operands[last]) {
+		return "replacing " + metadata
+	}
+	return ""
+}
+
+// copiedGroundMetadata reads cp, ln, install and rsync as sources followed by
+// one destination. Writing TO `.git` is always refused. Writing an ordinary file
+// into `.` is not. A source itself named `.git` would install metadata at a
+// directory destination, and rsync --delete aimed at an ancestor can remove the
+// existing metadata, so those two forms are refused by name.
+func copiedGroundMetadata(metadata, cwd, program string, rest, operands []string) string {
+	destination, sources, ok := copyDestination(rest, operands)
+	if !ok {
+		return ""
+	}
+	target := resolvePath(cwd, destination)
+	if protectedGroundMetadata(metadata, target, true) ||
+		program == "rsync" && rsyncDeletes(rest) && holdsGroundMetadata(metadata, target) {
+		return "replacing " + metadata
+	}
+	if destinationInstallsMetadata(metadata, cwd, sources, destination) {
+		return "replacing " + metadata
+	}
+	return ""
+}
+
+// copyDestination returns cp/ln/install/rsync's destination and sources. GNU
+// cp and install may put the destination before the sources with `-t DIR` or
+// `--target-directory=DIR`; commandOperands deliberately drops flags, so that
+// value must be read from the original words before the ordinary final-operand
+// rule (#2097 review).
+func copyDestination(rest, operands []string) (destination string, sources []string, ok bool) {
+	for index := 0; index < len(rest); index++ {
+		word := rest[index]
+		switch {
+		case word == "-t" || word == "--target-directory":
+			if index+1 >= len(rest) {
+				return "", nil, false
+			}
+			destination = rest[index+1]
+			sources = removeOperand(operands, destination)
+			return destination, sources, true
+		case strings.HasPrefix(word, "--target-directory="):
+			destination = strings.TrimPrefix(word, "--target-directory=")
+			sources = removeOperand(operands, destination)
+			return destination, sources, destination != ""
+		}
+	}
+	if len(operands) == 0 {
+		return "", nil, false
+	}
+	last := len(operands) - 1
+	return operands[last], operands[:last], true
+}
+
+func removeOperand(operands []string, value string) []string {
+	out := make([]string, 0, len(operands))
+	removed := false
+	for _, operand := range operands {
+		if !removed && operand == value {
+			removed = true
+			continue
+		}
+		out = append(out, operand)
+	}
+	return out
+}
+
+func destinationInstallsMetadata(metadata, cwd string, sources []string, destination string) bool {
+	dir := resolvePath(cwd, destination)
+	info, err := os.Stat(dir)
+	if err != nil || !info.IsDir() {
+		return false
+	}
+	for _, source := range sources {
+		name := filepath.Base(filepath.Clean(strings.TrimRight(source, `/\\`)))
+		if name == ".git" && namesGroundMetadata(metadata, filepath.Join(dir, name), false, true) {
+			return true
+		}
+	}
+	return false
+}
+
+func rsyncDeletes(rest []string) bool {
+	for _, word := range rest {
+		if strings.HasPrefix(word, "--delete") {
+			return true
+		}
+	}
+	return false
+}
+
+// protectedGroundMetadata answers whether target is the `.git` entry itself or
+// repository-defining/history data under it. Routine transient and local
+// customization paths stay writable: a worker may remove `index.lock`, update
+// `info/exclude`, and install hooks without being mistaken for replacing the
+// repository's identity or history (#2097 review).
+func protectedGroundMetadata(metadata, target string, followFinal bool) bool {
+	paths := [3]string{target, resolveParentSymlinks(target), ""}
+	if followFinal {
+		paths[2] = resolveSymlinks(target)
+	}
+	for _, path := range paths {
+		if path == "" {
+			continue
+		}
+		relative, err := filepath.Rel(metadata, path)
+		if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			continue
+		}
+		relative = filepath.ToSlash(relative)
+		if relative == "." || relative == "HEAD" || relative == "config" || relative == "packed-refs" ||
+			withinMetadataTree(relative, "objects") || withinMetadataTree(relative, "refs") ||
+			withinMetadataTree(relative, "worktrees") || withinMetadataTree(relative, "modules") {
+			return true
+		}
+	}
+	return false
+}
+
+// withinMetadataTree answers whether relative (always forward-slashed) is a
+// protected `.git` subtree: the directory `name` itself, removed whole, or
+// anything beneath it. Removing `.git/objects` takes every object with it just
+// as removing `.git/objects/pack` does, so the directory's own name counts.
+func withinMetadataTree(relative, name string) bool {
+	return relative == name || strings.HasPrefix(relative, name+"/")
+}
+
+// holdsGroundMetadata says deleting or moving target itself would also remove
+// metadata because target is `.git` or an ancestor of it. Descendants do not
+// answer true: removing `.git/index.lock` does not remove `.git`.
+func holdsGroundMetadata(metadata, target string) bool {
+	for _, path := range [2]string{target, resolveParentSymlinks(target)} {
+		if withinDir(path, metadata) {
+			return true
+		}
+	}
+	return false
+}
+
+// namesGroundMetadata answers whether a path a command names is the ground's
+// `.git` or something under it, and, when holding counts, a directory that holds
+// it (removing the ground itself takes its history too).
+//
+// IT IS ASKED ON BOTH SPELLINGS, the one written and the real one. A symlink to
+// the ground, or to `.git` itself, is the same history under another name, and
+// [insideGround] resolves symlinks for exactly this reason; a law that compared
+// only the written path would be one more spelling the model learns to use.
+func namesGroundMetadata(metadata, target string, holding, followFinal bool) bool {
+	real := resolveSymlinks(metadata)
+	paths := [3]string{target, resolveParentSymlinks(target), ""}
+	if followFinal {
+		paths[2] = resolveSymlinks(target)
+	}
+	for _, path := range paths {
+		if path == "" {
+			continue
+		}
+		for _, dir := range [2]string{metadata, real} {
+			if withinDir(dir, path) || (holding && withinDir(path, dir)) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// resolveParentSymlinks resolves every directory before the final name but
+// leaves that final entry itself alone. Removing or moving a symlink acts on the
+// link; writing through it follows it. Both still follow a linked parent, so
+// `linked-ground/.git` and `metadata-link/HEAD` reach the protected metadata.
+func resolveParentSymlinks(path string) string {
+	parent, name := filepath.Dir(path), filepath.Base(path)
+	if resolved, err := filepath.EvalSymlinks(parent); err == nil {
+		return filepath.Join(resolved, name)
+	}
+	return path
+}
+
+// groundMetadataDir is the `.git` that makes the ground a repository, spelled the
+// way [resolvePath] spells a command's operands so the two compare. It is "" for
+// a ground that is not one, which leaves a plain folder's work untouched.
+//
+// A LINKED WORKTREE'S `.git` IS A FILE AND IS STILL ITS METADATA: it is the
+// pointer that ties the copy to its repository, and removing it is the same
+// loss of history from the copy's side.
+func groundMetadataDir(ground string) string {
+	ground = strings.TrimSpace(ground)
+	if ground == "" {
+		return ""
+	}
+	metadata := filepath.Join(filepath.Clean(ground), ".git")
+	if _, err := os.Lstat(metadata); err != nil {
+		return ""
+	}
+	return metadata
 }
 
 // insideGround is the one comparison the whole law rests on.
@@ -832,6 +1180,28 @@ func commandVerb(words []string) (string, []string) {
 
 // ── reading a command line ──────────────────────────────────────────────────
 
+// BashCommandIsOnly reports whether command is one shell segment whose command
+// words begin with the exact wanted words. It is the exported reading the run
+// worker needs for its `plandb done` completion gate: use the same parser that
+// guards bash ([approval.CommandWords]) rather than a second delimiter heuristic
+// that mistakes `&` or `;` inside a quoted result for another command.
+func BashCommandIsOnly(command string, wanted ...string) bool {
+	segments := approval.CommandWords(command)
+	if len(segments) != 1 {
+		return false
+	}
+	words, _ := taskSegmentHead(stripRedirections(segments[0]))
+	if len(words) < len(wanted) {
+		return false
+	}
+	for index, word := range wanted {
+		if words[index] != word {
+			return false
+		}
+	}
+	return true
+}
+
 // taskSegmentHead drops what stands in front of a command — the environment it
 // was given and the words that only introduce it — and answers the command
 // itself with the environment that was set on it.
@@ -846,7 +1216,7 @@ func taskSegmentHead(segment []string) ([]string, map[string]string) {
 			continue
 		}
 		switch word {
-		case "sudo", "env", "time", "nohup", "exec", "command", "then", "else", "do", "!":
+		case "sudo", "doas", "env", "time", "nohup", "exec", "command", "then", "else", "do", "!":
 			continue
 		}
 		return segment[index:], assignments
