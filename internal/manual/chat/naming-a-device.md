@@ -6,7 +6,7 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 
 Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time; opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
 
-Every screen that names a device uses one name for it: the home rows (`held on tower`, `tower offline`), `Continue tower's latest chat here?`, the approve screen, `tower is now paired. Your chats can continue there.`, `/devices`, `/settings` → `Devices`, and the line after a move, `Moved from tower in 4s`. A device is called by its host name, the word your operating system already uses for it, until you give it a name. A name is only a label. It is not a key and it signs nothing, and renaming a device changes nothing about what it can reach.
+Every screen that names a device uses one name for it: the home rows (`working on tower`, `held on tower`, `tower offline`), `Continue tower's latest chat here?`, the approve screen, `tower is now paired. Your chats can continue there.`, `/devices`, `/settings` → `Devices`, and the line after a move, `Moved from tower in 4s`. A device is called by its host name, the word your operating system already uses for it, until you give it a name. A name is only a label. It is not a key and it signs nothing, and renaming a device changes nothing about what it can reach.
 
 Because you never named this device, it kept the default. Name it and every other device shows the new name.
 

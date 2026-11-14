@@ -152,6 +152,13 @@ func endsAView(door session.StopDoor) bool {
 // model change has no error to return.
 func (l lentAgent) SetModel(string) {}
 
+// SetModelChecked preserves the legacy wrapper's model policy at the checked
+// RPC door; the embedded agent's promoted setter must not bypass it.
+func (l lentAgent) SetModelChecked(model string) error {
+	l.SetModel(model)
+	return nil
+}
+
 // SetSpendRail refuses: the stage's rail is the factory's.
 func (l lentAgent) SetSpendRail(float64) error { return errLentStage("spend limit") }
 

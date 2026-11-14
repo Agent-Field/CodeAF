@@ -90,14 +90,15 @@ func resumesUnanswered(door StopDoor) bool {
 
 // ResumeStoppedTurn asks the person's last question again, once, when this
 // conversation was opened onto the exact shape resume.go describes, and reports
-// whether it did. It answers nil and false in every other case, which is nearly
-// every conversation ever opened.
+// whether it did. An owed turn refused by work admission returns a refusal
+// stream and false, retaining the turn for a later attempt. With nothing owed,
+// it returns nil and false without asking the work gate.
 //
-// THE FACT IS SPENT WHEN IT IS READ, whether or not a turn starts. A window that
-// takes a conversation may attach to it more than once — the switcher brings it
+// THE FACT IS SPENT AFTER ADMISSION. A window that takes a conversation may
+// attach to it more than once — the switcher brings it
 // forward, the keeper hands it back — and a question asked twice is two answers
 // and two bills for one thing the person typed. It is cleared here, under the
-// lock, before anything else can decide anything.
+// lock, before another caller can start the same turn.
 //
 // THE MESSAGE IS THE ONE ALREADY IN THE TRANSCRIPT. Nothing is appended: the
 // person's words are in a.messages because the journal put them there, and in
@@ -111,8 +112,17 @@ func resumesUnanswered(door StopDoor) bool {
 // stopped attempt's reasoning and half-written reply are simply gone, because
 // nothing kept them.
 func (a *Agent) ResumeStoppedTurn(ctx context.Context) (<-chan Event, bool) {
+	a.mu.Lock()
+	owed := resumesUnanswered(a.stoppedTurn)
+	_, hasQuestion := a.lastPersonMessageLocked()
+	a.mu.Unlock()
+	if !owed || !hasQuestion {
+		return nil, false
+	}
+	// Admission may reach the sync service, so it cannot hold the session
+	// lock. Recheck the journal shape under the lock before spending it.
 	if err := a.CheckWork(); err != nil {
-		return refusedStream(err), true
+		return refusedStream(err), false
 	}
 	a.mu.Lock()
 	door := a.stoppedTurn

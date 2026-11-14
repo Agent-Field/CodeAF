@@ -676,6 +676,8 @@ type (
 		call *hostCall
 		ch   <-chan session.Event
 		err  error
+		// refused keeps the submitted words until the engine accepts them.
+		refused string
 		// echo names WHICH echoed line this answer settles, and ZERO when none
 		// was drawn (echo.go). It is stamped where the line was drawn rather
 		// than looked up when the answer lands, because by then the person may
@@ -5650,6 +5652,8 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case homeMachinesSlowMsg:
 		a.machinesStillChecking(msg)
 		return a, nil
+	case homeLocalOpenMsg:
+		return a, a.homeLocalOpenReady(msg)
 	case homeMachinesMsg:
 		// THE OTHER MACHINES' CHATS, COMING BACK, off the update loop for the
 		// reason the repository's reading is (homepanel_machines.go).
@@ -6461,6 +6465,16 @@ func (a *app) adopt(msg submittedMsg) (cmd tea.Cmd) {
 	// its pictures, an accepted one has spent them (attach.go).
 	a.chipsSettled(msg.err)
 	if msg.err != nil {
+		if msg.refused != "" {
+			a.atMainComposer(func(state *composerState) {
+				words := msg.refused
+				if !state.box.empty() {
+					words += "\n" + unfoldPastes(state.box.String(), state.pastes)
+				}
+				state.box.setText(words)
+				state.pastes = nil
+			})
+		}
 		// A MESSAGE THE ENGINE REFUSED NEVER HAPPENED, so the line the surface
 		// drew for it comes off the page and the refusal is put where it was
 		// (echo.go). The sentence is the engine's own, unchanged: it knows why —
@@ -7604,10 +7618,10 @@ func (a *app) submittingShown(text, shown string, plain []segment, start func() 
 	ctx, agent := a.ctx, a.agent
 	return tea.Batch(func() tea.Msg {
 		if err := waitModelSelection(ctx, agent); err != nil {
-			return submittedMsg{err: err, echo: mark, call: call}
+			return submittedMsg{err: err, echo: mark, call: call, refused: text}
 		}
 		ch, err := start()
-		return submittedMsg{ch: ch, err: err, echo: mark, call: call}
+		return submittedMsg{ch: ch, err: err, echo: mark, call: call, refused: text}
 	}, a.wake())
 }
 

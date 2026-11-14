@@ -47,6 +47,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/effort"
+	procexec "github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/roles"
@@ -620,6 +621,8 @@ func (a *Agent) startOrJoinTaskRun(ctx context.Context, id uint64, title, brief 
 // startOrJoinTaskRunVia is the one body behind every door above: the start
 // lock, the join, the folder or the copy, the store and the first row.
 func (a *Agent) startOrJoinTaskRunVia(ctx context.Context, id uint64, title, brief string, dependsOn []uint64, stand taskStand, question string, via *delegate.Delegate, asked ...string) (bool, error) {
+	a.taskStarting.Add(1)
+	defer a.taskStarting.Add(-1)
 	epoch, err := a.beltAdmissionEpoch()
 	if err != nil {
 		return false, err
@@ -2055,6 +2058,10 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 		if !ok {
 			return
 		}
+	}
+	if err := procexec.CheckPreparedWork(a.config.Seat); err != nil {
+		a.settlePendingBeltRun(run, err)
+		return
 	}
 	// THE RUN'S MONEY REACHES THE CONVERSATION'S BOOKS THROUGH ONE FOLD
 	// (task_run_money.go): each call whole as a program's model API meters it,

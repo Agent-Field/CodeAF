@@ -831,3 +831,21 @@ method and measurements are in [docs/perf/memory-2026-10-24.md](docs/perf/memory
   once a minute. macOS keeps freed pages in a process's resident size until it
   needs them (`MADV_FREE_REUSABLE`), so `ps` RSS shows the peak of a burst while
   the footprint (`vmmap --summary`, Activity Monitor) shows what is held.
+
+## Paired idle save certification
+
+The idle-only `cellstore.SavedState` keeps the first fingerprint for each path
+and stops climbing at an already visited ancestor. A proof admits at most
+20,000 paths and 50,000 directory entries in total, 8 MiB per native output/diagnostic stream,
+and 64 MiB of current/saved chat-file content reads. Directory reads request
+only the remaining entry budget plus one. Native comparison uses its existing
+30-second preparation deadline. Exceeding a budget retains the hold; it never
+certifies a partial scope or limits ordinary saves or transfers.
+
+`TestIdleRelease_R8_WideWorkspaceAndReceiptsAllocateLinearly` measures native
+proofs over 100, 500 and 5,000 workspace files plus as many receipt records.
+It caps retained paths and visited entries at `2*N+100`, and Go allocations at
+`6 MiB + N*32,000` bytes. Before deduplication, 500+500 allocated 106,534,776
+bytes; afterward it allocated 2,505,888 bytes. The 5,000+5,000 proof allocated
+21,807,368 bytes. Bounds tests require refusal for paths, entries, reply size
+and content bytes. Final metadata revalidation remains mandatory.

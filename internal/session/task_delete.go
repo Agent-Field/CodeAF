@@ -94,6 +94,11 @@ func DeleteTaskUnder(root, file, id string, owned func(string, string) (bool, er
 // DeleteTask keeps the conversation and siblings alive. Cancellation settles
 // workers before their journals and resumable records are removed.
 func (a *Agent) DeleteTask(id string) error {
+	a.settingsWrites.Add(1)
+	defer a.settingsWrites.Add(-1)
+	if err := a.CheckSettingsWork(); err != nil {
+		return err
+	}
 	return deleteTaskRecord(a.config.SessionFile, id, a)
 }
 

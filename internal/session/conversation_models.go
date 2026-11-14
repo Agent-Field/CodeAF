@@ -43,6 +43,11 @@ func (a *Agent) ConversationModelPair() (ConversationModels, bool) {
 // SetConversationModels changes future requests only. In particular it never
 // calls hearModelLocked, whose terminal behavior may cancel an unproductive stream.
 func (a *Agent) SetConversationModels(pair ConversationModels) ([]ModelSwitch, error) {
+	a.settingsWrites.Add(1)
+	defer a.settingsWrites.Add(-1)
+	if err := a.CheckSettingsWork(); err != nil {
+		return nil, err
+	}
 	return a.setConversationModels(pair, "")
 }
 

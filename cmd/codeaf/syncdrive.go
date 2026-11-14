@@ -11,6 +11,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/cellsync"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
+	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
@@ -35,6 +36,8 @@ type driveBook struct {
 	// notices is installed by an app assembly before any drive starts. Nil
 	// retains the terminal's desk and its marking first-run behaviour.
 	notices *appDriveNotices
+	// idleCheck includes app work waiting outside the session's own queue.
+	idleCheck func(string) bool
 }
 
 type appDriveNotices struct {
@@ -84,7 +87,9 @@ func (b *driveBook) pendingDriveOf(c cell.Cell, engine cellstore.Engine, report 
 		cancel()
 		if err != nil {
 			report(err)
-			return d, b.claim(d, c.ID)
+			// Close stops the writer even when its last save fails. Retain that
+			// failure for the final receipt, then give the reopened chat a writer.
+			recordFinalSaveFailure(session.SavingError(d.transcript, err))
 		}
 	}
 	// A drive side that no longer holds the chat's lease (another machine took it, or it was moved
@@ -102,6 +107,9 @@ func (b *driveBook) pendingDriveOf(c cell.Cell, engine cellstore.Engine, report 
 	d := newAdmissionDrive(func(changed func()) (*syncsetup.Drive, error) {
 		return startLiveDrive(c, engine, report, appNotices, sayNotice, changed)
 	}, notices)
+	if check := b.idleCheck; check != nil {
+		d.surfaceIdle = func() bool { return check(c.ID) }
+	}
 	if appNotices != nil {
 		d.say = sayNotice
 	}
@@ -298,6 +306,38 @@ func driveWorkGate(d *liveDrive) func() error {
 	return func() error {
 		if started := d.started(); started != nil {
 			return check.admit(started)
+		}
+		return nil
+	}
+}
+
+func driveSettingsGate(d *liveDrive) func() error {
+	if d == nil {
+		return nil
+	}
+	return func() error {
+		if started := d.published.Load(); started != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), executor.TakeBackWithin)
+			defer cancel()
+			return started.ConfirmSettingsWork(ctx)
+		}
+		return nil
+	}
+}
+
+func drivePreparedGate(d *liveDrive) func() error {
+	if d == nil {
+		return nil
+	}
+	return func() error {
+		if started := d.started(); started != nil {
+			within := driveWorkWithin
+			if started.IdleReleased() {
+				within = executor.TakeBackWithin
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), within)
+			defer cancel()
+			return started.ConfirmPreparedWork(ctx)
 		}
 		return nil
 	}

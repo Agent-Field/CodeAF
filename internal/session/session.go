@@ -2808,6 +2808,8 @@ type Config struct {
 // events — every Submit streams, whether it started the turn or steered it.
 // The methods live in agent.go; the loop they drive lives in loop.go.
 type Agent struct {
+	settingError       atomic.Pointer[settingResult]
+	settingsWrites     atomic.Int64
 	modelChanges       sync.Mutex
 	conversationModels *ConversationModels
 	modelRequestSlot   string
@@ -3106,7 +3108,7 @@ type Agent struct {
 	// atomic is "closed, therefore no new job" (see [Agent.startMemoryJob]).
 	memoryCtx  context.Context
 	memoryStop context.CancelFunc
-	memoryJobs sync.WaitGroup
+	memoryJobs sessionJobs
 
 	// laneStop cancels the session's lane context, including probes. laneDone
 	// joins the optional sheet beat, whose cache writes must finish before Close
@@ -3261,6 +3263,8 @@ type Agent struct {
 	// tool calls in one turn that both find no copy would otherwise both make
 	// one — leaving a registered worktree that nothing holds a record of.
 	treeCut sync.Mutex
+	// taskStarting covers admission and preparation before a task has a row.
+	taskStarting atomic.Int64
 	// toldStanding is which folders' working copies THIS PROCESS has already
 	// told the model about (standingbelt.go). It is not on the meta on purpose:
 	// what it tracks is whether the model in front of it has been told, and a
@@ -4008,7 +4012,7 @@ type Agent struct {
 	// thing that can tell a run in flight that the session has left.
 	// Admission and Close share mu: no accepted run can appear after the quit
 	// starts waiting. The count covers setup, settlement and every child call.
-	orchestrateWorkers  sync.WaitGroup
+	orchestrateWorkers  sessionJobs
 	orchestrateContext  context.Context
 	orchestrateStop     context.CancelFunc
 	orchestrateSeq      uint64
@@ -4192,7 +4196,7 @@ type Agent struct {
 	// "closed, therefore no new errand" ([Agent.startTitleJob]).
 	titleCtx  context.Context
 	titleStop context.CancelFunc
-	titleJobs sync.WaitGroup
+	titleJobs sessionJobs
 	// titleWatchers is the standing subscription to the name this session gives
 	// itself, and it exists because THE NAME NOW ARRIVES AFTER THE TURN THAT
 	// BOUGHT IT MAY HAVE ENDED. It is [Agent.harnessWatchers]' shape exactly

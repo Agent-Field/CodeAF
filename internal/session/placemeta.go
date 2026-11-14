@@ -178,6 +178,15 @@ func (s *stampWriter) settle() {
 	write.Settle()
 }
 
+func (s *stampWriter) idle() bool {
+	if !s.mu.TryLock() {
+		return false
+	}
+	write := s.write
+	s.mu.Unlock()
+	return write.Idle()
+}
+
 // placeholderTitle cuts the folder's working name out of what a person said:
 // their first line, one space between the words, to the row's length. It is one
 // function because it is asked twice — once when they say it, and once when a
@@ -273,7 +282,7 @@ func (a *Agent) updateMeta(dir string, snapshot Meta, patch func(*Meta)) bool {
 	if dir == "" {
 		return false
 	}
-	return withMetaLock(dir, func() error {
+	err := withMetaLock(dir, func() error {
 		meta, err := LoadMeta(dir)
 		if err != nil {
 			return err
@@ -309,7 +318,13 @@ func (a *Agent) updateMeta(dir string, snapshot Meta, patch func(*Meta)) bool {
 		}
 		patch(&meta)
 		return saveMetaLocked(dir, meta)
-	}) == nil
+	})
+	if err == nil {
+		if watch, ok := a.config.Seals.(interface{ MetadataWrote() }); ok {
+			watch.MetadataWrote()
+		}
+	}
+	return err == nil
 }
 
 // fillMetaLocked fills in everything about a session that does not change while

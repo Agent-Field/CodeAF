@@ -170,7 +170,7 @@ func (b *appBackend) steer(agent, text, clientID string, shown *appSending) erro
 	// gate, which the open holds for as long as it takes. A chat known to
 	// belong elsewhere is refused now. After a stop there is no turn to give
 	// it to, and it is refused as any steer with nothing running is.
-	if err := b.knownWorkRefusal(a); err != nil {
+	if err := b.idleWorkRefusal(a); err != nil {
 		return err
 	}
 	kept := false
@@ -353,7 +353,7 @@ func (b *appBackend) queue(agent, text, clientID string, shown *appSending) ([]a
 	// before the gate, which the open holds for as long as it takes; the
 	// queue sends it through the ordinary door, admission and all, and a chat
 	// known to belong elsewhere is refused now.
-	if err := b.knownWorkRefusal(a); err != nil {
+	if err := b.idleWorkRefusal(a); err != nil {
 		return nil, err
 	}
 	starting := false

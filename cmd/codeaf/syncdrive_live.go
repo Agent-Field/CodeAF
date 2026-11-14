@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
@@ -33,6 +34,9 @@ type liveDrive struct {
 	transcript string
 	localGate  *localToolGate
 
+	// published is visible before idle release is enabled. Settings must not
+	// wait for installation or catch-up disk work under mu.
+	published atomic.Pointer[syncsetup.Drive]
 	mu             sync.Mutex
 	drive          *syncsetup.Drive
 	working        bool   // A turn may start before asynchronous startup finishes.
@@ -50,7 +54,9 @@ type liveDrive struct {
 	refusedSince   time.Time
 	told           error
 	// changes coalesces local health updates for the host's cached surface state.
-	changes chan struct{}
+	changes     chan struct{}
+	idleCheck   func() bool
+	surfaceIdle func() bool
 }
 
 // newLiveDrive starts the drive side behind the first paint. Local startup
@@ -182,6 +188,7 @@ func (l *liveDrive) install(d *syncsetup.Drive, err error, ready chan struct{}) 
 	defer close(ready)
 	l.ready = nil
 	l.drive, l.waiting, l.attempted = d, errors.Is(err, syncsetup.ErrNoIdentity) || errors.Is(err, syncsetup.ErrQuiet) || syncwords.NetworkFailure(err), true
+	l.published.Store(d)
 	if d == nil && !l.closed {
 		if r, ok := cellsync.RefusalOf(err); ok {
 			now := l.nowTime()
@@ -214,6 +221,7 @@ func (l *liveDrive) install(d *syncsetup.Drive, err error, ready chan struct{}) 
 		l.told = nil
 		l.refusedSince = time.Time{}
 		d.Working(l.working)
+		d.SetIdleCheck(l.idleReady)
 		d.CatchUp()
 		l.retryWait = 0
 	} else if !l.closed && cellsync.Unreachable(err) {
@@ -221,6 +229,24 @@ func (l *liveDrive) install(d *syncsetup.Drive, err error, ready chan struct{}) 
 	}
 	l.renewalChanged()
 	return l.closed
+}
+
+func (l *liveDrive) setIdleCheck(check func() bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.idleCheck = check
+}
+
+func (l *liveDrive) idleReady() bool {
+	check, surface, closed := l.idleChecks()
+	return !closed && check != nil && (surface == nil || surface()) && check()
+}
+
+// idleChecks reads the checks under mu; they run after it is released.
+func (l *liveDrive) idleChecks() (check, surface func() bool, closed bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.idleCheck, l.surfaceIdle, l.closed
 }
 
 // retryStartup owns the next attempt after a transport failure. It runs under
@@ -322,6 +348,12 @@ func (l *liveDrive) Gate() error {
 		return l.localGate.Gate()
 	}
 	return nil
+}
+
+func (l *liveDrive) SavedMetadata() {
+	if d := l.published.Load(); d != nil {
+		d.SavedMetadata()
+	}
 }
 
 // Working retains the turn state while startup runs, so a first send cannot
@@ -427,15 +459,26 @@ const holdsLeaseWithin = 5 * time.Second
 
 // superseded says a drive side was running and the chat has since been taken from it, by
 // another machine or by a move back to this one, so that it no longer holds the lease it
-// publishes under. A drive side that still waits for an identity, or that drives, is not.
+// publishes under. A closed writer must also be replaced, even if its failed
+// final save left a live lease. An open drive still waiting for identity is not.
 func (l *liveDrive) superseded() bool {
-	d := l.started()
+	d, closed := l.driveAndClosed()
+	if closed {
+		return true
+	}
 	if d == nil {
 		return l.localGate != nil && l.localGate.superseded()
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), holdsLeaseWithin)
 	defer cancel()
 	return !d.HoldsLease(ctx)
+}
+
+// driveAndClosed reads the drive side and whether it was closed under one lock.
+func (l *liveDrive) driveAndClosed() (*syncsetup.Drive, bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.drive, l.closed
 }
 
 // started is the drive side if one ever started, without trying to start it.

@@ -67,13 +67,19 @@ var (
 	appTakeSeen = func(ctx context.Context, s *syncsetup.Sync, id string, seen *directory.LeaseExpectation, onMove func(syncsetup.MoveProgress)) (syncsetup.Continued, error) {
 		return chatMover(s, onMove).TakeSeen(ctx, id, seen)
 	}
-	appTakeOpen = (*appBackend).OpenAgent
+	appTakeOpen = func(b *appBackend, id string) (appwire.Agent, error) {
+		return b.openAgent(id, false)
+	}
 )
 
 // TakeAgent moves a chat here. Its row says the move is queued, then how far
 // it has got, and, when it did not move the chat, how it ended, so a client
 // that stopped waiting still learns the outcome.
-func (b *appBackend) TakeAgent(p appwire.TakeParams) (agent appwire.Agent, err error) {
+func (b *appBackend) TakeAgent(p appwire.TakeParams) (appwire.Agent, error) {
+	return b.takeAgent(p, false)
+}
+
+func (b *appBackend) takeAgent(p appwire.TakeParams, available bool) (agent appwire.Agent, err error) {
 	if p.Cell == "" || p.Seen.Device == "" {
 		return appwire.Agent{}, appwire.Errorf(appwire.CodeBadParams, "a chat and its seen computer are required")
 	}
@@ -131,8 +137,11 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (agent appwire.Agent, err e
 		return appwire.Agent{}, err
 	}
 	seen := &directory.LeaseExpectation{Device: p.Seen.Device, Fence: p.Seen.Fence, Head: p.Seen.Head}
+	if available && view.Cell.Lease.Expires != 0 {
+		return appwire.Agent{}, appAvailableRefusal(ctx, s, view.Cell.Lease)
+	}
 	if !seen.Matches(view.Cell) {
-		return appwire.Agent{}, appTakeError(directory.ErrLeaseHeld)
+		return appwire.Agent{}, appTakeRefusal(ctx, s, p.Cell, seen, directory.ErrLeaseHeld)
 	}
 	if view.Cell.Archived || view.Cell.ParentCell != "" {
 		return appwire.Agent{}, appwire.Errorf(appwire.CodeNotFound, "that chat is not available")
@@ -159,7 +168,7 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (agent appwire.Agent, err e
 			if busy {
 				return appwire.Errorf(appwire.CodeBusy, "Finish this chat's work before continuing it here.")
 			}
-			if moved {
+			if available || moved {
 				b.release(existing)
 			}
 			return nil
@@ -169,17 +178,27 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (agent appwire.Agent, err e
 		}
 	}
 	report, stopReport := b.moveReporter(p.Cell, move)
-	got, err := appTakeSeen(ctx, s, p.Cell, seen, report)
+	var got syncsetup.Continued
+	if available {
+		got, err = chatMover(s, report).OpenAvailable(ctx, p.Cell, seen)
+	} else {
+		got, err = appTakeSeen(ctx, s, p.Cell, seen, report)
+	}
 	stopReport()
 	if err != nil {
-		return appwire.Agent{}, err
+		if available && (errors.Is(err, directory.ErrLeaseHeld) || errors.Is(err, directory.ErrFenceStale)) {
+			if fresh, readErr := s.Dir.Cell(ctx, p.Cell); readErr == nil && fresh.Cell.Lease.Expires > fresh.Now {
+				return appwire.Agent{}, appAvailableRefusal(ctx, s, fresh.Cell.Lease)
+			}
+		}
+		return appwire.Agent{}, appTakeRefusal(ctx, s, p.Cell, seen, err)
 	}
 	// The chat is this computer's from here on, even if opening it fails.
 	b.chats.landTake(p.Cell, got.Taken.Driving.Fence)
 	// The continuer's already-here shortcut may observe a local acquisition
 	// that happened after our preflight read. It must not accept older consent.
 	if got.AlreadyHere && (p.Seen.Device != s.Device.ID() || !seen.Matches(directory.Cell{Head: got.Taken.Driving.Head, Lease: directory.Lease{Device: s.Device.ID(), Fence: got.Taken.Driving.Fence}})) {
-		return appwire.Agent{}, appTakeError(directory.ErrLeaseHeld)
+		return appwire.Agent{}, appTakeRefusal(ctx, s, p.Cell, seen, directory.ErrLeaseHeld)
 	}
 	root := got.Taken.Cell.Root
 	meta, err := session.LoadMeta(root)
@@ -193,7 +212,7 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (agent appwire.Agent, err e
 	}
 	b.remember(session.SessionRow{ID: id, Dir: root, Transcript: transcript, Workspace: meta.Workspace, Title: meta.Title, Created: meta.Created, Model: meta.Model, ModelIdentity: meta.ModelIdentity})
 	a := b.agent(id)
-	b.installTaken(a, transcript, meta, !got.AlreadyHere, moved)
+	b.installTaken(a, transcript, meta, !got.AlreadyHere, available || moved)
 	location := &appwire.Location{Here: true, Cell: p.Cell, Seen: &appwire.Seen{Device: s.Device.ID(), Fence: got.Taken.Driving.Fence, Head: got.Taken.Driving.Head}, Holder: &appwire.LocationHolder{ID: s.Device.ID(), Name: got.Device}}
 	if service, ok := s.Dir.(interface{ HeadTakes() bool }); ok && !service.HeadTakes() {
 		location.Seen.Head = ""
@@ -229,6 +248,35 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (agent appwire.Agent, err e
 	// A newer cached version skips the reading's own taking.
 	b.publishTaking()
 	return agent, nil
+}
+
+// appTakeRefusal reads ownership again because the observed computer may have
+// reclaimed its own idle release while this take was on the way.
+func appTakeRefusal(ctx context.Context, s *syncsetup.Sync, id string, seen *directory.LeaseExpectation, err error) error {
+	if !errors.Is(err, directory.ErrLeaseHeld) && !errors.Is(err, directory.ErrFenceStale) {
+		return err
+	}
+	wire := appTakeError(err).(*appwire.Error)
+	if seen != nil && seen.Fence > 0 {
+		if fresh, readErr := s.Dir.Cell(ctx, id); readErr == nil && fresh.Cell.Lease.Device == seen.Device && fresh.Cell.Lease.Fence > seen.Fence {
+			wire.Message = fmt.Sprintf(chatlist.PickedUpAgain, appHolderName(ctx, s, fresh.Cell.Lease.Device))
+		}
+	}
+	return wire
+}
+
+func appHolderName(ctx context.Context, s *syncsetup.Sync, device string) string {
+	name := chatlist.DeviceName(nil, device, nil)
+	if listing, err := s.Dir.List(ctx); err == nil {
+		key := directory.MetadataKey(s.Identity.CellKey())
+		name = chatlist.DeviceName(listing.Devices, device, func(sealed string) (string, error) { return directory.OpenName(key, sealed) })
+	}
+	return name
+}
+
+func appAvailableRefusal(ctx context.Context, s *syncsetup.Sync, lease directory.Lease) error {
+	name := appHolderName(ctx, s, lease.Device)
+	return appLocationRefusal(&appwire.Location{Holder: &appwire.LocationHolder{ID: lease.Device, Name: name}, Line: chatlist.Superseded(name)})
 }
 
 // installTaken points the agent at the chat a take installed. installed: the

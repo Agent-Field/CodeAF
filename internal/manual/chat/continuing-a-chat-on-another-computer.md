@@ -1,12 +1,20 @@
 # Continuing a chat that one of your machines holds
 
-To continue on this machine, select the chat on home and choose `continue here`. When your paired computer is offline or has let go of its latest chat, home can ask `Continue tower's latest chat here?`: `alt+c` continues immediately when there is no local choice to make, and `alt+x` dismisses the offer. Moving chats is available by default on Linux, macOS and native Windows with a compatible engine. Older chats become movable through independent copies after pairing.
+To continue on this machine, select the chat on home and choose `continue here` (the default while `idle handoff` is off; when **Settings → General → idle handoff** or `CODEAF_IDLE_HANDOFF=1` is turned on in a paired set, a released chat opens here automatically, while a live hold or a lapsed hold on another computer still offers `continue here`). When your paired computer is offline or has let go of its latest chat, home can ask `Continue tower's latest chat here?`: `alt+c` continues immediately when there is no local choice to make, and `alt+x` dismisses the offer. Moving chats is available by default on Linux, macOS and native Windows with a compatible engine. Older chats become movable through independent copies after pairing.
 
 ## Continue on another computer — moving chats and pairing availability
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time; opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
+
+## Idle chats release their hold — open on another paired computer, even when the first is off
+
+**Settings → General → idle handoff** (`idle_handoff`, or `CODEAF_IDLE_HANDOFF=1`) is **off by default**: while off, open idle chats keep renewing their hold and a released remote chat still uses **Continue here**. When you turn `idle handoff` on with two or more paired computers (and sync storage on), an idle chat lets go of its hold about 2 seconds after it goes idle, once its saved turns, journal, working files, shared memory and settings are on the sync service. The open window stays as a reader. A running turn, queued or steering work, a running task or job, unsaved tail writes or an upload failure keeps the hold. Rebuildable folders such as `node_modules` follow the usual transfer exclusions.
+
+With `idle handoff` on, a chat explicitly released by its holder opens directly on another paired computer with no Continue-here step: press Enter on terminal Home, or open its `can_open` row through `agents.open` in the app. The original computer can be off. A chat another computer still holds (`held on <device>` or `working on <device>`, including an idle chat when `idle handoff` is off or on an older build that never releases) still asks, with **Move here** or **Continue here** as your choice. A hold that lapsed without a release also keeps that card, including one whose holder was working. This applies even when the last working state is unknown. Existing local edits use the ordinary kept-work rules during transfer.
+
+Sending new work in the window that released its idle hold takes the unchanged saved chat back in place, with no prompt, before recording your words or calling a model. If another computer took it, the window gets the held-elsewhere refusal. A hold that merely lapsed (not released by its window) admits nothing until you reopen or continue it. Only one computer can win a simultaneous open and send. A released window needs a successful ownership check before it can accept work; an outage leaves that work unsent. Unpaired, sync-off, single-device and default (`idle handoff` off) homes keep their hold while open.
 
 ## Continue on another computer — continuing a chat on another computer, why can't I type in this chat, my message did not send and home opened with a question
 
@@ -30,6 +38,15 @@ Your words stay in the box. Nothing was sent, and no branch nobody asked for was
 An attended window keeps following your other devices while the chat is open, so a move is shown without returning to home first. Slash commands such as `/help` always work.
 
 If you continue it, the other device's window stops taking new turns and says `<device> continued this chat; this window now only shows it`. The page *Home* has the rest of that card.
+
+## Which folder does a continued chat use — repeated moves and long copy-folder names
+
+A chat that already has a local folder keeps that folder when you bring it back.
+A first incoming copy is filed under this computer's `v3/projects` folder.
+Copy-folder names stay bounded and stable across repeated moves; long original
+paths receive a short stable suffix. Existing short folder names stay as they
+are. A long path on the other computer does not make the folder name grow on
+every round trip.
 
 ## A tool finishes after the chat hold expires — late saves and kept turns
 
@@ -114,9 +131,11 @@ On the hosted sync service this needs sync storage approval (Settings → Device
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
-Home lists chats from your other devices. A chat another device still holds says `held on <device>`: it is open there, and nothing is running in it right now. While that device is in the middle of a turn the row says `working on <device>` instead; it changes back as soon as the turn ends. A sync service too old to carry that word never shows it, so its rows say `held on <device>` either way. One that a device let go of, or that went off because its lid closed, says `<device> offline`.
+Home lists chats from your other devices. By default (`idle handoff` is off by default; turn it on in **Settings → General → idle handoff** or with `CODEAF_IDLE_HANDOFF=1`), an open idle chat keeps its hold and a released chat asks **Continue here**. With `idle handoff` on in paired computers, an idle chat lets go about 2 seconds after it goes idle once everything is on the sync service, and a released chat opens here directly: press enter on it to bring its latest saved copy here and open it directly (in the app, `agents.open` does the same on `can_open` rows). There is no Continue-here card for a released chat when `idle handoff` is on, and a free row shows no holder label. A lapsed hold on another computer keeps the card, including when its holder was working.
 
-Press enter on either row to continue it here. The verb on the card depends on the row: **Move here** for a chat another device is running right now, **Continue here** for one it let go of. You already chose to continue, so the cursor starts on `continue here` and enter completes the move; `esc` leaves it there. The card says how fresh the copy is, so you know how many turns may still be on the other device.
+A chat with a live hold on another device says `held on <device>` when it is open there with nothing running in it right now, and `working on <device>` while that device is in the middle of a turn; it changes back as soon as the turn ends. A sync service too old to carry that word shows `held on <device>` either way, so a hold alone does not establish that work is running there. When a computer stops answering without letting go (for example its lid closed), its row says `<device> offline`; offline alone does not make a live hold free.
+
+Opening a chat with a live hold still asks before moving it, with **Move here** or **Continue here** as your choice: the devices row offers **Move here** while it is running there and **Continue here** when it went off, and Enter on Home's row opens the `Continue this chat here?` card showing how fresh the copy is and how many turns may still be there (`esc` leaves it there). Watching never takes a live hold.
 
 ## Continue on this machine — Continue where you left off, alt+c and alt+x
 
@@ -253,7 +272,7 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 
 while a chat you explicitly chose is moving here, the card says `continuing here…`. another explicit continue during that move says `a chat is already continuing here; wait for it to open` on the card. an automatic startup move instead lets your explicit choice go next; see “my choice while an automatic chat is arriving”.
 
-every failure stays where you are looking: on Home's card with `1 retry` and `2 leave it there`, or inside the open chat window. a fresh reading decides whether a different computer continued first. if the same computer picked the chat up again, the card asks again with `<holder> picked this chat up again; press enter to continue it here`. it does not blame another device.
+every failure stays where you are looking: on Home's card with `1 retry` and `2 leave it there`, or inside the open chat window. a fresh reading decides whether a different computer continued first. if the same computer picked the chat up again, the card asks again with `<holder> picked this chat up again; press enter to continue it here`. The desktop's `agents.take` refusal says `<holder> picked this chat up again`, keeping its `conflict` code and `holder_changed` detail. Nothing is taken by either refusal.
 
 ## why continue here failed — retry or leave it there
 
@@ -278,7 +297,7 @@ a failed move keeps the draft and shows `1 retry` and `2 leave it there`. retry 
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
-A chat has one holder at a time. To take a chat back from the computer that took it, continue it there the same way: press enter on its row on that computer and choose `continue here`. Nothing has to be returned or switched off first. A computer with the chat open when another takes it says `<device> continued this chat; this window now only shows it`, stops taking new turns, and keeps what it had not yet sent as a branch (`<K> turns from <device>: open separately / discard`). A tool call the model tries there answers with that same line. Taking the chat back leaves a `node_modules` or other install folder that computer already has alone.
+A chat has one holder at a time. To take a chat back from the computer that took it, press enter on its row on that computer: choose `continue here` by default (`idle handoff` is off by default; when turned on in **Settings → General → idle handoff** or with `CODEAF_IDLE_HANDOFF=1`, a released paired chat opens directly while a live hold or a lapsed hold on another computer still asks for `continue here`). Nothing has to be returned or switched off first. A computer with the chat open when another takes it says `<device> continued this chat; this window now only shows it`, stops taking new turns, and keeps what it had not yet sent as a branch (`<K> turns from <device>: open separately / discard`). A tool call the model tries there answers with that same line. Taking the chat back leaves a `node_modules` or other install folder that computer already has alone.
 
 The choice covers the holder and turn of ownership shown on the card. If another computer continues the chat before you confirm or while the copy is arriving, your choice cannot take it from that new holder. The slower one sees `another device continued this chat first` on the card with `1 retry` and `2 leave it there`; its local copy is not replaced, and its row goes back to `held on <device>`. if the same holder picked it up again, the refreshed card says `<holder> picked this chat up again; press enter to continue it here` and asks for a new confirmation instead. a complete chat already held here gets one silent recovery attempt; another disagreement keeps the retry card and draft. No turn is lost on either side: whatever the earlier holder had not sent is kept for you as the branch above. This build offers discard, which archives a branch, and opening the branch as a separate chat; merging it into the original chat is unavailable. Pressing `2` (`leave it there`) on the question, or `esc`, changes nothing and leaves the chat where it is.
 
@@ -295,8 +314,7 @@ Once this window learns that another computer holds the chat, Enter opens
 as the live update or the `<device> continued this chat; this window now only
 shows it` notice arrives; it does not wait for the next background ownership
 check. Enter cannot start a reply, publish a turn or create a separate chat
-from this displaced window. Choose `continue here` to bring the latest chat
-back before sending.
+from this displaced window. Open the latest chat from Home to bring it back before sending (choose `continue here` by default; with `idle handoff` on, a released paired chat opens directly while a live hold or a lapsed hold on another computer still asks for `continue here`).
 
 A chat this computer still holds sends on one Enter without an extra request
 to the sync service. A chat that has never been shared does too.
@@ -304,8 +322,7 @@ to the sync service. A chat that has never been shared does too.
 ## Take my chat back after a crash, a killed process or a power loss
 
 If this computer was killed and another computer continued the chat, reopen
-codeaf and choose **continue here** from Home or from the question raised by
-Enter in the old local copy. The move brings the latest saved chat here and
+codeaf and open the chat from Home: choose **continue here** by default (`idle handoff` off), or with `idle handoff` on a released paired chat opens directly while a live hold or a lapsed hold on another computer still asks for **continue here**, as does the question raised by Enter in the old local copy. The move brings the latest saved chat here and
 says `Moved from <device>`. An old saved hold cannot keep the chat here or
 make that copy send a message. The question uses the other computer and last
 saved turn reported by the sync service. An offline holder is named as
@@ -321,7 +338,9 @@ On the hosted sync service this needs sync storage approval (Settings → Device
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
-Reopening an older copy does not replace newer history on your other devices, even if the other computer has closed the chat. This window only shows its local copy until you choose `continue here`. Submitting a message opens that question and keeps your words in the box. Continuing brings the newer history here before writing can resume.
+Reopening an older copy does not replace newer history on your other devices, even if the other computer has closed the chat. By default (`idle handoff` is off by default; turn it on in **Settings → General → idle handoff** or with `CODEAF_IDLE_HANDOFF=1`), this window only shows its local copy until you choose `continue here`. On paired computers with `idle handoff` on, opening a released chat from Home brings the latest saved history here automatically before you can write, including when an older viewer tab is already open. An older local copy does not overwrite newer history. A live hold or a lapsed hold on another computer still asks for Continue here, including when that holder was working.
+
+An already-open older window remains a reader after another computer continues the chat. Sending there refuses before recording your words. Open the latest chat from Home to resume it; if its hold is still live elsewhere (or `idle handoff` is off), the move remains your choice.
 
 Locally saved turns that never reached your other devices are kept as a branch before the newer copy replaces them, including turns already sealed on disk. Unsaved workspace edits are sealed and kept too. The move says `your unsaved edits here were kept as <K> turns from <device>`. Open that branch as a separate chat or discard it; merging is unavailable.
 
@@ -345,7 +364,9 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 
 While a chat is moving onto this computer, pressing enter on its row says `this chat is arriving on this computer; it opens by itself in a moment`. Nothing is wrong and nothing needs doing: the move takes a second or two, and the chat opens by itself when it ends, with the other computer's latest turns in it. Opening it earlier is refused on purpose, because a window opened halfway would show the chat as it was before the move and could not save your turns.
 
-When the holder is off (its lid is shut), the row reads `<device> offline` and you can still continue the chat here: the card says `last saved turn <N> ago; up to <K> turns may still be on <device>`. Turns that never left that computer are not in the copy you get; if its window is still running when it reconnects, it keeps those turns as a branch. After a restart, the turns stay in the local copy until you choose `continue here`, which keeps them as a branch before replacing that copy. Open the branch separately or discard it. Merging into the original chat is unavailable.
+When the holder stops answering (for example, its lid is shut), the row may read `<device> offline`. While its hold is live, Continue here still asks and the card says `last saved turn <N> ago; up to <K> turns may still be on <device>`. Once the holder releases the hold, Continue here brings it here by default (`idle handoff` is off by default; when turned on in **Settings → General → idle handoff** or with `CODEAF_IDLE_HANDOFF=1`, opening the paired released chat brings it here directly). A hold that merely lapses keeps the Continue-here card, including when its holder was working or its last working state is unknown.
+
+Turns that never left that computer are not in the copy you get. If its window is still running when it reconnects, it keeps those turns as a branch. After a restart, opening the latest copy keeps unpublished local turns and workspace edits as a branch before replacing them. Open the branch separately or discard it. Merging into the original chat is unavailable.
 
 ## Can the chat on the other computer still open the job logs it mentions — logs, saved tool output, task journals and the task history after a move
 
@@ -484,7 +505,7 @@ show no warning rather than guessing. A headless open does not consume the notic
 
 On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
-A clean quit lets go after the last save is durable. Opening bare `codeaf` on your other paired computer within 24 hours continues the released chat automatically, with the usual `Moved from` banner and `not brought along:` lines. `esc` goes Home. A sleeping laptop has not let go: Home offers the chat and `alt+c` continues it, asking only if local work needs a choice.
+A clean quit lets go after the last save is durable, and when **Settings → General → idle handoff** (`CODEAF_IDLE_HANDOFF=1`, off by default) is turned on, an idle paired chat also lets go about 2 seconds after it goes idle once everything is on the sync service. Opening bare `codeaf` on your other paired computer within 24 hours continues the released chat automatically, with the usual `Moved from` banner and `not brought along:` lines. `esc` goes Home. A laptop that went to sleep while still holding the chat (for example mid-turn, before the save finished, while `idle handoff` is off, or on an older build) has not let go: while its hold is live, Home offers the chat and `alt+c` continues it, asking only if local work needs a choice; once the hold lapses, pressing Enter on its Home row still asks Continue here.
 
 If this computer is also coordinating, a clean terminal quit releases its idle chats and returns coordination to an anchor before stopping. With the anchors reachable, the other computer can continue immediately. Sleep, a crash or a lost connection still use the fallback described on the coordination and workers page.
 
@@ -548,16 +569,24 @@ Older builds can still list, save, publish and release chats through a compatibl
 Yes. Directory requests from older builds keep the existing 1 MiB request limit, including large encrypted metadata and frame hints. The service receives the complete signed request before making the change visible. A failed or interrupted save never exposes only part of that metadata. Reconnect and check the latest save before retrying. Encrypted names, key wraps and frame hints are preserved. The identity's storage capacity still applies.
 
 
+## Opening a free chat from Home after restarting
+
+By default (**Settings → General → idle handoff** is off), selecting a released remote chat on Home asks **Continue here** and local chats open locally. Turn on **idle handoff** in `/settings` (or set `CODEAF_IDLE_HANDOFF=1`) on paired computers so selecting a released chat on Home brings its latest saved history here with a new hold, without **Continue here**. This also works on the first open of this computer's local copy after a restart.
+
+With `idle handoff` on, Home uses its shared listing when it already answers. If this window has no open copy and the listing is missing the chat or still shows this computer's old live hold, Home checks its current hold for up to two seconds. If that check fails or times out, the locally saved chat opens as usual, without a connection refusal. A chat already open in this window needs no extra check. A listed free chat still refreshes an older viewer with its latest history. A live hold or a lapsed hold elsewhere keeps the existing **Continue here** card, including when its holder was working. Only explicitly released holds open directly on another computer when `idle handoff` is on. Unpaired, sync-off, single-device and default (`idle handoff` off) homes keep their local opening behavior.
+
+If the sync service is unreachable, Enter on a chat saved on this computer opens its local copy, including a listed free chat last held here. With `idle handoff` on, a free open's initial ownership read also waits at most two seconds: an unreachable service opens the local copy if one exists, or explains that the sync service is not answering for a remote-only chat. Successful transfers keep their normal move budget. Opening locally keeps the chat's usual offline send restrictions.
+
 ## Why did Enter show Continue here instead of sending my message
 
-Before sending, codeaf checks that this window still holds the chat. If another computer holds it, its latest saved turn is newer, or this window's earlier move failed, Enter opens **Continue this chat here?** or leaves the window showing the chat only. The words stay in the box. Choose **continue here** to bring the saved chat here, then press Enter to send.
+Before sending, codeaf checks that this window still holds the chat. If another computer holds it, its latest saved turn is newer, or this window's earlier move failed, Enter opens **Continue this chat here?** or leaves the window showing the chat only. The words stay in the box. Open it from Home to bring the saved chat here, then press Enter to send (choose **continue here** by default; with `idle handoff` on, a released paired chat opens directly while a live hold or a lapsed hold on another computer still asks for **continue here**).
 
 Once this window says another computer continued the chat, its first Enter
 raises that question without running a turn or making a branch. A saved hold
 from an earlier process cannot bypass the question. A window whose writer
 still holds the chat sends with one Enter without asking the service first.
 
-A new chat can send its first message normally. A sleeping computer whose ownership check finds an expired hold must use Continue here before sending again. Reopening the chat acquires a new ownership fence. While storage is off, a free chat last held here resumes quietly without reopening if its local history contains every shared turn, even with newer turns saved only here. If the ownership check cannot reach your other computers, a chat this window already holds keeps working and its turns wait to be shared; any other message stays unsent.
+A new chat can send its first message normally. A hold that merely lapsed (not released by its window) is reopened conditionally on the next Enter when no other computer holds the chat, or continued with Continue here; a window that released its own idle hold (when `idle handoff` is on) takes it back in place on new work when the saved head is unchanged. Reopening the chat acquires a new ownership fence. While storage is off, a free chat last held here resumes quietly without reopening if its local history contains every shared turn, even with newer turns saved only here. If the ownership check cannot reach your other computers, a chat this window already holds keeps working and its turns wait to be shared; any other message stays unsent.
 
 ## A move that failed partway — are my typed words safe, can the old copy still send
 
@@ -575,7 +604,7 @@ Run `codeaf doctor` from a terminal to inspect this computer's engine store and 
 - `unfinished continue · chat <id>`: a continue started on this computer never completed or let go.
 - `duplicate rows · chat <id> (2 local folders)`: more than one local folder on disk shares one chat id.
 - `duplicate rows · chat <id> (branch copy <branch>, all turns in main chat)` or `duplicate rows · chat <id> (branch copy <branch>, 3 turns not in main chat)`: branch copies exist for a chat.
-- `lapsed hold on this computer · chat <id>`: an expired hold from this computer would raise a question on open.
+- `lapsed hold on this computer · chat <id>`: a stale local hold receipt needs repair. With `idle handoff` on (`CODEAF_IDLE_HANDOFF=1`, off by default), current builds open an explicitly released paired chat directly; on Home, an unchanged expired hold last held here also opens without a question.
 
 Run `codeaf doctor --fix` to repair what is safe. It prints one line per repair:
 
@@ -603,3 +632,35 @@ A current window understands the earlier outage and removed-computer notices too
 ## Why can't I continue new turns from my offline computer — sync storage is off
 
 Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request. Existing saved content remains readable; turning storage off deletes nothing. The refusal is `sync storage is off for this account, so chats stay on this computer; request access in Settings under Devices`. Once approval is read in the background, waiting chats start within a minute without restarting.
+
+## Changing thinking or model settings after idle release
+
+With **Settings → General → idle handoff** (`CODEAF_IDLE_HANDOFF=1`, off by default) turned on in a paired set, changing this chat's name, thinking, model, automatic model choice, approval posture or attached folders in its released window first takes the hold back in place. The setting is saved with the chat before it is handed back again. `/remember` after the last turn also travels with the saved chat.
+
+If another computer took the chat, the setting is refused through the usual held-elsewhere message. The terminal keeps the requested `/effort` or `/model` choice in the input box. Open the newest free chat before applying it there. Your already-held chat can still work offline, including starting a task.
+
+## Renaming, rewinding or compacting a released chat
+
+A manual name is saved in both the chat's title and journal. When `idle handoff` (`CODEAF_IDLE_HANDOFF=1`, off by default) has released this window's hold, renaming, rewinding, undoing a rewind, compacting, anchoring a workspace, changing project autonomy, editing a plan, changing a task's next model, reviewing, applying, resolving or deleting task work, landing a folder and moving a memory line first take back this window's released hold. If another computer continued the chat, these changes are refused before writing. Open its newest saved chat before applying the change there.
+
+## Large workspaces keep their hold when the idle save check is too large
+
+When `idle handoff` (`CODEAF_IDLE_HANDOFF=1`, off by default) is on, idle release requires a complete comparison. Its check allows 20,000 paths, 50,000 directory entries, 8 MiB per comparison output or diagnostic stream and 64 MiB of chat-file contents across the saved and current copies. It checks shared directories once. If any budget or the 30-second comparison deadline is exceeded, the chat keeps its hold and retries later. Ordinary work and saving keep their existing behavior; no incomplete comparison releases the chat.
+
+## Opening a saved chat offline, asking again, and keeping unsent words
+
+Opening a chat with no stopped reply to resume does not say `the reply stopped when this conversation moved — asking again` or refuse work through the resume door. This includes opening your released chat's local copy while the sync service is unreachable.
+
+If an unanswered reply was stopped by moving the chat, it asks again once when this window can work. If ownership refuses that resume, the refusal appears once without the asking-again line, and the unanswered question is kept for a later resume.
+
+A new send in the window that released its chat (when `idle handoff` is on) needs to take the hold back. If the ownership check cannot reach sync, it says `the sync service is not answering, so this chat cannot be taken back yet; your words are still in the box`. The draft stays in the box; the send records nothing and calls no model. When the service returns, press Enter again to send those words after taking a new hold. An uncertain take-back write keeps its separate retry sentence below.
+
+Enter checks again even when Home previously read another computer's chats or still shows an outage. If this window's hold merely lapsed, Enter reopens the chat at a new fence and sends the kept draft without a card. The box stays intact until the send succeeds. Another holder still requires your continuation choice. A failed move from Home to a different chat also leaves this chat able to check again and conditionally reopen its unchanged own fence on the next Enter.
+
+## Take-back timeout: retry a released chat when the sync service is slow
+
+When `idle handoff` (`CODEAF_IDLE_HANDOFF=1`, off by default) is on, taking back your released chat is a bounded ownership write, with up to 15 seconds to finish. The terminal can show `waiting for <service>; still checking` while it waits. An already-held chat keeps its ordinary short ownership check and offline behavior.
+
+If the answer is lost, codeaf says `couldn't confirm taking this chat back from the sync service; try again`. Your words stay unsent. Press Enter again to retry in the same window. The chat may be briefly unavailable: another hold on this computer does not prove which window acquired it. codeaf does not offer its own uncertain hold through “Continue this chat here?”.
+
+If no window adopted that uncertain hold, nobody renews it. It lapses within the ordinary 90-second hold, and a retry then takes a new hold before sending your words. A live hold belonging to another window or computer never grants this window permission to write.

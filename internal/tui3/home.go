@@ -3126,6 +3126,30 @@ func (a *app) homeOpenLine(line homeLine) tea.Cmd {
 			return nil
 		}
 	}
+	// A missing reading or stale own hold can hide a free chat after restart.
+	// An open window or an answered display needs no ownership round trip.
+	if a.idleOpenEnabled() && !a.homeTakeOpening && a.taker != nil && !a.hosted() && !a.machineRead.computerRemoved {
+		if a.machineRead.down || a.machineRead.err != nil {
+			return a.homeOpenLocalLine(line)
+		}
+		if source, ok := a.machines.(chatlist.SendSource); ok && a.homeLocalReadNeeded(line) {
+			if _, available := a.taker.(availableTaker); available {
+				return a.homeResolveLocal(line, source)
+			}
+		}
+		id := homeSessionID(line.row)
+		for _, row := range a.machineRead.rows {
+			if row.Cell == id && row.AutoOpen {
+				return a.homeMachineEnter(homeLine{remote: &row})
+			}
+		}
+	}
+	return a.homeOpenLocalLine(line)
+}
+
+// homeOpenLocalLine is the ordinary local door, including offline opening.
+func (a *app) homeOpenLocalLine(line homeLine) tea.Cmd {
+	h := &a.home
 	if line.row.Transcript == a.file {
 		a.rememberOpen(a.frontTabKey())
 		a.closeHome()

@@ -173,6 +173,11 @@ func (a *Agent) automaticModelsLockReason() string {
 	return ""
 }
 func (a *Agent) SetAutomaticModels(enabled bool) error {
+	a.settingsWrites.Add(1)
+	defer a.settingsWrites.Add(-1)
+	if err := a.CheckSettingsWork(); err != nil {
+		return err
+	}
 	if reason := a.automaticModelsLockReason(); enabled && reason != "" {
 		return errors.New(reason)
 	}
