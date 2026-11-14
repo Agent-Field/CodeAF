@@ -171,8 +171,10 @@ func (b *appBackend) memberStart(t teamstore.Team, ask appwire.MemberAsk) (strin
 	if err != nil {
 		return "", err
 	}
-	if _, _, err := b.heldLive(agent.ID); err != nil {
+	if _, _, endLive, err := b.borrowLive(agent.ID); err != nil {
 		return "", err
+	} else {
+		defer endLive()
 	}
 	m, err := b.agentMember(agent.ID)
 	if err != nil {
@@ -549,7 +551,9 @@ func (b *appBackend) CrewPropose(agent string) error {
 	if !first {
 		return nil
 	}
+	endWorker := b.pinReader(a)
 	guard.Go("app/crew-propose", func() {
+		defer endWorker()
 		// The press is free again the moment the model has answered, before
 		// the card is drawn, so a press made after the card is a new ask; the
 		// deferred call is for a road that never reaches that moment.

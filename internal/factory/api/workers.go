@@ -32,6 +32,10 @@ const StepChatsHeader = "X-Codeaf-Step-Chats"
 // control, so its worker cancels execution without reporting a person's Stop.
 const LeaseWithdrawnHeader = "X-Codeaf-Lease-Withdrawn"
 
+// LeaseStoppedHeader marks a rejected lease as ended by a person's Stop,
+// distinct from an expired or handed-back hold.
+const LeaseStoppedHeader = "X-Codeaf-Lease-Stopped"
+
 // SignalAcksHeader opts into retained delivery. Its JSON IDs acknowledge handled
 // signals; an older factory ignores the header and still receives an empty body.
 const SignalAcksHeader = "X-Codeaf-Signal-Acks"
@@ -192,6 +196,9 @@ func stageResultItem(r StepResult) factory.StageResult {
 func WorkerJob(it factory.Item) Job {
 	j := FromItem(it)
 	j.RoundCostTables, j.FailureSummaries = true, true
+	for i := range j.Context {
+		j.Context[i].Markdown = it.Context[i].Markdown
+	}
 	// The runner runs the file the job carries, so it is sent whole here.
 	j.PipelineCopy = it.PipelineCopy.Clone()
 	// The read written before work is what every step is told the issue

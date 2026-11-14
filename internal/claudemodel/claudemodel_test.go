@@ -77,6 +77,52 @@ func TestACatalogSpellingOfClaudeIsReadAsItsFamily(t *testing.T) {
 	}
 }
 
+func TestAVersionPickedByNameIsTheVersionClaudeCodeIsAskedFor(t *testing.T) {
+	// The family word runs whichever version the installed Claude Code maps it
+	// to, which on an older install is an older model. A person who picked a
+	// version is owed that version, so its name is never read down to the word.
+	for id, want := range map[string]string{
+		"claude-code/claude-haiku-5-5": "claude-haiku-5-5",
+		"claude-haiku-4-5":             "claude-haiku-4-5",
+		"claude-code/claude-opus-5":    "claude-opus-5",
+	} {
+		if got := model(id); got != want {
+			t.Errorf("model(%q) = %q, want %q", id, got, want)
+		}
+	}
+	var seen claudeagent.Ask
+	body := `{"model":"claude-code/claude-haiku-5-5","messages":[{"role":"user","content":"name this"}]}`
+	if _, err := fake("ok", &seen).Post(Address+"/chat/completions", "application/json", strings.NewReader(body)); err != nil {
+		t.Fatal(err)
+	}
+	if seen.Model != "claude-haiku-5-5" {
+		t.Fatalf("Claude Code was asked for %q, want claude-haiku-5-5", seen.Model)
+	}
+}
+
+func TestEachFamilyListsItsVersionsBesideItsWord(t *testing.T) {
+	listed := map[string]string{}
+	for _, m := range Models() {
+		listed[m.ID] = m.Name
+	}
+	for id, name := range map[string]string{
+		"opus": "Claude Opus", "sonnet": "Claude Sonnet", "haiku": "Claude Haiku",
+		"claude-haiku-5-5": "Claude Haiku 5.5", "claude-haiku-4-5": "Claude Haiku 4.5",
+		"claude-opus-5-5": "Claude Opus 5.5", "claude-sonnet-5-5": "Claude Sonnet 5.5",
+	} {
+		if listed[id] != name {
+			t.Errorf("row %q is named %q, want %q", id, listed[id], name)
+		}
+	}
+	// Every row is sent as it is listed: a version row that was read back to
+	// its family word would be a second spelling of the word's row.
+	for id := range listed {
+		if got := model(ID + "/" + id); got != id {
+			t.Errorf("row %q is sent to Claude Code as %q", id, got)
+		}
+	}
+}
+
 func TestATurnBackOnClaudeCodeCarriesWhatAnotherModelSaid(t *testing.T) {
 	msg := func(role, text string) chatMessage {
 		raw, _ := json.Marshal(text)

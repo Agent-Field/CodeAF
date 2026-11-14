@@ -200,6 +200,9 @@ func identified(doc *document, id, worker string) (*Lease, error) {
 	if id != "" && doc.Withdrawn[worker] == id {
 		return nil, ErrWithdrawn
 	}
+	if id != "" && doc.Stopped[worker] == id {
+		return nil, ErrStopped
+	}
 	return nil, ErrNoLease
 }
 

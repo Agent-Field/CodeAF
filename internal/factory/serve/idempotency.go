@@ -54,9 +54,9 @@ func (h *Handler) idempotent(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		row, ok := h.replays.rows[id]
-		if !ok || !cacheWorkerResponse(r, row) {
-			row = h.capture(r)
-			if cacheWorkerResponse(r, row) {
+		if !ok || !keepReplay(r, row) {
+			row = h.capture(w, r)
+			if keepReplay(r, row) {
 				h.replays.rows[id] = row
 			}
 		}
@@ -86,9 +86,9 @@ func (h *Handler) idempotent(w http.ResponseWriter, r *http.Request) {
 	if err == nil && h.failed(w, json.Unmarshal(raw, &row)) {
 		return
 	}
-	if row.At.IsZero() || h.clock().Sub(row.At) >= 24*time.Hour || !cacheWorkerResponse(r, row) {
-		row = h.capture(r)
-		if !cacheWorkerResponse(r, row) {
+	if row.At.IsZero() || h.clock().Sub(row.At) >= 24*time.Hour || !keepReplay(r, row) {
+		row = h.capture(w, r)
+		if !keepReplay(r, row) {
 			sendReplay(w, row)
 			return
 		}
@@ -106,13 +106,29 @@ func (h *Handler) idempotent(w http.ResponseWriter, r *http.Request) {
 	sendReplay(w, row)
 }
 
-// A retryable worker refusal must not become a cached day-long outage. A report
-// refused by validation has not committed its results: after a server repair it
-// must be validated again, including when an older server cached its 422. Other
-// verbs retain their original response and successful reports stay deduplicated.
-// This bridge still has a handler-commit/response-cache crash gap; only an
-// acknowledgment committed with the job itself can close it.
-func cacheWorkerResponse(r *http.Request, row replay) bool {
+// keepReplay is whether a keyed answer is kept and replayed for 24 hours. A
+// KEYED ANSWER IS REPLAYED UNLESS ITS HANDLER SAID IT COMMITTED NOTHING, so a
+// resend can never make a change twice, whatever the first answer's status.
+//
+// A handler says so with the phase marker (api.PhaseHeader, phase.go): its
+// route starts marked and the handler clears the marker immediately before its
+// first write. An answer still marked wrote nothing, a refusal or a 5xx alike,
+// so it is not kept and the same key runs again once the cause has passed or
+// been fixed. An answer given after the first write, including a 5xx, a 408 or
+// a lost GitHub answer, is kept. A row an older build kept never carries the
+// marker, so it is replayed too.
+//
+// Worker and runner routes keep their own rule. A retryable worker refusal
+// must not become a cached day-long outage. A report refused by validation has
+// not committed its results: after a server repair it must be validated again,
+// including when an older server cached its 422. Other verbs retain their
+// original response and successful reports stay deduplicated. This bridge
+// still has a handler-commit/response-cache crash gap; only an acknowledgment
+// committed with the job itself can close it.
+func keepReplay(r *http.Request, row replay) bool {
+	if row.Header.Get(api.PhaseHeader) == api.PhasePreMutation {
+		return false
+	}
 	if api.ReportCommittedNothing(row.Status) &&
 		(strings.HasPrefix(r.URL.Path, "/v1/workers/leases/") || strings.HasPrefix(r.URL.Path, "/v1/runners/leases/")) &&
 		strings.HasSuffix(r.URL.Path, "/report") {
@@ -121,13 +137,22 @@ func cacheWorkerResponse(r *http.Request, row replay) bool {
 	return !workerPath(r.URL.Path) || !api.WorkerResendable(row.Status)
 }
 
-func (h *Handler) capture(r *http.Request) replay {
+// capture runs the handler into a buffer. The phase marker ServeHTTP put on
+// the real writer goes into the buffer, where the handler's clearPhase reaches
+// it, so the captured row says whether the handler wrote anything.
+func (h *Handler) capture(real http.ResponseWriter, r *http.Request) replay {
 	w := &replayWriter{header: make(http.Header)}
+	if phase := real.Header().Get(api.PhaseHeader); phase != "" {
+		w.header.Set(api.PhaseHeader, phase)
+	}
 	h.mux.ServeHTTP(w, r)
 	return replay{At: h.clock(), Status: w.status(), Header: w.Header().Clone(), Body: w.body.Bytes()}
 }
 
+// sendReplay answers with row alone: the marker ServeHTTP put on the real
+// writer is the row's to carry, and a kept row never carries it.
 func sendReplay(w http.ResponseWriter, row replay) {
+	w.Header().Del(api.PhaseHeader)
 	for k, vals := range row.Header {
 		w.Header()[k] = append([]string(nil), vals...)
 	}

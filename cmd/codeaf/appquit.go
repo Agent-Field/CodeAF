@@ -141,7 +141,16 @@ func (b *appBackend) resumeOneWith(id string, reply bool, tasks []string, kind, 
 	if b.isClosing() {
 		return
 	}
-	a, live, err := b.keptLive(id)
+	a, err := b.find(id)
+	if err != nil {
+		return
+	}
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	if b.tidied(id) {
+		return
+	}
+	_, live, err := b.heldLiveLocked(a)
 	if err != nil {
 		return
 	}

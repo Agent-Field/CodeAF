@@ -416,7 +416,7 @@ func TestFreeRequestCannotSubstitutePaidSeat(t *testing.T) {
 	directSource := modelsource.Source{ID: "direct", Written: "direct", Address: paidServer.URL}
 	RecordUsage(UsageLedgerPath(), UsageLine{Model: "other", Calls: 1, USD: .25})
 	FlushUsage()
-	a, err := New(Config{Workspace: t.TempDir(), Model: "direct/stub/paid-seat", DailyBudgetResolved: true, DailyBudgetUSD: .24,
+	a, err := newTestProviderAgent(t, Config{Workspace: t.TempDir(), Model: "direct/stub/paid-seat", DailyBudgetResolved: true, DailyBudgetUSD: .24,
 		ModelPrice: func(model string) (float64, float64, bool) {
 			if model == "vendor/free" {
 				return 0, 0, true
@@ -442,7 +442,7 @@ func TestKnownFreeHTTPHelperSurvivesDayCap(t *testing.T) {
 	server := newClientDoorServer(t, "free answer")
 	RecordUsage(UsageLedgerPath(), UsageLine{Model: "other", Calls: 1, USD: .25})
 	FlushUsage()
-	a, err := New(Config{Workspace: t.TempDir(), Model: "test/free", APIKey: "fixture", BaseURL: server.URL,
+	a, err := newTestProviderAgent(t, Config{Workspace: t.TempDir(), Model: "test/free", APIKey: "fixture", BaseURL: server.URL,
 		DailyBudgetResolved: true, DailyBudgetUSD: .24, ModelPrice: func(string) (float64, float64, bool) { return 0, 0, true },
 	})
 	if err != nil {

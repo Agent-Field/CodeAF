@@ -730,6 +730,10 @@ are excluded. Deleted chats and tasks are excluded. Original text and source
 identity stay available for citations. Task reports remain attributed reports,
 not independent proof. Unsaved chats are not imported.
 
+Open chats share consent checks. A database refresh for one chat does not hold
+up another chat whose consent check is still current. Each source is checked
+against current consent before capture.
+
 Pages organize lasting concepts under short headings in a two-level folder tree.
 New material first considers existing pages and sections; related evidence
 updates the same page, while a distinct concept can receive a new page. Issue

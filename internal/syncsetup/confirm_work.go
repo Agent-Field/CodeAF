@@ -34,6 +34,7 @@ func (d *Drive) ConfirmWork(ctx context.Context) (bool, error) {
 		return false, nil
 	}
 	if lease.Expires <= v.Now {
+		d.retireHold(ctx, held)
 		d.availableAfter(held, lease)
 		return false, nil
 	}

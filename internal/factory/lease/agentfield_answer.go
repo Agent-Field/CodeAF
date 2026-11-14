@@ -120,6 +120,6 @@ func endRejectedLocked(history *record.Record, doc *document, held *Lease, id in
 	if held == nil {
 		return pendingSignals, nil
 	}
-	release(doc, id)
+	stopRelease(doc, *held)
 	return true, nil
 }

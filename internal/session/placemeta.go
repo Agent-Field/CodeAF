@@ -340,9 +340,12 @@ func (a *Agent) fillMetaLocked(meta Meta) Meta {
 	if meta.Created.IsZero() {
 		meta.Created = time.Now()
 	}
-	if model := strings.TrimSpace(a.model); model != "" {
+	if model := strings.TrimSpace(a.configuredModelLocked()); model != "" {
 		meta.Model = model
 		meta.ModelProvider = a.config.serviceFor(model).Source.ID
+		if a.modelForNowProvider != "" {
+			meta.ModelProvider = a.modelForNowProvider
+		}
 	}
 	// The rung is written whatever it is, absence included, because absence is
 	// a value a person can choose their way back to: a session dialled to max
@@ -374,7 +377,14 @@ func (a *Agent) fillMetaLocked(meta Meta) Meta {
 //
 // EVERY FAILURE IS SILENCE, for this file's stated reason: the rung is a
 // convenience and the session is the record.
-func (a *Agent) stampEffort() { a.stampMeta() }
+func (a *Agent) stampEffort() {
+	if metaStampSettling != nil {
+		metaStampSettling()
+	}
+	a.metaStamp().settle()
+	dir, snapshot := a.metaSnapshotAt()
+	a.updateMeta(dir, snapshot, func(meta *Meta) { meta.Effort = snapshot.Effort })
+}
 
 // stampPlaces writes the folders this conversation is about down the moment the
 // set changes, for [Agent.stampEffort]'s reason: a person who names a place and
@@ -396,9 +406,12 @@ func (a *Agent) stampPlaces() { a.stampMeta() }
 // bytes, and it happens once per file first written rather than once per write.
 func (a *Agent) stampTrees() { a.stampMeta() }
 
-// stampMeta updates the configuration and working context those three stamps
-// share. The transaction reads the latest title and spending from disk and
-// preserves them; this snapshot owns only model, effort, approval, places and trees.
+// stampMeta updates the configuration and working context [Agent.stampPlaces]
+// and [Agent.stampTrees] share. The transaction reads the latest title and
+// spending from disk and preserves them; this snapshot owns only model, effort,
+// approval, places and trees. [Agent.stampEffort] and [Agent.stampApproval]
+// settle the same way but patch only their own field, so restoring a dial when a
+// conversation opens leaves the file untouched when nothing moved (#1933).
 // EVERY FAILURE IS SILENCE, for this file's stated reason.
 //
 // AN EARLIER DEFERRED STAMP LANDS FIRST. [Agent.stampUserLocked] captures the
@@ -564,12 +577,12 @@ func isAnswer(message ai.Message) bool {
 // journal written before this field existed.
 //
 // IT FOLDS NOTHING AND READS NOTHING EXTRA. The resume already replayed the
-// file and already summed its usage lines ([sessionFile.RestoredUsage], which
-// is what the agent's live counters are restored from — agent.go), so this
-// takes that sum and writes it once. A session with nothing restored, or one
-// whose meta already carries a figure, writes nothing at all: the stamp above
-// keeps it true from here on, and a rewrite per open would be a file touched by
-// every window that merely looked.
+// file and already summed its usage lines and late-receipt call lines
+// ([sessionFile.RestoredUsage], which is what the agent's live counters are
+// restored from — agent.go), so this takes that sum and writes it once. A
+// session with nothing restored, or one whose meta already carries a figure,
+// writes nothing at all: the stamp above keeps it true from here on, and a
+// rewrite per open would be a file touched by every window that merely looked.
 func (a *Agent) stampRestoredSpend(restored Usage) {
 	a.spendStampMu.Lock()
 	defer a.spendStampMu.Unlock()

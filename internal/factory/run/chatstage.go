@@ -765,6 +765,7 @@ func stageBrief(job Job) string {
 	if len(notes) > 0 {
 		para(append([]string{"notes:"}, notes...)...)
 	}
+	para(jobContextBrief(job))
 	for _, p := range handover(job) {
 		para(p...)
 	}

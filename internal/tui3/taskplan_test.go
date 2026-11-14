@@ -31,6 +31,18 @@ func TestPlanReadyPartHeldByMachineReadsAsQueuedWithReason(t *testing.T) {
 	}
 }
 
+// L-LOOP2 C8, C6: retained ready work has queued presence as well as its word.
+func TestPlanRetainedReadyPartReadsQueuedWithoutAWorker(t *testing.T) {
+	row := session.PlanTaskRow{ID: "t-leaf", Status: "ready", Undriven: true}
+	if status := planStatus(row); status.Presence != session.TaskPresenceQueued || status.RowWord() != "queued" {
+		t.Fatalf("retained ready row still looks active: %+v", status)
+	}
+	row.Undriven = false
+	if status := planStatus(row); status.Presence != session.TaskPresenceWorking || status.RowWord() != "running" {
+		t.Fatalf("live ready row changed: %+v", status)
+	}
+}
+
 func TestPlanUnstartedRunningRootShowsMachineHold(t *testing.T) {
 	row := session.PlanTaskRow{ID: "t-root", Status: "running", Hold: "machine busy"}
 	status := planStatus(row)

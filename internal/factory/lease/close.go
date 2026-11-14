@@ -52,7 +52,7 @@ func (d *Doors) Close(id int, revision *int, who string) error {
 			}
 		}
 		if held != nil {
-			release(doc, id)
+			stopRelease(doc, *held)
 		}
 		it.Note(now, "Closed locally; work and spending kept. GitHub unchanged.")
 		return held != nil, nil
@@ -92,7 +92,7 @@ func (d *Doors) Reject(id int, revision *int, who, words string) error {
 			}
 		}
 		if held != nil {
-			release(doc, id)
+			stopRelease(doc, *held)
 		}
 		return held != nil, nil
 	})

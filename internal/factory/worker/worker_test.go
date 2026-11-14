@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -60,12 +61,16 @@ func newRigWithReportEvery(t *testing.T, keepLocal func(string, api.WorkerLease)
 }
 
 func newRigWithDelivery(t *testing.T, keepLocal func(string, api.WorkerLease), tune func(*run.Options), reportEvery time.Duration, intercept func(http.ResponseWriter, *http.Request) bool, clock func() time.Time, slots int, identity ...string) rig {
+	return newRigWithReady(t, keepLocal, tune, reportEvery, intercept, clock, slots, nil, identity...)
+}
+
+func newRigWithReady(t *testing.T, keepLocal func(string, api.WorkerLease), tune func(*run.Options), reportEvery time.Duration, intercept func(http.ResponseWriter, *http.Request) bool, clock func() time.Time, slots int, ready <-chan struct{}, identity ...string) rig {
 	t.Helper()
 	st, err := store.Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	desk, err := lease.Open(st, lease.Options{})
+	desk, err := lease.Open(st, lease.Options{Now: clock})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +82,7 @@ func newRigWithDelivery(t *testing.T, keepLocal func(string, api.WorkerLease), t
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := serve.New(seam, serve.Config{Address: "http://test", Store: st, Record: history, PullWait: 50 * time.Millisecond})
+	handler := serve.New(seam, serve.Config{Address: "http://test", Store: st, Record: history, PullWait: 50 * time.Millisecond, Now: clock, LeaseOptions: lease.Options{Now: clock}})
 	seen := &reportLog{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if intercept != nil && intercept(w, req) {
@@ -126,6 +131,13 @@ func newRigWithDelivery(t *testing.T, keepLocal func(string, api.WorkerLease), t
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
+		if ready != nil {
+			select {
+			case <-ready:
+			case <-ctx.Done():
+				return
+			}
+		}
 		worker.Run(ctx, worker.Options{
 			Dial: func(slot int) *client.WorkerClient {
 				mu.Lock()
@@ -152,7 +164,7 @@ func newRigWithDelivery(t *testing.T, keepLocal func(string, api.WorkerLease), t
 			Now:         clock,
 			Slots:       slots,
 			ReportEvery: reportEvery,
-			BeatEvery:   20 * time.Millisecond,
+			BeatEvery:   25 * time.Millisecond,
 		})
 	}()
 	quit := func() { cancel(); <-done }
@@ -477,5 +489,197 @@ func TestAFactoryStageRoomReachesTheFactoryThroughTheWorkersReports(t *testing.T
 	it := g.waitFor(t, id, factory.StateShipped)
 	if it.Stream == nil || it.Stream.Room != room {
 		t.Fatalf("the factory's copy lost the stage room after the report: %+v", it.Stream)
+	}
+}
+
+// C4, C5, C6, C7: A local (non-AgentField) step stops promptly when its lease
+// is withdrawn (C4), when its lease expires at the queue ("lease gone", C5),
+// or when the heartbeat cannot reach the queue past its bound (C5). In every
+// case the worker joins what it started within its bound (C6), and neither the
+// step context nor the job is marked as stopped by a person (C7).
+func TestLostAndWithdrawnLeaseStopLocalStepPromptlyWithoutPersonStop(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		kind string
+	}{
+		{name: "withdrawn lease", kind: "withdrawn"},
+		{name: "expired lease gone", kind: "expired"},
+		{name: "heartbeat unreachable past bound", kind: "unreachable"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var clockMu sync.Mutex
+			var offset time.Duration
+			now := func() time.Time {
+				clockMu.Lock()
+				defer clockMu.Unlock()
+				return time.Now().Add(offset)
+			}
+			advance := func(d time.Duration) {
+				clockMu.Lock()
+				defer clockMu.Unlock()
+				offset += d
+			}
+
+			launched := make(chan struct{})
+			var holdPull, unreachable atomic.Bool
+			intercept := func(w http.ResponseWriter, req *http.Request) bool {
+				if unreachable.Load() && strings.Contains(req.URL.Path, "/workers/") {
+					http.Error(w, "queue unreachable", http.StatusBadGateway)
+					return true
+				}
+				if holdPull.Load() && strings.HasSuffix(req.URL.Path, "/workers/pull") {
+					w.WriteHeader(http.StatusNoContent)
+					return true
+				}
+				return false
+			}
+
+			began := make(chan struct{}, 1)
+			ended := make(chan bool, 1)
+			releases := make(chan api.WorkerLease, 1024)
+			var mirrorPtr atomic.Pointer[store.Store]
+			var localMu sync.Mutex
+			var localAtDrop factory.Item
+			g := newRigWithReady(t,
+				func(_ string, held api.WorkerLease) {
+					if held.ID == "" {
+						if m := mirrorPtr.Load(); m != nil {
+							if it, err := m.Get(held.Job); err == nil {
+								localMu.Lock()
+								localAtDrop = it
+								localMu.Unlock()
+							}
+						}
+					}
+					select {
+					case releases <- held:
+					default:
+					}
+				},
+				func(o *run.Options) {
+					o.Exec[factory.StageCheck] = run.ExecutorFunc(func(ctx context.Context, _ run.Job) (factory.StageResult, error) {
+						select {
+						case began <- struct{}{}:
+						default:
+						}
+						<-ctx.Done()
+						ended <- run.StoppedHere(ctx)
+						return factory.StageResult{}, ctx.Err()
+					})
+				},
+				25*time.Millisecond,
+				intercept,
+				now,
+				1,
+				launched,
+			)
+			mirrorPtr.Store(g.mirror)
+
+			id := g.add(t, check("step-1"), factory.Stage{Name: "second", Kind: factory.StageCheck, Ask: "true", On: true})
+			if err := g.floor.Launch(id); err != nil {
+				t.Fatal(err)
+			}
+			close(launched)
+			select {
+			case <-began:
+			case <-time.After(10 * time.Second):
+				t.Fatal("the worker never began the local step")
+			}
+			for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(5 * time.Millisecond) {
+				if it, _ := g.st.Get(id); it.State == factory.StateRunning && it.Stream != nil && len(it.Stream.Phases) > 0 && it.Stream.Phases[0].State == factory.PhaseRunning {
+					break
+				}
+				if time.Now().After(deadline) {
+					t.Fatal("the worker's running state never reached the factory store")
+				}
+			}
+
+			holdPull.Store(true)
+			switch tc.kind {
+			case "withdrawn":
+				if _, _, err := g.doors.Edit(context.Background(), id, factory.RunEdit{
+					Skip: []string{"second"},
+					By:   factory.ByYou,
+					Why:  "skip second step",
+				}); err != nil {
+					t.Fatal(err)
+				}
+			case "expired":
+				advance(lease.DefaultTTL + time.Second)
+			case "unreachable":
+				unreachable.Store(true)
+				advance(lease.DefaultTTL + time.Second)
+			}
+
+			// C4, C5, C7: The local step stops promptly and is not marked StoppedHere.
+			select {
+			case stoppedHere := <-ended:
+				if stoppedHere {
+					t.Fatalf("C7 (%s): lost/withdrawn lease marked step context StoppedHere = true", tc.name)
+				}
+			case <-time.After(3 * time.Second):
+				t.Fatalf("C5 (%s): local step did not stop promptly when lease was lost", tc.name)
+			}
+
+			// Wait for the worker to finish dropping the lease (j.drop + defer keepLocal).
+			sawPull := false
+			emptyCount := 0
+			deadline := time.After(3 * time.Second)
+			for {
+				select {
+				case held := <-releases:
+					if held.Job != id {
+						continue
+					}
+					if held.ID != "" {
+						sawPull = true
+						continue
+					}
+					if sawPull {
+						emptyCount++
+						if emptyCount >= 2 {
+							goto dropped
+						}
+					}
+				case <-deadline:
+					t.Fatalf("C6 (%s): worker never released local lease receipt", tc.name)
+				}
+			}
+		dropped:
+			// C6: Dropping the job joined what it started within its bound.
+			if g.run.Running(id) {
+				t.Fatalf("C6 (%s): runner is still running after lease drop", tc.name)
+			}
+
+			// C7: Neither the factory item nor the worker mirror shows a person's stop.
+			it, _ := g.st.Get(id)
+			localMu.Lock()
+			local := localAtDrop
+			localMu.Unlock()
+			if factory.StoppedByPerson(it) || factory.StoppedByPerson(local) {
+				t.Fatalf("C7 (%s): job marked StoppedByPerson: factory=%v mirror=%v",
+					tc.name, factory.StoppedByPerson(it), factory.StoppedByPerson(local))
+			}
+			if logHas(it, "Stopped by you") > 0 || logHas(local, "Stopped by you") > 0 {
+				t.Fatalf("C7 (%s): job log says 'Stopped by you': factory=%+v mirror=%+v",
+					tc.name, it.Stream, local.Stream)
+			}
+			switch tc.kind {
+			case "withdrawn":
+				if it.State != factory.StateQueued {
+					t.Fatalf("C4 (%s): factory job state = %s, want %s", tc.name, it.State, factory.StateQueued)
+				}
+			case "expired":
+				if it.State != factory.StateNeedsYou || it.QKind != factory.NeedsRunnerOffline || it.Question != "Runner went offline mid-step" {
+					t.Fatalf("C7 (%s): factory job = (%s, %s, %q), want (%s, %s, %q)",
+						tc.name, it.State, it.QKind, it.Question, factory.StateNeedsYou, factory.NeedsRunnerOffline, "Runner went offline mid-step")
+				}
+			}
+
+			g.quit()
+			if g.run.Running(id) {
+				t.Fatalf("C6 (%s): runner still running after worker quit", tc.name)
+			}
+		})
 	}
 }

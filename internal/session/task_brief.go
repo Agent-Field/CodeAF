@@ -300,6 +300,8 @@ func composeBriefScoped(scope briefScope, role briefRole, request, work, deliver
 	order := append([]briefPart{ask}, assignment...)
 	if scope.planBorn() {
 		ask.rule = briefBackgroundRule
+	}
+	if scope.planBorn() {
 		order = append(append([]briefPart{}, assignment...), ask)
 	}
 	order = append(order, record...)

@@ -1969,6 +1969,11 @@ type app struct {
 	// MID-SENTENCE, and dropping the move would leave them on the service they
 	// just replaced, so the one pending id lands at the turn boundary.
 	deferredModelServiceModel string
+	deferredModelRename       *modelRename
+	// A later explicit choice keeps its wire and preference-write order even
+	// across a chat switch. Sends wait by agent inside their commands instead.
+	pendingModelSelection <-chan struct{}
+	modelCommands         []tea.Cmd
 	// harn is the subharness registry (Options.Harnesses) and harnPanel the
 	// list /harness opens over it (harnesspanel.go). A nil harn is a surface
 	// that cannot show harnesses and says so; nothing about the OFFER depends on
@@ -3654,7 +3659,7 @@ func (a *app) Init() tea.Cmd {
 	// legend needs before it may name the switcher (hop.go), and it is asked off
 	// the loop for the reason every other reading on this list is: the walk opens
 	// every project's index, and the paint path may never pay for one.
-	standing := []tea.Cmd{a.resumeAtLaunch, a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchTitles(),
+	standing := []tea.Cmd{a.takeModelCommands(), a.resumeAtLaunch, a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchTitles(),
 		a.watchRuns(), a.watchQuestions(), a.loadTasks(), a.stirLane(), a.askHeld(), a.watchDriving(), a.watchFollowing(),
 		a.linkPingTick(), a.prefetchReplayedPictures(), a.countConversations(), tea.RequestBackgroundColor,
 		// AND WHAT AUTOMATIONS HAVE BEEN DOING, read off their store on a beat of
@@ -3855,7 +3860,7 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if summary := a.refreshRunSummary(); summary != nil {
 		cmd = tea.Batch(cmd, summary)
 	}
-	return model, cmd
+	return model, tea.Batch(cmd, a.takeModelCommands())
 }
 
 // route is the message switch: every message this surface handles, handled once.
@@ -7519,7 +7524,12 @@ func (a *app) submitShown(text, shown string, plain []segment) tea.Cmd {
 // counts as an accepted turn, and keeps the update-loop door budget from growing
 // merely because a conversation can now send while it is behind the screen.
 func submitStart(agent Agent, ctx context.Context, text string) func() (<-chan session.Event, error) {
-	return func() (<-chan session.Event, error) { return agent.Submit(ctx, text) }
+	return func() (<-chan session.Event, error) {
+		if err := waitModelSelection(ctx, agent); err != nil {
+			return nil, err
+		}
+		return agent.Submit(ctx, text)
+	}
 }
 
 // submitting is that body with the CALL left to the caller: everything a
@@ -7591,7 +7601,11 @@ func (a *app) submittingShown(text, shown string, plain []segment, start func() 
 	a.startClock()
 	a.follow()
 	a.touch()
+	ctx, agent := a.ctx, a.agent
 	return tea.Batch(func() tea.Msg {
+		if err := waitModelSelection(ctx, agent); err != nil {
+			return submittedMsg{err: err, echo: mark, call: call}
+		}
 		ch, err := start()
 		return submittedMsg{ch: ch, err: err, echo: mark, call: call}
 	}, a.wake())

@@ -29,7 +29,7 @@ func TestHardCapStopsProviderRetryAndFallback(t *testing.T) {
 		http.Error(w, `{"error":{"message":"fixture unavailable","code":503}}`, http.StatusServiceUnavailable)
 	}))
 	defer server.Close()
-	a, err := New(Config{Workspace: t.TempDir(), System: "SYSTEM", Model: "test/model", APIKey: "fixture", BaseURL: server.URL, DailyBudgetResolved: true, DailyBudgetUSD: .24, ModelFallbacks: []string{"test/fallback"}})
+	a, err := newTestProviderAgent(t, Config{Workspace: t.TempDir(), System: "SYSTEM", Model: "test/model", APIKey: "fixture", BaseURL: server.URL, DailyBudgetResolved: true, DailyBudgetUSD: .24, ModelFallbacks: []string{"test/fallback"}})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -28,7 +28,7 @@ func (engine) Start(ctx context.Context, spec session.RunSpec) session.RunSummar
 	// THE REVIEW ROUND IS ON for every task the chat's door opens: a leaf
 	// that lands done is checked against its acceptance, and a check that
 	// does not hold becomes a fix task the run waits on.
-	limits := Limits{CostUSD: spec.CostUSD, Elapsed: spec.Elapsed, StepsPerTask: spec.StepsPerTask, ReviewRound: true}
+	limits := Limits{CostUSD: spec.CostUSD, CostCeiling: spec.CostCeiling, Elapsed: spec.Elapsed, StepsPerTask: spec.StepsPerTask, ReviewRound: true}
 	// THE CREW IS THE PROFILE'S, read again at each launch, and the seat's
 	// provider is the door's own completer through the one seam a test
 	// scripts ([CrewFactory]).

@@ -203,12 +203,12 @@ func TestChatOnceTakesAMidRunNoteAndStreamsItsRecord(t *testing.T) {
 // --json's one object is `codeaf exec --json`'s shape.
 func TestChatOnceJSONEnvelope(t *testing.T) {
 	var ok, bad bytes.Buffer
-	writeOnceEnvelope(&ok, " the answer \n", "deepseek/deepseek-v4.1-flash", nil)
-	writeOnceEnvelope(&bad, "", "m", io.ErrUnexpectedEOF)
-	if got := strings.TrimSpace(ok.String()); got != `{"ok":true,"stop":"done","answer":"the answer","model":"deepseek/deepseek-v4.1-flash"}` {
+	writeOnceEnvelope(&ok, " the answer \n", "deepseek/deepseek-v4.1-flash", envelopeUsage{}, nil)
+	writeOnceEnvelope(&bad, "", "m", envelopeUsage{}, io.ErrUnexpectedEOF)
+	if got := strings.TrimSpace(ok.String()); got != `{"ok":true,"stop":"done","answer":"the answer","model":"deepseek/deepseek-v4.1-flash","spend_usd":0,"tokens":{"in":0,"out":0}}` {
 		t.Fatalf("ok envelope: %s", got)
 	}
-	if got := strings.TrimSpace(bad.String()); got != `{"ok":false,"stop":"error","model":"m","error":"unexpected EOF"}` {
+	if got := strings.TrimSpace(bad.String()); got != `{"ok":false,"stop":"error","model":"m","error":"unexpected EOF","spend_usd":0,"tokens":{"in":0,"out":0}}` {
 		t.Fatalf("error envelope: %s", got)
 	}
 }

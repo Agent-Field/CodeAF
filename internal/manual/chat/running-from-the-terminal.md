@@ -460,6 +460,9 @@ and twelve once it ends. A command's whole output is kept on this Mac for a
 week under the app's folder in codeaf's home, so it can be opened after the
 reply ends, or after the app restarts.
 
+Live step events also carry the conversation's spend so far when it is known
+and positive; the saved conversation total can catch up after the reply ends.
+
 ## The desktop app's conversation — steer or queue, the decision dock, and notes to a task
 
 In the desktop app a message typed while the agent works can steer or queue.
@@ -1088,6 +1091,18 @@ and it is in the `blocked_on` field of `--json`. Answer it inside the ask itself
 again, or bring the work to `codeaf` where it can be answered.
 
 Asking for help is never a failure: `--help` on any verb exits 0.
+
+## chat --once --json — watched chat token usage and spending
+
+`codeaf chat --once --json` prints one result object with `ok`, `stop`,
+`answer`, `model` and `error`. Empty answer, model and error fields are omitted.
+It also carries the same accounting fields as `codeaf exec --json`:
+`tokens: {"in": 100, "out": 20}` and `spend_usd: 0.125`.
+These total this invocation's model calls, including steering turns and calls
+settled while closing. Resuming a saved conversation excludes earlier usage.
+A failure after paid work still carries its tokens and spending. Unmeasured
+usage is zero; it does not establish that an unpriced call was free.
+The watched door keeps its existing `stop: "done"` or `"error"` meanings.
 
 ## The --json result object — one shape, three commands
 

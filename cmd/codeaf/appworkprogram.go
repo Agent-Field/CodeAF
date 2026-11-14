@@ -108,10 +108,11 @@ func (b *appBackend) ProgramActions(id, before string) (appwire.ProgramActionsRe
 	if !ok {
 		return appwire.ProgramActionsResult{}, appwire.Errorf(appwire.CodeBadParams, "%s is not a task id", id)
 	}
-	_, live, err := b.heldLive(agent)
+	_, live, endLive, err := b.borrowLive(agent)
 	if err != nil {
 		return appwire.ProgramActionsResult{}, err
 	}
+	defer endLive()
 	pager, ok := live.conn.Conv.(appProgramPager)
 	if !ok {
 		return appwire.ProgramActionsResult{}, appwire.Errorf(appwire.CodeUnknownMethod, "this engine does not serve tasks.program_actions")

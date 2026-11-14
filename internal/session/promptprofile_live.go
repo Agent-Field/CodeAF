@@ -52,6 +52,7 @@ func (a *Agent) preparePromptProfile(model string) error {
 	state.current.Store(next)
 	tools := a.belt()
 	a.armMu.Lock()
+	tools = a.withoutClientToolsLocked(tools)
 	// Explicitly loaded capabilities and connected services remain usable.
 	// Only the default belt is repartitioned when the window changes.
 	held := make(map[string]bool, len(tools))
@@ -79,6 +80,11 @@ func (a *Agent) preparePromptProfile(model string) error {
 			tools = append(tools, tool)
 			held[tool.Name] = true
 		}
+	}
+	if !next.chat() {
+		tools = a.clientToolTailLocked(tools, a.clientTools.sets)
+	} else {
+		a.clientTools.names = nil
 	}
 	definitions, err := toolDefinitions(tools)
 	if err != nil {

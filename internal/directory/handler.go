@@ -205,6 +205,9 @@ func putDevice(c call, d Device) (any, error) {
 	if c.id() != c.device {
 		return nil, ErrUnauthorized
 	}
+	if d.Kind != "" || len(d.Methods) > 0 {
+		return nil, errBadRequest
+	}
 	return nothing(c.cl.PutDevice(c.ctx(), c.id(), d))
 }
 

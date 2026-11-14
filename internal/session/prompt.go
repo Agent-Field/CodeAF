@@ -341,6 +341,9 @@ func renderSystemAt(config Config, now time.Time) string {
 	// the shape; this conditions the sentences INSIDE one, which is where five
 	// families of tools were being promised to workers that do not carry them.
 	page := strings.TrimRight(promptWithBeltFacts(config), "\n")
+	// AND WHAT IT SAYS ABOUT OTHER WINDOWS FOLLOWS THE CONVERSATION'S SCOPE
+	// (scope.go); a project page is unchanged byte for byte.
+	page = config.scopedElsewhereFact(page)
 	if _, err := shell.Bash(); err != nil {
 		// Unix keeps its exact prompt bytes. On Windows an absent command
 		// tool cannot inherit instructions that promise shell execution.
@@ -405,6 +408,7 @@ func renderSystemAt(config Config, now time.Time) string {
 	}
 
 	out.WriteString(workerFooter(config, now))
+	out.WriteString(clientToolsSection(config))
 	return out.String()
 }
 
@@ -612,6 +616,8 @@ func (a *Agent) liveModelConfigLocked() Config {
 	if model := strings.TrimSpace(a.model); model != "" {
 		config.Model = model
 	}
+	// The page names the scope the tasks description was given (scope.go).
+	config.ownWork = a.ownWorkTold.Load()
 	return config
 }
 

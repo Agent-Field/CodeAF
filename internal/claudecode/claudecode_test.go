@@ -75,6 +75,24 @@ func TestAPushIsRefusedAndWorkOnTheBranchIsNot(t *testing.T) {
 	}
 }
 
+func TestACrewSeatOnAVersionStartsThatVersion(t *testing.T) {
+	// A worker pinned to a version row hands its tasks to Claude Code, and the
+	// task is owed the same version the conversation would have run.
+	for seat, want := range map[string]string{
+		"claude-code/claude-haiku-5-5": "claude-haiku-5-5",
+		"claude-code/haiku":            "haiku",
+		"anthropic/claude-opus-4.5":    "opus",
+	} {
+		got := crewFlags(delegate.Crew{Hands: seat})
+		if len(got) != 2 || got[0] != "--claude-model" || got[1] != want {
+			t.Errorf("crewFlags(%q) = %v, want --claude-model %s", seat, got, want)
+		}
+	}
+	if got := crewFlags(delegate.Crew{Hands: "openai/gpt-5"}); got != nil {
+		t.Errorf("a seat that is not Claude gave %v", got)
+	}
+}
+
 func TestTheCrewSeatIsHeardOnlyWhenItIsClaude(t *testing.T) {
 	for model, want := range map[string]string{
 		"anthropic/claude-opus-4.5": "opus", "claude-sonnet-4-5": "sonnet", "openai/gpt-5": "", "vendor/hands": "",

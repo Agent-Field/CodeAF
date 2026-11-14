@@ -3062,15 +3062,64 @@ A missing argument comes back as an ordinary result, never an error:
 `deliverable` and `acceptance`, in that order. Unparseable JSON answers
 `Invalid arguments: ` and the parse error.
 
-There is a sixth part the model is **not** asked for and cannot leave out: your own
-message. See the next section.
+For a proposed run, the model must put all needed context in those arguments. The
+worker receives that assignment without your conversation message or its journal pointer.
+
+## Task tree limits, duplicate tasks and proposals that auto-start
+
+A run worker can hand out work at most two levels below its run's root task. A run can
+hold at most 20 counted tasks: the root, checks seated by the review round and cancelled
+tasks do not consume those slots. A task a worker creates with `--role check` still
+counts. These are runaway stops, not a target for how much work to hand out.
+
+Each worker can add at most **five** tasks in total, excluding cancelled additions.
+Finished and archived additions still count. A `task pivot` counts what survives it: the
+open tasks it replaces hold no slot and no title for their replacements. Joined handoffs, review checks and fix tasks
+created by the engine do not spend that worker's five slots.
+
+Every worker-created task must be under that worker's own task. `plandb add` without
+`--parent` uses its own task; an explicit different parent is refused. A worker can split
+or pivot only its own task, and insert only beside one of its own children. A refusal
+adds nothing and tells it to do the remaining work itself or report it undone. Your own
+unbound CLI still defaults to the run root.
+
+## Duplicate task titles and countdown proposals joining a run
+
+A worker's `plandb add`, `split`, `task insert` or `task pivot` also refuses a title already
+used anywhere in that run, including its own task and the root. Titles are compared in
+lower case with runs of punctuation and whitespace folded to one space. Cancelled titles,
+and the titles of open tasks a pivot is replacing, can be reused. A duplicate within one batch, or a batch that would cross either tree
+limit, refuses the whole batch: nothing is added and nothing can start from it. The
+refusal tells the worker to do its own work or report what remains undone.
+
+A proposal that joins a live run because its countdown expired obeys the same growth
+rules. A refusal settles its card as not started. Choosing to start it yourself, or typing
+`/task`, retains your ability to join work beyond the count limit. Every ordinary run
+still has its whole-tree per-task dollar ceiling. Your own `codeaf plandb` commands with
+no run bound retain their existing behavior; the growth refusal applies to run workers.
+
+## What a proposed task reads — its own title, work, output and done-condition
+
+A task the conversation proposed on the run road receives its title, **THE WORK**,
+**WHAT TO PRODUCE** and **DONE WHEN**. Your conversation message, surrounding quotes,
+earlier call evidence and pointer to the original journal line are not included. This
+applies whether the countdown starts the proposal or you approve it yourself. The
+proposing model must make the assignment self-contained.
+
+Every worker opens on its own task id and title. A child reads its assignment's ask
+later as context. A proposal joined into an existing run keeps its own assignment
+for its workers and checks; they do not inherit the other task's root description.
+A task you typed yourself, such as `/task`, keeps its existing brief. The older
+session-tree road keeps its existing conversation context and journal pointers.
 
 ## What the task actually reads — does it see what I said?
 
-Yes. Your own message travels with the work, word for word.
+For a task you typed yourself or a task on the older session-tree road, your own message
+travels with the work, word for word. Proposed runs use the assignment-only document above.
 
-A task's first and only message is assembled by codeaf from these parts, under headings, in
-this order:
+A task you typed yourself keeps your message first. Its opening document is assembled by
+codeaf from these parts, under headings, in this order; the older session-tree road uses
+this order too:
 
 ```
 WHAT THE PERSON ASKED FOR, IN THEIR OWN WORDS
@@ -3159,7 +3208,7 @@ Long messages are cut at 6000 bytes and the cut is marked with `…`, so a task 
 handed a shortened version of what you said can see that it was. The brief then names the
 journal path and line of your original turn, so the worker can read the uncut words itself.
 
-A task the model hands out from **inside** another task inherits the same words: there is
+On the older session-tree road, a task handed out from **inside** another task inherits the same words: there is
 nobody inside a task's own folder to type a new message, so the sentence that started the family is what
 every task under it reads.
 
@@ -3191,7 +3240,8 @@ question to answer. Most steering is that, and it moves no target.
 
 ## Can the task see the original request — does the task know what I originally said, can a task read my full message when the brief is cut
 
-Yes. The brief is still the contract — the task is not handed this conversation — but it is
+For a person-typed task or the older session-tree road, yes. Proposed runs receive no
+original-message pointer. The brief is still the contract — the task is not handed this conversation — but it is
 handed an address: the filesystem path of the session journal and the line where your turn
 began. The worker already has `read` and `grep`, so that pointer is enough.
 
@@ -3212,7 +3262,7 @@ it must ship is still what the brief says.
 **An empty pointer draws nothing.** A task restored from a checkpoint written before this
 existed has no origin section. Unknown is absent, not a guessed path.
 
-A task handed out from inside another task, and every part of a division, inherit the same
+On the older session-tree road, a task handed out from inside another task and every part of a division inherit the same
 pointer — they still point at your turn, never at the parent task's own journal.
 
 ## The optional arguments on propose_task

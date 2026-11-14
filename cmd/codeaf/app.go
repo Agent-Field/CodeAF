@@ -156,6 +156,7 @@ func runApp(args []string) error {
 	defer leaving()
 	defer leave.On(leaving, nil)()
 	guard.Go("app/parent", func() { watchAppParent(ctx, os.Getppid, appParentPoll, leaving) })
+	startHeapTrimmer(ctx)
 	// THE APP'S KEYS LIVE IN THIS PROCESS'S MEMORY, installed before anything
 	// can read a key, and no profile write may put one on disk while they are.
 	defer config.UseAppCredentials(config.NewAppCredentials())()
@@ -222,6 +223,7 @@ func runApp(args []string) error {
 	// ONE SUPERVISOR FOR EVERY CONVERSATION THE APP BUILDS (appservices.go).
 	services := openAppServices()
 	appServiceDoor.Store(services)
+	appClientToolsBackend.Store(backend)
 	backend.attachServices(services)
 	// And the press a job's manager makes Merge and Mark ready through, the
 	// job page's own (factory_manager_press.go).
@@ -586,6 +588,7 @@ func appConnOf(client *remote.Client, release func(), assembled bool) *appConn {
 
 // appBackend is the [appwire.Engine] over this process's conversations.
 type appBackend struct {
+	clientTools    appClientTools
 	libraryWatch   sync.Once
 	libraryInboxMu sync.Mutex
 	pluginPauses   map[string]appPluginPause
@@ -603,6 +606,14 @@ type appBackend struct {
 	// devices observes existing sync traffic without starting a roster watch.
 	devices            *appDevices
 	stopSyncedSettings func()
+
+	// restMemo is the task lists of members at rest, so reading them does not
+	// hold their conversations (apprestmemo.go).
+	restMemo  appRestMemo
+	restSlots chan struct{}
+	// waitReaders joins an explicit close's readers; nil waits on their signal.
+	// Tests replace the wait to observe the unlocked admission gate.
+	waitReaders func(<-chan struct{})
 
 	// organizeProposer supplies a naming door when the backend is embedded without held conversations.
 	organizeProposer session.TeamProposer
@@ -840,8 +851,13 @@ type appAgent struct {
 	// listening is when this light record began watching crew traffic.
 	listening time.Time
 
-	// gate serializes opening and letting go of this one agent, so two sends
-	// racing for a closed conversation open it once.
+	// readers keeps the held conversation alive until the last disk/owner read
+	// returns. These fields are guarded by b.mu; pinning also holds gate.
+	readers     int
+	readersDone chan struct{}
+	restRead    bool
+	releasing   bool
+	// gate serializes opening, work admission and release for this agent.
 	gate       sync.Mutex
 	nameGate   sync.Mutex // serializes a rename RPC and its view update
 	view       appwire.Agent
@@ -1108,6 +1124,7 @@ func newAppBackend(emit appwire.Emitter, open appOpener) *appBackend {
 			return func() { t.Stop() }
 		},
 		agents:     map[string]*appAgent{},
+		restSlots:  make(chan struct{}, appRestReads),
 		closedDone: make(chan struct{}),
 		sweepStop:  make(chan struct{}),
 		sweepDone:  make(chan struct{}),
@@ -1999,6 +2016,9 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 	if door, ok := conn.Conv.(interface{ ModelIdentity() session.ModelIdentity }); ok {
 		state := door.ModelIdentity()
 		modelIdentity = &state
+		if state.Selected != "" {
+			model = state.Selected
+		}
 	}
 	effort := conn.Conv.ReasoningFor(model)
 	if dial, ok := conn.Conv.(interface{ ConversationEffort() string }); ok {
@@ -2052,6 +2072,7 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 		a.crewHeld = a.crewHeld || crewHeld
 		view = a.view
 	})
+	b.holdClientTools(a, live)
 	startTitles()
 	b.flushSync(a)
 	b.locked(func() { view = a.view })
@@ -2994,7 +3015,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 			b.stepMoved(a, live, title)
 			row := b.callBegan(a, id, turn, event, title)
 			row.Summary = event.Hint
-			live.box.Event(appwire.EventTurnTool, row)
+			live.sayTool(row)
 		case session.EventToolOutput:
 			b.callOutput(a, id, live, event)
 		case session.EventToolFinished:
@@ -3013,7 +3034,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 			if title == "" {
 				title = redact.Secrets(tui3.ToolTitle(event.Tool, event.Args, ""))
 			}
-			live.box.Event(appwire.EventTurnTool, b.callEnded(a, id, turn, event, title, summary, appDetail(summary), succeeded))
+			live.sayTool(b.callEnded(a, id, turn, event, title, summary, appDetail(summary), succeeded))
 			b.noteContext(a, live)
 			// THE SEVENTEENTH PROCESS is refused by the engine, and the turn
 			// says so once at its end.
@@ -3382,10 +3403,11 @@ func (b *appBackend) workEvent(id string, live *appLive, event session.Event) {
 // started, or is interrupted the moment it is ([appBackend.bootSettle]). No
 // stop waits on the gate an open holds.
 func (b *appBackend) Stop(id string) error {
-	a, err := b.findCrewOwner(id)
+	a, endRead, err := b.findCrewOwner(id)
 	if err != nil {
 		return err
 	}
+	defer endRead()
 	kept := false
 	b.locked(func() {
 		if a.starting {
@@ -3453,6 +3475,7 @@ func (b *appBackend) CloseAgent(id string) error {
 func (b *appBackend) closeAgent(a *appAgent) (view appwire.Agent) {
 	a.gate.Lock()
 	defer a.gate.Unlock()
+	b.lockRelease(a)
 	return b.closeAgentLocked(a)
 }
 
@@ -3473,7 +3496,7 @@ func (b *appBackend) release(a *appAgent) {
 	var id string
 	b.locked(func() {
 		id = a.view.ID
-		live, a.live, a.viewOpen = a.live, nil, false
+		live, a.live, a.viewOpen, a.restRead, a.releasing = a.live, nil, false, false, false
 		if live != nil {
 			a.lastLive = b.now()
 			// Its conversation's open questions go with it, unanswered and
@@ -3486,6 +3509,26 @@ func (b *appBackend) release(a *appAgent) {
 	}
 	b.finish(live)
 	b.forgetAsksOf(id, live)
+}
+
+func (b *appBackend) releaseIdle(a *appAgent) bool {
+	var live *appLive
+	var id string
+	b.locked(func() {
+		if a.readers > 0 || a.viewOpen || a.live == nil || a.live.running || a.live.compacting {
+			return
+		}
+		id = a.view.ID
+		live, a.live, a.viewOpen, a.restRead, a.crewHeld, a.releasing = a.live, nil, false, false, false, false
+		a.lastLive = b.now()
+		b.dropAsksLocked(a.view.ID, live.asks)
+	})
+	if live == nil {
+		return false
+	}
+	b.finish(live)
+	b.forgetAsksOf(id, live)
+	return true
 }
 
 // finish gives a conversation that is no longer held back, and shuts its
@@ -3534,10 +3577,13 @@ func (b *appBackend) finish(live *appLive) {
 // ListAsks answers the agent's open asks. An agent with no conversation held
 // has none this process can answer.
 func (b *appBackend) ListAsks(id string) ([]appwire.Ask, error) {
-	a, err := b.findCrewOwner(id)
+	// A member at rest has no question a held conversation would add: one
+	// waiting on the person says so in its presence and is not at rest.
+	a, endRead, err := b.findCrewReader(id)
 	if err != nil {
 		return nil, err
 	}
+	defer endRead()
 	var asks []appwire.Ask
 	b.locked(func() {
 		if a.live != nil {
@@ -3579,10 +3625,11 @@ func (b *appBackend) answerAskThrough(id, askID, option, text, scope string, sec
 	if handled, err := b.answerCrewAsk(id, askID, option, text, ""); handled {
 		return err
 	}
-	a, err := b.findCrewOwner(id)
+	a, endRead, err := b.findCrewOwner(id)
 	if err != nil {
 		return err
 	}
+	defer endRead()
 	if handled, err := b.answerMoney(a, askID, option, text); handled {
 		return err
 	}
@@ -4551,10 +4598,25 @@ func (b *appBackend) watchSpendRows() (stop func()) {
 // checkpoint does not name — and lays over them what a held conversation has
 // said since.
 func (b *appBackend) ListTasks(id string) ([]appwire.Task, error) {
-	a, err := b.findCrewOwner(id)
+	if a, err := b.find(id); err == nil && b.crewKeeps(id) && !b.isClosing() && !b.tidied(id) && b.memberRests(a) {
+		return b.restingTasks(a, id)
+	}
+	return b.listTasksOf(id)
+}
+
+// listTasksOf is ListTasks for a conversation the crew keeps held when it is
+// busy, and the files' answer otherwise.
+func (b *appBackend) listTasksOf(id string) ([]appwire.Task, error) {
+	a, endRead, err := b.findCrewOwner(id)
 	if err != nil {
 		return nil, err
 	}
+	defer endRead()
+	return b.listTasksHeld(a, id)
+}
+
+// listTasksHeld reads disk and overlays the owner while the caller pins a.
+func (b *appBackend) listTasksHeld(a *appAgent, id string) ([]appwire.Task, error) {
 	var transcript string
 	var fallback time.Time
 	// A quick task is listed by AppQuickTasks, never as a task here (#1880).
@@ -4646,7 +4708,11 @@ func (b *appBackend) ListTasks(id string) ([]appwire.Task, error) {
 			add(appwire.Task{Result: result, ID: appIndexTaskID(id, row.ID), Agent: id, Parent: parent, Title: title, State: state, UpdatedAt: at, YourCall: state == appwire.TaskUnverified})
 		}
 	}
-	for taskID, task := range b.heldTaskViews(a) {
+	owner, err := b.heldTaskViews(a)
+	if err != nil {
+		return nil, err
+	}
+	for taskID, task := range owner {
 		if quickIDs[taskID] {
 			continue
 		}
@@ -4696,6 +4762,8 @@ func (b *appBackend) Close() error {
 	if b.leaving != nil {
 		b.leaving()
 	}
+	b.clientTools.disconnect()
+	appClientToolsBackend.CompareAndSwap(b, nil)
 	already := false
 	var waitClosed chan struct{}
 	var crews *appCrewRun
@@ -4871,6 +4939,7 @@ func (b *appBackend) Close() error {
 func (b *appBackend) letGo(a *appAgent) {
 	a.gate.Lock()
 	defer a.gate.Unlock()
+	b.lockRelease(a)
 	b.release(a)
 }
 
@@ -4880,6 +4949,7 @@ func (b *appBackend) letGoTimed(a *appAgent, w io.Writer) {
 	began := time.Now()
 	a.gate.Lock()
 	defer a.gate.Unlock()
+	b.lockRelease(a)
 	gated := time.Now()
 	var id string
 	b.locked(func() { id = a.view.ID })
@@ -4938,10 +5008,11 @@ func (b *appBackend) sweepOnce() {
 		_, _ = b.SyncStatus()
 	}
 	now := b.now()
+	appRestDisk.maintain(now)
 	var idle []*appAgent
 	b.locked(func() {
 		for _, a := range b.agents {
-			if live := a.live; live != nil && !a.viewOpen && !live.running && now.Sub(live.lastUse) >= appAgentIdle {
+			if live := a.live; live != nil && !a.viewOpen && !live.running && a.readers == 0 && now.Sub(live.lastUse) >= appAgentIdle {
 				idle = append(idle, a)
 			}
 		}
@@ -4962,13 +5033,15 @@ func (b *appBackend) sweepAgent(a *appAgent, now time.Time) {
 	keep := true
 	b.locked(func() {
 		live = a.live
-		keep = live == nil || a.viewOpen || live.running || now.Sub(live.lastUse) < appAgentIdle
+		keep = live == nil || a.viewOpen || live.running || a.readers > 0 || now.Sub(live.lastUse) < appAgentIdle
 	})
-	// A member of an open crew stays held while the crew is open.
-	if !keep && !b.liveNeedsYou(live) && !b.crewKeeps(a.view.ID) && !b.serviceKeeps(a.view.ID) {
+	// A member of an open crew stays held while it has work in flight or a
+	// reason the crew would open it again at once; one with nothing to do goes
+	// like any other, and the crew opens it when traffic comes (applazy.go).
+	if !keep && appLiveWorkSettled(live) && !b.liveNeedsYou(live) && !b.serviceKeeps(a.view.ID) && (!b.crewKeeps(a.view.ID) || b.memberQuiet(a)) {
 		// The state the app reads does not move: the conversation is as
 		// idle on disk as it was in memory.
-		b.release(a)
+		b.releaseIdle(a)
 	}
 }
 

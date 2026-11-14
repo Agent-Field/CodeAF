@@ -26,6 +26,9 @@ var ErrLeaseGone = errors.New("factory worker: the lease is gone")
 // ErrLeaseWithdrawn is a retry or manual handover, rather than a person's Stop.
 var ErrLeaseWithdrawn = fmt.Errorf("factory worker: execution withdrawn: %w", ErrLeaseGone)
 
+// ErrLeaseStopped is a lease revoked by a person's Stop.
+var ErrLeaseStopped = fmt.Errorf("factory worker: stopped by person: %w", ErrLeaseGone)
+
 // Refusal is a request the factory read and refused, in its own sentence, as
 // opposed to one that never reached it.
 type Refusal struct {
@@ -308,6 +311,9 @@ func (w *WorkerClient) sendWith(ctx context.Context, method, path, bearer string
 		}
 		if resp.Header.Get(api.LeaseWithdrawnHeader) == "1" {
 			return resp.StatusCode, ErrLeaseWithdrawn
+		}
+		if resp.Header.Get(api.LeaseStoppedHeader) == "1" {
+			return resp.StatusCode, ErrLeaseStopped
 		}
 		return resp.StatusCode, ErrLeaseGone
 	case resp.StatusCode < 200 || resp.StatusCode >= 300:
