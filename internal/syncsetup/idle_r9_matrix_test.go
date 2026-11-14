@@ -355,6 +355,9 @@ func TestIdleRelease_R9_StateMatrix(t *testing.T) {
 					if confirmed, err := d.ConfirmWork(t.Context()); err != nil || confirmed || d.Gate() == nil {
 						t.Fatalf("draining a late seal restored admission: confirmed=%v error=%v gate=%v", confirmed, err, d.Gate())
 					}
+					if other {
+						<-dir.notices
+					}
 				}
 			}
 		})
