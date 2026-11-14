@@ -382,7 +382,7 @@ func (a *app) resumeOwnedSend(msg ownershipReadMsg) tea.Cmd {
 		// A failed move to a different chat can block this window too. An
 		// unchanged own fence may recover through the full conditional reopen;
 		// it never authorizes reuse of the writer that the failure stopped.
-		localHead := row.Head != "" && (row.Head == msg.head || row.Mine) || row.Mine && (row.Head == "" || msg.local && msg.extends)
+		localHead := row.Head != "" && (row.Head == msg.head || (a.idleOpenEnabled() || msg.reopen) && row.Mine) || row.Mine && (row.Head == "" || msg.local && msg.extends)
 		if row.Mine && (msg.ownFence == 0 || row.Fence == msg.ownFence) && (!held.blocked || msg.ownFence != 0) && (msg.reopen || held.blocked || !row.AutoOpen && (row.Status == chatlist.Idle || row.Status == chatlist.Off)) && localHead {
 			if _, ok := a.taker.(conditionalTaker); ok {
 				draft := a.mainComposer()
