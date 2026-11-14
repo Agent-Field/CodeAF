@@ -10,6 +10,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
@@ -359,10 +360,11 @@ func foremanPolicyRead(load func() (factory.Snapshot, error)) factory.Snapshot {
 		return factory.Snapshot{}
 	}
 	done := make(chan factory.Snapshot, 1)
-	go func() {
+	// Guarded: a read that panics answers nothing, and the wait below says so.
+	guard.Go("app/factory foreman policy read", func() {
 		snap, _ := load()
 		done <- snap
-	}()
+	})
 	select {
 	case snap := <-done:
 		return snap
