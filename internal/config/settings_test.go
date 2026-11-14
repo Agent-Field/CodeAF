@@ -484,6 +484,58 @@ func TestTheModelNameRowDefaultsOnAndTurnsOnlyTheNameOff(t *testing.T) {
 	}
 }
 
+func TestTheIdleHandoffRowDefaultsOffAndRespectsProfileAndEnvironment(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CODEAF_IDLE_HANDOFF", "")
+	rows := registry(t, dir)
+	row, ok := rows.Row(KeyIdleHandoff)
+	if !ok {
+		t.Fatalf("%s is not registered", KeyIdleHandoff)
+	}
+	if KeyIdleHandoff != "idle_handoff" || row.Env != "CODEAF_IDLE_HANDOFF" ||
+		row.Category != CategoryInterface || row.Kind != SettingBool || row.Label != "idle handoff" {
+		t.Fatalf("the idle-handoff row = %+v", row)
+	}
+	if row.Hint != IdleHandoffHint {
+		t.Fatalf("hint = %q, want %q", row.Hint, IdleHandoffHint)
+	}
+	if row.Value() != "off" || IdleHandoffAt(dir) {
+		t.Fatalf("idle handoff must be off by default: %q", row.Value())
+	}
+	if err := row.Apply("on"); err != nil {
+		t.Fatal(err)
+	}
+	if !IdleHandoffAt(dir) {
+		t.Fatal("on did not enable idle handoff")
+	}
+	if reread, _ := registry(t, dir).Row(KeyIdleHandoff); reread.Value() != "on" {
+		t.Fatalf("the reread row lost the persisted choice: %q", reread.Value())
+	}
+	if err := row.Apply("off"); err != nil {
+		t.Fatal(err)
+	}
+	if IdleHandoffAt(dir) {
+		t.Fatal("off did not turn idle handoff back off")
+	}
+
+	t.Setenv("CODEAF_IDLE_HANDOFF", "on")
+	if !IdleHandoffAt(dir) {
+		t.Fatal("the environment lost to the persisted file")
+	}
+	pinned, _ := registry(t, dir).Row(KeyIdleHandoff)
+	if name, isPinned := pinned.PinnedBy(); !isPinned || name != "CODEAF_IDLE_HANDOFF" {
+		t.Fatalf("the idle-handoff row did not report its pin: %q", name)
+	}
+	t.Setenv("CODEAF_IDLE_HANDOFF", "off")
+	if IdleHandoffAt(dir) {
+		t.Fatal("CODEAF_IDLE_HANDOFF=off did not turn idle handoff off")
+	}
+	t.Setenv("CODEAF_IDLE_HANDOFF", "sure")
+	if IdleHandoffAt(dir) {
+		t.Fatal("a malformed pin did not fall back to the default off")
+	}
+}
+
 func TestSplitPercentClampsAndSavesThroughTheRegistry(t *testing.T) {
 	saved := 0
 	rows := NewSettings(SettingsOptions{

@@ -1811,7 +1811,32 @@ func appSendUnsure(err error) bool {
 }
 
 // OpenAgent attaches a conversation to a saved agent and answers it.
-func (b *appBackend) OpenAgent(id string) (appwire.Agent, error) { return b.openAgent(id, false) }
+func (b *appBackend) OpenAgent(id string) (appwire.Agent, error) {
+	// Only a row already read for this paired identity can enable automatic
+	// pull. Ordinary local opens and single-device homes add no relay request.
+	if b.idleHandoffEnabled() {
+		row, found := b.chats.rowFor(id)
+		if found && row.CanOpen && !row.Here {
+			return b.takeAgent(appwire.TakeParams{Cell: row.Cell, Seen: row.Seen}, true)
+		}
+	}
+	return b.openAgent(id, false)
+}
+
+// rowFor is the last listed row for an agent id or a shared chat's cell id.
+func (c *appChats) rowFor(id string) (appwire.ChatRow, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if row, found := c.byAgent[id]; found {
+		return row, true
+	}
+	for _, row := range c.rows {
+		if row.Cell == id {
+			return row, true
+		}
+	}
+	return appwire.ChatRow{}, false
+}
 
 // WarmAgent is OpenAgent for a window's guess at a view (a hover's prefetch):
 // an agent in Closed or the archive is refused, never taken out again
@@ -2549,7 +2574,7 @@ func (b *appBackend) sendLocked(a *appAgent, text, clientID string, shown *appSe
 func (b *appBackend) knownWorkRefusalGated(a *appAgent) error {
 	a.gate.Lock()
 	defer a.gate.Unlock()
-	return b.knownWorkRefusal(a)
+	return b.idleWorkRefusal(a)
 }
 
 // Retry sends the words of the agent's last failed turn again.
@@ -4225,7 +4250,13 @@ func (b *appBackend) SetModel(id, model string) (appwire.Agent, error) {
 	if live.conn.Lent {
 		return appwire.Agent{}, errLentStage("model")
 	}
-	live.conn.Conv.SetModel(model)
+	if checked, ok := live.conn.Conv.(interface{ SetModelChecked(string) error }); ok {
+		if err := checked.SetModelChecked(model); err != nil {
+			return appwire.Agent{}, appEngineError(err)
+		}
+	} else {
+		live.conn.Conv.SetModel(model)
+	}
 	if now := live.conn.Conv.Model(); now != "" {
 		model = now
 	}
@@ -4270,7 +4301,18 @@ func (b *appBackend) SetEffort(id, word string) (appwire.Agent, error) {
 		SetConversationEffort(string) bool
 		ConversationEffort() string
 	})
-	if !ok || !dial.SetConversationEffort(rung.String()) {
+	took := false
+	if ok {
+		if checked, yes := dial.(interface{ SetConversationEffortChecked(string) (bool, error) }); yes {
+			took, err = checked.SetConversationEffortChecked(rung.String())
+			if err != nil {
+				return appwire.Agent{}, appEngineError(err)
+			}
+		} else {
+			took = dial.SetConversationEffort(rung.String())
+		}
+	}
+	if !ok || !took {
 		return appwire.Agent{}, appwire.Errorf(appwire.CodeEngine, "this conversation has no thinking dial; update the engine and reconnect")
 	}
 	chosen := dial.ConversationEffort()
@@ -5040,6 +5082,9 @@ func appEngineError(err error) error {
 	}
 	var refusal *executor.WorkRefusal
 	if errors.As(err, &refusal) {
+		if refusal.Retryable {
+			return &appwire.Error{Code: appwire.CodeUnreachable, Message: refusal.Line}
+		}
 		location := &appwire.Location{Here: false, Line: refusal.Line}
 		if refusal.HolderID != "" {
 			location.Holder = &appwire.LocationHolder{ID: refusal.HolderID, Name: refusal.HolderName}

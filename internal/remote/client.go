@@ -90,7 +90,8 @@ const callDeadline = 10 * time.Second
 // it has to be: the surface asks synchronous getters from its update loop while
 // a turn's events are arriving on the reader.
 type Client struct {
-	clientTools clientToolLink
+	settingError atomic.Pointer[settingResult]
+	clientTools  clientToolLink
 
 	savingNotices []string
 
@@ -1599,10 +1600,15 @@ type Agent struct{ c *Client }
 
 // CheckWork reads the session's own gate. An older engine has no new call.
 func (a *Agent) CheckWork() error {
+	return a.CheckWorkContext(context.Background())
+}
+
+// CheckWorkContext bounds an ownership check made before a surface sends.
+func (a *Agent) CheckWorkContext(ctx context.Context) error {
 	if !a.c.Welcome().WorkAdmission {
 		return nil
 	}
-	_, err := a.c.call(context.Background(), MethodCheckWork, nil)
+	_, err := a.c.call(ctx, MethodCheckWork, nil)
 	return err
 }
 
@@ -2296,8 +2302,31 @@ func (a *Agent) ModelIdentity() session.ModelIdentity {
 // what is assumed here; the assumption only covers the round trip, which is the
 // gap in which a person who pressed a key is looking at the row it changed.
 func (a *Agent) SetModel(model string) {
+	a.c.settingError.Store(&settingResult{err: a.SetModelChecked(model)})
+}
+
+// SetModelChecked reports this call's ownership refusal with the ordinary RPC policy.
+func (a *Agent) SetModelChecked(model string) error {
+	previous := a.Model()
 	a.c.facts.setModel(model)
-	_, _ = a.c.call(nil, MethodSetModel, model)
+	_, err := a.c.call(nil, MethodSetModel, model)
+	var refusal *executor.WorkRefusal
+	if !errors.As(err, &refusal) {
+		err = nil
+	} else {
+		a.c.facts.setModel(previous)
+	}
+	return err
+}
+
+type settingResult struct{ err error }
+
+// SettingError reads the last ownership refusal without crossing the wire.
+func (a *Agent) SettingError() error {
+	if result := a.c.settingError.Load(); result != nil {
+		return result.err
+	}
+	return nil
 }
 
 // SetSpendRail waits for the engine to bind the new conversation limit before

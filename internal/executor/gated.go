@@ -1,10 +1,21 @@
 package executor
 
-import "context"
+import (
+	"context"
+	"time"
+)
+
+// TakeBackWithin bounds a released window's ownership write on a slow relay.
+const TakeBackWithin = 15 * time.Second
+
+// TakeBackRetryLine keeps an unknown ownership write distinct from displacement.
+const TakeBackRetryLine = "couldn't confirm taking this chat back from the sync service; try again"
 
 // WorkRefusal retains the drive's sentence and the device that continued the
 // chat. Surfaces may dress the facts without classifying the sentence.
 type WorkRefusal struct {
+	// Retryable keeps an uncertain take-back out of the displacement card.
+	Retryable  bool   `json:"retryable,omitempty"`
 	Line       string `json:"line"`
 	HolderID   string `json:"holder_id,omitempty"`
 	HolderName string `json:"holder_name,omitempty"`
@@ -17,6 +28,23 @@ func (r *WorkRefusal) Error() string { return r.Line }
 func CheckWork(seat Seat) error {
 	if gate, ok := seat.(interface{ CheckWork() error }); ok {
 		return gate.CheckWork()
+	}
+	return nil
+}
+
+// CheckPreparedWork confirms ownership again after slow task preparation.
+func CheckPreparedWork(seat Seat) error {
+	if gate, ok := seat.(interface{ CheckPreparedWork() error }); ok {
+		return gate.CheckPreparedWork()
+	}
+	return nil
+}
+
+// CheckSettingsWork admits persistent choices only when the seat installed a
+// setting door. Older seats and ordinary local sessions retain their behavior.
+func CheckSettingsWork(seat Seat) error {
+	if gate, ok := seat.(interface{ CheckSettingsWork() error }); ok {
+		return gate.CheckSettingsWork()
 	}
 	return nil
 }
@@ -35,13 +63,37 @@ func Gated(seat Seat, gate func() error, admission ...func() error) Seat {
 	if len(admission) > 0 {
 		work = admission[0]
 	}
-	return gated{Seat: seat, gate: gate, work: work}
+	var prepared func() error
+	if len(admission) > 1 {
+		prepared = admission[1]
+	}
+	var settings func() error
+	if len(admission) > 2 {
+		settings = admission[2]
+	}
+	return gated{Seat: seat, gate: gate, work: work, prepared: prepared, settings: settings}
 }
 
 type gated struct {
 	Seat
-	gate func() error
-	work func() error
+	gate     func() error
+	work     func() error
+	prepared func() error
+	settings func() error
+}
+
+func (g gated) CheckSettingsWork() error {
+	if g.settings != nil {
+		return g.settings()
+	}
+	return nil
+}
+
+func (g gated) CheckPreparedWork() error {
+	if g.prepared != nil {
+		return g.prepared()
+	}
+	return nil
 }
 
 // CheckWork reads the ownership fact before a turn or task can start.
@@ -53,7 +105,9 @@ func (g gated) CheckWork() error {
 }
 
 // ForSetup implements SetupSeat: a setup turn's calls are gated too.
-func (g gated) ForSetup() Seat { return Gated(ForSetup(g.Seat), g.gate, g.work) }
+func (g gated) ForSetup() Seat {
+	return Gated(ForSetup(g.Seat), g.gate, g.work, g.prepared, g.settings)
+}
 
 // NoteModelCall implements ModelNoter: the seat beneath keeps the record.
 func (g gated) NoteModelCall(m ModelCall) { NoteModelCall(g.Seat, m) }

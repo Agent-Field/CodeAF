@@ -125,6 +125,7 @@ const (
 	KeyModelPoolPublicKey = "models.pool.public_key"
 	KeyAttribution        = "attribution"
 	KeyAttributionModel   = "attribution.model"
+	KeyIdleHandoff        = "idle_handoff"
 	KeySplitPct           = "split_pct"
 
 	// The two rows the v3 chat surface keeps on disk BESIDE the conversation:
@@ -1457,6 +1458,11 @@ const (
 	// default, because the line is provenance and the model is the part of it
 	// somebody auditing the history later actually wants.
 	DefaultAttributionModel = true
+
+	// DefaultIdleHandoff leaves an open chat's hold on the computer that
+	// holds it and keeps remote chats waiting for Continue here unless the
+	// person turns idle handoff on.
+	DefaultIdleHandoff = false
 
 	// The divider clamps so neither pane can be set into uselessness. The TUI
 	// reads these so the drag, the [ ] nudge, and the sheet agree.
@@ -2791,6 +2797,13 @@ func (s *Settings) build() []Setting {
 			read:  func() string { return formatBool(AttributionModelAt(dir)) },
 			write: func(raw string) error { return writeBool(dir, KeyAttributionModel, raw) },
 		},
+		Setting{
+			Key: KeyIdleHandoff, Category: CategoryInterface, Kind: SettingBool,
+			Label: "idle handoff", Env: "CODEAF_IDLE_HANDOFF",
+			Hint:  IdleHandoffHint,
+			read:  func() string { return formatBool(IdleHandoffAt(dir)) },
+			write: func(raw string) error { return writeBool(dir, KeyIdleHandoff, raw) },
+		},
 		// The ssh carrier is local surface policy, so its overrides live beside
 		// the other interface choices. Keeping them in the registry matters more
 		// than their rarity: a network that drops idle TCP or rewrites DSCP is a
@@ -3286,6 +3299,28 @@ func AssistedByModelAt(profileDir, model string) string {
 		return ""
 	}
 	return model
+}
+
+// IdleHandoffHint is the `idle_handoff` row's hint: what happens when an open
+// shared chat goes idle with the row on, and what happens with it off. It never
+// says "pair": that word is how a person searching settings finds the Devices
+// tab, and a General row matching it took the search there instead.
+const IdleHandoffHint = "On, an idle chat shared with your other computers releases its hold after upload and free shared chats open here without asking; off, open chats keep their hold and remote chats wait for Continue here."
+
+// IdleHandoffAt resolves whether an idle chat on a paired computer releases its
+// hold to the relay after upload and whether free shared chats auto-open. A
+// malformed pin reads as the default rather than refusing a launch over a toggle.
+func IdleHandoffAt(profileDir string) bool {
+	if raw := strings.TrimSpace(env.Get("CODEAF_IDLE_HANDOFF")); raw != "" {
+		if value, err := parseBool(raw); err == nil {
+			return value
+		}
+		return DefaultIdleHandoff
+	}
+	if value, ok := persistedBool(profileDir, KeyIdleHandoff); ok {
+		return value
+	}
+	return DefaultIdleHandoff
 }
 
 // HistoryEnabledAt resolves whether the v3 chat surface records what was typed

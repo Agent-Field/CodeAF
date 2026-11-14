@@ -799,3 +799,22 @@ func TestAttributionInProfileOrEnvironmentIsConsumedAndNeverUnread(t *testing.T)
 		t.Fatalf("attribution in both profile and shell was reported unread: %v", unread)
 	}
 }
+
+func TestIdleHandoffInProfileOrEnvironmentIsConsumedAndNeverUnread(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CODEAF_IDLE_HANDOFF", "")
+	if retiredProfileKeys["idle_handoff"] {
+		t.Fatal("idle_handoff is listed as a retired profile key")
+	}
+	values := map[string]json.RawMessage{"idle_handoff": json.RawMessage(`true`)}
+	if unread := warnUnreadProfileKeys(dir, values); len(unread) != 0 {
+		t.Fatalf("a profile saying idle_handoff: true was reported unread: %v", unread)
+	}
+	t.Setenv("CODEAF_IDLE_HANDOFF", "on")
+	if unread := warnUnreadProfileKeys(dir, nil); len(unread) != 0 {
+		t.Fatalf("CODEAF_IDLE_HANDOFF=on was reported unread: %v", unread)
+	}
+	if unread := warnUnreadProfileKeys(dir, values); len(unread) != 0 {
+		t.Fatalf("idle_handoff in both profile and shell was reported unread: %v", unread)
+	}
+}

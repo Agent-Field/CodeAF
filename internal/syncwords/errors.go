@@ -68,6 +68,13 @@ func NetworkFailure(err error) bool {
 	return errors.As(err, &request) || errors.As(err, &operation) || errors.As(err, &dns) || errors.Is(err, directory.ErrUnreachable) || errors.Is(err, wireauth.ErrUnavailable) || errors.Is(err, clusterctl.ErrUnavailable) || errors.Is(err, relay.ErrUnreachable) || errors.Is(err, relay.ErrStruggling)
 }
 
+// RequestNotSent requires a failed dial, before an HTTP request could be sent.
+// A response timeout, reset or generic unreachable error proves no such thing.
+func RequestNotSent(err error) bool {
+	var operation *net.OpError
+	return errors.As(err, &operation) && operation.Op == "dial" && !errors.Is(err, syscall.ECONNRESET)
+}
+
 // UploadFailure marks a failure after local durability succeeded. It survives
 // error wrapping and is also carried explicitly by remote saving replies.
 func UploadFailure(err error) error {

@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"log"
@@ -215,7 +213,13 @@ func (s surfaceMachines) RowsForSend(ctx context.Context) ([]chatlist.Row, uint6
 	}
 	key := directory.MetadataKey(s.Identity.CellKey())
 	open := func(sealed string) (string, error) { return directory.OpenName(key, sealed) }
-	return chatlist.Rows(l, s.Device.ID(), open), l.Version, nil
+	rows := chatlist.Rows(l, s.Device.ID(), open)
+	if !s.IdleHandoffAllowed() {
+		for i := range rows {
+			rows[i].AutoOpen = false
+		}
+	}
+	return rows, l.Version, nil
 }
 
 // standingWithin bounds the launch-time check so a silent relay costs nothing.
@@ -286,6 +290,10 @@ type takeover struct {
 	moving *takeProgress
 }
 
+func (t takeover) IdleHandoffAllowed() bool {
+	return t.c != nil && t.c.IdleHandoffAllowed()
+}
+
 // takeProgress is how far the terminal's one running continue has got.
 type takeProgress struct {
 	mu   sync.Mutex
@@ -346,6 +354,26 @@ func (t takeover) TakeSeen(ctx context.Context, id string, seen *directory.Lease
 	return surfaceTaken(got, elapsed), nil
 }
 
+func (t takeover) OpenAvailable(ctx context.Context, id string, seen *directory.LeaseExpectation) (tui3.Taken, error) {
+	began := time.Now()
+	t.moving.start(id)
+	got, err := t.c.OpenAvailable(ctx, id, seen)
+	if err != nil {
+		return tui3.Taken{}, surfaceTakeError(err)
+	}
+	return surfaceTaken(got, time.Since(began)), nil
+}
+
+func (t takeover) OpenAvailableWithWorkspaceRoots(ctx context.Context, id string, seen *directory.LeaseExpectation, roots map[string]string) (tui3.Taken, error) {
+	began := time.Now()
+	t.moving.start(id)
+	got, err := t.c.OpenAvailableWithWorkspaceRoots(ctx, id, seen, roots)
+	if err != nil {
+		return tui3.Taken{}, surfaceTakeError(err)
+	}
+	return surfaceTaken(got, time.Since(began)), nil
+}
+
 func (t takeover) TakeSeenWithWorkspaceRoots(ctx context.Context, id string, seen *directory.LeaseExpectation, roots map[string]string) (tui3.Taken, error) {
 	began := time.Now()
 	t.moving.start(id)
@@ -380,21 +408,6 @@ func takeRootForAt(dir, id string) string {
 		return c.Root
 	}
 	return filepath.Join(dir, "v3", "projects", "copies", id)
-}
-
-// takeCopyBucket files each copy under the folder it came from, apart from
-// conversations that work in this computer's own folder of the same name. A
-// chat's origin grows with every move, so an uncapped bucket name stops working
-// at the filesystem's 255-byte component limit.
-func takeCopyBucket(origin string) string { return takeCopyBucketAt(home.Dir(), origin) }
-
-func takeCopyBucketAt(dir, origin string) string {
-	name := "copy-" + encodeWorkspace(origin)
-	if len(name) > 255 {
-		digest := sha256.Sum256([]byte(filepath.Clean(origin)))
-		name = "copy-" + hex.EncodeToString(digest[:])
-	}
-	return filepath.Join(dir, "v3", "projects", name)
 }
 
 // deviceName is what this machine is called in a sentence about it: the name a

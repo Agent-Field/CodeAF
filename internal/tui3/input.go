@@ -1549,6 +1549,17 @@ func (a *app) enterCheckedLine(ownershipRead bool) tea.Cmd {
 		return a.edited()
 	}
 	if _, bash := session.BashCommand(a.pastesUnfolded(line)); bash {
+		if !ownershipRead && a.watchesConversation() {
+			if tag := a.missingPaste(line); tag != "" {
+				a.note(draftOrphanSendWord + " · " + tag)
+				return nil
+			}
+			if refusal := bashRefusal(a.pastesUnfolded(line), len(a.chips) > 0, a.stream != nil || a.state == stateWorking); refusal != "" {
+				a.note(refusal)
+				return nil
+			}
+			return a.checkBeforeSend()
+		}
 		return a.enterBash(line)
 	}
 	// Continuing is a local choice, so a displaced window offers it before

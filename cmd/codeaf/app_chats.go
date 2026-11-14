@@ -14,7 +14,9 @@ import (
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/dirwatch"
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/handoff"
 	"github.com/Agent-Field/codeaf/internal/pair"
@@ -406,6 +408,7 @@ func (b *appBackend) readChats(parent context.Context, s *syncsetup.Sync, feed d
 		_, installed := local[r.Cell]
 		here := r.Mine && (r.Status == chatlist.Here || installed)
 		row := appwire.ChatRow{Cell: r.Cell, Title: r.Title, Here: here, Status: string(r.Status), Seen: appwire.Seen{Device: r.DeviceID, Fence: r.Fence, Head: r.Head}, CanTake: !here && r.Head != ""}
+		row.CanOpen = s.IdleHandoffAllowed() && r.AutoOpen && r.Head != ""
 		if service, ok := s.Dir.(interface{ HeadTakes() bool }); ok && !service.HeadTakes() {
 			row.Seen.Head = ""
 		}
@@ -758,6 +761,17 @@ func (b *appBackend) cachedChatLocation(id string) *appwire.Location {
 		return nil
 	}
 	return chatLocation(row)
+}
+
+func (b *appBackend) idleHandoffEnabled() bool {
+	profile := strings.TrimSpace(b.profileDir)
+	if profile == "" {
+		profile = strings.TrimSpace(env.Get(config.ProfileDirEnv))
+	}
+	if profile == "" {
+		profile = b.relayHome()
+	}
+	return config.IdleHandoffAt(profile) && syncsetup.StorageForHome(b.relayHome()) != "off"
 }
 
 func (b *appBackend) dressChatLocation(view *appwire.Agent) {

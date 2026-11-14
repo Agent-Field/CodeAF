@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"log"
 	"os"
 	"path/filepath"
@@ -17,6 +16,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/cellsync"
 	"github.com/Agent-Field/codeaf/internal/chatfiles"
+	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/filelock"
@@ -84,9 +84,15 @@ type Continued struct {
 
 // Continuer is the take side of one machine: `continue here`.
 type Continuer struct {
-	sync *Sync
-	eng  cellstore.Engine
-	opt  TakeOptions
+	sync     *Sync
+	eng      cellstore.Engine
+	opt      TakeOptions
+	freeOnly bool
+}
+
+// IdleHandoffAllowed reports whether the opt-in idle handoff setting is on.
+func (c *Continuer) IdleHandoffAllowed() bool {
+	return c != nil && c.sync != nil && c.sync.IdleHandoffAllowed()
 }
 
 // Continuer builds the take side over eng, the engine every chat this machine
@@ -120,14 +126,15 @@ func (c *Continuer) taker(ctx context.Context, sc *Scope) handoff.Taker {
 	// local chat does become the branch.)
 	brancher := cellsync.Brancher{Dir: s.Dir, Publisher: pub, NewID: newCellID}
 	return handoff.Taker{
-		OnPhase: c.opt.OnPhase,
-		Dir:     s.Dir,
-		Fetch:   &cellsync.Fetcher{Engine: engine, Store: sc.Store, Dir: s.Dir, Inbox: sync.Inbox, ManyMax: cellsync.ManyMaxFor(s.Relay)},
-		Local:   engineLocal{eng: c.eng, ctx: ctx},
-		Branch:  c.branch(brancher),
-		RootFor: c.opt.RootFor,
-		InPlace: func(c cell.Cell) bool { return borrowsProject(c.Root) },
-		After:   []func(context.Context, cell.Cell) error{rebuildIndexes, recordOrigin, restoreChatFiles, c.pullVault},
+		FreeOnly: c.freeOnly,
+		OnPhase:  c.opt.OnPhase,
+		Dir:      s.Dir,
+		Fetch:    &cellsync.Fetcher{Engine: engine, Store: sc.Store, Dir: s.Dir, Inbox: sync.Inbox, ManyMax: cellsync.ManyMaxFor(s.Relay)},
+		Local:    engineLocal{eng: c.eng, ctx: ctx},
+		Branch:   c.branch(brancher),
+		RootFor:  c.opt.RootFor,
+		InPlace:  func(c cell.Cell) bool { return borrowsProject(c.Root) },
+		After:    []func(context.Context, cell.Cell) error{rebuildIndexes, recordOrigin, restoreChatFiles, c.pullVault},
 	}
 }
 
@@ -148,6 +155,22 @@ func (c *Continuer) Take(ctx context.Context, id string) (Continued, error) {
 // rather than silently consenting to displace a different device.
 func (c *Continuer) TakeSeen(ctx context.Context, id string, seen *directory.LeaseExpectation) (Continued, error) {
 	return c.take(ctx, id, seen, false)
+}
+
+// OpenAvailable is an open gesture from a paired set's free-chat row. It
+// restores through the ordinary continuation path, but never forces a hold.
+func (c *Continuer) OpenAvailable(ctx context.Context, id string, seen *directory.LeaseExpectation) (Continued, error) {
+	copy := *c
+	copy.freeOnly = true
+	return copy.take(ctx, id, seen, false)
+}
+
+// OpenAvailableWithWorkspaceRoots keeps a receiver's explicit folder choices
+// while retaining the automatic open's prohibition on displacing a live hold.
+func (c *Continuer) OpenAvailableWithWorkspaceRoots(ctx context.Context, id string, seen *directory.LeaseExpectation, roots map[string]string) (Continued, error) {
+	copy := *c
+	copy.freeOnly = true
+	return copy.TakeSeenWithWorkspaceRoots(ctx, id, seen, roots)
 }
 
 // TakeSeenWithWorkspaceRoots applies only this person's selected receiver
@@ -204,6 +227,14 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 			phases["local capture"], phases["directory"], phases["retirement"], phases["fetch"], phases["acquire"], phases["restore"], phases["hooks"], phases["filing"], phases["unpublished check"], phases["dirty check"], phases["kept-branch upload"], phases["staging/preflight"], time.Since(started), outcome)
 	}()
 	root := c.opt.RootFor(id)
+	_, localRootErr := cell.OpenAt(root, id)
+	keepRoot := localRootErr == nil
+	preKept := ""
+	if branches, err := cellsync.OpenBranchMap(c.sync.Home); err == nil {
+		if resolved := branches.Resolve(id); resolved != id {
+			preKept = resolved
+		}
+	}
 	defer handoff.Arrive(root)()
 	localCapture := handoff.Trace(c.opt.OnPhase, "local capture")
 	if err := cellstore.Await(ctx, cell.Cell{Root: root}); err != nil {
@@ -212,9 +243,18 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	}
 	localCapture()
 	directoryRead := handoff.Trace(c.opt.OnPhase, "directory")
-	view, err := c.sync.Dir.Cell(ctx, id)
+	readCtx := ctx
+	cancelRead := func() {}
+	if c.freeOnly {
+		readCtx, cancelRead = context.WithTimeout(ctx, chatlist.OpenReadTimeout)
+	}
+	view, err := c.sync.Dir.Cell(readCtx, id)
+	cancelRead()
 	directoryRead()
 	if err != nil {
+		if c.freeOnly && errors.Is(err, context.DeadlineExceeded) {
+			err = fmt.Errorf("%w: %w", directory.ErrUnreachable, err)
+		}
 		return Continued{}, err
 	}
 	if err := c.sync.reconcileSendLease(id, id, view); err != nil {
@@ -224,12 +264,25 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		return Continued{}, errors.New("these turns are no longer available to open separately")
 	}
 	lease := view.Cell.Lease
+	if c.freeOnly && lease.Expires != 0 {
+		return Continued{}, directory.ErrLeaseHeld
+	}
 	// Kept turns may name this device before their separate copy exists here.
 	known, err := cellstore.KnowsHead(cell.Cell{ID: id, Root: root}, view.Cell.Head)
 	if err != nil {
 		return Continued{}, err
 	}
-	if !branchOnly && known && view.Cell.ParentCell == "" && lease.Device == c.sync.Device.ID() && lease.Expires > view.Now {
+	heldHere := !branchOnly && known && view.Cell.ParentCell == "" && lease.Device == c.sync.Device.ID() && lease.Expires > view.Now
+	if heldHere {
+		// A revived own-device fence cannot restore a retired writer. Only
+		// its matching send receipt allows the active-session shortcut.
+		remote, fence, err := c.sync.SendLease(id)
+		if err != nil && !os.IsNotExist(err) {
+			return Continued{}, err
+		}
+		heldHere = err == nil && remote == id && fence == lease.Fence
+	}
+	if heldHere {
 		opened, err := cell.OpenAt(root, id)
 		if err != nil {
 			return Continued{}, err
@@ -272,7 +325,13 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	if !keepOpen {
 		retire()
 	}
-	localWork := engineLocal{eng: c.eng, ctx: ctx}
+	alreadyBranched := ""
+	if preKept != "" {
+		if kv, err := c.sync.Dir.Cell(ctx, preKept); err == nil && kv.Cell.ParentCell == id {
+			alreadyBranched = kv.Cell.Head
+		}
+	}
+	localWork := engineLocal{eng: c.eng, ctx: ctx, alreadyBranched: alreadyBranched}
 	if storageOff {
 		local := cell.Cell{ID: id, Root: root}
 		if _, err := os.Stat(root); err == nil {
@@ -395,7 +454,7 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 			filed()
 		}
 	}()
-	if taken.Cell, filed, err = c.fileCopy(ctx, taken.Cell); err != nil {
+	if taken.Cell, filed, err = c.fileCopy(ctx, taken.Cell, keepRoot); err != nil {
 		return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
 	}
 	taken.Driving.Cell = taken.Cell
@@ -422,7 +481,7 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		}
 	}
 	out = Continued{LocalOnly: storageOff, Taken: taken, Device: c.opt.DeviceName, TaskCopies: taskCopies, Resume: c.arrive(taken.Cell, from)}
-	if taken.Kept != "" {
+	if taken.Kept != "" && taken.Kept != preKept {
 		out.KeptTurns = c.orphanTurns(ctx, taken.Kept)
 	}
 	return out, nil
@@ -539,6 +598,14 @@ func (c *Continuer) orphanTurns(ctx context.Context, branch string) uint32 {
 // the kept edits become.
 func (c *Continuer) branch(b cellsync.Brancher) func(context.Context, *cellsync.Driving, string, uint32) (string, error) {
 	return func(ctx context.Context, from *cellsync.Driving, head string, turns uint32) (string, error) {
+		if branches, err := cellsync.OpenBranchMap(c.sync.Home); err == nil {
+			if existing := branches.Resolve(from.Cell.ID); existing != from.Cell.ID {
+				if v, err := c.sync.Dir.Cell(ctx, existing); err == nil && v.Cell.ParentCell == from.Cell.ID && v.Cell.Head == head {
+					from.Remote, from.Fence, from.Head = existing, 1, head
+					return existing, nil
+				}
+			}
+		}
 		opened, err := cell.OpenAt(from.Cell.Root, from.Cell.ID)
 		if err != nil {
 			return "", err
@@ -584,8 +651,9 @@ func (l landing) Want(ctx context.Context, c cell.Cell, head string) ([]string, 
 // engineLocal is the Taker's view of a copy of the chat this machine has: what
 // the engine says differs from the newest turn, and a seal of it.
 type engineLocal struct {
-	eng cellstore.Engine
-	ctx context.Context
+	eng             cellstore.Engine
+	ctx             context.Context
+	alreadyBranched string
 }
 
 func (l engineLocal) Unpublished(c cell.Cell, remoteHead string) (string, uint32, error) {
@@ -603,6 +671,13 @@ func (l engineLocal) Unpublished(c cell.Cell, remoteHead string) (string, uint32
 }
 
 func (l engineLocal) Dirty(ctx context.Context, c cell.Cell) (bool, error) {
+	if l.alreadyBranched != "" {
+		if head, err := cellstore.Head(c); err == nil && head != nil && head.Turn.ID == l.alreadyBranched && cellstore.Unsaved(c) == 0 {
+			if proof, err := l.eng.SavedState(ctx, c); err == nil && proof != nil && len(proof.Changes) == 0 {
+				return false, nil
+			}
+		}
+	}
 	// Both appended accounting and edits inside an older message must be checked
 	// against the shared snapshot, even when the current journal has the same size.
 	return l.eng.LocalWork(ctx, c)
@@ -676,45 +751,6 @@ func recordOrigin(_ context.Context, c cell.Cell) error {
 	m.Owned = true
 	m.Workspace = session.Place{Dir: c.Root, Owned: true}.Work()
 	return session.SaveMeta(c.Root, m)
-}
-
-// fileCopy uses the origin from the sealed inventory rather than this
-// computer's home directory. A first arrival stays a copy even if an unrelated
-// folder with the origin's path exists here; an existing borrowed project is
-// kept in place by the takeover's ordinary in-place road.
-func (c *Continuer) fileCopy(ctx context.Context, at cell.Cell) (cell.Cell, func(), error) {
-	m, err := session.LoadMeta(at.Root)
-	if err != nil || c.opt.BucketFor == nil || !m.Owned || m.Origin == "" {
-		return at, nil, err
-	}
-	dest := filepath.Join(c.opt.BucketFor(m.Origin), at.ID)
-	if filepath.Clean(dest) == filepath.Clean(at.Root) {
-		return at, nil, nil
-	}
-	if _, err := os.Stat(dest); !errors.Is(err, os.ErrNotExist) {
-		if err == nil {
-			err = errors.New("a copy of this chat is already filed here")
-		}
-		return at, nil, err
-	}
-	// The destination becomes discoverable at rename. Keep that root fenced
-	// through the caller's remaining arrival work, as the incoming root was.
-	filed := handoff.Arrive(dest)
-	if err := os.MkdirAll(filepath.Dir(dest), 0o700); err != nil {
-		return at, filed, err
-	}
-	if err := fsreplace.Rename(at.Root, dest); err != nil {
-		return at, filed, err
-	}
-	landed := cell.Cell{ID: at.ID, Root: dest}
-	if err := session.RebaseOwnedCopy(dest); err != nil {
-		return landed, filed, err
-	}
-	if err := c.eng.Follow(ctx, at, landed); err != nil {
-		return landed, filed, err
-	}
-	opened, err := cell.OpenAt(dest, at.ID)
-	return opened, filed, err
 }
 
 func titleOf(root string) string {
@@ -797,7 +833,19 @@ const (
 // withVaultWithin is withVault for a caller that waits up to within for another
 // codeaf on this computer to finish its own exchange; zero never waits.
 func (s *Sync) withVaultWithin(ctx context.Context, within time.Duration, use func(vaultsync.Syncer) error, extra ...vaultsync.Carrier) error {
-	stateMu.Lock()
+	return s.withVaultRound(ctx, within, false, use, extra...)
+}
+
+// Only idle certification may skip a competing in-process exchange. Ordinary
+// callers serialize as before, with cancellation belonging to their context.
+func (s *Sync) withVaultRound(ctx context.Context, within time.Duration, idle bool, use func(vaultsync.Syncer) error, extra ...vaultsync.Carrier) error {
+	if idle {
+		if !stateMu.TryLock() {
+			return errStateBusy
+		}
+	} else if err := lockDrive(ctx, &stateMu); err != nil {
+		return err
+	}
 	defer stateMu.Unlock()
 	// Refuse before opening the lock file as well as before creating keys, so
 	// a replacement directory receives none of the previous home's state.
@@ -822,6 +870,8 @@ func (s *Sync) withVaultWithin(ctx context.Context, within time.Duration, use fu
 	return use(vaultsync.Syncer{StorageOn: s.StorageAllowed, Store: sc.Store, Dir: s.Dir, Vault: v, CellKeyID: s.Identity.CellKeyID(),
 		Carry: append(s.carried(), extra...)})
 }
+
+var errStateBusy = errors.New("sync: another home-state exchange is in progress")
 
 // lockState takes the vault's lock without blocking, and while another process
 // holds it retries every vaultBusyRetry until within has passed or ctx ends. The
@@ -858,6 +908,12 @@ func (s *Sync) profile() string {
 // teamsSharing leaves every carrier quiet when this computer has not paired.
 func (s *Sync) teamsSharing() bool {
 	return config.TeamsSharingAt(s.profile(), func() bool { return MayTalk(s.Home) })
+}
+
+// IdleHandoffAllowed reports whether the idle-handoff setting is on and
+// encrypted relay storage is allowed for this home.
+func (s *Sync) IdleHandoffAllowed() bool {
+	return s != nil && s.StorageAllowed() && config.IdleHandoffAt(s.profile())
 }
 
 // carried is the profile state that travels in the vault beside the secrets.

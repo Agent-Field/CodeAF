@@ -27,6 +27,7 @@ effort
 google_oauth_client
 google_oauth_secret
 history.enabled
+idle_handoff
 knowledge.model
 lane.guard
 lane.talk

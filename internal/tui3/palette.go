@@ -3116,6 +3116,13 @@ func (a *app) switchModel(id string, window int) {
 		}
 	}
 	a.agent.SetModel(id)
+	if result, ok := a.agent.(interface{ SettingError() error }); ok {
+		if err := result.SettingError(); err != nil {
+			a.input.setText("/model " + id)
+			a.note(err.Error())
+			return
+		}
+	}
 	a.modelSwitched(id, window, true)
 }
 
