@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: the Factory manager answers, stops, and is cleared rather than archived
-pr: 0
+pr: 2608
 surface: [factory, engine, app]
 invalidates:
   - "Was true: agents.stop only interrupted the turn, so a turn parked on a wait that never read its context stayed working until the app was quit. Is true now: the app's Stop is bounded. The stop carries its bound (Interrupt's `within`, in milliseconds) and the engine abandons a turn that has not let go ten seconds later; the turn ends stopped by the person and the next send opens an ordinary turn. A lent factory stage is interrupted but never abandoned from the app."
