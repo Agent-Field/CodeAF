@@ -3302,8 +3302,10 @@ func AssistedByModelAt(profileDir, model string) string {
 }
 
 // IdleHandoffHint is the `idle_handoff` row's hint: what happens when an open
-// chat goes idle on a paired computer with the row on, and what happens with it off.
-const IdleHandoffHint = "On, an idle chat on a paired computer releases its hold after upload and free shared chats open here without asking; off, open chats keep their hold and remote chats wait for Continue here."
+// shared chat goes idle with the row on, and what happens with it off. It never
+// says "pair": that word is how a person searching settings finds the Devices
+// tab, and a General row matching it took the search there instead.
+const IdleHandoffHint = "On, an idle chat shared with your other computers releases its hold after upload and free shared chats open here without asking; off, open chats keep their hold and remote chats wait for Continue here."
 
 // IdleHandoffAt resolves whether an idle chat on a paired computer releases its
 // hold to the relay after upload and whether free shared chats auto-open. A
