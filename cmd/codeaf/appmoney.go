@@ -361,7 +361,7 @@ func (b *appBackend) answerMoney(a *appAgent, askID, option, text string) (bool,
 		case appwire.OptionStop:
 			if running {
 				b.locked(func() { live.stopping = true })
-				live.conn.Conv.Interrupt()
+				appStopByPerson(live.conn.Conv)
 			}
 			b.closeMoneyAsks(a, appwire.CapAgent, appwire.OptionStop, "Stopped")
 			return true, nil

@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -101,8 +102,41 @@ const AbandonStopTimeout AbandonReason = "stop timeout"
 // arriving on the next keystroke opens an ordinary turn and cannot be refused
 // for a turn nobody is waiting for.
 func (a *Agent) Abandon(reason AbandonReason) (Usage, bool) {
+	return a.abandonTurn(reason, 0)
+}
+
+// InterruptWithin is a person's stop WITH ITS SECOND STAGE ARMED BEHIND IT: the
+// turn is interrupted now, and one that has still not let go when grace has
+// run is abandoned ([Agent.Abandon]).
+//
+// IT IS FOR A SURFACE THAT CANNOT KEEP THE DEADLINE ITSELF. The terminal owns
+// its own countdown and calls Abandon when it runs out (tui3's stopGrace). A
+// surface on the far side of a wire has no second door to call, so its stop
+// used to be the first stage alone: a turn parked on a wait that ignores its
+// context stayed "working" until the engine was killed, which is how the
+// desktop app's Stop came to do nothing at all.
+//
+// THE BOUND IS FOR THE TURN THAT WAS STOPPED AND NO OTHER. The turn's number is
+// taken before the interrupt and compared when the clock fires, so a turn that
+// ended in time, and whatever the person started after it, are left alone. A
+// grace of zero or less arms nothing and is the plain stop.
+func (a *Agent) InterruptWithin(grace time.Duration) {
 	a.mu.Lock()
-	if a.closed || !a.running {
+	turn, running := a.turnSeq, a.running && !a.closed
+	a.mu.Unlock()
+	a.Interrupt()
+	if !running || grace <= 0 {
+		return
+	}
+	time.AfterFunc(grace, func() { a.abandonTurn(AbandonStopTimeout, turn) })
+}
+
+// abandonTurn is [Agent.Abandon] for one turn by its number, or for whichever
+// is running when turn is zero (a turn's number is never zero: it is counted
+// from one).
+func (a *Agent) abandonTurn(reason AbandonReason, turn uint64) (Usage, bool) {
+	a.mu.Lock()
+	if a.closed || !a.running || (turn != 0 && a.turnSeq != turn) {
 		a.mu.Unlock()
 		return Usage{}, false
 	}

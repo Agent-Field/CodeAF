@@ -253,6 +253,7 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, hello Hello, engine En
 	hello = withFactoryAgentFieldReasonersFeature(hello, engine)
 	hello = withFactoryJobAnswerFeature(hello, engine)
 	hello = withFactoryForemanOpenFeature(hello, engine)
+	hello = withFactoryForemanFreshFeature(hello, engine)
 	hello = withFactoryJobProtectedFeature(hello, engine)
 	hello = withFactoryEffortModelsFeature(hello, engine)
 	hello = withFactoryUsageFeature(hello, engine)

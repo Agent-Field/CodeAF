@@ -1697,7 +1697,7 @@ func (b *appBackend) bootSettle(a *appAgent, started bool) {
 	}
 	if stop {
 		b.locked(func() { live.stopping = live.running })
-		live.conn.Conv.Interrupt()
+		appStopByPerson(live.conn.Conv)
 		return
 	}
 	for _, s := range early {
@@ -3419,9 +3419,34 @@ func (b *appBackend) Stop(id string) error {
 	}
 	if live := b.liveOf(a); live != nil {
 		b.locked(func() { live.stopping = live.running })
-		live.conn.Conv.Interrupt()
+		appStopByPerson(live.conn.Conv)
 	}
 	return nil
+}
+
+// appStopGrace is how long the app's Stop waits for a turn to let go before
+// the engine abandons it. It is the terminal's figure and argued there
+// (internal/tui3's stopGrace): far above every settle that can be measured, so
+// it fires only on a wait that never looks at its context.
+const appStopGrace = 10 * time.Second
+
+// appBoundedStop is a conversation whose stop can carry its second stage.
+type appBoundedStop interface {
+	InterruptWithin(grace time.Duration)
+}
+
+// appStopByPerson is the person's Stop, BOUNDED WHERE THE CONVERSATION CAN BE.
+// An interrupt alone only cuts the turn's context, and a turn parked on a wait
+// that ignores it (a tool that takes a lock, a read that never looks) stayed
+// "working" until the app was quit: the app has no second key to press, so the
+// engine is given the bound with the stop ([session.Agent.InterruptWithin]).
+// The turn's stream then closes and the turn settles as stopped by the person.
+func appStopByPerson(conv appConversation) {
+	if bounded, ok := conv.(appBoundedStop); ok {
+		bounded.InterruptWithin(appStopGrace)
+		return
+	}
+	conv.Interrupt()
 }
 
 // CloseAgent lets the conversation go and says the agent is closed. Its journal

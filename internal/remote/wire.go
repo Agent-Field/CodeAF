@@ -1599,8 +1599,15 @@ type Moved struct {
 // AN EMPTY DOOR IS A PERSON'S OWN STOP, which is what an older surface that
 // sends no arguments at all means and what it always meant. That is the one
 // direction this may fail in that costs nothing: a stop is still a stop.
+//
+// WITHIN IS THE STOP'S BOUND, IN MILLISECONDS, for a surface that cannot keep
+// the deadline itself: a turn that has not let go by then is abandoned by the
+// engine ([session.Agent.InterruptWithin]). Zero is the plain stop every
+// surface sent before the field existed, and an engine too old to read it
+// stops as it always did, with no second stage: the field can only add one.
 type InterruptArgs struct {
-	Door string `json:"door,omitempty"`
+	Door   string `json:"door,omitempty"`
+	Within int64  `json:"within,omitempty"`
 }
 
 type SubmitArgs struct {

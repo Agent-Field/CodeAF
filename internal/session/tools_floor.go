@@ -34,7 +34,9 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -85,6 +87,24 @@ const (
 	floorAskRunning  = "running"
 	floorAskQueue    = "queue"
 	floorAskShipped  = "shipped"
+	floorAskRepos    = "repos"
+)
+
+// floorAsks is every ask in the order the schema and the refusal list them.
+var floorAsks = []string{floorAskRunning, floorAskQueue, floorAskWaiting, floorAskShipped, floorAskRepos, floorAskRisky, floorAskCheapest, floorAskOldest, floorAskAll, floorAskItem}
+
+// floorShippedDaysMost is how far back `shipped` reads when asked for more
+// than today: a quarter, which is as far as "recent work" reaches.
+const floorShippedDaysMost = 90
+
+// floorReadWait and floorActWait are how long one call may wait on the
+// factory before the tool answers that it did not. A healthy floor reads in
+// milliseconds; the bound is for the read that never comes back, which once
+// held a manager's turn open until the app was quit. A start or a priority is
+// a request to the factory and is given longer.
+const (
+	floorReadWait = 20 * time.Second
+	floorActWait  = 60 * time.Second
 )
 
 // The floor's limits on one answer: how many rows a ranked ask lists, how many
@@ -109,14 +129,17 @@ const (
 
 const factoryFloorDescription = "Read the whole factory, start or prioritise a job when the person asks, and propose what to take on by selecting items. " +
 	"You are the factory's foreman: you read, rank, propose and sum up. Start a job (start) or set its priority (priority with item) only when the person asks for that job in this conversation; nothing here ships, merges or posts. " +
-	"ask: running (jobs running or queued to run, with their step), queue (jobs not started yet, most urgent then oldest first), waiting (jobs that need the person), shipped (jobs shipped today, with their pull requests and changes, to sum up), risky, cheapest (ten, by estimate), oldest (ten), all, or item (one item in full: its read, facts, stages, question and body; set item). " +
+	"ask: running (jobs running or queued to run, with their step), queue (jobs not started yet, most urgent then oldest first), waiting (jobs that need the person), shipped (jobs shipped today, with their pull requests and changes, to sum up; set days to read further back), repos (every repository with its count of jobs in each state, for how many and where), risky, cheapest (ten, by estimate), oldest (ten), all, or item (one item in full: its read, facts, stages, question and body; set item). " +
+	"Every answer but item and repos says the factory's counts by state on its first line, so a how-many question is answered by one read. " +
 	"start takes one job by the number in its ref and starts it as the job page's Start does. priority is p0 (urgent), p1 (high), p2 (medium) or p3 (low), set on item. " +
 	"item, mark and unmark take items by the number in their ref (#4 is 4). Only a new item can be selected; selections stay until the person runs or unselects them. The fields are named mark and unmark; the person calls them select and unselect. " +
+	"A message may start with blocks the app writes: <afi-now> is the app's present state as of when it was sent (\"Waiting on you\" there is the person) and <app-places> says where things are in the app; read here for what they do not say. " +
 	"Name items by their ref in everything you say."
 
 func factoryFloorSchemaJSON() string {
 	return `{"type":"object","properties":{` +
-		`"ask":{"type":"string","enum":["` + strings.Join([]string{floorAskRunning, floorAskQueue, floorAskWaiting, floorAskShipped, floorAskRisky, floorAskCheapest, floorAskOldest, floorAskAll, floorAskItem}, `","`) + `"],"description":"What to read from the factory."},` +
+		`"ask":{"type":"string","enum":["` + strings.Join(floorAsks, `","`) + `"],"description":"What to read from the factory."},` +
+		`"days":{"type":"integer","description":"With ask shipped: how many days to read, today included (1 is today and the default; at most ` + strconv.Itoa(floorShippedDaysMost) + `)."},` +
 		`"item":{"type":"integer","description":"With ask item or priority: the number in the item's ref (#4 is 4)."},` +
 		`"start":{"type":"integer","description":"The number in the ref of one job to start now, only when the person asked."},` +
 		`"priority":{"type":"string","enum":["p0","p1","p2","p3"],"description":"With item: the priority to set on that job, only when the person asked."},` +
@@ -142,6 +165,7 @@ func (a *Agent) factoryFloorTool() bare.Tool {
 				Unmark   []int  `json:"unmark"`
 				Start    int    `json:"start"`
 				Priority string `json:"priority"`
+				Days     int    `json:"days"`
 			}
 			if len(args) > 0 {
 				if err := decodeToolArguments(args, &parsed); err != nil {
@@ -154,10 +178,11 @@ func (a *Agent) factoryFloorTool() bare.Tool {
 			if ask == "" && len(parsed.Mark)+len(parsed.Unmark) == 0 && !acts {
 				ask = floorAskAll
 			}
-			switch ask {
-			case "", floorAskRunning, floorAskQueue, floorAskWaiting, floorAskShipped, floorAskRisky, floorAskCheapest, floorAskOldest, floorAskAll, floorAskItem:
-			default:
-				return rejectToolArguments(ctx, "Invalid arguments: ask is one of running, queue, waiting, shipped, risky, cheapest, oldest, all or item."), true, nil
+			if ask != "" && !slices.Contains(floorAsks, ask) {
+				return rejectToolArguments(ctx, "Invalid arguments: ask is one of "+strings.Join(floorAsks[:len(floorAsks)-1], ", ")+" or "+floorAsks[len(floorAsks)-1]+"."), true, nil
+			}
+			if parsed.Days < 0 || parsed.Days > floorShippedDaysMost || (parsed.Days > 0 && ask != floorAskShipped) {
+				return rejectToolArguments(ctx, "Invalid arguments: days goes with ask shipped, from 1 to "+strconv.Itoa(floorShippedDaysMost)+"."), true, nil
 			}
 			if priority != "" && parsed.Item <= 0 {
 				return rejectToolArguments(ctx, "Invalid arguments: priority needs item, the number in the job's ref."), true, nil
@@ -168,7 +193,7 @@ func (a *Agent) factoryFloorTool() bare.Tool {
 			if ask == floorAskItem && parsed.Item <= 0 {
 				return rejectToolArguments(ctx, "Invalid arguments: ask item needs item, the number in the item's ref."), true, nil
 			}
-			return a.floorRun(ctx, ask, parsed.Item, parsed.Mark, parsed.Unmark)
+			return a.floorRun(ctx, ask, parsed.Item, parsed.Days, parsed.Mark, parsed.Unmark)
 		},
 	}
 }
@@ -180,7 +205,7 @@ func (a *Agent) floorAct(ctx context.Context, start, item int, priority string) 
 	if !ok {
 		return "Nothing changed: this window cannot start or prioritise a job; the person can on the job's page.", true, nil
 	}
-	snap, err := a.config.Floor.Snapshot(ctx)
+	snap, err := floorSnapshot(ctx, a.config.Floor)
 	if err != nil {
 		return "the factory could not be read: " + oneLine(err.Error()), true, nil
 	}
@@ -195,12 +220,17 @@ func (a *Agent) floorAct(ctx context.Context, start, item int, priority string) 
 	case len(found) > 1:
 		return fmt.Sprintf("Nothing changed: #%d is on %d repositories (%s)", n, len(found), floorRepos(found)), true, nil
 	}
-	var line string
-	if start > 0 {
-		line, err = actor.StartItem(ctx, found[0].ID)
-	} else {
+	line, err := floorWithin(ctx, floorActWait, func(ctx context.Context) (string, error) {
+		if start > 0 {
+			return actor.StartItem(ctx, found[0].ID)
+		}
 		value, _ := factory.PriorityFromShort(priority)
-		line, err = actor.SetPriority(ctx, found[0].ID, value)
+		return actor.SetPriority(ctx, found[0].ID, value)
+	})
+	if errors.Is(err, errFloorLate) {
+		// NOT "Nothing changed": the request was sent and its answer never
+		// came, so whether it landed is exactly what is not known.
+		return fmt.Sprintf("%s for %s. It may still take effect: read %s again before asking twice.", floorLateWords(floorActWait), found[0].Ref(), found[0].Ref()), true, nil
 	}
 	if err != nil {
 		return oneLine(err.Error()), true, nil
@@ -208,11 +238,61 @@ func (a *Agent) floorAct(ctx context.Context, start, item int, priority string) 
 	return line, false, nil
 }
 
+// errFloorLate is a call on the floor that did not answer inside its wait.
+var errFloorLate = errors.New("the factory did not answer in time")
+
+func floorLateWords(wait time.Duration) string {
+	return fmt.Sprintf("the factory did not answer within %d seconds", int(wait/time.Second))
+}
+
+// floorWithin runs one call on the floor's door and WAITS FOR IT NO LONGER
+// THAN wait, and no longer than the turn. The door reads disk and may take a
+// lock, and it is the engine's own code rather than a subprocess a context
+// can kill: a door that never came back held the manager's turn open, with
+// the person's stop changing nothing, until the app was quit. So the call
+// runs on a goroutine of its own and this returns at the bound or the moment
+// the turn is cut, whichever is first; a call that outlives it finishes with
+// nobody waiting, which is the most a caller can do about code that will not
+// look at its context.
+func floorWithin[T any](ctx context.Context, wait time.Duration, call func(context.Context) (T, error)) (T, error) {
+	ctx, cancel := context.WithTimeout(ctx, wait)
+	defer cancel()
+	type answer struct {
+		value T
+		err   error
+	}
+	done := make(chan answer, 1)
+	go func() {
+		value, err := call(ctx)
+		done <- answer{value, err}
+	}()
+	select {
+	case got := <-done:
+		return got.value, got.err
+	case <-ctx.Done():
+		var none T
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return none, errFloorLate
+		}
+		return none, ctx.Err()
+	}
+}
+
+// floorSnapshot is the floor read under [floorReadWait], in words the model
+// can act on when it did not come.
+func floorSnapshot(ctx context.Context, door FloorDoor) (factory.Snapshot, error) {
+	snap, err := floorWithin(ctx, floorReadWait, door.Snapshot)
+	if errors.Is(err, errFloorLate) {
+		return snap, errors.New(floorLateWords(floorReadWait) + "; say so rather than guess, and try once more if the person asks")
+	}
+	return snap, err
+}
+
 // floorRun does one call: the marks first, then the ask over the floor as it
 // is after them, so a call that marks and reads sees its own marks.
-func (a *Agent) floorRun(ctx context.Context, ask string, item int, mark, unmark []int) (string, bool, error) {
+func (a *Agent) floorRun(ctx context.Context, ask string, item, days int, mark, unmark []int) (string, bool, error) {
 	door := a.config.Floor
-	snap, err := door.Snapshot(ctx)
+	snap, err := floorSnapshot(ctx, door)
 	if err != nil {
 		return "the factory could not be read: " + oneLine(err.Error()), true, nil
 	}
@@ -224,13 +304,13 @@ func (a *Agent) floorRun(ctx context.Context, ask string, item int, mark, unmark
 			return strings.Join(out, "\n"), true, nil
 		}
 		if ask != "" {
-			if snap, err = door.Snapshot(ctx); err != nil {
+			if snap, err = floorSnapshot(ctx, door); err != nil {
 				return strings.Join(out, "\n"), false, nil
 			}
 		}
 	}
 	if ask != "" {
-		out = append(out, FloorAnswer(snap, ask, item))
+		out = append(out, floorAnswer(snap, ask, item, days))
 	}
 	return strings.Join(out, "\n\n"), false, nil
 }
@@ -258,18 +338,36 @@ func floorMarks(ctx context.Context, door FloorDoor, snap factory.Snapshot, mark
 		return ids, refs
 	}
 	if ids, refs := resolve(unmark, false); len(ids) > 0 {
-		if err := door.Mark(ctx, ids, false); err != nil {
-			return append(said, "nothing unselected: "+oneLine(err.Error())), true
+		if err := floorMark(ctx, door, ids, false); err != nil {
+			return append(said, floorMarkRefused("unselected", err)), true
 		}
 		said = append(said, "unselected "+strings.Join(refs, " "))
 	}
 	if ids, refs := resolve(mark, true); len(ids) > 0 {
-		if err := door.Mark(ctx, ids, true); err != nil {
-			return append(said, "nothing selected: "+oneLine(err.Error())), true
+		if err := floorMark(ctx, door, ids, true); err != nil {
+			return append(said, floorMarkRefused("selected", err)), true
 		}
 		said = append(said, "selected "+strings.Join(refs, " ")+FloorMarkedTail)
 	}
 	return append(said, notes...), false
+}
+
+// floorMark is the door's Mark under [floorActWait].
+func floorMark(ctx context.Context, door FloorDoor, ids []int, on bool) error {
+	_, err := floorWithin(ctx, floorActWait, func(ctx context.Context) (struct{}, error) {
+		return struct{}{}, door.Mark(ctx, ids, on)
+	})
+	return err
+}
+
+// floorMarkRefused is the line for a selection the door did not make. One
+// that got no answer in time is NOT said to have changed nothing: the write
+// was asked for, and whether it landed is what is not known.
+func floorMarkRefused(word string, err error) string {
+	if errors.Is(err, errFloorLate) {
+		return floorLateWords(floorActWait) + ": whether anything was " + word + " is not known; read the factory again"
+	}
+	return "nothing " + word + ": " + oneLine(err.Error())
 }
 
 // floorFind is every item on the floor whose ref is #n, dismissed ones left
@@ -305,18 +403,22 @@ func floorRepos(items []factory.Item) string {
 // FloorAnswer is one ask's text over a floor: a compact table, one item a
 // line, or one item in full for `item`.
 func FloorAnswer(snap factory.Snapshot, ask string, item int) string {
+	return floorAnswer(snap, ask, item, 0)
+}
+
+// floorAnswer is [FloorAnswer] with how many days `shipped` reads; zero is
+// today.
+func floorAnswer(snap factory.Snapshot, ask string, item, days int) string {
 	now := snap.Now
 	if now.IsZero() {
 		now = time.Now()
 	}
+	open := floorOpen(snap)
 	if ask == floorAskShipped {
-		return floorShippedToday(snap, now)
+		return floorWithCounts(floorShipped(snap, now, days), open)
 	}
-	var open []factory.Item
-	for _, it := range snap.Items {
-		if it.State != factory.StateDismissed && (it.State != factory.StateShipped || floorFollowing(it)) {
-			open = append(open, it)
-		}
+	if ask == floorAskRepos {
+		return floorReposAnswer(snap)
 	}
 	if len(open) == 0 {
 		return floorNothing
@@ -375,7 +477,7 @@ func FloorAnswer(snap factory.Snapshot, ask string, item int) string {
 		head = "every open item"
 	}
 	if len(rows) == 0 {
-		return floorNoneAsked + " (" + head + ")"
+		return floorWithCounts(floorNoneAsked+" ("+head+")", open)
 	}
 	var b strings.Builder
 	b.WriteString(floorSummary(open, len(rows), head))
@@ -394,24 +496,148 @@ func FloorAnswer(snap factory.Snapshot, ask string, item int) string {
 	return b.String()
 }
 
+// floorOpen is every item still the factory's work: not dismissed, and not
+// shipped unless it is still following its pull request.
+func floorOpen(snap factory.Snapshot) []factory.Item {
+	var open []factory.Item
+	for _, it := range snap.Items {
+		if it.State != factory.StateDismissed && (it.State != factory.StateShipped || floorFollowing(it)) {
+			open = append(open, it)
+		}
+	}
+	return open
+}
+
+// floorWithCounts puts the factory's counts on the first line of an answer
+// that is not a table of open items (what shipped, or an ask nothing
+// answers), so those say how the factory stands too: "nothing is waiting" is
+// worth more beside what is running. Nothing is added when nothing is open.
+func floorWithCounts(text string, open []factory.Item) string {
+	counts := floorCounts(open)
+	if counts == "" {
+		return text
+	}
+	head, rest, more := strings.Cut(text, "\n")
+	head += " · in the factory: " + counts
+	if more {
+		return head + "\n" + rest
+	}
+	return head
+}
+
 // floorSummary is the table's head: what was asked, how many rows answer it,
-// and the floor's counts that matter to a morning's choice, each left out
-// when it is nothing.
+// and THE FLOOR'S COUNTS BY STATE, each left out when it is nothing. The
+// counts are of the whole floor and not of the rows, so "how many are
+// running" is answered by whichever table was read: a manager that had to
+// count rows of a table cut at fifty answered with the cut.
 func floorSummary(open []factory.Item, rows int, head string) string {
 	parts := []string{head, strconv.Itoa(rows) + " " + floorPlural(rows, "item", "items")}
-	count := func(keep func(factory.Item) bool) int {
-		return len(floorKeep(open, keep))
+	if counts := floorCounts(open); counts != "" {
+		parts = append(parts, "in the factory: "+counts)
 	}
-	if n := count(func(it factory.Item) bool { return it.State == factory.StateNew }); n > 0 {
-		parts = append(parts, strconv.Itoa(n)+" new in the factory")
-	}
-	if n := count(func(it factory.Item) bool { return it.State == factory.StateNeedsYou }); n > 0 {
-		parts = append(parts, strconv.Itoa(n)+" waiting on the person")
-	}
-	if n := count(func(it factory.Item) bool { return it.Marked && it.State == factory.StateNew }); n > 0 {
+	if n := len(floorKeep(open, func(it factory.Item) bool { return it.Marked && it.State == factory.StateNew })); n > 0 {
 		parts = append(parts, strconv.Itoa(n)+" selected")
 	}
 	return strings.Join(parts, " · ")
+}
+
+// The states a count names, in the order a person asks about them, each in
+// the words the rows use.
+var floorCountOrder = []struct {
+	word string
+	keep func(factory.Item) bool
+}{
+	{"running", func(it factory.Item) bool { return it.State == factory.StateRunning }},
+	{"queued to run", func(it factory.Item) bool { return it.State == factory.StateQueued }},
+	{"waiting on the person", func(it factory.Item) bool { return it.State == factory.StateNeedsYou }},
+	{"following a pull request", func(it factory.Item) bool { return it.State == factory.StateShipped && floorFollowing(it) }},
+	{"landed", func(it factory.Item) bool { return it.State == factory.StateLanded }},
+	{"new", func(it factory.Item) bool { return it.State == factory.StateNew }},
+}
+
+// floorCounts is items counted by state in one line, `2 running, 1 waiting on
+// the person, 40 new`, with nothing said for a state nothing is in.
+func floorCounts(items []factory.Item) string {
+	var parts []string
+	for _, c := range floorCountOrder {
+		if n := len(floorKeep(items, c.keep)); n > 0 {
+			parts = append(parts, strconv.Itoa(n)+" "+c.word)
+		}
+	}
+	return strings.Join(parts, ", ")
+}
+
+// floorReposAnswer is every repository the floor has jobs on, one a line with
+// its jobs counted by state, the busiest first. It answers "how many
+// repositories are active" and "where is the work", which no table of jobs cut
+// at [floorAllRows] could. Dismissed jobs are counted nowhere; a repository
+// whose every job is done says so rather than being left out, so the count of
+// lines is the count of repositories the factory has worked on.
+func floorReposAnswer(snap factory.Snapshot) string {
+	type line struct {
+		name          string
+		open, done    int
+		items, active []factory.Item
+	}
+	by := map[string]*line{}
+	var order []*line
+	for _, it := range snap.Items {
+		if it.State == factory.StateDismissed {
+			continue
+		}
+		l := by[it.Repo]
+		if l == nil {
+			l = &line{name: it.Repo}
+			by[it.Repo] = l
+			order = append(order, l)
+		}
+		if it.State == factory.StateShipped && !floorFollowing(it) {
+			l.done++
+			continue
+		}
+		l.open++
+		l.items = append(l.items, it)
+		if it.State != factory.StateNew {
+			l.active = append(l.active, it)
+		}
+	}
+	if len(order) == 0 {
+		return floorNothing
+	}
+	sort.SliceStable(order, func(i, j int) bool {
+		if len(order[i].active) != len(order[j].active) {
+			return len(order[i].active) > len(order[j].active)
+		}
+		if order[i].open != order[j].open {
+			return order[i].open > order[j].open
+		}
+		return order[i].name < order[j].name
+	})
+	withOpen, withActive := 0, 0
+	for _, l := range order {
+		if l.open > 0 {
+			withOpen++
+		}
+		if len(l.active) > 0 {
+			withActive++
+		}
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "repositories · %d with jobs · %d with open jobs · %d with a job running, queued, waiting or following a pull request", len(order), withOpen, withActive)
+	for _, l := range order {
+		name := l.name
+		if strings.TrimSpace(name) == "" {
+			name = "(no repository)"
+		}
+		b.WriteString("\n" + name)
+		if l.open > 0 {
+			fmt.Fprintf(&b, " · %d open: %s", l.open, floorCounts(l.items))
+		}
+		if l.done > 0 {
+			fmt.Fprintf(&b, " · %d done", l.done)
+		}
+	}
+	return b.String()
 }
 
 // FloorRow is one item in one line: its ref and title, then every fact the
@@ -627,30 +853,61 @@ func floorCut(s string, n int) string {
 	return strings.TrimSpace(string(r[:n])) + "…"
 }
 
-// floorShippedToday is every job that shipped since the start of the floor's
-// day, each with its pull request and its change, for the foreman to sum up;
-// one line says none when none did.
-func floorShippedToday(snap factory.Snapshot, now time.Time) string {
+// floorShipped is every job that shipped since the start of the floor's day,
+// or of the day `days` back with today counted as the first, each with its
+// pull request and its change, for the foreman to sum up; one line says none
+// when none did. A job counts on the day it was done, or the day its pull
+// request merged when no done time was kept. The head counts the pull requests
+// merged among them, which is what "how many did we merge" asks.
+func floorShipped(snap factory.Snapshot, now time.Time, days int) string {
+	if days < 1 {
+		days = 1
+	}
 	y, m, d := now.Date()
-	since := time.Date(y, m, d, 0, 0, 0, 0, now.Location())
-	var rows []factory.Item
+	since := time.Date(y, m, d, 0, 0, 0, 0, now.Location()).AddDate(0, 0, -(days - 1))
+	window := "today"
+	if days > 1 {
+		window = fmt.Sprintf("in the last %d days", days)
+	}
+	type shipped struct {
+		it factory.Item
+		at time.Time
+	}
+	var rows []shipped
+	merged := 0
 	for _, it := range snap.Items {
 		at := it.DoneAt
 		if at.IsZero() && it.PullRequest != nil {
 			at = it.PullRequest.MergedAt
 		}
 		if it.State == factory.StateShipped && !at.Before(since) {
-			rows = append(rows, it)
+			rows = append(rows, shipped{it, at})
+			if it.PullRequest != nil && it.PullRequest.State == factory.PRMerged {
+				merged++
+			}
 		}
 	}
 	if len(rows) == 0 {
-		return "nothing shipped today"
+		return "nothing shipped " + window
 	}
+	sort.SliceStable(rows, func(i, j int) bool { return rows[i].at.After(rows[j].at) })
 	var b strings.Builder
-	fmt.Fprintf(&b, "shipped today · %d %s", len(rows), floorPlural(len(rows), "job", "jobs"))
-	for _, it := range rows {
+	fmt.Fprintf(&b, "shipped %s · %d %s", window, len(rows), floorPlural(len(rows), "job", "jobs"))
+	if merged > 0 {
+		fmt.Fprintf(&b, " · %d %s merged", merged, floorPlural(merged, "pull request", "pull requests"))
+	}
+	more := 0
+	if len(rows) > floorAllRows {
+		more = len(rows) - floorAllRows
+		rows = rows[:floorAllRows]
+	}
+	for _, row := range rows {
+		it := row.it
 		b.WriteString("\n")
 		b.WriteString(FloorRow(it, now))
+		if days > 1 && !row.at.IsZero() {
+			b.WriteString(" · shipped " + row.at.In(now.Location()).Format("2006-01-02"))
+		}
 		if pr := it.PullRequest; pr != nil && strings.TrimSpace(pr.URL) != "" {
 			b.WriteString(" · " + pr.URL)
 		}
@@ -661,6 +918,9 @@ func floorShippedToday(snap factory.Snapshot, now time.Time) string {
 		if how := strings.TrimSpace(it.DoneHow); how != "" {
 			b.WriteString(" · " + how)
 		}
+	}
+	if more > 0 {
+		fmt.Fprintf(&b, "\nand %d more, older", more)
 	}
 	return b.String()
 }

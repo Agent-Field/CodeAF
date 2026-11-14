@@ -129,6 +129,13 @@ type WrappedAgent interface {
 	RewindAt(index int) ([]session.DisplayEntry, error)
 }
 
+// boundedStopper is an agent whose stop can carry its own second stage: one
+// asked of the agent rather than required of [WrappedAgent], so a wrapped
+// agent that has never heard of abandoning a turn keeps the plain stop.
+type boundedStopper interface {
+	InterruptWithin(grace time.Duration)
+}
+
 // Engine is one opened conversation and the doors that replace it. The door
 // that builds it (cmd/codeaf) owns config resolution, session-file resolution
 // and the locked-file fallback; this package owns nothing about how an agent is
@@ -3096,6 +3103,14 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		}
 		if door := session.StopDoor(strings.TrimSpace(args.Door)); door != "" && door != session.StopByPerson {
 			agent.InterruptFor(door)
+			return nil, nil
+		}
+		// A PERSON'S STOP THAT CAME WITH A BOUND ARMS THE SECOND STAGE HERE,
+		// because the surface that sent it has no door of its own to press
+		// when the bound runs out ([InterruptArgs]). An agent that cannot be
+		// abandoned is stopped as it always was.
+		if bounded, ok := agent.(boundedStopper); ok && args.Within > 0 {
+			bounded.InterruptWithin(time.Duration(args.Within) * time.Millisecond)
 			return nil, nil
 		}
 		agent.Interrupt()
