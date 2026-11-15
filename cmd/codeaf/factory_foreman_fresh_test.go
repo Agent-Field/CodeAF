@@ -63,7 +63,7 @@ func homeForeman(t *testing.T, floor *store.Store, profile, dir string) string {
 	if err := session.SeedConversation(old, dir, foremanTitle, "the older brief"); err != nil {
 		t.Fatal(err)
 	}
-	if err := foremanJoinTeam(profile, old, dir); err != nil {
+	if err := foremanSwapTeam(profile, "", old, dir); err != nil {
 		t.Fatal(err)
 	}
 	if err := floor.SetForeman(old); err != nil {
@@ -190,6 +190,50 @@ func TestForemanFreshStartsTheManagerOver(t *testing.T) {
 	}
 	if again, err := foremanMaker(st, web, profile, nil)(context.Background()); err != nil || !sameSessionFile(again, fresh) {
 		t.Fatalf("the open after a fresh start answered %q, %v; want the fresh one", again, err)
+	}
+}
+
+// A TEAM THAT CANNOT TAKE THE NEW FOREMAN LEAVES THE OLD ONE THE FOREMAN.
+//
+// The team used to change in two writes before the store: the old foreman
+// left, then the new one joined. A join that failed left the team with no
+// foreman and the store naming the one that had left. The swap is one write
+// after the store now, and a swap that fails gives the store its old word back.
+func TestAFreshStartTheTeamRefusesLeavesTheOldForemanInPlace(t *testing.T) {
+	st, web, profile := talkLab(t)
+	first, err := foremanMaker(st, web, profile, nil)(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := teams.Path(profile)
+	kept, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A folder where the teams file belongs: nothing can read it or write it.
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(path, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if fresh, err := foremanFresh(st, web, profile, nil)(context.Background()); err == nil {
+		t.Fatalf("a fresh start over a teams file nothing can read answered %q; the premise is gone", fresh)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, kept, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if named, _ := st.Foreman(); !sameSessionFile(named, first) {
+		t.Fatalf("the store names %q after a swap that failed; want the old foreman %q", named, first)
+	}
+	if key, holders := foremanHandleHolder(t, profile); holders != 1 || key != teamKey(first) {
+		t.Fatalf("@foreman is held by %q (%d holders); want the old foreman alone", key, holders)
+	}
+	if !factoryOwnedConversation(first) {
+		t.Error("the old foreman lost its mark over a swap that failed")
 	}
 }
 

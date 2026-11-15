@@ -101,7 +101,7 @@ func foremanFloorDoor(st *store.Store, workspace, profileDir, transcript string)
 
 // sameSessionFile says whether two paths name one session file: cleaned, and
 // with symlinks resolved where the file is there to resolve, which is the key
-// [foremanJoinTeam] files the foreman under.
+// [foremanTeamKey] files the foreman under.
 func sameSessionFile(a, b string) bool {
 	a, b = strings.TrimSpace(a), strings.TrimSpace(b)
 	if a == "" || b == "" {
@@ -222,7 +222,6 @@ func foremanMaker(st *store.Store, workspace, profileDir string, load func() (fa
 // conversation is left on disk for its owner to stop and put away.
 func foremanFresh(st *store.Store, workspace, profileDir string, load func() (factory.Snapshot, error)) func(context.Context) (string, error) {
 	return func(context.Context) (string, error) {
-		factoryReconcileOnce(profileDir, st)
 		return foremanMint(st, workspace, profileDir, load)
 	}
 }
@@ -241,9 +240,14 @@ func foremanFolderRefusal(st *store.Store, transcript string) error {
 
 // foremanMint makes the foreman's conversation now and names it in the store.
 // A foreman the store already names gives up its place in the `factory` team
-// first, so the new one takes the `foreman` handle rather than a second-best
-// one beside it.
+// in the same write the new one joins it, so the new one takes the `foreman`
+// handle rather than a second-best one beside it.
+//
+// EVERY ROAD TO A NEW FOREMAN RECONCILES FIRST. The open, the fresh start and
+// the settle as the factory starts all come here, and an old teams file must
+// be stamped before a door joins its `factory` team ([factoryReconcileOnce]).
 func foremanMint(st *store.Store, workspace, profileDir string, load func() (factory.Snapshot, error)) (string, error) {
+	factoryReconcileOnce(profileDir, st)
 	where := strings.TrimSpace(workspace)
 	// A HOST WITH NO FOLDER OF ITS OWN (the desk's factory, or an engine
 	// started in the codeaf home) gives the foreman an empty folder under the
@@ -273,20 +277,24 @@ func foremanMint(st *store.Store, workspace, profileDir string, load func() (fac
 		return "", err
 	}
 	old, _ := st.Foreman()
-	if old != "" {
-		foremanLeaveTeam(profileDir, old)
-	}
-	if err := foremanJoinTeam(profileDir, transcript, where); err != nil {
+	// THE STORE'S WORD COMES FIRST, THEN THE TEAM, THEN THE MARKS. The store is
+	// what makes a conversation the foreman; the mark only says so beside the
+	// journal. A making cut short after the store named the new one leaves
+	// marks a later open or start puts right ([markFactoryForeman] there,
+	// [foremanSweep]); one cut short before it leaves a conversation nobody
+	// names and nothing hides, which the person can see and delete. Marked
+	// first, that same conversation was hidden from every list with no door
+	// that opened it.
+	if err := st.SetForeman(transcript); err != nil {
 		return "", err
 	}
-	// THE STORE'S WORD COMES FIRST, THEN THE MARKS. The store is what makes a
-	// conversation the foreman; the mark only says so beside the journal. A
-	// making cut short after the store named the new one leaves marks a later
-	// open or start puts right ([markFactoryForeman] there, [foremanSweep]);
-	// one cut short before it leaves a conversation nobody names and nothing
-	// hides, which the person can see and delete. Marked first, that same
-	// conversation was hidden from every list with no door that opened it.
-	if err := st.SetForeman(transcript); err != nil {
+	// THE TEAM CHANGES IN ONE WRITE, after the store. Two writes before it (the
+	// old one leaving, then the new one joining) left a team with no foreman
+	// when the join failed, and a store that went on naming the one that had
+	// left. A swap that fails gives the store its old word back, so the old
+	// foreman is still the foreman, in the store and in its team.
+	if err := foremanSwapTeam(profileDir, old, transcript, where); err != nil {
+		_ = st.SetForeman(old)
 		return "", err
 	}
 	if err := markFactoryForeman(st, transcript); err != nil {
@@ -388,42 +396,43 @@ func foremanBrief(snap factory.Snapshot) string {
 	return strings.Join(lines, "\n")
 }
 
-// foremanJoinTeam writes the foreman into the one `factory` team, made here
-// when no item has made it yet, in ONE read-modify-write of the teams file.
-// The team is found by the rule [talkJoinTeam] finds it by.
-func foremanJoinTeam(profileDir, transcript, where string) error {
-	key := transcript
-	if real, err := filepath.EvalSymlinks(transcript); err == nil {
-		key = real
+// foremanSwapTeam puts the new foreman in the `factory` team in place of the
+// old one, in ONE write of the teams file: the old one leaves every team that
+// holds it, so its handle is free, and the new one joins under it. A team that
+// will not let the old member go keeps it, and the new one joins beside it
+// under another handle. A join that fails, or a write the teams file refuses,
+// writes nothing at all.
+//
+// The team is found by the rule [talkJoinTeam] finds it by, and made here when
+// no item has made it yet.
+func foremanSwapTeam(profileDir, old, transcript, where string) error {
+	newKey, oldKey := foremanTeamKey(transcript), ""
+	if strings.TrimSpace(old) != "" && !sameSessionFile(old, transcript) {
+		oldKey = foremanTeamKey(old)
 	}
-	key = filepath.Clean(key)
 	now := time.Now()
 	return teams.UpdateOpen(profileDir, func(f *teams.File) error {
-		id := factoryParentTeam(f, now)
-		return f.AddMember(id, teams.Member{Key: key, File: transcript, Where: where, Word: foremanTitle, Handle: foremanHandle, JoinedAt: now})
-	})
-}
-
-// foremanLeaveTeam takes a foreman that is being replaced out of every team
-// that holds it, so its handle is free for the one made in its place. It is
-// best effort: a team file that cannot be written leaves the old member where
-// it was, and the new one joins beside it under another handle.
-func foremanLeaveTeam(profileDir, transcript string) {
-	key := transcript
-	if real, err := filepath.EvalSymlinks(transcript); err == nil {
-		key = real
-	}
-	key = filepath.Clean(key)
-	_ = teams.UpdateOpen(profileDir, func(f *teams.File) error {
-		for _, t := range f.Teams {
-			if t.Holds(key) {
-				if err := f.RemoveMember(t.ID, key); err != nil {
-					return err
+		if oldKey != "" {
+			for _, t := range f.Teams {
+				if t.Holds(oldKey) {
+					_ = f.RemoveMember(t.ID, oldKey)
 				}
 			}
 		}
-		return nil
+		id := factoryParentTeam(f, now)
+		return f.AddMember(id, teams.Member{Key: newKey, File: transcript, Where: where, Word: foremanTitle, Handle: foremanHandle, JoinedAt: now})
 	})
+}
+
+// foremanTeamKey is the key a foreman's conversation is filed under in a
+// team: its session file, with symlinks resolved where it is there to
+// resolve.
+func foremanTeamKey(transcript string) string {
+	key := transcript
+	if real, err := filepath.EvalSymlinks(transcript); err == nil {
+		key = real
+	}
+	return filepath.Clean(key)
 }
 
 // foremanRetitle renames a foreman made before the rename: its conversation's
