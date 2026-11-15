@@ -427,6 +427,7 @@ func (a *Agent) startVisionTurnLocked(ctx context.Context, kept userMessage, liv
 		return refusedStream(err)
 	}
 	a.running = true
+	a.runnerTurn = false
 	hub := a.newReplayHubLocked()
 	a.hub = hub
 	turnCtx, cancel := context.WithCancelCause(ctx)

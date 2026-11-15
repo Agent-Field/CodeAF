@@ -124,12 +124,21 @@ func (a *Agent) Abandon(reason AbandonReason) (Usage, bool) {
 // the turn's number: a channel is made fresh for every turn of every kind and
 // is never nil while one runs, so it cannot be mistaken for "any turn". A grace
 // of zero or less arms nothing and is the plain stop.
+//
+// A TURN THE FACTORY'S RUNNER OPENED IS ONLY INTERRUPTED. A runner gives an
+// item's manager a turn through the conversation a window holds (cmd/codeaf's
+// liveManagerTurn), and reads that turn's stream to its end: let go of while
+// a tool call was still in flight, the stream would close on partial text
+// with no error, and the runner would carry on over work that had not ended.
+// The person's stop still cuts the turn; the job's own Stop ends the run. A
+// person's own turn in the same conversation keeps the bound.
 func (a *Agent) InterruptWithin(grace time.Duration) {
 	a.mu.Lock()
 	turn, running := a.done, a.running && !a.closed && a.done != nil
+	runner := a.runnerTurn
 	a.mu.Unlock()
 	a.Interrupt()
-	if !running || grace <= 0 {
+	if !running || runner || grace <= 0 {
 		return
 	}
 	time.AfterFunc(grace, func() {

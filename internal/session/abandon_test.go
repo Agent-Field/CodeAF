@@ -509,3 +509,46 @@ func abandonedLines(t *testing.T, path string) []journalAbandoned {
 	}
 	return found
 }
+
+// A TURN THE FACTORY'S RUNNER OPENED IS ONLY INTERRUPTED BY A BOUNDED STOP.
+//
+// The runner gives an item's manager a turn through the conversation a window
+// holds, and reads that turn's stream to its end. Let go of while a tool call
+// was in flight, the stream closed on partial text with no error, and the
+// runner carried on over work that had not ended. The person's own turn in the
+// same conversation keeps its bound
+// ([TestABoundedStopAbandonsATurnThatWouldNotLetGo]).
+func TestABoundedStopOnlyInterruptsARunnersTurn(t *testing.T) {
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("call-1", "wedge", `{}`), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("done"), nil
+		},
+	}}
+	release := make(chan struct{})
+	agent, entered, journal := wedgedReleasable(t, completer, release)
+
+	events, err := agent.SubmitRunnerNoteThrough(context.Background(), "a step's question for the inbox", nil)
+	if err != nil {
+		t.Fatalf("SubmitRunnerNoteThrough: %v", err)
+	}
+	waitUntilClosed(t, "the runner's turn parking on the wedge", entered, 10*time.Second)
+	const grace = 50 * time.Millisecond
+	agent.InterruptWithin(grace)
+	ended := drained(events)
+	select {
+	case <-ended:
+		t.Fatal("a bounded stop let go of the runner's turn while its tool call was in flight")
+	case <-time.After(10 * grace):
+	}
+	if lines := abandonedLines(t, journal); len(lines) != 0 {
+		t.Fatalf("the runner's turn was journaled as abandoned: %+v", lines)
+	}
+	// The call returns; the interrupted turn ends on its own, its stream
+	// closing after the call it was waiting on.
+	close(release)
+	waitUntilClosed(t, "the runner's turn ending once its call returned", ended, 10*time.Second)
+	waitIdle(t, agent)
+}

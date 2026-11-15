@@ -87,8 +87,10 @@ that never reads its cancelled context) is abandoned by the engine: its stream
 closes, the turn ends `turn.done` with `error_kind: stopped` and the "Stopped by
 you" footer as any stopped turn does, and the next `agents.send` opens an
 ordinary turn. The conversation's journal records the turn as let go of, with
-what it had spent. A running factory stage lent to the app is interrupted but
-never abandoned from here; the job's own Stop ends a stage.
+what it had spent. A running factory stage lent to the app, and a turn the
+factory's runner gives a job manager the app holds open, are interrupted but
+never abandoned from here: the runner reads those turns to their end. The job's
+own Stop ends them. A person's own turn in a job manager's chat keeps the bound.
 
 ## Conversation work scope
 

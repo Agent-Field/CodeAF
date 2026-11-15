@@ -3821,6 +3821,10 @@ type Agent struct {
 	// live turn's cancel, close a live turn's hub, and close a `done` channel
 	// that has already been closed — the last of which is a panic.
 	turnSeq uint64
+	// runnerTurn says the running turn was opened by the factory's runner
+	// ([runnerNote]), which reads its stream to the end and acts on what it
+	// says. A bounded stop never abandons one ([Agent.InterruptWithin]).
+	runnerTurn bool
 	// turnSpend is what the RUNNING turn has cost so far, moved by [Agent.bank]
 	// on the same call that moves the session's meter and reset when a turn
 	// opens. It is the "last known spend" an abandoned turn is journaled with:
