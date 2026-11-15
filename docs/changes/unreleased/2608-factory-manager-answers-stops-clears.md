@@ -22,5 +22,7 @@ save since it was made.
 
 `session.Agent.InterruptWithin` is the stop with its second stage armed behind
 it, for a surface across a wire that has no second door to press. The bound is
-for the turn that was stopped and no other: the turn's number is taken at the
-stop and compared when the clock fires.
+for the turn that was stopped and no other, a vision-fallback turn included:
+the turn is named at the stop by its own `done` channel and compared when the
+clock fires. The vision turn is now numbered like every other turn, so a turn
+the session has let go of cleans up nothing when it finally returns.

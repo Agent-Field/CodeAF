@@ -102,7 +102,7 @@ const AbandonStopTimeout AbandonReason = "stop timeout"
 // arriving on the next keystroke opens an ordinary turn and cannot be refused
 // for a turn nobody is waiting for.
 func (a *Agent) Abandon(reason AbandonReason) (Usage, bool) {
-	return a.abandonTurn(reason, 0)
+	return a.abandonTurn(reason, nil)
 }
 
 // InterruptWithin is a person's stop WITH ITS SECOND STAGE ARMED BEHIND IT: the
@@ -116,13 +116,16 @@ func (a *Agent) Abandon(reason AbandonReason) (Usage, bool) {
 // context stayed "working" until the engine was killed, which is how the
 // desktop app's Stop came to do nothing at all.
 //
-// THE BOUND IS FOR THE TURN THAT WAS STOPPED AND NO OTHER. The turn's number is
-// taken before the interrupt and compared when the clock fires, so a turn that
-// ended in time, and whatever the person started after it, are left alone. A
-// grace of zero or less arms nothing and is the plain stop.
+// THE BOUND IS FOR THE TURN THAT WAS STOPPED AND NO OTHER. The turn is named by
+// its `done` channel, taken before the interrupt and compared when the clock
+// fires, so a turn that ended in time, and whatever the person started after
+// it — an ordinary turn or a vision one — are left alone. The channel and not
+// the turn's number: a channel is made fresh for every turn of every kind and
+// is never nil while one runs, so it cannot be mistaken for "any turn". A grace
+// of zero or less arms nothing and is the plain stop.
 func (a *Agent) InterruptWithin(grace time.Duration) {
 	a.mu.Lock()
-	turn, running := a.turnSeq, a.running && !a.closed
+	turn, running := a.done, a.running && !a.closed && a.done != nil
 	a.mu.Unlock()
 	a.Interrupt()
 	if !running || grace <= 0 {
@@ -131,12 +134,11 @@ func (a *Agent) InterruptWithin(grace time.Duration) {
 	time.AfterFunc(grace, func() { a.abandonTurn(AbandonStopTimeout, turn) })
 }
 
-// abandonTurn is [Agent.Abandon] for one turn by its number, or for whichever
-// is running when turn is zero (a turn's number is never zero: it is counted
-// from one).
-func (a *Agent) abandonTurn(reason AbandonReason, turn uint64) (Usage, bool) {
+// abandonTurn is [Agent.Abandon] for the turn whose `done` channel is only, or
+// for whichever turn is running when only is nil.
+func (a *Agent) abandonTurn(reason AbandonReason, only chan struct{}) (Usage, bool) {
 	a.mu.Lock()
-	if a.closed || !a.running || (turn != 0 && a.turnSeq != turn) {
+	if a.closed || !a.running || (only != nil && a.done != only) {
 		a.mu.Unlock()
 		return Usage{}, false
 	}
