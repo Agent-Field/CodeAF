@@ -49,7 +49,8 @@ type foremanDoor func(st *store.Store, workspace, profileDir string, load func()
 //
 // THE NEW ONE IS ANSWERED BEFORE THE OLD ONE IS PUT AWAY. A foreman the door
 // REPLACED (a fresh start, or one moved out of a folder it may not work in) is
-// stopped and archived on a goroutine of its own once the new one is held:
+// stopped and archived on a goroutine of its own as the call returns, whether
+// or not the new one could be held:
 // closing a conversation whose turn will not let go waits out its graces, and
 // the app's call would time out behind them with the new manager already made
 // and nobody told.
@@ -67,6 +68,18 @@ func (b *appBackend) foremanOpened(ctx context.Context, p appwire.FactoryRef, do
 		return appwire.FactoryForeman{}, appwire.Errorf(appwire.CodeConflict, "the factory's manager could not be opened: %s", err)
 	}
 	id := appAgentID(transcript)
+	// THE REPLACEMENT IS DECIDED HERE, THE MOMENT THE DOOR HAS COMMITTED IT. The
+	// store names the new foreman from now on whatever the hold below does, so
+	// the app is told and the old one is put away on every road out of this
+	// call: an early return that skipped them left the old manager held and the
+	// factory's in memory with nothing on disk to say so, no later open would
+	// ever put it away, and each retried Clear made another conversation.
+	if before != "" && !sameSessionFile(before, transcript) {
+		defer func() {
+			b.sayForemanChanged(p.Factory, id, before)
+			guard.Go("app/factory foreman put away", func() { b.putAwayForeman(before) })
+		}()
+	}
 	a, err := b.find(id)
 	if err != nil {
 		return appwire.FactoryForeman{}, err
@@ -89,10 +102,6 @@ func (b *appBackend) foremanOpened(ctx context.Context, p appwire.FactoryRef, do
 	// app heard otherwise it went on offering to archive the manager.
 	if flipped {
 		b.sayAgent(a)
-	}
-	if before != "" && !sameSessionFile(before, transcript) {
-		b.sayForemanChanged(p.Factory, id, before)
-		guard.Go("app/factory foreman put away", func() { b.putAwayForeman(before) })
 	}
 	return appwire.FactoryForeman{Factory: p.Factory, Agent: id}, nil
 }

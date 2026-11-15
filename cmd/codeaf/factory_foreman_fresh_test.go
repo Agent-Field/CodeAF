@@ -12,6 +12,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -324,6 +325,75 @@ func TestTheFactoryManagersDoorReopensItAndFreshPutsTheOldOneAway(t *testing.T) 
 		}
 	}
 	s.mustFail(appwire.FeatureFactoryForemanFresh, map[string]any{"factory": "factory_other"}, appwire.CodeNotFound)
+}
+
+// A CLEAR WHOSE NEW MANAGER CANNOT BE HELD OPEN STILL REPLACES THE OLD ONE.
+//
+// The store names the new manager the moment the door returns. An open that
+// then failed used to return before the app was told or the old manager put
+// away: the old one stayed held and the factory's in memory with no mark on
+// disk, no later open ever put it away, and each retried Clear minted another
+// conversation.
+func TestAFreshStartWhoseNewManagerCannotBeHeldStillPutsTheOldOneAway(t *testing.T) {
+	s := newLocalSetup(t)
+	convs := foremanFakeOpens(s)
+	heard := &foremanHeard{next: s.backend.emit}
+	s.backend.emit = heard
+	st := s.start()
+	ref := appwire.FactoryRef{Factory: st.Factory}
+
+	first, err := s.backend.FactoryForemanOpen(context.Background(), ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inner := s.backend.open
+	var failing sync.Mutex
+	fail := true
+	s.backend.open = func(ask appOpenAsk) (*appConn, error) {
+		failing.Lock()
+		refuse := fail
+		failing.Unlock()
+		if refuse {
+			return nil, errors.New("the engine could not assemble the conversation")
+		}
+		return inner(ask)
+	}
+	if _, err := s.backend.FactoryForemanFresh(context.Background(), ref); err == nil {
+		t.Fatal("the fresh start was held open; the premise is gone")
+	}
+	failing.Lock()
+	fail = false
+	failing.Unlock()
+
+	named, _ := s.backend.local.host.floor.Foreman()
+	now := appAgentID(named)
+	if now == first.Agent {
+		t.Fatal("the store still names the old manager; the premise is gone")
+	}
+	if got := heard.replacements(); len(got) != 1 || got[0] != (appwire.FactoryForemanChanged{Factory: st.Factory, Agent: now, Replaced: first.Agent}) {
+		t.Fatalf("the app was told of the replacements %+v; want one, of %s by %s", got, first.Agent, now)
+	}
+	foremanEventually(t, "the replaced manager being stopped and archived", func() bool {
+		return s.backend.tidied(first.Agent) && !s.backend.isHeld(first.Agent) && convs.stops(first.Agent) > 0
+	})
+	a, err := s.backend.find(first.Agent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owned := true
+	s.backend.locked(func() { owned = a.view.FactoryOwned })
+	if owned {
+		t.Fatal("the replaced manager is still the factory's in memory")
+	}
+
+	// THE NEXT PRESS OPENS THE NEW MANAGER AND MAKES NONE.
+	again, err := s.backend.FactoryForemanOpen(context.Background(), ref)
+	if err != nil || again.Agent != now {
+		t.Fatalf("the next open answered %q, %v; want the manager the store names, %s", again.Agent, err, now)
+	}
+	if got := heard.replacements(); len(got) != 1 {
+		t.Fatalf("the next open replaced the manager again: %+v", got)
+	}
 }
 
 // foremanConvs is the fake conversations a rig opened, by agent id, so a test
