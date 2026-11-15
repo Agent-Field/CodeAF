@@ -299,9 +299,12 @@ func foremanMint(st *store.Store, workspace, profileDir string, load func() (fac
 		_ = st.SetForeman(old)
 		return "", err
 	}
-	if err := markFactoryForeman(st, transcript); err != nil {
-		return "", err
-	}
+	// THE MARK IS BEST EFFORT FROM HERE. The store and the team already name
+	// the new foreman, so it is the foreman whatever the mark does: a making
+	// that answered an error now told its caller nothing had changed when it
+	// had, and the old one was neither retired nor put away. Every open and
+	// every start marks the foreman the store names again.
+	_ = foremanMark(st, transcript)
 	if old != "" && !sameSessionFile(old, transcript) {
 		foremanRetire(old)
 	}
@@ -445,8 +448,12 @@ func foremanSwapTeam(profileDir, old, transcript, where string) error {
 	})
 }
 
-// Tests stand in for the new foreman's join to its team, to fail it alone.
-var foremanJoin = func(f *teams.File, team string, m teams.Member) error { return f.AddMember(team, m) }
+// Tests stand in for the new foreman's join to its team and for its mark, to
+// fail each one alone.
+var (
+	foremanJoin = func(f *teams.File, team string, m teams.Member) error { return f.AddMember(team, m) }
+	foremanMark = markFactoryForeman
+)
 
 // foremanTeamKey is the key a foreman's conversation is filed under in a
 // team: its session file, with symlinks resolved where it is there to

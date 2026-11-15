@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -444,6 +445,109 @@ func TestAFreshStartWhoseNewManagerCannotBeHeldStillPutsTheOldOneAway(t *testing
 	}
 	if got := heard.replacements(); len(got) != 1 {
 		t.Fatalf("the next open replaced the manager again: %+v", got)
+	}
+}
+
+// A CLEAR WHOSE MARK CANNOT BE WRITTEN STILL REPLACES THE OLD MANAGER.
+//
+// The mark is written after the store and the team name the new manager. A
+// mark that failed used to fail the whole making: the door answered an error
+// with the new manager already the store's, so the app was never told, the old
+// one was never retired or put away, and the next Clear made another.
+func TestAFreshStartWhoseMarkFailsStillReplacesTheOldManager(t *testing.T) {
+	s := newLocalSetup(t)
+	convs := foremanFakeOpens(s)
+	heard := &foremanHeard{next: s.backend.emit}
+	s.backend.emit = heard
+	st := s.start()
+	ref := appwire.FactoryRef{Factory: st.Factory}
+	first, err := s.backend.FactoryForemanOpen(context.Background(), ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldFile, _ := s.backend.local.host.floor.Foreman()
+
+	mark := foremanMark
+	t.Cleanup(func() { foremanMark = mark })
+	marks := 0
+	foremanMark = func(*store.Store, string) error {
+		marks++
+		return errors.New("the mark could not be written")
+	}
+	fresh, err := s.backend.FactoryForemanFresh(context.Background(), ref)
+	foremanMark = mark
+	if marks == 0 {
+		t.Fatal("the fresh start never wrote a mark; the premise is gone")
+	}
+	if err != nil {
+		t.Fatalf("a fresh start whose mark failed answered %v; the store already names the new manager", err)
+	}
+	named, _ := s.backend.local.host.floor.Foreman()
+	if fresh.Agent == first.Agent || appAgentID(named) != fresh.Agent {
+		t.Fatalf("the fresh start answered %s, the store names %s; want a new manager, the store's", fresh.Agent, appAgentID(named))
+	}
+	if got := heard.replacements(); len(got) != 1 || got[0] != (appwire.FactoryForemanChanged{Factory: st.Factory, Agent: fresh.Agent, Replaced: first.Agent}) {
+		t.Fatalf("the app was told of the replacements %+v; want one, of %s by %s", got, first.Agent, fresh.Agent)
+	}
+	if !s.backend.isHeld(fresh.Agent) {
+		t.Fatal("the fresh manager is not held open")
+	}
+	foremanEventually(t, "the replaced manager being stopped and archived", func() bool {
+		return s.backend.tidied(first.Agent) && !s.backend.isHeld(first.Agent) && convs.stops(first.Agent) > 0
+	})
+	if factoryOwnedConversation(oldFile) {
+		t.Error("the replaced manager still carries the mark")
+	}
+	// THE NEXT OPEN MARKS THE MANAGER THE STORE NAMES, and makes none.
+	again, err := s.backend.FactoryForemanOpen(context.Background(), ref)
+	if err != nil || again.Agent != fresh.Agent {
+		t.Fatalf("the next open answered %q, %v; want %s", again.Agent, err, fresh.Agent)
+	}
+	if !factoryForemanMarked(named) {
+		t.Error("the next open did not mark the manager the store names")
+	}
+}
+
+// A DOOR THAT FAILS AFTER THE STORE NAMED THE NEW MANAGER STILL REPLACES THE
+// OLD ONE. What the store names once the door is done decides, not whether the
+// door answered an error: every road out of the call tells the app and puts
+// the old manager away.
+func TestADoorThatFailsAfterTheStoreNamedANewManagerStillPutsTheOldOneAway(t *testing.T) {
+	s := newLocalSetup(t)
+	convs := foremanFakeOpens(s)
+	heard := &foremanHeard{next: s.backend.emit}
+	s.backend.emit = heard
+	st := s.start()
+	ref := appwire.FactoryRef{Factory: st.Factory}
+	first, err := s.backend.FactoryForemanOpen(context.Background(), ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cutShort := func(st *store.Store, workspace, profileDir string, load func() (factory.Snapshot, error)) func(context.Context) (string, error) {
+		return func(ctx context.Context) (string, error) {
+			if _, err := foremanFresh(st, workspace, profileDir, load)(ctx); err != nil {
+				return "", err
+			}
+			return "", errors.New("the making was cut short after the store named it")
+		}
+	}
+	if _, err := s.backend.foremanOpened(context.Background(), ref, cutShort); err == nil {
+		t.Fatal("the door that failed was answered as a success; the premise is gone")
+	}
+	named, _ := s.backend.local.host.floor.Foreman()
+	now := appAgentID(named)
+	if now == first.Agent {
+		t.Fatal("the store still names the old manager; the premise is gone")
+	}
+	if got := heard.replacements(); len(got) != 1 || got[0] != (appwire.FactoryForemanChanged{Factory: st.Factory, Agent: now, Replaced: first.Agent}) {
+		t.Fatalf("the app was told of the replacements %+v; want one, of %s by %s", got, first.Agent, now)
+	}
+	foremanEventually(t, "the replaced manager being stopped and archived", func() bool {
+		return s.backend.tidied(first.Agent) && !s.backend.isHeld(first.Agent) && convs.stops(first.Agent) > 0
+	})
+	again, err := s.backend.FactoryForemanOpen(context.Background(), ref)
+	if err != nil || again.Agent != now {
+		t.Fatalf("the next open answered %q, %v; want the manager the store names, %s", again.Agent, err, now)
 	}
 }
 

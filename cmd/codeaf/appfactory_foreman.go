@@ -64,22 +64,24 @@ func (b *appBackend) foremanOpened(ctx context.Context, p appwire.FactoryRef, do
 	defer gate.Unlock()
 	before, _ := host.floor.Foreman()
 	transcript, err := door(host.floor, host.workspace, host.profile, foremanLoad(host))(ctx)
+	// THE REPLACEMENT IS DECIDED HERE, BY WHAT THE STORE NAMES ONCE THE DOOR IS
+	// DONE, WHETHER THE DOOR FAILED OR NOT. The store names the new foreman from
+	// then on whatever the hold below does, so the app is told and the old one
+	// is put away on every road out of this call: an early return that skipped
+	// them left the old manager held and the factory's in memory with nothing
+	// on disk to say so, no later open would ever put it away, and each retried
+	// Clear made another conversation. A door that failed after the store had
+	// named the new one is such a road, so the door's answer is not the word.
+	if after, _ := host.floor.Foreman(); before != "" && after != "" && !sameSessionFile(before, after) {
+		defer func() {
+			b.sayForemanChanged(p.Factory, appAgentID(after), before)
+			guard.Go("app/factory foreman put away", func() { b.putAwayForeman(before) })
+		}()
+	}
 	if err != nil {
 		return appwire.FactoryForeman{}, appwire.Errorf(appwire.CodeConflict, "the factory's manager could not be opened: %s", err)
 	}
 	id := appAgentID(transcript)
-	// THE REPLACEMENT IS DECIDED HERE, THE MOMENT THE DOOR HAS COMMITTED IT. The
-	// store names the new foreman from now on whatever the hold below does, so
-	// the app is told and the old one is put away on every road out of this
-	// call: an early return that skipped them left the old manager held and the
-	// factory's in memory with nothing on disk to say so, no later open would
-	// ever put it away, and each retried Clear made another conversation.
-	if before != "" && !sameSessionFile(before, transcript) {
-		defer func() {
-			b.sayForemanChanged(p.Factory, id, before)
-			guard.Go("app/factory foreman put away", func() { b.putAwayForeman(before) })
-		}()
-	}
 	a, err := b.find(id)
 	if err != nil {
 		return appwire.FactoryForeman{}, err
