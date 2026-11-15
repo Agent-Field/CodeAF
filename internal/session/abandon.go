@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/guard"
 )
 
 // THE SECOND STAGE OF A STOP, AND WHY IT HAD TO BE BUILT FROM THE BOTTOM UP.
@@ -131,7 +132,12 @@ func (a *Agent) InterruptWithin(grace time.Duration) {
 	if !running || grace <= 0 {
 		return
 	}
-	time.AfterFunc(grace, func() { a.abandonTurn(AbandonStopTimeout, turn) })
+	time.AfterFunc(grace, func() {
+		// The timer's goroutine is no tool loop's and no surface's, so nothing
+		// above it would absorb a fault in the journal write below.
+		defer guard.Recover("session bounded stop")
+		a.abandonTurn(AbandonStopTimeout, turn)
+	})
 }
 
 // abandonTurn is [Agent.Abandon] for the turn whose `done` channel is only, or

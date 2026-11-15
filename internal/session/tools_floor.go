@@ -44,6 +44,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/guard"
 )
 
 // FloorDoor is the foreman's door onto the factory floor: the floor as the
@@ -158,44 +159,74 @@ func (a *Agent) factoryFloorTool() bare.Tool {
 		Description: factoryFloorDescription,
 		Schema:      json.RawMessage(factoryFloorSchemaJSON()),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
-			var parsed struct {
-				Ask      string `json:"ask"`
-				Item     int    `json:"item"`
-				Mark     []int  `json:"mark"`
-				Unmark   []int  `json:"unmark"`
-				Start    int    `json:"start"`
-				Priority string `json:"priority"`
-				Days     int    `json:"days"`
+			// A DOOR THAT FAULTED ANSWERS AS ANY FAULTED TOOL DOES. The door's
+			// calls run on goroutines of their own ([floorWithin]), out of reach
+			// of the tool loop's guard, so the fault is recovered there and
+			// carried back here, and the call answers the loop's own sentence.
+			var fault floorFault
+			text, isError, err := a.factoryFloorCall(withFloorFault(ctx, &fault), args)
+			if fault.err != nil {
+				return floorPanickedWords, true, nil
 			}
-			if len(args) > 0 {
-				if err := decodeToolArguments(args, &parsed); err != nil {
-					return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
-				}
-			}
-			ask := strings.ToLower(strings.TrimSpace(parsed.Ask))
-			priority := strings.ToLower(strings.TrimSpace(parsed.Priority))
-			acts := parsed.Start > 0 || priority != ""
-			if ask == "" && len(parsed.Mark)+len(parsed.Unmark) == 0 && !acts {
-				ask = floorAskAll
-			}
-			if ask != "" && !slices.Contains(floorAsks, ask) {
-				return rejectToolArguments(ctx, "Invalid arguments: ask is one of "+strings.Join(floorAsks[:len(floorAsks)-1], ", ")+" or "+floorAsks[len(floorAsks)-1]+"."), true, nil
-			}
-			if parsed.Days < 0 || parsed.Days > floorShippedDaysMost || (parsed.Days > 0 && ask != floorAskShipped) {
-				return rejectToolArguments(ctx, "Invalid arguments: days goes with ask shipped, from 1 to "+strconv.Itoa(floorShippedDaysMost)+"."), true, nil
-			}
-			if priority != "" && parsed.Item <= 0 {
-				return rejectToolArguments(ctx, "Invalid arguments: priority needs item, the number in the job's ref."), true, nil
-			}
-			if acts {
-				return a.floorAct(ctx, parsed.Start, parsed.Item, priority)
-			}
-			if ask == floorAskItem && parsed.Item <= 0 {
-				return rejectToolArguments(ctx, "Invalid arguments: ask item needs item, the number in the item's ref."), true, nil
-			}
-			return a.floorRun(ctx, ask, parsed.Item, parsed.Days, parsed.Mark, parsed.Unmark)
+			return text, isError, err
 		},
 	}
+}
+
+// floorPanickedWords is the result a factory_floor call whose door panicked
+// answers: the sentence the tool loop seeds for every call ([newBatchSlots]).
+const floorPanickedWords = "tool panicked: factory_floor did not return a result"
+
+// floorFault is where [floorWithin] leaves a door's recovered panic for the
+// call that is waiting on it. It is written and read on the tool's own
+// goroutine: floorWithin receives the fault on its channel and files it here
+// before returning.
+type floorFault struct{ err error }
+
+type floorFaultKey struct{}
+
+func withFloorFault(ctx context.Context, fault *floorFault) context.Context {
+	return context.WithValue(ctx, floorFaultKey{}, fault)
+}
+
+// factoryFloorCall is the factory_floor tool's body.
+func (a *Agent) factoryFloorCall(ctx context.Context, args json.RawMessage) (string, bool, error) {
+	var parsed struct {
+		Ask      string `json:"ask"`
+		Item     int    `json:"item"`
+		Mark     []int  `json:"mark"`
+		Unmark   []int  `json:"unmark"`
+		Start    int    `json:"start"`
+		Priority string `json:"priority"`
+		Days     int    `json:"days"`
+	}
+	if len(args) > 0 {
+		if err := decodeToolArguments(args, &parsed); err != nil {
+			return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
+		}
+	}
+	ask := strings.ToLower(strings.TrimSpace(parsed.Ask))
+	priority := strings.ToLower(strings.TrimSpace(parsed.Priority))
+	acts := parsed.Start > 0 || priority != ""
+	if ask == "" && len(parsed.Mark)+len(parsed.Unmark) == 0 && !acts {
+		ask = floorAskAll
+	}
+	if ask != "" && !slices.Contains(floorAsks, ask) {
+		return rejectToolArguments(ctx, "Invalid arguments: ask is one of "+strings.Join(floorAsks[:len(floorAsks)-1], ", ")+" or "+floorAsks[len(floorAsks)-1]+"."), true, nil
+	}
+	if parsed.Days < 0 || parsed.Days > floorShippedDaysMost || (parsed.Days > 0 && ask != floorAskShipped) {
+		return rejectToolArguments(ctx, "Invalid arguments: days goes with ask shipped, from 1 to "+strconv.Itoa(floorShippedDaysMost)+"."), true, nil
+	}
+	if priority != "" && parsed.Item <= 0 {
+		return rejectToolArguments(ctx, "Invalid arguments: priority needs item, the number in the job's ref."), true, nil
+	}
+	if acts {
+		return a.floorAct(ctx, parsed.Start, parsed.Item, priority)
+	}
+	if ask == floorAskItem && parsed.Item <= 0 {
+		return rejectToolArguments(ctx, "Invalid arguments: ask item needs item, the number in the item's ref."), true, nil
+	}
+	return a.floorRun(ctx, ask, parsed.Item, parsed.Days, parsed.Mark, parsed.Unmark)
 }
 
 // floorAct starts one job, or sets one job's priority, through the door's
@@ -263,11 +294,26 @@ func floorWithin[T any](ctx context.Context, wait time.Duration, call func(conte
 	}
 	done := make(chan answer, 1)
 	go func() {
+		// THE DOOR'S CODE RUNS HERE, off the tool loop's guarded goroutine, so
+		// a panic in it is recovered here or it takes the process down. The
+		// fault goes back on done as an error, and the call that is waiting
+		// returns at once.
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				done <- answer{err: &floorPanic{guard.Note("session tool factory_floor", recovered)}}
+			}
+		}()
 		value, err := call(ctx)
 		done <- answer{value, err}
 	}()
 	select {
 	case got := <-done:
+		var panicked *floorPanic
+		if errors.As(got.err, &panicked) {
+			if fault, ok := ctx.Value(floorFaultKey{}).(*floorFault); ok && fault.err == nil {
+				fault.err = panicked.fault
+			}
+		}
 		return got.value, got.err
 	case <-ctx.Done():
 		var none T
@@ -277,6 +323,12 @@ func floorWithin[T any](ctx context.Context, wait time.Duration, call func(conte
 		return none, ctx.Err()
 	}
 }
+
+// floorPanic is a door call that panicked, as [floorWithin] returns it.
+type floorPanic struct{ fault error }
+
+func (p *floorPanic) Error() string { return p.fault.Error() }
+func (p *floorPanic) Unwrap() error { return p.fault }
 
 // floorSnapshot is the floor read under [floorReadWait], in words the model
 // can act on when it did not come.

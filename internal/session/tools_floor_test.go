@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/manual"
 )
@@ -562,5 +563,94 @@ func TestFloorMarkRefusedSaysALateSelectionIsNotKnown(t *testing.T) {
 	}
 	if got := floorMarkRefused("unselected", errors.New("the store is read-only")); got != "nothing unselected: the store is read-only" {
 		t.Errorf("a refused selection reads %q", got)
+	}
+}
+
+// faultyFloorDoor is a floor whose every call panics where asked to, the way a
+// door reading disk state can (a nil map, an index out of range).
+type faultyFloorDoor struct {
+	actingFloorDoor
+	in string
+}
+
+func (d *faultyFloorDoor) fault(where string) {
+	if d.in == where {
+		var nothing map[string]int
+		nothing["boom"] = 1
+	}
+}
+
+func (d *faultyFloorDoor) Snapshot(ctx context.Context) (factory.Snapshot, error) {
+	d.fault("snapshot")
+	return d.actingFloorDoor.Snapshot(ctx)
+}
+
+func (d *faultyFloorDoor) Mark(ctx context.Context, ids []int, on bool) error {
+	d.fault("mark")
+	return d.actingFloorDoor.Mark(ctx, ids, on)
+}
+
+func (d *faultyFloorDoor) StartItem(ctx context.Context, id int) (string, error) {
+	d.fault("start")
+	return d.actingFloorDoor.StartItem(ctx, id)
+}
+
+func (d *faultyFloorDoor) SetPriority(ctx context.Context, id int, value string) (string, error) {
+	d.fault("priority")
+	return d.actingFloorDoor.SetPriority(ctx, id, value)
+}
+
+// A DOOR THAT PANICS IS A FAULTED TOOL, NOT A DEAD PROCESS.
+//
+// The door's calls run on goroutines of their own so a wedged one cannot hold
+// the turn, which puts them out of reach of the tool loop's guard. Each is
+// recovered where it runs, and the call answers at once with the sentence the
+// loop gives any tool that panicked.
+func TestFactoryFloorAnswersAPanickingDoorAsAFaultedTool(t *testing.T) {
+	for _, tc := range []struct{ in, args string }{
+		{"snapshot", `{"ask":"all"}`},
+		{"mark", `{"mark":[4]}`},
+		{"start", `{"start":4}`},
+		{"priority", `{"priority":"p1","item":4}`},
+	} {
+		t.Run(tc.in, func(t *testing.T) {
+			door := &faultyFloorDoor{actingFloorDoor: actingFloorDoor{fakeFloorDoor: floorLab()}, in: tc.in}
+			agent := &Agent{config: Config{Workspace: t.TempDir(), Floor: door}}
+			text, isErr, err := agent.factoryFloorTool().Execute(context.Background(), json.RawMessage(tc.args))
+			if err != nil || !isErr || text != floorPanickedWords {
+				t.Fatalf("a door panicking in %s answered %q (error %v, %v)", tc.in, text, isErr, err)
+			}
+		})
+	}
+}
+
+// AND INSIDE A TURN THE TURN GOES ON: the model reads the fault and answers.
+func TestAPanickingFloorDoorLeavesTheTurnStanding(t *testing.T) {
+	var seen []string
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("call-1", "factory_floor", `{"ask":"all"}`), nil
+		},
+		func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+			for _, message := range messages {
+				if message.Role == "tool" {
+					for _, part := range message.Content {
+						seen = append(seen, part.Text)
+					}
+				}
+			}
+			return textResponse("the factory could not be read"), nil
+		},
+	}}
+	door := &faultyFloorDoor{actingFloorDoor: actingFloorDoor{fakeFloorDoor: floorLab()}, in: "snapshot"}
+	agent, _ := newTestAgent(t, completer, func(c *Config) { c.Floor = door })
+	events, err := agent.Submit(context.Background(), "how many jobs are running?")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range events {
+	}
+	if len(seen) != 1 || seen[0] != floorPanickedWords {
+		t.Fatalf("the model was handed %q for a door that panicked", seen)
 	}
 }
