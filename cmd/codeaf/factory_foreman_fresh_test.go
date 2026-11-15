@@ -551,6 +551,65 @@ func TestADoorThatFailsAfterTheStoreNamedANewManagerStillPutsTheOldOneAway(t *te
 	}
 }
 
+// A NAME THE PERSON GAVE A REPLACED MANAGER IS KEPT WHEN IT IS PUT AWAY.
+//
+// The app decided from the title it had last heard, which a rename made since
+// (in the terminal, or before a relaunch) is not in, and wrote the earlier
+// manager's name over the person's in the journal. The journal's own name
+// decides now, as it does for every other rename of a foreman.
+func TestAReplacedManagerThePersonRenamedKeepsItsName(t *testing.T) {
+	s := newLocalSetup(t)
+	foremanFakeOpens(s)
+	st := s.start()
+	ref := appwire.FactoryRef{Factory: st.Factory}
+	first, err := s.backend.FactoryForemanOpen(context.Background(), ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldFile, _ := s.backend.local.host.floor.Foreman()
+	// Put away by the person, so nothing holds it, then renamed where this
+	// engine does not hear of it.
+	if err := s.backend.Archive([]string{first.Agent}); err != nil {
+		t.Fatal(err)
+	}
+	if s.backend.isHeld(first.Agent) {
+		t.Fatal("the archived manager is still held; the premise is gone")
+	}
+	const given = "Planning the release"
+	if err := session.RetitleConversation(oldFile, given); err != nil {
+		t.Fatal(err)
+	}
+	a, err := s.backend.find(first.Agent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	title := func() string {
+		var got string
+		s.backend.locked(func() { got = a.view.Title })
+		return got
+	}
+	if got := title(); got != foremanTitle {
+		t.Fatalf("the engine heard the manager titled %q; the premise (a stale %q) is gone", got, foremanTitle)
+	}
+	if _, err := s.backend.FactoryForemanFresh(context.Background(), ref); err != nil {
+		t.Fatal(err)
+	}
+	foremanEventually(t, "the replaced manager being put away", func() bool { return title() != foremanTitle })
+	if got := title(); got != given {
+		t.Errorf("the engine says the replaced manager is %q; want the person's %q", got, given)
+	}
+	data, err := os.ReadFile(oldFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), foremanEarlierTitle) {
+		t.Errorf("the person's name was written over in the journal:\n%s", data)
+	}
+	if meta, err := session.LoadMeta(session.DirOf(oldFile)); err != nil || meta.Title != given {
+		t.Errorf("the folder's row says %q (%v); want %q", meta.Title, err, given)
+	}
+}
+
 // foremanConvs is the fake conversations a rig opened, by agent id, so a test
 // can read whether one was stopped.
 type foremanConvs struct {

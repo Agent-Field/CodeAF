@@ -361,7 +361,7 @@ func foremanRetire(transcript string) {
 // ([session.SetTitle]), and its holder renames it through its own door (the
 // app's [appBackend.putAwayForeman]).
 func foremanRename(transcript, to string, from ...string) {
-	still := func(current string) bool { return slices.Contains(from, strings.TrimSpace(current)) }
+	still := foremanNamed(from...)
 	// The row is read first, without claiming anything: a conversation whose
 	// row already says another name has nothing to rename, and its journal is
 	// neither claimed nor read through (every open of the manager comes here).
@@ -375,6 +375,13 @@ func foremanRename(transcript, to string, from ...string) {
 	// Held, or its journal already says another name: the row still follows
 	// its own name, under its lock.
 	_, _ = session.SetTitle(dir, to, still)
+}
+
+// foremanNamed is the test every rename of a foreman keeps: the name the
+// conversation has now is one of from. Any other name is one the person gave
+// it, and it stays.
+func foremanNamed(from ...string) func(current string) bool {
+	return func(current string) bool { return slices.Contains(from, strings.TrimSpace(current)) }
 }
 
 // foremanPolicyWait is how long a foreman's making waits for the floor's read

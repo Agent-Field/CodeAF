@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
@@ -240,16 +241,29 @@ func (b *appBackend) putAwayForeman(transcript string) {
 		// again to write one line is the thing this whole door exists to
 		// stop: its journal takes the line directly. One that is open (a tab
 		// holds it, or a turn is running) is renamed through its own door.
-		var err error
+		//
+		// THE JOURNAL'S NAME DECIDES, NOT THIS ENGINE'S. The title read above
+		// is what this engine last heard, and a name the person gave since
+		// (in the terminal, or before a relaunch) is not in it: the journal
+		// is renamed only while it still says the manager's name, as
+		// [foremanRename] renames it, and a name the person gave is what this
+		// engine says from here on.
+		title := foremanEarlierTitle
 		if b.isHeld(id) {
-			_, err = b.Rename(id, foremanEarlierTitle)
+			_, _ = b.Rename(id, foremanEarlierTitle)
 		} else {
-			err = session.RetitleConversation(transcript, foremanEarlierTitle)
+			named, still := "", foremanNamed(foremanTitle, foremanOldTitle)
+			renamed, err := session.RetitleConversationWhen(transcript, foremanEarlierTitle, func(current string) bool {
+				named = strings.TrimSpace(current)
+				return still(current)
+			})
+			// A journal that could not be read leaves the earlier name, as
+			// before; one that says another name keeps it.
+			if err == nil && !renamed && named != "" {
+				title = named
+			}
 		}
-		// Whether or not the journal took it, this engine says the earlier
-		// name from here on.
-		_ = err
-		b.locked(func() { a.view.Title = foremanEarlierTitle })
+		b.locked(func() { a.view.Title = title })
 	}
 	_ = b.Stop(id)
 	if err := b.Archive([]string{id}); err != nil {
