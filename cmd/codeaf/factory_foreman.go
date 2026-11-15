@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -200,7 +201,8 @@ func withForeman(seam factory.Seam, st *store.Store, workspace, profileDir strin
 // own areas. The old conversation is left on disk, off the `factory` team and
 // no longer marked the factory's. The app stops and archives it
 // ([appBackend.foremanOpened], [appBackend.settleForeman]); the terminal's
-// door leaves it as it is, an ordinary conversation in the person's list.
+// door leaves it an ordinary conversation in the person's list, renamed as
+// the earlier one ([foremanRetire]).
 func foremanMaker(st *store.Store, workspace, profileDir string, load func() (factory.Snapshot, error)) func(context.Context) (string, error) {
 	return func(context.Context) (string, error) {
 		factoryReconcileOnce(profileDir, st)
@@ -342,15 +344,34 @@ func foremanSweep(st *store.Store, profileDir string) []string {
 // It is best effort; the new foreman is the factory's either way.
 func foremanRetire(transcript string) {
 	unmarkFactoryForeman(transcript)
+	foremanRename(transcript, foremanEarlierTitle, foremanTitle, foremanOldTitle)
+}
+
+// foremanRename names a foreman's conversation to, when the name it has now
+// is one of from, and leaves a name the person gave it alone.
+//
+// THE NAME IS WRITTEN WHERE AN OPEN READS IT. A conversation nobody holds
+// takes it on its journal ([session.RetitleConversationWhen]), so the name
+// survives the next open: written to the folder's row alone, a retired
+// manager read "Factory manager" again the first time it was opened. One that
+// is held (a window has it) has its row renamed under the row's lock
+// ([session.SetTitle]), and its holder renames it through its own door (the
+// app's [appBackend.putAwayForeman]).
+func foremanRename(transcript, to string, from ...string) {
+	still := func(current string) bool { return slices.Contains(from, strings.TrimSpace(current)) }
+	// The row is read first, without claiming anything: a conversation whose
+	// row already says another name has nothing to rename, and its journal is
+	// neither claimed nor read through (every open of the manager comes here).
 	dir := session.DirOf(transcript)
-	meta, err := session.LoadMeta(dir)
-	if err != nil {
+	if meta, err := session.LoadMeta(dir); err != nil || !still(meta.Title) {
 		return
 	}
-	if title := strings.TrimSpace(meta.Title); title == foremanTitle || title == foremanOldTitle {
-		meta.Title = foremanEarlierTitle
-		_ = session.SaveMeta(dir, meta)
+	if renamed, err := session.RetitleConversationWhen(transcript, to, still); err == nil && renamed {
+		return
 	}
+	// Held, or its journal already says another name: the row still follows
+	// its own name, under its lock.
+	_, _ = session.SetTitle(dir, to, still)
 }
 
 // foremanPolicyWait is how long a foreman's making waits for the floor's read
@@ -440,16 +461,8 @@ func foremanTeamKey(transcript string) string {
 // title. A title the person changed is theirs and stays. It is best effort;
 // the conversation opens either way.
 func foremanRetitle(profileDir, transcript string) {
-	dir := session.DirOf(transcript)
-	if meta, err := session.LoadMeta(dir); err == nil && strings.TrimSpace(meta.Title) == foremanOldTitle {
-		meta.Title = foremanTitle
-		_ = session.SaveMeta(dir, meta)
-	}
-	key := transcript
-	if real, err := filepath.EvalSymlinks(transcript); err == nil {
-		key = real
-	}
-	key = filepath.Clean(key)
+	foremanRename(transcript, foremanTitle, foremanOldTitle)
+	key := foremanTeamKey(transcript)
 	_ = teams.UpdateOpen(profileDir, func(f *teams.File) error {
 		for ti := range f.Teams {
 			for mi := range f.Teams[ti].Members {

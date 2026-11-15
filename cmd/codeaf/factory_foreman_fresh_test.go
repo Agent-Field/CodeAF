@@ -148,6 +148,12 @@ func TestAForemanWorkingInTheCodeafHomeIsMadeAgainInAFolderOfItsOwn(t *testing.T
 	if now, err := session.LoadMeta(session.DirOf(made)); err != nil || now.Title != foremanTitle {
 		t.Errorf("the foreman made again is titled %q (%v)", now.Title, err)
 	}
+	// AND THE NAME STICKS FROM THIS DOOR TOO, which no app puts away after:
+	// it is on the journal, where an open reads a name from, so the next open
+	// of the old conversation does not call it "Factory manager" again.
+	if data, err := os.ReadFile(old); err != nil || !strings.Contains(string(data), foremanEarlierTitle) {
+		t.Errorf("the replaced foreman's journal does not carry %q (%v); its next open reads the manager's name", foremanEarlierTitle, err)
+	}
 	// AND THE NEXT ASK OPENS THE SAME ONE, as every ask after a making does.
 	if again, err := maker(context.Background()); err != nil || !sameSessionFile(again, made) {
 		t.Fatalf("the next open answered %q, %v; want %q", again, err, made)
