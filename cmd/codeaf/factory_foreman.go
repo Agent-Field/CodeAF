@@ -441,9 +441,12 @@ func foremanSwapTeam(profileDir, old, transcript, where string) error {
 			}
 		}
 		id := factoryParentTeam(f, now)
-		return f.AddMember(id, teams.Member{Key: newKey, File: transcript, Where: where, Word: foremanTitle, Handle: foremanHandle, JoinedAt: now})
+		return foremanJoin(f, id, teams.Member{Key: newKey, File: transcript, Where: where, Word: foremanTitle, Handle: foremanHandle, JoinedAt: now})
 	})
 }
+
+// Tests stand in for the new foreman's join to its team, to fail it alone.
+var foremanJoin = func(f *teams.File, team string, m teams.Member) error { return f.AddMember(team, m) }
 
 // foremanTeamKey is the key a foreman's conversation is filed under in a
 // team: its session file, with symlinks resolved where it is there to

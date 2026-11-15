@@ -205,32 +205,30 @@ func TestForemanFreshStartsTheManagerOver(t *testing.T) {
 // left, then the new one joined. A join that failed left the team with no
 // foreman and the store naming the one that had left. The swap is one write
 // after the store now, and a swap that fails gives the store its old word back.
+//
+// THE LEAVE CAN SUCCEED AND THE JOIN ALONE FAIL: that is how the old order
+// broke. A teams file nothing can write fails the leave too, so it passed on
+// the old order as well; here every write goes through and only the join
+// refuses.
 func TestAFreshStartTheTeamRefusesLeavesTheOldForemanInPlace(t *testing.T) {
 	st, web, profile := talkLab(t)
 	first, err := foremanMaker(st, web, profile, nil)(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := teams.Path(profile)
-	kept, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// A folder where the teams file belongs: nothing can read it or write it.
-	if err := os.Remove(path); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Mkdir(path, 0o700); err != nil {
-		t.Fatal(err)
+	join := foremanJoin
+	t.Cleanup(func() { foremanJoin = join })
+	joins := 0
+	foremanJoin = func(*teams.File, string, teams.Member) error {
+		joins++
+		return errors.New("the team will not take another member")
 	}
 	if fresh, err := foremanFresh(st, web, profile, nil)(context.Background()); err == nil {
-		t.Fatalf("a fresh start over a teams file nothing can read answered %q; the premise is gone", fresh)
+		t.Fatalf("a fresh start whose join failed answered %q; the premise is gone", fresh)
 	}
-	if err := os.Remove(path); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, kept, 0o600); err != nil {
-		t.Fatal(err)
+	foremanJoin = join
+	if joins != 1 {
+		t.Fatalf("the new foreman was joined %d times; want once", joins)
 	}
 	if named, _ := st.Foreman(); !sameSessionFile(named, first) {
 		t.Fatalf("the store names %q after a swap that failed; want the old foreman %q", named, first)
@@ -240,6 +238,9 @@ func TestAFreshStartTheTeamRefusesLeavesTheOldForemanInPlace(t *testing.T) {
 	}
 	if !factoryOwnedConversation(first) {
 		t.Error("the old foreman lost its mark over a swap that failed")
+	}
+	if again, err := foremanMaker(st, web, profile, nil)(context.Background()); err != nil || !sameSessionFile(again, first) {
+		t.Fatalf("the open after a swap that failed answered %q, %v; want the old foreman", again, err)
 	}
 }
 
