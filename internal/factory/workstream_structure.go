@@ -271,8 +271,8 @@ func InheritPeople(all OrgWorkstreams, changed []string) []string {
 
 // ReadsFilesOf is the workstreams whose files w's people and agents read, in
 // order: w itself, then the workstream it is inside, whose files it shows as
-// "From <parent>". Files (lane W4) asks this rather than walking parents
-// itself, so the one-level rule is spelled once.
+// "From <parent>". Files asks this rather than walking parents itself, so
+// the one-level rule is spelled once.
 func ReadsFilesOf(w OrgWorkstream) []string {
 	if w.Parent == "" {
 		return []string{w.ID}
@@ -366,7 +366,7 @@ type KeepCandidate struct {
 // ArchiveKeep is what a child workstream could leave in its parent when it is
 // archived: its pages and its sources, in its own order. A top-level
 // workstream answers nothing, because there is no parent to keep them in.
-// Moving them is Files' (lane W4); this only says what there is.
+// Files moves them; this only says what there is.
 func ArchiveKeep(w OrgWorkstream) []KeepCandidate {
 	out := []KeepCandidate{}
 	if w.Parent == "" {

@@ -172,7 +172,7 @@ func (h *Handler) peopleOf(ws factory.OrgWorkstream) map[string]bool {
 
 // WorkstreamPeopleRemoved is told, after a save, who left a workstream (and
 // every workstream inside it) and who takes their open work: the rules'
-// fallback, else the steward. Tasks (lane W2) sets it to hand their open
+// fallback, else the steward. The task list sets it to hand their open
 // tasks on; nil hands nothing.
 var WorkstreamPeopleRemoved func(h *Handler, r *http.Request, ws []string, removed []string, to string)
 
