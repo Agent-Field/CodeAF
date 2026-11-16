@@ -33,3 +33,7 @@ On the server the agent carries one tool, `workstream_pages`, and nothing else:
 It writes as the person who asked, and their rights are checked on every write. A page somebody has opened for editing is never written over: the agent's text is kept as a new version in that page's history, and anyone with edit restores it from there.
 
 It cannot run commands, read or change a repository, open files, start or stop factory jobs, use a computer, search the web or remember things between workstreams. For any of that, use `driver` mode, where the agent runs on a person's laptop with their tools.
+
+## a new organization workstream starts with an Overview page — never empty
+
+When someone makes a workstream on the organization's server and sends no pages with it, the server gives it one page: titled "Overview", of kind overview, with nothing written in it yet. That is the same page the desktop app sends, so a workstream made from the app, from a script or from any other client always has a page people (and the server's agent) can write in. A workstream made with pages of its own keeps exactly those pages, and no Overview is added.

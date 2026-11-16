@@ -393,3 +393,27 @@ func TestGoAheadReadOnOrgWorkstreamNeedsSight(t *testing.T) {
 		t.Fatalf("a hidden workstream's policy said %q where the workstream says %q", hidden.Error, gone.Error)
 	}
 }
+
+// A WORKSTREAM MADE WITH NO PAGES STARTS WITH THE DESK'S OVERVIEW, so a client
+// other than the desk never makes one nobody can write in; one made with pages
+// keeps exactly the pages it sent.
+func TestOrgWorkstreamMadeWithNoPagesStartsWithAnOverview(t *testing.T) {
+	o := newWSOrg(t)
+	bare := o.create(t, "santosh", api.WorkstreamNew{Name: "Launch plan"})
+	if len(bare.Pages) != 1 {
+		t.Fatalf("pages = %+v, want one Overview", bare.Pages)
+	}
+	p := bare.Pages[0]
+	if p.Title != "Overview" || p.Kind != "overview" || p.BodyMD != "" || p.Parent != "" || !strings.HasPrefix(p.ID, "pg_") || p.UpdatedBy != "santosh" || p.UpdatedAt == "" {
+		t.Fatalf("overview = %+v", p)
+	}
+	var again api.Workstream
+	o.do(t, "santosh", "GET", "/v1/workstreams/"+bare.ID, -1, nil, 200, &again)
+	if len(again.Pages) != 1 || again.Pages[0].ID != p.ID {
+		t.Fatalf("kept pages = %+v", again.Pages)
+	}
+	own := o.create(t, "santosh", api.WorkstreamNew{Name: "Runbook", Pages: []api.WorkstreamPage{{Title: "Steps", Kind: "runbook"}}})
+	if len(own.Pages) != 1 || own.Pages[0].Title != "Steps" || own.Pages[0].Kind != "runbook" {
+		t.Fatalf("own pages = %+v", own.Pages)
+	}
+}
