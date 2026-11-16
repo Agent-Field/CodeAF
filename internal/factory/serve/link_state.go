@@ -154,9 +154,9 @@ func (h *Handler) factoryAccess(w http.ResponseWriter, r *http.Request) {
 		out.Factory.Operator = tok.InvitedBy
 	}
 	// A link made for one GitHub login is used by signing in with GitHub as
-	// that person; it never offers a password.
+	// that person; it never offers a password or a passkey.
 	if tok.InvitedLogin != "" {
-		out.Factory.SignIn = slices.DeleteFunc(out.Factory.SignIn, func(m string) bool { return m == signInPassword })
+		out.Factory.SignIn = slices.DeleteFunc(out.Factory.SignIn, func(m string) bool { return m == signInPassword || m == signInPasskey })
 	}
 	// Only a link that matched earns the host's face; the secret is the proof.
 	if known, ok := h.signedInPeople([]string{out.Factory.Operator})[factory.NormalizeHandle(out.Factory.Operator)]; ok {

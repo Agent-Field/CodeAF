@@ -250,7 +250,9 @@ type Handler struct {
 	pwOnce  sync.Once
 	pwGuard *passwordGuard
 	// accounts is accounts.json as last read (password_accounts.go).
-	accounts       accountsCache
+	accounts accountsCache
+	// passkeys holds the WebAuthn ceremonies in flight (passkey.go).
+	passkeys       passkeyState
 	replays        replayCache
 	machinesMu     sync.Mutex
 	machines       map[string]machineRow
@@ -293,6 +295,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.route("/v1/auth/device/poll", map[string]http.HandlerFunc{http.MethodPost: h.pollDevice})
 	h.route("/v1/auth/password", map[string]http.HandlerFunc{http.MethodPost: h.passwordSignIn})
 	h.route("/v1/me/password", map[string]http.HandlerFunc{http.MethodPost: h.passwordChange})
+	h.passkeyRoutes()
 	h.route("/access", map[string]http.HandlerFunc{http.MethodGet: h.access, http.MethodPost: h.access})
 	h.route("/v1/access/revoke-sessions", map[string]http.HandlerFunc{http.MethodPost: h.revokeSessions})
 	h.read("/v1/queue", h.queue)
@@ -458,7 +461,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			return
 		}
-	} else if r.URL.Path != "/access" && r.URL.Path != "/v1/factory-access" && r.URL.Path != "/v1/about" && r.URL.Path != "/v1/auth/password" && !h.allowed(r) {
+	} else if r.URL.Path != "/access" && r.URL.Path != "/v1/factory-access" && r.URL.Path != "/v1/about" && r.URL.Path != "/v1/auth/password" && !passkeyOpenPath(r.URL.Path) && !h.allowed(r) {
 		if h.authFailed(w, r) {
 			return
 		}
@@ -475,7 +478,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if h.authFailed(w, r) {
 		return
 	}
-	if !workerPath(r.URL.Path) && r.URL.Path != "/v1/about" && r.URL.Path != "/access" && r.URL.Path != "/v1/auth/device" && r.URL.Path != "/v1/auth/device/poll" && r.URL.Path != "/v1/auth/password" {
+	if !workerPath(r.URL.Path) && r.URL.Path != "/v1/about" && r.URL.Path != "/access" && r.URL.Path != "/v1/auth/device" && r.URL.Path != "/v1/auth/device/poll" && r.URL.Path != "/v1/auth/password" && !passkeyOpenPath(r.URL.Path) {
 		if session, ok := h.credential(r); ok && session.tokenID != "" {
 			for _, tok := range h.tokenRows() {
 				if tok.ID == session.tokenID && (tok.AccessLink || tok.InvitedBy != "") {
@@ -943,6 +946,9 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 	if session.profile != nil && session.profile.Handle != "" {
 		body.SignInKind = personKind(*session.profile)
 		body.GitHubSignedIn = body.SignInKind == signInGitHub
+		if session.via != "" && body.SignInKind == signInPassword {
+			body.SignInKind = session.via
+		}
 	}
 	// What this factory is configured to do, said by the factory itself so a
 	// client never probes a real GitHub device flow to find out.

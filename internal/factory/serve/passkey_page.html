@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="dark light">
+<title>{{.Heading}} · codeaf</title>
+<link rel="stylesheet" href="/passkey/page.css">
+<script src="/passkey/page.js" defer></script>
+</head>
+<body>
+<main id="ceremony" data-flow="{{.Flow}}" data-purpose="{{.Purpose}}" data-host="{{.Host}}"{{if .Ended}} data-ended="true"{{end}}>
+  <p class="where">{{.Host}}</p>
+  <h1>{{.Heading}}</h1>
+  <p class="lede" id="lede">{{.Lede}}</p>
+  {{if not .Ended}}
+  <form id="form" novalidate>
+    {{if .AskUsername}}
+    <label for="username">Username</label>
+    <input id="username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="39" required>
+    <p class="hint">Lowercase letters, numbers and dashes.</p>
+    {{end}}
+    {{if .AskName}}
+    <label for="name">Your name <span class="quiet">optional</span></label>
+    <input id="name" name="name" autocomplete="name" maxlength="80">
+    {{end}}
+    {{if .AskLabel}}
+    <label for="label">Name this passkey <span class="quiet">optional</span></label>
+    <input id="label" name="label" maxlength="60" placeholder="MacBook Touch ID">
+    {{end}}
+    <button id="go" type="submit">{{.Button}}</button>
+    <p class="hint" id="kind" hidden>Use your phone or a security key.</p>
+  </form>
+  {{end}}
+  <p class="status" id="status" role="status" aria-live="polite"></p>
+</main>
+</body>
+</html>

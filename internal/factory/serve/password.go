@@ -74,6 +74,11 @@ func (h *Handler) passwordsOn() bool {
 // signInMethods is how a person may sign in here, preferred first.
 func (h *Handler) signInMethods() []string {
 	out := []string{}
+	// A passkey is the first choice wherever the server can offer one: an
+	// https address with a DNS name (passkey.go relyingParty).
+	if h.passkeysOn() {
+		out = append(out, signInPasskey)
+	}
 	if h.passwordsOn() {
 		out = append(out, signInPassword)
 	}
@@ -209,6 +214,12 @@ var errPasswordMoved = errors.New("the password changed during the sign-in")
 // the session lock, the one a change or a reset takes to end sessions: a
 // sign-in verified against a password replaced meanwhile makes nothing.
 func (h *Handler) mintSession(w http.ResponseWriter, r *http.Request, profile api.Profile, gen int64) (string, accessSession, error) {
+	return h.mintSessionVia(w, r, profile, gen, "")
+}
+
+// mintSessionVia is mintSession for a session made some way other than a
+// password (via, as accessSession.via), which /v1/me reports as its kind.
+func (h *Handler) mintSessionVia(w http.ResponseWriter, r *http.Request, profile api.Profile, gen int64, via string) (string, accessSession, error) {
 	credential, err := secret()
 	if err != nil {
 		return "", accessSession{}, err
@@ -219,7 +230,7 @@ func (h *Handler) mintSession(w http.ResponseWriter, r *http.Request, profile ap
 	}
 	now := h.now()
 	session := accessSession{id: "session_" + id, expires: now.Add(accessSessionTTL), created: now, lastSeen: now,
-		profile: &profile, device: deviceLabel(r), credGen: gen}
+		profile: &profile, device: deviceLabel(r), credGen: gen, via: via}
 	h.sessions.mu.Lock()
 	acct, held, err := h.freshAccount(profile.Handle)
 	if err == nil && (!held || acct.Gen != gen) {
@@ -498,8 +509,12 @@ func (h *Handler) passwordSignIn(w http.ResponseWriter, r *http.Request) {
 		normal, found = "", false
 	}
 	phc := dummyHash()
-	if found {
+	if found && acct.Hash != "" {
 		phc = acct.Hash
+	} else {
+		// A person who signs in only with a passkey has no password to
+		// match, and pays the same verify as an unknown name.
+		found = false
 	}
 	ok, weaker, err := verifyPassword(normal, phc)
 	if errors.Is(err, errHashBusy) {
@@ -594,7 +609,13 @@ func (h *Handler) passwordChange(w http.ResponseWriter, r *http.Request) {
 	if len(current) > passwordMaxBytes {
 		current = ""
 	}
-	match, _, err := verifyPassword(current, acct.Hash)
+	// A person who signs in only with a passkey sets a first password with
+	// no current one; the signed-in session is the proof, as it is for
+	// adding a passkey. Anyone with a password must give it.
+	match, err := acct.Hash == "" && current == "", error(nil)
+	if acct.Hash != "" {
+		match, _, err = verifyPassword(current, acct.Hash)
+	}
 	if errors.Is(err, errHashBusy) {
 		h.tooManyTries(w)
 		return

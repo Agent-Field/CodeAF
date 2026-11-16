@@ -59,19 +59,24 @@ var (
 	ErrGitHubLink = errors.New("this link is for a GitHub sign-in")
 )
 
-// Account is one password person. Hash is a PHC string. Gen counts every
-// time the password was set (sign-up makes it 1; a change or a reset adds
-// one; a transparent rehash does not): a session carries the Gen it was made
-// under and is refused as soon as the account's Gen has moved past it, so no
-// session made with an old password outlives the change, however the two
-// raced. Changed is when Gen last moved, for people to read.
+// Account is one person with an account on this server. Hash is a PHC
+// string, empty for a person who signs in only with a passkey. Gen counts
+// every time a way in was set or taken away (sign-up makes it 1; a password
+// change, a reset, or removing a passkey adds one; a transparent rehash does
+// not): a session carries the Gen it was made under and is refused as soon as
+// the account's Gen has moved past it, so no session made with an old
+// credential outlives the change, however the two raced. Changed is when Gen
+// last moved, for people to read. UserID and Passkeys are the person's
+// WebAuthn user handle and credentials (passkeys.go).
 type Account struct {
-	Handle  string    `json:"handle"`
-	Name    string    `json:"name,omitempty"`
-	Hash    string    `json:"hash"`
-	Gen     int64     `json:"gen"`
-	Created time.Time `json:"created"`
-	Changed time.Time `json:"changed"`
+	Handle   string    `json:"handle"`
+	Name     string    `json:"name,omitempty"`
+	Hash     string    `json:"hash"`
+	Gen      int64     `json:"gen"`
+	Created  time.Time `json:"created"`
+	Changed  time.Time `json:"changed"`
+	UserID   string    `json:"user_id,omitempty"`
+	Passkeys []Passkey `json:"passkeys,omitempty"`
 }
 
 // Reset is one operator-made reset link. Only SecretHash is kept.
@@ -417,6 +422,10 @@ func SignUp(tokensPath, id string, acct Account, profile Profile, now time.Time,
 	} else if !bindingAllowed(*row, profile.Handle, now) {
 		return Joined{}, os.ErrPermission
 	}
+	// A passkey that arrives with the account may not already be anyone's.
+	if err := passkeysFree(accounts, acct.Passkeys); err != nil {
+		return Joined{}, err
+	}
 	isTaken, err := handleTaken(tokensPath, accounts, rows, profile.Handle, taken)
 	if err != nil {
 		return Joined{}, err
@@ -574,7 +583,9 @@ func UseReset(tokensPath, secret, hash string, now time.Time) (string, int64, er
 		for k := range accounts.Accounts {
 			if a := &accounts.Accounts[k]; a.Handle == r.Handle {
 				r.Used = now
-				a.Hash, a.Changed, a.Gen = hash, now, a.Gen+1
+				// A RESET REPLACES EVERY WAY IN: the new password is the only
+				// one, so a passkey that may be in someone else's hands ends too.
+				a.Hash, a.Changed, a.Gen, a.Passkeys = hash, now, a.Gen+1, nil
 				accounts.Devices = keptDevices(accounts, now)
 				return r.Handle, a.Gen, saveAccounts(tokensPath, accounts)
 			}
