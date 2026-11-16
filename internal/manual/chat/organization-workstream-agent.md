@@ -15,9 +15,13 @@ Only the operator manages it, in Settings › Organizations › the organization
 
 Over the wire: `GET /v1/org/keys`, `PUT /v1/org/keys/openrouter {"key"}`, `DELETE /v1/org/keys/openrouter`, all operator-only. A key must be one word of 12 to 512 characters.
 
-## talking to the server's workstream agent — who can talk, who can only read, one message at a time, stop the agent while it is still answering someone else
+## talking to the server's workstream agent — private to you, who can talk, one message at a time, stop it
 
-In `server` mode a workstream's Agent panel is one conversation everyone who can see the workstream reads. People who can edit the workstream talk to it; people who can only view it read along with no composer. The agent answers one message at a time: a second message while it works is refused with "the agent is still answering santosh; wait for it, or stop it". Anyone who can edit may stop it; the conversation then says "Stopped by abir.".
+In `server` mode a workstream's Afi pane is private to you: you have your own conversation with the server's agent, and nobody else in the workstream reads it, not your colleagues and not the operator. Its memory is yours too, so it does not repeat what someone else told it. What it does to shared things is visible to everyone as those things: the tasks it makes, the files and pages it writes, the decisions it suggests, and one line on a task when your private request changed it ("Priya asked Afi to keep it under 300 words").
+
+People who can edit the workstream talk to it; people who can only view it have no composer. It answers one of your messages at a time: a second while it works is refused with "the agent is still answering your last message; wait for it, or stop it". Someone else's conversation never makes yours wait. Only you can stop yours; it then says "Stopped.".
+
+A workstream that had one shared conversation before gives each person only their own turns from it; nobody else's are copied.
 
 What it spends is posted to the workstream under the person whose message it answered. A workstream that has spent its budget takes no more messages ("This workstream has spent its budget."). An archived workstream takes none either.
 

@@ -17,7 +17,7 @@ var machineryWords = regexp.MustCompile(`(?i)\b(auditor|verdict|verified|refuted
 
 func TestServerAgentPromptKeepsMachineryOut(t *testing.T) {
 	for _, work := range []bool{false, true} {
-		prompt := factoryWorkstreamAgentSystem("Pantry", work)
+		prompt := factoryWorkstreamAgentSystem("Pantry", "priya", work)
 		if hit := machineryWords.FindAllString(prompt, -1); len(hit) > 0 {
 			t.Errorf("work=%v: the org workstream prompt says %q:\n%s", work, hit, prompt)
 		}
@@ -25,7 +25,10 @@ func TestServerAgentPromptKeepsMachineryOut(t *testing.T) {
 			t.Errorf("work=%v: the prompt no longer tells the agent to keep ids out of its answers", work)
 		}
 	}
-	if !strings.Contains(factoryWorkstreamAgentSystem("Pantry", true), "ws_task_create") {
+	if p := factoryWorkstreamAgentSystem("Pantry", "priya", true); !strings.Contains(p, "private to the one person") || !strings.Contains(p, "talking to priya") {
+		t.Error("the prompt must say the conversation is private to the person it names (L1 F2)")
+	}
+	if !strings.Contains(factoryWorkstreamAgentSystem("Pantry", "priya", true), "ws_task_create") {
 		t.Error("with the task tools, the prompt must send asked-for work to ws_task_create, not to a page")
 	}
 }

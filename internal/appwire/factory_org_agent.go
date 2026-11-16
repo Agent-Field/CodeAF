@@ -11,9 +11,9 @@ import (
 // ── AN ORGANIZATION WORKSTREAM'S AGENT ON THE ORGANIZATION'S SERVER ────────
 //
 // While the operator runs the organization's workstream agents on its server
-// (agent_runner "server"), every workstream has one agent there, with one
-// conversation everyone who can see the workstream reads, and those who can
-// edit it talk to. The server runs it with the organization's model key,
+// (agent_runner "server"), every workstream has one agent there, and each
+// person who can edit it has their own private conversation with it (private
+// on the answer); nobody reads another's. The server runs it with the organization's model key,
 // which only the operator sets and which no desk ever reads back.
 //
 //	factory.org_keys                    OrgConn                     -> OrgKeys            GET    /v1/org/keys (operator)
@@ -24,9 +24,9 @@ import (
 //	factory.org_workstream_agent_stop   OrgWorkstreamParams         -> OrgWorkstreamAgent POST   /v1/workstreams/{id}/agent/stop
 //
 // The server's `agent.entry` and `agent.state` are relayed as
-// factory.org_workstream_agent, already filtered to those who can see the
-// workstream. A message sent while the agent answers someone else is
-// conflict with detail {"reason":"busy","by":"@handle"}.
+// factory.org_workstream_agent, already filtered by the server to the one
+// person whose conversation it is. A message sent while the agent still
+// answers that person's last one is conflict with detail {"reason":"busy"}.
 
 // FeatureOrgAgentServer is the hello word for the methods above.
 const FeatureOrgAgentServer = "org_agent_server"
@@ -106,6 +106,9 @@ type OrgWorkstreamAgent struct {
 	Seq     int             `json:"seq"`
 	CanTalk bool            `json:"can_talk"`
 	Cannot  string          `json:"cannot,omitempty"`
+	// Private is true when the server keeps each person's conversation with
+	// the agent to that person alone: the pane says "Private to you".
+	Private bool `json:"private,omitempty"`
 }
 
 func (a *OrgWorkstreamAgent) fill() {
