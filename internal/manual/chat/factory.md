@@ -204,7 +204,7 @@ An access link looks like `codeaf://factory/join?url=https://factory.example#tok
 
 ## sign in to an organization with a username and password — sign up, sign in again, change password, wrong password
 
-An organization server (`codeaf factory serve`) takes a username and password by default; GitHub is the second way. Its `/v1/about` lists them in `sign_in`, password first. You make an account by opening the operator link or an invitation link and choosing a username and a password; the link is used up in the same step that makes the account, so two people can never both join on one single-use link.
+An organization server (`codeaf factory serve`) takes a username and password; a passkey comes first where the server can offer one (see "sign in with a passkey"), and GitHub is the last way. Its `/v1/about` lists them in `sign_in`, preferred first: `["passkey","password","github"]` on an https server with a name, `["password","github"]` otherwise. You make an account by opening the operator link or an invitation link and choosing a username and a password; the link is used up in the same step that makes the account, so two people can never both join on one single-use link.
 
 - A username is 2 to 39 lowercase letters, digits or hyphens. It must be new to the server: not a GitHub login that ever signed in, nor a name already given a share, a team place or a job. "That name belongs to someone who signs in here with a password." refuses a GitHub sign-in with a password person's name. An invitation made for one GitHub login takes no password: "This link is for a GitHub account; sign in with GitHub."
 - A password is 12 characters to 256 bytes, any characters, with no other composition rules and no expiry. One on the embedded list of about 486,000 common passwords, compared by its letters and digits only (so "P.a.s.s.w.o.r.d-1234" counts), or one that contains your username, is refused with a sentence naming the rule.
@@ -218,13 +218,26 @@ An organization server (`codeaf factory serve`) takes a username and password by
 
 When the desktop app can keep secrets in the system keychain, each sign-up, reset, password change or sign-in on that machine gets a device token from the organization, kept beside the sign-in. A client that cannot keep it gets none. Later sign-ins on that machine present it. While a stranger guesses at your username from many addresses, the 100-tries limit for the username holds them up but not your machines: a machine with its token is counted by itself (10 wrong tries from one address, 100 from everywhere) and its address (50); past 100 its tries count like any other. Signing out keeps the token; disconnecting the factory removes it.
 
-The server keeps only a hash of each token. A token lasts 180 days after it was last used and is not replaced on use; a restart of the server keeps them. A person holds at most 16: past that a sign-in still works but gets no new token, and no token in use is ever pushed out. Changing your password, a reset, or being removed ends every token made before, so the machine you changed it on gets a new one and your other machines count as new until they sign in again.
+The server keeps only a hash of each token. A token lasts 180 days after it was last used and is not replaced on use; a restart of the server keeps them. A person holds at most 16: past that a sign-in still works but gets no new token, and no token in use is ever pushed out. Changing your password, removing a passkey, a reset, or being removed ends every token made before, so the machine you changed it on gets a new one and your other machines count as new until they sign in again.
 
 A new machine during such an attack reads "Too many tries. Wait a few minutes." until the attack slows. To get in at once, ask the operator for a reset link: a reset link, like an unused invitation, is never held up by tries, and the reset trusts that machine from then on.
 
+## sign in with a passkey — Touch ID, Face ID, Windows Hello, your phone, a security key
+
+A passkey is the first way into an organization when its server is reached over HTTPS at a DNS name (not a bare IP address, not plain HTTP). Nothing secret is sent to the server: the passkey stays in your iCloud Keychain, Google Password Manager, 1Password, Windows Hello or security key, and signing in is one Touch ID or unlock.
+
+- **It opens your browser.** codeaf opens a page on the organization's own server in your default browser, because a passkey only works on that server's own page. You confirm with Touch ID (or your phone, or your security key) there, the page says "Done — go back to codeaf.", and codeaf is signed in. The page never shows your session to anyone.
+- **Join with a passkey**: open an invitation or the operator link, choose **Continue with a passkey**, pick a username in the browser. The link is used up in the same step that makes your account.
+- **Sign in again**: **Sign in with a passkey**; no username to type.
+- **No built-in passkey (most Linux machines)**: the browser offers your phone (scan a QR code) or a security key; the page says "Use your phone or a security key."
+- **A browser with no passkey support** is told: "This browser can't use passkeys. Go back to codeaf and use your password instead."
+- **Several passkeys**: in Settings, add another ("MacBook Touch ID", "YubiKey"), see when each was last used, or remove one. Removing a passkey ends your other sessions. The last way in cannot be removed: "This is your only way to sign in. Add a password or another passkey first." Someone who joined with a passkey can set a password there too.
+- A passkey sign-in that is never finished ends after ten minutes; one try's challenge lasts five.
+- A GitHub person has no passkeys on the server.
+
 ## forgot password — operator reset link, one hour, password people only
 
-There is no email recovery. The operator makes a reset link for one password person (in the app, or `factory.link_create` with `kind: "reset"`); it works once, lasts one hour, and makes any older reset link for that person stop working. Opening it lets the person set a new password, which ends all their sessions and signs them in. A GitHub person has no password to reset. Every sign-up, sign-in, refused burst of sign-ins, change, reset link and reset is written to the organization's record.
+There is no email recovery. The operator makes a reset link for one person with an account on the server (in the app, or `factory.link_create` with `kind: "reset"`); it works once, lasts one hour, and makes any older reset link for that person stop working. Opening it lets the person set a new password or create a new passkey; either one replaces every way in they had (the old password and every old passkey stop working), ends all their sessions and signs them in. A GitHub person has no password to reset. Every sign-up, sign-in, refused burst of sign-ins, change, reset link and reset is written to the organization's record.
 
 ## codeaf attach and codeaf detach — use another machine's factory
 
