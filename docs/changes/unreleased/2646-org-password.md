@@ -6,7 +6,7 @@ surface: [factory, engine, docs]
 invalidates:
   - "Joining a team server meant signing in with GitHub through an access link's device code. Now the operator link and invitations make a username + password account by default (POST /v1/factory-access verb sign_up); GitHub stays available where the server has a GitHub app. /v1/about's sign_in lists the ways, password first."
   - "factory.me's invite_available was true only when the server had GitHub. It is now true on any team server with a token store."
-  - "A GitHub login could be any name. A GitHub sign-in whose login equals a password person's handle is now refused with \"That name belongs to someone who signs in here with a password.\""
+  - "A GitHub login could be any name. A GitHub sign-in whose login equals a password person's handle is now refused with the sentence \"That name belongs to someone who signs in here with a password\"."
   - "A session lasted 30 days from its last use with no ceiling. It now also ends 90 days after it was made."
   - "There was no way back in for a person who lost their credential short of a new invitation. The operator now makes a one-hour, single-use reset link (POST /v1/access/links kind reset, engine factory.link_create kind reset) for a password person."
 ---
