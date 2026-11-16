@@ -245,6 +245,12 @@ func (v *Vault) EnabledSince() time.Time {
 	at, _ := time.Parse(time.RFC3339Nano, textValue(value["created_at"]))
 	return at
 }
+
+// KindWorkstreamFile is the provenance of a workstream file a person added to
+// the Library. Its session is "workstream:<address>" and its id
+// "workstream-file:<address>/<file>@<hash>", which lead back to the file.
+const KindWorkstreamFile = "workstream_file"
+
 func (v *Vault) Capture(source Source) error {
 	if !v.Enabled() {
 		return nil
@@ -287,6 +293,11 @@ func validateCapture(s Source) error {
 	if s.Role == "user" {
 		expected = "user_statement"
 	}
+	// A workstream file a person chose to keep is theirs to vouch for, whoever
+	// wrote it, so it is a user source with its own kind.
+	if s.Role == "user" && s.Kind == KindWorkstreamFile {
+		expected = KindWorkstreamFile
+	}
 	if s.Kind != "" && s.Kind != expected {
 		return errors.New("knowledge source kind does not match role")
 	}
@@ -316,6 +327,11 @@ func (v *Vault) captureTx(tx *sql.Tx, s Source) error {
 			var prior document
 			if json.Unmarshal([]byte(raw), &prior) != nil {
 				return errors.New("knowledge immutable source changed")
+			}
+			// Keeping the same words of the same file again is a no-op, not a
+			// changed source: only the moment it was kept differs.
+			if part.Kind == KindWorkstreamFile && textValue(prior["text"]) == part.Text {
+				continue
 			}
 			priorEvidence, evidence := clone(prior), clone(source)
 			delete(priorEvidence, "job")

@@ -3549,6 +3549,9 @@ Errors contain no source text or credentials. Stale mutations return `conflict`.
 | method | params | result |
 |---|---|---|
 | `knowledge.capture` | `{chat, message, text}` | admits a bounded passage from an actual saved agent reply; requires existing opt-in |
+| `knowledge.capture` | `{file: {workstream, id, name?}, text}` | the file form (hello word `knowledge.capture_file`): keeps a workstream file's words, at most 64000 characters, with no chat; requires existing opt-in |
+
+The file form names no `chat` or `message`. The engine records the words as a user source of kind `workstream_file`, session `workstream:<workstream>` and id `workstream-file:<workstream>/<id>@<hash of the words>`, so keeping the same words again is one source and keeping an edited file adds a new one beside it. `knowledge.source` on such a source answers `{chat: "", message: "", file: {workstream, id}}`, which the desk opens as that file. A desk that does not see `knowledge.capture_file` in hello leaves "Add to Library" off its file menus.
 
 Settings includes `knowledge_model`; `settings.set {knowledge_model}` changes the same profile row the terminal uses. Clearing it restores the default, `deepseek/deepseek-v4.1-flash`. Building the Library never changes a saved model choice.
 

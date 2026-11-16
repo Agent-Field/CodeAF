@@ -182,6 +182,12 @@ func (b *appBackend) KnowledgeSource(id, source string) (appwire.KnowledgeLocati
 	if err != nil {
 		return appwire.KnowledgeLocation{}, libraryError(err)
 	}
+	if file, ok := workstreamFileSource(source); ok {
+		if _, cited := page.Sources[source]; !cited {
+			return appwire.KnowledgeLocation{}, appwire.Errorf(appwire.CodeNotFound, "This source file is unavailable")
+		}
+		return appwire.KnowledgeLocation{File: &file}, nil
+	}
 	location, ok := page.Sources[source]
 	if !ok || location.Session == "" {
 		return appwire.KnowledgeLocation{}, appwire.Errorf(appwire.CodeNotFound, "This source chat is unavailable")
@@ -266,6 +272,9 @@ func (b *appBackend) KnowledgeCapture(p appwire.KnowledgeCapture) error {
 	if !b.library().Enabled() {
 		return libraryError(knowledge.ErrDisabled)
 	}
+	if p.File != nil {
+		return b.captureWorkstreamFile(*p.File, p.Text)
+	}
 	before := ""
 	for n := 0; n < 10; n++ {
 		entries, more, err := b.Entries(p.Chat, before, 500)
@@ -292,4 +301,57 @@ func (b *appBackend) KnowledgeCapture(p appwire.KnowledgeCapture) error {
 		before = entries[0].ID
 	}
 	return appwire.Errorf(appwire.CodeNotFound, "The saved reply is unavailable")
+}
+
+// A kept workstream file's source id is "workstream-file:<address>/<file>@<hash>"
+// (a long file's spans add ":span:<n>" after the hash). The address may itself
+// hold a slash (org:<connection>/<id>), and a file id never does, so the last
+// slash before the hash is the one between them. The hash is of the words, so
+// keeping the same file twice is one source, and keeping it after an edit is a
+// new one beside the old.
+const workstreamFileSourcePrefix = "workstream-file:"
+
+func (b *appBackend) captureWorkstreamFile(file appwire.KnowledgeFile, text string) error {
+	if strings.ContainsAny(file.ID, "/@") {
+		return appwire.Errorf(appwire.CodeBadParams, "Choose a file in a workstream")
+	}
+	at := time.Now()
+	if b.now != nil {
+		at = b.now()
+	}
+	words := text
+	if name := strings.TrimSpace(file.Name); name != "" {
+		words = name + "\n\n" + text
+	}
+	sum := sha256.Sum256([]byte(words))
+	source := knowledge.Source{
+		ID:      fmt.Sprintf("%s%s/%s@%x", workstreamFileSourcePrefix, file.Workstream, file.ID, sum[:12]),
+		Session: "workstream:" + file.Workstream,
+		Text:    words,
+		TS:      at.UTC().Format(time.RFC3339Nano),
+		Role:    "user",
+		Kind:    knowledge.KindWorkstreamFile,
+	}
+	if err := b.library().Capture(source); err != nil {
+		return libraryError(err)
+	}
+	b.libraryChanged()
+	return nil
+}
+
+func workstreamFileSource(source string) (appwire.KnowledgeFile, bool) {
+	rest, ok := strings.CutPrefix(source, workstreamFileSourcePrefix)
+	if !ok {
+		return appwire.KnowledgeFile{}, false
+	}
+	at := strings.LastIndex(rest, "@")
+	if at < 0 {
+		return appwire.KnowledgeFile{}, false
+	}
+	rest = rest[:at]
+	slash := strings.LastIndex(rest, "/")
+	if slash <= 0 || slash == len(rest)-1 {
+		return appwire.KnowledgeFile{}, false
+	}
+	return appwire.KnowledgeFile{Workstream: rest[:slash], ID: rest[slash+1:]}, true
 }
