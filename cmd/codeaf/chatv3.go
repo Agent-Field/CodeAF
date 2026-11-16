@@ -1988,6 +1988,9 @@ func v3Connect(profileDir string) *connect.Manager {
 	if err != nil {
 		return nil
 	}
+	// GitHub is the factory's own connection, hung here once so every door
+	// that opens accounts — chat, the app, a task — reads the same one.
+	manager.UseGitHub(v3GitHubDoors(profileDir))
 	return manager
 }
 

@@ -124,7 +124,9 @@ func (c connectStatus) asks() bool { return c.Blank != "" }
 type connectHub interface {
 	Services() []connectStatus
 	Connected(id string) bool
-	BeginAuth(ctx context.Context, id, answer string) (url string, wait func(context.Context) (connectStatus, error), err error)
+	// code is the one-time code a device sign-in (GitHub's) is approved with
+	// on url, and "" for a sign-in that needs none.
+	BeginAuth(ctx context.Context, id, answer string) (url, code string, wait func(context.Context) (connectStatus, error), err error)
 	ConnectKey(ctx context.Context, id string, key string) (connectStatus, error)
 	Client(ctx context.Context, id string) (*http.Client, error)
 	Request(ctx context.Context, id, method, path, query, body string) (string, error)
@@ -231,10 +233,10 @@ func (h managerHub) MCPCall(ctx context.Context, service, tool string, args json
 	return h.manager.MCPCall(ctx, service, tool, args)
 }
 
-func (h managerHub) BeginAuth(ctx context.Context, id, answer string) (string, func(context.Context) (connectStatus, error), error) {
+func (h managerHub) BeginAuth(ctx context.Context, id, answer string) (string, string, func(context.Context) (connectStatus, error), error) {
 	flow, err := h.manager.BeginAuth(ctx, id, answer)
 	if err != nil {
-		return "", nil, err
+		return "", "", nil, err
 	}
 	wait := func(ctx context.Context) (connectStatus, error) {
 		status, err := flow.Wait(ctx)
@@ -243,7 +245,7 @@ func (h managerHub) BeginAuth(ctx context.Context, id, answer string) (string, f
 		}
 		return asConnectStatus(status), nil
 	}
-	return flow.URL(), wait, nil
+	return flow.URL(), flow.Code(), wait, nil
 }
 
 // service finds one service by id, and reports whether this build has it at all.

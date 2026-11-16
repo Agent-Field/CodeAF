@@ -1204,7 +1204,9 @@ type Event struct {
 	// ConnectID names one EventConnectAsk and is the token handed back to
 	// [Agent.ResolveConnect]. Service is the account's id — "google" — on all
 	// three kinds; ServiceName is the word a person reads — "Google" — on the
-	// ask. AuthURL is the page to open, on EventConnectAuth only. Account and
+	// ask. AuthURL is the page to open, on EventConnectAuth only, and AuthCode
+	// the one-time code a device sign-in (GitHub's) is approved with there,
+	// empty for every other sign-in. Account and
 	// Failed are the outcome, on EventConnectDone only. Service and
 	// ServiceName also name the account an EventToolBegin's call acts through,
 	// and are empty on a call that reaches no account.
@@ -1212,6 +1214,7 @@ type Event struct {
 	Service     string
 	ServiceName string
 	AuthURL     string
+	AuthCode    string
 	Account     string
 	Failed      bool
 	// NeedsKey rides on EventConnectAsk alone and says that this account needs
