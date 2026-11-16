@@ -31,6 +31,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -110,6 +111,136 @@ type Accounts struct {
 	Accounts []Account `json:"accounts"`
 	Resets   []Reset   `json:"resets"`
 	Known    []string  `json:"known,omitempty"`
+	Devices  []Device  `json:"devices,omitempty"`
+}
+
+// ── TRUSTED DEVICES ─────────────────────────────────────────────────────────
+//
+// A device is a machine a password person has signed in from, remembered by
+// a long-lived secret the server hands it after a right password (the OWASP
+// "device cookie"). Presenting it with the password again exempts the try
+// from the username's overall ceiling, so a stranger guessing at the name
+// from many addresses cannot keep the owner's own machine out. Only the
+// SHA-256 of the secret is kept. A device belongs to one person at one
+// password generation: a change, a reset or the person's removal ends it.
+
+// DeviceLife is how long a device stays trusted without being used, and
+// DevicesPerPerson how many one person keeps (the latest used win).
+const (
+	DeviceLife       = 180 * 24 * time.Hour
+	DevicesPerPerson = 16
+)
+
+// Device is one trusted machine. Only Hash, the SHA-256 of its secret, is kept.
+type Device struct {
+	ID      string    `json:"id"`
+	Hash    string    `json:"hash"`
+	Handle  string    `json:"handle"`
+	Gen     int64     `json:"gen"`
+	Created time.Time `json:"created"`
+	Used    time.Time `json:"used"`
+}
+
+func secretHash(secret string) string {
+	sum := sha256.Sum256([]byte(secret))
+	return hex.EncodeToString(sum[:])
+}
+
+// FindDevice is handle's trusted device that secret opens at now: kept, not
+// idle past DeviceLife, and made at the account's current generation.
+func (a Accounts) FindDevice(handle, secret string, now time.Time) (Device, bool) {
+	if secret == "" {
+		return Device{}, false
+	}
+	acct, ok := a.Find(handle)
+	if !ok {
+		return Device{}, false
+	}
+	want, _ := hex.DecodeString(secretHash(secret))
+	for _, d := range a.Devices {
+		raw, err := hex.DecodeString(d.Hash)
+		if err != nil || len(raw) != sha256.Size || subtle.ConstantTimeCompare(raw, want) != 1 {
+			continue
+		}
+		if d.Handle != acct.Handle || d.Gen != acct.Gen || now.Sub(d.Used) >= DeviceLife {
+			return Device{}, false
+		}
+		return d, true
+	}
+	return Device{}, false
+}
+
+// keptDevices is devices without the ones that have ended at now: idle too
+// long, made at an older generation, of a person with no account, or past
+// the latest DevicesPerPerson of their person.
+func keptDevices(a Accounts, now time.Time) []Device {
+	gens := map[string]int64{}
+	for _, acct := range a.Accounts {
+		gens[acct.Handle] = acct.Gen
+	}
+	out := []Device{}
+	for _, d := range a.Devices {
+		if gen, ok := gens[d.Handle]; ok && gen == d.Gen && now.Sub(d.Used) < DeviceLife {
+			out = append(out, d)
+		}
+	}
+	// The latest used win when one person has too many.
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Used.After(out[j].Used) })
+	count := map[string]int{}
+	kept := out[:0]
+	for _, d := range out {
+		if count[d.Handle] < DevicesPerPerson {
+			count[d.Handle]++
+			kept = append(kept, d)
+		}
+	}
+	return kept
+}
+
+// AddDevice trusts a new device id for handle at generation gen, opened by
+// secret, which is kept only as its hash. It refuses (ErrStale) if the account is
+// no longer at gen: a device is never made for a password already replaced.
+func AddDevice(tokensPath, handle string, gen int64, id, secret string, now time.Time) error {
+	unlock, err := lockRows(tokensPath)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	accounts, err := LoadAccounts(tokensPath)
+	if err != nil {
+		return err
+	}
+	acct, ok := accounts.Find(handle)
+	if !ok {
+		return ErrNoAccount
+	}
+	if acct.Gen != gen {
+		return ErrStale
+	}
+	accounts.Devices = append(accounts.Devices, Device{ID: id, Hash: secretHash(secret), Handle: acct.Handle, Gen: gen, Created: now, Used: now})
+	accounts.Devices = keptDevices(accounts, now)
+	return saveAccounts(tokensPath, accounts)
+}
+
+// TouchDevice marks the device id used at now, so it stays trusted while it
+// is in use.
+func TouchDevice(tokensPath, id string, now time.Time) error {
+	unlock, err := lockRows(tokensPath)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	accounts, err := LoadAccounts(tokensPath)
+	if err != nil {
+		return err
+	}
+	for i := range accounts.Devices {
+		if accounts.Devices[i].ID == id {
+			accounts.Devices[i].Used = now
+		}
+	}
+	accounts.Devices = keptDevices(accounts, now)
+	return saveAccounts(tokensPath, accounts)
 }
 
 func (a Accounts) knows(handle string) bool {
@@ -335,6 +466,8 @@ func SetPassword(tokensPath, handle, hash string, gen int64, now time.Time) (int
 			return 0, ErrStale
 		}
 		a.Hash, a.Gen, a.Changed = hash, a.Gen+1, now
+		// Every device trusted with the old password ends with it.
+		accounts.Devices = keptDevices(accounts, now)
 		return a.Gen, saveAccounts(tokensPath, accounts)
 	}
 	return 0, ErrNoAccount
@@ -434,6 +567,7 @@ func UseReset(tokensPath, secret, hash string, now time.Time) (string, int64, er
 			if a := &accounts.Accounts[k]; a.Handle == r.Handle {
 				r.Used = now
 				a.Hash, a.Changed, a.Gen = hash, now, a.Gen+1
+				accounts.Devices = keptDevices(accounts, now)
 				return r.Handle, a.Gen, saveAccounts(tokensPath, accounts)
 			}
 		}
@@ -474,5 +608,12 @@ func RemoveAccount(tokensPath, handle string) error {
 		}
 	}
 	accounts.Accounts, accounts.Resets = kept, resets
+	devices := accounts.Devices[:0:0]
+	for _, d := range accounts.Devices {
+		if d.Handle != handle {
+			devices = append(devices, d)
+		}
+	}
+	accounts.Devices = devices
 	return saveAccounts(tokensPath, accounts)
 }

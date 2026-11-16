@@ -3,40 +3,51 @@ package serve
 // ── HOW OFTEN A PASSWORD MAY BE TRIED ───────────────────────────────────────
 //
 // EVERY TRY IS PAID FOR BEFORE IT IS VERIFIED. A sign-in (or a password
-// change's current password) is admitted only by reserving one token from
-// each golang.org/x/time/rate bucket it counts against, under one lock, and
-// only while no other try of the same username is being verified. A refused
-// guess keeps its tokens spent; a right password gives them back. So a burst
-// of concurrent guesses cannot all slip past a check that spent nothing: at
-// most one per username is ever in flight, and each one was already counted.
-// An address the person has signed in from before waits only for its own
-// tries, never for a stranger's guess in flight; a password change, which
-// needs the person's session already, is never held by a verify in flight.
+// change's current password) is admitted only by spending one try from each
+// bucket it counts against, under one lock, and a sign-in only while no
+// other sign-in of the same username (or the same trusted device) is being
+// verified. A refused guess keeps its tries spent; a right password, or a
+// try that never reached a verdict, gives them back. So a burst of concurrent
+// guesses cannot slip past a check that spent nothing.
 //
-// THE BUCKETS, each refilling over throttleWindow (15 minutes):
+// THE BUCKETS are golang.org/x/time/rate limiters refilling over
+// throttleWindow (15 minutes):
 //
 //   - one per (username, client address), userFailures (10). When it runs
 //     dry it also backs off exponentially, 30 seconds doubling to at most
 //     15 minutes, and that backoff decays once the pair has been quiet for 15
-//     minutes. A right password from that address forgives the pair at once.
+//     minutes. A right password from there forgives the pair at once.
 //   - one per username, userFailuresAll (100): a ceiling on how many guesses
-//     a name takes from everywhere at once. It never backs off, and an address
-//     the person has signed in from before does not count against it, so a
-//     stranger hammering the name from many addresses slows down the stranger,
-//     never the owner on their own machine.
+//     a name takes from everywhere at once. It never backs off.
 //   - one per client address, addrFailures (50), across every username.
+//
+// A TRUSTED DEVICE (tokens.Device: the long-lived secret a machine is handed
+// after a right password, kept by the server only as a hash and so surviving
+// a restart) is counted by itself instead of by its address: one bucket of
+// userFailures with backoff, and the address bucket, but NOT the username's
+// ceiling. A stranger draining that ceiling from many addresses therefore
+// slows down the stranger and every machine the owner never used, never the
+// owner's own machines. A brand-new machine during such an attack waits, or
+// the operator makes a reset link, which, like an invitation, is never
+// throttled here.
+//
+// A REFUND IS COUNTED BY HAND. x/time/rate can give a reservation back only
+// at the instant it was made, which a verify that takes argon2's time is
+// always past; so a refund is kept as credit on the key, spent before the
+// limiter and never lifting the key above its burst.
 //
 // THE ADDRESS is the one the server's own trusted-proxy resolver settled
 // (proxy.go), never a header read here; an IPv6 address counts by its /64,
-// the block one subscriber is usually given, so rotating within it is one
-// address.
+// the block one subscriber is usually given.
 //
 // THE MEMORY IS BOUNDED. Each set holds at most throttleKeyMost keys. A full
 // set forgets keys that have fully recovered first, then the oldest one that
 // is not backing off; a key that is backing off is never forgotten, and when
-// nothing can be forgotten the try is refused (429) rather than let through.
+// nothing can be forgotten the try is refused (429) rather than let through,
+// with one log line a minute saying so.
 
 import (
+	"log"
 	"net/netip"
 	"sync"
 	"time"
@@ -53,41 +64,48 @@ const (
 	backoffFirst    = 30 * time.Second
 	backoffMost     = 15 * time.Minute
 	backoffForgiven = 15 * time.Minute
-	// trustedPerUser and trustedLife bound the addresses remembered as a
-	// person's own: the latest few, for as long as a session lives.
-	trustedPerUser = 8
-	trustedLife    = accessSessionLife
+	// throttleFullEvery is how often a full set is said in the log.
+	throttleFullEvery = time.Minute
 )
 
 type throttleEntry struct {
 	lim     *rate.Limiter
+	credit  float64
 	strikes int
 	until   time.Time
 	seen    time.Time
 }
 
+// tokens is the tries the key has now: the limiter's and the credit.
+func (e *throttleEntry) tokens(now time.Time) float64 { return e.lim.TokensAt(now) + e.credit }
+
 // throttle is one bounded set of buckets. backoff turns on the exponential
 // wait for a key whose bucket runs dry. Its guard's lock covers it.
 type throttle struct {
+	name    string
 	keys    map[string]*throttleEntry
 	burst   int
 	every   time.Duration
 	backoff bool
 	most    int
+	// full is set when the last refusal was for want of room.
+	full bool
 }
 
-func newThrottle(failures int, backoff bool) *throttle {
-	return &throttle{keys: map[string]*throttleEntry{}, burst: failures,
+func newThrottle(name string, failures int, backoff bool) *throttle {
+	return &throttle{name: name, keys: map[string]*throttleEntry{}, burst: failures,
 		every: throttleWindow / time.Duration(failures), backoff: backoff, most: throttleKeyMost}
 }
 
-// reserve takes one try of key now, or answers false: backing off, empty, or
+// take spends one try of key now, or answers false: backing off, empty, or
 // no room to remember it.
-func (t *throttle) reserve(key string, now time.Time) (*rate.Reservation, bool) {
+func (t *throttle) take(key string, now time.Time) bool {
+	t.full = false
 	e := t.keys[key]
 	if e == nil {
 		if len(t.keys) >= t.most && !t.evict(now) {
-			return nil, false
+			t.full = true
+			return false
 		}
 		e = &throttleEntry{lim: rate.NewLimiter(rate.Every(t.every), t.burst)}
 		t.keys[key] = e
@@ -97,22 +115,30 @@ func (t *throttle) reserve(key string, now time.Time) (*rate.Reservation, bool) 
 	}
 	e.seen = now
 	if now.Before(e.until) {
-		return nil, false
+		return false
 	}
-	r := e.lim.ReserveN(now, 1)
-	if !r.OK() || r.DelayFrom(now) > 0 {
-		r.CancelAt(now)
-		return nil, false
+	if e.credit >= 1 {
+		e.credit--
+		return true
 	}
-	return r, true
+	return e.lim.AllowN(now, 1)
 }
 
-// failed settles a refused try of key: its token stays spent, and a bucket
+// refund gives one try of key back, never above its burst.
+func (t *throttle) refund(key string, now time.Time) {
+	e := t.keys[key]
+	if e == nil {
+		return
+	}
+	e.credit = min(e.credit+1, max(0, float64(t.burst)-e.lim.TokensAt(now)))
+}
+
+// failed settles a refused try of key: its try stays spent, and a bucket
 // left dry starts or lengthens the backoff. It answers true the first time
 // the key runs dry in a quiet spell, which is when a record row is worth it.
 func (t *throttle) failed(key string, now time.Time) bool {
 	e := t.keys[key]
-	if e == nil || e.lim.TokensAt(now) >= 1 {
+	if e == nil || e.tokens(now) >= 1 {
 		return false
 	}
 	if t.backoff {
@@ -132,7 +158,7 @@ func (t *throttle) evict(now time.Time) bool {
 		if now.Before(e.until) {
 			continue
 		}
-		if e.lim.TokensAt(now) >= float64(t.burst) {
+		if e.tokens(now) >= float64(t.burst) {
 			delete(t.keys, k)
 			continue
 		}
@@ -150,31 +176,38 @@ func (t *throttle) evict(now time.Time) bool {
 	return true
 }
 
-// passwordGuard is the server's throttle: the three sets of buckets, the
-// usernames being verified now, and the addresses each person has signed in
-// from. One lock covers all of it, so admitting a try is one step.
+// passwordGuard is the server's throttle: the three sets of buckets and the
+// names (or devices) being verified now. One lock covers all of it, so
+// admitting a try is one step.
 type passwordGuard struct {
 	mu       sync.Mutex
 	pairs    *throttle
 	users    *throttle
 	addrs    *throttle
 	inflight map[string]bool
-	trusted  map[string]map[string]time.Time
-	nTrusted int
+	saidFull time.Time
+	logf     func(format string, args ...any)
 }
 
 func newPasswordGuard() *passwordGuard {
-	return &passwordGuard{pairs: newThrottle(userFailures, true), users: newThrottle(userFailuresAll, false),
-		addrs: newThrottle(addrFailures, false), inflight: map[string]bool{}, trusted: map[string]map[string]time.Time{}}
+	return &passwordGuard{pairs: newThrottle("username and address", userFailures, true),
+		users: newThrottle("username", userFailuresAll, false), addrs: newThrottle("address", addrFailures, false),
+		inflight: map[string]bool{}, logf: log.Printf}
 }
 
-// attempt is one admitted try: the tokens it spent, until it is settled.
+// spent is one bucket an attempt took a try from.
+type spent struct {
+	t   *throttle
+	key string
+}
+
+// attempt is one admitted try: the tries it spent, until it is settled.
 type attempt struct {
-	g          *passwordGuard
-	user, addr string
-	flight     string
-	spent      []*rate.Reservation
-	settled    bool
+	g       *passwordGuard
+	pair    string
+	flight  string
+	spent   []spent
+	settled bool
 }
 
 // throttleAddr is the key a client address counts under: an IPv6 address by
@@ -192,149 +225,101 @@ func throttleAddr(addr netip.Addr) string {
 	return addr.String()
 }
 
-// admit reserves one try of user from addr, or answers false (429). alone
-// is whether the try must be the only one of its username being verified.
-func (g *passwordGuard) admit(user, addr string, now time.Time, alone bool) (*attempt, bool) {
+// admit spends one try of user from addr, or answers false (429). device is
+// the id of a trusted device the try came with, or "". alone is whether it
+// must be the only try of its name (or device) being verified.
+func (g *passwordGuard) admit(user, addr, device string, now time.Time, alone bool) (*attempt, bool) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	trusted := g.trustedLocked(user, addr, now)
+	pair := user + "\x00" + addr
+	if device != "" {
+		pair = user + "\x00device:" + device
+	}
 	flight := ""
 	if alone {
 		flight = user
-		if trusted {
-			flight = user + "\x00" + addr
+		if device != "" {
+			flight = pair
 		}
 		if g.inflight[flight] {
 			return nil, false
 		}
 	}
-	a := &attempt{g: g, user: user, addr: addr, flight: flight}
-	refuse := func() (*attempt, bool) {
-		for _, r := range a.spent {
-			r.CancelAt(now)
+	a := &attempt{g: g, pair: pair, flight: flight}
+	refuse := func(t *throttle) (*attempt, bool) {
+		for _, s := range a.spent {
+			s.t.refund(s.key, now)
+		}
+		if t.full && now.Sub(g.saidFull) >= throttleFullEvery {
+			g.saidFull = now
+			g.logf("factory: the password throttle's %s set is full (%d keys, all backing off); new tries are refused until some recover", t.name, t.most)
 		}
 		return nil, false
 	}
-	r, ok := g.pairs.reserve(user+"\x00"+addr, now)
-	if !ok {
-		return refuse()
+	steps := []spent{{g.pairs, pair}}
+	if device == "" {
+		steps = append(steps, spent{g.users, user})
 	}
-	a.spent = append(a.spent, r)
-	if !trusted {
-		if r, ok = g.users.reserve(user, now); !ok {
-			return refuse()
+	steps = append(steps, spent{g.addrs, addr})
+	for _, s := range steps {
+		if !s.t.take(s.key, now) {
+			return refuse(s.t)
 		}
-		a.spent = append(a.spent, r)
+		a.spent = append(a.spent, s)
 	}
-	if r, ok = g.addrs.reserve(addr, now); !ok {
-		return refuse()
-	}
-	a.spent = append(a.spent, r)
 	if flight != "" {
 		g.inflight[flight] = true
 	}
 	return a, true
 }
 
-func (g *passwordGuard) trustedLocked(user, addr string, now time.Time) bool {
-	at, ok := g.trusted[user][addr]
-	return ok && now.Sub(at) < trustedLife
-}
-
-// trustLocked remembers addr as one user signs in from, within the bounds.
-func (g *passwordGuard) trustLocked(user, addr string, now time.Time) {
-	mine := g.trusted[user]
-	if mine == nil {
-		if g.nTrusted >= throttleKeyMost {
-			g.dropOldestTrustedLocked()
-		}
-		mine = map[string]time.Time{}
-		g.trusted[user] = mine
-	}
-	if _, ok := mine[addr]; !ok {
-		if len(mine) >= trustedPerUser {
-			var oldest string
-			for k, at := range mine {
-				if oldest == "" || at.Before(mine[oldest]) {
-					oldest = k
-				}
-			}
-			delete(mine, oldest)
-			g.nTrusted--
-		}
-		g.nTrusted++
-	}
-	mine[addr] = now
-}
-
-func (g *passwordGuard) dropOldestTrustedLocked() {
-	var user, addr string
-	var at time.Time
-	for u, mine := range g.trusted {
-		for a, t := range mine {
-			if user == "" || t.Before(at) {
-				user, addr, at = u, a, t
-			}
-		}
-	}
-	if user == "" {
-		return
-	}
-	delete(g.trusted[user], addr)
-	if len(g.trusted[user]) == 0 {
-		delete(g.trusted, user)
-	}
-	g.nTrusted--
-}
-
-// succeeded settles a right password: every token comes back, the pair is
-// forgiven, and the address is remembered as the person's own.
-func (a *attempt) succeeded(now time.Time) {
-	g := a.g
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	if a.settled {
-		return
-	}
-	a.settled = true
-	for _, r := range a.spent {
-		r.CancelAt(now)
-	}
-	delete(g.pairs.keys, a.user+"\x00"+a.addr)
-	g.trustLocked(a.user, a.addr, now)
-	delete(g.inflight, a.flight)
-}
-
-// failed settles a wrong password: the tokens stay spent. It answers true the
-// first time the person's buckets run dry in a quiet spell.
-func (a *attempt) failed(now time.Time) bool {
-	g := a.g
-	g.mu.Lock()
-	defer g.mu.Unlock()
+// settle ends the attempt once: refund gives every try back.
+func (a *attempt) settle(now time.Time, refund bool) bool {
 	if a.settled {
 		return false
 	}
 	a.settled = true
-	delete(g.inflight, a.flight)
-	g.addrs.failed(a.addr, now)
-	pair := g.pairs.failed(a.user+"\x00"+a.addr, now)
-	all := g.users.failed(a.user, now)
-	return pair || all
+	if refund {
+		for _, s := range a.spent {
+			s.t.refund(s.key, now)
+		}
+	}
+	delete(a.g.inflight, a.flight)
+	return true
 }
 
-// abandon settles a try that never reached a verdict (hashing busy, a
-// server fault): the tokens come back. After succeeded or failed it does
-// nothing, so a handler can defer it.
+// succeeded settles a right password: every try comes back and the pair (or
+// device) is forgiven.
+func (a *attempt) succeeded(now time.Time) {
+	a.g.mu.Lock()
+	defer a.g.mu.Unlock()
+	if a.settle(now, true) {
+		delete(a.g.pairs.keys, a.pair)
+	}
+}
+
+// failed settles a wrong password: the tries stay spent. It answers true the
+// first time the person's buckets run dry in a quiet spell.
+func (a *attempt) failed(now time.Time) bool {
+	a.g.mu.Lock()
+	defer a.g.mu.Unlock()
+	if !a.settle(now, false) {
+		return false
+	}
+	dry := false
+	for _, s := range a.spent {
+		if s.t.failed(s.key, now) && s.t != a.g.addrs {
+			dry = true
+		}
+	}
+	return dry
+}
+
+// abandon settles a try that never reached a verdict (hashing busy, a server
+// fault): the tries come back. After succeeded or failed it does nothing, so
+// a handler can defer it.
 func (a *attempt) abandon(now time.Time) {
-	g := a.g
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	if a.settled {
-		return
-	}
-	a.settled = true
-	for _, r := range a.spent {
-		r.CancelAt(now)
-	}
-	delete(g.inflight, a.flight)
+	a.g.mu.Lock()
+	defer a.g.mu.Unlock()
+	a.settle(now, true)
 }

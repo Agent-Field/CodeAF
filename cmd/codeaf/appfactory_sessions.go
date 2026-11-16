@@ -31,7 +31,7 @@ func (h *appFactoryHub) keepSessionLocked(id, url string, s appFactorySession) {
 	if id == appLocalID || url == "" || s.token == "" {
 		return
 	}
-	c := appwire.FactorySessionChange{Factory: id, URL: url, Token: s.token}
+	c := appwire.FactorySessionChange{Factory: id, URL: url, Token: s.token, Device: h.devices[id]}
 	if !s.expires.IsZero() {
 		at := s.expires
 		c.Expires = &at
@@ -39,12 +39,45 @@ func (h *appFactoryHub) keepSessionLocked(id, url string, s appFactorySession) {
 	h.queueLocked(c)
 }
 
-// forgetKeptLocked queues id's kept sign-in to be removed. Callers hold h.mu.
+// forgetKeptLocked queues id's kept sign-in to be removed. The device token
+// stays: signing out does not make this machine a stranger, so the change
+// still carries it. Callers hold h.mu.
 func (h *appFactoryHub) forgetKeptLocked(id string) {
 	if id == appLocalID {
 		return
 	}
-	h.queueLocked(appwire.FactorySessionChange{Factory: id, Removed: true})
+	h.queueLocked(appwire.FactorySessionChange{Factory: id, Removed: true, Device: h.devices[id]})
+}
+
+// forgetDeviceLocked queues id's kept sign-in and device token to be removed,
+// for a connection that is gone. Callers hold h.mu.
+func (h *appFactoryHub) forgetDeviceLocked(id string) {
+	if id == appLocalID {
+		return
+	}
+	h.queueLocked(appwire.FactorySessionChange{Factory: id, Removed: true, DeviceRemoved: true})
+}
+
+// holdDeviceLocked keeps the trusted-device token a factory handed this
+// machine, as a secret. An empty token changes nothing. Callers hold h.mu and
+// queue the change that carries it (keepSessionLocked).
+func (h *appFactoryHub) holdDeviceLocked(id, token string) {
+	if token == "" || id == appLocalID {
+		return
+	}
+	redact.Register(token)
+	trace.Secret(token)
+	if h.devices == nil {
+		h.devices = map[string]string{}
+	}
+	h.devices[id] = token
+}
+
+// deviceFor is the device token held for id, or "".
+func (h *appFactoryHub) deviceFor(id string) string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.devices[id]
 }
 
 func (h *appFactoryHub) queueLocked(c appwire.FactorySessionChange) {
@@ -54,6 +87,10 @@ func (h *appFactoryHub) queueLocked(c appwire.FactorySessionChange) {
 	now := h.now()
 	kept := h.kept[:0]
 	for _, k := range h.kept {
+		if k.change.Factory == c.Factory && k.change.DeviceRemoved && c.Device == "" {
+			// A later change does not undo the device's removal it replaces.
+			c.DeviceRemoved = true
+		}
 		if k.change.Factory != c.Factory && now.Sub(k.at) < appwire.FactorySessionsTakeLife {
 			kept = append(kept, k)
 		}
@@ -113,8 +150,12 @@ func (b *appBackend) FactorySessionRestore(_ context.Context, p appwire.FactoryS
 	if p.Expires != nil {
 		s.expires = *p.Expires
 		if !h.now().Before(s.expires) {
-			return appwire.FactorySessionRestored{}, nil
+			// A dead sign-in is not kept; its device still may be.
+			s.token = ""
 		}
+	}
+	if s.token == "" && p.Device == "" {
+		return appwire.FactorySessionRestored{}, nil
 	}
 	for _, row := range h.rows {
 		if row.ID != p.Factory || row.Local {
@@ -123,11 +164,17 @@ func (b *appBackend) FactorySessionRestore(_ context.Context, p appwire.FactoryS
 		if row.URL != p.URL {
 			return appwire.FactorySessionRestored{}, nil
 		}
-		redact.Register(p.Token)
-		trace.Secret(p.Token)
-		// A sign-in made in this run is newer than the one kept from the last.
-		if h.tokenLocked(row.ID) == "" {
-			h.sessions[row.ID] = s
+		// A device or sign-in made in this run is newer than one kept from the
+		// last.
+		if h.devices[row.ID] == "" {
+			h.holdDeviceLocked(row.ID, p.Device)
+		}
+		if s.token != "" {
+			redact.Register(s.token)
+			trace.Secret(s.token)
+			if h.tokenLocked(row.ID) == "" {
+				h.sessions[row.ID] = s
+			}
 		}
 		return appwire.FactorySessionRestored{Kept: true}, nil
 	}

@@ -60,7 +60,10 @@ type FactorySetupRequest struct {
 // FactoryAccess reports a link's validity separately from the caller's GitHub sign-in.
 type FactoryAccess struct {
 	// AccessToken is a completed native session grant; the app host consumes it before replying.
-	AccessToken string        `json:"access_token,omitempty"`
+	AccessToken string `json:"access_token,omitempty"`
+	// DeviceToken is a password sign-up's or reset's trusted-device secret
+	// (PasswordSignedIn.DeviceToken); the app host keeps it, never shows it.
+	DeviceToken string        `json:"device_token,omitempty"`
 	State       string        `json:"state" jsonschema:"enum=ready,enum=waiting,enum=joined,enum=expired,enum=revoked,enum=used_up,enum=no_access,enum=unreachable,enum=already_joined"`
 	Factory     AccessFactory `json:"factory"`
 	Link        string        `json:"link"`

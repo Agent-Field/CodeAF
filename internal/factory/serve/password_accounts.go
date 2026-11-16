@@ -109,7 +109,72 @@ func (h *Handler) passwordSessionAlive(session accessSession) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return ok && acct.Gen == session.credGen, nil
+	return ok && (acct.Gen == session.credGen || (session.pendingGen != 0 && acct.Gen == session.pendingGen)), nil
+}
+
+// trustedDevice is the id of handle's trusted device that secret opens, or "".
+func (h *Handler) trustedDevice(handle, secret string) string {
+	if secret == "" || handle == "" {
+		return ""
+	}
+	doc, err := h.loadAccounts()
+	if err != nil {
+		return ""
+	}
+	d, ok := doc.FindDevice(handle, secret, h.now())
+	if !ok {
+		return ""
+	}
+	return d.ID
+}
+
+// issueDevice trusts the caller's machine for handle at generation gen and
+// answers the secret it keeps; "" if the password moved meanwhile.
+func (h *Handler) issueDevice(handle string, gen int64) (string, error) {
+	secretValue, err := secret()
+	if err != nil {
+		return "", err
+	}
+	id, err := secret()
+	if err != nil {
+		return "", err
+	}
+	err = tokens.AddDevice(h.config.TokensPath, handle, gen, "dev_"+id[:24], secretValue, h.now())
+	h.forgetAccounts()
+	if errors.Is(err, tokens.ErrStale) || errors.Is(err, tokens.ErrNoAccount) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return secretValue, nil
+}
+
+// touchDevice keeps a device in use trusted, writing at most once a day.
+func (h *Handler) touchDevice(handle, id string) {
+	doc, err := h.loadAccounts()
+	if err != nil {
+		return
+	}
+	for _, d := range doc.Devices {
+		if d.ID == id && h.now().Sub(d.Used) >= 24*time.Hour {
+			_ = tokens.TouchDevice(h.config.TokensPath, id, h.now())
+			h.forgetAccounts()
+		}
+	}
+}
+
+// setPendingGen marks the session whose public id is id as making a change
+// to generation gen (0 clears it).
+func (h *Handler) setPendingGen(id string, gen int64) {
+	h.sessions.mu.Lock()
+	defer h.sessions.mu.Unlock()
+	for key, s := range h.sessions.ids {
+		if s.id == id {
+			s.pendingGen = gen
+			h.sessions.ids[key] = s
+		}
+	}
 }
 
 // handleReferenced is whether anything this organization keeps already

@@ -210,3 +210,65 @@ func TestPasswordParamsAreCheckedWithoutQuotingThem(t *testing.T) {
 	}
 	w.neverSaid(secret)
 }
+
+// THE DEVICE TOKEN IS KEPT BESIDE THE SIGN-IN AND OUTLIVES IT: a sign-up
+// hands this machine a device token, kept through factory.sessions_take; a
+// sign-out forgets the sign-in and keeps the device; a new engine handed the
+// device alone presents it, so the factory trusts the machine and issues no
+// new one; a change replaces it; detaching the connection forgets both.
+func TestAPasswordDeviceIsKeptBesideTheSignIn(t *testing.T) {
+	const pw, pwNew = "violet otter campsite drizzle", "another long passphrase"
+	o := startPasswordOrg(t)
+	hub := testFactoryHub(t)
+	first := newFactoryWire(t, hub)
+	take := func(w *factoryWire) []appwire.FactorySessionChange {
+		t.Helper()
+		var out appwire.FactorySessionsTaken
+		w.must("factory.sessions_take", struct{}{}, &out)
+		return out.Changes
+	}
+	var access appwire.FactoryAccess
+	first.must("factory.access_sign_up", map[string]any{"link": o.operatorLink(t), "caller": "w1", "username": "santosh", "password": pw}, &access)
+	id := access.Factory.ID
+	kept := take(first)
+	if len(kept) != 1 || kept[0].Token == "" || kept[0].Device == "" || kept[0].Removed {
+		t.Fatalf("after sign-up = %+v", kept)
+	}
+	device := kept[0].Device
+	if strings.Contains(redact.Secrets("a line with "+device), device) {
+		t.Fatal("redact does not cover the device token")
+	}
+	first.must("factory.sign_out", map[string]any{"factory": id}, nil)
+	if gone := take(first); len(gone) != 1 || !gone[0].Removed || gone[0].Token != "" || gone[0].Device != device || gone[0].DeviceRemoved {
+		t.Fatalf("sign-out = %+v", gone)
+	}
+
+	// A restart: the new engine is handed the device alone.
+	second := testFactoryHub(t)
+	second.dir = hub.dir
+	after := newFactoryWire(t, second)
+	var restored appwire.FactorySessionRestored
+	after.must("factory.session_restore", map[string]any{"factory": id, "url": o.url, "device": device}, &restored)
+	if !restored.Kept {
+		t.Fatal("a kept device was not taken back")
+	}
+	var signed appwire.FactoryPasswordSignedIn
+	after.must("factory.password_sign_in", map[string]any{"factory": id, "caller": "w1", "username": "santosh", "password": pw}, &signed)
+	if again := take(after); len(again) != 1 || again[0].Token == "" || again[0].Device != device {
+		t.Fatalf("a sign-in with the kept device = %+v, want device %q kept", again, device)
+	}
+
+	// A change revokes it and hands this machine a new one.
+	after.must("factory.password_change", map[string]any{"factory": id, "current": pw, "new": pwNew}, nil)
+	changed := take(after)
+	if len(changed) != 1 || changed[0].Token == "" || changed[0].Device == "" || changed[0].Device == device {
+		t.Fatalf("after a change = %+v", changed)
+	}
+	after.must("factory.detach", map[string]any{"factory": id}, nil)
+	if gone := take(after); len(gone) != 1 || !gone[0].Removed || !gone[0].DeviceRemoved || gone[0].Device != "" {
+		t.Fatalf("detach = %+v", gone)
+	}
+	for _, w := range []*factoryWire{first, after} {
+		w.neverSaid(pw, pwNew)
+	}
+}

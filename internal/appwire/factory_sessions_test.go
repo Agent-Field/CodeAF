@@ -16,14 +16,15 @@ func (f *factoryEngine) FactorySessionRestore(_ context.Context, p FactorySessio
 	return FactorySessionRestored{}, nil
 }
 
-// A HAND-BACK NAMES A CONNECTION AND A TOKEN, AND NOTHING ELSE: a missing token
-// or an unknown field is refused before the engine sees it, and a take with
-// params is refused too.
+// A HAND-BACK NAMES A CONNECTION AND A TOKEN OR DEVICE, AND NOTHING ELSE:
+// neither, or an unknown field, is refused before the engine sees it, and a
+// take with params is refused too. A device alone is a hand-back.
 func TestFactorySessionMethodsReadTheirParamsStrictly(t *testing.T) {
 	eng := &factoryEngine{}
 	for _, c := range []struct{ name, params string }{
 		{"factory.session_restore", `{"factory":"f","url":"https://f.example"}`},
 		{"factory.session_restore", `{"factory":"f","url":"https://f.example","token":"  "}`},
+		{"factory.session_restore", `{"factory":"f","url":"https://f.example","token":" ","device":"  "}`},
 		{"factory.session_restore", `{"factory":"","url":"https://f.example","token":"t"}`},
 		{"factory.session_restore", `{"factory":"f","url":"https://f.example","token":"t","path":"/x"}`},
 		{"factory.sessions_take", `{"factory":"f"}`},
@@ -35,6 +36,9 @@ func TestFactorySessionMethodsReadTheirParamsStrictly(t *testing.T) {
 	}
 	if len(eng.calls) != 0 {
 		t.Fatalf("a refused request reached the engine: %v", eng.calls)
+	}
+	if _, err := methods["factory.session_restore"].call(eng, json.RawMessage(`{"factory":"f","url":"https://f.example","device":"d"}`)); err != nil {
+		t.Fatalf("a device alone = %v", err)
 	}
 	if got := withFactorySessionsFeature(Hello{}, eng); len(got.Features) != 1 || got.Features[0] != FeatureFactorySessions {
 		t.Fatalf("features = %v", got.Features)

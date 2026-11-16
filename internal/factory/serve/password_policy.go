@@ -26,6 +26,7 @@ import (
 	_ "embed"
 	"io"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -90,14 +91,54 @@ func squash(normal string) string {
 	return b.String()
 }
 
+// commonPassword is whether a password is one a guesser tries early: on the
+// list (by its letters and digits, or, when it has too few of those to be
+// listed that way, as it is typed, lower-cased), a few characters repeated,
+// or a run along one row of a keyboard. normal is already NFKC.
 func commonPassword(normal string) bool {
 	commonOnce.Do(loadCommon)
-	s := squash(normal)
-	if len(s) < commonSquashedMost {
-		return false
+	lower := strings.ToLower(normal)
+	if fewCharacters(lower) || keyboardRun(lower) {
+		return true
 	}
-	k := sort.Search(len(commonAt), func(i int) bool { return commonEntry(i) >= s })
-	return k < len(commonAt) && commonEntry(k) == s
+	key := squash(normal)
+	if len(key) < commonSquashedMost {
+		// Mostly punctuation: the list keeps such entries as typed.
+		key = lower
+	}
+	k := sort.Search(len(commonAt), func(i int) bool { return commonEntry(i) >= key })
+	return k < len(commonAt) && commonEntry(k) == key
+}
+
+// fewCharacters is a password made of fewer than four different characters,
+// such as "!!!!!!!!!!!!" or "abababababab": NIST's "repetitive characters".
+func fewCharacters(s string) bool {
+	seen := map[rune]bool{}
+	for _, r := range s {
+		seen[r] = true
+		if len(seen) >= 4 {
+			return false
+		}
+	}
+	return true
+}
+
+// keyboardRows are a US keyboard's rows, unshifted and shifted.
+var keyboardRows = []string{"`1234567890-=", "qwertyuiop[]\\", "asdfghjkl;'", "zxcvbnm,./",
+	"~!@#$%^&*()_+", "qwertyuiop{}|", "asdfghjkl:\"", "zxcvbnm<>?"}
+
+// keyboardRun is a password that is a run along one keyboard row, forwards
+// or backwards, however many times round: "!@#$%^&*()_+", "1234567890-=".
+func keyboardRun(s string) bool {
+	backwards := []rune(s)
+	slices.Reverse(backwards)
+	for _, row := range keyboardRows {
+		round := strings.Repeat(row, len(s)/len(row)+2)
+		if strings.Contains(round, s) || strings.Contains(round, string(backwards)) {
+			return true
+		}
+	}
+	return false
 }
 
 // usernameShape is GitHub's: 2 to 39 of a-z, 0-9 and "-", not starting or

@@ -188,8 +188,10 @@ func (b *appBackend) FactoryPasswordSignIn(ctx context.Context, p appwire.Factor
 	}
 	// No bearer: the password is the whole proof, and the session it makes
 	// replaces whatever this connection held.
+	// The device token, when this machine has one, lets the factory count the
+	// try by this machine rather than against the username's ceiling.
 	r, err := h.send(ctx, row.URL, "", http.MethodPost, "/v1/auth/password",
-		api.PasswordSignIn{Username: p.Username, Password: p.Password}, appFactorySmall, nil)
+		api.PasswordSignIn{Username: p.Username, Password: p.Password, Device: h.deviceFor(row.ID)}, appFactorySmall, nil)
 	if err != nil {
 		return appwire.FactoryPasswordSignedIn{}, err
 	}
@@ -200,6 +202,7 @@ func (b *appBackend) FactoryPasswordSignIn(ctx context.Context, p appwire.Factor
 	if json.Unmarshal(r.body, &signed) != nil || signed.AccessToken == "" {
 		return appwire.FactoryPasswordSignedIn{}, appwire.Errorf(appwire.CodeEngine, "the factory sent an answer this app cannot read")
 	}
+	h.holdDevice(row.ID, signed.DeviceToken)
 	h.holdAt(row.ID, row.URL, signed.AccessToken, time.Duration(signed.ExpiresIn)*time.Second)
 	h.touch(row.ID)
 	me := signed.Me
@@ -224,7 +227,20 @@ func (b *appBackend) FactoryPasswordChange(ctx context.Context, p appwire.Factor
 		return appwire.Errorf(appwire.CodeUncertain, "the factory did not confirm the change; try signing in with the new password")
 	}
 	switch r.status {
-	case http.StatusNoContent, http.StatusOK:
+	case http.StatusNoContent:
+		return nil
+	case http.StatusOK:
+		// A change revokes every device token of the old password; the answer
+		// carries this machine's new one, kept beside the sign-in that stays.
+		var changed api.PasswordChanged
+		if json.Unmarshal(r.body, &changed) == nil && changed.DeviceToken != "" {
+			h.mu.Lock()
+			defer h.mu.Unlock()
+			h.holdDeviceLocked(row.ID, changed.DeviceToken)
+			if s, ok := h.sessions[row.ID]; ok && s.token == token {
+				h.keepSessionLocked(row.ID, row.URL, s)
+			}
+		}
 		return nil
 	case http.StatusForbidden, http.StatusConflict:
 		return passwordFailure(r)

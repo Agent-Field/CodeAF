@@ -15,7 +15,13 @@ Passwords are argon2id (OWASP parameters) in PHC strings, 12 characters to 256
 bytes after NFKC, checked against about 486,000 common passwords compared by
 their letters and digits. Every try is paid for before it is verified:
 throttled per username and address with decaying backoff, per username
-overall (addresses the person used before are exempt) and per address. Each
+overall and per address. A machine that signed up, reset or signed in before
+holds a device token (kept hashed on the server, revoked by a password change
+or reset, surviving a restart) and is exempt from the per-username ceiling, so
+a stranger guessing at a name cannot lock out the person's own machines; a new
+machine during such an attack uses the operator's reset link, which is never
+throttled. POST /v1/me/password now answers 200 with the machine's new
+device_token. Each
 session is tied to the password it was made with. A username already named
 anywhere on the server is taken, and an invitation made for one GitHub login
 takes no password. The engine serves factory.access_sign_up, access_reset,

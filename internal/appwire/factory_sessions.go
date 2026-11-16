@@ -49,12 +49,22 @@ const FactorySessionsTakeLife = 60 * time.Second
 
 // FactorySessionChange is one sign-in to keep, or, with Removed, one to forget.
 // Expires is absent for a sign-in that does not expire.
+//
+// Device is the organization's trusted-device token for this machine, a
+// secret kept beside the sign-in and handed back the same way: a later
+// password sign-in presents it, so a stranger guessing at the person's
+// username from elsewhere does not lock this machine out. It outlives the
+// sign-in: Removed forgets only the sign-in, and a Device on the same change
+// is still kept. DeviceRemoved forgets the device too (the connection itself
+// was removed).
 type FactorySessionChange struct {
-	Factory string     `json:"factory"`
-	URL     string     `json:"url,omitempty"`
-	Token   string     `json:"token,omitempty"`
-	Expires *time.Time `json:"expires,omitempty"`
-	Removed bool       `json:"removed,omitempty"`
+	Factory       string     `json:"factory"`
+	URL           string     `json:"url,omitempty"`
+	Token         string     `json:"token,omitempty"`
+	Expires       *time.Time `json:"expires,omitempty"`
+	Removed       bool       `json:"removed,omitempty"`
+	Device        string     `json:"device,omitempty"`
+	DeviceRemoved bool       `json:"device_removed,omitempty"`
 }
 
 // FactorySessionsTaken is every change not yet taken, oldest first.
@@ -62,12 +72,15 @@ type FactorySessionsTaken struct {
 	Changes []FactorySessionChange `json:"changes"`
 }
 
-// FactorySessionRestoreParams is a kept sign-in handed back.
+// FactorySessionRestoreParams is a kept sign-in handed back, with the device
+// token kept beside it. Either may be absent, not both: a person who signed
+// out still has the device.
 type FactorySessionRestoreParams struct {
 	Factory string     `json:"factory"`
 	URL     string     `json:"url"`
-	Token   string     `json:"token"`
+	Token   string     `json:"token,omitempty"`
 	Expires *time.Time `json:"expires,omitempty"`
+	Device  string     `json:"device,omitempty"`
 }
 
 // FactorySessionRestored says whether the engine now holds the sign-in.
@@ -136,8 +149,9 @@ func init() {
 			if p.Factory, err = factoryID(strings.TrimSpace(p.Factory)); err != nil {
 				return nil, err
 			}
-			if p.Token = strings.TrimSpace(p.Token); p.Token == "" || len(p.Token) > 4096 {
-				return nil, Errorf(CodeBadParams, "factory.session_restore: token is required")
+			p.Token, p.Device = strings.TrimSpace(p.Token), strings.TrimSpace(p.Device)
+			if (p.Token == "" && p.Device == "") || len(p.Token) > 4096 || len(p.Device) > 4096 {
+				return nil, Errorf(CodeBadParams, "factory.session_restore: token or device is required")
 			}
 			ctx, cancel := factoryCall()
 			defer cancel()

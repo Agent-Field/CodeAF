@@ -153,7 +153,11 @@ type appFactoryHub struct {
 	// in ("password", "github"), for one flow life; no secret, bounded like
 	// checkCaps (appfactory_password.go).
 	signInCaps map[string]appFactorySignInCap
-	seen       map[string]time.Time
+	// devices holds, per connection, the organization's trusted-device token
+	// for this machine (appfactory_sessions.go). It is a secret, kept like a
+	// session but outliving one: signing out keeps it.
+	devices map[string]string
+	seen    map[string]time.Time
 	// adminBusy marks a connection whose sign-out or revoke-all is in flight
 	// (appfactory_admin.go), so one press is one request.
 	adminBusy map[string]bool
@@ -466,6 +470,14 @@ func (h *appFactoryHub) tokenLocked(id string) string {
 		return ""
 	}
 	return s.token
+}
+
+// holdDevice is holdDeviceLocked for a caller that does not hold h.mu; the
+// holdAt that follows queues it.
+func (h *appFactoryHub) holdDevice(id, token string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.holdDeviceLocked(id, token)
 }
 
 // hold keeps a session in memory and tells the redactors it is a secret.
@@ -1063,7 +1075,8 @@ func (b *appBackend) FactoryDetach(_ context.Context, id string) error {
 	}
 	h.rows = kept
 	delete(h.sessions, id)
-	h.forgetKeptLocked(id)
+	delete(h.devices, id)
+	h.forgetDeviceLocked(id)
 	delete(h.seen, id)
 	h.dropHeldLocked(id)
 	h.stopOrgFollowLocked(id)
@@ -1415,6 +1428,7 @@ func (h *appFactoryHub) accessWith(ctx context.Context, caller, link string, ask
 	if joined && granted != "" {
 		redact.Register(granted)
 		trace.Secret(granted)
+		h.holdDeviceLocked(id, out.DeviceToken)
 		// An explicit completed sign-in changes the caller, including when a
 		// local authority was previously reached through its operator bearer.
 		h.sessions[id] = appFactorySession{token: granted}

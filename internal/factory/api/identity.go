@@ -126,6 +126,15 @@ type SignedOut struct {
 type PasswordSignIn struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
+	// Device is the trusted-device secret this machine was handed at an
+	// earlier right password, if it has one (PasswordSignedIn.DeviceToken).
+	Device string `json:"device,omitempty"`
+}
+
+// PasswordChanged answers a password change: the changing machine's new
+// trusted-device secret, since every older one ended with the old password.
+type PasswordChanged struct {
+	DeviceToken string `json:"device_token,omitempty"`
 }
 
 // PasswordChange is POST /v1/me/password, made while signed in.
@@ -150,4 +159,8 @@ type PasswordSignedIn struct {
 	ExpiresAt   time.Time      `json:"expires_at"`
 	Person      PasswordPerson `json:"person"`
 	Me          Me             `json:"me"`
+	// DeviceToken is a new trusted-device secret for this machine to keep
+	// and present with its next password sign-in; empty when the one it
+	// presented is still good.
+	DeviceToken string `json:"device_token,omitempty"`
 }

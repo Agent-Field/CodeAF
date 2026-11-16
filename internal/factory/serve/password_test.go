@@ -237,8 +237,8 @@ func TestPasswordPolicyIsNISTs(t *testing.T) {
 	cases := map[string]string{
 		"elevenchars":                                 reasonPasswordShort,
 		"twelve chars":                                "",
-		strings.Repeat("xy", 128):                     "",
-		strings.Repeat("xy", 128) + "z":               reasonPasswordLong,
+		strings.Repeat("violet9", 36) + "abcd":        "",
+		strings.Repeat("violet9", 36) + "abcde":       reasonPasswordLong,
 		"qwertyuiopasdfghjkl":                         reasonPasswordCommon,
 		"P.a.s.s.w.o.r.d-1234":                        reasonPasswordCommon,
 		"correct horse battery staple":                reasonPasswordCommon,
@@ -477,30 +477,11 @@ func TestSignInIsThrottledByNameAndAddressAndRecovers(t *testing.T) {
 	}
 }
 
-// A NAME HAS A LOOSER CEILING OF ITS OWN, which an address the person signed
-// in from before does not count against.
-func TestANameHasACeilingThatItsOwnAddressesSkip(t *testing.T) {
-	o := newPWOrg(t)
-	o.signUp(o.operatorLink(), "santosh", pwOperator)
-	if w := o.signIn("santosh", pwOperator, "127.0.0.5:1"); w.Code != 200 {
-		t.Fatalf("first sign-in = %d", w.Code)
-	}
-	for i := 0; i < userFailuresAll; i++ {
-		o.signIn("santosh", pwAbir, "127.1."+itoa(i/200)+"."+itoa(i%200+1)+":1")
-	}
-	if w := o.signIn("santosh", pwOperator, "127.0.0.6:1"); w.Code != 429 {
-		t.Fatalf("a new address past the ceiling = %d", w.Code)
-	}
-	if w := o.signIn("santosh", pwOperator, "127.0.0.5:1"); w.Code != 200 {
-		t.Fatalf("the owner's own address = %d %s", w.Code, w.Body)
-	}
-}
-
 func TestTheThrottleBacksOffExponentiallyAndForgets(t *testing.T) {
-	th := newThrottle(10, true)
+	th := newThrottle("test", 10, true)
 	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	try := func(at time.Time) bool {
-		_, ok := th.reserve("u", at)
+		ok := th.take("u", at)
 		if ok {
 			th.failed("u", at)
 		}
@@ -511,7 +492,7 @@ func TestTheThrottleBacksOffExponentiallyAndForgets(t *testing.T) {
 			t.Fatalf("try %d refused", i)
 		}
 	}
-	if _, ok := th.reserve("u", now); ok {
+	if th.take("u", now) {
 		t.Fatal("open after ten")
 	}
 	first := th.keys["u"].until.Sub(now)
@@ -537,10 +518,10 @@ func TestTheThrottleBacksOffExponentiallyAndForgets(t *testing.T) {
 		t.Fatal("still locked after a quiet spell")
 	}
 	// Bounded: a full set forgets keys that are not backing off.
-	small := newThrottle(10, false)
+	small := newThrottle("test", 10, false)
 	small.most = 3
 	for _, k := range []string{"a", "b", "c", "d", "e"} {
-		if _, ok := small.reserve(k, now); !ok {
+		if !small.take(k, now) {
 			t.Fatalf("%s refused", k)
 		}
 	}
@@ -591,7 +572,7 @@ func TestChangingAPasswordEndsEveryOtherSession(t *testing.T) {
 	if w := o.do("POST", "/v1/me/password", here, api.PasswordChange{Current: pwOperator, New: "short"}, ""); w.Code != 422 || !strings.Contains(w.Body.String(), refusalWords[reasonPasswordShort]) {
 		t.Fatalf("short new = %d %s", w.Code, w.Body)
 	}
-	if w := o.do("POST", "/v1/me/password", here, api.PasswordChange{Current: pwOperator, New: "a brand new passphrase"}, ""); w.Code != 204 {
+	if w := o.do("POST", "/v1/me/password", here, api.PasswordChange{Current: pwOperator, New: "a brand new passphrase"}, ""); w.Code != 200 {
 		t.Fatalf("change = %d %s", w.Code, w.Body)
 	}
 	if _, code := o.me(here); code != 200 {

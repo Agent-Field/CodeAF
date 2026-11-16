@@ -2802,9 +2802,9 @@ the second way.
   for an unknown username and a wrong password ("That username and password
   don't match."). Too many tries is `busy` ("Too many tries. Wait a few
   minutes."): 10 wrong tries of a username from one address, 100 from
-  everywhere (an address the person signed in from before skips this one),
-  or 50 from one address (an IPv6 address counts by its /64); and a second
-  sign-in of a username while one is being verified. Every session is tied to
+  everywhere, or 50 from one address (an IPv6 address counts by its /64);
+  and a second sign-in of a username while one is being verified. A machine
+  the organization trusts skips the 100: see the device token below. Every session is tied to
   the password it was made with: a change or a reset ends all of them.
 - `factory.password_change {factory, current, new}` answers `{}`; every other
   session of the person ends. A wrong current password is `forbidden`; a new
@@ -2821,6 +2821,21 @@ preferred first, from the server's `/v1/about`; absent means GitHub only);
 `factory.me`'s `sign_in_kind` (`"password"` or `"github"`); and
 `factory.people`'s rows' `kind`. `factory.me`'s `invite_available` no longer
 needs GitHub.
+
+THE DEVICE TOKEN. A sign-up, a reset, a change, and a sign-in without a
+valid one hand this machine the organization's device token. The engine holds
+it per connection like a session, registers it with its redaction, presents it
+on every `factory.password_sign_in` (the server then counts the try by the
+machine, not against the username's ceiling of 100, so a stranger guessing at
+the name from elsewhere never locks out a machine the person used), and hands
+it to the app's core through `factory.sessions_take`: each
+`FactorySessionChange` may carry `device`. It outlives the session: a change
+with `removed` forgets the session only, and a `device` on it is still kept;
+`device_removed` (the connection was detached) forgets the device too.
+`factory.session_restore` takes `device` beside `token`, and either alone. A
+password change or reset revokes every older device token on the server; a
+new machine during an attack waits, or uses the operator's reset link, which
+is never throttled.
 
 A password crosses this wire only inward, in `password`, `current` and `new`,
 on these four methods; a client's wire trace drops those params by name. The

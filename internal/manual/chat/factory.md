@@ -209,10 +209,18 @@ An organization server (`codeaf factory serve`) takes a username and password by
 - A username is 2 to 39 lowercase letters, digits or hyphens. It must be new to the server: not a GitHub login that ever signed in, nor a name already given a share, a team place or a job. "That name belongs to someone who signs in here with a password." refuses a GitHub sign-in with a password person's name. An invitation made for one GitHub login takes no password: "This link is for a GitHub account; sign in with GitHub."
 - A password is 12 characters to 256 bytes, any characters, with no other composition rules and no expiry. One on the embedded list of about 486,000 common passwords, compared by its letters and digits only (so "P.a.s.s.w.o.r.d-1234" counts), or one that contains your username, is refused with a sentence naming the rule.
 - A wrong username and a wrong password get the same sentence: "That username and password don't match."
-- "Too many tries. Wait a few minutes." comes after 10 wrong tries for a username from one address, 100 for a username from everywhere, or 50 from one address; the wait grows with more tries and goes away on its own. An address you have signed in from before is not held up by other people's guesses.
+- "Too many tries. Wait a few minutes." comes after 10 wrong tries for a username from one address, 100 for a username from everywhere, or 50 from one address; the wait grows with more tries and goes away on its own. A machine you have signed in on before is not held up by other people's guesses (see the next section).
 - Changing your password, or a reset, ends every session made with the old one. Signing out ends that session on the server.
 - A session lasts 30 days after you last used it, and 90 days at most.
 - Password sign-in works only over HTTPS, or on the server's own machine, or behind a trusted proxy that says HTTPS.
+
+## a trusted machine — someone guessing my username, "Too many tries" on a new laptop, device token
+
+Each time a machine signs up, resets, changes its password, or signs in with a username and password, the organization hands it a device token, a secret the app keeps in the system keychain beside the sign-in. Later sign-ins on that machine present it. While a stranger guesses at your username from many addresses, the 100-tries limit for the username holds them up but not your machines: a machine with its token is counted only by itself (10 wrong tries) and its address (50). Signing out keeps the token; disconnecting the factory removes it.
+
+The server keeps only a hash of each token. A token lasts 180 days, a person has at most 16, and a restart of the server keeps them. Changing your password, a reset, or being removed ends every token made before, so the machine you changed it on gets a new one and your other machines count as new until they sign in again.
+
+A new machine during such an attack reads "Too many tries. Wait a few minutes." until the attack slows. To get in at once, ask the operator for a reset link: a reset link, like an unused invitation, is never held up by tries, and the reset trusts that machine from then on.
 
 ## forgot password — operator reset link, one hour, password people only
 
@@ -224,7 +232,7 @@ There is no email recovery. The operator makes a reset link for one password per
 
 ## the app keeps a factory sign-in — signed out after a restart, keychain, sign out removes it
 
-In the desktop app, a sign-in to a team factory (GitHub sign-in, an access link, or a pasted token) is kept in the system keychain, one item per factory, and handed back when the app next opens, so a restart does not sign you out. It is never written to the app's saved factory list or to a log. Signing out, ending every session, and disconnecting the factory each remove the kept sign-in. A kept sign-in the factory no longer accepts reads **Signed out** once and is removed; sign in again. The factory on your own machine keeps no sign-in: the app makes its key again at each start.
+In the desktop app, a sign-in to a team factory (GitHub sign-in, an access link, or a pasted token) is kept in the system keychain, one item per factory, and handed back when the app next opens, so a restart does not sign you out. It is never written to the app's saved factory list or to a log. Signing out, ending every session, and disconnecting the factory each remove the kept sign-in. An organization's device token is kept in the same item; only disconnecting removes it. A kept sign-in the factory no longer accepts reads **Signed out** once and is removed; sign in again. The factory on your own machine keeps no sign-in: the app makes its key again at each start.
 
 ## codeaf runner join — run a factory's jobs on this machine, sign in with GitHub
 

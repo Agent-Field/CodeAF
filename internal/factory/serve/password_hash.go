@@ -54,7 +54,7 @@ const (
 	// hashSlotsMost is how many hashes may run at once on the whole server,
 	// and hashSlotWait how long a request waits for one before it is refused.
 	hashSlotsMost = 4
-	hashSlotWait  = 3 * time.Second
+	hashSlotWait  = 500 * time.Millisecond
 )
 
 // owaspArgon is OWASP's 2025 argon2id floor. currentArgon is what a new hash

@@ -141,11 +141,12 @@ func throttleKeys(r *http.Request, username string) (user, addr string) {
 	return user, throttleAddr(clientOf(r).addr)
 }
 
-// admitTry admits one password try, or answers 429 and false. alone is
-// whether it must be the only try of the name being verified (sign-in).
-func (h *Handler) admitTry(w http.ResponseWriter, r *http.Request, username string, alone bool) (*attempt, bool) {
+// admitTry admits one password try, or answers 429 and false. device is a
+// trusted device's id the try came with, or "". alone is whether it must be
+// the only try of the name (or device) being verified (sign-in).
+func (h *Handler) admitTry(w http.ResponseWriter, r *http.Request, username, device string, alone bool) (*attempt, bool) {
 	user, addr := throttleKeys(r, username)
-	a, ok := h.guard().admit(user, addr, h.now(), alone)
+	a, ok := h.guard().admit(user, addr, device, h.now(), alone)
 	if !ok {
 		h.tooManyTries(w)
 	}
@@ -259,7 +260,7 @@ func (h *Handler) endSessionsOf(handle, keep string, gen int64) error {
 			continue
 		}
 		if keep != "" && s.id == keep {
-			s.credGen = gen
+			s.credGen, s.pendingGen = gen, 0
 			h.sessions.ids[key] = s
 			continue
 		}
@@ -368,7 +369,11 @@ func (h *Handler) signUp(w http.ResponseWriter, r *http.Request, body api.Factor
 	if h.failed(w, err) {
 		return
 	}
-	out.State, out.AccessToken, out.Message, out.Reason = "joined", credential, "", ""
+	device, err := h.issueDevice(username, 1)
+	if h.failed(w, err) {
+		return
+	}
+	out.State, out.AccessToken, out.DeviceToken, out.Message, out.Reason = "joined", credential, device, "", ""
 	h.passwordRepos(&out)
 	h.write(w, http.StatusOK, out)
 }
@@ -447,7 +452,11 @@ func (h *Handler) resetAccess(w http.ResponseWriter, r *http.Request, body api.F
 	if h.failed(w, err) {
 		return
 	}
-	out.State, out.AccessToken = "joined", credential
+	device, err := h.issueDevice(handle, gen)
+	if h.failed(w, err) {
+		return
+	}
+	out.State, out.AccessToken, out.DeviceToken = "joined", credential, device
 	h.passwordRepos(&out)
 	h.write(w, http.StatusOK, out)
 }
@@ -466,12 +475,15 @@ func (h *Handler) passwordSignIn(w http.ResponseWriter, r *http.Request) {
 	if !h.readPasswordBody(w, r, &body) {
 		return
 	}
-	try, ok := h.admitTry(w, r, body.Username, true)
+	username := cleanUsername(body.Username)
+	// A trusted device is judged before the try is admitted, since it is
+	// what decides which buckets the try counts against.
+	device := h.trustedDevice(username, body.Device)
+	try, ok := h.admitTry(w, r, body.Username, device, true)
 	if !ok {
 		return
 	}
 	defer try.abandon(h.now())
-	username := cleanUsername(body.Username)
 	acct, found, err := h.passwordAccount(username)
 	if h.failed(w, err) {
 		return
@@ -524,6 +536,12 @@ func (h *Handler) passwordSignIn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	try.succeeded(now)
+	newDevice := ""
+	if device != "" {
+		h.touchDevice(username, device)
+	} else if newDevice, err = h.issueDevice(username, acct.Gen); h.failed(w, err) {
+		return
+	}
 	if h.failed(w, h.accountEvent(r, username, "", "signed in", "signed in with a password", false)) {
 		return
 	}
@@ -533,7 +551,7 @@ func (h *Handler) passwordSignIn(w http.ResponseWriter, r *http.Request) {
 	me.Teams = h.Membership().TeamsOf(username)
 	h.write(w, http.StatusOK, api.PasswordSignedIn{Factory: h.factory, AccessToken: credential, TokenType: "bearer",
 		ExpiresIn: int(accessSessionTTL.Seconds()), ExpiresAt: session.expires.UTC(),
-		Person: api.PasswordPerson{Handle: username, Name: profile.Name}, Me: me})
+		Person: api.PasswordPerson{Handle: username, Name: profile.Name}, Me: me, DeviceToken: newDevice})
 }
 
 // passwordChange is POST /v1/me/password: current and new, signed in. Every
@@ -553,7 +571,7 @@ func (h *Handler) passwordChange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	handle := session.profile.Handle
-	try, ok := h.admitTry(w, r, handle, false)
+	try, ok := h.admitTry(w, r, handle, "", false)
 	if !ok {
 		return
 	}
@@ -594,8 +612,15 @@ func (h *Handler) passwordChange(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
+	// This session lives at the new generation too from before the write,
+	// so a request it makes while the change lands is not turned away; the
+	// session lock is not held across the write (row lock, then sessions).
+	h.setPendingGen(session.id, acct.Gen+1)
 	gen, err := tokens.SetPassword(h.config.TokensPath, handle, hash, acct.Gen, h.now())
 	h.forgetAccounts()
+	if err != nil {
+		h.setPendingGen(session.id, 0)
+	}
 	if errors.Is(err, tokens.ErrStale) {
 		h.refuse(w, http.StatusConflict, "Your password was changed meanwhile; sign in again.", "password_moved", "", nil, "")
 		return
@@ -609,7 +634,13 @@ func (h *Handler) passwordChange(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, h.accountEvent(r, handle, "", "changed password", "changed password; other sign-ins ended", false)) {
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	// Every trusted device ended with the old password; this one is
+	// trusted again at the new.
+	device, err := h.issueDevice(handle, gen)
+	if h.failed(w, err) {
+		return
+	}
+	h.write(w, http.StatusOK, api.PasswordChanged{DeviceToken: device})
 }
 
 // createResetLink is POST /v1/access/links with kind reset: the operator's
