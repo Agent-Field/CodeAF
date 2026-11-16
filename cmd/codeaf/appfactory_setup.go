@@ -104,6 +104,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/connect"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
@@ -701,6 +702,11 @@ func (b *appBackend) FactorySetupAct(ctx context.Context, _ string, act appwire.
 	// A STEP MAY HAVE JUST TOLD THE FACTORY WHOSE GITHUB THIS IS, which is all
 	// its runner was waiting for.
 	b.ensureLocalRunner(ctx)
+	if act.Verb == appwire.SetupVerbConnect && b.emit != nil {
+		// THE FACTORY'S GITHUB IS THE CONNECTORS PAGE'S GITHUB (connect_github.go):
+		// a connection made here is announced there too.
+		b.emit.Emit(appwire.EventPluginsChanged, appwire.PluginsChanged{ID: connect.GitHubID})
+	}
 	return b.setupView(out), nil
 }
 

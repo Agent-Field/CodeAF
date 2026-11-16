@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -149,6 +150,17 @@ func (m *Manager) MCPCall(ctx context.Context, service, tool string, args json.R
 // until it is restarted.
 func (m *Manager) open(ctx context.Context, plug *toolServer) (*mcp.ClientSession, error) {
 	service := plug.service
+	if plug.bearer {
+		// GitHub: the machine's one token, carried as it is (github.go).
+		if !m.offered(service) {
+			return nil, fmt.Errorf("%s is not connected", service.Name)
+		}
+		client, address, err := m.githubClient(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return m.connectServer(ctx, service, address, client)
+	}
 	entry, ok := m.standing(plug)
 	if !ok {
 		return nil, fmt.Errorf("%s is not connected", service.Name)
@@ -176,7 +188,12 @@ func (m *Manager) open(ctx context.Context, plug *toolServer) (*mcp.ClientSessio
 	}
 	client := oauth2.NewClient(ctx, source)
 	client.Timeout = mcpCallTimeout
+	return m.connectServer(ctx, service, address, client)
+}
 
+// connectServer opens one session with a tool server over client, which
+// already carries whatever the service is signed in with.
+func (m *Manager) connectServer(ctx context.Context, service Service, address string, client *http.Client) (*mcp.ClientSession, error) {
 	session, err := mcpClient().Connect(ctx, &mcp.StreamableClientTransport{
 		Endpoint:   address,
 		HTTPClient: client,
