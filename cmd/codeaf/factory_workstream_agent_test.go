@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -120,5 +121,21 @@ func TestTheServerAgentIsASessionWithTheOrgKeyAndOneTool(t *testing.T) {
 	}
 	if end.USD < 0.039 || end.USD > 0.041 {
 		t.Fatalf("spent %v, want 0.04", end.USD)
+	}
+}
+
+// THE SERVER AGENT ALWAYS NAMES A MODEL SOURCE. An unset CODEAF_BASE_URL used
+// to hand the provider client an empty base URL, which it refuses, so every
+// server turn failed with "provider base URL is required" on a server started
+// without the variable (film defect D9). Unset means OpenRouter; set means the
+// operator's own proxy.
+func TestTheServerAgentDefaultsToOpenRouterWhenNoBaseURLIsSet(t *testing.T) {
+	t.Setenv("CODEAF_BASE_URL", "")
+	if got := factoryWorkstreamAgentBaseURL(); got != config.DefaultBaseURL || got == "" {
+		t.Fatalf("base URL with no variable = %q, want %q", got, config.DefaultBaseURL)
+	}
+	t.Setenv("CODEAF_BASE_URL", " https://proxy.example/v1 ")
+	if got := factoryWorkstreamAgentBaseURL(); got != "https://proxy.example/v1" {
+		t.Fatalf("base URL with the variable = %q, want the operator's proxy", got)
 	}
 }
