@@ -26,7 +26,23 @@ On an organization, the amount is honoured by the organization's server with no 
 
 ## the Factory switch and standing orders in a workstream — what works here without anyone asking
 
-"Keeps running" lists what works in the workstream without anyone asking. The Factory switch says whether the Factory turns new issues into tasks here. Each standing order belonging to the workstream has its own switch; its results land in the workstream's task list as a group named after the order. Before an order is switched on, the sheet shows what it will create. An order that belongs to no workstream runs exactly as it always did.
+"Keeps running" lists what works in the workstream without anyone asking. The Factory switch says whether the Factory turns new issues into tasks here. Each standing order belonging to the workstream has its own row — when it runs ("Every Monday at 09:00"), then what it does and who owns its tasks — and one switch. Switching it off pauses it; switching it on again resumes it. Each switch says itself in a note with Undo for five seconds. An order that belongs to no workstream runs exactly as it always did.
+
+Before an order is switched on, its row opens a preview: the next three times it will run, and the task each run adds — its title, that Afi does it, and its owner (the workstream's "Owner of incoming work"). The switch inside the preview is what turns it on.
+
+## adding a standing order to a workstream — every Monday, each morning, the 1st of the month
+
+"Add a standing order…" at the foot of People and rules opens two questions: "What to do", in your own words, and "When": Each morning, Every weekday, Every week (pick the day), Every month (pick the day of the month), or Every hour, with the time of day. The preview under them shows the next three runs and the task each run will add. "Switch on" saves it and turns it on; Cancel keeps nothing. Only the person who looks after the workstream adds one.
+
+The sheet sets a schedule. It cannot start an order on an event, such as "when a release ships": nothing in the sheet watches for one, so it is not offered.
+
+An order runs on the computer of the person who added it, while codeaf is open there; what fell due while it was closed runs once, late, when it opens. That holds in an organization's workstream too: the organization's server keeps the tasks, and the order is that person's.
+
+## a standing order's tasks — Came from, the group in Tasks, and when it asks
+
+Each run of a workstream's standing order adds one task to it. The task says where it came from on its page ("From the standing order Every Monday at 09:00"), is done by Afi, and is owned by the workstream's "Owner of incoming work". In Tasks, an order's tasks fold into one group named after it, so forty runs never bury the work people added by hand.
+
+When "Start without asking" covers what one run may spend, the order runs alone. Otherwise each run first asks its owner "Run … now?" on its task, with Go, Skip this one and Not right; that reaches the owner's Inbox like any question. A run that ends needing a person's call asks on its task too. A run that did not finish shows Failed with its reason; one you skip or stop shows Stopped by you.
 
 ## a workstream inside a workstream — nesting, one level only, and what it shares with its parent
 

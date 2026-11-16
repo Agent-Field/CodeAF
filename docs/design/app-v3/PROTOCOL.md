@@ -867,6 +867,22 @@ nothing about when or how the order runs; the desk lands a scoped order's result
 that workstream's task list as a group named after the order, and its People and rules
 page switches it through `rules.keeps_running.orders`.
 
+An engine whose hello carries `workstream_orders` makes one from that page.
+`orders.create {title?, when, does, workstream, budget_per_run_usd?}` saves a work order
+as `proposed` (nothing runs before `orders.ratify`), asking first, its results said
+`not_here`, running from the person's home; an empty title takes the brief's first line.
+`when` is the dialect `orders.change` reads (`every 0 9 * * 1`, `every 1d`, `at …`, `in
+2h`), read in this machine's zone; one that cannot be read is `bad_params` and nothing
+is kept. `orders.preview {when}` answers `{when, when_exact, next_runs}` from the same
+reading without keeping anything. An order also carries `next_runs` (at most three)
+whenever it repeats and may still run, switched on or not, and a run that is over
+carries `outcome`, its own word (`done`, `your-call`, `incomplete`, `stopped`,
+`skipped`, `quiet`, `unchecked`), beside `result`, which folds several into
+`incomplete`. The desk that holds the order makes each run a task in the workstream
+(`came_from {kind: order, order_id, name, run}`, `group {kind: order}`): an order's
+workstream is the desk's own address for it, a Personal id or `org:<connection>/<id>`,
+opaque to the engine.
+
 An engine whose hello carries `org_agent_runner` reads and keeps where an organization
 workstream's agent runs. `factory.org_agent_runner` `GET /v1/settings` answers
 `{agent_runner, agent_runners}`: the operator's choice, `driver` (on the laptop of the
@@ -924,7 +940,8 @@ waiting_on, due?, group?, results, check?, ask?, cost_usd?, created_by, created_
 updated_at, done_at?, answered_by?}`, `state` one of `up_next`, `running`, `needs`,
 `done`, `failed`, `interrupted`, `stopped` (Stopped by you), `no_report` (Didn't report
 back); an event is `{id, task, at, by, kind, text, steps?, duration_s?, offer?,
-undo_until?}`. A person on a task (`owner`, `done_by`, `came_from` and
+undo_until?, option?}`, `option` being the chosen answer's id on an `answered` event; a
+standing order's task names its run in `came_from.run`. A person on a task (`owner`, `done_by`, `came_from` and
 `created_by` of kind `person`) is named, in every answer that carries the task, by the
 name they joined with ("Abir Das"), or their handle when the organization knows none;
 a task made with `owner: {kind: person, id}` alone reads back named. `factory.org_workstream_tasks {ws}` `GET /v1/workstreams/{id}/tasks`
@@ -2310,10 +2327,12 @@ $0.10 goes out as `0.1`.
 | method | params | result |
 |---|---|---|
 | `orders.change` | `in.orderAt` | `OrderResult` |
+| `orders.create` | `OrderCreate` | `OrderResult` |
 | `orders.list` | `{agent}` | `OrdersResult` |
 | `orders.made_in` | `in.OrdersMadeAsk` | `OrdersMadeResult` |
 | `orders.not_now` | `in.orderAt` | `Empty` |
 | `orders.pause` | `in.orderAt` | `OrderResult` |
+| `orders.preview` | `{when}` | `OrderPreview` |
 | `orders.ratify` | `in.orderAt` | `OrderResult` |
 | `orders.resume` | `in.orderAt` | `OrderResult` |
 | `orders.run` | `{id, run, verdict}` | `OrderResult` |

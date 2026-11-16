@@ -147,6 +147,11 @@ func orderView(asking map[string]automation.Run, a automation.Automation, now ti
 		at := a.Next
 		o.FiresAt = &at
 	}
+	// A repeating order that may still run says its next runs, switched on or
+	// not: the preview a workstream's sheet shows before its switch.
+	if a.Schedule.Repeats() && (o.State == appwire.OrderActive || o.State == appwire.OrderPaused || o.State == appwire.OrderProposed) {
+		o.NextRuns = orderNextRuns(a.Schedule, now)
+	}
 	if a.Last != nil {
 		last := orderRunView(*a.Last)
 		o.LastRun = &last
@@ -187,6 +192,7 @@ func orderRunView(run automation.Run) appwire.OrderRun {
 	if run.Phase != automation.PhaseOver {
 		return v
 	}
+	v.Outcome = string(run.Outcome)
 	if v.At == nil && !run.Finished.IsZero() {
 		at := run.Finished
 		v.At = &at
