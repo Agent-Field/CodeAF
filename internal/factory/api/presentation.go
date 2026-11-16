@@ -6,7 +6,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 )
 
-const ConcurrencySettingsHint = "Change Jobs at once in Settings → Factory → Your computers."
+const ConcurrencySettingsHint = "Change Jobs at once in Settings → Organizations → Your computers."
 
 // WaitingForComputer is a queued job whose work is on a computer that is
 // offline or asleep: no runner or Jobs at once setting can start it elsewhere.

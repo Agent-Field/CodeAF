@@ -255,7 +255,7 @@ func (h *Handler) agentCannot(ws factory.OrgWorkstream, v wsViewer) (bool, strin
 	case h.agentRunner() != factory.AgentRunnerServer:
 		return false, "This organization runs its workstreams' agents on the laptop of whoever drives them."
 	case h.orgModelKey() == "":
-		return false, "The organization has no model key yet. Its operator adds one in Settings › Factory."
+		return false, "The organization has no model key yet. Its operator adds one in Settings › Organizations."
 	}
 	if ws.BudgetUSD != nil {
 		spent, _ := h.config.Store.WorkstreamSpend()

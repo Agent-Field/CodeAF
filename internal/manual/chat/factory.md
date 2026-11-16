@@ -128,7 +128,7 @@ for that search, while the other results remain available.
 
 **Jobs at once** is the one number that limits how many jobs a computer runs
 together. A newly attached computer defaults to **15 jobs at once**. Change it
-in **Settings → Factory → Your computers**, with the stepper beside each of
+in **Settings → Organizations → Your computers**, with the stepper beside each of
 your computers; it is owner-only. The supported range is 1–100. An existing
 saved limit is kept on restart and upgrade, including a previously chosen limit
 of two. A change applies within about five seconds without restarting.
@@ -139,7 +139,7 @@ memory limits per job: the computer's own system shares them.
 Jobs over the limit wait in the queue in priority order, then oldest first (see "priority orders the queue"). When the owner's eligible
 computers are full, queued jobs say **Waiting for capacity** and show the
 number of occupied execution slots and the configured limit. The notice points
-to Settings → Factory → Your computers and offers **Change jobs at once**. An
+to Settings → Organizations → Your computers and offers **Change jobs at once**. An
 offline or unknown runner is reported as waiting for a runner, without
 inventing a full-capacity count. A restarted codeaf lists each of its computers
 once: the rows the process before it left go once they have been quiet past
@@ -190,6 +190,22 @@ The config keys are `name`, `listen`, `access_token`, `repos` (a list of `owner/
 When the GitHub rate limit for a team factory's token is spent, `codeaf factory serve` still answers its address at once; only its GitHub reads pause. The factory logs one line when it meets the limit, `GitHub is rate-limited until HH:MM; the factory keeps serving and reads GitHub again then`, and one line when a GitHub read succeeds again, `GitHub's rate limit has cleared; the factory reads GitHub again`. While the limit is spent, the factory's `/v1/about` carries that sentence as `github_limited` and the reset time as `github_resumes_at`.
 
 The operator access link of a fresh team factory is printed once GitHub names the host's login, after the reset if the limit is spent. A GitHub read whose limit resets more than ninety seconds later is not retried in a loop; the factory's next poll after the reset reads it.
+
+## join an organization — an invite link, joining a factory, where Factory settings went in the desktop app
+
+A person joins an **organization**, never Factory on its own. An organization is one server (`codeaf factory serve`), and joining it brings everything it holds at once: its workstreams, canvases, chats, teams and Factory's jobs and pipelines. There is no separate step to connect or join Factory; in an organization, Factory is just there, as one of its places.
+
+In the desktop app there are three ways in, and all three open the same **Join an organization** page:
+
+- first run's **Where do you want to work?**: **Just me** (Personal, on this computer), **Join an organization**, or **Set up an organization** (run one on this computer, where the engine offers it);
+- the switcher at the foot of the strip: **Join an organization…**;
+- **Settings › Organizations**: **Join an organization…** under the organizations you are already in.
+
+Paste the invite link someone sent you. Once it is read, the page says **You're invited to** and the organization's name, then offers a passkey, a username and password, or GitHub, in the order the server prefers. **Or join by your organization's address** takes the address (and an access token, if you were given one) instead.
+
+**Settings › Organizations** has one section per organization you are in: your account there (password, passkeys, sign out, **Leave organization…**), its invite links and people, the model key and where agents run, then **Teams in** the organization, then **Factory** for that organization (repositories, AI notes, and the line to its rules, limits and computers). It was called Settings › Factory before.
+
+Invite links keep their old spelling, `codeaf://factory/join?url=…#token=…`, so every link already sent still works.
 
 ## give someone access — codeaf factory token, revoke, revoke-sessions and name
 

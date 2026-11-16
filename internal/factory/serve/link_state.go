@@ -53,7 +53,7 @@ func captureDevice(action http.HandlerFunc, r *http.Request, body any) *deviceRe
 func accessSecret(link, address string) (string, error) {
 	u, err := url.Parse(link)
 	if err != nil {
-		return "", errors.New("use a factory access link")
+		return "", errors.New("use an organization invite link")
 	}
 	origin := u.Query().Get("url")
 	if u.Scheme != "codeaf" || u.Host != "factory" || u.Path != "/join" || strings.TrimRight(origin, "/") != strings.TrimRight(address, "/") {

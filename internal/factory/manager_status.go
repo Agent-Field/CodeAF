@@ -123,11 +123,11 @@ func StatusForManagerWaiting(it Item, held, threadOnly bool, waitingFor string, 
 	case it.State == StateQueued && waitingFor != "":
 		out.Text += step + " is queued. " + waitingFor
 	case it.State == StateQueued && held && threadOnly:
-		out.Text += step + " is queued; waiting for an available execution slot. Answering a reply in this thread does not take one. Change Jobs at once in Settings → Factory → Your computers."
+		out.Text += step + " is queued; waiting for an available execution slot. Answering a reply in this thread does not take one. Change Jobs at once in Settings → Organizations → Your computers."
 	case it.State == StateQueued && it.OverLimit:
 		out.Text += step + " is starting now, above Jobs at once this one time."
 	case it.State == StateQueued:
-		out.Text += step + " is queued; waiting for an available execution slot. Change Jobs at once in Settings → Factory → Your computers. Idle PR monitoring does not use an execution slot."
+		out.Text += step + " is queued; waiting for an available execution slot. Change Jobs at once in Settings → Organizations → Your computers. Idle PR monitoring does not use an execution slot."
 	case it.State == StateRunning && held && threadOnly:
 		out.Text += step + " is not running: only a reply in this thread is being answered, which takes no execution slot. Use Try again to recover the step."
 	case it.State == StateRunning && held:
