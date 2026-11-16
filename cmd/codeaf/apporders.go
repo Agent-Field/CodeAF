@@ -645,6 +645,15 @@ func (b *appBackend) sayOrderAsksFrom(store *automation.Store, open map[int64]ap
 			closed.By, closed.Option = appwire.ClosedByApp, option.(string)
 		}
 		b.emit.Emit(appwire.EventAskClosed, closed)
+		// A RUN THAT STOPPED WAITING LEAVES THE INBOX TOO. Its ask has no receipt
+		// line in any chat, and the Inbox drops an item only on its receipt, so the
+		// closed run sat in Waiting and in the count until the engine restarted, and
+		// nothing could clear it (owner, 2026-11-16: "Run … now?" rows that stayed).
+		receipt := appwire.Entry{}
+		if closed.By != appwire.ClosedByApp {
+			receipt.Text = "No longer needed · " + now.Format("15:04")
+		}
+		b.inboxResolved(appInboxID(ask.Agent, ask.ID), receipt)
 	}
 }
 
