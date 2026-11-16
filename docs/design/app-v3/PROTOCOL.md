@@ -2692,7 +2692,9 @@ answered, on a best effort, and is no longer the factory's: it reads
 `factory_owned: false`, as one of the person's own chats in Archived, titled
 "Factory manager (earlier)" when its title was still the manager's own.
 
-Whenever the engine replaces the manager (here, or by `factory.foreman_fresh`)
+Whenever the engine replaces the manager (here, by `factory.foreman_fresh`, or
+when a start or open finishes retiring an earlier manager left behind by an
+interrupted replacement)
 it sends the event `factory.foreman_changed {factory, agent, replaced}`:
 `agent` is the manager now and `replaced` the conversation that no longer is.
 A window showing `replaced` swaps it for `agent`; without the event a tab the
