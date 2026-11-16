@@ -1100,7 +1100,11 @@ func (a *Agent) askRouteAhead(ctx context.Context, asked string) (routeVerdict, 
 func (a *Agent) confirmRouteAhead(ctx context.Context, asked string) (routeVerdict, bool) {
 	ctx, done := context.WithTimeout(ctx, routeRaceConfirmWindow)
 	defer done()
-	verdict, ok := a.putRouteQuestion(ctx, roles.RoleRouterConfirm, "", routeAheadBrief, routeAheadQuestion(asked), asked)
+	// THE FLOOR IS THE CONVERSATION'S MODEL. The confirm is a background seat
+	// (internal/roles' background.go): it no longer reads the crew's planner
+	// row, so the empty floor this call used to pass would leave it no model
+	// and the look-ahead would silently never be asked.
+	verdict, ok := a.putRouteQuestion(ctx, roles.RoleRouterConfirm, a.Model(), routeAheadBrief, routeAheadQuestion(asked), asked)
 	return verdict, ok && verdict.Work
 }
 
