@@ -22,6 +22,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
+	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
 
 type appChats struct {
@@ -54,6 +55,8 @@ type appChats struct {
 type appLocalChat struct {
 	agent    string
 	copyable bool
+	// root is the chat's cell folder here, which its crew membership names.
+	root string
 }
 
 // Startup offers local cells without starting a chat-inventory subscriber.
@@ -263,7 +266,7 @@ func (b *appBackend) localChats(s *syncsetup.Sync) map[string]appLocalChat {
 		if meta, err := session.LoadMeta(root); err == nil && copied != root {
 			copyable = olderChatCopyable(meta)
 		}
-		out[remote] = appLocalChat{agent: agent, copyable: copyable}
+		out[remote] = appLocalChat{agent: agent, copyable: copyable, root: copied}
 	}
 	return out
 }
@@ -397,6 +400,7 @@ func (b *appBackend) readChats(parent context.Context, s *syncsetup.Sync, feed d
 	}
 	known := b.devices.watch.Snapshot(s.Identity, s.Device).Online
 	local := b.localChats(s)
+	crews := b.chatCrews()
 	out := make([]appwire.ChatRow, 0, len(rows))
 	facts := make(map[string]chatlist.Row, len(rows))
 	takeable := make(map[string]bool, len(rows))
@@ -427,6 +431,7 @@ func (b *appBackend) readChats(parent context.Context, s *syncsetup.Sync, feed d
 			row.Size = int64(min(r.Size, math.MaxInt64))
 		}
 		takeable[r.Cell] = row.CanTake
+		appChatCrew(&row, r, crews, local[r.Cell].root)
 		appChatSharing(&row, r)
 		row.Working = !here && r.Working
 		row.Notes = b.appChatNotes(mail, r.Cell, here)
@@ -449,6 +454,39 @@ func (b *appBackend) readChats(parent context.Context, s *syncsetup.Sync, feed d
 	// here, so only a row from before the take keeps its agent where it is.
 	b.publishChatRows(out, version, emit, func(r appwire.ChatRow) bool { return !b.chats.landedTake(r.Cell) })
 	return appwire.ChatsResult{Chats: out, Version: version}, nil
+}
+
+// ChatRowsCarryCrews is chats.crew: every row is dressed with its crew from
+// this computer's own teams store or, for a chat held elsewhere, from what its
+// holder sealed into the chat's record. Both always work, so the feature is
+// present wherever chat rows are; a holder that never says sends a loose row.
+func (*appBackend) ChatRowsCarryCrews() bool { return true }
+
+// chatCrews is this computer's open crews, read once per chat list. A store
+// that cannot be read leaves every row to what its holder said.
+func (b *appBackend) chatCrews() []teamstore.Team {
+	f, err := teamstore.LoadOpen(b.crewProfile())
+	if err != nil {
+		return nil
+	}
+	return f.Open()
+}
+
+// appChatCrew dresses a row with its crew. THIS COMPUTER'S OWN TEAMS STORE
+// WINS for a chat it knows (one here, or a `machine:` member that moved away),
+// because it is the one place a crew is edited and so the freshest; the
+// record's crew answers for a chat held elsewhere that this store does not
+// list, which is how a crew made on another computer arrives (chatlist.Crew).
+// A chat here that the store does not list is in no crew, whatever an older
+// record says. A remote crew is READ-ONLY here in this version: nothing here
+// offers to take or edit it as a crew, and its manager is reached with
+// chats.send like any chat another computer holds.
+func appChatCrew(row *appwire.ChatRow, fact chatlist.Row, crews []teamstore.Team, root string) {
+	crew := syncsetup.CrewOfChat(crews, root, row.Cell)
+	if crew.ID == "" && !row.Here {
+		crew = fact.Crew
+	}
+	row.Crew, row.CrewName, row.CrewManager, row.CrewKind = crew.ID, crew.Name, crew.Manager, crew.Kind
 }
 
 func (c *appChats) newerChats(version uint64) (appwire.ChatsResult, bool) {

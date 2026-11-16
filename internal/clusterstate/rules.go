@@ -76,6 +76,7 @@ func PublishTo(c Cell, device string, p Publish, now int64) (Cell, error) {
 	c.Lease.Expires = now + ttlMs
 	c.Title = keepIfEmpty(p.Title, c.Title)
 	c.Folder = keepIfEmpty(p.Folder, c.Folder)
+	c.Crew = keepIfEmpty(p.Crew, c.Crew)
 	return c, nil
 }
 
@@ -98,7 +99,7 @@ func ReleaseOf(c Cell, device string, fence uint64, at ...int64) (Cell, error) {
 func Created(in CellInit, device string, now int64) Cell {
 	return Cell{
 		V: 1, Head: in.Head, DurableAt: now, SavedAt: in.SavedAt, Class: in.Class, Size: in.Size,
-		ParentCell: in.ParentCell, Title: in.Title, Folder: in.Folder, Keys: in.Keys, OrphanTurns: in.OrphanTurns,
+		ParentCell: in.ParentCell, Title: in.Title, Folder: in.Folder, Crew: in.Crew, Keys: in.Keys, OrphanTurns: in.OrphanTurns,
 		Frames: in.Frames, FrameHints: boundedFrameHints(in.FrameHints),
 		Lease: Lease{Device: device, Fence: 1, Expires: now + ttlMs},
 	}

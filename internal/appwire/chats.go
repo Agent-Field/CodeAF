@@ -16,6 +16,17 @@ const (
 	// message written here to a chat another computer holds, which that
 	// computer puts in the chat's queue, so it runs when the turn there ends.
 	FeatureChatsSend = "chats.send"
+	// FeatureChatsRead says chats.read exists: the transcript of a chat another
+	// computer holds, read page by page from what that computer last sealed,
+	// without taking the chat and without downloading its project folder. It is
+	// absent unless a relay is configured AND the engine codeaf seals with can
+	// read one path of a snapshot (a capability that cannot work is absent).
+	FeatureChatsRead = "chats.read"
+	// FeatureChatsCrew says chat rows carry crew, crew_name, crew_manager and
+	// crew_kind: the crew a chat belongs to on the computer that holds it, so a
+	// client can show a crew made on another computer as one crew. A row from
+	// a holder whose build or relay does not say carries none (a loose row).
+	FeatureChatsCrew = "chats.crew"
 	FeatureSyncRelay = "sync.relay"
 	EventChatChanged = "chat.changed"
 	EventChatRemoved = "chat.removed"
@@ -36,10 +47,19 @@ type ChatRow struct {
 	Online     *bool           `json:"online,omitempty"`
 	SavedAt    time.Time       `json:"saved_at,omitzero"`
 	Status     string          `json:"status" enum:"here,running,idle,off"`
-	Crew       string          `json:"crew,omitempty"`
-	Seen       Seen            `json:"seen"`
-	CanTake    bool            `json:"can_take"`
-	Taking     bool            `json:"taking"`
+	// Crew is the id of the crew the chat belongs to on its holder, absent
+	// for a chat in none. CrewName is that crew's name, CrewManager says the
+	// chat is the crew's manager (the one to send to), and CrewKind is
+	// "factory" for a factory item's crew, absent for an ordinary one. For a
+	// chat held elsewhere they are what the holder said at its last saved turn
+	// (chats.crew); a crew held elsewhere is read-only here.
+	Crew        string `json:"crew,omitempty"`
+	CrewName    string `json:"crew_name,omitempty"`
+	CrewManager bool   `json:"crew_manager,omitempty"`
+	CrewKind    string `json:"crew_kind,omitempty" enum:"factory"`
+	Seen        Seen   `json:"seen"`
+	CanTake     bool   `json:"can_take"`
+	Taking      bool   `json:"taking"`
 	// Folder is the name of the folder the chat works in on its holder, when
 	// the holder said; Size is the bytes moving it here copies, absent when
 	// unknown or when this computer already has a copy (a move then copies
@@ -159,6 +179,43 @@ type ChatsTaker interface {
 	TakeAgent(TakeParams) (Agent, error)
 }
 
+// ChatReadParams asks for one page of a remote chat's transcript. Before is the
+// cursor a previous page answered; empty is the newest page. Limit is the
+// fewest entries a page holds before it reaches the start (a turn is never
+// split, so a page can hold more); zero or less is ChatReadLimit.
+type ChatReadParams struct {
+	Cell   string `json:"cell"`
+	Before string `json:"before,omitempty"`
+	Limit  int    `json:"limit,omitempty"`
+}
+
+// ChatReadLimit is the page size when a client names none.
+const ChatReadLimit = 50
+
+// ChatReadResult is one page, oldest to newest within it, newest page first.
+// Entries are the same Entry agents.entries answers for a chat on this
+// computer. Before is the cursor of the next older page and More is false once
+// the page reaches the start of the transcript. Head is the snapshot the page
+// was read at, and SealedAtMs when that turn was sealed, when known. The
+// transcript is what the holder last sealed: a turn running there now is not
+// on it. FetchedBytes is what this call pulled from the relay, 0 when this
+// computer already held every byte it needed.
+type ChatReadResult struct {
+	Entries      []Entry `json:"entries"`
+	More         bool    `json:"more"`
+	Before       string  `json:"before,omitempty"`
+	Head         string  `json:"head"`
+	SealedAtMs   int64   `json:"sealed_at_ms,omitempty"`
+	FetchedBytes int64   `json:"fetched_bytes"`
+}
+
+// ChatsReader reads chats other computers hold. CanReadChats is asked at every
+// hello, so the feature appears and disappears with the relay and the engine.
+type ChatsReader interface {
+	CanReadChats() bool
+	ReadChat(ChatReadParams) (ChatReadResult, error)
+}
+
 // ChatsMover cancels a move agents.take is running or has queued.
 type ChatsMover interface {
 	CancelTake(TakeCancelParams) (TakeCancelResult, error)
@@ -169,6 +226,9 @@ type Relay struct {
 	Off    bool   `json:"off"`
 }
 type RelayReporter interface{ RelayKnown() bool }
+
+// ChatsCrewer is an engine whose chat rows carry crew facts.
+type ChatsCrewer interface{ ChatRowsCarryCrews() bool }
 
 func withChatsFeatures(h Hello, e Engine) Hello {
 	if _, ok := e.(ChatsTaker); ok {
@@ -182,6 +242,12 @@ func withChatsFeatures(h Hello, e Engine) Hello {
 	}
 	if _, ok := e.(ChatsSender); ok {
 		h = withFeature(h, FeatureChatsSend)
+	}
+	if d, ok := e.(ChatsReader); ok && d.CanReadChats() {
+		h = withFeature(h, FeatureChatsRead)
+	}
+	if d, ok := e.(ChatsCrewer); ok && d.ChatRowsCarryCrews() {
+		h = withFeature(h, FeatureChatsCrew)
 	}
 	if d, ok := e.(RelayReporter); ok && d.RelayKnown() {
 		h = withFeature(h, FeatureSyncRelay)
@@ -225,6 +291,21 @@ func init() {
 		}
 		got, err := d.SendToChat(p)
 		return &ChatSendResult{Note: got}, err
+	})
+	methods["chats.read"] = typed(func(e Engine, p ChatReadParams) (*ChatReadResult, error) {
+		d, ok := e.(ChatsReader)
+		if !ok || !d.CanReadChats() {
+			return nil, Errorf(CodeUnknownMethod, "this engine does not read chats on other computers")
+		}
+		if _, err := required("cell", p.Cell); err != nil {
+			return nil, err
+		}
+		if p.Limit <= 0 {
+			p.Limit = ChatReadLimit
+		}
+		got, err := d.ReadChat(p)
+		got.Entries = nonNil(got.Entries)
+		return &got, err
 	})
 	methods["agents.take_cancel"] = typed(func(e Engine, p TakeCancelParams) (*TakeCancelResult, error) {
 		d, ok := e.(ChatsMover)

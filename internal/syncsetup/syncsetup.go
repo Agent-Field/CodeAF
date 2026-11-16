@@ -267,6 +267,7 @@ func (s *Sync) RowsMailAt(ctx context.Context) ([]chatlist.Row, Mail, uint64, er
 			rows[i].AutoOpen = false
 		}
 	}
+	chatlist.WithCrews(rows, l, key)
 	return rows, MailOf(l, s.Device.ID(), key), l.Version, nil
 }
 

@@ -106,6 +106,7 @@ export class Directory {
 
   create(id, init, device) {
     folderString(init);
+    crewString(init);
     return this.swap(id, (c, now) => {
       if (c) throw refuse('exists');
       return this.rules.created(init, device, now);
@@ -122,6 +123,7 @@ export class Directory {
 
   publish(id, device, p) {
     folderString(p);
+    crewString(p);
     return this.change(id, (c, now) => this.rules.publishTo(c, device, p, now));
   }
 
@@ -231,4 +233,10 @@ export class Directory {
 // only the existing request-body ceiling bounds their size.
 function folderString(record) {
   if (record.folder != null && typeof record.folder !== 'string') throw refuse('bad_request');
+}
+
+// crew is the chat's sealed crew (Codeaf-Chat-Crews), opaque like folder: Go
+// decodes it as a string, so anything else is refused before the record moves.
+function crewString(record) {
+  if (record.crew != null && typeof record.crew !== 'string') throw refuse('bad_request');
 }
