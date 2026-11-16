@@ -1048,6 +1048,23 @@ func answeredNoteUnchanged(messages []ai.Message) bool {
 	return false
 }
 
+// answeredWakeUnchanged reads the other shape [NoChangeReply] answers: a turn
+// the team's traffic woke ([TeamWakeNote]), whose note tells the model to say
+// exactly the token when it has nothing new for the person
+// ([teamWakeDeliveryRule]). The newest message is a tool-less reply that is
+// only the token; the calls before it are the handling the note asked for.
+// Read as an unfinished turn instead, the completion check carried it on and
+// the woken manager answered old questions to the person (owner, 2026-11-16:
+// Afi woke on startup, was reopened twice and posted two stale answers).
+func answeredWakeUnchanged(user userMessage, messages []ai.Message) bool {
+	last := len(messages) - 1
+	if last < 0 || messages[last].Role != "assistant" || len(messages[last].ToolCalls) > 0 ||
+		!IsNoChangeReply(partsText(messages[last])) {
+		return false
+	}
+	return TeamWakeNote(partsText(user.message))
+}
+
 // NoChangeReply is the whole of the model's answer to a carry-on it judges
 // mistaken, and the harness's token for "the answer already given stands".
 //
@@ -3385,7 +3402,7 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 	// answer those calls may have made stale, unread; a token after the person's
 	// own words, or after a load or ask nudge, answers something that is not the
 	// reader's note at all.
-	if meter != nil && answeredNoteUnchanged(a.snapshot()) {
+	if meter != nil && (answeredNoteUnchanged(a.snapshot()) || answeredWakeUnchanged(user, a.snapshot())) {
 		return false, false
 	}
 	// A TURN THAT LOADED A TOOL AND STOPPED WITHOUT USING IT IS SENT BACK ONCE,
