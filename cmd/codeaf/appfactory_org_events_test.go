@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"reflect"
 	"testing"
 	"time"
 
@@ -93,7 +94,7 @@ func TestOrgEventsAreRelayedWithTheConnection(t *testing.T) {
 		{Connection: id, Kind: "workstream.removed", ID: "ws_3"},
 	}
 	for _, w := range want {
-		if e := nextOrgEvent(t, got); e != w {
+		if e := nextOrgEvent(t, got); !reflect.DeepEqual(e, w) {
 			t.Fatalf("relayed %+v, want %+v", e, w)
 		}
 	}
@@ -111,7 +112,7 @@ func TestOrgEventsAreRelayedWithTheConnection(t *testing.T) {
 	}
 	o.frames <- "event: changed\ndata: *\n\n"
 	for _, kind := range []string{"team.changed", "workstream.changed"} {
-		if e := nextOrgEvent(t, got); e != (appwire.FactoryOrgChanged{Connection: id, Kind: kind}) {
+		if e := nextOrgEvent(t, got); !reflect.DeepEqual(e, appwire.FactoryOrgChanged{Connection: id, Kind: kind}) {
 			t.Fatalf("a gap relayed %+v, want %s with no id", e, kind)
 		}
 	}
