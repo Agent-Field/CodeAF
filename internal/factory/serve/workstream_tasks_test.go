@@ -2,6 +2,7 @@ package serve
 
 import (
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -90,8 +91,14 @@ func TestOnlyTheOwnerTicksAPersonTaskAndTheTickReleasesWhatWaits(t *testing.T) {
 	}
 	var released api.WorkstreamTask
 	o.do(t, "santosh", "GET", path+"/tasks/"+summary.ID, -1, nil, 200, &released)
-	if released.State != factory.TaskRunning {
-		t.Fatalf("the waiting task is %q, want running", released.State)
+	// Released, not running: nothing has woken Afi (live use, L1 F5, L2 #4).
+	if released.State != factory.TaskUpNext || released.Rev != summary.Rev {
+		t.Fatalf("the waiting task is %q rev %d, want up next and untouched", released.State, released.Rev)
+	}
+	var thread api.WorkstreamTaskEvents
+	o.do(t, "santosh", "GET", path+"/tasks/"+summary.ID+"/events", -1, nil, 200, &thread)
+	if n := len(thread.Events); n == 0 || thread.Events[n-1].Text != "Ready to start: Run five user interviews is done" {
+		t.Fatalf("the released task's thread: %+v", thread.Events)
 	}
 	// A stale rev is refused, as every workstream part is.
 	o.do(t, "abir", "PATCH", path+"/tasks/"+interviews.ID, interviews.Rev, map[string]any{"state": "up_next"}, 412, nil)
@@ -104,18 +111,27 @@ func TestWaitingOnRefusesACircleOverTheWire(t *testing.T) {
 	o.do(t, "santosh", "PATCH", path+"/tasks/"+a.ID, a.Rev, map[string]any{"waiting_on": []string{b.ID}}, 422, nil)
 }
 
-func TestAReplyOnADoneTaskReopensItAndHandingOnChangesTheOwner(t *testing.T) {
+func TestACommentNeverReopensADoneTaskAndSendBackDoes(t *testing.T) {
+	// Live use, L4 F3 and L2 #8: a comment reopened finished work, and a
+	// reviewer had no way to send it back on purpose.
 	o, path := taskOrg(t, "edit")
-	made := o.task(t, "santosh", path, api.TaskCreate{Title: "Draft notes", DoneBy: factory.TaskDoneBy{Kind: factory.TaskByAfi}})
+	made := o.task(t, "santosh", path, api.TaskCreate{Title: "Write the memo", DoneBy: factory.TaskDoneBy{Kind: factory.TaskByPerson, ID: "abir", Name: "abir"},
+		Owner: &factory.TaskOwner{Kind: factory.TaskOwnerPerson, ID: "abir", Name: "abir"}})
 	var cur api.WorkstreamTask
-	o.do(t, "santosh", "PATCH", path+"/tasks/"+made.ID, made.Rev, map[string]any{"state": "done"}, 200, &cur)
-	o.do(t, "abir", "POST", path+"/tasks/"+made.ID+"/comment", -1, map[string]string{"text": "Mention the import fix."}, 201, nil)
-	o.do(t, "abir", "GET", path+"/tasks/"+made.ID, -1, nil, 200, &cur)
-	if cur.State != factory.TaskUpNext {
-		t.Fatalf("a reply on a done task left it %q", cur.State)
+	o.do(t, "abir", "PATCH", path+"/tasks/"+made.ID, made.Rev, map[string]any{"state": "done"}, 200, &cur)
+	o.do(t, "santosh", "POST", path+"/tasks/"+made.ID+"/comment", -1, map[string]string{"text": "Receipt attached."}, 201, nil)
+	var after api.WorkstreamTask
+	o.do(t, "abir", "GET", path+"/tasks/"+made.ID, -1, nil, 200, &after)
+	if after.State != factory.TaskDone || after.Rev != cur.Rev {
+		t.Fatalf("a comment on a done task left it %q rev %d", after.State, after.Rev)
 	}
-	o.do(t, "abir", "PATCH", path+"/tasks/"+made.ID, cur.Rev, map[string]any{"owner": factory.TaskOwner{Kind: "person", ID: "abir", Name: "abir"}}, 200, &cur)
-	if cur.Owner.ID != "abir" {
+	// santosh, the reviewer, sends it back with a reason; abir sees who and why.
+	o.do(t, "santosh", "PATCH", path+"/tasks/"+made.ID, after.Rev, map[string]any{"state": "up_next", "state_reason": "section 2 uses last year's numbers"}, 200, &cur)
+	if cur.State != factory.TaskUpNext || !strings.HasPrefix(cur.StateReason, "Sent back by ") || !strings.HasSuffix(cur.StateReason, ": section 2 uses last year's numbers") {
+		t.Fatalf("sent back %+v", cur)
+	}
+	o.do(t, "abir", "PATCH", path+"/tasks/"+made.ID, cur.Rev, map[string]any{"owner": factory.TaskOwner{Kind: "person", ID: "santosh", Name: "santosh"}}, 200, &cur)
+	if cur.Owner.ID != "santosh" {
 		t.Fatalf("owner %+v", cur.Owner)
 	}
 }
@@ -159,7 +175,7 @@ func TestMovingATaskTakesItsThreadToTheOtherWorkstream(t *testing.T) {
 	}
 }
 
-func TestStartAllStartsTheGroupOverTheWire(t *testing.T) {
+func TestStartAllNamesTheGroupOverTheWireAndStartsNone(t *testing.T) {
 	o, path := taskOrg(t, "edit")
 	g := &factory.TaskGroup{Name: "Release 2.4", Kind: "batch"}
 	var first api.WorkstreamTask
@@ -172,7 +188,13 @@ func TestStartAllStartsTheGroupOverTheWire(t *testing.T) {
 	var started api.WorkstreamTasks
 	o.do(t, "abir", "POST", path+"/tasks/start_all", -1, api.TasksStartAll{Group: first.Group.ID}, 200, &started)
 	if len(started.Tasks) != 5 {
-		t.Fatalf("started %d", len(started.Tasks))
+		t.Fatalf("named %d", len(started.Tasks))
+	}
+	// Nothing is marked running: whoever wakes the doer says so (live use, L4 B6).
+	for _, task := range o.tasks(t, "santosh", path) {
+		if task.State != factory.TaskUpNext {
+			t.Fatalf("%s is %q after start all", task.Title, task.State)
+		}
 	}
 }
 

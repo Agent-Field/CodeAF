@@ -18,12 +18,12 @@ If the owner is Everyone, anyone who can edit the workstream may answer; the fir
 
 Who owns a new task: whoever asked for it. Work nobody asked for directly (from the Factory or a standing order) goes to the workstream's default owner.
 
-## tick a person task, hand a task to someone, move it to another workstream, reopen it
+## tick a person task, hand a task to someone, move it to another workstream, send it back
 
-- Tick: only the owner ticks a person's task ("only the task's owner ticks it" otherwise). Ticking it starts the tasks that were waiting only on it.
+- Tick: only the owner ticks a person's task ("only the task's owner ticks it" otherwise). Ticking it unblocks the tasks that were waiting only on it: a person's task loses its "waiting on", and an Afi or chat task stays in Up next with the line "Ready to start: <the ticked task> is done" until it is started (see *Start — why a task stays in Up next*).
 - Hand to someone: anyone who can edit the workstream changes a task's owner to another person or to Everyone. The thread says "Handed to Marco".
 - Move: More › Move moves a task, with its whole conversation, to another workstream you can edit. Tasks that waited on it here stop waiting.
-- Reopen: replying on a done task reopens it, so the history stays one thread. A new goal is a new task.
+- Send back: a done task's More has "Send back…". It asks why, then puts the task back in Up next. Anyone who can edit may send work back, a reviewer included. The thread, the task and the doer's Inbox row read "Sent back by Priya: <why>". An Afi or chat task sent back starts again with the reason. A new goal is a new task.
 
 Reading tasks needs view on the workstream; adding, commenting, handing on and moving need edit.
 
@@ -33,7 +33,7 @@ A task can wait on other tasks of the same workstream. That is the only ordering
 
 ## Start all — five or more tasks from one request wait in Up next
 
-When one request makes five or more tasks, they land in Up next under one heading with Start all. Start all starts every task of that heading that waits on nothing unfinished; the rest start as what they wait on finishes. Person tasks are not started (the person does them) and Factory tasks start at the Factory.
+When one request makes five or more tasks, they land in Up next under one heading with Start all. Start all wakes the doer of every Afi or chat task of that heading that waits on nothing unfinished, then shows those tasks Running; the rest stay in Up next until they can start. Person tasks are not started (the person does them) and Factory tasks start at the Factory. On an organization's workstream Start all is not offered yet (see *Start — why a task stays in Up next*).
 
 ## a Factory job is a task — its state, its question, never copied
 
@@ -54,3 +54,19 @@ When a person is removed from an organization workstream, each of their unfinish
 ## a file changed while a task was running — carry on or start again
 
 When someone changes the contents of a file that a running task's work read, that task stops and asks its owner "Layout changed while this ran. Carry on?", with "Carry on with the new version" and "Start again from the new version". Only the owner answers, and either answer starts the task again. A rename alone flags nothing, and a task that is not running is left alone. A Factory task cannot be stopped this way, because its state belongs to its job: its thread only gains the line "Layout changed while this ran".
+
+## does a comment reopen a done task? — no, a comment never changes a task
+
+A comment or a posted answer on a task never changes its state. Writing a receipt or a piece of news on a finished task leaves it done, and nothing waiting on it is blocked again. To reopen work on purpose, use Send back on the task's More; the owner of a person's task can also untick it.
+
+## Start — why a task Afi or a chat does stays in Up next, Mark done
+
+A task that Afi or a chat does is Running only while something is actually doing it. When what it waits on is done, or when Start all is pressed, it stays in Up next until its doer is woken. On a Personal workstream the task page shows **Start**: it hands the task to Afi's conversation (or to the chat that does it) and only then shows Running; Start all wakes each doer once with all of its tasks. On an organization's workstream nothing on your computer can wake the server's agent yet, so there is no Start: the task waits in Up next. In every case the task's owner can finish it by hand with **Mark done** in its More, or stop it with Stop.
+
+## due date — pick any day; change it on the task
+
+A task can carry one due date, any day at all. Add task's Due opens a month with Today, Tomorrow and In a week above it; the arrows on the month move between months, and the keyboard moves a day or a week with the arrows and a month with Page Up and Page Down. On the task page its owner presses the due date in the line of facts, or uses More › "Add a due date…", to change or clear it. A missed date reads "Due Nov 21 · 2 days late".
+
+## set what a task waits on — More › Waiting on
+
+On the task page, its owner opens More › Waiting on and ticks the tasks it should wait on (or unticks one to stop waiting). The menu lists what it already waits on, then the workstream's open tasks, newest first; a task that would make a circle is never offered, and the Factory's own issues stay out of it. The facts line then reads "Waiting on: …", and the task that waits shows "Then: …" on the other.

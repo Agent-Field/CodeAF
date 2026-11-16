@@ -937,19 +937,25 @@ Factory task's first overlay) takes any of `title`, `request`, `owner` (hand on)
 `waiting_on` (same workstream, never itself, never a circle: 422), `due`, `group`
 (null clears), `state`, `state_reason`, `results`, `check`, `ask` (null clears) and
 `move_to` (another workstream, edit on both; the thread moves with it). Only the owner
-ticks a person task (`state` `done`), and the tick starts each Afi or chat task that
-waited only on it; a Factory task's state is its job's (409). A stale rev is 412.
+ticks a person task (`state` `done`). The tick starts nothing: an Afi or chat task that
+waited only on it stays `up_next`, unchanged, and its thread gains "Ready to start: <title>
+is done"; `running` is set only by whoever wakes the doer. Send back is `state`
+`up_next` on a `done` task by someone other than its owner, or with a `state_reason`:
+anyone who edits may do it (a person task included), and the thread line and the
+task's `state_reason` read "Sent back by <name>[: <why>]" until its next change. A
+Factory task's state is its job's (409). A stale rev is 412.
 `_task_answer {ws, id, option?, text?}` `POST .../answer` is the owner's (with owner
 `everyone`, anyone who edits; after a day, also the workstream's fallback), 403
 otherwise; the first answer decides and records `answered_by`, a second is 409; a
 Factory task's answer goes through the job's own answer door and its rules.
 `_task_comment {ws, id, kind?, text, offer_for?}` `POST .../comment` (`edit`, 201)
 adds a `comment` (the default), `posted`, `request_note`, `worked` or `offer` (Afi's,
-under the comment `offer_for`); a comment or post on a done task reopens it. With
+under the comment `offer_for`); a comment or post never changes the task's state. With
 `offer {event, state}` instead it takes or dismisses an open offer (`undo_until` is five
 seconds on) or, with `state` `open` before then, undoes the take (the owner or the
-taker). `_tasks_start_all {ws, group}` `POST .../tasks/start_all` starts the group's up
-next Afi and chat tasks that wait on nothing unfinished and answers `{tasks}` started.
+taker). `_tasks_start_all {ws, group}` `POST .../tasks/start_all` names the group's up
+next Afi and chat tasks that wait on nothing unfinished and answers `{tasks}`; it writes
+and publishes nothing, because the caller wakes each doer and then sets `running`.
 Every change publishes `workstream.changed` with `part` `tasks` and `part_id` the task.
 
 An engine whose hello carries `org_canvases` reads and writes an organization's
