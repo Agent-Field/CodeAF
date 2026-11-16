@@ -2580,6 +2580,11 @@ type Config struct {
 	// so the page and the tasks description cannot disagree.
 	ownWork bool
 
+	// inWorkstream says the page is composed for a conversation that belongs to
+	// a workstream (workstream_mark.go). Only the agent sets it, from the mark it
+	// last read, so the page and the belt cannot disagree.
+	inWorkstream bool
+
 	// Workstream is an organization server's door onto the ONE workstream
 	// this conversation is the agent of (tools_workstream.go). NIL IS NO
 	// DOOR. When it is set the belt is `workstream_pages` and nothing else:
@@ -2856,8 +2861,10 @@ type Agent struct {
 	taskComputerPrompt bool
 	// ownWorkTold is the scope the page and the tasks description last told the
 	// model (scope.go). It is atomic because belts are built outside a.mu.
-	ownWorkTold   atomic.Bool
-	remoteAckJobs sync.WaitGroup
+	ownWorkTold atomic.Bool
+	// workstreamTold is the workstream mark the page and the belt last followed.
+	workstreamTold atomic.Bool
+	remoteAckJobs  sync.WaitGroup
 	// knowledgeWake is signalled after each journal line reaches the file.
 	// initKnowledge creates it once before the agent is reachable and never
 	// replaces it, so writers read it without a lock.

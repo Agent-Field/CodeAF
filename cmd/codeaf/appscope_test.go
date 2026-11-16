@@ -152,3 +152,35 @@ func TestAppScopeRequiresALocalConversationFolder(t *testing.T) {
 		})
 	}
 }
+
+// A desk or an organization server marks a conversation as a workstream's
+// without opening it, and clears the mark the same way.
+func TestAppWorkstreamMarksAClosedConversationWithoutOpeningIt(t *testing.T) {
+	d := newUnreadDisk(t)
+	w := newActionWire(t, d.backend)
+	if !slices.Contains(w.hello, appwire.FeatureAgentWorkstream) {
+		t.Fatal("the backend does not announce agents.workstream")
+	}
+	for _, word := range []string{"ws-pantry", ""} {
+		raw, failure := w.call("agents.set_workstream", map[string]string{"id": d.id, "workstream": word})
+		if failure != nil {
+			t.Fatal(failure)
+		}
+		var result appwire.AgentWorkstream
+		if err := json.Unmarshal(raw, &result); err != nil {
+			t.Fatal(err)
+		}
+		if result != (appwire.AgentWorkstream{ID: d.id, Workstream: word}) || session.WorkstreamAt(d.dir) != word {
+			t.Fatalf("set %q = %+v, stored %q", word, result, session.WorkstreamAt(d.dir))
+		}
+	}
+	d.mu.Lock()
+	opens := d.opens
+	d.mu.Unlock()
+	if opens != 0 {
+		t.Fatalf("the mark opened the conversation %d times", opens)
+	}
+	if _, err := w.call("agents.set_workstream", map[string]string{"id": "no-such-agent", "workstream": "ws"}); err == nil || err.Code != appwire.CodeNotFound {
+		t.Fatalf("unknown agent = %v", err)
+	}
+}

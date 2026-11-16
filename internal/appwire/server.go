@@ -217,6 +217,7 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, hello Hello, engine En
 	hello = withReplySuggestionFeature(hello, engine)
 	hello = withUnreadFeature(hello, engine)
 	hello = withAgentScopeFeature(hello, engine)
+	hello = withAgentWorkstreamFeature(hello, engine)
 	hello = withErrandFeature(hello, engine)
 	hello = withClientToolsFeature(hello, engine)
 	hello = withAsksDrawnFeature(hello, engine)

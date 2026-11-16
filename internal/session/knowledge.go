@@ -325,7 +325,14 @@ func (a *Agent) scanKnowledge(ctx context.Context, j *knowledgeJournal, path, se
 				return fmt.Errorf("knowledge: missing opt-in timestamp")
 			}
 		}
+		// A CONVERSATION IN A WORKSTREAM IS NEVER CAPTURED INTO THE LIBRARY
+		// (workstream_mark.go): its sources are read past, so the cursor still
+		// moves and nothing it said is filed on the app's shelf.
+		member := len(batch.Sources) > 0 && a.config.belongsToWorkstream()
 		for _, source := range batch.Sources {
+			if member {
+				break
+			}
 			if e = ctx.Err(); e != nil {
 				return e
 			}

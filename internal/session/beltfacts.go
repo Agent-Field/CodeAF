@@ -167,11 +167,15 @@ func (c Config) hasConnect() bool { return !c.readingTask() && newConnectHub(c) 
 // the page must not be able to disagree about whether anything can be
 // scheduled from here.
 //
+// A conversation that belongs to a workstream has none either: a workstream's
+// standing work is set up in the workstream itself (People and rules › Keeps
+// running), never as an app-wide automation (workstream_mark.go).
+//
 // It is the sharpest absence on the belt — a model told it can leave something
 // behind will plan a whole reply around one — and it is the predicate the page's
 // automation paragraph is composed from.
 func (c Config) mayAutomate() bool {
-	return !c.readingTask() && c.automationStore() != nil && c.AutomationRun == nil && !c.InTask
+	return !c.readingTask() && c.automationStore() != nil && c.AutomationRun == nil && !c.InTask && !c.belongsToWorkstream()
 }
 
 // signsGitWork says whether the attribution law belongs on this belt: a reading
