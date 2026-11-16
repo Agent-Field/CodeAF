@@ -46,7 +46,7 @@ When something you asked an agent privately changes shared work, the task's thre
 
 ## big work — five or more tasks, a batch, a named chat, Start all
 
-When Afi is given big work that splits into five or more tasks, it starts a named chat to run it and stays free for quick asks. The tasks share one group with the same name as that chat, land in Up next with "Start all", and nothing starts until a person presses it. Afi tells you with a button, "Open <name>", that opens the chat. In the Chats tab that chat's row says "Started by Afi". On an organization whose agents run on its server, Afi gives the tasks the one group in Up next with Start all, but there it starts no separate chat.
+When Afi is given big work that splits into five or more tasks, it starts a named chat to run it and stays free for quick asks. The tasks share one group with the same name as that chat, land in Up next with "Start all", and nothing starts until a person presses it. Afi tells you with a button, "Open <name>", that opens the chat. In the Chats tab that chat's row says "Started by Afi". On an organization whose agents run on its server, Afi gives the tasks the one group in Up next, but there it starts no separate chat, and nothing yet works an organization's task by itself: each waits in Up next until its owner marks it done or stops it.
 
 ## did the agent save it to the Library — what a workstream's chat makes goes to its Files, not the Library or disk
 

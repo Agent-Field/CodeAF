@@ -375,7 +375,7 @@ func (d *agentDoor) wsTaskCreate(ctx context.Context, args json.RawMessage) (any
 		}
 		said += fmt.Sprintf(" It is %d in the group %q.", n, t.Group.Name)
 		if n >= 5 {
-			said += " Nothing in the group starts until a person presses Start all in Tasks."
+			said += " They wait in Up next; none of them starts by itself."
 		}
 	}
 	return map[string]any{"said": said, "task": taskBrief(t)}, nil
