@@ -163,6 +163,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// What the page and the tasks description say about other windows follows
 	// the stored scope; a later change is taken at a turn's start (scope.go).
 	config.ownWork = config.readsOwnWorkOnly()
+	config.inWorkstream = config.belongsToWorkstream()
 	system, own := config.System, false
 	if strings.TrimSpace(system) == "" {
 		system, own = renderSystem(config), true
@@ -304,6 +305,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	agent.connect = newConnectHub(config)
 	agent.initKnowledge()
 	agent.ownWorkTold.Store(config.ownWork)
+	agent.workstreamTold.Store(config.inWorkstream)
 	agent.tools = agent.belt()
 	definitions, err := toolDefinitions(agent.tools)
 	if err != nil {

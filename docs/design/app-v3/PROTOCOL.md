@@ -76,6 +76,7 @@ decides which combinations are accepted.
 | `agents.set_model` | `{automatic, id, model}` | `agentResult` |
 | `agents.set_models` | `{fallback, id, main}` | `agentResult` |
 | `agents.set_scope` | `{id, scope}` | `AgentScope` |
+| `agents.set_workstream` | `{id, workstream}` | `AgentWorkstream` |
 | `agents.since` | `{after, id}` | `Since` |
 | `agents.steer` | `in.sayTo` | `Empty` |
 | `agents.stop` | `in.IDParams` | `Empty` |
@@ -116,6 +117,37 @@ A missing id or a scope other than `project` or `conversation` is `bad_params`;
 an engine without the door answers `unknown_method`. An unknown conversation is
 `not_found`; a lent conversation or one without a local folder is `conflict`.
 No `agent.changed` event is emitted, because the Agent view carries no scope.
+
+## Conversation workstream mark
+
+`agents.set_workstream {id, workstream}` answers `{id, workstream}` with the
+stored mark. `workstream` is the id of the workstream the conversation belongs
+to (an Afi or one of a workstream's chats), at most 128 characters; `""` clears
+it. Any client that owns workstreams may set it: a desk for a Personal
+workstream, an organization server for its own. A conversation an organization
+server runs with its own workstream door counts as marked without the call.
+
+A marked conversation:
+
+- is never captured into the knowledge Library: its sources are passed over and
+  never become the compiler's sources, whatever the Library's own setting;
+- has no `automation` tool, so standing work for a workstream is set up in the
+  workstream itself;
+- is told on its instructions page that what it makes goes to the workstream's
+  Files, that the Library is reached only when a person adds something there,
+  and where a person sets up work on a clock.
+
+The mark is stored with the conversation and survives restarts. A held
+conversation follows it from its next turn's start, when the `automation` tool
+is withdrawn and the page re-rendered; clearing the mark returns the tool at the
+next open. Setting it never opens, warms or interrupts the conversation, and
+never changes its transcript, title, model or tasks.
+
+Engines that serve this method announce `agents.workstream` in `hello.features`.
+A missing id or a workstream over 128 characters is `bad_params`; an engine
+without the door answers `unknown_method`. An unknown conversation is
+`not_found`; a lent conversation or one without a local folder is `conflict`.
+No `agent.changed` event is emitted.
 
 ## Client tools
 

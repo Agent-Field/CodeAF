@@ -196,6 +196,11 @@ func (a *Agent) compileJobKnowledge(ctx context.Context, j *knowledgeJournal) {
 // The next finished turn includes sibling stages skipped during an earlier
 // pass. Sources retain their original session IDs and searchable citations.
 func (a *Agent) captureJobKnowledge(ctx context.Context, j *knowledgeJournal) ([]string, error) {
+	// A workstream's conversation files nothing on the Library's shelf
+	// (workstream_mark.go); its work is in the workstream's Files.
+	if a.config.belongsToWorkstream() {
+		return nil, nil
+	}
 	if a.config.Place.Dir == "" {
 		for {
 			j.mu.Lock()

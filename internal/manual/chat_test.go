@@ -51,6 +51,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did the agent not do what the comment asked", "workstream-chats-and-tools"},
 		{"does every chat in a workstream turn into a task", "workstream-chats-and-tools"},
 		{"open a workstream chat as its own tab", "workstream-chats-and-tools"},
+		{"did Afi save the brief to my Library", "workstream-chats-and-tools"},
 		{"the agent is still answering someone else, how do I stop it", "organization-workstream-agent"},
 		{"who can answer a task's question in a workstream", "organization-workstream-tasks"},
 		{"someone left the workstream, who gets their tasks", "organization-workstream-tasks"},

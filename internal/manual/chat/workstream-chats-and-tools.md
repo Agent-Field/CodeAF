@@ -47,3 +47,9 @@ When something you asked an agent privately changes shared work, the task's thre
 ## big work — five or more tasks, a batch, a named chat, Start all
 
 When Afi is given big work that splits into five or more tasks, it starts a named chat to run it and stays free for quick asks. The tasks share one group with the same name as that chat, land in Up next with "Start all", and nothing starts until a person presses it. Afi tells you with a button, "Open <name>", that opens the chat. In the Chats tab that chat's row says "Started by Afi".
+
+## did the agent save it to the Library — what a workstream's chat makes goes to its Files, not the Library or disk
+
+A conversation that belongs to a workstream (its Afi, or one of its chats) keeps what it makes in that workstream: a brief, a comparison, a plan or a list is saved with ws_file_create and appears in the workstream's Files, where everyone in it sees it. It is not written to disk as a loose file, and it does not reach the app's Library. The Library is a separate shelf: something made in a workstream gets there only when a person adds it with Add to Library. What such a conversation says is also never captured into the Library by itself, whatever the Library's own setting is.
+
+Such a conversation cannot set up work on a clock either. Asked to do something every Monday or each morning, it says to set it up under People and rules › Keeps running, where the workstream's standing orders live, instead of making one itself.

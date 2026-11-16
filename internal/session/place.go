@@ -300,6 +300,11 @@ type Meta struct {
 	// Scope is conversation when the model is told only about its own work.
 	// Project or absence keeps the project's reading of other conversations' work.
 	Scope string `json:"scope,omitempty"`
+	// Workstream names the workstream this conversation belongs to: its Afi or
+	// one of its chats (workstream_mark.go). What it makes goes to that
+	// workstream's Files, so it is never captured into the Library and has no
+	// app-wide `automation` verb. Absent is an ordinary conversation.
+	Workstream string `json:"workstream,omitempty"`
 	// Created is when the session was minted.
 	Created time.Time `json:"created"`
 	// LastUserAt is when the PERSON last said something. Resume order is on
