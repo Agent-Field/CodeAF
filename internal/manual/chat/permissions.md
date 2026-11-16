@@ -29,12 +29,14 @@ when the countdown is off. Silence is never a no.
 **What happens if you just press `enter`?** The pointer is what `enter` takes,
 and where it opens depends on how much the call can cost you. On an **ordinary
 call** it opens on `1 allow once`, so `enter` runs that one call and nothing
-else. On a **grave one** — a call codeaf will always stop you for, such as
-`rm -rf *`, a force-push, or anything sent out in your name — the pointer opens
-on `3 deny` instead. So `enter` you have not aimed means "allow it once" when the
-call can be lived with and "no" when it cannot be taken back. On a grave call the
-pointer never opens on the act: allowing is a key you choose — `1`, or `↑` onto
-it and then `enter` — and refusing is the one that is already under your hand.
+else. On a **grave one** — a call codeaf will always stop you for, such as a
+critical command (`rm -rf /`, `rm -rf /*`, `rm -rf *`, `mkfs*`), a force-push,
+or anything sent out in your name — the pointer opens on `3 deny` instead,
+whether the model asked for the command or you typed it after `!`. So `enter`
+you have not aimed means "allow it once" when the call can be lived with and
+"no" when it cannot be taken back. On a grave call the pointer never opens on
+the act: allowing is a key you choose — `1`, or `↑` onto it and then `enter` —
+and refusing is the one that is already under your hand.
 
 Nothing on a permission is painted in the question's amber except the marks —
 the `?`, the pointer and the recommendation — because the command is the thing
@@ -81,8 +83,8 @@ still require aiming at the question. A draft you are already typing keeps its
 letters. `1`, `2` and `3` always take the corresponding answers.
 
 `[2]` is only drawn, and only acts, when the question is one that can bank an
-answer. Every approval question is about a TOOL and can, so every one of them
-offers it.
+answer. Every ordinary approval question is about a TOOL and can, so it offers
+`2`; a grave call asks every time and leaves `2` off.
 
 **It does not have to be answered in this window.** A conversation stopped on
 this question says so on **home**, with the same three answers on the row —
