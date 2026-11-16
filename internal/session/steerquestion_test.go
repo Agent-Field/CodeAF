@@ -321,3 +321,77 @@ func TestTalkingPastAQuestionClaimsItsWordsWithItsWait(t *testing.T) {
 	case <-time.After(200 * time.Millisecond):
 	}
 }
+
+// ── a reply from the person closes what is still open ───────────────────────
+
+// laterAsk is a question the turn does not wait for, with a task stopped on it:
+// both kinds outlive the turn that raised them ([questionOutlivesTurn]).
+const laterAsk = `{"head":"Which colour for the hall?","kind":"choice",` +
+	`"reason":"the paint order forks on it",` +
+	`"options":[{"key":"1","label":"White"},{"key":"2","label":"Grey"}],` +
+	`"stakes":"reversible","blocking":{"turn":false,"tasks":["Paint the hall"]}}`
+
+// leaveAQuestionStanding runs one turn that asks laterAsk and ends, and answers
+// the agent with the question still open after it.
+func leaveAQuestionStanding(t *testing.T, after ...step) *questioningTurn {
+	t.Helper()
+	steps := []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("", loadCapabilityToolName, `{"group":"`+questionsGroup+`"}`), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("", "ask", laterAsk), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("asked; carrying on"), nil
+		},
+	}
+	rig := newQuestioningTurn(t, &scriptedCompleter{steps: append(steps, after...)})
+	collect(t, mustSubmit(t, rig.agent, "plan the hall"))
+	open := rig.agent.OpenQuestions()
+	if len(open) != 1 || !open[0].Later || len(open[0].Blocking.Tasks) != 1 {
+		t.Fatalf("the turn left %+v standing, want the one later question blocking a task", open)
+	}
+	return rig
+}
+
+// A FRESH TURN FROM THE PERSON CLOSES EVERY OPEN QUESTION, by the steer's own
+// road: the same withdrawal with the same reason, so the receipt and the Inbox
+// read exactly as they do when the person talks past a question mid-turn.
+func TestAPersonsNewMessageClosesTheQuestionsLeftStanding(t *testing.T) {
+	rig := leaveAQuestionStanding(t, func(context.Context, []ai.Message) (*ai.Response, error) {
+		return textResponse("grey, then"), nil
+	})
+
+	turn := mustSubmit(t, rig.agent, "go with grey")
+	gone := waitForAsk(t, rig.asks, EventQuestionWithdrawn)
+	if gone.Question.Withdrawn == nil || gone.Question.Withdrawn.Reason != askTalkedPastReason {
+		t.Fatalf("the withdrawal reads %+v, want %q", gone.Question.Withdrawn, askTalkedPastReason)
+	}
+	collect(t, turn)
+	if open := rig.agent.OpenQuestions(); len(open) != 0 {
+		t.Fatalf("the person's reply left %d question(s) standing: %+v", len(open), open)
+	}
+	if decisions := rig.agent.Decisions(); len(decisions) != 0 {
+		t.Fatalf("a question nobody answered was recorded as a decision: %+v", decisions)
+	}
+}
+
+// ONLY THE PERSON'S OWN WORDS DO IT. A turn the engine opens — factory work, a
+// runner's note, a wake — is not somebody replying, and the question stands.
+func TestATurnTheEngineOpensLeavesTheQuestionsStanding(t *testing.T) {
+	rig := leaveAQuestionStanding(t, func(context.Context, []ai.Message) (*ai.Response, error) {
+		return textResponse("noted"), nil
+	})
+
+	note := userText("the factory has work for you")
+	note.factoryWork = true
+	events, err := rig.agent.submitUser(watchedContext(rig.agent), note)
+	if err != nil {
+		t.Fatal(err)
+	}
+	collect(t, events)
+	if open := rig.agent.OpenQuestions(); len(open) != 1 {
+		t.Fatalf("an engine turn closed the person's question: %d left, want 1", len(open))
+	}
+}
