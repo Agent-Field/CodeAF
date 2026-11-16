@@ -652,6 +652,8 @@ func (b *appBackend) sayOrderAsksFrom(store *automation.Store, open map[int64]ap
 		receipt := appwire.Entry{}
 		if closed.By != appwire.ClosedByApp {
 			receipt.Text = "No longer needed · " + now.Format("15:04")
+		} else if closed.Option == appwire.ResolvedDismissed {
+			receipt.Text = appDismissedReceipt(now)
 		}
 		b.inboxResolved(appInboxID(ask.Agent, ask.ID), receipt)
 	}

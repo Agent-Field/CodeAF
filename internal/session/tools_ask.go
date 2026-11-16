@@ -344,6 +344,14 @@ func (a *Agent) parkAsk(ctx context.Context, q Question, theirs map[string]strin
 			// lock it was already holding (steerquestion.go), so this only takes
 			// the presence row down and finds nothing else to take.
 			letGo()
+			// A DISMISSAL CLOSES THE SAME WAY and says so (askdismiss.go):
+			// nobody answered, and no words of theirs follow it.
+			a.mu.Lock()
+			dismissed := open.dismissed
+			a.mu.Unlock()
+			if dismissed {
+				return askDismissed, false, nil
+			}
 			return askTalkedPast, false, nil
 		}
 		if !AnswerResolves(answer) {
