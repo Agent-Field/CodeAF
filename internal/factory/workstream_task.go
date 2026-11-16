@@ -134,6 +134,9 @@ type TaskCameFrom struct {
 	Name    string `json:"name,omitempty"`
 	Issue   string `json:"issue,omitempty"`
 	OrderID string `json:"order_id,omitempty"`
+	// Run is the standing order's run that made the task, so one run makes
+	// exactly one task however often its holder's desk looks.
+	Run int64 `json:"run,omitempty"`
 }
 
 // TaskGroup is a heading that groups tasks. It is not a task.
@@ -223,6 +226,9 @@ type WorkstreamTaskEvent struct {
 	DurationS int         `json:"duration_s,omitempty"`
 	Offer     *TaskOffer  `json:"offer,omitempty"`
 	UndoUntil string      `json:"undo_until,omitempty"`
+	// Option is the id of the answer an "answered" event chose, so whoever
+	// asked (a standing order's clock, on its holder's computer) can act on it.
+	Option string `json:"option,omitempty"`
 }
 
 // TaskInvalid is a task the store will not keep, answered 422.
@@ -760,7 +766,7 @@ func AnswerTask(t WorkstreamTask, option, words string, a TaskActor, by TaskEven
 	text := t.Ask.Title + " · " + strings.TrimSpace(strings.Join(nonEmpty(chose, words), " · "))
 	who := PersonRef{ID: a.Handle, Name: by.Name}
 	t.Ask, t.AnsweredBy, t.State, t.Rev, t.UpdatedAt = nil, &who, TaskRunning, t.Rev+1, stamp
-	return TaskChange{Task: t, Events: []WorkstreamTaskEvent{{ID: newID(), Task: t.ID, At: stamp, By: by, Kind: TaskEventAnswered, Text: text}}}, nil
+	return TaskChange{Task: t, Events: []WorkstreamTaskEvent{{ID: newID(), Task: t.ID, At: stamp, By: by, Kind: TaskEventAnswered, Text: text, Option: option}}}, nil
 }
 
 func nonEmpty(s ...string) []string {

@@ -1,8 +1,10 @@
 package factory
 
 import (
+	"encoding/json"
 	"errors"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -46,7 +48,7 @@ func TestOnlyTheOwnerAnswersAnAsk(t *testing.T) {
 		t.Fatalf("priya answered marco's Ask: %v", err)
 	}
 	ch, err := AnswerTask(task, "publish", "", TaskActor{Handle: "marco", Edit: true}, byPriya, "", taskIDs(), taskNow)
-	if err != nil || ch.Task.Ask != nil || ch.Task.AnsweredBy.ID != "marco" || ch.Events[0].Kind != TaskEventAnswered {
+	if err != nil || ch.Task.Ask != nil || ch.Task.AnsweredBy.ID != "marco" || ch.Events[0].Kind != TaskEventAnswered || ch.Events[0].Option != "publish" {
 		t.Fatalf("marco's answer: %+v %v", ch, err)
 	}
 }
@@ -268,5 +270,25 @@ func TestAFactoryTasksAskIsTheJobsQuestion(t *testing.T) {
 	stop := TaskStopped
 	if _, err := ApplyPatch(task, TaskPatch{State: &stop}, TaskActor{Handle: "marco", Edit: true}, byPriya, []WorkstreamTask{task}, taskIDs(), taskNow); !errors.Is(err, ErrTaskFactoryState) {
 		t.Fatalf("a Factory task's state was set by hand: %v", err)
+	}
+}
+
+// A STANDING ORDER'S TASK NAMES ITS RUN, so the holder's desk makes one task per
+// run, and it is owned by the workstream's owner of incoming work.
+func TestAStandingOrdersTaskKeepsItsRunAndTheDefaultOwner(t *testing.T) {
+	in := TaskCreate{Title: "Draft the release notes", DoneBy: TaskDoneBy{Kind: TaskByAfi}, State: TaskRunning,
+		CameFrom: &TaskCameFrom{Kind: TaskByOrder, OrderID: "a1b2", Name: "Every Monday at 09:00", Run: 42},
+		Group:    &TaskGroup{ID: "order:a1b2", Name: "Every Monday at 09:00", Kind: "order"}}
+	owner := TaskOwner{Kind: TaskOwnerPerson, ID: "marco", Name: "Marco"}
+	task, err := NewTask("ws1", "t1", in, PersonRef{ID: "priya", Name: "Priya"}, owner, nil, taskNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task.CameFrom.Run != 42 || task.CameFrom.OrderID != "a1b2" || task.Owner != owner || task.State != TaskRunning || task.Group.Kind != "order" {
+		t.Fatalf("the order's task = %+v", task)
+	}
+	raw, _ := json.Marshal(task.CameFrom)
+	if !strings.Contains(string(raw), `"run":42`) {
+		t.Fatalf("the run is not on the wire: %s", raw)
 	}
 }
