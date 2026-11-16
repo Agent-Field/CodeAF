@@ -1,6 +1,6 @@
 ---
 kind: changed
-title: Titles, the reflex, the router, the page AI and the Library now run on the model the person or organization chose
+title: Background calls — titles, reflex, router, page AI, the Library — run on the chosen model
 pr: 2696
 surface: [chat, app, engine, factory]
 invalidates:
