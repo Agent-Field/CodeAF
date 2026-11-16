@@ -107,6 +107,7 @@ var factoryGood = map[string]string{
 	"factory.sign_in_cancel":  `{"flow":"f1","caller":"w1"}`,
 	"factory.sessions_take":   `{}`,
 	"factory.session_restore": `{"factory":"f","url":"https://f.example","token":"t"}`,
+	"factory.sessions_store":  `{"can_keep":true}`,
 }
 
 func TestEveryFactoryMethodHasAValidRequestHere(t *testing.T) {

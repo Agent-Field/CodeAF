@@ -211,11 +211,12 @@ func TestPasswordParamsAreCheckedWithoutQuotingThem(t *testing.T) {
 	w.neverSaid(secret)
 }
 
-// THE DEVICE TOKEN IS KEPT BESIDE THE SIGN-IN AND OUTLIVES IT: a sign-up
-// hands this machine a device token, kept through factory.sessions_take; a
-// sign-out forgets the sign-in and keeps the device; a new engine handed the
-// device alone presents it, so the factory trusts the machine and issues no
-// new one; a change replaces it; detaching the connection forgets both.
+// THE DEVICE TOKEN IS KEPT BESIDE THE SIGN-IN AND OUTLIVES IT: no device is
+// asked for until the app's core says it can keep secrets; then a sign-in
+// hands this machine one, kept through factory.sessions_take; a sign-out
+// forgets the sign-in and keeps the device; a new engine handed the device
+// alone presents it, so the factory trusts the machine and issues no new one;
+// a change replaces it; detaching the connection forgets both.
 func TestAPasswordDeviceIsKeptBesideTheSignIn(t *testing.T) {
 	const pw, pwNew = "violet otter campsite drizzle", "another long passphrase"
 	o := startPasswordOrg(t)
@@ -227,12 +228,19 @@ func TestAPasswordDeviceIsKeptBesideTheSignIn(t *testing.T) {
 		w.must("factory.sessions_take", struct{}{}, &out)
 		return out.Changes
 	}
+	// Until the core says it can keep secrets, no device is asked for.
 	var access appwire.FactoryAccess
 	first.must("factory.access_sign_up", map[string]any{"link": o.operatorLink(t), "caller": "w1", "username": "santosh", "password": pw}, &access)
 	id := access.Factory.ID
+	if c := take(first); access.State != "joined" || len(c) != 1 || c[0].Token == "" || c[0].Device != "" {
+		t.Fatalf("a sign-up before can_keep = %+v, %+v", access, c)
+	}
+	first.must("factory.sessions_store", map[string]any{"can_keep": true}, nil)
+	var signedFirst appwire.FactoryPasswordSignedIn
+	first.must("factory.password_sign_in", map[string]any{"factory": id, "caller": "w1", "username": "santosh", "password": pw}, &signedFirst)
 	kept := take(first)
 	if len(kept) != 1 || kept[0].Token == "" || kept[0].Device == "" || kept[0].Removed {
-		t.Fatalf("after sign-up = %+v", kept)
+		t.Fatalf("a sign-in after can_keep = %+v", kept)
 	}
 	device := kept[0].Device
 	if strings.Contains(redact.Secrets("a line with "+device), device) {
@@ -247,6 +255,7 @@ func TestAPasswordDeviceIsKeptBesideTheSignIn(t *testing.T) {
 	second := testFactoryHub(t)
 	second.dir = hub.dir
 	after := newFactoryWire(t, second)
+	after.must("factory.sessions_store", map[string]any{"can_keep": true}, nil)
 	var restored appwire.FactorySessionRestored
 	after.must("factory.session_restore", map[string]any{"factory": id, "url": o.url, "device": device}, &restored)
 	if !restored.Kept {

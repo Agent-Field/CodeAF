@@ -31,7 +31,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 )
@@ -123,9 +122,18 @@ type Accounts struct {
 // from many addresses cannot keep the owner's own machine out. Only the
 // SHA-256 of the secret is kept. A device belongs to one person at one
 // password generation: a change, a reset or the person's removal ends it.
+//
+// A LIVE DEVICE IS NEVER PUSHED OUT. A person holds at most DevicesPerPerson;
+// when that many are live a new one is refused (ErrDevicesFull) rather than
+// made by forgetting one, so sign-ins on machines that keep nothing can never
+// evict the owner's own. Only idling past DeviceLife, a change, a reset or a
+// removal ends one; it is not rotated on use (OWASP's device-cookie model).
+
+// ErrDevicesFull is a person already holding DevicesPerPerson live devices.
+var ErrDevicesFull = errors.New("this person already has as many trusted devices as are kept")
 
 // DeviceLife is how long a device stays trusted without being used, and
-// DevicesPerPerson how many one person keeps (the latest used win).
+// DevicesPerPerson how many live ones one person may hold.
 const (
 	DeviceLife       = 180 * 24 * time.Hour
 	DevicesPerPerson = 16
@@ -171,8 +179,7 @@ func (a Accounts) FindDevice(handle, secret string, now time.Time) (Device, bool
 }
 
 // keptDevices is devices without the ones that have ended at now: idle too
-// long, made at an older generation, of a person with no account, or past
-// the latest DevicesPerPerson of their person.
+// long, made at an older generation, or of a person with no account.
 func keptDevices(a Accounts, now time.Time) []Device {
 	gens := map[string]int64{}
 	for _, acct := range a.Accounts {
@@ -184,22 +191,14 @@ func keptDevices(a Accounts, now time.Time) []Device {
 			out = append(out, d)
 		}
 	}
-	// The latest used win when one person has too many.
-	sort.SliceStable(out, func(i, j int) bool { return out[i].Used.After(out[j].Used) })
-	count := map[string]int{}
-	kept := out[:0]
-	for _, d := range out {
-		if count[d.Handle] < DevicesPerPerson {
-			count[d.Handle]++
-			kept = append(kept, d)
-		}
-	}
-	return kept
+	return out
 }
 
 // AddDevice trusts a new device id for handle at generation gen, opened by
 // secret, which is kept only as its hash. It refuses (ErrStale) if the account is
-// no longer at gen: a device is never made for a password already replaced.
+// no longer at gen: a device is never made for a password already replaced;
+// and (ErrDevicesFull) when the person already holds DevicesPerPerson live
+// ones, none of which is forgotten to make room.
 func AddDevice(tokensPath, handle string, gen int64, id, secret string, now time.Time) error {
 	unlock, err := lockRows(tokensPath)
 	if err != nil {
@@ -217,8 +216,17 @@ func AddDevice(tokensPath, handle string, gen int64, id, secret string, now time
 	if acct.Gen != gen {
 		return ErrStale
 	}
-	accounts.Devices = append(accounts.Devices, Device{ID: id, Hash: secretHash(secret), Handle: acct.Handle, Gen: gen, Created: now, Used: now})
 	accounts.Devices = keptDevices(accounts, now)
+	live := 0
+	for _, d := range accounts.Devices {
+		if d.Handle == acct.Handle {
+			live++
+		}
+	}
+	if live >= DevicesPerPerson {
+		return ErrDevicesFull
+	}
+	accounts.Devices = append(accounts.Devices, Device{ID: id, Hash: secretHash(secret), Handle: acct.Handle, Gen: gen, Created: now, Used: now})
 	return saveAccounts(tokensPath, accounts)
 }
 

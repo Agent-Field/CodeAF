@@ -31,6 +31,13 @@ import (
 // the core removes its item. A restored sign-in the factory later refuses is
 // forgotten once, which reads as signed out and queues its removal.
 //
+// factory.sessions_store {can_keep} is the core saying whether it can keep a
+// secret in the OS's secure store at all. It is sent at launch, before the
+// windows are let go, and again with false the moment a keep is refused.
+// Only while it is true does the engine ask an organization for a device
+// token; nothing said (an older app) is false, so a machine that keeps
+// nothing never fills a person's trusted devices.
+//
 // ALL OF THIS IS OPTIONAL. An engine that is not a [FactorySessionKeeper]
 // answers both methods as unknown_method and does not announce the feature.
 
@@ -83,6 +90,11 @@ type FactorySessionRestoreParams struct {
 	Device  string     `json:"device,omitempty"`
 }
 
+// FactorySessionsStoreParams says whether the app can keep secrets.
+type FactorySessionsStoreParams struct {
+	CanKeep bool `json:"can_keep"`
+}
+
 // FactorySessionRestored says whether the engine now holds the sign-in.
 type FactorySessionRestored struct {
 	Kept bool `json:"kept"`
@@ -92,6 +104,7 @@ type FactorySessionRestored struct {
 type FactorySessionKeeper interface {
 	FactorySessionsTake(ctx context.Context) (FactorySessionsTaken, error)
 	FactorySessionRestore(ctx context.Context, p FactorySessionRestoreParams) (FactorySessionRestored, error)
+	FactorySessionsStore(ctx context.Context, p FactorySessionsStoreParams) error
 }
 
 func withFactorySessionsFeature(hello Hello, e Engine) Hello {
@@ -160,6 +173,22 @@ func init() {
 				return nil, err
 			}
 			return &out, nil
+		}),
+		"factory.sessions_store": shaped[FactorySessionsStoreParams, Empty](func(e Engine, raw json.RawMessage) (*Empty, error) {
+			k, err := factoryKeeperOf(e, "factory.sessions_store")
+			if err != nil {
+				return nil, err
+			}
+			var p FactorySessionsStoreParams
+			if err := decodeStrict("factory.sessions_store", raw, &p); err != nil {
+				return nil, err
+			}
+			ctx, cancel := factoryCall()
+			defer cancel()
+			if err := k.FactorySessionsStore(ctx, p); err != nil {
+				return nil, err
+			}
+			return &Empty{}, nil
 		}),
 	} {
 		methods[name] = m

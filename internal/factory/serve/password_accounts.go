@@ -129,8 +129,13 @@ func (h *Handler) trustedDevice(handle, secret string) string {
 }
 
 // issueDevice trusts the caller's machine for handle at generation gen and
-// answers the secret it keeps; "" if the password moved meanwhile.
-func (h *Handler) issueDevice(handle string, gen int64) (string, error) {
+// answers the secret it keeps, when the caller asked for one (want); "" if
+// it did not, if the password moved meanwhile, or if the person already
+// holds every device kept (said once in the log; the sign-in still stands).
+func (h *Handler) issueDevice(handle string, gen int64, want bool) (string, error) {
+	if !want {
+		return "", nil
+	}
 	secretValue, err := secret()
 	if err != nil {
 		return "", err
@@ -144,24 +149,21 @@ func (h *Handler) issueDevice(handle string, gen int64) (string, error) {
 	if errors.Is(err, tokens.ErrStale) || errors.Is(err, tokens.ErrNoAccount) {
 		return "", nil
 	}
+	if errors.Is(err, tokens.ErrDevicesFull) {
+		h.guard().devicesFull(handle)
+		return "", nil
+	}
 	if err != nil {
 		return "", err
 	}
 	return secretValue, nil
 }
 
-// touchDevice keeps a device in use trusted, writing at most once a day.
-func (h *Handler) touchDevice(handle, id string) {
-	doc, err := h.loadAccounts()
-	if err != nil {
-		return
-	}
-	for _, d := range doc.Devices {
-		if d.ID == id && h.now().Sub(d.Used) >= 24*time.Hour {
-			_ = tokens.TouchDevice(h.config.TokensPath, id, h.now())
-			h.forgetAccounts()
-		}
-	}
+// touchDevice marks a device used at every right sign-in with it, so the
+// one in use is never the one idling toward its end.
+func (h *Handler) touchDevice(id string) {
+	_ = tokens.TouchDevice(h.config.TokensPath, id, h.now())
+	h.forgetAccounts()
 }
 
 // setPendingGen marks the session whose public id is id as making a change

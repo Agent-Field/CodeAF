@@ -423,6 +423,7 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.runners` | `in.FactoryRef` | `Runners` |
 | `factory.scout` | `in.FactoryScoutParams` | `ScoutLook` |
 | `factory.session_restore` | `in.FactorySessionRestoreParams` | `FactorySessionRestored` |
+| `factory.sessions_store` | `in.FactorySessionsStoreParams` | `Empty` |
 | `factory.sessions_take` | `in.Empty` | `FactorySessionsTaken` |
 | `factory.setup` | `in.FactoryRef` | `FactorySetup` |
 | `factory.setup_back` | `in.FactoryLocalParams` | `FactorySetupView` |
@@ -2823,7 +2824,13 @@ preferred first, from the server's `/v1/about`; absent means GitHub only);
 needs GitHub.
 
 THE DEVICE TOKEN. A sign-up, a reset, a change, and a sign-in without a
-valid one hand this machine the organization's device token. The engine holds
+valid one hand this machine the organization's device token, but only when the
+engine asks (`want_device`), and it asks only while the app's core has said
+`factory.sessions_store {can_keep: true}`: that it can keep a secret in the
+OS's secure store. The core says it at launch, before the windows are let go,
+and says `false` the moment a keep is refused; unsaid is false. A person holds
+at most 16 live device tokens; past that a sign-in still succeeds but gets
+none, and no live token is ever pushed out. The engine holds
 it per connection like a session, registers it with its redaction, presents it
 on every `factory.password_sign_in` (the server then counts the try by the
 machine, not against the username's ceiling of 100, so a stranger guessing at

@@ -21,15 +21,22 @@ package serve
 //     a name takes from everywhere at once. It never backs off.
 //   - one per client address, addrFailures (50), across every username.
 //
-// A TRUSTED DEVICE (tokens.Device: the long-lived secret a machine is handed
-// after a right password, kept by the server only as a hash and so surviving
-// a restart) is counted by itself instead of by its address: one bucket of
-// userFailures with backoff, and the address bucket, but NOT the username's
-// ceiling. A stranger draining that ceiling from many addresses therefore
-// slows down the stranger and every machine the owner never used, never the
-// owner's own machines. A brand-new machine during such an attack waits, or
-// the operator makes a reset link, which, like an invitation, is never
-// throttled here.
+// A TRUSTED TRY skips the username's ceiling and counts in its own pair
+// bucket, keyed by what it is trusted by AND its address, plus the address
+// bucket. Two things make a try trusted:
+//
+//   - a device (tokens.Device: the long-lived secret a machine is handed
+//     after a right password, kept by the server only as a hash and so
+//     surviving a restart). A stranger draining the ceiling from many
+//     addresses slows down the stranger and every machine the owner never
+//     used, never the owner's own. The address is part of the key, so a
+//     thief guessing with a stolen device token from elsewhere backs off
+//     their own pair, not the owner's machine.
+//   - a signed-in session changing its password: the session already proves
+//     who it is, so a change counts per session.
+//
+// A brand-new machine during such an attack waits, or the operator makes a
+// reset link, which, like an invitation, is never throttled here.
 //
 // A REFUND IS COUNTED BY HAND. x/time/rate can give a reservation back only
 // at the instant it was made, which a verify that takes argon2's time is
@@ -53,6 +60,8 @@ import (
 	"time"
 
 	"golang.org/x/time/rate"
+
+	"github.com/Agent-Field/codeaf/internal/factory/tokens"
 )
 
 const (
@@ -186,7 +195,25 @@ type passwordGuard struct {
 	addrs    *throttle
 	inflight map[string]bool
 	saidFull time.Time
-	logf     func(format string, args ...any)
+	// saidDevicesFull is the people already said in the log to hold every
+	// device they may; bounded by throttleKeyMost.
+	saidDevicesFull map[string]bool
+	logf            func(format string, args ...any)
+}
+
+// devicesFull says once per person, in the log, that a right sign-in made no
+// new device because the person holds as many live ones as are kept.
+func (g *passwordGuard) devicesFull(handle string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.saidDevicesFull[handle] || len(g.saidDevicesFull) >= throttleKeyMost {
+		return
+	}
+	if g.saidDevicesFull == nil {
+		g.saidDevicesFull = map[string]bool{}
+	}
+	g.saidDevicesFull[handle] = true
+	g.logf("factory: %s already holds %d trusted devices; a sign-in made no new one", handle, tokens.DevicesPerPerson)
 }
 
 func newPasswordGuard() *passwordGuard {
@@ -225,20 +252,21 @@ func throttleAddr(addr netip.Addr) string {
 	return addr.String()
 }
 
-// admit spends one try of user from addr, or answers false (429). device is
-// the id of a trusted device the try came with, or "". alone is whether it
-// must be the only try of its name (or device) being verified.
-func (g *passwordGuard) admit(user, addr, device string, now time.Time, alone bool) (*attempt, bool) {
+// admit spends one try of user from addr, or answers false (429). trusted
+// is what the try is trusted by ("device:<id>", "session:<id>"), or "". alone
+// is whether it must be the only try of its name (or trusted pair) being
+// verified.
+func (g *passwordGuard) admit(user, addr, trusted string, now time.Time, alone bool) (*attempt, bool) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	pair := user + "\x00" + addr
-	if device != "" {
-		pair = user + "\x00device:" + device
+	if trusted != "" {
+		pair = user + "\x00" + trusted + "\x00" + addr
 	}
 	flight := ""
 	if alone {
 		flight = user
-		if device != "" {
+		if trusted != "" {
 			flight = pair
 		}
 		if g.inflight[flight] {
@@ -257,7 +285,7 @@ func (g *passwordGuard) admit(user, addr, device string, now time.Time, alone bo
 		return nil, false
 	}
 	steps := []spent{{g.pairs, pair}}
-	if device == "" {
+	if trusted == "" {
 		steps = append(steps, spent{g.users, user})
 	}
 	steps = append(steps, spent{g.addrs, addr})

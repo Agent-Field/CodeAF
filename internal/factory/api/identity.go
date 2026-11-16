@@ -130,6 +130,11 @@ type PasswordSignIn struct {
 	// Device is the trusted-device secret this machine was handed at an
 	// earlier right password, if it has one (PasswordSignedIn.DeviceToken).
 	Device string `json:"device,omitempty"`
+	// WantDevice asks for a device token when Device is not a trusted one.
+	// A client asks only when it can keep the token (in a secure store);
+	// without it none is made, so machines that keep nothing never fill a
+	// person's devices.
+	WantDevice bool `json:"want_device,omitempty"`
 }
 
 // PasswordChanged answers a password change: the changing machine's new
@@ -142,6 +147,8 @@ type PasswordChanged struct {
 type PasswordChange struct {
 	Current string `json:"current"`
 	New     string `json:"new"`
+	// WantDevice asks for this machine's new device token (PasswordSignIn).
+	WantDevice bool `json:"want_device,omitempty"`
 }
 
 // PasswordPerson is who a password sign-in signed in.

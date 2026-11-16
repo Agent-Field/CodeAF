@@ -114,6 +114,9 @@ type FactoryAccessRequest struct {
 	Username string `json:"username,omitempty"`
 	Password string `json:"password,omitempty"`
 	Name     string `json:"name,omitempty"`
+	// WantDevice asks sign_up and reset for a device token
+	// (PasswordSignIn.WantDevice).
+	WantDevice bool `json:"want_device,omitempty"`
 }
 
 // FactoryDay counts visible jobs once per calendar day; unknown waiting time is null.

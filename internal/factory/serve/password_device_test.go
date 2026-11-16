@@ -6,17 +6,26 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/tokens"
 )
 
-// deviceSignIn is a password sign-in over TLS from remote presenting device.
+const tokensDevicesPerPerson = tokens.DevicesPerPerson
+
+// deviceSignIn is a password sign-in over TLS from remote presenting device,
+// from a client that can keep a new one.
 func deviceSignIn(o *pwOrg, u, p, remote, device string) *httptest.ResponseRecorder {
-	data, _ := json.Marshal(api.PasswordSignIn{Username: u, Password: p, Device: device})
+	return wantSignIn(o, u, p, remote, device, true)
+}
+
+func wantSignIn(o *pwOrg, u, p, remote, device string, want bool) *httptest.ResponseRecorder {
+	data, _ := json.Marshal(api.PasswordSignIn{Username: u, Password: p, Device: device, WantDevice: want})
 	r := httptest.NewRequest("POST", "/v1/auth/password", bytes.NewReader(data))
 	r.RemoteAddr = remote
 	r.TLS = &tls.ConnectionState{}
@@ -30,7 +39,7 @@ func deviceSignIn(o *pwOrg, u, p, remote, device string) *httptest.ResponseRecor
 // the sign-up handed back.
 func joinWithDevice(o *pwOrg, link, username, password string) (session, device string) {
 	o.t.Helper()
-	out, w := o.access(api.FactoryAccessRequest{Link: link, Verb: "sign_up", Username: username, Password: password})
+	out, w := o.access(api.FactoryAccessRequest{Link: link, Verb: "sign_up", Username: username, Password: password, WantDevice: true})
 	if w.Code != 200 || out.State != "joined" || out.AccessToken == "" || out.DeviceToken == "" {
 		o.t.Fatalf("sign up %s = %d %s", username, w.Code, w.Body)
 	}
@@ -103,7 +112,7 @@ func TestAStrangerCannotKeepTheOwnerOut(t *testing.T) {
 		t.Fatalf("reset link = %d %s", w.Code, w.Body)
 	}
 	drain(o)
-	out, _ := o.access(api.FactoryAccessRequest{Link: made.Link.URL, Verb: "reset", Password: "a fresh passphrase here"})
+	out, _ := o.access(api.FactoryAccessRequest{Link: made.Link.URL, Verb: "reset", Password: "a fresh passphrase here", WantDevice: true})
 	if out.State != "joined" || out.AccessToken == "" || out.DeviceToken == "" {
 		t.Fatalf("reset during the attack = %+v", out)
 	}
@@ -163,7 +172,7 @@ func TestAPasswordChangeRevokesEveryDeviceToken(t *testing.T) {
 	if o.h.trustedDevice("santosh", first) != "" {
 		t.Fatal("abir's token opened santosh's name")
 	}
-	w = o.do("POST", "/v1/me/password", session, api.PasswordChange{Current: pwAbir, New: "a brand new passphrase"}, "")
+	w = o.do("POST", "/v1/me/password", session, api.PasswordChange{Current: pwAbir, New: "a brand new passphrase", WantDevice: true}, "")
 	var changed api.PasswordChanged
 	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &changed) != nil || changed.DeviceToken == "" {
 		t.Fatalf("change = %d %s", w.Code, w.Body)
@@ -361,5 +370,117 @@ func TestAPasswordPersonIsNotSaidToHaveSignedInWithGitHub(t *testing.T) {
 		if raw["github_signed_in"] != false || raw["sign_in_kind"] != "password" {
 			t.Errorf("%s: github_signed_in = %v, sign_in_kind = %v", name, raw["github_signed_in"], raw["sign_in_kind"])
 		}
+	}
+}
+
+// N1: only a client that asks is given a device token, and sign-ins on
+// machines that keep nothing never push the owner's own device out: past
+// DevicesPerPerson live ones a sign-in still succeeds but makes none, and a
+// device in use is marked used at every sign-in.
+func TestSignInsThatKeepNothingNeverEvictTheOwnersDevice(t *testing.T) {
+	o := newPWOrg(t)
+	g := o.h.guard()
+	var lines []string
+	g.logf = func(format string, args ...any) { lines = append(lines, fmt.Sprintf(format, args...)) }
+	operator := o.signUp(o.operatorLink(), "santosh", pwOperator)
+	if out, _ := o.access(api.FactoryAccessRequest{Link: o.invite(operator), Verb: "sign_up", Username: "mia", Password: pwAbir}); out.State != "joined" || out.DeviceToken != "" {
+		t.Fatalf("a sign-up that did not ask = %+v", out)
+	}
+	_, device := joinWithDevice(o, o.invite(operator), "abir", pwAbir)
+	signedIn := func(w *httptest.ResponseRecorder) api.PasswordSignedIn {
+		t.Helper()
+		var s api.PasswordSignedIn
+		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &s) != nil {
+			t.Fatalf("sign-in = %d %s", w.Code, w.Body)
+		}
+		return s
+	}
+	// Old clients and machines that keep nothing ask for none.
+	for i := 0; i < 40; i++ {
+		if s := signedIn(wantSignIn(o, "abir", pwAbir, fmt.Sprintf("198.51.100.%d:1", i+1), "", false)); s.DeviceToken != "" {
+			t.Fatalf("sign-in %d that did not ask was given a device", i)
+		}
+		o.advance(time.Minute)
+	}
+	// The owner's device, used now and then.
+	o.advance(48 * time.Hour)
+	signedIn(deviceSignIn(o, "abir", pwAbir, "192.0.2.7:1", device))
+	// Clients that do ask, many more than are kept, the owner's device the
+	// least recently used of them all.
+	minted := 0
+	for i := 0; i < 3*tokensDevicesPerPerson; i++ {
+		o.advance(time.Minute)
+		if s := signedIn(wantSignIn(o, "abir", pwAbir, fmt.Sprintf("203.0.113.%d:1", i+1), "", true)); s.DeviceToken != "" {
+			minted++
+		}
+	}
+	if minted != tokensDevicesPerPerson-1 {
+		t.Fatalf("devices made = %d, want %d (the owner's is the other)", minted, tokensDevicesPerPerson-1)
+	}
+	full := 0
+	for _, l := range lines {
+		if strings.Contains(l, "already holds") {
+			full++
+		}
+	}
+	if full != 1 {
+		t.Fatalf("a full set of devices was said %d times: %q", full, lines)
+	}
+	// During a drain the owner's device is still admitted.
+	for i := 0; i < userFailuresAll+20; i++ {
+		guess(o, i)
+	}
+	if w := deviceSignIn(o, "abir", pwAbir, "192.0.2.8:1", device); w.Code != 200 {
+		t.Fatalf("the owner's device after many sign-ins elsewhere, during a drain = %d %s", w.Code, w.Body)
+	}
+	// Used is the latest sign-in, not a day-old one.
+	doc, _ := o.h.loadAccounts()
+	for _, d := range doc.Devices {
+		if d.ID == o.h.trustedDevice("abir", device) && !d.Used.Equal(o.clock()) {
+			t.Fatalf("device used %v, last sign-in at %v", d.Used, o.clock())
+		}
+	}
+}
+
+// N2: a signed-in person changes their password while a stranger drains the
+// username's ceiling: the session already proves who they are.
+func TestAChangeIsNotHeldUpByAStrangersGuesses(t *testing.T) {
+	o := newPWOrg(t)
+	operator := o.signUp(o.operatorLink(), "santosh", pwOperator)
+	session, _ := joinWithDevice(o, o.invite(operator), "abir", pwAbir)
+	for i := 0; i < userFailuresAll+20; i++ {
+		guess(o, i)
+	}
+	if w := tlsSignIn(o, "abir", pwAbir, "203.0.113.70:1"); w.Code != 429 {
+		t.Fatalf("the ceiling is not dry: %d", w.Code)
+	}
+	if w := o.do("POST", "/v1/me/password", session, api.PasswordChange{Current: pwAbir, New: "a brand new passphrase"}, ""); w.Code != 200 {
+		t.Fatalf("a signed-in change during a drain = %d %s", w.Code, w.Body)
+	}
+	// Still throttled per session: ten wrong current passwords, then 429.
+	for i := 0; i < userFailures; i++ {
+		if w := o.do("POST", "/v1/me/password", session, api.PasswordChange{Current: "not the current one at all", New: "yet another passphrase"}, ""); w.Code != 403 {
+			t.Fatalf("wrong current %d = %d", i, w.Code)
+		}
+	}
+	if w := o.do("POST", "/v1/me/password", session, api.PasswordChange{Current: "a brand new passphrase", New: "yet another passphrase"}, ""); w.Code != 429 {
+		t.Fatalf("an eleventh change = %d", w.Code)
+	}
+}
+
+// N3: a thief guessing with a stolen device token from elsewhere backs off
+// their own (device, address) pair, never the owner's machine.
+func TestAStolenDeviceTokenCannotLockOutTheOwnersMachine(t *testing.T) {
+	o := newPWOrg(t)
+	operator := o.signUp(o.operatorLink(), "santosh", pwOperator)
+	_, device := joinWithDevice(o, o.invite(operator), "abir", pwAbir)
+	for i := 0; i < 3*userFailures; i++ {
+		deviceSignIn(o, "abir", "the thief's wrong guess", "10.66.0.1:1", device)
+	}
+	if w := deviceSignIn(o, "abir", pwAbir, "10.66.0.1:1", device); w.Code != 429 {
+		t.Fatalf("the thief's own pair = %d", w.Code)
+	}
+	if w := deviceSignIn(o, "abir", pwAbir, "192.0.2.7:1", device); w.Code != 200 {
+		t.Fatalf("the owner's machine with the same token = %d %s", w.Code, w.Body)
 	}
 }

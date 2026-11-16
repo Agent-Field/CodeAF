@@ -141,12 +141,12 @@ func throttleKeys(r *http.Request, username string) (user, addr string) {
 	return user, throttleAddr(clientOf(r).addr)
 }
 
-// admitTry admits one password try, or answers 429 and false. device is a
-// trusted device's id the try came with, or "". alone is whether it must be
-// the only try of the name (or device) being verified (sign-in).
-func (h *Handler) admitTry(w http.ResponseWriter, r *http.Request, username, device string, alone bool) (*attempt, bool) {
+// admitTry admits one password try, or answers 429 and false. trusted is
+// what the try is trusted by (passwordGuard.admit), or "". alone is whether
+// it must be the only try of the name (or trusted pair) being verified.
+func (h *Handler) admitTry(w http.ResponseWriter, r *http.Request, username, trusted string, alone bool) (*attempt, bool) {
 	user, addr := throttleKeys(r, username)
-	a, ok := h.guard().admit(user, addr, device, h.now(), alone)
+	a, ok := h.guard().admit(user, addr, trusted, h.now(), alone)
 	if !ok {
 		h.tooManyTries(w)
 	}
@@ -369,7 +369,7 @@ func (h *Handler) signUp(w http.ResponseWriter, r *http.Request, body api.Factor
 	if h.failed(w, err) {
 		return
 	}
-	device, err := h.issueDevice(username, 1)
+	device, err := h.issueDevice(username, 1, body.WantDevice)
 	if h.failed(w, err) {
 		return
 	}
@@ -452,7 +452,7 @@ func (h *Handler) resetAccess(w http.ResponseWriter, r *http.Request, body api.F
 	if h.failed(w, err) {
 		return
 	}
-	device, err := h.issueDevice(handle, gen)
+	device, err := h.issueDevice(handle, gen, body.WantDevice)
 	if h.failed(w, err) {
 		return
 	}
@@ -479,7 +479,11 @@ func (h *Handler) passwordSignIn(w http.ResponseWriter, r *http.Request) {
 	// A trusted device is judged before the try is admitted, since it is
 	// what decides which buckets the try counts against.
 	device := h.trustedDevice(username, body.Device)
-	try, ok := h.admitTry(w, r, body.Username, device, true)
+	trusted := ""
+	if device != "" {
+		trusted = "device:" + device
+	}
+	try, ok := h.admitTry(w, r, body.Username, trusted, true)
 	if !ok {
 		return
 	}
@@ -538,8 +542,8 @@ func (h *Handler) passwordSignIn(w http.ResponseWriter, r *http.Request) {
 	try.succeeded(now)
 	newDevice := ""
 	if device != "" {
-		h.touchDevice(username, device)
-	} else if newDevice, err = h.issueDevice(username, acct.Gen); h.failed(w, err) {
+		h.touchDevice(device)
+	} else if newDevice, err = h.issueDevice(username, acct.Gen, body.WantDevice); h.failed(w, err) {
 		return
 	}
 	if h.failed(w, h.accountEvent(r, username, "", "signed in", "signed in with a password", false)) {
@@ -571,7 +575,9 @@ func (h *Handler) passwordChange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	handle := session.profile.Handle
-	try, ok := h.admitTry(w, r, handle, "", false)
+	// The session proves who is changing; a change counts per session, not
+	// against the username's ceiling a stranger may be draining.
+	try, ok := h.admitTry(w, r, handle, "session:"+session.id, false)
 	if !ok {
 		return
 	}
@@ -636,7 +642,7 @@ func (h *Handler) passwordChange(w http.ResponseWriter, r *http.Request) {
 	}
 	// Every trusted device ended with the old password; this one is
 	// trusted again at the new.
-	device, err := h.issueDevice(handle, gen)
+	device, err := h.issueDevice(handle, gen, body.WantDevice)
 	if h.failed(w, err) {
 		return
 	}

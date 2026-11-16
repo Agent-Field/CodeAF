@@ -11,6 +11,15 @@ func (f *factoryEngine) FactorySessionsTake(context.Context) (FactorySessionsTak
 	return FactorySessionsTaken{}, nil
 }
 
+func (f *factoryEngine) FactorySessionsStore(_ context.Context, p FactorySessionsStoreParams) error {
+	if p.CanKeep {
+		f.note("store yes")
+	} else {
+		f.note("store no")
+	}
+	return nil
+}
+
 func (f *factoryEngine) FactorySessionRestore(_ context.Context, p FactorySessionRestoreParams) (FactorySessionRestored, error) {
 	f.note("restore " + p.Factory + " " + p.URL)
 	return FactorySessionRestored{}, nil
@@ -28,6 +37,8 @@ func TestFactorySessionMethodsReadTheirParamsStrictly(t *testing.T) {
 		{"factory.session_restore", `{"factory":"","url":"https://f.example","token":"t"}`},
 		{"factory.session_restore", `{"factory":"f","url":"https://f.example","token":"t","path":"/x"}`},
 		{"factory.sessions_take", `{"factory":"f"}`},
+		{"factory.sessions_store", `{"can_keep":"yes"}`},
+		{"factory.sessions_store", `{"can_keep":true,"x":1}`},
 	} {
 		_, err := methods[c.name].call(eng, json.RawMessage(c.params))
 		if wireCode(t, err) != CodeBadParams {

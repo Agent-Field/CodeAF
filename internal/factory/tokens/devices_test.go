@@ -49,9 +49,15 @@ func TestADeviceIsAHashBoundToOnePersonAndOnePassword(t *testing.T) {
 	if _, ok := doc.FindDevice("abir", secret, now.Add(DeviceLife+time.Hour)); !ok {
 		t.Fatal("a device in use lapsed")
 	}
-	// At most DevicesPerPerson, the latest kept.
+	// At most DevicesPerPerson live ones; past that a new one is refused and
+	// none, not even the least recently used, is pushed out.
 	for i := 0; i < DevicesPerPerson+4; i++ {
-		if err := AddDevice(path, "mia", 1, fmt.Sprintf("dev_m%02d", i), fmt.Sprintf("mia-secret-%02d-long-enough", i), now.Add(time.Duration(i)*time.Minute)); err != nil {
+		err := AddDevice(path, "mia", 1, fmt.Sprintf("dev_m%02d", i), fmt.Sprintf("mia-secret-%02d-long-enough", i), now.Add(time.Duration(i)*time.Minute))
+		if want := error(nil); i >= DevicesPerPerson {
+			if err != ErrDevicesFull {
+				t.Fatalf("device %d past the most = %v", i, err)
+			}
+		} else if err != want {
 			t.Fatal(err)
 		}
 	}
@@ -62,8 +68,12 @@ func TestADeviceIsAHashBoundToOnePersonAndOnePassword(t *testing.T) {
 			mia++
 		}
 	}
-	if _, ok := doc.FindDevice("mia", fmt.Sprintf("mia-secret-%02d-long-enough", DevicesPerPerson+3), now.Add(time.Hour)); mia != DevicesPerPerson || !ok {
-		t.Fatalf("mia keeps %d devices (latest found %v)", mia, ok)
+	if _, ok := doc.FindDevice("mia", "mia-secret-00-long-enough", now.Add(time.Hour)); mia != DevicesPerPerson || !ok {
+		t.Fatalf("mia keeps %d devices (the first found %v)", mia, ok)
+	}
+	// One that lapses makes room.
+	if err := AddDevice(path, "mia", 1, "dev_late", "mia-late-secret-long-enough", now.Add(DeviceLife+time.Hour)); err != nil {
+		t.Fatalf("after the others lapsed = %v", err)
 	}
 	// A change revokes; removal drops.
 	if _, err := SetPassword(path, "abir", "$a2", 1, now); err != nil {

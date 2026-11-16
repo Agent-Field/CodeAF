@@ -138,13 +138,15 @@ func (h *appFactoryHub) rememberSignInForLocked(origin string, methods []string,
 
 func (b *appBackend) FactoryAccessSignUp(ctx context.Context, p appwire.FactoryAccessSignUpParams) (appwire.FactoryAccess, error) {
 	coverSecret(p.Password)
-	return b.factoryHub().accessWith(ctx, p.Caller, p.Link, api.FactoryAccessRequest{Verb: "sign_up",
-		Username: p.Username, Password: p.Password, Name: strings.TrimSpace(p.Name)})
+	h := b.factoryHub()
+	return h.accessWith(ctx, p.Caller, p.Link, api.FactoryAccessRequest{Verb: "sign_up",
+		Username: p.Username, Password: p.Password, Name: strings.TrimSpace(p.Name), WantDevice: h.keepsDevices()})
 }
 
 func (b *appBackend) FactoryAccessReset(ctx context.Context, p appwire.FactoryAccessResetParams) (appwire.FactoryAccess, error) {
 	coverSecret(p.Password)
-	return b.factoryHub().accessWith(ctx, p.Caller, p.Link, api.FactoryAccessRequest{Verb: "reset", Password: p.Password})
+	h := b.factoryHub()
+	return h.accessWith(ctx, p.Caller, p.Link, api.FactoryAccessRequest{Verb: "reset", Password: p.Password, WantDevice: h.keepsDevices()})
 }
 
 // passwordFailure is the wire error for a password door's refusal: the
@@ -190,8 +192,10 @@ func (b *appBackend) FactoryPasswordSignIn(ctx context.Context, p appwire.Factor
 	// replaces whatever this connection held.
 	// The device token, when this machine has one, lets the factory count the
 	// try by this machine rather than against the username's ceiling.
+	// It asks for a new one only when something keeps it.
+	device, keeps := h.deviceFor(row.ID)
 	r, err := h.send(ctx, row.URL, "", http.MethodPost, "/v1/auth/password",
-		api.PasswordSignIn{Username: p.Username, Password: p.Password, Device: h.deviceFor(row.ID)}, appFactorySmall, nil)
+		api.PasswordSignIn{Username: p.Username, Password: p.Password, Device: device, WantDevice: keeps}, appFactorySmall, nil)
 	if err != nil {
 		return appwire.FactoryPasswordSignedIn{}, err
 	}
@@ -220,7 +224,7 @@ func (b *appBackend) FactoryPasswordChange(ctx context.Context, p appwire.Factor
 		return appwire.Errorf(appwire.CodeSignedOut, "sign in to this factory")
 	}
 	r, err := h.send(ctx, row.URL, token, http.MethodPost, "/v1/me/password",
-		api.PasswordChange{Current: p.Current, New: p.New}, appFactorySmall, nil)
+		api.PasswordChange{Current: p.Current, New: p.New, WantDevice: h.keepsDevices()}, appFactorySmall, nil)
 	if err != nil {
 		// The change may or may not have been made; the person can sign in
 		// with whichever password works.

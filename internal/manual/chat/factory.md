@@ -216,9 +216,9 @@ An organization server (`codeaf factory serve`) takes a username and password by
 
 ## a trusted machine — someone guessing my username, "Too many tries" on a new laptop, device token
 
-Each time a machine signs up, resets, changes its password, or signs in with a username and password, the organization hands it a device token, a secret the app keeps in the system keychain beside the sign-in. Later sign-ins on that machine present it. While a stranger guesses at your username from many addresses, the 100-tries limit for the username holds them up but not your machines: a machine with its token is counted only by itself (10 wrong tries) and its address (50). Signing out keeps the token; disconnecting the factory removes it.
+When the desktop app can keep secrets in the system keychain, each sign-up, reset, password change or sign-in on that machine gets a device token from the organization, kept beside the sign-in. A client that cannot keep it gets none. Later sign-ins on that machine present it. While a stranger guesses at your username from many addresses, the 100-tries limit for the username holds them up but not your machines: a machine with its token is counted only by itself (10 wrong tries) and its address (50). Signing out keeps the token; disconnecting the factory removes it.
 
-The server keeps only a hash of each token. A token lasts 180 days, a person has at most 16, and a restart of the server keeps them. Changing your password, a reset, or being removed ends every token made before, so the machine you changed it on gets a new one and your other machines count as new until they sign in again.
+The server keeps only a hash of each token. A token lasts 180 days after it was last used and is not replaced on use; a restart of the server keeps them. A person holds at most 16: past that a sign-in still works but gets no new token, and no token in use is ever pushed out. Changing your password, a reset, or being removed ends every token made before, so the machine you changed it on gets a new one and your other machines count as new until they sign in again.
 
 A new machine during such an attack reads "Too many tries. Wait a few minutes." until the attack slows. To get in at once, ask the operator for a reset link: a reset link, like an unused invitation, is never held up by tries, and the reset trusts that machine from then on.
 

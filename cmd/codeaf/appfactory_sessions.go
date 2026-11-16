@@ -73,11 +73,19 @@ func (h *appFactoryHub) holdDeviceLocked(id, token string) {
 	h.devices[id] = token
 }
 
-// deviceFor is the device token held for id, or "".
-func (h *appFactoryHub) deviceFor(id string) string {
+// deviceFor is the device token held for id, or "", and whether something
+// keeps device tokens, so a sign-in may ask for a new one.
+func (h *appFactoryHub) deviceFor(id string) (string, bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	return h.devices[id]
+	return h.devices[id], h.keeper
+}
+
+// keepsDevices is whether something keeps device tokens (appFactoryHub.keeper).
+func (h *appFactoryHub) keepsDevices() bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.keeper
 }
 
 func (h *appFactoryHub) queueLocked(c appwire.FactorySessionChange) {
@@ -128,6 +136,15 @@ func (b *appBackend) FactorySessionsTake(context.Context) (appwire.FactorySessio
 	}
 	h.kept = nil
 	return out, nil
+}
+
+// FactorySessionsStore is the core saying whether it can keep secrets.
+func (b *appBackend) FactorySessionsStore(_ context.Context, p appwire.FactorySessionsStoreParams) error {
+	h := b.factoryHub()
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.keeper = p.CanKeep
+	return nil
 }
 
 // FactorySessionRestore takes back a sign-in the app kept, for a saved

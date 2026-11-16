@@ -157,7 +157,11 @@ type appFactoryHub struct {
 	// for this machine (appfactory_sessions.go). It is a secret, kept like a
 	// session but outliving one: signing out keeps it.
 	devices map[string]string
-	seen    map[string]time.Time
+	// keeper is what the app's core last said through factory.sessions_store:
+	// whether it can keep a secret in the OS's secure store. Only then does a
+	// sign-in ask the factory for a device token; unsaid is false.
+	keeper bool
+	seen   map[string]time.Time
 	// adminBusy marks a connection whose sign-out or revoke-all is in flight
 	// (appfactory_admin.go), so one press is one request.
 	adminBusy map[string]bool
