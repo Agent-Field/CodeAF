@@ -21,9 +21,9 @@ In `server` mode a workstream's Agent panel is one conversation everyone who can
 
 What it spends is posted to the workstream under the person whose message it answered. A workstream that has spent its budget takes no more messages ("This workstream has spent its budget."). An archived workstream takes none either.
 
-## what the server's workstream agent can and cannot do — workstream_pages, no shell, no repository
+## what the server's workstream agent can and cannot do — workstream_pages, tasks and files, no shell, no repository
 
-On the server the agent carries one tool, `workstream_pages`, and nothing else:
+On the server the agent carries `workstream_pages`, and, once the server keeps a workstream's tasks and files, the eight workstream tools beside it (`ws_tasks`, `ws_task_create`, `ws_task_update`, `ws_task_comment`, `ws_files`, `ws_file_read`, `ws_file_create`, `ws_file_suggest`; the page about chats inside a workstream says what they do). With `workstream_pages` it can:
 
 - read the workstream: name, purpose, stage, budget, pages, decisions, sources and links;
 - read one page whole;

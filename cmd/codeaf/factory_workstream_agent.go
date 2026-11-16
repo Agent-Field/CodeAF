@@ -62,7 +62,7 @@ func factoryWorkstreamAgent(st *store.Store, load func() (config.Config, error))
 			Model:       factoryWorkstreamAgentModel(st, load, profile),
 			APIKey:      turn.Key, BaseURL: factoryWorkstreamAgentBaseURL(),
 			DeterministicNames: true, CompactEnabled: true,
-			System:     factoryWorkstreamAgentSystem(turn.Name),
+			System:     factoryWorkstreamAgentSystem(turn.Name, workstreamDoorKeepsWork(turn.Door)),
 			Workstream: turn.Door,
 		}, profile, true, true)
 		// THE GATE IS THE DOOR, NOT AN APPROVAL ASK. Nobody sits in front of
@@ -176,14 +176,28 @@ func factoryWorkstreamAgentModel(st *store.Store, load func() (config.Config, er
 }
 
 // factoryWorkstreamAgentSystem is what the server's agent is told it is.
-func factoryWorkstreamAgentSystem(name string) string {
-	return "You are the agent of the organization workstream \"" + name + "\", running on the organization's server. " +
+// workstreamDoorKeepsWork says the server's door also keeps the workstream's
+// tasks and files, so its agent carries the ws_* tools beside workstream_pages.
+func workstreamDoorKeepsWork(door serve.AgentDoor) bool {
+	_, ok := door.(session.WorkstreamWorkDoor)
+	return ok
+}
+
+func factoryWorkstreamAgentSystem(name string, work bool) string {
+	tools := "You have one tool, " + session.WorkstreamPagesTool + ": "
+	if work {
+		tools = "You have " + session.WorkstreamPagesTool + " and the workstream's task and file tools (ws_tasks, ws_files and the rest). With " + session.WorkstreamPagesTool + " you "
+	}
+	system := "You are the agent of the organization workstream \"" + name + "\", running on the organization's server. " +
 		"Everyone who can see the workstream reads this conversation, and each message comes from one of them.\n\n" +
-		"You have one tool, " + session.WorkstreamPagesTool + ": read the workstream (ask read) before you answer about it, " +
+		tools + "read the workstream (ask read) before you answer about it, " +
 		"read one page whole (ask page), write a page (ask write), make a new page (ask new), or propose a decision (ask decide). " +
 		"You write as the person whose message you are answering. When a write answers that your text was kept as a version, " +
 		"say so plainly: the page is open for editing, and anyone who can edit it restores that version from its history.\n\n" +
-		"You cannot run commands, read or change a repository, open files, start factory jobs or use the web. " +
-		"When a person asks for that, say that the server's agent cannot, and that the workstream's pages are what you can change.\n\n" +
-		"Answer briefly, in plain words."
+		"You cannot run commands, read or change a repository, open files on a computer, start factory jobs or use the web. " +
+		"When a person asks for that, say that the server's agent cannot, and say what in the workstream you can change.\n\n"
+	if work {
+		system += session.WorkstreamWorkRules + "\n\n"
+	}
+	return system + "Answer briefly, in plain words."
 }
