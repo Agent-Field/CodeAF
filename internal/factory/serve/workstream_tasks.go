@@ -146,6 +146,7 @@ func (h *Handler) readTasks(r *http.Request, ws factory.OrgWorkstream) ([]factor
 		out = append(out, factory.JobTask(jobs[n], ws.ID, overlays[n], owner))
 	}
 	slices.SortStableFunc(out, func(a, b factory.WorkstreamTask) int { return strings.Compare(a.CreatedAt, b.CreatedAt) })
+	nameTasks(h.personNames(), out)
 	return out, nil
 }
 
@@ -284,7 +285,7 @@ func (h *Handler) createWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 	}
 	h.recordWorkstream(r, ws.ID, "added task", made.ID)
 	h.publishTasks(ws, h.orgActor(r), made)
-	h.write(w, http.StatusCreated, made)
+	h.write(w, http.StatusCreated, nameTask(h.personNames(), made))
 }
 
 // readTasksIn is readTasks with the kept tasks read inside a write. jobs are
@@ -447,7 +448,7 @@ func (h *Handler) patchWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 	if target.ID != "" {
 		h.publishTasks(target, h.orgActor(r), out.Task)
 	}
-	h.write(w, http.StatusOK, out.Task)
+	h.write(w, http.StatusOK, nameTask(h.personNames(), out.Task))
 }
 
 func (h *Handler) answerWorkstreamTask(w http.ResponseWriter, r *http.Request) {
@@ -642,5 +643,6 @@ func (h *Handler) startAllWorkstreamTasks(w http.ResponseWriter, r *http.Request
 	if started == nil {
 		started = []factory.WorkstreamTask{}
 	}
+	nameTasks(h.personNames(), started)
 	h.write(w, http.StatusOK, api.WorkstreamTasks{Tasks: started})
 }

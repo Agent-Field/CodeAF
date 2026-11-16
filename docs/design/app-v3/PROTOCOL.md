@@ -924,7 +924,10 @@ waiting_on, due?, group?, results, check?, ask?, cost_usd?, created_by, created_
 updated_at, done_at?, answered_by?}`, `state` one of `up_next`, `running`, `needs`,
 `done`, `failed`, `interrupted`, `stopped` (Stopped by you), `no_report` (Didn't report
 back); an event is `{id, task, at, by, kind, text, steps?, duration_s?, offer?,
-undo_until?}`. `factory.org_workstream_tasks {ws}` `GET /v1/workstreams/{id}/tasks`
+undo_until?}`. A person on a task (`owner`, `done_by`, `came_from` and
+`created_by` of kind `person`) is named, in every answer that carries the task, by the
+name they joined with ("Abir Das"), or their handle when the organization knows none;
+a task made with `owner: {kind: person, id}` alone reads back named. `factory.org_workstream_tasks {ws}` `GET /v1/workstreams/{id}/tasks`
 (`view`) answers `{tasks}`: the kept tasks and every Factory job of the workstream (its
 membership, else its go-ahead group) as a task with id `job:<n>`, `done_by.kind`
 `factory`, its state from the job's, its Ask the job's open question and `step` "Step
