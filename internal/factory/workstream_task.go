@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // ── A WORKSTREAM'S TASKS (Workstreams v5, SPEC §2.2) ──────────────────────
@@ -198,6 +199,23 @@ type WorkstreamTask struct {
 	UpdatedAt  string       `json:"updated_at"`
 	DoneAt     string       `json:"done_at,omitempty"`
 	AnsweredBy *PersonRef   `json:"answered_by,omitempty"`
+	// HandedBy is who last handed the task to its owner, when that was
+	// someone other than the owner themselves, so the new owner's Inbox can
+	// say "handed to you by Marco" (SPEC "Handing work on"). Cleared when the
+	// owner takes it back by their own hand.
+	HandedBy *PersonRef `json:"handed_by,omitempty"`
+	// ForYou is the reader's own: the comments on it that are for them and
+	// not yet read. It is FILLED AT READ TIME for one viewer and never kept.
+	ForYou *TaskForYou `json:"for_you,omitempty"`
+}
+
+// TaskForYou is what a task holds for the person reading it (SPEC "Comments
+// for you"): the unread comments on a task they own, or that name them with
+// @, and the newest of them.
+type TaskForYou struct {
+	Comments  int                 `json:"comments"`
+	Mentioned bool                `json:"mentioned,omitempty"`
+	Last      WorkstreamTaskEvent `json:"last"`
 }
 
 // TaskEventBy is who an event in the thread is from.
@@ -229,6 +247,10 @@ type WorkstreamTaskEvent struct {
 	// Option is the id of the answer an "answered" event chose, so whoever
 	// asked (a standing order's clock, on its holder's computer) can act on it.
 	Option string `json:"option,omitempty"`
+	// Mentions are the handles a comment names with @, among the
+	// workstream's people: the comment reaches each of them (SPEC "A comment
+	// with @name reaches that person").
+	Mentions []string `json:"mentions,omitempty"`
 }
 
 // TaskInvalid is a task the store will not keep, answered 422.
@@ -571,6 +593,7 @@ func ApplyPatch(t WorkstreamTask, p TaskPatch, a TaskActor, by TaskEventBy, all 
 			return TaskChange{}, err
 		}
 		t.Owner = *p.Owner
+		t.HandedBy = handedBy(t.Owner, by)
 		event(TaskEventHanded, "Handed to "+ownerWords(t.Owner))
 	}
 	if p.WaitingOn != nil || p.Due != nil || p.Group != nil || p.ClearGroup {
@@ -1117,6 +1140,7 @@ func HandOn(t WorkstreamTask, removed map[string]bool, to string, by TaskEventBy
 	changed := false
 	if t.Owner.Kind == TaskOwnerPerson && removed[NormalizeHandle(t.Owner.ID)] {
 		t.Owner, changed = TaskOwner{Kind: TaskOwnerPerson, ID: to, Name: to}, true
+		t.HandedBy = handedBy(t.Owner, by)
 	}
 	if t.DoneBy.Kind == TaskByPerson && removed[NormalizeHandle(t.DoneBy.ID)] {
 		t.DoneBy, changed = TaskDoneBy{Kind: TaskByPerson, ID: to, Name: to}, true
@@ -1127,6 +1151,57 @@ func HandOn(t WorkstreamTask, removed map[string]bool, to string, by TaskEventBy
 	stamp := now.UTC().Format(time.RFC3339Nano)
 	t.Rev, t.UpdatedAt = t.Rev+1, stamp
 	return t, []WorkstreamTaskEvent{{ID: newID(), Task: t.ID, At: stamp, By: by, Kind: TaskEventHanded, Text: "Handed to " + to}}, true
+}
+
+// handedBy is who handed a task to owner: whoever did it, unless the new
+// owner took it themselves or nobody in particular owns it now.
+func handedBy(owner TaskOwner, by TaskEventBy) *PersonRef {
+	if owner.Kind != TaskOwnerPerson || (by.Kind == TaskByPerson && NormalizeHandle(by.ID) == NormalizeHandle(owner.ID)) {
+		return nil
+	}
+	return &PersonRef{ID: by.ID, Name: by.Name}
+}
+
+// Mentions are the people a comment names with @, as handles, each once and
+// in the order written. `people` maps each handle in the workstream to the
+// name they go by; "@abir", "@Abir" and "@AbirDas" all reach abir, and an @
+// that names nobody in the workstream reaches nobody.
+func Mentions(text string, people map[string]string) []string {
+	key := func(s string) string {
+		return strings.ToLower(strings.Map(func(r rune) rune {
+			if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' || r == '-' || r == '.' {
+				return r
+			}
+			return -1
+		}, s))
+	}
+	who := map[string]string{}
+	for handle, name := range people {
+		h := NormalizeHandle(handle)
+		first := ""
+		if f := strings.Fields(name); len(f) > 0 {
+			first = f[0]
+		}
+		for _, k := range []string{key(handle), key(name), key(first)} {
+			if k != "" {
+				if _, taken := who[k]; !taken || k == key(handle) {
+					who[k] = h
+				}
+			}
+		}
+	}
+	var out []string
+	for _, word := range strings.Fields(text) {
+		i := strings.IndexByte(word, '@')
+		if i < 0 || (i > 0 && !strings.ContainsRune(" ([{\"'", rune(word[i-1]))) {
+			continue
+		}
+		k := strings.TrimRight(key(word[i+1:]), ".-")
+		if h, ok := who[k]; ok && !slices.Contains(out, h) {
+			out = append(out, h)
+		}
+	}
+	return out
 }
 
 // FileChangedAskID prefixes the Ask a changed file puts on a running task.
