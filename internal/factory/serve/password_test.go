@@ -49,7 +49,11 @@ type pwOrg struct {
 	root string
 }
 
-func newPWOrg(t *testing.T) *pwOrg {
+func newPWOrg(t *testing.T) *pwOrg { t.Helper(); return newPWOrgWith(t, nil) }
+
+// newPWOrgWith is newPWOrg with more seam doors open: more is given the seam
+// and the store before the handler is made.
+func newPWOrgWith(t *testing.T, more func(*factory.Seam, *store.Store)) *pwOrg {
 	t.Helper()
 	st, err := store.Open(t.TempDir())
 	if err != nil {
@@ -62,6 +66,9 @@ func newPWOrg(t *testing.T) *pwOrg {
 		t.Fatal(err)
 	}
 	seam := factory.Seam{Load: func() (factory.Snapshot, error) { items, err := st.List(); return factory.Snapshot{Items: items}, err }, SetRepos: st.SetRepos}
+	if more != nil {
+		more(&seam, st)
+	}
 	o.cfg = Config{Name: "Acme", Version: "test", Address: "https://org.test", Mode: api.FactoryTeam, AccessToken: "host-secret",
 		Store: st, Record: history, TokensPath: filepath.Join(st.Root(), "tokens.json"), PullWait: time.Millisecond, Now: clock}
 	o.h = New(seam, o.cfg)

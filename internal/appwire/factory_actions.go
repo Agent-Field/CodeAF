@@ -285,6 +285,11 @@ type FactoryJobCreateParams struct {
 	Key string `json:"key,omitempty"`
 	// SplitFrom is a visible job number on the same Factory, at least 1.
 	SplitFrom *int `json:"split_from,omitempty"`
+	// Workstream is the organization workstream the job is made in (ws_…):
+	// the factory checks the caller can edit it and the job joins it in the
+	// same write. A job on a repository the caller reads only because the
+	// organization turned it on is refused without one.
+	Workstream string `json:"workstream,omitempty"`
 }
 
 func (p *FactoryJobCreateParams) pickedPipeline() string { return p.Pipeline }
@@ -426,6 +431,11 @@ func factoryActorOf(e Engine, name string) (FactoryActor, error) {
 }
 
 // factoryLogin is a GitHub login with an optional leading @.
+// factoryWorkstreamID is an organization workstream's id as the factory
+// mints it: ws_ and a cell id. It is checked here only for shape; the factory
+// decides whether the caller may make a job in it.
+var factoryWorkstreamID = regexp.MustCompile(`^ws_[A-Za-z0-9]{1,64}$`)
+
 var factoryLogin = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$`)
 
 var factoryCommit = regexp.MustCompile(`^[0-9a-f]{7,64}$`)
@@ -685,6 +695,9 @@ func prepCreate(p *FactoryJobCreateParams) error {
 	}
 	if _, err = words("text", p.Text, MaxFactoryJobText, false); err != nil {
 		return err
+	}
+	if p.Workstream = strings.TrimSpace(p.Workstream); p.Workstream != "" && !factoryWorkstreamID.MatchString(p.Workstream) {
+		return Errorf(CodeBadParams, "workstream must be a workstream id")
 	}
 	if p.Assignee != nil {
 		login := strings.TrimPrefix(strings.TrimSpace(*p.Assignee), "@")

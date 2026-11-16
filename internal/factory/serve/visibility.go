@@ -145,10 +145,12 @@ func repoKeys(s factory.Snapshot) []string {
 
 // repoAccess is the set of owner/name keys this caller may read. filter is
 // false for the owner: loopback without a GitHub profile, and the host token.
-// A signed-in profile with no token still filters, and sees nothing.
+// A signed-in profile reads what its own GitHub token can read AND the
+// organization's repositories (org_repos.go); with no token of its own it
+// reads only the organization's.
 func (h *Handler) repoAccess(r *http.Request, keys []string) (map[string]bool, bool) {
-	allow, _, filter := h.repoAccessDecided(r, keys)
-	return allow, filter
+	sight, filter := h.repoSight(r, keys)
+	return sight.allow, filter
 }
 
 // repoAccessDecided is [Handler.repoAccess] that also names the keys GitHub
@@ -156,9 +158,29 @@ func (h *Handler) repoAccess(r *http.Request, keys []string) (map[string]bool, b
 // limit or an ended sign-in): those read as not allowed, and are not known
 // to be.
 func (h *Handler) repoAccessDecided(r *http.Request, keys []string) (allow, unknown map[string]bool, filter bool) {
+	sight, filter := h.repoSight(r, keys)
+	return sight.allow, sight.unknown, filter
+}
+
+// repoSightOf is what repoSight answers: allow is every key the caller may
+// read, viaOrg the keys it may read ONLY because the organization turned them
+// on, which its own GitHub token does not reach, and unknown the keys GitHub
+// gave no answer for just now (they read as not allowed, and are not known
+// to be).
+type repoSightOf struct {
+	allow   map[string]bool
+	viaOrg  map[string]bool
+	unknown map[string]bool
+}
+
+// repoSight is repoAccess with the reason for each key kept apart, for the
+// doors that ask more of a repository reached through the organization alone
+// (a new job on one is made in a workstream the caller can edit).
+func (h *Handler) repoSight(r *http.Request, keys []string) (repoSightOf, bool) {
 	var session accessSession
 	var ok bool
-	if trial, isTrial := r.Context().Value(trialSessionKey{}).(*accessSession); isTrial {
+	trial, isTrial := r.Context().Value(trialSessionKey{}).(*accessSession)
+	if isTrial {
 		session, ok = *trial, true
 	} else {
 		session, ok = h.credential(r)
@@ -167,21 +189,25 @@ func (h *Handler) repoAccessDecided(r *http.Request, keys []string) (allow, unkn
 		// An ended sign-in never falls back to the owner's unfiltered view,
 		// including when a long-lived event stream outlasts its credential.
 		if state, ok := r.Context().Value(authErrorKey{}).(*authErrorState); ok && state.err != nil {
-			return map[string]bool{}, nil, true
+			return repoSightOf{allow: map[string]bool{}, viaOrg: map[string]bool{}}, true
 		}
-		return nil, nil, false
+		return repoSightOf{}, false
 	}
 	if session.profile == nil || session.profile.Handle == "" {
-		return nil, nil, false
+		return repoSightOf{}, false
 	}
 	token := session.githubToken
 	if token == "" && h.viewer != nil {
 		token = h.viewer.token(session.profile.Handle)
 	}
-	allow = map[string]bool{}
-	if token == "" {
-		return allow, nil, true
+	// A link's sign-in is still judged by what the person's OWN token reads
+	// (device.go): the organization's repositories are what a member reads
+	// once in, never a reason to let a GitHub stranger in.
+	org := map[string]bool{}
+	if !isTrial {
+		org = h.orgRepos(r, session.profile.Handle)
 	}
+	sight := repoSightOf{allow: map[string]bool{}, viaOrg: map[string]bool{}}
 	seen := map[string]bool{}
 	for _, key := range keys {
 		key = strings.ToLower(strings.TrimSpace(key))
@@ -189,19 +215,25 @@ func (h *Handler) repoAccessDecided(r *http.Request, keys []string) (allow, unkn
 			continue
 		}
 		seen[key] = true
-		known := false
-		allow[key], known = h.repoAllowed(r, token, key)
-		if !known {
-			if unknown == nil {
-				unknown = map[string]bool{}
+		own, known := false, true
+		if token != "" {
+			own, known = h.repoAllowed(r, token, key)
+		}
+		sight.allow[key] = own || org[key]
+		if !own && org[key] {
+			sight.viaOrg[key] = true
+		}
+		if !known && !org[key] {
+			if sight.unknown == nil {
+				sight.unknown = map[string]bool{}
 			}
-			unknown[key] = true
+			sight.unknown[key] = true
 		}
 		if state, ok := r.Context().Value(authErrorKey{}).(*authErrorState); ok && state.err != nil {
 			break
 		}
 	}
-	return allow, unknown, true
+	return sight, true
 }
 
 func (h *Handler) repoVisible(r *http.Request, name string) bool {

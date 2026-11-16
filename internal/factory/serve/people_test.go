@@ -151,7 +151,9 @@ func TestPersonOwnsWatchedRepositoryWithNoJobs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.SetRepos([]string{"acme/api", "acme/web"}); err != nil {
+	// Only acme/api is on: one that is on is the organization's and priya
+	// reads it whatever her token says (org_repos.go).
+	if err := st.SetRepos([]string{"acme/api"}); err != nil {
 		t.Fatal(err)
 	}
 	h.config.Store = st

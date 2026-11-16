@@ -734,6 +734,19 @@ func (h *Handler) addWorkstreamJob(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	saved, err := h.joinWorkstreamJob(r, ws, v, job)
+	if h.partRefused(w, err) {
+		return
+	}
+	h.writeWorkstream(w, http.StatusOK, saved, v)
+}
+
+// joinWorkstreamJob takes job into ws, out of any other workstream that held
+// it, under the store's lock, and records and publishes each change. It is
+// THE ONE PLACE a job joins a workstream: PUT /v1/workstreams/{id}/jobs/{job}
+// and a new job made in a workstream (POST /v1/jobs with workstream) both
+// come here, so both obey the same rules.
+func (h *Handler) joinWorkstreamJob(r *http.Request, ws factory.OrgWorkstream, v wsViewer, job int) (factory.OrgWorkstream, error) {
 	now := h.clock().UTC()
 	var left []string
 	saved, err := h.config.Store.EditWorkstreams(func(all factory.OrgWorkstreams) ([]string, error) {
@@ -771,8 +784,8 @@ func (h *Handler) addWorkstreamJob(w http.ResponseWriter, r *http.Request) {
 		all[ws.ID] = cur
 		return append(left, ws.ID), nil
 	})
-	if h.partRefused(w, err) {
-		return
+	if err != nil {
+		return factory.OrgWorkstream{}, err
 	}
 	jobID, by := strconv.Itoa(job), h.orgActor(r)
 	for _, id := range left {
@@ -783,7 +796,7 @@ func (h *Handler) addWorkstreamJob(w http.ResponseWriter, r *http.Request) {
 		h.recordWorkstream(r, ws.ID, "added job", "job "+jobID)
 		h.publishWorkstreamPart(saved[ws.ID], api.PartJobs, jobID, by, saved[ws.ID].Rev, false)
 	}
-	h.writeWorkstream(w, http.StatusOK, saved[ws.ID], v)
+	return saved[ws.ID], nil
 }
 
 func (h *Handler) removeWorkstreamJob(w http.ResponseWriter, r *http.Request) {

@@ -29,6 +29,11 @@ type NewJob struct {
 	Milestone string   `json:"milestone,omitempty"`
 	Budget    *float64 `json:"budget,omitempty"`
 	SplitFrom *int     `json:"split_from,omitempty"`
+	// Workstream is the organization workstream the new job is made in: the
+	// caller must be able to edit it, and the job joins it in the same
+	// request. A job on a repository the caller reads only because the
+	// organization turned it on must name one.
+	Workstream string `json:"workstream,omitempty"`
 }
 
 // JobAction carries the read a person acted on so mutations can reject stale pages.
