@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// Workstreams v5, lane F-orders: a standing order made from a workstream's
+// Workstreams v5: a standing order made from a workstream's
 // People and rules sheet, and the preview it shows before it is switched on.
 //
 // AN ORDER MADE HERE IS SAVED AS PROPOSED, so the store's own law holds: NOTHING
