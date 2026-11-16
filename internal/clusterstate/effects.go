@@ -121,6 +121,9 @@ func applyEffect(c Command, now int64, rows map[RecordKey][]byte, put func(Recor
 		if d.Revoked {
 			return Revoked
 		}
+		if d.Kind == "client" {
+			return Unauthorized
+		}
 		if Decode(rows[AuthorityKey(r.Device)], &auth) != nil || !auth.ValidRole() || auth.Cluster != c.Cluster || !auth.Personal && auth.Worker == nil {
 			return Unauthorized
 		}

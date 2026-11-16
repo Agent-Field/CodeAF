@@ -6,25 +6,38 @@ import (
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
 
-// turnOrigin is the two facts that say which turn caused a line of team
-// traffic: the run that is writing it and the person's message that OPENED that
-// run. It is built once, at the moment a turn starts, and never changed.
+// turnOrigin holds the run, the person's message that opened it for team
+// traffic, and the message it answers for client tools. It is built once, at
+// the moment a turn starts, and never changed.
 //
 // IT IS CARRIED ON THE TURN'S CONTEXT AND NEVER READ FROM THE AGENT. A line is
 // stamped from the context of the call that produced it, or from a copy taken
 // when a write was queued, so a turn that was abandoned and replaced, a late
 // callback and a steer that landed mid-turn can never charge their line to the
 // turn that happens to be current when the write finally runs. The same law as
-// [withRunIdentity], one value wider.
+// [withRunIdentity], with the message identities beside it.
 type turnOrigin struct {
 	// run is the turn's run identity, the id its journal records as `usage_run`.
 	run string
 	// turn is the durable id of the person's message that opened the turn, ""
 	// when no person message opened it or none can be named exactly.
 	turn string
+	// answers is the durable id of the message this turn answers. Resuming an
+	// answer can name it without changing who opened the run for crew traffic.
+	answers string
 }
 
 type turnOriginKey struct{}
+
+// turnOriginLocked captures the message being answered before the turn runs.
+// A resumed stopped answer reuses its recorded id independently of crew provenance.
+func turnOriginLocked(user userMessage, run string) turnOrigin {
+	origin := turnOrigin{run: run, turn: openingMessage(user), answers: openingMessage(user)}
+	if user.resumed {
+		origin.answers = user.sourceMessage
+	}
+	return origin
+}
 
 // withTurnOrigin hangs origin on ctx for the life of the turn.
 func withTurnOrigin(ctx context.Context, origin turnOrigin) context.Context {

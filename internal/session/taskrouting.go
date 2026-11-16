@@ -1000,9 +1000,11 @@ func (a *Agent) actOnLiveCrew(n uint64, crew *taskCrew, act TaskRoutingAction) (
 		return nil, err
 	}
 	if raise > 0 && crew.guard != nil {
-		crew.guard.mu.Lock()
-		crew.guard.TaskCap = raise
-		crew.guard.mu.Unlock()
+		crew.guard.raiseTaskCap(raise)
+		// AND THE RUN THAT IS GOING RISES WITH IT. Its engine was handed the
+		// old ceiling when it started, and a raise that reached only the guard
+		// left the run stopped at the figure the person had just raised.
+		a.raiseLiveRunCap(crew, raise)
 	}
 	if crew.persist != nil {
 		if err := crew.persist(); err != nil {

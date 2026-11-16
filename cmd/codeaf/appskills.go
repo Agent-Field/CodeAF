@@ -19,19 +19,20 @@ type appSkillDoor interface {
 	AttachedSkills() []string
 }
 
-func (b *appBackend) skillConversation(agent string) (*appLive, appSkillDoor, error) {
-	_, live, err := b.heldLive(agent)
+func (b *appBackend) skillConversation(agent string) (*appLive, appSkillDoor, func(), error) {
+	_, live, endLive, err := b.borrowLive(agent)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	door, ok := live.conn.Conv.(appSkillDoor)
 	if far, asks := live.conn.Conv.(interface{ SkillsSupported() bool }); asks && !far.SkillsSupported() {
 		ok = false
 	}
 	if !ok {
-		return nil, nil, appwire.Errorf(appwire.CodeUnknownMethod, "this conversation cannot carry attached skills")
+		endLive()
+		return nil, nil, nil, appwire.Errorf(appwire.CodeUnknownMethod, "this conversation cannot carry attached skills")
 	}
-	return live, door, nil
+	return live, door, endLive, nil
 }
 
 // ListSkills uses the terminal's merge and order. The shelf is always read
@@ -42,10 +43,11 @@ func (b *appBackend) ListSkills(agent string) ([]skillpick.Row, error) {
 		return nil, appActionReadsBusy()
 	}
 	defer release()
-	live, door, err := b.skillConversation(agent)
+	live, door, endLive, err := b.skillConversation(agent)
 	if err != nil {
 		return nil, err
 	}
+	defer endLive()
 	facts, readErr := door.SkillFacts(store.FactActive, skillpick.ListLimit)
 	if readErr != nil {
 		return nil, appEngineError(readErr)
@@ -76,10 +78,11 @@ func (b *appBackend) ListSkills(agent string) ([]skillpick.Row, error) {
 // SetSkill calls the terminal's attachment doors and checks the engine's
 // answer, since an older remote handle may return its previous replica.
 func (b *appBackend) SetSkill(p appwire.SkillSetParams) (appwire.SkillState, error) {
-	_, door, err := b.skillConversation(p.Agent)
+	_, door, endLive, err := b.skillConversation(p.Agent)
 	if err != nil {
 		return appwire.SkillState{}, err
 	}
+	defer endLive()
 	if p.On {
 		door.AttachSkills(p.Name)
 	} else {

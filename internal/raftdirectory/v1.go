@@ -121,6 +121,9 @@ func authorizeV1Read(ctx context.Context, s *raftstore.SQLite, app raftstore.App
 		if device.Revoked {
 			return directory.ErrRevoked
 		}
+		if device.Kind == "client" {
+			return directory.ErrUnauthorized
+		}
 	}
 	return nil
 }

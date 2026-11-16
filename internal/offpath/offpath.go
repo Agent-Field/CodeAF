@@ -199,3 +199,15 @@ func (w *Write) Settle() {
 		<-idle
 	}
 }
+
+// Idle observes deferred writes without joining work that may be stalled.
+func (w *Write) Idle() bool {
+	if w == nil {
+		return true
+	}
+	if !w.mu.TryLock() {
+		return false
+	}
+	defer w.mu.Unlock()
+	return !w.owed && !w.running
+}

@@ -236,6 +236,15 @@ func (s *Store) RootID() string {
 	return s.data.RootID
 }
 
+// Stopped reports the run's recorded stop, including when its root had already
+// finished. Ordinary completion does not carry this fact.
+func (s *Store) Stopped() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.refresh()
+	return s.data.Stopped
+}
+
 // AddMany admits a batch of specs and answers the tasks as they now stand.
 // The batch is validated whole before any of it is written, so a split with a
 // bad third part creates nothing — which is the property the CLI's split
@@ -245,6 +254,16 @@ func (s *Store) RootID() string {
 // CLI mints short random ones — `t-` + six base-36 characters — and honours
 // `--as` names. Both roads end here.
 func (s *Store) AddMany(specs []TaskSpec) ([]*Task, error) {
+	return s.addMany(specs, false, "", false)
+}
+
+// AddJoinedMany admits independent assignments through the engine's join door.
+// Silent joins keep the ordinary tree bounds; person-approved joins may exceed them.
+func (s *Store) AddJoinedMany(specs []TaskSpec, bounded bool) ([]*Task, error) {
+	return s.addMany(specs, bounded, "", true)
+}
+
+func (s *Store) addMany(specs []TaskSpec, bounded bool, workerTask string, joined bool, retiring ...string) ([]*Task, error) {
 	if len(specs) == 0 {
 		return nil, errors.New("tasks must not be empty")
 	}
@@ -277,6 +296,11 @@ func (s *Store) AddMany(specs []TaskSpec) ([]*Task, error) {
 			}
 			batch[specs[i].ID] = true
 		}
+		if bounded {
+			if err := boundedGrowthRefusal(*next, s.rdb, specs, workerTask, retiring...); err != nil {
+				return err
+			}
+		}
 		for _, spec := range specs {
 			if next.Tasks[spec.ParentID] == nil && !batch[spec.ParentID] {
 				return fmt.Errorf("task %q has unknown parent %q", spec.ID, spec.ParentID)
@@ -294,7 +318,8 @@ func (s *Store) AddMany(specs []TaskSpec) ([]*Task, error) {
 			}
 		}
 		for _, spec := range specs {
-			task := &Task{TaskSpec: spec, Status: StatusPending, CreatedAt: now, UpdatedAt: now}
+			task := &Task{TaskSpec: spec, Status: StatusPending, CreatedAt: now, UpdatedAt: now, AddedByTask: workerTask}
+			task.JoinedAssignment = joined
 			next.Tasks[spec.ID] = task
 			next.Order = append(next.Order, spec.ID)
 		}
@@ -568,6 +593,9 @@ func (s *Store) AddReviewCheck(spec TaskSpec) (*Task, error) {
 	defer s.mu.Unlock()
 	var id string
 	err := s.transact(func(next *state, now time.Time) error {
+		if next.Stopped {
+			return errors.New("this run was stopped, so no review was added")
+		}
 		spec = normalizeSpec(spec, next.RootID)
 		id = spec.ID
 		if err := validateSpec(spec); err != nil {
@@ -586,7 +614,7 @@ func (s *Store) AddReviewCheck(spec TaskSpec) (*Task, error) {
 		if parent == nil {
 			return fmt.Errorf("parent %q does not exist", spec.ParentID)
 		}
-		check := &Task{TaskSpec: spec, Status: StatusPending, CreatedAt: now, UpdatedAt: now}
+		check := &Task{TaskSpec: spec, Status: StatusPending, ReviewCheck: true, CreatedAt: now, UpdatedAt: now}
 		next.Tasks[spec.ID] = check
 		next.Order = append(next.Order, spec.ID)
 		for ancestor := parent; ancestor != nil; ancestor = next.Tasks[ancestor.ParentID] {
@@ -1712,16 +1740,21 @@ func (s *Store) EndRoot(reason string) error {
 
 // closeRoot is the one write [Store.StopRoot] and [Store.EndRoot] share: the
 // run's own task takes the ending named, every open task is cancelled under the
-// same reason, and nothing that had already ended is touched.
+// same reason, even beneath an already-ended root. Earlier task endings stand;
+// a person's stop is also kept in metadata so late reviews cannot reopen them.
 func (s *Store) closeRoot(rootStatus Status, reason string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.transact(func(next *state, now time.Time) error {
 		root := next.Tasks[next.RootID]
-		if root == nil || terminal(root.Status) {
+		if root == nil {
 			return errNoChange
 		}
 		reason = strings.TrimSpace(reason)
+		changed := false
+		if rootStatus == StatusCancelled && !next.Stopped {
+			next.Stopped, changed = true, true
+		}
 		for _, task := range next.Tasks {
 			if terminal(task.Status) {
 				continue
@@ -1729,8 +1762,15 @@ func (s *Store) closeRoot(rootStatus Status, reason string) error {
 			task.Status, task.Error, task.ClaimedBy = StatusCancelled, reason, ""
 			task.Owner, task.SeenAt = "", time.Time{}
 			task.UpdatedAt, task.CompletedAt = now, now
+			changed = true
+			task.Paused, task.Waiting, task.WaitedAt = false, false, time.Time{}
+			if task.ID == root.ID {
+				task.Status = rootStatus
+			}
 		}
-		root.Status = rootStatus
+		if !changed {
+			return errNoChange
+		}
 		promote(next, now)
 		return nil
 	})

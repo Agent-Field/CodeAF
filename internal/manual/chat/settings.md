@@ -91,6 +91,8 @@ history is hidden while sharing is off and is kept for when it is turned back
 on. Unpaired computers are unaffected. A missing or empty choice reads on; a
 damaged configuration or invalid value reads off, as shown in Settings.
 
+**Settings → General → idle handoff** (`idle_handoff`, environment `CODEAF_IDLE_HANDOFF`) is **off by default**. While off, open idle chats keep renewing their hold and released remote chats use **Continue here**. Turn it on in Settings or with `CODEAF_IDLE_HANDOFF=1` so paired idle chats release their hold about 2 seconds after upload and released shared chats open directly on Home and through `agents.open` (`can_open`).
+
 ## AI teams settings versus an individual AI team
 
 **AI teams** contains defaults for groups of AI chats, including questions to an

@@ -69,6 +69,10 @@ type Batcher struct {
 	working   bool       // a turn is running here now
 	toldWork  bool       // the working flag the directory last heard from a beat
 	closing   bool       // The closing caller owns subsequent publishes and release.
+	released  bool       // A retired writer cannot send renewal beats or admit new work; sealed turns still drain.
+	// acquireUncertain keeps this released window read-only until a fresh
+	// conditional acquisition returns. Device identity cannot prove a window.
+	acquireUncertain bool
 
 	refusedSince time.Time // when the present run of refusals began; zero while the relay is answering
 	told         string    // the kind of refusal the person has heard of in this run, so each is said once
@@ -77,12 +81,14 @@ type Batcher struct {
 	// renewalEnded prevents a displaced or removed writer from claiming a hold.
 	renewalEnded bool
 
-	work  wakeup // tells the flush loop a turn was noted, so an upload can start at once
-	idle  wakeup // asks the flush loop to upload now: the agent stopped to wait for the person
-	freed wakeup // ends a halt: something the relay refused for has changed
-	turns wakeup // a turn started or ended, so the directory hears it now and not at the next tick
+	work         wakeup // tells the flush loop a turn was noted, so an upload can start at once
+	idle         wakeup // asks the flush loop to upload now: the agent stopped to wait for the person
+	freed        wakeup // ends a halt: something the relay refused for has changed
+	leaseChanged wakeup // wakes the heartbeat loop to drop a released socket hold
+	turns        wakeup // a turn started or ended, so the directory hears it now and not at the next tick
 
 	flushMu sync.Mutex // one flush, branch or close at a time
+	renewMu sync.Mutex // a heartbeat already in flight finishes before idle release
 	backoff time.Duration
 	failing bool // the last flush failed, so Idle must wait out the backoff
 	// lastFlushErr retains the latest publish or branch result when Close waits behind it.
@@ -276,13 +282,14 @@ func (b *Batcher) beats(ctx context.Context) {
 	var held holding
 	defer held.release()
 	for {
-		held.follow(b.Liveness, b.view)
+		held.follow(b.Liveness, b.renewalView)
 		select {
 		case <-ticks:
 			b.tick(ctx, &held)
 			handled <- struct{}{}
 		case <-held.changes():
 			b.socketMoved(ctx, &held)
+		case <-b.leaseChanged.ch():
 		case <-b.turns.ch():
 			if !b.toldWorking() {
 				b.beat(ctx)
@@ -322,7 +329,7 @@ func (b *Batcher) tick(ctx context.Context, held *holding) {
 	if b.takePublished() {
 		return
 	}
-	if !held.covers(b.view, b.toldPending) || !b.toldWorking() {
+	if !held.covers(b.renewalView, b.toldPending) || !b.toldWorking() {
 		b.beat(ctx)
 	}
 }
@@ -468,8 +475,11 @@ func (b *Batcher) Close(ctx context.Context) error {
 // release gives the lease up so another device can take over at once. A lease
 // already lost has nothing to release.
 func (b *Batcher) release(ctx context.Context) error {
+	b.mu.Lock()
+	finished := b.released && b.renewalEnded
+	b.mu.Unlock()
 	d, _, stale := b.view()
-	if d.Fence == 0 || stale {
+	if d.Fence == 0 || stale || finished {
 		return nil
 	}
 	for {
@@ -551,7 +561,24 @@ func (b *Batcher) drain(ctx context.Context) error {
 }
 
 func (b *Batcher) publish(ctx context.Context, head string) error {
-	d, _, _ := b.view()
+	d, pending, stale := b.view()
+	if !stale && b.recovering(d) {
+		if err := b.heartbeat(ctx, d, pending); err != nil {
+			b.renewalResult(d, err)
+			if errors.Is(err, ErrSuperseded) {
+				b.setStale()
+				if b.OnLost != nil {
+					b.OnLost()
+				}
+				return b.resolve(ctx)
+			}
+			// THE HEARTBEAT IS THIS PUBLISH'S RELAY STEP, so its failure is the
+			// same owed upload a failed advance reports: the turns are durable
+			// here and only their upload is pending. Returned bare, a quit with
+			// the relay down reported a confirmed local save as lost.
+			return syncwords.UploadFailure(err)
+		}
+	}
 	ex, err := b.Publisher.publish(ctx, &d, head, b.info())
 	b.renewalResult(d, err)
 	if errors.Is(err, ErrSuperseded) {
@@ -574,13 +601,36 @@ func (b *Batcher) publish(ctx context.Context, head string) error {
 	return nil
 }
 
+// heartbeat renews an existing hold before a recovering publish. An outage
+// longer than the lease TTL expires the stored hold on the relay while leaving
+// the fence unchanged when no other computer took the chat; renewing first lets
+// PublishTo keep its strict expired-hold refusal without branching an
+// un-displaced outage turn.
+func (b *Batcher) heartbeat(ctx context.Context, d Driving, pending uint32) error {
+	up := b.beatUpload(pending)
+	b.mu.Lock()
+	working := b.working || b.toldWork && len(b.noted) > 0
+	b.mu.Unlock()
+	_, err := b.Publisher.Dir.Heartbeat(ctx, d.ID(), directory.Beat{Fence: d.Fence, Pending: pending, UploadSent: uint64(up.sent), UploadTotal: uint64(up.total), Working: working})
+	if err != nil {
+		return refusal(err)
+	}
+	b.mu.Lock()
+	b.beatSent, b.beatUp, b.toldWork = pending, up, working
+	b.mu.Unlock()
+	return nil
+}
+
 // beat renews the lease and reports how many turns are not durable yet.
 func (b *Batcher) beat(ctx context.Context) {
+	b.renewMu.Lock()
 	if b.isClosing() {
+		b.renewMu.Unlock()
 		return
 	}
-	d, pending, stale := b.view()
+	d, pending, stale := b.renewalView()
 	if d.Fence == 0 || stale {
+		b.renewMu.Unlock()
 		return
 	}
 	up := b.beatUpload(pending)
@@ -590,6 +640,7 @@ func (b *Batcher) beat(ctx context.Context) {
 	working := b.working || b.toldWork && len(b.noted) > 0
 	b.mu.Unlock()
 	_, err := b.Publisher.Dir.Heartbeat(ctx, d.ID(), directory.Beat{Fence: d.Fence, Pending: pending, UploadSent: uint64(up.sent), UploadTotal: uint64(up.total), Working: working})
+	b.renewMu.Unlock()
 	b.renewalResult(d, err)
 	switch {
 	case err == nil:
@@ -736,6 +787,14 @@ func (b *Batcher) view() (Driving, uint32, bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return *b.Driving, uint32(len(b.noted)), b.stale
+}
+
+// renewalView omits an idle reader's hold without calling it displaced. A
+// failed release reply can be retried under the same fence without renewing.
+func (b *Batcher) renewalView() (Driving, uint32, bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return *b.Driving, uint32(len(b.noted)), b.stale || b.released
 }
 
 func (b *Batcher) adopt(d Driving) {

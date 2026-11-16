@@ -24,6 +24,10 @@ type factoryChatOwner struct {
 	Root    string    `json:"root"`
 	Job     int       `json:"job"`
 	Repo    string    `json:"repo"`
+	// Foreman marks the floor's own conversation, which belongs to no job:
+	// Job is zero and Repo empty, so no job's reading of the marks takes it
+	// for one of its chats ([readFactoryOwner] answers jobs only).
+	Foreman bool `json:"foreman,omitempty"`
 }
 
 // Ownership lives beside the journal, not in a crew that can be replaced by a
@@ -84,7 +88,43 @@ func factoryOwnedConversation(file string) bool {
 	if _, ok := readFactoryOwner(file); ok {
 		return true
 	}
+	if factoryForemanMarked(file) {
+		return true
+	}
 	return legacyFactoryChat(file, 0)
+}
+
+// markFactoryForeman writes that file is the floor's own conversation, beside
+// its journal where a job's chat keeps its mark. WITHOUT IT THE FOREMAN WAS
+// THE FACTORY'S ONLY IN THE MEMORY OF THE ENGINE THAT LAST OPENED IT: after a
+// relaunch the app read it back as one of the person's own chats, listed it
+// among them, and offered to archive it. It is written only when it is not
+// there, so an open costs one read.
+func markFactoryForeman(st *store.Store, file string) error {
+	if st == nil || strings.TrimSpace(file) == "" || factoryForemanMarked(file) {
+		return nil
+	}
+	data, err := json.Marshal(factoryChatOwner{Root: chatKey(st.Root()), Foreman: true})
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(filepath.Dir(file), factoryOwnerFile), data, 0o600)
+}
+
+// unmarkFactoryForeman takes the mark off a foreman that was replaced: from
+// then on it is an ordinary conversation of the person's, found in Archived
+// with its history. Only a foreman's own mark is removed, never a job's.
+func unmarkFactoryForeman(file string) {
+	if factoryForemanMarked(file) {
+		_ = os.Remove(filepath.Join(filepath.Dir(file), factoryOwnerFile))
+	}
+}
+
+// factoryForemanMarked reports whether file carries the foreman's mark.
+func factoryForemanMarked(file string) bool {
+	var o factoryChatOwner
+	data, err := os.ReadFile(filepath.Join(filepath.Dir(file), factoryOwnerFile))
+	return err == nil && json.Unmarshal(data, &o) == nil && o.Foreman && o.Root != ""
 }
 
 func ownedJobChats(root string, it factory.Item, ownerRoots []string) []string {

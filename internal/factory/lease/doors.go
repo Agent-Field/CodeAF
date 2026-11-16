@@ -281,10 +281,12 @@ func stopLocked(history *record.Record, doc *document, held *Lease, id int, it *
 	// A RESET OF A RUN THAT ALREADY ENDED CHANGES NOTHING: a failed or
 	// stopped job is reassigned or dropped as it stands, and why it ended
 	// stays. Only a person's Stop of it is refused, as not running.
+	cutHere := false
 	if receipt || !factory.RunEnded(*it) {
 		if err := run.StopItem(it, now); err != nil {
 			return false, err
 		}
+		cutHere = true
 	}
 	// THE PERSON'S STOP WINS: keep it durable while the job is locked,
 	// before intake can see the job back in the backlog.
@@ -299,6 +301,21 @@ func stopLocked(history *record.Record, doc *document, held *Lease, id int, it *
 	if !receipt && !wasStopped {
 		stopped := false
 		it.PersonStopped = &stopped
+		// A RESET HANDS THE JOB ON; IT IS NOBODY'S FAILURE. The stop it
+		// just wrote on the job read as a failed job waiting in Needs you
+		// ("Stopped by you", for a stop its new person never made). The
+		// job waits in Backlog for them, as an unassigned one does, and the
+		// step the reset cut still says it was stopped.
+		if cutHere && it.Failure != nil && it.Failure.Code == factory.CodeStopped {
+			it.Failure = nil
+		}
+		// AND ITS ASK GOES WITH THE RUN IT CUT, as a person's stop takes
+		// it down: it was put to the old person, by a run that no longer
+		// runs. Left standing, the job in Backlog showed waiting_since,
+		// which the desktop app's full read keyed as a wait on a person.
+		if cutHere {
+			it.Asking = nil
+		}
 	}
 	it.Publishing = false
 	_, pendingSignals := doc.Signals[id]

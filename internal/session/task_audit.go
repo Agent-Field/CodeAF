@@ -2566,6 +2566,11 @@ func (n *TaskNode) startedAt() time.Time {
 // It is exported because two callers need it: a surface with a person in front
 // of it, and the model through the `tasks` tool (tools_tasks.go).
 func (a *Agent) ResolveUnverified(id uint64, resolution TaskResolution, why string) error {
+	a.settingsWrites.Add(1)
+	defer a.settingsWrites.Add(-1)
+	if err := a.CheckSettingsWork(); err != nil {
+		return err
+	}
 	return a.resolveUnverifiedBy(id, resolution, why, TaskAskOwnerPerson)
 }
 

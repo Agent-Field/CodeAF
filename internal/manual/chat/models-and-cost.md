@@ -121,13 +121,23 @@ On a local launch, the opening model comes from the same available chat list as
 is kept only if that model is listed. Otherwise codeaf selects the first available
 chat model in provider order. With only Ollama connected, that is an installed Ollama
 model. With several providers, the default still belongs to their combined list.
-Automatic replacements do not overwrite your saved preference.
+Availability replacements apply only to this run. They do not overwrite the
+conversation's saved model, main/fallback pair or profile model settings. When
+the configured model is listed again, codeaf returns to it automatically.
+Until then the replacement stays while it is listed; a refreshed list that puts
+another model first does not move the conversation. A hidden chat reconciles availability when it next comes to the front.
+Choosing a model yourself, including the replacement already running, saves that
+choice as usual.
 
 While every catalog is cold or empty, no default model is displayed and a message
 stays in the draft. The picker opens with:
 `no available model · connect a provider or refresh /model`.
 When a provider's list arrives, codeaf selects an available model. Press Enter again
-to send the draft. Refreshing a list or removing a connection also replaces a model
+to send the draft. The replacement is displayed immediately, and each send waits
+for that chat's model switch to finish. A failed selection reports
+`could not change model · <reason>`; the message still sends once on the engine's
+current model, and the next availability check retries the selection.
+Refreshing a list or removing a connection also replaces a model
 that is no longer listed; existing requests finish on the model they started with.
 
 Remote sessions keep the engine's opening model; this laptop's catalog does not
@@ -817,6 +827,9 @@ unchecked rather than on a bill ten times its estimate.
 Only the checker's own calls count toward that ceiling, whatever model the worker or
 planner runs, including a crew whose three seats use one model. The ceiling follows
 the checker when it moves to another model.
+Each check in a run starts with its own checker ceiling. An earlier check's actual
+cost does not raise the estimate held against a later check's ceiling. Every check's
+spend still counts toward the whole run's per-task limit and the day's limits.
 
 This cap is the crew's own. The day's limit under `/settings` → Spending counts everything
 codeaf spends, and still applies.
@@ -832,7 +845,9 @@ Every priced call of one task — each seat's, on every model, and the helpers m
 counts against one figure: what the task has spent, plus every call of it still on its
 way, plus what this call is expected to cost. A call that would pass the limit is not made,
 and the task stops on `this task reached its $5 limit · raise it in /crew`, with what it had
-done so far. The checker's own ceiling still applies inside it.
+done so far. The checker's own ceiling still applies inside it. A raise you give one task
+in the app, when its models need more than the limit, is that task's limit, even while it
+runs, and the sentence names the raised amount.
 
 `-yes-spend` does not lift it. `codeaf do` holds every run to the same limit, with or
 without a routed crew; the flag answers the day's questions and the plan-price question,

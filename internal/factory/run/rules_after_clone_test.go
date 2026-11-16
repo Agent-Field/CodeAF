@@ -14,12 +14,19 @@ import (
 
 func afterClone(t *testing.T, rules factory.StartRules, read func(context.Context, factory.Item) (pipeline.File, error)) factory.Item {
 	t.Helper()
+	return afterCloneOf(t, factory.Item{Cap: factory.DefaultJobBudget, StartRules: &rules}, read)
+}
+
+// afterCloneOf settles the rules of a job like it, as a round does once the
+// repository is here.
+func afterCloneOf(t *testing.T, it factory.Item, read func(context.Context, factory.Item) (pipeline.File, error)) factory.Item {
+	t.Helper()
 	st, err := store.Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	stages := factory.DefaultRecipe().For(factory.KindIssue)
-	id, err := st.Add(context.Background(), factory.Item{Repo: "acme/api", Title: "x", Kind: factory.KindIssue, Stages: stages, Cap: factory.DefaultJobBudget, StartRules: &rules})
+	it.Repo, it.Title, it.Kind, it.Stages = "acme/api", "x", factory.KindIssue, factory.DefaultRecipe().For(factory.KindIssue)
+	id, err := st.Add(context.Background(), it)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -27,7 +34,7 @@ func afterClone(t *testing.T, rules factory.StartRules, read func(context.Contex
 	r := New(Options{Store: st, RulesAfterClone: read})
 	lp := &floorLoop{r: r}
 	c := &loopCtl{id: id, ctx: context.Background()}
-	it, err := st.Get(id)
+	it, err = st.Get(id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,6 +84,21 @@ func TestRulesAreReadAfterTheClone(t *testing.T) {
 		}
 		if it.Cap != 1 {
 			t.Fatalf("the file's lower budget did not apply: %v", it.Cap)
+		}
+	})
+	t.Run("a budget a person chose stays, even the default's amount", func(t *testing.T) {
+		f := pipeline.Defaults()
+		f.Source, f.From = pipeline.SourceFile, factory.FromMainBranch
+		f.DefaultBudget = 2
+		read := func(context.Context, factory.Item) (pipeline.File, error) { return f, nil }
+		rules := pendingRules()
+		chosen := afterCloneOf(t, factory.Item{Cap: factory.DefaultJobBudget, CapChosen: true, StartRules: &rules}, read)
+		if chosen.Cap != factory.DefaultJobBudget {
+			t.Fatalf("a person's $%.0f budget became the file's: %v", factory.DefaultJobBudget, chosen.Cap)
+		}
+		rules = pendingRules()
+		if taken := afterCloneOf(t, factory.Item{Cap: factory.DefaultJobBudget, StartRules: &rules}, read); taken.Cap != 2 {
+			t.Fatalf("the default the start took was not lowered to the file's: %v", taken.Cap)
 		}
 	})
 	t.Run("a bad file stays unread, names its line, and its plan waits", func(t *testing.T) {

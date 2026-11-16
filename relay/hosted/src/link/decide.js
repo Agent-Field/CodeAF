@@ -29,6 +29,7 @@ async function certDevice(c, cert) {
 /** checkApprovalDevice validates the certificate before a request can be reserved. */
 export async function checkApprovalDevice(c, body, request) {
   if (!isObject(body) || !isObject(body.device)) throw badRequest();
+  if ((body.device.kind ?? '') !== '' || (body.device.methods?.length ?? 0) > 0) throw badRequest();
   if ((await certDevice(c, body.cert)) !== request.device) throw badRequest();
 }
 

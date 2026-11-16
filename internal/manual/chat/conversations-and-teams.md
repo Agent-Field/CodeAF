@@ -436,11 +436,13 @@ Use the Memory tab to forget a saved memory separately. Deleting a team also pre
 
 Ask “start another chat on kimi-k3 to read the README.” Load the `chats` capability group if needed. The `start_chat` tool takes
 `brief`, the complete first message, and `model`, a catalog ID or unique model name.
-Omitting `model` uses the requesting chat's current model. An unknown or ambiguous
-name is refused before any chat opens. The new chat opens behind the current one,
+Omitting `model` saves the requesting chat's configured model in the new chat.
+When that model is not listed, the new chat runs for now on the replacement the
+requesting chat is using, or else on the first listed model, without saving it.
+An unknown or ambiguous name is refused before any chat opens. The new chat opens behind the current one,
 with its model and approval posture set before its first message. Your focus stays
 in the original chat. Its receipt confirms the request; the terminal reports whether
-it actually opened. This needs an attached interactive terminal that can open chats; app-only sessions do not offer this tool.
+it actually opened with `started chat · <model>`, naming the model the new chat runs on. This needs an attached interactive terminal that can open chats; app-only sessions do not offer this tool.
 Only one attached window can claim each request, so delivery to several windows or
 replay does not open copies. A failed launcher is not retried automatically; ask again
 to issue a new request. A new independent chat does not report its answer back here automatically; use a task
@@ -463,23 +465,20 @@ Turning it off on either computer stops sharing between them: that computer
 stops sending and receiving teams and Traffic. What was already exchanged stays,
 including teams and encrypted copies in the vault.
 
-Open a member whose chat is on another paired computer to see
-`Continue this chat here?` on Home. Choose **continue here** to move the chat
-and open it. Choose **leave it there** to stay on Home with nothing changed.
-A chat that is not shared names the computer that has it: open it there. Until
-its name is known, it says `the other computer`. Under `--host` or `--at`, a
-member on another computer shows that notice; open it on its computer.
+Opening a remote member from terminal Teams raises `Continue this chat here?`
+on Home (`continue here` moves and opens it; `leave it there` changes nothing).
+By default (`idle handoff` is off by default; turn it on in **Settings → General → idle handoff** or with `CODEAF_IDLE_HANDOFF=1`), selecting a released chat on Home also asks **Continue here**. With `idle handoff` on, selecting a released chat on terminal Home (`enter`), or opening a
+`can_open` row via `agents.open` in the app, opens it directly with no
+Continue-here step; a live hold or a lapsed hold still asks, including when its holder
+was working. Unshared chats, or members under
+`--host` / `--at`, name the other computer (`the other computer` until known):
+open them there. Local members open like Home without an extra ownership lookup.
 
-A local member opens through the same path as its chat on Home, without an added
-ownership lookup or relay refusal. A chat positively known to be elsewhere still
-needs continuation.
-
-A send to one member or manager whose chat is known to be on another computer
-is refused: it would not reach that chat. Continue the chat here first, then
-send again. A room post or send to several members still reaches local members
-and names anyone not reached, such as `Not reached: @web (on desktop).` If every
-recipient is elsewhere, nothing is written. If the relay is unavailable, local messages still work. A local message may
-wait while this computer finishes sending an earlier change to the relay.
+A send to one member or manager known to be on another computer is refused until
+you bring that chat here. A room post or multi-member send reaches local members
+and names anyone skipped (`Not reached: @web (on desktop).`); if all are
+elsewhere, nothing is written. Local messages still work when the sync service
+is down, and may wait briefly while an earlier change finishes uploading.
 
 ## Will deleting a team on my laptop delete it on my desktop?
 
@@ -513,8 +512,10 @@ older lines leave this view. They remain on the computer that wrote them until
 its ordinary log rotation.
 
 A send only to chats known to be elsewhere is refused. A send with local
-recipients is written once and names those not reached. Open a remote chat and
-choose **continue here** on Home before sending to it. Under `--host` or `--at`,
+recipients is written once and names those not reached. Bring a remote chat
+here first (choose **continue here** by default, or with `idle handoff` on a released chat opens directly on Home or through
+`agents.open` while a live hold or a lapsed hold asks for **continue here**, including when
+its holder was working) before sending to it. Under `--host` or `--at`,
 open it on its computer. Decision details, spending records and working copies
 do not travel with Traffic. A decision or escalation whose recipient is
 elsewhere is refused before it changes anything. An unpaired computer or one

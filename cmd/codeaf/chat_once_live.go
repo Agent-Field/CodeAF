@@ -17,7 +17,7 @@ package main
 //     record as the person's steer line. A note that arrives after the turn
 //     has ended starts the turn it asks for, which this run waits out.
 //   - --json: print one machine object at the end instead of the reply:
-//     {ok, stop, answer, model, error} — the shape `codeaf exec --json` prints,
+//     {ok, stop, answer, model, error, tokens, spend_usd} — the shape `codeaf exec --json` prints,
 //     so a harness reads either door the same way.
 //
 // None of them changes a run that does not pass it.
@@ -215,10 +215,11 @@ type onceEnvelope struct {
 	Answer string `json:"answer,omitempty"`
 	Model  string `json:"model,omitempty"`
 	Error  string `json:"error,omitempty"`
+	envelopeUsage
 }
 
-func writeOnceEnvelope(w io.Writer, answer, model string, failure error) {
-	env := onceEnvelope{OK: failure == nil, Stop: "done", Answer: strings.TrimSpace(answer), Model: model}
+func writeOnceEnvelope(w io.Writer, answer, model string, usage envelopeUsage, failure error) {
+	env := onceEnvelope{OK: failure == nil, Stop: "done", Answer: strings.TrimSpace(answer), Model: model, envelopeUsage: usage}
 	if failure != nil {
 		env.Stop, env.Error = "error", failure.Error()
 	}

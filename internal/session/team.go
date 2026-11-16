@@ -488,6 +488,7 @@ func memberOf(team teams.Team, keys []string) (teams.Member, bool) {
 // and a demotion is rare enough that paying once for it is cheap. A role
 // gained again appends its verbs at the tail as before.
 func (a *Agent) teamBoundary() string {
+	a.clientToolsBoundary()
 	profile := a.config.teamProfile()
 	if profile == "" {
 		return ""

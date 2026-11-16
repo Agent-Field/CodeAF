@@ -2,6 +2,7 @@ package main
 
 import (
 	"sync"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/guard"
@@ -152,6 +153,13 @@ func endsAView(door session.StopDoor) bool {
 // model change has no error to return.
 func (l lentAgent) SetModel(string) {}
 
+// SetModelChecked preserves the legacy wrapper's model policy at the checked
+// RPC door; the embedded agent's promoted setter must not bypass it.
+func (l lentAgent) SetModelChecked(model string) error {
+	l.SetModel(model)
+	return nil
+}
+
 // SetSpendRail refuses: the stage's rail is the factory's.
 func (l lentAgent) SetSpendRail(float64) error { return errLentStage("spend limit") }
 
@@ -165,6 +173,12 @@ func (l lentAgent) InterruptFor(door session.StopDoor) {
 	}
 	l.Agent.InterruptFor(door)
 }
+
+// InterruptWithin is the person's stop without the view's bound behind it. A
+// stage's turn belongs to the factory's runner, which is still reading it: the
+// view letting go of that turn would leave the runner carrying on over work
+// that had not ended. The job's own Stop is the door that ends a stage.
+func (l lentAgent) InterruptWithin(time.Duration) { l.Agent.Interrupt() }
 
 // InterruptNamed is [lentAgent.InterruptFor] with the window the door named.
 func (l lentAgent) InterruptNamed(door session.StopDoor, name string) {

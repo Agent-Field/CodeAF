@@ -517,6 +517,10 @@ var settingUI = map[string]settingMeta{
 		tab: tabWorkspace, label: "model in commits", widget: widgetToggle,
 		about: config.AttributionModelHint,
 	},
+	config.KeyIdleHandoff: {
+		tab: tabWorkspace, label: "idle handoff", widget: widgetToggle,
+		about: config.IdleHandoffHint,
+	},
 	// The three rows Google and Slack connections are signed with. They belong on this tab
 	// and not under Providers because they are not about which model answers
 	// what: they are about what codeaf may REACH on your behalf, which is the

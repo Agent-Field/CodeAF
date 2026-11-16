@@ -30,6 +30,7 @@ import (
 // jobVerbs keeps canvas actions additive to the existing /v1 doors.
 func (h *Handler) jobVerbs() {
 	stored := h.config.Store != nil
+	h.postJob("context", stored, h.onlyOwner(h.setJobContext))
 	h.postJob("publish_anyway", stored && h.seam.Answer != nil, h.publishAnyway)
 	h.postJob("start_now", h.seam.Launch != nil, h.guardedStart())
 	h.postJob("run-as-new", stored && h.seam.NewJob != nil && h.seam.Launch != nil, h.onlyOwner(h.runAsNew))
@@ -778,6 +779,9 @@ func (h *Handler) unassignJob(w http.ResponseWriter, r *http.Request, it factory
 			cur.PublishError = ""
 			cur.Approval = nil
 			cur.StopUndo = nil
+			// An unassigned job waits in Backlog and asks nothing: an ask a
+			// failed run left (no reset cuts a run that already ended) goes.
+			cur.Asking = nil
 			return nil
 		})
 	}))

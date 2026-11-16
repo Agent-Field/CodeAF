@@ -12,11 +12,15 @@ engine reports it. Check the running work before starting the same brief again.
 A task is one self-contained piece of work handed off to run on its own while the
 conversation carries on. It works in a folder of its own and reports back when it lands.
 Projects may be copied; a task that would copy your home folder reads it in place and
-starts with an empty folder. It never inherits the conversation: what it reads is one written brief — your own message, word
-for word, then the work, what to produce and what done means, and a pointer at the
+starts with an empty folder. It never inherits the conversation: what it reads is one written brief.
+A task you typed yourself, or one on the older session-tree road, reads your own message word
+for word first, then the work, what to produce and what done means, and a pointer at the
 journal path and line of your original turn so it can read those words in full when the
-restatement was cut. How that is assembled is on the *how tasks run* page, under *What the
-task actually reads* and *Can the task see the original request*. The one exception is a
+restatement was cut. A task the conversation proposed on the run road reads only its own
+assignment — its title, the work, what to produce and what done means — with no message,
+quoted lines or journal pointer, so the proposing model makes it self-contained. How each is
+assembled is on the *how tasks run* page, under *What a proposed task reads*, *What the task
+actually reads* and *Can the task see the original request*. The one exception is a
 **quick task started with `inherit`**, which opens holding the conversation itself — see
 *Can it keep what it read* below.
 
@@ -2329,14 +2333,39 @@ you set it — and under the day's limit above it. An adaptive run they start op
 $100.00 default.
 
 **An ordinary `/task`, or any task codeaf's own worker does, also has a money limit of its own: $5 unless you set another**, shown on the
-Spending tab's `per task` row and set with `/crew cap task <$>`. A call that would spend
-past it is not made, whichever way the ordinary task was started, and the task stops there.
+Spending tab's `per task` row and set with `/crew cap task <$>`. It is one ceiling for the
+task's whole tree; *The per-task limit covers the whole task tree* below says what it
+counts and what happens when it is reached.
 **senior-dev, sec and review have their own dollar and time ceilings for each run**,
 separate from that `per task` row; see each program's page for its defaults and how to
 change them.
 
 Changing the engine's default changes the figure the composer layer opens on; the two are
 meant to be one number and are stated in both places on purpose.
+
+## The per-task limit covers the whole task tree — what happens when a task reaches its $5 limit, raising it with /crew cap task
+
+An ordinary `/task`, or any task codeaf's own worker does, has a money limit of its own:
+$5 unless you set another with `/crew cap task <$>`. On both task roads this is
+one ceiling for the whole tree, including planning and checks. The smaller of that limit
+and the conversation's remaining allowance wins, even when no crew was routed.
+Continuing interrupted work keeps what the same tree already spent: only the unspent
+part of its per-task limit remains available.
+A routed crew refuses a call that would cross its per-task limit. Reaching the run's
+ceiling ends workers in flight and starts no more.
+On the run road, a raise you give one task in the app, when its models need more than the
+cap, is that task's ceiling: before it starts, on a rerun, and while it runs, when the
+running tree's ceiling rises with it. The ending then names the raised amount.
+On the node belt, the saved ceiling survives restarts; reaching it refuses each worker's
+next request, queued workers spend nothing, and in-flight calls finish without
+cancellation. Every dollar counts once, including a part's spend inside the worker that
+proposed it. When the per-task limit binds, the report and its note lead with
+`this task reached its $5 limit · raise it in /crew` (with your amount), said once. On a task
+with a routed crew the same line stands under its row, and the Tasks column lists it as
+needing you.
+Raise it with `/crew cap task <$>`, then rerun the remaining work with `/task`.
+When the conversation's smaller limit binds, the report names that amount and `/settings`.
+Continuing a run is for interrupted work; a settled dollar-limit ending needs a rerun.
 
 ## The + /task row at the foot of the column — starting a task from the side
 
@@ -2862,8 +2891,9 @@ it had started.
 
 ## Does it know what my other windows are doing — will it notice work from another terminal
 
-Yes, and it is told rather than having to go and ask. When another codeaf window on this
-same directory lands a task, or has one running, codeaf puts a small block into the chat's
+With the default `project` conversation scope, yes: it is told rather than having to
+go and ask. When another codeaf window on this same directory lands a task, or has
+one running, codeaf puts a small block into the chat's
 own context — never on your screen — that reads:
 
 ```
@@ -2900,10 +2930,32 @@ running in another window now:
   told.
 - A **task** is never given this block. A task's brief is its whole world.
 
+## Conversation scope — tell this chat only about its own work
+
+A client can set a saved conversation's scope with `agents.set_scope {id, scope}`.
+`project` is the default: the chat is told about other conversations' landed and
+running work in the same folder. `conversation` means it is told only about its
+own work. No `<elsewhere>` block is added to its turns, and the model's `tasks`
+tool lists only its own tasks. Another conversation's tasks cannot be read by
+name or id, steered or resolved through that tool. The running-in-other-windows
+section and the `scope: "everywhere"` section are absent too. Its instructions
+and the `tasks` tool's description say other windows' work is hidden from it,
+so it does not claim nothing else is running in the folder.
+
+The choice survives a restart and takes effect from the next turn; a tasks call
+also reads the saved choice. Setting it does not open or interrupt the chat,
+move its folder, or change its transcript, title, model or tasks. Set `project`
+to restore the ordinary reading. This setting has no terminal command or UI
+control. The person's `@` task list and task nodes keep their existing behavior.
+
+The checks that warn before this chat's own work writes over files other
+conversations are writing still apply.
+
 ## Asking the chat what else is running on this project right now
 
-Ask it in words. It reads the other windows itself rather than guessing from the project's
-record — which cannot answer, because an ordinary task writes no row there until it lands.
+With `project` conversation scope, ask it in words. It reads the other windows itself
+rather than guessing from the project's record — which cannot answer, because an
+ordinary task writes no row there until it lands.
 What it gets back looks like this:
 
 ```
@@ -4288,6 +4340,22 @@ splits.
 `task.parallel` still applies to the whole session: pieces queue behind it exactly as
 top-level tasks do.
 
+## Duplicate task titles on the node belt
+
+With `CODEAF_TASK_BELT=node`, `legacy` or `off`, a worker cannot add the same work
+twice anywhere in its task tree. Letter case is ignored; runs of punctuation or
+whitespace fold to one space:
+`Read: the LAW!` and `read-the law` name the same work. Ancestors, siblings, cousins and
+finished tasks all count; a cancelled task's title may be reused. A division naming
+the same work twice is refused whole, before any part starts. Quick tasks use the same
+check. Separate conversation tasks have separate trees; a person's typed task stays
+exempt.
+
+The refusal says `no: this run already has a task named "Read: the LAW!" (7), so nothing
+was added.` It tells the worker to do that work in its own hands, or name different
+work for what is different. The shared tree money limit is described above under
+*The per-task limit covers the whole task tree*.
+
 ## How the bash belt run splits work instead of nesting node tasks
 
 With the switch unset, or `CODEAF_TASK_BELT=bash`, a task uses the run engine instead of the node tree.
@@ -4697,6 +4765,18 @@ Nothing is thrown away: on every ending except a clean merge the branch is kept 
 and what the task made is committed onto that branch before it lands — so the files it
 produced are listed under `changed:` and `git merge task/…` brings them over. The merge is
 never done for you, because only work that was checked reaches your branch.
+
+## Stop a running task and its open run children
+
+Use `x` on the task's row or in its room over an empty box, then choose `stop it`.
+Stopping a run ends every still-open task in its store, including workers mid-step and
+open children whose root already finished. Earlier completed results keep their endings.
+Task lists reflect the store's stop while the last workers return, so those parts no
+longer read as running.
+
+Starting a new run also ends open children retained below an earlier completed root,
+preserving that root's result. A later stop can clear lingering children in an older
+retained store without changing the newer run.
 
 ## Continue task N — keep going on a failed or finished task, No task 1 in this project
 

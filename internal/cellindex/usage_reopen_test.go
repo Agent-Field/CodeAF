@@ -14,6 +14,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	storetest "github.com/Agent-Field/codeaf/internal/cellstore/celltest"
 	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -47,7 +48,7 @@ func usageReopen(t *testing.T, clean, attribution bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rec, err := cellstore.NewRecorder(nil, cellstore.Engine{Binary: bin, DataRoot: t.TempDir()}, c, filepath.Join(t.TempDir(), "wal"), cellstore.Options{Report: func(err error) {
+	rec, err := cellstore.NewRecorder(nil, cellstore.Engine{Binary: bin, DataRoot: storetest.EngineDir(t)}, c, filepath.Join(t.TempDir(), "wal"), cellstore.Options{Report: func(err error) {
 		if err != nil {
 			t.Errorf("save fixture receipt: %v", err)
 		}
@@ -55,7 +56,6 @@ func usageReopen(t *testing.T, clean, attribution bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(cellstore.StopSpawned)
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()

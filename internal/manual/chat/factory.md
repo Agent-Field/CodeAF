@@ -287,6 +287,25 @@ Each factory has one manager of its own beside the jobs' managers, titled "Facto
 
 When you ask ("start the oldest p1", "make #12 urgent"), it starts that one job or sets its priority (p0 to p3) through the job page's own Start and priority, as you. It never stops, ships, merges or posts, and it can select jobs as a proposal you take or leave.
 
+## the Factory manager counts — how many jobs are running, how many repos are active, how many pull requests merged this week
+
+Every `factory_floor` answer but `item` and `repos` says the whole factory's counts by state on its first line, such as `in the factory: 2 running, 1 waiting on the person, 40 new`, so a how-many question is answered by one read, whichever was asked for. An ask nothing answers, and a day nothing shipped, say the counts too. The counts are of the factory and never of the rows listed, which stop at 50.
+
+- `repos`: every repository with its jobs counted by state, the one with work in hand first: `acme/api · 6 open: 1 running, 1 waiting on the person, 4 new · 3 done`. The first line says how many repositories have jobs, how many have open jobs, and how many have a job running, queued, waiting or following a pull request.
+- `shipped` with `days`: jobs shipped over that many days, today included (1 is today and the default, at most 90), newest first, each with the day it shipped. The first line counts the pull requests merged among them.
+
+The Factory manager is not limited to `factory_floor`. The desktop app starts each message to it with an `<afi-now>` block of the app's present state (the time, the factory's counts, what waits on you, what is running, what was made today and what was noticed lately), the block Afi is sent, and its first message with an `<app-places>` block saying where things are in the app. It answers from that for what the block says and reads the factory for the rest, and it answers anything else as any conversation does, with its other tools.
+
+## the Factory manager did not answer, takes forever, stop does nothing, clear the Factory manager's conversation, archived Factory manager
+
+One `factory_floor` read waits at most 20 seconds on the factory, and a start, a priority or a selection 60 seconds; after that the tool answers "the factory did not answer within 20 seconds" (or 60) and the turn goes on, and a stop returns it at once. A start or priority that got no answer in time says it may still take effect, so the job is read again before it is asked for twice. A selection that got none says "whether anything was selected is not known; read the factory again", never that nothing changed.
+
+The app's Stop is bounded. It interrupts the turn, and a turn that has still not let go ten seconds later is let go of by the engine: it ends "Stopped by you" and the next message opens an ordinary turn. A turn the factory itself is driving (a running stage, or the factory asking a job's manager a question in a chat you have open) is only interrupted, because the factory is still reading it; the job's own Stop ends it.
+
+A Factory manager whose conversation works in a folder the factory refuses for its chats (the codeaf home, a folder above it, or elsewhere inside it) is made again in a folder of its own, `chats/foreman` under the factory. The desktop app does this as its factory starts, and when the manager is next opened if it had not yet; the conversation it replaces is then stopped and archived, and is one of your own chats in Archived from then on, titled "Factory manager (earlier)". The app is told (`factory.foreman_changed`), and a tab still showing the old conversation is swapped for the manager. One made by an older build worked in the home itself, where every save swept the whole home and its tool calls never finished. In a terminal the replaced conversation is not archived: it stays in your list, titled "Factory manager (earlier)" when it still had the manager's name.
+
+The Factory manager is cleared, not archived. `factory.foreman_fresh` starts it over: a new conversation with only its brief takes its place and its `@foreman` address, on the default model and settings, and the old one is stopped and archived with its history kept, as one of your own chats. An earlier manager left behind by a quit mid-replacement is retired, moved off `@foreman` and put away the same way on the next start or open. Opening the Factory manager is your own open, so one you closed or archived comes back open. The manager's conversation stays the factory's across a relaunch: it is not listed among your chats and has no Archive.
+
 ## the default steps — what a job runs with no factory.yaml, how many rounds, security pass
 
 A repository without `.codeaf/factory.yaml` runs the shipped steps, and so does every job on it, whether a person started it or a start rule did: the same steps, asks and rounds. `codeaf factory steps` prints each one with its prompt, its until and its rounds.
@@ -836,6 +855,12 @@ A job owned by this factory has one manager, however many asks race to open it. 
 
 To go on from a step that was cut instead, keeping the steps before it and the money spent, run that step again (try again) rather than starting the job.
 
+## a job stopped by your answer or by a new assignee — cancel, no to the budget, change of assignee, Backlog
+
+While a runner holds the job, a cancel to a step out of attempts, a no to the budget question and a send back with no earlier step to go back to stop it as **Stop** does, on your own machine and on a team factory alike: the job says `Stopped by you`, waits in Backlog and is not in Needs you or its count. A cancel to a job no runner holds does the same. **Carry on**, **Start** or **Run again** run it again.
+
+Changing the assignee of a running or waiting job, or unassigning it, stops its run too. The job then waits in Backlog for its new person with nothing failed on it and no question waiting, and the step it cut says it was stopped. **Run as new** starts its request again as a new job. A job whose step failed by itself is different: it waits in Needs you with the failure on it.
+
 ## reject an approval — end a job with your words, Reject versus Ask for changes, rejected jobs
 
 **Reject** answers a job that waits on your approval (a plan, an approve step, a start that asked first, or a step whose run paused for an approval) with a no that ends the job. Your words are kept on it. The job is done and closed here, its work and spending kept and nothing on GitHub changed. The run's waiting step is closed, so it no longer reads waiting. It leaves Needs you and its count, and no routing rule or label ever starts it again. Its page says `Rejected` with `Rejected · <your words>`, and **Reopen** or **Run as new** are the ways back. It never offers to carry on.
@@ -1165,6 +1190,15 @@ The new job gets its own branch and conversations when it runs. It starts with n
 
 This is a person's Start: the same model, checkout, repository switch and start refusals apply. If Start is refused, no new job remains. Accepted work waits for runner capacity under the usual Jobs at once limit. Omitting an assignee starts it as the caller's job; an explicit assignee names the new job's person.
 
+## Resending a create with the same key — retry key, Idempotency-Key, uncertain create, no second job
+
+A job create sent to a Factory with an `Idempotency-Key` header is remembered for 24 hours, per caller, route (`/v1/jobs`, or `/v1/issues` when it opens the GitHub issue) and key. A Factory with this rule lists `keyed_create` in `GET /v1/features`, and an engine sends a create key only to such a Factory: an older one keeps every keyed answer, refusals and server errors included, for a day. A resend with the same key does not make a second job or GitHub issue:
+
+- An answer given before anything was written is not kept, so the same key runs the create again. That covers every refusal of the request (a bad field, a repository you can't see or that is off, a pipeline that doesn't exist), a sign-in or read failure, GitHub refusing the issue, and GitHub not answering before the issue request was sent. Fix the cause and resend the same key. These answers carry the response header `X-Codeaf-Phase: pre-mutation`.
+- An answer given once the issue request may have reached GitHub, or once the job exists, is replayed as it was, success or failure. That includes a server error: GitHub's answer to the issue request was lost or was an error, or the job was made and its start failed. If a resend gets the same failure back, the first attempt may have made the job or the issue, so read the queue before trying again. A new key would make another job.
+
+Two limits remain. The caller is the exact sign-in the request carried, so a resend after signing in again or under a new session cookie is not matched and runs as a new create. The answer is saved just after the create commits, so if the Factory stops in between, a resend runs again. A create without a key is never replayed: sending it again makes another job.
+
 ## App job title and details — literal words, auto-save, budgets and hand-off
 
 Creating a job with a separate title in the app, or handing off an agent,
@@ -1179,6 +1213,108 @@ request takes its title from the job title alone.
 Terminal factory sentences still read those words as chips. Existing jobs are
 not rewritten; this applies when a new job is created. Factories without the
 separate-title creation capability retain their existing creation behavior.
+
+## Creating a job with an issue, group, milestone, budget and retry key
+
+`factory.job_create` accepts these optional fields alongside the job's title
+and details:
+
+| Field | Bounds and default |
+| --- | --- |
+| `open_issue` | Boolean, default false: create a job without opening an issue. True opens one GitHub issue using only the title and details, then ties the job to its number. |
+| `group`, `milestone` | Opaque labels, trimmed, at most 200 characters each, with no control characters. Omitted or empty means none; labels stay outside the description and appear on job and queue reads. |
+| `budget` | Initial USD limit: 5, 10, 20 or 30. Recorded before starting and kept on an immediate or later start. Omission keeps the usual pipeline/Factory default ($5 when neither sets one). |
+| `key` | Retry key: 1–128 characters from `[A-Za-z0-9._:-]`, sent as the create's `Idempotency-Key` header, only to a Factory that lists `keyed_create` (next section). Omitted or `key: ""` sends no header. |
+
+`factory.capabilities` flags are `create_issue`, `create_group` (both labels),
+`create_budget` and `create_key`; an older engine omits a flag or reports
+false, and the attached Factory can still be older. A 422 refusing unknown
+`group`, `milestone`, `budget` or HTTP `issue`, or a Factory without
+`/v1/issues` (a 405, or a 404 saying `factory endpoint not found` or not in
+the Factory's JSON), answers `conflict` with `detail.reason: "factory_too_old"`:
+"This factory doesn't support that yet; nothing was changed. Update the factory
+to use it." No fallback create is sent. The Factory's own 404 "repository not
+found" (your GitHub can't see it) stays `not_found`. Invalid fields answer
+`bad_params` before a write. Context is a separate `factory.job_context_set`
+write after creation, not a create field.
+
+## Retry key on a job create — create_key, keyed_create, resend after uncertain
+
+A create key goes only to a Factory whose `GET /v1/features` lists
+`keyed_create`: it keeps a keyed create's answer only once the create wrote
+something, so a refusal or a failure before any write runs again under the same
+key. An older Factory keeps every keyed answer for 24 hours, refusals and
+server errors included, so a create it refused once could not run again under
+its key for a day.
+
+`factory.capabilities {factory}` answers `create_key: true` only when that
+Factory lists `keyed_create`. Without `factory`, or for a Factory that does not
+list it or cannot be asked, `create_key` is false: send no key there, and read
+the queue after an `uncertain` create. The engine asks the Factory again on
+every create with a key; to a Factory without the word such a create answers
+`conflict` with `detail.reason: "factory_too_old"`, and nothing is sent.
+
+Where the key is sent, a resend with the same key within 24 hours does not make
+a second job or GitHub issue; a new key makes a separate job. After an
+`uncertain` create, resend the same key; if it is still uncertain, read the
+queue first. Two limits: a resend after signing in again, or under a new
+session cookie, is a different caller and makes a new job; and if the Factory
+stops after making the job but before saving its answer, a resend runs again.
+Without a key there is no replay protection.
+
+## Split a failed job into smaller jobs — split_from lineage
+
+When creating smaller jobs from a failed job, `factory.job_create` accepts
+optional `split_from`: an integer job number of at least 1 on the same Factory.
+Engines that carry it announce `create_split_from: true` in
+`factory.capabilities`.
+
+Each new job remembers that number. Its job read, queue row and create reply's
+`current` carry `split_from`; a job created without it omits the field. The new
+job's own activity adds one line such as `split from #80`. The parent job stays
+unchanged. The smaller job follows the normal creation, pipeline and start
+rules; its steps read its own brief and details.
+
+An explicit zero or negative number answers `bad_params` before the engine
+sends anything. The Factory also requires the parent to exist and be visible
+to the caller. A missing or hidden parent answers `bad_params` before any job
+or GitHub issue is made, including when `open_issue: true` was requested.
+
+An older Factory that refuses the `split_from` field answers `conflict` with
+`detail.reason: "factory_too_old"`; update that Factory. Nothing is made, and
+the engine sends no fallback create.
+
+## Job context attachments before the first run
+
+`factory.job_context_set` replaces the reference material attached to one job.
+Send `factory`, `job`, the `expect.version` from the job you read, and `context`.
+An empty list clears the attachments. Engines announce `factory.job_context`
+in hello and `job_context` in `factory.capabilities`. Job creation does not
+accept `context`; create the job in Backlog, attach context, then start it.
+
+Context can be changed in Backlog or while queued while the job has no run:
+before its first run, or after Bring back cleared its last one. Once a run has
+begun, the Factory refuses with "The job has started; its steps already read
+their context." A stale version changes nothing: read the job again.
+The same caller rule as model edits applies: in a team Factory the
+job's person may edit, or anyone when no person is assigned; solo allows it.
+
+Attach at most 20 items, each with a title, markdown and optional source label,
+path or URL. Titles are 1–200 characters after trimming, sources at most 500,
+and markdown must contain more than whitespace: blank markdown is refused with
+"context markdown must be non-empty". All markdown together is at most 100,000
+characters, separate from the job description's 20,000-character limit.
+Job and queue reads show only titles and sources.
+
+The first eligible conversation named `plan` reads the whole attachments as
+reference material; if no such plan runs, the first eligible conversation reads
+them. Disabled, excluded and skipped plans do not take context away from that
+conversation. Other steps receive none. Attachments do not override the job or
+step instructions and never enter a GitHub issue, pull request or comment.
+
+An older Factory without the context route answers `conflict` with reason
+`factory_too_old`; update it. A lost answer is `uncertain`: the engine sends the
+write once, so read the job before deciding what to do next.
 
 ## Job Brief inputs — later requests, answers and saved notes
 

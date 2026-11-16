@@ -361,7 +361,7 @@ func (b *appBackend) answerMoney(a *appAgent, askID, option, text string) (bool,
 		case appwire.OptionStop:
 			if running {
 				b.locked(func() { live.stopping = true })
-				live.conn.Conv.Interrupt()
+				appStopByPerson(live.conn.Conv)
 			}
 			b.closeMoneyAsks(a, appwire.CapAgent, appwire.OptionStop, "Stopped")
 			return true, nil
@@ -403,10 +403,11 @@ func (b *appBackend) RaiseCap(raise appwire.CapRaise) error {
 	now := b.now()
 	switch raise.Scope {
 	case appwire.CapAgent:
-		a, err := b.findCrewOwner(raise.ID)
+		a, endRead, err := b.findCrewOwner(raise.ID)
 		if err != nil {
 			return err
 		}
+		defer endRead()
 		if err := b.lentFence(a, "budget"); err != nil {
 			return err
 		}

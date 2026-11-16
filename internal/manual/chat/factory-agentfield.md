@@ -337,6 +337,11 @@ page and step rail, Start and Stop.
 
 The node's developer writes nothing for any of this: a reasoner that calls
 `a.Harness(...)` on the codeaf provider is watched and steerable by itself.
+The watched `chat --once --json` result includes `tokens.in`, `tokens.out` and
+`spend_usd`, with the same names and types as `exec --json`. They total the
+invocation after closing settles usage, including work before a failure; a
+resumed conversation excludes earlier invocations. A remote accounting client
+can read these totals from stdout without adding up live usage events.
 
 ## the names of an AgentField run's steps — why parallel steps read the same, a call's subject, a label tag
 
@@ -372,12 +377,17 @@ node, so the cap is only what the job page shows beside it.
   step, never the factory's pipeline (`plan`) or a wait for a runner.
 - **Running**, its step is the run's own current step.
 - **Ended**, `done_at` is when the run ended on AgentField (else when this
-  factory saw it end), so it sorts and reads like any finished job.
+  factory saw it end), so it sorts and reads like any finished job. This also
+  applies to pipelines of AgentField steps and person gates, including a
+  successful answer with no pull request. The finish time stays after restart.
 
 A job a trigger files is announced on the app's wire as
 `factory.jobs_changed {factory, job}`, once when it is filed and once after
 the intake pass, so a Backlog on screen can read it again at once instead of
-on its next refresh.
+on its next refresh. Later committed state, question and completion changes
+also announce the job. A background person gate therefore appears in Needs you
+without waiting for the periodic refresh; unchanged progress sends no extra
+queue notification.
 
 ## where did this job come from, and where does it run — the AgentField node, its machine, reasoner, trigger and labels
 
@@ -463,7 +473,7 @@ steps:
 
 `input` maps the reasoner's own field names to the job's facts: `{title}`,
 `{body}`, `{repo}`, `{repo_url}`, `{base}`, `{issue_url}`, `{issue_number}`,
-`{job}`. Each value is sent in the type the reasoner's input says for its
+`{job}`, and the downstream result binding `{pr_url}` (below). Each value is sent in the type the reasoner's input says for its
 field (`{issue_number}` is a number for a number field), and one that is a
 fact alone is left out when the job has none. An object or a yes/no field is written
 as its JSON text (`config: '{"check_ci": false}'`, `plan_review: "true"`). With no `input` the
@@ -484,6 +494,40 @@ opened; how that reads is under "an AgentField step that did not succeed". A pip
 when its runs do, with no proof to approve, and needs no checkout on this
 machine: its job never says it is cloning the repository here, and Start is not
 refused because this machine cannot clone it. The same is true of a `run_on` job.
+
+## build then review in one pipeline — pass the opened pull request as {pr_url}
+
+An AgentField step can pass the job's opened pull request to a later step:
+
+```yaml
+pipeline:
+  build-review: [build, review]
+steps:
+  build:
+    kind: agentfield
+    target: planner.build_issue
+    input:
+      title: "{title}"
+      repo_url: "{repo_url}"
+      issue_number: "{issue_number}"
+  review:
+    kind: agentfield
+    target: pr-af.review
+    input:
+      pr_url: "{pr_url}"
+```
+
+Saving the library accepts the binding before a PR exists. The build finishes
+before review starts; review receives the job's first opened PR URL, following
+the existing rule that later results never replace that PR. Earlier phases
+must be done or skipped, with at least one completed work step before the
+consumer. A build that succeeds without opening a PR stops at review before
+contacting its reasoner, with: "this step needs {pr_url}: finish an earlier
+work step that opens a pull request first".
+
+The binding also works inside text (`"Review {pr_url}"`). It is sent only
+when explicitly mapped: a step with no `input` keeps its existing default
+fields. A standalone review can still receive a literal PR URL.
 
 ## give an AgentField step its input in the app — the pipeline editor's input fields, plan_review, config, a field the reasoner does not list
 
@@ -543,8 +587,15 @@ never from a pipeline's or a step's name:
   failed: <reason>" or "<step> was cancelled: <reason>".
 
 The run's whole report, command output included, is kept as the step's
-output: open the step to read it in full. A step that finished reads
-"<step> · done · finished", or "finished and opened <pull request link>".
+output: open the step to read it in full.
+
+## a finished AgentField step — which step opened the pull request
+
+A step that finished reads
+"<step> · done · finished". When that step supplied the job's first pull
+request, it reads "finished and opened <pull request link>". A later step,
+including review using `{pr_url}`, reads "finished" even if its result repeats
+the link; the first pull request stays on the job.
 
 ## a failed, rejected or stopped job on disk — its file says so; a step reads as its label
 
@@ -760,3 +811,20 @@ does every question of a job in Manual.
   own checkout and their own temp and cache folders. They cannot read keys and
   sign-ins or use docker unless `"jail.allow"` says so ("What an unattended run
   may touch").
+
+## factory runner control socket directory — isolated launches and long TMPDIR
+
+The local factory shares its runner's in-memory sessions through a private
+control socket. Set `CODEAF_FACTORY_RUNTIME_DIR` to an absolute runtime base
+to isolate it, for example to the same value as your launch's `TMPDIR`.
+Every process sharing that factory profile must use the same override.
+The socket lives in an owner-only `codeaf-runners-<user id>` directory with
+mode 0700; the socket itself is 0600. Its name is a hash of the state root,
+so different profiles have different sockets.
+
+With no override, the stable base remains `/tmp`, including on macOS and
+when `TMPDIR` changes, so a new process can still share an already running
+older runner. An override that makes the socket path 100 bytes or longer
+falls back to that base and says that the Unix socket path limit was exceeded.
+Choose a shorter override to keep the socket inside your isolated directory.
+A symlink in place of the private user directory is refused.

@@ -959,7 +959,7 @@ func (a *app) submitImagesShown(text, shown string, plain []segment) tea.Cmd {
 	a.touch()
 	return tea.Batch(func() tea.Msg {
 		ch, err := start()
-		return submittedMsg{ch: ch, err: err, echo: mark}
+		return submittedMsg{ch: ch, err: err, echo: mark, refused: text}
 	}, a.wake())
 }
 
@@ -998,6 +998,9 @@ func attachmentStart(agent Agent, ctx context.Context, hosted bool, text, shown 
 	}
 	display = shown
 	start = func() (<-chan session.Event, error) {
+		if err := waitModelSelection(ctx, agent); err != nil {
+			return nil, err
+		}
 		images, err := readAttachments(pictures)
 		if err != nil {
 			return nil, err

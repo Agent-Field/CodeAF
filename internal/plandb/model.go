@@ -128,6 +128,15 @@ type Task struct {
 	TaskSpec
 	Status    Status `json:"status"`
 	Composite bool   `json:"composite"`
+	// ReviewCheck is set only by AddReviewCheck, so choosing the check role
+	// through a worker's CLI cannot exempt its task from the growth count.
+	ReviewCheck bool `json:"review_check,omitempty"`
+	// AddedByTask names the adding worker's task. Only bounded worker writes
+	// set it; engine handoffs, reviews and fixes do not spend worker slots.
+	AddedByTask string `json:"added_by_task,omitempty"`
+	// JoinedAssignment is set only by the engine's join door. Its subtree
+	// serves this assignment rather than the run root's independent work.
+	JoinedAssignment bool `json:"joined_assignment,omitempty"`
 	// Paused is the status-independent hold on a task and everything under it.
 	// A paused task keeps the status it had — ready stays ready — and leaves
 	// the ready frontier whole while the flag is set; Resume clears it. It is

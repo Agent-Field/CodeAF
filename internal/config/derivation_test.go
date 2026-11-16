@@ -132,6 +132,7 @@ var settingReaders = map[string]string{
 	// name through: the leaf loops' doors hand [AssistedByModelAt]'s answer to
 	// the attribution line.
 	KeyAttributionModel: "AssistedByModelAt",
+	KeyIdleHandoff:      "IdleHandoffAt",
 	// The pool row is read through [ModelPoolAt] since the telemetry off switch
 	// started capping the pool at read: `codeaf pool` calls [ModelPoolResolved]
 	// with its injected environment (`codeaf telemetry` did too, until the

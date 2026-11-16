@@ -785,3 +785,67 @@ The macOS 60 s steady profile fell from 3.03% to 2.10% of a core. What remains
 is the factory's lease reads on runner requests (17%) and the chat presence
 beat (13%). The rig does not follow a live AgentField run, which the live
 round's idle did; the AgentField write above is that path's share.
+
+## Resident memory of the desktop engine
+
+`codeaf app` holds a conversation in memory only while something needs it. The
+method and measurements are in [docs/perf/memory-2026-10-24.md](docs/perf/memory-2026-10-24.md).
+
+- **Members at rest are read, not held.** `tasks.list`, `asks.list` and
+  `processes.list` on a member of an open crew answer from its files when its
+  presence shows no working turn, question, task or process, no service is kept
+  and no stage is lent. `tasks.list` builds the owner-backed list by holding the
+  conversation for the length of one read (at most `appRestReads` = 2 at once),
+  then keeps it under a stamp of the files it was built from: in memory up to
+  `appRestMemoBytes` = 24 MiB (least recently read first; a list larger than
+  that is not kept), and as `<home>/cache/app-tasks/<agent>.json` for the
+  next launch, valid for the same build and the same stamp only. Disk storage
+  keeps at most `appRestDiskTotalBytes` = 96 MiB and `appRestDiskEntries` = 256
+  files, evicting oldest writes first. The inventory is scanned on first use and
+  every `appRestDiskScanEvery` = 1 minute by the idle sweep, which also prunes
+  missing or deleted agents; writes update the inventory without directory scans.
+  Agent deletion removes both entries immediately. Byte-identical settled task
+  checkpoints preserve their identity on open, so snapshot validation can admit
+  conversations with saved tasks. Owner-overlay failures propagate and are
+  never cached; reader completion is deferred and one-shot. Record, rest and
+  project-index admission share the two-second mtime/ctime settling guard.
+  `TestAppReadingAnIdleCrewMemberDoesNotKeepItsConversation` and
+  `TestAppReadsARestingMembersTasksFromTheCacheAfterARelaunch` pin the opens.
+- **A crew member with nothing in flight is let go after `appAgentIdle`** like any
+  other conversation; the crew opens it again for traffic.
+- **Journal records** (`RecordCache`) keep at most `recordCacheEntries` = 8
+  records and drop one not read for `recordCacheIdle` = 30 s. The 256 MiB byte
+  budget and the 16 MiB per-file limit are unchanged.
+- **The project task index** keeps the decoded rows of the last
+  `taskIndexKeptPaths` = 4 indexes of at most `taskIndexKeptBytes` = 4 MiB each.
+- **Plan reads** (`plandb.Store`) reload the plan only when SQLite's
+  `data_version` or the database/log stamp moved.
+  `TestRepeatedReadsOfAnUnchangedPlanLoadItOnce` allows 3 MiB for 200 reads.
+  `TestAppTasksOpensThePlanOnceForAllTheRunRows` allows 16 MiB to list 150 rows.
+- **The collector percent follows the live heap** (`memtrim.go`): the app starts
+  at Go's default percent 100. The governor selects 400 for a small heap, and a
+  larger one is given the percent that
+  lets about `heapHeadroom` = 32 MiB of garbage build up, never below
+  `heapGCMin` = 10. An explicit `GOGC` decides instead. When more than 48 MiB
+  and half of the live heap is held and unused, `debug.FreeOSMemory` runs, at most
+  once a minute. macOS keeps freed pages in a process's resident size until it
+  needs them (`MADV_FREE_REUSABLE`), so `ps` RSS shows the peak of a burst while
+  the footprint (`vmmap --summary`, Activity Monitor) shows what is held.
+
+## Paired idle save certification
+
+The idle-only `cellstore.SavedState` keeps the first fingerprint for each path
+and stops climbing at an already visited ancestor. A proof admits at most
+20,000 paths and 50,000 directory entries in total, 8 MiB per native output/diagnostic stream,
+and 64 MiB of current/saved chat-file content reads. Directory reads request
+only the remaining entry budget plus one. Native comparison uses its existing
+30-second preparation deadline. Exceeding a budget retains the hold; it never
+certifies a partial scope or limits ordinary saves or transfers.
+
+`TestIdleRelease_R8_WideWorkspaceAndReceiptsAllocateLinearly` measures native
+proofs over 100, 500 and 5,000 workspace files plus as many receipt records.
+It caps retained paths and visited entries at `2*N+100`, and Go allocations at
+`6 MiB + N*32,000` bytes. Before deduplication, 500+500 allocated 106,534,776
+bytes; afterward it allocated 2,505,888 bytes. The 5,000+5,000 proof allocated
+21,807,368 bytes. Bounds tests require refusal for paths, entries, reply size
+and content bytes. Final metadata revalidation remains mandatory.

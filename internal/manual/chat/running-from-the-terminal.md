@@ -460,6 +460,9 @@ and twelve once it ends. A command's whole output is kept on this Mac for a
 week under the app's folder in codeaf's home, so it can be opened after the
 reply ends, or after the app restarts.
 
+Live step events also carry the conversation's spend so far when it is known
+and positive; the saved conversation total can catch up after the reply ends.
+
 ## The desktop app's conversation — steer or queue, the decision dock, and notes to a task
 
 In the desktop app a message typed while the agent works can steer or queue.
@@ -811,7 +814,7 @@ key the first time the identity is made on that machine.
 On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 **`codeaf cell list --all`** prints every chat you have on any of your machines, one line
-each: id, title, device, where it runs (`held on <device>`, `<device> offline`,
+each: id, title, device, where it runs (`working on <device>`, `held on <device>`, `<device> offline`,
 `<K> turns from <device>: discard`, or `-` for one held here or let go), and how
 long ago its last saved turn was. It needs no terminal UI, so it works over ssh. Without
 `--all` it prints the usage line. With sync off (`CODEAF_SYNC_URL=off`, or no relay to sync through) it prints
@@ -866,13 +869,11 @@ no file content it can read. Requests are signed by this machine's own device ke
 relay can tell your machines apart. `codeaf cell list --all` and the sessions panel on home
 show your chats on the other machines once both machines share an identity and this setting.
 
-## Why did my tool call not run after I continued the chat on my laptop — the view-only window, kept branch and clock warning
+## Why did my tool call not run after I continued the chat on my laptop — closing the chat, the view-only window, kept branch and clock warning
 
-With sync on, the chat you are typing in sends each saved turn to your relay, and holds the chat
-for this machine while it is open. Closing the chat sends what is left and lets go of it, so your
-other machine can pick it up at once. If this machine sleeps or loses its connection, presence stops answering; the other computers mark it offline after 25 seconds of silence, within 30 seconds. The lease itself expires after about ninety seconds, and an explicit continue can take it sooner.
-You do not have to wait for that: press enter on a chat that says `held on <device>` on another
-machine and continue it there, and it is taken at once (see "Continue a chat here that another
+With sync on, the chat you are typing in sends each saved turn to your sync service, and by default (`idle handoff` is off by default; turn it on in **Settings → General → idle handoff** or with `CODEAF_IDLE_HANDOFF=1`) holds the chat for this machine while it is open. Closing the chat sends what is left and lets go of it, and with `idle handoff` on in two or more paired machines an idle chat also lets go of its hold about 2 seconds after it goes idle once everything is saved, so another machine can continue it (or with `idle handoff` on open it directly on Home or through `agents.open` with no Continue-here step). New work in the window that released it takes it back in place if nobody else took it; unpaired, sync-off, single-device and default (`idle handoff` off) homes keep their hold while open. If this machine sleeps or loses its connection while still holding the chat, presence stops answering; the other machines mark it offline after 25 seconds of silence, within 30 seconds. The lease itself expires after about ninety seconds (after which another paired machine still asks Continue here, including when the holder was working; a window whose hold merely lapsed admits nothing until you reopen or continue it).
+You do not have to wait for expiry while a hold is still live: press enter on a chat that says `working on <device>`, `held on <device>` or `<device> offline` on another
+machine and choose **Move here** / **Continue here**, and it is taken at once (see "Continue a chat here that another
 machine left" in home).
 
 When another machine does, this window says `<device> continued this chat; this window now only shows it`,
@@ -1088,6 +1089,18 @@ and it is in the `blocked_on` field of `--json`. Answer it inside the ask itself
 again, or bring the work to `codeaf` where it can be answered.
 
 Asking for help is never a failure: `--help` on any verb exits 0.
+
+## chat --once --json — watched chat token usage and spending
+
+`codeaf chat --once --json` prints one result object with `ok`, `stop`,
+`answer`, `model` and `error`. Empty answer, model and error fields are omitted.
+It also carries the same accounting fields as `codeaf exec --json`:
+`tokens: {"in": 100, "out": 20}` and `spend_usd: 0.125`.
+These total this invocation's model calls, including steering turns and calls
+settled while closing. Resuming a saved conversation excludes earlier usage.
+A failure after paid work still carries its tokens and spending. Unmeasured
+usage is zero; it does not establish that an unpriced call was free.
+The watched door keeps its existing `stop: "done"` or `"error"` meanings.
 
 ## The --json result object — one shape, three commands
 

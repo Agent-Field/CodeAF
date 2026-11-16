@@ -101,10 +101,12 @@ func connectCodex(ctx context.Context, profileDir string, noBrowser bool) error 
 
 // connectClaudeCode connects the person's own `claude` program. It asks for no
 // key, because codeaf never holds its sign-in: it checks the program is here
-// and signed in, keeps the row and seeds its three models, exactly as the
-// app's Connect does.
+// and signed in, keeps the row and seeds its models, exactly as the app's
+// Connect does. The line names the three family words and counts the versions
+// listed beside them, so it stays one line however many versions there are.
 func connectClaudeCode(ctx context.Context, profileDir string) error {
-	if _, err := config.ConnectClaudeCode(ctx, profileDir); err != nil {
+	outcome, err := config.ConnectClaudeCode(ctx, profileDir)
+	if err != nil {
 		return connectFailed(claudemodel.ID, err)
 	}
 	status := claudeagent.ReadStatus(ctx)
@@ -115,7 +117,20 @@ func connectClaudeCode(ctx context.Context, profileDir string) error {
 	if status.Plan != "" {
 		words = append(words, "Claude "+strings.ToUpper(status.Plan[:1])+status.Plan[1:]+" plan")
 	}
-	words = append(words, "models: claude-code/opus, claude-code/sonnet, claude-code/haiku")
+	var families []string
+	versions := 0
+	for _, id := range outcome.ModelIDs {
+		if claudemodel.Version(id) != "" {
+			versions++
+			continue
+		}
+		families = append(families, claudemodel.ID+"/"+id)
+	}
+	models := "models: " + strings.Join(families, ", ")
+	if versions > 0 {
+		models += fmt.Sprintf(" and %d versions", versions)
+	}
+	words = append(words, models)
 	fmt.Fprintln(usageOut, strings.Join(words, " · "))
 	return nil
 }

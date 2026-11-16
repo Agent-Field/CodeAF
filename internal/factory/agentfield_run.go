@@ -42,6 +42,9 @@ type AgentFieldRun struct {
 	// starting a second run. False on a record written before it was kept,
 	// which is judged by its times as before ([AgentFieldRunOwed]).
 	EndOwed bool `json:"end_owed,omitempty"`
+	// PullRequestBefore records that this run began after the job had a pull
+	// request, so a result echoing that link cannot claim it opened one.
+	PullRequestBefore bool `json:"pull_request_before,omitempty"`
 	// A harness step's conversation keeps its own relay record beside its
 	// transcript (agentfield.json): which execution it is, how much of it is
 	// kept, whether it is steerable now. It lives with the conversation,
@@ -402,7 +405,7 @@ func RunOnPending(it Item) bool {
 
 // AgentFieldPlaceholders are the job's facts an agentfield step's input may
 // name, in the order the manual lists them.
-var AgentFieldPlaceholders = []string{"title", "body", "repo", "repo_url", "base", "issue_url", "issue_number", "job"}
+var AgentFieldPlaceholders = []string{"title", "body", "repo", "repo_url", "base", "issue_url", "issue_number", "job", "pr_url"}
 
 // AgentFieldTargetWord reads an agentfield step's reasoner: "<node>.<reasoner>",
 // each part a word of letters, digits, `-` and `_`.
@@ -456,6 +459,35 @@ func AgentFieldInputProblem(v string) string {
 	}
 }
 
+// AgentFieldInputReady validates result bindings only when a step is about to
+// dispatch. Library validation cannot know what earlier work will produce.
+func AgentFieldInputReady(it Item, st Stage) error {
+	requested := false
+	for _, v := range st.Input {
+		requested = requested || strings.Contains(v, "{pr_url}")
+	}
+	if !requested {
+		return nil
+	}
+	if it.PullRequest != nil && it.Stream != nil {
+		link, _ := PullRequestIn([]byte(it.PullRequest.URL))
+		work := false
+		for _, ph := range it.Stream.Phases {
+			if ph.Name == st.Name {
+				if work && link != "" && link == strings.TrimSpace(it.PullRequest.URL) {
+					return nil
+				}
+				break
+			}
+			if ph.State != PhaseDone && ph.State != PhaseSkipped {
+				break
+			}
+			work = work || ph.State == PhaseDone && ph.Kind != StageGate
+		}
+	}
+	return errorString("this step needs {pr_url}: finish an earlier work step that opens a pull request first")
+}
+
 // agentFieldFacts are the job's facts by placeholder.
 func agentFieldFacts(it Item) map[string]string {
 	issue, number := "", ""
@@ -471,9 +503,13 @@ func agentFieldFacts(it Item) map[string]string {
 	if base == "" {
 		base = strings.TrimSpace(it.ChangeBase)
 	}
+	pr := ""
+	if it.PullRequest != nil {
+		pr = strings.TrimSpace(it.PullRequest.URL)
+	}
 	return map[string]string{
 		"title": it.Title, "body": it.Body, "repo": RepoOf(it), "repo_url": RepoURL(it), "base": base,
-		"issue_url": issue, "issue_number": number, "job": strconv.Itoa(it.ID),
+		"issue_url": issue, "issue_number": number, "job": strconv.Itoa(it.ID), "pr_url": pr,
 	}
 }
 
@@ -500,7 +536,8 @@ func AgentFieldInput(it Item, st Stage) map[string]any {
 	if len(st.Input) == 0 {
 		out := map[string]any{"job": it.ID}
 		for k, v := range facts {
-			if k == "job" || v == "" {
+			// Result bindings are opt-in so existing reasoners keep their default input.
+			if k == "job" || k == "pr_url" || v == "" {
 				continue
 			}
 			if k == "base" {

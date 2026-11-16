@@ -117,6 +117,7 @@ func (a *Agent) appRunViewIn(row TaskNotice, cap float64, read *planTaskRead) Ap
 		Model: row.Model, Cap: cap, Spent: row.CostUSD, Result: row.Report, Files: append([]string{}, row.Changed...),
 		Elapsed: int64(row.Elapsed.Seconds()), Deadline: row.Deadline, Held: row.Paused, Version: 1, Origin: "asked",
 	}
+	view.Group = row.Run
 	view.Source, view.FinishedAt = cloneSource(row.Source), row.EndedAt
 	view.RunProgram, view.Ending, view.Branch = appRunFacts(row)
 	view.Dismissed = view.State == "failed" && row.Ending != TaskEndingStopped && a.tasker().isDismissed(view.ID)
@@ -153,6 +154,14 @@ func (a *Agent) appRunDetail(view *AppTaskView, key string, read *planTaskRead) 
 		if task == nil {
 			continue
 		}
+		appRunStoreEnding(view, store, task)
+		if view.State == "running" && task.Status == plandb.StatusReady {
+			row := PlanTaskRow{Status: string(task.Status)}
+			a.markPlanMachineHold(&row, store.Path(), task.ID == store.RootID())
+			if row.Undriven {
+				view.State = "waiting"
+			}
+		}
 		dir := filepath.Dir(store.Path())
 		trajectory := read.trajectory(planTrajectoryPath(dir, key), true)
 		steps, reads := trajectory.app, trajectory.reads
@@ -181,6 +190,31 @@ func (a *Agent) appRunDetail(view *AppTaskView, key string, read *planTaskRead) 
 		}
 		return
 	}
+}
+
+// appRunStoreEnding lets the stop's store write take effect before the last
+// worker return publishes the run row. A stale notice cannot reopen ended work.
+func appRunStoreEnding(view *AppTaskView, store *plandb.Store, task *plandb.Task) {
+	if view.State != "running" && view.State != "waiting" && view.State != "paused" {
+		return
+	}
+	switch task.Status {
+	case plandb.StatusDone:
+		if !store.Stopped() {
+			return
+		}
+		view.State = "done"
+	case plandb.StatusCancelled:
+		view.State = "failed"
+		if planTaskStopped(store, task) {
+			view.State, view.Ending = "stopped", string(TaskEndingStopped)
+		}
+	case plandb.StatusFailed:
+		view.State = "failed"
+	default:
+		return
+	}
+	view.FinishedAt = task.CompletedAt
 }
 
 // appTrajectoryLines is a run's steps as the worded tail a model reads, kept

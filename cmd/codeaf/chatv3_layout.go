@@ -853,6 +853,8 @@ func v3SeatPending(place session.Place, say func(string), drives *driveBook) (ex
 	failed(watch, err)
 	drive, claim := drives.pendingDriveOf(c, cellstore.EngineFor(place.Workspace), watch.SyncReport, watch)
 	if drive != nil {
+		drive.setIdleCheck(watch.IdleReady)
+		watch.OnMetadataWrite = drive.SavedMetadata
 		// The turn can finish locally while its final capture is still running.
 		watch.OnTurnEnd = func() { drive.TurnEnded(c, watch.Report) }
 		watch.OnTurnStart = func() { drive.Working(true) }
@@ -867,7 +869,7 @@ func v3SeatPending(place session.Place, say func(string), drives *driveBook) (ex
 	// the first input; their journal writes need a tail seal even before chat.
 	// Window attachment reuses the engine's seat rather than constructing one.
 	watch.Waiting()
-	return executor.Gated(seat, driveGate(drive), driveWorkGate(drive)), machine, watch, claim
+	return executor.Gated(seat, driveGate(drive), driveWorkGate(drive), drivePreparedGate(drive), driveSettingsGate(drive)), machine, watch, claim
 }
 
 // sealTail seals what the chat wrote after the turn-end seal (titles, summaries,

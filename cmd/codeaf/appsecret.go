@@ -10,10 +10,11 @@ import "github.com/Agent-Field/codeaf/internal/appwire"
 // and this refuses an ask that never asked for a secret, because the words of
 // an ordinary question go to the model.
 func (b *appBackend) AnswerAskSecret(agent, id, secret string) error {
-	a, err := b.findCrewOwner(agent)
+	a, endRead, err := b.findCrewOwner(agent)
 	if err != nil {
 		return err
 	}
+	defer endRead()
 	open, takesSecret := false, false
 	b.locked(func() {
 		if a.live == nil {

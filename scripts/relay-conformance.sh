@@ -31,6 +31,7 @@ suites=(
 	"bigtake:^TestBigTakeBack$"
 	"watch:^TestWatchConformance$"
 	"lease:^TestLeaseConformance$"
+	"fabric:^TestFabricConformance$"
 )
 
 pids=()
@@ -147,6 +148,7 @@ track_go() {
 	gotest go-inproc rotation ./internal/relayserve 'Rotated|Frozen|Retire|Sweep'
 	gotest go-inproc watch ./internal/relayserve '^TestWatch'
 	gotest go-inproc lease ./internal/relayserve '^TestLease'
+	gotest go-inproc fabric ./internal/relayserve '^TestFabricConformance$'
 	fi
 	local relay_bin=${CONFORMANCE_CODEAF:-$root/bin/codeaf}
 	# An explicit candidate avoids rebuilding a binary the caller has already prepared with make build.

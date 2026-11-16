@@ -802,12 +802,22 @@ func (h *Handler) reply(w http.ResponseWriter, r *http.Request, it factory.Item)
 	}
 }
 
+// newJob makes one job, opening its GitHub issue first when asked. EVERY ANSWER
+// BEFORE ITS FIRST WRITE CARRIES THE PHASE MARKER (api.PhaseHeader, phase.go):
+// a refusal, the visibility check, a sign-in or read failure, and a GitHub
+// failure before the issue request was sent. The issue request
+// ([Handler.githubJobJSON]) and the job's own make clear it, so everything
+// after them, the stamps, the issue link, the budget and a start, answers
+// unmarked and a keyed resend replays it instead of making another job.
 func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 	if !h.requireVerb(w, h.seam.New != nil || h.seam.NewJob != nil) {
 		return
 	}
 	var body api.NewJob
 	if !h.decode(w, r, &body, false) {
+		return
+	}
+	if !h.checkNewJobExtras(w, r, &body) {
 		return
 	}
 	if strings.TrimSpace(body.Repo) == "" || strings.TrimSpace(body.Title) == "" {
@@ -856,6 +866,9 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !visible {
+		if h.githubVisibilityLimited(w, r) {
+			return
+		}
 		h.fail(w, http.StatusNotFound, "repository not found")
 		return
 	}
@@ -929,6 +942,7 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 	var err error
 	literal := body.Source == factory.AskApp || body.Source == "hand-off" || body.Text != ""
 	if literal && h.seam.NewJob != nil {
+		clearPhase(w)
 		id, err = h.seam.NewJob(body.Repo, body.Title, body.Text)
 	} else {
 		if !h.requireVerb(w, h.seam.New != nil) {
@@ -938,12 +952,16 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 		if body.Text != "" {
 			words += "\n\n" + body.Text
 		}
+		clearPhase(w)
 		id, err = h.seam.New(body.Repo, words)
 	}
 	if h.failed(w, err) {
 		return
 	}
 	if h.failed(w, h.stampAsk(r, id, body)) {
+		return
+	}
+	if h.failed(w, h.stampNewJobExtras(r, id, body)) {
 		return
 	}
 	if selected != nil && h.failed(w, h.config.Store.Update(id, func(it *factory.Item) error {
@@ -974,7 +992,7 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 }
 
 // stampAsk records the app's ask on a job this factory's store holds.
-// The body carries the person's words, never a cap.
+// The initial budget and attachments are stamped separately after these words.
 func (h *Handler) stampAsk(r *http.Request, id int, body api.NewJob) error {
 	if h.config.Store == nil {
 		return nil

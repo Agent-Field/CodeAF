@@ -727,6 +727,11 @@ func (a *Agent) spoken(text string, waiting bool, origin messageOrigin, directio
 // this door was changed for was a step thirteen minutes into a wait the person
 // could do nothing about.
 func (a *Agent) RetargetTask(id uint64, model string) (ModelLanding, error) {
+	a.settingsWrites.Add(1)
+	defer a.settingsWrites.Add(-1)
+	if err := a.CheckSettingsWork(); err != nil {
+		return ModelLandsNextRequest, err
+	}
 	model = strings.TrimSpace(model)
 	if model == "" {
 		return ModelLandsNextRequest, errors.New("no model to move to")

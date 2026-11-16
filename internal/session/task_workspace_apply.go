@@ -33,6 +33,11 @@ const TaskWorkspaceUnavailable = "review and apply are for private task copies; 
 // ReviewTaskWorkspaceRoot reads actual committed and uncommitted changes. This
 // person-facing door is intentionally absent from model tools.
 func (a *Agent) ReviewTaskWorkspaceRoot(ctx context.Context, id uint64, slot string) (TaskWorkspaceReview, error) {
+	a.settingsWrites.Add(1)
+	defer a.settingsWrites.Add(-1)
+	if err := a.CheckSettingsWork(); err != nil {
+		return TaskWorkspaceReview{}, err
+	}
 	if err := a.taskWorkspaceDoor(ctx); err != nil {
 		return TaskWorkspaceReview{}, err
 	}
@@ -217,6 +222,11 @@ func taskWorkspaceApplicable(id uint64, use WorkspaceRootUse) error {
 // ApplyTaskWorkspaceRoot grants permission only for this selected operation.
 // It never records Landing, starts a worker, or broadens another root's access.
 func (a *Agent) ApplyTaskWorkspaceRoot(ctx context.Context, id uint64, slot string) (string, error) {
+	a.settingsWrites.Add(1)
+	defer a.settingsWrites.Add(-1)
+	if err := a.CheckSettingsWork(); err != nil {
+		return "", err
+	}
 	if err := a.taskWorkspaceDoor(ctx); err != nil {
 		return "", err
 	}

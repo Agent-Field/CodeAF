@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 )
 
@@ -51,11 +52,19 @@ func newAdmissionDrive(start func(func()) (*syncsetup.Drive, error), notices ...
 }
 
 func (w *workAdmission) admit(d *syncsetup.Drive) error {
-	if err := d.Gate(); err != nil {
+	released := d.BeginWork()
+	within := driveWorkWithin
+	if released {
+		within = executor.TakeBackWithin
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), within)
+	defer cancel()
+	if err := d.Gate(); err != nil && !released {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), driveWorkWithin)
-	defer cancel()
+	if released {
+		w.freshFor(0)
+	}
 	// Concurrent doors share the read and its result, including a failure.
 	// Waiting for another door consumes this caller's budget too.
 	done, mine := w.join()

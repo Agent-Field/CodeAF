@@ -108,6 +108,9 @@ func (a *Agent) executeTaskTool(ctx context.Context, tool bare.Tool, call ai.Too
 // readingToolRefusal also guards calls named off the belt. The names come from
 // the same set that arms the hand-off, so its promise cannot drift from it.
 func (a *Agent) readingToolRefusal(name string) string {
+	if category, client := a.clientToolCategory(name); client && category == ActionRead {
+		return ""
+	}
 	if !a.config.readingTask() || earlyTools[name] {
 		return ""
 	}

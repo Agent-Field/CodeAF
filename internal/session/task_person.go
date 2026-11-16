@@ -72,6 +72,8 @@ type taskJudgeVerdict struct {
 // WHAT IS STILL THEIRS, WORD FOR WORD, is the summary under the row and the
 // request the worker is told outranks anything a model wrote.
 func (a *Agent) StartTask(ctx context.Context, brief string, solo bool) (uint64, string, string, error) {
+	a.taskStarting.Add(1)
+	defer a.taskStarting.Add(-1)
 	if err := a.CheckWork(); err != nil {
 		return 0, "", "", err
 	}

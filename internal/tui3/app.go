@@ -676,6 +676,8 @@ type (
 		call *hostCall
 		ch   <-chan session.Event
 		err  error
+		// refused keeps the submitted words until the engine accepts them.
+		refused string
 		// echo names WHICH echoed line this answer settles, and ZERO when none
 		// was drawn (echo.go). It is stamped where the line was drawn rather
 		// than looked up when the answer lands, because by then the person may
@@ -1969,6 +1971,11 @@ type app struct {
 	// MID-SENTENCE, and dropping the move would leave them on the service they
 	// just replaced, so the one pending id lands at the turn boundary.
 	deferredModelServiceModel string
+	deferredModelRename       *modelRename
+	// A later explicit choice keeps its wire and preference-write order even
+	// across a chat switch. Sends wait by agent inside their commands instead.
+	pendingModelSelection <-chan struct{}
+	modelCommands         []tea.Cmd
 	// harn is the subharness registry (Options.Harnesses) and harnPanel the
 	// list /harness opens over it (harnesspanel.go). A nil harn is a surface
 	// that cannot show harnesses and says so; nothing about the OFFER depends on
@@ -3654,7 +3661,7 @@ func (a *app) Init() tea.Cmd {
 	// legend needs before it may name the switcher (hop.go), and it is asked off
 	// the loop for the reason every other reading on this list is: the walk opens
 	// every project's index, and the paint path may never pay for one.
-	standing := []tea.Cmd{a.resumeAtLaunch, a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchTitles(),
+	standing := []tea.Cmd{a.takeModelCommands(), a.resumeAtLaunch, a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchTitles(),
 		a.watchRuns(), a.watchQuestions(), a.loadTasks(), a.stirLane(), a.askHeld(), a.watchDriving(), a.watchFollowing(),
 		a.linkPingTick(), a.prefetchReplayedPictures(), a.countConversations(), tea.RequestBackgroundColor,
 		// AND WHAT AUTOMATIONS HAVE BEEN DOING, read off their store on a beat of
@@ -3855,7 +3862,7 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if summary := a.refreshRunSummary(); summary != nil {
 		cmd = tea.Batch(cmd, summary)
 	}
-	return model, cmd
+	return model, tea.Batch(cmd, a.takeModelCommands())
 }
 
 // route is the message switch: every message this surface handles, handled once.
@@ -5645,6 +5652,8 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case homeMachinesSlowMsg:
 		a.machinesStillChecking(msg)
 		return a, nil
+	case homeLocalOpenMsg:
+		return a, a.homeLocalOpenReady(msg)
 	case homeMachinesMsg:
 		// THE OTHER MACHINES' CHATS, COMING BACK, off the update loop for the
 		// reason the repository's reading is (homepanel_machines.go).
@@ -6456,6 +6465,16 @@ func (a *app) adopt(msg submittedMsg) (cmd tea.Cmd) {
 	// its pictures, an accepted one has spent them (attach.go).
 	a.chipsSettled(msg.err)
 	if msg.err != nil {
+		if msg.refused != "" {
+			a.atMainComposer(func(state *composerState) {
+				words := msg.refused
+				if !state.box.empty() {
+					words += "\n" + unfoldPastes(state.box.String(), state.pastes)
+				}
+				state.box.setText(words)
+				state.pastes = nil
+			})
+		}
 		// A MESSAGE THE ENGINE REFUSED NEVER HAPPENED, so the line the surface
 		// drew for it comes off the page and the refusal is put where it was
 		// (echo.go). The sentence is the engine's own, unchanged: it knows why —
@@ -7519,7 +7538,12 @@ func (a *app) submitShown(text, shown string, plain []segment) tea.Cmd {
 // counts as an accepted turn, and keeps the update-loop door budget from growing
 // merely because a conversation can now send while it is behind the screen.
 func submitStart(agent Agent, ctx context.Context, text string) func() (<-chan session.Event, error) {
-	return func() (<-chan session.Event, error) { return agent.Submit(ctx, text) }
+	return func() (<-chan session.Event, error) {
+		if err := waitModelSelection(ctx, agent); err != nil {
+			return nil, err
+		}
+		return agent.Submit(ctx, text)
+	}
 }
 
 // submitting is that body with the CALL left to the caller: everything a
@@ -7591,9 +7615,13 @@ func (a *app) submittingShown(text, shown string, plain []segment, start func() 
 	a.startClock()
 	a.follow()
 	a.touch()
+	ctx, agent := a.ctx, a.agent
 	return tea.Batch(func() tea.Msg {
+		if err := waitModelSelection(ctx, agent); err != nil {
+			return submittedMsg{err: err, echo: mark, call: call, refused: text}
+		}
 		ch, err := start()
-		return submittedMsg{ch: ch, err: err, echo: mark, call: call}
+		return submittedMsg{ch: ch, err: err, echo: mark, call: call, refused: text}
 	}, a.wake())
 }
 
@@ -9315,7 +9343,7 @@ func (a *app) interruptTurn() {
 	// surface says what it is while it runs down. It is measured from the KEY and
 	// not from the last event, because the key is the moment the person is
 	// certain of and the only one they are timing from.
-	a.stopBy = a.now().Add(stopGrace)
+	a.stopBy = a.now().Add(session.StopGrace)
 	// THE ROWS STOP AT THE KEY. Leaving the state word was already enough to
 	// still the spinners and the count-ups — both renderers stand down outside
 	// stateWorking (toolview.go's [app.mark] and [app.countClock]) — but only for
@@ -9420,24 +9448,6 @@ func (a *app) interruptTurn() {
 // surface detaches. A silent countdown is not a stop anybody can trust, so the
 // bound is on the screen before it fires and never only after.
 
-// stopGrace is HOW LONG A STOP WAITS FOR THE ENGINE before the surface lets go
-// of the turn without it ([app.stopSweep]).
-//
-// TEN SECONDS, AND THE FIGURE IS ARGUED RATHER THAN PICKED. It is NOT argued
-// from bash's three-second `WaitDelay` or the `jobs` kill's two-plus-two second
-// graces any more: this change put the call's context on both of those, so a
-// stop ends them at once rather than waiting them out. What is left behind the
-// bound is the class this change cannot reach from outside — a wait that never
-// looks at its context at all, a command whose output a grandchild still holds,
-// anything a tool blocks on that was written before cancellation existed. Ten
-// seconds is chosen to sit far above every settle we can measure, so the
-// deadline fires only on that class and never on a turn that was about to end
-// tidily and hand back what it did.
-//
-// IT IS MEASURED FROM THE KEYPRESS and not from the last event, because the key
-// is the only moment the person is timing from.
-const stopGrace = 10 * time.Second
-
 // windingDown reports that the turn on screen was STOPPED BY HAND and its stream
 // has not closed yet: the seconds between a person's ctrl+c and the engine letting
 // go of the turn.
@@ -9450,7 +9460,7 @@ const stopGrace = 10 * time.Second
 // event hub until [session.Agent]'s loop returns, and the loop cannot look at
 // the context until the tool batch it is inside has finished. What can still
 // outlast the cancel is the context-blind class — a wait that never looks at the
-// context it was given — and that is what the bound is for. [stopGrace] above
+// context it was given — and that is what the bound is for. [session.StopGrace]
 // carries the argument in full; it is not repeated here, so that moving the
 // reasoning cannot leave two versions of it disagreeing.
 //

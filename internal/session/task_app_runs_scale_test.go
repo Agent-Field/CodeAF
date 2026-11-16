@@ -110,15 +110,17 @@ func TestAppTaskListingRereadsChangedTrajectories(t *testing.T) {
 		seen := 0
 		for _, view := range views {
 			switch view.ID {
-			case "7", "t-work":
+			case "7":
 				if view.Step != count {
 					t.Errorf("%s has %d steps, want %d", view.ID, view.Step, count)
 				}
 				seen++
+			case "t-work":
+				t.Fatal("listing repeated the run task as a plan alias")
 			}
 		}
-		if seen != 2 {
-			t.Fatalf("saw %d work projections, want 2", seen)
+		if seen != 1 {
+			t.Fatalf("saw %d canonical work rows, want 1", seen)
 		}
 		writePlanTrajectory(t, dir, "work", `{"kind":"step","step":1,"command":"echo first"}`, `{"kind":"step","step":2,"command":"echo next"}`)
 	}

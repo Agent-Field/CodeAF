@@ -60,6 +60,11 @@ type Limits struct {
 	// reached it no new worker starts, work in flight ends, and the run ends on
 	// the limit word of the outcome ladder.
 	CostUSD float64
+	// CostCeiling, when set, is CostUSD as it stands now: a person who raises
+	// the cap of a task that is already running raises what it answers, and
+	// the counter reads it at every reading. It only ever raises the limit;
+	// a run with no CostUSD has none for it to raise.
+	CostCeiling func() float64
 	// Elapsed is how long the whole run may remain active. When it passes,
 	// workers already in flight are ended and drained, no new worker starts,
 	// and the run ends on the same limit word as the cost counter.
@@ -101,7 +106,17 @@ const costDust = 1e-9
 // refused for it ended as work that did not finish instead of on the limit the
 // person set.
 func (l Limits) costReached(spent float64) bool {
-	return l.CostUSD > 0 && l.CostUSD-spent <= costDust
+	limit := l.costLimit()
+	return limit > 0 && limit-spent <= costDust
+}
+
+// costLimit is the dollar limit at this reading: CostUSD, or the higher figure
+// a raise made of it while the run was going ([Limits.CostCeiling]).
+func (l Limits) costLimit() float64 {
+	if l.CostUSD <= 0 || l.CostCeiling == nil {
+		return l.CostUSD
+	}
+	return max(l.CostUSD, l.CostCeiling())
 }
 
 // stepsPerTaskKey is the type behind the context value, so a worker reads its

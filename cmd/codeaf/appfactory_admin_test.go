@@ -46,6 +46,9 @@ type adminFactory struct {
 	// no way to save the list at all.
 	afterStore   error
 	noRepoSwitch bool
+	// tokens is the factory's access-token file, for tests that mint a row as
+	// `codeaf factory token add` does.
+	tokens string
 }
 
 func startAdminFactory(t *testing.T) *adminFactory { return startAdminFactoryAt(t, true) }
@@ -75,6 +78,7 @@ func startAdminFactoryWith(t *testing.T, forwarded, noRepoSwitch bool) *adminFac
 		t.Fatal(err)
 	}
 	f.st = st
+	f.tokens = filepath.Join(dir, "tokens.json")
 	seam := factory.Seam{Load: func() (factory.Snapshot, error) { return factory.Snapshot{}, nil }}
 	if !f.noRepoSwitch {
 		seam.SetRepos = func(repos []string) error {
@@ -87,7 +91,7 @@ func startAdminFactoryWith(t *testing.T, forwarded, noRepoSwitch bool) *adminFac
 	h := serve.New(seam, serve.Config{
 		Version: "test", Name: "Acme factory", ServedBy: "factory", Address: adminFactoryAddress, AccessToken: testHostToken, Mode: api.FactoryTeam,
 		GitHubClientID: "client", GitHubHTTPClient: f.github.client(), Now: f.clock.now, Store: st, Record: rec, Root: st.Root(),
-		TokensPath: filepath.Join(dir, "tokens.json"),
+		TokensPath: f.tokens,
 	})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/about" {

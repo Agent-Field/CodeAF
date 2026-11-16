@@ -18,8 +18,9 @@ var errSessionEnded = errors.New("factory session has ended; sign in again")
 
 type authErrorKey struct{}
 type authErrorState struct {
-	err        error
-	hadSession bool
+	err           error
+	hadSession    bool
+	githubRetryAt time.Time
 }
 
 func (h *Handler) setAuthError(r *http.Request, err error) {

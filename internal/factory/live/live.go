@@ -32,8 +32,9 @@ type Event struct {
 }
 
 type document struct {
-	Next   uint64  `json:"next"`
-	Events []Event `json:"events"`
+	Next            uint64  `json:"next"`
+	Events          []Event `json:"events"`
+	OutcomesThrough uint64  `json:"outcomes_through,omitempty"`
 }
 
 // Append syncs and atomically replaces the bounded record under a shared flock.
@@ -52,7 +53,11 @@ func Commit(root string, events []Event, write func() error) error {
 	return locked(root, true, func(d *document) error {
 		before := *d
 		before.Events = append([]Event(nil), d.Events...)
-		for _, e := range events {
+		outcomes, notifications, err := prepareOutcomes(root, d, events)
+		if err != nil {
+			return err
+		}
+		for _, e := range notifications {
 			d.Next++
 			e.ID = "live_" + strconv.FormatUint(d.Next, 10)
 			d.Events = append(d.Events, e)
@@ -60,11 +65,15 @@ func Commit(root string, events []Event, write func() error) error {
 		if len(d.Events) > Limit {
 			d.Events = d.Events[len(d.Events)-Limit:]
 		}
-		if err := save(root, d); err != nil {
+		d.OutcomesThrough = d.Next
+		if err := outcomes.save(root); err != nil {
 			return err
 		}
+		if err := save(root, d); err != nil {
+			return errors.Join(err, outcomes.restore(root))
+		}
 		if err := write(); err != nil {
-			return errors.Join(err, save(root, &before))
+			return errors.Join(err, save(root, &before), outcomes.restore(root))
 		}
 		return nil
 	})
@@ -185,6 +194,9 @@ func ForgetJobs(root string, ids map[int]bool) error {
 			}
 		}
 		d.Events = kept
+		if err := forgetOutcomes(root, ids); err != nil {
+			return err
+		}
 		return save(root, d)
 	})
 }

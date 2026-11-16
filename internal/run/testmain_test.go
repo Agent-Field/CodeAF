@@ -25,5 +25,6 @@ func TestMain(m *testing.M) {
 	}
 	_ = os.Unsetenv("PLANDB_DB")
 	_ = os.Unsetenv("PLANDB_RUN")
+	_ = os.Unsetenv("PLANDB_TASK")
 	os.Exit(m.Run())
 }

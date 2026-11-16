@@ -29,6 +29,9 @@ func (h *Handler) repoPower(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !h.repoVisible(r, repo) {
+		if h.githubVisibilityLimited(w, r) {
+			return
+		}
 		h.fail(w, http.StatusNotFound, "repository not found")
 		return
 	}

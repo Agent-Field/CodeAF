@@ -79,23 +79,33 @@ func (a *Agent) ResolvedEffort() string {
 // the model (loop.go), so a change made while the agent is working lands on the
 // next call and never half-way through the one being answered.
 func (a *Agent) SetConversationEffort(rung string) bool {
+	took, err := a.SetConversationEffortChecked(rung)
+	a.settingError.Store(&settingResult{err: err})
+	return took
+}
+
+// SetConversationEffortChecked reports an ownership refusal before mutation.
+func (a *Agent) SetConversationEffortChecked(rung string) (bool, error) {
+	a.settingsWrites.Add(1)
+	defer a.settingsWrites.Add(-1)
 	parsed, ok := effort.Parse(rung)
 	if !ok {
-		return false
+		return false, nil
 	}
-	a.mu.Lock()
-	a.effort = parsed
-	a.mu.Unlock()
+	if err := a.CheckSettingsWork(); err != nil {
+		return false, err
+	}
+	func() { a.mu.Lock(); defer a.mu.Unlock(); a.effort = parsed }()
 	// Reapplying a stored dial on resume changes memory, not the chat's files.
 	if a.config.Place.Dir != "" {
 		if meta, err := LoadMeta(a.config.Place.Dir); err == nil && meta.Effort == parsed.String() {
-			return true
+			return true, nil
 		}
 	}
 	// Written through the same door every other fact about this conversation is
 	// written through, so the file keeps one shape and one writer.
 	a.stampEffort()
-	return true
+	return true, nil
 }
 
 // DefaultEffort is the install's own rung, as this session was launched with.
@@ -134,6 +144,11 @@ func (a *Agent) TaskEffort(id uint64) string {
 // next worker this task starts — a retry, a repair, a part handed out after the
 // change — and never reshapes a request already on the wire.
 func (a *Agent) SetTaskEffort(id uint64, rung string) error {
+	a.settingsWrites.Add(1)
+	defer a.settingsWrites.Add(-1)
+	if err := a.CheckSettingsWork(); err != nil {
+		return err
+	}
 	parsed, ok := effort.Parse(rung)
 	if !ok {
 		return fmt.Errorf("%q is not a thinking level. Use one of: %s, or auto",

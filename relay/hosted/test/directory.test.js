@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Directory } from '../src/directory.js';
+import { Fabric } from '../src/fabric.js';
 import { AMENDED, STAGE1 } from '../src/rules.js';
 import { memorySql } from './sql.js';
 import { init } from './helpers.js';
@@ -225,4 +226,33 @@ test('stale fences and heads cannot change a folder', () => {
     assert.equal(code(() => dir.publish('c1', 'dev_a', { fence, old_head, head: 'h1', folder: 'other' })), want);
     assert.deepEqual(dir.cell('c1').cell, before);
   }
+});
+
+test('putDevice and approveDevice refuse kind and methods, while Fabric slots and revocation respect Raft device state', async () => {
+  const sql = memorySql();
+  const clock = { now: 1_000_000 };
+  const dir = new Directory(sql, 'id_t', () => clock.now, AMENDED);
+  const fabric = new Fabric(sql, () => clock.now, dir);
+  const full = 'dev_' + 'a'.repeat(32);
+  const client = 'dev_' + 'b'.repeat(32);
+
+  assert.equal(code(() => dir.putDevice(full, { V: 1, kind: 'client' })), 'bad_request');
+  assert.equal(code(() => dir.putDevice(full, { V: 1, methods: ['status.get'] })), 'bad_request');
+  assert.equal(code(() => dir.approveDevice(full, { V: 1, kind: 'client' })), 'bad_request');
+  assert.equal(code(() => dir.approveDevice(full, { V: 1, methods: ['status.get'] })), 'bad_request');
+
+  dir.putDevice(full, { V: 1, name: 'workstation' });
+  dir.putClientDevice(client, { V: 1, device: client, name: 'phone', methods: ['status.get'] });
+
+  const enc = new TextEncoder();
+  const slotBody = enc.encode(JSON.stringify({ sealed: 'Y2lwaGVydGV4dA==' }));
+  assert.throws(() => fabric.putSlot({ caller: client, targetDevice: client, name: 'home', body: slotBody }));
+  fabric.putSlot({ caller: full, targetDevice: client, name: 'home', body: slotBody });
+  const got = fabric.getSlot({ caller: client, targetDevice: client, name: 'home', body: new Uint8Array() });
+  assert.equal(got.sealed, 'Y2lwaGVydGV4dA==');
+  assert.equal(got.writer, full);
+
+  dir.revoke(client, full);
+  fabric.revokeClient(client);
+  assert.equal(code(() => fabric.getSlot({ caller: client, targetDevice: client, name: 'home', body: new Uint8Array() })), 'not_found');
 });

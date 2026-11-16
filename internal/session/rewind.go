@@ -59,6 +59,11 @@ var ErrNothingToRewind = errors.New("session: nothing to rewind")
 // keeps its own cutting path. THERE IS ONE CUT IN THIS PACKAGE, and every door
 // onto it only chooses where to put it.
 func (a *Agent) Rewind() ([]DisplayEntry, error) {
+	a.settingsWrites.Add(1)
+	defer a.settingsWrites.Add(-1)
+	if err := a.CheckSettingsWork(); err != nil {
+		return nil, err
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if err := a.rewindReadyLocked(); err != nil {
@@ -142,6 +147,11 @@ func (a *Agent) RewindPoints() []RewindPoint {
 // this package quietly remove a different turn. The error names the nearest
 // valid point so the caller can say what it should have asked for.
 func (a *Agent) RewindAt(index int) ([]DisplayEntry, error) {
+	a.settingsWrites.Add(1)
+	defer a.settingsWrites.Add(-1)
+	if err := a.CheckSettingsWork(); err != nil {
+		return nil, err
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if err := a.rewindReadyLocked(); err != nil {
@@ -351,6 +361,11 @@ type rewindUndo struct {
 
 // RewindKeep uses the terminal's cut and retains one tail until another turn or cut.
 func (a *Agent) RewindKeep(index int) (string, error) {
+	a.settingsWrites.Add(1)
+	defer a.settingsWrites.Add(-1)
+	if err := a.CheckSettingsWork(); err != nil {
+		return "", err
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if err := a.rewindReadyLocked(); err != nil {
@@ -384,6 +399,11 @@ func (a *Agent) RewindKeep(index int) (string, error) {
 
 // UndoRewind refuses once anything newer uses the shortened conversation.
 func (a *Agent) UndoRewind(token string) error {
+	a.settingsWrites.Add(1)
+	defer a.settingsWrites.Add(-1)
+	if err := a.CheckSettingsWork(); err != nil {
+		return err
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if err := a.rewindReadyLocked(); err != nil {

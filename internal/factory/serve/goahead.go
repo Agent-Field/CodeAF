@@ -19,10 +19,13 @@ func (h *Handler) goAheadRoutes() {
 	h.postJob("waits_on", h.config.Store != nil, h.onlyOwner(h.setWaits))
 }
 
-// features lists what this factory does beyond its contract. Both words need
-// the factory's store, which is where policies and waits are kept.
+// features lists what this factory does beyond its contract. The go-ahead
+// words need the factory's store, which is where policies and waits are kept.
+// keyed_create does not: the rule that a keyed create answered before its
+// first write is not kept lives in the request path (keepReplay), and an
+// engine sends a create key only to a factory that lists it.
 func (h *Handler) features(w http.ResponseWriter, r *http.Request) {
-	out := api.Features{Features: []string{}}
+	out := api.Features{Features: []string{api.FeatureKeyedCreate}}
 	if h.config.Store != nil {
 		out.Features = append(out.Features, api.FeatureGroupPolicy, api.FeatureWaitsOn)
 	}

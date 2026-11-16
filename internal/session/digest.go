@@ -31,7 +31,12 @@ type Digest struct {
 	// Usage is one row per directly billed usage line, in file order.
 	Usage []UsageLine
 
-	folded      Usage
+	folded Usage
+	// Late receipts were banked outside every usage seal. Only Spend adds them;
+	// Usage stays the usage-line list its ledger readers already know.
+	lateUSD    float64
+	lateTokens int
+
 	placeholder string
 }
 
@@ -44,6 +49,7 @@ var digestFolds = map[string]foldFunc{
 	"session": foldHeader,
 	"title":   foldTitle,
 	"usage":   foldUsage,
+	"call":    foldCall,
 	"message": foldMessage,
 }
 
@@ -125,6 +131,14 @@ func foldUsage(d *Digest, _ []byte, e sessionEntry) {
 	})
 }
 
+func foldCall(d *Digest, _ []byte, e sessionEntry) {
+	if e.Call == nil || e.Call.Arm == "" {
+		return
+	}
+	d.lateUSD += e.Call.CostUSD
+	d.lateTokens += e.Call.Input + e.Call.Output
+}
+
 func foldMessage(d *Digest, _ []byte, e sessionEntry) {
 	if e.Role != "user" || e.Note {
 		return
@@ -140,15 +154,15 @@ func parseStamp(s string) time.Time {
 	return t
 }
 
-// Spend is the transcript's own total: money and input plus output tokens, the
-// two figures [Meta] stamps.
+// Spend is the transcript's own total: usage seals plus late-receipt call
+// lines, in money and input plus output tokens, the two figures [Meta] stamps.
 func (d Digest) Spend() (usd float64, tokens int) {
 	usd, tokens = d.folded.CostUSD, d.folded.Input+d.folded.Output
 	for _, u := range d.Usage {
 		usd += u.USD
 		tokens += u.Input + u.Output
 	}
-	return usd, tokens
+	return usd + d.lateUSD, tokens + d.lateTokens
 }
 
 // Derive lays what the transcript says over m and returns it. Fields the

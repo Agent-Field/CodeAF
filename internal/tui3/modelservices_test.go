@@ -1365,6 +1365,7 @@ func TestDisconnectingAServiceLeavesTheConversationOnSomethingItCanReach(t *test
 			a := modelServiceTestAppWithAgent(t, dir, agent.Model(), sources,
 				[]Model{{ID: config.DefaultModel}}, agent)
 			a.disconnectModelService("deepseek")
+			acknowledgeModelChanges(t, a)
 			if got := noteSaying(t, a, "is disconnected"); got != "deepseek-direct is disconnected · its models are gone from the picker" {
 				t.Fatalf("disconnect acknowledgement = %q", got)
 			}
@@ -1673,6 +1674,7 @@ func TestDisconnectingReplacesTheLiveClientBeforeTheNextRequest(t *testing.T) {
 	drainModelServiceTurn(t, agent, "before disconnect")
 	a := modelServiceTestAppWithAgent(t, dir, agent.Model(), sources, []Model{{ID: config.DefaultModel}}, agent)
 	a.disconnectModelService("deepseek")
+	acknowledgeModelChanges(t, a)
 	drainModelServiceTurn(t, agent, "after disconnect")
 	if got := completionRequests(directServer); len(got) != 1 || got[0].Bearer != "Bearer sk-direct-1234567890" {
 		t.Fatalf("removed service received another request or wrong bearer: %+v", got)

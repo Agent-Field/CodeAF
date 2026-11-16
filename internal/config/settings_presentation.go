@@ -70,6 +70,9 @@ func (s Setting) ChatPresentation() SettingPresentation {
 		p.Label = "sign commits, pull requests and issues"
 	case KeyAttributionModel:
 		p.Label = "include model in commit attribution"
+	case KeyIdleHandoff:
+		p.Label = "idle handoff"
+		p.Activation = "Applies immediately"
 	case KeyHistoryEnabled:
 		p.Category, p.Label = "Privacy", "save input history"
 	case KeyDraftPersist:
@@ -228,6 +231,8 @@ func (s Setting) ChatPresentation() SettingPresentation {
 		p.Aliases = append(p.Aliases, "budget", "cost", "limit")
 	case KeyHistoryEnabled, KeyDraftPersist:
 		p.Aliases = append(p.Aliases, "privacy", "saved messages")
+	case KeyIdleHandoff:
+		p.Aliases = append(p.Aliases, "handoff", "idle release", "continue here", "other computers", "sync")
 	}
 	return p
 }

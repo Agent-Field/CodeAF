@@ -138,6 +138,7 @@ func TestBashWorkerResolvesTheRunsPlandbOverAHostOne(t *testing.T) {
 // The command cd's to a fresh directory that holds no store and no ancestor
 // store, so only the bound PLANDB_DB can put the row in the run's plan — and the
 // assertion reads the run's store, not the CLI's stdout.
+// L-LOOP2 C3a: a changed cwd does not change the worker's default parent.
 func TestBashWorkerPlandbWritesTheRunsStoreFromAnyCwd(t *testing.T) {
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	t.Setenv("CODEAF_PLANDB_BIN", realPlandbDoor(t))
@@ -145,8 +146,8 @@ func TestBashWorkerPlandbWritesTheRunsStoreFromAnyCwd(t *testing.T) {
 	store := runOpenStore(t)
 	storeDir := filepath.Dir(store.Path())
 	// THE WORKER RUNS ON A LEAF, because this test's own first command adds a
-	// task under the root: a root with an open child cannot finish, and the
-	// leaf's own `plandb done` is what ends the loop.
+	// task under itself. It parks after the handoff; the supervisor would wake
+	// that composite only after its new child lands.
 	if _, err := store.AddMany([]plandb.TaskSpec{leafDone("outside")}); err != nil {
 		t.Fatalf("add the leaf: %v", err)
 	}
@@ -160,7 +161,7 @@ func TestBashWorkerPlandbWritesTheRunsStoreFromAnyCwd(t *testing.T) {
 			return toolReply(bashArguments(t, command)), nil
 		},
 		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return toolReply(finishCommand("outside", "added the task")), nil
+			return toolReply(bashArguments(t, "plandb wait --agent outside")), nil
 		},
 	}}
 	worker := run.NewBashWorker(store, t.TempDir(), "test/model", seat)
@@ -179,6 +180,9 @@ func TestBashWorkerPlandbWritesTheRunsStoreFromAnyCwd(t *testing.T) {
 	found := false
 	for _, task := range fresh.Tasks() {
 		if task.Title == title {
+			if task.ParentID != "outside" || task.AddedByTask != "outside" {
+				t.Fatalf("outside-cwd addition escaped its worker: %+v", task)
+			}
 			found = true
 			break
 		}

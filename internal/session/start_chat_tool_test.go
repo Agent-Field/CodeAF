@@ -44,6 +44,47 @@ func TestStartChatResolvesModelAndEmitsOnlyARequest(t *testing.T) {
 	}
 }
 
+// C1, C5: omitting a new chat's model inherits the configured selection of a
+// temporary parent; an explicit model still names the person's chosen model.
+func TestStartChatInheritsConfiguredModelFromTemporaryParent(t *testing.T) {
+	for _, explicit := range []bool{false, true} {
+		t.Run(map[bool]string{false: "inherited", true: "explicit"}[explicit], func(t *testing.T) {
+			args, want := `{"brief":"Read README"}`, "test/model"
+			if explicit {
+				args, want = `{"brief":"Read README","model":"chosen/model"}`, "chosen/model"
+			}
+			c := chained(nil,
+				func(context.Context, []ai.Message) (*ai.Response, error) {
+					return toolResponse("new-chat", "start_chat", args), nil
+				},
+				func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("Requested."), nil },
+			)
+			a, _ := newTestAgent(t, c, func(cfg *Config) {
+				cfg.Interactive = true
+				cfg.Place = Place{Dir: t.TempDir()}
+				cfg.TaskModels = func() []string { return []string{"chosen/model"} }
+			})
+			if err := a.UseModelForNow("available/model"); err != nil {
+				t.Fatal(err)
+			}
+			_, _ = a.loadCapability("chats")
+			stream, err := a.Submit(t.Context(), "start another chat")
+			if err != nil {
+				t.Fatal(err)
+			}
+			var request *ChatStart
+			for _, event := range collect(t, stream) {
+				if event.Kind == EventChatStart {
+					request = event.ChatStart
+				}
+			}
+			if request == nil || request.Model != want || a.Model() != "available/model" || a.ConfiguredModel() != "test/model" {
+				t.Fatalf("request=%+v live=%q configured=%q", request, a.Model(), a.ConfiguredModel())
+			}
+		})
+	}
+}
+
 func TestStartChatRefusesUnknownAndAmbiguousModels(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
 		c.TaskModels = func() []string { return []string{"moonshotai/kimi-k3", "moonshotai/kimi-k3.1-pro"} }

@@ -55,6 +55,12 @@ type Device struct {
 	// Codeaf-Chat-Notes.
 	Outbox []Note   `json:"outbox,omitempty"`
 	Took   []string `json:"took,omitempty"`
+
+	// Kind is "" for a full device and "client" for a scoped client that may
+	// only read its slots and append to its call queue. Methods lists the queue
+	// methods a scoped client may invoke.
+	Kind    string   `json:"kind,omitempty"`
+	Methods []string `json:"methods,omitempty"`
 }
 
 // Note is one message waiting in a device's outbox for whichever computer

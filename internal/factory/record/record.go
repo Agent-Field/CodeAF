@@ -24,6 +24,7 @@ import (
 
 const (
 	StepEdited           = "step_edited"
+	ContextSet           = "context_set"
 	StepStopped          = "step_stopped"
 	StepRerun            = "step_rerun"
 	HandOffNotNow        = "hand_off_not_now"
@@ -209,6 +210,7 @@ func (r *Record) Append(ctx context.Context, event Event) (Event, error) {
 
 func validate(e Event) error {
 	switch e.Kind {
+	case ContextSet:
 	case RunAsNew, StopAfterStepChanged, StepEdited, StepStopped, StepRerun, HandOffNotNow, Dismissed, Assigned, Unassigned, Nudged, PriorityChanged, BudgetRaised, BudgetChanged, Undone, Started, Held, Resumed, Stopped, AutoStarted, AskedFirst, Routed, RepoSet, Approved, Answered, Posted, Took, Dropped, ClosedLocally, Restored, Released, RequestChanges, PRMerged, PRClosed, SourceClosed, MergeAsked, MergeQueued, MergeRefused, StepFailed, RunnerAdded, RunnerChanged, ReposChanged, LinkCreated, LinkRevoked, SessionsRevoked, OperatorClaimed, GitHubGranted, PRReady:
 	default:
 		return fmt.Errorf("factory record: unknown event kind %q", e.Kind)
@@ -219,6 +221,7 @@ func validate(e Event) error {
 		return errors.New("factory record: actor must be person, agent or factory")
 	}
 	switch e.Verb {
+	case "set context":
 	case "ran as new", "edited steps", "reran step", "put away hand-off", "started", "held", "resumed", "stopped", "asked", "approved", "answered", "published", "assigned", "dropped", "brought back", "unassigned", "requested changes", "merged", "closed", "closed locally", "pressed merge", "sent merge", "refused merge", "failed", "added runner", "changed runner", "connected repo", "disconnected repo", "created access link", "revoked access link", "revoked sessions", "dismissed", "nudged", "changed priority", "raised budget", "changed budget", "changed spending stop", "undone", "claimed factory", "granted GitHub read access", "marked ready for review", "routed", "set repository":
 	default:
 		return errors.New("factory record: unknown Activity verb")

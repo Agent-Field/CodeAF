@@ -90,6 +90,9 @@ const callDeadline = 10 * time.Second
 // it has to be: the surface asks synchronous getters from its update loop while
 // a turn's events are arriving on the reader.
 type Client struct {
+	settingError atomic.Pointer[settingResult]
+	clientTools  clientToolLink
+
 	savingNotices []string
 
 	// host keeps the typed destination as the fallback until the window chooses
@@ -304,6 +307,8 @@ func newClient(host string, hello Hello) *Client {
 	}
 	hello.Encodings = []string{frameEncodingGzip}
 	return &Client{
+		clientTools: clientToolLink{owner: rand.Text()},
+
 		host:    strings.TrimSpace(host),
 		hello:   hello,
 		calls:   map[uint64]chan result{},
@@ -751,6 +756,7 @@ func (c *Client) Close() error {
 	c.closing = true
 	conn := c.conn
 	c.mu.Unlock()
+	c.endClientToolCalls()
 	// A CLOSE ENDS THE ROAMING TOO, and it has to end it now rather than at the
 	// end of whatever backoff the redial loop is sitting in: the person quit,
 	// and a client that went on dialling a machine nobody is watching would be
@@ -885,6 +891,8 @@ func (c *Client) read() {
 			return
 		}
 		switch frame.Kind {
+		case clientToolCallKind, clientToolEndedKind:
+			c.clientToolFrame(frame)
 		case "observed", "observerClosed":
 			c.observerFrame(frame)
 		case "sideAskDelta":
@@ -1062,6 +1070,7 @@ func (c *Client) streamLocked(id uint64) *stream {
 // a channel left open would leave the surface spinning on a turn nobody is
 // running.
 func (c *Client) bury(cause error) {
+	c.endClientToolCalls()
 	c.closeObservers()
 	c.mu.Lock()
 	if c.dead != nil {
@@ -1591,10 +1600,15 @@ type Agent struct{ c *Client }
 
 // CheckWork reads the session's own gate. An older engine has no new call.
 func (a *Agent) CheckWork() error {
+	return a.CheckWorkContext(context.Background())
+}
+
+// CheckWorkContext bounds an ownership check made before a surface sends.
+func (a *Agent) CheckWorkContext(ctx context.Context) error {
 	if !a.c.Welcome().WorkAdmission {
 		return nil
 	}
-	_, err := a.c.call(context.Background(), MethodCheckWork, nil)
+	_, err := a.c.call(ctx, MethodCheckWork, nil)
 	return err
 }
 
@@ -2137,6 +2151,13 @@ func (a *Agent) InterruptFor(door session.StopDoor) {
 	_, _ = a.c.call(nil, MethodInterrupt, InterruptArgs{Door: string(door)})
 }
 
+// InterruptWithin is a person's stop with its bound on it: the engine abandons
+// a turn that has not let go by then ([InterruptArgs]). Like every stop it
+// does not wait and reports nothing.
+func (a *Agent) InterruptWithin(grace time.Duration) {
+	_, _ = a.c.call(nil, MethodInterrupt, InterruptArgs{Door: string(session.StopByPerson), Within: grace.Milliseconds()})
+}
+
 // AnswerLaneOffer answers the question a stalled PINNED lane raises: the
 // machine this person named has gone quiet, there is somewhere else to go, and
 // a pin is asked rather than overridden. The `y` they pressed takes this road
@@ -2288,8 +2309,31 @@ func (a *Agent) ModelIdentity() session.ModelIdentity {
 // what is assumed here; the assumption only covers the round trip, which is the
 // gap in which a person who pressed a key is looking at the row it changed.
 func (a *Agent) SetModel(model string) {
+	a.c.settingError.Store(&settingResult{err: a.SetModelChecked(model)})
+}
+
+// SetModelChecked reports this call's ownership refusal with the ordinary RPC policy.
+func (a *Agent) SetModelChecked(model string) error {
+	previous := a.Model()
 	a.c.facts.setModel(model)
-	_, _ = a.c.call(nil, MethodSetModel, model)
+	_, err := a.c.call(nil, MethodSetModel, model)
+	var refusal *executor.WorkRefusal
+	if !errors.As(err, &refusal) {
+		err = nil
+	} else {
+		a.c.facts.setModel(previous)
+	}
+	return err
+}
+
+type settingResult struct{ err error }
+
+// SettingError reads the last ownership refusal without crossing the wire.
+func (a *Agent) SettingError() error {
+	if result := a.c.settingError.Load(); result != nil {
+		return result.err
+	}
+	return nil
 }
 
 // SetSpendRail waits for the engine to bind the new conversation limit before

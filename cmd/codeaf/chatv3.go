@@ -2983,6 +2983,23 @@ func runChatV3Once(ctx context.Context, cfg session.Config, workspace, text, lev
 		return reported(err)
 	}
 	agent.SetReasoning(level)
+	live := chatOnceLive
+	usageBefore := agent.Usage()
+	var answer *lockedWriter
+	// Closing settles late calls; serialize after both the agent and ledger close.
+	defer func() {
+		if answer == nil {
+			return
+		}
+		failure := onceFailure
+		if failure == nil {
+			failure = onceErr
+		}
+		used := agent.Usage()
+		usage := envelopeUsage{SpendUSD: used.CostUSD - usageBefore.CostUSD,
+			Tokens: envelopeTokens{In: used.Input - usageBefore.Input, Out: used.Output - usageBefore.Output}}
+		writeOnceEnvelope(os.Stdout, answer.String(), cfg.Model, usage, failure)
+	}()
 	// --events' LAST COPY WAITS FOR THE RECORD TO BE CLOSED. Closing the
 	// agent and the usage ledger still writes lines — a background helper's
 	// usage row lands a moment after the answer — and a copy that stopped
@@ -3029,19 +3046,10 @@ func runChatV3Once(ctx context.Context, cfg session.Config, workspace, text, lev
 		}
 	})
 
-	live := chatOnceLive
 	var reply io.Writer = os.Stdout
-	var answer *lockedWriter
 	if live.json {
 		answer = &lockedWriter{}
 		reply = answer
-		defer func() {
-			failure := onceFailure
-			if failure == nil {
-				failure = onceErr
-			}
-			writeOnceEnvelope(os.Stdout, answer.String(), cfg.Model, failure)
-		}()
 	}
 	var steers sync.WaitGroup
 	finishSteer, finishCopy := startOnceLive(agent, cfg.SessionFile, live, asker, reply, os.Stderr, &steers)

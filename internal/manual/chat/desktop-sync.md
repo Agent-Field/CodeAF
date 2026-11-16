@@ -97,7 +97,7 @@ engine's sentence and does not add a computer.
 A computer with submitted chats and its own pairing keys refuses ordinary
 pairing and explains replacement. Confirm `--replace` to join the other set:
 local chats stay here but stop syncing, shared memories and settings clear,
-and local provider keys stay here. Use Continue here to move a shared chat. A failed
+and local provider keys stay here. Use Continue here to move a shared chat (or, when **Settings → General → idle handoff** / `CODEAF_IDLE_HANDOFF=1` is turned on — off by default — a shared chat no computer holds advertises `can_open` and opens directly through `agents.open` with no Continue-here step; use **Move here** or **Continue here** when another computer still holds it). A failed
 upload stays saved locally and is retried while codeaf is open or on the next
 start. Sync status says `Sharing this computer's chats.` during the pass and
 `Some chats could not be shared yet. They are still saved here; codeaf will try
@@ -131,22 +131,10 @@ Chats from other computers appear under On your other computers, with the
 computer's name. An online dot appears only when the engine knows its presence.
 Finished movable chats saved before pairing are shared after pairing and when
 the paired app engine starts. This does not open the chat or start a new turn.
-An open, idle chat says `open on <name>`; this describes where it is open and
-does not mean a reply is running. While a reply runs, the engine advertises
-`working: true`, including for a chat just continued
-onto that computer. It clears the working flag after the reply finishes and its
-last saved turn reaches the relay. Closing a chat does not make its computer
-offline. `<name> offline` appears only when that computer is known to be offline;
-unknown presence has no online dot or offline claim. The saved time is the time
-of the newest shared saved turn, shown in your local time, rather than the time
-it was copied to the relay. An unknown saved time is left out. The engine's
-takeover sentence adds holder or pending-work facts without repeating a date or age.
-After a relay starts or restarts, computers it has not heard from have unknown
-presence for up to 75 seconds. They have no offline line during that window.
-An observed computer whose connection actually lapses can still be marked offline.
-Select a chat to preview its title, saved time and engine sentence. Continue
-here moves it through the engine, then opens the returned local chat. Its
-history and working copies use the same continuation path as the terminal.
+An open, idle chat another computer still holds says `open on <name>` (`held on <name>` in the terminal); this says where it is open, not that a reply is running. By default (`idle handoff` is off by default; turn it on in **Settings → General → idle handoff** or with `CODEAF_IDLE_HANDOFF=1`), an open idle chat keeps its hold; with `idle handoff` on in paired builds, an idle chat lets go about 2 seconds after going idle once saved to the sync service, so rows stay `open on <name>` only before release, while unsaved work keeps the hold, when `idle handoff` is off, or on older builds. While a reply runs, the engine advertises `working: true` (`working on <name>`), including right after a move, and clears it once the reply finishes and its last saved turn reaches the sync service. Closing a chat does not make its computer offline; `<name> offline` appears only when that computer is known to be offline, and unknown presence omits both dot and offline line. The saved time is the newest shared saved turn's time in your local time, not upload time, and is omitted when unknown. The engine's takeover sentence adds holder or pending-work facts without repeating a date or age. After the sync service starts or restarts, computers it has not heard from have unknown presence (no offline line) for up to 75 seconds; an observed connection that lapses can still be marked offline.
+With `idle handoff` on, a shared chat explicitly released by its holder advertises `can_open: true` and `agents.open` pulls and opens it directly with no Continue-here step (while `idle handoff` is off, `can_open` is not advertised and released chats use Continue here). A lapsed hold never advertises `can_open`, including when its holder was working or its last working state is unknown. Select a held or lapsed chat (or use a preview-only client, or when `idle handoff` is off) to see its title, saved time and engine sentence: **Move here** or **Continue here** moves it through the engine and opens the returned local chat, using the same continuation path as the terminal.
+
+## Continuing a desktop chat here — fences, retries and local copies
 
 An already local chat that moved away keeps its place and becomes read-only.
 Continue here is available when the engine says it can move. Continuing here
@@ -162,11 +150,11 @@ Completed turns are shared while the chat stays open, including after a move.
 
 ## Send a message to a chat working on another computer — queued there, runs after the turn
 
-While a chat is open or working on another computer, the desktop composer
+While another computer still holds a chat (working, or open while `idle handoff` is off, before idle release, or on an older build), the desktop composer
 writes to that computer instead of being read-only. The field says
 `Message <name>`, and where the model picker usually is, a chip beside Send
 says where it goes: `To <name> · after this turn` while a turn runs there,
-`To <name>` while the chat is only open. Rest on the chip or press it to see
+`To <name>` while the chat is only held open. When `idle handoff` (`CODEAF_IDLE_HANDOFF=1`, off by default) is on and an idle chat lets go of its hold, no computer holds it: opening it via `agents.open` pulls it here directly, and sending in the window that released it takes it back in place. Rest on the chip or press it to see
 which computer it is (`<name> · your Linux computer`), what happens to a
 message, and `Continue here instead`. The chat does not move. The
 message goes into the chat's queue on that computer, so it runs when the
@@ -203,14 +191,19 @@ Limits and refusals:
 - A message is at most 2000 characters: `Messages to another computer are limited to 2000 characters.`
 - A sync service that does not carry messages says `This sync service can't carry a message to another computer yet. Bring the chat here to write to it.`
 - Only an app engine (the desktop app, or `codeaf app`) on the holding computer takes messages. A terminal chat there does not; the message waits.
-- A chat whose computer is offline stays read-only, and a handed-over chat's next message still moves it here.
+- A chat whose holding computer is offline with a live hold or a lapsed hold stays read-only until you continue it here, including when its holder was working. With `idle handoff` on (`CODEAF_IDLE_HANDOFF=1`, off by default), an explicitly released chat opens here directly through `agents.open` on `can_open` rows, and new work in the window that released its own idle hold takes it back in place (with `idle handoff` off, a handed-over chat's next message moves it here via Continue here).
 
-## Does an idle desktop chat keep its hold on the relay
+## Does an idle desktop chat keep its hold on the sync service
 
-A chat opened for viewing keeps its conversation and relay hold until it is
-explicitly closed, including while its tab is hidden. Heartbeats renew the same
-hold without releasing it or moving its fence. Reading the chat does not cause
-ownership changes or repeat unchanged chat rows.
+By default (**Settings → General → idle handoff** is off), a chat opened for viewing keeps its conversation and sync-service hold until it is explicitly closed, including while its tab is hidden; heartbeats renew the same hold without releasing it or moving its fence, and reading the chat does not cause ownership changes or repeat unchanged chat rows.
+
+When you turn **idle handoff** on in `/settings` or with `CODEAF_IDLE_HANDOFF=1` with two or more paired computers (and sync storage on), an idle chat lets go of its hold about 2 seconds after it goes idle once its journal, working files, shared memory and settings are on the sync service, including when its tab stays open. The conversation remains open as a reader. Running turns, queued or steering work, running tasks or jobs, deferred writes and failed uploads retain the hold. Rebuildable files keep their existing transfer exclusions.
+
+New work in the window that released its idle hold takes the unchanged chat back in place, with no prompt, before recording it or calling a model. If another computer took it, the existing moved notice and held-elsewhere refusal name that computer. A hold that merely lapsed (not released by its window) admits nothing until you reopen or continue it. A released window stays read-only when ownership cannot be confirmed. Unpaired, sync-off, single-device and default (`idle handoff` off) homes keep their existing hold and renewal behavior.
+
+With `idle handoff` on, through `agents.open` and `can_open` rows, the engine opens an explicitly released shared chat on another paired computer directly with no Continue-here step. A lapsed hold keeps Continue here, including when its holder was working or its last working state is unknown. App versions that only preview shared chats (or homes with `idle handoff` off) still offer Continue here in that preview. A chat another computer still holds (`held on <device>` / `working on <device>`, including idle chats when `idle handoff` is off or on older builds) continues to ask with **Move here** or **Continue here** as your choice.
+
+## Background desktop conversations release after ten idle minutes
 
 A conversation opened only for background work is let go after ten idle minutes;
 the sweep checks every 30 seconds. It stays released until work needs it again.
@@ -233,8 +226,14 @@ sync or repeat settled preferences.
 While the relay is unreachable, an open chat continues to run and save on this
 computer. Unpublished turns retry automatically with waits capped at 60 seconds, without
 another send, quit or restart. Once an ownership check finds the hold expired,
-the window stops admitting work. Use Continue here to acquire a new hold.
-Reopening a chat also acquires a new ownership fence.
+an idle window stops admitting work. In an open terminal chat, the next Enter
+conditionally reopens it at a new fence and sends the kept draft without a
+Continue here card. A desktop can use Continue here to acquire a new hold.
+Reopening a chat also acquires a new ownership fence. If this computer's renewal
+or the relay's renewal at restart reaches the unchanged hold before an ownership
+check observes expiry, the open chat keeps its fence and uploads its local turns.
+
+A turn that is already running when the hold is observed to have expired attempts a conditional in-place reacquire at a new fence when no other computer holds the chat, clearing the outage notice and continuing on the original chat without a copy branch; if another computer holds the chat, finished calls are kept as a branch. An upload never overwrites another computer's newer hold and never renews a lapsed lease by publishing. If the service is down, those saved turns remain local and retry when it returns.
 
 If another computer continued the chat meanwhile, this window becomes read-only
 and names that computer. Work saved here during the outage is kept through the
@@ -265,11 +264,10 @@ If moving the chat fails, the app says
 `This chat could not be moved to this computer.` Technical causes are kept in
 the error details. A plain model setup reason is carried in the visible message.
 If installation failed after acquisition, the chat is released.
-The computer without the installed chat still offers Continue here and names the
-last holder without claiming it is open there. The original open chat says
-`This chat is available to continue here.` Its next send can acquire the free
-lease when its saved head still matches the relay.
-If another computer saved newer work, use Continue here to restore that work.
+The computer without the installed chat can choose Continue here (or, with `idle handoff` on, open the now-free row directly through `agents.open` / `can_open`), and the row names the
+last holder without claiming it is open there. A window that was displaced by that move attempt says
+`This chat is available to continue here.` Because another computer's move displaced it rather than its own idle release, it admits nothing until you reopen or continue it here.
+If another computer saved newer work, reopening or Continue here restores that work.
 
 ## Shared settings after pairing — model, effort and spending limits
 

@@ -49,6 +49,11 @@ func (a *Agent) RenameByPerson(title string) error {
 	if title == "" {
 		return errors.New("a name needs some words")
 	}
+	a.settingsWrites.Add(1)
+	defer a.settingsWrites.Add(-1)
+	if err := a.CheckSettingsWork(); err != nil {
+		return err
+	}
 	a.mu.Lock()
 	if a.closed {
 		a.mu.Unlock()

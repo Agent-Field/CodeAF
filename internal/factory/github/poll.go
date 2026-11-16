@@ -199,6 +199,14 @@ func TroubleWords(err error) string {
 			return "token refused"
 		case http.StatusNotFound:
 			return "repository not found"
+		case http.StatusTooManyRequests:
+			return "rate limited"
+		case http.StatusForbidden:
+			// GitHub also answers 403 for a spent limit; only one that says
+			// when to come back is a limit and not a refusal.
+			if apiErr.RetryAfter > 0 {
+				return "rate limited"
+			}
 		}
 	}
 	return "not reachable"

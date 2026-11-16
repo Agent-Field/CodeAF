@@ -27,6 +27,7 @@ type Seen struct {
 	Head   string `json:"head,omitempty"`
 }
 type ChatRow struct {
+	CanOpen    bool            `json:"can_open,omitempty"`
 	Cell       string          `json:"cell"`
 	Title      string          `json:"title"`
 	LocalAgent string          `json:"local_agent,omitempty"`

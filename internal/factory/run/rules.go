@@ -156,9 +156,10 @@ func settledRules(it factory.Item, f pipeline.File, err error) *factory.StartRul
 }
 
 // settledCap lowers the budget a job took while its rules were unread to the
-// file's, when the file's is lower. A person's own budget is never the default.
+// file's, when the file's is lower. A person's own budget is never the default,
+// even when it is the default's amount ([factory.Item.CapChosen]).
 func settledCap(it factory.Item, f pipeline.File, err error) float64 {
-	if err == nil && it.Cap == factory.DefaultJobBudget && f.DefaultBudget > 0 && f.DefaultBudget < it.Cap {
+	if err == nil && !it.CapChosen && it.Cap == factory.DefaultJobBudget && f.DefaultBudget > 0 && f.DefaultBudget < it.Cap {
 		return f.DefaultBudget
 	}
 	return it.Cap

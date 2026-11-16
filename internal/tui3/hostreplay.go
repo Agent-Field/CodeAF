@@ -79,6 +79,9 @@ func (a *app) finishHostedReplay() tea.Cmd {
 		}
 	}
 	if !a.hostReplayLoading {
+		if a.deferredModelRename != nil {
+			a.ensureAvailableModel()
+		}
 		deferred := a.hostDeferred
 		a.hostDeferred = nil
 		for _, start := range deferred {

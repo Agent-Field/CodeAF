@@ -852,6 +852,8 @@ type Event struct {
 	// a surface reads as "unknown" and never as "nothing happened".
 	Compaction *CompactionFact `json:"Compaction,omitempty"`
 
+	// Tool lifecycle events can also carry the conversation's declared client-tool
+	// category, so surfaces need no name-only guess for those dynamic tools.
 	// Category is the FAMILY OF WORK an EventCaption's sentence is about — one
 	// word from the closed list in actioncategory.go — and it is zero on every
 	// other kind.
@@ -1717,6 +1719,9 @@ type Config struct {
 	// bashAfter lets tests fire the real promotion callback after the command
 	// starts. Production leaves it nil and arms time.AfterFunc as before.
 	bashAfter func(time.Duration, func()) *time.Timer
+	// AbandonAfter lets tests hold and fire the bounded stop's timer itself.
+	// Production leaves it nil and arms time.AfterFunc at the same grace.
+	AbandonAfter func(time.Duration, func()) *time.Timer
 	// teamWatchManual leaves traffic-clock advances to tests calling
 	// teamWatchTick. Production leaves it false and starts the real ticker.
 	teamWatchManual bool
@@ -2567,6 +2572,14 @@ type Config struct {
 	// foremanFloorDoor), on a launch that has a Factory door.
 	Floor FloorDoor
 
+	// ClientTools is the door onto tools an app attached to this conversation. Nil is no door.
+	ClientTools ClientToolDoor
+
+	// ownWork says the page is composed for a conversation told only about its
+	// own work (scope.go). Only the agent sets it, from the scope it last read,
+	// so the page and the tasks description cannot disagree.
+	ownWork bool
+
 	// factoryWindow overrides how long one factory card holds its tool call
 	// open, for tests that watch the window end. Zero is [factoryCardWindow].
 	factoryWindow time.Duration
@@ -2798,6 +2811,8 @@ type Config struct {
 // events — every Submit streams, whether it started the turn or steered it.
 // The methods live in agent.go; the loop they drive lives in loop.go.
 type Agent struct {
+	settingError       atomic.Pointer[settingResult]
+	settingsWrites     atomic.Int64
 	modelChanges       sync.Mutex
 	conversationModels *ConversationModels
 	modelRequestSlot   string
@@ -2833,7 +2848,10 @@ type Agent struct {
 	knowledgeVault     *knowledge.Vault
 	knowledgeJournal   *knowledgeJournal
 	taskComputerPrompt bool
-	remoteAckJobs      sync.WaitGroup
+	// ownWorkTold is the scope the page and the tasks description last told the
+	// model (scope.go). It is atomic because belts are built outside a.mu.
+	ownWorkTold   atomic.Bool
+	remoteAckJobs sync.WaitGroup
 	// knowledgeWake is signalled after each journal line reaches the file.
 	// initKnowledge creates it once before the agent is reachable and never
 	// replaces it, so writers read it without a lock.
@@ -2964,21 +2982,20 @@ type Agent struct {
 	systemAt  time.Time
 	systemOwn bool
 	// tools is the belt and definitions is its wire form, built once at
-	// construction — rebuilding them per step would re-marshal every schema on
-	// the hot path — and thereafter grown only at the tail under armMu
-	// (connect.go), with one exception: the team verbs leave when the role that
-	// gave them does (team.go's [Agent.retireTeamTools]).
+	// construction. Built-ins grow under armMu (connect.go), before the replaceable
+	// client-tool tail. Team verbs leave when their role ends (team.go).
 	//
 	// Both are COPY-ON-WRITE: arming allocates a new array and swaps the header,
 	// so a reader that took a snapshot under armMu may walk it without the lock
 	// and can never see a half-written slice. Nothing already in either is ever
-	// moved or rewritten, and nothing but a team verb is removed, because the
-	// definition block rides at the front of every request and a definition that
-	// shifts re-bills the whole prompt behind it (internal/exec's tools.go states
-	// the law).
+	// moved or rewritten in place. Built-ins keep their order while client sets
+	// can be replaced. The definition block rides at the front of every request,
+	// so a definition that shifts re-bills the whole prompt behind it
+	// (internal/exec's tools.go states the law).
 	presentation *presentationIndex
 	tools        []bare.Tool
 	definitions  []ai.ToolDefinition
+	clientTools  clientToolState
 	// served is what the belt cannot say about the tools an ACCOUNT named
 	// rather than this build (served.go): whose account each one is, what the
 	// account calls it, and which capability governs it. Keyed by the name the
@@ -3094,7 +3111,7 @@ type Agent struct {
 	// atomic is "closed, therefore no new job" (see [Agent.startMemoryJob]).
 	memoryCtx  context.Context
 	memoryStop context.CancelFunc
-	memoryJobs sync.WaitGroup
+	memoryJobs sessionJobs
 
 	// laneStop cancels the session's lane context, including probes. laneDone
 	// joins the optional sheet beat, whose cache writes must finish before Close
@@ -3200,6 +3217,9 @@ type Agent struct {
 	// the one call that must always be answerable.
 	mu    sync.Mutex
 	model string
+	// modelForNowConfigured retains the saved choice while model serves this run.
+	modelForNowConfigured string
+	modelForNowProvider   string
 	// reasoning is how hard each model is asked to think, by model id, and it
 	// is a MAP rather than a field for the reason agent.go's block states: the
 	// level is a choice about a model, and a /model switch must not carry one
@@ -3246,6 +3266,8 @@ type Agent struct {
 	// tool calls in one turn that both find no copy would otherwise both make
 	// one — leaving a registered worktree that nothing holds a record of.
 	treeCut sync.Mutex
+	// taskStarting covers admission and preparation before a task has a row.
+	taskStarting atomic.Int64
 	// toldStanding is which folders' working copies THIS PROCESS has already
 	// told the model about (standingbelt.go). It is not on the meta on purpose:
 	// what it tracks is whether the model in front of it has been told, and a
@@ -3503,6 +3525,11 @@ type Agent struct {
 	// [Agent.factoryLead]), asked of its run door and kept once known.
 	lead  factoryLeadSeat
 	usage Usage
+	// foldedTaskUSD is the part of usage's dollars that is other tasks' bills
+	// folded in when they landed ([Agent.foldTaskUsage]). Those dollars are
+	// already on their own task's row, so a task tree's spend total takes them
+	// off this worker's figure to count each dollar once ([TaskNode.treeOwnSpend]).
+	foldedTaskUSD float64
 	// answered is the session's money once per model that ANSWERED it, every
 	// call banked under the name the response itself gave (competence.go's
 	// [Agent.AnsweredUsage]). It sums to usage's figures call for call.
@@ -3659,6 +3686,17 @@ type Agent struct {
 	// steerAfter lets a test hold and fire the scheduled second look itself.
 	// Production leaves it nil and uses time.AfterFunc at the same grace.
 	steerAfter func(time.Duration, func()) *time.Timer
+	// abandonTimer is the one armed second-stage timer of a bounded stop
+	// ([Agent.InterruptWithin]). Stopped when the turn ends on its own, when
+	// the turn is abandoned, and on Close.
+	abandonTimer *time.Timer
+	// abandonAfter lets a test hold and fire the bounded stop's timer itself.
+	// Production leaves it nil and uses time.AfterFunc at the same grace.
+	abandonAfter func(time.Duration, func()) *time.Timer
+	// turnExited is called when a turn's goroutine exits, after its cleanup
+	// defer has run, so a test can wait for a disowned turn's goroutine to
+	// finish without sleeping. Nil in production.
+	turnExited func()
 	// ambient is periodic watch news that must wait for a TURN boundary.
 	//
 	// It is separate from steering because a step boundary is not a turn
@@ -3797,6 +3835,10 @@ type Agent struct {
 	// live turn's cancel, close a live turn's hub, and close a `done` channel
 	// that has already been closed — the last of which is a panic.
 	turnSeq uint64
+	// runnerTurn says the running turn was opened by the factory's runner
+	// ([runnerNote]), which reads its stream to the end and acts on what it
+	// says. A bounded stop never abandons one ([Agent.InterruptWithin]).
+	runnerTurn bool
 	// turnSpend is what the RUNNING turn has cost so far, moved by [Agent.bank]
 	// on the same call that moves the session's meter and reset when a turn
 	// opens. It is the "last known spend" an abandoned turn is journaled with:
@@ -3988,7 +4030,7 @@ type Agent struct {
 	// thing that can tell a run in flight that the session has left.
 	// Admission and Close share mu: no accepted run can appear after the quit
 	// starts waiting. The count covers setup, settlement and every child call.
-	orchestrateWorkers  sync.WaitGroup
+	orchestrateWorkers  sessionJobs
 	orchestrateContext  context.Context
 	orchestrateStop     context.CancelFunc
 	orchestrateSeq      uint64
@@ -4172,7 +4214,7 @@ type Agent struct {
 	// "closed, therefore no new errand" ([Agent.startTitleJob]).
 	titleCtx  context.Context
 	titleStop context.CancelFunc
-	titleJobs sync.WaitGroup
+	titleJobs sessionJobs
 	// titleWatchers is the standing subscription to the name this session gives
 	// itself, and it exists because THE NAME NOW ARRIVES AFTER THE TURN THAT
 	// BOUGHT IT MAY HAVE ENDED. It is [Agent.harnessWatchers]' shape exactly

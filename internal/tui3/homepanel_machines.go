@@ -75,6 +75,7 @@ const (
 	machinesAskTimeout   = 25 * time.Second
 	machinesSlowAfter    = 5 * time.Second
 	sendOwnershipTimeout = 5 * time.Second
+	idleSendProbeTimeout = 3 * time.Second
 	writerStartTimeout   = 30 * time.Second
 )
 

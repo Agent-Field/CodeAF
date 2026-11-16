@@ -267,10 +267,12 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.read("/v1/jobs/{id}", h.job)
 	h.read("/v1/jobs/{id}/thread", h.thread)
 	h.read("/v1/events", h.events)
+	h.read("/v1/job-events", h.jobEvents)
 	h.route("/v1/repos", map[string]http.HandlerFunc{http.MethodGet: h.repos, http.MethodPut: h.setRepos})
 	h.read("/v1/repos/{owner}/{repo}/pipeline", h.pipeline)
 	h.read("/v1/repos/{owner}/{repo}/pipeline/edit-source", h.pipelineEditSource)
 	h.read("/v1/repos/{owner}/{repo}/read", h.repoRead)
+	h.read("/v1/repos/{owner}/{repo}/issues", h.repoIssues)
 	h.read("/v1/repos/{owner}/{repo}/pipeline/prs", h.pipelinePRs)
 	h.read("/v1/repos/{owner}/{repo}/dryrun", h.dryrun)
 	h.read("/v1/repos/{owner}/{repo}/estimate", h.estimateNew)
@@ -799,6 +801,9 @@ func (h *Handler) splitRepo(w http.ResponseWriter, r *http.Request) (owner, repo
 		return "", "", false
 	}
 	if !visible {
+		if h.githubVisibilityLimited(w, r) {
+			return "", "", false
+		}
 		h.fail(w, http.StatusNotFound, "repository not found")
 		return "", "", false
 	}

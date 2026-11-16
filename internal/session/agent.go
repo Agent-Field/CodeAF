@@ -90,6 +90,8 @@ func New(config Config) (*Agent, error) {
 // parent's account-keyed pool and resolve their own model before their first
 // request, rather than inheriting whichever adapter the parent last used.
 func (a *Agent) newChildAgent(config Config) (*Agent, error) {
+	config.ClientTools = nil
+	config.System = clientToolsWithoutSections(config.System)
 	if pair, ok := a.ConversationModelPair(); ok && config.ConversationModels == nil {
 		pair.Main = config.Model
 		if config.OneModel || pair.Fallback == pair.Main {
@@ -158,6 +160,9 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		config.liveProfile.launch = chosenPromptProfile(config)
 	}
 	config.liveProfile.current.Store(config.profile)
+	// What the page and the tasks description say about other windows follows
+	// the stored scope; a later change is taken at a turn's start (scope.go).
+	config.ownWork = config.readsOwnWorkOnly()
 	system, own := config.System, false
 	if strings.TrimSpace(system) == "" {
 		system, own = renderSystem(config), true
@@ -190,6 +195,9 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	}
 	if config.Place.Dir != "" {
 		if meta, err := LoadMeta(config.Place.Dir); err == nil {
+			if meta.Model == config.Model {
+				agent.modelForNowProvider = meta.ModelProvider
+			}
 			if meta.ModelIdentity != nil {
 				agent.modelIdentity = *meta.ModelIdentity
 				agent.modelIdentity.Active, agent.modelIdentity.Pending = "", false
@@ -295,6 +303,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// hub has to exist before the tools are assembled (connect.go).
 	agent.connect = newConnectHub(config)
 	agent.initKnowledge()
+	agent.ownWorkTold.Store(config.ownWork)
 	agent.tools = agent.belt()
 	definitions, err := toolDefinitions(agent.tools)
 	if err != nil {
@@ -417,9 +426,10 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// not reachable yet.
 		agent.scrubBlindImagePartsLocked(agent.model)
 		// AND IT KEEPS WHAT IT SPENT. The total is the sum of the file's usage
-		// lines (sessionfile.go), so a conversation reopened tomorrow reports the
-		// money it actually cost rather than the money this process has spent so
-		// far — which for a resumed session was always nothing.
+		// lines and late-receipt call lines (sessionfile.go), so a conversation
+		// reopened tomorrow reports the money it actually cost rather than the
+		// money this process has spent so far — which for a resumed session was
+		// always nothing.
 		//
 		// THIS ALSO RESTORES THE SPEND RAIL, and that is the intended change: the
 		// rail is this conversation's own ceiling (rail.go), so a conversation
@@ -427,7 +437,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// the process was a ceiling on a window, not on a conversation.
 		agent.usage = file.RestoredUsage()
 		// AND A JOURNAL WRITTEN BEFORE THE TOTAL WAS KEPT GETS ONE NOW. The sum
-		// above came out of the file's own usage lines, so this costs the read
+		// above came out of the file's own charge records, so this costs the read
 		// of a meta.json and — only when it has no figure at all — one write
 		// (placemeta.go's [Agent.stampRestoredSpend]). Without it a conversation
 		// that has not spoken since the field arrived would read as free on
@@ -554,6 +564,9 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	agent.mu.Lock()
 	agent.opened = true
 	agent.mu.Unlock()
+	if idle, ok := config.Seals.(interface{ SetIdleCheck(func() bool) }); ok && !config.InTask && !config.Errand {
+		idle.SetIdleCheck(agent.idleForHandoff)
+	}
 	// THE WALL IS READ AFTER THE SESSION IS OPEN. Recovery may put work back on
 	// the frontier, but no ending or notice may run before the caller can hold
 	// the agent and a surface can subscribe to its standing lane.
@@ -791,7 +804,38 @@ func (a *Agent) Model() string {
 // this turn. [Agent.scrubBlindImagePartsLocked] states the whole rule and its
 // three deliberate limits — the journal is untouched, the swap is one-way, and a
 // model that CAN see is handed everything unchanged.
-func (a *Agent) SetModel(model string) { a.setModel(model) }
+func (a *Agent) SetModel(model string) {
+	a.settingsWrites.Add(1)
+	defer a.settingsWrites.Add(-1)
+	err := a.CheckSettingsWork()
+	a.settingError.Store(&settingResult{err: err})
+	if err != nil {
+		return
+	}
+	a.setModel(model)
+}
+
+// SettingError is the local result of a legacy bool or void setting door.
+// Reading it never asks an engine or a relay; checked callers use their error.
+type settingResult struct{ err error }
+
+func (a *Agent) SettingError() error {
+	if result := a.settingError.Load(); result != nil {
+		return result.err
+	}
+	return nil
+}
+
+// SetModelChecked retains the requested choice when ownership refuses a save.
+func (a *Agent) SetModelChecked(model string) error {
+	a.settingsWrites.Add(1)
+	defer a.settingsWrites.Add(-1)
+	if err := a.CheckSettingsWork(); err != nil {
+		return err
+	}
+	a.setModel(model)
+	return nil
+}
 
 // setModel is SetModel with the answer to "when does this land", which the doors
 // inside this package that have somebody to tell need ([Agent.RetargetTask]) and
@@ -800,6 +844,9 @@ func (a *Agent) SetModel(model string) { a.setModel(model) }
 func (a *Agent) setModel(model string) ModelLanding {
 	if pair, ok := a.ConversationModelPair(); ok {
 		pair.Main = model
+		if pair.Main == pair.Fallback {
+			pair.Fallback = ""
+		}
 		_, _ = a.SetConversationModels(pair)
 		return ModelLandsNextRequest
 	}
@@ -824,6 +871,11 @@ func (a *Agent) setModel(model string) ModelLanding {
 	// that said `switching now` and a step that changed nothing (steer.go's
 	// [Agent.ridingNowLocked]).
 	changed := a.ridingNowLocked() != model
+	// An explicit confirmation also withdraws a queued temporary choice.
+	// This only changes the next request; the current call keeps answering.
+	a.spokenModel = ""
+	a.modelForNowConfigured = ""
+	a.modelForNowProvider = ""
 	a.model = model
 	if a.clientPool != nil {
 		a.clientPool.setSeat(model)
@@ -868,6 +920,10 @@ func (a *Agent) SetSources(sources modelsource.Set) {
 		return
 	}
 	a.mu.Lock()
+	// A disconnected source must not erase the saved model's provider identity.
+	if a.modelForNowProvider == "" {
+		a.modelForNowProvider = a.config.serviceFor(a.configuredModelLocked()).Source.ID
+	}
 	a.config.Sources = sources
 	a.clientPool.setSources(sources)
 	if !a.running {
@@ -1104,6 +1160,8 @@ func (a *Agent) Submit(ctx context.Context, text string) (<-chan Event, error) {
 // CheckWork reuses the seat's ownership gate for every user-work door. It is
 // checked before journaling and again when a queued message starts its turn.
 func (a *Agent) CheckWork() error { return procexec.CheckWork(a.config.Seat) }
+
+func (a *Agent) CheckSettingsWork() error { return procexec.CheckSettingsWork(a.config.Seat) }
 
 // submitText is Submit's body with the PERSON'S MARK beside the words: what a
 // door that knows more than the words said about the message
@@ -1368,6 +1426,9 @@ func (a *Agent) attachReplayLocked() (entries []DisplayEntry, events <-chan Even
 type userMessage struct {
 	// factoryWork marks a runtime manager turn, never the person's chat.
 	factoryWork bool
+	// runner marks words the factory's runner wrote ([runnerNote]): the turn
+	// they open is the runner's, which is still reading its stream.
+	runner bool
 	// answer continues an existing question, including a replacement or
 	// clarification, so ownership is checked at its tools rather than admission.
 	answer bool
@@ -1436,6 +1497,9 @@ type userMessage struct {
 	// leave it empty, and the turn is then stamped with no person message — an
 	// unknown, never a guess at the latest one.
 	answersMessage string
+	// sourceMessage is the exact recorded message a resumed answer continues.
+	// Only ResumeStoppedTurn sets it; ordinary notes never inherit the latest message.
+	sourceMessage string
 
 	// said is THE PERSON'S OWN WORDS, when what the model reads is not only
 	// them. Empty in every ordinary case, and set where the session writes
@@ -2012,6 +2076,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	a.stopJobWakeLocked()
 	a.running = true
 	a.factoryAutomaticTurn = user.factoryWork || user.wake && !user.answersPerson && !user.answer
+	a.runnerTurn = user.runner
 	a.teamTurnAt = time.Now()
 	a.teamTurnSerial++
 	a.lastTurnTruncated = false
@@ -2022,6 +2087,9 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	// (taskpresence.go). The nudge never blocks and never takes a lock, which is
 	// what lets it sit under a.mu here.
 	a.nudgePresence()
+	// AND WHAT THE PAGE SAYS ABOUT OTHER WINDOWS FOLLOWS A CHANGED SCOPE, from
+	// this turn on, as the scope's documentation promises (scope.go).
+	a.followWorkScopeLocked(time.Now())
 	// AND THE CLOCK IN THE PROMPT IS BROUGHT UP TO DATE BEFORE THE TURN OPENS,
 	// when it has gone stale enough to be worth the cold prefix (prompt.go's
 	// clockRefresh says why that is free).
@@ -2056,7 +2124,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	// turn, or one a task or member report opened, has a run and no person
 	// message, which is the truth. A steer that lands later is NOT the opener
 	// and changes nothing here.
-	turnCtx = withTurnOrigin(turnCtx, turnOrigin{run: runIdentity(turnCtx), turn: openingMessage(user)})
+	turnCtx = withTurnOrigin(turnCtx, turnOriginLocked(user, runIdentity(turnCtx)))
 	// AND THE TURN CARRIES THE CREATION CONTEXT the accepting door stated on
 	// its opening message (creation_team.go), only when it stated one: any other
 	// turn leaves the team unknown. Never rewritten from who manages a team now.
@@ -2149,7 +2217,11 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 		hub.send(turnSkillsNotice(user.skills))
 	}
 
+	exited := a.turnExited
 	go func() {
+		if exited != nil {
+			defer exited()
+		}
 		// completed is the turn's outcome: true only when the model answered
 		// without a tool call and nobody interrupted. It is what decides
 		// whether a queued follow-up may start (see [Agent.FollowUp]).
@@ -2225,6 +2297,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 			// anything, so a leftover is inert either way; stopping it here is
 			// what keeps the timer's life the turn's life (steer_grace.go).
 			a.stopSteerGraceLocked()
+			a.stopAbandonTimerLocked()
 			a.finishIntentExchangeLocked(user, completed)
 			a.running = false
 			// THE REDIRECT TURN HAS SAID ITS PIECE. Later turns plan and name
@@ -2558,6 +2631,11 @@ func (a *Agent) Compact(ctx context.Context) error {
 // (internal/tui3), and a person who types the old form gets the pass they asked
 // for rather than an error about a machine that used to exist.
 func (a *Agent) CompactWithFocus(ctx context.Context, _ string) error {
+	a.settingsWrites.Add(1)
+	defer a.settingsWrites.Add(-1)
+	if err := a.CheckSettingsWork(); err != nil {
+		return err
+	}
 	_, skipped, err := a.compactWithPolicyResult(ctx, nil, a.requestedCompactPolicy())
 	if err == nil && skipped != "" {
 		return &SummarySkipped{Why: skipped}
@@ -2772,6 +2850,7 @@ func (a *Agent) Close() (saveErr error) {
 	// Nothing armed by a steer outlives the session that armed it
 	// (steer_grace.go), and nor does a clock armed on a question (asklane.go).
 	a.stopSteerGraceLocked()
+	a.stopAbandonTimerLocked()
 	a.stopAskClocksLocked()
 	// PENDING NEWS BELONGS IN THE JOURNAL EVEN AFTER ITS CLOCK FIRED. A wake
 	// may have been refused, and none may start after admission has closed.

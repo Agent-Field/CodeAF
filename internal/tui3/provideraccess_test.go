@@ -141,6 +141,7 @@ func TestAddingOpenRouterFromTheModelMenuPreservesOllamaAndHandsOverTheKey(t *te
 	a.requireListedModel = true
 	a.model = "vendor/cloud"
 	a.connectAct(a.connPanel.cursor)
+	acknowledgeModelChanges(t, a)
 	if a.model != "ollama/installed" || a.agent.Model() != "ollama/installed" {
 		t.Fatal("removing OpenRouter did not move the next request to available Ollama")
 	}

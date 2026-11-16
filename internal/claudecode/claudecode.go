@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/claudeagent"
+	"github.com/Agent-Field/codeaf/internal/claudemodel"
 	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/programguide"
 )
@@ -63,8 +64,10 @@ var Program = delegate.Delegate{
 	Listens: true,
 	// A PERSON'S CREW SEAT IS HEARD WHEN IT IS A CLAUDE MODEL. A crew whose
 	// working seat is `anthropic/claude-opus-…` asked for Opus, and Claude Code
-	// answers to the family word; any other vendor's model is not something
-	// Claude Code can run, so it is left to Claude Code's own default.
+	// answers to the family word; one seated on a version Claude Code names
+	// itself (`claude-code/claude-haiku-4-5`) asked for that version. Any other
+	// vendor's model is not something Claude Code can run, so it is left to
+	// Claude Code's own default.
 	CrewFlags:  crewFlags,
 	StageWords: map[string]string{stageWork: "working in Claude Code"},
 	Unattended: delegate.Ceilings{CostUSD: 10, Hours: 2},
@@ -73,11 +76,16 @@ var Program = delegate.Delegate{
 	Commands:   []delegate.Command{{Name: "run", Usage: "[flags] -- <brief>", Summary: "run the brief in Claude Code", Bind: bindRun}},
 }
 
-// crewFlags turns the crew's working seat into Claude Code's model word.
+// crewFlags turns the crew's working seat into the model Claude Code starts: a
+// version in Claude Code's own spelling as it is, any other Claude model as its
+// family word.
 func crewFlags(crew delegate.Crew) []string {
 	seat := crew.Hands
 	if len(crew.Asked) > 0 {
 		seat = crew.Asked[0]
+	}
+	if version := claudemodel.Version(seat); version != "" {
+		return []string{"--claude-model", version}
 	}
 	if family := Family(seat); family != "" {
 		return []string{"--claude-model", family}

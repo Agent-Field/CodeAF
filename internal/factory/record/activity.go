@@ -19,6 +19,8 @@ func enrich(e *Event) {
 	}
 	if e.Verb == "" {
 		switch e.Kind {
+		case ContextSet:
+			e.Verb = "set context"
 		case StepEdited:
 			e.Verb = "edited steps"
 		case StepStopped:
