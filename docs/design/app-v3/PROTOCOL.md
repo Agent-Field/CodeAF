@@ -803,10 +803,14 @@ every canvas shape on these methods is canvas-core's own, passed through unchang
 same snapshot, op, op record, version and mark the desk reads for a Personal canvas. Each
 takes `connection` and, but for the list, create and import, `id` (`cv_` and twelve
 letters or digits): `factory.org_canvases` `GET /v1/canvases` (`{canvases}`, each the
-canvas-core summary plus `owner`, `shares`, `private`, `my_role`, `seq`, `updated_by`, or
-a `name_only` row of a private canvas for the operator), `factory.org_canvas_get`,
-`factory.org_canvas_create {title, owner?, shares?, private?}`, `factory.org_canvas_update
-{title?, trashed?}`, `factory.org_canvas_delete`, `factory.org_canvas_snapshot`,
+canvas-core summary plus `owner`, `shares`, `private`, `my_role`, `seq`, `updated_by`,
+`workstream?`, or a `name_only` row of a private canvas for the operator),
+`factory.org_canvas_get`, `factory.org_canvas_create {title, owner?, shares?, private?,
+workstream?}` (with `workstream`, hello word `org_workstream_canvases`: the canvas belongs
+to that organization workstream and is reached the way the workstream is; it needs `edit`
+on the workstream, and `owner`/`shares`/`private` beside it are refused),
+`factory.org_canvas_update {title?, trashed?, workstream?}` (`workstream` puts it in one, or
+`""` takes it out; full on the canvas), `factory.org_canvas_delete`, `factory.org_canvas_snapshot`,
 `factory.org_canvas_ops {since}` → `{seq, ops}`, `factory.org_canvas_apply {base_seq, ops}`
 → `{seq, ops}` (the records written, each stamped `person:<handle>` by the server),
 `factory.org_canvas_versions`, `factory.org_canvas_version_create {label?}`,

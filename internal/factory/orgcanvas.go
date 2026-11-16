@@ -19,6 +19,11 @@ type OrgCanvas struct {
 	// FromLocal is "<handle>/<local id>" for a canvas a person moved in from
 	// their laptop, so moving the same one twice finds the first.
 	FromLocal string `json:"from_local,omitempty"`
+	// Workstream is the organization workstream this canvas belongs to, made
+	// from inside it. A canvas in a workstream is reached the way the
+	// workstream is — its owner, its shares, Private — and its own Shares
+	// only add to that. Empty for a canvas that stands on its own.
+	Workstream string `json:"workstream,omitempty"`
 }
 
 // OrgCanvases are an organization's canvases by id.

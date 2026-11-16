@@ -66,6 +66,9 @@ type CanvasRow struct {
 	Seq       int64           `json:"seq"`
 	UpdatedBy string          `json:"updated_by,omitempty"`
 	NameOnly  bool            `json:"name_only,omitempty"`
+	// Workstream is the organization workstream the canvas belongs to, when
+	// it was made in one; its Canvases tab lists exactly these.
+	Workstream string `json:"workstream,omitempty"`
 }
 
 // MarshalJSON writes canvas-core's summary with the organization's fields
@@ -98,18 +101,26 @@ type CanvasList struct {
 	Canvases []CanvasRow `json:"canvases"`
 }
 
-// CanvasNew makes a canvas. Owner left out is the caller.
+// CanvasNew makes a canvas. Owner left out is the caller. Workstream makes
+// it inside that organization workstream (the caller must be able to edit
+// the workstream): it is then owned and shared the way the workstream is, so
+// Owner, Shares and Private are not sent with it.
 type CanvasNew struct {
-	Title   string           `json:"title"`
-	Owner   *WorkstreamOwner `json:"owner,omitempty"`
-	Shares  []factory.Share  `json:"shares,omitempty"`
-	Private bool             `json:"private,omitempty"`
+	Title      string           `json:"title"`
+	Owner      *WorkstreamOwner `json:"owner,omitempty"`
+	Shares     []factory.Share  `json:"shares,omitempty"`
+	Private    bool             `json:"private,omitempty"`
+	Workstream string           `json:"workstream,omitempty"`
 }
 
-// CanvasPatch renames a canvas (edit) or moves it to or from the trash (full).
+// CanvasPatch renames a canvas (edit), moves it to or from the trash (full),
+// or puts it in an organization workstream or takes it out ("" takes it out;
+// either needs full on the canvas, and putting it in needs edit on the
+// workstream).
 type CanvasPatch struct {
-	Title   *string `json:"title,omitempty"`
-	Trashed *bool   `json:"trashed,omitempty"`
+	Title      *string `json:"title,omitempty"`
+	Trashed    *bool   `json:"trashed,omitempty"`
+	Workstream *string `json:"workstream,omitempty"`
 }
 
 // CanvasSharesPut sets who a canvas is shared with, and optionally its owner

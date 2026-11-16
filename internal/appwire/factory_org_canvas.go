@@ -32,6 +32,12 @@ import (
 // FeatureOrgCanvases is the hello word, exactly as the desk reads it.
 const FeatureOrgCanvases = "org_canvases"
 
+// FeatureOrgWorkstreamCanvases is the hello word for a canvas made inside an
+// organization workstream (factory.org_canvas_create's workstream, and the
+// workstream a canvas row names). An engine without it would drop the field
+// and make the person's own canvas, so the desk sends it only on this word.
+const FeatureOrgWorkstreamCanvases = "org_workstream_canvases"
+
 // orgCanvasAnswerMost is the most one canvas answer may be: a whole canvas's
 // snapshot or op log, or one asset, is larger than a workstream.
 const orgCanvasAnswerMost = 64 << 20
@@ -91,21 +97,27 @@ type OrgCanvasParams struct {
 }
 
 // OrgCanvasCreateParams makes a canvas. Owner left out is the caller.
+// Workstream makes it inside that organization workstream, owned and shared
+// the way the workstream is (the server refuses it to anyone who cannot edit
+// the workstream).
 type OrgCanvasCreateParams struct {
 	OrgConn
-	Title   string     `json:"title"`
-	Owner   *OrgOwner  `json:"owner,omitempty"`
-	Shares  []OrgShare `json:"shares,omitempty"`
-	Private bool       `json:"private,omitempty"`
+	Title      string     `json:"title"`
+	Owner      *OrgOwner  `json:"owner,omitempty"`
+	Shares     []OrgShare `json:"shares,omitempty"`
+	Private    bool       `json:"private,omitempty"`
+	Workstream string     `json:"workstream,omitempty"`
 }
 
-// OrgCanvasUpdateParams renames a canvas (edit) or moves it to or from the
-// trash (full).
+// OrgCanvasUpdateParams renames a canvas (edit), moves it to or from the
+// trash (full), or puts it in an organization workstream or takes it out
+// (Workstream "", full).
 type OrgCanvasUpdateParams struct {
 	OrgConn
-	ID      string  `json:"id"`
-	Title   *string `json:"title,omitempty"`
-	Trashed *bool   `json:"trashed,omitempty"`
+	ID         string  `json:"id"`
+	Title      *string `json:"title,omitempty"`
+	Trashed    *bool   `json:"trashed,omitempty"`
+	Workstream *string `json:"workstream,omitempty"`
 }
 
 // OrgCanvasOpsParams reads the op records after Since.
@@ -221,6 +233,7 @@ func withFactoryOrgCanvasFeature(hello Hello, e Engine) Hello {
 	}
 	if _, ok := e.(FactoryOrg); ok {
 		hello = withFeature(hello, FeatureOrgCanvases)
+		hello = withFeature(hello, FeatureOrgWorkstreamCanvases)
 	}
 	return hello
 }
@@ -253,11 +266,12 @@ func init() {
 			return OrgRequest{}, err
 		}
 		body := struct {
-			Title   string     `json:"title"`
-			Owner   *OrgOwner  `json:"owner,omitempty"`
-			Shares  []OrgShare `json:"shares,omitempty"`
-			Private bool       `json:"private,omitempty"`
-		}{title, p.Owner, shares, p.Private}
+			Title      string     `json:"title"`
+			Owner      *OrgOwner  `json:"owner,omitempty"`
+			Shares     []OrgShare `json:"shares,omitempty"`
+			Private    bool       `json:"private,omitempty"`
+			Workstream string     `json:"workstream,omitempty"`
+		}{title, p.Owner, shares, p.Private, strings.TrimSpace(p.Workstream)}
 		return OrgRequest{Method: http.MethodPost, Path: "/v1/canvases", Body: body}, nil
 	})
 	methods["factory.org_canvas_update"] = orgMethod[OrgCanvasUpdateParams, json.RawMessage]("factory.org_canvas_update", func(p OrgCanvasUpdateParams) (OrgRequest, error) {
@@ -265,8 +279,8 @@ func init() {
 		if err != nil {
 			return OrgRequest{}, err
 		}
-		if p.Title == nil && p.Trashed == nil {
-			return OrgRequest{}, Errorf(CodeBadParams, "send title or trashed")
+		if p.Title == nil && p.Trashed == nil && p.Workstream == nil {
+			return OrgRequest{}, Errorf(CodeBadParams, "send title, trashed or workstream")
 		}
 		if p.Title != nil {
 			t, err := orgCanvasTitle(*p.Title)
@@ -276,9 +290,10 @@ func init() {
 			p.Title = &t
 		}
 		body := struct {
-			Title   *string `json:"title,omitempty"`
-			Trashed *bool   `json:"trashed,omitempty"`
-		}{p.Title, p.Trashed}
+			Title      *string `json:"title,omitempty"`
+			Trashed    *bool   `json:"trashed,omitempty"`
+			Workstream *string `json:"workstream,omitempty"`
+		}{p.Title, p.Trashed, p.Workstream}
 		return OrgRequest{Method: http.MethodPatch, Path: path, Body: body}, nil
 	})
 	methods["factory.org_canvas_delete"] = orgMethod[OrgCanvasParams, Empty]("factory.org_canvas_delete", func(p OrgCanvasParams) (OrgRequest, error) {

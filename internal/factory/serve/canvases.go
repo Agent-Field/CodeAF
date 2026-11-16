@@ -107,7 +107,7 @@ func (h *Handler) canvasViewable(r *http.Request, id string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return can(v, canvasItem(c), factory.RoleView), nil
+	return can(v, h.canvasItem(c), factory.RoleView), nil
 }
 
 // CanvasesServed is whether this server keeps canvases.
@@ -115,8 +115,24 @@ func (h *Handler) CanvasesServed() bool {
 	return h.config.Store != nil && h.config.Canvas != nil
 }
 
-func canvasItem(c factory.OrgCanvas) Item {
-	return Item{Kind: ItemCanvas, ID: c.ID, Owner: c.Owner, Shares: c.Shares, Private: c.Private}
+// canvasItem is c's access shape. A CANVAS IN A WORKSTREAM IS REACHED THE
+// WAY THE WORKSTREAM IS: its owner, its shares and Private are the
+// workstream's as they stand now, so a share added to the workstream later
+// reaches its canvases too, and the canvas's own shares only add to them. A
+// workstream that is gone, or cannot be read, leaves the canvas its own
+// record, whose owner was the workstream's when it was made.
+func (h *Handler) canvasItem(c factory.OrgCanvas) Item {
+	it := Item{Kind: ItemCanvas, ID: c.ID, Owner: c.Owner, Shares: c.Shares, Private: c.Private}
+	if c.Workstream == "" || h.config.Store == nil {
+		return it
+	}
+	ws, ok, err := h.config.Store.Workstream(c.Workstream)
+	if err != nil || !ok {
+		return it
+	}
+	it.Owner, it.Private = ws.Owner, ws.Private
+	it.Shares = append(append([]factory.Share{}, ws.Shares...), c.Shares...)
+	return it
 }
 
 func canvasActor(v Viewer) string {
@@ -142,11 +158,11 @@ func (h *Handler) findCanvas(w http.ResponseWriter, r *http.Request, verb string
 	if h.failed(w, err) {
 		return c, v, false
 	}
-	if !ok || !can(v, canvasItem(c), factory.RoleView) {
+	if !ok || !can(v, h.canvasItem(c), factory.RoleView) {
 		h.fail(w, http.StatusNotFound, "canvas not found")
 		return c, v, false
 	}
-	if !can(v, canvasItem(c), verb) {
+	if !can(v, h.canvasItem(c), verb) {
 		h.refuse(w, http.StatusForbidden, canvasRefusal(verb), "role", "", nil, "")
 		return c, v, false
 	}
@@ -202,8 +218,8 @@ func (h *Handler) rpc(ctx context.Context, id string, req map[string]any, out an
 
 // canvasRow is c as v sees it in a list, read from canvas-core.
 func (h *Handler) canvasRow(ctx context.Context, c factory.OrgCanvas, v Viewer) (api.CanvasRow, error) {
-	it := canvasItem(c)
-	row := api.CanvasRow{ID: c.ID, Owner: c.Owner, Shares: nonNil(c.Shares), Private: c.Private, MyRole: roleOf(v, it), UpdatedBy: c.UpdatedBy}
+	it := h.canvasItem(c)
+	row := api.CanvasRow{ID: c.ID, Owner: it.Owner, Shares: nonNil(c.Shares), Private: it.Private, MyRole: roleOf(v, it), UpdatedBy: c.UpdatedBy, Workstream: c.Workstream}
 	raw, err := h.config.Canvas.Raw(ctx, c.ID, map[string]any{"cmd": "summary"})
 	if err != nil {
 		return row, err
@@ -219,7 +235,7 @@ func (h *Handler) canvasRow(ctx context.Context, c factory.OrgCanvas, v Viewer) 
 	if nameOnly(v, it) {
 		// The operator learns that a private canvas exists, its name and
 		// owner, never what it says or who it is shared with.
-		row.NameOnly, row.Shares, row.MyRole = true, []factory.Share{}, ""
+		row.NameOnly, row.Shares, row.MyRole, row.Workstream = true, []factory.Share{}, "", ""
 		return row, nil
 	}
 	row.Summary = raw
@@ -248,7 +264,7 @@ func (h *Handler) listCanvases(w http.ResponseWriter, r *http.Request) {
 	out := api.CanvasList{Canvases: []api.CanvasRow{}}
 	updated := map[string]string{}
 	for _, c := range all {
-		it := canvasItem(c)
+		it := h.canvasItem(c)
 		if !can(v, it, factory.RoleView) && !nameOnly(v, it) {
 			continue
 		}
@@ -410,9 +426,22 @@ func (h *Handler) createCanvas(w http.ResponseWriter, r *http.Request) {
 	if err := plainWords("title", body.Title, 1, workstreamNameMost); h.workstreamRefused(w, err) {
 		return
 	}
-	c, ok := h.newCanvasRecord(w, v, body.Owner, body.Shares, body.Private)
-	if !ok {
-		return
+	var c factory.OrgCanvas
+	if body.Workstream != "" {
+		if body.Owner != nil || len(body.Shares) > 0 || body.Private {
+			h.fail(w, http.StatusBadRequest, "a canvas made in a workstream is owned and shared the way the workstream is, so send no owner, shares or private with it")
+			return
+		}
+		ws, ok := h.canvasWorkstream(w, r, v, body.Workstream)
+		if !ok {
+			return
+		}
+		c = factory.OrgCanvas{Owner: ws.Owner, Workstream: ws.ID, CreatedBy: v.Handle, CreatedAt: h.now().UTC(), UpdatedBy: v.Handle}
+	} else {
+		var ok bool
+		if c, ok = h.newCanvasRecord(w, v, body.Owner, body.Shares, body.Private); !ok {
+			return
+		}
 	}
 	var created struct {
 		ID string `json:"id"`
@@ -422,6 +451,32 @@ func (h *Handler) createCanvas(w http.ResponseWriter, r *http.Request) {
 	}
 	c.ID = created.ID
 	h.saveNewCanvas(w, r, c, v, http.StatusCreated)
+}
+
+// canvasWorkstream is the organization workstream id names when v may put a
+// canvas in it. A PERSON PUTS A CANVAS IN A WORKSTREAM ONLY WHEN THEY CAN EDIT
+// THE WORKSTREAM: everyone it is shared with will reach the canvas, so viewing
+// it is not enough. It has already answered when ok is false: 404 when v may
+// not even view the workstream (as one that does not exist), 403 when they may
+// view but not edit it, 409 when it is archived.
+func (h *Handler) canvasWorkstream(w http.ResponseWriter, r *http.Request, v Viewer, id string) (factory.OrgWorkstream, bool) {
+	ws, found, err := h.config.Store.Workstream(strings.TrimSpace(id))
+	if h.failed(w, err) {
+		return ws, false
+	}
+	if !found || !can(v, workstreamItem(ws), factory.RoleView) {
+		h.fail(w, http.StatusNotFound, "workstream not found")
+		return ws, false
+	}
+	if !can(v, workstreamItem(ws), factory.RoleEdit) {
+		h.refuse(w, http.StatusForbidden, "you can view this workstream but not change it, so a canvas cannot be added to it", "role", "", nil, "")
+		return ws, false
+	}
+	if ws.ArchivedAt != nil {
+		h.refuse(w, http.StatusConflict, "this workstream is archived, so a canvas cannot be added to it", "archived", "", nil, "")
+		return ws, false
+	}
+	return ws, true
 }
 
 // newCanvasRecord is the record of a canvas v is making, owned by owner (v
@@ -463,12 +518,17 @@ func (h *Handler) patchCanvas(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	verb := factory.RoleEdit
-	if body.Trashed != nil {
+	if body.Trashed != nil || body.Workstream != nil {
 		verb = factory.RoleFull
 	}
 	c, v, ok := h.findCanvas(w, r, verb)
 	if !ok {
 		return
+	}
+	if body.Workstream != nil && strings.TrimSpace(*body.Workstream) != c.Workstream {
+		if c, ok = h.moveCanvasWorkstream(w, r, c, v, strings.TrimSpace(*body.Workstream)); !ok {
+			return
+		}
 	}
 	var ops []map[string]any
 	if body.Title != nil {
@@ -493,6 +553,41 @@ func (h *Handler) patchCanvas(w http.ResponseWriter, r *http.Request) {
 		h.publishCanvasSeq(api.EventCanvasChanged, c, v.Handle, out.Seq)
 	}
 	h.writeCanvas(w, r, http.StatusOK, c, v)
+}
+
+// moveCanvasWorkstream puts c in workstream id, or takes it out of the one it
+// is in when id is "". Taking it out leaves it owned by the workstream's
+// owner, as it was made, with only its own shares.
+func (h *Handler) moveCanvasWorkstream(w http.ResponseWriter, r *http.Request, c factory.OrgCanvas, v Viewer, id string) (factory.OrgCanvas, bool) {
+	before := c
+	owner := c.Owner
+	if id != "" {
+		ws, ok := h.canvasWorkstream(w, r, v, id)
+		if !ok {
+			return c, false
+		}
+		owner = ws.Owner
+	} else if it := h.canvasItem(c); c.Workstream != "" {
+		owner = it.Owner
+	}
+	saved, err := h.config.Store.EditCanvases(func(all factory.OrgCanvases) (bool, error) {
+		cur, ok := all[c.ID]
+		if !ok {
+			return false, os.ErrNotExist
+		}
+		cur.Workstream, cur.Owner, cur.UpdatedBy = id, owner, v.Handle
+		if id != "" {
+			cur.Private = false
+		}
+		all[c.ID] = cur
+		return true, nil
+	})
+	if h.failed(w, err) {
+		return c, false
+	}
+	c = saved[c.ID]
+	h.publishCanvas(r.Context(), api.EventCanvasChanged, &before, c, v.Handle)
+	return c, true
 }
 
 func (h *Handler) deleteCanvas(w http.ResponseWriter, r *http.Request) {
@@ -554,7 +649,7 @@ func (h *Handler) setCanvasShares(w http.ResponseWriter, r *http.Request) {
 	}
 	c = saved[c.ID]
 	h.publishCanvas(r.Context(), api.EventCanvasChanged, &before, c, v.Handle)
-	if !can(v, canvasItem(c), factory.RoleView) {
+	if !can(v, h.canvasItem(c), factory.RoleView) {
 		// They gave it away and kept nothing: it is gone for them.
 		h.publishCanvas(r.Context(), api.EventCanvasRemoved, &before, before, v.Handle)
 		w.WriteHeader(http.StatusNoContent)
@@ -658,7 +753,7 @@ func (h *Handler) applyCanvasOps(w http.ResponseWriter, r *http.Request) {
 	if handsOnly {
 		verb = factory.RoleComment
 	}
-	if !can(v, canvasItem(c), verb) {
+	if !can(v, h.canvasItem(c), verb) {
 		h.refuse(w, http.StatusForbidden, canvasRefusal(verb), "role", "", nil, "")
 		return
 	}
@@ -884,7 +979,7 @@ func (h *Handler) importCanvas(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, c := range all {
-		if c.FromLocal == from && can(v, canvasItem(c), factory.RoleView) {
+		if c.FromLocal == from && can(v, h.canvasItem(c), factory.RoleView) {
 			h.writeCanvas(w, r, http.StatusOK, c, v)
 			return
 		}
@@ -940,9 +1035,9 @@ func (h *Handler) publishCanvas(ctx context.Context, kind string, before *factor
 		}
 	}
 	h.canvasFrames.forget(after.ID)
-	items := []Item{canvasItem(after)}
+	items := []Item{h.canvasItem(after)}
 	if before != nil {
-		items = append(items, canvasItem(*before))
+		items = append(items, h.canvasItem(*before))
 	}
 	e := canvasLive{CanvasEvent: api.CanvasEvent{Kind: kind, ID: after.ID, Seq: seq, By: by}, itemAudience: audienceOf(items...)}
 	_ = live.Append(h.eventRoot(), live.New(kind, 0, e))
@@ -956,7 +1051,7 @@ func (h *Handler) publishCanvasSeq(kind string, c factory.OrgCanvas, by string, 
 		return
 	}
 	h.canvasFrames.forget(c.ID)
-	e := canvasLive{CanvasEvent: api.CanvasEvent{Kind: kind, ID: c.ID, Seq: seq, By: by}, itemAudience: audienceOf(canvasItem(c))}
+	e := canvasLive{CanvasEvent: api.CanvasEvent{Kind: kind, ID: c.ID, Seq: seq, By: by}, itemAudience: audienceOf(h.canvasItem(c))}
 	_ = live.Append(h.eventRoot(), live.New(kind, 0, e))
 }
 
