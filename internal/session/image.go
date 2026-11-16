@@ -156,6 +156,7 @@ func (a *Agent) admitImageMessage(ctx context.Context, user userMessage) (events
 		a.mixCreationLocked(user)
 		a.steering = append(a.steering, user)
 		retired := a.personClosesQuestionsLocked(user)
+		a.notePersonWordsLocked(user)
 		events := a.hub.subscribePending(a.stillAskedLocked())
 		a.mu.Unlock()
 		a.sayTheQuestionsCameDown(retired)

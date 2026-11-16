@@ -75,3 +75,30 @@ func TestTheManagersBriefAnswersJobFactsOnlyFromStatus(t *testing.T) {
 		t.Error("the brief still says nothing posts before an approve step in Auto")
 	}
 }
+
+// THE MANAGER'S RESUME IS THE PERSON'S PRESS of the job's resume_auto door,
+// with their words, and only while Auto is paused on a failing check.
+func TestTheManagersResumePressesResumeAutoWithThePersonsWords(t *testing.T) {
+	it := factory.Item{ID: 9, Autonomy: factory.AutonomyAuto, Assignee: "sam", Cap: 5, State: factory.StateLanded,
+		Proof: []factory.Claim{{Text: "tests pass", OK: true}}, Policy: []factory.Claim{{Text: "FINDING: a vendored secret"}}}
+	var verb string
+	var body any
+	press := localJobPress(func(_ context.Context, job int, v string, b any) error {
+		verb, body = v, b
+		return nil
+	})
+	line, err := pressAutoResume(context.Background(), &press, it, "carry on")
+	if err != nil || verb != "resume_auto" || !strings.Contains(line, "FINDING: a vendored secret") {
+		t.Fatalf("resume = %q (%v), pressed %q", line, err, verb)
+	}
+	if w, ok := body.(struct {
+		Words string `json:"words,omitempty"`
+	}); !ok || w.Words != "carry on" {
+		t.Fatalf("pressed with %#v, want the person's words", body)
+	}
+	it.Policy[0].OK = true
+	verb = ""
+	if _, err := pressAutoResume(context.Background(), &press, it, "carry on"); err == nil || verb != "" {
+		t.Fatalf("a job not paused on a finding was resumed: %v, pressed %q", err, verb)
+	}
+}
