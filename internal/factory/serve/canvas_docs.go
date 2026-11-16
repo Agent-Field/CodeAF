@@ -80,7 +80,7 @@ func (h *Handler) canvasDocAccess(r *http.Request, id, frame string) (found, vie
 	if err != nil {
 		return false, false, false, err
 	}
-	if !can(v, canvasItem(c), factory.RoleView) {
+	if !can(v, h.canvasItem(c), factory.RoleView) {
 		return false, false, false, nil
 	}
 	nodes, err := h.canvasNodes(r.Context(), id)
@@ -90,7 +90,7 @@ func (h *Handler) canvasDocAccess(r *http.Request, id, frame string) (found, vie
 	if !nodes[frame] {
 		return false, false, false, nil
 	}
-	return true, true, v.Handle != "" && can(v, canvasItem(c), factory.RoleEdit), nil
+	return true, true, v.Handle != "" && can(v, h.canvasItem(c), factory.RoleEdit), nil
 }
 
 // dropCanvasDocs drops the document of every node in before that the canvas

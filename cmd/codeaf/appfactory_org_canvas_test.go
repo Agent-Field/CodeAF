@@ -46,6 +46,10 @@ func (o *canvasOrgServer) serve(w http.ResponseWriter, r *http.Request) {
 	o.typ = r.Header.Get("Content-Type")
 	base := "/v1/canvases/" + testCanvas
 	switch r.Method + " " + r.URL.Path {
+	case "POST /v1/canvases":
+		orgJSON(w, 201, map[string]any{"id": testCanvas, "title": "Untitled canvas", "my_role": "full", "workstream": "ws_launch"})
+	case "PATCH " + base:
+		orgJSON(w, 200, map[string]any{"id": testCanvas, "title": "Untitled canvas", "my_role": "full"})
 	case "GET /v1/canvases":
 		orgJSON(w, 200, map[string]any{"canvases": []any{map[string]any{"id": testCanvas, "title": "Board", "my_role": "edit", "outline": []any{}}}})
 	case "GET " + base + "/snapshot":
@@ -161,6 +165,31 @@ func TestOrgCanvasesForwardToTheServer(t *testing.T) {
 	}
 	if strings.Join(asks, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("asks:\n%s\nwant:\n%s", strings.Join(asks, "\n"), strings.Join(want, "\n"))
+	}
+}
+
+// A CANVAS MADE IN AN ORGANIZATION WORKSTREAM (D11) carries the workstream
+// to the server, announced as org_workstream_canvases, and taking it out
+// again is an update that sends workstream "".
+func TestOrgCanvasInAWorkstreamForwardsTheWorkstream(t *testing.T) {
+	o, wire, id := attachCanvasOrg(t)
+	if !strings.Contains(wire.hello, `"org_workstream_canvases"`) {
+		t.Fatalf("hello lacks org_workstream_canvases: %s", wire.hello)
+	}
+	var made map[string]any
+	wire.must("factory.org_canvas_create", map[string]any{"connection": id, "title": "Untitled canvas", "workstream": " ws_launch "}, &made)
+	o.mu.Lock()
+	sent := string(o.body)
+	o.mu.Unlock()
+	if sent != `{"title":"Untitled canvas","workstream":"ws_launch"}` || made["workstream"] != "ws_launch" {
+		t.Fatalf("create sent %s, answered %v", sent, made)
+	}
+	wire.must("factory.org_canvas_update", map[string]any{"connection": id, "id": testCanvas, "workstream": ""}, nil)
+	o.mu.Lock()
+	sent = string(o.body)
+	o.mu.Unlock()
+	if sent != `{"workstream":""}` {
+		t.Fatalf("taking it out sent %s", sent)
 	}
 }
 
