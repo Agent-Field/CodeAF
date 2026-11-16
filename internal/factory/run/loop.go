@@ -26,6 +26,7 @@ import (
 	"unicode"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/client"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
@@ -1242,6 +1243,17 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 		}
 		if again {
 			continue
+		}
+		if errors.Is(err, client.ErrLeaseGone) {
+			// A LEASE THE FACTORY TOOK BACK IS THE JOB LEAVING THIS RUNNER,
+			// NOT ITS STEP FAILING. A person's Stop reaches the worker through
+			// its lease (client.ErrLeaseStopped) a moment before it cancels
+			// this loop, and on a busy machine that moment is wide: the stop
+			// was written down as a failure, and the job's manager was paid to
+			// explain a failure nobody had. The factory that revoked the lease
+			// owns what the job reads now, as stopSpending already says.
+			c.cancel()
+			return false
 		}
 		if err != nil {
 			// A step that errored is a failure, not a question. The job stops,
