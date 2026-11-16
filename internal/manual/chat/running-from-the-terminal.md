@@ -554,7 +554,8 @@ three pinned models (⌥⌘1–3) are the app's own. Permissions lists every
 always-allow rule, a tool's or a command pattern's, and removing one takes it
 out of the profile; Memory lists what codeaf remembers and forgets a line on
 request; Export writes a CSV of every billed call between two days into the
-app's exports folder. Signing in to GitHub is not in the app yet.
+app's exports folder. GitHub is connected on the Connectors page or in the
+Factory's first step, one connection for both (see "Connect GitHub").
 
 ## Quitting the desktop app — agents pause and resume, processes stop
 

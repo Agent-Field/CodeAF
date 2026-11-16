@@ -6,7 +6,8 @@ type FeaturedWords struct {
 }
 
 func Featured() ([]string, map[string]FeaturedWords) {
-	return []string{"google", "slack", "notion", "sentry"}, map[string]FeaturedWords{
+	return []string{GitHubID, "google", "slack", "notion", "sentry"}, map[string]FeaturedWords{
+		GitHubID: {"Repositories, issues and pull requests", "GitHub's own tools. Agents read your code, issues and pull requests; anything that changes them asks first. The Factory uses this same connection."},
 		"google": {"Gmail and Calendar", "Agents search and read your mail, see your calendar and add events. Sending mail and inviting people ask first."},
 		"slack":  {"Channels, threads and DMs", "Agents search and read your Slack across the workspaces you sign in to. Sending a message asks first."},
 		"notion": {"Pages, databases and search", "Notion's own tools. Agents read and search your workspace; anything that changes a page asks first."},

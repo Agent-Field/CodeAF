@@ -36,14 +36,15 @@ has no tools for it. Do the work without it and say so plainly.`
 
 ## How many accounts can be connected
 
-**129 accounts register in this build: 99 are connected with a pasted key, and 30 are
+**130 accounts register in this build: 99 are connected with a pasted key, and 31 are
 connected in a browser.**
 
-The 30 browser ones are **Google** (Gmail and Calendar), **Slack**, and the 28 tool servers
+The 31 browser ones are **Google** (Gmail and Calendar), **Slack**, **GitHub**, and the 28 tool servers
 **Airtable, Atlassian, Buildkite, Calendly, Canva, CircleCI, ClickUp, Cloudflare,
 Datadog, GitLab, Grafana, Heroku, Hugging Face, Klaviyo, LaunchDarkly, Linear,
 Miro, Neon, Netlify, Notion, PayPal, PostHog, Postman, Railway, Sanity, Sentry,
-Supabase** and **Todoist**.
+Supabase** and **Todoist**. A build without GitHub's sign-in application lists GitHub
+as a pasted-token account instead (see "Connect GitHub").
 The 99 key accounts come from the bundled connectors catalog and are filed under
 eleven categories: `crm`, `support`, `billing`, `marketing`, `sales & outreach`,
 `calls & meetings`, `analytics`, `hr & recruiting`, `developer`, `productivity`,
@@ -432,9 +433,9 @@ address signs in with a key and nothing else, so it is deliberately not shipped.
 connect time and is issued an identity on the spot, kept in `toolservers.json`. Keys
 minted for one account cannot be spent at another.
 
-**GitHub is deliberately not shipped** — its sign-in does not let a program introduce
-itself, and its maintainers say that will not change, so it can return only with an
-application registered by hand in a later wave. Slack now signs in through a browser
+**GitHub is not one of the 28**, because its sign-in does not let a program introduce
+itself. It is connected with the application codeaf ships for it instead; see
+"Connect GitHub". Slack now signs in through a browser
 with the application codeaf ships; the Slack paragraph above describes that trip. Any
 account whose sign-in refuses an introduction cannot be connected this way at all, and
 codeaf says so in one sentence the moment you ask.
@@ -442,6 +443,34 @@ codeaf says so in one sentence the moment you ask.
 An identity is reused only when the account address, the issuer, the resource and the
 loopback port all still match. The registration file survives a disconnect, so
 reconnecting is one browser trip and not a second registration.
+
+## Connect GitHub — give agents GitHub, the same GitHub the Factory uses
+
+GitHub is one connection per computer, and it is **the same one the Factory reads**:
+connecting it on the Connectors page or in the Factory's first step shows it connected
+in both, and disconnecting it in either disconnects both. codeaf keeps no second copy.
+
+There are three ways in:
+
+- **Sign in in your browser.** codeaf shows a one-time code such as `ABCD-1234` and
+  the page `https://github.com/login/device`; type the code there and approve. The
+  code lasts fifteen minutes. In a terminal the waiting card reads `enter the code
+  ABCD-1234` above the link. A code that runs out ends with "The code expired before
+  it was approved. Start again for a new code."; saying no on GitHub ends with
+  "GitHub sign-in was declined, so nothing was connected."
+- **Use the gh login on this computer.** Offered when `gh auth status` says gh is
+  signed in. codeaf reads gh's token only after you choose this.
+- **Paste a token.** Make one at
+  `https://github.com/settings/tokens/new?scopes=repo&description=codeaf`. It is
+  checked with GitHub before anything is kept; a refused one says "GitHub did not
+  accept that token · nothing was saved".
+
+Agents get **GitHub's own tools** from its hosted tool server,
+`https://api.githubcopilot.com/mcp/`: reading code, issues and pull requests is on
+(yes), and anything that changes GitHub asks first. The browser sign-in asks for the
+`repo` permission. A build without GitHub's sign-in application offers only the gh
+login and a pasted token. `GH_TOKEN` or `GITHUB_TOKEN` in the shell also counts as
+connected, and a disconnect says to unset it.
 
 ## How MCP tool names are built, and how many can be armed
 

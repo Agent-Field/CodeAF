@@ -803,7 +803,7 @@ func (a *app) adoptConnectFlow(msg connectFlowMsg) tea.Cmd {
 		a.connFlows = map[string]*connect.Flow{}
 	}
 	a.connFlows[msg.service] = msg.flow
-	a.openConnectFlow(msg.service, msg.name, msg.flow.URL())
+	a.openConnectFlowCode(msg.service, msg.name, msg.flow.URL(), msg.flow.Code())
 	flow, ctx := msg.flow, a.ctx
 	return func() tea.Msg {
 		status, err := flow.Wait(ctx)
