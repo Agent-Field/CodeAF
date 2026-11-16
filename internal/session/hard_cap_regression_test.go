@@ -393,9 +393,16 @@ func TestPendingPreviousDayDoesNotBlockNewDay(t *testing.T) {
 	original := time.Local
 	// Restore the zone only after receipt workers and the HTTP server have joined.
 	t.Cleanup(func() { time.Local = original })
+	// TWO FIXED ZONES A WHOLE DAY APART, never the host's zone plus a day. The
+	// call is made twelve hours behind UTC and the new day is read twelve hours
+	// ahead of it, so the two local dates differ by exactly one whatever zone the
+	// machine is in. Adding a day to the host's own offset gave a UTC runner a
+	// +24:00 zone, which time.Time.MarshalJSON refuses: the usage row could then
+	// never be written, its writer retried it forever, and the next test's flush
+	// ran out of time on it.
+	time.Local = time.FixedZone("previous-day", -12*60*60)
 	a, unblock := pendingReceiptFixture(t, false)
-	_, offset := time.Now().Zone()
-	time.Local = time.FixedZone("next-day", offset+24*60*60)
+	time.Local = time.FixedZone("next-day", 12*60*60)
 	a.config.DailyBudgetUSD = .24
 	spent, err := DailySpendUSD(a.config.usageLedger, time.Now())
 	if err != nil || spent != 0 {
