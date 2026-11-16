@@ -166,7 +166,12 @@ func TestAppOneEngine(t *testing.T) {
 		}
 		t.Cleanup(func() {
 			if raw, err := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid)); err == nil && bytes.HasPrefix(raw, []byte("sleep")) {
-				_ = syscall.Kill(pid, syscall.SIGKILL)
+				// os.Process.Kill rather than syscall.Kill, which Windows does not
+				// have: the light gate vets this package for Windows as well, and the
+				// /proc check above already keeps this cleanup to Linux at run time.
+				if child, err := os.FindProcess(pid); err == nil {
+					_ = child.Kill()
+				}
 			}
 		})
 		parent.kill(t)
