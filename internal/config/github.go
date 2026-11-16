@@ -69,3 +69,17 @@ func WriteGitHubViaGH(profileDir string) error {
 func ForgetGitHubViaGH(profileDir string) error {
 	return writeProfileValues(profileDir, map[string]any{KeyGitHubVia: removeProfileKey})
 }
+
+// ForgetGitHub takes the factory's GitHub connection off the profile: the
+// kept token and the yes to gh, in one write. It is the terminal's disconnect;
+// in app mode the token is the app's to forget ([AppCredentials.Forget]) and
+// only the yes is written here ([ForgetGitHubViaGH]).
+func ForgetGitHub(profileDir string) error {
+	if AppMode() {
+		return ForgetGitHubViaGH(profileDir)
+	}
+	return writeProfileValues(profileDir, map[string]any{
+		KeyGitHubToken: removeProfileKey,
+		KeyGitHubVia:   removeProfileKey,
+	})
+}

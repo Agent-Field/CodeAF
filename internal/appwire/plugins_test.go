@@ -117,3 +117,49 @@ func TestPluginsDispatchValidationAndFeature(t *testing.T) {
 		}
 	}
 }
+
+// localPluginsEngine also adopts a login already on this computer.
+type localPluginsEngine struct{ pluginsEngine }
+
+func (e *localPluginsEngine) ConnectPluginLocal(p PluginID) (PluginKeyResult, error) {
+	e.calls = append(e.calls, "local:"+p.ID)
+	return PluginKeyResult{Checked: true, Account: "octocat"}, nil
+}
+
+func TestPluginsConnectLocalAndTheGitHubFeature(t *testing.T) {
+	// An engine without the local door neither advertises GitHub nor serves it.
+	plain := withPluginsFeature(Hello{}, &pluginsEngine{})
+	for _, f := range plain.Features {
+		if f == FeaturePluginsGitHub {
+			t.Fatal("an engine with no local door advertises plugins_github")
+		}
+	}
+	if _, err := methods["plugins.connect_local"].call(&pluginsEngine{}, json.RawMessage(`{"id":"github"}`)); wireCode(t, err) != CodeUnknownMethod {
+		t.Fatalf("served connect_local with no door: %v", err)
+	}
+
+	e := &localPluginsEngine{}
+	h := withPluginsFeature(Hello{}, e)
+	if strings.Join(h.Features, ",") != FeaturePlugins+","+FeaturePluginsGitHub {
+		t.Fatalf("features: %v", h.Features)
+	}
+	out, err := methods["plugins.connect_local"].call(e, json.RawMessage(`{"id":"github"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := out.(*PluginKeyResult); got.Account != "octocat" || e.calls[len(e.calls)-1] != "local:github" {
+		t.Fatalf("answer %+v calls %v", got, e.calls)
+	}
+	if _, err := methods["plugins.connect_local"].call(e, json.RawMessage(`{}`)); wireCode(t, err) != CodeBadParams {
+		t.Fatalf("accepted no id: %v", err)
+	}
+	raw, err := SchemaJSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, word := range []string{"plugins.connect_local", "local_login", "also_key", `"code"`} {
+		if !strings.Contains(string(raw), word) {
+			t.Errorf("schema lacks %s", word)
+		}
+	}
+}

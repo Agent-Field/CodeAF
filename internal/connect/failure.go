@@ -1,6 +1,7 @@
 package connect
 
 import (
+	"errors"
 	"strings"
 	"unicode"
 )
@@ -13,6 +14,15 @@ const hiddenSignInFailure = "the sign-in came back wrong and nothing was connect
 func SignInFailureReason(err error) string {
 	if err == nil {
 		return hiddenSignInFailure
+	}
+	// Words written in this package for a person leave it whole.
+	var words *SignInWords
+	if errors.As(err, &words) && strings.TrimSpace(words.Words) != "" {
+		return words.Words
+	}
+	var failure *KeyFailure
+	if errors.As(err, &failure) && strings.TrimSpace(failure.Words) != "" {
+		return failure.Words
 	}
 	const vendorShape = "authorization error from server:"
 	text := strings.TrimSpace(err.Error())
