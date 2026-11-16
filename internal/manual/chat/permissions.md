@@ -1261,13 +1261,18 @@ and their order is your own priority statement. A tool row is removed by name,
 leaving the others in the order they were written. After the drop the list is
 re-read and the cursor holds its place, not its row.
 
-The receipt in the transcript is `dropped · <name>`.
+The receipt in the transcript is `dropped · <name>` when the panel pushed
+the running gate immediately (such as under `--no-host`), and
+`dropped · <name> · from the next session` when the panel could not push the
+gate immediately (such as a plain launch through this machine's engine, or when
+a push seam is absent or refused).
 
 Under `--no-host`, a drop is live on the very next call. A plain launch through
-this machine's engine also reads the changed rules before its next tool
-decision. Its receipt can still be `dropped · <name> · from the next session`
-when the panel could not push the gate immediately. Project and conversation
-overrides retain their precedence.
+this machine's engine also reads the changed rules from disk and drops any
+remembered session allow for that tool before its next tool decision, in that
+conversation and in any other conversation on the same engine, even when the
+panel's receipt reads `dropped · <name> · from the next session`. Project and
+conversation overrides retain their precedence.
 
 `/new` and `/resume` open on the rules as they stand right now, not the ones the
 session launched with.

@@ -450,12 +450,29 @@ func (a *Agent) rememberConsent(tool string, allow bool) {
 		a.approvalParent.rememberConsent(tool, allow)
 		return
 	}
+	if a.config.ApprovalGate != nil {
+		_, _ = a.refreshApprovalGate()
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.consentMemo == nil {
 		a.consentMemo = make(map[string]bool, 1)
 	}
 	a.consentMemo[tool] = allow
+}
+
+// syncConsentMemoLocked drops any remembered tool allow that the newly
+// installed policy no longer allows, so a rule banked for a tool and then
+// dropped in /permissions asks again on the very next call.
+func (a *Agent) syncConsentMemoLocked(policy *approval.Policy) {
+	if policy == nil || len(a.consentMemo) == 0 {
+		return
+	}
+	for tool, allow := range a.consentMemo {
+		if allow && policy.Tools[tool] != approval.ActionAllow {
+			delete(a.consentMemo, tool)
+		}
+	}
 }
 
 // grantMade is the standing half of a yes, remembered so it can be TAKEN BACK.
