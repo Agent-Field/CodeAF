@@ -186,7 +186,7 @@ func TestReadFetchesOnlyTheTranscriptsPathAndTheNewestChunks(t *testing.T) {
 
 func TestPagesWalkBackToTheStartAcrossSplitLinesWithoutGapOrOverlap(t *testing.T) {
 	r := newReadRig(t)
-	whole := transcript(0, 25)
+	whole := transcript(0, 24) // a whole number of pages: the oldest one ends on the first message
 	r.files[cell.TranscriptPath] = whole
 	head := r.publish()
 	header := `{"type":"session","version":1,"id":"abc"}` + "\n"
@@ -216,6 +216,11 @@ func TestPagesWalkBackToTheStartAcrossSplitLinesWithoutGapOrOverlap(t *testing.T
 		}
 		if seg != whole[page.Start:page.End] {
 			t.Fatalf("page [%d,%d) is not those bytes of the file", page.Start, page.End)
+		}
+		// NO PAGE IS EMPTY: a page that reaches the first message also takes the
+		// header before it, rather than leaving it as one more page to fetch.
+		if strings.Count(seg, `"role":"user"`) == 0 {
+			t.Fatalf("page [%d,%d) holds no message", page.Start, page.End)
 		}
 		if n := strings.Count(seg, `"role":"user"`); page.More() && n < 4 {
 			t.Fatalf("page at %d holds %d turns, want at least the limit", page.Start, n)

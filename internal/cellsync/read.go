@@ -309,7 +309,14 @@ func (p *Pager) Page(ctx context.Context, c cell.Cell, head, before string, limi
 			cuts = append([]int64{0}, cuts...) // the file's own start is always a cut
 		}
 		if cut, ok := p.latestCut(header, buf, from, cuts, limit); ok || from == 0 {
-			if !ok {
+			// THE OLDEST PAGE TAKES THE FILE'S OPENING LINES WITH IT. When the cut
+			// lands on the earliest person line, all that lies before it is the
+			// session header and whatever the chat wrote before its first message:
+			// no entry a person would page back for. Offering it as one more page
+			// cost the viewer a round trip that answered nothing (seen on two GCP
+			// machines, 2026-11-16), so the page reaches byte 0 and says there is
+			// no older page.
+			if !ok || from == 0 && len(cuts) > 1 && cut <= cuts[1] {
 				cut = 0
 			}
 			page.Start = cut
