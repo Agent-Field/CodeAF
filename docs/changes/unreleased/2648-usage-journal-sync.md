@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: A usage test can no longer crash the whole session test binary, and closing an agent waits for its journal sync
+title: A usage test can no longer crash the session test binary, and closing an agent waits for its sync
 pr: 2648
 surface: [engine]
 invalidates:
