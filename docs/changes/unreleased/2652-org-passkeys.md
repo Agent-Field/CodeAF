@@ -21,6 +21,7 @@ invalidates:
   - "A full table of opened sign-ins could not be made room in. It now drops one from the network (/24, or /32 for IPv6) holding the most, oldest flow first, but only when that network holds more than 4 and more than the newcomer's own network plus one; otherwise the newcomer is refused with 429. A flood from a few networks yields room; a flood spread one per network never drains an office's few."
   - "A confirmation's page showed the engine's computer name bare (\"requested by codeaf on …\"). It now reads \"requested by a computer named “…”, signed in <date> from <address>\": the name is quoted as a claim, beside the session's sign-in date and the address the server saw."
   - "Any confirmation was kept, up to a table of 4096, and a full table dropped new ones. A session now holds at most 3, a fourth replacing its oldest, and a full table drops the oldest anyone holds. A password confirm for removing a passkey the person does not have is refused with 404, as the passkey confirm is."
+  - "An add or confirm that carried a link, username or name answered 404 \"no passkeys\". It now answers 422 (bad_input), which is what it is. localhost and *.localhost are documented as one-machine trial addresses only, since browsers let a plain-HTTP page on them set cookies."
   - "The relying party id kept an explicit default port (https://host:443); it is now stripped, so such an address still works."
 ---
 

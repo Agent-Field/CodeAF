@@ -624,8 +624,14 @@ func (h *Handler) passkeyStart(w http.ResponseWriter, r *http.Request) {
 // passkeyStartAccount is the signed-in password-account person an add or a
 // confirm is for. A refusal is answered here.
 func (h *Handler) passkeyStartAccount(w http.ResponseWriter, r *http.Request, body api.PasskeyStart) (accessSession, tokens.Account, bool) {
+	if body.Link != "" || body.Username != "" || body.Name != "" {
+		// An add or confirm names nobody but the signed-in person; a field
+		// for someone else is a bad request, not a missing account.
+		h.fail(w, http.StatusUnprocessableEntity, "an add or confirm takes no link, username or name")
+		return accessSession{}, tokens.Account{}, false
+	}
 	session, ok := h.credential(r)
-	if !ok || session.profile == nil || session.profile.Kind != tokens.KindPassword || body.Link != "" || body.Username != "" || body.Name != "" {
+	if !ok || session.profile == nil || session.profile.Kind != tokens.KindPassword {
 		h.fail(w, http.StatusNotFound, passkeyNoAccount)
 		return accessSession{}, tokens.Account{}, false
 	}

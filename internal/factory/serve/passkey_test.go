@@ -1533,6 +1533,23 @@ func TestAConfirmationIsForOneActionOnce(t *testing.T) {
 	stepUp("a removal confirmed too long ago", o.do("POST", "/v1/me/passkeys/remove", session, api.PasskeyRemove{ID: pkB64(c.ID)}, ""), toRemove(c))
 }
 
+// X1: an add or confirm that names someone (a link, username or name) is a
+// bad request, said honestly, not a missing account.
+func TestAnAddOrConfirmWithAStrayFieldIsABadRequest(t *testing.T) {
+	o := newPWOrg(t)
+	session := o.signUp(o.operatorLink(), "santosh", pwOperator)
+	for _, start := range []api.PasskeyStart{
+		{Purpose: api.PasskeyAdd, Name: "MacBook"},
+		{Purpose: api.PasskeyAdd, Username: "santosh"},
+		{Purpose: api.PasskeyConfirm, Action: &toAdd, Name: "MacBook"},
+		{Purpose: api.PasskeyConfirm, Action: &toAdd, Link: "https://x/join#y"},
+	} {
+		if _, w := o.pkStart(session, start); w.Code != http.StatusUnprocessableEntity {
+			t.Errorf("%+v = %d %s", start, w.Code, w.Body)
+		}
+	}
+}
+
 // Re-review 4 N2: a password member cannot fill the confirmation table.
 // A removal confirmed for a passkey that is not theirs is refused, as the
 // passkey confirm refuses it; one session holds three confirmations at
