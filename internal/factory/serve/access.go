@@ -38,6 +38,14 @@ type accessSession struct {
 	refreshExpires time.Time
 	githubExpired  bool
 	profile        *api.Profile
+	// credGen is the password account's generation the session was made
+	// under (tokens.Account.Gen); a password person's session dies when the
+	// account's generation moves past it. Zero for a GitHub session.
+	credGen int64
+	// pendingGen is the generation a password change this session is making
+	// will move the account to; while it is set the session lives at either,
+	// so the change never signs out the very session that made it.
+	pendingGen int64
 }
 
 // accessSessions indexes sign-ins by credential hash, never the credential.
@@ -132,6 +140,14 @@ func (h *Handler) liveSessionHash(r *http.Request, key string) (accessSession, b
 		h.setAuthError(r, errGitHubExpired)
 		return accessSession{}, false
 	}
+	if ok {
+		// An account file that cannot be read refuses this request and keeps
+		// the session: unknown is not gone.
+		if _, err := h.passwordSessionAlive(session); err != nil {
+			h.setAuthError(r, err)
+			return accessSession{}, false
+		}
+	}
 	if !ok || !h.sessionUsable(session) {
 		if ok {
 			delete(h.sessions.ids, key)
@@ -160,6 +176,16 @@ func (h *Handler) liveSessionHash(r *http.Request, key string) (accessSession, b
 	// Every use of the session is the person being here.
 	previousSeen := session.lastSeen
 	session.lastSeen = h.now()
+	// Use moves the idle end forward, never past the absolute one. It is
+	// written with lastSeen, so at most once a minute.
+	if next := session.lastSeen.Add(accessSessionTTL); next.After(session.expires) {
+		if !session.created.IsZero() && next.After(session.created.Add(accessSessionLife)) {
+			next = session.created.Add(accessSessionLife)
+		}
+		if next.After(session.expires) {
+			session.expires = next
+		}
+	}
 	h.sessions.ids[key] = session
 	// Persist activity at most once a minute; refreshing and revoking always
 	// save immediately, so painting a queue does not rewrite the file repeatedly.
@@ -265,6 +291,17 @@ func (h *Handler) tokenRows() []tokens.Token {
 // was minted from a row, that row is still present and unexpired.
 func (h *Handler) sessionUsable(session accessSession) bool {
 	if session.githubExpired || !h.now().Before(session.expires) {
+		return false
+	}
+	// A SESSION ENDS 90 DAYS AFTER IT WAS MADE however much it is used; its
+	// 30 days of idle life are moved forward by use in liveSessionHash.
+	if !session.created.IsZero() && !h.now().Before(session.created.Add(accessSessionLife)) {
+		return false
+	}
+	// A password person's session lives only while their account does, at
+	// the password it was made with: an operator who removes them, a change
+	// and a reset each end it. A file that cannot be read is not usable now.
+	if alive, err := h.passwordSessionAlive(session); !alive || err != nil {
 		return false
 	}
 	if session.tokenID == "" {

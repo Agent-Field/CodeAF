@@ -100,7 +100,7 @@ func (h *Handler) memberList() []api.Member {
 		m := by[handle]
 		out = append(out, api.Member{
 			Handle: m.profile.Handle, Name: m.profile.Name, AvatarURL: m.profile.AvatarURL,
-			JoinedAt: m.joined, LastSeen: m.lastSeen, Sessions: m.sessions,
+			JoinedAt: m.joined, LastSeen: m.lastSeen, Sessions: m.sessions, Kind: personKind(m.profile),
 		})
 	}
 	return out

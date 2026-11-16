@@ -51,6 +51,7 @@ func decodeGitHub(body io.Reader, out any) error {
 }
 
 func (h *Handler) startDevice(w http.ResponseWriter, r *http.Request) {
+	noStore(w)
 	if h.config.GitHubClientID == "" {
 		h.fail(w, http.StatusNotImplemented, "GitHub device sign-in needs github_client_id in the factory host config")
 		return
@@ -103,6 +104,7 @@ func (h *Handler) startDevice(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) pollDevice(w http.ResponseWriter, r *http.Request) {
+	noStore(w)
 	var body api.DevicePoll
 	if !h.decode(w, r, &body, false) {
 		return
@@ -177,6 +179,20 @@ func (h *Handler) pollDevice(w http.ResponseWriter, r *http.Request) {
 	if handle == "" {
 		h.fail(w, http.StatusBadGateway, "GitHub sign-in returned no login")
 		return
+	}
+	// One namespace: a GitHub login that is a password person's username is
+	// refused, never merged into their account. Asked again under joinMu just
+	// before the session is stored, so a sign-up racing this sign-in cannot
+	// leave both owning the name.
+	if _, held, err := h.freshAccount(handle); err != nil || held {
+		if h.failed(w, err) {
+			return
+		}
+		h.fail(w, http.StatusForbidden, githubNameHeldWords)
+		return
+	}
+	if afterGitHubNameCheck != nil {
+		afterGitHubNameCheck(handle)
 	}
 	if !h.teamAllows(handle) {
 		h.forgetDevice(body.DeviceCode, flow)
@@ -290,6 +306,23 @@ func (h *Handler) pollDevice(w http.ResponseWriter, r *http.Request) {
 			receipt.repos = seen.Factory.Repos
 		}
 	}
+	// A password sign-up holds joinMu from its name check to its account, so
+	// under it the name is either a password account already or stays free
+	// until this session (and the remembered handle) is down.
+	if !joinLocked {
+		h.joinMu.Lock()
+		joinLocked = true
+	}
+	if _, held, err := h.freshAccount(profile.Handle); err != nil || held {
+		if consumed {
+			h.giveBackUse(flow.tokenID, profile.Handle)
+		}
+		if h.failed(w, err) {
+			return
+		}
+		h.fail(w, http.StatusForbidden, githubNameHeldWords)
+		return
+	}
 	h.sessions.mu.Lock()
 	for key, old := range h.sessions.ids {
 		if !now.Before(old.expires) {
@@ -302,6 +335,16 @@ func (h *Handler) pollDevice(w http.ResponseWriter, r *http.Request) {
 		delete(h.sessions.ids, sessionHash(credential))
 	}
 	h.sessions.mu.Unlock()
+	if err == nil {
+		// The name stays this GitHub person's after the session ends. A
+		// name that could not be kept takes the session back with it.
+		if err = tokens.RememberHandle(h.config.TokensPath, profile.Handle); err != nil {
+			h.sessions.mu.Lock()
+			delete(h.sessions.ids, sessionHash(credential))
+			_ = h.saveSessions()
+			h.sessions.mu.Unlock()
+		}
+	}
 	if err != nil {
 		// No session was made, so the use this sign-in took goes back.
 		if consumed {
@@ -316,6 +359,7 @@ func (h *Handler) pollDevice(w http.ResponseWriter, r *http.Request) {
 	me.Operator = profile.Handle == h.operatorLogin(r)
 	// This session was just minted from GitHub's own exchange for this profile.
 	me.GitHubSignedIn = true
+	me.SignInKind = signInGitHub
 	h.write(w, http.StatusOK, api.SignedIn{Factory: h.factory, AccessToken: credential, TokenType: "bearer",
 		ExpiresIn: int(accessSessionTTL.Seconds()), Me: me})
 }
@@ -444,3 +488,8 @@ func (h *Handler) cancelDevice(w http.ResponseWriter, r *http.Request) {
 	h.forgetDevice(body.DeviceCode, flow)
 	h.finish(w, nil)
 }
+
+// afterGitHubNameCheck, when a test sets it, runs between a GitHub sign-in's
+// first look at the name and its session being stored: the window a racing
+// password sign-up would use.
+var afterGitHubNameCheck func(handle string)

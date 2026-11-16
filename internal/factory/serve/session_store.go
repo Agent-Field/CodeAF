@@ -30,6 +30,7 @@ type sessionRow struct {
 	Profile       *api.Profile `json:"profile,omitempty"`
 	GitHub        []byte       `json:"github,omitempty"`
 	GitHubExpired bool         `json:"github_expired,omitempty"`
+	CredGen       int64        `json:"cred_gen,omitempty"`
 }
 
 type githubCredentials struct {
@@ -95,8 +96,11 @@ func (h *Handler) loadSessions() error {
 			return errors.New("invalid factory session file")
 		}
 		s := accessSession{expires: row.Expires, created: row.Created, lastSeen: row.LastSeen,
-			tokenID: row.TokenID, id: row.ID, device: row.Device, profile: row.Profile, githubExpired: row.GitHubExpired}
-		if !h.now().Before(s.expires) || (!s.githubExpired && !h.sessionUsable(s)) {
+			tokenID: row.TokenID, id: row.ID, device: row.Device, profile: row.Profile, githubExpired: row.GitHubExpired, credGen: row.CredGen}
+		// An account file that cannot be read now keeps the session: only
+		// an account really gone or moved on prunes it.
+		_, unknown := h.passwordSessionAlive(s)
+		if !h.now().Before(s.expires) || (!s.githubExpired && unknown == nil && !h.sessionUsable(s)) {
 			pruned = true
 			continue
 		}
@@ -197,7 +201,7 @@ func (h *Handler) saveSessions() error {
 	doc := sessionDocument{Version: 1, Sessions: make(map[string]sessionRow)}
 	for hash, s := range h.sessions.ids {
 		row := sessionRow{Expires: s.expires, Created: s.created, LastSeen: s.lastSeen,
-			TokenID: s.tokenID, ID: s.id, Device: s.device, Profile: s.profile, GitHubExpired: s.githubExpired}
+			TokenID: s.tokenID, ID: s.id, Device: s.device, Profile: s.profile, GitHubExpired: s.githubExpired, CredGen: s.credGen}
 		if s.githubToken != "" || s.githubRefresh != "" {
 			aead, err := h.sessionCipher(true)
 			if err != nil {

@@ -191,7 +191,7 @@ func (h *Handler) cleanShares(shares []factory.Share, owner factory.WorkstreamOw
 		case factory.ShareToPerson:
 			s.ID = factory.NormalizeHandle(s.ID)
 			if !personHandle.MatchString(s.ID) {
-				return nil, invalidf("a person is shared with by their GitHub handle")
+				return nil, invalidf("a person is shared with by their handle")
 			}
 		case factory.ShareToTeam:
 			s.ID = strings.TrimSpace(s.ID)
