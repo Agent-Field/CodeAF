@@ -34,7 +34,7 @@ A workstream can sit inside one other workstream (Meal planner inside Pantry), a
 
 A workstream inside another:
 
-- always has its parent's people. Its sheet says "Same as Pantry" and its people cannot be changed there; change them on the parent and they change on every workstream inside it.
+- always has its parent's people. Its sheet says "Same people as Pantry" and its people cannot be changed there; change them on the parent and they change on every workstream inside it.
 - reads its parent's files, shown as "From Pantry".
 - starts with a copy of its parent's rules and may change its own copy; changing it never changes the parent's.
 - keeps its own tasks and chats.
