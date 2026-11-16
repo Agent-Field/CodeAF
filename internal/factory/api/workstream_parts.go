@@ -73,9 +73,14 @@ type PageVersion struct {
 	Title        string `json:"title"`
 	Reason       string `json:"reason" jsonschema:"enum=idle,enum=manual,enum=restore,enum=agent"`
 	RestoredFrom int    `json:"restored_from,omitempty"`
-	Bytes        int    `json:"bytes"`
-	BodyMD       string `json:"body_md,omitempty"`
-	State        []byte `json:"state,omitempty"`
+	// BasedOn is, on a kept version (Kept), the version of the page whose
+	// words the agent read and changed. A client restoring the kept version
+	// merges the change from BasedOn to it onto the live page, three ways,
+	// rather than replacing the page, so nothing typed since is dropped.
+	BasedOn int    `json:"based_on,omitempty"`
+	Bytes   int    `json:"bytes"`
+	BodyMD  string `json:"body_md,omitempty"`
+	State   []byte `json:"state,omitempty"`
 	// Kept is a version the page does not hold: the agent's words, kept
 	// because the page had a live document to write into, and not restored
 	// since. Restoring it applies them. Absent on every version the page held.

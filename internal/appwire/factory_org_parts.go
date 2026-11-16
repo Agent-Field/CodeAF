@@ -36,9 +36,12 @@ type OrgPageVersion struct {
 	Title        string `json:"title"`
 	Reason       string `json:"reason"`
 	RestoredFrom int    `json:"restored_from,omitempty"`
-	Bytes        int    `json:"bytes"`
-	BodyMD       string `json:"body_md,omitempty"`
-	State        []byte `json:"state,omitempty"`
+	// BasedOn is, on a kept version, the version whose words the agent read
+	// and changed: Restore merges the change from it onto the live page.
+	BasedOn int    `json:"based_on,omitempty"`
+	Bytes   int    `json:"bytes"`
+	BodyMD  string `json:"body_md,omitempty"`
+	State   []byte `json:"state,omitempty"`
 	// Kept is a version the page does not hold: the agent's words, kept
 	// because the page had a live document to write into, and not restored
 	// since. Restoring it applies them. Absent on every version the page held.
