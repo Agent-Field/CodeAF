@@ -81,6 +81,13 @@ func TestTwoPeopleShareAWorkstreamsFiles(t *testing.T) {
 	o.do(t, "abir", "POST", path, -1, api.FileNew{Kind: "document", Name: "Interview notes", Folder: folder.ID, BodyMD: "Dana said"}, 201, &doc)
 	o.do(t, "abir", "POST", path, -1, api.FileNew{Kind: "link", URL: "https://example.com/survey", Name: "Survey results",
 		MadeBy: &factory.FileMaker{Kind: "afi", Name: "Afi"}}, 201, &link)
+	// A document's first words are its first version, so History and Show
+	// versions are never empty for a document someone wrote (L3 F-21).
+	var vs api.PageVersions
+	o.do(t, "santosh", "GET", "/v1/workstreams/"+ws.ID+"/pages/"+doc.PageID+"/versions", -1, nil, 200, &vs)
+	if len(vs.Versions) != 1 || vs.Versions[0].Bytes != len("Dana said") || vs.Versions[0].By != "abir" || vs.LiveVersion != vs.Versions[0].Version {
+		t.Fatalf("a new document's versions = %+v", vs)
+	}
 	if doc.PageID == "" || doc.Folder != folder.ID || doc.MadeBy.ID != "abir" {
 		t.Fatalf("document = %+v", doc)
 	}
