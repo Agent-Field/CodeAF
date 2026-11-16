@@ -1330,7 +1330,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) (f
 			// answered that note; elsewhere it is an ordinary reply, even though every
 			// surface still leaves a reply containing only the token undrawn.
 			answer := response.Text()
-			withdrawn := IsNoChangeReply(answer) && answeredNoteUnchanged(a.snapshot())
+			withdrawn := IsNoChangeReply(answer) && (answeredNoteUnchanged(a.snapshot()) || answeredWakeUnchanged(user, a.snapshot()))
 			if withdrawn {
 				answer = checkpointLastSaid(a.snapshot())
 			}
