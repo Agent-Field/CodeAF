@@ -193,7 +193,8 @@ func serveFactory(ctx context.Context, configPath, listen string, out io.Writer,
 	defer stopPoll()
 	server, done := service.server, service.done
 	// READY MEANS USABLE: the operator link's row is written before the
-	// address is printed; only naming its GitHub login waits on GitHub.
+	// address is printed. A server that takes passwords never names it for a
+	// GitHub login (film D14), so only a server that takes none waits on GitHub.
 	operatorRow, err := service.handler.MintOperatorLink(cfg.operatorRecovery)
 	if err != nil {
 		return err

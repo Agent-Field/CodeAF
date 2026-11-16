@@ -3620,7 +3620,12 @@ the second way.
   `password_contains_username`, `name_invalid`, `github_link`) and `message`
   in the server's words. `github_link` is an invitation made for one GitHub
   login: it takes no password (its `factory.sign_in` leaves `password` out),
-  only that person's GitHub sign-in. A username already used anywhere on the
+  only that person's GitHub sign-in. An operator claim link is never one of
+  these on a server that takes passwords: it is not named for the host's GitHub
+  login even when the server holds a GitHub token, so its check lists
+  `password` and a password claim is taken (until film D14 such a server's
+  operator link answered `github_link`). A recovery link (`--new-operator-link`)
+  is still for the operator who claimed. A username already used anywhere on the
   server (a GitHub login that ever signed in, a share, a team, a job) is
   `username_taken`. A link that is revoked, expired or used up answers that
   state.
