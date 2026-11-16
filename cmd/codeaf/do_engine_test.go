@@ -136,6 +136,9 @@ func beltRunEnv(t *testing.T) string {
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	t.Setenv("CODEAF_PLANDB_BIN", beltStubCLI(t))
 	t.Setenv("OPENROUTER_API_KEY", "test-key")
+	// The command fixture runs in this test process, so its usage writer must
+	// finish before the disposable home is removed.
+	t.Cleanup(session.CloseUsage)
 	settings := config.NewSettings(config.SettingsOptions{ProfileDir: profile})
 	for _, key := range []string{config.KeyTaskMaxLoad, config.KeyTaskMinFreeMB} {
 		row, ok := settings.Row(key)
