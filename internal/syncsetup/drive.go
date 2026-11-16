@@ -524,6 +524,26 @@ func (d *Drive) loseHold() {
 	}
 }
 
+// firstPublishOwed says a reading of the chat's record cannot displace this
+// drive, because the drive has never held that record: its batcher is still at
+// fence 0, so its first publish has not landed, and the record names no other
+// computer as the holder.
+//
+// THE BACKGROUND COPIER CAN SHARE A CHAT BEFORE ITS OWN DRIVE DOES. A chat
+// started on a computer whose record did not exist yet is found by the next
+// sharing pass (PublishLocalChats), which uploads it beside the drive's own
+// first publish, creates the record under this computer's name and gives the
+// lease straight back. With a large working folder both uploads ran for about
+// forty seconds on 2026-11-16 and the copier won. A free lease, or one held by
+// this computer, then looked like a chat released from this window: the window
+// said "This chat is available to continue here.", refused every later send,
+// and its pending turns were branched away from the record the other computer
+// reads. The drive's first publish takes that record over (Publisher.resume
+// acquires it), so the reading is only a first publish still on its way.
+func (d *Drive) firstPublishOwed(fence uint64, lease directory.Lease, now int64) bool {
+	return fence == 0 && (lease.Expires <= now || lease.Device == d.sync.Device.ID())
+}
+
 func (d *Drive) displaced() bool {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -716,6 +736,9 @@ func (d *Drive) HoldsLease(ctx context.Context) bool {
 		return true
 	}
 	lease := v.Cell.Lease
+	if d.firstPublishOwed(d.batcher.Fence(), lease, v.Now) {
+		return true
+	}
 	// The first publish may establish the fence while the read is in flight.
 	return !d.released.Load() && lease.Expires > v.Now && lease.Device == d.sync.Device.ID() && lease.Fence == d.batcher.Fence()
 }
@@ -738,6 +761,9 @@ func (d *Drive) CheckLease(ctx context.Context) error {
 		return nil
 	}
 	if currentID, currentFence := d.batcher.Lease(); currentID != id || currentFence != fence {
+		return nil
+	}
+	if err == nil && d.firstPublishOwed(fence, v.Cell.Lease, v.Now) {
 		return nil
 	}
 	if err == nil && v.Cell.Lease.Expires <= v.Now {
