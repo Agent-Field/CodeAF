@@ -3839,6 +3839,11 @@ type Agent struct {
 	// ([runnerNote]), which reads its stream to the end and acts on what it
 	// says. A bounded stop never abandons one ([Agent.InterruptWithin]).
 	runnerTurn bool
+	// personWords is the person's latest own words in the running turn, and ""
+	// when nothing in it came from them: a runner's note, factory work, a wake.
+	// A manager's action that only the person may ask for reads it
+	// ([Agent.turnPersonWords]), so the model cannot take one on its own.
+	personWords string
 	// turnSpend is what the RUNNING turn has cost so far, moved by [Agent.bank]
 	// on the same call that moves the session's meter and reset when a turn
 	// opens. It is the "last known spend" an abandoned turn is journaled with:

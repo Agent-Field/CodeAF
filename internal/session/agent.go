@@ -1275,6 +1275,7 @@ func (a *Agent) submitUser(ctx context.Context, user userMessage) (<-chan Event,
 		// The person's reply closes what is still open before the pending cards
 		// are read, so the new subscriber is not handed a question it ended.
 		retired := a.personClosesQuestionsLocked(user)
+		a.notePersonWordsLocked(user)
 		// Subscribing under a.mu — not after releasing it — is what makes the
 		// returned channel live rather than a coin flip: the turn's goroutine
 		// clears running under this same lock BEFORE it closes the hub, so
@@ -2092,6 +2093,14 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	a.running = true
 	a.factoryAutomaticTurn = user.factoryWork || user.wake && !user.answersPerson && !user.answer
 	a.runnerTurn = user.runner
+	// The person's words belong to the turn they open; a woken turn answering a
+	// line they typed at the end of the last one keeps that line.
+	if !user.answersPerson {
+		a.personWords = ""
+	}
+	if user.fromPerson || user.steer != nil {
+		a.personWords = user.text()
+	}
 	a.teamTurnAt = time.Now()
 	a.teamTurnSerial++
 	a.lastTurnTruncated = false

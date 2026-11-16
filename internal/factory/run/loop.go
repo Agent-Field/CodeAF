@@ -3048,12 +3048,9 @@ func ApprovalRefused(it *factory.Item, edited bool) error {
 	if edited {
 		return nil
 	}
-	bad := 0
-	for _, cl := range append(append([]factory.Claim(nil), it.Proof...), it.Policy...) {
-		if !cl.OK {
-			bad++
-		}
-	}
+	// A failing finding the person overrode is theirs to have passed
+	// (factory's override.go); every other one still refuses.
+	bad := len(factory.FailingFindings(*it))
 	if bad == 1 {
 		return fmt.Errorf("%s has a claim not shown", it.Ref())
 	}

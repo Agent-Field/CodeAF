@@ -65,7 +65,10 @@ package session
 // through the same drain and the same send every other step uses, carrying the
 // question's result and then their words.
 
-import "strconv"
+import (
+	"strconv"
+	"strings"
+)
 
 // askTalkedPast is what the `ask` tool hands back when the person said
 // something else instead of answering.
@@ -154,4 +157,20 @@ func (a *Agent) personClosesQuestionsLocked(user userMessage) []Question {
 		return nil
 	}
 	return a.talkedPastQuestionsLocked()
+}
+
+// notePersonWordsLocked keeps a person's message that joined the running turn
+// as that turn's latest words from them ([Agent.personWords]).
+func (a *Agent) notePersonWordsLocked(user userMessage) {
+	if user.fromPerson {
+		a.personWords = user.text()
+	}
+}
+
+// turnPersonWords is the person's latest own words in the running turn, and
+// "" when the turn holds none.
+func (a *Agent) turnPersonWords() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return strings.TrimSpace(a.personWords)
 }
