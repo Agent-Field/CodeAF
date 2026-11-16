@@ -1,12 +1,9 @@
 package serve
 
 import (
-	"crypto/ecdsa"
-	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -18,38 +15,15 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/fxamacker/cbor/v2"
-
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/serve/passkeytest"
 	"github.com/Agent-Field/codeaf/internal/factory/tokens"
 )
 
-// ── a software authenticator ────────────────────────────────────────────────
-//
-// softKey is one ES256 passkey held by a test "authenticator". It builds the
-// exact bytes a browser hands a relying party (clientDataJSON, an attestation
-// object with fmt "none", an assertion signed over authData || SHA-256 of
-// clientDataJSON), so the server's real go-webauthn verification runs on
-// them. The flags it sets are the test's to choose, which is how a missing
-// user verification is proven to be refused.
+// softKey wraps passkeytest.Key with the test's own failure.
+type softKey struct{ *passkeytest.Key }
 
-const (
-	flagUP = 0x01
-	flagUV = 0x04
-	flagBE = 0x08
-	flagBS = 0x10
-	flagAT = 0x40
-)
-
-type softKey struct {
-	priv       *ecdsa.PrivateKey
-	id         []byte
-	userHandle []byte
-	count      uint32
-	flags      byte
-}
-
-func pkB64(b []byte) string { return base64.RawURLEncoding.EncodeToString(b) }
+func pkB64(b []byte) string { return passkeytest.B64(b) }
 
 func unb64(t *testing.T, s string) []byte {
 	t.Helper()
@@ -62,116 +36,36 @@ func unb64(t *testing.T, s string) []byte {
 
 func newSoftKey(t *testing.T) *softKey {
 	t.Helper()
-	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	k, err := passkeytest.New()
 	if err != nil {
 		t.Fatal(err)
 	}
-	id := make([]byte, 32)
-	_, _ = rand.Read(id)
-	return &softKey{priv: priv, id: id, flags: flagUP | flagUV | flagBE | flagBS}
+	return &softKey{k}
 }
 
-func (k *softKey) cose(t *testing.T) []byte {
-	t.Helper()
-	x, y := make([]byte, 32), make([]byte, 32)
-	k.priv.PublicKey.X.FillBytes(x)
-	k.priv.PublicKey.Y.FillBytes(y)
-	out, err := cbor.Marshal(map[int]any{1: 2, 3: -7, -1: 1, -2: x, -3: y})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return out
-}
-
-func clientData(kind, challenge, origin string) []byte {
-	out, _ := json.Marshal(map[string]any{"type": kind, "challenge": challenge, "origin": origin, "crossOrigin": false})
-	return out
-}
-
-func authData(rpID string, flags byte, count uint32) []byte {
-	hash := sha256.Sum256([]byte(rpID))
-	out := append([]byte{}, hash[:]...)
-	out = append(out, flags)
-	var c [4]byte
-	binary.BigEndian.PutUint32(c[:], count)
-	return append(out, c[:]...)
-}
-
-// create answers a navigator.credentials.create() for options as the
-// browser would at origin.
 func (k *softKey) create(t *testing.T, options json.RawMessage, origin string) json.RawMessage {
 	t.Helper()
-	var opt struct {
-		PublicKey struct {
-			Challenge string `json:"challenge"`
-			RP        struct {
-				ID string `json:"id"`
-			} `json:"rp"`
-			User struct {
-				ID string `json:"id"`
-			} `json:"user"`
-			AuthenticatorSelection struct {
-				ResidentKey             string `json:"residentKey"`
-				UserVerification        string `json:"userVerification"`
-				AuthenticatorAttachment string `json:"authenticatorAttachment"`
-			} `json:"authenticatorSelection"`
-			Attestation string `json:"attestation"`
-		} `json:"publicKey"`
-	}
-	if err := json.Unmarshal(options, &opt); err != nil {
-		t.Fatalf("creation options %s: %v", options, err)
-	}
-	k.userHandle = unb64(t, opt.PublicKey.User.ID)
-	ad := authData(opt.PublicKey.RP.ID, k.flags|flagAT, k.count)
-	ad = append(ad, make([]byte, 16)...) // AAGUID: none
-	var l [2]byte
-	binary.BigEndian.PutUint16(l[:], uint16(len(k.id)))
-	ad = append(ad, l[:]...)
-	ad = append(ad, k.id...)
-	ad = append(ad, k.cose(t)...)
-	att, err := cbor.Marshal(map[string]any{"fmt": "none", "attStmt": map[string]any{}, "authData": ad})
+	out, err := k.Create(options, origin)
 	if err != nil {
 		t.Fatal(err)
 	}
-	out, _ := json.Marshal(map[string]any{
-		"id": pkB64(k.id), "rawId": pkB64(k.id), "type": "public-key", "authenticatorAttachment": "platform",
-		"clientExtensionResults": map[string]any{},
-		"response": map[string]any{
-			"clientDataJSON":    pkB64(clientData("webauthn.create", opt.PublicKey.Challenge, origin)),
-			"attestationObject": pkB64(att), "transports": []string{"internal", "hybrid"},
-		},
-	})
 	return out
 }
 
-// get answers a navigator.credentials.get() for options at origin.
 func (k *softKey) get(t *testing.T, options json.RawMessage, origin string) json.RawMessage {
 	t.Helper()
-	var opt struct {
-		PublicKey struct {
-			Challenge        string `json:"challenge"`
-			RPID             string `json:"rpId"`
-			UserVerification string `json:"userVerification"`
-		} `json:"publicKey"`
-	}
-	if err := json.Unmarshal(options, &opt); err != nil {
-		t.Fatalf("request options %s: %v", options, err)
-	}
-	k.count++
-	ad := authData(opt.PublicKey.RPID, k.flags, k.count)
-	cd := clientData("webauthn.get", opt.PublicKey.Challenge, origin)
-	sum := sha256.Sum256(cd)
-	digest := sha256.Sum256(append(append([]byte{}, ad...), sum[:]...))
-	sig, err := ecdsa.SignASN1(rand.Reader, k.priv, digest[:])
+	out, err := k.Get(options, origin)
 	if err != nil {
 		t.Fatal(err)
 	}
-	out, _ := json.Marshal(map[string]any{
-		"id": pkB64(k.id), "rawId": pkB64(k.id), "type": "public-key", "clientExtensionResults": map[string]any{},
-		"response": map[string]any{"clientDataJSON": pkB64(cd), "authenticatorData": pkB64(ad), "signature": pkB64(sig), "userHandle": pkB64(k.userHandle)},
-	})
 	return out
 }
+
+const (
+	flagUV = passkeytest.FlagUV
+	flagBE = passkeytest.FlagBE
+	flagBS = passkeytest.FlagBS
+)
 
 // ── the engine's side of a flow ─────────────────────────────────────────────
 
@@ -339,7 +233,7 @@ func TestJoinByPasskeySignOutAndSignInAgain(t *testing.T) {
 		t.Fatalf("account = %+v", acct)
 	}
 	pk := acct.Passkeys[0]
-	if pk.Name != "Mac passkey" || !pk.BackupEligible || pk.PublicKey == "" || pk.ID != pkB64(key.id) {
+	if pk.Name != "Mac passkey" || !pk.BackupEligible || pk.PublicKey == "" || pk.ID != pkB64(key.ID) {
 		t.Fatalf("stored passkey = %+v", pk)
 	}
 	// The user handle is opaque: never the username.
@@ -388,7 +282,7 @@ func TestTheCeremonyRequiresUserVerificationAndResidentKeysAndLeavesAttachmentOp
 	}
 	// An authenticator that did not verify the person is refused.
 	key := newSoftKey(t)
-	key.flags &^= flagUV
+	key.Flags &^= flagUV
 	if w := o.finish(f.id, key.create(t, opt, pkOrigin), ""); w.Code != http.StatusBadRequest {
 		t.Fatalf("finish without UV = %d %s", w.Code, w.Body)
 	}
@@ -476,7 +370,7 @@ func TestCeremonyRefusals(t *testing.T) {
 	})
 	t.Run("unknown passkey", func(t *testing.T) {
 		stranger := newSoftKey(t)
-		stranger.userHandle = make([]byte, 32)
+		stranger.UserHandle = make([]byte, 32)
 		if _, w := o.signInByPasskey(stranger); w.Code != http.StatusBadRequest {
 			t.Fatalf("an unknown passkey = %d %s", w.Code, w.Body)
 		}
@@ -484,7 +378,7 @@ func TestCeremonyRefusals(t *testing.T) {
 	t.Run("credential owned by someone else", func(t *testing.T) {
 		operator := o.token2(key)
 		abir := newSoftKey(t)
-		abir.id = key.id // the same credential id as santosh's
+		abir.ID = key.ID // the same credential id as santosh's
 		f := o.mustStart("", api.PasskeyStart{Purpose: api.PasskeyJoin, Link: o.invite(operator)})
 		opt := o.options(f.id, map[string]string{"username": "abir"})
 		if w := o.finish(f.id, abir.create(t, opt, pkOrigin), ""); w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "passkey_taken") {
@@ -573,7 +467,7 @@ func TestAWayInChangedBeforeThePollSignsNobodyIn(t *testing.T) {
 	if w := o.finish(f.id, first.get(t, o.options(f.id, map[string]string{}), pkOrigin), ""); w.Code != 200 {
 		t.Fatalf("finish = %d %s", w.Code, w.Body)
 	}
-	if w := o.do("POST", "/v1/me/passkeys/remove", here, api.PasskeyRemove{ID: pkB64(second.id)}, ""); w.Code != http.StatusNoContent {
+	if w := o.do("POST", "/v1/me/passkeys/remove", here, api.PasskeyRemove{ID: pkB64(second.ID)}, ""); w.Code != http.StatusNoContent {
 		t.Fatalf("remove = %d %s", w.Code, w.Body)
 	}
 	if got := o.poll(f); got.State != api.PasskeyRefused || got.AccessToken != "" {
@@ -727,11 +621,11 @@ func TestAddAPasskeyThenRemoveItEndsOtherSessions(t *testing.T) {
 		} `json:"publicKey"`
 	}
 	_ = json.Unmarshal(opt, &excluded)
-	if len(excluded.PublicKey.Exclude) != 1 || excluded.PublicKey.Exclude[0].ID != pkB64(first.id) {
+	if len(excluded.PublicKey.Exclude) != 1 || excluded.PublicKey.Exclude[0].ID != pkB64(first.ID) {
 		t.Fatalf("the person's own passkey is not excluded: %s", opt)
 	}
 	second := newSoftKey(t)
-	second.flags &^= flagBE | flagBS // a security key: not synced
+	second.Flags &^= flagBE | flagBS // a security key: not synced
 	if w := o.finish(f.id, second.create(t, opt, pkOrigin), "YubiKey"); w.Code != 200 {
 		t.Fatalf("add = %d %s", w.Code, w.Body)
 	}
@@ -746,7 +640,7 @@ func TestAddAPasskeyThenRemoveItEndsOtherSessions(t *testing.T) {
 	}
 	// Sign in with the second, then remove the first: every other session ends.
 	o.token2(second)
-	if w := o.do("POST", "/v1/me/passkeys/remove", here, api.PasskeyRemove{ID: pkB64(first.id)}, ""); w.Code != http.StatusNoContent {
+	if w := o.do("POST", "/v1/me/passkeys/remove", here, api.PasskeyRemove{ID: pkB64(first.ID)}, ""); w.Code != http.StatusNoContent {
 		t.Fatalf("remove = %d %s", w.Code, w.Body)
 	}
 	if _, code := o.me(elsewhere); code == 200 {
@@ -759,14 +653,14 @@ func TestAddAPasskeyThenRemoveItEndsOtherSessions(t *testing.T) {
 		t.Fatalf("a removed passkey still signs in: %d", w.Code)
 	}
 	// The last way in cannot be removed.
-	if w := o.do("POST", "/v1/me/passkeys/remove", here, api.PasskeyRemove{ID: pkB64(second.id)}, ""); w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "last_way_in") {
+	if w := o.do("POST", "/v1/me/passkeys/remove", here, api.PasskeyRemove{ID: pkB64(second.ID)}, ""); w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "last_way_in") {
 		t.Fatalf("remove the last = %d %s", w.Code, w.Body)
 	}
 	// With a password set, it can.
 	if w := o.do("POST", "/v1/me/password", here, api.PasswordChange{Current: "", New: pwOperator}, ""); w.Code/100 != 2 {
 		t.Fatalf("set a first password = %d %s", w.Code, w.Body)
 	}
-	if w := o.do("POST", "/v1/me/passkeys/remove", here, api.PasskeyRemove{ID: pkB64(second.id)}, ""); w.Code != http.StatusNoContent {
+	if w := o.do("POST", "/v1/me/passkeys/remove", here, api.PasskeyRemove{ID: pkB64(second.ID)}, ""); w.Code != http.StatusNoContent {
 		t.Fatalf("remove with a password = %d %s", w.Code, w.Body)
 	}
 	o.token("santosh", pwOperator)
@@ -912,7 +806,7 @@ func TestPasskeysReachNoSecretSink(t *testing.T) {
 	if strings.Contains(string(body), token) {
 		t.Fatal("a session credential reached accounts.json")
 	}
-	priv, _ := key.priv.Bytes()
+	priv, _ := key.Priv.Bytes()
 	if strings.Contains(string(body), pkB64(priv)) {
 		t.Fatal("a private key reached accounts.json")
 	}

@@ -178,6 +178,9 @@ type appFactoryHub struct {
 	// linkSt is the invitations the engine holds and the lists it owes
 	// (appfactory_links.go), made by the first use.
 	linkSt *linkState
+	// passkeyFlows is the passkey ceremonies this engine started and the
+	// verifier each one is polled with (appfactory_passkey.go).
+	passkeyFlows map[string]*appPasskeyFlow
 	// orgFollow is each connection's organization event follower and
 	// orgChanged relays what it hears (appfactory_org_events.go); a hub with
 	// no orgChanged follows nothing. orgRetry is the first wait before a

@@ -90,14 +90,14 @@ func (h *appFactoryHub) readSignIn(ctx context.Context, origin string) ([]string
 	return cleanSignIn(about.SignIn), true
 }
 
-// cleanSignIn keeps only the two words a client acts on, once each, in order.
+// cleanSignIn keeps only the three words a client acts on, once each, in order.
 func cleanSignIn(in []string) []string {
 	if in == nil {
 		return nil
 	}
 	out := []string{}
 	for _, m := range in {
-		if (m == "password" || m == "github") && !containsString(out, m) {
+		if (m == "passkey" || m == "password" || m == "github") && !containsString(out, m) {
 			out = append(out, m)
 		}
 	}

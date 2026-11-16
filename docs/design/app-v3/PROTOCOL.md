@@ -243,6 +243,11 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.access_reset` | `in.FactoryAccessResetParams` | `FactoryAccess` |
 | `factory.password_sign_in` | `in.FactoryPasswordSignInParams` | `FactoryPasswordSignedIn` |
 | `factory.password_change` | `in.FactoryPasswordChangeParams` | `Empty` |
+| `factory.passkey_start` | `in.FactoryPasskeyStartParams` | `FactoryPasskeyStarted` |
+| `factory.passkey_poll` | `in.FactoryPasskeyPollParams` | `FactoryPasskeyPolled` |
+| `factory.passkey_cancel` | `in.FactoryPasskeyPollParams` | `Empty` |
+| `factory.passkey_list` | `in.FactoryPasskeyListParams` | `FactoryPasskeyList` |
+| `factory.passkey_remove` | `in.FactoryPasskeyRemoveParams` | `Empty` |
 | `factory.activity` | `in.FactoryActivityParams` | `FactoryActivity` |
 | `factory.attach` | `in.FactoryAttachParams` | `FactoryConnection` |
 | `factory.capabilities` | `in.Empty` | `FactoryCapabilities` |
@@ -2819,7 +2824,7 @@ the second way.
 Fields that say how a person signs in: `factory.list`'s connection `sign_in`
 and `factory.access_check`'s `factory.sign_in` (`["password","github"]`,
 preferred first, from the server's `/v1/about`; absent means GitHub only);
-`factory.me`'s `sign_in_kind` (`"password"` or `"github"`); and
+`factory.me`'s `sign_in_kind` (`"password"`, `"passkey"` or `"github"`); and
 `factory.people`'s rows' `kind`. `factory.me`'s `invite_available` no longer
 needs GitHub.
 
@@ -2847,4 +2852,54 @@ is never throttled.
 A password crosses this wire only inward, in `password`, `current` and `new`,
 on these four methods; a client's wire trace drops those params by name. The
 engine registers each with its redaction the moment it arrives.
+
+## Passkeys on an organization (`factory_passkey`)
+
+Hello announces **`factory_passkey`** when the engine serves the five methods
+below; an engine that does not answers them `unknown_method`. A passkey
+(WebAuthn: Touch ID, Windows Hello, a phone over QR, a security key, a password
+manager) is the first way into an organization wherever the server can offer
+one: its address is https with a DNS name. `sign_in` then lists `"passkey"`
+first (`["passkey","password","github"]`); a server that cannot offer passkeys
+leaves it out, and these methods answer `not_found` from it.
+
+The ceremony runs in the person's **default browser**, on a page the
+organization server serves: only a page on the server's own origin may use a
+passkey for it (a desk web view cannot, for any domain not in the app's
+build-time `webcredentials` entitlement). The engine starts the flow with the
+SHA-256 of a 32-byte verifier it keeps and never sends anywhere else; the server
+answers the session only to a poll carrying that verifier, so the url alone
+cannot mint a session.
+
+- `factory.passkey_start {factory?|link?, caller, purpose, username?, name?}`
+  answers `{flow, url, expires_at}`. `purpose` is `sign_in` (with `factory`, an
+  attached organization), `add` (with `factory`, signed in: another passkey for
+  this person) or `join` (with `link`: an invitation, the operator claim link,
+  or an operator's reset link). A join may carry the `username` (and `name`)
+  the person already chose; otherwise the page asks. `url` is always
+  `https://<the organization's host>/passkey/<flow>` (or a test server's
+  `http://localhost:<port>/…`); the engine refuses a start whose url is on any
+  other origin, and a client should open it only in the default browser. A link
+  that is revoked, expired or used is `conflict` with the server's sentence.
+- `factory.passkey_poll {flow, caller}` answers `{state, message?, factory?}`:
+  `pending` until the browser has finished; `done` with `factory` = the
+  connection now signed in (a join attaches a new one); `expired` (ten minutes
+  passed, or the flow is unknown); `refused` with `message`. A client polls
+  about every two seconds. Done is answered once; the session stays in the
+  engine exactly as `factory.access_sign_in` keeps one. An `add` signs nobody
+  in.
+- `factory.passkey_cancel {flow, caller}` answers `{}`; best effort.
+- `factory.passkey_list {factory}` answers `{passkeys: [{id, name, created_at,
+  last_used_at?, synced}], password}`. `password` says whether the person also
+  has a password. A GitHub person has no passkeys here: `not_found`.
+- `factory.passkey_remove {factory, id}` answers `{}`; every other session of
+  the person ends. Removing the last way in (the only passkey of a person with
+  no password) is `conflict`: "This is your only way to sign in. Add a password
+  or another passkey first."
+
+`factory.me`'s `sign_in_kind` is how this session was made: `"passkey"` after a
+passkey sign-in or join, `"password"` after a password one (the same person may
+hold both), with `github_signed_in` false for either; `factory.passkey_list`'s
+`password` says whether the person has a password. `factory.password_change` takes an empty `current` from a
+person with no password yet, which sets their first one.
 

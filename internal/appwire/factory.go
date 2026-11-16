@@ -378,18 +378,19 @@ type FactoryMe struct {
 	// Teams are the ids of the organization's teams this person is in, as
 	// the server's /v1/me says; [] from a server older than teams.
 	Teams []string `json:"teams"`
-	// SignInKind is how this person signed in, "password" or "github";
-	// absent for a key and from a server older than passwords. Only a
-	// "password" person can change a password.
-	SignInKind string `json:"sign_in_kind,omitempty" enum:"password,github"`
+	// SignInKind is how this person signed in: "password", "passkey" or
+	// "github"; absent for a key and from a server older than passwords. A
+	// "password" or "passkey" person has an account on the server and can set
+	// or change a password (factory.passkey_list's password says which).
+	SignInKind string `json:"sign_in_kind,omitempty" enum:"password,passkey,github"`
 }
 
 // NewFactoryMe narrows the factory's HTTP identity to the public view. Sign-in
 // is the factory's explicit attestation: github_signed_in for GitHub, or
-// sign_in_kind "password"; a session id, handle, name or operator flag never
+// sign_in_kind "password" or "passkey"; a session id, handle, name or operator flag never
 // implies it, and an older server's omission is false.
 func NewFactoryMe(me api.Me) FactoryMe {
-	person := me.GitHubSignedIn || me.SignInKind == "password"
+	person := me.GitHubSignedIn || me.SignInKind == "password" || me.SignInKind == "passkey"
 	out := FactoryMe{
 		Factory: me.Factory, CodeafVersion: me.CodeafVersion, Contract: me.Contract,
 		Profile: me.Profile, Mode: me.Mode, Operator: me.Operator, Access: me.Access,
