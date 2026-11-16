@@ -454,6 +454,30 @@ five exports, 320 objects, 40 frames); the engine-tagged
 `TestARepeatedExportKeepsTheWaitingFramesRealEngine` requires the real furrow
 to leave every waiting frame file untouched on a repeat.
 
+## Moving a chat
+
+`TestMoveTimelineRig` (`cmd/codeaf/app_move_timeline_test.go`) drives two real
+`codeaf app` processes with the engine daemon, a loopback relay and the shipped
+5 s sync cadence over a folder of the field's shape, and fails a take that lands
+`here` later than its ceiling. It runs on request because it writes and moves
+the folder twice. Run it on a quiet box: under a load of 100 on twenty cores,
+every take ran four to six times slower.
+
+```sh
+CODEAF_MOVE_RIG_MB=600 go test -count=1 -v -timeout 30m -run '^TestMoveTimelineRig$' ./cmd/codeaf
+```
+
+| Constant | Value | Before the fix (600 MB) | After (600 MB) |
+| --- | --- | --- | --- |
+| `moveTakeBackCeiling` | 3 s | 9.8 s | 0.8–1.2 s |
+| `moveOfflineCeiling` | 6 s | 13.0 s | 2.6–3.6 s |
+| `moveColdFixed` + MB × `moveColdPerMB` | 4 s + 10 ms per MB (10 s at 600) | 4.8–4.9 s | 4.8–5.7 s |
+
+Two unit tests in `internal/cellstore` guard the two causes on every pull
+request: a spawned engine process settles the store through a running daemon
+first, and every engine a process derives shares one clean-file ledger.
+`docs/design/app-v3/MOVE-TIMING.md` has the per-phase timeline.
+
 ## Idle factory manager checks
 
 Every open job manager checks its saved job budget once when opened. Thereafter
