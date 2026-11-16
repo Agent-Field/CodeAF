@@ -25,8 +25,13 @@ const usageRetryCap = time.Second
 // Open the journal only after locking the current ledger generation.
 // No append descriptor survives a compaction rename.
 type usagePending struct {
-	mu       sync.Mutex
-	rows     uint64
+	mu   sync.Mutex
+	rows uint64
+	// appended and durable count every row this process has put in the journal
+	// and every row a sync has since made durable. A settle reads the first and
+	// waits for the second to reach it ([usagePending.syncedThrough]).
+	appended uint64
+	durable  uint64
 	syncing  bool
 	wake     chan struct{}
 	synced   chan struct{}
@@ -254,6 +259,35 @@ func (p *usagePending) append(path string, row usageWrite) error {
 		return err
 	}
 	p.rows++
+	p.appended++
+	// A full batch hurries a sync that is already running. Starting one is the
+	// writer's job ([usagePending.startSync]), never an appender's.
+	if p.syncing && p.rows >= usageSyncRows {
+		select {
+		case p.wake <- struct{}{}:
+		default:
+		}
+	}
+	return nil
+}
+
+// startSync begins the journal's background sync when appended rows are waiting
+// for one, and hurries it along once a batch is full.
+//
+// ONLY THE LEDGER'S WRITER CALLS THIS. The sync goroutine and its channels live as
+// long as the process's machinery does, so they must belong to the goroutine that
+// owns the ledger, never to whichever caller happened to append first. A caller
+// inside a test's synctest bubble that started it used to own a bubbled timer and
+// bubbled channels: the bubble could not return while that timer was pending
+// (synctest calls it a deadlock), and the writer, outside the bubble, then woke a
+// bubbled channel on its way out, which is a fatal error for the whole test binary.
+// Every appended row reaches the writer, so every row's sync is started here.
+func (p *usagePending) startSync(path string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.rows == 0 {
+		return
+	}
 	if !p.syncing {
 		p.syncing = true
 		p.wake = make(chan struct{}, 1)
@@ -266,11 +300,43 @@ func (p *usagePending) append(path string, row usageWrite) error {
 		default:
 		}
 	}
-	return nil
 }
 
-// A clean close joins the final sync before replay can compact the journal.
-func (p *usagePending) finishSync() {
+// appendedSoFar is how many rows this process has journaled at path so far: the
+// mark a settle waits for [usagePending.syncedThrough] to reach.
+func (p *usagePending) appendedSoFar() uint64 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.appended
+}
+
+// syncedThrough reports whether every row up to mark is durable, and hurries a
+// running sync when it is not, so a settle never sits out the sync interval.
+//
+// IT READS A COUNT AND HANDS THE SYNC NOTHING, for [drainUsage]'s reason: a
+// settle may run inside a test's synctest bubble, and nothing it makes may be
+// left for the process's own goroutines to touch. Hurrying a sync is a send that
+// never blocks, on a channel the ledger's writer made.
+func (p *usagePending) syncedThrough(mark uint64) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.durable >= mark {
+		return true
+	}
+	if p.syncing {
+		select {
+		case p.wake <- struct{}{}:
+		default:
+		}
+	}
+	return false
+}
+
+// A clean close joins the final sync before replay can compact the journal. A row
+// appended since the writer last looked has its sync started here first, so none
+// is left unsynced by a close.
+func (p *usagePending) finishSync(path string) {
+	p.startSync(path)
 	p.mu.Lock()
 	if !p.syncing {
 		p.mu.Unlock()
@@ -327,6 +393,7 @@ func (p *usagePending) syncBatches(path string, wake <-chan struct{}, done chan<
 		p.mu.Lock()
 		if err == nil {
 			p.rows -= rows
+			p.durable += rows
 		}
 		if p.rows == 0 {
 			p.syncing = false
