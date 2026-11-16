@@ -700,6 +700,22 @@ it still needs existing knowledge consent. Use in chat opens a draft with a
 bounded excerpt and its Library address. The chat can also use
 `search_knowledge` and `read_knowledge` to consult the current guide.
 
+## Add a workstream file to the Library (keep a file, save a document to knowledge)
+
+In the desktop app, a file in a workstream's Files has "Add to Library" in its
+More menu and in its right-click menu. It keeps the file's words in your
+Library, the same profile-wide vault the terminal's Knowledge reads, and the
+next build files them into guides. A note shows for five seconds with Undo;
+nothing is kept if you press it.
+
+It needs Library consent, like Keep in Library. A file over 64000 characters
+is refused. Adding the same file again with the same words does nothing new;
+after you edit the file, adding it keeps the new words beside the old. A guide
+built from a file leads back to that file, not to a chat. Removing a file from
+Files does not take its words out of the Library; delete the guide for that.
+The other way round, a Files shortcut can open a Library page: Copy Link on
+the page, then New › Shortcut to a File Elsewhere… in Files, and paste it.
+
 ## Library disagreements in Inbox and Later
 
 The desktop sidebar separates Home from To review. Collections start

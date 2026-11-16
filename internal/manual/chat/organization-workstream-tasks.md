@@ -21,7 +21,7 @@ Who owns a new task: whoever asked for it. Work nobody asked for directly (from 
 ## tick a person task, hand a task to someone, move it to another workstream, send it back
 
 - Tick: only the owner ticks a person's task ("only the task's owner ticks it" otherwise). Ticking it unblocks the tasks that were waiting only on it: a person's task loses its "waiting on", and an Afi or chat task stays in Up next with the line "Ready to start: <the ticked task> is done" until it is started (see *Start — why a task stays in Up next*).
-- Hand to someone: anyone who can edit the workstream changes a task's owner to another person or to Everyone. The thread says "Handed to Marco".
+- Hand to someone: anyone who can edit the workstream changes a task's owner to another person or to Everyone. The thread says "Handed to Marco", and Marco's Inbox row says "handed to you by Priya". Taking a task yourself is not a hand-over and says nothing.
 - Move: More › Move moves a task, with its whole conversation, to another workstream you can edit. Tasks that waited on it here stop waiting.
 - Send back: a done task's More has "Send back…". It asks why, then puts the task back in Up next. Anyone who can edit may send work back, a reviewer included. The thread, the task and the doer's Inbox row read "Sent back by Priya: <why>". An Afi or chat task sent back starts again with the reason. A new goal is a new task.
 
@@ -46,6 +46,14 @@ You can hand it to someone, give it a due date or a heading, or make other tasks
 A task's Activity and comments is one thread everyone in the workstream sees: what was done, people's comments, and answers. Comments go to people. Afi never acts on a comment; it may offer under one ("Afi can add this to the draft · Add it"). Anyone may press Add it; the owner is told and can undo for 5 seconds, after which "the five seconds to undo this have passed".
 
 A private conversation with Afi stays private. If something you ask Afi there changes shared work, the task gets one line ("Priya asked Afi to keep it under 300 words"), never the conversation. "Post this to the task" adds Afi's answer to the thread, marked as posted by you.
+
+## @name in a comment — who a comment reaches, mention someone, Comments for you
+
+There is no chat between people; a comment on a task is how you say something about it. A comment reaches the task's owner, and anyone it names with @: "@abir", "@Abir" or "@AbirDas" all reach Abir. Only people in the workstream (named on it, or in one of its teams) can be reached; an @ that names nobody there, or one inside a word such as an email address, reaches nobody and the comment is still kept.
+
+A comment that reaches you shows in your Inbox under "Comments for you", with the newest comment's words and who wrote it, until you open the task. Opening it there or in Tasks marks it read; a new comment makes it unread again. Your own comments never reach you, and comments older than two weeks are not counted. Afi reading a task never marks it read for you.
+
+This works in an organization workstream. A Personal workstream has only you in it, so nothing there is for anyone else.
 
 ## someone left the workstream — who gets their tasks, handed to the fallback
 

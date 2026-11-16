@@ -46,6 +46,13 @@ CREATE TABLE IF NOT EXISTS task_events (
 	doc  TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS task_events_task ON task_events (ws, task, seq);
+CREATE TABLE IF NOT EXISTS task_reads (
+	ws     TEXT NOT NULL,
+	task   TEXT NOT NULL,
+	person TEXT NOT NULL,
+	seq    INTEGER NOT NULL,
+	PRIMARY KEY (ws, task, person)
+);
 `
 
 // ErrTaskStale is a task write whose rev is not the one kept.
@@ -149,6 +156,8 @@ func (w TaskWrite) Put(t factory.WorkstreamTask, rev int) error {
 	case cur != rev:
 		return ErrTaskStale
 	}
+	// What a task holds for one reader is filled when it is read, never kept.
+	t.ForYou = nil
 	doc, err := json.Marshal(t)
 	if err != nil {
 		return err
@@ -161,7 +170,7 @@ func (w TaskWrite) Put(t factory.WorkstreamTask, rev int) error {
 // Delete forgets task id of ws; its thread stays only when the task moves
 // (Move), never here.
 func (w TaskWrite) Delete(ws, id string) error {
-	for _, q := range []string{`DELETE FROM tasks WHERE ws = ? AND id = ?`, `DELETE FROM task_events WHERE ws = ? AND task = ?`} {
+	for _, q := range []string{`DELETE FROM tasks WHERE ws = ? AND id = ?`, `DELETE FROM task_events WHERE ws = ? AND task = ?`, `DELETE FROM task_reads WHERE ws = ? AND task = ?`} {
 		if _, err := w.tx.Exec(q, ws, id); err != nil {
 			return err
 		}
@@ -174,7 +183,10 @@ func (w TaskWrite) Move(from, to, id string) error {
 	if _, err := w.tx.Exec(`DELETE FROM tasks WHERE ws = ? AND id = ?`, from, id); err != nil {
 		return err
 	}
-	_, err := w.tx.Exec(`UPDATE task_events SET ws = ? WHERE ws = ? AND task = ?`, to, from, id)
+	if _, err := w.tx.Exec(`UPDATE task_events SET ws = ? WHERE ws = ? AND task = ?`, to, from, id); err != nil {
+		return err
+	}
+	_, err := w.tx.Exec(`UPDATE task_reads SET ws = ? WHERE ws = ? AND task = ?`, to, from, id)
 	return err
 }
 
@@ -220,4 +232,65 @@ func CountWorkstreamTasks(tasks []factory.WorkstreamTask) int {
 		_, job := factory.IsJobTask(t.ID)
 		return job
 	}))
+}
+
+// ── WHAT EACH PERSON HAS READ (SPEC "Comments for you") ──
+//
+// task_reads keeps, per task and person, the last line of its thread that
+// person has read. A comment after it is unread; reading the thread from a
+// screen moves the mark to its end ([Store.MarkTaskRead]).
+
+// TaskComment is one comment with the task it is on.
+type TaskComment struct {
+	Task  string
+	Event factory.WorkstreamTaskEvent
+}
+
+// UnreadComments are the comments in ws that person has not read, oldest
+// first, except their own and those older than `since` (RFC 3339): a
+// person who never opened a task is not handed its whole history.
+func (st *Store) UnreadComments(ws, person, since string) ([]TaskComment, error) {
+	db, err := st.wsDB(false)
+	if err != nil || db == nil {
+		return nil, err
+	}
+	person = factory.NormalizeHandle(person)
+	rows, err := db.Query(`SELECT e.task, e.doc FROM task_events e
+		LEFT JOIN task_reads r ON r.ws = e.ws AND r.task = e.task AND r.person = ?
+		WHERE e.ws = ? AND e.seq > COALESCE(r.seq, 0) AND e.doc LIKE '%"kind":"comment"%'
+		ORDER BY e.seq`, person, ws)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []TaskComment
+	for rows.Next() {
+		var task, doc string
+		if err := rows.Scan(&task, &doc); err != nil {
+			return nil, err
+		}
+		var e factory.WorkstreamTaskEvent
+		if err := json.Unmarshal([]byte(doc), &e); err != nil {
+			return nil, err
+		}
+		if e.Kind != factory.TaskEventComment || e.At < since || (e.By.Kind == factory.TaskByPerson && factory.NormalizeHandle(e.By.ID) == person) {
+			continue
+		}
+		out = append(out, TaskComment{Task: task, Event: e})
+	}
+	return out, rows.Err()
+}
+
+// MarkTaskRead records that person has read task's thread in ws to its end.
+func (st *Store) MarkTaskRead(ws, task, person string) error {
+	person = factory.NormalizeHandle(person)
+	if person == "" {
+		return nil
+	}
+	return st.wsTx(func(tx *sql.Tx) error {
+		_, err := tx.Exec(`INSERT INTO task_reads (ws, task, person, seq)
+			SELECT ?, ?, ?, COALESCE(MAX(seq), 0) FROM task_events WHERE ws = ? AND task = ?
+			ON CONFLICT (ws, task, person) DO UPDATE SET seq = MAX(task_reads.seq, excluded.seq)`, ws, task, person, ws, task)
+		return err
+	})
 }

@@ -71,6 +71,7 @@ func TestOrgWorkstreamTasksForwardToTheServer(t *testing.T) {
 		{"factory.org_workstream_task_comment", map[string]any{"id": "tk_1", "offer": map[string]any{"event": "te_2", "state": "taken"}},
 			"POST /v1/workstreams/ws_1/tasks/tk_1/comment", "", `{"offer":{"event":"te_2","state":"taken"}}`},
 		{"factory.org_workstream_task_events", map[string]any{"id": "tk_1"}, "GET /v1/workstreams/ws_1/tasks/tk_1/events", "", ``},
+		{"factory.org_workstream_task_events", map[string]any{"id": "tk_1", "seen": true}, "GET /v1/workstreams/ws_1/tasks/tk_1/events?seen=1", "", ``},
 		{"factory.org_workstream_tasks_start_all", map[string]any{"group": "grp_batch-release-2.4"}, "POST /v1/workstreams/ws_1/tasks/start_all", "", `{"group":"grp_batch-release-2.4"}`},
 	} {
 		o.since()

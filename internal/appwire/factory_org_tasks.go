@@ -19,7 +19,7 @@ import (
 //	factory.org_workstream_task_update     OrgTaskUpdateParams  -> OrgTask       PATCH /v1/workstreams/{id}/tasks/{tid}  If-Match: rev
 //	factory.org_workstream_task_answer     OrgTaskAnswerParams  -> OrgTask       POST  /v1/workstreams/{id}/tasks/{tid}/answer
 //	factory.org_workstream_task_comment    OrgTaskCommentParams -> OrgTaskEvent  POST  /v1/workstreams/{id}/tasks/{tid}/comment
-//	factory.org_workstream_task_events     OrgTaskParams        -> OrgTaskEvents GET   /v1/workstreams/{id}/tasks/{tid}/events
+//	factory.org_workstream_task_events     OrgTaskParams        -> OrgTaskEvents GET   /v1/workstreams/{id}/tasks/{tid}/events[?seen=1]
 //	factory.org_workstream_tasks_start_all OrgTasksStartAllParams -> OrgTasks    POST  /v1/workstreams/{id}/tasks/start_all
 //
 // Every param names the workstream as `ws` and the task as `id`, the same
@@ -61,6 +61,9 @@ type OrgTaskParams struct {
 	OrgConn
 	WS string `json:"ws"`
 	ID string `json:"id"`
+	// Seen, on a thread read, marks it read for the caller: a person opened
+	// the task, so its comments leave their Inbox's "Comments for you".
+	Seen bool `json:"seen,omitempty"`
 }
 
 // OrgTaskCreateParams is a new task: SPEC §2.2's TaskCreate beside ws.
@@ -267,6 +270,9 @@ func init() {
 	})
 	methods["factory.org_workstream_task_events"] = filled(orgMethod[OrgTaskParams, OrgTaskEvents]("factory.org_workstream_task_events", func(p OrgTaskParams) (OrgRequest, error) {
 		path, err := orgTaskPath(p.WS, p.ID)
+		if p.Seen {
+			return OrgRequest{Method: http.MethodGet, Path: path + "/events?seen=1"}, err
+		}
 		return OrgRequest{Method: http.MethodGet, Path: path + "/events"}, err
 	}), func(e *OrgTaskEvents) { e.fill() })
 	methods["factory.org_workstream_tasks_start_all"] = filled(orgMethod[OrgTasksStartAllParams, OrgTasks]("factory.org_workstream_tasks_start_all", func(p OrgTasksStartAllParams) (OrgRequest, error) {

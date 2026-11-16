@@ -969,10 +969,10 @@ and the task `id`, the same words the desk's Tauri `workstream_task_*` commands 
 and a task and an event are the server's shapes passed through whole: a task is `{id,
 ws, rev, title, request, owner, done_by, came_from, state, state_reason?, step?,
 waiting_on, due?, group?, results, check?, ask?, cost_usd?, created_by, created_at,
-updated_at, done_at?, answered_by?}`, `state` one of `up_next`, `running`, `needs`,
+updated_at, done_at?, answered_by?, handed_by?, for_you?}`, `state` one of `up_next`, `running`, `needs`,
 `done`, `failed`, `interrupted`, `stopped` (Stopped by you), `no_report` (Didn't report
 back); an event is `{id, task, at, by, kind, text, steps?, duration_s?, offer?,
-undo_until?, option?}`, `option` being the chosen answer's id on an `answered` event; a
+undo_until?, option?, mentions?}`, `option` being the chosen answer's id on an `answered` event; a
 standing order's task names its run in `came_from.run`. A person on a task (`owner`, `done_by`, `came_from` and
 `created_by` of kind `person`) is named, in every answer that carries the task, by the
 name they joined with ("Abir Das"), or their handle when the organization knows none;
@@ -982,7 +982,13 @@ membership, else its go-ahead group) as a task with id `job:<n>`, `done_by.kind`
 `factory`, its state from the job's, its Ask the job's open question and `step` "Step
 4 of 4, Review"; jobs are never copied, and what a person sets on one (owner, waits,
 due, heading) is kept as an overlay under its id. `factory.org_workstream_task {ws,
-id}` reads one; `_task_events {ws, id}` answers `{events}`, oldest first.
+id}` reads one; `_task_events {ws, id, seen?}` answers `{events}`, oldest first, and
+with `seen: true` (`GET .../events?seen=1`, sent only when a person opens the task on a
+screen, never by an agent) marks the thread read for the caller. `handed_by` (a
+PersonRef) is who last handed the task to its owner, absent when the owner took it by
+their own hand. `for_you` is the reader's own and never kept: `{comments, mentioned?,
+last}`, the unread `comment` lines of the last fourteen days on a task the reader owns
+or that name the reader with @, not their own, and the newest of them as `last`.
 `_task_create {ws, title, request?, owner?, done_by, came_from?, waiting_on?, due?,
 group?, state?}` `POST` (`edit`) answers the task, 201; whoever asked owns it, work
 from the Factory or a standing order goes to the workstream's default owner, and a
@@ -1005,7 +1011,10 @@ otherwise; the first answer decides and records `answered_by`, a second is 409; 
 Factory task's answer goes through the job's own answer door and its rules.
 `_task_comment {ws, id, kind?, text, offer_for?}` `POST .../comment` (`edit`, 201)
 adds a `comment` (the default), `posted`, `request_note`, `worked` or `offer` (Afi's,
-under the comment `offer_for`); a comment or post never changes the task's state. With
+under the comment `offer_for`); a comment or post never changes the task's state. A
+`comment` answers with `mentions`, the handles of the workstream's people (its persons
+and everyone in its teams) it names with `@handle`, `@Name` or `@FirstName`; an @
+naming nobody in the workstream, or inside a word (an address), names nobody. With
 `offer {event, state}` instead it takes or dismisses an open offer (`undo_until` is five
 seconds on) or, with `state` `open` before then, undoes the take (the owner or the
 taker). `_tasks_start_all {ws, group}` `POST .../tasks/start_all` names the group's up
@@ -3552,6 +3561,9 @@ Errors contain no source text or credentials. Stale mutations return `conflict`.
 | method | params | result |
 |---|---|---|
 | `knowledge.capture` | `{chat, message, text}` | admits a bounded passage from an actual saved agent reply; requires existing opt-in |
+| `knowledge.capture` | `{file: {workstream, id, name?}, text}` | the file form (hello word `knowledge.capture_file`): keeps a workstream file's words, at most 64000 characters, with no chat; requires existing opt-in |
+
+The file form names no `chat` or `message`. The engine records the words as a user source of kind `workstream_file`, session `workstream:<workstream>` and id `workstream-file:<workstream>/<id>@<hash of the words>`, so keeping the same words again is one source and keeping an edited file adds a new one beside it. `knowledge.source` on such a source answers `{chat: "", message: "", file: {workstream, id}}`, which the desk opens as that file. A desk that does not see `knowledge.capture_file` in hello leaves "Add to Library" off its file menus.
 
 Settings includes `knowledge_model`; `settings.set {knowledge_model}` changes the same profile row the terminal uses. Clearing it restores the default, `deepseek/deepseek-v4.1-flash`. Building the Library never changes a saved model choice.
 
@@ -3620,7 +3632,12 @@ the second way.
   `password_contains_username`, `name_invalid`, `github_link`) and `message`
   in the server's words. `github_link` is an invitation made for one GitHub
   login: it takes no password (its `factory.sign_in` leaves `password` out),
-  only that person's GitHub sign-in. A username already used anywhere on the
+  only that person's GitHub sign-in. An operator claim link is never one of
+  these on a server that takes passwords: it is not named for the host's GitHub
+  login even when the server holds a GitHub token, so its check lists
+  `password` and a password claim is taken (until film D14 such a server's
+  operator link answered `github_link`). A recovery link (`--new-operator-link`)
+  is still for the operator who claimed. A username already used anywhere on the
   server (a GitHub login that ever signed in, a share, a team, a job) is
   `username_taken`. A link that is revoked, expired or used up answers that
   state.
