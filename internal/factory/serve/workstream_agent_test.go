@@ -102,10 +102,10 @@ func (o *wsOrg) serverMode(t *testing.T, runner AgentRunner) {
 // settle waits for every answer in flight to end.
 func (o *wsOrg) settle() { o.h.agentDesk.wg.Wait() }
 
-// ONE CONVERSATION, READ BY EVERYONE WHO CAN SEE THE WORKSTREAM, AND SPOKEN
-// TO BY THOSE WHO CAN EDIT IT. The agent works with the organization's key,
-// writes as the person who asked, proposes decisions a person keeps, and what
-// it spent is posted under that person.
+// EACH PERSON WHO CAN EDIT HAS THEIR OWN CONVERSATION, which nobody else
+// reads. The agent works with the organization's key, writes as the person
+// who asked, proposes decisions a person keeps, and what it spent is posted
+// under that person.
 func TestServerAgentAnswersEveryoneWhoCanEdit(t *testing.T) {
 	o := newWSOrg(t)
 	webhook, _, _, brand := o.orgScene(t)
@@ -165,16 +165,22 @@ func TestServerAgentAnswersEveryoneWhoCanEdit(t *testing.T) {
 		t.Fatalf("the runner was handed %+v", seen)
 	}
 
-	o.do(t, "abir", "GET", "/v1/workstreams/"+webhook.ID+"/agent", -1, nil, 200, &got)
+	var abirs api.WorkstreamAgent
+	o.do(t, "abir", "GET", "/v1/workstreams/"+webhook.ID+"/agent", -1, nil, 200, &abirs)
+	if len(abirs.Entries) != 0 || abirs.Seq != 0 || !abirs.Private {
+		t.Fatalf("abir reads mia's conversation: %+v", abirs)
+	}
+	got = api.WorkstreamAgent{}
+	o.do(t, "mia", "GET", "/v1/workstreams/"+webhook.ID+"/agent", -1, nil, 200, &got)
 	kinds := []string{}
 	for _, e := range got.Entries {
 		kinds = append(kinds, e.Kind)
 	}
 	if !slices.Equal(kinds, []string{"person", "step", "agent"}) || got.Entries[0].By != "mia" || got.State != api.AgentIdle || got.Seq != 3 {
-		t.Fatalf("abir reads %v %+v", kinds, got)
+		t.Fatalf("mia reads %v %+v", kinds, got)
 	}
 	var since api.WorkstreamAgent
-	o.do(t, "abir", "GET", "/v1/workstreams/"+webhook.ID+"/agent?since=2", -1, nil, 200, &since)
+	o.do(t, "mia", "GET", "/v1/workstreams/"+webhook.ID+"/agent?since=2", -1, nil, 200, &since)
 	if len(since.Entries) != 1 || since.Entries[0].Kind != "agent" {
 		t.Fatalf("since=2 reads %+v", since.Entries)
 	}
@@ -218,14 +224,14 @@ func TestServerAgentAnswersEveryoneWhoCanEdit(t *testing.T) {
 	}
 }
 
-// ONE MESSAGE AT A TIME, AND ANYONE WHO CAN EDIT MAY STOP IT. A second
-// message while one is answered is refused naming whose it is answering.
+// ONE MESSAGE OF A PERSON'S AT A TIME, AND ONLY THEY STOP IT. Another
+// person's conversation is never busy because of theirs.
 func TestServerAgentIsBusyThenStopped(t *testing.T) {
 	o := newWSOrg(t)
 	webhook, _, _, _ := o.orgScene(t)
-	started := make(chan struct{})
+	started := make(chan string, 2)
 	o.serverMode(t, func(ctx context.Context, turn AgentTurn) (AgentTurnEnd, error) {
-		close(started)
+		started <- turn.Asker
 		<-ctx.Done()
 		return AgentTurnEnd{USD: 0.01}, ctx.Err()
 	})
@@ -233,20 +239,29 @@ func TestServerAgentIsBusyThenStopped(t *testing.T) {
 	o.do(t, "santosh", "POST", path+"/messages", -1, api.AgentMessageNew{Text: "think hard"}, 202, nil)
 	<-started
 	var busy map[string]string
-	o.do(t, "abir", "POST", path+"/messages", -1, api.AgentMessageNew{Text: "me too"}, 409, &busy)
-	if busy["reason"] != "busy" || busy["by"] != "santosh" || !strings.Contains(busy["error"], "still answering santosh") {
-		t.Fatalf("abir was told %v", busy)
+	o.do(t, "santosh", "POST", path+"/messages", -1, api.AgentMessageNew{Text: "and this"}, 409, &busy)
+	if busy["reason"] != "busy" || !strings.Contains(busy["error"], "still answering your last message") {
+		t.Fatalf("santosh was told %v", busy)
 	}
+	// abir's own conversation is free while santosh's is answered.
+	o.do(t, "abir", "POST", path+"/messages", -1, api.AgentMessageNew{Text: "me too"}, 202, nil)
+	<-started
 	o.do(t, "owner", "POST", path+"/stop", -1, nil, 403, nil)
 	var got api.WorkstreamAgent
 	o.do(t, "abir", "POST", path+"/stop", -1, nil, 200, &got)
 	if got.State != api.AgentStopping || got.For != "abir" {
 		t.Fatalf("stopping %+v", got.AgentState)
 	}
+	o.do(t, "santosh", "GET", path, -1, nil, 200, &got)
+	if got.State != api.AgentWorking {
+		t.Fatalf("abir's stop stopped santosh's answer: %+v", got.AgentState)
+	}
+	o.do(t, "santosh", "POST", path+"/stop", -1, nil, 200, nil)
 	o.settle()
+	got = api.WorkstreamAgent{}
 	o.do(t, "abir", "GET", path, -1, nil, 200, &got)
 	last := got.Entries[len(got.Entries)-1]
-	if got.State != api.AgentIdle || last.Kind != api.AgentEntryNote || last.Text != "Stopped by abir." {
+	if got.State != api.AgentIdle || last.Kind != api.AgentEntryNote || last.Text != "Stopped." {
 		t.Fatalf("after the stop %+v, last %+v", got.AgentState, last)
 	}
 }
@@ -416,13 +431,14 @@ func TestServerAgentStopsAtTheBudgetAndChecksRightsOnEveryWrite(t *testing.T) {
 	o.do(t, "mia", "POST", "/v1/workstreams/"+launch.ID+"/agent/messages", -1, api.AgentMessageNew{Text: "more"}, 409, nil)
 }
 
-// THE AGENT'S EVENTS REACH EXACTLY THOSE WHO CAN SEE THE WORKSTREAM.
+// THE AGENT'S EVENTS REACH ONLY THE PERSON WHOSE CONVERSATION IT IS, while
+// they can see the workstream (L1 F2). An event naming no person reaches no one.
 func TestServerAgentEventsFollowView(t *testing.T) {
 	o := newWSOrg(t)
 	webhook, _, _, _ := o.orgScene(t)
-	data, _ := json.Marshal(api.AgentEvent{ID: webhook.ID, Entry: &api.AgentEntry{Seq: 1, Kind: "person", Text: "hi"}})
+	data, _ := json.Marshal(api.AgentEvent{ID: webhook.ID, Person: "mia", Entry: &api.AgentEntry{Seq: 1, Kind: "person", Text: "hi"}})
 	e := live.Event{Kind: api.EventAgentEntry, Data: data}
-	for who, want := range map[string]bool{"abir": true, "mia": true, "owner": true} {
+	for who, want := range map[string]bool{"abir": false, "mia": true, "owner": false} {
 		r := httptest.NewRequest("GET", "/v1/events", nil)
 		r.RemoteAddr = "192.0.2.1:1234"
 		r.Header.Set("Authorization", "Bearer "+o.tokens[who])
@@ -431,7 +447,16 @@ func TestServerAgentEventsFollowView(t *testing.T) {
 		}
 	}
 	private := o.create(t, "abir", api.WorkstreamNew{Name: "Mine", Private: true})
-	data, _ = json.Marshal(api.AgentEvent{ID: private.ID, AgentState: &api.AgentState{State: api.AgentWorking}})
+	nobody, _ := json.Marshal(api.AgentEvent{ID: webhook.ID, Entry: &api.AgentEntry{Seq: 1, Kind: "person", Text: "hi"}})
+	for _, who := range []string{"abir", "mia", "owner"} {
+		r := httptest.NewRequest("GET", "/v1/events", nil)
+		r.RemoteAddr = "192.0.2.1:1234"
+		r.Header.Set("Authorization", "Bearer "+o.tokens[who])
+		if _, ok := o.h.liveForViewer(r, live.Event{Kind: api.EventAgentEntry, Data: nobody}); ok {
+			t.Fatalf("%s hears an event naming nobody", who)
+		}
+	}
+	data, _ = json.Marshal(api.AgentEvent{ID: private.ID, Person: "abir", AgentState: &api.AgentState{State: api.AgentWorking}})
 	for who, want := range map[string]bool{"abir": true, "santosh": false, "owner": false} {
 		r := httptest.NewRequest("GET", "/v1/events", nil)
 		r.RemoteAddr = "192.0.2.1:1234"

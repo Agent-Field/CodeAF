@@ -62,7 +62,7 @@ func factoryWorkstreamAgent(st *store.Store, load func() (config.Config, error))
 			Model:       factoryWorkstreamAgentModel(st, load, profile),
 			APIKey:      turn.Key, BaseURL: factoryWorkstreamAgentBaseURL(),
 			DeterministicNames: true, CompactEnabled: true,
-			System:     factoryWorkstreamAgentSystem(turn.Name, workstreamDoorKeepsWork(turn.Door)),
+			System:     factoryWorkstreamAgentSystem(turn.Name, turn.Asker, workstreamDoorKeepsWork(turn.Door)),
 			Workstream: turn.Door,
 		}, profile, true, true)
 		// THE GATE IS THE DOOR, NOT AN APPROVAL ASK. Nobody sits in front of
@@ -244,7 +244,7 @@ func workstreamDoorKeepsWork(door serve.AgentDoor) bool {
 	return ok
 }
 
-func factoryWorkstreamAgentSystem(name string, work bool) string {
+func factoryWorkstreamAgentSystem(name, asker string, work bool) string {
 	tools := "You have one tool, " + session.WorkstreamPagesTool + ": "
 	if work {
 		tools = "You have " + session.WorkstreamPagesTool + " and the workstream's task and file tools (ws_tasks, ws_task_create, ws_task_update, ws_task_comment, ws_files, ws_file_read, ws_file_create, ws_file_suggest). " +
@@ -252,7 +252,7 @@ func factoryWorkstreamAgentSystem(name string, work bool) string {
 			"before you answer who is doing what or what is waiting on someone, read ws_tasks. With " + session.WorkstreamPagesTool + " you "
 	}
 	system := "You are Afi, the assistant of the organization workstream \"" + name + "\", running on the organization's server. " +
-		factoryWorkstreamAgentAudience + "\n\n" +
+		factoryWorkstreamAgentAudience + factoryWorkstreamAgentAsker(asker) + "\n\n" +
 		tools + "read the workstream (ask read) before you answer about it, " +
 		"read one page whole (ask page), write a page (ask write), make a new page (ask new), or suggest a decision for a person to keep (ask decide). " +
 		"You write as the person whose message you are answering. You rewrite only a page you made that no person has edited; " +
@@ -267,7 +267,9 @@ func factoryWorkstreamAgentSystem(name string, work bool) string {
 }
 
 // factoryWorkstreamAgentAudience says who reads this conversation.
-const factoryWorkstreamAgentAudience = "Everyone who can see the workstream reads this conversation, and each message comes from one of them."
+// Each person has their own conversation with the server's agent (L1 F2).
+const factoryWorkstreamAgentAudience = "This conversation is private to the one person you are talking to: nobody else in the workstream reads it, and you never repeat to them what another person said to you. " +
+	"What you put in tasks, files, pages and decisions is shared with everyone in the workstream."
 
 // factoryWorkstreamAgentWords is how the agent speaks to a person. THE
 // MACHINERY VOCABULARY LAW (CLAUDE.md) holds for what the model says, not only
@@ -278,3 +280,12 @@ const factoryWorkstreamAgentWords = "How you speak to people: name tasks, pages,
 	"(ids such as tk_…, pg_…, fl_… and ws_… are for your tools only, and never appear in your answer). " +
 	"Say a task is up next, running, waiting on someone, done or failed, and call Factory work a task. " +
 	"Never describe where the workstream is by a phase or a step of a process; say what is done, what is running and what waits on whom."
+
+// factoryWorkstreamAgentAsker names the person this conversation is with, so
+// the one line a private request leaves on a task can say who asked.
+func factoryWorkstreamAgentAsker(asker string) string {
+	if asker = strings.TrimSpace(asker); asker == "" {
+		return ""
+	}
+	return " You are talking to " + asker + "."
+}

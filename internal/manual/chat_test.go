@@ -53,6 +53,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"open a workstream chat as its own tab", "workstream-chats-and-tools"},
 		{"did Afi save the brief to my Library", "workstream-chats-and-tools"},
 		{"the agent is still answering someone else, how do I stop it", "organization-workstream-agent"},
+		{"can my colleagues read what I ask Afi in our organization workstream", "organization-workstream-agent"},
+		{"Afi on the server wrote pages titled Task instead of making tasks", "organization-workstream-agent"},
 		{"who can answer a task's question in a workstream", "organization-workstream-tasks"},
 		{"someone left the workstream, who gets their tasks", "organization-workstream-tasks"},
 		{"a file changed while my task was running", "organization-workstream-tasks"},
