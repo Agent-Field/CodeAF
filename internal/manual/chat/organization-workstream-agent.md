@@ -30,10 +30,20 @@ On the server the agent carries one tool, `workstream_pages`, and nothing else:
 - write a page's words, or make a new page;
 - propose a decision (a person keeps it).
 
-It writes as the person who asked, and their rights are checked on every write. A page somebody has opened for editing is never written over: the agent's text is kept as a new version in that page's history, and anyone with edit restores it from there.
+It writes as the person who asked, and their rights are checked on every write. A page edited live (one somebody has opened for editing) is never written over: the agent's text is kept as a new version in that page's History, marked Kept · not applied, and anyone with edit applies it with Restore this version (next section).
 
 It cannot run commands, read or change a repository, open files, start or stop factory jobs, use a computer, search the web or remember things between workstreams. For any of that, use `driver` mode, where the agent runs on a person's laptop with their tools.
 
 ## a new organization workstream starts with an Overview page — never empty
 
 When someone makes a workstream on the organization's server and sends no pages with it, the server gives it one page: titled "Overview", of kind overview, with nothing written in it yet. That is the same page the desktop app sends, so a workstream made from the app, from a script or from any other client always has a page people (and the server's agent) can write in. A workstream made with pages of its own keeps exactly those pages, and no Overview is added.
+
+## the agent's text was kept, not applied — page History, current, Kept · not applied, Restore this version
+
+When the server's agent writes to a page that is edited live, its text does not go into the page. It is kept as the newest version in the page's History, and the agent says so: "your text was not applied: it was kept as version N in the page's History, marked Kept · not applied".
+
+History marks **current** on the version the page actually holds, which the organization's server names (`live_version` on the page's versions). That is never simply the highest number: a kept version can be newer than the page. A kept version's row reads **Kept · not applied** and is not current.
+
+Choosing a kept version shows its words, and **Restore this version** applies them. The restore goes into the live page as one edit, so everyone with the page open sees it at once, and it becomes the newest version and the current one. After a restore the kept row no longer says Kept · not applied. Restoring needs edit on the page, and the page open in your window.
+
+Versions a person's editor keeps (after a pause, or on request) and restores are always ones the page held. A Personal workstream has no kept versions: there, current is the newest version.

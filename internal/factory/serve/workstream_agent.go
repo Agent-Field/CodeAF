@@ -613,7 +613,7 @@ func (d *agentDoor) WritePage(ctx context.Context, page, title, body string) (st
 			return "wrote the page " + strconv.Quote(cur.Title), nil
 		}
 	}
-	saved, added, err := h.config.Store.AddPageVersion(d.id, page, store.PageVersion{At: stamp, By: v.Handle, Title: cur.Title, BodyMD: body, Reason: "agent"})
+	saved, added, err := h.config.Store.AddPageVersion(d.id, page, store.PageVersion{At: stamp, By: v.Handle, Title: cur.Title, BodyMD: body, Reason: versionReasonKept})
 	if err != nil {
 		return "", err
 	}
@@ -621,8 +621,10 @@ func (d *agentDoor) WritePage(ctx context.Context, page, title, body string) (st
 		h.recordAs(ctx, v.Handle, record.WorkstreamChanged, "changed page", orgObjectWorkstream+d.id, page+" version "+strconv.Itoa(saved.Version)+" by the agent")
 		h.publishWorkstreamPart(ws, api.PartVersions, page, v.Handle, saved.Version, false)
 	}
-	return "the page " + strconv.Quote(cur.Title) + " is open for editing, so your text was kept as version " +
-		strconv.Itoa(saved.Version) + " in its history; anyone who can edit it restores that version to apply it", nil
+	// These words are the desk's: History marks the version "Kept · not
+	// applied" and offers Restore this version on it (versionsWire says so).
+	return "the page " + strconv.Quote(cur.Title) + " is edited live, so your text was not applied: it was kept as version " +
+		strconv.Itoa(saved.Version) + " in the page's History, marked Kept · not applied; anyone who can edit the page opens History, chooses that version and presses Restore this version to apply it", nil
 }
 
 func (d *agentDoor) Decide(ctx context.Context, text string) (string, error) {
