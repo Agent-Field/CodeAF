@@ -34,7 +34,9 @@ type replayCache struct {
 func (h *Handler) idempotent(w http.ResponseWriter, r *http.Request) {
 	key := r.Header.Get("Idempotency-Key")
 	// Access links establish a caller cookie; replaying a pre-sign-in response could give another opener that cookie.
-	if r.Method != http.MethodPost || key == "" || r.URL.Path == "/v1/factory-access" {
+	// A password door's answer carries a session credential and must never be
+	// written to a replay row, on disk or in memory.
+	if r.Method != http.MethodPost || key == "" || r.URL.Path == "/v1/factory-access" || r.URL.Path == "/v1/auth/password" || r.URL.Path == "/v1/me/password" {
 		h.mux.ServeHTTP(w, r)
 		return
 	}

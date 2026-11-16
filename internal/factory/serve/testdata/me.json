@@ -22,5 +22,6 @@
   "mode": "team",
   "operator": false,
   "runners": [],
-  "teams": []
+  "teams": [],
+  "sign_in_kind": "github"
 }

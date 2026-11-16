@@ -149,7 +149,19 @@ type appFactoryHub struct {
 	// access_check_post. It holds no secret, expires with a flow's life and is
 	// bounded by appwire.MaxFactoryFlows.
 	checkCaps map[string]appFactoryCheckCap
-	seen      map[string]time.Time
+	// signInCaps remembers, per origin, how its /v1/about said a person signs
+	// in ("password", "github"), for one flow life; no secret, bounded like
+	// checkCaps (appfactory_password.go).
+	signInCaps map[string]appFactorySignInCap
+	// devices holds, per connection, the organization's trusted-device token
+	// for this machine (appfactory_sessions.go). It is a secret, kept like a
+	// session but outliving one: signing out keeps it.
+	devices map[string]string
+	// keeper is what the app's core last said through factory.sessions_store:
+	// whether it can keep a secret in the OS's secure store. Only then does a
+	// sign-in ask the factory for a device token; unsaid is false.
+	keeper bool
+	seen   map[string]time.Time
 	// adminBusy marks a connection whose sign-out or revoke-all is in flight
 	// (appfactory_admin.go), so one press is one request.
 	adminBusy map[string]bool
@@ -464,6 +476,14 @@ func (h *appFactoryHub) tokenLocked(id string) string {
 	return s.token
 }
 
+// holdDevice is holdDeviceLocked for a caller that does not hold h.mu; the
+// holdAt that follows queues it.
+func (h *appFactoryHub) holdDevice(id, token string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.holdDeviceLocked(id, token)
+}
+
 // hold keeps a session in memory and tells the redactors it is a secret.
 func (h *appFactoryHub) hold(id, token string, lives time.Duration) { h.holdAt(id, "", token, lives) }
 
@@ -733,6 +753,9 @@ func (h *appFactoryHub) view(ctx context.Context, row appFactoryRow) (out appwir
 	}
 	ctx, cancel := context.WithTimeout(ctx, appFactoryProbe)
 	defer cancel()
+	if !(row.Local || row.ID == appLocalID) {
+		out.SignIn = h.signInFor(ctx, row.URL)
+	}
 	token := h.tokenFor(row.ID)
 	if token == "" {
 		if row.Local || row.ID == appLocalID {
@@ -1056,7 +1079,8 @@ func (b *appBackend) FactoryDetach(_ context.Context, id string) error {
 	}
 	h.rows = kept
 	delete(h.sessions, id)
-	h.forgetKeptLocked(id)
+	delete(h.devices, id)
+	h.forgetDeviceLocked(id)
 	delete(h.seen, id)
 	h.dropHeldLocked(id)
 	h.stopOrgFollowLocked(id)
@@ -1312,13 +1336,31 @@ func (b *appBackend) FactoryAccessCancel(ctx context.Context, caller, link strin
 // access is the factory's /v1/factory-access for one caller's link. verb ""
 // asks (and polls a started sign-in), sign_in starts one, cancel ends it.
 func (h *appFactoryHub) access(ctx context.Context, caller, link, verb string) (appwire.FactoryAccess, error) {
+	return h.accessWith(ctx, caller, link, api.FactoryAccessRequest{Verb: verb})
+}
+
+// accessWith is access with the request's other fields: sign_up's username,
+// password and name, reset's password (appfactory_password.go). A password
+// verb is sent with no bearer and no join cookie: it needs neither, and the
+// session it makes replaces whatever this connection held.
+func (h *appFactoryHub) accessWith(ctx context.Context, caller, link string, ask api.FactoryAccessRequest) (appwire.FactoryAccess, error) {
+	verb := ask.Verb
+	password := verb == "sign_up" || verb == "reset"
 	origin, key, err := appFactoryJoin(caller, link)
 	if err != nil {
 		return appwire.FactoryAccess{}, err
 	}
-	id, cookie, token, err := h.admitAccess(origin, key, verb)
+	admit := verb
+	if password {
+		// Making an account attaches the factory, as a sign-in does.
+		admit = "sign_in"
+	}
+	id, cookie, token, err := h.admitAccess(origin, key, admit)
 	if err != nil {
 		return appwire.FactoryAccess{}, err
+	}
+	if password {
+		cookie, token = nil, ""
 	}
 	release := func() { h.releaseLink(key) }
 
@@ -1337,7 +1379,8 @@ func (h *appFactoryHub) access(ctx context.Context, caller, link, verb string) (
 		}
 	}
 	if wire != "" {
-		method, path, in = http.MethodPost, "/v1/factory-access", api.FactoryAccessRequest{Link: link, Verb: wire}
+		ask.Link, ask.Verb = link, wire
+		method, path, in = http.MethodPost, "/v1/factory-access", ask
 	}
 	if err == nil {
 		r, err = h.send(ctx, origin, token, method, path, in, appFactorySmall, func(req *http.Request) {
@@ -1389,6 +1432,7 @@ func (h *appFactoryHub) access(ctx context.Context, caller, link, verb string) (
 	if joined && granted != "" {
 		redact.Register(granted)
 		trace.Secret(granted)
+		h.holdDeviceLocked(id, out.DeviceToken)
 		// An explicit completed sign-in changes the caller, including when a
 		// local authority was previously reached through its operator bearer.
 		h.sessions[id] = appFactorySession{token: granted}
@@ -1407,8 +1451,11 @@ func (h *appFactoryHub) access(ctx context.Context, caller, link, verb string) (
 	if out.Factory.Repos == nil {
 		out.Factory.Repos = []string{}
 	}
+	if out.Factory.SignIn != nil {
+		h.rememberSignInLocked(origin, out.Factory.SignIn)
+	}
 	return appwire.FactoryAccess{State: out.State, Factory: out.Factory, Detail: out.Detail, Message: out.Message,
-		Help: out.Help, SignInURL: out.SignInURL, UserCode: out.UserCode}, nil
+		Help: out.Help, SignInURL: out.SignInURL, UserCode: out.UserCode, Kind: out.Kind, Reason: out.Reason}, nil
 }
 
 // admitAccess is the admission of one access-link exchange: it refuses a

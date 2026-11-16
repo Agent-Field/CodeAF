@@ -239,6 +239,10 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.access_cancel` | `in.FactoryAccessParams` | `FactoryAccess` |
 | `factory.access_check` | `in.FactoryAccessParams` | `FactoryAccess` |
 | `factory.access_sign_in` | `in.FactoryAccessParams` | `FactoryAccess` |
+| `factory.access_sign_up` | `in.FactoryAccessSignUpParams` | `FactoryAccess` |
+| `factory.access_reset` | `in.FactoryAccessResetParams` | `FactoryAccess` |
+| `factory.password_sign_in` | `in.FactoryPasswordSignInParams` | `FactoryPasswordSignedIn` |
+| `factory.password_change` | `in.FactoryPasswordChangeParams` | `Empty` |
 | `factory.activity` | `in.FactoryActivityParams` | `FactoryActivity` |
 | `factory.attach` | `in.FactoryAttachParams` | `FactoryConnection` |
 | `factory.capabilities` | `in.Empty` | `FactoryCapabilities` |
@@ -419,6 +423,7 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.runners` | `in.FactoryRef` | `Runners` |
 | `factory.scout` | `in.FactoryScoutParams` | `ScoutLook` |
 | `factory.session_restore` | `in.FactorySessionRestoreParams` | `FactorySessionRestored` |
+| `factory.sessions_store` | `in.FactorySessionsStoreParams` | `Empty` |
 | `factory.sessions_take` | `in.Empty` | `FactorySessionsTaken` |
 | `factory.setup` | `in.FactoryRef` | `FactorySetup` |
 | `factory.setup_back` | `in.FactoryLocalParams` | `FactorySetupView` |
@@ -2766,3 +2771,80 @@ Settings includes `knowledge_model`; `settings.set {knowledge_model}` changes th
 `knowledge.recall` is an explicit read of saved guides, including while `enabled` is false. It does not enable capture, import chats or publish new knowledge. Automatic memory use remains gated by the profile setting.
 
 Library page detail includes `changes: [{before, after, reason}]` for automatic replacements; `claim_details` and `sources` retain the corresponding claims and chat locators.
+
+## Username + password on an organization (`factory_password`)
+
+Hello announces **`factory_password`** when the engine serves the four methods
+below; an engine that does not answers them `unknown_method`. Username and
+password is the default way into an organization; GitHub's device flow stays as
+the second way.
+
+- `factory.access_sign_up {link, caller, username, password, name?}` makes an
+  account through an operator claim link or an invitation and answers
+  `FactoryAccess`. `state: "joined"` means the account exists and the engine
+  now holds its session for that connection (kept exactly as
+  `factory.access_sign_in` keeps one; the session credential is never in an
+  answer). A refusal is `state: "ready"` with `reason` (`username_taken`,
+  `username_invalid`, `password_short`, `password_long`, `password_common`,
+  `password_contains_username`, `name_invalid`, `github_link`) and `message`
+  in the server's words. `github_link` is an invitation made for one GitHub
+  login: it takes no password (its `factory.sign_in` leaves `password` out),
+  only that person's GitHub sign-in. A username already used anywhere on the
+  server (a GitHub login that ever signed in, a share, a team, a job) is
+  `username_taken`. A link that is revoked, expired or used up answers that
+  state.
+- `factory.access_reset {link, caller, password}` sets a new password through
+  the operator's reset link (`kind: "reset"` on `factory.access_check`'s
+  answer); `state: "joined"` signs the person in, and every other session of
+  theirs has ended.
+- `factory.password_sign_in {factory, caller, username, password}` signs a
+  person in again with no link and answers `{state: "signed_in", me}`. A
+  refusal is a `forbidden` error carrying the server's sentence: the same one
+  for an unknown username and a wrong password ("That username and password
+  don't match."). Too many tries is `busy` ("Too many tries. Wait a few
+  minutes."): 10 wrong tries of a username from one address, 100 from
+  everywhere, or 50 from one address (an IPv6 address counts by its /64);
+  and a second sign-in of a username while one is being verified. A machine
+  the organization trusts skips the 100: see the device token below. Every session is tied to
+  the password it was made with: a change or a reset ends all of them.
+- `factory.password_change {factory, current, new}` answers `{}`; every other
+  session of the person ends. A wrong current password is `forbidden`; a new
+  one that breaks a rule is `bad_params` with the rule's words; a change that
+  lost a race with another change is `conflict` ("Your password was changed
+  meanwhile; sign in again.").
+- `factory.link_create` takes `kind: "reset"` with `person: <handle>` (and no
+  other choice): a one-time link for one hour, for a password person only,
+  copied like an invitation. Its entry carries `kind: "reset"`.
+
+Fields that say how a person signs in: `factory.list`'s connection `sign_in`
+and `factory.access_check`'s `factory.sign_in` (`["password","github"]`,
+preferred first, from the server's `/v1/about`; absent means GitHub only);
+`factory.me`'s `sign_in_kind` (`"password"` or `"github"`); and
+`factory.people`'s rows' `kind`. `factory.me`'s `invite_available` no longer
+needs GitHub.
+
+THE DEVICE TOKEN. A sign-up, a reset, a change, and a sign-in without a
+valid one hand this machine the organization's device token, but only when the
+engine asks (`want_device`), and it asks only while the app's core has said
+`factory.sessions_store {can_keep: true}`: that it can keep a secret in the
+OS's secure store. The core says it at launch, before the windows are let go,
+and says `false` the moment a keep is refused; unsaid is false. A person holds
+at most 16 live device tokens; past that a sign-in still succeeds but gets
+none, and no live token is ever pushed out. The engine holds
+it per connection like a session, registers it with its redaction, presents it
+on every `factory.password_sign_in` (the server then counts the try by the
+machine, not against the username's ceiling of 100, so a stranger guessing at
+the name from elsewhere never locks out a machine the person used), and hands
+it to the app's core through `factory.sessions_take`: each
+`FactorySessionChange` may carry `device`. It outlives the session: a change
+with `removed` forgets the session only, and a `device` on it is still kept;
+`device_removed` (the connection was detached) forgets the device too.
+`factory.session_restore` takes `device` beside `token`, and either alone. A
+password change or reset revokes every older device token on the server; a
+new machine during an attack waits, or uses the operator's reset link, which
+is never throttled.
+
+A password crosses this wire only inward, in `password`, `current` and `new`,
+on these four methods; a client's wire trace drops those params by name. The
+engine registers each with its redaction the moment it arrives.
+

@@ -200,7 +200,31 @@ The service is joined with an access link, which the operator creates for one pe
 - `codeaf factory name` shows or changes the name the factory goes by.
 - `codeaf factory steps` prints the built-in step prompts; `codeaf factory convert` turns a Markdown pipeline into `.codeaf/factory.yaml`.
 
-An access link looks like `codeaf://factory/join?url=https://factory.example#token=…`. The secret is in the part after `#`, so it is never sent as part of an address. A link checks, in this order: the factory answers, it is not revoked, not expired, not used up, and the person's GitHub can see at least one of its repositories. Each failure is one plain sentence.
+An access link looks like `codeaf://factory/join?url=https://factory.example#token=…`. The secret is in the part after `#`, so it is never sent as part of an address. A link checks, in this order: the factory answers, it is not revoked, not expired, not used up, and, for a person who signs in with GitHub, their GitHub can see at least one of its repositories. Each failure is one plain sentence.
+
+## sign in to an organization with a username and password — sign up, sign in again, change password, wrong password
+
+An organization server (`codeaf factory serve`) takes a username and password by default; GitHub is the second way. Its `/v1/about` lists them in `sign_in`, password first. You make an account by opening the operator link or an invitation link and choosing a username and a password; the link is used up in the same step that makes the account, so two people can never both join on one single-use link.
+
+- A username is 2 to 39 lowercase letters, digits or hyphens. It must be new to the server: not a GitHub login that ever signed in, nor a name already given a share, a team place or a job. "That name belongs to someone who signs in here with a password." refuses a GitHub sign-in with a password person's name. An invitation made for one GitHub login takes no password: "This link is for a GitHub account; sign in with GitHub."
+- A password is 12 characters to 256 bytes, any characters, with no other composition rules and no expiry. One on the embedded list of about 486,000 common passwords, compared by its letters and digits only (so "P.a.s.s.w.o.r.d-1234" counts), or one that contains your username, is refused with a sentence naming the rule.
+- A wrong username and a wrong password get the same sentence: "That username and password don't match."
+- "Too many tries. Wait a few minutes." comes after 10 wrong tries for a username from one address, 100 for a username from everywhere, or 50 from one address; the wait grows with more tries and goes away on its own. A machine you have signed in on before is not held up by other people's guesses (see the next section).
+- Changing your password, or a reset, ends every session made with the old one. Signing out ends that session on the server.
+- A session lasts 30 days after you last used it, and 90 days at most.
+- Password sign-in works only over HTTPS, or on the server's own machine, or behind a trusted proxy that says HTTPS.
+
+## a trusted machine — someone guessing my username, "Too many tries" on a new laptop, device token
+
+When the desktop app can keep secrets in the system keychain, each sign-up, reset, password change or sign-in on that machine gets a device token from the organization, kept beside the sign-in. A client that cannot keep it gets none. Later sign-ins on that machine present it. While a stranger guesses at your username from many addresses, the 100-tries limit for the username holds them up but not your machines: a machine with its token is counted by itself (10 wrong tries from one address, 100 from everywhere) and its address (50); past 100 its tries count like any other. Signing out keeps the token; disconnecting the factory removes it.
+
+The server keeps only a hash of each token. A token lasts 180 days after it was last used and is not replaced on use; a restart of the server keeps them. A person holds at most 16: past that a sign-in still works but gets no new token, and no token in use is ever pushed out. Changing your password, a reset, or being removed ends every token made before, so the machine you changed it on gets a new one and your other machines count as new until they sign in again.
+
+A new machine during such an attack reads "Too many tries. Wait a few minutes." until the attack slows. To get in at once, ask the operator for a reset link: a reset link, like an unused invitation, is never held up by tries, and the reset trusts that machine from then on.
+
+## forgot password — operator reset link, one hour, password people only
+
+There is no email recovery. The operator makes a reset link for one password person (in the app, or `factory.link_create` with `kind: "reset"`); it works once, lasts one hour, and makes any older reset link for that person stop working. Opening it lets the person set a new password, which ends all their sessions and signs them in. A GitHub person has no password to reset. Every sign-up, sign-in, refused burst of sign-ins, change, reset link and reset is written to the organization's record.
 
 ## codeaf attach and codeaf detach — use another machine's factory
 
@@ -208,7 +232,7 @@ An access link looks like `codeaf://factory/join?url=https://factory.example#tok
 
 ## the app keeps a factory sign-in — signed out after a restart, keychain, sign out removes it
 
-In the desktop app, a sign-in to a team factory (GitHub sign-in, an access link, or a pasted token) is kept in the system keychain, one item per factory, and handed back when the app next opens, so a restart does not sign you out. It is never written to the app's saved factory list or to a log. Signing out, ending every session, and disconnecting the factory each remove the kept sign-in. A kept sign-in the factory no longer accepts reads **Signed out** once and is removed; sign in again. The factory on your own machine keeps no sign-in: the app makes its key again at each start.
+In the desktop app, a sign-in to a team factory (GitHub sign-in, an access link, or a pasted token) is kept in the system keychain, one item per factory, and handed back when the app next opens, so a restart does not sign you out. It is never written to the app's saved factory list or to a log. Signing out, ending every session, and disconnecting the factory each remove the kept sign-in. An organization's device token is kept in the same item; only disconnecting removes it. A kept sign-in the factory no longer accepts reads **Signed out** once and is removed; sign in again. The factory on your own machine keeps no sign-in: the app makes its key again at each start.
 
 ## codeaf runner join — run a factory's jobs on this machine, sign in with GitHub
 

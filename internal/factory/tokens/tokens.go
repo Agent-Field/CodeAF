@@ -33,6 +33,10 @@ type Profile struct {
 	Name      string   `json:"name"`
 	AvatarURL string   `json:"avatar_url"`
 	Scopes    []string `json:"scopes"`
+	// Kind is "password" for a person who signs in with a username and a
+	// password (accounts.go); empty is a GitHub person, which every profile
+	// written before password accounts is.
+	Kind string `json:"kind,omitempty"`
 }
 
 // Token is one access token row. Expires is set when the row should stop

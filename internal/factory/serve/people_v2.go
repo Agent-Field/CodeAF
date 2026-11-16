@@ -103,8 +103,14 @@ func (h *Handler) peopleDirectory(w http.ResponseWriter, r *http.Request) {
 	if !found && operator != "" {
 		members = append(members, api.Member{Handle: operator, LastSeen: h.now()})
 	}
+	accounts, _ := h.loadAccounts()
 	for _, member := range members {
-		p := api.Person{Factory: h.factory, Handle: member.Handle, Login: member.Handle, Role: "member", You: member.Handle == caller,
+		if _, ok := accounts.Find(member.Handle); ok {
+			member.Kind = signInPassword
+		} else if member.Kind == "" {
+			member.Kind = signInGitHub
+		}
+		p := api.Person{Factory: h.factory, Handle: member.Handle, Login: member.Handle, Kind: member.Kind, Role: "member", You: member.Handle == caller,
 			Operator: member.Handle == operator, Status: personStatus(member.LastSeen, h.now()), Owns: []api.Ownership{}, Machines: []api.Machine{}}
 		p.Name, p.AvatarURL = member.Name, member.AvatarURL
 		last := member.LastSeen
@@ -180,6 +186,12 @@ func (h *Handler) operatorRevokePerson(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if h.failed(w, h.revokePerson(r, handle)) {
+		return
+	}
+	// A removed password person's password signs nobody in any more.
+	err := tokens.RemoveAccount(h.config.TokensPath, handle)
+	h.forgetAccounts()
+	if h.failed(w, err) {
 		return
 	}
 	// A person the operator removes leaves every team with their sign-ins,

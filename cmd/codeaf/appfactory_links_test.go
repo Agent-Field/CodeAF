@@ -770,7 +770,6 @@ func TestLinkGatesFailClosedBeforeAnyWrite(t *testing.T) {
 		"no mode":            {func(f *linkFactory) { f.me.Mode = "" }, appwire.CodeConflict},
 		"older factory":      {func(f *linkFactory) { f.me.GitHubSignInAvailable, f.me.InviteAvailable = false, false }, appwire.CodeConflict},
 		"no invite config":   {func(f *linkFactory) { f.me.InviteAvailable = false }, appwire.CodeConflict},
-		"no github client":   {func(f *linkFactory) { f.me.GitHubSignInAvailable = false }, appwire.CodeConflict},
 		"no clipboard":       {func(f *linkFactory) { f.clip.avail = false }, appwire.CodeConflict},
 		"a role is no proof": {func(f *linkFactory) { f.me.Operator, f.me.Handle, f.me.SessionID = false, "alice", "tok_operator" }, appwire.CodeForbidden},
 	} {
@@ -783,6 +782,19 @@ func TestLinkGatesFailClosedBeforeAnyWrite(t *testing.T) {
 				t.Fatalf("posts %d copies %d", f.posts(), f.clip.count())
 			}
 		})
+	}
+}
+
+// A SERVER WITH NO GITHUB STILL INVITES: its people sign up with a password,
+// and invite_available is the server's own word for whether it can.
+func TestLinkInvitesOnAServerWithNoGitHub(t *testing.T) {
+	f := newLinkFactory(t)
+	f.me.GitHubSignInAvailable = false
+	if _, err := f.create(appwire.FactoryLinkCreateParams{}); err != nil {
+		t.Fatal(err)
+	}
+	if f.posts() != 1 || f.clip.count() != 1 {
+		t.Fatalf("posts %d copies %d", f.posts(), f.clip.count())
 	}
 }
 
