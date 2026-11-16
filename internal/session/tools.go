@@ -156,7 +156,13 @@ func (a *Agent) belt() []bare.Tool {
 	// OTHER, and no shelf a loader could reach (tools_workstream.go).
 	if a.config.mayWorkstream() {
 		a.clearShelf()
-		return []bare.Tool{a.workstreamTool()}
+		// Its tasks and files ride beside it when the door keeps them
+		// (tools_workstream_work.go); a door that does not leaves them absent.
+		belt := []bare.Tool{a.workstreamTool()}
+		if door := a.config.workstreamWorkDoor(); door != nil {
+			belt = append(belt, workstreamWorkBelt(door)...)
+		}
+		return belt
 	}
 	// A MODEL WITH NO TOOLS CARRIES NO BELT, and no shelf a loader could reach
 	// either: the catalog says it cannot call one (chatpage.go).
