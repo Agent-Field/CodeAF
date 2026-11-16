@@ -295,7 +295,7 @@ func TestSignUpThroughTheOperatorLinkMakesTheOperator(t *testing.T) {
 	}
 	token := o.signUp(link, "Santosh", pwOperator)
 	me, code := o.me(token)
-	if code != 200 || me.Handle != "santosh" || !me.Operator || me.SignInKind != "password" || !me.GitHubSignedIn || me.Kind != "password" {
+	if code != 200 || me.Handle != "santosh" || !me.Operator || me.SignInKind != "password" || me.GitHubSignedIn || me.Kind != "password" {
 		t.Fatalf("me = %d %+v", code, me)
 	}
 	// The claim is spent: the link opens as used, and a second sign-up on it

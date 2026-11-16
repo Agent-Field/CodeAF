@@ -547,7 +547,7 @@ func (h *Handler) passwordSignIn(w http.ResponseWriter, r *http.Request) {
 	}
 	me := h.meBody(profile, session.id)
 	me.Operator = username == h.operatorLogin(r)
-	me.GitHubSignedIn, me.SignInKind = true, signInPassword
+	me.SignInKind = signInPassword
 	me.Teams = h.Membership().TeamsOf(username)
 	h.write(w, http.StatusOK, api.PasswordSignedIn{Factory: h.factory, AccessToken: credential, TokenType: "bearer",
 		ExpiresIn: int(accessSessionTTL.Seconds()), ExpiresAt: session.expires.UTC(),

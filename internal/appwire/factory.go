@@ -385,14 +385,16 @@ type FactoryMe struct {
 }
 
 // NewFactoryMe narrows the factory's HTTP identity to the public view. Sign-in
-// is the factory's explicit github_signed_in attestation; a session id, handle,
-// name or operator flag never implies it, and an older server's omission is false.
+// is the factory's explicit attestation: github_signed_in for GitHub, or
+// sign_in_kind "password"; a session id, handle, name or operator flag never
+// implies it, and an older server's omission is false.
 func NewFactoryMe(me api.Me) FactoryMe {
+	person := me.GitHubSignedIn || me.SignInKind == "password"
 	out := FactoryMe{
 		Factory: me.Factory, CodeafVersion: me.CodeafVersion, Contract: me.Contract,
 		Profile: me.Profile, Mode: me.Mode, Operator: me.Operator, Access: me.Access,
 		GitHubSignedIn: me.GitHubSignedIn,
-		CanSignOut:     me.GitHubSignedIn && FactorySessionCanEnd(me.SessionID),
+		CanSignOut:     person && FactorySessionCanEnd(me.SessionID),
 
 		GitHubSignInAvailable: me.GitHubSignInAvailable,
 		// An invitation is redeemed with GitHub or with a password; an older

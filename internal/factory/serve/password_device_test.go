@@ -342,3 +342,24 @@ func TestAHashWaitsForASlotThenGivesUp(t *testing.T) {
 		t.Fatalf("gave up after %v, want about %v", waited, hashSlotWait)
 	}
 }
+
+// A password person is signed in, but not with GitHub: /v1/me and the
+// sign-in answer say github_signed_in false and sign_in_kind "password".
+func TestAPasswordPersonIsNotSaidToHaveSignedInWithGitHub(t *testing.T) {
+	o := newPWOrg(t)
+	session := o.signUp(o.operatorLink(), "santosh", pwOperator)
+	w := o.do("GET", "/v1/me", session, nil, "")
+	signedIn := tlsSignIn(o, "santosh", pwOperator, "192.0.2.9:1")
+	for name, body := range map[string]string{"/v1/me": w.Body.String(), "sign-in": signedIn.Body.String()} {
+		var raw map[string]any
+		if err := json.Unmarshal([]byte(body), &raw); err != nil {
+			t.Fatalf("%s: %v %s", name, err, body)
+		}
+		if me, ok := raw["me"].(map[string]any); ok {
+			raw = me
+		}
+		if raw["github_signed_in"] != false || raw["sign_in_kind"] != "password" {
+			t.Errorf("%s: github_signed_in = %v, sign_in_kind = %v", name, raw["github_signed_in"], raw["sign_in_kind"])
+		}
+	}
+}

@@ -32,7 +32,8 @@ type Me struct {
 	Runners   []Runner `json:"runners"`
 	SessionID string   `json:"session_id"`
 	// GitHubSignedIn is asserted only by the serving factory, and only when the
-	// authenticated credential carries a GitHub-verified profile. A session_ or
+	// authenticated credential carries a GitHub-verified profile; a password
+	// person is false, and SignInKind "password" says they signed in. A session_ or
 	// tok_ id alone proves nothing; an older server omits the field, so absent
 	// means false and no other field may promote it.
 	GitHubSignedIn bool `json:"github_signed_in"`

@@ -4,6 +4,7 @@ title: an organization's people sign in with a username and password, and GitHub
 pr: 2646
 surface: [factory, engine, docs]
 invalidates:
+  - "/v1/me's github_signed_in meant any signed-in person. It is now true only for a GitHub sign-in; a password person reads false with sign_in_kind password, and the engine's can_sign_out covers both."
   - "Joining a team server meant signing in with GitHub through an access link's device code. Now the operator link and invitations make a username + password account by default (POST /v1/factory-access verb sign_up); GitHub stays available where the server has a GitHub app. /v1/about's sign_in lists the ways, password first."
   - "factory.me's invite_available was true only when the server had GitHub. It is now true on any team server with a token store."
   - "A GitHub login could be any name. A GitHub sign-in whose login equals a password person's handle is now refused with the sentence \"That name belongs to someone who signs in here with a password\"."

@@ -938,12 +938,11 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 	body := h.meBody(profile, session.id)
 	// Only a credential that carries a GitHub-verified profile is a sign-in; a
 	// script token, access-link secret or legacy dashboard session is not.
-	body.GitHubSignedIn = session.profile != nil && session.profile.Handle != ""
-	// GitHubSignedIn has always meant "a person signed in", which a password
-	// person is; SignInKind says which way, so a GitHub-only affordance can be
-	// absent for a password person rather than broken.
-	if body.GitHubSignedIn {
+	// SignInKind says which way a person signed in; GitHubSignedIn is true only
+	// for GitHub, so a password person is never said to have a GitHub sign-in.
+	if session.profile != nil && session.profile.Handle != "" {
 		body.SignInKind = personKind(*session.profile)
+		body.GitHubSignedIn = body.SignInKind == signInGitHub
 	}
 	// What this factory is configured to do, said by the factory itself so a
 	// client never probes a real GitHub device flow to find out.

@@ -106,7 +106,7 @@ func TestTwoPasswordPeopleThroughTheEngine(t *testing.T) {
 	}
 	var me appwire.FactoryMe
 	santosh.must("factory.me", map[string]any{"factory": id}, &me)
-	if me.Handle != "santosh" || me.SignInKind != "password" || !me.Operator || !me.InviteAvailable || !me.CanSignOut {
+	if me.Handle != "santosh" || me.SignInKind != "password" || !me.Operator || !me.InviteAvailable || !me.CanSignOut || me.GitHubSignedIn {
 		t.Fatalf("me = %+v", me)
 	}
 
