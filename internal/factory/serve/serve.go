@@ -128,10 +128,15 @@ type Config struct {
 	// ([factorygithub.Standing]): "" while it is open, "closed" or "merged"
 	// when it ended. A person's start asks it first, so an issue closed on
 	// GitHub is finished instead of run. Nil starts on what the floor knows.
-	Recheck     func(context.Context, factory.Item) (factory.SourceStanding, error)
-	Address     string
-	Version     string
-	AccessToken string
+	Recheck func(context.Context, factory.Item) (factory.SourceStanding, error)
+	Address string
+	// HSTSSubdomains adds includeSubDomains to HSTS, for an operator who
+	// owns the whole name and serves every name under it over HTTPS. Off by
+	// default: the passkey cookie is __Host- already, so nothing here needs
+	// it, and it would break a plain-HTTP site below the name.
+	HSTSSubdomains bool
+	Version        string
+	AccessToken    string
 	// GitHubClientID enables GitHub device sign-in; Team optionally restricts handles.
 	GitHubClientID string
 	Team           []string
@@ -250,7 +255,9 @@ type Handler struct {
 	pwOnce  sync.Once
 	pwGuard *passwordGuard
 	// accounts is accounts.json as last read (password_accounts.go).
-	accounts       accountsCache
+	accounts accountsCache
+	// passkeys holds the WebAuthn ceremonies in flight (passkey.go).
+	passkeys       passkeyState
 	replays        replayCache
 	machinesMu     sync.Mutex
 	machines       map[string]machineRow
@@ -293,6 +300,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.route("/v1/auth/device/poll", map[string]http.HandlerFunc{http.MethodPost: h.pollDevice})
 	h.route("/v1/auth/password", map[string]http.HandlerFunc{http.MethodPost: h.passwordSignIn})
 	h.route("/v1/me/password", map[string]http.HandlerFunc{http.MethodPost: h.passwordChange})
+	h.passkeyRoutes()
 	h.route("/access", map[string]http.HandlerFunc{http.MethodGet: h.access, http.MethodPost: h.access})
 	h.route("/v1/access/revoke-sessions", map[string]http.HandlerFunc{http.MethodPost: h.revokeSessions})
 	h.read("/v1/queue", h.queue)
@@ -445,7 +453,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// A caller who reached the factory over HTTPS is told to keep doing so.
 	// Over plain HTTP the header means nothing and is not sent.
 	if secureRequest(r) {
-		w.Header().Set("Strict-Transport-Security", hstsValue)
+		w.Header().Set("Strict-Transport-Security", h.hsts())
 	}
 	if h.config.ServedBy == "app" && !workerPath(r.URL.Path) && !h.floorToken(bearer(r)) {
 		w.Header().Set("WWW-Authenticate", `Bearer realm="factory"`)
@@ -458,7 +466,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			return
 		}
-	} else if r.URL.Path != "/access" && r.URL.Path != "/v1/factory-access" && r.URL.Path != "/v1/about" && r.URL.Path != "/v1/auth/password" && !h.allowed(r) {
+	} else if r.URL.Path != "/access" && r.URL.Path != "/v1/factory-access" && r.URL.Path != "/v1/about" && r.URL.Path != "/v1/auth/password" && !passkeyOpenPath(r.URL.Path) && !h.allowed(r) {
 		if h.authFailed(w, r) {
 			return
 		}
@@ -475,7 +483,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if h.authFailed(w, r) {
 		return
 	}
-	if !workerPath(r.URL.Path) && r.URL.Path != "/v1/about" && r.URL.Path != "/access" && r.URL.Path != "/v1/auth/device" && r.URL.Path != "/v1/auth/device/poll" && r.URL.Path != "/v1/auth/password" {
+	if !workerPath(r.URL.Path) && r.URL.Path != "/v1/about" && r.URL.Path != "/access" && r.URL.Path != "/v1/auth/device" && r.URL.Path != "/v1/auth/device/poll" && r.URL.Path != "/v1/auth/password" && !passkeyOpenPath(r.URL.Path) {
 		if session, ok := h.credential(r); ok && session.tokenID != "" {
 			for _, tok := range h.tokenRows() {
 				if tok.ID == session.tokenID && (tok.AccessLink || tok.InvitedBy != "") {
@@ -943,6 +951,9 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 	if session.profile != nil && session.profile.Handle != "" {
 		body.SignInKind = personKind(*session.profile)
 		body.GitHubSignedIn = body.SignInKind == signInGitHub
+		if session.via != "" && body.SignInKind == signInPassword {
+			body.SignInKind = session.via
+		}
 	}
 	// What this factory is configured to do, said by the factory itself so a
 	// client never probes a real GitHub device flow to find out.

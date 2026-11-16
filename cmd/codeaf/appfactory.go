@@ -178,6 +178,9 @@ type appFactoryHub struct {
 	// linkSt is the invitations the engine holds and the lists it owes
 	// (appfactory_links.go), made by the first use.
 	linkSt *linkState
+	// passkeyFlows is the passkey ceremonies this engine started and the
+	// verifier each one is polled with (appfactory_passkey.go).
+	passkeyFlows map[string]*appPasskeyFlow
 	// orgFollow is each connection's organization event follower and
 	// orgChanged relays what it hears (appfactory_org_events.go); a hub with
 	// no orgChanged follows nothing. orgRetry is the first wait before a
@@ -254,6 +257,10 @@ func (h *appFactoryHub) forgetAll() {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.closed = true
+	for id, f := range h.passkeyFlows {
+		f.loopback.close()
+		delete(h.passkeyFlows, id)
+	}
 	h.sessions = map[string]appFactorySession{}
 	h.signIns = map[string]*appFactorySignIn{}
 	h.links = map[string]*appFactoryLink{}
@@ -568,8 +575,9 @@ func (h *appFactoryHub) send(ctx context.Context, origin, token, method, path st
 // sentence is passed on, trimmed; its status code is not.
 func appFactoryFailure(r appFactoryReply) error {
 	var body struct {
-		Error  string `json:"error"`
-		Reason string `json:"reason"`
+		Error  string            `json:"error"`
+		Reason string            `json:"reason"`
+		Action *api.StepUpAction `json:"action"`
 	}
 	_ = json.Unmarshal(bytes.TrimSpace(r.body), &body)
 	words := strings.TrimSpace(redact.Secrets(body.Error))
@@ -579,6 +587,16 @@ func appFactoryFailure(r appFactoryReply) error {
 	switch {
 	case r.status >= 300 && r.status < 400:
 		return appwire.Errorf(appwire.CodeUnreachable, "the factory redirected the request, and redirects are not followed")
+	case r.status == http.StatusForbidden && body.Reason == api.ReasonStepUp:
+		if words == "" {
+			words = "Confirm it's you first."
+		}
+		e := appwire.Errorf(appwire.CodeStepUp, "%s", words)
+		if body.Action != nil {
+			// The one action to confirm, so the client confirms that.
+			e.Detail = appwire.FactoryStepUpDetail{Action: body.Action.Kind, Passkey: body.Action.Passkey}
+		}
+		return e
 	case r.status == http.StatusUnauthorized && body.Reason == api.ReasonGitHubExpired:
 		return appwire.Errorf(appwire.CodeGitHubExpired, "GitHub access to this factory has expired; reconnect GitHub")
 	case r.status == http.StatusUnauthorized:
