@@ -1426,6 +1426,9 @@ func (a *Agent) attachReplayLocked() (entries []DisplayEntry, events <-chan Even
 type userMessage struct {
 	// factoryWork marks a runtime manager turn, never the person's chat.
 	factoryWork bool
+	// runner marks words the factory's runner wrote ([runnerNote]): the turn
+	// they open is the runner's, which is still reading its stream.
+	runner bool
 	// answer continues an existing question, including a replacement or
 	// clarification, so ownership is checked at its tools rather than admission.
 	answer bool
@@ -2073,6 +2076,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	a.stopJobWakeLocked()
 	a.running = true
 	a.factoryAutomaticTurn = user.factoryWork || user.wake && !user.answersPerson && !user.answer
+	a.runnerTurn = user.runner
 	a.teamTurnAt = time.Now()
 	a.teamTurnSerial++
 	a.lastTurnTruncated = false
