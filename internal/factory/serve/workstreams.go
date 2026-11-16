@@ -349,7 +349,19 @@ func (h *Handler) createWorkstream(w http.ResponseWriter, r *http.Request) {
 	if ws.Stage == "" {
 		ws.Stage = api.WorkstreamShaping
 	}
+	if len(ws.Pages) == 0 {
+		ws.Pages = []factory.WorkstreamPage{defaultOverviewPage()}
+	}
 	h.saveNewWorkstream(w, r, ws, v, false)
+}
+
+// defaultOverviewPage is the page a workstream made with none starts with.
+// A WORKSTREAM WITH NO PAGES IS ONE NOBODY CAN WRITE IN, so every client gets
+// the Overview the desk sends (lib/orgWire.ts withOverview): titled
+// "Overview", kind overview, and empty. cleanWorkstream gives it its id and
+// stamps it as written by the person who made the workstream.
+func defaultOverviewPage() factory.WorkstreamPage {
+	return factory.WorkstreamPage{Title: "Overview", Kind: "overview", BodyMD: ""}
 }
 
 // importWorkstream takes a Personal workstream moving in, once. The caller
