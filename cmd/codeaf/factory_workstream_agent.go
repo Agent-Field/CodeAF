@@ -32,9 +32,11 @@ import (
 
 // factoryWorkstreamAgentBase is where the runner's model API is: tests point
 // it at a fake; otherwise it is CODEAF_BASE_URL when the server's process was
-// started with one (an operator's own proxy in front of OpenRouter), else ""
-// for the default model source, OpenRouter, the one provider an organization
-// key is kept for. The server profile's own base_url is NOT read: it belongs
+// started with one (an operator's own proxy in front of OpenRouter), else
+// OpenRouter's own address, the one provider an organization key is kept
+// for. It is never empty: the provider client refuses an empty base URL, so
+// an unset variable once failed every server turn with "provider base URL is
+// required" (film defect D9). The server profile's own base_url is NOT read: it belongs
 // to whoever signs in to the machine, and the organization's key must never
 // be sent somewhere that profile chose.
 var factoryWorkstreamAgentBase = ""
@@ -43,7 +45,10 @@ func factoryWorkstreamAgentBaseURL() string {
 	if factoryWorkstreamAgentBase != "" {
 		return factoryWorkstreamAgentBase
 	}
-	return strings.TrimSpace(env.Get("CODEAF_BASE_URL"))
+	if base := strings.TrimSpace(env.Get("CODEAF_BASE_URL")); base != "" {
+		return base
+	}
+	return config.DefaultBaseURL
 }
 
 // factoryWorkstreamAgent answers one message to a workstream's server agent.
