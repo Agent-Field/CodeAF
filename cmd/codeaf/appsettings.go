@@ -69,7 +69,7 @@ func settingsExtra(settings *appwire.Settings, file appStateFile, profile string
 	if saved {
 		source = "saved"
 	}
-	settings.KnowledgeModel = config.KnowledgeModelAt(profile)
+	settings.KnowledgeModel = config.KnowledgeModelRowAt(profile)
 	settings.Memory = appwire.MemorySettings{Enabled: enabled, Source: source, CostNote: config.MemoryCostNote}
 	settings.Appearance, settings.TextSize = appwire.AppearanceSystem, appwire.TextMedium
 	if file.Appearance != "" {

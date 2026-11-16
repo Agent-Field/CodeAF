@@ -96,7 +96,9 @@ type TaskModelRole struct {
 	Warning  string
 	Eligible int
 	// Default is the model an unpinned role runs on because the engine chose
-	// it ([InsightDefault]); nil when it follows its tier.
+	// it. ALWAYS NIL SINCE 2026-11-16: no background seat has an engine-chosen
+	// model any more (internal/roles' background.go); the field stays so the
+	// wire keeps its shape for builds that still read it.
 	Default *CrewPin
 }
 
@@ -489,8 +491,8 @@ func taskModelsOnce(ctx context.Context, profileDir, revision string) (TaskModel
 
 // TaskAuxiliaryPinAt is the small-jobs model a person chose, read off the
 // small-work tier row, with the provider whose route it is sent through.
-// False while the row is unset or `auto`, when the build's own default
-// ([DefaultLowModel]) answers.
+// False while the row is unset or `auto`, when the small jobs follow the
+// model the person chose.
 func TaskAuxiliaryPinAt(profileDir string) (CrewPin, bool) {
 	written, held := persistedString(profileDir, KeyTierLowModel)
 	if !held {

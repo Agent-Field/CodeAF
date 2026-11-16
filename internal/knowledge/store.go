@@ -394,7 +394,7 @@ func (v *Vault) status(db *sql.DB) (Snapshot, error) {
 	snapshot.LastError = textValue(status["last_error"])
 	snapshot.NeedsUpdate = flag(status["needs_update"])
 	snapshot.CostUSD = number(status["cost_usd"])
-	snapshot.Model = knowledgeModel(v.profile)
+	snapshot.Model = v.model()
 	snapshot.Build = BuildStatus{Phase: BuildPhase(textValue(job["phase"])), Chats: int(number(job["chats"])), Imported: int(number(job["imported"])), Sources: totalSources, Problems: int(number(job["problems"])), Error: textValue(job["error"])}
 	return snapshot, nil
 }

@@ -2601,11 +2601,10 @@ topic views), `insight_factory_read` (the read of what arrived in a factory) and
 `Repo ask`, `Repo themes`, `Build with AI`, `Topic views`, `Factory read`,
 `Factory scout`), so a client can draw a role it does not know yet. They are
 errand roles (`agents.errand` `role`), not task roles. The ladder is the role's
-own pin, then the `insight` pin, then the engine's default for `insight`, then
-the small-work tier. `default` appears on `insight` only while the engine's
-default applies (`deepseek/deepseek-v4.1-flash` on `openrouter`, while OpenRouter
-is connected and the allowed models admit it); it is never written as a pin, and
-its absence means an unpinned `insight` follows its tier. `follows: "insight"`
+own pin, then the `insight` pin, then a small-work row the person wrote, then
+the model the person chose. Since 2026-11-16 the engine has no default model for
+`insight` (background seats follow the chosen model), so `default` is always
+absent; the key stays in the shape for older clients. `follows: "insight"`
 marks each override. Pins are stored in the `models.roles` row beside the other
 role pins and checked as the other pins are.
 
@@ -3602,7 +3601,7 @@ Errors contain no source text or credentials. Stale mutations return `conflict`.
 
 The file form names no `chat` or `message`. The engine records the words as a user source of kind `workstream_file`, session `workstream:<workstream>` and id `workstream-file:<workstream>/<id>@<hash of the words>`, so keeping the same words again is one source and keeping an edited file adds a new one beside it. `knowledge.source` on such a source answers `{chat: "", message: "", file: {workstream, id}}`, which the desk opens as that file. A desk that does not see `knowledge.capture_file` in hello leaves "Add to Library" off its file menus.
 
-Settings includes `knowledge_model`; `settings.set {knowledge_model}` changes the same profile row the terminal uses. Clearing it restores the default, `deepseek/deepseek-v4.1-flash`. Building the Library never changes a saved model choice.
+Settings includes `knowledge_model`; `settings.set {knowledge_model}` changes the same profile row the terminal uses. An empty `knowledge_model` means the Library follows the person's chosen model (the default); clearing it goes back to that. Building the Library never changes a saved model choice.
 
 `knowledge.recall` is an explicit read of saved guides, including while `enabled` is false. It does not enable capture, import chats or publish new knowledge. Automatic memory use remains gated by the profile setting.
 

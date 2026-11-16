@@ -47,7 +47,7 @@ func knowledgeProviderFixture(t *testing.T, started chan<- struct{}, release <-c
 		if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
 			return nil, err
 		}
-		if body.Model != config.DefaultKnowledgeModel {
+		if body.Model != knowledge.Model {
 			t.Errorf("unexpected model %q", body.Model)
 		}
 		var payload struct{ Messages []knowledge.Source }

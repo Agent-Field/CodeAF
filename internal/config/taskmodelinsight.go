@@ -4,7 +4,6 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/crewroute"
-	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
@@ -12,36 +11,15 @@ import (
 //
 // The page AI ([roles.RoleInsight] and its overrides) is pinned in the role
 // pins row ([KeyModelRoles]), the same row every other role's pin lives in, so
-// the task models add rows and no store. Its default is the engine's own and
-// is NEVER WRITTEN: a written default would be indistinguishable from a
-// person's choice, would survive the provider it needs being disconnected or
-// the model being unticked, and would be overwritten by nothing. Answered at
-// read time instead, it is there exactly while it can run and gone the moment
-// it cannot, and the first pin a person writes simply outranks it.
-
-// InsightDefault is the model every page AI runs on when nobody pinned one,
-// on the provider it is sent through.
-var InsightDefault = CrewPin{Model: "deepseek/deepseek-v4.1-flash", Provider: modelsource.DefaultID}
+// the task models add rows and no store. AN UNPINNED PAGE AI HAS NO MODEL OF
+// ITS OWN: it is a background seat, and follows its small-work row when the
+// person wrote one, then the model the person chose (internal/roles'
+// background.go). Until 2026-11-16 the engine answered `deepseek/deepseek-v4.1-flash`
+// here for everybody, which a person who chose another model never agreed to.
 
 // InsightRoles is the family first, then its overrides.
 func InsightRoles() []roles.Role {
 	return append([]roles.Role{roles.RoleInsight}, roles.InsightOverrides...)
-}
-
-// InsightDefaultAt is [InsightDefault] as this profile sends it, and false
-// while its provider is not connected or turned off, or the allowed models do
-// not admit it, when the page AI follows its tier instead.
-func InsightDefaultAt(profileDir string) (string, bool) {
-	route, ok := insightDefaultRoute(CrewProvidersAt(profileDir), CrewAllowedAt(profileDir))
-	return route.Send, ok
-}
-
-func insightDefaultRoute(providers []CrewProvider, rule crewroute.Allowed) (crewroute.Pin, bool) {
-	p, ok := crewProviderByID(providers, InsightDefault.Provider)
-	if !ok || !p.On || !crewPinAdmitted(rule, InsightDefault.Model, p.ID) {
-		return crewroute.Pin{}, false
-	}
-	return resolveCrewPin(InsightDefault, providers), true
 }
 
 // insightPinsAt is each page-AI role's pin as the role pins row holds it, with
@@ -74,11 +52,6 @@ func taskInsightRoles(profileDir string, providers []CrewProvider, rows []TaskMo
 			pin = &held
 		}
 		out[role] = taskErrandRole(pin, providers, rows, rule, health)
-	}
-	if route, ok := insightDefaultRoute(providers, *rule); ok {
-		family := out[roles.RoleInsight]
-		family.Default = &CrewPin{Model: InsightDefault.Model, Provider: route.Provider}
-		out[roles.RoleInsight] = family
 	}
 	return out
 }
