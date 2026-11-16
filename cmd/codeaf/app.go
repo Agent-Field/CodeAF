@@ -3450,12 +3450,6 @@ func (b *appBackend) Stop(id string) error {
 	return nil
 }
 
-// appStopGrace is how long the app's Stop waits for a turn to let go before
-// the engine abandons it. It is the terminal's figure and argued there
-// (internal/tui3's stopGrace): far above every settle that can be measured, so
-// it fires only on a wait that never looks at its context.
-const appStopGrace = 10 * time.Second
-
 // appBoundedStop is a conversation whose stop can carry its second stage.
 type appBoundedStop interface {
 	InterruptWithin(grace time.Duration)
@@ -3469,7 +3463,7 @@ type appBoundedStop interface {
 // The turn's stream then closes and the turn settles as stopped by the person.
 func appStopByPerson(conv appConversation) {
 	if bounded, ok := conv.(appBoundedStop); ok {
-		bounded.InterruptWithin(appStopGrace)
+		bounded.InterruptWithin(session.StopGrace)
 		return
 	}
 	conv.Interrupt()
