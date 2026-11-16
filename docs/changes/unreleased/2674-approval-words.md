@@ -1,7 +1,7 @@
 ---
 kind: renamed
 title: The approval mode is "tool approvals" everywhere, and its answers say ask, allow and block
-pr: 0
+pr: 2674
 surface: [chat, docs]
 invalidates:
   - "The settings sheet labelled the tools.approvalMode row \"ask before running\" while the search and the settings tool called it \"tool approvals\". The sheet, the registry and the manual now all say \"tool approvals\"."
