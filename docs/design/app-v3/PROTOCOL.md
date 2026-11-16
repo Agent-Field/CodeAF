@@ -2891,20 +2891,22 @@ cannot mint a session.
   seconds. Done is answered once; the session stays in the engine exactly as
   `factory.access_sign_in` keeps one. An `add` and a `confirm` sign nobody in.
 - Every ceremony ends on this computer. The engine opens a one-shot listener
-  on `127.0.0.1:<ephemeral>` under a random path for each flow; the page sends
-  the browser there with a one-time code, and the server answers `done` only
-  to a poll carrying that code and the verifier. Copy address still works on
-  this computer; on another device the page says "Finish on the computer that
-  started this" and the flow never completes.
+  on `127.0.0.1:<ephemeral>` under a random path, with a key, for each flow;
+  the page's browser (bound to the flow by a cookie on its first ceremony) is
+  sent there by a 303 with a one-time code only that listener accepts, and the
+  server answers `done` only to a poll carrying that code and the verifier.
+  Copy address works in another browser on this computer used from the start;
+  on another device the page says why before the browser's "can't connect",
+  and "Finish on the computer that started this" after, and the flow never
+  completes.
 - `purpose: "confirm"` (with `factory`) is a step-up: the signed-in person
   uses one of their passkeys, and the session counts as proven for five
   minutes. `factory.password_confirm {factory, password}` answers `{}` and does
   the same with the current password; a wrong one is `forbidden`, a person
   without a password `not_found`, too many tries `busy`.
 - Adding a passkey, setting a first password and removing a passkey need a
-  proof in the last five minutes (a sign-in counts). Without one they fail
-  with `step_up`; the client confirms and retries once. An `add` by a person
-  who already has passkeys asks for one of them on the page itself.
+  proof in the last five minutes; a sign-in never counts. Without one they
+  fail with `step_up`; the client confirms and retries once.
 - `factory.passkey_cancel {flow, caller}` answers `{}`; best effort.
 - `factory.passkey_list {factory}` answers `{passkeys: [{id, name, created_at,
   last_used_at?, synced}], password}`. `password` says whether the person also

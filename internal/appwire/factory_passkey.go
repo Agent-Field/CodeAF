@@ -23,18 +23,18 @@ import (
 //   factory.password_confirm  the current password, as a step-up
 //
 // THE CEREMONY ENDS ON THIS COMPUTER. The engine keeps a one-shot listener on
-// 127.0.0.1 for each flow; the server's page sends the browser there with a
-// one-time code, and only a poll with that code gets the session. A ceremony
+// 127.0.0.1 for each flow; the server hands the browser the page is bound to
+// there with a one-time code only that listener accepts, and only a poll with
+// that code gets the session. A ceremony
 // finished in a browser on another device polls as "elsewhere" and never
 // completes; the client keeps polling (it may still be opened here) or
 // cancels.
 //
 // STEP-UP. Adding a passkey, setting a first password (password_change with
 // an empty current) and removing a passkey need a proof made in the last
-// five minutes; without one they fail with [CodeStepUp]. The client proves it
-// with passkey_start purpose "confirm" (one of the person's passkeys), or
-// password_confirm, and retries once. An add by a person who already has
-// passkeys asks for one of them on the page itself and never fails so.
+// five minutes; without one they fail with [CodeStepUp]. A sign-in is never
+// that proof. The client proves it with passkey_start purpose "confirm" (one
+// of the person's passkeys) or password_confirm, and retries once.
 //
 // THE ENGINE HOLDS THE VERIFIER. The flow is started with the SHA-256 of a
 // 32-byte secret the engine makes and keeps; the server answers the session

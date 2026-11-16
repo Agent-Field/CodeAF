@@ -157,7 +157,7 @@ func (b *appBackend) FactoryPasskeyStart(ctx context.Context, p appwire.FactoryP
 	}()
 	r, err := h.send(ctx, origin, token, http.MethodPost, "/v1/auth/passkey/start", api.PasskeyStart{Purpose: p.Purpose, Link: p.Link,
 		Username: p.Username, Name: strings.TrimSpace(p.Name), CodeChallenge: challenge,
-		ReturnPort: lb.port(), ReturnPath: lb.path}, appFactorySmall, nil)
+		ReturnPort: lb.port(), ReturnPath: lb.path, ReturnKey: lb.returnKey()}, appFactorySmall, nil)
 	if err != nil {
 		return appwire.FactoryPasskeyStarted{}, err
 	}

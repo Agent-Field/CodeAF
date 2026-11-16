@@ -24,8 +24,10 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/tokens"
 )
 
-// recentlyVerified is whether session made a passkey or password proof in
-// the last passkeyStepUpLife.
+// recentlyVerified is whether session made an explicit proof in the last
+// passkeyStepUpLife: a passkey confirm, the current password confirmed, or a
+// password changed with the current one. A SIGN-IN NEVER COUNTS: a session
+// stolen a minute after it was made takes nothing over.
 func (h *Handler) recentlyVerified(session accessSession) bool {
 	return !session.verified.IsZero() && h.now().Sub(session.verified) < passkeyStepUpLife
 }

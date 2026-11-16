@@ -5,12 +5,13 @@
 // flow id in the url is the page's only handle, and the session it ends in is
 // handed to codeaf, never to this page.
 //
-// THE HAND-OVER. When the server has verified the ceremony it answers a
-// one-time address on 127.0.0.1, codeaf's own listener on the computer that
-// started this; the page sends the browser there. A browser on any other
-// device reaches its own 127.0.0.1, never codeaf's, so nothing finishes
-// there: that is what keeps a sign-in started by someone else from becoming
-// theirs.
+// THE HAND-OVER. When the server has verified the ceremony, this page (the
+// one browser the flow is bound to, by an HttpOnly cookie) navigates to the
+// flow's hand-over, which answers a 303 to codeaf's own listener on
+// 127.0.0.1 with a one-time code. No script here ever sees the code. A
+// browser on any other device reaches its own 127.0.0.1, never codeaf's, so
+// nothing finishes there: that is what keeps a sign-in started by someone
+// else from becoming theirs.
 "use strict";
 
 (function () {
@@ -30,23 +31,43 @@
     status.className = bad ? "status bad" : "status";
   }
 
-  function finished(words, redirect) {
+  // HAND-OVER WORDS COME FIRST. The page says where it is going, and what a
+  // "can't connect" from the browser means, before it navigates: on another
+  // device the browser's error replaces this page, and these words are what
+  // the person read just before (and see again on Back).
+  var cantConnectWords = "If your browser says it can't connect, you opened this page on a different computer or browser. " +
+    "Go back to the computer where you pressed Sign in and start again there.";
+
+  function finished(words, next) {
     if (form) {
       form.hidden = true;
     }
-    lede.textContent = "";
-    say(words, false);
+    var heading = document.querySelector("h1");
+    // Only ever this flow's own hand-over on this server, which answers
+    // codeaf's loopback address (with the code) to this browser alone.
+    var handOver = next === "/passkey/" + flow + "/go";
     document.title = "Done · codeaf";
-    // Only ever codeaf's own loopback listener, as the server spelled it.
-    if (redirect && /^http:\/\/127\.0\.0\.1:[0-9]{4,5}\/[A-Za-z0-9_-]{43}\?code=[A-Za-z0-9_-]{43}$/.test(redirect)) {
-      handedOver = true;
-      // On another device there is no codeaf at that address: the browser
-      // stays here or comes back here, and the page says where to finish.
-      window.setTimeout(elsewhere, 4000);
-      window.location.assign(redirect);
+    if (heading) {
+      heading.textContent = "Done.";
     }
+    lede.textContent = words;
+    if (!handOver) {
+      say("", false);
+      return;
+    }
+    say(cantConnectWords, false);
+    main.dataset.handover = "true";
+    handedOver = true;
+    window.setTimeout(function () {
+      window.location.assign(next);
+      // A browser that stays on this page (no codeaf at that address)
+      // is told so plainly.
+      window.setTimeout(elsewhere, 4000);
+    }, handOverDelay);
   }
 
+  // handOverDelay lets the hand-over words be read before the browser leaves.
+  var handOverDelay = 1000;
   var handedOver = false;
   function elsewhere() {
     if (handedOver) {
@@ -160,7 +181,8 @@
   function post(step, body) {
     return fetch("/passkey/" + encodeURIComponent(flow) + "/" + step, {
       method: "POST",
-      credentials: "omit",
+      // same-origin: the cookie that binds the flow to this browser rides along.
+      credentials: "same-origin",
       cache: "no-store",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body)
@@ -205,9 +227,7 @@
     if (document.getElementById("name")) {
       ask.name = value("name");
     }
-    // One ceremony: ask, let the browser sign, hand back. An add by someone
-    // who already has passkeys asks one of them first ("get"), then makes
-    // the new one ("create") in the same visit.
+    // One ceremony: ask, let the browser sign, hand back.
     function ceremony() {
       var made = null;
       return post("options", ask).then(function (opt) {
@@ -234,11 +254,7 @@
           }
           throw { words: fin.data.error || "Something went wrong. Try again." };
         }
-        if (fin.data.state === "continue") {
-          say("Now create the new passkey.", false);
-          return ceremony();
-        }
-        finished(fin.data.message || "Finishing on the computer that started this…", fin.data.redirect);
+        finished(fin.data.message || "Returning to codeaf on the computer that started this…", fin.data.next);
       });
     }
     ceremony().catch(function (err) {

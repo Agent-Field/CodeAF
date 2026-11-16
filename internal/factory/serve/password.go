@@ -230,7 +230,7 @@ func (h *Handler) mintSessionVia(w http.ResponseWriter, r *http.Request, profile
 	}
 	now := h.now()
 	session := accessSession{id: "session_" + id, expires: now.Add(accessSessionTTL), created: now, lastSeen: now,
-		profile: &profile, device: deviceLabel(r), credGen: gen, via: via, verified: now}
+		profile: &profile, device: deviceLabel(r), credGen: gen, via: via}
 	h.sessions.mu.Lock()
 	acct, held, err := h.freshAccount(profile.Handle)
 	if err == nil && (!held || acct.Gen != gen) {

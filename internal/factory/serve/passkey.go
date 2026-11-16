@@ -55,6 +55,7 @@ package serve
 // minutes, a flow ten.
 
 import (
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -99,6 +100,9 @@ const (
 	// passkeyFlowsPerAddr is how many flows one address (an IPv6 /64) may
 	// have waiting at once.
 	passkeyFlowsPerAddr = 8
+	// passkeyOpenedPerPrefix is how many opened sign-ins one /24 (IPv4) or
+	// /48 (IPv6) keeps; one more drops the oldest of them.
+	passkeyOpenedPerPrefix = 16
 	// passkeyUnopenedLife is how long a sign-in flow whose page was never
 	// fetched lives; such flows are the first to go when sign-ins are full.
 	passkeyUnopenedLife = 2 * time.Minute
@@ -140,7 +144,7 @@ const (
 	passkeyWrongPageWord = "this page belongs to another server"
 	passkeyStepUpWords   = "Confirm it's you first: use one of your passkeys, or enter your current password."
 	passkeyFullWords     = "Too many passkey sign-ins are waiting. Try again in a minute."
-	passkeyHandOverWords = "Finishing on the computer that started this…"
+	passkeyHandOverWords = "Returning to codeaf on the computer that started this…"
 	// passkeyElsewhereWords is the page of a finished ceremony that has not
 	// reached codeaf: on another device it never will.
 	passkeyElsewhereWords = "Nothing was signed in on this device. Open the address on the computer where you started, or start again there."
@@ -174,22 +178,27 @@ type passkeyFlow struct {
 	challenges int
 	tries      int
 
-	// addr is the /64 the flow was started from; opened is whether its page
-	// was ever fetched.
+	// addr is the /64 the flow was started from and prefix its /24 (IPv4)
+	// or /48 (IPv6); opened is whether a browser ever asked the page for a
+	// ceremony (a GET alone does not count).
 	addr   string
+	prefix string
 	opened bool
-	// returnTo is the engine's loopback url (no code yet); codeSum is the
-	// SHA-256 of the one-time code the page sends the browser there with.
+	// browserSum is the SHA-256 of the nonce in the cookie of the one
+	// browser the flow is bound to, set on its first options call; zero is
+	// unbound. Every later options, finish and hand-over needs that cookie.
+	browserSum [sha256.Size]byte
+	// returnTo is the engine's loopback url (no code yet) and returnKey the
+	// engine's key for its code; codeSum is the SHA-256 of the one-time code
+	// the hand-over sent the bound browser there with, made once (handed).
 	// wrong counts polls and cancels with a wrong verifier or code.
-	returnTo string
-	codeSum  [sha256.Size]byte
-	wrong    int
-	// sessionID is the signed-in session a confirm proves; needConfirm is an
-	// add whose session has no recent proof, so the page asks one of the
-	// person's own passkeys first, and confirmed is that step done.
-	sessionID   string
-	needConfirm bool
-	confirmed   bool
+	returnTo  string
+	returnKey []byte
+	codeSum   [sha256.Size]byte
+	handed    bool
+	wrong     int
+	// sessionID is the signed-in session a confirm proves.
+	sessionID string
 	// made is a verified new passkey, kept until the poll that shows the
 	// code: only then is an account made or changed, so a ceremony run on a
 	// stolen url never spends a link or adds anyone's key.
@@ -427,6 +436,20 @@ func passkeyStartKey(r *http.Request) string {
 	return throttleAddr(addr)
 }
 
+// passkeyPrefixKey is the network an opened sign-in counts under: an IPv4
+// /24 or an IPv6 /48.
+func passkeyPrefixKey(r *http.Request) string {
+	addr := clientOf(r).addr.Unmap()
+	bits := 24
+	if addr.Is6() {
+		bits = 48
+	}
+	if p, err := addr.Prefix(bits); err == nil {
+		return p.String()
+	}
+	return throttleAddr(addr)
+}
+
 // passkeyReturn is the engine's loopback url a start names, or "".
 func passkeyReturn(port int, path string) string {
 	if port < 1024 || port > 65535 {
@@ -470,12 +493,13 @@ func (h *Handler) passkeyStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	returnTo := passkeyReturn(body.ReturnPort, body.ReturnPath)
-	if returnTo == "" {
-		h.fail(w, http.StatusUnprocessableEntity, "return_port and return_path name the engine's loopback listener")
+	returnKey, keyOK := decodeB64URL32(body.ReturnKey)
+	if returnTo == "" || !keyOK {
+		h.fail(w, http.StatusUnprocessableEntity, "return_port, return_path and return_key name the engine's loopback listener")
 		return
 	}
 	flow := &passkeyFlow{purpose: body.Purpose, created: now, expires: now.Add(passkeyFlowLife), state: api.PasskeyPending,
-		addr: addrKey, returnTo: returnTo}
+		addr: addrKey, prefix: passkeyPrefixKey(r), returnTo: returnTo, returnKey: returnKey}
 	copy(flow.challenge[:], challenge)
 	switch body.Purpose {
 	case api.PasskeySignIn:
@@ -498,12 +522,10 @@ func (h *Handler) passkeyStart(w http.ResponseWriter, r *http.Request) {
 		case len(acct.Passkeys) >= tokens.PasskeyMost:
 			h.fail(w, http.StatusConflict, "this account already keeps as many passkeys as it can")
 			return
-		case h.recentlyVerified(session):
-		case len(acct.Passkeys) > 0:
-			// STEP-UP IN THE SAME VISIT: the page asks one of the person's
-			// own passkeys before it makes another.
-			flow.needConfirm = true
-		default:
+		case !h.recentlyVerified(session):
+			// A STEP-UP IS ALWAYS ITS OWN FLOW, made before: a confirm
+			// (whose code goes to the starter's loopback) or the current
+			// password. An add never asks for one along the way.
 			h.refuse(w, http.StatusForbidden, passkeyStepUpWords, api.ReasonStepUp, "", nil, "")
 			return
 		}
@@ -718,6 +740,7 @@ func (st *passkeyState) wrongLocked(f *passkeyFlow) {
 // engine's loopback with. A wrong one is counted.
 func (st *passkeyState) codeLocked(f *passkeyFlow, code string) bool {
 	c, ok := decodeB64URL32(code)
+	ok = ok && f.handed
 	sum := sha256.Sum256(c)
 	if ok && subtle.ConstantTimeCompare(sum[:], f.codeSum[:]) == 1 {
 		return true
@@ -990,6 +1013,10 @@ func (h *Handler) passkeyPage(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write(passkeyStyle)
 		return
 	}
+	if id, step, ok := strings.Cut(rest, "/"); ok && step == "go" && h.passkeysOn() {
+		h.passkeyHandOver(w, r, id)
+		return
+	}
 	if !h.passkeysOn() || strings.Contains(rest, "/") {
 		h.fail(w, http.StatusNotFound, passkeyOffWords)
 		return
@@ -1008,7 +1035,6 @@ func (h *Handler) passkeyPage(w http.ResponseWriter, r *http.Request) {
 		f = nil
 	}
 	if f != nil {
-		f.opened = true
 		data.Purpose, data.Handle, data.Username = f.purpose, f.handle, f.username
 		if f.state != api.PasskeyPending {
 			data.Ended = true
@@ -1033,8 +1059,6 @@ func (h *Handler) passkeyPage(w http.ResponseWriter, r *http.Request) {
 		data.Heading, data.Lede, data.Button = "Sign in to "+org, "Use the passkey you keep for "+rpID+".", "Sign in with a passkey"
 	case f.purpose == api.PasskeyConfirm:
 		data.Heading, data.Lede, data.Button = "Confirm it's you", "Use one of your passkeys for @"+f.handle+" on "+org+".", "Confirm with a passkey"
-	case f.purpose == api.PasskeyAdd && f.needConfirm:
-		data.Heading, data.Lede, data.Button, data.AskLabel = "Add a passkey", "For @"+f.handle+" on "+org+". First confirm with a passkey you already have.", "Continue", true
 	case f.purpose == api.PasskeyAdd:
 		data.Heading, data.Lede, data.Button, data.AskLabel = "Add a passkey", "For @"+f.handle+" on "+org+".", "Create a passkey", true
 	case f.resetSecret != "":
@@ -1133,10 +1157,70 @@ type passkeyOptionsAnswer struct {
 	PublicKey any    `json:"publicKey"`
 }
 
-// asksExisting is whether the flow's next ceremony is an assertion by one of
-// the person's own passkeys: a confirm, or an add whose step-up is not done.
-func (f *passkeyFlow) asksExisting() bool {
-	return f.purpose == api.PasskeyConfirm || (f.needConfirm && !f.confirmed)
+// passkeyCookie is the cookie that binds a flow to one browser; its path is
+// the flow's own, so one browser can hold several flows.
+const passkeyCookie = "codeaf_passkey"
+
+// passkeyOtherBrowserWords answer a page post from a browser the flow is not
+// bound to.
+const passkeyOtherBrowserWords = "This sign-in is open in another browser. Start again in codeaf."
+
+// boundLocked is whether r comes from the browser f is bound to.
+func (f *passkeyFlow) boundLocked(r *http.Request) bool {
+	var zero [sha256.Size]byte
+	if f.browserSum == zero {
+		return false
+	}
+	c, err := r.Cookie(passkeyCookie)
+	if err != nil {
+		return false
+	}
+	sum := sha256.Sum256([]byte(c.Value))
+	return subtle.ConstantTimeCompare(sum[:], f.browserSum[:]) == 1
+}
+
+// bindLocked binds an unbound flow to the browser asking now, answering the
+// cookie to set; a bound flow answers true only to its own browser.
+func (f *passkeyFlow) bindLocked(r *http.Request) (*http.Cookie, bool) {
+	var zero [sha256.Size]byte
+	if f.browserSum != zero {
+		return nil, f.boundLocked(r)
+	}
+	nonce, err := secret()
+	if err != nil {
+		return nil, false
+	}
+	f.browserSum = sha256.Sum256([]byte(nonce))
+	return &http.Cookie{Name: passkeyCookie, Value: nonce, Path: "/passkey/" + f.id, MaxAge: int(passkeyFlowLife / time.Second),
+		HttpOnly: true, Secure: true, SameSite: http.SameSiteStrictMode}, true
+}
+
+// openedLocked marks f opened by a browser. A sign-in counts against its
+// network: past passkeyOpenedPerPrefix the oldest other opened sign-in from
+// the same /24 or /48 is dropped, so pages a flood opens cannot hold the
+// table.
+func (st *passkeyState) openedLocked(f *passkeyFlow) {
+	if f.opened {
+		return
+	}
+	f.opened = true
+	if f.purpose != api.PasskeySignIn {
+		return
+	}
+	n := 0
+	var oldest *passkeyFlow
+	for _, g := range st.flows {
+		if g == f || g.purpose != api.PasskeySignIn || !g.opened || g.prefix != f.prefix {
+			continue
+		}
+		n++
+		if oldest == nil || g.created.Before(oldest.created) {
+			oldest = g
+		}
+	}
+	if n >= passkeyOpenedPerPrefix && oldest != nil {
+		delete(st.flows, oldest.id)
+	}
 }
 
 // passkeyOptions answers a fresh challenge for the flow's next ceremony. A
@@ -1164,12 +1248,19 @@ func (h *Handler) passkeyOptions(w http.ResponseWriter, r *http.Request, id stri
 		h.tooManyTries(w)
 		return
 	}
+	cookie, bound := f.bindLocked(r)
+	if !bound {
+		st.mu.Unlock()
+		h.refuse(w, http.StatusForbidden, passkeyOtherBrowserWords, "other_browser", "", nil, "")
+		return
+	}
 	f.challenges++
-	// Only the page asks for options, so the page was opened.
-	f.opened = true
-	existing := f.asksExisting()
+	st.openedLocked(f)
 	purpose, reset, handle, username, name := f.purpose, f.resetSecret, f.handle, f.username, f.name
 	st.mu.Unlock()
+	if cookie != nil {
+		http.SetCookie(w, cookie)
+	}
 
 	var answer passkeyOptionsAnswer
 	var session *webauthn.SessionData
@@ -1181,7 +1272,7 @@ func (h *Handler) passkeyOptions(w http.ResponseWriter, r *http.Request, id stri
 			return
 		}
 		answer, session = passkeyOptionsAnswer{"get", assertion.Response}, s
-	case existing:
+	case purpose == api.PasskeyConfirm:
 		acct, ok, err := h.freshAccount(handle)
 		if h.failed(w, err) {
 			return
@@ -1311,6 +1402,11 @@ func (h *Handler) passkeyFinish(w http.ResponseWriter, r *http.Request, id strin
 		st.mu.Unlock()
 		return
 	}
+	if !f.boundLocked(r) {
+		st.mu.Unlock()
+		h.refuse(w, http.StatusForbidden, passkeyOtherBrowserWords, "other_browser", "", nil, "")
+		return
+	}
 	session, live := f.session, f.session != nil && now.Before(f.sessionEnd)
 	f.session = nil
 	snapshot := *f
@@ -1364,7 +1460,7 @@ func (h *Handler) passkeyFinish(w http.ResponseWriter, r *http.Request, id strin
 			name = acct.Handle
 		}
 		profile = &api.Profile{Handle: acct.Handle, Name: name, Scopes: []string{}, Kind: tokens.KindPassword}
-	case snapshot.asksExisting():
+	case snapshot.purpose == api.PasskeyConfirm:
 		parsed, err := protocol.ParseCredentialRequestResponseBytes(body.Credential)
 		if err != nil {
 			refused(passkeyRefusedWords, "passkey_refused")
@@ -1386,17 +1482,6 @@ func (h *Handler) passkeyFinish(w http.ResponseWriter, r *http.Request, id strin
 		cred, err := rp.ValidateLogin(user, *session, parsed)
 		if err != nil || !h.passkeyUsed(r, acct, cred, now) {
 			refused(passkeyUnknownWords, "passkey_refused")
-			return
-		}
-		if snapshot.purpose == api.PasskeyAdd {
-			// The step-up is done; the same visit now makes the new passkey.
-			try.succeeded(h.now())
-			st.mu.Lock()
-			if f := st.flows[id]; f != nil {
-				f.confirmed = true
-			}
-			st.mu.Unlock()
-			h.write(w, http.StatusOK, map[string]string{"state": "continue"})
 			return
 		}
 	default:
@@ -1432,10 +1517,6 @@ func (h *Handler) passkeyFinish(w http.ResponseWriter, r *http.Request, id strin
 		}
 		made = &pk
 	}
-	code, err := secret32()
-	if h.failed(w, err) {
-		return
-	}
 	try.succeeded(h.now())
 	st.mu.Lock()
 	f = st.flows[id]
@@ -1445,10 +1526,48 @@ func (h *Handler) passkeyFinish(w http.ResponseWriter, r *http.Request, id strin
 		return
 	}
 	f.state, f.profile, f.gen, f.made = api.PasskeyDone, profile, gen, made
-	f.codeSum = sha256.Sum256(code)
-	redirect := f.returnTo + "?code=" + base64.RawURLEncoding.EncodeToString(code)
 	st.mu.Unlock()
-	h.write(w, http.StatusOK, map[string]string{"state": api.PasskeyDone, "message": passkeyHandOverWords, "redirect": redirect})
+	// NO CODE IN THIS ANSWER: the bound browser fetches the hand-over, which
+	// answers the loopback address with the code as a 303 (passkeyHandOver).
+	h.write(w, http.StatusOK, map[string]string{"state": api.PasskeyDone, "message": passkeyHandOverWords, "next": "/passkey/" + id + "/go"})
+}
+
+// passkeyHandOver is GET /passkey/<flow>/go, the bound browser's navigation
+// after a finished ceremony: once, a 303 to the engine's loopback with a
+// fresh one-time code. Any other request (no cookie, another browser, a
+// second visit) is sent to the page, which says where the ceremony finishes.
+func (h *Handler) passkeyHandOver(w http.ResponseWriter, r *http.Request, id string) {
+	passkeyHeaders(w)
+	st := h.pk()
+	now := h.now()
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	f := st.flows[id]
+	if f == nil || f.ended(now) || f.state != api.PasskeyDone || f.handed || !f.boundLocked(r) {
+		http.Redirect(w, r, "/passkey/"+id, http.StatusSeeOther)
+		return
+	}
+	code, err := passkeyLoopbackCode(f.returnKey)
+	if err != nil {
+		http.Redirect(w, r, "/passkey/"+id, http.StatusSeeOther)
+		return
+	}
+	f.codeSum, f.handed = sha256.Sum256(code), true
+	http.Redirect(w, r, f.returnTo+"?code="+base64.RawURLEncoding.EncodeToString(code), http.StatusSeeOther)
+}
+
+// passkeyLoopbackCode is 16 random bytes and the first 16 bytes of their
+// HMAC-SHA256 under the engine's key, so the engine's listener can tell its
+// own flow's code from any other request before it takes one.
+func passkeyLoopbackCode(key []byte) ([]byte, error) {
+	code := make([]byte, 32)
+	if _, err := rand.Read(code[:16]); err != nil {
+		return nil, err
+	}
+	mac := hmac.New(sha256.New, key)
+	mac.Write(code[:16])
+	copy(code[16:], mac.Sum(nil))
+	return code, nil
 }
 
 // passkeyUsed records a verified assertion on the account: its counter, its
@@ -1469,13 +1588,6 @@ func (h *Handler) passkeyUsed(r *http.Request, acct tokens.Account, cred *webaut
 		_ = h.accountEvent(r, acct.Handle, "", "passkey counter went backwards", "a passkey's signature counter went backwards; it may have been copied", false)
 	}
 	return true
-}
-
-// secret32 is 32 bytes from crypto/rand.
-func secret32() ([]byte, error) {
-	b := make([]byte, 32)
-	_, err := rand.Read(b)
-	return b, err
 }
 
 // passkeyRegistered does what a verified registration is for, at the poll

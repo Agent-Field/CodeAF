@@ -51,6 +51,10 @@ type PasskeyStart struct {
 	CodeChallenge string `json:"code_challenge"`
 	ReturnPort    int    `json:"return_port"`
 	ReturnPath    string `json:"return_path"`
+	// ReturnKey (base64url of 32 random bytes) lets the engine's listener
+	// tell its own flow's code from anyone else's: the code is 16 random
+	// bytes and the first 16 bytes of HMAC-SHA256(ReturnKey, those bytes).
+	ReturnKey string `json:"return_key"`
 }
 
 // PasskeyStarted answers a start: open URL in the person's browser.

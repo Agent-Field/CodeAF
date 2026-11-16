@@ -13,6 +13,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
 	"os"
@@ -121,70 +122,73 @@ func (o *passkeyOrg) client() *http.Client {
 
 // browser plays the person's browser on the ceremony page: it asks the page
 // for its options, lets key answer them, and posts the answer back, from the
-// page's own origin. An add that first asks for an existing passkey is
-// answered by confirmWith. A finished ceremony is followed to the engine's
+// page's own origin, keeping the cookie the page binds it with. A finished
+// ceremony is followed through the server's hand-over to the engine's
 // loopback, as the page does, which is what lets the engine's poll finish.
-func (o *passkeyOrg) browser(t *testing.T, pageURL string, key *passkeytest.Key, ask map[string]string, confirmWith ...*passkeytest.Key) {
+func (o *passkeyOrg) browser(t *testing.T, pageURL string, key *passkeytest.Key, ask map[string]string) {
 	t.Helper()
-	post := func(step string, body any) []byte {
-		data, _ := json.Marshal(body)
-		req, _ := http.NewRequest("POST", pageURL+"/"+step, strings.NewReader(string(data)))
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Origin", o.url)
-		resp, err := o.client().Do(req)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer resp.Body.Close()
-		out, _ := io.ReadAll(resp.Body)
-		if resp.StatusCode != 200 {
-			t.Fatalf("page %s = %d %s", step, resp.StatusCode, out)
-		}
-		return out
+	b := o.newBrowser()
+	opt := b.post(t, pageURL, "options", ask)
+	var answer struct {
+		Kind string `json:"kind"`
 	}
-	for range 3 {
-		opt := post("options", ask)
-		var answer struct {
-			Kind string `json:"kind"`
-		}
-		_ = json.Unmarshal(opt, &answer)
-		var cred json.RawMessage
-		var err error
-		switch {
-		case answer.Kind == "create":
-			cred, err = key.Create(opt, o.url)
-		case len(confirmWith) > 0 && confirmWith[0] != key:
-			cred, err = confirmWith[0].Get(opt, o.url)
-		default:
-			cred, err = key.Get(opt, o.url)
-		}
-		if err != nil {
-			t.Fatal(err)
-		}
-		var done struct {
-			State    string `json:"state"`
-			Redirect string `json:"redirect"`
-		}
-		if err := json.Unmarshal(post("finish", map[string]any{"credential": cred}), &done); err != nil {
-			t.Fatal(err)
-		}
-		if done.State == "continue" {
-			continue
-		}
-		if done.Redirect == "" {
-			t.Fatalf("a finished ceremony names no loopback: %+v", done)
-		}
-		resp, err := http.Get(done.Redirect)
-		if err != nil {
-			t.Fatal(err)
-		}
-		resp.Body.Close()
-		if resp.StatusCode != 200 {
-			t.Fatalf("the engine's loopback answered %d", resp.StatusCode)
-		}
-		return
+	_ = json.Unmarshal(opt, &answer)
+	var cred json.RawMessage
+	var err error
+	if answer.Kind == "create" {
+		cred, err = key.Create(opt, o.url)
+	} else {
+		cred, err = key.Get(opt, o.url)
 	}
-	t.Fatal("the page kept asking for another passkey")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var done struct {
+		Next string `json:"next"`
+	}
+	if err := json.Unmarshal(b.post(t, pageURL, "finish", map[string]any{"credential": cred}), &done); err != nil || done.Next == "" {
+		t.Fatalf("a finished ceremony names no hand-over: %+v %v", done, err)
+	}
+	resp, err := b.client.Get(o.url + done.Next)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != 200 || resp.Request.URL.Host == "" || !strings.HasPrefix(resp.Request.URL.String(), "http://127.0.0.1:") {
+		t.Fatalf("the hand-over ended at %s with %d", resp.Request.URL.Redacted(), resp.StatusCode)
+	}
+}
+
+// pageBrowser is one browser: a client with its own cookies.
+type pageBrowser struct {
+	client *http.Client
+	origin string
+}
+
+func (o *passkeyOrg) newBrowser() *pageBrowser {
+	jar, _ := cookiejar.New(nil)
+	c := o.client()
+	c.Jar = jar
+	return &pageBrowser{client: c, origin: o.url}
+}
+
+// post posts one step of a ceremony page from the page's own origin.
+func (b *pageBrowser) post(t *testing.T, pageURL, step string, body any) []byte {
+	t.Helper()
+	data, _ := json.Marshal(body)
+	req, _ := http.NewRequest("POST", pageURL+"/"+step, strings.NewReader(string(data)))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", b.origin)
+	resp, err := b.client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	out, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		t.Fatalf("page %s = %d %s", step, resp.StatusCode, out)
+	}
+	return out
 }
 
 func (o *passkeyOrg) operatorLink(t *testing.T) string {
@@ -245,6 +249,14 @@ func TestAPasskeyPersonThroughTheEngine(t *testing.T) {
 		t.Fatalf("list = %+v", list)
 	}
 
+	// A sign-in is no step-up: an add first needs a confirm.
+	santosh.mustFail("factory.passkey_start", map[string]any{"factory": id, "caller": "w1", "purpose": "add"}, appwire.CodeStepUp)
+	santosh.must("factory.passkey_start", map[string]any{"factory": id, "caller": "w1", "purpose": "confirm"}, &started)
+	o.browser(t, started.URL, first, map[string]string{})
+	santosh.must("factory.passkey_poll", map[string]any{"flow": started.Flow, "caller": "w1"}, &polled)
+	if polled.State != "done" || polled.Factory != id {
+		t.Fatalf("confirm poll = %+v", polled)
+	}
 	// Add a second passkey.
 	santosh.must("factory.passkey_start", map[string]any{"factory": id, "caller": "w1", "purpose": "add"}, &started)
 	second, _ := passkeytest.New()
@@ -275,6 +287,11 @@ func TestAPasskeyPersonThroughTheEngine(t *testing.T) {
 	// A done flow is answered once.
 	santosh.mustFail("factory.passkey_poll", map[string]any{"flow": started.Flow, "caller": "w1"}, appwire.CodeNotFound)
 
+	// Signed in again, the session must confirm before removing.
+	santosh.mustFail("factory.passkey_remove", map[string]any{"factory": id, "id": keys.Passkeys[0].ID}, appwire.CodeStepUp)
+	santosh.must("factory.passkey_start", map[string]any{"factory": id, "caller": "w1", "purpose": "confirm"}, &started)
+	o.browser(t, started.URL, second, map[string]string{})
+	santosh.must("factory.passkey_poll", map[string]any{"flow": started.Flow, "caller": "w1"}, &polled)
 	santosh.must("factory.passkey_remove", map[string]any{"factory": id, "id": keys.Passkeys[0].ID}, nil)
 	if msg := santosh.mustFail("factory.passkey_remove", map[string]any{"factory": id, "id": keys.Passkeys[1].ID}, appwire.CodeConflict); !strings.Contains(msg, "only way to sign in") {
 		t.Fatalf("last way in = %q", msg)
@@ -339,9 +356,12 @@ func TestAPasskeyCeremonyEndsOnThisComputerAndRemovingNeedsAProof(t *testing.T) 
 		t.Fatalf("join poll = %+v", polled)
 	}
 	id := polled.Factory
+	w.must("factory.passkey_start", map[string]any{"factory": id, "caller": "w1", "purpose": "confirm"}, &started)
+	o.browser(t, started.URL, first, map[string]string{})
+	w.must("factory.passkey_poll", map[string]any{"flow": started.Flow, "caller": "w1"}, &polled)
 	w.must("factory.passkey_start", map[string]any{"factory": id, "caller": "w1", "purpose": "add"}, &started)
 	second, _ := passkeytest.New()
-	o.browser(t, started.URL, second, map[string]string{}, first)
+	o.browser(t, started.URL, second, map[string]string{})
 	w.must("factory.passkey_poll", map[string]any{"flow": started.Flow, "caller": "w1"}, &polled)
 	if polled.State != "done" {
 		t.Fatalf("add poll = %+v", polled)
@@ -350,12 +370,13 @@ func TestAPasskeyCeremonyEndsOnThisComputerAndRemovingNeedsAProof(t *testing.T) 
 	// Elsewhere: the ceremony finishes in a browser that does not follow the
 	// redirect here.
 	w.must("factory.passkey_start", map[string]any{"factory": id, "caller": "w1", "purpose": "sign_in"}, &started)
-	opt := pagePost(t, o, started.URL, "options", map[string]string{})
+	elsewhere := o.newBrowser()
+	opt := elsewhere.post(t, started.URL, "options", map[string]string{})
 	cred, err := first.Get(opt, o.url)
 	if err != nil {
 		t.Fatal(err)
 	}
-	pagePost(t, o, started.URL, "finish", map[string]any{"credential": cred})
+	elsewhere.post(t, started.URL, "finish", map[string]any{"credential": cred})
 	w.must("factory.passkey_poll", map[string]any{"flow": started.Flow, "caller": "w1"}, &polled)
 	if polled.State != "pending" {
 		t.Fatalf("poll inside the grace = %+v", polled)
@@ -384,23 +405,4 @@ func TestAPasskeyCeremonyEndsOnThisComputerAndRemovingNeedsAProof(t *testing.T) 
 		t.Fatalf("confirm poll = %+v", polled)
 	}
 	w.must("factory.passkey_remove", map[string]any{"factory": id, "id": keys.Passkeys[0].ID}, nil)
-}
-
-// pagePost posts one step of a ceremony page from the page's own origin.
-func pagePost(t *testing.T, o *passkeyOrg, pageURL, step string, body any) []byte {
-	t.Helper()
-	data, _ := json.Marshal(body)
-	req, _ := http.NewRequest("POST", pageURL+"/"+step, strings.NewReader(string(data)))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Origin", o.url)
-	resp, err := o.client().Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer resp.Body.Close()
-	out, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != 200 {
-		t.Fatalf("page %s = %d %s", step, resp.StatusCode, out)
-	}
-	return out
 }
