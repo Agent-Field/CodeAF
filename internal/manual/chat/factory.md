@@ -228,7 +228,7 @@ The config keys are `name`, `listen`, `access_token`, `repos` (a list of `owner/
 
 When the GitHub rate limit for a team factory's token is spent, `codeaf factory serve` still answers its address at once; only its GitHub reads pause. The factory logs one line when it meets the limit, `GitHub is rate-limited until HH:MM; the factory keeps serving and reads GitHub again then`, and one line when a GitHub read succeeds again, `GitHub's rate limit has cleared; the factory reads GitHub again`. While the limit is spent, the factory's `/v1/about` carries that sentence as `github_limited` and the reset time as `github_resumes_at`.
 
-The operator access link of a fresh team factory is printed once GitHub names the host's login, after the reset if the limit is spent. A GitHub read whose limit resets more than ninety seconds later is not retried in a loop; the factory's next poll after the reset reads it.
+The operator access link of a fresh team factory is printed at once: it is not named for any GitHub login, so it never waits on GitHub's limit (see "claim the organization with a password"). A GitHub read whose limit resets more than ninety seconds later is not retried in a loop; the factory's next poll after the reset reads it.
 
 ## join an organization — an invite link, joining a factory, where Factory settings went in the desktop app
 
@@ -268,6 +268,14 @@ An organization server (`codeaf factory serve`) takes a username and password; a
 - Changing your password, or a reset, ends every session made with the old one. Signing out ends that session on the server.
 - A session lasts 30 days after you last used it, and 90 days at most.
 - Password sign-in works only over HTTPS, or on the server's own machine, or behind a trusted proxy that says HTTPS.
+
+## claim the organization with a password — operator link only offers GitHub, GH_TOKEN, "This link is for a GitHub account"
+
+The operator link that `codeaf factory serve` prints on a fresh team server is not tied to anyone's GitHub account, even when the server already holds a GitHub token (`GH_TOKEN`, or a GitHub grant in its home). Whoever opens it first chooses how to claim the server: a username and password ("Create operator account"), a passkey where the server offers one, or "Sign in with GitHub instead". The secret in the link is the proof, so share it only with the person who should run the organization.
+
+Until 2026-11-16 a server that already had a GitHub token named its operator link for that token's GitHub login. Its landing then offered only GitHub, and a person who signs in with a password could not claim the server. That is gone.
+
+A recovery link (`codeaf factory serve --new-operator-link`, after someone has claimed the server) is still for the operator who claimed it. An invitation an operator makes for one GitHub login still takes no password: "This link is for a GitHub account".
 
 ## a trusted machine — someone guessing my username, "Too many tries" on a new laptop, device token
 
