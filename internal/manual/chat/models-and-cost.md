@@ -2785,13 +2785,13 @@ same three-second beat every place runs on, and it draws three things:
   model you are talking to and for no other; the other choices are answered where their
   own session is opened, so this window cannot tell "nothing is bound" from "I cannot ask" —
   and the emptiness law says an unknown is drawn as nothing rather than guessed at;
-- **by topic** — the three things money is ever spent on, because the ledger holds
-  three ids: a piece of work, an automation, or a conversation. **The dearest twenty
-  are shown** and the rest fold into one line — the body scrolls and the cursor carries the
-  window with it, so a long table costs a short terminal nothing. It showed three, which is
-  a headline rather than an answer to the question this page is for. Work with **no id of its own** — the hands a reply
-  forks, the check that reads what a piece of work left — is on the row of the conversation
-  it belongs to, because that is the only name it has;
+- **by topic** — the four things money is ever spent on: a piece of work, an automation,
+  a conversation, or background knowledge compilation (`learning from your conversations`).
+  **The dearest twenty are shown** and the rest fold into one line — the body scrolls and
+  the cursor carries the window with it, so a long table costs a short terminal nothing. Work
+  with **no id of its own** — the hands a reply forks, the check that reads what a piece of
+  work left — is on the row of the conversation it belongs to, and id-less knowledge calls
+  appear under `learning from your conversations`;
 - **by automation** — the automations, under a heading and columns of their own,
   **drawn with `by topic`**. An automation is one of the things money was *for*, so it is
   a third heading rather than a third cut, and the control above it stays on `by topic`.
