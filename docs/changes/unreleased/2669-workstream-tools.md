@@ -1,6 +1,6 @@
 ---
 kind: added
-title: An agent inside a workstream gets eight tools onto its tasks and files, ws_tasks through ws_file_suggest
+title: An agent inside a workstream gets eight tools onto its tasks and files
 pr: 2669
 surface: [engine, factory, chat]
 invalidates:
