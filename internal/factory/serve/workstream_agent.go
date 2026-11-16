@@ -71,6 +71,10 @@ type AgentTurn struct {
 	// it, so it never takes a date it read for today (L3 F-17).
 	Now time.Time
 	TZ  string
+	// Task is set when this turn works one task rather than answering a
+	// person's message: Text is then what the task asks, and nobody reads the
+	// turn as a conversation.
+	Task *AgentTask
 	// Key is the organization's model key (OpenRouter's).
 	Key string
 	// Dir is a folder kept for this workstream's agent alone, across turns: its
@@ -81,6 +85,11 @@ type AgentTurn struct {
 	// Step reports one line of the conversation: api.AgentEntryStep with the
 	// tool's name, or api.AgentEntryAgent with the answer.
 	Step func(kind, text, tool string, failed bool)
+}
+
+// AgentTask is the task a turn works.
+type AgentTask struct {
+	ID, Title string
 }
 
 // AgentTurnEnd is what one turn cost.
@@ -133,9 +142,11 @@ type agentSeat struct {
 type agentDesk struct {
 	mu     sync.Mutex
 	agents map[agentSeat]*wsAgent
-	ctx    context.Context
-	stop   context.CancelFunc
-	wg     sync.WaitGroup
+	// tasks are the task runs going now, each stopped by its cancel.
+	tasks map[taskRunKey]context.CancelFunc
+	ctx   context.Context
+	stop  context.CancelFunc
+	wg    sync.WaitGroup
 }
 
 func (h *Handler) agentRoutes() {
