@@ -114,6 +114,12 @@ type OrgWorkstreamSummary struct {
 	UpdatedAt  string     `json:"updated_at,omitempty"`
 	ArchivedAt string     `json:"archived_at,omitempty"`
 	Rev        int        `json:"rev"`
+	// Parent, Steward and MySteward are its structure
+	// (factory_org_structure.go): the workstream it sits inside, who looks
+	// after it, and whether that is the caller.
+	Parent    string          `json:"parent,omitempty"`
+	Steward   *OrgRulesPerson `json:"steward,omitempty"`
+	MySteward bool            `json:"my_steward,omitempty"`
 }
 
 // OrgPage is one page of a workstream.
@@ -167,6 +173,10 @@ type OrgWorkstream struct {
 	// Driver is who drives its agent now (factory_org_runner.go); absent
 	// when nobody does.
 	Driver *OrgWorkstreamDriver `json:"driver,omitempty"`
+	// People are its persons and teams, and Rules how it runs; an older
+	// server answers neither.
+	People []OrgMember         `json:"people,omitempty"`
+	Rules  *OrgWorkstreamRules `json:"rules,omitempty"`
 }
 
 // OrgWorkstreams is factory.org_workstreams's answer: those visible to the
@@ -251,6 +261,10 @@ type OrgWorkstreamNew struct {
 	Decisions []OrgDecision `json:"decisions,omitempty"`
 	Sources   []OrgSource   `json:"sources,omitempty"`
 	Links     []string      `json:"links,omitempty"`
+	// Parent makes it inside that top-level workstream, with its people and
+	// a copy of its rules unless Rules is sent.
+	Parent string              `json:"parent,omitempty"`
+	Rules  *OrgWorkstreamRules `json:"rules,omitempty"`
 }
 
 // OrgWorkstreamCreateParams is factory.org_workstream_create's request.
@@ -271,6 +285,12 @@ type OrgWorkstreamPatch struct {
 	Links     *[]string      `json:"links,omitempty"`
 	// BudgetUSD sets what it may spend; a negative number clears it.
 	BudgetUSD *float64 `json:"budget_usd,omitempty"`
+	// Rules replace its rules whole and Steward hands it on; only its
+	// steward sends either. Parent moves it inside a top-level workstream,
+	// or "" to the top.
+	Rules   *OrgWorkstreamRules `json:"rules,omitempty"`
+	Steward *string             `json:"steward,omitempty"`
+	Parent  *string             `json:"parent,omitempty"`
 }
 
 // OrgWorkstreamUpdateParams is a patch guarded by the rev it was read at.
@@ -444,6 +464,8 @@ func withFactoryOrgFeature(hello Hello, e Engine) Hello {
 		hello = withFeature(hello, FeatureOrgRoles)
 		hello = withFeature(hello, FeatureOrgAgentRunner)
 		hello = withFeature(hello, FeatureOrgAgentServer)
+		hello = withFeature(hello, FeatureOrgWorkstreamNesting)
+		hello = withFeature(hello, FeatureOrgWorkstreamRules)
 	}
 	return hello
 }

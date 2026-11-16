@@ -355,6 +355,9 @@ func (st *Store) editWorkstreams(bump bool, edit func(all factory.OrgWorkstreams
 		if err != nil {
 			return err
 		}
+		// A WORKSTREAM INSIDE ANOTHER ALWAYS HAS ITS PEOPLE, so the same save
+		// that changed a parent's people writes them on its children.
+		changed = append(changed, factory.InheritPeople(all, changed)...)
 		out = all
 		for _, id := range changed {
 			w, ok := all[id]

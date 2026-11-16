@@ -290,7 +290,7 @@ func attachOrg(t *testing.T) (*orgServer, *factoryWire, string) {
 // words.
 func TestOrgMethodsAreAnnouncedInHello(t *testing.T) {
 	_, wire, _ := attachOrg(t)
-	for _, word := range []string{`"org_teams"`, `"org_workstreams"`, `"org_roles"`} {
+	for _, word := range []string{`"org_teams"`, `"org_workstreams"`, `"org_roles"`, `"org_workstream_nesting"`, `"org_workstream_rules"`} {
 		if !strings.Contains(wire.hello, word) {
 			t.Fatalf("hello lacks %s: %s", word, wire.hello)
 		}

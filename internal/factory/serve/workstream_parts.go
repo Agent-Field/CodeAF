@@ -795,6 +795,7 @@ func (h *Handler) joinWorkstreamJob(r *http.Request, ws factory.OrgWorkstream, v
 	if len(left) > 0 || saved[ws.ID].Rev != ws.Rev {
 		h.recordWorkstream(r, ws.ID, "added job", "job "+jobID)
 		h.publishWorkstreamPart(saved[ws.ID], api.PartJobs, jobID, by, saved[ws.ID].Rev, false)
+		h.syncStartWithoutAsking(append(left, ws.ID)...)
 	}
 	return saved[ws.ID], nil
 }
@@ -824,6 +825,7 @@ func (h *Handler) removeWorkstreamJob(w http.ResponseWriter, r *http.Request) {
 	if saved.Rev != before.Rev {
 		h.recordWorkstream(r, ws.ID, "removed job", "job "+strconv.Itoa(job))
 		h.publishWorkstreamPart(saved, api.PartJobs, strconv.Itoa(job), h.orgActor(r), saved.Rev, true)
+		h.syncStartWithoutAsking(ws.ID)
 	}
 	h.writeWorkstream(w, http.StatusOK, saved, v)
 }

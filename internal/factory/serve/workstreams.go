@@ -72,6 +72,7 @@ func (h *Handler) workstreamRoutes() {
 	h.workstreamPartRoutes()
 	h.workstreamFileRoutes()
 	h.workstreamTaskRoutes()
+	h.workstreamStructureRoutes()
 	h.route("/v1/workstreams/{id}/driver", map[string]http.HandlerFunc{http.MethodPut: h.takeWorkstreamDriver, http.MethodDelete: h.dropWorkstreamDriver})
 }
 
@@ -94,7 +95,7 @@ func (v Viewer) canWrite(w factory.OrgWorkstream) bool {
 	return can(v, workstreamItem(w), factory.RoleEdit)
 }
 func (v Viewer) canGovern(w factory.OrgWorkstream) bool {
-	return can(v, workstreamItem(w), factory.RoleFull) || (v.Operator && !w.Private)
+	return can(v, workstreamItem(w), factory.RoleFull) || (v.Operator && !w.Private) || (v.stewards(w) && can(v, workstreamItem(w), factory.RoleView))
 }
 
 // orgWorkstreamAccess is whether id names an organization workstream and
@@ -236,6 +237,7 @@ func workstreamSummary(ws factory.OrgWorkstream, c workstreamCount, v Viewer) ap
 		NeedsYou: c.needsYou, Merged: c.merged, Total: c.total,
 		UpdatedAt: ws.UpdatedAt.UTC().Format(time.RFC3339Nano), Rev: ws.Rev,
 	}
+	withStructure(&out, ws, v)
 	if out.MyRole == "" {
 		out.SharedWith, out.Shares = []string{}, []factory.Share{}
 		out.NeedsYou, out.Merged, out.Total = 0, 0, 0
@@ -305,6 +307,8 @@ func (h *Handler) workstreamBody(ws factory.OrgWorkstream, v Viewer) (api.Workst
 		GoAheads:          goAheads,
 		CreatedBy:         ws.CreatedBy,
 		Driver:            h.workstreamDriver(ws.ID),
+		People:            h.workstreamPeople(ws),
+		Rules:             rulesFor(ws),
 	}, nil
 }
 
@@ -328,12 +332,24 @@ func (h *Handler) createWorkstream(w http.ResponseWriter, r *http.Request) {
 	if body.Owner != nil {
 		owner = *body.Owner
 	}
+	body.Parent = strings.TrimSpace(body.Parent)
+	if body.Parent != "" && (body.Owner != nil || body.Private) {
+		h.fail(w, http.StatusUnprocessableEntity, factory.ErrChildPeople.Error())
+		return
+	}
+	rules, err := cleanNewRules(body.Rules)
+	if err != nil {
+		h.fail(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
 	owner, err = h.cleanOwner(owner)
 	if err != nil {
 		h.fail(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
-	if !v.Operator && !(owner.Kind == api.OwnerPerson && owner.ID == v.Handle) && !(owner.Kind == api.OwnerTeam && v.Teams[owner.ID]) {
+	// A workstream inside another takes that one's people whoever made it,
+	// so only an owner of its own is checked here.
+	if body.Parent == "" && !v.Operator && !(owner.Kind == api.OwnerPerson && owner.ID == v.Handle) && !(owner.Kind == api.OwnerTeam && v.Teams[owner.ID]) {
 		h.fail(w, http.StatusForbidden, "you can make a workstream owned by you or by a team you are in")
 		return
 	}
@@ -347,6 +363,7 @@ func (h *Handler) createWorkstream(w http.ResponseWriter, r *http.Request) {
 		Pages: body.Pages, Decisions: stampDecisions(body.Decisions, nil, v.Handle, now, false),
 		Sources: body.Sources, Links: body.Links,
 		CreatedBy: v.Handle, CreatedAt: now, UpdatedAt: now,
+		Parent: body.Parent, Steward: v.Handle, Rules: rules,
 	}
 	if ws.Stage == "" {
 		ws.Stage = api.WorkstreamShaping
@@ -444,6 +461,9 @@ func (h *Handler) saveNewWorkstream(w http.ResponseWriter, r *http.Request, ws f
 		} else if err := checkLinks(all, ws.Links, ws.ID); err != nil {
 			return nil, err
 		}
+		if err := nestNew(all, &ws, v, ws.Rules != nil); err != nil {
+			return nil, err
+		}
 		all[ws.ID] = ws
 		return changed, nil
 	})
@@ -460,6 +480,7 @@ func (h *Handler) saveNewWorkstream(w http.ResponseWriter, r *http.Request, ws f
 	}
 	h.recordWorkstream(r, ws.ID, verb, "")
 	h.publishWorkstreams(api.EventWorkstreamChanged, h.orgActor(r), nil, saved[ws.ID])
+	h.syncStartWithoutAsking(ws.ID)
 	for id, before := range befores {
 		h.publishWorkstreams(api.EventWorkstreamChanged, h.orgActor(r), &before, saved[id])
 	}
@@ -490,6 +511,7 @@ func (h *Handler) patchWorkstream(w http.ResponseWriter, r *http.Request) {
 	}
 	now := h.clock().UTC()
 	var before factory.OrgWorkstream
+	rulesChanged := false
 	saved, err := h.config.Store.EditWorkstreams(func(all factory.OrgWorkstreams) ([]string, error) {
 		cur, ok := all[ws.ID]
 		if !ok {
@@ -534,6 +556,11 @@ func (h *Handler) patchWorkstream(w http.ResponseWriter, r *http.Request) {
 				return nil, err
 			}
 		}
+		changedRules, err := patchStructure(all, &cur, body, v)
+		if err != nil {
+			return nil, err
+		}
+		rulesChanged = changedRules
 		if err := cleanWorkstream(&cur, v.Handle, now); err != nil {
 			return nil, err
 		}
@@ -551,6 +578,10 @@ func (h *Handler) patchWorkstream(w http.ResponseWriter, r *http.Request) {
 		h.recordWorkstream(r, ws.ID, "set budget", "")
 	}
 	h.publishWorkstreams(api.EventWorkstreamChanged, h.orgActor(r), &before, saved[ws.ID])
+	if rulesChanged {
+		h.syncStartWithoutAsking(ws.ID)
+		h.publishWorkstreamRules(saved[ws.ID], h.orgActor(r))
+	}
 	h.writeWorkstream(w, http.StatusOK, saved[ws.ID], v)
 }
 
@@ -568,6 +599,7 @@ func patchedFields(body api.WorkstreamPatch) string {
 			out = append(out, f.name)
 		}
 	}
+	out = append(out, patchedStructure(body)...)
 	return changedFields(out...)
 }
 
@@ -646,6 +678,9 @@ func (h *Handler) setWorkstreamOwner(w http.ResponseWriter, r *http.Request) {
 		if !v.canGovern(cur) {
 			return nil, errWorkstreamNoGovern
 		}
+		if cur.Parent != "" {
+			return nil, errChildPeople
+		}
 		before = cur
 		if cur.Owner == owner {
 			return nil, nil
@@ -655,6 +690,7 @@ func (h *Handler) setWorkstreamOwner(w http.ResponseWriter, r *http.Request) {
 		// say it twice. A team's workstream is never private.
 		cur.Shares = withoutOwnerShare(cur.Shares, owner)
 		cur.Private = cur.Private && owner.Kind == api.OwnerPerson
+		stampPeopleAdded(&cur, before, now)
 		all[cur.ID] = cur
 		return []string{cur.ID}, nil
 	})
@@ -664,6 +700,8 @@ func (h *Handler) setWorkstreamOwner(w http.ResponseWriter, r *http.Request) {
 	if saved[ws.ID].Rev != before.Rev {
 		h.recordWorkstream(r, ws.ID, "changed owner", owner.Kind+" "+owner.ID)
 		h.publishWorkstreams(api.EventWorkstreamChanged, h.orgActor(r), &before, saved[ws.ID])
+		h.publishChildren(r, saved, ws.ID)
+		h.peopleChanged(r, before, saved[ws.ID], saved)
 	}
 	h.writeWorkstream(w, http.StatusOK, saved[ws.ID], v)
 }
@@ -723,6 +761,9 @@ func (h *Handler) setWorkstreamShares(w http.ResponseWriter, r *http.Request) {
 		if body.Rev != nil && cur.Rev != *body.Rev {
 			return nil, errWorkstreamStale
 		}
+		if cur.Parent != "" {
+			return nil, errChildPeople
+		}
 		next := cur
 		if body.Owner != nil {
 			next.Owner = owner
@@ -752,6 +793,7 @@ func (h *Handler) setWorkstreamShares(w http.ResponseWriter, r *http.Request) {
 		if next.Owner != cur.Owner || next.Private != cur.Private || !slices.Equal(next.Shares, cur.Shares) {
 			befores[cur.ID] = cur
 			next.UpdatedAt = now
+			stampPeopleAdded(&next, cur, now)
 			all[cur.ID] = next
 			changed = append(changed, cur.ID)
 		}
@@ -772,6 +814,8 @@ func (h *Handler) setWorkstreamShares(w http.ResponseWriter, r *http.Request) {
 	for id, before := range befores {
 		h.recordWorkstream(r, id, "changed sharing", sharesWords(saved[id]))
 		h.publishWorkstreams(api.EventWorkstreamChanged, h.orgActor(r), &before, saved[id])
+		h.publishChildren(r, saved, id)
+		h.peopleChanged(r, before, saved[id], saved)
 	}
 	body2, err := h.workstreamBody(saved[ws.ID], v)
 	if h.failed(w, err) {
@@ -858,7 +902,7 @@ func (h *Handler) workstreamRefused(w http.ResponseWriter, err error) bool {
 		h.fail(w, http.StatusConflict, err.Error())
 	case errors.Is(err, errWorkstreamGone):
 		h.fail(w, http.StatusNotFound, err.Error())
-	case errors.Is(err, errWorkstreamNoWrite), errors.Is(err, errWorkstreamNoGovern), errors.Is(err, errWorkstreamNoFull):
+	case errors.Is(err, errWorkstreamNoWrite), errors.Is(err, errWorkstreamNoGovern), errors.Is(err, errWorkstreamNoFull), errors.Is(err, errNotSteward):
 		h.fail(w, http.StatusForbidden, err.Error())
 	case errors.As(err, new(workstreamInvalid)), errors.Is(err, errLinkUnknown):
 		h.fail(w, http.StatusUnprocessableEntity, err.Error())

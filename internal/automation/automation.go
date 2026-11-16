@@ -135,6 +135,12 @@ type Automation struct {
 	// Crew is the crew it belongs to, and Wont what it is told never to do.
 	Crew string `json:"crew,omitempty"`
 	Wont string `json:"wont,omitempty"`
+	// Workstream, when set, is the workstream whose People and rules page
+	// switches it on and whose task list its results land in, as a group
+	// named after it. Empty is an order that belongs to no workstream, which
+	// every order made before workstreams had them is. It changes nothing
+	// about when or how the order runs.
+	Workstream string `json:"workstream,omitempty"`
 
 	// Last is the most recent run that ended, filled in by [Store.List] and
 	// [Store.Get] from the runs table so a list can say what each one last came
