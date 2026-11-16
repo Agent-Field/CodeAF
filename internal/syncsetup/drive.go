@@ -18,6 +18,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/keys"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/vaultsync"
+	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
 // unknownDevice is said for the machine that took a chat when the directory
@@ -98,6 +99,9 @@ func (s *Sync) Drive(ctx context.Context, eng cellstore.Engine, c cell.Cell, opt
 	if Quiet(s.Home) {
 		return nil, ErrQuiet
 	}
+	if !s.StorageAllowed() {
+		return nil, wireauth.ErrStorageOff
+	}
 	files, err := s.files(eng, c)
 	if err != nil {
 		return nil, err
@@ -144,6 +148,8 @@ func (s *Sync) Drive(ctx context.Context, eng cellstore.Engine, c cell.Cell, opt
 			defer cancelWatch()
 			d.followOwnership(watch)
 		})
+		stopStorage := OnStorageOpened(s.Home, d.StorageOpened)
+		defer stopStorage()
 		_ = d.batcher.Run(run)
 		work.Wait()
 	}()
@@ -206,6 +212,9 @@ func (d *Drive) note(sealed cellstore.Sealed) {
 // see. It is best effort and says nothing when it fails: the fingerprint is then
 // not recorded, so the next flush tries again, and a seal never waits on it.
 func (d *Drive) syncVault(ctx context.Context) {
+	if !d.sync.StorageAllowed() {
+		return
+	}
 	err := d.sync.withVault(func(v vaultsync.Syncer) error {
 		if err := v.Capture(); err != nil {
 			return err
@@ -331,6 +340,11 @@ func (s *Sync) driving(ctx context.Context, c cell.Cell) (cellsync.Driving, stri
 		extends, err := cellstore.Extends(c, view.Cell.Head)
 		if err != nil {
 			return drv, "", err
+		}
+		// An empty head has no stored turns to require from this device's own
+		// expired hold; other devices retain the ordinary ancestry decision.
+		if view.Cell.Head == "" && view.Cell.Lease.Device == s.Device.ID() {
+			extends = true
 		}
 		if !extends {
 			return drv, nonemptyHolder(view.Cell.Lease.Device), nil
@@ -829,4 +843,11 @@ func (d *Drive) Close(ctx context.Context) error {
 		}
 	})
 	return d.closeErr
+}
+
+// StorageOpened wakes capacity-halted publication without replacing ownership.
+func (d *Drive) StorageOpened() {
+	if d.batcher != nil {
+		d.batcher.Freed()
+	}
 }

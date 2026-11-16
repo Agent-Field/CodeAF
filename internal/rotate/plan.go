@@ -33,8 +33,18 @@ func (e Env) Plan(ctx context.Context) (Plan, error) {
 		return Plan{}, err
 	}
 	p := Plan{Chats: len(l.Cells)}
+	upload := true
+	if e.StorageAllowed != nil {
+		var err error
+		upload, err = e.StorageAllowed(ctx, nil)
+		if err != nil {
+			return Plan{}, err
+		}
+	}
 	for id, c := range l.Cells {
-		p.UpBytes += int64(c.Size)
+		if upload {
+			p.UpBytes += int64(c.Size)
+		}
 		want, err := e.Engine(e.Identity).Want(ctx, e.Cell(id), c.Head)
 		if err != nil {
 			return Plan{}, err

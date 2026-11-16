@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/Agent-Field/codeaf/internal/syncwords"
+	"github.com/Agent-Field/codeaf/internal/wireauth"
 	"io"
 	"os"
 	"path/filepath"
@@ -1002,6 +1003,9 @@ func (c *Client) deliver(frame Frame) {
 			err = frame.WorkRefusal
 		}
 		if c.Welcome().LocalSavingReceipts && frame.SyncPending && frame.LocalSaved {
+			if frame.StorageOff {
+				err = errors.Join(wireauth.ErrStorageOff, err)
+			}
 			err = syncwords.UploadFailure(err)
 		}
 		if frame.UnsavedTranscript != "" {

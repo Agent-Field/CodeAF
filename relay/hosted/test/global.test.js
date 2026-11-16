@@ -11,7 +11,7 @@ import { frame, rid, openBucket } from './helpers.js';
 
 const empty = { list: async () => ({ objects: [], truncated: false }) };
 const refusal = (code, status) => (e) => e.code === code && e.status === status;
-const limits = (overrides) => ({ ...DEFAULTS, ...overrides });
+const limits = (overrides) => ({ ...DEFAULTS, storageOpen: true, ...overrides });
 
 test('deployment defaults allow admission and storage above the former global limits', async () => {
   const sql = memorySql();
@@ -21,10 +21,47 @@ test('deployment defaults allow admission and storage above the former global li
   await new GlobalBudget(sql, empty, limitsOf({})).admit('another', 0);
 });
 
-test('a zero storage override closes both admission and new writes', async () => {
-  const budget = new GlobalBudget(memorySql(), empty, limitsOf({ CAF_LIMITS: '{"globalStoreBytes":0}' }));
+test('a zero shared storage override closes admission only', async () => {
+  const sql = memorySql();
+  await new GlobalBudget(sql, empty, limitsOf({})).admit('a', 0);
+  const budget = new GlobalBudget(sql, empty, limitsOf({ CAF_LIMITS: '{"globalStoreBytes":0}' }));
   await assert.rejects(budget.admit('a', 0), refusal('relay_storage_full', 507));
+  await budget.reserve('a', 'f', 1);
+  await budget.reserve('a', 'f', 1);
+  assert.equal(sql.exec('SELECT bytes FROM global_usage').one().bytes, 1);
+});
+
+test('a zero hard storage override closes all new writes but preserves retries and erasure', async () => {
+  const sql = memorySql();
+  await new GlobalBudget(sql, empty, limitsOf({})).reserve('a', 'held', 1);
+  const budget = new GlobalBudget(sql, empty, limitsOf({ CAF_LIMITS: '{"globalHardStoreBytes":0}' }));
   await assert.rejects(budget.reserve('a', 'f', 1), refusal('relay_storage_full', 507));
+  await assert.rejects(budget.reserve('b', 'f', 1), refusal('relay_storage_full', 507));
+  await assert.rejects(budget.reserve('a', 'empty', 0), refusal('relay_storage_full', 507));
+  await budget.reserve('a', 'held', 1);
+  await budget.forget('a');
+  assert.equal(sql.exec('SELECT bytes FROM global_usage').one().bytes, 0);
+  await assert.rejects(budget.reserve('a', 'f', 1), refusal('relay_storage_full', 507));
+});
+
+test('existing identities grow past shared storage and keep admission closed until erasure', async () => {
+  const sql = memorySql(), cap = limits({ globalStoreBytes: 10 });
+  const budget = new GlobalBudget(sql, empty, cap);
+  await budget.admit('a', 0);
+  await budget.admit('b', 0);
+  await budget.reserve('a', 'first', 6);
+  await budget.reserve('b', 'first', 4);
+  await assert.rejects(budget.admit('new', 0), refusal('relay_storage_full', 507));
+  const cold = new GlobalBudget(sql, empty, cap);
+  await cold.reserve('a', 'second', 7);
+  await cold.reserve('a', 'second', 7);
+  assert.equal(sql.exec('SELECT bytes FROM global_usage').one().bytes, 17);
+  assert.equal(sql.exec('SELECT COUNT(*) AS n FROM global_frames').one().n, 3);
+  await assert.rejects(cold.admit('new', 0), refusal('relay_storage_full', 507));
+  await cold.forget('a');
+  await cold.forget('a');
+  assert.equal(sql.exec('SELECT bytes FROM global_usage').one().bytes, 4);
+  await cold.admit('new', 0);
 });
 
 // C20 bounds successful new identities across networks and keeps the count after restart.
@@ -47,9 +84,9 @@ test('zero admission closes the door and a per-network refusal spends no global 
   await budget.admit('b', 0);
 });
 
-// C20 reserves storage atomically across owners; retries and process restarts cannot spend twice.
-test('racing reservations share a durable storage ceiling and erasure returns capacity', async () => {
-  const sql = memorySql(), cap = limits({ globalStoreBytes: 10 });
+// The emergency stop must reserve atomically so racing owners cannot exceed it.
+test('racing reservations share a durable hard storage ceiling and erasure returns capacity', async () => {
+  const sql = memorySql(), cap = limits({ globalStoreBytes: 10, globalHardStoreBytes: 10 });
   const budget = new GlobalBudget(sql, empty, cap);
   const results = await Promise.allSettled([budget.reserve('a', 'f', 6), budget.reserve('b', 'f', 6)]);
   assert.deepEqual(results.map((r) => r.status), ['fulfilled', 'rejected']);
@@ -72,7 +109,7 @@ test('the first inventory counts existing R2 objects once before allowing writes
     if (fail) { fail = false; throw new Error('interrupted'); }
     return { objects: [{ key: 'other/f/b', size: 4 }], truncated: false };
   } };
-  const budget = new GlobalBudget(sql, bucket, limits({ globalStoreBytes: 10 }));
+  const budget = new GlobalBudget(sql, bucket, limits({ globalStoreBytes: 10, globalHardStoreBytes: 10 }));
   await assert.rejects(budget.reserve('new', 'c', 1), /interrupted/);
   await assert.rejects(budget.reserve('new', 'c', 1), refusal('relay_storage_full', 507));
   await budget.reserve('old', 'a', 6);
@@ -80,12 +117,12 @@ test('the first inventory counts existing R2 objects once before allowing writes
   await budget.reserve('new', 'c', 6);
 });
 
-// C20 refuses new frames while preserving reads, retries and owner erasure through the real store.
-test('an existing owner can read and erase when the global storage brake is closed', async () => {
+// The emergency stop preserves reads and retries so an operator can recover without losing data.
+test('an existing owner can read and erase when the hard storage brake is closed', async () => {
   const env = await openBucket();
   try {
     const first = frame([rid(1)]), second = frame([rid(2)]);
-    const cap = limits({ globalStoreBytes: first.bytes.length });
+    const cap = limits({ globalStoreBytes: first.bytes.length, globalHardStoreBytes: first.bytes.length });
     const budget = new GlobalBudget(memorySql(), env.bucket, cap);
     const tenant = new Tenant({ identity: 'owner', sql: memorySql(), bucket: env.bucket, clock: () => 0,
       policy: policyOf(), limits: cap, flight: new Flight(), arm: () => {}, watchers: NOBODY,
@@ -93,10 +130,42 @@ test('an existing owner can read and erase when the global storage brake is clos
     await tenant.putFrame(first.bytes);
     await tenant.putFrame(first.bytes);
     await assert.rejects(tenant.putFrame(second.bytes), refusal('relay_storage_full', 507));
+    cap.globalHardStoreBytes = 0;
+    await tenant.putFrame(first.bytes);
+    await assert.rejects(tenant.putFrame(second.bytes), refusal('relay_storage_full', 507));
     assert.deepEqual(await tenant.getObject(rid(1)), first.objs[0]);
     const page = await env.bucket.list({ prefix: 'owner/' });
     await env.bucket.delete(page.objects.map((o) => o.key));
     await budget.forget('owner');
+    cap.globalHardStoreBytes = first.bytes.length;
     await budget.reserve('another', 'f', second.bytes.length);
+  } finally { await env.close(); }
+});
+
+test('existing identities keep their own byte, object and daily ceilings after shared storage closes', async () => {
+  const env = await openBucket();
+  try {
+    const first = frame([rid(1)]), second = frame([rid(2)]), third = frame([rid(3)]);
+    for (const own of [{ storeBytes: first.bytes.length * 2 }, { storeObjects: 2 }, { framesPerDay: 2 }]) {
+      const cap = limits({ globalStoreBytes: first.bytes.length, ...own });
+      const sql = memorySql();
+      const budget = new GlobalBudget(sql, env.bucket, cap);
+      const identity = Object.keys(own)[0];
+      await budget.admit(identity, 0);
+      const tenant = new Tenant({ identity, sql: memorySql(), bucket: env.bucket, clock: () => 0,
+        policy: policyOf(), limits: cap, flight: new Flight(), arm: () => {}, watchers: NOBODY,
+        reserve: (...args) => budget.reserve(...args) });
+      await tenant.putFrame(first.bytes);
+      await assert.rejects(budget.admit('new', 0), refusal('relay_storage_full', 507));
+      await tenant.putFrame(second.bytes);
+      await tenant.putFrame(first.bytes);
+      await assert.rejects(tenant.putFrame(third.bytes), (e) => refusal('full', 507)(e) && e.limitBytes === own.storeBytes);
+      assert.deepEqual(await tenant.getObject(rid(1)), first.objs[0]);
+      assert.equal(sql.exec('SELECT bytes FROM global_frames WHERE owner = ?', identity).toArray().length, 2);
+      const page = await env.bucket.list({ prefix: `${identity}/` });
+      await env.bucket.delete(page.objects.map((o) => o.key));
+      await budget.forget(identity);
+      assert.equal(sql.exec('SELECT bytes FROM global_usage').one().bytes, 0);
+    }
   } finally { await env.close(); }
 });

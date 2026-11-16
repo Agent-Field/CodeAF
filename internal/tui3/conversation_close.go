@@ -7,6 +7,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 )
 
 // conversationCloseWithin bounds how long the surface waits for engine cleanup.
@@ -18,6 +19,7 @@ const closeStillFinishingWord = "this chat is still finishing in the background"
 type conversationClosedMsg struct {
 	err       error
 	finishing bool
+	address   string
 }
 
 // quitAfterClosing restores the terminal even when cleanup is still running.
@@ -40,7 +42,7 @@ func quitAfterClosing(work func(), started func(<-chan struct{})) tea.Cmd {
 
 // Closing releases the keyboard after a bounded wait. The close method has no
 // cancellation door, so it can finish later without holding the update loop.
-func closeConversationLater(agent Agent, door session.StopDoor, report func(error), started func(<-chan struct{}), lateFailure func()) tea.Cmd {
+func closeConversationLater(agent Agent, door session.StopDoor, report func(error), started func(<-chan struct{}), lateFailure func(error), address string) tea.Cmd {
 	done, finished := make(chan error, 1), make(chan struct{})
 	var mu sync.Mutex
 	late := false
@@ -58,7 +60,7 @@ func closeConversationLater(agent Agent, door session.StopDoor, report func(erro
 		notify := late && err != nil && !errors.Is(err, session.ErrSavingUnanswered) && lateFailure != nil
 		mu.Unlock()
 		if notify {
-			lateFailure()
+			lateFailure(err)
 		}
 	}()
 	return func() tea.Msg {
@@ -66,17 +68,32 @@ func closeConversationLater(agent Agent, door session.StopDoor, report func(erro
 		defer timer.Stop()
 		select {
 		case err := <-done:
-			return conversationClosedMsg{err: err}
+			return conversationClosedMsg{err: err, address: address}
 		case <-timer.C:
 			mu.Lock()
 			defer mu.Unlock()
 			select {
 			case err := <-done:
-				return conversationClosedMsg{err: err}
+				return conversationClosedMsg{err: err, address: address}
 			default:
 				late = true
 			}
-			return conversationClosedMsg{finishing: true}
+			return conversationClosedMsg{finishing: true, address: address}
 		}
+	}
+}
+
+// closeSaveWords uses the same local receipt as app quit before claiming turns are saved here.
+func closeSaveWords(err error, finishing bool, address string) string {
+	if line := syncwords.SavedHereWords(err, address); line != "" {
+		return line
+	}
+	switch {
+	case errors.Is(err, session.ErrSavingUnanswered), err == nil && finishing:
+		return closeStillFinishingWord
+	case err != nil:
+		return closeSaveFailedWord
+	default:
+		return ""
 	}
 }

@@ -72,7 +72,7 @@ older version saved stays in the profile, read by nothing, and is never reported
 as an unknown setting. Internal model slots that this surface cannot
 change are omitted; supported model controls remain in Models.
 
-## General — interface preferences and hints
+## General — interface preferences, hints and share teams between paired computers
 
 **General** contains mouse interaction, completed tool details, tool icons, chat
 switching, the task sidebar and updates. There is no background reminders row: codeaf
@@ -82,7 +82,7 @@ positive: on shows contextual tips, off hides them. Keyboard instructions and
 setting explanations stay visible either way. **Completed tool details** offers
 **collapsed** or **expanded** without changing the meaning of an existing profile.
 
-**Settings → General → share teams** is on by default for paired computers. It
+**Settings → General → share teams** is on by default for paired computers. On the hosted sync service sharing needs sync storage approval (Settings → Devices → sync storage). It
 shares teams, their members and settings, and recent Traffic as read-only history.
 The choice stays on each computer. Turning it off on either computer stops sharing
 between them: that computer stops sending and receiving teams and Traffic. What
@@ -218,3 +218,9 @@ resolution also falls back to prompting. A missing profile keeps its usual defau
 malformed JSON still reports an error. Spending-limit reads and settings writes
 continue to refuse unreadable files unless an explicit daily-limit override supplies
 the spending authority.
+
+## Devices — sync storage, off or on, and request access
+
+Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
+
+A paired account whose service reports storage permission has a **sync storage** row showing **on** or **off**. While **off**, press Enter (`enter request access`) to open a pre-filled GitHub issue. The panel also shows the public request code and link if no browser opens. The code is your identity id (`id_` and 32 hex digits), safe to post and granting nothing by itself. Choosing this row in Settings search clears the search and opens Devices. While **off**, Enter also requests access. While **on**, it opens Devices without offering or making a request. The row is absent with sync off, before pairing, or when the service answers without storage permission. A window already open when you pair checks for the answer within about a minute; an open Settings page then updates its row automatically. The first `/status` after pairing shows the cached dim line `sync storage  off` while storage is off.

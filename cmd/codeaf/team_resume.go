@@ -92,4 +92,6 @@ func teamComputers(ctx context.Context, members []teams.Member) (map[string]stri
 }
 
 // teamPaired supplies the shared quiet gate to packages below relay setup.
-func teamPaired() bool { return syncsetup.MayTalk(home.Dir()) }
+func teamPaired() bool {
+	return syncsetup.MayTalk(home.Dir()) && syncsetup.StorageForHome(home.Dir()) == "on"
+}

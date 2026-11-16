@@ -4,8 +4,11 @@ import (
 	"context"
 	"crypto/ed25519"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
@@ -64,6 +67,9 @@ type Env struct {
 	Home     string
 	Identity identity.Identity // the identity on disk now
 	Device   identity.Dev      // this machine's device under it
+	// HostedRelay is the normalized hosted URL, empty for other relays. Only an
+	// accepted binding on this service requires keeping a canceled successor.
+	HostedRelay string
 	// Connect binds the relay to a signer: the old identity's device, then the
 	// new one's.
 	Connect func(reqsign.Signer) Relay
@@ -75,8 +81,11 @@ type Env struct {
 	Cell func(id string) cell.Cell
 	// Record is this device's directory record under id.
 	Record func(id identity.Identity) (directory.Device, error)
-	Grace  time.Duration // 0 is DefaultGrace
-	Say    func(string)  // progress lines; nil says nothing
+	// StorageAllowed lets a closed account finish with local copies instead of
+	// asking verification to find content it was forbidden to upload.
+	StorageAllowed func(context.Context, blobstore.Store) (bool, error)
+	Grace          time.Duration // 0 is DefaultGrace
+	Say            func(string)  // progress lines; nil says nothing
 	// After is called once each step is durable, with its name; an error stops
 	// the rotation there. Tests use it to crash at every point.
 	After func(step string) error
@@ -185,6 +194,30 @@ func (e Env) open(ctx context.Context) (*run, error) {
 // mint makes the new root, the device it certifies, and writes them down before
 // anything is sent.
 func (e Env) mint() (Journal, error) {
+	if raw, err := os.ReadFile(filepath.Join(e.Home, successorFile)); err == nil {
+		var j Journal
+		if json.Unmarshal(raw, &j) != nil {
+			return Journal{}, errors.New("rotate: saved successor keys are damaged; keep " + successorFile)
+		}
+		if j.OldID == e.Identity.ID() && e.HostedRelay != "" && j.HandoffRelay == e.HostedRelay {
+			if _, err := identity.Unmarshal(j.New); err != nil {
+				return Journal{}, err
+			}
+			oldDoc, err := e.Device.Marshal()
+			if err != nil {
+				return Journal{}, err
+			}
+			j.OldDevice = oldDoc
+			j.GraceMS = e.grace().Milliseconds()
+			if err := save(e.Home, j); err != nil {
+				return Journal{}, err
+			}
+			return j, os.Remove(filepath.Join(e.Home, successorFile))
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return Journal{}, err
+	}
+
 	id, err := identity.Mint()
 	if err != nil {
 		return Journal{}, err
@@ -257,7 +290,8 @@ func (r *run) refusedFirst(err error) error {
 }
 
 // Abandon stops a rotation that has not switched: the old identity is thawed
-// and the journal, which holds the unused new keys, is deleted. With no journal
+// and keeps its successor keys only when a hosted relay accepted their binding.
+// A later rotation of that source on the same relay must reuse them. With no journal
 // it thaws anyway, which is how another computer undoes a rotation whose
 // keeper lost its disk.
 func (e Env) Abandon(ctx context.Context) error {
@@ -278,7 +312,17 @@ func (e Env) Abandon(ctx context.Context) error {
 	if err := r.old.Gate.Thaw(ctx); err != nil {
 		return err
 	}
-	return remove(e.Home)
+	if r.j.HandoffRelay == "" {
+		return remove(e.Home)
+	}
+	r.j.State = Minted
+	r.j.Items = nil
+	r.j.Vault = false
+	r.j.LocalOnly = false
+	if err := save(e.Home, r.j); err != nil {
+		return err
+	}
+	return os.Rename(path(e.Home), filepath.Join(e.Home, successorFile))
 }
 
 // vaultSyncer is the vault's syncer for the new relay.

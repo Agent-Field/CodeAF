@@ -18,11 +18,11 @@ func startServeKeeping(ctx context.Context, service string) func() {
 }
 
 // serveKeeping is startServeKeeping with the decision made. With keep false
-// it starts nothing and the join does nothing, so every serve that did not ask
-// behaves exactly as it always has.
+// only permission discovery runs; home-state and presence remain opt-in.
 func serveKeeping(ctx context.Context, service string, keep bool) func() {
+	stopStorage := syncsetup.StartStorageRefresh(ctx, home.Dir())
 	if !keep {
-		return func() {}
+		return stopStorage
 	}
 	joinState := startServeHomeState(ctx, home.Dir(), func(err error) {
 		fmt.Fprintln(os.Stderr, "could not sync this machine's saved keys and settings:", err)
@@ -34,6 +34,7 @@ func serveKeeping(ctx context.Context, service string, keep bool) func() {
 		stopPresence()
 		<-presenceDone
 		joinState()
+		stopStorage()
 	}
 }
 

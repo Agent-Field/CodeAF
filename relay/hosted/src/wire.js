@@ -5,7 +5,7 @@
 import { Refusal } from './verify.js';
 import { BadFrame } from './frame.js';
 import { RuleError } from './rules.js';
-import { Conflict, Damaged } from './store.js';
+import { Conflict, Damaged, StorageOff } from './store.js';
 import { networkOf } from './network.js';
 
 export class Wire extends Error {
@@ -48,6 +48,7 @@ export function wireOf(e) {
   if (e instanceof Wire) return e;
   if (e instanceof Refusal) return new Wire(e.kind, 401);
   if (e instanceof BadFrame) return new Wire('bad_frame', 400);
+  if (e instanceof StorageOff) return new Wire('storage_off', 403);
   if (e instanceof Conflict) return new Wire('conflict', 409);
   if (e instanceof Damaged) return new Wire('damaged', 500);
   if (e instanceof RuleError) return new Wire(e.code, RULE_STATUS[e.code] ?? 500);

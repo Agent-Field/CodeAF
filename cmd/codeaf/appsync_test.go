@@ -502,7 +502,13 @@ func TestC3AppHostedDisclosureWaitsForAcknowledgement(t *testing.T) {
 			srv := appSyncRelay(t)
 			b, rec, _, workspace := appSyncBackend(t)
 			t.Setenv(syncsetup.URLVar, "")
-			if _, err := identity.Ensure(home.Dir()); err != nil {
+			id, err := identity.Ensure(home.Dir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Hosted storage stays off until the account is approved (#2509);
+			// this disclosure is about an approved account's first copy.
+			if err := syncsetup.SaveStorage(home.Dir(), syncsetup.Resolve(home.Dir()).URL, id.ID(), "on"); err != nil {
 				t.Fatal(err)
 			}
 			own := appSyncOwn(t)

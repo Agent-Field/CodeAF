@@ -3288,9 +3288,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"codeaf relay --listen --store how do I run my own relay", "relay-hosted-or-your-own"},
 		{"is there a docker image for the relay", "relay-hosted-or-your-own"},
 		{"is there a storage limit on the relay", "relay-limits-and-refusals"},
+		{"how much sync space am I using", "relay-limits-and-refusals"},
+		{"how close am I to the relay limit", "relay-limits-and-refusals"},
+		{"how big is my relay storage", "relay-limits-and-refusals"},
 		{"why does my chat not sync and say nothing, is the relay full", "relay-limits-and-refusals"},
 		{"what is the limit on new identities from one network", "relay-limits-and-refusals"},
-		{"the chat says the relay has no room left", "relay-limits-and-refusals"},
+		{"the chat says your sync space is full", "relay-limits-and-refusals"},
+		{"my sync space is full, how do I free it?", "relay-limits-and-refusals"},
+		{"does deleting a chat free sync space?", "relay-limits-and-refusals"},
 		{"the relay is asking this computer to slow down", "relay-limits-and-refusals"},
 		{"I lost all my computers, can I recover my chats", "losing-every-device"},
 		{"is there a codeaf identity rotate", "losing-every-device"},
@@ -4997,6 +5002,46 @@ func TestChatTeamSharingSafetyAnswers(t *testing.T) {
 				}
 			}
 			t.Fatalf("no self-contained answer to %q includes %v", tc.query, tc.facts)
+		})
+	}
+}
+
+func TestStorageOptInManualQuestions(t *testing.T) {
+	for _, question := range []string{
+		"how do I turn on sync storage",
+		"why don't my chats sync to my other computer",
+		"request access to sync storage",
+		"does the relay store my chats",
+	} {
+		found := false
+		for _, section := range Chat().Search(question, DefaultResults) {
+			if section.Page == "relay-what-it-stores-and-sees" && strings.Contains(section.Body, "off by default") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%q did not reach the hosted storage approval answer", question)
+		}
+	}
+}
+
+func TestStorageOptInSettingsAndTeamsQuestions(t *testing.T) {
+	for _, probe := range []struct{ question, page, heading string }{
+		{"Settings General share teams between paired computers", "settings", "General —"},
+		{"Team sharing and Traffic on another computer", "team-manager", "Team sharing and Traffic"},
+		{"Shared team spending caps and continued members", "team-manager", "Shared team spending caps"},
+	} {
+		t.Run(probe.question, func(t *testing.T) {
+			for _, section := range Chat().Search(probe.question, DefaultResults) {
+				if section.Page == probe.page && strings.HasPrefix(section.Title, probe.heading) {
+					if !strings.Contains(section.Body, "sync storage approval") {
+						t.Fatalf("approval missing: %s", section.Body)
+					}
+					return
+				}
+			}
+			t.Fatalf("%q did not reach %s / %s", probe.question, probe.page, probe.heading)
 		})
 	}
 }

@@ -80,6 +80,30 @@ func (e Env) complete(ctx context.Context, from blobstore.Store, it Item) error 
 // that does it. Each finished chat is written down, so a crash repeats at most
 // the chat that was in flight.
 func (r *run) seal(ctx context.Context) error {
+	// A frozen journal already holds the successor keys. The separate handoff
+	// retries safely after a crash without changing any coordination command.
+	if gate, ok := r.old.Gate.(interface {
+		HandoffTo(context.Context, identity.Identity) (bool, error)
+	}); ok {
+		accepted, err := gate.HandoffTo(ctx, r.newID)
+		if err != nil {
+			return err
+		}
+		if accepted && r.HostedRelay != "" {
+			r.j.HandoffRelay = r.HostedRelay
+			if err := save(r.Home, r.j); err != nil {
+				return err
+			}
+		}
+	}
+	if r.StorageAllowed != nil {
+		allowed, err := r.StorageAllowed(ctx, r.new.Store)
+		if err != nil {
+			return err
+		}
+		r.j.LocalOnly = !allowed
+	}
+
 	if len(r.j.Items) == 0 {
 		l, err := r.old.Dir.List(ctx)
 		if err != nil {
@@ -89,6 +113,13 @@ func (r *run) seal(ctx context.Context) error {
 		if err := save(r.Home, r.j); err != nil {
 			return err
 		}
+	}
+	if r.j.LocalOnly {
+		if err := r.registerDevice(ctx); err != nil {
+			return err
+		}
+		r.say("sync storage is off; chats stay on your computers")
+		return r.advance(Sealed)
 	}
 	if err := r.registerDevice(ctx); err != nil {
 		return err
@@ -152,7 +183,14 @@ func (r *run) record(ctx context.Context, it Item) error {
 		Head: it.Head, Class: v.Cell.Class, Title: title, ParentCell: v.Cell.ParentCell,
 		Size: v.Cell.Size, OrphanTurns: v.Cell.OrphanTurns,
 	})
-	if err != nil && !errors.Is(err, directory.ErrExists) {
+	if errors.Is(err, directory.ErrExists) {
+		held, acquireErr := r.new.Dir.Acquire(ctx, it.ID, directory.AcquireOpts{})
+		if acquireErr != nil {
+			return acquireErr
+		}
+		_, err = r.new.Dir.Publish(ctx, it.ID, directory.Publish{Fence: held.Cell.Lease.Fence, OldHead: held.Cell.Head, Head: it.Head, Class: v.Cell.Class, Title: title, Size: v.Cell.Size})
+	}
+	if err != nil {
 		return err
 	}
 	if err := r.letGo(ctx, it.ID); err != nil {
@@ -210,6 +248,9 @@ func (r *run) carryVault(ctx context.Context) error {
 // verify asks the new relay for what the journal says it holds: every chat at
 // the carried head, every head's remote id, and the vault.
 func (r *run) verify(ctx context.Context) error {
+	if r.j.LocalOnly {
+		return r.advance(Verified)
+	}
 	l, err := r.new.Dir.List(ctx)
 	if err != nil {
 		return err

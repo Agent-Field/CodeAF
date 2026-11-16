@@ -1085,3 +1085,11 @@ Tools still run in that folder, and nothing in it is moved or deleted. A folder
 inside it that is one factory job's own checkout is a project like any other and
 is saved as usual. Chats made before this rule that name `~/.codeaf` stop saving
 its files the next time they open; nothing else about them changes.
+
+## Closing one open chat while sync storage is off
+
+Closing a chat with `/quit` or its close action can leave your other chats open. Only when an upload is refused because sync storage is off after a successful local save, codeaf says `saved here; sync storage is off for this account, so it stays on this computer`. The same words appear when quitting the app with that saving result.
+
+When local saving succeeds but another upload is still pending, the sentence is `saved here; it reaches your other devices when the sync service at <address> answers`. It names the service used by the chat you closed.
+
+If saving here fails, closing one chat still says `this chat could not be saved; its unsaved turns stay on this computer for the next start`. An unanswered save remains finishing in the background until its result arrives. Storage being off alone does not mean the local save failed.

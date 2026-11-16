@@ -46,9 +46,11 @@ type Taken struct {
 	Head  string
 	// AlreadyHere preserves the attached session when this device already holds it.
 	AlreadyHere bool
-	Kept        string
-	KeptTurns   uint32
-	Device      string
+	// LocalOnly allows local sending while account storage is off.
+	LocalOnly bool
+	Kept      string
+	KeptTurns uint32
+	Device    string
 	// TaskCopies names the tasks whose working copies came along with the chat.
 	TaskCopies []string
 	// Resume is what the chat left behind on the other machine that this one
@@ -886,7 +888,7 @@ func (a *app) openTaken(msg homeTakenMsg) tea.Cmd {
 	if previous.failed || (previous.fence != 0 && previous.fence != msg.taken.Fence) {
 		msg.taken.AlreadyHere = false
 	}
-	a.machineRead.sendHolds[msg.row.Cell] = sendHold{fence: msg.taken.Fence, awaitingWriter: !msg.taken.AlreadyHere}
+	a.machineRead.sendHolds[msg.row.Cell] = sendHold{fence: msg.taken.Fence, awaitingWriter: !msg.taken.AlreadyHere && !msg.taken.LocalOnly}
 	rows := append([]chatlist.Row(nil), a.machineRead.rows...)
 	for i := range rows {
 		if rows[i].Cell == msg.row.Cell {
@@ -896,6 +898,12 @@ func (a *app) openTaken(msg homeTakenMsg) tea.Cmd {
 		}
 	}
 	a.machineRead.rows = rows
+	if msg.send != nil && msg.row.Mine && msg.taken.LocalOnly && msg.fromFile == a.file && msg.taken.Transcript == a.file {
+		// The local conversation was kept in place, so reopening would repeat its startup notices.
+		a.restoreTakeDraft(msg)
+		a.finishHomeTake(false)
+		return msg.send()
+	}
 	a.machinesRetaken = a.machinesAsking
 	a.considerResume()
 	a.home.others = a.othersNow()
