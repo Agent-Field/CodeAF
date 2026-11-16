@@ -837,8 +837,16 @@ func (d *agentDoor) keepSuggestion(ctx context.Context, ws factory.OrgWorkstream
 	if ws.ArchivedAt != nil {
 		return 0, errWorkstreamArchived
 	}
+	// The agent read the page's mirror, which holds the words of the version
+	// the page holds now (keepVersion writes both): that version is what its
+	// text changed, the base a Restore merges from (L1 D15).
+	list, err := h.config.Store.PageVersions(ws.ID, page.ID)
+	if err != nil {
+		return 0, err
+	}
 	stamp := h.clock().UTC().Format(time.RFC3339Nano)
-	saved, added, err := h.config.Store.AddPageVersion(ws.ID, page.ID, store.PageVersion{At: stamp, By: v.Handle, Title: page.Title, BodyMD: text, Reason: versionReasonKept})
+	saved, added, err := h.config.Store.AddPageVersion(ws.ID, page.ID, store.PageVersion{At: stamp, By: v.Handle, Title: page.Title, BodyMD: text,
+		Reason: versionReasonKept, BasedOn: versionsWire(list).LiveVersion})
 	if err != nil {
 		return 0, err
 	}

@@ -352,6 +352,11 @@ func TestServerAgentsKeptVersionIsNotTheLiveOneUntilRestored(t *testing.T) {
 	if got.LiveVersion != 1 || len(got.Versions) != 2 || got.Versions[0].Version != 2 || !got.Versions[0].Kept || got.Versions[1].Kept {
 		t.Fatalf("after the agent: live %d, versions %+v", got.LiveVersion, got.Versions)
 	}
+	// The kept version names the version whose words the agent changed, so a
+	// Restore merges onto what people typed since instead of dropping it (D15).
+	if got.Versions[0].BasedOn != 1 || got.Versions[1].BasedOn != 0 {
+		t.Fatalf("based_on: %+v", got.Versions)
+	}
 	var restored api.PageVersion
 	o.do(t, "abir", "POST", base+"/restore", -1, api.PageRestore{Version: 2}, 201, &restored)
 	if restored.Version != 3 || restored.RestoredFrom != 2 || !strings.Contains(restored.BodyMD, "## Risks") {
