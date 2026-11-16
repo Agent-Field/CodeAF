@@ -608,6 +608,7 @@ func ApplyPatch(t WorkstreamTask, p TaskPatch, a TaskActor, by TaskEventBy, all 
 			t.State = TaskNeeds
 		}
 	}
+	sentBack := false
 	if p.State != nil && *p.State != t.State {
 		if t.DoneBy.Kind == TaskByFactory {
 			return TaskChange{}, ErrTaskFactoryState
@@ -615,13 +616,33 @@ func ApplyPatch(t WorkstreamTask, p TaskPatch, a TaskActor, by TaskEventBy, all 
 		if !validState(*p.State) {
 			return TaskChange{}, taskInvalidf("%q is not a task state", *p.State)
 		}
-		if t.DoneBy.Kind == TaskByPerson && !MayTick(t, a) {
+		// SEND BACK: a done task back to up next, by someone other than its
+		// owner or with a reason. It is an act of its own, never a comment's
+		// side effect (live use, L2 #8 and L4 F3): anyone who edits may do it,
+		// a reviewer included, and the thread and the task's reason say who
+		// sent it back and why, so the doer sees it in the Inbox.
+		why := ""
+		if p.StateReason != nil {
+			why = strings.TrimSpace(*p.StateReason)
+		}
+		back := t.State == TaskDone && *p.State == TaskUpNext && (!MayTick(t, a) || why != "")
+		if t.DoneBy.Kind == TaskByPerson && !MayTick(t, a) && !back {
 			return TaskChange{}, TaskRefused("only the task's owner ticks it")
 		}
 		t.State = *p.State
-		event(TaskEventState, StateWords(t.State))
+		if back {
+			words := "Sent back by " + by.Name
+			if why != "" {
+				words += ": " + why
+			}
+			event(TaskEventState, words)
+			t.StateReason = words
+			sentBack = true
+		} else {
+			event(TaskEventState, StateWords(t.State))
+		}
 	}
-	if p.StateReason != nil {
+	if p.StateReason != nil && !sentBack {
 		t.StateReason = strings.TrimSpace(*p.StateReason)
 	}
 	switch {
@@ -630,7 +651,7 @@ func ApplyPatch(t WorkstreamTask, p TaskPatch, a TaskActor, by TaskEventBy, all 
 	case t.State != TaskDone:
 		t.DoneAt = ""
 	}
-	if t.State != TaskFailed {
+	if t.State != TaskFailed && !sentBack {
 		t.StateReason = strings.TrimSpace(t.StateReason)
 		if p.StateReason == nil {
 			t.StateReason = ""
@@ -686,10 +707,14 @@ func replaced(all []WorkstreamTask, t WorkstreamTask) []WorkstreamTask {
 	return out
 }
 
-// Released is what finishing task id lets start: every task that waited on it
-// and now waits on nothing unfinished. An agent's or a chat's task that was up
-// next starts running; a person task is only unblocked (it shows no wait), and
-// a Factory task's state stays its job's. The answer is the changed tasks.
+// Released is what finishing task id lets start: every Afi or chat task that
+// waited on it, is up next, and now waits on nothing unfinished. THEY STAY UP
+// NEXT. Running means something is actually doing the work, and the store
+// cannot wake a doer; a task flipped to running here sat there for good with
+// nothing behind it (live use, L1 F5, L2 #4, L4 B6). Whoever wakes the doer
+// marks it running. The answer is those tasks, unchanged, for the thread's
+// "Ready to start" line. A person task is only unblocked (it shows no wait),
+// and a Factory task's state stays its job's.
 func Released(id string, all []WorkstreamTask, by TaskEventBy, newID func() string, now time.Time) []WorkstreamTask {
 	done := map[string]bool{}
 	for _, t := range all {
@@ -697,7 +722,6 @@ func Released(id string, all []WorkstreamTask, by TaskEventBy, newID func() stri
 			done[t.ID] = true
 		}
 	}
-	stamp := now.UTC().Format(time.RFC3339Nano)
 	var out []WorkstreamTask
 	for _, t := range all {
 		if !slices.Contains(t.WaitingOn, id) || t.State != TaskUpNext || (t.DoneBy.Kind != TaskByAfi && t.DoneBy.Kind != TaskByChat) {
@@ -706,7 +730,6 @@ func Released(id string, all []WorkstreamTask, by TaskEventBy, newID func() stri
 		if slices.ContainsFunc(t.WaitingOn, func(w string) bool { return !done[w] }) {
 			continue
 		}
-		t.State, t.Rev, t.UpdatedAt = TaskRunning, t.Rev+1, stamp
 		out = append(out, t)
 	}
 	return out
@@ -790,13 +813,11 @@ func Note(t WorkstreamTask, n TaskNote, a TaskActor, by TaskEventBy, thread []Wo
 	default:
 		return TaskChange{}, taskInvalidf("%q is not a line a thread takes", n.Kind)
 	}
-	ch := TaskChange{Task: t, Events: []WorkstreamTaskEvent{ev}}
-	if (n.Kind == TaskEventComment || n.Kind == TaskEventPosted) && t.State == TaskDone && t.DoneBy.Kind != TaskByFactory {
-		t.State, t.DoneAt, t.Rev, t.UpdatedAt = TaskUpNext, "", t.Rev+1, stamp
-		ch.Task = t
-		ch.Events = append(ch.Events, WorkstreamTaskEvent{ID: newID(), Task: t.ID, At: stamp, By: by, Kind: TaskEventState, Text: "Reopened"})
-	}
-	return ch, nil
+	// A COMMENT NEVER CHANGES A TASK'S STATE. A person logs a receipt or news
+	// on finished work and must not find it undone, with everything after it
+	// blocked again (live use, L4 F3). Reopening is its own act: the owner's
+	// untick, or Send back (ApplyPatch).
+	return TaskChange{Task: t, Events: []WorkstreamTaskEvent{ev}}, nil
 }
 
 // SetOffer takes, dismisses or undoes Afi's offer ev. Anyone who edits may
@@ -842,10 +863,12 @@ func SetOffer(t WorkstreamTask, ev WorkstreamTaskEvent, state string, a TaskActo
 	return ev, nil
 }
 
-// StartAll starts a group's tasks that are up next: each that waits on nothing
-// unfinished starts running, and the rest stay up next to start as they are
-// released. Person tasks and Factory tasks are not started here (a person
-// starts their own; a Factory job starts at the Factory).
+// StartAll names a group's Afi and chat tasks that are up next and wait on
+// nothing unfinished: the ones Start all can start. It changes nothing.
+// Running means a doer is actually at work, and only whoever wakes that doer
+// can say so; marking them running here left them running for good with
+// nothing behind them (live use, L4 B6). Person tasks and Factory tasks are
+// never named (a person starts their own; a Factory job starts at the Factory).
 func StartAll(group string, all []WorkstreamTask, now time.Time) []WorkstreamTask {
 	done := map[string]bool{}
 	for _, t := range all {
@@ -853,7 +876,6 @@ func StartAll(group string, all []WorkstreamTask, now time.Time) []WorkstreamTas
 			done[t.ID] = true
 		}
 	}
-	stamp := now.UTC().Format(time.RFC3339Nano)
 	var out []WorkstreamTask
 	for _, t := range all {
 		if t.Group == nil || t.Group.ID != group || t.State != TaskUpNext || (t.DoneBy.Kind != TaskByAfi && t.DoneBy.Kind != TaskByChat) {
@@ -862,7 +884,6 @@ func StartAll(group string, all []WorkstreamTask, now time.Time) []WorkstreamTas
 		if slices.ContainsFunc(t.WaitingOn, func(w string) bool { return !done[w] }) {
 			continue
 		}
-		t.State, t.Rev, t.UpdatedAt = TaskRunning, t.Rev+1, stamp
 		out = append(out, t)
 	}
 	return out

@@ -10,7 +10,6 @@ import (
 	"net/http/httptest"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -402,13 +401,12 @@ func (h *Handler) patchWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 		if err := keepTask(tw, out.Task, rev); err != nil {
 			return err
 		}
+		// A released task stays up next (factory.Released): its thread says it
+		// can start, and whoever wakes its doer marks it running.
 		for _, rel := range out.Released {
-			if err := tw.Put(rel, rel.Rev-1); err != nil {
-				return err
-			}
 			out.Events = append(out.Events, factory.WorkstreamTaskEvent{
-				ID: h.newTaskID("te_")(), Task: rel.ID, At: rel.UpdatedAt, By: by, Kind: factory.TaskEventState,
-				Text: "Started: " + out.Task.Title + " is done",
+				ID: h.newTaskID("te_")(), Task: rel.ID, At: out.Task.UpdatedAt, By: by, Kind: factory.TaskEventState,
+				Text: "Ready to start: " + out.Task.Title + " is done",
 			})
 		}
 		if target.ID != "" {
@@ -621,7 +619,7 @@ func (h *Handler) commentWorkstreamTask(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *Handler) startAllWorkstreamTasks(w http.ResponseWriter, r *http.Request) {
-	ws, v, ok := h.writablePart(w, r)
+	ws, _, ok := h.writablePart(w, r)
 	if !ok {
 		return
 	}
@@ -633,33 +631,16 @@ func (h *Handler) startAllWorkstreamTasks(w http.ResponseWriter, r *http.Request
 		h.fail(w, http.StatusUnprocessableEntity, "start all names its group")
 		return
 	}
-	now := h.clock().UTC()
-	by := taskBy(v)
-	var started []factory.WorkstreamTask
-	err := h.config.Store.EditWorkstreamTasks(func(tw store.TaskWrite) error {
-		all, err := tw.Tasks(ws.ID)
-		if err != nil {
-			return err
-		}
-		started = factory.StartAll(body.Group, all, now)
-		for _, t := range started {
-			if err := tw.Put(t, t.Rev-1); err != nil {
-				return err
-			}
-			if err := tw.Append(ws.ID, factory.WorkstreamTaskEvent{
-				ID: h.newTaskID("te_")(), Task: t.ID, At: now.Format(time.RFC3339Nano), By: by, Kind: factory.TaskEventState, Text: "Started",
-			}); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
+	// Start all names the group's ready Afi and chat tasks and starts none of
+	// them: running means a doer is at work, and only whoever wakes the doer
+	// can say so (factory.StartAll). It writes nothing and publishes nothing.
+	all, err := h.config.Store.WorkstreamTasks(ws.ID)
 	if h.taskRefused(w, err) {
 		return
 	}
+	started := factory.StartAll(body.Group, all, h.clock().UTC())
 	if started == nil {
 		started = []factory.WorkstreamTask{}
 	}
-	h.publishTasks(ws, h.orgActor(r), started...)
 	h.write(w, http.StatusOK, api.WorkstreamTasks{Tasks: started})
 }

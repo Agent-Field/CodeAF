@@ -95,8 +95,10 @@ func TestOnlyTheOwnerTicksAPersonTaskAndTickingReleasesItsDependents(t *testing.
 	if err != nil || ch.Task.State != TaskDone || ch.Task.DoneAt == "" {
 		t.Fatalf("lena's tick: %+v %v", ch.Task, err)
 	}
-	if len(ch.Released) != 1 || ch.Released[0].ID != "t2" || ch.Released[0].State != TaskRunning {
-		t.Fatalf("released %+v; want Afi's waiting task running and the person task left to its owner", ch.Released)
+	// Released, not running: nothing has woken Afi (live use, L1 F5). It stays
+	// up next, unchanged, and the person task is left to its owner.
+	if len(ch.Released) != 1 || ch.Released[0].ID != "t2" || ch.Released[0].State != TaskUpNext || ch.Released[0].Rev != post.Rev {
+		t.Fatalf("released %+v; want Afi's waiting task named, still up next", ch.Released)
 	}
 }
 
@@ -117,12 +119,36 @@ func TestWaitingOnIsTheSameWorkstreamNeverItselfNeverACircle(t *testing.T) {
 	}
 }
 
-func TestAReplyOnADoneTaskReopensIt(t *testing.T) {
+func TestACommentOnADoneTaskNeverReopensIt(t *testing.T) {
+	// Live use, L4 F3: a receipt logged on a ticked task reopened it.
 	task := afiTask("t1", "priya")
 	task.State, task.DoneAt = TaskDone, "2026-11-15T10:00:00Z"
-	ch, err := Note(task, TaskNote{Text: "One more line about search, please"}, TaskActor{Handle: "marco", Edit: true}, byPriya, nil, taskIDs(), taskNow)
-	if err != nil || ch.Task.State != TaskUpNext || ch.Task.DoneAt != "" || len(ch.Events) != 2 || ch.Events[1].Text != "Reopened" {
-		t.Fatalf("reply on done: %+v %v", ch, err)
+	for _, kind := range []string{TaskEventComment, TaskEventPosted} {
+		ch, err := Note(task, TaskNote{Kind: kind, Text: "One more line about search, please"}, TaskActor{Handle: "marco", Edit: true}, byPriya, nil, taskIDs(), taskNow)
+		if err != nil || ch.Task.State != TaskDone || ch.Task.DoneAt == "" || ch.Task.Rev != task.Rev || len(ch.Events) != 1 {
+			t.Fatalf("%s on done: %+v %v", kind, ch, err)
+		}
+	}
+}
+
+func TestSendBackReopensADoneTaskAndSaysWhoAndWhy(t *testing.T) {
+	// Live use, L2 #8: a reviewer could only send work back by commenting.
+	memo := personTask("t1", "marco")
+	memo.State, memo.DoneAt = TaskDone, "2026-11-15T10:00:00Z"
+	all := []WorkstreamTask{memo}
+	upNext, why := TaskUpNext, "the numbers in section 2 are last year's"
+	ch, err := ApplyPatch(memo, TaskPatch{State: &upNext, StateReason: &why}, TaskActor{Handle: "priya", Edit: true}, byPriya, all, taskIDs(), taskNow)
+	words := "Sent back by priya: " + why
+	if err != nil || ch.Task.State != TaskUpNext || ch.Task.DoneAt != "" || ch.Task.StateReason != words || len(ch.Events) != 1 || ch.Events[0].Text != words {
+		t.Fatalf("send back: %+v %v", ch, err)
+	}
+	done := TaskDone
+	if _, err := ApplyPatch(ch.Task, TaskPatch{State: &done}, TaskActor{Handle: "priya", Edit: true}, byPriya, all, taskIDs(), taskNow); err == nil {
+		t.Fatal("a reviewer ticked someone else's task done")
+	}
+	ticked, err := ApplyPatch(ch.Task, TaskPatch{State: &done}, TaskActor{Handle: "marco", Edit: true}, byPriya, all, taskIDs(), taskNow)
+	if err != nil || ticked.Task.StateReason != "" {
+		t.Fatalf("the owner's tick keeps the reason: %+v %v", ticked.Task, err)
 	}
 }
 
@@ -159,12 +185,12 @@ func TestAfiOffersUnderACommentAnyoneTakesItAndTheOwnerUndoesWithinFiveSeconds(t
 	}
 }
 
-func TestStartAllStartsAGroupsUpNextTasksThatWaitOnNothing(t *testing.T) {
+func TestStartAllNamesAGroupsReadyTasksAndStartsNone(t *testing.T) {
 	g := &TaskGroup{ID: "grp_rel", Name: "Release 2.4", Kind: "batch"}
 	a, b, c := afiTask("a", "priya"), afiTask("b", "priya", "a"), personTask("c", "lena")
 	a.Group, b.Group, c.Group = g, g, g
 	started := StartAll("grp_rel", []WorkstreamTask{a, b, c}, taskNow)
-	if len(started) != 1 || started[0].ID != "a" || started[0].State != TaskRunning {
+	if len(started) != 1 || started[0].ID != "a" || started[0].State != TaskUpNext || started[0].Rev != a.Rev {
 		t.Fatalf("started %+v", started)
 	}
 }
