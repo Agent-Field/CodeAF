@@ -133,3 +133,25 @@ func (a *Agent) sayTheQuestionsCameDown(taken []Question) {
 		a.sayWithdrawn(q, askTalkedPastReason)
 	}
 }
+
+// personClosesQuestionsLocked ends every question this agent still has open
+// when the person's own new message arrives, whether a turn is running or not,
+// and answers the questions it retired for the caller to say out loud once the
+// lock is down.
+//
+// A REPLY FROM THE PERSON IS THEIR ANSWER TO WHAT WAS ON THE SCREEN. A steer
+// already retired every ask; a fresh turn retired nothing, so a question the
+// turn did not wait for ([Question.Later]) or one a task is stopped on stood in
+// the Inbox after the person had moved on. It is the steer's own road
+// ([Agent.talkedPastQuestionsLocked]), so the receipt and the Inbox read the
+// same either way, and the model is free to ask again if it still needs to.
+//
+// Only the person's own doors count ([userMessage.fromPerson]): a wake note, a
+// runner's note, factory work, a setup turn or an answer to a question is not
+// somebody replying.
+func (a *Agent) personClosesQuestionsLocked(user userMessage) []Question {
+	if !user.fromPerson {
+		return nil
+	}
+	return a.talkedPastQuestionsLocked()
+}
