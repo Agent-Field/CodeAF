@@ -737,6 +737,7 @@ func (w *usageWriter) run(path string) {
 				}
 				return
 			}
+			log.Printf("usage-debug: write failed for %s: %v", path, err)
 			identities = usageIdentityCursor{}
 			for _, row := range rows {
 				if row.line != nil || row.row != nil {
