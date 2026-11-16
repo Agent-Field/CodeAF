@@ -256,3 +256,30 @@ test('putDevice and approveDevice refuse kind and methods, while Fabric slots an
   fabric.revokeClient(client);
   assert.equal(code(() => fabric.getSlot({ caller: client, targetDevice: client, name: 'home', body: new Uint8Array() })), 'not_found');
 });
+
+// Mirrors clusterstate's crew rule: the sealed crew rides the record like the
+// folder, an empty one keeps what is there, and only a string is accepted.
+test('a sealed crew survives publish and reopening, and a named crew replaces it', () => {
+  const sql = memorySql();
+  const dir = new Directory(sql, 'id_t', () => 1000, AMENDED);
+  dir.create('c1', { ...init(), crew: 'sealed-crew' }, 'dev_a');
+  assert.equal(dir.cell('c1').cell.crew, 'sealed-crew');
+  const p = { fence: 1, old_head: 'h0', head: 'h0', size: 1, class: 'work', pending: 0 };
+  for (const crew of [undefined, '', null]) {
+    dir.publish('c1', 'dev_a', { ...p, crew });
+    assert.equal(dir.cell('c1').cell.crew, 'sealed-crew');
+  }
+  dir.publish('c1', 'dev_a', { ...p, crew: 'other' });
+  const reopened = new Directory(sql, 'id_t', () => 2000, AMENDED);
+  assert.equal(reopened.list().cells.c1.crew, 'other');
+});
+
+test('non-string crews are refused before create or publish changes the record', () => {
+  for (const crew of [1, false, [], {}]) {
+    const { dir } = open();
+    assert.equal(code(() => dir.create('c1', { ...init(), crew }, 'dev_a')), 'bad_request');
+    const before = dir.create('c1', { ...init(), crew: 'sealed' }, 'dev_a').cell;
+    assert.equal(code(() => dir.publish('c1', 'dev_a', { fence: 1, old_head: 'h0', head: 'h1', crew })), 'bad_request');
+    assert.deepEqual(dir.cell('c1').cell, before);
+  }
+});

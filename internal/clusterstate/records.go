@@ -120,7 +120,12 @@ type Cell struct {
 	// Folder is the name of the folder the chat works in, sealed like the
 	// title, so another computer can say what a move copies. Absent from older
 	// publishers and from relays that do not advertise Codeaf-Chat-Folders.
-	Folder      string                       `json:"folder,omitempty"`
+	Folder string `json:"folder,omitempty"`
+	// Crew is the crew the chat belongs to on its holder, sealed like the
+	// title (directory.SealCrew), so another computer can show a crew made
+	// there as one crew. Absent from older publishers and from relays that do
+	// not advertise Codeaf-Chat-Crews; a sealed empty crew says "none".
+	Crew        string                       `json:"crew,omitempty"`
 	Keys        map[string]map[string]string `json:"keys"` // cell_key_id -> identity -> wrapped
 	Lease       Lease                        `json:"lease"`
 	OrphanTurns uint32                       `json:"orphan_turns,omitempty"` // turns in a death branch
@@ -153,6 +158,7 @@ type CellInit struct {
 	Class       string                       `json:"class"`
 	Title       string                       `json:"title,omitempty"`
 	Folder      string                       `json:"folder,omitempty"`
+	Crew        string                       `json:"crew,omitempty"`
 	ParentCell  string                       `json:"parent_cell,omitempty"`
 	Size        uint64                       `json:"size"`
 	Keys        map[string]map[string]string `json:"keys"`
@@ -184,6 +190,7 @@ type Publish struct {
 	Class      string      `json:"class"`
 	Title      string      `json:"title,omitempty"`  // empty keeps the current title
 	Folder     string      `json:"folder,omitempty"` // empty keeps the current folder
+	Crew       string      `json:"crew,omitempty"`   // empty keeps the current crew
 	Pending    uint32      `json:"pending"`          // turns still not durable after this one
 	Frames     []string    `json:"frames,omitempty"` // empty or absent replaces the record's plan with none
 }

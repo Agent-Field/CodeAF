@@ -22,6 +22,11 @@ const (
 	// absent unless a relay is configured AND the engine codeaf seals with can
 	// read one path of a snapshot (a capability that cannot work is absent).
 	FeatureChatsRead = "chats.read"
+	// FeatureChatsCrew says chat rows carry crew, crew_name, crew_manager and
+	// crew_kind: the crew a chat belongs to on the computer that holds it, so a
+	// client can show a crew made on another computer as one crew. A row from
+	// a holder whose build or relay does not say carries none (a loose row).
+	FeatureChatsCrew = "chats.crew"
 	FeatureSyncRelay = "sync.relay"
 	EventChatChanged = "chat.changed"
 	EventChatRemoved = "chat.removed"
@@ -42,10 +47,19 @@ type ChatRow struct {
 	Online     *bool           `json:"online,omitempty"`
 	SavedAt    time.Time       `json:"saved_at,omitzero"`
 	Status     string          `json:"status" enum:"here,running,idle,off"`
-	Crew       string          `json:"crew,omitempty"`
-	Seen       Seen            `json:"seen"`
-	CanTake    bool            `json:"can_take"`
-	Taking     bool            `json:"taking"`
+	// Crew is the id of the crew the chat belongs to on its holder, absent
+	// for a chat in none. CrewName is that crew's name, CrewManager says the
+	// chat is the crew's manager (the one to send to), and CrewKind is
+	// "factory" for a factory item's crew, absent for an ordinary one. For a
+	// chat held elsewhere they are what the holder said at its last saved turn
+	// (chats.crew); a crew held elsewhere is read-only here.
+	Crew        string `json:"crew,omitempty"`
+	CrewName    string `json:"crew_name,omitempty"`
+	CrewManager bool   `json:"crew_manager,omitempty"`
+	CrewKind    string `json:"crew_kind,omitempty" enum:"factory"`
+	Seen        Seen   `json:"seen"`
+	CanTake     bool   `json:"can_take"`
+	Taking      bool   `json:"taking"`
 	// Folder is the name of the folder the chat works in on its holder, when
 	// the holder said; Size is the bytes moving it here copies, absent when
 	// unknown or when this computer already has a copy (a move then copies
@@ -213,6 +227,9 @@ type Relay struct {
 }
 type RelayReporter interface{ RelayKnown() bool }
 
+// ChatsCrewer is an engine whose chat rows carry crew facts.
+type ChatsCrewer interface{ ChatRowsCarryCrews() bool }
+
 func withChatsFeatures(h Hello, e Engine) Hello {
 	if _, ok := e.(ChatsTaker); ok {
 		h = withFeature(h, FeatureChatsTake)
@@ -228,6 +245,9 @@ func withChatsFeatures(h Hello, e Engine) Hello {
 	}
 	if d, ok := e.(ChatsReader); ok && d.CanReadChats() {
 		h = withFeature(h, FeatureChatsRead)
+	}
+	if d, ok := e.(ChatsCrewer); ok && d.ChatRowsCarryCrews() {
+		h = withFeature(h, FeatureChatsCrew)
 	}
 	if d, ok := e.(RelayReporter); ok && d.RelayKnown() {
 		h = withFeature(h, FeatureSyncRelay)

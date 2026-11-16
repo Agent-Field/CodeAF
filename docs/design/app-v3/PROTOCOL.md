@@ -2257,8 +2257,7 @@ Never-paired homes also return `[]` without contacting a relay. The first
 inventory read starts one shared Sync.Follow subscription; later version
 changes reread and diff rows. Presence changes update cached online facts
 without a directory read. No inventory polling timer runs. Kept branches are
-outside this v1 inventory. Crew is omitted because relay rows carry no crew
-membership; the local Agent keeps its existing crews.
+outside this v1 inventory. Rows carry crew facts behind `chats.crew` (below).
 
 `chats.list` returns a fresh inventory without emitting `chat.changed` or
 `chat.removed`. The follower compares with its last emitted rows, including
@@ -2368,6 +2367,25 @@ store a later `agents.take` of the chat fetches into, so continuing the chat
 afterwards copies only the rest. No lease is taken, nothing is restored, no
 agent is opened. `chats.read` in `hello` says it exists: only when a relay is
 configured and the engine's furrow can read one path of a snapshot.
+
+`chats.crew` in `hello` says every `chats.list` row and `chat.changed` row
+carries the crew its chat belongs to on its holder, additively: `crew` (the
+crew id), `crew_name`, `crew_manager:true` for the crew's manager chat (the one
+to `chats.send` to), and `crew_kind:"factory"` for a factory item's crew (absent
+for an ordinary crew). All four are absent for a chat in no crew. A chat this
+computer's teams store lists (one here, or a member that moved away) takes its
+crew from that store; a chat held elsewhere takes it from what its holder sealed
+into the chat's directory record at its last saved turn (`Codeaf-Chat-Crews: 1`;
+publishers send the sealed crew only to a relay that answers it), so it stays
+while the holder is offline, and a rename or removal there arrives with that
+chat's next saved turn. An older holder or relay says nothing, and the row is
+loose. A chat is shown under one crew: the one it manages, else the one it
+reports into, never `All teams`. A crew held elsewhere is read-only here in
+this version: `crews.list` and `crews.get` do not list it, no crew verb acts on
+it, and `agents.take` still moves one member as a single chat.
+Example row: `{"cell":"01M7H89T8KA9W804DZX67NFAAT","title":"Todo CLI in
+Python","here":false,"status":"running","crew":"da48d479ea82","crew_name":"Todo
+crew","crew_manager":true,...}`.
 
 Before a move, a row says what it would copy: `folder` is the name of the
 folder the chat works in on its holder (absent for a chat in its own private
