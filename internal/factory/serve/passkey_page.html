@@ -13,7 +13,7 @@
 <main id="ceremony" data-flow="{{.Flow}}" data-purpose="{{.Purpose}}" data-host="{{.Host}}"{{if .Ended}} data-ended="true"{{end}}>
   <p class="where">{{.Host}}</p>
   <h1>{{.Heading}}</h1>
-  <p class="lede" id="lede">{{.Lede}}</p>
+  <p class="lede" id="lede">{{if .LedeParts}}{{range .LedeParts}}{{if .Name}}<bdi>{{.Text}}</bdi>{{else}}{{.Text}}{{end}}{{end}}{{else}}{{.Lede}}{{end}}</p>
   {{if not .Ended}}
   <form id="form" novalidate>
     {{if .AskUsername}}

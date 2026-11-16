@@ -1492,14 +1492,15 @@ func TestAConfirmationIsForOneActionOnce(t *testing.T) {
 	// name, beside the session's sign-in date and the address the server saw.
 	signedIn := o.h.now().UTC().Format("2 Jan 2006")
 	if body := page.Body.String(); !strings.Contains(body, "Remove passkey") ||
-		!strings.Contains(body, "requested by a computer named “santosh-mac”, signed in "+signedIn+" from ") {
+		!strings.Contains(body, "requested by a computer named “<bdi>santosh-mac</bdi>”, signed in "+signedIn+" from ") ||
+		!strings.Contains(body, "Remove passkey “<bdi>") {
 		t.Fatalf("the confirm page = %s", page.Body)
 	}
 	for given, want := range map[string]string{
 		"Press “Confirm” now": "a computer named “Press Confirm now”, signed in " + signedIn + " from 192.0.2.1",
 		"":                    "a computer, signed in " + signedIn + " from 192.0.2.1",
 	} {
-		if got := requestedBy(given, accessSession{created: o.h.now()}, "192.0.2.1"); got != want {
+		if got := requestedByWords(requestedBy(given, accessSession{created: o.h.now()}, "192.0.2.1")); got != want {
 			t.Errorf("requestedBy(%q) = %q, want %q", given, got, want)
 		}
 	}
@@ -1531,6 +1532,76 @@ func TestAConfirmationIsForOneActionOnce(t *testing.T) {
 	o.confirm(session, a, toRemove(c))
 	o.advance(passkeyStepUpLife)
 	stepUp("a removal confirmed too long ago", o.do("POST", "/v1/me/passkeys/remove", session, api.PasskeyRemove{ID: pkB64(c.ID)}, ""), toRemove(c))
+}
+
+// Re-check 5: a name someone else chose can neither reorder the server's
+// words on the confirm page (a right-to-left override or isolate left open)
+// nor hide in zero-width or C1 characters. Format characters are dropped,
+// a control character refuses a display name, and the session's raw device
+// label is cleaned the same way.
+func TestANameCannotReorderOrHideTheServersWords(t *testing.T) {
+	for raw, want := range map[string]string{
+		"Ana\u202e":                          "Ana",
+		"\u2066x\u2069":                      "x",
+		"zw\u200bj":                          "zwj",
+		"mac\u202e .mrifnoc ot efas si sihT": "mac .mrifnoc ot efas si sihT",
+	} {
+		if got, ok := cleanDisplayName(raw); !ok || got != want {
+			t.Errorf("cleanDisplayName(%q) = %q, %v; want %q", raw, got, ok, want)
+		}
+	}
+	if got, ok := cleanDisplayName("a\u0090b"); ok {
+		t.Errorf("cleanDisplayName kept a C1 control: %q", got)
+	}
+	device := accessSession{device: "Mozilla\u202e/5.0\u0090 (Mac\u200b)"}
+	for given, want := range map[string]string{
+		"mac\u202e .mrifnoc ot efas si sihT": "mac .mrifnoc ot efas si sihT",
+		"\u2066evil\u2069":                   "evil",
+		"zero\u200bwidth":                    "zerowidth",
+		"c1\u0090x":                          "Mozilla/5.0 (Mac)",
+	} {
+		if got, _ := requestedBy(given, device, ""); got != want {
+			t.Errorf("requestedBy(%q) = %q, want %q", given, got, want)
+		}
+	}
+	for _, s := range []string{"\u202e", "\u2066", "\u200b", "\u0090"} {
+		if got, _ := requestedBy("x"+s+"y", device, ""); strings.Contains(got, s) {
+			t.Errorf("requestedBy kept %q", s)
+		}
+	}
+
+	o := newPWOrg(t)
+	a, b := newSoftKey(t), newSoftKey(t)
+	session := o.joinByPasskey(o.operatorLink(), "santosh", a)
+	o.addPasskey(session, a, b)
+	f := o.mustStart(session, api.PasskeyStart{Purpose: api.PasskeyConfirm, Action: &toAdd, Device: "mac\u202e .mrifnoc ot efas si sihT"})
+	page := o.do("GET", "/passkey/"+f.id, "", nil, "").Body.String()
+	if strings.ContainsRune(page, '\u202e') || !strings.Contains(page, "<bdi>mac .mrifnoc ot efas si sihT</bdi>") {
+		t.Fatalf("the confirm page = %s", page)
+	}
+}
+
+// Re-check 5: one account holds three confirmations across all its
+// sessions, so a member with many sessions cannot fill the table either.
+func TestConfirmationsAreFewPerAccount(t *testing.T) {
+	o := newPWOrg(t)
+	now := o.h.now()
+	r := func(id string) api.StepUpAction { return api.StepUpAction{Kind: api.StepUpRemovePasskey, Passkey: id} }
+	for i, id := range []string{"one", "two", "three", "four"} {
+		o.h.grant(fmt.Sprintf("session%d", i), "santosh", r(id), now.Add(time.Duration(i)*time.Second))
+	}
+	if o.h.granted(accessSession{id: "session0"}, r("one"), false) {
+		t.Fatal("a fourth confirmation for the account did not replace its oldest")
+	}
+	for i, id := range []string{"two", "three", "four"} {
+		if !o.h.granted(accessSession{id: fmt.Sprintf("session%d", i+1)}, r(id), false) {
+			t.Fatalf("confirmation %q was lost", id)
+		}
+	}
+	o.h.grant("other", "abir", toAdd, now)
+	if !o.h.granted(accessSession{id: "other"}, toAdd, false) {
+		t.Fatal("another account's confirmation was refused")
+	}
 }
 
 // X1: an add or confirm that names someone (a link, username or name) is a
@@ -1581,7 +1652,7 @@ func TestConfirmationsAreFewPerSessionAndOnlyForRealPasskeys(t *testing.T) {
 	r := func(id string) api.StepUpAction { return api.StepUpAction{Kind: api.StepUpRemovePasskey, Passkey: id} }
 	now := o.h.now()
 	for i, a := range []api.StepUpAction{r("one"), r("two"), r("three"), r("four")} {
-		o.h.grant(me.id, a, now.Add(time.Duration(i)*time.Second))
+		o.h.grant(me.id, "me", a, now.Add(time.Duration(i)*time.Second))
 	}
 	if n := held("me"); n != passkeyGrantsPerSession {
 		t.Fatalf("one session holds %d confirmations, want %d", n, passkeyGrantsPerSession)
@@ -1597,9 +1668,9 @@ func TestConfirmationsAreFewPerSessionAndOnlyForRealPasskeys(t *testing.T) {
 
 	// A full table drops the oldest anyone holds to take a new one.
 	for i := range passkeyGrantsMost {
-		o.h.grant(fmt.Sprintf("s%d", i), toAdd, now.Add(time.Duration(i)*time.Millisecond))
+		o.h.grant(fmt.Sprintf("s%d", i), fmt.Sprintf("h%d", i), toAdd, now.Add(time.Duration(i)*time.Millisecond))
 	}
-	o.h.grant("newest", toAdd, now.Add(time.Hour/60))
+	o.h.grant("newest", "newest", toAdd, now.Add(time.Hour/60))
 	if !o.h.granted(accessSession{id: "newest"}, toAdd, false) {
 		t.Fatal("a new confirmation was dropped by a full table")
 	}
@@ -1738,6 +1809,54 @@ func TestAFloodOneSignInPerNetworkKeepsAnOfficesFew(t *testing.T) {
 				t.Fatalf("refused %d flood starts past a full table, want 3", refused)
 			}
 		})
+	}
+}
+
+// Re-check 5: an IPv6 /32 is one provider's many customers. When it is
+// the busiest network, the flow it gives up comes from its busiest /48, so
+// an attacker on the same provider drains their own flood, not the person
+// beside them.
+func TestAFloodOnTheSameProviderDrainsItsOwnFlowsFirst(t *testing.T) {
+	o := newPWOrg(t)
+	victim, flood := &pkBrowser{}, &pkBrowser{}
+	var mine []string
+	for i := range 3 {
+		f, w := o.startFrom(fmt.Sprintf("[2001:db8:1::%d]:1", i+1), api.PasskeyStart{Purpose: api.PasskeySignIn})
+		if w.Code != http.StatusCreated {
+			t.Fatalf("victim start %d = %d %s", i, w.Code, w.Body)
+		}
+		o.pageIn(victim, f.id, "options", pkOrigin, map[string]string{})
+		mine = append(mine, f.id)
+	}
+	o.advance(time.Second)
+	// The attacker fills the table from /48s of the same /32, then starts
+	// from fresh networks, each making room out of that /32.
+	for n := range passkeySignInFlowsMost {
+		f, w := o.startFrom(fmt.Sprintf("[2001:db8:%x:%x::1]:1", 2+n/16, n%16), api.PasskeyStart{Purpose: api.PasskeySignIn})
+		if w.Code == http.StatusCreated {
+			o.pageIn(flood, f.id, "options", pkOrigin, map[string]string{})
+		}
+	}
+	func() {
+		st := o.h.pk()
+		st.mu.Lock()
+		defer st.mu.Unlock()
+		if n := len(st.flows); n != passkeySignInFlowsMost {
+			t.Fatalf("the flood holds %d sign-ins, want the full %d", n, passkeySignInFlowsMost)
+		}
+	}()
+	for n := range 64 {
+		if _, w := o.startFrom(fmt.Sprintf("10.9.%d.1:1", n), api.PasskeyStart{Purpose: api.PasskeySignIn}); w.Code != http.StatusCreated {
+			t.Fatalf("a start from a fresh network = %d %s", w.Code, w.Body)
+		}
+	}
+	st := o.h.pk()
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	for _, id := range mine {
+		if st.flows[id] == nil {
+			t.Fatal("the victim's sign-in was evicted for a flood on the same provider")
+		}
 	}
 }
 

@@ -37,17 +37,20 @@ func stepUpKey(a api.StepUpAction) (string, bool) {
 	return "", false
 }
 
-// passkeyGrant is one confirmation: the action key it is for and when it
-// was made.
+// passkeyGrant is one confirmation: the action key it is for, the account
+// (handle) it was made by, and when.
 type passkeyGrant struct {
-	key string
-	at  time.Time
+	key    string
+	handle string
+	at     time.Time
 }
 
 // grant records a confirmation by session id for action. A session keeps
-// at most passkeyGrantsPerSession, its newest; the table keeps at most
-// passkeyGrantsMost, dropping the oldest anyone holds to take a new one.
-func (h *Handler) grant(sessionID string, a api.StepUpAction, now time.Time) {
+// at most passkeyGrantsPerSession, and an account (handle) at most
+// passkeyGrantsPerAccount across all its sessions, the newest; the table
+// keeps at most passkeyGrantsMost. Each makes room by dropping the oldest it
+// holds, never the new one.
+func (h *Handler) grant(sessionID, handle string, a api.StepUpAction, now time.Time) {
 	key, ok := stepUpKey(a)
 	if !ok || sessionID == "" {
 		return
@@ -58,7 +61,6 @@ func (h *Handler) grant(sessionID string, a api.StepUpAction, now time.Time) {
 	if st.grants == nil {
 		st.grants = map[string][]passkeyGrant{}
 	}
-	total := 0
 	for id, held := range st.grants {
 		live := held[:0]
 		for _, g := range held {
@@ -71,38 +73,59 @@ func (h *Handler) grant(sessionID string, a api.StepUpAction, now time.Time) {
 			continue
 		}
 		st.grants[id] = live
-		total += len(live)
 	}
-	// The same action again replaces its own; a fourth replaces the oldest.
+	// The same action again replaces its own.
 	var held []passkeyGrant
 	for _, g := range st.grants[sessionID] {
 		if g.key != key {
 			held = append(held, g)
 		}
 	}
-	if len(held) >= passkeyGrantsPerSession {
-		held = held[len(held)-passkeyGrantsPerSession+1:]
+	fresh := passkeyGrant{key: key, handle: handle, at: now}
+	st.grants[sessionID] = append(held, fresh)
+	count := func(match func(id string, g passkeyGrant) bool) int {
+		n := 0
+		for id, held := range st.grants {
+			for _, g := range held {
+				if match(id, g) {
+					n++
+				}
+			}
+		}
+		return n
 	}
-	total -= len(st.grants[sessionID]) - len(held)
-	st.grants[sessionID] = append(held, passkeyGrant{key: key, at: now})
-	for total >= passkeyGrantsMost && st.dropOldestGrantLocked(sessionID) {
-		total--
+	for _, limit := range []struct {
+		most  int
+		match func(id string, g passkeyGrant) bool
+	}{
+		{passkeyGrantsPerSession, func(id string, _ passkeyGrant) bool { return id == sessionID }},
+		{passkeyGrantsPerAccount, func(_ string, g passkeyGrant) bool { return handle != "" && g.handle == handle }},
+		{passkeyGrantsMost, func(string, passkeyGrant) bool { return true }},
+	} {
+		for count(limit.match) > limit.most && st.dropOldestGrantLocked(sessionID, fresh, limit.match) {
+		}
 	}
 }
 
-// dropOldestGrantLocked drops the oldest confirmation any session but
-// keep holds, or answers false.
-func (st *passkeyState) dropOldestGrantLocked(keep string) bool {
-	oldestID, oldestAt := "", time.Time{}
+// dropOldestGrantLocked drops the oldest confirmation match picks, other
+// than fresh (just made by session), or answers false.
+func (st *passkeyState) dropOldestGrantLocked(session string, fresh passkeyGrant, match func(id string, g passkeyGrant) bool) bool {
+	oldestID, oldestAt := "", 0
 	for id, held := range st.grants {
-		if id != keep && len(held) > 0 && (oldestID == "" || held[0].at.Before(oldestAt)) {
-			oldestID, oldestAt = id, held[0].at
+		for i, g := range held {
+			if (id == session && g == fresh) || !match(id, g) {
+				continue
+			}
+			if oldestID == "" || g.at.Before(st.grants[oldestID][oldestAt].at) {
+				oldestID, oldestAt = id, i
+			}
 		}
 	}
 	if oldestID == "" {
 		return false
 	}
-	if rest := st.grants[oldestID][1:]; len(rest) > 0 {
+	held := st.grants[oldestID]
+	if rest := append(held[:oldestAt:oldestAt], held[oldestAt+1:]...); len(rest) > 0 {
 		st.grants[oldestID] = rest
 	} else {
 		delete(st.grants, oldestID)
@@ -162,26 +185,34 @@ func (h *Handler) stepUp(w http.ResponseWriter, a api.StepUpAction) {
 // device label), so it is quoted and framed as a name, never shown bare
 // where it could read as an instruction; beside it are what the server knows
 // itself, the session's sign-in date and the address the start came from.
-func requestedBy(given string, session accessSession, from string) string {
+//
+// It answers the name and the rest apart, so the page can isolate the name
+// (<bdi>); the name has no control or format character either way, so it
+// can neither reorder the server's words nor hide its own.
+func requestedBy(given string, session accessSession, from string) (name, rest string) {
 	name, ok := cleanDisplayName(given)
 	if !ok || name == "" {
-		name = session.device
+		name = strings.Join(strings.Fields(plainText(session.device)), " ")
 	}
 	name = strings.TrimSpace(strings.NewReplacer("“", "", "”", "", `"`, "").Replace(name))
 	if len(name) > 60 {
 		name = strings.TrimSpace(strings.ToValidUTF8(name[:60], ""))
 	}
-	words := "a computer"
-	if name != "" {
-		words += " named “" + name + "”"
-	}
 	if !session.created.IsZero() {
-		words += ", signed in " + session.created.UTC().Format("2 Jan 2006")
+		rest += ", signed in " + session.created.UTC().Format("2 Jan 2006")
 	}
 	if from != "" && from != "invalid IP" {
-		words += " from " + from
+		rest += " from " + from
 	}
-	return words
+	return name, rest
+}
+
+// requestedByWords is requestedBy as one plain sentence part.
+func requestedByWords(name, rest string) string {
+	if name == "" {
+		return "a computer" + rest
+	}
+	return "a computer named “" + name + "”" + rest
 }
 
 // passwordConfirm is POST /v1/me/password/confirm: the signed-in person shows
@@ -241,6 +272,6 @@ func (h *Handler) passwordConfirm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	try.succeeded(h.now())
-	h.grant(session.id, body.Action, h.now())
+	h.grant(session.id, handle, body.Action, h.now())
 	w.WriteHeader(http.StatusNoContent)
 }

@@ -112,6 +112,9 @@ const (
 	// passkeyGrantsPerSession is how many confirmations one session holds;
 	// a fourth replaces its oldest.
 	passkeyGrantsPerSession = 3
+	// passkeyGrantsPerAccount is how many one account holds across all its
+	// sessions, so many sessions of one member cannot fill the table.
+	passkeyGrantsPerAccount = 3
 	// passkeyGrantsMost bounds the confirmations held in memory across all
 	// sessions; past it the oldest anyone holds is dropped, never the new one.
 	passkeyGrantsMost = 4096
@@ -219,6 +222,7 @@ type passkeyFlow struct {
 	sessionID   string
 	action      api.StepUpAction
 	requestedBy string
+	requestedAt string
 	passkeyName string
 	doneAt      time.Time
 	// made is a verified new passkey, kept until the poll that shows the
@@ -588,7 +592,8 @@ func (h *Handler) passkeyStart(w http.ResponseWriter, r *http.Request) {
 				}
 				flow.passkeyName = name
 			}
-			flow.action, flow.requestedBy = *body.Action, requestedBy(body.Device, session, clientOf(r).addr.Unmap().String())
+			flow.action = *body.Action
+			flow.requestedBy, flow.requestedAt = requestedBy(body.Device, session, clientOf(r).addr.Unmap().String())
 		case len(acct.Passkeys) >= tokens.PasskeyMost:
 			h.fail(w, http.StatusConflict, "this account already keeps as many passkeys as it can")
 			return
@@ -702,6 +707,27 @@ func (st *passkeyState) evictFairLocked(network string) bool {
 	for _, g := range st.flows {
 		if g.purpose == api.PasskeySignIn && g.opened && held[g.network] == most && (oldest == nil || g.created.Before(oldest.created)) {
 			oldest = g
+		}
+	}
+	// An IPv6 /32 is many parties' (one provider's customers), so within it
+	// the flow goes from its busiest /48: an attacker on the same provider
+	// pays for their own flood, not the person they share it with.
+	if network := oldest.network; strings.Contains(network, ":") {
+		within := map[string]int{}
+		for _, g := range st.flows {
+			if g.purpose == api.PasskeySignIn && g.opened && g.network == network {
+				within[g.prefix]++
+			}
+		}
+		busiest := 0
+		for _, n := range within {
+			busiest = max(busiest, n)
+		}
+		oldest = nil
+		for _, g := range st.flows {
+			if g.purpose == api.PasskeySignIn && g.opened && g.network == network && within[g.prefix] == busiest && (oldest == nil || g.created.Before(oldest.created)) {
+				oldest = g
+			}
 		}
 	}
 	delete(st.flows, oldest.id)
@@ -921,7 +947,7 @@ func (h *Handler) passkeyPoll(w http.ResponseWriter, r *http.Request) {
 	profile, gen := snapshot.profile, snapshot.gen
 	switch {
 	case snapshot.purpose == api.PasskeyConfirm:
-		h.grant(snapshot.sessionID, snapshot.action, h.now())
+		h.grant(snapshot.sessionID, snapshot.handle, snapshot.action, h.now())
 		h.write(w, http.StatusOK, api.PasskeyPolled{State: api.PasskeyDone, Purpose: snapshot.purpose})
 		return
 	case snapshot.made != nil:
@@ -1119,6 +1145,15 @@ func passkeyHeaders(w http.ResponseWriter) {
 type passkeyPageData struct {
 	Flow, Purpose, Org, Host, Handle, Username, Heading, Lede, Button string
 	AskUsername, AskName, AskLabel, Ended, Handover                   bool
+	// LedeParts, when set, is the lede in pieces: a Name piece is a name
+	// someone chose, set in its own <bdi> so it cannot reorder the words
+	// around it.
+	LedeParts []ledePart
+}
+
+type ledePart struct {
+	Text string
+	Name bool
 }
 
 // passkeyPage is GET /passkey/<flow>, /passkey/page.js and /passkey/page.css.
@@ -1180,7 +1215,15 @@ func (h *Handler) passkeyPage(w http.ResponseWriter, r *http.Request) {
 	case f.purpose == api.PasskeySignIn:
 		data.Heading, data.Lede, data.Button = "Sign in to "+org, "Use the passkey you keep for "+rpID+".", "Sign in with a passkey"
 	case f.purpose == api.PasskeyConfirm:
-		data.Heading, data.Lede, data.Button = "Confirm it's you", passkeyActionWords(f)+" — requested by "+f.requestedBy+". Use one of your passkeys for @"+f.handle+" on "+org+".", "Confirm with a passkey"
+		data.Heading, data.Button = "Confirm it's you", "Confirm with a passkey"
+		data.LedeParts = append(passkeyActionParts(f), ledePart{Text: " — requested by a computer"})
+		if f.requestedBy != "" {
+			data.LedeParts = append(data.LedeParts, ledePart{Text: " named “"}, ledePart{Text: f.requestedBy, Name: true}, ledePart{Text: "”"})
+		}
+		data.LedeParts = append(data.LedeParts, ledePart{Text: f.requestedAt + ". Use one of your passkeys for @" + f.handle + " on " + org + "."})
+		for _, p := range data.LedeParts {
+			data.Lede += p.Text
+		}
 	case f.purpose == api.PasskeyAdd:
 		data.Heading, data.Lede, data.Button, data.AskLabel = "Add a passkey", "For @"+f.handle+" on "+org+".", "Create a passkey", true
 	case f.resetSecret != "":
@@ -1279,15 +1322,16 @@ type passkeyOptionsAnswer struct {
 	PublicKey any    `json:"publicKey"`
 }
 
-// passkeyActionWords names what a confirm is for, as its page says it.
-func passkeyActionWords(f *passkeyFlow) string {
+// passkeyActionParts names what a confirm is for, as its page says it; a
+// passkey's name is isolated like any name a person chose.
+func passkeyActionParts(f *passkeyFlow) []ledePart {
 	switch f.action.Kind {
 	case api.StepUpRemovePasskey:
-		return "Remove passkey \u201c" + f.passkeyName + "\u201d"
+		return []ledePart{{Text: "Remove passkey \u201c"}, {Text: plainText(f.passkeyName), Name: true}, {Text: "\u201d"}}
 	case api.StepUpSetPassword:
-		return "Set a first password"
+		return []ledePart{{Text: "Set a first password"}}
 	}
-	return "Add a passkey"
+	return []ledePart{{Text: "Add a passkey"}}
 }
 
 // passkeyCookie is this browser's id for passkey pages. THE __Host- PREFIX IS
