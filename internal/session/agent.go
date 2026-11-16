@@ -2217,7 +2217,11 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 		hub.send(turnSkillsNotice(user.skills))
 	}
 
+	exited := a.turnExited
 	go func() {
+		if exited != nil {
+			defer exited()
+		}
 		// completed is the turn's outcome: true only when the model answered
 		// without a tool call and nobody interrupted. It is what decides
 		// whether a queued follow-up may start (see [Agent.FollowUp]).
@@ -2293,6 +2297,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 			// anything, so a leftover is inert either way; stopping it here is
 			// what keeps the timer's life the turn's life (steer_grace.go).
 			a.stopSteerGraceLocked()
+			a.stopAbandonTimerLocked()
 			a.finishIntentExchangeLocked(user, completed)
 			a.running = false
 			// THE REDIRECT TURN HAS SAID ITS PIECE. Later turns plan and name
@@ -2845,6 +2850,7 @@ func (a *Agent) Close() (saveErr error) {
 	// Nothing armed by a steer outlives the session that armed it
 	// (steer_grace.go), and nor does a clock armed on a question (asklane.go).
 	a.stopSteerGraceLocked()
+	a.stopAbandonTimerLocked()
 	a.stopAskClocksLocked()
 	// PENDING NEWS BELONGS IN THE JOURNAL EVEN AFTER ITS CLOCK FIRED. A wake
 	// may have been refused, and none may start after admission has closed.

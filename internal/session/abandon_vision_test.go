@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -59,6 +60,7 @@ func TestABoundedStopLeavesAVisionTurnAfterItAlone(t *testing.T) {
 		},
 	}}
 	agent, image, journal := visionAgent(t, completer)
+	clock := holdAbandon(agent)
 
 	first, err := agent.Submit(context.Background(), "ask something that never answers")
 	if err != nil {
@@ -75,10 +77,14 @@ func TestABoundedStopLeavesAVisionTurnAfterItAlone(t *testing.T) {
 	}
 	waitUntilClosed(t, "the vision call going out", looking, 10*time.Second)
 	ended := drained(second)
+	clock.trigger(t)
 	select {
 	case <-ended:
 		t.Fatal("the first turn's stop let go of the vision turn after it")
-	case <-time.After(3 * grace):
+	default:
+	}
+	if !agent.TurnRunning() {
+		t.Fatal("the first turn's stop left the vision turn not running")
 	}
 	if lines := abandonedLines(t, journal); len(lines) != 0 {
 		t.Fatalf("a turn was journaled as abandoned though none was: %+v", lines)
@@ -107,6 +113,7 @@ func TestABoundedStopOnAVisionTurnLeavesTheTurnAfterItAlone(t *testing.T) {
 		},
 	}}
 	agent, image, journal := visionAgent(t, completer)
+	clock := holdAbandon(agent)
 
 	first, err := agent.SubmitImage(context.Background(), "what is in this?", []Image{{Path: image}})
 	if err != nil {
@@ -123,10 +130,14 @@ func TestABoundedStopOnAVisionTurnLeavesTheTurnAfterItAlone(t *testing.T) {
 	}
 	waitUntilClosed(t, "the ordinary request going out", reached, 10*time.Second)
 	ended := drained(second)
+	clock.trigger(t)
 	select {
 	case <-ended:
 		t.Fatalf("the stop on the vision turn let go of the ordinary turn after it; abandoned: %+v", abandonedLines(t, journal))
-	case <-time.After(3 * grace):
+	default:
+	}
+	if !agent.TurnRunning() {
+		t.Fatal("the stop on the vision turn left the ordinary turn not running")
 	}
 	if lines := abandonedLines(t, journal); len(lines) != 0 {
 		t.Fatalf("a turn was journaled as abandoned though none was: %+v", lines)
@@ -156,6 +167,12 @@ func TestABoundedStopAbandonsAWedgedVisionTurnOnce(t *testing.T) {
 		},
 	}}
 	agent, image, journal := visionAgent(t, completer)
+	clock := holdAbandon(agent)
+	exited := make(chan struct{})
+	var exitOnce sync.Once
+	agent.mu.Lock()
+	agent.turnExited = func() { exitOnce.Do(func() { close(exited) }) }
+	agent.mu.Unlock()
 
 	first, err := agent.SubmitImage(context.Background(), "what is in this?", []Image{{Path: image}})
 	if err != nil {
@@ -163,6 +180,7 @@ func TestABoundedStopAbandonsAWedgedVisionTurnOnce(t *testing.T) {
 	}
 	waitUntilClosed(t, "the vision call going out", looking, 10*time.Second)
 	agent.InterruptWithin(50 * time.Millisecond)
+	clock.trigger(t)
 	waitUntilClosed(t, "the bound letting go of the wedged vision turn", drained(first), 10*time.Second)
 	waitFor(t, "the abandoned line in the journal", func() bool { return len(abandonedLines(t, journal)) > 0 })
 	if lines := abandonedLines(t, journal); len(lines) != 1 || lines[0].Reason != string(AbandonStopTimeout) {
@@ -175,7 +193,7 @@ func TestABoundedStopAbandonsAWedgedVisionTurnOnce(t *testing.T) {
 	// The wedged call returns now. Its cleanup used to close `done` a second
 	// time here and take the process down.
 	close(hold)
-	time.Sleep(100 * time.Millisecond)
+	waitUntilClosed(t, "the disowned vision turn's goroutine exiting", exited, 10*time.Second)
 	agent.mu.Lock()
 	after, running := len(agent.messages), agent.running
 	agent.mu.Unlock()

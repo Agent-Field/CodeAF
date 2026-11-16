@@ -9343,7 +9343,7 @@ func (a *app) interruptTurn() {
 	// surface says what it is while it runs down. It is measured from the KEY and
 	// not from the last event, because the key is the moment the person is
 	// certain of and the only one they are timing from.
-	a.stopBy = a.now().Add(stopGrace)
+	a.stopBy = a.now().Add(session.StopGrace)
 	// THE ROWS STOP AT THE KEY. Leaving the state word was already enough to
 	// still the spinners and the count-ups — both renderers stand down outside
 	// stateWorking (toolview.go's [app.mark] and [app.countClock]) — but only for
@@ -9448,24 +9448,6 @@ func (a *app) interruptTurn() {
 // surface detaches. A silent countdown is not a stop anybody can trust, so the
 // bound is on the screen before it fires and never only after.
 
-// stopGrace is HOW LONG A STOP WAITS FOR THE ENGINE before the surface lets go
-// of the turn without it ([app.stopSweep]).
-//
-// TEN SECONDS, AND THE FIGURE IS ARGUED RATHER THAN PICKED. It is NOT argued
-// from bash's three-second `WaitDelay` or the `jobs` kill's two-plus-two second
-// graces any more: this change put the call's context on both of those, so a
-// stop ends them at once rather than waiting them out. What is left behind the
-// bound is the class this change cannot reach from outside — a wait that never
-// looks at its context at all, a command whose output a grandchild still holds,
-// anything a tool blocks on that was written before cancellation existed. Ten
-// seconds is chosen to sit far above every settle we can measure, so the
-// deadline fires only on that class and never on a turn that was about to end
-// tidily and hand back what it did.
-//
-// IT IS MEASURED FROM THE KEYPRESS and not from the last event, because the key
-// is the only moment the person is timing from.
-const stopGrace = 10 * time.Second
-
 // windingDown reports that the turn on screen was STOPPED BY HAND and its stream
 // has not closed yet: the seconds between a person's ctrl+c and the engine letting
 // go of the turn.
@@ -9478,7 +9460,7 @@ const stopGrace = 10 * time.Second
 // event hub until [session.Agent]'s loop returns, and the loop cannot look at
 // the context until the tool batch it is inside has finished. What can still
 // outlast the cancel is the context-blind class — a wait that never looks at the
-// context it was given — and that is what the bound is for. [stopGrace] above
+// context it was given — and that is what the bound is for. [session.StopGrace]
 // carries the argument in full; it is not repeated here, so that moving the
 // reasoning cannot leave two versions of it disagreeing.
 //

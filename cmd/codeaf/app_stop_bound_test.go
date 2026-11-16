@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // THE APP'S STOP IS A BOUNDED STOP.
@@ -62,8 +63,8 @@ func TestAppStopAsksForItsBoundAndTheTurnLetGoSettlesStopped(t *testing.T) {
 	conv.mu.Lock()
 	graces := append([]time.Duration(nil), conv.graces...)
 	conv.mu.Unlock()
-	if len(graces) != 1 || graces[0] != appStopGrace {
-		t.Fatalf("the stop asked for the bounds %v, want one of %s", graces, appStopGrace)
+	if len(graces) != 1 || graces[0] != session.StopGrace {
+		t.Fatalf("the stop asked for the bounds %v, want one of %s", graces, session.StopGrace)
 	}
 	conv.fakeConversation.mu.Lock()
 	plain := conv.fakeConversation.interrupted
