@@ -298,7 +298,7 @@ The Factory manager is not limited to `factory_floor`. The desktop app starts ea
 
 ## the Factory manager did not answer, takes forever, stop does nothing, clear the Factory manager's conversation, archived Factory manager
 
-One `factory_floor` read waits at most 20 seconds on the factory, and a start or a priority 60 seconds; after that the tool answers "the factory did not answer within 20 seconds" and the turn goes on, and a stop returns it at once. A start or priority that got no answer in time says it may still take effect, so the job is read again before it is asked for twice.
+One `factory_floor` read waits at most 20 seconds on the factory, and a start, a priority or a selection 60 seconds; after that the tool answers "the factory did not answer within 20 seconds" (or 60) and the turn goes on, and a stop returns it at once. A start or priority that got no answer in time says it may still take effect, so the job is read again before it is asked for twice. A selection that got none says "whether anything was selected is not known; read the factory again", never that nothing changed.
 
 The app's Stop is bounded. It interrupts the turn, and a turn that has still not let go ten seconds later is let go of by the engine: it ends "Stopped by you" and the next message opens an ordinary turn. A turn the factory itself is driving (a running stage, or the factory asking a job's manager a question in a chat you have open) is only interrupted, because the factory is still reading it; the job's own Stop ends it.
 
