@@ -710,6 +710,8 @@ is refused. Adding the same file again with the same words does nothing new;
 after you edit the file, adding it keeps the new words beside the old. A guide
 built from a file leads back to that file, not to a chat. Removing a file from
 Files does not take its words out of the Library; delete the guide for that.
+The other way round, a Files shortcut can open a Library page: Copy Link on
+the page, then New › Shortcut to a File Elsewhere… in Files, and paste it.
 
 ## Library disagreements in Inbox and Later
 
