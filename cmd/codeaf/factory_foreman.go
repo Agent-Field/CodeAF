@@ -296,7 +296,18 @@ func foremanMint(st *store.Store, workspace, profileDir string, load func() (fac
 	// left. A swap that fails gives the store its old word back, so the old
 	// foreman is still the foreman, in the store and in its team.
 	if err := foremanSwapTeam(profileDir, old, transcript, where); err != nil {
-		_ = st.SetForeman(old)
+		// A STORE THAT WILL NOT TAKE ITS OLD WORD BACK (a full disk refuses
+		// both writes) still names the new foreman, and the app treats it as
+		// the manager from here. The old one is then retired and the new one
+		// marked as a finished making does: left marked, the old one held the
+		// foreman's handle in no list, not even Archived, with nothing that
+		// would ever retire it, since the sweep only looks among former members.
+		if rerr := foremanRestore(st, old); rerr != nil {
+			_ = foremanMark(st, transcript)
+			if old != "" && !sameSessionFile(old, transcript) {
+				foremanRetire(old)
+			}
+		}
 		return "", err
 	}
 	// THE MARK IS BEST EFFORT FROM HERE. The store and the team already name
@@ -455,11 +466,13 @@ func foremanSwapTeam(profileDir, old, transcript, where string) error {
 	})
 }
 
-// Tests stand in for the new foreman's join to its team and for its mark, to
-// fail each one alone.
+// Tests stand in for the new foreman's join to its team, for its mark, and for
+// the store taking its old word back after a swap that failed, to fail each
+// one alone.
 var (
-	foremanJoin = func(f *teams.File, team string, m teams.Member) error { return f.AddMember(team, m) }
-	foremanMark = markFactoryForeman
+	foremanJoin    = func(f *teams.File, team string, m teams.Member) error { return f.AddMember(team, m) }
+	foremanMark    = markFactoryForeman
+	foremanRestore = func(st *store.Store, old string) error { return st.SetForeman(old) }
 )
 
 // foremanTeamKey is the key a foreman's conversation is filed under in a

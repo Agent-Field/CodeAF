@@ -65,15 +65,22 @@ func (b *appBackend) foremanOpened(ctx context.Context, p appwire.FactoryRef, do
 	defer gate.Unlock()
 	before, _ := host.floor.Foreman()
 	transcript, err := door(host.floor, host.workspace, host.profile, foremanLoad(host))(ctx)
-	// THE REPLACEMENT IS DECIDED HERE, BY WHAT THE STORE NAMES ONCE THE DOOR IS
-	// DONE, WHETHER THE DOOR FAILED OR NOT. The store names the new foreman from
-	// then on whatever the hold below does, so the app is told and the old one
-	// is put away on every road out of this call: an early return that skipped
-	// them left the old manager held and the factory's in memory with nothing
-	// on disk to say so, no later open would ever put it away, and each retried
-	// Clear made another conversation. A door that failed after the store had
-	// named the new one is such a road, so the door's answer is not the word.
-	if after, _ := host.floor.Foreman(); before != "" && after != "" && !sameSessionFile(before, after) {
+	// THE REPLACEMENT IS DECIDED HERE, ONCE THE DOOR IS DONE, WHETHER IT FAILED
+	// OR NOT. The new foreman is the manager from then on whatever the hold
+	// below does, so the app is told and the old one is put away on every road
+	// out of this call: an early return that skipped them left the old manager
+	// held and the factory's in memory with nothing on disk to say so, no later
+	// open would ever put it away, and each retried Clear made another
+	// conversation. A door that answered names the foreman itself, and the
+	// event names the same conversation the call answers; a second read of the
+	// store that failed then told nobody of a real replacement. A door that
+	// failed may have failed after the store named the new one, so only then
+	// is the store asked.
+	after := transcript
+	if err != nil {
+		after, _ = host.floor.Foreman()
+	}
+	if before != "" && after != "" && !sameSessionFile(before, after) {
 		defer func() {
 			b.sayForemanChanged(p.Factory, appAgentID(after), before)
 			guard.Go("app/factory foreman put away", func() { b.putAwayForeman(before) })

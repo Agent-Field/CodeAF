@@ -829,3 +829,96 @@ func (h *foremanHeard) owned(agent string) int {
 	}
 	return n
 }
+
+// A STORE THAT WILL NOT TAKE ITS OLD WORD BACK HIDES NO MANAGER.
+//
+// A full disk refuses the team swap and then the store's rollback too. The
+// store goes on naming the new foreman, and the app then treats the old one as
+// replaced and archives it. Left marked, the old one held the foreman's handle
+// in no list, not even Archived, and the sweep (which looks only among former
+// members) never retired it: the person's earlier manager, history and all,
+// was hidden for good. It is retired and the new one marked, as a finished
+// making leaves them.
+func TestAFreshStartWhoseRollbackFailsHidesNoManager(t *testing.T) {
+	st, web, profile := talkLab(t)
+	first, err := foremanMaker(st, web, profile, nil)(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	join, restore := foremanJoin, foremanRestore
+	t.Cleanup(func() { foremanJoin, foremanRestore = join, restore })
+	foremanJoin = func(*teams.File, string, teams.Member) error { return errors.New("no space left on device") }
+	foremanRestore = func(*store.Store, string) error { return errors.New("no space left on device") }
+	if fresh, err := foremanFresh(st, web, profile, nil)(context.Background()); err == nil {
+		t.Fatalf("a fresh start whose swap failed answered %q; the premise is gone", fresh)
+	}
+	foremanJoin, foremanRestore = join, restore
+	named, _ := st.Foreman()
+	if named == "" || sameSessionFile(named, first) {
+		t.Fatalf("the store names %q; the premise (it kept the new word) is gone", named)
+	}
+	if factoryOwnedConversation(first) {
+		t.Error("the old manager is still marked the factory's: no list would ever show it")
+	}
+	if !factoryOwnedConversation(named) {
+		t.Error("the manager the store names is not marked")
+	}
+	if meta, err := session.LoadMeta(session.DirOf(first)); err != nil || meta.Title != foremanEarlierTitle {
+		t.Errorf("the old manager is titled %q (%v); want %q", meta.Title, err, foremanEarlierTitle)
+	}
+}
+
+// A CLEAR THAT ANSWERED IS ANNOUNCED BY ITS OWN ANSWER.
+//
+// The replacement was decided by a second read of the store after the door,
+// and that read's error was dropped: a store unreadable for that moment (a
+// sources.json being rewritten, or one a newer engine wrote) told the app of
+// no replacement, so the old manager stayed held and the factory's in memory
+// though the making had already retired it on disk.
+func TestAClearThatAnsweredIsAnnouncedThoughTheStoreCannotBeReadAfter(t *testing.T) {
+	s := newLocalSetup(t)
+	foremanFakeOpens(s)
+	heard := &foremanHeard{next: s.backend.emit}
+	s.backend.emit = heard
+	st := s.start()
+	ref := appwire.FactoryRef{Factory: st.Factory}
+	first, err := s.backend.FactoryForemanOpen(context.Background(), ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta := s.backend.local.host.floor.MetaPath()
+	var kept []byte
+	unreadable := func(st *store.Store, workspace, profileDir string, load func() (factory.Snapshot, error)) func(context.Context) (string, error) {
+		return func(ctx context.Context) (string, error) {
+			fresh, err := foremanFresh(st, workspace, profileDir, load)(ctx)
+			if err != nil {
+				return "", err
+			}
+			if kept, err = os.ReadFile(meta); err != nil {
+				return "", err
+			}
+			if err := os.WriteFile(meta, []byte("{not json"), 0o644); err != nil {
+				return "", err
+			}
+			return fresh, nil
+		}
+	}
+	got, err := s.backend.foremanOpened(context.Background(), ref, unreadable)
+	if kept != nil {
+		if werr := os.WriteFile(meta, kept, 0o644); werr != nil {
+			t.Fatal(werr)
+		}
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, rerr := s.backend.local.host.floor.Foreman(); rerr != nil {
+		t.Fatalf("the store is still unreadable: %v", rerr)
+	}
+	if got.Agent == first.Agent {
+		t.Fatal("the Clear answered the old manager; the premise is gone")
+	}
+	if r := heard.replacements(); len(r) != 1 || r[0] != (appwire.FactoryForemanChanged{Factory: st.Factory, Agent: got.Agent, Replaced: first.Agent}) {
+		t.Fatalf("the app was told of the replacements %+v; want one, of %s by %s", r, first.Agent, got.Agent)
+	}
+}
