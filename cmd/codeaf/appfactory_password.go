@@ -90,14 +90,14 @@ func (h *appFactoryHub) readSignIn(ctx context.Context, origin string) ([]string
 	return cleanSignIn(about.SignIn), true
 }
 
-// cleanSignIn keeps only the two words a client acts on, once each, in order.
+// cleanSignIn keeps only the three words a client acts on, once each, in order.
 func cleanSignIn(in []string) []string {
 	if in == nil {
 		return nil
 	}
 	out := []string{}
 	for _, m := range in {
-		if (m == "password" || m == "github") && !containsString(out, m) {
+		if (m == "passkey" || m == "password" || m == "github") && !containsString(out, m) {
 			out = append(out, m)
 		}
 	}
@@ -159,6 +159,12 @@ func passwordFailure(r appFactoryReply) error {
 	words := strings.TrimSpace(redact.Secrets(body.Error))
 	if len(words) > 300 {
 		words = words[:300]
+	}
+	var reason struct {
+		Reason string `json:"reason"`
+	}
+	if _ = json.Unmarshal(r.body, &reason); reason.Reason == api.ReasonStepUp {
+		return appFactoryFailure(r)
 	}
 	switch r.status {
 	case http.StatusUnauthorized, http.StatusForbidden:

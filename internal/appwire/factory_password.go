@@ -188,8 +188,11 @@ func init() {
 			if p.Factory, err = factoryID(strings.TrimSpace(p.Factory)); err != nil {
 				return err
 			}
-			if err := factoryPassword("current", p.Current); err != nil {
-				return err
+			// current is empty only for a person setting a first password
+			// beside their passkeys; the server refuses an empty one from
+			// anyone who already has a password.
+			if len(p.Current) > FactoryPasswordMost {
+				return Errorf(CodeBadParams, "current is at most %d bytes", FactoryPasswordMost)
 			}
 			return factoryPassword("new", p.New)
 		}, func(f FactoryPassword, ctx context.Context, p FactoryPasswordChangeParams) (Empty, error) {

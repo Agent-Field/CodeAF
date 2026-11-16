@@ -33,7 +33,7 @@ type Me struct {
 	SessionID string   `json:"session_id"`
 	// GitHubSignedIn is asserted only by the serving factory, and only when the
 	// authenticated credential carries a GitHub-verified profile; a password
-	// person is false, and SignInKind "password" says they signed in. A session_ or
+	// or passkey person is false, and SignInKind says they signed in. A session_ or
 	// tok_ id alone proves nothing; an older server omits the field, so absent
 	// means false and no other field may promote it.
 	GitHubSignedIn bool `json:"github_signed_in"`
@@ -53,7 +53,7 @@ type Me struct {
 	// Teams are the ids of the organization's teams this person is in. An
 	// older server omits it; this one always sends a list.
 	Teams []string `json:"teams"`
-	// SignInKind is how this caller signed in: "password" or "github".
+	// SignInKind is how this caller signed in: "password", "passkey" or "github".
 	// Absent for a key or a script, and from a server older than passwords.
 	SignInKind string `json:"sign_in_kind,omitempty"`
 }

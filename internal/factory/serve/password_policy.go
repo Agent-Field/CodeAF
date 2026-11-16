@@ -203,18 +203,44 @@ func passwordRefusal(normal, username string) string {
 	return ""
 }
 
-// cleanDisplayName is a person's chosen name, or false.
+// cleanDisplayName is a person's chosen name, or false. Format characters
+// are dropped (see plainText) and a control character refuses the name.
 func cleanDisplayName(raw string) (string, bool) {
-	name := strings.Join(strings.Fields(raw), " ")
-	if !utf8.ValidString(name) || utf8.RuneCountInString(name) > 80 {
+	if !utf8.ValidString(raw) {
+		return "", false
+	}
+	name := strings.Join(strings.Fields(strings.Map(dropFormat, raw)), " ")
+	if utf8.RuneCountInString(name) > 80 {
 		return "", false
 	}
 	for _, r := range name {
-		if r < 0x20 || r == 0x7f {
+		if unicode.IsControl(r) {
 			return "", false
 		}
 	}
 	return name, true
+}
+
+// plainText is s without control or format characters. A name someone
+// else chose is shown inside the server's own sentences, and a right-to-left
+// override (U+202E) or an isolate (U+2066–U+2069) left open in it would
+// reorder those sentences; zero-width and C1 characters hide what it says.
+func plainText(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return dropFormat(r)
+	}, strings.ToValidUTF8(s, ""))
+}
+
+// dropFormat drops a Unicode format character (category Cf: bidi
+// controls, zero-width marks and the like).
+func dropFormat(r rune) rune {
+	if unicode.Is(unicode.Cf, r) {
+		return -1
+	}
+	return r
 }
 
 // containsUsername is whether the password holds the username, compared

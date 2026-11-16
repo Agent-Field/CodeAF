@@ -94,7 +94,8 @@ const (
 	OperatorClaimed = "operator_claimed"
 	GitHubGranted   = "github_granted"
 	// AccountChanged is a password account's life: signed up, signed in, a
-	// run of refused sign-ins, a changed password, a reset link made or used.
+	// run of refused sign-ins, a changed password, a reset link made or used,
+	// a passkey added or removed, a passkey counter that went backwards.
 	// Its Object is "person:<handle>"; its Detail never carries a secret.
 	AccountChanged = "account_changed"
 	// The organization's own changes, each with Job 0 and an Object naming
@@ -264,7 +265,7 @@ func validate(e Event) error {
 	}
 	switch e.Verb {
 	case "set context":
-	case "ran as new", "edited steps", "reran step", "put away hand-off", "started", "held", "resumed", "stopped", "asked", "approved", "answered", "published", "assigned", "dropped", "brought back", "unassigned", "requested changes", "merged", "closed", "closed locally", "pressed merge", "sent merge", "refused merge", "failed", "added runner", "changed runner", "connected repo", "disconnected repo", "created access link", "revoked access link", "revoked sessions", "dismissed", "nudged", "changed priority", "raised budget", "changed budget", "changed spending stop", "undone", "claimed factory", "granted GitHub read access", "signed up", "signed in", "refused sign-ins", "changed password", "made password reset link", "reset password", "marked ready for review", "routed", "set repository":
+	case "ran as new", "edited steps", "reran step", "put away hand-off", "started", "held", "resumed", "stopped", "asked", "approved", "answered", "published", "assigned", "dropped", "brought back", "unassigned", "requested changes", "merged", "closed", "closed locally", "pressed merge", "sent merge", "refused merge", "failed", "added runner", "changed runner", "connected repo", "disconnected repo", "created access link", "revoked access link", "revoked sessions", "dismissed", "nudged", "changed priority", "raised budget", "changed budget", "changed spending stop", "undone", "claimed factory", "granted GitHub read access", "signed up", "signed in", "refused sign-ins", "changed password", "made password reset link", "reset password", "added passkey", "removed passkey", "passkey counter went backwards", "marked ready for review", "routed", "set repository":
 	default:
 		return errors.New("factory record: unknown Activity verb")
 	}

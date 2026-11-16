@@ -287,7 +287,7 @@ func TestSignUpThroughTheOperatorLinkMakesTheOperator(t *testing.T) {
 	o := newPWOrg(t)
 	link := o.operatorLink()
 	check, w := o.access(api.FactoryAccessRequest{Link: link, Verb: "check"})
-	if w.Code != 200 || check.State != "ready" || strings.Join(check.Factory.SignIn, ",") != "password" {
+	if w.Code != 200 || check.State != "ready" || strings.Join(check.Factory.SignIn, ",") != "passkey,password" {
 		t.Fatalf("check = %d %s", w.Code, w.Body)
 	}
 	if w.Header().Get("Cache-Control") != "no-store" {
@@ -683,12 +683,13 @@ func TestAGitHubLoginThatIsAPasswordUsernameIsRefused(t *testing.T) {
 	if out.Reason != reasonUsernameTaken {
 		t.Fatalf("mia as a username = %+v", out)
 	}
-	// /v1/about and /v1/me say both ways in, password first.
+	// /v1/about says every way in: a passkey (https with a name), then a
+	// password, then GitHub.
 	var about struct {
 		SignIn []string `json:"sign_in"`
 	}
 	_ = json.Unmarshal(o.do("GET", "/v1/about", "", nil, "").Body.Bytes(), &about)
-	if strings.Join(about.SignIn, ",") != "password,github" {
+	if strings.Join(about.SignIn, ",") != "passkey,password,github" {
 		t.Fatalf("about = %v", about.SignIn)
 	}
 	var people api.People

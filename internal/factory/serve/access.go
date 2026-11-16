@@ -42,6 +42,9 @@ type accessSession struct {
 	// under (tokens.Account.Gen); a password person's session dies when the
 	// account's generation moves past it. Zero for a GitHub session.
 	credGen int64
+	// via is how a password-account person signed in when it is not with a
+	// password: signInPasskey, or "" for a password (and for GitHub).
+	via string
 	// pendingGen is the generation a password change this session is making
 	// will move the account to; while it is set the session lives at either,
 	// so the change never signs out the very session that made it.

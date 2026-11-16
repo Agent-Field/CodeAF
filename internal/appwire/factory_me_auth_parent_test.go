@@ -42,3 +42,12 @@ func TestAPasswordPersonCanSignOutWithoutAGitHubSignIn(t *testing.T) {
 		t.Fatalf("password person = %+v", got)
 	}
 }
+
+// A passkey person may sign out too, and is not said to have signed in with
+// GitHub (X1 P4).
+func TestAPasskeyPersonCanSignOutWithoutAGitHubSignIn(t *testing.T) {
+	got := NewFactoryMe(api.Me{SessionID: "session_x", SignInKind: "passkey"})
+	if got.GitHubSignedIn || !got.CanSignOut || got.SignInKind != "passkey" {
+		t.Fatalf("passkey person = %+v", got)
+	}
+}
