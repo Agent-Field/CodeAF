@@ -2,7 +2,7 @@
 kind: added
 title: a crew made on another computer shows in the desktop as one crew, read-only
 pr: 2653
-surface: [engine, app, relay, docs]
+surface: [engine, app, docs]
 invalidates:
   - "Was true: ChatRow.crew was declared but never set, so on a paired computer a crew's manager and members arrived as loose chats, and crews.list there was empty (seen live on two GCP machines, 2026-11-16). Is true now: every chats.list and chat.changed row carries crew, crew_name, crew_manager and crew_kind (\"factory\" for a factory item's crew), and hello says chats.crew."
   - "Was true: PROTOCOL.md said crew is omitted because relay rows carry no crew membership. Is true now: the holder seals the chat's crew into its directory record with every saved turn (field crew, relay header Codeaf-Chat-Crews: 1, sealed under its own associated data), so it survives the holder going offline. This computer's own teams store wins for any chat it lists."

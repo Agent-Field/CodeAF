@@ -1,6 +1,7 @@
 package main
 
 import (
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -62,7 +63,7 @@ func TestOrgPresenceAndByAreRelayed(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("no factory.org_presence arrived")
 	}
-	if e := nextOrgEvent(t, got); e != (appwire.FactoryOrgChanged{Connection: id, Kind: "workstream.changed", ID: "ws_2", By: "abir"}) {
+	if e := nextOrgEvent(t, got); !reflect.DeepEqual(e, appwire.FactoryOrgChanged{Connection: id, Kind: "workstream.changed", ID: "ws_2", By: "abir"}) {
 		t.Fatalf("relayed %+v", e)
 	}
 }

@@ -37,8 +37,8 @@ type FactoryOrgChanged struct {
 	Kind       string `json:"kind" enum:"team.changed,workstream.changed,workstream.removed,canvas.changed,canvas.removed"`
 	ID         string `json:"id"`
 	// Part, PartID, By, Rev and Deleted say which part of a workstream changed
-	// ("page", "versions", "plan", "wakes", "suggestions", "jobs", "spend" or
-	// "workstream"), which one, who changed it, its rev after, and whether it
+	// ("page", "versions", "plan", "wakes", "suggestions", "jobs", "spend",
+	// "files" or "workstream"), which one, who changed it, its rev after, and whether it
 	// was removed. By is the person the server stamped; all are empty on a resync,
 	// and Part, PartID, Rev and Deleted are absent from a team's change and from
 	// an older server, and a window that ignores them reads the whole workstream again.
@@ -47,6 +47,9 @@ type FactoryOrgChanged struct {
 	By      string `json:"by,omitempty"`
 	Rev     int    `json:"rev,omitempty"`
 	Deleted bool   `json:"deleted,omitempty"`
+	// Flagged are the tasks a change to a file's contents flags, the ones
+	// whose agents read it (part "files" only).
+	Flagged []string `json:"flagged,omitempty"`
 	// Seq is the seq a canvas reached (canvas.changed only).
 	Seq int64 `json:"seq,omitempty"`
 }

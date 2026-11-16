@@ -1,4 +1,5 @@
 ---
+pr: 2659
 kind: fixed
 title: a canvas made in an organization workstream belongs to that workstream
 surface: [factory, engine]

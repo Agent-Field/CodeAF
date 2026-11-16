@@ -214,7 +214,7 @@ func (h *appFactoryHub) relayOrg(id string, f *appOrgFollow, kind, data string) 
 			return true
 		}
 		out = append(out, appwire.FactoryOrgChanged{Connection: id, Kind: kind, ID: body.ID,
-			Part: body.Part, PartID: body.PartID, By: body.By, Rev: body.Rev, Deleted: body.Deleted})
+			Part: body.Part, PartID: body.PartID, By: body.By, Rev: body.Rev, Deleted: body.Deleted, Flagged: body.Flagged})
 	case api.EventCanvasChanged, api.EventCanvasRemoved:
 		var body api.CanvasEvent
 		if json.Unmarshal([]byte(data), &body) != nil || body.ID == "" {

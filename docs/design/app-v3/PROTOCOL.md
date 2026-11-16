@@ -453,6 +453,13 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.org_workstream_job_add` | `in.OrgWorkstreamJobParams` | `OrgWorkstream` |
 | `factory.org_workstream_job_remove` | `in.OrgWorkstreamJobParams` | `OrgWorkstream` |
 | `factory.org_workstream_unarchive` | `in.OrgWorkstreamParams` | `OrgWorkstream` |
+| `factory.org_workstream_files` | `in.OrgFilesParams` | `OrgWorkstreamFiles` |
+| `factory.org_workstream_file_create` | `in.OrgFileCreateParams` | `OrgWorkstreamFile` |
+| `factory.org_workstream_file_update` | `in.OrgFileUpdateParams` | `OrgWorkstreamFile` |
+| `factory.org_workstream_file_move` | `in.OrgFileMoveParams` | `OrgWorkstreamFiles` |
+| `factory.org_workstream_file_delete` | `in.OrgFileParams` | `OrgWorkstreamFile` |
+| `factory.org_workstream_file_restore` | `in.OrgFileParams` | `OrgWorkstreamFile` |
+| `factory.org_workstream_file_content` | `in.OrgFileParams` | `OrgFileContent` |
 | `factory.org_agent_runner` | `in.OrgConn` | `OrgAgentRunner` |
 | `factory.org_agent_runner_set` | `in.OrgAgentRunnerSetParams` | `OrgAgentRunner` |
 | `factory.org_workstream_drive` | `in.OrgWorkstreamParams` | `OrgWorkstreamDriver` |
@@ -739,6 +746,42 @@ workstream also answers `budget_usd` (set with `factory.org_workstream_update
 decision a patch leaves out is kept as `superseded`, never deleted. Every author is
 the server's.
 
+An engine whose hello carries `org_workstream_files` keeps a workstream's Files, its
+shared drive. A file (`OrgWorkstreamFile`) is `{id, ws, rev, folder?, kind, name,
+made_by {kind person|afi|chat, id?, name, for?}, from_task?, used_by[], created_at,
+changed_at, changed_by?, versions?, open_comments?, person_edited?, page_id?, canvas_id?,
+url?, repo?, upload? {size, mime?, blob?}, target? {ws, file}, deleted_at?, deleted_with?,
+source?}`; `kind` is `folder`, `document`, `canvas`, `upload`, `link`, `repo` or
+`shortcut`. A file POINTS at what it holds: a document is a page of the workstream
+(`page_id`; its words are the page's live document, its versions the page's), a canvas
+an organization canvas made inside it (`canvas_id`), an upload bytes in the server's blob
+store, a shortcut a file in another workstream (`target`), copied nowhere.
+`factory.org_workstream_files {id, query?, deleted?}` `GET .../files` answers `{files,
+deleted?, from?}`: the live files, Recently deleted when `deleted`, and `from {id, name,
+files}`, the parent workstream's files, read-only, when the caller can see it. `query`
+matches a name, an address or a document's words. The FIRST read of a workstream folds
+in everything it kept before Files: each page becomes a document (a page holding pages
+becomes a folder too), each source a link, repo or (a `file` source) an upload with no
+bytes, each canvas made inside it a canvas file, and a workstream with no `decisions`
+page gets a Decisions document carrying the decisions it kept. Later reads fold in a page,
+source or canvas an older client added through its own route.
+`factory.org_workstream_file_create {id, kind, name?, folder?, from_task?, made_by?,
+body_md?, canvas_id?, url?, repo?, data?, mime?, target?}` `POST .../files` (a document
+also makes its page; `data` is an upload's bytes, base64, at most 25 MiB; `made_by` is
+honoured only for kind `afi` or `chat`, stamped `for` the caller).
+`factory.org_workstream_file_update {id, file, rev, name?, from_task?, used_by?,
+edited?}` `PATCH .../files/{file}` with `If-Match` the FILE's `rev`; a document's rename
+renames its page; `edited` `person` sets `person_edited` (an agent edits directly only a
+file it made that no person has edited — every other change it makes is a suggestion).
+`factory.org_workstream_file_move {id, files, folder}` moves all or none (`folder` ""
+is the top; a folder never moves into itself). `factory.org_workstream_file_delete {id,
+file}` moves it to Recently deleted for 30 days, a folder with everything under it
+(`deleted_with`); `factory.org_workstream_file_restore {id, file}` brings it back, to the
+top when its folder is gone. `factory.org_workstream_file_content {id, file}` answers an
+upload's bytes `{data, type}`. Every change publishes `workstream.changed` with `part`
+`files` and the file's id; a change with `edited` also carries `flagged`, the `used_by`
+tasks it flags.
+
 With `org_roles` in hello, a workstream's access is roles. A workstream row carries
 `shares` `[{kind:"person"|"team", id, role}]` with `role` one of `view`, `comment`,
 `edit`, `full` (each grants the ones before it), `private` (only its person owner
@@ -855,8 +898,8 @@ the handle that wrote it, so a window already at `seq` reads nothing and any oth
 `factory.org_canvas_ops {since}`) or `canvas.removed` (deleted or no longer shared with
 you; drop it). A `workstream.changed` from a
 server with `org_workstream_parts` also carries `part` (`page`, `versions`, `plan`,
-`wakes`, `suggestions`, `jobs`, `spend` or `workstream`), `part_id`, `by`, `rev` and
-`deleted`, so a window can read just that part. `connection` is the
+`wakes`, `suggestions`, `jobs`, `spend`, `files` or `workstream`), `part_id`, `by`, `rev`,
+`deleted` and, for `files`, `flagged`, so a window can read just that part. `connection` is the
 id the methods take. For example:
 
 ```json
