@@ -834,6 +834,9 @@ answers a workstream without them.
 - `people` (whole): owner and shares as one list, `{kind: person|team, id, name, role,
   members?, steward?, added_at?}`, owner first. A team's `members` are read now, so
   adding a team adds everyone in it, now and later.
+- A person's `name` here, in the whole answer's `steward` and in `rules`' `default_owner`
+  and `fallback` is the name they joined with ("Santosh Kumar"), or their handle when the
+  organization knows none. A summary's `steward.name` stays the handle.
 - `rules` (whole, filled with defaults): `{default_owner: {kind: person|everyone, id?,
   name?}, fallback?: {id, name}, start_without_asking_usd, keeps_running: {factory,
   orders: [order id]}}`. The default is the steward owning incoming work and `0`. A child
