@@ -877,6 +877,7 @@ func flushUsage(path string) bool {
 	return true
 }
 
+// probe: base CI evidence for #2648; not for merge.
 // usageDrainPoll is how often [drainUsage] looks at its writer's count.
 const usageDrainPoll = time.Millisecond
 
