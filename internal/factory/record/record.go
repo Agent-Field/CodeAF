@@ -92,6 +92,10 @@ const (
 	SessionsRevoked = "sessions_revoked"
 	OperatorClaimed = "operator_claimed"
 	GitHubGranted   = "github_granted"
+	// AccountChanged is a password account's life: signed up, signed in, a
+	// run of refused sign-ins, a changed password, a reset link made or used.
+	// Its Object is "person:<handle>"; its Detail never carries a secret.
+	AccountChanged = "account_changed"
 	// The organization's own changes, each with Job 0 and an Object naming
 	// what changed: "team:<id>", "workstream:<id>", "policy:<group>", or
 	// "factory" for the factory-wide rules, routes, spending and settings.
@@ -247,7 +251,7 @@ func validate(e Event) error {
 		return validateOrg(e)
 	}
 	switch e.Kind {
-	case RunAsNew, StopAfterStepChanged, StepEdited, StepStopped, StepRerun, HandOffNotNow, Dismissed, Assigned, Unassigned, Nudged, PriorityChanged, BudgetRaised, BudgetChanged, Undone, Started, Held, Resumed, Stopped, AutoStarted, AskedFirst, Routed, RepoSet, Approved, Answered, Posted, Took, Dropped, ClosedLocally, Restored, Released, RequestChanges, PRMerged, PRClosed, SourceClosed, MergeAsked, MergeQueued, MergeRefused, StepFailed, RunnerAdded, RunnerChanged, ReposChanged, LinkCreated, LinkRevoked, SessionsRevoked, OperatorClaimed, GitHubGranted, PRReady:
+	case RunAsNew, StopAfterStepChanged, StepEdited, StepStopped, StepRerun, HandOffNotNow, Dismissed, Assigned, Unassigned, Nudged, PriorityChanged, BudgetRaised, BudgetChanged, Undone, Started, Held, Resumed, Stopped, AutoStarted, AskedFirst, Routed, RepoSet, Approved, Answered, Posted, Took, Dropped, ClosedLocally, Restored, Released, RequestChanges, PRMerged, PRClosed, SourceClosed, MergeAsked, MergeQueued, MergeRefused, StepFailed, RunnerAdded, RunnerChanged, ReposChanged, LinkCreated, LinkRevoked, SessionsRevoked, OperatorClaimed, GitHubGranted, AccountChanged, PRReady:
 	default:
 		return fmt.Errorf("factory record: unknown event kind %q", e.Kind)
 	}
@@ -257,14 +261,14 @@ func validate(e Event) error {
 		return errors.New("factory record: actor must be person, agent or factory")
 	}
 	switch e.Verb {
-	case "ran as new", "edited steps", "reran step", "put away hand-off", "started", "held", "resumed", "stopped", "asked", "approved", "answered", "published", "assigned", "dropped", "brought back", "unassigned", "requested changes", "merged", "closed", "closed locally", "pressed merge", "sent merge", "refused merge", "failed", "added runner", "changed runner", "connected repo", "disconnected repo", "created access link", "revoked access link", "revoked sessions", "dismissed", "nudged", "changed priority", "raised budget", "changed budget", "changed spending stop", "undone", "claimed factory", "granted GitHub read access", "marked ready for review", "routed", "set repository":
+	case "ran as new", "edited steps", "reran step", "put away hand-off", "started", "held", "resumed", "stopped", "asked", "approved", "answered", "published", "assigned", "dropped", "brought back", "unassigned", "requested changes", "merged", "closed", "closed locally", "pressed merge", "sent merge", "refused merge", "failed", "added runner", "changed runner", "connected repo", "disconnected repo", "created access link", "revoked access link", "revoked sessions", "dismissed", "nudged", "changed priority", "raised budget", "changed budget", "changed spending stop", "undone", "claimed factory", "granted GitHub read access", "signed up", "signed in", "refused sign-ins", "changed password", "made password reset link", "reset password", "marked ready for review", "routed", "set repository":
 	default:
 		return errors.New("factory record: unknown Activity verb")
 	}
 	if e.Commit != "" && !publish.ValidCommit(e.Commit) {
 		return errors.New("factory record: approval requires a full commit SHA")
 	}
-	if e.Job <= 0 && e.Kind != RunnerAdded && e.Kind != RunnerChanged && e.Kind != ReposChanged && e.Kind != LinkCreated && e.Kind != LinkRevoked && e.Kind != SessionsRevoked && e.Kind != OperatorClaimed && e.Kind != GitHubGranted {
+	if e.Job <= 0 && e.Kind != RunnerAdded && e.Kind != RunnerChanged && e.Kind != ReposChanged && e.Kind != LinkCreated && e.Kind != LinkRevoked && e.Kind != SessionsRevoked && e.Kind != OperatorClaimed && e.Kind != GitHubGranted && e.Kind != AccountChanged {
 		return errors.New("factory record: job must be positive")
 	}
 	if e.Cost < 0 {

@@ -239,12 +239,16 @@ type Handler struct {
 	mux     *http.ServeMux
 	watch   *rootWatch
 
-	workers        *workerService
-	sessions       *accessSessions
-	auth           *deviceFlows
-	viewer         *viewerState
-	consentMu      sync.Mutex
-	joinMu         sync.Mutex
+	workers   *workerService
+	sessions  *accessSessions
+	auth      *deviceFlows
+	viewer    *viewerState
+	consentMu sync.Mutex
+	joinMu    sync.Mutex
+	// pwGuard throttles password tries by username and by address
+	// (password_policy.go), made on first use.
+	pwOnce         sync.Once
+	pwGuard        *passwordGuard
 	replays        replayCache
 	machinesMu     sync.Mutex
 	machines       map[string]machineRow
@@ -285,6 +289,8 @@ func New(seam factory.Seam, config Config) *Handler {
 	}
 	h.route("/v1/auth/device", map[string]http.HandlerFunc{http.MethodPost: h.startDevice, http.MethodDelete: h.cancelDevice})
 	h.route("/v1/auth/device/poll", map[string]http.HandlerFunc{http.MethodPost: h.pollDevice})
+	h.route("/v1/auth/password", map[string]http.HandlerFunc{http.MethodPost: h.passwordSignIn})
+	h.route("/v1/me/password", map[string]http.HandlerFunc{http.MethodPost: h.passwordChange})
 	h.route("/access", map[string]http.HandlerFunc{http.MethodGet: h.access, http.MethodPost: h.access})
 	h.route("/v1/access/revoke-sessions", map[string]http.HandlerFunc{http.MethodPost: h.revokeSessions})
 	h.read("/v1/queue", h.queue)
@@ -450,7 +456,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			return
 		}
-	} else if r.URL.Path != "/access" && r.URL.Path != "/v1/factory-access" && r.URL.Path != "/v1/about" && !h.allowed(r) {
+	} else if r.URL.Path != "/access" && r.URL.Path != "/v1/factory-access" && r.URL.Path != "/v1/about" && r.URL.Path != "/v1/auth/password" && !h.allowed(r) {
 		if h.authFailed(w, r) {
 			return
 		}
@@ -467,7 +473,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if h.authFailed(w, r) {
 		return
 	}
-	if !workerPath(r.URL.Path) && r.URL.Path != "/v1/about" && r.URL.Path != "/access" && r.URL.Path != "/v1/auth/device" && r.URL.Path != "/v1/auth/device/poll" {
+	if !workerPath(r.URL.Path) && r.URL.Path != "/v1/about" && r.URL.Path != "/access" && r.URL.Path != "/v1/auth/device" && r.URL.Path != "/v1/auth/device/poll" && r.URL.Path != "/v1/auth/password" {
 		if session, ok := h.credential(r); ok && session.tokenID != "" {
 			for _, tok := range h.tokenRows() {
 				if tok.ID == session.tokenID && (tok.AccessLink || tok.InvitedBy != "") {
@@ -931,10 +937,17 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 	// Only a credential that carries a GitHub-verified profile is a sign-in; a
 	// script token, access-link secret or legacy dashboard session is not.
 	body.GitHubSignedIn = session.profile != nil && session.profile.Handle != ""
+	// GitHubSignedIn has always meant "a person signed in", which a password
+	// person is; SignInKind says which way, so a GitHub-only affordance can be
+	// absent for a password person rather than broken.
+	if body.GitHubSignedIn {
+		body.SignInKind = personKind(*session.profile)
+	}
 	// What this factory is configured to do, said by the factory itself so a
 	// client never probes a real GitHub device flow to find out.
 	body.GitHubSignInAvailable = h.config.GitHubClientID != ""
-	body.InviteAvailable = body.GitHubSignInAvailable && h.config.TokensPath != ""
+	// An invitation can be redeemed with a password as well as with GitHub.
+	body.InviteAvailable = (body.GitHubSignInAvailable || h.passwordsOn()) && h.config.TokensPath != ""
 	body.Machines = machines
 	body.Mode, body.Operator = h.mode(), h.isOperator(r)
 	if body.Mode == api.FactoryTeam && h.operatorLogin(r) == "" {
@@ -970,8 +983,11 @@ func (h *Handler) about(w http.ResponseWriter, r *http.Request) {
 		// limit is spent, and GitHubResumesAt is when it resets.
 		GitHubLimited   string     `json:"github_limited,omitempty"`
 		GitHubResumesAt *time.Time `json:"github_resumes_at,omitempty"`
+		// SignIn is how a person may sign in, preferred first: "password",
+		// "github". Absent from an older server, which means GitHub only.
+		SignIn []string `json:"sign_in"`
 	}{h.factory, scheme(r), h.aboutName(), h.factory.Version, api.Contract, h.needsWord(),
-		h.accessMode(), h.pollingEvery(), h.servedBy(), true, limited, resumes})
+		h.accessMode(), h.pollingEvery(), h.servedBy(), true, limited, resumes, h.signInMethods()})
 }
 
 // githubLimited is the reason and reset time about carries while GitHub's

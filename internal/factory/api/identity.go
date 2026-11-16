@@ -52,6 +52,9 @@ type Me struct {
 	// Teams are the ids of the organization's teams this person is in. An
 	// older server omits it; this one always sends a list.
 	Teams []string `json:"teams"`
+	// SignInKind is how this caller signed in: "password" or "github".
+	// Absent for a key or a script, and from a server older than passwords.
+	SignInKind string `json:"sign_in_kind,omitempty"`
 }
 
 // Device describes the code to enter on GitHub and the opaque code to poll here.
@@ -87,6 +90,8 @@ type Member struct {
 	JoinedAt  time.Time `json:"joined_at"`
 	LastSeen  time.Time `json:"last_seen"`
 	Sessions  int       `json:"sessions"`
+	// Kind is "password" or "github": how this person signs in.
+	Kind string `json:"kind,omitempty"`
 }
 
 // Members is `GET /v1/members`.
@@ -114,4 +119,35 @@ type Sessions struct {
 type SignedOut struct {
 	Factory   Factory `json:"factory"`
 	SignedOut int     `json:"signed_out"`
+}
+
+// PasswordSignIn is POST /v1/auth/password. The password is never kept,
+// logged or answered.
+type PasswordSignIn struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+// PasswordChange is POST /v1/me/password, made while signed in.
+type PasswordChange struct {
+	Current string `json:"current"`
+	New     string `json:"new"`
+}
+
+// PasswordPerson is who a password sign-in signed in.
+type PasswordPerson struct {
+	Handle string `json:"handle"`
+	Name   string `json:"name"`
+}
+
+// PasswordSignedIn answers a password sign-in: a session credential, as the
+// device flow's SignedIn carries one, its end, and who it is.
+type PasswordSignedIn struct {
+	Factory     Factory        `json:"factory"`
+	AccessToken string         `json:"access_token"`
+	TokenType   string         `json:"token_type"`
+	ExpiresIn   int            `json:"expires_in"`
+	ExpiresAt   time.Time      `json:"expires_at"`
+	Person      PasswordPerson `json:"person"`
+	Me          Me             `json:"me"`
 }

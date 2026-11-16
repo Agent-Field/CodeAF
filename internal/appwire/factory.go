@@ -193,6 +193,10 @@ type FactoryConnection struct {
 	// is set only on this machine's own factory while another live codeaf
 	// holds its election, so it cannot be served here yet.
 	Reason string `json:"reason,omitempty"`
+	// SignIn is how a person signs in to this factory, preferred first
+	// ("password", "github"), as its /v1/about says. Absent when it has not
+	// said, which a client reads as GitHub only.
+	SignIn []string `json:"sign_in,omitempty"`
 }
 
 // FactoryList is factory.list's answer.
@@ -299,6 +303,13 @@ type FactoryAccess struct {
 	Help      string            `json:"help,omitempty"`
 	SignInURL string            `json:"sign_in_url,omitempty"`
 	UserCode  string            `json:"user_code,omitempty"`
+	// Kind is "reset" for an operator's password reset link; absent for an
+	// invitation or an operator claim. Reason names the rule a refused
+	// sign-up or reset broke (username_taken, username_invalid,
+	// password_short, password_long, password_common,
+	// password_contains_username, name_invalid); Message says it in words.
+	Kind   string `json:"kind,omitempty" enum:"reset"`
+	Reason string `json:"reason,omitempty"`
 }
 
 // FactoryAccessParams carries an access link and who is opening it.
@@ -367,6 +378,10 @@ type FactoryMe struct {
 	// Teams are the ids of the organization's teams this person is in, as
 	// the server's /v1/me says; [] from a server older than teams.
 	Teams []string `json:"teams"`
+	// SignInKind is how this person signed in, "password" or "github";
+	// absent for a key and from a server older than passwords. Only a
+	// "password" person can change a password.
+	SignInKind string `json:"sign_in_kind,omitempty" enum:"password,github"`
 }
 
 // NewFactoryMe narrows the factory's HTTP identity to the public view. Sign-in
@@ -380,7 +395,10 @@ func NewFactoryMe(me api.Me) FactoryMe {
 		CanSignOut:     me.GitHubSignedIn && FactorySessionCanEnd(me.SessionID),
 
 		GitHubSignInAvailable: me.GitHubSignInAvailable,
-		InviteAvailable:       me.GitHubSignInAvailable && me.InviteAvailable,
+		// An invitation is redeemed with GitHub or with a password; an older
+		// server only said yes when it had GitHub.
+		InviteAvailable: me.InviteAvailable,
+		SignInKind:      me.SignInKind,
 	}
 	if out.Scopes == nil {
 		out.Scopes = []string{}

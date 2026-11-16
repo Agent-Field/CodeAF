@@ -160,6 +160,16 @@ func (h *Handler) liveSessionHash(r *http.Request, key string) (accessSession, b
 	// Every use of the session is the person being here.
 	previousSeen := session.lastSeen
 	session.lastSeen = h.now()
+	// Use moves the idle end forward, never past the absolute one. It is
+	// written with lastSeen, so at most once a minute.
+	if next := session.lastSeen.Add(accessSessionTTL); next.After(session.expires) {
+		if !session.created.IsZero() && next.After(session.created.Add(accessSessionLife)) {
+			next = session.created.Add(accessSessionLife)
+		}
+		if next.After(session.expires) {
+			session.expires = next
+		}
+	}
 	h.sessions.ids[key] = session
 	// Persist activity at most once a minute; refreshing and revoking always
 	// save immediately, so painting a queue does not rewrite the file repeatedly.
@@ -266,6 +276,18 @@ func (h *Handler) tokenRows() []tokens.Token {
 func (h *Handler) sessionUsable(session accessSession) bool {
 	if session.githubExpired || !h.now().Before(session.expires) {
 		return false
+	}
+	// A SESSION ENDS 90 DAYS AFTER IT WAS MADE however much it is used; its
+	// 30 days of idle life are moved forward by use in liveSessionHash.
+	if !session.created.IsZero() && !h.now().Before(session.created.Add(accessSessionLife)) {
+		return false
+	}
+	// A password person's session lives only while their account does: an
+	// operator who removes them removes the account, and every session ends.
+	if session.profile != nil && session.profile.Kind == tokens.KindPassword {
+		if _, ok := h.passwordAccount(session.profile.Handle); !ok {
+			return false
+		}
 	}
 	if session.tokenID == "" {
 		return true

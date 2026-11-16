@@ -239,6 +239,10 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.access_cancel` | `in.FactoryAccessParams` | `FactoryAccess` |
 | `factory.access_check` | `in.FactoryAccessParams` | `FactoryAccess` |
 | `factory.access_sign_in` | `in.FactoryAccessParams` | `FactoryAccess` |
+| `factory.access_sign_up` | `in.FactoryAccessSignUpParams` | `FactoryAccess` |
+| `factory.access_reset` | `in.FactoryAccessResetParams` | `FactoryAccess` |
+| `factory.password_sign_in` | `in.FactoryPasswordSignInParams` | `FactoryPasswordSignedIn` |
+| `factory.password_change` | `in.FactoryPasswordChangeParams` | `Empty` |
 | `factory.activity` | `in.FactoryActivityParams` | `FactoryActivity` |
 | `factory.attach` | `in.FactoryAttachParams` | `FactoryConnection` |
 | `factory.capabilities` | `in.Empty` | `FactoryCapabilities` |
@@ -2766,3 +2770,48 @@ Settings includes `knowledge_model`; `settings.set {knowledge_model}` changes th
 `knowledge.recall` is an explicit read of saved guides, including while `enabled` is false. It does not enable capture, import chats or publish new knowledge. Automatic memory use remains gated by the profile setting.
 
 Library page detail includes `changes: [{before, after, reason}]` for automatic replacements; `claim_details` and `sources` retain the corresponding claims and chat locators.
+
+## Username + password on an organization (`factory_password`)
+
+Hello announces **`factory_password`** when the engine serves the four methods
+below; an engine that does not answers them `unknown_method`. Username and
+password is the default way into an organization; GitHub's device flow stays as
+the second way.
+
+- `factory.access_sign_up {link, caller, username, password, name?}` makes an
+  account through an operator claim link or an invitation and answers
+  `FactoryAccess`. `state: "joined"` means the account exists and the engine
+  now holds its session for that connection (kept exactly as
+  `factory.access_sign_in` keeps one; the session credential is never in an
+  answer). A refusal is `state: "ready"` with `reason` (`username_taken`,
+  `username_invalid`, `password_short`, `password_long`, `password_common`,
+  `password_contains_username`, `name_invalid`) and `message` in the server's
+  words. A link that is revoked, expired or used up answers that state.
+- `factory.access_reset {link, caller, password}` sets a new password through
+  the operator's reset link (`kind: "reset"` on `factory.access_check`'s
+  answer); `state: "joined"` signs the person in, and every other session of
+  theirs has ended.
+- `factory.password_sign_in {factory, caller, username, password}` signs a
+  person in again with no link and answers `{state: "signed_in", me}`. A
+  refusal is a `forbidden` error carrying the server's sentence: the same one
+  for an unknown username and a wrong password ("That username and password
+  don't match."). Too many tries is `busy` ("Too many tries. Wait a few
+  minutes.").
+- `factory.password_change {factory, current, new}` answers `{}`; every other
+  session of the person ends. A wrong current password is `forbidden`; a new
+  one that breaks a rule is `bad_params` with the rule's words.
+- `factory.link_create` takes `kind: "reset"` with `person: <handle>` (and no
+  other choice): a one-time link for one hour, for a password person only,
+  copied like an invitation. Its entry carries `kind: "reset"`.
+
+Fields that say how a person signs in: `factory.list`'s connection `sign_in`
+and `factory.access_check`'s `factory.sign_in` (`["password","github"]`,
+preferred first, from the server's `/v1/about`; absent means GitHub only);
+`factory.me`'s `sign_in_kind` (`"password"` or `"github"`); and
+`factory.people`'s rows' `kind`. `factory.me`'s `invite_available` no longer
+needs GitHub.
+
+A password crosses this wire only inward, in `password`, `current` and `new`,
+on these four methods; a client's wire trace drops those params by name. The
+engine registers each with its redaction the moment it arrives.
+

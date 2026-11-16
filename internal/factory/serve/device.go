@@ -51,6 +51,7 @@ func decodeGitHub(body io.Reader, out any) error {
 }
 
 func (h *Handler) startDevice(w http.ResponseWriter, r *http.Request) {
+	noStore(w)
 	if h.config.GitHubClientID == "" {
 		h.fail(w, http.StatusNotImplemented, "GitHub device sign-in needs github_client_id in the factory host config")
 		return
@@ -103,6 +104,7 @@ func (h *Handler) startDevice(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) pollDevice(w http.ResponseWriter, r *http.Request) {
+	noStore(w)
 	var body api.DevicePoll
 	if !h.decode(w, r, &body, false) {
 		return
@@ -176,6 +178,12 @@ func (h *Handler) pollDevice(w http.ResponseWriter, r *http.Request) {
 	handle := factory.NormalizeHandle(user.Login)
 	if handle == "" {
 		h.fail(w, http.StatusBadGateway, "GitHub sign-in returned no login")
+		return
+	}
+	// One namespace: a GitHub login that is a password person's username is
+	// refused, never merged into their account.
+	if _, held := h.passwordAccount(handle); held {
+		h.fail(w, http.StatusForbidden, githubNameHeldWords)
 		return
 	}
 	if !h.teamAllows(handle) {
@@ -316,6 +324,7 @@ func (h *Handler) pollDevice(w http.ResponseWriter, r *http.Request) {
 	me.Operator = profile.Handle == h.operatorLogin(r)
 	// This session was just minted from GitHub's own exchange for this profile.
 	me.GitHubSignedIn = true
+	me.SignInKind = signInGitHub
 	h.write(w, http.StatusOK, api.SignedIn{Factory: h.factory, AccessToken: credential, TokenType: "bearer",
 		ExpiresIn: int(accessSessionTTL.Seconds()), Me: me})
 }

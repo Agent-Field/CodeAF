@@ -200,7 +200,23 @@ The service is joined with an access link, which the operator creates for one pe
 - `codeaf factory name` shows or changes the name the factory goes by.
 - `codeaf factory steps` prints the built-in step prompts; `codeaf factory convert` turns a Markdown pipeline into `.codeaf/factory.yaml`.
 
-An access link looks like `codeaf://factory/join?url=https://factory.example#token=…`. The secret is in the part after `#`, so it is never sent as part of an address. A link checks, in this order: the factory answers, it is not revoked, not expired, not used up, and the person's GitHub can see at least one of its repositories. Each failure is one plain sentence.
+An access link looks like `codeaf://factory/join?url=https://factory.example#token=…`. The secret is in the part after `#`, so it is never sent as part of an address. A link checks, in this order: the factory answers, it is not revoked, not expired, not used up, and, for a person who signs in with GitHub, their GitHub can see at least one of its repositories. Each failure is one plain sentence.
+
+## sign in to an organization with a username and password — sign up, sign in again, change password, wrong password
+
+An organization server (`codeaf factory serve`) takes a username and password by default; GitHub is the second way. Its `/v1/about` lists them in `sign_in`, password first. You make an account by opening the operator link or an invitation link and choosing a username and a password; the link is used up in the same step that makes the account, so two people can never both join on one single-use link.
+
+- A username is 2 to 39 lowercase letters, digits or hyphens, and is unique on the server, including against the GitHub logins already there. "That name belongs to someone who signs in here with a password." refuses a GitHub sign-in with a password person's name.
+- A password is 12 characters to 256 bytes, any characters, with no other composition rules and no expiry. A password on the embedded list of common passwords, or one that contains your username, is refused with a sentence naming the rule.
+- A wrong username and a wrong password get the same sentence: "That username and password don't match."
+- After repeated wrong tries for one username or from one address: "Too many tries. Wait a few minutes." The wait grows with more tries and goes away on its own; nothing is locked for good.
+- Changing your password ends your other sessions. Signing out ends that session on the server.
+- A session lasts 30 days after you last used it, and 90 days at most.
+- Password sign-in works only over HTTPS, or on the server's own machine, or behind a trusted proxy that says HTTPS.
+
+## forgot password — operator reset link, one hour, password people only
+
+There is no email recovery. The operator makes a reset link for one password person (in the app, or `factory.link_create` with `kind: "reset"`); it works once, lasts one hour, and makes any older reset link for that person stop working. Opening it lets the person set a new password, which ends all their sessions and signs them in. A GitHub person has no password to reset. Every sign-up, sign-in, refused burst of sign-ins, change, reset link and reset is written to the organization's record.
 
 ## codeaf attach and codeaf detach — use another machine's factory
 
