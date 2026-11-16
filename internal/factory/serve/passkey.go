@@ -55,6 +55,7 @@ package serve
 // minutes, a flow ten.
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	_ "embed"
@@ -68,6 +69,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -88,8 +90,24 @@ const (
 	// passkeyChallengeLife is how long one challenge may be answered.
 	passkeyChallengeLife = 5 * time.Minute
 	// passkeyFlowsMost bounds the flows in flight, so starts cannot exhaust
-	// the server's memory.
-	passkeyFlowsMost = 512
+	// the server's memory. Sign-ins, which anyone may start, hold at most
+	// passkeySignInFlowsMost of them: the rest is kept for joins (which need
+	// a live link) and for signed-in adds and confirms, so a flood of
+	// sign-ins never shuts a person with an invitation out.
+	passkeyFlowsMost       = 512
+	passkeySignInFlowsMost = 384
+	// passkeyFlowsPerAddr is how many flows one address (an IPv6 /64) may
+	// have waiting at once.
+	passkeyFlowsPerAddr = 8
+	// passkeyUnopenedLife is how long a sign-in flow whose page was never
+	// fetched lives; such flows are the first to go when sign-ins are full.
+	passkeyUnopenedLife = 2 * time.Minute
+	// passkeyWrongMost is how many polls or cancels with a wrong verifier or
+	// code one flow survives: a guess is counted, not let end the flow.
+	passkeyWrongMost = 5
+	// passkeyStepUpLife is how recent a passkey or password proof must be
+	// for adding a passkey, setting a first password or removing a passkey.
+	passkeyStepUpLife = 5 * time.Minute
 	// passkeyTriesMost is how many failed ceremonies one flow survives.
 	passkeyTriesMost = 5
 	// passkeyChallengesMost is how many challenges one flow may ask for.
@@ -99,7 +117,8 @@ const (
 	// authenticator's extensions without letting a body grow unbounded.
 	passkeyFinishMost = 32 << 10
 	// passkeyStarts is how many flows one address may start per throttle
-	// window (15 minutes), spent on entry whether or not they finish.
+	// window (15 minutes), spent on entry whether or not they finish. An
+	// IPv6 address counts by its /48, so one subscriber's many /64s share it.
 	passkeyStarts = 30
 	// passkeyNameMost bounds a passkey's name.
 	passkeyNameMost = 60
@@ -119,6 +138,12 @@ const (
 	passkeyNotHereWords  = "This sign-in was not started here."
 	passkeyNoAccount     = "this sign-in has no passkeys"
 	passkeyWrongPageWord = "this page belongs to another server"
+	passkeyStepUpWords   = "Confirm it's you first: use one of your passkeys, or enter your current password."
+	passkeyFullWords     = "Too many passkey sign-ins are waiting. Try again in a minute."
+	passkeyHandOverWords = "Finishing on the computer that started this…"
+	// passkeyElsewhereWords is the page of a finished ceremony that has not
+	// reached codeaf: on another device it never will.
+	passkeyElsewhereWords = "Nothing was signed in on this device. Open the address on the computer where you started, or start again there."
 )
 
 // passkeyFlow is one ceremony in flight. Everything in it is server-side;
@@ -148,6 +173,27 @@ type passkeyFlow struct {
 	sessionEnd time.Time
 	challenges int
 	tries      int
+
+	// addr is the /64 the flow was started from; opened is whether its page
+	// was ever fetched.
+	addr   string
+	opened bool
+	// returnTo is the engine's loopback url (no code yet); codeSum is the
+	// SHA-256 of the one-time code the page sends the browser there with.
+	// wrong counts polls and cancels with a wrong verifier or code.
+	returnTo string
+	codeSum  [sha256.Size]byte
+	wrong    int
+	// sessionID is the signed-in session a confirm proves; needConfirm is an
+	// add whose session has no recent proof, so the page asks one of the
+	// person's own passkeys first, and confirmed is that step done.
+	sessionID   string
+	needConfirm bool
+	confirmed   bool
+	// made is a verified new passkey, kept until the poll that shows the
+	// code: only then is an account made or changed, so a ceremony run on a
+	// stolen url never spends a link or adds anyone's key.
+	made *tokens.Passkey
 
 	state   string
 	message string
@@ -195,6 +241,7 @@ func (h *Handler) passkeyRoutes() {
 	h.route("/v1/auth/passkey/cancel", map[string]http.HandlerFunc{http.MethodPost: h.passkeyCancel})
 	h.route("/v1/me/passkeys", map[string]http.HandlerFunc{http.MethodGet: h.passkeyList})
 	h.route("/v1/me/passkeys/remove", map[string]http.HandlerFunc{http.MethodPost: h.passkeyRemove})
+	h.route("/v1/me/password/confirm", map[string]http.HandlerFunc{http.MethodPost: h.passwordConfirm})
 	h.route("/passkey/", map[string]http.HandlerFunc{http.MethodGet: h.passkeyPage, http.MethodPost: h.passkeyPagePost})
 }
 
@@ -217,7 +264,16 @@ func (h *Handler) relyingParty() (rpID, origin string, ok bool) {
 	default:
 		return "", "", false
 	}
-	return host, u.Scheme + "://" + strings.ToLower(u.Host), true
+	// A browser's origin never spells its scheme's default port, so neither
+	// does this one: https://org:443 is https://org.
+	port := u.Port()
+	if (u.Scheme == "https" && port == "443") || (u.Scheme == "http" && port == "80") {
+		port = ""
+	}
+	if port != "" {
+		return host, u.Scheme + "://" + net.JoinHostPort(host, port), true
+	}
+	return host, u.Scheme + "://" + host, true
 }
 
 // passkeysOn is whether this server offers passkeys at all.
@@ -359,6 +415,29 @@ func decodeB64URL32(s string) ([]byte, bool) {
 	return b, err == nil && len(b) == 32
 }
 
+// passkeyStartKey is the key a start counts under: an IPv4 address, or an
+// IPv6 address by its /48.
+func passkeyStartKey(r *http.Request) string {
+	addr := clientOf(r).addr.Unmap()
+	if addr.Is6() {
+		if p, err := addr.Prefix(48); err == nil {
+			return p.String()
+		}
+	}
+	return throttleAddr(addr)
+}
+
+// passkeyReturn is the engine's loopback url a start names, or "".
+func passkeyReturn(port int, path string) string {
+	if port < 1024 || port > 65535 {
+		return ""
+	}
+	if _, ok := decodeB64URL32(path); !ok {
+		return ""
+	}
+	return "http://127.0.0.1:" + strconv.Itoa(port) + "/" + path
+}
+
 // passkeyStart is POST /v1/auth/passkey/start.
 func (h *Handler) passkeyStart(w http.ResponseWriter, r *http.Request) {
 	noStore(w)
@@ -379,7 +458,7 @@ func (h *Handler) passkeyStart(w http.ResponseWriter, r *http.Request) {
 	// SPENT ON ENTRY: every start costs one, finished or not, so starting
 	// flows cannot be used to probe or to fill the table.
 	st.mu.Lock()
-	admitted := st.starts.take(addrKey, now)
+	admitted := st.starts.take(passkeyStartKey(r), now)
 	st.mu.Unlock()
 	if !admitted {
 		h.tooManyTries(w)
@@ -390,7 +469,13 @@ func (h *Handler) passkeyStart(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusUnprocessableEntity, "code_challenge is the base64url SHA-256 of a 32-byte verifier")
 		return
 	}
-	flow := &passkeyFlow{purpose: body.Purpose, created: now, expires: now.Add(passkeyFlowLife), state: api.PasskeyPending}
+	returnTo := passkeyReturn(body.ReturnPort, body.ReturnPath)
+	if returnTo == "" {
+		h.fail(w, http.StatusUnprocessableEntity, "return_port and return_path name the engine's loopback listener")
+		return
+	}
+	flow := &passkeyFlow{purpose: body.Purpose, created: now, expires: now.Add(passkeyFlowLife), state: api.PasskeyPending,
+		addr: addrKey, returnTo: returnTo}
 	copy(flow.challenge[:], challenge)
 	switch body.Purpose {
 	case api.PasskeySignIn:
@@ -398,31 +483,36 @@ func (h *Handler) passkeyStart(w http.ResponseWriter, r *http.Request) {
 			h.fail(w, http.StatusUnprocessableEntity, "a passkey sign-in takes no link or username")
 			return
 		}
-	case api.PasskeyAdd:
-		session, ok := h.credential(r)
-		if !ok || session.profile == nil || session.profile.Kind != tokens.KindPassword || body.Link != "" {
-			h.fail(w, http.StatusNotFound, passkeyNoAccount)
+	case api.PasskeyAdd, api.PasskeyConfirm:
+		session, acct, ok := h.passkeyStartAccount(w, r, body)
+		if !ok {
 			return
 		}
-		acct, found, err := h.freshAccount(session.profile.Handle)
-		if h.failed(w, err) {
-			return
-		}
-		if !found {
-			h.fail(w, http.StatusNotFound, passkeyNoAccount)
-			return
-		}
-		if len(acct.Passkeys) >= tokens.PasskeyMost {
+		flow.handle, flow.sessionID = acct.Handle, session.id
+		switch {
+		case body.Purpose == api.PasskeyConfirm:
+			if len(acct.Passkeys) == 0 {
+				h.fail(w, http.StatusConflict, "this account has no passkey to confirm with")
+				return
+			}
+		case len(acct.Passkeys) >= tokens.PasskeyMost:
 			h.fail(w, http.StatusConflict, "this account already keeps as many passkeys as it can")
 			return
+		case h.recentlyVerified(session):
+		case len(acct.Passkeys) > 0:
+			// STEP-UP IN THE SAME VISIT: the page asks one of the person's
+			// own passkeys before it makes another.
+			flow.needConfirm = true
+		default:
+			h.refuse(w, http.StatusForbidden, passkeyStepUpWords, api.ReasonStepUp, "", nil, "")
+			return
 		}
-		flow.handle = acct.Handle
 	case api.PasskeyJoin:
 		if !h.passkeyJoinFlow(w, body, flow, now) {
 			return
 		}
 	default:
-		h.fail(w, http.StatusUnprocessableEntity, "choose sign_in, join or add")
+		h.fail(w, http.StatusUnprocessableEntity, "choose sign_in, join, add or confirm")
 		return
 	}
 	id, err := secret()
@@ -430,17 +520,78 @@ func (h *Handler) passkeyStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	flow.id = id
-	st.mu.Lock()
-	st.pruneLocked(now)
-	if len(st.flows) >= passkeyFlowsMost {
-		st.mu.Unlock()
-		h.tooManyTries(w)
+	if !st.admitFlow(flow, now) {
+		w.Header().Set("Retry-After", "60")
+		h.refuse(w, http.StatusTooManyRequests, passkeyFullWords, "too_many_tries", "", nil, "")
 		return
 	}
-	st.flows[id] = flow
-	st.mu.Unlock()
 	_, origin, _ := h.relyingParty()
 	h.write(w, http.StatusCreated, api.PasskeyStarted{Flow: id, URL: origin + "/passkey/" + id, ExpiresAt: flow.expires.UTC()})
+}
+
+// passkeyStartAccount is the signed-in password-account person an add or a
+// confirm is for. A refusal is answered here.
+func (h *Handler) passkeyStartAccount(w http.ResponseWriter, r *http.Request, body api.PasskeyStart) (accessSession, tokens.Account, bool) {
+	session, ok := h.credential(r)
+	if !ok || session.profile == nil || session.profile.Kind != tokens.KindPassword || body.Link != "" || body.Username != "" || body.Name != "" {
+		h.fail(w, http.StatusNotFound, passkeyNoAccount)
+		return accessSession{}, tokens.Account{}, false
+	}
+	acct, found, err := h.freshAccount(session.profile.Handle)
+	if h.failed(w, err) {
+		return accessSession{}, tokens.Account{}, false
+	}
+	if !found {
+		h.fail(w, http.StatusNotFound, passkeyNoAccount)
+		return accessSession{}, tokens.Account{}, false
+	}
+	return session, acct, true
+}
+
+// admitFlow puts f in the table, or answers false: its address already has
+// as many waiting as it may, or there is no room for its kind. A full table
+// of sign-ins makes room by dropping the oldest sign-in whose page nobody
+// ever opened.
+func (st *passkeyState) admitFlow(f *passkeyFlow, now time.Time) bool {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	st.pruneLocked(now)
+	mine, signIns := 0, 0
+	for _, g := range st.flows {
+		if g.addr == f.addr {
+			mine++
+		}
+		if g.purpose == api.PasskeySignIn {
+			signIns++
+		}
+	}
+	if mine >= passkeyFlowsPerAddr {
+		return false
+	}
+	if f.purpose == api.PasskeySignIn && signIns >= passkeySignInFlowsMost && !st.evictUnopenedLocked() {
+		return false
+	}
+	if len(st.flows) >= passkeyFlowsMost && !st.evictUnopenedLocked() {
+		return false
+	}
+	st.flows[f.id] = f
+	return true
+}
+
+// evictUnopenedLocked drops the oldest sign-in flow whose page was never
+// fetched, or answers false.
+func (st *passkeyState) evictUnopenedLocked() bool {
+	var oldest *passkeyFlow
+	for _, g := range st.flows {
+		if g.purpose == api.PasskeySignIn && !g.opened && (oldest == nil || g.created.Before(oldest.created)) {
+			oldest = g
+		}
+	}
+	if oldest == nil {
+		return false
+	}
+	delete(st.flows, oldest.id)
+	return true
 }
 
 // passkeyJoinFlow judges a join's link exactly as the access card does and
@@ -517,38 +668,66 @@ func (h *Handler) passkeyJoinFlow(w http.ResponseWriter, body api.PasskeyStart, 
 	return true
 }
 
-// pruneLocked drops ended flows. Called with mu held.
+// pruneLocked drops ended flows, and sign-ins whose page nobody opened in
+// time. Called with mu held.
 func (st *passkeyState) pruneLocked(now time.Time) {
 	for id, f := range st.flows {
-		if !now.Before(f.expires) {
+		if f.ended(now) {
 			delete(st.flows, id)
 		}
 	}
 }
 
-// verifiedLocked finds the flow id answers to with verifier. A wrong verifier ends
-// the flow: whoever holds the id is not whoever started it. Called with mu
-// held; the flow answered is still in the table.
+// ended is whether f has outlived its life: ten minutes, or two for a
+// sign-in whose page nobody opened.
+func (f *passkeyFlow) ended(now time.Time) bool {
+	return !now.Before(f.expires) || (f.purpose == api.PasskeySignIn && !f.opened && now.Sub(f.created) >= passkeyUnopenedLife)
+}
+
+// verifiedLocked finds the flow id answers to with verifier. A wrong verifier
+// is counted against the flow, which ends at passkeyWrongMost: whoever holds
+// the id is not whoever started it, but one guess must not end the real
+// engine's sign-in. Called with mu held; the flow answered is still in the
+// table.
 func (st *passkeyState) verifiedLocked(id, verifier string, now time.Time) (*passkeyFlow, string) {
 	f := st.flows[id]
 	if f == nil {
 		return nil, api.PasskeyExpired
 	}
+	if f.ended(now) {
+		delete(st.flows, id)
+		return nil, api.PasskeyExpired
+	}
 	v, ok := decodeB64URL32(verifier)
 	sum := sha256.Sum256(v)
 	if !ok || subtle.ConstantTimeCompare(sum[:], f.challenge[:]) != 1 {
-		delete(st.flows, id)
+		st.wrongLocked(f)
 		return nil, api.PasskeyRefused
-	}
-	if !now.Before(f.expires) {
-		delete(st.flows, id)
-		return nil, api.PasskeyExpired
 	}
 	return f, ""
 }
 
-// passkeyPoll is POST /v1/auth/passkey/poll. Done answers the session once
-// and ends the flow.
+// wrongLocked counts one wrong verifier or code against f.
+func (st *passkeyState) wrongLocked(f *passkeyFlow) {
+	if f.wrong++; f.wrong >= passkeyWrongMost {
+		delete(st.flows, f.id)
+	}
+}
+
+// codeLocked is whether code is the one the ceremony sent the browser to the
+// engine's loopback with. A wrong one is counted.
+func (st *passkeyState) codeLocked(f *passkeyFlow, code string) bool {
+	c, ok := decodeB64URL32(code)
+	sum := sha256.Sum256(c)
+	if ok && subtle.ConstantTimeCompare(sum[:], f.codeSum[:]) == 1 {
+		return true
+	}
+	st.wrongLocked(f)
+	return false
+}
+
+// passkeyPoll is POST /v1/auth/passkey/poll. A done flow answers only to a
+// poll with both the verifier and the loopback code, once, and ends.
 func (h *Handler) passkeyPoll(w http.ResponseWriter, r *http.Request) {
 	noStore(w)
 	if !h.passkeysOn() {
@@ -580,42 +759,84 @@ func (h *Handler) passkeyPoll(w http.ResponseWriter, r *http.Request) {
 		h.write(w, http.StatusOK, api.PasskeyPolled{State: api.PasskeyPending, Purpose: f.purpose})
 		return
 	}
-	// ANSWERED EXACTLY ONCE: the flow leaves the table before the session
-	// is made, so a second poll, even a concurrent one, finds nothing.
+	if f.state == api.PasskeyDone {
+		// NO CODE, NO SESSION: the ceremony finished, but in a browser that
+		// has not reached this engine's loopback (or not yet).
+		if body.Code == "" {
+			st.mu.Unlock()
+			h.write(w, http.StatusOK, api.PasskeyPolled{State: api.PasskeyElsewhere, Purpose: f.purpose})
+			return
+		}
+		if !st.codeLocked(f, body.Code) {
+			st.mu.Unlock()
+			h.write(w, http.StatusOK, api.PasskeyPolled{State: api.PasskeyRefused, Message: passkeyNotHereWords, Purpose: f.purpose})
+			return
+		}
+	}
+	// ANSWERED EXACTLY ONCE: the flow leaves the table before anything is
+	// written or a session is made, so a second poll, even a concurrent one,
+	// finds nothing.
 	delete(st.flows, f.id)
+	snapshot := *f
 	st.mu.Unlock()
-	if f.state != api.PasskeyDone {
-		h.write(w, http.StatusOK, api.PasskeyPolled{State: f.state, Message: f.message, Purpose: f.purpose})
+	if snapshot.state != api.PasskeyDone {
+		h.write(w, http.StatusOK, api.PasskeyPolled{State: snapshot.state, Message: snapshot.message, Purpose: snapshot.purpose})
 		return
 	}
-	if f.profile == nil {
-		h.write(w, http.StatusOK, api.PasskeyPolled{State: api.PasskeyDone, Purpose: f.purpose})
+	refused := func(words string) {
+		h.write(w, http.StatusOK, api.PasskeyPolled{State: api.PasskeyRefused, Message: words, Purpose: snapshot.purpose})
+	}
+	profile, gen := snapshot.profile, snapshot.gen
+	switch {
+	case snapshot.purpose == api.PasskeyConfirm:
+		h.markVerified(snapshot.sessionID, h.now())
+		h.write(w, http.StatusOK, api.PasskeyPolled{State: api.PasskeyDone, Purpose: snapshot.purpose})
+		return
+	case snapshot.made != nil:
+		var words string
+		var err error
+		profile, gen, words, err = h.passkeyRegistered(r, snapshot, *snapshot.made, h.now())
+		if h.failed(w, err) {
+			return
+		}
+		if words != "" {
+			refused(words)
+			return
+		}
+	}
+	if profile == nil {
+		h.write(w, http.StatusOK, api.PasskeyPolled{State: api.PasskeyDone, Purpose: snapshot.purpose})
 		return
 	}
 	// The account may have been removed, or a way in changed, between the
 	// ceremony and this poll; either signs nobody in.
-	acct, ok, err := h.freshAccount(f.profile.Handle)
+	acct, ok, err := h.freshAccount(profile.Handle)
 	if h.failed(w, err) {
 		return
 	}
-	if !ok || acct.Gen != f.gen {
-		h.write(w, http.StatusOK, api.PasskeyPolled{State: api.PasskeyRefused, Message: passkeyUnknownWords, Purpose: f.purpose})
+	if !ok || acct.Gen != gen {
+		refused(passkeyUnknownWords)
 		return
 	}
-	credential, session, err := h.mintSessionVia(w, r, *f.profile, f.gen, signInPasskey)
+	if snapshot.purpose == api.PasskeySignIn {
+		if h.failed(w, h.accountEvent(r, profile.Handle, "", "signed in", "signed in with a passkey", false)) {
+			return
+		}
+	}
+	credential, session, err := h.mintSessionVia(w, r, *profile, gen, signInPasskey)
 	if h.failed(w, err) {
 		return
 	}
-	me := h.meBody(*f.profile, session.id)
-	me.Operator = f.profile.Handle == h.operatorLogin(r)
+	me := h.meBody(*profile, session.id)
+	me.Operator = profile.Handle == h.operatorLogin(r)
 	// A passkey person signed in with a passkey, not with GitHub.
 	me.GitHubSignedIn, me.SignInKind = false, signInPasskey
-	me.Teams = h.Membership().TeamsOf(f.profile.Handle)
+	me.Teams = h.Membership().TeamsOf(profile.Handle)
 	expires := session.expires.UTC()
 	fac := h.factory
-	h.write(w, http.StatusOK, api.PasskeyPolled{State: api.PasskeyDone, Purpose: f.purpose, Factory: &fac,
+	h.write(w, http.StatusOK, api.PasskeyPolled{State: api.PasskeyDone, Purpose: snapshot.purpose, Factory: &fac,
 		AccessToken: credential, TokenType: "bearer", ExpiresIn: int(accessSessionTTL.Seconds()), ExpiresAt: &expires,
-		Person: &api.PasswordPerson{Handle: f.profile.Handle, Name: f.profile.Name}, Me: &me})
+		Person: &api.PasswordPerson{Handle: profile.Handle, Name: profile.Name}, Me: &me})
 }
 
 // passkeyCancel is POST /v1/auth/passkey/cancel: the engine ends its flow.
@@ -623,6 +844,9 @@ func (h *Handler) passkeyCancel(w http.ResponseWriter, r *http.Request) {
 	noStore(w)
 	if !h.passkeysOn() {
 		h.fail(w, http.StatusNotFound, passkeyOffWords)
+		return
+	}
+	if !h.passwordTransport(w, r) {
 		return
 	}
 	var body api.PasskeyPoll
@@ -692,6 +916,12 @@ func (h *Handler) passkeyRemove(w http.ResponseWriter, r *http.Request) {
 	if !h.readPasswordBody(w, r, &body) {
 		return
 	}
+	// STEP-UP: a session alone, perhaps a stolen one, may not take a way in
+	// away; only a proof made in the last few minutes may.
+	if !h.recentlyVerified(session) {
+		h.refuse(w, http.StatusForbidden, passkeyStepUpWords, api.ReasonStepUp, "", nil, "")
+		return
+	}
 	gen, err := tokens.RemovePasskey(h.config.TokensPath, acct.Handle, body.ID, h.now())
 	h.forgetAccounts()
 	switch {
@@ -743,7 +973,7 @@ func passkeyHeaders(w http.ResponseWriter) {
 
 type passkeyPageData struct {
 	Flow, Purpose, Org, Host, Handle, Username, Heading, Lede, Button string
-	AskUsername, AskName, AskLabel, Ended                             bool
+	AskUsername, AskName, AskLabel, Ended, Handover                   bool
 }
 
 // passkeyPage is GET /passkey/<flow>, /passkey/page.js and /passkey/page.css.
@@ -774,13 +1004,15 @@ func (h *Handler) passkeyPage(w http.ResponseWriter, r *http.Request) {
 	now := h.now()
 	st.mu.Lock()
 	f := st.flows[rest]
-	if f != nil && !now.Before(f.expires) {
+	if f != nil && f.ended(now) {
 		f = nil
 	}
 	if f != nil {
+		f.opened = true
 		data.Purpose, data.Handle, data.Username = f.purpose, f.handle, f.username
 		if f.state != api.PasskeyPending {
 			data.Ended = true
+			data.Handover = f.state == api.PasskeyDone
 		}
 	}
 	st.mu.Unlock()
@@ -791,10 +1023,18 @@ func (h *Handler) passkeyPage(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		_ = passkeyPageTemplate.Execute(w, data)
 		return
+	case data.Handover:
+		// A finished ceremony whose browser has not reached codeaf: reopened,
+		// or come back to from a browser on another device.
+		data.Heading, data.Lede = "Finish on the computer that started this", passkeyElsewhereWords
 	case data.Ended:
 		data.Heading, data.Lede = "Done", "Go back to codeaf."
 	case f.purpose == api.PasskeySignIn:
 		data.Heading, data.Lede, data.Button = "Sign in to "+org, "Use the passkey you keep for "+rpID+".", "Sign in with a passkey"
+	case f.purpose == api.PasskeyConfirm:
+		data.Heading, data.Lede, data.Button = "Confirm it's you", "Use one of your passkeys for @"+f.handle+" on "+org+".", "Confirm with a passkey"
+	case f.purpose == api.PasskeyAdd && f.needConfirm:
+		data.Heading, data.Lede, data.Button, data.AskLabel = "Add a passkey", "For @"+f.handle+" on "+org+". First confirm with a passkey you already have.", "Continue", true
 	case f.purpose == api.PasskeyAdd:
 		data.Heading, data.Lede, data.Button, data.AskLabel = "Add a passkey", "For @"+f.handle+" on "+org+".", "Create a passkey", true
 	case f.resetSecret != "":
@@ -879,16 +1119,29 @@ type passkeyFinishBody struct {
 // openFlowLocked is the pending flow id names, or an answer saying it has ended.
 func (h *Handler) openFlowLocked(w http.ResponseWriter, id string, now time.Time) *passkeyFlow {
 	f := h.pk().flows[id]
-	if f == nil || !now.Before(f.expires) || f.state != api.PasskeyPending {
+	if f == nil || f.ended(now) || f.state != api.PasskeyPending {
 		h.refuse(w, http.StatusGone, passkeyEndedWords, "flow_ended", "", nil, "")
 		return nil
 	}
 	return f
 }
 
-// passkeyOptions answers a fresh challenge for the flow's ceremony. A join
-// checks its username first, so nobody makes a passkey for a name that is
-// taken.
+// passkeyOptionsAnswer is what the page is asked to do next: kind "get" (an
+// assertion: a sign-in, a confirm, or an add's step-up) or "create".
+type passkeyOptionsAnswer struct {
+	Kind      string `json:"kind"`
+	PublicKey any    `json:"publicKey"`
+}
+
+// asksExisting is whether the flow's next ceremony is an assertion by one of
+// the person's own passkeys: a confirm, or an add whose step-up is not done.
+func (f *passkeyFlow) asksExisting() bool {
+	return f.purpose == api.PasskeyConfirm || (f.needConfirm && !f.confirmed)
+}
+
+// passkeyOptions answers a fresh challenge for the flow's next ceremony. A
+// join checks its username first, so nobody makes a passkey for a name that
+// is taken.
 func (h *Handler) passkeyOptions(w http.ResponseWriter, r *http.Request, id string) {
 	var body passkeyOptionsBody
 	if !h.readPageBody(w, r, passwordBodyMost, &body) {
@@ -912,10 +1165,13 @@ func (h *Handler) passkeyOptions(w http.ResponseWriter, r *http.Request, id stri
 		return
 	}
 	f.challenges++
+	// Only the page asks for options, so the page was opened.
+	f.opened = true
+	existing := f.asksExisting()
 	purpose, reset, handle, username, name := f.purpose, f.resetSecret, f.handle, f.username, f.name
 	st.mu.Unlock()
 
-	var answer any
+	var answer passkeyOptionsAnswer
 	var session *webauthn.SessionData
 	userID := ""
 	switch {
@@ -924,7 +1180,25 @@ func (h *Handler) passkeyOptions(w http.ResponseWriter, r *http.Request, id stri
 		if h.failed(w, err) {
 			return
 		}
-		answer, session = assertion, s
+		answer, session = passkeyOptionsAnswer{"get", assertion.Response}, s
+	case existing:
+		acct, ok, err := h.freshAccount(handle)
+		if h.failed(w, err) {
+			return
+		}
+		if !ok {
+			h.refuse(w, http.StatusGone, passkeyEndedWords, "flow_ended", "", nil, "")
+			return
+		}
+		user, err := accountUser(acct)
+		if h.failed(w, err) {
+			return
+		}
+		assertion, s, err := rp.BeginLogin(user, webauthn.WithUserVerification(protocol.VerificationRequired))
+		if h.failed(w, err) {
+			return
+		}
+		answer, session = passkeyOptionsAnswer{"get", assertion.Response}, s
 	case purpose == api.PasskeyAdd || reset != "":
 		_, err := tokens.EnsureUserID(h.config.TokensPath, handle)
 		h.forgetAccounts()
@@ -953,7 +1227,7 @@ func (h *Handler) passkeyOptions(w http.ResponseWriter, r *http.Request, id stri
 		if h.failed(w, err) {
 			return
 		}
-		answer, session = creation, s
+		answer, session = passkeyOptionsAnswer{"create", creation.Response}, s
 	default:
 		if username == "" {
 			username = cleanUsername(body.Username)
@@ -989,7 +1263,7 @@ func (h *Handler) passkeyOptions(w http.ResponseWriter, r *http.Request, id stri
 		if h.failed(w, err) {
 			return
 		}
-		answer, session = creation, s
+		answer, session = passkeyOptionsAnswer{"create", creation.Response}, s
 	}
 	st.mu.Lock()
 	f = h.openFlowLocked(w, id, h.now())
@@ -1006,8 +1280,10 @@ func (h *Handler) passkeyOptions(w http.ResponseWriter, r *http.Request, id stri
 	h.write(w, http.StatusOK, answer)
 }
 
-// passkeyFinish verifies what the authenticator signed and does what the flow
-// is for. The challenge is taken out first, so it can be answered only once.
+// passkeyFinish verifies what the authenticator signed. A sign-in learns
+// whom it signs in; a confirm or an add's step-up learns the person is
+// there; a new passkey is kept in the flow until the code-bearing poll. The
+// challenge is taken out first, so it can be answered only once.
 func (h *Handler) passkeyFinish(w http.ResponseWriter, r *http.Request, id string) {
 	var body passkeyFinishBody
 	if !h.readPageBody(w, r, passkeyFinishMost, &body) {
@@ -1057,7 +1333,9 @@ func (h *Handler) passkeyFinish(w http.ResponseWriter, r *http.Request, id strin
 	}
 	var profile *api.Profile
 	var gen int64
-	if snapshot.purpose == api.PasskeySignIn {
+	var made *tokens.Passkey
+	switch {
+	case snapshot.purpose == api.PasskeySignIn:
 		parsed, err := protocol.ParseCredentialRequestResponseBytes(body.Credential)
 		if err != nil {
 			refused(passkeyRefusedWords, "passkey_refused")
@@ -1076,33 +1354,52 @@ func (h *Handler) passkeyFinish(w http.ResponseWriter, r *http.Request, id strin
 			acct = found
 			return accountUser(found)
 		}, *session, parsed)
-		if err != nil || user == nil {
-			refused(passkeyUnknownWords, "passkey_refused")
-			return
-		}
-		credID := base64.RawURLEncoding.EncodeToString(cred.ID)
-		err = tokens.UsedPasskey(h.config.TokensPath, acct.Handle, credID, cred.Authenticator.SignCount, cred.Flags.BackupState, now)
-		h.forgetAccounts()
-		if err != nil {
+		if err != nil || user == nil || !h.passkeyUsed(r, acct, cred, now) {
 			refused(passkeyUnknownWords, "passkey_refused")
 			return
 		}
 		gen = acct.Gen
-		if cred.Authenticator.CloneWarning {
-			// A counter that went backwards can mean a copied authenticator;
-			// a synced passkey never counts, so this is written down for the
-			// operator, not refused (the library's guidance).
-			_ = h.accountEvent(r, acct.Handle, "", "passkey counter went backwards", "a passkey's signature counter went backwards; it may have been copied", false)
-		}
 		name := acct.Name
 		if name == "" {
 			name = acct.Handle
 		}
 		profile = &api.Profile{Handle: acct.Handle, Name: name, Scopes: []string{}, Kind: tokens.KindPassword}
-		if h.failed(w, h.accountEvent(r, acct.Handle, "", "signed in", "signed in with a passkey", false)) {
+	case snapshot.asksExisting():
+		parsed, err := protocol.ParseCredentialRequestResponseBytes(body.Credential)
+		if err != nil {
+			refused(passkeyRefusedWords, "passkey_refused")
 			return
 		}
-	} else {
+		acct, ok, err := h.freshAccount(snapshot.handle)
+		if h.failed(w, err) {
+			return
+		}
+		if !ok {
+			refused(passkeyUnknownWords, "passkey_refused")
+			return
+		}
+		user, err := accountUser(acct)
+		if err != nil {
+			refused(passkeyUnknownWords, "passkey_refused")
+			return
+		}
+		cred, err := rp.ValidateLogin(user, *session, parsed)
+		if err != nil || !h.passkeyUsed(r, acct, cred, now) {
+			refused(passkeyUnknownWords, "passkey_refused")
+			return
+		}
+		if snapshot.purpose == api.PasskeyAdd {
+			// The step-up is done; the same visit now makes the new passkey.
+			try.succeeded(h.now())
+			st.mu.Lock()
+			if f := st.flows[id]; f != nil {
+				f.confirmed = true
+			}
+			st.mu.Unlock()
+			h.write(w, http.StatusOK, map[string]string{"state": "continue"})
+			return
+		}
+	default:
 		parsed, err := protocol.ParseCredentialCreationResponseBytes(body.Credential)
 		if err != nil {
 			refused(passkeyRefusedWords, "passkey_refused")
@@ -1123,80 +1420,106 @@ func (h *Handler) passkeyFinish(w http.ResponseWriter, r *http.Request, id strin
 			return
 		}
 		pk := storedPasskey(cred, passkeyName(body.Name, r), now)
-		var ok bool
-		if profile, gen, ok = h.passkeyRegistered(w, r, snapshot, pk, now); !ok {
+		// Said here, where the page can still take the passkey back out of
+		// the keychain; the poll asks again, and that answer counts.
+		accounts, err := tokens.LoadAccounts(h.config.TokensPath)
+		if h.failed(w, err) {
 			return
 		}
+		if _, _, taken := accounts.FindPasskey(pk.ID); taken {
+			h.refuse(w, http.StatusConflict, passkeyTakenWords, "passkey_taken", "", nil, "")
+			return
+		}
+		made = &pk
+	}
+	code, err := secret32()
+	if h.failed(w, err) {
+		return
 	}
 	try.succeeded(h.now())
 	st.mu.Lock()
-	if f := st.flows[id]; f != nil {
-		f.state, f.profile, f.gen = api.PasskeyDone, profile, gen
+	f = st.flows[id]
+	if f == nil || f.state != api.PasskeyPending {
+		st.mu.Unlock()
+		h.refuse(w, http.StatusGone, passkeyEndedWords, "flow_ended", "", nil, "")
+		return
 	}
+	f.state, f.profile, f.gen, f.made = api.PasskeyDone, profile, gen, made
+	f.codeSum = sha256.Sum256(code)
+	redirect := f.returnTo + "?code=" + base64.RawURLEncoding.EncodeToString(code)
 	st.mu.Unlock()
-	h.write(w, http.StatusOK, map[string]string{"state": api.PasskeyDone, "message": "Done — go back to codeaf."})
+	h.write(w, http.StatusOK, map[string]string{"state": api.PasskeyDone, "message": passkeyHandOverWords, "redirect": redirect})
 }
 
-// passkeyRegistered does what a verified registration is for: a join makes
-// the account and spends the link in SignUp's one critical section; a reset
-// replaces every way in; an add puts the passkey on the account. It answers
-// whom the flow signs in (nil for an add) or has answered a refusal.
-func (h *Handler) passkeyRegistered(w http.ResponseWriter, r *http.Request, f passkeyFlow, pk tokens.Passkey, now time.Time) (*api.Profile, int64, bool) {
-	taken := func(words, reason string) {
-		h.refuse(w, http.StatusConflict, words, reason, "", nil, "")
+// passkeyUsed records a verified assertion on the account: its counter, its
+// backup state, and a row for the operator when the counter went backwards
+// (a copied authenticator; a synced passkey never counts, so this is not a
+// refusal, as the library advises). false is a write that failed.
+func (h *Handler) passkeyUsed(r *http.Request, acct tokens.Account, cred *webauthn.Credential, now time.Time) bool {
+	if cred == nil {
+		return false
 	}
-	ended := func(words string) {
-		st := h.pk()
-		st.mu.Lock()
-		if live := st.flows[f.id]; live != nil {
-			live.state, live.message = api.PasskeyRefused, words
-		}
-		st.mu.Unlock()
-		h.refuse(w, http.StatusGone, words, "flow_ended", "", nil, "")
+	credID := base64.RawURLEncoding.EncodeToString(cred.ID)
+	err := tokens.UsedPasskey(h.config.TokensPath, acct.Handle, credID, cred.Authenticator.SignCount, cred.Flags.BackupState, now)
+	h.forgetAccounts()
+	if err != nil {
+		return false
 	}
+	if cred.Authenticator.CloneWarning {
+		_ = h.accountEvent(r, acct.Handle, "", "passkey counter went backwards", "a passkey's signature counter went backwards; it may have been copied", false)
+	}
+	return true
+}
+
+// secret32 is 32 bytes from crypto/rand.
+func secret32() ([]byte, error) {
+	b := make([]byte, 32)
+	_, err := rand.Read(b)
+	return b, err
+}
+
+// passkeyRegistered does what a verified registration is for, at the poll
+// that showed the code: a join makes the account and spends the link in
+// SignUp's one critical section; a reset replaces every way in; an add puts
+// the passkey on the account. It answers whom the flow signs in (nil for an
+// add) and at what generation, or the words of a refusal; err is a fault.
+func (h *Handler) passkeyRegistered(r *http.Request, f passkeyFlow, pk tokens.Passkey, now time.Time) (*api.Profile, int64, string, error) {
 	switch {
 	case f.purpose == api.PasskeyAdd:
 		err := tokens.AddPasskey(h.config.TokensPath, f.handle, pk)
 		h.forgetAccounts()
 		switch {
 		case errors.Is(err, tokens.ErrPasskeyTaken):
-			taken(passkeyTakenWords, "passkey_taken")
-			return nil, 0, false
+			return nil, 0, passkeyTakenWords, nil
 		case errors.Is(err, tokens.ErrNoAccount):
-			ended(passkeyEndedWords)
-			return nil, 0, false
-		case h.failed(w, err):
-			return nil, 0, false
+			return nil, 0, passkeyEndedWords, nil
+		case err != nil:
+			return nil, 0, "", err
 		}
-		if h.failed(w, h.accountEvent(r, f.handle, "", "added passkey", "added a passkey", false)) {
-			return nil, 0, false
-		}
-		return nil, 0, true
+		return nil, 0, "", h.accountEvent(r, f.handle, "", "added passkey", "added a passkey", false)
 	case f.resetSecret != "":
 		handle, gen, err := tokens.UseResetPasskey(h.config.TokensPath, f.resetSecret, pk, now)
 		h.forgetAccounts()
 		switch {
 		case errors.Is(err, tokens.ErrPasskeyTaken):
-			taken(passkeyTakenWords, "passkey_taken")
-			return nil, 0, false
+			return nil, 0, passkeyTakenWords, nil
 		case errors.Is(err, tokens.ErrResetInvalid):
-			ended("This reset link has been used or has ended.")
-			return nil, 0, false
-		case h.failed(w, err):
-			return nil, 0, false
+			return nil, 0, "This reset link has been used or has ended.", nil
+		case err != nil:
+			return nil, 0, "", err
 		}
-		if h.failed(w, h.endSessionsOf(handle, "", gen)) {
-			return nil, 0, false
+		if err := h.endSessionsOf(handle, "", gen); err != nil {
+			return nil, 0, "", err
 		}
-		if h.failed(w, h.accountEvent(r, handle, "", "reset password", "chose a new passkey through the operator's reset link", false)) {
-			return nil, 0, false
+		if err := h.accountEvent(r, handle, "", "reset password", "chose a new passkey through the operator's reset link", false); err != nil {
+			return nil, 0, "", err
 		}
 		acct, _, _ := h.passwordAccount(handle)
 		name := acct.Name
 		if name == "" {
 			name = handle
 		}
-		return &api.Profile{Handle: handle, Name: name, Scopes: []string{}, Kind: tokens.KindPassword}, gen, true
+		return &api.Profile{Handle: handle, Name: name, Scopes: []string{}, Kind: tokens.KindPassword}, gen, "", nil
 	}
 	profile := api.Profile{Handle: f.username, Name: f.name, Scopes: []string{}, Kind: tokens.KindPassword}
 	h.joinMu.Lock()
@@ -1204,8 +1527,7 @@ func (h *Handler) passkeyRegistered(w http.ResponseWriter, r *http.Request, f pa
 	referenced, err := h.handleReferenced(f.username)
 	if err != nil {
 		h.joinMu.Unlock()
-		h.failed(w, err)
-		return nil, 0, false
+		return nil, 0, "", err
 	}
 	held := func(handle string) bool { return referenced || h.knownElsewhere(handle) }
 	_, err = tokens.SignUp(h.config.TokensPath, f.linkID, tokens.Account{Name: f.name, UserID: f.userID, Passkeys: []tokens.Passkey{pk}},
@@ -1222,26 +1544,21 @@ func (h *Handler) passkeyRegistered(w http.ResponseWriter, r *http.Request, f pa
 	switch {
 	case err == nil:
 	case errors.Is(err, tokens.ErrHandleTaken):
-		taken(refusalWords[reasonUsernameTaken], reasonUsernameTaken)
-		return nil, 0, false
+		return nil, 0, refusalWords[reasonUsernameTaken], nil
 	case errors.Is(err, tokens.ErrPasskeyTaken):
-		taken(passkeyTakenWords, "passkey_taken")
-		return nil, 0, false
+		return nil, 0, passkeyTakenWords, nil
 	case errors.Is(err, tokens.ErrGitHubLink):
-		taken(refusalWords[reasonGitHubLink], reasonGitHubLink)
-		return nil, 0, false
+		return nil, 0, refusalWords[reasonGitHubLink], nil
 	case errors.Is(err, tokens.ErrRevoked), errors.Is(err, tokens.ErrExpired), errors.Is(err, tokens.ErrUsedUp), errors.Is(err, os.ErrPermission):
-		ended("This access link has been used or has ended.")
-		return nil, 0, false
+		return nil, 0, "This access link has been used or has ended.", nil
 	default:
-		h.failed(w, err)
-		return nil, 0, false
+		return nil, 0, "", err
 	}
-	if h.failed(w, h.accountEvent(r, f.username, "", "signed up", "signed up with a passkey", f.operator)) {
-		return nil, 0, false
+	if err := h.accountEvent(r, f.username, "", "signed up", "signed up with a passkey", f.operator); err != nil {
+		return nil, 0, "", err
 	}
 	// A new account starts at generation 1, as SignUp writes it.
-	return &profile, 1, true
+	return &profile, 1, "", nil
 }
 
 // passkeyNameTaken is the join's early answer to whether username is free,

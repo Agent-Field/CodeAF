@@ -20,6 +20,21 @@ import (
 //   factory.passkey_cancel  the client gave up
 //   factory.passkey_list    the signed-in person's passkeys
 //   factory.passkey_remove  remove one (the server refuses the last way in)
+//   factory.password_confirm  the current password, as a step-up
+//
+// THE CEREMONY ENDS ON THIS COMPUTER. The engine keeps a one-shot listener on
+// 127.0.0.1 for each flow; the server's page sends the browser there with a
+// one-time code, and only a poll with that code gets the session. A ceremony
+// finished in a browser on another device polls as "elsewhere" and never
+// completes; the client keeps polling (it may still be opened here) or
+// cancels.
+//
+// STEP-UP. Adding a passkey, setting a first password (password_change with
+// an empty current) and removing a passkey need a proof made in the last
+// five minutes; without one they fail with [CodeStepUp]. The client proves it
+// with passkey_start purpose "confirm" (one of the person's passkeys), or
+// password_confirm, and retries once. An add by a person who already has
+// passkeys asks for one of them on the page itself and never fails so.
 //
 // THE ENGINE HOLDS THE VERIFIER. The flow is started with the SHA-256 of a
 // 32-byte secret the engine makes and keeps; the server answers the session
@@ -36,16 +51,25 @@ import (
 // passkey methods.
 const FeatureFactoryPasskey = "factory_passkey"
 
+// CodeStepUp is an action that needs a recent proof (see the file comment).
+const CodeStepUp = "step_up"
+
 // Passkey flow purposes and poll states, as the server spells them.
 const (
 	FactoryPasskeySignIn = "sign_in"
 	FactoryPasskeyJoin   = "join"
 	FactoryPasskeyAdd    = "add"
+	// FactoryPasskeyConfirm proves the signed-in person is there, with one
+	// of their passkeys: a step-up, signing nobody new in.
+	FactoryPasskeyConfirm = "confirm"
 
 	FactoryPasskeyPending = "pending"
 	FactoryPasskeyDone    = "done"
 	FactoryPasskeyExpired = "expired"
 	FactoryPasskeyRefused = "refused"
+	// FactoryPasskeyElsewhere is a ceremony finished in a browser that has
+	// not reached this computer. Not final: keep polling, or cancel.
+	FactoryPasskeyElsewhere = "elsewhere"
 )
 
 // FactoryPasskeyStartParams starts a ceremony. Exactly one of Factory (an
@@ -55,7 +79,7 @@ type FactoryPasskeyStartParams struct {
 	Factory  string `json:"factory,omitempty"`
 	Link     string `json:"link,omitempty"`
 	Caller   string `json:"caller"`
-	Purpose  string `json:"purpose" enum:"sign_in,join,add"`
+	Purpose  string `json:"purpose" enum:"sign_in,join,add,confirm"`
 	Username string `json:"username,omitempty"`
 	Name     string `json:"name,omitempty"`
 }
@@ -78,7 +102,7 @@ type FactoryPasskeyPollParams struct {
 // FactoryPasskeyPolled answers a poll. Factory is the connection the flow
 // signed in to, once done (a join attaches a new one).
 type FactoryPasskeyPolled struct {
-	State   string `json:"state" enum:"pending,done,expired,refused"`
+	State   string `json:"state" enum:"pending,done,expired,refused,elsewhere"`
 	Message string `json:"message,omitempty"`
 	Factory string `json:"factory,omitempty"`
 }
@@ -110,6 +134,12 @@ type FactoryPasskeyRemoveParams struct {
 	ID      string `json:"id"`
 }
 
+// FactoryPasswordConfirmParams shows the signed-in person's current password.
+type FactoryPasswordConfirmParams struct {
+	Factory  string `json:"factory"`
+	Password string `json:"password"`
+}
+
 // FactoryPasskeys is the engine's half of the passkey methods.
 type FactoryPasskeys interface {
 	FactoryPasskeyStart(ctx context.Context, p FactoryPasskeyStartParams) (FactoryPasskeyStarted, error)
@@ -117,6 +147,7 @@ type FactoryPasskeys interface {
 	FactoryPasskeyCancel(ctx context.Context, p FactoryPasskeyPollParams) error
 	FactoryPasskeyList(ctx context.Context, p FactoryPasskeyListParams) (FactoryPasskeyList, error)
 	FactoryPasskeyRemove(ctx context.Context, p FactoryPasskeyRemoveParams) error
+	FactoryPasswordConfirm(ctx context.Context, p FactoryPasswordConfirmParams) error
 }
 
 func withFactoryPasskeyFeature(hello Hello, e Engine) Hello {
@@ -179,7 +210,7 @@ func init() {
 			}
 			p.Factory, p.Link = strings.TrimSpace(p.Factory), strings.TrimSpace(p.Link)
 			switch p.Purpose {
-			case FactoryPasskeySignIn, FactoryPasskeyAdd:
+			case FactoryPasskeySignIn, FactoryPasskeyAdd, FactoryPasskeyConfirm:
 				if p.Link != "" || p.Factory == "" {
 					return Errorf(CodeBadParams, "%s names the factory, not a link", p.Purpose)
 				}
@@ -191,7 +222,7 @@ func init() {
 					return err
 				}
 			default:
-				return Errorf(CodeBadParams, "purpose is sign_in, join or add")
+				return Errorf(CodeBadParams, "purpose is sign_in, join, add or confirm")
 			}
 			if p.Purpose != FactoryPasskeyJoin && (p.Username != "" || p.Name != "") {
 				return Errorf(CodeBadParams, "only join takes a username")
@@ -225,11 +256,20 @@ func init() {
 		}, func(f FactoryPasskeys, ctx context.Context, p FactoryPasskeyRemoveParams) (Empty, error) {
 			return Empty{}, f.FactoryPasskeyRemove(ctx, p)
 		}),
+		"factory.password_confirm": passkeyCall("factory.password_confirm", func(p *FactoryPasswordConfirmParams) error {
+			var err error
+			if p.Factory, err = factoryID(strings.TrimSpace(p.Factory)); err != nil {
+				return err
+			}
+			return factoryPassword("password", p.Password)
+		}, func(f FactoryPasskeys, ctx context.Context, p FactoryPasswordConfirmParams) (Empty, error) {
+			return Empty{}, f.FactoryPasswordConfirm(ctx, p)
+		}),
 	} {
 		methods[name] = m
 		factoryPasskeyMethods[name] = m
 	}
 }
 
-// factoryPasskeyMethods is the table of the five, for the tests that walk it.
+// factoryPasskeyMethods is the table of the six, for the tests that walk it.
 var factoryPasskeyMethods = map[string]method{}

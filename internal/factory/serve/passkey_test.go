@@ -1,19 +1,23 @@
 package serve
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/serve/passkeytest"
@@ -89,6 +93,10 @@ func (o *pwOrg) pkStart(token string, body api.PasskeyStart) (pkFlow, *httptest.
 	if body.CodeChallenge == "" {
 		body.CodeChallenge = challenge
 	}
+	if body.ReturnPort == 0 && body.ReturnPath == "" {
+		path, _ := newVerifier()
+		body.ReturnPort, body.ReturnPath = 49152, path
+	}
 	w := o.do("POST", "/v1/auth/passkey/start", token, body, "")
 	var out api.PasskeyStarted
 	if w.Code == http.StatusCreated {
@@ -133,13 +141,38 @@ func (o *pwOrg) options(flow string, body any) json.RawMessage {
 	return w.Body.Bytes()
 }
 
+// loopbackCodes is the code each finished flow sent "the browser" to the
+// engine's loopback with, as the engine's listener would have taken it.
+var loopbackCodes sync.Map
+
+// finish hands the page's credential back; a done answer's loopback code is
+// kept for poll, as the engine's listener would receive it.
 func (o *pwOrg) finish(flow string, cred json.RawMessage, name string) *httptest.ResponseRecorder {
-	return o.page(flow, "finish", pkOrigin, map[string]any{"credential": cred, "name": name})
+	w := o.page(flow, "finish", pkOrigin, map[string]any{"credential": cred, "name": name})
+	var done struct {
+		Redirect string `json:"redirect"`
+	}
+	if w.Code == 200 && json.Unmarshal(w.Body.Bytes(), &done) == nil && done.Redirect != "" {
+		u, err := url.Parse(done.Redirect)
+		if err != nil || u.Scheme != "http" || u.Host != "127.0.0.1:49152" {
+			o.t.Fatalf("redirect = %q", done.Redirect)
+		}
+		loopbackCodes.Store(flow, u.Query().Get("code"))
+	}
+	return w
 }
 
+// poll is the engine's poll with its verifier and the loopback code.
 func (o *pwOrg) poll(f pkFlow) api.PasskeyPolled {
 	o.t.Helper()
-	w := o.do("POST", "/v1/auth/passkey/poll", "", api.PasskeyPoll{Flow: f.id, Verifier: f.verifier}, "")
+	code, _ := loopbackCodes.Load(f.id)
+	c, _ := code.(string)
+	return o.pollWith(f.id, f.verifier, c)
+}
+
+func (o *pwOrg) pollWith(flow, verifier, code string) api.PasskeyPolled {
+	o.t.Helper()
+	w := o.do("POST", "/v1/auth/passkey/poll", "", api.PasskeyPoll{Flow: flow, Verifier: verifier, Code: code}, "")
 	var out api.PasskeyPolled
 	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &out) != nil {
 		o.t.Fatalf("poll = %d %s", w.Code, w.Body)
@@ -171,6 +204,19 @@ func (o *pwOrg) signInByPasskey(key *softKey) (api.PasskeyPolled, *httptest.Resp
 		return api.PasskeyPolled{}, w
 	}
 	return o.poll(f), w
+}
+
+// confirm is a step-up: a confirm ceremony with one of the person's own
+// passkeys, polled with the code, which makes session recent again.
+func (o *pwOrg) confirm(session string, key *softKey) {
+	o.t.Helper()
+	f := o.mustStart(session, api.PasskeyStart{Purpose: api.PasskeyConfirm})
+	if w := o.finish(f.id, key.get(o.t, o.options(f.id, map[string]string{}), pkOrigin), ""); w.Code != 200 {
+		o.t.Fatalf("confirm finish = %d %s", w.Code, w.Body)
+	}
+	if got := o.poll(f); got.State != api.PasskeyDone || got.AccessToken != "" {
+		o.t.Fatalf("confirm poll = %+v", got)
+	}
 }
 
 func (o *pwOrg) accountOf(handle string) tokens.Account {
@@ -355,9 +401,22 @@ func TestCeremonyRefusals(t *testing.T) {
 		if w := o.do("POST", "/v1/auth/passkey/poll", "", map[string]string{"flow": f.id}, ""); !strings.Contains(w.Body.String(), `"refused"`) || strings.Contains(w.Body.String(), "access_token") {
 			t.Fatalf("poll with no verifier = %d %s", w.Code, w.Body)
 		}
-		// The wrong verifier ended the flow: the right one now finds nothing.
-		if got := o.poll(f); got.State != api.PasskeyExpired || got.AccessToken != "" {
-			t.Fatalf("poll after a wrong verifier = %+v", got)
+		// L2: one wrong verifier is counted, not let end the engine's flow;
+		// the right one still gets the session.
+		if got := o.poll(f); got.State != api.PasskeyDone || got.AccessToken == "" {
+			t.Fatalf("poll after one wrong verifier = %+v", got)
+		}
+		// passkeyWrongMost wrong ones do end it.
+		h := o.mustStart("", api.PasskeyStart{Purpose: api.PasskeySignIn})
+		_ = o.finish(h.id, key.get(t, o.options(h.id, map[string]string{}), pkOrigin), "")
+		for range passkeyWrongMost {
+			guess, _ := newVerifier()
+			if got := o.pollWith(h.id, guess, ""); got.State != api.PasskeyRefused || got.AccessToken != "" {
+				t.Fatalf("a guessed verifier = %+v", got)
+			}
+		}
+		if got := o.poll(h); got.State != api.PasskeyExpired || got.AccessToken != "" {
+			t.Fatalf("poll after %d wrong verifiers = %+v", passkeyWrongMost, got)
 		}
 		g := o.mustStart("", api.PasskeyStart{Purpose: api.PasskeySignIn})
 		opt = o.options(g.id, map[string]string{})
@@ -436,7 +495,8 @@ func TestPollAnswersTheSessionExactlyOnce(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			w := o.do("POST", "/v1/auth/passkey/poll", "", api.PasskeyPoll{Flow: f.id, Verifier: f.verifier}, "")
+			code, _ := loopbackCodes.Load(f.id)
+			w := o.do("POST", "/v1/auth/passkey/poll", "", api.PasskeyPoll{Flow: f.id, Verifier: f.verifier, Code: code.(string)}, "")
 			var out api.PasskeyPolled
 			_ = json.Unmarshal(w.Body.Bytes(), &out)
 			if out.AccessToken != "" {
@@ -509,7 +569,8 @@ func TestAPasskeySignInIsReportedAsAPasskeyNotGitHub(t *testing.T) {
 	if w := o.finish(f.id, key.get(t, o.options(f.id, map[string]string{}), pkOrigin), ""); w.Code != 200 {
 		t.Fatalf("finish = %d %s", w.Code, w.Body)
 	}
-	w := o.do("POST", "/v1/auth/passkey/poll", "", api.PasskeyPoll{Flow: f.id, Verifier: f.verifier}, "")
+	code, _ := loopbackCodes.Load(f.id)
+	w := o.do("POST", "/v1/auth/passkey/poll", "", api.PasskeyPoll{Flow: f.id, Verifier: f.verifier, Code: code.(string)}, "")
 	var polled struct {
 		AccessToken string         `json:"access_token"`
 		Me          map[string]any `json:"me"`
@@ -536,7 +597,9 @@ func TestAPasskeySignInIsReportedAsAPasskeyNotGitHub(t *testing.T) {
 	if !strings.Contains(me.Body.String(), `"sign_in_kind":"passkey"`) {
 		t.Fatalf("after a restart /v1/me = %d %s", me.Code, me.Body)
 	}
-	// The same person signing in with a password is a password sign-in.
+	// The same person signing in with a password is a password sign-in. A
+	// restart forgot the session's proof, so it confirms first.
+	o.confirm(polled.AccessToken, key)
 	if w := o.do("POST", "/v1/me/password", polled.AccessToken, api.PasswordChange{Current: "", New: pwOperator}, ""); w.Code/100 != 2 {
 		t.Fatalf("set a first password = %d %s", w.Code, w.Body)
 	}
@@ -582,13 +645,20 @@ func TestTwoPasskeyJoinsRacingForOneLinkMakeOneAccount(t *testing.T) {
 		opt := o.options(f.id, map[string]string{"username": name})
 		both = append(both, ready{f, newSoftKey(t).create(t, opt, pkOrigin)})
 	}
+	// Both ceremonies verify; the link is spent at the code-bearing poll,
+	// where the two race.
+	for _, r := range both {
+		if w := o.finish(r.f.id, r.cred, ""); w.Code != 200 {
+			t.Fatalf("finish = %d %s", w.Code, w.Body)
+		}
+	}
 	var wins atomic.Int32
 	var wg sync.WaitGroup
 	for _, r := range both {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if w := o.finish(r.f.id, r.cred, ""); w.Code == 200 {
+			if got := o.poll(r.f); got.AccessToken != "" {
 				wins.Add(1)
 			}
 		}()
@@ -674,6 +744,13 @@ func TestAPasswordPersonAddsAPasskeyAndAGitHubSessionCannot(t *testing.T) {
 	if w := o.finish(f.id, key.create(t, o.options(f.id, map[string]string{}), pkOrigin), ""); w.Code != 200 {
 		t.Fatalf("add = %d %s", w.Code, w.Body)
 	}
+	// Nothing is added until the engine's poll shows the loopback code.
+	if len(o.accountOf("santosh").Passkeys) != 0 {
+		t.Fatal("a passkey was added before the code-bearing poll")
+	}
+	if got := o.poll(f); got.State != api.PasskeyDone {
+		t.Fatalf("add poll = %+v", got)
+	}
 	if got, w := o.signInByPasskey(key); w.Code != 200 || got.Me == nil || got.Me.Handle != "santosh" {
 		t.Fatalf("passkey sign-in of a password person = %d %+v", w.Code, got)
 	}
@@ -731,9 +808,13 @@ func TestAResetByPasskeyReplacesEveryWayInAndEndsSessions(t *testing.T) {
 func TestStartsAreThrottledByAddressOnEntry(t *testing.T) {
 	o := newPWOrg(t)
 	for i := range passkeyStarts {
-		if _, w := o.pkStart("", api.PasskeyStart{Purpose: api.PasskeySignIn}); w.Code != http.StatusCreated {
+		f, w := o.pkStart("", api.PasskeyStart{Purpose: api.PasskeySignIn})
+		if w.Code != http.StatusCreated {
 			t.Fatalf("start %d = %d", i, w.Code)
 		}
+		// Cancelled at once, so the address's cap on waiting flows is not
+		// what stops it: the start is spent all the same.
+		o.do("POST", "/v1/auth/passkey/cancel", "", api.PasskeyPoll{Flow: f.id, Verifier: f.verifier}, "")
 	}
 	if _, w := o.pkStart("", api.PasskeyStart{Purpose: api.PasskeySignIn}); w.Code != http.StatusTooManyRequests {
 		t.Fatalf("start past the limit = %d", w.Code)
@@ -809,5 +890,291 @@ func TestPasskeysReachNoSecretSink(t *testing.T) {
 	priv, _ := key.Priv.Bytes()
 	if strings.Contains(string(body), pkB64(priv)) {
 		t.Fatal("a private key reached accounts.json")
+	}
+}
+
+// ── the security review's probes (#2652) ────────────────────────────────────
+
+// doTLS is a request over TLS from remote, as from another machine.
+func (o *pwOrg) doTLS(method, path, token string, body any, remote string) *httptest.ResponseRecorder {
+	data, _ := json.Marshal(body)
+	r := httptest.NewRequest(method, path, bytes.NewReader(data))
+	r.RemoteAddr = remote
+	r.TLS = &tls.ConnectionState{}
+	r.Header.Set("Content-Type", "application/json")
+	if token != "" {
+		r.Header.Set("Authorization", "Bearer "+token)
+	}
+	w := httptest.NewRecorder()
+	o.h.ServeHTTP(w, r)
+	return w
+}
+
+// startFrom starts a sign-in from remote over TLS and answers the flow.
+func (o *pwOrg) startFrom(remote string, body api.PasskeyStart) (pkFlow, *httptest.ResponseRecorder) {
+	verifier, challenge := newVerifier()
+	path, _ := newVerifier()
+	body.CodeChallenge, body.ReturnPort, body.ReturnPath = challenge, 49152, path
+	w := o.doTLS("POST", "/v1/auth/passkey/start", "", body, remote)
+	var out api.PasskeyStarted
+	_ = json.Unmarshal(w.Body.Bytes(), &out)
+	return pkFlow{id: out.Flow, url: out.URL, verifier: verifier}, w
+}
+
+// C1: a sign-in started by someone else and run by the person signs the
+// starter in to nothing. The attacker holds the flow and its verifier; the
+// person runs the genuine page with Touch ID; the code goes to the person's
+// own loopback, so every poll the attacker can make answers no session.
+func TestASignInStartedBySomeoneElseCannotBePhished(t *testing.T) {
+	o := newPWOrg(t)
+	victim := newSoftKey(t)
+	o.joinByPasskey(o.operatorLink(), "santosh", victim)
+
+	attack := o.mustStart("", api.PasskeyStart{Purpose: api.PasskeySignIn})
+	w := o.finish(attack.id, victim.get(t, o.options(attack.id, map[string]string{}), pkOrigin), "")
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"redirect":"http://127.0.0.1:`) || strings.Contains(w.Body.String(), "access_token") {
+		t.Fatalf("the person's ceremony = %d %s", w.Code, w.Body)
+	}
+	// The attacker's engine never received the code: polls without it, and
+	// with guesses, answer no session; the guesses end the flow.
+	if got := o.pollWith(attack.id, attack.verifier, ""); got.State != api.PasskeyElsewhere || got.AccessToken != "" {
+		t.Fatalf("attacker's poll without the code = %+v", got)
+	}
+	// The person's browser, back on the page, is told where it finishes.
+	if w := o.do("GET", "/passkey/"+attack.id, "", nil, ""); w.Code != 200 || !strings.Contains(w.Body.String(), "Finish on the computer that started this") {
+		t.Fatalf("the finished page = %d %.300s", w.Code, w.Body)
+	}
+	for range passkeyWrongMost {
+		guess, _ := newVerifier()
+		if got := o.pollWith(attack.id, attack.verifier, guess); got.AccessToken != "" || got.State != api.PasskeyRefused {
+			t.Fatalf("attacker's guessed code = %+v", got)
+		}
+	}
+	if got := o.poll(attack); got.AccessToken != "" {
+		t.Fatalf("the code after the guesses still answered: %+v", got)
+	}
+
+	// The legitimate flow, whose engine got the code, signs in.
+	if got, w := o.signInByPasskey(victim); w.Code != 200 || got.AccessToken == "" {
+		t.Fatalf("the person's own sign-in = %d %+v", w.Code, got)
+	}
+}
+
+// C1 for add and join: a ceremony run from a stolen url adds nothing and
+// spends nothing, because the account is written only at the poll that
+// shows the code, which the engine that started the flow never gets.
+func TestAStolenAddOrJoinURLChangesNothing(t *testing.T) {
+	o := newPWOrg(t)
+	mine := newSoftKey(t)
+	session := o.joinByPasskey(o.operatorLink(), "santosh", mine)
+	link := o.invite(session)
+
+	add := o.mustStart(session, api.PasskeyStart{Purpose: api.PasskeyAdd})
+	thief := newSoftKey(t)
+	if w := o.finish(add.id, thief.create(t, o.options(add.id, map[string]string{}), pkOrigin), ""); w.Code != 200 {
+		t.Fatalf("thief's add ceremony = %d %s", w.Code, w.Body)
+	}
+	if got := o.pollWith(add.id, add.verifier, ""); got.State != api.PasskeyElsewhere {
+		t.Fatalf("the person's engine's poll = %+v", got)
+	}
+	if n := len(o.accountOf("santosh").Passkeys); n != 1 {
+		t.Fatalf("a stolen add url added a passkey: %d", n)
+	}
+
+	join := o.mustStart("", api.PasskeyStart{Purpose: api.PasskeyJoin, Link: link})
+	if w := o.finish(join.id, thief.create(t, o.options(join.id, map[string]string{"username": "mallory"}), pkOrigin), ""); w.Code != 200 {
+		t.Fatalf("thief's join ceremony = %d %s", w.Code, w.Body)
+	}
+	if _, ok, _ := o.h.passwordAccount("mallory"); ok {
+		t.Fatal("a stolen join url made an account")
+	}
+	// The link is still there for the person it was sent to.
+	o.joinByPasskey(link, "abir", newSoftKey(t))
+}
+
+// H1: a stolen session cannot become a permanent takeover. Past the
+// step-up window it can set no first password, add no passkey of its own
+// and remove none of the person's.
+func TestAStolenSessionCannotTakeAnAccountOver(t *testing.T) {
+	o := newPWOrg(t)
+	own := newSoftKey(t)
+	o.joinByPasskey(o.operatorLink(), "santosh", own)
+	stolen := o.token2(own)
+	o.advance(passkeyStepUpLife + time.Second)
+
+	stepUp := func(what string, w *httptest.ResponseRecorder) {
+		t.Helper()
+		if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), api.ReasonStepUp) {
+			t.Fatalf("%s without a step-up = %d %s", what, w.Code, w.Body)
+		}
+	}
+	stepUp("a first password", o.do("POST", "/v1/me/password", stolen, api.PasswordChange{Current: "", New: "the attacker's own passphrase"}, ""))
+	stepUp("removing the person's passkey", o.do("POST", "/v1/me/passkeys/remove", stolen, api.PasskeyRemove{ID: pkB64(own.ID)}, ""))
+
+	// An add first asks one of the person's own passkeys, which the
+	// attacker's key is not.
+	add := o.mustStart(stolen, api.PasskeyStart{Purpose: api.PasskeyAdd})
+	opt := o.options(add.id, map[string]string{})
+	if !strings.Contains(string(opt), `"kind":"get"`) || !strings.Contains(string(opt), pkB64(own.ID)) {
+		t.Fatalf("an add without a step-up asked: %s", opt)
+	}
+	attacker := newSoftKey(t)
+	if w := o.finish(add.id, attacker.get(t, opt, pkOrigin), ""); w.Code != http.StatusBadRequest {
+		t.Fatalf("the attacker's key as the step-up = %d %s", w.Code, w.Body)
+	}
+	opt = o.options(add.id, map[string]string{})
+	if w := o.finish(add.id, attacker.create(t, opt, pkOrigin), ""); w.Code != http.StatusBadRequest {
+		t.Fatalf("a new passkey in place of the step-up = %d %s", w.Code, w.Body)
+	}
+	_ = o.poll(add)
+	if acct := o.accountOf("santosh"); len(acct.Passkeys) != 1 || acct.Hash != "" {
+		t.Fatalf("the account changed: %d passkeys, password %v", len(acct.Passkeys), acct.Hash != "")
+	}
+	// A passkey-only person has no password to confirm with.
+	if w := o.do("POST", "/v1/me/password/confirm", stolen, api.PasswordConfirm{Password: "anything"}, ""); w.Code != http.StatusNotFound {
+		t.Fatalf("password confirm with no password = %d", w.Code)
+	}
+
+	// The person, confirming with their own passkey, may.
+	o.confirm(stolen, own)
+	if w := o.do("POST", "/v1/me/password", stolen, api.PasswordChange{Current: "", New: pwOperator}, ""); w.Code/100 != 2 {
+		t.Fatalf("a first password after confirming = %d %s", w.Code, w.Body)
+	}
+}
+
+// H1 for a password person: the current password is the step-up.
+func TestAPasswordPersonStepsUpWithTheirPassword(t *testing.T) {
+	o := newPWOrg(t)
+	session := o.signUp(o.operatorLink(), "santosh", pwOperator)
+	o.advance(passkeyStepUpLife + time.Second)
+	if _, w := o.pkStart(session, api.PasskeyStart{Purpose: api.PasskeyAdd}); w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), api.ReasonStepUp) {
+		t.Fatalf("an add without a step-up = %d %s", w.Code, w.Body)
+	}
+	if w := o.do("POST", "/v1/me/password/confirm", session, api.PasswordConfirm{Password: "not the password"}, ""); w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "current_wrong") {
+		t.Fatalf("a wrong password = %d %s", w.Code, w.Body)
+	}
+	if w := o.do("POST", "/v1/me/password/confirm", session, api.PasswordConfirm{Password: pwOperator}, ""); w.Code != http.StatusNoContent {
+		t.Fatalf("the right password = %d %s", w.Code, w.Body)
+	}
+	key := newSoftKey(t)
+	f := o.mustStart(session, api.PasskeyStart{Purpose: api.PasskeyAdd})
+	if w := o.finish(f.id, key.create(t, o.options(f.id, map[string]string{}), pkOrigin), ""); w.Code != 200 {
+		t.Fatalf("add after confirming = %d %s", w.Code, w.Body)
+	}
+	if got := o.poll(f); got.State != api.PasskeyDone || len(o.accountOf("santosh").Passkeys) != 1 {
+		t.Fatalf("add poll = %+v", got)
+	}
+}
+
+// M1: a flood of sign-in starts from many addresses cannot shut a person
+// out. Sign-ins hold only part of the table; a link-bearing join still
+// starts; a fresh sign-in makes room by dropping the oldest unopened one;
+// and a flow whose page the person opened is never the one dropped.
+func TestAFloodOfStartsLeavesRoomForAPerson(t *testing.T) {
+	o := newPWOrg(t)
+	key := newSoftKey(t)
+	operator := o.joinByPasskey(o.operatorLink(), "santosh", key)
+	link := o.invite(operator)
+	// The person's own sign-in, page opened.
+	mine := o.mustStart("", api.PasskeyStart{Purpose: api.PasskeySignIn})
+	if w := o.do("GET", "/passkey/"+mine.id, "", nil, ""); w.Code != 200 {
+		t.Fatalf("page = %d", w.Code)
+	}
+	refused := 0
+	for a := range 80 {
+		for range passkeyFlowsPerAddr + 2 {
+			if _, w := o.startFrom(fmt.Sprintf("198.18.%d.%d:1", a/250, a%250+1), api.PasskeyStart{Purpose: api.PasskeySignIn}); w.Code == http.StatusTooManyRequests {
+				refused++
+			}
+		}
+	}
+	if refused == 0 {
+		t.Fatal("no address was held to its cap of waiting flows")
+	}
+	st := o.h.pk()
+	st.mu.Lock()
+	signIns := 0
+	for _, f := range st.flows {
+		if f.purpose == api.PasskeySignIn {
+			signIns++
+		}
+	}
+	_, kept := st.flows[mine.id]
+	st.mu.Unlock()
+	if signIns > passkeySignInFlowsMost || !kept {
+		t.Fatalf("sign-ins = %d (most %d), the opened flow kept = %v", signIns, passkeySignInFlowsMost, kept)
+	}
+	o.mustStart("", api.PasskeyStart{Purpose: api.PasskeyJoin, Link: link})
+	if _, w := o.startFrom("203.0.113.77:1", api.PasskeyStart{Purpose: api.PasskeySignIn}); w.Code != http.StatusCreated {
+		t.Fatalf("a person's fresh sign-in during the flood = %d %s", w.Code, w.Body)
+	}
+	if w := o.finish(mine.id, key.get(t, o.options(mine.id, map[string]string{}), pkOrigin), ""); w.Code != 200 {
+		t.Fatalf("the opened flow's ceremony = %d %s", w.Code, w.Body)
+	}
+	if got := o.poll(mine); got.AccessToken == "" {
+		t.Fatalf("the opened flow's poll = %+v", got)
+	}
+	// An unopened sign-in lives two minutes.
+	lazy := o.mustStart("", api.PasskeyStart{Purpose: api.PasskeySignIn})
+	o.advance(passkeyUnopenedLife)
+	if got := o.poll(lazy); got.State != api.PasskeyExpired {
+		t.Fatalf("an unopened sign-in after %v = %+v", passkeyUnopenedLife, got)
+	}
+}
+
+// M1: starts from one IPv6 /48 share one budget, however many /64s.
+func TestStartsFromOneIPv6SiteShareABudget(t *testing.T) {
+	o := newPWOrg(t)
+	created := 0
+	for i := range passkeyStarts + 5 {
+		f, w := o.startFrom(fmt.Sprintf("[2001:db8:1:%x::1]:1", i), api.PasskeyStart{Purpose: api.PasskeySignIn})
+		if w.Code == http.StatusCreated {
+			created++
+			o.doTLS("POST", "/v1/auth/passkey/cancel", "", api.PasskeyPoll{Flow: f.id, Verifier: f.verifier}, "[2001:db8:1::1]:1")
+		}
+	}
+	if created != passkeyStarts {
+		t.Fatalf("starts from one /48 = %d, want %d", created, passkeyStarts)
+	}
+	if _, w := o.startFrom("[2001:db8:2::1]:1", api.PasskeyStart{Purpose: api.PasskeySignIn}); w.Code != http.StatusCreated {
+		t.Fatalf("another /48 = %d", w.Code)
+	}
+}
+
+// L1: an address that spells the default port works; the browser's origin
+// never carries it.
+func TestADefaultPortInTheAddressStillWorks(t *testing.T) {
+	o := newPWOrg(t)
+	o.cfg.Address = "https://org.test:443"
+	o.h = New(o.h.seam, o.cfg)
+	t.Cleanup(o.h.Close)
+	if rp, origin, ok := o.h.relyingParty(); !ok || rp != "org.test" || origin != "https://org.test" {
+		t.Fatalf("relying party = %q %q %v", rp, origin, ok)
+	}
+	key := newSoftKey(t)
+	o.joinByPasskey(o.operatorLink(), "santosh", key)
+	if got, w := o.signInByPasskey(key); w.Code != 200 || got.AccessToken == "" {
+		t.Fatalf("sign in = %d %+v", w.Code, got)
+	}
+}
+
+// C1: a start must name the engine's loopback listener, on 127.0.0.1 only.
+func TestAStartNamesTheEnginesLoopback(t *testing.T) {
+	o := newPWOrg(t)
+	_, challenge := newVerifier()
+	path, _ := newVerifier()
+	for name, body := range map[string]api.PasskeyStart{
+		"no port":      {Purpose: api.PasskeySignIn, CodeChallenge: challenge, ReturnPath: path},
+		"no path":      {Purpose: api.PasskeySignIn, CodeChallenge: challenge, ReturnPort: 49152},
+		"a low port":   {Purpose: api.PasskeySignIn, CodeChallenge: challenge, ReturnPort: 80, ReturnPath: path},
+		"a short path": {Purpose: api.PasskeySignIn, CodeChallenge: challenge, ReturnPort: 49152, ReturnPath: "abc"},
+	} {
+		if w := o.do("POST", "/v1/auth/passkey/start", "", body, ""); w.Code != http.StatusUnprocessableEntity {
+			t.Errorf("%s = %d", name, w.Code)
+		}
+	}
+	// The cancel door is https-only like the others.
+	if w := o.do("POST", "/v1/auth/passkey/cancel", "", api.PasskeyPoll{Flow: "x", Verifier: "y"}, "203.0.113.9:5000"); w.Code != http.StatusForbidden {
+		t.Fatalf("cancel over plain http from afar = %d", w.Code)
 	}
 }

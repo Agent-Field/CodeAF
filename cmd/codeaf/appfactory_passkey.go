@@ -20,6 +20,17 @@ package main
 // THE URL IS CHECKED BEFORE A CLIENT OPENS IT: it must be on the very origin
 // the engine asked, so a server cannot send the person's browser anywhere
 // else.
+//
+// AND THE CEREMONY MUST END ON THIS COMPUTER. Every flow has a loopback
+// listener (appfactory_loopback.go); the server answers a done flow only to a
+// poll with its code. Until the code arrives a finished ceremony polls as
+// pending, and after passkeyElsewhereAfter as elsewhere: it was finished in a
+// browser that is not on this computer.
+//
+// STEP-UP. Adding a passkey, setting a first password and removing a passkey
+// need a proof made in the last few minutes. The server says step_up_required
+// and this wire says step_up; the client proves it with purpose confirm (a
+// passkey) or factory.password_confirm (the current password), then retries.
 
 import (
 	"context"
@@ -45,11 +56,19 @@ type appPasskeyFlow struct {
 	caller   string
 	purpose  string
 	origin   string
-	conn     string // the connection for sign_in and add; "" for a join
+	conn     string // the connection for sign_in, add and confirm; "" for a join
 	verifier string
 	expires  time.Time
 	busy     bool
+	loopback *passkeyLoopback
+	// finishedAt is when the server first said the ceremony finished
+	// without this engine having the code.
+	finishedAt time.Time
 }
+
+// passkeyElsewhereAfter is how long a finished ceremony waits for its browser
+// to reach this engine's loopback before the client is told it ran elsewhere.
+const passkeyElsewhereAfter = 5 * time.Second
 
 func (h *appFactoryHub) passkeyFlowsLocked() map[string]*appPasskeyFlow {
 	if h.passkeyFlows == nil {
@@ -58,6 +77,7 @@ func (h *appFactoryHub) passkeyFlowsLocked() map[string]*appPasskeyFlow {
 	now := h.now()
 	for id, f := range h.passkeyFlows {
 		if !f.busy && !now.Before(f.expires) {
+			f.loopback.close()
 			delete(h.passkeyFlows, id)
 		}
 	}
@@ -108,7 +128,7 @@ func (b *appBackend) FactoryPasskeyStart(ctx context.Context, p appwire.FactoryP
 			return appwire.FactoryPasskeyStarted{}, appwire.Errorf(appwire.CodeConflict, "this machine's own factory has no sign-in")
 		}
 		origin, conn = row.URL, row.ID
-	case appwire.FactoryPasskeyAdd:
+	case appwire.FactoryPasskeyAdd, appwire.FactoryPasskeyConfirm:
 		row, held, err := h.credentialed(ctx, p.Factory)
 		if err != nil {
 			return appwire.FactoryPasskeyStarted{}, err
@@ -125,8 +145,19 @@ func (b *appBackend) FactoryPasskeyStart(ctx context.Context, p appwire.FactoryP
 	if err != nil {
 		return appwire.FactoryPasskeyStarted{}, err
 	}
+	lb, err := openPasskeyLoopback()
+	if err != nil {
+		return appwire.FactoryPasskeyStarted{}, err
+	}
+	kept := false
+	defer func() {
+		if !kept {
+			lb.close()
+		}
+	}()
 	r, err := h.send(ctx, origin, token, http.MethodPost, "/v1/auth/passkey/start", api.PasskeyStart{Purpose: p.Purpose, Link: p.Link,
-		Username: p.Username, Name: strings.TrimSpace(p.Name), CodeChallenge: challenge}, appFactorySmall, nil)
+		Username: p.Username, Name: strings.TrimSpace(p.Name), CodeChallenge: challenge,
+		ReturnPort: lb.port(), ReturnPath: lb.path}, appFactorySmall, nil)
 	if err != nil {
 		return appwire.FactoryPasskeyStarted{}, err
 	}
@@ -146,8 +177,12 @@ func (b *appBackend) FactoryPasskeyStart(ctx context.Context, p appwire.FactoryP
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if h.closed {
+		return appwire.FactoryPasskeyStarted{}, appwire.Errorf(appwire.CodeClosed, "the engine is stopping")
+	}
 	h.passkeyFlowsLocked()[started.Flow] = &appPasskeyFlow{caller: p.Caller, purpose: p.Purpose, origin: origin, conn: conn,
-		verifier: verifier, expires: expires}
+		verifier: verifier, expires: expires, loopback: lb}
+	kept = true
 	return appwire.FactoryPasskeyStarted{Flow: started.Flow, URL: started.URL, ExpiresAt: started.ExpiresAt}, nil
 }
 
@@ -187,6 +222,7 @@ func (h *appFactoryHub) releasePasskeyFlow(flow string, end bool) {
 	if f := h.passkeyFlows[flow]; f != nil {
 		f.busy = false
 		if end {
+			f.loopback.close()
 			delete(h.passkeyFlows, flow)
 		}
 	}
@@ -198,7 +234,8 @@ func (b *appBackend) FactoryPasskeyPoll(ctx context.Context, p appwire.FactoryPa
 	if err != nil {
 		return appwire.FactoryPasskeyPolled{}, err
 	}
-	r, err := h.send(ctx, f.origin, "", http.MethodPost, "/v1/auth/passkey/poll", api.PasskeyPoll{Flow: p.Flow, Verifier: f.verifier}, appFactorySmall, nil)
+	code := f.loopback.received()
+	r, err := h.send(ctx, f.origin, "", http.MethodPost, "/v1/auth/passkey/poll", api.PasskeyPoll{Flow: p.Flow, Verifier: f.verifier, Code: code}, appFactorySmall, nil)
 	if err != nil {
 		h.releasePasskeyFlow(p.Flow, false)
 		return appwire.FactoryPasskeyPolled{}, err
@@ -220,6 +257,12 @@ func (b *appBackend) FactoryPasskeyPoll(ctx context.Context, p appwire.FactoryPa
 	case api.PasskeyPending:
 		h.releasePasskeyFlow(p.Flow, false)
 		return appwire.FactoryPasskeyPolled{State: appwire.FactoryPasskeyPending}, nil
+	case api.PasskeyElsewhere:
+		// Finished, but the browser has not reached this engine (yet): a
+		// moment's grace for the redirect, then say where it went.
+		state := h.passkeyFinishedElsewhere(p.Flow)
+		h.releasePasskeyFlow(p.Flow, false)
+		return appwire.FactoryPasskeyPolled{State: state}, nil
 	case api.PasskeyExpired, api.PasskeyRefused:
 		h.releasePasskeyFlow(p.Flow, true)
 		return appwire.FactoryPasskeyPolled{State: polled.State, Message: message}, nil
@@ -231,7 +274,7 @@ func (b *appBackend) FactoryPasskeyPoll(ctx context.Context, p appwire.FactoryPa
 	// Done. The flow ends whatever happens next: the server answers a done
 	// flow once.
 	defer h.releasePasskeyFlow(p.Flow, true)
-	if f.purpose == appwire.FactoryPasskeyAdd {
+	if f.purpose == appwire.FactoryPasskeyAdd || f.purpose == appwire.FactoryPasskeyConfirm {
 		return appwire.FactoryPasskeyPolled{State: appwire.FactoryPasskeyDone, Factory: f.conn}, nil
 	}
 	if polled.AccessToken == "" {
@@ -279,6 +322,25 @@ func (b *appBackend) FactoryPasskeyPoll(ctx context.Context, p appwire.FactoryPa
 	return appwire.FactoryPasskeyPolled{State: appwire.FactoryPasskeyDone, Factory: id}, nil
 }
 
+// passkeyFinishedElsewhere is the state a finished ceremony without the code
+// polls as: pending for passkeyElsewhereAfter, then elsewhere.
+func (h *appFactoryHub) passkeyFinishedElsewhere(flow string) string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	f := h.passkeyFlows[flow]
+	if f == nil {
+		return appwire.FactoryPasskeyPending
+	}
+	now := h.now()
+	if f.finishedAt.IsZero() {
+		f.finishedAt = now
+	}
+	if now.Sub(f.finishedAt) < passkeyElsewhereAfter {
+		return appwire.FactoryPasskeyPending
+	}
+	return appwire.FactoryPasskeyElsewhere
+}
+
 func (b *appBackend) FactoryPasskeyCancel(ctx context.Context, p appwire.FactoryPasskeyPollParams) error {
 	h := b.factoryHub()
 	f, err := h.claimPasskeyFlow(p.Flow, p.Caller)
@@ -315,6 +377,31 @@ func (b *appBackend) FactoryPasskeyList(ctx context.Context, p appwire.FactoryPa
 			LastUsedAt: pk.LastUsedAt, Synced: pk.Synced})
 	}
 	return out, nil
+}
+
+// FactoryPasswordConfirm shows the signed-in person's current password as a
+// step-up.
+func (b *appBackend) FactoryPasswordConfirm(ctx context.Context, p appwire.FactoryPasswordConfirmParams) error {
+	coverSecret(p.Password)
+	h := b.factoryHub()
+	row, token, err := h.credentialed(ctx, p.Factory)
+	if err != nil {
+		return err
+	}
+	if token == "" {
+		return appwire.Errorf(appwire.CodeSignedOut, "sign in to this factory")
+	}
+	r, err := h.send(ctx, row.URL, token, http.MethodPost, "/v1/me/password/confirm", api.PasswordConfirm{Password: p.Password}, appFactorySmall, nil)
+	if err != nil {
+		return err
+	}
+	switch r.status {
+	case http.StatusNoContent, http.StatusOK:
+		return nil
+	case http.StatusForbidden:
+		return passwordFailure(r)
+	}
+	return appFactoryFailure(r)
 }
 
 func (b *appBackend) FactoryPasskeyRemove(ctx context.Context, p appwire.FactoryPasskeyRemoveParams) error {

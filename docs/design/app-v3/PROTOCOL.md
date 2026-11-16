@@ -248,6 +248,7 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.passkey_cancel` | `in.FactoryPasskeyPollParams` | `Empty` |
 | `factory.passkey_list` | `in.FactoryPasskeyListParams` | `FactoryPasskeyList` |
 | `factory.passkey_remove` | `in.FactoryPasskeyRemoveParams` | `Empty` |
+| `factory.password_confirm` | `in.FactoryPasswordConfirmParams` | `Empty` |
 | `factory.activity` | `in.FactoryActivityParams` | `FactoryActivity` |
 | `factory.attach` | `in.FactoryAttachParams` | `FactoryConnection` |
 | `factory.capabilities` | `in.Empty` | `FactoryCapabilities` |
@@ -2884,10 +2885,26 @@ cannot mint a session.
 - `factory.passkey_poll {flow, caller}` answers `{state, message?, factory?}`:
   `pending` until the browser has finished; `done` with `factory` = the
   connection now signed in (a join attaches a new one); `expired` (ten minutes
-  passed, or the flow is unknown); `refused` with `message`. A client polls
-  about every two seconds. Done is answered once; the session stays in the
-  engine exactly as `factory.access_sign_in` keeps one. An `add` signs nobody
-  in.
+  passed, or the flow is unknown); `refused` with `message`; `elsewhere`
+  when the ceremony finished in a browser that has not reached this computer
+  (not final: keep polling, or cancel). A client polls about every two
+  seconds. Done is answered once; the session stays in the engine exactly as
+  `factory.access_sign_in` keeps one. An `add` and a `confirm` sign nobody in.
+- Every ceremony ends on this computer. The engine opens a one-shot listener
+  on `127.0.0.1:<ephemeral>` under a random path for each flow; the page sends
+  the browser there with a one-time code, and the server answers `done` only
+  to a poll carrying that code and the verifier. Copy address still works on
+  this computer; on another device the page says "Finish on the computer that
+  started this" and the flow never completes.
+- `purpose: "confirm"` (with `factory`) is a step-up: the signed-in person
+  uses one of their passkeys, and the session counts as proven for five
+  minutes. `factory.password_confirm {factory, password}` answers `{}` and does
+  the same with the current password; a wrong one is `forbidden`, a person
+  without a password `not_found`, too many tries `busy`.
+- Adding a passkey, setting a first password and removing a passkey need a
+  proof in the last five minutes (a sign-in counts). Without one they fail
+  with `step_up`; the client confirms and retries once. An `add` by a person
+  who already has passkeys asks for one of them on the page itself.
 - `factory.passkey_cancel {flow, caller}` answers `{}`; best effort.
 - `factory.passkey_list {factory}` answers `{passkeys: [{id, name, created_at,
   last_used_at?, synced}], password}`. `password` says whether the person also

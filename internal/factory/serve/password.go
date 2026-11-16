@@ -230,7 +230,7 @@ func (h *Handler) mintSessionVia(w http.ResponseWriter, r *http.Request, profile
 	}
 	now := h.now()
 	session := accessSession{id: "session_" + id, expires: now.Add(accessSessionTTL), created: now, lastSeen: now,
-		profile: &profile, device: deviceLabel(r), credGen: gen, via: via}
+		profile: &profile, device: deviceLabel(r), credGen: gen, via: via, verified: now}
 	h.sessions.mu.Lock()
 	acct, held, err := h.freshAccount(profile.Handle)
 	if err == nil && (!held || acct.Gen != gen) {
@@ -612,6 +612,12 @@ func (h *Handler) passwordChange(w http.ResponseWriter, r *http.Request) {
 	// A person who signs in only with a passkey sets a first password with
 	// no current one; the signed-in session is the proof, as it is for
 	// adding a passkey. Anyone with a password must give it.
+	// STEP-UP (passkey_stepup.go): setting a first password with no current
+	// one is adding a way in, which a session alone may not do.
+	if acct.Hash == "" && !h.recentlyVerified(session) {
+		h.refuse(w, http.StatusForbidden, passkeyStepUpWords, api.ReasonStepUp, "", nil, "")
+		return
+	}
 	match, err := acct.Hash == "" && current == "", error(nil)
 	if acct.Hash != "" {
 		match, _, err = verifyPassword(current, acct.Hash)
@@ -626,6 +632,8 @@ func (h *Handler) passwordChange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	try.succeeded(h.now())
+	// Giving the current password is a proof too (passkey_stepup.go).
+	h.markVerified(session.id, h.now())
 	next := normalPassword(body.New)
 	if reason := passwordRefusal(next, handle); reason != "" {
 		h.refuse(w, http.StatusUnprocessableEntity, refusalWords[reason], reason, "", nil, "")

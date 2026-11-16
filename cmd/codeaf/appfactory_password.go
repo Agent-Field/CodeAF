@@ -160,6 +160,12 @@ func passwordFailure(r appFactoryReply) error {
 	if len(words) > 300 {
 		words = words[:300]
 	}
+	var reason struct {
+		Reason string `json:"reason"`
+	}
+	if _ = json.Unmarshal(r.body, &reason); reason.Reason == api.ReasonStepUp {
+		return appFactoryFailure(r)
+	}
 	switch r.status {
 	case http.StatusUnauthorized, http.StatusForbidden:
 		if words == "" {

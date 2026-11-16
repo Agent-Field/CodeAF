@@ -257,6 +257,10 @@ func (h *appFactoryHub) forgetAll() {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.closed = true
+	for id, f := range h.passkeyFlows {
+		f.loopback.close()
+		delete(h.passkeyFlows, id)
+	}
 	h.sessions = map[string]appFactorySession{}
 	h.signIns = map[string]*appFactorySignIn{}
 	h.links = map[string]*appFactoryLink{}
@@ -582,6 +586,11 @@ func appFactoryFailure(r appFactoryReply) error {
 	switch {
 	case r.status >= 300 && r.status < 400:
 		return appwire.Errorf(appwire.CodeUnreachable, "the factory redirected the request, and redirects are not followed")
+	case r.status == http.StatusForbidden && body.Reason == api.ReasonStepUp:
+		if words == "" {
+			words = "Confirm it's you first."
+		}
+		return appwire.Errorf(appwire.CodeStepUp, "%s", words)
 	case r.status == http.StatusUnauthorized && body.Reason == api.ReasonGitHubExpired:
 		return appwire.Errorf(appwire.CodeGitHubExpired, "GitHub access to this factory has expired; reconnect GitHub")
 	case r.status == http.StatusUnauthorized:

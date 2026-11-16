@@ -4,6 +4,13 @@
 // posts back what the authenticator signed. Nothing secret is kept here; the
 // flow id in the url is the page's only handle, and the session it ends in is
 // handed to codeaf, never to this page.
+//
+// THE HAND-OVER. When the server has verified the ceremony it answers a
+// one-time address on 127.0.0.1, codeaf's own listener on the computer that
+// started this; the page sends the browser there. A browser on any other
+// device reaches its own 127.0.0.1, never codeaf's, so nothing finishes
+// there: that is what keeps a sign-in started by someone else from becoming
+// theirs.
 "use strict";
 
 (function () {
@@ -12,7 +19,6 @@
     return;
   }
   var flow = main.dataset.flow;
-  var purpose = main.dataset.purpose;
   var host = main.dataset.host;
   var form = document.getElementById("form");
   var go = document.getElementById("go");
@@ -24,14 +30,34 @@
     status.className = bad ? "status bad" : "status";
   }
 
-  function finished(words) {
+  function finished(words, redirect) {
     if (form) {
       form.hidden = true;
     }
     lede.textContent = "";
     say(words, false);
     document.title = "Done · codeaf";
+    // Only ever codeaf's own loopback listener, as the server spelled it.
+    if (redirect && /^http:\/\/127\.0\.0\.1:[0-9]{4,5}\/[A-Za-z0-9_-]{43}\?code=[A-Za-z0-9_-]{43}$/.test(redirect)) {
+      handedOver = true;
+      // On another device there is no codeaf at that address: the browser
+      // stays here or comes back here, and the page says where to finish.
+      window.setTimeout(elsewhere, 4000);
+      window.location.assign(redirect);
+    }
   }
+
+  var handedOver = false;
+  function elsewhere() {
+    if (handedOver) {
+      say("Finish on the computer that started this. Nothing was signed in on this device.", true);
+    }
+  }
+  window.addEventListener("pageshow", function (event) {
+    if (event.persisted) {
+      elsewhere();
+    }
+  });
 
   // FEATURE DETECTION FIRST: a browser without WebAuthn is told so plainly
   // and pointed at the password, never left with a button that fails.
@@ -179,33 +205,43 @@
     if (document.getElementById("name")) {
       ask.name = value("name");
     }
-    var made = null;
-    post("options", ask).then(function (opt) {
-      if (!opt.ok) {
-        throw { words: opt.data.error || "Something went wrong. Try again." };
-      }
-      if (purpose === "sign_in") {
-        return navigator.credentials.get({ publicKey: requestOptions(opt.data.publicKey) });
-      }
-      return navigator.credentials.create({ publicKey: creationOptions(opt.data.publicKey) });
-    }).then(function (cred) {
-      if (!cred) {
-        throw { words: "Nothing was saved. Try again when you're ready." };
-      }
-      if (purpose !== "sign_in") {
-        made = cred;
-      }
-      say("Checking…", false);
-      return post("finish", { credential: credentialJSON(cred), name: value("label") });
-    }).then(function (fin) {
-      if (!fin.ok) {
-        if (made && fin.data.reason !== "passkey_taken") {
-          forget(made);
+    // One ceremony: ask, let the browser sign, hand back. An add by someone
+    // who already has passkeys asks one of them first ("get"), then makes
+    // the new one ("create") in the same visit.
+    function ceremony() {
+      var made = null;
+      return post("options", ask).then(function (opt) {
+        if (!opt.ok) {
+          throw { words: opt.data.error || "Something went wrong. Try again." };
         }
-        throw { words: fin.data.error || "Something went wrong. Try again." };
-      }
-      finished(fin.data.message || "Done — go back to codeaf.");
-    }).catch(function (err) {
+        if (opt.data.kind === "get") {
+          return navigator.credentials.get({ publicKey: requestOptions(opt.data.publicKey) });
+        }
+        return navigator.credentials.create({ publicKey: creationOptions(opt.data.publicKey) }).then(function (cred) {
+          made = cred;
+          return cred;
+        });
+      }).then(function (cred) {
+        if (!cred) {
+          throw { words: "Nothing was saved. Try again when you're ready." };
+        }
+        say("Checking…", false);
+        return post("finish", { credential: credentialJSON(cred), name: value("label") });
+      }).then(function (fin) {
+        if (!fin.ok) {
+          if (made && fin.data.reason !== "passkey_taken") {
+            forget(made);
+          }
+          throw { words: fin.data.error || "Something went wrong. Try again." };
+        }
+        if (fin.data.state === "continue") {
+          say("Now create the new passkey.", false);
+          return ceremony();
+        }
+        finished(fin.data.message || "Finishing on the computer that started this…", fin.data.redirect);
+      });
+    }
+    ceremony().catch(function (err) {
       go.disabled = false;
       say(err && err.words ? err.words : ceremonyError(err), true);
     });
