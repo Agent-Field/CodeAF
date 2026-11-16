@@ -175,7 +175,7 @@ func TestMovingATaskTakesItsThreadToTheOtherWorkstream(t *testing.T) {
 	}
 }
 
-func TestStartAllNamesTheGroupOverTheWireAndStartsNone(t *testing.T) {
+func TestStartAllLeavesAChatsTasksForTheChat(t *testing.T) {
 	o, path := taskOrg(t, "edit")
 	g := &factory.TaskGroup{Name: "Release 2.4", Kind: "batch"}
 	var first api.WorkstreamTask
@@ -187,15 +187,17 @@ func TestStartAllNamesTheGroupOverTheWireAndStartsNone(t *testing.T) {
 	}
 	var started api.WorkstreamTasks
 	o.do(t, "abir", "POST", path+"/tasks/start_all", -1, api.TasksStartAll{Group: first.Group.ID}, 200, &started)
-	if len(started.Tasks) != 5 {
-		t.Fatalf("named %d", len(started.Tasks))
+	if len(started.Tasks) != 0 {
+		t.Fatalf("started %d", len(started.Tasks))
 	}
-	// Nothing is marked running: whoever wakes the doer says so (live use, L4 B6).
+	// A chat wakes on its person's machine, so nothing here marks its tasks
+	// running (live use, L4 B6).
 	for _, task := range o.tasks(t, "santosh", path) {
 		if task.State != factory.TaskUpNext {
 			t.Fatalf("%s is %q after start all", task.Title, task.State)
 		}
 	}
+	o.do(t, "abir", "PATCH", path+"/tasks/"+first.ID, first.Rev, map[string]any{"state": "running"}, 409, nil)
 }
 
 func TestAJobInTheWorkstreamIsAFactoryTaskNeverACopy(t *testing.T) {
