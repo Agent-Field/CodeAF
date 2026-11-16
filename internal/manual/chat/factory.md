@@ -226,7 +226,7 @@ A new machine during such an attack reads "Too many tries. Wait a few minutes." 
 
 A passkey is the first way into an organization when its server is reached over HTTPS at a DNS name (not a bare IP address, not plain HTTP). Nothing secret is sent to the server: the passkey stays in your iCloud Keychain, Google Password Manager, 1Password, Windows Hello or security key, and signing in is one Touch ID or unlock.
 
-- **It opens your browser.** codeaf opens a page on the organization's own server in your default browser, because a passkey only works on that server's own page. You confirm with Touch ID (or your phone, or your security key) there, the page says "Done — go back to codeaf.", and codeaf is signed in. The page never shows your session to anyone.
+- **It opens your browser.** codeaf opens a page on the organization's own server in your default browser, because a passkey only works on that server's own page. You confirm with Touch ID (or your phone, or your security key) there, codeaf on this computer shows "Done", and codeaf is signed in. The page never shows your session to anyone.
 - **Join with a passkey**: open an invitation or the operator link, choose **Continue with a passkey**, pick a username in the browser. The link is used up in the same step that makes your account.
 - **Sign in again**: **Sign in with a passkey**; no username to type.
 - **No built-in passkey (most Linux machines)**: the browser offers your phone (scan a QR code) or a security key; the page says "Use your phone or a security key."
@@ -234,6 +234,14 @@ A passkey is the first way into an organization when its server is reached over 
 - **Several passkeys**: in Settings, add another ("MacBook Touch ID", "YubiKey"), see when each was last used, or remove one. Removing a passkey ends your other sessions. The last way in cannot be removed: "This is your only way to sign in. Add a password or another passkey first." Someone who joined with a passkey can set a password there too.
 - A passkey sign-in that is never finished ends after ten minutes; one try's challenge lasts five.
 - A GitHub person has no passkeys on the server.
+
+## finish on the same computer — passkey page on another device, Copy address, "Confirm it's you"
+
+A passkey page finishes only on the computer whose codeaf started it. When the passkey is accepted, the page hands over to codeaf on that computer (an address on 127.0.0.1 that only codeaf there listens on), which shows "Done" and signs codeaf in. **Copy address** still works if you paste it into another browser on the same computer. Opened on a phone or another computer, the passkey can be accepted but nothing is signed in: the page says "Finish on the computer that started this", and codeaf on the starting computer waits until you start again there or cancel. So a sign-in address someone else sends you can never sign them in as you; never open one you did not start.
+
+**Confirm it's you.** Adding a passkey, setting a first password and removing a passkey need a recent confirmation: a sign-in, a passkey confirmation or your current password in the last five minutes. Otherwise codeaf asks first: "Confirm it's you first: use one of your passkeys, or enter your current password." A passkey confirmation is a short page of its own ("Confirm it's you"). Adding a passkey when you already have some asks on the same page for one you already have, then for the new one. Setting a first password ends your other sessions, as a change does.
+
+Too many passkey pages waiting from one network are turned away ("Too many passkey sign-ins are waiting. Try again in a minute."); a flood from elsewhere cannot crowd out an invitation or a signed-in person, and a sign-in page nobody opens ends after two minutes.
 
 ## forgot password — operator reset link, one hour, password people only
 
