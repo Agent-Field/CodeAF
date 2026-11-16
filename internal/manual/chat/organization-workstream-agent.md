@@ -33,6 +33,12 @@ With `workstream_pages` it reads the workstream (name, purpose, budget, pages, d
 
 It cannot run commands, read or change a repository, open files on a computer, start or stop Factory work, search the web or remember things between workstreams. For any of that, use `driver` mode, where the agent runs on a person's laptop with their tools.
 
+## does Afi know today's date — the date and time, your time zone, deadlines
+
+Yes. Every message you send tells the server's Afi the date and time where you are: the app sends your computer's time zone with the message, and Afi works out "today", "tomorrow" and every deadline from that date, never from a date it read on a page. If no time zone arrives, it uses the server's own clock and knows that it is the server's.
+
+When Afi changes something for you, it changes only what you asked, and its answer lists every change it made, including any status, rating, owner or date it changed along the way.
+
 ## Afi made a task on the server — who owns it, who it says made it, what Afi may change
 
 A task Afi makes is owned by the person who asked, unless they named someone else in the workstream or Everyone; "done by" is Afi, and it came from Afi. Lines Afi writes on a thread are signed Afi. Afi changes only work an agent does (its own tasks and chats' tasks); on a person's task or a Factory task it can only comment. An Ask it puts on a task has at most one recommended choice, listed first, and the task then waits on its owner, who alone answers it.

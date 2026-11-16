@@ -66,6 +66,11 @@ type AgentTurn struct {
 	// Turn names this message; Asker is the handle of who sent it.
 	Turn, Asker string
 	Text        string
+	// Now is when the message arrived, and TZ the asker's time zone (an
+	// IANA name) when their app sent one: the agent is told today's date in
+	// it, so it never takes a date it read for today (L3 F-17).
+	Now time.Time
+	TZ  string
 	// Key is the organization's model key (OpenRouter's).
 	Key string
 	// Dir is a folder kept for this workstream's agent alone, across turns: its
@@ -397,7 +402,7 @@ func (h *Handler) postAgentMessage(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusForbidden, "talking to this workstream's agent needs a signed-in person")
 		return
 	}
-	err := h.startAgentTurn(ws, v, asker, text)
+	err := h.startAgentTurn(ws, v, asker, text, strings.TrimSpace(body.TZ))
 	if errors.Is(err, errAgentBusy) {
 		h.write(w, http.StatusConflict, map[string]string{"error": "the agent is still answering your last message; wait for it, or stop it", "reason": "busy", "by": asker})
 		return
@@ -411,7 +416,7 @@ func (h *Handler) postAgentMessage(w http.ResponseWriter, r *http.Request) {
 // startAgentTurn claims asker's conversation with ws's agent for one message
 // and runs it in the background. It is errAgentBusy while their previous
 // message is answered; other people's conversations never make it busy.
-func (h *Handler) startAgentTurn(ws factory.OrgWorkstream, v wsViewer, asker, text string) error {
+func (h *Handler) startAgentTurn(ws factory.OrgWorkstream, v wsViewer, asker, text, tz string) error {
 	now := h.clock().UTC()
 	tid, err := cell.NewID(now)
 	if err != nil {
@@ -443,7 +448,7 @@ func (h *Handler) startAgentTurn(ws factory.OrgWorkstream, v wsViewer, asker, te
 	h.addAgentEntry(seat, api.AgentEntry{Kind: api.AgentEntryPerson, By: asker, Text: text, Turn: turn})
 	h.publishAgent(seat, api.AgentEvent{AgentState: &state})
 	door := &agentDoor{h: h, id: ws.ID, asker: asker, operator: v.Operator}
-	run := AgentTurn{Workstream: ws.ID, Name: ws.Name, Turn: turn, Asker: asker, Text: text,
+	run := AgentTurn{Workstream: ws.ID, Name: ws.Name, Turn: turn, Asker: asker, Text: text, Now: now, TZ: tz,
 		Key: h.orgModelKey(), Dir: filepath.Join(h.agentDir(seat), "agent"), Door: door,
 		Step: func(kind, text, tool string, failed bool) {
 			switch kind {

@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/env"
@@ -62,7 +63,7 @@ func factoryWorkstreamAgent(st *store.Store, load func() (config.Config, error))
 			Model:       factoryWorkstreamAgentModel(st, load, profile),
 			APIKey:      turn.Key, BaseURL: factoryWorkstreamAgentBaseURL(),
 			DeterministicNames: true, CompactEnabled: true,
-			System:     factoryWorkstreamAgentSystem(turn.Name, turn.Asker, workstreamDoorKeepsWork(turn.Door)),
+			System:     factoryWorkstreamAgentSystem(turn.Name, turn.Asker, workstreamDoorKeepsWork(turn.Door), turn.Now, turn.TZ),
 			Workstream: turn.Door,
 		}, profile, true, true)
 		// THE GATE IS THE DOOR, NOT AN APPROVAL ASK. Nobody sits in front of
@@ -244,7 +245,7 @@ func workstreamDoorKeepsWork(door serve.AgentDoor) bool {
 	return ok
 }
 
-func factoryWorkstreamAgentSystem(name, asker string, work bool) string {
+func factoryWorkstreamAgentSystem(name, asker string, work bool, now time.Time, tz string) string {
 	tools := "You have one tool, " + session.WorkstreamPagesTool + ": "
 	if work {
 		tools = "You have " + session.WorkstreamPagesTool + " and the workstream's task and file tools (ws_tasks, ws_task_create, ws_task_update, ws_task_comment, ws_files, ws_file_read, ws_file_create, ws_file_suggest). " +
@@ -252,11 +253,12 @@ func factoryWorkstreamAgentSystem(name, asker string, work bool) string {
 			"before you answer who is doing what or what is waiting on someone, read ws_tasks. With " + session.WorkstreamPagesTool + " you "
 	}
 	system := "You are Afi, the assistant of the organization workstream \"" + name + "\", running on the organization's server. " +
-		factoryWorkstreamAgentAudience + factoryWorkstreamAgentAsker(asker) + "\n\n" +
+		factoryWorkstreamAgentAudience + factoryWorkstreamAgentAsker(asker) + " " + factoryWorkstreamAgentToday(now, tz) + "\n\n" +
 		tools + "read the workstream (ask read) before you answer about it, " +
 		"read one page whole (ask page), write a page (ask write), make a new page (ask new), or suggest a decision for a person to keep (ask decide). " +
 		"You write as the person whose message you are answering. You rewrite only a page you made that no person has edited; " +
 		"your text for any other page waits in that page's History until someone restores it, and the tool's answer says so: tell the person plainly.\n\n" +
+		factoryWorkstreamAgentChanges + "\n\n" +
 		"You cannot run commands, read or change a repository, open files on a computer, start Factory work or use the web. " +
 		"When a person asks for that, say that you cannot here, and say what in the workstream you can change.\n\n" +
 		factoryWorkstreamAgentWords + "\n\n"
@@ -265,6 +267,31 @@ func factoryWorkstreamAgentSystem(name, asker string, work bool) string {
 	}
 	return system + "Answer briefly, in plain words."
 }
+
+// factoryWorkstreamAgentToday tells the agent the date and time where the
+// person is. The model has no clock, and without this line it took a date it
+// read in a page for today and reckoned every deadline from it (L3 F-17). The
+// time zone is the one the person's app sent; with none, or one this machine
+// cannot load, it is the server's own, and the line says which it is.
+func factoryWorkstreamAgentToday(now time.Time, tz string) string {
+	if now.IsZero() {
+		now = time.Now()
+	}
+	where := "the server's time"
+	if loc, err := time.LoadLocation(tz); tz != "" && err == nil {
+		now, where = now.In(loc), "the person's time, "+tz
+	} else {
+		now = now.Local()
+	}
+	return "It is now " + now.Format("Monday 2 January 2006, 15:04 MST") + " (" + where + "); reckon today, tomorrow and every deadline from that date, never from a date you read in a page."
+}
+
+// factoryWorkstreamAgentChanges is the rule for what a change says about
+// itself. In L3 F-10 the agent was asked for one edit, also moved a rating
+// from red to yellow, and reported only the edit.
+const factoryWorkstreamAgentChanges = "Change only what the person asked you to change. " +
+	"When you have changed something, list every change you made, each one, including any status, rating, owner or date you changed along the way; " +
+	"never report fewer changes than you made."
 
 // factoryWorkstreamAgentAudience says who reads this conversation.
 // Each person has their own conversation with the server's agent (L1 F2).

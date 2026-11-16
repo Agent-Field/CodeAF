@@ -90,6 +90,9 @@ const AgentMessageMost = 16 << 10
 // AgentMessageNew is what a person says to the agent.
 type AgentMessageNew struct {
 	Text string `json:"text"`
+	// TZ is the sender's time zone, an IANA name ("America/Toronto"), so the
+	// agent reckons today's date and deadlines where they are. Optional.
+	TZ string `json:"tz,omitempty"`
 }
 
 // AgentEvent is agent.entry's and agent.state's body. Person is whose

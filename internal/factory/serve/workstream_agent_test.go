@@ -159,9 +159,12 @@ func TestServerAgentAnswersEveryoneWhoCanEdit(t *testing.T) {
 	if !got.CanTalk || got.Cannot != "" {
 		t.Fatalf("mia (edit through Growth) reads %+v", got)
 	}
-	o.do(t, "mia", "POST", "/v1/workstreams/"+webhook.ID+"/agent/messages", -1, api.AgentMessageNew{Text: "Write down how retries work."}, 202, &got)
+	o.do(t, "mia", "POST", "/v1/workstreams/"+webhook.ID+"/agent/messages", -1, api.AgentMessageNew{Text: "Write down how retries work.", TZ: "America/Toronto"}, 202, &got)
 	o.settle()
-	if seen.Asker != "mia" || seen.Key != testOrgKey || seen.Name != "Webhook reliability" || !strings.HasPrefix(seen.Dir, o.st.Root()) {
+	// The turn carries when it was asked and where the person is, so the
+	// agent is told today's date in their time zone (L3 F-17).
+	if seen.Asker != "mia" || seen.Key != testOrgKey || seen.Name != "Webhook reliability" || !strings.HasPrefix(seen.Dir, o.st.Root()) ||
+		seen.Now.IsZero() || seen.TZ != "America/Toronto" {
 		t.Fatalf("the runner was handed %+v", seen)
 	}
 

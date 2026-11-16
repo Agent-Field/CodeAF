@@ -132,6 +132,9 @@ type OrgWorkstreamAgentSendParams struct {
 	OrgConn
 	ID   string `json:"id"`
 	Text string `json:"text"`
+	// TZ is the sender's time zone as an IANA name ("America/Toronto"), so
+	// the agent reckons today's date where they are. Optional.
+	TZ string `json:"tz,omitempty"`
 }
 
 // FactoryOrgWorkstreamAgent is one agent event on the connection it came
@@ -198,10 +201,20 @@ func init() {
 		if text == "" || len(text) > orgAgentMessageMost {
 			return OrgRequest{}, Errorf(CodeBadParams, "text is 1 to 16384 bytes of words")
 		}
-		return OrgRequest{Method: http.MethodPost, Path: path + "/agent/messages", Body: map[string]string{"text": text}}, nil
+		return OrgRequest{Method: http.MethodPost, Path: path + "/agent/messages", Body: orgAgentMessageBody(text, p.TZ)}, nil
 	}), agent)
 	methods["factory.org_workstream_agent_stop"] = filled(orgMethod[OrgWorkstreamParams, OrgWorkstreamAgent]("factory.org_workstream_agent_stop", func(p OrgWorkstreamParams) (OrgRequest, error) {
 		path, err := orgWorkstreamPath(p.ID)
 		return OrgRequest{Method: http.MethodPost, Path: path + "/agent/stop"}, err
 	}), agent)
+}
+
+// orgAgentMessageBody is the server's AgentMessageNew: the words, and the
+// sender's time zone when the app sent one.
+func orgAgentMessageBody(text, tz string) map[string]string {
+	body := map[string]string{"text": text}
+	if tz = strings.TrimSpace(tz); tz != "" && len(tz) <= 64 {
+		body["tz"] = tz
+	}
+	return body
 }
