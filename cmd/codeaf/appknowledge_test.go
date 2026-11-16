@@ -165,3 +165,39 @@ func TestLibraryLaterSurvivesRestartWhileLearningIsPaused(t *testing.T) {
 		t.Fatal("bringing a Library question back was not saved")
 	}
 }
+
+// F-20: "Add to Library" on a workstream file keeps the file's own words with no
+// chat behind them, leads back to the file, and keeping it again is harmless.
+func TestLibraryKeepsAWorkstreamFileAndLeadsBackToIt(t *testing.T) {
+	profile := t.TempDir()
+	v := knowledge.Open(profile)
+	b := &appBackend{profileDir: profile, now: func() time.Time { return time.Date(2026, 11, 16, 12, 0, 0, 0, time.UTC) }}
+	file := &appwire.KnowledgeFile{Workstream: "org:acme/ws-7", ID: "f-brief", Name: "Brief"}
+	if err := v.StartBuild(); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := v.Status()
+	if err := b.KnowledgeCapture(appwire.KnowledgeCapture{File: file, Text: "Ship on Fridays."}); err != nil {
+		t.Fatalf("file form refused: %v", err)
+	}
+	b.now = func() time.Time { return time.Date(2026, 11, 16, 13, 0, 0, 0, time.UTC) }
+	if err := b.KnowledgeCapture(appwire.KnowledgeCapture{File: file, Text: "Ship on Fridays."}); err != nil {
+		t.Fatalf("keeping the same file twice failed: %v", err)
+	}
+	after, _ := v.Status()
+	if after.Pending != before.Pending+1 {
+		t.Fatalf("pending sources %d -> %d, want one new source", before.Pending, after.Pending)
+	}
+	if err := b.KnowledgeCapture(appwire.KnowledgeCapture{File: file, Text: "Ship on Thursdays."}); err != nil {
+		t.Fatalf("an edited file was refused: %v", err)
+	}
+	if got, ok := workstreamFileSource("workstream-file:org:acme/ws-7/f-brief@00ff:span:24000"); !ok || got.Workstream != "org:acme/ws-7" || got.ID != "f-brief" {
+		t.Fatalf("source id does not lead back to the file: %+v %v", got, ok)
+	}
+	if _, ok := workstreamFileSource("desk:abc"); ok {
+		t.Fatal("a chat passage read as a file")
+	}
+	if err := b.KnowledgeCapture(appwire.KnowledgeCapture{File: &appwire.KnowledgeFile{Workstream: "ws", ID: "a/b"}, Text: "x"}); err == nil {
+		t.Fatal("a file id with a slash was accepted")
+	}
+}
