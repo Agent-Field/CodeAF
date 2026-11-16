@@ -942,9 +942,22 @@ model keys and to a workstream's agent on the server. `factory.org_keys` `GET
 `factory.org_key_delete {provider}` `DELETE` are the operator's alone; the only provider
 is `openrouter`, and a key is answered back only as `{provider, last4, set_at,
 set_by}`, never whole. In `server` mode every workstream has one agent on the server,
-run with that key as an ordinary engine conversation whose one tool is
+run with that key as an ordinary engine conversation whose tools are
 `workstream_pages` (read the workstream and one page, write a page, make a page,
-propose a decision; no shell, files, repository or machine). `factory.org_workstream_agent
+suggest a decision) and the eight workstream tools `ws_tasks`, `ws_task_create`,
+`ws_task_update`, `ws_task_comment`, `ws_files`, `ws_file_read`, `ws_file_create`,
+`ws_file_suggest`; no shell, repository or machine. Each `ws_*` call is answered by the
+same route a person's client uses (`/tasks`, `/tasks/{tid}` with `If-Match`,
+`/tasks/{tid}/comment`, `/files`), as the asker, so the routes' rules hold: what Afi
+adds to a thread is `by {kind:"afi", name:"Afi"}`, a task it makes is `done_by
+{kind:"afi"}`, `came_from {kind:"chat", chat_id:"afi", name:"Afi"}` and owned by the
+asker unless it names another person who can edit or Everyone, and it changes only
+tasks whose `done_by` is `afi` or `chat`; a file it makes is `made_by {kind:"afi",
+name:"Afi", for:<asker>}`. It writes a page directly only when its file is
+`made_by` an agent and not `person_edited`, first keeping the words before as a
+version; any other page, and any page with a live document, gets its text as a page
+version with `reason` `agent` (Kept · not applied), which is also what `ws_file_suggest`
+keeps. `factory.org_workstream_agent
 {id, since?}` `GET /v1/workstreams/{id}/agent?since=` (`view`) answers `{id, state,
 turn?, for?, since?, entries, seq, can_talk, cannot?}`: `state` is `idle`, `working`
 (`for` is whose message) or `stopping` (`for` is who stopped it); `entries` are the
@@ -956,8 +969,7 @@ spent), absent for a viewer. `factory.org_workstream_agent_send {id, text}` `POS
 it answers someone else the refusal is `conflict` with `detail.reason` `busy` and
 `detail.by` `@handle`. `factory.org_workstream_agent_stop {id}` `POST .../agent/stop`
 (`edit`) stops it. The agent writes as the person who asked (their rights are checked
-on every write); a page whose live document exists is not written over, the text is
-kept as a page version with `reason` `agent`; a decision is added `proposed`. What a
+on every write); a decision is added `proposed`. What a
 turn spent is posted to the workstream's spend under the asker with `chat` `agent`.
 The server's `agent.entry {id, entry}` and `agent.state {id, state, ...}` reach those
 who can see the workstream and are relayed as `factory.org_workstream_agent
