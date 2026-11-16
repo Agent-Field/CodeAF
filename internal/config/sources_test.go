@@ -685,7 +685,7 @@ func TestCustomConnectionNeedsUsableModelsBeforeSaving(t *testing.T) {
 	row := PrepareCustomSource(dir, server.URL(), "local")
 	row.KeyOptional = true
 	outcome, err := ConnectService(t.Context(), dir, row, source, nil)
-	if err != nil || outcome.Kind == modelsource.OutcomeConnected || !strings.Contains(outcome.VendorSaid, "lists no models") {
+	if err == nil || !strings.Contains(err.Error(), "lists no models") {
 		t.Fatalf("empty connection = %+v, %v", outcome, err)
 	}
 	if len(PersistedSources(dir)) != 0 {

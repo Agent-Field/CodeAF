@@ -141,15 +141,18 @@ func ProbeOpenAIEndpoint(ctx context.Context, address, key string) (int, error) 
 	}
 
 	var body struct {
-		Data   []any `json:"data"`
-		Models []any `json:"models"`
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		return 0, err
 	}
-	count := len(body.Data)
-	if count == 0 {
-		count = len(body.Models)
+	count := 0
+	for _, model := range body.Data {
+		if strings.TrimSpace(model.ID) != "" {
+			count++
+		}
 	}
 	if count == 0 {
 		return 0, errEmptyModelList
