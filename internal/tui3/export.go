@@ -99,7 +99,9 @@ func (a *app) exportTranscript(arg string) tea.Cmd {
 		return nil
 	}
 	entries := a.agent.Transcript()
-	if len(entries) == 0 {
+	earlier := append([]session.DisplayEntry(nil), a.earlier...)
+	floor := a.earlierFloor
+	if len(entries) == 0 && len(earlier) == 0 {
 		a.note(exportNothing)
 		return nil
 	}
@@ -122,9 +124,19 @@ func (a *app) exportTranscript(arg string) tea.Cmd {
 	// Read off the app here, on the loop, and closed over: the command runs on
 	// its own goroutine and must not be reading fields the next keystroke is
 	// writing.
+	file, hosted := a.file, a.hosted()
 	index, id := a.artifactsIndex(), exportSession(a.file)
 	return func() tea.Msg {
-		path, err := writeExport(target, exportDocument(name, entries))
+		whole := exportEntries(earlier, entries, floor)
+		if !hosted && strings.TrimSpace(file) != "" {
+			// When the journal is on this disk, [session.ReadTranscript] stacks
+			// every compaction pass so turns from before any compaction remain
+			// in the exported document.
+			if rec := session.ReadTranscript(file); len(rec.Entries) > 0 || len(rec.Earlier) > 0 {
+				whole = exportRecord(rec)
+			}
+		}
+		path, err := writeExport(target, exportDocument(name, whole))
 		if err == nil {
 			// AN EXPORT IS A DELIVERABLE, so it earns its row in the index a
 			// person finds their work again by (internal/session's
@@ -242,7 +254,7 @@ func exportSession(file string) string {
 // exportFileName is what the document is called when nobody said: the session's
 // own identity, spelled as a file name.
 //
-//	20260817-150405_a3f2-port-the-resume-picker.md
+//	transcript-port-the-resume-picker.md
 //
 // BOTH HALVES ARE THERE ON PURPOSE. The stem is the transcript's name, which is
 // what makes two exports of two conversations two files even when a model gave
@@ -297,6 +309,40 @@ func exportKebab(name string) string {
 }
 
 // ── the document ────────────────────────────────────────────────────────────
+
+// exportRecord joins the earlier region a compaction pass edited away with the
+// live tail after the rewritten floor, telling the whole journal once.
+func exportRecord(rec session.Record) []session.DisplayEntry {
+	return exportEntries(rec.Earlier, rec.Entries, rec.Floor)
+}
+
+// exportEntries splices the uncompacted earlier entries in front of the live
+// transcript entries after floor. When earlier is empty (a conversation that
+// was never compacted), it returns entries unchanged.
+func exportEntries(earlier, entries []session.DisplayEntry, floor int) []session.DisplayEntry {
+	if len(earlier) == 0 {
+		return entries
+	}
+	tail := entries
+	if floor >= 0 && floor <= len(entries) {
+		tail = entries[floor:]
+	}
+	out := make([]session.DisplayEntry, 0, len(earlier)+len(tail))
+	out = append(out, earlier...)
+	return append(out, tail...)
+}
+
+// exportSummaryBody extracts the summary text from a compaction summary note
+// when no earlier region is available to splice in its place.
+func exportSummaryBody(text string) string {
+	if !strings.HasPrefix(text, "[context compacted]") {
+		return ""
+	}
+	if _, body, ok := strings.Cut(text, "\n\n"); ok {
+		return strings.TrimSpace(body)
+	}
+	return ""
+}
 
 // exportDocument is the whole conversation as markdown: a heading with the
 // session's name on it, and then who said what.
@@ -358,6 +404,12 @@ func exportDocument(name string, entries []session.DisplayEntry) string {
 			}
 			say(product)
 			blocks = append(blocks, exportCall(tool, e.Hint, e.Args, e.Output))
+
+		case "note":
+			if body := exportSummaryBody(text); body != "" {
+				speaker = ""
+				blocks = append(blocks, "_"+firstLine(body)+"_")
+			}
 
 		case "aside":
 			if text == "" {
