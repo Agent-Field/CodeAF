@@ -37,6 +37,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"run the workstream agent on the organization's server instead of a laptop", "organization-workstream-agent"},
 		{"where do I put the organization's model key for the server", "organization-workstream-agent"},
 		{"who can change a workstream's people and rules", "workstream-people-and-rules"},
+		{"can Afi see my chats in a workstream", "workstream-chats-and-tools"},
+		{"does closing a chat stop what it is doing", "workstream-chats-and-tools"},
 		{"can I put a workstream inside another workstream", "workstream-people-and-rules"},
 		{"how much can an agent spend before it asks me in a workstream", "workstream-people-and-rules"},
 		{"what happens to someone's tasks when I remove them from a workstream", "workstream-people-and-rules"},
