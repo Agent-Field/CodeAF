@@ -116,6 +116,7 @@ var Lost = map[string]string{
 	"Item.LastRecoveryResume":     "the service's private acknowledgment for a repeated chat retry",
 	"Item.Passing":                "service-owned: who is passing the waiting approve step, set by the approval door just before its answer and moved onto the step's phase (Step.passed carries the result)",
 	"Item.PassJudge":              "service-owned: the manager's judgement of a manager-when approval, read only by the service that decides Auto (its reason reaches the job as needs_you's words)",
+	"Item.Overrides":              "service-owned: the failing checks a person told Auto to carry on past, read only by the service that decides Auto (autonomy_why clears); each one reaches readers as a line of the job's activity and a resumed record event",
 	"Item.GitHubIssueID":          "service-owned permanent GitHub identity; workers send RunReport deltas through run.ApplyReport, never replacement Items",
 	"Item.SourceClosed":           "service-owned automatic close provenance; RunReport has no such field; starting work clears it through TouchIssue",
 	"Item.PersonTouched":          "service-owned reconciliation exclusion; RunReport cannot replace it; store.RecordIssueTouch preserves ownership",

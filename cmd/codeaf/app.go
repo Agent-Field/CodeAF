@@ -2274,6 +2274,8 @@ func appReceipt(by, option string, answer *session.Answer, at time.Time) string 
 		word = "Kept running"
 	case appwire.OptionAllowNever:
 		word = "Kept running, never restarted"
+	case appwire.ResolvedDismissed:
+		word = "Dismissed"
 	}
 	who := "you"
 	switch by {

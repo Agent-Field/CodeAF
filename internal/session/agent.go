@@ -1209,6 +1209,7 @@ func (a *Agent) submitTextAnswer(ctx context.Context, text string, person *messa
 		user.said = said
 		user.person = person
 		user.answer = answer
+		user.fromPerson = !answer
 		return a.submitUser(ctx, user)
 	}
 	user := userText(text)
@@ -1217,6 +1218,7 @@ func (a *Agent) submitTextAnswer(ctx context.Context, text string, person *messa
 	}
 	user.person = person
 	user.answer = answer
+	user.fromPerson = !answer
 	return a.submitUser(ctx, user)
 }
 
@@ -1272,12 +1274,17 @@ func (a *Agent) submitUser(ctx context.Context, user userMessage) (<-chan Event,
 		// the turn's creation team unknown (creation_team.go).
 		a.mixCreationLocked(user)
 		a.steering = append(a.steering, user)
+		// The person's reply closes what is still open before the pending cards
+		// are read, so the new subscriber is not handed a question it ended.
+		retired := a.personClosesQuestionsLocked(user)
+		a.notePersonWordsLocked(user)
 		// Subscribing under a.mu — not after releasing it — is what makes the
 		// returned channel live rather than a coin flip: the turn's goroutine
 		// clears running under this same lock BEFORE it closes the hub, so
 		// running == true here means the hub cannot already be closed.
 		events := a.hub.subscribePending(a.stillAskedLocked())
 		a.mu.Unlock()
+		a.sayTheQuestionsCameDown(retired)
 		return events, nil
 	}
 	// The spend rail is checked here, before anything is recorded: a refused
@@ -1289,8 +1296,11 @@ func (a *Agent) submitUser(ctx context.Context, user userMessage) (<-chan Event,
 			return refusedStream(err), nil
 		}
 	}
+	// Only once the message is accepted: a refused one closes nothing.
+	retired := a.personClosesQuestionsLocked(user)
 	events := a.startTurnLocked(user.turnContext(ctx), user, nil)
 	a.mu.Unlock()
+	a.sayTheQuestionsCameDown(retired)
 	return events, nil
 }
 
@@ -1434,6 +1444,12 @@ type userMessage struct {
 	// answer continues an existing question, including a replacement or
 	// clarification, so ownership is checked at its tools rather than admission.
 	answer bool
+	// fromPerson marks a new message the person sent through one of their own
+	// doors (Submit, SubmitMessage, SubmitImage, SubmitComposed). Their reply
+	// closes every question this agent still has open (steerquestion.go's
+	// [Agent.personClosesQuestionsLocked]); engine notes, briefs, setup and
+	// answers to a question never set it.
+	fromPerson bool
 
 	// closeKey belongs only to the pending continuation this note consumes.
 	closeKey string
@@ -2079,6 +2095,14 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	a.running = true
 	a.factoryAutomaticTurn = user.factoryWork || user.wake && !user.answersPerson && !user.answer
 	a.runnerTurn = user.runner
+	// The person's words belong to the turn they open; a woken turn answering a
+	// line they typed at the end of the last one keeps that line.
+	if !user.answersPerson {
+		a.personWords = ""
+	}
+	if user.fromPerson || user.steer != nil {
+		a.personWords = user.text()
+	}
 	a.teamTurnAt = time.Now()
 	a.teamTurnSerial++
 	a.lastTurnTruncated = false

@@ -63,6 +63,10 @@ const (
 	ActionMerge     = "merge"
 	ActionMarkReady = "mark_ready"
 	ActionApprove   = "approve"
+	// ActionResume tells a job's Auto to carry on past the failing checks it
+	// paused on. It is the person's alone: it is pressed only with their own
+	// words from the running turn ([Agent.turnPersonWords]).
+	ActionResume = "resume"
 )
 
 // The words `factory_answer` hands back when nothing waits on the manager or
@@ -72,13 +76,13 @@ const (
 	answerNeedsOne     = factoryAnswerRefused + "Invalid arguments: factory_answer needs answer, or ask_person with one line of why, not both."
 )
 
-const factoryAnswerDescription = "Reply to a step question. During a temporary inbox turn, answer the supplied question. On an ordinary manager turn, read factory_status and pass its question_id to save the person's answer or delegated engineering choice durably; a stale question is refused. To send a waiting plan back with requested changes, use action=reject_plan and put the person's words in answer. When factory_status says the person is asked to merge the pull request or mark it ready, and the person asks for exactly that here, use action=merge or action=mark_ready with their words in answer, and action=approve when it says publishing waits on their approval; never on your own judgment. Never promise a state change before an accepted tool result. If an action fails, explain plainly that it did not happen, without tool names or internal identifiers; if the outcome is uncertain, say it is unconfirmed and read status before retrying. " +
+const factoryAnswerDescription = "Reply to a step question. During a temporary inbox turn, answer the supplied question. On an ordinary manager turn, read factory_status and pass its question_id to save the person's answer or delegated engineering choice durably; a stale question is refused. To send a waiting plan back with requested changes, use action=reject_plan and put the person's words in answer. When factory_status says the person is asked to merge the pull request or mark it ready, and the person asks for exactly that here, use action=merge or action=mark_ready with their words in answer, and action=approve when it says publishing waits on their approval; when it says Auto is paused on a failing check and the person asks here to resume or continue, use action=resume with their words in answer; never on your own judgment. Never promise a state change before an accepted tool result. If an action fails, explain plainly that it did not happen, without tool names or internal identifiers; if the outcome is uncertain, say it is unconfirmed and read status before retrying. " +
 	"answer is your answer in words, and the step goes on with it at once: answer yourself when the issue, the recipe, the stages, the notes or what the person said here settle it. " +
 	"ask_person is one line of why, and sends the question to the person in this conversation; the step waits for their answer. " +
 	"Send it to the person when it turns on taste, scope, risk, credentials or access, money, or anything the issue and the recipe do not say. Never guess an answer to spare them."
 
 const factoryAnswerSchemaJSON = `{"type":"object","properties":{` +
-	`"action":{"type":"string","enum":["answer","reject_plan","merge","mark_ready","approve"],"description":"Default answer saves a step reply. reject_plan sends only a waiting plan back with answer as the requested changes; never approves or continues it. merge presses Merge on the job's pull request, mark_ready marks its draft ready for review and approve approves publishing the checked work, each only when factory_status offers it and the person asked for it; answer carries the person's words."},` +
+	`"action":{"type":"string","enum":["answer","reject_plan","merge","mark_ready","approve","resume"],"description":"Default answer saves a step reply. reject_plan sends only a waiting plan back with answer as the requested changes; never approves or continues it. merge presses Merge on the job's pull request, mark_ready marks its draft ready for review, approve approves publishing the checked work and resume tells Auto to carry on past the failing checks it paused on, each only when factory_status offers it and the person asked for it; answer carries the person's words."},` +
 	`"question_id":{"type":"string","description":"The exact pending question_id returned by factory_status, required for a persisted step reply or a plan send-back outside a temporary inbox turn."},` +
 	`"answer":{"type":"string","description":"Your answer in words, for the step."},` +
 	`"ask_person":{"type":"string","description":"One line of why the person decides it."}` +
@@ -116,6 +120,25 @@ func (a *Agent) factoryAnswerTool() bare.Tool {
 					return factoryAnswerFailure("Nothing changed: sending a plan back requires requested changes on an ordinary manager turn."), true, nil
 				}
 				line, err := d.RejectPendingPlan(ctx, a.config.SessionFile, parsed.QuestionID, strings.TrimSpace(parsed.Answer))
+				if err != nil {
+					return factoryAnswerFailure(err.Error()), true, nil
+				}
+				return line, false, nil
+			}
+			if parsed.Action == ActionResume {
+				d, ok := a.runDoorForTurn().(ManagerPRDecider)
+				if !ok || answer == "" || why != "" {
+					return factoryAnswerFailure("Nothing changed: resuming Auto needs the person's words in answer, on an ordinary manager turn."), true, nil
+				}
+				// ONLY THE PERSON OVERRIDES A PAUSE. The words recorded are the
+				// ones they sent in this turn, read from the session and never
+				// from the model's arguments, and a turn with none — a runner's
+				// note, factory work, a wake — cannot resume anything.
+				said := a.turnPersonWords()
+				if said == "" {
+					return factoryAnswerFailure("Nothing changed: only the person can tell Auto to carry on, and nothing in this turn came from them."), true, nil
+				}
+				line, err := d.DecidePR(ctx, a.config.SessionFile, ActionResume, said)
 				if err != nil {
 					return factoryAnswerFailure(err.Error()), true, nil
 				}
