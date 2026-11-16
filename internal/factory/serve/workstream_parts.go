@@ -343,6 +343,36 @@ func versionWire(v store.PageVersion) api.PageVersion {
 	}
 }
 
+// versionReasonKept is the reason on a version the agent wrote while the
+// page had a live document: kept in the history, not applied to the page.
+const versionReasonKept = "agent"
+
+// versionsWire is a page's history, newest first, saying which version the
+// page holds. A version the agent kept is not one the page holds until it is
+// restored; every other version (an idle or manual snapshot of the live
+// document, or a restore) is what the page held when it was taken. So the
+// live version is the newest that is not kept, and a kept version stays kept
+// until a restore names it.
+func versionsWire(list []store.PageVersion) api.PageVersions {
+	restored := map[int]bool{}
+	for _, v := range list {
+		if v.RestoredFrom != 0 {
+			restored[v.RestoredFrom] = true
+		}
+	}
+	out := api.PageVersions{Versions: make([]api.PageVersion, 0, len(list))}
+	for _, v := range list {
+		wire := versionWire(v)
+		if v.Reason == versionReasonKept {
+			wire.Kept = !restored[v.Version]
+		} else if v.Version > out.LiveVersion {
+			out.LiveVersion = v.Version
+		}
+		out.Versions = append(out.Versions, wire)
+	}
+	return out
+}
+
 func (h *Handler) listPageVersions(w http.ResponseWriter, r *http.Request) {
 	ws, page, _, ok := h.pageOf(w, r, false)
 	if !ok {
@@ -352,11 +382,7 @@ func (h *Handler) listPageVersions(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
-	out := api.PageVersions{Versions: make([]api.PageVersion, 0, len(list))}
-	for _, v := range list {
-		out.Versions = append(out.Versions, versionWire(v))
-	}
-	h.write(w, http.StatusOK, out)
+	h.write(w, http.StatusOK, versionsWire(list))
 }
 
 func (h *Handler) getPageVersion(w http.ResponseWriter, r *http.Request) {

@@ -71,16 +71,26 @@ type PageVersion struct {
 	At           string `json:"at"`
 	By           string `json:"by"`
 	Title        string `json:"title"`
-	Reason       string `json:"reason" jsonschema:"enum=idle,enum=manual,enum=restore"`
+	Reason       string `json:"reason" jsonschema:"enum=idle,enum=manual,enum=restore,enum=agent"`
 	RestoredFrom int    `json:"restored_from,omitempty"`
 	Bytes        int    `json:"bytes"`
 	BodyMD       string `json:"body_md,omitempty"`
 	State        []byte `json:"state,omitempty"`
+	// Kept is a version the page does not hold: the agent's words, kept
+	// because the page had a live document to write into, and not restored
+	// since. Restoring it applies them. Absent on every version the page held.
+	Kept bool `json:"kept,omitempty"`
 }
 
 // PageVersions is a page's versions, newest first.
+//
+// LiveVersion is the version the page holds now, the newest one it took
+// from its live document or a restore. A client marks that one current,
+// NEVER THE HIGHEST NUMBER: a kept version (Kept) can be newer than it.
+// Absent when no version the page held is kept.
 type PageVersions struct {
-	Versions []PageVersion `json:"versions"`
+	Versions    []PageVersion `json:"versions"`
+	LiveVersion int           `json:"live_version,omitempty"`
 }
 
 // PageVersionNew is a version a client saves: the page's words as markdown,
