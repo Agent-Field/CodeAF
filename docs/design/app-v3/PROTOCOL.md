@@ -386,11 +386,90 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.access_cancel` | `in.FactoryAccessParams` | `FactoryAccess` |
 | `factory.access_check` | `in.FactoryAccessParams` | `FactoryAccess` |
 | `factory.access_sign_in` | `in.FactoryAccessParams` | `FactoryAccess` |
+| `factory.access_sign_up` | `in.FactoryAccessSignUpParams` | `FactoryAccess` |
+| `factory.access_reset` | `in.FactoryAccessResetParams` | `FactoryAccess` |
+| `factory.password_sign_in` | `in.FactoryPasswordSignInParams` | `FactoryPasswordSignedIn` |
+| `factory.password_change` | `in.FactoryPasswordChangeParams` | `Empty` |
+| `factory.passkey_start` | `in.FactoryPasskeyStartParams` | `FactoryPasskeyStarted` |
+| `factory.passkey_poll` | `in.FactoryPasskeyPollParams` | `FactoryPasskeyPolled` |
+| `factory.passkey_cancel` | `in.FactoryPasskeyPollParams` | `Empty` |
+| `factory.passkey_list` | `in.FactoryPasskeyListParams` | `FactoryPasskeyList` |
+| `factory.passkey_remove` | `in.FactoryPasskeyRemoveParams` | `Empty` |
+| `factory.password_confirm` | `in.FactoryPasswordConfirmParams` | `Empty` |
 | `factory.activity` | `in.FactoryActivityParams` | `FactoryActivity` |
 | `factory.attach` | `in.FactoryAttachParams` | `FactoryConnection` |
 | `factory.capabilities` | `in.FactoryCapabilitiesParams` | `FactoryCapabilities` |
 | `factory.intake_add` | `in.FactoryIntakeParams` | `inbox.Result` |
 | `factory.features` | `in.FactoryRef` | `FactoryFeatures` |
+| `factory.teams` | `in.OrgConn` | `OrgTeams` |
+| `factory.team_create` | `in.OrgTeamCreateParams` | `OrgTeam` |
+| `factory.team_rename` | `in.OrgTeamRenameParams` | `OrgTeam` |
+| `factory.team_delete` | `in.OrgTeamParams` | `Empty` |
+| `factory.team_member_add` | `in.OrgTeamMemberParams` | `OrgTeam` |
+| `factory.team_member_remove` | `in.OrgTeamMemberParams` | `OrgTeam` |
+| `factory.org_workstreams` | `in.OrgConn` | `OrgWorkstreams` |
+| `factory.org_workstream` | `in.OrgWorkstreamParams` | `OrgWorkstream` |
+| `factory.org_workstream_create` | `in.OrgWorkstreamCreateParams` | `OrgWorkstream` |
+| `factory.org_workstream_update` | `in.OrgWorkstreamUpdateParams` | `OrgWorkstream` |
+| `factory.org_workstream_delete` | `in.OrgWorkstreamParams` | `Empty` |
+| `factory.org_workstream_owner` | `in.OrgWorkstreamOwnerParams` | `OrgWorkstream` |
+| `factory.org_workstream_shares` | `in.OrgWorkstreamSharesParams` | `OrgWorkstreamShared` |
+| `factory.org_workstream_share_preview` | `in.OrgWorkstreamSharePreviewParams` | `OrgSharePreview` |
+| `factory.org_workstream_import` | `in.OrgWorkstreamImportParams` | `OrgWorkstream` |
+| `factory.org_presence` | `in.OrgPresenceParams` | `OrgPresence` |
+| `factory.org_workstream_activity` | `in.OrgActivityParams` | `OrgActivity` |
+| `factory.org_doc_read` | `in.OrgDocParams` | `OrgDocState` |
+| `factory.org_doc_send` | `in.OrgDocSendParams` | `OrgDocUpdated` |
+| `factory.org_doc_snapshot` | `in.OrgDocSnapshotParams` | `OrgDocSnapshotKept` |
+| `factory.org_doc_aware` | `in.OrgDocAwareParams` | `Empty` |
+| `factory.org_doc_follow` | `in.OrgDocParams` | `Empty` |
+| `factory.org_doc_unfollow` | `in.OrgDocParams` | `Empty` |
+| `factory.org_workstream_page_create` | `in.OrgPageCreateParams` | `OrgWorkstream` |
+| `factory.org_workstream_page_update` | `in.OrgPageUpdateParams` | `OrgWorkstream` |
+| `factory.org_workstream_page_delete` | `in.OrgPageParams` | `OrgWorkstream` |
+| `factory.org_workstream_page_versions` | `in.OrgPageParams` | `OrgPageVersions` |
+| `factory.org_workstream_page_version` | `in.OrgPageVersionParams` | `OrgPageVersion` |
+| `factory.org_workstream_page_snapshot` | `in.OrgPageSnapshotParams` | `OrgPageVersion` |
+| `factory.org_workstream_page_restore` | `in.OrgPageVersionParams` | `OrgPageVersion` |
+| `factory.org_workstream_plan_get` | `in.OrgWorkstreamParams` | `OrgWorkstreamPlan` |
+| `factory.org_workstream_plan_set` | `in.OrgPlanSetParams` | `OrgWorkstreamPlan` |
+| `factory.org_workstream_wakes` | `in.OrgWorkstreamParams` | `OrgWorkstreamWakes` |
+| `factory.org_workstream_wake_add` | `in.OrgWakeAddParams` | `json.RawMessage` |
+| `factory.org_workstream_wake_update` | `in.OrgWakeUpdateParams` | `json.RawMessage` |
+| `factory.org_workstream_suggestions` | `in.OrgSuggestionsParams` | `OrgWorkstreamSuggestions` |
+| `factory.org_workstream_suggestion_add` | `in.OrgSuggestionAddParams` | `json.RawMessage` |
+| `factory.org_workstream_suggestion_update` | `in.OrgSuggestionUpdateParams` | `json.RawMessage` |
+| `factory.org_workstream_job_add` | `in.OrgWorkstreamJobParams` | `OrgWorkstream` |
+| `factory.org_workstream_job_remove` | `in.OrgWorkstreamJobParams` | `OrgWorkstream` |
+| `factory.org_workstream_unarchive` | `in.OrgWorkstreamParams` | `OrgWorkstream` |
+| `factory.org_agent_runner` | `in.OrgConn` | `OrgAgentRunner` |
+| `factory.org_agent_runner_set` | `in.OrgAgentRunnerSetParams` | `OrgAgentRunner` |
+| `factory.org_workstream_drive` | `in.OrgWorkstreamParams` | `OrgWorkstreamDriver` |
+| `factory.org_workstream_let_go` | `in.OrgWorkstreamParams` | `Empty` |
+| `factory.org_workstream_spend` | `in.OrgWorkstreamSpendParams` | `OrgWorkstreamSpend` |
+| `factory.org_keys` | `in.OrgConn` | `OrgKeys` |
+| `factory.org_key_set` | `in.OrgKeySetParams` | `OrgKey` |
+| `factory.org_key_delete` | `in.OrgKeyParams` | `Empty` |
+| `factory.org_workstream_agent` | `in.OrgWorkstreamAgentParams` | `OrgWorkstreamAgent` |
+| `factory.org_workstream_agent_send` | `in.OrgWorkstreamAgentSendParams` | `OrgWorkstreamAgent` |
+| `factory.org_workstream_agent_stop` | `in.OrgWorkstreamParams` | `OrgWorkstreamAgent` |
+| `factory.org_canvases` | `in.OrgConn` | `OrgCanvasList` |
+| `factory.org_canvas_get` | `in.OrgCanvasParams` | `json.RawMessage` |
+| `factory.org_canvas_create` | `in.OrgCanvasCreateParams` | `json.RawMessage` |
+| `factory.org_canvas_update` | `in.OrgCanvasUpdateParams` | `json.RawMessage` |
+| `factory.org_canvas_delete` | `in.OrgCanvasParams` | `Empty` |
+| `factory.org_canvas_snapshot` | `in.OrgCanvasParams` | `json.RawMessage` |
+| `factory.org_canvas_ops` | `in.OrgCanvasOpsParams` | `OrgCanvasOps` |
+| `factory.org_canvas_apply` | `in.OrgCanvasApplyParams` | `OrgCanvasOps` |
+| `factory.org_canvas_versions` | `in.OrgCanvasParams` | `OrgCanvasVersions` |
+| `factory.org_canvas_version_create` | `in.OrgCanvasVersionParams` | `json.RawMessage` |
+| `factory.org_canvas_restore` | `in.OrgCanvasRestoreParams` | `OrgCanvasOps` |
+| `factory.org_canvas_marks` | `in.OrgCanvasParams` | `OrgCanvasMarks` |
+| `factory.org_canvas_mark_create` | `in.OrgCanvasMarkParams` | `json.RawMessage` |
+| `factory.org_canvas_shares` | `in.OrgCanvasSharesParams` | `json.RawMessage` |
+| `factory.org_canvas_import` | `in.OrgCanvasImportParams` | `json.RawMessage` |
+| `factory.org_canvas_asset_get` | `in.OrgCanvasAssetParams` | `OrgCanvasAssetData` |
+| `factory.org_canvas_asset_put` | `in.OrgCanvasAssetPutParams` | `json.RawMessage` |
 | `factory.detach` | `in.FactoryRef` | `Empty` |
 | `factory.job` | `in.FactoryJobParams` | `Job` |
 | `factory.job_approve` | `in.FactoryJobApproveParams` | `FactoryJobActed` |
@@ -500,6 +579,7 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.runners` | `in.FactoryRef` | `Runners` |
 | `factory.scout` | `in.FactoryScoutParams` | `ScoutLook` |
 | `factory.session_restore` | `in.FactorySessionRestoreParams` | `FactorySessionRestored` |
+| `factory.sessions_store` | `in.FactorySessionsStoreParams` | `Empty` |
 | `factory.sessions_take` | `in.Empty` | `FactorySessionsTaken` |
 | `factory.setup` | `in.FactoryRef` | `FactorySetup` |
 | `factory.setup_back` | `in.FactoryLocalParams` | `FactorySetupView` |
@@ -549,6 +629,287 @@ the model. Only the factory's operator may set them (`forbidden` otherwise).
 `stale` and changes nothing. A refused value is `bad_params` before anything is
 sent; an unconfirmed write is `uncertain`.
 
+An engine whose hello carries `org_teams` and `org_workstreams` reads and changes an
+organization's teams and workstreams, which live only on its `codeaf factory serve`
+server; the engine keeps no copy. Each method takes `connection` (the factory
+connection id; `factory` is read when it is absent) and is one request with the
+caller's session: `factory.teams` `GET /v1/teams`, `factory.team_create {name}`
+`POST /v1/teams`, `factory.team_rename {team, name}` `PATCH /v1/teams/{id}`,
+`factory.team_delete {team}` `DELETE /v1/teams/{id}`, `factory.team_member_add` and
+`factory.team_member_remove {team, handle}` `PUT`/`DELETE /v1/teams/{id}/members/{handle}`;
+`factory.org_workstreams` `GET /v1/workstreams`, `factory.org_workstream {id}`,
+`factory.org_workstream_create` `POST /v1/workstreams`, `factory.org_workstream_update
+{id, rev, ...patch}` `PATCH` with `If-Match: rev`, `factory.org_workstream_delete {id}`,
+`factory.org_workstream_owner {id, kind, owner}` `PUT .../owner`,
+`factory.org_workstream_shares {id, shares?, teams?, owner?, private?, rev?, include_linked}`
+`PUT .../shares`,
+`factory.org_workstream_share_preview {id, teams?, shares?}` `GET .../shares/preview?teams=&shares=kind:id:role,...`, and
+`factory.org_workstream_import {from_local_id, name, ...}` `POST /v1/workstreams/import`.
+The answer is the server's, in its own shape (lists are `[]`, never null). Ids are
+checked before anything is sent (`bad_params`); the server's refusal keeps its status:
+403 `forbidden`, 409 `conflict`, 412 `conflict` with `detail.reason` `stale` (read the
+workstream again). A write that may have happened is `uncertain`. `factory.me` also
+answers `teams`, the ids of the teams the person is in (`[]` from an older server).
+
+An engine whose hello carries `org_docs` carries an organization's **live documents**:
+the Yjs documents two people type into at once, a workstream page
+`ws/<workstream>/page/<page>` or the text of a canvas frame
+`canvas/<canvas>/frame/<frame>`. The server keeps, per document, an append-only log of
+opaque Yjs updates stamped `seq`, `by`, `at`, plus the latest client-made snapshot and
+the `seq` it covers; it never parses Yjs. Each method takes `connection` and `doc`:
+`factory.org_doc_read {since}` `GET /v1/docs/{doc}?since=` answers `{doc, seq,
+snapshot, updates, awareness, can_edit, compact}` (load `snapshot` when it is set, then
+apply `updates` in order; `seq` is what to follow from);
+`factory.org_doc_send {base_seq, update, seed?}` `POST .../updates` answers the stamp
+`{doc, seq, by, at, compact}`; `factory.org_doc_snapshot {seq, state}` `PUT
+.../snapshot` answers `{doc, seq, kept}` (`kept` false: a snapshot at or past `seq`
+was already kept, not an error); `factory.org_doc_aware {client, state}` `POST
+.../awareness` sends this client's y-protocols awareness state (`null`: it left), true
+for 30 s unless sent again. `update`, `state` and `snapshot.state` are base64. Seeing the
+parent item (`view`) reads, follows and sends awareness; `edit` sends updates and
+snapshots; an archived workstream's pages are read-only; a document whose parent you
+cannot see is `not_found`; a canvas frame's document follows its canvas (`org_canvases`):
+found when the canvas is visible and the frame is in its snapshot, read with `view`, written
+with `edit`, and dropped when the frame or the canvas is deleted. Refusals: `conflict` with `detail.reason` `seeded` (a `seed: true` update into a
+document that has content: read it instead), `reset` (`base_seq` or a snapshot's `seq`
+is past the server's head: the document was reset, read it again) or `snapshot_needed`
+(see compaction); `bad_params` before anything is sent past 256 KiB per update, 2 MiB
+per snapshot, 4 KiB per awareness state; `busy` (HTTP 429, `Retry-After: 1`) past 30 updates a second (burst
+120) or 10 awareness states a second (burst 20) per person per document.
+
+**Compaction.** The client compacts; the server only keeps. Past 500 updates or 512 KiB
+since the snapshot, every answer says `compact: true`: an editor posts
+`Y.encodeStateAsUpdate` as the snapshot with the `seq` it has applied. Past 5000 updates
+or 2 MiB the server refuses new updates with `snapshot_needed` until one arrives. A kept
+snapshot drops the updates it covers. **Versions** are E2's: on 30 s idle the client that
+wrote last posts the snapshot here and then `POST /v1/workstreams/{id}/pages/{pid}/versions
+{body_md, state, reason:"idle"}` there; a restore answers `{body_md, state}` and the
+restorer applies it as an ordinary update, so collaborators see it live.
+
+`factory.org_doc_follow {since}` keeps the document's stream (`GET
+/v1/docs/{doc}/events?since=`) open with the same session and relays it until
+`factory.org_doc_unfollow`, the connection is detached, or its sign-in changes or ends:
+`factory.org_doc_update {connection, doc, seq, by, at, update, snapshot}` in `seq` order,
+never skipping one (a stream that drops or falls behind is reopened from the last `seq`
+relayed and the server replays the rest; a replay that starts behind the snapshot opens
+with the snapshot, `snapshot: true`, applied the same way with `Y.applyUpdate`);
+`factory.org_doc_awareness {connection, doc, by, client, state, at}` (`state` null: the
+client left or lapsed); and `factory.org_doc_closed {connection, doc, reason}`,
+`removed` (the page was deleted) or `gone` (no longer visible, or signed out).
+Document updates do NOT travel on `GET /v1/events`, whose durable window of 200 events
+keystrokes would flush.
+An engine whose hello carries `org_workstream_parts` changes one part of an
+organization workstream at a time, so two people changing two different parts never
+refuse each other. A page's BODY is not one of them (it is a live document); these keep
+a page's place, title, kind and saved versions. `factory.org_workstream_page_create
+{id, title, kind?, parent?, index?}` `POST .../pages`, `factory.org_workstream_page_update
+{id, page, rev, title?, kind?, parent?, index?}` `PATCH .../pages/{page}` with `If-Match`
+the PAGE's `rev` (every page carries one), `factory.org_workstream_page_delete {id, page}`
+(its pages move up to its parent) — each answers the workstream. Versions:
+`factory.org_workstream_page_versions {id, page}` (newest first, without words),
+`factory.org_workstream_page_version {id, page, version}` (with `body_md` and `state`),
+`factory.org_workstream_page_snapshot {id, page, body_md, state?, reason}` (`reason`
+`idle` or `manual`; the same words twice answer the version already kept) and
+`factory.org_workstream_page_restore {id, page, version}`, which keeps the old words as
+a new version by the caller and answers them so the caller's editor applies them to the
+live document. `factory.org_workstream_plan_get {id}` answers `{plan, rev}` (`null` and
+`0` before the first) and `factory.org_workstream_plan_set {id, rev, plan}` replaces it
+(`rev` 0 for the first). `factory.org_workstream_wakes {id}`, `_wake_add {id, wake}` and
+`_wake_update {id, wake_id, rev, wake}`, and the same three for suggestions
+(`_suggestions {id, page?}`, `_suggestion_add`, `_suggestion_update {id, suggestion_id,
+rev, suggestion}`), keep the desk's own objects with the server's `id`, `rev`, `by`, `at`,
+`updated_by` and `updated_at` on top; an update merges one level deep and `null`
+removes a key. `factory.org_workstream_job_add` and `_job_remove {id, job}` keep which
+factory jobs (by number) belong to it, one workstream per job; the workstream answers
+`jobs`. `factory.org_workstream_unarchive {id}` brings an archived one back. The
+workstream also answers `budget_usd` (set with `factory.org_workstream_update
+{budget_usd}`, negative clears) and `spend_usd`, the spend posted against it. A
+decision a patch leaves out is kept as `superseded`, never deleted. Every author is
+the server's.
+
+With `org_roles` in hello, a workstream's access is roles. A workstream row carries
+`shares` `[{kind:"person"|"team", id, role}]` with `role` one of `view`, `comment`,
+`edit`, `full` (each grants the ones before it), `private` (only its person owner
+reaches it) and `my_role`, the caller's role. The owner holds `full`. `view` reads,
+`edit` changes its words and approves its go-aheads, `full` archives it and changes
+its owner, shares or privacy. The operator holds `view` on every workstream that is
+not private and may change its owner or shares. For someone else's private
+workstream the operator gets a name-only row (`my_role` `""`, id, name, stage, owner,
+`private`, `updated_at`, zero counts, no shares), and `factory.org_workstream` on it
+answers `not_found`. `shared_with` is still answered: the team ids among `shares`.
+`factory.org_workstream_shares` lands in one save on the server: `shares` (the whole
+list) when sent, else `teams` (the older call: each team as `edit`, person shares
+kept); `owner` when sent; `private` when sent (`true` needs a person owner and takes
+it from everyone it was shared with; beside a non-empty `shares` it is a 422); a non-empty `shares` on a private workstream
+makes it not private; `rev` when sent must be the rev read, else `conflict`/`stale`.
+`factory.org_workstream_create` takes `private`. The server signs every decision that
+is new or changed (`by` is the caller, `at` is now) and ignores the client's values,
+and an import's `created_by` is always the caller. An import's `links` may name the
+Personal ids of workstreams the same person already moved in; they are linked by
+their organization ids, and a later import is linked from earlier ones that named it.
+When the operator removes a person, their workstreams go to `?heir=<handle>` or the
+operator, and they leave every share; each change is a `workstream.changed` event.
+
+An engine whose hello carries `org_agent_runner` reads and keeps where an organization
+workstream's agent runs. `factory.org_agent_runner` `GET /v1/settings` answers
+`{agent_runner, agent_runners}`: the operator's choice, `driver` (on the laptop of the
+person driving the workstream, their engine and model key) or `server` (on the
+organization's server with keys the operator set there), and the choices that server
+offers; an older server reads as `driver` of `[driver]`. A server offers `server` once it runs
+agents (`codeaf factory serve` does) AND the operator has given it a model key; choosing
+`server` lets go of every driver's hand. `factory.org_agent_runner_set {agent_runner}` `PATCH /v1/settings` is the
+operator's alone (`forbidden` otherwise); a choice not offered is refused by the server.
+While it is `driver`, one person at a time drives a workstream's agent through its
+driver hand: `factory.org_workstream_drive {id}` `PUT /v1/workstreams/{id}/driver` takes
+it, or renews it when it is already yours, and answers `{handle, since, until, ttl_s}`;
+the hand lapses `ttl_s` (90) seconds after its last renewal, so a desk renews it while
+the window is open. Someone else's live hand is `conflict` with `detail.reason`
+`driving` and `detail.by` `@handle`. `factory.org_workstream_let_go {id}` `DELETE`
+lets go; its owner and the operator may also take it from someone else. A workstream
+answers `driver` while someone holds it. `factory.org_workstream_spend {id, usd, key,
+job?, chat?}` `POST /v1/workstreams/{id}/spend` posts what the driver's agent spent,
+with `key` sent as `Idempotency-Key` so a retry counts once, and answers `{spend_usd,
+budget_usd}`; the server names the spender from the session.
+
+An engine whose hello carries `org_agent_server` speaks to the organization's own
+model keys and to a workstream's agent on the server. `factory.org_keys` `GET
+/v1/org/keys`, `factory.org_key_set {provider, key}` `PUT /v1/org/keys/{provider}` and
+`factory.org_key_delete {provider}` `DELETE` are the operator's alone; the only provider
+is `openrouter`, and a key is answered back only as `{provider, last4, set_at,
+set_by}`, never whole. In `server` mode every workstream has one agent on the server,
+run with that key as an ordinary engine conversation whose one tool is
+`workstream_pages` (read the workstream and one page, write a page, make a page,
+propose a decision; no shell, files, repository or machine). `factory.org_workstream_agent
+{id, since?}` `GET /v1/workstreams/{id}/agent?since=` (`view`) answers `{id, state,
+turn?, for?, since?, entries, seq, can_talk, cannot?}`: `state` is `idle`, `working`
+(`for` is whose message) or `stopping` (`for` is who stopped it); `entries` are the
+lines after `since` (at most 200), each `{seq, at, kind, by?, text, tool?, failed?,
+turn}` with `kind` `person`, `agent`, `step` or `note`; `cannot` is the one sentence
+saying why an editor cannot talk now (another runner mode, no key, archived, budget
+spent), absent for a viewer. `factory.org_workstream_agent_send {id, text}` `POST
+.../agent/messages` (`edit`, 1–16384 bytes) answers 202 with the agent working; while
+it answers someone else the refusal is `conflict` with `detail.reason` `busy` and
+`detail.by` `@handle`. `factory.org_workstream_agent_stop {id}` `POST .../agent/stop`
+(`edit`) stops it. The agent writes as the person who asked (their rights are checked
+on every write); a page whose live document exists is not written over, the text is
+kept as a page version with `reason` `agent`; a decision is added `proposed`. What a
+turn spent is posted to the workstream's spend under the asker with `chat` `agent`.
+The server's `agent.entry {id, entry}` and `agent.state {id, state, ...}` reach those
+who can see the workstream and are relayed as `factory.org_workstream_agent
+{connection, id, entry?, state?}`.
+
+An engine whose hello carries `org_canvases` reads and writes an organization's
+canvases, which live on its server and are kept there by canvas-core (`canvas rpc`), so
+every canvas shape on these methods is canvas-core's own, passed through unchanged — the
+same snapshot, op, op record, version and mark the desk reads for a Personal canvas. Each
+takes `connection` and, but for the list, create and import, `id` (`cv_` and twelve
+letters or digits): `factory.org_canvases` `GET /v1/canvases` (`{canvases}`, each the
+canvas-core summary plus `owner`, `shares`, `private`, `my_role`, `seq`, `updated_by`,
+`workstream?`, or a `name_only` row of a private canvas for the operator),
+`factory.org_canvas_get`, `factory.org_canvas_create {title, owner?, shares?, private?,
+workstream?}` (with `workstream`, hello word `org_workstream_canvases`: the canvas belongs
+to that organization workstream and is reached the way the workstream is; it needs `edit`
+on the workstream, and `owner`/`shares`/`private` beside it are refused),
+`factory.org_canvas_update {title?, trashed?, workstream?}` (`workstream` puts it in one, or
+`""` takes it out; full on the canvas), `factory.org_canvas_delete`, `factory.org_canvas_snapshot`,
+`factory.org_canvas_ops {since}` → `{seq, ops}`, `factory.org_canvas_apply {base_seq, ops}`
+→ `{seq, ops}` (the records written, each stamped `person:<handle>` by the server),
+`factory.org_canvas_versions`, `factory.org_canvas_version_create {label?}`,
+`factory.org_canvas_restore {version}` → `{seq, ops}`, `factory.org_canvas_marks` (each
+mark with `by`), `factory.org_canvas_mark_create {mark}`, `factory.org_canvas_shares
+{shares:[{kind, id, role}], owner?, private?}`, `factory.org_canvas_import {snapshot,
+assets:[{sha, data, type, name}], from_local_id, title?}` (a laptop canvas moving in once;
+again answers the first), `factory.org_canvas_asset_get {sha}` → `{data, type}` and
+`factory.org_canvas_asset_put {sha, data, type, name?}` (`data` is base64). Roles: `view`
+reads; `comment` adds marks and takes a hand; `edit` writes ops, versions and restores;
+`full` shares, trashes and deletes; a canvas you cannot view is `not_found`. A hand is a
+lease op `{t:"lease", frame, actor:"", until:"hand"}` (`until:""` lets go); `member`,
+`wait`, `proposal` and `suggest` ops and reserved meta keys are `bad_params`. A write
+into, or a hand on, a frame another person's hand is on is `conflict` with
+`detail: {reason:"conflict", frame, holder, seq, ops}`, `ops` being every record after
+`base_seq`. Text inside a frame is not these ops: it is a shared document (`org_docs`).
+
+The event `factory.org_changed` `{connection, kind, id}` says a team or workstream
+changed on an organization's server, so a window showing that organization reads it
+again instead of polling. Once a connection has answered any of the methods above,
+the engine follows its `GET /v1/events` with the same session and relays the
+server's organization kinds, already filtered to what this person may see:
+`kind` `team.changed` (a team was made, renamed, deleted or its members changed;
+read `factory.teams`), `workstream.changed` (made, edited, owner or shares changed;
+read `factory.org_workstream {id}`, which answers `not_found` once it is no longer
+visible), `workstream.removed` (archived or purged; drop it), `canvas.changed` (a canvas
+was made, written, renamed or shared; it also carries `seq`, the seq it reached, and `by`,
+the handle that wrote it, so a window already at `seq` reads nothing and any other reads
+`factory.org_canvas_ops {since}`) or `canvas.removed` (deleted or no longer shared with
+you; drop it). A `workstream.changed` from a
+server with `org_workstream_parts` also carries `part` (`page`, `versions`, `plan`,
+`wakes`, `suggestions`, `jobs`, `spend` or `workstream`), `part_id`, `by`, `rev` and
+`deleted`, so a window can read just that part. `connection` is the
+id the methods take. For example:
+
+```json
+{"event":"factory.org_changed","seq":812,"data":{"connection":"fc_acme","kind":"workstream.changed","id":"ws_01JD…"}}
+```
+
+**A job in an organization workstream answers to that workstream.** A job belongs to
+the workstream whose go-ahead started it (`desk.policy_group` `ws_…`). On a team
+factory, every `POST /v1/jobs/{id}/<verb>` (stop, steer, priority, prioritize, reply,
+nudge, recheck, request_changes, undo and the rest) needs the job's person, `edit` on
+its workstream, or the operator; a job with no person needs `edit` on its workstream.
+`follow`, `brief_seen` and `scout` only need sight of the job, and `take`/`release`
+keep the lease desk's own person rule. A job outside every workstream with a person is
+changed only by that person or the operator (it used to be anyone who could read the
+repository). The refusal is 403 `reason: "not_job_person"`, `error` "only @santosh and
+people who can edit this job's workstream can do this" (`job_person` absent when the
+job has none). Undo of a stop is allowed to whoever stopped it and to the job's person.
+A job is seen only with read on its repository AND `view` on its workstream: the
+queue, `GET /v1/jobs/{id}` (404), the record and `activity`/job events leave it out.
+A sign-in whose token row names no one sees no workstream job and acts as no one's
+person, where it used to read as the server machine's own GitHub login.
+
+An empty `id` means the stream dropped and the server could not replay what was
+missed; the engine then sends one `team.changed` and one `workstream.changed`, both
+with `id` `""`: read both lists again. A dropped stream is otherwise reopened with
+`Last-Event-ID`, so nothing is lost. Following ends when the connection is detached,
+its sign-in changes, ends or is refused, or the engine stops; the next organization
+method starts it again.
+
+An engine whose hello carries `org_presence` also says who is in an organization
+item and who changed it. Every `factory.org_changed` carries `by`, the handle of the
+person who made the change as the server stamped it from the sign-in (`""` on a
+resync and from an older server).
+
+`factory.org_presence {item: {kind, id}, part?, editing?, left?, client?}` is
+`POST /v1/presence`, a heartbeat the desk sends every 10 s while the item is open:
+`kind` is `workstream` (or `canvas`, on a server that keeps canvases), `part` the
+page or frame the person is on (`""` for the item itself), `editing` whether they
+are typing in it, `client` a window id so two windows of one person are told apart,
+and `left: true` once when the item closes. A person not heard from for 30 s has
+left. The answer is `{item, here: [{handle, part, editing}]}`, who is on it now,
+one row per person and part. An item the caller may not view is `not_found`. The
+server publishes only a CHANGE to that list (an arrival, a move to another part,
+editing starting or stopping, a leaving or a silence), relayed as the event
+`factory.org_presence {connection, item, here}` to those who may view the item:
+
+```json
+{"event":"factory.org_presence","seq":813,"data":{"connection":"fc_acme","item":{"kind":"workstream","id":"ws_01JD…"},"here":[{"handle":"santosh","part":"pg_retry","editing":true}]}}
+```
+
+Presence is not kept: a restarted server knows nobody until the next beat. Carets
+inside a document are not presence; they travel with that document's awareness.
+
+`factory.org_workstream_activity {id, since?, limit?}` is
+`GET /v1/workstreams/{id}/activity`: every recorded change to the workstream and its
+go-aheads, oldest first (at most 500, the newest), as
+`{id, events: [{id, at, kind, verb, object, handle, detail, actor}], people}`. `verb`
+is the words a person reads (`created workstream`, `changed workstream`, `changed
+sharing`, `changed owner`, `archived workstream`, `changed go-aheads`, and the page,
+plan and job verbs); `detail` names the fields that changed, never their words;
+`handle` is who made it, stamped by the server. A workstream the caller cannot see is
+`not_found`. Changes to teams and to the factory's rules, routing, spending defaults
+and settings are recorded the same way and read in the factory's activity list
+(`object` `team:<id>` or `factory`).
+
 An engine whose hello carries `factory.group_policy` and `factory.waits_set`
 (and capabilities `group_policy: true`, `waits_on: true`) serves go-aheads the
 factory follows by itself. `factory.features {factory}` answers `{features}`, what
@@ -559,7 +920,9 @@ older than the route. `factory.policy_get {factory, group}` and
 `PUT /v1/policy`) answer `{group, version?, stopped, owner?, updated_at?, spent_usd,
 allowances: [{id, jobs, cap_usd, ends_at, spent_usd, state}]}`; a set replaces the
 group's whole policy and its caller becomes its owner (on a team, only the owner or
-the operator may change one someone keeps: `forbidden`). `group` is 1–200 plain
+the operator may change one someone keeps: `forbidden`). When `group` is an organization workstream's id, only those who can see that
+workstream read its policy (`not_found` otherwise, as for the workstream itself) and only
+those who can write it set one (`forbidden`). `group` is 1–200 plain
 characters; at most 50 allowances, each a distinct id of 1–64 of `A–Z a–z 0–9 . _ : -`,
 1–200 distinct job numbers, a cap above 0 and at most 10,000, and an RFC 3339
 `ends_at`, kept as sent; anything else is `bad_params` before it is sent. `state` is
@@ -676,6 +1039,19 @@ rotated session cookie runs as a new create, and it saves the answer only after
 the create has committed, so a Factory that stops between the two runs the
 resend again. With none of the new fields, the route, body and absent
 idempotency header are unchanged.
+
+`factory.job_create` takes `workstream` (an organization workstream id, `ws_…`),
+passed to the factory as `POST /v1/jobs {workstream}`. The factory checks the
+caller can edit that workstream (403 otherwise, 404 when they cannot see it, 409
+when it is archived) before the job exists, and the job joins the workstream in
+the same request, as `PUT /v1/workstreams/{id}/jobs/{job}` would. On an
+organization server a signed-in person reads the repositories turned on in Repos
+(the organization's) besides those their own GitHub sign-in reads; a job on one
+they read ONLY through the organization must name such a workstream, or is
+refused 403 with "Make this job in a workstream you can edit: this repository is
+the organization's." The operator is never asked for one. An older factory
+ignores the field, so a desk that sends it still adds the job to the workstream
+itself afterwards; that add is a no-op when the job is already in it.
 
 
 An engine whose hello carries `factory.stop_any_version` accepts
@@ -2113,6 +2489,12 @@ and the reply is empty.
 | `devices.changed` | `DevicesResult` |
 | `entry.added` | `EntryAdded` |
 | `factory.jobs_changed` | `FactoryJobsChanged` |
+| `factory.org_changed` | `FactoryOrgChanged` |
+| `factory.org_presence` | `FactoryOrgPresence` |
+| `factory.org_workstream_agent` | `FactoryOrgWorkstreamAgent` |
+| `factory.org_doc_awareness` | `FactoryOrgDocAwareness` |
+| `factory.org_doc_closed` | `FactoryOrgDocClosed` |
+| `factory.org_doc_update` | `FactoryOrgDocUpdate` |
 | `factory.sessions_changed` | `Empty` |
 | `factory.event` | `FactoryEvent` |
 | `hello` | `Hello` |
@@ -2948,3 +3330,156 @@ For custom instances, every model returned by `keys.check` and `models.list`
 sets `provider` to the persisted provider ID (`connection.id` / `providers.list`
 `id`). Model IDs keep their qualified routing prefix and display names remain
 human-readable; a routing prefix is not a connection ID.
+
+## Username + password on an organization (`factory_password`)
+
+Hello announces **`factory_password`** when the engine serves the four methods
+below; an engine that does not answers them `unknown_method`. Username and
+password is the default way into an organization; GitHub's device flow stays as
+the second way.
+
+- `factory.access_sign_up {link, caller, username, password, name?}` makes an
+  account through an operator claim link or an invitation and answers
+  `FactoryAccess`. `state: "joined"` means the account exists and the engine
+  now holds its session for that connection (kept exactly as
+  `factory.access_sign_in` keeps one; the session credential is never in an
+  answer). A refusal is `state: "ready"` with `reason` (`username_taken`,
+  `username_invalid`, `password_short`, `password_long`, `password_common`,
+  `password_contains_username`, `name_invalid`, `github_link`) and `message`
+  in the server's words. `github_link` is an invitation made for one GitHub
+  login: it takes no password (its `factory.sign_in` leaves `password` out),
+  only that person's GitHub sign-in. A username already used anywhere on the
+  server (a GitHub login that ever signed in, a share, a team, a job) is
+  `username_taken`. A link that is revoked, expired or used up answers that
+  state.
+- `factory.access_reset {link, caller, password}` sets a new password through
+  the operator's reset link (`kind: "reset"` on `factory.access_check`'s
+  answer); `state: "joined"` signs the person in, and every other session of
+  theirs has ended.
+- `factory.password_sign_in {factory, caller, username, password}` signs a
+  person in again with no link and answers `{state: "signed_in", me}`. A
+  refusal is a `forbidden` error carrying the server's sentence: the same one
+  for an unknown username and a wrong password ("That username and password
+  don't match."). Too many tries is `busy` ("Too many tries. Wait a few
+  minutes."): 10 wrong tries of a username from one address, 100 from
+  everywhere, or 50 from one address (an IPv6 address counts by its /64);
+  and a second sign-in of a username while one is being verified. A machine
+  the organization trusts skips the 100: see the device token below. Every session is tied to
+  the password it was made with: a change or a reset ends all of them.
+- `factory.password_change {factory, current, new}` answers `{}`; every other
+  session of the person ends. A wrong current password is `forbidden`; a new
+  one that breaks a rule is `bad_params` with the rule's words; a change that
+  lost a race with another change is `conflict` ("Your password was changed
+  meanwhile; sign in again.").
+- `factory.link_create` takes `kind: "reset"` with `person: <handle>` (and no
+  other choice): a one-time link for one hour, for a password person only,
+  copied like an invitation. Its entry carries `kind: "reset"`.
+
+Fields that say how a person signs in: `factory.list`'s connection `sign_in`
+and `factory.access_check`'s `factory.sign_in` (`["password","github"]`,
+preferred first, from the server's `/v1/about`; absent means GitHub only);
+`factory.me`'s `sign_in_kind` (`"password"`, `"passkey"` or `"github"`); and
+`factory.people`'s rows' `kind`. `factory.me`'s `invite_available` no longer
+needs GitHub.
+
+THE DEVICE TOKEN. A sign-up, a reset, a change, and a sign-in without a
+valid one hand this machine the organization's device token, but only when the
+engine asks (`want_device`), and it asks only while the app's core has said
+`factory.sessions_store {can_keep: true}`: that it can keep a secret in the
+OS's secure store. The core says it at launch, before the windows are let go,
+and says `false` the moment a keep is refused; unsaid is false. A person holds
+at most 16 live device tokens; past that a sign-in still succeeds but gets
+none, and no live token is ever pushed out. The engine holds
+it per connection like a session, registers it with its redaction, presents it
+on every `factory.password_sign_in` (the server then counts the try by the
+machine, not against the username's ceiling of 100, so a stranger guessing at
+the name from elsewhere never locks out a machine the person used), and hands
+it to the app's core through `factory.sessions_take`: each
+`FactorySessionChange` may carry `device`. It outlives the session: a change
+with `removed` forgets the session only, and a `device` on it is still kept;
+`device_removed` (the connection was detached) forgets the device too.
+`factory.session_restore` takes `device` beside `token`, and either alone. A
+password change or reset revokes every older device token on the server; a
+new machine during an attack waits, or uses the operator's reset link, which
+is never throttled.
+
+A password crosses this wire only inward, in `password`, `current` and `new`,
+on these four methods; a client's wire trace drops those params by name. The
+engine registers each with its redaction the moment it arrives.
+
+## Passkeys on an organization (`factory_passkey`)
+
+Hello announces **`factory_passkey`** when the engine serves the five methods
+below; an engine that does not answers them `unknown_method`. A passkey
+(WebAuthn: Touch ID, Windows Hello, a phone over QR, a security key, a password
+manager) is the first way into an organization wherever the server can offer
+one: its address is https with a DNS name. `sign_in` then lists `"passkey"`
+first (`["passkey","password","github"]`); a server that cannot offer passkeys
+leaves it out, and these methods answer `not_found` from it.
+
+The ceremony runs in the person's **default browser**, on a page the
+organization server serves: only a page on the server's own origin may use a
+passkey for it (a desk web view cannot, for any domain not in the app's
+build-time `webcredentials` entitlement). The engine starts the flow with the
+SHA-256 of a 32-byte verifier it keeps and never sends anywhere else; the server
+answers the session only to a poll carrying that verifier, so the url alone
+cannot mint a session.
+
+- `factory.passkey_start {factory?|link?, caller, purpose, username?, name?}`
+  answers `{flow, url, expires_at}`. `purpose` is `sign_in` (with `factory`, an
+  attached organization), `add` (with `factory`, signed in: another passkey for
+  this person) or `join` (with `link`: an invitation, the operator claim link,
+  or an operator's reset link). A join may carry the `username` (and `name`)
+  the person already chose; otherwise the page asks. `url` is always
+  `https://<the organization's host>/passkey/<flow>` (or a test server's
+  `http://localhost:<port>/…`); the engine refuses a start whose url is on any
+  other origin, and a client should open it only in the default browser. A link
+  that is revoked, expired or used is `conflict` with the server's sentence.
+- `factory.passkey_poll {flow, caller}` answers `{state, message?, factory?}`:
+  `pending` until the browser has finished; `done` with `factory` = the
+  connection now signed in (a join attaches a new one); `expired` (ten minutes
+  passed, or the flow is unknown); `refused` with `message`; `elsewhere`
+  when the ceremony finished in a browser that has not reached this computer
+  (not final: keep polling, or cancel). A client polls about every two
+  seconds. Done is answered once; the session stays in the engine exactly as
+  `factory.access_sign_in` keeps one. An `add` and a `confirm` sign nobody in.
+- Every ceremony ends on this computer. The engine opens a one-shot listener
+  on `127.0.0.1:<ephemeral>` under a random path, with a key, for each flow;
+  the page's browser (bound to the flow by a cookie on its first ceremony) is
+  sent there by a 303 with a one-time code only that listener accepts, and the
+  server answers `done` only to a poll carrying that code and the verifier.
+  Copy address works in another browser on this computer used from the start;
+  on another device the page says why before the browser's "can't connect",
+  and "Finish on the computer that started this" after, and the flow never
+  completes.
+- `purpose: "confirm"` (with `factory` and `action`, one of `add_passkey`,
+  `remove_passkey` with `passkey` = its id, or `set_password`) is a step-up
+  for that one action: the person uses one of their passkeys on a page that
+  names the action and this computer. `factory.password_confirm {factory,
+  password, action, passkey?}` answers `{}` and does the same with the
+  current password; a wrong one is `forbidden`, a person without a password
+  or a `remove_passkey` for a passkey they don't have `not_found`, too many
+  tries `busy`. A session holds at most three confirmations; a fourth
+  replaces its oldest.
+- Adding a passkey, setting a first password and removing a passkey each
+  need a confirmation for that action, which lets it happen once within five
+  minutes; a sign-in never counts. Without one they fail with `step_up`,
+  whose `detail` is `{action, passkey?}`; the client confirms that action and
+  retries once.
+- A finished flow's code works for 60 s; the loopback answers its code with
+  a 303 to a clean `http://127.0.0.1:<port>/done`.
+- `factory.passkey_cancel {flow, caller}` answers `{}`; best effort.
+- `factory.passkey_list {factory}` answers `{passkeys: [{id, name, created_at,
+  last_used_at?, synced}], password}`. `password` says whether the person also
+  has a password. A GitHub person has no passkeys here: `not_found`.
+- `factory.passkey_remove {factory, id}` answers `{}`; every other session of
+  the person ends. Removing the last way in (the only passkey of a person with
+  no password) is `conflict`: "This is your only way to sign in. Add a password
+  or another passkey first."
+
+`factory.me`'s `sign_in_kind` is how this session was made: `"passkey"` after a
+passkey sign-in or join, `"password"` after a password one (the same person may
+hold both), with `github_signed_in` false for either; `factory.passkey_list`'s
+`password` says whether the person has a password. `factory.password_change` takes an empty `current` from a
+person with no password yet, which sets their first one.
+

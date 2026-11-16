@@ -35,6 +35,9 @@ type factoryHostConfig struct {
 	// TrustedProxies are addresses or CIDR ranges whose forwarding headers
 	// the service believes.
 	TrustedProxies []string `yaml:"trusted_proxies,omitempty"`
+	// HSTSIncludeSubdomains opts the HSTS header into includeSubDomains,
+	// for an operator who owns the domain and serves all of it over HTTPS.
+	HSTSIncludeSubdomains bool `yaml:"hsts_include_subdomains,omitempty"`
 
 	// secure is the HTTPS keys resolved against the final listen address by
 	// `factory serve`; nil serves plain HTTP the way a window does.
@@ -76,6 +79,9 @@ func (cfg factoryHostConfig) MarshalYAML() (any, error) {
 	}
 	if len(cfg.TrustedProxies) > 0 {
 		doc["trusted_proxies"] = cfg.TrustedProxies
+	}
+	if cfg.HSTSIncludeSubdomains {
+		doc["hsts_include_subdomains"] = true
 	}
 	return doc, nil
 }

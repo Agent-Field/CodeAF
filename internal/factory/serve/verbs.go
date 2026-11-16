@@ -78,6 +78,11 @@ func (h *Handler) postJob(verb string, exists bool, action jobAction) {
 			if offVerbs[verb] && h.refuseOff(w, factory.RepoOf(it), factory.JobState(it)) {
 				return
 			}
+			// THE ONE PLACE A JOB'S DOOR MEETS ITS WORKSTREAM: its person, an
+			// editor of its workstream or the operator (job_access.go).
+			if !h.mayChangeJob(w, r, it, verb) {
+				return
+			}
 			if decisionAction(verb) && factory.RecoveryPaused(it) {
 				h.finish(w, run.StepControlRefusal(factory.DecisionPauseDetail(it)))
 				return
@@ -878,6 +883,13 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 	if h.refuseOff(w, body.Repo, "") {
 		return
 	}
+	// A JOB IS MADE IN A WORKSTREAM ITS MAKER CAN EDIT when it names one, and
+	// MUST name one when its maker reads the repository only because the
+	// organization turned it on (org_repos.go): a view-only member makes none.
+	home, homeViewer, ok := h.newJobWorkstream(w, r, body)
+	if !ok {
+		return
+	}
 	if body.Autostart && !h.requireVerb(w, h.seam.Launch != nil) {
 		return
 	}
@@ -976,6 +988,14 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 	if body.Issue && h.failed(w, h.keepIssue(id, issue)) {
 		return
 	}
+	// The job joins its workstream before anything starts it, so the
+	// workstream's sight already covers it when it runs. The job exists
+	// either way; a join refused in between says so in the workstream's words.
+	if home.ID != "" {
+		if _, err := h.joinWorkstreamJob(r, home, homeViewer, id); h.partRefused(w, err) {
+			return
+		}
+	}
 	if body.Autostart && h.config.Store != nil {
 		it, err := h.config.Store.Get(id)
 		if h.failed(w, err) || h.failed(w, h.ensureBudget(r, it)) {
@@ -989,6 +1009,52 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 		Factory api.Factory `json:"factory"`
 		ID      int         `json:"id"`
 	}{h.factory, id})
+}
+
+// NewJobNeedsWorkstream is the refusal of a job named in no workstream on a
+// repository its maker reads only through the organization.
+const NewJobNeedsWorkstream = "Make this job in a workstream you can edit: this repository is the organization's."
+
+// newJobWorkstream is the workstream a new job is made in, read and checked
+// before the job exists; a zero workstream when it names none and needs none.
+// ok is false with the refusal written.
+func (h *Handler) newJobWorkstream(w http.ResponseWriter, r *http.Request, body api.NewJob) (factory.OrgWorkstream, wsViewer, bool) {
+	id := strings.TrimSpace(body.Workstream)
+	if h.mode() == api.FactorySolo {
+		// A solo factory keeps no organization workstreams to make a job in.
+		return factory.OrgWorkstream{}, wsViewer{}, true
+	}
+	if id == "" {
+		if h.repoOnlyThroughOrg(r, body.Repo) {
+			h.fail(w, http.StatusForbidden, NewJobNeedsWorkstream)
+			return factory.OrgWorkstream{}, wsViewer{}, false
+		}
+		return factory.OrgWorkstream{}, wsViewer{}, true
+	}
+	if !h.requireVerb(w, h.config.Store != nil) {
+		return factory.OrgWorkstream{}, wsViewer{}, false
+	}
+	v, err := h.wsViewer(r)
+	if h.failed(w, err) {
+		return factory.OrgWorkstream{}, v, false
+	}
+	ws, found, err := h.config.Store.Workstream(id)
+	if h.failed(w, err) {
+		return factory.OrgWorkstream{}, v, false
+	}
+	if !found || !v.canSee(ws) {
+		h.fail(w, http.StatusNotFound, errWorkstreamGone.Error())
+		return factory.OrgWorkstream{}, v, false
+	}
+	if !v.canWrite(ws) {
+		h.fail(w, http.StatusForbidden, errWorkstreamNoWrite.Error())
+		return factory.OrgWorkstream{}, v, false
+	}
+	if ws.ArchivedAt != nil {
+		h.fail(w, http.StatusConflict, errWorkstreamArchived.Error())
+		return factory.OrgWorkstream{}, v, false
+	}
+	return ws, v, true
 }
 
 // stampAsk records the app's ask on a job this factory's store holds.

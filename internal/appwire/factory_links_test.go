@@ -229,8 +229,10 @@ func TestFactoryMeCarriesTheAvailabilityBooleansAndSilenceIsFalse(t *testing.T) 
 	if !got.GitHubSignInAvailable || !got.InviteAvailable {
 		t.Fatalf("%+v", got)
 	}
-	// Invitations need the sign-in, so one cannot be reported without it.
-	if got := NewFactoryMe(api.Me{InviteAvailable: true}); got.InviteAvailable {
-		t.Fatalf("invites without sign-in: %+v", got)
+	// An invitation is redeemed with a password as well as with GitHub, so a
+	// factory that says it can invite is believed without GitHub; an older one
+	// never said so without GitHub.
+	if got := NewFactoryMe(api.Me{InviteAvailable: true}); !got.InviteAvailable || got.GitHubSignInAvailable {
+		t.Fatalf("a password factory's invites: %+v", got)
 	}
 }

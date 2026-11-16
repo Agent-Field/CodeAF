@@ -8,6 +8,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/record"
 )
 
 // errRulesMoved refuses a write whose reader's copy is no longer what the
@@ -120,6 +121,7 @@ func (h *Handler) houseRules(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
+	h.recordOrg(r, record.RulesChanged, "changed rules", orgObjectFactory, "")
 	h.write(w, 200, factory.KeptRules{HouseRules: saved, RulesChange: by})
 }
 

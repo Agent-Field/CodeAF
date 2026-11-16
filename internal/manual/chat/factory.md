@@ -55,9 +55,19 @@ Three things make one factory:
 
 - the **service**, started with `codeaf factory serve`, which holds the jobs and the people;
 - one or more **runners**, machines that pull a job and run it with their owner's keys;
-- the **people**, each signed in with their own GitHub.
+- the **people**, each signed in with a username and password, a passkey, or their GitHub.
 
 A machine with no factory set up has none of this: the chat's factory tools are absent from its belt rather than present and failing.
+
+## make a job without a GitHub account — the organization's repositories, no repository to pick, "An admin turns repositories on in Repos"
+
+On an organization server you do not need a GitHub account of your own to make a job. The organization's repositories are the ones turned on in Repos. Only the operator turns a repository on or off, and only from the list the server's own GitHub connection can read.
+
+- **Everyone signed in reads the organization's repositories**, with a password, a passkey or GitHub. A GitHub member also keeps every repository their own GitHub sign-in reads; nothing they had before is taken away.
+- **A job on one of the organization's repositories is made in a workstream you can edit.** Add job on a workstream's Jobs tab offers them. Someone who can only view the workstream sees its jobs and makes none. A job made outside a workstream on such a repository is refused with "Make this job in a workstream you can edit: this repository is the organization's." The operator, and a GitHub member whose own sign-in reads the repository, may still make one anywhere.
+- **When the organization has none on**, Add job says so: someone who is not the operator reads "An admin turns repositories on in Repos"; the operator gets a link straight to Repos.
+
+Turning a repository on is the operator's choice of what every member may read through the server: its jobs, their steps and their pull requests.
 
 ## job numbers and GitHub issue numbers — a job with no GitHub issue
 
@@ -157,7 +167,7 @@ changed is not decoded again.
 
 **Jobs at once** is the one number that limits how many jobs a computer runs
 together. A newly attached computer defaults to **15 jobs at once**. Change it
-in **Settings → Factory → Your computers**, with the stepper beside each of
+in **Settings → Organizations → Your computers**, with the stepper beside each of
 your computers; it is owner-only. The supported range is 1–100. An existing
 saved limit is kept on restart and upgrade, including a previously chosen limit
 of two. A change applies within about five seconds without restarting.
@@ -168,7 +178,7 @@ memory limits per job: the computer's own system shares them.
 Jobs over the limit wait in the queue in priority order, then oldest first (see "priority orders the queue"). When the owner's eligible
 computers are full, queued jobs say **Waiting for capacity** and show the
 number of occupied execution slots and the configured limit. The notice points
-to Settings → Factory → Your computers and offers **Change jobs at once**. An
+to Settings → Organizations → Your computers and offers **Change jobs at once**. An
 offline or unknown runner is reported as waiting for a runner, without
 inventing a full-capacity count. A restarted codeaf lists each of its computers
 once: the rows the process before it left go once they have been quiet past
@@ -212,13 +222,29 @@ conflict queues a bounded maintenance pass. Only the worker executing that pass
 holds a slot; completing it releases capacity and resumes background monitoring.
 Budgets, ownership, publication consent and duplicate-repair protection still apply.
 
-The config keys are `name`, `listen`, `access_token`, `repos` (a list of `owner/name`), `github_client_id` (an OAuth app with device flow on), `team` (GitHub handles), `mode` (`solo` or `team`) and the HTTPS keys `tls`, `domain`, `cert_file`, `key_file`, `cache_dir` and `trusted_proxies`. Unknown keys are refused. Serving plain HTTP on a non-loopback address prints a warning, because access tokens and sign-in sessions would cross the network unencrypted. `--model slug` and `--one-model` pin the model its triage reads use. `--new-operator-link` prints a fresh one-time operator recovery link. Only one service runs per codeaf home (`serve.lock`); a second one says so.
+The config keys are `name`, `listen`, `access_token`, `repos` (a list of `owner/name`), `github_client_id` (an OAuth app with device flow on), `team` (GitHub handles), `mode` (`solo` or `team`) and the HTTPS keys `tls`, `domain`, `cert_file`, `key_file`, `cache_dir`, `trusted_proxies` and `hsts_include_subdomains` (`true` adds `includeSubDomains` to HSTS; off by default; only for a domain you own whose every name is HTTPS). Unknown keys are refused. `domain: localhost` is taken only with `tls: files` and a certificate of your own (no certificate authority issues one for it); it is how passkeys are tried on one machine. Serving plain HTTP on a non-loopback address prints a warning, because access tokens and sign-in sessions would cross the network unencrypted. `--model slug` and `--one-model` pin the model its triage reads use. `--new-operator-link` prints a fresh one-time operator recovery link. Only one service runs per codeaf home (`serve.lock`); a second one says so.
 
 ## GitHub rate limit on a team factory — "GitHub is rate-limited until", github_limited, operator access link after the reset
 
 When the GitHub rate limit for a team factory's token is spent, `codeaf factory serve` still answers its address at once; only its GitHub reads pause. The factory logs one line when it meets the limit, `GitHub is rate-limited until HH:MM; the factory keeps serving and reads GitHub again then`, and one line when a GitHub read succeeds again, `GitHub's rate limit has cleared; the factory reads GitHub again`. While the limit is spent, the factory's `/v1/about` carries that sentence as `github_limited` and the reset time as `github_resumes_at`.
 
 The operator access link of a fresh team factory is printed once GitHub names the host's login, after the reset if the limit is spent. A GitHub read whose limit resets more than ninety seconds later is not retried in a loop; the factory's next poll after the reset reads it.
+
+## join an organization — an invite link, joining a factory, where Factory settings went in the desktop app
+
+A person joins an **organization**, never Factory on its own. An organization is one server (`codeaf factory serve`), and joining it brings everything it holds at once: its workstreams, canvases, chats, teams and Factory's jobs and pipelines. There is no separate step to connect or join Factory; in an organization, Factory is just there, as one of its places.
+
+In the desktop app there are three ways in, and all three open the same **Join an organization** page:
+
+- first run's **Where do you want to work?**: **Just me** (Personal, on this computer), **Join an organization**, or **Set up an organization** (run one on this computer, where the engine offers it);
+- the switcher at the foot of the strip: **Join an organization…**;
+- **Settings › Organizations**: **Join an organization…** under the organizations you are already in.
+
+Paste the invite link someone sent you. Once it is read, the page says **You're invited to** and the organization's name, then offers a passkey, a username and password, or GitHub, in the order the server prefers. **Or join by your organization's address** takes the address (and an access token, if you were given one) instead.
+
+**Settings › Organizations** has one section per organization you are in: your account there (password, passkeys, sign out, **Leave organization…**), its invite links and people, the model key and where agents run, then **Teams in** the organization, then **Factory** for that organization (repositories, AI notes, and the line to its rules, limits and computers). It was called Settings › Factory before.
+
+Invite links keep their old spelling, `codeaf://factory/join?url=…#token=…`, so every link already sent still works.
 
 ## give someone access — codeaf factory token, revoke, revoke-sessions and name
 
@@ -229,7 +255,60 @@ The service is joined with an access link, which the operator creates for one pe
 - `codeaf factory name` shows or changes the name the factory goes by.
 - `codeaf factory steps` prints the built-in step prompts; `codeaf factory convert` turns a Markdown pipeline into `.codeaf/factory.yaml`.
 
-An access link looks like `codeaf://factory/join?url=https://factory.example#token=…`. The secret is in the part after `#`, so it is never sent as part of an address. A link checks, in this order: the factory answers, it is not revoked, not expired, not used up, and the person's GitHub can see at least one of its repositories. Each failure is one plain sentence.
+An access link looks like `codeaf://factory/join?url=https://factory.example#token=…`. The secret is in the part after `#`, so it is never sent as part of an address. A link checks, in this order: the factory answers, it is not revoked, not expired, not used up, and, for a person who signs in with GitHub, their GitHub can see at least one of its repositories. Each failure is one plain sentence.
+
+## sign in to an organization with a username and password — sign up, sign in again, change password, wrong password
+
+An organization server (`codeaf factory serve`) takes a username and password; a passkey comes first where the server can offer one (see "sign in with a passkey"), and GitHub is the last way. Its `/v1/about` lists them in `sign_in`, preferred first: `["passkey","password","github"]` on an https server with a name, `["password","github"]` otherwise. You make an account by opening the operator link or an invitation link and choosing a username and a password; the link is used up in the same step that makes the account, so two people can never both join on one single-use link.
+
+- A username is 2 to 39 lowercase letters, digits or hyphens. It must be new to the server: not a GitHub login that ever signed in, nor a name already given a share, a team place or a job. "That name belongs to someone who signs in here with a password." refuses a GitHub sign-in with a password person's name. An invitation made for one GitHub login takes no password: "This link is for a GitHub account; sign in with GitHub."
+- A password is 12 characters to 256 bytes, any characters, with no other composition rules and no expiry. One on the embedded list of about 486,000 common passwords, compared by its letters and digits only (so "P.a.s.s.w.o.r.d-1234" counts), or one that contains your username, is refused with a sentence naming the rule.
+- A wrong username and a wrong password get the same sentence: "That username and password don't match."
+- "Too many tries. Wait a few minutes." comes after 10 wrong tries for a username from one address, 100 for a username from everywhere, or 50 from one address; the wait grows with more tries and goes away on its own. A machine you have signed in on before is not held up by other people's guesses (see the next section).
+- Changing your password, or a reset, ends every session made with the old one. Signing out ends that session on the server.
+- A session lasts 30 days after you last used it, and 90 days at most.
+- Password sign-in works only over HTTPS, or on the server's own machine, or behind a trusted proxy that says HTTPS.
+
+## a trusted machine — someone guessing my username, "Too many tries" on a new laptop, device token
+
+When the desktop app can keep secrets in the system keychain, each sign-up, reset, password change or sign-in on that machine gets a device token from the organization, kept beside the sign-in. A client that cannot keep it gets none. Later sign-ins on that machine present it. While a stranger guesses at your username from many addresses, the 100-tries limit for the username holds them up but not your machines: a machine with its token is counted by itself (10 wrong tries from one address, 100 from everywhere) and its address (50); past 100 its tries count like any other. Signing out keeps the token; disconnecting the factory removes it.
+
+The server keeps only a hash of each token. A token lasts 180 days after it was last used and is not replaced on use; a restart of the server keeps them. A person holds at most 16: past that a sign-in still works but gets no new token, and no token in use is ever pushed out. Changing your password, removing a passkey, a reset, or being removed ends every token made before, so the machine you changed it on gets a new one and your other machines count as new until they sign in again.
+
+A new machine during such an attack reads "Too many tries. Wait a few minutes." until the attack slows. To get in at once, ask the operator for a reset link: a reset link, like an unused invitation, is never held up by tries, and the reset trusts that machine from then on.
+
+## sign in with a passkey — Touch ID, Face ID, Windows Hello, your phone, a security key
+
+A passkey is the first way into an organization when its server is reached over HTTPS at a DNS name (not a bare IP address, not plain HTTP). Nothing secret is sent to the server: the passkey stays in your iCloud Keychain, Google Password Manager, 1Password, Windows Hello or security key, and signing in is one Touch ID or unlock.
+
+- **It opens your browser.** codeaf opens a page on the organization's own server in your default browser, because a passkey only works on that server's own page. You confirm with Touch ID (or your phone, or your security key) there, codeaf on this computer shows "Done", and codeaf is signed in. The page never shows your session to anyone.
+- **Join with a passkey**: open an invitation or the operator link, choose **Continue with a passkey**, pick a username in the browser. The link is used up in the same step that makes your account.
+- **Sign in again**: **Sign in with a passkey**; no username to type.
+- **No built-in passkey (most Linux machines)**: the browser offers your phone (scan a QR code) or a security key; the page says "Use your phone or a security key."
+- **A browser with no passkey support** is told: "This browser can't use passkeys. Go back to codeaf and use your password instead."
+- **Several passkeys**: in Settings, add another ("MacBook Touch ID", "YubiKey"), see when each was last used, or remove one. Removing a passkey ends your other sessions. The last way in cannot be removed: "This is your only way to sign in. Add a password or another passkey first." Someone who joined with a passkey can set a password there too.
+- A passkey sign-in that is never finished ends after ten minutes; one try's challenge lasts five.
+- A GitHub person has no passkeys on the server.
+
+## finish on the same computer — passkey page on another device, Copy address, "Confirm it's you"
+
+A passkey page finishes only on the computer whose codeaf started it. When the passkey is accepted, the page says "Done. Returning to codeaf on the computer that started this…" and, a second later, hands over to codeaf on that computer (an address on 127.0.0.1 that only codeaf there listens on), which shows "Done" and signs codeaf in. **Copy address** works in another browser on the same computer if you use the page there from the start: a page belongs to the first browser that presses its button, and any other reads "This sign-in is open in another browser. Start again in codeaf." Opened on a phone or another computer, the passkey can be accepted but nothing is signed in: the browser says it can't connect, the page said why just before ("you opened this page on a different computer or browser"), and going back to it reads "Finish on the computer that started this". A sign-in address someone else sends you never signs them in as you.
+
+**Limit:** another person signed in to the same computer can see which port codeaf listens on while a passkey page is open; without the page's secret path and key they cannot finish it, but on a shared computer sign in only on your own account. An organization at an address under a shared wildcard name (sslip.io, nip.io) is for demos only: anyone can serve a neighbouring name there. `localhost` (and any `*.localhost` name) is for trying passkeys on one machine only: browsers let a plain-HTTP page on a localhost name set its cookies. While someone floods the server with passkey sign-ins from hundreds of networks, a new passkey sign-in can be refused ("too many tries") for as long as the flood lasts; signing in with a password is not affected, and nobody already signed in is signed out.
+
+## confirm it's you — adding a passkey, removing a passkey, setting a first password
+
+Adding a passkey, removing a passkey and setting a first password each need a confirmation made for that one change: codeaf says "Confirm it's you first: use one of your passkeys, or enter your current password." and asks. Your current password, or one of your passkeys on a short page of its own that names the change and the computer asking, for example "Remove passkey “MacBook” — requested by a computer named “santosh-mac”, signed in 16 Nov 2026 from 203.0.113.7". The name is what that computer calls itself; the date and address are what the server saw. Read it: confirm only a change you asked for, on your own computer.
+
+A confirmation lets that one change happen once, within five minutes; it allows nothing else, and signing in is never one, even a minute ago. A session holds at most three at a time; a fourth replaces the oldest. Setting a first password ends your other sessions, as a change does.
+
+After a passkey page finishes on this computer, the browser shows a plain "Done" page on 127.0.0.1; the one-time code it carried is gone from the address, and stops working a minute after the passkey was used either way.
+
+Too many passkey pages waiting from one network are turned away ("Too many passkey sign-ins are waiting. Try again in a minute."); a flood from elsewhere cannot crowd out an invitation or a signed-in person, and a sign-in page nobody opens ends after two minutes.
+
+## forgot password — operator reset link, one hour, password people only
+
+There is no email recovery. The operator makes a reset link for one person with an account on the server (in the app, or `factory.link_create` with `kind: "reset"`); it works once, lasts one hour, and makes any older reset link for that person stop working. Opening it lets the person set a new password or create a new passkey; either one replaces every way in they had (the old password and every old passkey stop working), ends all their sessions and signs them in. A GitHub person has no password to reset. Every sign-up, sign-in, refused burst of sign-ins, change, reset link and reset is written to the organization's record.
 
 ## codeaf attach and codeaf detach — use another machine's factory
 
@@ -237,7 +316,7 @@ An access link looks like `codeaf://factory/join?url=https://factory.example#tok
 
 ## the app keeps a factory sign-in — signed out after a restart, keychain, sign out removes it
 
-In the desktop app, a sign-in to a team factory (GitHub sign-in, an access link, or a pasted token) is kept in the system keychain, one item per factory, and handed back when the app next opens, so a restart does not sign you out. It is never written to the app's saved factory list or to a log. Signing out, ending every session, and disconnecting the factory each remove the kept sign-in. A kept sign-in the factory no longer accepts reads **Signed out** once and is removed; sign in again. The factory on your own machine keeps no sign-in: the app makes its key again at each start.
+In the desktop app, a sign-in to a team factory (GitHub sign-in, an access link, or a pasted token) is kept in the system keychain, one item per factory, and handed back when the app next opens, so a restart does not sign you out. It is never written to the app's saved factory list or to a log. Signing out, ending every session, and disconnecting the factory each remove the kept sign-in. An organization's device token is kept in the same item; only disconnecting removes it. A kept sign-in the factory no longer accepts reads **Signed out** once and is removed; sign in again. The factory on your own machine keeps no sign-in: the app makes its key again at each start.
 
 ## codeaf runner join — run a factory's jobs on this machine, sign in with GitHub
 

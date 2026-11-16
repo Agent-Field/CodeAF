@@ -1,6 +1,7 @@
 package serve
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -102,8 +103,14 @@ func (h *Handler) peopleDirectory(w http.ResponseWriter, r *http.Request) {
 	if !found && operator != "" {
 		members = append(members, api.Member{Handle: operator, LastSeen: h.now()})
 	}
+	accounts, _ := h.loadAccounts()
 	for _, member := range members {
-		p := api.Person{Factory: h.factory, Handle: member.Handle, Login: member.Handle, Role: "member", You: member.Handle == caller,
+		if _, ok := accounts.Find(member.Handle); ok {
+			member.Kind = signInPassword
+		} else if member.Kind == "" {
+			member.Kind = signInGitHub
+		}
+		p := api.Person{Factory: h.factory, Handle: member.Handle, Login: member.Handle, Kind: member.Kind, Role: "member", You: member.Handle == caller,
 			Operator: member.Handle == operator, Status: personStatus(member.LastSeen, h.now()), Owns: []api.Ownership{}, Machines: []api.Machine{}}
 		p.Name, p.AvatarURL = member.Name, member.AvatarURL
 		last := member.LastSeen
@@ -174,10 +181,33 @@ func (h *Handler) operatorRevokePerson(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusUnprocessableEntity, "person handle must be a GitHub handle")
 		return
 	}
+	heir, ok := h.workstreamHeir(w, r, handle)
+	if !ok {
+		return
+	}
 	if h.failed(w, h.revokePerson(r, handle)) {
 		return
 	}
-	h.finish(w, h.operatorEvent(r, record.SessionsRevoked, "person:"+handle, "jobs moved to Unassigned"))
+	// A removed password person's password signs nobody in any more.
+	err := tokens.RemoveAccount(h.config.TokensPath, handle)
+	h.forgetAccounts()
+	if h.failed(w, err) {
+		return
+	}
+	// A person the operator removes leaves every team with their sign-ins,
+	// and their workstreams go to an heir rather than keep a gone owner.
+	if h.failed(w, h.leaveEveryTeam(r, handle)) {
+		return
+	}
+	given, err := h.handOnWorkstreams(handle, heir, h.orgActor(r))
+	if h.failed(w, err) {
+		return
+	}
+	detail := "jobs moved to Unassigned"
+	if given > 0 {
+		detail += fmt.Sprintf("; %d workstreams given to @%s", given, heir)
+	}
+	h.finish(w, h.operatorEvent(r, record.SessionsRevoked, "person:"+handle, detail))
 }
 
 // revokePerson ends sign-ins and runner credentials before ownership is made available again.

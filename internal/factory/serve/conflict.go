@@ -206,6 +206,8 @@ type refusalBody struct {
 	CurrentCommit string      `json:"current_commit,omitempty"`
 	HeadCommit    string      `json:"head_commit,omitempty"`
 	JobPerson     string      `json:"job_person,omitempty"`
+	// Action is the one action a step_up_required refusal wants confirmed.
+	Action *api.StepUpAction `json:"action,omitempty"`
 	// Outcome is set only by the issue comment route ([api.CommentRefused]).
 	Outcome   string `json:"outcome,omitempty"`
 	RequestID string `json:"request_id"`

@@ -69,6 +69,23 @@ func (h *Handler) createAccessLink(w http.ResponseWriter, r *http.Request) {
 	if !h.decode(w, r, &body, true) {
 		return
 	}
+	switch body.Kind {
+	case "", "invite":
+		if body.Person != "" {
+			h.fail(w, http.StatusUnprocessableEntity, "only a reset link names a person")
+			return
+		}
+	case "reset":
+		if body.Login != "" || body.Name != "" || body.MaxUses > 1 || !body.ExpiresAt.IsZero() {
+			h.fail(w, http.StatusUnprocessableEntity, "a reset link takes only the person; it admits one use for one hour")
+			return
+		}
+		h.createResetLink(w, r, body)
+		return
+	default:
+		h.fail(w, http.StatusUnprocessableEntity, `kind is "invite" or "reset"`)
+		return
+	}
 	body.Login = factory.NormalizeHandle(body.Login)
 	if body.Login != "" && !personHandle.MatchString(body.Login) {
 		h.fail(w, http.StatusUnprocessableEntity, "login must be a GitHub handle")
@@ -160,6 +177,9 @@ func (h *Handler) revokeAccessLink(w http.ResponseWriter, r *http.Request) {
 	if !revoked.Counted() {
 		for _, member := range revoked.Members() {
 			if h.failed(w, h.revokePerson(r, member.Profile.Handle)) {
+				return
+			}
+			if h.failed(w, h.leaveEveryTeam(r, member.Profile.Handle)) {
 				return
 			}
 		}
