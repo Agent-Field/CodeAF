@@ -13,6 +13,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/live"
+	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
 const testOrgKey = "sk-or-v1-0123456789abcdefWXYZ"
@@ -268,6 +269,96 @@ func TestServerAgentKeepsALivePagesTextAsAVersion(t *testing.T) {
 	at := slices.IndexFunc(ws.Pages, func(p api.WorkstreamPage) bool { return p.ID == pid })
 	if ws.Pages[at].BodyMD != "" {
 		t.Fatalf("the live page's mirror was written: %q", ws.Pages[at].BodyMD)
+	}
+}
+
+// THE HISTORY SAYS WHICH VERSION THE PAGE HOLDS (film D12). The agent's text
+// on a live page is kept as the newest version but not applied, so the list
+// names the version the page holds as live_version and marks the agent's as
+// kept; restoring the kept version applies it, makes the restore live and
+// leaves nothing kept. The agent's words name exactly what History shows.
+func TestServerAgentsKeptVersionIsNotTheLiveOneUntilRestored(t *testing.T) {
+	o := newWSOrg(t)
+	webhook, _, _, _ := o.orgScene(t)
+	var page api.Workstream
+	o.do(t, "abir", "POST", "/v1/workstreams/"+webhook.ID+"/pages", -1, api.PageNew{Title: "Overview two"}, 201, &page)
+	pid := page.Pages[len(page.Pages)-1].ID
+	base := "/v1/workstreams/" + webhook.ID + "/pages/" + pid
+	ds, err := o.h.docStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := ds.Append("ws/"+webhook.ID+"/page/"+pid, "abir", o.now, []byte{1, 2, 3}, 0, true, nil); err != nil {
+		t.Fatal(err)
+	}
+	// abir's editor kept what the live page holds.
+	o.do(t, "abir", "POST", base+"/versions", -1, api.PageVersionNew{BodyMD: "# Launch", Reason: "idle"}, 201, nil)
+	var line string
+	o.serverMode(t, func(ctx context.Context, turn AgentTurn) (AgentTurnEnd, error) {
+		line, err = turn.Door.WritePage(ctx, pid, "", "# Launch\n\n## Risks\n\nNone yet.")
+		return AgentTurnEnd{}, err
+	})
+	o.do(t, "abir", "POST", "/v1/workstreams/"+webhook.ID+"/agent/messages", -1, api.AgentMessageNew{Text: "add risks"}, 202, nil)
+	o.settle()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"was not applied", "kept as version 2", "History", "Kept · not applied", "Restore this version"} {
+		if !strings.Contains(line, want) {
+			t.Fatalf("the agent was told %q, missing %q", line, want)
+		}
+	}
+	list := func() api.PageVersions {
+		var out api.PageVersions
+		o.do(t, "santosh", "GET", base+"/versions", -1, nil, 200, &out)
+		return out
+	}
+	got := list()
+	if got.LiveVersion != 1 || len(got.Versions) != 2 || got.Versions[0].Version != 2 || !got.Versions[0].Kept || got.Versions[1].Kept {
+		t.Fatalf("after the agent: live %d, versions %+v", got.LiveVersion, got.Versions)
+	}
+	var restored api.PageVersion
+	o.do(t, "abir", "POST", base+"/restore", -1, api.PageRestore{Version: 2}, 201, &restored)
+	if restored.Version != 3 || restored.RestoredFrom != 2 || !strings.Contains(restored.BodyMD, "## Risks") {
+		t.Fatalf("restore %+v", restored)
+	}
+	got = list()
+	if got.LiveVersion != 3 || slices.ContainsFunc(got.Versions, func(v api.PageVersion) bool { return v.Kept }) {
+		t.Fatalf("after the restore: live %d, versions %+v", got.LiveVersion, got.Versions)
+	}
+	var ws api.Workstream
+	o.do(t, "abir", "GET", "/v1/workstreams/"+webhook.ID, -1, nil, 200, &ws)
+	if at := slices.IndexFunc(ws.Pages, func(p api.WorkstreamPage) bool { return p.ID == pid }); !strings.Contains(ws.Pages[at].BodyMD, "## Risks") {
+		t.Fatalf("the restore did not reach the page's words: %q", ws.Pages[at].BodyMD)
+	}
+}
+
+// THE LIVE VERSION IS THE NEWEST THE PAGE HELD, NEVER THE HIGHEST NUMBER: a
+// kept version above it is kept, a restore of it makes it held, and a history
+// of kept versions alone names no live one.
+func TestPageVersionsNameTheLiveOneNeverTheHighest(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		list []store.PageVersion
+		live int
+		kept []int
+	}{
+		{"empty", nil, 0, nil},
+		{"only kept", []store.PageVersion{{Version: 1, Reason: "agent"}}, 0, []int{1}},
+		{"kept above held", []store.PageVersion{{Version: 3, Reason: "agent"}, {Version: 2, Reason: "idle"}, {Version: 1, Reason: "manual"}}, 2, []int{3}},
+		{"held above kept", []store.PageVersion{{Version: 3, Reason: "idle"}, {Version: 2, Reason: "agent"}, {Version: 1, Reason: "idle"}}, 3, []int{2}},
+		{"restored", []store.PageVersion{{Version: 3, Reason: "restore", RestoredFrom: 2}, {Version: 2, Reason: "agent"}, {Version: 1, Reason: "idle"}}, 3, nil},
+	} {
+		got := versionsWire(c.list)
+		var kept []int
+		for _, v := range got.Versions {
+			if v.Kept {
+				kept = append(kept, v.Version)
+			}
+		}
+		if got.LiveVersion != c.live || !slices.Equal(kept, c.kept) {
+			t.Errorf("%s: live %d kept %v, want %d %v", c.name, got.LiveVersion, kept, c.live, c.kept)
+		}
 	}
 }
 

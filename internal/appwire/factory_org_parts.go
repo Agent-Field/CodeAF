@@ -39,11 +39,19 @@ type OrgPageVersion struct {
 	Bytes        int    `json:"bytes"`
 	BodyMD       string `json:"body_md,omitempty"`
 	State        []byte `json:"state,omitempty"`
+	// Kept is a version the page does not hold: the agent's words, kept
+	// because the page had a live document to write into, and not restored
+	// since. Restoring it applies them. Absent on every version the page held.
+	Kept bool `json:"kept,omitempty"`
 }
 
 // OrgPageVersions is a page's versions, newest first.
+//
+// LiveVersion is the version the page holds now (api.PageVersions); a client
+// marks that one current, never the highest number. Absent when unknown.
 type OrgPageVersions struct {
-	Versions []OrgPageVersion `json:"versions"`
+	Versions    []OrgPageVersion `json:"versions"`
+	LiveVersion int              `json:"live_version,omitempty"`
 }
 
 // OrgWorkstreamPlan is a workstream's plan (the desk's own object, or null)
