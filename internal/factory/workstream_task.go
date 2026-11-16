@@ -165,9 +165,14 @@ type TaskAskOption struct {
 	ID          string `json:"id"`
 	Label       string `json:"label"`
 	Recommended bool   `json:"recommended,omitempty"`
+	// Decides is the decision this answer records, in one line ("The March
+	// notes go on the website"). Absent, the decision reads as the question
+	// and the answer chosen.
+	Decides string `json:"decides,omitempty"`
 }
 
-// TaskAsk is the one question a task waits on.
+// TaskAsk is a question a task waits on. The task's own Ask (Task.Ask) is
+// decided by its owner; each of Task.Asks names its own Decider.
 type TaskAsk struct {
 	ID         string          `json:"id"`
 	Title      string          `json:"title"`
@@ -175,6 +180,44 @@ type TaskAsk struct {
 	Options    []TaskAskOption `json:"options"`
 	AskedAt    string          `json:"asked_at"`
 	LaterUntil string          `json:"later_until,omitempty"`
+	// Decider is the ONE person who answers it. Absent on Task.Ask, whose
+	// decider is the task's owner.
+	Decider *PersonRef `json:"decider,omitempty"`
+	// By is who raised it: Afi, a chat, the factory or a person.
+	By *TaskEventBy `json:"by,omitempty"`
+	// Views are the short lines others attached for the decider to read, one
+	// per person, never the decider's own. A view is not a vote.
+	Views []TaskView `json:"views,omitempty"`
+	// Against is the decision the work went against, on the Ask the decision
+	// check raised to whoever made it.
+	Against *TaskAgainst `json:"against,omitempty"`
+}
+
+// TaskView is one person's view on someone else's Ask.
+type TaskView struct {
+	By   PersonRef `json:"by"`
+	Text string    `json:"text"`
+	At   string    `json:"at"`
+}
+
+// TaskAgainst names the decision a conflict Ask is about.
+type TaskAgainst struct {
+	Decision string    `json:"decision"`
+	Text     string    `json:"text"`
+	By       PersonRef `json:"by"`
+	// Why is the check's one line on how the work goes against it.
+	Why string `json:"why,omitempty"`
+}
+
+// TaskAssumed is one thing an agent decided without asking: cheap,
+// reversible work that goes against no decision, done and told after. Send
+// back overturns it (OverturnedBy).
+type TaskAssumed struct {
+	ID           string      `json:"id"`
+	Text         string      `json:"text"`
+	At           string      `json:"at"`
+	By           TaskEventBy `json:"by"`
+	OverturnedBy *PersonRef  `json:"overturned_by,omitempty"`
 }
 
 // WorkstreamTask is one task.
@@ -191,19 +234,25 @@ type WorkstreamTask struct {
 	StateReason string       `json:"state_reason,omitempty"`
 	// Step is where a Factory task's job is, "Step 4 of 4, Review"; absent on
 	// every other task and on a job that is not running or waiting.
-	Step       string       `json:"step,omitempty"`
-	WaitingOn  []string     `json:"waiting_on"`
-	Due        string       `json:"due,omitempty"`
-	Group      *TaskGroup   `json:"group,omitempty"`
-	Results    []TaskResult `json:"results"`
-	Check      string       `json:"check,omitempty"`
-	Ask        *TaskAsk     `json:"ask,omitempty"`
-	CostUSD    *float64     `json:"cost_usd,omitempty"`
-	CreatedBy  PersonRef    `json:"created_by"`
-	CreatedAt  string       `json:"created_at"`
-	UpdatedAt  string       `json:"updated_at"`
-	DoneAt     string       `json:"done_at,omitempty"`
-	AnsweredBy *PersonRef   `json:"answered_by,omitempty"`
+	Step      string       `json:"step,omitempty"`
+	WaitingOn []string     `json:"waiting_on"`
+	Due       string       `json:"due,omitempty"`
+	Group     *TaskGroup   `json:"group,omitempty"`
+	Results   []TaskResult `json:"results"`
+	Check     string       `json:"check,omitempty"`
+	Ask       *TaskAsk     `json:"ask,omitempty"`
+	// Asks are the task's other open Asks, each with its own decider. The
+	// task waits on all of them and on Ask: approval by several people is
+	// several Asks.
+	Asks []TaskAsk `json:"asks,omitempty"`
+	// Assumed is what the agent decided without asking.
+	Assumed    []TaskAssumed `json:"assumed,omitempty"`
+	CostUSD    *float64      `json:"cost_usd,omitempty"`
+	CreatedBy  PersonRef     `json:"created_by"`
+	CreatedAt  string        `json:"created_at"`
+	UpdatedAt  string        `json:"updated_at"`
+	DoneAt     string        `json:"done_at,omitempty"`
+	AnsweredBy *PersonRef    `json:"answered_by,omitempty"`
 	// HandedBy is who last handed the task to its owner, when that was
 	// someone other than the owner themselves, so the new owner's Inbox can
 	// say "handed to you by Marco" (SPEC "Handing work on"). Cleared when the
@@ -567,6 +616,21 @@ type TaskPatch struct {
 	Ask         *TaskAsk      `json:"ask,omitempty"`
 	ClearAsk    bool          `json:"-"`
 	MoveTo      string        `json:"move_to,omitempty"`
+	// AddAsk raises another Ask, to its Decider: the task waits on it too.
+	AddAsk *TaskAsk `json:"add_ask,omitempty"`
+	// AskLater is Later on one of Asks, by its decider.
+	AskLater *TaskAskLater `json:"ask_later,omitempty"`
+	// Assumed adds lines to what the agent decided without asking.
+	Assumed []string `json:"assumed,omitempty"`
+	// Overturn is the id of one of Assumed that Send back overturns, with
+	// StateReason the why. A done task goes back to its doer.
+	Overturn string `json:"overturn,omitempty"`
+}
+
+// TaskAskLater is Later on one of a task's Asks.
+type TaskAskLater struct {
+	Ask   string `json:"ask"`
+	Until string `json:"until"`
 }
 
 // TaskChange is what one change did, for the thread and for the tasks it
@@ -578,6 +642,9 @@ type TaskChange struct {
 	// Rewait is what waits on a task that was done and is not any more (sent
 	// back, unticked): each waits again (see WaitAgain).
 	Rewait []WorkstreamTask
+	// Decisions are what the change settled, for the workstream's Decisions:
+	// an answered Ask, or a request that changed shared work.
+	Decisions []WorkstreamDecision
 }
 
 // ApplyPatch changes t by p for actor a, under the rules, and answers the
@@ -661,6 +728,78 @@ func ApplyPatch(t WorkstreamTask, p TaskPatch, a TaskActor, by TaskEventBy, all 
 			t.State = TaskNeeds
 		}
 	}
+	if p.AddAsk != nil {
+		ask := *p.AddAsk
+		if ask.Decider == nil || strings.TrimSpace(ask.Decider.ID) == "" {
+			return TaskChange{}, TaskInvalid("an Ask names its one decider")
+		}
+		if err := checkAsk(&ask, stamp); err != nil {
+			return TaskChange{}, err
+		}
+		if _, _, dup := findAsk(t, ask.ID); dup {
+			return TaskChange{}, TaskInvalid("this task already has that Ask")
+		}
+		if ask.By == nil {
+			b := by
+			ask.By = &b
+		}
+		t.Asks = append(slices.Clone(t.Asks), ask)
+		if t.State != TaskDone {
+			t.State = TaskNeeds
+		}
+	}
+	if l := p.AskLater; l != nil {
+		ask, i, ok := findAsk(t, l.Ask)
+		if !ok || i < 0 {
+			return TaskChange{}, ErrTaskNoAsk
+		}
+		if ask.Decider == nil || NormalizeHandle(ask.Decider.ID) != a.Handle {
+			return TaskChange{}, ErrTaskNotAnswerer
+		}
+		t.Asks = slices.Clone(t.Asks)
+		t.Asks[i].LaterUntil = strings.TrimSpace(l.Until)
+	}
+	if len(p.Assumed) > 0 {
+		t.Assumed = slices.Clone(t.Assumed)
+		for _, line := range p.Assumed {
+			line = strings.Join(strings.Fields(line), " ")
+			if line == "" {
+				continue
+			}
+			if len(line) > taskLineMost {
+				return TaskChange{}, taskInvalidf("an assumption is one line, at most %d characters", taskLineMost)
+			}
+			t.Assumed = append(t.Assumed, TaskAssumed{ID: "as_" + newID(), Text: line, At: stamp, By: by})
+		}
+		if len(t.Assumed) > taskAssumedMost {
+			return TaskChange{}, taskInvalidf("a task lists at most %d assumptions", taskAssumedMost)
+		}
+	}
+	overturned := ""
+	if p.Overturn != "" {
+		i := slices.IndexFunc(t.Assumed, func(x TaskAssumed) bool { return x.ID == p.Overturn })
+		if i < 0 || t.Assumed[i].OverturnedBy != nil {
+			return TaskChange{}, TaskInvalid("that assumption is not open")
+		}
+		t.Assumed = slices.Clone(t.Assumed)
+		t.Assumed[i].OverturnedBy = &PersonRef{ID: a.Handle, Name: by.Name}
+		overturned = t.Assumed[i].Text
+		why := ""
+		if p.StateReason != nil {
+			why = strings.TrimSpace(*p.StateReason)
+		}
+		reason := "instead of “" + overturned + "”"
+		if why != "" {
+			reason += ", " + why
+		}
+		if t.State == TaskDone {
+			// Overturning finished work is Send back: it goes back to its doer.
+			up := TaskUpNext
+			p.State, p.StateReason = &up, &reason
+		} else {
+			event(TaskEventState, by.Name+" sent back an assumption: "+reason)
+		}
+	}
 	sentBack := false
 	if p.State != nil && *p.State != t.State {
 		if t.DoneBy.Kind == TaskByFactory {
@@ -711,7 +850,7 @@ func ApplyPatch(t WorkstreamTask, p TaskPatch, a TaskActor, by TaskEventBy, all 
 	}
 	switch {
 	case t.State == TaskDone && before.State != TaskDone:
-		t.DoneAt, t.Ask = stamp, nil
+		t.DoneAt, t.Ask, t.Asks = stamp, nil, nil
 	case t.State != TaskDone:
 		t.DoneAt = ""
 	}
@@ -819,32 +958,56 @@ func Released(id string, all []WorkstreamTask, by TaskEventBy, newID func() stri
 	return out
 }
 
-// AnswerTask answers t's Ask with option (an id the Ask offers) or words. The
-// first answer decides: an Ask already answered is ErrTaskNoAsk.
-func AnswerTask(t WorkstreamTask, option, words string, a TaskActor, by TaskEventBy, fallback string, newID func() string, now time.Time) (TaskChange, error) {
-	if t.Ask == nil || t.State != TaskNeeds {
+// AnswerTask answers the Ask askID names on t (empty: the task's own) with
+// option (an id the Ask offers) or words. The first answer decides: an Ask
+// already answered is ErrTaskNoAsk. The task runs again once nothing else is
+// asked; while another Ask is open it keeps waiting. The answer records a
+// decision (TaskChange.Decisions), made by whoever answered.
+func AnswerTask(t WorkstreamTask, askID, option, words string, a TaskActor, by TaskEventBy, fallback string, newID func() string, now time.Time) (TaskChange, error) {
+	ask, i, ok := findAsk(t, askID)
+	if !ok || t.State != TaskNeeds {
 		return TaskChange{}, ErrTaskNoAsk
 	}
-	if !MayAnswer(t, a, fallback, now) {
+	if !MayAnswerAsk(t, ask.ID, a, fallback, now) {
+		if i >= 0 {
+			return TaskChange{}, TaskRefused("only " + firstNonEmpty(ask.Decider.Name, ask.Decider.ID) + " answers this Ask")
+		}
 		return TaskChange{}, ErrTaskNotAnswerer
 	}
 	words = strings.TrimSpace(words)
 	chose := ""
+	var opt *TaskAskOption
 	if option != "" {
-		i := slices.IndexFunc(t.Ask.Options, func(o TaskAskOption) bool { return o.ID == option })
-		if i < 0 {
+		k := slices.IndexFunc(ask.Options, func(o TaskAskOption) bool { return o.ID == option })
+		if k < 0 {
 			return TaskChange{}, taskInvalidf("%q is not one of this question's answers", option)
 		}
-		chose = t.Ask.Options[i].Label
+		opt = &ask.Options[k]
+		chose = opt.Label
 	}
 	if chose == "" && words == "" {
 		return TaskChange{}, TaskInvalid("an answer is one of the question's answers, or words")
 	}
 	stamp := now.UTC().Format(time.RFC3339Nano)
-	text := t.Ask.Title + " · " + strings.TrimSpace(strings.Join(nonEmpty(chose, words), " · "))
+	text := ask.Title + " · " + strings.TrimSpace(strings.Join(nonEmpty(chose, words), " · "))
 	who := PersonRef{ID: a.Handle, Name: by.Name}
-	t.Ask, t.AnsweredBy, t.State, t.Rev, t.UpdatedAt = nil, &who, TaskRunning, t.Rev+1, stamp
-	return TaskChange{Task: t, Events: []WorkstreamTaskEvent{{ID: newID(), Task: t.ID, At: stamp, By: by, Kind: TaskEventAnswered, Text: text, Option: option}}}, nil
+	if i < 0 {
+		t.Ask, t.AnsweredBy = nil, &who
+	} else {
+		t.Asks = slices.Delete(slices.Clone(t.Asks), i, i+1)
+		if len(t.Asks) == 0 {
+			t.Asks = nil
+		}
+	}
+	if t.Ask == nil && len(t.Asks) == 0 {
+		t.State = TaskRunning
+	}
+	t.Rev, t.UpdatedAt = t.Rev+1, stamp
+	ch := TaskChange{Task: t, Events: []WorkstreamTaskEvent{{ID: newID(), Task: t.ID, At: stamp, By: by, Kind: TaskEventAnswered, Text: text, Option: option}}}
+	if d, ok := answerDecision(t, ask, opt, words, who, "dc_"+newID(), now); ok {
+		ch.Decisions = append(ch.Decisions, d)
+	}
+	return ch, nil
 }
 
 func nonEmpty(s ...string) []string {
@@ -855,7 +1018,10 @@ func nonEmpty(s ...string) []string {
 // one (OfferFor), a private request's one note, or an answer posted from a
 // private chat.
 type TaskNote struct {
-	Kind      string `json:"kind,omitempty"`
+	Kind string `json:"kind,omitempty"`
+	// Decision is, on a request_note, what the request settles for shared
+	// work in one line; it is kept in the workstream's Decisions.
+	Decision  string `json:"decision,omitempty"`
 	Text      string `json:"text"`
 	OfferFor  string `json:"offer_for,omitempty"`
 	Steps     int    `json:"steps,omitempty"`
@@ -1120,6 +1286,12 @@ func JobTask(it Item, ws string, overlay *WorkstreamTask, defaultOwner TaskOwner
 		if o.AnsweredBy != nil {
 			t.AnsweredBy = o.AnsweredBy
 		}
+		// Views on the job's own question, and any other Ask raised on it,
+		// are the overlay's: the job knows neither.
+		if o.Ask != nil && t.Ask != nil && o.Ask.ID == t.Ask.ID {
+			t.Ask.Views = o.Ask.Views
+		}
+		t.Asks, t.Assumed = o.Asks, o.Assumed
 	}
 	return t
 }
@@ -1131,7 +1303,17 @@ func JobOverlay(t WorkstreamTask) WorkstreamTask {
 		ID: t.ID, WS: t.WS, Rev: t.Rev, Owner: t.Owner, DoneBy: t.DoneBy, CameFrom: t.CameFrom, State: TaskUpNext,
 		WaitingOn: nonNilIDs(t.WaitingOn), Due: t.Due, Group: t.Group, Results: []TaskResult{},
 		Title: t.Title, CreatedBy: t.CreatedBy, CreatedAt: t.CreatedAt, UpdatedAt: t.UpdatedAt, AnsweredBy: t.AnsweredBy,
+		Ask: overlayAsk(t.Ask), Asks: t.Asks, Assumed: t.Assumed,
 	}
+}
+
+// overlayAsk is what an overlay keeps of a job's own question: its id and
+// the views on it, nothing the job itself says.
+func overlayAsk(a *TaskAsk) *TaskAsk {
+	if a == nil || len(a.Views) == 0 {
+		return nil
+	}
+	return &TaskAsk{ID: a.ID, Views: a.Views, Options: []TaskAskOption{}}
 }
 
 func nonNilIDs(ids []string) []string {

@@ -245,14 +245,22 @@ func (a *Agent) clientTool(set ClientToolSet, spec ClientTool) bare.Tool {
 			if len(data) == 0 || data[0] != '{' || !json.Valid(data) || decodeToolArguments(data, &object) != nil || object == nil {
 				return rejectToolArguments(ctx, invalidArgumentsPrefix+"expected a JSON object"), true, nil
 			}
-			answer, err := a.config.ClientTools.CallClientTool(ctx, ClientToolCall{
-				Set: set.ID, Name: spec.Name, Args: args, TurnCall: callIDFrom(ctx), DeadlineMS: set.DeadlineMS,
-				SourceMessage: turnOriginFrom(ctx).answers,
-			})
-			if err != nil {
-				return err.Error(), true, nil
+			call := func(ctx context.Context, name string, args json.RawMessage) (string, bool, error) {
+				answer, err := a.config.ClientTools.CallClientTool(ctx, ClientToolCall{
+					Set: set.ID, Name: name, Args: args, TurnCall: callIDFrom(ctx), DeadlineMS: set.DeadlineMS,
+					SourceMessage: turnOriginFrom(ctx).answers,
+				})
+				if err != nil {
+					return err.Error(), true, nil
+				}
+				return answer.Text, answer.IsError, nil
 			}
-			return answer.Text, answer.IsError, nil
+			// A Personal workstream's tools are the desk's: the decision check
+			// stands around them here, as it does around the server's door.
+			if guardsDecisions(spec.Name) && clientSetServes(set, WSDecisionsTool) {
+				return a.guardDecisions(ctx, spec.Name, args, call)
+			}
+			return call(ctx, spec.Name, args)
 		},
 	}
 }
@@ -371,4 +379,14 @@ func (a *Agent) ClientToolBuiltinNames() []string {
 		}
 	}
 	return names
+}
+
+// clientSetServes is whether set registers the tool name.
+func clientSetServes(set ClientToolSet, name string) bool {
+	for _, t := range set.Tools {
+		if t.Name == name {
+			return true
+		}
+	}
+	return false
 }

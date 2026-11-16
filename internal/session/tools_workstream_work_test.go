@@ -90,7 +90,7 @@ func TestTheWorkstreamToolsTeachTheirRules(t *testing.T) {
 
 func TestAWorkstreamToolCallGoesToTheDoorByName(t *testing.T) {
 	door := &workingDoor{}
-	belt := workstreamWorkBelt(door)
+	belt := workstreamWorkBelt(door, nil)
 	out, failed, err := belt[1].Execute(context.Background(), json.RawMessage(`{"title":"Draft","request":"Write it."}`))
 	if err != nil || failed || out != "did ws_task_create" || door.calls[0] != `ws_task_create {"title":"Draft","request":"Write it."}` {
 		t.Fatalf("answered %q %v %v; door saw %v", out, failed, err, door.calls)

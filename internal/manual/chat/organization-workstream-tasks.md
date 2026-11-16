@@ -20,6 +20,8 @@ A Personal workstream keeps its tasks on this computer; an organization workstre
 
 When a task needs a choice or an approval, it asks its owner and shows as "Needs Priya". Only the owner sees buttons on the question; anyone else sees who answers and may comment. Someone else pressing answer is refused with "only the task's owner answers its question".
 
+A task can carry more than one Ask — approval by several people is several Asks, each with its one decider, and the task waits on all of them; an Ask with its own decider is answered by that person alone ("only Priya answers this Ask"). Others attach a view instead.
+
 If the owner is Everyone, anyone who can edit the workstream may answer; the first answer decides, a second is refused with "this question was already answered", and the task records who answered. A question left unanswered for a day also goes to the workstream's fallback person, if it has one.
 
 Who owns a new task: whoever asked for it. Work nobody asked for directly (from the Factory or a standing order) goes to the workstream's default owner.

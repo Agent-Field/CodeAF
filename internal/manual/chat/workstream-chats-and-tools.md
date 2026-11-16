@@ -28,12 +28,12 @@ On an organization's workstream Afi does not have `ws_chats`: your chats stay on
 
 No. Going back to the list, opening another chat, or closing a chat's tab stops nothing: the chat keeps working on whatever it was doing and its tasks keep running. It rests on its own when nothing of its is running, and wakes when you write to it or a task of its needs you. To stop work, stop the task itself, or press stop in the chat while it is answering.
 
-## the workstream tools — ws_tasks, ws_task_create, ws_task_update, ws_task_comment, ws_files, ws_file_read, ws_file_create, ws_file_suggest
+## the workstream tools — ws_tasks, ws_decisions, ws_task_create, ws_task_update, ws_task_comment, ws_files, ws_file_read, ws_file_create, ws_file_suggest
 
-Every chat started inside a workstream, and Afi when it is inside one, carries eight tools onto the workstream's shared work:
+Every chat started inside a workstream, and Afi when it is inside one, carries nine tools onto the workstream's shared work:
 
-- `ws_tasks` lists the tasks, or reads one whole with its activity and comments.
-- `ws_task_create` makes a task; `ws_task_update` changes one this chat does (its state, its result, the check against the request, an Ask for its owner); `ws_task_comment` writes on a task's thread.
+- `ws_tasks` lists the tasks, or reads one whole with its activity and comments. `ws_decisions` lists what the workstream's people decided.
+- `ws_task_create` makes a task; `ws_task_update` changes one this chat does (its state, its result, the check against the request, an Ask for its owner, what it assumed without asking); `ws_task_comment` writes on a task's thread. Starting and finishing work are checked against the decisions: work that goes against one is paused, and the person who made it is asked.
 - `ws_files` lists files and folders; `ws_file_read` reads one; `ws_file_create` makes a document, folder or link; `ws_file_suggest` suggests edits to a document.
 
 What a chat or Afi makes for the workstream is saved with `ws_file_create` and appears in Files for everyone in it; it is never written to disk as a loose file.
@@ -56,7 +56,7 @@ Agents change a document by suggestion: nothing changes until someone in the wor
 
 ## "Priya asked Afi to keep it under 300 words" — the one line a private request leaves
 
-When something you asked an agent privately changes shared work, the task's thread gets ONE line naming who asked for what, such as "Priya asked Afi to keep it under 300 words". The conversation around it stays private. A private answer is shared only when you post it.
+When something you asked an agent privately changes shared work, the task's thread gets ONE line naming who asked for what, such as "Priya asked Afi to keep it under 300 words". The conversation around it stays private. A private answer is shared only when you post it. What the request settles ("The notes stay under 300 words") is kept in the workstream's Decisions as yours.
 
 ## big work, "you coordinate it", a batch of tasks — Afi starts a named chat; the plan's Start and Change the plan
 

@@ -497,11 +497,14 @@ func (h *Handler) answerWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 	now := h.clock().UTC()
 	actor, by := taskActor(v, ws), h.taskBy(r, v)
 	// The rules first, on the task as read: who answers, and what.
-	change, err := factory.AnswerTask(t, body.Option, body.Text, actor, by, taskFallback(ws), h.newTaskID("te_"), now)
+	by.Name = h.personNames()(v.Handle)
+	change, err := factory.AnswerTask(t, body.Ask, body.Option, body.Text, actor, by, taskFallback(ws), h.newTaskID("te_"), now)
 	if h.taskRefused(w, err) {
 		return
 	}
-	if n, job := factory.IsJobTask(t.ID); job && !h.answerJob(w, r, n, t, body) {
+	asked, _, _ := factory.FindAsk(t, body.Ask)
+	_, ownAsk := factory.IsOwnAsk(t, body.Ask)
+	if n, job := factory.IsJobTask(t.ID); job && ownAsk && !h.answerJob(w, r, n, t, body) {
 		return
 	}
 	err = h.config.Store.EditWorkstreamTasks(func(tw store.TaskWrite) error {
@@ -512,7 +515,7 @@ func (h *Handler) answerWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 		cur, found := findTask(kept, t.ID)
 		if _, job := factory.IsJobTask(t.ID); job {
 			// The job took the answer; the overlay records who gave it.
-			o := factory.JobOverlay(t)
+			o := factory.JobOverlay(change.Task)
 			o.AnsweredBy, o.UpdatedAt = change.Task.AnsweredBy, change.Task.UpdatedAt
 			if found {
 				o.Rev = cur.Rev + 1
@@ -527,7 +530,7 @@ func (h *Handler) answerWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 		} else {
 			// THE FIRST ANSWER DECIDES: an Ask somebody answered meanwhile
 			// is not answered twice.
-			if !found || cur.Ask == nil || cur.Ask.ID != t.Ask.ID {
+			if _, _, open := factory.FindAsk(cur, asked.ID); !found || !open {
 				return errTaskAnswered
 			}
 			if err := tw.Put(change.Task, cur.Rev); err != nil {
@@ -540,6 +543,7 @@ func (h *Handler) answerWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.recordWorkstream(r, ws.ID, "answered task", t.ID)
+	h.keepDecisions(r, ws.ID, v, change.Decisions)
 	_, _, fresh, _, ok := h.oneTask(httptest.NewRecorder(), r)
 	if !ok {
 		fresh = change.Task
@@ -653,6 +657,14 @@ func (h *Handler) commentWorkstreamTask(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	h.publishTasks(ws, h.orgActor(r), out.Task)
+	if body.Offer == nil && body.Kind == factory.TaskEventRequestNote && body.Decision != "" {
+		// A REQUEST THAT CHANGED SHARED WORK IS A DECISION, the asker's: the
+		// person the private chat works for.
+		who := factory.PersonRef{ID: v.Handle, Name: h.personNames()(v.Handle)}
+		if d, ok := factory.RequestDecision(out.Task, body.Decision, who, "dc_"+h.newTaskID("")(), now); ok {
+			h.keepDecisions(r, ws.ID, v, []factory.WorkstreamDecision{d})
+		}
+	}
 	status := http.StatusCreated
 	if body.Offer != nil {
 		status = http.StatusOK
