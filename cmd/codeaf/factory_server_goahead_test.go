@@ -50,11 +50,14 @@ func TestAServedFactoryStartsAGoAheadsJobWithNoAppAttached(t *testing.T) {
 		return st.Update(id, func(it *factory.Item) error { it.State = factory.StateQueued; return nil })
 	}})
 	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
 	ticks := make(chan struct{}, 8)
-	startFactoryServerPoll(ctx, st, filepath.Join(t.TempDir(), "tokens.json"), &githubLimit{}, func(ctx context.Context) error {
+	done := startFactoryServerPoll(ctx, st, filepath.Join(t.TempDir(), "tokens.json"), &githubLimit{}, func(ctx context.Context) error {
 		defer func() { ticks <- struct{}{} }()
 		return in.GoAheads(ctx)
+	})
+	t.Cleanup(func() {
+		cancel()
+		<-done
 	})
 
 	// The first tick's launch is refused; the job says so and is not started.

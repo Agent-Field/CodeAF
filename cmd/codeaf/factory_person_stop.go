@@ -188,6 +188,12 @@ func (m *stopCheckMemo) answer(key, conversation string, d seamRunDoor) (string,
 		if last.jobs == nil {
 			return "", false
 		}
+		// A newly assigned manager must not inherit the timed floor snapshot's
+		// stale pass. The store's index observes writes without that delay.
+		manager, _, err := d.st.TalkStop(cachedFileKey(conversation))
+		if err != nil || manager {
+			return "", false
+		}
 		now, err := floorJobFiles(d.st.Root())
 		if err != nil {
 			return "", false
