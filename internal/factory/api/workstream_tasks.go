@@ -1,0 +1,73 @@
+package api
+
+import "github.com/Agent-Field/codeaf/internal/factory"
+
+// ── A WORKSTREAM'S TASKS ON THE WIRE (Workstreams v5, SPEC §2.2) ──────────
+//
+//	GET   /v1/workstreams/{id}/tasks                    -> WorkstreamTasks: the kept tasks and every job of the workstream as a task
+//	POST  /v1/workstreams/{id}/tasks                    TaskCreate -> WorkstreamTask (201)
+//	GET   /v1/workstreams/{id}/tasks/{tid}              -> WorkstreamTask
+//	PATCH /v1/workstreams/{id}/tasks/{tid}  If-Match:task rev  TaskPatchBody -> WorkstreamTask, 412 stale
+//	GET   /v1/workstreams/{id}/tasks/{tid}/events       -> WorkstreamTaskEvents, oldest first
+//	POST  /v1/workstreams/{id}/tasks/{tid}/answer       TaskAnswer -> WorkstreamTask; 409 when already answered
+//	POST  /v1/workstreams/{id}/tasks/{tid}/comment      TaskComment -> WorkstreamTaskEvent (201)
+//	POST  /v1/workstreams/{id}/tasks/start_all          TasksStartAll -> WorkstreamTasks, the tasks it started
+//
+// Reading needs view on the workstream; every write needs edit. Answering an
+// Ask is its owner's (with Everyone, anyone who edits; after a day, also the
+// workstream's fallback), and ticking a person task is its owner's alone. A
+// Factory job's task ("job:<n>") is derived from the job: its state and Ask
+// are the job's, and answering it answers the job through the job's own door
+// and rules. Every change publishes workstream.changed with part "tasks" and
+// the task's id.
+
+// PartTasks is the part a task change names.
+const PartTasks = "tasks"
+
+// The task shapes are the factory's own.
+type (
+	WorkstreamTask      = factory.WorkstreamTask
+	WorkstreamTaskEvent = factory.WorkstreamTaskEvent
+	TaskCreate          = factory.TaskCreate
+)
+
+// WorkstreamTasks is a list of tasks.
+type WorkstreamTasks struct {
+	Tasks []WorkstreamTask `json:"tasks"`
+}
+
+// WorkstreamTaskEvents is a task's thread.
+type WorkstreamTaskEvents struct {
+	Events []WorkstreamTaskEvent `json:"events"`
+}
+
+// TaskPatchBody is a task change: any subset of factory.TaskPatch's fields;
+// "group": null and "ask": null clear those, "due": "" clears the date.
+// move_to is the workstream to move it to (edit is needed on both).
+type TaskPatchBody = map[string]any
+
+// TaskAnswer answers a task's Ask: one of its options by id, or words.
+type TaskAnswer struct {
+	Option string `json:"option,omitempty"`
+	Text   string `json:"text,omitempty"`
+}
+
+// TaskComment adds a line to a thread (kind comment, the default; posted;
+// request_note; worked; or offer with offer_for), or, with Offer, takes,
+// dismisses or undoes an offer already there.
+type TaskComment struct {
+	factory.TaskNote
+	Offer *TaskOfferSet `json:"offer,omitempty"`
+}
+
+// TaskOfferSet names an offer event and the state it moves to: "taken",
+// "dismissed", or "open" to undo a take within its five seconds.
+type TaskOfferSet struct {
+	Event string `json:"event"`
+	State string `json:"state"`
+}
+
+// TasksStartAll names the group whose up-next tasks start.
+type TasksStartAll struct {
+	Group string `json:"group"`
+}

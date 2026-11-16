@@ -161,7 +161,7 @@ func (st *Store) wsDB(create bool) (*sql.DB, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1)
-	if _, err := db.Exec(workstreamsSchema); err != nil {
+	if _, err := db.Exec(workstreamsSchema + workstreamTasksSchema); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("the organization's workstreams cannot be opened: %w", err)
 	}
@@ -362,6 +362,7 @@ func (st *Store) editWorkstreams(bump bool, edit func(all factory.OrgWorkstreams
 				for _, q := range []string{
 					`DELETE FROM workstreams WHERE id = ?`, `DELETE FROM page_versions WHERE ws = ?`,
 					`DELETE FROM parts WHERE ws = ?`, `DELETE FROM spend WHERE ws = ?`,
+					`DELETE FROM tasks WHERE ws = ?`, `DELETE FROM task_events WHERE ws = ?`,
 				} {
 					if _, err := tx.Exec(q, id); err != nil {
 						return err
