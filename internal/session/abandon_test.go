@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -183,6 +184,125 @@ func TestABoundedStopAbandonsATurnThatWouldNotLetGo(t *testing.T) {
 	}
 }
 
+// controlledAbandon holds the bounded stop's timer in the test's hand: a real
+// timer is returned so Stop can be observed, and its duration is a day so only
+// trigger fires the callback.
+type controlledAbandon struct {
+	mu    sync.Mutex
+	armed int
+	grace time.Duration
+	fire  func()
+	timer *time.Timer
+}
+
+func holdAbandon(agent *Agent) *controlledAbandon {
+	clock := &controlledAbandon{}
+	agent.mu.Lock()
+	agent.abandonAfter = func(grace time.Duration, fire func()) *time.Timer {
+		timer := time.NewTimer(24 * time.Hour)
+		clock.mu.Lock()
+		clock.armed++
+		clock.grace = grace
+		clock.fire = fire
+		clock.timer = timer
+		clock.mu.Unlock()
+		return timer
+	}
+	agent.mu.Unlock()
+	return clock
+}
+
+func (c *controlledAbandon) trigger(t *testing.T) {
+	t.Helper()
+	c.mu.Lock()
+	fire := c.fire
+	c.mu.Unlock()
+	if fire == nil {
+		t.Fatal("the bounded stop never armed its timer")
+	}
+	fire()
+}
+
+func (c *controlledAbandon) count() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.armed
+}
+
+// A TURN THAT LETS GO IN TIME, OR A SESSION THAT CLOSES, LEAVES NO ARMED TIMER
+// BEHIND IT.
+func TestABoundedStopStopsItsTimerWhenTheTurnEndsOrTheSessionCloses(t *testing.T) {
+	t.Run("when the stopped turn ends on its own", func(t *testing.T) {
+		reached := make(chan struct{})
+		completer := &scriptedCompleter{steps: []step{
+			func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+				close(reached)
+				<-ctx.Done()
+				return nil, ctx.Err()
+			},
+		}}
+		agent, _ := newTestAgent(t, completer, nil)
+		clock := holdAbandon(agent)
+
+		events, err := agent.Submit(context.Background(), "ask something that stops on the interrupt")
+		if err != nil {
+			t.Fatalf("Submit: %v", err)
+		}
+		waitUntilClosed(t, "the request going out", reached, 10*time.Second)
+		agent.InterruptWithin(StopGrace)
+		for range events {
+		}
+		waitIdle(t, agent)
+
+		if clock.count() != 1 {
+			t.Fatalf("the bounded stop armed %d timer(s), want 1", clock.count())
+		}
+		agent.mu.Lock()
+		held := agent.abandonTimer
+		agent.mu.Unlock()
+		if held != nil {
+			t.Fatal("the agent still holds an abandon timer after the turn ended on its own")
+		}
+		if clock.timer.Stop() {
+			t.Fatal("the bounded stop's timer was still armed after the turn ended on its own")
+		}
+	})
+
+	t.Run("when the session closes", func(t *testing.T) {
+		release := make(chan struct{})
+		completer := &scriptedCompleter{steps: []step{
+			func(context.Context, []ai.Message) (*ai.Response, error) {
+				return toolResponse("call-1", "wedge", `{}`), nil
+			},
+		}}
+		agent, entered, _ := wedgedReleasable(t, completer, release)
+		clock := holdAbandon(agent)
+
+		if _, err := agent.Submit(context.Background(), "park"); err != nil {
+			t.Fatalf("Submit: %v", err)
+		}
+		waitUntilClosed(t, "the turn parking on the wedge", entered, 10*time.Second)
+		agent.InterruptWithin(StopGrace)
+		close(release)
+		if err := agent.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+
+		if clock.count() != 1 {
+			t.Fatalf("the bounded stop armed %d timer(s), want 1", clock.count())
+		}
+		agent.mu.Lock()
+		held := agent.abandonTimer
+		agent.mu.Unlock()
+		if held != nil {
+			t.Fatal("the agent still holds an abandon timer after Close")
+		}
+		if clock.timer.Stop() {
+			t.Fatal("the bounded stop's timer was still armed after Close")
+		}
+	})
+}
+
 // AND ITS CLOCK IS FOR THE TURN THAT WAS STOPPED, NEVER THE ONE AFTER IT.
 //
 // The first turn here ends on the interrupt alone, well inside its bound, and
@@ -203,6 +323,7 @@ func TestABoundedStopLeavesTheTurnAfterItAlone(t *testing.T) {
 		},
 	}}
 	agent, entered, journal := wedged(t, completer)
+	clock := holdAbandon(agent)
 
 	first, err := agent.Submit(context.Background(), "ask something that never answers")
 	if err != nil {
@@ -226,10 +347,16 @@ func TestABoundedStopLeavesTheTurnAfterItAlone(t *testing.T) {
 		}
 		close(ended)
 	}()
+	// Fire the first turn's timer while the second turn is provably parked on
+	// the wedge.
+	clock.trigger(t)
 	select {
 	case <-ended:
 		t.Fatal("the first turn's stop let go of the turn after it")
-	case <-time.After(3 * grace):
+	default:
+	}
+	if !agent.TurnRunning() {
+		t.Fatal("the first turn's stop left the second turn not running")
 	}
 	if lines := abandonedLines(t, journal); len(lines) != 0 {
 		t.Fatalf("a turn was journaled as abandoned though none was: %+v", lines)
@@ -529,6 +656,7 @@ func TestABoundedStopOnlyInterruptsARunnersTurn(t *testing.T) {
 	}}
 	release := make(chan struct{})
 	agent, entered, journal := wedgedReleasable(t, completer, release)
+	clock := holdAbandon(agent)
 
 	events, err := agent.SubmitRunnerNoteThrough(context.Background(), "a step's question for the inbox", nil)
 	if err != nil {
@@ -537,11 +665,17 @@ func TestABoundedStopOnlyInterruptsARunnersTurn(t *testing.T) {
 	waitUntilClosed(t, "the runner's turn parking on the wedge", entered, 10*time.Second)
 	const grace = 50 * time.Millisecond
 	agent.InterruptWithin(grace)
+	if clock.count() != 0 {
+		t.Fatalf("a bounded stop armed %d timer(s) on a runner's turn, want 0", clock.count())
+	}
 	ended := drained(events)
 	select {
 	case <-ended:
 		t.Fatal("a bounded stop let go of the runner's turn while its tool call was in flight")
-	case <-time.After(10 * grace):
+	default:
+	}
+	if !agent.TurnRunning() {
+		t.Fatal("the runner's turn is not running while its tool call is still in flight")
 	}
 	if lines := abandonedLines(t, journal); len(lines) != 0 {
 		t.Fatalf("the runner's turn was journaled as abandoned: %+v", lines)

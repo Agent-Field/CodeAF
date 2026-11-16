@@ -1719,6 +1719,9 @@ type Config struct {
 	// bashAfter lets tests fire the real promotion callback after the command
 	// starts. Production leaves it nil and arms time.AfterFunc as before.
 	bashAfter func(time.Duration, func()) *time.Timer
+	// AbandonAfter lets tests hold and fire the bounded stop's timer itself.
+	// Production leaves it nil and arms time.AfterFunc at the same grace.
+	AbandonAfter func(time.Duration, func()) *time.Timer
 	// teamWatchManual leaves traffic-clock advances to tests calling
 	// teamWatchTick. Production leaves it false and starts the real ticker.
 	teamWatchManual bool
@@ -3683,6 +3686,17 @@ type Agent struct {
 	// steerAfter lets a test hold and fire the scheduled second look itself.
 	// Production leaves it nil and uses time.AfterFunc at the same grace.
 	steerAfter func(time.Duration, func()) *time.Timer
+	// abandonTimer is the one armed second-stage timer of a bounded stop
+	// ([Agent.InterruptWithin]). Stopped when the turn ends on its own, when
+	// the turn is abandoned, and on Close.
+	abandonTimer *time.Timer
+	// abandonAfter lets a test hold and fire the bounded stop's timer itself.
+	// Production leaves it nil and uses time.AfterFunc at the same grace.
+	abandonAfter func(time.Duration, func()) *time.Timer
+	// turnExited is called when a turn's goroutine exits, after its cleanup
+	// defer has run, so a test can wait for a disowned turn's goroutine to
+	// finish without sleeping. Nil in production.
+	turnExited func()
 	// ambient is periodic watch news that must wait for a TURN boundary.
 	//
 	// It is separate from steering because a step boundary is not a turn

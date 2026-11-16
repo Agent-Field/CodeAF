@@ -449,7 +449,11 @@ func (a *Agent) startVisionTurnLocked(ctx context.Context, kept userMessage, liv
 	a.recordUserLocked(kept)
 	events := hub.subscribe()
 
+	exited := a.turnExited
 	go func() {
+		if exited != nil {
+			defer exited()
+		}
 		completed := false
 		// No cause: the turn is finishing, not being stopped (stopcause.go).
 		defer cancel(nil)
@@ -472,6 +476,7 @@ func (a *Agent) startVisionTurnLocked(ctx context.Context, kept userMessage, liv
 			// their own stream, not a reason to swallow their words.
 			a.liftSteersLocked(hub)
 			drained := a.drainQueueLocked(hub, true)
+			a.stopAbandonTimerLocked()
 			a.running = false
 			a.cancel = nil
 			a.hub = nil
