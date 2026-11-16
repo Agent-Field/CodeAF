@@ -131,27 +131,42 @@ var ghLoginCache struct {
 // named here is one GitHub accepts — and codeaf never takes gh's token to
 // learn it: that waits for the person's yes ([factorygithub.KeepGH]).
 func ghLocalLogin(ctx context.Context) string {
-	ghLoginCache.mu.Lock()
-	login, at, ask := ghLoginCache.login, ghLoginCache.at, ghLoginCache.ask
-	if ask == nil && (at.IsZero() || time.Since(at) > ghLoginFresh) {
-		ask = make(chan struct{})
-		ghLoginCache.ask = ask
-		guard.Go("connect/gh login", func() {
-			found, _ := ghLoginAsk(context.Background())
-			ghLoginCache.mu.Lock()
-			ghLoginCache.login, ghLoginCache.at, ghLoginCache.ask = found, time.Now(), nil
-			ghLoginCache.mu.Unlock()
-			close(ask)
-		})
-	}
-	ghLoginCache.mu.Unlock()
-	if !at.IsZero() {
+	login, known, ask := ghLoginBegin()
+	if known {
 		return login
 	}
 	select {
 	case <-ask:
 	case <-ctx.Done():
 	}
+	return ghLoginHeld()
+}
+
+// ghLoginBegin answers gh's last answer when there is one, and starts one ask
+// behind it when that answer is stale or missing.
+func ghLoginBegin() (login string, known bool, ask chan struct{}) {
+	ghLoginCache.mu.Lock()
+	defer ghLoginCache.mu.Unlock()
+	login, at, ask := ghLoginCache.login, ghLoginCache.at, ghLoginCache.ask
+	if ask == nil && (at.IsZero() || time.Since(at) > ghLoginFresh) {
+		ask = make(chan struct{})
+		ghLoginCache.ask = ask
+		guard.Go("connect/gh login", func() {
+			found, _ := ghLoginAsk(context.Background())
+			ghLoginSettle(found)
+			close(ask)
+		})
+	}
+	return login, !at.IsZero(), ask
+}
+
+func ghLoginSettle(found string) {
+	ghLoginCache.mu.Lock()
+	defer ghLoginCache.mu.Unlock()
+	ghLoginCache.login, ghLoginCache.at, ghLoginCache.ask = found, time.Now(), nil
+}
+
+func ghLoginHeld() string {
 	ghLoginCache.mu.Lock()
 	defer ghLoginCache.mu.Unlock()
 	return ghLoginCache.login
