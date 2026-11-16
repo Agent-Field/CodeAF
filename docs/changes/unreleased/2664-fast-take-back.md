@@ -1,6 +1,6 @@
 ---
 kind: changed
-title: moving a chat back to a computer that held it takes about a second instead of ten, however big its folder
+title: moving a chat back to a computer that held it takes about a second, not ten, however big its folder
 pr: 2664
 surface: [engine, app, chat]
 invalidates:
