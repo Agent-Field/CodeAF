@@ -223,4 +223,7 @@ type WorkstreamEvent struct {
 	Rev int    `json:"rev,omitempty"`
 	// Deleted is true when the part named was removed (a page).
 	Deleted bool `json:"deleted,omitempty"`
+	// Flagged are the tasks a change to a file's contents flags: the ones
+	// whose agents read it (part "files" only).
+	Flagged []string `json:"flagged,omitempty"`
 }
