@@ -294,7 +294,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// way it is shown on the surface's own notice line below rather than printed
 	// into a terminal the surface is about to take over.
 	entryNotice := ""
-	if workspace, take := v3HostRoad(v3HostChoice{
+	hostWorkspace, take := v3HostRoad(v3HostChoice{
 		noHost: *noHost,
 		once:   strings.TrimSpace(*once) != "",
 		// THE SWITCH AND NOT THE FLAG. --debug has already turned the record on
@@ -304,9 +304,10 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// record ([v3HostChoice.debug]).
 		debug: trace.Enabled(),
 		setup: !v3MachineIsSetUp(),
-	}); take {
+	})
+	if take {
 		err := openChatV3Local(localLaunch{
-			workspace: workspace,
+			workspace: hostWorkspace,
 			session:   strings.TrimSpace(*file),
 			model:     strings.TrimSpace(*model),
 			level:     level,
@@ -323,7 +324,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		case errors.As(err, &unreachable):
 			entryNotice = "this conversation opened in this terminal instead, and ends with it: " + unreachable.reason
 		default:
-			return finishChatRestart(err, restart, workspace)
+			return finishChatRestart(err, restart, hostWorkspace)
 		}
 	}
 
@@ -354,6 +355,11 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	}
 	seed := v3Options{
 		Model: *model,
+		// Anchor the in-process launch (--no-host, --debug, CODEAF_DEBUG=1, or a
+		// fallback from the host road) to the same resolved workspace the hosted
+		// door hands the engine, so both doors open the folder with the same
+		// project identity, memories and rules.
+		Workspace: hostWorkspace,
 		// A TERMINAL DOOR IS STEERED unless --once is it: --once is the
 		// headless fork below. The seed carries the fact into the boot
 		// launch, the seam's /new and /resume, and the hosted shape.
