@@ -273,10 +273,22 @@ try {
   let needs = "";
   try { await santosh.call("factory.passkey_start", { factory: factoryID, caller: "e2e", purpose: "add" }); } catch (e) { needs = e.code; }
   check("N2: an add straight after signing in needs a confirm", needs === "step_up", needs);
-  started = await santosh.call("factory.passkey_start", { factory: factoryID, caller: "e2e", purpose: "confirm" });
-  page = await ceremony(internal, started.url);
-  polled = await santosh.pollUntilDone(started.flow, "e2e");
-  check("confirm with the internal passkey", page.status.startsWith("Done") && polled.state === "done", page.status);
+  const cookies = await internal.context.cookies(origin);
+  const pkb = cookies.find((c) => c.name.endsWith("codeaf_pkb"));
+  check("F1: the browser id is a __Host- cookie (Secure, Path=/, no Domain)", pkb && pkb.name === "__Host-codeaf_pkb" && pkb.secure &&
+    pkb.path === "/" && !pkb.domain.startsWith(".") && pkb.httpOnly && pkb.sameSite === "Strict", JSON.stringify(pkb));
+  check("F3: the right computer's address bar ends on a clean /done", /^http:\/\/127\.0\.0\.1:[0-9]+\/done$/.test(internal.page.url()), internal.page.url());
+  async function confirmFor(a, action, passkey) {
+    const s = await santosh.call("factory.passkey_start", { factory: factoryID, caller: "e2e", purpose: "confirm", action, ...(passkey ? { passkey } : {}) });
+    await a.page.goto(s.url);
+    const lede = (await a.page.textContent("#lede")) || "";
+    const p = await ceremony(a, s.url);
+    const d = await santosh.pollUntilDone(s.flow, "e2e");
+    return { lede, status: p.status, state: d.state };
+  }
+  let confirmed = await confirmFor(internal, "add_passkey");
+  check("confirm an add with the internal passkey; the page names it and this computer",
+    confirmed.state === "done" && confirmed.lede.startsWith("Add a passkey — requested by codeaf on "), JSON.stringify(confirmed));
   // Then add a second passkey on a phone (hybrid) and a third on a security key (usb).
   const hybrid = await authenticatorFor("hybrid");
   started = await santosh.call("factory.passkey_start", { factory: factoryID, caller: "e2e", purpose: "add" });
@@ -285,6 +297,10 @@ try {
   polled = await santosh.pollUntilDone(started.flow, "e2e");
   check("add poll done", polled.state === "done" && polled.factory === factoryID);
   const usb = await authenticatorFor("usb");
+  let spent = "";
+  try { await santosh.call("factory.passkey_start", { factory: factoryID, caller: "e2e", purpose: "add" }); } catch (e) { spent = e.code; }
+  check("F3: a confirmation lets one add, once", spent === "step_up", spent);
+  await confirmFor(internal, "add_passkey");
   started = await santosh.call("factory.passkey_start", { factory: factoryID, caller: "e2e", purpose: "add" });
   page = await ceremony(usb, started.url, { label: "YubiKey" });
   check("chromium (usb) add page says done", page.status.startsWith("Done"), page.status);
@@ -374,20 +390,20 @@ try {
   laptopMe = await laptop.call("factory.me", { factory: attached.id });
   check("C1: on the starting computer the same passkey signs in", page.status.startsWith("Done") && laptopMe.handle === "santosh", page.status);
 
-  // 4c. H1: a step-up with a passkey is its own short ceremony.
-  started = await santosh.call("factory.passkey_start", { factory: factoryID, caller: "e2e", purpose: "confirm" });
-  await hybrid.page.goto(started.url);
-  const confirmHeading = (await hybrid.page.textContent("h1")) || "";
-  page = await ceremony(hybrid, started.url);
-  polled = await santosh.pollUntilDone(started.flow, "e2e");
-  check("H1: confirm it's you, with a passkey", confirmHeading.includes("Confirm it") && page.status.startsWith("Done") &&
-    polled.state === "done" && polled.factory === factoryID, `${confirmHeading} / ${page.status} / ${JSON.stringify(polled)}`);
+  // 4c. H1/F3: removing a passkey needs a confirmation for exactly that
+  // removal, a short ceremony of its own that names it.
+  const internalRow = list.passkeys.find((p) => p.name !== "Pixel phone" && p.name !== "YubiKey");
+  let wanted = "";
+  try { await santosh.call("factory.passkey_remove", { factory: factoryID, id: internalRow.id }); } catch (e) { wanted = e.code; }
+  check("F3: a removal without its confirmation is step_up", wanted === "step_up", wanted);
+  confirmed = await confirmFor(hybrid, "remove_passkey", internalRow.id);
+  check("H1: confirm it's you, for this removal", confirmed.state === "done" &&
+    confirmed.lede.startsWith(`Remove passkey \u201c${internalRow.name}\u201d — requested by codeaf on `), JSON.stringify(confirmed));
   let noPassword = "";
-  try { await santosh.call("factory.password_confirm", { factory: factoryID, password: "not the password at all" }); } catch (e) { noPassword = e.code; }
+  try { await santosh.call("factory.password_confirm", { factory: factoryID, password: "not the password at all", action: "add_passkey" }); } catch (e) { noPassword = e.code; }
   check("H1: a passkey person has no password to confirm with", noPassword === "not_found", noPassword);
 
   // 5. Remove the internal passkey from the first machine: the other machine's session ends.
-  const internalRow = list.passkeys.find((p) => p.name !== "Pixel phone" && p.name !== "YubiKey");
   await santosh.call("factory.passkey_remove", { factory: factoryID, id: internalRow.id });
   let laptopOut = "";
   try { await laptop.call("factory.me", { factory: attached.id }); } catch (e) { laptopOut = e.code; }
@@ -402,6 +418,7 @@ try {
 
   // 6. The last way in cannot go.
   list = await santosh.call("factory.passkey_list", { factory: factoryID });
+  await confirmFor(usb, "remove_passkey", list.passkeys[0].id);
   await santosh.call("factory.passkey_remove", { factory: factoryID, id: list.passkeys[0].id });
   let last = "";
   try { await santosh.call("factory.passkey_remove", { factory: factoryID, id: list.passkeys[1].id }); } catch (e) { last = e.message; }
@@ -471,7 +488,7 @@ try {
       if (name === "firefox" && support === "yes") {
         // A whole ceremony on Firefox's soft token: add it, then sign in with
         // it. The add needs a fresh confirm, which the security key gives.
-        const confirmAgain = await santosh.call("factory.passkey_start", { factory: factoryID, caller: "e2e", purpose: "confirm" });
+        const confirmAgain = await santosh.call("factory.passkey_start", { factory: factoryID, caller: "e2e", purpose: "confirm", action: "add_passkey" });
         await ceremony(usb, confirmAgain.url);
         await santosh.pollUntilDone(confirmAgain.flow, "e2e");
         started = await santosh.call("factory.passkey_start", { factory: factoryID, caller: "e2e", purpose: "add" });
