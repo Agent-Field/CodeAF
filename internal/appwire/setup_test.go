@@ -212,3 +212,14 @@ func TestKeysCarryTheConnectionToAnEngineThatConnectsEveryProvider(t *testing.T)
 		t.Fatal("a key of two lines was handed over")
 	}
 }
+
+func TestSetupLegacyConnectorDoesNotAdvertiseInstances(t *testing.T) {
+	w := startWire(t, &fakeEngine{})
+	hello := w.next()
+	data := hello["data"].(map[string]any)
+	for _, feature := range data["features"].([]any) {
+		if feature == "providers.instances" {
+			t.Fatal("legacy engine advertised instance semantics")
+		}
+	}
+}

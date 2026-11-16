@@ -191,6 +191,28 @@ func KeepAppSource(profileDir string, row PersistedSource) error {
 	return persistConnectedSource(profileDir, row)
 }
 
+// AddAppSource keeps a new app connection only if its checked identity is
+// still free under the profile lock. A different process adding that identity
+// cannot be overwritten between the app's network proof and its final write.
+func AddAppSource(profileDir string, row PersistedSource) error {
+	row.Key, row.KeyEnv = "", ""
+	if row.ID == "" || row.Written == "" {
+		return errors.New("a service row needs an id and name")
+	}
+	return crewCredentialWrite(profileDir, func() error {
+		return editProfile(profileDir, keyModelSources, func(held map[string]json.RawMessage) (profileChange, error) {
+			rows := persistedSourcesFrom(held)
+			for _, existing := range rows {
+				if sameServiceID(existing.ID, row.ID) {
+					return profileChange{}, errors.New("the connection changed; check the address again")
+				}
+				row.Order = max(row.Order, existing.Order+1)
+			}
+			return encodeChange(map[string]any{keyModelSources: cleanSources(append(rows, row))})
+		})
+	})
+}
+
 // SourceKeyAt is APIKeyAt's generalisation. The default service keeps its
 // existing three-rung implementation; another service reads its conventional
 // variable, its stored key, then the variable a person named.

@@ -2472,3 +2472,47 @@ Settings includes `knowledge_model`; `settings.set {knowledge_model}` changes th
 `knowledge.recall` is an explicit read of saved guides, including while `enabled` is false. It does not enable capture, import chats or publish new knowledge. Automatic memory use remains gated by the profile setting.
 
 Library page detail includes `changes: [{before, after, reason}]` for automatic replacements; `claim_details` and `sources` retain the corresponding claims and chat locators.
+
+## Provider connection add, replace and final save
+
+`providers.list` remains the engine's provider catalog, with `kind`, optional-key,
+address, regions and browser sign-in metadata. Compatible local runtimes (LM
+Studio, vLLM, llama.cpp) use `custom` with their configured OpenAI-compatible base
+URL; Ollama has its own catalog row. `localhost` means the engine's machine.
+Connecting never installs a runtime or downloads a model.
+
+`keys.check` and `keys.set` accept optional `mode: "add" | "replace"`.
+Omitting it preserves legacy behavior. `add` requires `provider: "custom"` and
+an address, and allocates a separate custom connection. `replace` names an
+existing custom provider ID. A passing check returns `connection.id`, the
+persisted provider and credential identity, alongside its address/region/plan.
+Pass that connection unchanged with the same mode, provider, address and key to
+`keys.set`. An intervening add that occupies the checked ID refuses the stale
+save rather than overwriting it. Recheck before trying a new add.
+
+An interactive save (connection, mode, region or address supplied) proves the
+current usable model list before writing the profile or adopting credentials.
+A reachable listing without usable model IDs answers `keys.check` with
+`ok: false, status: "empty"`; save returns an error and leaves credentials and
+connections unchanged. Bare `keys.set {provider,key}` remains offline launch
+handover. OpenRouter check also returns a connection ID, so its interactive save
+can be distinguished from launch handover. Live catalog model IDs are retained
+exactly, and connecting never changes the default model.
+
+The desktop keeps secrets securely under `connection.id` only after engine save
+succeeds. Profile storage failure returns an error before credential adoption;
+retrying the unchanged connection after repairing storage does not create a
+second row. If engine save succeeds but desktop secure storage fails, retry only
+secure storage with the held key, rather than sending another add. Ignore
+cancelled or superseded UI results. Browser sign-in methods are unchanged.
+
+The hello's `engine.features` includes **`providers.instances`** only when the
+engine implements the explicit instance contract. Clients must gate add-another
+custom and compatible local preset actions on that exact capability: older
+engines may silently ignore the new mode field. `ProviderConnector` alone does
+not advertise this capability.
+
+For custom instances, every model returned by `keys.check` and `models.list`
+sets `provider` to the persisted provider ID (`connection.id` / `providers.list`
+`id`). Model IDs keep their qualified routing prefix and display names remain
+human-readable; a routing prefix is not a connection ID.

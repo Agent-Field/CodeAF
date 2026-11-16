@@ -195,6 +195,7 @@ type request struct {
 // before it returns.
 func (s *Server) Serve(ctx context.Context, in io.Reader, hello Hello, engine Engine) error {
 	hello.Contract = Contract
+	hello = withProviderInstancesFeature(hello, engine)
 	hello = withFeature(hello, FeatureAgentEffortRungs)
 	hello = withCollectionsFeature(hello, engine)
 	hello = withKnowledgeFeature(hello, engine)

@@ -52,8 +52,10 @@ func factoryServerSeam(st *store.Store, tokensPath string, limit *githubLimit) f
 // closed. Its error is never the poll's: a launch the factory refused is
 // written on the job and tried again next tick, and counting it as a failed
 // read would back GitHub reads off for up to ten minutes.
-func startFactoryServerPoll(ctx context.Context, st *store.Store, tokensPath string, limit *githubLimit, after func(context.Context) error) {
+func startFactoryServerPoll(ctx context.Context, st *store.Store, tokensPath string, limit *githubLimit, after func(context.Context) error) <-chan struct{} {
+	done := make(chan struct{})
 	guard.Go("factory/server-read", func() {
+		defer close(done)
 		waker := factorygithub.NewWaker(st)
 		cursor := ""
 		failed := 0
@@ -80,6 +82,7 @@ func startFactoryServerPoll(ctx context.Context, st *store.Store, tokensPath str
 			}
 		}
 	})
+	return done
 }
 
 // registerFactoryTierResolver runs before page reads, even without a usable poll.
