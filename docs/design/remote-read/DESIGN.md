@@ -90,6 +90,27 @@ The same numbers come out over spawned engines and over the managed daemon.
   tried and failed.
 - The relay, its encryption and its convergent ids are untouched.
 
+## Measured on two machines (2026-11-16)
+
+Two GCP e2-standard-4 machines, the holder in Toronto (with a `codeaf relay` beside it) and the
+viewer in Iowa, driving `codeaf app` over its wire. One chat of 12 turns working in a 601 MB folder.
+
+| Journey | Time | Bytes |
+| --- | --- | --- |
+| Read here, newest page | 411 ms | whole transcript 116.6 KB; older pages 0 B, ~100 ms each |
+| Same head read again | 107 ms | 0 B |
+| Send from the viewer, reply visible there | 7.5 s with the model | one tail chunk |
+| Follow the holder's turns | 3.8-6.1 s after each send | one tail chunk |
+| Continue here (take) | 41 s | whole folder |
+| Take back to the first computer | 19 s | 559 KiB, the changes only |
+| Holder offline: read / Continue here | 145 ms / 19 s | 0 B (held) / folder |
+| Cold take with nothing read | 38.5 s | 606.2 MiB |
+| Read every page first | 517 ms first page | 190 KiB on the wire |
+
+The viewer's whole state after reading was 9.4 MB, with no project file in it. Reading the full
+transcript cost about 0.03% of a take, which is the point of this design: do not trade it for a
+take "to keep it simple".
+
 ## Do not simplify this into a full fetch or a materialize
 
 It is tempting to "reuse" `Fetcher.Complete` or a take and read the file off
