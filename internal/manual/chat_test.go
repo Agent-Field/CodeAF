@@ -60,6 +60,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I tick a person task and what happens to tasks waiting on it", "organization-workstream-tasks"},
 		{"how do I mention someone in a comment so they see it", "organization-workstream-tasks"},
 		{"who handed this task to me", "organization-workstream-tasks"},
+		{"ask another team's workstream to do something for me", "organization-workstream-tasks"},
 		{"hand a task to someone else or move it to another workstream", "organization-workstream-tasks"},
 		{"is a factory job a task in the workstream", "organization-workstream-tasks"},
 		{"what does Start all do", "organization-workstream-tasks"},

@@ -33,6 +33,33 @@ import (
 // FeatureOrgWorkstreamTasks is the hello word for the methods above.
 const FeatureOrgWorkstreamTasks = "org_workstream_tasks"
 
+// A REQUEST INTO ANOTHER WORKSTREAM (Workstreams final spec, flow 7): anyone
+// in the organization asks a workstream that is not private, in it or not,
+// and the request becomes a task there owned by its owner of incoming work.
+//
+//	factory.org_workstreams_requestable OrgConn               -> OrgRequestable GET  /v1/workstreams/requestable
+//	factory.org_workstream_request      OrgTaskRequestParams  -> OrgRequestSent POST /v1/workstreams/{id}/requests
+//
+// FeatureOrgWorkstreamRequests is their hello word.
+const FeatureOrgWorkstreamRequests = "org_workstream_requests"
+
+// OrgTaskRequestParams is a request into ws: a title, the words, and the task
+// of the caller's own it came from (from_ws, from_task), which gains one line.
+type OrgTaskRequestParams struct {
+	OrgConn
+	WS       string `json:"ws"`
+	Title    string `json:"title"`
+	Request  string `json:"request,omitempty"`
+	FromWS   string `json:"from_ws,omitempty"`
+	FromTask string `json:"from_task,omitempty"`
+}
+
+// OrgRequestable and OrgRequestSent are the server's shapes, passed through.
+type (
+	OrgRequestable = json.RawMessage
+	OrgRequestSent = json.RawMessage
+)
+
 // OrgTask and OrgTaskEvent are the server's own shapes, passed through whole:
 // the desk's wsTasksModel.ts types them.
 type (
@@ -176,6 +203,7 @@ func withFactoryOrgTasksFeature(hello Hello, e Engine) Hello {
 	}
 	if _, ok := e.(FactoryOrg); ok {
 		hello = withFeature(hello, FeatureOrgWorkstreamTasks)
+		hello = withFeature(hello, FeatureOrgWorkstreamRequests)
 	}
 	return hello
 }
@@ -184,6 +212,24 @@ func (t *OrgTasks) fill()      { t.Tasks = nonNil(t.Tasks) }
 func (e *OrgTaskEvents) fill() { e.Events = nonNil(e.Events) }
 
 func init() {
+	methods["factory.org_workstreams_requestable"] = orgMethod[OrgConn, OrgRequestable]("factory.org_workstreams_requestable", func(OrgConn) (OrgRequest, error) {
+		return OrgRequest{Method: http.MethodGet, Path: "/v1/workstreams/requestable"}, nil
+	})
+	methods["factory.org_workstream_request"] = orgMethod[OrgTaskRequestParams, OrgRequestSent]("factory.org_workstream_request", func(p OrgTaskRequestParams) (OrgRequest, error) {
+		path, err := orgWorkstreamPath(p.WS)
+		if err != nil {
+			return OrgRequest{}, err
+		}
+		title := strings.TrimSpace(p.Title)
+		if title == "" || !plainText(title, 300) {
+			return OrgRequest{}, Errorf(CodeBadParams, "title is one line of at most 300 characters")
+		}
+		if len(p.Request) > orgTaskMost {
+			return OrgRequest{}, Errorf(CodeBadParams, "request is at most 16384 bytes")
+		}
+		return OrgRequest{Method: http.MethodPost, Path: path + "/requests", Body: map[string]string{
+			"title": title, "request": p.Request, "from_ws": p.FromWS, "from_task": p.FromTask}}, nil
+	})
 	tasks := func(t *OrgTasks) { t.fill() }
 	methods["factory.org_workstream_tasks"] = filled(orgMethod[OrgTasksParams, OrgTasks]("factory.org_workstream_tasks", func(p OrgTasksParams) (OrgRequest, error) {
 		path, err := orgTasksPath(p.WS)
