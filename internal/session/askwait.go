@@ -115,6 +115,11 @@ type askOpen struct {
 	// kept because a settled reversible decision can still be CHANGED, and the
 	// correction says what it was changed from.
 	settled *Answer
+	// dismissed says the person dismissed it from the Inbox
+	// ([askedOfThePerson.dismissLocked]). It is set before the wait is closed,
+	// so a call parked on it reads the dismissal and not a sentence it was
+	// talked past for.
+	dismissed bool
 }
 
 // parkLocked registers one ask and answers the channel its lane waits on, which
@@ -336,6 +341,32 @@ func (asked *askedOfThePerson) talkedPastLocked() []uint64 {
 		retired = append(retired, id)
 	}
 	return retired
+}
+
+// dismissLocked ends ONE question because the person dismissed it without
+// answering. It is the talked-past ending for a single id: the entry is
+// claimed, marked dismissed and its wait closed, so the call parked on it comes
+// back with nothing decided. It answers the entry and whether a call was
+// parked on it, and false for a question this book no longer holds open —
+// gone, or already answered.
+func (asked *askedOfThePerson) dismissLocked(id uint64) (open *askOpen, called, ok bool) {
+	if have := asked.parked[id]; have == nil || have.settled != nil {
+		return nil, false, false
+	}
+	open, parked := asked.claimLocked(id)
+	if !parked {
+		return nil, false, false
+	}
+	open.dismissed = true
+	if open.clock != nil {
+		open.clock.Stop()
+	}
+	if open.wait != nil {
+		close(open.wait)
+		open.wait = nil
+		called = true
+	}
+	return open, called, true
 }
 
 // retireLocked is the LET-GO applied to every question the turn that raised it

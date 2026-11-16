@@ -1667,6 +1667,7 @@ saved model. Provider health is transient and is not saved in setup. hello says
 |---|---|---|
 | `inbox.answer` | `{id, option, scope, text, why}` | `UndoUntilResult` |
 | `inbox.back` | `in.IDParams` | `Empty` |
+| `inbox.dismiss` | `in.IDParams` | `Empty` |
 | `inbox.later` | `in.IDParams` | `Empty` |
 | `inbox.list` | `{list, query}` | `ItemsCountsResult` |
 | `inbox.open` | `in.IDParams` | `AgentTaskResult` |
