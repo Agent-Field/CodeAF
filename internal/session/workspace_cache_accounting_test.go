@@ -90,6 +90,7 @@ func observedWorkerCache(t *testing.T, workspace, uri string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
+	ownTestAgent(t, worker)
 	drainTurn(t, worker, "Observe the assigned cache")
 	worker.Close()
 	raw, err := os.ReadFile(filepath.Join(workspace, "cache-path.txt"))
