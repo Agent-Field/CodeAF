@@ -1019,6 +1019,8 @@ task's own run (the caller's rights, nobody's conversation) inside the same writ
 the task says `running` only once Afi took it; a server that cannot run Afi, a task
 already being worked on, or a chat's task (woken on its person's machine) is 409 with
 nothing changed. A person's `done`, `stopped` or `up_next` ends a run still going on it.
+An engine whose hello also carries `org_workstream_task_start` serves this Start; a desk
+offers Start and Start all on an organization only where it hears that word.
 Send back is `state`
 `up_next` on a `done` task by someone other than its owner, or with a `state_reason`:
 anyone who edits may do it (a person task included), and the thread line and the

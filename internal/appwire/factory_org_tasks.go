@@ -33,6 +33,13 @@ import (
 // FeatureOrgWorkstreamTasks is the hello word for the methods above.
 const FeatureOrgWorkstreamTasks = "org_workstream_tasks"
 
+// FeatureOrgWorkstreamTaskStart says a person's Start (state "running") and
+// Start all on an organization's Afi task run Afi on the server inside the
+// same write, refusing with nothing kept when Afi cannot take it. A desk
+// offers Start on an organization only where this word is heard, because an
+// engine without it would mark the task running with nothing behind it.
+const FeatureOrgWorkstreamTaskStart = "org_workstream_task_start"
+
 // OrgTask and OrgTaskEvent are the server's own shapes, passed through whole:
 // the desk's wsTasksModel.ts types them.
 type (
@@ -173,6 +180,7 @@ func withFactoryOrgTasksFeature(hello Hello, e Engine) Hello {
 	}
 	if _, ok := e.(FactoryOrg); ok {
 		hello = withFeature(hello, FeatureOrgWorkstreamTasks)
+		hello = withFeature(hello, FeatureOrgWorkstreamTaskStart)
 	}
 	return hello
 }

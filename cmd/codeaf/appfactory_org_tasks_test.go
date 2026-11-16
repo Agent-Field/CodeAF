@@ -17,6 +17,9 @@ func TestOrgWorkstreamTasksForwardToTheServer(t *testing.T) {
 	if !strings.Contains(wire.hello, `"org_workstream_tasks"`) {
 		t.Fatalf("hello lacks org_workstream_tasks: %s", wire.hello)
 	}
+	if !strings.Contains(wire.hello, `"org_workstream_task_start"`) {
+		t.Fatalf("hello lacks org_workstream_task_start: %s", wire.hello)
+	}
 	task := map[string]any{"id": "tk_1", "ws": "ws_1", "rev": 2, "title": "Draft the March release notes", "state": "needs",
 		"owner": map[string]any{"kind": "person", "id": "santosh", "name": "santosh"}, "done_by": map[string]any{"kind": "afi"},
 		"ask": map[string]any{"id": "a1", "title": "Publish the notes to the website?", "options": []any{}}}
