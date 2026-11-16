@@ -288,7 +288,7 @@ try {
   }
   let confirmed = await confirmFor(internal, "add_passkey");
   check("confirm an add with the internal passkey; the page names it and this computer",
-    confirmed.state === "done" && confirmed.lede.startsWith("Add a passkey — requested by codeaf on "), JSON.stringify(confirmed));
+    confirmed.state === "done" && confirmed.lede.startsWith("Add a passkey — requested by a computer named \u201c"), JSON.stringify(confirmed));
   // Then add a second passkey on a phone (hybrid) and a third on a security key (usb).
   const hybrid = await authenticatorFor("hybrid");
   started = await santosh.call("factory.passkey_start", { factory: factoryID, caller: "e2e", purpose: "add" });
@@ -398,7 +398,7 @@ try {
   check("F3: a removal without its confirmation is step_up", wanted === "step_up", wanted);
   confirmed = await confirmFor(hybrid, "remove_passkey", internalRow.id);
   check("H1: confirm it's you, for this removal", confirmed.state === "done" &&
-    confirmed.lede.startsWith(`Remove passkey \u201c${internalRow.name}\u201d — requested by codeaf on `), JSON.stringify(confirmed));
+    confirmed.lede.startsWith(`Remove passkey \u201c${internalRow.name}\u201d — requested by a computer named \u201c`), JSON.stringify(confirmed));
   let noPassword = "";
   try { await santosh.call("factory.password_confirm", { factory: factoryID, password: "not the password at all", action: "add_passkey" }); } catch (e) { noPassword = e.code; }
   check("H1: a passkey person has no password to confirm with", noPassword === "not_found", noPassword);
