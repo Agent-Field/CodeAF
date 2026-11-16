@@ -1263,7 +1263,7 @@ func (b *appBackend) FactorySetup(ctx context.Context, id string) (api.FactorySe
 func appFactoryJoin(caller, link string) (origin, key string, err error) {
 	u, e := url.Parse(link)
 	if e != nil || u.Scheme != "codeaf" || u.Host != "factory" || u.Path != "/join" {
-		return "", "", appwire.Errorf(appwire.CodeBadParams, "use a factory access link")
+		return "", "", appwire.Errorf(appwire.CodeBadParams, "use an organization invite link")
 	}
 	origin, err = appFactoryOrigin(u.Query().Get("url"))
 	if err != nil {

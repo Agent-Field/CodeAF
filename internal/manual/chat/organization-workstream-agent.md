@@ -2,7 +2,7 @@
 
 ## where an organization workstream's agent runs — driver or server, the operator's choice
 
-An organization's workstreams live on its server (`codeaf factory serve`). Where each workstream's agent runs is one setting for the whole organization, `agent_runner`, which everyone can read and only the operator changes (desktop app: Settings › Factory › the organization, "Where agents run"):
+An organization's workstreams live on its server (`codeaf factory serve`). Where each workstream's agent runs is one setting for the whole organization, `agent_runner`, which everyone can read and only the operator changes (desktop app: Settings › Organizations › the organization, "Where agents run"):
 
 - `driver` — the agent runs on the laptop of the person driving that workstream, with their own model key. One person drives a workstream at a time; the hand lapses 90 seconds after their app stops renewing it. What it spends is posted to the workstream in their name.
 - `server` — the organization's server runs every workstream's agent, with the model key the operator gave the server. Nobody drives; choosing `server` lets go of every driver's hand.
@@ -11,7 +11,7 @@ The server offers `server` only once it can run agents AND the operator has adde
 
 ## the organization's model key — add, replace or remove the key the server uses
 
-Only the operator manages it, in Settings › Factory › the organization. The key is sent to the server once and is never sent back: the list shows the provider (`openrouter`), the last four characters, who set it and when. No desk ever holds it. Removing it stops the server's agents from taking new messages ("The organization has no model key yet. Its operator adds one in Settings › Factory.").
+Only the operator manages it, in Settings › Organizations › the organization. The key is sent to the server once and is never sent back: the list shows the provider (`openrouter`), the last four characters, who set it and when. No desk ever holds it. Removing it stops the server's agents from taking new messages ("The organization has no model key yet. Its operator adds one in Settings › Organizations.").
 
 Over the wire: `GET /v1/org/keys`, `PUT /v1/org/keys/openrouter {"key"}`, `DELETE /v1/org/keys/openrouter`, all operator-only. A key must be one word of 12 to 512 characters.
 
