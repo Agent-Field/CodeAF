@@ -103,7 +103,7 @@ func (h *Handler) peopleDirectory(w http.ResponseWriter, r *http.Request) {
 	if !found && operator != "" {
 		members = append(members, api.Member{Handle: operator, LastSeen: h.now()})
 	}
-	accounts, _ := tokens.LoadAccounts(h.config.TokensPath)
+	accounts, _ := h.loadAccounts()
 	for _, member := range members {
 		if _, ok := accounts.Find(member.Handle); ok {
 			member.Kind = signInPassword
@@ -189,7 +189,9 @@ func (h *Handler) operatorRevokePerson(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// A removed password person's password signs nobody in any more.
-	if h.failed(w, tokens.RemoveAccount(h.config.TokensPath, handle)) {
+	err := tokens.RemoveAccount(h.config.TokensPath, handle)
+	h.forgetAccounts()
+	if h.failed(w, err) {
 		return
 	}
 	// A person the operator removes leaves every team with their sign-ins,

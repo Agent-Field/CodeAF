@@ -51,14 +51,25 @@ var (
 	ErrHandleTaken  = errors.New("that username is taken")
 	ErrNoAccount    = errors.New("no such password account")
 	ErrResetInvalid = errors.New("this reset link is not valid")
+	// ErrStale is a write made against an account that changed since it was
+	// read: a rehash after a change, or a second change racing the first.
+	ErrStale = errors.New("the password changed meanwhile")
+	// ErrGitHubLink is a sign-up through a link made for one GitHub login:
+	// that person signs in with GitHub, and nobody else can take the name.
+	ErrGitHubLink = errors.New("this link is for a GitHub sign-in")
 )
 
-// Account is one password person. Hash is a PHC string; Changed is when the
-// password was last set, which a session made before it does not outlive.
+// Account is one password person. Hash is a PHC string. Gen counts every
+// time the password was set (sign-up makes it 1; a change or a reset adds
+// one; a transparent rehash does not): a session carries the Gen it was made
+// under and is refused as soon as the account's Gen has moved past it, so no
+// session made with an old password outlives the change, however the two
+// raced. Changed is when Gen last moved, for people to read.
 type Account struct {
 	Handle  string    `json:"handle"`
 	Name    string    `json:"name,omitempty"`
 	Hash    string    `json:"hash"`
+	Gen     int64     `json:"gen"`
 	Created time.Time `json:"created"`
 	Changed time.Time `json:"changed"`
 }
@@ -92,10 +103,49 @@ func (r Reset) Open(now time.Time) bool {
 	return r.Used.IsZero() && now.Before(r.Expires)
 }
 
-// Accounts is the whole of accounts.json.
+// Accounts is the whole of accounts.json. Known is every handle a GitHub
+// sign-in has ever brought here, kept after its sessions are gone, so the
+// name can never later be taken as a username by somebody else.
 type Accounts struct {
 	Accounts []Account `json:"accounts"`
 	Resets   []Reset   `json:"resets"`
+	Known    []string  `json:"known,omitempty"`
+}
+
+func (a Accounts) knows(handle string) bool {
+	handle = strings.ToLower(strings.TrimSpace(handle))
+	for _, k := range a.Known {
+		if k == handle {
+			return true
+		}
+	}
+	return false
+}
+
+// RememberHandle keeps handle in the known set for good. The server calls it
+// after every GitHub sign-in, so the name stays taken after its sessions end.
+func RememberHandle(tokensPath, handle string) error {
+	handle = strings.ToLower(strings.TrimSpace(handle))
+	if tokensPath == "" || handle == "" {
+		return nil
+	}
+	if doc, err := LoadAccounts(tokensPath); err == nil && doc.knows(handle) {
+		return nil
+	}
+	unlock, err := lockRows(tokensPath)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	doc, err := LoadAccounts(tokensPath)
+	if err != nil {
+		return err
+	}
+	if doc.knows(handle) {
+		return nil
+	}
+	doc.Known = append(doc.Known, handle)
+	return saveAccounts(tokensPath, doc)
 }
 
 // Find is the account for handle, compared case-insensitively.
@@ -157,7 +207,7 @@ type TakenFunc func(handle string) bool
 // handleTaken is whether handle is any person the files know: a password
 // account, anyone who used or was named by a link, or the operator.
 func handleTaken(tokensPath string, accounts Accounts, rows []Token, handle string, taken TakenFunc) (bool, error) {
-	if _, ok := accounts.Find(handle); ok {
+	if _, ok := accounts.Find(handle); ok || accounts.knows(handle) {
 		return true, nil
 	}
 	for _, row := range rows {
@@ -185,7 +235,8 @@ func handleTaken(tokensPath string, accounts Accounts, rows []Token, handle stri
 // that link's use, in one critical section under the row lock (see the file
 // comment). profile is the person as the link records them. claimEvent is
 // the operator claim's audit write, made before the claim is published, as
-// [Join] makes it. A link made for one login admits only that username.
+// [Join] makes it. A link made for one GitHub login makes no password
+// account at all (ErrGitHubLink): holding the link is not being that person.
 func SignUp(tokensPath, id string, acct Account, profile Profile, now time.Time, taken TakenFunc, claimEvent ...func() error) (Joined, error) {
 	unlock, err := lockRows(tokensPath)
 	if err != nil {
@@ -221,8 +272,8 @@ func SignUp(tokensPath, id string, acct Account, profile Profile, now time.Time,
 		case "used_up":
 			return Joined{}, ErrUsedUp
 		}
-		if row.InvitedLogin != "" && row.InvitedLogin != profile.Handle {
-			return Joined{}, ErrWrongPerson
+		if row.InvitedLogin != "" {
+			return Joined{}, ErrGitHubLink
 		}
 	} else if !bindingAllowed(*row, profile.Handle, now) {
 		return Joined{}, os.ErrPermission
@@ -231,9 +282,7 @@ func SignUp(tokensPath, id string, acct Account, profile Profile, now time.Time,
 	if err != nil {
 		return Joined{}, err
 	}
-	// A link for exactly this login names the person it is for; that is not
-	// someone else holding the name.
-	if isTaken && !(row.InvitedLogin == profile.Handle && row.Profile == nil && !accountHeld(accounts, profile.Handle)) {
+	if isTaken {
 		return Joined{}, ErrHandleTaken
 	}
 	var out Joined
@@ -243,7 +292,7 @@ func SignUp(tokensPath, id string, acct Account, profile Profile, now time.Time,
 			return Joined{}, err
 		}
 	}
-	acct.Handle, acct.Created, acct.Changed = profile.Handle, now, now
+	acct.Handle, acct.Created, acct.Changed, acct.Gen = profile.Handle, now, now, 1
 	before := accounts
 	accounts.Accounts = append(append([]Account(nil), accounts.Accounts...), acct)
 	if err := saveAccounts(tokensPath, accounts); err != nil {
@@ -263,15 +312,39 @@ func SignUp(tokensPath, id string, acct Account, profile Profile, now time.Time,
 	return out, nil
 }
 
-func accountHeld(a Accounts, handle string) bool {
-	_, ok := a.Find(handle)
-	return ok
+// SetPassword is a change made while signed in: it replaces handle's hash
+// only while the account is still at generation gen, the one whose password
+// the person just proved, and answers the new generation. A second change
+// racing the first finds the generation moved and gets ErrStale.
+func SetPassword(tokensPath, handle, hash string, gen int64, now time.Time) (int64, error) {
+	unlock, err := lockRows(tokensPath)
+	if err != nil {
+		return 0, err
+	}
+	defer unlock()
+	accounts, err := LoadAccounts(tokensPath)
+	if err != nil {
+		return 0, err
+	}
+	for i := range accounts.Accounts {
+		a := &accounts.Accounts[i]
+		if a.Handle != handle {
+			continue
+		}
+		if a.Gen != gen {
+			return 0, ErrStale
+		}
+		a.Hash, a.Gen, a.Changed = hash, a.Gen+1, now
+		return a.Gen, saveAccounts(tokensPath, accounts)
+	}
+	return 0, ErrNoAccount
 }
 
-// SetPassword replaces handle's hash. It is the one door for a change made
-// while signed in and for a transparent rehash at stronger parameters; only
-// a change moves Changed, which ends the person's older sessions.
-func SetPassword(tokensPath, handle, hash string, now time.Time, change bool) error {
+// Rehash replaces handle's hash with the same password at stronger
+// parameters, only while the stored hash is still old: compare and swap, so
+// it can never put back a password a change or a reset just replaced. The
+// generation does not move, so nobody's session ends.
+func Rehash(tokensPath, handle, old, hash string) error {
 	unlock, err := lockRows(tokensPath)
 	if err != nil {
 		return err
@@ -282,13 +355,15 @@ func SetPassword(tokensPath, handle, hash string, now time.Time, change bool) er
 		return err
 	}
 	for i := range accounts.Accounts {
-		if accounts.Accounts[i].Handle == handle {
-			accounts.Accounts[i].Hash = hash
-			if change {
-				accounts.Accounts[i].Changed = now
-			}
-			return saveAccounts(tokensPath, accounts)
+		a := &accounts.Accounts[i]
+		if a.Handle != handle {
+			continue
 		}
+		if a.Hash != old {
+			return ErrStale
+		}
+		a.Hash = hash
+		return saveAccounts(tokensPath, accounts)
 	}
 	return ErrNoAccount
 }
@@ -336,16 +411,16 @@ func (a Accounts) FindReset(secret string) (Reset, bool) {
 }
 
 // UseReset spends the reset link secret opens and sets its person's new hash,
-// in one write. It answers whose password it was.
-func UseReset(tokensPath, secret, hash string, now time.Time) (string, error) {
+// in one write. It answers whose password it was and its new generation.
+func UseReset(tokensPath, secret, hash string, now time.Time) (string, int64, error) {
 	unlock, err := lockRows(tokensPath)
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 	defer unlock()
 	accounts, err := LoadAccounts(tokensPath)
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 	for i := range accounts.Resets {
 		r := &accounts.Resets[i]
@@ -353,18 +428,18 @@ func UseReset(tokensPath, secret, hash string, now time.Time) (string, error) {
 			continue
 		}
 		if !r.Open(now) {
-			return "", ErrResetInvalid
+			return "", 0, ErrResetInvalid
 		}
 		for k := range accounts.Accounts {
-			if accounts.Accounts[k].Handle == r.Handle {
+			if a := &accounts.Accounts[k]; a.Handle == r.Handle {
 				r.Used = now
-				accounts.Accounts[k].Hash, accounts.Accounts[k].Changed = hash, now
-				return r.Handle, saveAccounts(tokensPath, accounts)
+				a.Hash, a.Changed, a.Gen = hash, now, a.Gen+1
+				return r.Handle, a.Gen, saveAccounts(tokensPath, accounts)
 			}
 		}
-		return "", ErrResetInvalid
+		return "", 0, ErrResetInvalid
 	}
-	return "", ErrResetInvalid
+	return "", 0, ErrResetInvalid
 }
 
 // RemoveAccount deletes handle's account and its reset links: the operator

@@ -12,7 +12,11 @@ invalidates:
 ---
 
 Passwords are argon2id (OWASP parameters) in PHC strings, 12 characters to 256
-bytes after NFKC, checked against an embedded common-password list; sign-in is
-throttled per username and per client address with decaying backoff. The engine
-serves factory.access_sign_up, access_reset, password_sign_in and
-password_change behind the hello word factory_password.
+bytes after NFKC, checked against about 486,000 common passwords compared by
+their letters and digits. Every try is paid for before it is verified:
+throttled per username and address with decaying backoff, per username
+overall (addresses the person used before are exempt) and per address. Each
+session is tied to the password it was made with. A username already named
+anywhere on the server is taken, and an invitation made for one GitHub login
+takes no password. The engine serves factory.access_sign_up, access_reset,
+password_sign_in and password_change behind the hello word factory_password.

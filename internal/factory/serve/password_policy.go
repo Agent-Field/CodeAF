@@ -4,59 +4,100 @@ package serve
 //
 // THE POLICY IS NIST SP 800-63B's: a length floor, a length ceiling, any
 // characters (spaces and every script included), no composition rules, no
-// forced rotation, and a refusal of passwords known to be common. The common
-// list is SecLists' "100k most used passwords (NCSC)" (MIT licence; see
-// common_passwords.LICENSE), NFKC-normalized and lower-cased, keeping only the
-// entries at least passwordMinChars long: a shorter one can never equal a
-// password the length rule lets through, so it would only cost space.
+// forced rotation, and a refusal of passwords known to be common.
 //
-// THE THROTTLE IS TWO SETS OF golang.org/x/time/rate BUCKETS: one per username
-// (10 failures per 15 minutes) and one per client address (50 per 15 minutes),
-// the address being the one the server's own trusted-proxy resolver settled
-// (proxy.go), never a header read here. A username whose bucket is empty also
-// backs off exponentially, 30 seconds doubling to at most 15 minutes, and that
-// backoff decays once the name has been quiet for 15 minutes: an attacker can
-// slow the real owner down, never lock them out for good. Each set is bounded;
-// a full set first forgets the keys that have recovered, then the oldest.
+// THE COMMON LIST is every password in SecLists' "100k most used passwords
+// (NCSC)" and "xato-net 10 million passwords, top 1,000,000" (MIT licence;
+// see common_passwords.LICENSE), plus a handful of passphrases famous enough
+// to be guessed first ("correct horse battery staple"), each squashed: NFKC,
+// lower-cased, and only its letters and digits kept. A password is squashed
+// the same way before it is looked up, so "P.a.s.s.w.o.r.d-1234" is
+// "password1234" and is refused. Entries shorter than commonSquashedMost
+// letters and digits are left out: they cost the most space and a password
+// that squashes that short is a 12-character string of mostly punctuation.
+// The list is about 486,000 entries in 1.9 MiB, read once, on first use, into
+// one sorted string searched by halves.
+//
+// How often a password may be tried is password_throttle.go's.
 
 import (
-	"bufio"
 	"bytes"
 	"compress/gzip"
 	_ "embed"
+	"io"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
-	"time"
+	"unicode"
 	"unicode/utf8"
-
-	"golang.org/x/time/rate"
 )
 
 //go:embed common_passwords.txt.gz
 var commonPasswordsGz []byte
 
+// commonSquashedMost is the shortest squashed entry the list keeps.
+const commonSquashedMost = 8
+
 var (
 	commonOnce sync.Once
-	commonSet  map[string]struct{}
+	// commonBlob is the whole list, sorted, one entry per line; commonAt is
+	// where each entry starts.
+	commonBlob string
+	commonAt   []int32
 )
 
+func loadCommon() {
+	zr, err := gzip.NewReader(bytes.NewReader(commonPasswordsGz))
+	if err != nil {
+		panic("the embedded common-password list is not readable: " + err.Error())
+	}
+	raw, err := io.ReadAll(zr)
+	if err != nil {
+		panic("the embedded common-password list is not readable: " + err.Error())
+	}
+	commonBlob = string(raw)
+	for i := 0; i < len(commonBlob); {
+		end := strings.IndexByte(commonBlob[i:], '\n')
+		if end < 0 {
+			end = len(commonBlob) - i
+		}
+		if end > 0 {
+			commonAt = append(commonAt, int32(i))
+		}
+		i += end + 1
+	}
+}
+
+func commonEntry(k int) string {
+	start := int(commonAt[k])
+	end := strings.IndexByte(commonBlob[start:], '\n')
+	if end < 0 {
+		return commonBlob[start:]
+	}
+	return commonBlob[start : start+end]
+}
+
+// squash is a password as the common list keeps it: lower-cased letters and
+// digits only. normal is already NFKC.
+func squash(normal string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(normal) {
+		if unicode.IsLetter(r) || unicode.IsNumber(r) {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
 func commonPassword(normal string) bool {
-	commonOnce.Do(func() {
-		commonSet = map[string]struct{}{}
-		zr, err := gzip.NewReader(bytes.NewReader(commonPasswordsGz))
-		if err != nil {
-			return
-		}
-		sc := bufio.NewScanner(zr)
-		for sc.Scan() {
-			if line := sc.Text(); line != "" {
-				commonSet[line] = struct{}{}
-			}
-		}
-	})
-	_, found := commonSet[strings.ToLower(normal)]
-	return found
+	commonOnce.Do(loadCommon)
+	s := squash(normal)
+	if len(s) < commonSquashedMost {
+		return false
+	}
+	k := sort.Search(len(commonAt), func(i int) bool { return commonEntry(i) >= s })
+	return k < len(commonAt) && commonEntry(k) == s
 }
 
 // usernameShape is GitHub's: 2 to 39 of a-z, 0-9 and "-", not starting or
@@ -73,6 +114,9 @@ const (
 	reasonPasswordCommon  = "password_common"
 	reasonPasswordName    = "password_contains_username"
 	reasonNameInvalid     = "name_invalid"
+	// reasonGitHubLink is a sign-up through a link made for one GitHub
+	// login, which only that GitHub person can use.
+	reasonGitHubLink = "github_link"
 )
 
 var refusalWords = map[string]string{
@@ -83,6 +127,7 @@ var refusalWords = map[string]string{
 	reasonPasswordCommon:  "That password is on a list of common passwords. Choose another.",
 	reasonPasswordName:    "A password cannot contain your username.",
 	reasonNameInvalid:     "A name is one line of at most 80 characters.",
+	reasonGitHubLink:      "This link is for a GitHub account; sign in with GitHub.",
 }
 
 // The sentences every sign-in refusal shares, whatever the cause.
@@ -109,7 +154,7 @@ func passwordRefusal(normal, username string) string {
 		return reasonPasswordLong
 	case utf8.RuneCountInString(normal) < passwordMinChars:
 		return reasonPasswordShort
-	case username != "" && strings.Contains(strings.ToLower(normal), username):
+	case containsUsername(normal, username):
 		return reasonPasswordName
 	case commonPassword(normal):
 		return reasonPasswordCommon
@@ -131,106 +176,10 @@ func cleanDisplayName(raw string) (string, bool) {
 	return name, true
 }
 
-const (
-	throttleWindow  = 15 * time.Minute
-	userFailures    = 10
-	addrFailures    = 50
-	throttleKeyMost = 10000
-	backoffFirst    = 30 * time.Second
-	backoffMost     = 15 * time.Minute
-	backoffForgiven = 15 * time.Minute
-)
-
-type throttleEntry struct {
-	lim     *rate.Limiter
-	strikes int
-	until   time.Time
-	seen    time.Time
-}
-
-// throttle is one bounded set of buckets. backoff turns on the exponential
-// wait for a key whose bucket is empty (the username set).
-type throttle struct {
-	mu      sync.Mutex
-	keys    map[string]*throttleEntry
-	burst   int
-	every   time.Duration
-	backoff bool
-	most    int
-}
-
-func newThrottle(failures int, backoff bool) *throttle {
-	return &throttle{keys: map[string]*throttleEntry{}, burst: failures,
-		every: throttleWindow / time.Duration(failures), backoff: backoff, most: throttleKeyMost}
-}
-
-// open is whether key may be tried at now. Asking spends nothing.
-func (t *throttle) open(key string, now time.Time) bool {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	e := t.keys[key]
-	if e == nil {
-		return true
-	}
-	return !now.Before(e.until) && e.lim.TokensAt(now) >= 1
-}
-
-// fail spends one try of key, and answers true the first time the key runs
-// dry since it last recovered, which is when a summary is worth writing down.
-func (t *throttle) fail(key string, now time.Time) (ranDry bool) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	e := t.keys[key]
-	if e == nil {
-		if len(t.keys) >= t.most {
-			t.evict(now)
-		}
-		e = &throttleEntry{lim: rate.NewLimiter(rate.Every(t.every), t.burst)}
-		t.keys[key] = e
-	}
-	if now.Sub(e.seen) >= backoffForgiven {
-		e.strikes = 0
-	}
-	e.seen = now
-	wasOpen := e.lim.TokensAt(now) >= 1
-	e.lim.AllowN(now, 1)
-	dry := e.lim.TokensAt(now) < 1
-	if dry && t.backoff {
-		// Each time the name runs dry it waits twice as long as the last,
-		// on top of the bucket's own refill, until it has been quiet a while.
-		wait := backoffFirst << min(e.strikes, 10)
-		e.until = now.Add(min(wait, backoffMost))
-		e.strikes++
-	}
-	// Only the first run dry of a quiet spell is worth a line in the record.
-	return dry && wasOpen && e.strikes <= 1
-}
-
-// evict makes room: keys that have fully recovered go first, then the one
-// seen longest ago. Called with mu held.
-func (t *throttle) evict(now time.Time) {
-	var oldest string
-	var oldestSeen time.Time
-	for k, e := range t.keys {
-		if !now.Before(e.until) && e.lim.TokensAt(now) >= float64(t.burst) {
-			delete(t.keys, k)
-			continue
-		}
-		if oldest == "" || e.seen.Before(oldestSeen) {
-			oldest, oldestSeen = k, e.seen
-		}
-	}
-	if len(t.keys) >= t.most && oldest != "" {
-		delete(t.keys, oldest)
-	}
-}
-
-// passwordGuard is the server's two throttles.
-type passwordGuard struct {
-	users *throttle
-	addrs *throttle
-}
-
-func newPasswordGuard() *passwordGuard {
-	return &passwordGuard{users: newThrottle(userFailures, true), addrs: newThrottle(addrFailures, false)}
+// containsUsername is whether the password holds the username, compared
+// squashed (so "S.a.n.t.o.s.h" holds santosh). A username of one or two
+// letters and digits is left out: nearly every password holds two letters.
+func containsUsername(normal, username string) bool {
+	name := squash(username)
+	return len(name) >= 3 && strings.Contains(squash(normal), name)
 }

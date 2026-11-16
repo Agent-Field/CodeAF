@@ -37,13 +37,14 @@ type appFactorySignInCap struct {
 	expires time.Time
 }
 
-// coverSecret takes a password out of everything this process writes.
+// coverSecret takes a password out of everything this process writes while
+// it is being used. It is a passing secret: the latest few stay covered, and
+// one under eight bytes is not registered, since it would redact ordinary
+// words (the server refuses it anyway; nothing here logs it).
 func coverSecret(values ...string) {
 	for _, v := range values {
-		if v != "" {
-			redact.Register(v)
-			trace.Secret(v)
-		}
+		redact.RegisterPassing(v)
+		trace.SecretPassing(v)
 	}
 }
 
@@ -165,6 +166,12 @@ func passwordFailure(r appFactoryReply) error {
 		return appwire.Errorf(appwire.CodeForbidden, "%s", words)
 	case http.StatusNotFound:
 		return appwire.Errorf(appwire.CodeNotFound, "this organization does not take passwords")
+	case http.StatusConflict:
+		// The password was changed by another sign-in meanwhile.
+		if words == "" {
+			words = "Your password was changed meanwhile; sign in again."
+		}
+		return appwire.Errorf(appwire.CodeConflict, "%s", words)
 	}
 	return appFactoryFailure(r)
 }
@@ -219,7 +226,7 @@ func (b *appBackend) FactoryPasswordChange(ctx context.Context, p appwire.Factor
 	switch r.status {
 	case http.StatusNoContent, http.StatusOK:
 		return nil
-	case http.StatusForbidden:
+	case http.StatusForbidden, http.StatusConflict:
 		return passwordFailure(r)
 	}
 	return appFactoryFailure(r)

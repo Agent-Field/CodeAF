@@ -32,7 +32,7 @@ func init() { currentArgon = argonParams{memory: 64, time: 1, threads: 1} }
 // THE PASSWORDS EVERY TEST USES. leakPassword is the one the leak test looks
 // for in every sink; nothing else in this file spells it.
 const (
-	pwOperator = "correct horse battery staple"
+	pwOperator = "violet otter campsite drizzle"
 	pwAbir     = "a long passphrase for my friend"
 )
 
@@ -235,16 +235,21 @@ func FuzzDecodePHC(f *testing.F) {
 
 func TestPasswordPolicyIsNISTs(t *testing.T) {
 	cases := map[string]string{
-		"elevenchars":                            reasonPasswordShort,
-		"twelve chars":                           "",
-		strings.Repeat("xy", 128):                "",
-		strings.Repeat("xy", 128) + "z":          reasonPasswordLong,
-		"qwertyuiopasdfghjkl":                    reasonPasswordCommon,
-		"QwertyuiopASDFGHJKL":                    reasonPasswordCommon,
-		"my name is abir, ok":                    reasonPasswordName,
-		"日本語のパスフレーズです、長い":                        "",
-		"spaces are fine here":                   "",
-		"no composition rules apply to this one": "",
+		"elevenchars":                                 reasonPasswordShort,
+		"twelve chars":                                "",
+		strings.Repeat("xy", 128):                     "",
+		strings.Repeat("xy", 128) + "z":               reasonPasswordLong,
+		"qwertyuiopasdfghjkl":                         reasonPasswordCommon,
+		"P.a.s.s.w.o.r.d-1234":                        reasonPasswordCommon,
+		"correct horse battery staple":                reasonPasswordCommon,
+		"Correct-Horse Battery Staple!":               reasonPasswordCommon,
+		"the quick brown fox jumps over the lazy dog": reasonPasswordCommon,
+		"my name is A.B.I.R, ok":                      reasonPasswordName,
+		"QwertyuiopASDFGHJKL":                         reasonPasswordCommon,
+		"my name is abir, ok":                         reasonPasswordName,
+		"日本語のパスフレーズです、長い":                             "",
+		"spaces are fine here":                        "",
+		"no composition rules apply to this one":      "",
 	}
 	for pw, want := range cases {
 		if got := passwordRefusal(normalPassword(pw), "abir"); got != want {
@@ -257,6 +262,14 @@ func TestPasswordPolicyIsNISTs(t *testing.T) {
 	}
 	if !commonPassword("ＱＷＥＲＴＹＵＩＯＰＡＳＤＦＧＨＪＫＬ") && !commonPassword(normalPassword("ＱＷＥＲＴＹＵＩＯＰＡＳＤＦＧＨＪＫＬ")) {
 		t.Fatal("the list is not consulted after normalizing")
+	}
+	// The list is the large one, and a two-letter username is not a rule.
+	commonOnce.Do(loadCommon)
+	if len(commonAt) < 400000 {
+		t.Fatalf("common list has %d entries", len(commonAt))
+	}
+	if passwordRefusal(normalPassword("absolutely fine passphrase"), "ab") != "" {
+		t.Fatal("a two-letter username refuses everything")
 	}
 	for _, u := range []string{"a", "-abc", "abc-", "Ab C", strings.Repeat("a", 40), "ab_c"} {
 		if cleanUsername(u) != "" {
@@ -291,7 +304,7 @@ func TestSignUpThroughTheOperatorLinkMakesTheOperator(t *testing.T) {
 	if again.State == "joined" || again.AccessToken != "" {
 		t.Fatalf("a spent claim made an account: %+v", again)
 	}
-	if _, ok := o.h.passwordAccount("mallory"); ok {
+	if _, ok, _ := o.h.passwordAccount("mallory"); ok {
 		t.Fatal("mallory has an account")
 	}
 	// The record says who signed up and who claimed.
@@ -413,7 +426,7 @@ func TestASignInRefusalSaysTheSameThingAndCostsTheSame(t *testing.T) {
 	}
 }
 
-func TestSignInIsThrottledByNameAndByAddressAndRecovers(t *testing.T) {
+func TestSignInIsThrottledByNameAndAddressAndRecovers(t *testing.T) {
 	o := newPWOrg(t)
 	o.signUp(o.operatorLink(), "santosh", pwOperator)
 	for i := 0; i < userFailures; i++ {
@@ -421,10 +434,15 @@ func TestSignInIsThrottledByNameAndByAddressAndRecovers(t *testing.T) {
 			t.Fatalf("try %d = %d", i, w.Code)
 		}
 	}
-	// The eleventh try is refused even with the right password, from anywhere.
-	w := o.signIn("santosh", pwOperator, "127.0.0.2:1")
+	// From that address the next try is refused, even with the right password.
+	w := o.signIn("santosh", pwOperator, "127.0.0.1:1")
 	if w.Code != 429 || !strings.Contains(w.Body.String(), tooManyTriesWords) {
 		t.Fatalf("eleventh = %d %s", w.Code, w.Body)
+	}
+	// From another address the owner is in: one address's guesses hold up
+	// that address, not the name.
+	if w := o.signIn("santosh", pwOperator, "127.0.0.2:1"); w.Code != 200 {
+		t.Fatalf("another address = %d %s", w.Code, w.Body)
 	}
 	// Another name from the same address is not held up by santosh's.
 	if w := o.signIn("abir", pwAbir, "127.0.0.1:1"); w.Code != 401 {
@@ -441,9 +459,11 @@ func TestSignInIsThrottledByNameAndByAddressAndRecovers(t *testing.T) {
 	if refused != 1 {
 		t.Fatalf("refused-sign-in rows = %d, want 1", refused)
 	}
-	// It decays: fifteen quiet minutes later the owner is in.
+	// It decays: fifteen quiet minutes later that address may try again.
 	o.advance(throttleWindow)
-	o.token("santosh", pwOperator)
+	if w := o.signIn("santosh", pwOperator, "127.0.0.1:1"); w.Code != 200 {
+		t.Fatalf("after the window = %d %s", w.Code, w.Body)
+	}
 
 	// By address: fifty failures over many names hold that address only.
 	for i := 0; i < addrFailures; i++ {
@@ -457,43 +477,72 @@ func TestSignInIsThrottledByNameAndByAddressAndRecovers(t *testing.T) {
 	}
 }
 
+// A NAME HAS A LOOSER CEILING OF ITS OWN, which an address the person signed
+// in from before does not count against.
+func TestANameHasACeilingThatItsOwnAddressesSkip(t *testing.T) {
+	o := newPWOrg(t)
+	o.signUp(o.operatorLink(), "santosh", pwOperator)
+	if w := o.signIn("santosh", pwOperator, "127.0.0.5:1"); w.Code != 200 {
+		t.Fatalf("first sign-in = %d", w.Code)
+	}
+	for i := 0; i < userFailuresAll; i++ {
+		o.signIn("santosh", pwAbir, "127.1."+itoa(i/200)+"."+itoa(i%200+1)+":1")
+	}
+	if w := o.signIn("santosh", pwOperator, "127.0.0.6:1"); w.Code != 429 {
+		t.Fatalf("a new address past the ceiling = %d", w.Code)
+	}
+	if w := o.signIn("santosh", pwOperator, "127.0.0.5:1"); w.Code != 200 {
+		t.Fatalf("the owner's own address = %d %s", w.Code, w.Body)
+	}
+}
+
 func TestTheThrottleBacksOffExponentiallyAndForgets(t *testing.T) {
 	th := newThrottle(10, true)
 	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	for i := 0; i < 10; i++ {
-		th.fail("u", now)
+	try := func(at time.Time) bool {
+		_, ok := th.reserve("u", at)
+		if ok {
+			th.failed("u", at)
+		}
+		return ok
 	}
-	if th.open("u", now) {
+	for i := 0; i < 10; i++ {
+		if !try(now) {
+			t.Fatalf("try %d refused", i)
+		}
+	}
+	if _, ok := th.reserve("u", now); ok {
 		t.Fatal("open after ten")
 	}
 	first := th.keys["u"].until.Sub(now)
 	// Wait out the bucket, fail once more: the wait doubles.
 	now = now.Add(2 * time.Minute)
-	if !th.open("u", now) {
+	if !try(now) {
 		t.Fatal("not open after the refill")
 	}
-	th.fail("u", now)
 	second := th.keys["u"].until.Sub(now)
 	if second != 2*first {
 		t.Fatalf("backoff %v then %v", first, second)
 	}
 	// Never past the most, and forgiven after a quiet spell.
 	for i := 0; i < 20; i++ {
-		now = now.Add(backoffMost + time.Minute)
-		th.fail("u", now.Add(-time.Second)) // keep strikes growing
+		now = th.keys["u"].until.Add(time.Minute)
+		try(now)
 	}
 	if th.keys["u"].until.Sub(now) > backoffMost {
 		t.Fatalf("waited %v", th.keys["u"].until.Sub(now))
 	}
 	now = now.Add(throttleWindow + backoffForgiven)
-	if !th.open("u", now) {
+	if !try(now) {
 		t.Fatal("still locked after a quiet spell")
 	}
-	// Bounded: a full set forgets.
+	// Bounded: a full set forgets keys that are not backing off.
 	small := newThrottle(10, false)
 	small.most = 3
 	for _, k := range []string{"a", "b", "c", "d", "e"} {
-		small.fail(k, now)
+		if _, ok := small.reserve(k, now); !ok {
+			t.Fatalf("%s refused", k)
+		}
 	}
 	if len(small.keys) > 3 {
 		t.Fatalf("set grew to %d", len(small.keys))

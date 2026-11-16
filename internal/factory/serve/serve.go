@@ -247,8 +247,10 @@ type Handler struct {
 	joinMu    sync.Mutex
 	// pwGuard throttles password tries by username and by address
 	// (password_policy.go), made on first use.
-	pwOnce         sync.Once
-	pwGuard        *passwordGuard
+	pwOnce  sync.Once
+	pwGuard *passwordGuard
+	// accounts is accounts.json as last read (password_accounts.go).
+	accounts       accountsCache
 	replays        replayCache
 	machinesMu     sync.Mutex
 	machines       map[string]machineRow

@@ -38,6 +38,10 @@ type accessSession struct {
 	refreshExpires time.Time
 	githubExpired  bool
 	profile        *api.Profile
+	// credGen is the password account's generation the session was made
+	// under (tokens.Account.Gen); a password person's session dies when the
+	// account's generation moves past it. Zero for a GitHub session.
+	credGen int64
 }
 
 // accessSessions indexes sign-ins by credential hash, never the credential.
@@ -131,6 +135,14 @@ func (h *Handler) liveSessionHash(r *http.Request, key string) (accessSession, b
 	if ok && session.githubExpired && h.now().Before(session.expires) {
 		h.setAuthError(r, errGitHubExpired)
 		return accessSession{}, false
+	}
+	if ok {
+		// An account file that cannot be read refuses this request and keeps
+		// the session: unknown is not gone.
+		if _, err := h.passwordSessionAlive(session); err != nil {
+			h.setAuthError(r, err)
+			return accessSession{}, false
+		}
 	}
 	if !ok || !h.sessionUsable(session) {
 		if ok {
@@ -282,12 +294,11 @@ func (h *Handler) sessionUsable(session accessSession) bool {
 	if !session.created.IsZero() && !h.now().Before(session.created.Add(accessSessionLife)) {
 		return false
 	}
-	// A password person's session lives only while their account does: an
-	// operator who removes them removes the account, and every session ends.
-	if session.profile != nil && session.profile.Kind == tokens.KindPassword {
-		if _, ok := h.passwordAccount(session.profile.Handle); !ok {
-			return false
-		}
+	// A password person's session lives only while their account does, at
+	// the password it was made with: an operator who removes them, a change
+	// and a reset each end it. A file that cannot be read is not usable now.
+	if alive, err := h.passwordSessionAlive(session); !alive || err != nil {
+		return false
 	}
 	if session.tokenID == "" {
 		return true

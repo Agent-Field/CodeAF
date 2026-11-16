@@ -2785,8 +2785,13 @@ the second way.
   `factory.access_sign_in` keeps one; the session credential is never in an
   answer). A refusal is `state: "ready"` with `reason` (`username_taken`,
   `username_invalid`, `password_short`, `password_long`, `password_common`,
-  `password_contains_username`, `name_invalid`) and `message` in the server's
-  words. A link that is revoked, expired or used up answers that state.
+  `password_contains_username`, `name_invalid`, `github_link`) and `message`
+  in the server's words. `github_link` is an invitation made for one GitHub
+  login: it takes no password (its `factory.sign_in` leaves `password` out),
+  only that person's GitHub sign-in. A username already used anywhere on the
+  server (a GitHub login that ever signed in, a share, a team, a job) is
+  `username_taken`. A link that is revoked, expired or used up answers that
+  state.
 - `factory.access_reset {link, caller, password}` sets a new password through
   the operator's reset link (`kind: "reset"` on `factory.access_check`'s
   answer); `state: "joined"` signs the person in, and every other session of
@@ -2796,10 +2801,16 @@ the second way.
   refusal is a `forbidden` error carrying the server's sentence: the same one
   for an unknown username and a wrong password ("That username and password
   don't match."). Too many tries is `busy` ("Too many tries. Wait a few
-  minutes.").
+  minutes."): 10 wrong tries of a username from one address, 100 from
+  everywhere (an address the person signed in from before skips this one),
+  or 50 from one address (an IPv6 address counts by its /64); and a second
+  sign-in of a username while one is being verified. Every session is tied to
+  the password it was made with: a change or a reset ends all of them.
 - `factory.password_change {factory, current, new}` answers `{}`; every other
   session of the person ends. A wrong current password is `forbidden`; a new
-  one that breaks a rule is `bad_params` with the rule's words.
+  one that breaks a rule is `bad_params` with the rule's words; a change that
+  lost a race with another change is `conflict` ("Your password was changed
+  meanwhile; sign in again.").
 - `factory.link_create` takes `kind: "reset"` with `person: <handle>` (and no
   other choice): a one-time link for one hour, for a password person only,
   copied like an invitation. Its entry carries `kind: "reset"`.

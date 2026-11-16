@@ -74,7 +74,7 @@ func (o *passwordOrg) operatorLink(t *testing.T) string {
 // signs out and back in with it, and makes abir a reset link that abir uses.
 // No answer and no line the engine writes carries a password or a session.
 func TestTwoPasswordPeopleThroughTheEngine(t *testing.T) {
-	const pwSantosh, pwAbir, pwNew, pwReset = "correct horse battery staple", "a long passphrase for my friend", "another long passphrase", "a reset passphrase, long"
+	const pwSantosh, pwAbir, pwNew, pwReset = "violet otter campsite drizzle", "a long passphrase for my friend", "another long passphrase", "a reset passphrase, long"
 	o := startPasswordOrg(t)
 	santosh := newFactoryWire(t, testFactoryHub(t))
 	if !strings.Contains(santosh.hello, appwire.FeatureFactoryPassword) {

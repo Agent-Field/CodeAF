@@ -132,17 +132,24 @@ func (h *Handler) strictJSON(w http.ResponseWriter, data []byte, out any) bool {
 	return true
 }
 
-// throttleKeys are the two keys a try is counted under.
+// throttleKeys are the username and the address a try is counted under.
 func throttleKeys(r *http.Request, username string) (user, addr string) {
 	user = strings.ToLower(strings.TrimSpace(username))
 	if len(user) > 64 {
 		user = user[:64]
 	}
-	addr = "unknown"
-	if c := clientOf(r); c.addr.IsValid() {
-		addr = c.addr.String()
+	return user, throttleAddr(clientOf(r).addr)
+}
+
+// admitTry admits one password try, or answers 429 and false. alone is
+// whether it must be the only try of the name being verified (sign-in).
+func (h *Handler) admitTry(w http.ResponseWriter, r *http.Request, username string, alone bool) (*attempt, bool) {
+	user, addr := throttleKeys(r, username)
+	a, ok := h.guard().admit(user, addr, h.now(), alone)
+	if !ok {
+		h.tooManyTries(w)
 	}
-	return "u:" + user, "a:" + addr
+	return a, ok
 }
 
 func (h *Handler) tooManyTries(w http.ResponseWriter) {
@@ -169,7 +176,8 @@ func (h *Handler) accountEvent(r *http.Request, handle, actor, verb, detail stri
 }
 
 // knownElsewhere is a handle the token files do not record but the server
-// knows: a signed-in session, the host's own login, the configured team.
+// knows: a signed-in session, the host's own login, the configured team. It
+// is asked under the row lock, so it reads only memory.
 func (h *Handler) knownElsewhere(handle string) bool {
 	if handle == factory.NormalizeHandle(h.config.OperatorLogin) {
 		return true
@@ -189,22 +197,17 @@ func (h *Handler) knownElsewhere(handle string) bool {
 	return false
 }
 
-// passwordAccount is handle's account, if it has one.
-func (h *Handler) passwordAccount(handle string) (tokens.Account, bool) {
-	if h.config.TokensPath == "" || handle == "" {
-		return tokens.Account{}, false
-	}
-	accounts, err := tokens.LoadAccounts(h.config.TokensPath)
-	if err != nil {
-		return tokens.Account{}, false
-	}
-	return accounts.Find(handle)
-}
+// errPasswordMoved is a sign-in whose password was replaced while it was
+// being verified: no session is made with a password that no longer works.
+var errPasswordMoved = errors.New("the password changed during the sign-in")
 
-// mintSession stores a new person session and answers its credential. It is
-// the device flow's ending without GitHub: no link row holds it, so it lives
-// by its own expiry and the account's existence (sessionUsable).
-func (h *Handler) mintSession(w http.ResponseWriter, r *http.Request, profile api.Profile) (string, accessSession, error) {
+// mintSession stores a new person session made under the account's
+// generation gen and answers its credential. It is the device flow's ending
+// without GitHub: no link row holds it, so it lives by its own expiry and the
+// account staying at gen (sessionUsable). The generation is read again under
+// the session lock, the one a change or a reset takes to end sessions: a
+// sign-in verified against a password replaced meanwhile makes nothing.
+func (h *Handler) mintSession(w http.ResponseWriter, r *http.Request, profile api.Profile, gen int64) (string, accessSession, error) {
 	credential, err := secret()
 	if err != nil {
 		return "", accessSession{}, err
@@ -215,8 +218,16 @@ func (h *Handler) mintSession(w http.ResponseWriter, r *http.Request, profile ap
 	}
 	now := h.now()
 	session := accessSession{id: "session_" + id, expires: now.Add(accessSessionTTL), created: now, lastSeen: now,
-		profile: &profile, device: deviceLabel(r)}
+		profile: &profile, device: deviceLabel(r), credGen: gen}
 	h.sessions.mu.Lock()
+	acct, held, err := h.freshAccount(profile.Handle)
+	if err == nil && (!held || acct.Gen != gen) {
+		err = errPasswordMoved
+	}
+	if err != nil {
+		h.sessions.mu.Unlock()
+		return "", accessSession{}, err
+	}
 	for key, old := range h.sessions.ids {
 		if !now.Before(old.expires) {
 			delete(h.sessions.ids, key)
@@ -239,14 +250,20 @@ func (h *Handler) mintSession(w http.ResponseWriter, r *http.Request, profile ap
 }
 
 // endSessionsOf ends every session of handle except the one whose public id
-// is keep ("" ends them all).
-func (h *Handler) endSessionsOf(handle, keep string) error {
+// is keep ("" ends them all), which moves to the account's new generation.
+func (h *Handler) endSessionsOf(handle, keep string, gen int64) error {
 	h.sessions.mu.Lock()
 	defer h.sessions.mu.Unlock()
 	for key, s := range h.sessions.ids {
-		if profileHandle(s) == handle && (keep == "" || s.id != keep) {
-			delete(h.sessions.ids, key)
+		if profileHandle(s) != handle {
+			continue
 		}
+		if keep != "" && s.id == keep {
+			s.credGen = gen
+			h.sessions.ids[key] = s
+			continue
+		}
+		delete(h.sessions.ids, key)
 	}
 	return h.saveSessions()
 }
@@ -262,6 +279,12 @@ func (h *Handler) passwordRefused(w http.ResponseWriter, out api.FactoryAccess, 
 func (h *Handler) signUp(w http.ResponseWriter, r *http.Request, body api.FactoryAccessRequest, tok tokens.Token, out api.FactoryAccess) {
 	if !h.passwordsOn() {
 		h.fail(w, http.StatusNotFound, "this organization does not take passwords")
+		return
+	}
+	// A link made for one GitHub login is that person's: whoever holds it
+	// signs in with GitHub as them or not at all, never with a password.
+	if tok.InvitedLogin != "" {
+		h.passwordRefused(w, out, reasonGitHubLink)
 		return
 	}
 	username := cleanUsername(body.Username)
@@ -293,7 +316,17 @@ func (h *Handler) signUp(w http.ResponseWriter, r *http.Request, body api.Factor
 	profile := api.Profile{Handle: username, Name: name, Scopes: []string{}, Kind: tokens.KindPassword}
 	now := h.now()
 	h.joinMu.Lock()
-	_, err = tokens.SignUp(h.config.TokensPath, tok.ID, tokens.Account{Name: name, Hash: hash}, profile, now, h.knownElsewhere, func() error {
+	// Everything else that names people is read before the row lock, which
+	// none of it may take; a GitHub sign-in stores its session under joinMu,
+	// so it cannot slip between this read and the account.
+	referenced, err := h.handleReferenced(username)
+	if err != nil {
+		h.joinMu.Unlock()
+		h.failed(w, err)
+		return
+	}
+	taken := func(handle string) bool { return referenced || h.knownElsewhere(handle) }
+	_, err = tokens.SignUp(h.config.TokensPath, tok.ID, tokens.Account{Name: name, Hash: hash}, profile, now, taken, func() error {
 		if h.config.Record == nil {
 			return nil
 		}
@@ -302,14 +335,14 @@ func (h *Handler) signUp(w http.ResponseWriter, r *http.Request, body api.Factor
 		return e
 	})
 	h.joinMu.Unlock()
+	h.forgetAccounts()
 	switch {
 	case err == nil:
 	case errors.Is(err, tokens.ErrHandleTaken):
 		h.passwordRefused(w, out, reasonUsernameTaken)
 		return
-	case errors.Is(err, tokens.ErrWrongPerson) && tok.InvitedLogin != "":
-		out.Message, out.Reason = "This link is for @"+tok.InvitedLogin+"; choose that username.", reasonUsernameInvalid
-		h.write(w, http.StatusOK, out)
+	case errors.Is(err, tokens.ErrGitHubLink):
+		h.passwordRefused(w, out, reasonGitHubLink)
 		return
 	case errors.Is(err, tokens.ErrRevoked):
 		out.State = "revoked"
@@ -331,7 +364,7 @@ func (h *Handler) signUp(w http.ResponseWriter, r *http.Request, body api.Factor
 	if h.failed(w, h.accountEvent(r, username, "", "signed up", "signed up with a password", tok.Operator)) {
 		return
 	}
-	credential, _, err := h.mintSession(w, r, profile)
+	credential, _, err := h.mintSession(w, r, profile, 1)
 	if h.failed(w, err) {
 		return
 	}
@@ -363,7 +396,10 @@ func (h *Handler) resetAccess(w http.ResponseWriter, r *http.Request, body api.F
 	default:
 		out.State = "ready"
 	}
-	if _, ok := h.passwordAccount(reset.Handle); !ok && out.State == "ready" {
+	if _, ok, err := h.passwordAccount(reset.Handle); err != nil {
+		h.failed(w, err)
+		return
+	} else if !ok && out.State == "ready" {
 		out.State = "revoked"
 	}
 	if body.Verb != "reset" || out.State != "ready" {
@@ -388,7 +424,8 @@ func (h *Handler) resetAccess(w http.ResponseWriter, r *http.Request, body api.F
 	}
 	_, link, _ := strings.Cut(body.Link, "#")
 	fragment, _ := url.ParseQuery(link)
-	handle, err := tokens.UseReset(h.config.TokensPath, fragment.Get("token"), hash, now)
+	handle, gen, err := tokens.UseReset(h.config.TokensPath, fragment.Get("token"), hash, now)
+	h.forgetAccounts()
 	if errors.Is(err, tokens.ErrResetInvalid) {
 		out.State = "used_up"
 		h.write(w, http.StatusOK, out)
@@ -399,14 +436,14 @@ func (h *Handler) resetAccess(w http.ResponseWriter, r *http.Request, body api.F
 	}
 	// A reset is the recovery door: whoever held the old password, or a
 	// session made with it, is out.
-	if h.failed(w, h.endSessionsOf(handle, "")) {
+	if h.failed(w, h.endSessionsOf(handle, "", gen)) {
 		return
 	}
 	if h.failed(w, h.accountEvent(r, handle, "", "reset password", "reset password through the operator's link", false)) {
 		return
 	}
-	acct, _ := h.passwordAccount(handle)
-	credential, _, err := h.mintSession(w, r, api.Profile{Handle: handle, Name: acct.Name, Scopes: []string{}, Kind: tokens.KindPassword})
+	acct, _, _ := h.passwordAccount(handle)
+	credential, _, err := h.mintSession(w, r, api.Profile{Handle: handle, Name: acct.Name, Scopes: []string{}, Kind: tokens.KindPassword}, gen)
 	if h.failed(w, err) {
 		return
 	}
@@ -429,15 +466,16 @@ func (h *Handler) passwordSignIn(w http.ResponseWriter, r *http.Request) {
 	if !h.readPasswordBody(w, r, &body) {
 		return
 	}
-	userKey, addrKey := throttleKeys(r, body.Username)
-	g := h.guard()
-	now := h.now()
-	if !g.addrs.open(addrKey, now) || !g.users.open(userKey, now) {
-		h.tooManyTries(w)
+	try, ok := h.admitTry(w, r, body.Username, true)
+	if !ok {
 		return
 	}
+	defer try.abandon(h.now())
 	username := cleanUsername(body.Username)
-	acct, found := h.passwordAccount(username)
+	acct, found, err := h.passwordAccount(username)
+	if h.failed(w, err) {
+		return
+	}
 	normal := normalPassword(body.Password)
 	if len(normal) > passwordMaxBytes {
 		// Nothing that long was ever accepted, so nothing is hashed for it.
@@ -452,30 +490,40 @@ func (h *Handler) passwordSignIn(w http.ResponseWriter, r *http.Request) {
 		h.tooManyTries(w)
 		return
 	}
-	if !ok || !found || err != nil {
-		g.addrs.fail(addrKey, now)
-		if g.users.fail(userKey, now) && found {
-			_ = h.accountEvent(r, username, "", "refused sign-ins", "10 sign-ins with a wrong password in 15 minutes; tries are slowed down", false)
+	refused := func() {
+		if try.failed(h.now()) && found {
+			_ = h.accountEvent(r, username, "", "refused sign-ins", "sign-ins with a wrong password ran out; tries are slowed down", false)
 		}
 		w.Header().Set("WWW-Authenticate", `Bearer realm="factory"`)
 		h.refuse(w, http.StatusUnauthorized, signInRefusedWords, "sign_in_refused", "", nil, "")
+	}
+	if !ok || !found || err != nil {
+		refused()
 		return
 	}
+	now := h.now()
 	if weaker {
 		// The stored parameters are older and weaker; the password is in hand
-		// once, so it is rehashed at today's now. A failure keeps the old hash.
+		// once, so it is rehashed at today's. Only over the very hash it
+		// verified: a change or a reset made meanwhile is never undone.
 		if stronger, e := hashPassword(normal); e == nil {
-			_ = tokens.SetPassword(h.config.TokensPath, username, stronger, now, false)
+			_ = tokens.Rehash(h.config.TokensPath, username, acct.Hash, stronger)
+			h.forgetAccounts()
 		}
 	}
 	profile := api.Profile{Handle: username, Name: acct.Name, Scopes: []string{}, Kind: tokens.KindPassword}
 	if profile.Name == "" {
 		profile.Name = username
 	}
-	credential, session, err := h.mintSession(w, r, profile)
+	credential, session, err := h.mintSession(w, r, profile, acct.Gen)
+	if errors.Is(err, errPasswordMoved) {
+		refused()
+		return
+	}
 	if h.failed(w, err) {
 		return
 	}
+	try.succeeded(now)
 	if h.failed(w, h.accountEvent(r, username, "", "signed in", "signed in with a password", false)) {
 		return
 	}
@@ -505,14 +553,15 @@ func (h *Handler) passwordChange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	handle := session.profile.Handle
-	userKey, addrKey := throttleKeys(r, handle)
-	g := h.guard()
-	now := h.now()
-	if !g.addrs.open(addrKey, now) || !g.users.open(userKey, now) {
-		h.tooManyTries(w)
+	try, ok := h.admitTry(w, r, handle, false)
+	if !ok {
 		return
 	}
-	acct, found := h.passwordAccount(handle)
+	defer try.abandon(h.now())
+	acct, found, err := h.passwordAccount(handle)
+	if h.failed(w, err) {
+		return
+	}
 	if !found {
 		h.fail(w, http.StatusNotFound, "this sign-in has no password")
 		return
@@ -527,11 +576,11 @@ func (h *Handler) passwordChange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !match || err != nil {
-		g.addrs.fail(addrKey, now)
-		g.users.fail(userKey, now)
+		try.failed(h.now())
 		h.refuse(w, http.StatusForbidden, "Your current password is not right.", "current_wrong", "", nil, "")
 		return
 	}
+	try.succeeded(h.now())
 	next := normalPassword(body.New)
 	if reason := passwordRefusal(next, handle); reason != "" {
 		h.refuse(w, http.StatusUnprocessableEntity, refusalWords[reason], reason, "", nil, "")
@@ -545,10 +594,16 @@ func (h *Handler) passwordChange(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
-	if h.failed(w, tokens.SetPassword(h.config.TokensPath, handle, hash, now, true)) {
+	gen, err := tokens.SetPassword(h.config.TokensPath, handle, hash, acct.Gen, h.now())
+	h.forgetAccounts()
+	if errors.Is(err, tokens.ErrStale) {
+		h.refuse(w, http.StatusConflict, "Your password was changed meanwhile; sign in again.", "password_moved", "", nil, "")
 		return
 	}
-	if h.failed(w, h.endSessionsOf(handle, session.id)) {
+	if h.failed(w, err) {
+		return
+	}
+	if h.failed(w, h.endSessionsOf(handle, session.id, gen)) {
 		return
 	}
 	if h.failed(w, h.accountEvent(r, handle, "", "changed password", "changed password; other sign-ins ended", false)) {
@@ -562,7 +617,10 @@ func (h *Handler) passwordChange(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) createResetLink(w http.ResponseWriter, r *http.Request, body api.CreateAccessLink) {
 	noStore(w)
 	person := factory.NormalizeHandle(body.Person)
-	if _, ok := h.passwordAccount(person); !ok || !h.passwordsOn() {
+	if _, ok, err := h.passwordAccount(person); err != nil {
+		h.failed(w, err)
+		return
+	} else if !ok || !h.passwordsOn() {
 		h.fail(w, http.StatusUnprocessableEntity, "only a person who signs in with a password can be sent a reset link")
 		return
 	}

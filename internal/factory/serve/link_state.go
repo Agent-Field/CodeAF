@@ -12,6 +12,7 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -135,7 +136,7 @@ func (h *Handler) factoryAccess(w http.ResponseWriter, r *http.Request) {
 	if tok == nil {
 		// An operator's password reset link is kept beside the accounts, not
 		// among the access rows: its secret must never pass as a bearer.
-		if accounts, e := tokens.LoadAccounts(h.config.TokensPath); e == nil && h.passwordsOn() {
+		if accounts, e := h.loadAccounts(); e == nil && h.passwordsOn() {
 			if reset, ok := accounts.FindReset(secret); ok && (verb == "" || verb == "check" || verb == "reset") {
 				h.resetAccess(w, r, body, reset, out)
 				return
@@ -151,6 +152,11 @@ func (h *Handler) factoryAccess(w http.ResponseWriter, r *http.Request) {
 	}
 	if tok.InvitedBy != "" {
 		out.Factory.Operator = tok.InvitedBy
+	}
+	// A link made for one GitHub login is used by signing in with GitHub as
+	// that person; it never offers a password.
+	if tok.InvitedLogin != "" {
+		out.Factory.SignIn = slices.DeleteFunc(out.Factory.SignIn, func(m string) bool { return m == signInPassword })
 	}
 	// Only a link that matched earns the host's face; the secret is the proof.
 	if known, ok := h.signedInPeople([]string{out.Factory.Operator})[factory.NormalizeHandle(out.Factory.Operator)]; ok {

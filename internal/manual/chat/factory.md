@@ -206,11 +206,11 @@ An access link looks like `codeaf://factory/join?url=https://factory.example#tok
 
 An organization server (`codeaf factory serve`) takes a username and password by default; GitHub is the second way. Its `/v1/about` lists them in `sign_in`, password first. You make an account by opening the operator link or an invitation link and choosing a username and a password; the link is used up in the same step that makes the account, so two people can never both join on one single-use link.
 
-- A username is 2 to 39 lowercase letters, digits or hyphens, and is unique on the server, including against the GitHub logins already there. "That name belongs to someone who signs in here with a password." refuses a GitHub sign-in with a password person's name.
-- A password is 12 characters to 256 bytes, any characters, with no other composition rules and no expiry. A password on the embedded list of common passwords, or one that contains your username, is refused with a sentence naming the rule.
+- A username is 2 to 39 lowercase letters, digits or hyphens. It must be new to the server: not a GitHub login that ever signed in, nor a name already given a share, a team place or a job. "That name belongs to someone who signs in here with a password." refuses a GitHub sign-in with a password person's name. An invitation made for one GitHub login takes no password: "This link is for a GitHub account; sign in with GitHub."
+- A password is 12 characters to 256 bytes, any characters, with no other composition rules and no expiry. One on the embedded list of about 486,000 common passwords, compared by its letters and digits only (so "P.a.s.s.w.o.r.d-1234" counts), or one that contains your username, is refused with a sentence naming the rule.
 - A wrong username and a wrong password get the same sentence: "That username and password don't match."
-- After repeated wrong tries for one username or from one address: "Too many tries. Wait a few minutes." The wait grows with more tries and goes away on its own; nothing is locked for good.
-- Changing your password ends your other sessions. Signing out ends that session on the server.
+- "Too many tries. Wait a few minutes." comes after 10 wrong tries for a username from one address, 100 for a username from everywhere, or 50 from one address; the wait grows with more tries and goes away on its own. An address you have signed in from before is not held up by other people's guesses.
+- Changing your password, or a reset, ends every session made with the old one. Signing out ends that session on the server.
 - A session lasts 30 days after you last used it, and 90 days at most.
 - Password sign-in works only over HTTPS, or on the server's own machine, or behind a trusted proxy that says HTTPS.
 
