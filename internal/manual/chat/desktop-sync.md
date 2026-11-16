@@ -148,6 +148,28 @@ Continue here requires the holder and ownership fence shown when you chose it.
 A changed fence, holder or saved turn needs a fresh choice.
 Completed turns are shared while the chat stays open, including after a move.
 
+## A crew made on another computer in the desktop — grouped, read-only, message its manager
+
+A crew made on another paired computer shows in the desktop as one crew: its
+manager and members are grouped under the crew's name, not listed as loose
+chats. Factory crews from another computer group the same way. The grouping
+is what that computer said at each chat's last saved turn, so it stays while
+that computer is off; a rename or a member leaving there shows once that chat
+saves its next turn. A chat from a computer on an older codeaf, or through a
+relay that does not carry crews yet, shows as a loose chat.
+
+In this version a crew on another computer is read-only here:
+
+- You can read each member's chat and send a message to the crew's manager,
+  which is queued on that computer and runs after its turn.
+- The crew is not in this computer's crews list, cannot be edited, closed or
+  started here, and cannot be continued here as a crew. Continue here still
+  moves one member's chat on its own, which leaves the crew on the other
+  computer.
+
+A crew made on this computer is grouped the same way, from this computer's own
+crews.
+
 ## Send a message to a chat working on another computer — queued there, runs after the turn
 
 While another computer still holds a chat (working, or open while `idle handoff` is off, before idle release, or on an older build), the desktop composer

@@ -126,3 +126,43 @@ needs more of the cell, add a path to read, not a walk of the head.
   records on the holder and are not on a remote page.
 - Entry ids are stable within a head's pages; a client replaces its pages when
   `head` changes.
+
+## Crews on another computer
+
+**Status:** built 2026-11-16 (`chats.crew`, engine side; hosted relay needs the
+`Codeaf-Chat-Crews` deploy).
+
+A crew made on one computer has to show on a paired computer as ONE crew — its
+manager and members grouped, not loose chats — even while the holder is off,
+and stays read-only there: the only thing done to it from elsewhere is
+`chats.send` to its manager.
+
+**The crew rides the chat's directory record**, sealed under the identity's
+metadata key with its own associated data (`directory.SealCrew`), beside the
+sealed title and folder. Each publish seals `{v, id, name, manager, kind}` for
+the crew `teams.ChatCrew` picks, or `{v:1}` for "in no crew" (an empty field
+keeps the old value, so leaving a crew has to be said). The viewer opens it in
+`chatlist.WithCrews` and `cmd/codeaf`'s `appChatCrew` puts it on the row; this
+computer's own teams store wins for any chat it lists.
+
+Why the record and not the vault's team sync (`syncsetup/teams.go`):
+
+- The vault sync MERGES the crew into the viewer's teams store as a crew the
+  viewer can edit and drive. Two computers driving one crew is the thing this
+  version must not allow; the record only describes.
+- `codeaf app` runs the vault round only while pairing is still pending, so a
+  crew made after pairing never travelled — the live GCP pair on 2026-11-16 got
+  `crews.list: []` and three loose member rows for exactly this reason.
+- The record is already per chat, durable on the relay while the holder is off,
+  and rewritten every saved turn.
+
+Costs and limits, accepted on purpose:
+
+- A rename, new manager or removal on the holder arrives with that chat's next
+  saved turn; an idle chat keeps what it last said.
+- A relay that does not answer `Codeaf-Chat-Crews: 1` never receives the field
+  (older relays decode strictly), and its rows are loose. The header is not in
+  `directory.Capabilities`, so it does not block a release.
+- Crews do not appear in `crews.list` on the viewer, and taking a crew whole is
+  not offered. Do not "fix" that by turning the vault team sync on in the app
+  without first deciding who drives a crew whose members live on two computers.

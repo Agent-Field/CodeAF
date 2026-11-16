@@ -463,7 +463,8 @@ Both computers need to be running codeaf and able to reach the relay. An
 unpaired computer or a computer with sharing off keeps its teams to itself.
 Turning it off on either computer stops sharing between them: that computer
 stops sending and receiving teams and Traffic. What was already exchanged stays,
-including teams and encrypted copies in the vault.
+including teams and encrypted copies in the vault. Unpaired computers are unaffected.
+The desktop shows another computer's crew grouped and read-only in its chats.
 
 Opening a remote member from terminal Teams raises `Continue this chat here?`
 on Home (`continue here` moves and opens it; `leave it there` changes nothing).
