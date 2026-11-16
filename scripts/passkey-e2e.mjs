@@ -187,7 +187,7 @@ const browser = await chromium.launch({ args: [`--ignore-certificate-errors-spki
 // authenticatorFor is a fresh Chromium context with one virtual authenticator
 // on transport, user verification on, presence answered automatically.
 async function authenticatorFor(transport, width = 1024) {
-  const context = await browser.newContext({ viewport: { width, height: 800 } });
+  const context = await browser.newContext({ viewport: { width, height: 800 }, ignoreHTTPSErrors: true });
   const page = await context.newPage();
   const cdp = await context.newCDPSession(page);
   await cdp.send("WebAuthn.enable", { enableUI: false });
@@ -226,7 +226,7 @@ async function settled(page) {
     } else {
       let s = "";
       try { s = (await page.textContent("#status")) || ""; } catch { /* navigating */ }
-      if (s && s !== "Checking…" && !s.startsWith("Finishing on the computer")) return s;
+      if (s && s !== "Checking…" && !s.startsWith("If your browser says it can't connect")) return s;
     }
     await new Promise((r) => setTimeout(r, 100));
   }
@@ -269,7 +269,15 @@ try {
   try { await santosh.call("factory.passkey_poll", { flow: started.flow, caller: "e2e" }); } catch (e) { again = e.code; }
   check("a done flow is answered once", again === "not_found", again);
 
-  // 3. Add a second passkey on a phone (hybrid) and a third on a security key (usb).
+  // 3. A sign-in is no step-up (N2): an add first needs "Confirm it's you".
+  let needs = "";
+  try { await santosh.call("factory.passkey_start", { factory: factoryID, caller: "e2e", purpose: "add" }); } catch (e) { needs = e.code; }
+  check("N2: an add straight after signing in needs a confirm", needs === "step_up", needs);
+  started = await santosh.call("factory.passkey_start", { factory: factoryID, caller: "e2e", purpose: "confirm" });
+  page = await ceremony(internal, started.url);
+  polled = await santosh.pollUntilDone(started.flow, "e2e");
+  check("confirm with the internal passkey", page.status.startsWith("Done") && polled.state === "done", page.status);
+  // Then add a second passkey on a phone (hybrid) and a third on a security key (usb).
   const hybrid = await authenticatorFor("hybrid");
   started = await santosh.call("factory.passkey_start", { factory: factoryID, caller: "e2e", purpose: "add" });
   page = await ceremony(hybrid, started.url, { label: "Pixel phone" });
@@ -306,7 +314,16 @@ try {
   // computer), which this context stands for by refusing every loopback
   // navigation. The ceremony passes; the starter gets nothing, ever.
   const victim = await authenticatorFor("usb");
-  await victim.context.route(/^http:\/\/127\.0\.0\.1:/, (route) => route.abort("connectionrefused"));
+  // On that other computer nothing listens at the starter's port: the
+  // server's hand-over (a 303 to 127.0.0.1) is sent on to a port where
+  // nothing listens here, which is exactly what the victim's browser meets.
+  const nothingThere = await freePort();
+  await victim.context.route(/\/passkey\/[0-9a-f]{64}\/go$/, async (route) => {
+    const handed = await route.fetch({ maxRedirects: 0 });
+    const to = new URL(handed.headers()["location"]);
+    to.port = String(nothingThere);
+    await route.fulfill({ status: 303, headers: { location: to.toString() } });
+  });
   const victimCreds = await usb.cdp.send("WebAuthn.getCredentials", { authenticatorId: usb.authenticatorId });
   for (const c of victimCreds.credentials) {
     await victim.cdp.send("WebAuthn.addCredential", { authenticatorId: victim.authenticatorId, credential: c });
@@ -315,11 +332,27 @@ try {
   started = await laptop.call("factory.passkey_start", { factory: attached.id, caller: "e2e2", purpose: "sign_in" });
   await victim.page.goto(started.url);
   await victim.page.click("#go");
-  // The hand-over fails there (no codeaf at that 127.0.0.1); coming back to
-  // the address, the page says where it finishes.
+  // Before the browser tries the starter's 127.0.0.1, the page says, in our
+  // own words, what a "can't connect" means and where to finish.
+  let before = { h1: "", lede: "", status: "" };
+  for (let i = 0; i < 100 && !before.status.startsWith("If your browser says"); i++) {
+    try {
+      before = { h1: await victim.page.textContent("h1", { timeout: 200 }), lede: await victim.page.textContent("#lede", { timeout: 200 }),
+        status: await victim.page.textContent("#status", { timeout: 200 }) };
+    } catch { /* settling */ }
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  check("C1: our words come before the browser's error", before.h1 === "Done." &&
+    before.lede.startsWith("Returning to codeaf on the computer that started this") &&
+    before.status.includes("you opened this page on a different computer or browser") &&
+    before.status.includes("start again there"), JSON.stringify(before));
+  // Then the hand-over fails there (no codeaf at that 127.0.0.1): the
+  // browser's own error page. Coming back to the address, the page says
+  // where it finishes.
   for (let i = 0; i < 100 && victim.page.url().startsWith(origin); i++) {
     await new Promise((r) => setTimeout(r, 100));
   }
+  check("C1: the browser then shows its own error, not a session", !victim.page.url().startsWith(origin), victim.page.url());
   await victim.page.goto(started.url);
   const phished = (await victim.page.textContent("h1", { timeout: 5000 })) || "";
   check("C1: the victim's page says to finish on the computer that started it", phished.startsWith("Finish on the computer"), phished);
@@ -436,7 +469,11 @@ try {
       check(`${name} smoke: loads, detects, reports cleanly`, clean,
         `support=${support} button=${button} status=${JSON.stringify(says)} errors=${errors.length}`);
       if (name === "firefox" && support === "yes") {
-        // A whole ceremony on Firefox's soft token: add it, then sign in with it.
+        // A whole ceremony on Firefox's soft token: add it, then sign in with
+        // it. The add needs a fresh confirm, which the security key gives.
+        const confirmAgain = await santosh.call("factory.passkey_start", { factory: factoryID, caller: "e2e", purpose: "confirm" });
+        await ceremony(usb, confirmAgain.url);
+        await santosh.pollUntilDone(confirmAgain.flow, "e2e");
         started = await santosh.call("factory.passkey_start", { factory: factoryID, caller: "e2e", purpose: "add" });
         await p.goto(started.url);
         await p.fill("#label", "Firefox soft token");
