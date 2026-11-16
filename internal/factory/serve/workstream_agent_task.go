@@ -48,6 +48,13 @@ func (h *Handler) taskRunDir(ws, task string) string {
 // itself sets the task done or failed through ws_task_update; a run that ends
 // without doing either, and was not stopped, leaves the task failed with the
 // reason, so a task never says running with nothing at work on it.
+//
+// IT TOUCHES NO WORKSTREAMS DATABASE BEFORE IT RETURNS, so a task write may call
+// it inside its own EditWorkstreamTasks transaction: that store has one
+// connection, and a synchronous read here would wait on the transaction that
+// is waiting on it. The organization's key is a file of its own. Every read of
+// the task happens in the run, after the caller's transaction has ended; a
+// caller whose transaction fails after a nil return calls stopTaskTurn.
 func (h *Handler) runTaskTurn(ws factory.OrgWorkstream, task factory.WorkstreamTask, starter, words string) error {
 	if !h.serverAgentServed() {
 		return errTaskNoRunner
