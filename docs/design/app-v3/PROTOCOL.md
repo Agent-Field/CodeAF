@@ -968,8 +968,10 @@ conversation; `private` is `true` from a server that keeps each person's convers
 them (an older server, which kept one conversation everyone read, leaves it out, and the
 desk then must not say "Private to you"); `cannot` is the one sentence saying why an
 editor cannot talk now (another runner mode, no key, archived, budget spent), absent for
-a viewer. `factory.org_workstream_agent_send {id, text}` `POST
-.../agent/messages` (`edit`, 1–16384 bytes) answers 202 with the agent working; while
+a viewer. `factory.org_workstream_agent_send {id, text, tz?}` `POST
+.../agent/messages` (`edit`, 1–16384 bytes) answers 202 with the agent working; `tz`
+is the sender's IANA time zone (`America/Toronto`), and every turn tells the agent the
+date and time in it, or in the server's own zone when it is absent or unknown; while
 it still answers the caller's previous message the refusal is `conflict` with
 `detail.reason` `busy` (another person's conversation never makes it busy).
 `factory.org_workstream_agent_stop {id}` `POST .../agent/stop` (`edit`) stops the

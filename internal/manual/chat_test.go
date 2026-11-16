@@ -35,6 +35,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 	}{
 		{"how do I give you my API key safely", "giving-a-password-or-token"},
 		{"run the workstream agent on the organization's server instead of a laptop", "organization-workstream-agent"},
+		{"does the server's Afi know what today's date is in my time zone", "organization-workstream-agent"},
 		{"where do I put the organization's model key for the server", "organization-workstream-agent"},
 		{"who can change a workstream's people and rules", "workstream-people-and-rules"},
 		{"can I put a workstream inside another workstream", "workstream-people-and-rules"},
