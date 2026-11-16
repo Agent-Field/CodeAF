@@ -1012,7 +1012,10 @@ Factory task's first overlay) takes any of `title`, `request`, `owner` (hand on)
 `waiting_on` (same workstream, never itself, never a circle: 422), `due`, `group`
 (null clears), `state`, `state_reason`, `results`, `check`, `ask` (null clears) and
 `move_to` (another workstream, edit on both; the thread moves with it). Only the owner
-ticks a person task (`state` `done`). The tick starts nothing: an Afi or chat task that
+ticks a person task (`state` `done`). Stopping (`state` `stopped`) and `move_to` are the
+task owner's or whoever looks after the workstream's (its steward, or full access);
+anyone else gets 403 "only the task's owner or whoever looks after this workstream can
+stop or move it". The tick starts nothing: an Afi or chat task that
 waited only on it stays `up_next`, unchanged, and its thread gains "Ready to start: <title>
 is done"; `running` is set only by whoever wakes the doer. Send back is `state`
 `up_next` on a `done` task by someone other than its owner, or with a `state_reason`:
