@@ -427,10 +427,23 @@ func (a *Agent) startVisionTurnLocked(ctx context.Context, kept userMessage, liv
 		return refusedStream(err)
 	}
 	a.running = true
+	a.runnerTurn = false
 	hub := a.newReplayHubLocked()
 	a.hub = hub
 	turnCtx, cancel := context.WithCancelCause(ctx)
 	a.cancel = cancel
+	// IT CARRIES ITS OWN SECOND STAGE AND ITS OWN NUMBER, exactly as an ordinary
+	// turn does (abandon.go). Without the number a bounded stop armed on the turn
+	// before this one would find the count unchanged and let go of THIS turn,
+	// which nobody stopped; and without the disowned check below, the abandoned
+	// goroutine's cleanup would close a `done` that [Agent.Abandon] had already
+	// closed, which is a panic nothing recovers.
+	gone := make(chan struct{})
+	a.abandon = gone
+	turnCtx = withAbandon(turnCtx, gone)
+	a.turnSeq++
+	seq := a.turnSeq
+	a.turnSpend = Usage{}
 	done := make(chan struct{})
 	a.done = done
 	a.recordUserLocked(kept)
@@ -443,6 +456,14 @@ func (a *Agent) startVisionTurnLocked(ctx context.Context, kept userMessage, liv
 		defer hub.close()
 		defer func() {
 			a.mu.Lock()
+			// A DISOWNED TURN CLEANS UP NOTHING, by the same law and for the same
+			// reason as an ordinary turn's cleanup (agent.go's startTurnLocked):
+			// [Agent.Abandon] has already done every act below, and the fields
+			// belong to whatever turn the session has started since.
+			if a.turnSeq != seq {
+				a.mu.Unlock()
+				return
+			}
 			// A VISION TURN HAS NO STEP BOUNDARY — it is one provider call — so a
 			// sentence spliced into it can only ever fall through, and it does so
 			// by the same law every other turn keeps (steer.go's
@@ -455,6 +476,7 @@ func (a *Agent) startVisionTurnLocked(ctx context.Context, kept userMessage, liv
 			a.cancel = nil
 			a.hub = nil
 			a.done = nil
+			a.abandon = nil
 			close(done)
 			if next, ok := a.nextFollowUpLocked(completed); ok {
 				// An ordinary turn, on the chat model: the follow-up is words,
@@ -523,6 +545,12 @@ func (a *Agent) runVision(ctx context.Context, hub *eventHub, live ai.Message, s
 		[]ai.Message{live}, seer)
 	if err == nil && response != nil {
 		a.addAuxiliaryUsageAs(response, seer, 1, string(roles.RoleVision))
+	}
+	// A TURN THE SESSION HAS ALREADY LET GO OF WRITES NOTHING MORE. The money
+	// above is banked; the messages belong to the turn the person started next
+	// (loop.go keeps the same law after its tool batch).
+	if abandoned(ctx) {
+		return false
 	}
 	answer := ""
 	if response != nil {

@@ -417,3 +417,35 @@ func TestLegacyRecoveryNeverOverwritesARoomSetBeforeTheWrite(t *testing.T) {
 		t.Fatalf("room = %q", r.room(id))
 	}
 }
+
+// A FOREMAN MADE OVER AN OLD TEAMS FILE JOINS THE `factory` TEAM IT ALREADY
+// HAS. Every road to a new foreman (the open, the fresh start, and the settle
+// as the app's factory starts) stamps the old file first: the settle once
+// minted without it, found no stamped parent, and made a second `factory`
+// team beside the one holding the jobs.
+func TestAForemanMadeOverAnOldTeamsFileJoinsTheFactoryTeamItHas(t *testing.T) {
+	r := newLegacyRig(t)
+	home := filepath.Dir(r.profile)
+	t.Setenv("CODEAF_HOME", home)
+	t.Setenv("HOME", home)
+	fs := r.five()
+	r.seed(fs.parent, fs.child)
+	r.item(fs.talk, "", fs.chats...)
+
+	made, err := foremanMint(r.st, "", r.profile, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var factories []string
+	for id, tm := range r.teams() {
+		if tm.Name == factoryTeamName && tm.Parent == "" {
+			factories = append(factories, id)
+		}
+	}
+	if len(factories) != 1 || factories[0] != "parent" {
+		t.Fatalf("the foreman's making left the `factory` teams %v; want the one it had, parent", factories)
+	}
+	if !r.teams()["parent"].Holds(foremanTeamKey(made)) {
+		t.Fatal("the foreman did not join the `factory` team it had")
+	}
+}
