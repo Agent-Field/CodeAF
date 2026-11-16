@@ -3,6 +3,7 @@ package tui3
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/config"
@@ -135,5 +136,42 @@ func TestCustomAddressEditKeepsCredentialsWhenListingIsPublic(t *testing.T) {
 	cmd := a.modelEntryAnswer(entry)
 	if cmd == nil || draft.row.KeyEnv != "MY_INFERENCE_KEY" {
 		t.Fatal("public model listing erased existing inference credentials")
+	}
+}
+
+func TestCustomAddressEmptyListingStaysEditableAndCanRecover(t *testing.T) {
+	ready := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if ready {
+			w.Write([]byte(`{"data":[{"id":"installed"}]}`))
+		} else {
+			w.Write([]byte(`{"data":[]}`))
+		}
+	}))
+	defer server.Close()
+	a := modelServiceTestApp(t, t.TempDir(), "sample", modelsource.NewSet(), nil)
+	a.openAddProvider(false)
+	a.startCustomAdd(false)
+	a.addPanel.entry.box.setText(server.URL + "/v1")
+	a.Update(a.addPanelKey(key("enter"))())
+	if a.addPanel.entry == nil || a.addPanel.entry.blank != "base URL" || !strings.Contains(a.addPanel.err, "lists no models") {
+		t.Fatalf("empty server advanced instead of explaining recovery: %s", a.addPanel.err)
+	}
+	a.width, a.height = 100, 35
+	a.touch()
+	t.Logf("empty-list recovery frame:\n%s", plain(frame(a)))
+	if len(config.PersistedSources(a.profileDir)) != 0 {
+		t.Fatal("empty server was saved")
+	}
+	ready = true
+	a.Update(a.addPanelKey(key("enter"))())
+	if a.addPanel.entry == nil || a.addPanel.entry.blank != "name" {
+		t.Fatal("retry did not recover")
+	}
+	a.addPanel.entry.box.setText("recovered")
+	a.Update(a.addPanelKey(key("enter"))())
+	reopened, found := config.ResolveSources(a.profileDir, "", config.DefaultBaseURL).ByID("custom")
+	if !found || reopened.Address != server.URL+"/v1" {
+		t.Fatal("recovered endpoint did not survive reopen")
 	}
 }

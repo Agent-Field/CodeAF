@@ -151,6 +151,9 @@ func ProbeOpenAIEndpoint(ctx context.Context, address, key string) (int, error) 
 	if count == 0 {
 		count = len(body.Models)
 	}
+	if count == 0 {
+		return 0, errEmptyModelList
+	}
 	return count, nil
 }
 

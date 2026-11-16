@@ -320,4 +320,14 @@ type a model id in /model`.
 In Phase 1 a **Custom OpenAI-compatible API** provider must provide the compatible chat path. codeaf
 tries `GET <base>/models` first; the models from an answered list fill its picker group.
 A new custom address must answer its model-list check before it can be saved. An
-answered empty list leaves the picker asking you to type a model id. Direct calls record no cost in Phase 1 and have one host.
+answered empty list stays in the address box: `server is reachable but lists no models · load a model in the server, then press enter to retry`. It does not save a new connection. Direct calls record no cost in Phase 1 and have one host.
+
+
+## Local server unreachable or no models — which machine is localhost?
+
+`localhost` and `127.0.0.1` mean the machine running the engine, including when a
+separate desktop connects to that engine. An unreachable address does not prove
+that a runtime is missing. Check that the server is running, its address and port,
+and whether the engine can reach it. codeaf does not install a runtime or download
+a model automatically. A reachable custom server with no models keeps its address
+editable; load a model in that server and press `enter` to check again.

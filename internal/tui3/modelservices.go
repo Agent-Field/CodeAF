@@ -699,6 +699,10 @@ func (a *app) customAddressChecked(msg customAddressCheckedMsg) tea.Cmd {
 		return nil
 	}
 	draft.addressCancel = nil
+	if errors.Is(msg.err, errEmptyModelList) {
+		a.modelServiceMessage("server is reachable but lists no models · load a model in the server, then press enter to retry")
+		return nil
+	}
 	if msg.err != nil && !errors.Is(msg.err, errAuthRequired) {
 		a.modelServiceMessage("that address did not list models · " + msg.err.Error())
 		return nil

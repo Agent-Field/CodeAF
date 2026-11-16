@@ -676,3 +676,19 @@ func TestOllamaClientConfigPreservesServiceIdentity(t *testing.T) {
 		t.Fatalf("Ollama identity was lost: %+v", configured)
 	}
 }
+
+func TestCustomConnectionNeedsUsableModelsBeforeSaving(t *testing.T) {
+	server := sourcestub.New()
+	defer server.Close()
+	dir := t.TempDir()
+	source := vendoredSource(t, "custom")
+	row := PrepareCustomSource(dir, server.URL(), "local")
+	row.KeyOptional = true
+	outcome, err := ConnectService(t.Context(), dir, row, source, nil)
+	if err != nil || outcome.Kind == modelsource.OutcomeConnected || !strings.Contains(outcome.VendorSaid, "lists no models") {
+		t.Fatalf("empty connection = %+v, %v", outcome, err)
+	}
+	if len(PersistedSources(dir)) != 0 {
+		t.Fatal("empty connection was persisted")
+	}
+}

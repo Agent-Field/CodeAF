@@ -449,6 +449,11 @@ func ConnectService(ctx context.Context, profileDir string, row PersistedSource,
 		if !ok {
 			return modelsource.Outcome{Kind: modelsource.OutcomeUnanswered}, nil
 		}
+		// A CUSTOM CONNECTION NEEDS A USABLE MODEL BEFORE IT IS SAVED. The
+		// address may have listed models earlier and lost them before this check.
+		if (modelsource.IsCustomID(row.ID) || src.KeyOptional) && len(outcome.ModelIDs) == 0 {
+			return modelsource.Outcome{Kind: modelsource.OutcomeRefused, Listed: true, VendorSaid: "server is reachable but lists no models; load a model in the server and reconnect"}, nil
+		}
 		listed := true
 		row.Listed = &listed
 		if err := persistSourceUnlessCancelled(ctx, profileDir, row); err != nil {
