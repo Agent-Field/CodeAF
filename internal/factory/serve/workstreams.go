@@ -294,8 +294,13 @@ func (h *Handler) workstreamBody(ws factory.OrgWorkstream, v Viewer) (api.Workst
 	if err != nil {
 		return api.Workstream{}, err
 	}
+	nameOf := h.personNames()
+	summary := workstreamSummary(ws, c, v)
+	if summary.Steward != nil {
+		summary.Steward.Name = nameOf(summary.Steward.ID)
+	}
 	return api.Workstream{
-		WorkstreamSummary: workstreamSummary(ws, c, v),
+		WorkstreamSummary: summary,
 		Jobs:              nonNil(ws.Jobs),
 		BudgetUSD:         ws.BudgetUSD,
 		SpendUSD:          spend[ws.ID],
@@ -307,8 +312,8 @@ func (h *Handler) workstreamBody(ws factory.OrgWorkstream, v Viewer) (api.Workst
 		GoAheads:          goAheads,
 		CreatedBy:         ws.CreatedBy,
 		Driver:            h.workstreamDriver(ws.ID),
-		People:            h.workstreamPeople(ws),
-		Rules:             rulesFor(ws),
+		People:            h.workstreamPeople(ws, nameOf),
+		Rules:             rulesFor(ws, nameOf),
 	}, nil
 }
 

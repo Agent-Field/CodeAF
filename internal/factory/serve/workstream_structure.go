@@ -59,7 +59,7 @@ func withStructure(out *api.WorkstreamSummary, ws factory.OrgWorkstream, v Viewe
 // workstreamPeople is ws's owner and shares as one list, owner first, then
 // teams, then persons, each by name. A team carries its members as the
 // organization keeps them now.
-func (h *Handler) workstreamPeople(ws factory.OrgWorkstream) []api.WorkstreamMember {
+func (h *Handler) workstreamPeople(ws factory.OrgWorkstream, nameOf func(string) string) []api.WorkstreamMember {
 	steward := ws.StewardHandle()
 	book := h.Membership()
 	member := func(kind, id, role string) api.WorkstreamMember {
@@ -68,6 +68,7 @@ func (h *Handler) workstreamPeople(ws factory.OrgWorkstream) []api.WorkstreamMem
 			m.Name = h.wsTeamName(id)
 			m.Members = book.Members(id)
 		} else {
+			m.Name = nameOf(id)
 			m.Steward = factory.NormalizeHandle(id) == steward
 		}
 		return m
@@ -92,9 +93,33 @@ func (h *Handler) workstreamPeople(ws factory.OrgWorkstream) []api.WorkstreamMem
 	// THE STEWARD IS ALWAYS IN IT. One who reaches it only through a team is
 	// still named, so the sheet can say who looks after it.
 	if steward != "" && !slices.ContainsFunc(out, func(m api.WorkstreamMember) bool { return m.Steward }) {
-		out = append(out, api.WorkstreamMember{Kind: api.MemberPerson, ID: steward, Name: steward, Role: factory.RoleFull, Steward: true})
+		out = append(out, api.WorkstreamMember{Kind: api.MemberPerson, ID: steward, Name: nameOf(steward), Role: factory.RoleFull, Steward: true})
 	}
 	return out
+}
+
+// personNames answers a person's name as they gave it when they joined
+// ("Santosh Kumar"), or their handle when the organization knows none. The
+// member roster is read once per call of personNames, not once per handle,
+// because on a team host it is a file read. A workstream's people, steward
+// and rules name people this way, so a desk offers "Hand to Abir Das", never
+// a bare handle beside full names elsewhere on the same screen.
+func (h *Handler) personNames() func(string) string {
+	var names map[string]string
+	return func(handle string) string {
+		if names == nil {
+			names = map[string]string{}
+			for _, m := range h.memberList() {
+				if n := strings.TrimSpace(m.Name); n != "" {
+					names[factory.NormalizeHandle(m.Handle)] = n
+				}
+			}
+		}
+		if n := names[factory.NormalizeHandle(handle)]; n != "" {
+			return n
+		}
+		return handle
+	}
 }
 
 // wsTeamName is a team's name, or its id when the team is gone.
@@ -111,13 +136,13 @@ func (h *Handler) wsTeamName(id string) string {
 }
 
 // rulesFor is ws's rules with names filled in, for the wire.
-func rulesFor(ws factory.OrgWorkstream) api.WorkstreamRules {
+func rulesFor(ws factory.OrgWorkstream, nameOf func(string) string) api.WorkstreamRules {
 	r := ws.RulesOrDefault()
 	if r.DefaultOwner.Kind == factory.RulesOwnerPerson {
-		r.DefaultOwner.Name = r.DefaultOwner.ID
+		r.DefaultOwner.Name = nameOf(r.DefaultOwner.ID)
 	}
 	if r.Fallback != nil {
-		r.Fallback.Name = r.Fallback.ID
+		r.Fallback.Name = nameOf(r.Fallback.ID)
 	}
 	return r
 }
