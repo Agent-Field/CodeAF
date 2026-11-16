@@ -43,6 +43,9 @@ func (h *Handler) operatorLogin(r *http.Request) string {
 
 // isOperator accepts script credentials or the persisted operator's signed-in identity.
 func (h *Handler) isOperator(r *http.Request) bool {
+	if call, ok := agentCallOf(r); ok {
+		return call.operator
+	}
 	if h.floorToken(bearer(r)) {
 		return true
 	}

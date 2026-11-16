@@ -66,7 +66,7 @@ const (
 const workstreamPageCut = 1500
 
 const workstreamPagesDescription = "Read and write the organization workstream you are this conversation's agent for. " +
-	"ask: read (its name, purpose, stage, go-aheads, budget, every page with the start of its words, decisions, sources and links), " +
+	"ask: read (its name, purpose, budget, every page with the start of its words, decisions, sources and links), " +
 	"page (one page whole; set page to its id), write (replace one page's words with body, in Markdown; set page), " +
 	"new (a new page with title and body), or decide (propose one decision, its words in text; a person keeps it). " +
 	"You write as the person whose message you are answering. A page someone has open for editing is not written over: " +
@@ -160,7 +160,9 @@ func strconvQuote(s string) string { return fmt.Sprintf("%q", s) }
 // page cut to its start.
 func WorkstreamAnswer(ws factory.OrgWorkstream) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "# %s\n\nstage: %s\n", ws.Name, ws.Stage)
+	// The stage is NOT said: it left the surface in Workstreams v5, and a
+	// model that reads it says it ("at stage shaping") to a person.
+	fmt.Fprintf(&b, "# %s\n", ws.Name)
 	if ws.BudgetUSD != nil {
 		fmt.Fprintf(&b, "budget: $%.2f\n", *ws.BudgetUSD)
 	}
@@ -177,12 +179,13 @@ func WorkstreamAnswer(ws factory.OrgWorkstream) string {
 		if len(body) > workstreamPageCut {
 			body, cut = body[:workstreamPageCut], fmt.Sprintf("\n… (%d more bytes; ask page)", len(p.BodyMD)-workstreamPageCut)
 		}
-		fmt.Fprintf(&b, "\n### %s (%s, %s)\n\n%s%s\n", p.Title, p.ID, p.Kind, body, cut)
+		fmt.Fprintf(&b, "\n### %s (page id %s, for your tools only)\n\n%s%s\n", p.Title, p.ID, body, cut)
 	}
 	if len(ws.Decisions) > 0 {
 		b.WriteString("\n## Decisions\n\n")
 		for _, d := range ws.Decisions {
-			fmt.Fprintf(&b, "- [%s] %s (%s)\n", d.State, oneLine(d.Text), d.By)
+			state := map[string]string{"kept": "kept", "proposed": "waiting for a person to keep it", "superseded": "replaced by a later one"}[d.State]
+			fmt.Fprintf(&b, "- %s (%s, %s)\n", oneLine(d.Text), state, d.By)
 		}
 	}
 	if len(ws.Sources) > 0 {
