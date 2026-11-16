@@ -1,10 +1,12 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync/atomic"
 	"testing"
 
@@ -16,6 +18,15 @@ import (
 func TestAppWireAddsSeparateCustomConnections(t *testing.T) {
 	b, _, profile := appProviderTest(t)
 	w := wireOver(t, b)
+	var hello struct {
+		Data appwire.Hello `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(w.hello), &hello); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(hello.Data.Features, "providers.instances") {
+		t.Fatalf("hello missing providers.instances: %s", w.hello)
+	}
 	first := sourcestub.New("first-model")
 	defer first.Close()
 	second := sourcestub.New("second-model")
@@ -109,7 +120,7 @@ func TestAppWireRefusesAnEmptyCatalogAtCheckAndFinalSave(t *testing.T) {
 			}
 			var check appwire.KeyCheck
 			w.must("keys.check", params, &check)
-			if !check.OK || len(check.Models) != 1 {
+			if !check.OK || len(check.Models) != 1 || (provider == "openrouter" && check.Models[0].ID != "deepseek/deepseek-v4.1-flash-1017") {
 				t.Fatalf("check = %+v", check)
 			}
 			params["connection"] = check.Connection

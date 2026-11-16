@@ -16,6 +16,23 @@ func init() {
 	}
 }
 
+// FeatureProviderInstances gates add-versus-replace semantics on older clients.
+const FeatureProviderInstances = "providers.instances"
+
+// ProviderInstances opts an engine into explicit custom instance identity.
+// ProviderConnector alone predates mode and cannot promise safe adds.
+type ProviderInstances interface {
+	ProviderConnector
+	ProviderInstances() bool
+}
+
+func withProviderInstancesFeature(hello Hello, e Engine) Hello {
+	if capable, ok := e.(ProviderInstances); ok && capable.ProviderInstances() {
+		return withFeature(hello, FeatureProviderInstances)
+	}
+	return hello
+}
+
 type ProviderSignInCanceler interface{ CancelSignIn(string, string) error }
 
 type ProviderSignInStart struct {

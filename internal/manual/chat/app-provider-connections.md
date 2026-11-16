@@ -31,3 +31,9 @@ cannot produce a successful connection. A storage error also fails the save.
 OpenRouter models retain their exact live catalog IDs, including
 `deepseek/deepseek-v4.1-flash-1017` when the account's live list supplies it.
 Connecting a provider does not change the chosen default model.
+
+## Older engines and adding another server
+
+Desktop clients enable explicit add-another behavior only when the engine
+advertises `providers.instances`. An older engine can ignore the add mode and
+replace its first endpoint, so the desktop must hide that action until upgraded.

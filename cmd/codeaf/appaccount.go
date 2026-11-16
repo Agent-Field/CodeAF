@@ -296,6 +296,9 @@ func (b *appBackend) providerIDChanged(id, key string) {
 	}
 }
 
+// ProviderInstances advertises explicit add and replace semantics to clients.
+func (b *appBackend) ProviderInstances() bool { return true }
+
 // CheckKey proves a key and keeps nothing: the two-field question.
 func (b *appBackend) CheckKey(provider, key string) (appwire.KeyCheck, error) {
 	return b.CheckProvider(appwire.KeyParams{Provider: provider, Key: key})
@@ -737,7 +740,7 @@ func (b *appBackend) SetProvider(params appwire.KeyParams) error {
 			return err
 		}
 		if params.Connection != nil && params.Connection.ID != "" {
-			p, _ = b.appProviderNamed(params.Connection.ID)
+			p.id, p.source.ID = params.Connection.ID, params.Connection.ID
 		}
 	}
 	if key != "" {

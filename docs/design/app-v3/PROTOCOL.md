@@ -2464,3 +2464,9 @@ retrying the unchanged connection after repairing storage does not create a
 second row. If engine save succeeds but desktop secure storage fails, retry only
 secure storage with the held key, rather than sending another add. Ignore
 cancelled or superseded UI results. Browser sign-in methods are unchanged.
+
+The hello's `engine.features` includes **`providers.instances`** only when the
+engine implements the explicit instance contract. Clients must gate add-another
+custom and compatible local preset actions on that exact capability: older
+engines may silently ignore the new mode field. `ProviderConnector` alone does
+not advertise this capability.
