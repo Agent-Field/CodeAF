@@ -64,7 +64,8 @@ func TestOrgPagesHaveTheirOwnRevs(t *testing.T) {
 	// Decoded into a fresh value: an omitted parent must not keep the old one.
 	ws = api.Workstream{}
 	o.do(t, "santosh", "DELETE", base+"/pages/"+retries.ID, -1, nil, 200, &ws)
-	if len(ws.Pages) != 1 || ws.Pages[0].ID != alerts.ID || ws.Pages[0].Parent != "" {
+	// The Overview the workstream was made with stays below it.
+	if len(ws.Pages) != 2 || ws.Pages[0].ID != alerts.ID || ws.Pages[0].Parent != "" || ws.Pages[1].Kind != "overview" {
 		t.Fatalf("after delete %+v", ws.Pages)
 	}
 	o.do(t, "santosh", "DELETE", base+"/pages/"+retries.ID, -1, nil, 404, nil)
