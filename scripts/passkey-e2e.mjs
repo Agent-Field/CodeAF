@@ -212,12 +212,22 @@ async function ceremony(a, url, fill = {}) {
   return { support, status };
 }
 
-// settled is the page's status once the ceremony has answered. It is read
-// from outside: the page's CSP forbids the eval a waitForFunction needs.
+// settled is the page's status once the ceremony has answered: "Done" once
+// the browser has reached the engine's loopback and its page says so, else
+// the ceremony page's own words. It is read from outside: the page's CSP
+// forbids the eval a waitForFunction needs.
 async function settled(page) {
   for (let i = 0; i < 150; i++) {
-    const s = (await page.textContent("#status")) || "";
-    if (s && s !== "Checking…") return s;
+    if (page.url().startsWith("http://127.0.0.1:")) {
+      try {
+        const h = (await page.textContent("h1")) || "";
+        if (h) return h;
+      } catch { /* still navigating */ }
+    } else {
+      let s = "";
+      try { s = (await page.textContent("#status")) || ""; } catch { /* navigating */ }
+      if (s && s !== "Checking…" && !s.startsWith("Finishing on the computer")) return s;
+    }
     await new Promise((r) => setTimeout(r, 100));
   }
   throw new Error("the page never answered");
@@ -290,6 +300,58 @@ try {
   page = await ceremony(hybrid, started.url);
   check("chromium (hybrid) sign-in page says done", page.status.startsWith("Done"), page.status);
   await santosh.pollUntilDone(started.flow, "e2e");
+
+  // 4b. C1: a sign-in started by someone else, opened on the victim's device.
+  // The victim's browser cannot reach the starter's 127.0.0.1 (a different
+  // computer), which this context stands for by refusing every loopback
+  // navigation. The ceremony passes; the starter gets nothing, ever.
+  const victim = await authenticatorFor("usb");
+  await victim.context.route(/^http:\/\/127\.0\.0\.1:/, (route) => route.abort("connectionrefused"));
+  const victimCreds = await usb.cdp.send("WebAuthn.getCredentials", { authenticatorId: usb.authenticatorId });
+  for (const c of victimCreds.credentials) {
+    await victim.cdp.send("WebAuthn.addCredential", { authenticatorId: victim.authenticatorId, credential: c });
+  }
+  await laptop.call("factory.sign_out", { factory: attached.id });
+  started = await laptop.call("factory.passkey_start", { factory: attached.id, caller: "e2e2", purpose: "sign_in" });
+  await victim.page.goto(started.url);
+  await victim.page.click("#go");
+  // The hand-over fails there (no codeaf at that 127.0.0.1); coming back to
+  // the address, the page says where it finishes.
+  for (let i = 0; i < 100 && victim.page.url().startsWith(origin); i++) {
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  await victim.page.goto(started.url);
+  const phished = (await victim.page.textContent("h1", { timeout: 5000 })) || "";
+  check("C1: the victim's page says to finish on the computer that started it", phished.startsWith("Finish on the computer"), phished);
+  let stolen = { state: "pending" };
+  for (let i = 0; i < 16 && stolen.state === "pending"; i++) {
+    stolen = await laptop.call("factory.passkey_poll", { flow: started.flow, caller: "e2e2" });
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  check("C1: the starter's poll ends elsewhere, with no connection", stolen.state === "elsewhere" && !stolen.factory, JSON.stringify(stolen));
+  let stillOut = "";
+  try { await laptop.call("factory.me", { factory: attached.id }); } catch (e) { stillOut = e.code; }
+  check("C1: the starter is still signed out", stillOut === "signed_out", stillOut);
+  await laptop.call("factory.passkey_cancel", { flow: started.flow, caller: "e2e2" });
+  await victim.context.close();
+  // The same person on the starting computer finishes as usual.
+  started = await laptop.call("factory.passkey_start", { factory: attached.id, caller: "e2e2", purpose: "sign_in" });
+  page = await ceremony(usb, started.url);
+  await laptop.pollUntilDone(started.flow, "e2e2");
+  laptopMe = await laptop.call("factory.me", { factory: attached.id });
+  check("C1: on the starting computer the same passkey signs in", page.status.startsWith("Done") && laptopMe.handle === "santosh", page.status);
+
+  // 4c. H1: a step-up with a passkey is its own short ceremony.
+  started = await santosh.call("factory.passkey_start", { factory: factoryID, caller: "e2e", purpose: "confirm" });
+  await hybrid.page.goto(started.url);
+  const confirmHeading = (await hybrid.page.textContent("h1")) || "";
+  page = await ceremony(hybrid, started.url);
+  polled = await santosh.pollUntilDone(started.flow, "e2e");
+  check("H1: confirm it's you, with a passkey", confirmHeading.includes("Confirm it") && page.status.startsWith("Done") &&
+    polled.state === "done" && polled.factory === factoryID, `${confirmHeading} / ${page.status} / ${JSON.stringify(polled)}`);
+  let noPassword = "";
+  try { await santosh.call("factory.password_confirm", { factory: factoryID, password: "not the password at all" }); } catch (e) { noPassword = e.code; }
+  check("H1: a passkey person has no password to confirm with", noPassword === "not_found", noPassword);
 
   // 5. Remove the internal passkey from the first machine: the other machine's session ends.
   const internalRow = list.passkeys.find((p) => p.name !== "Pixel phone" && p.name !== "YubiKey");
