@@ -50,11 +50,8 @@ func coverSecret(values ...string) {
 // signInFor is how a person signs in to origin, from a cached /v1/about.
 // nil means the factory has not said, which reads as GitHub only.
 func (h *appFactoryHub) signInFor(ctx context.Context, origin string) []string {
-	h.mu.Lock()
-	c, ok := h.signInCaps[origin]
-	h.mu.Unlock()
-	if ok && h.now().Before(c.expires) {
-		return c.methods
+	if methods, ok := h.cachedSignIn(origin); ok {
+		return methods
 	}
 	methods, read := h.readSignIn(ctx, origin)
 	h.mu.Lock()
@@ -65,6 +62,17 @@ func (h *appFactoryHub) signInFor(ctx context.Context, origin string) []string {
 	}
 	h.rememberSignInForLocked(origin, methods, life)
 	return methods
+}
+
+// cachedSignIn is what origin last said about sign-in, while it is fresh.
+func (h *appFactoryHub) cachedSignIn(origin string) ([]string, bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	c, ok := h.signInCaps[origin]
+	if !ok || !h.now().Before(c.expires) {
+		return nil, false
+	}
+	return c.methods, true
 }
 
 func (h *appFactoryHub) readSignIn(ctx context.Context, origin string) ([]string, bool) {
