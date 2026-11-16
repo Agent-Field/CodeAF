@@ -94,6 +94,7 @@ func TestAutomaticRefusalWorkDoesNotGrowWithTheFloor(t *testing.T) {
 		ask  func(string) string
 	}{{"manager", manager}, {"helper", helper}} {
 		small, large := allocs(4, c.ask), allocs(80, c.ask)
+		t.Logf("%s allocations: %v at 4 jobs, %v at 80", c.name, small, large)
 		if large > small+8 {
 			t.Fatalf("%s ask allocations grew with the floor: %v at 4 jobs, %v at 80", c.name, small, large)
 		}

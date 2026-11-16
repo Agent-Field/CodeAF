@@ -249,7 +249,7 @@ func TestAppConnectsAnAddressWithAndWithoutAKey(t *testing.T) {
 	if err != nil || !check.OK || check.Connection == nil || check.Connection.Address != endpoint.URL() {
 		t.Fatalf("check = %+v, %v", check, err)
 	}
-	if len(check.Models) != 1 || check.Models[0].ID != "127-0-0-1/local-model" || check.Models[0].Provider != "127-0-0-1" {
+	if len(check.Models) != 1 || check.Models[0].ID != "127-0-0-1/local-model" || check.Models[0].Provider != "custom" {
 		t.Fatalf("models = %+v", check.Models)
 	}
 	if bearer := endpoint.Requests()[0].Bearer; bearer != "" {
@@ -451,7 +451,7 @@ func TestAppModelsListOffersANewlyConnectedProvidersModels(t *testing.T) {
 			byID[m.ID] = m
 		}
 		local, moon := byID["127-0-0-1/local-model"], byID["moonshot/kimi-k2.7-code"]
-		if local.Provider == "127-0-0-1" && moon.Provider == "moonshot" && moon.ProviderName == "Moonshot" {
+		if local.Provider == "custom" && moon.Provider == "moonshot" && moon.ProviderName == "Moonshot" {
 			return
 		}
 		if time.Now().After(deadline) {

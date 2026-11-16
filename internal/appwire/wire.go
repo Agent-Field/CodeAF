@@ -858,8 +858,8 @@ type KeyCheck struct {
 	Status  any     `json:"status,omitempty"`
 	Message string  `json:"message,omitempty"`
 	// Connection is what a passing check proved beyond the key, handed back to
-	// keys.set as it came so the provider is kept as it was proved. Absent for
-	// OpenRouter, whose key is the whole of its connection.
+	// keys.set as it came so the provider is kept as it was proved. Its ID
+	// also marks an interactive OpenRouter save for final validation.
 	Connection *Connection `json:"connection,omitempty"`
 }
 
@@ -868,6 +868,8 @@ type KeyCheck struct {
 // billing road the key opened (Door, with Plan its word), whether the provider
 // answered with its list of models, and the address an address provider is at.
 type Connection struct {
+	// ID names the persisted connection and its desktop keychain credential.
+	ID      string `json:"id,omitempty"`
 	Region  string `json:"region,omitempty"`
 	Door    string `json:"door,omitempty"`
 	Plan    string `json:"plan,omitempty"`
