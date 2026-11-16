@@ -81,7 +81,7 @@ type pkFlow struct {
 	verifier string
 }
 
-// pkBrowser is one browser: the cookie each flow bound it with.
+// pkBrowser is one browser: the passkey-page cookie its host set, if any.
 type pkBrowser struct{ cookies sync.Map }
 
 // theBrowser is the person's own browser, which every helper uses unless a
@@ -150,22 +150,24 @@ func (o *pwOrg) pageIn(b *pkBrowser, flow, step, origin string, body any) *httpt
 	return o.browse(b, flow, r)
 }
 
-// browse sends r with b's cookie for flow, and keeps any cookie answered.
+// browse sends r with b's passkey cookie, and keeps any cookie answered,
+// as a browser keeps a __Host- cookie: only Secure, Path=/, no Domain.
 func (o *pwOrg) browse(b *pkBrowser, flow string, r *http.Request) *httptest.ResponseRecorder {
 	if b != nil {
-		if c, ok := b.cookies.Load(flow); ok {
+		if c, ok := b.cookies.Load(passkeyCookie); ok {
 			r.AddCookie(c.(*http.Cookie))
 		}
 	}
 	w := httptest.NewRecorder()
 	o.h.ServeHTTP(w, r)
 	for _, c := range w.Result().Cookies() {
-		if c.Name == passkeyCookie && b != nil {
-			if c.Path != "/passkey/"+flow || !c.HttpOnly || !c.Secure || c.SameSite != http.SameSiteStrictMode {
-				o.t.Fatalf("the binding cookie = %+v", c)
-			}
-			b.cookies.Store(flow, &http.Cookie{Name: c.Name, Value: c.Value})
+		if c.Name != passkeyCookie || b == nil {
+			continue
 		}
+		if !strings.HasPrefix(c.Name, "__Host-") || c.Path != "/" || c.Domain != "" || !c.HttpOnly || !c.Secure || c.SameSite != http.SameSiteStrictMode {
+			o.t.Fatalf("the browser cookie = %+v", c)
+		}
+		b.cookies.Store(passkeyCookie, &http.Cookie{Name: c.Name, Value: c.Value})
 	}
 	return w
 }
@@ -287,11 +289,12 @@ func (o *pwOrg) signInByPasskey(key *softKey) (api.PasskeyPolled, *httptest.Resp
 	return o.poll(f), w
 }
 
-// confirm is a step-up: a confirm ceremony with one of the person's own
-// passkeys, polled with the code, which makes session recent again.
-func (o *pwOrg) confirm(session string, key *softKey) {
+// confirm is a step-up for one action: a confirm ceremony with one of the
+// person's own passkeys, polled with the code, which lets session do that
+// action once.
+func (o *pwOrg) confirm(session string, key *softKey, action api.StepUpAction) {
 	o.t.Helper()
-	f := o.mustStart(session, api.PasskeyStart{Purpose: api.PasskeyConfirm})
+	f := o.mustStart(session, api.PasskeyStart{Purpose: api.PasskeyConfirm, Action: &action, Device: "santosh-mac"})
 	if w := o.finish(f.id, key.get(o.t, o.options(f.id, map[string]string{}), pkOrigin), ""); w.Code != 200 {
 		o.t.Fatalf("confirm finish = %d %s", w.Code, w.Body)
 	}
@@ -300,12 +303,34 @@ func (o *pwOrg) confirm(session string, key *softKey) {
 	}
 }
 
-// pwConfirm is a step-up with the current password.
-func (o *pwOrg) pwConfirm(session, password string) {
+// pwConfirm is a step-up for one action with the current password.
+func (o *pwOrg) pwConfirm(session, password string, action api.StepUpAction) {
 	o.t.Helper()
-	if w := o.do("POST", "/v1/me/password/confirm", session, api.PasswordConfirm{Password: password}, ""); w.Code != http.StatusNoContent {
+	if w := o.do("POST", "/v1/me/password/confirm", session, api.PasswordConfirm{Password: password, Action: action}, ""); w.Code != http.StatusNoContent {
 		o.t.Fatalf("password confirm = %d %s", w.Code, w.Body)
 	}
+}
+
+// addPasskey confirms with key, then adds next, for session.
+func (o *pwOrg) addPasskey(session string, key, next *softKey) {
+	o.t.Helper()
+	o.confirm(session, key, toAdd)
+	f := o.mustStart(session, api.PasskeyStart{Purpose: api.PasskeyAdd})
+	if w := o.finish(f.id, next.create(o.t, o.options(f.id, map[string]string{}), pkOrigin), ""); w.Code != 200 {
+		o.t.Fatalf("add = %d %s", w.Code, w.Body)
+	}
+	if got := o.poll(f); got.State != api.PasskeyDone {
+		o.t.Fatalf("add poll = %+v", got)
+	}
+}
+
+var (
+	toAdd         = api.StepUpAction{Kind: api.StepUpAddPasskey}
+	toSetPassword = api.StepUpAction{Kind: api.StepUpSetPassword}
+)
+
+func toRemove(k *softKey) api.StepUpAction {
+	return api.StepUpAction{Kind: api.StepUpRemovePasskey, Passkey: pkB64(k.ID)}
 }
 
 func (o *pwOrg) accountOf(handle string) tokens.Account {
@@ -606,7 +631,7 @@ func TestAWayInChangedBeforeThePollSignsNobodyIn(t *testing.T) {
 	first, second := newSoftKey(t), newSoftKey(t)
 	o.joinByPasskey(o.operatorLink(), "santosh", first)
 	here := o.token2(first)
-	o.confirm(here, first)
+	o.confirm(here, first, toAdd)
 	add := o.mustStart(here, api.PasskeyStart{Purpose: api.PasskeyAdd})
 	if w := o.finish(add.id, second.create(t, o.options(add.id, map[string]string{}), pkOrigin), ""); w.Code != 200 {
 		t.Fatalf("add = %d %s", w.Code, w.Body)
@@ -617,6 +642,7 @@ func TestAWayInChangedBeforeThePollSignsNobodyIn(t *testing.T) {
 	if w := o.finish(f.id, first.get(t, o.options(f.id, map[string]string{}), pkOrigin), ""); w.Code != 200 {
 		t.Fatalf("finish = %d %s", w.Code, w.Body)
 	}
+	o.confirm(here, second, toRemove(second))
 	if w := o.do("POST", "/v1/me/passkeys/remove", here, api.PasskeyRemove{ID: pkB64(second.ID)}, ""); w.Code != http.StatusNoContent {
 		t.Fatalf("remove = %d %s", w.Code, w.Body)
 	}
@@ -689,7 +715,7 @@ func TestAPasskeySignInIsReportedAsAPasskeyNotGitHub(t *testing.T) {
 	}
 	// The same person signing in with a password is a password sign-in. A
 	// restart forgot the session's proof, so it confirms first.
-	o.confirm(polled.AccessToken, key)
+	o.confirm(polled.AccessToken, key, toSetPassword)
 	if w := o.do("POST", "/v1/me/password", polled.AccessToken, api.PasswordChange{Current: "", New: pwOperator}, ""); w.Code/100 != 2 {
 		t.Fatalf("set a first password = %d %s", w.Code, w.Body)
 	}
@@ -707,8 +733,8 @@ func TestAPasskeySessionsPasswordTriesPayThePerSessionBucket(t *testing.T) {
 	key := newSoftKey(t)
 	o.joinByPasskey(o.operatorLink(), "santosh", key)
 	guessing, other := o.token2(key), o.token2(key)
-	o.confirm(guessing, key)
-	o.confirm(other, key)
+	o.confirm(guessing, key, toSetPassword)
+	o.confirm(other, key, toSetPassword)
 	for i := range userFailures {
 		remote := fmt.Sprintf("198.51.100.%d:1", i+1)
 		if w := tlsChange(o, guessing, "not empty", pwOperator, remote); w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "current_wrong") {
@@ -771,7 +797,7 @@ func TestAddAPasskeyThenRemoveItEndsOtherSessions(t *testing.T) {
 	o.joinByPasskey(o.operatorLink(), "santosh", first)
 	here := o.token2(first)
 	elsewhere := o.token2(first)
-	o.confirm(here, first)
+	o.confirm(here, first, toAdd)
 
 	// Add a second passkey, named, while signed in.
 	f := o.mustStart(here, api.PasskeyStart{Purpose: api.PasskeyAdd})
@@ -803,6 +829,7 @@ func TestAddAPasskeyThenRemoveItEndsOtherSessions(t *testing.T) {
 	}
 	// Sign in with the second, then remove the first: every other session ends.
 	o.token2(second)
+	o.confirm(here, second, toRemove(first))
 	if w := o.do("POST", "/v1/me/passkeys/remove", here, api.PasskeyRemove{ID: pkB64(first.ID)}, ""); w.Code != http.StatusNoContent {
 		t.Fatalf("remove = %d %s", w.Code, w.Body)
 	}
@@ -820,9 +847,11 @@ func TestAddAPasskeyThenRemoveItEndsOtherSessions(t *testing.T) {
 		t.Fatalf("remove the last = %d %s", w.Code, w.Body)
 	}
 	// With a password set, it can.
+	o.confirm(here, second, toSetPassword)
 	if w := o.do("POST", "/v1/me/password", here, api.PasswordChange{Current: "", New: pwOperator}, ""); w.Code/100 != 2 {
 		t.Fatalf("set a first password = %d %s", w.Code, w.Body)
 	}
+	o.pwConfirm(here, pwOperator, toRemove(second))
 	if w := o.do("POST", "/v1/me/passkeys/remove", here, api.PasskeyRemove{ID: pkB64(second.ID)}, ""); w.Code != http.StatusNoContent {
 		t.Fatalf("remove with a password = %d %s", w.Code, w.Body)
 	}
@@ -833,7 +862,7 @@ func TestAPasswordPersonAddsAPasskeyAndAGitHubSessionCannot(t *testing.T) {
 	o := newPWOrg(t)
 	operator := o.signUp(o.operatorLink(), "santosh", pwOperator)
 	key := newSoftKey(t)
-	o.pwConfirm(operator, pwOperator)
+	o.pwConfirm(operator, pwOperator, toAdd)
 	f := o.mustStart(operator, api.PasskeyStart{Purpose: api.PasskeyAdd})
 	if w := o.finish(f.id, key.create(t, o.options(f.id, map[string]string{}), pkOrigin), ""); w.Code != 200 {
 		t.Fatalf("add = %d %s", w.Code, w.Body)
@@ -862,7 +891,7 @@ func TestAResetByPasskeyReplacesEveryWayInAndEndsSessions(t *testing.T) {
 	operator := o.signUp(o.operatorLink(), "santosh", pwOperator)
 	abirSession := o.signUp(o.invite(operator), "abir", pwAbir)
 	old := newSoftKey(t)
-	o.pwConfirm(abirSession, pwAbir)
+	o.pwConfirm(abirSession, pwAbir, toAdd)
 	f := o.mustStart(abirSession, api.PasskeyStart{Purpose: api.PasskeyAdd})
 	_ = o.finish(f.id, old.create(t, o.options(f.id, map[string]string{}), pkOrigin), "")
 
@@ -1066,7 +1095,7 @@ func TestAStolenAddOrJoinURLChangesNothing(t *testing.T) {
 	session := o.joinByPasskey(o.operatorLink(), "santosh", mine)
 	link := o.invite(session)
 
-	o.confirm(session, mine)
+	o.confirm(session, mine, toAdd)
 	add := o.mustStart(session, api.PasskeyStart{Purpose: api.PasskeyAdd})
 	thief := newSoftKey(t)
 	if w := o.finish(add.id, thief.create(t, o.options(add.id, map[string]string{}), pkOrigin), ""); w.Code != 200 {
@@ -1095,8 +1124,9 @@ func TestAStolenAddOrJoinURLChangesNothing(t *testing.T) {
 // first password, adds no passkey and removes none.
 func TestAStolenSessionCannotTakeAnAccountOver(t *testing.T) {
 	o := newPWOrg(t)
-	own := newSoftKey(t)
-	o.joinByPasskey(o.operatorLink(), "santosh", own)
+	own, spare := newSoftKey(t), newSoftKey(t)
+	mine := o.joinByPasskey(o.operatorLink(), "santosh", own)
+	o.addPasskey(mine, own, spare)
 	stolen := o.token2(own)
 	o.advance(time.Minute)
 
@@ -1111,15 +1141,15 @@ func TestAStolenSessionCannotTakeAnAccountOver(t *testing.T) {
 	_, w := o.pkStart(stolen, api.PasskeyStart{Purpose: api.PasskeyAdd})
 	stepUp("an add", w)
 	// A passkey-only person has no password to confirm with.
-	if w := o.do("POST", "/v1/me/password/confirm", stolen, api.PasswordConfirm{Password: "anything"}, ""); w.Code != http.StatusNotFound {
+	if w := o.do("POST", "/v1/me/password/confirm", stolen, api.PasswordConfirm{Password: "anything", Action: toSetPassword}, ""); w.Code != http.StatusNotFound {
 		t.Fatalf("password confirm with no password = %d", w.Code)
 	}
-	if acct := o.accountOf("santosh"); len(acct.Passkeys) != 1 || acct.Hash != "" {
+	if acct := o.accountOf("santosh"); len(acct.Passkeys) != 2 || acct.Hash != "" {
 		t.Fatalf("the account changed: %d passkeys, password %v", len(acct.Passkeys), acct.Hash != "")
 	}
 
 	// The person, confirming with their own passkey, may.
-	o.confirm(stolen, own)
+	o.confirm(stolen, own, toSetPassword)
 	if w := o.do("POST", "/v1/me/password", stolen, api.PasswordChange{Current: "", New: pwOperator}, ""); w.Code/100 != 2 {
 		t.Fatalf("a first password after confirming = %d %s", w.Code, w.Body)
 	}
@@ -1144,8 +1174,9 @@ func TestASplitStepUpCannotBeFinishedByTheAttacker(t *testing.T) {
 	if _, w := o.pkStart(stolen, api.PasskeyStart{Purpose: api.PasskeyAdd}); w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), api.ReasonStepUp) {
 		t.Fatalf("an add by a stolen session = %d %s", w.Code, w.Body)
 	}
-	// So the attacker starts a confirm and sends the person its page.
-	confirm := o.mustStart(stolen, api.PasskeyStart{Purpose: api.PasskeyConfirm})
+	// So the attacker starts a confirm for an add and sends the person its
+	// page.
+	confirm := o.mustStart(stolen, api.PasskeyStart{Purpose: api.PasskeyConfirm, Action: &toAdd, Device: "MacBook"})
 	opt := o.options(confirm.id, map[string]string{})
 	// The attacker's client, forged Origin and all, cannot ask or answer for
 	// the flow the person's browser holds.
@@ -1171,7 +1202,7 @@ func TestASplitStepUpCannotBeFinishedByTheAttacker(t *testing.T) {
 	if _, w := o.pkStart(stolen, api.PasskeyStart{Purpose: api.PasskeyAdd}); w.Code != http.StatusForbidden {
 		t.Fatalf("an add after the attacker's confirm = %d %s", w.Code, w.Body)
 	}
-	if w := o.do("POST", "/v1/me/passkeys/remove", stolen, api.PasskeyRemove{ID: pkB64(own.ID)}, ""); w.Code != http.StatusForbidden {
+	if w := o.do("POST", "/v1/me/passkeys/remove", stolen, api.PasskeyRemove{ID: pkB64(own.ID)}, ""); w.Code/100 == 2 {
 		t.Fatalf("a removal after the attacker's confirm = %d %s", w.Code, w.Body)
 	}
 	if n := len(o.accountOf("santosh").Passkeys); n != 1 {
@@ -1214,10 +1245,10 @@ func TestAPasswordPersonStepsUpWithTheirPassword(t *testing.T) {
 	if _, w := o.pkStart(session, api.PasskeyStart{Purpose: api.PasskeyAdd}); w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), api.ReasonStepUp) {
 		t.Fatalf("an add without a step-up = %d %s", w.Code, w.Body)
 	}
-	if w := o.do("POST", "/v1/me/password/confirm", session, api.PasswordConfirm{Password: "not the password"}, ""); w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "current_wrong") {
+	if w := o.do("POST", "/v1/me/password/confirm", session, api.PasswordConfirm{Password: "not the password", Action: toAdd}, ""); w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "current_wrong") {
 		t.Fatalf("a wrong password = %d %s", w.Code, w.Body)
 	}
-	if w := o.do("POST", "/v1/me/password/confirm", session, api.PasswordConfirm{Password: pwOperator}, ""); w.Code != http.StatusNoContent {
+	if w := o.do("POST", "/v1/me/password/confirm", session, api.PasswordConfirm{Password: pwOperator, Action: toAdd}, ""); w.Code != http.StatusNoContent {
 		t.Fatalf("the right password = %d %s", w.Code, w.Body)
 	}
 	key := newSoftKey(t)
@@ -1389,5 +1420,197 @@ func TestAStartNamesTheEnginesLoopback(t *testing.T) {
 	// The cancel door is https-only like the others.
 	if w := o.do("POST", "/v1/auth/passkey/cancel", "", api.PasskeyPoll{Flow: "x", Verifier: "y"}, "203.0.113.9:5000"); w.Code != http.StatusForbidden {
 		t.Fatalf("cancel over plain http from afar = %d", w.Code)
+	}
+}
+
+// F1, replayed: cookie fixation. The attacker binds a sign-in flow to their
+// own browser id and plants it in the person's browser the two ways a
+// sibling or on-path host can: a Domain cookie for the parent name, and a
+// path cookie on plain HTTP. Neither carries the __Host- name the server
+// reads, so the person's browser is not the attacker's: it gets its own id,
+// the flow (bound to the attacker) refuses it, and the attacker's own
+// browser never holds a ceremony the person ran.
+func TestAPlantedCookieDoesNotBindThePersonsBrowser(t *testing.T) {
+	o := newPWOrg(t)
+	victim := newSoftKey(t)
+	o.joinByPasskey(o.operatorLink(), "santosh", victim)
+	attacker := &pkBrowser{}
+	f := o.mustStart("", api.PasskeyStart{Purpose: api.PasskeySignIn})
+	opt := o.pageIn(attacker, f.id, "options", pkOrigin, map[string]string{})
+	if opt.Code != 200 {
+		t.Fatalf("the attacker's own options = %d", opt.Code)
+	}
+	planted, _ := attacker.cookies.Load(passkeyCookie)
+	id := planted.(*http.Cookie).Value
+	// What the planted cookies look like on the wire: names without the
+	// prefix (a browser refuses __Host- from a sibling or over HTTP).
+	person := func(r *http.Request) {
+		r.Header.Add("Cookie", "codeaf_passkey="+id+"; codeaf_pkb="+id)
+	}
+	data, _ := json.Marshal(map[string]string{})
+	r := httptest.NewRequest("POST", "/passkey/"+f.id+"/options", strings.NewReader(string(data)))
+	r.RemoteAddr = "127.0.0.1:4100"
+	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set("Origin", pkOrigin)
+	person(r)
+	w := httptest.NewRecorder()
+	o.h.ServeHTTP(w, r)
+	if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "other_browser") {
+		t.Fatalf("the person's browser, cookies planted = %d %s", w.Code, w.Body)
+	}
+	// So the person never runs the attacker's flow; and a flow the person's
+	// browser does bind, the attacker's id cannot touch.
+	mine := o.mustStart("", api.PasskeyStart{Purpose: api.PasskeySignIn})
+	o.options(mine.id, map[string]string{})
+	if w := o.pageIn(attacker, mine.id, "finish", pkOrigin, map[string]any{"credential": json.RawMessage("{}")}); w.Code != http.StatusForbidden {
+		t.Fatalf("the attacker's id on the person's flow = %d", w.Code)
+	}
+	if w := o.finish(mine.id, victim.get(t, o.options(mine.id, map[string]string{}), pkOrigin), ""); w.Code != 200 {
+		t.Fatalf("the person's own ceremony = %d %s", w.Code, w.Body)
+	}
+	if loc := o.handOver(attacker, mine.id); loc != "" {
+		t.Fatalf("the attacker's hand-over = %q", loc)
+	}
+	if got := o.poll(mine); got.AccessToken == "" {
+		t.Fatalf("the person's poll = %+v", got)
+	}
+}
+
+// F3: a confirmation lets one action happen once. A confirm for removing
+// one passkey removes no other, adds nothing and sets no password; it is
+// spent by the removal; and one older than five minutes lets nothing.
+func TestAConfirmationIsForOneActionOnce(t *testing.T) {
+	o := newPWOrg(t)
+	a, b, c := newSoftKey(t), newSoftKey(t), newSoftKey(t)
+	session := o.joinByPasskey(o.operatorLink(), "santosh", a)
+	o.addPasskey(session, a, b)
+	o.addPasskey(session, a, c)
+	// The confirm page names the action and the computer asking.
+	f := o.mustStart(session, api.PasskeyStart{Purpose: api.PasskeyConfirm, Action: &api.StepUpAction{Kind: api.StepUpRemovePasskey, Passkey: pkB64(b.ID)}, Device: "santosh-mac"})
+	page := o.do("GET", "/passkey/"+f.id, "", nil, "")
+	if !strings.Contains(page.Body.String(), "Remove passkey") || !strings.Contains(page.Body.String(), "requested by codeaf on santosh-mac") {
+		t.Fatalf("the confirm page = %s", page.Body)
+	}
+	if w := o.finish(f.id, a.get(t, o.options(f.id, map[string]string{}), pkOrigin), ""); w.Code != 200 {
+		t.Fatalf("confirm = %d %s", w.Code, w.Body)
+	}
+	if got := o.poll(f); got.State != api.PasskeyDone {
+		t.Fatalf("confirm poll = %+v", got)
+	}
+	stepUp := func(what string, w *httptest.ResponseRecorder, want api.StepUpAction) {
+		t.Helper()
+		var body struct {
+			Reason string           `json:"reason"`
+			Action api.StepUpAction `json:"action"`
+		}
+		_ = json.Unmarshal(w.Body.Bytes(), &body)
+		if w.Code != http.StatusForbidden || body.Reason != api.ReasonStepUp || body.Action != want {
+			t.Fatalf("%s = %d %s", what, w.Code, w.Body)
+		}
+	}
+	stepUp("removing another passkey", o.do("POST", "/v1/me/passkeys/remove", session, api.PasskeyRemove{ID: pkB64(c.ID)}, ""), toRemove(c))
+	_, w := o.pkStart(session, api.PasskeyStart{Purpose: api.PasskeyAdd})
+	stepUp("an add", w, toAdd)
+	stepUp("a first password", o.do("POST", "/v1/me/password", session, api.PasswordChange{New: pwOperator}, ""), toSetPassword)
+	if w := o.do("POST", "/v1/me/passkeys/remove", session, api.PasskeyRemove{ID: pkB64(b.ID)}, ""); w.Code != http.StatusNoContent {
+		t.Fatalf("the confirmed removal = %d %s", w.Code, w.Body)
+	}
+	// Spent: confirming removal of c, then waiting past the window.
+	o.confirm(session, a, toRemove(c))
+	o.advance(passkeyStepUpLife)
+	stepUp("a removal confirmed too long ago", o.do("POST", "/v1/me/passkeys/remove", session, api.PasskeyRemove{ID: pkB64(c.ID)}, ""), toRemove(c))
+}
+
+// F3: a finished flow's code works for a minute. A code that reached the
+// wrong computer's address bar and is pasted back later opens nothing.
+func TestALoopbackCodeLivesOneMinute(t *testing.T) {
+	o := newPWOrg(t)
+	key := newSoftKey(t)
+	o.joinByPasskey(o.operatorLink(), "santosh", key)
+	f := o.mustStart("", api.PasskeyStart{Purpose: api.PasskeySignIn})
+	if w := o.finish(f.id, key.get(t, o.options(f.id, map[string]string{}), pkOrigin), ""); w.Code != 200 {
+		t.Fatalf("finish = %d", w.Code)
+	}
+	o.advance(passkeyCodeLife)
+	if got := o.poll(f); got.State != api.PasskeyExpired || got.AccessToken != "" {
+		t.Fatalf("a poll a minute after done = %+v", got)
+	}
+	// And a hand-over a minute late hands no code.
+	g := o.mustStart("", api.PasskeyStart{Purpose: api.PasskeySignIn})
+	if w := o.page(g.id, "finish", pkOrigin, map[string]any{"credential": key.get(t, o.options(g.id, map[string]string{}), pkOrigin)}); w.Code != 200 {
+		t.Fatalf("finish = %d", w.Code)
+	}
+	o.advance(passkeyCodeLife)
+	if loc := o.handOver(theBrowser, g.id); loc != "" {
+		t.Fatalf("a late hand-over = %q", loc)
+	}
+}
+
+// F2: a flood that opens 16 sign-ins from each of 24 networks fills every
+// sign-in slot; a person on a fresh network still starts, and the room
+// is taken from the network holding the most.
+func TestAFloodFromManyNetworksStillLetsAPersonStart(t *testing.T) {
+	o := newPWOrg(t)
+	key := newSoftKey(t)
+	o.joinByPasskey(o.operatorLink(), "santosh", key)
+	flood := &pkBrowser{}
+	for n := range 24 {
+		for a := range 2 {
+			for range passkeyFlowsPerAddr {
+				f, w := o.startFrom(fmt.Sprintf("10.%d.0.%d:1", n+1, a+1), api.PasskeyStart{Purpose: api.PasskeySignIn})
+				if w.Code == http.StatusCreated {
+					o.pageIn(flood, f.id, "options", pkOrigin, map[string]string{})
+				}
+			}
+		}
+	}
+	count := func() (int, map[string]int) {
+		st := o.h.pk()
+		st.mu.Lock()
+		defer st.mu.Unlock()
+		n, by := 0, map[string]int{}
+		for _, f := range st.flows {
+			if f.purpose == api.PasskeySignIn {
+				n++
+				by[f.prefix]++
+			}
+		}
+		return n, by
+	}
+	if n, _ := count(); n != passkeySignInFlowsMost {
+		t.Fatalf("the flood holds %d sign-ins, want the full %d", n, passkeySignInFlowsMost)
+	}
+	mine, w := o.startFrom("203.0.113.9:1", api.PasskeyStart{Purpose: api.PasskeySignIn})
+	if w.Code != http.StatusCreated {
+		t.Fatalf("a person on a fresh network = %d %s", w.Code, w.Body)
+	}
+	if _, by := count(); by["203.0.113.0/24"] != 1 {
+		t.Fatalf("the person's flow is not kept: %v", by)
+	}
+	o.options(mine.id, map[string]string{})
+	if w := o.finish(mine.id, key.get(t, o.options(mine.id, map[string]string{}), pkOrigin), ""); w.Code != 200 {
+		t.Fatalf("the person's ceremony = %d", w.Code)
+	}
+	if got := o.poll(mine); got.AccessToken == "" {
+		t.Fatalf("the person's poll = %+v", got)
+	}
+}
+
+// F1: a real name the operator owns covers the names under it too, so no
+// plain-HTTP host below it can toss cookies at it; a shared wildcard name
+// (demos only), an IP address and localhost get the bare header.
+func TestHSTSCoversSubdomainsOnlyOfANameTheOperatorOwns(t *testing.T) {
+	for host, want := range map[string]string{
+		"org.example.com":         hstsValue + "; includeSubDomains",
+		"Factory.Acme.dev.":       hstsValue + "; includeSubDomains",
+		"203-0-113-9.sslip.io":    hstsValue,
+		"acme.203.0.113.9.nip.io": hstsValue,
+		"localhost":               hstsValue,
+		"203.0.113.9":             hstsValue,
+		"intranet":                hstsValue,
+	} {
+		if got := hstsFor(host); got != want {
+			t.Errorf("hstsFor(%q) = %q, want %q", host, got, want)
+		}
 	}
 }

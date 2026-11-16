@@ -575,8 +575,9 @@ func (h *appFactoryHub) send(ctx context.Context, origin, token, method, path st
 // sentence is passed on, trimmed; its status code is not.
 func appFactoryFailure(r appFactoryReply) error {
 	var body struct {
-		Error  string `json:"error"`
-		Reason string `json:"reason"`
+		Error  string            `json:"error"`
+		Reason string            `json:"reason"`
+		Action *api.StepUpAction `json:"action"`
 	}
 	_ = json.Unmarshal(bytes.TrimSpace(r.body), &body)
 	words := strings.TrimSpace(redact.Secrets(body.Error))
@@ -590,7 +591,12 @@ func appFactoryFailure(r appFactoryReply) error {
 		if words == "" {
 			words = "Confirm it's you first."
 		}
-		return appwire.Errorf(appwire.CodeStepUp, "%s", words)
+		e := appwire.Errorf(appwire.CodeStepUp, "%s", words)
+		if body.Action != nil {
+			// The one action to confirm, so the client confirms that.
+			e.Detail = appwire.FactoryStepUpDetail{Action: body.Action.Kind, Passkey: body.Action.Passkey}
+		}
+		return e
 	case r.status == http.StatusUnauthorized && body.Reason == api.ReasonGitHubExpired:
 		return appwire.Errorf(appwire.CodeGitHubExpired, "GitHub access to this factory has expired; reconnect GitHub")
 	case r.status == http.StatusUnauthorized:

@@ -8,9 +8,30 @@ import (
 	"strings"
 )
 
-// hstsValue asks a browser to keep using HTTPS for this name for a year. It
-// carries no includeSubDomains: the factory owns one name, never its siblings.
+// hstsValue asks a browser to keep using HTTPS for this name for a year.
 const hstsValue = "max-age=31536000"
+
+// sharedHostSuffixes are wildcard DNS services: every name under one belongs
+// to whoever typed it, so nobody owns the names below a factory's there.
+// Such an address is for demos only (see the manual).
+var sharedHostSuffixes = []string{".sslip.io", ".nip.io", ".xip.io", ".traefik.me", ".localtest.me", ".lvh.me"}
+
+// hstsFor is the HSTS header for a factory at host. A real name the operator
+// owns also covers the names under it (includeSubDomains), so no plain-HTTP
+// sibling below it can toss cookies at this one; a shared wildcard name, an
+// IP address or localhost gets the bare value.
+func hstsFor(host string) string {
+	host = strings.ToLower(strings.TrimSuffix(host, "."))
+	if host == "" || host == "localhost" || net.ParseIP(host) != nil || !strings.Contains(host, ".") {
+		return hstsValue
+	}
+	for _, suffix := range sharedHostSuffixes {
+		if strings.HasSuffix(host, suffix) {
+			return hstsValue
+		}
+	}
+	return hstsValue + "; includeSubDomains"
+}
 
 // client is who is on the far end of a request and how they reached the
 // factory, after the one decision about which headers to believe.

@@ -40,6 +40,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -155,9 +156,16 @@ func (b *appBackend) FactoryPasskeyStart(ctx context.Context, p appwire.FactoryP
 			lb.close()
 		}
 	}()
-	r, err := h.send(ctx, origin, token, http.MethodPost, "/v1/auth/passkey/start", api.PasskeyStart{Purpose: p.Purpose, Link: p.Link,
+	start := api.PasskeyStart{Purpose: p.Purpose, Link: p.Link,
 		Username: p.Username, Name: strings.TrimSpace(p.Name), CodeChallenge: challenge,
-		ReturnPort: lb.port(), ReturnPath: lb.path, ReturnKey: lb.returnKey()}, appFactorySmall, nil)
+		ReturnPort: lb.port(), ReturnPath: lb.path, ReturnKey: lb.returnKey()}
+	if p.Purpose == appwire.FactoryPasskeyConfirm {
+		// The page names the action and this computer, so the person knows
+		// what they are confirming and for whom.
+		start.Action = &api.StepUpAction{Kind: p.Action, Passkey: p.Passkey}
+		start.Device, _ = os.Hostname()
+	}
+	r, err := h.send(ctx, origin, token, http.MethodPost, "/v1/auth/passkey/start", start, appFactorySmall, nil)
 	if err != nil {
 		return appwire.FactoryPasskeyStarted{}, err
 	}
@@ -391,7 +399,7 @@ func (b *appBackend) FactoryPasswordConfirm(ctx context.Context, p appwire.Facto
 	if token == "" {
 		return appwire.Errorf(appwire.CodeSignedOut, "sign in to this factory")
 	}
-	r, err := h.send(ctx, row.URL, token, http.MethodPost, "/v1/me/password/confirm", api.PasswordConfirm{Password: p.Password}, appFactorySmall, nil)
+	r, err := h.send(ctx, row.URL, token, http.MethodPost, "/v1/me/password/confirm", api.PasswordConfirm{Password: p.Password, Action: api.StepUpAction{Kind: p.Action, Passkey: p.Passkey}}, appFactorySmall, nil)
 	if err != nil {
 		return err
 	}

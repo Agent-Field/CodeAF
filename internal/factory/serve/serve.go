@@ -448,7 +448,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// A caller who reached the factory over HTTPS is told to keep doing so.
 	// Over plain HTTP the header means nothing and is not sent.
 	if secureRequest(r) {
-		w.Header().Set("Strict-Transport-Security", hstsValue)
+		w.Header().Set("Strict-Transport-Security", h.hsts())
 	}
 	if h.config.ServedBy == "app" && !workerPath(r.URL.Path) && !h.floorToken(bearer(r)) {
 		w.Header().Set("WWW-Authenticate", `Bearer realm="factory"`)

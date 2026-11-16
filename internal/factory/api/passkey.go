@@ -31,10 +31,24 @@ const (
 	PasskeyConfirm = "confirm"
 )
 
-// ReasonStepUp is the refusal of an action that needs a proof made in the
-// last few minutes: a passkey (purpose confirm) or the current password
-// (POST /v1/me/password/confirm).
+// ReasonStepUp is the refusal of an action that needs a confirmation made for
+// it: a passkey confirm flow started for that action, or the current password
+// given for it (POST /v1/me/password/confirm). The refusal's action names it.
 const ReasonStepUp = "step_up_required"
+
+// The actions a confirmation is for.
+const (
+	StepUpAddPasskey    = "add_passkey"
+	StepUpRemovePasskey = "remove_passkey"
+	StepUpSetPassword   = "set_password"
+)
+
+// StepUpAction is one action a confirmation lets happen once: Kind, and for
+// remove_passkey the passkey's id.
+type StepUpAction struct {
+	Kind    string `json:"kind"`
+	Passkey string `json:"passkey,omitempty"`
+}
 
 // PasskeyStart is POST /v1/auth/passkey/start. CodeChallenge is base64url
 // (no padding) of SHA-256 of a 32-byte verifier. Link is an invitation, an
@@ -44,13 +58,17 @@ const ReasonStepUp = "step_up_required"
 // sends the browser to http://127.0.0.1:<ReturnPort>/<ReturnPath>?code=...
 // ReturnPath is base64url (no padding) of 32 random bytes.
 type PasskeyStart struct {
-	Purpose       string `json:"purpose"`
-	Link          string `json:"link,omitempty"`
-	Username      string `json:"username,omitempty"`
-	Name          string `json:"name,omitempty"`
-	CodeChallenge string `json:"code_challenge"`
-	ReturnPort    int    `json:"return_port"`
-	ReturnPath    string `json:"return_path"`
+	Purpose string `json:"purpose"`
+	// Action is what a confirm is for (required with purpose confirm, never
+	// otherwise); Device names the computer asking, shown on the page.
+	Action        *StepUpAction `json:"action,omitempty"`
+	Device        string        `json:"device,omitempty"`
+	Link          string        `json:"link,omitempty"`
+	Username      string        `json:"username,omitempty"`
+	Name          string        `json:"name,omitempty"`
+	CodeChallenge string        `json:"code_challenge"`
+	ReturnPort    int           `json:"return_port"`
+	ReturnPath    string        `json:"return_path"`
 	// ReturnKey (base64url of 32 random bytes) lets the engine's listener
 	// tell its own flow's code from anyone else's: the code is 16 random
 	// bytes and the first 16 bytes of HMAC-SHA256(ReturnKey, those bytes).
@@ -125,5 +143,6 @@ type PasskeyRemove struct {
 // PasswordConfirm is POST /v1/me/password/confirm: the signed-in person's
 // current password, as a step-up.
 type PasswordConfirm struct {
-	Password string `json:"password"`
+	Password string       `json:"password"`
+	Action   StepUpAction `json:"action"`
 }

@@ -42,9 +42,6 @@ type accessSession struct {
 	// under (tokens.Account.Gen); a password person's session dies when the
 	// account's generation moves past it. Zero for a GitHub session.
 	credGen int64
-	// verified is when this session last made an explicit proof, never its
-	// sign-in (passkey_stepup.go); kept in memory only.
-	verified time.Time
 	// via is how a password-account person signed in when it is not with a
 	// password: signInPasskey, or "" for a password (and for GitHub).
 	via string

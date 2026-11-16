@@ -1,50 +1,102 @@
 package serve
 
-// ── STEP-UP: A RECENT PROOF BEFORE A WAY IN CHANGES ─────────────────────────
+// ── STEP-UP: ONE CONFIRMATION FOR ONE ACTION ────────────────────────────────
 //
 // A session is a bearer: whoever holds one is the person to this server. That
 // is fine for reading and working, but not for changing how the person gets
 // in. A stolen session that could add its own passkey, set a first password
 // and remove the person's own passkey would lock the person out for good. So
-// adding a passkey, setting a first password (no current one) and removing a
-// passkey need a proof made in the last passkeyStepUpLife: the session was
-// just made by a passkey ceremony or a password, or it has since confirmed
-// with one of the person's passkeys (purpose confirm) or with the current
-// password (POST /v1/me/password/confirm). A refusal says step_up_required.
+// each of those needs a confirmation made for it: a passkey confirm flow
+// started for that action (the page names it and the computer asking), or
+// the current password given for it. A confirmation lets exactly that action
+// happen once, within passkeyStepUpLife; nothing else, and not twice. A
+// sign-in is never one. A refusal says step_up_required and names the action
+// it wanted, so the client confirms that action and retries.
 //
-// The proof is kept in memory with the session; a server restart forgets it,
-// which only means confirming again.
+// Confirmations are kept in memory; a server restart forgets them, which only
+// means confirming again.
 
 import (
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/tokens"
 )
 
-// recentlyVerified is whether session made an explicit proof in the last
-// passkeyStepUpLife: a passkey confirm, the current password confirmed, or a
-// password changed with the current one. A SIGN-IN NEVER COUNTS: a session
-// stolen a minute after it was made takes nothing over.
-func (h *Handler) recentlyVerified(session accessSession) bool {
-	return !session.verified.IsZero() && h.now().Sub(session.verified) < passkeyStepUpLife
+// stepUpKey is the one action a confirmation is for.
+func stepUpKey(a api.StepUpAction) (string, bool) {
+	switch a.Kind {
+	case api.StepUpAddPasskey, api.StepUpSetPassword:
+		return a.Kind, a.Passkey == ""
+	case api.StepUpRemovePasskey:
+		return a.Kind + ":" + a.Passkey, a.Passkey != "" && len(a.Passkey) <= 512
+	}
+	return "", false
 }
 
-// markVerified records a proof just made by the session whose public id is id.
-func (h *Handler) markVerified(id string, now time.Time) {
-	if id == "" {
+// grant records a confirmation by session id for action.
+func (h *Handler) grant(sessionID string, a api.StepUpAction, now time.Time) {
+	key, ok := stepUpKey(a)
+	if !ok || sessionID == "" {
 		return
 	}
-	h.sessions.mu.Lock()
-	defer h.sessions.mu.Unlock()
-	for key, s := range h.sessions.ids {
-		if s.id == id {
-			s.verified = now
-			h.sessions.ids[key] = s
+	st := h.pk()
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if st.grants == nil {
+		st.grants = map[string]time.Time{}
+	}
+	for k, at := range st.grants {
+		if now.Sub(at) >= passkeyStepUpLife {
+			delete(st.grants, k)
 		}
 	}
+	if len(st.grants) < passkeyGrantsMost {
+		st.grants[sessionID+"\x00"+key] = now
+	}
+}
+
+// granted is whether session holds a live confirmation for action; take
+// spends it as well, so it lets the action happen once.
+func (h *Handler) granted(session accessSession, a api.StepUpAction, take bool) bool {
+	key, ok := stepUpKey(a)
+	if !ok {
+		return false
+	}
+	st := h.pk()
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	at, held := st.grants[session.id+"\x00"+key]
+	if !held || h.now().Sub(at) >= passkeyStepUpLife {
+		return false
+	}
+	if take {
+		delete(st.grants, session.id+"\x00"+key)
+	}
+	return true
+}
+
+// stepUp refuses an action that needs a confirmation, naming it.
+func (h *Handler) stepUp(w http.ResponseWriter, a api.StepUpAction) {
+	h.writeRefusal(w, http.StatusForbidden, refusalBody{Error: passkeyStepUpWords, Reason: api.ReasonStepUp, Action: &a})
+}
+
+// requestedBy is the computer a confirm names on its page: what the engine
+// says it is, cleaned, or the session's own device label.
+func requestedBy(given string, session accessSession) string {
+	if name, ok := cleanDisplayName(given); ok && name != "" {
+		if len(name) > 60 {
+			name = strings.TrimSpace(name[:60])
+		}
+		return name
+	}
+	if session.device != "" {
+		return session.device
+	}
+	return "another computer"
 }
 
 // passwordConfirm is POST /v1/me/password/confirm: the signed-in person shows
@@ -63,6 +115,10 @@ func (h *Handler) passwordConfirm(w http.ResponseWriter, r *http.Request) {
 	}
 	var body api.PasswordConfirm
 	if !h.readPasswordBody(w, r, &body) {
+		return
+	}
+	if _, ok := stepUpKey(body.Action); !ok {
+		h.fail(w, http.StatusUnprocessableEntity, "action names one of add_passkey, remove_passkey (with passkey) or set_password")
 		return
 	}
 	handle := session.profile.Handle
@@ -94,6 +150,6 @@ func (h *Handler) passwordConfirm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	try.succeeded(h.now())
-	h.markVerified(session.id, h.now())
+	h.grant(session.id, body.Action, h.now())
 	w.WriteHeader(http.StatusNoContent)
 }

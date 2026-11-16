@@ -30,11 +30,14 @@ import (
 // completes; the client keeps polling (it may still be opened here) or
 // cancels.
 //
-// STEP-UP. Adding a passkey, setting a first password (password_change with
-// an empty current) and removing a passkey need a proof made in the last
-// five minutes; without one they fail with [CodeStepUp]. A sign-in is never
-// that proof. The client proves it with passkey_start purpose "confirm" (one
-// of the person's passkeys) or password_confirm, and retries once.
+// STEP-UP: ONE CONFIRMATION FOR ONE ACTION. Adding a passkey, setting a first
+// password (password_change with an empty current) and removing a passkey
+// each need a confirmation made for that action in the last five minutes;
+// it lets the action happen once. Without one they fail with [CodeStepUp],
+// whose Detail ([FactoryStepUpDetail]) names the action. A sign-in is never
+// one. The client confirms that action, with passkey_start purpose "confirm"
+// and the same action (one of the person's passkeys; the page names the
+// action and this computer), or password_confirm with it, and retries once.
 //
 // THE ENGINE HOLDS THE VERIFIER. The flow is started with the SHA-256 of a
 // 32-byte secret the engine makes and keeps; the server answers the session
@@ -82,6 +85,41 @@ type FactoryPasskeyStartParams struct {
 	Purpose  string `json:"purpose" enum:"sign_in,join,add,confirm"`
 	Username string `json:"username,omitempty"`
 	Name     string `json:"name,omitempty"`
+	// Action (with Passkey for remove_passkey) is what a confirm is for;
+	// required with purpose confirm and refused otherwise.
+	Action  string `json:"action,omitempty" enum:"add_passkey,remove_passkey,set_password"`
+	Passkey string `json:"passkey,omitempty"`
+}
+
+// The actions a confirmation is for (see the file comment).
+const (
+	FactoryStepUpAddPasskey    = "add_passkey"
+	FactoryStepUpRemovePasskey = "remove_passkey"
+	FactoryStepUpSetPassword   = "set_password"
+)
+
+// FactoryStepUpDetail is the [Error.Detail] of a [CodeStepUp]: the one
+// action to confirm, and for remove_passkey which passkey.
+type FactoryStepUpDetail struct {
+	Action  string `json:"action" enum:"add_passkey,remove_passkey,set_password"`
+	Passkey string `json:"passkey,omitempty"`
+}
+
+// stepUpAction checks an action and its passkey, as a confirm names them.
+func stepUpAction(action, passkey string) error {
+	switch action {
+	case FactoryStepUpAddPasskey, FactoryStepUpSetPassword:
+		if passkey != "" {
+			return Errorf(CodeBadParams, "only remove_passkey names a passkey")
+		}
+	case FactoryStepUpRemovePasskey:
+		if passkey == "" || len(passkey) > 512 {
+			return Errorf(CodeBadParams, "remove_passkey names the passkey's id")
+		}
+	default:
+		return Errorf(CodeBadParams, "action is add_passkey, remove_passkey or set_password")
+	}
+	return nil
 }
 
 // FactoryPasskeyStarted answers a start: open URL in the default browser.
@@ -138,6 +176,8 @@ type FactoryPasskeyRemoveParams struct {
 type FactoryPasswordConfirmParams struct {
 	Factory  string `json:"factory"`
 	Password string `json:"password"`
+	Action   string `json:"action" enum:"add_passkey,remove_passkey,set_password"`
+	Passkey  string `json:"passkey,omitempty"`
 }
 
 // FactoryPasskeys is the engine's half of the passkey methods.
@@ -227,6 +267,13 @@ func init() {
 			if p.Purpose != FactoryPasskeyJoin && (p.Username != "" || p.Name != "") {
 				return Errorf(CodeBadParams, "only join takes a username")
 			}
+			if p.Purpose == FactoryPasskeyConfirm {
+				if err := stepUpAction(p.Action, p.Passkey); err != nil {
+					return err
+				}
+			} else if p.Action != "" || p.Passkey != "" {
+				return Errorf(CodeBadParams, "only confirm names an action")
+			}
 			if p.Username = strings.TrimSpace(p.Username); len(p.Username) > 64 {
 				return Errorf(CodeBadParams, "username is at most 64 characters")
 			}
@@ -259,6 +306,9 @@ func init() {
 		"factory.password_confirm": passkeyCall("factory.password_confirm", func(p *FactoryPasswordConfirmParams) error {
 			var err error
 			if p.Factory, err = factoryID(strings.TrimSpace(p.Factory)); err != nil {
+				return err
+			}
+			if err := stepUpAction(p.Action, p.Passkey); err != nil {
 				return err
 			}
 			return factoryPassword("password", p.Password)

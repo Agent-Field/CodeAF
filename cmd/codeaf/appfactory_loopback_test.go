@@ -32,17 +32,21 @@ func TestThePasskeyLoopbackTakesOnlyItsOwnFlowsCode(t *testing.T) {
 	}
 	defer lb.close()
 	base := fmt.Sprintf("http://127.0.0.1:%d/", lb.port())
+	noFollow := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	get := func(u, host string) int {
 		t.Helper()
 		req, _ := http.NewRequest("GET", u, nil)
 		if host != "" {
 			req.Host = host
 		}
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := noFollow.Do(req)
 		if err != nil {
 			return -1
 		}
 		resp.Body.Close()
+		if resp.StatusCode == http.StatusSeeOther && resp.Header.Get("Location") != "/done" {
+			t.Fatalf("redirected to %q", resp.Header.Get("Location"))
+		}
 		return resp.StatusCode
 	}
 	mine := markedCode(lb, 'a')
@@ -73,7 +77,7 @@ func TestThePasskeyLoopbackTakesOnlyItsOwnFlowsCode(t *testing.T) {
 	}
 	for i := 0; ; i++ {
 		got := get(base+lb.path+"?code="+mine, "")
-		if got == http.StatusOK {
+		if got == http.StatusSeeOther {
 			break
 		}
 		if got != http.StatusTooManyRequests || i > 50 {
@@ -86,11 +90,18 @@ func TestThePasskeyLoopbackTakesOnlyItsOwnFlowsCode(t *testing.T) {
 	if lb.received() != mine {
 		t.Fatalf("received = %q", lb.received())
 	}
-	if got := get(base+lb.path+"?code="+markedCode(lb, 'b'), ""); got == http.StatusOK {
-		t.Fatal("a second code was accepted")
+	// The browser was sent on to a clean /done: no code in the address.
+	if got := get(base+"done?code="+mine, ""); got != http.StatusNotFound && got != http.StatusTooManyRequests {
+		t.Fatalf("/done with a query = %d", got)
+	}
+	if got := get(base+"done", ""); got != http.StatusOK {
+		t.Fatalf("/done = %d", got)
+	}
+	if got := get(base+"done", ""); got != -1 {
+		t.Fatalf("the listener outlived its Done: %d", got)
 	}
 	if lb.received() != mine {
-		t.Fatal("a second code replaced the first")
+		t.Fatal("the code changed")
 	}
 	var none *passkeyLoopback
 	none.close()

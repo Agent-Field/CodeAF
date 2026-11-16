@@ -2899,14 +2899,20 @@ cannot mint a session.
   on another device the page says why before the browser's "can't connect",
   and "Finish on the computer that started this" after, and the flow never
   completes.
-- `purpose: "confirm"` (with `factory`) is a step-up: the signed-in person
-  uses one of their passkeys, and the session counts as proven for five
-  minutes. `factory.password_confirm {factory, password}` answers `{}` and does
-  the same with the current password; a wrong one is `forbidden`, a person
-  without a password `not_found`, too many tries `busy`.
-- Adding a passkey, setting a first password and removing a passkey need a
-  proof in the last five minutes; a sign-in never counts. Without one they
-  fail with `step_up`; the client confirms and retries once.
+- `purpose: "confirm"` (with `factory` and `action`, one of `add_passkey`,
+  `remove_passkey` with `passkey` = its id, or `set_password`) is a step-up
+  for that one action: the person uses one of their passkeys on a page that
+  names the action and this computer. `factory.password_confirm {factory,
+  password, action, passkey?}` answers `{}` and does the same with the
+  current password; a wrong one is `forbidden`, a person without a password
+  `not_found`, too many tries `busy`.
+- Adding a passkey, setting a first password and removing a passkey each
+  need a confirmation for that action, which lets it happen once within five
+  minutes; a sign-in never counts. Without one they fail with `step_up`,
+  whose `detail` is `{action, passkey?}`; the client confirms that action and
+  retries once.
+- A finished flow's code works for 60 s; the loopback answers its code with
+  a 303 to a clean `http://127.0.0.1:<port>/done`.
 - `factory.passkey_cancel {flow, caller}` answers `{}`; best effort.
 - `factory.passkey_list {factory}` answers `{passkeys: [{id, name, created_at,
   last_used_at?, synced}], password}`. `password` says whether the person also

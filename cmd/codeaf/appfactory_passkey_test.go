@@ -251,7 +251,8 @@ func TestAPasskeyPersonThroughTheEngine(t *testing.T) {
 
 	// A sign-in is no step-up: an add first needs a confirm.
 	santosh.mustFail("factory.passkey_start", map[string]any{"factory": id, "caller": "w1", "purpose": "add"}, appwire.CodeStepUp)
-	santosh.must("factory.passkey_start", map[string]any{"factory": id, "caller": "w1", "purpose": "confirm"}, &started)
+	santosh.saidLast(t, `"detail":{"action":"add_passkey"}`)
+	santosh.must("factory.passkey_start", map[string]any{"factory": id, "caller": "w1", "purpose": "confirm", "action": "add_passkey"}, &started)
 	o.browser(t, started.URL, first, map[string]string{})
 	santosh.must("factory.passkey_poll", map[string]any{"flow": started.Flow, "caller": "w1"}, &polled)
 	if polled.State != "done" || polled.Factory != id {
@@ -289,7 +290,8 @@ func TestAPasskeyPersonThroughTheEngine(t *testing.T) {
 
 	// Signed in again, the session must confirm before removing.
 	santosh.mustFail("factory.passkey_remove", map[string]any{"factory": id, "id": keys.Passkeys[0].ID}, appwire.CodeStepUp)
-	santosh.must("factory.passkey_start", map[string]any{"factory": id, "caller": "w1", "purpose": "confirm"}, &started)
+	santosh.saidLast(t, `"detail":{"action":"remove_passkey","passkey":"`+keys.Passkeys[0].ID+`"}`)
+	santosh.must("factory.passkey_start", map[string]any{"factory": id, "caller": "w1", "purpose": "confirm", "action": "remove_passkey", "passkey": keys.Passkeys[0].ID}, &started)
 	o.browser(t, started.URL, second, map[string]string{})
 	santosh.must("factory.passkey_poll", map[string]any{"flow": started.Flow, "caller": "w1"}, &polled)
 	santosh.must("factory.passkey_remove", map[string]any{"factory": id, "id": keys.Passkeys[0].ID}, nil)
@@ -320,8 +322,12 @@ func TestPasskeyStartIsCheckedBeforeAnythingIsOpened(t *testing.T) {
 		{"caller": "c", "purpose": "add", "factory": "f", "username": "x"},
 		{"caller": "c", "purpose": "steal", "factory": "f"},
 		{"caller": "c", "purpose": "sign_in", "factory": "f", "verifier": "x"},
-		{"caller": "c", "purpose": "confirm", "factory": "f", "username": "x"},
-		{"caller": "c", "purpose": "confirm", "link": "codeaf://factory/join"},
+		{"caller": "c", "purpose": "confirm", "factory": "f", "username": "x", "action": "add_passkey"},
+		{"caller": "c", "purpose": "confirm", "link": "codeaf://factory/join", "action": "add_passkey"},
+		{"caller": "c", "purpose": "confirm", "factory": "f"},
+		{"caller": "c", "purpose": "confirm", "factory": "f", "action": "remove_passkey"},
+		{"caller": "c", "purpose": "confirm", "factory": "f", "action": "add_passkey", "passkey": "x"},
+		{"caller": "c", "purpose": "add", "factory": "f", "action": "add_passkey"},
 	} {
 		w.mustFail("factory.passkey_start", params, appwire.CodeBadParams)
 	}
@@ -356,7 +362,7 @@ func TestAPasskeyCeremonyEndsOnThisComputerAndRemovingNeedsAProof(t *testing.T) 
 		t.Fatalf("join poll = %+v", polled)
 	}
 	id := polled.Factory
-	w.must("factory.passkey_start", map[string]any{"factory": id, "caller": "w1", "purpose": "confirm"}, &started)
+	w.must("factory.passkey_start", map[string]any{"factory": id, "caller": "w1", "purpose": "confirm", "action": "add_passkey"}, &started)
 	o.browser(t, started.URL, first, map[string]string{})
 	w.must("factory.passkey_poll", map[string]any{"flow": started.Flow, "caller": "w1"}, &polled)
 	w.must("factory.passkey_start", map[string]any{"factory": id, "caller": "w1", "purpose": "add"}, &started)
@@ -397,12 +403,26 @@ func TestAPasskeyCeremonyEndsOnThisComputerAndRemovingNeedsAProof(t *testing.T) 
 		t.Fatalf("passkeys = %+v", keys)
 	}
 	w.mustFail("factory.passkey_remove", map[string]any{"factory": id, "id": keys.Passkeys[0].ID}, appwire.CodeStepUp)
-	w.mustFail("factory.password_confirm", map[string]any{"factory": id, "password": "not-a-password-here"}, appwire.CodeNotFound)
-	w.must("factory.passkey_start", map[string]any{"factory": id, "caller": "w1", "purpose": "confirm"}, &started)
+	w.mustFail("factory.password_confirm", map[string]any{"factory": id, "password": "not-a-password-here", "action": "remove_passkey", "passkey": keys.Passkeys[0].ID}, appwire.CodeNotFound)
+	w.must("factory.passkey_start", map[string]any{"factory": id, "caller": "w1", "purpose": "confirm", "action": "remove_passkey", "passkey": keys.Passkeys[0].ID}, &started)
 	o.browser(t, started.URL, second, map[string]string{})
 	w.must("factory.passkey_poll", map[string]any{"flow": started.Flow, "caller": "w1"}, &polled)
 	if polled.State != "done" || polled.Factory != id {
 		t.Fatalf("confirm poll = %+v", polled)
 	}
 	w.must("factory.passkey_remove", map[string]any{"factory": id, "id": keys.Passkeys[0].ID}, nil)
+}
+
+// saidLast fails unless the last line the engine wrote contains want.
+func (w *factoryWire) saidLast(t *testing.T, want string) {
+	t.Helper()
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if len(w.lines) == 0 || !strings.Contains(w.lines[len(w.lines)-1], want) {
+		last := ""
+		if len(w.lines) > 0 {
+			last = w.lines[len(w.lines)-1]
+		}
+		t.Fatalf("the last line does not say %s: %.300s", want, last)
+	}
 }

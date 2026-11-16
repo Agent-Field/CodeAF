@@ -103,6 +103,10 @@ const (
 	// passkeyOpenedPerPrefix is how many opened sign-ins one /24 (IPv4) or
 	// /48 (IPv6) keeps; one more drops the oldest of them.
 	passkeyOpenedPerPrefix = 16
+	// passkeyCodeLife is how long a finished flow's hand-over and code work.
+	passkeyCodeLife = 60 * time.Second
+	// passkeyGrantsMost bounds the confirmations held in memory.
+	passkeyGrantsMost = 4096
 	// passkeyUnopenedLife is how long a sign-in flow whose page was never
 	// fetched lives; such flows are the first to go when sign-ins are full.
 	passkeyUnopenedLife = 2 * time.Minute
@@ -197,8 +201,14 @@ type passkeyFlow struct {
 	codeSum   [sha256.Size]byte
 	handed    bool
 	wrong     int
-	// sessionID is the signed-in session a confirm proves.
-	sessionID string
+	// sessionID is the signed-in session a confirm proves; action is the one
+	// thing it confirms and requestedBy the computer that asked. doneAt is
+	// when the ceremony finished: the code works passkeyCodeLife after it.
+	sessionID   string
+	action      api.StepUpAction
+	requestedBy string
+	passkeyName string
+	doneAt      time.Time
 	// made is a verified new passkey, kept until the poll that shows the
 	// code: only then is an account made or changed, so a ceremony run on a
 	// stolen url never spends a link or adds anyone's key.
@@ -220,6 +230,9 @@ type passkeyState struct {
 	mu     sync.Mutex
 	flows  map[string]*passkeyFlow
 	starts *throttle
+	// grants are confirmations: session id NUL action key → when made
+	// (passkey_stepup.go).
+	grants map[string]time.Time
 	// plainLocalhost lets tests run a ceremony against http://localhost,
 	// which browsers treat as a secure context. It is never set by a config.
 	plainLocalhost bool
@@ -283,6 +296,15 @@ func (h *Handler) relyingParty() (rpID, origin string, ok bool) {
 		return host, u.Scheme + "://" + net.JoinHostPort(host, port), true
 	}
 	return host, u.Scheme + "://" + host, true
+}
+
+// hsts is this server's HSTS header, by the host of its public address.
+func (h *Handler) hsts() string {
+	u, err := url.Parse(strings.TrimRight(h.factory.Address, "/"))
+	if err != nil {
+		return hstsValue
+	}
+	return hstsFor(u.Hostname())
 }
 
 // passkeysOn is whether this server offers passkeys at all.
@@ -501,6 +523,10 @@ func (h *Handler) passkeyStart(w http.ResponseWriter, r *http.Request) {
 	flow := &passkeyFlow{purpose: body.Purpose, created: now, expires: now.Add(passkeyFlowLife), state: api.PasskeyPending,
 		addr: addrKey, prefix: passkeyPrefixKey(r), returnTo: returnTo, returnKey: returnKey}
 	copy(flow.challenge[:], challenge)
+	if (body.Action != nil) != (body.Purpose == api.PasskeyConfirm) {
+		h.fail(w, http.StatusUnprocessableEntity, "a confirm names one action, and nothing else does")
+		return
+	}
 	switch body.Purpose {
 	case api.PasskeySignIn:
 		if body.Link != "" || body.Username != "" || body.Name != "" {
@@ -519,14 +545,31 @@ func (h *Handler) passkeyStart(w http.ResponseWriter, r *http.Request) {
 				h.fail(w, http.StatusConflict, "this account has no passkey to confirm with")
 				return
 			}
+			if _, ok := stepUpKey(*body.Action); !ok {
+				h.fail(w, http.StatusUnprocessableEntity, "action names one of add_passkey, remove_passkey (with passkey) or set_password")
+				return
+			}
+			if body.Action.Kind == api.StepUpRemovePasskey {
+				found := false
+				for _, pk := range acct.Passkeys {
+					if pk.ID == body.Action.Passkey {
+						found, flow.passkeyName = true, pk.Name
+					}
+				}
+				if !found {
+					h.fail(w, http.StatusNotFound, "no such passkey")
+					return
+				}
+			}
+			flow.action, flow.requestedBy = *body.Action, requestedBy(body.Device, session)
 		case len(acct.Passkeys) >= tokens.PasskeyMost:
 			h.fail(w, http.StatusConflict, "this account already keeps as many passkeys as it can")
 			return
-		case !h.recentlyVerified(session):
-			// A STEP-UP IS ALWAYS ITS OWN FLOW, made before: a confirm
-			// (whose code goes to the starter's loopback) or the current
-			// password. An add never asks for one along the way.
-			h.refuse(w, http.StatusForbidden, passkeyStepUpWords, api.ReasonStepUp, "", nil, "")
+		case !h.granted(session, api.StepUpAction{Kind: api.StepUpAddPasskey}, true):
+			// A STEP-UP IS ALWAYS ITS OWN FLOW, made before and for this:
+			// a confirm (whose code goes to the starter's loopback) or the
+			// current password. An add never asks for one along the way.
+			h.stepUp(w, api.StepUpAction{Kind: api.StepUpAddPasskey})
 			return
 		}
 	case api.PasskeyJoin:
@@ -590,13 +633,43 @@ func (st *passkeyState) admitFlow(f *passkeyFlow, now time.Time) bool {
 	if mine >= passkeyFlowsPerAddr {
 		return false
 	}
-	if f.purpose == api.PasskeySignIn && signIns >= passkeySignInFlowsMost && !st.evictUnopenedLocked() {
+	if f.purpose == api.PasskeySignIn && signIns >= passkeySignInFlowsMost && !st.evictUnopenedLocked() && !st.evictFairLocked() {
 		return false
 	}
-	if len(st.flows) >= passkeyFlowsMost && !st.evictUnopenedLocked() {
+	if len(st.flows) >= passkeyFlowsMost && !st.evictUnopenedLocked() && !st.evictFairLocked() {
 		return false
 	}
 	st.flows[f.id] = f
+	return true
+}
+
+// evictFairLocked drops, when every sign-in has been opened, the oldest
+// opened sign-in from the network (/24 or /48) holding the most of them, so
+// a flood from many networks shares the room and a person on a fresh
+// network still gets in.
+func (st *passkeyState) evictFairLocked() bool {
+	held := map[string]int{}
+	for _, g := range st.flows {
+		if g.purpose == api.PasskeySignIn && g.opened {
+			held[g.prefix]++
+		}
+	}
+	most := ""
+	for p, n := range held {
+		if most == "" || n > held[most] || (n == held[most] && p < most) {
+			most = p
+		}
+	}
+	if most == "" {
+		return false
+	}
+	var oldest *passkeyFlow
+	for _, g := range st.flows {
+		if g.purpose == api.PasskeySignIn && g.opened && g.prefix == most && (oldest == nil || g.created.Before(oldest.created)) {
+			oldest = g
+		}
+	}
+	delete(st.flows, oldest.id)
 	return true
 }
 
@@ -703,7 +776,8 @@ func (st *passkeyState) pruneLocked(now time.Time) {
 // ended is whether f has outlived its life: ten minutes, or two for a
 // sign-in whose page nobody opened.
 func (f *passkeyFlow) ended(now time.Time) bool {
-	return !now.Before(f.expires) || (f.purpose == api.PasskeySignIn && !f.opened && now.Sub(f.created) >= passkeyUnopenedLife)
+	return !now.Before(f.expires) || (f.purpose == api.PasskeySignIn && !f.opened && now.Sub(f.created) >= passkeyUnopenedLife) ||
+		(f.state == api.PasskeyDone && now.Sub(f.doneAt) >= passkeyCodeLife)
 }
 
 // verifiedLocked finds the flow id answers to with verifier. A wrong verifier
@@ -812,7 +886,7 @@ func (h *Handler) passkeyPoll(w http.ResponseWriter, r *http.Request) {
 	profile, gen := snapshot.profile, snapshot.gen
 	switch {
 	case snapshot.purpose == api.PasskeyConfirm:
-		h.markVerified(snapshot.sessionID, h.now())
+		h.grant(snapshot.sessionID, snapshot.action, h.now())
 		h.write(w, http.StatusOK, api.PasskeyPolled{State: api.PasskeyDone, Purpose: snapshot.purpose})
 		return
 	case snapshot.made != nil:
@@ -940,9 +1014,22 @@ func (h *Handler) passkeyRemove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// STEP-UP: a session alone, perhaps a stolen one, may not take a way in
-	// away; only a proof made in the last few minutes may.
-	if !h.recentlyVerified(session) {
-		h.refuse(w, http.StatusForbidden, passkeyStepUpWords, api.ReasonStepUp, "", nil, "")
+	// away; only a confirmation made for removing this passkey may, once. It
+	// is checked after what would refuse anyway, so a refusal spends none.
+	action := api.StepUpAction{Kind: api.StepUpRemovePasskey, Passkey: body.ID}
+	known := false
+	for _, pk := range acct.Passkeys {
+		known = known || pk.ID == body.ID
+	}
+	switch {
+	case !known:
+		h.fail(w, http.StatusNotFound, "no such passkey")
+		return
+	case len(acct.Passkeys) == 1 && acct.Hash == "":
+		h.refuse(w, http.StatusConflict, passkeyLastWords, "last_way_in", "", nil, "")
+		return
+	case !h.granted(session, action, true):
+		h.stepUp(w, action)
 		return
 	}
 	gen, err := tokens.RemovePasskey(h.config.TokensPath, acct.Handle, body.ID, h.now())
@@ -1058,7 +1145,7 @@ func (h *Handler) passkeyPage(w http.ResponseWriter, r *http.Request) {
 	case f.purpose == api.PasskeySignIn:
 		data.Heading, data.Lede, data.Button = "Sign in to "+org, "Use the passkey you keep for "+rpID+".", "Sign in with a passkey"
 	case f.purpose == api.PasskeyConfirm:
-		data.Heading, data.Lede, data.Button = "Confirm it's you", "Use one of your passkeys for @"+f.handle+" on "+org+".", "Confirm with a passkey"
+		data.Heading, data.Lede, data.Button = "Confirm it's you", passkeyActionWords(f)+" — requested by codeaf on "+f.requestedBy+". Use one of your passkeys for @"+f.handle+" on "+org+".", "Confirm with a passkey"
 	case f.purpose == api.PasskeyAdd:
 		data.Heading, data.Lede, data.Button, data.AskLabel = "Add a passkey", "For @"+f.handle+" on "+org+".", "Create a passkey", true
 	case f.resetSecret != "":
@@ -1157,9 +1244,26 @@ type passkeyOptionsAnswer struct {
 	PublicKey any    `json:"publicKey"`
 }
 
-// passkeyCookie is the cookie that binds a flow to one browser; its path is
-// the flow's own, so one browser can hold several flows.
-const passkeyCookie = "codeaf_passkey"
+// passkeyActionWords names what a confirm is for, as its page says it.
+func passkeyActionWords(f *passkeyFlow) string {
+	switch f.action.Kind {
+	case api.StepUpRemovePasskey:
+		return "Remove passkey \u201c" + f.passkeyName + "\u201d"
+	case api.StepUpSetPassword:
+		return "Set a first password"
+	}
+	return "Add a passkey"
+}
+
+// passkeyCookie is this browser's id for passkey pages. THE __Host- PREFIX IS
+// THE POINT: a browser keeps such a cookie only when this very host set it
+// over HTTPS, with Path=/ and no Domain, so neither a sibling host (another
+// name under a shared wildcard DNS suffix) nor a plain-HTTP attacker can
+// plant one. Each flow keeps the SHA-256 of the id that bound it.
+const passkeyCookie = "__Host-codeaf_pkb"
+
+// passkeyCookieLife is how long the browser id lives; it is renewed by use.
+const passkeyCookieLife = 24 * time.Hour
 
 // passkeyOtherBrowserWords answer a page post from a browser the flow is not
 // bound to.
@@ -1186,12 +1290,14 @@ func (f *passkeyFlow) bindLocked(r *http.Request) (*http.Cookie, bool) {
 	if f.browserSum != zero {
 		return nil, f.boundLocked(r)
 	}
-	nonce, err := secret()
-	if err != nil {
+	id := ""
+	if c, err := r.Cookie(passkeyCookie); err == nil && len(c.Value) == 64 && strings.Trim(c.Value, "0123456789abcdef") == "" {
+		id = c.Value
+	} else if id, err = secret(); err != nil {
 		return nil, false
 	}
-	f.browserSum = sha256.Sum256([]byte(nonce))
-	return &http.Cookie{Name: passkeyCookie, Value: nonce, Path: "/passkey/" + f.id, MaxAge: int(passkeyFlowLife / time.Second),
+	f.browserSum = sha256.Sum256([]byte(id))
+	return &http.Cookie{Name: passkeyCookie, Value: id, Path: "/", MaxAge: int(passkeyCookieLife / time.Second),
 		HttpOnly: true, Secure: true, SameSite: http.SameSiteStrictMode}, true
 }
 
@@ -1525,7 +1631,7 @@ func (h *Handler) passkeyFinish(w http.ResponseWriter, r *http.Request, id strin
 		h.refuse(w, http.StatusGone, passkeyEndedWords, "flow_ended", "", nil, "")
 		return
 	}
-	f.state, f.profile, f.gen, f.made = api.PasskeyDone, profile, gen, made
+	f.state, f.profile, f.gen, f.made, f.doneAt = api.PasskeyDone, profile, gen, made, h.now()
 	st.mu.Unlock()
 	// NO CODE IN THIS ANSWER: the bound browser fetches the hand-over, which
 	// answers the loopback address with the code as a 303 (passkeyHandOver).
@@ -1543,7 +1649,7 @@ func (h *Handler) passkeyHandOver(w http.ResponseWriter, r *http.Request, id str
 	st.mu.Lock()
 	defer st.mu.Unlock()
 	f := st.flows[id]
-	if f == nil || f.ended(now) || f.state != api.PasskeyDone || f.handed || !f.boundLocked(r) {
+	if f == nil || f.ended(now) || f.state != api.PasskeyDone || f.handed || !f.boundLocked(r) || now.Sub(f.doneAt) >= passkeyCodeLife {
 		http.Redirect(w, r, "/passkey/"+id, http.StatusSeeOther)
 		return
 	}

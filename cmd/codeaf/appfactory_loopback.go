@@ -17,7 +17,8 @@ package main
 // with another Host, another path or a code without that mark (another local
 // user's, a scanner's) is answered "not found" and the listener keeps
 // waiting, at most passkeyLoopbackRefusals of them a second, until its flow
-// ends. Only its own code is taken; then it answers "Done" and closes.
+// ends. Only its own code is taken; it answers a 303 to a clean /done, so the
+// code does not stay in the address bar, shows "Done" there, and closes.
 //
 // THE RESIDUAL (RFC 8252 §8.3): the port is chosen by this computer's
 // kernel, and another person signed in to the same computer can see which
@@ -58,6 +59,10 @@ type passkeyLoopback struct {
 // passkeyLoopbackRefusals is how many foreign requests a second the
 // listener answers at all; past it they get 429 until the next second.
 const passkeyLoopbackRefusals = 20
+
+// passkeyLoopbackDoneWait is how long the listener stays for /done after
+// its code.
+const passkeyLoopbackDoneWait = 30 * time.Second
 
 const passkeyLoopbackPage = `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
 	`<meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="dark light">` +
@@ -122,6 +127,13 @@ func (lb *passkeyLoopback) serve(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+	if r.Method == http.MethodGet && r.Host == "127.0.0.1:"+strconv.Itoa(lb.port()) && r.URL.Path == "/done" && r.URL.RawQuery == "" && lb.received() != "" {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(passkeyLoopbackPage))
+		// One shot: nothing after its own Done is listened for.
+		guard.Go("app/passkey-loopback", func() { _ = lb.ln.Close() })
+		return
+	}
 	code := r.URL.Query().Get("code")
 	if r.Method != http.MethodGet || r.Host != "127.0.0.1:"+strconv.Itoa(lb.port()) || r.URL.Path != "/"+lb.path || !lb.ours(code) {
 		// Not this flow's: answered and forgotten, never closing.
@@ -132,13 +144,10 @@ func (lb *passkeyLoopback) serve(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if !lb.take(code) {
-		w.WriteHeader(http.StatusGone)
-	}
-	_, _ = w.Write([]byte(passkeyLoopbackPage))
-	// One shot: nothing after its own code is listened for.
-	guard.Go("app/passkey-loopback", func() { _ = lb.ln.Close() })
+	lb.take(code)
+	http.Redirect(w, r, "/done", http.StatusSeeOther)
+	// If the browser never asks for /done, the listener still ends.
+	time.AfterFunc(passkeyLoopbackDoneWait, func() { _ = lb.ln.Close() })
 }
 
 // take keeps the first code; false means one was kept already.
