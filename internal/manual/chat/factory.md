@@ -55,9 +55,19 @@ Three things make one factory:
 
 - the **service**, started with `codeaf factory serve`, which holds the jobs and the people;
 - one or more **runners**, machines that pull a job and run it with their owner's keys;
-- the **people**, each signed in with their own GitHub.
+- the **people**, each signed in with a username and password, a passkey, or their GitHub.
 
 A machine with no factory set up has none of this: the chat's factory tools are absent from its belt rather than present and failing.
+
+## make a job without a GitHub account — the organization's repositories, no repository to pick, "An admin turns repositories on in Repos"
+
+On an organization server you do not need a GitHub account of your own to make a job. The organization's repositories are the ones turned on in Repos. Only the operator turns a repository on or off, and only from the list the server's own GitHub connection can read.
+
+- **Everyone signed in reads the organization's repositories**, with a password, a passkey or GitHub. A GitHub member also keeps every repository their own GitHub sign-in reads; nothing they had before is taken away.
+- **A job on one of the organization's repositories is made in a workstream you can edit.** Add job on a workstream's Jobs tab offers them. Someone who can only view the workstream sees its jobs and makes none. A job made outside a workstream on such a repository is refused with "Make this job in a workstream you can edit: this repository is the organization's." The operator, and a GitHub member whose own sign-in reads the repository, may still make one anywhere.
+- **When the organization has none on**, Add job says so: someone who is not the operator reads "An admin turns repositories on in Repos"; the operator gets a link straight to Repos.
+
+Turning a repository on is the operator's choice of what every member may read through the server: its jobs, their steps and their pull requests.
 
 ## job numbers and GitHub issue numbers — a job with no GitHub issue
 

@@ -463,7 +463,7 @@ func stepSegment(name string) string { return url.PathEscape(name) }
 // "now", opens no GitHub issue, and asks no model for anything.
 func (b *appBackend) FactoryJobCreate(ctx context.Context, p appwire.FactoryJobCreateParams) (appwire.FactoryJobActed, error) {
 	h := b.factoryHub()
-	body := api.NewJob{Repo: p.Repo, Title: p.Title, Text: p.Text, Source: factory.AskApp, Assignee: p.Assignee, Pipeline: p.Pipeline}
+	body := api.NewJob{Repo: p.Repo, Title: p.Title, Text: p.Text, Source: factory.AskApp, Assignee: p.Assignee, Pipeline: p.Pipeline, Workstream: p.Workstream}
 	if p.Start == "now" {
 		body.Start = "now"
 	}

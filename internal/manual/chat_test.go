@@ -48,6 +48,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I sign in to the organization with Touch ID", "factory"},
 		{"can I join the org with a passkey instead of a password", "factory"},
 		{"remove a passkey from my account", "factory"},
+		{"can I make a job without a GitHub account", "factory"},
+		{"why is there no repository to pick when I add a job", "factory"},
 		{"can I send a message to the chat running on my other computer", "desktop-sync"},
 		{"queue a message for my other computer while its turn is working", "desktop-sync"},
 		{"my message to the other computer was never delivered because it is offline", "desktop-sync"},

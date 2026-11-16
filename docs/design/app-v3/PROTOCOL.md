@@ -798,6 +798,19 @@ The job title alone supplies the draft PR title. Existing jobs are not rewritten
 The method, reply, `factory.job_actions` hello feature and error codes are unchanged.
 Factories without the separate-title capability retain their prior behavior.
 
+`factory.job_create` takes `workstream` (an organization workstream id, `ws_…`),
+passed to the factory as `POST /v1/jobs {workstream}`. The factory checks the
+caller can edit that workstream (403 otherwise, 404 when they cannot see it, 409
+when it is archived) before the job exists, and the job joins the workstream in
+the same request, as `PUT /v1/workstreams/{id}/jobs/{job}` would. On an
+organization server a signed-in person reads the repositories turned on in Repos
+(the organization's) besides those their own GitHub sign-in reads; a job on one
+they read ONLY through the organization must name such a workstream, or is
+refused 403 with "Make this job in a workstream you can edit: this repository is
+the organization's." The operator is never asked for one. An older factory
+ignores the field, so a desk that sends it still adds the job to the workstream
+itself afterwards; that add is a no-op when the job is already in it.
+
 
 An engine whose hello carries `factory.stop_any_version` accepts
 `factory.job_stop {factory, job, expect?}` and
