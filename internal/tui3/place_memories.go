@@ -942,10 +942,7 @@ func (p *memoryPlace) memoryFacts(memory store.Memory) []string {
 	// could name is absent rather than "somewhere", and one still on its way is
 	// absent until it lands.
 	if origin, held := p.origins[memory.ID]; held {
-		learned := ""
-		if age := sinceAt(origin.at, p.read); age != "" {
-			learned = age + " ago"
-		}
+		learned := memoryLearnedAge(origin.at, p.read)
 		if origin.title != "" {
 			if learned != "" {
 				learned += " · "
@@ -957,6 +954,16 @@ func (p *memoryPlace) memoryFacts(memory store.Memory) []string {
 		}
 	}
 	return facts
+}
+
+// memoryLearnedAge is [sinceAt] with the word a person says out loud: "now" and
+// a calendar date read as themselves, while a span reads "3m ago" or "2h ago".
+func memoryLearnedAge(at, now time.Time) string {
+	age := sinceAt(at, now)
+	if age == "" || age == "now" || strings.ContainsRune(age, ' ') {
+		return age
+	}
+	return age + " ago"
 }
 
 // addReach is where a line kept from the add row holds, in the pane's words.

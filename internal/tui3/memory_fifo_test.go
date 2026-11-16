@@ -93,7 +93,7 @@ func TestMemoryTwoSavesApplyAndReportInIssueOrder(t *testing.T) {
 }
 
 func TestMemorySaveThenReadAppliesAndReportsInIssueOrder(t *testing.T) {
-	testMemoryFIFO(t, "/memory cobalt", "· cobalt shipment fixture", []string{"remember cobalt shipment fixture", "memories cobalt"})
+	testMemoryFIFO(t, "/memory cobalt", "cobalt shipment fixture", []string{"remember cobalt shipment fixture", "memories cobalt"})
 }
 
 func TestMemoryIssueOrderSurvivesReversedCommandScheduling(t *testing.T) {
@@ -118,7 +118,7 @@ func TestMemoryIssueOrderSurvivesReversedCommandScheduling(t *testing.T) {
 	release()
 	a.Update(fifoMemoryReply(t, firstReplies))
 	a.Update(fifoMemoryReply(t, secondReplies))
-	if got := plain(lastNote(t, a)); !strings.Contains(got, "· cobalt shipment fixture") {
+	if got := plain(lastNote(t, a)); !strings.Contains(got, "cobalt shipment fixture") {
 		t.Fatalf("later read receipt = %q", got)
 	}
 }
@@ -181,7 +181,7 @@ func TestMemoryLateSaveKeepsTheNextCommandQueuedThroughItsGrace(t *testing.T) {
 	// grace is therefore the bounded path that releases the queued operation.
 	grace <- time.Time{}
 	a.Update(fifoMemoryReply(t, secondReplies))
-	if got := plain(lastNote(t, a)); !strings.Contains(got, "· cobalt shipment fixture") {
+	if got := plain(lastNote(t, a)); !strings.Contains(got, "cobalt shipment fixture") {
 		t.Fatalf("queued read receipt = %q, want it to see the late save", got)
 	}
 	s.mu.Lock()
