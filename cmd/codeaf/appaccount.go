@@ -198,7 +198,7 @@ func appSourcesNow() modelsource.Set {
 // would find what it needs — a key, wherever that key came from; a sign-in;
 // an address, with a key if it wants one.
 func (b *appBackend) providerView(p appProvider, sources modelsource.Set, rows map[string]config.PersistedSource) appwire.Provider {
-	view := appwire.Provider{ID: p.id, Name: p.name, SignIn: p.signIn, Kind: p.kind}
+	view := appwire.Provider{ID: p.id, Name: p.name, SignIn: p.signIn, Kind: p.kind, KeyOptional: p.source.KeyOptional}
 	service, found := sources.ByID(p.id)
 	key := ""
 	if found {
@@ -322,6 +322,9 @@ func (b *appBackend) CheckProvider(params appwire.KeyParams) (appwire.KeyCheck, 
 	if err := appKeyAsked(p, key); err != nil {
 		return appwire.KeyCheck{}, err
 	}
+	if params.Mode == "add" && p.id != modelsource.CustomID {
+		return appwire.KeyCheck{}, appwire.Errorf(appwire.CodeBadParams, "add needs custom and an address")
+	}
 	if p.id == modelsource.DefaultID {
 		address := p.check
 		if b.keyAddress != nil {
@@ -329,9 +332,13 @@ func (b *appBackend) CheckProvider(params appwire.KeyParams) (appwire.KeyCheck, 
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), appKeyCheckWait)
 		defer cancel()
-		return appCheckKey(ctx, b.keyClient, address, p.id, key), nil
+		check := appCheckKey(ctx, b.keyClient, address, p.id, key)
+		if check.OK {
+			check.Connection = &appwire.Connection{ID: p.id}
+		}
+		return check, nil
 	}
-	row, source, err := appServiceRow(config.ProfileDir(), p, params.Region, params.Address, key)
+	row, source, err := appConnectionRow(p, params, key)
 	if err != nil {
 		return appwire.KeyCheck{}, err
 	}
@@ -349,10 +356,39 @@ func appKeyAsked(p appProvider, key string) error {
 		return appwire.Errorf(appwire.CodeBadParams, "%s signs in through the browser and takes no key", p.name)
 	case p.kind == appwire.ProviderAgent && key != "":
 		return appwire.Errorf(appwire.CodeBadParams, "%s uses its own sign-in and takes no key", p.name)
-	case p.kind == appwire.ProviderKey && key == "":
+	case p.kind == appwire.ProviderKey && key == "" && !p.source.KeyOptional:
 		return appwire.Errorf(appwire.CodeBadParams, "%s needs a key", p.name)
 	}
 	return nil
+}
+
+// appConnectionRow separates an explicit add from replacing a saved endpoint.
+// A check's identity must still be free at save, so an intervening add cannot
+// turn a stale draft into an overwrite of someone else's connection.
+func appConnectionRow(p appProvider, params appwire.KeyParams, key string) (config.PersistedSource, modelsource.Source, error) {
+	profile := config.ProfileDir()
+	if params.Mode != "" && params.Mode != "add" && params.Mode != "replace" {
+		return config.PersistedSource{}, p.source, appwire.Errorf(appwire.CodeBadParams, "mode is add or replace")
+	}
+	if params.Mode == "add" {
+		if p.id != modelsource.CustomID || strings.TrimSpace(params.Address) == "" {
+			return config.PersistedSource{}, p.source, appwire.Errorf(appwire.CodeBadParams, "add needs custom and an address")
+		}
+		candidate := config.PrepareCustomSource(profile, params.Address, "")
+		if params.Connection != nil && params.Connection.ID != "" && params.Connection.ID != candidate.ID {
+			return config.PersistedSource{}, p.source, appwire.Errorf(appwire.CodeBadParams, "the connection changed; check the address again")
+		}
+		p.id, p.source.ID = candidate.ID, candidate.ID
+	}
+	if params.Mode == "replace" && modelsource.IsCustomID(p.id) {
+		if _, held := appPersistedRows()[p.id]; !held {
+			return config.PersistedSource{}, p.source, appwire.Errorf(appwire.CodeBadParams, "replace needs an existing connection")
+		}
+	}
+	if params.Connection != nil && params.Connection.ID != "" && params.Connection.ID != p.id {
+		return config.PersistedSource{}, p.source, appwire.Errorf(appwire.CodeBadParams, "connection id does not match provider")
+	}
+	return appServiceRow(profile, p, params.Region, params.Address, key)
 }
 
 // appServiceRow is the row a provider would be kept as, assembled from what
@@ -429,14 +465,18 @@ func appProvedCheck(p appProvider, source modelsource.Source, row config.Persist
 			return appwire.KeyCheck{Status: appCheckPayment, Message: redact.Secrets(config.ConnectionOutcomeWord(p.name, outcome))}
 		}
 	}
-	connection := &appwire.Connection{Region: row.Region, Door: row.Door, Listed: row.Listed}
+	connection := &appwire.Connection{ID: row.ID, Region: row.Region, Door: row.Door, Listed: row.Listed}
 	if p.kind == appwire.ProviderAddress {
 		connection.Address = row.Address
 	}
 	if len(source.Doors) > 1 {
 		connection.Plan = outcome.Door.Name
 	}
-	check := appwire.KeyCheck{OK: true, Models: appProvedModels(source, outcome), Connection: connection}
+	models := appProvedModels(source, outcome)
+	if len(models) == 0 {
+		return appwire.KeyCheck{Status: "empty", Message: "the provider answered, but has no usable models"}
+	}
+	check := appwire.KeyCheck{OK: true, Models: models, Connection: connection}
 	if outcome.Kind == modelsource.OutcomeAccountCannotPay || outcome.PlanPaused {
 		check.Message = redact.Secrets(config.ConnectionOutcomeWord(p.name, outcome))
 	}
@@ -449,7 +489,7 @@ func appProvedCheck(p appProvider, source modelsource.Source, row config.Persist
 // — the one model the terminal would move a conversation onto.
 func appProvedModels(source modelsource.Source, outcome modelsource.Outcome) []appwire.Model {
 	ids := outcome.ModelIDs
-	if len(ids) == 0 {
+	if len(ids) == 0 && !outcome.Listed {
 		if preferred := source.PreferredModel(outcome.Door, nil); preferred != "" {
 			ids = []string{preferred}
 		}
@@ -579,6 +619,9 @@ func appCheckKey(ctx context.Context, client *http.Client, address, provider, ke
 		}
 		check.Models = append(check.Models, appwire.Model{ID: id, Name: name, Provider: provider})
 	}
+	if len(check.Models) == 0 {
+		return appwire.KeyCheck{Status: "empty", Message: "the provider answered, but has no usable models"}
+	}
 	return check
 }
 
@@ -646,6 +689,8 @@ func (b *appBackend) SetKey(provider, key string) error {
 // proved — its region, the road its key opened, its address — in the profile.
 // A launch's hand-over carries no connection and keeps what is already there.
 func (b *appBackend) SetProvider(params appwire.KeyParams) error {
+	b.providerSave.Lock()
+	defer b.providerSave.Unlock()
 	if params.Provider == appwire.KeyGitHub {
 		return b.setGitHubKey(params.Key)
 	}
@@ -660,6 +705,23 @@ func (b *appBackend) SetProvider(params appwire.KeyParams) error {
 	if err := appKeyAsked(p, key); err != nil {
 		return err
 	}
+	// Launch credential handover remains offline. An interactive save proves
+	// the current catalog again before changing either profile or credentials.
+	if p.kind != appwire.ProviderAgent && (params.Connection != nil || params.Mode != "" || params.Address != "" || params.Region != "") {
+		if params.Connection != nil {
+			params.Address = firstNonEmptyString(params.Connection.Address, params.Address)
+			params.Region = firstNonEmptyString(params.Connection.Region, params.Region)
+		}
+		check, err := b.CheckProvider(params)
+		if err != nil {
+			return err
+		}
+		if !check.OK {
+			return appwire.Errorf(appwire.CodeBadParams, "%s", check.Message)
+		}
+		params.Connection = check.Connection
+	}
+
 	if p.kind == appwire.ProviderAgent {
 		if _, err := config.ConnectClaudeCode(context.Background(), config.ProfileDir()); err != nil {
 			return appwire.Errorf(appwire.CodeBadParams, "%s", err.Error())
@@ -673,6 +735,9 @@ func (b *appBackend) SetProvider(params appwire.KeyParams) error {
 	if p.id != modelsource.DefaultID {
 		if err := b.keepConnection(p, params, key); err != nil {
 			return err
+		}
+		if params.Connection != nil && params.Connection.ID != "" {
+			p, _ = b.appProviderNamed(params.Connection.ID)
 		}
 	}
 	if key != "" {
@@ -738,7 +803,8 @@ func (b *appBackend) keepConnection(p appProvider, params appwire.KeyParams, key
 	if !said && (p.kind != appwire.ProviderAddress || held || key != "") {
 		return nil
 	}
-	row, source, err := appServiceRow(profile, p, region, address, key)
+	params.Region, params.Address = region, address
+	row, source, err := appConnectionRow(p, params, key)
 	if err != nil {
 		return err
 	}
@@ -756,7 +822,11 @@ func (b *appBackend) keepConnection(p appProvider, params appwire.KeyParams, key
 		listed := *connection.Listed
 		row.Listed = &listed
 	}
-	if err := config.KeepAppSource(profile, row); err != nil {
+	keep := config.KeepAppSource
+	if params.Mode == "add" {
+		keep = config.AddAppSource
+	}
+	if err := keep(profile, row); err != nil {
 		return appEngineError(err)
 	}
 	return nil

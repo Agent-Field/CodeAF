@@ -751,6 +751,7 @@ type appBackend struct {
 	keyHealth        keyHealthCache
 	monitorKeyHealth bool
 	keys             *config.AppCredentials
+	providerSave     sync.Mutex
 	keyClient        *http.Client
 	keyAddress       func(provider string) string
 	vendored         func() []modelsource.Source

@@ -176,6 +176,9 @@ var setupMethods = map[string]method{
 // back to keys.set so the provider is kept as it was proved. The key may be
 // empty for a provider that takes none ([ProviderConnector]).
 type KeyParams struct {
+	// Mode is add for a new custom endpoint or replace for an existing row.
+	// Omitted mode preserves the original client behavior.
+	Mode       string      `json:"mode,omitempty" enum:"add,replace"`
 	Provider   string      `json:"provider"`
 	Key        string      `json:"key"`
 	Region     string      `json:"region,omitempty"`
@@ -239,6 +242,9 @@ func decodeKey(raw json.RawMessage, name string, keyless bool) (KeyParams, error
 		return KeyParams{}, Errorf(CodeBadParams, "%s needs a provider and a key, both strings", name)
 	}
 	p.Provider, p.Key = strings.ToLower(strings.TrimSpace(p.Provider)), strings.TrimSpace(p.Key)
+	if p.Mode != "" && p.Mode != "add" && p.Mode != "replace" {
+		return KeyParams{}, Errorf(CodeBadParams, "mode is add or replace")
+	}
 	p.Region, p.Address = strings.TrimSpace(p.Region), strings.TrimSpace(p.Address)
 	if p.Provider == "" || p.Key == "" && !keyless {
 		return KeyParams{}, Errorf(CodeBadParams, "%s needs a provider and a key", name)
