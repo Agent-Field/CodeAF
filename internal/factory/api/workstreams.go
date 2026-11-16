@@ -54,6 +54,11 @@ type (
 	WorkstreamDecision = factory.WorkstreamDecision
 	WorkstreamSource   = factory.WorkstreamSource
 	Share              = factory.Share
+	WorkstreamRules    = factory.WorkstreamRules
+	RulesOwner         = factory.RulesOwner
+	RulesPerson        = factory.RulesPerson
+	KeepsRunning       = factory.KeepsRunning
+	KeepCandidate      = factory.KeepCandidate
 )
 
 // WorkstreamSummary is one row of the list: enough to draw Home.
@@ -79,6 +84,12 @@ type WorkstreamSummary struct {
 	UpdatedAt  string          `json:"updated_at"`
 	ArchivedAt string          `json:"archived_at,omitempty"`
 	Rev        int             `json:"rev"`
+	// Parent is the workstream it sits inside, absent at the top. Steward is
+	// who looks after it, and MySteward whether that is the caller: only
+	// the steward changes its people and rules (workstream_structure.go).
+	Parent    string       `json:"parent,omitempty"`
+	Steward   *RulesPerson `json:"steward,omitempty"`
+	MySteward bool         `json:"my_steward,omitempty"`
 }
 
 // Workstream is one workstream whole. GoAheads are the allowances of the
@@ -100,6 +111,46 @@ type Workstream struct {
 	CreatedBy string   `json:"created_by"`
 	// Driver is who is driving its agent now, absent when nobody is.
 	Driver *WorkstreamDriver `json:"driver,omitempty"`
+	// People are its owner and shares as one list of persons and teams, each
+	// with the role access reads; a child's are its parent's. Rules are how
+	// it runs, filled with the defaults when it never set any.
+	People []WorkstreamMember `json:"people"`
+	Rules  WorkstreamRules    `json:"rules"`
+}
+
+// The kinds a workstream member may be.
+const (
+	MemberPerson = "person"
+	MemberTeam   = "team"
+)
+
+// WorkstreamMember is one person or team in a workstream. Members are a
+// team's people as the organization keeps them now, so adding a team adds
+// everyone in it, now and later. Steward marks the person who looks after
+// it. AddedAt is when they were added, absent when that was never kept.
+type WorkstreamMember struct {
+	Kind    string   `json:"kind" jsonschema:"enum=person,enum=team"`
+	ID      string   `json:"id"`
+	Name    string   `json:"name"`
+	Role    string   `json:"role" jsonschema:"enum=view,enum=comment,enum=edit,enum=full"`
+	Members []string `json:"members,omitempty"`
+	Steward bool     `json:"steward,omitempty"`
+	AddedAt string   `json:"added_at,omitempty"`
+}
+
+// WorkstreamArchiveKeep is GET /v1/workstreams/{id}/archive/keep's answer:
+// what a child could leave in its parent when it is archived. The parent is
+// absent, and Keep empty, for a top-level workstream.
+type WorkstreamArchiveKeep struct {
+	Parent string          `json:"parent,omitempty"`
+	Keep   []KeepCandidate `json:"keep"`
+}
+
+// WorkstreamFolded is POST /v1/workstreams/{id}/fold's answer: the parent as
+// it is now, and the heading the child became in it.
+type WorkstreamFolded struct {
+	Parent  Workstream `json:"parent"`
+	Heading string     `json:"heading"`
 }
 
 // DriverHandSeconds is how long a workstream's driver hand lasts unless its
@@ -141,6 +192,11 @@ type WorkstreamNew struct {
 	Decisions []WorkstreamDecision `json:"decisions,omitempty"`
 	Sources   []WorkstreamSource   `json:"sources,omitempty"`
 	Links     []string             `json:"links,omitempty"`
+	// Parent puts it inside a top-level workstream: it takes that one's
+	// people (Owner, Private and shares are then refused) and starts with a
+	// copy of its rules unless Rules is sent.
+	Parent string           `json:"parent,omitempty"`
+	Rules  *WorkstreamRules `json:"rules,omitempty"`
 }
 
 // WorkstreamPatch is PATCH /v1/workstreams/{id}'s body: any subset, and an
@@ -155,6 +211,12 @@ type WorkstreamPatch struct {
 	Links     *[]string             `json:"links,omitempty"`
 	// BudgetUSD sets what it may spend; a negative number clears it.
 	BudgetUSD *float64 `json:"budget_usd,omitempty"`
+	// Rules replaces its rules whole, and Steward hands it on to another
+	// person in it; only its steward sends either. Parent moves it inside a
+	// top-level workstream, or "" to the top.
+	Rules   *WorkstreamRules `json:"rules,omitempty"`
+	Steward *string          `json:"steward,omitempty"`
+	Parent  *string          `json:"parent,omitempty"`
 }
 
 // WorkstreamSharesPut is PUT /v1/workstreams/{id}/shares's body, and it lands
@@ -226,4 +288,7 @@ type WorkstreamEvent struct {
 	// Flagged are the tasks a change to a file's contents flags: the ones
 	// whose agents read it (part "files" only).
 	Flagged []string `json:"flagged,omitempty"`
+	// Parts names what changed when it is one of a workstream's v5 parts:
+	// "tasks", "files" or "rules".
+	Parts []string `json:"parts,omitempty"`
 }

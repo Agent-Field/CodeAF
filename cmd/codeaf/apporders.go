@@ -103,6 +103,7 @@ func orderView(asking map[string]automation.Run, a automation.Automation, now ti
 		When:         automation.Describe(a.Schedule, now),
 		WhenExact:    automation.Exact(a.Schedule),
 		Wont:         a.Wont,
+		Workstream:   a.Workstream,
 		AnswersIn:    string(a.AnswersIn),
 		Trust:        string(a.Trust),
 		ApprovedRuns: a.Approved,
@@ -378,6 +379,13 @@ func (b *appBackend) changeOrder(store *automation.Store, id string, edits appwi
 	}
 	if edits.AnswersIn != nil {
 		a.AnswersIn = automation.Scope(*edits.AnswersIn)
+	}
+	if edits.Workstream != nil {
+		ws := strings.TrimSpace(*edits.Workstream)
+		if len(ws) > 200 || strings.ContainsAny(ws, "\r\n\t") {
+			return a, appwire.Errorf(appwire.CodeBadParams, "workstream is a workstream's id")
+		}
+		a.Workstream = ws
 	}
 	if edits.BudgetPerRunUSD != nil {
 		if *edits.BudgetPerRunUSD <= 0 {

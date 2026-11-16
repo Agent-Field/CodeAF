@@ -88,6 +88,9 @@ type Order struct {
 	Does      string `json:"does"`
 	Wont      string `json:"wont,omitempty"`
 	AnswersIn string `json:"answers_in" enum:"chat,crew,everywhere,not_here"`
+	// Workstream is the workstream it keeps running for, absent for one that
+	// belongs to none: its results land there as a group named after it.
+	Workstream string `json:"workstream,omitempty"`
 	// Trust is the ladder's rung, ApprovedRuns how many go's it has had, and
 	// TrustAfter how many make it trusted.
 	Trust           string     `json:"trust" enum:"asks_first,earning,trusted"`
@@ -132,6 +135,8 @@ type OrderEdits struct {
 	BudgetPerRunUSD *float64 `json:"budget_per_run_usd,omitempty"`
 	TimePerRunS     *int     `json:"time_per_run_s,omitempty"`
 	Trust           *string  `json:"trust,omitempty"`
+	// Workstream scopes it to a workstream, or "" to none.
+	Workstream *string `json:"workstream,omitempty"`
 }
 
 // OrderChanged is order.changed and order.missed.

@@ -59,18 +59,29 @@ func taskBy(v Viewer) factory.TaskEventBy {
 }
 
 // taskDefaultOwner owns work nobody asked for directly: the workstream's
-// owner when that is a person, else Everyone. (rules.default_owner replaces
-// this when the workstream carries its rules.)
+// "Owner of incoming work" (rules.default_owner), a named person or
+// Everyone. A workstream that never set its rules gives it to its steward.
 func taskDefaultOwner(ws factory.OrgWorkstream) factory.TaskOwner {
-	if ws.Owner.Kind == api.OwnerPerson && ws.Owner.ID != "" {
-		return factory.TaskOwner{Kind: factory.TaskOwnerPerson, ID: ws.Owner.ID, Name: ws.Owner.ID}
+	o := ws.RulesOrDefault().DefaultOwner
+	if o.Kind == factory.RulesOwnerPerson && o.ID != "" {
+		name := o.Name
+		if name == "" {
+			name = o.ID
+		}
+		return factory.TaskOwner{Kind: factory.TaskOwnerPerson, ID: o.ID, Name: name}
 	}
 	return factory.TaskOwner{Kind: factory.TaskOwnerEveryone}
 }
 
-// taskFallback is the workstream's fallback person (rules.fallback), "" for
-// none. A workstream that carries no rules has none.
-func taskFallback(factory.OrgWorkstream) string { return "" }
+// taskFallback is the workstream's "If unanswered for a day" person
+// (rules.fallback), "" for none: an Ask unanswered for a day goes to them
+// too.
+func taskFallback(ws factory.OrgWorkstream) string {
+	if f := ws.RulesOrDefault().Fallback; f != nil {
+		return f.ID
+	}
+	return ""
+}
 
 func (h *Handler) newTaskID(prefix string) func() string {
 	return func() string {

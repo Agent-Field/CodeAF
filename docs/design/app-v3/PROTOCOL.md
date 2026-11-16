@@ -427,6 +427,8 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.org_workstream_shares` | `in.OrgWorkstreamSharesParams` | `OrgWorkstreamShared` |
 | `factory.org_workstream_share_preview` | `in.OrgWorkstreamSharePreviewParams` | `OrgSharePreview` |
 | `factory.org_workstream_import` | `in.OrgWorkstreamImportParams` | `OrgWorkstream` |
+| `factory.org_workstream_archive_keep` | `in.OrgWorkstreamParams` | `OrgArchiveKeep` |
+| `factory.org_workstream_fold` | `in.OrgWorkstreamParams` | `OrgWorkstreamFolded` |
 | `factory.org_presence` | `in.OrgPresenceParams` | `OrgPresence` |
 | `factory.org_workstream_activity` | `in.OrgActivityParams` | `OrgActivity` |
 | `factory.org_doc_read` | `in.OrgDocParams` | `OrgDocState` |
@@ -812,6 +814,55 @@ Personal ids of workstreams the same person already moved in; they are linked by
 their organization ids, and a later import is linked from earlier ones that named it.
 When the operator removes a person, their workstreams go to `?heir=<handle>` or the
 operator, and they leave every share; each change is a `workstream.changed` event.
+
+**A workstream's structure (Workstreams v5, SPEC §2.1).** An engine whose hello carries
+`org_workstream_nesting` and `org_workstream_rules` carries these fields; an older server
+answers a workstream without them.
+
+- `parent` (summary and whole): the top-level workstream it sits inside. NESTING IS ONE
+  LEVEL: `factory.org_workstream_create {parent}` or `factory.org_workstream_update
+  {parent}` naming a workstream that has a parent, or moving one that has children, is a
+  422. A child ALWAYS HAS ITS PARENT'S PEOPLE: the server copies the parent's owner,
+  shares and privacy onto every child in the save that changed them, so
+  `factory.org_workstream_owner` and `factory.org_workstream_shares` on a child are a
+  422, and `create {parent}` beside `owner` or `private` is a 422. Creating inside needs
+  edit on the parent.
+- `steward {id, name}` and `my_steward` (summary): who looks after it, its maker until
+  handed on with `update {steward: handle}`. ONLY THE STEWARD sends `rules` or `steward`
+  (else 403 `forbidden`); the steward also governs its people beside its owner, owning
+  team and the operator.
+- `people` (whole): owner and shares as one list, `{kind: person|team, id, name, role,
+  members?, steward?, added_at?}`, owner first. A team's `members` are read now, so
+  adding a team adds everyone in it, now and later.
+- `rules` (whole, filled with defaults): `{default_owner: {kind: person|everyone, id?,
+  name?}, fallback?: {id, name}, start_without_asking_usd, keeps_running: {factory,
+  orders: [order id]}}`. The default is the steward owning incoming work and `0`. A child
+  starts with a copy of its parent's rules (its maker as `default_owner`) unless `create`
+  sends `rules`, and changes its own copy. `update {rules}` replaces them whole and
+  publishes `workstream.changed` with `parts: ["rules"]`.
+- `start_without_asking_usd` IS THE WORKSTREAM'S GO-AHEAD: the server keeps one
+  allowance `start-without-asking` in the policy under the workstream's id, covering its
+  jobs with `per_job_usd` set to the amount (every job it starts is held to it) and
+  `cap_usd` the amount times the jobs. It is written again whenever the rule or the
+  workstream's jobs change; `0` takes it away (never start without asking). Allowances a
+  person made keep their own ids and are not touched. An allowance's `per_job_usd` is
+  `0..cap_usd`.
+- `factory.org_workstream_archive_keep {id}` `GET .../archive/keep` answers `{parent?,
+  keep: [{kind: page|source, id, title}]}`: what a child could leave in its parent when it
+  is archived (nothing for a top-level one).
+- `factory.org_workstream_fold {id}` `POST .../fold` turns a child back into a heading in
+  its parent: its jobs move into the parent and it is archived. It answers `{parent,
+  heading}`, the heading being the child's name; tasks and files fold by that heading in
+  their own lanes. A top-level one is a 422; it needs edit on both.
+- Removing a person (from shares, or a team leaving) hands their open work in the
+  workstream and its children to `rules.fallback`, else the steward (the tasks lane's
+  hook).
+
+**Standing orders scoped to a workstream.** An order carries `workstream` (absent: none),
+and `orders.change {id, edits: {workstream}}` sets it, `""` clearing it. It changes
+nothing about when or how the order runs; the desk lands a scoped order's results in
+that workstream's task list as a group named after the order, and its People and rules
+page switches it through `rules.keeps_running.orders`.
 
 An engine whose hello carries `org_agent_runner` reads and keeps where an organization
 workstream's agent runs. `factory.org_agent_runner` `GET /v1/settings` answers

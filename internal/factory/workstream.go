@@ -60,6 +60,16 @@ type OrgWorkstream struct {
 	UpdatedAt      time.Time  `json:"updated_at"`
 	ArchivedAt     *time.Time `json:"archived_at,omitempty"`
 	Rev            int        `json:"rev"`
+	// Parent, Steward and Rules are its structure (workstream_structure.go):
+	// the workstream it sits inside, the person who looks after it, and how
+	// it runs. Rules nil is [DefaultRules] for its steward.
+	Parent  string           `json:"parent,omitempty"`
+	Steward string           `json:"steward,omitempty"`
+	Rules   *WorkstreamRules `json:"rules,omitempty"`
+	// PeopleAdded is when each person or team ("person:<handle>",
+	// "team:<id>") was added, for the line "Added Nov 2"; one added before it
+	// was kept has none, and says nothing.
+	PeopleAdded map[string]string `json:"people_added,omitempty"`
 }
 
 // OrgWorkstreams are every organization workstream, by id.
