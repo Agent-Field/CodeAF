@@ -37,3 +37,7 @@ Connecting a provider does not change the chosen default model.
 Desktop clients enable explicit add-another behavior only when the engine
 advertises `providers.instances`. An older engine can ignore the add mode and
 replace its first endpoint, so the desktop must hide that action until upgraded.
+
+Models from each custom server belong to that server's saved connection ID.
+Their qualified model names keep routing turns to the same server, even when
+the connection ID and its readable routing prefix differ.

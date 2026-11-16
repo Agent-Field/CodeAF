@@ -499,6 +499,9 @@ func appProvedModels(source modelsource.Source, outcome modelsource.Outcome) []a
 	}
 	connected := modelsource.Connected{Source: source}
 	group := strings.ToLower(strings.TrimSpace(source.Written))
+	if modelsource.IsCustomID(source.ID) {
+		group = source.ID
+	}
 	name := source.Name
 	if modelsource.IsCustomID(source.ID) || name == "" {
 		name = strings.TrimSpace(source.Written)

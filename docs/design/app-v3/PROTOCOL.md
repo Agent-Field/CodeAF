@@ -2470,3 +2470,8 @@ engine implements the explicit instance contract. Clients must gate add-another
 custom and compatible local preset actions on that exact capability: older
 engines may silently ignore the new mode field. `ProviderConnector` alone does
 not advertise this capability.
+
+For custom instances, every model returned by `keys.check` and `models.list`
+sets `provider` to the persisted provider ID (`connection.id` / `providers.list`
+`id`). Model IDs keep their qualified routing prefix and display names remain
+human-readable; a routing prefix is not a connection ID.

@@ -11,3 +11,7 @@ invalidates:
 The additive mode and connection ID preserve older client behavior and offline
 launch credential handover. Profile write failures do not adopt credentials;
 retry after repairing storage keeps one row. Browser sign-in is unchanged.
+
+Custom model rows now identify their provider by the saved connection ID in
+both check and listing responses. Qualified model IDs still use the existing
+routing names; desktop clients can join model rows to provider rows directly.

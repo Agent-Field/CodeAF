@@ -49,6 +49,9 @@ func TestAppWireAddsSeparateCustomConnections(t *testing.T) {
 			t.Fatalf("check = %+v", check)
 		}
 		ids = append(ids, check.Connection["id"].(string))
+		if check.Models[0].Provider != ids[i] {
+			t.Fatalf("check identity: connection=%s models=%+v", ids[i], check.Models)
+		}
 		params["connection"] = check.Connection
 		w.must("keys.set", params, nil)
 	}
@@ -72,10 +75,10 @@ func TestAppWireAddsSeparateCustomConnections(t *testing.T) {
 		Models []appwire.Model `json:"models"`
 	}
 	again.must("models.list", map[string]any{}, &models)
-	for _, name := range []string{"first-model", "second-model"} {
+	for i, name := range []string{"first-model", "second-model"} {
 		found := false
 		for _, m := range models.Models {
-			if m.Name == name {
+			if m.Name == name && m.Provider == ids[i] {
 				found = true
 			}
 		}

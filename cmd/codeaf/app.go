@@ -4363,6 +4363,7 @@ func (b *appBackend) ListModels() ([]appwire.Model, error) {
 	_, sources := proc.currentAccount()
 	rows := tui3.PickerModels(proc.ProfileDir, sources, proc.Shelf.pickerModels, proc.Shelf.modelsForService)
 	names := map[string]string{}
+	customIDs := map[string]string{}
 	for _, service := range sources.All() {
 		group := strings.ToLower(strings.TrimSpace(service.Source.Written))
 		if group == "" {
@@ -4373,6 +4374,9 @@ func (b *appBackend) ListModels() ([]appwire.Model, error) {
 			name = strings.TrimSpace(service.Source.Written)
 		}
 		names[group] = name
+		if modelsource.IsCustomID(service.Source.ID) {
+			customIDs[group] = service.Source.ID
+		}
 	}
 	chosen := appDefaultModel()
 	models := make([]appwire.Model, 0, len(rows)+1)
@@ -4428,6 +4432,14 @@ func (b *appBackend) ListModels() ([]appwire.Model, error) {
 			provider = strings.ToLower(service.Source.Written)
 		}
 		models = append(models, appwire.Model{ID: chosen, Name: chosen, Provider: provider, ProviderName: names[provider], Default: true})
+	}
+	// The picker groups by the routing name, but the app joins models to
+	// providers by persisted identity. Keep qualified model IDs untouched: their
+	// prefixes still select the same server when a conversation sends a turn.
+	for i := range models {
+		if id := customIDs[models[i].Provider]; id != "" {
+			models[i].Provider = id
+		}
 	}
 	return models, nil
 }
