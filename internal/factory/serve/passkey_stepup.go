@@ -37,7 +37,16 @@ func stepUpKey(a api.StepUpAction) (string, bool) {
 	return "", false
 }
 
-// grant records a confirmation by session id for action.
+// passkeyGrant is one confirmation: the action key it is for and when it
+// was made.
+type passkeyGrant struct {
+	key string
+	at  time.Time
+}
+
+// grant records a confirmation by session id for action. A session keeps
+// at most passkeyGrantsPerSession, its newest; the table keeps at most
+// passkeyGrantsMost, dropping the oldest anyone holds to take a new one.
 func (h *Handler) grant(sessionID string, a api.StepUpAction, now time.Time) {
 	key, ok := stepUpKey(a)
 	if !ok || sessionID == "" {
@@ -47,16 +56,58 @@ func (h *Handler) grant(sessionID string, a api.StepUpAction, now time.Time) {
 	st.mu.Lock()
 	defer st.mu.Unlock()
 	if st.grants == nil {
-		st.grants = map[string]time.Time{}
+		st.grants = map[string][]passkeyGrant{}
 	}
-	for k, at := range st.grants {
-		if now.Sub(at) >= passkeyStepUpLife {
-			delete(st.grants, k)
+	total := 0
+	for id, held := range st.grants {
+		live := held[:0]
+		for _, g := range held {
+			if now.Sub(g.at) < passkeyStepUpLife {
+				live = append(live, g)
+			}
+		}
+		if len(live) == 0 {
+			delete(st.grants, id)
+			continue
+		}
+		st.grants[id] = live
+		total += len(live)
+	}
+	// The same action again replaces its own; a fourth replaces the oldest.
+	var held []passkeyGrant
+	for _, g := range st.grants[sessionID] {
+		if g.key != key {
+			held = append(held, g)
 		}
 	}
-	if len(st.grants) < passkeyGrantsMost {
-		st.grants[sessionID+"\x00"+key] = now
+	if len(held) >= passkeyGrantsPerSession {
+		held = held[len(held)-passkeyGrantsPerSession+1:]
 	}
+	total -= len(st.grants[sessionID]) - len(held)
+	st.grants[sessionID] = append(held, passkeyGrant{key: key, at: now})
+	for total >= passkeyGrantsMost && st.dropOldestGrantLocked(sessionID) {
+		total--
+	}
+}
+
+// dropOldestGrantLocked drops the oldest confirmation any session but
+// keep holds, or answers false.
+func (st *passkeyState) dropOldestGrantLocked(keep string) bool {
+	oldestID, oldestAt := "", time.Time{}
+	for id, held := range st.grants {
+		if id != keep && len(held) > 0 && (oldestID == "" || held[0].at.Before(oldestAt)) {
+			oldestID, oldestAt = id, held[0].at
+		}
+	}
+	if oldestID == "" {
+		return false
+	}
+	if rest := st.grants[oldestID][1:]; len(rest) > 0 {
+		st.grants[oldestID] = rest
+	} else {
+		delete(st.grants, oldestID)
+	}
+	return true
 }
 
 // granted is whether session holds a live confirmation for action; take
@@ -69,14 +120,35 @@ func (h *Handler) granted(session accessSession, a api.StepUpAction, take bool) 
 	st := h.pk()
 	st.mu.Lock()
 	defer st.mu.Unlock()
-	at, held := st.grants[session.id+"\x00"+key]
-	if !held || h.now().Sub(at) >= passkeyStepUpLife {
-		return false
+	held := st.grants[session.id]
+	for i, g := range held {
+		if g.key != key {
+			continue
+		}
+		if h.now().Sub(g.at) >= passkeyStepUpLife {
+			return false
+		}
+		if take {
+			st.grants[session.id] = append(held[:i:i], held[i+1:]...)
+		}
+		return true
 	}
-	if take {
-		delete(st.grants, session.id+"\x00"+key)
+	return false
+}
+
+// passkeyNamed is the name of acct's passkey id, and whether it has one.
+func passkeyNamed(acct tokens.Account, id string) (string, bool) {
+	for _, pk := range acct.Passkeys {
+		if pk.ID == id {
+			return pk.Name, true
+		}
 	}
-	return true
+	return "", false
+}
+
+func passkeyKnown(acct tokens.Account, id string) bool {
+	_, ok := passkeyNamed(acct, id)
+	return ok
 }
 
 // stepUp refuses an action that needs a confirmation, naming it.
@@ -84,19 +156,32 @@ func (h *Handler) stepUp(w http.ResponseWriter, a api.StepUpAction) {
 	h.writeRefusal(w, http.StatusForbidden, refusalBody{Error: passkeyStepUpWords, Reason: api.ReasonStepUp, Action: &a})
 }
 
-// requestedBy is the computer a confirm names on its page: what the engine
-// says it is, cleaned, or the session's own device label.
-func requestedBy(given string, session accessSession) string {
-	if name, ok := cleanDisplayName(given); ok && name != "" {
-		if len(name) > 60 {
-			name = strings.TrimSpace(name[:60])
-		}
-		return name
+// requestedBy says which computer asked for a confirm, as its page names
+// it: "a computer named “santosh-mac”, signed in 16 Nov 2026 from
+// 203.0.113.7". The name is whatever the engine claims (or the session's own
+// device label), so it is quoted and framed as a name, never shown bare
+// where it could read as an instruction; beside it are what the server knows
+// itself, the session's sign-in date and the address the start came from.
+func requestedBy(given string, session accessSession, from string) string {
+	name, ok := cleanDisplayName(given)
+	if !ok || name == "" {
+		name = session.device
 	}
-	if session.device != "" {
-		return session.device
+	name = strings.TrimSpace(strings.NewReplacer("“", "", "”", "", `"`, "").Replace(name))
+	if len(name) > 60 {
+		name = strings.TrimSpace(strings.ToValidUTF8(name[:60], ""))
 	}
-	return "another computer"
+	words := "a computer"
+	if name != "" {
+		words += " named “" + name + "”"
+	}
+	if !session.created.IsZero() {
+		words += ", signed in " + session.created.UTC().Format("2 Jan 2006")
+	}
+	if from != "" && from != "invalid IP" {
+		words += " from " + from
+	}
+	return words
 }
 
 // passwordConfirm is POST /v1/me/password/confirm: the signed-in person shows
@@ -133,6 +218,12 @@ func (h *Handler) passwordConfirm(w http.ResponseWriter, r *http.Request) {
 	}
 	if !found || acct.Hash == "" {
 		h.fail(w, http.StatusNotFound, "this sign-in has no password")
+		return
+	}
+	if body.Action.Kind == api.StepUpRemovePasskey && !passkeyKnown(acct, body.Action.Passkey) {
+		// The same answer a passkey confirm for it gets: nothing is held
+		// for a passkey that is not this person's.
+		h.fail(w, http.StatusNotFound, "no such passkey")
 		return
 	}
 	given := normalPassword(body.Password)

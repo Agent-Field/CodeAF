@@ -103,9 +103,17 @@ const (
 	// passkeyOpenedPerPrefix is how many opened sign-ins one /24 (IPv4) or
 	// /48 (IPv6) keeps; one more drops the oldest of them.
 	passkeyOpenedPerPrefix = 16
+	// passkeyFairShare is how many opened sign-ins a network (/24, or /32
+	// for IPv6) keeps against everyone else: a full table never takes one
+	// of these from it to make room for another network.
+	passkeyFairShare = 4
 	// passkeyCodeLife is how long a finished flow's hand-over and code work.
 	passkeyCodeLife = 60 * time.Second
-	// passkeyGrantsMost bounds the confirmations held in memory.
+	// passkeyGrantsPerSession is how many confirmations one session holds;
+	// a fourth replaces its oldest.
+	passkeyGrantsPerSession = 3
+	// passkeyGrantsMost bounds the confirmations held in memory across all
+	// sessions; past it the oldest anyone holds is dropped, never the new one.
 	passkeyGrantsMost = 4096
 	// passkeyUnopenedLife is how long a sign-in flow whose page was never
 	// fetched lives; such flows are the first to go when sign-ins are full.
@@ -187,7 +195,10 @@ type passkeyFlow struct {
 	// ceremony (a GET alone does not count).
 	addr   string
 	prefix string
-	opened bool
+	// network is the flow's /24 (IPv4) or /32 (IPv6), the unit a full
+	// table shares its room by; a /32 is what one party is commonly given.
+	network string
+	opened  bool
 	// browserSum is the SHA-256 of the nonce in the cookie of the one
 	// browser the flow is bound to, set on its first options call; zero is
 	// unbound. Every later options, finish and hand-over needs that cookie.
@@ -202,7 +213,8 @@ type passkeyFlow struct {
 	handed    bool
 	wrong     int
 	// sessionID is the signed-in session a confirm proves; action is the one
-	// thing it confirms and requestedBy the computer that asked. doneAt is
+	// thing it confirms and requestedBy the computer that asked, as its page
+	// says it (see requestedBy). doneAt is
 	// when the ceremony finished: the code works passkeyCodeLife after it.
 	sessionID   string
 	action      api.StepUpAction
@@ -230,9 +242,10 @@ type passkeyState struct {
 	mu     sync.Mutex
 	flows  map[string]*passkeyFlow
 	starts *throttle
-	// grants are confirmations: session id NUL action key → when made
-	// (passkey_stepup.go).
-	grants map[string]time.Time
+	// grants are confirmations by session id, newest last, at most
+	// passkeyGrantsPerSession each: one person can only ever hold a few, and
+	// the table as a whole is bounded by passkeyGrantsMost, oldest out.
+	grants map[string][]passkeyGrant
 	// plainLocalhost lets tests run a ceremony against http://localhost,
 	// which browsers treat as a secure context. It is never set by a config.
 	plainLocalhost bool
@@ -298,8 +311,12 @@ func (h *Handler) relyingParty() (rpID, origin string, ok bool) {
 	return host, u.Scheme + "://" + host, true
 }
 
-// hsts is this server's HSTS header, by the host of its public address.
+// hsts is this server's HSTS header: includeSubDomains only when the
+// operator asked for it and the host is a name they can own.
 func (h *Handler) hsts() string {
+	if !h.config.HSTSSubdomains {
+		return hstsValue
+	}
 	u, err := url.Parse(strings.TrimRight(h.factory.Address, "/"))
 	if err != nil {
 		return hstsValue
@@ -472,6 +489,20 @@ func passkeyPrefixKey(r *http.Request) string {
 	return throttleAddr(addr)
 }
 
+// passkeyNetworkKey is the request's /24 (IPv4) or /32 (IPv6): the unit
+// eviction is fair between. An IPv6 /48 is too cheap to hold many of.
+func passkeyNetworkKey(r *http.Request) string {
+	addr := clientOf(r).addr.Unmap()
+	bits := 24
+	if addr.Is6() {
+		bits = 32
+	}
+	if p, err := addr.Prefix(bits); err == nil {
+		return p.String()
+	}
+	return throttleAddr(addr)
+}
+
 // passkeyReturn is the engine's loopback url a start names, or "".
 func passkeyReturn(port int, path string) string {
 	if port < 1024 || port > 65535 {
@@ -521,7 +552,7 @@ func (h *Handler) passkeyStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	flow := &passkeyFlow{purpose: body.Purpose, created: now, expires: now.Add(passkeyFlowLife), state: api.PasskeyPending,
-		addr: addrKey, prefix: passkeyPrefixKey(r), returnTo: returnTo, returnKey: returnKey}
+		addr: addrKey, prefix: passkeyPrefixKey(r), network: passkeyNetworkKey(r), returnTo: returnTo, returnKey: returnKey}
 	copy(flow.challenge[:], challenge)
 	if (body.Action != nil) != (body.Purpose == api.PasskeyConfirm) {
 		h.fail(w, http.StatusUnprocessableEntity, "a confirm names one action, and nothing else does")
@@ -550,18 +581,14 @@ func (h *Handler) passkeyStart(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if body.Action.Kind == api.StepUpRemovePasskey {
-				found := false
-				for _, pk := range acct.Passkeys {
-					if pk.ID == body.Action.Passkey {
-						found, flow.passkeyName = true, pk.Name
-					}
-				}
+				name, found := passkeyNamed(acct, body.Action.Passkey)
 				if !found {
 					h.fail(w, http.StatusNotFound, "no such passkey")
 					return
 				}
+				flow.passkeyName = name
 			}
-			flow.action, flow.requestedBy = *body.Action, requestedBy(body.Device, session)
+			flow.action, flow.requestedBy = *body.Action, requestedBy(body.Device, session, clientOf(r).addr.Unmap().String())
 		case len(acct.Passkeys) >= tokens.PasskeyMost:
 			h.fail(w, http.StatusConflict, "this account already keeps as many passkeys as it can")
 			return
@@ -633,39 +660,41 @@ func (st *passkeyState) admitFlow(f *passkeyFlow, now time.Time) bool {
 	if mine >= passkeyFlowsPerAddr {
 		return false
 	}
-	if f.purpose == api.PasskeySignIn && signIns >= passkeySignInFlowsMost && !st.evictUnopenedLocked() && !st.evictFairLocked() {
+	if f.purpose == api.PasskeySignIn && signIns >= passkeySignInFlowsMost && !st.evictUnopenedLocked() && !st.evictFairLocked(f.network) {
 		return false
 	}
-	if len(st.flows) >= passkeyFlowsMost && !st.evictUnopenedLocked() && !st.evictFairLocked() {
+	if len(st.flows) >= passkeyFlowsMost && !st.evictUnopenedLocked() && !st.evictFairLocked(f.network) {
 		return false
 	}
 	st.flows[f.id] = f
 	return true
 }
 
-// evictFairLocked drops, when every sign-in has been opened, the oldest
-// opened sign-in from the network (/24 or /48) holding the most of them, so
-// a flood from many networks shares the room and a person on a fresh
-// network still gets in.
-func (st *passkeyState) evictFairLocked() bool {
+// evictFairLocked makes room for a newcomer from network, when every
+// sign-in has been opened, by dropping one opened sign-in from the network
+// holding the most, and only when that network holds clearly more than its
+// share: more than passkeyFairShare and more than the newcomer's own network
+// holds plus one. Otherwise it answers false and the newcomer is refused, so
+// a flood spread one sign-in per network never drains a busy office of the
+// few it holds, while a flood from a few networks still yields room. Among
+// networks that hold equally many, the one with the oldest flow gives way.
+func (st *passkeyState) evictFairLocked(network string) bool {
 	held := map[string]int{}
 	for _, g := range st.flows {
 		if g.purpose == api.PasskeySignIn && g.opened {
-			held[g.prefix]++
+			held[g.network]++
 		}
 	}
-	most := ""
-	for p, n := range held {
-		if most == "" || n > held[most] || (n == held[most] && p < most) {
-			most = p
-		}
+	most := 0
+	for _, n := range held {
+		most = max(most, n)
 	}
-	if most == "" {
+	if most <= passkeyFairShare || most <= held[network]+1 {
 		return false
 	}
 	var oldest *passkeyFlow
 	for _, g := range st.flows {
-		if g.purpose == api.PasskeySignIn && g.opened && g.prefix == most && (oldest == nil || g.created.Before(oldest.created)) {
+		if g.purpose == api.PasskeySignIn && g.opened && held[g.network] == most && (oldest == nil || g.created.Before(oldest.created)) {
 			oldest = g
 		}
 	}
@@ -1145,7 +1174,7 @@ func (h *Handler) passkeyPage(w http.ResponseWriter, r *http.Request) {
 	case f.purpose == api.PasskeySignIn:
 		data.Heading, data.Lede, data.Button = "Sign in to "+org, "Use the passkey you keep for "+rpID+".", "Sign in with a passkey"
 	case f.purpose == api.PasskeyConfirm:
-		data.Heading, data.Lede, data.Button = "Confirm it's you", passkeyActionWords(f)+" — requested by codeaf on "+f.requestedBy+". Use one of your passkeys for @"+f.handle+" on "+org+".", "Confirm with a passkey"
+		data.Heading, data.Lede, data.Button = "Confirm it's you", passkeyActionWords(f)+" — requested by "+f.requestedBy+". Use one of your passkeys for @"+f.handle+" on "+org+".", "Confirm with a passkey"
 	case f.purpose == api.PasskeyAdd:
 		data.Heading, data.Lede, data.Button, data.AskLabel = "Add a passkey", "For @"+f.handle+" on "+org+".", "Create a passkey", true
 	case f.resetSecret != "":

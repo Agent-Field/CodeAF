@@ -128,10 +128,15 @@ type Config struct {
 	// ([factorygithub.Standing]): "" while it is open, "closed" or "merged"
 	// when it ended. A person's start asks it first, so an issue closed on
 	// GitHub is finished instead of run. Nil starts on what the floor knows.
-	Recheck     func(context.Context, factory.Item) (factory.SourceStanding, error)
-	Address     string
-	Version     string
-	AccessToken string
+	Recheck func(context.Context, factory.Item) (factory.SourceStanding, error)
+	Address string
+	// HSTSSubdomains adds includeSubDomains to HSTS, for an operator who
+	// owns the whole name and serves every name under it over HTTPS. Off by
+	// default: the passkey cookie is __Host- already, so nothing here needs
+	// it, and it would break a plain-HTTP site below the name.
+	HSTSSubdomains bool
+	Version        string
+	AccessToken    string
 	// GitHubClientID enables GitHub device sign-in; Team optionally restricts handles.
 	GitHubClientID string
 	Team           []string

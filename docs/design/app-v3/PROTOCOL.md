@@ -2905,7 +2905,9 @@ cannot mint a session.
   names the action and this computer. `factory.password_confirm {factory,
   password, action, passkey?}` answers `{}` and does the same with the
   current password; a wrong one is `forbidden`, a person without a password
-  `not_found`, too many tries `busy`.
+  or a `remove_passkey` for a passkey they don't have `not_found`, too many
+  tries `busy`. A session holds at most three confirmations; a fourth
+  replaces its oldest.
 - Adding a passkey, setting a first password and removing a passkey each
   need a confirmation for that action, which lets it happen once within five
   minutes; a sign-in never counts. Without one they fail with `step_up`,

@@ -1488,8 +1488,20 @@ func TestAConfirmationIsForOneActionOnce(t *testing.T) {
 	// The confirm page names the action and the computer asking.
 	f := o.mustStart(session, api.PasskeyStart{Purpose: api.PasskeyConfirm, Action: &api.StepUpAction{Kind: api.StepUpRemovePasskey, Passkey: pkB64(b.ID)}, Device: "santosh-mac"})
 	page := o.do("GET", "/passkey/"+f.id, "", nil, "")
-	if !strings.Contains(page.Body.String(), "Remove passkey") || !strings.Contains(page.Body.String(), "requested by codeaf on santosh-mac") {
+	// Re-review 4 N3: the name is the engine's claim, so it is quoted as a
+	// name, beside the session's sign-in date and the address the server saw.
+	signedIn := o.h.now().UTC().Format("2 Jan 2006")
+	if body := page.Body.String(); !strings.Contains(body, "Remove passkey") ||
+		!strings.Contains(body, "requested by a computer named “santosh-mac”, signed in "+signedIn+" from ") {
 		t.Fatalf("the confirm page = %s", page.Body)
+	}
+	for given, want := range map[string]string{
+		"Press “Confirm” now": "a computer named “Press Confirm now”, signed in " + signedIn + " from 192.0.2.1",
+		"":                    "a computer, signed in " + signedIn + " from 192.0.2.1",
+	} {
+		if got := requestedBy(given, accessSession{created: o.h.now()}, "192.0.2.1"); got != want {
+			t.Errorf("requestedBy(%q) = %q, want %q", given, got, want)
+		}
 	}
 	if w := o.finish(f.id, a.get(t, o.options(f.id, map[string]string{}), pkOrigin), ""); w.Code != 200 {
 		t.Fatalf("confirm = %d %s", w.Code, w.Body)
@@ -1519,6 +1531,71 @@ func TestAConfirmationIsForOneActionOnce(t *testing.T) {
 	o.confirm(session, a, toRemove(c))
 	o.advance(passkeyStepUpLife)
 	stepUp("a removal confirmed too long ago", o.do("POST", "/v1/me/passkeys/remove", session, api.PasskeyRemove{ID: pkB64(c.ID)}, ""), toRemove(c))
+}
+
+// Re-review 4 N2: a password member cannot fill the confirmation table.
+// A removal confirmed for a passkey that is not theirs is refused, as the
+// passkey confirm refuses it; one session holds three confirmations at
+// most, a fourth replacing its oldest; and a full table drops the oldest
+// anyone holds, never the new one.
+func TestConfirmationsAreFewPerSessionAndOnlyForRealPasskeys(t *testing.T) {
+	o := newPWOrg(t)
+	session := o.signUp(o.operatorLink(), "santosh", pwOperator)
+	for _, id := range []string{"bogus", pkB64([]byte("not a passkey of santosh"))} {
+		w := o.do("POST", "/v1/me/password/confirm", session, api.PasswordConfirm{Password: pwOperator, Action: api.StepUpAction{Kind: api.StepUpRemovePasskey, Passkey: id}}, "")
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("confirming removal of %q = %d %s", id, w.Code, w.Body)
+		}
+	}
+	held := func(id string) int {
+		st := o.h.pk()
+		st.mu.Lock()
+		defer st.mu.Unlock()
+		if id == "" {
+			return len(st.grants)
+		}
+		return len(st.grants[id])
+	}
+	if n := held(""); n != 0 {
+		t.Fatalf("bogus removals hold confirmations for %d sessions", n)
+	}
+
+	me := accessSession{id: "me"}
+	r := func(id string) api.StepUpAction { return api.StepUpAction{Kind: api.StepUpRemovePasskey, Passkey: id} }
+	now := o.h.now()
+	for i, a := range []api.StepUpAction{r("one"), r("two"), r("three"), r("four")} {
+		o.h.grant(me.id, a, now.Add(time.Duration(i)*time.Second))
+	}
+	if n := held("me"); n != passkeyGrantsPerSession {
+		t.Fatalf("one session holds %d confirmations, want %d", n, passkeyGrantsPerSession)
+	}
+	if o.h.granted(me, r("one"), false) {
+		t.Fatal("the fourth confirmation did not replace the oldest")
+	}
+	for _, id := range []string{"two", "three", "four"} {
+		if !o.h.granted(me, r(id), false) {
+			t.Fatalf("confirmation %q was lost", id)
+		}
+	}
+
+	// A full table drops the oldest anyone holds to take a new one.
+	for i := range passkeyGrantsMost {
+		o.h.grant(fmt.Sprintf("s%d", i), toAdd, now.Add(time.Duration(i)*time.Millisecond))
+	}
+	o.h.grant("newest", toAdd, now.Add(time.Hour/60))
+	if !o.h.granted(accessSession{id: "newest"}, toAdd, false) {
+		t.Fatal("a new confirmation was dropped by a full table")
+	}
+	total := 0
+	st := o.h.pk()
+	st.mu.Lock()
+	for _, g := range st.grants {
+		total += len(g)
+	}
+	st.mu.Unlock()
+	if total > passkeyGrantsMost {
+		t.Fatalf("the table holds %d confirmations, more than %d", total, passkeyGrantsMost)
+	}
 }
 
 // F3: a finished flow's code works for a minute. A code that reached the
@@ -1596,10 +1673,61 @@ func TestAFloodFromManyNetworksStillLetsAPersonStart(t *testing.T) {
 	}
 }
 
+// Re-review 4 N1: a flood holding one sign-in on each of many networks
+// never drains an office's few. Starts past a full table are refused, not
+// paid for by the busy network; an IPv6 flood spread over /48s of one /32
+// counts as one network and only ever makes room out of its own flows.
+func TestAFloodOneSignInPerNetworkKeepsAnOfficesFew(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		at   func(n int) string
+	}{
+		{"ipv4 /24s", func(n int) string { return fmt.Sprintf("10.%d.%d.1:1", n/256, n%256) }},
+		{"ipv6 /48s of one /32", func(n int) string { return fmt.Sprintf("[2001:db8:%x::1]:1", n) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			o := newPWOrg(t)
+			office, flood := &pkBrowser{}, &pkBrowser{}
+			var mine []string
+			for i := range 3 {
+				f, w := o.startFrom(fmt.Sprintf("198.51.100.%d:1", i+1), api.PasskeyStart{Purpose: api.PasskeySignIn})
+				if w.Code != http.StatusCreated {
+					t.Fatalf("office start %d = %d %s", i, w.Code, w.Body)
+				}
+				o.pageIn(office, f.id, "options", pkOrigin, map[string]string{})
+				mine = append(mine, f.id)
+			}
+			refused := 0
+			for n := range passkeySignInFlowsMost {
+				f, w := o.startFrom(tc.at(n), api.PasskeyStart{Purpose: api.PasskeySignIn})
+				if w.Code == http.StatusTooManyRequests {
+					refused++
+					continue
+				}
+				if w.Code != http.StatusCreated {
+					t.Fatalf("flood start %d = %d %s", n, w.Code, w.Body)
+				}
+				o.pageIn(flood, f.id, "options", pkOrigin, map[string]string{})
+			}
+			st := o.h.pk()
+			st.mu.Lock()
+			defer st.mu.Unlock()
+			for _, id := range mine {
+				if st.flows[id] == nil {
+					t.Fatalf("an office sign-in was evicted by the flood")
+				}
+			}
+			if tc.name == "ipv4 /24s" && refused != 3 {
+				t.Fatalf("refused %d flood starts past a full table, want 3", refused)
+			}
+		})
+	}
+}
+
 // F1: a real name the operator owns covers the names under it too, so no
 // plain-HTTP host below it can toss cookies at it; a shared wildcard name
 // (demos only), an IP address and localhost get the bare header.
-func TestHSTSCoversSubdomainsOnlyOfANameTheOperatorOwns(t *testing.T) {
+func TestHSTSCoversSubdomainsOnlyWhenTheOperatorOwnsTheNameAndAsks(t *testing.T) {
 	for host, want := range map[string]string{
 		"org.example.com":         hstsValue + "; includeSubDomains",
 		"Factory.Acme.dev.":       hstsValue + "; includeSubDomains",
@@ -1612,5 +1740,21 @@ func TestHSTSCoversSubdomainsOnlyOfANameTheOperatorOwns(t *testing.T) {
 		if got := hstsFor(host); got != want {
 			t.Errorf("hstsFor(%q) = %q, want %q", host, got, want)
 		}
+	}
+	// Re-review 4: includeSubDomains is the operator's opt-in
+	// (hsts_include_subdomains), off by default even for a name they own.
+	for _, on := range []bool{false, true} {
+		h := &Handler{config: Config{HSTSSubdomains: on}, factory: api.Factory{Address: "https://org.example.com"}}
+		want := hstsValue
+		if on {
+			want += "; includeSubDomains"
+		}
+		if got := h.hsts(); got != want {
+			t.Errorf("hsts with the opt-in %v = %q, want %q", on, got, want)
+		}
+	}
+	shared := &Handler{config: Config{HSTSSubdomains: true}, factory: api.Factory{Address: "https://203-0-113-9.sslip.io"}}
+	if got := shared.hsts(); got != hstsValue {
+		t.Errorf("hsts opted in on a shared name = %q", got)
 	}
 }
