@@ -168,10 +168,12 @@ func TestRemovingAPersonHandsTheirWorkToTheFallback(t *testing.T) {
 		removed []string
 		to      string
 	}
+	was := WorkstreamPeopleRemoved
 	WorkstreamPeopleRemoved = func(_ *Handler, _ *http.Request, ws, removed []string, to string) {
 		got.ws, got.removed, got.to = ws, removed, to
 	}
-	t.Cleanup(func() { WorkstreamPeopleRemoved = nil })
+	// The task list sets the hook for the whole package; put back what was there.
+	t.Cleanup(func() { WorkstreamPeopleRemoved = was })
 	pantry := o.create(t, "santosh", api.WorkstreamNew{Name: "Pantry"})
 	meal := o.create(t, "santosh", api.WorkstreamNew{Name: "Meal planner", Parent: pantry.ID})
 	path := "/v1/workstreams/" + pantry.ID

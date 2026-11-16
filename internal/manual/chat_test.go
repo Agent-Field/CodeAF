@@ -50,6 +50,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"open a workstream chat as its own tab", "workstream-chats-and-tools"},
 		{"the agent is still answering someone else, how do I stop it", "organization-workstream-agent"},
 		{"who can answer a task's question in a workstream", "organization-workstream-tasks"},
+		{"someone left the workstream, who gets their tasks", "organization-workstream-tasks"},
+		{"a file changed while my task was running", "organization-workstream-tasks"},
 		{"the task's owner is Everyone, who decides", "organization-workstream-tasks"},
 		{"how do I tick a person task and what happens to tasks waiting on it", "organization-workstream-tasks"},
 		{"hand a task to someone else or move it to another workstream", "organization-workstream-tasks"},

@@ -1075,3 +1075,60 @@ func firstLines(s string, most int) string {
 	}
 	return strings.TrimSpace(s[:cut]) + "…"
 }
+
+// ── when the people or the files change under a task ──
+
+// HandOn hands t to `to` when its owner, or the person who does it, has left
+// the workstream (removed, by normalized handle): the rules' fallback, else
+// the steward. Done work keeps who did it; a task nobody left is unchanged
+// (false). The thread says "Handed to <to>", as a hand-off by hand does.
+func HandOn(t WorkstreamTask, removed map[string]bool, to string, by TaskEventBy, newID func() string, now time.Time) (WorkstreamTask, []WorkstreamTaskEvent, bool) {
+	to = NormalizeHandle(to)
+	if t.State == TaskDone || to == "" || removed[to] {
+		return t, nil, false
+	}
+	changed := false
+	if t.Owner.Kind == TaskOwnerPerson && removed[NormalizeHandle(t.Owner.ID)] {
+		t.Owner, changed = TaskOwner{Kind: TaskOwnerPerson, ID: to, Name: to}, true
+	}
+	if t.DoneBy.Kind == TaskByPerson && removed[NormalizeHandle(t.DoneBy.ID)] {
+		t.DoneBy, changed = TaskDoneBy{Kind: TaskByPerson, ID: to, Name: to}, true
+	}
+	if !changed {
+		return t, nil, false
+	}
+	stamp := now.UTC().Format(time.RFC3339Nano)
+	t.Rev, t.UpdatedAt = t.Rev+1, stamp
+	return t, []WorkstreamTaskEvent{{ID: newID(), Task: t.ID, At: stamp, By: by, Kind: TaskEventHanded, Text: "Handed to " + to}}, true
+}
+
+// FileChangedAskID prefixes the Ask a changed file puts on a running task.
+const FileChangedAskID = "ask_file_"
+
+// FlagForFile marks a RUNNING task whose agent read `file` before someone
+// changed it (DESIGN: "Marco's running task is flagged because a file it read
+// has changed, and asks him whether to continue"). An Afi, chat or person task
+// stops on a question to its owner, either answer carries on with the new
+// version and the thread says which; a Factory task's state is its job's, so
+// it only gains the line. Anything not running is unchanged (false).
+func FlagForFile(t WorkstreamTask, file string, by TaskEventBy, newID func() string, now time.Time) (WorkstreamTask, []WorkstreamTaskEvent, bool) {
+	if t.State != TaskRunning {
+		return t, nil, false
+	}
+	stamp := now.UTC().Format(time.RFC3339Nano)
+	line := WorkstreamTaskEvent{ID: newID(), Task: t.ID, At: stamp, By: by, Kind: TaskEventState, Text: file + " changed while this ran"}
+	if _, job := IsJobTask(t.ID); job || t.DoneBy.Kind == TaskByFactory {
+		return t, []WorkstreamTaskEvent{line}, true
+	}
+	t.State, t.Rev, t.UpdatedAt = TaskNeeds, t.Rev+1, stamp
+	t.Ask = &TaskAsk{
+		ID: FileChangedAskID + newID(), Title: file + " changed while this ran. Carry on?",
+		Detail: "The work so far read the earlier version.",
+		Options: []TaskAskOption{
+			{ID: "carry_on", Label: "Carry on with the new version", Recommended: true},
+			{ID: "start_again", Label: "Start again from the new version"},
+		},
+		AskedAt: stamp,
+	}
+	return t, []WorkstreamTaskEvent{line}, true
+}
