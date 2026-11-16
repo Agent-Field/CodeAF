@@ -25,9 +25,14 @@ const usageRetryCap = time.Second
 // Open the journal only after locking the current ledger generation.
 // No append descriptor survives a compaction rename.
 type usagePending struct {
-	mu       sync.Mutex
-	rows     uint64
-	syncing  bool
+	mu      sync.Mutex
+	rows    uint64
+	syncing bool
+	// appended and durable count every row this process has put in the journal
+	// and every row a sync has since made durable. A settle reads the first and
+	// waits for the second to reach it ([usagePending.syncedThrough]).
+	appended uint64
+	durable  uint64
 	wake     chan struct{}
 	synced   chan struct{}
 	ready    bool
@@ -255,6 +260,7 @@ func (p *usagePending) append(path string, row usageWrite) (bool, error) {
 		return false, err
 	}
 	p.rows++
+	p.appended++
 	if p.syncing && p.rows >= usageSyncRows {
 		select {
 		case p.wake <- struct{}{}:
@@ -279,6 +285,38 @@ func (p *usagePending) startSync(path string) {
 	if p.rows >= usageSyncRows {
 		p.wake <- struct{}{}
 	}
+}
+
+// appendedSoFar is how many rows this process has journaled at path so far: the
+// mark a settle waits for [usagePending.syncedThrough] to reach.
+func (p *usagePending) appendedSoFar() uint64 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.appended
+}
+
+// syncedThrough reports whether every row up to mark is durable, and hurries a
+// running sync when it is not, so a settle never sits out the sync interval.
+//
+// IT READS A COUNT AND HANDS THE SYNC NOTHING, for [drainUsage]'s reason: a
+// settle may run inside a test's synctest bubble, and nothing it makes may be
+// left for the process's own goroutines to touch. Hurrying a sync is a send that
+// never blocks, on a channel the writer's journal loop made. A row journaled but
+// not yet picked up by that loop needs no hurry: the writer wakes the loop for
+// every row it is handed ([usageWriter.wakeJournal]).
+func (p *usagePending) syncedThrough(mark uint64) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.durable >= mark {
+		return true
+	}
+	if p.syncing {
+		select {
+		case p.wake <- struct{}{}:
+		default:
+		}
+	}
+	return false
 }
 
 // A clean close joins the final sync before replay can compact the journal.
@@ -339,6 +377,7 @@ func (p *usagePending) syncBatches(path string, wake <-chan struct{}, done chan<
 		p.mu.Lock()
 		if err == nil {
 			p.rows -= rows
+			p.durable += rows
 		}
 		if p.rows == 0 {
 			p.syncing = false

@@ -893,6 +893,8 @@ func FlushUsage() bool {
 // flushUsage drains one path without stopping its shared writer. An empty path
 // selects every writer for [FlushUsage]. Rows admitted later may keep writing.
 func flushUsage(path string) bool {
+	marks := usageJournalMarks(path)
+	until := time.Now().Add(usageFlushLimit)
 	dones := enqueueUsageFlush(path)
 	// IT WAITS UNDER A CEILING, because the one thing it waits on is the thing
 	// this whole file exists to survive. A writer parked inside [openUsageLedger]
@@ -915,6 +917,41 @@ func flushUsage(path string) bool {
 			return false
 		}
 	}
+	return awaitUsageJournals(marks, until)
+}
+
+// usageJournalMarks is, for path's journal (every journal when path is empty),
+// how many rows had been journaled when a flush or drain began.
+func usageJournalMarks(path string) map[*usagePending]uint64 {
+	marks := map[*usagePending]uint64{}
+	usagePendingPaths.Range(func(key, value any) bool {
+		if path == "" || key.(string) == path {
+			pending := value.(*usagePending)
+			marks[pending] = pending.appendedSoFar()
+		}
+		return true
+	})
+	return marks
+}
+
+// awaitUsageJournals waits, until deadline, for each journal to have synced the
+// rows it held when its mark was taken.
+//
+// A SETTLE IS NOT DONE UNTIL THE JOURNAL SYNC IS. A sync locks the ledger, and
+// locking it creates the ledger's folder and file if they are gone; a sync still
+// pending after a close used to land in a home its owner had already removed (a
+// test's TempDir cleanup: "directory not empty"). So whoever waits for rows to
+// be written also waits for them to be durable, under the same ceiling, and
+// nothing of theirs writes into the home after the wait answers.
+func awaitUsageJournals(marks map[*usagePending]uint64, deadline time.Time) bool {
+	for pending, mark := range marks {
+		for !pending.syncedThrough(mark) {
+			if time.Now().After(deadline) {
+				return false
+			}
+			time.Sleep(usageDrainPoll)
+		}
+	}
 	return true
 }
 
@@ -935,6 +972,7 @@ func drainUsage(path string) bool {
 		return true
 	}
 	writer := writers[0]
+	marks := usageJournalMarks(path)
 	target := writer.admitted.Load()
 	deadline := time.Now().Add(usageFlushLimit)
 	for writer.handled.Load() < target {
@@ -944,7 +982,8 @@ func drainUsage(path string) bool {
 		}
 		time.Sleep(usageDrainPoll)
 	}
-	return true
+	// A journal still syncing is no projection miss, so it is not counted as one.
+	return awaitUsageJournals(marks, deadline)
 }
 
 // usageWritersAt answers the writer at path, or every writer for an empty path.
