@@ -12,6 +12,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/modelsource/sourcestub"
 )
 
@@ -145,7 +146,7 @@ func TestAppWireCustomStorageFailureCanRetryWithoutDuplicate(t *testing.T) {
 	w := wireOver(t, b)
 	endpoint := sourcestub.New("local-model")
 	defer endpoint.Close()
-	params := map[string]any{"provider": "custom", "mode": "add", "address": endpoint.URL()}
+	params := map[string]any{"provider": "custom", "mode": "add", "address": endpoint.URL(), "key": "storage-fixture-secret-12345"}
 	var check appwire.KeyCheck
 	w.must("keys.check", params, &check)
 	params["connection"] = check.Connection
@@ -160,6 +161,9 @@ func TestAppWireCustomStorageFailureCanRetryWithoutDuplicate(t *testing.T) {
 	_, code, _ := w.call("keys.set", params)
 	if code == "" {
 		t.Fatal("storage failure reported success")
+	}
+	if _, held := b.keys.Key(check.Connection.ID); held {
+		t.Fatal("storage failure adopted credential")
 	}
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)
@@ -194,4 +198,41 @@ func TestAppWireCustomAddCollisionAndReplace(t *testing.T) {
 	if rows := config.PersistedSources(profile); len(rows) != 1 || rows[0].ID != "custom" || rows[0].Address != second.URL() {
 		t.Fatalf("replace = %+v", rows)
 	}
+}
+
+func TestAppWireRegionSurvivesReopen(t *testing.T) {
+	b, _, profile := appProviderTest(t)
+	w := wireOver(t, b)
+	endpoint := sourcestub.New("glm-5.3")
+	defer endpoint.Close()
+	sources := appStubbed("z-ai", func(source *modelsource.Source) {
+		source.Doors[0].Address, source.Doors[1].Address = endpoint.URL(), endpoint.URL()
+		source.Regions[0].Address, source.Regions[1].Address = endpoint.URL(), endpoint.URL()
+	})
+	b.vendored = sources
+	const key = "zai-dummy-not-a-real-key-0001"
+	params := map[string]any{"provider": "z-ai", "region": "intl", "key": key}
+	var check appwire.KeyCheck
+	w.must("keys.check", params, &check)
+	if !check.OK {
+		t.Fatalf("check=%+v", check)
+	}
+	params["connection"] = check.Connection
+	w.must("keys.set", params, nil)
+	assertNoKeyOnDisk(t, profile, key)
+	restore := config.UseAppCredentials(config.NewAppCredentials())
+	defer restore()
+	reopened := newFakeBackend(newAppRecorder(), nil)
+	defer reopened.Close()
+	reopened.vendored = sources
+	again := wireOver(t, reopened)
+	again.must("keys.set", map[string]any{"provider": "z-ai", "key": key}, nil)
+	var result appwire.ProvidersResult
+	again.must("providers.list", map[string]any{}, &result)
+	for _, p := range result.Providers {
+		if p.ID == "z-ai" && p.Region == "intl" && p.Plan == "coding plan" && p.SignedIn {
+			return
+		}
+	}
+	t.Fatalf("region after reopen=%+v", result)
 }
