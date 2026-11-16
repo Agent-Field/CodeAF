@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Desktop connections add separate custom endpoints and refuse empty models at save
-pr: 0
+pr: 2649
 surface: [app, engine]
 invalidates:
   - "The app's custom connection flow reused the first endpoint when adding another address. Explicit add now returns a separate connection identity and refuses stale identity collisions."
