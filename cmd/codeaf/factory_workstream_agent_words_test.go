@@ -64,3 +64,17 @@ func TestServerAgentKnowsTodaysDate(t *testing.T) {
 		t.Error("the prompt must tell the agent to report every change it made, not only the one asked for (L3 F-10)")
 	}
 }
+
+// A task run's prompt keeps the same words law, and tells the run that only
+// what it does to the task is seen, how to finish, and how to give up.
+func TestATaskRunsPromptSaysHowItEnds(t *testing.T) {
+	p := factoryWorkstreamAgentTaskRun("tk_1", "Fraction table", "mia")
+	if hit := machineryWords.FindAllString(p, -1); len(hit) > 0 {
+		t.Errorf("the task run's prompt says %q:\n%s", hit, p)
+	}
+	for _, want := range []string{"mia started you", "Nobody reads what you say here", "set the task done", "set the task failed", "ws_task_comment"} {
+		if !strings.Contains(p, want) {
+			t.Errorf("the task run's prompt does not say %q:\n%s", want, p)
+		}
+	}
+}

@@ -63,7 +63,7 @@ func factoryWorkstreamAgent(st *store.Store, load func() (config.Config, error))
 			Model:       factoryWorkstreamAgentModel(st, load, profile),
 			APIKey:      turn.Key, BaseURL: factoryWorkstreamAgentBaseURL(),
 			DeterministicNames: true, CompactEnabled: true,
-			System:     factoryWorkstreamAgentSystem(turn.Name, turn.Asker, workstreamDoorKeepsWork(turn.Door), turn.Now, turn.TZ),
+			System:     factoryWorkstreamAgentTurnSystem(turn),
 			Workstream: turn.Door,
 		}, profile, true, true)
 		// THE GATE IS THE DOOR, NOT AN APPROVAL ASK. Nobody sits in front of
@@ -243,6 +243,30 @@ func factoryWorkstreamAgentModel(st *store.Store, load func() (config.Config, er
 func workstreamDoorKeepsWork(door serve.AgentDoor) bool {
 	_, ok := door.(session.WorkstreamWorkDoor)
 	return ok
+}
+
+// factoryWorkstreamAgentTurnSystem is the prompt for one turn: a person's
+// message, or one task Afi was started on.
+func factoryWorkstreamAgentTurnSystem(turn serve.AgentTurn) string {
+	system := factoryWorkstreamAgentSystem(turn.Name, turn.Asker, workstreamDoorKeepsWork(turn.Door), turn.Now, turn.TZ)
+	if turn.Task == nil {
+		return system
+	}
+	return system + "\n\n" + factoryWorkstreamAgentTaskRun(turn.Task.ID, turn.Task.Title, turn.Asker)
+}
+
+// factoryWorkstreamAgentTaskRun turns the prompt from a conversation into one
+// task's work. Nobody reads a task run as a chat, so the only things a person
+// ever sees of it are what it does to the task: results, a line in its
+// thread, and its state. A run that ends without setting done or failed is
+// left failed by the server.
+func factoryWorkstreamAgentTaskRun(id, title, starter string) string {
+	return "This time nobody is chatting with you: " + starter + " started you on one task, \"" + title + "\" (its id, for your tools only: " + id + "). " +
+		"The message below is what the task asks. Do the work with your tools. Nobody reads what you say here; people see only what you do to the task. " +
+		"Put anything you write in Files with ws_file_create and name it in the task's results. " +
+		"When the work is done, post one plain line saying what you did with ws_task_comment, then set the task done with ws_task_update. " +
+		"If a person must choose before you can go on, raise an Ask with ws_task_update and stop. " +
+		"If you cannot do it, set the task failed with ws_task_update and a state_reason saying why in plain words."
 }
 
 func factoryWorkstreamAgentSystem(name, asker string, work bool, now time.Time, tz string) string {
