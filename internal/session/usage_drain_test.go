@@ -438,6 +438,33 @@ func TestClosingAnAgentInsideASyncBubbleLeavesTheWriterAlone(t *testing.T) {
 	}
 }
 
+// A row recorded inside a synctest bubble leaves nothing of the process's own
+// machinery behind in that bubble. The journal's background sync used to be
+// started by whoever appended first, so a bubbled caller owned it: its 100ms
+// fake-clock timer outlived a bubble whose main goroutine returned sooner, which
+// synctest reports as a deadlock, and the ledger's writer — outside the bubble —
+// then woke that bubbled channel on its way out, a fatal error that took the
+// whole test binary down with it. THE WRITER OWNS THE SYNC, so this bubble can
+// return the moment it has recorded.
+func TestRecordingInsideASyncBubbleLeavesNoGoroutineBehindInIt(t *testing.T) {
+	path := filepath.Join(t.TempDir(), UsageLedgerName)
+	usageWriterFor(path)
+	defer StopUsageWriter(path)
+	synctest.Test(t, func(t *testing.T) {
+		RecordUsage(path, UsageLine{ID: "in-bubble", Input: 1, USD: .001})
+	})
+	if !flushUsage(path) {
+		t.Fatal("the row was not written after the bubble ended")
+	}
+	rows, err := ReadUsage(path, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].ID != "in-bubble" {
+		t.Fatalf("rows=%+v, want the bubble's call once", rows)
+	}
+}
+
 // Traffic that keeps arriving after a close begins doesn't hold the close open:
 // it waits for the rows taken in when it began.
 func TestDrainingUsageWaitsOnlyForTheRowsAlreadyTakenIn(t *testing.T) {

@@ -254,6 +254,34 @@ func (p *usagePending) append(path string, row usageWrite) error {
 		return err
 	}
 	p.rows++
+	// A full batch hurries a sync that is already running. Starting one is the
+	// writer's job ([usagePending.startSync]), never an appender's.
+	if p.syncing && p.rows >= usageSyncRows {
+		select {
+		case p.wake <- struct{}{}:
+		default:
+		}
+	}
+	return nil
+}
+
+// startSync begins the journal's background sync when appended rows are waiting
+// for one, and hurries it along once a batch is full.
+//
+// ONLY THE LEDGER'S WRITER CALLS THIS. The sync goroutine and its channels live as
+// long as the process's machinery does, so they must belong to the goroutine that
+// owns the ledger, never to whichever caller happened to append first. A caller
+// inside a test's synctest bubble that started it used to own a bubbled timer and
+// bubbled channels: the bubble could not return while that timer was pending
+// (synctest calls it a deadlock), and the writer, outside the bubble, then woke a
+// bubbled channel on its way out, which is a fatal error for the whole test binary.
+// Every appended row reaches the writer, so every row's sync is started here.
+func (p *usagePending) startSync(path string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.rows == 0 {
+		return
+	}
 	if !p.syncing {
 		p.syncing = true
 		p.wake = make(chan struct{}, 1)
@@ -266,11 +294,13 @@ func (p *usagePending) append(path string, row usageWrite) error {
 		default:
 		}
 	}
-	return nil
 }
 
-// A clean close joins the final sync before replay can compact the journal.
-func (p *usagePending) finishSync() {
+// A clean close joins the final sync before replay can compact the journal. A row
+// appended since the writer last looked has its sync started here first, so none
+// is left unsynced by a close.
+func (p *usagePending) finishSync(path string) {
+	p.startSync(path)
 	p.mu.Lock()
 	if !p.syncing {
 		p.mu.Unlock()

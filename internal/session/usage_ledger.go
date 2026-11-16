@@ -671,7 +671,7 @@ func (w *usageWriter) pendingOverflow() []chan struct{} {
 func (w *usageWriter) run(path string) {
 	defer close(w.stopped)
 	defer func() {
-		pendingUsage(path).finishSync()
+		pendingUsage(path).finishSync(path)
 		RecoverUsage(path)
 	}()
 	var identities usageIdentityCursor
@@ -685,6 +685,9 @@ func (w *usageWriter) run(path string) {
 		if charges == 0 {
 			return
 		}
+		// Rows a caller journaled before queueing them have their sync started
+		// here, on the writer's goroutine ([usagePending.startSync] says why).
+		pendingUsage(path).startSync(path)
 		if w.beforeWrite != nil {
 			w.beforeWrite()
 		}
@@ -713,6 +716,8 @@ func (w *usageWriter) run(path string) {
 					break
 				}
 			}
+			// And rows journaled just now, by this goroutine, have theirs started too.
+			pendingUsage(path).startSync(path)
 			written := 0
 			if err == nil {
 				file := openUsageLedger(path)
