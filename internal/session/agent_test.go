@@ -19,6 +19,7 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/executor"
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/search"
@@ -313,6 +314,14 @@ func ownTestAgent(t *testing.T, agent *Agent) {
 		if err := agent.WaitReceipts(ctx); err != nil {
 			t.Errorf("fixture receipt settlement: %v", err)
 		}
+		// WAITRECEIPTS SCHEDULES A SAVE OF THE LATE RECEIPTS' NOTES AND DOES NOT
+		// JOIN IT (usage_pending.go): the quit path joins it afterwards, through
+		// the drive's close. A fixture whose seat pipelines its captures must join
+		// it too, or the test's temporary home is removed under a seal that is
+		// still rewriting the call log, and the removal fails with "directory not
+		// empty" (#2667's staging Full check, D3). Errors are not this fixture's to
+		// report: Close has already said what the final save did.
+		_ = executor.Drain(ctx, agent.config.seat())
 		agent.SettleWrites()
 		// Stop retains its existing bounded fallback when the disk stalls.
 		// The responsive-disk join is asserted by the fixture regression.
