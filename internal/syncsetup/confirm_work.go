@@ -132,6 +132,11 @@ func (d *Drive) ConfirmWork(ctx context.Context) (bool, error) {
 	if currentID, currentFence := d.batcher.Lease(); currentID != id || currentFence != fence {
 		return false, nil
 	}
+	// A record this drive has not published yet confirms nothing and takes
+	// nothing away: work stays admitted until the first publish holds it.
+	if d.firstPublishOwed(fence, lease, v.Now) {
+		return false, nil
+	}
 	switch d.workOwnership(v, fence) {
 	case workUncertain:
 		return false, d.Gate()
