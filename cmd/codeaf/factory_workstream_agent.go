@@ -149,13 +149,74 @@ func factoryAgentStepWords(e session.Event) string {
 			}
 			return "made a page"
 		case "decide":
-			return "proposed a decision"
+			return "suggested a decision"
 		}
+	}
+	if words, ok := factoryAgentWorkWords(e); ok {
+		return words
 	}
 	if hint := strings.TrimSpace(e.Hint); hint != "" {
 		return hint
 	}
 	return e.Tool
+}
+
+// factoryAgentWorkWords is a ws_* step as a person reads it. A tool's own
+// hint names its first field, which for most of these is an id (tk_…, fl_…),
+// and an id is never a word a person reads.
+func factoryAgentWorkWords(e session.Event) (string, bool) {
+	var args struct {
+		Task  string `json:"task"`
+		Title string `json:"title"`
+		Name  string `json:"name"`
+		Kind  string `json:"kind"`
+		File  string `json:"file"`
+	}
+	_ = json.Unmarshal([]byte(e.Args), &args)
+	named := func(what, name string) string {
+		if name = strings.TrimSpace(name); name != "" {
+			return what + " " + name
+		}
+		return what
+	}
+	switch e.Tool {
+	case session.WSTasksTool:
+		if args.Task != "" {
+			return "read a task", true
+		}
+		return "read the tasks", true
+	case session.WSTaskCreateTool:
+		return named("made the task", args.Title), true
+	case session.WSTaskUpdateTool:
+		return "changed a task", true
+	case session.WSTaskCommentTool:
+		switch args.Kind {
+		case "offer":
+			return "offered help on a task", true
+		case "request_note":
+			return "noted the request on a task", true
+		}
+		return "wrote on a task", true
+	case session.WSFilesTool:
+		return "read the files", true
+	case session.WSFileReadTool:
+		return "read a file", true
+	case session.WSFileCreateTool:
+		if args.File != "" {
+			return "rewrote a document", true
+		}
+		what := "made the document"
+		switch args.Kind {
+		case "folder":
+			what = "made the folder"
+		case "link":
+			what = "added the link"
+		}
+		return named(what, args.Name), true
+	case session.WSFileSuggestTool:
+		return "suggested a change to a document", true
+	}
+	return "", false
 }
 
 // factoryWorkstreamAgentModel is the model the server's agent answers on: the
@@ -186,18 +247,34 @@ func workstreamDoorKeepsWork(door serve.AgentDoor) bool {
 func factoryWorkstreamAgentSystem(name string, work bool) string {
 	tools := "You have one tool, " + session.WorkstreamPagesTool + ": "
 	if work {
-		tools = "You have " + session.WorkstreamPagesTool + " and the workstream's task and file tools (ws_tasks, ws_files and the rest). With " + session.WorkstreamPagesTool + " you "
+		tools = "You have " + session.WorkstreamPagesTool + " and the workstream's task and file tools (ws_tasks, ws_task_create, ws_task_update, ws_task_comment, ws_files, ws_file_read, ws_file_create, ws_file_suggest). " +
+			"Work is kept as tasks: when someone asks for work to be done, make a task with ws_task_create, never a page titled like a task; " +
+			"before you answer who is doing what or what is waiting on someone, read ws_tasks. With " + session.WorkstreamPagesTool + " you "
 	}
-	system := "You are the agent of the organization workstream \"" + name + "\", running on the organization's server. " +
-		"Everyone who can see the workstream reads this conversation, and each message comes from one of them.\n\n" +
+	system := "You are Afi, the assistant of the organization workstream \"" + name + "\", running on the organization's server. " +
+		factoryWorkstreamAgentAudience + "\n\n" +
 		tools + "read the workstream (ask read) before you answer about it, " +
-		"read one page whole (ask page), write a page (ask write), make a new page (ask new), or propose a decision (ask decide). " +
-		"You write as the person whose message you are answering. When a write answers that your text was kept as a version, " +
-		"say so plainly: the page is open for editing, and anyone who can edit it restores that version from its history.\n\n" +
-		"You cannot run commands, read or change a repository, open files on a computer, start factory jobs or use the web. " +
-		"When a person asks for that, say that the server's agent cannot, and say what in the workstream you can change.\n\n"
+		"read one page whole (ask page), write a page (ask write), make a new page (ask new), or suggest a decision for a person to keep (ask decide). " +
+		"You write as the person whose message you are answering. You rewrite only a page you made that no person has edited; " +
+		"your text for any other page waits in that page's History until someone restores it, and the tool's answer says so: tell the person plainly.\n\n" +
+		"You cannot run commands, read or change a repository, open files on a computer, start Factory work or use the web. " +
+		"When a person asks for that, say that you cannot here, and say what in the workstream you can change.\n\n" +
+		factoryWorkstreamAgentWords + "\n\n"
 	if work {
 		system += session.WorkstreamWorkRules + "\n\n"
 	}
 	return system + "Answer briefly, in plain words."
 }
+
+// factoryWorkstreamAgentAudience says who reads this conversation.
+const factoryWorkstreamAgentAudience = "Everyone who can see the workstream reads this conversation, and each message comes from one of them."
+
+// factoryWorkstreamAgentWords is how the agent speaks to a person. THE
+// MACHINERY VOCABULARY LAW (CLAUDE.md) holds for what the model says, not only
+// for what the screens draw: the server answers a workstream's stage and its
+// ids, and a model that reads them repeats them. TestServerAgentPromptKeepsMachineryOut
+// pins the banned words out of the rest of the prompt.
+const factoryWorkstreamAgentWords = "How you speak to people: name tasks, pages, files and people by their titles and names, never by an id " +
+	"(ids such as tk_…, pg_…, fl_… and ws_… are for your tools only, and never appear in your answer). " +
+	"Say a task is up next, running, waiting on someone, done or failed, and call Factory work a task. " +
+	"Never describe where the workstream is by a phase or a step of a process; say what is done, what is running and what waits on whom."

@@ -539,29 +539,24 @@ func (d *agentDoor) WritePage(ctx context.Context, page, title, body string) (st
 	if len(body) > workstreamBodyMost {
 		return "", errors.New("a page holds at most 256 KiB of words")
 	}
-	now := h.clock().UTC()
-	stamp := now.Format(time.RFC3339Nano)
 	if page == "" {
+		// A new page is a new document made by Afi for the person who asked,
+		// through the route a person's client makes one with, so Files and
+		// the page agree on who made it.
 		title = strings.TrimSpace(title)
 		if title == "" {
 			return "", errors.New("a new page needs a title")
 		}
-		id, err := cell.NewID(now)
-		if err != nil {
-			return "", err
-		}
-		p := factory.WorkstreamPage{ID: "pg_" + id, Title: title, Kind: "page", BodyMD: body, UpdatedAt: stamp, UpdatedBy: v.Handle, Rev: 1}
-		_, saved, err := h.editPart(d.id, v, func(cur *factory.OrgWorkstream, _ factory.OrgWorkstreams) (bool, error) {
-			cur.Pages = append(cur.Pages, p)
-			cur.UpdatedAt = now
-			return true, cleanWorkstream(cur, v.Handle, now)
-		})
+		raw, err := d.call(ctx, h.createWorkstreamFile, http.MethodPost, "/v1/workstreams/"+d.id+"/files", nil,
+			api.FileNew{Kind: factory.FileDocument, Name: title, BodyMD: body, MadeBy: &factory.FileMaker{Kind: factory.MakerAfi, Name: "Afi"}}, -1)
 		if err != nil {
 			return "", agentWriteRefused(err)
 		}
-		h.recordAs(ctx, v.Handle, record.WorkstreamChanged, "added page", orgObjectWorkstream+d.id, p.ID+" by the agent")
-		h.publishWorkstreamPart(saved, api.PartPage, p.ID, v.Handle, 1, false)
-		return "made the page " + strconv.Quote(title) + " (" + p.ID + ")", nil
+		var f factory.WorkstreamFile
+		if err := json.Unmarshal(raw, &f); err != nil {
+			return "", err
+		}
+		return "made the page " + strconv.Quote(title) + " (" + f.PageID + ")", nil
 	}
 	ws, err := d.Workstream(ctx)
 	if err != nil {
@@ -578,13 +573,29 @@ func (d *agentDoor) WritePage(ctx context.Context, page, title, body string) (st
 		return "", errors.New("this workstream has no page " + page)
 	}
 	cur := ws.Pages[at]
+	// AN AGENT REWRITES ONLY A DOCUMENT IT MADE THAT NO PERSON HAS EDITED.
+	// Any other page gets the agent's text as a suggestion: a version in its
+	// History that applies nothing until someone restores it.
+	if !h.agentMayRewrite(ws, page) {
+		n, err := d.keepSuggestion(ctx, ws, cur, body, "rewrite")
+		if err != nil {
+			return "", err
+		}
+		return "the page " + strconv.Quote(cur.Title) + " was made or edited by a person, so your text was not applied: " + keptWords(n), nil
+	}
 	live, err := h.pageDocLive(d.id, page)
 	if err != nil {
 		return "", err
 	}
 	if !live {
 		// Nobody has opened the page's live document yet, so its words are
-		// these: the first person to open it starts from them.
+		// these: the first person to open it starts from them. The words
+		// before are kept in its History first, and the new ones after, so
+		// nothing the page said is lost and History shows what it holds.
+		stamp := h.clock().UTC().Format(time.RFC3339Nano)
+		if strings.TrimSpace(cur.BodyMD) != "" && cur.BodyMD != body {
+			_, _, _ = h.config.Store.AddPageVersion(d.id, page, store.PageVersion{At: stamp, By: firstNonEmpty(cur.UpdatedBy, v.Handle), Title: cur.Title, BodyMD: cur.BodyMD, Reason: "manual"})
+		}
 		after, err := h.config.Store.MirrorWorkstreams(func(all factory.OrgWorkstreams) ([]string, error) {
 			w, ok := all[d.id]
 			if !ok {
@@ -606,25 +617,66 @@ func (d *agentDoor) WritePage(ctx context.Context, page, title, body string) (st
 		// from the words before; their copy wins, and the agent's goes to
 		// the history below instead.
 		if live, err := h.pageDocLive(d.id, page); err == nil && !live {
+			saved, _, _ := h.config.Store.AddPageVersion(d.id, page, store.PageVersion{At: stamp, By: v.Handle, Title: cur.Title, BodyMD: body, Reason: "manual"})
 			h.recordAs(ctx, v.Handle, record.WorkstreamChanged, "changed page", orgObjectWorkstream+d.id, page+" by the agent")
 			if w, ok := after[d.id]; ok {
 				h.publishWorkstreamPart(w, api.PartPage, page, v.Handle, cur.Rev, false)
 			}
-			return "wrote the page " + strconv.Quote(cur.Title), nil
+			h.agentEditedFile(ws, page, v.Handle)
+			line := "wrote the page " + strconv.Quote(cur.Title)
+			if saved.Version > 1 {
+				line += "; the words before are kept in its History"
+			}
+			return line, nil
 		}
 	}
-	saved, added, err := h.config.Store.AddPageVersion(d.id, page, store.PageVersion{At: stamp, By: v.Handle, Title: cur.Title, BodyMD: body, Reason: versionReasonKept})
+	n, err := d.keepSuggestion(ctx, ws, cur, body, "edited live")
 	if err != nil {
 		return "", err
 	}
-	if added {
-		h.recordAs(ctx, v.Handle, record.WorkstreamChanged, "changed page", orgObjectWorkstream+d.id, page+" version "+strconv.Itoa(saved.Version)+" by the agent")
-		h.publishWorkstreamPart(ws, api.PartVersions, page, v.Handle, saved.Version, false)
+	return "the page " + strconv.Quote(cur.Title) + " is edited live, so your text was not applied: " + keptWords(n), nil
+}
+
+// agentMayRewrite is whether the agent may write page's words directly: its
+// file was made by an agent and no person has edited it. A page Files has not
+// folded in yet was a person's.
+func (h *Handler) agentMayRewrite(ws factory.OrgWorkstream, page string) bool {
+	files, err := h.foldFiles(ws)
+	if err != nil {
+		return false
 	}
-	// These words are the desk's: History marks the version "Kept · not
-	// applied" and offers Restore this version on it (versionsWire says so).
-	return "the page " + strconv.Quote(cur.Title) + " is edited live, so your text was not applied: it was kept as version " +
-		strconv.Itoa(saved.Version) + " in the page's History, marked Kept · not applied; anyone who can edit the page opens History, chooses that version and presses Restore this version to apply it", nil
+	for _, f := range files {
+		if f.PageID == page && f.Kind == factory.FileDocument && f.DeletedAt == nil {
+			return f.AgentMayEdit()
+		}
+	}
+	return false
+}
+
+// agentEditedFile stamps the document of page as changed by the person the
+// agent answered, the way a person's client stamps its own edits, and flags
+// the running tasks that use it.
+func (h *Handler) agentEditedFile(ws factory.OrgWorkstream, page, by string) {
+	now := h.clock().UTC()
+	files, err := h.config.Store.EditWorkstreamFiles(ws.ID, now.Format(time.RFC3339Nano), func(files map[string]factory.WorkstreamFile) ([]string, bool, error) {
+		for id, f := range files {
+			if f.PageID == page && f.Kind == factory.FileDocument {
+				f.ChangedAt, f.ChangedBy = now, by
+				files[id] = f
+				return []string{id}, false, nil
+			}
+		}
+		return nil, false, nil
+	})
+	if err != nil {
+		return
+	}
+	for _, f := range files {
+		if f.PageID == page && f.Kind == factory.FileDocument {
+			h.publishFileChange(ws, f, by, true)
+			return
+		}
+	}
 }
 
 func (d *agentDoor) Decide(ctx context.Context, text string) (string, error) {
@@ -652,7 +704,7 @@ func (d *agentDoor) Decide(ctx context.Context, text string) (string, error) {
 	}
 	h.recordAs(ctx, v.Handle, record.WorkstreamChanged, "changed workstream", orgObjectWorkstream+d.id, "proposed decision "+id+" by the agent")
 	h.publishWorkstreamPart(saved, api.PartWorkstream, "", v.Handle, saved.Rev, false)
-	return "proposed the decision (" + id + "); a person keeps it", nil
+	return "suggested the decision; it waits in Decisions until a person keeps it", nil
 }
 
 // agentWriteRefused is a write refusal in words the agent can act on.
