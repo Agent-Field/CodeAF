@@ -158,7 +158,8 @@ func TestConcurrentGuessesArePaidForBeforeTheyAreVerified(t *testing.T) {
 	o.signUp(o.operatorLink(), "santosh", pwOperator)
 	var verified, throttled atomic.Int64
 	var wg sync.WaitGroup
-	for i := 0; i < 120; i++ {
+	const tries = 240
+	for i := 0; i < tries; i++ {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
@@ -172,8 +173,10 @@ func TestConcurrentGuessesArePaidForBeforeTheyAreVerified(t *testing.T) {
 		}(i)
 	}
 	wg.Wait()
-	if verified.Load() > userFailures || verified.Load()+throttled.Load() != 120 {
-		t.Fatalf("guesses verified: %d (limit %d), 429s: %d", verified.Load(), userFailures, throttled.Load())
+	// Each guess comes from its own address, so the bound is the username's
+	// ceiling, however the guesses interleave.
+	if verified.Load() > userFailuresAll || verified.Load()+throttled.Load() != tries {
+		t.Fatalf("guesses verified: %d (limit %d), 429s: %d", verified.Load(), userFailuresAll, throttled.Load())
 	}
 }
 

@@ -24,8 +24,9 @@ machine during such an attack uses the operator's reset link, which is never
 throttled. A device token is made only for a client that asks (want_device;
 the engine asks only after the app's core says factory.sessions_store
 can_keep true), a person holds at most 16 and none in use is pushed out. A
-signed-in password change counts per session, not against the username's
-ceiling. POST /v1/me/password now answers 200 with the machine's new
+signed-in password change counts in one bucket per session, at any address,
+not against the username's ceiling; a device token has its own ceiling of 100
+across every address, past which its tries count like any other. POST /v1/me/password now answers 200 with the machine's new
 device_token. Each
 session is tied to the password it was made with. A username already named
 anywhere on the server is taken, and an invitation made for one GitHub login

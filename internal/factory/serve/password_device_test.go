@@ -484,3 +484,93 @@ func TestAStolenDeviceTokenCannotLockOutTheOwnersMachine(t *testing.T) {
 		t.Fatalf("the owner's machine with the same token = %d %s", w.Code, w.Body)
 	}
 }
+
+// tlsChange is a password change over TLS from remote with session.
+func tlsChange(o *pwOrg, session, current, next, remote string) *httptest.ResponseRecorder {
+	data, _ := json.Marshal(api.PasswordChange{Current: current, New: next})
+	r := httptest.NewRequest("POST", "/v1/me/password", bytes.NewReader(data))
+	r.RemoteAddr = remote
+	r.TLS = &tls.ConnectionState{}
+	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set("Authorization", "Bearer "+session)
+	w := httptest.NewRecorder()
+	o.h.ServeHTTP(w, r)
+	return w
+}
+
+// F1: a stolen session spread over many addresses gets no more guesses at
+// the current password than the session's own bucket, in all.
+func TestAStolenSessionFromManyAddressesGetsOneSessionsGuesses(t *testing.T) {
+	o := newPWOrg(t)
+	operator := o.signUp(o.operatorLink(), "santosh", pwOperator)
+	session, _ := joinWithDevice(o, o.invite(operator), "abir", pwAbir)
+	const addrs, each = 30, 10
+	checked := 0
+	for a := 0; a < addrs; a++ {
+		for i := 0; i < each; i++ {
+			if w := tlsChange(o, session, fmt.Sprintf("thief guess %02d %02d xx", a, i), "the thief's new passphrase", fmt.Sprintf("10.77.0.%d:1", a+1)); w.Code == 403 {
+				checked++
+			}
+		}
+	}
+	t.Logf("F1 probe: %d addresses x %d tries = %d current passwords checked", addrs, each, checked)
+	if checked > userFailures {
+		t.Fatalf("one session from %d addresses had %d current passwords checked, want at most %d", addrs, checked, userFailures)
+	}
+	// The owner signs in again and has a session, and a bucket, of their own.
+	fresh := deviceSignIn(o, "abir", pwAbir, "192.0.2.7:1", "")
+	var signed api.PasswordSignedIn
+	if fresh.Code != 200 || json.Unmarshal(fresh.Body.Bytes(), &signed) != nil {
+		t.Fatalf("the owner signing in again = %d %s", fresh.Code, fresh.Body)
+	}
+	if w := tlsChange(o, signed.AccessToken, pwAbir, "a brand new passphrase", "192.0.2.7:1"); w.Code != 200 {
+		t.Fatalf("the owner's change from a new session = %d %s", w.Code, w.Body)
+	}
+}
+
+// F2: a stolen device token spread over many addresses gets at most the
+// device's ceiling of trusted guesses; past it the tries count as untrusted,
+// and the owner still signs in.
+func TestAStolenDeviceTokenFromManyAddressesIsCapped(t *testing.T) {
+	o := newPWOrg(t)
+	operator := o.signUp(o.operatorLink(), "santosh", pwOperator)
+	_, device := joinWithDevice(o, o.invite(operator), "abir", pwAbir)
+	id := o.h.trustedDevice("abir", device)
+	guesses := func(addrs, each int, from int) int {
+		checked := 0
+		for a := 0; a < addrs; a++ {
+			for i := 0; i < each; i++ {
+				if w := deviceSignIn(o, "abir", fmt.Sprintf("thief guess %02d %02d xx", a, i), fmt.Sprintf("10.88.%d.1:1", from+a), device); w.Code == 401 {
+					checked++
+				}
+			}
+		}
+		return checked
+	}
+	// Just past the device's ceiling: 120 guesses, 100 trusted, 20 untrusted.
+	if checked := guesses(30, 4, 0); checked != 30*4 {
+		t.Fatalf("first guesses checked %d", checked)
+	}
+	g := o.h.guard()
+	g.mu.Lock()
+	left := float64(deviceFailuresAll)
+	if e := g.devices.keys["device:"+id]; e != nil {
+		left = e.tokens(o.clock())
+	}
+	g.mu.Unlock()
+	if left >= 1 {
+		t.Fatalf("the device's ceiling has %.2f tries left after 120 guesses", left)
+	}
+	// The owner's machine: its device ceiling is dry, so it signs in as an
+	// untrusted try, which the username's ceiling still allows.
+	if w := deviceSignIn(o, "abir", pwAbir, "192.0.2.7:1", device); w.Code != 200 {
+		t.Fatalf("the owner after the device's ceiling ran dry = %d %s", w.Code, w.Body)
+	}
+	// In all, 30 addresses x 10 guesses: the device's ceiling plus the
+	// username's, never 300.
+	total := 30*4 + guesses(30, 6, 30)
+	t.Logf("F2 probe: 30 addresses x 10 tries = %d passwords checked (device ceiling %d + username ceiling %d)", total, deviceFailuresAll, userFailuresAll)
+	if total > deviceFailuresAll+userFailuresAll {
+		t.Fatalf("a stolen token from 30 addresses had %d passwords checked", total)
+	}
+}

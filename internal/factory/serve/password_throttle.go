@@ -21,19 +21,24 @@ package serve
 //     a name takes from everywhere at once. It never backs off.
 //   - one per client address, addrFailures (50), across every username.
 //
-// A TRUSTED TRY skips the username's ceiling and counts in its own pair
-// bucket, keyed by what it is trusted by AND its address, plus the address
-// bucket. Two things make a try trusted:
+// A TRUSTED TRY skips the username's ceiling. Two things make a try trusted:
 //
 //   - a device (tokens.Device: the long-lived secret a machine is handed
 //     after a right password, kept by the server only as a hash and so
 //     surviving a restart). A stranger draining the ceiling from many
 //     addresses slows down the stranger and every machine the owner never
-//     used, never the owner's own. The address is part of the key, so a
-//     thief guessing with a stolen device token from elsewhere backs off
-//     their own pair, not the owner's machine.
+//     used, never the owner's own. It counts in a pair bucket of (device,
+//     address), with backoff, so a thief guessing with a stolen token from
+//     elsewhere backs off their own pair and not the owner's machine; and in
+//     the device's own ceiling across every address, deviceFailuresAll,
+//     without backoff, so a stolen token spread over many addresses gets no
+//     more guesses than the username's ceiling. A device whose ceiling is dry
+//     is not refused: its try is counted as an untrusted one.
 //   - a signed-in session changing its password: the session already proves
-//     who it is, so a change counts per session.
+//     who it is, so a change counts in one bucket for the session, whatever
+//     address it comes from. A thief holding the session shares that bucket
+//     with the owner, which costs the owner nothing: signing in again makes a
+//     new session with a bucket of its own.
 //
 // A brand-new machine during such an attack waits, or the operator makes a
 // reset link, which, like an invitation, is never throttled here.
@@ -56,6 +61,7 @@ package serve
 import (
 	"log"
 	"net/netip"
+	"strings"
 	"sync"
 	"time"
 
@@ -68,11 +74,13 @@ const (
 	throttleWindow  = 15 * time.Minute
 	userFailures    = 10
 	userFailuresAll = 100
-	addrFailures    = 50
-	throttleKeyMost = 10000
-	backoffFirst    = 30 * time.Second
-	backoffMost     = 15 * time.Minute
-	backoffForgiven = 15 * time.Minute
+	// deviceFailuresAll is one device's ceiling across every address.
+	deviceFailuresAll = userFailuresAll
+	addrFailures      = 50
+	throttleKeyMost   = 10000
+	backoffFirst      = 30 * time.Second
+	backoffMost       = 15 * time.Minute
+	backoffForgiven   = 15 * time.Minute
 	// throttleFullEvery is how often a full set is said in the log.
 	throttleFullEvery = time.Minute
 )
@@ -193,6 +201,7 @@ type passwordGuard struct {
 	pairs    *throttle
 	users    *throttle
 	addrs    *throttle
+	devices  *throttle
 	inflight map[string]bool
 	saidFull time.Time
 	// saidDevicesFull is the people already said in the log to hold every
@@ -219,6 +228,7 @@ func (g *passwordGuard) devicesFull(handle string) {
 func newPasswordGuard() *passwordGuard {
 	return &passwordGuard{pairs: newThrottle("username and address", userFailures, true),
 		users: newThrottle("username", userFailuresAll, false), addrs: newThrottle("address", addrFailures, false),
+		devices:  newThrottle("device", deviceFailuresAll, false),
 		inflight: map[string]bool{}, logf: log.Printf}
 }
 
@@ -259,9 +269,24 @@ func throttleAddr(addr netip.Addr) string {
 func (g *passwordGuard) admit(user, addr, trusted string, now time.Time, alone bool) (*attempt, bool) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	var first []spent
 	pair := user + "\x00" + addr
-	if trusted != "" {
+	switch {
+	case strings.HasPrefix(trusted, "session:"):
+		pair = user + "\x00" + trusted
+	case trusted != "":
+		// A device whose own ceiling is dry is counted as untrusted.
+		if !g.devices.take(trusted, now) {
+			trusted = ""
+			break
+		}
+		first = []spent{{g.devices, trusted}}
 		pair = user + "\x00" + trusted + "\x00" + addr
+	}
+	refundFirst := func() {
+		for _, s := range first {
+			s.t.refund(s.key, now)
+		}
 	}
 	flight := ""
 	if alone {
@@ -270,10 +295,11 @@ func (g *passwordGuard) admit(user, addr, trusted string, now time.Time, alone b
 			flight = pair
 		}
 		if g.inflight[flight] {
+			refundFirst()
 			return nil, false
 		}
 	}
-	a := &attempt{g: g, pair: pair, flight: flight}
+	a := &attempt{g: g, pair: pair, flight: flight, spent: first}
 	refuse := func(t *throttle) (*attempt, bool) {
 		for _, s := range a.spent {
 			s.t.refund(s.key, now)
