@@ -1,0 +1,283 @@
+package appwire
+
+import (
+	"encoding/json"
+	"net/http"
+	"net/url"
+	"strings"
+)
+
+// ── AN ORGANIZATION WORKSTREAM'S TASKS (Workstreams v5, SPEC §2.2) ────────
+//
+// A task is one piece of work with one owner. The desk sends a Personal
+// workstream's tasks through its own Tauri commands (workstream_task_*) in
+// exactly these shapes, so its screens never ask where a task lives.
+//
+//	factory.org_workstream_tasks           OrgTasksParams       -> OrgTasks      GET   /v1/workstreams/{id}/tasks
+//	factory.org_workstream_task            OrgTaskParams        -> OrgTask       GET   /v1/workstreams/{id}/tasks/{tid}
+//	factory.org_workstream_task_create     OrgTaskCreateParams  -> OrgTask       POST  /v1/workstreams/{id}/tasks
+//	factory.org_workstream_task_update     OrgTaskUpdateParams  -> OrgTask       PATCH /v1/workstreams/{id}/tasks/{tid}  If-Match: rev
+//	factory.org_workstream_task_answer     OrgTaskAnswerParams  -> OrgTask       POST  /v1/workstreams/{id}/tasks/{tid}/answer
+//	factory.org_workstream_task_comment    OrgTaskCommentParams -> OrgTaskEvent  POST  /v1/workstreams/{id}/tasks/{tid}/comment
+//	factory.org_workstream_task_events     OrgTaskParams        -> OrgTaskEvents GET   /v1/workstreams/{id}/tasks/{tid}/events
+//	factory.org_workstream_tasks_start_all OrgTasksStartAllParams -> OrgTasks    POST  /v1/workstreams/{id}/tasks/start_all
+//
+// Every param names the workstream as `ws` and the task as `id`, the same
+// words the desk's Tauri commands take. A Factory job of the workstream is a
+// task with id "job:<n>" and done_by.kind "factory", derived from the job.
+// Only the owner answers an Ask (with owner Everyone, anyone who edits; after
+// a day, also the workstream's fallback) and ticks a person task (state
+// "done"). A change is relayed as factory.org_workstream_changed with part
+// "tasks".
+
+// FeatureOrgWorkstreamTasks is the hello word for the methods above.
+const FeatureOrgWorkstreamTasks = "org_workstream_tasks"
+
+// OrgTask and OrgTaskEvent are the server's own shapes, passed through whole:
+// the desk's wsTasksModel.ts types them.
+type (
+	OrgTask      = json.RawMessage
+	OrgTaskEvent = json.RawMessage
+)
+
+// OrgTasks is a list of tasks.
+type OrgTasks struct {
+	Tasks []json.RawMessage `json:"tasks"`
+}
+
+// OrgTaskEvents is a task's thread, oldest first.
+type OrgTaskEvents struct {
+	Events []json.RawMessage `json:"events"`
+}
+
+// OrgTasksParams names a workstream.
+type OrgTasksParams struct {
+	OrgConn
+	WS string `json:"ws"`
+}
+
+// OrgTaskParams names one task of a workstream.
+type OrgTaskParams struct {
+	OrgConn
+	WS string `json:"ws"`
+	ID string `json:"id"`
+}
+
+// OrgTaskCreateParams is a new task: SPEC §2.2's TaskCreate beside ws.
+type OrgTaskCreateParams struct {
+	OrgConn
+	WS        string          `json:"ws"`
+	Title     string          `json:"title"`
+	Request   string          `json:"request,omitempty"`
+	Owner     json.RawMessage `json:"owner,omitempty"`
+	DoneBy    json.RawMessage `json:"done_by"`
+	CameFrom  json.RawMessage `json:"came_from,omitempty"`
+	WaitingOn []string        `json:"waiting_on,omitempty"`
+	Due       string          `json:"due,omitempty"`
+	Group     json.RawMessage `json:"group,omitempty"`
+	State     string          `json:"state,omitempty"`
+}
+
+// OrgTaskUpdateParams is a change to one task at the rev it was read at.
+// Every other field is the change itself (TaskPatch: title, request, owner,
+// waiting_on, due, group, state, state_reason, results, check, ask, move_to),
+// passed on as sent, so a null that clears reaches the server as a null.
+type OrgTaskUpdateParams struct {
+	OrgConn
+	WS    string                     `json:"ws"`
+	ID    string                     `json:"id"`
+	Rev   int                        `json:"rev"`
+	Patch map[string]json.RawMessage `json:"-"`
+}
+
+// UnmarshalJSON keeps every field that is not a param as the change.
+func (p *OrgTaskUpdateParams) UnmarshalJSON(data []byte) error {
+	var all map[string]json.RawMessage
+	if err := json.Unmarshal(data, &all); err != nil {
+		return err
+	}
+	type plain OrgTaskUpdateParams
+	var head plain
+	if err := json.Unmarshal(data, &head); err != nil {
+		return err
+	}
+	*p = OrgTaskUpdateParams(head)
+	p.Patch = map[string]json.RawMessage{}
+	for k, v := range all {
+		switch k {
+		case "connection", "factory", "ws", "id", "rev":
+		default:
+			p.Patch[k] = v
+		}
+	}
+	return nil
+}
+
+// OrgTaskAnswerParams answers a task's Ask: an option's id, or words.
+type OrgTaskAnswerParams struct {
+	OrgConn
+	WS     string `json:"ws"`
+	ID     string `json:"id"`
+	Option string `json:"option,omitempty"`
+	Text   string `json:"text,omitempty"`
+}
+
+// OrgTaskCommentParams adds a line to a task's thread (kind comment, the
+// default; posted; request_note; worked; offer with offer_for), or with Offer
+// takes, dismisses or undoes Afi's offer.
+type OrgTaskCommentParams struct {
+	OrgConn
+	WS        string          `json:"ws"`
+	ID        string          `json:"id"`
+	Kind      string          `json:"kind,omitempty"`
+	Text      string          `json:"text,omitempty"`
+	OfferFor  string          `json:"offer_for,omitempty"`
+	Steps     int             `json:"steps,omitempty"`
+	DurationS int             `json:"duration_s,omitempty"`
+	Offer     json.RawMessage `json:"offer,omitempty"`
+}
+
+// OrgTasksStartAllParams starts a group's up-next tasks.
+type OrgTasksStartAllParams struct {
+	OrgConn
+	WS    string `json:"ws"`
+	Group string `json:"group"`
+}
+
+// orgTaskMost is the longest thing one task call carries, as the server takes it.
+const orgTaskMost = 16 << 10
+
+func orgTasksPath(ws string) (string, error) {
+	path, err := orgWorkstreamPath(ws)
+	if err != nil {
+		return "", err
+	}
+	return path + "/tasks", nil
+}
+
+func orgTaskPath(ws, id string) (string, error) {
+	path, err := orgTasksPath(ws)
+	if err != nil {
+		return "", err
+	}
+	tid, err := orgSegment("id", id)
+	if err != nil {
+		return "", err
+	}
+	return path + "/" + url.PathEscape(tid), nil
+}
+
+func withFactoryOrgTasksFeature(hello Hello, e Engine) Hello {
+	if _, ok := e.(Factory); !ok {
+		return hello
+	}
+	if _, ok := e.(FactoryOrg); ok {
+		hello = withFeature(hello, FeatureOrgWorkstreamTasks)
+	}
+	return hello
+}
+
+func (t *OrgTasks) fill()      { t.Tasks = nonNil(t.Tasks) }
+func (e *OrgTaskEvents) fill() { e.Events = nonNil(e.Events) }
+
+func init() {
+	tasks := func(t *OrgTasks) { t.fill() }
+	methods["factory.org_workstream_tasks"] = filled(orgMethod[OrgTasksParams, OrgTasks]("factory.org_workstream_tasks", func(p OrgTasksParams) (OrgRequest, error) {
+		path, err := orgTasksPath(p.WS)
+		return OrgRequest{Method: http.MethodGet, Path: path}, err
+	}), tasks)
+	methods["factory.org_workstream_task"] = orgMethod[OrgTaskParams, OrgTask]("factory.org_workstream_task", func(p OrgTaskParams) (OrgRequest, error) {
+		path, err := orgTaskPath(p.WS, p.ID)
+		return OrgRequest{Method: http.MethodGet, Path: path}, err
+	})
+	methods["factory.org_workstream_task_create"] = orgMethod[OrgTaskCreateParams, OrgTask]("factory.org_workstream_task_create", func(p OrgTaskCreateParams) (OrgRequest, error) {
+		path, err := orgTasksPath(p.WS)
+		if err != nil {
+			return OrgRequest{}, err
+		}
+		title := strings.TrimSpace(p.Title)
+		if title == "" || !plainText(title, 300) {
+			return OrgRequest{}, Errorf(CodeBadParams, "title is one line of at most 300 characters")
+		}
+		if len(p.DoneBy) == 0 {
+			return OrgRequest{}, Errorf(CodeBadParams, "done_by says who does the work")
+		}
+		body := p
+		body.OrgConn, body.WS, body.Title = OrgConn{}, "", title
+		return OrgRequest{Method: http.MethodPost, Path: path, Body: struct {
+			Title     string          `json:"title"`
+			Request   string          `json:"request,omitempty"`
+			Owner     json.RawMessage `json:"owner,omitempty"`
+			DoneBy    json.RawMessage `json:"done_by"`
+			CameFrom  json.RawMessage `json:"came_from,omitempty"`
+			WaitingOn []string        `json:"waiting_on,omitempty"`
+			Due       string          `json:"due,omitempty"`
+			Group     json.RawMessage `json:"group,omitempty"`
+			State     string          `json:"state,omitempty"`
+		}{body.Title, body.Request, body.Owner, body.DoneBy, body.CameFrom, body.WaitingOn, body.Due, body.Group, body.State}}, nil
+	})
+	methods["factory.org_workstream_task_update"] = orgMethod[OrgTaskUpdateParams, OrgTask]("factory.org_workstream_task_update", func(p OrgTaskUpdateParams) (OrgRequest, error) {
+		path, err := orgTaskPath(p.WS, p.ID)
+		if err != nil {
+			return OrgRequest{}, err
+		}
+		// A Factory job's task is first written at rev 0: its overlay is new.
+		rev, err := orgRev(p.Rev, true)
+		if err != nil {
+			return OrgRequest{}, err
+		}
+		if len(p.Patch) == 0 {
+			return OrgRequest{}, Errorf(CodeBadParams, "say what changes")
+		}
+		return OrgRequest{Method: http.MethodPatch, Path: path, Body: p.Patch, IfMatch: rev}, nil
+	})
+	methods["factory.org_workstream_task_answer"] = orgMethod[OrgTaskAnswerParams, OrgTask]("factory.org_workstream_task_answer", func(p OrgTaskAnswerParams) (OrgRequest, error) {
+		path, err := orgTaskPath(p.WS, p.ID)
+		if err != nil {
+			return OrgRequest{}, err
+		}
+		if strings.TrimSpace(p.Option) == "" && strings.TrimSpace(p.Text) == "" {
+			return OrgRequest{}, Errorf(CodeBadParams, "an answer is an option or words")
+		}
+		if len(p.Text) > orgTaskMost {
+			return OrgRequest{}, Errorf(CodeBadParams, "text is at most 16384 bytes")
+		}
+		return OrgRequest{Method: http.MethodPost, Path: path + "/answer", Body: map[string]string{"option": p.Option, "text": p.Text}}, nil
+	})
+	methods["factory.org_workstream_task_comment"] = orgMethod[OrgTaskCommentParams, OrgTaskEvent]("factory.org_workstream_task_comment", func(p OrgTaskCommentParams) (OrgRequest, error) {
+		path, err := orgTaskPath(p.WS, p.ID)
+		if err != nil {
+			return OrgRequest{}, err
+		}
+		if len(p.Offer) == 0 && strings.TrimSpace(p.Text) == "" {
+			return OrgRequest{}, Errorf(CodeBadParams, "a comment needs words")
+		}
+		if len(p.Text) > orgTaskMost {
+			return OrgRequest{}, Errorf(CodeBadParams, "text is at most 16384 bytes")
+		}
+		body := struct {
+			Kind      string          `json:"kind,omitempty"`
+			Text      string          `json:"text,omitempty"`
+			OfferFor  string          `json:"offer_for,omitempty"`
+			Steps     int             `json:"steps,omitempty"`
+			DurationS int             `json:"duration_s,omitempty"`
+			Offer     json.RawMessage `json:"offer,omitempty"`
+		}{p.Kind, p.Text, p.OfferFor, p.Steps, p.DurationS, p.Offer}
+		return OrgRequest{Method: http.MethodPost, Path: path + "/comment", Body: body}, nil
+	})
+	methods["factory.org_workstream_task_events"] = filled(orgMethod[OrgTaskParams, OrgTaskEvents]("factory.org_workstream_task_events", func(p OrgTaskParams) (OrgRequest, error) {
+		path, err := orgTaskPath(p.WS, p.ID)
+		return OrgRequest{Method: http.MethodGet, Path: path + "/events"}, err
+	}), func(e *OrgTaskEvents) { e.fill() })
+	methods["factory.org_workstream_tasks_start_all"] = filled(orgMethod[OrgTasksStartAllParams, OrgTasks]("factory.org_workstream_tasks_start_all", func(p OrgTasksStartAllParams) (OrgRequest, error) {
+		path, err := orgTasksPath(p.WS)
+		if err != nil {
+			return OrgRequest{}, err
+		}
+		group, err := orgSegment("group", p.Group)
+		if err != nil {
+			return OrgRequest{}, err
+		}
+		return OrgRequest{Method: http.MethodPost, Path: path + "/start_all", Body: map[string]string{"group": group}}, nil
+	}), tasks)
+}
