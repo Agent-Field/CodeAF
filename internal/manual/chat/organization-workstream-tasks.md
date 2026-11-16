@@ -46,3 +46,11 @@ You can hand it to someone, give it a due date or a heading, or make other tasks
 A task's Activity and comments is one thread everyone in the workstream sees: what was done, people's comments, and answers. Comments go to people. Afi never acts on a comment; it may offer under one ("Afi can add this to the draft · Add it"). Anyone may press Add it; the owner is told and can undo for 5 seconds, after which "the five seconds to undo this have passed".
 
 A private conversation with Afi stays private. If something you ask Afi there changes shared work, the task gets one line ("Priya asked Afi to keep it under 300 words"), never the conversation. "Post this to the task" adds Afi's answer to the thread, marked as posted by you.
+
+## someone left the workstream — who gets their tasks, handed to the fallback
+
+When a person is removed from an organization workstream, each of their unfinished tasks there (and in every workstream inside it) is handed to the workstream's fallback person ("If unanswered for a day"), or to the person who looks after the workstream when there is none. The thread says "Handed to mia". Done tasks keep who did them, and a person's own checkbox task moves with the hand-off. Anyone who can edit can hand a task on again by hand.
+
+## a file changed while a task was running — carry on or start again
+
+When someone changes the contents of a file that a running task's work read, that task stops and asks its owner "Layout changed while this ran. Carry on?", with "Carry on with the new version" and "Start again from the new version". Only the owner answers, and either answer starts the task again. A rename alone flags nothing, and a task that is not running is left alone. A Factory task cannot be stopped this way, because its state belongs to its job: its thread only gains the line "Layout changed while this ran".

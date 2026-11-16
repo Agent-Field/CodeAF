@@ -709,6 +709,9 @@ func (h *Handler) patchWorkstreamFile(w http.ResponseWriter, r *http.Request) {
 	}
 	h.recordWorkstream(r, ws.ID, verb, fid)
 	h.publishFileChange(ws, saved, h.orgActor(r), body.Edited != "")
+	if body.Edited != "" {
+		h.flagTasksOfFile(r, ws, saved, h.orgActor(r))
+	}
 	h.write(w, http.StatusOK, saved)
 }
 
