@@ -16,6 +16,12 @@ const (
 	// message written here to a chat another computer holds, which that
 	// computer puts in the chat's queue, so it runs when the turn there ends.
 	FeatureChatsSend = "chats.send"
+	// FeatureChatsRead says chats.read exists: the transcript of a chat another
+	// computer holds, read page by page from what that computer last sealed,
+	// without taking the chat and without downloading its project folder. It is
+	// absent unless a relay is configured AND the engine codeaf seals with can
+	// read one path of a snapshot (a capability that cannot work is absent).
+	FeatureChatsRead = "chats.read"
 	FeatureSyncRelay = "sync.relay"
 	EventChatChanged = "chat.changed"
 	EventChatRemoved = "chat.removed"
@@ -159,6 +165,43 @@ type ChatsTaker interface {
 	TakeAgent(TakeParams) (Agent, error)
 }
 
+// ChatReadParams asks for one page of a remote chat's transcript. Before is the
+// cursor a previous page answered; empty is the newest page. Limit is the
+// fewest entries a page holds before it reaches the start (a turn is never
+// split, so a page can hold more); zero or less is ChatReadLimit.
+type ChatReadParams struct {
+	Cell   string `json:"cell"`
+	Before string `json:"before,omitempty"`
+	Limit  int    `json:"limit,omitempty"`
+}
+
+// ChatReadLimit is the page size when a client names none.
+const ChatReadLimit = 50
+
+// ChatReadResult is one page, oldest to newest within it, newest page first.
+// Entries are the same Entry agents.entries answers for a chat on this
+// computer. Before is the cursor of the next older page and More is false once
+// the page reaches the start of the transcript. Head is the snapshot the page
+// was read at, and SealedAtMs when that turn was sealed, when known. The
+// transcript is what the holder last sealed: a turn running there now is not
+// on it. FetchedBytes is what this call pulled from the relay, 0 when this
+// computer already held every byte it needed.
+type ChatReadResult struct {
+	Entries      []Entry `json:"entries"`
+	More         bool    `json:"more"`
+	Before       string  `json:"before,omitempty"`
+	Head         string  `json:"head"`
+	SealedAtMs   int64   `json:"sealed_at_ms,omitempty"`
+	FetchedBytes int64   `json:"fetched_bytes"`
+}
+
+// ChatsReader reads chats other computers hold. CanReadChats is asked at every
+// hello, so the feature appears and disappears with the relay and the engine.
+type ChatsReader interface {
+	CanReadChats() bool
+	ReadChat(ChatReadParams) (ChatReadResult, error)
+}
+
 // ChatsMover cancels a move agents.take is running or has queued.
 type ChatsMover interface {
 	CancelTake(TakeCancelParams) (TakeCancelResult, error)
@@ -182,6 +225,9 @@ func withChatsFeatures(h Hello, e Engine) Hello {
 	}
 	if _, ok := e.(ChatsSender); ok {
 		h = withFeature(h, FeatureChatsSend)
+	}
+	if d, ok := e.(ChatsReader); ok && d.CanReadChats() {
+		h = withFeature(h, FeatureChatsRead)
 	}
 	if d, ok := e.(RelayReporter); ok && d.RelayKnown() {
 		h = withFeature(h, FeatureSyncRelay)
@@ -225,6 +271,21 @@ func init() {
 		}
 		got, err := d.SendToChat(p)
 		return &ChatSendResult{Note: got}, err
+	})
+	methods["chats.read"] = typed(func(e Engine, p ChatReadParams) (*ChatReadResult, error) {
+		d, ok := e.(ChatsReader)
+		if !ok || !d.CanReadChats() {
+			return nil, Errorf(CodeUnknownMethod, "this engine does not read chats on other computers")
+		}
+		if _, err := required("cell", p.Cell); err != nil {
+			return nil, err
+		}
+		if p.Limit <= 0 {
+			p.Limit = ChatReadLimit
+		}
+		got, err := d.ReadChat(p)
+		got.Entries = nonNil(got.Entries)
+		return &got, err
 	})
 	methods["agents.take_cancel"] = typed(func(e Engine, p TakeCancelParams) (*TakeCancelResult, error) {
 		d, ok := e.(ChatsMover)
