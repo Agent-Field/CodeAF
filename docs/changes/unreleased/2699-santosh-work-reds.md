@@ -14,4 +14,6 @@ creating its record under the same computer. Since #2654 that is the copier
 sharing a new chat, which the drive rightly keeps, so the fixture now has
 another computer hold the record. TestAClosedNodesDollarsAreStampedOnTheConversation
 now settles the deferred meta.json stamp before it reads it. The workstream
-tools decode their arguments through decodeToolArguments.
+tools decode their arguments through decodeToolArguments. CODEAF_CANVAS_BIN
+(#2638) and CODEAF_FACTORY_RUNTIME_DIR (#2609) are registered as operator
+plumbing, so TestRegistryCoversEveryUserFacingEnvironmentPin is green again.
