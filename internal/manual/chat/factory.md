@@ -239,9 +239,15 @@ A passkey is the first way into an organization when its server is reached over 
 
 A passkey page finishes only on the computer whose codeaf started it. When the passkey is accepted, the page says "Done. Returning to codeaf on the computer that started this…" and, a second later, hands over to codeaf on that computer (an address on 127.0.0.1 that only codeaf there listens on), which shows "Done" and signs codeaf in. **Copy address** works in another browser on the same computer if you use the page there from the start: a page belongs to the first browser that presses its button, and any other reads "This sign-in is open in another browser. Start again in codeaf." Opened on a phone or another computer, the passkey can be accepted but nothing is signed in: the browser says it can't connect, the page said why just before ("you opened this page on a different computer or browser"), and going back to it reads "Finish on the computer that started this". A sign-in address someone else sends you never signs them in as you.
 
-**Confirm it's you.** Adding a passkey, setting a first password and removing a passkey always need a confirmation in the last five minutes: one of your passkeys on its own short page ("Confirm it's you") or your current password. Signing in is not one, even a minute ago. codeaf asks first: "Confirm it's you first: use one of your passkeys, or enter your current password." Setting a first password ends your other sessions, as a change does.
+**Limit:** another person signed in to the same computer can see which port codeaf listens on while a passkey page is open; without the page's secret path and key they cannot finish it, but on a shared computer sign in only on your own account. An organization at an address under a shared wildcard name (sslip.io, nip.io) is for demos only: anyone can serve a neighbouring name there.
 
-**Limit:** another person signed in to the same computer can see which port codeaf listens on while a passkey page is open; without the page's secret path and key they cannot finish it, but on a shared computer sign in only on your own account.
+## confirm it's you — adding a passkey, removing a passkey, setting a first password
+
+Adding a passkey, removing a passkey and setting a first password each need a confirmation made for that one change: codeaf says "Confirm it's you first: use one of your passkeys, or enter your current password." and asks. Your current password, or one of your passkeys on a short page of its own that names the change and the computer asking, for example "Remove passkey “MacBook” — requested by codeaf on santosh-mac". Read it: confirm only a change you asked for, on your own computer.
+
+A confirmation lets that one change happen once, within five minutes; it allows nothing else, and signing in is never one, even a minute ago. Setting a first password ends your other sessions, as a change does.
+
+After a passkey page finishes on this computer, the browser shows a plain "Done" page on 127.0.0.1; the one-time code it carried is gone from the address, and stops working a minute after the passkey was used either way.
 
 Too many passkey pages waiting from one network are turned away ("Too many passkey sign-ins are waiting. Try again in a minute."); a flood from elsewhere cannot crowd out an invitation or a signed-in person, and a sign-in page nobody opens ends after two minutes.
 
