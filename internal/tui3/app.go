@@ -4285,6 +4285,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.homeFilesLoaded(msg.paths, msg.root)
 			return a, nil
 		}
+		if msg.root != "" && a.comp.walked != "" && msg.root != a.comp.walked {
+			return a, nil
+		}
 		a.comp.all, a.comp.loaded, a.comp.loading = msg.paths, true, false
 		a.fillMentions()
 		a.comp.refresh(&a.input)
@@ -10115,6 +10118,7 @@ func (a *app) syncLists() tea.Cmd {
 		recents = a.loadMentionRecents()
 	}
 	a.fillMentions()
+	a.alignFiles(a.pathRoot())
 	a.comp.sync(&a.input)
 	if opening {
 		// Both halves of the list are asked for at the same moment, and neither
@@ -10122,6 +10126,9 @@ func (a *app) syncLists() tea.Cmd {
 		// walk lands when it lands (taskmention.go, files.go). The recent
 		// conversations ride the same opening (mention.go).
 		return tea.Batch(a.loadFiles(), a.loadTasks(), recents)
+	}
+	if a.comp.open && a.comp.words == nil {
+		return a.loadFiles()
 	}
 	return nil
 }
