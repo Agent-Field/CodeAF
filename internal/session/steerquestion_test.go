@@ -444,3 +444,25 @@ func TestASteerLeavesAnAnsweredQuestionChangeable(t *testing.T) {
 		t.Fatalf("changing the answer after a steer was refused: %v", err)
 	}
 }
+
+// THE MODEL IS TOLD WHEN THE PERSON'S WORDS TOOK DOWN A QUESTION IT WAS NOT
+// WAITING ON: no call is left to hand the news to, so it arrives as a note the
+// model reads at its next step, as a dismissed question's does.
+func TestAQuestionTheModelWasNotWaitingOnIsToldWhenTalkedPast(t *testing.T) {
+	var later []ai.Message
+	rig := leaveAQuestionStanding(t,
+		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("grey, then"), nil },
+		func(_ context.Context, msgs []ai.Message) (*ai.Response, error) {
+			later = msgs
+			return textResponse("noted"), nil
+		},
+	)
+	collect(t, mustSubmit(t, rig.agent, "go with grey"))
+	collect(t, mustSubmit(t, rig.agent, "and the hall after"))
+	for _, m := range later {
+		if strings.Contains(partsText(m), askTalkedPastNote) {
+			return
+		}
+	}
+	t.Fatalf("the model was not told its question came down; it read %d messages", len(later))
+}

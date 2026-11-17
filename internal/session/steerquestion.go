@@ -85,6 +85,11 @@ const askTalkedPast = "the person did not answer this question: they said someth
 // onto every surface still drawing the row.
 const askTalkedPastReason = "you said something else instead"
 
+// askTalkedPastNote is what the model reads about a question it was not
+// waiting on (a [Question.Later] one, one a task is stopped on) that the
+// person's words took down: no call is left to hand [askTalkedPast] to.
+const askTalkedPastNote = "the person said something else instead of answering it, and it is no longer on their screen: nothing was decided. Carry on without the answer; ask again later only if you still need it."
+
 // steerTookTheQuestion is where the correction landed when it retired a
 // question. It is a [SteerNote.Landing] and therefore person-facing: it names
 // what their sentence DID, which is the one thing the three other landings have
@@ -137,6 +142,11 @@ func (a *Agent) talkedPastQuestionsLocked(keepSettled bool) []Question {
 func (a *Agent) sayTheQuestionsCameDown(taken []Question) {
 	for _, q := range taken {
 		a.sayWithdrawn(q, askTalkedPastReason)
+		// A call parked on it reads [askTalkedPast]; one nothing waited on is
+		// told at the model's next step, as a dismissed one is.
+		if q.Later || len(q.Blocking.Tasks) > 0 {
+			a.enqueueAmbientNote("Your question \"" + strings.TrimSpace(q.Head) + "\": " + askTalkedPastNote)
+		}
 	}
 }
 
