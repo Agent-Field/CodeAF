@@ -19,11 +19,13 @@ import (
 // A TASK AFI WORKS ON THE SERVER RUNS IN A SEAT OF ITS OWN, NEVER IN A
 // PERSON'S PANE. Each person's conversation with Afi is private to them (L1
 // F2), so a task somebody started cannot be answered into anybody's
-// conversation: it has its own folder, its own memory of the work, and
-// publishes no agent event at all. What it did is told where everyone who can
-// see the task reads it, the task itself: its state, its results and a line
-// in its thread, all written through the same door and the same routes a
-// person's client uses.
+// conversation: it has its own folder and its own memory of the work. WHAT IT
+// SAYS AND DOES THERE IS THE TASK'S WORKING CONVERSATION, which everyone who
+// can see the workstream reads, live, as task.work events
+// (workstream_task_work.go; OWNER-DECISIONS 2026-11-17 §8); the task's owner
+// and whoever started the run steer it there. What it did is also told on the
+// task itself: its state, its results and a line in its thread, all written
+// through the same door and the same routes a person's client uses.
 //
 // The run's rights are the rights of the person who started it, checked on
 // every write as they are now, so a starter who loses edit mid-run stops the
@@ -110,10 +112,11 @@ func (h *Handler) startTaskRun(ws factory.OrgWorkstream, task factory.Workstream
 	run := AgentTurn{Workstream: ws.ID, Name: ws.Name, Turn: turn, Asker: starter, Text: strings.TrimSpace(words), Now: now, About: h.orgAbout(),
 		Task: &AgentTask{ID: task.ID, Title: task.Title},
 		Key:  h.orgModelKey(), Dir: filepath.Join(h.taskRunDir(ws.ID, task.ID), "agent"), Door: door,
-		// Nobody reads a task run as a conversation: its lines go nowhere.
-		Step: func(string, string, string, bool) {}}
+		// Every line is a line of the task's Working conversation.
+		Step: h.taskWorkStep(key, turn), Steers: h.openTaskWork(key, turn, starter)}
 	guard.Go("factory workstream task", func() {
 		var next *taskResume
+		var failed error
 		defer func() {
 			// Last, once this run is gone: the answer that came while it
 			// was ending starts the next one.
@@ -121,6 +124,10 @@ func (h *Handler) startTaskRun(ws factory.OrgWorkstream, task factory.Workstream
 				h.resumeTaskRun(ws, next.task, next.starter, next.words)
 			}
 		}()
+		var spent float64
+		// Before that: everyone reading the task sees this run end, so the
+		// next run's lines open a turn of their own.
+		defer func() { h.closeTaskWork(key, turn, failed, spent) }()
 		defer d.wg.Done()
 		defer cancel()
 		// The lease is kept first and beats while the run goes, so a restart
@@ -135,6 +142,10 @@ func (h *Handler) startTaskRun(ws factory.OrgWorkstream, task factory.Workstream
 			}
 		}()
 		end, err := h.config.WorkstreamAgent(ctx, run)
+		if ctx.Err() == nil {
+			failed = err
+		}
+		spent = end.USD
 		if end.USD > 0 {
 			h.postAgentSpend(run, end.USD)
 		}

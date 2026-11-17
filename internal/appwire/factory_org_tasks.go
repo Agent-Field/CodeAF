@@ -288,7 +288,7 @@ func withFactoryOrgTasksFeature(hello Hello, e Engine) Hello {
 		hello = withFeature(hello, FeatureOrgWorkstreamRequests)
 		hello = withFeature(hello, FeatureOrgWorkstreamDecisions)
 	}
-	return hello
+	return withFactoryOrgTaskWorkFeature(hello, e)
 }
 
 func (t *OrgTasks) fill()      { t.Tasks = nonNil(t.Tasks) }

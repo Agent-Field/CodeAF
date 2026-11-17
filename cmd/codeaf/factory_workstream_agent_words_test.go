@@ -78,7 +78,7 @@ func TestATaskRunsPromptSaysHowItEnds(t *testing.T) {
 	if hit := machineryWords.FindAllString(p, -1); len(hit) > 0 {
 		t.Errorf("the task run's prompt says %q:\n%s", hit, p)
 	}
-	for _, want := range []string{"mia started you", "Nobody reads what you say here", "set the task done", "set the task failed", "ws_task_comment"} {
+	for _, want := range []string{"mia started you", "Everyone in the workstream can read what you say and do here", "their words change the work", "set the task done", "set the task failed", "ws_task_comment"} {
 		if !strings.Contains(p, want) {
 			t.Errorf("the task run's prompt does not say %q:\n%s", want, p)
 		}
@@ -98,5 +98,64 @@ func TestFactoryAgentStepsNeverShowAToolsHandle(t *testing.T) {
 	}
 	if got := factoryAgentStepWords(session.Event{Tool: session.WSDecisionsTool}); got != "read the decisions" {
 		t.Errorf("ws_decisions reads %q", got)
+	}
+}
+
+// A STEER'S STREAM REPORTS ONLY ITS OWN TURN. Session's Steer answers a live
+// view of the turn it was typed into, whose lines the run's main stream
+// already reports; only what follows the steer falling through into a turn of
+// its own is new. Reporting both would draw every line of the task's Working
+// conversation twice.
+func TestASteersStreamReportsOnlyTheTurnItStarted(t *testing.T) {
+	events := make(chan session.Event, 8)
+	events <- session.Event{Kind: session.EventSteerAccepted}
+	events <- session.Event{Kind: session.EventTextDelta, Text: "already said by the main stream"}
+	events <- session.Event{Kind: session.EventSteerFellThrough}
+	events <- session.Event{Kind: session.EventTextDelta, Text: "Using the shorter title."}
+	close(events)
+	var lines []string
+	if err := factoryAgentConsume(events, func(kind, text, _ string, _ bool) { lines = append(lines, kind+":"+text) }, true); err != nil {
+		t.Fatal(err)
+	}
+	if len(lines) != 1 || lines[0] != "agent:Using the shorter title." {
+		t.Fatalf("a steer's stream reported %q", lines)
+	}
+}
+
+// EVERY ws_* STEP READS AS WORDS IN A TASK'S WORKING CONVERSATION, which
+// everyone in the workstream reads. A step with no words of its own fell back
+// to the tool's name, and "ws_decisions" was drawn to people (L4 live run).
+func TestEveryWorkstreamStepReadsAsWords(t *testing.T) {
+	for _, tool := range session.WorkstreamWorkTools() {
+		words := factoryAgentStepWords(session.Event{Tool: tool.Name, Args: "{}"})
+		if words == "" || strings.Contains(words, "ws_") || strings.Contains(words, "_") {
+			t.Errorf("%s reads %q", tool.Name, words)
+		}
+	}
+}
+
+// A STEER IS NEVER ECHOED ONTO THE TASK. Live on 2026-11-17 Afi recorded the
+// owner's steer as a request note, which the thread drew as "Afi asked Afi Mia
+// asked to keep the headline under eight words": words everyone had already
+// read in the Working conversation, said twice and garbled.
+func TestATaskRunNeverEchoesASteerOntoTheTask(t *testing.T) {
+	p := factoryWorkstreamAgentTaskRun("tk_1", "Draft the post", "mia")
+	if !strings.Contains(p, "never repeat them on the task as a note or a comment") {
+		t.Errorf("the task run's words do not forbid echoing a steer: %s", p)
+	}
+}
+
+// ON THE SERVER A BATCH IS A PLAN, NOT A CHAT (org-space DESIGN §12). Before,
+// the server's Afi read the shared rule that a batch is named for "the chat
+// that runs them" and promised people a chat that cannot exist on a server.
+func TestOnTheServerABatchIsAPlan(t *testing.T) {
+	p := factoryWorkstreamAgentSystem("Pantry", "priya", true, time.Time{}, "")
+	for _, must := range []string{"a batch is a plan, never a chat", "presses Start, which releases all of it", "never say a chat will run it"} {
+		if !strings.Contains(p, must) {
+			t.Errorf("the server prompt does not say %q", must)
+		}
+	}
+	if strings.Contains(factoryWorkstreamAgentSystem("Pantry", "priya", false, time.Time{}, ""), "a batch is a plan") {
+		t.Error("without the task tools there is no batch to speak of")
 	}
 }

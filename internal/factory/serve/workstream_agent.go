@@ -73,8 +73,8 @@ type AgentTurn struct {
 	Now time.Time
 	TZ  string
 	// Task is set when this turn works one task rather than answering a
-	// person's message: Text is then what the task asks, and nobody reads the
-	// turn as a conversation.
+	// person's message: Text is then what the task asks, and the turn is the
+	// task's Working conversation, which everyone in the workstream reads.
 	Task *AgentTask
 	// Key is the organization's model key (OpenRouter's).
 	Key string
@@ -93,6 +93,11 @@ type AgentTurn struct {
 	// Step reports one line of the conversation: api.AgentEntryStep with the
 	// tool's name, or api.AgentEntryAgent with the answer.
 	Step func(kind, text, tool string, failed bool)
+	// Steers, on a task's run, carries words its owner or starter sent while
+	// it works: the runner hands each to the turn at its next step, and
+	// answers it as a new turn when the turn has already ended. Nil on a
+	// person's own conversation, where one message is answered at a time.
+	Steers <-chan string
 }
 
 // AgentOrg is what the set-up conversation knows of its organization, and
@@ -168,9 +173,11 @@ type agentDesk struct {
 	since time.Time
 	// sweepDone closes when the lease sweep has ended, after Close.
 	sweepDone chan struct{}
-	ctx       context.Context
-	stop      context.CancelFunc
-	wg        sync.WaitGroup
+	// work is each task's Working conversation (workstream_task_work.go).
+	work map[taskRunKey]*taskWork
+	ctx  context.Context
+	stop context.CancelFunc
+	wg   sync.WaitGroup
 }
 
 func (h *Handler) agentRoutes() {
