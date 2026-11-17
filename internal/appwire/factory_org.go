@@ -177,6 +177,10 @@ type OrgWorkstream struct {
 	// server answers neither.
 	People []OrgMember         `json:"people,omitempty"`
 	Rules  *OrgWorkstreamRules `json:"rules,omitempty"`
+	// SetupCard is the setup Afi proposed to this person and they have not
+	// yet accepted or dropped (factory.WorkstreamSetupCard); absent when
+	// there is none. It is carried as the server says it.
+	SetupCard json.RawMessage `json:"setup_card,omitempty"`
 }
 
 // OrgWorkstreams is factory.org_workstreams's answer: those visible to the
@@ -291,6 +295,9 @@ type OrgWorkstreamPatch struct {
 	Rules   *OrgWorkstreamRules `json:"rules,omitempty"`
 	Steward *string             `json:"steward,omitempty"`
 	Parent  *string             `json:"parent,omitempty"`
+	// DropSetupCard clears the caller's setup card: sent with an accepted
+	// card's changes, or alone when it is dismissed.
+	DropSetupCard bool `json:"drop_setup_card,omitempty"`
 }
 
 // OrgWorkstreamUpdateParams is a patch guarded by the rev it was read at.
