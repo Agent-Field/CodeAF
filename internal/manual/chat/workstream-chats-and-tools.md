@@ -24,7 +24,7 @@ Your teammates cannot see your chats, and neither can their Afi. Afi does not co
 
 On an organization's workstream Afi does not have `ws_chats`: your chats stay on your computer and the organization's server never holds them, so there is nothing for it to read.
 
-## does closing a chat stop it — leaving a chat stops nothing
+## does leaving a chat stop what it is doing — going back or shutting its tab stops nothing
 
 No. Going back to the list, opening another chat, or closing a chat's tab stops nothing: the chat keeps working on whatever it was doing and its tasks keep running. It rests on its own when nothing of its is running, and wakes when you write to it or a task of its needs you. To stop work, stop the task itself, or press stop in the chat while it is answering.
 
