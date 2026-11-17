@@ -147,6 +147,23 @@ func TestMySpaceChatsRunOnTheServerAndStayPrivate(t *testing.T) {
 	if len(abirs.Chats) != 0 {
 		t.Fatalf("abir lists santosh's chat: %+v", abirs.Chats)
 	}
+	// v2 ruling C10: abir sees that santosh has a chat called Side, its state
+	// and when it last moved, and nothing that was said in it.
+	if len(abirs.Others) != 1 || abirs.Others[0].ID != side.ID || abirs.Others[0].Title != "Side" || abirs.Others[0].Owner != "santosh" ||
+		abirs.Others[0].Workstream != ws.ID || abirs.Others[0].LastActivity == "" || abirs.Others[0].State == "" {
+		t.Fatalf("abir's view of others' chats = %+v", abirs.Others)
+	}
+	// santosh's own chats are not listed back to santosh as someone else's,
+	// and a space lists nobody's.
+	var santoshs api.AgentChatList
+	o.do(t, "santosh", "GET", "/v1/workstreams/"+ws.ID+"/chats", -1, nil, 200, &santoshs)
+	if len(santoshs.Others) != 0 {
+		t.Fatalf("santosh is shown their own chat as another's: %+v", santoshs.Others)
+	}
+	o.do(t, "santosh", "GET", path+"/chats", -1, nil, 200, &santoshs)
+	if len(santoshs.Others) != 0 {
+		t.Fatalf("a space lists others' chats: %+v", santoshs.Others)
+	}
 }
 
 // THE OPERATOR SEES TOTALS ONLY: spend this month and a count per person,

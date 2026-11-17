@@ -517,6 +517,7 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.org_workstream_task_work` | `in.OrgTaskWorkParams` | `OrgTaskWork` |
 | `factory.org_workstream_task_steer` | `in.OrgTaskSteerParams` | `OrgTaskWork` |
 | `factory.org_workstream_chats` | `in.OrgWorkstreamParams` | `{chats}` |
+| `factory.org_workstream_chats` | `in.OrgWorkstreamParams` | `{chats, others}` |
 | `factory.org_workstream_chat_new` | `in.OrgWorkstreamChatNew` | `{id, title, state, created_at, updated_at}` |
 | `factory.org_myspace` | `in.OrgConn` | `{workstream, limit_usd, spent_usd, at_limit?}` |
 | `factory.org_myspace_totals` | `in.OrgConn` | `{month, limit_usd, people}` |
@@ -1065,7 +1066,10 @@ names a space's things. `factory.org_myspace_limit_set {limit_usd}` `PUT
 removes a person, their space goes to the heir as one private workstream named
 "<handle>'s space". `factory.org_workstream_chats {id}` `GET .../chats` lists the
 caller's own chats in a workstream (`{chats: [{id, title, state, created_at,
-updated_at}]}`, newest first) and `factory.org_workstream_chat_new {id, title?}` `POST
+updated_at}]}`, newest first) and, metadata only, everyone else's there (v2 ruling C10:
+`others: [{id, workstream, title, owner, owner_name?, state, last_activity}]`, newest
+activity first; never a line of what is said; always empty in a space). `id` is the
+`chat_id` on the tasks and files that chat made. `factory.org_workstream_chat_new {id, title?}` `POST
 .../chats` (`edit`) makes one (`ch_` and 26 letters or digits; an empty title is the
 first message's first line). `factory.org_workstream_agent`, `_send` and `_stop` take
 `chat` to read, talk in or stop one; a chat that is not the caller's is `not_found`. A

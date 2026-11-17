@@ -24,8 +24,10 @@ import (
 // is a side conversation. Each chat is a seat of its own (workstream_agent.go
 // agentSeat.chat), so it has the same rules Afi's pane has:
 //
-//   - IT IS PRIVATE TO ITS PERSON. Nobody else lists it, reads it or hears its
-//     events; what the agent puts in files and pages is the workstream's.
+//   - WHAT IS SAID IS PRIVATE TO ITS PERSON. Nobody else reads it or hears its
+//     events; what the agent puts in files and pages is the workstream's. In
+//     a shared workstream the chat's title, owner, state and last activity
+//     are the workstream's to see (v2 ruling C10); in a space, nothing is.
 //   - IT RUNS HERE, never on a laptop, whatever the operator chose for Afi's
 //     pane, so closing the laptop mid-answer loses nothing.
 //   - IT SPENDS THE ORGANIZATION'S KEY, posted to the workstream under its
@@ -182,13 +184,44 @@ func (h *Handler) myChats(ws, person string) []api.AgentChat {
 	return out
 }
 
-// listAgentChats is GET /v1/workstreams/{id}/chats: the caller's own chats.
+// listAgentChats is GET /v1/workstreams/{id}/chats: the caller's own chats,
+// and everyone else's as metadata only.
 func (h *Handler) listAgentChats(w http.ResponseWriter, r *http.Request) {
 	ws, _, ok := h.findWorkstream(w, r)
 	if !ok {
 		return
 	}
-	h.write(w, http.StatusOK, api.AgentChatList{Chats: h.myChats(ws.ID, h.orgActor(r))})
+	me := h.orgActor(r)
+	h.write(w, http.StatusOK, api.AgentChatList{Chats: h.myChats(ws.ID, me), Others: h.othersChats(ws, me)})
+}
+
+// othersChats are the chats in ws of everyone but me, newest activity first:
+// title, owner, state and last activity only. A space's are nobody else's.
+func (h *Handler) othersChats(ws factory.OrgWorkstream, me string) []api.OtherChat {
+	out := []api.OtherChat{}
+	if ws.Space {
+		return out
+	}
+	people, err := os.ReadDir(filepath.Join(h.config.Store.Root(), agentDirName, ws.ID, "people"))
+	if err != nil {
+		return out
+	}
+	nameOf := h.personNames()
+	for _, p := range people {
+		if !p.IsDir() || p.Name() == me {
+			continue
+		}
+		for _, c := range h.myChats(ws.ID, p.Name()) {
+			out = append(out, api.OtherChat{ID: c.ID, Workstream: ws.ID, Title: c.Title, Owner: p.Name(), OwnerName: nameOf(p.Name()), State: c.State, LastActivity: c.UpdatedAt})
+		}
+	}
+	slices.SortFunc(out, func(a, b api.OtherChat) int {
+		if c := strings.Compare(b.LastActivity, a.LastActivity); c != 0 {
+			return c
+		}
+		return strings.Compare(b.ID, a.ID)
+	})
+	return out
 }
 
 // createAgentChat is POST /v1/workstreams/{id}/chats: a new chat of the

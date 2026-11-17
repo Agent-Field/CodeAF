@@ -56,8 +56,9 @@ const MySpaceLimitDefaultUSD = 20.0
 const MySpaceLimitMostUSD = 10000.0
 
 // AgentChat is one of a person's own chats with a workstream's agent on the
-// server, beside the one Afi conversation every workstream has. Like Afi's
-// conversation it is private to the person: nobody else lists or reads it.
+// server, beside the one Afi conversation every workstream has. What is said
+// in it is private to the person, like Afi's conversation: nobody else reads
+// it. In a shared workstream, others see only its OtherChat row.
 type AgentChat struct {
 	ID    string `json:"id"`
 	Title string `json:"title"`
@@ -72,6 +73,25 @@ type AgentChat struct {
 // chats there, newest change first.
 type AgentChatList struct {
 	Chats []AgentChat `json:"chats"`
+	// Others are everyone else's chats in this workstream, metadata only
+	// (v2 ruling C10). Always empty in a space.
+	Others []OtherChat `json:"others"`
+}
+
+// OtherChat is another person's chat as the workstream sees it (v2 ruling
+// C10: "Lena's chat: Onboarding emails · Working"). It carries its title, its
+// owner, its state and its last activity, and never a line of what is said.
+// ID matches the chat_id on the tasks and files it made, so a row can open
+// them.
+type OtherChat struct {
+	ID         string `json:"id"`
+	Workstream string `json:"workstream"`
+	Title      string `json:"title"`
+	Owner      string `json:"owner"`
+	OwnerName  string `json:"owner_name,omitempty"`
+	// State is AgentIdle, AgentWorking or AgentStopping.
+	State        string `json:"state"`
+	LastActivity string `json:"last_activity"`
 }
 
 // AgentChatNew is POST /v1/workstreams/{id}/chats's body. An empty title is

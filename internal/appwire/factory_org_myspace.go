@@ -19,7 +19,7 @@ import (
 //	factory.org_myspace              OrgConn                  -> {workstream, limit_usd, spent_usd, at_limit?} GET /v1/myspace
 //	factory.org_myspace_totals       OrgConn                  -> {month, limit_usd, people[]}   GET /v1/myspace/totals (operator)
 //	factory.org_myspace_limit_set    OrgMySpaceLimitParams    -> the totals                     PUT /v1/myspace/limit (operator)
-//	factory.org_workstream_chats     OrgWorkstreamParams      -> {chats[]}                      GET  /v1/workstreams/{id}/chats
+//	factory.org_workstream_chats     OrgWorkstreamParams      -> {chats[], others[]}            GET  /v1/workstreams/{id}/chats
 //	factory.org_workstream_chat_new  OrgWorkstreamChatNew     -> {id, title, state, ...}        POST /v1/workstreams/{id}/chats
 //
 // A person's chats are private to them, like Afi's pane, and always run on
