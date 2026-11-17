@@ -284,4 +284,11 @@ func TestRemovingSomeoneOffersTheirTasksToTheAdmin(t *testing.T) {
 	if len(list.Invites) != 0 {
 		t.Fatalf("removed person still listed: %+v", list.Invites)
 	}
+	var people api.People
+	f.request(t, "GET", "/v1/people", o.priya, nil, 200, &people)
+	for _, p := range people.People {
+		if p.Handle == "sam" {
+			t.Fatalf("removed person still in the people list: %+v", p)
+		}
+	}
 }
