@@ -38,8 +38,14 @@ func (h *Handler) keepDecisions(r *http.Request, id string, v Viewer, ds []facto
 		return
 	}
 	now := h.clock().UTC()
+	var kept []factory.WorkstreamDecision
 	_, saved, err := h.editPart(id, v, func(cur *factory.OrgWorkstream, _ factory.OrgWorkstreams) (bool, error) {
-		cur.Decisions = append(slices.Clone(cur.Decisions), ds...)
+		// Inside the write: two answers given together read the list one
+		// after the other, so the second finds the first and keeps nothing.
+		if kept = factory.KeepNewDecisions(cur.Decisions, ds); len(kept) == 0 {
+			return false, nil
+		}
+		cur.Decisions = append(slices.Clone(cur.Decisions), kept...)
 		cur.UpdatedAt = now
 		return true, nil
 	})
@@ -47,7 +53,10 @@ func (h *Handler) keepDecisions(r *http.Request, id string, v Viewer, ds []facto
 		log.Printf("factory: workstream %s: a decision was not kept: %v", id, err)
 		return
 	}
-	for _, d := range ds {
+	if len(kept) == 0 {
+		return
+	}
+	for _, d := range kept {
 		h.recordWorkstream(r, id, "kept decision", d.ID)
 	}
 	h.publishWorkstreamPart(saved, api.PartWorkstream, "", h.orgActor(r), saved.Rev, false)

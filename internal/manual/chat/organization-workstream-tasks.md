@@ -39,6 +39,14 @@ Reading tasks needs view on the workstream; adding, commenting, handing on and s
 
 Stopping a task or moving it to another workstream is for the task's owner and for whoever looks after the workstream (its steward, or anyone with full access to it). Anyone else who can edit is refused with "only the task's owner or whoever looks after this workstream can stop or move it", and the desk leaves Stop and Move to another workstream out of their More. They can still comment, hand it to someone or send it back. Answering a task's question and ticking a person's task stay the owner's alone, whoever looks after the workstream.
 
+## I answered Afi's question and nothing happened — an answer puts Afi back to work
+
+When Afi, working a task on an organization's server, asks a question, its run ends and the task shows "Needs" and the person it asks. Answering the last open question on the task sets it Running and starts Afi on it again straight away, in the task's own run, with what it was asked and the answer you chose ("Internal team only"), so it carries on from there. "Go ahead anyway" on a paused task does the same. If the answer lands while Afi is still finishing the turn that asked, it starts again the moment that turn ends. A task with more than one question waits until every one is answered. If the server cannot run Afi any more (no model key), the task stays Running with nothing behind it until its owner stops it or marks it done.
+
+## what Afi's conversation shows when you press Start — Start "the task", never words you did not write
+
+On a Personal workstream, Start and Send back hand the task to Afi's conversation (or the chat that does it). The conversation shows what you did, as your line: Start "Compare ways to move", Start all 3 tasks in "Move day", or Sent back "Compare ways to move": and your own reason. The fuller instruction the doer is given (the task, what was asked, mark it running and done) is not shown as a message from you.
+
 ## send a done task back — Send back…, and what waits on it waits again
 
 A done task's page has a framed line under its facts, "Done by Lena on Nov 20 · Not right? Send it back with what to change. A comment does not reopen a task.", with "Send back…" (also in its More). It asks why, then puts the task back in Up next. Anyone who can edit may send work back, a reviewer included. The thread, the task and the doer's Inbox row read "Sent back by Priya: <why>". An Afi or chat task sent back starts again with the reason. Every done task has the line, whatever it made, files only included. A Factory task's Send back reopens its job, with the reason left in the thread; where the job cannot be reopened from here (an organization's Factory), the line says "The Factory's own page reopens its work." instead. A new goal is a new task.

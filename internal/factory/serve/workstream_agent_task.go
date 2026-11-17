@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -100,24 +101,90 @@ func (h *Handler) runTaskTurn(ws factory.OrgWorkstream, task factory.WorkstreamT
 		// Nobody reads a task run as a conversation: its lines go nowhere.
 		Step: func(string, string, string, bool) {}}
 	guard.Go("factory workstream task", func() {
-		defer d.wg.Done()
+		var next *taskResume
 		defer func() {
-			d.mu.Lock()
-			delete(d.tasks, key)
-			d.mu.Unlock()
-			cancel()
+			// Last, once this run is gone: the answer that came while it
+			// was ending starts the next one.
+			if next != nil {
+				h.resumeTaskRun(ws, next.task, next.starter, next.words)
+			}
 		}()
+		defer d.wg.Done()
+		defer cancel()
 		end, err := h.config.WorkstreamAgent(ctx, run)
 		if end.USD > 0 {
 			h.postAgentSpend(run, end.USD)
 		}
+		// One step under the lock: the run leaves, and whatever answer
+		// queued behind it is taken, so no answer can land in between
+		// and be lost.
+		d.mu.Lock()
+		delete(d.tasks, key)
+		if r, ok := d.resume[key]; ok {
+			delete(d.resume, key)
+			if ctx.Err() == nil {
+				next = &r
+			}
+		}
+		d.mu.Unlock()
 		if ctx.Err() != nil {
 			// Stopped: whoever stopped it has already said so on the task.
+			return
+		}
+		if next != nil {
+			// The task was answered while this run ended: it goes on.
 			return
 		}
 		h.finishTaskRun(door, task.ID, err)
 	})
 	return nil
+}
+
+// taskResume is a run to start on a task once its current one has ended.
+type taskResume struct {
+	task           factory.WorkstreamTask
+	starter, words string
+}
+
+// AN ANSWERED ASK PUTS AFI BACK TO WORK. An Afi task the server runs pauses
+// on an Ask and its run ends; the answer sets it running again, and running
+// means a doer is at work (live2 E1 F4: the task said Running for eight and
+// ten minutes with no model call behind it). So the answer wakes Afi in the
+// task's own seat, with what it was asked and what the person answered. A
+// run still ending when the answer arrives starts the next one as it goes.
+
+// resumeTaskRun starts Afi again on t, as starter, telling it words; when t's
+// run is still going it waits for that run to end. A task that is no longer
+// running by then (done, stopped, asked again) is left as it is.
+func (h *Handler) resumeTaskRun(ws factory.OrgWorkstream, t factory.WorkstreamTask, starter, words string) {
+	d := &h.agentDesk
+	key := taskRunKey{ws.ID, t.ID}
+	d.mu.Lock()
+	if _, busy := d.tasks[key]; busy {
+		if d.resume == nil {
+			d.resume = map[taskRunKey]taskResume{}
+		}
+		d.resume[key] = taskResume{task: t, starter: starter, words: words}
+		d.mu.Unlock()
+		return
+	}
+	d.mu.Unlock()
+	door := &agentDoor{h: h, id: ws.ID, asker: factory.NormalizeHandle(starter)}
+	cur, err := door.task(context.Background(), t.ID)
+	if err != nil || cur.State != factory.TaskRunning || cur.DoneBy.Kind != factory.TaskByAfi {
+		return
+	}
+	// A server with no runner was never running Afi here (the same answer a
+	// Start gets), so only an unexpected refusal is worth a line in the log.
+	if err := h.runTaskTurn(ws, cur, starter, words); err != nil && !errors.Is(err, errTaskBusy) && !errors.Is(err, errTaskNoRunner) {
+		log.Printf("factory: workstream %s: task %s was answered but Afi could not go on: %v", ws.ID, t.ID, err)
+	}
+}
+
+// answeredWords is what Afi is told when an answer puts it back to work.
+func answeredWords(t factory.WorkstreamTask, ask factory.TaskAsk, answer, who string) string {
+	return taskWords(t) + "\n\n" + firstNonEmpty(who, "The person") + " answered your question “" + strings.TrimSpace(ask.Title) +
+		"”: " + strings.TrimSpace(answer) + "\n\nCarry on with the task in light of that answer."
 }
 
 // stopTaskTurn stops task's run, if one is going. The task's own Stop says

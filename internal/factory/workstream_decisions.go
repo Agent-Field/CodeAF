@@ -261,6 +261,36 @@ func RequestDecision(t WorkstreamTask, text string, who PersonRef, id string, no
 	return newDecision(id, text, who, &DecisionFrom{Kind: DecisionFromRequest, Task: t.ID, TaskTitle: t.Title}, now), true
 }
 
+// sameDecision is whether text, made by maker, says what d says: the same
+// words from the same person. ONE ANSWER IS ONE DECISION, and one request
+// written on six tasks settles one thing (live2 E1 F6, E2 #5): a list that
+// repeats it six times is noise, and a check that reads six copies asks the
+// maker six times.
+func sameDecision(text, maker string, d WorkstreamDecision) bool {
+	return NormalizeHandle(maker) == NormalizeHandle(d.By) && decisionWords(text) == decisionWords(d.Text)
+}
+
+func decisionWords(s string) string { return strings.ToLower(strings.Join(strings.Fields(s), " ")) }
+
+// KeepNewDecisions are the decisions of fresh that list does not already keep:
+// an answered Ask or a request whose words its maker has already settled, and
+// that is still kept, records nothing new (nor does a second copy within
+// fresh). A rule is recorded every time it is set, because setting it again
+// is news.
+func KeepNewDecisions(list, fresh []WorkstreamDecision) []WorkstreamDecision {
+	var out []WorkstreamDecision
+	for _, d := range fresh {
+		if d.From == nil || d.From.Kind != DecisionFromRule {
+			kept := func(k WorkstreamDecision) bool { return k.State == DecisionKept && sameDecision(k.Text, k.By, d) }
+			if slices.ContainsFunc(list, kept) || slices.ContainsFunc(out, kept) {
+				continue
+			}
+		}
+		out = append(out, d)
+	}
+	return out
+}
+
 // RuleDecisions are the decisions a change of rules from before to after
 // records, one per rule that changed, made by who. names gives a standing
 // order's name by its id (an id it does not know stays unsaid).
@@ -416,7 +446,7 @@ func ConflictAsk(t WorkstreamTask, d WorkstreamDecision, why string, by TaskEven
 // waits on the same decision is unchanged.
 func RaiseConflict(t WorkstreamTask, d WorkstreamDecision, why string, by TaskEventBy, newID func() string, now time.Time) (TaskChange, error) {
 	for _, a := range OpenAsks(t) {
-		if a.Against != nil && a.Against.Decision == d.ID {
+		if a.Against != nil && (a.Against.Decision == d.ID || sameDecision(a.Against.Text, a.Against.By.ID, d)) {
 			return TaskChange{Task: t}, nil
 		}
 	}

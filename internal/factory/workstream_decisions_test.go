@@ -139,3 +139,30 @@ func TestARuleChangeIsADecision(t *testing.T) {
 		t.Fatalf("rule decisions = %+v", ds)
 	}
 }
+
+// ONE DECISION ASKS ONCE, even when the list already holds copies of it from
+// before copies were refused (live2 E2 #5: six Asks to Marco, six "Go ahead
+// anyway"). And a copy of a kept decision is not kept again.
+func TestCopiesOfOneDecisionAskOnceAndAreKeptOnce(t *testing.T) {
+	marco := PersonRef{ID: "marco", Name: "Marco"}
+	one := newDecision("dc_1", "No Pantry Plus pricing in 2.4", marco, &DecisionFrom{Kind: DecisionFromRequest}, taskNow)
+	two := newDecision("dc_2", "No  Pantry Plus pricing in 2.4", marco, &DecisionFrom{Kind: DecisionFromRequest}, taskNow)
+	task := afiTask("tk_1", "priya")
+	task.State = TaskRunning
+	afi := TaskEventBy{Kind: TaskByAfi, Name: "Afi"}
+	ch, _ := RaiseConflict(task, one, "", afi, taskIDs(), taskNow)
+	again, _ := RaiseConflict(ch.Task, two, "", afi, taskIDs(), taskNow)
+	if len(again.Task.Asks) != 1 {
+		t.Fatalf("two copies of one decision asked %d times", len(again.Task.Asks))
+	}
+	if kept := KeepNewDecisions([]WorkstreamDecision{one}, []WorkstreamDecision{two, two}); len(kept) != 0 {
+		t.Fatalf("a copy was kept again: %+v", kept)
+	}
+	other := newDecision("dc_3", "No Pantry Plus pricing in 2.4", PersonRef{ID: "priya", Name: "Priya"}, &DecisionFrom{Kind: DecisionFromRequest}, taskNow)
+	rule := newDecision("dc_4", "Everyone owns incoming work", marco, &DecisionFrom{Kind: DecisionFromRule}, taskNow)
+	ruleAgain := rule
+	ruleAgain.ID = "dc_5"
+	if kept := KeepNewDecisions([]WorkstreamDecision{one, rule}, []WorkstreamDecision{other, ruleAgain}); len(kept) != 2 {
+		t.Fatalf("another person's decision, or a rule set again, was dropped: %+v", kept)
+	}
+}

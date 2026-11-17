@@ -48,6 +48,11 @@ func TestServerAgentKeepsWorkAsTasks(t *testing.T) {
 		}
 	}
 	o.serverMode(t, func(ctx context.Context, turn AgentTurn) (AgentTurnEnd, error) {
+		if turn.Task != nil {
+			// An answered Ask puts Afi back to work on its task in a run of
+			// its own; this scene is the person's turn alone.
+			return AgentTurnEnd{}, nil
+		}
 		d, ok := turn.Door.(workDoor)
 		if !ok {
 			t.Fatal("the server's door does not answer the ws_* tools")
