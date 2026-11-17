@@ -14,7 +14,9 @@ enough: the node dials the control plane's **link** and needs no address of
 its own, so a laptop behind NAT works. Optional: `base_url` (an address the
 control plane can reach this factory on, such as `http://10.0.0.5:8765`) and
 the control plane's `internal_token`, for a control plane that offers no
-link; a node id (default `codeaf-factory`); the address to listen on
+link; a node id (default `codeaf-factory`, or `CODEAF_FACTORY_NODE_ID` when
+that is set, so two computers on one control plane each keep their own
+node); the address to listen on
 (default: base_url's port); a trust ceiling (default `collaborator`).
 With no base_url the factory binds no port at all for AgentField.
 
