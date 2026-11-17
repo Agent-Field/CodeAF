@@ -151,3 +151,23 @@ func (o *wsOrg) threadSays(t *testing.T, path, id, text string) bool {
 	}
 	return false
 }
+
+// afiAtWork serves the organization's Afi with a run that keeps working until
+// it is stopped, for a test that needs a task Afi has really taken: since
+// #2695 a person's "running" is refused unless Afi takes the task. Every run
+// still going ends with the test.
+func (o *wsOrg) afiAtWork(t *testing.T) {
+	t.Helper()
+	o.serverMode(t, func(ctx context.Context, _ AgentTurn) (AgentTurnEnd, error) {
+		<-ctx.Done()
+		return AgentTurnEnd{}, nil
+	})
+	t.Cleanup(func() {
+		o.h.agentDesk.mu.Lock()
+		for _, stop := range o.h.agentDesk.tasks {
+			stop()
+		}
+		o.h.agentDesk.mu.Unlock()
+		o.settle()
+	})
+}
