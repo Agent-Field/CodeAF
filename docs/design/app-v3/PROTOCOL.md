@@ -513,6 +513,8 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.org_workstream_task_comment` | `in.OrgTaskCommentParams` | `json.RawMessage` |
 | `factory.org_workstream_task_events` | `in.OrgTaskParams` | `OrgTaskEvents` |
 | `factory.org_workstream_tasks_start_all` | `in.OrgTasksStartAllParams` | `OrgTasks` |
+| `factory.org_workstreams_requestable` | `in.OrgConn` | `json.RawMessage` |
+| `factory.org_workstream_request` | `in.OrgTaskRequestParams` | `json.RawMessage` |
 | `factory.org_canvases` | `in.OrgConn` | `OrgCanvasList` |
 | `factory.org_canvas_get` | `in.OrgCanvasParams` | `json.RawMessage` |
 | `factory.org_canvas_create` | `in.OrgCanvasCreateParams` | `json.RawMessage` |
@@ -1033,6 +1035,21 @@ taker). `_tasks_start_all {ws, group}` `POST .../tasks/start_all` names the grou
 next Afi and chat tasks that wait on nothing unfinished and answers `{tasks}`; it writes
 and publishes nothing, because the caller wakes each doer and then sets `running`.
 Every change publishes `workstream.changed` with `part` `tasks` and `part_id` the task.
+
+A REQUEST INTO ANOTHER WORKSTREAM (hello `org_workstream_requests`; Workstreams final
+spec, flow 7). `factory.org_workstreams_requestable {}` `GET /v1/workstreams/requestable`
+answers `{workstreams: [{id, name, parent?, in, receiver?}]}`: every open workstream
+the caller is in or that is not private, by name, `in` saying whether they are in it
+and `receiver` its owner of incoming work (absent for Everyone).
+`factory.org_workstream_request {ws, title, request?, from_ws?, from_task?}` `POST
+/v1/workstreams/{id}/requests` (any member; 404 for a private workstream they are not
+in, or an archived one) makes a task there: owned by the workstream's owner of
+incoming work, done by that person (Afi when it is Everyone), `up_next`, `came_from`
+`{kind: person, id, name, ws?, ws_name?}` naming the workstream it came from when the
+caller can edit `from_ws`, and the thread line "Requested by <name>[ from <workstream>]".
+The task `from_task` in `from_ws` gains "Sent a request to <workstream>: <title>". It
+answers 201 `{id, ws, ws_name, title, owner, task?}`, the whole task only to someone in
+the workstream.
 
 An engine whose hello carries `org_canvases` reads and writes an organization's
 canvases, which live on its server and are kept there by canvas-core (`canvas rpc`), so

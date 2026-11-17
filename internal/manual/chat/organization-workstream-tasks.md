@@ -47,6 +47,14 @@ A task's Activity and comments is one thread everyone in the workstream sees: wh
 
 A private conversation with Afi stays private. If something you ask Afi there changes shared work, the task gets one line ("Priya asked Afi to keep it under 300 words"), never the conversation. "Post this to the task" adds Afi's answer to the thread, marked as posted by you.
 
+## send a request to another team's workstream — ask another workstream for work, one you are not in
+
+Work for another team is a request into their workstream, not a task in yours. On a task, More › "Send a request to" lists every workstream in the organization you may ask: the ones you are in, and every one that is not private, each with who receives it. Pick one, write what you want (the first line is its title), and press "Send request".
+
+It becomes a task in that workstream, owned by its owner of incoming work (People and rules), who also does it, or done by Afi when that owner is Everyone. It waits in Up next until they start it. Its page says "From" you and your workstream, and its thread starts "Requested by Priya from Marketing". Your task gains one line, "Sent a request to Engineering: <title>". If you are not in that workstream you see only that it was sent and who owns it, never its other work. A private workstream you are not in cannot be asked, and an archived one is not listed.
+
+Afi never sends a request on its own: asked about another workstream's work, it names that workstream and leaves the request to you. A Personal workstream has nobody else to ask, so the item is absent there.
+
 ## @name in a comment — who a comment reaches, mention someone, Comments for you
 
 There is no chat between people; a comment on a task is how you say something about it. A comment reaches the task's owner, and anyone it names with @: "@abir", "@Abir" or "@AbirDas" all reach Abir. Only people in the workstream (named on it, or in one of its teams) can be reached; an @ that names nobody there, or one inside a word such as an email address, reaches nobody and the comment is still kept.
