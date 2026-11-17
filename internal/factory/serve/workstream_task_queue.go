@@ -40,6 +40,9 @@ type pendingRun struct {
 	words   string
 	resumes int
 	seq     int
+	// retried says the run already had its one more try after a model
+	// error (workstream_task_limits.go).
+	retried bool
 }
 
 // runningInLocked is how many runs ws has going; "" counts the organization's.

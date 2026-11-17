@@ -85,6 +85,10 @@ type AgentTurn struct {
 	// Step reports one line of the conversation: api.AgentEntryStep with the
 	// tool's name, or api.AgentEntryAgent with the answer.
 	Step func(kind, text, tool string, failed bool)
+	// Progress, on a task's run, is told after every step what the run has
+	// spent so far and how many steps it has taken, so the server can pause
+	// it at a limit (workstream_task_limits.go). Nil on a person's message.
+	Progress func(usd float64, steps int)
 }
 
 // AgentTask is the task a turn works.
@@ -95,6 +99,9 @@ type AgentTask struct {
 // AgentTurnEnd is what one turn cost.
 type AgentTurnEnd struct {
 	USD float64
+	// Transient says the turn's error may pass by itself (a busy or failing
+	// model provider, a dropped connection), so the run is tried once more.
+	Transient bool
 }
 
 // AgentDoor is how a workstream's agent reads and writes its workstream.
@@ -151,6 +158,9 @@ type agentDesk struct {
 	// queue holds the runs waiting under the limits, in the order they
 	// came; served counts, per workstream, when it last had a run started,
 	// for the round robin (workstream_task_queue.go).
+	// gen counts each task's runs, so a run that ends releases only its
+	// own place, never a newer run's on the same task.
+	gen     map[taskRunKey]int
 	queue   []pendingRun
 	queueN  int
 	served  map[string]int

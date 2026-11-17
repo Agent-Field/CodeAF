@@ -18,8 +18,13 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
+	"net"
+	"net/http"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
@@ -28,6 +33,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -103,6 +109,12 @@ func factoryWorkstreamAgent(st *store.Store, load func() (config.Config, error))
 			said.Reset()
 		}
 		var failed error
+		steps := 0
+		progress := func() {
+			if turn.Progress != nil {
+				turn.Progress(max(agent.Usage().CostUSD-before, 0), steps)
+			}
+		}
 		for e := range events {
 			switch e.Kind {
 			case session.EventTextDelta:
@@ -111,8 +123,12 @@ func factoryWorkstreamAgent(st *store.Store, load func() (config.Config, error))
 				say()
 			case session.EventToolEnd:
 				turn.Step(api.AgentEntryStep, factoryAgentStepWords(e), e.Tool, false)
+				steps++
+				progress()
 			case session.EventToolFailed:
 				turn.Step(api.AgentEntryStep, factoryAgentStepWords(e), e.Tool, true)
+				steps++
+				progress()
 			case session.EventError:
 				if e.Err != nil {
 					failed = e.Err
@@ -124,8 +140,27 @@ func factoryWorkstreamAgent(st *store.Store, load func() (config.Config, error))
 		if ctx.Err() != nil {
 			return serve.AgentTurnEnd{USD: usd}, ctx.Err()
 		}
-		return serve.AgentTurnEnd{USD: usd}, failed
+		return serve.AgentTurnEnd{USD: usd, Transient: transientModelError(failed)}, failed
 	}
+}
+
+// transientModelError is whether err may pass by itself: the provider was
+// busy or failing (429 or 5xx), or the connection dropped. A refusal, a bad
+// key or a model that cannot do what was asked will not, and is not tried
+// again.
+func transientModelError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var api *provider.APIError
+	if errors.As(err, &api) {
+		return api.Status == http.StatusTooManyRequests || api.Status >= 500
+	}
+	var nerr net.Error
+	if errors.As(err, &nerr) {
+		return true
+	}
+	return errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, syscall.ECONNRESET)
 }
 
 // factoryAgentStepWords is one step as a person reads it ("read the

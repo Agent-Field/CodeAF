@@ -126,6 +126,19 @@ On an organization's server, **at most 3 of Afi's tasks run at once in one works
 
 These limits are fixed for now; nobody can change them in Settings yet. On a Personal workstream each chat does one thing at a time, and these limits do not apply.
 
+## Afi paused a task to ask whether to continue — spending cap, budget, 60 steps, 15 minutes
+
+On an organization's server, a task Afi runs is **paused with a question to the task's owner, never failed**, when it reaches a limit:
+
+- **Spending:** past the task's cap, the question reads "Afi has spent $0.61 on this · keep going?". The cap is the workstream's **Start without asking** amount when one is set, and **$0.50** otherwise.
+- **The workstream's budget**, once it is spent. This is checked before the run spends anything and every few seconds while it runs; raise the budget first, or Afi pauses again.
+- **Steps:** at 60 tool calls.
+- **Time:** at 15 minutes.
+
+The task moves to Waiting on someone, and its activity says "Paused: …". The owner presses **Keep going**, which starts Afi again on the same conversation with the same allowance again, or **Stop here**, which stops the task. Neither choice is recorded as a workstream decision.
+
+**A model error that may pass** (the provider busy or failing, a dropped connection) is tried once more, 20 seconds later. The activity says "Afi hit a model error and tries again in 20 seconds". A second error, or one that will not pass (a refused key, say), fails the task with its reason.
+
 ## task stuck on Running after the server restarted, or pressed Start on a running task and nothing happened
 
 On an organization workstream, Afi's work on a task runs on the organization's server, and the server keeps a note of every run while it goes. **When the server starts again, every task it was working on is settled within about ten seconds; none is left saying Running with nothing behind it.**
