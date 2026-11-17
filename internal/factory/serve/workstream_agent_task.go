@@ -174,9 +174,14 @@ func (h *Handler) launchLocked(r pendingRun) error {
 		Key:  h.orgModelKey(), Dir: filepath.Join(h.taskRunDir(ws.ID, task.ID), "agent"), Door: h.withLibrary(door), Library: h.spacesServed(),
 		// Every line is a line of the task's Working conversation, and its
 		// last step is what the running row says it is doing.
-		Step: watch.noting(h.taskWorkStep(key, turn)), Steers: h.openTaskWork(key, turn, starter),
+		Step:     watch.noting(h.taskWorkStep(key, turn)),
 		Progress: watch.progress(limit, pause)}
 	guard.Go("factory workstream task", func() {
+		// The Working conversation opens here, never in launchLocked: it takes
+		// the desk's lock and publishes, and launchLocked holds that lock (a
+		// queued run starts from inside it). Steers wait in its inbox until
+		// the run reads them.
+		run.Steers = h.openTaskWork(key, turn, starter)
 		var next *taskResume
 		var failed error
 		defer func() {
