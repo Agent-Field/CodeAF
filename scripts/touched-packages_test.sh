@@ -81,6 +81,22 @@ for file in go.mod go.sum; do
 	expect $'./cmd/codeaf\n./emptied\n./internal/one\n./internal/session\n./internal/tui3\n./internal/two' 'codeaf rest session tui3'
 done
 
+# A base that advanced after the branch forked must not select another lane's
+# packages or expand a module edit that exists only on that base.
+for upstream in internal/session/file.go go.mod; do
+	fixture "behind-${upstream//\//-}"
+	fork="$BASE"
+	printf '// Own branch change.\n' >>internal/one/file.go
+	finish internal/one/file.go
+	candidate="$(git rev-parse HEAD)"
+	git checkout -q --detach "$fork"
+	printf '\n' >>"$upstream"
+	finish "$upstream"
+	BASE="$(git rev-parse HEAD)"; export BASE
+	git checkout -q --detach "$candidate"
+	expect './internal/one' rest
+done
+
 fixture excluded
 rm emptied/file.go
 printf '// Changed fixture.\n' >>bench/bashloop/fixtures/nested/deep/file.go
@@ -100,11 +116,19 @@ SH
 chmod +x scripts/touched-verdict.sh
 printf '// Changed source.\n' >>internal/tui3/file.go
 finish internal/tui3/file.go
+candidate="$(git rev-parse HEAD)"
+fork="$BASE"
+git checkout -q --detach "$fork"
+printf '\n' >>go.mod
+finish go.mod
+BASE="$(git rev-parse HEAD)"; export BASE
+git checkout -q --detach "$candidate"
 TOUCHED_ARGS="$tmp/local-args" make -s -f "$root/Makefile" test-touched >/dev/null
-python3 - "$tmp/local-args" <<'PY'
+python3 - "$tmp/local-args" "$fork" <<'PY'
 import sys
 arguments = open(sys.argv[1]).read().splitlines()
 assert arguments[0] == 'run', arguments
+assert arguments[arguments.index('--base') + 1] == sys.argv[2], arguments
 assert arguments[-1] == './internal/tui3', arguments
 assert len([arg for arg in arguments if arg.startswith('./')]) == 1, arguments
 PY

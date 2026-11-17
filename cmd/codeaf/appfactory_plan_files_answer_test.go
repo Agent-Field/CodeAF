@@ -143,7 +143,13 @@ func TestAppFactoryPlanFilesAnswer(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			t.Cleanup(proc.closeAll)
+			// The factory can still open conversations while it stops. Join it
+			// before closing the shared process and restoring its environment.
+			t.Cleanup(func() {
+				_ = s.backend.Close()
+				proc.closeAll()
+				closeEngineProcess()
+			})
 			launch, err := openV3Launch(proc, engineLaunchOptions(remote.Hello{Version: remote.Version, Workspace: g.workspace}, g.workspace, ""))
 			if err != nil {
 				t.Fatal(err)

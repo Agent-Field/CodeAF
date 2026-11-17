@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	cellstoretest "github.com/Agent-Field/codeaf/internal/cellstore/celltest"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
@@ -99,6 +100,8 @@ type localSetup struct {
 func useLocalHome(t *testing.T) (appHome, userHome, decoy string) {
 	t.Helper()
 	appHome, userHome, decoy = testHome(t), testHome(t), testHome(t)
+	// Saving helpers must exit before any of this test's folders are removed.
+	cellstoretest.EngineDir(t)
 	// The unix socket of a solo host is short-pathed; t.TempDir can be long.
 	t.Setenv(home.EnvVar, appHome)
 	t.Setenv("HOME", userHome)

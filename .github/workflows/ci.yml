@@ -313,6 +313,7 @@ jobs:
         run: |
           set -euo pipefail
           case "${BASE:-}" in ''|0000000000000000000000000000000000000000) BASE="$(git rev-parse HEAD~1)";; esac
+          BASE="$(git merge-base "$BASE" HEAD)"
           export BASE
           echo "base=$BASE" >> "$GITHUB_OUTPUT"
           ./scripts/touched-packages.sh | python3 scripts/touched-matrix.py >> "$GITHUB_OUTPUT"
