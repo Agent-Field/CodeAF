@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: An organization task Afi ran that wrote its page and ended is Done with the page as its result, not Failed
+title: An org task Afi ran that wrote its page and ended is Done with the page as its result
 pr: 2730
 surface: [factory, docs]
 invalidates:
