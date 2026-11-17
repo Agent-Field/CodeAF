@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/Agent-Field/codeaf/internal/factory"
 	"strings"
 	"testing"
 
@@ -106,6 +107,11 @@ func TestTheWorkstreamToolsTeachTheirRules(t *testing.T) {
 		if !strings.Contains(describe[WSFileReadTool], rule) {
 			t.Errorf("ws_file_read does not say %q", rule)
 		}
+	}
+	// The ask rule is taught where a run acts, in the factory's own spelling
+	// (one source of truth); the shared rules have no room left for it.
+	if !strings.Contains(describe[WSTaskUpdateTool], `"`+factory.AsksBeforePublishingRule+`" binds you`) {
+		t.Errorf("ws_task_update does not name the ask rule %q", factory.AsksBeforePublishingRule)
 	}
 	if !strings.Contains(describe[WSTaskCreateTool], "never the private conversation") {
 		t.Error("ws_task_create does not forbid copying the private conversation into a request")

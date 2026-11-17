@@ -367,6 +367,13 @@ func RuleDecisions(before, after WorkstreamRules, who PersonRef, names func(orde
 			lines = append(lines, fmt.Sprintf("Tasks under $%.2f start without asking", after.StartWithoutAskingUSD))
 		}
 	}
+	if before.PublishesWithoutAsking != after.PublishesWithoutAsking {
+		if after.PublishesWithoutAsking {
+			lines = append(lines, PublishesWithoutAskingRule)
+		} else {
+			lines = append(lines, AsksBeforePublishingRule)
+		}
+	}
 	if before.KeepsRunning.Factory != after.KeepsRunning.Factory {
 		if after.KeepsRunning.Factory {
 			lines = append(lines, "The factory keeps running here")

@@ -80,6 +80,11 @@ type WorkstreamRules struct {
 	Fallback              *RulesPerson `json:"fallback,omitempty"`
 	StartWithoutAskingUSD float64      `json:"start_without_asking_usd"`
 	KeepsRunning          KeepsRunning `json:"keeps_running"`
+	// PublishesWithoutAsking turns the ask rule off: an agent publishes,
+	// sends, posts and pays without asking first. Its zero value is the
+	// default, "Afi asks before publishing or sending" (workstream_asks_first.go),
+	// so every workstream kept before the rule existed asks too.
+	PublishesWithoutAsking bool `json:"publishes_without_asking,omitempty"`
 }
 
 // StampFactorySince sets next's [KeepsRunning.FactorySince] from before: kept

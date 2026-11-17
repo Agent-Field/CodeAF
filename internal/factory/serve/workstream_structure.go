@@ -325,7 +325,7 @@ func sameWorkstreamRules(a, b factory.WorkstreamRules) bool {
 	}
 	return a.DefaultOwner.Kind == b.DefaultOwner.Kind && a.DefaultOwner.ID == b.DefaultOwner.ID && fa == fb &&
 		a.StartWithoutAskingUSD == b.StartWithoutAskingUSD && a.KeepsRunning.Factory == b.KeepsRunning.Factory &&
-		slices.Equal(a.KeepsRunning.Orders, b.KeepsRunning.Orders)
+		slices.Equal(a.KeepsRunning.Orders, b.KeepsRunning.Orders) && a.PublishesWithoutAsking == b.PublishesWithoutAsking
 }
 
 // patchedStructure names the structure fields a patch sent, for the record.

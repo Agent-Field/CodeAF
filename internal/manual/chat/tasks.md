@@ -2784,6 +2784,8 @@ most recent 2000 tasks — and the page scrolls rather than cutting it.
 
 Two codeaf windows open on one directory can see each other's running work, and `/history`
 is where they see it.
+Work started over ssh on another machine is a different case: see *I started a task over ssh
+and the sidebar stayed empty*.
 
 **A conversation *this* terminal is holding is never one of them.** One terminal can have
 several conversations open at once with `codeaf chat --no-host`, in this project or others,

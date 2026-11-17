@@ -483,7 +483,15 @@ func (d *agentDoor) wsTaskUpdate(ctx context.Context, args json.RawMessage) (any
 		p["state_reason"] = cutRunes(strings.TrimSpace(*a.StateReason), 500)
 	}
 	if a.Check != nil {
-		p["check"] = cutRunes(strings.TrimSpace(*a.Check), 500)
+		claims := cutRunes(strings.TrimSpace(*a.Check), 500)
+		if claims != "" {
+			ws, err := d.Workstream(ctx)
+			if err != nil {
+				return nil, err
+			}
+			claims = factory.CheckedAgainst(len(factory.CurrentDecisions(ws.Decisions)), claims)
+		}
+		p["check"] = claims
 	}
 	if a.Handoff != nil {
 		p["handoff"] = cutRunes(strings.TrimSpace(*a.Handoff), factory.TaskHandoffMost)

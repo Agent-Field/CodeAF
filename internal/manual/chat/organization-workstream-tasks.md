@@ -189,7 +189,7 @@ A task's page reads, top to bottom: its question for you (the Ask), then **Resul
 
 The first document an agent's task made is shown inside Result: its name, where it is in Files and **Open**, then its heading and first few lines, so you can read it without leaving the task. **Open** is for editing it. Anything else the task made (more files, a canvas's picture, a pull request) is a row under it. A document that cannot be read shows only its line with Open.
 
-Under the result, the doer's check reads "Checked against the request: …", or "Checked against the request and 2 decisions: …" when it also checked the work against that many of the workstream's decisions. A task with no check shows no line.
+Under the result, the doer's check reads "Checked against the request: …", or "Checked against the request and 2 decisions: …" when it also checked the work against that many of the workstream's decisions: the ones in force when the check was written, which its run was given. A task with no check shows no line.
 
 ## a task's brief — Goal, Deliverable, Acceptance, Inputs, Constraints, and the hand-off note
 

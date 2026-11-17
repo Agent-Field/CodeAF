@@ -2,7 +2,7 @@
 
 ## People and rules — the sheet behind People in a workstream's header
 
-Every workstream has one People and rules sheet, opened from People in its header (below 1100 points wide, from More › People). It shows, in order: the people and teams in it, "Owner of incoming work", "If unanswered for a day", "Start without asking", and "Keeps running" (the Factory and each standing order, each with a switch). Every change applies at once and can be undone for five seconds; there is no Save button, and Done only closes the sheet.
+Every workstream has one People and rules sheet, opened from People in its header (below 1100 points wide, from More › People). It shows, in order: the people and teams in it, "Owner of incoming work", "If unanswered for a day", "Start without asking", "Afi asks before publishing or sending", and "Keeps running" (the Factory and each standing order, each with a switch). Every change applies at once and can be undone for five seconds; there is no Save button, and Done only closes the sheet.
 
 Only the person who looks after the workstream (its steward — the person who made it, until they hand it on) changes this sheet. Everyone else in it sees the same sheet, read-only. Asking to change it when you do not look after it is refused with "only the person who looks after this workstream can change its rules or hand it on".
 
@@ -29,6 +29,14 @@ Nothing waiting draws nothing: no dot, no "0". Amber means only "waiting on you"
 "Start without asking" is one amount per task: the most an agent may spend on one task before it must ask its owner. $0 means never start without asking — every task waits for a person. It replaces the older go-ahead allowances and the autonomy setting, which no longer appear on a workstream.
 
 On an organization, the amount is honoured by the organization's server with no app open: it keeps one go-ahead over the workstream's Factory jobs, holding each job's budget to the amount, rewritten whenever the amount or the jobs change.
+
+## what "asks first" means on a plan — the rule Afi asks before publishing or sending
+
+Every workstream has the rule "Afi asks before publishing or sending", on unless its steward turns it off in People and rules. It binds every agent doing a task there (Afi or a chat): cheap, reversible work it does and lists under Assumed; anything a task publishes, sends, posts, replies to in public or pays for, it makes ready and then asks the task's owner before doing it. The Ask lands on the task, under Waiting on you.
+
+Which tasks will ask is known before anything runs: a task done by an agent whose title or request says it posts, publishes, sends, replies or pays "asks first" (for example "Post the notes to Discord" or "Reply to the three GitHub issues"), and its run is told to stop for you at that step. Writing a draft, an email's text or a blog post does not ask; sending or posting it does. A task you or a colleague do, or the Factory does (it keeps its own approvals), never asks first. Ask Afi "which of these will ask me first?" and it answers from the plan.
+
+Turning the rule off reads "Afi publishes and sends without asking", and either change is kept in Decisions. Off, nothing asks first, though a task that goes against a decision still asks.
 
 ## the Factory switch and standing orders in a workstream — what works here without anyone asking
 
