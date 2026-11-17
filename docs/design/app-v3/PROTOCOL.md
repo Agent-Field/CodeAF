@@ -524,6 +524,13 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.org_workstream_order_delete` | `in.OrgOrderParams` | `Empty` |
 | `factory.org_workstream_decision_withdraw` | `in.OrgDecisionParams` | `json.RawMessage` |
 | `factory.org_workstream_decision_replace` | `in.OrgDecisionParams` | `json.RawMessage` |
+| `factory.org_invites` | `in.OrgConn` | `json.RawMessage` |
+| `factory.org_invite_create` | `in.OrgInviteNewParams` | `json.RawMessage` |
+| `factory.org_invite_resend` | `in.OrgInviteParams` | `json.RawMessage` |
+| `factory.org_invite_withdraw` | `in.OrgInviteParams` | `json.RawMessage` |
+| `factory.org_welcome` | `in.OrgConn` | `json.RawMessage` |
+| `factory.org_welcome_seen` | `in.OrgConn` | `json.RawMessage` |
+| `factory.org_person_remove` | `in.OrgPersonParams` | `json.RawMessage` |
 | `factory.org_workstream_page_comments` | `in.OrgPageCommentsParams` | `OrgPageComments` |
 | `factory.org_workstream_page_comment` | `in.OrgPageCommentParams` | `json.RawMessage` |
 | `factory.org_workstream_page_comment_reply` | `in.OrgPageCommentReplyParams` | `json.RawMessage` |
@@ -1151,6 +1158,18 @@ caller can edit `from_ws`, and the thread line "Requested by <name>[ from <works
 The task `from_task` in `from_ws` gains "Sent a request to <workstream>: <title>". It
 answers 201 `{id, ws, ws_name, title, owner, task?}`, the whole task only to someone in
 the workstream.
+
+Invites (workstreams v2, J4 and J7; hello word `org_invites`). `factory.org_invites {}` `GET /v1/invites`
+lists the organization's invites, each with `id`, `ref` ("invite:<id>", the name the person goes by before
+joining), `email`, `name`, `team`, `team_name`, `workstreams`, `workstream_names`, `state` ("invited",
+"joined", "expired"), `joined_at`, `handle` and `emailed`, and says `mailer` when the server mails links.
+`factory.org_invite_create {email?, name?, team?, workstreams?}` `POST /v1/invites` makes one (or adds to the
+open one for the same email) and answers `{invite, url}`; `factory.org_invite_resend {id}` makes a new link
+for seven more days; `factory.org_invite_withdraw {id}` ends one nobody used. Only the operator calls those
+four. `factory.org_welcome {}` `GET /v1/me/welcome` is the caller's "added you to" line, `show` false once
+`factory.org_welcome_seen {}` was sent. `factory.org_person_remove {handle}` `DELETE /v1/people/{handle}/sessions`
+is the operator removing someone: their workstreams go to the operator and the tasks they owned arrive in the
+operator's Handed to you.
 
 An engine whose hello carries `org_workstream_decisions` adds Asks, views and decisions
 (Workstreams final spec, "Working with other people"). A task's `ask` is its OWNER's

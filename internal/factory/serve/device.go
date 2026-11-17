@@ -355,6 +355,8 @@ func (h *Handler) pollDevice(w http.ResponseWriter, r *http.Request) {
 	}
 	h.viewer.see(profile, now, now, exchange.AccessToken)
 	h.setSessionCookie(w, r, credential, session)
+	// An invite's team, workstreams and tasks are theirs from the first screen.
+	h.settleInvites(r)
 	me := h.meBody(profile, session.id)
 	me.Operator = profile.Handle == h.operatorLogin(r)
 	// This session was just minted from GitHub's own exchange for this profile.

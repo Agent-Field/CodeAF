@@ -206,6 +206,15 @@ func (h *Handler) operatorRevokePerson(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
+	// THE TASKS THEY OWN ARE OFFERED TO WHOEVER REMOVED THEM (v2 J4, C6), so
+	// nothing is left without an owner: they arrive in that person's "Handed
+	// to you", from the person who left, to hand on.
+	if admin := h.orgActor(r); h.config.Store != nil && admin != "" && admin != handle {
+		from := &factory.PersonRef{ID: handle, Name: h.personNames()(handle)}
+		if h.failed(w, h.rebindTasks(r, handle, admin, admin, from)) {
+			return
+		}
+	}
 	detail := "jobs moved to Unassigned"
 	if given > 0 {
 		detail += fmt.Sprintf("; %d workstreams given to @%s", given, heir)

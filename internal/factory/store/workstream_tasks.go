@@ -281,6 +281,33 @@ func (st *Store) UnreadComments(ws, person, since string) ([]TaskComment, error)
 	return out, rows.Err()
 }
 
+// HandedUnopened are the tasks in ws handed to someone since person last
+// opened them: a "handed" line in the thread after their read mark. Work's
+// "Handed to you" shows each once, until it is opened.
+func (st *Store) HandedUnopened(ws, person string) (map[string]bool, error) {
+	db, err := st.wsDB(false)
+	if err != nil || db == nil {
+		return nil, err
+	}
+	person = factory.NormalizeHandle(person)
+	rows, err := db.Query(`SELECT DISTINCT e.task FROM task_events e
+		LEFT JOIN task_reads r ON r.ws = e.ws AND r.task = e.task AND r.person = ?
+		WHERE e.ws = ? AND e.seq > COALESCE(r.seq, 0) AND e.doc LIKE '%"kind":"handed"%'`, person, ws)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]bool{}
+	for rows.Next() {
+		var task string
+		if err := rows.Scan(&task); err != nil {
+			return nil, err
+		}
+		out[task] = true
+	}
+	return out, rows.Err()
+}
+
 // MarkTaskRead records that person has read task's thread in ws to its end.
 func (st *Store) MarkTaskRead(ws, task, person string) error {
 	person = factory.NormalizeHandle(person)
