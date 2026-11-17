@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/serve"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -157,5 +158,28 @@ func TestOnTheServerABatchIsAPlan(t *testing.T) {
 	}
 	if strings.Contains(factoryWorkstreamAgentSystem("Pantry", "priya", false, time.Time{}, ""), "a batch is a plan") {
 		t.Error("without the task tools there is no batch to speak of")
+	}
+}
+
+// MY SPACE'S AGENT IS TOLD THE SPACE IS THE PERSON'S ALONE AND HOLDS NO
+// TASKS, in the same plain words as a workstream's (OWNER-DECISIONS §6).
+func TestMySpaceAgentIsToldTheSpaceIsPrivateAndHoldsNoTasks(t *testing.T) {
+	for _, work := range []bool{false, true} {
+		p := factoryWorkstreamAgentTurnSystem(serve.AgentTurn{Name: "My space", Asker: "priya", Space: true, Door: nil})
+		if work {
+			p = factoryMySpaceAgentSystem("priya", true, time.Time{}, "")
+		}
+		if hit := machineryWords.FindAllString(p, -1); len(hit) > 0 {
+			t.Errorf("work=%v: the space prompt says %q", work, hit)
+		}
+		if !strings.Contains(p, "private to them") || !strings.Contains(p, "the operator included") || !strings.Contains(p, "working with priya") {
+			t.Errorf("work=%v: the space prompt must say it is private to the person, the operator included:\n%s", work, p)
+		}
+		if strings.Contains(p, "You are Afi, the assistant of the organization workstream") {
+			t.Errorf("work=%v: a space turn was told it is a shared workstream", work)
+		}
+	}
+	if p := factoryMySpaceAgentSystem("priya", true, time.Time{}, ""); !strings.Contains(p, "There are no tasks here") {
+		t.Error("with the work tools, the space prompt must say tasks are refused here")
 	}
 }

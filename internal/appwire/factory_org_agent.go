@@ -21,7 +21,11 @@ import (
 //	factory.org_key_delete              OrgKeyParams                -> {}                 DELETE /v1/org/keys/{provider} (operator)
 //	factory.org_workstream_agent        OrgWorkstreamAgentParams    -> OrgWorkstreamAgent GET    /v1/workstreams/{id}/agent?since=
 //	factory.org_workstream_agent_send   OrgWorkstreamAgentSendParams -> OrgWorkstreamAgent POST  /v1/workstreams/{id}/agent/messages
-//	factory.org_workstream_agent_stop   OrgWorkstreamParams         -> OrgWorkstreamAgent POST   /v1/workstreams/{id}/agent/stop
+//	factory.org_workstream_agent_stop   OrgWorkstreamAgentStopParams -> OrgWorkstreamAgent POST  /v1/workstreams/{id}/agent/stop?chat=
+//
+// With hello word "org_myspace" each of the three also takes chat, one of
+// the person's own chats kept on the server (factory_org_myspace.go); empty
+// is the workstream's Afi conversation, as before.
 //
 // The server's `agent.entry` and `agent.state` are relayed as
 // factory.org_workstream_agent, already filtered by the server to the one
@@ -100,7 +104,8 @@ type OrgAgentState struct {
 // Cannot is the one sentence saying why not; it is empty for a reader who
 // could never talk to it.
 type OrgWorkstreamAgent struct {
-	ID string `json:"id"`
+	ID   string `json:"id"`
+	Chat string `json:"chat,omitempty"`
 	OrgAgentState
 	Entries []OrgAgentEntry `json:"entries"`
 	Seq     int             `json:"seq"`
@@ -125,6 +130,15 @@ type OrgWorkstreamAgentParams struct {
 	OrgConn
 	ID    string `json:"id"`
 	Since int    `json:"since,omitempty"`
+	Chat  string `json:"chat,omitempty"`
+}
+
+// OrgWorkstreamAgentStopParams stops the answer in Afi's conversation, or in
+// Chat, one of the caller's own chats.
+type OrgWorkstreamAgentStopParams struct {
+	OrgConn
+	ID   string `json:"id"`
+	Chat string `json:"chat,omitempty"`
 }
 
 // OrgWorkstreamAgentSendParams is one message to the agent.
@@ -134,7 +148,8 @@ type OrgWorkstreamAgentSendParams struct {
 	Text string `json:"text"`
 	// TZ is the sender's time zone as an IANA name ("America/Toronto"), so
 	// the agent reckons today's date where they are. Optional.
-	TZ string `json:"tz,omitempty"`
+	TZ   string `json:"tz,omitempty"`
+	Chat string `json:"chat,omitempty"`
 }
 
 // FactoryOrgWorkstreamAgent is one agent event on the connection it came
@@ -142,6 +157,7 @@ type OrgWorkstreamAgentSendParams struct {
 type FactoryOrgWorkstreamAgent struct {
 	Connection string         `json:"connection"`
 	ID         string         `json:"id"`
+	Chat       string         `json:"chat,omitempty"`
 	Entry      *OrgAgentEntry `json:"entry,omitempty"`
 	State      *OrgAgentState `json:"state,omitempty"`
 }
@@ -186,9 +202,20 @@ func init() {
 		if p.Since < 0 {
 			return OrgRequest{}, Errorf(CodeBadParams, "since is the last seq you have")
 		}
-		path += "/agent"
+		chat, err := orgChatID(p.Chat)
+		if err != nil {
+			return OrgRequest{}, err
+		}
+		q := url.Values{}
 		if p.Since > 0 {
-			path += "?since=" + strconv.Itoa(p.Since)
+			q.Set("since", strconv.Itoa(p.Since))
+		}
+		if chat != "" {
+			q.Set("chat", chat)
+		}
+		path += "/agent"
+		if len(q) > 0 {
+			path += "?" + q.Encode()
 		}
 		return OrgRequest{Method: http.MethodGet, Path: path}, nil
 	}), agent)
@@ -201,11 +228,30 @@ func init() {
 		if text == "" || len(text) > orgAgentMessageMost {
 			return OrgRequest{}, Errorf(CodeBadParams, "text is 1 to 16384 bytes of words")
 		}
-		return OrgRequest{Method: http.MethodPost, Path: path + "/agent/messages", Body: orgAgentMessageBody(text, p.TZ)}, nil
+		chat, err := orgChatID(p.Chat)
+		if err != nil {
+			return OrgRequest{}, err
+		}
+		body := orgAgentMessageBody(text, p.TZ)
+		if chat != "" {
+			body["chat"] = chat
+		}
+		return OrgRequest{Method: http.MethodPost, Path: path + "/agent/messages", Body: body}, nil
 	}), agent)
-	methods["factory.org_workstream_agent_stop"] = filled(orgMethod[OrgWorkstreamParams, OrgWorkstreamAgent]("factory.org_workstream_agent_stop", func(p OrgWorkstreamParams) (OrgRequest, error) {
+	methods["factory.org_workstream_agent_stop"] = filled(orgMethod[OrgWorkstreamAgentStopParams, OrgWorkstreamAgent]("factory.org_workstream_agent_stop", func(p OrgWorkstreamAgentStopParams) (OrgRequest, error) {
 		path, err := orgWorkstreamPath(p.ID)
-		return OrgRequest{Method: http.MethodPost, Path: path + "/agent/stop"}, err
+		if err != nil {
+			return OrgRequest{}, err
+		}
+		chat, err := orgChatID(p.Chat)
+		if err != nil {
+			return OrgRequest{}, err
+		}
+		path += "/agent/stop"
+		if chat != "" {
+			path += "?chat=" + url.QueryEscape(chat)
+		}
+		return OrgRequest{Method: http.MethodPost, Path: path}, nil
 	}), agent)
 }
 

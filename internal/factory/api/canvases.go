@@ -53,8 +53,8 @@ type CanvasEvent struct {
 
 // CanvasRow is one canvas as a list shows it: canvas-core's summary (id,
 // title, updated, outline, members, trashed, frames…) with the
-// organization's fields beside it. A private canvas the operator may only
-// know exists carries NameOnly and nothing of what it says.
+// organization's fields beside it. A private canvas is answered to its owner
+// alone; nobody else, the operator included, is told it exists.
 type CanvasRow struct {
 	Summary   json.RawMessage `json:"-"`
 	ID        string          `json:"id"`
@@ -65,7 +65,6 @@ type CanvasRow struct {
 	MyRole    string          `json:"my_role"`
 	Seq       int64           `json:"seq"`
 	UpdatedBy string          `json:"updated_by,omitempty"`
-	NameOnly  bool            `json:"name_only,omitempty"`
 	// Workstream is the organization workstream the canvas belongs to, when
 	// it was made in one; its Canvases tab lists exactly these.
 	Workstream string `json:"workstream,omitempty"`
@@ -75,7 +74,7 @@ type CanvasRow struct {
 // laid over it, so a reader of either finds every field it knows.
 func (r CanvasRow) MarshalJSON() ([]byte, error) {
 	out := map[string]any{}
-	if len(r.Summary) > 0 && !r.NameOnly {
+	if len(r.Summary) > 0 {
 		if err := json.Unmarshal(r.Summary, &out); err != nil {
 			return nil, err
 		}

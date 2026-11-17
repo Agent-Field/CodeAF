@@ -163,7 +163,7 @@ func TestCanvasOpsAreThePersonsOwn(t *testing.T) {
 // THE ROLES: someone it is not shared with gets 404 for everything; view
 // reads but neither comments nor writes; comment adds a mark (kept with who
 // wrote it) and takes a hand but writes nothing; only full shares or
-// deletes. The operator sees a private canvas only as a name.
+// deletes. The operator is never told a private canvas exists.
 func TestCanvasRolesAndPrivacy(t *testing.T) {
 	o := canvasOrg(t)
 	var cv map[string]any
@@ -185,7 +185,8 @@ func TestCanvasRolesAndPrivacy(t *testing.T) {
 	o.do(t, "mia", "PUT", path+"/shares", -1, api.CanvasSharesPut{Shares: []factory.Share{}}, 403, nil)
 	o.do(t, "mia", "DELETE", path, -1, nil, 403, nil)
 
-	// Private: shares grant nothing, the operator sees a name only.
+	// Private: shares grant nothing, and the operator is not told it exists,
+	// not even its name (OWNER-DECISIONS §8).
 	priv := true
 	o.do(t, "santosh", "PUT", path+"/shares", -1, api.CanvasSharesPut{Shares: []factory.Share{{Kind: "person", ID: "abir", Role: "edit"}}, Private: &priv}, 200, nil)
 	o.do(t, "abir", "GET", path, -1, nil, 404, nil)
@@ -194,8 +195,8 @@ func TestCanvasRolesAndPrivacy(t *testing.T) {
 		Canvases []map[string]any `json:"canvases"`
 	}
 	o.do(t, "owner", "GET", "/v1/canvases", -1, nil, 200, &list)
-	if len(list.Canvases) != 1 || list.Canvases[0]["name_only"] != true || list.Canvases[0]["title"] != "Launch" || list.Canvases[0]["outline"] != nil {
-		t.Fatalf("operator's row: %v", list.Canvases)
+	if len(list.Canvases) != 0 {
+		t.Fatalf("the operator was told a private canvas exists: %v", list.Canvases)
 	}
 	o.do(t, "abir", "GET", "/v1/canvases", -1, nil, 200, &list)
 	if len(list.Canvases) != 0 {

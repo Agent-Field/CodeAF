@@ -384,6 +384,8 @@ func New(seam factory.Seam, config Config) *Handler {
 	// Settles the task runs a restart cut off, and those that went quiet.
 	h.startTaskSweep()
 	h.orgSetupRoutes()
+	h.chatRoutes()
+	h.mySpaceRoutes()
 	// After presence and the documents, so a canvas registers its own
 	// presence kind and the canvas half of the documents' access.
 	h.canvasRoutes()

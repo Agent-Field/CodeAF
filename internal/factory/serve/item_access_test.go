@@ -57,9 +57,6 @@ func TestTheAccessCoreRanksRolesFromOwnerSharesAndPrivacy(t *testing.T) {
 	if can(santosh, shared, "admin") || can(santosh, shared, "") {
 		t.Fatal("an unknown verb was allowed")
 	}
-	if !nameOnly(operator, private) || nameOnly(operator, shared) || nameOnly(abir, private) {
-		t.Fatal("only the operator sees a private item's name, and only that")
-	}
 }
 
 // AN ITEM'S EVENTS REACH WHO MAY VIEW IT: a private item's never reach the

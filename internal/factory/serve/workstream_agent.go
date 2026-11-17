@@ -72,6 +72,12 @@ type AgentTurn struct {
 	// it, so it never takes a date it read for today (L3 F-17).
 	Now time.Time
 	TZ  string
+	// Chat is the person's own chat this turn answers in, "" for the
+	// workstream's Afi conversation. Space is true when the workstream is the
+	// person's own space (myspace.go): the agent is told it is theirs alone and
+	// holds no tasks.
+	Chat  string
+	Space bool
 	// Task is set when this turn works one task rather than answering a
 	// person's message: Text is then what the task asks, and the turn is the
 	// task's Working conversation, which everyone in the workstream reads.
@@ -157,6 +163,9 @@ type wsAgent struct {
 // those things.
 type agentSeat struct {
 	ws, person string
+	// chat is one of the person's own chats (chats.go), "" for Afi's one
+	// conversation in the workstream.
+	chat string
 }
 
 type agentDesk struct {
@@ -194,6 +203,9 @@ func (h *Handler) serverAgentServed() bool {
 
 // agentDir is s's folder: its lines, and the agent's own conversation.
 func (h *Handler) agentDir(s agentSeat) string {
+	if s.chat != "" {
+		return h.chatDir(s.ws, s.person, s.chat)
+	}
 	return filepath.Join(h.config.Store.Root(), agentDirName, s.ws, "people", s.person)
 }
 
@@ -219,7 +231,7 @@ func (h *Handler) agentOfLocked(s agentSeat) *wsAgent {
 	if !a.loaded {
 		a.loaded = true
 		path := filepath.Join(h.agentDir(s), "entries.jsonl")
-		if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		if _, err := os.Stat(path); s.chat == "" && errors.Is(err, os.ErrNotExist) {
 			h.seedFromShared(s, path)
 		}
 		a.entries, a.seq = readAgentEntries(path)
@@ -323,7 +335,7 @@ func (h *Handler) setAgentState(s agentSeat, st api.AgentState) {
 // decided as it is sent (agentForViewer): that person, while they can still
 // see the workstream.
 func (h *Handler) publishAgent(s agentSeat, e api.AgentEvent) {
-	e.ID, e.Person = s.ws, s.person
+	e.ID, e.Person, e.Chat = s.ws, s.person, s.chat
 	kind := api.EventAgentEntry
 	if e.Entry == nil {
 		kind = api.EventAgentState
@@ -349,17 +361,27 @@ func (h *Handler) agentForViewer(r *http.Request, e live.Event) (live.Event, boo
 // agentCannot is whether v may talk to ws's agent now, and the one sentence
 // that says why not. A person who could never talk to it (they cannot edit
 // the workstream, or this server runs no agents) is answered no sentence.
-func (h *Handler) agentCannot(ws factory.OrgWorkstream, v wsViewer) (bool, string) {
+//
+// A PERSON'S OWN CHATS AND THEIR SPACE ALWAYS RUN HERE, whatever the operator
+// chose for Afi's pane: a chat kept on the server is answered by the server,
+// so a laptop that sleeps loses nothing (org-space DESIGN §2.1).
+func (h *Handler) agentCannot(ws factory.OrgWorkstream, v wsViewer, chat string) (bool, string) {
 	if !v.canWrite(ws) || h.config.WorkstreamAgent == nil {
 		return false, ""
 	}
+	serverAlways := chat != "" || ws.Space
 	switch {
 	case ws.ArchivedAt != nil:
 		return false, "This workstream is archived."
-	case h.agentRunner() != factory.AgentRunnerServer:
+	case !serverAlways && h.agentRunner() != factory.AgentRunnerServer:
 		return false, "This organization runs its workstreams' agents on the laptop of whoever drives them."
 	case h.orgModelKey() == "":
 		return false, "The organization has no model key yet. Its operator adds one in Settings › Organizations."
+	}
+	if ws.Space {
+		if limit, spent := h.spaceMonth(ws.ID); spent >= limit {
+			return false, spaceAtLimit
+		}
 	}
 	if ws.BudgetUSD != nil {
 		spent, _ := h.config.Store.WorkstreamSpend()
@@ -371,11 +393,11 @@ func (h *Handler) agentCannot(ws factory.OrgWorkstream, v wsViewer) (bool, strin
 }
 
 // agentWire is person's own conversation with ws's agent, as v reads it.
-func (h *Handler) agentWire(ws factory.OrgWorkstream, v wsViewer, person string, since int) api.WorkstreamAgent {
-	out := api.WorkstreamAgent{ID: ws.ID, AgentState: api.AgentState{State: api.AgentIdle}, Entries: []api.AgentEntry{}, Private: true}
+func (h *Handler) agentWire(ws factory.OrgWorkstream, v wsViewer, person, chat string, since int) api.WorkstreamAgent {
+	out := api.WorkstreamAgent{ID: ws.ID, Chat: chat, AgentState: api.AgentState{State: api.AgentIdle}, Entries: []api.AgentEntry{}, Private: true}
 	if person != "" {
 		h.agentDesk.mu.Lock()
-		a := h.agentOfLocked(agentSeat{ws.ID, person})
+		a := h.agentOfLocked(agentSeat{ws.ID, person, chat})
 		out.AgentState, out.Seq = a.state, a.seq
 		from := len(a.entries)
 		for from > 0 && a.entries[from-1].Seq > since {
@@ -387,7 +409,7 @@ func (h *Handler) agentWire(ws factory.OrgWorkstream, v wsViewer, person string,
 		out.Entries = append(out.Entries, a.entries[from:]...)
 		h.agentDesk.mu.Unlock()
 	}
-	out.CanTalk, out.Cannot = h.agentCannot(ws, v)
+	out.CanTalk, out.Cannot = h.agentCannot(ws, v, chat)
 	if person == "" {
 		out.CanTalk, out.Cannot = false, ""
 	}
@@ -410,7 +432,11 @@ func (h *Handler) getWorkstreamAgent(w http.ResponseWriter, r *http.Request) {
 		}
 		since = n
 	}
-	h.write(w, http.StatusOK, h.agentWire(ws, v, h.orgActor(r), since))
+	chat, ok := h.chatOf(w, ws, h.orgActor(r), r.URL.Query().Get("chat"))
+	if !ok {
+		return
+	}
+	h.write(w, http.StatusOK, h.agentWire(ws, v, h.orgActor(r), chat, since))
 }
 
 // postAgentMessage is POST /v1/workstreams/{id}/agent/messages: one person's
@@ -429,12 +455,16 @@ func (h *Handler) postAgentMessage(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusNotFound, "this organization's server does not run agents")
 		return
 	}
-	if can, cannot := h.agentCannot(ws, v); !can {
-		h.fail(w, http.StatusConflict, cannot)
-		return
-	}
 	var body api.AgentMessageNew
 	if !h.decode(w, r, &body, false) {
+		return
+	}
+	chat, ok := h.chatOf(w, ws, h.orgActor(r), body.Chat)
+	if !ok {
+		return
+	}
+	if can, cannot := h.agentCannot(ws, v, chat); !can {
+		h.fail(w, http.StatusConflict, cannot)
 		return
 	}
 	text := strings.TrimSpace(body.Text)
@@ -447,7 +477,7 @@ func (h *Handler) postAgentMessage(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusForbidden, "talking to this workstream's agent needs a signed-in person")
 		return
 	}
-	err := h.startAgentTurn(ws, v, asker, text, strings.TrimSpace(body.TZ))
+	err := h.startAgentTurn(ws, v, asker, chat, text, strings.TrimSpace(body.TZ))
 	if errors.Is(err, errAgentBusy) {
 		h.write(w, http.StatusConflict, map[string]string{"error": "the agent is still answering your last message; wait for it, or stop it", "reason": "busy", "by": asker})
 		return
@@ -455,20 +485,20 @@ func (h *Handler) postAgentMessage(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
-	h.write(w, http.StatusAccepted, h.agentWire(ws, v, asker, 0))
+	h.write(w, http.StatusAccepted, h.agentWire(ws, v, asker, chat, 0))
 }
 
 // startAgentTurn claims asker's conversation with ws's agent for one message
 // and runs it in the background. It is errAgentBusy while their previous
 // message is answered; other people's conversations never make it busy.
-func (h *Handler) startAgentTurn(ws factory.OrgWorkstream, v wsViewer, asker, text, tz string) error {
+func (h *Handler) startAgentTurn(ws factory.OrgWorkstream, v wsViewer, asker, chat, text, tz string) error {
 	now := h.clock().UTC()
 	tid, err := cell.NewID(now)
 	if err != nil {
 		return err
 	}
 	turn := "turn_" + tid
-	seat := agentSeat{ws.ID, asker}
+	seat := agentSeat{ws.ID, asker, chat}
 	d := &h.agentDesk
 	d.mu.Lock()
 	if d.ctx == nil {
@@ -491,9 +521,12 @@ func (h *Handler) startAgentTurn(ws factory.OrgWorkstream, v wsViewer, asker, te
 	d.mu.Unlock()
 
 	h.addAgentEntry(seat, api.AgentEntry{Kind: api.AgentEntryPerson, By: asker, Text: text, Turn: turn})
+	if chat != "" {
+		h.chatTouched(seat, text)
+	}
 	h.publishAgent(seat, api.AgentEvent{AgentState: &state})
 	door := &agentDoor{h: h, id: ws.ID, asker: asker, operator: v.Operator}
-	run := AgentTurn{Workstream: ws.ID, Name: ws.Name, Turn: turn, Asker: asker, Text: text, Now: now, TZ: tz, About: h.orgAbout(),
+	run := AgentTurn{Workstream: ws.ID, Name: ws.Name, Turn: turn, Asker: asker, Text: text, Now: now, TZ: tz, About: h.orgAbout(), Chat: chat, Space: ws.Space,
 		Key: h.orgModelKey(), Dir: filepath.Join(h.agentDir(seat), "agent"), Door: door,
 		Step: func(kind, text, tool string, failed bool) {
 			switch kind {
@@ -514,7 +547,7 @@ func (h *Handler) startAgentTurn(ws factory.OrgWorkstream, v wsViewer, asker, te
 // runAgentTurn answers one message, posts what it spent, and leaves the
 // person's conversation idle again.
 func (h *Handler) runAgentTurn(ctx context.Context, run AgentTurn) {
-	seat := agentSeat{run.Workstream, run.Asker}
+	seat := agentSeat{run.Workstream, run.Asker, run.Chat}
 	if err := os.MkdirAll(run.Dir, 0o700); err != nil {
 		h.addAgentEntry(seat, api.AgentEntry{Kind: api.AgentEntryNote, Text: "The agent could not start: " + err.Error(), Turn: run.Turn})
 		h.setAgentState(seat, api.AgentState{State: api.AgentIdle})
@@ -571,11 +604,15 @@ func (h *Handler) stopWorkstreamAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	who := h.orgActor(r)
-	if who == "" {
-		h.write(w, http.StatusOK, h.agentWire(ws, v, who, 0))
+	chat, ok := h.chatOf(w, ws, who, r.URL.Query().Get("chat"))
+	if !ok {
 		return
 	}
-	seat := agentSeat{ws.ID, who}
+	if who == "" {
+		h.write(w, http.StatusOK, h.agentWire(ws, v, who, chat, 0))
+		return
+	}
+	seat := agentSeat{ws.ID, who, chat}
 	h.agentDesk.mu.Lock()
 	a := h.agentOfLocked(seat)
 	var state *api.AgentState
@@ -589,7 +626,7 @@ func (h *Handler) stopWorkstreamAgent(w http.ResponseWriter, r *http.Request) {
 	if state != nil {
 		h.publishAgent(seat, api.AgentEvent{AgentState: state})
 	}
-	h.write(w, http.StatusOK, h.agentWire(ws, v, who, 0))
+	h.write(w, http.StatusOK, h.agentWire(ws, v, who, chat, 0))
 }
 
 // closeAgents stops every answer in flight and waits for them; Close calls it.

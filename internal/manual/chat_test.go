@@ -34,6 +34,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		page     string
 	}{
 		{"how do I give you my API key safely", "giving-a-password-or-token"},
+		{"what is My space", "my-space"},
+		{"is there a private place for me inside the organization", "my-space"},
+		{"can the org admin see what is in my space", "my-space"},
+		{"who pays for my chats in the organization", "my-space"},
+		{"my space chat says this month's limit is reached", "my-space"},
+		{"does a chat in the organization keep going if I close my laptop", "my-space"},
+		{"can I make a task in My space", "my-space"},
+		{"how do I move a document from my space into a workstream", "my-space"},
 		{"run the workstream agent on the organization's server instead of a laptop", "organization-workstream-agent"},
 		{"does the server's Afi know what today's date is in my time zone", "organization-workstream-agent"},
 		{"where do I put the organization's model key for the server", "organization-workstream-agent"},

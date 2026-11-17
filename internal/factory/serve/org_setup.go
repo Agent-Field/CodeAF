@@ -210,7 +210,7 @@ func (h *Handler) orgSetupCannot() (bool, string) {
 func (h *Handler) orgSetupView(person string, since int) (api.OrgSetupView, error) {
 	out := api.OrgSetupView{Agent: api.WorkstreamAgent{ID: orgSetupSeat, AgentState: api.AgentState{State: api.AgentIdle}, Entries: []api.AgentEntry{}, Private: true}, Made: []api.OrgSetupMadePart{}}
 	h.agentDesk.mu.Lock()
-	a := h.agentOfLocked(agentSeat{orgSetupSeat, person})
+	a := h.agentOfLocked(agentSeat{ws: orgSetupSeat, person: person})
 	out.Agent.AgentState, out.Agent.Seq = a.state, a.seq
 	from := len(a.entries)
 	for from > 0 && a.entries[from-1].Seq > since {
@@ -314,7 +314,7 @@ func (h *Handler) startOrgSetupTurn(who, text, tz string) error {
 		return err
 	}
 	turn := "turn_" + tid
-	seat := agentSeat{orgSetupSeat, who}
+	seat := agentSeat{ws: orgSetupSeat, person: who}
 	d := &h.agentDesk
 	d.mu.Lock()
 	if d.ctx == nil {
@@ -364,7 +364,7 @@ func (h *Handler) stopOrgSetup(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	seat := agentSeat{orgSetupSeat, who}
+	seat := agentSeat{ws: orgSetupSeat, person: who}
 	h.agentDesk.mu.Lock()
 	a := h.agentOfLocked(seat)
 	var state *api.AgentState

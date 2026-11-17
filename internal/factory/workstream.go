@@ -32,7 +32,13 @@ type OrgWorkstream struct {
 	SharedWith []string `json:"shared_with,omitempty"`
 	// Private is an item only its owner reaches: it has a person owner and
 	// no shares, and the operator sees that it exists but never what it says.
-	Private   bool                 `json:"private,omitempty"`
+	Private bool `json:"private,omitempty"`
+	// Space marks a person's own space inside the organization ("My space",
+	// serve/myspace.go): one per person, private to them, holding their pages,
+	// canvases and chats and no tasks. It is never listed with the
+	// workstreams, never shared, moved, nested or archived, and the operator
+	// sees only its totals.
+	Space     bool                 `json:"space,omitempty"`
 	Purpose   string               `json:"purpose"`
 	Pages     []WorkstreamPage     `json:"pages"`
 	Decisions []WorkstreamDecision `json:"decisions"`

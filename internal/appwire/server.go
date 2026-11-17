@@ -311,6 +311,7 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, hello Hello, engine En
 	hello = withFactoryOrgPageCommentsFeature(hello, engine)
 	hello = withFactoryOrgCanvasFeature(hello, engine)
 	hello = withFactoryOrgFilesFeature(hello, engine)
+	hello = withFactoryOrgMySpaceFeature(hello, engine)
 	hello = withFactoryPipelinePRFeature(hello, engine)
 	hello = withFactoryPipelinePRUpdateFeature(hello, engine)
 	hello = withFactoryPipelinePRsFeature(hello, engine)

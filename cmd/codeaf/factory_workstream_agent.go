@@ -343,6 +343,9 @@ func factoryWorkstreamAgentTurnSystem(turn serve.AgentTurn) string {
 	if turn.Org != nil {
 		return factoryOrgSetupSystem(turn)
 	}
+	if turn.Space {
+		return factoryMySpaceAgentSystem(turn.Asker, workstreamDoorKeepsWork(turn.Door), turn.Now, turn.TZ)
+	}
 	system := factoryWorkstreamAgentSystem(turn.Name, turn.Asker, workstreamDoorKeepsWork(turn.Door), turn.Now, turn.TZ)
 	if about := strings.TrimSpace(turn.About); about != "" {
 		system += "\n\n" + about
@@ -467,4 +470,25 @@ func factoryWorkstreamAgentAsker(asker string) string {
 		return ""
 	}
 	return " You are talking to " + asker + "."
+}
+
+// factoryMySpaceAgentSystem is what the agent is told in a person's own space
+// inside the organization (serve/myspace.go). The space is theirs alone and
+// holds no tasks, so the task tools are named as refused before the model
+// tries them, and what it makes is the person's until they move it.
+func factoryMySpaceAgentSystem(asker string, work bool, now time.Time, tz string) string {
+	tools := "With " + session.WorkstreamPagesTool + " you can read the space (ask read), read one page whole (ask page), write a page (ask write) or make a new page (ask new). "
+	if work {
+		tools += "With ws_files, ws_file_read and ws_file_create you list, read and make the documents and folders kept here. " +
+			"There are no tasks here: ws_task_create is refused, because a task belongs in a workstream where others can see it. " +
+			"When the person wants work shared or tracked, tell them to move the document into a workstream from its menu, or to ask there. "
+	}
+	return "You are Afi, working with " + asker + " in their own space inside the organization, running on the organization's server. " +
+		"This space and this conversation are private to them: nobody else in the organization, the operator included, reads them. " +
+		"What you make here stays in their space until they move it into a workstream. " +
+		factoryWorkstreamAgentToday(now, tz) + "\n\n" + tools + "\n\n" +
+		factoryWorkstreamAgentChanges + "\n\n" +
+		"You cannot run commands, read or change a repository, open files on a computer, start Factory work or use the web. " +
+		"When a person asks for that, say that you cannot here.\n\n" +
+		factoryWorkstreamAgentWords + "\n\nAnswer briefly, in plain words."
 }

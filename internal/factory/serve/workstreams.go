@@ -149,7 +149,7 @@ func (h *Handler) listWorkstreams(w http.ResponseWriter, r *http.Request) {
 	archived := r.URL.Query().Get("archived") == "1"
 	seen := make([]factory.OrgWorkstream, 0, len(all))
 	for _, ws := range all {
-		if (v.canSee(ws) || nameOnly(v, workstreamItem(ws))) && (archived || ws.ArchivedAt == nil) {
+		if !ws.Space && v.canSee(ws) && (archived || ws.ArchivedAt == nil) {
 			seen = append(seen, ws)
 		}
 	}
@@ -240,7 +240,7 @@ func workstreamSummary(ws factory.OrgWorkstream, c workstreamCount, v Viewer) ap
 	out := api.WorkstreamSummary{
 		ID: ws.ID, Name: ws.Name, Stage: ws.Stage, Owner: ws.Owner,
 		SharedWith: factory.ShareTeams(ws.Shares), Shares: nonNil(ws.Shares),
-		Private: ws.Private, MyRole: roleOf(v, workstreamItem(ws)),
+		Private: ws.Private, Space: ws.Space, MyRole: roleOf(v, workstreamItem(ws)),
 		NeedsYou: c.needsYou, Merged: c.merged, Total: c.total,
 		UpdatedAt: ws.UpdatedAt.UTC().Format(time.RFC3339Nano), Rev: ws.Rev,
 	}
@@ -517,6 +517,9 @@ func (h *Handler) patchWorkstream(w http.ResponseWriter, r *http.Request) {
 	if !h.decode(w, r, &body, false) {
 		return
 	}
+	if ws.Space && (body.Name != nil || body.Stage != nil || body.Rules != nil || body.Steward != nil || body.Parent != nil || body.BudgetUSD != nil) && h.spaceRefused(w, ws) {
+		return
+	}
 	if !v.canWrite(ws) {
 		h.fail(w, http.StatusForbidden, errWorkstreamNoWrite.Error())
 		return
@@ -631,6 +634,9 @@ func (h *Handler) deleteWorkstream(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if h.spaceRefused(w, ws) {
+		return
+	}
 	purge := r.URL.Query().Get("purge") == "1"
 	if purge && !v.Operator {
 		h.fail(w, http.StatusForbidden, "only the operator can remove a workstream for good")
@@ -677,6 +683,9 @@ func (h *Handler) deleteWorkstream(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) setWorkstreamOwner(w http.ResponseWriter, r *http.Request) {
 	ws, v, ok := h.findWorkstream(w, r)
 	if !ok {
+		return
+	}
+	if h.spaceRefused(w, ws) {
 		return
 	}
 	var body api.WorkstreamOwner
@@ -737,6 +746,9 @@ func (h *Handler) setWorkstreamOwner(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) setWorkstreamShares(w http.ResponseWriter, r *http.Request) {
 	ws, v, ok := h.findWorkstream(w, r)
 	if !ok {
+		return
+	}
+	if h.spaceRefused(w, ws) {
 		return
 	}
 	var body api.WorkstreamSharesPut

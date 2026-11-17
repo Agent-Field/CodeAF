@@ -87,7 +87,7 @@ func TestATaskRunsInItsOwnSeatAndReportsOnTheTask(t *testing.T) {
 	}
 
 	// Nothing of the run is in mia's private conversation, nor anyone's.
-	if _, err := os.Stat(o.h.agentDir(agentSeat{webhook.ID, "mia"})); err == nil {
+	if _, err := os.Stat(o.h.agentDir(agentSeat{webhook.ID, "mia", ""})); err == nil {
 		t.Fatal("the task run made mia a conversation")
 	}
 	var pane api.WorkstreamAgent
