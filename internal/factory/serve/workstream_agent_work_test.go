@@ -3,6 +3,7 @@ package serve
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -253,5 +254,64 @@ func TestServerAgentSuggestionIsInTheWorkstreamsSuggestions(t *testing.T) {
 	o.do(t, "santosh", "GET", "/v1/workstreams/"+ws.ID, -1, nil, 200, &after)
 	if p := pageNamed(t, after, "Onboarding research"); !strings.Contains(p.BodyMD, "servings to 4") {
 		t.Fatalf("the suggestion changed the page: %q", p.BodyMD)
+	}
+}
+
+// A TASK IS A FULL WORK ITEM (org-space DESIGN §5, lane L2). A task's run
+// stamps what it makes as made by the task and what it reads as used by it, and
+// the agent makes a checklist on create and ticks it by id.
+func TestServerAgentTaskRunLinksItsFilesAndTicksItsChecklist(t *testing.T) {
+	o := newWSOrg(t)
+	ws := o.create(t, "santosh", api.WorkstreamNew{Name: "Pantry"})
+	chat := &agentDoor{h: o.h, id: ws.ID, asker: "santosh"}
+	work := func(d *agentDoor, tool, args string) map[string]any {
+		t.Helper()
+		line, err := d.Work(context.Background(), tool, json.RawMessage(args))
+		if err != nil {
+			t.Fatalf("%s %s: %v", tool, args, err)
+		}
+		var out map[string]any
+		if err := json.Unmarshal([]byte(line), &out); err != nil {
+			t.Fatalf("%s answered %q", tool, line)
+		}
+		return out
+	}
+	made := work(chat, "ws_task_create", `{"title":"Draft the launch post","request":"A post for Friday","checklist":["Outline","First draft"]}`)
+	task := made["task"].(map[string]any)
+	id := task["id"].(string)
+	list, _ := task["checklist"].([]any)
+	if len(list) != 2 || list[0].(map[string]any)["id"] != "c1" {
+		t.Fatalf("the task's checklist reads %v", task["checklist"])
+	}
+	var notes api.WorkstreamFile
+	o.do(t, "santosh", "POST", "/v1/workstreams/"+ws.ID+"/files", -1, api.FileNew{Kind: "document", Name: "Interview notes", BodyMD: "Five people."}, 201, &notes)
+
+	run := &agentDoor{h: o.h, id: ws.ID, asker: "santosh", runTask: id}
+	work(run, "ws_file_read", `{"file":"`+notes.ID+`"}`)
+	draft := work(run, "ws_file_create", `{"name":"Launch post","markdown":"Hello."}`)["file"].(map[string]any)
+	ticked := work(run, "ws_task_update", `{"task":"`+id+`","checklist_done":["c1"]}`)["task"].(map[string]any)
+	if c := ticked["checklist"].([]any); c[0].(map[string]any)["done"] != true || c[1].(map[string]any)["done"] != nil {
+		t.Fatalf("ticked checklist %v", c)
+	}
+	if _, err := run.Work(context.Background(), "ws_task_update", json.RawMessage(`{"task":"`+id+`","checklist_done":["c7"]}`)); err == nil {
+		t.Fatal("a line that is not on the checklist was ticked")
+	}
+
+	files, err := o.h.config.Store.WorkstreamFiles(ws.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := files[notes.ID].UsedBy; !slices.Equal(got, []string{id}) {
+		t.Fatalf("the notes the run read are used by %v", got)
+	}
+	if got := files[draft["id"].(string)].FromTask; got != id {
+		t.Fatalf("the post the run made is from %q", got)
+	}
+	// A chat that is not a task's run links nothing by itself.
+	other := work(chat, "ws_file_create", `{"name":"Scratch","markdown":"x"}`)["file"].(map[string]any)
+	work(chat, "ws_file_read", `{"file":"`+other["id"].(string)+`"}`)
+	files, _ = o.h.config.Store.WorkstreamFiles(ws.ID)
+	if f := files[other["id"].(string)]; f.FromTask != "" || len(f.UsedBy) != 0 {
+		t.Fatalf("a chat's file was linked to a task: %+v", f)
 	}
 }

@@ -246,13 +246,17 @@ type WorkstreamTask struct {
 	// several Asks.
 	Asks []TaskAsk `json:"asks,omitempty"`
 	// Assumed is what the agent decided without asking.
-	Assumed    []TaskAssumed `json:"assumed,omitempty"`
-	CostUSD    *float64      `json:"cost_usd,omitempty"`
-	CreatedBy  PersonRef     `json:"created_by"`
-	CreatedAt  string        `json:"created_at"`
-	UpdatedAt  string        `json:"updated_at"`
-	DoneAt     string        `json:"done_at,omitempty"`
-	AnsweredBy *PersonRef    `json:"answered_by,omitempty"`
+	Assumed []TaskAssumed `json:"assumed,omitempty"`
+	// Checklist is the steps of this one deliverable (org-space DESIGN §5.2):
+	// lines inside the task, each ticked or not. A line is never a task of
+	// its own: it has no owner, page, due date or state beyond its tick.
+	Checklist  []TaskCheckItem `json:"checklist,omitempty"`
+	CostUSD    *float64        `json:"cost_usd,omitempty"`
+	CreatedBy  PersonRef       `json:"created_by"`
+	CreatedAt  string          `json:"created_at"`
+	UpdatedAt  string          `json:"updated_at"`
+	DoneAt     string          `json:"done_at,omitempty"`
+	AnsweredBy *PersonRef      `json:"answered_by,omitempty"`
 	// HandedBy is who last handed the task to its owner, when that was
 	// someone other than the owner themselves, so the new owner's Inbox can
 	// say "handed to you by Marco" (SPEC "Handing work on"). Cleared when the
@@ -266,6 +270,22 @@ type WorkstreamTask struct {
 	// everyone else.
 	StoppedBy *PersonRef `json:"stopped_by,omitempty"`
 }
+
+// TaskCheckItem is one line of a task's checklist. Who is who ticks it, when
+// that is not the task's doer; absent, the doer does.
+type TaskCheckItem struct {
+	ID   string      `json:"id"`
+	Text string      `json:"text"`
+	Done bool        `json:"done,omitempty"`
+	Who  *TaskDoneBy `json:"who,omitempty"`
+}
+
+// The most one checklist holds, and the longest line. ONE SOURCE: the desk's
+// wsTasksModel.ts and the tool schemas read these.
+const (
+	TaskChecklistMost     = 30
+	TaskChecklistLineMost = 200
+)
 
 // TaskForYou is what a task holds for the person reading it (SPEC "Comments
 // for you"): the unread comments on a task they own, or that name them with
@@ -410,6 +430,8 @@ type TaskCreate struct {
 	Due       string        `json:"due,omitempty"`
 	Group     *TaskGroup    `json:"group,omitempty"`
 	State     string        `json:"state,omitempty"`
+	// Checklist is the deliverable's steps, one line each, unticked.
+	Checklist []string `json:"checklist,omitempty"`
 }
 
 // NewTask makes a task from in, checked. id is the store's; by is the caller;
@@ -450,6 +472,17 @@ func NewTask(ws, id string, in TaskCreate, by PersonRef, defaultOwner TaskOwner,
 	if in.Group != nil {
 		g := groupFor(*in.Group, all)
 		t.Group = &g
+	}
+	if len(in.Checklist) > 0 {
+		lines := make([]TaskCheckItem, 0, len(in.Checklist))
+		for _, text := range in.Checklist {
+			lines = append(lines, TaskCheckItem{Text: text})
+		}
+		list, err := cleanChecklist(lines)
+		if err != nil {
+			return t, err
+		}
+		t.Checklist = list
 	}
 	if err := CheckTask(t, all); err != nil {
 		return t, err
@@ -625,6 +658,13 @@ type TaskPatch struct {
 	// Overturn is the id of one of Assumed that Send back overturns, with
 	// StateReason the why. A done task goes back to its doer.
 	Overturn string `json:"overturn,omitempty"`
+	// Checklist replaces the whole checklist (a person adding, rewording,
+	// reordering or removing lines). A line with no id is new.
+	Checklist *[]TaskCheckItem `json:"checklist,omitempty"`
+	// CheckDone and CheckUndone tick and untick lines by id: an agent ticks
+	// its own lines as it works, a person ticks theirs.
+	CheckDone   []string `json:"check_done,omitempty"`
+	CheckUndone []string `json:"check_undone,omitempty"`
 }
 
 // TaskAskLater is Later on one of a task's Asks.
@@ -706,6 +746,20 @@ func ApplyPatch(t WorkstreamTask, p TaskPatch, a TaskActor, by TaskEventBy, all 
 	}
 	if p.Results != nil {
 		t.Results = slices.Clone(*p.Results)
+	}
+	if p.Checklist != nil {
+		list, err := cleanChecklist(*p.Checklist)
+		if err != nil {
+			return TaskChange{}, err
+		}
+		t.Checklist = list
+	}
+	if len(p.CheckDone) > 0 || len(p.CheckUndone) > 0 {
+		list, err := tickChecklist(t.Checklist, p.CheckDone, p.CheckUndone)
+		if err != nil {
+			return TaskChange{}, err
+		}
+		t.Checklist = list
 	}
 	if p.Check != nil {
 		t.Check = strings.TrimSpace(*p.Check)
@@ -1495,4 +1549,69 @@ func FlagForFile(t WorkstreamTask, file string, by TaskEventBy, newID func() str
 		AskedAt: stamp,
 	}
 	return t, []WorkstreamTaskEvent{line}, true
+}
+
+// cleanChecklist checks a whole checklist and gives each new line its id: one
+// line each, trimmed, none empty, at most [TaskChecklistMost] lines of at most
+// [TaskChecklistLineMost] characters, every id once.
+func cleanChecklist(in []TaskCheckItem) ([]TaskCheckItem, error) {
+	if len(in) > TaskChecklistMost {
+		return nil, taskInvalidf("a checklist has at most %d lines; past that the work is more than one task", TaskChecklistMost)
+	}
+	out := make([]TaskCheckItem, 0, len(in))
+	seen := map[string]bool{}
+	next := 1
+	for _, it := range in {
+		if it.ID != "" {
+			seen[it.ID] = true
+		}
+	}
+	for _, it := range in {
+		it.Text = strings.Join(strings.Fields(it.Text), " ")
+		if it.Text == "" {
+			continue
+		}
+		if len(it.Text) > TaskChecklistLineMost {
+			return nil, taskInvalidf("a checklist line is at most %d characters", TaskChecklistLineMost)
+		}
+		if it.ID == "" {
+			for seen["c"+strconv.Itoa(next)] {
+				next++
+			}
+			it.ID = "c" + strconv.Itoa(next)
+			seen[it.ID] = true
+		}
+		if slices.ContainsFunc(out, func(x TaskCheckItem) bool { return x.ID == it.ID }) {
+			return nil, TaskInvalid("each checklist line has its own id")
+		}
+		out = append(out, it)
+	}
+	if len(out) == 0 {
+		return nil, nil
+	}
+	return out, nil
+}
+
+// tickChecklist ticks the lines in done and unticks those in undone. A line
+// that is not on the checklist is refused by its id, so an agent learns it
+// named a line that is not there rather than believing it ticked one.
+func tickChecklist(list []TaskCheckItem, done, undone []string) ([]TaskCheckItem, error) {
+	out := slices.Clone(list)
+	set := func(ids []string, to bool) error {
+		for _, id := range ids {
+			i := slices.IndexFunc(out, func(x TaskCheckItem) bool { return x.ID == strings.TrimSpace(id) })
+			if i < 0 {
+				return taskInvalidf("this task's checklist has no line %q", id)
+			}
+			out[i].Done = to
+		}
+		return nil
+	}
+	if err := set(done, true); err != nil {
+		return nil, err
+	}
+	if err := set(undone, false); err != nil {
+		return nil, err
+	}
+	return out, nil
 }

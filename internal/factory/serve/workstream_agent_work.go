@@ -197,6 +197,10 @@ func taskBrief(t factory.WorkstreamTask) map[string]any {
 	if t.Ask != nil {
 		o["asks"] = t.Ask.Title
 	}
+	if len(t.Checklist) > 0 {
+		// The ids are what ws_task_update's checklist_done names.
+		o["checklist"] = t.Checklist
+	}
 	return o
 }
 
@@ -314,6 +318,7 @@ func (d *agentDoor) wsTaskCreate(ctx context.Context, args json.RawMessage) (any
 		WaitingOn []string `json:"waiting_on"`
 		Due       string   `json:"due"`
 		Group     string   `json:"group"`
+		Checklist []string `json:"checklist"`
 	}
 	if err := agentArgs(args, &a); err != nil {
 		return nil, err
@@ -338,7 +343,10 @@ func (d *agentDoor) wsTaskCreate(ctx context.Context, args json.RawMessage) (any
 	if err != nil {
 		return nil, err
 	}
-	body := factory.TaskCreate{Title: title, Request: request, Owner: owner, WaitingOn: a.WaitingOn, Due: a.Due,
+	if len(a.Checklist) > factory.TaskChecklistMost {
+		return nil, fmt.Errorf("invalid arguments: a checklist has at most %d lines", factory.TaskChecklistMost)
+	}
+	body := factory.TaskCreate{Title: title, Request: request, Owner: owner, WaitingOn: a.WaitingOn, Due: a.Due, Checklist: a.Checklist,
 		CameFrom: &factory.TaskCameFrom{Kind: factory.TaskByChat, ChatID: "afi", Name: "Afi"}}
 	switch a.DoneBy {
 	case "", "this_chat":
@@ -412,6 +420,8 @@ func (d *agentDoor) wsTaskUpdate(ctx context.Context, args json.RawMessage) (any
 		RequestNote string    `json:"request_note"`
 		Decision    string    `json:"decision"`
 		Assumed     []string  `json:"assumed"`
+		CheckDone   []string  `json:"checklist_done"`
+		CheckUndone []string  `json:"checklist_undone"`
 	}
 	if err := agentArgs(args, &a); err != nil {
 		return nil, err
@@ -530,6 +540,14 @@ func (d *agentDoor) wsTaskUpdate(ctx context.Context, args json.RawMessage) (any
 		}
 		p["assumed"] = lines
 	}
+	// The agent ticks its own checklist lines as it works, by id; rewording
+	// or adding lines is a person's change on the task page.
+	if len(a.CheckDone) > 0 {
+		p["check_done"] = a.CheckDone
+	}
+	if len(a.CheckUndone) > 0 {
+		p["check_undone"] = a.CheckUndone
+	}
 	if len(p) > 0 {
 		raw, err := d.call(ctx, d.h.patchWorkstreamTask, http.MethodPatch, "/v1/workstreams/"+d.id+"/tasks/"+url.PathEscape(id), map[string]string{"tid": id}, p, rev)
 		if err != nil {
@@ -638,6 +656,12 @@ func fileBrief(f factory.WorkstreamFile) map[string]any {
 	if f.Repo != "" {
 		o["repo"] = f.Repo
 	}
+	if f.FromTask != "" {
+		o["from_task"] = f.FromTask
+	}
+	if len(f.UsedBy) > 0 {
+		o["used_by"] = f.UsedBy
+	}
 	return o
 }
 
@@ -715,6 +739,7 @@ func (d *agentDoor) wsFileRead(ctx context.Context, args json.RawMessage) (any, 
 	if err != nil {
 		return nil, err
 	}
+	d.usedByTask(ctx, f, ws)
 	out := fileBrief(f)
 	out["version"] = f.Rev
 	switch f.Kind {
@@ -746,6 +771,20 @@ func (d *agentDoor) wsFileRead(ctx context.Context, args json.RawMessage) (any, 
 		}
 	}
 	return out, nil
+}
+
+// usedByTask writes this run's task into the used_by of a file it just read,
+// so the task page lists it under Uses and a later change to the file flags the
+// task. Only this workstream's own files: a parent's file names only its own
+// tasks. A file the task made is not also one it uses, a folder is never an
+// input, and a write that loses a race is left alone; the read already
+// happened, and the next read tries again.
+func (d *agentDoor) usedByTask(ctx context.Context, f factory.WorkstreamFile, ws factory.OrgWorkstream) {
+	if d.runTask == "" || ws.ID != d.id || f.Kind == factory.FileFolder || f.FromTask == d.runTask || slices.Contains(f.UsedBy, d.runTask) {
+		return
+	}
+	used := append(slices.Clone(f.UsedBy), d.runTask)
+	_, _ = d.call(ctx, d.h.patchWorkstreamFile, http.MethodPatch, "/v1/workstreams/"+d.id+"/files/"+url.PathEscape(f.ID), map[string]string{"fid": f.ID}, api.FilePatch{UsedBy: &used}, f.Rev)
 }
 
 // uploadTextMost is the most of an upload's words one ws_file_read answers;
@@ -800,7 +839,13 @@ func (d *agentDoor) wsFileCreate(ctx context.Context, args json.RawMessage) (any
 	if err != nil {
 		return nil, err
 	}
-	body := api.FileNew{Kind: firstNonEmpty(a.Kind, factory.FileDocument), Name: name, Folder: a.Folder, FromTask: a.FromTask,
+	// What a task's run makes is made by that task, unless the agent named
+	// another.
+	fromTask := firstNonEmpty(strings.TrimSpace(a.FromTask), d.runTask)
+	if a.Kind == factory.FileFolder {
+		fromTask = strings.TrimSpace(a.FromTask)
+	}
+	body := api.FileNew{Kind: firstNonEmpty(a.Kind, factory.FileDocument), Name: name, Folder: a.Folder, FromTask: fromTask,
 		MadeBy: &factory.FileMaker{Kind: factory.MakerAfi, Name: "Afi"}}
 	switch body.Kind {
 	case factory.FileDocument:

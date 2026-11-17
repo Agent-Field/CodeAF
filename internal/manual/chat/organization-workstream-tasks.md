@@ -4,7 +4,7 @@
 
 A workstream's Tasks tab is the shared list of its work; everyone in the workstream sees the same list. A task is one piece of work with ONE owner. Who does it varies: Afi, a chat, the Factory, or a person (a person's task is just a checkbox). Who answers for it does not.
 
-A task has a title, a few lines saying what is wanted (the request), its owner, who does it, where it came from (a chat, a person, the Factory, a standing order), its state, what it waits on, an optional due date, an optional heading that groups it, the files or links it made, and the files it uses. There are no sub-tasks, priorities, estimates or custom fields.
+A task has a title, a few lines saying what is wanted (the request), its owner, who does it, where it came from (a chat, a person, the Factory, a standing order), its state, what it waits on, an optional due date, an optional heading that groups it, the files or links it made, the files it uses, and an optional checklist of its steps. There are no sub-tasks, priorities, estimates or custom fields: steps of one piece of work go on its checklist.
 
 The list's sections are always in this order: Waiting on someone, Running, Up next, Done. Work that ended without finishing sits under Waiting on someone, in the app's words: Failed (with its reason), Interrupted, Stopped by you (to whoever pressed Stop; everyone else reads "Stopped by Marco"), Didn't report back. A heading such as "Release 2.4" or "Factory" sits in the most urgent section any of its tasks is in, with all its tasks under it.
 
@@ -103,15 +103,27 @@ A task's page lists what it made (**Result**, or **Files** on a person's task) a
 
 The link lives on the file: its facts in Files say "Used by" the task, and a document's or a canvas's page says "Made by task …" and "Used by …" (or "Used by 2 tasks", which lists them), each opening the task. When a file a running task uses changes, the task asks its owner whether to carry on. Someone the workstream is shared with to view sees what is attached but has no Attach and no Remove.
 
-Today a file is attached by a person. Afi and the chats file what they make in Files by themselves, but do not yet attach to a task the files they read.
+## Afi links files to the task by itself — what a task's run reads and makes
+
+When Afi or a chat does a task, nobody has to attach its files. Every file of this workstream it reads is attached to the task, under **Uses**, and every document or canvas it makes is the task's own, under **Result**, made by that task. A file from the workstream this one sits inside is read but not attached, because it belongs to that workstream's tasks. Talking to Afi in your own pane, outside a task's run, links nothing by itself. What the run linked can be removed from the task like anything attached by hand.
 
 ## a canvas on a task — its live picture, open it inside the task, Open beside
 
 A canvas a task made or uses shows as a small picture of the whole board, repainted a moment after anyone changes it. Clicking it opens the canvas inside the task, with a bar naming the task to go back (Escape too) and **Open beside** to put it in the window's preview tab. On an organization's canvas the picture stays the plain board ground until this computer can draw it; the canvas itself still opens.
 
+## a checklist inside a task — steps, not sub-tasks, tick a step, 2/5
+
+A task can carry a **checklist**: the steps of that one piece of work ("Outline", "First draft", "Check the numbers"), each one line that is ticked or not. A step is not a task: it has no owner, due date or page of its own. Work someone else does, or work delivered on its own, is a separate task instead.
+
+- Afi writes the checklist when it makes a task for steps of one deliverable, and ticks each line as it finishes it while doing the task.
+- On the task page the **Checklist** sits under the request. Anyone who can edit the workstream ticks or unticks a line, adds one with **Add a step**, rewords one by clicking it, or removes one. Someone it is shared with to view sees the lines and cannot tick them.
+- The task's row in Tasks shows how far it is, "2/5", among its dim counts; a task without a checklist shows none.
+
+A checklist holds at most 30 lines of up to 200 characters each; past that the work is more than one task.
+
 ## the counts on a task's row — files and canvases
 
-A task's row in Tasks carries dim counts after its title: a file mark with how many files it made or uses, and a canvas mark with how many canvases. A task with nothing attached shows no count at all.
+A task's row in Tasks carries dim counts after its title: a file mark with how many files it made or uses, a canvas mark with how many canvases, and a checklist's progress such as "2/5". A task with nothing attached and no checklist shows no count at all.
 
 ## a file changed while a task was running — carry on or start again
 
