@@ -105,7 +105,7 @@ func TestTheStallTurnReportsTheStallToTheManager(t *testing.T) {
 	if _, err := s.Stalled(context.Background(), it, st, door); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"this is turn 2 of 4 on it.", "Waits on: the person, to decide what happens next.", stallAskYours} {
+	for _, want := range []string{"this is turn 2 of 4 on it.", "Waits on: the person, to bring a computer online", stallAskYours} {
 		if !strings.Contains(asked[1], want) {
 			t.Errorf("the second report does not say %q:\n%s", want, asked[1])
 		}
