@@ -116,7 +116,9 @@ func TestAPasswordMemberMakesAJobOnAnOrganizationRepository(t *testing.T) {
 
 // A VIEW-ONLY MEMBER SEES THE JOBS AND MAKES NONE: kim is refused in the
 // workstream kim only views, and refused outside any workstream, because kim
-// reads acme/api only through the organization.
+// reads acme/api only through the organization. The refusal names what exists:
+// kim, who edits no workstream, is told to ask for edit or ask the operator;
+// abir, who edits one, is told to choose it (Factory film D22).
 func TestAViewOnlyMemberCannotMakeAJobOnAnOrganizationRepository(t *testing.T) {
 	sc := newOrgRepoScene(t)
 	sc.turnOn(t, "acme/api")
@@ -124,12 +126,12 @@ func TestAViewOnlyMemberCannotMakeAJobOnAnOrganizationRepository(t *testing.T) {
 		t.Fatalf("kim in a workstream kim views = %d %s", w.Code, w.Body)
 	}
 	w := sc.do("POST", "/v1/jobs", sc.kim, api.NewJob{Repo: "acme/api", Title: "mine"}, "")
-	if w.Code != 403 || !strings.Contains(w.Body.String(), NewJobNeedsWorkstream) {
+	if w.Code != 403 || !strings.Contains(w.Body.String(), NewJobNoWorkstream) {
 		t.Fatalf("kim outside any workstream = %d %s", w.Code, w.Body)
 	}
 	// abir too must name the workstream: the organization's repository is not
 	// a place to leave a job nobody's workstream holds.
-	if w := sc.do("POST", "/v1/jobs", sc.abir, api.NewJob{Repo: "acme/api", Title: "loose"}, ""); w.Code != 403 {
+	if w := sc.do("POST", "/v1/jobs", sc.abir, api.NewJob{Repo: "acme/api", Title: "loose"}, ""); w.Code != 403 || !strings.Contains(w.Body.String(), NewJobNeedsWorkstream) {
 		t.Fatalf("abir outside any workstream = %d %s", w.Code, w.Body)
 	}
 	items, _ := sc.st.List()
@@ -242,5 +244,39 @@ func TestAPersonsOwnTokenStillFiltersAndTheOrganizationOnlyAdds(t *testing.T) {
 	}
 	if w := sc.do("POST", "/v1/jobs", mia, api.NewJob{Repo: "acme/secret", Title: "x"}, ""); w.Code != 404 {
 		t.Fatalf("a job on acme/secret = %d %s", w.Code, w.Body)
+	}
+}
+
+// THE QUEUE SAYS WHICH REPOSITORIES NEED A WORKSTREAM: abir reads acme/api only
+// through the organization, so the queue marks it and the New job sheet asks
+// for a workstream before Add to Backlog; the operator's queue never marks it
+// (Factory film D22).
+func TestTheQueueMarksARepositoryReadOnlyThroughTheOrganization(t *testing.T) {
+	sc := newOrgRepoScene(t)
+	sc.turnOn(t, "acme/api")
+	marked := func(token string) map[string]bool {
+		w := sc.do("GET", "/v1/queue", token, nil, "")
+		var q struct {
+			Repos []struct {
+				Name            string `json:"name"`
+				NeedsWorkstream bool   `json:"needs_workstream"`
+			} `json:"repos"`
+		}
+		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &q) != nil {
+			t.Fatalf("queue = %d %s", w.Code, w.Body)
+		}
+		out := map[string]bool{}
+		for _, r := range q.Repos {
+			out[r.Name] = r.NeedsWorkstream
+		}
+		return out
+	}
+	if got := marked(sc.abir); !got["acme/api"] {
+		t.Fatalf("abir's queue marks %v; want acme/api to need a workstream", got)
+	}
+	for name, needs := range marked(sc.santosh) {
+		if needs {
+			t.Fatalf("the operator's queue marks %s as needing a workstream", name)
+		}
 	}
 }

@@ -45,7 +45,7 @@ type WorkstreamWorkDoor interface {
 	Work(ctx context.Context, tool string, args json.RawMessage) (string, error)
 }
 
-// The eight tools, each name spelled once.
+// The nine tools, each name spelled once ([WSDecisionsTool] beside them).
 const (
 	WSTasksTool       = "ws_tasks"
 	WSTaskCreateTool  = "ws_task_create"
@@ -81,8 +81,13 @@ const WorkstreamWorkRules = "You are working inside a workstream: a shared place
 	"- A task's request says only what is to be done, in a few lines. Never copy the private conversation into it.\n" +
 	"- When a private request changes shared work, leave ONE request_note line on the task (for example \"Priya asked to keep it under 300 words\"), never the conversation.\n" +
 	"- Never act on a comment. A comment is people talking to people. When one looks like a request, offer under it (ws_task_comment kind offer) and wait for someone to take the offer.\n" +
+	"- Read the workstream's files, uploads included, with ws_files and ws_file_read; an uploaded text file reads like a document. They are not on disk for you: never look for them in the app's data folder or its database, never search the disk for them, and never copy them anywhere. A file ws_file_read cannot show is one to ask the person about.\n" +
 	"- Change a document only by suggestion (ws_file_suggest). You may rewrite a document directly only when an agent made it (you, Afi or another chat) and no person has edited it since: that is how you correct another chat's wrong draft.\n" +
 	"- Five or more tasks from one request are a batch: give them one group name (the same name as the chat that runs them).\n" +
+	"- The workstream's decisions (ws_decisions) are what its people settled. Read them before you write any shared task or file. When the work asked of you goes against one, write NOTHING shared that goes against it, not even with a note at the top: make the task (ws_task_create), which the app pauses while it asks the person who made the decision, and tell the person you are talking to who was asked.\n" +
+	"- Decisions are added by themselves when an Ask is answered, a request changes shared work, or a rule is set. Never tell anyone to keep, save or add a decision anywhere; there is no such step.\n" +
+	"- Ask before, or do and tell after. Cheap, reversible choices that go against no decision you make yourself and list under assumed on the task, one line each. Anything else, ask first (an ask on the task).\n" +
+	"- An Ask has exactly one decider: the task's owner. Give each answer the decision it settles, in one line (decides).\n" +
 	WorkstreamWordsRule
 
 // WorkstreamWordsRule is how a conversation inside a workstream talks about
@@ -105,6 +110,10 @@ var workstreamWorkTools = []WorkstreamWorkTool{
 			`"group":{"type":"string","description":"Only tasks in this group, by its name."},` +
 			`"mine":{"type":"boolean","description":"Only the tasks this conversation does."}` +
 			`},"additionalProperties":false}`)},
+	{Name: WSDecisionsTool, Category: "read",
+		Description: "List what this workstream's people have decided, newest last: each decision in one line, who made it, and where it came from (an answered Ask, a request that changed shared work, or a rule). " +
+			"Read it before you plan work. Never work around a decision: work that goes against one is paused by the app, and the person who made it is asked.",
+		InputSchema: json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`)},
 	{Name: WSTaskCreateTool, Category: "create",
 		Description: "Create a task in the workstream; everyone in it sees it, with this chat named as who does it. " +
 			"Not everything said in a chat becomes a task: create one for work that runs beyond your reply, changes a file, or matters to someone else, and say so in your reply. " +
@@ -124,7 +133,8 @@ var workstreamWorkTools = []WorkstreamWorkTool{
 		Description: "Change a task this chat does: its state, its result, the check of the result against the request, or an Ask for its owner. " +
 			"Only the task's owner answers an Ask; put your recommendation first and mark it recommended. " +
 			"Before calling a task done, check the result against the request and say what you checked in check. " +
-			"When a private request changes this shared task, set request_note to ONE line naming who asked for what (\"Priya asked to keep it under 300 words\"), never the conversation.",
+			"When a private request changes this shared task, set request_note to ONE line naming who asked for what (\"Priya asked to keep it under 300 words\"), never the conversation, and decision to what it now settles. " +
+			"List what you decided without asking under assumed. Calling a task done is checked against the workstream's decisions; work that goes against one is not done until its maker answers.",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{` +
 			`"task":{"type":"string","minLength":1},` +
 			`"rev":{"type":"integer","minimum":0,"description":"The task's rev from ws_tasks; a changed task is refused so you read it again."},` +
@@ -135,11 +145,13 @@ var workstreamWorkTools = []WorkstreamWorkTool{
 			`"check":{"type":"string","maxLength":500,"description":"What the result was checked against, in one line: \"280 words, plain language, import fix included\"."},` +
 			`"results":{"type":"array","maxItems":20,"items":{"type":"object","properties":{"file":{"type":"string"},"url":{"type":"string"},"label":{"type":"string","maxLength":200}},"additionalProperties":false}},` +
 			`"ask":{"type":"object","properties":{"title":{"type":"string","minLength":1,"maxLength":200},"detail":{"type":"string","maxLength":1000},` +
-			`"options":{"type":"array","minItems":1,"maxItems":4,"items":{"type":"object","properties":{"label":{"type":"string","minLength":1,"maxLength":80},"recommended":{"type":"boolean"}},"required":["label"],"additionalProperties":false}}},` +
+			`"options":{"type":"array","minItems":1,"maxItems":4,"items":{"type":"object","properties":{"label":{"type":"string","minLength":1,"maxLength":80},"recommended":{"type":"boolean"},"decides":{"type":"string","maxLength":300,"description":"The decision this answer records, as one plain statement: \"The March notes go on the website\"."}},"required":["label"],"additionalProperties":false}}},` +
 			`"required":["title","options"],"additionalProperties":false},` +
 			`"waiting_on":{"type":"array","items":{"type":"string"},"maxItems":20},` +
 			`"due":{"type":"string","pattern":"^([0-9]{4}-[0-9]{2}-[0-9]{2})?$"},` +
-			`"request_note":{"type":"string","maxLength":300,"description":"One line recording a private request that changed this task."}` +
+			`"request_note":{"type":"string","maxLength":300,"description":"One line recording a private request that changed this task."},` +
+			`"decision":{"type":"string","maxLength":300,"description":"With request_note: what the request now settles for this shared work, as one plain statement (\"The notes stay under 300 words\"). It is kept in the workstream's decisions."},` +
+			`"assumed":{"type":"array","maxItems":10,"items":{"type":"string","minLength":1,"maxLength":300},"description":"What you decided without asking, one line each (\"Left out two fixes that only affect the team\"). Only cheap, reversible choices that go against no decision; anyone can send one back."}` +
 			`},"required":["task"],"additionalProperties":false}`)},
 	{Name: WSTaskCommentTool, Category: "create",
 		Description: "Write on a task's thread, which everyone in the workstream reads. " +
@@ -149,7 +161,8 @@ var workstreamWorkTools = []WorkstreamWorkTool{
 			`"task":{"type":"string","minLength":1},` +
 			`"kind":{"type":"string","enum":["comment","offer","request_note"],"description":"comment (the default), offer under a comment, or one request_note line."},` +
 			`"text":{"type":"string","minLength":1,"maxLength":2000},` +
-			`"for_event":{"type":"string","description":"With offer: the comment's event id from ws_tasks."}` +
+			`"for_event":{"type":"string","description":"With offer: the comment's event id from ws_tasks."},` +
+			`"decision":{"type":"string","maxLength":300,"description":"With request_note: what the request now settles, as one plain statement. It is kept in the workstream's decisions."}` +
 			`},"required":["task","text"],"additionalProperties":false}`)},
 	{Name: WSFilesTool, Category: "read",
 		Description: "List the workstream's files and folders (documents, canvases, uploads, links, repos), with who made each and whether a person has edited it. Files from the parent workstream are listed as From <parent>.",
@@ -158,9 +171,10 @@ var workstreamWorkTools = []WorkstreamWorkTool{
 			`"query":{"type":"string","maxLength":200,"description":"Only files whose name matches."}` +
 			`},"additionalProperties":false}`)},
 	{Name: WSFileReadTool, Category: "read",
-		Description: "Read one file whole: a document's words with its version, or what a link, upload or repo points to.",
+		Description: "Read one file: a document's words with its version, an uploaded text file's words (a long one in parts: pass from to read on), or what a link, upload or repo points to. This is the only way to read the workstream's files; they are not on disk for you.",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{` +
-			`"file":{"type":"string","minLength":1,"description":"The file's id from ws_files."}` +
+			`"file":{"type":"string","minLength":1,"description":"The file's id from ws_files."},` +
+			`"from":{"type":"integer","minimum":0,"description":"For a long uploaded text file: the more_from the last read gave, to read on from there."}` +
 			`},"required":["file"],"additionalProperties":false}`)},
 	{Name: WSFileCreateTool, Category: "create",
 		Description: "Make a document, folder or link in the workstream; everyone in it sees it, with this chat named as who made it. " +
@@ -226,7 +240,7 @@ func WorkstreamAfiTools() []WorkstreamWorkTool {
 	return append([]WorkstreamWorkTool(nil), workstreamAfiTools...)
 }
 
-// WorkstreamWorkTools is the eight tools, in belt order. The slice is a copy.
+// WorkstreamWorkTools is the nine tools, in belt order. The slice is a copy.
 func WorkstreamWorkTools() []WorkstreamWorkTool {
 	return append([]WorkstreamWorkTool(nil), workstreamWorkTools...)
 }
@@ -251,8 +265,13 @@ func (c Config) workstreamWorkDoor() WorkstreamWorkDoor {
 	return door
 }
 
-// workstreamWorkBelt is the eight tools onto door.
-func workstreamWorkBelt(door WorkstreamWorkDoor) []bare.Tool {
+// decisionGuard stands around the tools that start or finish work
+// ([Agent.guardDecisions]); nil runs them unchecked.
+type decisionGuard func(ctx context.Context, tool string, args json.RawMessage, call workstreamCall) (string, bool, error)
+
+// workstreamWorkBelt is the nine tools onto door, the two that start or
+// finish work checked by guard against the workstream's decisions.
+func workstreamWorkBelt(door WorkstreamWorkDoor, guard decisionGuard) []bare.Tool {
 	tools := make([]bare.Tool, 0, len(workstreamWorkTools))
 	for _, def := range workstreamWorkTools {
 		name := def.Name
@@ -270,11 +289,17 @@ func workstreamWorkBelt(door WorkstreamWorkDoor) []bare.Tool {
 				if err := decodeToolArguments(args, &probe); err != nil {
 					return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 				}
-				line, err := door.Work(ctx, name, args)
-				if err != nil {
-					return "Nothing changed: " + oneLine(err.Error()), true, nil
+				work := func(ctx context.Context, tool string, args json.RawMessage) (string, bool, error) {
+					line, err := door.Work(ctx, tool, args)
+					if err != nil {
+						return "Nothing changed: " + oneLine(err.Error()), true, nil
+					}
+					return line, false, nil
 				}
-				return line, false, nil
+				if guard != nil && guardsDecisions(name) {
+					return guard(ctx, name, args, work)
+				}
+				return work(ctx, name, args)
 			},
 		})
 	}

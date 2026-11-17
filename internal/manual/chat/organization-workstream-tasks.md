@@ -20,6 +20,8 @@ A Personal workstream keeps its tasks on this computer; an organization workstre
 
 When a task needs a choice or an approval, it asks its owner and shows as "Needs Priya". Only the owner sees buttons on the question; anyone else sees who answers and may comment. Someone else pressing answer is refused with "only the task's owner answers its question".
 
+A task can carry more than one Ask — approval by several people is several Asks, each with its one decider, and the task waits on all of them; an Ask with its own decider is answered by that person alone ("only Priya answers this Ask"). Others attach a view instead.
+
 If the owner is Everyone, anyone who can edit the workstream may answer; the first answer decides, a second is refused with "this question was already answered", and the task records who answered. A question left unanswered for a day also goes to the workstream's fallback person, if it has one.
 
 Who owns a new task: whoever asked for it. Work nobody asked for directly (from the Factory or a standing order) goes to the workstream's default owner.
@@ -49,7 +51,7 @@ A task can wait on other tasks of the same workstream. That is the only ordering
 
 ## a plan — five or more tasks from one request wait for Start (Start all) and Change the plan
 
-When one request makes five or more tasks, they arrive as a plan: one heading in Up next with two buttons under it, **Start** and **Change the plan**. Nothing starts until someone presses Start (it was called Start all before). Start wakes the doer of every Afi or chat task of that heading that waits on nothing unfinished, then shows those tasks Running; the rest stay in Up next until they can start. Person tasks are not started (the person does them) and Factory tasks start at the Factory. Change the plan opens Afi's pane with "Change the plan for <name>: " typed, to say what should be different. On an organization's workstream the plan's Start is not offered yet (see *Start — why a task stays in Up next*).
+When one request makes five or more tasks, they arrive as a plan: one heading in Up next with two buttons under it, **Start** and **Change the plan**. Nothing starts until someone presses Start (it was called Start all before). Start wakes the doer of every Afi or chat task of that heading that waits on nothing unfinished, then shows those tasks Running; the rest stay in Up next until they can start. Person tasks are not started (the person does them) and Factory tasks start at the Factory. Change the plan opens Afi's pane with "Change the plan for <name>: " typed, to say what should be different. On an organization's workstream the plan's Start starts the heading's Afi tasks on the organization's server; a chat's tasks stay in Up next, because a chat is woken on its person's computer.
 
 ## a Factory job is a task — its state, its question, never copied
 
@@ -93,7 +95,7 @@ A comment or a posted answer on a task never changes its state. Writing a receip
 
 ## Start — why a task Afi or a chat does stays in Up next, Mark done
 
-A task that Afi or a chat does is Running only while something is actually doing it. When what it waits on is done, it stays in Up next until its doer is woken. On a Personal workstream the task page shows **Start**: it hands the task to Afi's conversation (or to the chat that does it) and only then shows Running; a plan's Start wakes each doer once with all of its tasks. On an organization's workstream nothing on your computer can wake the server's agent yet, so there is no Start: the task waits in Up next. In every case the task's owner can finish it by hand with **Mark done** in its More, or stop it with Stop.
+A task that Afi or a chat does is Running only while something is actually doing it. When what it waits on is done, it stays in Up next until its doer is woken. On a Personal workstream the task page shows **Start**: it hands the task to Afi's conversation (or to the chat that does it) and only then shows Running; a plan's Start wakes each doer once with all of its tasks. On an organization's workstream **Start** runs an Afi task on the organization's server, as the person who pressed it and with their rights, in a run of its own that is not anybody's conversation with Afi: what it did shows in the task's thread and results, and the task ends done or failed with the reason. If the server cannot run Afi (no model key from the organization) Start says so and the task stays in Up next. A chat's task cannot be started from an organization's workstream; it starts from that chat. In every case the task's owner can finish it by hand with **Mark done** in its More, or stop it with Stop.
 
 ## due date — pick any day; change it on the task
 

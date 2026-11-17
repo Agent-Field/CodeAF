@@ -271,6 +271,12 @@ type Repo struct {
 	Habits        []string  `json:"habits,omitempty"` // desk
 	Hue           int       `json:"hue,omitempty"`    // desk
 	CIRed         bool      `json:"ci_red,omitempty"` // desk
+	// NeedsWorkstream says the caller reads this repository only through the
+	// organization, so a job on it is made in a workstream they can edit: the
+	// desk's New job sheet offers a Workstream field for it (Factory film D22).
+	// Absent for the operator, a GitHub member whose own sign-in reads it, and
+	// a solo factory.
+	NeedsWorkstream bool `json:"needs_workstream,omitempty"`
 }
 
 // Pipeline is a repository's steps in order, per kind of job, and the policy

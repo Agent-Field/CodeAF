@@ -1012,8 +1012,14 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 }
 
 // NewJobNeedsWorkstream is the refusal of a job named in no workstream on a
-// repository its maker reads only through the organization.
-const NewJobNeedsWorkstream = "Make this job in a workstream you can edit: this repository is the organization's."
+// repository its maker reads only through the organization, said to someone
+// who can edit a workstream: the New job sheet's Workstream field offers them.
+const NewJobNeedsWorkstream = "Choose a workstream you can edit for this job: this repository is the organization's."
+
+// NewJobNoWorkstream is the same refusal to someone who can edit no workstream
+// at all. It names the two ways that exist, never a workstream they cannot have
+// (Factory film D22, where the old wording sent a member to a Jobs tab that is gone).
+const NewJobNoWorkstream = "Ask someone to give you edit on a workstream, or ask the operator to make this job."
 
 // newJobWorkstream is the workstream a new job is made in, read and checked
 // before the job exists; a zero workstream when it names none and needs none.
@@ -1026,7 +1032,11 @@ func (h *Handler) newJobWorkstream(w http.ResponseWriter, r *http.Request, body 
 	}
 	if id == "" {
 		if h.repoOnlyThroughOrg(r, body.Repo) {
-			h.fail(w, http.StatusForbidden, NewJobNeedsWorkstream)
+			refusal, err := h.newJobWithoutWorkstream(r)
+			if h.failed(w, err) {
+				return factory.OrgWorkstream{}, wsViewer{}, false
+			}
+			h.fail(w, http.StatusForbidden, refusal)
 			return factory.OrgWorkstream{}, wsViewer{}, false
 		}
 		return factory.OrgWorkstream{}, wsViewer{}, true
@@ -1055,6 +1065,29 @@ func (h *Handler) newJobWorkstream(w http.ResponseWriter, r *http.Request, body 
 		return factory.OrgWorkstream{}, v, false
 	}
 	return ws, v, true
+}
+
+// newJobWithoutWorkstream is the refusal of a job on an organization's
+// repository that names no workstream: which one depends on whether the caller
+// can edit any workstream that is not archived.
+func (h *Handler) newJobWithoutWorkstream(r *http.Request) (string, error) {
+	if h.config.Store == nil {
+		return NewJobNoWorkstream, nil
+	}
+	v, err := h.wsViewer(r)
+	if err != nil {
+		return "", err
+	}
+	all, err := h.config.Store.Workstreams()
+	if err != nil {
+		return "", err
+	}
+	for _, ws := range all {
+		if ws.ArchivedAt == nil && v.canWrite(ws) {
+			return NewJobNeedsWorkstream, nil
+		}
+	}
+	return NewJobNoWorkstream, nil
 }
 
 // stampAsk records the app's ask on a job this factory's store holds.

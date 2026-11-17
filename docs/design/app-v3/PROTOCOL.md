@@ -515,6 +515,9 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.org_workstream_tasks_start_all` | `in.OrgTasksStartAllParams` | `OrgTasks` |
 | `factory.org_workstreams_requestable` | `in.OrgConn` | `json.RawMessage` |
 | `factory.org_workstream_request` | `in.OrgTaskRequestParams` | `json.RawMessage` |
+| `factory.org_workstream_task_view` | `in.OrgTaskViewParams` | `json.RawMessage` |
+| `factory.org_workstream_decision_withdraw` | `in.OrgDecisionParams` | `json.RawMessage` |
+| `factory.org_workstream_decision_replace` | `in.OrgDecisionParams` | `json.RawMessage` |
 | `factory.org_canvases` | `in.OrgConn` | `OrgCanvasList` |
 | `factory.org_canvas_get` | `in.OrgCanvasParams` | `json.RawMessage` |
 | `factory.org_canvas_create` | `in.OrgCanvasCreateParams` | `json.RawMessage` |
@@ -970,7 +973,10 @@ name:"Afi", for:<asker>}`. It writes a page directly only when its file is
 `made_by` an agent and not `person_edited`, first keeping the words before as a
 version; any other page, and any page with a live document, gets its text as a page
 version with `reason` `agent` (Kept · not applied), which is also what `ws_file_suggest`
-keeps. `factory.org_workstream_agent
+keeps. `ws_file_read {file, from?}` on an upload whose bytes are UTF-8 text answers
+them as `text` (at most 100 KiB from byte `from`, with `more_from` and `said` when more
+follows); any other upload answers `said`, that it has no words to read. The desk's
+Personal door answers the same shape. `factory.org_workstream_agent
 {id, since?}` `GET /v1/workstreams/{id}/agent?since=` (`view`) answers `{id, state,
 turn?, for?, since?, entries, seq, can_talk, cannot?}`: `state` is `idle`, `working`
 (`for` is whose message) or `stopping` (`for` is who stopped it); `entries` are the
@@ -1034,7 +1040,15 @@ task owner's or whoever looks after the workstream's (its steward, or full acces
 anyone else gets 403 "only the task's owner or whoever looks after this workstream can
 stop or move it". The tick starts nothing: an Afi or chat task that
 waited only on it stays `up_next`, unchanged, and its thread gains "Ready to start: <title>
-is done"; `running` is set only by whoever wakes the doer. Send back is `state`
+is done"; `running` is set only by whoever wakes the doer. On the server that is a
+person's own `state` `running` on an Afi task: the server starts Afi on it in the
+task's own run (the caller's rights, nobody's conversation) inside the same write, and
+the task says `running` only once Afi took it; a server that cannot run Afi, a task
+already being worked on, or a chat's task (woken on its person's machine) is 409 with
+nothing changed. A person's `done`, `stopped` or `up_next` ends a run still going on it.
+An engine whose hello also carries `org_workstream_task_start` serves this Start; a desk
+offers Start and Start all on an organization only where it hears that word.
+Send back is `state`
 `up_next` on a `done` task by someone other than its owner, or with a `state_reason`:
 anyone who edits may do it (a person task included), and the thread line and the
 task's `state_reason` read "Sent back by <name>[: <why>]" until its next change. A done
@@ -1056,8 +1070,9 @@ naming nobody in the workstream, or inside a word (an address), names nobody. Wi
 `offer {event, state}` instead it takes or dismisses an open offer (`undo_until` is five
 seconds on) or, with `state` `open` before then, undoes the take (the owner or the
 taker). `_tasks_start_all {ws, group}` `POST .../tasks/start_all` names the group's up
-next Afi and chat tasks that wait on nothing unfinished and answers `{tasks}`; it writes
-and publishes nothing, because the caller wakes each doer and then sets `running`.
+next Afi tasks that wait on nothing unfinished the way a person's `running` starts one,
+and answers `{tasks}` with those Afi took, now `running`; a chat's tasks are left
+`up_next`. If none could be taken it is that refusal (409).
 Every change publishes `workstream.changed` with `part` `tasks` and `part_id` the task.
 
 A REQUEST INTO ANOTHER WORKSTREAM (hello `org_workstream_requests`; Workstreams final
@@ -1074,6 +1089,52 @@ caller can edit `from_ws`, and the thread line "Requested by <name>[ from <works
 The task `from_task` in `from_ws` gains "Sent a request to <workstream>: <title>". It
 answers 201 `{id, ws, ws_name, title, owner, task?}`, the whole task only to someone in
 the workstream.
+
+An engine whose hello carries `org_workstream_decisions` adds Asks, views and decisions
+(Workstreams final spec, "Working with other people"). A task's `ask` is its OWNER's
+Ask; `asks` are its other open Asks, each `{..., decider: {id, name}}`, and the task is
+`needs` while any is open. Every Ask may carry `by` (who raised it, a thread `by`),
+`views` `[{by: {id, name}, text, at}]` (one per person, never the decider's) and
+`against` `{decision, text, by, why}` (the Ask the decision check raised); an option
+may carry `decides`, the decision its answer records in one line. A task may carry
+`assumed` `[{id, text, at, by, overturned_by?}]`, what its agent decided without
+asking. `_task_update` also takes `add_ask` (another Ask, with its `decider`),
+`ask_later {ask, until}` (Later, by that Ask's decider), `assumed` (lines to add) and
+`overturn` (an assumed id; with `state_reason` the why; a done task goes back to its
+doer, its reason reading "instead of “…”, <why>"). `_task_answer` takes `ask` (which
+Ask; absent, the task's own); only its decider answers it (else 403 "only <name>
+answers this Ask"), the task runs again only once no Ask is open, and the answer
+RECORDS A DECISION in the workstream: the option's `decides`, else the question and
+the answer; a changed file's question and "Keep the decision" on a conflict record
+none. `factory.org_workstream_task_view {ws, id, ask, text}` `POST .../tasks/{tid}/view`
+(`edit`) puts the caller's view on an Ask (`text` "" takes it away; the decider's own
+is 403) and answers the task. `_task_comment {kind: request_note, decision}` records
+`decision` as the caller's, from that task. A rules change (`update {rules}`) records
+one decision per rule that changed, the steward's ("Tasks under $5.00 start without
+asking"). A decision (`WorkstreamDecision`) gains `by_name`, `from {kind:
+ask|request|rule, task?, task_title?, ask?, asked_by?, views?, replaces?}`,
+`replaced_by`, `changed_by {id, name}`, `changed_at` and the state `withdrawn`.
+`factory.org_workstream_decision_withdraw {id, decision}` `POST
+/v1/workstreams/{id}/decisions/{did}/withdraw` and `factory.org_workstream_decision_replace
+{id, decision, text}` `POST .../replace` are ITS MAKER'S ALONE (403 "only the person who
+made a decision can withdraw or replace it"); the old one stays, `withdrawn` or
+`superseded` with `replaced_by`, and both answer the workstream. A whole-workstream
+save that changes or leaves out someone else's kept decision is refused the same way.
+
+THE DECISION CHECK runs in the engine's session, around `ws_task_create` and around
+`ws_task_update` with `state` `done`, whichever door answers them. It calls the door's
+`ws_decisions` (`{decisions: [{id, text, by, by_name}]}`, a tool the model also holds)
+and, with any, asks the conversation's model one short question; for finished work it
+reads the task (`ws_tasks {task}`) and up to three result files (`ws_file_read`). A
+conflict makes new work and then raises the Ask, or keeps everything but `done` of
+finished work, through `ws_task_conflict {task, decision, why}` — a verb the doors
+answer and the model never holds — which adds the Ask to the decision's maker with
+"Keep the decision" (recommended, records nothing) and "Go ahead anyway" (records an
+exception). A door without `ws_decisions`, no decisions, or a reply the check cannot
+read lets the call through unchanged. The organization's server answers both for its own Afi
+(`internal/factory/serve/workstream_agent_work.go`), so a server conversation is checked
+the same way, with the server's model; `ws_task_conflict` there is no route, only the
+agent door reaches it.
 
 An engine whose hello carries `org_canvases` reads and writes an organization's
 canvases, which live on its server and are kept there by canvas-core (`canvas rpc`), so

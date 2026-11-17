@@ -44,10 +44,10 @@ var byPriya = TaskEventBy{Kind: TaskByPerson, ID: "priya", Name: "priya"}
 
 func TestOnlyTheOwnerAnswersAnAsk(t *testing.T) {
 	task := asking(afiTask("t1", "marco"), taskNow)
-	if _, err := AnswerTask(task, "publish", "", TaskActor{Handle: "priya", Edit: true}, byPriya, "", taskIDs(), taskNow); !errors.Is(err, ErrTaskNotAnswerer) {
+	if _, err := AnswerTask(task, "", "publish", "", TaskActor{Handle: "priya", Edit: true}, byPriya, "", taskIDs(), taskNow); !errors.Is(err, ErrTaskNotAnswerer) {
 		t.Fatalf("priya answered marco's Ask: %v", err)
 	}
-	ch, err := AnswerTask(task, "publish", "", TaskActor{Handle: "marco", Edit: true}, byPriya, "", taskIDs(), taskNow)
+	ch, err := AnswerTask(task, "", "publish", "", TaskActor{Handle: "marco", Edit: true}, byPriya, "", taskIDs(), taskNow)
 	if err != nil || ch.Task.Ask != nil || ch.Task.AnsweredBy.ID != "marco" || ch.Events[0].Kind != TaskEventAnswered || ch.Events[0].Option != "publish" {
 		t.Fatalf("marco's answer: %+v %v", ch, err)
 	}
@@ -59,11 +59,11 @@ func TestWithOwnerEveryoneTheFirstAnswerDecidesAndIsRecorded(t *testing.T) {
 	if MayAnswer(task, TaskActor{Handle: "abir", Edit: false}, "", taskNow) {
 		t.Fatal("someone who only views answered")
 	}
-	ch, err := AnswerTask(task, "publish", "", TaskActor{Handle: "abir", Edit: true}, byPriya, "", taskIDs(), taskNow)
+	ch, err := AnswerTask(task, "", "publish", "", TaskActor{Handle: "abir", Edit: true}, byPriya, "", taskIDs(), taskNow)
 	if err != nil || ch.Task.AnsweredBy == nil || ch.Task.AnsweredBy.ID != "abir" {
 		t.Fatalf("abir's answer: %+v %v", ch.Task.AnsweredBy, err)
 	}
-	if _, err := AnswerTask(ch.Task, "publish", "", TaskActor{Handle: "santosh", Edit: true}, byPriya, "", taskIDs(), taskNow); !errors.Is(err, ErrTaskNoAsk) {
+	if _, err := AnswerTask(ch.Task, "", "publish", "", TaskActor{Handle: "santosh", Edit: true}, byPriya, "", taskIDs(), taskNow); !errors.Is(err, ErrTaskNoAsk) {
 		t.Fatalf("a second answer was taken: %v", err)
 	}
 }

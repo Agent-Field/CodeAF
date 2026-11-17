@@ -236,7 +236,7 @@ func (h *Handler) taskRefused(w http.ResponseWriter, err error) bool {
 	case errors.Is(err, store.ErrTaskGone):
 		h.fail(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, errTaskAnswered), errors.Is(err, factory.ErrTaskNoAsk), errors.Is(err, factory.ErrTaskOfferGone),
-		errors.Is(err, factory.ErrTaskUndoOver), errors.Is(err, factory.ErrTaskFactoryState):
+		errors.Is(err, factory.ErrTaskUndoOver), errors.Is(err, factory.ErrTaskFactoryState), wakeRefused(err):
 		h.fail(w, http.StatusConflict, err.Error())
 	case errors.As(err, new(factory.TaskInvalid)):
 		h.fail(w, http.StatusUnprocessableEntity, err.Error())
@@ -395,6 +395,8 @@ func (h *Handler) patchWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 	now := h.clock().UTC()
 	actor, by := taskActor(v, ws), h.taskBy(r, v)
 	var out factory.TaskChange
+	wake := false
+	_, byAgent := agentCallOf(r)
 	var rewaited []factory.WorkstreamTask
 	jobs, err := h.workstreamJobs(r, ws)
 	if h.failed(w, err) {
@@ -419,6 +421,9 @@ func (h *Handler) patchWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return err
 		}
+		// A person's start wakes the doer before the task may say running
+		// (workstream_task_wake.go); the agent's own "running" is its run.
+		wake = !byAgent && target.ID == "" && t.State != factory.TaskRunning && out.Task.State == factory.TaskRunning
 		if err := keepTask(tw, out.Task, rev); err != nil {
 			return err
 		}
@@ -472,10 +477,36 @@ func (h *Handler) patchWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 			})
 			return tw.Append(target.ID, out.Events...)
 		}
-		return tw.Append(ws.ID, out.Events...)
+		if err := tw.Append(ws.ID, out.Events...); err != nil {
+			return err
+		}
+		if wake {
+			// Last, with the write still open: a doer that cannot take the
+			// task leaves nothing kept, and the run's own first write waits
+			// for this one.
+			return h.wakeTaskDoer(ws, out.Task, v.Handle)
+		}
+		return nil
 	})
+	if wake && err != nil && !wakeRefused(err) {
+		// The write failed after Afi took the task: nothing says it is
+		// running, so nothing may be.
+		h.stopTaskTurn(ws.ID, tid)
+	}
 	if h.taskRefused(w, err) {
 		return
+	}
+	if !byAgent && out.Task.State != factory.TaskRunning {
+		// Marked done, stopped or sent back by a person: a run still going on
+		// it ends. (The run's own "done" is the run ending by itself.)
+		h.stopTaskTurn(ws.ID, tid)
+	}
+	for _, again := range rewaited {
+		// A running task sent back to waiting by a reopen is not worked on
+		// any more: its run ends too, or it would say up next while Afi works.
+		if again.State != factory.TaskRunning {
+			h.stopTaskTurn(ws.ID, again.ID)
+		}
 	}
 	h.recordWorkstream(r, ws.ID, "changed task", tid)
 	h.publishTasks(ws, h.orgActor(r), append(append([]factory.WorkstreamTask{out.Task}, out.Released...), rewaited...)...)
@@ -497,11 +528,14 @@ func (h *Handler) answerWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 	now := h.clock().UTC()
 	actor, by := taskActor(v, ws), h.taskBy(r, v)
 	// The rules first, on the task as read: who answers, and what.
-	change, err := factory.AnswerTask(t, body.Option, body.Text, actor, by, taskFallback(ws), h.newTaskID("te_"), now)
+	by.Name = h.personNames()(v.Handle)
+	change, err := factory.AnswerTask(t, body.Ask, body.Option, body.Text, actor, by, taskFallback(ws), h.newTaskID("te_"), now)
 	if h.taskRefused(w, err) {
 		return
 	}
-	if n, job := factory.IsJobTask(t.ID); job && !h.answerJob(w, r, n, t, body) {
+	asked, _, _ := factory.FindAsk(t, body.Ask)
+	_, ownAsk := factory.IsOwnAsk(t, body.Ask)
+	if n, job := factory.IsJobTask(t.ID); job && ownAsk && !h.answerJob(w, r, n, t, body) {
 		return
 	}
 	err = h.config.Store.EditWorkstreamTasks(func(tw store.TaskWrite) error {
@@ -512,7 +546,7 @@ func (h *Handler) answerWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 		cur, found := findTask(kept, t.ID)
 		if _, job := factory.IsJobTask(t.ID); job {
 			// The job took the answer; the overlay records who gave it.
-			o := factory.JobOverlay(t)
+			o := factory.JobOverlay(change.Task)
 			o.AnsweredBy, o.UpdatedAt = change.Task.AnsweredBy, change.Task.UpdatedAt
 			if found {
 				o.Rev = cur.Rev + 1
@@ -527,7 +561,7 @@ func (h *Handler) answerWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 		} else {
 			// THE FIRST ANSWER DECIDES: an Ask somebody answered meanwhile
 			// is not answered twice.
-			if !found || cur.Ask == nil || cur.Ask.ID != t.Ask.ID {
+			if _, _, open := factory.FindAsk(cur, asked.ID); !found || !open {
 				return errTaskAnswered
 			}
 			if err := tw.Put(change.Task, cur.Rev); err != nil {
@@ -540,6 +574,7 @@ func (h *Handler) answerWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.recordWorkstream(r, ws.ID, "answered task", t.ID)
+	h.keepDecisions(r, ws.ID, v, change.Decisions)
 	_, _, fresh, _, ok := h.oneTask(httptest.NewRecorder(), r)
 	if !ok {
 		fresh = change.Task
@@ -653,6 +688,14 @@ func (h *Handler) commentWorkstreamTask(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	h.publishTasks(ws, h.orgActor(r), out.Task)
+	if body.Offer == nil && body.Kind == factory.TaskEventRequestNote && body.Decision != "" {
+		// A REQUEST THAT CHANGED SHARED WORK IS A DECISION, the asker's: the
+		// person the private chat works for.
+		who := factory.PersonRef{ID: v.Handle, Name: h.personNames()(v.Handle)}
+		if d, ok := factory.RequestDecision(out.Task, body.Decision, who, "dc_"+h.newTaskID("")(), now); ok {
+			h.keepDecisions(r, ws.ID, v, []factory.WorkstreamDecision{d})
+		}
+	}
 	status := http.StatusCreated
 	if body.Offer != nil {
 		status = http.StatusOK
@@ -661,7 +704,7 @@ func (h *Handler) commentWorkstreamTask(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *Handler) startAllWorkstreamTasks(w http.ResponseWriter, r *http.Request) {
-	ws, _, ok := h.writablePart(w, r)
+	ws, v, ok := h.writablePart(w, r)
 	if !ok {
 		return
 	}
@@ -673,17 +716,72 @@ func (h *Handler) startAllWorkstreamTasks(w http.ResponseWriter, r *http.Request
 		h.fail(w, http.StatusUnprocessableEntity, "start all names its group")
 		return
 	}
-	// Start all names the group's ready Afi and chat tasks and starts none of
-	// them: running means a doer is at work, and only whoever wakes the doer
-	// can say so (factory.StartAll). It writes nothing and publishes nothing.
+	// Start all starts the group's ready Afi tasks the way Start starts one:
+	// Afi takes each in its own seat, and only a task Afi took says running
+	// (workstream_task_wake.go). A chat's task is left up next, because a
+	// chat wakes on its person's machine; so is one Afi cannot take, and if
+	// none could be taken the refusal says why.
 	all, err := h.config.Store.WorkstreamTasks(ws.ID)
 	if h.taskRefused(w, err) {
 		return
 	}
-	started := factory.StartAll(body.Group, all, h.clock().UTC())
-	if started == nil {
-		started = []factory.WorkstreamTask{}
+	jobs, err := h.workstreamJobs(r, ws)
+	if h.failed(w, err) {
+		return
+	}
+	started := []factory.WorkstreamTask{}
+	var refused error
+	for _, ready := range factory.StartAll(body.Group, all, h.clock().UTC()) {
+		if ready.DoneBy.Kind != factory.TaskByAfi {
+			continue
+		}
+		t, err := h.startTask(r, ws, v, jobs, ready.ID)
+		if err != nil {
+			refused = err
+			continue
+		}
+		started = append(started, t)
+	}
+	if len(started) == 0 && refused != nil {
+		h.taskRefused(w, refused)
+		return
+	}
+	if len(started) > 0 {
+		h.recordWorkstream(r, ws.ID, "started tasks", body.Group)
+		h.publishTasks(ws, h.orgActor(r), started...)
 	}
 	nameTasks(h.personNames(), started)
 	h.write(w, http.StatusOK, api.WorkstreamTasks{Tasks: started})
+}
+
+// startTask marks one ready task running as v, with its doer woken inside the
+// same write.
+func (h *Handler) startTask(r *http.Request, ws factory.OrgWorkstream, v Viewer, jobs map[int]factory.Item, tid string) (factory.WorkstreamTask, error) {
+	running := factory.TaskRunning
+	var out factory.TaskChange
+	err := h.config.Store.EditWorkstreamTasks(func(tw store.TaskWrite) error {
+		all, err := readTasksIn(tw, ws, jobs)
+		if err != nil {
+			return err
+		}
+		t, found := findTask(all, tid)
+		if !found {
+			return store.ErrTaskGone
+		}
+		out, err = factory.ApplyPatch(t, factory.TaskPatch{State: &running}, taskActor(v, ws), h.taskBy(r, v), all, h.newTaskID("te_"), h.clock().UTC())
+		if err != nil {
+			return err
+		}
+		if err := keepTask(tw, out.Task, t.Rev); err != nil {
+			return err
+		}
+		if err := tw.Append(ws.ID, out.Events...); err != nil {
+			return err
+		}
+		return h.wakeTaskDoer(ws, out.Task, v.Handle)
+	})
+	if err != nil && !wakeRefused(err) {
+		h.stopTaskTurn(ws.ID, tid)
+	}
+	return out.Task, err
 }

@@ -28,12 +28,12 @@ On an organization's workstream Afi does not have `ws_chats`: your chats stay on
 
 No. Going back to the list, opening another chat, or closing a chat's tab stops nothing: the chat keeps working on whatever it was doing and its tasks keep running. It rests on its own when nothing of its is running, and wakes when you write to it or a task of its needs you. To stop work, stop the task itself, or press stop in the chat while it is answering.
 
-## the workstream tools — ws_tasks, ws_task_create, ws_task_update, ws_task_comment, ws_files, ws_file_read, ws_file_create, ws_file_suggest
+## the workstream tools — ws_tasks, ws_decisions, ws_task_create, ws_task_update, ws_task_comment, ws_files, ws_file_read, ws_file_create, ws_file_suggest
 
-Every chat started inside a workstream, and Afi when it is inside one, carries eight tools onto the workstream's shared work:
+Every chat started inside a workstream, and Afi when it is inside one, carries nine tools onto the workstream's shared work:
 
-- `ws_tasks` lists the tasks, or reads one whole with its activity and comments.
-- `ws_task_create` makes a task; `ws_task_update` changes one this chat does (its state, its result, the check against the request, an Ask for its owner); `ws_task_comment` writes on a task's thread.
+- `ws_tasks` lists the tasks, or reads one whole with its activity and comments. `ws_decisions` lists what the workstream's people decided.
+- `ws_task_create` makes a task; `ws_task_update` changes one this chat does (its state, its result, the check against the request, an Ask for its owner, what it assumed without asking); `ws_task_comment` writes on a task's thread. Starting and finishing work are checked against the decisions: work that goes against one is paused, and the person who made it is asked.
 - `ws_files` lists files and folders; `ws_file_read` reads one; `ws_file_create` makes a document, folder or link; `ws_file_suggest` suggests edits to a document.
 
 What a chat or Afi makes for the workstream is saved with `ws_file_create` and appears in Files for everyone in it; it is never written to disk as a loose file.
@@ -56,7 +56,7 @@ Agents change a document by suggestion: nothing changes until someone in the wor
 
 ## "Priya asked Afi to keep it under 300 words" — the one line a private request leaves
 
-When something you asked an agent privately changes shared work, the task's thread gets ONE line naming who asked for what, such as "Priya asked Afi to keep it under 300 words". The conversation around it stays private. A private answer is shared only when you post it.
+When something you asked an agent privately changes shared work, the task's thread gets ONE line naming who asked for what, such as "Priya asked Afi to keep it under 300 words". The conversation around it stays private. A private answer is shared only when you post it. What the request settles ("The notes stay under 300 words") is kept in the workstream's Decisions as yours.
 
 ## big work, "you coordinate it", a batch of tasks — Afi starts a named chat; the plan's Start and Change the plan
 
@@ -65,6 +65,14 @@ Give Afi big work (work that splits into five or more tasks), or tell it "you co
 That chat splits the work into tasks under a group with the same name, with owners and what waits on what. Five or more appear in Tasks as a plan with **Start** (once spelled "Start all") and **Change the plan**, and nothing in it starts until you press Start. **Change the plan** opens that chat with "Change the plan for <name>: " ready in its box, so you tell the chat that owns the plan. With fewer than five, the chat asks you first, or goes ahead within the workstream's "Start without asking" amount. Once started, the chat runs the tasks in order, each once what it waits on is done, within the workstream's "Start without asking" rule, checks each result against its request, and comes to you only when a task needs you, with an Ask on that task. One name leads to two places: in Chats, your private conversation about the work; in Tasks, the shared group everyone in the workstream sees.
 
 On an organization whose agents run on its server, Afi has no ws_chat_start: your chats live on your computer and the server never sees them. There Afi gives the tasks one group in Up next itself, and nothing yet works an organization's task unattended: each waits in Up next until its owner marks it done or stops it.
+
+## can the agent read a file I uploaded — uploads in Files read through ws_file_read
+
+Yes. A file uploaded to a workstream's Files (Upload a File…, or dropped onto the list) is read by its Afi and its chats with `ws_file_read`, the same tool that reads a document. A text file — Markdown, plain text, source code such as `.rs`, `.ts`, `.go` or `.tsx`, CSV, JSON — answers its words. A long one comes in parts of about 100 KB: the answer says `more_from`, and reading again with `from` set to it gives the rest.
+
+A file that is not text (a picture, a PDF, a spreadsheet, an archive) answers only its name, size and type, with the line "This upload is not text, so it has no words to read here." The agent then says what it is from its name, or asks you about it.
+
+The agent never reads a workstream's files from disk. They are kept in the app's own store (on an organization, the server's), which no agent may open: it is told never to look for them in the app's data folder or its database, never to search the disk for them, and never to copy them anywhere such as `/tmp`. This holds on a Personal workstream and on an organization's alike, so a citation in a document points at the file in Files, never at one person's computer.
 
 ## did the agent save it to the Library — what a workstream's chat makes goes to its Files, not the Library or disk
 

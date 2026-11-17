@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
@@ -22,7 +23,7 @@ import (
 
 // ── THE WORKSTREAM TOOLS, ANSWERED FOR THE SERVER'S AGENT ──────────────────
 //
-// internal/session spells the eight ws_* tools once (tools_workstream_work.go)
+// internal/session spells the nine ws_* tools once (tools_workstream_work.go)
 // and puts them on the belt of any conversation whose workstream door also
 // answers Work. This file is that Work for the organization's server: the
 // agent's calls onto the workstream's tasks and files.
@@ -140,6 +141,10 @@ func (d *agentDoor) Work(ctx context.Context, tool string, args json.RawMessage)
 		out, err = d.wsFileCreate(ctx, args)
 	case "ws_file_suggest":
 		out, err = d.wsFileSuggest(ctx, args)
+	case "ws_decisions":
+		out, err = d.wsDecisions(ctx, args)
+	case "ws_task_conflict":
+		out, err = d.wsTaskConflict(ctx, args)
 	default:
 		return "", errors.New("this workstream tool is not served here")
 	}
@@ -396,16 +401,15 @@ func (d *agentDoor) wsTaskUpdate(ctx context.Context, args json.RawMessage) (any
 			Label string `json:"label"`
 		} `json:"results"`
 		Ask *struct {
-			Title   string `json:"title"`
-			Detail  string `json:"detail"`
-			Options []struct {
-				Label       string `json:"label"`
-				Recommended bool   `json:"recommended"`
-			} `json:"options"`
+			Title   string           `json:"title"`
+			Detail  string           `json:"detail"`
+			Options []agentAskOption `json:"options"`
 		} `json:"ask"`
 		WaitingOn   *[]string `json:"waiting_on"`
 		Due         *string   `json:"due"`
 		RequestNote string    `json:"request_note"`
+		Decision    string    `json:"decision"`
+		Assumed     []string  `json:"assumed"`
 	}
 	if err := agentArgs(args, &a); err != nil {
 		return nil, err
@@ -474,10 +478,7 @@ func (d *agentDoor) wsTaskUpdate(ctx context.Context, args json.RawMessage) (any
 		}
 		// The recommendation leads, as the Ask card draws it.
 		opts := slices.Clone(a.Ask.Options)
-		slices.SortStableFunc(opts, func(x, y struct {
-			Label       string `json:"label"`
-			Recommended bool   `json:"recommended"`
-		}) int {
+		slices.SortStableFunc(opts, func(x, y agentAskOption) int {
 			switch {
 			case x.Recommended == y.Recommended:
 				return 0
@@ -494,7 +495,8 @@ func (d *agentDoor) wsTaskUpdate(ctx context.Context, args json.RawMessage) (any
 			if err != nil {
 				return nil, err
 			}
-			options = append(options, factory.TaskAskOption{ID: fmt.Sprintf("o%d", i+1), Label: label, Recommended: o.Recommended})
+			options = append(options, factory.TaskAskOption{ID: fmt.Sprintf("o%d", i+1), Label: label, Recommended: o.Recommended,
+				Decides: cutRunes(strings.TrimSpace(o.Decides), 300)})
 		}
 		p["ask"] = factory.TaskAsk{Title: title, Detail: cutRunes(strings.TrimSpace(a.Ask.Detail), 1000), Options: options}
 	}
@@ -512,6 +514,20 @@ func (d *agentDoor) wsTaskUpdate(ctx context.Context, args json.RawMessage) (any
 		}
 		p["due"] = *a.Due
 	}
+	if len(a.Assumed) > 0 {
+		if len(a.Assumed) > 10 {
+			return nil, errors.New("invalid arguments: at most 10 assumed lines at once")
+		}
+		lines := []string{}
+		for _, l := range a.Assumed {
+			l, err := agentWords(l, "an assumed line", 300)
+			if err != nil {
+				return nil, err
+			}
+			lines = append(lines, l)
+		}
+		p["assumed"] = lines
+	}
 	if len(p) > 0 {
 		raw, err := d.call(ctx, d.h.patchWorkstreamTask, http.MethodPatch, "/v1/workstreams/"+d.id+"/tasks/"+url.PathEscape(id), map[string]string{"tid": id}, p, rev)
 		if err != nil {
@@ -522,7 +538,7 @@ func (d *agentDoor) wsTaskUpdate(ctx context.Context, args json.RawMessage) (any
 		}
 	}
 	if note := strings.TrimSpace(a.RequestNote); note != "" {
-		body := api.TaskComment{TaskNote: factory.TaskNote{Kind: factory.TaskEventRequestNote, Text: cutRunes(note, 300)}}
+		body := api.TaskComment{TaskNote: factory.TaskNote{Kind: factory.TaskEventRequestNote, Text: cutRunes(note, 300), Decision: cutRunes(strings.TrimSpace(a.Decision), 300)}}
 		if _, err := d.call(ctx, d.h.commentWorkstreamTask, http.MethodPost, "/v1/workstreams/"+d.id+"/tasks/"+url.PathEscape(id)+"/comment", map[string]string{"tid": id}, body, -1); err != nil {
 			return nil, err
 		}
@@ -539,6 +555,7 @@ func (d *agentDoor) wsTaskComment(ctx context.Context, args json.RawMessage) (an
 		Kind     string `json:"kind"`
 		Text     string `json:"text"`
 		ForEvent string `json:"for_event"`
+		Decision string `json:"decision"`
 	}
 	if err := agentArgs(args, &a); err != nil {
 		return nil, err
@@ -553,6 +570,9 @@ func (d *agentDoor) wsTaskComment(ctx context.Context, args json.RawMessage) (an
 		return nil, err
 	}
 	note := factory.TaskNote{Kind: kind, Text: text}
+	if kind == factory.TaskEventRequestNote {
+		note.Decision = cutRunes(strings.TrimSpace(a.Decision), 300)
+	}
 	switch kind {
 	case factory.TaskEventComment, factory.TaskEventRequestNote:
 	case factory.TaskEventOffer:
@@ -684,6 +704,7 @@ func pageOf(ws factory.OrgWorkstream, id string) (factory.WorkstreamPage, bool) 
 func (d *agentDoor) wsFileRead(ctx context.Context, args json.RawMessage) (any, error) {
 	var a struct {
 		File string `json:"file"`
+		From int    `json:"from"`
 	}
 	if err := agentArgs(args, &a); err != nil {
 		return nil, err
@@ -702,6 +723,13 @@ func (d *agentDoor) wsFileRead(ctx context.Context, args json.RawMessage) (any, 
 	case factory.FileUpload:
 		if f.Upload != nil {
 			out["size"], out["mime"] = f.Upload.Size, f.Upload.Mime
+			if f.Upload.Blob != "" {
+				data, err := d.h.config.Store.Blob(f.Upload.Blob)
+				if err != nil {
+					return nil, err
+				}
+				uploadWords(out, data, a.From)
+			}
 		}
 	case factory.FileShortcut:
 		if f.Target != nil {
@@ -709,6 +737,38 @@ func (d *agentDoor) wsFileRead(ctx context.Context, args json.RawMessage) (any, 
 		}
 	}
 	return out, nil
+}
+
+// uploadTextMost is the most of an upload's words one ws_file_read answers;
+// from reads on.
+const uploadTextMost = 100 << 10
+
+// uploadWords puts a text upload's words on a ws_file_read answer, from byte
+// from on. AN UPLOAD IS READ THROUGH ITS FILE, NEVER FROM DISK (solo-sheets
+// F1): its bytes live in the server's store, which no agent can reach, so an
+// answer that gave only its size sent the agent hunting the disk for it. A
+// file that is not text says plainly that it has no words to read.
+func uploadWords(out map[string]any, data []byte, from int) {
+	if !utf8.Valid(data) || bytes.IndexByte(data, 0) >= 0 {
+		out["said"] = "This upload is not text, so it has no words to read here. Do not look for it on disk or in the app's data folder; say what it is from its name and type, or ask the person about it."
+		return
+	}
+	start := min(max(from, 0), len(data))
+	for start > 0 && !utf8.RuneStart(data[start]) {
+		start--
+	}
+	end := min(start+uploadTextMost, len(data))
+	for end < len(data) && end > start && !utf8.RuneStart(data[end]) {
+		end--
+	}
+	out["text"] = string(data[start:end])
+	if start > 0 {
+		out["from"] = start
+	}
+	if end < len(data) {
+		out["more_from"] = end
+		out["said"] = fmt.Sprintf("The upload is longer than one read: this is bytes %d to %d of %d. Call ws_file_read again with from %d for the rest.", start, end, len(data), end)
+	}
 }
 
 func (d *agentDoor) wsFileCreate(ctx context.Context, args json.RawMessage) (any, error) {
@@ -874,4 +934,61 @@ func cutRunes(s string, most int) string {
 		return s
 	}
 	return string(r[:most])
+}
+
+// agentAskOption is one answer of an Ask the agent raises: its label, whether
+// it leads, and the decision it records when chosen.
+type agentAskOption struct {
+	Label       string `json:"label"`
+	Recommended bool   `json:"recommended"`
+	Decides     string `json:"decides"`
+}
+
+// ── decisions ──
+
+// wsDecisions answers what the workstream's people settled and keep now: a
+// withdrawn or replaced decision is history, never something to keep to.
+func (d *agentDoor) wsDecisions(ctx context.Context, args json.RawMessage) (any, error) {
+	if err := agentArgs(args, &struct{}{}); err != nil {
+		return nil, err
+	}
+	ws, err := d.Workstream(ctx)
+	if err != nil {
+		return nil, err
+	}
+	list := []map[string]any{}
+	for _, x := range nameDecisions(factory.CurrentDecisions(ws.Decisions), d.h.personNames()) {
+		list = append(list, map[string]any{"id": x.ID, "text": x.Text, "by": x.By, "by_name": x.ByName})
+	}
+	return map[string]any{"decisions": list}, nil
+}
+
+// wsTaskConflict is the decision check's own verb: it pauses a task on an Ask
+// to the decision's maker. The model never holds it.
+func (d *agentDoor) wsTaskConflict(ctx context.Context, args json.RawMessage) (any, error) {
+	var a struct {
+		Task     string `json:"task"`
+		Decision string `json:"decision"`
+		Why      string `json:"why"`
+	}
+	if err := agentArgs(args, &a); err != nil {
+		return nil, err
+	}
+	id := strings.TrimSpace(a.Task)
+	body := map[string]string{"decision": strings.TrimSpace(a.Decision), "why": cutRunes(strings.TrimSpace(a.Why), 500)}
+	raw, err := d.call(ctx, d.h.conflictWorkstreamTask, http.MethodPost, "/v1/workstreams/"+d.id+"/tasks/"+url.PathEscape(id)+"/conflict", map[string]string{"tid": id}, body, -1)
+	if err != nil {
+		return nil, err
+	}
+	var t factory.WorkstreamTask
+	if err := json.Unmarshal(raw, &t); err != nil {
+		return nil, err
+	}
+	asked := ""
+	for _, x := range t.Asks {
+		if x.Against != nil && x.Against.Decision == strings.TrimSpace(a.Decision) && x.Decider != nil {
+			asked = firstNonEmpty(x.Decider.Name, x.Decider.ID)
+		}
+	}
+	return map[string]any{"task": taskBrief(t), "asked": asked}, nil
 }

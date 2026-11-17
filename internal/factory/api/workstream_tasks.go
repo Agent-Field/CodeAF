@@ -48,8 +48,22 @@ type TaskPatchBody = map[string]any
 
 // TaskAnswer answers a task's Ask: one of its options by id, or words.
 type TaskAnswer struct {
+	// Ask names which of the task's Asks is answered; absent, its own.
+	Ask    string `json:"ask,omitempty"`
 	Option string `json:"option,omitempty"`
 	Text   string `json:"text,omitempty"`
+}
+
+// TaskViewSet is one person's view on someone else's Ask: Text "" takes it
+// away.
+type TaskViewSet struct {
+	Ask  string `json:"ask"`
+	Text string `json:"text"`
+}
+
+// DecisionReplace is the words a decision is replaced with.
+type DecisionReplace struct {
+	Text string `json:"text"`
 }
 
 // TaskComment adds a line to a thread (kind comment, the default; posted;
