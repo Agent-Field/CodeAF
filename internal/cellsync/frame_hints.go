@@ -50,7 +50,7 @@ func (f *Fetcher) primeWarm(ctx context.Context, c cell.Cell, head, inbox string
 	if len(want) == 0 {
 		return nil
 	}
-	view, err := f.Dir.Cell(ctx, c.ID)
+	view, err := f.cellView(ctx, c.ID)
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}

@@ -6,12 +6,17 @@ import (
 	"fmt"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
+	"sync"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/syncwords"
+	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
 // fetcherFor is a second device's fetcher over store, with its own engine.
@@ -159,4 +164,212 @@ func gets(m *blobstore.Memory) int {
 		}
 	}
 	return n
+}
+
+// roundCountingStore wraps a Store, counts peak concurrent GetMany requests
+// and serial waves ("rounds"), and advances a fake clock by perRound on each
+// round with no wall-clock sleeps.
+type roundCountingStore struct {
+	blobstore.Store
+	perRound time.Duration
+
+	mu          sync.Mutex
+	inFlight    int
+	maxInFlight int
+	rounds      int
+	requests    int
+	virtualTime time.Duration
+}
+
+func (s *roundCountingStore) GetMany(ctx context.Context, rids []string) ([]blobstore.Object, error) {
+	s.mu.Lock()
+	if s.inFlight == 0 {
+		s.rounds++
+		s.virtualTime += s.perRound
+	}
+	s.inFlight++
+	s.requests++
+	if s.inFlight > s.maxInFlight {
+		s.maxInFlight = s.inFlight
+	}
+	s.mu.Unlock()
+
+	for range 4 {
+		runtime.Gosched()
+	}
+	got, err := s.Store.GetMany(ctx, rids)
+
+	s.mu.Lock()
+	s.inFlight--
+	s.mu.Unlock()
+	return got, err
+}
+
+// C5: Hosted fetches keep at least 4 GetMany batches in flight concurrently
+// (bounded by GatherWindow) and take at most a quarter of the serial round
+// trips for 2,000 small objects on a fake relay with 300 ms per request.
+func TestC5ParallelFetchReducesRoundsAndBoundsInFlight(t *testing.T) {
+	r := newRig(t)
+	files := make(map[string]string, 2000)
+	for i := range 2000 {
+		files[fmt.Sprintf("f%04d.txt", i)] = fmt.Sprintf("small object %d", i)
+	}
+	head := r.publishFirst(files)
+
+	// Baseline: serial fetch (Concurrency=1, today's order).
+	serialStore := &roundCountingStore{Store: r.mem, perRound: 300 * time.Millisecond}
+	serialFetcher, serialCell := fetcherFor(t, serialStore)
+	serialFetcher.ManyMax = HostedGetMany
+	serialFetcher.Concurrency = 1
+	if err := serialFetcher.Fetch(context.Background(), serialCell, head); err != nil {
+		t.Fatal(err)
+	}
+
+	// Parallel fetch (default GatherWindow).
+	parallelStore := &roundCountingStore{Store: r.mem, perRound: 300 * time.Millisecond}
+	f, c := fetcherFor(t, parallelStore)
+	f.ManyMax = HostedGetMany
+	if err := f.Fetch(context.Background(), c, head); err != nil {
+		t.Fatal(err)
+	}
+	if parallelStore.maxInFlight < 4 || parallelStore.maxInFlight > GatherWindow {
+		t.Fatalf("max in-flight = %d, want between 4 and %d", parallelStore.maxInFlight, GatherWindow)
+	}
+	if parallelStore.rounds > serialStore.rounds/4 {
+		t.Fatalf("parallel rounds = %d (%s virtual), want <= 1/4 of serial rounds %d (%s virtual)",
+			parallelStore.rounds, parallelStore.virtualTime, serialStore.rounds, serialStore.virtualTime)
+	}
+	if got := readFiles(t, c.Root); !reflect.DeepEqual(got, files) {
+		t.Fatalf("materialized %d files, want %d", len(got), len(files))
+	}
+}
+
+type scriptStore struct {
+	blobstore.Store
+	mu        sync.Mutex
+	calls     int
+	ridsAsked []string
+	decide    func(call int, rids []string) error
+}
+
+func (s *scriptStore) GetMany(ctx context.Context, rids []string) ([]blobstore.Object, error) {
+	s.mu.Lock()
+	s.calls++
+	call := s.calls
+	s.ridsAsked = append(s.ridsAsked, rids...)
+	var err error
+	if s.decide != nil {
+		err = s.decide(call, rids)
+	}
+	s.mu.Unlock()
+	if err != nil {
+		return nil, err
+	}
+	return s.Store.GetMany(ctx, rids)
+}
+
+// C4: transient failures (5xx, timeouts, connection resets) are retried at
+// least 3 times with backoff; 4xx and auth refusals are never retried; a
+// retried fetch keeps the objects it already fetched.
+func TestC4FetchRetriesTransientAndKeepsFetchedObjects(t *testing.T) {
+	r := newRig(t)
+	files := make(map[string]string, 40)
+	for i := range 40 {
+		files[fmt.Sprintf("f%02d", i)] = fmt.Sprintf("payload %d", i)
+	}
+	head := r.publishFirst(files)
+
+	// 1. A 500 / timeout / connection reset then success is retried and succeeds.
+	for _, transientErr := range []error{
+		fmt.Errorf("%w: server answered 500", blobstore.ErrUnreachable),
+		context.DeadlineExceeded,
+		syscall.ECONNRESET,
+	} {
+		store := &scriptStore{
+			Store: r.mem,
+			decide: func(call int, _ []string) error {
+				if call <= 2 {
+					return transientErr
+				}
+				return nil
+			},
+		}
+		f, c := fetcherFor(t, store)
+		f.ManyMax = HostedGetMany
+		var sleeps int
+		f.Sleep = func(context.Context, time.Duration) error { sleeps++; return nil }
+		if err := f.Fetch(context.Background(), c, head); err != nil {
+			t.Fatalf("transient %v: Fetch = %v, want nil", transientErr, err)
+		}
+		if sleeps != 2 {
+			t.Fatalf("transient %v: sleeps = %d, want 2", transientErr, sleeps)
+		}
+	}
+
+	// 2. Persistent failures retry at least 3 times before failing, and a retry
+	// of the fetch keeps the objects already fetched in the first attempt.
+	var failBatch string
+	store := &scriptStore{
+		Store: r.mem,
+		decide: func(call int, rids []string) error {
+			// Let the snapshot (call 1) and the first blob batch (call 2) succeed,
+			// then fail the next blob batch across all retries.
+			if call >= 3 && (failBatch == "" || rids[0] == failBatch) {
+				failBatch = rids[0]
+				return fmt.Errorf("%w: server answered 500", blobstore.ErrUnreachable)
+			}
+			return nil
+		},
+	}
+	f, c := fetcherFor(t, store)
+	f.ManyMax = HostedGetMany
+	f.Concurrency = 1
+	var sleeps int
+	f.Sleep = func(context.Context, time.Duration) error { sleeps++; return nil }
+	err := f.Fetch(context.Background(), c, head)
+	if !errors.Is(err, blobstore.ErrUnreachable) {
+		t.Fatalf("Fetch with persistent 500 = %v, want ErrUnreachable", err)
+	}
+	if sleeps < blobstore.FetchRetries {
+		t.Fatalf("sleeps = %d, want at least %d retries", sleeps, blobstore.FetchRetries)
+	}
+
+	// Now allow the store to succeed and retry Fetch on the same Fetcher/Cell.
+	// Neither the snapshot nor the first 16 blobs may be requested again.
+	firstAttemptAsked := append([]string(nil), store.ridsAsked...)
+	store.mu.Lock()
+	store.ridsAsked = nil
+	store.decide = nil
+	store.mu.Unlock()
+	if err := f.Fetch(context.Background(), c, head); err != nil {
+		t.Fatalf("retry Fetch = %v, want nil", err)
+	}
+	if len(store.ridsAsked) >= len(firstAttemptAsked) || len(store.ridsAsked) != 40-HostedGetMany {
+		t.Fatalf("retry asked for %d rids, want only the remaining %d (not the %d already fetched)",
+			len(store.ridsAsked), 40-HostedGetMany, HostedGetMany+1)
+	}
+	if got := readFiles(t, c.Root); !reflect.DeepEqual(got, files) {
+		t.Fatalf("materialized %d files after retry, want %d", len(got), len(files))
+	}
+
+	// 3. A 403 or auth refusal is never retried.
+	for _, refusal := range []error{
+		wireauth.ErrStorageOff,
+		wireauth.ErrUnauthorized,
+		errors.New("blobstore: server refused with 403 \"forbidden\""),
+	} {
+		store := &scriptStore{
+			Store:  r.mem,
+			decide: func(int, []string) error { return refusal },
+		}
+		f, c := fetcherFor(t, store)
+		var sleeps int
+		f.Sleep = func(context.Context, time.Duration) error { sleeps++; return nil }
+		if err := f.Fetch(context.Background(), c, head); err == nil {
+			t.Fatalf("refusal %v succeeded", refusal)
+		}
+		if store.calls != 1 || sleeps != 0 {
+			t.Fatalf("refusal %v: calls = %d, sleeps = %d; want 1 call and 0 retries", refusal, store.calls, sleeps)
+		}
+	}
 }

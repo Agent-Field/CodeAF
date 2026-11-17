@@ -367,10 +367,85 @@ func TestHTTPErrorsRoundTrip(t *testing.T) {
 		t.Run(want.Error(), func(t *testing.T) {
 			g := newRig(t)
 			g.memory("alice").FailAfter(0, want)
-			if _, err := g.client("alice").Get(context.Background(), rid); !errors.Is(err, want) {
-				t.Fatalf("Get = %v, want %v", err, want)
+			_, err := g.client("alice").Has(context.Background(), []string{rid})
+			if !errors.Is(err, want) {
+				t.Fatalf("Has = %v, want %v", err, want)
 			}
 		})
+	}
+}
+
+// C4: transient read failures (5xx, timeouts, connection resets) are retried at
+// least 3 times with backoff before failing; 4xx and auth refusals are never retried.
+func TestHTTPRetryTransientAndNeverAuthOr4xx(t *testing.T) {
+	oldSleep := blobstore.Sleep
+	var sleeps []time.Duration
+	blobstore.Sleep = func(_ context.Context, d time.Duration) error {
+		sleeps = append(sleeps, d)
+		return nil
+	}
+	t.Cleanup(func() { blobstore.Sleep = oldSleep })
+
+	o, f := frame(t, "retry-payload")
+	// 1. A 500 followed by 200 is retried and succeeds.
+	var calls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		if calls == 1 {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(f)
+	}))
+	defer srv.Close()
+	c := blobstore.NewHTTP(srv.URL, fakeSign("alice"), srv.Client())
+	got, err := c.GetMany(context.Background(), []string{o.RID})
+	if err != nil || len(got) != 1 || string(got[0].Bytes) != string(o.Bytes) {
+		t.Fatalf("GetMany after one 500 = %v, %v; want 1 object", got, err)
+	}
+	if calls != 2 || len(sleeps) != 1 {
+		t.Fatalf("calls = %d, sleeps = %v; want 2 calls and 1 backoff sleep", calls, sleeps)
+	}
+
+	// 2. Persistent 500 retries at least 3 times with increasing backoff before failing.
+	calls, sleeps = 0, nil
+	failSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer failSrv.Close()
+	failClient := blobstore.NewHTTP(failSrv.URL, fakeSign("alice"), failSrv.Client())
+	_, err = failClient.GetMany(context.Background(), []string{o.RID})
+	if !errors.Is(err, blobstore.ErrUnreachable) {
+		t.Fatalf("GetMany on persistent 500 = %v, want ErrUnreachable", err)
+	}
+	if calls < 4 || len(sleeps) < 3 {
+		t.Fatalf("calls = %d, sleeps = %v; want at least 4 attempts (3 retries)", calls, sleeps)
+	}
+	for i := 1; i < len(sleeps); i++ {
+		if sleeps[i] <= sleeps[i-1] {
+			t.Fatalf("backoff did not grow: %v", sleeps)
+		}
+	}
+
+	// 3. A 403 is never retried.
+	for _, body := range []string{`{"err":"storage_off"}`, `{"err":"forbidden"}`} {
+		calls, sleeps = 0, nil
+		forbidSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			calls++
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(body))
+		}))
+		forbidClient := blobstore.NewHTTP(forbidSrv.URL, fakeSign("alice"), forbidSrv.Client())
+		_, err = forbidClient.GetMany(context.Background(), []string{o.RID})
+		forbidSrv.Close()
+		if err == nil {
+			t.Fatalf("403 %s succeeded", body)
+		}
+		if calls != 1 || len(sleeps) != 0 {
+			t.Fatalf("403 %s: calls = %d, sleeps = %v; want 1 call and 0 retries", body, calls, sleeps)
+		}
 	}
 }
 
