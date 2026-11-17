@@ -143,6 +143,8 @@ type actsFloor struct {
 	// real, when set, answers GitHub's own API for the real client, in place
 	// of the scripted forge.
 	real roundTrip
+	// team makes the service a team's, where a job's doors are its person's.
+	team bool
 }
 
 type roundTrip func(*http.Request) (*http.Response, error)
@@ -194,6 +196,9 @@ func (f *actsFloor) open() {
 		}}
 	if f.real != nil {
 		config.ActsClient, config.GitHubHTTPClient = nil, &http.Client{Transport: f.real}
+	}
+	if f.team {
+		config.Mode = api.FactoryTeam
 	}
 	f.h = New(seam, config)
 	f.t.Cleanup(f.h.Close)
@@ -876,5 +881,49 @@ func TestActsAreSentToGitHubWithThePersonsSignIn(t *testing.T) {
 	}
 	if a := got.Acts[0]; a.State != factory.ActDone || a.URL != "https://github.com/acme/api/pull/7#discussion_r502" {
 		t.Fatalf("act %+v", a)
+	}
+}
+
+// ONLY THE JOB'S PERSON proposes or answers its acts. On a team's factory
+// someone else is refused at every one of the three doors, and a team never
+// sends an act with the host's own sign-in.
+func TestActsAreTheJobsPersonsOnly(t *testing.T) {
+	f := newActsFloor(t)
+	f.team = true
+	f.h.Close()
+	f.open()
+	theirs := f.job(factory.AutonomyManual, func(it *factory.Item) {
+		it.Starter = "someone-else"
+		it.Acts = []factory.PublicAct{{ID: "act_1", Kind: factory.ActKindComment, Text: "Ready.\n\n" + factory.PublicActFooter, By: factory.ActByMainAgent, State: factory.ActProposed}}
+	})
+	for verb, body := range map[string]any{
+		api.ActVerb:         ask(factory.ActByYou, api.ActAsk{Kind: factory.ActKindComment, Text: "Mine now."}),
+		api.ActsApproveVerb: nil,
+		api.ActsDeclineVerb: nil,
+	} {
+		if status, _, words := f.post(theirs.ID, verb, body); status != http.StatusForbidden || !strings.Contains(words, "only @someone-else") {
+			t.Errorf("%s by someone else: %d %s", verb, status, words)
+		}
+	}
+	got := f.item(theirs.ID)
+	if len(got.Acts) != 1 || got.Acts[0].State != factory.ActProposed || len(f.github.Writes()) != 0 {
+		t.Fatalf("acts %+v, writes %q", got.Acts, f.github.Writes())
+	}
+	// The job's own person, with no GitHub sign-in of their own on this team's
+	// factory, is told to sign in: the host's sign-in is never used for them.
+	mine := f.job(factory.AutonomyAuto, nil)
+	if status, _, words := f.post(mine.ID, api.ActVerb, ask(factory.ActByYou, api.ActAsk{Kind: factory.ActKindComment, Text: "Hello."})); status != http.StatusForbidden || words != actsSignIn {
+		t.Fatalf("no sign-in on a team: %d %s", status, words)
+	}
+	// And an act already approved waits for that sign-in, then fails saying so.
+	if err := f.st.Update(mine.ID, func(cur *factory.Item) error {
+		cur.Acts = []factory.PublicAct{{ID: "act_2", Kind: factory.ActKindComment, Text: "Hello.\n\n" + factory.PublicActFooter, By: factory.ActByYou, State: factory.ActApproved, ApprovedBy: "me"}}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	f.pass()
+	if a := f.sent(mine.ID).Acts[0]; a.State != factory.ActApproved || a.Tries != 1 || a.Error != "The job's person is not signed in to GitHub." || len(f.github.Writes()) != 0 {
+		t.Fatalf("with no sign-in the act reads %+v, writes %q", a, f.github.Writes())
 	}
 }
