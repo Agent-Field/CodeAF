@@ -74,6 +74,7 @@ func (h *Handler) workstreamRoutes() {
 	h.workstreamTaskRoutes()
 	h.workstreamPageCommentRoutes()
 	h.workstreamRequestRoutes()
+	h.runningRoutes()
 	h.workstreamDecisionRoutes()
 	h.workstreamStructureRoutes()
 	h.route("/v1/workstreams/{id}/driver", map[string]http.HandlerFunc{http.MethodPut: h.takeWorkstreamDriver, http.MethodDelete: h.dropWorkstreamDriver})

@@ -126,6 +126,18 @@ On an organization's server, **at most 3 of Afi's tasks run at once in one works
 
 These limits are fixed for now; nobody can change them in Settings yet. On a Personal workstream each chat does one thing at a time, and these limits do not apply.
 
+## what each agent is doing — the Inbox's Running list, Mine, how long a task has run and its cost so far
+
+The Inbox's **Running** section lists the tasks an agent is working on, across every workstream you are in, open, never folded. Each row names the workstream and who does it, then what Afi is doing at this moment when its server says ("Pantry · Afi · Reading notes.md"). The right side reads one of:
+
+- how long it has run, and what it has spent once that reaches a cent: "12m · $0.04";
+- **"Queued · 2nd"** while it waits for its place under the limits;
+- **"Nothing working on it"** when the task says Running but no run is behind it (press **Start again** on the task).
+
+**Mine** lists the tasks you own. **Everything** adds every agent's running work in the workstreams you are in, though someone else owns the task; the choice appears only when it would change the list. Rows that are working come first, then the queue in its order.
+
+A task waiting on a question you decide is not here: it is under **Waiting on you**. Personal workstreams list their running tasks the same way, without the time, cost or queue words, which only an organization's server reports.
+
 ## Afi paused a task to ask whether to continue — spending cap, budget, 60 steps, 15 minutes
 
 On an organization's server, a task Afi runs is **paused with a question to the task's owner, never failed**, when it reaches a limit:

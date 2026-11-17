@@ -60,6 +60,26 @@ const FeatureOrgWorkstreamTaskStart = "org_workstream_task_start"
 // FeatureOrgWorkstreamRequests is their hello word.
 const FeatureOrgWorkstreamRequests = "org_workstream_requests"
 
+// WHAT EVERY AGENT IS DOING NOW (lane L6): the tasks an agent is working on,
+// waiting its turn for, or paused on a question about, across the workstreams
+// the person can see, each with its run's facts (run: now, since, steps, usd;
+// queue: place). scope "mine" keeps the person's own; the operator also reads
+// the organization's count (org: running, queued, most).
+//
+//	factory.org_workstreams_running OrgRunningParams -> OrgRunning GET /v1/workstreams/running[?scope=mine]
+//
+// FeatureOrgWorkstreamsRunning is its hello word.
+const FeatureOrgWorkstreamsRunning = "org_workstreams_running"
+
+// OrgRunningParams asks for everything, or only the person's own ("mine").
+type OrgRunningParams struct {
+	OrgConn
+	Scope string `json:"scope,omitempty"`
+}
+
+// OrgRunning is the server's shape, passed through.
+type OrgRunning = json.RawMessage
+
 // OrgTaskRequestParams is a request into ws: a title, the words, and the task
 // of the caller's own it came from (from_ws, from_task), which gains one line.
 type OrgTaskRequestParams struct {
@@ -250,6 +270,7 @@ func withFactoryOrgTasksFeature(hello Hello, e Engine) Hello {
 		hello = withFeature(hello, FeatureOrgWorkstreamTaskStart)
 		hello = withFeature(hello, FeatureOrgWorkstreamRequests)
 		hello = withFeature(hello, FeatureOrgWorkstreamDecisions)
+		hello = withFeature(hello, FeatureOrgWorkstreamsRunning)
 	}
 	return hello
 }
@@ -258,6 +279,15 @@ func (t *OrgTasks) fill()      { t.Tasks = nonNil(t.Tasks) }
 func (e *OrgTaskEvents) fill() { e.Events = nonNil(e.Events) }
 
 func init() {
+	methods["factory.org_workstreams_running"] = orgMethod[OrgRunningParams, OrgRunning]("factory.org_workstreams_running", func(p OrgRunningParams) (OrgRequest, error) {
+		switch p.Scope {
+		case "":
+			return OrgRequest{Method: http.MethodGet, Path: "/v1/workstreams/running"}, nil
+		case "mine":
+			return OrgRequest{Method: http.MethodGet, Path: "/v1/workstreams/running?scope=mine"}, nil
+		}
+		return OrgRequest{}, Errorf(CodeBadParams, `scope is "mine" or absent`)
+	})
 	methods["factory.org_workstreams_requestable"] = orgMethod[OrgConn, OrgRequestable]("factory.org_workstreams_requestable", func(OrgConn) (OrgRequest, error) {
 		return OrgRequest{Method: http.MethodGet, Path: "/v1/workstreams/requestable"}, nil
 	})

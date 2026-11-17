@@ -514,6 +514,7 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.org_workstream_task_events` | `in.OrgTaskParams` | `OrgTaskEvents` |
 | `factory.org_workstream_tasks_start_all` | `in.OrgTasksStartAllParams` | `OrgTasks` |
 | `factory.org_workstreams_requestable` | `in.OrgConn` | `json.RawMessage` |
+| `factory.org_workstreams_running` | `in.OrgRunningParams` | `json.RawMessage` |
 | `factory.org_workstream_request` | `in.OrgTaskRequestParams` | `json.RawMessage` |
 | `factory.org_workstream_task_view` | `in.OrgTaskViewParams` | `json.RawMessage` |
 | `factory.org_workstream_decision_withdraw` | `in.OrgDecisionParams` | `json.RawMessage` |
@@ -1087,7 +1088,13 @@ place frees; Stop takes it out of the queue. A run past its spending cap (the wo
 Start without asking, else $0.50), the workstream's budget, 60 steps or 15 minutes is
 paused: the task goes `needs` with an Ask whose id begins `ask_limit_`, options `keep_going`
 and `stop_here` (thread line "Paused: <title>"); answering `keep_going` starts Afi again,
-`stop_here` stops the task, and neither records a decision. A Factory task's state is its job's (409). A stale rev is 412.
+`stop_here` stops the task, and neither records a decision. A running task's `run` also
+carries `now` (its last step, in a person's words), `steps` and `usd` (so far; each absent
+while zero). With the hello word `org_workstreams_running`,
+`factory.org_workstreams_running {scope?}` `GET /v1/workstreams/running[?scope=mine]`
+answers `{items: [{ws, ws_name, task}], org?}`: every Afi task `running` or `needs` in the
+workstreams the person can see (with `mine`, those they own or started), paused ones first,
+then at work, then queued; `org {running, queued?, most}` only for the operator. A Factory task's state is its job's (409). A stale rev is 412.
 `_task_answer {ws, id, option?, text?}` `POST .../answer` is the owner's (with owner
 `everyone`, anyone who edits; after a day, also the workstream's fallback), 403
 otherwise; the first answer decides and records `answered_by`, a second is 409; a

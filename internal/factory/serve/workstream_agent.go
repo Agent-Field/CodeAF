@@ -160,7 +160,10 @@ type agentDesk struct {
 	// for the round robin (workstream_task_queue.go).
 	// gen counts each task's runs, so a run that ends releases only its
 	// own place, never a newer run's on the same task.
-	gen     map[taskRunKey]int
+	gen map[taskRunKey]int
+	// watch is each going run's spending, steps and last step, for the
+	// Running view (workstream_running.go).
+	watch   map[taskRunKey]*runWatch
 	queue   []pendingRun
 	queueN  int
 	served  map[string]int

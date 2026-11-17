@@ -112,3 +112,27 @@ type RequestSent struct {
 	Owner  factory.TaskOwner       `json:"owner"`
 	Task   *factory.WorkstreamTask `json:"task,omitempty"`
 }
+
+// RunningWork is what the agents are doing now, across the workstreams the
+// reader can see (GET /v1/workstreams/running): every task an agent is
+// working on, waiting its turn for, or paused on a question about.
+type RunningWork struct {
+	Items []RunningItem `json:"items"`
+	// Org is the organization's own count, for its operator alone: how many
+	// runs are going and waiting, out of how many may go at once.
+	Org *RunningOrg `json:"org,omitempty"`
+}
+
+// RunningItem is one task an agent is on, with its workstream.
+type RunningItem struct {
+	WS     string         `json:"ws"`
+	WSName string         `json:"ws_name"`
+	Task   WorkstreamTask `json:"task"`
+}
+
+// RunningOrg is the organization's count of runs.
+type RunningOrg struct {
+	Running int `json:"running"`
+	Queued  int `json:"queued,omitempty"`
+	Most    int `json:"most"`
+}

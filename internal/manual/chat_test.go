@@ -82,6 +82,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"my task is stuck on running after the server restarted", "organization-workstream-tasks"},
 		{"my task says queued 2nd, why is it not running", "organization-workstream-tasks"},
 		{"how many tasks can run at once in a workstream", "organization-workstream-tasks"},
+		{"what is each agent doing on my tasks", "organization-workstream-tasks"},
+		{"how much has the running task cost so far", "organization-workstream-tasks"},
 		{"Afi paused my task and asks whether to continue", "organization-workstream-tasks"},
 		{"is there a spending cap on a task Afi runs", "organization-workstream-tasks"},
 		{"pressed start on a running task and nothing happened", "organization-workstream-tasks"},
