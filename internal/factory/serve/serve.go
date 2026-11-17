@@ -51,6 +51,13 @@ type Config struct {
 	// Auto ([factory.PassOf]): the factory's AI filter, on its default model.
 	// Nil leaves every such approval to a person, with the reason said.
 	PassJudge route.Judge
+	// Stalled gives the manager of a stalled job one turn on it (watchdog.go):
+	// the host puts the stall's facts to the job's own conversation, which may
+	// move the job through its own doors, and answers what the manager said.
+	// It is called off the settle pass, one turn at a time for a job, under a
+	// context that ends when the service closes. Nil is a factory with no
+	// manager to ask: a stall then goes straight to the job's person.
+	Stalled func(ctx context.Context, it factory.Item, stall factory.Stall) (said string, err error)
 	// Scout is Look closer on this factory (scout.Door.Look): nil when the
 	// factory has no model to look with, and the route then says so.
 	Scout func(ctx context.Context, id int, refresh bool) (factory.Scout, bool, error)
@@ -219,6 +226,8 @@ type Handler struct {
 	// floorKept is the last look that found nothing due. A later request
 	// skips the decode while those files and the clock still say so.
 	floorKept floorLook
+	// stalls is the stall watchdog's manager turns in flight (watchdog.go).
+	stalls stallWatch
 
 	seam    factory.Seam
 	areas   repoAreas
@@ -373,6 +382,8 @@ func (h *Handler) Close() {
 			h.jobsTimer.Stop()
 		}
 		h.jobsMu.Unlock()
+		// A manager turn on a stall is ended, not waited out.
+		h.stalls.stop()
 		h.jobsBusy.Wait()
 	}
 

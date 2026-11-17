@@ -406,7 +406,7 @@ func (b *appBackend) startLocalLocked(ctx context.Context, resume bool) error {
 		b.briefJobChanged(before, after)
 		// Queue filters change after filing too, when a background step waits or ends.
 		if before.State != after.State || before.Question != after.Question || before.QKind != after.QKind ||
-			before.DoneHow != after.DoneHow || !before.DoneAt.Equal(after.DoneAt) {
+			before.DoneHow != after.DoneHow || !before.DoneAt.Equal(after.DoneAt) || factory.WaitChanged(before, after) {
 			b.emit.Emit(appwire.EventFactoryJobsChanged, appwire.FactoryJobsChanged{Factory: appLocalID, Job: after.ID})
 		}
 	})

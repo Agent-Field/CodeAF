@@ -145,7 +145,10 @@ func StatusForManagerWaiting(it Item, held, threadOnly bool, waitingFor string, 
 	case it.State == StateRunning:
 		out.Text += step + " has no live worker. The saved running state is not active work. Use Try again to recover the step."
 	case it.State == StateLanded:
-		out.Text += "Local work is complete; publication is pending. Check the approval controls."
+		out.Text += "Local work is complete; publication is pending."
+		if OffersPublishApproval(it) {
+			out.Text += " Check the approval controls."
+		}
 	default:
 		out.Text += "Pipeline state: " + string(it.State) + "."
 	}
@@ -154,6 +157,11 @@ func StatusForManagerWaiting(it Item, held, threadOnly bool, waitingFor string, 
 	}
 	facts, guide := managerFactsLines(it)
 	for _, line := range facts {
+		out.Text += "\n" + line
+	}
+	// THE WAIT THE SERVICE STORED IS SAID HERE IN ITS OWN LINE, so the manager
+	// names the wait the job page shows and the actions the doors take now.
+	if line := WaitLine(it); line != "" {
 		out.Text += "\n" + line
 	}
 	decisions, actions := managerPRDecision(it)

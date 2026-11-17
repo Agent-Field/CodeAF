@@ -464,7 +464,12 @@ type Job struct {
 	Manual         bool                `json:"manual,omitempty"`
 	Effort         string              `json:"effort,omitempty"`
 	FollowUp       *factory.PRFollowUp `json:"follow_up,omitempty"`
-	SetupHeld      bool                `json:"setup_held,omitempty"`
+	// Wait is what the job waits on and Offers the actions the service
+	// takes on it now, as the service stored them (factory.SettleWait).
+	// Readers show them; none works the wait out again.
+	Wait      *factory.Wait   `json:"wait,omitempty"`
+	Offers    []factory.Offer `json:"offers,omitempty"`
+	SetupHeld bool            `json:"setup_held,omitempty"`
 	// Held is a queued job its person keeps from starting: no worker takes it
 	// until it is resumed. OverLimit is a queued job its person said to start
 	// now, which may take one slot above its computer's Jobs at once.
@@ -1070,6 +1075,7 @@ type PR struct {
 	Problems        []factory.PRReadProblem `json:"problems,omitempty"`
 	ReadinessKey    string                  `json:"readiness_key,omitempty"`
 	BaseSHA         string                  `json:"base_sha,omitempty"`
+	BaseBranch      string                  `json:"base_branch,omitempty"`
 	Feedback        string                  `json:"feedback,omitempty"`
 	CheckRuns       []CheckRun              `json:"check_runs,omitempty"`
 	Conflict        bool                    `json:"conflict,omitempty"`

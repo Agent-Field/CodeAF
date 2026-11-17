@@ -231,6 +231,9 @@ func (h *appFactoryHost) solo(_ context.Context) (http.Handler, error) {
 	handler := serve.New(seam, serve.Config{PassJudge: factoryJudge(h.floor, config.Load), ProfileDir: h.profile, DefaultModel: h.defaultModel, RunnerModels: h.runnerModelsOrNone, GitHubToken: func(ctx context.Context) string { token, _ := factorygithub.TokenAt(ctx, h.profile); return token }, GitHubHTTPClient: h.githubHTTP, Mode: api.FactorySolo, ServedBy: "app", Address: h.address, AccessToken: h.token, Name: appLocalName, Store: h.floor, Root: h.floor.Root(), Record: history, PollingEvery: factoryPollEvery,
 		Scout: factoryScoutLook(h.floor, config.Load), Read: factoryClickRead(h.floor, config.Load),
 		Route: h.routeNow,
+		// A stalled job is reported to its manager, one turn of its own
+		// conversation (appfactory_watchdog.go).
+		Stalled: h.stalled,
 		Pipeline: func(ctx context.Context, repo, dir string) (pipeline.File, error) {
 			if h.rules != nil {
 				return h.rules(ctx, repo, dir)

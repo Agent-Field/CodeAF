@@ -112,6 +112,7 @@ func ToSnapshot(q Queue, jobs []Job) factory.Snapshot {
 // test reads it, so a field is either carried or named here.
 var Lost = map[string]string{
 	"JobContext.Markdown":         "attachment text is private to worker admission; ordinary job and queue reads carry only title and source",
+	"Item.Stall":                  "service-owned: the watchdog's record of a stalled wait and its manager turns; readers see the wait it becomes (wait.who you, action decide)",
 	"Item.PausedRecoveryQuestion": "the service owns the paused decision identity; readers see the paused presentation",
 	"Item.LastRecoveryResume":     "the service's private acknowledgment for a repeated chat retry",
 	"Item.Passing":                "service-owned: who is passing the waiting approve step, set by the approval door just before its answer and moved onto the step's phase (Step.passed carries the result)",
@@ -176,7 +177,7 @@ func FromItem(it factory.Item) Job {
 		Group: it.Group, Milestone: it.Milestone, Context: mapList(it.Context, fromJobContext),
 		FromJob: it.FromJob, SplitFrom: it.SplitFrom, SourceIssue: it.SourceIssue, RunOn: it.RunOn, AgentField: it.AgentField, AgentFieldSteps: it.AgentFieldSteps,
 		WaitsOn: append([]int(nil), it.WaitsOn...), PolicyRun: it.PolicyRun, Blocked: cloneBlocked(it.Blocked),
-		Recovery: it.Recovery, Autonomy: it.Autonomy, AutonomyWhy: factory.AutonomyBlockReason(it), FollowUp: it.FollowUp, Manual: it.Manual, Effort: it.Effort,
+		Recovery: it.Recovery, Autonomy: it.Autonomy, AutonomyWhy: factory.AutonomyBlockReason(it), FollowUp: it.FollowUp, Wait: it.Wait, Offers: append([]factory.Offer(nil), it.Offers...), Manual: it.Manual, Effort: it.Effort,
 		SetupHeld: it.SetupHeld, Held: heldInQueue(it), OverLimit: it.OverLimit && it.State == factory.StateQueued,
 		Owners: append([]string(nil), it.Owners...),
 		ID:     it.ID, Repo: it.Repo, Num: it.Num, Kind: string(it.Kind), Title: it.Title, URL: it.URL,
@@ -623,7 +624,7 @@ func ToItem(j Job) factory.Item {
 		Group: j.Group, Milestone: j.Milestone, Context: mapList(j.Context, toJobContext),
 		FromJob: j.FromJob, SplitFrom: j.SplitFrom, SourceIssue: j.SourceIssue, RunOn: j.RunOn, AgentField: j.AgentField, AgentFieldSteps: j.AgentFieldSteps,
 		WaitsOn: append([]int(nil), j.WaitsOn...), PolicyRun: j.PolicyRun, PolicyGroup: d.PolicyGroup, Blocked: cloneBlocked(j.Blocked),
-		Recovery: j.Recovery, Autonomy: j.Autonomy, FollowUp: j.FollowUp, Manual: j.Manual, Effort: j.Effort,
+		Recovery: j.Recovery, Autonomy: j.Autonomy, FollowUp: j.FollowUp, Wait: j.Wait, Offers: append([]factory.Offer(nil), j.Offers...), Manual: j.Manual, Effort: j.Effort,
 		SetupHeld: j.SetupHeld, StopAfterStep: j.StopAfterStep,
 		Owners: append([]string(nil), j.Owners...),
 		ID:     j.ID, Repo: j.Repo, Num: j.Num, Kind: factory.Kind(j.Kind), Title: j.Title, URL: j.URL, Model: j.Model, AutomaticModels: j.AutomaticModels, FactoryModel: j.FactoryModel,
@@ -768,7 +769,7 @@ func fromPR(pr *factory.PullRequest) *PR {
 		return nil
 	}
 	out := &PR{
-		FeedbackItems: append([]factory.PRFeedback(nil), pr.FeedbackItems...), FeedbackTracked: pr.FeedbackTracked, Problems: append([]factory.PRReadProblem(nil), pr.Problems...), BaseSHA: pr.BaseSHA, Feedback: pr.Feedback, CheckRuns: mapList(pr.CheckRuns, fromCheckRun),
+		FeedbackItems: append([]factory.PRFeedback(nil), pr.FeedbackItems...), FeedbackTracked: pr.FeedbackTracked, Problems: append([]factory.PRReadProblem(nil), pr.Problems...), BaseSHA: pr.BaseSHA, BaseBranch: pr.BaseBranch, Feedback: pr.Feedback, CheckRuns: mapList(pr.CheckRuns, fromCheckRun),
 		ReadinessKey: pr.ReadinessKey, Conflict: pr.Conflict, Draft: pr.Draft, Number: pr.Number, URL: pr.URL, CI: pr.CI, State: pr.State,
 		MergedBy: pr.MergedBy, ReviewDecision: pr.ReviewDecision, RequiredReviews: pr.Required,
 		Reviews: mapList(pr.Reviews, func(r factory.PRReview) PRReview {
@@ -798,7 +799,7 @@ func toPR(pr *PR) *factory.PullRequest {
 		return nil
 	}
 	out := &factory.PullRequest{
-		FeedbackItems: append([]factory.PRFeedback(nil), pr.FeedbackItems...), FeedbackTracked: pr.FeedbackTracked, Problems: append([]factory.PRReadProblem(nil), pr.Problems...), BaseSHA: pr.BaseSHA, Feedback: pr.Feedback, CheckRuns: mapList(pr.CheckRuns, toCheckRun),
+		FeedbackItems: append([]factory.PRFeedback(nil), pr.FeedbackItems...), FeedbackTracked: pr.FeedbackTracked, Problems: append([]factory.PRReadProblem(nil), pr.Problems...), BaseSHA: pr.BaseSHA, BaseBranch: pr.BaseBranch, Feedback: pr.Feedback, CheckRuns: mapList(pr.CheckRuns, toCheckRun),
 		ReadinessKey: pr.ReadinessKey, Conflict: pr.Conflict, Draft: pr.Draft, Number: pr.Number, URL: pr.URL, CI: pr.CI, State: pr.State,
 		MergedBy: pr.MergedBy, ReviewDecision: pr.ReviewDecision, Required: pr.RequiredReviews,
 		Reviews: mapList(pr.Reviews, func(r PRReview) factory.PRReview {

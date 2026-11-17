@@ -868,6 +868,14 @@ type Item struct {
 	// undone, a failed merge or a pull request's review. Zero while the job
 	// waits on nobody.
 	NeedsAt time.Time `json:",omitzero"`
+	// Wait is what the job waits on, and Offers the actions the service takes
+	// on it now. The store sets both on every write ([SettleWait]); nothing
+	// else writes them.
+	Wait   *Wait   `json:",omitempty"`
+	Offers []Offer `json:",omitempty"`
+	// Stall is the watchdog's record of a wait that went wrong and what it
+	// did about it ([Stall]). The store drops it when the job moves on.
+	Stall *Stall `json:",omitempty"`
 	// ManagerAnswer confirms the last durable decision independently of lease delivery.
 	ManagerAnswer *ManagerAnswer `json:",omitempty"`
 	// Briefs are the job's brief versions ([BriefVersion]), oldest first, at

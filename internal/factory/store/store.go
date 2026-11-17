@@ -151,6 +151,7 @@ func (st *Store) Create(it factory.Item) (factory.Item, error) {
 		}
 		it.ID = highest + 1
 		st.retainOutput(&it)
+		factory.SettleWait(factory.Item{}, &it, st.now())
 		data, err := marshalDoc(doc{Revision: 1, BudgetRevision: 1, ActionRevision: 1, Item: it})
 		if err != nil {
 			return err
@@ -364,6 +365,7 @@ func (st *Store) Save(it factory.Item) error {
 			it.Failure = current.Item.Failure
 		}
 		factory.NoteWait(current.Item, &it, st.now())
+		factory.SettleWait(current.Item, &it, st.now())
 		st.retainOutput(&it)
 		data, err := marshalDoc(nextDoc(current, it, rev))
 		if err != nil {
@@ -591,6 +593,7 @@ func (st *Store) update(id int, mode writeMode, expect *int, change func(*factor
 		factory.RecordIssueTouch(before, &it)
 		factory.NoteChanges(before, &it, now)
 		factory.NoteWait(before, &it, now)
+		factory.SettleWait(before, &it, now)
 		st.retainOutput(&it)
 		rev := current.Revision
 		if mode.bump {
@@ -716,6 +719,13 @@ func nextDoc(before doc, it factory.Item, revision int) doc {
 	// The wait's clock is the store's bookkeeping, as Changed is.
 	prior.NeedsAt, next.NeedsAt = time.Time{}, time.Time{}
 	prior.BriefWriting, next.BriefWriting = nil, nil
+	// The stored wait and offers are read off the other fields ([factory.SettleWait]),
+	// so they never make a write an action of its own.
+	prior.Wait, next.Wait = nil, nil
+	prior.Offers, next.Offers = nil, nil
+	// The watchdog's record of a stall is its own bookkeeping about the same
+	// facts: sighting one must not make a person's press on the job stale.
+	prior.Stall, next.Stall = nil, nil
 	return doc{Revision: revision,
 		BudgetRevision: revisionSince(before.BudgetRevision, revision, before.Item.Cap != it.Cap),
 		ActionRevision: revisionSince(before.ActionRevision, revision, !sameAction(prior, next)),

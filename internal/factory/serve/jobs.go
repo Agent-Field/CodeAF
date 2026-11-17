@@ -1150,7 +1150,7 @@ func (h *Handler) settleJobs(approvalsOnly bool, held []lease.Lease) {
 	// while the read is in progress must not be remembered as idle: the
 	// signature would name the new files while the deadlines came from
 	// the old ones.
-	h.rememberFloor(nil, "")
+	h.rememberFloor(nil, "", time.Time{})
 	before := h.floorSignature()
 	pending, err := h.listFloor()
 	if err != nil {
@@ -1172,6 +1172,29 @@ func (h *Handler) settleJobs(approvalsOnly bool, held []lease.Lease) {
 	if err := h.settleMerges(sweep, pending); err != nil {
 		return
 	}
+	// THE STALL WATCHDOG LOOKS AFTER THE SCANS ABOVE, at the floor as they
+	// left it: a lost step already has its recovery and an approval Auto
+	// gives is already given, so neither reads as a stall (watchdog.go).
+	//
+	// THE TIMER IS SET AGAIN AFTER EVERY SWEEP. A wait's deadline begins with
+	// whatever write began the wait, and no door that makes one sets the
+	// timer, so a job that went quiet after its last request would otherwise
+	// never be looked at again. A pass that wrote lists the floor again.
+	//
+	// watchNext is the soonest of the watchdog's clocks on this listing, for
+	// the idle look below: they come due with no document changing.
+	var watchNext time.Time
+	if sweep {
+		now := h.clock()
+		facts := h.watchFacts(held)
+		h.keepFacts(facts)
+		if h.watchJobs(pending, facts, now) {
+			h.scheduleJobTimer()
+		} else {
+			h.armJobTimer(pending, now, facts)
+			watchNext = watchDue(pending, facts.of, now)
+		}
+	}
 	due := false
 	for _, it := range pending {
 		if a := it.Approval; a != nil && a.State == "approving" && !h.clock().Before(a.UndoUntil) {
@@ -1184,7 +1207,7 @@ func (h *Handler) settleJobs(approvalsOnly bool, held []lease.Lease) {
 		// a document this look depends on changes or a deadline arrives.
 		// A signature that moved during the read is left unremembered.
 		if after := h.floorSignature(); sweep && after != "" && after == before {
-			h.rememberFloor(pending, after)
+			h.rememberFloor(pending, after, watchNext)
 		}
 		return
 	}
@@ -1294,7 +1317,10 @@ func (h *Handler) floorUnchanged() bool {
 	return h.floorSignature() == kept.sig
 }
 
-func (h *Handler) rememberFloor(items []factory.Item, sig string) {
+// rememberFloor keeps one idle look. watch is the soonest of the watchdog's
+// clocks on items, zero for none: the look is over when it comes, as it is at
+// the soonest saved deadline.
+func (h *Handler) rememberFloor(items []factory.Item, sig string, watch time.Time) {
 	h.jobsMu.Lock()
 	defer h.jobsMu.Unlock()
 	if sig == "" {
@@ -1309,7 +1335,11 @@ func (h *Handler) rememberFloor(items []factory.Item, sig string) {
 			return
 		}
 	}
-	h.floorKept = floorLook{sig: sig, next: floorNext(items)}
+	next := floorNext(items)
+	if !watch.IsZero() && (next.IsZero() || watch.Before(next)) {
+		next = watch
+	}
+	h.floorKept = floorLook{sig: sig, next: next}
 }
 
 // floorSignature is the identity of every JSON document settle consults.
@@ -1380,7 +1410,13 @@ func (h *Handler) scheduleJobTimer() {
 	if err != nil {
 		return
 	}
-	next := jobTimerDue(items, h.clock())
+	h.armJobTimer(items, h.clock(), h.lastFacts())
+}
+
+// armJobTimer sets the job timer for the soonest deadline among items, a
+// listing the caller already holds, read at now on the watchdog's facts.
+func (h *Handler) armJobTimer(items []factory.Item, now time.Time, facts *watchFacts) {
+	next := jobTimerDue(items, now, facts.of)
 	h.jobsMu.Lock()
 	defer h.jobsMu.Unlock()
 	if h.jobsClosed {
@@ -1390,24 +1426,27 @@ func (h *Handler) scheduleJobTimer() {
 		h.jobsTimer.Stop()
 	}
 	if !next.IsZero() {
-		h.jobsTimer = time.AfterFunc(max(next.Sub(h.clock()), time.Millisecond), h.runJobTimer)
+		h.jobsTimer = time.AfterFunc(max(next.Sub(now), time.Millisecond), h.runJobTimer)
 	}
 }
 
 // jobTimerDue is when the job timer should next look: the soonest recovery,
-// approval or merge deadline among items, or zero for none.
+// approval or merge deadline among items, the soonest deadline of a stored
+// wait or next look at a stall (the watchdog's clocks, [factory.WatchAt]),
+// or zero for none. facts is what the service knows beside each job's
+// document; nil reads the documents alone.
 //
 // A deadline already past is looked at again in two seconds, never at once: a
 // settle that could not move the job (a refused merge, an approval still
 // waiting on its door) would otherwise re-arm the timer at a millisecond and
 // settle the whole floor a thousand times a second.
-func jobTimerDue(items []factory.Item, now time.Time) time.Time {
+func jobTimerDue(items []factory.Item, now time.Time, facts func(factory.Item) factory.WatchFacts) time.Time {
+	if facts == nil {
+		facts = func(factory.Item) factory.WatchFacts { return factory.WatchFacts{} }
+	}
 	var next time.Time
 	soonest := func(at time.Time) {
-		if !at.After(now) {
-			at = now.Add(2 * time.Second)
-		}
-		if next.IsZero() || at.Before(next) {
+		if at = notAtOnce(at, now); next.IsZero() || at.Before(next) {
 			next = at
 		}
 	}
@@ -1425,8 +1464,23 @@ func jobTimerDue(items []factory.Item, now time.Time) time.Time {
 		if m := it.Merging; m != nil && m.State == factory.MergeAsked {
 			soonest(m.UndoUntil)
 		}
+		// A WAIT PAST ITS DEADLINE IS THE WATCHDOG'S, and so is a stall whose
+		// next look has come: the pass that follows records the one and acts on
+		// the other, so neither stays past for the timer to come round to.
+		if at := factory.WatchAt(it, facts(it), now); !at.IsZero() {
+			soonest(at)
+		}
 	}
 	return next
+}
+
+// notAtOnce is at, or two seconds on from now when at has already passed
+// ([jobTimerDue] says why).
+func notAtOnce(at, now time.Time) time.Time {
+	if !at.After(now) {
+		return now.Add(2 * time.Second)
+	}
+	return at
 }
 
 func approvalWords(it factory.Item) string {
