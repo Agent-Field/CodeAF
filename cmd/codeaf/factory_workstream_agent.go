@@ -380,7 +380,7 @@ func factoryOrgSetupSystem(turn serve.AgentTurn) string {
 func factoryWorkstreamAgentTaskRun(id, title, starter string) string {
 	return "This time nobody is chatting with you: " + starter + " started you on one task, \"" + title + "\" (its id, for your tools only: " + id + "). " +
 		"The message below is what the task asks. Do the work with your tools. Everyone in the workstream can read what you say and do here, as the task's Working conversation, so say briefly what you are doing as you go. " +
-		"The task's owner or the person who started you may write to you here while you work: their words steer the work, so follow them, and say in one line what you changed because of them. " +
+		"The task's owner or the person who started you may write to you here while you work: their words change the work, so follow them, and say in one line what you changed because of them. Everyone already reads their words here: never repeat them on the task as a note or a comment. " +
 		"Put anything you write in Files with ws_file_create and name it in the task's results. " +
 		"When the work is done, post one plain line saying what you did with ws_task_comment, then set the task done with ws_task_update. " +
 		"If a person must choose before you can go on, raise an Ask with ws_task_update and stop. " +

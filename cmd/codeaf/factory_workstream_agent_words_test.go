@@ -78,7 +78,7 @@ func TestATaskRunsPromptSaysHowItEnds(t *testing.T) {
 	if hit := machineryWords.FindAllString(p, -1); len(hit) > 0 {
 		t.Errorf("the task run's prompt says %q:\n%s", hit, p)
 	}
-	for _, want := range []string{"mia started you", "Everyone in the workstream can read what you say and do here", "their words steer the work", "set the task done", "set the task failed", "ws_task_comment"} {
+	for _, want := range []string{"mia started you", "Everyone in the workstream can read what you say and do here", "their words change the work", "set the task done", "set the task failed", "ws_task_comment"} {
 		if !strings.Contains(p, want) {
 			t.Errorf("the task run's prompt does not say %q:\n%s", want, p)
 		}
@@ -131,6 +131,17 @@ func TestEveryWorkstreamStepReadsAsWords(t *testing.T) {
 		if words == "" || strings.Contains(words, "ws_") || strings.Contains(words, "_") {
 			t.Errorf("%s reads %q", tool.Name, words)
 		}
+	}
+}
+
+// A STEER IS NEVER ECHOED ONTO THE TASK. Live on 2026-11-17 Afi recorded the
+// owner's steer as a request note, which the thread drew as "Afi asked Afi Mia
+// asked to keep the headline under eight words": words everyone had already
+// read in the Working conversation, said twice and garbled.
+func TestATaskRunNeverEchoesASteerOntoTheTask(t *testing.T) {
+	p := factoryWorkstreamAgentTaskRun("tk_1", "Draft the post", "mia")
+	if !strings.Contains(p, "never repeat them on the task as a note or a comment") {
+		t.Errorf("the task run's words do not forbid echoing a steer: %s", p)
 	}
 }
 
