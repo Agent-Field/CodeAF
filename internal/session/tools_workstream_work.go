@@ -130,7 +130,8 @@ var workstreamWorkTools = []WorkstreamWorkTool{
 			"Not everything said in a chat becomes a task: create one for work that runs beyond your reply, changes a file, or matters to someone else, and say so in your reply. " +
 			"request is only what is to be done, in a few lines; never the private conversation. " +
 			"The person you are talking to owns it unless you name another owner. " +
-			"Five or more tasks from one request share one group name (the same name as the chat that runs them) and arrive in Up next as a plan with Start and Change the plan; nothing in a batch starts until a person presses Start.",
+			"Five or more tasks from one request share one group name (the same name as the chat that runs them) and arrive in Up next as a plan with Start and Change the plan; nothing in a batch starts until a person presses Start. " +
+			"After that, and for any task outside a plan, a task that waits on others starts by itself once what it waits on is done, unless its owner set it to \"Waits for you to start\" or turned that off in Settings › Work; ws_tasks says which. Never tell a person a started plan still waits on their Start.",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{` +
 			`"title":{"type":"string","minLength":1,"maxLength":200},` +
 			`"request":{"type":"string","minLength":1,"maxLength":4000,"description":"What is to be done, in a few lines. Never the conversation."},` +

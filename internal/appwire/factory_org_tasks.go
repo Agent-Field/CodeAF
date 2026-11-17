@@ -50,6 +50,29 @@ const FeatureOrgWorkstreamTasks = "org_workstream_tasks"
 // engine without it would mark the task running with nothing behind it.
 const FeatureOrgWorkstreamTaskStart = "org_workstream_task_start"
 
+// TASKS START BY THEMSELVES WHEN THEIR WAITS CLEAR (owner decisions
+// 2026-11-17, 1). Where the engine says org_task_starts, the server starts an
+// Afi task in the same write that finished the last thing it waited on, when
+// its rule says so (factory.StartsBySelf); a task carries `starts`
+// ("when_ready", "by_hand" or absent for the default), which its owner or
+// whoever looks after the workstream sets with the ordinary task change, and
+// reads back `starts_when_ready`, what that resolves to; and the signed-in
+// person's own default is read and written here:
+//
+//	factory.org_work      OrgConn          -> OrgWork  GET /v1/me/work
+//	factory.org_work_set  OrgWorkSetParams -> OrgWork  PUT /v1/me/work
+const FeatureOrgTaskStarts = "org_task_starts"
+
+// OrgWorkSetParams is the person's "Start tasks when what they wait on is
+// done".
+type OrgWorkSetParams struct {
+	OrgConn
+	StartWhenReady bool `json:"start_when_ready"`
+}
+
+// OrgWork is the server's answer, passed through: {start_when_ready}.
+type OrgWork = json.RawMessage
+
 // A REQUEST INTO ANOTHER WORKSTREAM (Workstreams final spec, flow 7): anyone
 // in the organization asks a workstream that is not private, in it or not,
 // and the request becomes a task there owned by its owner of incoming work.
@@ -248,6 +271,7 @@ func withFactoryOrgTasksFeature(hello Hello, e Engine) Hello {
 	if _, ok := e.(FactoryOrg); ok {
 		hello = withFeature(hello, FeatureOrgWorkstreamTasks)
 		hello = withFeature(hello, FeatureOrgWorkstreamTaskStart)
+		hello = withFeature(hello, FeatureOrgTaskStarts)
 		hello = withFeature(hello, FeatureOrgWorkstreamRequests)
 		hello = withFeature(hello, FeatureOrgWorkstreamDecisions)
 	}
@@ -258,6 +282,12 @@ func (t *OrgTasks) fill()      { t.Tasks = nonNil(t.Tasks) }
 func (e *OrgTaskEvents) fill() { e.Events = nonNil(e.Events) }
 
 func init() {
+	methods["factory.org_work"] = orgMethod[OrgConn, OrgWork]("factory.org_work", func(OrgConn) (OrgRequest, error) {
+		return OrgRequest{Method: http.MethodGet, Path: "/v1/me/work"}, nil
+	})
+	methods["factory.org_work_set"] = orgMethod[OrgWorkSetParams, OrgWork]("factory.org_work_set", func(p OrgWorkSetParams) (OrgRequest, error) {
+		return OrgRequest{Method: http.MethodPut, Path: "/v1/me/work", Body: map[string]bool{"start_when_ready": p.StartWhenReady}}, nil
+	})
 	methods["factory.org_workstreams_requestable"] = orgMethod[OrgConn, OrgRequestable]("factory.org_workstreams_requestable", func(OrgConn) (OrgRequest, error) {
 		return OrgRequest{Method: http.MethodGet, Path: "/v1/workstreams/requestable"}, nil
 	})

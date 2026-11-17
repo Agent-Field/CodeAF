@@ -157,6 +157,7 @@ func (h *Handler) readTasks(r *http.Request, ws factory.OrgWorkstream) ([]factor
 	slices.SortStableFunc(out, func(a, b factory.WorkstreamTask) int { return strings.Compare(a.CreatedAt, b.CreatedAt) })
 	nameTasks(h.personNames(), out)
 	h.fillRuns(ws.ID, out)
+	h.fillStarts(out)
 	return out, nil
 }
 
@@ -401,7 +402,7 @@ func (h *Handler) patchWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 	var out factory.TaskChange
 	wake := false
 	_, byAgent := agentCallOf(r)
-	var rewaited []factory.WorkstreamTask
+	var rewaited, autoStarted []factory.WorkstreamTask
 	jobs, err := h.workstreamJobs(r, ws)
 	if h.failed(w, err) {
 		return
@@ -454,13 +455,20 @@ func (h *Handler) patchWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 				Text: "Waiting again: " + rewaitOn(out, o.ID) + " was reopened",
 			})
 		}
-		// A released task stays up next (factory.Released): its thread says it
-		// can start, and whoever wakes its doer marks it running.
-		for _, rel := range out.Released {
-			out.Events = append(out.Events, factory.WorkstreamTaskEvent{
-				ID: h.newTaskID("te_")(), Task: rel.ID, At: out.Task.UpdatedAt, By: by, Kind: factory.TaskEventState,
-				Text: "Ready to start: " + out.Task.Title + " is done",
-			})
+		// A released task starts by itself where its rule says so and Afi can
+		// take it (workstream_task_autostart.go); the rest stay up next, and
+		// their thread says they can start.
+		if len(out.Released) > 0 {
+			after := slices.Clone(all)
+			if i := slices.IndexFunc(after, func(o factory.WorkstreamTask) bool { return o.ID == out.Task.ID }); i >= 0 {
+				after[i] = out.Task
+			}
+			started, lines, err := h.startReleased(tw, ws, out.Task, out.Released, after, by, v.Handle, h.newTaskID("te_"))
+			autoStarted = started
+			if err != nil {
+				return err
+			}
+			out.Events = append(out.Events, lines...)
 		}
 		if target.ID != "" {
 			// A move takes the task and its thread; what waited on it here
@@ -506,6 +514,13 @@ func (h *Handler) patchWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 		// running, so nothing may be.
 		h.stopTaskTurn(ws.ID, tid)
 	}
+	if err != nil {
+		// Nothing of the write was kept, so nothing it started may run.
+		for _, t := range autoStarted {
+			h.stopTaskTurn(ws.ID, t.ID)
+		}
+		autoStarted = nil
+	}
 	if h.taskRefused(w, err) {
 		return
 	}
@@ -522,6 +537,9 @@ func (h *Handler) patchWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	h.recordWorkstream(r, ws.ID, "changed task", tid)
+	if len(autoStarted) > 0 {
+		h.recordWorkstream(r, ws.ID, "started tasks", tid)
+	}
 	h.publishTasks(ws, h.orgActor(r), append(append([]factory.WorkstreamTask{out.Task}, out.Released...), rewaited...)...)
 	if target.ID != "" {
 		h.publishTasks(target, h.orgActor(r), out.Task)

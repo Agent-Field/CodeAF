@@ -202,6 +202,15 @@ func taskBrief(t factory.WorkstreamTask) map[string]any {
 		// The ids are what ws_task_update's checklist_done names.
 		o["checklist"] = t.Checklist
 	}
+	// Whether it starts by itself once what it waits on is done, so Afi never
+	// tells a person a task waits on their Start when it will not.
+	if t.StartsWhenReady != nil && t.State == factory.TaskUpNext {
+		if *t.StartsWhenReady {
+			o["starts"] = "by itself when what it waits on is done"
+		} else {
+			o["starts"] = "when a person presses Start"
+		}
+	}
 	return o
 }
 
@@ -391,7 +400,7 @@ func (d *agentDoor) wsTaskCreate(ctx context.Context, args json.RawMessage) (any
 		}
 		said += fmt.Sprintf(" It is %d in the group %q.", n, t.Group.Name)
 		if n >= 5 {
-			said += " They wait in Up next; none of them starts by itself."
+			said += " They wait in Up next as a plan until a person presses its Start; after that each starts by itself once what it waits on is done."
 		}
 	}
 	return map[string]any{"said": said, "task": taskBrief(t)}, nil

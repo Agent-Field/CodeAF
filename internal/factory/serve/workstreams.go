@@ -72,6 +72,7 @@ func (h *Handler) workstreamRoutes() {
 	h.workstreamPartRoutes()
 	h.workstreamFileRoutes()
 	h.workstreamTaskRoutes()
+	h.workPrefsRoutes()
 	h.workstreamPageCommentRoutes()
 	h.workstreamRequestRoutes()
 	h.workstreamDecisionRoutes()
