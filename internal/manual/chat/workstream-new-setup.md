@@ -42,8 +42,8 @@ starting from your changes.
 
 ## Create workstream — what Create does, who is told
 
-Beside **Create workstream** the card says who is told, for example "Sam is told when you create it." Personal
-workstreams tell nobody. Create makes everything at once: the workstream with its name, what it is for, where it sits
+Beside **Create workstream** the card says who is told, for example "Sam is told when you create it." Anyone a
+ticked task is given to joins as one of its people and is told too. Personal workstreams tell nobody. Create makes everything at once: the workstream with its name, what it is for, where it sits
 and its people; the standing orders; the rules; each rule line as a decision; the Brief in Files; the ticked tasks
 together as the group "First plan", each after what it waits on; and last, in an organization, the workstream handed
 to who decides. A toast says "<name> is created" and the page becomes the workstream, on Tasks. A task cannot be
