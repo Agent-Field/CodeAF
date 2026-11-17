@@ -274,6 +274,16 @@ type WorkstreamTask struct {
 	// READ TIME by the organization's server and never kept, so a task that
 	// says running with nothing behind it can offer Start (L6).
 	Run *TaskRunNow `json:"run,omitempty"`
+	// Starts is the task's own word on starting once nothing it waits on is
+	// unfinished: TaskStartsWhenReady or TaskStartsByHand. Empty follows the
+	// default (StartsBySelf): the plan it belongs to, else its owner's
+	// "Start tasks when what they wait on is done".
+	Starts string `json:"starts,omitempty"`
+	// StartsWhenReady is what Starts resolves to for an Afi or chat task, so
+	// the task's facts line can say "Starts when ready" or "Waits for you to
+	// start". It is FILLED AT READ TIME and never kept: the owner's default
+	// can change without the task changing.
+	StartsWhenReady *bool `json:"starts_when_ready,omitempty"`
 }
 
 // TaskRunNow is a running task's run, as its server sees it now.
@@ -298,6 +308,12 @@ type TaskCheckItem struct {
 const (
 	TaskChecklistMost     = 30
 	TaskChecklistLineMost = 200
+)
+
+// The two words a task's Starts may hold.
+const (
+	TaskStartsWhenReady = "when_ready"
+	TaskStartsByHand    = "by_hand"
 )
 
 // TaskForYou is what a task holds for the person reading it (SPEC "Comments
@@ -361,6 +377,7 @@ var (
 	ErrTaskNotOwner     error = TaskRefused("only the task's owner can do this")
 	ErrTaskNotAnswerer  error = TaskRefused("only the task's owner answers its question")
 	ErrTaskNotStopper   error = TaskRefused("only the task's owner or whoever looks after this workstream can stop or move it")
+	ErrTaskNotStarter   error = TaskRefused("only the task's owner or whoever looks after this workstream can say whether it starts by itself")
 	ErrTaskNoAsk              = errors.New("this task is not waiting on a question")
 	ErrTaskOfferGone          = errors.New("that offer is not open")
 	ErrTaskUndoOver           = errors.New("the five seconds to undo this have passed")
@@ -678,6 +695,9 @@ type TaskPatch struct {
 	// its own lines as it works, a person ticks theirs.
 	CheckDone   []string `json:"check_done,omitempty"`
 	CheckUndone []string `json:"check_undone,omitempty"`
+	// Starts sets the task's own word on starting by itself (see
+	// WorkstreamTask.Starts); "" goes back to the default.
+	Starts *string `json:"starts,omitempty"`
 }
 
 // TaskAskLater is Later on one of a task's Asks.
@@ -759,6 +779,21 @@ func ApplyPatch(t WorkstreamTask, p TaskPatch, a TaskActor, by TaskEventBy, all 
 			g := groupFor(*p.Group, all)
 			t.Group = &g
 		}
+	}
+	if p.Starts != nil && *p.Starts != t.Starts {
+		// WHETHER A TASK STARTS BY ITSELF IS THE OWNER'S, or whoever looks
+		// after the workstream's (owner decisions 2026-11-17, 1), the same
+		// people who may stop it.
+		if !MayStop(t, a) {
+			return TaskChange{}, ErrTaskNotStarter
+		}
+		switch *p.Starts {
+		case "", TaskStartsWhenReady, TaskStartsByHand:
+		default:
+			return TaskChange{}, taskInvalidf("starts is %q, %q or empty", TaskStartsWhenReady, TaskStartsByHand)
+		}
+		t.Starts = *p.Starts
+		event(TaskEventState, by.Name+" set it to “"+StartsWords(t.Starts)+"”")
 	}
 	if p.Results != nil {
 		t.Results = slices.Clone(*p.Results)
@@ -1213,6 +1248,74 @@ func SetOffer(t WorkstreamTask, ev WorkstreamTaskEvent, state string, a TaskActo
 	}
 	ev.Offer = &o
 	return ev, nil
+}
+
+// TASKS START BY THEMSELVES WHEN THEIR WAITS CLEAR (owner decisions
+// 2026-11-17, 1: "the person decides once, and the work carries on").
+// StartsBySelf is whether t, released by the last task it waited on, starts
+// without another click. In order:
+//
+//   - only an Afi or chat task starts by itself: a person's task lands in
+//     that person's Waiting on you and Due, and a Factory job starts at the
+//     Factory;
+//   - the task's own word (Starts) wins;
+//   - a plan nobody has started yet waits for its Start (StartAllAt or more
+//     tasks in one batch, every one still up next), and a plan that was
+//     started is consent for the whole plan;
+//   - otherwise the owner's "Start tasks when what they wait on is done",
+//     which is on unless they turned it off (ownerDefault).
+//
+// Nothing else changes: an Ask, the spending rule and the decision check
+// still pause the task once it runs.
+func StartsBySelf(t WorkstreamTask, all []WorkstreamTask, ownerDefault bool) bool {
+	if t.DoneBy.Kind != TaskByAfi && t.DoneBy.Kind != TaskByChat {
+		return false
+	}
+	switch t.Starts {
+	case TaskStartsWhenReady:
+		return true
+	case TaskStartsByHand:
+		return false
+	}
+	if started, plan := planStarted(t, all); plan {
+		return started
+	}
+	return ownerDefault
+}
+
+// StartsWords is the facts line's words for a task's own Starts; empty is
+// the default's words, which the reader resolves.
+func StartsWords(starts string) string {
+	switch starts {
+	case TaskStartsWhenReady:
+		return "Starts when ready"
+	case TaskStartsByHand:
+		return "Waits for you to start"
+	}
+	return "Starts as its owner's settings say"
+}
+
+// StartAllAt is how many tasks of one batch make it a plan that waits for
+// Start (the spec's "five or more tasks from one request").
+const StartAllAt = 5
+
+// planStarted says whether t belongs to a plan, and if so whether anything in
+// it has started.
+func planStarted(t WorkstreamTask, all []WorkstreamTask) (started, plan bool) {
+	if t.Group == nil || t.Group.Kind != "batch" {
+		return false, false
+	}
+	n := 0
+	for _, o := range all {
+		if o.Group == nil || o.Group.ID != t.Group.ID {
+			continue
+		}
+		n++
+		if o.State != TaskUpNext {
+			started = true
+		}
+	}
+	return started, n >= StartAllAt
 }
 
 // StartAll names a group's Afi and chat tasks that are up next and wait on

@@ -513,6 +513,8 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.org_workstream_task_comment` | `in.OrgTaskCommentParams` | `json.RawMessage` |
 | `factory.org_workstream_task_events` | `in.OrgTaskParams` | `OrgTaskEvents` |
 | `factory.org_workstream_tasks_start_all` | `in.OrgTasksStartAllParams` | `OrgTasks` |
+| `factory.org_work` | `in.OrgConn` | `json.RawMessage` |
+| `factory.org_work_set` | `in.OrgWorkSetParams` | `json.RawMessage` |
 | `factory.org_workstreams_requestable` | `in.OrgConn` | `json.RawMessage` |
 | `factory.org_workstream_request` | `in.OrgTaskRequestParams` | `json.RawMessage` |
 | `factory.org_workstream_task_view` | `in.OrgTaskViewParams` | `json.RawMessage` |
@@ -1061,9 +1063,23 @@ Factory task's first overlay) takes any of `title`, `request`, `owner` (hand on)
 ticks a person task (`state` `done`). Stopping (`state` `stopped`) and `move_to` are the
 task owner's or whoever looks after the workstream's (its steward, or full access);
 anyone else gets 403 "only the task's owner or whoever looks after this workstream can
-stop or move it". The tick starts nothing: an Afi or chat task that
-waited only on it stays `up_next`, unchanged, and its thread gains "Ready to start: <title>
-is done"; `running` is set only by whoever wakes the doer. On the server that is a
+stop or move it". TASKS START BY THEMSELVES WHEN THEIR WAITS CLEAR (hello
+`org_task_starts`; owner decisions 2026-11-17, 1): when a tick or a run's `done` finishes
+the last thing an Afi task waited on, and the task starts by itself, the server starts Afi
+on it inside that same write, with the rights of whoever finished the work, and its thread
+gains "Started: <title> is done". Whether it starts by itself is, in order: its own `starts`
+(`when_ready` or `by_hand`; set with `_task_update`'s `starts` by its owner or whoever looks
+after the workstream, 403 otherwise, `""` back to the default, and the thread reads "<name>
+set it to “Starts when ready”"); a plan (a `batch` of five or more) nobody has started waits
+for its Start, and a started plan is consent for all of it; else the owner's "Start tasks
+when what they wait on is done", on unless they turned it off. Every Afi and chat task reads
+back `starts_when_ready`, what that resolves to, filled when read and never kept.
+`factory.org_work {}` `GET /v1/me/work` and `factory.org_work_set {start_when_ready}` `PUT
+/v1/me/work` read and write the signed-in person's own default (`{start_when_ready}`). Any
+other release starts nothing: a chat's task (woken on its person's machine), a task Afi
+cannot take now (no model key, already being worked on) and a task that does not start by
+itself stay `up_next`, unchanged, and the thread gains "Ready to start: <title> is done";
+there, `running` is set only by whoever wakes the doer. On the server that is a
 person's own `state` `running` on an Afi task: the server starts Afi on it in the
 task's own run (the caller's rights, nobody's conversation) inside the same write, and
 the task says `running` only once Afi took it; a server that cannot run Afi, a task
