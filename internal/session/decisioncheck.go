@@ -113,12 +113,26 @@ func decisionCheckPrompt(decisions []checkDecision, work checkWork) string {
 	b.WriteString("(a delivery-notes field that asks for a home address breaks \"we never store addresses\"; a launch planned for after a stated deadline breaks the deadline). ")
 	b.WriteString("Work that keeps to a decision, plans around it, or only mentions its subject does NOT go against it. When unsure, it does not.\n\n")
 	b.WriteString("Answer with JSON only, no other words:\n")
-	b.WriteString(`{"conflicts":[{"decision":<number>,"why":"<one short line on how the work goes against it>"}]}`)
+	b.WriteString(`{"conflicts":[{"decision":<number>,"why":"<one short line on how the work goes against it, never naming a decision by its number>"}]}`)
 	b.WriteString("\nor, when nothing conflicts:\n{\"conflicts\":[]}")
 	return b.String()
 }
 
 var decisionJSON = regexp.MustCompile(`(?s)\{.*\}`)
+
+// listNumber is the check's own numbering leaking into its why ("which
+// decision 3 forbids"): the number means nothing outside the prompt, and the
+// person reads the why on the Ask (live2/E6c).
+var listNumber = regexp.MustCompile(`(?i)\b(decision|rule|item)\s*(no\.?|#)?\s*\d+\b`)
+
+func withoutListNumber(why string) string {
+	return strings.TrimSpace(listNumber.ReplaceAllStringFunc(why, func(m string) string {
+		if m[0] >= 'A' && m[0] <= 'Z' {
+			return "The decision"
+		}
+		return "the decision"
+	}))
+}
 
 // readDecisionCheck reads the model's answer. A reply that cannot be read, or
 // names a decision that is not there, finds no conflict (WHEN IN DOUBT, IT IS
@@ -145,7 +159,7 @@ func readDecisionCheck(reply string, decisions []checkDecision) []decisionConfli
 			continue
 		}
 		seen[n] = true
-		out = append(out, decisionConflict{Decision: decisions[n-1], Why: oneLine(c.Why)})
+		out = append(out, decisionConflict{Decision: decisions[n-1], Why: withoutListNumber(oneLine(c.Why))})
 	}
 	return out
 }
@@ -413,7 +427,7 @@ func conflictAsked(reply string, d checkDecision) string {
 	_ = json.Unmarshal([]byte(reply), &got)
 	switch a := strings.TrimSpace(got.Asked); {
 	case strings.EqualFold(a, "you"):
-		return "the person you are talking to"
+		return "the person you are talking to, and nobody else,"
 	case a != "":
 		return a
 	}

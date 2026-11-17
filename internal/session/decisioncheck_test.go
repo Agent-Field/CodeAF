@@ -146,7 +146,7 @@ func TestAConflictTheDoorCannotAskClaimsNoPause(t *testing.T) {
 // The reply names whoever the door asked: on Personal that is the person in
 // the conversation, never a name from the decision's byline.
 func TestTheReplyNamesWhoTheDoorAsked(t *testing.T) {
-	if got := conflictAsked(`{"asked":"you"}`, checkDecision{ByName: "Priya"}); got != "the person you are talking to" {
+	if got := conflictAsked(`{"asked":"you"}`, checkDecision{ByName: "Priya"}); got != "the person you are talking to, and nobody else," {
 		t.Fatal(got)
 	}
 	if got := conflictAsked(`{"asked":"Santosh"}`, checkDecision{ByName: "Priya"}); got != "Santosh" {
@@ -154,5 +154,13 @@ func TestTheReplyNamesWhoTheDoorAsked(t *testing.T) {
 	}
 	if got := conflictAsked(`{}`, checkDecision{ByName: "Priya"}); got != "Priya" {
 		t.Fatal(got)
+	}
+}
+
+// The check's numbering never reaches the person (live2/E6c).
+func TestTheWhyNeverNamesADecisionByItsNumber(t *testing.T) {
+	got := readDecisionCheck(`{"conflicts":[{"decision":1,"why":"It stores birthdays, which decision 3 forbids; Decision #1 too"}]}`, []checkDecision{{ID: "dc_1", Text: "No birthdays"}})
+	if len(got) != 1 || got[0].Why != "It stores birthdays, which the decision forbids; The decision too" {
+		t.Fatalf("%+v", got)
 	}
 }
