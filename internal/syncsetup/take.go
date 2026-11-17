@@ -837,7 +837,7 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	}
 	var stageComplete bool
 	var preRoot string
-	preWorkspace := workspaceOf(root)
+	preWorkspace := keptFolderOf(root)
 	stallBound := func() time.Duration {
 		if c.opt.IdleWithin > 0 {
 			return c.opt.IdleWithin
@@ -2418,7 +2418,20 @@ func (l engineLocal) Seal(ctx context.Context, c cell.Cell) (string, uint32, err
 	if err != nil {
 		return "", 0, err
 	}
-	sealed, err := l.eng.SealRecovered(ctx, opened)
+	eng := l.eng
+	if eng.FolderGone(opened) {
+		// UNSAVED WORDS OUTLIVE THE FOLDER THEY WERE SPOKEN IN. A seal of a folder
+		// that is not there refuses (cellstore.ErrWorkspaceGone), which would
+		// stop the move for a chat whose words still have to be kept. They are
+		// sealed against this copy's own empty work/ folder instead, so the
+		// branch holds the conversation and the deleted path is never made again.
+		own := session.Place{Dir: c.Root, Owned: true}.Work()
+		if err := os.MkdirAll(own, 0o700); err != nil {
+			return "", 0, err
+		}
+		eng.WorkspaceOf = func(cell.Cell) string { return own }
+	}
+	sealed, err := eng.SealRecovered(ctx, opened)
 	return sealed.Turn.ID, 1, err
 }
 
@@ -2440,6 +2453,25 @@ func workspaceOf(root string) string {
 func projectOf(root string) (string, bool) {
 	m, err := session.LoadMeta(root)
 	return m.Workspace, err == nil && !m.Owned && dirExists(m.Workspace) && !cellstore.ForeignFolder(root, m.Workspace)
+}
+
+// keptFolderOf is the folder this computer's older copy of the chat at root
+// kept its files in, which is what that copy is checked for unsaved edits
+// against. It is the project folder the record names even when that folder was
+// deleted: [workspaceOf] answers with the chat's own work/ folder for a project
+// that is not here, a folder the take itself creates before the check runs, so
+// asking it would check the new empty folder and never see that the old files
+// are gone. A folder that is not there holds no edits, and the check says so.
+//
+// ONLY WHEN NO FOLDER OF THIS CHAT IS HERE AT ALL. A work/ folder that already
+// exists may hold files, and the older answer, which checks it, stays.
+func keptFolderOf(root string) string {
+	m, err := session.LoadMeta(root)
+	if err == nil && !m.Owned && strings.TrimSpace(m.Workspace) != "" && !dirExists(m.Workspace) &&
+		!cellstore.ForeignFolder(root, m.Workspace) && !dirExists(session.Place{Dir: root, Owned: true}.Work()) {
+		return m.Workspace
+	}
+	return workspaceOf(root)
 }
 
 func borrowsProject(root string) bool {
