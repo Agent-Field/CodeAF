@@ -19,7 +19,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
-	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // ── THE WORKSTREAM TOOLS, ANSWERED FOR THE SERVER'S AGENT ──────────────────
@@ -148,8 +147,6 @@ func (d *agentDoor) Work(ctx context.Context, tool string, args json.RawMessage)
 		out, err = d.wsDecisions(ctx, args)
 	case "ws_task_conflict":
 		out, err = d.wsTaskConflict(ctx, args)
-	case session.WSProposeSetupTool:
-		out, err = d.wsProposeSetup(ctx, args)
 	default:
 		return "", errors.New("this workstream tool is not served here")
 	}

@@ -1,14 +1,14 @@
 ---
 kind: added
-title: A new workstream starts with Afi asking what it is for, then a setup card to change and accept
-pr: 0
+title: A new workstream starts as a conversation with Afi and a card; nothing exists until Create workstream
+pr: 2752
 surface: [app, engine]
 invalidates:
-  - "New workstream opened a sheet that asked for a name first, and the new workstream then offered \"Draft the brief and tasks\", which sent Afi searching an empty workstream. Now the workstream is made at once with Afi's question already showing, and Afi proposes the whole setup as one card with ws_propose_setup."
-  - "Afi could only make tasks one at a time and had no way to propose a workstream's name, goal, people, rules and plan together. ws_propose_setup keeps one card per person; Accept in the app holds it behind Undo for five seconds, then applies it all at once."
+  - "New workstream opened a sheet that asked for a name first, and the new workstream then offered \"Draft the brief and tasks\", which sent Afi searching an empty workstream. Now New workstream opens a page that is only Afi's conversation; Afi proposes the whole setup as one card (name, what it is for, people, inside, ticked first tasks, Library pages, rules), and nothing exists and nobody is told until Create workstream."
+  - "There is no empty \"New workstream\" left behind: the page is the window's memory until Create, and Set up by hand opens the same card empty."
 ---
 
-Owner decision 2026-11-17 §9. The tool is spelled once in internal/session/tools_workstream_setup.go,
-served by the organization's server (the card is kept on the workstream for the person who asked,
-read back as GET's setup_card, cleared with PATCH's drop_setup_card) and pinned by the desktop app
-for a Personal workstream. A task's run cannot propose one.
+Owner decisions 2026-11-17 §9 and §11 (v2 designs, screen 5). The card is the desktop app's: before
+Create there is no workstream for an agent to work in, so each of Afi's turns is an agents.errand and
+no tool or store keeps the card. This change is the chat manual's page for it,
+internal/manual/chat/workstream-new-setup.md.

@@ -62,7 +62,7 @@ When "Start without asking" covers what one run may spend, the order runs alone.
 
 ## a workstream inside a workstream — nesting, one level only, and what it shares with its parent
 
-A workstream can sit inside one other workstream (Meal planner inside Pantry), and the nesting stops there: a workstream that is already inside another cannot be a parent, and one that has workstreams inside it cannot move inside another. Making one goes through New workstream, "Where: Inside Pantry", which offers only top-level workstreams.
+A workstream can sit inside one other workstream (Meal planner inside Pantry), and the nesting stops there: a workstream that is already inside another cannot be a parent, and one that has workstreams inside it cannot move inside another. Making one goes through New workstream: its card's "Inside" line offers only top-level workstreams.
 
 A workstream inside another:
 

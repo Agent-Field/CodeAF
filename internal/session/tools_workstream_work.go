@@ -298,14 +298,8 @@ type decisionGuard func(ctx context.Context, tool string, args json.RawMessage, 
 // workstreamWorkBelt is the ten tools onto door, the two that start or
 // finish work checked by guard against the workstream's decisions.
 func workstreamWorkBelt(door WorkstreamWorkDoor, guard decisionGuard) []bare.Tool {
-	return workstreamToolsOnto(door, workstreamWorkTools, guard)
-}
-
-// workstreamToolsOnto is defs onto door, the ones that start or finish work
-// checked by guard when there is one.
-func workstreamToolsOnto(door WorkstreamWorkDoor, defs []WorkstreamWorkTool, guard decisionGuard) []bare.Tool {
-	tools := make([]bare.Tool, 0, len(defs))
-	for _, def := range defs {
+	tools := make([]bare.Tool, 0, len(workstreamWorkTools))
+	for _, def := range workstreamWorkTools {
 		name := def.Name
 		tools = append(tools, bare.Tool{
 			Name: name, Description: def.Description, Schema: def.InputSchema,

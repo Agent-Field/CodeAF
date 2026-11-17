@@ -318,7 +318,6 @@ func (h *Handler) workstreamBody(ws factory.OrgWorkstream, v Viewer) (api.Workst
 		Driver:            h.workstreamDriver(ws.ID),
 		People:            h.workstreamPeople(ws, nameOf),
 		Rules:             rulesFor(ws, nameOf),
-		SetupCard:         setupCardFor(ws, v),
 	}, nil
 }
 
@@ -574,9 +573,6 @@ func (h *Handler) patchWorkstream(w http.ResponseWriter, r *http.Request) {
 			return nil, err
 		}
 		rulesChanged = changedRules
-		if body.DropSetupCard {
-			dropSetupCard(&cur, v.Handle)
-		}
 		if changedRules {
 			// A RULE SET IN PEOPLE AND RULES IS A DECISION, made by the
 			// steward who set it.

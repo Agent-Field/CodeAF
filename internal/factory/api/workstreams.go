@@ -116,13 +116,7 @@ type Workstream struct {
 	// it runs, filled with the defaults when it never set any.
 	People []WorkstreamMember `json:"people"`
 	Rules  WorkstreamRules    `json:"rules"`
-	// SetupCard is the setup Afi proposed to the caller and they have not yet
-	// accepted or dropped; absent when there is none. Nobody else's is shown.
-	SetupCard *WorkstreamSetupCard `json:"setup_card,omitempty"`
 }
-
-// WorkstreamSetupCard is a setup Afi proposed (factory.WorkstreamSetupCard).
-type WorkstreamSetupCard = factory.WorkstreamSetupCard
 
 // The kinds a workstream member may be.
 const (
@@ -223,9 +217,6 @@ type WorkstreamPatch struct {
 	Rules   *WorkstreamRules `json:"rules,omitempty"`
 	Steward *string          `json:"steward,omitempty"`
 	Parent  *string          `json:"parent,omitempty"`
-	// DropSetupCard clears the setup card Afi proposed to the caller: sent
-	// with the rest of an accepted card, or alone when it is dismissed.
-	DropSetupCard bool `json:"drop_setup_card,omitempty"`
 }
 
 // WorkstreamSharesPut is PUT /v1/workstreams/{id}/shares's body, and it lands

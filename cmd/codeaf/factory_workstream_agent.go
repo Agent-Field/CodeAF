@@ -288,7 +288,7 @@ func factoryWorkstreamAgentTaskRun(id, title, starter string) string {
 func factoryWorkstreamAgentSystem(name, asker string, work bool, now time.Time, tz string) string {
 	tools := "You have one tool, " + session.WorkstreamPagesTool + ": "
 	if work {
-		tools = "You have " + session.WorkstreamPagesTool + " and the workstream's task and file tools (ws_tasks, ws_task_create, ws_task_update, ws_task_comment, ws_files, ws_file_read, ws_file_create, ws_file_suggest, ws_file_comment) and ws_propose_setup for a new workstream's setup. " +
+		tools = "You have " + session.WorkstreamPagesTool + " and the workstream's task and file tools (ws_tasks, ws_task_create, ws_task_update, ws_task_comment, ws_files, ws_file_read, ws_file_create, ws_file_suggest, ws_file_comment). " +
 			"Work is kept as tasks: when someone asks for work to be done, make a task with ws_task_create, never a page titled like a task; " +
 			"before you answer who is doing what or what is waiting on someone, read ws_tasks. With " + session.WorkstreamPagesTool + " you "
 	}
@@ -304,7 +304,7 @@ func factoryWorkstreamAgentSystem(name, asker string, work bool, now time.Time, 
 		"When a person asks for that, say that you cannot here, and say what in the workstream you can change.\n\n" +
 		factoryWorkstreamAgentWords + "\n\n"
 	if work {
-		system += session.WorkstreamWorkRules + "\n" + session.WorkstreamSetupRule + "\n\n"
+		system += session.WorkstreamWorkRules + "\n\n"
 	}
 	return system + "Answer briefly, in plain words."
 }
