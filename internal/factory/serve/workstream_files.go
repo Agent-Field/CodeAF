@@ -447,6 +447,10 @@ func (h *Handler) readFileJSON(w http.ResponseWriter, r *http.Request, out any) 
 		h.fail(w, http.StatusUnprocessableEntity, "invalid JSON body: "+err.Error())
 		return false
 	}
+	if d.Decode(new(any)) != io.EOF {
+		h.fail(w, http.StatusUnprocessableEntity, "body must contain one JSON object")
+		return false
+	}
 	return true
 }
 

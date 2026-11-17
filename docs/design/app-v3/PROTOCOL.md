@@ -4192,3 +4192,7 @@ bytes in base64, `tasks` and `task_events`. File and task identities, `from_task
 and `used_by` links survive. `to` brings a chat's limited package into an existing
 workstream rather than creating one. Imported upload paths are replaced by server
 blobs. Repeating a whole-workstream import completes the same destination.
+
+`from_chat` on file creation and file records associates an attachment with its
+chat without changing its maker. File-bearing imports share the ordinary upload
+request envelope (`uploadBodyMost`) rather than the 1 MiB JSON-only limit.
