@@ -21,7 +21,7 @@ func doneRunner(o *wsOrg, t *testing.T) (asked func(title string) (AgentTurn, bo
 		mu.Lock()
 		seen[turn.Task.Title] = turn
 		mu.Unlock()
-		_, err := turn.Door.(workDoor).Work(ctx, "ws_task_update", json.RawMessage(`{"task":"`+turn.Task.ID+`","state":"done"}`))
+		_, err := turn.Door.(workDoor).Work(ctx, "ws_task_update", json.RawMessage(`{"task":"`+turn.Task.ID+`","state":"done","handoff":"Did the task."}`))
 		return AgentTurnEnd{}, err
 	})
 	return func(title string) (AgentTurn, bool) {
