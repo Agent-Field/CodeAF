@@ -28,7 +28,7 @@ func (h *Handler) importWorkstreamContents(w http.ResponseWriter, ws factory.Org
 			f.MadeBy.For = v.Handle
 		}
 		if f.Kind == factory.FileUpload {
-			if len(item.Data) > 25<<20 {
+			if len(item.Data) > uploadMost {
 				h.fail(w, 422, "an upload may be at most 25 MiB")
 				return false
 			}
