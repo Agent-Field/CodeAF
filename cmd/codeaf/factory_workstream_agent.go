@@ -308,8 +308,6 @@ func factoryAgentWorkWords(e session.Event) (string, bool) {
 		return "suggested a change to a document", true
 	case session.WSFileCommentTool:
 		return "commented on a document", true
-	case session.WSDecisionsTool:
-		return "read the decisions", true
 	}
 	return "", false
 }
