@@ -515,6 +515,9 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.org_workstream_tasks_start_all` | `in.OrgTasksStartAllParams` | `OrgTasks` |
 | `factory.org_workstreams_requestable` | `in.OrgConn` | `json.RawMessage` |
 | `factory.org_workstream_request` | `in.OrgTaskRequestParams` | `json.RawMessage` |
+| `factory.org_workstream_task_view` | `in.OrgTaskViewParams` | `json.RawMessage` |
+| `factory.org_workstream_decision_withdraw` | `in.OrgDecisionParams` | `json.RawMessage` |
+| `factory.org_workstream_decision_replace` | `in.OrgDecisionParams` | `json.RawMessage` |
 | `factory.org_canvases` | `in.OrgConn` | `OrgCanvasList` |
 | `factory.org_canvas_get` | `in.OrgCanvasParams` | `json.RawMessage` |
 | `factory.org_canvas_create` | `in.OrgCanvasCreateParams` | `json.RawMessage` |

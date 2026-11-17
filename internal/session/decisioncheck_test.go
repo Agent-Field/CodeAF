@@ -109,3 +109,14 @@ func jsonSaid(s string) string {
 	_ = json.Unmarshal([]byte(s), &o)
 	return o.Said
 }
+
+func TestADocumentAgainstADecisionIsNotWritten(t *testing.T) {
+	f := &fakeWorkstream{decisions: pantryDecisions}
+	out, isErr, _ := guardDecisionsWith(context.Background(), WSFileCreateTool, json.RawMessage(`{"name":"What's new","markdown":"Pantry Plus is now $5.99"}`), f.call,
+		func(context.Context, string) (string, error) {
+			return `{"conflicts":[{"decision":1,"why":"raises the price"}]}`, nil
+		})
+	if !isErr || !strings.HasPrefix(out, "Nothing written") || strings.Contains(strings.Join(f.calls, ","), WSFileCreateTool) {
+		t.Fatalf("calls %v, out %q", f.calls, out)
+	}
+}

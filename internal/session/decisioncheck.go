@@ -176,7 +176,15 @@ func checkAgainstDecisions(ctx context.Context, ask func(ctx context.Context, pr
 type workstreamCall func(ctx context.Context, tool string, args json.RawMessage) (text string, isError bool, err error)
 
 // guardsDecisions is whether tool is one the check stands around.
-func guardsDecisions(tool string) bool { return tool == WSTaskCreateTool || tool == WSTaskUpdateTool }
+//
+// ws_file_create is among them because a document an agent writes is shared
+// the moment it lands: live2/E6 measured flash naming the right decision in
+// 20 of 20 conflicting requests and still writing the conflicting work into
+// shared Files or Tasks in 8 of 10. Detection was never the gap; acting on it
+// was, so the app acts.
+func guardsDecisions(tool string) bool {
+	return tool == WSTaskCreateTool || tool == WSTaskUpdateTool || tool == WSFileCreateTool
+}
 
 // guardDecisions runs tool through call, checked against the workstream's
 // decisions first. New work that goes against one is made, then paused on the
@@ -201,6 +209,9 @@ func guardDecisionsWith(ctx context.Context, tool string, args json.RawMessage, 
 		var s string
 		_ = json.Unmarshal(in[k], &s)
 		return strings.TrimSpace(s)
+	}
+	if tool == WSFileCreateTool {
+		return guardFile(ctx, args, str, call, ask)
 	}
 	finishing := tool == WSTaskUpdateTool && str("state") == "done"
 	if tool == WSTaskUpdateTool && !finishing {
@@ -357,4 +368,30 @@ func finishedWork(ctx context.Context, call workstreamCall, task string, in map[
 	}
 	w.Result = strings.TrimSpace(b.String())
 	return w
+}
+
+// guardFile checks a document an agent is about to write into shared Files.
+// One that goes against a decision is NOT WRITTEN: there is no task to pause
+// yet, so the agent is told to make one, which the check pauses on an Ask to
+// the decision's maker. A folder, a link or an empty document is not checked.
+func guardFile(ctx context.Context, args json.RawMessage, str func(string) string, call workstreamCall, ask func(context.Context, string) (string, error)) (string, bool, error) {
+	words := str("markdown")
+	if words == "" {
+		return call(ctx, WSFileCreateTool, args)
+	}
+	decisions := workstreamDecisions(ctx, call)
+	if len(decisions) == 0 {
+		return call(ctx, WSFileCreateTool, args)
+	}
+	conflicts, err := checkAgainstDecisions(ctx, ask, decisions, checkWork{Title: str("name"), Result: words})
+	if err != nil || len(conflicts) == 0 {
+		return call(ctx, WSFileCreateTool, args)
+	}
+	var against []string
+	for _, c := range conflicts {
+		maker := firstNonBlank(c.Decision.ByName, c.Decision.By, "whoever made it")
+		against = append(against, "“"+c.Decision.Text+"” ("+maker+"'s decision; "+c.Why+")")
+	}
+	return "Nothing written: this goes against " + strings.Join(against, " and ") +
+		". Write nothing shared that goes against it. Make a task for this work with ws_task_create: the app pauses it and asks whoever made the decision, and you tell the person you are talking to who was asked.", true, nil
 }
