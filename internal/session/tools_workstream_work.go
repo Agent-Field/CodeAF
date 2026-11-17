@@ -111,6 +111,17 @@ const WorkstreamWordsRule = "- Talk in the words the person sees. Name a task by
 	"when the person must do something themselves, say what to do and where (\"delete it from Tasks\"), not which control to press. " +
 	"Never quote a tool's name, such as ws_task_create, to the person: say what you did (\"I made a task\")."
 
+// WorkstreamDoneBySchema is ws_task_create's done_by, as a JSON schema: WHO
+// does the work, named exactly (org-space DESIGN §11.1, lane L1). It is one
+// string so a person and an agent are named the same way; the server's door
+// (factory/serve/workstream_doer_ref.go) and the desk's Personal belt
+// (crates/core/src/workstream_tools/doer_ref.rs) read the same grammar. Lane
+// L7's brief schema interpolates this constant rather than restating it.
+// "this_chat" and a bare "person" (the owner) still parse, for old prompts,
+// and are not offered.
+const WorkstreamDoneBySchema = `{"type":"string","pattern":"^(afi|this_chat|factory|person|person:.+|agent:.+)$",` +
+	`"description":"Who does the work: \"afi\" (you, the default), \"person:<id>\" (that person ticks it when done; an owner.id from ws_tasks), \"agent:<id>\" (one of the workstream's agents), or \"factory\" (a Factory job, started in the Factory). A review or sign-off is done by the reviewer, never by the owner."}`
+
 var workstreamWorkTools = []WorkstreamWorkTool{
 	{Name: WSTasksTool, Category: "read",
 		Description: "List the workstream's tasks, or read one whole with its activity and comments (set task). " +
@@ -126,7 +137,8 @@ var workstreamWorkTools = []WorkstreamWorkTool{
 			"Read it before you plan work. Never work around a decision: work that goes against one is paused by the app, and the person who made it is asked.",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`)},
 	{Name: WSTaskCreateTool, Category: "create",
-		Description: "Create a task in the workstream; everyone in it sees it, with this chat named as who does it. " +
+		Description: "Create a task in the workstream; everyone in it sees it, with who does it named on it. " +
+			"Name WHO does the work in done_by: a review or sign-off meant for someone is done by that person (person:<their id>), never by its owner. " +
 			"Not everything said in a chat becomes a task: create one for work that runs beyond your reply, changes a file, or matters to someone else, and say so in your reply. " +
 			"request is only what is to be done, in a few lines; never the private conversation. " +
 			"The person you are talking to owns it unless you name another owner. " +
@@ -136,7 +148,7 @@ var workstreamWorkTools = []WorkstreamWorkTool{
 			`"title":{"type":"string","minLength":1,"maxLength":200},` +
 			`"request":{"type":"string","minLength":1,"maxLength":4000,"description":"What is to be done, in a few lines. Never the conversation."},` +
 			`"owner":{"type":"string","description":"Who answers for it: \"me\" (the person you are talking to, the default), \"everyone\", or a person's id from ws_tasks. Someone invited who has not joined goes by an id starting invite:, and a task they do waits until they join."},` +
-			`"done_by":{"type":"string","enum":["this_chat","factory","person"],"description":"Who does the work: this chat (the default), the Factory, or a person (the owner ticks it when done)."},` +
+			`"done_by":` + WorkstreamDoneBySchema + `,` +
 			`"waiting_on":{"type":"array","items":{"type":"string"},"maxItems":20,"description":"Ids of tasks in this workstream that must finish first."},` +
 			`"due":{"type":"string","pattern":"^[0-9]{4}-[0-9]{2}-[0-9]{2}$","description":"YYYY-MM-DD, only when the person gave a date."},` +
 			`"group":{"type":"string","maxLength":200,"description":"A batch's name; tasks with the same group sit together."},` +

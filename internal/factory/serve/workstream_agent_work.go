@@ -359,21 +359,8 @@ func (d *agentDoor) wsTaskCreate(ctx context.Context, args json.RawMessage) (any
 	}
 	body := factory.TaskCreate{Title: title, Request: request, Owner: owner, WaitingOn: a.WaitingOn, Due: a.Due, Checklist: a.Checklist,
 		CameFrom: &factory.TaskCameFrom{Kind: factory.TaskByChat, ChatID: "afi", Name: "Afi"}}
-	switch a.DoneBy {
-	case "", "this_chat":
-		body.DoneBy = factory.TaskDoneBy{Kind: factory.TaskByAfi, Name: "Afi"}
-	case "person":
-		// The owner ticks a person task, so the owner does it: the person it
-		// answers, or the person named.
-		who := factory.NormalizeHandle(d.asker)
-		if owner != nil && owner.Kind == factory.TaskOwnerPerson {
-			who = owner.ID
-		}
-		body.DoneBy = factory.TaskDoneBy{Kind: factory.TaskByPerson, ID: who, Name: d.h.personNames()(who)}
-	case "factory":
-		return nil, errors.New("a Factory task is a Factory job in this workstream: ask the person to start the job in the Factory, and it appears in Tasks by itself")
-	default:
-		return nil, fmt.Errorf("invalid arguments: done_by is this_chat, factory or person, not %q", a.DoneBy)
+	if body.DoneBy, err = d.doerOfWord(ctx, a.DoneBy, owner); err != nil {
+		return nil, err
 	}
 	if g := strings.TrimSpace(a.Group); g != "" {
 		if g, err = agentWords(g, "group", 200); err != nil {

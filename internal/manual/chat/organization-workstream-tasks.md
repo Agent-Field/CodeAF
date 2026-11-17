@@ -58,7 +58,11 @@ More › **Change who does it** hands the work to someone else: a person in the 
 
 More › **Change the owner** (it was called "Hand to someone") changes only who answers for the task. Owner and doer are always changed separately.
 
-On an organization's workstream, Change who does it needs a server new enough to keep it. Its list offers Afi and the workstream's people. The organization's own shared agents are not offered there yet. On a Personal workstream the list also has your own agents and crews.
+On a running task the menu says **Stop and hand to** instead: it stops the task, then hands it on. On an organization's workstream, Change who does it needs a server new enough to keep it; on an older one the item is absent. The list offers the workstream's people and Afi. Agents and crews appear only once they are added to the workstream's own list of agents, which is not built yet, so today no named agent is offered, on an organization or on Personal.
+
+## Afi gave the task to the wrong person — a review is done by the reviewer
+
+When Afi makes a task it names who does it: Afi, a person in the workstream by name, or one of the workstream's agents. A review or a sign-off meant for Marco is done by Marco and owned by whoever asked, so it lands in Marco's Inbox and Marco ticks it. Before this, Afi could only say "a person", which always meant the owner, so "Marco reviews the store text" came out done by the person who asked. Afi is refused when it names someone outside the workstream or an agent the workstream has not added. If a task still has the wrong doer, More › Change who does it fixes it.
 
 ## tick a person task, change the owner, move it to another workstream
 
