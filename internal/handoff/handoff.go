@@ -97,9 +97,14 @@ type Taker struct {
 	// in the background (C1).
 	InstallState func(context.Context, cell.Cell, cell.Cell, string) error
 	// ConcurrentClaim issues StagePrepare and the conditional lease acquire
-	// concurrently from View's head and fence (F1). If the acquire is refused
-	// because the view was stale, Revalidate re-reads the directory record and
-	// falls back to the serial path.
+	// concurrently from View's head and fence (F1), but ONLY for a chat whose
+	// record shows no holder (never held, or released): taking that lease cannot
+	// fence anybody, so a fetch that then fails costs nobody anything. A chat
+	// somebody still holds, live or lapsed, is staged first and acquired after,
+	// as ever, so a take that fails before the chat opens leaves that holder
+	// exactly as it was. If the acquire is refused because the view was stale,
+	// Revalidate re-reads the directory record and the take falls back to the
+	// serial path, aimed at the holder and turn the person chose and nobody else.
 	ConcurrentClaim bool
 	Revalidate      func(context.Context) (directory.CellView, error)
 }
@@ -161,7 +166,12 @@ func (t Taker) TakeSeen(ctx context.Context, id string, seen *directory.LeaseExp
 	if seen != nil && seen.Head != "" {
 		how.Expect.Head = seen.Head
 	}
-	if kept != "" {
+	// ONLY A LEASE NOBODY HOLDS MAY BE ASKED FOR BESIDE THE FETCH. An acquire
+	// that displaces or outlasts a holder fences it the moment the relay commits
+	// it, and a fetch that then fails (the network, a bad chunk, a full disk)
+	// would leave that holder, possibly mid-turn on another computer, without its
+	// writer role for a take that never opened.
+	if kept != "" || !unheld(view.Cell.Lease) {
 		t.ConcurrentClaim = false
 	}
 	head, fence, acquired, err := t.claim(ctx, c, view.Cell.Head, how)
@@ -188,6 +198,11 @@ func displacing(v directory.CellView) directory.AcquireOpts {
 		Expect:             &directory.LeaseExpectation{Device: v.Cell.Lease.Device, Fence: v.Cell.Lease.Fence},
 	}
 }
+
+// unheld says the record shows nobody holding the chat: it was never held, or its
+// holder released it. A lapsed lease is NOT unheld: the holder may only be late
+// with a heartbeat, and an acquire would fence it.
+func unheld(l directory.Lease) bool { return l.Device == "" || l.Expires == 0 }
 
 // keepLocal seals unsealed local work onto a branch before any fetch. It
 // answers the branch id, or "" when the root is absent or clean. The
@@ -405,20 +420,21 @@ func (t Taker) fetchAndAcquire(ctx context.Context, stage cell.Cell, from, head 
 		if revErr != nil {
 			return "", 0, directory.Cell{}, fmt.Errorf("handoff: take %s: %w", stage.ID, revErr)
 		}
+		// THE PERSON'S CHOICE COVERS THE HOLDER AND THE TURN THEY SAW, AND NO
+		// OTHER. The acquire was refused because the record moved. If it now names
+		// a different holder or fence (another computer, or this one's other
+		// window, took the chat meanwhile), or a different turn than the card
+		// named, that is a lost race, refused exactly as the serial path refuses
+		// one. The take is never re-aimed at whoever holds the chat now: that
+		// would force a lease the person never saw. The acquire that follows is
+		// the one the person's own reading made, with the force it had then, and
+		// only a newer turn from the same holder is followed.
+		if how.Expect != nil && !how.Expect.Matches(freshView.Cell) {
+			return "", 0, directory.Cell{}, fmt.Errorf("handoff: take %s: %w", stage.ID, directory.ErrLeaseHeld)
+		}
 		head = freshView.Cell.Head
 		if fetcher, ok := t.Fetch.(*cellsync.Fetcher); ok {
 			fetcher.View = &freshView
-		}
-		origExpectHead := ""
-		if how.Expect != nil {
-			origExpectHead = how.Expect.Head
-		}
-		how = displacing(freshView)
-		if t.FreeOnly {
-			how.Force = false
-		}
-		if origExpectHead != "" {
-			how.Expect.Head = origExpectHead
 		}
 	}
 	if err := prepare(head); err != nil {

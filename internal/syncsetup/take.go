@@ -396,8 +396,18 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	}()
 	// Ask a local reader to let go immediately at the keypress when this device
 	// does not hold an active send lease, overlapping retirement with Dir.Cell.
-	if keepRoot && (seen == nil || seen.Device != c.sync.Device.ID()) {
-		if _, fence, lErr := c.sync.SendLease(id); lErr != nil || fence == 0 {
+	//
+	// ONLY A WINDOW THAT IS JUST OPEN IS ASKED THIS EARLY. At the keypress the take
+	// has not been allowed yet: the card may be stale, the relay unreachable, the
+	// chat held by somebody else now, and a refused take must leave a window that
+	// is working here working. So a window mid-turn, one waiting on its person, or
+	// one that cannot say what it is doing is asked later, by retire(), once the
+	// refusals that need only the directory's record are behind us, exactly where
+	// the old road asked. A refusal withdraws whatever was asked (retirer.cancel,
+	// deferred above). With CODEAF_MOVE_FILES_FIRST=1 nothing is asked early at all:
+	// that switch is the old road entire.
+	if keepRoot && !MoveFilesFirst() && (seen == nil || seen.Device != c.sync.Device.ID()) {
+		if _, fence, lErr := c.sync.SendLease(id); (lErr != nil || fence == 0) && retirer.isIdleReader() {
 			retireDone := handoff.Trace(c.opt.OnPhase, "retirement")
 			retirer.ask()
 			retireDone()
@@ -430,6 +440,12 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	localCache := &localWorkCache{eng: c.eng}
 	var view directory.CellView
 	supplied, explicitSupplied, hasSupplied := c.sync.takeCellView(id)
+	if MoveFilesFirst() {
+		// The old road reads the directory itself, in series. A record the list
+		// supplied or cached (consumed above, so it cannot serve a later take
+		// either) is never trusted in its place.
+		hasSupplied = false
+	}
 	if hasSupplied && !explicitSupplied {
 		lease := supplied.Cell.Lease
 		eligible := supplied.Cell.Head != "" && !supplied.Cell.Archived && c.sync.StorageAllowed()
@@ -552,6 +568,11 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		}
 		return from
 	}
+	if MoveFilesFirst() {
+		// The old road names the other computer before it fetches, in series with
+		// the rest; the fast road leaves that lookup for after the chat is open.
+		resolveFrom()
+	}
 	storageOff := !c.sync.StorageAllowed()
 	// An own free chat can return without replacing its open local conversation.
 	keepOpen := storageOff && lease.Device == c.sync.Device.ID() && lease.Expires <= view.Now
@@ -560,7 +581,12 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	fastLocalOnly := !filesFirst && !storageOff && c.eng.HasComposedCellDir(cell.Cell{ID: id, Root: root})
 	var unknownClean bool
 	alreadyBranched := ""
-	if preKept != "" && keepRoot {
+	if preKept != "" && MoveFilesFirst() {
+		// The old road always reads the kept branch's record, never a cached one.
+		if kv, err := dir.Cell(ctx, preKept); err == nil && kv.Cell.ParentCell == id {
+			alreadyBranched = kv.Cell.Head
+		}
+	} else if preKept != "" && keepRoot {
 		if unshared, _, uErr := cellstore.Unpublished(cell.Cell{ID: id, Root: root}, view.Cell.Head); uErr == nil && unshared != "" {
 			if kv, ok := c.sync.CachedCellView(preKept); ok && kv.Cell.ParentCell == id {
 				alreadyBranched = kv.Cell.Head
@@ -1486,6 +1512,16 @@ func (r *holderRetirer) ask() {
 	}
 	r.oldFile = f
 	r.asked = true
+}
+
+// isIdleReader says the window holding the chat's journal has told us, in its own
+// fresh presence record, that it is open and doing nothing. A window that is
+// working, waiting on its person, or says nothing at all is not one that may be
+// asked to leave before the take is allowed.
+func (r *holderRetirer) isIdleReader() bool {
+	presence, ok := session.ReadSessionPresenceAnyAge(r.root)
+	return ok && presence.PID > 0 && !presence.UpdatedAt.IsZero() &&
+		time.Since(presence.UpdatedAt) <= session.TakeoverStale && presence.State == session.PresenceIdle
 }
 
 func (r *holderRetirer) isWorkingWriter() bool {

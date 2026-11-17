@@ -42,6 +42,7 @@ type recordedRelay struct {
 	wave        int
 	rounds      int
 	events      []string
+	eventWaves  []int // the round each event began in, parallel to events
 	cellReads   int
 	listReads   int
 	acquireDone bool
@@ -90,6 +91,7 @@ func (r *recordedRelay) begin(op string) int {
 		r.fakeClock += r.stepDelay
 	}
 	r.events = append(r.events, op)
+	r.eventWaves = append(r.eventWaves, r.wave)
 	return r.wave
 }
 
@@ -98,6 +100,15 @@ func (r *recordedRelay) end() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.inFlight--
+}
+
+// roundsOfEvents is the round each recorded event began in. Two events in one
+// round were on the wire at the same time; an event in a later round than every
+// event before it waited for them.
+func (r *recordedRelay) roundsOfEvents() []int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]int(nil), r.eventWaves...)
 }
 
 func (r *recordedRelay) snapshot() (rounds, cellReads, listReads int, clock time.Duration, events []string) {
