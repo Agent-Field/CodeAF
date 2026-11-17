@@ -106,6 +106,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I restore a file I deleted from a workstream", "workstream-files"},
 		{"can Afi edit my document directly or only suggest", "workstream-files"},
 		{"who can see my chats inside a workstream", "workstream-chats-and-tools"},
+		{"can my teammates see the name of my chat in the workstream", "workstream-chats-and-tools"},
 		{"why did the agent not do what the comment asked", "workstream-chats-and-tools"},
 		{"does every chat in a workstream turn into a task", "workstream-chats-and-tools"},
 		{"why did Afi make so many tiny tasks", "workstream-chats-and-tools"},
