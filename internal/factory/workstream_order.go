@@ -36,7 +36,7 @@ const (
 	// WorkstreamOrdersMost is how many orders one workstream keeps.
 	WorkstreamOrdersMost = RulesOrdersMost
 	// workstreamOrderDoesMost bounds what one does, as a task's request is.
-	workstreamOrderDoesMost = 4000
+	workstreamOrderDoesMost  = 4000
 	workstreamOrderTitleMost = 80
 )
 
