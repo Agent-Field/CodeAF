@@ -158,6 +158,7 @@ func (w TaskWrite) Put(t factory.WorkstreamTask, rev int) error {
 	}
 	// What a task holds for one reader is filled when it is read, never kept.
 	t.ForYou, t.Run, t.Queue = nil, nil, nil
+	t.AsksFirst = ""
 	doc, err := json.Marshal(t)
 	if err != nil {
 		return err

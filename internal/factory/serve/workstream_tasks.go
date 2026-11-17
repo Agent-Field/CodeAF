@@ -181,6 +181,7 @@ func (h *Handler) listWorkstreamTasks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.fillForYou(ws, v, all)
+	factory.FillAsksFirst(ws.RulesOrDefault(), all)
 	h.write(w, http.StatusOK, api.WorkstreamTasks{Tasks: all})
 }
 
@@ -208,6 +209,7 @@ func (h *Handler) getWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 	if ws, v, t, _, ok := h.oneTask(w, r); ok {
 		one := []factory.WorkstreamTask{t}
 		h.fillForYou(ws, v, one)
+		factory.FillAsksFirst(ws.RulesOrDefault(), one)
 		h.write(w, http.StatusOK, one[0])
 	}
 }

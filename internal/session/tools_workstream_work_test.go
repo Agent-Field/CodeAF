@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/Agent-Field/codeaf/internal/factory"
 	"strings"
 	"testing"
 
@@ -56,6 +57,10 @@ func TestTheWorkstreamToolsRideOnlyADoorThatKeepsTasksAndFiles(t *testing.T) {
 // THE DESCRIPTIONS TEACH THE RULES, each where it applies: the model has no
 // other account of how shared work behaves.
 func TestTheWorkstreamToolsTeachTheirRules(t *testing.T) {
+	// The ask rule's line is the factory's own spelling (one source of truth).
+	if !strings.Contains(WorkstreamWorkRules, `"`+factory.AsksBeforePublishingRule+`"`) {
+		t.Errorf("the rules do not name the ask rule %q", factory.AsksBeforePublishingRule)
+	}
 	describe := map[string]string{}
 	for _, def := range WorkstreamWorkTools() {
 		describe[def.Name] = def.Description

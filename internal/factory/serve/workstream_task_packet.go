@@ -250,6 +250,16 @@ func (h *Handler) taskPacket(ctx context.Context, d *agentDoor, task, words stri
 			}
 		}
 	}
+	// THE PREDICTION IS KEPT BY THE RUN. A plan said this task "asks first";
+	// the run is told the same rule, and which step it is, so the Ask comes
+	// where the owner was promised it (v2 J6, DELTA §4.1).
+	switch rules := ws.RulesOrDefault(); {
+	case t.AsksFirst != "":
+		out.WriteString("\n\nRule: " + factory.AsksBeforePublishingRule + ". This task involves " + t.AsksFirst +
+			": make it ready, then raise an Ask to the owner (ws_task_update ask, the step as its recommended option) and stop before you do it.")
+	case rules.PublishesWithoutAsking:
+		out.WriteString("\n\nRule: " + factory.PublishesWithoutAskingRule + " in this workstream.")
+	}
 	out.WriteString(fmt.Sprintf("\n\nThis is everything the task needs, already read for you: the decisions above are the workstream's decisions, and the inputs' words are above. "+
 		"So do not call ws_decisions, ws_tasks, ws_files or ws_file_read before you write; read with them only something this does not cover. "+
 		"This task's id is %s; leave rev out when you update it. ", t.ID) +

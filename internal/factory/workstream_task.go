@@ -434,6 +434,11 @@ type WorkstreamTask struct {
 	// not opened since, which Work lists under "Handed to you" once. FILLED AT
 	// READ TIME for one viewer and never kept.
 	Unopened bool `json:"unopened,omitempty"`
+	// AsksFirst is the step that will make its agent ask the owner before it
+	// goes on ("posting", "sending"), from the workstream's ask rule
+	// ([AsksFirst]). FILLED AT READ TIME and never kept: a change of the rule
+	// changes it for every task at once.
+	AsksFirst string `json:"asks_first,omitempty"`
 	// StoppedBy is who pressed Stop, while the task is stopped, so the list
 	// says "Stopped by you" to that person alone and "Stopped by Marco" to
 	// everyone else.
