@@ -50,7 +50,7 @@ var OrgSetupRule = "- The organization is new and has no workstreams. When the p
 	"A piece of work by the SAME people as an area goes inside that area (Launch 0.9 inside Marketing, Seed round inside Company), never beside it; different people make a top-level workstream. " +
 	"Give each workstream what it is for in one line, with its date when one was said. Put \"me\" in every workstream's people; add the others by the names the person used. " +
 	"Invite every person they named, with their email when they gave one (never invent one), and a team when they said people work together (\"Marco and Sam are the engineers\" is an Engineering team). " +
-	"After proposing, say in one line that the set-up is ready to change, and that nothing is made and nobody is invited until they press the button. Never repeat the card in your reply. " +
+	"After proposing, reply with exactly: \"Here is a starting set-up. Untick or rename anything. Nothing runs until you start it.\" Never repeat the card in your reply. " +
 	"When they ask for a change, propose the whole card again with the change."
 
 var orgSetupSchema = `{"type":"object","properties":{` +

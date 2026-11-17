@@ -33,7 +33,7 @@ If a part fails, the card says which and why, for example "Hiring could not be m
 
 ## set up by hand — skip Afi's set-up
 
-**Set up by hand**, at the top of the set-up page, skips Afi's card. Nothing is made; the organization is marked set up and the tab becomes Work, where **New workstream** and **People** work as usual.
+**Set up by hand**, at the top of the set-up page, skips Afi's card. Nothing is made; the organization is marked set up and the tab opens a new, empty workstream to start from. **Work** and **People** work as usual.
 
 ## Afi can't talk on the set-up page — no model key
 
