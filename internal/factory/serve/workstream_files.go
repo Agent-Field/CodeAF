@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"mime"
 	"net/http"
 	"net/url"
@@ -758,6 +759,8 @@ func (h *Handler) moveWorkstreamFiles(w http.ResponseWriter, r *http.Request) {
 
 // errFileNotMover refuses a move between workstreams by someone who neither
 // looks after the workstream the files leave nor made them.
+var errMoveBackLate = errors.New("moving a file back to your space once its Undo has gone needs whoever looks after this workstream")
+
 var errFileNotMover = errors.New("only whoever looks after this workstream, or the person who made a file, can move it to another workstream")
 
 // moveFilesAcross sends files to another workstream's Files (Bring along:
@@ -806,6 +809,18 @@ func (h *Handler) moveFilesAcross(w http.ResponseWriter, r *http.Request, ws fac
 		}
 	}
 	now := h.clock().UTC()
+	// BACK TO MY SPACE ONLY WHILE ITS UNDO STANDS (org-space DESIGN §2.2): a
+	// person takes back what they moved in from their space for a short while;
+	// after that, a file leaves a workstream for anyone's space only by whoever
+	// looks after the workstream.
+	undo := -1
+	if other.Space && !ws.Space {
+		undo = factory.UndoableMove(ws.Decisions, v.Handle, ids, now)
+		if undo < 0 && !v.canGovern(ws) {
+			h.fail(w, http.StatusForbidden, errMoveBackLate.Error())
+			return
+		}
+	}
 	moved, err := h.config.Store.MoveWorkstreamFiles(ws.ID, other.ID, ids, body.Folder, now.Format(time.RFC3339Nano), v.Handle)
 	switch {
 	case errors.Is(err, store.ErrFileFolderMove), errors.Is(err, store.ErrFileNoFolder), errors.Is(err, store.ErrFileIDTaken):
@@ -833,7 +848,45 @@ func (h *Handler) moveFilesAcross(w http.ResponseWriter, r *http.Request, ws fac
 	}
 	h.recordWorkstream(r, ws.ID, "moved files to "+other.ID, strings.Join(ids, " "))
 	h.recordWorkstream(r, other.ID, "received files from "+ws.ID, strings.Join(ids, " "))
+	h.recordSpaceMove(r, ws, other, v, moved, undo, now)
 	h.write(w, http.StatusOK, out)
+}
+
+// recordSpaceMove keeps the one Decisions line a move in from My space leaves
+// in the workstream ("Priya moved “Launch canvas” in from their space"), and
+// withdraws it when an Undo takes the files back.
+func (h *Handler) recordSpaceMove(r *http.Request, from, to factory.OrgWorkstream, v wsViewer, moved []factory.WorkstreamFile, undo int, now time.Time) {
+	who := factory.PersonRef{ID: v.Handle, Name: h.personNames()(v.Handle)}
+	switch {
+	case from.Space && !to.Space:
+		names, files := make([]string, 0, len(moved)), make([]string, 0, len(moved))
+		for _, f := range moved {
+			if f.Folder == "" || !slices.ContainsFunc(moved, func(p factory.WorkstreamFile) bool { return p.ID == f.Folder }) {
+				names = append(names, f.Name)
+			}
+			files = append(files, f.ID)
+		}
+		if d, ok := factory.MoveDecision(names, files, who, "dc_"+h.newTaskID("")(), now); ok {
+			h.keepDecisions(r, to.ID, v, []factory.WorkstreamDecision{d})
+		}
+	case to.Space && undo >= 0:
+		id := from.Decisions[undo].ID
+		_, saved, err := h.editPart(from.ID, v, func(cur *factory.OrgWorkstream, _ factory.OrgWorkstreams) (bool, error) {
+			i := slices.IndexFunc(cur.Decisions, func(d factory.WorkstreamDecision) bool { return d.ID == id && d.State == factory.DecisionKept })
+			if i < 0 {
+				return false, nil
+			}
+			cur.Decisions = slices.Clone(cur.Decisions)
+			cur.Decisions[i].State, cur.Decisions[i].ChangedBy, cur.Decisions[i].ChangedAt = factory.DecisionWithdrawn, &who, now.Format(time.RFC3339Nano)
+			cur.UpdatedAt = now
+			return true, nil
+		})
+		if err != nil {
+			log.Printf("factory: workstream %s: an undone move's decision was not withdrawn: %v", from.ID, err)
+			return
+		}
+		h.publishWorkstreamPart(saved, api.PartWorkstream, "", h.orgActor(r), saved.Rev, false)
+	}
 }
 
 // madeBy is whether handle made f: a person's own file, or one a chat or Afi

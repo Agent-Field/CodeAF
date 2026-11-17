@@ -42,6 +42,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does a chat in the organization keep going if I close my laptop", "my-space"},
 		{"can I make a task in My space", "my-space"},
 		{"how do I move a document from my space into a workstream", "my-space"},
+		{"undo moving a file out of my space into a workstream", "my-space"},
 		{"how do I make my own agent in the organization", "organization-agents"},
 		{"share my agent into a workstream so the team can use it", "organization-agents"},
 		{"can the operator see my agents", "organization-agents"},
