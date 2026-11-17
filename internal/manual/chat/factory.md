@@ -257,7 +257,7 @@ A person joins an **organization**, never Factory on its own. An organization is
 
 In the desktop app there are three ways in, and all three open the same **Join an organization** page:
 
-- first run's **Where do you want to work?**: **Just me** (Personal, on this computer), **Join an organization**, or **Start an organization** (run one on this computer, where the engine offers it);
+- first run's **Where do you want to work?**: **Just me** (Personal, on this computer), **Join an organization**, or **Set up the Factory** (run it on this computer, in Personal, where the engine offers it);
 - the switcher at the foot of the strip: **Join an organization…**;
 - **Settings › Organizations**: **Join an organization…** under the organizations you are already in.
 
