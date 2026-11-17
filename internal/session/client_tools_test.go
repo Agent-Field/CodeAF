@@ -675,3 +675,26 @@ func clientToolsAssertExcluded(t *testing.T, child *Agent) {
 		}
 	}
 }
+
+// An app's workstream set carries WorkstreamWorkRules verbatim and adds its own
+// lines after them, so the rules may take at most half of what a set allows: the
+// desk's Afi set was refused when the rules alone were three quarters of the cap.
+func TestWorkstreamRulesLeaveRoomInAClientToolSet(t *testing.T) {
+	if len(WorkstreamWorkRules) > ClientToolInstructionsMax/2 {
+		t.Fatalf("WorkstreamWorkRules is %d bytes; an app's set allows %d, and the rules may take at most half", len(WorkstreamWorkRules), ClientToolInstructionsMax)
+	}
+}
+
+// A refused set says which limit it is over and the size it saw.
+func TestClientToolSetRefusalNamesTheSize(t *testing.T) {
+	err := ValidateClientToolSet(ClientToolSet{ID: "workstream_work", Instructions: strings.Repeat("x", ClientToolInstructionsMax+1)})
+	want := fmt.Sprintf("a set allows at most %d instruction bytes; this one has %d", ClientToolInstructionsMax, ClientToolInstructionsMax+1)
+	if err == nil || err.Error() != want {
+		t.Fatalf("got %v, want %q", err, want)
+	}
+	err = ValidateClientToolSet(ClientToolSet{ID: "workstream_work", Tools: make([]ClientTool, ClientToolMaxPerSet+1)})
+	want = fmt.Sprintf("a set allows at most %d tools; this one has %d", ClientToolMaxPerSet, ClientToolMaxPerSet+1)
+	if err == nil || err.Error() != want {
+		t.Fatalf("got %v, want %q", err, want)
+	}
+}
