@@ -213,3 +213,45 @@ func TestALeavingPersonsAgentsGoToTheHeir(t *testing.T) {
 		t.Fatalf("Pantry lost the agent santosh shared: %+v", rows)
 	}
 }
+
+// AN AGENT SHARED INTO A WORKSTREAM IS ONE OF ITS DOERS, AND ONLY WHILE IT IS
+// THERE (L1's seam, wired by L3). Before santosh shares Copywriter into
+// Pantry a task cannot be handed to it; shared, the task names it as its
+// person named it; unshared, it cannot be picked again.
+func TestAnAgentSharedIntoAWorkstreamCanDoItsTasksUntilUnshared(t *testing.T) {
+	o := newWSOrg(t)
+	copywriter := o.agent(t, "santosh", "Copywriter", "Write short, plain launch copy.")
+	ws := o.create(t, "santosh", api.WorkstreamNew{Name: "Pantry"})
+	path := "/v1/workstreams/" + ws.ID
+	task := o.task(t, "santosh", path, api.TaskCreate{Title: "Draft the launch post", DoneBy: factory.TaskDoneBy{Kind: factory.TaskByAfi}})
+	toCopy := map[string]any{"done_by": factory.TaskDoneBy{Kind: factory.TaskByAgent, AgentID: copywriter.ID, Name: "someone else"}}
+
+	o.do(t, "santosh", "PATCH", path+"/tasks/"+task.ID, task.Rev, toCopy, 422, nil)
+	o.do(t, "santosh", "PUT", path+"/agents/"+copywriter.ID, -1, nil, 200, nil)
+	var handed api.WorkstreamTask
+	o.do(t, "santosh", "PATCH", path+"/tasks/"+task.ID, task.Rev, toCopy, 200, &handed)
+	if handed.DoneBy.Kind != factory.TaskByAgent || handed.DoneBy.AgentID != copywriter.ID || handed.DoneBy.Name != "Copywriter" || handed.DoneBy.Crew {
+		t.Fatalf("the shared agent does the task as %+v", handed.DoneBy)
+	}
+	got := o.doersOf(t, ws.ID)
+	if len(got) != 1 || got[0].Brief != "Write short, plain launch copy." {
+		t.Fatalf("Pantry's doers = %+v", got)
+	}
+
+	o.do(t, "santosh", "DELETE", path+"/agents/"+copywriter.ID, -1, nil, 200, nil)
+	if got := o.doersOf(t, ws.ID); len(got) != 0 {
+		t.Fatalf("unshared, Pantry's doers = %+v", got)
+	}
+	other := o.task(t, "santosh", path, api.TaskCreate{Title: "Draft the follow-up", DoneBy: factory.TaskDoneBy{Kind: factory.TaskByAfi}})
+	o.do(t, "santosh", "PATCH", path+"/tasks/"+other.ID, other.Rev, toCopy, 422, nil)
+}
+
+// doersOf is the agents the seam names as id's doers, read as the server reads them.
+func (o *wsOrg) doersOf(t *testing.T, id string) []WorkstreamAgent {
+	t.Helper()
+	all, err := o.h.config.Store.Workstreams()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return o.h.workstreamAgents(all[id])
+}
