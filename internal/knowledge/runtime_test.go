@@ -235,12 +235,17 @@ func captureRuntimeSource(t *testing.T, v *knowledge.Vault, id string) {
 func runToKnowledgeFailure(t *testing.T, v *knowledge.Vault, calls *atomic.Int32, want int32, stopped bool) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(t.Context())
-	done := make(chan error, 1)
-	go func() { done <- v.Run(ctx, runtimeHistory{}, func() string { return "fixture" }) }()
+	done := make(chan struct{})
+	var runErr error
+	go func() {
+		runErr = v.Run(ctx, runtimeHistory{}, func() string { return "fixture" })
+		close(done)
+	}()
 	defer func() {
 		cancel()
-		if err := <-done; !errors.Is(err, context.Canceled) {
-			t.Errorf("worker cancellation: %v", err)
+		<-done
+		if !errors.Is(runErr, context.Canceled) {
+			t.Errorf("worker cancellation: %v", runErr)
 		}
 	}()
 	notice := "retrying automatically"
@@ -262,6 +267,8 @@ func runToKnowledgeFailure(t *testing.T, v *knowledge.Vault, calls *atomic.Int32
 		}
 		select {
 		case <-tick.C:
+		case <-done:
+			t.Fatalf("worker ended before persisting failure: %v", runErr)
 		case <-ctx.Done():
 			t.Fatal(ctx.Err())
 		}

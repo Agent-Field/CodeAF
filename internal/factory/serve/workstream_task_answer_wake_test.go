@@ -25,6 +25,9 @@ func TestAnAnsweredAskPutsAfiBackToWork(t *testing.T) {
 	var mu sync.Mutex
 	var turns []AgentTurn
 	hold := make(chan struct{})
+	var release sync.Once
+	free := func() { release.Do(func() { close(hold) }) }
+	t.Cleanup(free)
 	o.serverMode(t, func(ctx context.Context, turn AgentTurn) (AgentTurnEnd, error) {
 		mu.Lock()
 		turns = append(turns, turn)
@@ -91,7 +94,7 @@ func TestAnAnsweredAskPutsAfiBackToWork(t *testing.T) {
 	o.do(t, "santosh", "PATCH", path+"/tasks/"+post.ID, post.Rev, map[string]any{"state": "running"}, 200, nil)
 	waitState(post.ID, string(factory.TaskNeeds))
 	answer(post.ID)
-	close(hold)
+	free()
 	waitState(post.ID, string(factory.TaskDone))
 	o.settle()
 }
