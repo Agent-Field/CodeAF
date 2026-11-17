@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
@@ -703,6 +704,7 @@ func pageOf(ws factory.OrgWorkstream, id string) (factory.WorkstreamPage, bool) 
 func (d *agentDoor) wsFileRead(ctx context.Context, args json.RawMessage) (any, error) {
 	var a struct {
 		File string `json:"file"`
+		From int    `json:"from"`
 	}
 	if err := agentArgs(args, &a); err != nil {
 		return nil, err
@@ -721,6 +723,13 @@ func (d *agentDoor) wsFileRead(ctx context.Context, args json.RawMessage) (any, 
 	case factory.FileUpload:
 		if f.Upload != nil {
 			out["size"], out["mime"] = f.Upload.Size, f.Upload.Mime
+			if f.Upload.Blob != "" {
+				data, err := d.h.config.Store.Blob(f.Upload.Blob)
+				if err != nil {
+					return nil, err
+				}
+				uploadWords(out, data, a.From)
+			}
 		}
 	case factory.FileShortcut:
 		if f.Target != nil {
@@ -728,6 +737,38 @@ func (d *agentDoor) wsFileRead(ctx context.Context, args json.RawMessage) (any, 
 		}
 	}
 	return out, nil
+}
+
+// uploadTextMost is the most of an upload's words one ws_file_read answers;
+// from reads on.
+const uploadTextMost = 100 << 10
+
+// uploadWords puts a text upload's words on a ws_file_read answer, from byte
+// from on. AN UPLOAD IS READ THROUGH ITS FILE, NEVER FROM DISK (solo-sheets
+// F1): its bytes live in the server's store, which no agent can reach, so an
+// answer that gave only its size sent the agent hunting the disk for it. A
+// file that is not text says plainly that it has no words to read.
+func uploadWords(out map[string]any, data []byte, from int) {
+	if !utf8.Valid(data) || bytes.IndexByte(data, 0) >= 0 {
+		out["said"] = "This upload is not text, so it has no words to read here. Do not look for it on disk or in the app's data folder; say what it is from its name and type, or ask the person about it."
+		return
+	}
+	start := min(max(from, 0), len(data))
+	for start > 0 && !utf8.RuneStart(data[start]) {
+		start--
+	}
+	end := min(start+uploadTextMost, len(data))
+	for end < len(data) && end > start && !utf8.RuneStart(data[end]) {
+		end--
+	}
+	out["text"] = string(data[start:end])
+	if start > 0 {
+		out["from"] = start
+	}
+	if end < len(data) {
+		out["more_from"] = end
+		out["said"] = fmt.Sprintf("The upload is longer than one read: this is bytes %d to %d of %d. Call ws_file_read again with from %d for the rest.", start, end, len(data), end)
+	}
 }
 
 func (d *agentDoor) wsFileCreate(ctx context.Context, args json.RawMessage) (any, error) {

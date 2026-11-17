@@ -66,6 +66,14 @@ That chat splits the work into tasks under a group with the same name, with owne
 
 On an organization whose agents run on its server, Afi has no ws_chat_start: your chats live on your computer and the server never sees them. There Afi gives the tasks one group in Up next itself, and nothing yet works an organization's task unattended: each waits in Up next until its owner marks it done or stops it.
 
+## can the agent read a file I uploaded — uploads in Files read through ws_file_read
+
+Yes. A file uploaded to a workstream's Files (Upload a File…, or dropped onto the list) is read by its Afi and its chats with `ws_file_read`, the same tool that reads a document. A text file — Markdown, plain text, source code such as `.rs`, `.ts`, `.go` or `.tsx`, CSV, JSON — answers its words. A long one comes in parts of about 100 KB: the answer says `more_from`, and reading again with `from` set to it gives the rest.
+
+A file that is not text (a picture, a PDF, a spreadsheet, an archive) answers only its name, size and type, with the line "This upload is not text, so it has no words to read here." The agent then says what it is from its name, or asks you about it.
+
+The agent never reads a workstream's files from disk. They are kept in the app's own store (on an organization, the server's), which no agent may open: it is told never to look for them in the app's data folder or its database, never to search the disk for them, and never to copy them anywhere such as `/tmp`. This holds on a Personal workstream and on an organization's alike, so a citation in a document points at the file in Files, never at one person's computer.
+
 ## did the agent save it to the Library — what a workstream's chat makes goes to its Files, not the Library or disk
 
 A conversation that belongs to a workstream (its Afi, or one of its chats) keeps what it makes in that workstream: a brief, a comparison, a plan or a list is saved with ws_file_create and appears in the workstream's Files, where everyone in it sees it. It is not written to disk as a loose file, and it does not reach the app's Library. The Library is a separate shelf: something made in a workstream gets there only when a person adds it with Add to Library. What such a conversation says is also never captured into the Library by itself, whatever the Library's own setting is.

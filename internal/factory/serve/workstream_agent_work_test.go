@@ -3,6 +3,7 @@ package serve
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -139,5 +140,54 @@ func TestServerAgentWritesNoTaskForSomeoneWhoLostEdit(t *testing.T) {
 	d := &agentDoor{h: o.h, id: launch.ID, asker: "abir"}
 	if _, err := d.Work(context.Background(), "ws_task_create", json.RawMessage(`{"title":"x","request":"y"}`)); err == nil {
 		t.Fatal("abir, who cannot see Launch plan, made a task in it through the agent")
+	}
+}
+
+// AN UPLOAD IS READ THROUGH ITS FILE (solo-sheets F1). ws_file_read answers a
+// text upload's words, a long one in parts, and says a picture has no words,
+// so the agent never goes looking for the bytes on disk.
+func TestServerAgentReadsAnUploadedTextFile(t *testing.T) {
+	o := newWSOrg(t)
+	ws := o.create(t, "santosh", api.WorkstreamNew{Name: "Sheets"})
+	path := "/v1/workstreams/" + ws.ID + "/files"
+	upload := func(name, mime string, data []byte) string {
+		var f api.WorkstreamFile
+		o.do(t, "santosh", "POST", path, -1, api.FileNew{Kind: "upload", Name: name, Mime: mime, Data: data}, 201, &f)
+		return f.ID
+	}
+	d := &agentDoor{h: o.h, id: ws.ID, asker: "santosh"}
+	read := func(args string) map[string]any {
+		t.Helper()
+		line, err := d.Work(context.Background(), "ws_file_read", json.RawMessage(args))
+		if err != nil {
+			t.Fatalf("ws_file_read %s: %v", args, err)
+		}
+		var out map[string]any
+		if err := json.Unmarshal([]byte(line), &out); err != nil {
+			t.Fatalf("ws_file_read answered %q", line)
+		}
+		return out
+	}
+
+	contract := upload("CONTRACT.md", "text/markdown", []byte("# Contract\n\nOne row, one writer."))
+	if got := read(`{"file":"` + contract + `"}`); got["text"] != "# Contract\n\nOne row, one writer." || got["more_from"] != nil {
+		t.Fatalf("a text upload reads %v", got)
+	}
+
+	long := strings.Repeat("é", 60<<10)
+	big := upload("notes.txt", "text/plain", []byte(long))
+	first := read(`{"file":"` + big + `"}`)
+	on, ok := first["more_from"].(float64)
+	if !ok || !strings.Contains(first["said"].(string), "from") {
+		t.Fatalf("a long upload's first read %v", first["said"])
+	}
+	rest := read(`{"file":"` + big + `","from":` + strconv.Itoa(int(on)) + `}`)
+	if first["text"].(string)+rest["text"].(string) != long {
+		t.Fatal("the two reads of a long upload do not make the whole")
+	}
+
+	pic := read(`{"file":"` + upload("look.png", "image/png", []byte{0x89, 'P', 'N', 'G', 0, 0, 0xff}) + `"}`)
+	if pic["text"] != nil || !strings.Contains(pic["said"].(string), "Do not look for it on disk") {
+		t.Fatalf("a picture reads %v", pic)
 	}
 }

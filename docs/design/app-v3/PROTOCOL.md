@@ -973,7 +973,10 @@ name:"Afi", for:<asker>}`. It writes a page directly only when its file is
 `made_by` an agent and not `person_edited`, first keeping the words before as a
 version; any other page, and any page with a live document, gets its text as a page
 version with `reason` `agent` (Kept · not applied), which is also what `ws_file_suggest`
-keeps. `factory.org_workstream_agent
+keeps. `ws_file_read {file, from?}` on an upload whose bytes are UTF-8 text answers
+them as `text` (at most 100 KiB from byte `from`, with `more_from` and `said` when more
+follows); any other upload answers `said`, that it has no words to read. The desk's
+Personal door answers the same shape. `factory.org_workstream_agent
 {id, since?}` `GET /v1/workstreams/{id}/agent?since=` (`view`) answers `{id, state,
 turn?, for?, since?, entries, seq, can_talk, cannot?}`: `state` is `idle`, `working`
 (`for` is whose message) or `stopping` (`for` is who stopped it); `entries` are the
