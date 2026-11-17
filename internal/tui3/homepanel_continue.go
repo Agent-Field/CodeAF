@@ -112,6 +112,12 @@ const (
 	branchAsk           = "What should happen to these turns?"
 	branchLeave         = "leave them"
 	branchFails         = "could not change those turns"
+
+	// continueCheckFails is the failure of the look at this computer's copy that
+	// comes BEFORE a move. It says what was being done, because nothing had been
+	// put in any folder yet, and a sentence about a folder sends the person to
+	// look for a problem that is not there.
+	continueCheckFails = "could not check this computer's copy before continuing; your words are still in the box"
 )
 
 // homeContinueKind and homeBranchKind are the lanes the two questions travel

@@ -224,11 +224,19 @@ The file tools also map an absolute path under the original folder to the same r
 
 Taking a chat back into its original project restores that project in place. The agent is told about the return too; old paths from the other computer's copy now map back into the original project.
 
+## I deleted the project folder a chat worked in — will it still continue here, or say could not be put in this folder
+
+Yes. When the folder a chat worked in on this computer was deleted, `continue here` and the automatic move at startup both open the chat. A folder that is not there holds no files to keep, so only the conversation is checked: the chat arrives the way a chat from another computer does, in a folder of its own under this computer's chats, with every file as the other computer left it, and the line `Moved from <device> in <T>. Everything as you left it.` The deleted folder is not made again and nothing is written to its old path.
+
+If the conversation here holds turns that were never shared, the move asks first, as it does for any unsaved work, and keeps those turns as a separate copy of the chat before the files arrive; the deleted folder's files are not part of that copy. The engine log says `continuation: the chat's folder <path> is gone, so there are no local files to keep; checking only the conversation` each time the check meets a deleted folder.
+
+A path that exists but is not a folder, or one this computer may not look at, is not treated as deleted. The move stops there and says `could not check this computer's copy before continuing; your words are still in the box`.
+
 ## Why does the project label say copy from another machine
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
-A chat arriving here for the first time works in its own copy. It is filed under the folder it came from, apart from conversations in this computer's own folder of the same name. Home and the keys-row label say `proj-a (copy from another machine)`. This remains a copy even if a folder with the original path happens to exist on this computer. Taking back a chat that already works in your own project restores that project in place. An unknown origin is left unnamed.
+A chat arriving here for the first time works in its own copy. It is filed under the folder it came from, apart from conversations in this computer's own folder of the same name. Home and the keys-row label say `proj-a (copy from another machine)`. This remains a copy even if a folder with the original path happens to exist on this computer. Taking back a chat that already works in your own project restores that project in place, unless that folder was deleted here: the chat then works in a copy of its own. An unknown origin is left unnamed.
 
 The same label appears with `codeaf chat --no-host`. The copy's own working folder does not change its label to `codeaf`.
 
@@ -284,6 +292,7 @@ a failed move keeps the draft and shows `1 retry` and `2 leave it there`. retry 
 - `another device continued this chat first`: another device was faster. The row goes back to `held on <device>`. Nothing changed.
 - `the sync service is not answering`: this device cannot reach the service. Nothing can be moved until it can.
 - `could not continue this chat here because the engine store is busy` or `could not continue this chat here because the engine store is busy (held by codeaf chat, pid 4321)`: another `codeaf` process holds this computer's engine store writer. Close or finish that process, then choose `retry`.
+- `could not check this computer's copy before continuing; your words are still in the box`: the look at what this computer holds for the chat, which comes before anything is moved, could not finish. Nothing was put in any folder and the chat stays where it was; the engine log has the reason after `continue chat <id>`. A folder that was deleted is not a reason: see *I deleted the project folder a chat worked in*.
 - `could not continue this chat here`: the move failed. The row stays where it was; choose `retry` or try again.
 - A move does not fail because another chat on this computer is saving its secrets to the sync service at that moment. Its last step waits up to 30 seconds for that save to finish, then arrives.
 - `could not continue this chat here because the sync service is not answering; your words are still in the box`: the service went away during the move. Nothing was sent and the chat stays where it was; send again once the other machines are reachable.

@@ -132,6 +132,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// C15 makes the Linux limit and moved-folder corrections retrievable.
 		{"why do commands fail on Ubuntu 24.04", "linux-workspace-limits"},
 		{"what folder does the moved chat work in", "continuing-a-chat-on-another-computer"},
+		{"I deleted the project folder and now continue here will not open the chat", "continuing-a-chat-on-another-computer"},
+		{"could not check this computer's copy before continuing", "continuing-a-chat-on-another-computer"},
 		// N4 reaches the Windows requirements in the asker's words.
 		{"which bash does codeaf use on Windows", "running-commands-on-windows"},
 		{"my commands fail on Windows when no bash was found", "running-commands-on-windows"},
