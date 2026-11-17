@@ -40,11 +40,13 @@ func TestTheLibraryToolIsOnTheServerBeltOnlyWhereTheDoorKeepsALibrary(t *testing
 		if _, failed, err := tool.Execute(context.Background(), json.RawMessage(`{"query":"refunds"}`)); failed || err != nil {
 			t.Fatalf("a search failed: %v", err)
 		}
-		if _, failed, _ := tool.Execute(context.Background(), json.RawMessage(`{"write":"x"}`)); !failed {
-			t.Fatal("the Library tool took an argument it does not have")
+		// An argument the tool does not have is ignored, as every tool's is
+		// (toolargs.go): asked to write, it can only read, so it lists titles.
+		if _, failed, err := tool.Execute(context.Background(), json.RawMessage(`{"write":"x"}`)); failed || err != nil {
+			t.Fatalf("an unknown argument broke the read: %v", err)
 		}
 	}
-	if len(door.asked) != 1 || door.asked[0] != "refunds|" {
+	if len(door.asked) != 2 || door.asked[0] != "refunds|" || door.asked[1] != "|" {
 		t.Fatalf("the door was asked %v", door.asked)
 	}
 	if !manual.Chat().Mentions(OrgLibraryTool) {
