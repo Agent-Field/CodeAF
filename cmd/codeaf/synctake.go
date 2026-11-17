@@ -57,7 +57,7 @@ func wireSync(o *tui3.Options) {
 	if o.NotShared == nil {
 		o.NotShared = terminalNotShared
 	}
-	moving := &takeProgress{}
+	moving := terminalMoving
 	take := takeover{c: chatContinuerWith(s, surfaceNotices.Say, moving.report, true, continueSeams{arrived: terminalArrived(surfaceNotices)}), moving: moving}
 	if o.Takeover == nil {
 		o.Takeover = take
@@ -296,6 +296,12 @@ type takeover struct {
 func (t takeover) IdleHandoffAllowed() bool {
 	return t.c != nil && t.c.IdleHandoffAllowed()
 }
+
+// terminalMoving is how far the terminal's one running continue has got. It is
+// one value for the whole process, not one per [wireSync], because the restart of
+// a held chat's files ([restartHeldFilesBeforeOpen]) runs before any surface is
+// wired, and the status line must say `files arriving` for it as for a move.
+var terminalMoving = &takeProgress{}
 
 // takeProgress is how far the terminal's one running continue has got.
 type takeProgress struct {
