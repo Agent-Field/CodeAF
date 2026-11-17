@@ -44,10 +44,6 @@ When the agent doing a task can't go on because an input is missing, or the task
 
 The agent may offer its own answers instead, such as "Paste their text". None of these answers is kept in the workstream's decisions. Failed is kept for errors: a run that broke off (the model refused, the connection dropped) still says Failed, with why.
 
-## Checked against the request and 2 decisions — what an agent's result was checked against
-
-When an agent finishes a task it says what it checked the result against, and the task keeps that line under Result: "Checked against the request and 2 decisions: 280 words, plain language". The number is the workstream's decisions in force when the check was written, the ones its run was given; with none it reads "Checked against the request: …". Nothing is claimed that was not checked: a task you tick yourself has no such line. Not right? Send it back with what to change.
-
 ## read tasks side by side with the arrow keys — the split Tasks list
 
 With at least 1100 pixels of content width and Afi's pane closed, Tasks shows a 500-pixel list beside the selected task. When there is no current selection, the first task waiting on you is selected; if none is waiting on you, the first visible task is selected. Click another row to read it beside the list. With focus in the list, Up and Down move through the visible tasks without pressing Back. Running rows show their current step when the runner supplies one.
@@ -193,7 +189,7 @@ A task's page reads, top to bottom: its question for you (the Ask), then **Resul
 
 The first document an agent's task made is shown inside Result: its name, where it is in Files and **Open**, then its heading and first few lines, so you can read it without leaving the task. **Open** is for editing it. Anything else the task made (more files, a canvas's picture, a pull request) is a row under it. A document that cannot be read shows only its line with Open.
 
-Under the result, the doer's check reads "Checked against the request: …", or "Checked against the request and 2 decisions: …" when it also checked the work against that many of the workstream's decisions. A task with no check shows no line.
+Under the result, the doer's check reads "Checked against the request: …", or "Checked against the request and 2 decisions: …" when it also checked the work against that many of the workstream's decisions: the ones in force when the check was written, which its run was given. A task with no check shows no line.
 
 ## a task's brief — Goal, Deliverable, Acceptance, Inputs, Constraints, and the hand-off note
 
