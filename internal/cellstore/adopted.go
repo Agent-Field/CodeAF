@@ -32,6 +32,11 @@ type adoption struct {
 	From          string `json:"from,omitempty"` // the device the chat was sealed on, by name
 }
 
+// NoteAdopted records that c's tree now stands at head.
+func NoteAdopted(c cell.Cell, head string) error {
+	return noteAdopted(c, head)
+}
+
 // noteAdopted records that c's tree now stands at head, as materialize left it.
 func noteAdopted(c cell.Cell, head string) error {
 	return writeAdoption(c, adoption{V: schemaV, Head: head})

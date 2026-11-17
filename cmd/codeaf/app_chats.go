@@ -15,6 +15,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/dirwatch"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/guard"
@@ -37,6 +38,7 @@ type appChats struct {
 	mu       sync.Mutex
 	rows     []appwire.ChatRow
 	facts    map[string]chatlist.Row
+	views    map[string]directory.CellView
 	// takeable is each row's can_take before its holder's sharing was judged,
 	// so a presence change can lift the block as well as set it.
 	takeable        map[string]bool
@@ -399,12 +401,16 @@ func (b *appBackend) readChats(parent context.Context, s *syncsetup.Sync, feed d
 	local := b.localChats(s)
 	out := make([]appwire.ChatRow, 0, len(rows))
 	facts := make(map[string]chatlist.Row, len(rows))
+	views := make(map[string]directory.CellView, len(rows))
 	takeable := make(map[string]bool, len(rows))
 	for _, r := range rows {
 		if r.Parent != "" || r.Status == chatlist.Branch {
 			continue
 		}
 		facts[r.Cell] = r
+		if v, ok := s.CachedCellView(r.Cell); ok {
+			views[r.Cell] = v
+		}
 		_, installed := local[r.Cell]
 		here := r.Mine && (r.Status == chatlist.Here || installed)
 		row := appwire.ChatRow{Cell: r.Cell, Title: r.Title, Here: here, Status: string(r.Status), Seen: appwire.Seen{Device: r.DeviceID, Fence: r.Fence, Head: r.Head}, CanTake: !here && r.Head != ""}
@@ -442,7 +448,7 @@ func (b *appBackend) readChats(parent context.Context, s *syncsetup.Sync, feed d
 	cacheFacts := func() {
 		b.chats.mu.Lock()
 		defer b.chats.mu.Unlock()
-		b.chats.facts, b.chats.takeable = facts, takeable
+		b.chats.facts, b.chats.views, b.chats.takeable = facts, views, takeable
 	}
 	cacheFacts()
 	// markTaking has already cleared a landed take on a row saying the chat is
@@ -497,6 +503,13 @@ func (c *appChats) landedTake(id string) bool {
 	defer c.mu.Unlock()
 	_, ok := c.landed[id]
 	return ok
+}
+
+func (c *appChats) viewFor(id string) (directory.CellView, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	v, ok := c.views[id]
+	return v, ok
 }
 
 func (c *appChats) landTake(id string, fence uint64) {

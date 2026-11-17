@@ -78,11 +78,17 @@ func (s *Sync) list(ctx context.Context) (directory.Listing, error) {
 			s.rememberTeamDirectory(l, err)
 		}
 		if err == nil {
+			s.RememberDevices(l.Devices)
+			s.RememberViews(l)
 			rememberOthers(s.Home, deviceBindingFor(s.Relay, s.Identity, s.Device), l.Devices)
 		}
 		return l, err
 	}
 	l, err := s.Dir.List(ctx)
+	if err == nil {
+		s.RememberDevices(l.Devices)
+		s.RememberViews(l)
+	}
 	if s.teamsSharing() {
 		s.rememberTeamDirectory(l, err)
 	}

@@ -56,8 +56,12 @@ func deviceBindingFor(relay string, id identity.Identity, dev identity.Dev) devi
 
 var deviceObservers = struct {
 	sync.Mutex
-	all map[*DeviceObserver]struct{}
-}{all: map[*DeviceObserver]struct{}{}}
+	all       map[*DeviceObserver]struct{}
+	snapshots map[deviceBinding]DeviceSnapshot
+}{
+	all:       map[*DeviceObserver]struct{}{},
+	snapshots: map[deviceBinding]DeviceSnapshot{},
+}
 
 func ObserveDevices(home string) *DeviceObserver {
 	o := &DeviceObserver{home: home, changes: make(chan struct{}, 1)}
@@ -67,6 +71,11 @@ func ObserveDevices(home string) *DeviceObserver {
 		}
 	}
 	deviceObservers.Lock()
+	if snap, ok := deviceObservers.snapshots[o.binding]; ok {
+		snap.Devices, snap.Online = maps.Clone(snap.Devices), maps.Clone(snap.Online)
+		snap.presenceAt = maps.Clone(snap.presenceAt)
+		o.state = snap
+	}
 	deviceObservers.all[o] = struct{}{}
 	deviceObservers.Unlock()
 	return o
@@ -101,6 +110,19 @@ func (o *DeviceObserver) Close() {
 func rememberDevices(home string, binding deviceBinding, edit func(*DeviceSnapshot)) {
 	deviceObservers.Lock()
 	defer deviceObservers.Unlock()
+	if binding != (deviceBinding{}) {
+		cur := deviceObservers.snapshots[binding]
+		cur.Devices, cur.Online = maps.Clone(cur.Devices), maps.Clone(cur.Online)
+		cur.presenceAt = maps.Clone(cur.presenceAt)
+		if cur.Devices == nil {
+			cur.Devices = map[string]directory.Device{}
+		}
+		if cur.presenceAt == nil {
+			cur.presenceAt = map[string]int64{}
+		}
+		edit(&cur)
+		deviceObservers.snapshots[binding] = cur
+	}
 	for o := range deviceObservers.all {
 		if o.home != home || o.binding != binding {
 			continue

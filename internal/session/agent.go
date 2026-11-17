@@ -11,6 +11,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
+	"github.com/Agent-Field/codeaf/internal/cell"
 	preferences "github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/env"
@@ -193,6 +194,9 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// with the header's id, which survives every resume.
 		id: NewSessionID(),
 	}
+	// A CHAT OPENED WHILE ITS FILES ARE STILL ARRIVING renders its page from a
+	// workspace that is not all there ([Agent.followArrivedFiles]).
+	agent.filesArriving = cell.WorkspaceArriving(agent.arrivalPaths()...)
 	if config.Place.Dir != "" {
 		if meta, err := LoadMeta(config.Place.Dir); err == nil {
 			if meta.Model == config.Model {

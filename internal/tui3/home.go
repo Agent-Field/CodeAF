@@ -2443,6 +2443,8 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 	// is a condition, still true, and the foot is where this screen says it.
 	if word := a.takeoverLine(); word != "" {
 		h.say(word, "")
+	} else if a.homeContinueInFlight() {
+		h.say(a.homeMoveLine(), "")
 	}
 	a.sayHomeAsk()
 	// AND THE ROUTER'S OWN LINE COMES DOWN WITH HOME'S. A refusal that put a
@@ -2501,7 +2503,7 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 	// was ("2 hours later" begins with a 2). The numbered chips are drawn on
 	// the row itself, and a key the screen is visibly advertising may take the
 	// press.
-	if h.box.empty() {
+	if h.box.empty() && !a.homeContinueInFlight() {
 		if cmd, took := a.homeGridAnswer(msg.String()); took {
 			return cmd
 		}
@@ -2579,6 +2581,9 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		return a.homeEnter()
 
 	case "ctrl+enter":
+		if a.homeContinueInFlight() {
+			return nil
+		}
 		// `ask here` WITHOUT LEAVING THE BOX, on a terminal that can tell
 		// ctrl+enter from a plain enter at all (the kitty protocol, win32-input).
 		// The foot does not name it, because most terminals cannot send it; the
@@ -2951,8 +2956,19 @@ func (h *homeView) buildFor() {
 	h.buildGrid()
 }
 
+// homeContinueInFlight reports whether a continue initiated from Home is currently running.
+func (a *app) homeContinueInFlight() bool {
+	if a.homeTaking != "" && !a.homeTakeAutomatic && !a.homeTakeAbandoned {
+		return true
+	}
+	return a.continueChecking != nil && !a.continueChecking.automatic
+}
+
 // homeSubmit runs the draft selected by the new-conversation row or a send tag.
 func (a *app) homeSubmit() tea.Cmd {
+	if a.homeContinueInFlight() {
+		return nil
+	}
 	h := &a.home
 	typed := strings.TrimSpace(h.box.String())
 	if isPairLink(typed) {
@@ -2991,6 +3007,9 @@ func (a *app) homeSubmit() tea.Cmd {
 // one depending on what is in the box.
 func (a *app) homeEnter() tea.Cmd {
 	h := &a.home
+	if a.homeContinueInFlight() && (!h.box.empty() || len(h.chips) > 0) {
+		return nil
+	}
 	// A DROP THE FOLD IS STILL HOLDING IS SPENT BEFORE THE LINE IS READ, which
 	// is input.go's law about enter said at this surface's other send door: a
 	// gesture nothing has finished answering must not be read as the text it
@@ -3024,7 +3043,7 @@ func (a *app) homeEnter() tea.Cmd {
 		// work, and the nearest work is the conversation this terminal is already
 		// holding, which is the same door `esc` is said with the key a hand
 		// reaches for first.
-		if strings.TrimSpace(h.box.String()) == "" {
+		if strings.TrimSpace(h.box.String()) == "" && !a.homeContinueInFlight() {
 			a.closeHome()
 		}
 		return nil
@@ -3053,6 +3072,9 @@ func (a *app) homeEnter() tea.Cmd {
 		// the tray (homeat.go).
 		return a.homeComplete(line)
 	case homeAskHere:
+		if a.homeContinueInFlight() {
+			return nil
+		}
 		// The same sentence, asked rather than opened (homeexchange.go).
 		return a.askHere(strings.TrimSpace(h.box.String()))
 	case homeExchangeRow:
@@ -3108,7 +3130,7 @@ func (a *app) homeOpenLine(line homeLine) tea.Cmd {
 		// A local row can still be the old copy of the arriving chat. Joining the
 		// move avoids opening that copy before the replacement has settled.
 		a.homeTakeAutomatic, a.homeTakeAbandoned, a.homeTakePending = false, false, nil
-		a.home.say(continuing, "")
+		a.home.say(a.homeMoveLine(), "")
 		return nil
 	}
 	if !a.homeTakeOpening {
@@ -3474,6 +3496,9 @@ func (a *app) homeStartInProject(project string) tea.Cmd {
 // opens. The shared legacy connection still swaps in place and keeps its
 // existing transition semantics.
 func (a *app) homeStartWithProject(text, place string) tea.Cmd {
+	if a.homeContinueInFlight() {
+		return nil
+	}
 	a.abandonAutomaticTake()
 	a.teamViewSet("")
 	// THE SHELL REFUSAL COMES BEFORE THE ROAD IS CHOSEN, so a line home will not

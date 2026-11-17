@@ -498,15 +498,16 @@ func (a *app) presentRow(row chatlist.Row) chatlist.Row {
 
 // homeTakenMsg is the takeover's answer, coming back off the update loop.
 type homeTakenMsg struct {
-	automatic bool
-	seq       uint64
-	row       chatlist.Row
-	taken     Taken
-	err       error
-	roots     map[string]string
-	draft     *composerState
-	send      func() tea.Cmd
-	fromFile  string
+	automatic    bool
+	seq          uint64
+	row          chatlist.Row
+	taken        Taken
+	err          error
+	roots        map[string]string
+	draft        *composerState
+	fromComposer bool
+	send         func() tea.Cmd
+	fromFile     string
 	// A fresh listing can disagree with the taker once without asking again.
 	recoveredHere bool
 }
@@ -538,7 +539,7 @@ func (a *app) takeRemoteState(msg homeTakenMsg) tea.Cmd {
 			// Joining adopts the existing move, so later choices use the explicit busy rule.
 			a.stopAutomaticTakeTimer()
 			a.homeTakeAutomatic, a.homeTakeAbandoned, a.homeTakePending = false, false, nil
-			a.home.say(continuing, "")
+			a.home.say(a.homeMoveLine(), "")
 			return nil
 		}
 		a.abandonAutomaticTake()
@@ -561,7 +562,8 @@ func (a *app) takeRemoteState(msg homeTakenMsg) tea.Cmd {
 	a.homeTaking = msg.row.Cell
 	a.homeTakeAutomatic, a.homeTakeOriginAutomatic, a.homeTakeAbandoned = msg.automatic, msg.automatic, false
 	a.homeTakeRow = msg.row
-	a.home.say(continuing, "")
+	a.homeMoveSaid = a.initialMoveLine()
+	a.home.say(a.homeMoveSaid, "")
 	baseCtx := a.ctx
 	if baseCtx == nil {
 		baseCtx = context.Background()
@@ -576,6 +578,9 @@ func (a *app) takeRemoteState(msg homeTakenMsg) tea.Cmd {
 		if msg.draft == nil && !composer.empty() {
 			msg.draft = &composer
 		}
+	}
+	if msg.draft != nil {
+		msg.fromComposer = true
 	}
 	idleOpen := a.idleOpenEnabled() && msg.row.AutoOpen
 	take := func() tea.Msg {
@@ -685,7 +690,7 @@ func (a *app) automaticTakeSettled(msg homeTakeSettledMsg) tea.Cmd {
 		return a.takeRemoteState(*pending)
 	}
 	if a.continueChecking != nil && a.at(pageHome) {
-		a.home.say(continuing, "")
+		a.home.say(a.homeMoveLine(), "")
 	}
 	return nil
 }
@@ -905,6 +910,9 @@ func (a *app) rebuildMachines() {
 // the one they are arriving in. A shared window opens in place, and the ride
 // is spent here rather than at the landing.
 func (a *app) openTaken(msg homeTakenMsg) tea.Cmd {
+	if !msg.automatic && a.at(pageHome) {
+		a.foldHomeBoxIntoDraft(&msg)
+	}
 	a.homeTakeResult = &msg
 	a.homeTakeOpening = true
 	defer func() { a.homeTakeOpening = false }()
@@ -957,6 +965,9 @@ func (a *app) openTaken(msg homeTakenMsg) tea.Cmd {
 	}
 	a.homeTakeDraft = &msg
 	a.homeTakenSaid = func() tea.Cmd {
+		if !msg.automatic {
+			a.foldHomeBoxIntoDraft(&msg)
+		}
 		// A local session of this same chat was retired before replacement.
 		// Its old handle cannot remain a selectable copy behind the new one.
 		for _, file := range []string{line.row.Transcript, msg.fromFile} {
@@ -971,24 +982,47 @@ func (a *app) openTaken(msg homeTakenMsg) tea.Cmd {
 		}
 		a.finishHomeTake(false)
 		a.note(joinSaid(moved, kept))
-		if msg.draft != nil {
-			if msg.taken.AlreadyHere {
-				a.moveTakeDraftCopies(*msg.draft)
-			}
-			a.putComposer(*msg.draft)
-			if msg.send == nil {
-				a.note("your message is still in the box; press enter to send it")
-			}
-		} else if !msg.taken.AlreadyHere {
+		if !msg.taken.AlreadyHere && !msg.fromComposer {
 			// A take from Home restores the arrived chat's saved words. The
 			// conversation being left keeps its own composer in its own draft.
 			a.layKeptDrafts(false)
 		}
+		if msg.draft != nil {
+			carried := *msg.draft
+			if !msg.taken.AlreadyHere && !msg.fromComposer {
+				if saved := a.mainComposer(); !saved.empty() {
+					carried = mergeComposerDraft(saved, carried)
+				}
+			}
+			if msg.taken.AlreadyHere {
+				a.moveTakeDraftCopies(carried)
+			}
+			a.putComposer(carried)
+			a.claimDraftComposer()
+			if msg.send == nil {
+				a.keepMainDraft()
+				a.note("your message is still in the box; press enter to send it")
+			}
+		}
 		if a.file == line.row.Transcript {
-			a.offerSetup(msg.taken.Resume)
+			resume := msg.taken.Resume
+			// A LOOK THAT FINISHED BEFORE THIS LANDING is the whole one: it
+			// knows what this computer lacks and what is uncommitted, which the
+			// open's resume could not. It keeps the names the open already has.
+			if late, ok := a.takeHeldArrival(filepath.Base(session.DirOf(a.file))); ok {
+				late.From, late.Was, late.ChatWas = resume.From, resume.Was, resume.ChatWas
+				resume = late
+			}
+			a.offerSetup(resume)
 		}
 		if msg.send != nil {
+			if _, ok := a.taker.(moveReporter); ok {
+				return tea.Batch(msg.send(), moveTick(a.homeTakeSeq))
+			}
 			return msg.send()
+		}
+		if _, ok := a.taker.(moveReporter); ok {
+			return moveTick(a.homeTakeSeq)
 		}
 		return nil
 	}
@@ -1031,7 +1065,7 @@ func (a *app) openTaken(msg homeTakenMsg) tea.Cmd {
 // moveTakeDraft leaves one composer with the arriving chat after its door opens.
 func (a *app) moveTakeDraft(conv Conversation) {
 	msg := a.homeTakeDraft
-	if msg == nil || msg.draft == nil || msg.fromFile == "" || a.file != msg.fromFile {
+	if msg == nil || msg.draft == nil || !msg.fromComposer || msg.fromFile == "" || a.file != msg.fromFile {
 		return
 	}
 	if conv.DraftFile != "" && conv.DraftFile != a.draftFile {
@@ -1048,8 +1082,67 @@ func (a *app) moveTakeDraft(conv Conversation) {
 	a.writeDraftsNow("")
 }
 
+func mergeComposerDraft(saved, carried composerState) composerState {
+	merged := saved
+	savedText := saved.box.String()
+	carriedText := carried.box.String()
+	switch {
+	case savedText != "" && carriedText != "":
+		merged.box.setText(savedText + "\n" + carriedText)
+	case carriedText != "":
+		merged.box.setText(carriedText)
+	}
+	if len(carried.pastes) > 0 {
+		merged.pastes = append(append([]pasteChip(nil), saved.pastes...), carried.pastes...)
+	}
+	if len(carried.chips) > 0 {
+		merged.chips = append(append([]chip(nil), saved.chips...), carried.chips...)
+	}
+	if len(carried.sends) > 0 {
+		merged.sends = append(append([]outboxSnapshot(nil), saved.sends...), carried.sends...)
+	}
+	return merged
+}
+
+// foldHomeBoxIntoDraft moves any text or chips typed on Home during a continue
+// into the arriving chat's draft (R6).
+func (a *app) foldHomeBoxIntoDraft(msg *homeTakenMsg) {
+	if msg == nil || (a.home.box.empty() && len(a.home.chips) == 0) {
+		return
+	}
+	typed := a.pastesUnfolded(a.home.box.String())
+	chips := append([]chip(nil), a.home.chips...)
+	a.home.box.reset()
+	a.home.chips = nil
+	a.home.carrying = false
+	if msg.draft == nil {
+		var box editor
+		box.setText(typed)
+		msg.draft = &composerState{box: box, chips: chips}
+		return
+	}
+	if typed != "" {
+		existing := msg.draft.box.String()
+		if existing != "" {
+			msg.draft.box.setText(existing + "\n" + typed)
+		} else {
+			msg.draft.box.setText(typed)
+		}
+	}
+	if len(chips) > 0 {
+		msg.draft.chips = append(msg.draft.chips, chips...)
+	}
+}
+
 func (a *app) restoreTakeDraft(msg homeTakenMsg) {
 	if msg.draft == nil {
+		return
+	}
+	if a.at(pageHome) && msg.fromFile == "" {
+		a.home.box = msg.draft.box
+		a.home.chips = append([]chip(nil), msg.draft.chips...)
+		a.home.carrying = len(a.home.chips) > 0
+		a.home.build()
 		return
 	}
 	if a.composerOwner == mainRecipient {

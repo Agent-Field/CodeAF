@@ -1,6 +1,7 @@
 package cellstore
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -220,7 +221,7 @@ func (g Guard) importDotenv(scope, tree string, files []string) error {
 		return err
 	}
 	for _, rel := range files {
-		if _, err := v.ImportDotenv(filepath.Join(tree, rel), scope); err != nil {
+		if _, err := v.ImportDotenv(filepath.Join(tree, rel), scope); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
 	}

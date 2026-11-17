@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	"github.com/Agent-Field/codeaf/internal/chatlist"
+	machine "github.com/Agent-Field/codeaf/internal/preflight"
 )
 
 // ── THE NOTICE SEAM: A SENTENCE FROM OUTSIDE THE LOOP, SHOWN AT ONCE ────────
@@ -38,6 +39,15 @@ type outsideNotice struct {
 	text  string
 	home  bool
 	final bool
+	// arrived is not a sentence but the whole look at this computer that a
+	// moved chat's after-work ended with ([Notices.Arrived]).
+	arrived *arrivedLook
+}
+
+// arrivedLook is that look, and the chat (its folder's name) it is about.
+type arrivedLook struct {
+	chat   string
+	resume machine.Resume
 }
 
 // saving keeps final sentences on the desk until the loop displays them or
@@ -107,6 +117,25 @@ func (n *Notices) say(line string, home bool) {
 	}
 	n.mu.Lock()
 	n.lines = append(n.lines, outsideNotice{text: line, home: home})
+	bell := n.bell
+	n.mu.Unlock()
+	bell.ring()
+}
+
+// Arrived puts on the desk the whole look at this computer that a moved chat's
+// background after-work ended with, for the chat whose folder is named chat.
+//
+// A CHAT THAT OPENS BEFORE ITS FILES ARRIVE CANNOT KNOW what this computer lacks
+// for the project, or what is uncommitted in the folder: both are read from the
+// files. The card the open raised could say only what the record held, so this
+// is the second beat of it, and the loop raises the same card again with the
+// rest ([app.arrivedAfterFiles]). A look with nothing to show says nothing.
+func (n *Notices) Arrived(chat string, r machine.Resume) {
+	if n == nil || chat == "" || !r.Worth() {
+		return
+	}
+	n.mu.Lock()
+	n.lines = append(n.lines, outsideNotice{arrived: &arrivedLook{chat: chat, resume: r}})
 	bell := n.bell
 	n.mu.Unlock()
 	bell.ring()
@@ -183,6 +212,10 @@ func (a *app) useNotices(desk *Notices) {
 // loop on the door again.
 func (a *app) saidNotices() {
 	for _, line := range a.outsideDesk.take() {
+		if line.arrived != nil {
+			a.arrivedAfterFiles(line.arrived.chat, line.arrived.resume)
+			continue
+		}
 		if chatlist.IsRemovedNotice(line.text) {
 			a.removedComputer()
 		}
