@@ -9,4 +9,4 @@ invalidates:
   - "A running task said only that it was running, and amber counted only Asks; now a running row's second line says what Afi is doing now (task.run.now, with its steps and spend), the Work header reads \"7 running · 1 failed\", and your Interrupted or Didn't report back task is amber, waiting on you."
 ---
 
-Lane L6, slice 2. The limits are fixed for now; nothing in Settings changes them yet.
+Lane L6, slice 2. A task that starts by itself when its waits clear (#2736) waits its turn under the same limits. The limits are fixed for now; nothing in Settings changes them yet.
