@@ -4,13 +4,13 @@
 
 A workstream's Tasks tab is the shared list of its work; everyone in the workstream sees the same list. A task is one piece of work with ONE owner. Who does it varies: Afi, a chat, the Factory, or a person (a person's task is just a checkbox). Who answers for it does not.
 
-A task has a title, a few lines saying what is wanted (the request), its owner, who does it, where it came from (a chat, a person, the Factory, a standing order), its state, what it waits on, an optional due date, an optional heading that groups it, and the files or links it made. There are no sub-tasks, priorities, estimates or custom fields.
+A task has a title, a few lines saying what is wanted (the request), its owner, who does it, where it came from (a chat, a person, the Factory, a standing order), its state, what it waits on, an optional due date, an optional heading that groups it, the files or links it made, and the files it uses. There are no sub-tasks, priorities, estimates or custom fields.
 
 The list's sections are always in this order: Waiting on someone, Running, Up next, Done. Work that ended without finishing sits under Waiting on someone, in the app's words: Failed (with its reason), Interrupted, Stopped by you (to whoever pressed Stop; everyone else reads "Stopped by Marco"), Didn't report back. A heading such as "Release 2.4" or "Factory" sits in the most urgent section any of its tasks is in, with all its tasks under it.
 
 ## open a task — in place in Tasks, back to the list, Open as its own tab
 
-A click on a task opens it in place, inside the Tasks tab: the workstream's header and tabs stay, and a bar over the page shows the task's name with "‹ Tasks" to go back, "Open as its own tab", and the task's own More (⋯). Escape, or pressing the Tasks tab again, also goes back, to the same place in the list. A task opened from the Inbox, from a file's "From" line or from a chat's list of what it made opens the same way, in its workstream's Tasks tab.
+A click on a task opens it in place, inside the Tasks tab: the workstream's header and tabs stay, and a bar over the page shows the task's name with "‹ Tasks" to go back, "Open as its own tab", and the task's own More (⋯). Escape, or pressing the Tasks tab again, also goes back, to the same place in the list. A task opened from the Inbox, from a file's "Made by task" or "Used by" line or from a chat's list of what it made opens the same way, in its workstream's Tasks tab.
 
 "Open as its own tab" (or Command-click on a row) shows the task alone in the window's one preview tab: opening the next task replaces it, unless you pinned it or worked in it. A chat keeps its own tab.
 
@@ -92,6 +92,26 @@ This works in an organization workstream. A Personal workstream has only you in 
 ## someone left the workstream — who gets their tasks, handed to the fallback
 
 When a person is removed from an organization workstream, each of their unfinished tasks there (and in every workstream inside it) is handed to the workstream's fallback person ("If unanswered for a day"), or to the person who looks after the workstream when there is none. The thread says "Handed to mia". Done tasks keep who did them, and a person's own checkbox task moves with the hand-off. Anyone who can edit can hand a task on again by hand.
+
+## attach a file to a task — + Attach, drag a file onto a task, what a task uses, Remove from this task
+
+A task's page lists what it made (**Result**, or **Files** on a person's task) and, under it, what it **uses**: the files its doer reads as inputs. A file the task made is never listed twice.
+
+- **Attach** at the right of the **Uses** heading picks a file from this workstream's Files, or from the workstream it sits inside, or **Upload a file…** from your computer. A file already attached is greyed and says "Attached"; one the task made says "Made here".
+- **Drag a file onto a task**: a row dragged from Files onto a task's row in Tasks, or onto its open page, attaches it. A file dragged from your computer onto a task is added to Files first, then attached ("Added to Files and attached").
+- **Remove from this task** shows when you point at a Uses row. It only takes the task off the file; the file stays in Files. What a task made cannot be removed from it.
+
+The link lives on the file: its facts in Files say "Used by" the task, and a document's or a canvas's page says "Made by task …" and "Used by …" (or "Used by 2 tasks", which lists them), each opening the task. When a file a running task uses changes, the task asks its owner whether to carry on. Someone the workstream is shared with to view sees what is attached but has no Attach and no Remove.
+
+Today a file is attached by a person. Afi and the chats file what they make in Files by themselves, but do not yet attach to a task the files they read.
+
+## a canvas on a task — its live picture, open it inside the task, Open beside
+
+A canvas a task made or uses shows as a small picture of the whole board, repainted a moment after anyone changes it. Clicking it opens the canvas inside the task, with a bar naming the task to go back (Escape too) and **Open beside** to put it in the window's preview tab. On an organization's canvas the picture stays the plain board ground until this computer can draw it; the canvas itself still opens.
+
+## the counts on a task's row — files and canvases
+
+A task's row in Tasks carries dim counts after its title: a file mark with how many files it made or uses, and a canvas mark with how many canvases. A task with nothing attached shows no count at all.
 
 ## a file changed while a task was running — carry on or start again
 
