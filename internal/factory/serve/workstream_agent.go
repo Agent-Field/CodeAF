@@ -590,6 +590,10 @@ type agentDoor struct {
 	// so a run that ends having written its work is not called a failure
 	// (finishTaskRun). A person's conversation leaves it nil.
 	wrote *taskWrites
+	// runTask is the task this door's run does, when it is a task's run: what
+	// the run makes is stamped from it and what it reads is used by it, so the
+	// task page lists both without the agent having to say so.
+	runTask string
 }
 
 // taskWrites is the files one task run made or rewrote, in the order it wrote

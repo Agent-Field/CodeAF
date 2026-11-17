@@ -31,9 +31,11 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/factory"
 )
 
 // WorkstreamWorkDoor is the door onto a workstream's tasks and files. Work
@@ -86,6 +88,8 @@ const WorkstreamWorkRules = "You are working inside a workstream: a shared place
 	"- Read the comments on a file (ws_file_read lists them) before you change it. Answer a comment on a passage with ws_file_comment, in its thread; never answer one by changing the document without a word.\n" +
 	"- Change a document only by suggestion (ws_file_suggest). You may rewrite a document directly only when an agent made it (you, Afi or another chat) and no person has edited it since: that is how you correct another chat's wrong draft.\n" +
 	"- Five or more tasks from one request are a batch: give them one group name (the same name as the chat that runs them).\n" +
+	"- The steps of ONE deliverable are a checklist inside its task (ws_task_create checklist), never tasks of their own. When a task you do has a checklist (ws_tasks shows it), tick each line as you finish it (ws_task_update checklist_done).\n" +
+	"- When you do a task, what you read and make is linked to it by itself: a file you read is listed as one it uses, a file you make as one it made.\n" +
 	"- The workstream's decisions (ws_decisions) are what its people settled. Read them before you write any shared task or file. When the work asked of you goes against one, write NOTHING shared that goes against it, not even with a note at the top: make the task (ws_task_create), which the app pauses while it asks the person who made the decision, and tell the person you are talking to who was asked.\n" +
 	"- Decisions are added by themselves when an Ask is answered, a request changes shared work, or a rule is set. Never tell anyone to keep, save or add a decision anywhere; there is no such step.\n" +
 	"- Ask before, or do and tell after. Cheap, reversible choices that go against no decision you make yourself and list under assumed on the task, one line each. Anything else, ask first (an ask on the task).\n" +
@@ -134,7 +138,8 @@ var workstreamWorkTools = []WorkstreamWorkTool{
 			`"done_by":{"type":"string","enum":["this_chat","factory","person"],"description":"Who does the work: this chat (the default), the Factory, or a person (the owner ticks it when done)."},` +
 			`"waiting_on":{"type":"array","items":{"type":"string"},"maxItems":20,"description":"Ids of tasks in this workstream that must finish first."},` +
 			`"due":{"type":"string","pattern":"^[0-9]{4}-[0-9]{2}-[0-9]{2}$","description":"YYYY-MM-DD, only when the person gave a date."},` +
-			`"group":{"type":"string","maxLength":200,"description":"A batch's name; tasks with the same group sit together."}` +
+			`"group":{"type":"string","maxLength":200,"description":"A batch's name; tasks with the same group sit together."},` +
+			`"checklist":{"type":"array","maxItems":` + strconv.Itoa(factory.TaskChecklistMost) + `,"items":{"type":"string","minLength":1,"maxLength":` + strconv.Itoa(factory.TaskChecklistLineMost) + `},"description":"The steps of this one deliverable, one line each (\"Outline\", \"First draft\", \"Check the numbers\"); they are lines inside the task with ids c1, c2…, never tasks of their own. Use separate tasks only for work someone else does or that is delivered on its own."}` +
 			`},"required":["title","request"],"additionalProperties":false}`)},
 	{Name: WSTaskUpdateTool, Category: "edit",
 		Description: "Change a task this chat does: its state, its result, the check of the result against the request, or an Ask for its owner. " +
@@ -158,7 +163,9 @@ var workstreamWorkTools = []WorkstreamWorkTool{
 			`"due":{"type":"string","pattern":"^([0-9]{4}-[0-9]{2}-[0-9]{2})?$"},` +
 			`"request_note":{"type":"string","maxLength":300,"description":"One line recording a private request that changed this task."},` +
 			`"decision":{"type":"string","maxLength":300,"description":"With request_note: what the request now settles for this shared work, as one plain statement (\"The notes stay under 300 words\"). It is kept in the workstream's decisions."},` +
-			`"assumed":{"type":"array","maxItems":10,"items":{"type":"string","minLength":1,"maxLength":300},"description":"What you decided without asking, one line each (\"Left out two fixes that only affect the team\"). Only cheap, reversible choices that go against no decision; anyone can send one back."}` +
+			`"assumed":{"type":"array","maxItems":10,"items":{"type":"string","minLength":1,"maxLength":300},"description":"What you decided without asking, one line each (\"Left out two fixes that only affect the team\"). Only cheap, reversible choices that go against no decision; anyone can send one back."},` +
+			`"checklist_done":{"type":"array","maxItems":` + strconv.Itoa(factory.TaskChecklistMost) + `,"items":{"type":"string"},"description":"Ids of the task's checklist lines (c1, c2… from ws_tasks) you have finished; tick each as you finish it."},` +
+			`"checklist_undone":{"type":"array","maxItems":` + strconv.Itoa(factory.TaskChecklistMost) + `,"items":{"type":"string"},"description":"Ids of checklist lines to untick."}` +
 			`},"required":["task"],"additionalProperties":false}`)},
 	{Name: WSTaskCommentTool, Category: "create",
 		Description: "Write on a task's thread, which everyone in the workstream reads. " +
