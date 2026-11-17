@@ -256,7 +256,7 @@ func (c Config) workstreamWorkDoor() WorkstreamWorkDoor {
 // ([Agent.guardDecisions]); nil runs them unchecked.
 type decisionGuard func(ctx context.Context, tool string, args json.RawMessage, call workstreamCall) (string, bool, error)
 
-// workstreamWorkBelt is the eight tools onto door, the two that start or
+// workstreamWorkBelt is the nine tools onto door, the two that start or
 // finish work checked by guard against the workstream's decisions.
 func workstreamWorkBelt(door WorkstreamWorkDoor, guard decisionGuard) []bare.Tool {
 	tools := make([]bare.Tool, 0, len(workstreamWorkTools))

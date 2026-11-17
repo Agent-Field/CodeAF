@@ -1119,7 +1119,10 @@ finished work, through `ws_task_conflict {task, decision, why}` — a verb the d
 answer and the model never holds — which adds the Ask to the decision's maker with
 "Keep the decision" (recommended, records nothing) and "Go ahead anyway" (records an
 exception). A door without `ws_decisions`, no decisions, or a reply the check cannot
-read lets the call through unchanged.
+read lets the call through unchanged. The organization's server answers both for its own Afi
+(`internal/factory/serve/workstream_agent_work.go`), so a server conversation is checked
+the same way, with the server's model; `ws_task_conflict` there is no route, only the
+agent door reaches it.
 
 An engine whose hello carries `org_canvases` reads and writes an organization's
 canvases, which live on its server and are kept there by canvas-core (`canvas rpc`), so

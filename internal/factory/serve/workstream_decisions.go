@@ -175,3 +175,71 @@ func foreignDecisionChange(next, before []factory.WorkstreamDecision, who string
 	}
 	return nil
 }
+
+// ── THE DECISION CHECK'S TWO VERBS, FOR THE SERVER'S AGENT ─────────────────
+//
+// internal/session checks the server agent's work against the decisions the
+// same way it checks a person's own (decisioncheck.go): it reads them through
+// ws_decisions and, on a conflict, raises the Ask through ws_task_conflict.
+// live2/E6 measured why the app and not the model acts: flash named the
+// right decision every time and still wrote the conflicting work in 8 of 10.
+// The second verb is never on the model's belt, so only the check reaches it.
+
+// conflictWorkstreamTask pauses task {tid} on an Ask to the maker of the
+// decision its work goes against. It is NOT A ROUTE: only the agent door
+// calls it, as the person, so the workstream's edit rule still holds. A
+// decision that is no longer kept raises nothing, and the same decision
+// raised twice is one Ask.
+func (h *Handler) conflictWorkstreamTask(w http.ResponseWriter, r *http.Request) {
+	ws, v, ok := h.writablePart(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Decision string `json:"decision"`
+		Why      string `json:"why"`
+	}
+	if !h.decode(w, r, &body, false) {
+		return
+	}
+	i := slices.IndexFunc(ws.Decisions, func(d factory.WorkstreamDecision) bool {
+		return d.ID == body.Decision && d.State == factory.DecisionKept
+	})
+	if i < 0 {
+		h.fail(w, http.StatusNotFound, "that decision is not one the workstream keeps now")
+		return
+	}
+	d := nameDecisions(ws.Decisions[i:i+1], h.personNames())[0]
+	now := h.clock().UTC()
+	by, tid := h.taskBy(r, v), r.PathValue("tid")
+	jobs, err := h.workstreamJobs(r, ws)
+	if h.failed(w, err) {
+		return
+	}
+	var out factory.TaskChange
+	err = h.config.Store.EditWorkstreamTasks(func(tw store.TaskWrite) error {
+		all, err := readTasksIn(tw, ws, jobs)
+		if err != nil {
+			return err
+		}
+		t, found := findTask(all, tid)
+		if !found {
+			return store.ErrTaskGone
+		}
+		if out, err = factory.RaiseConflict(t, d, body.Why, by, h.newTaskID("te_"), now); err != nil {
+			return err
+		}
+		if out.Task.Rev == t.Rev {
+			return nil
+		}
+		if err := keepTask(tw, out.Task, t.Rev); err != nil {
+			return err
+		}
+		return tw.Append(ws.ID, out.Events...)
+	})
+	if h.taskRefused(w, err) {
+		return
+	}
+	h.publishTasks(ws, h.orgActor(r), out.Task)
+	h.write(w, http.StatusOK, out.Task)
+}
