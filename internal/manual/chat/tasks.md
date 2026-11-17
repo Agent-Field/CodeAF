@@ -2858,7 +2858,9 @@ owns the work:
 could not open that conversation · engine: that conversation is not open here any more
 ```
 
-**And it works where the engine is local.** `--host` and `--at` do not draw rows for other
+## Can I read another conversation's task over ssh
+
+Live pages for another window work only where the engine is local. `--host` and `--at` do not draw rows for other
 conversations at all — the presence those rows are minted from is on the engine's machine and
 is not carried across the connection — so over a remote session (`--host` over ssh, or `--at`)
 you cannot read another conversation's task: there is no such row and no such page. What you
@@ -3409,7 +3411,7 @@ hour into the work still draws every row rather than only the ones that moved af
 arrived. This is the same subscription a local surface holds; the only difference is that
 it crosses a connection.
 
-## can I read another conversation's task over ssh — I started a task over ssh and the sidebar stayed empty — my task ran on the remote machine but there is no row for it
+## I started a task over ssh and the sidebar stayed empty — my task ran on the remote machine but there is no row for it
 
 This was a real defect and it is fixed. Before it was, `/task solo <brief>` over `--host`
 answered `single task 1 started · …`, the far worker ran and finished — and the column
