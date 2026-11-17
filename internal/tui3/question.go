@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
@@ -563,6 +564,9 @@ func (a *app) raiseQuestion(q questionShown) {
 	if a.qroom != nil && q.question.ClarificationDepth > a.qroom.head.question.ClarificationDepth {
 		a.closeQuestionRoom()
 	}
+	if q.question.Ask == session.AskPermission && approval.AlwaysAsksRule(q.question.Reason) {
+		q.question.Stakes = session.StakesIrreversible
+	}
 	q.pick = questionPointerStart(q.question)
 	// THE WAY BACK IS THE ASKER'S OWN CLAIM AND NOT THIS SURFACE'S GUESS. A
 	// caller that already knows this window can put the work back says so; for
@@ -590,7 +594,13 @@ func (a *app) raiseQuestion(q questionShown) {
 		// hand it a fresh settle guard every few seconds — which is a question
 		// that never becomes answerable on a link that reconnects.
 		q.shown = a.questions[i].shown
-		q.pick = a.questions[i].pick
+		if a.questions[i].question.Stakes == session.StakesIrreversible && q.question.Stakes != session.StakesIrreversible {
+			q.question.Stakes = session.StakesIrreversible
+			q.pick = questionPointerStart(q.question)
+		} else if questionSameAnswers(q.question.Options, a.questions[i].question.Options) &&
+			q.question.Stakes == a.questions[i].question.Stakes {
+			q.pick = a.questions[i].pick
+		}
 		// AND SO DOES EVERYTHING THE SURFACE KNOWS THAT THE OBJECT CANNOT
 		// CARRY. The same question arrives twice on purpose — the lane that
 		// raised it dresses it with the row it is about, its second beat and
@@ -783,7 +793,7 @@ func questionPointerStart(q session.Question) int {
 	// proposal is unaffected: an asker that recommended an answer said so on the
 	// row a person is reading (`suggested`), and `enter` taking the
 	// recommendation IS the pointer's law.
-	if q.Ask == session.AskPermission && q.Stakes == session.StakesCostly {
+	if q.Ask == session.AskPermission && q.Stakes == session.StakesCostly && !approval.AlwaysAsksRule(q.Reason) {
 		return 0
 	}
 	if questionHandsOnly(q) {

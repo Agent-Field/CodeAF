@@ -1048,6 +1048,11 @@ var OperatorEnvPins = []string{
 	// editable profile preferences.
 	"CODEAF_FACTORY_BENCHES",
 	"CODEAF_FACTORY_POSTURE",
+	// CODEAF_FACTORY_RUNTIME_DIR moves the private directory where an elected
+	// factory runner places its Unix control socket (cmd/codeaf's
+	// factory_runner_control.go). A socket directory is launch plumbing rather
+	// than a persisted preference.
+	"CODEAF_FACTORY_RUNTIME_DIR",
 	// The fence widening a launcher hands an unattended run (jailallow.go).
 	"CODEAF_JAIL_ALLOW",
 	// What a fenced command is told about itself; codeaf sets it, nobody reads
@@ -1399,6 +1404,20 @@ var OperatorEnvPins = []string{
 	// case. A path to a program is plumbing, for the reason CODEAF_FURROW is,
 	// and it shares CODEAF_TASK_BELT's lifetime.
 	"CODEAF_PLANDB_BIN",
+	// CODEAF_CANVAS_BIN names canvas-core's `canvas` program for an
+	// organization's server (internal/factory/canvasrpc), when it is neither
+	// beside codeaf nor on PATH. Without one the server keeps no canvases and
+	// leaves the canvas routes off. A path to a program the server's operator
+	// installs is plumbing, for the reason CODEAF_PLANDB_BIN is: a sheet row a
+	// project file could write would let a repository name what a server execs.
+	"CODEAF_CANVAS_BIN",
+	// CODEAF_FACTORY_RUNTIME_DIR moves the directory that holds the factory
+	// runner's control sockets (cmd/codeaf's factory_runner_control.go), /tmp
+	// by default; it must be absolute, and a path too long for a Unix socket
+	// falls back to the default with one line on stderr. The sockets stay out
+	// of the state home on purpose, so a socket's place is plumbing, like the
+	// workspace host's, and never a row a project file could move.
+	"CODEAF_FACTORY_RUNTIME_DIR",
 	// The four pool names that stay plumbing (internal/pool/poolcfg, which
 	// names them and reads none of them: the environment reaches that package
 	// as a function the caller hands in). The relay is the base the two URLs

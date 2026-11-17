@@ -33,6 +33,10 @@ type wedgedClientTools struct {
 	entered chan struct{}
 	release chan struct{}
 	once    sync.Once
+
+	mu    sync.Mutex
+	armed int
+	fire  func()
 }
 
 func (w *wedgedClientTools) ClientToolSets() (uint64, []session.ClientToolSet) {
@@ -79,7 +83,14 @@ func wedgedAgent(t *testing.T) (*session.Agent, *wedgedClientTools) {
 	root := t.TempDir()
 	agent, err := session.New(session.Config{Workspace: root, SessionFile: filepath.Join(root, "transcript.jsonl"),
 		Model: "test/model", APIKey: "fixture", BaseURL: provider.URL, OneModel: true,
-		DeterministicNames: true, PromptProfile: "full", ClientTools: tools})
+		DeterministicNames: true, PromptProfile: "full", ClientTools: tools,
+		AbandonAfter: func(_ time.Duration, fire func()) *time.Timer {
+			tools.mu.Lock()
+			tools.armed++
+			tools.fire = fire
+			tools.mu.Unlock()
+			return time.NewTimer(24 * time.Hour)
+		}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,14 +144,27 @@ func TestTheAppsBoundedStopOnlyInterruptsTheFactorysTurns(t *testing.T) {
 				}
 				close(ended)
 			}()
-			select {
-			case <-ended:
-				if !tc.letGoOf {
-					t.Fatal("the app's bounded stop let go of a turn the factory is still reading")
+			tools.mu.Lock()
+			armed, fire := tools.armed, tools.fire
+			tools.mu.Unlock()
+			if tc.letGoOf {
+				if armed != 1 || fire == nil {
+					t.Fatalf("the bounded stop armed %d timer(s), want 1", armed)
 				}
-			case <-time.After(20 * grace):
-				if tc.letGoOf {
-					t.Fatal("the bound never let go of the wedged turn; the rig proves nothing")
+				fire()
+				select {
+				case <-ended:
+				case <-time.After(10 * time.Second):
+					t.Fatal("the bound never let go of the wedged turn")
+				}
+			} else {
+				if armed != 0 {
+					t.Fatalf("the app's bounded stop armed %d timer(s) on %s, want 0", armed, tc.name)
+				}
+				select {
+				case <-ended:
+					t.Fatal("the app's bounded stop let go of a turn the factory is still reading")
+				default:
 				}
 				if !agent.TurnRunning() {
 					t.Fatal("the turn is not running, though its stream is open")

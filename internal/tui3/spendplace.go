@@ -9,6 +9,7 @@ package tui3
 
 import (
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -314,17 +315,8 @@ func readSpend(lines []session.UsageLine, win session.UsageWindow, now time.Time
 		totals:   session.UsageTotals(priced),
 		days:     session.UsageByDay(priced, win),
 		models:   session.UsageByModel(priced),
+		subjects: spendSubjects(priced),
 	}
-	// A subject exists only when the ledger names one of its addresses. The
-	// grouping reader's default conversation bucket is useful arithmetic, but
-	// an addressless line is not evidence for a person-facing role word.
-	var subjectPriced []session.UsageLine
-	for _, line := range priced {
-		if strings.TrimSpace(line.Task) != "" || strings.TrimSpace(line.Standing) != "" || strings.TrimSpace(line.Session) != "" {
-			subjectPriced = append(subjectPriced, line)
-		}
-	}
-	r.subjects = session.UsageBySubject(subjectPriced)
 	for _, day := range r.days {
 		if day.USD > r.loudest.USD {
 			r.loudest = day
@@ -332,16 +324,94 @@ func readSpend(lines []session.UsageLine, win session.UsageWindow, now time.Time
 	}
 	if r.loudest.USD > 0 {
 		var onDay []session.UsageLine
-		for _, line := range subjectPriced {
+		for _, line := range priced {
 			if sameSpendBucket(session.UsageLineDay(line), r.loudest.At, win.Grain) {
 				onDay = append(onDay, line)
 			}
 		}
-		if subjects := session.UsageBySubject(onDay); len(subjects) > 0 {
+		if subjects := spendSubjects(onDay); len(subjects) > 0 {
 			r.loudFor = subjects[0]
 		}
 	}
 	return r
+}
+
+const (
+	// spendSubjectKnowledge and spendSubjectOther classify ledger rows that carry
+	// none of the three subject ids (task, automation, conversation) so that
+	// every priced row in the window stands under exactly one topic (#2679).
+	spendSubjectKnowledge   = "knowledge"
+	spendKnowledgeTopicWord = "learning from your conversations"
+	spendSubjectOther       = "other"
+	spendOtherTopicWord     = "other work"
+)
+
+func isKnowledgeUsageLine(line session.UsageLine) bool {
+	role := strings.ToLower(strings.TrimSpace(line.Role))
+	return role == "knowledge" || role == "memory" || strings.TrimSpace(line.LibraryActivity) != ""
+}
+
+func hasUsageSubjectAddress(line session.UsageLine) bool {
+	return strings.TrimSpace(line.Automation) != "" ||
+		strings.TrimSpace(line.Standing) != "" ||
+		strings.TrimSpace(line.Task) != "" ||
+		strings.TrimSpace(line.Root) != "" ||
+		strings.TrimSpace(line.Session) != ""
+}
+
+// spendSubjects rolls up the window's priced lines by what the money was for,
+// dearest first, so that every dollar in the header is under exactly one topic
+// (#2679). Lines that carry a task, automation or conversation id use
+// [session.UsageBySubject]; id-less knowledge compiler lines land under
+// [spendKnowledgeTopicWord], and any other id-less line lands under
+// [spendOtherTopicWord].
+func spendSubjects(lines []session.UsageLine) []session.SubjectSpend {
+	var addressed []session.UsageLine
+	var knowledge, other session.SubjectSpend
+	for _, line := range lines {
+		if hasUsageSubjectAddress(line) {
+			addressed = append(addressed, line)
+			continue
+		}
+		if isKnowledgeUsageLine(line) {
+			knowledge.Kind = spendSubjectKnowledge
+			knowledge.ID = spendKnowledgeTopicWord
+			knowledge.Calls += line.Calls
+			knowledge.Tokens += line.Input + line.Output
+			knowledge.USD += line.USD
+			if knowledge.Workspace == "" {
+				knowledge.Workspace = strings.TrimSpace(line.Workspace)
+			}
+			continue
+		}
+		other.Kind = spendSubjectOther
+		other.ID = spendOtherTopicWord
+		other.Calls += line.Calls
+		other.Tokens += line.Input + line.Output
+		other.USD += line.USD
+		if other.Workspace == "" {
+			other.Workspace = strings.TrimSpace(line.Workspace)
+		}
+	}
+	rows := session.UsageBySubject(addressed)
+	if knowledge.USD > 0 || knowledge.Calls > 0 {
+		rows = append(rows, knowledge)
+	}
+	if other.USD > 0 || other.Calls > 0 {
+		rows = append(rows, other)
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		switch {
+		case rows[i].USD != rows[j].USD:
+			return rows[i].USD > rows[j].USD
+		case rows[i].Calls != rows[j].Calls:
+			return rows[i].Calls > rows[j].Calls
+		case rows[i].Kind != rows[j].Kind:
+			return rows[i].Kind < rows[j].Kind
+		}
+		return rows[i].ID < rows[j].ID
+	})
+	return rows
 }
 
 func sameSpendBucket(at, bucket time.Time, grain session.UsageGrain) bool {

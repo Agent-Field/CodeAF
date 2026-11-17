@@ -693,11 +693,13 @@ Tab completes the path as you type it.
 ## Does export save to my laptop — /export writes this conversation here
 
 `/export` (or `/save`) writes the **whole** conversation to a markdown file somebody else
-can read. It is built from the full transcript, not from the tail on screen.
+can read. It is built from the full journal — including turns from before `/compact` — not
+from the tail on screen.
 
 With no argument the file lands in the local root under a name derived from the session,
-like `20260817-150405_a3f2-port-the-resume-picker.md` — the transcript file stem plus the
-session name in kebab case, clipped to 48 characters. With neither file nor name it is
+`transcript-<session name>.md` (like `transcript-port-the-resume-picker.md`) — the
+transcript file stem plus the session name in kebab case, clipped to 48 characters, or
+`transcript.md` before the conversation has a name. With neither file nor name it is
 called `conversation.md`.
 
 With a path, `~` is home, a bare name is under the conversation's directory, and an

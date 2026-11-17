@@ -50,10 +50,16 @@ var errTaskAnswered = errors.New("this question was already answered")
 // ── who the caller is to the rules ──
 
 func taskActor(v Viewer, ws factory.OrgWorkstream) factory.TaskActor {
-	return factory.TaskActor{Handle: v.Handle, Edit: v.canWrite(ws) && ws.ArchivedAt == nil}
+	return factory.TaskActor{Handle: v.Handle, Edit: v.canWrite(ws) && ws.ArchivedAt == nil, Govern: v.canGovern(ws)}
 }
 
-func taskBy(v Viewer) factory.TaskEventBy {
+// taskBy is who a change is stamped with on the thread: the caller, or Afi
+// when the workstream's agent made it for them (the caller's rights are
+// still the ones checked).
+func (h *Handler) taskBy(r *http.Request, v Viewer) factory.TaskEventBy {
+	if call, ok := agentCallOf(r); ok && call.by.Kind != "" {
+		return call.by
+	}
 	return factory.TaskEventBy{Kind: factory.TaskByPerson, ID: v.Handle, Name: v.Handle}
 }
 
@@ -387,7 +393,7 @@ func (h *Handler) patchWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := h.clock().UTC()
-	actor, by := taskActor(v, ws), taskBy(v)
+	actor, by := taskActor(v, ws), h.taskBy(r, v)
 	var out factory.TaskChange
 	jobs, err := h.workstreamJobs(r, ws)
 	if h.failed(w, err) {
@@ -404,6 +410,9 @@ func (h *Handler) patchWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 		}
 		if t.Rev != rev {
 			return store.ErrTaskStale
+		}
+		if target.ID != "" && !factory.MayStop(t, actor) {
+			return factory.ErrTaskNotStopper
 		}
 		out, err = factory.ApplyPatch(t, p, actor, by, all, h.newTaskID("te_"), now)
 		if err != nil {
@@ -471,7 +480,7 @@ func (h *Handler) answerWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := h.clock().UTC()
-	actor, by := taskActor(v, ws), taskBy(v)
+	actor, by := taskActor(v, ws), h.taskBy(r, v)
 	// The rules first, on the task as read: who answers, and what.
 	change, err := factory.AnswerTask(t, body.Option, body.Text, actor, by, taskFallback(ws), h.newTaskID("te_"), now)
 	if h.taskRefused(w, err) {
@@ -565,7 +574,7 @@ func (h *Handler) commentWorkstreamTask(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	now := h.clock().UTC()
-	actor, by := taskActor(v, ws), taskBy(v)
+	actor, by := taskActor(v, ws), h.taskBy(r, v)
 	if body.Kind == factory.TaskEventOffer || body.Kind == factory.TaskEventRequestNote {
 		// An offer is Afi's, and a private request's note is made by the
 		// private chat the person is in: the caller's own client writes both,
@@ -603,7 +612,7 @@ func (h *Handler) commentWorkstreamTask(w http.ResponseWriter, r *http.Request) 
 			if i < 0 {
 				return store.ErrTaskGone
 			}
-			ev, err = factory.SetOffer(t, thread[i], body.Offer.State, actor, taskBy(v), now)
+			ev, err = factory.SetOffer(t, thread[i], body.Offer.State, actor, h.taskBy(r, v), now)
 			if err != nil {
 				return err
 			}

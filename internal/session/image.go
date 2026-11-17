@@ -129,6 +129,7 @@ func (a *Agent) SubmitImage(ctx context.Context, text string, images []Image) (<
 	if digest := a.planDigest(); digest != "" {
 		user = planDigestedParts(digest, user)
 	}
+	user.fromPerson = true
 	events, _, err := a.admitImageMessage(ctx, user)
 	return events, err
 }
@@ -154,16 +155,21 @@ func (a *Agent) admitImageMessage(ctx context.Context, user userMessage) (events
 		// happens then, not now.
 		a.mixCreationLocked(user)
 		a.steering = append(a.steering, user)
+		retired := a.personClosesQuestionsLocked(user)
+		a.notePersonWordsLocked(user)
 		events := a.hub.subscribePending(a.stillAskedLocked())
 		a.mu.Unlock()
+		a.sayTheQuestionsCameDown(retired)
 		return events, true, nil
 	}
 	if err := a.railBlockLocked(); err != nil {
 		a.mu.Unlock()
 		return refusedStream(err), false, nil
 	}
+	retired := a.personClosesQuestionsLocked(user)
 	started := a.startTurnLocked(ctx, user, nil)
 	a.mu.Unlock()
+	a.sayTheQuestionsCameDown(retired)
 	return started, false, nil
 }
 
@@ -341,7 +347,9 @@ func (a *Agent) visionTurn(ctx context.Context, text string, images []Image, mod
 	if err != nil {
 		return nil, err
 	}
-	return a.startVision(ctx, visionUserMessage(text, live.refs), live.message, model, seer)
+	kept := visionUserMessage(text, live.refs)
+	kept.fromPerson = true
+	return a.startVision(ctx, kept, live.message, model, seer)
 }
 
 // visionTurnMarked is [Agent.visionTurn] for an already assembled composed
@@ -350,6 +358,7 @@ func (a *Agent) visionTurn(ctx context.Context, text string, images []Image, mod
 func (a *Agent) visionTurnMarked(ctx context.Context, text, said string, live userMessage, model, seer string, mark *messagePresentation) (<-chan Event, error) {
 	kept := visionUserMessage(said, live.refs)
 	kept.person = mark
+	kept.fromPerson = true
 	return a.startVision(ctx, kept, live.message, model, seer)
 }
 
@@ -374,8 +383,10 @@ func (a *Agent) startVision(ctx context.Context, kept userMessage, live ai.Messa
 		a.mu.Unlock()
 		return refusedStream(err), nil
 	}
+	retired := a.personClosesQuestionsLocked(kept)
 	events := a.startVisionTurnLocked(ctx, kept, live, seer)
 	a.mu.Unlock()
+	a.sayTheQuestionsCameDown(retired)
 	return events, nil
 }
 
@@ -449,7 +460,11 @@ func (a *Agent) startVisionTurnLocked(ctx context.Context, kept userMessage, liv
 	a.recordUserLocked(kept)
 	events := hub.subscribe()
 
+	exited := a.turnExited
 	go func() {
+		if exited != nil {
+			defer exited()
+		}
 		completed := false
 		// No cause: the turn is finishing, not being stopped (stopcause.go).
 		defer cancel(nil)
@@ -472,6 +487,7 @@ func (a *Agent) startVisionTurnLocked(ctx context.Context, kept userMessage, liv
 			// their own stream, not a reason to swallow their words.
 			a.liftSteersLocked(hub)
 			drained := a.drainQueueLocked(hub, true)
+			a.stopAbandonTimerLocked()
 			a.running = false
 			a.cancel = nil
 			a.hub = nil

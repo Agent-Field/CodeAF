@@ -251,8 +251,12 @@ func workstreamWorkBelt(door WorkstreamWorkDoor) []bare.Tool {
 				if len(args) == 0 || strings.TrimSpace(string(args)) == "null" {
 					args = json.RawMessage(`{}`)
 				}
+				// The arguments are only checked to be one object here; the door
+				// reads its own fields. The check goes through the one decoder
+				// every tool's arguments go through (toolargs.go), so a model
+				// reads one grammar of refusal and never Go's own words.
 				var probe map[string]json.RawMessage
-				if err := json.Unmarshal(args, &probe); err != nil {
+				if err := decodeToolArguments(args, &probe); err != nil {
 					return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 				}
 				line, err := door.Work(ctx, name, args)

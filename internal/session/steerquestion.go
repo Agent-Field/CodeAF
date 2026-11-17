@@ -65,7 +65,10 @@ package session
 // through the same drain and the same send every other step uses, carrying the
 // question's result and then their words.
 
-import "strconv"
+import (
+	"strconv"
+	"strings"
+)
 
 // askTalkedPast is what the `ask` tool hands back when the person said
 // something else instead of answering.
@@ -132,4 +135,42 @@ func (a *Agent) sayTheQuestionsCameDown(taken []Question) {
 	for _, q := range taken {
 		a.sayWithdrawn(q, askTalkedPastReason)
 	}
+}
+
+// personClosesQuestionsLocked ends every question this agent still has open
+// when the person's own new message arrives, whether a turn is running or not,
+// and answers the questions it retired for the caller to say out loud once the
+// lock is down.
+//
+// A REPLY FROM THE PERSON IS THEIR ANSWER TO WHAT WAS ON THE SCREEN. A steer
+// already retired every ask; a fresh turn retired nothing, so a question the
+// turn did not wait for ([Question.Later]) or one a task is stopped on stood in
+// the Inbox after the person had moved on. It is the steer's own road
+// ([Agent.talkedPastQuestionsLocked]), so the receipt and the Inbox read the
+// same either way, and the model is free to ask again if it still needs to.
+//
+// Only the person's own doors count ([userMessage.fromPerson]): a wake note, a
+// runner's note, factory work, a setup turn or an answer to a question is not
+// somebody replying.
+func (a *Agent) personClosesQuestionsLocked(user userMessage) []Question {
+	if !user.fromPerson {
+		return nil
+	}
+	return a.talkedPastQuestionsLocked()
+}
+
+// notePersonWordsLocked keeps a person's message that joined the running turn
+// as that turn's latest words from them ([Agent.personWords]).
+func (a *Agent) notePersonWordsLocked(user userMessage) {
+	if user.fromPerson {
+		a.personWords = user.text()
+	}
+}
+
+// turnPersonWords is the person's latest own words in the running turn, and
+// "" when the turn holds none.
+func (a *Agent) turnPersonWords() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return strings.TrimSpace(a.personWords)
 }

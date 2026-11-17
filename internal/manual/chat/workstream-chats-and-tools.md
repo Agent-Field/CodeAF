@@ -36,7 +36,7 @@ Every chat started inside a workstream, and Afi when it is inside one, carries e
 - `ws_task_create` makes a task; `ws_task_update` changes one this chat does (its state, its result, the check against the request, an Ask for its owner); `ws_task_comment` writes on a task's thread.
 - `ws_files` lists files and folders; `ws_file_read` reads one; `ws_file_create` makes a document, folder or link; `ws_file_suggest` suggests edits to a document.
 
-On a Personal workstream the desktop app serves them. On an organization's server, the workstream's server agent carries them beside `workstream_pages` once that server keeps a workstream's tasks and files; a server that does not yet keep them leaves them off the belt, and the agent does not have those verbs.
+On a Personal workstream the desktop app serves them. On an organization whose agents run on its server, Afi there carries all eight beside `workstream_pages`, with the same rules; the page about an organization workstream's agent says what is different there.
 
 ## does every chat turn into a task — when an agent makes a task, and when it does not
 
@@ -50,7 +50,7 @@ An agent never acts on a comment. A comment on a task or in a file is people tal
 
 ## the agent changed my document — suggestions, and when it edits directly
 
-Agents change a document by suggestion: nothing changes until someone in the workstream accepts it, and anyone can accept or reject one. An agent rewrites a document directly only when it made that document and no person has edited it since. Two chats changing the same document both arrive as suggestions.
+Agents change a document by suggestion: nothing changes until someone in the workstream accepts it, and anyone can accept or reject one. An agent rewrites a document directly only when it made that document and no person has edited it since. Two chats changing the same document both arrive as suggestions. On an organization's server, a suggestion from Afi is a version in the document's History marked Kept · not applied, and accepting it is Restore this version.
 
 ## "Priya asked Afi to keep it under 300 words" — the one line a private request leaves
 
@@ -60,9 +60,9 @@ When something you asked an agent privately changes shared work, the task's thre
 
 Give Afi big work (work that splits into five or more tasks), or tell it "you coordinate it", and it hands the work to a chat of your own instead of doing it in Afi's pane: it starts the chat with ws_chat_start, names it for the work (for example "Release 2.4"), gives it the brief, and says so in its reply. Afi stays free for quick questions. Afi's pane then offers "Open <name>", and in the Chats tab the chat's row says "Started by Afi".
 
-That chat splits the work into tasks under a group with the same name, with owners and what waits on what. Five or more appear in Tasks as a plan with **Start** (once spelled "Start all") and **Change the plan**, and nothing in it starts until you press Start. **Change the plan** opens that chat with "Change the plan for <name>: " ready in its box, so you tell the chat that owns the plan. Fewer than five, it starts them itself. Once started, the chat runs the tasks in order, each once what it waits on is done, within the workstream's "Start without asking" rule, checks each result against its request, and comes to you only when a task needs you, with an Ask on that task. One name leads to two places: in Chats, your private conversation about the work; in Tasks, the shared group everyone in the workstream sees.
+That chat splits the work into tasks under a group with the same name, with owners and what waits on what. Five or more appear in Tasks as a plan with **Start** (once spelled "Start all") and **Change the plan**, and nothing in it starts until you press Start. **Change the plan** opens that chat with "Change the plan for <name>: " ready in its box, so you tell the chat that owns the plan. With fewer than five, the chat asks you first, or goes ahead within the workstream's "Start without asking" amount. Once started, the chat runs the tasks in order, each once what it waits on is done, within the workstream's "Start without asking" rule, checks each result against its request, and comes to you only when a task needs you, with an Ask on that task. One name leads to two places: in Chats, your private conversation about the work; in Tasks, the shared group everyone in the workstream sees.
 
-On an organization whose agents run on its server, Afi has no ws_chat_start: your chats live on your computer and the server never sees them. There Afi gives the tasks one group in Up next itself, and each waits until someone starts it.
+On an organization whose agents run on its server, Afi has no ws_chat_start: your chats live on your computer and the server never sees them. There Afi gives the tasks one group in Up next itself, and nothing yet works an organization's task unattended: each waits in Up next until its owner marks it done or stops it.
 
 ## did the agent save it to the Library — what a workstream's chat makes goes to its Files, not the Library or disk
 

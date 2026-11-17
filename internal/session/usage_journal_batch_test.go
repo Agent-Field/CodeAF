@@ -104,3 +104,21 @@ func TestUsageJournalSyncDoesNotBlockAdmission(t *testing.T) {
 		t.Fatal("slow background sync blocked RecordUsage")
 	}
 }
+
+// Removing a disposable home while its writer is still registered must not leave
+// the journal synchronizer retrying a deleted file and holding StopUsageWriter:
+// the stop wakes the synchronizer, so no timer needs to be waited out.
+func TestUsageJournalStopJoinsAfterDirectoryRemoval(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "v3", UsageLedgerName)
+	RecordUsage(path, UsageLine{ID: "removed-home", Input: 1, USD: .01})
+	if !FlushUsage() {
+		t.Fatal("initial usage did not flush")
+	}
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatal(err)
+	}
+	if !StopUsageWriter(path) {
+		t.Fatal("StopUsageWriter did not join after the journal directory was removed")
+	}
+}

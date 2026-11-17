@@ -25,6 +25,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
 // ── the window ──────────────────────────────────────────────────────────────
@@ -698,6 +700,15 @@ type Receipt struct {
 	// Calls is the whole subtree's requests, on [Receipt.Folded]'s terms: the
 	// denominator the total is the sum over.
 	Calls int
+	// Input, Output and CacheRead are the whole subtree's token counts on the
+	// same terms as [Receipt.Calls], and CacheReads splits CacheRead by the
+	// model each ledger row named so cache savings stay priced at the model
+	// that served the call.
+	Input       int
+	Output      int
+	CacheRead   int
+	EmptyReflex int
+	CacheReads  map[string]int
 }
 
 // Folded is the whole subtree: the node and the work it started.
@@ -741,6 +752,18 @@ func UsageTree(lines []UsageLine, conversation string) Receipt {
 			receipt.Unbilled++
 		}
 		receipt.Calls += line.Calls
+		receipt.Input += line.Input
+		receipt.Output += line.Output
+		receipt.CacheRead += line.CacheRead
+		if line.CacheRead > 0 {
+			if receipt.CacheReads == nil {
+				receipt.CacheReads = make(map[string]int)
+			}
+			receipt.CacheReads[strings.TrimSpace(line.Model)] += line.CacheRead
+		}
+		if line.Empty && line.Role == string(roles.RoleReflex) {
+			receipt.EmptyReflex += max(line.Calls, 1)
+		}
 	}
 	return receipt
 }

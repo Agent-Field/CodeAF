@@ -583,6 +583,12 @@ const (
 	// surface that is told so shows the question at once rather than holding
 	// it on a clock it cannot stop.
 	MethodQuestionClock = "Question.Clock" // QuestionClockArgs → QuestionClockReply
+	// MethodQuestionDismiss takes one of the model's own questions down because
+	// the person dismissed it from the Inbox: nothing is decided and the model
+	// is told ([session.Agent.DismissQuestion]). It names the question the way
+	// [MethodQuestionHold] does, and it answers, because a refusal — the
+	// question was answered first — must reach the person who pressed it.
+	MethodQuestionDismiss = "Question.Dismiss" // QuestionHoldArgs → nothing (or a refusal)
 	// MethodQuestionWatch is the surface saying it draws questions, and it buys
 	// exactly what [MethodTaskWatch] and [MethodDesignWatch] buy: "question"
 	// frames from here on, including everything already open replayed the
