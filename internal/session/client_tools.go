@@ -14,13 +14,19 @@ import (
 )
 
 // Client tool limits are shared by the wire validator and the conversation door.
+//
+// ClientToolInstructionsMax is 8 KiB because the workstream set an app declares
+// carries this engine's own WorkstreamWorkRules (about 3 KiB) verbatim and adds
+// its own lines after them; at 4 KiB the desk's Afi set came to 4521 bytes and
+// was refused, which left Afi with no workstream tools at all. Four sets at the
+// cap still add at most 32 KiB to a turn's prompt.
 const (
 	ClientToolMaxSets           = 4
 	ClientToolMaxPerSet         = 32
 	ClientToolMaxPerAgent       = 64
 	ClientToolDescriptionMax    = 2048
 	ClientToolSchemaMax         = 16 << 10
-	ClientToolInstructionsMax   = 4096
+	ClientToolInstructionsMax   = 8192
 	ClientToolErrorMax          = 4096
 	ClientToolOutputMax         = 64 << 10
 	ClientToolDefaultDeadlineMS = 30000
@@ -52,13 +58,27 @@ type ClientToolSet struct {
 var clientToolSetPattern = regexp.MustCompile(`^[a-z][a-z0-9_.-]{0,63}$`)
 var clientToolNamePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
 
+// ClientToolSetSizeError names the limit a set is over and by how much, or ""
+// when it fits. THE REFUSAL SAYS THE SIZE IT SAW: an app whose set grew past a
+// limit learns which one and by how many from the error alone, rather than from
+// a live test that finds a conversation with none of its tools.
+func ClientToolSetSizeError(tools, instructionBytes int) string {
+	switch {
+	case tools > ClientToolMaxPerSet:
+		return fmt.Sprintf("a set allows at most %d tools; this one has %d", ClientToolMaxPerSet, tools)
+	case instructionBytes > ClientToolInstructionsMax:
+		return fmt.Sprintf("a set allows at most %d instruction bytes; this one has %d", ClientToolInstructionsMax, instructionBytes)
+	}
+	return ""
+}
+
 // ValidateClientToolSet checks declarations at a conversation's transport door.
 func ValidateClientToolSet(set ClientToolSet) error {
 	if !clientToolSetPattern.MatchString(set.ID) {
 		return fmt.Errorf("a valid set id is required")
 	}
-	if len(set.Tools) > ClientToolMaxPerSet || len(set.Instructions) > ClientToolInstructionsMax {
-		return fmt.Errorf("a set allows at most %d tools and %d instruction bytes", ClientToolMaxPerSet, ClientToolInstructionsMax)
+	if err := ClientToolSetSizeError(len(set.Tools), len(set.Instructions)); err != "" {
+		return fmt.Errorf("%s", err)
 	}
 	if set.DeadlineMS != 0 && (set.DeadlineMS < ClientToolMinDeadlineMS || set.DeadlineMS > ClientToolMaxDeadlineMS) {
 		return fmt.Errorf("deadline_ms must be 0 or %d–%d", ClientToolMinDeadlineMS, ClientToolMaxDeadlineMS)
