@@ -249,6 +249,11 @@ func (p Policy) CheckBash(command string) Decision {
 	return p.checkBash(command, p.base(ToolBash, nil))
 }
 
+const (
+	criticalCommandRulePrefix = "critical command "
+	actsInPersonsNameSuffix   = " acts in your name outside this machine"
+)
+
 // base is the answer before any bash-specific reasoning: the tool's own rule
 // if it has one, otherwise the default, otherwise ask — with the floor under a
 // blanket allow that [actsInThePersonsName] describes.
@@ -261,7 +266,7 @@ func (p Policy) base(tool string, args json.RawMessage) Decision {
 		decision = Decision{Action: p.Default, Rule: "default"}
 	}
 	if decision.Action == ActionAllow && ActsInThePersonsName(tool, args) {
-		return Decision{Action: ActionPrompt, Rule: fmt.Sprintf("%s acts in your name outside this machine", tool)}
+		return Decision{Action: ActionPrompt, Rule: tool + actsInPersonsNameSuffix}
 	}
 	return decision
 }
@@ -283,7 +288,7 @@ func (p Policy) checkBash(command string, base Decision) Decision {
 	// would have run silently is worth interrupting.
 	if decision.Action == ActionAllow {
 		if hit, ok := criticalHit(command, segments); ok {
-			return Decision{Action: ActionPrompt, Rule: fmt.Sprintf("critical command %q", hit)}
+			return Decision{Action: ActionPrompt, Rule: fmt.Sprintf(criticalCommandRulePrefix+"%q", hit)}
 		}
 	}
 	// A read-only line — `git status` and its flags — is not a question in

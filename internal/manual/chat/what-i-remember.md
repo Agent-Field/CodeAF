@@ -413,7 +413,10 @@ not necessarily a running turn.
 
 Yes. Plain `codeaf` and `--host devbox` both use the connected conversation's
 memory: the commands, the Memory tab and the receipts all reach that machine's
-store. `--no-host` uses this machine's store directly.
+store. `codeaf chat --no-host` and `CODEAF_DEBUG=1 codeaf` use this machine's store
+directly and anchor the conversation to the working folder's project the same way
+plain `codeaf` does, so `/remember` keeps the line `for this project` and `/always`
+shows the project's lines on both.
 
 On a small model (a context window under about 32,000 tokens, or a model with no
 tools) the selected lines still ride and noticing still runs. What a small
