@@ -113,6 +113,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does Start all do", "organization-workstream-tasks"},
 		{"how do I go back to the task list after opening a task", "organization-workstream-tasks"},
 		{"open a task in its own tab", "organization-workstream-tasks"},
+		{"select several tasks with shift click and give them to Afi", "organization-workstream-tasks"},
+		{"read tasks side by side with the arrow keys", "organization-workstream-tasks"},
 		{"I sent a task back, what happens to the tasks waiting on it", "organization-workstream-tasks"},
 		{"can afi act on my comment on a task", "organization-workstream-tasks"},
 		{"where is the result of a task, can I read it without opening it", "organization-workstream-tasks"},

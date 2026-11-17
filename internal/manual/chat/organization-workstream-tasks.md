@@ -6,13 +6,23 @@ A workstream's Tasks tab is the shared list of its work; everyone in the workstr
 
 A task has a title, a few lines saying what is wanted (the request), its owner, who does it, where it came from (a chat, a person, the Factory, a standing order), its state, what it waits on, an optional due date, an optional heading that groups it, the files or links it made, the files it uses, and an optional checklist of its steps. There are no sub-tasks, priorities, estimates or custom fields: steps of one piece of work go on its checklist.
 
-The list's sections are always in this order: Waiting on someone, Running, Up next, Done. Work that ended without finishing sits under Waiting on someone, in the app's words: Failed (with its reason), Interrupted, Stopped by you (to whoever pressed Stop; everyone else reads "Stopped by Marco"), Didn't report back. A heading such as "Release 2.4" or "Factory" sits in the most urgent section any of its tasks is in, with all its tasks under it.
+The list's sections are always in this order: Waiting on you, Waiting on others, Running, Up next, Done. Empty sections are absent. Everyone shows all the work; Mine shows what you own, do, or need to answer. Work that ended without finishing sits in the appropriate waiting section, in the app's words: Failed (with its reason), Interrupted, Stopped by you (to whoever pressed Stop; everyone else reads "Stopped by Marco"), Didn't report back. A heading such as "Release 2.4" or "Factory" sits in the most urgent section any of its tasks is in, with all its tasks under it.
 
-## open a task — in place in Tasks, back to the list, Open as its own tab
+## read tasks side by side with the arrow keys — the split Tasks list
 
-A click on a task opens it in place, inside the Tasks tab: the workstream's header and tabs stay, and a bar over the page shows the task's name with "‹ Tasks" to go back, "Open as its own tab", and the task's own More (⋯). Escape, or pressing the Tasks tab again, also goes back, to the same place in the list. A task opened from the Inbox, from a file's "Made by task" or "Used by" line or from a chat's list of what it made opens the same way, in its workstream's Tasks tab.
+With at least 1100 pixels of content width and Afi's pane closed, Tasks shows a 500-pixel list beside the selected task. The first task waiting on you is selected when there is no current selection; otherwise the first visible task is selected. Click another row to read it beside the list. With focus in the list, Up and Down move through the visible tasks without pressing Back. Running rows show their current step when the runner supplies one.
 
-"Open as its own tab" (or Command-click on a row) shows the task alone in the window's one preview tab: opening the next task replaces it, unless you pinned it or worked in it. A chat keeps its own tab.
+## open a task — how do I go back to the task list after opening a task, Open as its own tab
+
+Below 1100 pixels of content width, or while Afi's pane is open, selecting a task opens it in place, inside the Tasks tab. The workstream's header and tabs stay, and a bar shows the task's name, “‹ Tasks”, “Open as its own tab”, and the task's More (⋯). Escape, “‹ Tasks”, or pressing the Tasks tab again returns to the same list position. A task opened from the Inbox, a file's “Made by task”, “Used by” or “From” line, or a chat's list of what it made opens in the same workstream's Tasks tab.
+
+“Open as its own tab” shows the task alone in the window's preview tab. In the Tasks list, Command-click (Control-click on Linux) toggles selection instead. A chat keeps its own tab.
+
+## select several tasks — shift click, command click, bulk Done by, Give to Afi
+
+Shift-click selects the visible range from the first selected task. Command-click, or Control-click on Linux, adds or removes a task. Shift with Up or Down extends a selection. Folded tasks are not included. A selection of several tasks replaces the task page with their titles and shared controls. Its checkboxes select tasks; they never mark them done. Clear returns to reading one task.
+
+Done by offers only choices every selected task allows: the owner or workstream steward can change a doer, but completed tasks and Factory tasks cannot be handed over here. Agents come from the workstream's own list. Choosing a doer shows “Give these N to Afi” (or the chosen name), the consequences, Give and Cancel. The owner is unchanged. Ready agent tasks start through the normal Start door; unfinished waits stay Up next. A failed write stops the operation, and the list refreshes so you can see which changes took effect before retrying.
 
 A Personal workstream keeps its tasks on this computer; an organization workstream keeps them on the organization's server. They behave the same.
 
