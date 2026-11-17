@@ -20,6 +20,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -209,6 +210,82 @@ func TestATeamWakeAnsweredNoChangeIsNotCarriedOn(t *testing.T) {
 	}
 	if got := remainsAsks.Load(); got != 0 {
 		t.Errorf("the reader was spent %d times on a wake with nothing new", got)
+	}
+}
+
+// AND IT ENDS THERE ON THE REAL ROAD. A team wake does not arrive as a typed
+// message: [Agent.teamWakeWith] queues the note and starts a turn whose opening
+// message is empty and marked a wake, and the note reaches the transcript
+// through the steering drain. The turn is read the same way, off the transcript.
+func TestATeamWakeStartedByTheTeamAndAnsweredNoChangeIsNotCarriedOn(t *testing.T) {
+	var remainsAsks, carriedOn, rounds atomic.Int64
+	steps := make([]step, checkpointMarkAt(1)+10)
+	for index := range steps {
+		steps[index] = func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+			if askedForRemains(messages) {
+				remainsAsks.Add(1)
+				return textResponse("the person's question about flyers was never answered"), nil
+			}
+			if last := messages[len(messages)-1]; last.Role == "user" && strings.HasPrefix(partsText(last), checkpointCarryOnLead) {
+				carriedOn.Add(1)
+				return textResponse("No flyers have ever been made."), nil
+			}
+			if call := rounds.Add(1); call <= int64(checkpointMarkAt(1)) {
+				return toolResponseWithText(fmt.Sprintf("call-%d", call), "ls",
+					fmt.Sprintf(`{"path":"./%d"}`, call), ""), nil
+			}
+			return textResponse(NoChangeReply), nil
+		}
+	}
+	agent := checkpointAgent(t, &scriptedCompleter{steps: steps})
+	stubbedGraph(agent, func(node *TaskNode) {})
+	wakes := agent.Wakes()
+
+	wake := teamWakeManagerLead + "\n\n" + teamWakeDeliveryRule + "\n\nWhat your members in \"tele\" did:\n@tele finished its turn"
+	if started, why := agent.teamWakeWith(wake); !started {
+		t.Fatalf("the team did not wake the agent: %s", why)
+	}
+	select {
+	case events := <-wakes:
+		collect(t, events)
+	case <-time.After(10 * time.Second):
+		t.Fatal("the woken turn was never handed to the wake lane")
+	}
+	if got := carriedOn.Load(); got != 0 {
+		t.Errorf("a wake answered %q was carried on %d times", NoChangeReply, got)
+	}
+	if got := remainsAsks.Load(); got != 0 {
+		t.Errorf("the reader was spent %d times on a wake with nothing new", got)
+	}
+}
+
+// THE WAKE IS READ OFF THE TRANSCRIPT: the token ends a turn nobody typed only
+// when, past the harness's own notes, what it answers is the team's wake note.
+func TestAnsweredWakeUnchangedReadsTheTranscript(t *testing.T) {
+	note := teamWakeManagerLead + "\n\n" + teamWakeDeliveryRule + "\n\n@tele finished its turn"
+	token := textMessage("assistant", NoChangeReply)
+	called := ai.Message{Role: "assistant", ToolCalls: []ai.ToolCall{{ID: "c1"}}}
+	answered := ai.Message{Role: "tool", ToolCallID: "c1"}
+	woken := userMessage{wake: true}
+	for name, tc := range map[string]struct {
+		user     userMessage
+		messages []ai.Message
+		want     bool
+	}{
+		"wake handled then token": {woken, []ai.Message{textMessage("user", note), called, answered,
+			textMessage("user", checkpointChoiceLead+" 10 rounds so far"), token}, true},
+		"person typed into the wake": {woken, []ai.Message{textMessage("user", note), called, answered,
+			textMessage("user", "and what about the flyers?"), token}, false},
+		"a carry-on after the note": {woken, []ai.Message{textMessage("user", note), called, answered,
+			textMessage("user", checkpointCarryOnLead+"note"), called, answered, token}, false},
+		"a wake for something else": {woken, []ai.Message{textMessage("user", note), token,
+			textMessage("user", "a task you started has finished"), token}, false},
+		"a typed turn":       {userMessage{message: textMessage("user", "hi")}, []ai.Message{textMessage("user", note), token}, false},
+		"calls on the reply": {woken, []ai.Message{textMessage("user", note), {Role: "assistant", Content: token.Content, ToolCalls: called.ToolCalls}}, false},
+	} {
+		if got := answeredWakeUnchanged(tc.user, tc.messages); got != tc.want {
+			t.Errorf("%s: answeredWakeUnchanged = %v, want %v", name, got, tc.want)
+		}
 	}
 }
 
