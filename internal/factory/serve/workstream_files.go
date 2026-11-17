@@ -716,6 +716,10 @@ func (h *Handler) moveWorkstreamFiles(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusUnprocessableEntity, "files names at least one file to move")
 		return
 	}
+	if body.To != "" && body.To != ws.ID {
+		h.moveFilesAcross(w, r, ws, v, body)
+		return
+	}
 	now := h.clock().UTC()
 	ids := slices.Compact(slices.Sorted(slices.Values(body.Files)))
 	files, err := h.config.Store.EditWorkstreamFiles(ws.ID, now.Format(time.RFC3339Nano), func(files map[string]factory.WorkstreamFile) ([]string, bool, error) {
@@ -750,6 +754,99 @@ func (h *Handler) moveWorkstreamFiles(w http.ResponseWriter, r *http.Request) {
 	}
 	h.recordWorkstream(r, ws.ID, "moved files", strings.Join(ids, " "))
 	h.write(w, http.StatusOK, out)
+}
+
+// errFileNotMover refuses a move between workstreams by someone who neither
+// looks after the workstream the files leave nor made them.
+var errFileNotMover = errors.New("only whoever looks after this workstream, or the person who made a file, can move it to another workstream")
+
+// moveFilesAcross sends files to another workstream's Files (Bring along:
+// what a chat made lands in the new workstream once). It asks what a task's
+// move asks (factory.MayStop): edit on both workstreams, and the caller
+// either looks after this one or made the file, a chat or Afi's file
+// counting as made for the person it was made for. A document's live text
+// follows its page.
+func (h *Handler) moveFilesAcross(w http.ResponseWriter, r *http.Request, ws factory.OrgWorkstream, v wsViewer, body api.FilesMove) {
+	other, found, err := h.config.Store.Workstream(body.To)
+	if h.failed(w, err) {
+		return
+	}
+	if !found || !v.canSee(other) {
+		h.fail(w, http.StatusNotFound, errWorkstreamGone.Error())
+		return
+	}
+	if !v.canWrite(other) || other.ArchivedAt != nil {
+		h.fail(w, http.StatusForbidden, "moving a file needs edit on the workstream it moves to")
+		return
+	}
+	// Both sides folded first, so a fold that runs later never makes a second
+	// copy of a page that moved.
+	if _, err := h.foldFiles(ws); h.failed(w, err) {
+		return
+	}
+	if _, err := h.foldFiles(other); h.failed(w, err) {
+		return
+	}
+	ids := slices.Compact(slices.Sorted(slices.Values(body.Files)))
+	if !v.canGovern(ws) {
+		have, err := h.config.Store.WorkstreamFiles(ws.ID)
+		if h.failed(w, err) {
+			return
+		}
+		for _, id := range ids {
+			f, ok := have[id]
+			if !ok || f.DeletedAt != nil {
+				h.fail(w, http.StatusNotFound, store.ErrFileGone.Error())
+				return
+			}
+			if !madeBy(f, v.Handle) {
+				h.fail(w, http.StatusForbidden, errFileNotMover.Error())
+				return
+			}
+		}
+	}
+	now := h.clock().UTC()
+	moved, err := h.config.Store.MoveWorkstreamFiles(ws.ID, other.ID, ids, body.Folder, now.Format(time.RFC3339Nano), v.Handle)
+	switch {
+	case errors.Is(err, store.ErrFileFolderMove), errors.Is(err, store.ErrFileNoFolder), errors.Is(err, store.ErrFileIDTaken):
+		h.fail(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	case h.fileRefused(w, err):
+		return
+	}
+	for _, f := range moved {
+		if f.Kind == factory.FileDocument && f.PageID != "" {
+			if ds, err := h.docStore(); err == nil {
+				from := "ws/" + ws.ID + "/page/" + f.PageID
+				if ds.Rename(from, "ws/"+other.ID+"/page/"+f.PageID) == nil {
+					h.docs.hub.Remove(from)
+				}
+			}
+		}
+	}
+	out := api.WorkstreamFiles{Files: []factory.WorkstreamFile{}}
+	actor := h.orgActor(r)
+	for _, f := range moved {
+		out.Files = append(out.Files, f)
+		h.publishWorkstreamPart(ws, api.PartFiles, f.ID, actor, f.Rev, true) // gone from here
+		h.publishWorkstreamPart(other, api.PartFiles, f.ID, actor, f.Rev, false)
+	}
+	h.recordWorkstream(r, ws.ID, "moved files to "+other.ID, strings.Join(ids, " "))
+	h.recordWorkstream(r, other.ID, "received files from "+ws.ID, strings.Join(ids, " "))
+	h.write(w, http.StatusOK, out)
+}
+
+// madeBy is whether handle made f: a person's own file, or one a chat or Afi
+// made for them.
+func madeBy(f factory.WorkstreamFile, handle string) bool {
+	if handle == "" {
+		return false
+	}
+	h := factory.NormalizeHandle(handle)
+	if f.MadeBy.Kind == factory.MakerPerson {
+		return factory.NormalizeHandle(firstNonEmpty(f.MadeBy.ID, f.MadeBy.Name)) == h
+	}
+	return f.MadeBy.For != "" && factory.NormalizeHandle(f.MadeBy.For) == h
 }
 
 func (h *Handler) deleteWorkstreamFile(w http.ResponseWriter, r *http.Request) {

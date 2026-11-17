@@ -339,3 +339,32 @@ func parse(s string) time.Time {
 	t, _ := time.Parse(time.RFC3339Nano, s)
 	return t
 }
+
+// ErrDocTaken refuses a rename onto a document that already has content.
+var ErrDocTaken = errors.New("a document of that name already has content")
+
+// Rename carries doc's log and snapshot to a new name, so a page that moves
+// to another workstream keeps its live text and its sequence numbers. A doc
+// with nothing kept renames to nothing; a target that has content refuses.
+func (s *Store) Rename(from, to string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var n int
+	if err := tx.QueryRow(`SELECT (SELECT count(*) FROM docs WHERE doc = ?) + (SELECT count(*) FROM updates WHERE doc = ?)`, to, to).Scan(&n); err != nil {
+		return err
+	}
+	if n > 0 {
+		return ErrDocTaken
+	}
+	for _, q := range []string{`UPDATE updates SET doc = ? WHERE doc = ?`, `UPDATE docs SET doc = ? WHERE doc = ?`} {
+		if _, err := tx.Exec(q, to, from); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}

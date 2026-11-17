@@ -836,8 +836,14 @@ honoured only for kind `afi` or `chat`, stamped `for` the caller).
 edited?}` `PATCH .../files/{file}` with `If-Match` the FILE's `rev`; a document's rename
 renames its page; `edited` `person` sets `person_edited` (an agent edits directly only a
 file it made that no person has edited — every other change it makes is a suggestion).
-`factory.org_workstream_file_move {id, files, folder}` moves all or none (`folder` ""
-is the top; a folder never moves into itself). `factory.org_workstream_file_delete {id,
+`factory.org_workstream_file_move {id, files, folder, to?}` moves all or none (`folder` ""
+is the top; a folder never moves into itself). With `to` (another workstream's id) the
+files leave `id`'s Files for `to`'s, each still itself: same id, maker and upload bytes,
+and a document takes its page, its versions and its live text. It asks what a task's move
+asks: edit on both, and the caller looks after `id` or made every file (a chat's or Afi's
+file counts as made for the person it was made for); else 403. A folder, an id `to`
+already keeps, or a `folder` that is not `to`'s is 422. Both workstreams publish
+`workstream.changed` with `part` `files` (`deleted` on `id`'s side). Bring along uses it. `factory.org_workstream_file_delete {id,
 file}` moves it to Recently deleted for 30 days, a folder with everything under it
 (`deleted_with`); `factory.org_workstream_file_restore {id, file}` brings it back, to the
 top when its folder is gone. `factory.org_workstream_file_content {id, file}` answers an
