@@ -94,6 +94,7 @@ func TestACheckNamesTheRequestAndTheDecisionsItWasCheckedAgainst(t *testing.T) {
 		{0, "Under 300 words", "Checked against the request: Under 300 words"},
 		{3, "Checked against the request: Both changes", "Checked against the request and 3 decisions: Both changes"},
 		{0, "  ", ""},
+		{0, "Checked against the release notes document: built only on its words", "Checked against the request: built only on its words"},
 	} {
 		if got := CheckedAgainst(c.n, c.claims); got != c.out {
 			t.Errorf("CheckedAgainst(%d, %q) = %q, want %q", c.n, c.claims, got, c.out)

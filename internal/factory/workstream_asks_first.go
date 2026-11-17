@@ -100,7 +100,9 @@ func FillAsksFirst(r WorkstreamRules, tasks []WorkstreamTask) {
 
 // checkedAgainstPrefix matches a "Checked against the request…:" lead the
 // agent wrote itself, so the server's own lead is never doubled.
-var checkedAgainstPrefix = regexp.MustCompile(`(?i)^\s*checked against the request( and (\d+|one|two|three|no) decisions?)?\s*:\s*`)
+// Any "Checked against …:" lead goes, whatever it names (live L7 run: "Checked
+// against the release notes document: …" came out under the server's own).
+var checkedAgainstPrefix = regexp.MustCompile(`(?i)^\s*checked (it )?against [^:\n]{1,120}:\s*`)
 
 // CheckedAgainst is an agent's check as the task keeps it: its claims after
 // what they were checked against, "Checked against the request and 2
