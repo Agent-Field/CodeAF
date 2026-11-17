@@ -77,17 +77,18 @@ type WorkstreamWorkTool struct {
 // WorkstreamWorkRules is the instructions block a conversation inside a
 // workstream is given beside these tools. It states the rules the tools'
 // descriptions repeat where each one applies.
-const WorkstreamWorkRules = "You are working inside a workstream: a shared place with tasks and files that everyone in it sees. " +
+var WorkstreamWorkRules = "You are working inside a workstream: a shared place with tasks and files that everyone in it sees. " +
 	"This conversation is private to the person you are talking to; what you put in tasks and files is shared.\n" +
 	"- Not everything said in a chat becomes a task. Work that runs beyond your reply, changes a file, or matters to someone else becomes a task (ws_task_create), and you say so in your reply.\n" +
 	"- Before creating a task, read ws_tasks. If one already covers it, point to that task instead of starting a duplicate.\n" +
-	"- A task's request says only what is to be done, in a few lines. Never copy the private conversation into it.\n" +
+	"- A task's request says only what is to be done, in a few lines, then its steps. Never copy the private conversation into it.\n" +
 	"- When a private request changes shared work, leave ONE request_note line on the task (for example \"Priya asked to keep it under 300 words\"), never the conversation.\n" +
 	"- Never act on a comment. A comment is people talking to people. When one looks like a request, offer under it (ws_task_comment kind offer) and wait for someone to take the offer.\n" +
 	"- Read the workstream's files, uploads included, with ws_files and ws_file_read; an uploaded text file reads like a document. They are not on disk for you: never look for them in the app's data folder or its database, never search the disk for them, and never copy them anywhere. A file ws_file_read cannot show is one to ask the person about.\n" +
 	"- Read the comments on a file (ws_file_read lists them) before you change it. Answer a comment on a passage with ws_file_comment, in its thread; never answer one by changing the document without a word.\n" +
 	"- Change a document only by suggestion (ws_file_suggest). You may rewrite a document directly only when an agent made it (you, Afi or another chat) and no person has edited it since: that is how you correct another chat's wrong draft.\n" +
-	"- Five or more tasks from one request are a batch: give them one group name (the same name as the chat that runs them).\n" +
+	WorkstreamBreakdownRules +
+	"- Five or more tasks from one request are a batch: give them one group name (the same name as the chat that runs them). The whole batch waits as one plan, and one press of Start releases all of it; never ask for a Start per task.\n" +
 	"- The steps of ONE deliverable are a checklist inside its task (ws_task_create checklist), never tasks of their own. When a task you do has a checklist (ws_tasks shows it), tick each line as you finish it (ws_task_update checklist_done).\n" +
 	"- When you do a task, what you read and make is linked to it by itself: a file you read is listed as one it uses, a file you make as one it made.\n" +
 	"- The workstream's decisions (ws_decisions) are what its people settled. Read them before you write any shared task or file. When the work asked of you goes against one, write NOTHING shared that goes against it, not even with a note at the top: make the task (ws_task_create), which the app pauses while it asks the person who made the decision, and tell the person you are talking to who was asked.\n" +
@@ -95,6 +96,32 @@ const WorkstreamWorkRules = "You are working inside a workstream: a shared place
 	"- Ask before, or do and tell after. Cheap, reversible choices that go against no decision you make yourself and list under assumed on the task, one line each. Anything else, ask first (an ask on the task).\n" +
 	"- An Ask has exactly one decider: the task's owner. Give each answer the decision it settles, in one line (decides).\n" +
 	WorkstreamWordsRule
+
+// WorkstreamTaskSmallestMinutes is the least work a task may hold (OWNER-DECISIONS
+// 2026-11-17 §7): anything smaller is done in the reply or is a step of a task.
+const WorkstreamTaskSmallestMinutes = 30
+
+// WorkstreamPlanFewest and WorkstreamPlanMost bound how many tasks big work is
+// broken into. Live use on 2026-11-17 found a launch plan arriving as twenty
+// crumbs ("open the file", "find the link"), each its own row to start, own
+// and answer for; the owner's rule is five to eight real deliverables.
+const (
+	WorkstreamPlanFewest = 5
+	WorkstreamPlanMost   = 8
+)
+
+// WorkstreamStepsLead is the line a task's request ends its steps under, until
+// tasks carry a checklist of their own (lane L2): the steps of one deliverable
+// are lines inside its task, never tasks of their own.
+const WorkstreamStepsLead = "Steps:"
+
+// WorkstreamBreakdownRules is how big work is broken into tasks. Every number
+// in it is interpolated from the constants above, so the prompt cannot drift
+// from what the tests and the manual say.
+var WorkstreamBreakdownRules = "- A task is a deliverable someone could review when it is done (a page, a canvas, a pull request, a booking, a decision): hours to days of work. " +
+	"Never make a task for anything under " + strconv.Itoa(WorkstreamTaskSmallestMinutes) + " minutes of work (\"open the file\", \"find the link\"): do it yourself in your reply, or make it a step of the closest task.\n" +
+	"- Break big work into " + strconv.Itoa(WorkstreamPlanFewest) + " to " + strconv.Itoa(WorkstreamPlanMost) + " tasks, never more: merge small pieces until they fit. Every task names its owner, a person already in the workstream, and who does it.\n" +
+	"- The steps of one task are its checklist, not tasks of their own: end the task's request with a line \"" + WorkstreamStepsLead + "\" and then one line per step, each starting \"- \".\n"
 
 // WorkstreamWordsRule is how a conversation inside a workstream talks about
 // it. Live testing on 2026-11-16 found 33 of 64 replies quoting raw task ids,
@@ -142,6 +169,7 @@ var workstreamWorkTools = []WorkstreamWorkTool{
 			"Not everything said in a chat becomes a task: create one for work that runs beyond your reply, changes a file, or matters to someone else, and say so in your reply. " +
 			"request is only what is to be done, in a few lines; never the private conversation. " +
 			"The person you are talking to owns it unless you name another owner. " +
+			"A task is a deliverable (hours to days of work), never anything under " + strconv.Itoa(WorkstreamTaskSmallestMinutes) + " minutes; big work is " + strconv.Itoa(WorkstreamPlanFewest) + " to " + strconv.Itoa(WorkstreamPlanMost) + " tasks, and one task's steps end its request under a line \"" + WorkstreamStepsLead + "\", never tasks of their own. " +
 			"Five or more tasks from one request share one group name (the same name as the chat that runs them) and arrive in Up next as a plan with Start and Change the plan; nothing in a batch starts until a person presses Start. " +
 			"After that, and for any task outside a plan, a task that waits on others starts by itself once what it waits on is done, unless its owner set it to \"Waits for you to start\" or turned that off in Settings › Work; ws_tasks says which. Never tell a person a started plan still waits on their Start.",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{` +

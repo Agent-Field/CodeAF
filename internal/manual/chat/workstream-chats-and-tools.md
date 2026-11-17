@@ -84,6 +84,14 @@ That chat splits the work into tasks under a group with the same name, with owne
 
 On an organization whose agents run on its server, Afi has no ws_chat_start: an organization's workstream starts no chats. There Afi gives the tasks one group in Up next itself, and nothing yet works an organization's task unattended: each waits in Up next until its owner marks it done or stops it.
 
+## how Afi breaks work into tasks — how many tasks, how big a task is, where the steps of a task go, too many tiny tasks, one Start for the plan
+
+When Afi (or a chat coordinating a batch) breaks big work down, it makes **5 to 8 tasks, never more**. Each task is a deliverable someone could review when it is done: a page, a canvas, a pull request, a booking or a decision, hours to days of work. Afi never makes a task for anything under 30 minutes of work, such as "open the file" or "find the link": it does that in its reply, or makes it a step of the closest task.
+
+The steps of one deliverable are not tasks of their own. They end the task's request, under a line "Steps:", one line per step, so you read them on the task page under Request. Every task in the plan names its owner, a person already in the workstream, and who does it.
+
+Five or more tasks from one request arrive as one plan with **Start** and **Change the plan**. One press of Start releases the whole plan; there is no Start to press for each task. If a plan has too many tasks, or tasks that are too small, press **Change the plan** and say so, for example "merge these into five".
+
 ## can the agent read a file I uploaded — uploads in Files read through ws_file_read
 
 Yes. A file uploaded to a workstream's Files (Upload a File…, or dropped onto the list) is read by its Afi and its chats with `ws_file_read`, the same tool that reads a document. A text file — Markdown, plain text, source code such as `.rs`, `.ts`, `.go` or `.tsx`, CSV, JSON — answers its words. A long one comes in parts of about 100 KB: the answer says `more_from`, and reading again with `from` set to it gives the rest.
