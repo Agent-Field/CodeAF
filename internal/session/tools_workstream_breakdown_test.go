@@ -30,7 +30,10 @@ func TestTheRulesBreakBigWorkIntoFiveToEightDeliverables(t *testing.T) {
 			}
 		}
 	}
-	for _, rule := range []string{"deliverable", "never more", "Every task names its owner", "one press of Start releases all of it", "never ask for a Start per task"} {
+	for _, rule := range []string{"deliverable", "never more", "Every task names its owner", "one press of Start releases all of it", "never ask for a Start per task",
+		// SMALL WORK IS DONE, NOT DECLINED (owner, 2026-11-17): live, Afi answered a typo with only why it made no task,
+		// and once said it had suggested the fix without calling a tool.
+		"even when asked for one: do it yourself now", "only after the tool that changes it has answered", "your first sentence offers what you can do right now", "never open with \"I can't\""} {
 		if !strings.Contains(WorkstreamWorkRules, rule) {
 			t.Errorf("the rules do not say %q", rule)
 		}

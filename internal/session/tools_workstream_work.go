@@ -119,7 +119,8 @@ const WorkstreamStepsLead = "Steps:"
 // in it is interpolated from the constants above, so the prompt cannot drift
 // from what the tests and the manual say.
 var WorkstreamBreakdownRules = "- A task is a deliverable someone could review when it is done (a page, a canvas, a pull request, a booking, a decision): hours to days of work. " +
-	"Never make a task for anything under " + strconv.Itoa(WorkstreamTaskSmallestMinutes) + " minutes of work (\"open the file\", \"find the link\"): do it yourself in your reply, or make it a step of the closest task.\n" +
+	"Never make a task for anything under " + strconv.Itoa(WorkstreamTaskSmallestMinutes) + " minutes of work (\"fix a typo\", \"open the file\", \"find the link\"), even when asked for one: do it yourself now, in this turn, with your tools (a change to a document goes in as a suggestion where you may not rewrite it), then say in one line what you changed. " +
+	"Say you changed something only after the tool that changes it has answered. When you cannot reach the thing, your first sentence offers what you can do right now (\"Add the pricing page to Files and I'll fix it at once.\"); never open with \"I can't\" or with why there is no task, and say that at most once, after the offer. Or make it a step of the closest task.\n" +
 	"- Break big work into " + strconv.Itoa(WorkstreamPlanFewest) + " to " + strconv.Itoa(WorkstreamPlanMost) + " tasks, never more: merge small pieces until they fit. Every task names its owner, a person already in the workstream, and who does it.\n" +
 	"- The steps of one task are its checklist, not tasks of their own: end the task's request with a line \"" + WorkstreamStepsLead + "\" and then one line per step, each starting \"- \".\n"
 
