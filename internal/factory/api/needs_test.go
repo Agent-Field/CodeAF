@@ -106,6 +106,24 @@ func TestAnOpenStepQuestionRidesOnAPullRequestsNeedsYou(t *testing.T) {
 		if ny.BackTo != "proof" {
 			t.Fatalf("%s: back_to = %q, want proof", name, ny.BackTo)
 		}
+		// THE JOB'S PERSON CAN ANSWER IT; NO ONE ELSE (review 4): the answer
+		// door takes only the job's person under a pull request's wait.
+		if c := CanFor(it, "zeropoint95"); !c.Answer {
+			t.Fatalf("%s: the job's person cannot answer: %+v", name, c)
+		}
+		if c := CanFor(it, "someone-else"); c.Answer || c.AcceptStep {
+			t.Fatalf("%s: another person may answer: %+v", name, c)
+		}
+	}
+
+	// A STEP'S FREE QUESTION UNDER A CONFLICT says only the job's person answers.
+	free := job31()
+	free.QKind = factory.QKindStep
+	if ny := FromItem(free).NeedsYou; ny == nil || ny.Question == nil || ny.Question.WhoCanAnswer != factory.WhoJobPerson {
+		t.Fatalf("a free step question under a conflict = %+v", ny)
+	}
+	if c := CanFor(free, "zeropoint95"); !c.Answer {
+		t.Fatalf("the job's person cannot answer a free question under a conflict: %+v", c)
 	}
 
 	// A BARE CONFLICT, NO QUESTION OPEN, IS UNCHANGED.

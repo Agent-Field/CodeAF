@@ -210,6 +210,9 @@ type Handler struct {
 	// key, so one approval is never judged twice at once.
 	judgingMu sync.Mutex
 	judging   map[int]string
+	// repairing is held while one settle sends Auto repairs back, so two
+	// settles at once never count two attempts for one send-back.
+	repairing sync.Mutex
 	// floorList, when set, is how a test counts floor reads. A real handler
 	// leaves it nil and reads the store.
 	floorList func(*store.Store) ([]factory.Item, error)

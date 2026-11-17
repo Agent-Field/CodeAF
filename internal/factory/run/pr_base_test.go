@@ -272,6 +272,34 @@ func TestFollowPRSyncBaseMergesTheLiveBaseHead(t *testing.T) {
 		}
 	})
 
+	t.Run("a merge in progress is named on the history once (review 4)", func(t *testing.T) {
+		f := newPRBaseFixture(t, false)
+		prBaseFixtureCommit(t, f.remote, "feature.txt", "the base's newer change\n")
+		c := &loopCtl{id: f.id, ctx: context.Background()}
+		for range 2 {
+			it, err := f.rig.st.Get(f.id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := f.rig.r.loop().baseSyncAction(c, it, chat(factory.FollowPRStep), f.dir)(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+		}
+		current, err := f.rig.st.Get(f.id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		n := 0
+		for _, l := range current.Stream.Log {
+			if strings.HasPrefix(l.Text, "Follow PR base sync:") {
+				n++
+			}
+		}
+		if n != 1 {
+			t.Fatalf("history names the base sync %d times: %+v", n, current.Stream.Log)
+		}
+	})
+
 	t.Run("clean merge of the live head", func(t *testing.T) {
 		f := newPRBaseFixture(t, false)
 		prBaseFixtureCommit(t, f.remote, "later.txt", "the base moved on\n")

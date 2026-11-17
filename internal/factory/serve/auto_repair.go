@@ -14,7 +14,17 @@ import (
 //
 // The attempt is counted under the job's lock before the send-back, so a
 // send-back that fails is still an attempt and the repairs stay bounded.
+//
+// ONE SETTLE AT A TIME. settleJobs runs on every request; the attempt is
+// counted before the send-back moves the job off landed, so a second settle
+// in between would read it still due and count a second attempt for the same
+// send-back. A settle that comes while another repairs waits for it, then
+// reads the job again under its lock and finds it queued, not due. (Nothing a
+// send-back calls settles again: settles come from requests, the job timer and
+// the manager-when judge's goroutine.)
 func (h *Handler) prepareAutomaticRepairs(items []factory.Item) ([]factory.Item, error) {
+	h.repairing.Lock()
+	defer h.repairing.Unlock()
 	for i, candidate := range items {
 		if _, ok := factory.AutoRepairDue(candidate); !ok || !h.repoOn(candidate) {
 			continue

@@ -301,7 +301,7 @@ func NeedsKind(it Item) string {
 // among them) and the step it sends back to. Job 31 (2026-11-17) was kind
 // conflict while Follow PR waited on "followpr is not proven after 3 rounds
 // · try again, send it back, or stop the job?", and needs_you carried no
-// question. It is "" when no question kind is outranked.
+// question. Where nothing outranks a question it is the job's [NeedsKind].
 func QuestionKind(it Item) string {
 	kind := NeedsKind(it)
 	if (kind != NeedsConflict && kind != NeedsChangesRequested) || it.PullRequest == nil {
@@ -365,6 +365,12 @@ func QuestionForm(it Item) (kind string, options []string, who string) {
 		return AskOptions, OutOfAttemptChoices(it), WhoJobPerson
 	case NeedsQuestion:
 		who = WhoAnyoneWithRepo
+		// Under a pull request's own wait (a conflict, changes requested) the
+		// answer door takes only the job's person (serve's mayAnswer reads
+		// [JobPersonOnly] of [NeedsKind]), so the question says so.
+		if NeedsKind(it) != NeedsQuestion {
+			who = WhoJobPerson
+		}
 		var opts []string
 		// A STEP'S QUESTION IS KIND STEP, WITH ITS OPTIONS AS ITS ANSWERS,
 		// however many there are and whatever they say: the answer door and
@@ -646,9 +652,13 @@ func MayAct(it Item, caller string) Acts {
 		return Acts{RunAgain: owner, CancelJob: owner, Reply: true}
 	}
 	var answer bool
-	switch NeedsKind(it) {
+	// The open question decides who answers, also where a pull request's wait
+	// outranks it for the kind ([QuestionKind]); under that wait only the
+	// job's person answers, as the answer door does.
+	asked := QuestionKind(it)
+	switch asked {
 	case NeedsQuestion:
-		answer = true
+		answer = asked == NeedsKind(it) || owner
 	case NeedsApproveStart, NeedsApprovePlan, NeedsApproveStep, NeedsApproveProof, NeedsSpendingLimit, NeedsOutOfAttempts, NeedsRunnerOffline:
 		answer = owner
 	}

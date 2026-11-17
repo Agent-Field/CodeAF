@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -129,5 +130,40 @@ func TestOfferMergeStampsMergeOfferedAtOnlyWithAnOpenPullRequest(t *testing.T) {
 	f.post(t, none, serve.OfferMergeVerb, `{}`, 409)
 	if j := f.read(t, none); j.MergeOfferedAt != nil {
 		t.Fatalf("a job with no pull request was offered: %v", j.MergeOfferedAt)
+	}
+}
+
+// TWO SETTLES AT ONCE COUNT ONE REPAIR: settles run on every request, and a
+// second one that reads the job between the first's count and its send-back
+// must not count a second attempt for the same send-back (review 4).
+func TestTwoSettlesAtOnceCountOneAutoRepair(t *testing.T) {
+	f := newV2Jobs(t)
+	withSendBack(t, f)
+	entered, release := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	sendBack := f.seam.SendBack
+	f.h.Close()
+	f.seam.SendBack = func(id int, words string) error {
+		once.Do(func() { close(entered); <-release })
+		return sendBack(id, words)
+	}
+	f.h = serve.New(f.seam, f.cfg)
+	it := f.create(t, landedAutoFinding())
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() { defer wg.Done(); verbRequest(f.h, "GET", fmt.Sprintf("/v1/jobs/%d", it.ID), "") }()
+	<-entered
+	go func() { defer wg.Done(); verbRequest(f.h, "GET", fmt.Sprintf("/v1/jobs/%d", it.ID), "") }()
+	time.Sleep(100 * time.Millisecond) // the second request's settle reads the job while the first holds its send-back
+	close(release)
+	wg.Wait()
+
+	saved, err := f.st.Get(it.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.Stream.AutoRepairs != 1 {
+		t.Fatalf("one send-back counted %d repairs", saved.Stream.AutoRepairs)
 	}
 }

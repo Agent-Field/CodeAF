@@ -17,8 +17,6 @@ const DefaultPRRepairAttempts = 3
 const FollowBlockedBudget = "budget"
 const FollowBlockedAttempts = "attempts"
 
-// PRFollowUp keeps the publication record and the PR maintenance cursor.
-// Every later tested head receives its own service-side publication approval.
 // FollowUpUpdateWaiting says a landed job holds a Follow PR repair that passed
 // its checks here and waits only to be pushed to its existing pull request.
 // That wait outranks the pull request's own conflict or changes requested: the
@@ -31,6 +29,8 @@ func FollowUpUpdateWaiting(it Item) bool {
 	return it.State == StateLanded && it.FollowUp != nil && it.FollowUp.State == "waiting_approval"
 }
 
+// PRFollowUp keeps the publication record and the PR maintenance cursor.
+// Every later tested head receives its own service-side publication approval.
 type PRFollowUp struct {
 	Reviewed        map[string]string `json:"reviewed,omitempty"`
 	Inspecting      map[string]string `json:"inspecting,omitempty"`

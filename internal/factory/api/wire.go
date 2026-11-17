@@ -1097,6 +1097,9 @@ type PR struct {
 	NoChecks      bool       `json:"no_checks,omitempty"`
 	// HeadBranch is the branch the pull request comes from.
 	HeadBranch string `json:"head_branch,omitempty"`
+	// BaseBranch is the branch the pull request asks to merge into, as the
+	// forge names it; Follow PR's base sync merges its live head.
+	BaseBranch string `json:"base_branch,omitempty"`
 	// Files is the pull request's own file list as the forge reports it, each
 	// path with its status (added, modified, removed, renamed, ...), at most
 	// [factory.PRFilesMost] of FilesTotal, read on the commit FilesHead. A
