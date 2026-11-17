@@ -293,14 +293,14 @@ func (d *agentDoor) wsTasks(ctx context.Context, args json.RawMessage) (any, err
 }
 
 // ownerOf reads the model's owner word: "me" (the person it answers, the
-// default), "everyone", or the handle of someone who can see the workstream.
+// default), or the handle of one person who can see the workstream.
 func (d *agentDoor) ownerOf(ctx context.Context, word string) (*factory.TaskOwner, error) {
 	word = strings.TrimPrefix(strings.TrimSpace(word), "@")
 	switch strings.ToLower(word) {
 	case "", "me", "you":
 		return nil, nil
 	case "everyone":
-		return &factory.TaskOwner{Kind: factory.TaskOwnerEveryone}, nil
+		return nil, fmt.Errorf("A task needs one person as owner: use \"me\" for the person you are talking to, or a person’s id from ws_tasks")
 	}
 	ws, err := d.Workstream(ctx)
 	if err != nil {
@@ -315,7 +315,7 @@ func (d *agentDoor) ownerOf(ctx context.Context, word string) (*factory.TaskOwne
 		v.Teams[team] = true
 	}
 	if handle == "" || !v.canWrite(ws) {
-		return nil, fmt.Errorf("%q is not someone in this workstream: owner is \"me\", \"everyone\", or the id of a person in it (a task's owner.id from ws_tasks)", word)
+		return nil, fmt.Errorf("%q is not someone in this workstream: owner is \"me\" or the id of a person in it (a task's owner.id from ws_tasks)", word)
 	}
 	return &factory.TaskOwner{Kind: factory.TaskOwnerPerson, ID: handle, Name: handle}, nil
 }

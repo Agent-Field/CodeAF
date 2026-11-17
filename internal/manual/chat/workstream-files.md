@@ -10,7 +10,7 @@ Files is a workstream's shared drive: everything worth keeping, in folders, made
 - **Link** — a web address;
 - **Repo** — a connected repository, `owner/name`.
 
-Every file shows who made it (a person, Afi, or a chat's name), the task it came from, and when it last changed. Every workstream starts with a **Decisions** document. Agents read every file in the workstream, in the workstream it sits inside, and in the Library.
+Every file shows who made it (a person's current display name, Afi, or a chat's name), the task it came from, and when it last changed. Every workstream starts with a **Decisions** document. Agents read every file in the workstream, in the workstream it sits inside, and in the Library.
 
 Files is the workstream's own library. The app's **Library** is a separate shelf every workstream and agent reads, and nothing in Files reaches it by itself: only Add to Library, chosen by a person, puts a file there.
 

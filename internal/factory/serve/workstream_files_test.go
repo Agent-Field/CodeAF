@@ -1,6 +1,7 @@
 package serve
 
 import (
+	"encoding/json"
 	"net/http/httptest"
 	"slices"
 	"testing"
@@ -242,4 +243,29 @@ func TestFilesMoveToAnotherWorkstream(t *testing.T) {
 	}
 	// santosh looks after Pantry, so santosh may move anyone's file.
 	o.do(t, "santosh", "POST", path+"/move", -1, api.FilesMove{Files: []string{notes.ID}, To: to.ID}, 200, nil)
+}
+
+func TestFilesNameTheirPersonOnLegacyAndLaterReads(t *testing.T) {
+	o := newPWOrg(t)
+	token := o.signUpNamed(o.operatorLink(), "lena", pwOperator, "Lena Novak")
+	call := func(method, path string, body any, out any) {
+		t.Helper()
+		r := o.do(method, path, token, body, "")
+		if r.Code >= 300 {
+			t.Fatalf("%s %s: %d %s", method, path, r.Code, r.Body)
+		}
+		if err := json.Unmarshal(r.Body.Bytes(), out); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var ws api.Workstream
+	call("POST", "/v1/workstreams", api.WorkstreamNew{Name: "Files", Pages: []factory.WorkstreamPage{{Title: "Brief", Kind: "page"}}}, &ws)
+	for range 2 {
+		var files api.WorkstreamFiles
+		call("GET", "/v1/workstreams/"+ws.ID+"/files", nil, &files)
+		made := fileNamed(t, files.Files, "Brief").MadeBy
+		if made.ID != "lena" || made.Name != "Lena Novak" {
+			t.Fatalf("Made by = %+v; want Lena Novak", made)
+		}
+	}
 }

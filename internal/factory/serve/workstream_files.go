@@ -286,8 +286,13 @@ func (h *Handler) filesAsRead(ws factory.OrgWorkstream, files map[string]factory
 	if err != nil {
 		return nil, nil, err
 	}
+	nameOf := h.personNames()
 	q = strings.ToLower(strings.TrimSpace(q))
 	for _, f := range files {
+		// Resolve names at the read boundary so imported files and renamed people stay current.
+		if f.MadeBy.Kind == factory.MakerPerson && f.MadeBy.ID != "" {
+			f.MadeBy.Name = nameOf(f.MadeBy.ID)
+		}
 		if p, ok := pages[f.PageID]; ok && f.Kind == factory.FileDocument {
 			f.Name = firstNonEmpty(p.Title, f.Name)
 			vs, err := h.config.Store.PageVersions(ws.ID, p.ID)

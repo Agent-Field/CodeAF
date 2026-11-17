@@ -65,6 +65,7 @@ func TestServerAgentKeepsWorkAsTasks(t *testing.T) {
 		if said, _ := created["said"].(string); !strings.Contains(said, "Parser reads unicode fractions") || strings.Contains(said, id) {
 			t.Errorf("ws_task_create said %q", said)
 		}
+		refused(ctx, d, "ws_task_create", `{"title":"x","request":"y","owner":"everyone"}`, "A task needs one person as owner")
 		person := work(ctx, d, "ws_task_create", `{"title":"Release notes","request":"Write them.","owner":"santosh","done_by":"person"}`)["task"].(map[string]any)
 		refused(ctx, d, "ws_task_create", `{"title":"x","request":"y","owner":"nobody-here"}`, "not someone in this workstream")
 		refused(ctx, d, "ws_task_create", `{"title":"x","request":"y","done_by":"factory"}`, "Factory job")

@@ -170,7 +170,7 @@ var workstreamWorkTools = []WorkstreamWorkTool{
 		InputSchema: json.RawMessage(`{"type":"object","properties":{` +
 			`"title":{"type":"string","minLength":1,"maxLength":200},` +
 			`"request":{"type":"string","minLength":1,"maxLength":4000,"description":"What is to be done, in a few lines. Never the conversation."},` +
-			`"owner":{"type":"string","description":"Who answers for it: \"me\" (the person you are talking to, the default), \"everyone\", or a person's id from ws_tasks. Someone invited who has not joined goes by an id starting invite:, and a task they do waits until they join."},` +
+			`"owner":{"type":"string","description":"Who answers for it: \"me\" (the person you are talking to, the default) or a person's id from ws_tasks. Someone invited who has not joined goes by an id starting invite:, and a task they do waits until they join."},` +
 			`"done_by":` + WorkstreamDoneBySchema + `,` +
 			`"waiting_on":{"type":"array","items":{"type":"string"},"maxItems":20,"description":"Ids of tasks in this workstream that must finish first."},` +
 			`"due":{"type":"string","pattern":"^[0-9]{4}-[0-9]{2}-[0-9]{2}$","description":"YYYY-MM-DD, only when the person gave a date."},` +
