@@ -614,6 +614,25 @@ var methods = map[string]method{
 		}
 		return &agentResult{agent}, nil
 	}),
+	// agents.continue carries on, once, a chat the app's quit or close stopped
+	// mid-turn ([Agent.Interrupted]).
+	"agents.continue": typed(func(e Engine, p IDParams) (*agentResult, error) {
+		id, err := required("id", p.ID)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := e.(interface {
+			ContinueInterrupted(id string) (Agent, error)
+		})
+		if !ok {
+			return nil, Errorf(CodeBadParams, "continuing an interrupted chat requires a newer engine")
+		}
+		agent, err := door.ContinueInterrupted(id)
+		if err != nil {
+			return nil, err
+		}
+		return &agentResult{agent}, nil
+	}),
 	"agents.retry": typed(func(e Engine, p IDParams) (*TurnResult, error) {
 		id, err := required("id", p.ID)
 		if err != nil {

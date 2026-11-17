@@ -176,7 +176,10 @@ type Agent struct {
 	Location      *Location              `json:"location,omitempty"`
 	ModelIdentity *session.ModelIdentity `json:"model_identity,omitempty"`
 	// Retryable means this backend retained the failed message for agents.retry.
-	Retryable    bool   `json:"retryable"`
+	Retryable bool `json:"retryable"`
+	// Interrupted means the app's quit or close stopped this chat mid-turn and
+	// it waits for agents.continue: nothing it was doing carries on by itself.
+	Interrupted  bool   `json:"interrupted,omitempty"`
 	FactoryOwned bool   `json:"factory_owned,omitempty"`
 	ID           string `json:"id"`
 	// DID is the agent's identity: what its commands carry as

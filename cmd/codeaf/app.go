@@ -239,8 +239,9 @@ func runApp(args []string) error {
 		defer keepAutomationsWindow("app")()
 	}
 	guard.Go("app/orders", func() { backend.watchOrders(backend.sweepStop) })
-	// And what the last quit stopped in the middle of a reply carries on.
-	guard.Go("app/resume-after-quit", backend.resumeAfterQuit)
+	// And what the last quit stopped in the middle of a reply waits for the
+	// person's Continue; it never carries on by itself (appinterrupted.go).
+	backend.interruptAfterQuit()
 	backend.startCloseWatch()
 	err := server.Serve(ctx, os.Stdin, appwire.Hello{Version: resolvedVersion(), PID: os.Getpid(), Home: home.Dir(), Features: []string{"agents.create.attachments", "crews.message.attachments"}}, backend)
 	if backend.assembled.Load() {
@@ -324,6 +325,9 @@ type appOpenAsk struct {
 	// ClockS is how many seconds a proposed task waits before it starts on
 	// its own: the app's own setting, never the terminal's.
 	ClockS int
+	// HoldInterruptedWork opens a chat waiting for Continue without carrying
+	// on its recovered work ([session.Config.HoldInterruptedWork]).
+	HoldInterruptedWork bool
 }
 
 // appConn is an opened conversation and the one way to give it back.
@@ -397,6 +401,9 @@ func appOpenInProcess(ask appOpenAsk) (*appConn, error) {
 		// And only the person moves a running reply to a task, and a proposed
 		// task's clock is the app's, as is a suggested choice's.
 		Launch: launch,
+		// A chat waiting for Continue is opened to be looked at, never to
+		// carry on by itself (appinterrupted.go).
+		HoldInterruptedWork: ask.HoldInterruptedWork,
 	}
 	// The agent this boot built, kept so the app can tell when somebody else
 	// closes it (below). Boot runs once, before Loopback returns.
@@ -1957,6 +1964,7 @@ func (b *appBackend) ensureLocked(a *appAgent) (appwire.Agent, bool, error) {
 		return names
 	}
 	_ = b.state.read(func(f *appStateFile) { ask.ClockS = f.clock() })
+	ask.HoldInterruptedWork = b.holdOpen(view.ID, transcript)
 	if boot != nil {
 		ask.Model, ask.Minted = boot.model, true
 		ask.AutomaticModels = boot.automatic

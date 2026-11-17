@@ -46,6 +46,10 @@ const (
 	// These notices explain work left unfinished by an unexpected app close.
 	FooterResumedAfterClose = "resumed_after_close"
 	FooterStoppedByClose    = "stopped_by_close"
+	// FooterInterrupted is where a turn the app's quit or close stopped waits
+	// for the person: the window offers Continue beside it while the agent
+	// reads Interrupted, and nothing carries on before that press.
+	FooterInterrupted = "interrupted"
 )
 
 // CodeSent refuses an edit to a queued message that has already been sent.

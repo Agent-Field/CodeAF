@@ -1973,8 +1973,11 @@ func (a *Agent) recoverTasks() {
 	}
 	// CONTINUE — the same frontier every other transition turns. A queued node
 	// whose prerequisites are done starts now; one whose prerequisite was
-	// interrupted fails through the cascade that already exists.
-	graph.runFrontier()
+	// interrupted fails through the cascade that already exists. A held open
+	// leaves the frontier still until the person's Continue (resume_quit.go).
+	if !a.holdRecovered(heldFrontier) {
+		graph.runFrontier()
+	}
 	// A saved naming failure is not an earned name. Retry only those rows from
 	// their saved briefs; reopening never renames valid work or reruns a task.
 	for _, record := range document.Nodes {

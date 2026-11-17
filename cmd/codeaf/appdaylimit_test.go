@@ -109,11 +109,13 @@ func TestAppBadDayLimitPreservesResumeAndExplicitSetRepairsNumericRow(t *testing
 	if err := backend.state.write(func(f *appStateFile) error { f.ResumeAfterQuit = []string{"fixture"}; return nil }); err != nil {
 		t.Fatal(err)
 	}
-	backend.resumeAfterQuit()
-	var kept int
-	_ = backend.state.read(func(f *appStateFile) { kept = len(f.ResumeAfterQuit) })
-	if kept != 1 {
-		t.Fatal("lost unresumed work on budget failure")
+	// Nothing a quit stopped spends at the next start, so a budget that cannot
+	// be read does not decide it: the chat waits for Continue either way.
+	backend.interruptAfterQuit()
+	var kept bool
+	_ = backend.state.read(func(f *appStateFile) { _, kept = f.Interrupted["fixture"] })
+	if !kept {
+		t.Fatal("lost the interrupted mark on budget failure")
 	}
 	cap := 12.0
 	got, err := backend.SetSettings(appwire.SettingsPatch{DayCapUSD: &appwire.Figure{USD: &cap}})

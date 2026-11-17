@@ -5854,6 +5854,9 @@ no four lines.
 ## A task waiting on a busy machine after restarting the engine
 
 An ordinary task backed by its plan resumes when its conversation opens again.
+In the desktop app, a task whose chat the app's quit or crash stopped mid-turn
+does not: it stays interrupted until you press Continue on that chat's
+"Interrupted" line (see "Quitting the desktop app mid-reply").
 A task waiting for machine capacity keeps its accepted brief and exact folder,
 and waits at the same admission gate. It takes no folder lock or branch while
 waiting. A task that had already started uses its recorded working copy and plan;

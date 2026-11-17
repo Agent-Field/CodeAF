@@ -1223,6 +1223,9 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 		cfg.StandingOrders = hello.Launch.StandingOrders
 		cfg.QuickTasks = hello.Launch.QuickTasks
 	}
+	// A chat the app's quit stopped mid-turn opens without carrying on by
+	// itself; the person's Continue releases it (session's resume_quit.go).
+	cfg.HoldInterruptedWork = hello.HoldInterruptedWork
 	agent, cfg, notice, err := openV3Agent(cfg, workspace, open)
 	if err != nil {
 		return nil, err

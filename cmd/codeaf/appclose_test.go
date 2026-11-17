@@ -173,7 +173,7 @@ func (r *closeRig) entries(t *testing.T) []appwire.Entry {
 func closeFooters(entries []appwire.Entry) []appwire.Entry {
 	var found []appwire.Entry
 	for _, e := range entries {
-		if e.Footer == appwire.FooterResumedAfterClose || e.Footer == appwire.FooterStoppedByClose || e.Footer == appwire.FooterResumedAfterQuit {
+		if e.Footer == appwire.FooterResumedAfterClose || e.Footer == appwire.FooterStoppedByClose || e.Footer == appwire.FooterResumedAfterQuit || e.Footer == appwire.FooterInterrupted {
 			found = append(found, e)
 		}
 	}
@@ -184,6 +184,26 @@ func (r *closeRig) wantFooter(t *testing.T, kind, words string) {
 	found := closeFooters(r.entries(t))
 	if len(found) != 1 || found[0].Footer != kind || found[0].Text != words {
 		t.Fatalf("footers=%+v", found)
+	}
+}
+
+// wantInterrupted is the whole of what a death leaves: one Interrupted line,
+// the mark that offers Continue, nothing resumed and nothing opened.
+func (r *closeRig) wantInterrupted(t *testing.T) {
+	t.Helper()
+	r.wantFooter(t, appwire.FooterInterrupted, appInterruptedWord)
+	if n, q := r.conv.counts(); n != 0 || q != 0 {
+		t.Fatalf("carried on by itself: close=%d quit=%d", n, q)
+	}
+	if r.b.held(r.id) {
+		t.Fatal("the interrupted chat was opened by itself")
+	}
+	if !r.b.interrupted(r.id) {
+		t.Fatal("the chat is not marked for Continue")
+	}
+	rows, err := r.b.ListAgents("")
+	if err != nil || len(rows) == 0 || !rows[0].Interrupted {
+		t.Fatalf("list=%+v,%v", rows, err)
 	}
 }
 func (r *closeRig) wantIdle(t *testing.T) {
@@ -208,8 +228,6 @@ func TestAppCloseC1DeadClaimExpiresOnTheWire(t *testing.T) {
 	for _, state := range []session.PresenceState{session.PresenceWorking, session.PresenceWaiting} {
 		t.Run(string(state), func(t *testing.T) {
 			r := newCloseRig(t, state, 2*time.Second)
-			// Reporting an old interruption avoids starting a new reply in this test.
-			_ = r.b.state.write(func(f *appStateFile) error { f.CloseResumes = map[string]int{r.id: 2}; return nil })
 			r.start()
 			rows, err := r.b.ListAgents("")
 			if err != nil || len(rows) != 1 || rows[0].State == appwire.StateIdle {
@@ -225,7 +243,9 @@ func TestAppCloseC1DeadClaimExpiresOnTheWire(t *testing.T) {
 			defer r.rec.mu.Unlock()
 			n := 0
 			for _, d := range r.rec.data {
-				if e, ok := d.(appwire.AgentChanged); ok && e.Agent.ID == r.id && e.Agent.State == appwire.StateIdle {
+				// The correction is said once; the Interrupted mark after it is
+				// its own change.
+				if e, ok := d.(appwire.AgentChanged); ok && e.Agent.ID == r.id && e.Agent.State == appwire.StateIdle && !e.Agent.Interrupted {
 					n++
 				}
 			}
@@ -236,60 +256,7 @@ func TestAppCloseC1DeadClaimExpiresOnTheWire(t *testing.T) {
 	}
 }
 
-// C1: another conversation's slow opener cannot hold a dead claim's state
-// correction past its deadline. The two due callbacks model independent timers.
-func TestAppCloseC1SlowOpenDoesNotDelayAnotherCorrection(t *testing.T) {
-	r := newCloseRig(t, session.PresenceWorking, time.Minute)
-	other, err := appMint(r.p.Workspace)
-	if err != nil {
-		t.Fatal(err)
-	}
-	id := appAgentID(other)
-	if err = os.WriteFile(other, []byte(`{"type":"session","version":1,"id":"`+id+`"}`+"\n"+`{"type":"message","role":"user","content":"second reply"}`+"\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	p := r.p
-	p.SessionID = id
-	raw, _ := json.Marshal(p)
-	if err = os.WriteFile(filepath.Join(filepath.Dir(other), "presence.json"), raw, 0600); err != nil {
-		t.Fatal(err)
-	}
-	_ = r.b.state.write(func(f *appStateFile) error { f.CloseResumes = map[string]int{id: 2}; return nil })
-	entered, release := make(chan struct{}), make(chan struct{})
-	var once sync.Once
-	t.Cleanup(func() { once.Do(func() { close(release) }) })
-	r.b.open = func(ask appOpenAsk) (*appConn, error) {
-		close(entered)
-		<-release
-		return &appConn{Conv: r.conv, Transcript: ask.Transcript, Workspace: ask.Workspace, Assembled: true, Release: func() {}}, nil
-	}
-	r.b.snapshotCloseClaims()
-	firstPath, secondPath := filepath.Dir(r.file), filepath.Dir(other)
-	var first, second *appCloseClaim
-	r.b.closeRecovery.locked(func() { first = r.b.closeRecovery.claims[firstPath]; second = r.b.closeRecovery.claims[secondPath] })
-	finished1, finished2 := make(chan struct{}), make(chan struct{})
-	go func() { defer close(finished1); r.b.checkCloseClaim(firstPath, first) }()
-	select {
-	case <-entered:
-	case <-time.After(time.Second):
-		t.Fatal("first conversation never reached the blocked opener")
-	}
-	go func() { defer close(finished2); r.b.checkCloseClaim(secondPath, second) }()
-	r.rec.waitFor(t, time.Second, func(_ string, d any) bool {
-		e, ok := d.(appwire.AgentChanged)
-		return ok && e.Agent.ID == id && e.Agent.State == appwire.StateIdle
-	})
-	once.Do(func() { close(release) })
-	for _, finished := range []chan struct{}{finished1, finished2} {
-		select {
-		case <-finished:
-		case <-time.After(time.Second):
-			t.Fatal("due callback did not finish")
-		}
-	}
-}
-
-// C2: first seen mid-life, then killed while this engine stays up.
+// C2: a holder that dies while this app is open leaves the chat interrupted.
 func TestAppCloseC2HolderDiesMidLife(t *testing.T) {
 	r := newCloseRig(t, session.PresenceIdle, 0)
 	r.start()
@@ -298,36 +265,35 @@ func TestAppCloseC2HolderDiesMidLife(t *testing.T) {
 	r.write(t, r.p)
 	_, _ = r.b.ListAgents("")
 	r.clock.advance(t, session.PresenceWindow+appClosePresenceMargin)
-	if n, _ := r.conv.counts(); n != 1 {
-		t.Fatalf("resumes=%d", n)
-	}
-	r.wantFooter(t, appwire.FooterResumedAfterClose, "Resumed after the app closed")
+	r.wantInterrupted(t)
 }
 
-// C3: both kinds of left-behind mid-answer claim carry on automatically once.
-func TestAppCloseC3WorkingAndWaitingCarryOn(t *testing.T) {
+// C3: both kinds of left-behind mid-answer claim wait for Continue; neither
+// carries on by itself.
+func TestAppCloseC3WorkingAndWaitingWaitForContinue(t *testing.T) {
 	for _, state := range []session.PresenceState{session.PresenceWorking, session.PresenceWaiting} {
 		t.Run(string(state), func(t *testing.T) {
 			r := newCloseRig(t, state, time.Minute)
 			r.start()
 			r.clock.advance(t, 0)
-			if n, _ := r.conv.counts(); n != 1 {
-				t.Fatalf("%s resumed %d times", state, n)
-			}
-			r.wantFooter(t, appwire.FooterResumedAfterClose, "Resumed after the app closed")
+			r.wantInterrupted(t)
 		})
 	}
 }
 
-// C3: the real session and remote door start their own turn, with a private aside.
-func TestAppCloseC3RealSessionCarriesOnOnce(t *testing.T) {
+// C3: with a real session behind the door, the start spends nothing — no
+// request reaches the model — and the person's Continue carries the turn on
+// exactly once, with the unexpected-close aside the model alone reads.
+func TestAppCloseC3RealSessionContinuesOnceOnThePress(t *testing.T) {
 	r := newCloseRig(t, session.PresenceWorking, time.Minute)
 	model := newHeldModel(t)
 	var release sync.Once
 	t.Cleanup(func() { release.Do(func() { close(model.release) }) })
 	sources := modelsource.NewSet(modelsource.Connected{Source: modelsource.DefaultSource(model.server.URL), Key: "test-key", Address: model.server.URL})
+	var held []bool
 	r.b.open = func(ask appOpenAsk) (*appConn, error) {
-		agent, err := session.New(session.Config{Workspace: r.p.Workspace, Place: session.Place{Dir: filepath.Dir(r.file)}, SessionFile: r.file, Model: "openai/gpt-4.1-mini", Sources: sources})
+		held = append(held, ask.HoldInterruptedWork)
+		agent, err := session.New(session.Config{Workspace: r.p.Workspace, Place: session.Place{Dir: filepath.Dir(r.file)}, SessionFile: r.file, Model: "openai/gpt-4.1-mini", Sources: sources, HoldInterruptedWork: ask.HoldInterruptedWork})
 		if err != nil {
 			return nil, err
 		}
@@ -342,13 +308,33 @@ func TestAppCloseC3RealSessionCarriesOnOnce(t *testing.T) {
 	}
 	r.start()
 	r.clock.advance(t, 0)
+	r.wantFooter(t, appwire.FooterInterrupted, appInterruptedWord)
+	if len(held) != 0 || r.b.held(r.id) {
+		t.Fatalf("the start opened the interrupted chat: %v", held)
+	}
+	// Looking at the chat opens it held, and still nothing is asked of the model.
+	if _, err := r.b.OpenAgent(r.id); err != nil {
+		t.Fatal(err)
+	}
+	if len(held) != 1 || !held[0] {
+		t.Fatalf("the open was not held: %v", held)
+	}
+	model.mu.Lock()
+	asked := len(model.requests)
+	model.mu.Unlock()
+	if asked != 0 {
+		t.Fatalf("an interrupted chat spent before Continue: %d requests", asked)
+	}
+	view, err := r.b.ContinueInterrupted(r.id)
+	if err != nil || view.Interrupted {
+		t.Fatalf("continue=%+v,%v", view, err)
+	}
 	select {
 	case <-model.arrived:
 	case <-time.After(10 * time.Second):
-		t.Fatal("resumed turn never reached the model")
+		t.Fatal("the continued turn never reached the model")
 	}
 	r.rec.waitFor(t, time.Second, func(name string, _ any) bool { return name == appwire.EventTurnStarted })
-	r.wantFooter(t, appwire.FooterResumedAfterClose, "Resumed after the app closed")
 	model.mu.Lock()
 	said := false
 	for _, request := range model.requests {
@@ -367,21 +353,23 @@ func TestAppCloseC3RealSessionCarriesOnOnce(t *testing.T) {
 	}
 	release.Do(func() { close(model.release) })
 	r.rec.waitFor(t, 10*time.Second, appTurnDone)
-	r.clock.advance(t, time.Minute)
-	if len(closeFooters(r.entries(t))) != 1 {
-		t.Fatal("the same death was resumed twice")
+	// A second press is not a second turn.
+	if _, err := r.b.ContinueInterrupted(r.id); err != nil {
+		t.Fatal(err)
 	}
-	// C6: a normally completed real turn clears the persisted consecutive count.
-	_ = r.b.state.read(func(f *appStateFile) {
-		if f.CloseResumes[r.id] != 0 || f.ClosePending[r.id] != "" || !f.ClosePendingAt[r.id].IsZero() {
-			t.Errorf("own continuation did not acknowledge its pending key or reset its count: %+v", f)
-		}
-	})
+	r.clock.advance(t, time.Minute)
+	model.mu.Lock()
+	turns := len(model.requests)
+	model.mu.Unlock()
+	if r.b.interrupted(r.id) || turns != 1 {
+		t.Fatalf("continued more than once: requests=%d", turns)
+	}
 }
 
-// C4: persisted running tasks continue only with a carried-on conversation.
-func TestAppCloseC4TasksContinueOrReadInterrupted(t *testing.T) {
-	for _, mode := range []string{"continue", "guard", "breaker", "old"} {
+// C4: persisted running tasks are not continued by the start, at any age;
+// the person's Continue carries every one of them on.
+func TestAppCloseC4TasksWaitForContinue(t *testing.T) {
+	for _, mode := range []string{"recent", "old"} {
 		t.Run(mode, func(t *testing.T) {
 			age := time.Minute
 			if mode == "old" {
@@ -400,37 +388,23 @@ func TestAppCloseC4TasksContinueOrReadInterrupted(t *testing.T) {
 			if err := os.WriteFile(session.TaskIndexPath(r.file), append(raw, '\n'), 0600); err != nil {
 				t.Fatal(err)
 			}
-			if mode == "guard" {
-				_ = r.b.state.write(func(f *appStateFile) error { f.CloseResumes = map[string]int{r.id: 2}; return nil })
-			}
-			if mode == "breaker" {
-				_ = r.b.state.write(func(f *appStateFile) error {
-					f.CloseStarts = []time.Time{r.clock.now().Add(-2 * time.Minute), r.clock.now().Add(-time.Minute)}
-					return nil
-				})
-			}
 			r.start()
 			r.clock.advance(t, 0)
 			r.conv.muClose.Lock()
 			n := len(r.conv.continued)
 			r.conv.muClose.Unlock()
-			if mode == "continue" {
-				if n != 2 {
-					t.Fatalf("continued tasks=%d", n)
-				}
-				return
-			}
 			if n != 0 {
-				t.Fatal("blocked reply continued its tasks")
+				t.Fatalf("the start continued %d tasks", n)
 			}
-			rows, err := r.b.ListTasks(r.id)
-			if err != nil || len(rows) != 2 {
-				t.Fatalf("tasks=%+v,%v", rows, err)
+			r.wantInterrupted(t)
+			if _, err := r.b.ContinueInterrupted(r.id); err != nil {
+				t.Fatal(err)
 			}
-			for _, row := range rows {
-				if row.State != appwire.TaskFailed || row.Result != "Interrupted" {
-					t.Fatalf("task=%+v", row)
-				}
+			r.conv.muClose.Lock()
+			n = len(r.conv.continued)
+			r.conv.muClose.Unlock()
+			if resumed, _ := r.conv.counts(); n != 2 || resumed != 1 {
+				t.Fatalf("Continue carried on tasks=%d replies=%d", n, resumed)
 			}
 		})
 	}
@@ -450,47 +424,20 @@ func TestAppCloseC5IdleIsLeftAlone(t *testing.T) {
 	}
 }
 
-// C6, C13: two attempts survive fresh backends; a third death stops the loop.
-func TestAppCloseC6TwoAttemptsAcrossRestarts(t *testing.T) {
+// C6: restarts after a death never carry it on, however many there are; the
+// chat keeps one Interrupted line until the person presses Continue.
+func TestAppCloseC6RestartsNeverCarryOn(t *testing.T) {
 	r := newCloseRig(t, session.PresenceWorking, time.Minute)
 	for attempt := 1; attempt <= 3; attempt++ {
-		r.conv.beforeResume = func() {
-			disk := &appState{path: r.b.state.where()}
-			if err := disk.read(func(f *appStateFile) {
-				if f.CloseResumes[r.id] != attempt || !f.CloseHandled[r.id].Equal(r.p.UpdatedAt) || len(f.CloseStarts) != 1 {
-					t.Errorf("wake started before its durable record: %+v", f)
-				}
-			}); err != nil {
-				t.Error(err)
-			}
-		}
 		r.start()
 		r.clock.advance(t, 0)
-		if n, _ := r.conv.counts(); n != min(attempt, 2) {
-			t.Fatalf("attempt %d: resumes=%d", attempt, n)
-		}
-		disk := &appState{path: r.b.state.where()}
-		if err := disk.read(func(f *appStateFile) {
-			if f.CloseResumes[r.id] != min(attempt, 2) || !f.CloseHandled[r.id].Equal(r.p.UpdatedAt) {
-				t.Errorf("not durable before wake: %+v", f)
-			}
-		}); err != nil {
-			t.Fatal(err)
-		}
-		if attempt < 3 {
-			closeConsumeTurn(t, r, closeDisk(t, r).ClosePending[r.id], false)
-			_ = r.b.Close()
-			r.clock.advance(t, 11*time.Minute)
-			r.p.UpdatedAt = r.clock.now().Add(-time.Minute)
-			r.write(t, r.p)
-			r.backend(t)
-		}
+		r.wantInterrupted(t)
+		_ = r.b.Close()
+		r.clock.advance(t, 11*time.Minute)
+		r.p.UpdatedAt = r.clock.now().Add(-time.Minute)
+		r.write(t, r.p)
+		r.backend(t)
 	}
-	footers := closeFooters(r.entries(t))
-	if len(footers) != 3 || footers[2].Footer != appwire.FooterStoppedByClose || footers[2].Text != "The app closed while this was working · send a message to carry on" {
-		t.Fatalf("footers=%+v", footers)
-	}
-	r.wantIdle(t)
 }
 
 // C6: every person-facing direction door clears the guard's count.
@@ -523,6 +470,7 @@ func TestAppCloseC6PersonDirectionsResetCount(t *testing.T) {
 				f.CloseResumedAt = map[string]time.Time{r.id: r.clock.now()}
 				f.ClosePending = map[string]string{r.id: "owed"}
 				f.ClosePendingAt = map[string]time.Time{r.id: r.clock.now()}
+				f.markInterrupted(r.id, appInterrupted{At: r.clock.now(), Key: "interrupted", Road: appInterruptedQuit, Reply: true})
 				return nil
 			}); err != nil {
 				t.Fatal(err)
@@ -553,7 +501,7 @@ func TestAppCloseC6PersonDirectionsResetCount(t *testing.T) {
 			}
 			disk := &appState{path: r.b.state.where()}
 			_ = disk.read(func(f *appStateFile) {
-				if f.CloseResumes[r.id] != 0 || f.ClosePending[r.id] != "" || !f.CloseResumedAt[r.id].IsZero() || !f.ClosePendingAt[r.id].IsZero() {
+				if _, marked := f.Interrupted[r.id]; marked || f.CloseResumes[r.id] != 0 || f.ClosePending[r.id] != "" || !f.CloseResumedAt[r.id].IsZero() || !f.ClosePendingAt[r.id].IsZero() {
 					t.Errorf("%s kept automatic work=%+v", door, f)
 				}
 			})
@@ -604,14 +552,9 @@ func TestAppCloseC6OtherWindowMessageResetsButPrivateWakeDoesNot(t *testing.T) {
 	}
 }
 
-// C7: affected starts count once each, including the current third start;
-// an unaffected start adds no stamp, and every reply on the third is stopped.
-func TestAppCloseC7ThirdAffectedStartStopsEveryReply(t *testing.T) {
+// C7: every chat a death left working is marked, each on its own.
+func TestAppCloseC7EveryAffectedChatIsMarked(t *testing.T) {
 	r := newCloseRig(t, session.PresenceWorking, time.Minute)
-	_ = r.b.state.write(func(f *appStateFile) error {
-		f.CloseStarts = []time.Time{r.clock.now().Add(-8 * time.Minute), r.clock.now().Add(-4 * time.Minute)}
-		return nil
-	})
 	other, err := appMint(r.p.Workspace)
 	if err != nil {
 		t.Fatal(err)
@@ -628,62 +571,10 @@ func TestAppCloseC7ThirdAffectedStartStopsEveryReply(t *testing.T) {
 	}
 	r.start()
 	r.clock.advance(t, 0)
-	if n, _ := r.conv.counts(); n != 0 {
-		t.Fatal("third affected start resumed work")
-	}
-	r.wantFooter(t, appwire.FooterStoppedByClose, appCloseStoppedWord)
+	r.wantInterrupted(t)
 	entries, _, err := r.b.Entries(otherID, "", 100)
-	if err != nil || len(closeFooters(entries)) != 1 || closeFooters(entries)[0].Footer != appwire.FooterStoppedByClose {
+	if err != nil || len(closeFooters(entries)) != 1 || closeFooters(entries)[0].Footer != appwire.FooterInterrupted || !r.b.interrupted(otherID) {
 		t.Fatalf("other entries=%+v,%v", entries, err)
-	}
-	_ = r.b.state.read(func(f *appStateFile) {
-		if len(f.CloseStarts) != 3 {
-			t.Errorf("counted conversations instead of starts: %v", f.CloseStarts)
-		}
-	})
-	_ = r.b.Close()
-	r.p.State = session.PresenceIdle
-	r.write(t, r.p)
-	_ = os.Remove(filepath.Join(filepath.Dir(other), "presence.json"))
-	r.backend(t)
-	r.start()
-	r.clock.advance(t, 0)
-	_ = r.b.state.read(func(f *appStateFile) {
-		if len(f.CloseStarts) != 3 {
-			t.Errorf("unaffected start counted: %v", f.CloseStarts)
-		}
-	})
-}
-
-// C7: the delay needed to establish a dead claim cannot move a third start
-// outside the ten-minute start window, and the breaker lasts for this start.
-func TestAppCloseC7ExpiryDelayCannotEvadeTheBreaker(t *testing.T) {
-	r := newCloseRig(t, session.PresenceWorking, 2*time.Second)
-	_ = r.b.state.write(func(f *appStateFile) error {
-		f.CloseStarts = []time.Time{r.clock.now().Add(-10*time.Minute + time.Second), r.clock.now().Add(-time.Minute)}
-		return nil
-	})
-	r.start()
-	r.clock.advance(t, session.PresenceWindow+appClosePresenceMargin)
-	if n, _ := r.conv.counts(); n != 0 {
-		t.Fatal("claim-expiry delay evaded third-start breaker")
-	}
-	r.wantFooter(t, appwire.FooterStoppedByClose, appCloseStoppedWord)
-	_ = r.b.state.read(func(f *appStateFile) {
-		for _, at := range f.CloseStarts {
-			if at.Before(r.clock.now().Add(-appCloseBreakerWithin)) {
-				t.Errorf("expired stamp retained: %v", at)
-			}
-		}
-	})
-	// Another claim found much later in this same process is still blocked.
-	r.clock.advance(t, 11*time.Minute)
-	r.p.UpdatedAt = r.clock.now()
-	r.write(t, r.p)
-	_, _ = r.b.ListAgents("")
-	r.clock.advance(t, session.PresenceWindow+appClosePresenceMargin)
-	if n, _ := r.conv.counts(); n != 0 {
-		t.Fatal("breaker expired during its own start")
 	}
 }
 
@@ -727,55 +618,30 @@ func TestAppCloseC8FreshForeignWindowIsNeverResumed(t *testing.T) {
 	}
 }
 
-// C9: a claim older than one hour at this start is reported without replay.
-func TestAppCloseC9OldDeathIsReported(t *testing.T) {
+// C9: a claim older than one hour reads the same as a recent one.
+func TestAppCloseC9OldDeathIsInterruptedToo(t *testing.T) {
 	r := newCloseRig(t, session.PresenceWorking, time.Hour+time.Nanosecond)
 	r.start()
 	r.clock.advance(t, 0)
-	if n, _ := r.conv.counts(); n != 0 {
-		t.Fatal("old reply replayed")
-	}
-	r.wantFooter(t, appwire.FooterStoppedByClose, appCloseStoppedWord)
-	r.wantIdle(t)
+	r.wantInterrupted(t)
 }
 
 // C10: the same updatedAt encountered by a later process has no second effect.
 func TestAppCloseC10SameClaimHandledOnce(t *testing.T) {
-	for _, stopped := range []bool{false, true} {
-		t.Run(map[bool]string{false: "resumed", true: "stopped"}[stopped], func(t *testing.T) {
-			r := newCloseRig(t, session.PresenceWorking, time.Minute)
-			if stopped {
-				_ = r.b.state.write(func(f *appStateFile) error { f.CloseResumes = map[string]int{r.id: 2}; return nil })
-			}
-			r.start()
-			r.clock.advance(t, 0)
-			first, _ := r.conv.counts()
-			if !stopped {
-				// The accepted fake wake must start a turn, as the real session
-				// does. An unstarted wake deliberately remains pending for F3.
-				a := r.b.agent(r.id)
-				events := make(chan session.Event, 2)
-				events <- session.Event{Kind: session.EventCloseContinued, Text: closeDisk(t, r).ClosePending[r.id]}
-				events <- session.Event{Kind: session.EventError, Text: "unfinished test turn"}
-				close(events)
-				r.b.wokenTurn(a, r.b.liveOf(a), appTurnElsewhere{events: events})
-			}
-			_ = r.b.Close()
-			r.backend(t)
-			r.start()
-			r.clock.advance(t, 0)
-			if n, _ := r.conv.counts(); n != first {
-				t.Fatal("same claim resumed again")
-			}
-			if len(closeFooters(r.entries(t))) != 1 {
-				t.Fatal("same claim got another footer")
-			}
-		})
-	}
+	r := newCloseRig(t, session.PresenceWorking, time.Minute)
+	r.start()
+	r.clock.advance(t, 0)
+	r.wantInterrupted(t)
+	_ = r.b.Close()
+	r.backend(t)
+	r.start()
+	r.clock.advance(t, 0)
+	r.wantInterrupted(t)
 }
 
-// C11, C12: a half-finished quit owns its claim, and its old footer now persists.
-func TestAppCloseC11QuitNeverDoublesAndKeepsItsFooter(t *testing.T) {
+// C11, C12: a half-finished quit owns its claim: one Interrupted line across
+// restarts, nothing carried on until Continue, and Continue carries it on once.
+func TestAppCloseC11QuitNeverDoublesAndWaitsForContinue(t *testing.T) {
 	r := newCloseRig(t, session.PresenceWorking, time.Minute)
 	_ = r.b.state.write(func(f *appStateFile) error {
 		f.ResumeAfterQuit = []string{r.id}
@@ -783,30 +649,40 @@ func TestAppCloseC11QuitNeverDoublesAndKeepsItsFooter(t *testing.T) {
 		return nil
 	})
 	r.b.snapshotCloseClaims()
-	r.b.resumeAfterQuit()
+	r.b.interruptAfterQuit()
 	r.rec.waitFor(t, time.Second, func(_ string, d any) bool {
 		e, ok := d.(appwire.EntryAdded)
-		return ok && e.Entry.Footer == appwire.FooterResumedAfterQuit
+		return ok && e.Entry.Footer == appwire.FooterInterrupted
 	})
 	r.b.startCloseWatch()
 	r.clock.advance(t, 0)
-	r.wantFooter(t, appwire.FooterResumedAfterQuit, "Resumed after quit")
+	r.wantInterrupted(t)
+	_ = r.b.Close()
+	r.backend(t)
+	r.start()
+	r.clock.advance(t, 0)
+	r.wantInterrupted(t)
+	if _, err := r.b.ContinueInterrupted(r.id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.b.ContinueInterrupted(r.id); err != nil {
+		t.Fatal(err)
+	}
 	if n, q := r.conv.counts(); n != 0 || q != 1 {
-		t.Fatalf("close=%d quit=%d", n, q)
+		t.Fatalf("after Continue close=%d quit=%d", n, q)
 	}
 	_ = r.b.Close()
 	r.backend(t)
 	r.start()
 	r.clock.advance(t, 0)
-	r.wantFooter(t, appwire.FooterResumedAfterQuit, "Resumed after quit")
-	if n, q := r.conv.counts(); n != 0 || q != 1 {
-		t.Fatalf("later close=%d quit=%d", n, q)
+	if n, q := r.conv.counts(); n != 0 || q != 1 || r.b.interrupted(r.id) {
+		t.Fatalf("a later start carried on again: close=%d quit=%d", n, q)
 	}
 }
 
 // C12: fresh backends keep both new footers in place, including equal timestamps.
 func TestAppCloseC12FootersSurviveAFreshBackendInPlace(t *testing.T) {
-	for _, kind := range []string{appwire.FooterResumedAfterClose, appwire.FooterStoppedByClose, appwire.FooterResumedAfterQuit} {
+	for _, kind := range []string{appwire.FooterResumedAfterClose, appwire.FooterStoppedByClose, appwire.FooterResumedAfterQuit, appwire.FooterInterrupted} {
 		t.Run(kind, func(t *testing.T) {
 			r := newCloseRig(t, session.PresenceIdle, 0)
 			a, err := r.b.find(r.id)
@@ -869,7 +745,7 @@ func TestAppCloseC13PruningAndWriteFailure(t *testing.T) {
 	r.b.startCloseWatch()
 	r.clock.advance(t, 0)
 	if n, _ := r.conv.counts(); n != 0 {
-		t.Fatal("resumed without writing guard state")
+		t.Fatal("resumed without writing the mark")
 	}
 	_ = r.b.state.read(func(f *appStateFile) {
 		if !f.CloseHandled[r.id].IsZero() {
@@ -878,9 +754,9 @@ func TestAppCloseC13PruningAndWriteFailure(t *testing.T) {
 	})
 }
 
-// C14: a malformed day limit blocks all paid-capable opens and leaves the
-// claim available after the profile is repaired and the app is reopened.
-func TestAppCloseC14DayLimitSettlesBeforeAnyResume(t *testing.T) {
+// C14: a start opens nothing at all for a dead claim, so a day limit it
+// cannot read is never in question; the chat is marked all the same.
+func TestAppCloseC14StartOpensNothing(t *testing.T) {
 	r := newCloseRig(t, session.PresenceWorking, time.Minute)
 	path := config.BudgetConfigPath(config.ProfileDir())
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
@@ -890,29 +766,12 @@ func TestAppCloseC14DayLimitSettlesBeforeAnyResume(t *testing.T) {
 		t.Fatal(err)
 	}
 	r.b.open = func(appOpenAsk) (*appConn, error) {
-		t.Error("opened before budget settled")
+		t.Error("the start opened an interrupted chat")
 		return nil, errors.New("blocked")
 	}
 	r.start()
 	r.clock.advance(t, 0)
-	if n, _ := r.conv.counts(); n != 0 {
-		t.Fatal("resumed with unknown day limit")
-	}
-	_ = r.b.state.read(func(f *appStateFile) {
-		if !f.CloseHandled[r.id].IsZero() {
-			t.Error("lost claim on budget failure")
-		}
-	})
-	if err := os.WriteFile(path, []byte(`{"daily_budget_usd":20}`), 0600); err != nil {
-		t.Fatal(err)
-	}
-	_ = r.b.Close()
-	r.backend(t)
-	r.start()
-	r.clock.advance(t, 0)
-	if n, _ := r.conv.counts(); n != 1 {
-		t.Fatal("repaired budget did not allow the saved reply to carry on")
-	}
+	r.wantInterrupted(t)
 }
 
 // C8: the synchronous snapshot survives this process taking the journal and
@@ -936,29 +795,13 @@ func TestAppCloseC8SnapshotBeforeThisProcessHoldsTheJournal(t *testing.T) {
 			r.b.startCloseWatch()
 			r.clock.advance(t, session.PresenceWindow+appClosePresenceMargin)
 			n, _ := r.conv.counts()
-			if ours && n != 1 {
+			if ours && (n != 0 || !r.b.interrupted(r.id)) {
 				t.Fatal("own opener erased the evidence")
 			}
 			if !ours && (n != 0 || len(closeFooters(r.entries(t))) != 0) {
 				t.Fatal("drove the new holder")
 			}
 		})
-	}
-}
-
-// C8: a new holder can acquire the journal after expiry but before the opener.
-func TestAppCloseC8OwnershipChangesAtOpen(t *testing.T) {
-	r := newCloseRig(t, session.PresenceWorking, time.Minute)
-	r.b.open = func(appOpenAsk) (*appConn, error) {
-		return &appConn{Conv: r.conv, Transcript: r.file, Workspace: r.p.Workspace, Release: func() {}}, nil
-	}
-	r.start()
-	r.clock.advance(t, 0)
-	if n, _ := r.conv.counts(); n != 0 {
-		t.Fatal("joined holder was resumed")
-	}
-	if len(closeFooters(r.entries(t))) != 0 {
-		t.Fatal("joined holder received a close receipt")
 	}
 }
 

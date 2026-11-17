@@ -560,16 +560,24 @@ request; Export writes a CSV of every billed call between two days into the
 app's exports folder. GitHub is connected on the Connectors page or in the
 Factory's first step, one connection for both (see "Connect GitHub").
 
-## Quitting the desktop app — agents pause and resume, processes stop
+## Quitting the desktop app mid-reply — Interrupted · Continue; a reopened app never resumes a chat or spends money unasked
 
-Quitting the desktop app does not fail the work in it. An agent in the middle
-of a reply is stopped where it stands and carries on by itself the next time
-the app opens, with "Resumed after quit" in front of it; a task it had running
-is picked up where its record stands. A process the model started is sent
-SIGTERM, then SIGKILL five seconds later, and the Processes list says "stopped
-by quit". Automations are not touched by a quit and fire again once the app is
-open. A conversation the app joined in a terminal window is that window's, and
-quitting the app only lets go of it.
+An agent in the middle of a reply is stopped where it stands, and it waits
+for you. When the app opens again that chat shows a dim
+"Interrupted" line where the turn stopped, with **Continue** beside it. Until
+you press it nothing in the chat runs or spends: the reply does not resume, its
+running tasks stay interrupted, and their background work does not wake the
+chat. Opening the chat to read it starts nothing either.
+
+Continue carries the reply on once, on the chat's own model, with "Resumed
+after quit" in front of it, and picks its tasks up where their records stand. A
+second press does nothing. Sending a message or answering a question in that
+chat also clears the mark, and its tasks carry on with you there.
+
+A process the model started is sent SIGTERM, then SIGKILL five seconds later,
+and the Processes list says "stopped by quit". Automations are not touched by a
+quit and fire again once the app is open. A conversation the app joined in a
+terminal window is that window's, and quitting the app only lets go of it.
 
 The app waits for local saving, publishes the newest saved turn and releases its
 hold so another computer can continue. Each saving boundary waits up to 30 seconds.
@@ -589,42 +597,34 @@ Closing the desktop's input pipe starts the same bounded shutdown as a first
 SIGTERM, including while the engine is waiting for a lock. A second SIGTERM
 ends the process immediately.
 
-## When the desktop app closes unexpectedly — a reply stuck working, carrying on after it closed
+## When the desktop app closes unexpectedly — a reply stuck working, Interrupted · Continue
 
-If the desktop app closes unexpectedly during a reply, opening it again carries
-the reply and its running tasks on from where their records stand.
-"Resumed after the app closed" appears before that reply. Finished steps are
-not repeated; the agent checks the result of an unfinished step before relying
-on it. Another window still working on the conversation is left alone. An idle
-conversation without a promised reply stays idle.
+If the desktop app closes unexpectedly during a reply, opening it again does
+not carry the reply on. Once the old window's working claim has run out, the
+chat reads "Interrupted" with **Continue** beside it, exactly as after a quit,
+and nothing in it — the reply, its running tasks, their background work —
+runs or spends until you press Continue. Opening the chat to look at it does
+not start anything. Another window still working on the conversation is left
+alone, an idle conversation stays idle, and a deleted conversation never
+carries on.
 
-If the app closes again before its promised reply begins, opening it again
-tries that reply with the same notice. Newer task activity keeps that promise's
-original notice and age. Another reply starting does not cancel
-that promise. A message, correction, queued message or answer from you cancels
-that promise, including a message sent in another window while the app was
-closed. A deleted conversation never carries on.
+Continue carries the reply on once, with "Resumed after the app closed" in
+front of it. Finished steps are not repeated; the agent checks the result of
+an unfinished step before relying on it. A message, correction, queued message
+or answer from you in that chat also clears the Interrupted mark and lets its
+tasks carry on. These lines stay in the conversation when you close and reopen
+the app.
 
-A conversation carries on automatically at most twice in a row. A reply that
-finishes normally, or a direction from you, resets that limit; the agent's own
-notes do not. Compacting or rewinding the conversation does not reset it.
-Retrying a promised reply uses an attempt too. On the third
-opening within ten minutes that finds unfinished replies, none carry on
-automatically. A reply last active more than an hour before opening is left
-for you to choose. For a promised reply that never began, the hour starts when
-that promise was first saved, even if its tasks worked again afterwards.
-
-When work is left for you, its chat says "The app closed while this was working · send a message to carry on".
-Send a message to continue. These lines, and "Resumed after quit" after a normal
-quit, stay in the conversation when you close and reopen the app.
+Earlier builds carried such a reply on unasked, up to twice in a row. That is
+gone: a chat that was mid-turn at a quit or crash waits for you.
 
 ## Reopening the app while the last one is still leaving — your factory isn't answering, another codeaf is still running this factory
 
 When the app closes, or its window is killed, the codeaf behind it leaves by
 itself: it never keeps working without the app. It lets go of this machine's
 factory first (a running job stops the way a quit stops it and goes back to the
-queue), then stops its replies and processes, which carry on when the app opens
-again. Leaving takes at most two minutes, including the final saving waits.
+queue), then stops its replies and processes; a stopped reply waits for your
+Continue when the app opens again. Leaving takes at most two minutes, including the final saving waits.
 A second SIGTERM or SIGINT ends it at once.
 
 If the app is opened again before the last one has let go, the factory on this
