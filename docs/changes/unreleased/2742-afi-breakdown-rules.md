@@ -11,4 +11,4 @@ invalidates:
 
 The rule and its numbers live once, in internal/session (WorkstreamTaskSmallestMinutes,
 WorkstreamPlanFewest, WorkstreamPlanMost, WorkstreamStepsLead). Once tasks carry a
-checklist (lane L2), the steps move from the request into it.
+checklist (CodeAF #2745), the steps move from the request into it.

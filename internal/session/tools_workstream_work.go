@@ -111,7 +111,7 @@ const (
 )
 
 // WorkstreamStepsLead is the line a task's request ends its steps under, until
-// tasks carry a checklist of their own (lane L2): the steps of one deliverable
+// tasks carry a checklist of their own: the steps of one deliverable
 // are lines inside its task, never tasks of their own.
 const WorkstreamStepsLead = "Steps:"
 
