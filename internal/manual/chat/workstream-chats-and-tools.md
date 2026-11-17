@@ -88,7 +88,7 @@ On an organization whose agents run on its server, Afi has no ws_chat_start: an 
 
 When Afi (or a chat coordinating a batch) breaks big work down, it makes **5 to 8 tasks, never more**. Each task is a deliverable someone could review when it is done: a page, a canvas, a pull request, a booking or a decision, hours to days of work. Afi never makes a task for anything under 30 minutes of work, such as fixing a typo, "open the file" or "find the link", even when you ask for one: it does it right away instead, with a suggestion on the document where it may not rewrite it, and says what it changed. When it cannot reach the thing (the page is not in the workstream), it says what it can do now and offers it, for example to fix it as soon as the page is in Files. It may also make it a step of the closest task.
 
-The steps of one deliverable are not tasks of their own. They end the task's request, under a line "Steps:", one line per step, so you read them on the task page under Request. Every task in the plan names its owner, a person already in the workstream, and who does it.
+The steps of one deliverable are not tasks of their own. They are the task's checklist: lines inside the task that are ticked as each is finished (see a checklist inside a task). Every task in the plan names its owner, a person already in the workstream, and who does it.
 
 Five or more tasks from one request arrive as one plan with **Start** and **Change the plan**. One press of Start releases the whole plan; there is no Start to press for each task. If a plan has too many tasks, or tasks that are too small, press **Change the plan** and say so, for example "merge these into five".
 

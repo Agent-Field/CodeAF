@@ -42,6 +42,8 @@ type breakdownTask struct {
 	Owner   string `json:"owner,omitempty"`
 	DoneBy  string `json:"done_by,omitempty"`
 	Group   string `json:"group,omitempty"`
+	// Checklist is the deliverable's steps (CodeAF #2745).
+	Checklist []string `json:"checklist,omitempty"`
 }
 
 func (d *breakdownDoor) Workstream(context.Context) (factory.OrgWorkstream, error) {
@@ -83,20 +85,8 @@ func (d *breakdownDoor) Work(_ context.Context, tool string, args json.RawMessag
 // Files and I'll fix it at once").
 var offersFix = regexp.MustCompile(`(?i)\bI(?:'|’)ll\b[^.]*\b(fix|correct|change)`)
 
-// steps is how many "- " lines a request carries under its Steps: line.
-func (t breakdownTask) steps() int {
-	_, after, ok := strings.Cut(t.Request, session.WorkstreamStepsLead)
-	if !ok {
-		return 0
-	}
-	n := 0
-	for _, line := range strings.Split(after, "\n") {
-		if strings.HasPrefix(strings.TrimSpace(line), "- ") {
-			n++
-		}
-	}
-	return n
-}
+// steps is how many lines the deliverable's checklist carries.
+func (t breakdownTask) steps() int { return len(t.Checklist) }
 
 // AFI'S BREAKDOWN, MEASURED ON THE REAL MODEL (OWNER-DECISIONS 2026-11-17 §7).
 // Three requests a person really sends get 5 to 8 deliverables each, every one
