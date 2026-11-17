@@ -1,6 +1,6 @@
 ---
 kind: changed
-title: An agent that can't do a task asks its owner instead of failing, and a run carries every task it waits on
+title: An agent that can't do a task asks its owner, and a run carries every task it waits on
 pr: 2753
 surface: [factory, chat, docs]
 invalidates:
