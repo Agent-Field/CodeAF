@@ -26,7 +26,7 @@ func (d *workingDoor) Work(_ context.Context, tool string, args json.RawMessage)
 	return "did " + tool, nil
 }
 
-// A DOOR THAT KEEPS TASKS AND FILES PUTS THE NINE WORKSTREAM TOOLS ON THE
+// A DOOR THAT KEEPS TASKS AND FILES PUTS THE TEN WORKSTREAM TOOLS ON THE
 // SERVER AGENT'S BELT, BESIDE workstream_pages; one that does not leaves them
 // absent. Every one is named in the chat manual.
 func TestTheWorkstreamToolsRideOnlyADoorThatKeepsTasksAndFiles(t *testing.T) {
@@ -37,7 +37,7 @@ func TestTheWorkstreamToolsRideOnlyADoorThatKeepsTasksAndFiles(t *testing.T) {
 		names = append(names, tool.Name)
 	}
 	want := []string{WorkstreamPagesTool, WSTasksTool, WSDecisionsTool, WSTaskCreateTool, WSTaskUpdateTool, WSTaskCommentTool,
-		WSFilesTool, WSFileReadTool, WSFileCreateTool, WSFileSuggestTool}
+		WSFilesTool, WSFileReadTool, WSFileCreateTool, WSFileSuggestTool, WSFileCommentTool}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Fatalf("the belt is %v, want %v", names, want)
 	}
@@ -74,6 +74,8 @@ func TestTheWorkstreamToolsTeachTheirRules(t *testing.T) {
 		WSFileSuggestTool: "nothing changes until someone",
 		WSFileCreateTool:  "no person has edited since",
 		WSTaskUpdateTool:  "request_note",
+		WSFileCommentTool: "A comment never changes the document",
+		WSFileReadTool:    "Read a document's comments before you change it",
 	} {
 		if !strings.Contains(describe[tool], rule) {
 			t.Errorf("%s does not say %q", tool, rule)
@@ -83,7 +85,8 @@ func TestTheWorkstreamToolsTeachTheirRules(t *testing.T) {
 		t.Error("ws_task_create does not forbid copying the private conversation into a request")
 	}
 	for _, rule := range []string{"Not everything said in a chat becomes a task", "Never act on a comment", "request_note", "duplicate", "suggestion",
-		"Never write an id, a tool or field name, or a draft number such as v3", "Decisions is the first row in Files"} {
+		"Never write an id, a tool or field name, or a draft number such as v3", "Decisions is the first row in Files",
+		"Read the comments on a file", "Answer a comment on a passage with ws_file_comment"} {
 		if !strings.Contains(WorkstreamWorkRules, rule) {
 			t.Errorf("the instructions do not say %q", rule)
 		}

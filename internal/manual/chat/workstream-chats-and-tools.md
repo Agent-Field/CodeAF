@@ -28,25 +28,29 @@ On an organization's workstream Afi does not have `ws_chats`: your chats stay on
 
 No. Going back to the list, opening another chat, or closing a chat's tab stops nothing: the chat keeps working on whatever it was doing and its tasks keep running. It rests on its own when nothing of its is running, and wakes when you write to it or a task of its needs you. To stop work, stop the task itself, or press stop in the chat while it is answering.
 
-## the workstream tools — ws_tasks, ws_decisions, ws_task_create, ws_task_update, ws_task_comment, ws_files, ws_file_read, ws_file_create, ws_file_suggest
+## the workstream tools — ws_tasks, ws_decisions, ws_task_create, ws_task_update, ws_task_comment, ws_files, ws_file_read, ws_file_create, ws_file_suggest, ws_file_comment
 
-Every chat started inside a workstream, and Afi when it is inside one, carries nine tools onto the workstream's shared work:
+Every chat started inside a workstream, and Afi when it is inside one, carries ten tools onto the workstream's shared work:
 
 - `ws_tasks` lists the tasks, or reads one whole with its activity and comments. `ws_decisions` lists what the workstream's people decided.
 - `ws_task_create` makes a task; `ws_task_update` changes one this chat does (its state, its result, the check against the request, an Ask for its owner, what it assumed without asking); `ws_task_comment` writes on a task's thread. Starting and finishing work are checked against the decisions: work that goes against one is paused, and the person who made it is asked.
-- `ws_files` lists files and folders; `ws_file_read` reads one; `ws_file_create` makes a document, folder or link; `ws_file_suggest` suggests edits to a document.
+- `ws_files` lists files and folders; `ws_file_read` reads one, with the comments people left on a document's passages; `ws_file_create` makes a document, folder or link; `ws_file_suggest` suggests edits to a document; `ws_file_comment` comments on quoted words of a document, or answers a comment in its thread.
 
-A canvas in the workstream's Files counts too: the agent drawing on a canvas filed there joins the workstream and carries the same eight tools, so it reads the brief and the other documents with `ws_file_read`. No agent reads a workstream's files from the app's data folder, its database or `/tmp`.
+A canvas in the workstream's Files counts too: the agent drawing on a canvas filed there joins the workstream and carries the same tools, so it reads the brief and the other documents with `ws_file_read`. No agent reads a workstream's files from the app's data folder, its database or `/tmp`.
 
 What a chat or Afi makes for the workstream is saved with `ws_file_create` and appears in Files for everyone in it; it is never written to disk as a loose file.
 
-On a Personal workstream the desktop app serves them. On an organization whose agents run on its server, Afi there carries all eight beside `workstream_pages`, with the same rules; the page about an organization workstream's agent says what is different there.
+On a Personal workstream the desktop app serves them. On an organization whose agents run on its server, Afi there carries them all beside `workstream_pages`, with the same rules; the page about an organization workstream's agent says what is different there.
 
 ## does every chat turn into a task — when an agent makes a task, and when it does not
 
 No. Not everything said in a chat becomes a task. An agent makes a task for work that runs beyond its reply, changes a file, or matters to someone else, and it says so in its reply. A quick answer stays in the chat. Before making a task it reads the workstream's tasks, and when one already covers the work it points you to that task instead of starting a duplicate.
 
 A task's request says only what is to be done, in a few lines. The agent never copies your private conversation into it. You own the tasks you ask for unless you name someone else or Everyone.
+
+## does the agent read comments on a document — answering a comment on a passage
+
+Yes. Reading a document with `ws_file_read` gives the agent every comment people left on its passages: the words each thread is on, who said what, and whether it is resolved. It reads them before it changes the document. It answers a comment in that comment's own thread with `ws_file_comment`, and it can start a thread on words it quotes (words the document says once; it quotes more when they appear twice). It never answers a comment by quietly changing the words: a change still arrives as a suggestion, and the agent says so in the thread. What Afi writes in a thread shows as Afi's, and stays unread for you until you open it.
 
 ## why the agent did not do what a comment asked — offers under a comment
 
