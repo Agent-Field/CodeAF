@@ -212,6 +212,10 @@ type WorkstreamTask struct {
 	// ForYou is the reader's own: the comments on it that are for them and
 	// not yet read. It is FILLED AT READ TIME for one viewer and never kept.
 	ForYou *TaskForYou `json:"for_you,omitempty"`
+	// StoppedBy is who pressed Stop, while the task is stopped, so the list
+	// says "Stopped by you" to that person alone and "Stopped by Marco" to
+	// everyone else.
+	StoppedBy *PersonRef `json:"stopped_by,omitempty"`
 }
 
 // TaskForYou is what a task holds for the person reading it (SPEC "Comments
@@ -571,6 +575,9 @@ type TaskChange struct {
 	Task     WorkstreamTask
 	Events   []WorkstreamTaskEvent
 	Released []WorkstreamTask
+	// Rewait is what waits on a task that was done and is not any more (sent
+	// back, unticked): each waits again (see WaitAgain).
+	Rewait []WorkstreamTask
 }
 
 // ApplyPatch changes t by p for actor a, under the rules, and answers the
@@ -687,9 +694,17 @@ func ApplyPatch(t WorkstreamTask, p TaskPatch, a TaskActor, by TaskEventBy, all 
 			event(TaskEventState, words)
 			t.StateReason = words
 			sentBack = true
+		} else if t.State == TaskStopped && by.Kind == TaskByPerson {
+			// WHO STOPPED IT IS KEPT (final spec, States): the thread names
+			// them and the list says "you" to them alone.
+			event(TaskEventState, "Stopped by "+by.Name)
+			t.StoppedBy = &PersonRef{ID: by.ID, Name: by.Name}
 		} else {
 			event(TaskEventState, StateWords(t.State))
 		}
+	}
+	if t.State != TaskStopped {
+		t.StoppedBy = nil
 	}
 	if p.StateReason != nil && !sentBack {
 		t.StateReason = strings.TrimSpace(*p.StateReason)
@@ -715,7 +730,27 @@ func ApplyPatch(t WorkstreamTask, p TaskPatch, a TaskActor, by TaskEventBy, all 
 	if t.State == TaskDone && before.State != TaskDone {
 		ch.Released = Released(t.ID, replaced(all, t), by, newID, now)
 	}
+	if before.State == TaskDone && t.State != TaskDone {
+		for _, o := range all {
+			if o.ID != t.ID && o.State != TaskDone && slices.Contains(o.WaitingOn, t.ID) {
+				ch.Rewait = append(ch.Rewait, o)
+			}
+		}
+	}
 	return ch, nil
+}
+
+// WaitAgain is o, which waits on a task that was just reopened, waiting
+// again. REOPENING A TASK MAKES EVERY TASK THAT WAITS ON IT WAIT AGAIN (final
+// spec, Tasks › Rules): one already running goes back to Up next, where its
+// wait shows; a Factory task keeps its job's state. changed says whether o
+// itself changed; the caller writes it and the "Waiting again" line either way.
+func WaitAgain(o WorkstreamTask, stamp string) (WorkstreamTask, bool) {
+	if o.State != TaskRunning || o.DoneBy.Kind == TaskByFactory {
+		return o, false
+	}
+	o.State, o.Rev, o.UpdatedAt = TaskUpNext, o.Rev+1, stamp
+	return o, true
 }
 
 func validState(s string) bool {

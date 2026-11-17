@@ -202,7 +202,8 @@ conversations. Nothing changes until Apply. Suggestions come from two sources:
   for other groupings or additions. Folders win disagreements. It has ten seconds;
   `thinking…` shows while it works, and its reported usage cost appears below when known.
 
-The terminal uses the conversation’s model when no naming role is set.
+When no naming role is set, the app uses the model you chose and the terminal uses the
+conversation’s model; organizing never refuses for want of a naming role.
 If the model is unavailable, the card shows `suggestions from folders only`. With no
 suggestions it says `Everything is organized` beside Close. Rows start selected.
 Arrows move; space or a press toggles; enter or Apply takes the selected suggestions.

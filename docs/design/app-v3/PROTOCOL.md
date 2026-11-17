@@ -949,7 +949,8 @@ model keys and to a workstream's agent on the server. `factory.org_keys` `GET
 `factory.org_key_delete {provider}` `DELETE` are the operator's alone; the only provider
 is `openrouter`, and a key is answered back only as `{provider, last4, set_at,
 set_by}`, never whole. In `server` mode every workstream has one agent on the server,
-run with that key as an ordinary engine conversation whose tools are
+and each person who can edit it has their OWN conversation with it, which nobody else
+reads (the agent's memory is per person too); it is run with that key as an ordinary engine conversation whose tools are
 `workstream_pages` (read the workstream and one page, write a page, make a page,
 suggest a decision) and the eight workstream tools `ws_tasks`, `ws_task_create`,
 `ws_task_update`, `ws_task_comment`, `ws_files`, `ws_file_read`, `ws_file_create`,
@@ -969,17 +970,23 @@ keeps. `factory.org_workstream_agent
 turn?, for?, since?, entries, seq, can_talk, cannot?}`: `state` is `idle`, `working`
 (`for` is whose message) or `stopping` (`for` is who stopped it); `entries` are the
 lines after `since` (at most 200), each `{seq, at, kind, by?, text, tool?, failed?,
-turn}` with `kind` `person`, `agent`, `step` or `note`; `cannot` is the one sentence
-saying why an editor cannot talk now (another runner mode, no key, archived, budget
-spent), absent for a viewer. `factory.org_workstream_agent_send {id, text}` `POST
-.../agent/messages` (`edit`, 1–16384 bytes) answers 202 with the agent working; while
-it answers someone else the refusal is `conflict` with `detail.reason` `busy` and
-`detail.by` `@handle`. `factory.org_workstream_agent_stop {id}` `POST .../agent/stop`
-(`edit`) stops it. The agent writes as the person who asked (their rights are checked
+turn}` with `kind` `person`, `agent`, `step` or `note`, all of them the caller's own
+conversation; `private` is `true` from a server that keeps each person's conversation to
+them (an older server, which kept one conversation everyone read, leaves it out, and the
+desk then must not say "Private to you"); `cannot` is the one sentence saying why an
+editor cannot talk now (another runner mode, no key, archived, budget spent), absent for
+a viewer. `factory.org_workstream_agent_send {id, text, tz?}` `POST
+.../agent/messages` (`edit`, 1–16384 bytes) answers 202 with the agent working; `tz`
+is the sender's IANA time zone (`America/Toronto`), and every turn tells the agent the
+date and time in it, or in the server's own zone when it is absent or unknown; while
+it still answers the caller's previous message the refusal is `conflict` with
+`detail.reason` `busy` (another person's conversation never makes it busy).
+`factory.org_workstream_agent_stop {id}` `POST .../agent/stop` (`edit`) stops the
+caller's own answer. The agent writes as the person who asked (their rights are checked
 on every write); a decision is added `proposed`. What a
 turn spent is posted to the workstream's spend under the asker with `chat` `agent`.
-The server's `agent.entry {id, entry}` and `agent.state {id, state, ...}` reach those
-who can see the workstream and are relayed as `factory.org_workstream_agent
+The server's `agent.entry {id, person, entry}` and `agent.state {id, person, state, ...}`
+reach only `person`, while they can see the workstream, and are relayed as `factory.org_workstream_agent
 {connection, id, entry?, state?}`.
 
 An engine whose hello carries `org_workstream_tasks` reads and changes an organization
@@ -988,9 +995,9 @@ and the task `id`, the same words the desk's Tauri `workstream_task_*` commands 
 and a task and an event are the server's shapes passed through whole: a task is `{id,
 ws, rev, title, request, owner, done_by, came_from, state, state_reason?, step?,
 waiting_on, due?, group?, results, check?, ask?, cost_usd?, created_by, created_at,
-updated_at, done_at?, answered_by?, handed_by?, for_you?}`, `state` one of `up_next`, `running`, `needs`,
-`done`, `failed`, `interrupted`, `stopped` (Stopped by you), `no_report` (Didn't report
-back); an event is `{id, task, at, by, kind, text, steps?, duration_s?, offer?,
+updated_at, done_at?, answered_by?, handed_by?, for_you?, stopped_by?}`, `state` one of `up_next`, `running`, `needs`,
+`done`, `failed`, `interrupted`, `stopped` (Stopped by you, to `stopped_by`; Stopped by
+<name> to everyone else), `no_report` (Didn't report back); an event is `{id, task, at, by, kind, text, steps?, duration_s?, offer?,
 undo_until?, option?, mentions?}`, `option` being the chosen answer's id on an `answered` event; a
 standing order's task names its run in `came_from.run`. A person on a task (`owner`, `done_by`, `came_from` and
 `created_by` of kind `person`) is named, in every answer that carries the task, by the
@@ -1025,8 +1032,12 @@ waited only on it stays `up_next`, unchanged, and its thread gains "Ready to sta
 is done"; `running` is set only by whoever wakes the doer. Send back is `state`
 `up_next` on a `done` task by someone other than its owner, or with a `state_reason`:
 anyone who edits may do it (a person task included), and the thread line and the
-task's `state_reason` read "Sent back by <name>[: <why>]" until its next change. A
-Factory task's state is its job's (409). A stale rev is 412.
+task's `state_reason` read "Sent back by <name>[: <why>]" until its next change. A done
+task reopened (sent back or unticked) makes every unfinished task that waits on it wait
+again: one that was `running` goes back to `up_next` (a Factory task keeps its job's
+state), and each gains the thread line "Waiting again: <title> was reopened". A person's
+`stopped` records `stopped_by {id, name}`, and its thread line reads "Stopped by <name>";
+any later state clears it. A Factory task's state is its job's (409). A stale rev is 412.
 `_task_answer {ws, id, option?, text?}` `POST .../answer` is the owner's (with owner
 `everyone`, anyone who edits; after a day, also the workstream's fallback), 403
 otherwise; the first answer decides and records `answered_by`, a second is 409; a
@@ -2601,11 +2612,10 @@ topic views), `insight_factory_read` (the read of what arrived in a factory) and
 `Repo ask`, `Repo themes`, `Build with AI`, `Topic views`, `Factory read`,
 `Factory scout`), so a client can draw a role it does not know yet. They are
 errand roles (`agents.errand` `role`), not task roles. The ladder is the role's
-own pin, then the `insight` pin, then the engine's default for `insight`, then
-the small-work tier. `default` appears on `insight` only while the engine's
-default applies (`deepseek/deepseek-v4.1-flash` on `openrouter`, while OpenRouter
-is connected and the allowed models admit it); it is never written as a pin, and
-its absence means an unpinned `insight` follows its tier. `follows: "insight"`
+own pin, then the `insight` pin, then a small-work row the person wrote, then
+the model the person chose. Since 2026-11-16 the engine has no default model for
+`insight` (background seats follow the chosen model), so `default` is always
+absent; the key stays in the shape for older clients. `follows: "insight"`
 marks each override. Pins are stored in the `models.roles` row beside the other
 role pins and checked as the other pins are.
 
@@ -3602,7 +3612,7 @@ Errors contain no source text or credentials. Stale mutations return `conflict`.
 
 The file form names no `chat` or `message`. The engine records the words as a user source of kind `workstream_file`, session `workstream:<workstream>` and id `workstream-file:<workstream>/<id>@<hash of the words>`, so keeping the same words again is one source and keeping an edited file adds a new one beside it. `knowledge.source` on such a source answers `{chat: "", message: "", file: {workstream, id}}`, which the desk opens as that file. A desk that does not see `knowledge.capture_file` in hello leaves "Add to Library" off its file menus.
 
-Settings includes `knowledge_model`; `settings.set {knowledge_model}` changes the same profile row the terminal uses. Clearing it restores the default, `deepseek/deepseek-v4.1-flash`. Building the Library never changes a saved model choice.
+Settings includes `knowledge_model`; `settings.set {knowledge_model}` changes the same profile row the terminal uses. An empty `knowledge_model` means the Library follows the person's chosen model (the default); clearing it goes back to that. Building the Library never changes a saved model choice.
 
 `knowledge.recall` is an explicit read of saved guides, including while `enabled` is false. It does not enable capture, import chats or publish new knowledge. Automatic memory use remains gated by the profile setting.
 

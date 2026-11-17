@@ -40,9 +40,11 @@ func TestCreditsRecordChangesImplicitDefaultsWithoutSavingModels(t *testing.T) {
 	if SettingsGeneration() <= before || !CreditsLowAt(dir) || ChatDefaultAt(dir) != FreeChatModel || !crewHealthAt(dir).unaffordable[modelsource.DefaultID] {
 		t.Fatalf("low record did not move chat default and crew health: chat=%q", ChatDefaultAt(dir))
 	}
-	for tier, want := range freeHelperModels {
-		if got := TierModelAt(dir, tier); got != want {
-			t.Errorf("%s = %q, want %q", tier, got, want)
+	// The two helper rows have no model of their own on a low account either:
+	// they follow the conversation, which the low reading just moved.
+	for _, tier := range []string{ModelTierReflex, ModelTierLow} {
+		if got := TierModelAt(dir, tier); got != "" {
+			t.Errorf("%s = %q, want it to follow the conversation", tier, got)
 		}
 	}
 	data, err := os.ReadFile(ProfilePath(dir, "credits.json"))
@@ -103,14 +105,6 @@ func TestFreeHelpersAreAReadingAndExplicitRowsWin(t *testing.T) {
 	}
 	if ChatModelAt(dir) != "openai/gpt-4" {
 		t.Fatal("saved talk model changed")
-	}
-	for _, model := range freeHelperModels {
-		if !strings.HasSuffix(model, ":free") {
-			t.Fatalf("%q is not free", model)
-		}
-	}
-	if strings.Split(freeHelperModels[ModelTierReflex], "/")[0] == strings.Split(freeHelperModels[ModelTierLow], "/")[0] {
-		t.Fatal("reflex and small work share a vendor")
 	}
 }
 

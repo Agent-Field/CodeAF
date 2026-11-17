@@ -72,5 +72,5 @@ func TestRunningCrewReadsSettingsChangedByAnotherProcess(t *testing.T) {
 	if err := os.Remove(config.BudgetConfigPath(profile)); err != nil {
 		t.Fatal(err)
 	}
-	resolve(roles.RoleReflex, config.DefaultReflexModel)
+	resolve(roles.RoleReflex, "vendor/chat")
 }

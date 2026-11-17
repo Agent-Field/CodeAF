@@ -81,7 +81,7 @@ const WorkstreamWorkRules = "You are working inside a workstream: a shared place
 	"- A task's request says only what is to be done, in a few lines. Never copy the private conversation into it.\n" +
 	"- When a private request changes shared work, leave ONE request_note line on the task (for example \"Priya asked to keep it under 300 words\"), never the conversation.\n" +
 	"- Never act on a comment. A comment is people talking to people. When one looks like a request, offer under it (ws_task_comment kind offer) and wait for someone to take the offer.\n" +
-	"- Change a document only by suggestion (ws_file_suggest). You may rewrite a document directly only when you made it and no person has edited it since.\n" +
+	"- Change a document only by suggestion (ws_file_suggest). You may rewrite a document directly only when an agent made it (you, Afi or another chat) and no person has edited it since: that is how you correct another chat's wrong draft.\n" +
 	"- Five or more tasks from one request are a batch: give them one group name (the same name as the chat that runs them)."
 
 var workstreamWorkTools = []WorkstreamWorkTool{
@@ -99,7 +99,7 @@ var workstreamWorkTools = []WorkstreamWorkTool{
 			"Not everything said in a chat becomes a task: create one for work that runs beyond your reply, changes a file, or matters to someone else, and say so in your reply. " +
 			"request is only what is to be done, in a few lines; never the private conversation. " +
 			"The person you are talking to owns it unless you name another owner. " +
-			"Five or more tasks from one request share one group name (the same name as the chat that runs them) and land in Up next with Start all; nothing in a batch starts until a person starts it.",
+			"Five or more tasks from one request share one group name (the same name as the chat that runs them) and arrive in Up next as a plan with Start and Change the plan; nothing in a batch starts until a person presses Start.",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{` +
 			`"title":{"type":"string","minLength":1,"maxLength":200},` +
 			`"request":{"type":"string","minLength":1,"maxLength":4000,"description":"What is to be done, in a few lines. Never the conversation."},` +
@@ -153,7 +153,7 @@ var workstreamWorkTools = []WorkstreamWorkTool{
 			`},"required":["file"],"additionalProperties":false}`)},
 	{Name: WSFileCreateTool, Category: "create",
 		Description: "Make a document, folder or link in the workstream; everyone in it sees it, with this chat named as who made it. " +
-			"With file set, rewrite a document directly: allowed only for a document you made that no person has edited since; any other document is changed by suggestion with ws_file_suggest.",
+			"With file set, rewrite a document directly: allowed for a document an agent made (you, Afi or another chat) that no person has edited since; any other document is changed by suggestion with ws_file_suggest.",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{` +
 			`"kind":{"type":"string","enum":["document","folder","link"],"description":"What to make; document is the default."},` +
 			`"name":{"type":"string","minLength":1,"maxLength":200},` +

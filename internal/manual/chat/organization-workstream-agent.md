@@ -15,9 +15,13 @@ Only the operator manages it, in Settings › Organizations › the organization
 
 Over the wire: `GET /v1/org/keys`, `PUT /v1/org/keys/openrouter {"key"}`, `DELETE /v1/org/keys/openrouter`, all operator-only. A key must be one word of 12 to 512 characters.
 
-## talking to the server's workstream agent — who can talk, who can only read, one message at a time, stop the agent while it is still answering someone else
+## talking to the server's workstream agent — private to you, who can talk, one message at a time, stop it
 
-In `server` mode a workstream's Agent panel is one conversation everyone who can see the workstream reads. People who can edit the workstream talk to it; people who can only view it read along with no composer. The agent answers one message at a time: a second message while it works is refused with "the agent is still answering santosh; wait for it, or stop it". Anyone who can edit may stop it; the conversation then says "Stopped by abir.".
+In `server` mode a workstream's Afi pane is private to you: you have your own conversation with the server's agent, and nobody else in the workstream reads it, not your colleagues and not the operator. Its memory is yours too, so it does not repeat what someone else told it. What it does to shared things is visible to everyone as those things: the tasks it makes, the files and pages it writes, the decisions it suggests, and one line on a task when your private request changed it ("Priya asked Afi to keep it under 300 words").
+
+People who can edit the workstream talk to it; people who can only view it have no composer. It answers one of your messages at a time: a second while it works is refused with "the agent is still answering your last message; wait for it, or stop it". Someone else's conversation never makes yours wait. Only you can stop yours; it then says "Stopped.".
+
+A workstream that had one shared conversation before gives each person only their own turns from it; nobody else's are copied.
 
 What it spends is posted to the workstream under the person whose message it answered. A workstream that has spent its budget takes no more messages ("This workstream has spent its budget."). An archived workstream takes none either.
 
@@ -28,6 +32,12 @@ On the server the agent, Afi, carries `workstream_pages` and the eight workstrea
 With `workstream_pages` it reads the workstream (name, purpose, budget, pages, decisions, sources and links), reads or writes one page, makes a new page, or suggests a decision that waits in Decisions until a person keeps it.
 
 It cannot run commands, read or change a repository, open files on a computer, start or stop Factory work, search the web or remember things between workstreams. For any of that, use `driver` mode, where the agent runs on a person's laptop with their tools.
+
+## does Afi know today's date — the date and time, your time zone, deadlines
+
+Yes. Every message you send tells the server's Afi the date and time where you are: the app sends your computer's time zone with the message, and Afi works out "today", "tomorrow" and every deadline from that date, never from a date it read on a page. If no time zone arrives, it uses the server's own clock and knows that it is the server's.
+
+When Afi changes something for you, it changes only what you asked, and its answer lists every change it made, including any status, rating, owner or date it changed along the way.
 
 ## Afi made a task on the server — who owns it, who it says made it, what Afi may change
 
