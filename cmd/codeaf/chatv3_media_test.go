@@ -168,7 +168,9 @@ func TestTheMediaResolverWalksItsLadder(t *testing.T) {
 		{"image", "krea/krea-2-medium-turbo"},
 		{"speech", "vendor/first-voice"},
 		{"video", ""},
-		{"vision", "anthropic/claude-sonnet-4.5"},
+		// Looking elects nothing by itself: with no looking row and no pin the
+		// session looks with the person's own model or not at all (F17).
+		{"vision", ""},
 		{"transcribe", "vendor/ear"},
 		{"listen", "google/gemini-2.5-flash"},
 		{"watch", "google/gemini-2.5-flash"},
@@ -255,9 +257,15 @@ func TestTheMediaResolverPassesOverAnIncapableRung(t *testing.T) {
 
 	// And the perception words refuse a model that answers in pictures rather
 	// than in words: eyes that reply with a painting cannot say what they saw.
+	// It is passed over, and looking falls to nothing rather than to a model
+	// the catalog happened to list (F17).
 	pins[roles.PinKey(roles.RoleVision)] = "krea/krea-2-medium-turbo"
+	if got := resolve("vision"); got != "" {
+		t.Fatalf("a painter was accepted as a pair of eyes, or another model elected: %q", got)
+	}
+	pins[roles.PinKey(roles.RoleVision)] = "anthropic/claude-sonnet-4.5"
 	if got := resolve("vision"); got != "anthropic/claude-sonnet-4.5" {
-		t.Fatalf("a painter was accepted as a pair of eyes: %q", got)
+		t.Fatalf("a capable vision pin resolved to %q", got)
 	}
 }
 

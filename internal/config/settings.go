@@ -2021,7 +2021,7 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyVisionModel, Category: CategoryModels, Kind: SettingText,
 			Label: "looking", Env: "CODEAF_VISION_MODEL", EmptyLabel: "automatic",
-			Hint: "the model that looks at images. Leave it blank and codeaf picks one that can see. " +
+			Hint: "the model that looks at images. Leave it blank and codeaf looks with the model you chose when it can see, and never picks another one for you. " +
 				"A change lands the next time codeaf starts.",
 			read:  func() string { return VisionModelAt(dir) },
 			write: func(raw string) error { return writeText(dir, KeyVisionModel, raw) },

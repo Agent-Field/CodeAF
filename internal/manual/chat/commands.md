@@ -2093,6 +2093,10 @@ one order:
 3. the best model the catalog advertises that publishes the capability;
 4. a name this build remembers.
 
+**Looking stops after step 2.** For looking at an image, steps 3 and 4 are never taken: with
+no looking row and no `vision` pin, codeaf looks with the model you are talking to when it
+can see, and otherwise nothing looks — it never elects another vendor's model for you.
+
 Steps 3 and 4 read one preference list per kind of media, strongest first, and these are
 the names at the head of each list — what an `automatic` row actually gets:
 
@@ -2102,12 +2106,10 @@ the names at the head of each list — what an `automatic` row actually gets:
 | speaks | `fish-audio/s2.1-pro` |
 | composes | `google/lyria-3-clip-preview` |
 | films | `bytedance/seedance-2.5` |
-| looks at an image | `google/gemini-3.7-flash` |
 
 Each list has older names under its leader — `krea/krea-2-medium-turbo` under drawing,
 `fish-audio/s1`, `openai/gpt-4o-mini-tts` and `hexgrad/kokoro-82m` under speech,
-`google/lyria-3-pro-preview` under music, `bytedance/seedance-2.0-mini` under video,
-`qwen/qwen3.8-27b` under looking — used when
+`google/lyria-3-pro-preview` under music, `bytedance/seedance-2.0-mini` under video — used when
 your catalog does not advertise the leader. When the whole list misses, the catalog's own
 rows are used — settled ones first: a row whose name marks it experimental (`-exp`,
 `-preview`, `:free`, alpha, beta, a stealth vendor) is passed over while any ordinary row
