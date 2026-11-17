@@ -462,11 +462,9 @@ func (a *Agent) nameIntent(ctx context.Context, intent titleIntent, fallback str
 		// never wrote a small-work row was a ladder with no rung at all — and a
 		// conversation that was never named. A session with no roles source at
 		// all (a headless run) still names nothing: an optional name is bought
-		// only where someone configured where naming goes.
-		floor := ""
-		if a.config.RolesSource != nil {
-			floor = a.Model()
-		}
+		// only where someone configured where naming goes
+		// ([roleReader.BackgroundFloor]).
+		floor := a.roleModels().BackgroundFloor()
 		response, named, err := a.callRoleChecked(withFirstRungOnly(withDetachedUsage(callCtx)), roles.RoleTitle, floor,
 			[]ai.Message{
 				textMessage("system", titleSystem),
