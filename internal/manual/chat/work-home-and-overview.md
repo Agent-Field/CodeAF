@@ -12,7 +12,7 @@ Work opens the page across the workstreams you belong to. It never includes a wo
 
 A workstream opens on “Overview”, before “Tasks”, “Chats” and “Files”. The purpose is the same field as the workstream's goal. “Edit purpose” saves it for the workstream and its Afi.
 
-Overview shows at most two Asks, four Running rows and two results from today. With fewer than four running tasks it opens their last three work steps. A larger list uses one row per piece of work, grouping tasks under their shared heading. “All tasks” opens Tasks. Empty sections and side blocks are absent.
+Overview shows at most two Asks, four Running rows and two results from today. With fewer than four running tasks it opens their last three work steps. A larger list uses one row per piece of work, grouping tasks under their shared heading. “All tasks” opens Tasks. Empty sections and side blocks are absent. Standing orders show their real schedules; an order switched off says "Off".
 
 A result previews the first four lines, up to 600 characters, of the actual result document in Files. An upload or link has no invented text preview. “Send back” opens that task's existing Send back composer: the same task action and doer rules apply.
 

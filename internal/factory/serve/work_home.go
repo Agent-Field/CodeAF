@@ -61,7 +61,14 @@ func (h *Handler) workOverview(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
-	out := api.WorkOverview{Tasks: tasks, Steps: map[string][]string{}, Previews: map[string]string{}, Children: []api.WorkstreamSummary{}, People: h.workstreamPeople(ws, h.personNames()), Decisions: nameDecisions(ws.Decisions, h.personNames()), Files: []factory.WorkstreamFile{}, AskedOf: []api.WorkRequest{}}
+	out := api.WorkOverview{StandingOrders: []api.WorkstreamOrder{}, Tasks: tasks, Steps: map[string][]string{}, Previews: map[string]string{}, Children: []api.WorkstreamSummary{}, People: h.workstreamPeople(ws, h.personNames()), Decisions: nameDecisions(ws.Decisions, h.personNames()), Files: []factory.WorkstreamFile{}, AskedOf: []api.WorkRequest{}}
+	orders, err := h.config.Store.WorkstreamOrders(ws.ID)
+	if h.failed(w, err) {
+		return
+	}
+	for _, order := range orders {
+		out.StandingOrders = append(out.StandingOrders, orderView(order, h.clock()))
+	}
 	files, err := h.config.Store.WorkstreamFiles(ws.ID)
 	if h.failed(w, err) {
 		return
