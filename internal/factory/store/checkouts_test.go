@@ -179,3 +179,22 @@ func TestGitHubCheckoutRemoteForms(t *testing.T) {
 		}
 	}
 }
+
+// A FOLDER ON THIS COMPUTER IS ITS OWN CHECKOUT while it holds a repository,
+// and nothing once it no longer does.
+func TestAFolderIsItsOwnCheckout(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if got := st.CheckoutDir(dir); got != "" {
+		t.Fatalf("a folder with no repository is checked out at %q", got)
+	}
+	if err := os.Mkdir(filepath.Join(dir, ".git"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if got := st.CheckoutDir(dir); got != dir {
+		t.Fatalf("folder checkout = %q, want %q", got, dir)
+	}
+}

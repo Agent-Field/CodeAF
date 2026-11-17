@@ -37,6 +37,7 @@ func (h *Handler) verbs() {
 	h.postJob("retry_publish", h.config.Store != nil && h.seam.SignOff != nil, h.guarded("retry_publish", h.onlyOwner(h.retryPublish)))
 	h.postJob("merge", h.config.Store != nil, h.onlyOwner(h.mergeJob))
 	h.postJob("pr-ready", h.config.Store != nil, h.onlyOwner(h.prReady))
+	h.postJob("open_pr", h.folderDoor(), h.onlyOwner(h.openFolderPR))
 	h.postJob("request_changes", true, h.agentFieldAnswer(agentfield.DecisionRequestChanges, h.recordedWords(s.SendBack, record.RequestChanges), s.SendBack != nil))
 	h.postJob("recheck", s.Reverify != nil, h.guarded("recheck", h.idVerb(s.Reverify)))
 	// Take and release are the lease desk's own doors, not seam fields. The
@@ -54,7 +55,7 @@ type jobAction func(http.ResponseWriter, *http.Request, factory.Item)
 func (h *Handler) postJob(verb string, exists bool, action jobAction) {
 	h.route("/v1/jobs/{id}/"+verb, map[string]http.HandlerFunc{
 		http.MethodPost: func(w http.ResponseWriter, r *http.Request) {
-			if verb == "pause" || verb == "publish_anyway" || verb == ResumeAutoVerb || verb == "sync" || verb == "approve" || verb == "retry_publish" || verb == "merge" || verb == "pr-ready" || verb == "answer" || verb == "spend_answer" || verb == "reject_plan" || verb == "undo" || verb == "assign_to_me" || verb == "change_assignee" || verb == "assignee" || verb == "unassign" {
+			if verb == "pause" || verb == "publish_anyway" || verb == ResumeAutoVerb || verb == "sync" || verb == "approve" || verb == "retry_publish" || verb == "merge" || verb == "pr-ready" || verb == "open_pr" || verb == "answer" || verb == "spend_answer" || verb == "reject_plan" || verb == "undo" || verb == "assign_to_me" || verb == "change_assignee" || verb == "assignee" || verb == "unassign" {
 				unlock, err := h.lockConsent()
 				if h.failed(w, err) {
 					return
@@ -825,6 +826,10 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 	if !h.checkNewJobExtras(w, r, &body) {
 		return
 	}
+	folder := strings.TrimSpace(body.Folder) != ""
+	if folder && !h.folderJob(w, r, &body) {
+		return
+	}
 	if strings.TrimSpace(body.Repo) == "" || strings.TrimSpace(body.Title) == "" {
 		h.fail(w, http.StatusUnprocessableEntity, "new job requires repo and title")
 		return
@@ -866,16 +871,20 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	visible := h.repoVisible(r, body.Repo)
-	if h.authFailed(w, r) {
-		return
-	}
-	if !visible {
-		if h.githubVisibilityLimited(w, r) {
+	// A FOLDER ON THIS COMPUTER IS NO REPOSITORY GITHUB COULD SHOW OR HIDE:
+	// the factory read it itself ([Handler.folderJob]).
+	if !folder {
+		visible := h.repoVisible(r, body.Repo)
+		if h.authFailed(w, r) {
 			return
 		}
-		h.fail(w, http.StatusNotFound, "repository not found")
-		return
+		if !visible {
+			if h.githubVisibilityLimited(w, r) {
+				return
+			}
+			h.fail(w, http.StatusNotFound, "repository not found")
+			return
+		}
 	}
 	// A JOB IS NEVER MADE ON A REPOSITORY THAT IS OFF: it would leave the
 	// queue the moment it was made, and its start would be refused after

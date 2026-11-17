@@ -229,6 +229,11 @@ func factoryCheckoutDoor(st *store.Store, dirs func(repo string) string, token f
 		if dirs(repo) != "" {
 			return factory.CheckoutHere, nil
 		}
+		// A FOLDER ON THIS COMPUTER IS NEVER CLONED: it is its own checkout,
+		// and one that moved or lost its repository is said so.
+		if factory.IsFolderRepo(repo) {
+			return factory.CheckoutMissing, factory.NeedsCheckout{Repo: repo, Why: factory.FolderGoneWords}
+		}
 		if _, err := factoryCloneName(st, repo); err != nil {
 			return factory.CheckoutMissing, factory.NeedsCheckout{Repo: repo, Why: factory.CheckoutNotOnGitHub}
 		}
@@ -279,6 +284,9 @@ func factoryRunWorkdir(floor *store.Store, dirs func(repo string) string, workdi
 	clone := factoryCloneDoor(floor, token)
 	return func(it factory.Item) (string, error) {
 		checkout := dirs(it.Repo)
+		if checkout == "" && factory.IsFolderRepo(it.Repo) {
+			return "", factory.NeedsCheckout{Repo: factory.FolderOf(it), Why: factory.FolderGoneWords}
+		}
 		if checkout == "" && strings.TrimSpace(it.Repo) != "" {
 			if full, err := factoryCloneName(floor, it.Repo); err == nil && workdirs.Log != nil {
 				workdirs.Log(it, "cloning "+full+"…")

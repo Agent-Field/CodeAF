@@ -34,6 +34,11 @@ type NewJob struct {
 	// request. A job on a repository the caller reads only because the
 	// organization turned it on must name one.
 	Workstream string `json:"workstream,omitempty"`
+	// Folder is a folder on the factory's own computer that holds a git
+	// repository, in place of Repo: the job works in its own worktree off it
+	// and finishes on a local branch ([factory.FolderOf]). Only a Personal
+	// factory, one that lists [factory.FeatureLocalFolder], takes it.
+	Folder string `json:"folder,omitempty"`
 }
 
 // JobAction carries the read a person acted on so mutations can reject stale pages.

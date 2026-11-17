@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"math"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -290,6 +291,11 @@ type FactoryJobCreateParams struct {
 	// same write. A job on a repository the caller reads only because the
 	// organization turned it on is refused without one.
 	Workstream string `json:"workstream,omitempty"`
+	// Folder is a folder on the factory's own computer that holds a git
+	// repository, sent in place of Repo: the job works in its own worktree
+	// off it and finishes on a local branch. Only a Personal factory takes
+	// it, one whose factory.features lists local_folder.
+	Folder string `json:"folder,omitempty"`
 }
 
 func (p *FactoryJobCreateParams) pickedPipeline() string { return p.Pipeline }
@@ -684,7 +690,12 @@ func prepCreate(p *FactoryJobCreateParams) error {
 		return err
 	}
 	p.Factory = id
-	if p.Repo, err = FactoryRepoName(p.Repo); err != nil {
+	if p.Folder, err = factoryFolder(p.Folder, p.Repo); err != nil {
+		return err
+	}
+	if p.Folder != "" {
+		p.Repo = ""
+	} else if p.Repo, err = FactoryRepoName(p.Repo); err != nil {
 		return err
 	}
 	if err := checkPipelinePick(&p.Pipeline); err != nil {
@@ -750,3 +761,21 @@ func init() {
 
 // factoryActionMethods is the table of factory.job_*, for the tests that walk it.
 var factoryActionMethods = map[string]method{}
+
+// factoryFolder is a create's folder, checked for shape only: a full path,
+// one line, at most 4096 bytes, and never beside a repository. "" is no
+// folder. Whether it holds a repository is the factory's to say, since only
+// it can look at its own disk.
+func factoryFolder(folder, repo string) (string, error) {
+	folder = strings.TrimSpace(folder)
+	if folder == "" {
+		return "", nil
+	}
+	if strings.TrimSpace(repo) != "" {
+		return "", Errorf(CodeBadParams, "send a repo or a folder, not both")
+	}
+	if len(folder) > 4096 || !filepath.IsAbs(folder) || strings.ContainsFunc(folder, func(r rune) bool { return r < ' ' || r == 0x7f }) {
+		return "", Errorf(CodeBadParams, "folder must be a full path on the factory's computer")
+	}
+	return folder, nil
+}

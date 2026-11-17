@@ -490,7 +490,10 @@ type Job struct {
 	// and only a factory that knows its machine's checkouts; absent is
 	// nothing to say (no repository, or a factory whose runners keep their
 	// own).
-	Checkout          string            `json:"checkout,omitempty" jsonschema:"enum=here,enum=will_clone,enum=missing"`
+	Checkout string `json:"checkout,omitempty" jsonschema:"enum=here,enum=will_clone,enum=missing"`
+	// Folder is the folder on the factory's computer a Personal job works in
+	// ([factory.FolderOf]), absent for a job on a repository.
+	Folder            *JobFolder        `json:"folder,omitempty"`
 	Display           JobDisplay        `json:"display"`
 	StatePresentation StatePresentation `json:"state_presentation"`
 	Controls          JobControls       `json:"controls"`
@@ -846,6 +849,18 @@ type Can struct {
 	// from before Hold never sends either, which reads as false.
 	Hold   bool `json:"hold"`
 	Resume bool `json:"resume"`
+	// OpenPR is POST /v1/jobs/{id}/open_pr for this caller now: a finished
+	// folder job whose folder has a GitHub remote, on a factory with GitHub
+	// connected ([factory.FolderPROffered]). Absent everywhere else.
+	OpenPR bool `json:"open_pr,omitempty"`
+}
+
+// JobFolder is where a folder job's work is: the folder, the branch its work
+// is on there, and the pull request a person opened from it, if one was.
+type JobFolder struct {
+	Path   string               `json:"path"`
+	Branch string               `json:"branch,omitempty"`
+	PR     *factory.PublishedPR `json:"pr,omitempty"`
 }
 
 // JobAsk is how the job was requested. A GitHub issue fills issue and text.
