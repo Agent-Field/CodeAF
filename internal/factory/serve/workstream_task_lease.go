@@ -3,6 +3,7 @@ package serve
 import (
 	"context"
 	"errors"
+	"math"
 	"strings"
 	"sync"
 	"time"
@@ -345,7 +346,12 @@ func (h *Handler) fillRuns(ws string, all []factory.WorkstreamTask) {
 		d := &h.agentDesk
 		d.mu.Lock()
 		place := d.placeLocked(taskRunKey{ws, t.ID})
+		watch := d.watch[taskRunKey{ws, t.ID}]
 		d.mu.Unlock()
+		if watch != nil {
+			run.Now, run.Steps, run.USD = watch.facts()
+			run.USD = math.Round(run.USD*10000) / 10000
+		}
 		if place > 0 {
 			t.Queue = &factory.TaskQueue{Place: place}
 		}

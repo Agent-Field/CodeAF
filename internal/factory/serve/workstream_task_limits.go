@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
@@ -100,6 +101,28 @@ type runWatch struct {
 	mu    sync.Mutex
 	usd   float64
 	steps int
+	now   string
+}
+
+// noting wraps a run's Step so the run's last step is what it is doing now.
+func (w *runWatch) noting(step func(kind, text, tool string, failed bool)) func(kind, text, tool string, failed bool) {
+	return func(kind, text, tool string, failed bool) {
+		if kind == api.AgentEntryStep && strings.TrimSpace(text) != "" {
+			w.mu.Lock()
+			w.now = strings.TrimSpace(text)
+			w.mu.Unlock()
+		}
+		if step != nil {
+			step(kind, text, tool, failed)
+		}
+	}
+}
+
+// facts is what the run has done so far.
+func (w *runWatch) facts() (now string, steps int, usd float64) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.now, w.steps, w.usd
 }
 
 func (w *runWatch) spent() float64 {

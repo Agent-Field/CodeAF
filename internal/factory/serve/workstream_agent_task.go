@@ -153,12 +153,17 @@ func (h *Handler) launchLocked(r pendingRun) error {
 		d.mu.Lock()
 		if d.gen[key] == mine {
 			delete(d.tasks, key)
+			delete(d.watch, key)
 		}
 		d.mu.Unlock()
 	}
 	// The run is watched for its limits (workstream_task_limits.go).
 	limit := taskSpendCap(ws)
 	watch := &runWatch{}
+	if d.watch == nil {
+		d.watch = map[taskRunKey]*runWatch{}
+	}
+	d.watch[key] = watch
 	d.servedLocked(ws.ID)
 	d.wg.Add(1)
 	owner := d.ownerLocked()
@@ -167,8 +172,9 @@ func (h *Handler) launchLocked(r pendingRun) error {
 	run := AgentTurn{Workstream: ws.ID, Name: ws.Name, Turn: turn, Asker: starter, Text: strings.TrimSpace(r.words), Now: now, About: h.orgAbout(),
 		Task: &AgentTask{ID: task.ID, Title: task.Title},
 		Key:  h.orgModelKey(), Dir: filepath.Join(h.taskRunDir(ws.ID, task.ID), "agent"), Door: h.withLibrary(door), Library: h.spacesServed(),
-		// Every line is a line of the task's Working conversation.
-		Step: h.taskWorkStep(key, turn), Steers: h.openTaskWork(key, turn, starter),
+		// Every line is a line of the task's Working conversation, and its
+		// last step is what the running row says it is doing.
+		Step: watch.noting(h.taskWorkStep(key, turn)), Steers: h.openTaskWork(key, turn, starter),
 		Progress: watch.progress(limit, pause)}
 	guard.Go("factory workstream task", func() {
 		var next *taskResume

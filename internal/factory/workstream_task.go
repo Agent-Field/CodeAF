@@ -341,6 +341,14 @@ type TaskRunNow struct {
 	Live bool `json:"live"`
 	// Since is when the run began (RFC 3339), when the server kept it.
 	Since string `json:"since,omitempty"`
+	// Now is what the run is doing, in a person's words: its last step
+	// ("read the workstream", "made the page Release notes"). Absent before
+	// its first step.
+	Now string `json:"now,omitempty"`
+	// Steps is how many steps the run has taken, and USD what it has spent
+	// so far; each is absent while it is zero (the emptiness law).
+	Steps int     `json:"steps,omitempty"`
+	USD   float64 `json:"usd,omitempty"`
 }
 
 // TaskCheckItem is one line of a task's checklist. Who is who ticks it, when

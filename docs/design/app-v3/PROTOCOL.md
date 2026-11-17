@@ -1260,7 +1260,9 @@ place frees; Stop takes it out of the queue. A run past its spending cap (the wo
 Start without asking, else $0.50), the workstream's budget, 60 steps or 15 minutes is
 paused: the task goes `needs` with an Ask whose id begins `ask_limit_`, options `keep_going`
 and `stop_here` (thread line "Paused: <title>"); answering `keep_going` starts Afi again,
-`stop_here` stops the task, and neither records a decision. A Factory task's state is its job's (409). A stale rev is 412.
+`stop_here` stops the task, and neither records a decision. A running task's `run` also
+carries `now` (its last step, in a person's words: the running row's second line), `steps`
+and `usd` (so far; each absent while zero); a queued task has none of them. A Factory task's state is its job's (409). A stale rev is 412.
 `_task_answer {ws, id, option?, text?}` `POST .../answer` is the owner's (with owner
 `everyone`, anyone who edits; after a day, also the workstream's fallback), 403
 otherwise; the first answer decides and records `answered_by`, a second is 409; a

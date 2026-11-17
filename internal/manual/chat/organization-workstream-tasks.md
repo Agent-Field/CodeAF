@@ -250,6 +250,8 @@ On an organization's server, **at most 3 of Afi's tasks run at once in one works
 - **Stop** on a waiting task takes it out of the queue; the places behind it move up.
 - A task waiting when the server restarts waits again afterwards. It was never working, so it is not Interrupted.
 
+A running row has a second line saying what Afi is doing at this moment, in words ("Reading crash log 9 of 14"); a task waiting for its place has none. The Work header counts the tasks being worked on, those waiting for a place and those that failed: "7 running · 2 queued · 1 failed", each part only when it is not zero.
+
 These limits are fixed for now; nobody can change them in Settings yet. On a Personal workstream each chat does one thing at a time, and these limits do not apply.
 
 ## Afi paused a task to ask whether to continue — spending cap, budget, 60 steps, 15 minutes
