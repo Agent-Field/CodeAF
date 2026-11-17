@@ -234,26 +234,22 @@ func captureRuntimeSource(t *testing.T, v *knowledge.Vault, id string) {
 
 func runToKnowledgeFailure(t *testing.T, v *knowledge.Vault, calls *atomic.Int32, want int32, stopped bool) {
 	t.Helper()
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
 	go func() { done <- v.Run(ctx, runtimeHistory{}, func() string { return "fixture" }) }()
 	defer func() {
 		cancel()
-		select {
-		case err := <-done:
-			if !errors.Is(err, context.Canceled) {
-				t.Errorf("worker cancellation: %v", err)
-			}
-		case <-time.After(3 * time.Second):
-			t.Error("worker did not stop")
+		if err := <-done; !errors.Is(err, context.Canceled) {
+			t.Errorf("worker cancellation: %v", err)
 		}
 	}()
 	notice := "retrying automatically"
 	if stopped {
 		notice = "use Build or add new sources"
 	}
-	deadline := time.Now().Add(4 * time.Second)
-	for time.Now().Before(deadline) {
+	tick := time.NewTicker(10 * time.Millisecond)
+	defer tick.Stop()
+	for {
 		got := calls.Load()
 		state, err := v.Snapshot()
 		if err != nil {
@@ -264,16 +260,27 @@ func runToKnowledgeFailure(t *testing.T, v *knowledge.Vault, calls *atomic.Int32
 			t.Logf("paid calls=%d; error=%q", want, state.Build.Error)
 			return
 		}
-		time.Sleep(10 * time.Millisecond)
+		select {
+		case <-tick.C:
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		}
 	}
-	t.Fatalf("worker did not persist failure at paid calls=%d (got %d)", want, calls.Load())
 }
 
 func assertKnowledgeBuildIdle(t *testing.T, v *knowledge.Vault, calls *atomic.Int32, want int32) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 2200*time.Millisecond)
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	if err := v.Run(ctx, runtimeHistory{}, func() string { return "fixture" }); !errors.Is(err, context.DeadlineExceeded) {
+	// A second inventory acknowledges that the preceding idle pass finished.
+	passes := 0
+	history := runtimeHistory{onInventory: func() {
+		passes++
+		if passes == 2 {
+			cancel()
+		}
+	}}
+	if err := v.Run(ctx, history, func() string { return "fixture" }); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
 	state, err := v.Snapshot()
@@ -551,9 +558,15 @@ func TestKnowledgeConcurrentBuildWaitsAndCanBeCancelled(t *testing.T) {
 	}
 }
 
-type runtimeHistory struct{ journals []knowledge.Journal }
+type runtimeHistory struct {
+	journals    []knowledge.Journal
+	onInventory func()
+}
 
 func (h runtimeHistory) Inventory(context.Context) ([]knowledge.Journal, error) {
+	if h.onInventory != nil {
+		h.onInventory()
+	}
 	return h.journals, nil
 }
 func (h runtimeHistory) Read(_ context.Context, j knowledge.Journal, c knowledge.JournalCursor) (knowledge.JournalBatch, error) {

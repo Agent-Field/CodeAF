@@ -49,6 +49,19 @@ func TestAnAnsweredAskPutsAfiBackToWork(t *testing.T) {
 		return AgentTurnEnd{}, err
 	})
 
+	// A drained worker group is not a receipt for a follow-up run queued by its predecessor.
+	waitState := func(id string, state string) {
+		t.Helper()
+		tick := time.NewTicker(10 * time.Millisecond)
+		defer tick.Stop()
+		for string(o.one(t, path, id).State) != state {
+			select {
+			case <-tick.C:
+			case <-t.Context().Done():
+				t.Fatal(t.Context().Err())
+			}
+		}
+	}
 	answer := func(id string) {
 		t.Helper()
 		got := o.one(t, path, id)
@@ -60,9 +73,9 @@ func TestAnAnsweredAskPutsAfiBackToWork(t *testing.T) {
 
 	notes := o.task(t, "santosh", path, api.TaskCreate{Title: "Draft the notes", DoneBy: afi})
 	o.do(t, "santosh", "PATCH", path+"/tasks/"+notes.ID, notes.Rev, map[string]any{"state": "running"}, 200, nil)
-	o.settle()
+	waitState(notes.ID, string(factory.TaskNeeds))
 	answer(notes.ID)
-	o.settle()
+	waitState(notes.ID, string(factory.TaskDone))
 	if got := o.one(t, path, notes.ID); got.State != factory.TaskDone {
 		t.Fatalf("after the answer the task is %q, with Afi never back at it", got.State)
 	}
@@ -76,18 +89,9 @@ func TestAnAnsweredAskPutsAfiBackToWork(t *testing.T) {
 	// The answer arrives while the run that asked is still ending.
 	post := o.task(t, "santosh", path, api.TaskCreate{Title: "Write the post", DoneBy: afi})
 	o.do(t, "santosh", "PATCH", path+"/tasks/"+post.ID, post.Rev, map[string]any{"state": "running"}, 200, nil)
-	for end := time.Now().Add(3 * time.Second); o.one(t, path, post.ID).State != factory.TaskNeeds; time.Sleep(10 * time.Millisecond) {
-		if time.Now().After(end) {
-			close(hold)
-			t.Fatal("Afi never asked")
-		}
-	}
+	waitState(post.ID, string(factory.TaskNeeds))
 	answer(post.ID)
 	close(hold)
-	for end := time.Now().Add(3 * time.Second); o.one(t, path, post.ID).State != factory.TaskDone; time.Sleep(10 * time.Millisecond) {
-		if time.Now().After(end) {
-			t.Fatalf("an answer given while the run was ending left the task %q", o.one(t, path, post.ID).State)
-		}
-	}
+	waitState(post.ID, string(factory.TaskDone))
 	o.settle()
 }
