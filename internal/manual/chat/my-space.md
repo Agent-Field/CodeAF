@@ -34,4 +34,4 @@ A document or file in My space moves into a workstream from its menu (Move to…
 
 ## What My space cannot do yet
 
-My space holds no crews, and an organization has no shared Library yet. Your Personal agents and Library never appear in an organization window.
+My space holds no crews, and it has no Library of its own: the organization's Library is shared by everyone in it (see "The organization's Library"). Your Personal agents and Library never appear in an organization window.

@@ -529,6 +529,11 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.org_workstream_agent_list` | `in.OrgWorkstreamParams` | `{agents}` |
 | `factory.org_workstream_agent_add` | `in.OrgWorkstreamAgentLink` | `{agents}` |
 | `factory.org_workstream_agent_drop` | `in.OrgWorkstreamAgentLink` | `{agents}` |
+| `factory.org_library` | `in.OrgConn` | `{pages}` |
+| `factory.org_library_page` | `in.OrgLibraryPageParams` | the page |
+| `factory.org_library_add` | `in.OrgLibraryAddParams` | the page |
+| `factory.org_library_set` | `in.OrgLibrarySetParams` | the page |
+| `factory.org_library_delete` | `in.OrgLibraryPageParams` | `{}` |
 | `factory.org_workstream_tasks` | `in.OrgTasksParams` | `OrgTasks` |
 | `factory.org_workstream_task` | `in.OrgTaskParams` | `json.RawMessage` |
 | `factory.org_workstream_task_create` | `in.OrgTaskCreateParams` | `json.RawMessage` |
@@ -1148,6 +1153,19 @@ done gets Afi's offer "Revise with this" under it, and taking that offer (`offer
 The server's `task.work {id, task, entry?, state?}` reaches everyone who can see the
 workstream and is relayed as `factory.org_workstream_task_work {connection, id, task,
 entry?, state?}`.
+
+An engine whose hello carries `org_library` keeps an organization's Library: pages its
+people added on purpose, which everyone in the organization reads. `factory.org_library`
+`GET /v1/library` answers `{pages: [{id, title, by, by_name?, from_workstream?,
+from_name?, mine?, changeable?, created_at, updated_at}]}`, newest change first and
+without words; `factory.org_library_page {page}` adds `body`. `from_workstream` and
+`from_name` are said only to a caller who may see that workstream (`from_name` is "My
+space" for the caller's own). `factory.org_library_add {title, body, from_workstream?,
+from_file?}` (`lb_` and 26 letters or digits; title 1–200 characters, body 1–64000
+bytes of text, at most 500 pages) is Add to Library: nothing else adds a page, and a
+`from_workstream` must be one the caller can see. `_set {page, title?, body?}` and
+`_delete {page}` are the person who added it, or the operator (`changeable`). Every
+chat the server runs carries the read-only `org_library` tool beside its others.
 
 An engine whose hello carries `org_workstream_tasks` reads and changes an organization
 workstream's tasks (Workstreams v5, SPEC §2.2). Every param names the workstream `ws`
