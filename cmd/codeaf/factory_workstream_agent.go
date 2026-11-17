@@ -480,7 +480,7 @@ func factoryWorkstreamAgentTaskRun(id, title, starter string) string {
 		"Put anything you write in Files with ws_file_create and name it in the task's results. " +
 		"When the work is done, post one plain line saying what you did with ws_task_comment, then set the task done with ws_task_update, with check saying what you checked it against and handoff: two to four lines on what you made, what you assumed, and what the next task should know. " +
 		"If a person must choose before you can go on, raise an Ask with ws_task_update and stop. " +
-		"If you cannot do it, set the task failed with ws_task_update and a state_reason saying why in plain words."
+		"If you cannot do it (an input is missing, or it needs something you do not have, such as the web), do not fail it: raise an Ask to the task's owner with ws_task_update, saying what you lack, with options such as \"Paste their text\", \"Give this to a person\" and \"Drop it\", and stop."
 }
 
 func factoryWorkstreamAgentSystem(name, asker string, work bool, now time.Time, tz string) string {

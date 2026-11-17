@@ -229,7 +229,7 @@ func askerWords(t WorkstreamTask, ask TaskAsk) string {
 // to a running task is about the run, not the work, and keeping a decision
 // that a conflict already holds ("Keep the decision") would only repeat it.
 func answerDecision(t WorkstreamTask, ask TaskAsk, opt *TaskAskOption, words string, who PersonRef, id string, now time.Time) (WorkstreamDecision, bool) {
-	if strings.HasPrefix(ask.ID, FileChangedAskID) {
+	if strings.HasPrefix(ask.ID, FileChangedAskID) || IsCantDoAsk(ask) {
 		return WorkstreamDecision{}, false
 	}
 	text := ""

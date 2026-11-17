@@ -125,6 +125,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does a good task brief need goal deliverable acceptance", "organization-workstream-tasks"},
 		{"does the next agent get the release notes the earlier task wrote", "organization-workstream-tasks"},
 		{"what is the hand-off note when a task is done", "organization-workstream-tasks"},
+		{"the agent can't do the task because it has no web access", "organization-workstream-tasks"},
+		{"why did my task ask me to paste their text instead of failing", "organization-workstream-tasks"},
 		{"open a workstream chat as its own tab", "workstream-chats-and-tools"},
 		{"did Afi save the brief to my Library", "workstream-chats-and-tools"},
 		{"where is the Decisions panel", "workstream-chats-and-tools"},

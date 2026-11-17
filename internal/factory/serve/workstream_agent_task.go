@@ -436,8 +436,10 @@ func (h *Handler) finishTaskRun(door *agentDoor, task string, err error) {
 	if err != nil {
 		why = "Afi could not finish: " + cutRunes(err.Error(), 300)
 	}
-	args, _ := json.Marshal(map[string]any{"task": task, "rev": t.Rev, "state": factory.TaskFailed, "state_reason": why})
-	_, _ = door.Work(ctx, "ws_task_update", args)
+	// An error is Failed: written straight to the task, never through the
+	// tool, which turns an agent's own "failed" into an Ask to the owner.
+	p := map[string]any{"state": factory.TaskFailed, "state_reason": why}
+	_, _ = door.call(ctx, h.patchWorkstreamTask, http.MethodPatch, "/v1/workstreams/"+door.id+"/tasks/"+url.PathEscape(task), map[string]string{"tid": task}, p, t.Rev)
 }
 
 // waitsOnUnfinished is whether t waits on a task that is not done.

@@ -34,6 +34,16 @@ On an organization's server, when Afi starts a task, its first message already c
 
 When an agent finishes a task it leaves a **hand-off note**: two to four lines on what it made, what it assumed, and what the next task should know. Done without one is refused. A run that ends having written its work, without a note, gets "Made ... Afi left no note of its own on what to carry forward." The note is the first thing the next task's run reads about this one.
 
+## the agent can't do a task — it asks you instead of failing: Paste what it needs, Give this to a person, Drop it
+
+When the agent doing a task can't go on because an input is missing, or the task needs something it doesn't have (Afi on an organization's server has no web, so it can't open live store pages), it doesn't mark the task Failed. It asks the task's owner. The task waits under Waiting on someone with the question "Afi can't finish this without you", its reason in its own words, and three answers:
+
+- **Paste what it needs**: write or paste what it lacks (their text, the figures) with the answer. The task runs again with your words.
+- **Give this to a person**: the task becomes the owner's own checkbox, in Up next.
+- **Drop it**: the task is stopped, by you.
+
+The agent may offer its own answers instead, such as "Paste their text". None of these answers is kept in the workstream's decisions. Failed is kept for errors: a run that broke off (the model refused, the connection dropped) still says Failed, with why.
+
 ## read tasks side by side with the arrow keys — the split Tasks list
 
 With at least 1100 pixels of content width and Afi's pane closed, Tasks shows a 500-pixel list beside the selected task. When there is no current selection, the first task waiting on you is selected; if none is waiting on you, the first visible task is selected. Click another row to read it beside the list. With focus in the list, Up and Down move through the visible tasks without pressing Back. Running rows show their current step when the runner supplies one.
