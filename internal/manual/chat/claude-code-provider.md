@@ -14,7 +14,7 @@ Nothing is billed per call on a Claude plan, so these models show `on your Claud
 
 `claude-code/opus`, `claude-code/sonnet` and `claude-code/haiku` run whichever version your installed Claude Code maps that word to. An older Claude Code maps a word to an older model — `haiku` may be Haiku 4.5 — and updating Claude Code (`claude update`) moves it.
 
-To hold a seat to one version, pick a version row. Each family lists its two newest: `claude-code/claude-opus-5-5`, `claude-code/claude-opus-5`, `claude-code/claude-sonnet-5-5`, `claude-code/claude-sonnet-5`, `claude-code/claude-haiku-5-5` and `claude-code/claude-haiku-4-5`. A version row is sent to Claude Code under exactly that name, in a conversation, for a crew member and for a task handed to `claude`. Whether it runs depends on your Claude plan; a version your plan does not include fails as any unavailable model does.
+To hold a seat to one version, pick a version row in `/model`, in `/crew`'s seat picker (`worker`, `planner` or `checker`), or in Settings › Tasks. Each family lists its two newest: `claude-code/claude-opus-5-5`, `claude-code/claude-opus-5`, `claude-code/claude-sonnet-5-5`, `claude-code/claude-sonnet-5`, `claude-code/claude-haiku-5-5` and `claude-code/claude-haiku-4-5`, alongside the three family rows (`claude-code/opus`, `claude-code/sonnet` and `claude-code/haiku`), each marked `on your Claude plan`. A version row is sent to Claude Code under exactly that name, in a conversation, for a crew member and for a task handed to `claude`. Whether it runs depends on your Claude plan; a version your plan does not include fails as any unavailable model does.
 
 ## How a conversation on Claude Code works — Claude Code does the work with its own tools
 
@@ -56,7 +56,7 @@ With only Claude Code connected, the small jobs — naming a conversation, titli
 
 ## Auto and Claude Code models — why Auto never picks them
 
-Auto never picks a Claude Code model for a task role; Task models says `Auto never picks these · pin one to a role · edits without asking`. Pin one: a Worker pinned to Claude Code hands each task to the `claude` program.
+Auto never picks a Claude Code model for a task role; Task models says `Auto never picks these · pin one to a role · edits without asking`. Pin one in `/crew` (picking any `claude-code/*` family or version row from the seat picker, or typing `/crew pin <seat> <model>`) or in Settings › Tasks: a Worker pinned to Claude Code hands each task to the `claude` program.
 
 ## Claude Code on another computer — the relay, --host
 

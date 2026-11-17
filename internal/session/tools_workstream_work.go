@@ -99,7 +99,7 @@ var workstreamWorkTools = []WorkstreamWorkTool{
 			"Not everything said in a chat becomes a task: create one for work that runs beyond your reply, changes a file, or matters to someone else, and say so in your reply. " +
 			"request is only what is to be done, in a few lines; never the private conversation. " +
 			"The person you are talking to owns it unless you name another owner. " +
-			"Five or more tasks from one request share one group name (the same name as the chat that runs them) and land in Up next with Start all; nothing in a batch starts until a person starts it.",
+			"Five or more tasks from one request share one group name (the same name as the chat that runs them) and arrive in Up next as a plan with Start and Change the plan; nothing in a batch starts until a person presses Start.",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{` +
 			`"title":{"type":"string","minLength":1,"maxLength":200},` +
 			`"request":{"type":"string","minLength":1,"maxLength":4000,"description":"What is to be done, in a few lines. Never the conversation."},` +
@@ -208,8 +208,12 @@ func workstreamWorkBelt(door WorkstreamWorkDoor) []bare.Tool {
 				if len(args) == 0 || strings.TrimSpace(string(args)) == "null" {
 					args = json.RawMessage(`{}`)
 				}
+				// The arguments are only checked to be one object here; the door
+				// reads its own fields. The check goes through the one decoder
+				// every tool's arguments go through (toolargs.go), so a model
+				// reads one grammar of refusal and never Go's own words.
 				var probe map[string]json.RawMessage
-				if err := json.Unmarshal(args, &probe); err != nil {
+				if err := decodeToolArguments(args, &probe); err != nil {
 					return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 				}
 				line, err := door.Work(ctx, name, args)

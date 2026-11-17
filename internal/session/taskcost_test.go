@@ -348,11 +348,13 @@ func TestAClosedNodesDollarsAreStampedOnTheConversation(t *testing.T) {
 		model: "vendor/worker",
 	})
 	waitDoneNode(t, graph.node(id))
+	// The stamp is a deferred write ([Agent.stampSpend]), owed when the node
+	// closes and landed behind it; a reader settles it first, as every reader
+	// of meta.json must ([Agent.SettleWrites]). Reading straight after the
+	// node closed raced that write and lost about half the time.
+	agent.SettleWrites()
 
-	meta, err := LoadMeta(dir)
-	if err != nil {
-		t.Fatalf("LoadMeta: %v", err)
-	}
+	meta := stampedMeta(t, agent, dir)
 	if meta.SpentUSD != 0.75 {
 		t.Fatalf("meta.json says the conversation spent %v once its node closed, want the node's $0.75", meta.SpentUSD)
 	}

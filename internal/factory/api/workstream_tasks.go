@@ -71,3 +71,30 @@ type TaskOfferSet struct {
 type TasksStartAll struct {
 	Group string `json:"group"`
 }
+
+// RequestableWorkstream is one workstream a person may send a request into:
+// its name, whether they are in it, and who receives it (its owner of
+// incoming work, absent when that is Everyone).
+type RequestableWorkstream struct {
+	ID       string             `json:"id"`
+	Name     string             `json:"name"`
+	Parent   string             `json:"parent,omitempty"`
+	In       bool               `json:"in"`
+	Receiver *factory.PersonRef `json:"receiver,omitempty"`
+}
+
+// RequestableWorkstreams is GET /v1/workstreams/requestable.
+type RequestableWorkstreams struct {
+	Workstreams []RequestableWorkstream `json:"workstreams"`
+}
+
+// RequestSent is what a request into a workstream answers: the task it
+// became, by id, title and owner, and the whole task only to someone in it.
+type RequestSent struct {
+	ID     string                  `json:"id"`
+	WS     string                  `json:"ws"`
+	WSName string                  `json:"ws_name"`
+	Title  string                  `json:"title"`
+	Owner  factory.TaskOwner       `json:"owner"`
+	Task   *factory.WorkstreamTask `json:"task,omitempty"`
+}

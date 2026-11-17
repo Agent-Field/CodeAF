@@ -50,7 +50,7 @@ var errTaskAnswered = errors.New("this question was already answered")
 // ── who the caller is to the rules ──
 
 func taskActor(v Viewer, ws factory.OrgWorkstream) factory.TaskActor {
-	return factory.TaskActor{Handle: v.Handle, Edit: v.canWrite(ws) && ws.ArchivedAt == nil}
+	return factory.TaskActor{Handle: v.Handle, Edit: v.canWrite(ws) && ws.ArchivedAt == nil, Govern: v.canGovern(ws)}
 }
 
 // taskBy is who a change is stamped with on the thread: the caller, or Afi
@@ -395,6 +395,7 @@ func (h *Handler) patchWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 	now := h.clock().UTC()
 	actor, by := taskActor(v, ws), h.taskBy(r, v)
 	var out factory.TaskChange
+	var rewaited []factory.WorkstreamTask
 	jobs, err := h.workstreamJobs(r, ws)
 	if h.failed(w, err) {
 		return
@@ -411,12 +412,29 @@ func (h *Handler) patchWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 		if t.Rev != rev {
 			return store.ErrTaskStale
 		}
+		if target.ID != "" && !factory.MayStop(t, actor) {
+			return factory.ErrTaskNotStopper
+		}
 		out, err = factory.ApplyPatch(t, p, actor, by, all, h.newTaskID("te_"), now)
 		if err != nil {
 			return err
 		}
 		if err := keepTask(tw, out.Task, rev); err != nil {
 			return err
+		}
+		// What waited on a reopened task waits again (factory.WaitAgain), and
+		// its thread says why.
+		for _, o := range out.Rewait {
+			if again, changed := factory.WaitAgain(o, out.Task.UpdatedAt); changed {
+				if err := keepTask(tw, again, o.Rev); err != nil {
+					return err
+				}
+				rewaited = append(rewaited, again)
+			}
+			out.Events = append(out.Events, factory.WorkstreamTaskEvent{
+				ID: h.newTaskID("te_")(), Task: o.ID, At: out.Task.UpdatedAt, By: by, Kind: factory.TaskEventState,
+				Text: "Waiting again: " + out.Task.Title + " was reopened",
+			})
 		}
 		// A released task stays up next (factory.Released): its thread says it
 		// can start, and whoever wakes its doer marks it running.
@@ -460,7 +478,7 @@ func (h *Handler) patchWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.recordWorkstream(r, ws.ID, "changed task", tid)
-	h.publishTasks(ws, h.orgActor(r), append([]factory.WorkstreamTask{out.Task}, out.Released...)...)
+	h.publishTasks(ws, h.orgActor(r), append(append([]factory.WorkstreamTask{out.Task}, out.Released...), rewaited...)...)
 	if target.ID != "" {
 		h.publishTasks(target, h.orgActor(r), out.Task)
 	}

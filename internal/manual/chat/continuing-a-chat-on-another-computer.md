@@ -461,7 +461,7 @@ Device presence can arrive before its list of chats. If you press `alt+m` early,
 What a move costs depends on what this computer already has.
 
 - **Moving a chat back** to a computer that held it before downloads only what the other computer changed. In a big folder, the rest of the move stays a second or two, plus the download.
-- **A chat this computer never held** copies its whole saved folder. It takes as long as that many bytes take over your connection to the sync service.
+- **A chat this computer never held** copies its whole saved folder. It takes as long as sending that many bytes through your connection to the sync service.
 - **Taking a chat from a computer that is off** also restores this computer's own copy of the folder. On a large folder that adds a few seconds.
 
 Before a move restores files into your folder, codeaf checks the files there for secrets. A file this running codeaf has already checked, and that has not changed since, is not read again. A file that changed is read again. After codeaf restarts, its first move in a folder reads every file once. It remembers at most 100,000 files. Files beyond that are read again on every move.

@@ -138,6 +138,11 @@ type TaskCameFrom struct {
 	// Run is the standing order's run that made the task, so one run makes
 	// exactly one task however often its holder's desk looks.
 	Run int64 `json:"run,omitempty"`
+	// WS and WSName name the workstream a request came from, when someone
+	// asked from another one (SPEC "Work for another team is a request into
+	// their workstream"): "From Priya · Marketing".
+	WS     string `json:"ws,omitempty"`
+	WSName string `json:"ws_name,omitempty"`
 }
 
 // TaskGroup is a heading that groups tasks. It is not a task.
@@ -207,6 +212,10 @@ type WorkstreamTask struct {
 	// ForYou is the reader's own: the comments on it that are for them and
 	// not yet read. It is FILLED AT READ TIME for one viewer and never kept.
 	ForYou *TaskForYou `json:"for_you,omitempty"`
+	// StoppedBy is who pressed Stop, while the task is stopped, so the list
+	// says "Stopped by you" to that person alone and "Stopped by Marco" to
+	// everyone else.
+	StoppedBy *PersonRef `json:"stopped_by,omitempty"`
 }
 
 // TaskForYou is what a task holds for the person reading it (SPEC "Comments
@@ -269,6 +278,7 @@ func (e TaskRefused) Error() string { return string(e) }
 var (
 	ErrTaskNotOwner     error = TaskRefused("only the task's owner can do this")
 	ErrTaskNotAnswerer  error = TaskRefused("only the task's owner answers its question")
+	ErrTaskNotStopper   error = TaskRefused("only the task's owner or whoever looks after this workstream can stop or move it")
 	ErrTaskNoAsk              = errors.New("this task is not waiting on a question")
 	ErrTaskOfferGone          = errors.New("that offer is not open")
 	ErrTaskUndoOver           = errors.New("the five seconds to undo this have passed")
@@ -282,6 +292,10 @@ type TaskActor struct {
 	Handle string
 	// Edit is whether they may edit the workstream; view alone reads tasks.
 	Edit bool
+	// Govern is whether they look after the workstream (its steward, or
+	// anyone who may change its people and rules): they may stop or move any
+	// of its tasks, which nobody else but the task's owner may.
+	Govern bool
 }
 
 func (a TaskActor) owns(t WorkstreamTask) bool {
@@ -314,6 +328,13 @@ func MayAnswer(t WorkstreamTask, a TaskActor, fallback string, now time.Time) bo
 }
 
 // MayTick is whether a may tick (or untick) t: a person task, by its owner.
+// MayStop is whether a may stop or move t: its owner, or whoever looks after
+// the workstream (Workstreams final spec, "Who can do what"). Anyone else who
+// edits comments, hands it on or sends it back, and asks them to stop it.
+func MayStop(t WorkstreamTask, a TaskActor) bool {
+	return a.owns(t) || (a.Edit && a.Govern)
+}
+
 func MayTick(t WorkstreamTask, a TaskActor) bool {
 	return t.DoneBy.Kind == TaskByPerson && a.owns(t)
 }
@@ -554,6 +575,9 @@ type TaskChange struct {
 	Task     WorkstreamTask
 	Events   []WorkstreamTaskEvent
 	Released []WorkstreamTask
+	// Rewait is what waits on a task that was done and is not any more (sent
+	// back, unticked): each waits again (see WaitAgain).
+	Rewait []WorkstreamTask
 }
 
 // ApplyPatch changes t by p for actor a, under the rules, and answers the
@@ -655,6 +679,9 @@ func ApplyPatch(t WorkstreamTask, p TaskPatch, a TaskActor, by TaskEventBy, all 
 			why = strings.TrimSpace(*p.StateReason)
 		}
 		back := t.State == TaskDone && *p.State == TaskUpNext && (!MayTick(t, a) || why != "")
+		if *p.State == TaskStopped && !MayStop(t, a) {
+			return TaskChange{}, ErrTaskNotStopper
+		}
 		if t.DoneBy.Kind == TaskByPerson && !MayTick(t, a) && !back {
 			return TaskChange{}, TaskRefused("only the task's owner ticks it")
 		}
@@ -667,9 +694,17 @@ func ApplyPatch(t WorkstreamTask, p TaskPatch, a TaskActor, by TaskEventBy, all 
 			event(TaskEventState, words)
 			t.StateReason = words
 			sentBack = true
+		} else if t.State == TaskStopped && by.Kind == TaskByPerson {
+			// WHO STOPPED IT IS KEPT (final spec, States): the thread names
+			// them and the list says "you" to them alone.
+			event(TaskEventState, "Stopped by "+by.Name)
+			t.StoppedBy = &PersonRef{ID: by.ID, Name: by.Name}
 		} else {
 			event(TaskEventState, StateWords(t.State))
 		}
+	}
+	if t.State != TaskStopped {
+		t.StoppedBy = nil
 	}
 	if p.StateReason != nil && !sentBack {
 		t.StateReason = strings.TrimSpace(*p.StateReason)
@@ -695,7 +730,27 @@ func ApplyPatch(t WorkstreamTask, p TaskPatch, a TaskActor, by TaskEventBy, all 
 	if t.State == TaskDone && before.State != TaskDone {
 		ch.Released = Released(t.ID, replaced(all, t), by, newID, now)
 	}
+	if before.State == TaskDone && t.State != TaskDone {
+		for _, o := range all {
+			if o.ID != t.ID && o.State != TaskDone && slices.Contains(o.WaitingOn, t.ID) {
+				ch.Rewait = append(ch.Rewait, o)
+			}
+		}
+	}
 	return ch, nil
+}
+
+// WaitAgain is o, which waits on a task that was just reopened, waiting
+// again. REOPENING A TASK MAKES EVERY TASK THAT WAITS ON IT WAIT AGAIN (final
+// spec, Tasks › Rules): one already running goes back to Up next, where its
+// wait shows; a Factory task keeps its job's state. changed says whether o
+// itself changed; the caller writes it and the "Waiting again" line either way.
+func WaitAgain(o WorkstreamTask, stamp string) (WorkstreamTask, bool) {
+	if o.State != TaskRunning || o.DoneBy.Kind == TaskByFactory {
+		return o, false
+	}
+	o.State, o.Rev, o.UpdatedAt = TaskUpNext, o.Rev+1, stamp
+	return o, true
 }
 
 func validState(s string) bool {
@@ -1151,6 +1206,31 @@ func HandOn(t WorkstreamTask, removed map[string]bool, to string, by TaskEventBy
 	stamp := now.UTC().Format(time.RFC3339Nano)
 	t.Rev, t.UpdatedAt = t.Rev+1, stamp
 	return t, []WorkstreamTaskEvent{{ID: newID(), Task: t.ID, At: stamp, By: by, Kind: TaskEventHanded, Text: "Handed to " + to}}, true
+}
+
+// TaskRequest is a request into a workstream: what is wanted, and the work
+// it came from, when it came from a task elsewhere.
+type TaskRequest struct {
+	Title    string `json:"title"`
+	Request  string `json:"request,omitempty"`
+	FromWS   string `json:"from_ws,omitempty"`
+	FromTask string `json:"from_task,omitempty"`
+}
+
+// RequestTask is the task a request into ws becomes: owned by ws's owner of
+// incoming work, who also does it when that is a person (they decide how),
+// Afi when nobody in particular owns it; up next, never started on its own.
+func RequestTask(ws, id string, in TaskRequest, by PersonRef, from TaskCameFrom, incoming TaskOwner, all []WorkstreamTask, now time.Time) (WorkstreamTask, error) {
+	in.Title = strings.TrimSpace(in.Title)
+	if in.Title == "" {
+		return WorkstreamTask{}, TaskInvalid("a request needs a title")
+	}
+	doer := TaskDoneBy{Kind: TaskByAfi}
+	if incoming.Kind == TaskOwnerPerson {
+		doer = TaskDoneBy{Kind: TaskByPerson, ID: incoming.ID, Name: incoming.Name}
+	}
+	owner := incoming
+	return NewTask(ws, id, TaskCreate{Title: in.Title, Request: in.Request, Owner: &owner, DoneBy: doer, CameFrom: &from}, by, incoming, all, now)
 }
 
 // handedBy is who handed a task to owner: whoever did it, unless the new

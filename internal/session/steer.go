@@ -656,6 +656,7 @@ func (a *Agent) steerMarked(words string, person *messagePresentation) (<-chan E
 	queued.person = person
 	a.mixCreationLocked(queued)
 	a.steering = append(a.steering, queued)
+	a.personWords = words
 	// A stage parked on a check must still answer a person or runner correction.
 	if a.config.mayStage() {
 		a.releaseTaskWaitLocked()
