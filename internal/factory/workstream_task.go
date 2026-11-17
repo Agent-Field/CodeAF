@@ -1433,6 +1433,18 @@ func JobTaskAsk(it Item) *TaskAsk {
 		for _, o := range q.Options {
 			ask.Options = append(ask.Options, TaskAskOption{ID: o, Label: o, Recommended: o == q.Pick})
 		}
+	} else if NeedsKind(it) == NeedsPublishFailed {
+		// A PUBLISH THAT FAILED SAYS WHY ON THE TASK: the person answering
+		// sees what is needed and where (connect GitHub, say), never a bare
+		// "Go on with". Yes is Retry publishing, as on the job.
+		ask.Title, ask.Detail = "Publishing "+it.Ref()+" failed", strings.TrimSpace(it.PublishError)
+		if code := publishCode(it); code == PublishGitHubNotConnected || code == PublishGitHubOtherAccount {
+			ask.Title = "Connect GitHub to publish " + it.Ref()
+		}
+		if ask.Detail == "" && it.PublishStatus != nil {
+			ask.Detail, _, _ = strings.Cut(strings.TrimSpace(it.PublishStatus.Detail), "\n")
+		}
+		ask.Options = []TaskAskOption{{ID: "yes", Label: "Retry publishing", Recommended: true}, {ID: "no", Label: "Not now"}}
 	} else {
 		ask.Title = strings.TrimSpace(it.Question)
 		if ask.Title == "" {
@@ -1443,6 +1455,22 @@ func JobTaskAsk(it Item) *TaskAsk {
 		ask.Options = []TaskAskOption{{ID: "yes", Label: "Yes", Recommended: true}, {ID: "no", Label: "No"}}
 	}
 	return ask
+}
+
+// The publish codes whose remedy is a GitHub connection. They are spelled
+// here, where a task reads them, and the publish vocabulary names them from
+// here ([publish.CodeGitHubNotConnected]); the factory cannot import publish.
+const (
+	PublishGitHubNotConnected = "github_not_connected"
+	PublishGitHubOtherAccount = "github_other_account"
+)
+
+// publishCode is the code of the job's last failed publish, "" when none.
+func publishCode(it Item) string {
+	if it.PublishStatus == nil {
+		return ""
+	}
+	return it.PublishStatus.Code
 }
 
 // JobTask is job it read as a task of workstream ws. overlay is what a person

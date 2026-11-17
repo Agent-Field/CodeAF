@@ -61,6 +61,12 @@ type RulesPerson struct {
 type KeepsRunning struct {
 	Factory bool     `json:"factory"`
 	Orders  []string `json:"orders"`
+	// FactorySince is when the Factory switch was last turned on. THE
+	// SERVER STAMPS IT, never the person: whatever a writer sends is
+	// replaced ([StampFactorySince]). Only an issue opened after it comes
+	// into the workstream ([FactoryWorkstreamFor]), so turning the switch on
+	// never sweeps in the backlog the repository already had.
+	FactorySince *time.Time `json:"factory_since,omitempty"`
 }
 
 // WorkstreamRules are how a workstream runs (SPEC §2.1).
@@ -74,6 +80,70 @@ type WorkstreamRules struct {
 	Fallback              *RulesPerson `json:"fallback,omitempty"`
 	StartWithoutAskingUSD float64      `json:"start_without_asking_usd"`
 	KeepsRunning          KeepsRunning `json:"keeps_running"`
+}
+
+// StampFactorySince sets next's [KeepsRunning.FactorySince] from before: kept
+// while the Factory switch stays on, now when it was just turned on, and
+// gone when it is off.
+func StampFactorySince(before WorkstreamRules, next *WorkstreamRules, now time.Time) {
+	switch {
+	case !next.KeepsRunning.Factory:
+		next.KeepsRunning.FactorySince = nil
+	case before.KeepsRunning.Factory && before.KeepsRunning.FactorySince != nil:
+		at := *before.KeepsRunning.FactorySince
+		next.KeepsRunning.FactorySince = &at
+	default:
+		at := now.UTC()
+		next.KeepsRunning.FactorySince = &at
+	}
+}
+
+// FactoryWorkstreamFor is the workstream whose Factory switch takes the job
+// in, and false when none does. SPEC: "The factory turns each new issue in a
+// connected repo into a task" in the workstream whose switch is on.
+//
+// Only an issue from GitHub that was opened after the switch was turned on
+// is taken, and only by a workstream that is not archived. A workstream that
+// names the issue's repository among its sources takes it before one that
+// names no repository at all; one that names only other repositories never
+// does. When several are equally near, the oldest takes it, because a job
+// belongs to one workstream at most.
+func FactoryWorkstreamFor(all OrgWorkstreams, it Item) (string, bool) {
+	repo := strings.ToLower(RepoOf(it))
+	if !IsIssueJob(it) || it.Kind != KindIssue || it.Num <= 0 || repo == "" || it.Created.IsZero() {
+		return "", false
+	}
+	best, bestNamed := OrgWorkstream{}, false
+	found := false
+	for _, w := range all {
+		r := w.RulesOrDefault()
+		if w.ArchivedAt != nil || !r.KeepsRunning.Factory || r.KeepsRunning.FactorySince == nil || it.Created.Before(*r.KeepsRunning.FactorySince) {
+			continue
+		}
+		named, any := false, false
+		for _, src := range w.Sources {
+			if src.Kind != "repo" {
+				continue
+			}
+			any = true
+			if strings.EqualFold(strings.TrimSpace(src.Ref), repo) {
+				named = true
+			}
+		}
+		if any && !named {
+			continue
+		}
+		switch {
+		case !found, named && !bestNamed:
+		case named != bestNamed:
+			continue
+		case w.CreatedAt.Before(best.CreatedAt), w.CreatedAt.Equal(best.CreatedAt) && w.ID < best.ID:
+		default:
+			continue
+		}
+		best, bestNamed, found = w, named, true
+	}
+	return best.ID, found
 }
 
 // The bounds a workstream's rules are kept within.
