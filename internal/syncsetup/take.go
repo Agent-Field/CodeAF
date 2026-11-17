@@ -714,7 +714,12 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	}
 	recordStep("retire", "")
 	intendedPrimary := session.Place{Dir: root, Owned: true}.Work()
-	if project, here := projectOf(root); here {
+	// WHERE THE CHAT WORKS IS READ NOW, FROM THIS COMPUTER'S OWN RECORD, because the
+	// record the open swaps in is the head's, and a head the other computer sealed
+	// as a copy of its own says "owned" whatever this computer's folder holds.
+	// InstallState asks this answer, not the record in front of it.
+	project, worksInPlace := projectOf(root)
+	if worksInPlace {
 		intendedPrimary = project
 	}
 	taker := c.takerWithDir(ctx, sc, dir)
@@ -808,7 +813,7 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 			// its journal before rebuilding the row, so two chats never share an id.
 			taker.After = append([]func(context.Context, cell.Cell) error{branchIdentity}, taker.After...)
 		}
-		if project, here := projectOf(c.opt.RootFor(id)); here {
+		if worksInPlace {
 			// Ownership of this computer's project folder is local. A snapshot
 			// arriving from an owned copy must not turn an in-place return into
 			// tools pointed at a different, empty work/ directory.
@@ -895,7 +900,9 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 			if err := c.eng.NoteCarried(target, carried); err != nil {
 				return err
 			}
-			installOpenInstructions(staged.Root, target.Root)
+			if !worksInPlace {
+				installOpenInstructions(staged.Root, target.Root)
+			}
 			if err := cellstore.NoteAdopted(target, head); err != nil {
 				return err
 			}
@@ -965,7 +972,7 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 			after = append(after, branchIdentity)
 		}
 		after = append(after, seedMeta)
-		if project, here := projectOf(c.opt.RootFor(id)); here {
+		if worksInPlace {
 			after = append(after, func(_ context.Context, at cell.Cell) error {
 				meta, err := session.LoadMeta(at.Root)
 				if err != nil {
@@ -1989,6 +1996,13 @@ func (l landing) OpenCache(c cell.Cell) string {
 // and the restore that follows decides between them as it always has; a chat
 // working inside one of the person's own folders is left to that restore
 // entirely.
+//
+// THE RECORD UNDER root IS THE HEAD'S, NOT THIS COMPUTER'S. A chat that works in
+// one of this computer's own folders but was last sealed by a computer that held
+// it as a copy says "owned" here, so the answer this function reads from it is
+// wrong for exactly the move back; the caller therefore never calls it for a chat
+// it already knows works in place (see worksInPlace in take), and the check below
+// is for a head that names a folder of its own that happens to exist here.
 func installOpenInstructions(stagedRoot, root string) {
 	if _, inPlace := projectOf(root); inPlace {
 		return

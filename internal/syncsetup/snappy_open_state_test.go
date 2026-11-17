@@ -11,7 +11,9 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/cellsync"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // openStateRecords are the conversation records a person sees the moment a moved
@@ -231,4 +233,76 @@ func TestMovedChatOpensWithTheWorkspaceInstructionFilesAlreadyOnDisk(t *testing.
 	rec.unblock()
 	mustNil(t, got.Wait(ctx))
 	assertSameTree(t, h.work, workspaceOf(got.Taken.Cell.Root))
+}
+
+// Contract: a chat that moves back to the computer whose own folder it works in
+// opens there and nothing else. The folder is the person's, the instruction files
+// in it are theirs and are read from it where they are, and codeaf's own copy
+// folder for the chat, the work/ folder a chat taken from elsewhere keeps its files
+// in, is not used by it at all: no AGENTS.md or CLAUDE.md appears in it, at the
+// moment the chat opens or once its files have finished arriving, and the
+// person's own files are exactly what they were. The other computer sealed the
+// chat as a copy of its own, so the record the open installs says so, and only
+// this computer's own knowledge of where the chat works tells the two apart.
+func TestMoveBackToTheFolderTheChatWorksInWritesNoInstructionFilesIntoTheCopyFolder(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("CODEAF_TELEMETRY", "off")
+	ctx := context.Background()
+	h := newTwoHomes(t)
+	seedTree(t, h.work)
+	rules := "# house rules\nrun the whole gate before you say done\n"
+	claude := "# more rules\nnever commit to main\n"
+	mustNil(t, os.WriteFile(filepath.Join(h.work, "AGENTS.md"), []byte(rules), 0o644))
+	mustNil(t, os.WriteFile(filepath.Join(h.work, "CLAUDE.md"), []byte(claude), 0o644))
+
+	a := h.openA()
+	a.mustSay("first turn on the computer whose folder this is")
+	h.durable(h.cell.ID, h.cell)
+	mustNil(t, a.drive.Close(ctx))
+
+	// The other computer takes the chat as a copy, adds a turn and seals it.
+	toB, err := h.continuerB().Take(ctx, h.cell.ID)
+	mustNil(t, err)
+	mustNil(t, toB.Wait(ctx))
+	b := h.openOn(h.b, h.engB, toB.Taken.Cell, workspaceOf(toB.Taken.Cell.Root), nameB)
+	b.mustSay("a turn on the other computer")
+	h.durable(h.cell.ID, toB.Taken.Cell)
+	mustNil(t, b.drive.Close(ctx))
+
+	copyFolder := session.Place{Dir: h.cell.Root, Owned: true}.Work()
+	strays := func() []string {
+		var found []string
+		for _, name := range cellsync.OpenInstructionFiles {
+			if _, err := os.Lstat(filepath.Join(copyFolder, name)); err == nil {
+				found = append(found, name)
+			}
+		}
+		return found
+	}
+	if got := strays(); len(got) != 0 {
+		t.Fatalf("fixture: the chat's copy folder already holds %v before it moves back", got)
+	}
+
+	var strayAtShown []string
+	contA := h.continuerA()
+	contA.opt.OnShown = func(Continued) { strayAtShown = strays() }
+	backA, err := contA.Take(ctx, h.cell.ID)
+	mustNil(t, err)
+	mustNil(t, backA.Wait(ctx))
+
+	if got := workspaceOf(backA.Taken.Cell.Root); got != h.link {
+		t.Fatalf("the chat moved back works in %q, want the folder it was started in (%q)", got, h.link)
+	}
+	if len(strayAtShown) != 0 {
+		t.Errorf("when the chat opened back in its own folder, codeaf's copy folder for it (%s) held %v; it must hold no instruction files", copyFolder, strayAtShown)
+	}
+	if got := strays(); len(got) != 0 {
+		t.Errorf("after the chat moved back to its own folder, codeaf's copy folder for it (%s) holds %v; it must hold no instruction files", copyFolder, got)
+	}
+	for name, want := range map[string]string{"AGENTS.md": rules, "CLAUDE.md": claude} {
+		raw, err := os.ReadFile(filepath.Join(h.work, name))
+		if err != nil || string(raw) != want {
+			t.Errorf("the person's own %s is %q (%v) after the move back, want it exactly as it was", name, raw, err)
+		}
+	}
 }
