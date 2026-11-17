@@ -984,6 +984,17 @@ func (it Item) Person() string {
 	return ""
 }
 
+// LocalRunnerHandle is the name a Personal (solo) factory's own runner attaches
+// under while no forge is connected (serve's worker attach, on loopback only).
+// IT IS NEVER A FORGE IDENTITY: it is used only while the factory has no GitHub
+// token, so no write can ever reach GitHub under it, and a factory that later
+// connects GitHub attaches its runner under the login instead. It keeps the
+// record's handle shape (lowercase letters, digits and hyphens), which the
+// factory's history refuses anything outside of. It exists because a folder
+// job needs no GitHub at all, and a runner with no name to attach under left
+// such a job waiting in the queue forever.
+const LocalRunnerHandle = "this-computer"
+
 // NormalizeHandle lets workers and stored ownership compare forge handles
 // without treating display prefixes or case as a different person.
 func NormalizeHandle(handle string) string {

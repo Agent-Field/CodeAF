@@ -136,6 +136,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can a factory job work on a repo on my laptop that isn't on GitHub", "factory"},
 		{"how do I open a pull request from a job that ran on a local folder", "factory"},
 		{"why does my local folder job wait in the queue without GitHub", "factory"},
+		{"can the factory run a job on a folder without connecting GitHub", "factory"},
 		{"I can't add a job to Backlog on the organization's repository", "factory"},
 		{"which workstream does my new factory job go in", "factory"},
 		{"what does Ask someone to give you edit on a workstream mean", "factory"},
