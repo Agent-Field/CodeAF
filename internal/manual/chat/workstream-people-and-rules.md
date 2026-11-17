@@ -42,7 +42,13 @@ Before an order is switched on, its row opens a preview: the next three times it
 
 The sheet sets a schedule. It cannot start an order on an event, such as "when a release ships": nothing in the sheet watches for one, so it is not offered.
 
-An order runs on the computer of the person who added it, while codeaf is open there; what fell due while it was closed runs once, late, when it opens. That holds in an organization's workstream too: the organization's server keeps the tasks, and the order is that person's.
+In Personal, an order runs on your computer while codeaf is open there; what fell due while it was closed runs once, late, when it opens. An organization's workstream is different: see the next section.
+
+## standing orders in an organization's workstream — why one never runs on your computer
+
+A standing order in an organization's workstream never runs on a person's computer. A run there would be a general agent with that person's shell, files and connected accounts, over a home that holds every organization they belong to, so codeaf refuses it: making one from this computer is refused with "an organization's standing orders run on its server, never on this computer", and an organization's order made before that rule no longer runs here. Its due times pass with nothing run and nothing asked, and a run started by hand ends at once, Stopped, with that same line.
+
+"Add a standing order…" is absent from an organization's workstream until its server runs them.
 
 ## a standing order's tasks — Came from, the group in Tasks, and when it asks
 

@@ -115,6 +115,13 @@ func (b *appBackend) CreateOrder(in appwire.OrderCreate) (appwire.Order, error) 
 	if in.BudgetPerRunUSD != nil {
 		a.Limits.USD = *in.BudgetPerRunUSD
 	}
+	// AN ORGANIZATION'S STANDING ORDER IS NEVER MADE HERE: this computer
+	// would run it as a general agent over this person's whole home (E4 F0).
+	// Its workstream's own agent on the organization's server is the one
+	// that may run it.
+	if a.OrgWorkstream() {
+		return appwire.Order{}, appwire.Errorf(appwire.CodeBadScope, "%s", automation.LineOrgWorkstream)
+	}
 	saved, err := store.Create(a)
 	if err != nil {
 		return appwire.Order{}, appwire.Errorf(appwire.CodeBadParams, "%s", err.Error())

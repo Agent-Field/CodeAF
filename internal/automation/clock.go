@@ -321,6 +321,14 @@ func (c *Clock) pass(ctx context.Context, now time.Time) {
 	}
 	busy := c.busyAutomations()
 	for _, a := range due {
+		if a.OrgWorkstream() {
+			// Never here (Automation.OrgWorkstream): its slot passes with
+			// nothing queued, so nothing spends and nothing asks.
+			if err := c.skip(a, now); err != nil && !errors.Is(err, errChanged) {
+				c.log("could not move " + a.Title + " on: " + err.Error())
+			}
+			continue
+		}
 		if busy[a.ID] {
 			// ONE RUN AT A TIME PER AUTOMATION. A slot that comes while the
 			// last run is still going is passed over, not queued behind it: a
@@ -404,6 +412,16 @@ func (c *Clock) start(ctx context.Context, run Run) {
 			_ = c.Store.Start(run.ID)
 			c.finish(run)
 		}
+		return
+	}
+	// AN ORGANIZATION'S ORDER IS NEVER RUN HERE (Automation.OrgWorkstream),
+	// however its run was queued: "run it now" included. It ends before it
+	// asks, so nobody is asked to say go to something that cannot go.
+	if a.OrgWorkstream() {
+		c.mu.Unlock()
+		run.Outcome, run.Line = OutcomeStopped, LineOrgWorkstream
+		_ = c.Store.Start(run.ID)
+		c.finish(run)
 		return
 	}
 	// WORK NOT YET TRUSTED WAITS FOR THE PERSON'S GO (trust.go), unless this
