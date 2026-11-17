@@ -2371,7 +2371,11 @@ func (lp *floorLoop) land(c *loopCtl) {
 	})
 	if err == nil && shipped {
 		lp.emit(c.id, "", EventShipped, "shipped")
-		lp.tell(c.id, sayShipped)
+		if done, e := lp.r.opts.Store.Get(c.id); e == nil && factory.FolderOf(done) != "" {
+			lp.tell(c.id, factory.FolderFinishedWords(JobBranch(done), factory.FolderOf(done)))
+		} else {
+			lp.tell(c.id, sayShipped)
+		}
 	} else if err == nil {
 		if it, e := lp.r.opts.Store.Get(c.id); e == nil && it.FollowUp != nil && it.FollowUp.State == "waiting_approval" {
 			if factory.Automatic(it) {

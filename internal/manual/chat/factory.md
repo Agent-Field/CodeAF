@@ -49,7 +49,7 @@ which can be different from the PR created for the job.
 
 ## what is the factory — jobs, runners and a pull request at the end
 
-The factory takes work that is already written down, such as a GitHub issue or a brief handed over from a chat, and runs it through the steps of its repository's pipeline on a runner. A person is asked at fixed points, and a job that changes code ends as a pull request, which its assignee can merge from the job itself. Nothing starts by surprise: a job a rule does not allow asks first, and a repository without `.codeaf/factory.yaml` runs on the defaults, under which nothing starts on its own unless you gave it a go-ahead.
+The factory takes work that is already written down, such as a GitHub issue or a brief handed over from a chat, and runs it through the steps of its repository's pipeline on a runner. A person is asked at fixed points, and a job that changes code ends as a pull request, which its assignee can merge from the job itself (in Personal, a job on a folder on this computer ends on a local branch instead; see "a job on a folder on this computer"). Nothing starts by surprise: a job a rule does not allow asks first, and a repository without `.codeaf/factory.yaml` runs on the defaults, under which nothing starts on its own unless you gave it a go-ahead.
 
 Three things make one factory:
 
@@ -58,6 +58,17 @@ Three things make one factory:
 - the **people**, each signed in with a username and password, a passkey, or their GitHub.
 
 A machine with no factory set up has none of this: the chat's factory tools are absent from its belt rather than present and failing.
+
+## a job on a folder on this computer — a local repository, a repo that isn't on GitHub, "A folder on this computer…", Open a pull request
+
+On the factory that runs on this computer (Personal), Factory › New job can point a job at a folder instead of a repository: open the Repo field, pick **A folder on this computer…** and choose a folder that holds a git repository (a folder inside one works on the whole repository). The job runs the same steps in its own worktree on its own branch, so your checkout and its uncommitted changes are never touched.
+
+- **It finishes on a local branch.** After its proof the job is done and says "Finished on branch <branch> in <folder>. Nothing was pushed." There is no publish approval: nothing leaves the computer.
+- **Open a pull request** is offered on the finished job only when the folder's `origin` is on GitHub and GitHub is connected. It pushes the job's branch (never forced, your checkout untouched) and opens a draft pull request. Otherwise the button is absent; asked anyway: "A pull request needs the folder to have a GitHub remote and GitHub to be connected."
+- **Refusals**: "<folder> isn't a git repository · pick the folder that holds one." A folder that later moved or lost its repository: "the folder is gone or no longer holds a git repository."
+- **Jobs run once GitHub is connected**, even on a folder that is not on GitHub: the runner on this computer takes jobs only once it can say whose they are. Until then a started job waits in the queue.
+- **Not in an organization.** Its server cannot reach your laptop, so the folder choice is absent there; a create that sends one is refused: "A folder on this computer can only be used in Personal. An organization's jobs run on the repositories it turned on."
+- Protocol: a create takes `folder` (a full path) in place of `repo`; Personal lists `local_folder` in `factory.features`; `factory.job_open_pr` opens the pull request.
 
 ## make a job without a GitHub account — the organization's repositories, no repository to pick, "An admin turns repositories on in Repos"
 

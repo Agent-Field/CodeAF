@@ -481,6 +481,12 @@ func (b *appBackend) FactoryJobPRReady(ctx context.Context, p appwire.FactoryJob
 	return b.jobWrite(ctx, p.Factory, appwire.JobActPRReady, p.Job, "pr-ready", guardBody{p.Expect})
 }
 
+// FactoryJobOpenPR opens a finished folder job's pull request with the
+// caller's GitHub connection.
+func (b *appBackend) FactoryJobOpenPR(ctx context.Context, p appwire.FactoryJobActionParams) (appwire.FactoryJobActed, error) {
+	return b.jobWrite(ctx, p.Factory, appwire.JobActOpenPR, p.Job, "open_pr", guardBody{p.Expect})
+}
+
 // FactoryJobRunAsNew starts a separate job and answers its new number.
 func (b *appBackend) FactoryJobRunAsNew(ctx context.Context, p appwire.FactoryJobRunAsNewParams) (appwire.FactoryJobActed, error) {
 	return b.jobWrite(ctx, p.Factory, appwire.JobActRunAsNew, p.Job, "run-as-new", struct {

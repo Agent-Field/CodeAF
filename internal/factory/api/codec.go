@@ -209,6 +209,12 @@ func FromItem(it factory.Item) Job {
 	AreaIn(&j, nil)
 	j.ReadSize = readSize(it)
 	j.PR = fromPR(it.PullRequest)
+	// A pull request opened from a folder is carried whenever it was opened, so
+	// a read never loses it, even for an item whose place no longer reads as a
+	// folder.
+	if dir := factory.FolderOf(it); dir != "" || it.FolderPR != nil {
+		j.Folder = &JobFolder{Path: dir, Branch: factory.WorkBranch(it), PR: it.FolderPR}
+	}
 	j.Merge = jobMerge(it)
 	if factory.PausedDecision(it) {
 		j.State = StateNeedsYou
@@ -636,6 +642,9 @@ func ToItem(j Job) factory.Item {
 		Activity: mapList(d.Activity, toActivity),
 	}
 	it.PullRequest = toPR(j.PR)
+	if j.Folder != nil {
+		it.FolderPR = j.Folder.PR
+	}
 	it.MergePolicy, it.Merging = unmerge(j.Merge)
 	if j.Draft != nil {
 		it.Draft = *j.Draft

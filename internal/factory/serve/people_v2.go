@@ -270,6 +270,7 @@ func (h *Handler) soloJob(job *api.Job, stored factory.Item, caller string) {
 	if a := factory.JobApproval(it); !decisionPaused && a != nil && a.State == "waiting" {
 		job.Can.Approve = factory.NormalizeHandle(caller) != ""
 	}
+	h.folderCan(job, stored)
 	job.AssignedTo = ""
 	job.Assignee, job.WaitingFor = "", ""
 	job.Can.AssignToMe = false

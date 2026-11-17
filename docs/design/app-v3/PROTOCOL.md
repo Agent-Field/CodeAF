@@ -569,6 +569,7 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.job_follow` | `in.FactoryJobFollowParams` | `FactoryJobActed` |
 | `factory.job_hold` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_pr_ready` | `in.FactoryJobActionParams` | `FactoryJobActed` |
+| `factory.job_open_pr` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_merge` | `in.FactoryJobMergeParams` | `FactoryJobActed` |
 | `factory.job_reject` | `in.FactoryJobRejectParams` | `FactoryJobActed` |
 | `factory.job_reject_plan` | `in.FactoryJobRejectPlanParams` | `FactoryJobActed` |
@@ -3336,6 +3337,19 @@ when no catalog knows. Under one-model mode `one_model` names the only model.
 
 Remote owners answer errands over their own connection when they advertise it;
 older ones answer `unavailable`.
+
+### Open a pull request from a folder job
+
+Hello feature `factory.job_open_pr` advertises the optional method of the same
+name. Params are `{factory, job, expect}`. It sends one
+`POST /v1/jobs/{id}/open_pr` and returns `FactoryJobActed` with
+`action: "open_pr"` and the current job. Only a Personal factory serves it, for a
+job made on a folder on its own computer (create's `folder`) that finished on
+its local branch. Job reads offer `can.open_pr` only while the folder's `origin`
+is on GitHub, GitHub is connected and no pull request was opened from it. It
+pushes the job's branch (never forced, the checkout untouched) and opens a draft
+pull request; the job's `folder.pr` then names it. A folder with no GitHub
+remote, or GitHub not connected, is `conflict`.
 
 ### Mark a job pull request ready
 

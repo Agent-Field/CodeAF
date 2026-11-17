@@ -247,6 +247,7 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, hello Hello, engine En
 	hello = withFactoryJobRejectPlanFeature(hello, engine)
 	hello = withFactoryJobRejectFeature(hello, engine)
 	hello = withFactoryJobPRReadyFeature(hello, engine)
+	hello = withFactoryJobOpenPRFeature(hello, engine)
 	hello = withFactoryJobBriefSeenFeature(hello, engine)
 	hello = withFactoryPublishAnywayFeature(hello, engine)
 	hello = withFactoryAcceptStepFeature(hello, engine)

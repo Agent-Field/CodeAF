@@ -962,6 +962,10 @@ type Item struct {
 	Publish string `json:",omitempty"`
 	// CommentURL is the receipt for approved proof that needed no new commit.
 	CommentURL string `json:",omitempty"`
+	// FolderPR is the pull request a person opened from a finished folder
+	// job's branch ([FolderOf], "Open a pull request"). It is a receipt and
+	// nothing more: the job stays done, and nothing follows the pull request.
+	FolderPR *PublishedPR `json:",omitempty"`
 
 	// Activity is the item's own short history, oldest first: it arrived, it
 	// changed upstream, it was read, a conversation was made, its stages

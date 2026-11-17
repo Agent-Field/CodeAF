@@ -30,6 +30,11 @@ func (h *Handler) features(w http.ResponseWriter, r *http.Request) {
 	if h.config.Store != nil {
 		out.Features = append(out.Features, api.FeatureGroupPolicy, api.FeatureWaitsOn)
 	}
+	// A FOLDER ON THIS COMPUTER IS PERSONAL'S DOOR ALONE (folder.go): an
+	// organization's factory never lists it, so no app offers it there.
+	if h.folderDoor() {
+		out.Features = append(out.Features, factory.FeatureLocalFolder)
+	}
 	h.write(w, http.StatusOK, out)
 }
 
