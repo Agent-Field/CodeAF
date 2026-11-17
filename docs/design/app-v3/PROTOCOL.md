@@ -995,9 +995,9 @@ and the task `id`, the same words the desk's Tauri `workstream_task_*` commands 
 and a task and an event are the server's shapes passed through whole: a task is `{id,
 ws, rev, title, request, owner, done_by, came_from, state, state_reason?, step?,
 waiting_on, due?, group?, results, check?, ask?, cost_usd?, created_by, created_at,
-updated_at, done_at?, answered_by?, handed_by?, for_you?}`, `state` one of `up_next`, `running`, `needs`,
-`done`, `failed`, `interrupted`, `stopped` (Stopped by you), `no_report` (Didn't report
-back); an event is `{id, task, at, by, kind, text, steps?, duration_s?, offer?,
+updated_at, done_at?, answered_by?, handed_by?, for_you?, stopped_by?}`, `state` one of `up_next`, `running`, `needs`,
+`done`, `failed`, `interrupted`, `stopped` (Stopped by you, to `stopped_by`; Stopped by
+<name> to everyone else), `no_report` (Didn't report back); an event is `{id, task, at, by, kind, text, steps?, duration_s?, offer?,
 undo_until?, option?, mentions?}`, `option` being the chosen answer's id on an `answered` event; a
 standing order's task names its run in `came_from.run`. A person on a task (`owner`, `done_by`, `came_from` and
 `created_by` of kind `person`) is named, in every answer that carries the task, by the
@@ -1040,8 +1040,12 @@ offers Start and Start all on an organization only where it hears that word.
 Send back is `state`
 `up_next` on a `done` task by someone other than its owner, or with a `state_reason`:
 anyone who edits may do it (a person task included), and the thread line and the
-task's `state_reason` read "Sent back by <name>[: <why>]" until its next change. A
-Factory task's state is its job's (409). A stale rev is 412.
+task's `state_reason` read "Sent back by <name>[: <why>]" until its next change. A done
+task reopened (sent back or unticked) makes every unfinished task that waits on it wait
+again: one that was `running` goes back to `up_next` (a Factory task keeps its job's
+state), and each gains the thread line "Waiting again: <title> was reopened". A person's
+`stopped` records `stopped_by {id, name}`, and its thread line reads "Stopped by <name>";
+any later state clears it. A Factory task's state is its job's (409). A stale rev is 412.
 `_task_answer {ws, id, option?, text?}` `POST .../answer` is the owner's (with owner
 `everyone`, anyone who edits; after a day, also the workstream's fallback), 403
 otherwise; the first answer decides and records `answered_by`, a second is 409; a

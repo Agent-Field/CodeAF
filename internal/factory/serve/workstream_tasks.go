@@ -397,6 +397,7 @@ func (h *Handler) patchWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 	var out factory.TaskChange
 	wake := false
 	_, byAgent := agentCallOf(r)
+	var rewaited []factory.WorkstreamTask
 	jobs, err := h.workstreamJobs(r, ws)
 	if h.failed(w, err) {
 		return
@@ -425,6 +426,20 @@ func (h *Handler) patchWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 		wake = !byAgent && target.ID == "" && t.State != factory.TaskRunning && out.Task.State == factory.TaskRunning
 		if err := keepTask(tw, out.Task, rev); err != nil {
 			return err
+		}
+		// What waited on a reopened task waits again (factory.WaitAgain), and
+		// its thread says why.
+		for _, o := range out.Rewait {
+			if again, changed := factory.WaitAgain(o, out.Task.UpdatedAt); changed {
+				if err := keepTask(tw, again, o.Rev); err != nil {
+					return err
+				}
+				rewaited = append(rewaited, again)
+			}
+			out.Events = append(out.Events, factory.WorkstreamTaskEvent{
+				ID: h.newTaskID("te_")(), Task: o.ID, At: out.Task.UpdatedAt, By: by, Kind: factory.TaskEventState,
+				Text: "Waiting again: " + out.Task.Title + " was reopened",
+			})
 		}
 		// A released task stays up next (factory.Released): its thread says it
 		// can start, and whoever wakes its doer marks it running.
@@ -486,8 +501,15 @@ func (h *Handler) patchWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 		// it ends. (The run's own "done" is the run ending by itself.)
 		h.stopTaskTurn(ws.ID, tid)
 	}
+	for _, again := range rewaited {
+		// A running task sent back to waiting by a reopen is not worked on
+		// any more: its run ends too, or it would say up next while Afi works.
+		if again.State != factory.TaskRunning {
+			h.stopTaskTurn(ws.ID, again.ID)
+		}
+	}
 	h.recordWorkstream(r, ws.ID, "changed task", tid)
-	h.publishTasks(ws, h.orgActor(r), append([]factory.WorkstreamTask{out.Task}, out.Released...)...)
+	h.publishTasks(ws, h.orgActor(r), append(append([]factory.WorkstreamTask{out.Task}, out.Released...), rewaited...)...)
 	if target.ID != "" {
 		h.publishTasks(target, h.orgActor(r), out.Task)
 	}

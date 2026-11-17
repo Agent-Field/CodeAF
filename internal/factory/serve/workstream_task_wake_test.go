@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
@@ -35,7 +36,7 @@ func TestAStartOnTheServerWakesAfiAndOnlyThenSaysRunning(t *testing.T) {
 		asked[turn.Task.Title] = turn
 		mu.Unlock()
 		d := turn.Door.(workDoor)
-		if turn.Task.Title == "Hold" {
+		if strings.HasPrefix(turn.Task.Title, "Hold") {
 			select {
 			case <-release:
 			case <-ctx.Done():
@@ -107,6 +108,27 @@ func TestAStartOnTheServerWakesAfiAndOnlyThenSaysRunning(t *testing.T) {
 	}
 	if got := o.one(t, path, hold.ID); got.State != factory.TaskStopped {
 		t.Fatalf("stopped %+v", got)
+	}
+
+	// A reopen sends what waited on it back to waiting, and its run ends with it.
+	sign := o.task(t, "santosh", path, api.TaskCreate{Title: "Sign the form", DoneBy: factory.TaskDoneBy{Kind: factory.TaskByPerson, ID: "santosh", Name: "santosh"}})
+	var signed api.WorkstreamTask
+	o.do(t, "santosh", "PATCH", path+"/tasks/"+sign.ID, sign.Rev, map[string]any{"state": "done"}, 200, &signed)
+	after := o.task(t, "santosh", path, api.TaskCreate{Title: "Hold after signing", DoneBy: afi, WaitingOn: []string{sign.ID}})
+	o.do(t, "abir", "PATCH", path+"/tasks/"+after.ID, after.Rev, map[string]any{"state": "running"}, 200, &running)
+	if !o.h.taskTurnRunning(running.WS, after.ID) {
+		t.Fatal("the task started after signing has no run")
+	}
+	o.do(t, "abir", "PATCH", path+"/tasks/"+sign.ID, signed.Rev, map[string]any{"state": "up_next", "state_reason": "wrong form"}, 200, nil)
+	// Polled rather than settled: a run nobody stopped would hold settle forever.
+	for end := time.Now().Add(3 * time.Second); o.h.taskTurnRunning(running.WS, after.ID); time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(end) {
+			close(release)
+			t.Fatal("a reopen sent the task back to waiting and left Afi working on it")
+		}
+	}
+	if got := o.one(t, path, after.ID); got.State == factory.TaskRunning {
+		t.Fatalf("after the reopen %+v", got)
 	}
 	close(release)
 }
