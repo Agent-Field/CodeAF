@@ -63,8 +63,8 @@ func TestWorkstreamPagesReadsAndWritesThroughTheDoor(t *testing.T) {
 		return out, failed
 	}
 	out, failed := call(`{"ask":"read"}`)
-	if failed || !strings.Contains(out, "# Webhook reliability") || !strings.Contains(out, "Retries (pg_1, page)") ||
-		!strings.Contains(out, "10 more bytes; ask page") || !strings.Contains(out, "[kept] Use backoff. (abir)") || !strings.Contains(out, "budget: $5.00") {
+	if failed || !strings.Contains(out, "# Webhook reliability") || !strings.Contains(out, "Retries (page id pg_1, for your tools only)") ||
+		!strings.Contains(out, "10 more bytes; ask page") || !strings.Contains(out, "- Use backoff. (kept, abir)") || !strings.Contains(out, "budget: $5.00") {
 		t.Fatalf("read answered %q", out)
 	}
 	if out, failed = call(`{"ask":"page","page":"pg_1"}`); failed || !strings.HasSuffix(out, strings.Repeat("r", workstreamPageCut+10)) {

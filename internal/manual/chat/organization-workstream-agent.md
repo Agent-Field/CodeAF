@@ -21,18 +21,27 @@ In `server` mode a workstream's Agent panel is one conversation everyone who can
 
 What it spends is posted to the workstream under the person whose message it answered. A workstream that has spent its budget takes no more messages ("This workstream has spent its budget."). An archived workstream takes none either.
 
-## what the server's workstream agent can and cannot do — workstream_pages, tasks and files, no shell, no repository
+## what the server's workstream agent can and cannot do — tasks, files, pages, no shell, no repository
 
-On the server the agent carries `workstream_pages`, and, once the server keeps a workstream's tasks and files, the eight workstream tools beside it (`ws_tasks`, `ws_task_create`, `ws_task_update`, `ws_task_comment`, `ws_files`, `ws_file_read`, `ws_file_create`, `ws_file_suggest`; the page about chats inside a workstream says what they do). With `workstream_pages` it can:
+On the server the agent, Afi, carries `workstream_pages` and the eight workstream tools (`ws_tasks`, `ws_task_create`, `ws_task_update`, `ws_task_comment`, `ws_files`, `ws_file_read`, `ws_file_create`, `ws_file_suggest`; the page about chats inside a workstream says what each does). So when you ask it to "turn these asks into tasks", it makes real tasks in the Tasks tab, not pages titled "Task: …", and it reads Tasks before it says who is doing what or what is waiting on you.
 
-- read the workstream: name, purpose, stage, budget, pages, decisions, sources and links;
-- read one page whole;
-- write a page's words, or make a new page;
-- propose a decision (a person keeps it).
+With `workstream_pages` it reads the workstream (name, purpose, budget, pages, decisions, sources and links), reads or writes one page, makes a new page, or suggests a decision that waits in Decisions until a person keeps it.
 
-It writes as the person who asked, and their rights are checked on every write. A page edited live (one somebody has opened for editing) is never written over: the agent's text is kept as a new version in that page's History, marked Kept · not applied, and anyone with edit applies it with Restore this version (next section).
+It cannot run commands, read or change a repository, open files on a computer, start or stop Factory work, search the web or remember things between workstreams. For any of that, use `driver` mode, where the agent runs on a person's laptop with their tools.
 
-It cannot run commands, read or change a repository, open files, start or stop factory jobs, use a computer, search the web or remember things between workstreams. For any of that, use `driver` mode, where the agent runs on a person's laptop with their tools.
+## Afi made a task on the server — who owns it, who it says made it, what Afi may change
+
+A task Afi makes is owned by the person who asked, unless they named someone else in the workstream or Everyone; "done by" is Afi, and it came from Afi. Lines Afi writes on a thread are signed Afi. Afi changes only work an agent does (its own tasks and chats' tasks); on a person's task or a Factory task it can only comment. An Ask it puts on a task has at most one recommended choice, listed first, and the task then waits on its owner, who alone answers it.
+
+Everything goes through the same rules a person's app uses, with the rights of the person whose message it is answering, checked again on every call: a stale task is refused ("it changed since you read it; read it again"), and someone who cannot edit the workstream cannot change it through Afi.
+
+## who wrote this page — Afi, for the person who asked
+
+A page or document Afi makes is shown in Files as made by Afi for the person who asked; the page's last change is in that person's name, not the steward's. The organization's activity names that person too.
+
+## Afi changed my page — suggestions on the server, History, nothing lost
+
+Afi rewrites a page directly only when Afi made it and no person has edited it; the words before are kept in the page's History first. Any other page, and any page somebody has open for editing, gets Afi's text as a suggestion: a new version in the page's History marked Kept · not applied, which changes nothing until someone opens History and presses Restore this version (next sections). Afi says so, naming the version.
 
 ## a new organization workstream starts with an Overview page — never empty
 
@@ -40,7 +49,7 @@ When someone makes a workstream on the organization's server and sends no pages 
 
 ## the agent's text was kept, not applied — page History, current, Kept · not applied, Restore this version
 
-When the server's agent writes to a page that is edited live, its text does not go into the page. It is kept as the newest version in the page's History, and the agent says so: "your text was not applied: it was kept as version N in the page's History, marked Kept · not applied".
+When the server's agent writes to a page a person made or is editing live, its text does not go into the page. It is kept as the newest version in the page's History, and the agent says so: "your text was not applied: it was kept as version N in the page's History, marked Kept · not applied".
 
 History marks **current** on the version the page actually holds, which the organization's server names (`live_version` on the page's versions). That is never simply the highest number: a kept version can be newer than the page. A kept version's row reads **Kept · not applied** and is not current.
 
