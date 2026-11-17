@@ -207,7 +207,7 @@ A task that Afi or a chat does is Running only while something is actually doing
 
 ## the Working conversation — see what the agent is doing on a task, steer the agent on a task, who can see it
 
-A task Afi or a chat does has a **Working** section on its page, between Result and Activity and comments. It shows the conversation that does the task: what the agent says, each step it takes (folded into one line each) and what it made. Its first line says who started it ("Started by mia"), and the line above it says whether it is working now. **Open the conversation** shows all of it in place; **Fold it** goes back to the last few lines.
+A task Afi or a chat does has a **Working** section on its page, between Result and Activity and comments. It shows the conversation that does the task: what the agent says, each step it takes (folded into one line each) and what it made. Its first line says who started it ("Started by mia"), and the line above it says whether it is working now. Folded, it shows only its latest line; **Open the conversation** shows all of it in place, and **Fold it** goes back to the latest line.
 
 On an organization's workstream the Working conversation is the server's run of that task, and **everyone in the workstream sees it**, live, under the caption "Everyone in <workstream> sees this". On a Personal workstream it is the conversation of Afi or of the chat that does the task.
 
