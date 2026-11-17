@@ -277,7 +277,7 @@ func TestServerAgentTaskRunLinksItsFilesAndTicksItsChecklist(t *testing.T) {
 		}
 		return out
 	}
-	made := work(chat, "ws_task_create", `{"title":"Draft the launch post","request":"A post for Friday","checklist":["Outline","First draft"]}`)
+	made := work(chat, "ws_task_create", `{"title":"Draft the launch post","request":"A post for Friday","checklist":["Outline","First draft"],"goal":"Announce the launch","deliverable":"A post in Files","acceptance":["Names the date","Under 100 words"]}`)
 	task := made["task"].(map[string]any)
 	id := task["id"].(string)
 	list, _ := task["checklist"].([]any)
