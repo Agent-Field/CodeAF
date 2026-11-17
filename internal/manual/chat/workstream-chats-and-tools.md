@@ -58,9 +58,13 @@ Agents change a document by suggestion: nothing changes until someone in the wor
 
 When something you asked an agent privately changes shared work, the task's thread gets ONE line naming who asked for what, such as "Priya asked Afi to keep it under 300 words". The conversation around it stays private. A private answer is shared only when you post it.
 
-## big work — five or more tasks, a batch, a named chat, a plan with Start
+## big work, "you coordinate it", a batch of tasks — Afi starts a named chat; the plan's Start and Change the plan
 
-When Afi is given big work that splits into five or more tasks, it starts a named chat to run it and stays free for quick asks. The tasks share one group with the same name as that chat and arrive in Up next as a plan with "Start" and "Change the plan"; nothing starts until a person presses Start. Afi tells you with a button, "Open <name>", that opens the chat. In the Chats tab that chat's row says "Started by Afi". On an organization whose agents run on its server, Afi gives the tasks the one group in Up next, but there it starts no separate chat, and nothing yet works an organization's task by itself: each waits in Up next until its owner marks it done or stops it.
+Give Afi big work (work that splits into five or more tasks), or tell it "you coordinate it", and it hands the work to a chat of your own instead of doing it in Afi's pane: it starts the chat with ws_chat_start, names it for the work (for example "Release 2.4"), gives it the brief, and says so in its reply. Afi stays free for quick questions. Afi's pane then offers "Open <name>", and in the Chats tab the chat's row says "Started by Afi".
+
+That chat splits the work into tasks under a group with the same name, with owners and what waits on what. Five or more appear in Tasks as a plan with **Start** (once spelled "Start all") and **Change the plan**, and nothing in it starts until you press Start. **Change the plan** opens that chat with "Change the plan for <name>: " ready in its box, so you tell the chat that owns the plan. With fewer than five, the chat asks you first, or goes ahead within the workstream's "Start without asking" amount. Once started, the chat runs the tasks in order, each once what it waits on is done, within the workstream's "Start without asking" rule, checks each result against its request, and comes to you only when a task needs you, with an Ask on that task. One name leads to two places: in Chats, your private conversation about the work; in Tasks, the shared group everyone in the workstream sees.
+
+On an organization whose agents run on its server, Afi has no ws_chat_start: your chats live on your computer and the server never sees them. There Afi gives the tasks one group in Up next itself, and nothing yet works an organization's task unattended: each waits in Up next until its owner marks it done or stops it.
 
 ## did the agent save it to the Library — what a workstream's chat makes goes to its Files, not the Library or disk
 
