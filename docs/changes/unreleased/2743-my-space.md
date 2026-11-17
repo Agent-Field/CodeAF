@@ -1,6 +1,6 @@
 ---
 kind: added
-title: Each person has a private My space inside an organization, its chats run on the server, and the operator sees totals only
+title: A private My space per person in an organization, chats on its server, totals only for the operator
 pr: 2743
 surface: [factory, engine]
 invalidates:
