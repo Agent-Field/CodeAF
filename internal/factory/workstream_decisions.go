@@ -47,13 +47,22 @@ const (
 	DecisionFromAsk     = "ask"
 	DecisionFromRequest = "request"
 	DecisionFromRule    = "rule"
+	// DecisionFromMove is a person moving files in from their My space
+	// (org-space DESIGN §2.2): "Priya moved “Launch canvas” in from their
+	// space".
+	DecisionFromMove = "move"
 )
+
+// MoveUndoWindow is how long after a move from My space its mover may take the
+// files back without whoever looks after the workstream. The desk's Undo note
+// stays 10 seconds; the rest is the time an Undo takes to arrive.
+const MoveUndoWindow = 30 * time.Second
 
 // DecisionFrom is where a decision came from, for its row: "answered Afi's
 // Ask on Draft the March release notes", "from her request on Refresh the
 // store screenshots", "People and rules".
 type DecisionFrom struct {
-	Kind      string `json:"kind" jsonschema:"enum=ask,enum=request,enum=rule"`
+	Kind      string `json:"kind" jsonschema:"enum=ask,enum=request,enum=rule,enum=move"`
 	Task      string `json:"task,omitempty"`
 	TaskTitle string `json:"task_title,omitempty"`
 	Ask       string `json:"ask,omitempty"`
@@ -65,6 +74,8 @@ type DecisionFrom struct {
 	Views []string `json:"views,omitempty"`
 	// Replaces is the decision this one replaced.
 	Replaces string `json:"replaces,omitempty"`
+	// Files are the files a move from My space brought in.
+	Files []string `json:"files,omitempty"`
 }
 
 // The most a list of views, or of assumptions, holds, and the longest line.
@@ -289,6 +300,46 @@ func KeepNewDecisions(list, fresh []WorkstreamDecision) []WorkstreamDecision {
 		out = append(out, d)
 	}
 	return out
+}
+
+// MoveDecision is the one line a move from who's My space records in the
+// workstream it moved into, naming what moved: "Priya moved “Launch canvas” in
+// from their space".
+func MoveDecision(names, files []string, who PersonRef, id string, now time.Time) (WorkstreamDecision, bool) {
+	if len(names) == 0 || who.ID == "" {
+		return WorkstreamDecision{}, false
+	}
+	quoted := make([]string, 0, 2)
+	for _, n := range names[:min(2, len(names))] {
+		quoted = append(quoted, "“"+n+"”")
+	}
+	what := strings.Join(quoted, " and ")
+	if more := len(names) - len(quoted); more > 0 {
+		what = strings.Join(quoted, ", ") + fmt.Sprintf(" and %d more", more)
+	}
+	text := firstNonEmpty(who.Name, who.ID) + " moved " + what + " in from their space"
+	return newDecision(id, text, who, &DecisionFrom{Kind: DecisionFromMove, Files: slices.Clone(files)}, now), true
+}
+
+// UndoableMove is the index of the move decision in ds that handle made at
+// most MoveUndoWindow before now and that brought in every one of files, or
+// -1: the one an Undo may take back.
+func UndoableMove(ds []WorkstreamDecision, handle string, files []string, now time.Time) int {
+	handle = NormalizeHandle(handle)
+	for i := len(ds) - 1; i >= 0; i-- {
+		d := ds[i]
+		if d.State != DecisionKept || d.From == nil || d.From.Kind != DecisionFromMove || NormalizeHandle(d.By) != handle {
+			continue
+		}
+		at, err := time.Parse(time.RFC3339Nano, d.At)
+		if err != nil || now.Sub(at) > MoveUndoWindow {
+			continue
+		}
+		if !slices.ContainsFunc(files, func(f string) bool { return !slices.Contains(d.From.Files, f) }) {
+			return i
+		}
+	}
+	return -1
 }
 
 // RuleDecisions are the decisions a change of rules from before to after

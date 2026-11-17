@@ -28,9 +28,13 @@ The operator sees two numbers for each person's space: what it spent this month 
 
 When the operator removes someone from the organization, everything that person owned, their space included, goes to the person the operator names. Their space arrives as one private workstream called "<name>'s space"; the heir keeps their own My space. That is the only way anyone else reaches it.
 
-## Moving a document from My space into a workstream
+## Moving a document from My space into a workstream — Move to workstream, Undo
 
-A document or file in My space moves into a workstream from its menu (Move to…), the same way files move between workstreams. Once moved, it belongs to that workstream: everyone in it can see it, and its agent work is that workstream's spend. A chat never moves; what the chat made does.
+In My space, a document's or file's menu has **Move to workstream…**: pick one of the workstreams you can edit and the file goes into its Files. It is the one copy, not a duplicate. Once moved it belongs to that workstream: everyone in it sees and edits it, and its agent work is that workstream's spend.
+
+A note says "Moved to Pantry" with **Undo** for 10 seconds; Undo brings it back into My space. The workstream's Decisions keep one line, "Priya moved “Launch plan” in from their space", and Undo withdraws it. After the note has gone, only whoever looks after that workstream can move the file out to a space again; you are told "moving a file back to your space once its Undo has gone needs whoever looks after this workstream".
+
+A chat never moves: it stays private. What the chat made does move.
 
 ## What My space cannot do yet
 
