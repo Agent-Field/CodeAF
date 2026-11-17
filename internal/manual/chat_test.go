@@ -51,6 +51,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can everyone in the organization read the library pages", "organization-library"},
 		{"can the chat look things up in the organization library", "organization-library"},
 		{"remove a page from the organization library", "organization-library"},
+		{"upload our brand voice file to the organization library", "organization-library"},
 		{"how does an agent get on the organization's list", "organization-agents"},
 		{"approve an agent for everyone in the organization", "organization-agents"},
 		{"chat with my Copywriter agent instead of Afi", "organization-agents"},
