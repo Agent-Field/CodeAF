@@ -8,7 +8,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 )
 
-// THE DOER WORD (org-space DESIGN §11.1, lane L1, shared with L7's brief): an
+// THE DOER WORD (org-space DESIGN §11.1, shared with a task's brief): an
 // agent naming who does a task says it in ONE string, so the person a review is
 // meant for is the person who gets it. Live use on 2026-11-17 made "Marco
 // reviews the store text" with Priya as its doer, because the only person word

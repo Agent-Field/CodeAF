@@ -116,7 +116,7 @@ type Config struct {
 	WorkstreamAgent AgentRunner
 	// WorkstreamAgents lists the named agents and crews a workstream's tasks
 	// may be done by (workstream_task_doers.go). It is THE SEAM for the
-	// organization's agent list (org-space DESIGN §4.6, lane L3): nil is an
+	// organization's agent list (org-space DESIGN §4.6): nil is an
 	// organization with no shared agents yet, where only Afi, its people and
 	// its chats do tasks.
 	WorkstreamAgents func(factory.OrgWorkstream) []WorkstreamAgent

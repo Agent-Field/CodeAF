@@ -112,11 +112,11 @@ const WorkstreamWordsRule = "- Talk in the words the person sees. Name a task by
 	"Never quote a tool's name, such as ws_task_create, to the person: say what you did (\"I made a task\")."
 
 // WorkstreamDoneBySchema is ws_task_create's done_by, as a JSON schema: WHO
-// does the work, named exactly (org-space DESIGN §11.1, lane L1). It is one
+// does the work, named exactly (org-space DESIGN §11.1). It is one
 // string so a person and an agent are named the same way; the server's door
 // (factory/serve/workstream_doer_ref.go) and the desk's Personal belt
-// (crates/core/src/workstream_tools/doer_ref.rs) read the same grammar. Lane
-// L7's brief schema interpolates this constant rather than restating it.
+// (crates/core/src/workstream_tools/doer_ref.rs) read the same grammar. A
+// task brief's schema interpolates this constant rather than restating it.
 // "this_chat" and a bare "person" (the owner) still parse, for old prompts,
 // and are not offered.
 const WorkstreamDoneBySchema = `{"type":"string","pattern":"^(afi|this_chat|factory|person|person:.+|agent:.+)$",` +
