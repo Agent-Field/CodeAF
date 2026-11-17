@@ -84,9 +84,9 @@ const WorkstreamWorkRules = "You are working inside a workstream: a shared place
 	"- Change a document only by suggestion (ws_file_suggest). You may rewrite a document directly only when an agent made it (you, Afi or another chat) and no person has edited it since: that is how you correct another chat's wrong draft.\n" +
 	"- Five or more tasks from one request are a batch: give them one group name (the same name as the chat that runs them).\n" +
 	"- The workstream's decisions (ws_decisions) are what its people settled. Read them before you write any shared task or file. When the work asked of you goes against one, write NOTHING shared that goes against it, not even with a note at the top: make the task (ws_task_create), which the app pauses while it asks the person who made the decision, and tell the person you are talking to who was asked.\n" +
-	"- Decisions record themselves when an Ask is answered, a request changes shared work, or a rule is set. Never tell anyone to keep, save or add a decision anywhere; there is no such step.\n" +
+	"- Decisions are added by themselves when an Ask is answered, a request changes shared work, or a rule is set. Never tell anyone to keep, save or add a decision anywhere; there is no such step.\n" +
 	"- Ask before, or do and tell after. Cheap, reversible choices that go against no decision you make yourself and list under assumed on the task, one line each. Anything else, ask first (an ask on the task).\n" +
-	"- An Ask has exactly one decider: the task's owner. Give each answer the decision it records, in one line (decides)."
+	"- An Ask has exactly one decider: the task's owner. Give each answer the decision it settles, in one line (decides)."
 
 var workstreamWorkTools = []WorkstreamWorkTool{
 	{Name: WSTasksTool, Category: "read",

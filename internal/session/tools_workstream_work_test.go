@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	"github.com/Agent-Field/codeaf/internal/manual"
 )
 
@@ -25,7 +26,7 @@ func (d *workingDoor) Work(_ context.Context, tool string, args json.RawMessage)
 	return "did " + tool, nil
 }
 
-// A DOOR THAT KEEPS TASKS AND FILES PUTS THE EIGHT WORKSTREAM TOOLS ON THE
+// A DOOR THAT KEEPS TASKS AND FILES PUTS THE NINE WORKSTREAM TOOLS ON THE
 // SERVER AGENT'S BELT, BESIDE workstream_pages; one that does not leaves them
 // absent. Every one is named in the chat manual.
 func TestTheWorkstreamToolsRideOnlyADoorThatKeepsTasksAndFiles(t *testing.T) {
@@ -35,7 +36,7 @@ func TestTheWorkstreamToolsRideOnlyADoorThatKeepsTasksAndFiles(t *testing.T) {
 	for _, tool := range agent.offeredTools() {
 		names = append(names, tool.Name)
 	}
-	want := []string{WorkstreamPagesTool, WSTasksTool, WSTaskCreateTool, WSTaskUpdateTool, WSTaskCommentTool,
+	want := []string{WorkstreamPagesTool, WSTasksTool, WSDecisionsTool, WSTaskCreateTool, WSTaskUpdateTool, WSTaskCommentTool,
 		WSFilesTool, WSFileReadTool, WSFileCreateTool, WSFileSuggestTool}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Fatalf("the belt is %v, want %v", names, want)
@@ -90,19 +91,22 @@ func TestTheWorkstreamToolsTeachTheirRules(t *testing.T) {
 
 func TestAWorkstreamToolCallGoesToTheDoorByName(t *testing.T) {
 	door := &workingDoor{}
-	belt := workstreamWorkBelt(door, nil)
-	out, failed, err := belt[1].Execute(context.Background(), json.RawMessage(`{"title":"Draft","request":"Write it."}`))
+	belt := map[string]bare.Tool{}
+	for _, tool := range workstreamWorkBelt(door, nil) {
+		belt[tool.Name] = tool
+	}
+	out, failed, err := belt[WSTaskCreateTool].Execute(context.Background(), json.RawMessage(`{"title":"Draft","request":"Write it."}`))
 	if err != nil || failed || out != "did ws_task_create" || door.calls[0] != `ws_task_create {"title":"Draft","request":"Write it."}` {
 		t.Fatalf("answered %q %v %v; door saw %v", out, failed, err, door.calls)
 	}
-	if out, failed, _ = belt[0].Execute(context.Background(), nil); failed || door.calls[1] != "ws_tasks {}" {
+	if out, failed, _ = belt[WSTasksTool].Execute(context.Background(), nil); failed || door.calls[1] != "ws_tasks {}" {
 		t.Fatalf("an empty call answered %q; door saw %v", out, door.calls)
 	}
-	if _, failed, _ = belt[0].Execute(context.Background(), json.RawMessage(`[1]`)); !failed {
+	if _, failed, _ = belt[WSTasksTool].Execute(context.Background(), json.RawMessage(`[1]`)); !failed {
 		t.Fatal("an array of arguments was taken")
 	}
 	door.fail = errors.New("only the owner answers an Ask")
-	if out, failed, _ = belt[2].Execute(context.Background(), json.RawMessage(`{"task":"t1"}`)); !failed || out != "Nothing changed: only the owner answers an Ask" {
+	if out, failed, _ = belt[WSTaskUpdateTool].Execute(context.Background(), json.RawMessage(`{"task":"t1"}`)); !failed || out != "Nothing changed: only the owner answers an Ask" {
 		t.Fatalf("a refusal answered %q", out)
 	}
 }

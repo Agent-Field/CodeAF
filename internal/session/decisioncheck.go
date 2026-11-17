@@ -216,7 +216,7 @@ func (a *Agent) guardDecisions(ctx context.Context, tool string, args json.RawMe
 // guardDecisionsWith is the guard with the check's model as ask.
 func guardDecisionsWith(ctx context.Context, tool string, args json.RawMessage, call workstreamCall, ask func(ctx context.Context, prompt string) (string, error)) (string, bool, error) {
 	var in map[string]json.RawMessage
-	if json.Unmarshal(args, &in) != nil {
+	if decodeToolArguments(args, &in) != nil {
 		return call(ctx, tool, args)
 	}
 	str := func(k string) string {
