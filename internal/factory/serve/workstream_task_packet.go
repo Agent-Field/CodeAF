@@ -10,7 +10,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 )
 
-// ── A RUN STARTS WITH ITS CONTEXT PACKET (DESIGN §11.1–§11.2, lane L7) ─────
+// ── A RUN STARTS WITH ITS CONTEXT PACKET (DESIGN §11.1–§11.2) ─────────────
 //
 // The work-loop audit of 2026-11-17 watched every dependant of a six-task plan
 // spend four to seven tool calls (pages, ws_tasks, ws_decisions, ws_files,
