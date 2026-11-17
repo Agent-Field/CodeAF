@@ -120,3 +120,39 @@ func TestADocumentAgainstADecisionIsNotWritten(t *testing.T) {
 		t.Fatalf("calls %v, out %q", f.calls, out)
 	}
 }
+
+// A CONFLICT THAT COULD NOT BE ASKED IS NOT SAID TO BE (live2/E6b): the work
+// made is answered as made, the tool is not called again, and the reply
+// claims no pause.
+func TestAConflictTheDoorCannotAskClaimsNoPause(t *testing.T) {
+	f := &fakeWorkstream{decisions: pantryDecisions}
+	failing := func(ctx context.Context, tool string, args json.RawMessage) (string, bool, error) {
+		if tool == WSTaskConflictVerb {
+			f.calls = append(f.calls, tool)
+			return "client_unavailable", true, nil
+		}
+		return f.call(ctx, tool, args)
+	}
+	out, isErr, _ := guardDecisionsWith(context.Background(), WSTaskCreateTool, json.RawMessage(`{"title":"Price post","request":"Announce $5.99"}`), failing,
+		func(context.Context, string) (string, error) {
+			return `{"conflicts":[{"decision":1,"why":"raises the price"}]}`, nil
+		})
+	creates := strings.Count(strings.Join(f.calls, ","), WSTaskCreateTool)
+	if isErr || creates != 1 || strings.Contains(out, "Paused") || strings.Contains(out, "asked") {
+		t.Fatalf("calls %v, out %q", f.calls, out)
+	}
+}
+
+// The reply names whoever the door asked: on Personal that is the person in
+// the conversation, never a name from the decision's byline.
+func TestTheReplyNamesWhoTheDoorAsked(t *testing.T) {
+	if got := conflictAsked(`{"asked":"you"}`, checkDecision{ByName: "Priya"}); got != "the person you are talking to" {
+		t.Fatal(got)
+	}
+	if got := conflictAsked(`{"asked":"Santosh"}`, checkDecision{ByName: "Priya"}); got != "Santosh" {
+		t.Fatal(got)
+	}
+	if got := conflictAsked(`{}`, checkDecision{ByName: "Priya"}); got != "Priya" {
+		t.Fatal(got)
+	}
+}

@@ -229,7 +229,7 @@ func guardDecisionsWith(ctx context.Context, tool string, args json.RawMessage, 
 	if err != nil || len(conflicts) == 0 {
 		return call(ctx, tool, args)
 	}
-	task, said := str("task"), ""
+	task, said, madeText := str("task"), "", ""
 	if finishing {
 		// Everything but "done" is kept: the result and the check line are the
 		// work's, and the person deciding reads them.
@@ -255,18 +255,25 @@ func guardDecisionsWith(ctx context.Context, tool string, args json.RawMessage, 
 		if json.Unmarshal([]byte(text), &made) != nil || made.Task.ID == "" {
 			return text, isErr, err
 		}
-		task, said = made.Task.ID, made.Said
+		task, said, madeText = made.Task.ID, made.Said, text
 	}
 	var asked []string
 	for _, c := range conflicts {
 		body, _ := json.Marshal(map[string]string{"task": task, "decision": c.Decision.ID, "why": c.Why})
-		if _, isErr, err := call(ctx, WSTaskConflictVerb, body); err != nil || isErr {
+		reply, isErr, err := call(ctx, WSTaskConflictVerb, body)
+		if err != nil || isErr {
 			continue
 		}
-		maker := firstNonBlank(c.Decision.ByName, c.Decision.By, "whoever made it")
-		asked = append(asked, "“"+c.Decision.Text+"” ("+maker+"'s decision; "+c.Why+"), so "+maker+" is asked")
+		asked = append(asked, "“"+c.Decision.Text+"” ("+c.Why+"), so "+conflictAsked(reply, c.Decision)+" is asked")
 	}
 	if len(asked) == 0 {
+		// NOTHING WAS ASKED, so nothing is said to have been. New work is
+		// already made and is answered as made; calling the tool again would
+		// be answered from the first call (the same call id), and finished
+		// work goes through as the check lets any failure through.
+		if !finishing {
+			return madeText, false, nil
+		}
 		return call(ctx, tool, args)
 	}
 	lead := "Not done: this goes against "
@@ -394,4 +401,41 @@ func guardFile(ctx context.Context, args json.RawMessage, str func(string) strin
 	}
 	return "Nothing written: this goes against " + strings.Join(against, " and ") +
 		". Write nothing shared that goes against it. Make a task for this work with ws_task_create: the app pauses it and asks whoever made the decision, and you tell the person you are talking to who was asked.", true, nil
+}
+
+// conflictAsked is who the door says it asked, in words for the model: the
+// person in the conversation on a Personal workstream ("you"), else the
+// decider's name, else the decision's maker as the list spells them.
+func conflictAsked(reply string, d checkDecision) string {
+	var got struct {
+		Asked string `json:"asked"`
+	}
+	_ = json.Unmarshal([]byte(reply), &got)
+	switch a := strings.TrimSpace(got.Asked); {
+	case strings.EqualFold(a, "you"):
+		return "the person you are talking to"
+	case a != "":
+		return a
+	}
+	return firstNonBlank(d.ByName, d.By, "whoever made it")
+}
+
+// clientToolGuard is the guard standing around an app's tool name in set, or
+// nil. A Personal workstream's tools are the desk's, so the decision check
+// stands around them as it does around the server's door, wherever the set
+// keeps decisions.
+func (a *Agent) clientToolGuard(set ClientToolSet, name string) decisionGuard {
+	if guardsDecisions(name) && clientSetServes(set, WSDecisionsTool) {
+		return a.guardDecisions
+	}
+	return nil
+}
+
+// ClientToolUnregistered is whether an app's set answers name without having
+// registered it, given the names it did register: the decision check's own
+// verb, which the model must never hold, reaches any set that keeps
+// decisions. Refusing it made every conflict the check found pause nothing
+// (live2/E6b).
+func ClientToolUnregistered(name string, registered func(string) bool) bool {
+	return name == WSTaskConflictVerb && registered(WSDecisionsTool)
 }

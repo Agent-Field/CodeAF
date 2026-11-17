@@ -943,5 +943,11 @@ func (d *agentDoor) wsTaskConflict(ctx context.Context, args json.RawMessage) (a
 	if err := json.Unmarshal(raw, &t); err != nil {
 		return nil, err
 	}
-	return map[string]any{"task": taskBrief(t)}, nil
+	asked := ""
+	for _, x := range t.Asks {
+		if x.Against != nil && x.Against.Decision == strings.TrimSpace(a.Decision) && x.Decider != nil {
+			asked = firstNonEmpty(x.Decider.Name, x.Decider.ID)
+		}
+	}
+	return map[string]any{"task": taskBrief(t), "asked": asked}, nil
 }

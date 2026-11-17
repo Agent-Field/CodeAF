@@ -255,10 +255,10 @@ func (a *Agent) clientTool(set ClientToolSet, spec ClientTool) bare.Tool {
 				}
 				return answer.Text, answer.IsError, nil
 			}
-			// A Personal workstream's tools are the desk's: the decision check
-			// stands around them here, as it does around the server's door.
-			if guardsDecisions(spec.Name) && clientSetServes(set, WSDecisionsTool) {
-				return a.guardDecisions(ctx, spec.Name, args, call)
+			// A guard may stand around an app's tool: it calls the app through
+			// the same door ([Agent.clientToolGuard]).
+			if guard := a.clientToolGuard(set, spec.Name); guard != nil {
+				return guard(ctx, spec.Name, args, call)
 			}
 			return call(ctx, spec.Name, args)
 		},
