@@ -101,6 +101,9 @@ type OrgFileMoveParams struct {
 	ID     string   `json:"id"`
 	Files  []string `json:"files"`
 	Folder string   `json:"folder"`
+	// To sends the files to another of the organization's workstreams
+	// (Bring along), each still itself; Folder is then one of its folders.
+	To string `json:"to,omitempty"`
 }
 
 // OrgFileContent is an upload's bytes (base64 on the wire) and type.
@@ -219,10 +222,16 @@ func init() {
 				return OrgRequest{}, err
 			}
 		}
+		if p.To != "" {
+			if _, err := orgWorkstreamPath(p.To); err != nil {
+				return OrgRequest{}, err
+			}
+		}
 		body := struct {
 			Files  []string `json:"files"`
 			Folder string   `json:"folder"`
-		}{p.Files, p.Folder}
+			To     string   `json:"to,omitempty"`
+		}{p.Files, p.Folder, p.To}
 		return OrgRequest{Method: http.MethodPost, Path: path + "/files/move", Body: body}, nil
 	}), list)
 	methods["factory.org_workstream_file_delete"] = filled(orgMethod[OrgFileParams, OrgWorkstreamFile]("factory.org_workstream_file_delete", func(p OrgFileParams) (OrgRequest, error) {

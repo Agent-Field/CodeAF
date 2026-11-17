@@ -179,3 +179,35 @@ func TestTheHubEndsALaggardAndLapsesCarets(t *testing.T) {
 		t.Fatal("feed still open after remove")
 	}
 }
+
+// A PAGE THAT MOVES TO ANOTHER WORKSTREAM KEEPS ITS LIVE TEXT: Rename carries
+// the snapshot and the log after it, sequence numbers unchanged, and leaves the
+// old name empty. A target that already has content refuses.
+func TestRenameCarriesTheSnapshotAndTheLog(t *testing.T) {
+	s := openStore(t)
+	from, to := "ws/ws_1/page/p", "ws/ws_2/page/p"
+	for i := 1; i <= 3; i++ {
+		if _, _, err := s.Append(from, "abir", at, []byte{byte(i)}, int64(i-1), false, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := s.PutSnapshot(from, "abir", at, 2, []byte("S2")); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Rename(from, to); err != nil {
+		t.Fatal(err)
+	}
+	st, err := s.Since(to, 0)
+	if err != nil || st.Seq != 3 || st.Snapshot == nil || string(st.Snapshot.State) != "S2" || len(st.Updates) != 1 || st.Updates[0].Seq != 3 {
+		t.Fatalf("renamed = %+v %v", st, err)
+	}
+	if h, _ := s.Head(from); h != 0 {
+		t.Fatalf("the old name is empty: head %d", h)
+	}
+	if _, _, err := s.Append(from, "abir", at, []byte{9}, 0, false, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Rename(from, to); err != ErrDocTaken {
+		t.Fatalf("onto content = %v", err)
+	}
+}

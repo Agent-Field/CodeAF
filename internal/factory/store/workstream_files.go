@@ -9,7 +9,9 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 )
@@ -314,4 +316,109 @@ func SortFiles(files []factory.WorkstreamFile) {
 		}
 		return files[i].ID < files[j].ID
 	})
+}
+
+// ErrFileFolderMove refuses a folder sent to another workstream: what is
+// inside it would have to follow, and a move between workstreams is of files.
+var ErrFileFolderMove = errors.New("a folder moves only within its own workstream")
+
+// ErrFileNoFolder refuses a move into a folder the other workstream does not
+// keep live.
+var ErrFileNoFolder = errors.New("that folder is not one of that workstream's folders")
+
+// ErrFileIDTaken refuses a move that would land on a file id the other
+// workstream already keeps.
+var ErrFileIDTaken = errors.New("that workstream already keeps a file with this id")
+
+// MoveWorkstreamFiles sends ids from one workstream's Files to another's, all
+// or none, in one save (Bring along: what a chat made lands in the new
+// workstream's Files once). EACH FILE STAYS ITSELF: its id, its maker, the
+// task it came from and an upload's bytes (kept by their sha256, which no
+// workstream owns). A document takes its page and the page's versions with
+// it, so its words and its history follow. Folder is where they land in to
+// ("" is the top); a folder, a deleted file and a file from elsewhere are
+// refused. It answers the moved files as to now keeps them; the caller moves
+// a document's live text (the docs store keys it by workstream).
+func (st *Store) MoveWorkstreamFiles(from, to string, ids []string, folder, now, by string) ([]factory.WorkstreamFile, error) {
+	if _, err := st.filesDB(true); err != nil {
+		return nil, err
+	}
+	var out []factory.WorkstreamFile
+	err := st.wsTx(func(tx *sql.Tx) error {
+		src, err := readFiles(tx, from)
+		if err != nil {
+			return err
+		}
+		dst, err := readFiles(tx, to)
+		if err != nil {
+			return err
+		}
+		if folder != "" {
+			if f, ok := dst[folder]; !ok || f.DeletedAt != nil || f.Kind != factory.FileFolder {
+				return ErrFileNoFolder
+			}
+		}
+		var pages []string
+		for _, id := range ids {
+			f, ok := src[id]
+			if !ok || f.DeletedAt != nil {
+				return ErrFileGone
+			}
+			if f.Kind == factory.FileFolder {
+				return ErrFileFolderMove
+			}
+			if _, taken := dst[id]; taken {
+				return ErrFileIDTaken
+			}
+			f.WS, f.Folder, f.Rev, f.ChangedBy = to, folder, f.Rev+1, by
+			if at, err := time.Parse(time.RFC3339Nano, now); err == nil {
+				f.ChangedAt = at
+			}
+			doc, err := json.Marshal(f)
+			if err != nil {
+				return err
+			}
+			if _, err := tx.Exec(`DELETE FROM workstream_files WHERE ws = ? AND id = ?`, from, id); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(`INSERT INTO workstream_files (ws, id, rev, doc) VALUES (?, ?, ?, ?)`, to, id, f.Rev, string(doc)); err != nil {
+				return err
+			}
+			dst[id] = f
+			out = append(out, f)
+			if f.Kind == factory.FileDocument && f.PageID != "" {
+				pages = append(pages, f.PageID)
+			}
+		}
+		if len(pages) == 0 {
+			return nil
+		}
+		all, err := readWorkstreams(tx)
+		if err != nil {
+			return err
+		}
+		a, okA := all[from]
+		b, okB := all[to]
+		if !okA || !okB {
+			return ErrFileGone
+		}
+		for _, pid := range pages {
+			at := slices.IndexFunc(a.Pages, func(p factory.WorkstreamPage) bool { return p.ID == pid })
+			if at < 0 {
+				continue
+			}
+			p := a.Pages[at]
+			p.Parent = ""
+			a.Pages = slices.Delete(slices.Clone(a.Pages), at, at+1)
+			b.Pages = append(slices.Clone(b.Pages), p)
+			if _, err := tx.Exec(`UPDATE page_versions SET ws = ? WHERE ws = ? AND page = ?`, to, from, pid); err != nil {
+				return err
+			}
+		}
+		if err := putWorkstream(tx, normalizeWorkstream(a)); err != nil {
+			return err
+		}
+		return putWorkstream(tx, normalizeWorkstream(b))
+	})
+	return out, err
 }

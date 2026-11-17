@@ -11,7 +11,7 @@ import "github.com/Agent-Field/codeaf/internal/factory"
 //	GET    /v1/workstreams/{id}/files[?q=words][&deleted=1]  -> WorkstreamFiles
 //	POST   /v1/workstreams/{id}/files                     FileNew -> WorkstreamFile (201)
 //	PATCH  /v1/workstreams/{id}/files/{fid}  If-Match:file rev  FilePatch -> WorkstreamFile, 412 stale
-//	POST   /v1/workstreams/{id}/files/move                FilesMove -> WorkstreamFiles (the moved files)
+//	POST   /v1/workstreams/{id}/files/move                FilesMove -> WorkstreamFiles (the moved files; with to, into another workstream)
 //	DELETE /v1/workstreams/{id}/files/{fid}               -> WorkstreamFile, now in Recently deleted
 //	POST   /v1/workstreams/{id}/files/{fid}/restore       -> WorkstreamFile, back where it was
 //	GET    /v1/workstreams/{id}/files/{fid}/content       -> an upload's bytes, typed as uploaded
@@ -89,4 +89,8 @@ type FilePatch struct {
 type FilesMove struct {
 	Files  []string `json:"files"`
 	Folder string   `json:"folder"`
+	// To sends the files to another workstream's Files (Folder is then one of
+	// its folders, "" its top), each still itself. The caller edits both
+	// workstreams and looks after this one or made every file it sends.
+	To string `json:"to,omitempty"`
 }

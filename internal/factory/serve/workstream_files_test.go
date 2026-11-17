@@ -178,3 +178,66 @@ func TestFilesUploadsShortcutsAndViewers(t *testing.T) {
 	o.do(t, "abir", "POST", "/v1/workstreams/"+planner.ID+"/files", -1,
 		api.FileNew{Kind: "shortcut", Target: &factory.FileTarget{WS: pantry.ID, File: up.ID}}, 404, nil)
 }
+
+// BRING ALONG ON AN ORGANIZATION: what a chat made leaves one workstream's
+// Files for another's once, each still itself. A document takes its page,
+// its versions and its search with it, and the old workstream keeps nothing,
+// not even in Recently deleted. Moving asks what moving a task asks: edit on
+// both, and whoever looks after the workstream, or the person the file was
+// made for. A folder never crosses, and a workstream the caller cannot edit
+// is refused.
+func TestFilesMoveToAnotherWorkstream(t *testing.T) {
+	o := newWSOrg(t)
+	from := o.create(t, "santosh", api.WorkstreamNew{Name: "Pantry"})
+	to := o.create(t, "santosh", api.WorkstreamNew{Name: "Meal planner"})
+	locked := o.create(t, "mia", api.WorkstreamNew{Name: "Mia's own"})
+	for _, ws := range []api.Workstream{from, to} {
+		edit := []factory.Share{{Kind: "person", ID: "abir", Role: "edit"}}
+		o.do(t, "santosh", "PUT", "/v1/workstreams/"+ws.ID+"/shares", -1, api.WorkstreamSharesPut{Shares: &edit, Rev: &ws.Rev}, 200, nil)
+	}
+	path := "/v1/workstreams/" + from.ID + "/files"
+	var plan, notes, folder api.WorkstreamFile
+	o.do(t, "abir", "POST", path, -1, api.FileNew{Kind: "document", Name: "Launch plan", BodyMD: "Ship the oatmeal tagline",
+		MadeBy: &factory.FileMaker{Kind: "chat", ID: "c1", Name: "Launch chat"}}, 201, &plan)
+	o.do(t, "santosh", "POST", path, -1, api.FileNew{Kind: "link", URL: "https://example.com/notes", Name: "Santosh's notes"}, 201, &notes)
+	o.do(t, "santosh", "POST", path, -1, api.FileNew{Kind: "folder", Name: "Research"}, 201, &folder)
+
+	// abir neither looks after Pantry nor made santosh's notes.
+	o.do(t, "abir", "POST", path+"/move", -1, api.FilesMove{Files: []string{notes.ID}, To: to.ID}, 403, nil)
+	// A folder does not cross; a workstream abir cannot see is not there.
+	o.do(t, "santosh", "POST", path+"/move", -1, api.FilesMove{Files: []string{folder.ID}, To: to.ID}, 422, nil)
+	o.do(t, "abir", "POST", path+"/move", -1, api.FilesMove{Files: []string{plan.ID}, To: locked.ID}, 404, nil)
+
+	// The chat abir's chat made was made for abir, so abir may bring it along.
+	var moved api.WorkstreamFiles
+	o.do(t, "abir", "POST", path+"/move", -1, api.FilesMove{Files: []string{plan.ID}, To: to.ID}, 200, &moved)
+	if len(moved.Files) != 1 || moved.Files[0].WS != to.ID || moved.Files[0].ID != plan.ID || moved.Files[0].MadeBy.Name != "Launch chat" {
+		t.Fatalf("moved = %+v", moved.Files)
+	}
+	var there, left api.WorkstreamFiles
+	o.do(t, "santosh", "GET", "/v1/workstreams/"+to.ID+"/files", -1, nil, 200, &there)
+	if n := len(slices.DeleteFunc(slices.Clone(there.Files), func(f factory.WorkstreamFile) bool { return f.Name != "Launch plan" })); n != 1 {
+		t.Fatalf("lands once: %+v", there.Files)
+	}
+	o.do(t, "santosh", "GET", path+"?deleted=1", -1, nil, 200, &left)
+	if slices.ContainsFunc(append(left.Files, left.Deleted...), func(f factory.WorkstreamFile) bool { return f.ID == plan.ID }) {
+		t.Fatalf("the old workstream keeps nothing: %+v %+v", left.Files, left.Deleted)
+	}
+	var got api.Workstream
+	o.do(t, "santosh", "GET", "/v1/workstreams/"+to.ID, -1, nil, 200, &got)
+	if !slices.ContainsFunc(got.Pages, func(p factory.WorkstreamPage) bool { return p.ID == plan.PageID && p.BodyMD == "Ship the oatmeal tagline" }) {
+		t.Fatalf("the page went with it: %+v", got.Pages)
+	}
+	var vs api.PageVersions
+	o.do(t, "santosh", "GET", "/v1/workstreams/"+to.ID+"/pages/"+plan.PageID+"/versions", -1, nil, 200, &vs)
+	if len(vs.Versions) != 1 {
+		t.Fatalf("its versions went with it: %+v", vs)
+	}
+	var found api.WorkstreamFiles
+	o.do(t, "santosh", "GET", "/v1/workstreams/"+to.ID+"/files?q=oatmeal", -1, nil, 200, &found)
+	if len(found.Files) != 1 || found.Files[0].ID != plan.ID {
+		t.Fatalf("search follows it: %+v", found.Files)
+	}
+	// santosh looks after Pantry, so santosh may move anyone's file.
+	o.do(t, "santosh", "POST", path+"/move", -1, api.FilesMove{Files: []string{notes.ID}, To: to.ID}, 200, nil)
+}
