@@ -21,7 +21,6 @@ import (
 	"errors"
 	"io"
 	"net"
-	"net/http"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -36,6 +35,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/taxonomy"
 )
 
 // factoryWorkstreamAgentBase is where the runner's model API is: tests point
@@ -224,23 +224,23 @@ func factoryAgentSteers(ctx context.Context, agent *session.Agent, turn serve.Ag
 	}
 }
 
-// transientModelError is whether err may pass by itself: the provider was
-// busy or failing (429 or 5xx), or the connection dropped. A refusal, a bad
-// key or a model that cannot do what was asked will not, and is not tried
-// again.
+// transientModelError is whether err may pass by itself: the wire, as the
+// taxonomy reads it (a busy or failing provider, a stall, a dropped
+// connection). A refusal of the request, a bad key or a model that cannot do
+// what was asked will not, and is not tried again. ONE FUNCTION TURNS FACTS
+// INTO A MOVE: the provider's facts go to taxonomy.Classify, never a status
+// read here.
 func transientModelError(err error) bool {
 	if err == nil {
 		return false
 	}
-	var api *provider.APIError
-	if errors.As(err, &api) {
-		return api.Status == http.StatusTooManyRequests || api.Status >= 500
-	}
-	var nerr net.Error
-	if errors.As(err, &nerr) {
+	if taxonomy.Classify(provider.Evidence(err), taxonomy.Limits{}.Floored()).Retries() {
 		return true
 	}
-	return errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, syscall.ECONNRESET)
+	// A connection that dropped before the provider said anything carries no
+	// provider facts to classify: it may pass by itself.
+	var nerr net.Error
+	return errors.As(err, &nerr) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, syscall.ECONNRESET)
 }
 
 // factoryAgentStepWords is one step as a person reads it ("read the
