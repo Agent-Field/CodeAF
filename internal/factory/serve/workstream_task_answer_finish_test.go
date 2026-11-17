@@ -42,6 +42,11 @@ func TestARunAnAnswerStartedIsNotFailedForEndingOnAReply(t *testing.T) {
 			_, err := d.Work(ctx, "ws_task_update", json.RawMessage(`{"task":"`+id+`","ask":{"title":"Keep the draft or hold it?","options":[{"label":"Keep the draft"},{"label":"Hold"}]}}`))
 			return AgentTurnEnd{}, err
 		}
+		if turn.Task.Title == "Waits" && n >= 3 {
+			// Started by itself once its wait was done: it finishes.
+			_, err := d.Work(ctx, "ws_task_update", json.RawMessage(`{"task":"`+id+`","state":"done"}`))
+			return AgentTurnEnd{}, err
+		}
 		if turn.Task.Title == "Waits" {
 			if _, err := d.Work(ctx, "ws_task_update", json.RawMessage(`{"task":"`+id+`","waiting_on":["`+wait+`"]}`)); err != nil {
 				return AgentTurnEnd{}, err
@@ -73,6 +78,20 @@ func TestARunAnAnswerStartedIsNotFailedForEndingOnAReply(t *testing.T) {
 	got := run("Waits")
 	if got.State != factory.TaskUpNext || !slices.Contains(got.WaitingOn, review.ID) {
 		t.Fatalf("a resumed run that left the task waiting on %s made it %q (%q), waiting on %v", review.ID, got.State, got.StateReason, got.WaitingOn)
+	}
+
+	// UP NEXT IS NOT PARKED: once the work it waits on is done, the task
+	// starts by itself, with Afi, and finishes.
+	o.do(t, "santosh", "PATCH", path+"/tasks/"+review.ID, review.Rev, map[string]any{"state": "done"}, 200, nil)
+	o.settle()
+	mu.Lock()
+	waitsRuns := runs[got.ID]
+	mu.Unlock()
+	if after := o.one(t, path, got.ID); after.State != factory.TaskDone || waitsRuns != 3 {
+		t.Fatalf("once its wait was done the task left in Up next is %q after %d run(s)", after.State, waitsRuns)
+	}
+	if !o.threadSays(t, path, got.ID, "Started: Security review is done") {
+		t.Fatal("the thread does not say the waiting task started by itself")
 	}
 
 	// The resumed run only replies: the asking run's draft is the result.

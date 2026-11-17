@@ -68,6 +68,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"who is told when I create a workstream", "workstream-new-setup"},
 		{"do workstream tasks start automatically when what they depend on is done", "organization-workstream-tasks"},
 		{"hold a workstream task for my Start instead of starting automatically", "organization-workstream-tasks"},
+		{"I answered the question on a task that still waits on other work, why did it not start", "organization-workstream-tasks"},
 		{"how do I invite someone to my organization by email", "inviting-people"},
 		{"how do I start a new organization", "organization-start"},
 		{"can Afi set up my whole organization for me", "organization-start"},

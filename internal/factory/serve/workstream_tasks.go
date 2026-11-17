@@ -615,12 +615,33 @@ func (h *Handler) answerWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 	if n, job := factory.IsJobTask(t.ID); job && ownAsk && !h.answerJob(w, r, n, t, body) {
 		return
 	}
+	// What the task waits on may be a Factory job, which is read from the
+	// jobs, not the task file.
+	var jobs map[int]factory.Item
+	if len(t.WaitingOn) > 0 {
+		if jobs, err = h.workstreamJobs(r, ws); h.failed(w, err) {
+			return
+		}
+	}
 	err = h.config.Store.EditWorkstreamTasks(func(tw store.TaskWrite) error {
 		kept, err := tw.Tasks(ws.ID)
 		if err != nil {
 			return err
 		}
 		cur, found := findTask(kept, t.ID)
+		if _, job := factory.IsJobTask(t.ID); !job && len(change.Task.WaitingOn) > 0 {
+			// The answer is kept and decided; a task whose waits are not done
+			// is not started by it (factory.AnsweredWaiting), read against the
+			// workstream as it is in this write.
+			all, err := readTasksIn(tw, ws, jobs)
+			if err != nil {
+				return err
+			}
+			if held, line, ok := factory.AnsweredWaiting(change.Task, factory.UnfinishedWaits(change.Task, all)); ok {
+				change.Task, wake = held, false
+				change.Events = append(change.Events, factory.WorkstreamTaskEvent{ID: h.newTaskID("te_")(), Task: t.ID, At: held.UpdatedAt, By: by, Kind: factory.TaskEventState, Text: line})
+			}
+		}
 		if _, job := factory.IsJobTask(t.ID); job {
 			// The job took the answer; the overlay records who gave it.
 			o := factory.JobOverlay(change.Task)

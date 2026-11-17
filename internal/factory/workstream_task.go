@@ -1358,7 +1358,9 @@ func Released(id string, all []WorkstreamTask, by TaskEventBy, newID func() stri
 // option (an id the Ask offers) or words. The first answer decides: an Ask
 // already answered is ErrTaskNoAsk. The task runs again once nothing else is
 // asked; while another Ask is open it keeps waiting. The answer records a
-// decision (TaskChange.Decisions), made by whoever answered.
+// decision (TaskChange.Decisions), made by whoever answered. The caller holds
+// a task that still waits on unfinished work in Up next (AnsweredWaiting),
+// with the workstream's tasks as they are at the write.
 func AnswerTask(t WorkstreamTask, askID, option, words string, a TaskActor, by TaskEventBy, fallback string, newID func() string, now time.Time) (TaskChange, error) {
 	ask, i, ok := findAsk(t, askID)
 	if !ok || t.State != TaskNeeds {
@@ -1418,6 +1420,46 @@ func AnswerTask(t WorkstreamTask, askID, option, words string, a TaskActor, by T
 		ch.Decisions = append(ch.Decisions, d)
 	}
 	return ch, nil
+}
+
+// UnfinishedWaits is what t waits on that is not done, in t's own order. A
+// task it names that is not in all (gone, or another workstream's) counts as
+// unfinished: nothing says it is done.
+func UnfinishedWaits(t WorkstreamTask, all []WorkstreamTask) []WorkstreamTask {
+	byID := map[string]WorkstreamTask{}
+	for _, o := range all {
+		byID[o.ID] = o
+	}
+	var out []WorkstreamTask
+	for _, id := range t.WaitingOn {
+		o, ok := byID[id]
+		if !ok {
+			o = WorkstreamTask{ID: id}
+		}
+		if o.State != TaskDone {
+			out = append(out, o)
+		}
+	}
+	return out
+}
+
+// AnsweredWaiting is t, just answered (AnswerTask), held in Up next while it
+// still waits on unfinished work (unfinished, from UnfinishedWaits). AN ANSWER
+// RECORDS THE DECISION; IT NEVER STARTS A TASK WHOSE WAITS ARE NOT DONE (the
+// blackmac demo, 2026-11-17: answering the launch-date task's Ask started the
+// blog post before the date was confirmed). Up next is where a wait shows, and
+// the task starts by itself, the answer in its thread, once that work is done
+// (Released). ok says whether t was held; line is its thread's words.
+func AnsweredWaiting(t WorkstreamTask, unfinished []WorkstreamTask) (held WorkstreamTask, line string, ok bool) {
+	if t.State != TaskRunning || len(unfinished) == 0 {
+		return t, "", false
+	}
+	var names []string
+	for _, o := range unfinished {
+		names = append(names, firstNonEmpty(strings.TrimSpace(o.Title), "another task"))
+	}
+	t.State = TaskUpNext
+	return t, "Up next: waits for " + strings.Join(names, ", ") + " before it starts", true
 }
 
 func nonEmpty(s ...string) []string {
