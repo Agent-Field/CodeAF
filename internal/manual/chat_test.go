@@ -4777,6 +4777,8 @@ func TestTheMovedChatQuestionsReachTheAnswer(t *testing.T) {
 		{"why is node_modules missing after I continued the chat here", "`node_modules` (with a `package-lock.json`"},
 		{"my dev server is not running after I moved", "`was running there:` the commands"},
 		{"does set up run npm ci without asking again", "consent for exactly the commands the card lists"},
+		{"how do I open the copy my unsaved edits were kept as", "`k kept turns`"},
+		{"there is a 1 copy note on my chat and no row to open or discard the kept turns", "press `→` on the chat's row and then `k`"},
 	} {
 		found := false
 		for _, section := range Chat().Search(probe.asked, DefaultResults) {

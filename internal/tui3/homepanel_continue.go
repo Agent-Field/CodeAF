@@ -1255,6 +1255,13 @@ func (a *app) offerBranch(row chatlist.Row, _ chatlist.Offer) tea.Cmd {
 // branchShown is the branch question. The answers are the verbs in order and
 // `leave them` last, under the cursor.
 func (a *app) branchShown(row chatlist.Row, verbs []branchVerb) questionShown {
+	return a.branchShownWith(row, verbs, chatlist.BranchLine(row, a.branches.Merge != nil, a.branches.Open != nil))
+}
+
+// branchShownWith is the same question with the sentence under it chosen by the
+// caller: a copy folded onto a chat's row says which copy it is and whether
+// discarding it loses anything ([chatlist.CopyLine]).
+func (a *app) branchShownWith(row chatlist.Row, verbs []branchVerb, reason string) questionShown {
 	options := make([]session.AnswerOption, 0, len(verbs)+1)
 	for i, v := range verbs {
 		options = append(options, session.AnswerOption{Key: string(rune('1' + i)), Label: v.label, Consequence: v.consequence})
@@ -1268,7 +1275,7 @@ func (a *app) branchShown(row chatlist.Row, verbs []branchVerb) questionShown {
 			Form:    session.FormCard,
 			Asker:   session.Asker{Kind: session.AskerSurface},
 			Head:    branchAsk,
-			Reason:  chatlist.BranchLine(row, a.branches.Merge != nil, a.branches.Open != nil),
+			Reason:  reason,
 			Subject: session.SubjectRef{Name: row.Title},
 			Options: options,
 			Stakes:  session.StakesReversible,
@@ -1285,6 +1292,78 @@ func (a *app) branchShown(row chatlist.Row, verbs []branchVerb) questionShown {
 			return nil
 		},
 	}
+}
+
+// ── a copy folded onto a chat's row ─────────────────────────────────────────
+//
+// A COPY THAT HOME FOLDED AWAY MUST STILL HAVE A DOOR. The copy a move keeps
+// from unsaved edits is a branch whose parent is the chat that moved, and Home
+// shows it only as the dim `N copy` note on that chat's single row
+// ([chatlist.CollapseCopies]), so that one chat is one row. A row that stands alone is
+// opened or discarded with enter; the folded one has no row of its own and enter
+// on the chat's row opens the chat. So the chat's row carries a key, named on its
+// strip while the row has copies, that raises the branch card for one of them.
+// The test that let this go unnoticed used branch rows with no parent, which
+// never fold (#2780).
+
+// The key and the word the strip names for the copies. `k` is the first letter
+// of `kept`, the word the notice and the manual use for these turns.
+const (
+	keptTurnsKey  = 'k'
+	keptTurnsWord = "kept turns"
+)
+
+// keptTurnsVerb is the strip's verb for a chat row that has copies. A VERB THAT
+// CANNOT WORK IS ABSENT: with no open and no discard behind this surface there is
+// nothing for the card to offer, and with no copy there is nothing for it to be
+// about, so the strip does not name a key that would do nothing.
+func (a *app) keptTurnsVerb(line homeLine) (verb, bool) {
+	if line.cell == nil || len(line.cell.copies) == 0 || a.hosted() || len(a.branchVerbs()) == 0 {
+		return verb{}, false
+	}
+	copies := line.cell.copies
+	return verb{key: keptTurnsKey, word: keptTurnsWord, do: func() tea.Cmd { return a.offerKeptCopy(line, copies) }}, true
+}
+
+// offerKeptCopy raises the branch card for the next copy of the chat on the
+// line: the first on the first press, the second on the next, and the first
+// again after the last, so the key walks as many cards as the note counts. The
+// walk starts over when the cursor has been on another chat since.
+//
+// IT IS THE BRANCH ROW'S OWN DOOR AND ONLY THE SENTENCE DIFFERS. The card's
+// answers, the refusal while the directory is out of reach, and what each answer
+// runs are [app.branchShownWith]'s and [app.runBranchVerb]'s, acting on the
+// copy's own id and never on the chat's.
+func (a *app) offerKeptCopy(line homeLine, copies []chatlist.BranchCopy) tea.Cmd {
+	if a.hosted() || len(copies) == 0 {
+		return nil
+	}
+	if a.machineRead.computerRemoved {
+		a.home.say(chatlist.RemovedChat, "")
+		return nil
+	}
+	if a.machineRead.down || a.machineRead.err != nil {
+		a.home.say(a.machineRead.unavailableWord(), "")
+		return nil
+	}
+	verbs := a.branchVerbs()
+	if len(verbs) == 0 {
+		return nil
+	}
+	chat := homeSessionID(line.row)
+	if a.home.keptChat != chat {
+		a.home.keptChat, a.home.keptNext = chat, 0
+	}
+	nth := a.home.keptNext % len(copies)
+	a.home.keptNext = nth + 1
+	kept := copies[nth]
+	row := kept.Row(chat, homeName(line.row))
+	reason := chatlist.CopyLine(kept, nth+1, len(copies), a.branches.Merge != nil, a.branches.Open != nil)
+	a.raiseMachineAsk(row, a.branchShownWith(row, verbs, reason))
+	// THE CARD STANDS BESIDE THE CHAT'S ROW, which is the one this key was
+	// pressed on: the copy has no row of its own for it to stand beside.
+	a.home.armed = strings.TrimSpace(line.row.Transcript)
+	return nil
 }
 
 // homeBranchMsg is a branch verb's answer.
