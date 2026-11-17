@@ -386,7 +386,7 @@ func (h *Handler) finishTaskRun(door *agentDoor, task string, err error) {
 		return
 	}
 	if err == nil && len(t.WaitingOn) > 0 {
-		if all, lerr := door.tasks(ctx); lerr == nil && waitsOnUnfinished(t, all) {
+		if all, lerr := door.tasks(ctx); lerr == nil && len(factory.UnfinishedWaits(t, all)) > 0 {
 			args, _ := json.Marshal(map[string]any{"state": factory.TaskUpNext})
 			if _, perr := door.call(ctx, h.patchWorkstreamTask, http.MethodPatch, "/v1/workstreams/"+door.id+"/tasks/"+url.PathEscape(task), map[string]string{"tid": task}, json.RawMessage(args), t.Rev); perr == nil {
 				return
@@ -440,15 +440,4 @@ func (h *Handler) finishTaskRun(door *agentDoor, task string, err error) {
 	// tool, which turns an agent's own "failed" into an Ask to the owner.
 	p := map[string]any{"state": factory.TaskFailed, "state_reason": why}
 	_, _ = door.call(ctx, h.patchWorkstreamTask, http.MethodPatch, "/v1/workstreams/"+door.id+"/tasks/"+url.PathEscape(task), map[string]string{"tid": task}, p, t.Rev)
-}
-
-// waitsOnUnfinished is whether t waits on a task that is not done.
-func waitsOnUnfinished(t factory.WorkstreamTask, all []factory.WorkstreamTask) bool {
-	done := map[string]bool{}
-	for _, o := range all {
-		if o.State == factory.TaskDone {
-			done[o.ID] = true
-		}
-	}
-	return slices.ContainsFunc(t.WaitingOn, func(w string) bool { return !done[w] })
 }
