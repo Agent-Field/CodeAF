@@ -24,19 +24,24 @@ If the owner is Everyone, anyone who can edit the workstream may answer; the fir
 
 Who owns a new task: whoever asked for it. Work nobody asked for directly (from the Factory or a standing order) goes to the workstream's default owner.
 
-## tick a person task, hand a task to someone, move it to another workstream, send it back
+## tick a person task, hand a task to someone, move it to another workstream
 
 - Tick: only the owner ticks a person's task ("only the task's owner ticks it" otherwise). Ticking it unblocks the tasks that were waiting only on it: a person's task loses its "waiting on", and an Afi or chat task stays in Up next with the line "Ready to start: <the ticked task> is done" until it is started (see *Start — why a task stays in Up next*).
 - Hand to someone: anyone who can edit the workstream changes a task's owner to another person or to Everyone. The thread says "Handed to Marco", and Marco's Inbox row says "handed to you by Priya". Taking a task yourself is not a hand-over and says nothing.
 - Move: More › Move moves a task, with its whole conversation, to another workstream you can edit. Tasks that waited on it here stop waiting. Only the task's owner or whoever looks after the workstream moves it.
-- Send back: a done task's page has a framed line under its facts, "Done by Lena on Nov 20 · Not right? Send it back with what to change. A comment does not reopen a task.", with "Send back…" (also in its More). It asks why, then puts the task back in Up next. Anyone who can edit may send work back, a reviewer included. The thread, the task and the doer's Inbox row read "Sent back by Priya: <why>". An Afi or chat task sent back starts again with the reason. A new goal is a new task.
-- Reopening makes what waits on it wait again: when a done task is sent back or unticked, every unfinished task that waits on it waits again. One that was running goes back to Up next (a Factory task keeps its job's state), and each one's thread says "Waiting again: <title> was reopened". Done tasks that waited on it stay done; send them back too if they need redoing.
+- Send back: see *send a done task back* below.
 
 Reading tasks needs view on the workstream; adding, commenting, handing on and sending back need edit.
 
 ## who can stop or move a task — the owner or whoever looks after the workstream
 
 Stopping a task or moving it to another workstream is for the task's owner and for whoever looks after the workstream (its steward, or anyone with full access to it). Anyone else who can edit is refused with "only the task's owner or whoever looks after this workstream can stop or move it", and the desk leaves Stop and Move to another workstream out of their More. They can still comment, hand it to someone or send it back. Answering a task's question and ticking a person's task stay the owner's alone, whoever looks after the workstream.
+
+## send a done task back — Send back…, and what waits on it waits again
+
+A done task's page has a framed line under its facts, "Done by Lena on Nov 20 · Not right? Send it back with what to change. A comment does not reopen a task.", with "Send back…" (also in its More). It asks why, then puts the task back in Up next. Anyone who can edit may send work back, a reviewer included. The thread, the task and the doer's Inbox row read "Sent back by Priya: <why>". An Afi or chat task sent back starts again with the reason. Every done task has the line, whatever it made, files only included. A Factory task's Send back reopens its job, with the reason left in the thread; where the job cannot be reopened from here (an organization's Factory), the line says "The Factory's own page reopens its work." instead. A new goal is a new task.
+
+When a done task is sent back or unticked, every unfinished task that waits on it waits again. One that was running goes back to Up next (a Factory task keeps its job's state), and each one's thread says "Waiting again: <title> was reopened". Done tasks that waited on it stay done; send them back too if they need redoing.
 
 ## waiting on — the only way to order tasks, no circles
 
