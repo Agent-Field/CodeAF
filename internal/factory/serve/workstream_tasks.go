@@ -50,7 +50,7 @@ var errTaskAnswered = errors.New("this question was already answered")
 // ── who the caller is to the rules ──
 
 func taskActor(v Viewer, ws factory.OrgWorkstream) factory.TaskActor {
-	return factory.TaskActor{Handle: v.Handle, Edit: v.canWrite(ws) && ws.ArchivedAt == nil}
+	return factory.TaskActor{Handle: v.Handle, Edit: v.canWrite(ws) && ws.ArchivedAt == nil, Govern: v.canGovern(ws)}
 }
 
 // taskBy is who a change is stamped with on the thread: the caller, or Afi
@@ -410,6 +410,9 @@ func (h *Handler) patchWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 		}
 		if t.Rev != rev {
 			return store.ErrTaskStale
+		}
+		if target.ID != "" && !factory.MayStop(t, actor) {
+			return factory.ErrTaskNotStopper
 		}
 		out, err = factory.ApplyPatch(t, p, actor, by, all, h.newTaskID("te_"), now)
 		if err != nil {

@@ -171,6 +171,47 @@ func TestACarryOnAnsweredNoChangeEndsItAndKeepsTheAnswer(t *testing.T) {
 	}
 }
 
+// A TEAM WAKE ANSWERED WITH THE TOKEN ENDS THERE. The wake's note tells the
+// model to say exactly [NoChangeReply] when there is nothing new for the
+// person, after handling the traffic; read as an unfinished turn, the
+// completion check carried it on and the manager answered old questions.
+func TestATeamWakeAnsweredNoChangeIsNotCarriedOn(t *testing.T) {
+	var remainsAsks, carriedOn, rounds atomic.Int64
+	steps := make([]step, checkpointMarkAt(1)+10)
+	for index := range steps {
+		steps[index] = func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+			if askedForRemains(messages) {
+				remainsAsks.Add(1)
+				return textResponse("the person's question about flyers was never answered"), nil
+			}
+			if last := messages[len(messages)-1]; last.Role == "user" && strings.HasPrefix(partsText(last), checkpointCarryOnLead) {
+				carriedOn.Add(1)
+				return textResponse("No flyers have ever been made."), nil
+			}
+			if call := rounds.Add(1); call <= int64(checkpointMarkAt(1)) {
+				return toolResponseWithText(fmt.Sprintf("call-%d", call), "ls",
+					fmt.Sprintf(`{"path":"./%d"}`, call), ""), nil
+			}
+			return textResponse(NoChangeReply), nil
+		}
+	}
+	agent := checkpointAgent(t, &scriptedCompleter{steps: steps})
+	stubbedGraph(agent, func(node *TaskNode) {})
+
+	wake := teamWakeManagerLead + "\n\n" + teamWakeDeliveryRule + "\n\nWhat your members in \"tele\" did:\n@tele finished its turn"
+	events, err := agent.Submit(context.Background(), wake)
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collect(t, events)
+	if got := carriedOn.Load(); got != 0 {
+		t.Errorf("a wake answered %q was carried on %d times", NoChangeReply, got)
+	}
+	if got := remainsAsks.Load(); got != 0 {
+		t.Errorf("the reader was spent %d times on a wake with nothing new", got)
+	}
+}
+
 // THE TOKEN IS AN ANSWER TO A CARRY-ON AND NOTHING ELSE. A turn that says it
 // without having been carried on is read for what remains like any other, so
 // the token cannot become a way to end a turn unread.

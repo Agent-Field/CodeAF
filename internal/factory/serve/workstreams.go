@@ -72,6 +72,7 @@ func (h *Handler) workstreamRoutes() {
 	h.workstreamPartRoutes()
 	h.workstreamFileRoutes()
 	h.workstreamTaskRoutes()
+	h.workstreamRequestRoutes()
 	h.workstreamStructureRoutes()
 	h.route("/v1/workstreams/{id}/driver", map[string]http.HandlerFunc{http.MethodPut: h.takeWorkstreamDriver, http.MethodDelete: h.dropWorkstreamDriver})
 }

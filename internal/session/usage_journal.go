@@ -366,14 +366,24 @@ func (p *usagePending) syncBatches(path string, wake <-chan struct{}, done chan<
 		}
 		p.mu.Unlock()
 		started := time.Now()
-		err := withUsageLedgerLock(path, false, func(_ *os.File) error {
-			f, err := os.OpenFile(path+usagePendingSuffix, os.O_WRONLY, 0600)
-			if err != nil {
-				return err
+		journal := path + usagePendingSuffix
+		var err error
+		if _, statErr := os.Stat(journal); !errors.Is(statErr, fs.ErrNotExist) {
+			err = withUsageLedgerLock(path, false, func(_ *os.File) error {
+				f, openErr := os.OpenFile(journal, os.O_WRONLY, 0600)
+				if errors.Is(openErr, fs.ErrNotExist) {
+					return nil
+				}
+				if openErr != nil {
+					return openErr
+				}
+				defer f.Close()
+				return p.syncJournal(f)
+			})
+			if errors.Is(err, fs.ErrNotExist) {
+				err = nil
 			}
-			defer f.Close()
-			return p.syncJournal(f)
-		})
+		}
 		p.mu.Lock()
 		if err == nil {
 			p.rows -= rows

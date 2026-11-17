@@ -156,6 +156,12 @@ func OffersMarkReady(it Item) bool {
 // ready on a draft, Merge on an open pull request the gate passes, and the
 // merge already pressed and waiting out its Undo.
 func managerPRDecision(it Item) (person, actions []string) {
+	// AUTO PAUSED ON A FAILING CHECK IS THE PERSON'S TO OVERRIDE, and only
+	// theirs: the manager presses resume with their words, never on its own.
+	if OffersAutoResume(it) {
+		person = append(person, "Auto is paused on a failing check: "+OverrideSummary(FailingFindings(it))+".")
+		actions = append(actions, "If the person asks in this conversation to resume or continue anyway, call factory_answer with action=resume and answer set to their words; Auto then carries on past these findings and publishes, and a new failing finding pauses it again. Never resume on your own judgment.")
+	}
 	if OffersPublishApproval(it) {
 		person = append(person, "Waiting on the person: Approve publishing this job's checked work?")
 		actions = append(actions, "To approve publishing when the person asks in this conversation, call factory_answer with action=approve and answer set to their words; it waits out its Undo window first.")

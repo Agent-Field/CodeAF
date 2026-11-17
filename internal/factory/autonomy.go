@@ -72,6 +72,12 @@ func CheckAutomaticApproval(it Item) error {
 	return nil
 }
 
+// The leads of a pause on a failing finding, which [OffersAutoResume] reads.
+const (
+	proofAttentionLead  = "Proof needs attention: "
+	policyAttentionLead = "Repository policy needs attention: "
+)
+
 // AutonomyBlockReason explains a saved exception without asking a model to
 // infer why Auto has stopped. A routine approval in flight has no exception.
 func AutonomyBlockReason(it Item) string {
@@ -127,14 +133,16 @@ func AutonomyBlockReason(it Item) string {
 		if len(it.Proof) == 0 {
 			return "Proof is incomplete. Request changes or take over to continue."
 		}
+		// A finding the person told Auto to carry on past no longer pauses it
+		// (override.go); one they did not still does.
 		for _, cl := range it.Proof {
-			if !cl.OK {
-				return "Proof needs attention: " + cl.Text + ". Request changes or take over to continue."
+			if !cl.OK && !ClaimOverridden(it, OverrideProof, cl) {
+				return proofAttentionLead + cl.Text + ". Request changes or take over to continue."
 			}
 		}
 		for _, cl := range it.Policy {
-			if !cl.OK {
-				return "Repository policy needs attention: " + cl.Text + ". Request changes or take over to continue."
+			if !cl.OK && !ClaimOverridden(it, OverridePolicy, cl) {
+				return policyAttentionLead + cl.Text + ". Request changes or take over to continue."
 			}
 		}
 		for i := len(it.Stages) - 1; i >= 0; i-- {

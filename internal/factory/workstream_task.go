@@ -138,6 +138,11 @@ type TaskCameFrom struct {
 	// Run is the standing order's run that made the task, so one run makes
 	// exactly one task however often its holder's desk looks.
 	Run int64 `json:"run,omitempty"`
+	// WS and WSName name the workstream a request came from, when someone
+	// asked from another one (SPEC "Work for another team is a request into
+	// their workstream"): "From Priya · Marketing".
+	WS     string `json:"ws,omitempty"`
+	WSName string `json:"ws_name,omitempty"`
 }
 
 // TaskGroup is a heading that groups tasks. It is not a task.
@@ -269,6 +274,7 @@ func (e TaskRefused) Error() string { return string(e) }
 var (
 	ErrTaskNotOwner     error = TaskRefused("only the task's owner can do this")
 	ErrTaskNotAnswerer  error = TaskRefused("only the task's owner answers its question")
+	ErrTaskNotStopper   error = TaskRefused("only the task's owner or whoever looks after this workstream can stop or move it")
 	ErrTaskNoAsk              = errors.New("this task is not waiting on a question")
 	ErrTaskOfferGone          = errors.New("that offer is not open")
 	ErrTaskUndoOver           = errors.New("the five seconds to undo this have passed")
@@ -282,6 +288,10 @@ type TaskActor struct {
 	Handle string
 	// Edit is whether they may edit the workstream; view alone reads tasks.
 	Edit bool
+	// Govern is whether they look after the workstream (its steward, or
+	// anyone who may change its people and rules): they may stop or move any
+	// of its tasks, which nobody else but the task's owner may.
+	Govern bool
 }
 
 func (a TaskActor) owns(t WorkstreamTask) bool {
@@ -314,6 +324,13 @@ func MayAnswer(t WorkstreamTask, a TaskActor, fallback string, now time.Time) bo
 }
 
 // MayTick is whether a may tick (or untick) t: a person task, by its owner.
+// MayStop is whether a may stop or move t: its owner, or whoever looks after
+// the workstream (Workstreams final spec, "Who can do what"). Anyone else who
+// edits comments, hands it on or sends it back, and asks them to stop it.
+func MayStop(t WorkstreamTask, a TaskActor) bool {
+	return a.owns(t) || (a.Edit && a.Govern)
+}
+
 func MayTick(t WorkstreamTask, a TaskActor) bool {
 	return t.DoneBy.Kind == TaskByPerson && a.owns(t)
 }
@@ -655,6 +672,9 @@ func ApplyPatch(t WorkstreamTask, p TaskPatch, a TaskActor, by TaskEventBy, all 
 			why = strings.TrimSpace(*p.StateReason)
 		}
 		back := t.State == TaskDone && *p.State == TaskUpNext && (!MayTick(t, a) || why != "")
+		if *p.State == TaskStopped && !MayStop(t, a) {
+			return TaskChange{}, ErrTaskNotStopper
+		}
 		if t.DoneBy.Kind == TaskByPerson && !MayTick(t, a) && !back {
 			return TaskChange{}, TaskRefused("only the task's owner ticks it")
 		}
@@ -1151,6 +1171,31 @@ func HandOn(t WorkstreamTask, removed map[string]bool, to string, by TaskEventBy
 	stamp := now.UTC().Format(time.RFC3339Nano)
 	t.Rev, t.UpdatedAt = t.Rev+1, stamp
 	return t, []WorkstreamTaskEvent{{ID: newID(), Task: t.ID, At: stamp, By: by, Kind: TaskEventHanded, Text: "Handed to " + to}}, true
+}
+
+// TaskRequest is a request into a workstream: what is wanted, and the work
+// it came from, when it came from a task elsewhere.
+type TaskRequest struct {
+	Title    string `json:"title"`
+	Request  string `json:"request,omitempty"`
+	FromWS   string `json:"from_ws,omitempty"`
+	FromTask string `json:"from_task,omitempty"`
+}
+
+// RequestTask is the task a request into ws becomes: owned by ws's owner of
+// incoming work, who also does it when that is a person (they decide how),
+// Afi when nobody in particular owns it; up next, never started on its own.
+func RequestTask(ws, id string, in TaskRequest, by PersonRef, from TaskCameFrom, incoming TaskOwner, all []WorkstreamTask, now time.Time) (WorkstreamTask, error) {
+	in.Title = strings.TrimSpace(in.Title)
+	if in.Title == "" {
+		return WorkstreamTask{}, TaskInvalid("a request needs a title")
+	}
+	doer := TaskDoneBy{Kind: TaskByAfi}
+	if incoming.Kind == TaskOwnerPerson {
+		doer = TaskDoneBy{Kind: TaskByPerson, ID: incoming.ID, Name: incoming.Name}
+	}
+	owner := incoming
+	return NewTask(ws, id, TaskCreate{Title: in.Title, Request: in.Request, Owner: &owner, DoneBy: doer, CameFrom: &from}, by, incoming, all, now)
 }
 
 // handedBy is who handed a task to owner: whoever did it, unless the new
