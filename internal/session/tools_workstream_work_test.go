@@ -106,3 +106,32 @@ func TestAWorkstreamToolCallGoesToTheDoorByName(t *testing.T) {
 		t.Fatalf("a refusal answered %q", out)
 	}
 }
+
+// AFI READS THE PERSON'S OWN CHATS, AND ONLY WHERE THEY LIVE. ws_chats is
+// Afi's, served by the desktop app beside a Personal workstream's chats; no
+// server door carries it, because nothing private to a person reaches a
+// server. Its description keeps the privacy rule where the verb is used, and
+// the chat manual names it.
+func TestAfiReadsYourChatsOnlyOnTheDeskThatHoldsThem(t *testing.T) {
+	afi := WorkstreamAfiTools()
+	if len(afi) != 1 || afi[0].Name != WSChatsTool || afi[0].Category != "read" {
+		t.Fatalf("Afi's own tools are %+v, want the one read verb %s", afi, WSChatsTool)
+	}
+	var schema map[string]any
+	if err := json.Unmarshal(afi[0].InputSchema, &schema); err != nil || schema["type"] != "object" {
+		t.Fatalf("ws_chats' schema is not an object: %v %s", err, afi[0].InputSchema)
+	}
+	if !strings.Contains(afi[0].Description, "never copy them into a task") {
+		t.Errorf("ws_chats does not say its conversations stay private: %q", afi[0].Description)
+	}
+	agent := &Agent{config: Config{Workstream: &workingDoor{}, Workspace: t.TempDir(), ProfileDir: t.TempDir(), Interactive: true}}
+	agent.tools = agent.belt()
+	for _, tool := range agent.offeredTools() {
+		if tool.Name == WSChatsTool {
+			t.Fatalf("a server door offered %s: a person's chats never reach a server", WSChatsTool)
+		}
+	}
+	if !manual.Chat().Mentions(WSChatsTool) {
+		t.Errorf("no chat manual page mentions the %s tool — add it to internal/manual/chat/", WSChatsTool)
+	}
+}

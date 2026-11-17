@@ -174,6 +174,32 @@ var workstreamWorkTools = []WorkstreamWorkTool{
 			`},"required":["file","base_version","why","edits"],"additionalProperties":false}`)},
 }
 
+// WSChatsTool is Afi's one extra verb in a workstream: reading the person's
+// own chats there (SPEC "Afi and chats": Afi can read your chats in the
+// workstream; other people cannot).
+const WSChatsTool = "ws_chats"
+
+// workstreamAfiTools are the verbs only Afi carries, and only where the
+// person's own chats live: the desktop app serves them on a Personal
+// workstream. THEY ARE ON NO SERVER BELT. A chat is private to the person who
+// started it and never leaves their computer, so an organization's server has
+// nothing behind this verb, and a capability that cannot work is absent.
+var workstreamAfiTools = []WorkstreamWorkTool{
+	{Name: WSChatsTool, Category: "read",
+		Description: "List the person's own chats in this workstream (name, whether it waits on them, is working or resting, and its latest line), or read one (set chat) to see what was said there lately. " +
+			"Use it when the person asks about one of their chats, or what their chats are doing. " +
+			"These conversations are private to the person you are talking to: tell them what is in them, but never copy them into a task, a comment or a file.",
+		InputSchema: json.RawMessage(`{"type":"object","properties":{` +
+			`"chat":{"type":"string","description":"One chat's id or name, to read what was said there lately."}` +
+			`},"additionalProperties":false}`)},
+}
+
+// WorkstreamAfiTools is the verbs only Afi carries inside a workstream, which
+// the desktop app serves. The slice is a copy.
+func WorkstreamAfiTools() []WorkstreamWorkTool {
+	return append([]WorkstreamWorkTool(nil), workstreamAfiTools...)
+}
+
 // WorkstreamWorkTools is the eight tools, in belt order. The slice is a copy.
 func WorkstreamWorkTools() []WorkstreamWorkTool {
 	return append([]WorkstreamWorkTool(nil), workstreamWorkTools...)
@@ -188,6 +214,7 @@ func init() {
 	glossField[WSFileReadTool] = "file"
 	glossField[WSFileCreateTool] = "name"
 	glossField[WSFileSuggestTool] = "file"
+	glossField[WSChatsTool] = "chat"
 }
 
 // workstreamWorkDoor is the conversation's tasks-and-files door, or nil when

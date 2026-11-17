@@ -16,6 +16,18 @@ A click on a chat opens it in place, inside the Chats tab, with Afi still beside
 
 "Open as its own tab" opens the same conversation as a tab whose path reads Work › <workstream> › Chats › <chat>. Its right panel has two tabs, Tasks and Files, listing only what this chat made; a row opens that task or file. Pressing Afi swaps the panel for Afi's pane. A chat is open in one place at a time: opening it as a tab returns the workstream to its list of chats. Leaving a chat or closing its tab stops nothing; it keeps working.
 
+## can Afi see my chats — Afi reads your own chats in the workstream with ws_chats
+
+Yes, yours, and nobody else's. Inside a Personal workstream, Afi carries one more tool than the chats do: `ws_chats`. With it Afi lists your chats in that workstream (each one's name, whether it is waiting on you, working or resting, and its latest line) and reads what was said in one lately. Ask Afi "what is Launch post doing?" or "which of my chats needs me?" and it reads them to answer.
+
+Your teammates cannot see your chats, and neither can their Afi. Afi does not copy what it reads there into a task, a comment or a file; the one line a private request leaves on a task is still the only trace.
+
+On an organization's workstream Afi does not have `ws_chats`: your chats stay on your computer and the organization's server never holds them, so there is nothing for it to read.
+
+## does leaving a chat stop what it is doing — going back or shutting its tab stops nothing
+
+No. Going back to the list, opening another chat, or closing a chat's tab stops nothing: the chat keeps working on whatever it was doing and its tasks keep running. It rests on its own when nothing of its is running, and wakes when you write to it or a task of its needs you. To stop work, stop the task itself, or press stop in the chat while it is answering.
+
 ## the workstream tools — ws_tasks, ws_task_create, ws_task_update, ws_task_comment, ws_files, ws_file_read, ws_file_create, ws_file_suggest
 
 Every chat started inside a workstream, and Afi when it is inside one, carries eight tools onto the workstream's shared work:
