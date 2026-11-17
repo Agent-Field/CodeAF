@@ -538,7 +538,7 @@ func (a *app) takeRemoteState(msg homeTakenMsg) tea.Cmd {
 			// Joining adopts the existing move, so later choices use the explicit busy rule.
 			a.stopAutomaticTakeTimer()
 			a.homeTakeAutomatic, a.homeTakeAbandoned, a.homeTakePending = false, false, nil
-			a.home.say(continuing, "")
+			a.home.say(a.homeMoveLine(), "")
 			return nil
 		}
 		a.abandonAutomaticTake()
@@ -561,7 +561,8 @@ func (a *app) takeRemoteState(msg homeTakenMsg) tea.Cmd {
 	a.homeTaking = msg.row.Cell
 	a.homeTakeAutomatic, a.homeTakeOriginAutomatic, a.homeTakeAbandoned = msg.automatic, msg.automatic, false
 	a.homeTakeRow = msg.row
-	a.home.say(continuing, "")
+	a.homeMoveSaid = a.initialMoveLine()
+	a.home.say(a.homeMoveSaid, "")
 	baseCtx := a.ctx
 	if baseCtx == nil {
 		baseCtx = context.Background()
@@ -685,7 +686,7 @@ func (a *app) automaticTakeSettled(msg homeTakeSettledMsg) tea.Cmd {
 		return a.takeRemoteState(*pending)
 	}
 	if a.continueChecking != nil && a.at(pageHome) {
-		a.home.say(continuing, "")
+		a.home.say(a.homeMoveLine(), "")
 	}
 	return nil
 }
@@ -905,6 +906,9 @@ func (a *app) rebuildMachines() {
 // the one they are arriving in. A shared window opens in place, and the ride
 // is spent here rather than at the landing.
 func (a *app) openTaken(msg homeTakenMsg) tea.Cmd {
+	if !msg.automatic && a.at(pageHome) {
+		a.foldHomeBoxIntoDraft(&msg)
+	}
 	a.homeTakeResult = &msg
 	a.homeTakeOpening = true
 	defer func() { a.homeTakeOpening = false }()
@@ -979,6 +983,7 @@ func (a *app) openTaken(msg homeTakenMsg) tea.Cmd {
 			}
 			a.putComposer(*msg.draft)
 			if msg.send == nil {
+				a.keepMainDraft()
 				a.note("your message is still in the box; press enter to send it")
 			}
 		} else if !msg.taken.AlreadyHere {
@@ -1056,8 +1061,45 @@ func (a *app) moveTakeDraft(conv Conversation) {
 	a.writeDraftsNow("")
 }
 
+// foldHomeBoxIntoDraft moves any text or chips typed on Home during a continue
+// into the arriving chat's draft (R6).
+func (a *app) foldHomeBoxIntoDraft(msg *homeTakenMsg) {
+	if msg == nil || (a.home.box.empty() && len(a.home.chips) == 0) {
+		return
+	}
+	typed := a.pastesUnfolded(a.home.box.String())
+	chips := append([]chip(nil), a.home.chips...)
+	a.home.box.reset()
+	a.home.chips = nil
+	a.home.carrying = false
+	if msg.draft == nil {
+		var box editor
+		box.setText(typed)
+		msg.draft = &composerState{box: box, chips: chips}
+		return
+	}
+	if typed != "" {
+		existing := msg.draft.box.String()
+		if existing != "" {
+			msg.draft.box.setText(existing + "\n" + typed)
+		} else {
+			msg.draft.box.setText(typed)
+		}
+	}
+	if len(chips) > 0 {
+		msg.draft.chips = append(msg.draft.chips, chips...)
+	}
+}
+
 func (a *app) restoreTakeDraft(msg homeTakenMsg) {
 	if msg.draft == nil {
+		return
+	}
+	if a.at(pageHome) && msg.fromFile == "" {
+		a.home.box = msg.draft.box
+		a.home.chips = append([]chip(nil), msg.draft.chips...)
+		a.home.carrying = len(a.home.chips) > 0
+		a.home.build()
 		return
 	}
 	if a.composerOwner == mainRecipient {

@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/syncsetup"
 )
 
 // MoveProgress is how far a continue has got: its step (preparing, copying,
@@ -45,6 +46,12 @@ func moveTick(seq uint64) tea.Cmd {
 
 // moveSaid is home's line for a continue that has got this far.
 func moveSaid(p MoveProgress) string {
+	if !syncsetup.MoveFilesFirst() {
+		if p.Done > 0 {
+			return fmt.Sprintf("opening conversation… %s", openConversationBytes(p.Done))
+		}
+		return "opening conversation…"
+	}
 	switch {
 	case p.Step == "opening":
 		return "opening it here…"
@@ -54,6 +61,13 @@ func moveSaid(p MoveProgress) string {
 		return fmt.Sprintf("copying to this computer: %s…", movedBytes(p.Done, p.Total))
 	}
 	return fmt.Sprintf("copying to this computer: %s so far…", movedBytes(p.Done, 0))
+}
+
+func openConversationBytes(done int64) string {
+	if done >= 1<<20 {
+		return fmt.Sprintf("%s MB", grouped((done+(1<<19))/(1<<20)))
+	}
+	return fmt.Sprintf("%s KB", grouped(max(1, (done+512)/1024)))
 }
 
 // movedBytes reads "412 of 1,433 MB", in the unit the larger number reads best in.
@@ -184,7 +198,7 @@ func (a *app) followMove(msg homeMoveTickMsg) tea.Cmd {
 		return nil
 	}
 	if a.homeTaking != "" {
-		if p, ok := reporter.MoveProgress(a.homeTaking); ok && a.at(pageHome) && a.home.msg == a.homeMoveLine() {
+		if p, ok := reporter.MoveProgress(a.homeTaking); ok && a.at(pageHome) && (a.home.msg == "" || a.home.msg == a.homeMoveLine() || a.home.msg == continuing || a.home.msg == "opening conversation…") {
 			a.homeMoveSaid = moveSaid(p)
 			a.home.say(a.homeMoveSaid, "")
 			a.touch()
@@ -203,10 +217,20 @@ func (a *app) followMove(msg homeMoveTickMsg) tea.Cmd {
 	return moveTick(msg.seq)
 }
 
+// initialMoveLine is the first line home shows when a continue begins.
+func (a *app) initialMoveLine() string {
+	if !syncsetup.MoveFilesFirst() {
+		if _, ok := a.taker.(moveReporter); ok {
+			return "opening conversation…"
+		}
+	}
+	return continuing
+}
+
 // homeMoveLine is the line home shows for the running continue.
 func (a *app) homeMoveLine() string {
 	if a.homeMoveSaid != "" {
 		return a.homeMoveSaid
 	}
-	return continuing
+	return a.initialMoveLine()
 }

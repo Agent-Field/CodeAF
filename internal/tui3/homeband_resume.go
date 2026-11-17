@@ -238,6 +238,9 @@ func (a *app) continueIfSafe(row chatlist.Row, safe continuationSafety) tea.Cmd 
 	a.continueChecking = &continuationChecked{row: row, generation: choice}
 	if a.homeTakeAutomatic && a.homeTaking != "" {
 		a.home.say(fmt.Sprintf("continuing %s next; %s is still on its way here", row.Title, a.homeTakeRow.Title), "")
+	} else {
+		a.homeMoveSaid = a.initialMoveLine()
+		a.home.say(a.homeMoveSaid, "")
 	}
 	return func() tea.Msg {
 		clean, err := safe.SafeToContinue(ctx, row.Cell, file, false)
@@ -335,6 +338,8 @@ func (a *app) continuationReady(msg continuationChecked) tea.Cmd {
 		if msg.automatic {
 			return opened
 		}
+		a.homeMoveSaid = ""
+		a.home.say("", "")
 		return a.raiseContinue(msg.row, continueYesAt)
 	}
 	return tea.Batch(opened, a.takeRemoteState(homeTakenMsg{row: msg.row, automatic: msg.automatic}))
