@@ -197,6 +197,11 @@ type Handler struct {
 	// agentDesk holds each organization workstream's server agent and its
 	// conversation (workstream_agent.go).
 	agentDesk agentDesk
+	// ordersTimer wakes for the soonest standing order due in any
+	// organization workstream (workstream_orders.go).
+	ordersMu     sync.Mutex
+	ordersTimer  *time.Timer
+	ordersClosed bool
 	// workerSettled is when a runner's request last settled the floor
 	// ([Handler.workerSettleDue]).
 	workerSettleMu sync.Mutex
@@ -364,6 +369,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	}
 	h.jobScreens()
 	h.scheduleJobTimer()
+	h.scheduleOrderTimer()
 	if config.Store != nil {
 		h.setupMu.Lock()
 		if saved, err := h.loadSetup("local"); err == nil {
@@ -393,6 +399,7 @@ func (h *Handler) root(w http.ResponseWriter, r *http.Request) {
 // a change after Close is not delivered.
 func (h *Handler) Close() {
 	if h != nil {
+		h.closeOrders()
 		h.closeAgents()
 		h.closeDocs()
 		h.reposRead.mu.Lock()

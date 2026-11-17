@@ -516,6 +516,10 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.org_workstreams_requestable` | `in.OrgConn` | `json.RawMessage` |
 | `factory.org_workstream_request` | `in.OrgTaskRequestParams` | `json.RawMessage` |
 | `factory.org_workstream_task_view` | `in.OrgTaskViewParams` | `json.RawMessage` |
+| `factory.org_workstream_orders` | `in.OrgOrdersParams` | `json.RawMessage` |
+| `factory.org_workstream_order_create` | `in.OrgOrderCreateParams` | `json.RawMessage` |
+| `factory.org_workstream_order_update` | `in.OrgOrderUpdateParams` | `json.RawMessage` |
+| `factory.org_workstream_order_delete` | `in.OrgOrderParams` | `Empty` |
 | `factory.org_workstream_decision_withdraw` | `in.OrgDecisionParams` | `json.RawMessage` |
 | `factory.org_workstream_decision_replace` | `in.OrgDecisionParams` | `json.RawMessage` |
 | `factory.org_workstream_page_comments` | `in.OrgPageCommentsParams` | `OrgPageComments` |
@@ -1092,6 +1096,23 @@ next Afi tasks that wait on nothing unfinished the way a person's `running` star
 and answers `{tasks}` with those Afi took, now `running`; a chat's tasks are left
 `up_next`. If none could be taken it is that refusal (409).
 Every change publishes `workstream.changed` with `part` `tasks` and `part_id` the task.
+
+AN ORGANIZATION WORKSTREAM'S STANDING ORDERS (hello `org_workstream_orders`; fix wave
+X1). They are kept and run by the organization's server, never by a person's computer:
+`orders.create` refuses an `org:` workstream with `bad_scope`, and the clock passes such
+an order over. `factory.org_workstream_orders {ws}` `GET /v1/workstreams/{id}/orders`
+(view) answers `{runs, orders: [{id, ws, title, does, every, zone, on,
+budget_per_run_usd?, next?, runs, created_by, created_at, updated_at, rev, when}]}`;
+`runs` is false on a server that cannot run Afi (no model key), which then refuses to
+make one or switch one on (409). `_order_create {ws, title?, when, zone?, does,
+budget_per_run_usd?}` `POST` (the steward; `when` is `every <cron or interval>`) makes
+one switched on; `_order_update {ws, id, rev, on}` `PATCH` switches it; `_order_delete
+{ws, id}` `DELETE` removes it. Each run is ONE task (`came_from {kind: order, order_id,
+name, run}`, done by Afi, owned by the owner of incoming work, group `order:<id>`): it
+starts at once when `start_without_asking_usd` covers `budget_per_run_usd`, else waits
+on the Ask `order:<run>` "Run … now?" (go, skip, not_right). Go starts the workstream's
+agent on the server as whoever answered; skip and not_right leave it `stopped` with the
+reason. A change relays part `orders`.
 
 A REQUEST INTO ANOTHER WORKSTREAM (hello `org_workstream_requests`; Workstreams final
 spec, flow 7). `factory.org_workstreams_requestable {}` `GET /v1/workstreams/requestable`

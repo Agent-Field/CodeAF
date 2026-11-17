@@ -22,7 +22,13 @@ Yes, yours, and nobody else's. Inside a Personal workstream, Afi carries one mor
 
 Your teammates cannot see your chats, and neither can their Afi. Afi does not copy what it reads there into a task, a comment or a file; the one line a private request leaves on a task is still the only trace.
 
-On an organization's workstream Afi does not have `ws_chats`: your chats stay on your computer and the organization's server never holds them, so there is nothing for it to read.
+On an organization's workstream Afi does not have `ws_chats`: chats are not started there at all (see the next section), so there is nothing for it to read.
+
+## can I start a chat in an organization's workstream — no; ask Afi or add a task
+
+No. Only a Personal workstream starts chats. A chat in an organization's workstream would be a conversation on your computer, outside the organization: what it made would never reach the workstream's Files, Afi could not read it, and it would sit among your own conversations. So an organization's Chats tab has no box to start one, and says where the box would be: "Chats aren't started in an organization's workstream: one would run on this computer, where what it makes never reaches Files and Afi can't read it. Ask Afi or add a task instead."
+
+Afi's pane works there as always, and a task you add is kept on the organization's server for everyone in the workstream. A chat you started in an organization's workstream before this change is still listed on its Chats tab.
 
 ## does leaving a chat stop what it is doing — going back or shutting its tab stops nothing
 
@@ -70,7 +76,7 @@ Give Afi big work (work that splits into five or more tasks), or tell it "you co
 
 That chat splits the work into tasks under a group with the same name, with owners and what waits on what. Five or more appear in Tasks as a plan with **Start** (once spelled "Start all") and **Change the plan**, and nothing in it starts until you press Start. **Change the plan** opens that chat with "Change the plan for <name>: " ready in its box, so you tell the chat that owns the plan. With fewer than five, the chat asks you first, or goes ahead within the workstream's "Start without asking" amount. Once started, the chat runs the tasks in order, each once what it waits on is done, within the workstream's "Start without asking" rule, checks each result against its request, and comes to you only when a task needs you, with an Ask on that task. One name leads to two places: in Chats, your private conversation about the work; in Tasks, the shared group everyone in the workstream sees.
 
-On an organization whose agents run on its server, Afi has no ws_chat_start: your chats live on your computer and the server never sees them. There Afi gives the tasks one group in Up next itself, and nothing yet works an organization's task unattended: each waits in Up next until its owner marks it done or stops it.
+On an organization whose agents run on its server, Afi has no ws_chat_start: an organization's workstream starts no chats. There Afi gives the tasks one group in Up next itself, and nothing yet works an organization's task unattended: each waits in Up next until its owner marks it done or stops it.
 
 ## can the agent read a file I uploaded — uploads in Files read through ws_file_read
 
