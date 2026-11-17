@@ -88,6 +88,13 @@ type OrgAgentEntry struct {
 	Tool   string `json:"tool,omitempty"`
 	Failed bool   `json:"failed,omitempty"`
 	Turn   string `json:"turn,omitempty"`
+	// Cards is a "cards" line's proposal: tasks the agent proposes, which the
+	// person adds with factory.org_workstream_agent_cards_add.
+	Cards *OrgAgentCards `json:"cards,omitempty"`
+	// Took is the seq of the cards line a note says was added; Tasks are the
+	// ids it made.
+	Took  int      `json:"took,omitempty"`
+	Tasks []string `json:"tasks,omitempty"`
 }
 
 // OrgAgentState is what the agent is doing: "idle", "working" (For is whose
@@ -150,6 +157,9 @@ type OrgWorkstreamAgentSendParams struct {
 	// the agent reckons today's date where they are. Optional.
 	TZ   string `json:"tz,omitempty"`
 	Chat string `json:"chat,omitempty"`
+	// Cards is true from a desk that draws Afi's task cards and adds them
+	// (factory.org_workstream_agent_cards_add); only then does Afi propose.
+	Cards bool `json:"cards,omitempty"`
 }
 
 // FactoryOrgWorkstreamAgent is one agent event on the connection it came
@@ -232,7 +242,7 @@ func init() {
 		if err != nil {
 			return OrgRequest{}, err
 		}
-		body := orgAgentMessageBody(text, p.TZ)
+		body := orgAgentMessageBody(text, p.TZ, p.Cards)
 		if chat != "" {
 			body["chat"] = chat
 		}
@@ -257,10 +267,13 @@ func init() {
 
 // orgAgentMessageBody is the server's AgentMessageNew: the words, and the
 // sender's time zone when the app sent one.
-func orgAgentMessageBody(text, tz string) map[string]string {
-	body := map[string]string{"text": text}
+func orgAgentMessageBody(text, tz string, cards bool) map[string]any {
+	body := map[string]any{"text": text}
 	if tz = strings.TrimSpace(tz); tz != "" && len(tz) <= 64 {
 		body["tz"] = tz
+	}
+	if cards {
+		body["cards"] = true
 	}
 	return body
 }

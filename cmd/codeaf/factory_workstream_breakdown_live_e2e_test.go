@@ -31,7 +31,29 @@ type breakdownDoor struct {
 	// small fix is one Afi can make itself; edits are the changes it made.
 	pricing bool
 	edits   []string
+	// cards makes it a person's conversation on the server, which proposes;
+	// proposals are each ws_task_propose call's cards.
+	cards     bool
+	proposals []proposal
 }
+
+type proposal struct {
+	Group string         `json:"group,omitempty"`
+	Tasks []proposedCard `json:"tasks"`
+}
+
+type proposedCard struct {
+	Title   string `json:"title"`
+	Request string `json:"request"`
+	DoneBy  string `json:"done_by,omitempty"`
+	Person  string `json:"person,omitempty"`
+	Owner   string `json:"owner,omitempty"`
+	Due     string `json:"due,omitempty"`
+	// Checklist is the card's steps, the task's checklist once added.
+	Checklist []string `json:"checklist,omitempty"`
+}
+
+func (d *breakdownDoor) Proposes() bool { return d.cards }
 
 // pricingPage is the workstream's pricing page, typo and all.
 const pricingPage = "# Plans and pricing\n\n## Save hours on Recipies every week\n\nPantry Plus is $4 a month: unlimited meal plans, shared shopping lists and pantry tracking.\n"
@@ -59,6 +81,14 @@ func (d *breakdownDoor) Work(_ context.Context, tool string, args json.RawMessag
 		_ = json.Unmarshal(args, &t)
 		d.made = append(d.made, t)
 		return fmt.Sprintf(`{"id":"tk_%d","title":%q,"state":"up_next"}`, len(d.made), t.Title), nil
+	case session.WSTaskProposeTool:
+		var p proposal
+		_ = json.Unmarshal(args, &p)
+		if p.Group != "" && len(p.Tasks) < session.WorkstreamPlanFewest {
+			return "", fmt.Errorf("a plan is 5 to 8 tasks in ONE call: propose all of its tasks together, or leave out group for fewer")
+		}
+		d.proposals = append(d.proposals, p)
+		return fmt.Sprintf("Shown to them as %d cards. Nothing is made until they press Add %d tasks. Say what you proposed in one line; never say the tasks exist yet.", len(p.Tasks), len(p.Tasks)), nil
 	case session.WSTasksTool:
 		return `{"tasks":[],"people":[{"id":"priya","name":"Priya"},{"id":"marco","name":"Marco"},{"id":"lena","name":"Lena"},{"id":"sam","name":"Sam"}]}`, nil
 	case session.WSDecisionsTool:
@@ -168,6 +198,85 @@ func TestLiveAfiBreaksBigWorkIntoDeliverables(t *testing.T) {
 		})
 	}
 	if path := os.Getenv("CODEAF_LIVE_BREAKDOWN_OUT"); path != "" {
+		raw, _ := json.MarshalIndent(out, "", "  ")
+		_ = os.WriteFile(path, raw, 0o644)
+	}
+}
+
+// AFI PROPOSES ON THE SERVER, MEASURED ON THE REAL MODEL (Workstreams v2,
+// screen 8). Work that names other people, carries a date, or is a plan
+// arrives as ONE proposal of cards and nothing is made; one task only for the
+// asker with no date is made at once; a typo is neither. Opt in with
+// CODEAF_LIVE_FACTORY=1; CODEAF_LIVE_CARDS_OUT names a JSON file for the
+// measurements.
+func TestLiveAfiProposesCardsOnTheServer(t *testing.T) {
+	if os.Getenv(liveFactoryOptIn) != "1" {
+		t.Skipf("opt-in live lane: set %s=1 (spends a few cents on OpenRouter)", liveFactoryOptIn)
+	}
+	if liveFactoryKey == "" {
+		t.Fatal("BLOCKED: no OpenRouter key by any road the product reads; not faking a pass")
+	}
+	requests := []struct {
+		name, text string
+		// cards is how many cards the one proposal should hold: 0 is no proposal.
+		fewest, most int
+		made         int
+	}{
+		{"plan", "Plan the Pantry 2.4 launch for March 12: the shopping-list feature ships then. We need the blog post, App Store copy, the newsletter, social posts, a press list and whatever the launch day needs. Marco and Sam handle the build, Lena the visuals, I'm on the words.", session.WorkstreamPlanFewest, session.WorkstreamPlanMost, 0},
+		{"someone", "Ask Lena to redo the hero image for the launch post by Friday, and have me draft the launch post itself.", 1, 3, 0},
+		{"mine", "Make me a task to write the 2.4 FAQ for the help center; no rush.", 0, 0, 1},
+		{"typo", "The pricing page headline says 'Recipies' — please fix that typo.", 0, 0, 0},
+	}
+	type measured struct {
+		Name      string          `json:"name"`
+		Proposals []proposal      `json:"proposals"`
+		Made      []breakdownTask `json:"made"`
+		USD       float64         `json:"usd"`
+		Said      string          `json:"said"`
+	}
+	var out []measured
+	run := factoryWorkstreamAgent(nil, func() (config.Config, error) { return config.Config{Model: liveFactoryModel}, nil })
+	for _, r := range requests {
+		t.Run(r.name, func(t *testing.T) {
+			door := &breakdownDoor{cards: true, pricing: r.name == "typo"}
+			var said strings.Builder
+			ctx, cancel := context.WithTimeout(context.Background(), liveFactoryWall)
+			defer cancel()
+			end, err := run(ctx, serve.AgentTurn{Workstream: "ws_live", Name: "Pantry 2.4", Turn: "turn_cards_" + r.name, Asker: "priya",
+				Text: r.text, Now: time.Now(), Key: liveFactoryKey, Dir: t.TempDir(), Door: door,
+				Step: func(kind, text, tool string, failed bool) {
+					if kind == "agent" {
+						said.WriteString(text)
+					}
+				}})
+			if err != nil {
+				t.Fatalf("the turn failed: %v", err)
+			}
+			m := measured{Name: r.name, Proposals: door.proposals, Made: door.made, USD: end.USD, Said: said.String()}
+			out = append(out, m)
+			n := 0
+			for _, p := range door.proposals {
+				n += len(p.Tasks)
+			}
+			var steps []int
+			for _, p := range door.proposals {
+				for _, c := range p.Tasks {
+					steps = append(steps, len(c.Checklist))
+				}
+			}
+			t.Logf("%s: %d proposals, %d cards, steps %v, %d made, $%.4f: %q", r.name, len(door.proposals), n, steps, len(door.made), m.USD, m.Said)
+			if r.most == 0 && len(door.proposals) > 0 {
+				t.Errorf("proposed %d cards for work that needed none", n)
+			}
+			if r.most > 0 && (len(door.proposals) != 1 || n < r.fewest || n > r.most) {
+				t.Errorf("%d proposals with %d cards; want one with %d to %d", len(door.proposals), n, r.fewest, r.most)
+			}
+			if len(door.made) != r.made {
+				t.Errorf("made %d tasks at once; want %d", len(door.made), r.made)
+			}
+		})
+	}
+	if path := os.Getenv("CODEAF_LIVE_CARDS_OUT"); path != "" {
 		raw, _ := json.MarshalIndent(out, "", "  ")
 		_ = os.WriteFile(path, raw, 0o644)
 	}

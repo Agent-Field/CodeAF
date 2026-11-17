@@ -146,6 +146,8 @@ func (d *agentDoor) Work(ctx context.Context, tool string, args json.RawMessage)
 		out, err = d.wsFileComment(ctx, args)
 	case "ws_decisions":
 		out, err = d.wsDecisions(ctx, args)
+	case "ws_task_propose":
+		out, err = d.wsTaskPropose(ctx, args)
 	case "ws_task_conflict":
 		out, err = d.wsTaskConflict(ctx, args)
 	default:

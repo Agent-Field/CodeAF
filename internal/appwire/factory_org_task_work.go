@@ -89,6 +89,7 @@ func withFactoryOrgTaskWorkFeature(hello Hello, e Engine) Hello {
 	}
 	if _, ok := e.(FactoryOrg); ok {
 		hello = withFeature(hello, FeatureOrgTaskWork)
+		hello = withFeature(hello, FeatureOrgAgentCards)
 	}
 	return hello
 }

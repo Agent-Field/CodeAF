@@ -14,6 +14,7 @@ package api
 //	GET    /v1/workstreams/{id}/agent?since=<seq>     -> WorkstreamAgent (view)
 //	POST   /v1/workstreams/{id}/agent/messages AgentMessageNew -> 202 WorkstreamAgent (edit)
 //	POST   /v1/workstreams/{id}/agent/stop            -> WorkstreamAgent (edit)
+//	POST   /v1/workstreams/{id}/agent/cards/{seq} AgentCardsAdd -> WorkstreamAgent (edit; the ticked cards become tasks, once)
 //
 // Events, heard only by the person whose conversation it is (person):
 //
@@ -32,7 +33,45 @@ const (
 	AgentEntryAgent  = "agent"  // the agent's answer
 	AgentEntryStep   = "step"   // one thing the agent did on the way (Tool, Failed)
 	AgentEntryNote   = "note"   // the server saying what happened: stopped, spent its budget, could not reach the model
+	AgentEntryCards  = "cards"  // tasks the agent proposes (Cards): nothing is made until the person adds them
 )
+
+// AgentCardsMost is how many task cards one proposal holds: a plan is five to
+// eight deliverables, never more (session.WorkstreamPlanMost).
+const AgentCardsMost = 8
+
+// AgentCards is a proposal of tasks in the person's own conversation with
+// the agent (v2 screen 8). NOTHING IS WRITTEN UNTIL THE PERSON ADDS THEM: they
+// untick, change and press "Add N tasks", and only then are the tasks made,
+// as them. Group is the plan's name when the cards are a plan (five or more).
+type AgentCards struct {
+	Group string      `json:"group,omitempty"`
+	Tasks []AgentCard `json:"tasks"`
+}
+
+// AgentCard is one proposed task. DoneBy is "afi" or "person"; Person is the
+// handle of the person who does it ("" is the person adding it). Owner is the
+// handle of its owner ("" is the person adding it). WaitsOn are the 1-based
+// numbers of earlier cards it waits on. Due is YYYY-MM-DD or empty.
+type AgentCard struct {
+	Title   string `json:"title"`
+	Request string `json:"request"`
+	DoneBy  string `json:"done_by"`
+	Person  string `json:"person,omitempty"`
+	Owner   string `json:"owner,omitempty"`
+	Due     string `json:"due,omitempty"`
+	WaitsOn []int  `json:"waits_on,omitempty"`
+	// Checklist is the deliverable's steps, one line each (a task's
+	// checklist once added).
+	Checklist []string `json:"checklist,omitempty"`
+}
+
+// AgentCardsAdd is what the person adds: the ticked cards, as they changed
+// them, in the proposal's order (WaitsOn then counts within these).
+type AgentCardsAdd struct {
+	Group string      `json:"group,omitempty"`
+	Tasks []AgentCard `json:"tasks"`
+}
 
 // The states an agent is in.
 const (
@@ -46,12 +85,19 @@ const (
 type AgentEntry struct {
 	Seq    int    `json:"seq"`
 	At     string `json:"at"`
-	Kind   string `json:"kind" jsonschema:"enum=person,enum=agent,enum=step,enum=note"`
+	Kind   string `json:"kind" jsonschema:"enum=person,enum=agent,enum=step,enum=note,enum=cards"`
 	By     string `json:"by,omitempty"`
 	Text   string `json:"text"`
 	Tool   string `json:"tool,omitempty"`
 	Failed bool   `json:"failed,omitempty"`
 	Turn   string `json:"turn,omitempty"`
+	// Cards is a cards line's proposal.
+	Cards *AgentCards `json:"cards,omitempty"`
+	// Took is the seq of the cards line a note says was added: a cards line
+	// some later line took is done, and its button is gone.
+	Took int `json:"took,omitempty"`
+	// Tasks are the ids of the tasks an added note made, in order.
+	Tasks []string `json:"tasks,omitempty"`
 }
 
 // AgentState is what the agent is doing: For is whose message it is
@@ -99,6 +145,10 @@ type AgentMessageNew struct {
 	// Chat names one of the sender's own chats (AgentChat.ID); empty is the
 	// workstream's Afi conversation.
 	Chat string `json:"chat,omitempty"`
+	// Cards is true from an app that draws task cards: only then may the
+	// agent propose tasks in its answer, so an app that cannot draw a card
+	// never holds one it cannot add.
+	Cards bool `json:"cards,omitempty"`
 }
 
 // AgentEvent is agent.entry's and agent.state's body. Person is whose

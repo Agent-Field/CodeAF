@@ -281,7 +281,7 @@ func (h *appFactoryHub) relayAgent(id string, f *appOrgFollow, data string) bool
 	}
 	out := appwire.FactoryOrgWorkstreamAgent{Connection: id, ID: body.ID, Chat: body.Chat}
 	if e := body.Entry; e != nil {
-		out.Entry = &appwire.OrgAgentEntry{Seq: e.Seq, At: e.At, Kind: e.Kind, By: e.By, Text: e.Text, Tool: e.Tool, Failed: e.Failed, Turn: e.Turn}
+		out.Entry = orgAgentEntryOf(*e)
 	}
 	if s := body.AgentState; s != nil {
 		out.State = &appwire.OrgAgentState{State: s.State, Turn: s.Turn, For: s.For, Since: s.Since}
@@ -306,11 +306,23 @@ func (h *appFactoryHub) relayTaskWork(id string, f *appOrgFollow, data string) b
 	}
 	out := appwire.FactoryOrgTaskWork{Connection: id, ID: body.ID, Task: body.Task}
 	if e := body.Entry; e != nil {
-		out.Entry = &appwire.OrgAgentEntry{Seq: e.Seq, At: e.At, Kind: e.Kind, By: e.By, Text: e.Text, Tool: e.Tool, Failed: e.Failed, Turn: e.Turn}
+		out.Entry = orgAgentEntryOf(*e)
 	}
 	if s := body.AgentState; s != nil {
 		out.State = &appwire.OrgAgentState{State: s.State, Turn: s.Turn, For: s.For, Since: s.Since}
 	}
 	h.orgTaskWork(out)
 	return true
+}
+
+// orgAgentEntryOf is one server line as the desk reads it, cards and all.
+func orgAgentEntryOf(e api.AgentEntry) *appwire.OrgAgentEntry {
+	out := &appwire.OrgAgentEntry{Seq: e.Seq, At: e.At, Kind: e.Kind, By: e.By, Text: e.Text, Tool: e.Tool, Failed: e.Failed, Turn: e.Turn, Took: e.Took, Tasks: e.Tasks}
+	if e.Cards != nil {
+		out.Cards = &appwire.OrgAgentCards{Group: e.Cards.Group, Tasks: make([]appwire.OrgAgentCard, len(e.Cards.Tasks))}
+		for i, c := range e.Cards.Tasks {
+			out.Cards.Tasks[i] = appwire.OrgAgentCard(c)
+		}
+	}
+	return out
 }

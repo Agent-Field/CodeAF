@@ -45,6 +45,12 @@ Yes. Every message you send tells the server's Afi the date and time where you a
 
 When Afi changes something for you, it changes only what you asked, and its answer lists every change it made, including any status, rating, owner or date it changed along the way.
 
+## Afi's task cards — where is what Afi planned, nothing happened yet, Afi proposes, Add 2 tasks, untick a card, who is told
+
+On an organization's workstream, when what you ask for would involve someone else (a person does or owns it), carry a due date, or be a plan of 5 to 8 deliverables, Afi does not make it straight away. It proposes it in your pane as cards, all at once: each card has a tick, its title, who does it (Afi or a person), its owner, its due date and its checklist, and you can untick a card or change it. **Nothing is made and nobody is told until you press "Add 2 tasks"** (with the number ticked); the line under the button names who will be told. Then the ticked cards are made by you, with your rights, marked as coming from Afi, in Up next; five or more share one plan, which waits for one press of Start. The cards then say "Added 2 tasks · Lena is told", and the button is gone: a set of cards is added once.
+
+Something only for you, with no date, Afi simply makes and names in its answer. A typo or anything under half an hour it does itself. Your cards are private to you, like the rest of your pane. Afi only proposes in an app that draws the cards; Afi working on its own never proposes.
+
 ## Afi made a task on the server — who owns it, who it says made it, what Afi may change
 
 A task Afi makes is owned by the person who asked, unless they named someone else in the workstream or Everyone; "done by" is Afi, and it came from Afi. Lines Afi writes on a thread are signed Afi. Afi changes only work an agent does (its own tasks and chats' tasks); on a person's task or a Factory task it can only comment. An Ask it puts on a task has at most one recommended choice, listed first, and the task then waits on its owner, who alone answers it.
