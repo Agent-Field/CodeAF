@@ -1976,7 +1976,9 @@ func Mentions(text string, people map[string]string) []string {
 //
 //   - Paste what it needs: the owner's words go back to the doer, and the task
 //     runs again with them.
-//   - Give this to a person: the owner does it; it becomes their checkbox.
+//   - Do it myself: the owner takes it back (Done by becomes them, as the
+//     owner-decisions v2 board "Who does what" spells taking work back); it
+//     becomes their checkbox.
 //   - Drop it: the task is stopped, by the owner.
 
 // CantDoAskID prefixes the Ask a doer raises when it cannot do its task.
@@ -1993,11 +1995,11 @@ const (
 // with why in its own words. The owner may answer with words alone too.
 func CantDoAsk(doer, why, id string) TaskAsk {
 	return TaskAsk{
-		ID: CantDoAskID + id, Title: firstNonEmpty(doer, "The agent") + " can't finish this without you",
+		ID: CantDoAskID + id, Title: "Can you give " + firstNonEmpty(doer, "the agent") + " what it needs?",
 		Detail: cutWords(strings.TrimSpace(why), 1000),
 		Options: []TaskAskOption{
 			{ID: CantDoPaste, Label: "Paste what it needs", Recommended: true},
-			{ID: CantDoPerson, Label: "Give this to a person"},
+			{ID: CantDoPerson, Label: "Do it myself"},
 			{ID: CantDoDrop, Label: "Drop it"},
 		},
 	}

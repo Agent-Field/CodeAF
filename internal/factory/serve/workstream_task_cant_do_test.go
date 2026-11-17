@@ -12,7 +12,7 @@ import (
 // CAN'T DO IT IS AN ASK, NOT FAILED (owner decisions §10, Q4). The work-loop
 // audit's competitor-notes task ended red Failed with "If someone pastes their
 // text, I can compare it". Here the doer's failed becomes a question to the
-// owner with that way forward as an answer; Give this to a person makes it the
+// owner with that way forward as an answer; Do it myself makes it the
 // owner's checkbox, Drop it stops it, and none of them is kept as a decision.
 func TestAnAgentThatCannotDoATaskAsksTheOwnerInsteadOfFailing(t *testing.T) {
 	o := newWSOrg(t)
@@ -57,11 +57,16 @@ func TestAnAgentThatCannotDoATaskAsksTheOwnerInsteadOfFailing(t *testing.T) {
 	if !strings.Contains(got.Ask.Detail, "pastes their text") || got.Ask.Options[0].Label != "Paste what it needs" || !got.Ask.Options[0].Recommended {
 		t.Fatalf("the Ask does not carry the way forward: %+v", got.Ask)
 	}
+	// The v2 boards (2026-11-17): an Ask is a question, and taking work back
+	// is "Do it myself", never handing it to some other person.
+	if got.Ask.Title != "Can you give Afi what it needs?" || got.Ask.Options[1].Label != "Do it myself" {
+		t.Errorf("the Ask reads %q / %q, want the v2 question and Do it myself", got.Ask.Title, got.Ask.Options[1].Label)
+	}
 	if after := answer(id, factory.CantDoPaste); after.State != factory.TaskRunning || after.DoneBy.Kind != factory.TaskByAfi {
 		t.Errorf("Paste what it needs left %q by %q", after.State, after.DoneBy.Kind)
 	}
 	if after := answer(newTask("Second look"), factory.CantDoPerson); after.State != factory.TaskUpNext || after.DoneBy.Kind != factory.TaskByPerson || after.DoneBy.ID != "mia" {
-		t.Errorf("Give this to a person left %q done by %+v", after.State, after.DoneBy)
+		t.Errorf("Do it myself left %q done by %+v", after.State, after.DoneBy)
 	}
 	if after := answer(newTask("Third look"), factory.CantDoDrop); after.State != factory.TaskStopped || after.StoppedBy == nil {
 		t.Errorf("Drop it left %q", after.State)
