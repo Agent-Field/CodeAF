@@ -264,5 +264,27 @@ func TestAppInboxDismissClosesEveryKindThroughItsOwnDoor(t *testing.T) {
 		if waiting, _, _ := w.backend.ListInbox(appwire.InboxWaiting, ""); len(waiting) != 0 {
 			t.Fatalf("the process's line came back: %+v", waiting)
 		}
+		// AND AFTER A RESTART: the episode is still open, and still dismissed.
+		w = w.relaunch(t, nil)
+		if waiting, _, _ := w.backend.ListInbox(appwire.InboxWaiting, ""); len(waiting) != 0 {
+			t.Fatalf("the dismissed line came back after a restart: %+v", waiting)
+		}
+		// A NEW EPISODE OPENS ITS LINE: the process recovers, then fails again.
+		w.rt.Failing(false)
+		w.check(t, w.agent.ID+":"+row.ID, 0)
+		w.changed(t, w.agent.ID+":"+row.ID, func(p appwire.Process) bool { return !p.Service.EpisodeOpen })
+		w.rt.Failing(true)
+		for fails := 1; fails <= 3; fails++ {
+			w.check(t, w.agent.ID+":"+row.ID, fails)
+		}
+		w.rec.waitFor(t, 5*time.Second, func(_ string, data any) bool {
+			v, ok := data.(appwire.InboxAddedEvent)
+			return ok && v.Item.Ask.Subkind == appwire.SubkindServiceHealth
+		})
+		var kept map[string]string
+		_ = w.backend.state.read(func(f *appStateFile) { kept = f.ServiceDismissed })
+		if len(kept) != 0 {
+			t.Fatalf("a closed episode's dismissal is still kept: %v", kept)
+		}
 	})
 }

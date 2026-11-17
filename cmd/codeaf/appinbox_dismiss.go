@@ -23,7 +23,8 @@ package main
 //	a crew proposal            let go, as keeping the agent alone does
 //	a budget ask               closed; the budget stays as it is
 //	a kept-running process     its line closes; the process is left as it is
-//	                           and this episode's line does not open again
+//	                           and this episode's line does not open again,
+//	                           even after a restart (the app's state file)
 //	a Library choice           refused: it is the Library guide's choice, owned
 //	                           by no agent, and it stands until the guide
 //	                           settles it
@@ -152,7 +153,8 @@ func (b *appBackend) dismissProposal(agent, proposal string) error {
 }
 
 // dismissServiceLine closes a kept-running process's line and leaves the
-// process as it is; the same episode's line does not open again.
+// process as it is; the same episode's line does not open again, in this run
+// of the app or the next ([appStateFile.ServiceDismissed]).
 func (b *appBackend) dismissServiceLine(id string) error {
 	svc, err := b.servicesOf()
 	if err != nil {
@@ -173,8 +175,30 @@ func (b *appBackend) dismissServiceLine(id string) error {
 	if !found {
 		return appwire.Errorf(appwire.CodeNotFound, "the Inbox item %s is no longer waiting", id)
 	}
+	b.saveServiceDismissed(key, line.episode)
 	b.serviceLineResolved(svc, key, line, appwire.ResolvedDismissed, b.now())
 	return nil
+}
+
+// saveServiceDismissed keeps a process's dismissed episode in the app's
+// file, or forgets it when episode is "", so a restart does not open the line
+// again. A file that cannot be written leaves the dismissal standing for this
+// run of the app.
+func (b *appBackend) saveServiceDismissed(key, episode string) {
+	if b.state == nil {
+		return
+	}
+	_ = b.state.write(func(f *appStateFile) error {
+		if episode == "" {
+			delete(f.ServiceDismissed, key)
+			return nil
+		}
+		if f.ServiceDismissed == nil {
+			f.ServiceDismissed = map[string]string{}
+		}
+		f.ServiceDismissed[key] = episode
+		return nil
+	})
 }
 
 // dismissQuestion closes one of a held conversation's asks: a budget ask, the
