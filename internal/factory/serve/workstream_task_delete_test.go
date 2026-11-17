@@ -18,6 +18,7 @@ func TestTaskDeleteAndUndoRestoreTheWaits(t *testing.T) {
 		t.Fatalf("after delete: %+v", all)
 	}
 	o.do(t, "santosh", "GET", path+"/tasks/"+a.ID, -1, nil, 404, nil)
+	o.do(t, "abir", "POST", path+"/tasks/"+a.ID+"/restore", -1, nil, 403, nil)
 	o.do(t, "santosh", "POST", path+"/tasks/"+a.ID+"/restore", -1, nil, 200, nil)
 	var got api.WorkstreamTask
 	o.do(t, "santosh", "GET", path+"/tasks/"+b.ID, -1, nil, 200, &got)
@@ -55,7 +56,13 @@ func TestTaskDeleteNeedsAStopAndOwnerRights(t *testing.T) {
 	a := o.task(t, "santosh", path, api.TaskCreate{Title: "Work", DoneBy: factory.TaskDoneBy{Kind: factory.TaskByPerson, ID: "abir"}, Owner: &factory.TaskOwner{Kind: factory.TaskOwnerPerson, ID: "abir", Name: "Abir"}})
 	var cur api.WorkstreamTask
 	o.do(t, "abir", "PATCH", path+"/tasks/"+a.ID, a.Rev, map[string]any{"state": "running"}, 200, &cur)
-	o.do(t, "abir", "DELETE", path+"/tasks/"+a.ID, cur.Rev, nil, 403, nil)
+	var refused struct {
+		Error string `json:"error"`
+	}
+	o.do(t, "abir", "DELETE", path+"/tasks/"+a.ID, cur.Rev, nil, 403, &refused)
+	if refused.Error != "Stop this task before deleting it" {
+		t.Fatalf("running refusal: %q", refused.Error)
+	}
 	o.do(t, "abir", "PATCH", path+"/tasks/"+a.ID, cur.Rev, map[string]any{"state": "stopped"}, 200, &cur)
 	o.do(t, "santosh", "DELETE", path+"/tasks/"+a.ID, a.Rev, nil, 412, nil)
 	o.do(t, "santosh", "DELETE", path+"/tasks/"+a.ID, cur.Rev, nil, 200, nil)
