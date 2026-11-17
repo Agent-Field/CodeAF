@@ -1,7 +1,7 @@
 ---
 kind: internal
 title: Join command test writers and select touched packages from the branch point
-pr: 99999
+pr: 2790
 surface: [build]
 invalidates:
   - "Touched-package checks compared the current base tree with HEAD; they now compare the merge-base with HEAD, so advancing trunk does not select another lane's packages or module changes."
