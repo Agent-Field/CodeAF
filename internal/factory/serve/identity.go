@@ -15,6 +15,9 @@ import (
 // callerHandle resolves credentials before consulting the host's GitHub login.
 // A token with no signed-in profile is the factory owner.
 func (h *Handler) callerHandle(r *http.Request) (string, error) {
+	if call, ok := agentCallOf(r); ok {
+		return call.handle, nil
+	}
 	if r.Context().Value(workerKey{}) != nil {
 		return requestWorker(r).Handle, nil
 	}
