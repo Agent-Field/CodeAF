@@ -51,7 +51,7 @@ func TestATasksWorkingConversationIsSharedAndItsOwnerSteersIt(t *testing.T) {
 	_, _, pricing, _ := o.orgScene(t)
 	ctx := context.Background()
 	mia := &agentDoor{h: o.h, id: pricing.ID, asker: "mia"}
-	line, err := mia.Work(ctx, "ws_task_create", json.RawMessage(`{"title":"Pricing copy","request":"Write the pricing page copy."}`))
+	line, err := mia.Work(ctx, "ws_task_create", json.RawMessage(`{"title":"Pricing copy","request":"Write the pricing page copy.","goal":"Visitors understand the three plans","deliverable":"The page copy in Files","acceptance":["Names all three plans","Under 200 words"]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,14 +155,14 @@ func TestADoneTaskIsRevisedNotReopened(t *testing.T) {
 	_, _, pricing, _ := o.orgScene(t)
 	ctx := context.Background()
 	mia := &agentDoor{h: o.h, id: pricing.ID, asker: "mia"}
-	line, err := mia.Work(ctx, "ws_task_create", json.RawMessage(`{"title":"Pricing copy","request":"Write the pricing page copy."}`))
+	line, err := mia.Work(ctx, "ws_task_create", json.RawMessage(`{"title":"Pricing copy","request":"Write the pricing page copy.","goal":"Visitors understand the three plans","deliverable":"The page copy in Files","acceptance":["Names all three plans","Under 200 words"]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
 	var made struct{ Task struct{ ID string } }
 	_ = json.Unmarshal([]byte(line), &made)
-	for _, state := range []string{"running", "done"} {
-		if _, err := mia.Work(ctx, "ws_task_update", json.RawMessage(`{"task":"`+made.Task.ID+`","state":"`+state+`"}`)); err != nil {
+	for _, state := range []string{`"running"`, `"done","handoff":"Wrote the pricing copy."`} {
+		if _, err := mia.Work(ctx, "ws_task_update", json.RawMessage(`{"task":"`+made.Task.ID+`","state":`+state+`}`)); err != nil {
 			t.Fatal(err)
 		}
 	}

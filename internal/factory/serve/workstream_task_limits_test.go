@@ -34,7 +34,7 @@ func TestARunAtItsLimitAsksTheOwnerInsteadOfOverrunningOrFailing(t *testing.T) {
 		n := len(calls[turn.Task.Title])
 		mu.Unlock()
 		done := func() (AgentTurnEnd, error) {
-			_, err := turn.Door.(workDoor).Work(ctx, "ws_task_update", json.RawMessage(`{"task":"`+turn.Task.ID+`","state":"done"}`))
+			_, err := turn.Door.(workDoor).Work(ctx, "ws_task_update", json.RawMessage(`{"task":"`+turn.Task.ID+`","state":"done","handoff":"Did the task."}`))
 			return AgentTurnEnd{}, err
 		}
 		if n > 1 {

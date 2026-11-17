@@ -43,7 +43,7 @@ func TestEightStartsRunThreeAtATimeAndTheRestWaitTheirTurn(t *testing.T) {
 		case <-ctx.Done():
 			return AgentTurnEnd{}, ctx.Err()
 		}
-		_, err := turn.Door.(workDoor).Work(ctx, "ws_task_update", json.RawMessage(`{"task":"`+turn.Task.ID+`","state":"done"}`))
+		_, err := turn.Door.(workDoor).Work(ctx, "ws_task_update", json.RawMessage(`{"task":"`+turn.Task.ID+`","state":"done","handoff":"Did the task."}`))
 		return AgentTurnEnd{}, err
 	})
 	var ids []string
@@ -164,7 +164,7 @@ func TestATaskWaitingForItsPlaceWaitsAgainAfterARestart(t *testing.T) {
 	cfg := o.cfg
 	cfg.WorkstreamAgent = func(ctx context.Context, turn AgentTurn) (AgentTurnEnd, error) {
 		asked = turn
-		_, err := turn.Door.(workDoor).Work(ctx, "ws_task_update", json.RawMessage(`{"task":"`+turn.Task.ID+`","state":"done"}`))
+		_, err := turn.Door.(workDoor).Work(ctx, "ws_task_update", json.RawMessage(`{"task":"`+turn.Task.ID+`","state":"done","handoff":"Did the task."}`))
 		return AgentTurnEnd{}, err
 	}
 	o.h = New(o.seam, cfg)
@@ -175,7 +175,7 @@ func TestATaskWaitingForItsPlaceWaitsAgainAfterARestart(t *testing.T) {
 	if got := o.one(t, path, tk.ID); got.State != factory.TaskDone || o.threadSays(t, path, tk.ID, "Interrupted") {
 		t.Fatalf("a waiting task after a restart: %+v", got)
 	}
-	if asked.Asker != "abir" || asked.Text != "Waiting\n\nAs asked." {
+	if asked.Asker != "abir" || !strings.HasPrefix(asked.Text, "Waiting\n\nAs asked.") {
 		t.Fatalf("it was asked %+v", asked)
 	}
 }
