@@ -53,3 +53,9 @@ When Afi is given big work that splits into five or more tasks, it starts a name
 A conversation that belongs to a workstream (its Afi, or one of its chats) keeps what it makes in that workstream: a brief, a comparison, a plan or a list is saved with ws_file_create and appears in the workstream's Files, where everyone in it sees it. It is not written to disk as a loose file, and it does not reach the app's Library. The Library is a separate shelf: something made in a workstream gets there only when a person adds it with Add to Library. What such a conversation says is also never captured into the Library by itself, whatever the Library's own setting is.
 
 Such a conversation cannot set up work on a clock either. Asked to do something every Monday or each morning, it says to set it up under People and rules › Keeps running, where the workstream's standing orders live, instead of making one itself.
+
+## where is the Decisions panel — Decisions is the first row in Files; why Afi names a task, not its id
+
+There is no Decisions panel. Decisions is the first row in a workstream's Files: it opens the list the workstream builds itself, one line per decision with who made it, where it came from and when, and a replaced decision stays there greyed. When Afi or a chat says it recorded or proposed a decision, that is where it is.
+
+Afi and the chats talk in the words you see on the screen. They name a task by its title, a file by its name and a person by their name. They never quote an id (a long string such as `tk_5afd…`), a tool or field name, or a version number such as "Overview v3", because Files keeps no version history. They also never talk about "the system" or a window. The places they point you to are Tasks, Chats and Files. If a reply still quotes an id, ask for the task by its title and they will find it.
