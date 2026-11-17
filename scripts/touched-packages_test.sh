@@ -123,7 +123,7 @@ printf '\n' >>go.mod
 finish go.mod
 BASE="$(git rev-parse HEAD)"; export BASE
 git checkout -q --detach "$candidate"
-TOUCHED_ARGS="$tmp/local-args" make -s -f "$root/Makefile" test-touched >/dev/null
+TOUCHED_ARGS="$tmp/local-args" make -s -f "$root/Makefile" test-touched BASE="$BASE" >/dev/null
 python3 - "$tmp/local-args" "$fork" <<'PY'
 import sys
 arguments = open(sys.argv[1]).read().splitlines()
@@ -140,7 +140,7 @@ for package in cmd/codeaf internal/session internal/one internal/two; do
 	printf '// Changed source.\n' >>"$package/file.go"
 done
 finish cmd/codeaf/file.go internal/session/file.go internal/one/file.go internal/two/file.go
-TOUCHED_ARGS="$tmp/local-args" make -s -f "$root/Makefile" test-touched >/dev/null
+TOUCHED_ARGS="$tmp/local-args" make -s -f "$root/Makefile" test-touched BASE="$BASE" >/dev/null
 python3 - "$tmp/local-args" <<'PYTEST'
 import sys
 arguments = open(sys.argv[1]).read().splitlines()
