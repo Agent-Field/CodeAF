@@ -61,6 +61,7 @@ type FilesFrom struct {
 // MadeBy is the agent that made it, when one did (kind afi or chat, with its
 // name); a person's file leaves it out and is stamped as the caller's.
 type FileNew struct {
+	FromChat string              `json:"from_chat,omitempty"`
 	Kind     string              `json:"kind"`
 	Name     string              `json:"name,omitempty"`
 	Folder   string              `json:"folder,omitempty"`

@@ -71,6 +71,7 @@ type OrgFileCreateParams struct {
 	Kind     string              `json:"kind"`
 	Name     string              `json:"name,omitempty"`
 	Folder   string              `json:"folder,omitempty"`
+	FromChat string              `json:"from_chat,omitempty"`
 	FromTask string              `json:"from_task,omitempty"`
 	MadeBy   *factory.FileMaker  `json:"made_by,omitempty"`
 	BodyMD   string              `json:"body_md,omitempty"`

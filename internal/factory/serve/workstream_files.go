@@ -483,7 +483,7 @@ func (h *Handler) createWorkstreamFile(w http.ResponseWriter, r *http.Request) {
 		maker = factory.FileMaker{Kind: body.MadeBy.Kind, ID: body.MadeBy.ID, Name: firstNonEmpty(strings.TrimSpace(body.MadeBy.Name), "Afi"), For: v.Handle}
 	}
 	f := factory.WorkstreamFile{
-		ID: "fl_" + id, Kind: body.Kind, Name: strings.TrimSpace(body.Name), Folder: body.Folder, FromTask: body.FromTask,
+		ID: "fl_" + id, Kind: body.Kind, Name: strings.TrimSpace(body.Name), Folder: body.Folder, FromTask: body.FromTask, FromChat: body.FromChat,
 		MadeBy: maker, CreatedAt: now, ChangedAt: now, ChangedBy: v.Handle,
 	}
 	if !slices.Contains(factory.FileKinds, f.Kind) {

@@ -54,8 +54,9 @@ const (
 // counts every change to this one file, so two people changing two files
 // never refuse each other.
 type WorkstreamFile struct {
-	ID string `json:"id"`
-	WS string `json:"ws"`
+	FromChat string `json:"from_chat,omitempty"`
+	ID       string `json:"id"`
+	WS       string `json:"ws"`
 	// Rev counts every change to this file.
 	Rev int `json:"rev"`
 	// Folder is the id of the folder it sits in, empty at the top.
