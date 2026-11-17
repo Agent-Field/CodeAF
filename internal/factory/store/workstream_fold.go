@@ -256,6 +256,14 @@ func (st *Store) FoldWorkstream(from, to string, undo bool, now time.Time, guard
 		b.UpdatedAt = now
 		b.Rev++
 		for _, t := range before {
+			// Each workstream has one launch plan. The destination keeps its
+			// own; the source's remains under its old key for Undo.
+			if t.Name == "parts" {
+				if _, err = tx.Exec(`UPDATE parts SET ws=? WHERE ws=? AND part<>?`, to, from, PartPlan); err != nil {
+					return err
+				}
+				continue
+			}
 			if t.Name == "workstreams" || t.Name == "workstream_file_seeds" {
 				continue
 			}
