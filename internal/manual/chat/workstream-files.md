@@ -16,7 +16,7 @@ Files is the workstream's own library. The app's **Library** is a separate shelf
 
 ## where my old pages, sources and canvases went — nothing was lost
 
-The first time a workstream's Files is opened, everything it kept before is folded in, once, and nothing is copied or lost: each page becomes a document (a page that held other pages also becomes a folder holding them), each source becomes a link, a repo or an upload, each canvas made inside the workstream becomes a canvas file, and a workstream with no decisions page gets a Decisions document carrying the decisions it already had.
+The first time a workstream's Files is opened, everything it kept before is folded in, once, and nothing is copied or lost: each page becomes a document (a page that held other pages also becomes a folder holding them), each source becomes a link, a repo or an upload, and each canvas made inside the workstream becomes a canvas file. No Decisions document is made: a workstream's decisions are its Decisions list, kept automatically, not a file in Files.
 
 ## New, search, sort, folders — making and finding files
 

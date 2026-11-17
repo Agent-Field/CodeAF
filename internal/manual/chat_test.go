@@ -60,6 +60,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does every chat in a workstream turn into a task", "workstream-chats-and-tools"},
 		{"open a workstream chat as its own tab", "workstream-chats-and-tools"},
 		{"did Afi save the brief to my Library", "workstream-chats-and-tools"},
+		{"I told Afi you coordinate it, where did the work go", "workstream-chats-and-tools"},
+		{"what does Change the plan do on a batch of tasks", "workstream-chats-and-tools"},
 		{"the agent is still answering someone else, how do I stop it", "organization-workstream-agent"},
 		{"can my colleagues read what I ask Afi in our organization workstream", "organization-workstream-agent"},
 		{"Afi on the server wrote pages titled Task instead of making tasks", "organization-workstream-agent"},
@@ -510,6 +512,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// F-20 (workstreams-v5 live run): background seats follow the chosen
 		// model, and a person billed for models they never picked asks this.
 		{"which model names my chats and builds the library in the background?", "models-and-cost"},
+		{"why do memory calls keep running after I stop chatting?", "models-and-cost"},
+		{"when does the library build from my chats?", "models-and-cost"},
 		{"why is my spending showing gemini when I picked deepseek", "models-and-cost"},
 		{"how do I say no to a task it wants to start", "tasks"},
 		{"I typed no to the task and it started anyway", "tasks"},

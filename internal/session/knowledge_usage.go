@@ -18,15 +18,21 @@ func init() {
 	knowledge.SetUsageRecorder(func(ctx context.Context, billed provider.Billed) {
 		// The provider sends empty figures only when a final receipt was unavailable.
 		// Keep the request and its attribution without guessing a monetary amount.
+		//
+		// THE LINE IS CHARGED TO THE CONVERSATION whose sources the compile ran
+		// for (knowledge.ChargedSession) — the owning turn's session, or the one
+		// chat a background pass compiled after it went quiet. Before, a
+		// background pass carried no session at all, and live lane E6b's 175
+		// Library calls belonged to no conversation.
 		if billed.Empty() {
 			RecordUnbilledCall(UsageLedgerPath(), withUsageBilling(UsageLine{
 				GenerationID: billed.GenerationID, Model: billed.Model, Role: string(lane.RoleMemory),
-				Session: provider.SessionFrom(ctx), LibraryActivity: knowledge.LibraryActivity(ctx),
+				Session: knowledge.ChargedSession(ctx), LibraryActivity: knowledge.LibraryActivity(ctx),
 			}, billed.Billing))
 			return
 		}
 		RecordUsage(UsageLedgerPath(), withUsageBilling(UsageLine{
-			GenerationID: billed.GenerationID, At: time.Now(), Model: billed.Model, Role: string(lane.RoleMemory), Session: provider.SessionFrom(ctx),
+			GenerationID: billed.GenerationID, At: time.Now(), Model: billed.Model, Role: string(lane.RoleMemory), Session: knowledge.ChargedSession(ctx),
 			Calls: 1, Input: billed.PromptTokens, Output: billed.CompletionTokens, USD: billed.Cost,
 			Price: usagePriceProvider, LibraryActivity: knowledge.LibraryActivity(ctx),
 		}, billed.Billing))
