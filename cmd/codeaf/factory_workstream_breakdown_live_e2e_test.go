@@ -49,6 +49,8 @@ type proposedCard struct {
 	Person  string `json:"person,omitempty"`
 	Owner   string `json:"owner,omitempty"`
 	Due     string `json:"due,omitempty"`
+	// Checklist is the card's steps, the task's checklist once added.
+	Checklist []string `json:"checklist,omitempty"`
 }
 
 func (d *breakdownDoor) Proposes() bool { return d.cards }
@@ -256,7 +258,13 @@ func TestLiveAfiProposesCardsOnTheServer(t *testing.T) {
 			for _, p := range door.proposals {
 				n += len(p.Tasks)
 			}
-			t.Logf("%s: %d proposals, %d cards, %d made, $%.4f: %q", r.name, len(door.proposals), n, len(door.made), m.USD, m.Said)
+			var steps []int
+			for _, p := range door.proposals {
+				for _, c := range p.Tasks {
+					steps = append(steps, len(c.Checklist))
+				}
+			}
+			t.Logf("%s: %d proposals, %d cards, steps %v, %d made, $%.4f: %q", r.name, len(door.proposals), n, steps, len(door.made), m.USD, m.Said)
 			if r.most == 0 && len(door.proposals) > 0 {
 				t.Errorf("proposed %d cards for work that needed none", n)
 			}
