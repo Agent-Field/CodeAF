@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -90,5 +91,21 @@ func TestAnOrderRunSaysItsOwnOutcome(t *testing.T) {
 	}
 	if v := orderRunView(automation.Run{ID: 8, Phase: automation.PhaseRunning}); v.Outcome != "" {
 		t.Fatalf("a running run has an outcome: %+v", v)
+	}
+}
+
+// AN ORGANIZATION'S STANDING ORDER IS NEVER MADE ON A PERSON'S COMPUTER (E4
+// F0): the clock here would run it as a general agent with this person's shell
+// over their whole home. orders.create refuses it, saying where such orders
+// run, and keeps nothing.
+func TestAnOrganizationsOrderIsNotMadeOnThisComputer(t *testing.T) {
+	backend, _, store := ordersBackend(t)
+	_, err := backend.CreateOrder(appwire.OrderCreate{When: "every 1h", Does: "Check Pantry app for tasks due today.", Workstream: "org:conn-1/ws_pantry"})
+	var wire *appwire.Error
+	if !errors.As(err, &wire) || wire.Code != appwire.CodeBadScope || wire.Message != automation.LineOrgWorkstream {
+		t.Fatalf("an organization's order was made here: %v", err)
+	}
+	if all, _ := store.List(); len(all) != 0 {
+		t.Fatalf("a refused order was kept: %+v", all)
 	}
 }

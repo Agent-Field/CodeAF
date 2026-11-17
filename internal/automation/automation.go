@@ -139,7 +139,8 @@ type Automation struct {
 	// switches it on and whose task list its results land in, as a group
 	// named after it. Empty is an order that belongs to no workstream, which
 	// every order made before workstreams had them is. It changes nothing
-	// about when or how the order runs.
+	// about when or how the order runs, with ONE exception: an organization's
+	// workstream ([OrgWorkstream]) never runs on this computer at all.
 	Workstream string `json:"workstream,omitempty"`
 
 	// Last is the most recent run that ended, filled in by [Store.List] and
@@ -148,6 +149,29 @@ type Automation struct {
 	// runs table is the one record of a run.
 	Last *Run `json:"last,omitempty"`
 }
+
+// orgWorkstreamPrefix is how the app spells a workstream that lives on an
+// organization's server: `org:<connection>/<id>`. Personal's are a bare id.
+const orgWorkstreamPrefix = "org:"
+
+// OrgWorkstream says a belongs to a workstream on an organization's server.
+//
+// AN ORGANIZATION'S STANDING ORDER NEVER RUNS ON A PERSON'S COMPUTER. A run
+// here is a general agent with this person's shell, files and connected
+// accounts, over a home that holds every organization they belong to; the
+// final run of 2026-11-17 (E4 F0) watched one read the organization's own
+// database, an operator's join link and a teammate's private store. The
+// workstream's own agent, with only the workstream's tools, runs on the
+// organization's server; the clock here never starts one ([Clock.pass] passes
+// its slots over and [Clock.start] ends a run of it at once), and an app
+// never makes one ([LineOrgWorkstream] is what it says instead).
+func (a Automation) OrgWorkstream() bool {
+	return strings.HasPrefix(strings.TrimSpace(a.Workstream), orgWorkstreamPrefix)
+}
+
+// LineOrgWorkstream is what a run of an organization's standing order says
+// when this computer refuses it, and what making one here is refused with.
+const LineOrgWorkstream = "an organization's standing orders run on its server, never on this computer"
 
 // Look is what a watch looks at, and the sentence its judgment is held to.
 // Exactly one of Command, Files or Tool is set.
