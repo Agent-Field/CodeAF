@@ -80,6 +80,15 @@ func TestADependantStartsWithItsInputsWordsAndTheHandoff(t *testing.T) {
 		t.Errorf("the packet names what it used as %v", used)
 	}
 
+	// A wait added afterwards is in the packet too, though the brief never named it.
+	macro := work("ws_task_create", `{"title":"Support macro","request":"Write it.",`+brief+`}`)
+	macroID := macro["task"].(map[string]any)["id"].(string)
+	work("ws_task_update", `{"task":"`+macroID+`","waiting_on":["`+relID+`"]}`)
+	packet, _ = o.h.taskPacket(ctx, d, macroID, "Support macro")
+	if !strings.Contains(packet, "recipe import no longer drops fractions") || !strings.Contains(packet, "Its hand-off note: Notes cover") {
+		t.Errorf("a wait added after the task was made is not in its packet:\n%s", packet)
+	}
+
 	// A long input is cut to the budget, and says how to read on.
 	long := strings.Repeat("A line of the research the team gathered.\n", 4000)
 	big := work("ws_file_create", `{"name":"Research dump","markdown":`+quoteJSON(long)+`}`)

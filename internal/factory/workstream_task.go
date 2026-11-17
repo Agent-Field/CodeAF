@@ -1393,6 +1393,20 @@ func AnswerTask(t WorkstreamTask, askID, option, words string, a TaskActor, by T
 	if t.Ask == nil && len(t.Asks) == 0 {
 		t.State = TaskRunning
 	}
+	if i < 0 && IsCantDoAsk(ask) && t.Ask == nil && len(t.Asks) == 0 {
+		switch option {
+		case CantDoPerson:
+			// The owner does it: their checkbox, up next.
+			doer := who
+			if t.Owner.Kind == TaskOwnerPerson && t.Owner.ID != "" {
+				doer = PersonRef{ID: t.Owner.ID, Name: firstNonEmpty(t.Owner.Name, t.Owner.ID)}
+			}
+			t.DoneBy = TaskDoneBy{Kind: TaskByPerson, ID: doer.ID, Name: doer.Name}
+			t.State = TaskUpNext
+		case CantDoDrop:
+			t.State, t.StoppedBy = TaskStopped, &who
+		}
+	}
 	t.Rev, t.UpdatedAt = t.Rev+1, stamp
 	ch := TaskChange{Task: t, Events: []WorkstreamTaskEvent{{ID: newID(), Task: t.ID, At: stamp, By: by, Kind: TaskEventAnswered, Text: text, Option: option}}}
 	if d, ok := answerDecision(t, ask, opt, words, who, "dc_"+newID(), now); ok {
@@ -1950,6 +1964,49 @@ func Mentions(text string, people map[string]string) []string {
 	}
 	return out
 }
+
+// ── "CAN'T DO IT" IS AN ASK, NOT FAILED (owner decisions §10, Q4) ──
+//
+// An agent that lacks an input or a capability (the server's Afi has no web)
+// used to set its task Failed with an honest reason, which turned it red when
+// it was really a question for the owner. Now the doer's door turns that into
+// this Ask on the task, to its owner, and Failed is kept for errors. Its three
+// answers act, and none of them is a decision of the workstream's: the reason
+// an agent could not go on is not something its people settled.
+//
+//   - Paste what it needs: the owner's words go back to the doer, and the task
+//     runs again with them.
+//   - Do it myself: the owner takes it back (Done by becomes them, as the
+//     owner-decisions v2 board "Who does what" spells taking work back); it
+//     becomes their checkbox.
+//   - Drop it: the task is stopped, by the owner.
+
+// CantDoAskID prefixes the Ask a doer raises when it cannot do its task.
+const CantDoAskID = "ask_cant_"
+
+// The answers a can't-do Ask offers.
+const (
+	CantDoPaste  = "paste"
+	CantDoPerson = "person"
+	CantDoDrop   = "drop"
+)
+
+// CantDoAsk is the Ask that replaces Failed when doer could not do the task,
+// with why in its own words. The owner may answer with words alone too.
+func CantDoAsk(doer, why, id string) TaskAsk {
+	return TaskAsk{
+		ID: CantDoAskID + id, Title: "Can you give " + firstNonEmpty(doer, "the agent") + " what it needs?",
+		Detail: cutWords(strings.TrimSpace(why), 1000),
+		Options: []TaskAskOption{
+			{ID: CantDoPaste, Label: "Paste what it needs", Recommended: true},
+			{ID: CantDoPerson, Label: "Do it myself"},
+			{ID: CantDoDrop, Label: "Drop it"},
+		},
+	}
+}
+
+// IsCantDoAsk is whether ask is a doer's can't-do Ask.
+func IsCantDoAsk(ask TaskAsk) bool { return strings.HasPrefix(ask.ID, CantDoAskID) }
 
 // FileChangedAskID prefixes the Ask a changed file puts on a running task.
 const FileChangedAskID = "ask_file_"

@@ -465,6 +465,20 @@ func (d *agentDoor) wsTaskUpdate(ctx context.Context, args json.RawMessage) (any
 		}
 		p["state"] = *a.State
 	}
+	// CAN'T DO IT IS AN ASK, NOT FAILED (owner decisions §10). An agent that
+	// sets its task failed is saying it cannot go on: what it lacks becomes a
+	// question to the task's owner, with what to do about it as answers, and
+	// the task waits amber instead of turning red. Failed stays for errors,
+	// which only the run's own ending writes (finishTaskRun).
+	if a.State != nil && *a.State == factory.TaskFailed && a.Ask == nil {
+		delete(p, "state")
+		delete(p, "state_reason")
+		why := strings.TrimSpace(derefString(a.StateReason))
+		if why == "" {
+			why = "It did not say what it lacks."
+		}
+		p["ask"] = factory.CantDoAsk(firstNonEmpty(t.DoneBy.Name, "Afi"), why, strconv.FormatInt(time.Now().UnixNano(), 36))
+	}
 	if a.StateReason != nil {
 		p["state_reason"] = cutRunes(strings.TrimSpace(*a.StateReason), 500)
 	}

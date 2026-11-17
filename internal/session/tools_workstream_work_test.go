@@ -98,6 +98,9 @@ func TestTheWorkstreamToolsTeachTheirRules(t *testing.T) {
 			}
 		}
 	}
+	if !strings.Contains(describe[WSTaskUpdateTool], "do not set failed: raise an ask") {
+		t.Error("ws_task_update does not turn can't-do into an Ask")
+	}
 	// Owner decision 4 (E3 F6, "(version 2)"): an earlier copy only when History has one, never a number.
 	for _, rule := range []string{"Say an earlier copy exists only when earlier_copies lists one", "never say it to anyone"} {
 		if !strings.Contains(describe[WSFileReadTool], rule) {
