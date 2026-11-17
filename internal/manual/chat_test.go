@@ -106,6 +106,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"open a task in its own tab", "organization-workstream-tasks"},
 		{"I sent a task back, what happens to the tasks waiting on it", "organization-workstream-tasks"},
 		{"can afi act on my comment on a task", "organization-workstream-tasks"},
+		{"where is the result of a task, can I read it without opening it", "organization-workstream-tasks"},
+		{"what does checked against the request and 2 decisions mean", "organization-workstream-tasks"},
 		{"can Claude Code make a canvas", "claude-code-provider"},
 		{"does Claude Code see my codeaf skills", "claude-code-provider"},
 		{"Claude Code's edits don't show as rows in the chat", "claude-code-provider"},

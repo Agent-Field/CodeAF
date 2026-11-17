@@ -117,6 +117,14 @@ When Afi or a chat does a task, nobody has to attach its files. Every file of th
 
 A canvas a task made or uses shows as a small picture of the whole board, repainted a moment after anyone changes it. Clicking it opens the canvas inside the task, with a bar naming the task to go back (Escape too) and **Open beside** to put it in the window's preview tab. On an organization's canvas the picture stays the plain board ground until this computer can draw it; the canvas itself still opens.
 
+## a task's result — read the document without opening it, Result above Request, Checked against
+
+A task's page reads, top to bottom: its question for you (the Ask), then **Result**, then the hand-off note, then **Request** (or its **Brief**), the **Checklist**, what it **Uses**, and **Activity and comments**. Result sits above Request because once work is done, what was made matters more than what was asked.
+
+The first document an agent's task made is shown inside Result: its name, where it is in Files and **Open**, then its heading and first few lines, so you can read it without leaving the task. **Open** is for editing it. Anything else the task made (more files, a canvas's picture, a pull request) is a row under it. A document that cannot be read shows only its line with Open.
+
+Under the result, the doer's check reads "Checked against the request: …", or "Checked against the request and 2 decisions: …" when it also checked the work against that many of the workstream's decisions. A task with no check shows no line.
+
 ## a task's brief — Goal, Deliverable, Acceptance, Inputs, Constraints, and the hand-off note
 
 A task made with a brief shows it under **Brief**: the request as a summary, then **Goal** (why, and for whom), **Deliverable** (what comes back, and where), **Acceptance** (the lines its check answers), **Inputs** (each a row: a file opens, a canvas shows its picture, another task opens in place and stands for its Result, a decision reads as its words, a link opens in the browser) and **Constraints**. Only the parts with words show. A task made before briefs, or by a person in Add task, shows only its **Request**.
