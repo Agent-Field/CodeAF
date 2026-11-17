@@ -60,6 +60,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does every chat in a workstream turn into a task", "workstream-chats-and-tools"},
 		{"open a workstream chat as its own tab", "workstream-chats-and-tools"},
 		{"did Afi save the brief to my Library", "workstream-chats-and-tools"},
+		{"where is the Decisions panel", "workstream-chats-and-tools"},
+		{"why does Afi show me a task id", "workstream-chats-and-tools"},
 		{"I told Afi you coordinate it, where did the work go", "workstream-chats-and-tools"},
 		{"what does Change the plan do on a batch of tasks", "workstream-chats-and-tools"},
 		{"who decides an Ask on a task", "workstream-asks-and-decisions"},
