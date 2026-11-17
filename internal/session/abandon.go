@@ -3,8 +3,10 @@ package session
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/guard"
 )
 
 // THE SECOND STAGE OF A STOP, AND WHY IT HAD TO BE BUILT FROM THE BOTTOM UP.
@@ -101,8 +103,97 @@ const AbandonStopTimeout AbandonReason = "stop timeout"
 // arriving on the next keystroke opens an ordinary turn and cannot be refused
 // for a turn nobody is waiting for.
 func (a *Agent) Abandon(reason AbandonReason) (Usage, bool) {
+	return a.abandonTurn(reason, nil)
+}
+
+// StopGrace is HOW LONG A STOP WAITS FOR THE ENGINE before the turn is let go
+// of without it ([Agent.Abandon], [Agent.InterruptWithin]).
+//
+// TEN SECONDS, AND THE FIGURE IS ARGUED RATHER THAN PICKED. It is NOT argued
+// from bash's three-second `WaitDelay` or the `jobs` kill's two-plus-two second
+// graces any more: this change put the call's context on both of those, so a
+// stop ends them at once rather than waiting them out. What is left behind the
+// bound is the class this change cannot reach from outside — a wait that never
+// looks at its context at all, a command whose output a grandchild still holds,
+// anything a tool blocks on that was written before cancellation existed. Ten
+// seconds is chosen to sit far above every settle we can measure, so the
+// deadline fires only on that class and never on a turn that was about to end
+// tidily and hand back what it did.
+//
+// IT IS MEASURED FROM THE KEYPRESS and not from the last event, because the key
+// is the only moment the person is timing from.
+const StopGrace = 10 * time.Second
+
+// InterruptWithin is a person's stop WITH ITS SECOND STAGE ARMED BEHIND IT: the
+// turn is interrupted now, and one that has still not let go when grace has
+// run is abandoned ([Agent.Abandon]).
+//
+// IT IS FOR A SURFACE THAT CANNOT KEEP THE DEADLINE ITSELF. The terminal owns
+// its own countdown and calls Abandon when it runs out ([StopGrace]). A
+// surface on the far side of a wire has no second door to call, so its stop
+// used to be the first stage alone: a turn parked on a wait that ignores its
+// context stayed "working" until the engine was killed, which is how the
+// desktop app's Stop came to do nothing at all.
+//
+// THE BOUND IS FOR THE TURN THAT WAS STOPPED AND NO OTHER. The turn is named by
+// its `done` channel, taken before the interrupt and compared when the clock
+// fires, so a turn that ended in time, and whatever the person started after
+// it — an ordinary turn or a vision one — are left alone. The channel and not
+// the turn's number: a channel is made fresh for every turn of every kind and
+// is never nil while one runs, so it cannot be mistaken for "any turn". A grace
+// of zero or less arms nothing and is the plain stop.
+//
+// A TURN THE FACTORY'S RUNNER OPENED IS ONLY INTERRUPTED. A runner gives an
+// item's manager a turn through the conversation a window holds (cmd/codeaf's
+// liveManagerTurn), and reads that turn's stream to its end: let go of while
+// a tool call was still in flight, the stream would close on partial text
+// with no error, and the runner would carry on over work that had not ended.
+// The person's stop still cuts the turn; the job's own Stop ends the run. A
+// person's own turn in the same conversation keeps the bound.
+func (a *Agent) InterruptWithin(grace time.Duration) {
 	a.mu.Lock()
-	if a.closed || !a.running {
+	if a.running && !a.closed && a.done != nil && !a.runnerTurn && grace > 0 {
+		a.armAbandonTimerLocked(grace, a.done)
+	}
+	a.mu.Unlock()
+	a.Interrupt()
+}
+
+// armAbandonTimerLocked schedules the second stage of a stop for the turn
+// whose `done` channel is turn, with a.mu held. Any timer still standing from
+// an earlier stop on this turn is replaced.
+func (a *Agent) armAbandonTimerLocked(grace time.Duration, turn chan struct{}) {
+	a.stopAbandonTimerLocked()
+	after := time.AfterFunc
+	if a.abandonAfter != nil {
+		after = a.abandonAfter
+	} else if a.config.AbandonAfter != nil {
+		after = a.config.AbandonAfter
+	}
+	a.abandonTimer = after(grace, func() {
+		// The timer's goroutine is no tool loop's and no surface's, so nothing
+		// above it would absorb a fault in the journal write below.
+		defer guard.Recover("session bounded stop")
+		a.abandonTurn(AbandonStopTimeout, turn)
+	})
+}
+
+// stopAbandonTimerLocked lets go of an armed bounded-stop timer. Every exit of
+// the turn calls it — the turn's own cleanup, an abandon, Close — so a turn
+// that ended inside its grace leaves no timer running behind it.
+func (a *Agent) stopAbandonTimerLocked() {
+	if a.abandonTimer == nil {
+		return
+	}
+	a.abandonTimer.Stop()
+	a.abandonTimer = nil
+}
+
+// abandonTurn is [Agent.Abandon] for the turn whose `done` channel is only, or
+// for whichever turn is running when only is nil.
+func (a *Agent) abandonTurn(reason AbandonReason, only chan struct{}) (Usage, bool) {
+	a.mu.Lock()
+	if a.closed || !a.running || (only != nil && a.done != only) {
 		a.mu.Unlock()
 		return Usage{}, false
 	}
@@ -130,6 +221,7 @@ func (a *Agent) Abandon(reason AbandonReason) (Usage, bool) {
 	// armed second look inert; this is the same act said as a release
 	// (steer_grace.go).
 	a.stopSteerGraceLocked()
+	a.stopAbandonTimerLocked()
 	a.running = false
 	a.cancel, a.hub, a.done, a.abandon = nil, nil, nil, nil
 	a.turnSpend = Usage{}

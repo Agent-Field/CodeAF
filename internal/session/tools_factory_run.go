@@ -291,6 +291,7 @@ func (a *Agent) SubmitRunnerNote(ctx context.Context, text string) (<-chan Event
 func runnerNote(text string) userMessage {
 	note := briefNote(text)
 	note.noSkills = true
+	note.runner = true
 	return note
 }
 

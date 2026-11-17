@@ -263,7 +263,7 @@ func TestRememberPrintsTheConversationsOwnReceipt(t *testing.T) {
 
 func TestMemoriesPrintsWhereALineHoldsAndWhoKeptIt(t *testing.T) {
 	lines := []session.MemoryLine{{Text: "prefers tabs", Where: "for you everywhere", Origin: store.OriginNoticed}}
-	if got := memoriesText("", lines); got != "· prefers tabs  · for you everywhere · noticed" {
+	if got := memoriesText("", lines); got != "prefers tabs  · for you everywhere · noticed" {
 		t.Fatalf("listing = %q", got)
 	}
 	if got := memoriesText("", nil); !strings.Contains(got, "/remember <text>") {
@@ -815,5 +815,78 @@ func TestMemoryMixUsesActualAdmittedDerivedTypes(t *testing.T) {
 	memory := store.Memory{Text: "mock status", Type: store.MemoryPreference, SemanticType: store.MemoryProjectState, Status: store.MemoryActive}
 	if facts := strings.Join(p.memoryFacts(memory), " "); !strings.Contains(facts, "kind · project progress · originally saved as preferences") {
 		t.Fatalf("derived label hides original type: %s", facts)
+	}
+}
+
+// #2683: The detail pane's learned-age line says "now", "3m ago", "2h ago" and
+// never "now ago".
+func TestMemoryDetailPaneAge2683(t *testing.T) {
+	now := time.Now()
+	memory := store.Memory{ID: "u", Owner: store.OwnerUser, Text: "second dev line", Origin: store.OriginPerson, Status: store.MemoryActive, UpdatedAt: now}
+	for _, tc := range []struct {
+		at   time.Time
+		want string
+	}{
+		{now.Add(-10 * time.Second), "now"},
+		{now.Add(-3 * time.Minute), "3m ago"},
+		{now.Add(-2 * time.Hour), "2h ago"},
+	} {
+		p := memoryPlace{
+			read:    now,
+			origins: map[string]memoryOrigin{"u": {at: tc.at}},
+		}
+		facts := p.memoryFacts(memory)
+		if got := facts[len(facts)-1]; got != tc.want {
+			t.Fatalf("learned age for %v = %q, want %q", now.Sub(tc.at), got, tc.want)
+		}
+	}
+
+	a, mem := memoryPlaceApp(t, []store.Memory{memory})
+	mem.origins["u"] = memoryOrigin{session: "s1", at: now.Add(-10 * time.Second)}
+	openMemoryPlace(t, a)
+	a.mem.asking = nil
+	for _, msg := range runCmd(a.memoryFollow()) {
+		if origin, ok := msg.(memoryOriginMsg); ok {
+			a.adoptMemoryOrigin(origin)
+		}
+	}
+	a.width, a.height = taskPaneFloor+20, 30
+	shown := plain(frame(a))
+	if strings.Contains(shown, "now ago") {
+		t.Fatalf("detail pane wrote 'now ago':\n%s", shown)
+	}
+	if !strings.Contains(shown, "│ now") {
+		t.Fatalf("detail pane did not say 'now':\n%s", shown)
+	}
+}
+
+// #2683: Bare /always (and /memory <words>) prints one bullet per line in the
+// conversation transcript, never doubling the first line's bullet into "· ·".
+func TestBareAlwaysDoesNotDoubleTheBullet2683(t *testing.T) {
+	agent := &rememberingAgent{
+		kept: []session.MemoryLine{
+			{ID: "m1", Text: "the stable line", Where: "for you everywhere", Origin: store.OriginPerson},
+			{ID: "m2", Text: "the dev line", Where: "for this project", Origin: store.OriginPerson},
+		},
+	}
+	a := newTestApp(agent)
+	a.width, a.height = 120, 40
+	settleMemorySlash(t, a, "/always")
+	rows := plainRows(a)
+	var matched int
+	for _, row := range rows {
+		trimmed := strings.TrimSpace(row)
+		if strings.HasPrefix(trimmed, "· ·") {
+			t.Fatalf("line starts with two bullets: %q\n%s", row, strings.Join(rows, "\n"))
+		}
+		if strings.Contains(trimmed, "the stable line") || strings.Contains(trimmed, "the dev line") {
+			matched++
+			if !strings.HasPrefix(trimmed, "· ") {
+				t.Fatalf("line does not start with a single bullet: %q", row)
+			}
+		}
+	}
+	if matched != 2 {
+		t.Fatalf("saw %d kept lines in transcript, want 2:\n%s", matched, strings.Join(rows, "\n"))
 	}
 }

@@ -81,6 +81,7 @@ package session
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
@@ -234,11 +235,10 @@ type UsageLine struct {
 	// reader summing a year of this file has to be able to add those honestly.
 	// Missing-receipt markers carry zero; measured calls carry one.
 	Calls int `json:"calls,omitempty"`
-	// Input and Output are the tokens. The cache split is deliberately not here:
-	// this file answers "how much and on what", and the four-way breakdown with
-	// the cached share in it is in the journal the session id names.
-	Input  int `json:"in,omitempty"`
-	Output int `json:"out,omitempty"`
+	// Input, Output and CacheRead are the tokens.
+	Input     int `json:"in,omitempty"`
+	Output    int `json:"out,omitempty"`
+	CacheRead int `json:"cache_read,omitempty"`
 	// USD is what it cost, and zero means nobody could price it rather than that
 	// it was free — the same reading [TaskIndexEntry.Cost] has.
 	USD float64 `json:"usd,omitempty"`
@@ -893,6 +893,8 @@ func FlushUsage() bool {
 // flushUsage drains one path without stopping its shared writer. An empty path
 // selects every writer for [FlushUsage]. Rows admitted later may keep writing.
 func flushUsage(path string) bool {
+	marks := usageJournalMarks(path)
+	until := time.Now().Add(usageFlushLimit)
 	dones := enqueueUsageFlush(path)
 	// IT WAITS UNDER A CEILING, because the one thing it waits on is the thing
 	// this whole file exists to survive. A writer parked inside [openUsageLedger]
@@ -915,6 +917,41 @@ func flushUsage(path string) bool {
 			return false
 		}
 	}
+	return awaitUsageJournals(marks, until)
+}
+
+// usageJournalMarks is, for path's journal (every journal when path is empty),
+// how many rows had been journaled when a flush or drain began.
+func usageJournalMarks(path string) map[*usagePending]uint64 {
+	marks := map[*usagePending]uint64{}
+	usagePendingPaths.Range(func(key, value any) bool {
+		if path == "" || key.(string) == path {
+			pending := value.(*usagePending)
+			marks[pending] = pending.appendedSoFar()
+		}
+		return true
+	})
+	return marks
+}
+
+// awaitUsageJournals waits, until deadline, for each journal to have synced the
+// rows it held when its mark was taken.
+//
+// A SETTLE IS NOT DONE UNTIL THE JOURNAL SYNC IS. A sync locks the ledger, and
+// locking it creates the ledger's folder and file if they are gone; a sync still
+// pending after a close used to land in a home its owner had already removed (a
+// test's TempDir cleanup: "directory not empty"). So whoever waits for rows to
+// be written also waits for them to be durable, under the same ceiling, and
+// nothing of theirs writes into the home after the wait answers.
+func awaitUsageJournals(marks map[*usagePending]uint64, deadline time.Time) bool {
+	for pending, mark := range marks {
+		for !pending.syncedThrough(mark) {
+			if time.Now().After(deadline) {
+				return false
+			}
+			time.Sleep(usageDrainPoll)
+		}
+	}
 	return true
 }
 
@@ -935,6 +972,7 @@ func drainUsage(path string) bool {
 		return true
 	}
 	writer := writers[0]
+	marks := usageJournalMarks(path)
 	target := writer.admitted.Load()
 	deadline := time.Now().Add(usageFlushLimit)
 	for writer.handled.Load() < target {
@@ -944,7 +982,8 @@ func drainUsage(path string) bool {
 		}
 		time.Sleep(usageDrainPoll)
 	}
-	return true
+	// A journal still syncing is no projection miss, so it is not counted as one.
+	return awaitUsageJournals(marks, deadline)
 }
 
 // usageWritersAt answers the writer at path, or every writer for an empty path.
@@ -1385,6 +1424,7 @@ func (a *Agent) recordUsageLine(call bankedCall) error {
 		Calls:           used.Calls,
 		Input:           used.Input,
 		Output:          used.Output,
+		CacheRead:       used.CacheRead,
 		USD:             used.CostUSD,
 		Empty:           used.EmptyReflex > 0,
 		Reconciled:      call.reconciled,
@@ -1690,4 +1730,64 @@ func (line UsageLine) modelCalls() int {
 		return 0
 	}
 	return max(line.Calls, 1)
+}
+
+// TranscriptCacheReads returns the cached prompt tokens recorded in a
+// conversation's journal at path, grouped by the model each row named.
+func TranscriptCacheReads(path string) map[string]int {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil
+	}
+	defer file.Close()
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+	var (
+		reads      map[string]int
+		remoteSeen map[string]bool
+	)
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if !bytes.Contains(line, []byte(`"cacheRead"`)) {
+			continue
+		}
+		var entry sessionEntry
+		if json.Unmarshal(line, &entry) != nil {
+			continue
+		}
+		switch entry.Type {
+		case "usage":
+			used := entry.Usage
+			if used == nil || used.CacheRead <= 0 {
+				continue
+			}
+			if used.RemoteEvent != "" {
+				if remoteSeen[used.RemoteEvent] {
+					continue
+				}
+				if remoteSeen == nil {
+					remoteSeen = make(map[string]bool)
+				}
+				remoteSeen[used.RemoteEvent] = true
+			}
+			if reads == nil {
+				reads = make(map[string]int)
+			}
+			reads[strings.TrimSpace(used.Model)] += used.CacheRead
+		case "call":
+			call := entry.Call
+			if call == nil || call.Arm == "" || call.CacheRead <= 0 {
+				continue
+			}
+			if reads == nil {
+				reads = make(map[string]int)
+			}
+			reads[strings.TrimSpace(call.Model)] += call.CacheRead
+		}
+	}
+	return reads
 }

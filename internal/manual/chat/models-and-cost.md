@@ -2479,7 +2479,7 @@ which is the whole machine's ledger rather than this conversation's — it was a
 | `conversation` | what the conversation's own calls cost |
 | `tasks` | what the work it started has cost, running or finished — tasks, the nodes of an adaptive run, and a task handed to a program such as senior-dev |
 | `tokens` | `48.1k in · 3.2k out`, or one half alone, or the combined figure |
-| `cache` | `31.2k read · saved $0.0180` — the money half only when a price pair was published |
+| `cache` | `31.2k read · saved $0.0180` — the money half only when a price pair was published, priced at the model that served each call and unchanged when `/model` switches models |
 | `model calls` | **requests to the provider**, deliberately not "turns" |
 | `empty reflex answers` | paid reflex readings after a turn that returned no answer |
 | `time` | how long |
@@ -2597,8 +2597,9 @@ session, a judge deciding where something should be routed, looking at a picture
 request a task's own agent made on its own lane, every request a harness run made
 while it walked its program, and every request a program such as senior-dev made for a
 task this conversation handed it. That is deliberate, because the `spend` line above it is the
-sum over exactly those requests — a smaller count beside it would be a bill divided by the
-wrong number.
+sum over exactly those requests — `spend`, `tokens`, `cache` and `model calls` read the same
+ledger and conversation totals, so a post-turn call or late receipt moves the counts with the
+dollars.
 
 **One request is not written down and so is not in either figure**: the one-token
 measurement sent while you are typing. Your provider bills it and codeaf does not count
@@ -2785,13 +2786,13 @@ same three-second beat every place runs on, and it draws three things:
   model you are talking to and for no other; the other choices are answered where their
   own session is opened, so this window cannot tell "nothing is bound" from "I cannot ask" —
   and the emptiness law says an unknown is drawn as nothing rather than guessed at;
-- **by topic** — the three things money is ever spent on, because the ledger holds
-  three ids: a piece of work, an automation, or a conversation. **The dearest twenty
-  are shown** and the rest fold into one line — the body scrolls and the cursor carries the
-  window with it, so a long table costs a short terminal nothing. It showed three, which is
-  a headline rather than an answer to the question this page is for. Work with **no id of its own** — the hands a reply
-  forks, the check that reads what a piece of work left — is on the row of the conversation
-  it belongs to, because that is the only name it has;
+- **by topic** — the four things money is ever spent on: a piece of work, an automation,
+  a conversation, or background knowledge compilation (`learning from your conversations`).
+  **The dearest twenty are shown** and the rest fold into one line — the body scrolls and
+  the cursor carries the window with it, so a long table costs a short terminal nothing. Work
+  with **no id of its own** — the hands a reply forks, the check that reads what a piece of
+  work left — is on the row of the conversation it belongs to, and id-less knowledge calls
+  appear under `learning from your conversations`;
 - **by automation** — the automations, under a heading and columns of their own,
   **drawn with `by topic`**. An automation is one of the things money was *for*, so it is
   a third heading rather than a third cut, and the control above it stays on `by topic`.

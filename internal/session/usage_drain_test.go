@@ -438,6 +438,55 @@ func TestClosingAnAgentInsideASyncBubbleLeavesTheWriterAlone(t *testing.T) {
 	}
 }
 
+// A row recorded inside a synctest bubble leaves nothing of the process's own
+// machinery behind in that bubble. The journal's background sync used to be
+// started by whoever appended first, so a bubbled caller owned it: its 100ms
+// fake-clock timer outlived a bubble whose main goroutine returned sooner, which
+// synctest reports as a deadlock, and the ledger's writer — outside the bubble —
+// then woke that bubbled channel on its way out, a fatal error that took the
+// whole test binary down with it. THE WRITER OWNS THE SYNC, so this bubble can
+// return the moment it has recorded.
+func TestRecordingInsideASyncBubbleLeavesNoGoroutineBehindInIt(t *testing.T) {
+	path := filepath.Join(t.TempDir(), UsageLedgerName)
+	usageWriterFor(path)
+	defer StopUsageWriter(path)
+	synctest.Test(t, func(t *testing.T) {
+		RecordUsage(path, UsageLine{ID: "in-bubble", Input: 1, USD: .001})
+	})
+	if !flushUsage(path) {
+		t.Fatal("the row was not written after the bubble ended")
+	}
+	rows, err := ReadUsage(path, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].ID != "in-bubble" {
+		t.Fatalf("rows=%+v, want the bubble's call once", rows)
+	}
+}
+
+// A drain that answers leaves no journal sync pending for the rows it covered.
+// A sync locks the ledger, and locking recreates the ledger's folder and file,
+// so a sync still waiting out its interval after a close used to land in a home
+// already removed (TestRetryTaskResumesTheSameWorktreeAndFinishes failed its
+// TempDir cleanup with "directory not empty" about one run in ten).
+func TestADrainThatAnswersLeavesNoJournalSyncPending(t *testing.T) {
+	path := filepath.Join(t.TempDir(), UsageLedgerName)
+	usageWriterFor(path)
+	defer StopUsageWriter(path)
+	RecordUsage(path, UsageLine{ID: "settled", Input: 1, USD: .001})
+	if !drainUsage(path) {
+		t.Fatal("the drain did not answer under its ceiling")
+	}
+	journal := pendingUsage(path)
+	journal.mu.Lock()
+	syncing, rows := journal.syncing, journal.rows
+	journal.mu.Unlock()
+	if syncing || rows != 0 {
+		t.Fatalf("after the drain answered: sync running=%v, rows not yet durable=%d; want neither", syncing, rows)
+	}
+}
+
 // Traffic that keeps arriving after a close begins doesn't hold the close open:
 // it waits for the rows taken in when it began.
 func TestDrainingUsageWaitsOnlyForTheRowsAlreadyTakenIn(t *testing.T) {

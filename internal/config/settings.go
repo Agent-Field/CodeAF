@@ -1048,6 +1048,11 @@ var OperatorEnvPins = []string{
 	// editable profile preferences.
 	"CODEAF_FACTORY_BENCHES",
 	"CODEAF_FACTORY_POSTURE",
+	// CODEAF_FACTORY_RUNTIME_DIR moves the private directory where an elected
+	// factory runner places its Unix control socket (cmd/codeaf's
+	// factory_runner_control.go). A socket directory is launch plumbing rather
+	// than a persisted preference.
+	"CODEAF_FACTORY_RUNTIME_DIR",
 	// The fence widening a launcher hands an unattended run (jailallow.go).
 	"CODEAF_JAIL_ALLOW",
 	// What a fenced command is told about itself; codeaf sets it, nobody reads
