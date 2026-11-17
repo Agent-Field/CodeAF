@@ -687,6 +687,11 @@ func (a *Agent) standingName(name string) string {
 // conversation would go on writing into after its branch was kept would be work
 // piling up behind a landing that already failed.
 func (a *Agent) Land(folder string) (FolderLanding, error) {
+	a.settingsWrites.Add(1)
+	defer a.settingsWrites.Add(-1)
+	if err := a.CheckSettingsWork(); err != nil {
+		return FolderLanding{}, err
+	}
 	name := a.standingName(folder)
 	if name == "" {
 		return FolderLanding{}, errors.New("nothing is waiting to go into a folder")

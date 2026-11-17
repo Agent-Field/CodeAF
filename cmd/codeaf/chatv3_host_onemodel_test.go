@@ -20,7 +20,9 @@ func TestHostedOptionsCarryTheAppliedOneModelLaunch(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { _ = loop.Close() })
-		options, _ := hostOptions(onePipeFleet("devbox", loop.Client), loop.Client.Welcome(), false)
+		fleet := onePipeFleet("devbox", loop.Client)
+		t.Cleanup(fleet.closeAll)
+		options, _ := hostOptions(fleet, loop.Client.Welcome(), false)
 		want := shape != nil && shape.OneModel
 		if options.OneModel != want {
 			t.Errorf("hosted options OneModel = %t, applied launch wants %t", options.OneModel, want)

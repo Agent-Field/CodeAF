@@ -142,6 +142,11 @@ func (a *Agent) Places() []PlaceRef { return a.referredPlaces() }
 // directory inside it. Chose preserves each independently selected context scope:
 // two subdirectories may share a working ground without becoming one attachment.
 func (a *Agent) ReferPlace(path string, arrival PlaceArrival) (PlaceRef, error) {
+	a.settingsWrites.Add(1)
+	defer a.settingsWrites.Add(-1)
+	if err := a.CheckSettingsWork(); err != nil {
+		return PlaceRef{}, err
+	}
 	dir, err := a.placePath(path)
 	if err != nil {
 		return PlaceRef{}, err
@@ -191,6 +196,11 @@ func (a *Agent) ReferPlace(path string, arrival PlaceArrival) (PlaceRef, error) 
 // never on the set has been told something false about which folders are
 // attached.
 func (a *Agent) RemovePlace(path string) error {
+	a.settingsWrites.Add(1)
+	defer a.settingsWrites.Add(-1)
+	if err := a.CheckSettingsWork(); err != nil {
+		return err
+	}
 	want := strings.TrimSpace(path)
 	if want == "" {
 		return fmt.Errorf("a place is a folder · this one has no path")
@@ -236,6 +246,11 @@ func (a *Agent) RemovePlace(path string) error {
 // rather than invented: the mode is a fact ABOUT a place, so there has to be
 // one.
 func (a *Agent) SetPlaceMode(path, word string) error {
+	a.settingsWrites.Add(1)
+	defer a.settingsWrites.Add(-1)
+	if err := a.CheckSettingsWork(); err != nil {
+		return err
+	}
 	dir, err := a.placePath(path)
 	if err != nil {
 		return err

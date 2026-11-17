@@ -160,9 +160,10 @@ func TestAHomeSeatSaysOnceThatItsFilesAreNotSaved(t *testing.T) {
 }
 
 // TestStartupInALargeHomeWalksNoHome is the startup gate: a seat opened with
-// warm capture in a home of many files, through the real engine, finishes its
+// warm capture in a home of many files, through the real engine, seals its
 // first capture having planned none of the home's files and having written no
-// plan that lists them. It counts paths and plan bytes; it never times.
+// plan that lists them. A real tool call supplies the turn: warm preparation
+// alone adds none. It counts paths and plan bytes; it never times.
 func TestStartupInALargeHomeWalksNoHome(t *testing.T) {
 	const dirs, files = 100, 200 // 20,000 files
 	house := t.TempDir()

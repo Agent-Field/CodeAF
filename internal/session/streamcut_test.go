@@ -158,6 +158,9 @@ func TestATruncatedProviderReplyIsNotSettledByTheSession(t *testing.T) {
 	var attempts int
 	var requests [][]byte
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if !answersChatOnly(writer, request) {
+			return
+		}
 		body, err := io.ReadAll(request.Body)
 		if err != nil {
 			t.Errorf("read request: %v", err)

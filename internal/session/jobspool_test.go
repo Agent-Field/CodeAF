@@ -220,7 +220,7 @@ func TestJobFooterNamesTruncationInsteadOfFullLog(t *testing.T) {
 	}
 	job.sink.chunkBytes = 4
 	_, _ = job.sink.Write([]byte("a\nb\nc\nd\ne\n"))
-	registry.settleExit(job, 0)
+	registry.settleExit(job, 1)
 	output, failed := registry.output(job.id, 10)
 	if failed {
 		t.Fatal(output)
@@ -299,7 +299,7 @@ func TestJobSpoolEmptyCompletionStillReportsFailure(t *testing.T) {
 	t.Cleanup(job.sink.close)
 	job.sink.hook = func([]byte) (int, error) { return 0, errors.New("injected full disk") }
 	_, _ = job.sink.Write([]byte("\n"))
-	registry.settleExit(job, 0)
+	registry.settleExit(job, 1)
 	if !strings.Contains(note, "injected full disk") || strings.Contains(note, "full log:") {
 		t.Fatalf("blank output hid failure: %s", note)
 	}

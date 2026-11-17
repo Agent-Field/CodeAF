@@ -1,17 +1,26 @@
 package cellsync
 
 import (
+	"context"
 	"errors"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
+	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
 // MaxHalt bounds even halting refusals so sync discovers recovered capacity
 // without reopening the chat or trusting a relay's clock beyond an hour.
 const MaxHalt = time.Hour
+
+// Unreachable identifies transport failures that can recover without a person's
+// intervention. They leave local work writable and use the bounded retry path.
+func Unreachable(err error) bool {
+	return errors.Is(err, directory.ErrUnreachable) || errors.Is(err, blobstore.ErrUnreachable) ||
+		errors.Is(err, wireauth.ErrUnavailable) || errors.Is(err, context.DeadlineExceeded)
+}
 
 // Refusal is one way the relay says no: the sentinel the wire names it by, the
 // one plain sentence the person reads, and how the client carries on. The table

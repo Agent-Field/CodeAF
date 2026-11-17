@@ -160,7 +160,7 @@ func (a *Agent) harnessDesignCall(named string) roleRequest {
 	if named = strings.TrimSpace(named); named != "" {
 		return roleRequest{model: named}
 	}
-	if call, err := roles.ResolveCall(roles.Source(a.config.RolesSource), roles.RoleDesigner, a.model); err == nil {
+	if call, err := readerFor(a.config, a.model).ResolveCall(roles.RoleDesigner, a.model); err == nil {
 		return newRoleRequest(call)
 	}
 	return roleRequest{model: a.model}
@@ -366,7 +366,7 @@ func (a *Agent) askHarnessDesign(ctx context.Context, node *TaskNode, page subha
 	// is). letGo is called on every road out
 	// of this function, and a question somebody answered has already claimed its
 	// own words, so the withdrawal it sends is the one nobody answered.
-	letGo := a.presenceAskingWhole(a.harnessQuestion(id, card), func() { a.emitHarness(card) })
+	letGo := a.presenceAskingWhole(ctx, a.harnessQuestion(id, card), func() { a.emitHarness(card) })
 	defer letGo()
 
 	select {

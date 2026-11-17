@@ -40,6 +40,12 @@ func selectAddProvider(t *testing.T, a *app, id string) {
 
 func TestLaterProviderMenusShowTheInitialCatalogAndActualConnectionStatus(t *testing.T) {
 	a, _ := providerAccessApp(t)
+	// The catalog is counted on a machine where every provider's program is
+	// present, so the count is the same on every machine the test runs on;
+	// TestSetupOffersClaudeCodeOnlyWhereItIsInstalled covers the other kind.
+	here := claudeCodeHere
+	claudeCodeHere = func() bool { return true }
+	t.Cleanup(func() { claudeCodeHere = here })
 	// A persisted row without credentials must not acquire a connected badge.
 	services := append(a.sources.All(), modelsource.Connected{Source: testModelSource(t, "deepseek")})
 	a.sources = modelsource.NewSet(services...)
@@ -135,6 +141,7 @@ func TestAddingOpenRouterFromTheModelMenuPreservesOllamaAndHandsOverTheKey(t *te
 	a.requireListedModel = true
 	a.model = "vendor/cloud"
 	a.connectAct(a.connPanel.cursor)
+	acknowledgeModelChanges(t, a)
 	if a.model != "ollama/installed" || a.agent.Model() != "ollama/installed" {
 		t.Fatal("removing OpenRouter did not move the next request to available Ollama")
 	}

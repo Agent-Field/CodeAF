@@ -295,8 +295,11 @@ func (a *app) costText() string {
 			add("tasks", dollars(tasks))
 		}
 	}
-	add("tokens", tokenHalves(a.inputTokens, a.outputTokens, a.tokens))
-	add(deckSegWords[segCache], cacheWords(a.cacheRead, a.cacheSaved))
+	in := max(a.inputTokens, a.tree.Input)
+	out := max(a.outputTokens, a.tree.Output)
+	tok := max(a.tokens, in+out)
+	add("tokens", tokenHalves(in, out, tok))
+	add(deckSegWords[segCache], cacheWords(max(a.cacheRead, a.tree.CacheRead), a.cacheSaved))
 	// "model calls" and not "turns". A turn is what the PERSON took — one message
 	// and everything that answered it — and a conversation of nine messages that
 	// reports "turns 41" is a surface using a person's word for a machine's
@@ -309,11 +312,11 @@ func (a *app) costText() string {
 	// which is the sum over exactly this many — Turns counts only the
 	// conversation's own steps by law, and would have named a smaller number
 	// than the money was spent over.
-	if u.Calls > 0 {
-		add("model calls", itoa(u.Calls))
+	if calls := max(u.Calls, a.tree.Calls); calls > 0 {
+		add("model calls", itoa(calls))
 	}
-	if u.EmptyReflex > 0 {
-		add("empty reflex answers", itoa(u.EmptyReflex))
+	if emptyReflex := max(u.EmptyReflex, a.tree.EmptyReflex); emptyReflex > 0 {
+		add("empty reflex answers", itoa(emptyReflex))
 	}
 	if a.tree.Unbilled > 0 {
 		add(spendUnbilledWord, itoa(a.tree.Unbilled)+" "+spendUnbilledSaid)
@@ -353,9 +356,9 @@ func tokenHalves(in, out, both int) string {
 // worth.
 //
 // The cash is printed ONLY when it is real, on the terms [app.cacheSaved] is
-// held: it is the session's cache reads priced at the model this conversation
-// is on, and only where BOTH a prompt price and a cache-read price are
-// published. So a session on a model that publishes no cache-read price says
+// held: it is the session's cache reads priced per call at the model that
+// served that call, and only where BOTH a prompt price and a cache-read price
+// are published. So a session on a model that publishes no cache-read price says
 // how much it read and stops there, rather than learning to say it saved the
 // whole prompt price. The count leads and the money follows it, which is
 // the order [app.warmSegment] puts the same pair in on the status line.

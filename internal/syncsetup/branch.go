@@ -53,7 +53,7 @@ func branchIdentity(_ context.Context, c cell.Cell) (err error) {
 	if err != nil {
 		return err
 	}
-	defer func() { out.Close(); os.Remove(out.Name()) }()
+	defer func() { out.Close(); fsreplace.Remove(out.Name()) }()
 	if _, err = out.Write(append(line, '\n')); err != nil {
 		return err
 	}

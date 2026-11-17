@@ -68,12 +68,10 @@ func (a *app) conversationDeleteChoose(index int) tea.Cmd {
 	}
 	if s.taskID == "" {
 		file := a.teamTree()
-		managed := file.ManagedTeams(a.convKey(s.file))
-		s.managerChoices = nil
-		if len(managed) == 1 && managed[0].Root {
-			s.managerChoices = map[string]string{managed[0].ID: ""}
-		} else if len(managed) > 0 {
-			s.message, s.cursor, s.messageTop = file.ManagerRemovalMessage(a.convKey(s.file)), 0, 0
+		choices, err := session.ConversationDeleteChoices(file, a.convKey(s.file))
+		s.managerChoices = choices
+		if err != nil {
+			s.message, s.cursor, s.messageTop = err.Error(), 0, 0
 			a.touch()
 			return nil
 		}

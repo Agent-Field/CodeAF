@@ -246,3 +246,61 @@ func TestU1BrokenEngineDoesNotHoldAnotherChatsGroup(t *testing.T) {
 		t.Fatalf("healthy records were held by another engine: %v", q.pending)
 	}
 }
+
+// ONE GROUP COMMIT SAVES EVERY CHAT CLOSING AT ONCE. A quit closes every chat
+// together and each one's boundary waits on the process's one flush slot; the
+// flush that holds it syncs every chat's owed records, each path once however
+// many chats owe it, so the chats behind it find nothing owed and sync nothing.
+// The seventh live A+B run's 48 closes queued one round each, three seconds a
+// step on macOS, and ran out the desk's thirty seconds.
+func TestOneGroupCommitSavesEveryChatClosingAtOnce(t *testing.T) {
+	root := t.TempDir()
+	shared := filepath.Join(root, "shared")
+	if err := os.Mkdir(shared, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	synced := map[string]int{}
+	q := newCommitQueue(func(p string) error { synced[p]++; return nil })
+	q.after = func(time.Duration, func()) {}
+	var engines []string
+	q.beforeFlush = func(_ context.Context, owner string) error { engines = append(engines, owner); return nil }
+	const chats = 48
+	for i := range chats {
+		file := filepath.Join(shared, "calls-"+string(rune('a'+i%26))+string(rune('a'+i/26)))
+		if err := os.WriteFile(file, []byte("done\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		q.mark("chat-"+file, file, true)
+	}
+	if err := q.flush(t.Context(), "chat-"+filepath.Join(shared, "calls-aa")); err != nil {
+		t.Fatal(err)
+	}
+	if len(q.pending) != 0 {
+		t.Fatalf("the first close left %d records owed by the others", len(q.pending))
+	}
+	if len(engines) != chats {
+		t.Fatalf("the round confirmed %d chats' snapshots, want %d", len(engines), chats)
+	}
+	for path, n := range synced {
+		if n != 1 {
+			t.Fatalf("%s was synced %d times in one round", path, n)
+		}
+	}
+	if synced[shared] != 1 || synced[root] != 1 || len(synced) != chats+2 {
+		t.Fatalf("synced %d paths (folder %d, its parent %d), want %d files and two folders once", len(synced), synced[shared], synced[root], chats)
+	}
+	before := len(synced)
+	for i := 1; i < chats; i++ {
+		file := filepath.Join(shared, "calls-"+string(rune('a'+i%26))+string(rune('a'+i/26)))
+		if err := q.flush(t.Context(), "chat-"+file); err != nil {
+			t.Fatal(err)
+		}
+	}
+	total := 0
+	for _, n := range synced {
+		total += n
+	}
+	if len(synced) != before || total != before {
+		t.Fatalf("the closes behind the first synced again: %d syncs over %d paths", total, len(synced))
+	}
+}

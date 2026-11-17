@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -15,9 +17,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/calllog"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/knowledge"
+	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/sqliteuri"
 )
 
 type moneyTransport func(*http.Request) (*http.Response, error)
@@ -26,9 +31,11 @@ func (f moneyTransport) RoundTrip(r *http.Request) (*http.Response, error) { ret
 
 func moneyVault(t *testing.T) (*knowledge.Vault, string) {
 	t.Helper()
-	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", testHome(t))
 	t.Setenv("CODEAF_DAILY_BUDGET", "")
-	profile := t.TempDir()
+	ledger := session.UsageLedgerPath()
+	t.Cleanup(func() { session.StopUsageWriter(ledger) })
+	profile := testHome(t)
 	if err := config.WriteDailyBudgetUSD(profile, 100); err != nil {
 		t.Fatal(err)
 	}
@@ -225,4 +232,171 @@ func TestKnowledgeDailyLimitBlocksTransportRetry(t *testing.T) {
 	if calls != 1 || err == nil || !strings.Contains(err.Error(), "daily limit reached") {
 		t.Fatalf("calls=%d, err=%v; want transport retry refused", calls, err)
 	}
+}
+
+func TestKnowledgeDailyLimitBlocksEveryRetry(t *testing.T) {
+	for _, retry := range []string{"reopen", "automatic backoff", "owner"} {
+		t.Run(retry, func(t *testing.T) {
+			v, profile := moneyVault(t)
+			if err := config.WriteDailyBudgetUSD(profile, 1); err != nil {
+				t.Fatal(err)
+			}
+			previous := http.DefaultTransport
+			t.Cleanup(func() { http.DefaultTransport = previous })
+			var paid, owned atomic.Int32
+			http.DefaultTransport = moneyTransport(func(r *http.Request) (*http.Response, error) {
+				paid.Add(1)
+				session.RecordUsage(session.UsageLedgerPath(), session.UsageLine{At: time.Now(), USD: 1, Calls: 1, Model: "fixture/concurrent-chat"})
+				session.FlushUsage()
+				return moneyReply(knowledge.Model, "length", "{", 8000), nil
+			})
+			ctx := knowledgeCalls(context.Background(), profile, false)
+			if retry == "owner" {
+				if err := v.Capture(knowledge.Source{ID: "owned", Session: "stage", Job: true, Role: "user", TS: "2026-11-10T12:00:00Z", Text: "Cedar queues jobs."}); err != nil {
+					t.Fatal(err)
+				}
+				v = v.WithCalls(func(ctx context.Context) (context.Context, error) {
+					ctx = provider.WithSession(ctx, "stage")
+					return provider.WithBilling(ctx, func(provider.Billed) { owned.Add(1) }), nil
+				})
+			}
+			if retry == "automatic backoff" {
+				worker, cancel := context.WithTimeout(ctx, 7*time.Second)
+				defer cancel()
+				if err := v.Run(worker, moneyHistory{}, func() string { return "fixture" }); !errors.Is(err, context.DeadlineExceeded) {
+					t.Fatal(err)
+				}
+			} else {
+				if err := v.Flush(ctx, "fixture", true); err == nil || !strings.Contains(err.Error(), "length") {
+					t.Fatalf("initial paid failure: %v", err)
+				}
+				if retry == "owner" {
+					time.Sleep(2200 * time.Millisecond)
+					if err := v.Flush(ctx, "fixture", true); err == nil || !strings.Contains(err.Error(), "daily limit reached") {
+						t.Fatalf("owner retry must pause for daily limit: %v", err)
+					}
+				} else {
+					v = knowledge.Open(profile)
+				}
+				worker, cancel := context.WithTimeout(ctx, 250*time.Millisecond)
+				defer cancel()
+				if err := v.Run(worker, moneyHistory{}, func() string { return "fixture" }); !errors.Is(err, context.DeadlineExceeded) {
+					t.Fatal(err)
+				}
+			}
+			// The day's figure is the whole bill: the concurrent chat's dollar plus the
+			// ordinary compiler's unusable answer, which reaches the global ledger. An
+			// owner's answer is billed to its owner, so the global day stays at the dollar.
+			spent := "$1.01"
+			if retry == "owner" {
+				spent = "$1"
+			}
+			state, err := v.Status()
+			if err != nil || paid.Load() != 1 || state.Build.Phase != knowledge.BuildFailed || !strings.Contains(state.Build.Error, "daily limit reached · "+spent+" spent of $1 · /budget day changes it") {
+				t.Fatalf("%s bought a retry or lost the daily pause: paid=%d state=%+v err=%v", retry, paid.Load(), state.Build, err)
+			}
+			if retry == "owner" && owned.Load() != 1 {
+				t.Fatalf("owned receipts=%d, want the initial paid failure only", owned.Load())
+			}
+			t.Logf("%s: one initial paid failure; zero paid retries; notice=%q", retry, state.Build.Error)
+		})
+	}
+}
+
+func TestKnowledgeMixedPaidAnswersMatchCallLogLedgerAndReceipts(t *testing.T) {
+	v, profile := moneyVault(t)
+	callPath := filepath.Join(os.Getenv("CODEAF_HOME"), "logs", "calls.jsonl")
+	t.Setenv(calllog.EnvVar, callPath)
+	calllog.Open("")
+	t.Cleanup(func() {
+		calllog.Close()
+		os.Setenv(calllog.EnvVar, calllog.OffValue)
+		calllog.Open("")
+	})
+	previous := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = previous })
+	paid := 0
+	http.DefaultTransport = moneyTransport(func(r *http.Request) (*http.Response, error) {
+		paid++
+		switch paid {
+		case 1:
+			return moneyReply(knowledge.Model, "stop", "", 3), nil
+		case 2:
+			return moneyReply(knowledge.Model, "length", "{", 8000), nil
+		case 3:
+			return moneyReply("fixture/substituted", "stop", `{"claims":[]}`, 3), nil
+		case 4:
+			return moneyReply(knowledge.Model, "stop", "not JSON", 3), nil
+		default:
+			return moneyReply(knowledge.Model, "stop", `{"claims":[],"notes":[],"relations":[],"aliases":[],"subjects":[]}`, 3), nil
+		}
+	})
+	ctx := knowledgeCalls(context.Background(), profile, false)
+	for attempt := 1; attempt <= 5; attempt++ {
+		// Reopening represents the engine's next ownership of the same profile.
+		v = knowledge.Open(profile)
+		err := v.Flush(ctx, "fixture", true)
+		if attempt < 5 && err == nil {
+			t.Fatalf("unusable paid answer %d accepted", attempt)
+		}
+		if attempt == 5 && err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := v.Flush(ctx, "fixture", true); err != nil {
+		t.Fatal(err)
+	}
+	if !session.FlushUsage() {
+		t.Fatal("usage ledger did not flush")
+	}
+	lines, err := session.ReadUsage(session.UsageLedgerPath(), time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ledgerRows, ledgerCost := 0, 0.0
+	for _, line := range lines {
+		if line.Role == "knowledge" {
+			ledgerRows++
+			ledgerCost += line.USD
+			if line.Calls != 1 {
+				t.Fatalf("ledger bill counted more than once: %+v", line)
+			}
+		}
+	}
+	raw, err := os.ReadFile(callPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	logRows, logCost := 0, 0.0
+	for _, line := range bytes.Split(bytes.TrimSpace(raw), []byte("\n")) {
+		var row calllog.Record
+		if err := json.Unmarshal(line, &row); err != nil {
+			t.Fatal(err)
+		}
+		// A start row describes an in-flight request; its completed row is the answer.
+		if row.Tag == "memory" && row.Phase != calllog.PhaseStart {
+			logRows++
+			logCost += row.Cost
+		}
+	}
+	uri := sqliteuri.File(filepath.Join(v.Directory(), "knowledge.sqlite"))
+	db, err := sql.Open("sqlite", uri.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var receipts, failures, usable int
+	var receiptCost float64
+	if err := db.QueryRow(`SELECT count(*), coalesce(sum(cost),0), count(*) FILTER (WHERE json_extract(payload,'$.result') IS NULL), count(*) FILTER (WHERE json_extract(payload,'$.result') IS NOT NULL) FROM receipts`).Scan(&receipts, &receiptCost, &failures, &usable); err != nil {
+		t.Fatal(err)
+	}
+	if paid != 5 || logRows != paid || ledgerRows != paid || receipts != paid || failures != 4 || usable != 1 {
+		t.Fatalf("paid=%d memory answers=%d knowledge ledger=%d receipts=%d failures=%d usable=%d", paid, logRows, ledgerRows, receipts, failures, usable)
+	}
+	for _, cost := range []float64{logCost, ledgerCost, receiptCost} {
+		if math.Abs(cost-float64(paid)*.0123) > 1e-9 {
+			t.Fatalf("cost mismatch: call log=%g ledger=%g receipts=%g paid=%d", logCost, ledgerCost, receiptCost, paid)
+		}
+	}
+	t.Logf("paid=%d memory answers=%d knowledge ledger=%d receipts=%d failed=%d usable=%d cost=%g", paid, logRows, ledgerRows, receipts, failures, usable, ledgerCost)
 }

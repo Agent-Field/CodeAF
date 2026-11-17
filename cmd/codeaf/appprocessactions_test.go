@@ -1,0 +1,879 @@
+package main
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"strconv"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/service"
+	"github.com/Agent-Field/codeaf/internal/session"
+)
+
+// actorEngine is an owner engine with the stamped doors. Each door records
+// what it was asked; StopConversationProcesses can be made to wait for its
+// context, the way an engine that does not answer in time does.
+type actorEngine struct {
+	*fakeConversation
+	mu       sync.Mutex
+	facts    session.ProcessActions
+	factsErr error
+	record   session.JobNotice
+	asked    []string
+	stop     session.ProcessStopOutcome
+	receipt  session.ProcessStopReceipt
+	block    bool
+	returned bool
+}
+
+func (e *actorEngine) note(door string, id int, ms int64) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.asked = append(e.asked, door+":"+strconv.Itoa(id)+"@"+strconv.FormatInt(ms, 10))
+}
+
+func (e *actorEngine) ProcessRecord(_ context.Context, id int) (session.JobNotice, bool, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.record, e.record.ID == id, nil
+}
+func (e *actorEngine) ProcessActions(_ context.Context, id int, ms int64) (session.ProcessActions, error) {
+	e.note("actions", id, ms)
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.facts, e.factsErr
+}
+func (e *actorEngine) RerunProcessAt(_ context.Context, id int, ms int64) (session.JobNotice, error) {
+	e.note("rerun", id, ms)
+	return session.JobNotice{}, &session.ProcessActionRefused{Verb: "rerun", Reason: session.ProcessRerunUnknown}
+}
+func (e *actorEngine) StopProcessAt(_ context.Context, id int, ms int64) (session.ProcessStopOutcome, error) {
+	e.note("stop", id, ms)
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.stop, nil
+}
+func (e *actorEngine) StopConversationProcesses(ctx context.Context) (session.ProcessStopReceipt, error) {
+	e.mu.Lock()
+	block := e.block
+	e.mu.Unlock()
+	defer func() { e.mu.Lock(); e.returned = true; e.mu.Unlock() }()
+	if block {
+		<-ctx.Done()
+		return session.ProcessStopReceipt{}, ctx.Err()
+	}
+	return e.receipt, nil
+}
+
+func actorBackend(t *testing.T, engine *actorEngine) (*appBackend, appwire.Agent) {
+	t.Helper()
+	backend := newFakeBackend(newAppRecorder(), func(ask appOpenAsk) (*appConn, error) {
+		return &appConn{Conv: engine, Workspace: ask.Workspace, Transcript: appFakeTranscript, Release: func() {}}, nil
+	})
+	t.Cleanup(func() { backend.Close() })
+	backend.state = &appState{path: filepath.Join(t.TempDir(), appStateName)}
+	agent, err := mustCreate(t, backend, appwire.CreateAsk{Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := backend.heldLive(agent.ID); err != nil {
+		t.Fatal(err)
+	}
+	return backend, agent
+}
+
+// THE ENGINE HOLDING THE CONVERSATION SAYS WHAT MAY BE DONE, by number and
+// start; an unknown row carries its reason, and nothing else does.
+func TestProcessActionsAreTheHoldingEnginesAnswerForThatRun(t *testing.T) {
+	started := time.UnixMilli(1_700_000_000_000)
+	ended := session.JobNotice{ID: 41, Kind: session.JobKindCommand, State: session.JobDone, Started: started}
+	engine := &actorEngine{fakeConversation: &fakeConversation{}, record: ended, facts: session.ProcessActions{
+		Record: ended, Stop: session.ProcessAction{Reason: session.ProcessStopEnded}, Rerun: session.ProcessAction{Available: true},
+	}}
+	backend, agent := actorBackend(t, engine)
+	id := appProcessID(agent.ID, ended)
+	got, err := backend.ProcessActions(context.Background(), id)
+	if err != nil || got.Kind != appwire.ProcessKindJob || got.State != appwire.ProcessEnded || got.UnknownReason != "" ||
+		!got.Rerun.Available || got.Stop.Available || got.Stop.Reason != session.ProcessStopEnded || got.Log.Reason != appwire.ProcessLogNoLog {
+		t.Fatalf("ended: %+v %v", got, err)
+	}
+	if engine.asked[0] != "actions:41@1700000000000" {
+		t.Fatalf("the engine was asked %q", engine.asked)
+	}
+	unknown := ended
+	unknown.State = session.JobRunning
+	engine.mu.Lock()
+	engine.facts = session.ProcessActions{Record: unknown, Unknown: session.ProcessUnknownOwnerLost,
+		Stop: session.ProcessAction{Reason: session.ProcessStopUnknown}, Rerun: session.ProcessAction{Reason: session.ProcessRerunUnknown}}
+	engine.mu.Unlock()
+	got, err = backend.ProcessActions(context.Background(), id)
+	if err != nil || got.State != appwire.ProcessUnknown || got.UnknownReason != appwire.ProcessUnknownOwnerLost || got.Rerun.Available || got.Stop.Available {
+		t.Fatalf("unknown: %+v %v", got, err)
+	}
+	engine.mu.Lock()
+	engine.factsErr = session.ErrNoSuchProcess
+	engine.mu.Unlock()
+	if _, err := backend.ProcessActions(context.Background(), id); !isCode(err, appwire.CodeNotFound) {
+		t.Fatalf("another run: %v", err)
+	}
+	if _, err := backend.ProcessActions(context.Background(), agent.ID+":p41.!!"); !isCode(err, appwire.CodeBadParams) {
+		t.Fatalf("a malformed stamp: %v", err)
+	}
+}
+
+// RUN AGAIN AND STOP ACT THROUGH THE STAMPED DOOR AND REPORT WHAT IT SAID: a
+// refusal is a conflict in the engine's words, a stop it could not prove or
+// that a saving render refused is never a success, and an engine too old to
+// check is never asked to run anything again.
+func TestRerunAndStopActThroughTheStampedDoor(t *testing.T) {
+	started := time.UnixMilli(1_700_000_000_000)
+	running := session.JobNotice{ID: 42, Kind: session.JobKindCommand, State: session.JobRunning, Started: started}
+	engine := &actorEngine{fakeConversation: &fakeConversation{}, record: running}
+	backend, agent := actorBackend(t, engine)
+	id := appProcessID(agent.ID, running)
+	if _, err := backend.RerunProcess(id); !isCode(err, appwire.CodeConflict) {
+		t.Fatalf("refused rerun: %v", err)
+	}
+	for _, outcome := range []session.ProcessStopOutcome{{Line: "not ended in time", Unproven: true}, {Line: "being saved", Refused: true}} {
+		engine.mu.Lock()
+		engine.stop = outcome
+		engine.mu.Unlock()
+		if err := backend.StopProcess(id); err == nil {
+			t.Fatalf("a stop that did not happen answered success: %+v", outcome)
+		}
+	}
+	engine.mu.Lock()
+	engine.stop = session.ProcessStopOutcome{Line: "stopped"}
+	engine.mu.Unlock()
+	if err := backend.StopProcess(id); err != nil {
+		t.Fatal(err)
+	}
+	engine.mu.Lock()
+	asked := append([]string(nil), engine.asked...)
+	engine.mu.Unlock()
+	if len(asked) != 4 || asked[0] != "rerun:42@1700000000000" || asked[3] != "stop:42@1700000000000" {
+		t.Fatalf("doors asked: %q", asked)
+	}
+	if len(engine.cancels) != 0 {
+		t.Fatalf("the unstamped door was used beside the stamped one: %q", engine.cancels)
+	}
+
+	old := &fakeConversation{jobs: []session.JobNotice{{ID: 3, Kind: session.JobKindCommand, State: session.JobDone, Started: started}}}
+	legacy, _, oldAgent := workBackend(t, old)
+	oldID := appProcessID(oldAgent.ID, old.jobs[0])
+	if _, err := legacy.RerunProcess(oldID); !isCode(err, appwire.CodeUnknownMethod) {
+		t.Fatalf("an old engine was asked to run again: %v", err)
+	}
+}
+
+// STOP-ALL HAS ONE DEADLINE FROM THE MOMENT IT IS ASKED: an engine that does
+// not answer in time is joined at the deadline and the receipt says what is
+// unknown, never "all stopped"; a second stop-all for the agent is busy; a
+// crew is refused; an agent that does not exist is not found.
+func TestStopAllHasOneDeadlineAndNeverClaimsWhatItCouldNotSee(t *testing.T) {
+	engine := &actorEngine{fakeConversation: &fakeConversation{}, block: true}
+	backend, agent := actorBackend(t, engine)
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+
+	second := make(chan error, 1)
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		_, err := backend.StopAllProcesses(context.Background(), appwire.ProcessStopAllAsk{Agent: agent.ID})
+		second <- err
+	}()
+	began := time.Now()
+	res, err := backend.StopAllProcesses(ctx, appwire.ProcessStopAllAsk{Agent: agent.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if time.Since(began) > 2*time.Second {
+		t.Fatalf("stop-all outlived its deadline: %v", time.Since(began))
+	}
+	engine.mu.Lock()
+	returned := engine.returned
+	engine.mu.Unlock()
+	if !returned {
+		t.Fatal("stop-all answered before the engine's stop was joined")
+	}
+	if !res.Partial || !res.RemainingUnknown || res.Eligible != 0 || res.NotStopped == nil || res.ServicesNotStopped == nil || res.Unsupported == nil {
+		t.Fatalf("an unanswered stop-all receipt: %+v", res)
+	}
+	if err := <-second; !isCode(err, appwire.CodeBusy) {
+		t.Fatalf("a second stop-all for the agent: %v", err)
+	}
+	if _, err := backend.StopAllProcesses(ctx, appwire.ProcessStopAllAsk{Agent: agent.ID, Crew: "c1"}); !isCode(err, appwire.CodeBadParams) {
+		t.Fatalf("crew: %v", err)
+	}
+	if _, err := backend.StopAllProcesses(ctx, appwire.ProcessStopAllAsk{Agent: "nobody"}); err == nil {
+		t.Fatal("an agent that does not exist was stopped")
+	}
+}
+
+// THE RECEIPT IS THE ENGINE'S, IN THE APP'S IDS, BOUNDED: not-stopped jobs keep
+// their stamps, a list over its bound is cut and says so, and a part this app
+// cannot reach is unsupported rather than zero.
+func TestStopAllReceiptIsTheEnginesBoundedAndInTheAppsIDs(t *testing.T) {
+	started := time.UnixMilli(1_700_000_000_000)
+	notStopped := make([]session.JobNotice, appwire.ProcessStopAllIDs+3)
+	for i := range notStopped {
+		notStopped[i] = session.JobNotice{ID: i + 1, Started: started}
+	}
+	engine := &actorEngine{fakeConversation: &fakeConversation{}, receipt: session.ProcessStopReceipt{
+		Eligible: len(notStopped) + 2, Stopped: 2, NotStopped: notStopped,
+	}}
+	backend, agent := actorBackend(t, engine)
+	res, err := backend.StopAllProcesses(context.Background(), appwire.ProcessStopAllAsk{Agent: agent.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Eligible != len(notStopped)+2 || res.Stopped != 2 || len(res.NotStopped) != appwire.ProcessStopAllIDs ||
+		res.NotStopped[0] != appProcessID(agent.ID, notStopped[0]) || !res.RemainingUnknown || !res.Partial {
+		t.Fatalf("receipt: eligible=%d stopped=%d listed=%d first=%q partial=%v", res.Eligible, res.Stopped, len(res.NotStopped), res.NotStopped[0], res.Partial)
+	}
+	if len(res.Unsupported) != 1 || res.Unsupported[0] != appwire.ProcessStopAllServices {
+		t.Fatalf("services with no supervisor: %q", res.Unsupported)
+	}
+	if res.JobsDeadlineMS != int(session.ProcessStopAllWait/time.Millisecond) {
+		t.Fatalf("jobs deadline: %d", res.JobsDeadlineMS)
+	}
+
+	old := &fakeConversation{}
+	legacy, _, oldAgent := workBackend(t, old)
+	res, err = legacy.StopAllProcesses(context.Background(), appwire.ProcessStopAllAsk{Agent: oldAgent.ID})
+	if err != nil || !res.Partial || len(res.Unsupported) != 2 || res.Unsupported[0] != appwire.ProcessStopAllJobs {
+		t.Fatalf("an engine without the door: %+v %v", res, err)
+	}
+	if len(old.cancels) != 0 {
+		t.Fatalf("an old engine was stopped job by job: %q", old.cancels)
+	}
+}
+
+// A CONVERSATION NOBODY HERE HOLDS IS ANSWERED FROM ITS STORE: a record saved
+// running is unknown and offers nothing, an ended one offers no run again
+// without an owner, and its log target is the managed file, identified, with
+// no grant — a link in its place is refused.
+func TestProcessActionsAndLogTargetOfANotHeldConversation(t *testing.T) {
+	conv := &fakeConversation{}
+	backend, _, agent := workBackend(t, conv)
+	dir := t.TempDir()
+	transcript := filepath.Join(dir, "transcript.jsonl")
+	logs := filepath.Join(dir, "logs", "jobs")
+	if err := os.MkdirAll(logs, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	started := time.UnixMilli(1_700_000_000_000)
+	ended := session.JobNotice{ID: 7, Kind: session.JobKindCommand, State: session.JobDone, Started: started, LogPath: filepath.Join(logs, "7.log")}
+	running := session.JobNotice{ID: 8, Kind: session.JobKindCommand, State: session.JobRunning, Started: started}
+	linked := session.JobNotice{ID: 9, Kind: session.JobKindCommand, State: session.JobDone, Started: started, LogPath: filepath.Join(logs, "9.log")}
+	seedRecords(t, dir, ended, running, linked)
+	if err := os.WriteFile(ended.LogPath, []byte("built\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	secret := filepath.Join(t.TempDir(), "secret")
+	_ = os.WriteFile(secret, []byte("secret"), 0o600)
+	if err := os.Symlink(secret, linked.LogPath); err != nil {
+		t.Fatal(err)
+	}
+	letGo(t, backend, agent.ID, transcript)
+	ctx := context.Background()
+
+	got, err := backend.ProcessActions(ctx, appProcessID(agent.ID, running))
+	if err != nil || got.State != appwire.ProcessUnknown || got.UnknownReason != appwire.ProcessUnknownNotHeld ||
+		got.Stop.Reason != appwire.ProcessActionNotHeld || got.Rerun.Reason != appwire.ProcessActionNotHeld {
+		t.Fatalf("saved running: %+v %v", got, err)
+	}
+	got, err = backend.ProcessActions(ctx, appProcessID(agent.ID, ended))
+	if err != nil || got.State != appwire.ProcessEnded || got.UnknownReason != "" || got.Stop.Reason != session.ProcessStopEnded ||
+		got.Rerun.Available || got.Rerun.Reason != appwire.ProcessActionNotHeld || !got.Log.Available {
+		t.Fatalf("saved ended: %+v %v", got, err)
+	}
+	target, err := backend.ProcessLogTarget(ctx, appProcessID(agent.ID, ended))
+	if err != nil || !target.Local || target.Path != ended.LogPath || target.Size != 6 || target.Revision == "" || target.Gone || target.CapBytes != session.AppProcessOutputBytes {
+		t.Fatalf("log target: %+v %v", target, err)
+	}
+	read, err := backend.ReadProcessLog(ctx, appwire.ProcessLogAsk{ID: appProcessID(agent.ID, ended)})
+	if err != nil || read.Revision != target.Revision {
+		t.Fatalf("the target's revision is not the log read's: %+v %v", read, err)
+	}
+	if _, err := backend.ProcessLogTarget(ctx, appProcessID(agent.ID, linked)); !isCode(err, appwire.CodeEngine) {
+		t.Fatalf("a linked log: %v", err)
+	}
+	if got, err := backend.ProcessActions(ctx, appProcessID(agent.ID, linked)); err != nil || got.Log.Reason != appwire.ProcessLogUnmanaged {
+		t.Fatalf("a linked log's action: %+v %v", got, err)
+	}
+	if err := os.Remove(ended.LogPath); err != nil {
+		t.Fatal(err)
+	}
+	target, err = backend.ProcessLogTarget(ctx, appProcessID(agent.ID, ended))
+	if err != nil || !target.Gone || target.Path != "" || target.Revision != "" {
+		t.Fatalf("an expired log: %+v %v", target, err)
+	}
+	if _, err := backend.ProcessLogTarget(ctx, appProcessID(agent.ID, running)); !isCode(err, appwire.CodeNotFound) {
+		t.Fatalf("a record with no log: %v", err)
+	}
+}
+
+// A SERVICE'S ACTIONS AND LOG ARE THE SUPERVISOR'S, AND STOP-ALL STOPS ONLY
+// THE AGENT'S OWN: another agent's service keeps running.
+func TestServiceActionsLogTargetAndOwnerScopedStopAll(t *testing.T) {
+	w := newSvcWorld(t)
+	row := w.keep(t, w.agent.ID, service.PolicyOnFailure)
+	other := w.keep(t, "someone-else", service.PolicyOnFailure)
+	id := w.agent.ID + ":" + row.ID
+	if err := os.WriteFile(row.LogPath, []byte("ready\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	got, err := w.backend.ProcessActions(ctx, id)
+	if err != nil || got.Kind != appwire.ProcessKindService || got.State != appwire.ProcessRunning || !got.Stop.Available ||
+		got.Rerun.Reason != session.ProcessRerunRunning || !got.Log.Available || got.UnknownReason != "" {
+		t.Fatalf("running service: %+v %v", got, err)
+	}
+	target, err := w.backend.ProcessLogTarget(ctx, id)
+	if err != nil || target.Kind != appwire.ProcessKindService || target.Path != row.LogPath || target.Size != 6 || target.CapBytes != service.LogCapBytes {
+		t.Fatalf("service log target: %+v %v", target, err)
+	}
+	res, err := w.backend.StopAllProcesses(ctx, appwire.ProcessStopAllAsk{Agent: w.agent.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.ServicesEligible != 1 || res.ServicesStopped != 1 || len(res.ServicesNotStopped) != 0 {
+		t.Fatalf("services receipt: %+v", res)
+	}
+	if theirs, err := w.sup.Get("someone-else", other.ID); err != nil || !theirs.Running {
+		t.Fatalf("another agent's service was stopped: %+v %v", theirs, err)
+	}
+	got, err = w.backend.ProcessActions(ctx, id)
+	if err != nil || got.Stop.Available || !got.Rerun.Available {
+		t.Fatalf("stopped service: %+v %v", got, err)
+	}
+}
+
+func TestOldEngineStopDoesNotFallBackToAnUnverifiableCancel(t *testing.T) {
+	job := session.JobNotice{ID: 7, Kind: session.JobKindRender, State: session.JobRunning, Started: time.Now()}
+	old := &fakeConversation{jobs: []session.JobNotice{job}}
+	backend, _, agent := workBackend(t, old)
+	err := backend.StopProcess(appProcessID(agent.ID, job))
+	if !isCode(err, appwire.CodeUnknownMethod) {
+		t.Fatalf("old engine stop pretended to prove a stop: %v", err)
+	}
+	old.mu.Lock()
+	defer old.mu.Unlock()
+	if len(old.cancels) != 0 {
+		t.Fatalf("unverifiable old Cancel was called: %q", old.cancels)
+	}
+}
+
+func TestStopAllOnANotHeldConversationNeverOpensItOrInventsAnEmptyJobSnapshot(t *testing.T) {
+	engine := &actorEngine{fakeConversation: &fakeConversation{}}
+	backend, agent := actorBackend(t, engine)
+	a, err := backend.find(agent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	letGo(t, backend, agent.ID, a.transcript)
+	if backend.liveOf(a) != nil {
+		t.Fatal("fixture still held")
+	}
+	result, err := backend.StopAllProcesses(context.Background(), appwire.ProcessStopAllAsk{Agent: agent.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if backend.liveOf(a) != nil {
+		t.Fatal("stop all reopened a conversation to invent a fresh registry")
+	}
+	if !result.RemainingUnknown || !result.Partial {
+		t.Fatalf("unheld jobs became a complete empty snapshot: %+v", result)
+	}
+	engine.mu.Lock()
+	defer engine.mu.Unlock()
+	if engine.returned {
+		t.Fatal("unheld owner was asked for a job snapshot")
+	}
+}
+
+func TestProcessActionsOpensALightCrewOwnerOnce(t *testing.T) {
+	b, rec, paths, opens := lazyBackend(t, 1)
+	b.crews()
+	job := session.JobNotice{ID: 41, Kind: session.JobKindCommand, State: session.JobDone, Started: time.UnixMilli(1700000000000)}
+	seedRecords(t, filepath.Dir(paths[0]), job)
+	engine := &actorEngine{fakeConversation: &fakeConversation{}, record: job, facts: session.ProcessActions{
+		Record: job, Rerun: session.ProcessAction{Available: true},
+	}}
+	entered, release := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	releaseOpen := func() { once.Do(func() { close(release) }) }
+	defer releaseOpen()
+	opener := b.open
+	b.open = func(ask appOpenAsk) (*appConn, error) {
+		close(entered)
+		<-release
+		conn, err := opener(ask)
+		if err == nil {
+			conn.Conv = engine
+		}
+		return conn, err
+	}
+	id := appProcessID(appAgentID(paths[0]), job)
+	first := make(chan struct{})
+	go func() {
+		defer close(first)
+		got, err := b.ProcessActions(context.Background(), id)
+		if err != nil || !got.Rerun.Available {
+			t.Errorf("opening caller's actions: %+v %v", got, err)
+		}
+	}()
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the owner was never asked to open")
+	}
+	t.Log("interleaving: first actions caller entered the opener; owner publication is blocked")
+	var wg sync.WaitGroup
+	for range 12 {
+		wg.Go(func() {
+			got, err := b.ProcessActions(context.Background(), id)
+			if err != nil || got.State != appwire.ProcessEnded || got.Rerun.Available || got.Rerun.Reason != appwire.ProcessActionNotHeld {
+				t.Errorf("opening owner's saved actions: %+v %v", got, err)
+			}
+		})
+	}
+	answersWithin(t, 2*time.Second, "actions while the owner opens", wg.Wait)
+	t.Log("interleaving: concurrent reads returned ended and not_held without waiting for the opener")
+	releaseOpen()
+	rec.waitFor(t, 5*time.Second, func(event string, data any) bool {
+		changed, ok := data.(appwire.AgentChanged)
+		return event == appwire.EventAgentChanged && ok && changed.Agent.ID == appAgentID(paths[0])
+	})
+	t.Log("interleaving: opener released; agent.changed received")
+	<-first
+	// The readiness event, rather than another caller's timing, makes an
+	// owner-backed answer available to every subsequent read.
+	for range 12 {
+		wg.Go(func() {
+			got, err := b.ProcessActions(context.Background(), id)
+			if err != nil || !got.Rerun.Available {
+				t.Errorf("ready owner's actions: %+v %v", got, err)
+			}
+		})
+	}
+	wg.Wait()
+	if got := opens.Load(); got != 1 {
+		t.Fatalf("concurrent actions opened %d owners", got)
+	}
+}
+
+// A PERSON'S STOP-ALL DURING AN OPEN STOPS WHAT THE OWNER HOLDS. The stop waits
+// for the open that is under way, so held jobs are stopped rather than reported
+// unknown. An open that never ends costs only the wait: the receipt then says
+// what is left is unknown, and the method's own deadline still holds.
+func TestStopAllDuringAnOwnersOpen(t *testing.T) {
+	setup := func(t *testing.T) (*appBackend, string, *actorEngine, chan struct{}, chan struct{}) {
+		b, _, paths, _ := lazyBackend(t, 1)
+		b.crews()
+		job := session.JobNotice{ID: 41, Kind: session.JobKindCommand, State: session.JobRunning, Started: time.UnixMilli(1700000000000)}
+		seedRecords(t, filepath.Dir(paths[0]), job)
+		engine := &actorEngine{fakeConversation: &fakeConversation{}, record: job, receipt: session.ProcessStopReceipt{Eligible: 1, Stopped: 1}}
+		entered, release := make(chan struct{}), make(chan struct{})
+		opener := b.open
+		b.open = func(ask appOpenAsk) (*appConn, error) {
+			close(entered)
+			<-release
+			conn, err := opener(ask)
+			if err == nil {
+				conn.Conv = engine
+			}
+			return conn, err
+		}
+		id := appProcessID(appAgentID(paths[0]), job)
+		go func() { _, _ = b.ProcessActions(context.Background(), id) }()
+		select {
+		case <-entered:
+		case <-time.After(5 * time.Second):
+			t.Fatal("the owner was never asked to open")
+		}
+		return b, appAgentID(paths[0]), engine, entered, release
+	}
+	t.Run("the open ends", func(t *testing.T) {
+		b, agent, _, _, release := setup(t)
+		answered := make(chan *appwire.ProcessStopAllResult, 1)
+		go func() {
+			res, err := b.StopAllProcesses(context.Background(), appwire.ProcessStopAllAsk{Agent: agent})
+			if err != nil {
+				t.Errorf("stop-all: %v", err)
+			}
+			answered <- res
+		}()
+		time.Sleep(100 * time.Millisecond)
+		close(release)
+		select {
+		case res := <-answered:
+			if res == nil || res.Stopped != 1 || res.RemainingUnknown {
+				t.Fatalf("a stop-all during an open did not stop what the owner holds: %+v", res)
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatal("stop-all never answered")
+		}
+	})
+	t.Run("the open is stuck", func(t *testing.T) {
+		b, agent, _, _, release := setup(t)
+		defer close(release)
+		ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+		defer cancel()
+		began := time.Now()
+		res, err := b.StopAllProcesses(ctx, appwire.ProcessStopAllAsk{Agent: agent})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if took := time.Since(began); took > 2*time.Second {
+			t.Fatalf("a stuck open held the stop past its deadline: %v", took)
+		}
+		if !res.RemainingUnknown || res.Stopped != 0 {
+			t.Fatalf("a stuck open's receipt claims too much: %+v", res)
+		}
+	})
+}
+
+// stopAllWatchGate holds initialization after the owner has been published.
+type stopAllWatchGate struct {
+	*actorEngine
+	entered, release chan struct{}
+}
+
+func (e *stopAllWatchGate) WatchTaskUpdates() (<-chan session.Event, func()) {
+	close(e.entered)
+	<-e.release
+	return e.actorEngine.WatchTaskUpdates()
+}
+
+func TestStopAllTimeoutSkipsLatePublishedOwner(t *testing.T) {
+	b, _, paths, _ := lazyBackend(t, 1)
+	b.crews()
+	engine := &stopAllWatchGate{
+		actorEngine: &actorEngine{fakeConversation: &fakeConversation{}, receipt: session.ProcessStopReceipt{Eligible: 1, Stopped: 1}},
+		entered:     make(chan struct{}), release: make(chan struct{}),
+	}
+	entered, release, opened := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	var releaseOnce, watchOnce sync.Once
+	releaseOpen := func() { releaseOnce.Do(func() { close(release) }) }
+	releaseWatch := func() { watchOnce.Do(func() { close(engine.release) }) }
+	opener := b.open
+	b.open = func(ask appOpenAsk) (*appConn, error) {
+		close(entered)
+		<-release
+		conn, err := opener(ask)
+		if err == nil {
+			conn.Conv = engine
+		}
+		return conn, err
+	}
+	agent := appAgentID(paths[0])
+	go func() { defer close(opened); _, _ = b.OpenAgent(agent) }()
+	defer func() { releaseOpen(); releaseWatch(); <-opened }()
+	<-entered
+	w := newSvcWorld(t)
+	b.attachServices(w.sup)
+	row := w.keep(t, agent, service.PolicyOnFailure)
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	answered := make(chan *appwire.ProcessStopAllResult, 1)
+	go func() {
+		res, err := b.StopAllProcesses(ctx, appwire.ProcessStopAllAsk{Agent: agent})
+		if err != nil {
+			t.Errorf("stop-all: %v", err)
+		}
+		answered <- res
+	}()
+	// Services establish that stop-all has begun while the opener is blocked.
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		got, err := w.sup.Get(agent, row.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !got.Running && !got.Stopping {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("services waited for the opener")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	releaseOpen()
+	<-engine.entered
+	if ctx.Err() != nil {
+		t.Fatal("publication window was not reached before the deadline")
+	}
+	res := <-answered
+	if ctx.Err() != context.DeadlineExceeded {
+		t.Fatal("stop-all skipped the wait for owner publication")
+	}
+	releaseWatch()
+	<-opened
+	engine.mu.Lock()
+	called := engine.returned
+	engine.mu.Unlock()
+	if called || res == nil || res.Eligible != 0 || res.Stopped != 0 || !res.RemainingUnknown || !res.Partial {
+		t.Fatalf("timeout must skip actor and report zero jobs, unknown and partial: actor_called=%t receipt=%+v", called, res)
+	}
+}
+
+// stopAllTitleGate holds initialization before the live owner is published.
+type stopAllTitleGate struct {
+	*actorEngine
+	entered, release chan struct{}
+}
+
+func (e *stopAllTitleGate) Title() string {
+	close(e.entered)
+	<-e.release
+	return ""
+}
+
+func TestStopAllOwnerLookupOpensOnlyKeptOwnersWithinDeadline(t *testing.T) {
+	t.Run("post-open publication deadline", func(t *testing.T) {
+		b, _, paths, _ := lazyBackend(t, 1)
+		b.crews()
+		engine := &stopAllTitleGate{
+			actorEngine: &actorEngine{fakeConversation: &fakeConversation{}},
+			entered:     make(chan struct{}), release: make(chan struct{}),
+		}
+		opener := b.open
+		b.open = func(ask appOpenAsk) (*appConn, error) {
+			conn, err := opener(ask)
+			if err == nil {
+				conn.Conv = engine
+			}
+			return conn, err
+		}
+		agent := appAgentID(paths[0])
+		opened := make(chan struct{})
+		go func() { defer close(opened); _, _ = b.OpenAgent(agent) }()
+		<-engine.entered
+		defer func() { close(engine.release); <-opened }()
+		w := newSvcWorld(t)
+		b.attachServices(w.sup)
+		row := w.keep(t, agent, service.PolicyOnFailure)
+		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+		defer cancel()
+		answered := make(chan *appwire.ProcessStopAllResult, 1)
+		go func() {
+			res, err := b.StopAllProcesses(ctx, appwire.ProcessStopAllAsk{Agent: agent})
+			if err != nil {
+				t.Errorf("stop-all: %v", err)
+			}
+			answered <- res
+		}()
+		select {
+		case res := <-answered:
+			if ctx.Err() != context.DeadlineExceeded {
+				t.Error("stop-all skipped the wait for owner publication")
+			}
+			if res == nil || !res.RemainingUnknown || !res.Partial || res.Stopped != 0 || res.ServicesStopped != 1 {
+				t.Errorf("initializing owner's receipt: %+v", res)
+			}
+		case <-time.After(300 * time.Millisecond):
+			t.Error("stop-all exceeded its 50ms deadline while Title held initialization")
+		}
+		got, err := w.sup.Get(agent, row.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Running || got.Stopping {
+			t.Errorf("services waited for initialization: running=%t stopping=%t", got.Running, got.Stopping)
+		}
+	})
+	t.Run("non-kept conversation stays cold", func(t *testing.T) {
+		b, _, paths, opens := lazyBackend(t, 1)
+		res, err := b.StopAllProcesses(context.Background(), appwire.ProcessStopAllAsk{Agent: appAgentID(paths[0])})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := opens.Load(); got != 0 {
+			t.Errorf("stop-all opened %d cold owners", got)
+		}
+		if res == nil || !res.RemainingUnknown || !res.Partial || res.Stopped != 0 {
+			t.Errorf("cold owner's receipt: %+v", res)
+		}
+	})
+	t.Run("cold kept open respects deadline and retries join it", func(t *testing.T) {
+		b, _, paths, opens := lazyBackend(t, 1)
+		b.crews()
+		agent := appAgentID(paths[0])
+		entered, release, finished := make(chan struct{}), make(chan struct{}), make(chan struct{})
+		engine := &actorEngine{fakeConversation: &fakeConversation{}, receipt: session.ProcessStopReceipt{Eligible: 1, Stopped: 1}}
+		opener := b.open
+		b.open = func(ask appOpenAsk) (*appConn, error) {
+			close(entered)
+			<-release
+			conn, err := opener(ask)
+			if err == nil {
+				conn.Conv = engine
+			}
+			return conn, err
+		}
+		var releaseOnce sync.Once
+		releaseOpen := func() { releaseOnce.Do(func() { close(release) }) }
+		defer func() { releaseOpen(); <-finished }()
+		w := newSvcWorld(t)
+		b.attachServices(w.sup)
+		row := w.keep(t, agent, service.PolicyOnFailure)
+		var done <-chan struct{}
+		for attempt := range 3 {
+			ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+			answered := make(chan *appwire.ProcessStopAllResult, 1)
+			go func() {
+				res, err := b.StopAllProcesses(ctx, appwire.ProcessStopAllAsk{Agent: agent})
+				if err != nil {
+					t.Errorf("stop-all: %v", err)
+				}
+				answered <- res
+			}()
+			if attempt == 0 {
+				select {
+				case <-entered:
+					if ctx.Err() != nil {
+						t.Error("cold opener missed the deadline")
+					}
+				case <-answered:
+					cancel()
+					close(finished)
+					t.Fatal("stop-all skipped the cold opener")
+				case <-time.After(time.Second):
+					cancel()
+					close(finished)
+					t.Fatal("cold opener was never reached")
+				}
+				a := mustFind(t, b, agent)
+				b.locked(func() { done = a.openDone })
+				go func() { <-done; close(finished) }()
+			}
+			select {
+			case res := <-answered:
+				if ctx.Err() != context.DeadlineExceeded {
+					t.Error("stop-all skipped its owner wait")
+				}
+				if res == nil || res.Stopped != 0 || !res.Partial || !res.RemainingUnknown {
+					t.Errorf("stuck cold receipt: %+v", res)
+				}
+				if attempt == 0 && (res == nil || res.ServicesStopped != 1) {
+					t.Errorf("services did not stop independently: %+v", res)
+				}
+			case <-time.After(300 * time.Millisecond):
+				t.Error("stop-all exceeded its 50ms deadline")
+			}
+			cancel()
+			a := mustFind(t, b, agent)
+			b.locked(func() {
+				if a.openDone != done {
+					t.Error("retry did not join the existing open")
+				}
+			})
+		}
+		got, err := w.sup.Get(agent, row.ID)
+		if err != nil || got.Running || got.Stopping {
+			t.Errorf("service still running before open release: %+v %v", got, err)
+		}
+		if opens.Load() != 0 {
+			t.Error("blocked opener was released early")
+		}
+		releaseOpen()
+		<-finished
+		if opens.Load() != 1 {
+			t.Errorf("retries opened %d owners, want one", opens.Load())
+		}
+		engine.mu.Lock()
+		called := engine.returned
+		engine.mu.Unlock()
+		if called {
+			t.Error("timed-out stop called the job actor")
+		}
+	})
+}
+
+func TestStopAllColdCrewOwnerStopsRunningJob(t *testing.T) {
+	h := newRealActionHarnessSaying(t, "")
+	a := mustFind(t, h.b, h.agent)
+	if _, _, err := h.b.ensure(a); err != nil {
+		t.Fatal(err)
+	}
+	real, ok := session.LiveAgentFor(a.transcript)
+	if !ok {
+		t.Fatal("no real owner")
+	}
+	rememberStageAgent(real)
+	defer forgetStageAgent(real)
+	job := session.JobNotice{ID: 41, Kind: session.JobKindCommand, State: session.JobDone, Command: "sleep 30", StartedBy: session.JobStartedByChat, Dir: h.cwd, Started: time.UnixMilli(1700000000000), Ended: time.UnixMilli(1700000001000)}
+	seedRecords(t, filepath.Dir(a.transcript), job)
+	running, err := real.RerunProcessAt(context.Background(), job.ID, job.Started.UnixMilli())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer real.StopConversationProcesses(context.Background())
+	if running.State != session.JobRunning {
+		t.Fatalf("job not running: %+v", running)
+	}
+	b := newFakeBackend(newAppRecorder(), appOpenInProcess)
+	defer b.Close()
+	run := newAppCrewRun()
+	close(run.ready)
+	close(run.done)
+	run.held[h.agent] = []string{"test-crew"}
+	b.crewRun = run
+	cold := mustFind(t, b, h.agent)
+	if b.liveOf(cold) != nil {
+		t.Fatal("owner is not cold")
+	}
+	res, err := b.StopAllProcesses(context.Background(), appwire.ProcessStopAllAsk{Agent: h.agent})
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := real.JobNotices()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range after {
+		if row.ID == running.ID && row.State == session.JobRunning {
+			t.Errorf("sleep 30 still running after stop-all: %+v", res)
+		}
+	}
+	if res.Stopped != 1 || res.RemainingUnknown {
+		t.Fatalf("cold crew owner missed running job: %+v", res)
+	}
+}
+
+func TestStopAllLeavesClosedOrClosingCrewOwnerCold(t *testing.T) {
+	for _, state := range []string{"closed", "closing"} {
+		t.Run(state, func(t *testing.T) {
+			b, _, paths, opens := lazyBackend(t, 1)
+			b.crews()
+			agent := appAgentID(paths[0])
+			if state == "closed" {
+				if err := b.state.write(func(f *appStateFile) error {
+					if f.Closed == nil {
+						f.Closed = map[string]time.Time{}
+					}
+					f.Closed[agent] = time.Now()
+					return nil
+				}); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				b.locked(func() { b.closing = true })
+				defer b.locked(func() { b.closing = false })
+			}
+			res, err := b.StopAllProcesses(context.Background(), appwire.ProcessStopAllAsk{Agent: agent})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if opens.Load() != 0 || res.Stopped != 0 || !res.RemainingUnknown || !res.Partial {
+				t.Fatalf("%s owner reopened or claims complete: opens=%d receipt=%+v", state, opens.Load(), res)
+			}
+		})
+	}
+}

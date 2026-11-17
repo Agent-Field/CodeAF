@@ -174,6 +174,9 @@ type Rule struct {
 // The zero Policy prompts for everything. That is the intended reading of "no
 // policy configured" — a session with no settings should ask, not run.
 type Policy struct {
+	// ProfileReadError requires a fresh human answer for every call because
+	// saved denials could not be read. It overrides every automatic allowance.
+	ProfileReadError string
 	// Default applies to any tool with no rule of its own.
 	Default Action
 	// Tools is keyed by tool name (read, edit, write, bash, …). A tool rule
@@ -190,8 +193,15 @@ type Policy struct {
 // because every surface that renders a consent prompt needs the same sentence
 // and none of them should be re-deriving it from the Policy.
 type Decision struct {
+	// ProfileReadError prevents other consent sources from answering for a person.
+	ProfileReadError string
+	// Scope is the explicit rule matched, absent for default and inferred allows.
+	Scope  string
 	Action Action
 	Rule   string
+	// Credential marks a refusal by the credential floor (credentials.go), which
+	// is the one deny a person's own `!` command is not bound by.
+	Credential bool
 }
 
 // String is the one-line form: `bash pattern "rm -rf *" → prompt`.
@@ -201,6 +211,13 @@ func (d Decision) String() string { return d.Rule + " → " + string(d.Action) }
 // is read only for bash, and only for its "command" field.
 func (p Policy) Check(tool string, args json.RawMessage) Decision {
 	tool = strings.TrimSpace(tool)
+	if read, hit := DefaultCredentialScope("").Read(tool, args); hit {
+		return read.Decision()
+	}
+	if p.ProfileReadError != "" {
+		return Decision{Action: ActionPrompt, ProfileReadError: p.ProfileReadError,
+			Rule: "saved approval rules could not be read; every call needs your approval: " + p.ProfileReadError}
+	}
 	base := p.base(tool, args)
 	if tool != ToolBash {
 		return p.maybeAllowSelfAsking(tool, p.maybeAllowReadOnly(tool, args, base))
@@ -223,22 +240,33 @@ func (p Policy) Check(tool string, args json.RawMessage) Decision {
 // string — a slash command, a queued shell action, a settings preview that
 // wants to show what a pattern would do.
 func (p Policy) CheckBash(command string) Decision {
+	if read, hit := DefaultCredentialScope("").Command(command); hit {
+		return read.Decision()
+	}
+	if p.ProfileReadError != "" {
+		return p.Check(ToolBash, nil)
+	}
 	return p.checkBash(command, p.base(ToolBash, nil))
 }
+
+const (
+	criticalCommandRulePrefix = "critical command "
+	actsInPersonsNameSuffix   = " acts in your name outside this machine"
+)
 
 // base is the answer before any bash-specific reasoning: the tool's own rule
 // if it has one, otherwise the default, otherwise ask — with the floor under a
 // blanket allow that [actsInThePersonsName] describes.
 func (p Policy) base(tool string, args json.RawMessage) Decision {
 	if action, ok := p.Tools[tool]; ok && action.valid() {
-		return Decision{Action: action, Rule: fmt.Sprintf("tool %q", tool)}
+		return Decision{Action: action, Rule: fmt.Sprintf("tool %q", tool), Scope: tool}
 	}
 	decision := Decision{Action: ActionPrompt, Rule: "default (unset)"}
 	if p.Default.valid() {
 		decision = Decision{Action: p.Default, Rule: "default"}
 	}
 	if decision.Action == ActionAllow && ActsInThePersonsName(tool, args) {
-		return Decision{Action: ActionPrompt, Rule: fmt.Sprintf("%s acts in your name outside this machine", tool)}
+		return Decision{Action: ActionPrompt, Rule: tool + actsInPersonsNameSuffix}
 	}
 	return decision
 }
@@ -251,7 +279,7 @@ func (p Policy) checkBash(command string, base Decision) Decision {
 	decision := base
 	matched := false
 	if rule, hit := matchRule(p.BashPatterns, whole, segments, compound); hit {
-		decision = Decision{Action: rule.Action, Rule: fmt.Sprintf("bash pattern %q", rule.Match)}
+		decision = Decision{Action: rule.Action, Rule: fmt.Sprintf("bash pattern %q", rule.Match), Scope: rule.Match}
 		matched = true
 	}
 
@@ -260,7 +288,7 @@ func (p Policy) checkBash(command string, base Decision) Decision {
 	// would have run silently is worth interrupting.
 	if decision.Action == ActionAllow {
 		if hit, ok := criticalHit(command, segments); ok {
-			return Decision{Action: ActionPrompt, Rule: fmt.Sprintf("critical command %q", hit)}
+			return Decision{Action: ActionPrompt, Rule: fmt.Sprintf(criticalCommandRulePrefix+"%q", hit)}
 		}
 	}
 	// A read-only line — `git status` and its flags — is not a question in
@@ -436,3 +464,9 @@ func toList(value any) ([]any, bool) {
 		return nil, false
 	}
 }
+
+// ProfileReadFailure is an unattended call refused because the saved rules
+// could not be read. Runners retain this reason ahead of report recovery.
+type ProfileReadFailure struct{ Reason string }
+
+func (e *ProfileReadFailure) Error() string { return e.Reason }

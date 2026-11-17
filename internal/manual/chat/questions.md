@@ -772,6 +772,12 @@ absence. Where the asker recommended nothing there is nothing to take: the line
 reads `your call: <what was asked> (nobody to ask)` and the work stops there
 rather than guessing.
 
+One `--once` run does have somebody to ask: `codeaf chat --once` with both
+`--events` and `--steer`, which is how an AgentField node runs a WorkAF step.
+There a question is written on the events file and the run waits for its
+answer on the steer file, so the factory watching the step puts it to the job's
+manager and person and the step goes on with their answer.
+
 ## What stays behind after you answer
 
 Answering leaves one dim line where the question was:
@@ -1448,3 +1454,11 @@ Saving is not forever: pausing or deleting one later is `/automations`, or askin
 (*Automations*). A rule such as "always use tabs" is not an automation — it has no
 time and nothing to run — so it is kept as a memory, with `/remember` (*Rules are not
 automations*).
+
+## Desktop Hold — stop a model question's countdown
+
+Hold on a model question stops its clock in the engine without answering it.
+The same question stays open past its original deadline. Its countdown goes
+away in the chat and Inbox, and later listings keep showing it without a clock.
+Hold on a task proposal still uses the task's existing hold action. A clock
+that has not been held still takes its declared suggestion when it expires.

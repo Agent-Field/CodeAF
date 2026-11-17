@@ -124,11 +124,11 @@ func (a *Agent) beltCarries(name string) bool {
 func (a *Agent) rejectBashEnvelope(hub *eventHub, calls []ai.ToolCall, diagnostic string) {
 	if bashCallsAddressable(calls) {
 		for _, call := range calls {
-			a.record(ai.Message{
+			a.recordToolResult(ai.Message{
 				Role:       "tool",
 				ToolCallID: call.ID,
 				Content:    []ai.ContentPart{{Type: "text", Text: diagnostic}},
-			})
+			}, toolResult{text: diagnostic, isError: true, harness: true})
 			hub.send(Event{
 				Kind:        EventToolFailed,
 				Tool:        call.Function.Name,

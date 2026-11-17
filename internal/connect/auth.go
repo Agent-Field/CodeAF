@@ -88,12 +88,14 @@ type Flow struct {
 	plug    Plug
 	url     string
 	cancel  context.CancelFunc
+	ctx     context.Context
 	done    chan flowResult
 
-	mu      sync.Mutex
-	settled bool
-	status  Status
-	err     error
+	mu        sync.Mutex
+	settled   bool
+	committed bool
+	status    Status
+	err       error
 }
 
 // flowResult is what the browser round-trip eventually produced.
@@ -188,6 +190,7 @@ func (m *Manager) BeginAuth(ctx context.Context, id, answer string) (*Flow, erro
 		plug:    plug,
 		url:     doorURL,
 		cancel:  cancel,
+		ctx:     runContext,
 		done:    make(chan flowResult, 1),
 	}
 	if refusal, refuses := plug.(refusing); refuses {
@@ -254,44 +257,81 @@ func (f *Flow) Wait(ctx context.Context) (Status, error) {
 // Cancel abandons a connection nobody is going to finish — the person pressed
 // escape, or closed the tab and came back. It releases the loopback address so
 // the next attempt can have it.
-func (f *Flow) Cancel() { f.cancel() }
+func (f *Flow) Cancel() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.cancel()
+	if !f.settled && !f.committed {
+		f.settled = true
+		f.status = Status{Service: f.plug.Service()}
+		f.err = context.Canceled
+	}
+}
+
+// commit serializes the atomic credential replacement with cancellation, after slow work and lock waits finish.
+func (f *Flow) commit(write func() error) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.ctx.Err(); err != nil {
+		return err
+	}
+	if err := write(); err != nil {
+		return err
+	}
+	f.committed = true
+	return nil
+}
 
 // settle records the outcome once: it asks whose account this is, writes the
 // connection to the store, and fixes the answer every later [Flow.Wait] gets.
 func (f *Flow) settle(ctx context.Context, result flowResult) (Status, error) {
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	if f.settled {
-		return f.status, f.err
+		status, err := f.status, f.err
+		f.mu.Unlock()
+		return status, err
 	}
-	f.settled = true
-	f.cancel()
+	f.mu.Unlock()
+	defer f.cancel()
 
+	waitContext := ctx
+	ctx, cancel := context.WithCancel(f.ctx)
+	stop := context.AfterFunc(waitContext, cancel)
+	if waitContext.Err() != nil {
+		cancel()
+	}
+	defer stop()
+	defer cancel()
 	service := f.plug.Service()
-	if result.err != nil {
-		f.status, f.err = Status{Service: service}, result.err
-		return f.status, f.err
+	status, err := Status{Service: service}, result.err
+	if err == nil && result.keys == nil {
+		err = fmt.Errorf("connect %s: the service granted nothing", service.Name)
 	}
-	if result.keys == nil {
-		f.status = Status{Service: service}
-		f.err = fmt.Errorf("connect %s: the service granted nothing", service.Name)
-		return f.status, f.err
+	if err == nil {
+		entry := stored{Keys: result.keys, Scopes: granted(result.keys, service.Scopes)}
+		// The identity probe may fail without failing the connection; only its label is lost.
+		if account, probeErr := f.plug.Account(ctx, staticClient(ctx, result.keys)); probeErr == nil {
+			entry.Account = account
+		}
+		err = waitContext.Err()
+		if err == nil {
+			err = ctx.Err()
+		}
+		if err == nil {
+			err = f.manager.store.putConnected(ctx, service.ID, entry, f.commit)
+		}
+		if err != nil {
+			err = fmt.Errorf("connect %s: %w", service.Name, err)
+		} else {
+			status = Status{Service: service, Connected: true, Account: entry.Account}
+		}
 	}
-
-	entry := stored{Keys: result.keys, Scopes: granted(result.keys, service.Scopes)}
-	// THE IDENTITY PROBE MAY FAIL WITHOUT FAILING THE CONNECTION. The keys
-	// work; only the label is missing, and a missing label renders as
-	// nothing.
-	if account, err := f.plug.Account(ctx, staticClient(ctx, result.keys)); err == nil {
-		entry.Account = account
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if !f.settled {
+		f.settled, f.status, f.err = true, status, err
 	}
-	if err := f.manager.store.put(service.ID, entry); err != nil {
-		f.status = Status{Service: service}
-		f.err = fmt.Errorf("connect %s: %w", service.Name, err)
-		return f.status, f.err
-	}
-	f.status = Status{Service: service, Connected: true, Account: entry.Account}
-	return f.status, nil
+	return f.status, f.err
 }
 
 // granted is what the person actually agreed to, for the record kept beside the

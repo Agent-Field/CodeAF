@@ -229,6 +229,8 @@ fuel spent after the answer was written; drop them in the same amendment.
 ## 10 · WRITE-SCOPE
 
 A node that WRITES CODE declares `write_scope`: the repo paths it may write.
+Use root-relative files, dirs or globs: `*`, `?`, `[...]` per segment; no `**`,
+`..` or absolute paths. A matched directory covers its subtree.
 
 - **Overlapping scopes are NOT independent.** Two nodes writing the same file are
   a collision no scheduler can fix, and the fix is yours: give one of them the

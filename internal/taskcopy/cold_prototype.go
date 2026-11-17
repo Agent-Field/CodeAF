@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/inventory"
 	"github.com/Agent-Field/codeaf/internal/taskstorage"
@@ -57,7 +58,7 @@ func writeCold(dest string, marker coldCarry) error {
 		return e
 	}
 	name := temp.Name()
-	defer os.Remove(name)
+	defer fsreplace.Remove(name)
 	if e = temp.Chmod(0600); e == nil {
 		_, e = temp.Write(raw)
 	}
@@ -71,7 +72,7 @@ func writeCold(dest string, marker coldCarry) error {
 	if e != nil {
 		return e
 	}
-	return os.Rename(name, filepath.Join(dest, coldRecord))
+	return fsreplace.Rename(name, filepath.Join(dest, coldRecord))
 }
 
 // coldCopies validates cached portable artifacts without expanding any archive.

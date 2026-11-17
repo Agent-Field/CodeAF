@@ -300,29 +300,17 @@ func planProgramOf(programs []delegate.Delegate, name string) delegate.Delegate 
 }
 
 // planProgramActionsFor is a program's action log as its page carries it: every
-// line read, from the first, by one reader of the program's own vocabulary —
-// which may need the lines before to read the one in front of it — with the
-// run's copy taken out of what it names; the newest [planProgramActions] of
-// what it shows, every text cut to its head; and how many shown actions came
-// before those.
+// line read, from the first, by one reader of the program's own vocabulary
+// ([planProgramShownReader]) — which may need the lines before to read the one
+// in front of it — the newest [planProgramActions] of what it shows, and how
+// many shown actions came before those.
 func planProgramActionsFor(logged []delegate.Action, program delegate.Delegate, copies planRunCopies) ([]delegate.Shown, int) {
-	read := program.Reader()
+	read := planProgramShownReader(program, copies)
 	var shown []delegate.Shown
 	for _, action := range logged {
-		action.Command = copies.strip(action.Command)
-		action.Observation = copies.strip(action.Observation)
-		action.Message = copies.strip(action.Message)
-		line, ok := read(action)
-		if !ok {
-			continue
+		if line, ok := read(action); ok {
+			shown = append(shown, line)
 		}
-		line.Text = planTextHead(copies.strip(line.Text))
-		line.Outcome = planTextHead(line.Outcome)
-		line.Reason = planTextHead(line.Reason)
-		if line.Text == "" {
-			continue
-		}
-		shown = append(shown, line)
 	}
 	earlier := 0
 	if len(shown) > planProgramActions {
@@ -330,6 +318,61 @@ func planProgramActionsFor(logged []delegate.Action, program delegate.Delegate, 
 		shown = shown[earlier:]
 	}
 	return shown, earlier
+}
+
+// planProgramShownReader is a fresh reader of a program's action log as every
+// page carries it: the run's copy taken out of what a line names before the
+// program's own vocabulary reads it ([delegate.Delegate.Reader]), every text of
+// what it shows cut to its head, and an action left with no words left out. It
+// is THE ONE reading of a line for a page, whether the page reads the whole
+// log or one launch of it within a budget ([delegate.ReadLaunchActions]).
+func planProgramShownReader(program delegate.Delegate, copies planRunCopies) delegate.ActionReader {
+	read := program.Reader()
+	return func(action delegate.Action) (delegate.Shown, bool) {
+		action.Command = copies.strip(action.Command)
+		action.Observation = copies.strip(action.Observation)
+		action.Message = copies.strip(action.Message)
+		line, ok := read(action)
+		if !ok {
+			return delegate.Shown{}, false
+		}
+		line.Text = planTextHead(copies.strip(line.Text))
+		line.Outcome = planTextHead(line.Outcome)
+		line.Reason = planTextHead(line.Reason)
+		line.Ending = planEndingForPage(line.Ending, copies)
+		if line.Text == "" {
+			return delegate.Shown{}, false
+		}
+		return line, true
+	}
+}
+
+// planEndingForPage is an ending's facts as the page carries them: the run's own
+// copy taken out of every text a program wrote about its files, as the line's
+// own words have it, and every fact else exactly as the log kept it.
+func planEndingForPage(ending *delegate.EndFacts, copies planRunCopies) *delegate.EndFacts {
+	if ending == nil {
+		return nil
+	}
+	kept := *ending
+	kept.Claim, kept.Observed = copies.strip(kept.Claim), copies.strip(kept.Observed)
+	kept.AnalysisIncomplete = copies.strip(kept.AnalysisIncomplete)
+	kept.SubmissionReason = copies.strip(kept.SubmissionReason)
+	if len(kept.Reports) > 0 {
+		kept.Reports = make([]string, len(ending.Reports))
+		for i, name := range ending.Reports {
+			kept.Reports[i] = copies.strip(name)
+		}
+	}
+	if ending.HuntCoverage != nil {
+		coverage := *ending.HuntCoverage
+		coverage.Failures = make([]delegate.HuntFailure, len(ending.HuntCoverage.Failures))
+		for i, failure := range ending.HuntCoverage.Failures {
+			coverage.Failures[i] = delegate.HuntFailure{Strategy: copies.strip(failure.Strategy), Reason: copies.strip(failure.Reason)}
+		}
+		kept.HuntCoverage = &coverage
+	}
+	return &kept
 }
 
 // planTurnForPage is one turn as a page carries it: every text cut to its head

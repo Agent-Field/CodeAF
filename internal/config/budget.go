@@ -1,7 +1,9 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"math"
@@ -13,42 +15,12 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/filememo"
 	"github.com/Agent-Field/codeaf/internal/home"
 )
 
-// DailyBudgetUSDAt resolves env → persisted config → built-in default. The env
-// remains the explicit headless override; /budget default writes the middle
-// layer used by both chat and one-shot runs.
-func DailyBudgetUSDAt(profileDir string) (float64, error) {
-	if raw := strings.TrimSpace(env.Get("CODEAF_DAILY_BUDGET")); raw != "" {
-		return parseDailyBudget(raw, "CODEAF_DAILY_BUDGET")
-	}
-	values, err := readProfileConfig(profileDir)
-	if err != nil {
-		return 0, err
-	}
-	encoded, ok := values[KeyDailyBudget]
-	if !ok {
-		return DefaultDailyBudgetUSD, nil
-	}
-	var value float64
-	if err := json.Unmarshal(encoded, &value); err != nil {
-		return 0, fmt.Errorf("read budget config: %s: %w", KeyDailyBudget, err)
-	}
-	return validateDailyBudget(value, KeyDailyBudget)
-}
-
-// WriteDailyBudgetUSD atomically persists the default rail while preserving any
-// unrelated future keys in the JSON object.
-func WriteDailyBudgetUSD(profileDir string, amount float64) error {
-	amount, err := validateDailyBudget(amount, KeyDailyBudget)
-	if err != nil {
-		return err
-	}
-	return writeProfileValue(profileDir, KeyDailyBudget, amount)
-}
+// DailyBudgetUSDAt, DailyBudgetBaseUSDAt and WriteDailyBudgetUSD live in
+// dailylimit.go, which owns the daily limit's persisted authority.
 
 // profileConfigMemo is the profile's config.json, PARSED AT MOST ONCE PER
 // CHANGE.
@@ -65,8 +37,9 @@ func WriteDailyBudgetUSD(profileDir string, amount float64) error {
 // internal/filememo spends one stat to decide whether it may answer, and
 // [SettingsGeneration] is folded in beside it so a value this process persisted
 // can never be served back stale, whatever a filesystem's timestamp resolution
-// is. File metadata also notices ordinary writes by another process; the
-// counter covers this process's writes where timestamp granularity cannot.
+// is. What the memo does not see is what the counter below already documents it
+// cannot: a same-inode write that restores both size and modification time.
+// Ordinary external edits and atomic replacements are seen on the next read.
 var profileConfigMemo = filememo.Stamped(SettingsGeneration,
 	func(_ string, data []byte, missing bool) (map[string]json.RawMessage, error) {
 		// A file that is not there yet is an empty object, not an error.
@@ -77,10 +50,13 @@ var profileConfigMemo = filememo.Stamped(SettingsGeneration,
 		if err := json.Unmarshal(data, &values); err != nil {
 			return nil, fmt.Errorf("read config: %w", err)
 		}
+		if values == nil {
+			return nil, fmt.Errorf("read config: expected a JSON object")
+		}
 		return values, nil
 	})
 
-// readProfileConfig is the single reader of the profile's config.json.
+// readProfileConfig is the ordinary reader of the profile's config.json.
 //
 // EVERY CALLER GETS THE SAME MAP AND NOBODY MAY WRITE IT. A memo hands back the
 // value it holds rather than a copy, so the eight readers in this package treat
@@ -95,6 +71,12 @@ var profileConfigMemo = filememo.Stamped(SettingsGeneration,
 // exists to remove. The law is free; the clone is not.
 func readProfileConfig(profileDir string) (map[string]json.RawMessage, error) {
 	return profileConfigMemo.Read(BudgetConfigPath(profileDir))
+}
+
+// readProfileConfigStrict preserves read errors at spending, privacy and write boundaries.
+// Absence still means a new profile; an unreadable existing file does not.
+func readProfileConfigStrict(profileDir string) (map[string]json.RawMessage, error) {
+	return profileConfigMemo.ReadStrict(BudgetConfigPath(profileDir))
 }
 
 // writeProfileValue is the single writer every persisted setting goes through:
@@ -171,6 +153,21 @@ func (c profileChange) applyTo(held map[string]json.RawMessage) map[string]json.
 }
 
 func writeProfileValues(profileDir string, updates map[string]any) error {
+	return writeProfileValuesExpecting(profileDir, nil, updates)
+}
+
+// errProfileMoved is a write refused because a row it was decided on changed
+// between the read and the write ([writeProfileValuesExpecting]).
+var errProfileMoved = errors.New("these settings changed while the change was being made")
+
+// writeProfileValuesExpecting is [writeProfileValues] that first checks, UNDER
+// THE SAME LOCK AS THE WRITE, that every row in expect still holds exactly the
+// bytes it was read with (a nil value: still absent), and refuses with
+// [errProfileMoved] otherwise. It is how a change computed from several rows —
+// a rule edited a tick at a time, a pin judged against that rule — lands on the
+// rows it was computed from, or not at all, rather than over a write that came
+// in between.
+func writeProfileValuesExpecting(profileDir string, expect map[string]json.RawMessage, updates map[string]any) error {
 	if len(updates) == 0 {
 		return nil
 	}
@@ -181,7 +178,13 @@ func writeProfileValues(profileDir string, updates map[string]any) error {
 	// The key in the error messages is a DETERMINISTIC one, since a map has no
 	// order and a failure that named a different row on every attempt would be a
 	// failure nobody could search for.
-	return editProfile(profileDir, errorKey(updates), func(map[string]json.RawMessage) (profileChange, error) {
+	return editProfile(profileDir, errorKey(updates), func(held map[string]json.RawMessage) (profileChange, error) {
+		for name, want := range expect {
+			got, present := held[name]
+			if present != (want != nil) || (present && !bytes.Equal(bytes.TrimSpace(got), bytes.TrimSpace(want))) {
+				return profileChange{}, errProfileMoved
+			}
+		}
 		return change, nil
 	})
 }
@@ -212,7 +215,7 @@ func editProfile(profileDir, key string, decide func(held map[string]json.RawMes
 	}
 	defer profileLock.Close()
 
-	held, err := readProfileConfig(profileDir)
+	held, err := readProfileConfigStrict(profileDir)
 	if err != nil {
 		return fmt.Errorf("write config: preserve existing file: %w", err)
 	}
@@ -222,6 +225,10 @@ func editProfile(profileDir, key string, decide func(held map[string]json.RawMes
 	}
 	if change.empty() {
 		return nil
+	}
+	// Computed changes pass the same credential guard as direct writes, against the locked reading.
+	if err := refuseAppCredentialUpdates(held, change); err != nil {
+		return err
 	}
 	stampPreferences(profileDir, held, &change)
 	encoded, err := json.MarshalIndent(change.applyTo(held), "", "  ")

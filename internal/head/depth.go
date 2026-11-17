@@ -2,11 +2,13 @@ package head
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/resident"
 	"github.com/Agent-Field/codeaf/internal/store"
+	"github.com/Agent-Field/codeaf/internal/summarypath"
 )
 
 // The board gives every job exactly one line, and that line is the same line
@@ -270,14 +272,14 @@ func collectResultFiles(node store.Node, limit int) []string {
 	seen := make(map[string]bool, deepFileCap)
 	add := func(path string) {
 		path = strings.Trim(strings.TrimSpace(path), `"'(),;:.`)
-		if !strings.HasPrefix(path, "/") && !strings.HasPrefix(path, "~/") &&
+		if !filepath.IsAbs(path) && !strings.HasPrefix(path, "~/") &&
 			!strings.HasPrefix(path, "cas://") {
 			return
 		}
-		if len(path) < 2 || seen[path] || (limit > 0 && len(files) == limit) {
+		if len(path) < 2 || seen[summarypath.Key(path)] || (limit > 0 && len(files) == limit) {
 			return
 		}
-		seen[path] = true
+		seen[summarypath.Key(path)] = true
 		files = append(files, path)
 	}
 	for _, pointer := range node.FoldPointers {

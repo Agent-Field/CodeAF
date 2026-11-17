@@ -39,6 +39,12 @@ const ProgramFile = "delegate-program.json"
 type ProgramRecord struct {
 	Name   string   `json:"name"`
 	Stages []string `json:"stages,omitempty"`
+	// Launch is the identity of the process this record is about
+	// ([NewLaunch]), drawn by whoever ran it before the process was started and
+	// stamped on every line of the action log and the conversation log that
+	// process's run wrote. Empty on a record written before launches were, and
+	// then no line can be told to be this process's: a reader says unknown.
+	Launch string `json:"launch,omitempty"`
 	// CeilingUSD is the dollar ceiling the run handed the program, zero for
 	// none. It is written here because the run works it out when it starts and
 	// keeps it nowhere a page could read it afterwards, and a page that shows
@@ -67,6 +73,13 @@ type ProgramRecord struct {
 	// conversation read both before offering, or refusing, to send it words.
 	Listening   bool   `json:"listening,omitempty"`
 	InboxClosed string `json:"inbox_closed,omitempty"`
+	// ReportReceipts are the receipts THIS LAUNCH's program issued on its own
+	// terminal line for the reports it wrote ([Delegate.IssuedReceipts]), kept
+	// by its worker in the write that sets EndedAt. They are the only authority
+	// a report is served on (report.go): a launch whose program wrote no
+	// report, or a record from before receipts, has none, and nothing is
+	// inferred for it.
+	ReportReceipts []ReportReceipt `json:"report_receipts,omitempty"`
 }
 
 // Heard keeps the models a stage record names ([StageRecord.Models]) and
@@ -100,16 +113,12 @@ func WriteProgram(dir string, record ProgramRecord) error {
 
 // ReadProgram reads the record; ok is false for a run that handed its task to
 // no program, or whose program has neither said hello nor ended yet.
+//
+// EVERY READER OF THE RECORD IS BOUNDED: a regular file of at most
+// [ProgramRecordCap], opened without blocking, so a page or a row read never
+// waits on a FIFO or reads a planted giant left where the record goes.
 func ReadProgram(dir string) (ProgramRecord, bool) {
-	data, err := os.ReadFile(filepath.Join(dir, ProgramFile))
-	if err != nil {
-		return ProgramRecord{}, false
-	}
-	var record ProgramRecord
-	if json.Unmarshal(data, &record) != nil || record.Name == "" {
-		return ProgramRecord{}, false
-	}
-	return record, true
+	return ReadProgramWithin(dir, ProgramRecordCap)
 }
 
 // MainThread is the thread a call belongs to when the program gave it no
@@ -122,6 +131,11 @@ const MainThread = "main"
 // flight without a second file.
 type Turn struct {
 	Seq int `json:"seq"`
+	// Launch is the launch of the program's process that made the call
+	// ([Action.Launch] says why it is the one tie between a line and a
+	// process). Seq starts again with every launch, so two launches' calls
+	// share numbers and only this tells them apart.
+	Launch string `json:"launch,omitempty"`
 	// Thread tells conversations apart when a program holds more than one at
 	// once (a summary of its own history, a helper agent): the call's cache key
 	// or its own id, MainThread when it gave none.
@@ -183,6 +197,9 @@ const (
 // capped is the turn as it is written: every text cut on a rune boundary, the
 // newest messages kept when there are too many, the tool calls bounded.
 func (t Turn) capped() Turn {
+	if !ValidLaunch(t.Launch) {
+		t.Launch = ""
+	}
 	t.Reply = cut(t.Reply, turnTextCap)
 	if len(t.Sent) > turnSaidMax {
 		t.Sent = t.Sent[len(t.Sent)-turnSaidMax:]

@@ -56,6 +56,14 @@ Stop it with SIGTERM or ctrl+c: requests under way finish first. **The relay has
 
 There is no Docker image for the relay. The page `docs/relay.md` in the repository says how to run, back up and upgrade it.
 
+## Why does my native relay answer leadership unavailable or HTTP 503
+
+The relay could not activate its durable group or complete the requested work.
+Its existing log includes the underlying local error, limited to one line per
+cause per minute. Check that log for a storage, permission or consensus error;
+the HTTP response keeps its usual wording. `--quiet` disables these log lines
+along with the other relay logging.
+
 ## Who can use my own relay
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
@@ -64,7 +72,7 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 
 ## My sync service is too old to move chats — update before continuing here
 
-An older sync service still pairs computers, lists and shows chats, saves every chat you write, and continues a chat another computer has closed. Only taking a chat that is open on another computer waits for it, because only an updated service can promise that the take displaces the holder you saw. This build says `taking an open chat from another computer waits for a sync service update; all else works, so close it there and continue here`. Close the chat on that computer and continue here. For your own service, replace the running `codeaf relay` with this build; the next attempt uses the update without reopening codeaf.
+An older sync service still pairs computers, lists and shows chats, saves every chat you write, and opens or continues a chat no computer holds (one the other computer closed, let go of after about 2 idle seconds when **Settings → General → idle handoff** / `CODEAF_IDLE_HANDOFF=1` is turned on — off by default — or let expire). Only taking a chat another computer still holds (running, or idle while `idle handoff` is off, before release, or on an older build) waits for it, because only an updated service can promise that the take displaces the holder you saw. This build says `taking an open chat from another computer waits for a sync service update; all else works, so close it there and continue here`. Close the chat on that computer (or let it go idle with `idle handoff` on), then continue or open it here. For your own service, replace the running `codeaf relay` with this build; the next attempt uses the update without reopening codeaf.
 
 A chat you write on this computer is never held back by an older service. Releases of codeaf check that the hosted service answers what they need before they ship.
 
@@ -85,3 +93,12 @@ A timeout says `the sync service at http://127.0.0.1:8901 did not answer in time
 ## A chat keeps working when the sync service is down
 
 A sync outage says `the sync service at 127.0.0.1:8901 is not answering; this chat keeps working here and catches up when it is back`, once per outage. Local saves and rewind keep working. A local save by itself does not prove that syncing recovered. After an actual successful sync call, the chat can say `syncing again`; a sustained renewal outage keeps its existing `this chat is syncing again` recovery line.
+
+## Do chat folder names sync through the hosted relay
+
+The hosted relay and your own current codeaf relay both carry a chat's folder
+name between paired computers. The name is sealed before upload; the relay
+stores opaque text and cannot read it. An older relay that does not advertise
+folder support receives no folder name. Updating that relay enables folder
+sync on the next successful capability check. A publish with no folder name
+keeps the name already stored, as does releasing the chat.

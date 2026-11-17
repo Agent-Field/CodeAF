@@ -76,6 +76,14 @@ type conditionalTaker interface {
 	TakeSeen(context.Context, string, *directory.LeaseExpectation) (Taken, error)
 }
 
+type availableTaker interface {
+	OpenAvailable(context.Context, string, *directory.LeaseExpectation) (Taken, error)
+}
+
+type availableRootTaker interface {
+	OpenAvailableWithWorkspaceRoots(context.Context, string, *directory.LeaseExpectation, map[string]string) (Taken, error)
+}
+
 type workspaceRootTaker interface {
 	TakeSeenWithWorkspaceRoots(context.Context, string, *directory.LeaseExpectation, map[string]string) (Taken, error)
 }
@@ -157,11 +165,8 @@ func (a *app) machineScreen(width int) []string {
 // remoteOffers answers each offer with what enter does on it. A table rather
 // than a switch, so a new offer is a new entry.
 //
-// A CHAT ANOTHER MACHINE LET GO OF (`Open`, which is what a released chat offers
-// where it is held) IS CONTINUED THE WAY A CHAT THAT WENT OFF IS: it is not on
-// this machine, so opening it is continuing it, and the lease is free. A chat
-// that is running on another machine is continued the same way, and the lease
-// is taken from it at once: the screen names the machine, the person decides.
+// Paired free rows take the non-forcing open door before this table. Other
+// rows keep the existing continuation choice, including live older holders.
 var remoteOffers = map[chatlist.OfferKind]func(*app, chatlist.Row, chatlist.Offer) tea.Cmd{
 	chatlist.Open:         (*app).offerContinue,
 	chatlist.ContinueHere: (*app).offerContinue,
@@ -186,7 +191,12 @@ func (a *app) homeMachineEnter(line homeLine) tea.Cmd {
 	// THE DIRECTORY IS THE ONLY THING THAT CAN GRANT A LEASE OR ARCHIVE A
 	// BRANCH, so with it out of reach the acting offers are disabled and say why
 	// on the foot, where every other refusal on this screen is said.
-	if a.machineRead.down {
+	if a.machineRead.down || a.machineRead.err != nil {
+		if a.idleOpenEnabled() {
+			if local, ok := a.homeLineOf(row.Cell); ok && row.AutoOpen {
+				return a.homeOpenLocalLine(local)
+			}
+		}
 		a.home.say(a.machineRead.unavailableWord(), "")
 		return nil
 	}
@@ -194,6 +204,11 @@ func (a *app) homeMachineEnter(line homeLine) tea.Cmd {
 		a.raiseMachineAsk(row, a.continueBusyShown(row))
 		a.home.say(continueAlreadyRunning, "")
 		return nil
+	}
+	if a.idleOpenEnabled() && row.AutoOpen {
+		if _, ok := a.taker.(availableTaker); ok {
+			return a.takeRemoteState(homeTakenMsg{row: row})
+		}
 	}
 	return run(a, row, offer)
 }
@@ -233,7 +248,7 @@ func (a *app) finishHomeTake(restoreDraft bool) {
 	if restoreDraft && a.homeTakeDraft != nil {
 		a.restoreTakeDraft(*a.homeTakeDraft)
 	}
-	a.homeTaking, a.homeTakeDraft, a.homeTakenSaid = "", nil, nil
+	a.homeTaking, a.homeTakeDraft, a.homeTakenSaid, a.homeMoveSaid = "", nil, nil, ""
 	a.homeTakeAutomatic, a.homeTakeOriginAutomatic, a.homeTakeAbandoned = false, false, false
 	a.homeTakeResult = nil
 }
@@ -264,8 +279,9 @@ func (a *app) cancelHomeTake() bool {
 		return true
 	}
 	a.homeTakeSeq++
+	line := a.homeMoveLine()
 	a.finishHomeTake(true)
-	if a.at(pageHome) && a.home.msg == continuing {
+	if a.at(pageHome) && a.home.msg == line {
 		a.home.say("", "")
 	}
 	a.touch()
@@ -339,7 +355,7 @@ func (a *app) continueShown(row chatlist.Row, at int) questionShown {
 			Form:    session.FormCard,
 			Asker:   session.Asker{Kind: session.AskerSurface},
 			Head:    continueAsk,
-			Reason:  chatlist.TakeoverLine(row),
+			Reason:  continueReason(row),
 			Subject: session.SubjectRef{Name: row.Title},
 			Options: []session.AnswerOption{
 				{Key: "1", Label: chatlist.OfferContinue},
@@ -364,6 +380,15 @@ func (a *app) continueShown(row chatlist.Row, at int) questionShown {
 			return a.takeRemote(row)
 		},
 	}
+}
+
+// continueReason is the takeover sentence, and before a big folder the
+// warning that moving it copies the folder too.
+func continueReason(row chatlist.Row) string {
+	if big := chatlist.BigMoveLine(row); big != "" {
+		return chatlist.TakeoverLine(row) + "; " + big
+	}
+	return chatlist.TakeoverLine(row)
 }
 
 // continueBusyShown tells the person on the card itself that another take is
@@ -552,9 +577,14 @@ func (a *app) takeRemoteState(msg homeTakenMsg) tea.Cmd {
 			msg.draft = &composer
 		}
 	}
-	return func() tea.Msg {
+	idleOpen := a.idleOpenEnabled() && msg.row.AutoOpen
+	take := func() tea.Msg {
 		seen := &directory.LeaseExpectation{Device: msg.row.DeviceID, Fence: msg.row.Fence}
-		if mapped, ok := taker.(workspaceRootTaker); ok && len(msg.roots) > 0 {
+		if open, ok := taker.(availableRootTaker); ok && idleOpen && len(msg.roots) > 0 {
+			msg.taken, msg.err = open.OpenAvailableWithWorkspaceRoots(ctx, msg.row.Cell, seen, msg.roots)
+		} else if open, ok := taker.(availableTaker); ok && idleOpen {
+			msg.taken, msg.err = open.OpenAvailable(ctx, msg.row.Cell, seen)
+		} else if mapped, ok := taker.(workspaceRootTaker); ok && len(msg.roots) > 0 {
 			msg.taken, msg.err = mapped.TakeSeenWithWorkspaceRoots(ctx, msg.row.Cell, seen, msg.roots)
 		} else if conditional, ok := taker.(conditionalTaker); ok {
 			msg.taken, msg.err = conditional.TakeSeen(ctx, msg.row.Cell, seen)
@@ -563,6 +593,10 @@ func (a *app) takeRemoteState(msg homeTakenMsg) tea.Cmd {
 		}
 		return msg
 	}
+	if _, ok := taker.(moveReporter); ok {
+		return tea.Batch(take, moveTick(msg.seq))
+	}
+	return take
 }
 
 // abandonAutomaticTake withdraws navigation without interrupting a mutation that
@@ -672,6 +706,16 @@ func (a *app) tookTakeover(msg homeTakenMsg) tea.Cmd {
 	if msg.err != nil {
 		a.finishHomeTake(false)
 	}
+	// A failed availability read has not brought a newer chat here. Keep the
+	// ordinary local door available, with send admission still checking its hold.
+	if !msg.automatic && msg.row.AutoOpen && a.at(pageHome) && !a.machineRead.computerRemoved &&
+		(errors.Is(msg.err, directory.ErrUnreachable) || errors.Is(msg.err, context.DeadlineExceeded)) {
+		if local, ok := a.homeLineOf(msg.row.Cell); ok {
+			a.failedTake(msg)
+			a.restoreTakeDraft(msg)
+			return a.homeOpenLocalLine(local)
+		}
+	}
 	var missing *session.WorkspaceBindingsRequired
 	if errors.As(msg.err, &missing) {
 		if _, ok := a.taker.(workspaceRootTaker); ok && len(missing.Roots) > 0 {
@@ -689,7 +733,7 @@ func (a *app) tookTakeover(msg homeTakenMsg) tea.Cmd {
 	switch {
 	case errors.Is(msg.err, directory.ErrLeaseHeld):
 		return a.lostRace(msg)
-	case errors.Is(msg.err, directory.ErrUnreachable):
+	case errors.Is(msg.err, directory.ErrUnreachable), msg.row.AutoOpen && errors.Is(msg.err, context.DeadlineExceeded):
 		// Home is where the failed move lands, so it carries the whole sentence:
 		// the reason alone does not say the chat stayed and the words were kept.
 		a.machineRead.down = true
@@ -825,7 +869,7 @@ func (a *app) continueConflictRead(msg continueConflictMsg) tea.Cmd {
 			}
 			sameHolder := row.DeviceID != "" && row.DeviceID == failed.row.DeviceID || row.DeviceID == "" && failed.row.DeviceID == "" && row.Device == failed.row.Device
 			if sameHolder && row.Fence != failed.row.Fence && row.Device != "" {
-				failure = fmt.Sprintf("%s picked this chat up again; press enter to continue it here", nonemptyDevice(row.Device))
+				failure = fmt.Sprintf(chatlist.PickedUpAgain+"; press enter to continue it here", nonemptyDevice(row.Device))
 			} else if !sameHolder && !row.Mine {
 				failure = lostRaceWord
 			}
@@ -878,7 +922,7 @@ func (a *app) openTaken(msg homeTakenMsg) tea.Cmd {
 	rows := append([]chatlist.Row(nil), a.machineRead.rows...)
 	for i := range rows {
 		if rows[i].Cell == msg.row.Cell {
-			rows[i].Mine, rows[i].Status, rows[i].Released = true, chatlist.Here, false
+			rows[i].Mine, rows[i].Status, rows[i].Released, rows[i].AutoOpen = true, chatlist.Here, false, false
 			rows[i].Device, rows[i].DeviceID, rows[i].Fence = msg.taken.Device, "", msg.taken.Fence
 			rows[i].Head = msg.taken.Head
 		}

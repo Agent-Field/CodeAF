@@ -15,6 +15,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	cellstoretest "github.com/Agent-Field/codeaf/internal/cellstore/celltest"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -54,8 +55,7 @@ func TestStorageOffContinuePreservesLocalTurns(t *testing.T) {
 			work := t.TempDir()
 			mustNil(t, session.SaveMeta(at.Root, session.Meta{ID: at.ID, Workspace: work, Created: time.Now()}))
 			eng := cellstore.EngineFor(work)
-			eng.DataRoot = t.TempDir()
-			t.Cleanup(cellstore.StopSpawned)
+			eng.DataRoot = cellstoretest.EngineDir(t)
 			seal := func(words string) string {
 				appendTo(t, transcriptOf(at), `{"type":"message","role":"user","content":"`+words+`"}`+"\n")
 				sealed, err := eng.Seal(t.Context(), at, cellstore.TurnInfo{})

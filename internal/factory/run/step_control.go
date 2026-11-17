@@ -1,0 +1,228 @@
+package run
+
+import (
+	"strings"
+	"time"
+
+	"github.com/Agent-Field/codeaf/internal/factory"
+)
+
+// stepRerunLog is the saved action a resumed runner reports to the manager.
+const stepRerunLog = "Rerun from "
+
+// StepControlRefusal identifies a state conflict without changing its person-facing words.
+type StepControlRefusal string
+
+func (e StepControlRefusal) Error() string { return string(e) }
+
+// StepControl changes only a recorded run. A rerun keeps completed earlier
+// steps and the money already spent; publishing and final jobs cannot rewind.
+// words, on a rerun, are the person's for it: kept on the item's notes, which
+// every step's brief carries, so trying again or sending work back says what to
+// do differently. A stop takes none.
+func StepControl(it *factory.Item, name string, rerun bool, words string, now time.Time) error {
+	return stepControl(it, name, rerun, words, "", now)
+}
+
+// stepControl is [StepControl] with the model a rerun moves the step to: ""
+// for the one it had. The log line names a new model, and a step moving to one
+// never resumes a conversation the old model held.
+func stepControl(it *factory.Item, name string, rerun bool, words, model string, now time.Time) error {
+	if rerun && factory.RecoveryPaused(*it) {
+		return StepControlRefusal(factory.DecisionPauseDetail(*it))
+	}
+	if err := factory.CheckPersonStop(*it); err != nil && (rerun || it.State != factory.StateRunning) {
+		return err
+	}
+	if factory.JobState(*it) == "done" || it.Publishing {
+		return StepControlRefusal("finished or publishing jobs cannot change steps")
+	}
+	s := it.Stream
+	if s == nil {
+		return StepControlRefusal("step not found")
+	}
+	index := -1
+	for i := range s.Phases {
+		if s.Phases[i].Name == name {
+			index = i
+			break
+		}
+	}
+	if index < 0 {
+		return StepControlRefusal("step not found")
+	}
+	if !rerun && (index != s.Cur || (it.State != factory.StateRunning && it.State != factory.StateNeedsYou && it.State != factory.StateQueued)) {
+		return StepControlRefusal("only the current running step can stop")
+	}
+	failedClaim := it.Failure != nil && it.Failure.Step == name && it.Failure.Next == factory.FailureStopped
+	if rerun && s.Phases[index].State == factory.PhasePending && !failedClaim {
+		return StepControlRefusal("step has not run yet")
+	}
+	if rerun && it.Cap > 0 && factory.JobLifetimeSpent(*it) >= it.Cap {
+		return StepControlRefusal("job budget reached; raise Budget before trying again")
+	}
+	if rerun {
+		if err := unchangedFollowRefusal(*it, s.Phases[index]); err != nil {
+			return err
+		}
+		it.PublishAnyway = nil
+		it.Recovery = nil
+		previous := s.Phases[index]
+		for i := index; i < len(s.Phases); i++ {
+			p := s.Phases[i]
+			s.Phases[i] = factory.Phase{Name: p.Name, Kind: p.Kind, Note: p.Note, State: factory.PhasePending,
+				RoundCosts: p.RoundCosts, Result: p.Result}
+			if len(p.RoundCosts) > 0 {
+				s.Phases[i].Round = p.Round + 1
+			}
+		}
+		// A fresh round retains this step's history and identity. Its nonzero
+		// round marks the stream begun, even when retrying the first step, so
+		// worker admission revives it without erasing spend or earlier results.
+		target := &s.Phases[index]
+		if previous.Result != nil && refusedCheckout(*previous.Result) != nil {
+			target.Result = previous.Result
+		}
+		target.Round = max(previous.Round+1, target.Round, 1)
+		grantFreshLoop(it, target)
+		target.Rounds = append([]factory.RoundLine(nil), previous.Rounds...)
+		if previous.Chat != "" {
+			factory.NoteRound(target, factory.RoundLinesMost, factory.RoundLine{Round: previous.Round, Chat: previous.Chat, Summary: previous.Note, At: previous.At, Started: previous.Started})
+		}
+		if planReportPending(name, previous.Result) && previous.Chat != "" && model == "" {
+			target.Chat = previous.Chat
+			target.State = factory.PhaseRunning
+			target.Carry = append([]string(nil), previous.Carry...)
+		}
+		if previous.Failure != nil && previous.Round > 0 {
+			result := "failed"
+			switch previous.Failure.Code {
+			case factory.CodeStopped:
+				result = "stopped"
+			case factory.CodeMachineLost:
+				result = "interrupted"
+			}
+			factory.NoteRound(target, factory.RoundLinesMost, factory.RoundLine{Round: previous.Round, Chat: previous.Chat, Summary: previous.Failure.Detail, Rejected: result == "failed", Result: result, At: previous.Failure.At, Started: previous.Started})
+		}
+		it.State = factory.StateQueued
+		it.Failure = nil
+		it.Proof, it.Policy = nil, nil
+		it.PublishError = ""
+		it.PublishStatus = nil
+		if it.FollowUp != nil {
+			f := *it.FollowUp
+			f.State, f.Reason = "queued", "Waiting for a runner to retry "+name
+			it.FollowUp = &f
+		}
+		s.Ended = time.Time{}
+	} else {
+		factory.MarkPersonStopped(it)
+		it.State = factory.StateNew
+		failure := stoppedByYou(name, s.Phases[index].Round, now)
+		it.Failure = failure
+		s.Phases[index].State, s.Phases[index].Failure, s.Phases[index].At = factory.PhaseFailed, failure, now
+		s.Ended = now
+	}
+	s.Cur, s.Paused = index, false
+	it.Question, it.QKind, it.Asking = "", "", nil
+	it.Approval, it.StopUndo = nil, nil
+	said := map[bool]string{true: stepRerunLog + name, false: "Stopped step " + name}[rerun]
+	if model != "" {
+		said += " on " + model
+	}
+	if words = strings.TrimSpace(words); rerun && words != "" {
+		it.Notes = append(it.Notes, words)
+		said += ": " + oneLine(words)
+	}
+	loopSay(it, now, "said", said)
+	return nil
+}
+
+// EditStepsItem recompiles the unstarted tail after a bounded person edit.
+// Completed and current phases retain their results and conversation identity.
+func EditStepsItem(it *factory.Item, edit factory.RunEdit, recipe factory.Recipe) ([]string, error) {
+	mode := factory.EditBeforeRun
+	if lastBegun(it) >= 0 {
+		mode = factory.EditInRun
+	}
+	next, lines, err := factory.Edit(*it, edit, recipe, mode)
+	if err != nil {
+		return nil, err
+	}
+	if len(lines) == 0 {
+		return nil, nil
+	}
+	RelayTail(&next)
+	*it = next
+	return lines, nil
+}
+
+// RelayTail lays the phases of it's run that have not begun again from its
+// steps as they stand, after any door changed them (a person's edit, the
+// manager's, the factory_item card): A STEP REMOVED LEAVES THE RUN and a step
+// moved runs in its new place, whether the job is queued (its phases were
+// laid when it was queued) or running. Phases that began keep their results
+// and conversations. A job with no run is left as it is.
+//
+// The runner's own re-lay at each round ([tailPhases]) cannot do this for a
+// removed step: it leaves alone a tail holding a phase no step names, which
+// is how a send-back's prove looks.
+func RelayTail(it *factory.Item) {
+	if it.Stream == nil {
+		return
+	}
+	if last := lastBegun(it); last >= 0 {
+		it.Stream.Phases = retail(*it, it.Stream.Phases, last)
+		return
+	}
+	it.Stream.Phases = loopPhases(*it)
+	it.Stream.Cur = 0
+}
+
+// lastBegun is the index of the last phase of it's run that is not pending,
+// -1 when none is (or it has no run).
+func lastBegun(it *factory.Item) int {
+	last := -1
+	if it.Stream != nil {
+		for i, p := range it.Stream.Phases {
+			if p.State != factory.PhasePending {
+				last = i
+			}
+		}
+	}
+	return last
+}
+
+// StepRerun is [StepControl]'s rerun that may also name the model the step
+// runs on this time and after: "" keeps the step's own. The step and every
+// step after it go back to pending, so an approval after it asks again. A
+// model is the person's pick of one conversation step ([factory.RunEdit]'s
+// Model), so a check, an approval or a fixed step refuses one, and a refusal
+// moves nothing.
+func StepRerun(it *factory.Item, name, words, model string, now time.Time) error {
+	model = strings.TrimSpace(model)
+	i := factory.StageIndex(it.Stages, name)
+	if model != "" {
+		switch {
+		case !factory.ModelID(model):
+			return StepControlRefusal(factory.ErrModelID.Error())
+		case i < 0:
+			return StepControlRefusal("step not found")
+		case it.Stages[i].Kind == factory.StageCheck || factory.IsApprove(it.Stages[i]):
+			return StepControlRefusal(name + " is a check or an approval and runs no model")
+		case it.Stages[i].Fixed:
+			return factory.FixedRefusal(name)
+		}
+	}
+	if i >= 0 && it.Stages[i].Model == model {
+		model = ""
+	}
+	if err := stepControl(it, name, true, words, model, now); err != nil {
+		return err
+	}
+	if model != "" {
+		st := &it.Stages[i]
+		st.Model, st.By, st.Why = model, factory.ByYou, oneLine(words)
+	}
+	return nil
+}

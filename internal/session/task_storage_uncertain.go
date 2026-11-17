@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/env"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/home"
 )
 
@@ -91,12 +92,7 @@ func syncTaskStorageUncertainty(name string) error {
 }
 
 func syncTaskStorageDirectory(path string) error {
-	dir, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer dir.Close()
-	return dir.Sync()
+	return fsreplace.SyncDir(path)
 }
 
 func taskStorageHasUncertainWriter() bool {

@@ -13,6 +13,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	cellstoretest "github.com/Agent-Field/codeaf/internal/cellstore/celltest"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -24,8 +25,8 @@ import (
 // the entire earlier conversation, while the original remains unchanged.
 func TestC29FirstSavedTurnIncludesTheEarlierConversation(t *testing.T) {
 	celltest.RequireEngine(t)
-	t.Setenv(home.EnvVar, t.TempDir())
-	t.Cleanup(cellstore.StopSpawned)
+	t.Setenv(home.EnvVar, cellstoretest.EngineDir(t))
+
 	work := t.TempDir()
 	if err := os.WriteFile(filepath.Join(work, "hello.txt"), []byte("at copy time"), 0600); err != nil {
 		t.Fatal(err)
@@ -98,7 +99,6 @@ func newShortOlderChatHome(t *testing.T) string {
 // the `.moving` copy rather than the stale original.
 func TestCopiedLegacyChatKeepsCopyReadyAfterRewind(t *testing.T) {
 	celltest.RequireEngine(t)
-	t.Cleanup(cellstore.StopSpawned)
 
 	homeDir := newShortOlderChatHome(t)
 	t.Setenv(home.EnvVar, homeDir)
@@ -108,7 +108,7 @@ func TestCopiedLegacyChatKeepsCopyReadyAfterRewind(t *testing.T) {
 	}
 	t.Setenv(syncsetup.URLVar, "http://127.0.0.1:1")
 
-	work := t.TempDir()
+	work := cellstoretest.EngineDir(t)
 	if err := os.WriteFile(filepath.Join(work, "readme.txt"), []byte("turn one"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +245,7 @@ func TestCopiedLegacyChatKeepsCopyReadyAfterRewind(t *testing.T) {
 // Home — both for borrowed-project (`InPlace`) and owned (`swap`) chats.
 func TestCopiedLegacyChatKeepsCopyReadyAfterTakeBack(t *testing.T) {
 	celltest.RequireEngine(t)
-	t.Cleanup(cellstore.StopSpawned)
+	cellstoretest.EngineDir(t)
 
 	for _, tc := range []struct {
 		name  string
@@ -287,7 +287,7 @@ func TestCopiedLegacyChatKeepsCopyReadyAfterTakeBack(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			projectWork := t.TempDir()
+			projectWork := cellstoretest.EngineDir(t)
 			bucket, err := v3ProjectDir(projectWork)
 			if err != nil {
 				t.Fatal(err)
@@ -508,7 +508,6 @@ func TestCopiedLegacyChatKeepsCopyReadyAfterTakeBack(t *testing.T) {
 // never wipes the populated copy.
 func TestOpeningStaleOriginalNeverDeletesPopulatedCopy(t *testing.T) {
 	celltest.RequireEngine(t)
-	t.Cleanup(cellstore.StopSpawned)
 
 	homeDir := newShortOlderChatHome(t)
 	t.Setenv(home.EnvVar, homeDir)
@@ -518,7 +517,7 @@ func TestOpeningStaleOriginalNeverDeletesPopulatedCopy(t *testing.T) {
 	}
 	t.Setenv(syncsetup.URLVar, "http://127.0.0.1:1")
 
-	work := t.TempDir()
+	work := cellstoretest.EngineDir(t)
 	if err := os.WriteFile(filepath.Join(work, "readme.txt"), []byte("turn one"), 0o600); err != nil {
 		t.Fatal(err)
 	}

@@ -1,0 +1,78 @@
+package factory
+
+import "time"
+
+// RunReport is a worker's incremental write, not a replacement item. Keeping the
+// identity and pipeline out of it preserves changes a person made meanwhile.
+type RunReport struct {
+	FollowUp   *PRFollowUp
+	Change     *Change
+	ChangeBase string
+	HeadCommit string
+	Publishing *Publishing
+	// Pipeline is the job's steps after the worker's runner reshaped them (the
+	// manager's first turn, or a plan's edit, both bounded by the recipe). Nil
+	// is no change. A reshape lands before Stages, which may name a new step.
+	Pipeline *PipelineChange
+	Stages   []StageReport
+	Log      []LogLine
+	// Cost excludes growth in round tables carried by this report.
+	Cost         float64
+	Claims       []Claim
+	Question     *Asked
+	QuestionKind string
+	PR           *PullRequest
+	Publish      string
+	CommentURL   string
+	// Talk is the job's manager conversation, once the worker made it.
+	Talk string
+	// Notes are sentences the run added to the job's notes, oldest first.
+	Notes []string
+	// Thread carries spoken lines; Delivered acknowledges pending reply IDs.
+	Thread    []Message
+	Delivered []string
+	// Room is the item team's id the worker's factory-owned stage wrapper
+	// recorded on its mirror (Stream.Room). The server keeps the first one it
+	// is given and refuses a different one; "" is no change.
+	Room string
+	// Merge is what the runner's merge did, nil when it carried none out.
+	Merge *MergeReport
+	// AgentField is the AgentField run behind a run_on job as the runner last
+	// recorded it, nil for no change. The factory keeps it, so a runner that
+	// takes the job again follows the same run rather than starting another.
+	AgentField *AgentFieldRun
+	// AgentFieldSteps are the runs behind the job's agentfield steps as the
+	// runner last recorded them, by step, each one whole; nil for no change.
+	AgentFieldSteps map[string]*AgentFieldRun `json:",omitempty"`
+	// Models is the priced calls recorded since the previous report, by model.
+	// It rides a header, not the report body: a factory older than the field
+	// refuses an unknown JSON field and would drop the whole report.
+	Models []ModelUse
+}
+
+// PipelineChange is the job's stages and the run's phase list as the worker's
+// runner left them. A phase already on the job keeps its state on the server;
+// only the shape is taken from the report before results are folded.
+type PipelineChange struct {
+	Stages []Stage
+	Phases []Phase
+}
+
+// StageReport addresses a pipeline step by name, so a report cannot invent a
+// new step or depend on an index that a person changed between reports.
+type StageReport struct {
+	RoundCosts   map[int]float64
+	RoundLimit   int
+	Verification *StepVerification
+	Name         string
+	Chat         string
+	SkipReason   string
+	State        PhaseState
+	Round        int
+	// Started is when the step's latest round began on the worker
+	// ([Phase.Started]); zero leaves the factory's as it is.
+	Started time.Time
+	Result  *StageResult
+	Rounds  []RoundLine
+	Failure *Failure
+}

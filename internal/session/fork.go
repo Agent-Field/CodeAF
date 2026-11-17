@@ -63,6 +63,11 @@ func normalizeScopePath(workspace, raw string) (string, error) {
 	if clean == "" {
 		return "", errors.New("it is empty")
 	}
+	if strings.ContainsAny(clean, "*?[\\") {
+		if err := orchestrate.ValidateScope(clean); err != nil {
+			return "", err
+		}
+	}
 	local := filepath.FromSlash(clean)
 	if filepath.IsAbs(local) {
 		// AN ABSOLUTE PATH UNDER THE WORKSPACE IS ACCEPTED AND CONVERTED, never
@@ -158,13 +163,13 @@ func scopeAsGuarded(workspace string, scope []string) []string {
 // forkScopesCollide reports the first path two scopes share, if any.
 func forkScopesCollide(left, right []string) (string, bool) {
 	for _, one := range left {
-		if orchestrate.Covers(right, one) {
-			return one, true
-		}
-	}
-	for _, two := range right {
-		if orchestrate.Covers(left, two) {
-			return two, true
+		for _, two := range right {
+			if orchestrate.ScopesOverlap([]string{one}, []string{two}) {
+				if len(one) > len(two) {
+					return one, true
+				}
+				return two, true
+			}
 		}
 	}
 	return "", false

@@ -68,6 +68,31 @@ func (a *app) readTreeSpend() {
 		return
 	}
 	a.tree = session.UsageTree(lines, self)
+	if a.turnBegan.IsZero() {
+		if a.tree.Input > a.inputTokens {
+			a.inputTokens = a.tree.Input
+		}
+		if a.tree.Output > a.outputTokens {
+			a.outputTokens = a.tree.Output
+		}
+		if n := a.inputTokens + a.outputTokens; n > a.tokens {
+			a.tokens = n
+		}
+	}
+	if a.tree.CacheRead > a.cacheRead {
+		a.cacheRead = a.tree.CacheRead
+	}
+	if len(a.tree.CacheReads) > 0 {
+		if a.cacheReadByModel == nil || a.tree.CacheRead >= a.cacheRead {
+			a.cacheReadByModel = make(map[string]int, len(a.tree.CacheReads))
+		}
+		for model, reads := range a.tree.CacheReads {
+			if reads > a.cacheReadByModel[model] {
+				a.cacheReadByModel[model] = reads
+			}
+		}
+		a.repriceCache()
+	}
 }
 
 // treeLines is the ledger the tree is summed over, through THE SAME TWO DOORS

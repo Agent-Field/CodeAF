@@ -3,7 +3,6 @@ package syncsetup
 import (
 	"context"
 	"errors"
-	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -17,14 +16,15 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellstats"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	cellstoretest "github.com/Agent-Field/codeaf/internal/cellstore/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellsync"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/directory/directorytest"
 	"github.com/Agent-Field/codeaf/internal/executor"
-	"github.com/Agent-Field/codeaf/internal/furrow"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/relayserve"
@@ -81,13 +81,10 @@ type driveRig struct {
 func newDriveRig(t *testing.T, wrap ...func(http.Handler) http.Handler) *driveRig {
 	t.Helper()
 	celltest.RequireEngine(t)
-	bin, err := furrow.ResolveOwned()
-	if err != nil {
-		t.Skipf("no engine binary: %v", err)
-	}
+	bin := celltest.Engine(t)
 	clock := &driveClock{directorytest.NewFakeClock()}
 	clock.Advance(time.Since(clock.Now()))
-	storeDir := t.TempDir()
+	storeDir := cellstoretest.EngineDir(t)
 	svc := relayserve.New(relayserve.Config{Store: storeDir, Now: clock.Now, After: clock.After, Grace: directory.GraceBounds{Min: time.Second, Max: time.Hour, Default: 10 * time.Second}})
 	t.Cleanup(func() { _ = svc.Close() })
 	handler := svc.Handler
@@ -115,7 +112,6 @@ func newDriveRig(t *testing.T, wrap ...func(http.Handler) http.Handler) *driveRi
 	r.engine = cellstore.EngineFor(r.work)
 	r.engine.DataRoot, r.engine.Binary = t.TempDir(), bin
 	r.engine.Transport = cellstore.Spawn{Binary: bin}
-	t.Cleanup(cellstore.StopSpawned)
 	t.Cleanup(session.CloseUsage)
 	return r
 }
@@ -436,10 +432,7 @@ func TestDriveSideCloseReleasesTheLease(t *testing.T) {
 // fence 0, and nothing is written under the home's sync directory.
 func TestDriveSideOffIsStageZero(t *testing.T) {
 	celltest.RequireEngine(t)
-	bin, err := furrow.ResolveOwned()
-	if err != nil {
-		t.Skipf("no engine binary: %v", err)
-	}
+	bin := celltest.Engine(t)
 	hosted(t, "") // a build with no default relay: empty now means the built-in one
 	t.Setenv(home.EnvVar, t.TempDir())
 	h := t.TempDir()
@@ -505,6 +498,16 @@ func TestDriveSideStartsAsViewerWhenHeld(t *testing.T) {
 // daemon's socket appearing shows the daemon, and not the spawn, served them.
 func TestDriveSidePublishesOverTheDefaultDaemon(t *testing.T) {
 	r := newDriveRig(t)
+	if runtime.GOOS != "windows" {
+		// The rig has not opened an engine transport yet. A short home keeps
+		// its socket inside the home even with macOS's small address limit.
+		short, err := os.MkdirTemp("/tmp", "cds")
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.RemoveAll(short) })
+		t.Setenv(home.EnvVar, short)
+	}
 	t.Setenv("CODEAF_ENGINE_DAEMON", "")
 	r.engine.Transport = nil
 	t.Cleanup(func() { stopDaemons(t) })

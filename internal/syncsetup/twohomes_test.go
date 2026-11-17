@@ -493,6 +493,10 @@ func TestTwoHomesL12DeathBranches(t *testing.T) {
 
 	h.block.set(false)
 	waitFor(t, "A to learn it was superseded", func() bool { _, viewer := a.drive.Viewer(); return viewer })
+	waitFor(t, "A's branch row to hold three orphan turns", func() bool {
+		branch, ok := branchRowOf(t, h.a, h.cell.ID)
+		return ok && branch.OrphanTurns == 3
+	})
 
 	v, err := h.a.Dir.Cell(ctx, h.cell.ID)
 	if err != nil || v.Cell.Head != parentHead || v.Cell.Lease.Device != h.b.Device.ID() {

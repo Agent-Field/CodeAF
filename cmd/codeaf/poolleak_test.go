@@ -32,6 +32,7 @@ import (
 // fails here rather than passing a second later and racing the profile's own
 // clean-up.
 func TestTheLaunchesPoolWritersStopWhenTheProcessCloses(t *testing.T) {
+	t.Setenv("CODEAF_MODEL_POOL", "on")
 	released := make(chan struct{})
 	var release sync.Once
 	free := func() { release.Do(func() { close(released) }) }

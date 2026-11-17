@@ -9,9 +9,10 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	storetest "github.com/Agent-Field/codeaf/internal/cellstore/celltest"
 	"github.com/Agent-Field/codeaf/internal/executor"
-	"github.com/Agent-Field/codeaf/internal/furrow"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -37,12 +38,9 @@ func totalOf(t *testing.T) (sum total) {
 // Deleting the ledger and rebuilding it from the receipts gives back exactly
 // what the live rows said, and a rewind afterwards changes nothing.
 func TestUsageRebuildsFromReceiptsAndSurvivesARewind(t *testing.T) {
-	bin, err := furrow.ResolveOwned()
-	if err != nil {
-		t.Skipf("no engine binary: %v", err)
-	}
+	bin := celltest.Engine(t)
 	t.Setenv(home.EnvVar, t.TempDir())
-	e := cellstore.Engine{Binary: bin, DataRoot: t.TempDir()}
+	e := cellstore.Engine{Binary: bin, DataRoot: storetest.EngineDir(t)}
 	c, err := cell.CreateIn(t.TempDir(), cell.Options{Class: cell.Sandboxed})
 	if err != nil {
 		t.Fatal(err)
@@ -51,6 +49,7 @@ func TestUsageRebuildsFromReceiptsAndSurvivesARewind(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	cleanupRecorder(t, rec)
 	for i, micro := range []int64{1234, 5678, 91011} {
 		call := executor.ModelCall{Model: "m", Role: "turn", TokensIn: 100 * (i + 1), TokensOut: 7 * (i + 1), CostMicroUSD: micro}
 		session.RecordUsage(session.UsageLedgerPath(), session.UsageLine{Model: "m", Session: c.ID,
@@ -112,12 +111,9 @@ func contains(list []string, s string) bool {
 // The log a take carries does not name the newest turn, but that turn's receipt
 // is in the tree: its calls are still the chat's spend.
 func TestUsageCountsTheReceiptOfATurnTheCarriedLogDoesNotName(t *testing.T) {
-	bin, err := furrow.ResolveOwned()
-	if err != nil {
-		t.Skipf("no engine binary: %v", err)
-	}
+	bin := celltest.Engine(t)
 	t.Setenv(home.EnvVar, t.TempDir())
-	e := cellstore.Engine{Binary: bin, DataRoot: t.TempDir()}
+	e := cellstore.Engine{Binary: bin, DataRoot: storetest.EngineDir(t)}
 	c, err := cell.CreateIn(t.TempDir(), cell.Options{Class: cell.Sandboxed})
 	if err != nil {
 		t.Fatal(err)
@@ -126,6 +122,7 @@ func TestUsageCountsTheReceiptOfATurnTheCarriedLogDoesNotName(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	cleanupRecorder(t, rec)
 	for i := range 3 {
 		rec.NoteModelCall(executor.ModelCall{Model: "m", Role: "turn", TokensIn: 10, TokensOut: 1, CostMicroUSD: 1000})
 		if err := os.WriteFile(filepath.Join(c.Root, "f.txt"), []byte{byte('a' + i)}, 0o644); err != nil {
@@ -145,4 +142,16 @@ func TestUsageCountsTheReceiptOfATurnTheCarriedLogDoesNotName(t *testing.T) {
 	if got, err := cellstore.ModelCalls(c); err != nil || len(got) != len(all) || len(all) != 3 {
 		t.Fatalf("with the newest line missing %d calls are counted (%v), want %d", len(got), err, len(all))
 	}
+}
+
+// cleanupRecorder drains the group commit before EngineDir stops its daemon.
+func cleanupRecorder(t *testing.T, rec *cellstore.Recorder) {
+	t.Helper()
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := rec.Drain(ctx); err != nil {
+			t.Errorf("drain receipt recorder: %v", err)
+		}
+	})
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"io"
 	"net/http"
 	"net/url"
@@ -543,5 +544,54 @@ func TestSameKeys(t *testing.T) {
 	}
 	if sameKeys(one, nil) || !sameKeys(nil, nil) {
 		t.Error("nil must only equal nil")
+	}
+}
+
+func TestCancelDuringAccountLookupReturnsWithoutSaving(t *testing.T) {
+	onFreePort(t)
+	entered, release := make(chan struct{}), make(chan struct{})
+	mux := http.NewServeMux()
+	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(t, w, map[string]any{"access_token": "access-one", "token_type": "Bearer"})
+	})
+	mux.HandleFunc("/gmail/v1/users/me/profile", func(w http.ResponseWriter, r *http.Request) {
+		close(entered)
+		<-release
+		writeJSON(t, w, map[string]any{"emailAddress": "me@example.com"})
+	})
+	fakeService(t, mux)
+	defer close(release)
+	manager, _ := testManager(t)
+	flow, err := manager.BeginAuth(context.Background(), "google", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	drive(t, flow, "the-code")
+	waited := make(chan error, 1)
+	go func() { _, err := flow.Wait(context.Background()); waited <- err }()
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("account lookup did not start")
+	}
+	cancelled := make(chan struct{})
+	go func() { flow.Cancel(); close(cancelled) }()
+	select {
+	case <-cancelled:
+	case <-time.After(100 * time.Millisecond):
+		t.Error("Cancel blocked on account lookup")
+	}
+	// Release the fake even on the buggy path so the waiter cannot leak.
+	release <- struct{}{}
+	select {
+	case err := <-waited:
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("Wait = %v, want cancellation", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Wait did not finish")
+	}
+	if manager.Connected("google") {
+		t.Error("cancelled attempt saved credentials")
 	}
 }

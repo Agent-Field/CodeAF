@@ -12,6 +12,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/fuzzy"
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/skillpick"
 	"github.com/Agent-Field/codeaf/internal/skills"
 	store "github.com/Agent-Field/codeaf/internal/store"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
@@ -41,7 +42,7 @@ import (
 // catalog's own scan bound (internal/session's skillcatalog.go) rather than a
 // second number, because the shelf the picker shows and the shelf the model
 // is offered are the same shelf.
-const skillPickListLimit = 50
+const skillPickListLimit = skillpick.ListLimit
 
 // skillChipCap is how much of a name the tray's chip may spend
 // (harnesspick.go's [harnessChipCap], for its reason).
@@ -80,7 +81,7 @@ const (
 	// The shelf is now asked of the session itself ([skillShelf]), and memory
 	// off has a shelf of its own, so the one case left is a conversation whose
 	// door built none, or a far engine too old to be asked.
-	skillNoShelfWarning = "this conversation has no skill shelf, so this cannot be attached"
+	skillNoShelfWarning = skillpick.NoShelfWarning
 	skillEmptyWord      = "no skills are available here"
 )
 
@@ -384,7 +385,7 @@ func (a *app) readSkillShelf() tea.Cmd {
 		facts, err := shelf.SkillFacts(store.FactActive, skillPickListLimit)
 		reading := &skillShelfReading{readable: err == nil}
 		for _, fact := range facts {
-			reading.rows = append(reading.rows, shelfSkillRow{name: fact.SkillName(), desc: strings.TrimSpace(fact.Body)})
+			reading.rows = append(reading.rows, shelfSkillRow{name: fact.SkillName(), desc: strings.TrimSpace(fact.Body), artifact: fact.Artifact})
 		}
 		return func(here bool) tea.Cmd {
 			if !here {
@@ -413,8 +414,16 @@ func (a *app) readSkillShelf() tea.Cmd {
 // arrive when the scan answers.
 func (a *app) readSkillDisk() tea.Cmd {
 	workspace, homeDir := a.workspace, skillHomeDir()
+	folders, remoteFolders := a.agent.(interface {
+		SkillFolders() ([]skills.Skill, error)
+	})
 	return a.besideLine(func() func(bool) tea.Cmd {
-		found, _ := skillDiscover(skills.Options{ProjectDir: workspace, HomeDir: homeDir})
+		var found []skills.Skill
+		if remoteFolders {
+			found, _ = folders.SkillFolders()
+		} else {
+			found, _ = skillDiscover(skills.Options{ProjectDir: workspace, HomeDir: homeDir})
+		}
 		return func(here bool) tea.Cmd {
 			if !here {
 				return nil
@@ -465,60 +474,17 @@ func (a *app) skillPickReadsDone() bool {
 // name. Two sources are merged and deduplicated by name: the active shelf the
 // store keeps, and the folders internal/skills discovers in place.
 func (a *app) skillPickList() []skillPickRow {
-	attached := a.attachedSkillNames()
-	// WHETHER A CHOICE ON THIS LIST CAN DO ANYTHING. The shelf is the store and
-	// the rows below come off the disk, so the two can disagree, and they do in
-	// a conversation whose door built no shelf.
-	shelf, shelfReadable := a.shelfSkillFacts()
-	rows := make([]skillPickRow, 0, 16)
-	seen := make(map[string]bool, 16)
-	// THE ATTACHED ONES FIRST, in the order the session holds them. Attachment
-	// order is the conflict rule the workers read, so it is the order the list
-	// opens on too.
-	for _, name := range attached {
-		rows = append(rows, skillPickRow{name: name, on: true})
-		seen[strings.ToLower(name)] = true
+	shelf, readable := a.shelfSkillFacts()
+	entries := make([]skillpick.Entry, 0, len(shelf))
+	for _, row := range shelf {
+		entries = append(entries, skillpick.Entry{Name: row.name, Description: row.desc, Artifact: row.artifact})
 	}
-	var rest []skillPickRow
-	for _, skill := range shelf {
-		name := skill.name
-		if name == "" || seen[strings.ToLower(name)] {
-			continue
-		}
-		seen[strings.ToLower(name)] = true
-		rest = append(rest, skillPickRow{name: name, desc: skill.desc, from: skillFromShelf, on: attachedHas(attached, name)})
+	shared := skillpick.Rows(a.attachedSkillNames(), entries, a.skillDiskSeen, readable)
+	rows := make([]skillPickRow, 0, len(shared))
+	for _, row := range shared {
+		rows = append(rows, skillPickRow{name: row.Name, desc: row.Description, from: row.From, warning: row.Warning, on: row.On})
 	}
-	for _, skill := range a.skillDiskSeen {
-		if skill.Shadowed || skill.Name == "" || seen[strings.ToLower(skill.Name)] {
-			continue
-		}
-		seen[strings.ToLower(skill.Name)] = true
-		from := skillFromUser
-		if skill.Scope == skills.ScopeProject {
-			from = skillFromProject
-		}
-		warning := skill.Warning
-		if !shelfReadable {
-			// BOTH, AND THE FOLDER'S FIRST. The two warnings answer different
-			// questions: one is what is wrong with this skill, the other is
-			// what is wrong with the machine, and a row that dropped the first
-			// to make room for the second would hide a fault that outlives the
-			// setting.
-			warning = strings.TrimSpace(strings.Join([]string{warning, skillNoShelfWarning}, " · "))
-			warning = strings.TrimPrefix(warning, "· ")
-		}
-		rest = append(rest, skillPickRow{name: skill.Name, desc: skill.Description, from: from, warning: warning, on: attachedHas(attached, nameOf(skill))})
-	}
-	// PROJECT BEFORE USER, and the name as the tie-break: scope is a claim
-	// about where a skill lives and the name is the only order left inside a
-	// scope.
-	sort.SliceStable(rest, func(i, j int) bool {
-		if rest[i].from != rest[j].from {
-			return rest[i].from == skillFromProject
-		}
-		return rest[i].name < rest[j].name
-	})
-	return append(rows, rest...)
+	return rows
 }
 
 // attachedSkillNames is what the session holds, or nothing on a session
@@ -545,8 +511,9 @@ func attachedHas(names []string, name string) bool {
 
 // shelfSkillRow is one active shelf fact as the list reads it.
 type shelfSkillRow struct {
-	name string
-	desc string
+	artifact string
+	name     string
+	desc     string
 }
 
 // shelfSkillFacts is the active shelf as the SESSION last answered it, newest
@@ -579,9 +546,6 @@ func (a *app) shelfSkillFacts() ([]shelfSkillRow, bool) {
 type skillShelf interface {
 	SkillFacts(status string, limit int) ([]store.Fact, error)
 }
-
-// nameOf keeps the discovered Skill's own name in one place.
-func nameOf(skill skills.Skill) string { return skill.Name }
 
 // ── the keys ────────────────────────────────────────────────────────────────
 

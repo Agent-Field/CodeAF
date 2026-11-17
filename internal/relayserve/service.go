@@ -59,6 +59,7 @@ type Config struct {
 type Service struct {
 	Handler http.Handler
 	ns      *namespaces
+	fabric  *fabric
 	stop    chan struct{}
 	swept   sync.WaitGroup
 }
@@ -80,7 +81,12 @@ func (s *Service) Sweep() error {
 	if s.ns == nil {
 		return nil
 	}
-	return s.ns.sweep()
+	s.fabric.mu.Lock()
+	defer s.fabric.mu.Unlock()
+	if err := s.ns.sweep(); err != nil {
+		return err
+	}
+	return s.fabric.cleanRevoked()
 }
 
 // sweepLoop sweeps once at start, so a relay that was down past a deadline
@@ -118,6 +124,7 @@ func New(cfg Config) *Service {
 	}
 	links := directory.NewLinks(now, directory.DefaultLinkLimits)
 	svc.ns = newNamespaces(cfg.Store, now, cfg.Grace, cfg.MaxWatchers)
+	svc.ns.logf = cfg.Logf
 	svc.ns.after = cfg.After
 	svc.ns.links = links
 	mux.HandleFunc(clusterstate.ClusterAPIPath, svc.ns.clusterAPI)
@@ -129,7 +136,11 @@ func New(cfg Config) *Service {
 	}
 	mux.Handle(clusterctl.Path, clusterctl.Handler(svc.ns.controlAuthenticate, svc.ns.controlBackend))
 	auth := noting(svc.ns.authenticate)
-	dirs := logged(cfg.Logf, directory.Handler(auth, svc.ns.directory))
+	fabric := &fabric{ns: svc.ns, auth: noting(svc.ns.authenticateFabric)}
+	svc.fabric = fabric
+	dirs := logged(cfg.Logf, fabric.directoryHandler(directory.Handler(auth, svc.ns.directory)))
+	mux.Handle("/v1/clients/", logged(cfg.Logf, fabric.handler()))
+	mux.Handle("POST /v1/dir/devices/{device}/revoke", logged(cfg.Logf, fabric.serve(revokeClient)))
 	mux.Handle("/v1/dir/", dirs)
 	mux.Handle("/v1/identity/", dirs)
 	mux.Handle(directory.LinkPath+"/", logged(cfg.Logf, directory.LinkHandler(links, peerOf(cfg))))

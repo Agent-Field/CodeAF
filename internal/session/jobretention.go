@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/filelock"
 )
 
@@ -35,7 +36,14 @@ type jobRetentionBudget struct {
 	groups int
 }
 
-func defaultJobRetentionBudget() jobRetentionBudget { return jobRetentionBudget{128 << 20, 64} }
+func defaultJobRetentionBudget() jobRetentionBudget {
+	// App output has a per-process cap and a seven-day lifetime. A terminal's
+	// directory budget must not silently shorten that promised lifetime.
+	if config.AppMode() {
+		return jobRetentionBudget{1<<63 - 1, int(^uint(0) >> 1)}
+	}
+	return jobRetentionBudget{128 << 20, 64}
+}
 
 // Only caller-selected roots are resolved. Never resolve an entire jobs path:
 // a link planted inside the owned log subtree must still fail closed.

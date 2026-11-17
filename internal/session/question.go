@@ -68,6 +68,7 @@ package session
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -660,6 +661,11 @@ type Withdrawal struct {
 	By AskerKind `json:"by,omitempty"`
 	// At is when.
 	At time.Time `json:"at,omitzero"`
+	// Started says the question's own clock took its pick and the work it
+	// asked about is starting: a proposal nobody answered in time. It rides on
+	// the withdrawal itself because a surface reads the questions and the tasks
+	// on two lanes, and the task's own update may reach it after this does.
+	Started bool `json:"started,omitempty"`
 }
 
 // Exchange is one round of asking back: a person's question about one of the
@@ -711,6 +717,12 @@ const (
 // forms are internal/tui3's, and two of them drawing the same value differently
 // is a surface question rather than a contract one.
 type Question struct {
+	// Outside names a saved rule that does not cover this permission call.
+	Outside string `json:"outside,omitempty"`
+	// ConsentScopes and AlwaysAsk carry the gate's offered persistent rules.
+	ConsentScopes []string `json:"consentScopes,omitempty"`
+	AlwaysAsk     string   `json:"alwaysAsk,omitempty"`
+
 	// ClarificationDepth orders prerequisites ahead of the question they explain.
 	ClarificationDepth int `json:"clarificationDepth,omitempty"`
 
@@ -792,6 +804,10 @@ type Question struct {
 	Attach []Block `json:"attach,omitempty"`
 	// Asked is when it was put.
 	Asked time.Time `json:"asked,omitzero"`
+	// Keep is a keep-running card's whole proposal (keep_running.go), so a
+	// surface draws its command, folder and check from the card itself rather
+	// than from Head and Reason. Nil on every other question.
+	Keep *KeepNotice `json:"keep,omitempty"`
 	// Deadline is when a clock takes the question, and it is ZERO ON EVERY
 	// QUESTION THAT HAS NO CLOCK — which is all of them but the task proposal
 	// today. A WAIT THAT ENDED IS NOT A NO (consent.go): what a deadline does is
@@ -969,9 +985,13 @@ func (q Question) Check(records []DecisionRecord) error {
 // another, and a record keyed on the head alone would answer for every file a
 // session ever touched. A question with no subject at all matches only records
 // that had none either.
+//
+// AND A CREDENTIAL IS NEVER DECIDED. Asking for a token again is asking for a
+// new one — the first expired, or was wrong — and the record of the first
+// answer carries no value that could stand in for it (secret_request.go).
 func decidedAlready(records []DecisionRecord, q Question) (DecisionRecord, bool) {
 	head := questionFold(q.Head)
-	if head == "" {
+	if head == "" || q.SecretAnswer() {
 		return DecisionRecord{}, false
 	}
 	for at := len(records) - 1; at >= 0; at-- {
@@ -1460,6 +1480,13 @@ func questionAsked(event Event) (string, bool) {
 		}
 		return questionToken(QuestionAutomation, strconv.FormatUint(event.Automation.ID, 10)), true
 
+	case EventKeepRunning:
+		// A restated card carries its answer and asks nothing ([KeepNotice]).
+		if event.Keep == nil || event.Keep.ID == 0 || event.Keep.Decided != "" || event.Keep.Withdrawn != "" {
+			return "", false
+		}
+		return questionToken(QuestionKeep, strconv.FormatUint(event.Keep.ID, 10)), true
+
 	case EventHarnessOffer:
 		if event.ID == 0 {
 			return "", false
@@ -1472,6 +1499,35 @@ func questionAsked(event Event) (string, bool) {
 			return "", false
 		}
 		return questionToken(QuestionConnect, id), true
+
+	case EventFactoryProposal:
+		if event.Factory == nil || strings.TrimSpace(event.Factory.ID) == "" {
+			return "", false
+		}
+		if event.Factory.Decided != nil || event.Factory.Withdrawn != "" {
+			// The settled card restates its outcome and asks nothing, as a
+			// settled task proposal does.
+			return "", false
+		}
+		return questionToken(QuestionFactory, strings.TrimSpace(event.Factory.ID)), true
+
+	case EventRecipeProposal:
+		if event.Recipe == nil || strings.TrimSpace(event.Recipe.ID) == "" {
+			return "", false
+		}
+		if event.Recipe.Decided != nil || event.Recipe.Withdrawn != "" {
+			return "", false
+		}
+		return questionToken(QuestionRecipe, strings.TrimSpace(event.Recipe.ID)), true
+
+	case EventItemProposal:
+		if event.FactoryItem == nil || strings.TrimSpace(event.FactoryItem.ID) == "" {
+			return "", false
+		}
+		if event.FactoryItem.Decided != nil || event.FactoryItem.Withdrawn != "" {
+			return "", false
+		}
+		return questionToken(QuestionItem, strings.TrimSpace(event.FactoryItem.ID)), true
 	}
 	return "", false
 }
@@ -1729,7 +1785,8 @@ func (a *Agent) AskQuestion(q Question) (func(), error) {
 	// were already standing — which is the opposite of what a question object is
 	// for. Observed: three `ask` calls waiting and home drawing the conversation
 	// as `working`.
-	return a.presenceAskingWhole(q, nil), nil
+	// A door with no turn behind it names none (turn_origin.go).
+	return a.presenceAskingWhole(context.Background(), q, nil), nil
 }
 
 // checkQuestion is [Question.Check] plus the one bound that belongs to the SET
@@ -1804,11 +1861,23 @@ func (a *Agent) WithdrawQuestion(kind QuestionKind, token, reason string) {
 // once that lock is down (steerquestion.go), and there must not be two spellings
 // of what a withdrawal looks like.
 func (a *Agent) sayWithdrawn(q Question, reason string) {
-	q.Withdrawn = &Withdrawal{
-		Reason: strings.TrimSpace(reason),
-		By:     q.Asker.Kind,
-		At:     time.Now(),
+	a.sayWithdrawal(q, Withdrawal{Reason: strings.TrimSpace(reason), By: q.Asker.Kind, At: time.Now()})
+}
+
+// withdrawStarted retires a proposal its clock has just started, saying so on
+// the withdrawal ([Withdrawal.Started]). It claims the words first, so the
+// lane's own letting-go finds nothing and says nothing a second time.
+func (a *Agent) withdrawStarted(q Question) {
+	claimed, said := a.claimQuestion(q.Kind, q.Token(), false)
+	if !said {
+		return
 	}
+	a.sayWithdrawal(claimed, Withdrawal{Reason: questionGoneReason(claimed), By: claimed.Asker.Kind, At: time.Now(), Started: true})
+}
+
+// sayWithdrawal says one withdrawal, whole, to every surface.
+func (a *Agent) sayWithdrawal(q Question, withdrawal Withdrawal) {
+	q.Withdrawn = &withdrawal
 	a.emitQuestion(EventQuestionWithdrawn, q, nil)
 	// AND EVERY OTHER WINDOW LEARNS AT ONCE, for the reason the raise does
 	// ([Agent.raiseQuestion]): a question that is no longer being asked must not
@@ -1872,6 +1941,12 @@ func questionGoneReason(q Question) string {
 		return "the work settled"
 	case QuestionFuel:
 		return "the run is no longer at its gate"
+	case QuestionFactory:
+		return factoryGoneReason
+	case QuestionRecipe:
+		return recipeGoneReason
+	case QuestionItem:
+		return itemGoneReason
 	}
 	// The model's own question and everything else: the turn that raised it
 	// has ended — interrupted, or finished around it — which is the one way a
@@ -2222,6 +2297,65 @@ func (a *Agent) applyToLane(answer Answer) error {
 	case QuestionSubharness:
 		a.ResolveSubharness(answer.ID, key == "1", nil)
 		return nil
+	case QuestionFactory:
+		// WORDS ARE A CHANGE AND NEVER A YES (tools_factory.go). Words with no
+		// key are the whole answer; words beside `add it` still mean the card
+		// was not right as it stood, so they travel as the change and nothing
+		// is written. `not now` with words is still not now.
+		if key == "" {
+			if strings.TrimSpace(words) == "" {
+				return errAnswerEmpty
+			}
+			a.ResolveFactory(answer.Ref, FactoryAnswer{Change: words})
+			return nil
+		}
+		action, ok := AnswerFromKey(QuestionFactory, key)
+		if !ok {
+			return errAnswerEmpty
+		}
+		if action.Factory.Approved {
+			action.Factory.Change = strings.TrimSpace(words)
+		}
+		a.ResolveFactory(answer.Ref, action.Factory)
+		return nil
+	case QuestionRecipe:
+		// The factory card's reading, word for word: words are a change and
+		// never a yes, and words beside `bank it` still bank nothing.
+		if key == "" {
+			if strings.TrimSpace(words) == "" {
+				return errAnswerEmpty
+			}
+			a.ResolveRecipe(answer.Ref, RecipeAnswer{Change: words})
+			return nil
+		}
+		action, ok := AnswerFromKey(QuestionRecipe, key)
+		if !ok {
+			return errAnswerEmpty
+		}
+		if action.Recipe.Approved {
+			action.Recipe.Change = strings.TrimSpace(words)
+		}
+		a.ResolveRecipe(answer.Ref, action.Recipe)
+		return nil
+	case QuestionItem:
+		// The factory card's reading, word for word: words are a change and
+		// never a yes, and words beside `yes` still change nothing.
+		if key == "" {
+			if strings.TrimSpace(words) == "" {
+				return errAnswerEmpty
+			}
+			a.ResolveItem(answer.Ref, ItemAnswer{Change: words})
+			return nil
+		}
+		action, ok := AnswerFromKey(QuestionItem, key)
+		if !ok {
+			return errAnswerEmpty
+		}
+		if action.Item.Approved {
+			action.Item.Change = strings.TrimSpace(words)
+		}
+		a.ResolveItem(answer.Ref, action.Item)
+		return nil
 	case QuestionSubharnessAsk:
 		// A RUNNING SUB-HARNESS IS ANSWERED IN WORDS, not with a key: its
 		// question is its own and this engine never wrote answers for it. Taking
@@ -2233,6 +2367,14 @@ func (a *Agent) applyToLane(answer Answer) error {
 	case QuestionFuel:
 		_, err := a.ResolveOrchestrate(answer.Ref, fuelAnswer(key, words))
 		return err
+	case QuestionKeep:
+		// A KEEP-RUNNING CARD IS ANSWERED BY ITS KEY AND NOTHING ELSE: words are
+		// not a policy, and a person who wants something different says so in
+		// a message once the card is answered.
+		if !a.ResolveKeep(answer.ID, key) {
+			return errAnswerEmpty
+		}
+		return nil
 	}
 	return errAnswerUnknownLane
 }
@@ -2403,10 +2545,32 @@ func (a *Agent) OpenQuestions() []Question {
 	for id := range a.automationAnswers {
 		automations = append(automations, id)
 	}
+	keeps := make([]KeepNotice, 0, len(a.keepAsks))
+	for _, ask := range a.keepAsks {
+		keeps = append(keeps, ask.notice)
+	}
 	proposals := make(map[uint64]TaskNotice, len(a.taskAnswers))
 	for id, proposal := range a.taskAnswers {
 		if proposal != nil {
 			proposals[id] = proposal.notice
+		}
+	}
+	factories := make([]factoryOffer, 0, len(a.factoryOffers))
+	for _, offer := range a.factoryOffers {
+		if offer != nil {
+			factories = append(factories, *offer)
+		}
+	}
+	recipes := make([]recipeOffer, 0, len(a.recipeOffers))
+	for _, offer := range a.recipeOffers {
+		if offer != nil {
+			recipes = append(recipes, *offer)
+		}
+	}
+	stageCards := make([]itemOffer, 0, len(a.itemOffers))
+	for _, offer := range a.itemOffers {
+		if offer != nil {
+			stageCards = append(stageCards, *offer)
 		}
 	}
 	offers := make(map[uint64]Event, len(a.subharnessOffers))
@@ -2438,6 +2602,9 @@ func (a *Agent) OpenQuestions() []Question {
 	for _, id := range consent {
 		open = append(open, a.consentQuestion(id))
 	}
+	for _, notice := range keeps {
+		open = append(open, KeepQuestion(notice))
+	}
 	for id, ask := range connects {
 		open = append(open, a.connectQuestion(id, ask))
 	}
@@ -2455,6 +2622,15 @@ func (a *Agent) OpenQuestions() []Question {
 	}
 	for id, ask := range askers {
 		open = append(open, a.subharnessAskQuestion(id, ask))
+	}
+	for _, offer := range factories {
+		open = append(open, a.factoryQuestion(offer.notice.ID, offer.notice, offer.asked))
+	}
+	for _, offer := range recipes {
+		open = append(open, a.recipeQuestion(offer.notice.ID, offer.notice, offer.asked))
+	}
+	for _, offer := range stageCards {
+		open = append(open, a.itemQuestion(offer.notice.ID, offer.notice, offer.asked))
 	}
 	for id, live := range runs {
 		if snap := live.run.Snapshot(); snap.Paused {
@@ -2528,7 +2704,9 @@ const ConsentFallbackReason = "it will not run this without your word"
 // to one of those is read as a decline (connect.go) and a chip that means no
 // while reading yes is worse than no chip.
 func (a *Agent) connectQuestion(id string, ask connectAsk) Question {
-	return a.said(QuestionConnect, id, ConnectQuestion(id, ask.name, ask.needsKey, "", ask.secret))
+	q := ConnectQuestion(id, ask.name, ask.needsKey, "", ask.secret)
+	q.Subject.Name = ask.service
+	return a.said(QuestionConnect, id, q)
 }
 
 // ConnectQuestion is that object, and it is ONE BUILDER for the two roads it

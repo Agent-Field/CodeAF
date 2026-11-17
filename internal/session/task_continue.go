@@ -20,6 +20,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -44,6 +45,9 @@ const continueAskedLead = "What they asked this time"
 // brief and the acceptance the node was admitted with stay the ones the work
 // is graded against.
 func (a *Agent) ContinueTask(id uint64, words string) error {
+	if err := a.CheckWork(); err != nil {
+		return err
+	}
 	node := a.taskNode(id)
 	if node == nil {
 		return fmt.Errorf("no task %d in this session", id)
@@ -51,10 +55,17 @@ func (a *Agent) ContinueTask(id uint64, words string) error {
 	return a.tasker().reopen(node, words)
 }
 
-// RetryTask restarts incomplete work without changing its identity or assignment.
+// RetryTask restarts incomplete work. Graph nodes keep their identity and
+// assignment; an empty adaptive opening starts a fresh admitted run.
 func (a *Agent) RetryTask(id uint64) error {
+	if err := a.CheckWork(); err != nil {
+		return err
+	}
 	node := a.taskNode(id)
 	if node == nil {
+		if handled, err := a.retryEmptyOrchestrate(id); handled {
+			return err
+		}
 		return fmt.Errorf("no task %d in this session", id)
 	}
 	return a.tasker().reopenAttempt(node, "", true)
@@ -142,7 +153,12 @@ func (g *TaskGraph) reopenAttempt(node *TaskNode, words string, failedOnly bool)
 		node.offer = nil
 		node.revise = nil
 	}
-	node.state = TaskQueued
+	node.setStateLocked(TaskQueued)
+	// A RETRIED TASK IS NOT A HIDDEN FAILURE ANY MORE. The dismissal is cleared in the
+	// same locked step that admits the attempt, so it is never cleared by a retry that
+	// was refused above, and a task that is working again is never left hidden
+	// (task_dismiss.go). The checkpoint below writes the cleared set with the state.
+	delete(g.dismissed, strconv.FormatUint(node.id, 10))
 	node.claimed = false
 	node.stopped = false
 	node.ending = ""
@@ -452,7 +468,7 @@ func (g *TaskGraph) runAgainFromItsBranch(node *TaskNode) bool {
 		node.offer = nil
 		node.revise = nil
 	}
-	node.state = TaskQueued
+	node.setStateLocked(TaskQueued)
 	node.claimed = false
 	node.stopped = false
 	node.ending = ""

@@ -16,6 +16,7 @@ package session
 import (
 	"context"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -119,6 +120,7 @@ func TestACarryOnAnsweredNoChangeEndsItAndKeepsTheAnswer(t *testing.T) {
 	}
 	completer := &scriptedCompleter{steps: steps}
 	agent := checkpointAgent(t, completer, func(config *Config) { config.Memory = openTestBrain(t) })
+	writeProfileRow(t, agent.config.ProfileDir, config.KeyMemoryEnabled, config.MemoryOn)
 	learned := observeMemoryExtraction(completer)
 	stubbedGraph(agent, func(node *TaskNode) {})
 
@@ -232,6 +234,7 @@ func TestNoChangeAfterCallsMadeForTheNoteIsReadAgain(t *testing.T) {
 	}
 	completer := &scriptedCompleter{steps: steps}
 	agent := checkpointAgent(t, completer, func(config *Config) { config.Memory = openTestBrain(t) })
+	writeProfileRow(t, agent.config.ProfileDir, config.KeyMemoryEnabled, config.MemoryOn)
 	learned := observeMemoryExtraction(completer)
 	stubbedGraph(agent, func(node *TaskNode) {})
 

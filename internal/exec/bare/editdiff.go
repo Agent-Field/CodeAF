@@ -4,39 +4,9 @@ package bare
 import (
 	"strings"
 	"unicode"
+
+	"github.com/Agent-Field/codeaf/internal/textfile"
 )
-
-// detectLineEnding mirrors pi's edit-diff.js:detectLineEnding: returns "\r\n"
-// when the first CRLF precedes the first LF, otherwise "\n".
-func detectLineEnding(content string) string {
-	crlfIdx := strings.Index(content, "\r\n")
-	lfIdx := strings.Index(content, "\n")
-	if lfIdx == -1 {
-		return "\n"
-	}
-	if crlfIdx == -1 {
-		return "\n"
-	}
-	if crlfIdx < lfIdx {
-		return "\r\n"
-	}
-	return "\n"
-}
-
-// normalizeToLF mirrors pi's edit-diff.js:normalizeToLF.
-func normalizeToLF(text string) string {
-	text = strings.ReplaceAll(text, "\r\n", "\n")
-	text = strings.ReplaceAll(text, "\r", "\n")
-	return text
-}
-
-// restoreLineEndings mirrors pi's edit-diff.js:restoreLineEndings.
-func restoreLineEndings(text, ending string) string {
-	if ending == "\r\n" {
-		return strings.ReplaceAll(text, "\n", "\r\n")
-	}
-	return text
-}
 
 // stripBom mirrors pi's edit-diff.js:stripBom. The model will not include an
 // invisible BOM in oldText, so it is stripped before matching and restored
@@ -236,8 +206,8 @@ func applyEditsToNormalizedContent(normalizedContent string, edits []editPair, p
 	normalizedEdits := make([]editPair, len(edits))
 	for i, e := range edits {
 		normalizedEdits[i] = editPair{
-			oldText: normalizeToLF(e.oldText),
-			newText: normalizeToLF(e.newText),
+			oldText: textfile.NormalizeToLF(e.oldText),
+			newText: textfile.NormalizeToLF(e.newText),
 		}
 	}
 

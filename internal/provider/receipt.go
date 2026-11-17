@@ -104,6 +104,12 @@ type receiptWork struct {
 	queued time.Time
 	usage  func(int, int, bool, bool)
 	base   string
+	// requirePrice keeps token-only receipts unknown for final-price consumers.
+	requirePrice bool
+	// attempt is the send this receipt prices, captured when the receipt was
+	// owed (attemptobserver.go). It is NOT read from the trace at arrival: by
+	// then the call may be on a later send, or over.
+	attempt *attemptHandle
 }
 
 // deadline is the latest a receipt may be answered: [receiptFetchTimeout] after
@@ -167,56 +173,118 @@ func (c *Client) settle(ctx context.Context, model string, response *ai.Response
 	if len(traces) > 0 && traces[0] != nil && traces[0].attemptBase != "" {
 		base = traces[0].attemptBase
 	}
-	if response != nil && response.Usage != nil {
-		c.bill(ctx, model, response)
-		return
+	// A cut or failed response may carry interim usage. Preserve the existing
+	// bank exactly once, but it cannot prove the completed price of an observed
+	// send. Only that send's final generation receipt can settle its token.
+	handle := attemptOf(traces...)
+	bankedUsage := response != nil && response.Usage != nil && !finalReceiptsFrom(ctx) && billingFrom(ctx) != nil
+	if bankedUsage {
+		if handle == nil {
+			c.bill(ctx, model, response, traces...)
+			return
+		}
+		c.bankBilledUsage(ctx, model, response, traces...)
 	}
-	// A DIRECT SERVICE HAS NO OPENROUTER GENERATION ROUTE TO ASK. Its missing
-	// usage block supplies no measured figures to record. An overflow route
-	// does not change which service owns this client's credential, so it must
-	// not carry that credential to a router's generation route either.
-	if c.config.Direct {
-		return
-	}
+
 	sink := reconcileFrom(ctx)
+	if bankedUsage {
+		// The legacy usage bank already consumed this response. This additional
+		// receipt settles only the captured token, never a second legacy charge.
+		sink = func(Reconciled) {}
+	}
 	if sink == nil {
-		return
+		if handle == nil {
+			return
+		}
+		// Nobody banks the receipt, but the attempt's token is still owed it.
+		sink = func(Reconciled) {}
 	}
 	if served := CallFrom(ctx).Model(); served != "" {
 		model = served
 	}
 	result := Reconciled{
-		Billed: Billed{Node: callNode(ctx), Model: model},
+		Tag:    callTag(ctx),
+		Billed: Billed{Node: callNode(ctx), Model: model, Billing: c.answeredBilling(traces...)},
 		Reason: strings.TrimSpace(reason),
 		Hedged: hedgeLaneFrom(ctx) != "",
 	}
 	if response != nil {
 		result.Ref = canonicalGenerationID(response.ID)
+		result.GenerationID = result.Ref
+	}
+	// Retain measured interim usage if the final receipt cannot be recovered.
+	// The fallback and final receipt use the same sink, so only one can be banked.
+	if !bankedUsage && response != nil && response.Usage != nil {
+		original := sink
+		usage := *response.Usage
+		sink = func(answer Reconciled) {
+			if !answer.Found || (answer.PriceMissing && usage.Cost != nil) {
+				answer.PromptTokens = usage.PromptTokens
+				answer.CompletionTokens = usage.CompletionTokens
+				answer.CachedTokens = usage.CacheReadTokens()
+				if usage.Cost != nil {
+					answer.Cost = *usage.Cost
+				}
+				answer.Found = !answer.Billed.Empty()
+				answer.Interim = answer.Found
+				answer.PriceMissing = usage.Cost == nil
+			}
+			original(answer)
+		}
+	}
+	// A direct service has no generation route; retain its measured usage only.
+	if c.config.Direct {
+		if !bankedUsage && response != nil && response.Usage != nil {
+			sink(result)
+		} else if !bankedUsage && (ctx.Err() != nil || finalReceiptsFrom(ctx) && answerBytes > 0) {
+			sink(result)
+		}
+		handle.unknown()
+		return
 	}
 	// NO ID MEANS NO REQUEST. Text still proves that the call got somewhere and
 	// may be charged, so its missing price is said; without text there is no
-	// generation and nothing honest to count.
+	// generation and nothing honest to count, unless the caller cancelled an
+	// already sent request whose charge is still unknown.
 	if result.Ref == "" {
-		if answerBytes > 0 {
+		if ctx.Err() != nil || answerBytes > 0 || (response != nil && response.Usage != nil) {
 			sink(result)
 		}
+		handle.unknown()
 		return
 	}
 	attemptID := ""
 	if len(traces) > 0 && traces[0] != nil {
 		attemptID = traces[0].attemptID
 	}
-	work := receiptWork{result: result, sink: sink, base: base, usage: telemetry.CaptureUsageRecorderWithPresence(telemetry.UsageDimensions{
+
+	work := receiptWork{result: result, sink: sink, base: base, attempt: handle, requirePrice: finalReceiptsFrom(ctx), usage: telemetry.CaptureUsageRecorderWithPresence(telemetry.UsageDimensions{
 		RoutingProvider: c.usageRoutingProvider(base),
 		ModelFamily:     telemetry.ModelFamily(result.Model), UsageStatus: "reported",
 		AccountingSource: "provider", ReceiptID: usageReceiptID(base, result.Ref, attemptID),
 	})}
+	if bankedUsage {
+		// This is new observer-only coverage of an already banked response;
+		// do not replay its usage into legacy telemetry/accounting consumers.
+		work.usage = nil
+	}
 	// THE WORK IS TOLD A RECEIPT IS OWED BEFORE IT IS QUEUED, and told it was
 	// answered only after the sink has banked it, so a caller waiting for its
 	// receipts cannot see zero owed while money is between the two
 	// ([ReceiptPending]).
-	if pending := receiptPendingFrom(ctx); pending != nil {
+	// A finished answer that only lacks usage doesn't hold up the job's next step
+	// for its receipt: the job has moved on, and the row lands when it is answered.
+	moved := finalReceiptsFrom(ctx) && result.Reason == receiptUnmeteredReason
+	if pending := receiptPendingFrom(ctx); !bankedUsage && !moved && pending != nil {
 		done := pending()
+		work.sink = func(answer Reconciled) {
+			defer done()
+			sink(answer)
+		}
+	}
+	if pending, _ := ctx.Value(receiptSettlementContextKey{}).(ReceiptPending); !bankedUsage && pending != nil {
+		done := pending()
+		sink := work.sink
 		work.sink = func(answer Reconciled) {
 			defer done()
 			sink(answer)
@@ -225,8 +293,12 @@ func (c *Client) settle(ctx context.Context, model string, response *ai.Response
 	// THE RECEIPT'S BOUND STARTS HERE, when it is owed, and not when a worker
 	// gets to it ([receiptWork.deadline]).
 	work.queued = time.Now()
+	// PENDING IS SAID BEFORE THE QUEUE, so a token never looks silent while its
+	// price is between the call and a worker.
+	handle.financial(PendingCost())
 	if !c.queueReceipt(work) {
 		// A full queue reports the missing price without holding up the turn.
+		handle.unknown()
 		work.sink(result)
 	}
 }
@@ -286,39 +358,70 @@ func (c *Client) reconcile(work receiptWork) {
 		base = strings.TrimRight(strings.TrimSpace(c.config.BaseURL), "/")
 	}
 	if !receiptRoutes.askable(base, time.Now()) {
+		work.attempt.unknown()
 		work.sink(result)
 		return
 	}
 	ctx, cancel := context.WithDeadline(context.Background(), work.deadline())
 	defer cancel()
+	// last is the newest parsed receipt's verified price. A not-ready all-zero
+	// placeholder stays unknown; a nonempty receipt can state a real zero.
+	last := UnknownCost()
+	// A HURRIED RECEIPT ASKS ONCE MORE AND THEN ANSWERS (receipt_hurry.go).
+	hurry := receiptHurried()
+	final := false
 	for attempt := 0; attempt < receiptAttempts; attempt++ {
-		var presence [2]bool
-		billed, found, noRoute := c.fetchReceiptAt(ctx, result.Ref, base, &presence)
+		final = final || hurry.Err() != nil
+		ask, cancelAsk := receiptAskContext(ctx, hurry)
+		read := c.readReceiptAt(ask, result.Ref, base)
+		cancelAsk()
+		// An ask the hurry reached while it was in flight was the last one.
+		final = final || hurry.Err() != nil
+		billed, found, noRoute := read.billed, read.found, read.noRoute
+		if read.parsed {
+			last = read.financial
+		}
 		// Explicit zero counts are measurements even when the old money door
 		// still considers this an empty, unpriced receipt. Keep its price and
 		// ledger behavior while allowing those counts to replace estimates.
-		if work.usage != nil && (presence[0] || presence[1]) {
-			work.usage(billed.PromptTokens, billed.CompletionTokens, presence[0], presence[1])
+		if work.usage != nil && (read.presence[0] || read.presence[1]) {
+			work.usage(billed.PromptTokens, billed.CompletionTokens, read.presence[0], read.presence[1])
 		}
 		if noRoute {
 			receiptRoutes.heard(base, time.Now())
+			work.attempt.unknown()
 			work.sink(result)
 			return
 		}
 		if found {
+			if work.requirePrice && read.financial.State != FinancialKnown {
+				work.attempt.unknown()
+				work.sink(result)
+				return
+			}
+			work.attempt.financial(last)
+			billed.GenerationID = result.Ref
 			billed.Node = result.Node
 			billed.Model = result.Model
+			// The road is the attempt's, captured when the receipt was owed;
+			// the receipt document says nothing about it.
+			billed.Billing = result.Billing
 			result.Billed = billed
 			result.Found = true
+			result.PriceMissing = read.financial.State != FinancialKnown
 			work.sink(result)
 			return
 		}
+		if final {
+			break
+		}
 		if attempt < len(receiptRetrySchedule) {
-			if err := c.wait(ctx, receiptRetrySchedule[attempt]); err != nil {
+			if _, err := c.pauseReceipt(ctx, hurry, receiptRetrySchedule[attempt]); err != nil {
 				break
 			}
 		}
 	}
+	work.attempt.financial(last)
 	work.sink(result)
 }
 
@@ -344,9 +447,30 @@ func (c *Client) fetchReceipt(ctx context.Context, ref string) (Billed, bool, bo
 
 // fetchReceiptAt follows the route the generation actually used.
 func (c *Client) fetchReceiptAt(ctx context.Context, ref, base string, observed ...*[2]bool) (Billed, bool, bool) {
+	read := c.readReceiptAt(ctx, ref, base)
+	if len(observed) > 0 && observed[0] != nil {
+		*observed[0] = read.presence
+	}
+	return read.billed, read.found, read.noRoute
+}
+
+// receiptRead is one receipt request's whole answer. found and billed are the
+// sinks' view (an empty receipt is not found); parsed and financial are the
+// attempt token's view, which keeps an exact stated zero and a missing figure
+// apart because Billed cannot.
+type receiptRead struct {
+	billed    Billed
+	found     bool
+	noRoute   bool
+	presence  [2]bool
+	parsed    bool
+	financial FinancialObservation
+}
+
+func (c *Client) readReceiptAt(ctx context.Context, ref, base string) receiptRead {
 	endpoint, err := url.Parse(strings.TrimSpace(base))
 	if err != nil {
-		return Billed{}, false, false
+		return receiptRead{}
 	}
 	endpoint.Path = strings.TrimRight(endpoint.Path, "/") + "/generation"
 	endpoint.RawPath = ""
@@ -355,31 +479,31 @@ func (c *Client) fetchReceiptAt(ctx context.Context, ref, base string, observed 
 	endpoint.RawQuery = query.Encode()
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
 	if err != nil {
-		return Billed{}, false, false
+		return receiptRead{}
 	}
 	key, err := c.apiKeyNow()
 	if err != nil {
-		return Billed{}, false, false
+		return receiptRead{}
 	}
 	request.Header.Set("Accept", "application/json")
 	request.Header.Set("Authorization", "Bearer "+key)
 	c.applyRequestIdentity(request)
 	response, err := providerhttp.Do(c.http, request)
 	if err != nil {
-		return Billed{}, false, false
+		return receiptRead{}
 	}
 	defer response.Body.Close()
 	if response.StatusCode == http.StatusNotFound {
 		payload, _ := io.ReadAll(io.LimitReader(response.Body, maxReceiptBytes))
-		return Billed{}, false, receiptRouteMissing(payload)
+		return receiptRead{noRoute: receiptRouteMissing(payload)}
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, maxReceiptBytes))
-		return Billed{}, false, false
+		return receiptRead{}
 	}
 	var wire receiptWire
 	if err := json.NewDecoder(io.LimitReader(response.Body, maxReceiptBytes)).Decode(&wire); err != nil {
-		return Billed{}, false, false
+		return receiptRead{}
 	}
 	billed := Billed{}
 	if wire.Data.TotalCost != nil {
@@ -395,13 +519,14 @@ func (c *Client) fetchReceiptAt(ctx context.Context, ref, base string, observed 
 		billed.PromptTokens = valueOrZero(wire.Data.NativeTokensPrompt)
 		billed.CompletionTokens = valueOrZero(wire.Data.NativeTokensCompletion)
 	}
-	if len(observed) > 0 && observed[0] != nil {
-		*observed[0] = presence
-	}
+	financial := costFrom(wire.Data.TotalCost)
 	if billed.Empty() {
-		return Billed{}, false, false
+		// An all-zero generation document may still be a not-ready placeholder.
+		// A zero price remains valid with actual token counts, or in a completed
+		// answer's final usage block; this empty document proves neither.
+		return receiptRead{parsed: true, presence: presence, financial: UnknownCost()}
 	}
-	return billed, true, false
+	return receiptRead{billed: billed, found: true, parsed: true, presence: presence, financial: financial}
 }
 
 // receiptRouteMissing reads the same two meanings of a 404 as the lane sheet:

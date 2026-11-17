@@ -74,11 +74,11 @@ func (e Engine) screenCapture(ctx context.Context, c cell.Cell) error {
 // of a completed external call even if death preceded its background seal (D4,
 // L9). Incomplete intents remain unresolved and are never executed here.
 func (e Engine) recoverCompleted(ctx context.Context, c cell.Cell) error {
-	_, recovery, err := OpenWAL(e.WALPath(c))
+	_, recovery, err := openRecovery(c, e.WALPath(c))
 	if err != nil {
 		return err
 	}
-	if len(recovery.Completed) == 0 {
+	if len(recovery.Completed) == 0 && len(recovery.Models) == 0 {
 		return nil
 	}
 	_, err = e.SealRecovered(ctx, c)
@@ -89,15 +89,19 @@ func (e Engine) recoverCompleted(ctx context.Context, c cell.Cell) error {
 // same turn before take-back sets them aside as a branch (D4, L9). A call that
 // only returned external output is still work; incomplete intents stay local.
 func (e Engine) SealRecovered(ctx context.Context, c cell.Cell) (Sealed, error) {
-	wal, recovery, err := OpenWAL(e.WALPath(c))
+	wal, recovery, err := openRecovery(c, e.WALPath(c))
 	if err != nil {
 		return Sealed{}, err
 	}
-	sealed, err := e.Seal(ctx, c, TurnInfo{Calls: recovery.Completed, Changed: changedOf(recovery.Completed)})
-	if err != nil || len(recovery.Completed) == 0 {
+	models, err := unsealedModels(c, recovery.Models)
+	if err != nil {
+		return Sealed{}, err
+	}
+	sealed, err := e.Seal(ctx, c, TurnInfo{Calls: recovery.Completed, Models: models, Changed: changedOf(recovery.Completed)})
+	if err != nil || len(recovery.Completed) == 0 && len(recovery.Models) == 0 {
 		return sealed, err
 	}
-	return sealed, wal.Sealed(recovery.Completed)
+	return sealed, wal.Sealed(recovery.Completed, recovery.Models...)
 }
 
 // StageAdmission reads only the incoming workspace policy and checkpoint into

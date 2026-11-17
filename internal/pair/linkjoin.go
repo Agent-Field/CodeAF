@@ -85,6 +85,11 @@ func (j LinkJoining) free() (LinkJoining, error) {
 	if _, err := identity.Load(j.Home); err != nil {
 		return j, nil
 	}
+	// A removed paired computer may be returning to its own identity. The
+	// approved grant is checked by adoptWithDevice before any local switch.
+	if j.Revoked && !identity.Solo(j.Home) {
+		return j, nil
+	}
 	fresh, err := identity.Joinable(j.Home)
 	if err != nil {
 		return j, ErrDifferentChats
@@ -92,7 +97,6 @@ func (j LinkJoining) free() (LinkJoining, error) {
 	if !fresh {
 		return j, differentChats(j.Home)
 	}
-	j.MergeState = true
 	return j, nil
 }
 
@@ -196,12 +200,17 @@ func (a *asker) install(ctx context.Context, j LinkJoining, g LinkGrant) (LinkJo
 	if err != nil {
 		return LinkJoined{}, err
 	}
-	joined, err := adopt(j.Joining, g.Grant)
+	joined, err := adoptWithDevice(j.Joining, g.Grant, &dev)
 	if err != nil {
 		return LinkJoined{Joined: joined}, err
 	}
-	if err := identity.Install(j.Home, g.Identity, dev); err != nil {
-		return LinkJoined{Joined: joined}, err
+	// Explicit re-pairing installs the approved device even in the same set,
+	// so a removed device can return without changing the shared identity.
+	if !joined.Already || j.Replace {
+		if err := identity.Install(j.Home, g.Identity, dev); err != nil {
+			return LinkJoined{Joined: joined}, err
+		}
+		joined.Already = false
 	}
 	fleet, err := j.Pull(ctx)
 	if err != nil {

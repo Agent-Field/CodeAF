@@ -100,6 +100,11 @@ const RootCodexSystem = ".codex/skills/.system"
 type Options struct {
 	ProjectDir string
 	HomeDir    string
+	// OmitSize leaves every Skill.SizeBytes zero. Sizing a skill walks its
+	// whole folder, so a caller that never reads the weight — the import pass,
+	// which walks the same folders again to sign them — says so and skips a
+	// full tree walk per skill on every call. The default is unchanged.
+	OmitSize bool
 }
 
 // Skill is one discovered skill. The shape is FROZEN — the resident registers
@@ -182,7 +187,7 @@ func Discover(opts Options) ([]Skill, error) {
 	// take reads one skill folder into the result, settling its name against
 	// every skill collected before it.
 	take := func(dir, root, scope, plugin string) {
-		skill, state := readSkill(dir, root, scope)
+		skill, state := readSkill(dir, root, scope, !opts.OmitSize)
 		skill.Plugin = plugin
 		switch state {
 		case stateNotASkill:
@@ -302,7 +307,7 @@ func readSkillFile(path string) ([]byte, error) {
 }
 
 // readSkill reads one direct child directory of a skills root.
-func readSkill(dir, root, scope string) (Skill, skillState) {
+func readSkill(dir, root, scope string, sized bool) (Skill, skillState) {
 	skill := Skill{Dir: dir, Scope: scope, Root: root}
 	data, err := readSkillFile(filepath.Join(dir, "SKILL.md"))
 	if err != nil {
@@ -326,7 +331,9 @@ func readSkill(dir, root, scope string) (Skill, skillState) {
 	}
 	skill.Name = name
 	skill.Description = description
-	skill.SizeBytes = directorySize(dir)
+	if sized {
+		skill.SizeBytes = directorySize(dir)
+	}
 	if warning != "" {
 		skill.Warning = warning
 	}

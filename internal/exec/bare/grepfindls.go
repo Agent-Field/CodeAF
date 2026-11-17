@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/processgroup"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,6 +20,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/executor"
 )
 
@@ -129,7 +131,7 @@ func newGrepToolUsing(cwd string, caps Caps, rgPath string, haveRipgrep bool) To
 				Limit      *int    `json:"limit"`
 			}
 			if err := json.Unmarshal(args, &p); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return RejectArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
 
 			searchDir := "."
@@ -216,7 +218,7 @@ func newGrepToolUsing(cwd string, caps Caps, rgPath string, haveRipgrep bool) To
 				return fmt.Sprintf("Failed to run ripgrep: %s", err.Error()), true, nil
 			}
 
-			if err := cmd.Start(); err != nil {
+			if err := processgroup.Start(cmd); err != nil {
 				return fmt.Sprintf("Failed to run ripgrep: %s", err.Error()), true, nil
 			}
 
@@ -301,6 +303,31 @@ func newGrepToolUsing(cwd string, caps Caps, rgPath string, haveRipgrep bool) To
 // rather than a second grep: every cap, every notice and every path rule below
 // is written once and neither engine can drift from it.
 func grepRender(caps Caps, matches []grepMatch, matchCount int, matchLimitReached, linesTruncated bool, contextValue int, searchPath string, isDirectory bool, effectiveLimit int) (string, bool, error) {
+	matches, matchCount, withheld := withoutCredentialFiles(matches, matchCount)
+	text, failed, err := grepRenderKept(caps, matches, matchCount, matchLimitReached, linesTruncated, contextValue, searchPath, isDirectory, effectiveLimit)
+	if withheld > 0 {
+		text += fmt.Sprintf("\n[%d match(es) in credential files were left out: agents cannot read credentials in any approval mode. Do not look for them another way.]", withheld)
+	}
+	return text, failed, err
+}
+
+// withoutCredentialFiles takes out what a recursive search found in a credential
+// file. The approval floor judges the path a search was GIVEN, and it would be
+// wrong to refuse a search of a home folder or of this program's state for being
+// able to reach one; so the reader that walks the tree judges what it found.
+func withoutCredentialFiles(matches []grepMatch, matchCount int) ([]grepMatch, int, int) {
+	scope := approval.DefaultCredentialScope("")
+	kept := matches[:0:0]
+	for _, match := range matches {
+		if _, hit := scope.File(match.filePath); !hit {
+			kept = append(kept, match)
+		}
+	}
+	withheld := len(matches) - len(kept)
+	return kept, matchCount - withheld, withheld
+}
+
+func grepRenderKept(caps Caps, matches []grepMatch, matchCount int, matchLimitReached, linesTruncated bool, contextValue int, searchPath string, isDirectory bool, effectiveLimit int) (string, bool, error) {
 	if matchCount == 0 {
 		return "No matches found", false, nil
 	}
@@ -402,6 +429,7 @@ func grepByWalkingBounded(ctx context.Context, pattern, searchPath, glob string,
 	}
 	compiled, err := regexp.Compile(expression)
 	if err != nil {
+		MarkArgumentRejection(ctx) // pattern validation, before walking any file
 		return nil, false, false, fmt.Errorf("Invalid pattern: %s", err)
 	}
 	searchPath = grepCanonical(searchPath)
@@ -652,7 +680,7 @@ func newFindTool(cwd string, caps Caps) Tool {
 	caps = caps.resolve()
 	return Tool{
 		Name:        "find",
-		Description: findDescription(caps),
+		Description: findToolDescription(caps),
 		Schema:      json.RawMessage(findSchemaJSON),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			var p struct {
@@ -661,12 +689,12 @@ func newFindTool(cwd string, caps Caps) Tool {
 				Limit   *int    `json:"limit"`
 			}
 			if err := json.Unmarshal(args, &p); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return RejectArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
 
 			fdPath, err := exec.LookPath("fd")
 			if err != nil {
-				return "fd is not available and could not be downloaded", true, nil
+				return findByWalking(ctx, cwd, p.Pattern, p.Path, p.Limit, caps)
 			}
 
 			searchDir := "."
@@ -796,7 +824,7 @@ func newLsTool(cwd string, caps Caps) Tool {
 				Limit *int    `json:"limit"`
 			}
 			if err := json.Unmarshal(args, &p); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return RejectArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
 
 			dirPath := "."

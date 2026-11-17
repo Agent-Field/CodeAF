@@ -33,6 +33,36 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		question string
 		page     string
 	}{
+		{"how do I give you my API key safely", "giving-a-password-or-token"},
+		{"can Claude Code make a canvas", "claude-code-provider"},
+		{"does Claude Code see my codeaf skills", "claude-code-provider"},
+		{"Claude Code's edits don't show as rows in the chat", "claude-code-provider"},
+		{"can Claude Code propose a task", "claude-code-provider"},
+		{"use my Claude plan with no API key", "claude-code-provider"},
+		{"where is the token I pasted kept and for how long", "giving-a-password-or-token"},
+		{"can the model see my password", "giving-a-password-or-token"},
+		{"can I send a message to the chat running on my other computer", "desktop-sync"},
+		{"queue a message for my other computer while its turn is working", "desktop-sync"},
+		{"my message to the other computer was never delivered because it is offline", "desktop-sync"},
+		{"message to my other computer didn't send, can't reach relay", "desktop-sync"},
+		// C9: Windows shell questions must reach the self-contained Git Bash section.
+		{"are factory steps sandboxed", "unattended-run-limits"},
+		{"why did brew install fail in a factory step", "unattended-run-limits"},
+		{"codeaf blocked this", "unattended-run-limits"},
+		{"let a factory step use docker", "unattended-run-limits"},
+		{"how do I allow more with jail.allow", "unattended-run-limits"},
+		{"can codeaf exec read my ssh keys", "unattended-run-limits"},
+		{"where does a step's GOCACHE go", "unattended-run-limits"},
+		{"why do my commands fail on Windows", "running-commands-on-windows"},
+		{"which bash does codeaf use on Windows", "running-commands-on-windows"},
+		{"can codeaf use WSL", "running-commands-on-windows"},
+		{"Git Bash", "running-commands-on-windows"},
+		{"why did Defender block my command on Windows", "running-commands-on-windows"},
+		{"Windows refused to start the shell access denied", "running-commands-on-windows"},
+		{"Windows command line too long 32,767 characters", "running-commands-on-windows"},
+		// R4 and R3 keep command routes and explicit-choice remedies reachable.
+		{"gh api says not found on Windows", "running-commands-on-windows"},
+		{"CODEAF_BASH does not exist", "running-commands-on-windows"},
 		// Task placement must answer DESIGN contract 16 in the person's words.
 		{"taskdoor empty frame when starting a task", "tasks-on-another-computer"},
 		{"taskdoor a frame needs a type", "tasks-on-another-computer"},
@@ -119,7 +149,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"I changed or unset my API key in the shell but codeaf still uses the old one", "starting-codeaf"},
 		{"your key was not accepted for this model", "starting-codeaf"},
 		{"codeaf ignores my OPENAI_API_KEY", "starting-codeaf"},
+		{"I reconnected my key but my pinned model still will not start", "models-and-cost"},
+		{"I added credit and the one model is still refused", "models-and-cost"},
 
+		{"can a python chart you made show up in your answer without me editing markdown", "making-pictures-audio-and-video"},
+		{"can I stop an image while it is still generating", "making-pictures-audio-and-video"},
+		{"was the picture that failed still charged", "making-pictures-audio-and-video"},
 		{"what can you do", "what-i-can-do"},
 		{"my task had uncommitted edits when I moved the chat to another machine, are they lost", "home"},
 		{"does a task's working copy come along when I continue a chat here", "home"},
@@ -1642,6 +1677,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I get back to the home screen from the tasks page", "home"},
 		{"double space does not go home from the memory page", "home"},
 		{"does closing one conversation quit codeaf", "commands"},
+		{"the app crashed in the middle of a reply, does it carry on?", "running-from-the-terminal"},
 		{"how do I close just this chat", "commands"},
 		{"will ctrl+c kill my other project's tasks", "keys"},
 		{"does my approval question expire while I am in another chat", "permissions"},
@@ -3416,6 +3452,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what happens to a running chat when I close its tab", "screen"},
 		{"what does keep running do", "screen"},
 		{"what is the difference between keep running and stop work", "screen"},
+		{"can my dev server stay up after the turn", "kept-running"},
+		{"what does allow never restart mean", "kept-running"},
+		{"how often is my dev server health checked", "kept-running"},
 		{"k doesn't do anything on the close tab card any more", "screen"},
 		{"how do I close a tab without stopping the work", "screen"},
 		// ctrl+r in /model (internal/tui3's modelrefresh.go), asked the ways
@@ -3510,8 +3549,148 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why the setup examples change every three seconds", "getting-started"},
 		{"asking what a quoted /task command does", "commands"},
 		{"how to turn telemetry off now", "running-from-the-terminal"},
+		// THE CHECKED-RESULTS MAP, asked the way somebody choosing a model asks it.
+		{"which model passes its tests most often", "running-from-the-terminal"},
+		{"what has each model proven with checks", "running-from-the-terminal"},
 		{"where are my cleared drafts", "commands"},
 		{"what does /workspace path do", "commands"},
+		// A DROP DELETES THE JOB'S LOCAL WORK, asking first when there is some,
+		// and a start checks the one issue on GitHub.
+		{"bring back a dropped factory job", "factory"},
+		{"what happens to a running factory job when I quit codeaf", "factory"},
+		{"send work to the factory from Jira", "factory"},
+		{"how do I connect GitHub in the app without Terminal", "factory"},
+		{"what does the one-time code for GitHub sign-in mean", "factory"},
+		{"which permissions does a GitHub token for the factory need", "factory"},
+		{"how do I add a factory job from a script", "factory"},
+		{"what does POST /api/intake take", "factory"},
+		{"codeaf factory add", "factory"},
+		{"can I send work to the factory with curl or Zapier", "factory"},
+		{"what is running in the factory and what did we ship today", "factory"},
+		{"what is the factory manager in the factory team", "factory"},
+		{"the factory manager says my job is following its pull request", "factory"},
+		{"start the oldest p1 job", "factory"},
+		{"the manager said nothing was waiting but merge pull request was on screen", "factory"},
+		{"why is there a step called immediately in my job", "factory"},
+		{"the manager refused to add my step, it says it has no name of its own", "factory"},
+		{"I sent the same ticket twice to the factory", "factory"},
+		{"will my go-ahead start jobs when the app is closed", "factory"},
+		{"why did a job not start after the job it waits on merged", "factory"},
+		{"rules for every repository in the factory", "factory"},
+		{"make the factory ask before it touches auth", "factory"},
+		{"why did Auto stop at the plan saying a rule asks first", "factory"},
+		// WHO MAY PASS AN APPROVE STEP, asked the way an owner asks it.
+		{"make only a person able to approve the plan", "factory"},
+		{"let the manager pass the approval when the plan touches few files", "factory"},
+		{"who passed the approve step and when", "factory"},
+		{"stop the plan from changing the pipeline steps", "factory"},
+		{"send Jira tickets to a repository with a routing rule", "factory"},
+		{"route inbox work to a pipeline and start it by itself", "factory"},
+		{"make a new pipeline for docs jobs", "factory"},
+		{"reuse a pipeline across repos", "factory"},
+		{"where are my pipelines kept", "factory"},
+		{"which pipeline wins, the repo's or the library's", "factory"},
+		{"does priority change which factory job runs next", "factory"},
+		{"why did a newer p0 job run before the older ones", "factory"},
+		{"who can change the routing rules", "factory"},
+		{"can a routing rule ask the AI whether a ticket is a small bug fix", "factory"},
+		{"what does couldn't judge mean on a job", "factory"},
+		{"test these rules before saving them", "factory"},
+		{"make the factory start issues by itself", "factory"},
+		{"can an AI filter decide which tickets the factory starts", "factory"},
+		{"what does the factory filter charge on spending", "factory"},
+		{"what does pick up issues do", "factory"},
+		{"my Jira ticket says waiting for a repository, how do I give it one", "factory"},
+		{"a routing rule says the repository has no pipeline", "factory"},
+		{"do routing rules still work with pick up issues off", "factory"},
+		{"swap a queued job's pipeline", "factory"},
+		{"does dropping a factory job delete its branch", "factory"},
+		{"drop a factory job that has uncommitted changes", "factory"},
+		{"the factory says my issue was closed on GitHub so it wasn't started", "factory"},
+		{"check GitHub now in the factory", "factory"},
+		// A STOP IS A FACT ON THE JOB, and a start after it begins again.
+		{"I stopped a factory job, what happens when I start it again", "factory"},
+		{"undo a stop of a factory job", "factory"},
+		{"run again a stopped factory job", "factory"},
+		{"the factory says my job was dropped, can it be restarted", "factory"},
+		// BRING BACK IS A FRESH START: the earlier conversation is deleted.
+		{"I brought back a dropped factory job and the old conversation is still there", "factory"},
+		// A RUN CLONES A REPOSITORY IT HAS NO CHECKOUT OF, and a start is
+		// refused only when it cannot.
+		{"the factory says my repository isn't checked out on this machine", "factory"},
+		{"does the factory clone a private repository it has no checkout of", "factory"},
+		{"factory start refused, not checked out, connect GitHub so the factory can clone it", "factory"},
+		// WHAT A STEP FOUND REACHES THE STEPS AFTER IT: the plan whole, the
+		// files it names, every claim so far.
+		// JIRA TICKETS ARE WORK: connected with an API token and a JQL, polled,
+		// matched to a repository through the jira-project label, answered with
+		// a comment carrying the pull request's link.
+		{"how do I connect Jira to the factory", "factory-jira"},
+		{"can Jira tickets become factory jobs", "factory-jira"},
+		{"which Jira tickets does the factory pick up", "factory-jira"},
+		{"what JQL should I write for the factory", "factory-jira"},
+		{"will codeaf comment on the Jira ticket with the PR link", "factory-jira"},
+		{"how do I disconnect Jira", "factory-jira"},
+		{"does the Jira connection use webhooks", "factory-jira"},
+		{"send one Jira project to one repository", "factory-jira"},
+		{"what does Jira priority Highest become in the factory", "factory-jira"},
+		{"does codeaf work with Jira Server or Data Center", "factory-jira"},
+		// ASK AI IN THE JOBS SEARCH BAR: by meaning, two passes, a cost before
+		// it runs, saved as a view whose refresh reuses its answers.
+		{"can the factory search find issues by meaning, not just title words", "factory-ai-search"},
+		{"find all jobs related to exports with AI", "factory-ai-search"},
+		{"how does the AI search decide an issue matches", "factory-ai-search"},
+		{"what does an AI search of the jobs cost", "factory-ai-search"},
+		{"is there a spending cap or limit on an AI search", "factory-ai-search"},
+		{"save an AI search as a view", "factory-ai-search"},
+		{"does a saved AI view check new issues by itself", "factory-ai-search"},
+		// THE TRIGGER API: AgentField only, a message from outside read
+		// as a comment, the status of a job: none of it is an HTTP door or a
+		// webhook any more, and every one is answered by AgentField's page.
+		{"how do I connect my own tool to the factory", "factory-agentfield"},
+		{"can I add an AgentField trigger from the app", "factory-agentfield"},
+		{"route jobs to an AgentField reasoner with no repository", "factory-agentfield"},
+		{"is there an SDK for the factory", "factory-agentfield"},
+		{"send a comment to a job from outside", "factory-agentfield"},
+		{"the engine restarted, did my AgentField execution fail", "factory-agentfield"},
+		{"how does my tool add more details to a factory job it filed", "factory-agentfield"},
+		{"check the status of a factory job from my script", "factory-agentfield"},
+		{"set a webhook for a source", "factory-agentfield"},
+		{"which webhook events does the factory send", "factory-agentfield"},
+		{"how do I verify the factory webhook signature", "factory-agentfield"},
+		{"what happens if my webhook endpoint is down", "factory-agentfield"},
+		{"can I give a tool a token that only files its own tickets", "factory-agentfield"},
+		// THE FACTORY IS AN AGENTFIELD NODE: AgentField's triggers are its
+		// intake, translated per source, completed with the pull request.
+		{"how do I connect AgentField to the factory", "factory-agentfield"},
+		{"can I approve an AgentField plan from a team factory on another computer", "factory-agentfield"},
+		{"answer an AgentField approval from a desk attached to a remote factory", "factory-agentfield"},
+		{"register the factory on the AgentField control plane", "factory-agentfield"},
+		{"can a Linear issue start a factory job through AgentField", "factory-agentfield"},
+		{"trigger factory work from Sentry", "factory-agentfield"},
+		{"can a Slack message become a factory job", "factory-agentfield"},
+		{"can a pipeline step run a reasoner on AgentField", "factory-agentfield"},
+		{"approve the plan an AgentField run asks about", "factory-agentfield"},
+		{"why did my AgentField step fail and open no pull request", "factory-agentfield"},
+		// THE APP'S EDITOR GIVES AN AGENTFIELD STEP ITS INPUT (WorkAF r10).
+		{"how do I set plan_review on an AgentField step in the pipeline editor", "factory-agentfield"},
+		{"give a reasoner a field the job does not fill in the app", "factory-agentfield"},
+		{"merge says no approved commit is recorded for my AgentField job", "factory-agentfield"},
+		{"ask for changes to the AgentField plan", "factory-agentfield"},
+		{"an AgentField step asked a question, who answers it", "factory-agentfield"},
+		{"why do the parallel AgentField steps all have the same name", "factory-agentfield"},
+		{"does an AgentField cron trigger make a job", "factory-agentfield"},
+		{"why didn't my AgentField trigger make a job", "factory-agentfield"},
+		{"what source name does AgentField work get in routing rules", "factory-agentfield"},
+		{"does the AgentField execution get the pull request link", "factory-agentfield"},
+		{"what happens to a GitHub webhook from AgentField", "factory-agentfield"},
+		{"how is the AgentField node protected, does it check a secret", "factory-agentfield"},
+		{"add an AgentField trigger that targets the factory", "factory-agentfield"},
+		{"disconnect AgentField", "factory-agentfield"},
+		{"can a routing rule run jobs on the organization's own agent", "factory-agentfield"},
+		{"does the factory write step see the whole plan", "factory-stage-conversations"},
+		{"does the proof step know what earlier steps claimed", "factory-stage-conversations"},
+		{"ask the manager for changes to a waiting plan", "factory-stage-conversations"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)
@@ -4402,6 +4581,29 @@ func TestChangedInputQuestionReachesRetainedHistory(t *testing.T) {
 	}
 }
 
+// codeaf app connects every provider the terminal does; a person asking
+// how reaches the section that says so, and not an older line that denied it.
+func TestAppProviderQuestionsReachTheirSection(t *testing.T) {
+	const heading = "Connecting a provider from the app"
+	for _, asked := range []string{
+		"can the app connect ollama",
+		"connect a custom endpoint in the app",
+		"sign in with chatgpt in the app",
+		"app z.ai region",
+	} {
+		var reached bool
+		for _, section := range Chat().Search(asked, DefaultResults) {
+			if section.Page == "running-from-the-terminal" && strings.HasPrefix(section.Title, heading) {
+				reached = true
+				break
+			}
+		}
+		if !reached {
+			t.Errorf("%q does not reach %q", asked, heading)
+		}
+	}
+}
+
 // /helpers: the questions a person in the middle of some work asks when they
 // want it to become a team, and the ones they ask about saying no, reach the
 // sections that answer them by name, not just the pages they are on.
@@ -4434,6 +4636,97 @@ func TestHelpersQuestionsReachTheirSections(t *testing.T) {
 		}
 		if !reached {
 			t.Errorf("%q does not reach %s · %q; it reached %v", probe.question, probe.page, probe.title, where)
+		}
+	}
+}
+
+// A person asking why an issue shows no size must reach the factory's size
+// section, and not the context-window or debug-record pages that also say
+// "size". The section is the one place that says a size has three sources
+// and that an issue's length is not one of them.
+func TestFactoryNoSizeQuestionsReachTheHowBigIsAJobSection(t *testing.T) {
+	const heading = "how big is a job"
+	for _, asked := range []string{
+		"why does my issue have no size",
+		"how big is a job",
+		"factory size: filter shows no size for my issue",
+		"why does the factory say no size label",
+	} {
+		sections := Chat().Search(asked, DefaultResults)
+		var reached bool
+		for _, section := range sections {
+			if section.Page == "factory" && strings.HasPrefix(section.Title, heading) {
+				reached = true
+				break
+			}
+		}
+		if !reached {
+			t.Errorf("%q does not reach the factory section %q", asked, heading)
+			continue
+		}
+		if first := sections[0]; first.Page != "factory" || !strings.HasPrefix(first.Title, heading) {
+			t.Errorf("%q reaches %q but %s · %q ranks above it", asked, heading, first.Page, first.Title)
+		}
+	}
+}
+
+func TestFactoryRecipeHeldWriteQuestionReachesFactory(t *testing.T) {
+	for _, asked := range []string{"factory_recipe bank it refused held folder", "factory recipe cannot write while a program holds the folder"} {
+		found := false
+		for _, section := range Chat().Search(asked, DefaultResults) {
+			if section.Page == "factory" && strings.HasPrefix(section.Title, "from chat to the factory") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%q does not reach the factory recipe write instructions", asked)
+		}
+	}
+}
+
+// A person whose `factory_item` card sat on the screen, or never appeared, must
+// reach the section that says how it is answered and what it does not do.
+func TestFactoryItemCardAnswerQuestionsReachTheAnswerSection(t *testing.T) {
+	for _, asked := range []string{
+		"how do I answer the factory_item card in the terminal",
+		"factory_item stuck running and the card never appeared",
+		"how do I say yes or keep it on the factory item card",
+		"does typing a sentence on the factory item card change the item",
+	} {
+		found := false
+		for _, section := range Chat().Search(asked, DefaultResults) {
+			if section.Page == "factory" && strings.HasPrefix(section.Title, "answer the factory_item card") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%q does not reach the factory_item card answer section", asked)
+		}
+	}
+}
+
+// A person asking how to merge, or why a factory job will not merge, must
+// reach the section that names Merge, its one check and auto-merge; the
+// pages about merging a task's branch also say "merge".
+func TestFactoryMergeQuestionsReachTheMergeSection(t *testing.T) {
+	const heading = "merge a job's pull request"
+	for _, asked := range []string{
+		"how do I merge the factory job's pull request",
+		"why won't the factory merge my pull request",
+		"factory auto-merge",
+		"can the factory merge automatically when checks pass",
+	} {
+		found := false
+		for _, section := range Chat().Search(asked, DefaultResults) {
+			if section.Page == "factory" && strings.HasPrefix(section.Title, heading) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%q does not reach the factory section %q", asked, heading)
 		}
 	}
 }
@@ -4708,6 +5001,22 @@ func TestSyncOffManualQuotesExactSentences(t *testing.T) {
 			}
 			t.Fatalf("%q did not retrieve %q on %s within %d results", probe.asked, probe.heading, probe.page, DefaultResults)
 		})
+	}
+}
+
+func TestFactoryBriefLaterRequestsReachInputs(t *testing.T) {
+	const heading = "Job Brief inputs"
+	for _, asked := range []string{"job brief later requests answers saved notes", "job brief inputs later requests"} {
+		sections := Chat().Search(asked, DefaultResults)
+		found := false
+		for _, section := range sections {
+			if section.Page == "factory" && strings.HasPrefix(section.Title, heading) {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%q does not reach %q", asked, heading)
+		}
 	}
 }
 

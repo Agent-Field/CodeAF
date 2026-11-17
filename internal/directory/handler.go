@@ -62,6 +62,12 @@ type handler struct {
 
 func (h *handler) serve(rt route) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set(SavedTurnTimeHeader, "1")
+		w.Header().Set(HeadTakeHeader, "1")
+		w.Header().Set(UploadProgressHeader, "1")
+		w.Header().Set(WorkingBeatsHeader, "1")
+		w.Header().Set(ChatNotesHeader, "1")
+		w.Header().Set(ChatFoldersHeader, "1")
 		c, err := h.admit(w, r)
 		if err != nil {
 			refuse(w, err)
@@ -198,6 +204,9 @@ func optionalBody[T any](f func(call, T) (any, error)) route {
 func putDevice(c call, d Device) (any, error) {
 	if c.id() != c.device {
 		return nil, ErrUnauthorized
+	}
+	if d.Kind != "" || len(d.Methods) > 0 {
+		return nil, errBadRequest
 	}
 	return nothing(c.cl.PutDevice(c.ctx(), c.id(), d))
 }

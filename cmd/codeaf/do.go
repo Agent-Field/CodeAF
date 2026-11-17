@@ -530,6 +530,20 @@ func (r doRequest) residentWaitOrDefault() time.Duration {
 	return defaultResidentWait
 }
 
+// context is the base context for this invocation: the host seat, and the run
+// id the door minted when it opened one ([trace.WithRun]). Carrying the run id
+// on the context rather than leaving it to the process fallback is what keeps
+// the run engine's session workers — whose turns call [trace.ConversationRun]
+// and mint a fresh id when the context carries none — filing their model-call
+// rows under this invocation's own run id (#2684).
+func (r doRequest) context() context.Context {
+	ctx := hostSeated(context.Background())
+	if run := strings.TrimSpace(r.run); run != "" {
+		ctx = trace.WithRun(ctx, run)
+	}
+	return ctx
+}
+
 // applyContextLaw puts this run's two window dials where the law reads them.
 //
 // internal/ctxbudget is deliberately environment-driven and imports nothing: it
@@ -572,6 +586,8 @@ func applyContextLaw(fillPercent, completionReserve int) error {
 // to main, which says it on stderr — an ordinary run has no object to put it in
 // and never wanted one.
 func doErrand(request doRequest) error {
+	// Producers stop before the process-owned usage writers are joined.
+	defer session.CloseUsage()
 	started := time.Now()
 	// The two seats, resolved before anything is opened or built, so the run
 	// says which models it is about to use and on whose authority — and says it
@@ -593,7 +609,8 @@ func doErrand(request doRequest) error {
 		settings, err = config.LoadKeyless()
 	}
 	if err == nil {
-		useAutoSeats(settings)
+		held := useAutoSeats(settings)
+		defer stopPoolErrands(held)
 	}
 	profileDir := config.ProfileDir()
 	// A PROFILE WRITTEN BEFORE CREWS WERE ROUTED IS MIGRATED ONCE, and the one
@@ -922,7 +939,7 @@ func errandRun(request doRequest, seats config.Seats, started time.Time) (outcom
 	// during the unwind kills the process the way it always did. SIGKILL is
 	// outside all of this and stays correct by accident: no defer runs, so
 	// nothing deletes the store either.
-	signalled, stopSignals := signal.NotifyContext(hostSeated(context.Background()), os.Interrupt, syscall.SIGTERM)
+	signalled, stopSignals := signal.NotifyContext(request.context(), os.Interrupt, syscall.SIGTERM)
 	defer stopSignals()
 	// The person's own ending of the run is the one fact the usage counts
 	// keep about how it ended: the interrupt word, not a failure word.
@@ -3807,7 +3824,7 @@ func runErrand(request doRequest, seats config.Seats) (outcome headlessOutcome, 
 	// under a short --timeout the open alone could spend the whole deadline
 	// before a single node had started.
 	memorySection := doMemory(workspace)
-	signalled, stopSignals := signal.NotifyContext(hostSeated(context.Background()), os.Interrupt, syscall.SIGTERM)
+	signalled, stopSignals := signal.NotifyContext(request.context(), os.Interrupt, syscall.SIGTERM)
 	defer stopSignals()
 	ctx, cancel := context.WithTimeout(signalled, request.timeout)
 	defer cancel()
@@ -4074,7 +4091,11 @@ func runSpendBound(request doRequest, profileDir string, now time.Time) (runSpen
 				"rerun with --yes-spend to let it go past that", consent)}
 	}
 	if daily > 0 {
-		left := daily - spentToday(now)
+		spent, err := session.DailySpendUSD(session.UsageLedgerPath(), now)
+		if err != nil {
+			return runSpend{}, fmt.Errorf("daily spending could not be verified: %w", err)
+		}
+		left := daily - spent
 		if left <= 0 {
 			return runSpend{refused: true, stop: stopBudget, words: fmt.Sprintf(
 				"today's spending limit of $%.2f is spent, so nothing was started; "+
@@ -4087,18 +4108,6 @@ func runSpendBound(request doRequest, profileDir string, now time.Time) (runSpen
 		}
 	}
 	return bound, nil
-}
-
-// spentToday is what today has cost on this machine, read off the usage ledger
-// every conversation and every run worker writes ([session.SpendToday]). A
-// ledger that cannot be read is a day that has spent nothing as far as this
-// door can tell; the plan-price rung still bounds the run.
-func spentToday(now time.Time) float64 {
-	lines, err := session.ReadUsage(session.UsageLedgerPath(), now.Add(-48*time.Hour))
-	if err != nil {
-		return 0
-	}
-	return session.SpendToday(lines, now)
 }
 
 // crewCompleters turns the run road's provider seam into the per-model

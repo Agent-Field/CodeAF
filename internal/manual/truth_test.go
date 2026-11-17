@@ -108,6 +108,11 @@ func TestEveryFigureAChatPageQuotesComesFromTheCodeThatOwnsIt(t *testing.T) {
 // crew's own three by five — is appended by [crewFacts].
 func quotedFacts(t *testing.T) []quotedFact {
 	t.Helper()
+	stopSeconds := sourceDurationNumber(t, "../session/abandon.go", "StopGrace", "Second")
+	stopWords, notStopWords := counted(stopSeconds)
+	floorReadSeconds := strconv.Itoa(sourceDurationNumber(t, "../session/tools_floor.go", "floorReadWait", "Second"))
+	floorActSeconds := strconv.Itoa(sourceDurationNumber(t, "../session/tools_floor.go", "floorActWait", "Second"))
+	floorShippedDays := strconv.Itoa(sourceNumber(t, "../session/tools_floor.go", "floorShippedDaysMost"))
 	seats, notSeats := counted(len(crewroute.Seats))
 	decay, notDecay := counted(sourceNumber(t, "../router/crew.go", "redoDecayAfter"))
 	steps, notSteps := counted(sourceNumber(t, "../router/crew.go", "redoOffsetCeiling"))
@@ -182,11 +187,37 @@ func quotedFacts(t *testing.T) []quotedFact {
 		// THE STOP'S BOUND IS A NAMED CONSTANT AND THE PAGES QUOTE IT, so a
 		// ruling that moves the bound moves the manual in the same change
 		// rather than leaving two pages promising a window that is gone.
-		fact: "how long a stop waits before it detaches", owner: "tui3.stopGrace",
-		value: strconv.Itoa(sourceNumber(t, "../tui3/app.go", "stopGrace")),
+		fact: "how long a stop waits before it detaches", owner: "session.StopGrace",
+		value: strconv.Itoa(stopSeconds),
 		quotes: []quotedIn{
 			{"keys", "bounded at %s seconds"},
 			{"screen", "bounded at %s seconds"},
+		},
+	}, {
+		fact: "how long the app's stop waits before the engine lets the turn go", owner: "session.StopGrace",
+		value: stopWords, others: notStopWords,
+		quotes: []quotedIn{
+			{"factory", "a turn that has still not let go %s seconds later is let go of by the engine"},
+		},
+	}, {
+		fact: "how long a factory_floor read waits on the factory", owner: "session.floorReadWait",
+		value: floorReadSeconds,
+		quotes: []quotedIn{
+			{"factory", "One `factory_floor` read waits at most %s seconds on the factory"},
+			{"factory", `"the factory did not answer within %s seconds"`},
+		},
+	}, {
+		fact: "how long a factory_floor start, priority or selection waits on the factory", owner: "session.floorActWait",
+		value: floorActSeconds,
+		quotes: []quotedIn{
+			{"factory", "and a start, a priority or a selection %s seconds"},
+			{"factory", `seconds" (or %s) and the turn goes on`},
+		},
+	}, {
+		fact: "how many days back factory_floor shipped reads at most", owner: "session.floorShippedDaysMost",
+		value: floorShippedDays,
+		quotes: []quotedIn{
+			{"factory", "(1 is today and the default, at most %s)"},
 		},
 	}, {
 		fact: "the run supervisor's re-ask cadence", owner: "run.passInterval",
@@ -488,7 +519,7 @@ func TestEveryPageQuotingAShippedSentenceQuotesItWhole(t *testing.T) {
 func TestTheCrewCommandRowsNameTheSeatsTheRouterOwns(t *testing.T) {
 	rows := strings.Join(crewCommandRows(t), "\n")
 	if rows == "" {
-		t.Fatal("internal/tui3/commands.go offers no /crew row")
+		t.Fatal("internal/slashcat/catalog.go offers no /crew row")
 	}
 	for _, seat := range crewroute.Seats {
 		if !strings.Contains(rows, string(seat)) {
@@ -503,12 +534,13 @@ func TestTheCrewCommandRowsNameTheSeatsTheRouterOwns(t *testing.T) {
 	}
 }
 
-// crewCommandRows is every /crew row in the command list, read as text.
-var crewRowLine = regexp.MustCompile(`(?m)^.*\{name: "crew".*$`)
+// crewCommandRows is every /crew row in the command list, read as text. The
+// list is internal/slashcat's one table, which the terminal and the wire both read.
+var crewRowLine = regexp.MustCompile(`(?m)^.*\{Name: "crew".*$`)
 
 func crewCommandRows(t *testing.T) []string {
 	t.Helper()
-	return crewRowLine.FindAllString(sourceText(t, "../tui3/commands.go"), -1)
+	return crewRowLine.FindAllString(sourceText(t, "../slashcat/catalog.go"), -1)
 }
 
 // THE FLOOR AND THE PAGE ABOUT IT AGREE, INCLUDING ABOUT ITS SIZE.

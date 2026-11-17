@@ -104,7 +104,7 @@ func WriteTrafficMirror(profile, team string, incoming []Entry) error {
 	// Serialize with deletion so a late network response cannot recreate a
 	// removed team's folder. Reading here performs no store repairs.
 	return withLock(profile, lockWait, func() error {
-		f, _, _, err := read(profile)
+		f, err := read(profile)
 		if err != nil {
 			return err
 		}

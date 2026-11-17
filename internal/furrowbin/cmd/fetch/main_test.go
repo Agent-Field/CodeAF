@@ -7,7 +7,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -267,5 +269,42 @@ func TestABuiltArtifactIsStagedWithoutTheCacheOrThePin(t *testing.T) {
 func TestAMissingBuiltArtifactIsAnError(t *testing.T) {
 	if err := stageBuilt(t.TempDir(), "linux-arm64", filepath.Join(t.TempDir(), "absent")); err == nil {
 		t.Fatal("staging a file that does not exist succeeded")
+	}
+}
+
+// TestW3BuiltArtifactAnnouncesOverride checks W3 at the fetch command: an
+// unpinned developer artifact is staged, with one notice naming the override
+// and the pinned version it replaces.
+func TestW3BuiltArtifactAnnouncesOverride(t *testing.T) {
+	if os.Getenv("CODEAF_TEST_FETCH_MAIN") == "1" {
+		for i, arg := range os.Args {
+			if arg == "--" {
+				os.Args = append(os.Args[:1], os.Args[i+1:]...)
+				main()
+				os.Exit(0)
+			}
+		}
+		t.Fatal("fetch helper needs command arguments")
+	}
+
+	stage := t.TempDir()
+	artifact := artifactOn(t, "a deliberately unpinned developer engine")
+	command := exec.Command(os.Args[0], "-test.run=^TestW3BuiltArtifactAnnouncesOverride$", "--",
+		"-built", artifact, "-stage", stage, "-goos", "windows", "-goarch", "amd64")
+	command.Env = append(os.Environ(), "CODEAF_TEST_FETCH_MAIN=1")
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("fetch developer override: %v: %s", err, output)
+	}
+	for _, phrase := range []string{strconv.Quote(artifact), "windows-amd64", "without pin verification", "pinned version " + furrowbin.Version()} {
+		if !strings.Contains(string(output), phrase) {
+			t.Fatalf("W3 override notice missing %q: %q", phrase, output)
+		}
+	}
+	if bytes.Count(output, []byte("\n")) != 1 {
+		t.Fatalf("W3 needs one override notice, got %q", output)
+	}
+	if got := stagedBody(t, stage, "windows-amd64"); got != "a deliberately unpinned developer engine" {
+		t.Fatalf("W3 override staged %q", got)
 	}
 }

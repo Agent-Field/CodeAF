@@ -126,7 +126,7 @@ func TestPoolPushPostsPendingRowsUnderTheInstallNonce(t *testing.T) {
 
 	dir := seedOutbox(t)
 	submit := oneEnv("CODEAF_MODEL_POOL_SUBMIT_URL", srv.URL)
-	cfg := poolcfg.Resolve("", "", submit)
+	cfg := poolcfg.Resolve("on", "", submit)
 	poolPush(context.Background(), dir, cfg, 2*time.Second)
 
 	if len(installs) != 1 {
@@ -162,7 +162,7 @@ func TestPoolPushLeavesTheRowsPendingWhenTheRelayDoesNotAnswer(t *testing.T) {
 	// A dead loopback port: the address the relay would have answered at, if
 	// the relay were there.
 	submit := oneEnv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/v1/rows")
-	cfg := poolcfg.Resolve("", "", submit)
+	cfg := poolcfg.Resolve("on", "", submit)
 
 	said, err := captureStdout(t, func() error {
 		poolPush(context.Background(), dir, cfg, time.Second)

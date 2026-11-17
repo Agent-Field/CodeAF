@@ -89,7 +89,7 @@ func (s blockingCapture) Seal(ctx context.Context, c cell.Cell, in TurnInfo) (Se
 }
 
 // TestD3CommandReturnsAndNextCallWaits proves D3 and D4 without clock sleeps:
-// the first call returns with a durable completion while capture is blocked;
+// an exact-path call returns with a durable completion while capture is blocked;
 // no later tool can run over that capture, and its output remains in the WAL.
 func TestD3CommandReturnsAndNextCallWaits(t *testing.T) {
 	c := newCell(t)
@@ -99,7 +99,7 @@ func TestD3CommandReturnsAndNextCallWaits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := r.Around(t.Context(), executor.Call{Tool: "bash", Args: []byte("first")}, executor.EffectExternal, AgentRun, func() ([]byte, bool) { return []byte("first output"), false }); err != nil {
+	if err := r.Around(t.Context(), executor.Call{Tool: "write", Args: []byte("first"), Changed: []string{"first.txt"}}, executor.EffectExternal, AgentRun, func() ([]byte, bool) { return []byte("first output"), false }); err != nil {
 		t.Fatal(err)
 	}
 	<-s.entered
@@ -172,6 +172,7 @@ func TestD4FailedCaptureBlocksAMove(t *testing.T) {
 	if err := r.Around(t.Context(), executor.Call{Tool: "bash"}, executor.EffectExternal, AgentRun, func() ([]byte, bool) { return []byte("done once"), false }); err != nil {
 		t.Fatal(err)
 	}
+	r.Settle(t.Context())
 	if err := r.wait(t.Context()); err != nil {
 		t.Fatal(err)
 	}

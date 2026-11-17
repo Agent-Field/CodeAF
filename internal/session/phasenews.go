@@ -348,10 +348,11 @@ func postPhaseNews(news PhaseNews) {
 // frame, a machine under load, a stop-the-world pause — before anything a person
 // is reading blinks.
 //
-// It is a var rather than a const for exactly one reason: the tests that prove a
-// stage outlasting the window keeps drawing shorten it, and a test that waited
-// five real seconds per beat would cost more than the defect it guards.
-var phaseHeldBeat = provider.PhaseWindow / 3
+// It is a const so that nothing can write it while a beat goroutine reads it.
+// The tests that prove a stage outlasting the window keeps drawing shorten the
+// beat PER AGENT through [phaseHeart.beat] instead, and a test that waited five
+// real seconds per beat would cost more than the defect it guards.
+const phaseHeldBeat = provider.PhaseWindow / 3
 
 // phaseHeart is the one phase an agent is holding open and the beat that keeps
 // saying it.
@@ -369,6 +370,10 @@ type phaseHeart struct {
 	// screen, which is the same defect as a stale phase and harder to see.
 	held PhaseNews
 	stop chan struct{}
+	// beat overrides [phaseHeldBeat] for this agent when positive. It is a test
+	// seam read under mu by [Agent.tellPhaseUntil] and handed to the goroutine as
+	// a value, so a beat never reads shared state after it starts.
+	beat time.Duration
 }
 
 // tellPhase is how this package says what a turn is doing between requests, and
@@ -396,6 +401,14 @@ func (a *Agent) tellPhase(phase provider.Phase, detail string, since time.Time) 
 // `switching model` without naming the model would be telling somebody their
 // answer is changing hands and refusing to say to whom.
 func (a *Agent) tellPhaseThen(phase provider.Phase, detail, then string, since time.Time) {
+	a.tellPhaseUntil(phase, detail, then, since, time.Time{})
+}
+
+// tellPhaseUntil is [Agent.tellPhaseThen] for a stage with a real moment at its
+// end: the retry ladder's wait, whose deadline is when the step is asked again.
+// A surface counts down to it, which is why it is only ever a moment that will
+// really happen.
+func (a *Agent) tellPhaseUntil(phase provider.Phase, detail, then string, since, deadline time.Time) {
 	if a == nil {
 		return
 	}
@@ -418,15 +431,16 @@ func (a *Agent) tellPhaseThen(phase provider.Phase, detail, then string, since t
 	// model id overwrote each other's stage and a node's own room could never be
 	// asked what its own node was doing.
 	news := PhaseNews{
-		Phase:   phase,
-		Since:   since,
-		Detail:  detail,
-		Then:    strings.TrimSpace(then),
-		Model:   model,
-		Role:    a.laneRole(),
-		Session: a.newsKey(),
-		Subject: a.newsSubject(),
-		At:      now,
+		Phase:    phase,
+		Since:    since,
+		Detail:   detail,
+		Then:     strings.TrimSpace(then),
+		Deadline: deadline,
+		Model:    model,
+		Role:     a.laneRole(),
+		Session:  a.newsKey(),
+		Subject:  a.newsSubject(),
+		At:       now,
 	}
 	a.phase.mu.Lock()
 	defer a.phase.mu.Unlock()
@@ -434,7 +448,11 @@ func (a *Agent) tellPhaseThen(phase provider.Phase, detail, then string, since t
 	stop := make(chan struct{})
 	a.phase.held, a.phase.stop = news, stop
 	postPhaseNews(news)
-	guard.Go("phase beat", func() { a.beatHeldPhase(stop) })
+	every := phaseHeldBeat
+	if a.phase.beat > 0 {
+		every = a.phase.beat
+	}
+	guard.Go("phase beat", func() { a.beatHeldPhase(stop, every) })
 }
 
 // interruptPhase says a phase over the top of whatever the turn was already
@@ -464,7 +482,7 @@ func (a *Agent) interruptPhase(phase provider.Phase, detail string, since time.T
 		}
 		// THE OLD STAGE KEEPS ITS OWN START, so its clock counts the whole stage
 		// rather than restarting at the moment the gate let go of the line.
-		a.tellPhaseThen(held.Phase, held.Detail, held.Then, held.Since)
+		a.tellPhaseUntil(held.Phase, held.Detail, held.Then, held.Since, held.Deadline)
 	}
 }
 
@@ -504,8 +522,8 @@ func (a *Agent) dropHeldPhaseLocked() {
 // beatHeldPhase re-says one held phase until it ends. It is the whole lifetime
 // of the goroutine [Agent.tellPhase] spawns: it starts with a phase and it
 // returns when that phase is over, and there is no other exit.
-func (a *Agent) beatHeldPhase(stop chan struct{}) {
-	beat := time.NewTicker(phaseHeldBeat)
+func (a *Agent) beatHeldPhase(stop chan struct{}, every time.Duration) {
+	beat := time.NewTicker(every)
 	defer beat.Stop()
 	for {
 		select {

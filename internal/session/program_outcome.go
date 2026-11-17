@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/delegate"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 )
 
 // programVerdict is how a program's run came out, as codeaf acts on it.
@@ -377,7 +378,7 @@ func (a *Agent) saveProgramHoldLocked() {
 		err = os.WriteFile(path+".tmp", data, 0o600)
 	}
 	if err == nil {
-		err = os.Rename(path+".tmp", path)
+		err = fsreplace.Rename(path+".tmp", path)
 	}
 	if err != nil {
 		a.programHoldErr = err.Error()

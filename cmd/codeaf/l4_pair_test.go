@@ -92,7 +92,7 @@ func TestL4PairEmptyChatThroughBothDoors(t *testing.T) {
 				if err := <-done; err != nil {
 					t.Fatal(err)
 				}
-				if !strings.Contains(screen.String(), "Paired with laptop-a. Run codeaf to open your chats.") {
+				if !strings.Contains(screen.String(), pair.PairedWithLine("laptop-a")) {
 					t.Fatal(screen.String())
 				}
 				return
@@ -109,7 +109,7 @@ func TestL4PairEmptyChatThroughBothDoors(t *testing.T) {
 			if err := <-done; err != nil {
 				t.Fatal(err)
 			}
-			if !strings.Contains(out.String(), "Paired with laptop-a. Run codeaf to open your chats.") {
+			if !strings.Contains(out.String(), pair.PairedWithLine("laptop-a")) {
 				t.Fatal(out.String())
 			}
 		})

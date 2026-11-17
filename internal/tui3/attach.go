@@ -364,14 +364,24 @@ func (a *app) attachFilePath(raw string) {
 // far side. Joining "shot.png" onto the far machine's workspace would name a
 // path that exists on neither machine.
 func (a *app) resolvePath(path string) string {
+	return resolvePathAt(path, a.pathRoot(), a.wsl)
+}
+
+// resolvePathAt is [app.resolvePath] with the root handed in rather than read
+// off a window. It is the ONE reading of a typed path — `~` is home, a relative
+// name hangs off root, an absolute path is left alone — and it is apart so
+// codeaf app's path completion ([CompletePath]) resolves a typed `@~/code/`
+// exactly the way this surface does, rather than by a second rule that could
+// drift from it.
+func resolvePathAt(path, root string, wsl wslPaths) string {
 	path = unquotePath(path)
 	if path == "~" || strings.HasPrefix(path, "~/") {
 		if home, err := os.UserHomeDir(); err == nil {
 			path = filepath.Join(home, strings.TrimPrefix(strings.TrimPrefix(path, "~"), "/"))
 		}
 	}
-	path = windowsPathHere(path, a.wsl)
-	if root := a.pathRoot(); !filepath.IsAbs(path) && root != "" {
+	path = windowsPathHere(path, wsl)
+	if !filepath.IsAbs(path) && root != "" {
 		path = filepath.Join(root, path)
 	}
 	return path
@@ -949,7 +959,7 @@ func (a *app) submitImagesShown(text, shown string, plain []segment) tea.Cmd {
 	a.touch()
 	return tea.Batch(func() tea.Msg {
 		ch, err := start()
-		return submittedMsg{ch: ch, err: err, echo: mark}
+		return submittedMsg{ch: ch, err: err, echo: mark, refused: text}
 	}, a.wake())
 }
 
@@ -988,6 +998,9 @@ func attachmentStart(agent Agent, ctx context.Context, hosted bool, text, shown 
 	}
 	display = shown
 	start = func() (<-chan session.Event, error) {
+		if err := waitModelSelection(ctx, agent); err != nil {
+			return nil, err
+		}
 		images, err := readAttachments(pictures)
 		if err != nil {
 			return nil, err

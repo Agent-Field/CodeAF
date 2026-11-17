@@ -130,6 +130,11 @@ func TestARequestOlderThanTheRunningTurnWaitsForIt(t *testing.T) {
 // one left by a window that died asking.
 func TestAWithdrawnOrStaleTakeoverIsIgnored(t *testing.T) {
 	agent, dir := questionSession(t, "takeover", nil)
+	// THE BEAT IS STOPPED FIRST. Its folder watch answers a live request as soon
+	// as AskTakeover publishes it, which is right for a window that is waiting,
+	// and under load it could win the race against the withdrawal below. The
+	// drain under test is the same one the beat runs, called here by hand.
+	agent.stopPresence()
 	if err := AskTakeover(dir); err != nil {
 		t.Fatal(err)
 	}

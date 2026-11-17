@@ -28,9 +28,6 @@ import (
 // tests claims to survive a power cut, which is the one guarantee it gives up.
 // Where there is no tmpfs with room (macOS, Windows, a small container
 // /dev/shm), the package runs in the ordinary temporary directory as before.
-func TestMain(m *testing.M) {
-	os.Exit(runInMemoryTemp(m))
-}
 
 // memoryTempPrefix names this package's temporary roots, so a run that was
 // killed before it could clean up is recognisable to the next one.

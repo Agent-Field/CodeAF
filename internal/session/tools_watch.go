@@ -63,7 +63,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
-	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -274,7 +273,7 @@ func (a *Agent) watchTool() bare.Tool {
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			spec, problem := parseWatchArguments(args)
 			if problem != "" {
-				return problem, true, nil
+				return rejectToolArguments(ctx, problem), true, nil
 			}
 			started, err := a.jobs.startWatch(spec)
 			if err != nil {
@@ -666,7 +665,7 @@ func (r *jobRegistry) runTick(ctx context.Context, spec watchSpec) (string, stri
 	tickCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	shell, shellArgs, shellErr := jobShell()
+	shell, shellArgs, shellErr := jobShell(spec.command)
 	if shellErr != nil {
 		return "", shellErr.Error()
 	}
@@ -680,7 +679,7 @@ func (r *jobRegistry) runTick(ctx context.Context, spec watchSpec) (string, stri
 	// from a pipe a grandchild may still hold open after its parent died.
 	var captured bytes.Buffer
 	res, err := r.runner(r.workspace).Exec(tickCtx, procexec.ExecRequest{
-		Argv: append([]string{shell}, append(shellArgs, spec.command)...), Env: os.Environ(),
+		Argv: append([]string{shell}, shellArgs...), Env: bare.StreamingEnv(),
 		Group: procexec.GroupSession, WaitDelay: 2 * time.Second,
 		Combined: true, Stream: true,
 	}, func(c procexec.Chunk) { captured.Write(c.Data) })

@@ -201,11 +201,18 @@ func mcpClient() *mcp.Client {
 func asTool(tool *mcp.Tool) MCPTool {
 	out := MCPTool{
 		Name:        strings.TrimSpace(tool.Name),
+		Title:       strings.TrimSpace(tool.Title),
 		Description: strings.TrimSpace(tool.Description),
 		Schema:      schemaOf(tool.InputSchema),
 	}
 	if tool.Annotations != nil {
 		out.ReadOnly = tool.Annotations.ReadOnlyHint
+		if out.Title == "" {
+			out.Title = strings.TrimSpace(tool.Annotations.Title)
+		}
+	}
+	if out.Title == "" {
+		out.Title = out.Name
 	}
 	return out
 }

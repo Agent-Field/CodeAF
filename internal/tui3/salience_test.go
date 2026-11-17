@@ -179,6 +179,10 @@ var salienceTable = []salienceCase{
 	{name: "EventAutomationUpdate", chatOnly: "automations belong to the machine and the conversation that made " +
 		"them, not to one node's work: the line is the conversation's (automation.go)",
 		ev: session.Event{Kind: session.EventAutomationUpdate}},
+	{name: "EventSummaryStarted", ev: session.Event{Kind: session.EventSummaryStarted,
+		Compaction: &session.CompactionFact{Seq: 1, TokensBefore: 120000}}},
+	{name: "EventSummaryFailed", ev: session.Event{Kind: session.EventSummaryFailed,
+		Compaction: &session.CompactionFact{Seq: 1, Failed: session.SummaryFailedError}}},
 	{name: "EventChatStart", chatOnly: "only interactive conversations request new chats; task workers carry no start_chat tool",
 		ev: session.Event{Kind: session.EventChatStart}},
 	{name: "EventQuestionDiscussion", chatOnly: "a clarification belongs to the person's pending decision and arrives on the conversation's question subscription",

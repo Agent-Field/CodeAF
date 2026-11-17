@@ -80,6 +80,12 @@ func TestRecoveredReceiptAddsOnlyPreviouslyMissingTokens(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := WithReconcile(context.Background(), func(answer Reconciled) { results <- answer })
+	ctx = WithBilling(ctx, func(Billed) {})
+	pending := 0
+	ctx = WithReceiptPending(ctx, func() func() {
+		pending++
+		return func() {}
+	})
 	// The real settle door queues recovery only for an absent usage block.
 	client.settle(ctx, client.config.Model, &ai.Response{ID: "generation-one"}, receiptTornReason, 1)
 	answer := receiptResult(t, results)
@@ -102,6 +108,9 @@ func TestRecoveredReceiptAddsOnlyPreviouslyMissingTokens(t *testing.T) {
 	// A stream that already supplied usage never enters recovery, including
 	// a partial receipt, so it cannot add its usage a second time here.
 	client.settle(ctx, client.config.Model, &ai.Response{ID: "generation-two", Usage: &ai.Usage{PromptTokens: 4, CompletionTokens: 1}}, receiptTornReason, 1)
+	if pending != 1 {
+		t.Fatalf("reported usage queued another receipt: %d total admissions", pending)
+	}
 	if rows := telemetry.SpoolContents(); len(rows) != 1 {
 		t.Fatalf("reported usage entered late recovery: %d rows", len(rows))
 	}
@@ -202,7 +211,8 @@ func TestV1V3DirectLateReceiptNeverUsesAnOverflowHost(t *testing.T) {
 					if !reported && len(bills) != 0 {
 						t.Errorf("missing direct usage banked %+v", bills)
 					}
-					if reported && (len(bills) != 1 || bills[0] != (Billed{Model: "glm-5.3", PromptTokens: 4, CompletionTokens: 1, Cost: cost})) {
+					// app/v3 carries an explicit unknown billing road when no door stated one.
+					if reported && (len(bills) != 1 || bills[0] != (Billed{GenerationID: "generation-direct", Model: "glm-5.3", PromptTokens: 4, CompletionTokens: 1, Cost: cost, Billing: BillingFact{Kind: BillingUnknown}})) {
 						t.Errorf("reported direct usage banked %+v", bills)
 					}
 					if rows := telemetry.SpoolContents(); len(rows) != 0 {
@@ -243,7 +253,8 @@ func TestV2RouterTornAnswerRecoversWithItsOwnBearer(t *testing.T) {
 		t.Fatalf("torn answer error = %v", err)
 	}
 	result := receiptResult(t, results)
-	want := Reconciled{Billed: Billed{Node: "router-node", Model: client.config.Model, PromptTokens: 10, CompletionTokens: 3, Cost: 0.02}, Ref: "generation-router", Reason: receiptTornReason, Found: true}
+	// app/v3 preserves the attempt's explicit unknown billing road on its receipt.
+	want := Reconciled{Billed: Billed{GenerationID: "generation-router", Node: "router-node", Model: client.config.Model, PromptTokens: 10, CompletionTokens: 3, Cost: 0.02, Billing: BillingFact{Kind: BillingUnknown}}, Ref: "generation-router", Reason: receiptTornReason, Found: true}
 	if result != want || len(bills) != 0 || len(results) != 0 {
 		t.Fatalf("banked result = %+v, want %+v; ordinary bills = %+v; extra results = %d", result, want, bills, len(results))
 	}

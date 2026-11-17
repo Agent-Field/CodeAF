@@ -1,0 +1,49 @@
+{
+  "factory": {
+    "name": "factory",
+    "address": "https://factory.test",
+    "version": "test"
+  },
+  "mode": "team",
+  "people": [
+    {
+      "factory": {
+        "name": "factory",
+        "address": "https://factory.test",
+        "version": "test"
+      },
+      "html_url": "",
+      "you": false,
+      "operator": true,
+      "status": "active",
+      "runners": [],
+      "role": "member",
+      "owns": [],
+      "machines": [],
+      "avatar_url": "",
+      "handle": "owner",
+      "login": "owner",
+      "name": "",
+      "last_seen": "2026-10-11T12:00:00Z"
+    },
+    {
+      "factory": {
+        "name": "factory",
+        "address": "https://factory.test",
+        "version": "test"
+      },
+      "html_url": "",
+      "you": false,
+      "operator": false,
+      "status": "invited",
+      "runners": [],
+      "role": "",
+      "owns": [],
+      "machines": [],
+      "avatar_url": "",
+      "handle": "priya",
+      "login": "priya",
+      "name": "Priya Nair"
+    }
+  ]
+}

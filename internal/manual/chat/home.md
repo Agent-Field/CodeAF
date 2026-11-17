@@ -301,7 +301,8 @@ happened. The row says where the chat is only where that tells you something:
 
 | The chat is | The row says |
 | --- | --- |
-| held on another machine | `held on <device>` |
+| running a turn on another machine | `working on <device>` |
+| held open on another machine | `held on <device>` |
 | on a machine that went off or to sleep without letting go | `<device> offline` |
 | a branch left by a takeover | `<K> turns from <device>: discard` (this build has no merge) |
 | held by this machine, or let go by everyone | nothing |
@@ -310,7 +311,7 @@ happened. The row says where the chat is only where that tells you something:
 
 On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
-For a chat on another paired computer, read the two words apart: `held on build-box` says that computer still holds the chat, including while it is idle, and `build-box offline` says that computer has not answered for 25 seconds (it is switched off, asleep, frozen or offline; the word appears within 30 seconds, and goes at once when it answers again) and has not let the chat go, so the chat's last saved turns are what you would get. The name is only the device's. A chat on a computer that is `offline` can still be continued here; the card says how many turns may still be there. A count of one reads `1 turn`, never `1 turns`. The device is the name you gave that machine. A chat whose name will not open shows
+For a chat on another paired computer, read the words apart: `working on build-box` says a turn is running on that computer right now, `held on build-box` says that computer still holds the chat with nothing running right now (by default while `idle handoff` is off, before idle release when `idle handoff` is on, or while an older build is idle), and `build-box offline` says that computer has not answered for 25 seconds (it is switched off, asleep, frozen or offline; the word appears within 30 seconds, and goes at once when it answers again) and has not let the chat go, so the chat's last saved turns are what you would get. The name is only the device's. A live hold on a computer that says `working on`, `held on` or `offline` still asks before **Move here** / **Continue here**; the card says how many turns may still be there. Offline alone does not make the chat free. By default (`idle handoff` is off by default; turn it on in **Settings → General → idle handoff** or with `CODEAF_IDLE_HANDOFF=1`), a released chat asks **Continue here**; on paired computers with `idle handoff` on, a released chat opens here directly with its latest saved copy and no Continue-here card, including when its older viewer tab is already open. A lapsed hold on another computer still asks, including when its holder was working. A count of one reads `1 turn`, never `1 turns`. The device is the name you gave that machine. A chat whose name will not open shows
 `untitled`, and a machine whose name will not open shows the first eight characters of
 its id. On a narrow frame a branch's sentence shortens to `<K> turns · <device>`, and where
 even that will not fit the sentence gives way whole before the chat's name is cut, so a
@@ -346,7 +347,7 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 
 Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time; opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
 
-Press enter on a row that says `<device> offline` or `held on <device>` and home asks **Continue this chat here?**
+By default (`idle handoff` is off by default; turn it on in **Settings → General → idle handoff** or with `CODEAF_IDLE_HANDOFF=1`), selecting a released remote chat asks **Continue this chat here?**, while on paired computers with `idle handoff` on a released chat opens directly with its latest saved copy. If the row has a live hold or a lapsed hold on another computer (or is released while `idle handoff` is off), whether it says `working on <device>`, `held on <device>` or `<device> offline`, press enter and Home asks **Continue this chat here?**
 with the cursor on `continue here`, because pressing enter on the row already said you want it; `esc` or `2` leaves it there.
 The card says how fresh the copy is: `last saved turn <N> ago; up to <K> turns may still
 be on <device>`. The `up to` clause is left out when nothing is waiting there. On a
@@ -454,7 +455,7 @@ A chat that moves to another computer brings, from the relay and sealed on the w
 - what the chat spent: the chat's share of the usage and spend figures is read again from its sealed record on the new computer, so its cost shows there and a rewind never drops it;
 - the memories that chat wrote, kept in the chat's own ledger and read back into the new computer's memory.
 
-## What stays on this computer when a chat moves — task history, install folders, secrets and spending limits
+## What stays on this computer when a chat moves — does the task history come with the chat to another computer, install folders, secrets and spending limits
 
 On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
@@ -1982,9 +1983,14 @@ longest wait at the top of the panel.
 A session that gave no words for what it is waiting on shows no line at all rather than a
 placeholder.
 
-This is read out of a small file each live session keeps in its own folder, refreshed
-every five seconds and believed for fifteen. So a window that was killed, or a laptop that
-closed, stops claiming to need you within a glance.
+This is read out of a small file each live session keeps in its own folder, written the
+moment its contents change. While a session is working, waiting on you or has work out, the
+file is refreshed every seven seconds and believed for fifteen seconds after its last
+refresh, so a window that was killed, or a laptop that closed, stops claiming to need you
+within a glance. An idle session — nothing running, nothing asked — leaves its file alone
+and refreshes it once a minute, and its file is believed for three minutes, so an idle window
+that was killed can still be listed as open for up to three minutes. An older codeaf
+believes every file for fifteen seconds only, so it drops idle sessions between refreshes.
 
 `enter` on the row opens it. **For the ordinary questions you do not have to go at all** —
 see the next section.
@@ -2021,7 +2027,8 @@ into the box, which is a search and a new conversation at the same time.
 **A question raised by _this_ window closes home on its way in**, so the card is on the
 screen you are looking at rather than behind it. Home then says `answered · deny` at the
 foot and the row reads `answered · waiting for it to pick that up` until the other session
-picks it up, on its next heartbeat. **An answer that arrives too late is ignored**, and a
+picks it up — at once, since the session watches its own folder for answers, or on its next
+five-second beat when that watch cannot be kept. **An answer that arrives too late is ignored**, and a
 window that has stopped refreshing for fifteen seconds cannot be answered from here: its
 chips are not drawn.
 
@@ -2747,9 +2754,9 @@ from a previous visit cannot replace the current visit's selection or draft.
 
 On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
-After a clean quit lets a paired computer's chat go, bare `codeaf` on another paired computer continues that chat automatically within 24 hours. You arrive with the `Moved from` banner and the usual `not brought along:` facts; `esc` goes Home.
+After a clean quit lets a paired computer's chat go (or, when **Settings → General → idle handoff** / `CODEAF_IDLE_HANDOFF=1` is turned on — off by default — about 2 seconds after an idle paired chat goes idle once saved to the sync service), bare `codeaf` on another paired computer continues that released chat automatically within 24 hours, and with `idle handoff` on Enter on Home opens a released chat directly (with `idle handoff` off, Home rows ask **Continue here**). A lapsed hold on another computer still asks Continue here, including when its holder was working. You arrive with the `Moved from` banner and the usual `not brought along:` facts; `esc` goes Home.
 
-If the laptop only slept or lost its connection, Home offers its latest chat and `alt+c` continues immediately. When local unsaved edits need to be kept as a branch, the continuation card asks first. Nothing moves automatically while the other computer is running that chat, for a named chat or `--host`/`--at`/`--session`, when another local window holds a chat, or when local unsaved edits need a choice. If the move fails, Home stays open and says why.
+If the laptop went to sleep or lost its connection while still holding the chat, Home offers its latest chat while the hold is live and `alt+c` continues immediately (once the hold lapses, Enter on its Home row still asks Continue here). When local unsaved edits need to be kept as a branch, the continuation card asks first. Nothing moves automatically while the other computer is running that chat, for a named chat or `--host`/`--at`/`--session`, when another local window holds a chat, or when local unsaved edits need a choice. If the move fails, Home stays open and says why.
 
 ## my chosen chat opens while a startup chat is still arriving
 

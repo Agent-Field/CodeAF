@@ -172,6 +172,9 @@ func stopSentence(door StopDoor, name string) string {
 	case StopByTimeLimit:
 		return "a time limit you set stopped it"
 	case StopByWorkStopped:
+		if name != "" {
+			return name
+		}
 		return "everything running here was stopped, the reply with it"
 	case StopByRetired:
 		if name != "" {

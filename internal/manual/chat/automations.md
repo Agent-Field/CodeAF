@@ -56,6 +56,9 @@ codeaf is closed when the moment comes, the reminder is not lost: it is said onc
 codeaf window is next open, marked `late`. A reminder made with nobody there to
 answer the card — inside a task, or a headless `codeaf chat --once` — is not set up at all.
 
+Reminders run on Windows, macOS and Linux while a codeaf window is open. On Windows,
+the reminder appears in codeaf; there is no desktop notification banner.
+
 ## Do something every Monday — scheduled work at a time or on a rhythm
 
 "Every Monday at 9, draft the weekly update from the git log", "at 7 tomorrow run the full
@@ -440,7 +443,9 @@ there are any it is the door alone.
 operating system — no launchd agent, no systemd timer, no helper or background service — and
 nothing runs with every window or the whole app closed. One small process, `codeaf clock`, does the running: a window
 starts it when none is running, every window checks every half minute that it still is, and
-it leaves by itself half a minute after the last window closes.
+it leaves by itself half a minute after the last window closes. It also leaves with the
+window that started it, once no run is in hand, so a restarted app never keeps the old one's
+clock; any window still open starts the next within half a minute.
 
 **What fell due while codeaf was closed, or while the machine slept, runs once** when a
 window is next open, marked `late`. A rhythm that missed five slots runs one run, and its
@@ -492,7 +497,8 @@ clock, nothing runs and saved automations wait.
 
 The clock inherits the environment — keys, `PATH`, time zone — of the window that started
 it. When its own build is replaced it leaves as soon as nothing is running, and the next
-window's check starts the new one. What it could not do outside a run goes to
+window's check starts the new one. When the window that started it closes and no other
+window is open, it leaves within about two seconds once nothing is running. What it could not do outside a run goes to
 `~/.codeaf/v3/automations/clock.log`.
 
 ## What does an automation cost — 30 minutes and $5 a run, and where the spend shows
@@ -684,7 +690,7 @@ consume it; an empty home says nothing.
 Recreate schedules in `/automations` and rules with `/remember`, checking the old
 scope and limits before saving. Nothing from the report runs automatically.
 
-## What automations cannot do
+## What automations cannot do — a watch cannot trigger on a webhook, no phone notifications
 
 - **No — they do not run while codeaf is closed.** Keep a window open, here or attached to
   another machine; anything missed runs once, late, when one is.

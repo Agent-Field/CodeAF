@@ -13,6 +13,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	cellstoretest "github.com/Agent-Field/codeaf/internal/cellstore/celltest"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/furrow"
 	"github.com/Agent-Field/codeaf/internal/handoff"
@@ -153,13 +154,12 @@ func TestInPlaceTakeWithTheHomeRepositoryReading(t *testing.T) {
 		t.Fatal(err)
 	}
 	root := repositoryWithStaleStat(t)
-	c, err := cell.CreateIn(t.TempDir(), cell.Options{Class: cell.HostBound})
+	c, err := cell.CreateIn(cellstoretest.EngineDir(t), cell.Options{Class: cell.HostBound})
 	if err != nil {
 		t.Fatal(err)
 	}
 	transport := &readingRestore{Transport: cellstore.Spawn{Binary: bin}, t: t, root: root}
 	e := cellstore.Engine{Binary: bin, DataRoot: t.TempDir(), Workspace: root, Transport: transport}
-	t.Cleanup(cellstore.StopSpawned)
 	if err := os.WriteFile(filepath.Join(root, "restored.txt"), []byte("before\n"), 0600); err != nil {
 		t.Fatal(err)
 	}

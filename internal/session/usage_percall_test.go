@@ -532,13 +532,31 @@ func TestALedgerWriteThatFailsIsCountedRatherThanSwallowed(t *testing.T) {
 	}
 	before := UsageDrops()
 
-	RecordUsage(filepath.Join(blocker, UsageLedgerName), UsageLine{
+	path := filepath.Join(blocker, UsageLedgerName)
+	RecordUsage(path, UsageLine{
 		At: time.Now(), Model: "test/model", Calls: 1, Input: 100, Output: 20, USD: 0.31,
 	})
 	FlushUsage()
 
 	if got := UsageDrops() - before; got != 1 {
 		t.Fatalf("a row that could not be written moved the counter by %d, want 1", got)
+	}
+	// Repair the disk and prove the failed row was retained, rather than discarded.
+	if err := os.Remove(blocker); err != nil {
+		t.Fatal(err)
+	}
+	if !flushUsage(path) {
+		t.Fatal("retained charge did not retry")
+	}
+	if !StopUsageWriter(path) {
+		t.Fatal("retry writer did not stop")
+	}
+	rows, err := ReadUsage(path, time.Time{})
+	if err != nil || len(rows) != 1 || rows[0].USD != .31 {
+		t.Fatalf("retained rows=%+v %v", rows, err)
+	}
+	if UsageDrops() != before {
+		t.Fatal("recovered row still counted as missing")
 	}
 	// And an ordinary row moves it by nothing, so a nonzero count is news.
 	good := filepath.Join(t.TempDir(), UsageLedgerName)

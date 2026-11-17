@@ -82,6 +82,9 @@ you named them and priced heaviest first. Those job figures do not add up to the
 window's total, and it will say so: planning, answering and its own upkeep
 belong to no single job.
 
+On Windows, macOS and Linux, a window ending now includes calls already recorded
+at the clock's current reading. An explicitly chosen end time stays exclusive.
+
 "What did that cost?" about one particular job is answered from that job's own
 record instead, which also carries what it produced.
 

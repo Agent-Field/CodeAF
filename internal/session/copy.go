@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/store"
@@ -39,6 +40,9 @@ func PrepareCopy(ctx context.Context, original string, c cell.Cell, brain *store
 		return err
 	}
 	meta.ID = c.ID
+	// A COPY HAS SAID NOTHING NEW YET: the older chat's last answer is not
+	// the copy's, so the copy is never born unread.
+	meta.LastReplyAt = time.Time{}
 	if meta.Owned {
 		meta.Workspace = filepath.Join(c.Root, "work")
 	}

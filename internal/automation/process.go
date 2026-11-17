@@ -56,7 +56,7 @@ func StartClock(root, binary string, args ...string) error {
 	command.Stdin, command.Stdout = null, null
 	command.Stderr = stderr.(*os.File)
 	processgroup.ConfigureDetached(command)
-	if err := command.Start(); err != nil {
+	if err := processgroup.Start(command); err != nil {
 		return err
 	}
 	// The clock is nobody's to wait for: it outlives the window that started it

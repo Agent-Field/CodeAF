@@ -12,6 +12,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 )
 
 // FetchWindow is the most frame fetches a take has in flight at once
@@ -34,6 +35,36 @@ type Fetcher struct {
 	Dir        directory.Client
 	Inbox      func(c cell.Cell) string
 	OnProgress func(have, want int) // optional; want grows as the graph is learned
+	// ManyMax bounds the rids one GetMany asks for; 0 is blobstore.MaxGetMany.
+	// ManyMaxFor picks it for a relay.
+	ManyMax int
+}
+
+// HostedGetMany is the most rids one GetMany asks the hosted relay for. Its
+// batch get reads, for every frame a request touches, the bytes from the first
+// wanted object to the last, all at once in a 128 MB isolate, while bulk frames
+// are BulkFrame (8 MiB). Measured on a 1.4 GB chat's real frames (N21), 256
+// rids made it read up to 65 MB for a few hundred KB wanted, and the move
+// failed with a 500 on every try; 16 keeps a request at about 8 MB in walk
+// order and under 15 MB even for scattered objects. A big move asks about
+// three times as often.
+const HostedGetMany = 16
+
+// ManyMaxFor is the GetMany bound for relay: HostedGetMany for a hosted sync
+// relay (the "(hosted)" one the device screens name), the full batch for a
+// relay of the person's own, which reads each object by itself.
+func ManyMaxFor(relay string) int {
+	if syncwords.Hosted(relay) {
+		return HostedGetMany
+	}
+	return blobstore.MaxGetMany
+}
+
+func (f *Fetcher) manyMax() int {
+	if f.ManyMax <= 0 || f.ManyMax > blobstore.MaxGetMany {
+		return blobstore.MaxGetMany
+	}
+	return f.ManyMax
 }
 
 // Fetch completes head in the store and then materializes it. A rid the
@@ -96,12 +127,13 @@ func (f *Fetcher) round(ctx context.Context, c cell.Cell, head, inbox string, wa
 	return n, err
 }
 
-// gather brings every wanted object into the inbox, a frame's worth per request:
-// the store answers a prefix of what is asked, and the rest is asked again. An
-// object the store does not hold is an error that names it.
+// gather brings every wanted object into the inbox, a frame's worth per request
+// of at most ManyMax rids, in want order: the store answers a prefix of what is
+// asked, and the rest is asked again. An object the store does not hold is an
+// error that names it.
 func (f *Fetcher) gather(ctx context.Context, inbox string, want []string) error {
 	for len(want) > 0 {
-		batch := want[:min(len(want), blobstore.MaxGetMany)]
+		batch := want[:min(len(want), f.manyMax())]
 		objects, err := f.Store.GetMany(ctx, batch)
 		if err != nil {
 			return fmt.Errorf("cellsync: fetch object %s: %w", batch[0], err)

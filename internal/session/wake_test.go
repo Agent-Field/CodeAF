@@ -532,7 +532,7 @@ func TestInterruptedTurnKeepsItsAmbientBatchForTheNextTurn(t *testing.T) {
 // delta, and the coalescing that keeps a flapping dev server from being a turn
 // per flap.
 
-// A BACKGROUND JOB THAT EXITS WAKES AN IDLE SESSION, with the exit in front of
+// A BACKGROUND JOB THAT FAILS WAKES AN IDLE SESSION, with the exit in front of
 // the model. The job is real and so is its death: the note is written by the
 // registry's reaper (jobs.go), on the lane agent.go hands it.
 func TestExitingJobWakesAnIdleSession(t *testing.T) {
@@ -569,6 +569,74 @@ func TestExitingJobWakesAnIdleSession(t *testing.T) {
 	waitFor(t, "the answer to reach the transcript", func() bool {
 		return strings.Contains(transcriptText(agent), "the build failed on the linker step")
 	})
+}
+
+// Successful processes are context for the next conversation, not a reason to
+// start one. Separate endings keep their full text instead of watch coalescing.
+func TestCleanBackgroundExitsWaitForTheNextTurnsContext(t *testing.T) {
+	asked := make(chan []ai.Message, 1)
+	completer := &scriptedCompleter{steps: []step{
+		func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+			asked <- messages
+			return textResponse("both builds finished"), nil
+		},
+	}}
+	answerTheReadingsOffTheQueue(completer)
+	agent, _ := newTestAgent(t, completer, nil)
+	for _, command := range []string{"echo first build done", "echo second build done"} {
+		startJob(t, agent, command)
+	}
+	waitFor(t, "both quiet endings", func() bool { return len(ambientQueue(agent)) == 2 })
+	if count := conversationRequests(completer); count != 0 {
+		t.Fatalf("clean exits started %d requests, want none", count)
+	}
+	agent.mu.Lock()
+	for _, note := range agent.ambient {
+		if note.wake || note.ending || !note.batch || note.batchKey != "" {
+			t.Errorf("quiet ending has wrong routing: %+v", note)
+		}
+	}
+	agent.mu.Unlock()
+	events, err := agent.Submit(context.Background(), "what happened?")
+	if err != nil {
+		t.Fatal(err)
+	}
+	collect(t, events)
+	text := userTextIn(<-asked)
+	for _, ending := range []string{"job 1 exited 0: first build done", "job 2 exited 0: second build done"} {
+		if strings.Count(text, ending) != 1 {
+			t.Errorf("next turn did not receive %q exactly once:\n%s", ending, text)
+		}
+	}
+	if strings.Contains(text, jobExitNewsRule) {
+		t.Fatalf("quiet context told the model to relay the news:\n%s", text)
+	}
+}
+
+// An explicit request to be told makes even a clean process exit wake a reply.
+func TestNotifyCleanBackgroundExitWakesAnIdleSession(t *testing.T) {
+	asked := make(chan []ai.Message, 1)
+	completer := &scriptedCompleter{steps: []step{
+		func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+			asked <- messages
+			return textResponse("the build finished"), nil
+		},
+	}}
+	answerTheReadingsOffTheQueue(completer)
+	agent, _ := newTestAgent(t, completer, nil)
+	text, failed := runTool(t, agent, "bash", `{"command":"echo build done","background":true,"notify":true}`)
+	if failed {
+		t.Fatal(text)
+	}
+	select {
+	case messages := <-asked:
+		text := userTextIn(messages)
+		if !strings.Contains(text, "exited 0: build done") || !strings.Contains(text, jobExitNewsRule) {
+			t.Fatalf("requested wake lost its ending:\n%s", text)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("notify:true clean exit did not wake")
+	}
 }
 
 // A WATCH WITH NEWS IS AMBIENT. It updates the live job row and log, but it

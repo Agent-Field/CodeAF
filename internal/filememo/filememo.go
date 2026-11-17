@@ -25,6 +25,8 @@
 //   - The file appearing where there was none, or disappearing. Absence is a
 //     value like any other and is held like one, so a profile with no config.json
 //     — the ordinary state of a fresh install — is answered without a read too.
+//   - The file identity differs, including a rename that preserves size and
+//     modification time.
 //   - A caller-supplied stamp moving ([Memo.Stamped]). It is how a package whose
 //     own writer runs in this process says "that was me": config's every
 //     persisted write bumps a counter, and reading that counter into the
@@ -48,6 +50,7 @@
 package filememo
 
 import (
+	"errors"
 	"os"
 	"sync"
 	"time"
@@ -68,10 +71,14 @@ type Derive[T any] func(path string, data []byte, missing bool) (T, error)
 //
 // It is safe for concurrent use. The lock is held across the read, so two
 // callers arriving on a cold memo at once perform one read rather than two;
-// that is the right trade for files this small and this hot.
+// that is the right trade for files this small and this hot. At most 64 paths
+// are retained, with the least recently used path evicted first.
 type Memo[T any] struct {
 	derive Derive[T]
 	stamp  func() uint64
+	source func(string, os.FileInfo) (T, error)
+	tick   uint64
+	reads  uint64
 
 	mu   sync.Mutex
 	held map[string]reading[T]
@@ -79,6 +86,8 @@ type Memo[T any] struct {
 
 // reading is one file as it was when its value was derived.
 type reading[T any] struct {
+	info    os.FileInfo
+	used    uint64
 	value   T
 	err     error
 	size    int64
@@ -114,51 +123,61 @@ func (m *Memo[T]) Read(path string) (T, error) {
 	return m.read(path, false)
 }
 
-// ReadStrict preserves filesystem errors instead of deriving the missing-file
-// default. Privacy preferences must also invalidate a warm value when file
-// permissions change, even though chmod leaves size and modification time alone.
+// ReadStrict preserves filesystem errors and invalidates cached values when
+// permissions change. Ordinary readers retain the missing-file fallback.
 func (m *Memo[T]) ReadStrict(path string) (T, error) {
 	return m.read(path, true)
 }
 
 func (m *Memo[T]) read(path string, strict bool) (T, error) {
-	now, missing := os.Stat(path)
-	if strict && missing != nil && !os.IsNotExist(missing) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	now, statErr := os.Stat(path)
+	if (strict || m.source != nil) && statErr != nil && !errors.Is(statErr, os.ErrNotExist) {
 		var zero T
-		return zero, missing
+		return zero, statErr
 	}
 	var size int64
 	var modTime time.Time
 	var mode os.FileMode
-	if missing == nil {
+	if now != nil {
 		size, modTime = now.Size(), now.ModTime()
 		mode = now.Mode()
 	}
-	absent := missing != nil
+	absent := now == nil
 	stamp := uint64(0)
 	if m.stamp != nil {
 		stamp = m.stamp()
 	}
-
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if held, known := m.held[path]; known && held.fresh(size, modTime, absent, stamp) && (!strict || held.mode == mode) {
+	held, known := m.held[path]
+	m.tick++
+	if known && held.fresh(size, modTime, absent, stamp) && (absent || os.SameFile(held.info, now)) && (!strict || held.mode == mode) {
+		held.used = m.tick
+		m.held[path] = held
 		return held.value, held.err
 	}
-
+	if m.source != nil {
+		if now != nil {
+			m.reads++
+		}
+		value, err := m.source(path, now)
+		if err == nil {
+			m.keep(path, reading[T]{value: value, info: now, size: size, modTime: modTime, missing: absent, stamp: stamp, mode: mode})
+		}
+		return value, err
+	}
 	var data []byte
 	if !absent {
+		m.reads++
 		bytes, err := os.ReadFile(path)
 		if err != nil {
-			if strict {
-				var zero T
-				return zero, err
+			// Failed reads are not cached. Ordinary callers retain their
+			// missing-file default; privacy preferences use ReadStrict.
+			if !strict {
+				return m.derive(path, nil, true)
 			}
-			// The file went away between the stat and the read, or became
-			// unreadable. NOTHING IS HELD FOR IT: the reading this memo would
-			// key on is the one that just turned out to be a lie, so the next
-			// call stats again and finds whatever is true then.
-			return m.derive(path, nil, true)
+			var zero T
+			return zero, err
 		}
 		data = bytes
 	}
@@ -166,10 +185,10 @@ func (m *Memo[T]) read(path string, strict bool) (T, error) {
 	if m.held == nil {
 		m.held = make(map[string]reading[T], 4)
 	}
-	m.held[path] = reading[T]{
+	m.keep(path, reading[T]{
 		value: value, err: err,
-		size: size, modTime: modTime, missing: absent, stamp: stamp, mode: mode,
-	}
+		info: now, size: size, modTime: modTime, missing: absent, stamp: stamp, mode: mode,
+	})
 	return value, err
 }
 
@@ -190,4 +209,43 @@ func (r reading[T]) fresh(size int64, modTime time.Time, missing bool, stamp uin
 		return true
 	}
 	return r.size == size && r.modTime.Equal(modTime)
+}
+
+// Source binds a memo to a reader that derives its value without loading the
+// whole file. info is nil for absence. Values belong to the memo and callers
+// must treat them as immutable.
+func Source[T any](read func(path string, info os.FileInfo) (T, error)) *Memo[T] {
+	return &Memo[T]{source: read}
+}
+
+// MaxEntries bounds each process cache of file state, including readers that
+// retain offsets or import dependencies rather than a single derived value.
+const MaxEntries = 64
+
+// keep bounds retained paths. Reads in progress hold the same mutex, so an
+// eviction cannot start a second reader for a path still being published.
+func (m *Memo[T]) keep(path string, value reading[T]) {
+	if m.held == nil {
+		m.held = make(map[string]reading[T])
+	}
+	if _, found := m.held[path]; !found && len(m.held) >= MaxEntries {
+		var oldest string
+		least := ^uint64(0)
+		for key, entry := range m.held {
+			if entry.used < least {
+				oldest, least = key, entry.used
+			}
+		}
+		delete(m.held, oldest)
+	}
+	value.used = m.tick
+	m.held[path] = value
+}
+
+// Reads reports content reads admitted by this memo, for cost diagnostics.
+// A source invocation counts as one read; missing files cost no content read.
+func (m *Memo[T]) Reads() uint64 {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.reads
 }

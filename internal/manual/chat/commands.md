@@ -693,11 +693,13 @@ Tab completes the path as you type it.
 ## Does export save to my laptop — /export writes this conversation here
 
 `/export` (or `/save`) writes the **whole** conversation to a markdown file somebody else
-can read. It is built from the full transcript, not from the tail on screen.
+can read. It is built from the full journal — including turns from before `/compact` — not
+from the tail on screen.
 
 With no argument the file lands in the local root under a name derived from the session,
-like `20260817-150405_a3f2-port-the-resume-picker.md` — the transcript file stem plus the
-session name in kebab case, clipped to 48 characters. With neither file nor name it is
+`transcript-<session name>.md` (like `transcript-port-the-resume-picker.md`) — the
+transcript file stem plus the session name in kebab case, clipped to 48 characters, or
+`transcript.md` before the conversation has a name. With neither file nor name it is
 called `conversation.md`.
 
 With a path, `~` is home, a bare name is under the conversation's directory, and an
@@ -905,6 +907,9 @@ it with `alt+a` and all three move on the keystroke; change "ask before running"
 `/settings` and they move together for a conversation that follows the rows, or the panel
 says `saved · from the next session`.
 
+A running engine reading the same settings picks up the changed rules before
+its next tool decision even when the panel could not push them immediately.
+
 The one session with no `approvals` line is a remote one whose engine carried no posture
 over the wire. The gate there is the far machine's, and a line drawn from this laptop's
 settings would be a claim about a machine nobody consulted.
@@ -1043,6 +1048,13 @@ also live beneath this cache directory and are reused by tasks
 using the same working root. Older admitted cache locations remain in use;
 `/cache` includes them in its size and lists them before an explicit clean.
 Temporary files and saved work are outside the cache cleanup.
+
+The desktop engine also keeps rebuildable task-list answers in
+`~/.codeaf/cache/app-tasks`, capped at 96 MiB total and 256 files. Oldest files
+are evicted first. The engine prunes entries for missing or deleted conversations
+on its first inventory scan and once per minute while running; deleting a
+conversation in the app drops its entry immediately. Cleaning this cache makes
+the next task listing rebuild its answer.
 
 With nothing in it, `/cache` answers `the cache is empty · ~/.codeaf/cache`.
 
@@ -1956,8 +1968,8 @@ Settings now groups controls by what you want to change:
 `General · Models · Memory · Tasks · AI teams · Permissions · Spending · Connections · Devices · Privacy`
 
 General holds appearance, input and updates. Models holds model selection and
-advanced routing/context controls. Memory holds `notice things to remember` —
-whether codeaf may keep a line on its own after a turn you typed — and a link to
+advanced routing/context controls. Memory holds `learn from chats and jobs` —
+automatic memory learning, on by default unless saved off, with its extra model-call cost — and a link to
 the Memory tab. Tasks controls delegated work; AI teams sets defaults
 for groups of AI chats. Permissions controls approvals. Spending holds limits.
 Connections holds accounts, keys, web search and remote connection settings.
@@ -2274,6 +2286,8 @@ Routine task completions stay in Tasks automatically, including older conversati
 those dismissals without making routine task completions appear in chat. Pending
 `your call` decisions stay visible. Dismissal does not stop work, accept a result,
 delete a task, or remove its output. Open Tasks to read results and run details.
+With an empty message box, select a task notification and press `delete` to dismiss
+just that notification.
 
 ## Process history and logs — /processes
 
@@ -2282,6 +2296,31 @@ select it with the arrow keys and press Enter to read its log. `/processes <id>`
 a known process directly. Escape returns from a log to the list, then back to chat.
 The sidebar itself only shows running processes, without a completed count.
 
+## Desktop engine methods for cache, autonomy and harnesses
+
+Desktop clients can read the machine build cache through `cache.status` and clean
+it through `cache.clean {confirm: true}` after asking you first. Cleaning uses the
+same directory and safeguards as `/cache clean now`; builds start cold afterwards.
+Conversations and settings are not removed.
+
+`autonomy.get {agent}` lists the terminal's eight question kinds and their saved
+rules. `autonomy.set {agent, kind, rule}` accepts ask, decide or recommend with an
+optional duration. Confirmation and clarification always ask. These rules belong
+to the conversation's project and follow its engine connection to another machine.
+
+`harness.list` lists the latest saved shapes with descriptions and run history.
+Choosing a shape belongs to the client's draft tray: there is no `harness.use`
+engine method. The terminal panel's selection shows a card; its picker sets a chip.
+`agents.run_harness {id, name, text, client_id?}` runs that saved shape with your
+next message as its input, through the same runner as the terminal picker.
+It returns a turn and ordinary reply events. A running turn refuses as busy;
+an unknown name refuses before a turn starts. An engine without the door says
+`harnesses are unavailable here`. Attachments stay for an ordinary message.
+The optional `client_id` correlates the user entry, as with `agents.send`;
+sending it twice still starts two runs when the conversation is free.
+
+Cache and saved-harness listing are machine-local. Running a saved harness uses
+the conversation's engine connection when that engine supports it.
 ## /setup — prepare this machine so a conversation can run here
 
 A conversation carries a record of the tools and services it has used (codeaf builds it by

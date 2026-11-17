@@ -20,6 +20,7 @@
 //	PROBE-ECHO         one reply, no tools: the handshake and one turn
 //	PROBE-PWD          calls `bash` with `pwd`, then quotes the answer back
 //	PROBE-READ <path>  calls `read` on the path, then quotes the answer back
+//	PROBE-WRITE <path> calls `write` on the path, then quotes the answer back
 //	PROBE-SLOW         a reply spread over seconds, for the link that dies
 //	PROBE-NOCHANGE <path> replays the completion-check rejection from #1065
 //
@@ -244,6 +245,7 @@ const (
 	markerEcho     = "PROBE-ECHO"
 	markerPwd      = "PROBE-PWD"
 	markerRead     = "PROBE-READ"
+	markerWrite    = "PROBE-WRITE"
 	markerSlow     = "PROBE-SLOW"
 	markerNoChange = "PROBE-NOCHANGE"
 	// markerJob starts the command after it in the BACKGROUND, which is the one
@@ -269,12 +271,13 @@ var noChangeReaderCalls atomic.Int64
 // The prefixes the harness asserts on. They are constants here and constants in
 // the test, because a string that appears in two places drifts.
 const (
-	sayEcho = "STUB-REPLY: "
-	sayPwd  = "ENGINE-PWD: "
-	sayRead = "ENGINE-READ: "
-	slowTop = "SLOW-BEGIN"
-	slowEnd = "SLOW-END"
-	sayJob  = "ENGINE-JOB: "
+	sayEcho  = "STUB-REPLY: "
+	sayPwd   = "ENGINE-PWD: "
+	sayRead  = "ENGINE-READ: "
+	sayWrite = "ENGINE-WRITE: "
+	slowTop  = "SLOW-BEGIN"
+	slowEnd  = "SLOW-END"
+	sayJob   = "ENGINE-JOB: "
 )
 
 // noChangeReply is the deterministic live replay of #1065. The main
@@ -366,6 +369,15 @@ func compose(ask, answered string) reply {
 			return reply{tool: "read", args: `{"path":"` + jsonEscape(pathAfter(ask, markerRead)) + `"}`}
 		}
 		return reply{chunks: []string{sayRead + strings.TrimSpace(answered)}}
+
+	case strings.Contains(ask, markerWrite):
+		// PROBE-WRITE drives the write tool for approval and permission-drop
+		// verification without a live provider key.
+		if answered == "" {
+			path := pathAfter(ask, markerWrite)
+			return reply{tool: "write", args: `{"path":"` + jsonEscape(path) + `","content":"hello\n"}`}
+		}
+		return reply{chunks: []string{sayWrite + strings.TrimSpace(answered)}}
 
 	case strings.Contains(ask, markerJob):
 		if answered == "" {

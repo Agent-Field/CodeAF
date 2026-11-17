@@ -12,6 +12,23 @@ import (
 // The database's other state and machine facts survive this explicit door.
 func replaceState(home, profile string, paired func() bool) (string, error) {
 	aside := ""
+	// A clean slate must not offer the old chats to the new set on startup.
+	// Set their folders aside rather than deleting locally readable history.
+	for _, name := range []string{"projects", "cells", "sync"} {
+		from := filepath.Join(home, "v3", name)
+		if _, err := os.Stat(from); os.IsNotExist(err) {
+			continue
+		} else if err != nil {
+			return aside, err
+		}
+		kept, err := os.MkdirTemp(home, "replaced-chats-")
+		if err != nil {
+			return aside, err
+		}
+		if err := os.Rename(from, filepath.Join(kept, name)); err != nil {
+			return aside, err
+		}
+	}
 	if profile == "" {
 		profile = home
 	}
@@ -37,9 +54,9 @@ func replaceState(home, profile string, paired func() bool) (string, error) {
 			return aside, err
 		}
 	}
-	names := []string{"preferences-sync.ledger", "memory-sync.ledger", "provider-keys.ledger", "vault.enc"}
+	names := []string{"preferences-sync.ledger", "memory-sync.ledger", "provider-keys.ledger", "vault.enc", "vault.enc.next"}
 	if config.TeamsSharingAt(profile, paired) {
-		path, err := teams.SetAside(profile)
+		path, err := teams.MoveAside(profile)
 		if err != nil && !os.IsNotExist(err) {
 			return aside, err
 		}

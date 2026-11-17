@@ -30,6 +30,7 @@ package orchestrate
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -205,9 +206,20 @@ func (o *Orchestrator) Run(ctx context.Context) (Snapshot, error) {
 			o.finish("")
 			return o.Snapshot(), nil
 		}
+		if errors.Is(err, ErrPlannerReplyCutOff) {
+			o.note(err.Error())
+			o.finish("")
+			return o.Snapshot(), err
+		}
 		return o.Snapshot(), fmt.Errorf("orchestrate: the opening plan failed: %w", err)
 	}
 	o.absorb(work, thought{amendment: opening})
+	if len(o.Snapshot().Nodes) == 0 && !o.wasStopped() {
+		// An opening with no work has ended, but has accomplished nothing.
+		o.finish("")
+		snap := o.Snapshot()
+		return snap, errors.New(snap.EmptyPlanReason())
+	}
 
 	var (
 		completions = make(chan completed, o.lanes)

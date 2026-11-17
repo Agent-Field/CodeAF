@@ -88,17 +88,13 @@ func TestTrafficMirrorNeverDeliversStartsQuestionsWakesOrStops(t *testing.T) {
 }
 
 func TestForeignDeliveryCursorStartsAtThisComputersOpeningAndDeliversOnce(t *testing.T) {
-	root := t.TempDir()
-	t.Setenv("CODEAF_HOME", root)
-	if _, err := identity.Ensure(root); err != nil {
-		t.Fatal(err)
-	}
+	f := newWakingTeamFixture(t)
+	enableSessionTeamSharing(t, f.profile)
+	root := home.Dir()
 	dev, err := identity.Device(root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := newWakingTeamFixture(t)
-	enableSessionTeamSharing(t, f.profile)
 	// A line from long before the chat arrived is history; the directive sent
 	// a second before the engine opened is the one a rouse opened it for, which
 	// a conversation meeting a team for the first time is always handed.
@@ -180,7 +176,7 @@ func TestRemoteTeamSendsStartsPostsAndRousesRefuseBeforeTraffic(t *testing.T) {
 	}
 	file, _ := teams.Snapshot(f.profile)
 	m, _ := file.Teams[0].ByHandle("web")
-	if said := a.teamRouse(f.profile, file.Teams[0], true, []teams.Member{m}, ""); !strings.Contains(said, "desktop") {
+	if said := a.teamRouse(f.profile, file.Teams[0], true, []teams.Member{m}, "", teams.Provenance{}); !strings.Contains(said, "desktop") {
 		t.Fatal(said)
 	}
 	member := teamAgent(t, f, f.web, nil, manualRelayTeamClock)
@@ -207,12 +203,12 @@ func TestRemoteTeamSendsStartsPostsAndRousesRefuseBeforeTraffic(t *testing.T) {
 
 func enableSessionTeamSharing(t *testing.T, profile string) {
 	t.Helper()
-	if _, err := identity.Load(home.Dir()); err != nil {
-		root := t.TempDir()
-		t.Setenv("CODEAF_HOME", root)
-		if _, err := identity.Ensure(root); err != nil {
-			t.Fatal(err)
-		}
+	// Custody saves in other fixtures can leave the process home solo.
+	// Sharing needs its own paired home, restored after this test's agents close.
+	root := t.TempDir()
+	t.Setenv("CODEAF_HOME", root)
+	if _, err := identity.Ensure(root); err != nil {
+		t.Fatal(err)
 	}
 	row, _ := config.NewSettings(config.SettingsOptions{ProfileDir: profile}).Row(config.KeyTeamsShare)
 	if err := row.Apply("on"); err != nil {

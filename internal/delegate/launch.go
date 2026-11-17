@@ -57,6 +57,41 @@ type Launch struct {
 	// (session.ProgramFolder.Hold), which the program's process is handed as
 	// well ([HoldEnv]); nil hands it nothing.
 	Hold *os.File
+	// Marker is this launch's own identity ([NewLaunch]): the mark its
+	// descendants carry for the sweep below, and the id its caller stamps on
+	// the program record and on every line it keeps for the launch. Empty, or
+	// anything that is not one [NewLaunch] draws, has one drawn here.
+	//
+	// THE CALLER DRAWS IT BEFORE THE PROCESS IS STARTED, because the record of
+	// which lines are this process's has to be written before the process can
+	// say anything, and a time cannot tie a line to a process.
+	Marker string
+}
+
+// NewLaunch draws one launch's identity: sixteen random bytes as lowercase
+// hex, the same mark [Run] gives a launch's descendants. Empty when the
+// system's randomness failed, which leaves the launch with no identity a
+// reader can tie its lines to — unknown, never another launch's.
+func NewLaunch() string {
+	raw := make([]byte, 16)
+	if _, err := rand.Read(raw); err != nil {
+		return ""
+	}
+	return hex.EncodeToString(raw)
+}
+
+// ValidLaunch answers whether id has the one shape [NewLaunch] draws. A line
+// or record carrying anything else carries no launch at all.
+func ValidLaunch(id string) bool {
+	if len(id) != 32 {
+		return false
+	}
+	for i := 0; i < len(id); i++ {
+		if c := id[i]; (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 // HoldEnv names, in a program's environment, the descriptor its host's hold on
@@ -121,11 +156,12 @@ var ErrNoTerminal = errors.New("the program exited without a terminal record")
 func Run(ctx context.Context, launch Launch, sink Sink) (Result, error) {
 	// The marker is a last-resort Linux sweep after SIGKILL stops the engine
 	// before its own subreaper can clean up its descendants.
-	markerBytes := make([]byte, 16)
-	if _, err := rand.Read(markerBytes); err != nil {
-		return Result{ExitCode: -1}, fmt.Errorf("mark %s's descendants: %w", launch.Name, err)
+	marker := launch.Marker
+	if !ValidLaunch(marker) {
+		if marker = NewLaunch(); marker == "" {
+			return Result{ExitCode: -1}, fmt.Errorf("mark %s's descendants: no randomness", launch.Name)
+		}
 	}
-	marker := hex.EncodeToString(markerBytes)
 	baseEnv := launch.Env
 	if baseEnv == nil {
 		baseEnv = os.Environ()
@@ -133,6 +169,9 @@ func Run(ctx context.Context, launch Launch, sink Sink) (Result, error) {
 	cmd, err := executor.For(ctx).In(launch.Dir).Command(context.Background(), executor.ExecRequest{
 		Argv: append([]string{launch.Bin}, launch.Args...),
 		Env:  append(append([]string(nil), baseEnv...), processgroup.RunMarkerEnv+"="+marker),
+		// A FENCED PROGRAM STILL WRITES ITS OWN RECORDS AND READS ITS INBOX,
+		// which codeaf keeps outside the folder it works in.
+		Writable: recordFolders(baseEnv),
 	})
 	if err != nil {
 		return Result{ExitCode: -1}, fmt.Errorf("start %s: %w", launch.Name, err)
@@ -163,7 +202,7 @@ func Run(ctx context.Context, launch Launch, sink Sink) (Result, error) {
 	}
 	cmd.Stdout = stdoutWrite
 	started := time.Now()
-	if err := cmd.Start(); err != nil {
+	if err := processgroup.Start(cmd); err != nil {
 		_ = stdoutRead.Close()
 		_ = stdoutWrite.Close()
 		return Result{ExitCode: -1}, fmt.Errorf("start %s: %w", launch.Name, err)
@@ -189,18 +228,33 @@ func Run(ctx context.Context, launch Launch, sink Sink) (Result, error) {
 	if grace <= 0 {
 		grace = DefaultGrace
 	}
-	var waitErr error
+	var waitErr, stopErr error
 	select {
 	case waitErr = <-waitDone:
 	case <-ctx.Done():
 		result.Stopped = true
 		_ = group.Terminate()
-		select {
-		case waitErr = <-waitDone:
-		case <-time.After(grace):
+		deadline := time.Now().Add(grace)
+		hardStop := func() {
 			result.Killed = true
 			_ = group.Kill()
-			waitErr = <-waitDone
+			stopErr = processgroup.WaitEmpty(cmd.Process.Pid, grace)
+			if stopErr != nil {
+				result.Stopped = false
+			}
+		}
+		select {
+		case waitErr = <-waitDone:
+			// A leader's exit does not end its Windows Job Object. Preserve
+			// the remaining soft grace, then stop any orphaned descendants.
+			if processgroup.WaitEmpty(cmd.Process.Pid, max(time.Until(deadline), time.Nanosecond)) != nil {
+				hardStop()
+			}
+		case <-time.After(grace):
+			hardStop()
+			if stopErr == nil {
+				waitErr = <-waitDone
+			}
 		}
 	}
 	result.Elapsed = time.Since(started)
@@ -233,6 +287,9 @@ func Run(ctx context.Context, launch Launch, sink Sink) (Result, error) {
 	}
 	_ = stdoutRead.Close()
 	result.Reading = r.reading
+	if stopErr != nil {
+		return result, fmt.Errorf("stop %s: %w", launch.Name, stopErr)
+	}
 	if result.Stopped {
 		return result, ctx.Err()
 	}
@@ -269,3 +326,21 @@ func openStderr(path string) (io.WriteCloser, error) {
 type nopCloser struct{ io.Writer }
 
 func (nopCloser) Close() error { return nil }
+
+// recordFolders is the folders a program's environment names for its records
+// and its inbox: what it must be able to write under a fence.
+func recordFolders(environment []string) []string {
+	var out []string
+	for _, kv := range environment {
+		name, value, _ := strings.Cut(kv, "=")
+		value = strings.TrimSpace(value)
+		switch {
+		case value == "":
+		case name == EnvRecords:
+			out = append(out, value)
+		case name == EnvInbox:
+			out = append(out, filepath.Dir(value))
+		}
+	}
+	return out
+}

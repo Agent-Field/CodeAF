@@ -1,6 +1,8 @@
 package remote
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -119,3 +121,37 @@ func TestAnEngineWithoutSkillDoorsAdvertisesNone(t *testing.T) {
 
 // The actual engine, rather than only a fixture, must expose every door.
 var _ skillDoor = (*session.Agent)(nil)
+
+// The hosted picker reads its engine's folders as well as its bounded active
+// shelf, so installed skills beyond that window remain available to attach.
+func TestSkillFoldersCrossTheHostConnection(t *testing.T) {
+	workspace := t.TempDir()
+	folder := filepath.Join(workspace, ".claude", "skills", "far-only")
+	if err := os.MkdirAll(folder, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(folder, "SKILL.md"), []byte("---\nname: far-only\ndescription: A skill on the host\n---\nUse this skill.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	far := &shelfAgent{fakeAgent: &fakeAgent{}}
+	loop, err := Loopback(Hello{Version: Version}, Options{Boot: func(Hello) (*Engine, error) {
+		return &Engine{Agent: far, Workspace: workspace, SessionFile: filepath.Join(workspace, "session.jsonl")}, nil
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop.Close()
+	found, err := loop.Client.Agent().SkillFolders()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, skill := range found {
+		if skill.Name == "far-only" {
+			if skill.Root != ".claude/skills" || skill.Dir != folder || skill.SizeBytes != 0 {
+				t.Fatalf("host folder: %+v", skill)
+			}
+			return
+		}
+	}
+	t.Fatalf("host skill missing from %v", found)
+}

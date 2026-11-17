@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 )
 
 const awayAfter = 10 * time.Minute
@@ -53,6 +55,11 @@ func (a *Agent) legacyAutonomyFile() string {
 
 // SetAutonomy is the one door surfaces use for the D-key promise.
 func (a *Agent) SetAutonomy(kind AskKind, policy Policy) error {
+	a.settingsWrites.Add(1)
+	defer a.settingsWrites.Add(-1)
+	if err := a.CheckSettingsWork(); err != nil {
+		return err
+	}
 	// THE TWO ROWS NOBODY MAY CHANGE, refused at the door that writes them so
 	// that no surface has to hold a second copy of the rule.
 	//
@@ -94,7 +101,7 @@ func (a *Agent) SetAutonomy(kind AskKind, policy Policy) error {
 	if err := os.WriteFile(tmp, append(data, '\n'), 0o600); err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	return fsreplace.Rename(tmp, path)
 }
 
 func (a *Agent) readAutonomy() map[AskKind]Policy {

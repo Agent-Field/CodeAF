@@ -78,4 +78,20 @@ set -e
 [ "$status" -eq 2 ]
 case "$output" in *'-definitely-not-a-go-test-flag'*) ;; *) printf 'unsupported flag was not named: %s\n' "$output" >&2; exit 1 ;; esac
 
+# Listed tests and reported results differ: the run fails and names both sides,
+# whatever the locale, instead of exiting with no result line.
+set +e
+output="$(LC_ALL=en_US.UTF-8 SHARDS=2 SHARD_FIXTURE_MISMATCH=1 run_fixture -timeout 5s 2>&1)"
+status=$?
+set -e
+[ "$status" -eq 1 ]
+case "$output" in
+	*'missing: TestCharlieCanFail'*'extra: TestaGhost'*) ;;
+	*) printf 'a mismatch was not reported by name:\n%s\n' "$output" >&2; exit 1 ;;
+esac
+case "$output" in
+	*'FAIL  '*'failing: '*'TestCharlieCanFail'*) ;;
+	*) printf 'a mismatch left no failing summary:\n%s\n' "$output" >&2; exit 1 ;;
+esac
+
 printf 'shard-test acceptance: ok\n'

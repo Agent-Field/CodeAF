@@ -240,7 +240,7 @@ func modelReadTheResults(agent *Agent) { agent.stepSeq.Add(1) }
 // refusedWith is what a proposal of spec reads back from the door refusals,
 // and "" when none of them turns it around.
 func refusedWith(agent *Agent, spec taskSpec) string {
-	refusal := agent.refuseProposedTask(spec)
+	refusal := agent.refuseProposedTask(context.Background(), spec)
 	if refusal == nil {
 		return ""
 	}

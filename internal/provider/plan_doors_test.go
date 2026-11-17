@@ -25,7 +25,7 @@ func TestAnExhaustedPlanWaitsAndSpendsNothing(t *testing.T) {
 
 	told := listen(t)
 	client, err := NewClient(Config{
-		APIKey: "test-key", BaseURL: plan.URL(), Model: "glm-5.3-flash", Direct: true,
+		SourceID: "z-ai", APIKey: "test-key", BaseURL: plan.URL(), Model: "glm-5.3-flash", Direct: true,
 		BillingDoor: "coding plan", PlanOverflow: metered.URL(), PlanOverflowDoor: "pay-as-you-go",
 	})
 	if err != nil {
@@ -54,7 +54,7 @@ func TestAnExhaustedPlanWaitsAndSpendsNothing(t *testing.T) {
 		t.Fatalf("plan-pause evidence = %+v, want a distinct temporary pause", evidence)
 	}
 	paused, ok := told.find(PhasePlanPaused)
-	if !ok || paused.Detail != "resets at 18:30 UTC · /connect can switch to pay-as-you-go" {
+	if !ok || paused.SourceID != "z-ai" || paused.PlanReset != "18:30 UTC" || paused.Detail != "resets at 18:30 UTC · /connect can switch to pay-as-you-go" {
 		t.Fatalf("paused phase = %+v, found %t", paused, ok)
 	}
 }
@@ -117,6 +117,9 @@ func TestOverflowGoesToTheMeteredDoorAndSaysSo(t *testing.T) {
 	if len(plan.Requests()) != 1 || len(metered.Requests()) != 1 ||
 		plan.Requests()[0].Agent != DirectUserAgent || metered.Requests()[0].Agent != DirectUserAgent {
 		t.Fatalf("requests: plan=%d metered=%d", len(plan.Requests()), len(metered.Requests()))
+	}
+	if _, ok := told.find(PhasePlanPaused); !ok {
+		t.Fatal("overflow hid the plan pause")
 	}
 	writing, ok := told.find(PhaseWriting)
 	if !ok || writing.Door != "pay-as-you-go" {

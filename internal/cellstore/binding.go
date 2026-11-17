@@ -22,8 +22,7 @@ func (e Engine) bindTarget(ctx context.Context, c cell.Cell, t Target) error {
 		return err
 	}
 	if len(raw) > 0 && string(raw) != t.Tree {
-		t.CellDir = ""
-		if _, err := (Spawn{Binary: e.Binary, Run: e.Run}).Do(ctx, t, rebindOp{From: string(raw)}); err != nil {
+		if err := e.rebind(ctx, t, string(raw)); err != nil {
 			return fmt.Errorf("follow chat folder: %w", err)
 		}
 	}

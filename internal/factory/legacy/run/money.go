@@ -1,0 +1,238 @@
+package run
+
+import (
+	"fmt"
+	"strconv"
+	"sync"
+	"time"
+
+	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/store"
+)
+
+// LedgerName is the role the floor's runs are recorded under on the spend
+// ledger, beside `factory triage`. The func handed to [NewMoney] writes the line
+// (the wiring owns the session ledger; this package imports none of the
+// session engine) and is given the item's id and the dollars.
+const LedgerName = "factory run"
+
+// ActivityHours is how many hourly buckets Stream.Activity keeps: the last 24
+// hours, oldest first. The head draws the newest few of them as its sparkline.
+const ActivityHours = 24
+
+// activityTop is the tallest a bucket stands (the sparkline's range is 0..7).
+const activityTop = 7
+
+// Money is the one pool: the item's cap, the day's rail, and the dollars
+// every round reports. It writes the item's Spent, the ledger line and the
+// activity; it decides nothing about what to do when a cap is reached.
+//
+// THE CAP CONTRACT. The loop calls [Money.CapReached] after EVERY round, and
+// when it is true it parks the item as needing the person with
+// [Money.CapQuestion] as Item.Question and QKind `cap` (a stored key; the sentence says `budget`). Money never stops a
+// round itself: chat-family meters and check-context watchers stop owned work
+// as the shared cap is reached, and each already-paid receipt is retained.
+//
+// MONEY IS WRITTEN THROUGH Annotate. A model's cost is not the item moving, so
+// the row's age is left alone.
+type Money struct {
+	st     *store.Store
+	ledger func(item int, usd float64)
+	clock  func() time.Time
+
+	mu    sync.Mutex
+	today map[int]float64 // dollars each item spent today, by this process
+	day   [3]int          // the day `today` is for
+	hour  map[int]int64   // the hour (unix hours) of each item's newest bucket
+}
+
+// NewMoney makes the money. A nil ledger records nothing and a nil clock is
+// time.Now.
+func NewMoney(st *store.Store, ledger func(item int, usd float64), clock func() time.Time) *Money {
+	if clock == nil {
+		clock = time.Now
+	}
+	return &Money{st: st, ledger: ledger, clock: clock, today: map[int]float64{}, hour: map[int]int64{}}
+}
+
+// Spend is the hook for Job.Spend of item id. A cost of nothing, or less, is
+// not recorded.
+func (m *Money) Spend(id int) func(usd float64) {
+	return m.SpendRound(id, "", 0)
+}
+
+// SpendRound books a step receipt together with its job charge.
+func (m *Money) SpendRound(id int, step string, round int) func(usd float64) {
+	return func(usd float64) {
+		if m == nil || usd <= 0 {
+			return
+		}
+		now := m.clock()
+		slide := m.note(id, usd, now)
+		if m.st != nil {
+			_ = m.st.Annotate(id, func(it *factory.Item) error {
+				if it.Stream == nil {
+					it.Stream = &factory.Stream{}
+				}
+				spendRound(it, step, round, usd)
+				it.Stream.Activity = bump(it.Stream.Activity, slide)
+				return nil
+			})
+		}
+		if m.ledger != nil {
+			m.ledger(id, usd)
+		}
+	}
+}
+
+// note books usd to today and answers how many hours the item's activity must
+// slide before the newest bucket takes this call: -1 for a first call, whose
+// newest bucket is taken to be this hour.
+func (m *Money) note(id int, usd float64, now time.Time) int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.roll(now)
+	m.today[id] += usd
+	h := now.Unix() / 3600
+	last, seen := m.hour[id]
+	m.hour[id] = h
+	if !seen {
+		return 0
+	}
+	return int(h - last)
+}
+
+// roll forgets yesterday's spend when the day turns. Callers hold mu.
+func (m *Money) roll(now time.Time) {
+	y, mo, d := now.Date()
+	if cur := [3]int{y, int(mo), d}; cur != m.day {
+		m.day = cur
+		m.today = map[int]float64{}
+	}
+}
+
+// bump slides the 24 buckets forward by hours and adds one to the newest, to
+// at most the sparkline's top. An activity of another length is made 24 first.
+func bump(a []int, hours int) []int {
+	out := make([]int, ActivityHours)
+	if len(a) >= ActivityHours {
+		copy(out, a[len(a)-ActivityHours:])
+	} else {
+		copy(out[ActivityHours-len(a):], a)
+	}
+	if hours > 0 {
+		if hours >= ActivityHours {
+			out = make([]int, ActivityHours)
+		} else {
+			copy(out, out[hours:])
+			for i := ActivityHours - hours; i < ActivityHours; i++ {
+				out[i] = 0
+			}
+		}
+	}
+	if out[ActivityHours-1] < activityTop {
+		out[ActivityHours-1]++
+	}
+	return out
+}
+
+// freshStream is the stream a new run starts on, with the job's phases and
+// WHAT THE JOB SPENT THAT NO STEP OF A RUN DID: its chat's spend before any
+// run (Item.ChatSpent, carried and zeroed here) and the spend of a stream none
+// of whose steps began, which can only be its chat's — a run that was queued
+// and stopped, or the run the factory queued and the worker that pulled it is
+// starting. A run whose steps began starts its own spend from nothing, as a
+// new run always has.
+func freshStream(it *factory.Item, now time.Time) *factory.Stream {
+	spent := it.ChatSpent
+	models := it.ChatModels
+	if s := it.Stream; s != nil && !begun(s) {
+		spent += s.Spent
+		models = factory.JoinModelUses(models, s.Models)
+	}
+	it.ChatSpent = 0
+	it.ChatModels = nil
+	return &factory.Stream{Started: now, Phases: loopPhases(*it), Spent: spent, Models: models}
+}
+
+// begun says whether any step of the stream has started a round.
+func begun(s *factory.Stream) bool {
+	for _, ph := range s.Phases {
+		if ph.Round > 0 || ph.State != factory.PhasePending {
+			return true
+		}
+	}
+	return false
+}
+
+// ChatBudgetReached is the sentence a job's own conversation refuses a turn
+// with once the job's budget is spent: the figure, the budget and the door,
+// in the shape of the conversation limit's own line. The manual quotes it
+// (internal/manual/chat/factory-stage-conversations.md).
+const ChatBudgetReached = "job budget reached · %s spent of %s · raise the job's budget to go on"
+
+// ChatRefusal is why the job's own conversation may not start another turn,
+// "" while it may. A budget question does not exempt owned calls from this
+// limit; raising the cap through the job controls permits work again.
+func ChatRefusal(it factory.Item) string {
+	if it.DoneHow == "closed_locally" {
+		return "job closed locally; Reopen to continue with its work and spending kept"
+	}
+	spent := factory.JobSpent(it)
+	if it.Cap <= 0 || spent < it.Cap {
+		return ""
+	}
+	return fmt.Sprintf(ChatBudgetReached, dollars(spent), dollars(it.Cap))
+}
+
+// CapReached is whether the item has spent what its cap allows. No cap (0) is
+// never reached.
+func (m *Money) CapReached(it factory.Item) bool {
+	return it.Cap > 0 && it.Stream != nil && it.Stream.Spent >= it.Cap
+}
+
+// CapQuestion is the sentence the item waits on, and its QKind.
+func (m *Money) CapQuestion(it factory.Item) (q string, kind string) {
+	spent := factory.JobSpent(it)
+	q = "budget of " + dollars(it.Cap) + " reached · " + dollars(spent) + " spent · "
+	return q + "raise it to " + dollars(factory.NextJobCap(it)) + ", or stop?", "cap"
+}
+
+func dollars(usd float64) string {
+	if usd == float64(int64(usd)) {
+		return "$" + strconv.FormatInt(int64(usd), 10)
+	}
+	return "$" + strconv.FormatFloat(usd, 'f', 2, 64)
+}
+
+// SpentToday is what the floor has spent today, for the rail. An item this
+// process paid for counts what it paid today; any other counts its whole
+// spend when it moved or started today. Triage reads are not added: they are
+// kept as a running total, not by day.
+func (m *Money) SpentToday() float64 {
+	if m == nil || m.st == nil {
+		return 0
+	}
+	items, err := m.st.List()
+	if err != nil {
+		return 0
+	}
+	now := m.clock()
+	m.mu.Lock()
+	m.roll(now)
+	paid := make(map[int]float64, len(m.today))
+	for id, usd := range m.today {
+		paid[id] = usd
+	}
+	m.mu.Unlock()
+	return factory.DaySpend(items, paid, now)
+}
+
+// Rail is the day's rail in dollars, 0 for none.
+func (m *Money) Rail() float64 {
+	if m == nil || m.st == nil {
+		return 0
+	}
+	r, _ := m.st.Rail()
+	return r
+}

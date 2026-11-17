@@ -121,6 +121,14 @@ func TestAModelThatWillNotWriteNotesHasItsToolsHeldAtTheEnforcedRung(t *testing.
 	if !failed {
 		t.Fatal("no harness-made tool failure carried the demand out to the surface")
 	}
+	for _, event := range collected {
+		if event.Kind == EventToolFailed && event.HarnessMade {
+			row := toolEntryFor(t, agent.Transcript(), event.CallID)
+			if !row.ToolResult.HarnessMade() || row.ToolResult.Invoked() || row.ToolResult.RejectedBeforeRun() {
+				t.Fatalf("held history lost producer facts: %+v", row)
+			}
+		}
+	}
 }
 
 // And it lands honestly if it still refuses, rather than arguing forever.

@@ -13,6 +13,8 @@ import (
 func deletionFixture(t *testing.T) (string, string, string) {
 	t.Helper()
 	root := t.TempDir()
+	// Contract 6–7: release the fixture's cached databases before directory cleanup.
+	t.Cleanup(teams.Close)
 	root, _ = filepath.EvalSymlinks(root)
 	profile := filepath.Join(root, "profile")
 	dir := filepath.Join(root, "projects", "project", "conversation")

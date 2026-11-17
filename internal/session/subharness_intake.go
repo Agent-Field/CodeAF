@@ -155,7 +155,7 @@ func (a *Agent) fillSubharnessCard(card *SubharnessCard) {
 	if material == "" {
 		return
 	}
-	model, err := roles.Resolve(roles.Source(a.config.RolesSource), roles.RoleIntake, a.Model())
+	model, err := a.roleModels().Resolve(roles.RoleIntake, a.Model())
 	if err != nil {
 		return
 	}

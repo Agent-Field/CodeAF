@@ -370,6 +370,9 @@ func leanDropsSection(heading string) bool {
 // it: the table in tools_capabilities.go that owns it, and the pre-arming below.
 const questionsGroup = "questions"
 
+// secretsGroup is the shelf group `request_secret` waits in.
+const secretsGroup = "secrets"
+
 // leanCapabilityGroups is what a LEAN belt shelves on top of
 // [capabilityGroups], built exactly the way that table is — names, no schemas,
 // no gates — so a tool this machine does not build is missing from the shelf for

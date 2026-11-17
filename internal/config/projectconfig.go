@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/filememo"
 	"os"
 	"path/filepath"
 	"sort"
@@ -146,32 +147,36 @@ func LoadProjectConfig(cwd string) (ProjectConfig, error) {
 	if path == "" {
 		return ProjectConfig{}, nil
 	}
-	raw, err := os.ReadFile(path)
+	project, err := projectConfigMemo.ReadStrict(path)
 	if os.IsNotExist(err) {
 		legacy := filepath.Join(strings.TrimSpace(cwd), legacyProjectConfigDir, ProjectConfigFile)
-		path = legacy
-		raw, err = os.ReadFile(legacy)
+		project, err = projectConfigMemo.ReadStrict(legacy)
 		if os.IsNotExist(err) {
-			return ProjectConfig{path: ProjectConfigPath(cwd)}, nil
+			return ProjectConfig{path: path}, nil
 		}
 	}
 	if err != nil {
 		return ProjectConfig{}, fmt.Errorf("read project settings %s: %w", path, err)
+	}
+	return project, nil
+}
+
+var projectConfigMemo = filememo.New(func(path string, raw []byte, missing bool) (ProjectConfig, error) {
+	if missing {
+		return ProjectConfig{}, os.ErrNotExist
 	}
 	var values map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &values); err != nil {
 		return ProjectConfig{}, fmt.Errorf("read project settings %s: %w", path, err)
 	}
 	if values == nil {
-		// A literal `null` parses without complaint and means the same as an
-		// empty object here: a file that says nothing.
 		values = map[string]json.RawMessage{}
 	}
 	if err := refuseNestedRows(path, values); err != nil {
 		return ProjectConfig{}, err
 	}
 	return ProjectConfig{path: path, values: values}, nil
-}
+})
 
 // Path is the file this layer came from, empty when there is no workspace.
 func (p ProjectConfig) Path() string { return p.path }
@@ -318,12 +323,8 @@ func (p ProjectConfig) ResolveString(profileDir, key string) (string, error) {
 		return value, nil
 	}
 	switch key {
-	case KeyToolApprovalMode:
-		return ToolApprovalModeAt(profileDir), nil
-	case KeyToolApprovals:
-		return ToolApprovalsAt(profileDir), nil
-	case KeyBashApprovals:
-		return BashApprovalsAt(profileDir), nil
+	case KeyToolApprovalMode, KeyToolApprovals, KeyBashApprovals:
+		return profileApprovalString(profileDir, key)
 	case KeyTierLowModel:
 		return TierModelAt(profileDir, ModelTierLow), nil
 	case KeyTierHighModel:
@@ -332,6 +333,31 @@ func (p ProjectConfig) ResolveString(profileDir, key string) (string, error) {
 		return ModelRolesAt(profileDir), nil
 	}
 	return "", fmt.Errorf("%q is not a text row", key)
+}
+
+// ReadProfileApprovalConfig preserves a failed profile read so policy builders
+// can require a person even when a caller or project supplies an allow mode.
+func ReadProfileApprovalConfig(profileDir string) (map[string]json.RawMessage, error) {
+	return readProfileConfigStrict(profileDir)
+}
+
+func profileApprovalString(profileDir, key string) (string, error) {
+	values, err := ReadProfileApprovalConfig(profileDir)
+	if err != nil {
+		return "", err
+	}
+	if key == KeyToolApprovalMode {
+		return toolApprovalMode(values, DefaultToolApprovalMode), nil
+	}
+	encoded, found := values[key]
+	if !found {
+		return "", nil
+	}
+	var value string
+	if err := json.Unmarshal(encoded, &value); err != nil {
+		return "", fmt.Errorf("settings row %q: %w", key, err)
+	}
+	return strings.TrimSpace(value), nil
 }
 
 // ResolveBool answers one on/off row through the ladder.

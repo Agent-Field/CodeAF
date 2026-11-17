@@ -64,3 +64,14 @@ func (g Group) Alive() bool {
 	}
 	return groupHasLiveMember(g.pid)
 }
+
+// Group is a POSIX process group with its leader's recorded identity.
+type Group struct {
+	pid   int
+	start uint64
+	known bool
+}
+
+func capturedGroup(pid int, start uint64, known bool) Group {
+	return Group{pid: pid, start: start, known: known}
+}

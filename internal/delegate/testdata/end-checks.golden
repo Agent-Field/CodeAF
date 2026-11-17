@@ -1,0 +1,2 @@
+{"at":"2026-10-16T09:30:00Z","kind":"end","status":"pass","data":{"claim":"the retry loop is bounded","observed":"3 of 3 commands passed","submitted":true},"message":"submitted"}
+{"at":"2026-10-16T09:30:00Z","text":"submitted","ending":{"claim":"the retry loop is bounded","observed":"3 of 3 commands passed","submitted":true}}

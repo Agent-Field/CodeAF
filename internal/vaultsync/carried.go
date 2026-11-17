@@ -60,7 +60,9 @@ func (c Carried) captureEdits(v VaultFile) error {
 // when it holds nothing.
 func (c Carried) record(v VaultFile, absent func(VaultFile) error) error {
 	content, at, err := c.Medium.Read()
-	if errors.Is(err, ErrDamaged) {
+	// Too large for the vault is not a removal either: the copy here is fine,
+	// it just does not travel, so the slot is neither taken nor tombstoned.
+	if errors.Is(err, ErrDamaged) || errors.Is(err, keys.ErrTooLarge) {
 		return nil
 	}
 	if errors.Is(err, os.ErrNotExist) {
@@ -77,7 +79,11 @@ func (c Carried) record(v VaultFile, absent func(VaultFile) error) error {
 	if medium, ok := c.Medium.(interface{ recorded(string, string) string }); ok {
 		content = medium.recorded(content, held.Value)
 	}
-	return v.PutAt(c.ID, keys.Entry{Name: c.Name, Value: content, Scope: c.Scope}, at)
+	err = v.PutAt(c.ID, keys.Entry{Name: c.Name, Value: content, Scope: c.Scope}, at)
+	if errors.Is(err, keys.ErrTooLarge) {
+		return nil
+	}
+	return err
 }
 
 // removed tombstones the slot, unless the slot holds nothing this machine could

@@ -564,8 +564,21 @@ func (a *app) trafficStart(t team, e teamstore.Entry) tea.Cmd {
 			posture = dial.ResolvedApprovalPosture()
 		}
 	}
-	start, where, id := a.start, a.teamWhere(t), t.ID
+	start, where, id, seam, entry := a.start, a.teamWhere(t), t.ID, a.teamsSeam(), e.ID
 	return a.besideLine(func() func(bool) tea.Cmd {
+		// ONE WINDOW CARRIES OUT A START: the desktop app may hold this same
+		// manager, and the claim in the teams file says which of us does
+		// (internal/teams' startclaim.go). A seam that cannot write starts as
+		// before.
+		if seam.Update != nil {
+			claimed := true
+			if _, _, err := seam.Update(func(f *teamstore.File) error {
+				claimed = f.ClaimStart(id, entry)
+				return nil
+			}); err == nil && !claimed {
+				return func(bool) tea.Cmd { return nil }
+			}
+		}
 		conv, err := start(where)
 		// Seat the conversation before membership can wake its first turn.
 		if err == nil && conv.Agent != nil && e.Model != "" {
@@ -585,7 +598,7 @@ func (a *app) trafficStart(t team, e teamstore.Entry) tea.Cmd {
 				err = fmt.Errorf("inherit approvals: %w", err)
 			}
 		}
-		return func(bool) tea.Cmd { return a.trafficStarted(id, handle, e.ID, conv, err) }
+		return func(bool) tea.Cmd { return a.trafficStarted(id, handle, entry, conv, err) }
 	})
 }
 
@@ -596,7 +609,7 @@ func (a *app) trafficStartRefused(handle, why string) {
 
 // trafficStarted is the start's conversation back from the engine: held
 // behind, joined to the team under its handle, and said beside the manager.
-func (a *app) trafficStarted(id, handle, startID string, conv Conversation, err error) tea.Cmd {
+func (a *app) trafficStarted(id, handle, entry string, conv Conversation, err error) tea.Cmd {
 	if err != nil || conv.Agent == nil {
 		why := "the conversation did not open"
 		if err != nil {
@@ -616,7 +629,7 @@ func (a *app) trafficStarted(id, handle, startID string, conv Conversation, err 
 	a.trafficBehindTop(key)
 	a.chatTabBar = tabBar{}
 	if t.ID != "" {
-		m := teamMember{Key: key, File: conv.SessionFile, Where: conv.Workspace, Handle: handle, StartID: startID}
+		m := teamMember{Key: key, File: conv.SessionFile, Where: conv.Workspace, Handle: handle, StartEntry: entry, StartID: entry}
 		if err := a.teamEdit(func(f *teamstore.File) error {
 			if err := f.AddMember(t.ID, m); err != nil {
 				return err

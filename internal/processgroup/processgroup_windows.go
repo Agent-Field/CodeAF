@@ -4,9 +4,11 @@ package processgroup
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"strconv"
 	"syscall"
+	"time"
 
 	"golang.org/x/sys/windows"
 )
@@ -17,6 +19,7 @@ func Configure(cmd *exec.Cmd) {
 
 func ConfigureDetached(cmd *exec.Cmd) {
 	Configure(cmd)
+	cmd.SysProcAttr.CreationFlags |= windows.DETACHED_PROCESS
 }
 
 func Configured(cmd *exec.Cmd) bool {
@@ -24,10 +27,16 @@ func Configured(cmd *exec.Cmd) bool {
 }
 
 func Terminate(pid int) error {
+	if job := launchJob(pid); job != nil {
+		return job.terminate(pid)
+	}
 	return taskkill(pid, false)
 }
 
 func Kill(pid int) error {
+	if job := launchJob(pid); job != nil {
+		return job.kill()
+	}
 	return taskkill(pid, true)
 }
 
@@ -49,6 +58,9 @@ func taskkill(pid int, force bool) error {
 }
 
 func Alive(pid int) bool {
+	if job := launchJob(pid); job != nil {
+		return job.alive()
+	}
 	return ProcessAlive(pid)
 }
 
@@ -60,13 +72,13 @@ func ProcessAlive(pid int) bool {
 	defer windows.CloseHandle(handle)
 	var code uint32
 	if err := windows.GetExitCodeProcess(handle, &code); err != nil {
-		return false
+		return true
 	}
 	return code == 259 // STILL_ACTIVE
 }
 
 func ReapExitedChild(pid int) bool {
-	return !ProcessAlive(pid)
+	return !Alive(pid)
 }
 
 func SetPriority(pid, _ int) {
@@ -76,4 +88,25 @@ func SetPriority(pid, _ int) {
 	}
 	defer windows.CloseHandle(handle)
 	_ = windows.SetPriorityClass(handle, windows.BELOW_NORMAL_PRIORITY_CLASS)
+}
+
+// WaitEmpty verifies job accounting rather than leader death. A zero timeout
+// waits until ownership ends; a query failure remains alive, never stopped.
+func WaitEmpty(pid int, timeout time.Duration) error {
+	job := launchJob(pid)
+	if job == nil {
+		return nil
+	}
+	if err := job.waitEmpty(timeout); err != nil {
+		return fmt.Errorf("process tree %d: %w", pid, err)
+	}
+	return nil
+}
+
+// KillChild cancels a launch even when it inherited its parent's console.
+func KillChild(process *os.Process) error {
+	if job := launchJob(process.Pid); job != nil {
+		return job.kill()
+	}
+	return process.Kill()
 }

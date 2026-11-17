@@ -59,6 +59,9 @@ const probeCeiling = 10 * time.Second
 // path that will not carry — but it carries no duration, because what a refusal
 // times is the refusal.
 func (c *Client) probeLane(ctx context.Context, model, lane string) (time.Duration, error) {
+	if err := refuseObserved(ctx, SurfaceProbe); err != nil {
+		return 0, err
+	}
 	model, lane = strings.TrimSpace(model), strings.TrimSpace(lane)
 	if model == "" || lane == "" {
 		return 0, errors.New("probe: a model and a lane are both required")
@@ -244,18 +247,25 @@ func (c *Client) ProbeLanes(ctx context.Context, model string) {
 	if c == nil || !c.carriesPreferences() || c.connectionWaiting() {
 		return
 	}
-	// SIMPLE ROUTING BUYS NO MEASUREMENTS. A probe exists to teach the belief
+	// A probe is a paid send that never passes the attempt hook, so under an
+	// observer it is not bought at all (attemptobserver.go).
+	if refuseObserved(ctx, SurfaceProbe) != nil {
+		return
+	}
+	// Off and simple routing buy no measurements. A probe exists to teach the belief
 	// which machine to choose, and under this row choosing is the person's
 	// row and nothing else — so a probe would spend real money on an answer
 	// no request will ever read.
-	if c.routing() == RoutingSimple {
+	if strategy := c.routing(); strategy == RoutingOff || strategy == RoutingSimple {
 		return
 	}
 	model = strings.TrimSpace(model)
 	if model == "" {
 		return
 	}
-	choice := lanes.Default().Chooser().Choose(LaneTalkAsk(model, laneNow()))
+	now := laneNow()
+	lanes.Default().RecordRouting()
+	choice := lanes.Default().Chooser().Choose(LaneTalkAsk(model, now))
 	head := make([]string, 0, probeHead)
 	for _, scored := range choice.Frontier {
 		if scored.ID.Lane == "" {

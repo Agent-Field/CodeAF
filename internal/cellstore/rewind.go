@@ -2,6 +2,7 @@ package cellstore
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,10 @@ import (
 
 // rewindTool is the tool name the rewind turn's receipt row carries.
 const rewindTool = "cell.rewind"
+
+// ErrStepOpen prevents file restoration from sealing a finished call before
+// its caller has written the result line and closed the step.
+var ErrStepOpen = errors.New("rewind refused: a tool step is open; settle it first")
 
 // IncompleteError refuses a rewind while calls are unresolved (L9): an
 // incomplete call may have half-run, and restoring underneath it would hide
@@ -35,6 +40,18 @@ func (e Engine) WALPath(c cell.Cell) string { return filepath.Join(e.LocalDir(c)
 // rewound.
 func (e Engine) Rewind(ctx context.Context, c cell.Cell, ref string) (Sealed, error) {
 	if err := e.refuseIncomplete(c); err != nil {
+		return Sealed{}, err
+	}
+	captures.Lock()
+	r := captures.held[c.Root]
+	captures.Unlock()
+	if r != nil && !r.scheduleAtPause(ctx) {
+		return Sealed{}, ErrStepOpen
+	}
+	if err := Await(ctx, c); err != nil {
+		return Sealed{}, err
+	}
+	if err := e.recoverCompleted(ctx, c); err != nil {
 		return Sealed{}, err
 	}
 	turns, err := Turns(c)

@@ -27,6 +27,37 @@ func usdClose(got, want float64) bool {
 	return diff < 1e-9 && diff > -1e-9
 }
 
+// L-LOOP2 C1, C6: only the woken worker's own additions are dispatched work.
+func TestRootWakeSeparatesJoinedWorkFromDispatchedChildren(t *testing.T) {
+	store := startOpenStore(t, "Run")
+	seat := newFakeSeat()
+	calls := 0
+	clause := ""
+	seat.actions["root"] = func(ctx context.Context, task plandb.Task) (run.Report, error) {
+		calls++
+		if calls == 1 {
+			if _, err := store.AddManyForWorker(task.ID, []plandb.TaskSpec{{ID: "own", ParentID: task.ID, Title: "Dispatched work"}}); err != nil {
+				return run.Report{}, err
+			}
+			_, err := store.AddJoinedMany([]plandb.TaskSpec{{ID: "joined", ParentID: task.ID, Title: "Independent assignment"}}, false)
+			return run.Report{Result: "handed out my part", Steps: 1}, err
+		}
+		clause = run.WakeClause(ctx)
+		return run.Report{Result: "integrated my part", Steps: 1}, nil
+	}
+	outcome, _ := run.Start(runContext(t), run.Spec{Store: store, Workspace: t.TempDir(), Slots: 1, Factory: seat.workerFor})
+	if outcome != run.OutcomeDone || calls != 2 {
+		t.Fatalf("root did not wake once: outcome=%s calls=%d", outcome, calls)
+	}
+	dispatched, other, _ := strings.Cut(clause, "Other work you did not dispatch; do not redo it:")
+	if !strings.Contains(dispatched, "every child you dispatched") || !strings.Contains(dispatched, "Dispatched work") || strings.Contains(dispatched, "Independent assignment") {
+		t.Fatalf("wake misattributes dispatched work: %s", clause)
+	}
+	if strings.Contains(clause, "Independent assignment") && !strings.Contains(other, "Independent assignment") {
+		t.Fatalf("joined work was not identified as independent: %s", clause)
+	}
+}
+
 // TestSupervisorWakesARootWithItsChildrensResults is the law's first half: the
 // root splits into two leaves, both land, and the root is run a second time
 // with an opening that carries both leaves' titles, statuses and results. The
@@ -45,7 +76,7 @@ func TestSupervisorWakesARootWithItsChildrensResults(t *testing.T) {
 		defer mu.Unlock()
 		calls++
 		if calls == 1 {
-			_, err := store.AddMany([]plandb.TaskSpec{
+			_, err := store.AddManyForWorker(task.ID, []plandb.TaskSpec{
 				{ID: "l1", Title: "the first leaf", ParentID: task.ID},
 				{ID: "l2", Title: "the second leaf", ParentID: task.ID},
 			})
@@ -123,14 +154,14 @@ func TestSupervisorWakesARootAgainWhenItAddsAChild(t *testing.T) {
 		calls++
 		switch calls {
 		case 1:
-			_, err := store.AddMany([]plandb.TaskSpec{
+			_, err := store.AddManyForWorker(task.ID, []plandb.TaskSpec{
 				{ID: "l1", Title: "leaf one", ParentID: task.ID},
 				{ID: "l2", Title: "leaf two", ParentID: task.ID},
 			})
 			return run.Report{Result: "split into two", Steps: 1}, err
 		case 2:
 			clauses = append(clauses, run.WakeClause(ctx))
-			_, err := store.AddMany([]plandb.TaskSpec{{ID: "l3", Title: "the gap leaf", ParentID: task.ID}})
+			_, err := store.AddManyForWorker(task.ID, []plandb.TaskSpec{{ID: "l3", Title: "the gap leaf", ParentID: task.ID}})
 			return run.Report{Result: "integrated two, added a third", Steps: 1}, err
 		default:
 			clauses = append(clauses, run.WakeClause(ctx))
@@ -183,7 +214,7 @@ func TestSupervisorStopsWakingAParentAtTheCap(t *testing.T) {
 		calls++
 		// One more leaf every turn: without a cap the root would never stop.
 		id := fmt.Sprintf("l%d", calls)
-		_, err := store.AddMany([]plandb.TaskSpec{{ID: id, Title: "leaf " + id, ParentID: task.ID}})
+		_, err := store.AddManyForWorker(task.ID, []plandb.TaskSpec{{ID: id, Title: "leaf " + id, ParentID: task.ID}})
 		return run.Report{Result: fmt.Sprintf("call %d", calls), Steps: 1}, err
 	}
 
@@ -258,7 +289,7 @@ func TestSupervisorWakesACoordinatorBelowTheRootAgainWhenItAddsAChild(t *testing
 		defer mu.Unlock()
 		rootCalls++
 		if rootCalls == 1 {
-			_, err := store.AddMany([]plandb.TaskSpec{{ID: "m", Title: "the coordinator", ParentID: task.ID}})
+			_, err := store.AddManyForWorker(task.ID, []plandb.TaskSpec{{ID: "m", Title: "the coordinator", ParentID: task.ID}})
 			return run.Report{Result: "split into a coordinator", Steps: 1}, err
 		}
 		return run.Report{Result: "root integrated: " + store.Task("m").Result, Steps: 1}, nil
@@ -269,7 +300,7 @@ func TestSupervisorWakesACoordinatorBelowTheRootAgainWhenItAddsAChild(t *testing
 		midCalls++
 		switch midCalls {
 		case 1:
-			_, err := store.AddMany([]plandb.TaskSpec{
+			_, err := store.AddManyForWorker(task.ID, []plandb.TaskSpec{
 				{ID: "c1", Title: "child one", ParentID: task.ID},
 				{ID: "c2", Title: "child two", ParentID: task.ID},
 			})
@@ -279,7 +310,7 @@ func TestSupervisorWakesACoordinatorBelowTheRootAgainWhenItAddsAChild(t *testing
 			// reports showed up as missing — which the store only lets it do
 			// because it left the parent open.
 			clauses = append(clauses, run.WakeClause(ctx))
-			_, err := store.AddMany([]plandb.TaskSpec{{ID: "c3", Title: "the gap child", ParentID: task.ID}})
+			_, err := store.AddManyForWorker(task.ID, []plandb.TaskSpec{{ID: "c3", Title: "the gap child", ParentID: task.ID}})
 			if err != nil {
 				t.Errorf("a woken coordinator could not add a child: %v", err)
 			}
@@ -345,7 +376,7 @@ func TestSupervisorWakesAParentWhoseChildrenLandedFirst(t *testing.T) {
 		defer mu.Unlock()
 		rootCalls++
 		if rootCalls == 1 {
-			_, err := store.AddMany([]plandb.TaskSpec{{ID: "m", Title: "the coordinator", ParentID: task.ID}})
+			_, err := store.AddManyForWorker(task.ID, []plandb.TaskSpec{{ID: "m", Title: "the coordinator", ParentID: task.ID}})
 			return run.Report{Result: "split into a coordinator", Steps: 1}, err
 		}
 		return run.Report{Result: "root integrated: " + store.Task("m").Result, Steps: 1}, nil
@@ -355,7 +386,7 @@ func TestSupervisorWakesAParentWhoseChildrenLandedFirst(t *testing.T) {
 		defer mu.Unlock()
 		midCalls++
 		if midCalls == 1 {
-			_, err := store.AddMany([]plandb.TaskSpec{
+			_, err := store.AddManyForWorker(task.ID, []plandb.TaskSpec{
 				{ID: "c1", Title: "child one", ParentID: task.ID},
 				{ID: "c2", Title: "child two", ParentID: task.ID},
 			})
@@ -416,7 +447,7 @@ func TestSupervisorKeepsACappedParentsOwnReport(t *testing.T) {
 		mu.Lock()
 		defer mu.Unlock()
 		if store.Task("m") == nil {
-			_, err := store.AddMany([]plandb.TaskSpec{{ID: "m", Title: "the coordinator", ParentID: task.ID}})
+			_, err := store.AddManyForWorker(task.ID, []plandb.TaskSpec{{ID: "m", Title: "the coordinator", ParentID: task.ID}})
 			return run.Report{Result: "split into a coordinator", Steps: 1}, err
 		}
 		return run.Report{Result: "root integrated: " + store.Task("m").Result, Steps: 1}, nil
@@ -428,7 +459,7 @@ func TestSupervisorKeepsACappedParentsOwnReport(t *testing.T) {
 		// One more child every turn: without the cap this coordinator would
 		// never stop being woken.
 		id := fmt.Sprintf("c%d", midCalls)
-		_, err := store.AddMany([]plandb.TaskSpec{{ID: id, Title: "child " + id, ParentID: task.ID}})
+		_, err := store.AddManyForWorker(task.ID, []plandb.TaskSpec{{ID: id, Title: "child " + id, ParentID: task.ID}})
 		return run.Report{Result: "the coordinator's report " + fmt.Sprint(midCalls), Steps: 1}, err
 	}
 

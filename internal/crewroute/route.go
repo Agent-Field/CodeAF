@@ -129,6 +129,20 @@ type Route struct {
 	// task's first call, zero when nothing is known — a free route then reads
 	// [freeFailPrior].
 	FailRate float64
+	// Price is what THIS route's own provider publishes for the model, when it
+	// is not the model's catalog price — a direct connection's own listing. A
+	// metered route weighs its own price when it has one; nil weighs the
+	// model's ([Model]'s prices are the catalog's provider's).
+	Price *RoutePrice `json:",omitempty"`
+}
+
+// RoutePrice is one route's own published price, dollars per token. Zero in
+// and zero out is a price of nothing on a paid route, which promises nothing
+// about the next call: it is weighed as a model nobody prices is.
+type RoutePrice struct {
+	Prompt     float64
+	Completion float64
+	CacheRead  float64
 }
 
 // Candidate is a model the person allows, with every route a connected
@@ -266,7 +280,10 @@ type Pick struct {
 	Send     string
 	Kind     RouteKind
 	Pinned   bool
-	Quality  float64
+	// Price is the accepted route's own published tariff at admission. Nil is
+	// unknown, including checkpoints written before tariff facts were stored.
+	Price   *RoutePrice `json:",omitempty"`
+	Quality float64
 	// SD is the standard deviation of Quality under the weights.
 	SD float64 `json:",omitempty"`
 	// Learned is the part of Quality this install's own outcomes moved.
@@ -326,6 +343,13 @@ type Decision struct {
 	// against their estimates ([router.CrewLog.CostFactor]); EstUSD carries
 	// it. Zero is none learned yet.
 	CostFactor float64 `json:",omitempty"`
+	// Mode is how the roles were chosen at admission ([ModeAuto], [ModeOne]);
+	// empty on a decision from before modes, which reads as auto.
+	Mode Mode `json:",omitempty"`
+	// Warnings are what was wrong with the saved pins at admission: a pin the
+	// allowed models no longer admit (the role was routed instead), or a pin
+	// whose provider was unavailable.
+	Warnings []SeatWarning `json:",omitempty"`
 }
 
 // Unspent is the actual cost a line is drawn with when there is none worth
@@ -988,7 +1012,7 @@ func pickAt(t *table, class Class, seat Seat, c Candidate, a ability) Pick {
 	pick := Pick{Seat: seat, Model: c.Model.ID, Quality: q, SD: sd, Learned: t.learnedOf(class, seat, a),
 		CostUSD: math.Inf(1)}
 	for _, route := range c.Routes {
-		cost := routeCost(route, metered, fallback)
+		cost := routeCost(route, t.meteredOn(class, seat, c.Model, route, a, metered), fallback)
 		if unpriced && route.Kind == Free {
 			// A free pool of a model nobody prices is weighed above the
 			// cheapest priced model: its zero is not a price.
@@ -996,9 +1020,32 @@ func pickAt(t *table, class Class, seat Seat, c Candidate, a ability) Pick {
 		}
 		if cost < pick.CostUSD-1e-12 {
 			pick.Provider, pick.Send, pick.Kind, pick.CostUSD = route.Provider, route.Send, route.Kind, cost
+			pick.Price = copyRoutePrice(route.Price)
 		}
 	}
 	return pick
+}
+
+func copyRoutePrice(price *RoutePrice) *RoutePrice {
+	if price == nil {
+		return nil
+	}
+	copy := *price
+	return &copy
+}
+
+// meteredOn is what a seat bills on one route: the route's own price when its
+// provider published one, else the model's (metered). A paid route whose own
+// price is zero both ways is weighed at what a priced model as able costs.
+func (t *table) meteredOn(class Class, seat Seat, m Model, route Route, a ability, metered float64) float64 {
+	if route.Kind != Metered || route.Price == nil {
+		return metered
+	}
+	if route.Price.Prompt <= 0 && route.Price.Completion <= 0 {
+		return t.priceFor(seat, a.U) * t.costScale(class, seat)
+	}
+	m.PromptPrice, m.CompletionPrice, m.CacheReadPrice = route.Price.Prompt, route.Price.Completion, route.Price.CacheRead
+	return t.classCost(class, seat, m)
 }
 
 // routeCost is what one more task is EXPECTED to cost on a route: what it
@@ -1042,7 +1089,8 @@ func pinned(t *table, class Class, seat Seat, pin Pin, candidates []Candidate) P
 			for _, route := range c.Routes {
 				if strings.EqualFold(route.Provider, pin.Provider) {
 					found.Provider, found.Send, found.Kind = route.Provider, route.Send, route.Kind
-					metered := t.classCost(class, seat, c.Model)
+					found.Price = copyRoutePrice(route.Price)
+					metered := t.meteredOn(class, seat, c.Model, route, t.abilityOf(c.Model), t.classCost(class, seat, c.Model))
 					found.CostUSD = routeCost(route, metered, math.Max(metered, t.costFloor(seat)*t.costScale(class, seat)))
 				}
 			}

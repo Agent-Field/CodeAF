@@ -586,3 +586,27 @@ func TestTrafficStartRefusesFailedApprovalInheritance(t *testing.T) {
 		t.Fatal("failed child joined team")
 	}
 }
+
+// A MEMBER THE TERMINAL STARTS KEEPS THE ID OF ITS START LINE: the same durable
+// identity the desktop app records, so the brief is found by the line and the
+// member's key, never by a handle a person can change or a later member take.
+func TestTrafficStartedRecordsTheStartLineOnTheMembership(t *testing.T) {
+	a, harbor, _, _ := trafficApp(t)
+	first, err := teamstore.AppendTrafficID(a.profileDir, harbor, teamstore.Entry{Kind: teamstore.KindStart, From: teamstore.FromManager, To: "scribe", Text: "write the changelog"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(t.TempDir(), "scribe.jsonl")
+	conv := Conversation{Agent: &fakeAgent{model: "m"}, SessionFile: file, Workspace: "/tmp/lab"}
+	spend(t, a, a.trafficStarted(harbor, "scribe", first, conv, nil))
+	teamsFlush(t, a)
+	tm := mustTeam(t, a, harbor)
+	m, ok := tm.ByHandle("scribe")
+	if !ok || m.StartEntry != first {
+		t.Fatalf("membership = %+v", m)
+	}
+	got, ok, err := teamstore.StartFor(a.profileDir, tm, m)
+	if err != nil || !ok || got.Text != "write the changelog" || got.ID != first {
+		t.Fatalf("StartFor = %+v %v %v", got, ok, err)
+	}
+}

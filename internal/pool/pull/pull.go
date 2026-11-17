@@ -127,6 +127,9 @@ func Verify(doc, sig []byte, keys []ed25519.PublicKey) bool {
 // panics. The whole call lives inside Budget (DefaultBudget when it is zero)
 // and inside ctx, whichever ends first.
 func (p *Puller) Pull(ctx context.Context) (Result, error) {
+	if err := ctx.Err(); err != nil {
+		return Result{}, err
+	}
 	if p.URL == "" {
 		return Result{}, errors.New("pull: empty url")
 	}
@@ -198,8 +201,12 @@ func (p *Puller) Pull(ctx context.Context) (Result, error) {
 		changed = false
 	}
 
+	// A late body may finish after its owner stopped waiting for the pull.
+	if err := ctx.Err(); err != nil {
+		return Result{}, err
+	}
 	// A good document is cached and returned with FromCache false.
-	p.storeCache(doc, sig, etag, version, now)
+	p.storeCache(ctx, doc, sig, etag, version, now)
 	return Result{
 		Doc:       doc,
 		Version:   version,
@@ -287,6 +294,9 @@ func (p *Puller) fetch(ctx context.Context, cached cache) ([]byte, []byte, strin
 
 // fetchHTTP reads the document and its signature over the network.
 func (p *Puller) fetchHTTP(ctx context.Context, cached cache) ([]byte, []byte, string, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, nil, "", err
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.URL, nil)
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("pull: build request: %w", err)
@@ -320,6 +330,10 @@ func (p *Puller) fetchHTTP(ctx context.Context, cached cache) ([]byte, []byte, s
 }
 
 func (p *Puller) fetchSigHTTP(ctx context.Context) ([]byte, error) {
+	// A transport can return a body that ignores request cancellation.
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.sigLocation(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("pull: build signature request: %w", err)

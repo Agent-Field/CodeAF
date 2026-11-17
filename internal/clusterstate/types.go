@@ -81,6 +81,7 @@ type Mutation struct {
 	Release            *ReleaseCell        `json:"release,omitempty"`
 	Archive            *CellID             `json:"archive,omitempty"`
 	PutDevice          *PutDevice          `json:"put_device,omitempty"`
+	RegisterClient     *ClientRegistration `json:"register_client,omitempty"`
 	Revoke             *DeviceID           `json:"revoke,omitempty"`
 	SetVault           *VaultCAS           `json:"set_vault,omitempty"`
 	AdvanceTime        *AdvanceTime        `json:"advance_time,omitempty"`
@@ -141,6 +142,15 @@ type ReleaseCell struct {
 type PutDevice struct {
 	ID     string `json:"id"`
 	Device Device `json:"device"`
+}
+
+// ClientRegistration records a scoped client device and its allowed queue
+// methods in the replicated directory. Only a full device may submit it.
+type ClientRegistration struct {
+	Device  string   `json:"device"`
+	Cert    string   `json:"cert"`
+	Name    string   `json:"name,omitempty"`
+	Methods []string `json:"methods,omitempty"`
 }
 
 type VaultCAS struct {

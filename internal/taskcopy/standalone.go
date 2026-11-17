@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 )
 
 // prepareResultCheckout reconstructs a carried commit in an owned destination.
@@ -43,7 +45,7 @@ func restoreStandaloneCopy(project, destination, from string, rec record) error 
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(scratch)
+	defer fsreplace.RemoveAll(scratch)
 	checkout := filepath.Join(scratch, "copy")
 	if err := prepareResultCheckout(project, checkout, from, rec); err != nil {
 		return err
@@ -58,11 +60,11 @@ func restoreStandaloneCopy(project, destination, from string, rec record) error 
 	}
 	if _, err := os.Stat(destination); err == nil {
 		// Only an empty owned destination is removed, never an existing copy's files.
-		if err := os.Remove(destination); err != nil {
+		if err := fsreplace.Remove(destination); err != nil {
 			return err
 		}
 	} else if !os.IsNotExist(err) {
 		return err
 	}
-	return os.Rename(checkout, destination)
+	return fsreplace.Rename(checkout, destination)
 }

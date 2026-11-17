@@ -121,22 +121,7 @@ func TestTUIE2E(t *testing.T) {
 // ordinary launch, with no --no-host escape hatch, keeps this machine's account
 // store and harness registry on the surface side of the local socket.
 func testPlainLaunchConnectionsAndHarnesses(t *testing.T) {
-	// The socket path includes CODEAF_HOME. Go's test directory carries this
-	// whole sentence and crosses the unix-socket limit, which would make the
-	// product honestly take its in-process floor and stop testing this road.
-	seed := newHome(t, nil)
-	home, err := os.MkdirTemp("", "afld")
-	if err != nil {
-		t.Fatalf("make a short state root: %v", err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(home) })
-	profile, err := os.ReadFile(filepath.Join(seed, "config.json"))
-	if err != nil {
-		t.Fatalf("read the copied profile: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(home, "config.json"), profile, 0o600); err != nil {
-		t.Fatalf("write the copied profile: %v", err)
-	}
+	home := newHome(t, nil)
 	credential := map[string]any{
 		"stripe": map[string]any{
 			"account": "fixture account",
@@ -298,8 +283,10 @@ func testNestedGate(t *testing.T) {
 	pressLandingKey(r, "a")
 	r.waitFor(20*time.Second,
 		say(t, "taskDoneGlyph")+" Port the parser"+say(t, "settleAcceptReceipt"))
-	r.waitFor(20*time.Second, say(t, "backgroundWorkWord"))
-	r.keys("C-e")
+	r.waitFor(runPatience, " "+say(t, "idleWord"))
+	showBackgroundWork(t, r)
+	// A newer worked chip can take ctrl+e, so open the task history by name.
+	clickLineContaining(t, r, say(t, "backgroundWorkWord"))
 	settled := r.waitFor(20*time.Second,
 		"Rebuild the index"+say(t, "taskDoneWord")+say(t, "taskOpenResultWord"),
 		"Port the parser"+say(t, "taskDoneWord")+say(t, "taskOpenResultWord"))
@@ -347,10 +334,12 @@ func testRefusedLanding(t *testing.T) {
 	if strings.Contains(screen, say(t, "taskFailedWord")) {
 		t.Errorf("the refused landing still says failed:\n%s", screen)
 	}
-	r.waitFor(20*time.Second, say(t, "backgroundWorkWord"))
-	r.keys("C-e")
+	r.waitFor(runPatience, " "+say(t, "idleWord"))
+	showBackgroundWork(t, r)
+	// A newer worked chip can take ctrl+e, so open the task history by name.
+	clickLineContaining(t, r, say(t, "backgroundWorkWord"))
 	row := "Review the pull request diff" + say(t, "taskIncompleteWord") + say(t, "taskOpenResultWord")
-	screen = r.waitFor(20*time.Second, row)
+	screen = r.waitFor(runPatience, row)
 	waitForLandingReceipt(t, seedDir, say(t, "settleNotRightLine"))
 	t.Logf("the named refused task row says incomplete:\n%s", screen)
 	if strings.Contains(screen, say(t, "taskFailedWord")) {
@@ -363,6 +352,20 @@ func testRefusedLanding(t *testing.T) {
 	}
 	t.Logf("the refused result keeps the refusal and original reason:\n%s", result)
 	r.quit()
+}
+
+// showBackgroundWork brings the settled task history back after a resumed turn scrolled it away.
+func showBackgroundWork(t *testing.T, r *rig) {
+	t.Helper()
+	for step := 0; step < 120; step++ {
+		if strings.Contains(r.capture(), say(t, "backgroundWorkWord")) {
+			return
+		}
+		// The suite's SGR wheel gesture stays in the conversation, away from the task rail.
+		r.lit("\x1b[<64;10;10M")
+		time.Sleep(pollEvery)
+	}
+	t.Fatalf("background work was not visible after 120 scroll steps:\n%s", r.capture())
 }
 
 // pressLandingKey clears the first-run greeting before spending one answer.
@@ -394,7 +397,7 @@ func waitForLandingReceipt(t *testing.T, seedDir, receipt string) {
 
 // testHomeShape reads home at rest — the `activity` list of conversations, and
 // the `projects`, `spend`, `since you left` and `automations` panels — and the
-// seven places on the wordmark row, then drives the command and double-space
+// eight places on the wordmark row, then drives the command and double-space
 // routes back to it.
 func testHomeShape(t *testing.T) {
 	home := newHome(t, nil)
@@ -421,16 +424,13 @@ func testHomeShape(t *testing.T) {
 	if strings.Contains(screen, say(t, "homeRunningWhisper")) {
 		t.Errorf("populated sessions still show the empty-panel hint:\n%s", screen)
 	}
-	// THE BAR IS EIGHT PLACES on the wordmark row, each by its label, in
-	// placeBarOrder's order, automations between memory and spend.
+	// Issue #1831 makes Automations a permanent tab between Memory and Spend,
+	// including while Home is selected. Keep the whole bar in that order.
 	want := []string{say(t, "barHomeWord"), say(t, "barChatsWord"), say(t, "barTeamsWord"),
 		say(t, "barSessionsWord"), say(t, "barMemoryWord"), say(t, "barAutomationsWord"),
 		say(t, "barSpendWord"), say(t, "barSettingsWord")}
 	if row, ok := barInOrder(screen, want); !ok {
 		t.Errorf("the tab bar reads %q, want the labels %q in that order:\n%s", row, want, screen)
-	}
-	if row, _ := barInOrder(screen, want); strings.Contains(row, strings.ToUpper(say(t, "homePanelNext")[:1])+say(t, "homePanelNext")[1:]) {
-		t.Errorf("the tab bar carries the automations place while nobody stands in it: %q", row)
 	}
 
 	// Home includes recent saved conversations, even before a tab opens them.

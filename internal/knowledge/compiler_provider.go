@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -24,7 +25,7 @@ var compilerPromptJSON []byte
 
 const (
 	compilerAnswerTokens = 8000
-	compilerRetryPause   = 30 * time.Second
+	compilerRepeatGuard  = 2 * time.Second
 )
 
 var compilerPrompts = func() map[string]string {
@@ -36,12 +37,32 @@ var compilerPrompts = func() map[string]string {
 }()
 
 type compilerModel struct {
+	// Explicit reads may answer a question while capture is paused, never compile new knowledge.
+	explicitRead     bool
 	ctx              context.Context
 	root, key, model string
 	db               *sql.DB
+	calls            func(context.Context) (context.Context, error)
+	repeats          *compilerRepeats
+}
+
+// compilerRepeats keeps paid failures in memory so deliberate retries can proceed
+// after two seconds, below the build's five-second backoff and an owner's next pass.
+// The persisted attempt count, rather than this guard, bounds retries on reopening.
+type compilerRepeats struct {
+	sync.Mutex
+	failed map[string]compilerRepeat
+}
+
+type compilerRepeat struct {
+	after  time.Time
+	reason string
 }
 
 func (m compilerModel) call(role string, payload document) (result document, err error) {
+	if m.explicitRead && role != "query" && role != "recall" {
+		return nil, ErrDisabled
+	}
 	prompt, ok := compilerPrompts[role]
 	if !ok {
 		return nil, fmt.Errorf("unknown knowledge role %q", role)
@@ -50,7 +71,7 @@ func (m compilerModel) call(role string, payload document) (result document, err
 		return result, err
 	}
 	requestID := compilerRequestID(m.model, role, payload)
-	reasoning := document{"effort": "none"}
+	reasoning := document{"enabled": false}
 	if m.key == "" {
 		return nil, errors.New("knowledge compilation requires an OpenRouter API key")
 	}
@@ -58,16 +79,20 @@ func (m compilerModel) call(role string, payload document) (result document, err
 	if err != nil {
 		return nil, err
 	}
+	ctx, err := m.callContext(withLibraryActivity(m.ctx, role))
+	if err != nil {
+		return nil, err
+	}
+	if err = ctx.Err(); err != nil {
+		return nil, err
+	}
 	sources := modelsource.Set{}.OrDefault(m.key, config.DefaultBaseURL)
 	settings := config.ClientConfigFor(sources, m.model)
 	settings.Timeout = 240 * time.Second
 	settings.HTTPClient = http.DefaultClient
-	calls := callsFrom(m.ctx)
 	settings.RouteGate = func(ctx context.Context, model, tag string) error {
-		if calls.before != nil {
-			if err := calls.before(); err != nil {
-				return err
-			}
+		if _, err := m.callContext(ctx); err != nil {
+			return err
 		}
 		if model != m.model {
 			return fmt.Errorf("knowledge requested model %q; refusing fallback %q", m.model, model)
@@ -79,22 +104,24 @@ func (m compilerModel) call(role string, payload document) (result document, err
 		return nil, err
 	}
 	served := &provider.ServedEndpoint{}
-	ctx := provider.WithRole(m.ctx, lanes.RoleMemory)
+	ctx = provider.WithRole(ctx, lanes.RoleMemory)
+	ctx = memoryBilling(ctx)
 	ctx = provider.WithCacheKey(ctx, "knowledge:"+identity([]any{m.root, m.model, role}))
 	ctx = provider.WithServedEndpoint(ctx, served)
-	ctx = provider.WithCallTag(ctx, "memory")
+	ctx = provider.WithCallTag(ctx, string(lanes.RoleMemory))
 	ctx = provider.WithRequiredReasoningEffort(ctx, provider.EffortOff)
 	messages := []ai.Message{{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: prompt}}}, {Role: "user", Content: []ai.ContentPart{{Type: "text", Text: mustJSON(wire.payload)}}}}
 	started := time.Now()
 	var receiptsMu sync.Mutex
 	var receiptIDs []string
 	var receiptErr error
+	record := provider.BillingSinkFrom(ctx)
 	ctx = provider.WithBilling(ctx, func(b provider.Billed) {
 		if reported := strings.TrimSpace(b.ReportedModel); reported != "" {
 			b.Model = reported
 		}
-		if calls.record != nil {
-			calls.record(b)
+		if record != nil {
+			record(b)
 		}
 		receiptsMu.Lock()
 		defer receiptsMu.Unlock()
@@ -111,10 +138,10 @@ func (m compilerModel) call(role string, payload document) (result document, err
 		if receiptErr != nil && err == nil {
 			err = receiptErr
 		}
-		if err != nil && len(receiptIDs) > 0 {
-			// Persist the pause so reopening the vault cannot immediately buy
-			// the same unusable answer again.
-			_ = saveState(m.db, "retry:"+requestID, document{"after": time.Now().Add(compilerRetryPause).UnixNano(), "reason": err.Error()})
+		if err != nil && len(receiptIDs) > 0 && m.repeats != nil {
+			m.repeats.Lock()
+			m.repeats.failed[requestID] = compilerRepeat{after: time.Now().Add(compilerRepeatGuard), reason: err.Error()}
+			m.repeats.Unlock()
 		}
 	}()
 	response, err := client.CompleteWithMessages(ctx, messages, ai.WithTemperature(0), ai.WithMaxTokens(compilerAnswerTokens), ai.WithJSONMode())
@@ -215,12 +242,41 @@ func (m compilerModel) cached(role string, payload document) (document, bool, er
 	} else if cacheErr != sql.ErrNoRows {
 		return nil, false, cacheErr
 	}
-	retry, err := stateDocument(m.db, "retry:"+compilerRequestID(m.model, role, payload))
-	if err != nil {
-		return nil, false, err
-	}
-	if float64(time.Now().UnixNano()) < number(retry["after"]) {
-		return nil, false, fmt.Errorf("knowledge retry paused: %s", textValue(retry["reason"]))
+	if m.repeats != nil {
+		requestID := compilerRequestID(m.model, role, payload)
+		m.repeats.Lock()
+		retry := m.repeats.failed[requestID]
+		if !time.Now().Before(retry.after) {
+			delete(m.repeats.failed, requestID)
+		}
+		m.repeats.Unlock()
+		if time.Now().Before(retry.after) {
+			return nil, false, fmt.Errorf("knowledge retry paused: %s", retry.reason)
+		}
 	}
 	return nil, false, nil
+}
+
+// callContext gates every memory model step, including recall and provider retries.
+func (m compilerModel) callContext(ctx context.Context) (context.Context, error) {
+	// A job's memory compiles on a context carried over from the turn that
+	// wrote it. Its answer is a document, never a reply, so the chat's stream
+	// must not hear it.
+	ctx = provider.WithoutStream(ctx)
+	if !m.explicitRead && !config.MemoryEnabledAt(filepath.Dir(m.root)) {
+		return nil, ErrDisabled
+	}
+	if m.calls != nil {
+		var err error
+		ctx, err = m.calls(ctx)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if before := callsFrom(ctx).before; before != nil {
+		if err := before(); err != nil {
+			return nil, err
+		}
+	}
+	return ctx, nil
 }

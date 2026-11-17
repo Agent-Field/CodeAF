@@ -145,7 +145,9 @@ func (c *Corpus) build() {
 		if err != nil {
 			panic("manual: read embedded page: " + err.Error())
 		}
-		name := strings.TrimSuffix(path.Base(entry), ".md")
+		// A page's name is its path below the glob's folder, so a page filed
+		// one folder down keeps that folder as its prefix (apppages.go).
+		name := strings.TrimSuffix(strings.TrimPrefix(entry, path.Dir(c.glob)+"/"), ".md")
 		text := strings.ReplaceAll(string(raw), "\r\n", "\n")
 		c.pageText[name] = strings.TrimSpace(text)
 		c.order = append(c.order, name)

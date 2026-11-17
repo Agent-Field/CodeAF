@@ -287,6 +287,7 @@ func (f *fakeToolServer) tools(t *testing.T) *mcp.Server {
 
 	server.AddTool(&mcp.Tool{
 		Name:        "find_pages",
+		Title:       "Find pages",
 		Description: "Search the pages in this account.",
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true},
 		InputSchema: json.RawMessage(`{"type":"object","properties":{"query":{"type":"string"}}}`),

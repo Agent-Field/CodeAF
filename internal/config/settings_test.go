@@ -484,6 +484,58 @@ func TestTheModelNameRowDefaultsOnAndTurnsOnlyTheNameOff(t *testing.T) {
 	}
 }
 
+func TestTheIdleHandoffRowDefaultsOffAndRespectsProfileAndEnvironment(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CODEAF_IDLE_HANDOFF", "")
+	rows := registry(t, dir)
+	row, ok := rows.Row(KeyIdleHandoff)
+	if !ok {
+		t.Fatalf("%s is not registered", KeyIdleHandoff)
+	}
+	if KeyIdleHandoff != "idle_handoff" || row.Env != "CODEAF_IDLE_HANDOFF" ||
+		row.Category != CategoryInterface || row.Kind != SettingBool || row.Label != "idle handoff" {
+		t.Fatalf("the idle-handoff row = %+v", row)
+	}
+	if row.Hint != IdleHandoffHint {
+		t.Fatalf("hint = %q, want %q", row.Hint, IdleHandoffHint)
+	}
+	if row.Value() != "off" || IdleHandoffAt(dir) {
+		t.Fatalf("idle handoff must be off by default: %q", row.Value())
+	}
+	if err := row.Apply("on"); err != nil {
+		t.Fatal(err)
+	}
+	if !IdleHandoffAt(dir) {
+		t.Fatal("on did not enable idle handoff")
+	}
+	if reread, _ := registry(t, dir).Row(KeyIdleHandoff); reread.Value() != "on" {
+		t.Fatalf("the reread row lost the persisted choice: %q", reread.Value())
+	}
+	if err := row.Apply("off"); err != nil {
+		t.Fatal(err)
+	}
+	if IdleHandoffAt(dir) {
+		t.Fatal("off did not turn idle handoff back off")
+	}
+
+	t.Setenv("CODEAF_IDLE_HANDOFF", "on")
+	if !IdleHandoffAt(dir) {
+		t.Fatal("the environment lost to the persisted file")
+	}
+	pinned, _ := registry(t, dir).Row(KeyIdleHandoff)
+	if name, isPinned := pinned.PinnedBy(); !isPinned || name != "CODEAF_IDLE_HANDOFF" {
+		t.Fatalf("the idle-handoff row did not report its pin: %q", name)
+	}
+	t.Setenv("CODEAF_IDLE_HANDOFF", "off")
+	if IdleHandoffAt(dir) {
+		t.Fatal("CODEAF_IDLE_HANDOFF=off did not turn idle handoff off")
+	}
+	t.Setenv("CODEAF_IDLE_HANDOFF", "sure")
+	if IdleHandoffAt(dir) {
+		t.Fatal("a malformed pin did not fall back to the default off")
+	}
+}
+
 func TestSplitPercentClampsAndSavesThroughTheRegistry(t *testing.T) {
 	saved := 0
 	rows := NewSettings(SettingsOptions{
@@ -1384,7 +1436,7 @@ func TestThePromptProfileRowRoundTripsAndItsPinWinsForOneLaunch(t *testing.T) {
 // three words poolcfg.Resolve accepts from the environment, so a row and a
 // shell spell one thing — and the resolver in this package is the one place
 // the process environment is read for the pool.
-func TestTheModelPoolRowDefaultsToOnAndFollowsItsStoredWordAndItsPin(t *testing.T) {
+func TestTheModelPoolRowDefaultsToOffAndFollowsItsStoredWordAndItsPin(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("CODEAF_MODEL_POOL", "")
 	t.Setenv("CI", "")
@@ -1401,10 +1453,10 @@ func TestTheModelPoolRowDefaultsToOnAndFollowsItsStoredWordAndItsPin(t *testing.
 	if row.Category != CategoryModels || row.Kind != SettingChoice || row.Label != "model pool" {
 		t.Fatalf("model pool row = %+v", row)
 	}
-	if row.Value() != "on" {
-		t.Fatalf("the pool does not default to on: %q", row.Value())
+	if row.Value() != "off" {
+		t.Fatalf("the pool does not default to off: %q", row.Value())
 	}
-	if got := ModelPoolAt(dir); got.Mode != poolcfg.On || got.Source.Mode != "default" {
+	if got := ModelPoolAt(dir); got.Mode != poolcfg.Off || got.Source.Mode != "default" {
 		t.Fatalf("an untouched profile resolved %+v", got)
 	}
 
@@ -1446,8 +1498,8 @@ func TestTheModelPoolRowDefaultsToOnAndFollowsItsStoredWordAndItsPin(t *testing.
 	if err := writeProfileValue(dir, KeyModelPool, "maybe"); err != nil {
 		t.Fatal(err)
 	}
-	if got := ModelPoolAt(dir); got.Mode != poolcfg.On {
-		t.Fatalf("a stale word did not fall back to on: %+v", got)
+	if got := ModelPoolAt(dir); got.Mode != poolcfg.Off {
+		t.Fatalf("a stale word did not fall back to off: %+v", got)
 	}
 }
 

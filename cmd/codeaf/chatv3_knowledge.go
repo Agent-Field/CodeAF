@@ -27,7 +27,7 @@ func (p *v3Process) startKnowledge() {
 			}
 			return service.Key
 		}
-		if err := vault.Run(knowledgeCalls(p.lifetime(), p.ProfileDir, spendPreauthorized(false, os.Getenv)), session.KnowledgeHistory(session.PlacesRoot()), key); err != nil && !errors.Is(err, context.Canceled) {
+		if err := vault.Run(knowledgeCalls(p.lifetime(), p.ProfileDir, spendPreauthorized(false, os.Getenv)), session.KnowledgeHistory(session.PlacesRoot(), config.ProfilePath(p.ProfileDir, "")), key); err != nil && !errors.Is(err, context.Canceled) {
 			log.Printf("knowledge: background worker stopped: %v", err)
 		}
 	})

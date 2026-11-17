@@ -12,6 +12,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	cellstoretest "github.com/Agent-Field/codeaf/internal/cellstore/celltest"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -22,14 +23,13 @@ import (
 // readable on another computer in the account, leaving its original untouched.
 func TestL4Fix4PreIdentityChatSyncsAfterJoining(t *testing.T) {
 	celltest.RequireEngine(t)
-	t.Cleanup(cellstore.StopSpawned)
 	local, other := newShortOlderChatHome(t), newShortOlderChatHome(t)
 	t.Setenv(home.EnvVar, local)
 	t.Setenv("CODEAF_PROFILE_DIR", local)
 	server := httptest.NewServer(relayserveForMove(t))
 	t.Cleanup(server.Close)
 	t.Setenv(syncsetup.URLVar, server.URL)
-	work := t.TempDir()
+	work := cellstoretest.EngineDir(t)
 	bucket, err := v3ProjectDir(work)
 	if err != nil {
 		t.Fatal(err)

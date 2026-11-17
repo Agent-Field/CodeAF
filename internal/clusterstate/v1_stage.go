@@ -182,6 +182,9 @@ func evaluateV1Stage(c Command, meta ApplicationMeta, read ReadRecord) (Evaluati
 			out.Result.Code = Revoked
 			return out, nil
 		}
+		if device.Kind == "client" {
+			return out, nil
+		}
 	}
 	path, err := c.V1.route()
 	if err != nil || !strings.HasPrefix(path, "/v1/") {

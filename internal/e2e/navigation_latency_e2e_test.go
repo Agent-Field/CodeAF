@@ -23,6 +23,17 @@ import (
 // Timings include actual keyboard delivery, terminal rendering and framebuffer
 // observation. rig.keys' 120ms settling sleep is deliberately outside the meter.
 func TestNavigationLatency(t *testing.T) {
+	testNavigationLatency(t, 20, 10)
+}
+
+// A first message shows the ordinary working chat at once, even while the
+// engine that will hold the conversation is paused, never a placeholder page.
+func TestChatStartUsesOrdinaryChatWhileEngineOpens(t *testing.T) {
+	testNavigationLatency(t, 0, 2)
+}
+
+func testNavigationLatency(t *testing.T, navigationTrials, messageTrials int) {
+	t.Helper()
 	requireTmuxAndKey(t)
 	const model = "deepseek/deepseek-v4.1-flash"
 	if e2eModel != model {
@@ -95,7 +106,7 @@ func TestNavigationLatency(t *testing.T) {
 	r.lit("/status")
 	r.keys("Enter")
 	r.keys("Escape")
-	for i := 0; i < 20; i++ {
+	for i := 0; i < navigationTrials; i++ {
 		began := time.Now()
 		send("Space", "Space")
 		wait("home", began, 10*time.Second, homeUp)
@@ -129,7 +140,7 @@ func TestNavigationLatency(t *testing.T) {
 		wait("settings_return", began, 10*time.Second, chat)
 	}
 	for _, slow := range []bool{false, true} {
-		for trial := 0; trial < 10; trial++ {
+		for trial := 0; trial < messageTrials; trial++ {
 			where := "new_tab"
 			if trial%2 == 1 {
 				where = "home"
@@ -161,6 +172,13 @@ func TestNavigationLatency(t *testing.T) {
 				}
 				return false
 			})
+			if strings.Contains(screen, say(t, "conversationOpeningPage")) ||
+				!(strings.Contains(screen, say(t, "conversationOpeningState")) || strings.Contains(screen, say(t, "chatTurnWorkingWord"))) {
+				t.Errorf("first message did not land in the ordinary chat: %s", screen)
+			}
+			if slow && time.Since(began) >= 700*time.Millisecond {
+				t.Errorf("chat waited for the held engine: %s", time.Since(began))
+			}
 			if dir := os.Getenv("CODEAF_E2E_EVIDENCE_DIR"); dir != "" {
 				os.MkdirAll(dir, 0755)
 				os.WriteFile(filepath.Join(dir, fmt.Sprintf("%s%s-%d.txt", kind, where, trial)), []byte(screen), 0644)

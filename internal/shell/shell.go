@@ -287,6 +287,15 @@ func Reading() (string, error) {
 	return exec.LookPath("bash")
 }
 
+// ForegroundArgs keeps headless Unix login profiles and Windows' inherited PATH.
+func ForegroundArgs(bash, command string) []string {
+	flag := "-lc"
+	if runtime.GOOS == "windows" {
+		flag = "-c"
+	}
+	return PipefailArgs(bash, []string{flag}, command)
+}
+
 // ListPath converts only paths bash interprets itself. Values passed to native
 // programs, such as PLANDB_DB, must keep their native Windows spelling.
 func ListPath(native string) string { return listPath(runtime.GOOS, native, filepath.Abs) }
@@ -332,5 +341,5 @@ func PromptFact() string {
 	if err != nil {
 		return "- Shell commands are unavailable; there is no shell tool in this call. " + err.Error() + "\n"
 	}
-	return "- Shell: Git Bash (" + bash + "); Windows drives are /c/…, /d/…\n" + PathConversionFact
+	return "- Shell: Git Bash (" + bash + "); Windows drives are /c/…, /d/…\n" + "- On Windows, python3 may be the Microsoft Store stub; use python or py. npm/npx/yarn are .cmd shims. Start long-running servers with the jobs tool instead of & and stop them with jobs: Git Bash kill cannot stop native Windows processes.\n" + PathConversionFact
 }

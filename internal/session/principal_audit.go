@@ -47,6 +47,7 @@ package session
 import (
 	"context"
 	"errors"
+	"github.com/Agent-Field/codeaf/internal/processgroup"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -55,6 +56,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	procexec "github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/shell"
@@ -259,12 +261,12 @@ func runOneCheck(ctx context.Context, tree, check string, windows ...time.Durati
 	}
 	// I0: the check uses its caller's seat, while retaining its unbounded drain.
 	command, err := procexec.For(ctx).In(tree).Command(ctx, procexec.ExecRequest{
-		Argv: []string{bash, "-c", check}, WaitDelay: -1,
+		Argv: []string{bash, "-c", check}, Env: bare.StreamingEnv(), WaitDelay: -1,
 	})
 	if err != nil {
 		return CheckRun{Command: check, Tail: err.Error()}
 	}
-	output, err := command.CombinedOutput()
+	output, err := processgroup.CombinedOutput(command)
 	// A COMMAND THAT RAN AND A COMMAND THAT COULD NOT BE RUN ARE DIFFERENT NEWS.
 	// An exit status — whatever it was — is the shell having executed the thing
 	// and answered; anything else is the command not being there, the window

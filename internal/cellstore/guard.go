@@ -3,6 +3,7 @@ package cellstore
 import (
 	"fmt"
 	"log"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -21,8 +22,16 @@ import (
 // so the file stays where it is on this machine and is simply never captured.
 // Nothing is written into the tree: the exclusions live in the cell's own folder.
 //
-// The zero Guard works: the vault lives in the codeaf home and a notice is one
-// line in the standard logger.
+// A FILE KEPT OUT FOR A SECRET IS LOGGED, NEVER SAID IN THE CHAT. A fresh
+// checkout of a repository whose tests carry fake keys kept a dozen of them out
+// on its first seal, and each was a line in the chat that asked nothing of the
+// person. The line goes to the engine's log instead ([Guard.Kept]), and the
+// cell's policy file keeps the list of what is withheld. A file this machine
+// cannot read, or a vault that cannot be written, is still said: the person can
+// fix those.
+//
+// The zero Guard works: the vault lives in the codeaf home, a kept-out file is
+// one line in the log and a notice is one line in the standard logger.
 //
 // A NOTICE WITH NO ROUTE GOES TO THE STANDARD LOGGER, NEVER STRAIGHT TO STDERR.
 // The full-screen surface parks the logger in chat.log for its whole lifetime
@@ -33,9 +42,13 @@ import (
 type Guard struct {
 	// Home is the codeaf home that holds the vault; empty means the state root.
 	Home string
-	// Notify receives one line for a path newly withheld; nil writes it to the
+	// Notify receives one line the person should see (a file this machine
+	// cannot read, a vault that cannot be written); nil writes it to the
 	// standard logger.
 	Notify func(string)
+	// Kept receives one line for a path newly withheld because it holds a
+	// secret; nil writes it to the log.
+	Kept func(string)
 	// Ledger, when set, spares a file that has not changed since it was found
 	// clean from being read again; EngineFor sets one per session.
 	Ledger *keys.Ledger
@@ -86,7 +99,7 @@ func (g Guard) Look(c cell.Cell, tree, policyDir string, changed, locks []string
 	if err := next.write(policyDir); err != nil {
 		return Screened{}, fmt.Errorf("screen for secrets: %w", err)
 	}
-	g.announce(policy, secrets)
+	g.announce(tree, policy, secrets)
 	g.announceUnreadable(policy, unreadable)
 	g.vault(c, tree, secrets)
 	left.Apart = next.apart()
@@ -138,14 +151,30 @@ func pathsOf(found []keys.Finding) []string {
 	return out
 }
 
-// announce tells a person once about each path newly withheld. It names the
-// file and the rule, never the value.
-func (g Guard) announce(before policyFile, found []keys.Finding) {
+// announce logs once each path newly withheld. It names the file and the rule,
+// never the value.
+func (g Guard) announce(tree string, before policyFile, found []keys.Finding) {
 	for _, f := range found {
 		if !before.isWithheld(f.Path) {
-			g.notify(noticeFor(f))
+			g.kept(noticeFor(f, tooLargeToTravel(tree, f.Path)))
 		}
 	}
+}
+
+// tooLargeToTravel says whether the file at rel is larger than the key vault
+// carries (keys.MaxSlotValue): it is still withheld from every seal, but it
+// stays on this computer, and the notice must not promise otherwise.
+func tooLargeToTravel(tree, rel string) bool {
+	info, err := os.Stat(filepath.Join(tree, filepath.FromSlash(rel)))
+	return err == nil && info.Size() > keys.MaxSlotValue
+}
+
+func (g Guard) kept(line string) {
+	if g.Kept != nil {
+		g.Kept(line)
+		return
+	}
+	log.Printf("seal guard: %s", line)
 }
 
 // announceUnreadable tells a person once about each path newly left out because
@@ -158,7 +187,10 @@ func (g Guard) announceUnreadable(before policyFile, found []keys.Finding) {
 	}
 }
 
-func noticeFor(f keys.Finding) string {
+func noticeFor(f keys.Finding, tooLarge bool) string {
+	if tooLarge {
+		return f.Path + " looks like it holds a secret (" + f.Rule + "), so it is kept out of the saved history; it is too large for the key vault, so it stays on this computer"
+	}
 	if f.Rule == keys.RuleDotenv {
 		return f.Path + " is kept out of the saved history; its variables are kept locally for your tools, and the file travels through the key vault only to paired computers"
 	}

@@ -14,6 +14,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellsync"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/teams"
 	"github.com/Agent-Field/codeaf/internal/vaultsync"
@@ -404,7 +405,7 @@ func (p teamKeys) ApplyIf(changes, expected map[string]string) error {
 				found = found || old.ID == t.ID
 			}
 			if !found {
-				if err := os.Remove(teams.TrafficMirrorPath(p.profile, old.ID)); err != nil && !os.IsNotExist(err) {
+				if err := fsreplace.Remove(teams.TrafficMirrorPath(p.profile, old.ID)); err != nil && !os.IsNotExist(err) {
 					return err
 				}
 			}

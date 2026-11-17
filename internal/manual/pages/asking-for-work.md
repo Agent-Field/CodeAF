@@ -7,6 +7,13 @@ colleague, and the front desk decides where it goes.
 > "Find out which of our dependencies changed licence this year."
 > "Read this contract and tell me what I'm agreeing to."
 
+## Reports, native Windows paths and downstream workers
+
+When a worker names an absolute report path in its result, downstream workers
+and the front desk can find that report using the host's native paths. On
+Windows this includes drive and UNC paths; drive-letter case and slash style
+do not create a second copy of the same report.
+
 ## Reflex or compiled
 
 Two shapes of work exist, and codeaf chooses between them for you.

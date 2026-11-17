@@ -456,7 +456,7 @@ func must(t *testing.T, err error) {
 func writeRaw(t *testing.T, dir, raw string) {
 	t.Helper()
 	must(t, os.MkdirAll(dir, 0o700))
-	must(t, os.WriteFile(Path(dir), []byte(raw), 0o600))
+	must(t, storeRaw(dir, []byte(raw)))
 }
 
 // THE GLOBAL MANAGER IS THE MANAGER OF A REAL ROOT. Making the root moves every

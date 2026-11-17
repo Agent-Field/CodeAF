@@ -71,3 +71,11 @@ func TestRouteFailureOnTheWire(t *testing.T) {
 		t.Errorf("nil: %q", got)
 	}
 }
+
+func TestRouteFailureReadsUTCPlanReset(t *testing.T) {
+	before := time.Now().UTC()
+	_, at := RouteFailureOf(&PlanPauseError{Reset: "18:30 UTC"})
+	if at.IsZero() || at.Hour() != 18 || at.Minute() != 30 || at.Location() != time.UTC || at.Before(before) || at.After(before.Add(24*time.Hour)) {
+		t.Fatalf("UTC reset = %v", at)
+	}
+}

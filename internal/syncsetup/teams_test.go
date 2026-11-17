@@ -21,16 +21,16 @@ import (
 	"github.com/Agent-Field/codeaf/internal/keys"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/teams"
+	"github.com/Agent-Field/codeaf/internal/teams/teamstest"
 	"github.com/Agent-Field/codeaf/internal/vaultsync"
 )
 
 func TestTeamFieldsAndUnknownMemberFieldsSurviveGuardedApply(t *testing.T) {
 	home := t.TempDir()
-	path := teams.Path(home)
 	raw := `{"version":2,"teams":[{"id":"alpha","name":"alpha","parent":"","members":[{"key":"local","file":"","where":"","word":"storage","future_member":{"value":7}}],"manager":"","former_manager":"historical-leader","made":"2026-01-01T00:00:00Z","future_team":{"enabled":true}}]}`
-	if err := os.WriteFile(path, []byte(raw), 0600); err != nil {
-		t.Fatal(err)
-	}
+	// app/v3 keeps teams in an SQLite store (#2066): the old file's document
+	// goes into the store as stored, unknown fields and all.
+	teamstest.Write(t, home, []byte(raw))
 	p := teamKeys{home, home, "device-a", nil}
 	expected, err := p.Values()
 	if err != nil {
@@ -48,9 +48,9 @@ func TestTeamFieldsAndUnknownMemberFieldsSurviveGuardedApply(t *testing.T) {
 	if err != nil || f.Teams[0].Name != "typed during request" || f.Teams[0].Parent != "" {
 		t.Fatalf("guard: %+v %v", f, err)
 	}
-	saved, _ := os.ReadFile(path)
+	saved := string(teamstest.JSON(t, home))
 	for _, field := range []string{"future_member", "future_team", "future_flag"} {
-		if !strings.Contains(string(saved), field) {
+		if !strings.Contains(saved, field) {
 			t.Fatalf("lost %s", field)
 		}
 	}
@@ -278,16 +278,11 @@ func TestTeamRestoreHealsMembershipAfterDamagedFileDelayedRebinding(t *testing.T
 	}); err != nil {
 		t.Fatal(err)
 	}
-	good, _ := os.ReadFile(teams.Path(home))
-	if err := os.WriteFile(teams.Path(home), []byte("damaged"), 0600); err != nil {
-		t.Fatal(err)
-	}
+	restore := teamstest.Break(t, home, []byte("damaged"))
 	if err := p.rebindChat(c.ID, c); err == nil {
 		t.Fatal("fixture did not fail rebind")
 	}
-	if err := os.WriteFile(teams.Path(home), good, 0600); err != nil {
-		t.Fatal(err)
-	}
+	restore()
 	if err := p.Refresh(); err != nil {
 		t.Fatal(err)
 	}
@@ -416,13 +411,8 @@ func TestContinuingAChatKeepsItsLeaseDespiteDamagedTeamsAndLaterHeals(t *testing
 	if err := h.b.SyncState(ctx); err != nil {
 		t.Fatal(err)
 	}
-	good, err := os.ReadFile(teams.Path(h.b.Home))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(teams.Path(h.b.Home), []byte("damaged"), 0600); err != nil {
-		t.Fatal(err)
-	}
+	// app/v3 keeps teams in an SQLite store (#2066): damage the store itself.
+	restore := teamstest.Break(t, h.b.Home, []byte("damaged"))
 	h.lapse()
 	took, err := h.continuerB().Take(ctx, h.cell.ID)
 	if err != nil {
@@ -439,9 +429,7 @@ func TestContinuingAChatKeepsItsLeaseDespiteDamagedTeamsAndLaterHeals(t *testing
 	if err != nil || string(received) != string(cursor) {
 		t.Fatal("cursor fixture did not travel", string(received), err)
 	}
-	if err := os.WriteFile(teams.Path(h.b.Home), good, 0600); err != nil {
-		t.Fatal(err)
-	}
+	restore()
 	if err := h.b.SyncState(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -681,7 +669,7 @@ func TestFirstTeamSharingRoundBacksUpLocalTeamsOnce(t *testing.T) {
 		}
 		m.Carry = []vaultsync.Carrier{syncedTeams(m.profile, m.profile, fmt.Sprintf("device-%d", i), nil)}
 	}
-	before, _ := os.ReadFile(teams.Path(b.profile))
+	before := teamstest.JSON(t, b.profile)
 	a.push(t)
 	b.pull(t)
 	backup := filepath.Join(b.profile, "teams.before-sharing.json")
@@ -798,21 +786,10 @@ func TestTeamBackupFailureWaitsAndNotifiesOnce(t *testing.T) {
 	if err := teams.Update(dir, func(f *teams.File) error { f.Teams = []teams.Team{{ID: "local", Name: "harbor"}}; return nil }); err != nil {
 		t.Fatal(err)
 	}
-	before, err := os.ReadFile(teams.Path(dir))
-	if err != nil {
-		t.Fatal(err)
-	}
+	before := teamstest.JSON(t, dir)
 	backup := filepath.Join(dir, "teams.before-sharing.json")
-	// A symlink loop deterministically refuses even privileged processes.
-	if err := os.Symlink(filepath.Base(teams.Path(dir)), filepath.Join(dir, "original-teams")); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Remove(teams.Path(dir)); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink("original-teams", teams.Path(dir)); err != nil {
-		t.Fatal(err)
-	}
+	restore := teamstest.Break(t, dir, []byte("damaged store"))
+	defer restore()
 	p := teamKeys{dir, dir, "local", nil}
 	teams.SharingError(dir, errors.New("an earlier independent sharing failure"))
 	var notices []string
@@ -828,15 +805,10 @@ func TestTeamBackupFailureWaitsAndNotifiesOnce(t *testing.T) {
 	if len(notices) != 2 || !strings.Contains(notices[1], "teams.before-sharing.json") {
 		t.Fatalf("backup notice was lost or repeated: %v", notices)
 	}
-	if _, err := os.Lstat(backup); !os.IsNotExist(err) {
+	if _, err := os.Stat(backup); !os.IsNotExist(err) {
 		t.Fatal("failed backup left a copy", err)
 	}
-	if err := os.Remove(teams.Path(dir)); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(teams.Path(dir), before, 0600); err != nil {
-		t.Fatal(err)
-	}
+	restore()
 	if err := p.ApplyIf(map[string]string{"incoming/exists": "true"}, nil); err != nil {
 		t.Fatal(err)
 	}

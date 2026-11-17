@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -144,7 +145,15 @@ func joinerLabel(offer []byte) string {
 	if len(offer) < nonceSize {
 		return readableLabel("")
 	}
-	return readableLabel(string(offer[:len(offer)-nonceSize]))
+	name := string(offer[:len(offer)-nonceSize])
+	// Keep the established text offer readable by older engines. A platform
+	// suffix is outside the name's limit, so a full-length name retains it.
+	for platform, word := range platformWords {
+		if plain, ok := strings.CutSuffix(name, " ("+word+")"); ok {
+			return ComputerLabel(readableLabel(plain), platform)
+		}
+	}
+	return readableLabel(name)
 }
 
 // nonceSize is the random tail of a joining device's offer. It makes the offer

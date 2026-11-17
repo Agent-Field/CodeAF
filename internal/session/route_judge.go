@@ -1159,6 +1159,12 @@ func (a *Agent) confirmRouteAhead(ctx context.Context, asked string) (routeVerdi
 // things this function decides — a done-condition, a place on the ground
 // ladder, a name, a width to arm — are the things a quick node does not have.
 func (a *Agent) launchRouteTask(hub *eventHub, verdict routeVerdict, title string, drawn drawnDivision, ahead *nameAhead) (string, uint64) {
+	return a.launchRouteTaskTold(hub, verdict, title, drawn, ahead, true)
+}
+
+// launchRouteTaskTold is [Agent.launchRouteTask], saying the told-after line
+// only when tell is set: a hand-over has already said its own.
+func (a *Agent) launchRouteTaskTold(hub *eventHub, verdict routeVerdict, title string, drawn drawnDivision, ahead *nameAhead, tell bool) (string, uint64) {
 	// THE LAST LINE OF THE FLOOR (spawnfloor.go). Both roads into this function
 	// already return above on a one-command ask; a reserved id for work that
 	// must not start would be the floor leaking a node number into a conversation
@@ -1177,6 +1183,7 @@ func (a *Agent) launchRouteTask(hub *eventHub, verdict routeVerdict, title strin
 		// written by a judge that read their turn and summarised it, so the node
 		// would otherwise open on a summary of a summary.
 		request: a.taskRequest(),
+		source:  a.bornSource(), sourceCaptured: true,
 		// AND WHERE THOSE WORDS LIVE, the same pointer every other door sets
 		// (task_brief.go). The checkpoint road reaches here through
 		// [Agent.handOverRunningTurn] and does not build a spec of its own, so
@@ -1241,7 +1248,9 @@ func (a *Agent) launchRouteTask(hub *eventHub, verdict routeVerdict, title strin
 	// the rest, on the rail.
 	said := "this looked like work, so task " +
 		strconv.FormatUint(id, 10) + " " + word + ": " + spec.title
-	hub.send(Event{Kind: EventNotice, Text: said})
+	if tell {
+		hub.send(Event{Kind: EventNotice, Text: said})
+	}
 	return said, id
 }
 

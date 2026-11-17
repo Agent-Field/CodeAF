@@ -599,6 +599,41 @@ const checkpointSketchAsk = "[checkpoint] Above is what was asked and what has b
 // "can" and not "will".
 const checkpointCeilingNote = "this is running long · moving it to a task that is watched and can split"
 
+// checkpointAskedNote is the line a reply the person moved to a task leaves.
+const checkpointAskedNote = "Moved to a task · the chat is free again"
+
+// errNothingToMove is [Agent.MoveTurnToTask]'s answer when no reply is running.
+var errNothingToMove = errors.New("no reply is running to move")
+
+// errStageStays is [Agent.MoveTurnToTask]'s answer in a factory stage.
+var errStageStays = errors.New("a factory step's reply stays in its step")
+
+// MoveTurnToTask asks that the running reply move to a task at its next step
+// boundary. It answers at once; the task arrives on the task lane like any
+// other, and a reply that ends first simply ends.
+//
+// A FACTORY STAGE'S REPLY IS NEVER MOVED ([Config.mayStage]). Its runner is
+// waiting on that conversation's `stage_result`, and a reply moved out of it
+// takes the work somewhere the report cannot come from: the app may lend a
+// running stage to a person (cmd/codeaf's app_lend.go), and this is the one
+// door through which their move would have reached it.
+func (a *Agent) MoveTurnToTask() error {
+	if err := a.CheckWork(); err != nil {
+		return err
+	}
+	if a.config.mayStage() {
+		return errStageStays
+	}
+	a.mu.Lock()
+	running := a.hub != nil
+	a.mu.Unlock()
+	if !running {
+		return errNothingToMove
+	}
+	a.moveAsked.Store(true)
+	return nil
+}
+
 // checkpointHandoffAsk is what the model is asked for on the way out, and it is
 // the LAST thing this turn does with it.
 //
@@ -755,6 +790,29 @@ const checkpointRemainsAsk = "[still asked] Above is what the person asked for a
 // this door does, which is carry on rather than start anything.
 const checkpointCarryOnNote = "the ask is not finished · carrying on rather than stopping here"
 
+// IsCarryOnNotice says whether a notice's words are the line the harness says
+// as it sends a stopped turn back to work: the completion check's carry-on
+// ([checkpointCarryOnNote]) or one of the two nudges ([checkpointLoadNudgeNote],
+// [checkpointAskNudgeNote]). It is the ONE reading of those three lines, for
+// [IsNoChangeReply]'s reason.
+//
+// THEY ARE SAID FOR THE MOMENT THEY ARE SAID IN. None is written into the
+// transcript, and the turn they announce goes on working, so what each tells
+// the person is only that it has not stopped yet. A surface that folds a
+// settled turn's machinery away draws them while the turn runs and folds them
+// with the rest (tui3's workfold.go); a surface with no such fold leaves them
+// out, rather than keep a standing line that a reopened conversation would not
+// have and that names nothing the person can act on (codeaf app's pump).
+// The lines that END a turn — stopping, finishing, moving to a task — are not
+// these, and every surface keeps them.
+func IsCarryOnNotice(text string) bool {
+	switch strings.TrimSpace(text) {
+	case checkpointCarryOnNote, checkpointLoadNudgeNote, checkpointAskNudgeNote:
+		return true
+	}
+	return false
+}
+
 // checkpointCarryOnCap is HOW MANY TIMES ONE ASK MAY BE CARRIED ON before the
 // harness stops carrying it.
 //
@@ -845,9 +903,21 @@ const checkpointAskNudgeNote = "its question was refused and it stopped without 
 // checkpointAskNudgeLead is that continuation, carrying the refusal itself so
 // the model has the fix in front of it rather than in its history.
 func checkpointAskNudgeLead(refusal string) string {
-	return "[carry on] Your `ask` this turn was refused — " + strings.TrimSpace(refusal) + " — and the person saw no question. " +
-		"Ask again in this same turn with that fixed, or say in one line why you no longer need to."
+	return checkpointAskNudgeOpening + strings.TrimSpace(refusal) + checkpointAskNudgeClosing
 }
+
+// The two nudge continuations are written around what they name — the refusal,
+// the tools loaded — so each is spelled as the words before it and the words
+// after it. THE HALVES ARE CONSTANTS FOR THE DISPLAY'S SAKE: a reopened
+// conversation recognises the whole continuation by both halves
+// ([isContinuationContext]) and leaves it out, where a test of the "[carry on]"
+// opening alone would also hide a person's own message that began that way.
+const (
+	checkpointAskNudgeOpening  = "[carry on] Your `ask` this turn was refused — "
+	checkpointAskNudgeClosing  = " — and the person saw no question. Ask again in this same turn with that fixed, or say in one line why you no longer need to."
+	checkpointLoadNudgeOpening = "[carry on] You loaded "
+	checkpointLoadNudgeClosing = " this turn and then stopped without calling it. It is in your tool list now: call it in this same turn, or say in one line why you no longer need it."
+)
 
 // askRefusedAndNotRetried reads the transcript for the shape
 // [checkpointAskNudgeLead] answers: the newest `ask` of THIS turn came back
@@ -895,8 +965,7 @@ func checkpointLoadNudgeLead(names []string) string {
 	for _, name := range names {
 		quoted = append(quoted, "`"+name+"`")
 	}
-	return "[carry on] You loaded " + strings.Join(quoted, ", ") + " this turn and then stopped without calling it. " +
-		"It is in your tool list now: call it in this same turn, or say in one line why you no longer need it."
+	return checkpointLoadNudgeOpening + strings.Join(quoted, ", ") + checkpointLoadNudgeClosing
 }
 
 // loadedAndNeverUsed reads the transcript for the shape [Agent.checkpointReopen]
@@ -1807,14 +1876,8 @@ func unbracket(stage string) string {
 // unless `--one-model` put the conversation's own model there (auxiliary.go).
 // A session with no client at all is the same answer for the other reason.
 func (a *Agent) markReaderAbsent() bool {
-	a.mu.Lock()
-	source, floor := a.config.RolesSource, ""
-	if a.config.OneModel {
-		floor = a.model
-	}
-	a.mu.Unlock()
 	if a.hasClient() {
-		if _, err := roles.Ladder(roles.Source(source), roles.RoleMarkReader, floor); err == nil {
+		if _, err := a.roleLadder(roles.RoleMarkReader, ""); err == nil {
 			return false
 		}
 	}
@@ -2148,6 +2211,9 @@ const (
 	// every drop above because nothing was decided about the WORK: the seam has
 	// no owner to admit a task on behalf of ([Agent.handOverRunningTurn]).
 	checkpointCeilingAbandoned = "dropped:turn-abandoned"
+	// checkpointCeilingAppHolds is a reply in the desktop app, which only the
+	// person moves to a task ([Config.HandOverOnAsk]).
+	checkpointCeilingAppHolds = "dropped:the-person-moves-it"
 )
 
 // THE LAW: ONE ENDING ROW PER ENDING, WRITTEN AT THE SEAM THAT TOOK IT.
@@ -2179,6 +2245,8 @@ const (
 	checkpointSeamCeiling = "ceiling"
 	checkpointSeamWall    = "wall"
 	checkpointSeamCarry   = "carry-on"
+	// checkpointSeamAsked is the person moving the reply ([Agent.MoveTurnToTask]).
+	checkpointSeamAsked = "asked"
 )
 
 // journalCarryOnAwaited writes down the one ending the carry-on road takes on
@@ -2888,6 +2956,17 @@ func checkpointLastSaid(messages []ai.Message) string {
 // injected, nothing is said, the model is not told it was looked at, and the
 // meter simply walks on to the next mark.
 func (a *Agent) checkpointRound(ctx context.Context, hub *eventHub, user userMessage, meter *checkpointMeter, turn *Usage, started time.Time, model string, calls []ai.ToolCall, taken *Decision, aside *markAside) bool {
+	// IN THE DESKTOP APP THE PERSON MOVES A RUNNING REPLY, NOT THE CLOCK. No
+	// mark, ceiling, write seam or wall share moves it on its own; the app says
+	// the reply is running long and the person's ask is taken here, at the
+	// first boundary after it, through the one door every other move uses.
+	if a.config.HandOverOnAsk {
+		if !a.moveAsked.Swap(false) {
+			return false
+		}
+		return a.handOverRunningTurn(ctx, hub, turn, started, model,
+			checkpointAskedNote, checkpointSeamAsked, meter.rounds, meter, meter.raced, checkpointRead{}, taken).moved
+	}
 	if !a.checkpoints(ctx, user) {
 		return false
 	}
@@ -3158,7 +3237,8 @@ func (a *Agent) checkpointSettle(ctx context.Context, hub *eventHub, turn *Usage
 // stands in front of the meter and therefore in front of every call this file
 // makes.
 func (a *Agent) checkpoints(ctx context.Context, user userMessage) bool {
-	if a.config.InTask {
+	// The factory runner owns background completion, including its manager chat.
+	if a.config.InTask || a.jobChatOf() != nil {
 		return false
 	}
 	// A SCREENLESS SESSION WITH NOBODY LEFT IN CHARGE HAS NO ONE TO READ THE
@@ -4181,6 +4261,11 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	if ctx.Err() != nil {
 		return checkpointHandover{decision: checkpointCeilingAbandoned}
 	}
+	// IN THE DESKTOP APP ONLY THE PERSON MOVES A REPLY ([Config.HandOverOnAsk]):
+	// every other road into this function leaves the turn running.
+	if a.config.HandOverOnAsk && seam != checkpointSeamAsked {
+		return checkpointHandover{decision: checkpointCeilingAppHolds}
+	}
 	// THE FLOOR STANDS IN FRONT OF EVERYTHING ELSE. A caller that reached here
 	// through [Agent.checkpoints] already asked, but looped.go's looping
 	// handoff and any future door share this function, and a handover that
@@ -4603,7 +4688,10 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// closing remark of a finished answer. The person's sentence is the one thing
 	// on this road nobody writes, so it is the one thing that cannot come back as
 	// machinery — and the namer improves it a second later anyway (taskname.go).
-	said, id := a.launchRouteTask(hub, verdict, asked, drawn, ahead)
+	// IN THE DESKTOP APP THE PERSON MOVED THIS REPLY, and the line above already
+	// said so; the task's start is not told a second time as though the harness
+	// had chosen the work. The terminal keeps its two lines.
+	said, id := a.launchRouteTaskTold(hub, verdict, asked, drawn, ahead, !a.config.HandOverOnAsk)
 
 	// THE GAP IS SPENT, because the person has just been interrupted by a task and
 	// does not care which of the moments noticed. routeJudgeGap exists so that work
@@ -5133,7 +5221,7 @@ func (a *Agent) checkpointBrief(ctx context.Context, turn *Usage, model string) 
 	// measurement of one request written down about another (usage_ledger.go's
 	// emptiness law for the five lane keys).
 	turn.Turns++
-	a.addUsage(turn, response, model, provider.ServedEndpointFrom(ctx).Name(), laneFacts{})
+	a.addUsage(turn, response, model, provider.ServedEndpointFrom(ctx).Name(), laneFacts{}, provider.ServedEndpointFrom(ctx).TakeBilling())
 
 	brief := strings.TrimSpace(response.Text())
 	// THE REMAINS CONTRACT IS READ FIRST, because it is the only answer here that

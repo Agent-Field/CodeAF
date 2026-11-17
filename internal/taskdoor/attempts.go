@@ -124,7 +124,7 @@ func openAttempts(root string, clock Clock) (*attemptStore, error) {
 		// A completed acknowledgement can be interrupted halfway through RemoveAll.
 		// Its durable tombstone outranks a now-missing state or request file.
 		if finished && (errors.Is(stateErr, os.ErrNotExist) || stateErr == nil && a.state.Phase != "running") {
-			if err := os.RemoveAll(a.Dir); err != nil {
+			if err := fsreplace.RemoveAll(a.Dir); err != nil {
 				return nil, err
 			}
 			continue
@@ -134,7 +134,7 @@ func openAttempts(root string, clock Clock) (*attemptStore, error) {
 		}
 		if err := readJSON(filepath.Join(a.Dir, "request.json"), &a.Request); err != nil {
 			if finished && errors.Is(err, os.ErrNotExist) {
-				if err := os.RemoveAll(a.Dir); err != nil {
+				if err := fsreplace.RemoveAll(a.Dir); err != nil {
 					return nil, err
 				}
 				continue
@@ -156,7 +156,7 @@ func openAttempts(root string, clock Clock) (*attemptStore, error) {
 		events, err := readEvents(a.Dir)
 		if err != nil {
 			if finished && errors.Is(err, os.ErrNotExist) {
-				if err := os.RemoveAll(a.Dir); err != nil {
+				if err := fsreplace.RemoveAll(a.Dir); err != nil {
 					return nil, err
 				}
 				continue
@@ -238,7 +238,7 @@ func (s *attemptStore) admit(id string, request Start, busy string) (*Attempt, b
 	if err != nil {
 		return nil, false, err
 	}
-	defer os.RemoveAll(staging)
+	defer fsreplace.RemoveAll(staging)
 	if err := atomicJSON(filepath.Join(staging, "request.json"), request); err != nil {
 		return nil, false, err
 	}
@@ -248,7 +248,7 @@ func (s *attemptStore) admit(id string, request Start, busy string) (*Attempt, b
 	if err := atomicWrite(filepath.Join(staging, "events.jsonl"), nil); err != nil {
 		return nil, false, err
 	}
-	if err := os.Rename(staging, a.Dir); err != nil {
+	if err := fsreplace.Rename(staging, a.Dir); err != nil {
 		return nil, false, err
 	}
 	s.attempts[id] = a
@@ -282,7 +282,7 @@ func (s *attemptStore) forget(id string) error {
 		a.notify()
 		return nil
 	}
-	if err := os.RemoveAll(a.Dir); err != nil {
+	if err := fsreplace.RemoveAll(a.Dir); err != nil {
 		return err
 	}
 	a.removed = true
@@ -298,7 +298,7 @@ func (s *attemptStore) released(a *Attempt) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.removed {
-		_ = os.RemoveAll(a.Dir)
+		_ = fsreplace.RemoveAll(a.Dir)
 		delete(s.attempts, a.ID)
 	}
 }
@@ -443,7 +443,7 @@ func atomicWrite(path string, raw []byte) error {
 	if err != nil {
 		return err
 	}
-	defer os.Remove(file.Name())
+	defer fsreplace.Remove(file.Name())
 	_, writeErr := file.Write(raw)
 	syncErr := file.Sync()
 	closeErr := file.Close()
