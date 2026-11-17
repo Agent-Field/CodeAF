@@ -3,6 +3,7 @@ package serve
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
@@ -86,14 +87,14 @@ func (h *Handler) leaseSince() time.Time {
 // answers the drop the run calls when it ends here. It runs inside the run's
 // goroutine, after the write that started the run has ended: that store has
 // one connection.
-func (h *Handler) holdTaskLease(ctx context.Context, key taskRunKey, owner, starter string, started time.Time, resumes int) func() {
+func (h *Handler) holdTaskLease(ctx context.Context, key taskRunKey, owner, starter, words string, started time.Time, resumes int) func() {
 	st := h.config.Store
 	if st == nil {
 		return func() {}
 	}
 	stamp := func() string { return h.clock().UTC().Format(time.RFC3339Nano) }
 	_ = st.PutTaskRun(store.TaskRun{WS: key.ws, Task: key.task, Owner: owner, Starter: starter,
-		Started: started.UTC().Format(time.RFC3339Nano), Beat: stamp(), Resumes: resumes})
+		Started: started.UTC().Format(time.RFC3339Nano), Beat: stamp(), Resumes: resumes, Words: words})
 	done := make(chan struct{})
 	guard.Go("factory workstream task lease", func() {
 		tick := time.NewTicker(taskLeaseBeat)
@@ -105,7 +106,7 @@ func (h *Handler) holdTaskLease(ctx context.Context, key taskRunKey, owner, star
 			case <-done:
 				return
 			case <-tick.C:
-				_ = st.BeatTaskRun(key.ws, key.task, owner, stamp())
+				_ = st.BeatTaskRun(key.ws, key.task, owner, stamp(), 0)
 			}
 		}
 	})
@@ -245,7 +246,7 @@ func (h *Handler) settleCutRun(ws factory.OrgWorkstream, seen factory.Workstream
 				return err
 			}
 			settled = t
-			return h.startTaskRun(ws, t, starter, resumeWords(t), resumes+1)
+			return h.startTaskRun(ws, t, starter, resumeWords(t, l.Words), resumes+1)
 		}
 		t.State, t.StateReason = factory.TaskInterrupted, taskInterruptedWhy
 		if err := keepTask(tw, t, seen.Rev); err != nil {
@@ -310,12 +311,16 @@ func keptTask(tw store.TaskWrite, ws, id string) (factory.WorkstreamTask, bool) 
 }
 
 // resumeWords is what Afi is asked when its run is taken up again after a
-// restart. The run's folder keeps its conversation, so it carries on rather
-// than beginning again.
-func resumeWords(t factory.WorkstreamTask) string {
+// restart: what the run was asked (words, kept on its lease; the task's own
+// words when none was kept), after a line saying it was cut off. The run's
+// folder keeps its conversation, so it carries on rather than beginning again.
+func resumeWords(t factory.WorkstreamTask, words string) string {
+	if strings.TrimSpace(words) == "" {
+		words = taskWords(t)
+	}
 	return "The server restarted while you were working on this task, and your work was cut off. " +
 		"Carry on from where you stopped: check what you already wrote to the workstream before writing it again, then finish the task.\n\n" +
-		taskWords(t)
+		words
 }
 
 // fillRuns writes onto each running Afi task whether a run is working on it

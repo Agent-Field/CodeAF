@@ -118,7 +118,7 @@ func (h *Handler) startTaskRun(ws factory.OrgWorkstream, task factory.Workstream
 		// that cuts the run off leaves a row the next start settles; it is
 		// dropped when the run ends here, unless the server is closing, which
 		// is exactly the cut the next start must find.
-		lease := h.holdTaskLease(ctx, key, owner, starter, now, resumes)
+		lease := h.holdTaskLease(ctx, key, owner, starter, run.Text, now, resumes)
 		defer func() {
 			if d.ctx.Err() == nil {
 				lease()
