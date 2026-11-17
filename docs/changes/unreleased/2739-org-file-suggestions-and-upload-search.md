@@ -1,5 +1,6 @@
 ---
 kind: fixed
+pr: 2739
 title: An organization's agent suggestions reach the document, and Files search reads uploads
 surface: [engine, app]
 invalidates:
