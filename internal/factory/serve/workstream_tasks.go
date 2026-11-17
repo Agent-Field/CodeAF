@@ -156,6 +156,7 @@ func (h *Handler) readTasks(r *http.Request, ws factory.OrgWorkstream) ([]factor
 	}
 	slices.SortStableFunc(out, func(a, b factory.WorkstreamTask) int { return strings.Compare(a.CreatedAt, b.CreatedAt) })
 	nameTasks(h.personNames(), out)
+	h.fillRuns(ws.ID, out)
 	return out, nil
 }
 

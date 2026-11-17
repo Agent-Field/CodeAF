@@ -36,6 +36,9 @@ func TestARunCutOffByARestartIsInterruptedThenResumesOnce(t *testing.T) {
 	cut := o.task(t, "santosh", path, api.TaskCreate{Title: "Write the release notes", Request: "Short.", DoneBy: afi})
 	o.do(t, "abir", "PATCH", path+"/tasks/"+cut.ID, cut.Rev, map[string]any{"state": "running"}, 200, nil)
 	lease := waitLease(t, o.st, wsID, cut.ID)
+	if got := o.one(t, path, cut.ID); got.Run == nil || !got.Run.Live || got.Run.Since == "" {
+		t.Fatalf("a working task does not say a run is going: %+v", got.Run)
+	}
 	if lease.Starter != "abir" || lease.Resumes != 0 {
 		t.Fatalf("the run's lease is %+v", lease)
 	}
@@ -109,6 +112,9 @@ func TestARunCutOffByARestartIsInterruptedThenResumesOnce(t *testing.T) {
 	stuck := o.task(t, "santosh", path, api.TaskCreate{Title: "Help article", DoneBy: afi})
 	setRunningByAgent(t, o, wsID, stuck.ID)
 	now := o.one(t, path, stuck.ID)
+	if now.Run == nil || now.Run.Live {
+		t.Fatalf("a stuck task does not say nothing is working on it: %+v", now.Run)
+	}
 	o.do(t, "santosh", "PATCH", path+"/tasks/"+stuck.ID, now.Rev, map[string]any{"state": "running"}, 200, nil)
 	o.settle()
 	if _, ran := asked["Help article"]; !ran {

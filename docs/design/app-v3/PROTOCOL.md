@@ -1029,7 +1029,7 @@ and the task `id`, the same words the desk's Tauri `workstream_task_*` commands 
 and a task and an event are the server's shapes passed through whole: a task is `{id,
 ws, rev, title, request, owner, done_by, came_from, state, state_reason?, step?,
 waiting_on, due?, group?, results, check?, ask?, cost_usd?, created_by, created_at,
-updated_at, done_at?, answered_by?, handed_by?, for_you?, stopped_by?}`, `state` one of `up_next`, `running`, `needs`,
+updated_at, done_at?, answered_by?, handed_by?, for_you?, stopped_by?, run?}`, `state` one of `up_next`, `running`, `needs`,
 `done`, `failed`, `interrupted`, `stopped` (Stopped by you, to `stopped_by`; Stopped by
 <name> to everyone else), `no_report` (Didn't report back); an event is `{id, task, at, by, kind, text, steps?, duration_s?, offer?,
 undo_until?, option?, mentions?}`, `option` being the chosen answer's id on an `answered` event; a
@@ -1079,7 +1079,13 @@ task reopened (sent back or unticked) makes every unfinished task that waits on 
 again: one that was `running` goes back to `up_next` (a Factory task keeps its job's
 state), and each gains the thread line "Waiting again: <title> was reopened". A person's
 `stopped` records `stopped_by {id, name}`, and its thread line reads "Stopped by <name>";
-any later state clears it. A Factory task's state is its job's (409). A stale rev is 412.
+any later state clears it. A `running` task Afi does carries `run {live, since?}`, filled
+at read time: `live` false means nothing on the server is working on it, and a PATCH
+`state: running` then starts Afi on it again (thread line "Started again by <name>: nothing
+was working on it"); with `live` true that PATCH changes nothing. The server settles a run
+a restart cut off (thread lines "Interrupted: the server restarted while Afi was working on
+it", then "Resumed after the restart"; a second cut leaves it `interrupted`) and one quiet
+for a minute (`no_report`). A Factory task's state is its job's (409). A stale rev is 412.
 `_task_answer {ws, id, option?, text?}` `POST .../answer` is the owner's (with owner
 `everyone`, anyone who edits; after a day, also the workstream's fallback), 403
 otherwise; the first answer decides and records `answered_by`, a second is 409; a
