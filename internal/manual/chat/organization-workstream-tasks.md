@@ -73,6 +73,12 @@ A task's Activity and comments is one thread everyone in the workstream sees: wh
 
 A private conversation with Afi stays private. If something you ask Afi there changes shared work, the task gets one line ("Priya asked Afi to keep it under 300 words"), never the conversation. "Post this to the task" adds Afi's answer to the thread, marked as posted by you.
 
+## attach a file in a comment, and Attach to the task from Afi's pane
+
+- **In a comment**: the **+** in a task's comment box picks files from your computer; they show as chips you can take off before sending. Sending adds them to Files, attaches them to the task (its **Uses**), and ends the comment with "Attached Interview notes.pdf". Nothing is uploaded until you send, so a comment you give up leaves nothing behind. Someone who only views the workstream has no **+**.
+- **From Afi's pane**: with a task in front of you, Afi's latest answer can go two ways. "Post this to the task" puts the words on the thread. **Attach to the task** makes them a document in Files, named from the answer's first line, made by Afi for you and listed under the task's **Result**; the thread says "Attached “Brief for Lena”, drafted with Afi". Either way your conversation with Afi stays private.
+- A task Afi made from your pane says "Added by Afi for you" (or "for Marco") in its facts, never that Afi is a chat.
+
 ## send a request to another team's workstream — ask another workstream for work, one you are not in
 
 Work for another team is a request into their workstream, not a task in yours. On a task, More › "Send a request to" lists every workstream in the organization you may ask: the ones you are in, and every one that is not private, each with who receives it. Pick one, write what you want (the first line is its title), and press "Send request".
@@ -110,6 +116,12 @@ When Afi or a chat does a task, nobody has to attach its files. Every file of th
 ## a canvas on a task — its live picture, open it inside the task, Open beside
 
 A canvas a task made or uses shows as a small picture of the whole board, repainted a moment after anyone changes it. Clicking it opens the canvas inside the task, with a bar naming the task to go back (Escape too) and **Open beside** to put it in the window's preview tab. On an organization's canvas the picture stays the plain board ground until this computer can draw it; the canvas itself still opens.
+
+## a task's brief — Goal, Deliverable, Acceptance, Inputs, Constraints, and the hand-off note
+
+A task made with a brief shows it under **Brief**: the request as a summary, then **Goal** (why, and for whom), **Deliverable** (what comes back, and where), **Acceptance** (the lines its check answers), **Inputs** (each a row: a file opens, a canvas shows its picture, another task opens in place and stands for its Result, a decision reads as its words, a link opens in the browser) and **Constraints**. Only the parts with words show. A task made before briefs, or by a person in Add task, shows only its **Request**.
+
+When the doer finishes, the two to four lines it leaves for the next task show as **Hand-off** under the Result. A task with no note shows none.
 
 ## a checklist inside a task — steps, not sub-tasks, tick a step, 2/5
 
