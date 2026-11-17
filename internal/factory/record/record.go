@@ -114,11 +114,14 @@ const (
 	// org_agent.go). Its Object is "agent:<id>" and it never names the agent:
 	// every member reads the record.
 	AgentChanged = "agent_changed"
+	// LibraryChanged is a page of the organization's Library added, changed
+	// or removed (factory org_library.go). Its Object is "library:<id>".
+	LibraryChanged = "library_changed"
 )
 
 // orgKinds are the organization change kinds; none of them names a job.
 var orgKinds = map[string]bool{TeamChanged: true, WorkstreamChanged: true, PolicyChanged: true,
-	RulesChanged: true, RoutesChanged: true, SpendingChanged: true, SettingsChanged: true, AgentChanged: true}
+	RulesChanged: true, RoutesChanged: true, SpendingChanged: true, SettingsChanged: true, AgentChanged: true, LibraryChanged: true}
 
 // OrgVerbs are the words an organization change may read as, by kind. They
 // are what a person reads in an activity list, so each is plain words.
@@ -136,6 +139,7 @@ var OrgVerbs = map[string][]string{
 	SpendingChanged: {"changed spending defaults", "set space limit"},
 	SettingsChanged: {"changed settings", "set model key", "removed model key"},
 	AgentChanged:    {"asked for org agent", "approved org agent", "declined org agent", "added org agent", "removed org agent"},
+	LibraryChanged:  {"added library page", "changed library page", "removed library page"},
 }
 
 // IsOrgKind is whether kind is one of the organization's own changes.

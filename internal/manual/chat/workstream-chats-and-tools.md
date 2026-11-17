@@ -1,8 +1,16 @@
 # Chats inside a workstream, and the tools an agent there uses on its tasks and files
 
-## a chat inside a workstream is private — what is private and what is shared
+## a chat inside a workstream is private — what is private and what is shared, can others see my chat's name
 
 A chat you start inside a workstream (the box at the bottom of its Chats tab, "Start a new chat in <workstream>") keeps its messages private to you. Where the organization supplies the shared chat listing, teammates see its name, owner, state, last activity and task count under "Other people's chats"; they never see its messages or Asks. Opening that row lists only the shared tasks it made. On an older server with no listing, that section is absent. What it makes is shared. Its tasks appear in the workstream's Tasks for everyone, done by the chat: the row says "Your chat" (to others in the workstream, "<your name>'s chat"), drawn with its agent's face, and the task says "In the chat <name>", and its files appear in Files with the chat's name as who made them. The Chats tab says so under the list: "Only you see your chats. The tasks and files they make are shared with everyone in <workstream>."
+
+| What | Who sees it |
+| --- | --- |
+| What you and a chat say to each other, and its Asks | you only |
+| A chat's name, owner, state, last activity and task count | everyone in the workstream, where the server lists them |
+| The tasks and files a chat makes | everyone in the workstream |
+| One line on a task when your private request changed it | everyone in the workstream |
+| Your chats in My space, their names included | you only |
 
 Afi's pane is private to you on a Personal workstream. On an organization, read its header: "Private to you" means the server keeps your conversation apart; "Everyone in <workstream> sees this" means an older server keeps a shared conversation. Anything on a task or a file is shared.
 

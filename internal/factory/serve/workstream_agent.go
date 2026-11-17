@@ -99,6 +99,9 @@ type AgentTurn struct {
 	// Door is then nil, and the agent carries org_propose_setup and nothing
 	// else.
 	Org *AgentOrg
+	// Library is true when Door also reads the organization's Library
+	// (org_library.go), so the agent is told it has that tool.
+	Library bool
 	// Step reports one line of the conversation: api.AgentEntryStep with the
 	// tool's name, or api.AgentEntryAgent with the answer.
 	Step func(kind, text, tool string, failed bool)
@@ -544,7 +547,7 @@ func (h *Handler) startAgentTurn(ws factory.OrgWorkstream, v wsViewer, asker, ch
 	h.publishAgent(seat, api.AgentEvent{AgentState: &state})
 	door := &agentDoor{h: h, id: ws.ID, asker: asker, operator: v.Operator}
 	run := AgentTurn{Workstream: ws.ID, Name: ws.Name, Turn: turn, Asker: asker, Text: text, Now: now, TZ: tz, About: h.orgAbout(), Chat: chat, Space: ws.Space, Agent: persona,
-		Key: h.orgModelKey(), Dir: filepath.Join(h.agentDir(seat), "agent"), Door: door,
+		Key: h.orgModelKey(), Dir: filepath.Join(h.agentDir(seat), "agent"), Door: h.withLibrary(door), Library: h.spacesServed(),
 		Step: func(kind, text, tool string, failed bool) {
 			switch kind {
 			case api.AgentEntryStep, api.AgentEntryAgent, api.AgentEntryNote:

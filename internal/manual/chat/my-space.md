@@ -16,7 +16,7 @@ My space cannot be shared, handed to someone else, renamed, archived or deleted,
 
 In an organization window, New chat starts a chat in My space. It runs on the organization's server, never on this computer: close the laptop mid-answer and the chat finishes anyway, with what it made waiting in My space when you come back. It uses the organization's model key and the model the organization chose.
 
-A chat is private to you, like Afi's pane: nobody else lists or reads it. Its title is its first message's first line. What the agent writes into documents and canvases lands in My space.
+A chat in My space is private to you, like Afi's pane: nobody else lists or reads it, its name included. (A chat started inside a workstream is different: its name and state are seen there, never what is said.) Its title is its first message's first line. What the agent writes into documents and canvases lands in My space.
 
 ## Who pays for My space — the organization, under your name, up to a monthly limit
 
@@ -34,4 +34,4 @@ A document or file in My space moves into a workstream from its menu (Move to…
 
 ## What My space cannot do yet
 
-My space holds no crews, and an organization has no shared Library yet. Your Personal agents and Library never appear in an organization window.
+My space holds no crews, and it has no Library of its own: the organization's Library is shared by everyone in it (see "The organization's Library"). Your Personal agents and Library never appear in an organization window.

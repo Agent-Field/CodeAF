@@ -162,6 +162,11 @@ func (a *Agent) belt() []bare.Tool {
 		if door := a.config.workstreamWorkDoor(); door != nil {
 			belt = append(belt, workstreamWorkBelt(door, a.guardDecisions)...)
 		}
+		// The organization's Library rides beside them on a server that keeps
+		// one (tools_org_library.go); it only reads.
+		if door := a.config.orgLibraryDoor(); door != nil {
+			belt = append(belt, orgLibraryTool(door))
+		}
 		return belt
 	}
 	// AN ORGANIZATION'S SETUP CONVERSATION CARRIES ITS ONE VERB AND NO OTHER
