@@ -10,6 +10,7 @@ invalidates:
   - "The Library compiler defaulted to deepseek/deepseek-v4.1-flash (config.DefaultKnowledgeModel); knowledge.model is now an override, and empty means the chosen model. config.KnowledgeModelAt takes the chosen model as a second argument; KnowledgeModelRowAt is the row alone."
   - "Settings' knowledge_model was omitted when empty; it is now always sent, empty meaning it follows the chosen model."
   - "routerconfirm (a mastermind-tier role) rode the crew router's standing planner pick when unpinned; a background role now never reads the worker, checker or planner rows (roles.Background)."
+  - "The desktop's Organize refused with no_naming_model unless a naming (small-work) row was written, and an app conversation named by intent asked the title seat with no floor; both now name on the chosen model. A session with no roles source at all (headless) still buys no optional name."
   - "The quorum verifier asked deepseek/deepseek-v4-flash by name; it now resolves the checker seat (roles.RoleAuditor) through the roles ladder."
 ---
 
