@@ -155,7 +155,19 @@ func (h *Handler) ruleDecisions(before, after factory.WorkstreamRules, v Viewer)
 	// A standing order lives on its holder's computer, so the server does not
 	// know its name; switching one is recorded by the desk that holds it.
 	names := map[string]string{}
-	who := factory.PersonRef{ID: v.Handle, Name: h.personNames()(v.Handle)}
+	nameOf := h.personNames()
+	who := factory.PersonRef{ID: v.Handle, Name: nameOf(v.Handle)}
+	// The people a rule names are said by the names they joined with: a desk
+	// may save a rule carrying only the handle, and Decisions read "marco
+	// answers what waits unanswered for a day" (E1 F10).
+	if o := &after.DefaultOwner; o.Kind == factory.RulesOwnerPerson && o.ID != "" && (o.Name == "" || o.Name == o.ID) {
+		o.Name = nameOf(o.ID)
+	}
+	if f := after.Fallback; f != nil && f.ID != "" && (f.Name == "" || f.Name == f.ID) {
+		named := *f
+		named.Name = nameOf(f.ID)
+		after.Fallback = &named
+	}
 	return factory.RuleDecisions(before, after, who, func(id string) string { return names[id] }, func() string { return "dc_" + h.newTaskID("")() }, h.clock().UTC())
 }
 

@@ -875,6 +875,9 @@ type appAgent struct {
 	// failedShown is what that turn's entry showed, when it carried
 	// attachments: a retry sends the same words and shows the same message.
 	failedShown *appSending
+	// failedRead says the footer sidecar was already asked, once in this
+	// process, for a failed turn an earlier run left behind ([appRecoverFailed]).
+	failedRead bool
 	// failedClient is the client id of a first message that failed before it
 	// was handed to its conversation (bootFailed), which a retry carries: that
 	// message never reached the accepted line, so its id is still unused.
@@ -1225,6 +1228,7 @@ func appRowView(row session.SessionRow) appwire.Agent {
 // process is holding: a held conversation's own facts are newer than the disk's.
 func (b *appBackend) remember(row session.SessionRow) appwire.Agent {
 	b.watchCloseClaim(row.Dir)
+	b.recoverFailed(row)
 	createdBy := b.createdBy(row.ID)
 	// Read freshness against this backend's clock, including in deterministic
 	// tests, rather than trusting a row another reader dated earlier.
@@ -3146,6 +3150,9 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 	endThought()
 	sayReply(appwire.EntryAnswer)
 	byPerson := false
+	// keptWords are the failed turn's words, written beside its error entry so
+	// Retry message outlives a restart ([appRecoverFailed]).
+	keptWords := ""
 	b.locked(func() {
 		byPerson = live.stopping
 		// A STOPPED TURN ENDS CLEANLY ON THE ENGINE'S SIDE — an interrupt is
@@ -3159,6 +3166,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 			a.failed, a.failedKind, a.failedShown = text, kind, shown
 			a.view.Retryable = text != ""
 		}
+		keptWords = a.failed
 	})
 	switch {
 	case !ok && kind == appwire.ErrorStopped:
@@ -3177,11 +3185,11 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 	case !ok && kind == appwire.ErrorProvider:
 		footer := appFooter(appErrorEntryID(n), id, turn, appwire.FooterProviderFailed, failure, b.now())
 		footer.ErrorKind, footer.Status = kind, status
-		_ = b.keepAppEntry(a, footer, "")
+		_ = b.keepAppFailure(a, footer, keptWords)
 		entry(footer)
 	case !ok:
 		errEntry := appwire.Entry{ID: appErrorEntryID(n), Agent: id, Turn: turn, At: b.now(), Kind: appwire.EntryError, Text: failure, ErrorKind: kind, Status: status}
-		_ = b.keepAppEntry(a, errEntry, "")
+		_ = b.keepAppFailure(a, errEntry, keptWords)
 		entry(errEntry)
 	}
 	if ok {
@@ -3359,6 +3367,10 @@ func appTurnFailure(event session.Event) (kind string, status int, words string)
 	}
 	switch kind {
 	case session.TurnErrorProvider, session.TurnErrorBudget, session.TurnErrorStopped:
+	case session.TurnErrorOffline:
+		// OFFLINE SAYS ITS OWN SENTENCE, never the transport's ladder of
+		// retries and attempts: the work is paused, not broken.
+		return appwire.ErrorOffline, 0, session.TurnOfflineWords
 	default:
 		kind = appwire.ErrorOther
 	}

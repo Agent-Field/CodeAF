@@ -159,7 +159,19 @@ func factoryAgentStepWords(e session.Event) string {
 	if hint := strings.TrimSpace(e.Hint); hint != "" {
 		return hint
 	}
-	return e.Tool
+	return factoryAgentToolWords(e.Tool)
+}
+
+// factoryAgentToolWords is a step with no words of its own, said without the
+// tool's handle: "ws_decisions" reached the Afi pane as a step name (E1 F10).
+// The prefix and the underscores are machinery; what is left is the thing it
+// worked with.
+func factoryAgentToolWords(tool string) string {
+	words := strings.TrimSpace(strings.ReplaceAll(strings.TrimPrefix(tool, "ws_"), "_", " "))
+	if words == "" {
+		return "worked"
+	}
+	return "worked with " + words
 }
 
 // factoryAgentWorkWords is a ws_* step as a person reads it. A tool's own
@@ -216,6 +228,10 @@ func factoryAgentWorkWords(e session.Event) (string, bool) {
 		return named(what, args.Name), true
 	case session.WSFileSuggestTool:
 		return "suggested a change to a document", true
+	case session.WSFileCommentTool:
+		return "commented on a document", true
+	case session.WSDecisionsTool:
+		return "read the decisions", true
 	}
 	return "", false
 }

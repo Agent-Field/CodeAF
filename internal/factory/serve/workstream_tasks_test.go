@@ -256,7 +256,8 @@ func TestAStopSaysWhoStoppedIt(t *testing.T) {
 	}
 	var thread api.WorkstreamTaskEvents
 	o.do(t, "santosh", "GET", path+"/tasks/"+made.ID+"/events", -1, nil, 200, &thread)
-	if n := len(thread.Events); n == 0 || thread.Events[n-1].Text != "Stopped by abir" {
+	// The line names the person by the name they joined with, never the handle (E1 F10).
+	if n := len(thread.Events); n == 0 || thread.Events[n-1].By.ID != "abir" || thread.Events[n-1].By.Name == "abir" || thread.Events[n-1].Text != "Stopped by "+thread.Events[n-1].By.Name {
 		t.Fatalf("the thread: %+v", thread.Events)
 	}
 	o.do(t, "santosh", "PATCH", path+"/tasks/"+made.ID, stopped.Rev, map[string]any{"state": "running"}, 200, &again)
