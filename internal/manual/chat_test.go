@@ -45,6 +45,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I make my own agent in the organization", "organization-agents"},
 		{"share my agent into a workstream so the team can use it", "organization-agents"},
 		{"can the operator see my agents", "organization-agents"},
+		{"can my shared agent do a task in the workstream", "organization-agents"},
 		{"how does an agent get on the organization's list", "organization-agents"},
 		{"approve an agent for everyone in the organization", "organization-agents"},
 		{"chat with my Copywriter agent instead of Afi", "organization-agents"},

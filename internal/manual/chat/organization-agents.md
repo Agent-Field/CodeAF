@@ -20,7 +20,7 @@ In a workstream you can chat with any agent that workstream lists (below). If th
 
 The Agents part of a workstream's People and rules lists Afi first, then each agent the workstream may use. Anyone who can edit the workstream can add one (**Add an agent**: from your own, or from the organization's list) or take one off. You can always take your own agent off a workstream. A workstream lists 50 agents at most, and My space takes none: your agents are already there.
 
-These are the agents a task in that workstream may be given to. Choosing one as the doer of a task is not in this build yet.
+These are the agents a task in that workstream may be given to. Ask Afi ("give the launch post to Copywriter") and it makes the task with that agent as its doer; when the task starts, the organization's server runs it as that agent, with the agent's instructions and the task's request, never a private chat. An agent the workstream has not added is refused, and one taken off the workstream, or deleted, stops being offered at once. No screen offers an agent as a doer: the Done by choices are Afi, your chats, you and the workstream's people.
 
 ## The organization's list of agents — asking the operator to approve an agent for everyone
 
@@ -36,4 +36,4 @@ When the operator removes someone from the organization, their agents go to the 
 
 ## What agents in an organization cannot do yet
 
-There are no crews in an organization: an agent works alone. A task's doer cannot be set to a named agent yet; the workstream's Agents list is what that choice will offer. Agents cannot be moved into a workstream (only shared). An agent cannot be given tools beyond those a chat in that place has.
+There are no crews in an organization: an agent works alone. Only Afi gives a task to a named agent, and only to one on the workstream's Agents list. Agents cannot be moved into a workstream (only shared). An agent cannot be given tools beyond those a chat in that place has.
