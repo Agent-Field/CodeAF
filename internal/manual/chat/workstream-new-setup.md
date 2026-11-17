@@ -15,7 +15,8 @@ is no empty "New workstream" to clean up.
 ## Afi's questions when setting up — why did Afi ask me something, how many questions
 
 Afi proposes as soon as it can. When what you said leaves something it cannot guess and that changes the setup (who
-decides, a date), it asks at most two short questions, in one message. It never asks about rules, spending, names or
+decides, a date), it asks at most two short questions, in one message, with its best-guess card already under them: answer
+and it changes the card, or change the card yourself. It never asks about rules, spending, names or
 files: it drafts sensible ones and you change them on the card. Afi may suggest only people already in the
 organization, and only Library pages you can open.
 
