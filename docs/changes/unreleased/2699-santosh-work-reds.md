@@ -17,3 +17,6 @@ now settles the deferred meta.json stamp before it reads it. The workstream
 tools decode their arguments through decodeToolArguments. CODEAF_CANVAS_BIN
 (#2638) and CODEAF_FACTORY_RUNTIME_DIR (#2609) are registered as operator
 plumbing, so TestRegistryCoversEveryUserFacingEnvironmentPin is green again.
+TestConcurrentTurnAndLateSpendStampsKeepTheLatestMeter waits for the late
+charge's own stamp instead of owing a second one, and a sentence on the
+device page no longer trips the vocabulary law.
