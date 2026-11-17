@@ -55,6 +55,19 @@ A workstream inside another:
 - starts with a copy of its parent's rules and may change its own copy; changing it never changes the parent's.
 - keeps its own tasks and chats.
 
-## archiving a workstream inside another, or folding it back into a heading
+## archiving a workstream — what it asks first, running tasks that stop, and what stays in the parent
 
-Archiving a workstream inside another asks which of its files should stay in the parent first. Folding it back turns it into a heading in the parent's task list, named after it: its tasks and Factory jobs move into the parent and it is archived.
+Archive is in the workstream's More menu (…). It takes the workstream off the Work list; its tasks and documents stay readable and searchable, and Bring back in More undoes it.
+
+Archive asks first only when it has to; otherwise it archives at once, with Undo for 5 seconds:
+
+- **Tasks still running.** The question says how many will stop ("2 running tasks will stop."). Archive stops them the way a task's own Stop does: each shows "Stopped by you". Tasks that are up next or waiting keep their state.
+- **A workstream inside another.** Under "Keep these files in Pantry:" it lists what it holds, every one ticked; untick what Pantry should not show. Folders and its own Decisions are not offered. Nothing moves: each ticked one stays in the archived workstream, and Pantry gains a shortcut to it.
+
+The toast then says what happened, for example "Archived Meal planner · 3 files kept in Pantry". Undo brings the workstream back; tasks it stopped stay stopped, and the shortcuts stay in the parent.
+
+Delete appears in More instead of Archive only for a workstream that holds nothing at all: no tasks, nothing in Files. Any other workstream is archived, never deleted. Folding a workstream back into a heading of its parent is not offered in the app.
+
+## my computer is asleep or offline — is the work lost?
+
+No. When the computer running the agents is asleep or offline (this Mac's engine stopped, or an organization's server cannot be reached), the workstream keeps showing what it last read, and the line under its name says so: "This Mac is offline · answers send when it is back; work is paused, not lost" (or "The organization's server is offline · …"). Its tasks, files, Asks and decisions are all kept. An agent's turn that was running stops with the computer; when the computer is back, the task is still there, and a task that did not finish can be started again from its page.

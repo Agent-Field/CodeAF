@@ -106,6 +106,9 @@ type appServices struct {
 	said    map[string]string
 	notices *appNoticeLog
 	follows map[string]*appServiceFollow
+	// dismissed is the episode each service's line was dismissed for: that
+	// episode's line does not open again, and a new episode's does.
+	dismissed map[string]string
 }
 
 // locked runs fn holding svc.mu, and ordered holding svc.order: every
@@ -146,7 +149,7 @@ func (b *appBackend) attachServices(sup *service.Supervisor) {
 	if sup == nil {
 		return
 	}
-	svc := &appServices{sup: sup, since: b.now(), lines: map[string]appServiceLine{}, noticed: map[string]string{}, said: map[string]string{}, notices: b.noticeLog(), follows: map[string]*appServiceFollow{}}
+	svc := &appServices{sup: sup, since: b.now(), lines: map[string]appServiceLine{}, noticed: map[string]string{}, said: map[string]string{}, notices: b.noticeLog(), follows: map[string]*appServiceFollow{}, dismissed: map[string]string{}}
 	b.locked(func() { b.services = svc })
 	svc.unhear = sup.Subscribe(b.serviceSaw)
 	// WHAT WAS ALREADY IN TROUBLE IS IN THE INBOX FROM THE START, not from
@@ -380,6 +383,12 @@ func (b *appBackend) serviceEpisode(svc *appServices, row service.Row, process a
 		if lined && line.ask.Title == ask.Title && line.ask.Detail == ask.Detail {
 			return
 		}
+		// An episode whose line the person dismissed stays dismissed.
+		dismissed := false
+		svc.locked(func() { dismissed = svc.dismissed[key] == row.Episode })
+		if dismissed {
+			return
+		}
 		svc.locked(func() {
 			svc.lines[key] = appServiceLine{episode: row.Episode, item: appInboxID(row.Owner, ask.ID), ask: ask}
 		})
@@ -474,8 +483,11 @@ func (b *appBackend) serviceLineResolved(svc *appServices, key string, line appS
 		return
 	}
 	receipt := "Healthy again · " + at.Local().Format("15:04")
-	if by == appwire.ResolvedStopped {
+	switch by {
+	case appwire.ResolvedStopped:
 		receipt = "Stopped · " + at.Local().Format("15:04")
+	case appwire.ResolvedDismissed:
+		receipt = appDismissedReceipt(at)
 	}
 	moved := false
 	in.locked(func() {

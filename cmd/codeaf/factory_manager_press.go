@@ -10,6 +10,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/serve"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -53,12 +54,39 @@ var errNoPress = errors.New("Nothing changed: this window has no signed-in conne
 
 // DecidePR is `factory_answer`'s merge and mark_ready for the conversation
 // that manages the job: refused in words unless the job page offers it now.
-func (d seamRunDoor) DecidePR(ctx context.Context, conversation, action, _ string) (string, error) {
+func (d seamRunDoor) DecidePR(ctx context.Context, conversation, action, words string) (string, error) {
 	it, err := d.managed(conversation)
 	if err != nil {
 		return "", err
 	}
+	if action == session.ActionResume {
+		return pressAutoResume(ctx, appLocalPress.Load(), it, words)
+	}
 	return pressPRDecision(ctx, appLocalPress.Load(), it, action, func() (factory.Item, error) { return d.managed(conversation) })
+}
+
+// pressAutoResume tells a job's Auto to carry on past the failing checks it
+// paused on, as the person, with the words they sent (factory's override.go).
+// The factory checks the caller may approve the job and records who overrode
+// which finding on the job's history.
+func pressAutoResume(ctx context.Context, press *localJobPress, it factory.Item, words string) (string, error) {
+	if !factory.OffersAutoResume(it) {
+		return "", errors.New("Nothing changed: Auto is not paused on a failing check")
+	}
+	if press == nil {
+		return "", errNoPress
+	}
+	found := factory.OverrideSummary(factory.FailingFindings(it))
+	if err := (*press)(ctx, it.ID, serve.ResumeAutoVerb, struct {
+		Words string `json:"words,omitempty"`
+	}{words}); err != nil {
+		var wire *appwire.Error
+		if errors.As(err, &wire) && wire.Code == appwire.CodeUncertain {
+			return "", err
+		}
+		return "", fmt.Errorf("Nothing changed: %w", err)
+	}
+	return "Auto resumed, as the person: it carries on past " + found + ", and the job's history records the override. A new failing check pauses it again. This confirms the override, not the publication; read factory_status for the outcome.", nil
 }
 
 // pressPRDecision checks the decision against the job as saved and presses it.

@@ -922,3 +922,322 @@ func TestAClearThatAnsweredIsAnnouncedThoughTheStoreCannotBeReadAfter(t *testing
 		t.Fatalf("the app was told of the replacements %+v; want one, of %s by %s", r, first.Agent, got.Agent)
 	}
 }
+
+// seedCrashForeman mints a foreman session on disk without touching the store
+// or the teams file, so a test can stop the making right after st.SetForeman.
+func seedCrashForeman(t *testing.T, where string) string {
+	t.Helper()
+	if err := os.MkdirAll(where, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	bucket, err := v3ProjectDir(where)
+	if err != nil {
+		t.Fatal(err)
+	}
+	place, err := v3MintSession(bucket, where, v3StampLaunchDir(v3LaunchDir(), where), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	transcript := place.Transcript()
+	if err := session.SeedConversation(transcript, where, foremanTitle, foremanBrief(factory.Snapshot{})); err != nil {
+		t.Fatal(err)
+	}
+	return transcript
+}
+
+// A CRASH BETWEEN NAMING THE NEW MANAGER AND SWAPPING THE TEAM STRANDS NEITHER.
+//
+// foremanMint names the new manager in the store before it swaps the `factory`
+// team and retires the old one. If the engine dies in that gap, the store
+// names manager B while the `factory` team still lists manager A under
+// `@foreman` and A's factory-owner.json still says `foreman: true`. On the
+// next start or open:
+//   - A is retired, unmarked, renamed (unless the person named it), and put
+//     away where the app puts replaced managers away;
+//   - A moves off the team's current members and B takes `@foreman`;
+//   - a healthy state rewrites nothing and announces no replacement;
+//   - a person's own chat holding `@foreman` without `foreman: true` is never
+//     retired.
+func TestAForemanStrandedOnTheTeamByACrashIsReconciled(t *testing.T) {
+	t.Run("when the manager's door opens", func(t *testing.T) {
+		st, web, profile := talkLab(t)
+		maker := foremanMaker(st, web, profile, nil)
+		first, err := maker(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		second := seedCrashForeman(t, web)
+		if err := st.SetForeman(second); err != nil {
+			t.Fatal(err)
+		}
+		if key, holders := foremanHandleHolder(t, profile); holders != 1 || key != teamKey(first) {
+			t.Fatalf("before reconcile: @foreman is held by %q (%d holders); want A alone", key, holders)
+		}
+
+		got, err := maker(context.Background())
+		if err != nil || !sameSessionFile(got, second) {
+			t.Fatalf("the door answered %q, %v; want B (%q)", got, err, second)
+		}
+		if factoryOwnedConversation(first) || !factoryOwnedConversation(second) {
+			t.Fatalf("after reconcile: A owned=%v, B owned=%v; want false, true", factoryOwnedConversation(first), factoryOwnedConversation(second))
+		}
+		if meta, err := session.LoadMeta(session.DirOf(first)); err != nil || meta.Title != foremanEarlierTitle {
+			t.Fatalf("A is titled %q (%v); want %q", meta.Title, err, foremanEarlierTitle)
+		}
+		if key, holders := foremanHandleHolder(t, profile); holders != 1 || key != teamKey(second) {
+			t.Fatalf("after reconcile: @foreman is held by %q (%d holders); want B (%q) alone", key, holders, teamKey(second))
+		}
+		f, err := teams.Load(profile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, team := range f.Teams {
+			if team.Holds(teamKey(first)) {
+				t.Fatalf("A is still a current member of team %q", team.Name)
+			}
+		}
+	})
+
+	t.Run("a stranded manager the person named keeps its name", func(t *testing.T) {
+		st, web, profile := talkLab(t)
+		first, err := foremanMaker(st, web, profile, nil)(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		const given = "Release triage"
+		if err := session.RetitleConversation(first, given); err != nil {
+			t.Fatal(err)
+		}
+		second := seedCrashForeman(t, web)
+		if err := st.SetForeman(second); err != nil {
+			t.Fatal(err)
+		}
+		if got := foremanSweep(st, profile); len(got) != 1 || !sameSessionFile(got[0], first) {
+			t.Fatalf("the sweep retired %v; want A alone", got)
+		}
+		if meta, err := session.LoadMeta(session.DirOf(first)); err != nil || meta.Title != given {
+			t.Fatalf("A is titled %q (%v); want the person's %q", meta.Title, err, given)
+		}
+	})
+
+	t.Run("a person's own chat holding @foreman without the mark is untouched", func(t *testing.T) {
+		st, web, profile := talkLab(t)
+		yours := seedCrashForeman(t, web)
+		const yourTitle = "My own foreman helper"
+		if err := session.RetitleConversation(yours, yourTitle); err != nil {
+			t.Fatal(err)
+		}
+		if err := foremanSwapTeam(profile, "", yours, web); err != nil {
+			t.Fatal(err)
+		}
+		manager := seedCrashForeman(t, web)
+		if err := st.SetForeman(manager); err != nil {
+			t.Fatal(err)
+		}
+		if err := markFactoryForeman(st, manager); err != nil {
+			t.Fatal(err)
+		}
+		if got := foremanSweep(st, profile); len(got) != 0 {
+			t.Fatalf("the sweep retired %v; a chat without foreman:true must never be retired", got)
+		}
+		if meta, err := session.LoadMeta(session.DirOf(yours)); err != nil || meta.Title != yourTitle {
+			t.Fatalf("the person's chat is titled %q (%v); want %q", meta.Title, err, yourTitle)
+		}
+		f, err := teams.Load(profile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		held := false
+		for _, team := range f.Teams {
+			if team.Holds(teamKey(yours)) {
+				held = true
+			}
+		}
+		if !held {
+			t.Fatal("the person's own chat was removed from the team")
+		}
+	})
+
+	t.Run("when the factory starts in the app and on a healthy state after", func(t *testing.T) {
+		s := newLocalSetup(t)
+		foremanFakeOpens(s)
+		heard := &foremanHeard{next: s.backend.emit}
+		s.backend.emit = heard
+		floor, err := store.Open(v3FactoryRoot())
+		if err != nil {
+			t.Fatal(err)
+		}
+		profile := factoryProfile(s.backend.profileDir)
+		where, err := factoryForemanFolder(floor)
+		if err != nil {
+			t.Fatal(err)
+		}
+		first, err := foremanMaker(floor, where, profile, nil)(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		second := seedCrashForeman(t, where)
+		if err := floor.SetForeman(second); err != nil {
+			t.Fatal(err)
+		}
+		firstID, secondID := appAgentID(first), appAgentID(second)
+
+		st := s.start()
+		foremanEventually(t, "the stranded manager being announced and archived at start", func() bool {
+			return len(heard.replacements()) > 0 && s.backend.tidied(firstID)
+		})
+		if got := heard.replacements(); len(got) != 1 || got[0] != (appwire.FactoryForemanChanged{Factory: st.Factory, Agent: secondID, Replaced: firstID}) {
+			t.Fatalf("the app was told of the replacements %+v; want one, of %s by %s", got, firstID, secondID)
+		}
+		if factoryOwnedConversation(first) || !factoryOwnedConversation(second) {
+			t.Fatalf("marks after start: A=%v, B=%v; want false, true", factoryOwnedConversation(first), factoryOwnedConversation(second))
+		}
+		if key, holders := foremanHandleHolder(t, profile); holders != 1 || key != teamKey(second) {
+			t.Fatalf("@foreman is held by %q (%d holders); want B alone", key, holders)
+		}
+
+		// Healthy now: neither settleForemanNow nor foremanMaker rewrites a
+		// file or announces a replacement.
+		watched := []string{
+			s.backend.local.host.floor.MetaPath(),
+			teams.Path(profile),
+			second,
+			filepath.Join(session.DirOf(second), "meta.json"),
+			filepath.Join(session.DirOf(second), factoryOwnerFile),
+		}
+		stamp := time.Now().Add(-time.Hour).Truncate(time.Second)
+		for _, p := range watched {
+			if err := os.Chtimes(p, stamp, stamp); err != nil {
+				t.Fatalf("chtimes %s: %v", p, err)
+			}
+		}
+		if away := s.backend.settleForemanNow(s.backend.local.host); len(away) != 0 {
+			t.Fatalf("a healthy start retired %v", away)
+		}
+		if got, err := foremanMaker(s.backend.local.host.floor, where, profile, nil)(context.Background()); err != nil || !sameSessionFile(got, second) {
+			t.Fatalf("a healthy open answered %q, %v; want %q", got, err, second)
+		}
+		if got := heard.replacements(); len(got) != 1 {
+			t.Fatalf("a healthy state announced replacements: %+v", got)
+		}
+		for _, p := range watched {
+			info, err := os.Stat(p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !info.ModTime().Equal(stamp) {
+				t.Errorf("a healthy reconcile rewrote %s (mtime %v, want %v)", p, info.ModTime(), stamp)
+			}
+		}
+	})
+
+	t.Run("when the manager's door opens in the running app", func(t *testing.T) {
+		s := newLocalSetup(t)
+		convs := foremanFakeOpens(s)
+		heard := &foremanHeard{next: s.backend.emit}
+		s.backend.emit = heard
+		st := s.start()
+		ref := appwire.FactoryRef{Factory: st.Factory}
+
+		first, err := s.backend.FactoryForemanOpen(context.Background(), ref)
+		if err != nil {
+			t.Fatal(err)
+		}
+		host := s.backend.local.host
+		where, err := factoryForemanFolder(host.floor)
+		if err != nil {
+			t.Fatal(err)
+		}
+		second := seedCrashForeman(t, where)
+		if err := host.floor.SetForeman(second); err != nil {
+			t.Fatal(err)
+		}
+		secondID := appAgentID(second)
+
+		opened, err := s.backend.FactoryForemanOpen(context.Background(), ref)
+		if err != nil || opened.Agent != secondID {
+			t.Fatalf("FactoryForemanOpen answered %q, %v; want %q", opened.Agent, err, secondID)
+		}
+		if got := heard.replacements(); len(got) != 1 || got[0] != (appwire.FactoryForemanChanged{Factory: st.Factory, Agent: secondID, Replaced: first.Agent}) {
+			t.Fatalf("the app was told of the replacements %+v; want one, of %s by %s", got, first.Agent, secondID)
+		}
+		foremanEventually(t, "the stranded manager being stopped and archived on open", func() bool {
+			return s.backend.tidied(first.Agent) && !s.backend.isHeld(first.Agent) && convs.stops(first.Agent) > 0
+		})
+		if key, holders := foremanHandleHolder(t, host.profile); holders != 1 || key != teamKey(second) {
+			t.Fatalf("@foreman is held by %q (%d holders); want B alone", key, holders)
+		}
+	})
+}
+
+// A SETTLE WHOSE MAKING FAILS AFTER THE STORE CHANGED STILL ANNOUNCES AND PUTS
+// THE OLD MANAGER AWAY.
+//
+// When both the team swap and the store's rollback fail during settleForemanNow,
+// foremanMint returns an error with the new manager already named in the store
+// and the old one already retired on disk. settleForemanNow must announce
+// factory.foreman_changed and put the old manager away, just as foremanOpened
+// does; when foremanMint fails before the store stays changed, nothing is
+// announced and the old manager stays.
+func TestAFreshStartInSettleForemanThatFailsAfterTheStoreChangedIsAnnounced(t *testing.T) {
+	t.Run("fails after the store changed", func(t *testing.T) {
+		s := newLocalSetup(t)
+		foremanFakeOpens(s)
+		heard := &foremanHeard{next: s.backend.emit}
+		s.backend.emit = heard
+		floor, err := store.Open(v3FactoryRoot())
+		if err != nil {
+			t.Fatal(err)
+		}
+		old := homeForeman(t, floor, factoryProfile(s.backend.profileDir), s.home)
+		oldID := appAgentID(old)
+
+		join, restore := foremanJoin, foremanRestore
+		t.Cleanup(func() { foremanJoin, foremanRestore = join, restore })
+		foremanJoin = func(*teams.File, string, teams.Member) error { return errors.New("no space left on device") }
+		foremanRestore = func(*store.Store, string) error { return errors.New("no space left on device") }
+
+		st := s.start()
+		foremanEventually(t, "the replaced manager being announced and archived after a failed settle swap", func() bool {
+			return len(heard.replacements()) > 0 && s.backend.tidied(oldID)
+		})
+		named, _ := s.backend.local.host.floor.Foreman()
+		if named == "" || sameSessionFile(named, old) {
+			t.Fatalf("the store names %q; the premise (it kept the new manager) is gone", named)
+		}
+		if got := heard.replacements(); len(got) != 1 || got[0] != (appwire.FactoryForemanChanged{Factory: st.Factory, Agent: appAgentID(named), Replaced: oldID}) {
+			t.Fatalf("the app was told of the replacements %+v; want one, of %s by %s", got, oldID, appAgentID(named))
+		}
+	})
+
+	t.Run("fails before the store stays changed", func(t *testing.T) {
+		s := newLocalSetup(t)
+		foremanFakeOpens(s)
+		heard := &foremanHeard{next: s.backend.emit}
+		s.backend.emit = heard
+		floor, err := store.Open(v3FactoryRoot())
+		if err != nil {
+			t.Fatal(err)
+		}
+		old := homeForeman(t, floor, factoryProfile(s.backend.profileDir), s.home)
+		oldID := appAgentID(old)
+
+		join := foremanJoin
+		t.Cleanup(func() { foremanJoin = join })
+		foremanJoin = func(*teams.File, string, teams.Member) error { return errors.New("the team refused the join") }
+
+		_ = s.start()
+		if away := s.backend.settleForemanNow(s.backend.local.host); len(away) != 0 {
+			t.Fatalf("a failed making whose rollback succeeded put away %v", away)
+		}
+		if named, _ := s.backend.local.host.floor.Foreman(); !sameSessionFile(named, old) {
+			t.Fatalf("the store names %q; want the old manager %q", named, old)
+		}
+		if got := heard.replacements(); len(got) != 0 {
+			t.Fatalf("a failed making whose store did not change announced %+v", got)
+		}
+		if s.backend.tidied(oldID) {
+			t.Fatal("the old manager was archived though the store still names it")
+		}
+	})
+}

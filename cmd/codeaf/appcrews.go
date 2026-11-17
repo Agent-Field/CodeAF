@@ -1348,9 +1348,14 @@ func (b *appBackend) closeCrewAsk(ask appwire.Ask, option, by string) {
 	if by != "" && by != teamstore.Person {
 		who = "@" + by
 	}
+	text := "Decided · " + who + " · " + at.Format("15:04")
+	// A DECISION THE PERSON DISMISSED closes as dismissed (appinbox_dismiss.go).
+	if _, dismissed := appCrewDismissed.LoadAndDelete(ask.ID); dismissed {
+		option, text = appwire.ResolvedDismissed, appDismissedReceipt(at)
+	}
 	b.emit.Emit(appwire.EventAskClosed, appwire.AskClosed{Agent: ask.Agent, ID: ask.ID, By: appwire.ClosedByApp, Option: option, At: at})
 	b.emit.Emit(appwire.EventEntryAdded, appwire.EntryAdded{Entry: appwire.Entry{
-		ID: "r" + ask.ID, Agent: ask.Agent, Kind: appwire.EntryReceipt, At: at, Text: "Decided · " + who + " · " + at.Format("15:04"),
+		ID: "r" + ask.ID, Agent: ask.Agent, Kind: appwire.EntryReceipt, At: at, Text: text,
 	}})
 }
 

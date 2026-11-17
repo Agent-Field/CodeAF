@@ -63,6 +63,7 @@ func (b *appBackend) foremanOpened(ctx context.Context, p appwire.FactoryRef, do
 	gate := &b.local.foreman
 	gate.Lock()
 	defer gate.Unlock()
+	away := foremanSweep(host.floor, host.profile)
 	before, _ := host.floor.Foreman()
 	transcript, err := door(host.floor, host.workspace, host.profile, foremanLoad(host))(ctx)
 	// THE REPLACEMENT IS DECIDED HERE, ONCE THE DOOR IS DONE, WHETHER IT FAILED
@@ -76,14 +77,16 @@ func (b *appBackend) foremanOpened(ctx context.Context, p appwire.FactoryRef, do
 	// store that failed then told nobody of a real replacement. A door that
 	// failed may have failed after the store named the new one, so only then
 	// is the store asked.
-	after := transcript
-	if err != nil {
-		after, _ = host.floor.Foreman()
+	after, replaced := foremanReplaced(host.floor, before, transcript, err)
+	if replaced {
+		away = append(away, before)
 	}
-	if before != "" && after != "" && !sameSessionFile(before, after) {
+	if len(away) > 0 && after != "" {
 		defer func() {
-			b.sayForemanChanged(p.Factory, appAgentID(after), before)
-			guard.Go("app/factory foreman put away", func() { b.putAwayForeman(before) })
+			for _, old := range away {
+				b.sayForemanChanged(p.Factory, appAgentID(after), old)
+			}
+			b.putAwayForemen(away)
 		}()
 	}
 	if err != nil {
@@ -159,14 +162,7 @@ func foremanLoad(host *appFactoryHost) func() (factory.Snapshot, error) {
 // what it writes is the person's chats, never the floor.
 func (b *appBackend) settleForeman(host *appFactoryHost) {
 	host.chore("app/factory foreman settle", func() {
-		away := b.settleForemanNow(host)
-		if len(away) > 0 {
-			guard.Go("app/factory foreman put away", func() {
-				for _, old := range away {
-					b.putAwayForeman(old)
-				}
-			})
-		}
+		b.putAwayForemen(b.settleForemanNow(host))
 	})
 }
 
@@ -185,16 +181,46 @@ func (b *appBackend) settleForemanNow(host *appFactoryHost) (away []string) {
 	if _, err := os.Stat(chat); err != nil {
 		return away
 	}
+	current := chat
 	if foremanFolderRefusal(host.floor, chat) == nil {
 		_ = markFactoryForeman(host.floor, chat)
 		b.ownForeman(chat)
-		return away
+	} else {
+		made, err := foremanMint(host.floor, host.workspace, host.profile, foremanLoad(host))
+		if after, ok := foremanReplaced(host.floor, chat, made, err); ok {
+			away = append(away, chat)
+			current = after
+		}
 	}
-	if made, err := foremanMint(host.floor, host.workspace, host.profile, foremanLoad(host)); err == nil {
-		away = append(away, chat)
-		b.sayForemanChanged(appLocalID, appAgentID(made), chat)
+	for _, old := range away {
+		b.sayForemanChanged(appLocalID, appAgentID(current), old)
 	}
 	return away
+}
+
+// foremanReplaced reports which conversation the store names as the foreman
+// once a door or making has run, and whether it replaced before. A call that
+// answered names the foreman itself; one that failed may have failed after
+// the store already named the new one, so only then is the store asked.
+func foremanReplaced(st *store.Store, before, answered string, err error) (after string, replaced bool) {
+	after = answered
+	if err != nil {
+		after, _ = st.Foreman()
+	}
+	return after, before != "" && after != "" && !sameSessionFile(before, after)
+}
+
+// putAwayForemen stops and archives replaced foremen on a goroutine of their
+// own, so the call or start that replaced them never waits on a turn's graces.
+func (b *appBackend) putAwayForemen(away []string) {
+	if len(away) == 0 {
+		return
+	}
+	guard.Go("app/factory foreman put away", func() {
+		for _, old := range away {
+			b.putAwayForeman(old)
+		}
+	})
 }
 
 // ownForeman tells the app a conversation it already knows is the factory's,

@@ -91,7 +91,7 @@ func TestAWorkstreamsConversationHasNoAutomationVerbAndIsToldWhereItsWorkGoes(t 
 	if held() {
 		t.Fatal("a conversation that joined a workstream kept the automation verb")
 	}
-	for _, words := range []string{"THIS CONVERSATION BELONGS TO A WORKSTREAM", "only when a person adds it there", "People and rules › Keeps running"} {
+	for _, words := range []string{"THIS CONVERSATION BELONGS TO A WORKSTREAM", "only when a person adds it there", "keeps no earlier versions", "People and rules › Keeps running"} {
 		if !strings.Contains(page, words) {
 			t.Fatalf("the page does not say %q", words)
 		}

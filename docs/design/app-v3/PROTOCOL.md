@@ -799,7 +799,12 @@ source?}`; `kind` is `folder`, `document`, `canvas`, `upload`, `link`, `repo` or
 `shortcut`. A file POINTS at what it holds: a document is a page of the workstream
 (`page_id`; its words are the page's live document, its versions the page's), a canvas
 an organization canvas made inside it (`canvas_id`), an upload bytes in the server's blob
-store, a shortcut a file in another workstream (`target`), copied nowhere.
+store, a shortcut a file in another workstream (`target`), copied nowhere. A shortcut to
+a Library page is a `link` whose `url` is the page's own address,
+`codeaf://library/<page>` (Copy Link on the page); the desk draws it as "From the Library"
+and opens the page in the Library, and the Personal store accepts that one non-web
+address for a link. Files never mentions `versions` to a person and never offers a
+restore: the desk asks before a delete instead (final spec, Files and the Library).
 `factory.org_workstream_files {id, query?, deleted?}` `GET .../files` answers `{files,
 deleted?, from?}`: the live files, Recently deleted when `deleted`, and `from {id, name,
 files}`, the parent workstream's files, read-only, when the caller can see it. `query`
@@ -1012,7 +1017,10 @@ Factory task's first overlay) takes any of `title`, `request`, `owner` (hand on)
 `waiting_on` (same workstream, never itself, never a circle: 422), `due`, `group`
 (null clears), `state`, `state_reason`, `results`, `check`, `ask` (null clears) and
 `move_to` (another workstream, edit on both; the thread moves with it). Only the owner
-ticks a person task (`state` `done`). The tick starts nothing: an Afi or chat task that
+ticks a person task (`state` `done`). Stopping (`state` `stopped`) and `move_to` are the
+task owner's or whoever looks after the workstream's (its steward, or full access);
+anyone else gets 403 "only the task's owner or whoever looks after this workstream can
+stop or move it". The tick starts nothing: an Afi or chat task that
 waited only on it stays `up_next`, unchanged, and its thread gains "Ready to start: <title>
 is done"; `running` is set only by whoever wakes the doer. Send back is `state`
 `up_next` on a `done` task by someone other than its owner, or with a `state_reason`:
@@ -2287,6 +2295,7 @@ saved model. Provider health is transient and is not saved in setup. hello says
 |---|---|---|
 | `inbox.answer` | `{id, option, scope, text, why}` | `UndoUntilResult` |
 | `inbox.back` | `in.IDParams` | `Empty` |
+| `inbox.dismiss` | `in.IDParams` | `Empty` |
 | `inbox.later` | `in.IDParams` | `Empty` |
 | `inbox.list` | `{list, query}` | `ItemsCountsResult` |
 | `inbox.open` | `in.IDParams` | `AgentTaskResult` |
@@ -3357,7 +3366,9 @@ answered, on a best effort, and is no longer the factory's: it reads
 `factory_owned: false`, as one of the person's own chats in Archived, titled
 "Factory manager (earlier)" when its title was still the manager's own.
 
-Whenever the engine replaces the manager (here, or by `factory.foreman_fresh`)
+Whenever the engine replaces the manager (here, by `factory.foreman_fresh`, or
+when a start or open finishes retiring an earlier manager left behind by an
+interrupted replacement)
 it sends the event `factory.foreman_changed {factory, agent, replaced}`:
 `agent` is the manager now and `replaced` the conversation that no longer is.
 A window showing `replaced` swaps it for `agent`; without the event a tab the
