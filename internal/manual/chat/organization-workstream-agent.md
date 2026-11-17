@@ -49,9 +49,9 @@ Everything goes through the same rules a person's app uses, with the rights of t
 
 A page or document Afi makes is shown in Files as made by Afi for the person who asked; the page's last change is in that person's name, not the steward's. The organization's activity names that person too.
 
-## Afi changed my page — suggestions on the server, History, nothing lost
+## Afi changed my page — suggestions on the server, nothing lost
 
-Afi rewrites a page directly only when Afi made it and no person has edited it; the words before are kept in the page's History first. Any other page, and any page somebody has open for editing, gets Afi's text as a suggestion: a new version in the page's History marked Kept · not applied, which changes nothing until someone opens History and presses Restore this version (next sections). Afi says so, naming the version.
+Afi rewrites a page directly only when Afi made it and no person has edited it. Any other page, and any page somebody has open for editing, gets Afi's text as a suggestion: it changes nothing in the page and waits for someone who can edit the page to take it. Afi says so in its reply, by the page's name, and never talks about versions or history. The document's header says the same thing to everyone: "Afi suggests edits here; they wait for someone to take them".
 
 ## a new organization workstream starts with an Overview page — never empty
 
@@ -59,7 +59,7 @@ When someone makes a workstream on the organization's server and sends no pages 
 
 ## the agent's text was kept, not applied — page History, current, Kept · not applied, Restore this version
 
-When the server's agent writes to a page a person made or is editing live, its text does not go into the page. It is kept as the newest version in the page's History, and the agent says so: "your text was not applied: it was kept as version N in the page's History, marked Kept · not applied".
+When the server's agent writes to a page a person made or is editing live, its text does not go into the page. It waits as a suggestion, and the agent says so: "your text was not applied: it waits as a suggestion for someone who can edit the page to take it". Underneath, the page's History menu still lists it as a version marked Kept · not applied.
 
 History marks **current** on the version the page actually holds, which the organization's server names (`live_version` on the page's versions). That is never simply the highest number: a kept version can be newer than the page. A kept version's row reads **Kept · not applied** and is not current.
 

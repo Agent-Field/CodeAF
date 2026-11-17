@@ -825,8 +825,8 @@ func (d *agentDoor) wsFileSuggest(ctx context.Context, args json.RawMessage) (an
 	return map[string]any{"said": "Suggested the change to " + strconv.Quote(page.Title) + "; nothing in it was applied: " + keptWords(n) + "."}, nil
 }
 
-// keepSuggestion keeps text as a version of page that is not applied: anyone
-// who can edit the document reads it in History and restores it to accept.
+// keepSuggestion keeps text as a version of page that is not applied, which
+// anyone who can edit the document may take.
 // It answers the version's number.
 func (d *agentDoor) keepSuggestion(ctx context.Context, ws factory.OrgWorkstream, page factory.WorkstreamPage, text, why string) (int, error) {
 	h := d.h
@@ -837,8 +837,16 @@ func (d *agentDoor) keepSuggestion(ctx context.Context, ws factory.OrgWorkstream
 	if ws.ArchivedAt != nil {
 		return 0, errWorkstreamArchived
 	}
+	// The agent read the page's mirror, which holds the words of the version
+	// the page holds now (keepVersion writes both): that version is what its
+	// text changed, the base a Restore merges from (L1 D15).
+	list, err := h.config.Store.PageVersions(ws.ID, page.ID)
+	if err != nil {
+		return 0, err
+	}
 	stamp := h.clock().UTC().Format(time.RFC3339Nano)
-	saved, added, err := h.config.Store.AddPageVersion(ws.ID, page.ID, store.PageVersion{At: stamp, By: v.Handle, Title: page.Title, BodyMD: text, Reason: versionReasonKept})
+	saved, added, err := h.config.Store.AddPageVersion(ws.ID, page.ID, store.PageVersion{At: stamp, By: v.Handle, Title: page.Title, BodyMD: text,
+		Reason: versionReasonKept, BasedOn: versionsWire(list).LiveVersion})
 	if err != nil {
 		return 0, err
 	}
@@ -850,11 +858,14 @@ func (d *agentDoor) keepSuggestion(ctx context.Context, ws factory.OrgWorkstream
 }
 
 // keptWords is what the agent is told when its text was kept, not applied.
-// These words are the desk's: History marks the version "Kept · not
-// applied" and offers Restore this version on it (versionsWire says so).
-func keptWords(version int) string {
-	return "it was kept as version " + strconv.Itoa(version) + " in the page's History, marked Kept · not applied; " +
-		"anyone who can edit the page opens History, chooses that version and presses Restore this version to apply it"
+// NOTHING IN FILES MENTIONS VERSIONS (final spec, "No version history in this
+// release"), and the agent must not claim the workstream keeps history: a
+// model repeats what its tool answers. So the words say what the person sees
+// and does, the same on Personal and on an organization, and never the
+// version's number, History or restoring, though the server still keeps the
+// text as a version underneath.
+func keptWords(int) string {
+	return "it waits as a suggestion for someone who can edit the page to take it"
 }
 
 func cutRunes(s string, most int) string {

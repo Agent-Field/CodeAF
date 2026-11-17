@@ -775,7 +775,12 @@ the PAGE's `rev` (every page carries one), `factory.org_workstream_page_delete {
 `idle` or `manual`; the same words twice answer the version already kept) and
 `factory.org_workstream_page_restore {id, page, version}`, which keeps the old words as
 a new version by the caller and answers them so the caller's editor applies them to the
-live document. `factory.org_workstream_plan_get {id}` answers `{plan, rev}` (`null` and
+live document. A version the agent kept (`reason` `agent`, `kept` true) carries
+`based_on`, the version whose words the agent read and changed (0 when unknown, as on
+every version kept before it existed); a client restoring it reads `based_on`'s words
+and merges the change from them to the kept words onto the live document, three ways,
+so nothing typed since the agent read the page is dropped, and says so in plain words
+and keeps both texts where the two changes collide. `factory.org_workstream_plan_get {id}` answers `{plan, rev}` (`null` and
 `0` before the first) and `factory.org_workstream_plan_set {id, rev, plan}` replaces it
 (`rev` 0 for the first). `factory.org_workstream_wakes {id}`, `_wake_add {id, wake}` and
 `_wake_update {id, wake_id, rev, wake}`, and the same three for suggestions
