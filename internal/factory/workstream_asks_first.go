@@ -48,8 +48,7 @@ var outward = []struct {
 // AsksFirst is the step that will make t's agent ask its owner before it goes
 // on ("posting", "sending" …), or "" when it will not: the rule is off, a
 // person or the factory does it (the factory keeps its own approvals), it is
-// finished, or nothing in its title, request or deliverable leaves the
-// workstream.
+// finished, or nothing in its title or request leaves the workstream.
 func AsksFirst(t WorkstreamTask, r WorkstreamRules) string {
 	if r.PublishesWithoutAsking {
 		return ""
@@ -65,14 +64,14 @@ func AsksFirst(t WorkstreamTask, r WorkstreamRules) string {
 	if _, job := IsJobTask(t.ID); job {
 		return ""
 	}
-	texts := []string{t.Title, t.Request}
-	if t.Brief != nil {
-		texts = append(texts, t.Brief.Deliverable)
-	}
+	// The title and the request say what this task DOES; a deliverable says
+	// what it makes, and "ready to post to #announcements" is the next task's
+	// step, not this one's (live L7 run: the Discord draft was predicted to
+	// ask). A step written as someone else's is read out the same way.
 	for _, o := range outward {
-		for _, s := range texts {
+		for _, s := range []string{t.Title, t.Request} {
 			for _, sentence := range splitSentences(s) {
-				if o.re.MatchString(sentence) {
+				if o.re.MatchString(laterStep.ReplaceAllString(sentence, " ")) {
 					return o.act
 				}
 			}
@@ -80,6 +79,10 @@ func AsksFirst(t WorkstreamTask, r WorkstreamRules) string {
 	}
 	return ""
 }
+
+// laterStep is a step written as someone else's, later: "ready to post",
+// "for you to send", "to be published".
+var laterStep = regexp.MustCompile(`(?i)\b(ready|able|you|someone|owner|them|person)\s+to\s+\w+|\bto\s+be\s+\w+`)
 
 // splitSentences cuts s at sentence ends, so "Write it. Post it to Discord"
 // reads its second sentence's first word as a first word.

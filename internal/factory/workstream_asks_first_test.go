@@ -27,11 +27,21 @@ func TestAPlanSaysWhichTasksWillAskFirst(t *testing.T) {
 		{"Support reply macro for the recipe import fix", "A macro agents paste into replies.", ""},
 		{"Write a blog post about 2.4", "", ""},
 		{"App Store and Play Store What's new text", "", ""},
+		// The live L7 run: a draft whose request names the channel it is for
+		// is not the post, and neither is one made "ready to post".
+		{"Draft Discord announcement of Pantry 2.4", "Draft a short Discord announcement of Pantry 2.4 from the release notes, for the #announcements channel.", ""},
+		{"Write the announcement", "Make it ready to post to Discord. Leave it for someone to send to the list.", ""},
+		{"Post Pantry 2.4 announcement to Discord #announcements", "Post the drafted announcement.", "posting"},
 	} {
 		task := WorkstreamTask{Title: c.title, Request: c.request, DoneBy: afi, State: TaskUpNext}
 		if got := AsksFirst(task, on); got != c.want {
 			t.Errorf("%q / %q asks first %q, want %q", c.title, c.request, got, c.want)
 		}
+	}
+	draft := WorkstreamTask{Title: "Draft Discord announcement of Pantry 2.4", DoneBy: afi, State: TaskUpNext,
+		Brief: &TaskBrief{Deliverable: "Announcement text as a document in Files, ready to post to Discord #announcements."}}
+	if got := AsksFirst(draft, on); got != "" {
+		t.Errorf("a draft whose deliverable is ready to post asks first %q (live L7 run)", got)
 	}
 	post := WorkstreamTask{Title: "Post the notes to Discord", DoneBy: afi, State: TaskUpNext}
 	off := on
