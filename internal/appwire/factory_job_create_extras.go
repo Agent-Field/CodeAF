@@ -2,7 +2,6 @@ package appwire
 
 import (
 	"regexp"
-	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -32,8 +31,12 @@ func checkCreateExtras(p *FactoryJobCreateParams) error {
 		}
 		*value = strings.TrimSpace(*value)
 	}
-	if p.Budget != nil && !slices.Contains(FactoryBudgetSteps, *p.Budget) {
-		return Errorf(CodeBadParams, "budget must be one of %v US dollars", FactoryBudgetSteps)
+	if p.Budget != nil {
+		budget, err := factory.CheckJobBudget(*p.Budget)
+		if err != nil {
+			return Errorf(CodeBadParams, "%s", err.Error())
+		}
+		*p.Budget = budget
 	}
 	if p.Key != "" && (len(p.Key) > MaxFactoryJobKey || !factoryJobKey.MatchString(p.Key)) {
 		return Errorf(CodeBadParams, "key must be 1–%d characters from [A-Za-z0-9._:-]", MaxFactoryJobKey)

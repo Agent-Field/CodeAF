@@ -1347,7 +1347,7 @@ and details:
 | --- | --- |
 | `open_issue` | Boolean, default false: create a job without opening an issue. True opens one GitHub issue using only the title and details, then ties the job to its number. |
 | `group`, `milestone` | Opaque labels, trimmed, at most 200 characters each, with no control characters. Omitted or empty means none; labels stay outside the description and appear on job and queue reads. |
-| `budget` | Initial USD limit: 5, 10, 20 or 30. Recorded before starting and kept on an immediate or later start. Omission keeps the usual pipeline/Factory default ($5 when neither sets one). |
+| `budget` | Initial USD limit: any amount from $1 up, to the cent ($5, $10, $20 and $30 are the suggested presets); less is refused with "A job's budget is at least $1." Recorded before starting and kept on an immediate or later start. Omission keeps the usual pipeline/Factory default ($5 when neither sets one). |
 | `key` | Retry key: 1–128 characters from `[A-Za-z0-9._:-]`, sent as the create's `Idempotency-Key` header, only to a Factory that lists `keyed_create` (next section). Omitted or `key: ""` sends no header. |
 
 `factory.capabilities` flags are `create_issue`, `create_group` (both labels),
@@ -1505,6 +1505,24 @@ cost at most $0.03, and the kept versions plus one more at that cost must fit
 within 5% of the job's actual spend. Correcting a duplicate charge can therefore
 hold back an automatic write sooner. A requested retry still bypasses this guard.
 
+## Setting a job's budget to any amount — custom budget, $1 minimum, not only $5 $10 $20 $30
+
+A Factory job's budget can be any amount from $1 up, to the cent: $2, $7.50
+and $45 are all budgets. $5, $10, $20 and $30 are only the suggested presets.
+`factory.job_set_budget` (and `budget` on `factory.job_create`) takes the
+amount in US dollars and rounds it to whole cents. Less than $1, zero, a
+negative amount or one that is not a number is refused with "A job's budget is
+at least $1." and nothing changes.
+
+In the desktop each Budget menu (the sidebar value, the Spend fact in the
+job's header and Actions) lists the presets and **Other…**, which opens one
+field for the amount; an amount under $1 is refused under the field before
+anything is sent.
+
+A budget is still never set below what the job has already spent: that is
+refused with the job total, whatever the amount. Finished and dropped jobs
+refuse budget changes.
+
 ## budget reached — yes, raise the cap, next budget and stop
 
 When a job reaches its budget across all its runs, the question names its
@@ -1523,15 +1541,16 @@ so a raise can continue them. Approved publication and merge writes can finish
 at the cap because they make no model calls; a new paid pipeline step still
 requires budget. Stop remains available during publication and merge.
 
-The next budget is the smallest of $5, $10, $20 or $30 strictly above recorded
+The next budget offered is the smallest of $5, $10, $20 or $30 strictly above recorded
 spending. If the job has spent $5.25, the next budget is $10 even when the old cap
 was $0.01. Once spending reaches $30, double the current cap, repeatedly if
 needed, until it is above spend. A $30 cap with $31 spent offers $60.
 Saved questions on older jobs can keep their old words, but yes now
 uses this same rule.
 
-The raise button accepts $5, $10, $20, $30 or exactly the job's next budget.
-Other amounts are refused. A raise in Auto or Manual must exceed the job total
+The raise accepts any amount from $1 up, to the cent, not only the $5, $10,
+$20 and $30 presets or the job's next budget: a $2 or $7.50 budget is fine.
+Less than $1 is refused with "A job's budget is at least $1." A raise in Auto or Manual must exceed the job total
 to resume work. A budget at or below that total keeps work held and names the
 total and budget in the question or refusal. No automatic decision raises it;
 your yes or continue chooses the next budget. Stop keeps recorded spend and work.

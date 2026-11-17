@@ -126,8 +126,9 @@ func TestCreateExtrasRefuseBeforeActor(t *testing.T) {
 		{"group control", "group", "control", "batch\x00"},
 		{"milestone length", "milestone", "200", strings.Repeat("m", 201)},
 		{"milestone control", "milestone", "control", "release\nname"},
-		{"budget", "budget", "5 10 20 30", 7},
-		{"zero budget", "budget", "5 10 20 30", 0},
+		{"budget under a dollar", "budget", "$1", 0.99},
+		{"zero budget", "budget", "$1", 0},
+		{"negative budget", "budget", "$1", -5},
 		{"key alphabet", "key", "128", "a b"},
 		{"key length", "key", "128", strings.Repeat("k", 129)},
 	}

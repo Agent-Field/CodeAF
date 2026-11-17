@@ -3,7 +3,6 @@ package appwire
 import (
 	"context"
 	"encoding/json"
-	"math"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -66,8 +65,10 @@ type FactoryPipelineStarter interface {
 // old expect on an active job or its current running step.
 const FeatureFactoryStopAnyVersion = "factory.stop_any_version"
 
-// FactoryBudgetSteps are the standard limits factory.job_set_budget accepts,
-// in US dollars. Larger amounts must equal the job's next cap. The job owner can choose either direction, never below recorded spending.
+// FactoryBudgetSteps are the suggested limits a budget picker offers, in US
+// dollars. factory.job_set_budget and factory.job_create accept any amount from
+// factory.MinJobBudget up, to the cent; the job owner can choose either
+// direction, never below recorded spending.
 var FactoryBudgetSteps = factory.JobBudgetSteps()
 
 // The priorities factory.job_set_priority takes, as the factory spells them.
@@ -162,8 +163,8 @@ type FactoryJobPriorityParams struct {
 	Expect   *api.Expect `json:"expect"`
 }
 
-// FactoryJobBudgetParams changes a job's limit to one of [FactoryBudgetSteps]
-// or its next cap above those steps, as validated by the factory.
+// FactoryJobBudgetParams changes a job's limit to any amount from
+// factory.MinJobBudget ($1) up, to the cent; [FactoryBudgetSteps] are suggestions.
 // An increase above spend resumes a cap wait; a smaller increase keeps the
 // question. A decrease below recorded spending is refused.
 type FactoryJobBudgetParams struct {
@@ -280,7 +281,8 @@ type FactoryJobCreateParams struct {
 	Group string `json:"group,omitempty"`
 	// Milestone is a second label with the same bounds as Group.
 	Milestone string `json:"milestone,omitempty"`
-	// Budget sets the job's initial cap to one of FactoryBudgetSteps.
+	// Budget sets the job's initial cap: any amount from factory.MinJobBudget
+	// ($1) up, to the cent; FactoryBudgetSteps are suggestions.
 	Budget *float64 `json:"budget,omitempty"`
 	// Key is carried as Idempotency-Key on this create request alone.
 	Key string `json:"key,omitempty"`
@@ -586,17 +588,14 @@ func prepBudget(p *FactoryJobBudgetParams) error {
 	if err := checkJob(&p.Factory, p.Job, p.Expect); err != nil {
 		return err
 	}
-	// The factory validates larger amounts against the job's current next cap.
-	if p.Budget > FactoryBudgetSteps[len(FactoryBudgetSteps)-1] {
-		return nil
+	// Any amount from factory.MinJobBudget up, to the cent; the factory still
+	// refuses one below the job's recorded spending.
+	budget, err := factory.CheckJobBudget(p.Budget)
+	if err != nil {
+		return Errorf(CodeBadParams, "%s", err.Error())
 	}
-	for _, step := range FactoryBudgetSteps {
-		if math.Abs(p.Budget-step) < 1e-9 {
-			p.Budget = step
-			return nil
-		}
-	}
-	return Errorf(CodeBadParams, "budget must be 5, 10, 20, 30 US dollars or the job's next cap")
+	p.Budget = budget
+	return nil
 }
 
 func prepApprove(p *FactoryJobApproveParams) error {
