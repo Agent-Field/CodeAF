@@ -86,8 +86,10 @@ func TestTwoPeopleOverTheWireMeetE1sAcceptance(t *testing.T) {
 			row = &list.Workstreams[i]
 		}
 	}
-	if row == nil || row.Name != "Salary bands" || row.MyRole != "" || !row.Private {
-		t.Fatalf("the operator's row = %+v", row)
+	// OWNER-DECISIONS §8: the operator sees totals only, so a private workstream is
+	// not a row on their list at all, not even its name.
+	if row != nil {
+		t.Fatalf("the operator was told a private workstream exists: %+v", row)
 	}
 	if got := call("owner", "GET", "/v1/workstreams/"+private.ID, -1, nil, nil); got != 404 {
 		t.Fatalf("the operator reads a private workstream: %d, want 404", got)

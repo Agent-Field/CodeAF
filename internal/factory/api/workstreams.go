@@ -77,13 +77,16 @@ type WorkstreamSummary struct {
 	SharedWith []string        `json:"shared_with"`
 	Shares     []Share         `json:"shares"`
 	Private    bool            `json:"private"`
-	MyRole     string          `json:"my_role"`
-	NeedsYou   int             `json:"needs_you"`
-	Merged     int             `json:"merged"`
-	Total      int             `json:"total"`
-	UpdatedAt  string          `json:"updated_at"`
-	ArchivedAt string          `json:"archived_at,omitempty"`
-	Rev        int             `json:"rev"`
+	// Space is true for a person's own space (MySpace): it is never one of
+	// the workstreams a list shows.
+	Space      bool   `json:"space,omitempty"`
+	MyRole     string `json:"my_role"`
+	NeedsYou   int    `json:"needs_you"`
+	Merged     int    `json:"merged"`
+	Total      int    `json:"total"`
+	UpdatedAt  string `json:"updated_at"`
+	ArchivedAt string `json:"archived_at,omitempty"`
+	Rev        int    `json:"rev"`
 	// Parent is the workstream it sits inside, absent at the top. Steward is
 	// who looks after it, and MySteward whether that is the caller: only
 	// the steward changes its people and rules (workstream_structure.go).

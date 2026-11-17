@@ -70,6 +70,9 @@ type AgentState struct {
 // never talk to it (view only), whose screen simply has no composer.
 type WorkstreamAgent struct {
 	ID string `json:"id"`
+	// Chat is which of the person's chats this is (AgentChat.ID); empty is
+	// the workstream's one Afi conversation.
+	Chat string `json:"chat,omitempty"`
 	AgentState
 	Entries []AgentEntry `json:"entries"`
 	Seq     int          `json:"seq"`
@@ -93,6 +96,9 @@ type AgentMessageNew struct {
 	// TZ is the sender's time zone, an IANA name ("America/Toronto"), so the
 	// agent reckons today's date and deadlines where they are. Optional.
 	TZ string `json:"tz,omitempty"`
+	// Chat names one of the sender's own chats (AgentChat.ID); empty is the
+	// workstream's Afi conversation.
+	Chat string `json:"chat,omitempty"`
 }
 
 // AgentEvent is agent.entry's and agent.state's body. Person is whose
@@ -100,6 +106,7 @@ type AgentMessageNew struct {
 type AgentEvent struct {
 	ID     string      `json:"id"`
 	Person string      `json:"person,omitempty"`
+	Chat   string      `json:"chat,omitempty"`
 	Entry  *AgentEntry `json:"entry,omitempty"`
 	*AgentState
 }

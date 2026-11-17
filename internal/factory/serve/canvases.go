@@ -231,14 +231,7 @@ func (h *Handler) canvasRow(ctx context.Context, c factory.OrgCanvas, v Viewer) 
 	if err := json.Unmarshal(raw, &s); err != nil {
 		return row, err
 	}
-	row.Title, row.Seq = s.Title, s.Seq
-	if nameOnly(v, it) {
-		// The operator learns that a private canvas exists, its name and
-		// owner, never what it says or who it is shared with.
-		row.NameOnly, row.Shares, row.MyRole, row.Workstream = true, []factory.Share{}, "", ""
-		return row, nil
-	}
-	row.Summary = raw
+	row.Title, row.Seq, row.Summary = s.Title, s.Seq, raw
 	return row, nil
 }
 
@@ -265,7 +258,7 @@ func (h *Handler) listCanvases(w http.ResponseWriter, r *http.Request) {
 	updated := map[string]string{}
 	for _, c := range all {
 		it := h.canvasItem(c)
-		if !can(v, it, factory.RoleView) && !nameOnly(v, it) {
+		if !can(v, it, factory.RoleView) {
 			continue
 		}
 		row, err := h.canvasRow(r.Context(), c, v)

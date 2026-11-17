@@ -281,6 +281,10 @@ func (h *Handler) createWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if ws.Space {
+		h.fail(w, http.StatusUnprocessableEntity, errSpaceNoTasks.Error())
+		return
+	}
 	var body api.TaskCreate
 	if !h.decode(w, r, &body, false) {
 		return

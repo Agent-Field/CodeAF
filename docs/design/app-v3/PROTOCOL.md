@@ -504,7 +504,7 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.org_key_delete` | `in.OrgKeyParams` | `Empty` |
 | `factory.org_workstream_agent` | `in.OrgWorkstreamAgentParams` | `OrgWorkstreamAgent` |
 | `factory.org_workstream_agent_send` | `in.OrgWorkstreamAgentSendParams` | `OrgWorkstreamAgent` |
-| `factory.org_workstream_agent_stop` | `in.OrgWorkstreamParams` | `OrgWorkstreamAgent` |
+| `factory.org_workstream_agent_stop` | `in.OrgWorkstreamAgentStopParams` | `OrgWorkstreamAgent` |
 | `factory.org_profile` | `in.OrgConn` | `OrgProfile` |
 | `factory.org_profile_set` | `in.OrgProfileSetParams` | `OrgProfile` |
 | `factory.org_setup` | `in.OrgSetupParams` | `OrgSetupView` |
@@ -516,6 +516,11 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.org_workstream_overview_get` | `in.OrgTasksParams` | `json.RawMessage` |
 | `factory.org_workstream_task_work` | `in.OrgTaskWorkParams` | `OrgTaskWork` |
 | `factory.org_workstream_task_steer` | `in.OrgTaskSteerParams` | `OrgTaskWork` |
+| `factory.org_workstream_chats` | `in.OrgWorkstreamParams` | `{chats, others}` |
+| `factory.org_workstream_chat_new` | `in.OrgWorkstreamChatNew` | `{id, title, state, created_at, updated_at}` |
+| `factory.org_myspace` | `in.OrgConn` | `{workstream, limit_usd, spent_usd, at_limit?}` |
+| `factory.org_myspace_totals` | `in.OrgConn` | `{month, limit_usd, people}` |
+| `factory.org_myspace_limit_set` | `in.OrgMySpaceLimitParams` | `{month, limit_usd, people}` |
 | `factory.org_workstream_tasks` | `in.OrgTasksParams` | `OrgTasks` |
 | `factory.org_workstream_task` | `in.OrgTaskParams` | `json.RawMessage` |
 | `factory.org_workstream_task_create` | `in.OrgTaskCreateParams` | `json.RawMessage` |
@@ -1041,7 +1046,35 @@ on every write); a decision is added `proposed`. What a
 turn spent is posted to the workstream's spend under the asker with `chat` `agent`.
 The server's `agent.entry {id, person, entry}` and `agent.state {id, person, state, ...}`
 reach only `person`, while they can see the workstream, and are relayed as `factory.org_workstream_agent
-{connection, id, entry?, state?}`.
+{connection, id, chat?, entry?, state?}`.
+
+An engine whose hello carries `org_myspace` serves each person's own space inside an
+organization ("My space") and a person's own chats on the server. `factory.org_myspace`
+`GET /v1/myspace` answers the caller's space, made on first read: `{workstream,
+limit_usd, spent_usd, at_limit?}`, where `workstream` is a workstream with `space: true`,
+owned by the caller and private, read further with the workstream methods (files,
+canvases, agent). A space is never in `factory.org_workstreams` or the requestable list;
+it refuses tasks, shares, a new owner, a parent, a rename, archive and delete
+(`invalid`), and a workstream cannot be made inside it. `spent_usd` is what it has spent
+this calendar month (UTC); at `limit_usd` its chats answer `can_talk: false` with
+`cannot` "Paused: this month's limit for your space is reached. …". The operator's
+`factory.org_myspace_totals` `GET /v1/myspace/totals` answers `{month, limit_usd,
+people: [{person, name?, spent_usd, items, at_limit?}]}`, totals only: nothing in it
+names a space's things. `factory.org_myspace_limit_set {limit_usd}` `PUT
+/v1/myspace/limit` (operator, 0–10000; default 20) answers the totals. When the operator
+removes a person, their space goes to the heir as one private workstream named
+"<handle>'s space". `factory.org_workstream_chats {id}` `GET .../chats` lists the
+caller's own chats in a workstream (`{chats: [{id, title, state, created_at,
+updated_at}]}`, newest first) and, metadata only, everyone else's there (v2 ruling C10:
+`others: [{id, workstream, title, owner, owner_name?, state, last_activity}]`, newest
+activity first; never a line of what is said; always empty in a space). `id` is the
+`chat_id` on the tasks and files that chat made. `factory.org_workstream_chat_new {id, title?}` `POST
+.../chats` (`edit`) makes one (`ch_` and 26 letters or digits; an empty title is the
+first message's first line). `factory.org_workstream_agent`, `_send` and `_stop` take
+`chat` to read, talk in or stop one; a chat that is not the caller's is `not_found`. A
+chat, and every turn in a space, runs on the server whatever `agent_runner` says. Since
+`org_myspace`, the operator is no longer told a private workstream or canvas exists:
+the `name_only` row is gone.
 
 Starting an organization (hello `org_setup`, v2 designs J2 and J3). `factory.org_profile`
 `GET /v1/org` answers `{name, description?, set_up, by_hand?}` to anyone signed in;
@@ -1311,7 +1344,7 @@ same snapshot, op, op record, version and mark the desk reads for a Personal can
 takes `connection` and, but for the list, create and import, `id` (`cv_` and twelve
 letters or digits): `factory.org_canvases` `GET /v1/canvases` (`{canvases}`, each the
 canvas-core summary plus `owner`, `shares`, `private`, `my_role`, `seq`, `updated_by`,
-`workstream?`, or a `name_only` row of a private canvas for the operator),
+`workstream?`; a private canvas is answered to its owner alone, never to the operator),
 `factory.org_canvas_get`, `factory.org_canvas_create {title, owner?, shares?, private?,
 workstream?}` (with `workstream`, hello word `org_workstream_canvases`: the canvas belongs
 to that organization workstream and is reached the way the workstream is; it needs `edit`

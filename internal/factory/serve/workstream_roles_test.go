@@ -62,19 +62,18 @@ func TestAShareGivesItsRoleAndNoMore(t *testing.T) {
 	o.do(t, "santosh", "PUT", path+"/shares", -1, sharesPut(factory.Share{Kind: "person", ID: "abir", Role: "admin"}), 422, nil)
 }
 
-// A PRIVATE WORKSTREAM IS ITS OWNER'S ALONE: the operator's list has a row
-// with its name and nothing it says, its content is 404 to them, and its
-// events never reach them. Sharing it makes it not private.
-func TestAPrivateWorkstreamIsANameToTheOperator(t *testing.T) {
+// A PRIVATE WORKSTREAM IS ITS OWNER'S ALONE: the operator's list does not
+// carry it, not even its name (OWNER-DECISIONS §8: totals only), its content is
+// 404 to them, and its events never reach them. Sharing it makes it not private.
+func TestAPrivateWorkstreamIsHiddenFromTheOperator(t *testing.T) {
 	o := newWSOrg(t)
 	ws := o.create(t, "santosh", api.WorkstreamNew{Name: "Salary bands", Private: true, Purpose: "secret"})
 	if !ws.Private || ws.MyRole != "full" {
 		t.Fatalf("made = %+v", ws.WorkstreamSummary)
 	}
 	path := "/v1/workstreams/" + ws.ID
-	row, ok := o.summary(t, "owner", ws.ID)
-	if !ok || row.Name != "Salary bands" || !row.Private || row.MyRole != "" || row.Owner.ID != "santosh" {
-		t.Fatalf("the operator's row = %+v %v", row, ok)
+	if row, ok := o.summary(t, "owner", ws.ID); ok {
+		t.Fatalf("the operator was told a private workstream exists: %+v", row)
 	}
 	o.do(t, "owner", "GET", path, -1, nil, 404, nil)
 	o.do(t, "owner", "PUT", path+"/owner", -1, api.WorkstreamOwner{Kind: "person", ID: "owner"}, 404, nil)

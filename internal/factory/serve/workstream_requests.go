@@ -28,7 +28,7 @@ func (h *Handler) workstreamRequestRoutes() {
 // requestableBy is whether v may send a request into ws: it is open, and v
 // is in it or it is not private.
 func requestableBy(v Viewer, ws factory.OrgWorkstream) bool {
-	return ws.ArchivedAt == nil && v.Handle != "" && (v.canSee(ws) || !ws.Private)
+	return ws.ArchivedAt == nil && !ws.Space && v.Handle != "" && (v.canSee(ws) || !ws.Private)
 }
 
 // requestableWorkstreams lists every workstream the caller may send a

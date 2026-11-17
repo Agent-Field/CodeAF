@@ -159,6 +159,11 @@ const (
 // inside another.
 var ErrNestedTooDeep = errors.New("a workstream can sit inside a top-level workstream only; this one is already inside another")
 
+// ErrSpaceHoldsNoWorkstreams is a workstream asked to sit inside a person's
+// own space. My space holds pages, canvases and chats; shared work belongs in
+// a workstream of its own.
+var ErrSpaceHoldsNoWorkstreams = errors.New("My space holds no workstreams; make it a workstream of its own")
+
 // ErrHasChildren is a workstream with workstreams inside it asked to move
 // inside another.
 var ErrHasChildren = errors.New("this workstream has workstreams inside it, so it cannot move inside another")
@@ -284,6 +289,9 @@ func CheckParent(all OrgWorkstreams, id, parent string) error {
 	}
 	if p.ArchivedAt != nil {
 		return errors.New("the workstream to put it inside is archived")
+	}
+	if p.Space {
+		return ErrSpaceHoldsNoWorkstreams
 	}
 	if p.Parent != "" {
 		return ErrNestedTooDeep

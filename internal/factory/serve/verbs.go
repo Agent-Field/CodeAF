@@ -1092,7 +1092,7 @@ func (h *Handler) newJobWithoutWorkstream(r *http.Request) (string, error) {
 		return "", err
 	}
 	for _, ws := range all {
-		if ws.ArchivedAt == nil && v.canWrite(ws) {
+		if ws.ArchivedAt == nil && !ws.Space && v.canWrite(ws) {
 			return NewJobNeedsWorkstream, nil
 		}
 	}

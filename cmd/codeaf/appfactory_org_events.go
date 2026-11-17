@@ -279,7 +279,7 @@ func (h *appFactoryHub) relayAgent(id string, f *appOrgFollow, data string) bool
 	if h.orgAgent == nil {
 		return true
 	}
-	out := appwire.FactoryOrgWorkstreamAgent{Connection: id, ID: body.ID}
+	out := appwire.FactoryOrgWorkstreamAgent{Connection: id, ID: body.ID, Chat: body.Chat}
 	if e := body.Entry; e != nil {
 		out.Entry = &appwire.OrgAgentEntry{Seq: e.Seq, At: e.At, Kind: e.Kind, By: e.By, Text: e.Text, Tool: e.Tool, Failed: e.Failed, Turn: e.Turn}
 	}

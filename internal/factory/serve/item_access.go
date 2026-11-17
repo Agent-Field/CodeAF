@@ -23,8 +23,11 @@ import (
 //   - A PRIVATE ITEM IS ITS OWNER'S ALONE. Its shares, if any were ever kept,
 //     grant nothing.
 //   - THE OPERATOR VIEWS every item that is not private, and of a private item
-//     sees only that it exists ([nameOnly]): its name, owner and when it
-//     changed, never what it says. Seeing is not writing: the operator edits
+//     sees NOTHING: not its name, its owner or when it changed, because a
+//     name alone can say what the work is ("Layoff plan"). What the operator
+//     learns of private work is totals: what each person's space spent this
+//     month and how many things it holds (myspace.go, OWNER-DECISIONS §8).
+//     Seeing is not writing: the operator edits
 //     an item only through a role like anyone else. What the operator may do
 //     beyond that (purge, reassign an offboarded person's items) is checked
 //     by the route that does it, against [Viewer.Operator].
@@ -116,12 +119,6 @@ func roleOf(v Viewer, it Item) string {
 func can(v Viewer, it Item, verb string) bool {
 	need := factory.RoleRank(verb)
 	return need > 0 && factory.RoleRank(roleOf(v, it)) >= need
-}
-
-// nameOnly is whether v may see that it exists without seeing what it says:
-// the operator's row for someone else's private item.
-func nameOnly(v Viewer, it Item) bool {
-	return v.Operator && roleOf(v, it) == ""
 }
 
 // ── who hears an item's events ──

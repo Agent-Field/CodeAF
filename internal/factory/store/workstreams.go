@@ -736,3 +736,28 @@ func (st *Store) WorkstreamSpend() (map[string]float64, error) {
 	}
 	return out, rows.Err()
 }
+
+// WorkstreamSpendSince is what every workstream has spent from since on
+// (an RFC 3339 time, compared as kept: every post is written in UTC), by id;
+// one with none posted is absent. A person's space reads its month with it.
+func (st *Store) WorkstreamSpendSince(since string) (map[string]float64, error) {
+	out := map[string]float64{}
+	db, err := st.wsDB(false)
+	if err != nil || db == nil {
+		return out, err
+	}
+	rows, err := db.Query(`SELECT ws, sum(usd) FROM spend WHERE at >= ? GROUP BY ws`, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		var usd float64
+		if err := rows.Scan(&id, &usd); err != nil {
+			return nil, err
+		}
+		out[id] = usd
+	}
+	return out, rows.Err()
+}

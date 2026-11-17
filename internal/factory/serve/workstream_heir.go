@@ -68,6 +68,13 @@ func (h *Handler) handOnWorkstreams(leaving, heir, by string) (int, error) {
 			if owned && heir != "" {
 				ws.Owner = api.WorkstreamOwner{Kind: api.OwnerPerson, ID: heir}
 				given++
+				// A LEAVING PERSON'S SPACE GOES TO THE HEIR WHOLE, as one
+				// private workstream named for them: the heir keeps their own
+				// space, and this is the only door into someone else's
+				// (org-space DESIGN §2.1).
+				if ws.Space {
+					ws.Space, ws.Name = false, leaving+"'s space"
+				}
 			}
 			ws.Shares = withoutOwnerShare(slices.DeleteFunc(slices.Clone(ws.Shares), func(s factory.Share) bool {
 				return s.Kind == factory.ShareToPerson && s.ID == leaving
