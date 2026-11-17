@@ -126,6 +126,11 @@ func (b *appBackend) dismissOrderRun(ask string) error {
 	if err != nil {
 		return appwire.Errorf(appwire.CodeNotFound, "the ask %s is not open", ask)
 	}
+	// Dismissed already (a second press before the next orders poll closes the
+	// ask): nothing more to do, and the first press's mark must stay.
+	if was, ok := appOrderAnswered.Load(run); ok && was == appwire.ResolvedDismissed {
+		return nil
+	}
 	appOrderAnswered.Store(run, appwire.ResolvedDismissed)
 	if _, err := b.OrderVerdict(r.AutomationID, run, appwire.VerdictSkip); err != nil {
 		appOrderAnswered.Delete(run)
@@ -241,6 +246,11 @@ func (b *appBackend) dismissQuestion(agent, ask string) error {
 			return appEngineError(err)
 		}
 		return nil
+	}
+	// A landing's or a conflict's cards all decide the task: its "not right"
+	// is marked safe, but it refutes the task and fails what depends on it.
+	if q.Kind == session.QuestionLanding || q.Kind == session.QuestionConflict {
+		return appwire.Errorf(appwire.CodeBadParams, "every answer to this question decides the task, so dismissing it would decide it; answer it instead")
 	}
 	safe, ok := appSafeOption(q)
 	if !ok {
