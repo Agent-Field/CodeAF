@@ -1,7 +1,7 @@
 ---
 kind: changed
 title: Continuing a chat on another computer opens the transcript first and fetches files in the background
-pr: 0
+pr: 2714
 surface: [chat, engine, remote, app, docs]
 invalidates:
   - "Continuing a chat on another computer waited for every workspace file, the previous holder's release, and post-handoff filing before showing the conversation or accepting typing. Continuing now fetches and installs `.cell/` first and opens the chat with the input box active while the remaining workspace files arrive in the background (`Files arriving in the background...`)."
