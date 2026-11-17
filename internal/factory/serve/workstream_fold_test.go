@@ -1,6 +1,7 @@
 package serve
 
 import (
+	"bytes"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"testing"
@@ -73,4 +74,18 @@ func TestFoldUndoNeverOverwritesLaterWork(t *testing.T) {
 		t.Fatalf("Undo replaced later work: %+v", got)
 	}
 	o.do(t, "santosh", "GET", "/v1/workstreams/"+a.ID, -1, nil, 404, nil)
+}
+
+func TestImportBringsAnUploadLargerThanTheOrdinaryJSONBody(t *testing.T) {
+	o := newWSOrg(t)
+	data := bytes.Repeat([]byte("A"), 2<<20)
+	pkg := map[string]any{"from_local_id": "large", "name": "Files", "files": []any{map[string]any{"file": map[string]any{"id": "large-input", "kind": "upload", "name": "large.txt", "from_chat": "chat1", "made_by": map[string]any{"kind": "person", "name": "You"}}, "data": data}}}
+	var ws api.Workstream
+	o.do(t, "santosh", "POST", "/v1/workstreams/import", -1, pkg, 201, &ws)
+	var files api.WorkstreamFiles
+	o.do(t, "santosh", "GET", "/v1/workstreams/"+ws.ID+"/files", -1, nil, 200, &files)
+	file := fileNamed(t, files.Files, "large.txt")
+	if file.Upload.Size != int64(len(data)) || file.FromChat != "chat1" {
+		t.Fatalf("imported file = %+v", file)
+	}
 }

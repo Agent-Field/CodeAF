@@ -404,7 +404,7 @@ func (h *Handler) importWorkstream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body api.WorkstreamPackage
-	if !h.decode(w, r, &body, false) {
+	if !h.readFileJSON(w, r, &body) {
 		return
 	}
 	v, err := h.wsViewer(r)

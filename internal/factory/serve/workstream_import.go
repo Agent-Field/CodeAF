@@ -29,7 +29,7 @@ func (h *Handler) importWorkstreamContents(w http.ResponseWriter, ws factory.Org
 		}
 		if f.Kind == factory.FileUpload {
 			if len(item.Data) > uploadMost {
-				h.fail(w, 422, "an upload may be at most 25 MiB")
+				h.fail(w, http.StatusRequestEntityTooLarge, errUploadTooBig.Error())
 				return false
 			}
 			sha, err := h.config.Store.PutBlob(item.Data)
