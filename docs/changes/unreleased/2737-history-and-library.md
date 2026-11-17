@@ -1,7 +1,7 @@
 ---
 kind: changed
 title: Documents keep History in plain words, and Add to Library never waits on learning
-pr: 0
+pr: 2737
 surface: [engine, app, chat, docs]
 invalidates:
   - "The manual and a workstream conversation's page said Files keeps no version history and Afi must never offer an earlier copy. Documents and canvases keep History with Restore, in Personal and organization workstreams (owner decision 4, 2026-11-17). ws_file_read on an organization's document now lists earlier_copies (when, and who by name), absent when there are none, and the agent may mention an earlier copy only when it lists one, never by number or id."

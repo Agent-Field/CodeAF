@@ -81,6 +81,12 @@ func TestTheWorkstreamToolsTeachTheirRules(t *testing.T) {
 			t.Errorf("%s does not say %q", tool, rule)
 		}
 	}
+	// Owner decision 4 (E3 F6, "(version 2)"): an earlier copy only when History has one, never a number.
+	for _, rule := range []string{"Say an earlier copy exists only when earlier_copies lists one", "never say it to anyone"} {
+		if !strings.Contains(describe[WSFileReadTool], rule) {
+			t.Errorf("ws_file_read does not say %q", rule)
+		}
+	}
 	if !strings.Contains(describe[WSTaskCreateTool], "never the private conversation") {
 		t.Error("ws_task_create does not forbid copying the private conversation into a request")
 	}
