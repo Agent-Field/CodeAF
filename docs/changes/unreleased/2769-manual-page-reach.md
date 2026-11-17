@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Manual page-name searches reach task execution and workstream tasks
-pr: 2768
+pr: 2769
 surface: [chat, docs]
 invalidates:
   - Searches for how tasks run and organization workstream tasks missed their pages; both now reach them.
