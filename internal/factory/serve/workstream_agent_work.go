@@ -214,10 +214,11 @@ func taskBrief(t factory.WorkstreamTask) map[string]any {
 	return o
 }
 
-// agentDoes is whether the agent may change t: work an agent does (Afi or a
-// chat). A person's task and a Factory job are commented on, never changed.
+// agentDoes is whether the agent may change t: work an agent does (Afi, a
+// chat's agent, a named agent or crew). A person's task and a Factory job are
+// commented on, never changed.
 func agentDoes(t factory.WorkstreamTask) bool {
-	return t.DoneBy.Kind == factory.TaskByAfi || t.DoneBy.Kind == factory.TaskByChat
+	return factory.AgentDoes(t)
 }
 
 func (d *agentDoor) tasks(ctx context.Context) ([]factory.WorkstreamTask, error) {

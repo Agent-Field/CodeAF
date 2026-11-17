@@ -3,6 +3,7 @@ package factory
 import (
 	"encoding/json"
 	"errors"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -338,5 +339,64 @@ func TestReopeningATaskMakesADoneDependantWaitAgainAndWhatRestsOnIt(t *testing.T
 	}
 	if len(got) != 2 || got["notes"] != fix.Title || got["post"] != notes.Title {
 		t.Fatalf("waits again %v, want notes on the fix and post on the notes", got)
+	}
+}
+
+// CHANGE WHO DOES IT (org-space DESIGN §4.5): the owner or whoever looks
+// after the workstream, never a running or done task, never a Factory task.
+// Unfinished work goes back to Up next for its new doer, and the thread says
+// from whom to whom.
+func TestChangingTheDoerKeepsTheOwnerAndSaysFromWhomToWhom(t *testing.T) {
+	task := afiTask("t1", "priya")
+	task.State, task.StateReason = TaskFailed, "the key ran out"
+	copywriter := TaskDoneBy{Kind: TaskByAgent, AgentID: "ag-copy", Name: "Copywriter"}
+	all := []WorkstreamTask{task}
+	if _, err := ApplyPatch(task, TaskPatch{DoneBy: &copywriter}, TaskActor{Handle: "abir", Edit: true}, byPriya, all, taskIDs(), taskNow); err == nil {
+		t.Fatal("someone who neither owns it nor looks after the workstream changed its doer")
+	}
+	ch, err := ApplyPatch(task, TaskPatch{DoneBy: &copywriter}, TaskActor{Handle: "abir", Edit: true, Govern: true}, byPriya, all, taskIDs(), taskNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ch.Task.DoneBy != copywriter || ch.Task.Owner.ID != "priya" || ch.Task.State != TaskUpNext || ch.Task.StateReason != "" {
+		t.Fatalf("handed %+v", ch.Task)
+	}
+	if len(ch.Events) != 1 || ch.Events[0].Kind != TaskEventHanded || ch.Events[0].Text != "from Afi to Copywriter" {
+		t.Fatalf("the thread says %+v", ch.Events)
+	}
+	for _, state := range []string{TaskRunning, TaskDone} {
+		busy := afiTask("t2", "priya")
+		busy.State = state
+		if _, err := ApplyPatch(busy, TaskPatch{DoneBy: &copywriter}, TaskActor{Handle: "priya", Edit: true}, byPriya, []WorkstreamTask{busy}, taskIDs(), taskNow); err == nil {
+			t.Fatalf("a %s task changed its doer", state)
+		}
+	}
+	nameless := TaskDoneBy{Kind: TaskByAgent, Name: "Copywriter"}
+	if _, err := ApplyPatch(afiTask("t3", "priya"), TaskPatch{DoneBy: &nameless}, TaskActor{Handle: "priya", Edit: true}, byPriya, nil, taskIDs(), taskNow); err == nil {
+		t.Fatal("an agent doer with no agent_id was kept")
+	}
+}
+
+// START WAKES EVERY AGENT DOER (E2 F7): a named agent's and a chat's ready
+// tasks are named with Afi's; a person's and a Factory's never are.
+func TestStartAllNamesEveryAgentDoersReadyTask(t *testing.T) {
+	g := &TaskGroup{ID: "g", Name: "Launch", Kind: "batch"}
+	mk := func(id string, d TaskDoneBy) WorkstreamTask {
+		x := afiTask(id, "priya")
+		x.DoneBy, x.Group = d, g
+		return x
+	}
+	all := []WorkstreamTask{
+		mk("afi", TaskDoneBy{Kind: TaskByAfi}),
+		mk("agent", TaskDoneBy{Kind: TaskByAgent, AgentID: "ag", Name: "Copywriter"}),
+		mk("chat", TaskDoneBy{Kind: TaskByChat, ChatID: "c", Name: "Build"}),
+		mk("person", TaskDoneBy{Kind: TaskByPerson, ID: "lena", Name: "Lena"}),
+	}
+	var got []string
+	for _, x := range StartAll("g", all, taskNow) {
+		got = append(got, x.ID)
+	}
+	if want := []string{"afi", "agent", "chat"}; !slices.Equal(got, want) {
+		t.Fatalf("start all names %v, want %v", got, want)
 	}
 }

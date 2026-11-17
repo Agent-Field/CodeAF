@@ -74,22 +74,34 @@ func TestAStartOnTheServerWakesAfiAndOnlyThenSaysRunning(t *testing.T) {
 		}
 	}
 
-	// Start all: both Afi tasks run, the chat's stays for its chat.
+	// Start all: every agent task of the group runs, Afi's, a chat's and a named agent's.
 	g := &factory.TaskGroup{Name: "Launch", Kind: "batch"}
 	one := o.task(t, "santosh", path, api.TaskCreate{Title: "Write the post", DoneBy: afi, Group: g})
 	o.task(t, "santosh", path, api.TaskCreate{Title: "Pick the image", DoneBy: afi, Group: g})
-	chat := o.task(t, "santosh", path, api.TaskCreate{Title: "Ship the build", DoneBy: factory.TaskDoneBy{Kind: factory.TaskByChat, ChatID: "c1", Name: "Build"}, Group: g})
+	// E2 F7: a chat's task and a named agent's start with the rest, each in its
+	// own seat, from the task's brief and never the chat's conversation.
+	o.h.config.WorkstreamAgents = func(factory.OrgWorkstream) []WorkstreamAgent {
+		return []WorkstreamAgent{{ID: "ag-copy", Name: "Copywriter", Brief: "Writes launch copy."}}
+	}
+	o.task(t, "santosh", path, api.TaskCreate{Title: "Ship the build", DoneBy: factory.TaskDoneBy{Kind: factory.TaskByChat, ChatID: "c1", Name: "Build"}, Group: g})
+	copyTask := o.task(t, "santosh", path, api.TaskCreate{Title: "Write the tagline", DoneBy: factory.TaskDoneBy{Kind: factory.TaskByAgent, AgentID: "ag-copy", Name: "whatever the caller said"}, Group: g})
+	if copyTask.DoneBy.Name != "Copywriter" {
+		t.Fatalf("an agent doer keeps the list's name, not the caller's: %+v", copyTask.DoneBy)
+	}
 	var started api.WorkstreamTasks
 	o.do(t, "abir", "POST", path+"/tasks/start_all", -1, api.TasksStartAll{Group: one.Group.ID}, 200, &started)
-	if len(started.Tasks) != 2 || started.Tasks[0].State != factory.TaskRunning {
+	if len(started.Tasks) != 4 || started.Tasks[0].State != factory.TaskRunning {
 		t.Fatalf("start all started %+v", started.Tasks)
 	}
 	o.settle()
+	if turn := asked["Write the tagline"]; !strings.HasPrefix(turn.Text, "You are doing this task as Copywriter.\nWhat Copywriter is for: Writes launch copy.") {
+		t.Fatalf("the agent was asked %q", turn.Text)
+	}
+	if turn := asked["Ship the build"]; !strings.HasPrefix(turn.Text, "You are doing this task as Build.") {
+		t.Fatalf("the chat's agent was asked %q", turn.Text)
+	}
 	for _, task := range o.tasks(t, "santosh", path) {
 		want := factory.TaskDone
-		if task.ID == chat.ID {
-			want = factory.TaskUpNext
-		}
 		if task.State != want {
 			t.Fatalf("%s is %q after start all", task.Title, task.State)
 		}

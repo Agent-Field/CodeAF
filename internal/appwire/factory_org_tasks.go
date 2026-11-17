@@ -73,6 +73,17 @@ type OrgWorkSetParams struct {
 // OrgWork is the server's answer, passed through: {start_when_ready}.
 type OrgWork = json.RawMessage
 
+// FeatureOrgWorkstreamTaskDoers says who does an organization's task can be
+// changed after it is made (factory.org_workstream_task_update with
+// done_by: the owner's or whoever looks after the workstream's, never while
+// it runs), that a task may be done by a named agent or crew
+// ({"kind":"agent","agent_id","name","crew"}) from the workstream's agent
+// list, and that Start and Start all wake every agent doer, a chat's and a
+// named agent's as well as Afi's, each in the task's own run on the server.
+// A desk offers "Change who does it" on an organization only where it hears
+// this word: an older server ignores done_by and changes nothing.
+const FeatureOrgWorkstreamTaskDoers = "org_workstream_task_doers"
+
 // A REQUEST INTO ANOTHER WORKSTREAM (Workstreams final spec, flow 7): anyone
 // in the organization asks a workstream that is not private, in it or not,
 // and the request becomes a task there owned by its owner of incoming work.
@@ -272,6 +283,7 @@ func withFactoryOrgTasksFeature(hello Hello, e Engine) Hello {
 		hello = withFeature(hello, FeatureOrgWorkstreamTasks)
 		hello = withFeature(hello, FeatureOrgWorkstreamTaskStart)
 		hello = withFeature(hello, FeatureOrgTaskStarts)
+		hello = withFeature(hello, FeatureOrgWorkstreamTaskDoers)
 		hello = withFeature(hello, FeatureOrgWorkstreamRequests)
 		hello = withFeature(hello, FeatureOrgWorkstreamDecisions)
 	}

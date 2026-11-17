@@ -281,6 +281,13 @@ func (h *Handler) createWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusUnprocessableEntity, "a Factory task is its job: add the job to the workstream instead")
 		return
 	}
+	if body.DoneBy.Kind == factory.TaskByAgent {
+		d, err := h.checkDoer(ws, body.DoneBy)
+		if h.taskRefused(w, err) {
+			return
+		}
+		body.DoneBy = d
+	}
 	now := h.clock().UTC()
 	var made factory.WorkstreamTask
 	jobs, err := h.workstreamJobs(r, ws)
@@ -363,6 +370,15 @@ func (h *Handler) patchWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 	p, ok := h.decodeTaskPatch(w, r)
 	if !ok {
 		return
+	}
+	if p.DoneBy != nil {
+		// Change who does it names someone the workstream has: a person in
+		// it, or an agent on its list (workstream_task_doers.go).
+		d, err := h.checkDoer(ws, *p.DoneBy)
+		if h.taskRefused(w, err) {
+			return
+		}
+		p.DoneBy = &d
 	}
 	var target factory.OrgWorkstream
 	if p.MoveTo != "" && p.MoveTo != ws.ID {
@@ -780,11 +796,11 @@ func (h *Handler) startAllWorkstreamTasks(w http.ResponseWriter, r *http.Request
 		h.fail(w, http.StatusUnprocessableEntity, "start all names its group")
 		return
 	}
-	// Start all starts the group's ready Afi tasks the way Start starts one:
-	// Afi takes each in its own seat, and only a task Afi took says running
-	// (workstream_task_wake.go). A chat's task is left up next, because a
-	// chat wakes on its person's machine; so is one Afi cannot take, and if
-	// none could be taken the refusal says why.
+	// Start all starts every ready agent task of the group the way Start
+	// starts one (E2 F7): Afi's, a named agent's and a chat's agent's, each in
+	// its own seat, and only a task its doer took says running
+	// (workstream_task_wake.go). One its doer cannot take stays up next, and
+	// if none could be taken the refusal says why.
 	all, err := h.config.Store.WorkstreamTasks(ws.ID)
 	if h.taskRefused(w, err) {
 		return
@@ -796,9 +812,6 @@ func (h *Handler) startAllWorkstreamTasks(w http.ResponseWriter, r *http.Request
 	started := []factory.WorkstreamTask{}
 	var refused error
 	for _, ready := range factory.StartAll(body.Group, all, h.clock().UTC()) {
-		if ready.DoneBy.Kind != factory.TaskByAfi {
-			continue
-		}
 		t, err := h.startTask(r, ws, v, jobs, ready.ID)
 		if err != nil {
 			refused = err
