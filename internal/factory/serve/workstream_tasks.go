@@ -654,7 +654,7 @@ func (h *Handler) answerWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 		if limit && change.Task.State == factory.TaskRunning {
 			// Keep going: a new run on the same conversation, with a fresh
 			// allowance. A server that cannot run Afi now refuses the answer.
-			return h.startTaskRun(ws, change.Task, v.Handle, keepGoingWords(change.Task, asked, by.Name), 0, true)
+			return h.startTaskRun(ws, change.Task, v.Handle, keepGoingWords(change.Task, asked, by.Name, body.Text), 0, true)
 		}
 		return nil
 	})

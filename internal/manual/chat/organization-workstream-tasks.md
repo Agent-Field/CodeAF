@@ -263,7 +263,7 @@ On an organization's server, a task Afi runs is **paused with a question to the 
 - **Steps:** at 60 tool calls.
 - **Time:** at 15 minutes.
 
-The task moves to Waiting on someone, and its activity says "Paused: …". The owner presses **Keep going**, which starts Afi again on the same conversation with the same allowance again, or **Stop here**, which stops the task. Neither choice is recorded as a workstream decision.
+The task moves to Waiting on someone, and its activity says "Paused: …". The owner presses **Keep going**, which starts Afi again on the same conversation with the same allowance again, or **Stop here**, which stops the task. **Tell it…** starts Afi again with what you typed, so you can say how to carry on ("Only the first ten"). None of these is recorded as a workstream decision.
 
 **A model error that may pass** (the provider busy or failing, a dropped connection) is tried once more, 20 seconds later. The activity says "Afi hit a model error and tries again in 20 seconds". A second error, or one that will not pass (a refused key, say), fails the task with its reason.
 

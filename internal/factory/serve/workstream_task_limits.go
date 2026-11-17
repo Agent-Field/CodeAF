@@ -203,9 +203,14 @@ func (h *Handler) pauseTaskRun(ws factory.OrgWorkstream, taskID string, p runPau
 func isLimitAsk(ask factory.TaskAsk) bool { return strings.HasPrefix(ask.ID, limitAskPrefix) }
 
 // keepGoingWords is what Afi is told when a person answers Keep going.
-func keepGoingWords(t factory.WorkstreamTask, ask factory.TaskAsk, who string) string {
-	return firstWords(who, "The task's owner") + " said to keep going after you paused (“" + strings.TrimSpace(ask.Title) +
-		"”). Carry on from where you stopped and finish the task.\n\n" + taskWords(t)
+func keepGoingWords(t factory.WorkstreamTask, ask factory.TaskAsk, who, text string) string {
+	// An answer in their own words (Tell it…) is what Afi carries on with;
+	// dropping it would ask the same question again.
+	said := " said to keep going after you paused (“" + strings.TrimSpace(ask.Title) + "”)."
+	if text = strings.TrimSpace(text); text != "" {
+		said = " answered after you paused (“" + strings.TrimSpace(ask.Title) + "”): “" + text + "”. Do what they said."
+	}
+	return firstWords(who, "The task's owner") + said + " Carry on from where you stopped and finish the task.\n\n" + taskWords(t)
 }
 
 func firstWords(s, otherwise string) string {

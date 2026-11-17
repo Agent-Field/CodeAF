@@ -84,8 +84,16 @@ func TestARunAtItsLimitAsksTheOwnerInsteadOfOverrunningOrFailing(t *testing.T) {
 		t.Fatalf("Stop here left %+v", got)
 	}
 
-	// Past its time: an Ask.
-	paused(start("Slow"), "Afi has worked 0 minutes on this · keep going?")
+	// Past its time: an Ask. Answered in the owner's own words (Tell it…),
+	// Afi carries on with those words, not with the bare question.
+	slow := paused(start("Slow"), "Afi has worked 0 minutes on this · keep going?")
+	o.do(t, "santosh", "POST", path+"/tasks/"+slow.ID+"/answer", -1, map[string]any{"ask": slow.Ask.ID, "text": "Only the first ten"}, 200, nil)
+	waitFor(t, func() bool { return o.one(t, path, slow.ID).State == factory.TaskDone })
+	mu.Lock()
+	if got := calls["Slow"]; len(got) != 2 || !strings.Contains(got[1], "“Only the first ten”") {
+		t.Fatalf("Tell it… asked %q", got)
+	}
+	mu.Unlock()
 
 	// A model error that may pass: one more try, then done.
 	flaky := start("Flaky")
