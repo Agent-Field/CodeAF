@@ -358,12 +358,12 @@ var writeKeptToLibrary = func(b *appBackend, session string) {
 	if err != nil {
 		return
 	}
-	go func() {
+	guard.Go("app/library-keep", func() {
 		ctx, cancel := context.WithTimeout(proc.lifetime(), 10*time.Minute)
 		defer cancel()
 		_ = b.library().Write(ctx, config.APIKeyAt(b.profileDir), session)
 		b.libraryChanged()
-	}()
+	})
 }
 
 func workstreamFileSource(source string) (appwire.KnowledgeFile, bool) {
