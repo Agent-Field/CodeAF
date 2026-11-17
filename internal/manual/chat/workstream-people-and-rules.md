@@ -110,6 +110,6 @@ The toast's **Undo** returns the moved work and the chats to the original workst
 
 ## Bring along a chat's files and attachments, or move into an organization
 
-Bringing a chat into a workstream also carries files it made, files made for its tasks, and files attached as those tasks' inputs. Their task links remain on the files in the destination's Files. Folders and deleted files are not a chat's work.
+Bringing a chat into a workstream also carries its recorded outputs and message attachments, files made for its tasks, and files attached as those tasks' inputs. A chat that began outside any workstream brings these into Files too. Attachments keep their original maker. Their task links remain on the files in the destination's Files. Folders and deleted files are not a chat's work.
 
 Moving a Personal workstream into an organization carries its Files, including upload bytes, documents, canvases and task links, together with its non-Factory tasks and their threads. A Personal chat brought into an organization's workstream carries just that chat's tasks and files. The chat conversation stays private on this desk and appears in the destination's Chats. Factory jobs stay where they ran. An unreadable upload prevents the move; it is never replaced with a path the organization's server cannot open.
