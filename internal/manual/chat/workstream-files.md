@@ -30,7 +30,7 @@ The first time a workstream's Files is opened, everything it kept before is fold
 
 **New** offers Document, Canvas, Folder, Upload a File, Add a Link and Shortcut to a File Elsewhere. A new document or canvas is made in the open or selected folder and opens as a tab. A new folder appears with its name ready to type: Return keeps it, Escape removes it. Files can also be dropped onto the list from the computer; dropped on a folder, they go into it.
 
-The search box finds files by name and by what they say, in this workstream and in the parent's files it reads (those come after, read-only). A click on a column name (Name, Kind, Made by, Changed) sorts by it. Folders nest without limit and fold open in place.
+The search box finds files by name and by what they say, in this workstream and in the parent's files it reads (those come after, read-only). What a file says is a document's words and an uploaded text file's words (a CSV, a Markdown or a plain text file); on an organization's server it is also a PDF's text. A picture, and on a Personal workstream a PDF, is found by its name only. A click on a column name (Name, Kind, Made by, Changed) sorts by it. Folders nest without limit and fold open in place.
 
 ## select, open, rename, move, delete — the right-click menu and keys
 

@@ -882,20 +882,53 @@ func (d *agentDoor) wsFileSuggest(ctx context.Context, args json.RawMessage) (an
 		return nil, errPageGone
 	}
 	text := page.BodyMD
-	for _, e := range a.Edits {
+	edits := make([]suggestedEdit, 0, len(a.Edits))
+	for i, e := range a.Edits {
 		switch n := strings.Count(text, e.Find); {
 		case e.Find == "" || n == 0:
 			return nil, fmt.Errorf("%q is not in the document as it reads now; quote it exactly", cutRunes(e.Find, 80))
 		case n > 1:
 			return nil, fmt.Errorf("%q is in the document %d times; quote more of it so it is found once", cutRunes(e.Find, 80), n)
 		}
+		if e.Find == e.Replace {
+			return nil, fmt.Errorf("edit %d changes nothing: its replace is the same as its find", i+1)
+		}
 		text = strings.Replace(text, e.Find, e.Replace, 1)
+		edits = append(edits, suggestedEdit{ID: "e" + strconv.Itoa(i+1), Find: e.Find, Replace: e.Replace,
+			Why: firstNonEmpty(strings.TrimSpace(e.Why), why), State: "proposed"})
 	}
-	n, err := d.keepSuggestion(ctx, ws, page, text, why)
-	if err != nil {
+	// A SUGGESTION IS ONE THE PEOPLE IN THE WORKSTREAM CAN SEE AND DECIDE ON
+	// (live2 E3 F1). It is kept in the workstream's suggestions, the list every
+	// client draws on the document with Keep and Drop beside each edit; it was
+	// once kept as a page version nobody was shown, while the agent said it
+	// was waiting. Each edit keeps the exact words it changes, and the client
+	// finds them again on the document as it reads when someone opens it.
+	body := suggestionPart{PageID: page.ID, BaseVersion: f.Rev, Why: why, Agent: true,
+		CreatedAt: d.h.clock().UTC().Format(time.RFC3339Nano), Edits: edits}
+	if _, err := d.call(ctx, d.h.addPart(suggestionsPart), http.MethodPost, "/v1/workstreams/"+d.id+"/suggestions", nil, body, -1); err != nil {
 		return nil, err
 	}
-	return map[string]any{"said": "Suggested the change to " + strconv.Quote(page.Title) + "; nothing in it was applied: " + keptWords(n) + "."}, nil
+	return map[string]any{"said": fmt.Sprintf("Suggested %d edit(s) on %s. They show on the document for everyone in the workstream, and nothing changes until someone keeps them.", len(edits), strconv.Quote(page.Title))}, nil
+}
+
+// suggestionPart is an agent's suggestion as the workstream's suggestions
+// keep it: the desk's own object, which the server stamps with who and when.
+type suggestionPart struct {
+	PageID      string          `json:"page_id"`
+	BaseVersion int             `json:"base_version"`
+	Why         string          `json:"why"`
+	Agent       bool            `json:"agent"`
+	CreatedAt   string          `json:"created_at"`
+	Edits       []suggestedEdit `json:"edits"`
+}
+
+// suggestedEdit is one exact quote and the words that would replace it.
+type suggestedEdit struct {
+	ID      string `json:"id"`
+	Find    string `json:"find"`
+	Replace string `json:"replace"`
+	Why     string `json:"why"`
+	State   string `json:"state"`
 }
 
 // keepSuggestion keeps text as a version of page that is not applied, which

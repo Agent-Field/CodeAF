@@ -196,3 +196,57 @@ func TestServerAgentReadsAnUploadedTextFile(t *testing.T) {
 		t.Fatalf("a picture reads %v", pic)
 	}
 }
+
+// AN AGENT'S SUGGESTION IS ONE PEOPLE CAN SEE (live2 E3 F1). ws_file_suggest
+// on a person's document lands in the workstream's suggestions, where every
+// client draws it on the page with Keep and Drop, with each edit's exact
+// words; it is never kept as a page version nobody is shown, and the page's
+// words do not change until someone keeps it.
+func TestServerAgentSuggestionIsInTheWorkstreamsSuggestions(t *testing.T) {
+	o := newWSOrg(t)
+	ws := o.create(t, "santosh", api.WorkstreamNew{Name: "Pantry"})
+	var doc api.WorkstreamFile
+	o.do(t, "santosh", "POST", "/v1/workstreams/"+ws.ID+"/files", -1, api.FileNew{Kind: "document", Name: "Onboarding research", BodyMD: "Default servings to 4.\n\nAsk for allergies."}, 201, &doc)
+	d := &agentDoor{h: o.h, id: ws.ID, asker: "santosh"}
+	line, err := d.Work(context.Background(), "ws_file_suggest", json.RawMessage(`{"file":"`+doc.ID+`","base_version":`+strconv.Itoa(doc.Rev)+`,"why":"Smaller households","edits":[{"find":"servings to 4","replace":"servings to 2","why":"Most households are two"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(line, "Onboarding research") || strings.Contains(line, "version") {
+		t.Errorf("ws_file_suggest said %s", line)
+	}
+	var list struct {
+		Suggestions []struct {
+			PageID string `json:"page_id"`
+			Why    string `json:"why"`
+			Agent  bool   `json:"agent"`
+			By     string `json:"by"`
+			Edits  []struct {
+				ID, Find, Replace, Why, State string
+			} `json:"edits"`
+		} `json:"suggestions"`
+	}
+	o.do(t, "santosh", "GET", "/v1/workstreams/"+ws.ID+"/suggestions?page="+doc.PageID, -1, nil, 200, &list)
+	if len(list.Suggestions) != 1 {
+		t.Fatalf("the workstream's suggestions are %+v", list)
+	}
+	s := list.Suggestions[0]
+	if s.PageID != doc.PageID || !s.Agent || s.By != "santosh" || s.Why != "Smaller households" || len(s.Edits) != 1 {
+		t.Fatalf("the suggestion %+v", s)
+	}
+	if e := s.Edits[0]; e.ID != "e1" || e.Find != "servings to 4" || e.Replace != "servings to 2" || e.Why != "Most households are two" || e.State != "proposed" {
+		t.Fatalf("its edit %+v", e)
+	}
+	var versions api.PageVersions
+	o.do(t, "santosh", "GET", "/v1/workstreams/"+ws.ID+"/pages/"+doc.PageID+"/versions", -1, nil, 200, &versions)
+	for _, v := range versions.Versions {
+		if v.Reason == versionReasonKept {
+			t.Fatalf("the suggestion was kept as a hidden version %+v", v)
+		}
+	}
+	var after api.Workstream
+	o.do(t, "santosh", "GET", "/v1/workstreams/"+ws.ID, -1, nil, 200, &after)
+	if p := pageNamed(t, after, "Onboarding research"); !strings.Contains(p.BodyMD, "servings to 4") {
+		t.Fatalf("the suggestion changed the page: %q", p.BodyMD)
+	}
+}
