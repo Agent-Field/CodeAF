@@ -1,6 +1,8 @@
 package tui3
 
 import (
+	"path/filepath"
+	"reflect"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -48,6 +50,7 @@ func (a *app) offerSetup(r machine.Resume) {
 	if !r.Worth() {
 		return
 	}
+	a.setupOffered, a.setupOfferedFor = r, a.file
 	far, ok := a.agent.(machineDoor)
 	switch {
 	case !r.Empty() && ok:
@@ -55,6 +58,53 @@ func (a *app) offerSetup(r machine.Resume) {
 	case r.Empty():
 		a.raiseQuestion(a.arrivedShown(r))
 	}
+}
+
+// arrivedAfterFiles is the second beat of a moved chat's card: the look at this
+// computer that could only be taken once the chat's files were in. The open
+// raised its card from what the record held, which cannot say what this
+// computer lacks for the project or what is uncommitted in the folder; those
+// reach the same card here, and a look that adds nothing to the card already up
+// raises nothing.
+//
+// A look for a chat the person is not in yet waits for the window to land on
+// it ([app.takeHeldArrival]); one for a chat they have left is dropped, since
+// the agent is told the same facts at its next step (internal/preflight's
+// stash) whichever window it is in.
+func (a *app) arrivedAfterFiles(chat string, r machine.Resume) {
+	if !r.Worth() {
+		return
+	}
+	if a.file == "" || filepath.Base(session.DirOf(a.file)) != chat {
+		if a.heldArrival == nil {
+			a.heldArrival = map[string]machine.Resume{}
+		}
+		a.heldArrival[chat] = r
+		return
+	}
+	a.raiseArrival(r)
+}
+
+// raiseArrival raises the card for a look taken after the files arrived,
+// carrying the places and names the open's card already said.
+func (a *app) raiseArrival(r machine.Resume) {
+	if a.setupOfferedFor == a.file {
+		whole := a.setupOffered
+		whole.Lacks, whole.Uncommitted = r.Lacks, r.Uncommitted
+		if reflect.DeepEqual(setupFacts(whole), setupFacts(a.setupOffered)) {
+			return
+		}
+		r = whole
+	}
+	a.offerSetup(r)
+}
+
+// takeHeldArrival hands back, once, the look that finished while the window was
+// still on its way into the chat whose folder is named chat.
+func (a *app) takeHeldArrival(chat string) (machine.Resume, bool) {
+	r, ok := a.heldArrival[chat]
+	delete(a.heldArrival, chat)
+	return r, ok
 }
 
 // arrivedShown is the hero card of an arrival with nothing to set up: the

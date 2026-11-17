@@ -20,6 +20,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/dirwatch"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/preflight"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 	"github.com/Agent-Field/codeaf/internal/tui3"
@@ -57,7 +58,7 @@ func wireSync(o *tui3.Options) {
 		o.NotShared = terminalNotShared
 	}
 	moving := &takeProgress{}
-	take := takeover{c: chatContinuerAsync(s, surfaceNotices.Say, moving.report), moving: moving}
+	take := takeover{c: chatContinuerWith(s, surfaceNotices.Say, moving.report, true, continueSeams{arrived: terminalArrived(surfaceNotices)}), moving: moving}
 	if o.Takeover == nil {
 		o.Takeover = take
 	}
@@ -489,28 +490,51 @@ func (t takeover) SafeToContinue(ctx context.Context, id, current string, automa
 // chatContinuer is the terminal's continue: it stops when nothing comes
 // through for syncsetup.MoveIdleWithin, and tells onMove how far it has got.
 func chatContinuer(s *syncsetup.Sync, notify func(string), onMove func(syncsetup.MoveProgress)) *syncsetup.Continuer {
-	return chatContinuerWith(s, notify, onMove, false)
+	return chatContinuerWith(s, notify, onMove, false, continueSeams{})
 }
 
 func chatContinuerAsync(s *syncsetup.Sync, notify func(string), onMove func(syncsetup.MoveProgress)) *syncsetup.Continuer {
-	return chatContinuerWith(s, notify, onMove, true)
+	return chatContinuerWith(s, notify, onMove, true, continueSeams{})
 }
 
-func chatContinuerWith(s *syncsetup.Sync, notify func(string), onMove func(syncsetup.MoveProgress), asyncFiles bool) *syncsetup.Continuer {
+// continueSeams are the two ways a surface hears about the work a continue
+// does after the chat has opened, beyond the one desk Notify speaks to.
+type continueSeams struct {
+	// noticeAt files a sentence under the chat it is about, for a surface that
+	// holds several chats (the app). It replaces Notify.
+	noticeAt func(cell.Cell, string)
+	// arrived hears the look at this computer once the files are in, which an
+	// early open could only carry in part.
+	arrived func(cell.Cell, preflight.Resume)
+}
+
+func chatContinuerWith(s *syncsetup.Sync, notify func(string), onMove func(syncsetup.MoveProgress), asyncFiles bool, seams continueSeams) *syncsetup.Continuer {
 	return s.Continuer(cellstore.EngineFor(""), syncsetup.TakeOptions{
 		DeviceName: devname.Name(s.Home),
 		RootFor:    func(id string) string { return takeRootForAt(s.Home, id) },
 		BucketFor:  func(origin string) string { return takeCopyBucketAt(s.Home, origin) },
 		Notify:     notify,
+		NotifyAt:   seams.noticeAt,
+		OnArrived:  seams.arrived,
 		OnMove:     onMove,
 		AsyncFiles: asyncFiles,
 		IdleWithin: syncsetup.MoveIdleWithin,
 	})
 }
 
-// chatMover is chatContinuer for a move the app watches.
-func chatMover(s *syncsetup.Sync, onMove func(syncsetup.MoveProgress)) *syncsetup.Continuer {
-	return chatContinuerAsync(s, nil, onMove)
+// chatMover is chatContinuer for a move the app watches. EVERY SENTENCE THE
+// CONTINUE SAYS AFTER THE CHAT HAS OPENED goes to say, for the chat it is
+// about: the app has no one desk to put a line on, and a continuer built with
+// neither seam drops a failed after-work step without a word.
+func chatMover(s *syncsetup.Sync, onMove func(syncsetup.MoveProgress), say func(cell.Cell, string)) *syncsetup.Continuer {
+	return chatContinuerWith(s, nil, onMove, true, continueSeams{noticeAt: say})
+}
+
+// terminalArrived hands the terminal's open window the whole look at this
+// computer once a moved chat's files are in: the setup card gains what only the
+// files could show (tools this computer lacks, uncommitted work).
+func terminalArrived(desk *tui3.Notices) func(cell.Cell, preflight.Resume) {
+	return func(c cell.Cell, r preflight.Resume) { desk.Arrived(filepath.Base(c.Root), r) }
 }
 
 // ReleaseUnused leaves the installed files and kept work intact, just as closing

@@ -26,6 +26,7 @@ import (
 	internalenv "github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/knowledge"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
+	machine "github.com/Agent-Field/codeaf/internal/preflight"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/skills"
@@ -1485,6 +1486,15 @@ type app struct {
 	// LEAVING. The open's landing spends it; a shared window opens in place
 	// and spends it at once.
 	homeTakenSaid func() tea.Cmd
+	// setupOffered is the resume the setup card was last raised from, and
+	// setupOfferedFor the conversation it was raised in. A look taken after a
+	// moved chat's files arrived is compared with it, so the card is raised
+	// again only when it has something new to say ([app.arrivedAfterFiles]).
+	setupOffered    machine.Resume
+	setupOfferedFor string
+	// heldArrival is a look that finished before the window had landed in its
+	// chat, by the chat's folder name, until the landing takes it.
+	heldArrival map[string]machine.Resume
 	// homeTaking keeps a retiring session on its own continuation until arrival.
 	homeTaking string
 	// homeMoveSaid is the progress line home shows for the running continue.

@@ -61,6 +61,17 @@ type TakeOptions struct {
 	BucketFor func(origin string) string
 	// Notify hears the one sentence the vault hook says about what it left alone.
 	Notify func(string)
+	// NotifyAt is Notify for a surface that holds several chats and files each
+	// sentence under the one it is about, as the app does. It is told which chat
+	// the sentence belongs to, and Notify is not called when it is set.
+	NotifyAt func(cell.Cell, string)
+	// OnArrived hears the look at this computer that a background after-work
+	// ends with, once the files are in. A chat that opens before its files
+	// arrive carries only the part of that look that needs no files (what the
+	// other computer left out or left running); what this computer lacks and
+	// what is uncommitted in its folder are known only here. It is not called
+	// for a take the caller waited on, whose Continued.Resume is already whole.
+	OnArrived func(cell.Cell, preflight.Resume)
 	// OnMove hears how far a move has got, a few times a second while it
 	// changes.
 	OnMove func(MoveProgress)
@@ -111,6 +122,21 @@ type Continuer struct {
 	eng      cellstore.Engine
 	opt      TakeOptions
 	freeOnly bool
+}
+
+// say puts one sentence in front of the person for chat at. EVERY AFTER-WORK
+// FAILURE AND NOTICE GOES THROUGH HERE, because on dev these steps ran before
+// the chat opened and a failure refused the take, so the person saw it; they
+// now run behind the open, and a sentence with nowhere to go is a failure
+// nobody is told about. A surface that files sentences per chat takes
+// [TakeOptions.NotifyAt]; the terminal's one desk takes [TakeOptions.Notify].
+func (c *Continuer) say(at cell.Cell, line string) {
+	switch {
+	case c.opt.NotifyAt != nil:
+		c.opt.NotifyAt(at, line)
+	case c.opt.Notify != nil:
+		c.opt.Notify(line)
+	}
 }
 
 // IdleHandoffAllowed reports whether the opt-in idle handoff setting is on.
@@ -972,9 +998,7 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		}
 		if c.sync.teamsSharing() {
 			if err := (teamKeys{c.sync.profile(), c.sync.Home, c.sync.Device.ID(), nil}).rebindChat(id, taken.Cell); err != nil {
-				if c.opt.Notify != nil {
-					c.opt.Notify("This chat continued here, but its teams could not be updated yet: " + err.Error())
-				}
+				c.say(taken.Cell, "This chat continued here, but its teams could not be updated yet: "+err.Error())
 			}
 		}
 		recordStep("send_lease", "")
@@ -1187,8 +1211,8 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 			// Said in the log as well as to the person, so a record of a move can
 			// tell a kept change from one that was never found.
 			log.Printf("continue %s kept local edits as %s (%d turns) before the files arrived", id, keptID, kt)
-			if runAsync && keptID != preKept && c.opt.Notify != nil {
-				c.opt.Notify(chatlist.KeptEdits(kt, c.opt.DeviceName))
+			if runAsync && keptID != preKept {
+				c.say(taken.Cell, chatlist.KeptEdits(kt, c.opt.DeviceName))
 			}
 			return nil
 		}
@@ -1279,8 +1303,8 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 					if runWatch != nil {
 						runWatch.setFailed(plain)
 					}
-					if runAsync && c.opt.Notify != nil {
-						c.opt.Notify(plain + ", so the files here are left as they are")
+					if runAsync {
+						c.say(taken.Cell, plain+", so the files here are left as they are")
 					}
 					logPhases(fmt.Sprintf("failed reason=%q", keepErr.Error()))
 					return
@@ -1321,8 +1345,8 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 				hookDone := handoff.Trace(c.opt.OnPhase, "hooks")
 				hErr := hook(runCtx, taken.Cell)
 				hookDone()
-				if hErr != nil && c.opt.Notify != nil {
-					c.opt.Notify("This chat continued here, but part of its state could not be updated yet: " + hErr.Error())
+				if hErr != nil {
+					c.say(taken.Cell, "This chat continued here, but part of its state could not be updated yet: "+hErr.Error())
 				}
 			}
 
@@ -1331,8 +1355,8 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 			if workspacePlan != nil {
 				var rErr error
 				copies, rErr = session.RestoreTaskWorkspaceSets(runCtx, session.Place{Dir: taken.Cell.Root, Workspace: workspaceOf(taken.Cell.Root)}, c.opt.WorkspaceRoots)
-				if rErr != nil && c.opt.Notify != nil {
-					c.opt.Notify("a task's working copy could not be set up again here: " + rErr.Error())
+				if rErr != nil {
+					c.say(taken.Cell, "a task's working copy could not be set up again here: "+rErr.Error())
 				}
 			} else {
 				copies = c.restoreCopies(taken.Cell)
@@ -1343,9 +1367,7 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 			}
 			if c.sync.teamsSharing() {
 				if tErr := (teamKeys{c.sync.profile(), c.sync.Home, c.sync.Device.ID(), nil}).rebindChat(id, taken.Cell); tErr != nil {
-					if c.opt.Notify != nil {
-						c.opt.Notify("This chat continued here, but its teams could not be updated yet: " + tErr.Error())
-					}
+					c.say(taken.Cell, "This chat continued here, but its teams could not be updated yet: "+tErr.Error())
 				}
 			}
 			stashPath := filepath.Join(taken.Cell.Root, "resume.pending")
@@ -1384,6 +1406,14 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 			if arriveRootFence != nil {
 				arriveRootFence()
 				arriveRootFence = nil
+			}
+			// THE OPEN CARRIED ONLY THE PART OF THE LOOK THAT NEEDS NO FILES.
+			// What this computer lacks (tools, versions) and what is uncommitted
+			// in the folder are read from the files, so they exist only now; a
+			// surface that opened the chat on the early Resume is told the whole
+			// of it here, as dev's open, which looked after the files, said it.
+			if runAsync && c.opt.OnArrived != nil {
+				c.opt.OnArrived(taken.Cell, res)
 			}
 			logPhases("done")
 		}()
@@ -1688,17 +1718,15 @@ func plainFetchFailure(err error, relay string) string {
 func (c *Continuer) restoreCopies(at cell.Cell) []string {
 	parents, planErr := session.TaskCopyRestoreParents(session.Place{Dir: at.Root})
 	if planErr != nil {
-		if c.opt.Notify != nil {
-			c.opt.Notify("task working copies were preserved but could not be rebound here: " + planErr.Error())
-		}
+		c.say(at, "task working copies were preserved but could not be rebound here: "+planErr.Error())
 		return nil
 	}
 	restored, err := taskcopy.Carry{Cutter: session.TaskCopyCutter{Place: session.Place{Dir: at.Root}}}.RestoreWithParents(at, workspaceOf(at.Root), parents)
-	if err != nil && c.opt.Notify != nil {
-		c.opt.Notify("a task's working copy could not be set up again here: " + err.Error())
+	if err != nil {
+		c.say(at, "a task's working copy could not be set up again here: "+err.Error())
 	}
-	if adoptionErr := session.AdoptTaskWorkspaceIdentities(session.Place{Dir: at.Root}, workspaceOf(at.Root), restored); adoptionErr != nil && c.opt.Notify != nil {
-		c.opt.Notify("a restored task's workspace identity could not be rebound here: " + adoptionErr.Error())
+	if adoptionErr := session.AdoptTaskWorkspaceIdentities(session.Place{Dir: at.Root}, workspaceOf(at.Root), restored); adoptionErr != nil {
+		c.say(at, "a restored task's workspace identity could not be rebound here: "+adoptionErr.Error())
 	}
 	return restored
 }

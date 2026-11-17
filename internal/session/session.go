@@ -2981,6 +2981,11 @@ type Agent struct {
 	// [Agent.system].
 	systemAt  time.Time
 	systemOwn bool
+	// filesArriving says this agent has seen its chat's workspace files still
+	// arriving in the background, so the first request after the arrival
+	// completes re-renders the page that reads the project's own instructions
+	// from them ([Agent.followArrivedFiles]). Under mu with [Agent.system].
+	filesArriving bool
 	// tools is the belt and definitions is its wire form, built once at
 	// construction. Built-ins grow under armMu (connect.go), before the replaceable
 	// client-tool tail. Team verbs leave when their role ends (team.go).

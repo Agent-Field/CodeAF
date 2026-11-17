@@ -64,8 +64,8 @@ func appTakeWords(words string) string {
 
 // Tests stand in for the copy that acquires the chat and for opening it here.
 var (
-	appTakeSeen = func(ctx context.Context, s *syncsetup.Sync, id string, seen *directory.LeaseExpectation, onMove func(syncsetup.MoveProgress)) (syncsetup.Continued, error) {
-		return chatMover(s, onMove).TakeSeen(ctx, id, seen)
+	appTakeSeen = func(ctx context.Context, s *syncsetup.Sync, id string, seen *directory.LeaseExpectation, onMove func(syncsetup.MoveProgress), say func(cell.Cell, string)) (syncsetup.Continued, error) {
+		return chatMover(s, onMove, say).TakeSeen(ctx, id, seen)
 	}
 	appTakeOpen = func(b *appBackend, id string) (appwire.Agent, error) {
 		return b.openAgent(id, false)
@@ -191,11 +191,16 @@ func (b *appBackend) takeAgent(p appwire.TakeParams, available bool) (agent appw
 		}
 	}
 	report, stopReport := b.moveReporter(p.Cell, move)
+	// WHAT THE MOVE DOES BEHIND THE OPEN FAILS HERE, NOT BEFORE IT. On dev a
+	// failed vault pull or index rebuild refused the take and the person read
+	// the refusal; behind the open there is no refusal to carry it, so each
+	// sentence goes to the chat it is about, the way a drive's notices do.
+	say := func(c cell.Cell, line string) { b.syncFact(c, appSyncFact{line: line}) }
 	var got syncsetup.Continued
 	if available {
-		got, err = chatMover(s, report).OpenAvailable(ctx, p.Cell, seen)
+		got, err = chatMover(s, report, say).OpenAvailable(ctx, p.Cell, seen)
 	} else {
-		got, err = appTakeSeen(ctx, s, p.Cell, seen, report)
+		got, err = appTakeSeen(ctx, s, p.Cell, seen, report, say)
 	}
 	stopReport()
 	if err != nil {

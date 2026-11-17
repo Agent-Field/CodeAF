@@ -2199,6 +2199,9 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 			purpose = purposeTask
 			attemptCtx = provider.WithCallNode(attemptCtx, strconv.FormatUint(a.config.taskID, 10))
 		}
+		// THE FILES OF A MOVED CHAT MAY HAVE LANDED SINCE THE LAST REQUEST, and
+		// with them the project's own instructions (workspace_gate.go).
+		a.followArrivedFiles()
 		if err := a.preparePromptProfile(model); err != nil {
 			return nil, model, err
 		}

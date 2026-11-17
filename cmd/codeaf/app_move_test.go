@@ -40,10 +40,10 @@ func TestAppMoveRowSaysHowFarItHasGot(t *testing.T) {
 	_, rec, wire, _, row := appLandedTakeFixture(t, appOpened)
 	landed := appTakeSeen
 	release := make(chan struct{})
-	appTakeSeen = func(ctx context.Context, s *syncsetup.Sync, id string, seen *directory.LeaseExpectation, onMove func(syncsetup.MoveProgress)) (syncsetup.Continued, error) {
+	appTakeSeen = func(ctx context.Context, s *syncsetup.Sync, id string, seen *directory.LeaseExpectation, onMove func(syncsetup.MoveProgress), say func(cell.Cell, string)) (syncsetup.Continued, error) {
 		onMove(syncsetup.MoveProgress{Step: syncsetup.MoveCopying, Done: 412 << 20, Total: 1433 << 20})
 		<-release
-		return landed(ctx, s, id, seen, onMove)
+		return landed(ctx, s, id, seen, onMove, say)
 	}
 	from := appRecorded(rec)
 	done := make(chan error, 1)
@@ -75,7 +75,7 @@ func TestAppMoveRowSaysHowFarItHasGot(t *testing.T) {
 // on, after the take has ended: a client that stopped waiting still learns it.
 func TestAppMoveThatStoppedSaysWhyOnTheRow(t *testing.T) {
 	_, rec, wire, _, row := appLandedTakeFixture(t, appOpened)
-	appTakeSeen = func(context.Context, *syncsetup.Sync, string, *directory.LeaseExpectation, func(syncsetup.MoveProgress)) (syncsetup.Continued, error) {
+	appTakeSeen = func(context.Context, *syncsetup.Sync, string, *directory.LeaseExpectation, func(syncsetup.MoveProgress), func(cell.Cell, string)) (syncsetup.Continued, error) {
 		return syncsetup.Continued{}, fmt.Errorf("%w: handoff: fetch abc: context canceled", syncsetup.ErrMoveStalled)
 	}
 	from := appRecorded(rec)
@@ -105,7 +105,7 @@ func TestAppMoveThatStoppedSaysWhyOnTheRow(t *testing.T) {
 func TestAppMoveCancelEndsRunningAndQueuedMoves(t *testing.T) {
 	backend, rec, wire, _, row := appLandedTakeFixture(t, appOpened)
 	started := make(chan string, 2)
-	appTakeSeen = func(ctx context.Context, _ *syncsetup.Sync, id string, _ *directory.LeaseExpectation, _ func(syncsetup.MoveProgress)) (syncsetup.Continued, error) {
+	appTakeSeen = func(ctx context.Context, _ *syncsetup.Sync, id string, _ *directory.LeaseExpectation, _ func(syncsetup.MoveProgress), _ func(cell.Cell, string)) (syncsetup.Continued, error) {
 		started <- id
 		<-ctx.Done()
 		return syncsetup.Continued{}, ctx.Err()
@@ -284,7 +284,7 @@ func TestAppMoveKeepsTheEnginesOwnRefusal(t *testing.T) {
 func TestAppMoveSecondTakeOfTheSameChatIsRefused(t *testing.T) {
 	backend, _, wire, _, row := appLandedTakeFixture(t, appOpened)
 	started := make(chan struct{}, 2)
-	appTakeSeen = func(ctx context.Context, _ *syncsetup.Sync, _ string, _ *directory.LeaseExpectation, _ func(syncsetup.MoveProgress)) (syncsetup.Continued, error) {
+	appTakeSeen = func(ctx context.Context, _ *syncsetup.Sync, _ string, _ *directory.LeaseExpectation, _ func(syncsetup.MoveProgress), _ func(cell.Cell, string)) (syncsetup.Continued, error) {
 		started <- struct{}{}
 		<-ctx.Done()
 		return syncsetup.Continued{}, ctx.Err()

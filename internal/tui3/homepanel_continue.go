@@ -1005,7 +1005,15 @@ func (a *app) openTaken(msg homeTakenMsg) tea.Cmd {
 			}
 		}
 		if a.file == line.row.Transcript {
-			a.offerSetup(msg.taken.Resume)
+			resume := msg.taken.Resume
+			// A LOOK THAT FINISHED BEFORE THIS LANDING is the whole one: it
+			// knows what this computer lacks and what is uncommitted, which the
+			// open's resume could not. It keeps the names the open already has.
+			if late, ok := a.takeHeldArrival(filepath.Base(session.DirOf(a.file))); ok {
+				late.From, late.Was, late.ChatWas = resume.From, resume.Was, resume.ChatWas
+				resume = late
+			}
+			a.offerSetup(resume)
 		}
 		if msg.send != nil {
 			if _, ok := a.taker.(moveReporter); ok {
