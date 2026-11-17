@@ -655,3 +655,19 @@ func tokenHash(secret string) string {
 	sum := sha256.Sum256([]byte(secret))
 	return hex.EncodeToString(sum[:])
 }
+
+// closeInvitesOf ends every invite that admitted handle; the list skips an ended invite.
+func closeInvitesOf(path, handle string, now time.Time) error {
+	if path == "" {
+		return nil
+	}
+	return tokens.Edit(path, func(rows []tokens.Token) ([]tokens.Token, error) {
+		for i := range rows {
+			t := &rows[i]
+			if t.Invite != nil && !t.Revoked && t.Invite.Handle != "" && factory.NormalizeHandle(t.Invite.Handle) == handle {
+				t.TokenHash, t.Token, t.Revoked, t.RevokedAt = tokenHash(t.Token), "", true, now.UTC()
+			}
+		}
+		return rows, nil
+	})
+}

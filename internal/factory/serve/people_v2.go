@@ -197,6 +197,11 @@ func (h *Handler) operatorRevokePerson(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
+	// The invite they joined by is closed too, so People stops listing them as Joined (v2 J4): a removed person is
+	// gone from the table, and inviting the same email again makes a fresh invite.
+	if h.failed(w, closeInvitesOf(h.config.TokensPath, handle, h.now())) {
+		return
+	}
 	// A person the operator removes leaves every team with their sign-ins,
 	// and their workstreams go to an heir rather than keep a gone owner.
 	if h.failed(w, h.leaveEveryTeam(r, handle)) {

@@ -23,7 +23,7 @@ The **People** table under the form lists everyone with their **Name**, **Email*
 - **Invited · Send again** — the invite is waiting.
 - **Expired · Send again** — the 7 days ran out.
 
-**Send again** makes a new link for 7 more days, emails it (or copies it), and the old link stops working. **Withdraw invite…** (in the row's menu) ends an invite nobody has used: they leave its workstreams and the tasks they were given come back to you. A joined person cannot be sent an invite again.
+**Send again** makes a new link for 7 more days, emails it (or copies it), and the old link stops working. **Withdraw invite…** (in the row's menu) ends an invite nobody has used: they leave its workstreams and the tasks they were given come back to you. A joined person cannot be sent an invite again. An invite made here is listed only here, not again among the plain invite links.
 
 ## give a task to someone who hasn't joined yet — it waits until they join
 
@@ -39,7 +39,7 @@ After joining through the link and signing in, a person lands on their organizat
 
 ## remove someone from the organization — Remove from, sign-ins ended, work offered to the admin
 
-In the People table, a joined person's menu has **Remove from <organization>…**. Removing someone ends their sign-ins, takes them out of every team and every workstream, and gives the workstreams they owned to you. The tasks they owned are **offered to you to hand over**: they arrive in your **Handed to you**, marked as handed over by them, so nothing is left without an owner.
+In the People table, a joined person's menu has **Remove from <organization>…**. Removing someone takes them off the People table, ends their sign-ins, takes them out of every team and every workstream, and gives the workstreams they owned to you. The tasks they owned are **offered to you to hand over**: they arrive in your **Handed to you**, marked as handed over by them, so nothing is left without an owner.
 
 ## Teams — a group you add to a workstream in one step
 

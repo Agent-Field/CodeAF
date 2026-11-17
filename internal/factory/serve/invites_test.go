@@ -145,6 +145,14 @@ func TestAnInviteCarriesItsTeamWorkstreamsAndTasksIntoTheJoin(t *testing.T) {
 		t.Fatalf("invites after joining = %+v", list)
 	}
 	f.request(t, "GET", "/v1/invites", marco, nil, 403, nil)
+	// The invite is People's row, never a second bare row in Access links.
+	var links api.AccessLinks
+	f.request(t, "GET", "/v1/access/links", o.priya, nil, 200, &links)
+	for _, l := range links.Links {
+		if l.ID == inv.ID {
+			t.Fatalf("access links list the invite again: %+v", l)
+		}
+	}
 
 	var names api.WorkstreamList
 	f.request(t, "GET", "/v1/workstreams", marco, nil, 200, &names)
@@ -260,9 +268,20 @@ func TestRemovingSomeoneOffersTheirTasksToTheAdmin(t *testing.T) {
 	if task.Owner.ID != "sam" {
 		t.Fatalf("sam's own task = %+v", task.Owner)
 	}
+	var list api.Invites
+	f.request(t, "GET", "/v1/invites", o.priya, nil, 200, &list)
+	if len(list.Invites) != 1 || list.Invites[0].State != api.InviteJoined {
+		t.Fatalf("sam's invite before removing = %+v", list)
+	}
 	f.request(t, "DELETE", "/v1/people/sam/sessions", o.priya, nil, 200, nil)
 	got := o.tasks(t, o.priya, o.product.ID)
 	if len(got) != 1 || got[0].Owner.ID != "priya" || got[0].HandedBy == nil || got[0].HandedBy.ID != "sam" || !got[0].Unopened {
 		t.Fatalf("after removing sam = %+v", got)
+	}
+	// A removed person is gone from People, not still listed as Joined (found live on spark, 2026-11-17).
+	list = api.Invites{}
+	f.request(t, "GET", "/v1/invites", o.priya, nil, 200, &list)
+	if len(list.Invites) != 0 {
+		t.Fatalf("removed person still listed: %+v", list.Invites)
 	}
 }

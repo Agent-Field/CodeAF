@@ -52,6 +52,11 @@ func (h *Handler) accessLinks(w http.ResponseWriter, r *http.Request) {
 	out := api.AccessLinks{Factory: h.factory, Links: []api.AccessLink{}}
 	now := h.now()
 	for _, tok := range rows {
+		// An invite to a named person is listed in People (GET /v1/invites), with its team, its workstreams and Send
+		// again; listing it here too drew the same person twice, once as a bare link.
+		if tok.Invite != nil {
+			continue
+		}
 		// Ended links stay listed, greyed, for thirty days.
 		if tok.Human() && tok.Reason(now) != "" && now.Sub(tok.EndedAt(now)) > endedLinkListed {
 			continue
