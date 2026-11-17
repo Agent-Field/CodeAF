@@ -16,10 +16,6 @@ import (
 // them). The agent's own writes through its door never wake anything: the
 // run is already going.
 
-// errChatNotHere is the refusal for starting a chat's task on the server: a
-// chat lives on a person's machine, and nothing here can wake it.
-var errChatNotHere = errors.New("a chat's task starts from that chat; this server cannot wake it")
-
 // taskWords is what Afi is asked when it is started on t.
 func taskWords(t factory.WorkstreamTask) string {
 	words := strings.TrimSpace(t.Title)
@@ -31,17 +27,29 @@ func taskWords(t factory.WorkstreamTask) string {
 
 // wakeTaskDoer starts t's doer as starter. It is called with the task's write
 // still open, after the change is ready to keep, so a refusal keeps nothing.
+//
+// EVERY AGENT DOER STARTS HERE (E2 F7): Afi, a named agent or crew, and a
+// chat's agent each run in the task's own seat on this server, from the
+// task's brief. A chat's task used to be left Up next, because the chat lived
+// on its person's computer; its task's run is the task's, never the chat's
+// private conversation (org-space DESIGN §3.1).
 func (h *Handler) wakeTaskDoer(ws factory.OrgWorkstream, t factory.WorkstreamTask, starter string) error {
 	switch t.DoneBy.Kind {
 	case factory.TaskByAfi:
 		return h.runTaskTurn(ws, t, starter, taskWords(t))
+	case factory.TaskByAgent:
+		a, ok := h.workstreamAgent(ws, t.DoneBy.AgentID)
+		if !ok {
+			return errAgentNotHere
+		}
+		return h.runTaskTurn(ws, t, starter, agentTaskWords(a.Name, a.Brief, t))
 	case factory.TaskByChat:
-		return errChatNotHere
+		return h.runTaskTurn(ws, t, starter, agentTaskWords(firstNonEmpty(t.DoneBy.Name, "the chat's agent"), "", t))
 	}
 	return nil
 }
 
 // wakeRefused reports whether err is a start the doer could not take.
 func wakeRefused(err error) bool {
-	return errors.Is(err, errTaskBusy) || errors.Is(err, errTaskNoRunner) || errors.Is(err, errChatNotHere)
+	return errors.Is(err, errTaskBusy) || errors.Is(err, errTaskNoRunner) || errors.Is(err, errAgentNotHere)
 }

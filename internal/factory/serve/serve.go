@@ -114,6 +114,12 @@ type Config struct {
 	// key. Nil is a server that runs no agents: it never offers "server" as
 	// where they run.
 	WorkstreamAgent AgentRunner
+	// WorkstreamAgents lists the named agents and crews a workstream's tasks
+	// may be done by (workstream_task_doers.go). It is THE SEAM for the
+	// organization's agent list (org-space DESIGN §4.6): nil is an
+	// organization with no shared agents yet, where only Afi, its people and
+	// its chats do tasks.
+	WorkstreamAgents func(factory.OrgWorkstream) []WorkstreamAgent
 	// Pipeline reads the same repository rules as intake, including personal limits.
 	Pipeline func(context.Context, string, string) (pipeline.File, error)
 	// JobPipeline reads the pipeline one job is bounded by, with the same

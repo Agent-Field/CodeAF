@@ -59,6 +59,9 @@ const (
 	TaskByFactory = "factory"
 	TaskByPerson  = "person"
 	TaskByOrder   = "order"
+	// TaskByAgent is a named agent or crew (org-space DESIGN §4.1), by the
+	// id the workstream's agent list knows it under.
+	TaskByAgent = "agent"
 )
 
 // The kinds of event in a task's thread.
@@ -120,13 +123,43 @@ type TaskOwner struct {
 	Name string `json:"name,omitempty"`
 }
 
-// TaskDoneBy is who does the work.
+// TaskDoneBy is who does the work: a person, Afi, a named agent or crew, a
+// Factory job, or a chat (whose agent does it).
 type TaskDoneBy struct {
 	Kind   string `json:"kind"`
 	ChatID string `json:"chat_id,omitempty"`
 	ID     string `json:"id,omitempty"`
 	Name   string `json:"name,omitempty"`
 	Job    int    `json:"job,omitempty"`
+	// AgentID and Crew name a named agent or crew (Kind agent).
+	AgentID string `json:"agent_id,omitempty"`
+	Crew    bool   `json:"crew,omitempty"`
+}
+
+// AgentDoes is whether an agent does t: Afi, a chat's agent or a named agent
+// or crew. These are the tasks a Start wakes; a person does their own and a
+// Factory job starts at the Factory.
+func AgentDoes(t WorkstreamTask) bool {
+	switch t.DoneBy.Kind {
+	case TaskByAfi, TaskByChat, TaskByAgent:
+		return true
+	}
+	return false
+}
+
+// DoerWords is who does the work, as a sentence names it: "Afi", "Lena",
+// "Copywriter", "the Factory".
+func DoerWords(d TaskDoneBy) string {
+	switch d.Kind {
+	case TaskByAfi:
+		return "Afi"
+	case TaskByFactory:
+		return "the Factory"
+	}
+	if d.Name != "" {
+		return d.Name
+	}
+	return firstNonEmptyWords(d.ID, d.AgentID, d.ChatID, d.Kind)
 }
 
 // TaskCameFrom is where a task came from.
@@ -613,10 +646,20 @@ func checkDoneBy(d TaskDoneBy) error {
 		if d.ID == "" {
 			return TaskInvalid("a person's task names the person")
 		}
+	case TaskByAgent:
+		if strings.TrimSpace(d.AgentID) == "" || strings.TrimSpace(d.Name) == "" {
+			return TaskInvalid("an agent's task names the agent: its agent_id and its name")
+		}
 	default:
-		return TaskInvalid(`done_by is afi, chat, factory or person`)
+		return TaskInvalid(`done_by is afi, agent, chat, factory or person`)
 	}
 	return nil
+}
+
+// MayChangeDoer is whether a may change who does t: its owner, or whoever
+// looks after the workstream (org-space DESIGN §4.5).
+func MayChangeDoer(t WorkstreamTask, a TaskActor) bool {
+	return a.owns(t) || (a.Edit && a.Govern)
 }
 
 // CheckWaits checks what task id waits on: tasks of the same workstream (all),
@@ -704,6 +747,10 @@ type TaskPatch struct {
 	// Starts sets the task's own word on starting by itself (see
 	// WorkstreamTask.Starts); "" goes back to the default.
 	Starts *string `json:"starts,omitempty"`
+	// DoneBy is Change who does it: the owner's or whoever looks after the
+	// workstream's, never while the task runs (Stop it first), never on a
+	// Factory task (its job is its doer) and never once it is done.
+	DoneBy *TaskDoneBy `json:"done_by,omitempty"`
 }
 
 // TaskAskLater is Later on one of a task's Asks.
@@ -768,6 +815,35 @@ func ApplyPatch(t WorkstreamTask, p TaskPatch, a TaskActor, by TaskEventBy, all 
 		t.Owner = *p.Owner
 		t.HandedBy = handedBy(t.Owner, by)
 		event(TaskEventHanded, "Handed to "+ownerWords(t.Owner))
+	}
+	if p.DoneBy != nil && *p.DoneBy != t.DoneBy {
+		// CHANGE WHO DOES IT (org-space DESIGN §4.5). The brief, the results
+		// and the thread stay; work that ended without finishing goes back to
+		// Up next for its new doer to start, and one line says who handed it
+		// from whom to whom.
+		d := *p.DoneBy
+		switch {
+		case !MayChangeDoer(t, a):
+			return TaskChange{}, TaskRefused("only the task's owner or whoever looks after the workstream changes who does it")
+		case t.DoneBy.Kind == TaskByFactory:
+			return TaskChange{}, TaskRefused("a Factory task is its job: the Factory does it")
+		case d.Kind == TaskByFactory:
+			return TaskChange{}, TaskInvalid("a Factory task is a Factory job: add the job to the workstream instead")
+		case t.State == TaskRunning:
+			return TaskChange{}, TaskRefused("this task is running: stop it, then hand it to someone else")
+		case t.State == TaskDone:
+			return TaskChange{}, TaskRefused("this task is done: send it back first, then change who does it")
+		}
+		if err := checkDoneBy(d); err != nil {
+			return TaskChange{}, err
+		}
+		from := DoerWords(t.DoneBy)
+		t.DoneBy = d
+		switch t.State {
+		case TaskFailed, TaskInterrupted, TaskStopped, TaskNoReport:
+			t.State, t.StateReason, t.StoppedBy = TaskUpNext, "", nil
+		}
+		event(TaskEventHanded, "from "+from+" to "+DoerWords(d))
 	}
 	if p.WaitingOn != nil || p.Due != nil || p.Group != nil || p.ClearGroup {
 		if !a.owns(t) {
@@ -1095,7 +1171,7 @@ func Released(id string, all []WorkstreamTask, by TaskEventBy, newID func() stri
 	}
 	var out []WorkstreamTask
 	for _, t := range all {
-		if !slices.Contains(t.WaitingOn, id) || t.State != TaskUpNext || (t.DoneBy.Kind != TaskByAfi && t.DoneBy.Kind != TaskByChat) {
+		if !slices.Contains(t.WaitingOn, id) || t.State != TaskUpNext || !AgentDoes(t) {
 			continue
 		}
 		if slices.ContainsFunc(t.WaitingOn, func(w string) bool { return !done[w] }) {
@@ -1344,7 +1420,7 @@ func StartAll(group string, all []WorkstreamTask, now time.Time) []WorkstreamTas
 	}
 	var out []WorkstreamTask
 	for _, t := range all {
-		if t.Group == nil || t.Group.ID != group || t.State != TaskUpNext || (t.DoneBy.Kind != TaskByAfi && t.DoneBy.Kind != TaskByChat) {
+		if t.Group == nil || t.Group.ID != group || t.State != TaskUpNext || !AgentDoes(t) {
 			continue
 		}
 		if slices.ContainsFunc(t.WaitingOn, func(w string) bool { return !done[w] }) {

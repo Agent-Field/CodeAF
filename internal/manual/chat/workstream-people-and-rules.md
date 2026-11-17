@@ -22,7 +22,7 @@ Nothing waiting draws nothing: no dot, no "0". Amber means only "waiting on you"
 
 ## owner of incoming work, and the fallback person — who is asked
 
-"Owner of incoming work" owns tasks nobody asked for directly, such as ones the Factory creates: a named person, or Everyone (the first person to answer decides, and the task records who answered). It starts as the person who made the workstream. "If unanswered for a day" names a person who is also asked when a task's question has waited a day, and who takes the open tasks of anyone removed.
+"Owner of incoming work" owns tasks nobody asked for directly, such as ones the Factory creates: a named person. Everyone is no longer offered there, because a task has one owner; a workstream that already has Everyone keeps it until someone picks a person (then the first person to answer decides, and the task records who answered). It starts as the person who made the workstream. "If unanswered for a day" names a person who is also asked when a task's question has waited a day, and who takes the open tasks of anyone removed.
 
 ## start without asking — how much an agent may spend before it must ask
 

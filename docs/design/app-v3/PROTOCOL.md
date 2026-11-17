@@ -1089,11 +1089,21 @@ itself stay `up_next`, unchanged, and the thread gains "Ready to start: <title> 
 there, `running` is set only by whoever wakes the doer. On the server that is a
 person's own `state` `running` on an Afi task: the server starts Afi on it in the
 task's own run (the caller's rights, nobody's conversation) inside the same write, and
-the task says `running` only once Afi took it; a server that cannot run Afi, a task
-already being worked on, or a chat's task (woken on its person's machine) is 409 with
-nothing changed. A person's `done`, `stopped` or `up_next` ends a run still going on it.
+the task says `running` only once Afi took it; a server that cannot run Afi or a task
+already being worked on is 409 with nothing changed. A person's `done`, `stopped` or
+`up_next` ends a run still going on it.
 An engine whose hello also carries `org_workstream_task_start` serves this Start; a desk
 offers Start and Start all on an organization only where it hears that word.
+Where the hello also carries `org_workstream_task_doers`, every agent doer starts the
+same way: a chat's task and a named agent's (`done_by {kind:"agent", agent_id, name,
+crew?}`, from the workstream's agent list, which names and kinds it) run in the task's
+own seat, from the task's brief and never the chat's conversation; an agent the list no
+longer names is 409. `done_by` is also a change (Change who does it): the task's owner's
+or whoever looks after the workstream's (403 otherwise), never on a `running` task (403,
+stop it first), a `done` one (403) or a Factory task (403); a person not in the
+workstream or an agent not on its list is 422. Work that ended without finishing goes
+back to `up_next`, the owner is unchanged, and the thread gains a `handed` line "from
+<old doer> to <new doer>".
 Send back is `state`
 `up_next` on a `done` task by someone other than its owner, or with a `state_reason`:
 anyone who edits may do it (a person task included), and the thread line and the
