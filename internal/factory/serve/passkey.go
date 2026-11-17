@@ -289,7 +289,7 @@ func (h *Handler) passkeyRoutes() {
 // own scheme://host[:port]. ok is false where WebAuthn cannot work: plain
 // http (except localhost under test), an IP address, no address at all.
 func (h *Handler) relyingParty() (rpID, origin string, ok bool) {
-	u, err := url.Parse(strings.TrimRight(h.factory.Address, "/"))
+	u, err := url.Parse(strings.TrimRight(h.factoryNow().Address, "/"))
 	if err != nil || u.Host == "" || u.Path != "" || u.RawQuery != "" || u.User != nil {
 		return "", "", false
 	}
@@ -321,7 +321,7 @@ func (h *Handler) hsts() string {
 	if !h.config.HSTSSubdomains {
 		return hstsValue
 	}
-	u, err := url.Parse(strings.TrimRight(h.factory.Address, "/"))
+	u, err := url.Parse(strings.TrimRight(h.factoryNow().Address, "/"))
 	if err != nil {
 		return hstsValue
 	}
@@ -340,7 +340,7 @@ func (h *Handler) relying() (*webauthn.WebAuthn, string, error) {
 	if !ok {
 		return nil, "", errors.New(passkeyOffWords)
 	}
-	name := strings.TrimSpace(h.factory.Name)
+	name := strings.TrimSpace(h.factoryNow().Name)
 	if name == "" {
 		name = "codeaf"
 	}
@@ -753,7 +753,7 @@ func (st *passkeyState) evictUnopenedLocked() bool {
 // passkeyJoinFlow judges a join's link exactly as the access card does and
 // records what it is for. A refusal is answered here.
 func (h *Handler) passkeyJoinFlow(w http.ResponseWriter, body api.PasskeyStart, flow *passkeyFlow, now time.Time) bool {
-	secretText, err := accessSecret(body.Link, h.factory.Address)
+	secretText, err := accessSecret(body.Link, h.factoryNow().Address)
 	if err != nil {
 		h.fail(w, http.StatusUnprocessableEntity, err.Error())
 		return false
@@ -991,7 +991,7 @@ func (h *Handler) passkeyPoll(w http.ResponseWriter, r *http.Request) {
 	me.GitHubSignedIn, me.SignInKind = false, signInPasskey
 	me.Teams = h.Membership().TeamsOf(profile.Handle)
 	expires := session.expires.UTC()
-	fac := h.factory
+	fac := h.factoryNow()
 	h.write(w, http.StatusOK, api.PasskeyPolled{State: api.PasskeyDone, Purpose: snapshot.purpose, Factory: &fac,
 		AccessToken: credential, TokenType: "bearer", ExpiresIn: int(accessSessionTTL.Seconds()), ExpiresAt: &expires,
 		Person: &api.PasswordPerson{Handle: profile.Handle, Name: profile.Name}, Me: &me})
@@ -1179,7 +1179,7 @@ func (h *Handler) passkeyPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rpID, _, _ := h.relyingParty()
-	org := strings.TrimSpace(h.factory.Name)
+	org := strings.TrimSpace(h.factoryNow().Name)
 	if org == "" {
 		org = rpID
 	}

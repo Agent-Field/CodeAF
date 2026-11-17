@@ -257,11 +257,11 @@ A person joins an **organization**, never Factory on its own. An organization is
 
 In the desktop app there are three ways in, and all three open the same **Join an organization** page:
 
-- first run's **Where do you want to work?**: **Just me** (Personal, on this computer), **Join an organization**, or **Set up an organization** (run one on this computer, where the engine offers it);
+- first run's **Where do you want to work?**: **Just me** (Personal, on this computer), **Join an organization**, or **Start an organization** (run one on this computer, where the engine offers it);
 - the switcher at the foot of the strip: **Join an organization…**;
 - **Settings › Organizations**: **Join an organization…** under the organizations you are already in.
 
-Paste the invite link someone sent you. Once it is read, the page says **You're invited to** and the organization's name, then offers a passkey, a username and password, or GitHub, in the order the server prefers. **Or join by your organization's address** takes the address (and an access token, if you were given one) instead.
+The page is headed **Sign in to WorkAF**. Paste your organization's link (the one `codeaf factory serve` printed) or the invite link someone sent you. Signing in creates your account. Once it is read, the page says **You're invited to** and the organization's name, then offers a passkey, a username and password, or GitHub, in the order the server prefers; a way the server does not take is named in one line ("Acme does not take passkeys yet."). The operator of an organization nobody has set up lands on **Start your organization** next (see the page on starting an organization). **Or join by your organization's address** takes the address (and an access token, if you were given one) instead.
 
 **Settings › Organizations** has one section per organization you are in: your account there (password, passkeys, sign out, **Leave organization…**), its invite links, **People in** the organization (invite someone by email with a team and workstreams; see the page on inviting people), the model key and where agents run, then **Teams in** the organization, then **Factory** for that organization (repositories, AI notes, and the line to its rules, limits and computers). It was called Settings › Factory before.
 

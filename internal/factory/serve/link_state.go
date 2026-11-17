@@ -109,13 +109,13 @@ func (h *Handler) factoryAccess(w http.ResponseWriter, r *http.Request) {
 	// A CHECK READS AND POLLS, NEVER STARTS: GET (legacy, secret in the URL) and
 	// POST check are the same read, so neither can mint a cookie, start OAuth or reset a flow.
 	check := r.Method == http.MethodGet || verb == "check"
-	secret, err := accessSecret(link, h.factory.Address)
+	secret, err := accessSecret(link, h.factoryNow().Address)
 	if err != nil {
 		h.fail(w, 422, err.Error())
 		return
 	}
-	out := api.FactoryAccess{State: "no_access", Link: link, Factory: api.AccessFactory{Name: h.factory.Name, Host: h.factory.Address, Repos: []string{}, SignIn: h.signInMethods()}, Detail: "Link for one person"}
-	hash := sha256.Sum256([]byte(h.factory.Address))
+	out := api.FactoryAccess{State: "no_access", Link: link, Factory: api.AccessFactory{Name: h.factoryNow().Name, Host: h.factoryNow().Address, Repos: []string{}, SignIn: h.signInMethods()}, Detail: "Link for one person"}
+	hash := sha256.Sum256([]byte(h.factoryNow().Address))
 	out.Factory.ID = "factory_" + hex.EncodeToString(hash[:8])
 	claim, err := tokens.LoadOperator(h.config.TokensPath)
 	if h.failed(w, err) {

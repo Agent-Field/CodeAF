@@ -466,6 +466,7 @@ func withFactoryOrgFeature(hello Hello, e Engine) Hello {
 		hello = withFeature(hello, FeatureOrgAgentServer)
 		hello = withFeature(hello, FeatureOrgWorkstreamNesting)
 		hello = withFeature(hello, FeatureOrgWorkstreamRules)
+		hello = withFeature(hello, FeatureOrgSetup)
 	}
 	return hello
 }

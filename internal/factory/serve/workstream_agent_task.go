@@ -102,7 +102,7 @@ func (h *Handler) startTaskRun(ws factory.OrgWorkstream, task factory.Workstream
 	d.mu.Unlock()
 
 	door := &agentDoor{h: h, id: ws.ID, asker: starter, wrote: &taskWrites{}, runTask: task.ID}
-	run := AgentTurn{Workstream: ws.ID, Name: ws.Name, Turn: turn, Asker: starter, Text: strings.TrimSpace(words), Now: now,
+	run := AgentTurn{Workstream: ws.ID, Name: ws.Name, Turn: turn, Asker: starter, Text: strings.TrimSpace(words), Now: now, About: h.orgAbout(),
 		Task: &AgentTask{ID: task.ID, Title: task.Title},
 		Key:  h.orgModelKey(), Dir: filepath.Join(h.taskRunDir(ws.ID, task.ID), "agent"), Door: door,
 		// Nobody reads a task run as a conversation: its lines go nowhere.
