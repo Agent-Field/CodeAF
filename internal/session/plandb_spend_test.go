@@ -22,7 +22,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	_ "modernc.org/sqlite"
 
@@ -136,38 +135,6 @@ func readSpendRows(t *testing.T, store *plandb.Store) []spendRow {
 	return ledger
 }
 
-// waitSpendRows waits for the writes to land: recordPlanSpend is best-effort
-// and off the call's road, so a row arrives on a goroutine the test waits
-// for rather than counts behind the call that made it.
-func waitSpendRows(t *testing.T, store *plandb.Store, want int) []spendRow {
-	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
-	for {
-		rows := readSpendRows(t, store)
-		if len(rows) >= want {
-			return rows
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("%d spend rows landed, want %d (last read: %#v)", len(rows), want, rows)
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-}
-
-// waitNoSpendRows holds the same patience against the silence: a worker that
-// must write nothing is given the same window a worker writing rows gets,
-// because absence is only proved by waiting for the writes not to come.
-func waitNoSpendRows(t *testing.T, store *plandb.Store) {
-	t.Helper()
-	deadline := time.Now().Add(time.Second)
-	for time.Now().Before(deadline) {
-		if rows := readSpendRows(t, store); len(rows) != 0 {
-			t.Fatalf("a worker that writes nothing wrote %#v", rows)
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-}
-
 // A WORKER WITH A PLAN TASK CHARGES EVERY CALL TO IT, and the role word is
 // what the node was doing at that instant: 'work' while it is a leaf, 'plan'
 // from the moment it has plan children of its own. The task id is the plan
@@ -186,6 +153,9 @@ func TestSpendRowsFollowThePlanNode(t *testing.T) {
 			taskLimits{maxSteps: taskMaxSteps, noProgress: taskNoProgress}, room, io.Discard); err != nil {
 			t.Fatalf("runTaskChild: %v", err)
 		}
+		// All calls have returned, so no new spend write can be admitted.
+		// Joining proves both the exact row count and the no-row cases.
+		child.graph().planSpend.Wait()
 	}
 
 	// THE LEAF'S ROLE IS 'WORK'.
@@ -195,7 +165,7 @@ func TestSpendRowsFollowThePlanNode(t *testing.T) {
 	node := spendNode(t, graph, planRootID, 0)
 	child := spendWorker(t, graph, node, true, steps)
 	run(node, child)
-	rows := waitSpendRows(t, store, 2)
+	rows := readSpendRows(t, store)
 	if len(rows) != 2 {
 		t.Fatalf("%d spend rows for two calls, want exactly 2", len(rows))
 	}
@@ -231,7 +201,7 @@ func TestSpendRowsFollowThePlanNode(t *testing.T) {
 	pnode.graph.mu.Unlock()
 	pchild := spendWorker(t, pgraph, pnode, true, steps)
 	run(pnode, pchild)
-	for index, row := range waitSpendRows(t, pstore, 2) {
+	for index, row := range readSpendRows(t, pstore) {
 		if row.taskID != planRootID {
 			t.Errorf("row %d charged %q, want the plan task %q", index, row.taskID, planRootID)
 		}
@@ -254,7 +224,9 @@ func TestSpendRowsFollowThePlanNode(t *testing.T) {
 	nnode := spendNode(t, ngraph, "", 0)
 	nchild := spendWorker(t, ngraph, nnode, true, steps)
 	run(nnode, nchild)
-	waitNoSpendRows(t, nstore)
+	if rows := readSpendRows(t, nstore); len(rows) != 0 {
+		t.Fatalf("a worker without a plan task wrote %#v", rows)
+	}
 
 	// AND SO DOES THE FLAG-OFF WORKER, whatever its node carries: the switch
 	// gates the wiring whole, so with it off nothing is armed and not one row
@@ -271,7 +243,9 @@ func TestSpendRowsFollowThePlanNode(t *testing.T) {
 	onode := spendNode(t, ograph, planRootID, 0)
 	ochild := spendWorker(t, ograph, onode, false, steps)
 	run(onode, ochild)
-	waitNoSpendRows(t, ostore)
+	if rows := readSpendRows(t, ostore); len(rows) != 0 {
+		t.Fatalf("a flag-off worker wrote %#v", rows)
+	}
 }
 
 // PLAN SPEND ROLLS THE RUN'S LEDGER UP BY SEAT: one line per role, dearest
