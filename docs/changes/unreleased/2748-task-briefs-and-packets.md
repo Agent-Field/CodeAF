@@ -1,6 +1,6 @@
 ---
 kind: added
-title: A task an agent does carries a brief, and its run starts with its inputs' words and the hand-off note before it
+title: A task an agent does carries a brief, and its run starts with its inputs and the hand-off note
 pr: 2748
 surface: [factory, chat, docs]
 invalidates:
