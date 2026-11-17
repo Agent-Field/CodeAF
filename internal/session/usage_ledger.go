@@ -595,6 +595,15 @@ type usageWriter struct {
 	overflow     map[chan struct{}]struct{}
 	overflowRows []usageWrite
 	missed       int64 // pending rows already in usageDropped, under overflowMu
+
+	// retrySleep waits out one backoff between a failed write and its retry. It
+	// is nil everywhere but a test, where nil means [time.Sleep]: a test that
+	// repairs a disk and then waits for the retry would otherwise be racing a
+	// real timer of up to [usageRetryCap] against a real ceiling, and which of
+	// them wins would depend on how busy the machine is. It is read on the
+	// writer's goroutine only after a row has been handed over, so a test sets
+	// it before recording, the way it sets beforeWrite.
+	retrySleep func(time.Duration)
 }
 
 // usageDropped counts serialization and filesystem failures across all ledgers,
@@ -702,6 +711,16 @@ func (w *usageWriter) pendingOverflow() []chan struct{} {
 	return pending
 }
 
+// waitOutRetry sleeps one backoff before a failed write is tried again, through
+// the seam a test may have put in [usageWriter.retrySleep].
+func (w *usageWriter) waitOutRetry(delay time.Duration) {
+	if w.retrySleep != nil {
+		w.retrySleep(delay)
+		return
+	}
+	time.Sleep(delay)
+}
+
 // run projects journaled rows in order. Failed rows stay in memory with capped
 // backoff; close can reach its deadline while the journal keeps the durable copy.
 func (w *usageWriter) run(path string) {
@@ -780,7 +799,7 @@ func (w *usageWriter) run(path string) {
 				}
 			}
 			delay = nextUsageRetryDelay(delay)
-			time.Sleep(delay)
+			w.waitOutRetry(delay)
 		}
 	}
 	batch := make([]usageWrite, 0, usageWriteBatchSize)
