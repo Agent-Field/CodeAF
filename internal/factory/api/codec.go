@@ -209,7 +209,10 @@ func FromItem(it factory.Item) Job {
 	AreaIn(&j, nil)
 	j.ReadSize = readSize(it)
 	j.PR = fromPR(it.PullRequest)
-	if dir := factory.FolderOf(it); dir != "" {
+	// A pull request opened from a folder is carried whenever it was opened, so
+	// a read never loses it, even for an item whose place no longer reads as a
+	// folder.
+	if dir := factory.FolderOf(it); dir != "" || it.FolderPR != nil {
 		j.Folder = &JobFolder{Path: dir, Branch: factory.WorkBranch(it), PR: it.FolderPR}
 	}
 	j.Merge = jobMerge(it)
