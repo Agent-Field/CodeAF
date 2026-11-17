@@ -51,8 +51,13 @@ func TestServerAgentKeepsWorkAsTasks(t *testing.T) {
 		if !ok {
 			t.Fatal("the server's door does not answer the ws_* tools")
 		}
-		made := work(ctx, d, "ws_task_create", `{"title":"Parser reads unicode fractions","request":"Make ½ parse."}`)["task"].(map[string]any)
+		created := work(ctx, d, "ws_task_create", `{"title":"Parser reads unicode fractions","request":"Make ½ parse."}`)
+		made := created["task"].(map[string]any)
 		id := made["id"].(string)
+		// The sentence the model repeats names the task, never its id (live2 E6 F11).
+		if said, _ := created["said"].(string); !strings.Contains(said, "Parser reads unicode fractions") || strings.Contains(said, id) {
+			t.Errorf("ws_task_create said %q", said)
+		}
 		person := work(ctx, d, "ws_task_create", `{"title":"Release notes","request":"Write them.","owner":"santosh","done_by":"person"}`)["task"].(map[string]any)
 		refused(ctx, d, "ws_task_create", `{"title":"x","request":"y","owner":"nobody-here"}`, "not someone in this workstream")
 		refused(ctx, d, "ws_task_create", `{"title":"x","request":"y","done_by":"factory"}`, "Factory job")

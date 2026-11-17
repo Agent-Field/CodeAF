@@ -363,7 +363,7 @@ func (d *agentDoor) wsTaskCreate(ctx context.Context, args json.RawMessage) (any
 	if err := json.Unmarshal(raw, &t); err != nil {
 		return nil, err
 	}
-	said := fmt.Sprintf("Made the task %q (%s) in Up next; everyone in the workstream sees it.", t.Title, t.ID)
+	said := fmt.Sprintf("Made the task %q in Up next; everyone in the workstream sees it.", t.Title)
 	if t.Group != nil {
 		n := 0
 		if all, err := d.tasks(ctx); err == nil {
@@ -530,7 +530,7 @@ func (d *agentDoor) wsTaskUpdate(ctx context.Context, args json.RawMessage) (any
 			return nil, err
 		}
 	}
-	return map[string]any{"said": fmt.Sprintf("Changed %q (%s).", t.Title, t.ID), "task": taskBrief(t)}, nil
+	return map[string]any{"said": fmt.Sprintf("Changed %q.", t.Title), "task": taskBrief(t)}, nil
 }
 
 func (d *agentDoor) wsTaskComment(ctx context.Context, args json.RawMessage) (any, error) {
@@ -750,7 +750,7 @@ func (d *agentDoor) wsFileCreate(ctx context.Context, args json.RawMessage) (any
 	if err := json.Unmarshal(raw, &f); err != nil {
 		return nil, err
 	}
-	return map[string]any{"said": fmt.Sprintf("Made the %s %q (%s); everyone in the workstream sees it.", f.Kind, f.Name, f.ID), "file": fileBrief(f)}, nil
+	return map[string]any{"said": fmt.Sprintf("Made the %s %q; everyone in the workstream sees it.", f.Kind, f.Name), "file": fileBrief(f)}, nil
 }
 
 // rewriteDocument rewrites a document the agent made that no person has
