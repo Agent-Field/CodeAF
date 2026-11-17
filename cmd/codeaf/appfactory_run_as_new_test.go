@@ -4,7 +4,6 @@ import (
 	"context"
 	"reflect"
 	"strings"
-	"sync/atomic"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
@@ -18,33 +17,22 @@ func TestAppFactoryRunAsNew(t *testing.T) {
 		t.Run(ending, func(t *testing.T) {
 			t.Setenv("OPENROUTER_API_KEY", "sk-test-not-real")
 			s := newLocalSetup(t)
-			// Connect the fixture identity after serving, so local_start cannot
-			// turn on an automatic worker. Launch still uses the real lease desk.
-			var connected atomic.Bool
+			// The fixture owns launches, which still use the real lease desk.
 			hook := s.backend.local.seamHook
 			s.backend.local.seamHook = func(seam factory.Seam) factory.Seam {
 				seam = hook(seam)
-				seam.ConnectGitHub = func(context.Context, string) error { return nil }
-				seam.GitHub = func(context.Context) (factory.GitHubLink, error) {
-					if !connected.Load() {
-						return factory.GitHubLink{}, nil
-					}
-					return factory.GitHubLink{Login: "owner"}, nil
-				}
 				if ending == "launch refused" {
 					seam.Launch = func(int) error { return factoryrun.AlreadyRunning("fixture") }
 				}
 				return seam
 			}
-			st := s.start()
-			if st.Runner {
-				t.Fatal("fixture started an automatic runner")
-			}
-			connected.Store(true)
-			// Connecting invalidates the host's cached anonymous identity. This
-			// fixture connect does not turn the app's automatic runner on.
-			if err := s.backend.local.host.seam.ConnectGitHub(context.Background(), "fixture"); err != nil {
+			// Serve without starting the app worker; this fixture owns job launches.
+			if err := s.backend.startLocal(context.Background()); err != nil {
 				t.Fatal(err)
+			}
+			st := s.backend.localStatus()
+			if st.Runner {
+				t.Fatal("fixture started an automatic worker")
 			}
 			if ending != "no checkout" {
 				if err := s.backend.local.host.floor.SetCheckout("acme/api", t.TempDir()); err != nil {
