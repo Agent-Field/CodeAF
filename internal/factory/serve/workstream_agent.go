@@ -191,6 +191,13 @@ type agentDesk struct {
 	// when it was first asked (workstream_task_lease.go).
 	owner string
 	since time.Time
+	// queue holds the runs waiting under the limits, in the order they
+	// came; served counts, per workstream, when it last had a run started,
+	// for the round robin (workstream_task_queue.go).
+	queue   []pendingRun
+	queueN  int
+	served  map[string]int
+	servedN int
 	// sweepDone closes when the lease sweep has ended, after Close.
 	sweepDone chan struct{}
 	// work is each task's Working conversation (workstream_task_work.go).

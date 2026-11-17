@@ -323,6 +323,16 @@ type WorkstreamTask struct {
 	// start". It is FILLED AT READ TIME and never kept: the owner's default
 	// can change without the task changing.
 	StartsWhenReady *bool `json:"starts_when_ready,omitempty"`
+	// Queue is a started task's place while its run waits for room under the
+	// limits (3 runs at once in a workstream, 10 in an organization), read
+	// as "Queued · 2nd". FILLED AT READ TIME and never kept.
+	Queue *TaskQueue `json:"queue,omitempty"`
+}
+
+// TaskQueue is a started task's place in its workstream's queue.
+type TaskQueue struct {
+	// Place counts from 1: the next of the workstream's tasks to start.
+	Place int `json:"place"`
 }
 
 // TaskRunNow is a running task's run, as its server sees it now.
