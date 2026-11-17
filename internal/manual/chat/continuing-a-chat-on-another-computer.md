@@ -362,11 +362,19 @@ On the hosted sync service this needs sync storage approval (Settings → Device
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
-While a chat is moving onto this computer, pressing enter on its row says `this chat is arriving on this computer; it opens by itself in a moment`. Nothing is wrong and nothing needs doing: the move takes a second or two, and the chat opens by itself when it ends, with the other computer's latest turns in it. Opening it earlier is refused on purpose, because a window opened halfway would show the chat as it was before the move and could not save your turns.
+When you continue a chat here, codeaf fetches the conversation records and claims the hold first, so the chat opens and accepts typing in about a second without waiting for the workspace files to finish copying. While those conversation records are being swapped into place, pressing enter on its row says `this chat is arriving on this computer; it opens by itself in a moment`. Opening a second window during that brief swap is refused so no window reads the journal as it was before the move.
 
 When the holder stops answering (for example, its lid is shut), the row may read `<device> offline`. While its hold is live, Continue here still asks and the card says `last saved turn <N> ago; up to <K> turns may still be on <device>`. Once the holder releases the hold, Continue here brings it here by default (`idle handoff` is off by default; when turned on in **Settings → General → idle handoff** or with `CODEAF_IDLE_HANDOFF=1`, opening the paired released chat brings it here directly). A hold that merely lapses keeps the Continue-here card, including when its holder was working or its last working state is unknown.
 
 Turns that never left that computer are not in the copy you get. If its window is still running when it reconnects, it keeps those turns as a branch. After a restart, opening the latest copy keeps unpublished local turns and workspace edits as a branch before replacing them. Open the branch separately or discard it. Merging into the original chat is unavailable.
+
+## Why is it slow, files still arriving, can I type while it moves — background workspace files and CODEAF_MOVE_FILES_FIRST
+
+When you continue a chat from another computer, the transcript opens and the message box accepts typing as soon as the conversation records and the hold arrive. It does not wait on workspace files, the key vault, task working copies, Git status or local indexes.
+
+Workspace files keep arriving in the background after the chat opens. While they arrive, the status line says `files arriving` with the bytes copied so far (for example `files arriving · 40 of 112 MB` or `files arriving · 12 MB`, never `0 of 0`), and clears when the folder is in place. You can type and send messages while files are still arriving, and the model can answer in words immediately. Any tool or command that reads or writes the workspace or runs in it waits for the files to finish arriving (bounded by the 2-minute stall limit) rather than seeing a half-arrived folder.
+
+Each object download is retried at least 3 times with backoff on transient errors before it counts as failed. If the background download still fails, the chat stays open, tools keep waiting rather than running on a partial tree, and the status line names the problem in plain words with a retry (`files couldn't arrive: <reason> · retry`). Retrying (`/retry` or the next tool call) keeps the objects already downloaded. Set `CODEAF_MOVE_FILES_FIRST=1` to restore the old order that downloads and puts all workspace files in place before opening the chat.
 
 ## Can the chat on the other computer still open the job logs it mentions — logs, saved tool output, task journals and the task history after a move
 
@@ -458,7 +466,7 @@ Device presence can arrive before its list of chats. If you press `alt+m` early,
 
 ## a new chat brings its full saved contents; a returning chat brings its changes
 
-a chat this computer has never held brings its saved contents in parallel, even after other chats used this store. a returning chat downloads only what changed. either path checks that all saved contents arrived before the move finishes. sharing saved file contents with other chats does not make a new chat count as one this computer already held.
+a chat this computer has never held opens as soon as its conversation records and hold arrive, and brings its saved workspace contents in parallel in the background, even after other chats used this store. a returning chat downloads only what changed. tools that touch the workspace wait until all saved contents have arrived and been put in place (`CODEAF_MOVE_FILES_FIRST=1` waits for all files before opening instead). sharing saved file contents with other chats does not make a new chat count as one this computer already held.
 
 ## Does first start send anything — local identity before pairing
 
