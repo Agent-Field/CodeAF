@@ -42,6 +42,11 @@ type OrgTaskWork struct {
 	Seq      int             `json:"seq"`
 	CanSteer bool            `json:"can_steer"`
 	Steerer  bool            `json:"steerer,omitempty"`
+	// CanRevise is whether the caller's words start a revision run now: a
+	// done Afi task, nothing working, and they may steer it.
+	CanRevise bool `json:"can_revise,omitempty"`
+	// USD is what every run of the task has spent; absent while nothing has.
+	USD float64 `json:"usd,omitempty"`
 }
 
 func (w *OrgTaskWork) fill() {

@@ -133,3 +133,18 @@ func TestEveryWorkstreamStepReadsAsWords(t *testing.T) {
 		}
 	}
 }
+
+// ON THE SERVER A BATCH IS A PLAN, NOT A CHAT (org-space DESIGN §12). Before,
+// the server's Afi read the shared rule that a batch is named for "the chat
+// that runs them" and promised people a chat that cannot exist on a server.
+func TestOnTheServerABatchIsAPlan(t *testing.T) {
+	p := factoryWorkstreamAgentSystem("Pantry", "priya", true, time.Time{}, "")
+	for _, must := range []string{"a batch is a plan, never a chat", "presses Start, which releases all of it", "never say a chat will run it"} {
+		if !strings.Contains(p, must) {
+			t.Errorf("the server prompt does not say %q", must)
+		}
+	}
+	if strings.Contains(factoryWorkstreamAgentSystem("Pantry", "priya", false, time.Time{}, ""), "a batch is a plan") {
+		t.Error("without the task tools there is no batch to speak of")
+	}
+}

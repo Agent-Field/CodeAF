@@ -1064,16 +1064,22 @@ conversation: what Afi says and does while it works a task on the organization's
 server (OWNER-DECISIONS 2026-11-17 §8). Unlike Afi's pane, it is shared: everyone who
 can see the workstream reads it. `factory.org_workstream_task_work {ws, id, since?}`
 `GET /v1/workstreams/{ws}/tasks/{id}/work?since=` (`view`) answers `{id, task, state,
-turn?, for?, since?, entries, seq, can_steer, steerer?}`: `state` is `working` while a
+turn?, for?, since?, entries, seq, can_steer, steerer?, can_revise?, usd?}`: `state` is `working` while a
 run goes (`for` is who started it) and `idle` otherwise; `entries` are the lines after
 `since` (at most 200) in the pane's shape, a steer being a `person` line with `by`, and
 the run's first line a `note` "Started by <handle>"; `can_steer` is whether the caller may
 steer now, and `steerer` whether they could while a run goes (they own the task, or
-started the run, or the task is everyone's and they can edit).
+started the run, or the task is everyone's and they can edit); `can_revise` is whether
+their words would start a revision run now (a done Afi task with nothing working), and
+`usd` what every run of the task has spent.
 `factory.org_workstream_task_steer {ws, id, text}` `POST .../work/messages` (1–16384
 bytes) answers 202 with the conversation; the words reach the run at its next step, or
-start a turn of the run's own when its turn has just ended. With no run going the
-refusal is `conflict` with `detail.reason` `idle`; from anyone else it is `forbidden`.
+start a turn of the run's own when its turn has just ended. On a done Afi task with no
+run going they start a revision run and the task stays done. Otherwise, with no run
+going, the refusal is `conflict` with `detail.reason` `idle`; from anyone else it is
+`forbidden`. A person's comment that asks for a change on an Afi task that is running or
+done gets Afi's offer "Revise with this" under it, and taking that offer (`offer` state
+`taken`) hands the comment's words to the run, or starts a revision.
 The server's `task.work {id, task, entry?, state?}` reaches everyone who can see the
 workstream and is relayed as `factory.org_workstream_task_work {connection, id, task,
 entry?, state?}`.

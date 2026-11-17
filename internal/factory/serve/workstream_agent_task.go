@@ -124,9 +124,10 @@ func (h *Handler) startTaskRun(ws factory.OrgWorkstream, task factory.Workstream
 				h.resumeTaskRun(ws, next.task, next.starter, next.words)
 			}
 		}()
+		var spent float64
 		// Before that: everyone reading the task sees this run end, so the
 		// next run's lines open a turn of their own.
-		defer func() { h.closeTaskWork(key, turn, failed) }()
+		defer func() { h.closeTaskWork(key, turn, failed, spent) }()
 		defer d.wg.Done()
 		defer cancel()
 		// The lease is kept first and beats while the run goes, so a restart
@@ -144,6 +145,7 @@ func (h *Handler) startTaskRun(ws factory.OrgWorkstream, task factory.Workstream
 		if ctx.Err() == nil {
 			failed = err
 		}
+		spent = end.USD
 		if end.USD > 0 {
 			h.postAgentSpend(run, end.USD)
 		}

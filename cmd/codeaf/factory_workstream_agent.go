@@ -406,10 +406,21 @@ func factoryWorkstreamAgentSystem(name, asker string, work bool, now time.Time, 
 		"When a person asks for that, say that you cannot here, and say what in the workstream you can change.\n\n" +
 		factoryWorkstreamAgentWords + "\n\n"
 	if work {
-		system += session.WorkstreamWorkRules + "\n\n"
+		system += session.WorkstreamWorkRules + "\n\n" + factoryWorkstreamAgentPlan + "\n\n"
 	}
 	return system + "Answer briefly, in plain words."
 }
+
+// factoryWorkstreamAgentPlan is what a batch is on an organization's server.
+// The shared rules say a batch's group is "the same name as the chat that runs
+// them", which is the Personal workstream's way: a person's chats live on
+// their own computer, and a server has none (org-space DESIGN §12). Without
+// this line the server's Afi promised "a chat to coordinate it" and pointed
+// people at one that could never exist. ON THE SERVER A BATCH IS A PLAN.
+const factoryWorkstreamAgentPlan = "Here a batch is a plan, never a chat: there are no chats on this server. " +
+	"Make its tasks yourself with ws_task_create, one group name for all of them (a short name for the work), each done by Afi unless a person is to do it. " +
+	"The plan waits in Up next until a person presses Start, which releases all of it; never start a task of it yourself, and never say a chat will run it. " +
+	"When you are asked to coordinate work, that means: make the plan, then read ws_tasks when you are asked how it is going, and report here."
 
 // factoryWorkstreamAgentToday tells the agent the date and time where the
 // person is. The model has no clock, and without this line it took a date it

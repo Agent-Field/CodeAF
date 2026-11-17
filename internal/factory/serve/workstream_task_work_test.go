@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/live"
 )
@@ -138,5 +140,83 @@ func TestATasksWorkingConversationIsSharedAndItsOwnerSteersIt(t *testing.T) {
 	o.do(t, "mia", "GET", "/v1/workstreams/"+pricing.ID+"/agent", -1, nil, 200, &pane)
 	if len(pane.Entries) != 0 {
 		t.Fatalf("the task run wrote into mia's own pane: %+v", pane.Entries)
+	}
+}
+
+// A DONE TASK IS REVISED, NEVER REOPENED (org-space DESIGN §11.5). Before, the
+// only way to change finished work was to send it back: the task left Done
+// and everything after it waited again. Now the owner's words to a done Afi
+// task start a revision run with them and the task stays done; a comment
+// that asks for a change gets Afi's "Revise with this" under it, and taking it
+// starts a revision with the comment's words; a comment that asks for nothing
+// gets no offer.
+func TestADoneTaskIsRevisedNotReopened(t *testing.T) {
+	o := newWSOrg(t)
+	_, _, pricing, _ := o.orgScene(t)
+	ctx := context.Background()
+	mia := &agentDoor{h: o.h, id: pricing.ID, asker: "mia"}
+	line, err := mia.Work(ctx, "ws_task_create", json.RawMessage(`{"title":"Pricing copy","request":"Write the pricing page copy."}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var made struct{ Task struct{ ID string } }
+	_ = json.Unmarshal([]byte(line), &made)
+	for _, state := range []string{"running", "done"} {
+		if _, err := mia.Work(ctx, "ws_task_update", json.RawMessage(`{"task":"`+made.Task.ID+`","state":"`+state+`"}`)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	base := "/v1/workstreams/" + pricing.ID + "/tasks/" + made.Task.ID
+	asked := make(chan string, 4)
+	o.serverMode(t, func(ctx context.Context, turn AgentTurn) (AgentTurnEnd, error) {
+		asked <- turn.Text
+		turn.Step(api.AgentEntryAgent, "Revised.", "", false)
+		return AgentTurnEnd{USD: 0.01}, nil
+	})
+	stillDone := func(when string) {
+		t.Helper()
+		task, _ := mia.task(ctx, made.Task.ID)
+		if task.State != "done" {
+			t.Fatalf("%s the task says %q, want done", when, task.State)
+		}
+	}
+
+	var before api.TaskWork
+	o.do(t, "mia", "GET", base+"/work", -1, nil, 200, &before)
+	if !before.CanRevise || before.CanSteer {
+		t.Fatalf("the owner of a done Afi task cannot revise it: %+v", before)
+	}
+	o.do(t, "mia", "POST", base+"/work/messages", -1, api.TaskSteerNew{Text: "make it shorter"}, 202, nil)
+	if got := <-asked; !strings.Contains(got, "already done") || !strings.Contains(got, "make it shorter") {
+		t.Fatalf("the revision run was asked %q", got)
+	}
+	o.settle()
+	stillDone("after a revision")
+
+	// A comment that asks for nothing gets no offer; one that asks gets Afi's.
+	o.do(t, "mia", "POST", base+"/comment", -1, api.TaskComment{TaskNote: factory.TaskNote{Text: "Shipped this morning."}}, 201, nil)
+	o.do(t, "mia", "POST", base+"/comment", -1, api.TaskComment{TaskNote: factory.TaskNote{Text: "Please add a short FAQ at the end."}}, 201, nil)
+	var thread api.WorkstreamTaskEvents
+	o.do(t, "mia", "GET", base+"/events", -1, nil, 200, &thread)
+	var offers []factory.WorkstreamTaskEvent
+	for _, e := range thread.Events {
+		if e.Kind == factory.TaskEventOffer {
+			offers = append(offers, e)
+		}
+	}
+	if len(offers) != 1 || offers[0].Text != "Revise with this" || offers[0].By.Kind != factory.TaskByAfi {
+		t.Fatalf("offers = %+v", offers)
+	}
+	o.do(t, "mia", "POST", base+"/comment", -1, api.TaskComment{Offer: &api.TaskOfferSet{Event: offers[0].ID, State: factory.OfferTaken}}, 200, nil)
+	if got := <-asked; !strings.Contains(got, "already done") || !strings.Contains(got, "Please add a short FAQ at the end.") {
+		t.Fatalf("taking the offer asked %q", got)
+	}
+	o.settle()
+	stillDone("after taking the offer")
+
+	var after api.TaskWork
+	o.do(t, "mia", "GET", base+"/work", -1, nil, 200, &after)
+	if after.USD < 0.019 || after.State != api.AgentIdle {
+		t.Fatalf("after two revisions: %+v", after)
 	}
 }

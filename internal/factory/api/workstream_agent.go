@@ -136,7 +136,7 @@ type OrgKeyPut struct {
 // shared.
 //
 //	GET  /v1/workstreams/{id}/tasks/{tid}/work?since=<seq>   -> TaskWork (view)
-//	POST /v1/workstreams/{id}/tasks/{tid}/work/messages TaskSteerNew -> 202 TaskWork (owner or starter, while it runs)
+//	POST /v1/workstreams/{id}/tasks/{tid}/work/messages TaskSteerNew -> 202 TaskWork (owner or starter: into the run going, or a revision run on a done Afi task)
 //
 // Event, heard by everyone who can see the workstream:
 //
@@ -158,6 +158,11 @@ type TaskWork struct {
 	Seq      int          `json:"seq"`
 	CanSteer bool         `json:"can_steer"`
 	Steerer  bool         `json:"steerer,omitempty"`
+	// CanRevise is whether the caller's words would start a revision run now:
+	// the task is Afi's and done, nothing is working, and they may steer it.
+	CanRevise bool `json:"can_revise,omitempty"`
+	// USD is what every run of this task has spent; absent while nothing has.
+	USD float64 `json:"usd,omitempty"`
 }
 
 // TaskSteerNew is one steer: words to the agent working the task, which

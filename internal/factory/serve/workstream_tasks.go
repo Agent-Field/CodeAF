@@ -725,6 +725,9 @@ func (h *Handler) commentWorkstreamTask(w http.ResponseWriter, r *http.Request) 
 	var out factory.TaskChange
 	var ev factory.WorkstreamTaskEvent
 	var people map[string]string
+	// took is Afi's "Revise with this" when this write takes it, and asked the
+	// comment it hangs under: the words the revision is made with.
+	var took, asked *factory.WorkstreamTaskEvent
 	if body.Offer == nil && (body.Kind == "" || body.Kind == factory.TaskEventComment) {
 		people = h.wsPeopleNames(ws)
 	}
@@ -755,6 +758,11 @@ func (h *Handler) commentWorkstreamTask(w http.ResponseWriter, r *http.Request) 
 				return err
 			}
 			out.Task = t
+			if ev.Offer.State == factory.OfferTaken && ev.By.Kind == factory.TaskByAfi && ev.Text == reviseOfferWords {
+				if j := slices.IndexFunc(thread, func(e factory.WorkstreamTaskEvent) bool { return e.ID == ev.Offer.ForEvent }); j >= 0 {
+					took, asked = &ev, &thread[j]
+				}
+			}
 			return tw.Replace(ws.ID, ev)
 		}
 		out, err = factory.Note(t, body.TaskNote, actor, by, thread, h.newTaskID("te_"), now)
@@ -776,6 +784,13 @@ func (h *Handler) commentWorkstreamTask(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	h.publishTasks(ws, h.orgActor(r), out.Task)
+	if took != nil {
+		// Taking Afi's offer hands the comment's words to the work at once:
+		// into the run going, or as a revision of the done task.
+		h.reviseWith(ws, out.Task, factory.NormalizeHandle(v.Handle), asked.By, asked.Text)
+	} else if body.Offer == nil && ev.Kind == factory.TaskEventComment && ev.By.Kind == factory.TaskByPerson {
+		h.offerRevision(ws, out.Task, ev)
+	}
 	if body.Offer == nil && body.Kind == factory.TaskEventRequestNote && body.Decision != "" {
 		// A REQUEST THAT CHANGED SHARED WORK IS A DECISION, the asker's: the
 		// person the private chat works for.

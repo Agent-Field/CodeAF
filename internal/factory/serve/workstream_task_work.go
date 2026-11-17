@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/live"
+	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
 // ── A TASK'S WORKING CONVERSATION ──────────────────────────────────────────
@@ -30,6 +32,13 @@ import (
 // verb: their words on a task are comments, which an agent never acts on. A
 // steer needs a run going; with none, there is nobody to hear it, and the
 // refusal says to start the task again or comment.
+//
+// A DONE TASK IS REVISED, NEVER REOPENED. With no run going, the owner's (or
+// the last starter's) words to a done Afi task start a REVISION RUN on the
+// same task: Afi changes its result as asked and the task stays done. A
+// comment that asks for a change gets Afi's offer "Revise with this" under
+// it; anyone who can edit may take it, which steers the run going or starts a
+// revision with the comment's words (org-space DESIGN §11.5).
 //
 // AFI'S PANE AND A PERSON'S OWN CHATS STAY PRIVATE. Only a task's run is
 // shared; the per-person conversations in workstream_agent.go are untouched.
@@ -52,6 +61,8 @@ type taskWork struct {
 	state   api.AgentState
 	// steers is the run's inbox while it goes; nil when no run is going.
 	steers chan string
+	// usd is what every run of this task has spent, kept in its own file.
+	usd float64
 }
 
 // taskWorkOfLocked is key's conversation, read from disk on first use. The
@@ -69,6 +80,9 @@ func (h *Handler) taskWorkOfLocked(key taskRunKey) *taskWork {
 	if !w.loaded {
 		w.loaded = true
 		w.entries, w.seq = readAgentEntries(h.taskWorkFile(key))
+		if raw, err := os.ReadFile(h.taskWorkSpentFile(key)); err == nil {
+			w.usd, _ = strconv.ParseFloat(strings.TrimSpace(string(raw)), 64)
+		}
 	}
 	return w
 }
@@ -77,6 +91,11 @@ func (h *Handler) taskWorkOfLocked(key taskRunKey) *taskWork {
 // folder (taskRunDir), which holds the agent's memory of it.
 func (h *Handler) taskWorkFile(key taskRunKey) string {
 	return filepath.Join(h.taskRunDir(key.ws, key.task), "entries.jsonl")
+}
+
+// taskWorkSpentFile keeps what key's runs have spent, in dollars.
+func (h *Handler) taskWorkSpentFile(key taskRunKey) string {
+	return filepath.Join(h.taskRunDir(key.ws, key.task), "spent")
 }
 
 // addTaskWorkEntry keeps one line of key's conversation and publishes it to
@@ -140,9 +159,10 @@ func (h *Handler) openTaskWork(key taskRunKey, turn, starter string) <-chan stri
 	return steers
 }
 
-// closeTaskWork says key's run ended. A steer that arrived too late for any
-// step is said so, never silently dropped; why is the run's failure, if any.
-func (h *Handler) closeTaskWork(key taskRunKey, turn string, why error) {
+// closeTaskWork says key's run ended, having spent usd. A steer that arrived
+// too late for any step is said so, never silently dropped; why is the run's
+// failure, if any.
+func (h *Handler) closeTaskWork(key taskRunKey, turn string, why error, usd float64) {
 	h.agentDesk.mu.Lock()
 	w := h.taskWorkOfLocked(key)
 	late := 0
@@ -158,6 +178,12 @@ func (h *Handler) closeTaskWork(key taskRunKey, turn string, why error) {
 	}
 	w.steers = nil
 	w.state = api.AgentState{State: api.AgentIdle}
+	if usd > 0 {
+		w.usd += usd
+		if os.MkdirAll(filepath.Dir(h.taskWorkSpentFile(key)), 0o700) == nil {
+			_ = os.WriteFile(h.taskWorkSpentFile(key), []byte(strconv.FormatFloat(w.usd, 'f', -1, 64)), 0o600)
+		}
+	}
 	state := w.state
 	h.agentDesk.mu.Unlock()
 	if why != nil {
@@ -167,6 +193,103 @@ func (h *Handler) closeTaskWork(key taskRunKey, turn string, why error) {
 		h.addTaskWorkEntry(key, api.AgentEntry{Kind: api.AgentEntryNote, Text: "The work ended before Afi read the last message; start it again to use it.", Turn: turn})
 	}
 	h.publishTaskWork(key, api.TaskWorkEvent{AgentState: &state})
+}
+
+// lastStarterLocked is who started key's latest run, read from its "Started
+// by" line so it outlives a restart. The desk's lock is held.
+func lastStarterLocked(w *taskWork) string {
+	for i := len(w.entries) - 1; i >= 0; i-- {
+		if e := w.entries[i]; e.Kind == api.AgentEntryNote && e.By != "" && strings.HasPrefix(e.Text, "Started by ") {
+			return e.By
+		}
+	}
+	return ""
+}
+
+// revisable is whether t takes a revision run: Afi does it and it is done.
+func revisable(t factory.WorkstreamTask) bool {
+	return t.DoneBy.Kind == factory.TaskByAfi && t.State == factory.TaskDone
+}
+
+// revisionWords is what Afi is told on a revision run: the task, and what to
+// change, with the rule that the task stays done.
+func revisionWords(t factory.WorkstreamTask, who, words string) string {
+	return taskWords(t) + "\n\nThis task is already done. " + firstNonEmpty(who, "Someone") + " asks for a revision: " + strings.TrimSpace(words) +
+		"\n\nRevise its result as asked. Rewrite the document you made with ws_file_create (set file), or suggest the change with ws_file_suggest if a person has edited it. " +
+		"Keep the task done: never set it up next. Post one line on the task with ws_task_comment saying what you changed."
+}
+
+// startRevision starts a revision run on the done task t, as starter, after
+// the line that asked for it.
+func (h *Handler) startRevision(ws factory.OrgWorkstream, t factory.WorkstreamTask, starter, words string) error {
+	return h.runTaskTurn(ws, t, starter, revisionWords(t, starter, words))
+}
+
+// requestLike is a comment that asks the doer for a change: it opens with a
+// verb of change or a polite ask, or says "can you" or "please" anywhere.
+var requestLike = regexp.MustCompile(`(?i)^\s*(please|can you|could you|would you|can we|could we|add|change|make|use|remove|drop|rewrite|reword|shorten|lengthen|cut|fix|include|swap|replace|update|try|give|tighten|split|merge|turn|move|rename)\b|\b(can|could|would) you\b|\bplease\b`)
+
+// reviseOfferWords is Afi's offer under a comment that asks for a change.
+const reviseOfferWords = "Revise with this"
+
+// offerRevision hangs Afi's "Revise with this" under comment, when the
+// comment asks for a change and Afi's task can still take it (running, or
+// done). Anything else is left a comment.
+func (h *Handler) offerRevision(ws factory.OrgWorkstream, t factory.WorkstreamTask, comment factory.WorkstreamTaskEvent) {
+	if t.DoneBy.Kind != factory.TaskByAfi || (t.State != factory.TaskDone && t.State != factory.TaskRunning) || !requestLike.MatchString(comment.Text) {
+		return
+	}
+	afi := factory.TaskEventBy{Kind: factory.TaskByAfi, Name: "Afi"}
+	actor := factory.TaskActor{Edit: true}
+	_ = h.config.Store.EditWorkstreamTasks(func(tw store.TaskWrite) error {
+		thread, err := tw.Events(ws.ID, t.ID)
+		if err != nil {
+			return err
+		}
+		out, err := factory.Note(t, factory.TaskNote{Kind: factory.TaskEventOffer, Text: reviseOfferWords, OfferFor: comment.ID}, actor, afi, thread, h.newTaskID("te_"), h.clock().UTC())
+		if err != nil {
+			return err
+		}
+		return tw.Append(ws.ID, out.Events...)
+	})
+	h.publishTasks(ws, "", t)
+}
+
+// reviseWith hands words, from the comment by commenter that taker took Afi's
+// offer under, to t's run: into the run going, or as a revision run on a done
+// task. Its line in the Working conversation names both.
+func (h *Handler) reviseWith(ws factory.OrgWorkstream, t factory.WorkstreamTask, taker string, commenter factory.TaskEventBy, words string) {
+	key := taskRunKey{ws.ID, t.ID}
+	h.agentDesk.mu.Lock()
+	going := h.taskWorkOfLocked(key).steers != nil
+	turn := h.taskWorkOfLocked(key).state.Turn
+	h.agentDesk.mu.Unlock()
+	line := words
+	if factory.NormalizeHandle(commenter.ID) != taker {
+		line = "From " + firstNonEmpty(commenter.Name, commenter.ID, "a") + "'s comment: " + words
+	}
+	h.addTaskWorkEntry(key, api.AgentEntry{Kind: api.AgentEntryPerson, By: taker, Text: line, Turn: turn})
+	if going {
+		h.agentDesk.mu.Lock()
+		sent := false
+		if cur := h.taskWorkOfLocked(key); cur.steers != nil {
+			select {
+			case cur.steers <- line:
+				sent = true
+			default:
+			}
+		}
+		h.agentDesk.mu.Unlock()
+		if sent {
+			return
+		}
+	}
+	if revisable(t) {
+		if err := h.startRevision(ws, t, taker, line); err == nil {
+			return
+		}
+	}
+	h.addTaskWorkEntry(key, api.AgentEntry{Kind: api.AgentEntryNote, Text: "Afi could not take that now. Start the task again to use it.", Turn: turn})
 }
 
 // taskWorkStep is the Step of key's run: each line becomes a line of the
@@ -205,7 +328,8 @@ func (h *Handler) taskWorkWire(ws factory.OrgWorkstream, v wsViewer, t factory.W
 	out := api.TaskWork{ID: ws.ID, Task: t.ID, Entries: []api.AgentEntry{}}
 	h.agentDesk.mu.Lock()
 	w := h.taskWorkOfLocked(key)
-	out.AgentState, out.Seq = w.state, w.seq
+	out.AgentState, out.Seq, out.USD = w.state, w.seq, w.usd
+	starter := firstNonEmpty(w.state.For, lastStarterLocked(w))
 	from := len(w.entries)
 	for from > 0 && w.entries[from-1].Seq > since {
 		from--
@@ -216,8 +340,10 @@ func (h *Handler) taskWorkWire(ws factory.OrgWorkstream, v wsViewer, t factory.W
 	out.Entries = append(out.Entries, w.entries[from:]...)
 	going := w.steers != nil
 	h.agentDesk.mu.Unlock()
-	out.Steerer = taskSteerer(ws, v, t, out.For)
-	out.CanSteer = out.Steerer && going && ws.ArchivedAt == nil
+	out.Steerer = taskSteerer(ws, v, t, starter)
+	open := ws.ArchivedAt == nil && v.canWrite(ws)
+	out.CanSteer = out.Steerer && going && open
+	out.CanRevise = out.Steerer && !going && open && revisable(t) && h.serverAgentServed()
 	return out
 }
 
@@ -265,17 +391,28 @@ func (h *Handler) postTaskSteer(w http.ResponseWriter, r *http.Request) {
 	key := taskRunKey{ws.ID, t.ID}
 	h.agentDesk.mu.Lock()
 	cur := h.taskWorkOfLocked(key)
-	going, startedBy, turn := cur.steers != nil, cur.state.For, cur.state.Turn
+	going, startedBy, turn := cur.steers != nil, firstNonEmpty(cur.state.For, lastStarterLocked(cur)), cur.state.Turn
 	h.agentDesk.mu.Unlock()
 	if !taskSteerer(ws, v, t, startedBy) {
 		h.fail(w, http.StatusForbidden, errNotSteerer.Error())
+		return
+	}
+	me := factory.NormalizeHandle(v.Handle)
+	if !going && revisable(t) && v.canWrite(ws) {
+		// A done task is revised, never reopened: the words start a revision run.
+		h.addTaskWorkEntry(key, api.AgentEntry{Kind: api.AgentEntryPerson, By: me, Text: text})
+		if err := h.startRevision(ws, t, me, text); err != nil {
+			h.addTaskWorkEntry(key, api.AgentEntry{Kind: api.AgentEntryNote, Text: "Afi could not start the revision: " + err.Error()})
+			h.fail(w, http.StatusConflict, err.Error())
+			return
+		}
+		h.write(w, http.StatusAccepted, h.taskWorkWire(ws, v, t, 0))
 		return
 	}
 	if !going {
 		h.write(w, http.StatusConflict, map[string]string{"error": errNothingWorking.Error(), "reason": "idle"})
 		return
 	}
-	me := factory.NormalizeHandle(v.Handle)
 	// The line first, so everyone reads the words before the answer to them.
 	h.addTaskWorkEntry(key, api.AgentEntry{Kind: api.AgentEntryPerson, By: me, Text: text, Turn: turn})
 	h.agentDesk.mu.Lock()

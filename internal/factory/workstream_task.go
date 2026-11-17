@@ -1252,9 +1252,7 @@ type TaskNote struct {
 	DurationS int    `json:"duration_s,omitempty"`
 }
 
-// Note adds n to t's thread. A comment or a post on a done task REOPENS it
-// (Up next), so the history stays one thread; a Factory task's state stays
-// its job's. An offer hangs under a comment of the same thread and only Afi
+// Note adds n to t's thread and never changes t's state (the law below). An offer hangs under a comment of the same thread and only Afi
 // or a chat makes one.
 func Note(t WorkstreamTask, n TaskNote, a TaskActor, by TaskEventBy, thread []WorkstreamTaskEvent, newID func() string, now time.Time) (TaskChange, error) {
 	if !a.Edit {
