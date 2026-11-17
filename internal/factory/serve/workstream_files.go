@@ -290,6 +290,24 @@ func (h *Handler) filesAsRead(ws factory.OrgWorkstream, files map[string]factory
 	nameOf := h.personNames()
 	q = strings.ToLower(strings.TrimSpace(q))
 	for _, f := range files {
+		// A canvas file follows the canvas's lifetime, keeping its links for Undo.
+		if f.Kind == factory.FileCanvas && f.CanvasID != "" {
+			_, exists, e := h.config.Store.Canvas(f.CanvasID)
+			if e != nil {
+				return nil, nil, e
+			}
+			if !exists {
+				continue
+			}
+			if h.config.Canvas != nil {
+				var summary struct {
+					Trashed string `json:"trashed"`
+				}
+				if e := h.config.Canvas.Call(context.Background(), f.CanvasID, map[string]any{"cmd": "summary"}, &summary); e == nil && summary.Trashed != "" {
+					continue
+				}
+			}
+		}
 		// Resolve names at the read boundary so imported files and renamed people stay current.
 		if f.MadeBy.Kind == factory.MakerPerson && f.MadeBy.ID != "" {
 			f.MadeBy.Name = nameOf(f.MadeBy.ID)

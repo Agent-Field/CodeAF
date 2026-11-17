@@ -71,12 +71,10 @@ When Afi suggests edits to a document (`ws_file_suggest`), they show on the docu
 
 When someone makes a workstream on the organization's server and sends no pages with it, the server gives it one page: titled "Overview", of kind overview, with nothing written in it yet. That is the same page the desktop app sends, so a workstream made from the app, from a script or from any other client always has a page people (and the server's agent) can write in. A workstream made with pages of its own keeps exactly those pages, and no Overview is added.
 
-## the agent's text was kept, not applied — page History, current, Kept · not applied, Restore this version
+## page actions — no History or Restore in this release
 
-When the server's agent writes to a page a person made or is editing live, its text does not go into the page. It waits as a suggestion, and the agent says so: "your text was not applied: it waits as a suggestion for someone who can edit the page to take it". Underneath, the page's History menu still lists it as a version marked Kept · not applied.
+Organization pages have no version-history interface in this release. Page actions does not offer History or Restore this version. Afi's suggested edits are reviewed on the document itself with Keep and Drop; use those actions to take or reject them.
 
-History marks **current** on the version the page actually holds, which the organization's server names (`live_version` on the page's versions). That is never simply the highest number: a kept version can be newer than the page. A kept version's row reads **Kept · not applied** and is not current.
+## pages Afi reads appear under Uses on its task
 
-Choosing a kept version shows its words, and **Restore this version** applies them. The restore goes into the live page as one edit, so everyone with the page open sees it at once, and it becomes the newest version and the current one. After a restore the kept row no longer says Kept · not applied. Restoring needs edit on the page, and the page open in your window.
-
-Versions a person's editor keeps (after a pause, or on request) and restores are always ones the page held. A Personal workstream has no kept versions: there, current is the newest version.
+When Afi is working on a task, pages it reads through `workstream_pages` appear under Uses on that task, just like files read through `ws_file_read`. Reading the workstream includes the start of every page, so those pages count as inputs too. Reading one whole page adds that page. Afi's general workstream chat does not attach its reads to a task.

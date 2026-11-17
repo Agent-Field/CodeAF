@@ -78,7 +78,7 @@ An agent never acts on a comment. A comment on a task or in a file is people tal
 
 ## the agent changed my document — suggestions, and when it edits directly
 
-Agents change a document by suggestion: nothing changes until someone in the workstream accepts it, and anyone can accept or reject one. An agent rewrites a document directly only when it made that document and no person has edited it since. Two chats changing the same document both arrive as suggestions. On an organization's server too, a suggestion made with `ws_file_suggest` shows on the document for everyone in the workstream, each changed passage marked with **Keep** and **Drop** beside it and a bar above the title to review them one by one. Only when Afi rewrites a whole page it may not change does its text go to the page's History as Kept · not applied instead.
+Agents change a document by suggestion: nothing changes until someone in the workstream accepts it, and anyone can accept or reject one. An agent rewrites a document directly only when it made that document and no person has edited it since. Two chats changing the same document both arrive as suggestions. On an organization's server too, a suggestion made with `ws_file_suggest` shows on the document for everyone in the workstream, each changed passage marked with **Keep** and **Drop** beside it and a bar above the title to review them one by one. A whole-page rewrite that cannot be applied waits as a suggestion too. Organization pages have no History or Restore action in this release.
 
 ## "Priya asked Afi to keep it under 300 words" — the one line a private request leaves
 

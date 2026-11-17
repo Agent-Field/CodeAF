@@ -363,3 +363,61 @@ func TestAFramesWordsFollowItsCanvas(t *testing.T) {
 		t.Fatalf("a deleted canvas's words were kept: %+v %v", left, err)
 	}
 }
+
+func TestTrashedCanvasLeavesLiveFilesAndRestoresWithCanvas(t *testing.T) {
+	o := canvasOrg(t)
+	ws := o.create(t, "santosh", api.WorkstreamNew{Name: "Pantry"})
+	var cv api.CanvasRow
+	o.do(t, "santosh", "POST", "/v1/canvases", -1, api.CanvasNew{Title: "Layouts", Workstream: ws.ID}, 201, &cv)
+	path := "/v1/workstreams/" + ws.ID + "/files"
+	var list api.WorkstreamFiles
+	list = api.WorkstreamFiles{}
+	o.do(t, "santosh", "GET", path, -1, nil, 200, &list)
+	fileNamed(t, list.Files, "Layouts")
+	trashed := true
+	o.do(t, "santosh", "PATCH", "/v1/canvases/"+cv.ID, -1, api.CanvasPatch{Trashed: &trashed}, 200, nil)
+	list = api.WorkstreamFiles{}
+	o.do(t, "santosh", "GET", path, -1, nil, 200, &list)
+	for _, f := range list.Files {
+		if f.CanvasID == cv.ID {
+			t.Fatal("trashed canvas remains in live Files")
+		}
+	}
+	trashed = false
+	o.do(t, "santosh", "PATCH", "/v1/canvases/"+cv.ID, -1, api.CanvasPatch{Trashed: &trashed}, 200, nil)
+	list = api.WorkstreamFiles{}
+	o.do(t, "santosh", "GET", path, -1, nil, 200, &list)
+	fileNamed(t, list.Files, "Layouts")
+	o.do(t, "santosh", "DELETE", "/v1/canvases/"+cv.ID, -1, nil, 204, nil)
+	list = api.WorkstreamFiles{}
+	o.do(t, "santosh", "GET", path, -1, nil, 200, &list)
+	for _, f := range list.Files {
+		if f.CanvasID == cv.ID {
+			t.Fatal("deleted canvas remains in live Files")
+		}
+	}
+}
+
+func TestCanvasTrashPublishesFilesRefresh(t *testing.T) {
+	o := canvasOrg(t)
+	ws := o.create(t, "santosh", api.WorkstreamNew{Name: "Pantry"})
+	var cv api.CanvasRow
+	o.do(t, "santosh", "POST", "/v1/canvases", -1, api.CanvasNew{Title: "Layouts", Workstream: ws.ID}, 201, &cv)
+	o.do(t, "santosh", "GET", "/v1/workstreams/"+ws.ID+"/files", -1, nil, 200, nil)
+	trashed := true
+	o.do(t, "santosh", "PATCH", "/v1/canvases/"+cv.ID, -1, api.CanvasPatch{Trashed: &trashed}, 200, nil)
+	events, _, err := live.Read(o.st.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range events {
+		if e.Kind != api.EventWorkstreamChanged {
+			continue
+		}
+		var change api.WorkstreamEvent
+		if json.Unmarshal(e.Data, &change) == nil && change.ID == ws.ID && change.Part == api.PartFiles {
+			return
+		}
+	}
+	t.Fatal("canvas trash did not tell open Files views to refresh")
+}

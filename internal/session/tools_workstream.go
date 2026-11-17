@@ -50,6 +50,12 @@ type WorkstreamDoor interface {
 	Decide(ctx context.Context, text string) (string, error)
 }
 
+// workstreamPageReader records task inputs only when page words were shown.
+// General workstream reads used by other tools do not imply reading its pages.
+type workstreamPageReader interface {
+	ReadPages(context.Context, []string)
+}
+
 // WorkstreamPagesTool is the tool's name, spelled once.
 const WorkstreamPagesTool = "workstream_pages"
 
@@ -113,6 +119,13 @@ func (a *Agent) workstreamTool() bare.Tool {
 				if err != nil {
 					return "the workstream could not be read: " + oneLine(err.Error()), true, nil
 				}
+				if reads, ok := door.(workstreamPageReader); ok {
+					ids := make([]string, 0, len(ws.Pages))
+					for _, pg := range ws.Pages {
+						ids = append(ids, pg.ID)
+					}
+					reads.ReadPages(ctx, ids)
+				}
 				return WorkstreamAnswer(ws), false, nil
 			case wsAskPage:
 				ws, err := door.Workstream(ctx)
@@ -121,6 +134,9 @@ func (a *Agent) workstreamTool() bare.Tool {
 				}
 				for _, pg := range ws.Pages {
 					if pg.ID == page {
+						if reads, ok := door.(workstreamPageReader); ok {
+							reads.ReadPages(ctx, []string{page})
+						}
 						return "# " + pg.Title + " (" + pg.ID + ")\n\n" + pg.BodyMD, false, nil
 					}
 				}
