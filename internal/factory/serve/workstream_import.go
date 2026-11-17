@@ -45,8 +45,25 @@ func (h *Handler) importWorkstreamContents(w http.ResponseWriter, ws factory.Org
 		}
 		files = append(files, f)
 	}
+	if len(pkg.Tasks) > factory.TasksMost {
+		h.fail(w, 422, "too many tasks to bring along")
+		return false
+	}
 	for i := range pkg.Tasks {
 		t := &pkg.Tasks[i]
+		if strings.TrimSpace(t.ID) == "" {
+			h.fail(w, 422, "an imported task needs its identity")
+			return false
+		}
+		switch t.State {
+		case factory.TaskUpNext, factory.TaskNeeds, factory.TaskDone, factory.TaskFailed, factory.TaskInterrupted, factory.TaskStopped, factory.TaskNoReport:
+		case factory.TaskRunning:
+			h.fail(w, 422, "stop working tasks before bringing them along")
+			return false
+		default:
+			h.fail(w, 422, "an imported task needs a known task state")
+			return false
+		}
 		if strings.HasPrefix(t.ID, factory.TaskJobPrefix) {
 			h.fail(w, 422, "Factory jobs stay where they ran")
 			return false

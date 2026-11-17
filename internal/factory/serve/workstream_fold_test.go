@@ -40,7 +40,7 @@ func TestImportBringsUploadWithItsTaskLinks(t *testing.T) {
 	pkg := map[string]any{
 		"from_local_id": "local-chat", "name": "Launch",
 		"files": []any{map[string]any{"file": map[string]any{"id": "fl_input", "kind": "upload", "name": "input.txt", "made_by": map[string]any{"kind": "person", "name": "You"}, "from_task": "t1", "used_by": []string{"t1"}}, "data": "QQ=="}},
-		"tasks": []any{map[string]any{"id": "t1", "title": "Read input", "owner": map[string]any{"kind": "person", "id": "you", "name": "You"}, "done_by": map[string]any{"kind": "person", "id": "you", "name": "You"}, "came_from": map[string]any{"kind": "person", "id": "you", "name": "You"}, "state": "ready", "waiting_on": []string{}, "results": []any{}}},
+		"tasks": []any{map[string]any{"id": "t1", "title": "Read input", "owner": map[string]any{"kind": "person", "id": "you", "name": "You"}, "done_by": map[string]any{"kind": "person", "id": "you", "name": "You"}, "came_from": map[string]any{"kind": "person", "id": "you", "name": "You"}, "state": "up_next", "waiting_on": []string{}, "results": []any{}}},
 	}
 	var ws api.Workstream
 	o.do(t, "santosh", "POST", "/v1/workstreams/import", -1, pkg, 201, &ws)
