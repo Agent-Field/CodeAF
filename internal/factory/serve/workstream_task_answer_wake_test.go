@@ -52,12 +52,24 @@ func TestAnAnsweredAskPutsAfiBackToWork(t *testing.T) {
 		return AgentTurnEnd{}, err
 	})
 
-	// A drained worker group is not a receipt for a follow-up run queued by its predecessor.
-	waitState := func(id string, state string) {
+	// Needs is published before its asking run finishes. The first case waits
+	// for the Working conversation to go idle; the held-run case answers while
+	// it is still working. Both await the resumed task's actual completion.
+	waitState := func(id string, state string, idle bool) {
 		t.Helper()
 		tick := time.NewTicker(10 * time.Millisecond)
 		defer tick.Stop()
-		for string(o.one(t, path, id).State) != state {
+		for {
+			if string(o.one(t, path, id).State) == state {
+				if !idle {
+					return
+				}
+				var work api.TaskWork
+				o.do(t, "santosh", "GET", path+"/tasks/"+id+"/work", -1, nil, 200, &work)
+				if work.AgentState.State == api.AgentIdle && !o.h.taskTurnRunning(strings.TrimPrefix(path, "/v1/workstreams/"), id) {
+					return
+				}
+			}
 			select {
 			case <-tick.C:
 			case <-t.Context().Done():
@@ -76,9 +88,9 @@ func TestAnAnsweredAskPutsAfiBackToWork(t *testing.T) {
 
 	notes := o.task(t, "santosh", path, api.TaskCreate{Title: "Draft the notes", DoneBy: afi})
 	o.do(t, "santosh", "PATCH", path+"/tasks/"+notes.ID, notes.Rev, map[string]any{"state": "running"}, 200, nil)
-	waitState(notes.ID, string(factory.TaskNeeds))
+	waitState(notes.ID, string(factory.TaskNeeds), true)
 	answer(notes.ID)
-	waitState(notes.ID, string(factory.TaskDone))
+	waitState(notes.ID, string(factory.TaskDone), true)
 	if got := o.one(t, path, notes.ID); got.State != factory.TaskDone {
 		t.Fatalf("after the answer the task is %q, with Afi never back at it", got.State)
 	}
@@ -92,9 +104,9 @@ func TestAnAnsweredAskPutsAfiBackToWork(t *testing.T) {
 	// The answer arrives while the run that asked is still ending.
 	post := o.task(t, "santosh", path, api.TaskCreate{Title: "Write the post", DoneBy: afi})
 	o.do(t, "santosh", "PATCH", path+"/tasks/"+post.ID, post.Rev, map[string]any{"state": "running"}, 200, nil)
-	waitState(post.ID, string(factory.TaskNeeds))
+	waitState(post.ID, string(factory.TaskNeeds), false)
 	answer(post.ID)
 	free()
-	waitState(post.ID, string(factory.TaskDone))
+	waitState(post.ID, string(factory.TaskDone), true)
 	o.settle()
 }
