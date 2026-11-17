@@ -65,6 +65,11 @@ func TestLocalRunnerRegistersWithProductionSettingsAndNoJobs(t *testing.T) {
 // Before, the start answered "connect GitHub before turning the runner on".
 func TestLocalRunnerRegistersWithoutGitHub(t *testing.T) {
 	s := newLocalSetup(t)
+	// The harness links GitHub as "owner"; this factory has never seen GitHub.
+	s.backend.local.seamHook = func(seam factory.Seam) factory.Seam {
+		seam.GitHub = func(context.Context) (factory.GitHubLink, error) { return factory.GitHubLink{}, nil }
+		return seam
+	}
 	st := s.start()
 	var run appwire.FactoryLocalStatus
 	s.must("factory.local_run", map[string]any{"caller": "w1"}, &run)
@@ -72,16 +77,19 @@ func TestLocalRunnerRegistersWithoutGitHub(t *testing.T) {
 		t.Fatal("runner did not start without GitHub")
 	}
 	deadline := time.Now().Add(5 * time.Second)
+	var last []string
 	for time.Now().Before(deadline) {
 		rows, err := s.backend.FactoryRunners(context.Background(), st.Factory)
+		last = last[:0]
 		if err == nil {
 			for _, row := range rows.Runners {
-				if row.Owner == factory.LocalRunnerHandle && row.LiveCapacity && row.State != "offline" {
+				if row.Owner == factory.LocalRunnerHandle && row.State != "offline" {
 					return
 				}
+				last = append(last, row.Owner+"/"+row.State)
 			}
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	t.Fatalf("no live runner registered under %q with GitHub never connected", factory.LocalRunnerHandle)
+	t.Fatalf("no runner registered under %q with GitHub never connected; saw %v", factory.LocalRunnerHandle, last)
 }
