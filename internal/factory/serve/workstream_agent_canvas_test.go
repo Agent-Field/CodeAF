@@ -34,7 +34,7 @@ func TestServerAfiDrawsACanvasInItsWorkstream(t *testing.T) {
 	o := canvasOrg(t)
 	ws := o.create(t, "santosh", api.WorkstreamNew{Name: "Pantry launch"})
 	chat := &agentDoor{h: o.h, id: ws.ID, asker: "santosh"}
-	line, err := chat.Work(context.Background(), "ws_task_create", json.RawMessage(`{"title":"Social launch cards","request":"Three cards for Friday"}`))
+	line, err := chat.Work(context.Background(), "ws_task_create", json.RawMessage(`{"title":"Social launch cards","request":"Three cards for Friday","goal":"Launch posts look like one set","deliverable":"A canvas of three cards","acceptance":["Three 1080 square cards","One shared palette"]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
