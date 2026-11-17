@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
@@ -819,10 +820,17 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 					earlyArrival.BindPaths(root)
 				}
 			}
-			preserveExistingSubdirs(filepath.Join(target.Root, cell.StateDir), filepath.Join(staged.Root, cell.StateDir))
+			carried := preserveExistingSubdirs(filepath.Join(target.Root, cell.StateDir), filepath.Join(staged.Root, cell.StateDir))
 			if err := handoff.Swap(filepath.Join(staged.Root, cell.StateDir), filepath.Join(target.Root, cell.StateDir)); err != nil {
 				return err
 			}
+			// What was carried over is the OLDER copy of those records until the
+			// restore that follows replaces it with the head's; the restore needs
+			// to know which files are still exactly that copy.
+			if err := c.eng.NoteCarried(target, carried); err != nil {
+				return err
+			}
+			installOpenInstructions(staged.Root, target.Root)
 			if err := cellstore.NoteAdopted(target, head); err != nil {
 				return err
 			}
@@ -1875,12 +1883,58 @@ func (l landing) OpenCache(c cell.Cell) string {
 	return ""
 }
 
-func preserveExistingSubdirs(oldCellDir, newCellDir string) {
-	entries, err := os.ReadDir(oldCellDir)
-	if err != nil {
+// installOpenInstructions puts the workspace's instruction files, which the open
+// wave staged beside the conversation records, where the chat's system prompt
+// will read them, so a chat that opens before its workspace has arrived still
+// has its project's rules in the first turns. A file already in the workspace is
+// never touched, because it is either the person's own edit or an older copy,
+// and the restore that follows decides between them as it always has; a chat
+// working inside one of the person's own folders is left to that restore
+// entirely.
+func installOpenInstructions(stagedRoot, root string) {
+	if _, inPlace := projectOf(root); inPlace {
 		return
 	}
+	workspace := workspaceOf(root)
+	for _, name := range cellsync.OpenInstructionFiles {
+		src := filepath.Join(stagedRoot, cellsync.OpenInstructionDir, name)
+		info, err := os.Lstat(src)
+		if err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		raw, err := os.ReadFile(src)
+		if err != nil || os.MkdirAll(workspace, 0o700) != nil {
+			continue
+		}
+		f, err := os.OpenFile(filepath.Join(workspace, name), os.O_WRONLY|os.O_CREATE|os.O_EXCL, info.Mode().Perm())
+		if err != nil {
+			continue
+		}
+		_, werr := f.Write(raw)
+		if cerr := f.Close(); werr != nil || cerr != nil {
+			_ = os.Remove(filepath.Join(workspace, name))
+		}
+	}
+}
+
+// preserveExistingSubdirs carries the folders of the old .cell/ that the open
+// state does not cover (tasks, artifacts, and the like) into the staged one, so
+// the chat opens with something in them while the rest arrives. It answers the
+// stat of every file now under a carried folder, keyed by its name relative to
+// .cell/.
+//
+// A file the head already placed in the staged folder ALWAYS wins over the old
+// copy of the same name, at every depth: carrying an older version over the
+// incoming one would let the next seal publish the older. A file only the old
+// copy has is kept, and is the older version of whatever the head holds under
+// that name until the restore replaces it (see cellstore.Engine.NoteCarried).
+func preserveExistingSubdirs(oldCellDir, newCellDir string) map[string]cellstore.CarriedFile {
+	entries, err := os.ReadDir(oldCellDir)
+	if err != nil {
+		return nil
+	}
 	_ = os.MkdirAll(newCellDir, 0o700)
+	var carried []string
 	for _, e := range entries {
 		if !e.IsDir() {
 			continue
@@ -1892,17 +1946,47 @@ func preserveExistingSubdirs(oldCellDir, newCellDir string) {
 		src := filepath.Join(oldCellDir, name)
 		dst := filepath.Join(newCellDir, name)
 		if _, err := os.Stat(dst); os.IsNotExist(err) {
-			_ = os.Rename(src, dst)
+			if os.Rename(src, dst) == nil {
+				carried = append(carried, name)
+			}
 			continue
 		}
-		if subEntries, err := os.ReadDir(dst); err == nil {
-			for _, se := range subEntries {
-				_ = os.Rename(filepath.Join(dst, se.Name()), filepath.Join(src, se.Name()))
-			}
+		if _, err := os.ReadDir(dst); err == nil {
+			_ = filepath.WalkDir(dst, func(p string, d fs.DirEntry, err error) error {
+				if err != nil || d.IsDir() {
+					return nil
+				}
+				rel, relErr := filepath.Rel(dst, p)
+				if relErr != nil {
+					return nil
+				}
+				to := filepath.Join(src, rel)
+				if os.MkdirAll(filepath.Dir(to), 0o700) == nil {
+					_ = os.Rename(p, to)
+				}
+				return nil
+			})
 			_ = os.RemoveAll(dst)
-			_ = os.Rename(src, dst)
+			if os.Rename(src, dst) == nil {
+				carried = append(carried, name)
+			}
 		}
 	}
+	files := map[string]cellstore.CarriedFile{}
+	for _, name := range carried {
+		_ = filepath.WalkDir(filepath.Join(newCellDir, name), func(p string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return nil
+			}
+			info, iErr := d.Info()
+			rel, relErr := filepath.Rel(newCellDir, p)
+			if iErr == nil && relErr == nil && info.Mode().IsRegular() {
+				files[filepath.ToSlash(rel)] = cellstore.FingerprintOf(info)
+			}
+			return nil
+		})
+	}
+	return files
 }
 
 func (l landing) Want(ctx context.Context, c cell.Cell, head string) ([]string, error) {

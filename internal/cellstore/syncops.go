@@ -470,9 +470,13 @@ func (e Engine) Sync(keys SyncKeys, ledger string) SyncEngine {
 						return nil, err
 					}
 				}
-				if err := mergeMissingState(scratch, stateDir(c)); err != nil {
+				if err := mergeMissingState(scratch, stateDir(c), e.carriedStale(c)); err != nil {
 					return nil, err
 				}
+				// Once the head's records have replaced the carried-over older
+				// ones, the note has done its work: a later restore must not
+				// mistake a file written since for the older copy.
+				_ = removeIfPresent(e.carriedPath(c))
 				if mop, ok := op.(materializeOp); ok {
 					e.recordMaterializedStat(c, mop.Head)
 				}
@@ -480,7 +484,7 @@ func (e Engine) Sync(keys SyncKeys, ledger string) SyncEngine {
 			}
 			// When the cell's own folder is the tree (e.g. a home-folder chat),
 			// preserve the live .cell/ state across materialize.
-			if err := mergeMissingState(stateDir(c), scratch); err != nil {
+			if err := mergeMissingState(stateDir(c), scratch, nil); err != nil {
 				return nil, err
 			}
 			raw, err := materializer.do(ctx, c, "", op)

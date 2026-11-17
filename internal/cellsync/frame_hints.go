@@ -158,6 +158,139 @@ func blake3Keyed(key [32]byte, domain string, id [32]byte) [32]byte {
 	return out
 }
 
+// blake3 flags and sizes, from the BLAKE3 specification.
+const (
+	blake3ChunkLen   = 1024
+	blake3BlockLen   = 64
+	blake3ChunkStart = 1
+	blake3ChunkEnd   = 2
+	blake3Parent     = 4
+	blake3Root       = 8
+)
+
+var blake3IV = [8]uint32{0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A, 0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19}
+
+// blake3Compress is the BLAKE3 compression function: it answers the sixteen
+// output words of one block under a chaining value, which callers fold down to
+// eight (the next chaining value) or read whole (an extended output).
+func blake3Compress(cv [8]uint32, block [16]uint32, counter uint64, blockLen, flags uint32) [16]uint32 {
+	v := [16]uint32{
+		cv[0], cv[1], cv[2], cv[3], cv[4], cv[5], cv[6], cv[7],
+		blake3IV[0], blake3IV[1], blake3IV[2], blake3IV[3],
+		uint32(counter), uint32(counter >> 32), blockLen, flags,
+	}
+	m := block
+	for r := range 7 {
+		blake3G(&v, 0, 4, 8, 12, m[0], m[1])
+		blake3G(&v, 1, 5, 9, 13, m[2], m[3])
+		blake3G(&v, 2, 6, 10, 14, m[4], m[5])
+		blake3G(&v, 3, 7, 11, 15, m[6], m[7])
+		blake3G(&v, 0, 5, 10, 15, m[8], m[9])
+		blake3G(&v, 1, 6, 11, 12, m[10], m[11])
+		blake3G(&v, 2, 7, 8, 13, m[12], m[13])
+		blake3G(&v, 3, 4, 9, 14, m[14], m[15])
+		if r < 6 {
+			var next [16]uint32
+			for i := range 16 {
+				next[i] = m[blake3Perm[i]]
+			}
+			m = next
+		}
+	}
+	for i := range 8 {
+		v[i] ^= v[i+8]
+		v[i+8] ^= cv[i]
+	}
+	return v
+}
+
+func blake3Words(b []byte) [16]uint32 {
+	var padded [blake3BlockLen]byte
+	copy(padded[:], b)
+	var w [16]uint32
+	for i := range 16 {
+		w[i] = binary.LittleEndian.Uint32(padded[4*i : 4*i+4])
+	}
+	return w
+}
+
+// blake3Output is the last compression of a chunk or a parent node, held back
+// because the root node is compressed once more with the ROOT flag.
+type blake3Output struct {
+	cv       [8]uint32
+	block    [16]uint32
+	counter  uint64
+	blockLen uint32
+	flags    uint32
+}
+
+func (o blake3Output) chainingValue() [8]uint32 {
+	w := blake3Compress(o.cv, o.block, o.counter, o.blockLen, o.flags)
+	var cv [8]uint32
+	copy(cv[:], w[:8])
+	return cv
+}
+
+func (o blake3Output) root() [32]byte {
+	w := blake3Compress(o.cv, o.block, 0, o.blockLen, o.flags|blake3Root)
+	var out [32]byte
+	for i := range 8 {
+		binary.LittleEndian.PutUint32(out[4*i:4*i+4], w[i])
+	}
+	return out
+}
+
+func blake3ChunkOutput(chunk []byte, counter uint64) blake3Output {
+	cv := blake3IV
+	flags := uint32(blake3ChunkStart)
+	for len(chunk) > blake3BlockLen {
+		w := blake3Compress(cv, blake3Words(chunk[:blake3BlockLen]), counter, blake3BlockLen, flags)
+		copy(cv[:], w[:8])
+		chunk = chunk[blake3BlockLen:]
+		flags = 0
+	}
+	return blake3Output{cv: cv, block: blake3Words(chunk), counter: counter, blockLen: uint32(len(chunk)), flags: flags | blake3ChunkEnd}
+}
+
+func blake3ParentOutput(left, right [8]uint32) blake3Output {
+	var block [16]uint32
+	copy(block[:8], left[:])
+	copy(block[8:], right[:])
+	return blake3Output{cv: blake3IV, block: block, blockLen: blake3BlockLen, flags: blake3Parent}
+}
+
+// blake3Subtree is the output of the node that covers data, whose first chunk
+// is number counter. The left child always takes the largest power-of-two run
+// of whole chunks that still leaves something for the right one.
+func blake3Subtree(data []byte, counter uint64) blake3Output {
+	if len(data) <= blake3ChunkLen {
+		return blake3ChunkOutput(data, counter)
+	}
+	left := blake3ChunkLen
+	for left*2 < len(data) {
+		left *= 2
+	}
+	l := blake3Subtree(data[:left], counter).chainingValue()
+	r := blake3Subtree(data[left:], counter+uint64(left/blake3ChunkLen)).chainingValue()
+	return blake3ParentOutput(l, r)
+}
+
+// blake3Sum is the unkeyed BLAKE3 hash of data. The package carries it because
+// a chunk's id is the hash of its bytes, and only a hash can say whether a file
+// that is already on this disk holds the chunk a head names: a length that
+// happens to match says nothing.
+func blake3Sum(data []byte) [32]byte { return blake3Subtree(data, 0).root() }
+
+// furrowChunkID is the id furrow gives a chunk of file content: the BLAKE3 hash
+// of the chunk's bytes under the chunk domain.
+func furrowChunkID(content []byte) [32]byte {
+	const domain = "furrow:chunk:v1\x00"
+	buf := make([]byte, 0, len(domain)+len(content))
+	buf = append(buf, domain...)
+	buf = append(buf, content...)
+	return blake3Sum(buf)
+}
+
 func metaRID(cellKey, oid [32]byte) string {
 	sum := blake3Keyed(cellKey, "furrow:remote-id:v1\x00", oid)
 	return hex.EncodeToString(sum[:])
@@ -315,7 +448,24 @@ type furrowChunkRef struct {
 const (
 	openSmallFileLimit  = 4 << 20
 	openCarryBytesLimit = 4 << 20
+	// openInstructionBudget bounds the workspace's instruction files, together,
+	// that ride in the open wave. They are a page of house rules each, so the
+	// bound is generous; a head whose files are larger gets them with the rest of
+	// the workspace instead.
+	openInstructionBudget = 256 << 10
 )
+
+// OpenInstructionFiles are the files at the workspace root that the chat's
+// system prompt reads as the project's own rules (internal/session/prompt.go:
+// agentsFileName and claudeFileName). The agent is built the moment the chat
+// opens, so a take brings them in the same round as the conversation records
+// rather than leaving the first turns to run without them. The names live here
+// because this package sits below the session; keep the two lists the same.
+var OpenInstructionFiles = []string{"AGENTS.md", "CLAUDE.md"}
+
+// OpenInstructionDir is the folder, inside the staging folder, where the open
+// wave leaves those files for the take to place in the workspace.
+const OpenInstructionDir = ".open-workspace"
 
 func parseKeys(eng Engine, c cell.Cell) (cellKey, dedup [32]byte, cacheDir string, ok bool) {
 	k, has := eng.(openKeyer)
@@ -432,11 +582,6 @@ func fileExistsHint(p string) bool {
 	return err == nil && info.Mode().IsRegular()
 }
 
-func dirExistsHint(p string) bool {
-	info, err := os.Stat(p)
-	return err == nil && info.IsDir()
-}
-
 func fillMissingOpenChunksFromDisk(c cell.Cell, cellKey, dedup, headOID [32]byte, rawByRID map[string]blobstore.Object, metaByOID map[[32]byte]metaObj) {
 	if c.Root == "" {
 		return
@@ -492,6 +637,13 @@ func fillMissingOpenChunksFromDisk(c cell.Cell, cellKey, dedup, headOID [32]byte
 		if err != nil {
 			return
 		}
+		// A file on this disk stands in for a chunk of the head only when its
+		// bytes at that place HASH to the chunk's id. A length that fits proves
+		// nothing: an older copy of a transcript or a task file often has the
+		// same length as the newer one, and sealing its bytes under the head's
+		// chunk id would hand the chat (or the next device) a chunk that was
+		// never in the head. A chunk that does not match is left missing, and
+		// the caller fetches it.
 		var offset uint64
 		for _, ch := range b.Chunks {
 			cid, ok := ch.ID.id32()
@@ -503,8 +655,11 @@ func fillMissingOpenChunksFromDisk(c cell.Cell, cellKey, dedup, headOID [32]byte
 			}
 			rid := chunkRID(dedup, cid)
 			if _, have := rawByRID[rid]; !have {
-				if obj, encOK := encryptChunkObject(dedup, cid, localBytes[offset:offset+ch.Len]); encOK {
-					rawByRID[rid] = obj
+				part := localBytes[offset : offset+ch.Len]
+				if furrowChunkID(part) == cid {
+					if obj, encOK := encryptChunkObject(dedup, cid, part); encOK {
+						rawByRID[rid] = obj
+					}
 				}
 			}
 			offset += ch.Len
@@ -779,6 +934,29 @@ func openStateRIDs(cellKey, dedup, headOID [32]byte, metaByOID map[[32]byte]meta
 			}
 		}
 	}
+	// The workspace's instruction files ride in the head frame too, so the open
+	// wave finds them without a round of its own (see OpenInstructionFiles).
+	var instructionBytes uint64
+	for _, name := range OpenInstructionFiles {
+		ie, _, ok := findDirEntryInPages(rootOID, name, metaByOID)
+		if !ok || ie.Kind != "File" {
+			continue
+		}
+		boid, ok := ie.Target.id32()
+		if !ok {
+			continue
+		}
+		bm, ok := metaByOID[boid]
+		if !ok || bm.kind != 2 {
+			continue
+		}
+		var b furrowBlob
+		if json.Unmarshal(bm.body, &b) != nil || b.TotalLen == 0 || instructionBytes+b.TotalLen > openInstructionBudget {
+			continue
+		}
+		instructionBytes += b.TotalLen
+		addBlob(boid)
+	}
 	return wantedRIDs
 }
 
@@ -880,6 +1058,12 @@ func (f *Fetcher) stageOpenFromInbox(ctx context.Context, c cell.Cell, head, sta
 		return false, nil
 	}
 
+	// A warm receiver's stage is seeded with the files of its older copy, which
+	// are only ever CANDIDATES: a file there is reused when its bytes hash to
+	// what the head names (fillMissingOpenChunksFromDisk), and is otherwise
+	// fetched, whether or not the head's frame happened to carry its metadata.
+	// "The file exists and I have never seen its metadata" says nothing about
+	// whether it is the head's file.
 	seededWarm := fileExistsHint(filepath.Join(c.Root, filepath.FromSlash(cell.MetaPath)))
 	var subDirOIDs [][32]byte
 	var envDirOID, carrierDirOID, receiptsDirOID [32]byte
@@ -902,15 +1086,9 @@ func (f *Fetcher) stageOpenFromInbox(ctx context.Context, c cell.Cell, head, sta
 		case "Directory":
 			switch name {
 			case "env":
-				if _, have := metaByOID[oid]; !have && seededWarm && dirExistsHint(filepath.Join(c.Root, cell.StateDir, "env")) {
-					continue
-				}
 				envDirOID, hasEnvDir = oid, true
 				subDirOIDs = append(subDirOIDs, oid)
 			case "workspace-carrier":
-				if _, have := metaByOID[oid]; !have && seededWarm && dirExistsHint(filepath.Join(c.Root, cell.StateDir, "workspace-carrier")) {
-					continue
-				}
 				carrierDirOID, hasCarrierDir = oid, true
 				subDirOIDs = append(subDirOIDs, oid)
 			case "receipts":
@@ -969,25 +1147,50 @@ func (f *Fetcher) stageOpenFromInbox(ctx context.Context, c cell.Cell, head, sta
 		}
 	}
 
-	if seededWarm {
-		journalRel := filepath.Join(cell.StateDir, "journal.jsonl")
-		turnsRel := filepath.Join(cell.StateDir, "turns.jsonl")
-		filtered := files[:0]
-		for _, spec := range files {
-			if _, have := metaByOID[spec.blobOID]; !have && spec.relPath != journalRel && spec.relPath != turnsRel && fileExistsHint(filepath.Join(c.Root, spec.relPath)) {
-				continue
-			}
-			filtered = append(filtered, spec)
+	// The workspace's instruction files join the same request set as the open
+	// state: their metadata is fetched in the same round as the other files'
+	// metadata and their chunks in the same round as the other files' chunks, so
+	// bringing them costs the open no round of its own.
+	var instructionSpecs []openFileSpec
+	for _, name := range OpenInstructionFiles {
+		ie, _, ok := findDirEntryInPages(rootOID, name, metaByOID)
+		if !ok || ie.Kind != "File" {
+			continue
 		}
-		files = filtered
+		if soid, ok := ie.Target.id32(); ok {
+			instructionSpecs = append(instructionSpecs, openFileSpec{
+				relPath: filepath.Join(OpenInstructionDir, name),
+				blobOID: soid,
+				mode:    fileModeOf(ie.Mode),
+			})
+		}
 	}
 
 	var blobOIDs [][32]byte
 	for _, spec := range files {
 		blobOIDs = append(blobOIDs, spec.blobOID)
 	}
+	for _, spec := range instructionSpecs {
+		blobOIDs = append(blobOIDs, spec.blobOID)
+	}
 	if err := fetchMissingMeta(blobOIDs); err != nil {
 		return false, err
+	}
+	// Bound what rides: together they must fit the budget, or they stay with the
+	// workspace and arrive behind the open like every other workspace file.
+	var instructionBytes uint64
+	instructionFits := true
+	for _, spec := range instructionSpecs {
+		bm, ok := metaByOID[spec.blobOID]
+		var b furrowBlob
+		if !ok || bm.kind != 2 || json.Unmarshal(bm.body, &b) != nil {
+			instructionFits = false
+			break
+		}
+		instructionBytes += b.TotalLen
+	}
+	if instructionFits && instructionBytes <= openInstructionBudget {
+		files = append(files, instructionSpecs...)
 	}
 
 	if seededWarm {
