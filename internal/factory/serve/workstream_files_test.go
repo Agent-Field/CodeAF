@@ -225,7 +225,9 @@ func TestFilesMoveToAnotherWorkstream(t *testing.T) {
 	}
 	var got api.Workstream
 	o.do(t, "santosh", "GET", "/v1/workstreams/"+to.ID, -1, nil, 200, &got)
-	if !slices.ContainsFunc(got.Pages, func(p factory.WorkstreamPage) bool { return p.ID == plan.PageID && p.BodyMD == "Ship the oatmeal tagline" }) {
+	if !slices.ContainsFunc(got.Pages, func(p factory.WorkstreamPage) bool {
+		return p.ID == plan.PageID && p.BodyMD == "Ship the oatmeal tagline"
+	}) {
 		t.Fatalf("the page went with it: %+v", got.Pages)
 	}
 	var vs api.PageVersions
