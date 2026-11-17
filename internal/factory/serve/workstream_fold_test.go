@@ -89,3 +89,25 @@ func TestImportBringsAnUploadLargerThanTheOrdinaryJSONBody(t *testing.T) {
 		t.Fatalf("imported file = %+v", file)
 	}
 }
+
+func TestFoldKeepsTheDestinationPlanAndUndoReturnsTheSourcePlan(t *testing.T) {
+	o := newWSOrg(t)
+	a := o.create(t, "santosh", api.WorkstreamNew{Name: "Research"})
+	b := o.create(t, "santosh", api.WorkstreamNew{Name: "Launch"})
+	for id, name := range map[string]string{a.ID: "Research plan", b.ID: "Launch plan"} {
+		o.do(t, "santosh", "PUT", "/v1/workstreams/"+id+"/plan", 0, map[string]any{"plan": map[string]any{"name": name}}, 200, nil)
+	}
+	var folded api.Workstream
+	o.do(t, "santosh", "PATCH", "/v1/workstreams/"+a.ID, a.Rev, map[string]any{"fold_into": b.ID}, 200, &folded)
+	var dest map[string]any
+	o.do(t, "santosh", "GET", "/v1/workstreams/"+b.ID+"/plan", -1, nil, 200, &dest)
+	if dest["plan"].(map[string]any)["name"] != "Launch plan" {
+		t.Fatalf("destination plan = %+v", dest)
+	}
+	o.do(t, "santosh", "PATCH", "/v1/workstreams/"+b.ID, folded.Rev, map[string]any{"unfold": a.ID}, 200, nil)
+	var source map[string]any
+	o.do(t, "santosh", "GET", "/v1/workstreams/"+a.ID+"/plan", -1, nil, 200, &source)
+	if source["plan"].(map[string]any)["name"] != "Research plan" {
+		t.Fatalf("restored source plan = %+v", source)
+	}
+}
