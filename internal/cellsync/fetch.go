@@ -128,7 +128,6 @@ func (f *Fetcher) Fetch(ctx context.Context, c cell.Cell, head string) error {
 // leaves any remaining workspace frames for Complete after the chat opens (C1).
 // It reports whether all objects head wants are already in the store.
 func (f *Fetcher) StageChat(ctx context.Context, c cell.Cell, head string, stageState func(context.Context, cell.Cell, string) error) (complete bool, err error) {
-	f.openRounds.Store(0)
 	if err := ctx.Err(); err != nil {
 		return false, err
 	}
@@ -281,6 +280,7 @@ func (f *Fetcher) round(ctx context.Context, c cell.Cell, head, inbox string, wa
 	if err := f.gather(ctx, inbox, want); err != nil {
 		return 0, err
 	}
+	cacheOpenObjectsFromDirs(f.Engine, c, head, inbox)
 	n, err := f.Engine.Import(ctx, c, head, inbox)
 	if err == nil && n == 0 {
 		err = errors.New("cellsync: import took none of the wanted objects")
@@ -513,6 +513,7 @@ func (f *Fetcher) prime(ctx context.Context, c cell.Cell, head, inbox string) er
 							return fErr
 						}
 						if allLanded {
+							cacheOpenObjectsFromDirs(f.Engine, c, head, inbox)
 							if _, impErr := f.Engine.ImportPrimed(ctx, c, head, inbox); impErr == nil {
 								markSeenFrames(mainInbox, view.Cell.Frames)
 								removeStageInbox(stageInbox)
@@ -522,6 +523,7 @@ func (f *Fetcher) prime(ctx context.Context, c cell.Cell, head, inbox string) er
 						}
 						_, _ = f.Engine.ImportPartial(ctx, c, head, inbox)
 					} else {
+						cacheOpenObjectsFromDirs(f.Engine, c, head, inbox)
 						if _, impErr := f.Engine.ImportPrimed(ctx, c, head, inbox); impErr == nil {
 							markSeenFrames(mainInbox, view.Cell.Frames)
 							removeStageInbox(stageInbox)
@@ -567,6 +569,7 @@ func (f *Fetcher) prime(ctx context.Context, c cell.Cell, head, inbox string) er
 		}
 		return nil
 	}
+	cacheOpenObjectsFromDirs(f.Engine, c, head, inbox)
 	if _, err := f.Engine.ImportPrimed(ctx, c, head, inbox); err != nil {
 		clearInbox(inbox)
 		if usingStage {

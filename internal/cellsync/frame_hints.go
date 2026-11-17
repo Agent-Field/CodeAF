@@ -3,6 +3,7 @@ package cellsync
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -227,6 +228,33 @@ func decryptChunkObject(dedup, cid [32]byte, rid string, raw []byte) ([]byte, bo
 	return plain[33:], true
 }
 
+func encryptChunkObject(dedup, cid [32]byte, plainBytes []byte) (blobstore.Object, bool) {
+	rid := chunkRID(dedup, cid)
+	aad, err := hex.DecodeString(rid)
+	if err != nil || len(aad) != 32 {
+		return blobstore.Object{}, false
+	}
+	cKey := blake3Keyed(dedup, "codeaf:chunk-key:v1\x00", cid)
+	aead, err := chacha20poly1305.NewX(cKey[:])
+	if err != nil {
+		return blobstore.Object{}, false
+	}
+	var nonce [24]byte
+	if _, err := rand.Read(nonce[:]); err != nil {
+		return blobstore.Object{}, false
+	}
+	plain := make([]byte, 1+32+len(plainBytes))
+	plain[0] = 1
+	copy(plain[1:33], cid[:])
+	copy(plain[33:], plainBytes)
+	sealed := aead.Seal(nil, nonce[:], plain, aad)
+	raw := make([]byte, 5+24+len(sealed))
+	copy(raw[:5], "AGEO\x01")
+	copy(raw[5:29], nonce[:])
+	copy(raw[29:], sealed)
+	return blobstore.Object{RID: rid, Bytes: raw}, true
+}
+
 type rawBytes []byte
 
 func (r *rawBytes) UnmarshalJSON(data []byte) error {
@@ -285,8 +313,8 @@ type furrowChunkRef struct {
 }
 
 const (
-	openSmallFileLimit  = 32 << 10
-	openCarryBytesLimit = 64 << 10
+	openSmallFileLimit  = 4 << 20
+	openCarryBytesLimit = 4 << 20
 )
 
 func parseKeys(eng Engine, c cell.Cell) (cellKey, dedup [32]byte, cacheDir string, ok bool) {
@@ -399,6 +427,161 @@ func findDirEntryInPages(dirOID [32]byte, targetName string, metaByOID map[[32]b
 	return furrowDirEntry{}, nil, false
 }
 
+func fileExistsHint(p string) bool {
+	info, err := os.Stat(p)
+	return err == nil && info.Mode().IsRegular()
+}
+
+func dirExistsHint(p string) bool {
+	info, err := os.Stat(p)
+	return err == nil && info.IsDir()
+}
+
+func fillMissingOpenChunksFromDisk(c cell.Cell, cellKey, dedup, headOID [32]byte, rawByRID map[string]blobstore.Object, metaByOID map[[32]byte]metaObj) {
+	if c.Root == "" {
+		return
+	}
+	snapObj, ok := metaByOID[headOID]
+	if !ok || snapObj.kind != 4 {
+		return
+	}
+	var snap furrowSnapshot
+	if json.Unmarshal(snapObj.body, &snap) != nil {
+		return
+	}
+	rootOID, ok := snap.RootTree.id32()
+	if !ok {
+		return
+	}
+	cellEntry, _, ok := findDirEntryInPages(rootOID, cell.StateDir, metaByOID)
+	if !ok || cellEntry.Kind != "Directory" {
+		return
+	}
+	cellDirOID, ok := cellEntry.Target.id32()
+	if !ok {
+		return
+	}
+	cellEntries, _, ok := decodeDirEntries(cellDirOID, metaByOID)
+	if !ok {
+		return
+	}
+	fillBlob := func(relPath string, blobOID [32]byte) {
+		bm, ok := metaByOID[blobOID]
+		if !ok || bm.kind != 2 {
+			return
+		}
+		var b furrowBlob
+		if json.Unmarshal(bm.body, &b) != nil || b.TotalLen == 0 || b.TotalLen > openSmallFileLimit {
+			return
+		}
+		needAny := false
+		for _, ch := range b.Chunks {
+			cid, ok := ch.ID.id32()
+			if !ok {
+				return
+			}
+			if _, have := rawByRID[chunkRID(dedup, cid)]; !have {
+				needAny = true
+				break
+			}
+		}
+		if !needAny {
+			return
+		}
+		localBytes, err := os.ReadFile(filepath.Join(c.Root, relPath))
+		if err != nil {
+			return
+		}
+		var offset uint64
+		for _, ch := range b.Chunks {
+			cid, ok := ch.ID.id32()
+			if !ok {
+				return
+			}
+			if offset+ch.Len > uint64(len(localBytes)) {
+				return
+			}
+			rid := chunkRID(dedup, cid)
+			if _, have := rawByRID[rid]; !have {
+				if obj, encOK := encryptChunkObject(dedup, cid, localBytes[offset:offset+ch.Len]); encOK {
+					rawByRID[rid] = obj
+				}
+			}
+			offset += ch.Len
+		}
+	}
+	for _, e := range cellEntries {
+		name := string(e.Name)
+		oid, ok := e.Target.id32()
+		if !ok {
+			continue
+		}
+		switch e.Kind {
+		case "File":
+			fillBlob(filepath.Join(cell.StateDir, name), oid)
+		case "Directory":
+			if name != "env" && name != "workspace-carrier" && name != "receipts" {
+				continue
+			}
+			subEntries, _, subOK := decodeDirEntries(oid, metaByOID)
+			if !subOK {
+				continue
+			}
+			for _, se := range subEntries {
+				if se.Kind != "File" {
+					continue
+				}
+				if name == "workspace-carrier" && string(se.Name) != "manifest.json" {
+					continue
+				}
+				if name == "receipts" && (snap.Label == "" || string(se.Name) != snap.Label+".json") {
+					continue
+				}
+				if soid, ok := se.Target.id32(); ok {
+					fillBlob(filepath.Join(cell.StateDir, name, string(se.Name)), soid)
+				}
+			}
+		}
+	}
+}
+
+func writeOpenStateToCache(cacheDir string, cellKey, dedup, headOID [32]byte, rawByRID map[string]blobstore.Object, metaByOID map[[32]byte]metaObj) {
+	if cacheDir == "" {
+		return
+	}
+	wantedRIDs := openStateRIDs(cellKey, dedup, headOID, metaByOID)
+	if len(wantedRIDs) == 0 {
+		return
+	}
+	_ = os.MkdirAll(cacheDir, 0o700)
+	for _, rid := range wantedRIDs {
+		if o, ok := rawByRID[rid]; ok {
+			_ = writeWhole(cacheDir, o)
+		}
+	}
+}
+
+func cacheOpenObjectsFromDirs(eng Engine, c cell.Cell, head string, dirs ...string) {
+	cellKey, dedup, cacheDir, ok := parseKeys(eng, c)
+	if !ok || cacheDir == "" {
+		return
+	}
+	headOID, ok := parseHexOID(head)
+	if !ok {
+		return
+	}
+	rawByRID := map[string]blobstore.Object{}
+	metaByOID := map[[32]byte]metaObj{}
+	for _, d := range dirs {
+		if d != "" {
+			loadObjectsFromDir(d, cellKey, rawByRID, metaByOID)
+		}
+	}
+	loadObjectsFromDir(cacheDir, cellKey, rawByRID, metaByOID)
+	fillMissingOpenChunksFromDisk(c, cellKey, dedup, headOID, rawByRID, metaByOID)
+	writeOpenStateToCache(cacheDir, cellKey, dedup, headOID, rawByRID, metaByOID)
+}
+
 // cacheOpenObjects caches small open-state objects (.cell metadata, env, and
 // workspace-carrier manifest) from frames so later publishes can include them
 // in the head frame without mutating outbox files on disk (R2).
@@ -433,16 +616,8 @@ func cacheOpenObjects(eng Engine, c cell.Cell, head string, frames []FrameFile) 
 		}
 	}
 	loadObjectsFromDir(cacheDir, cellKey, rawByRID, metaByOID)
-	wantedRIDs := openStateRIDs(cellKey, dedup, headOID, metaByOID)
-	if len(wantedRIDs) == 0 {
-		return
-	}
-	_ = os.MkdirAll(cacheDir, 0o700)
-	for _, rid := range wantedRIDs {
-		if o, ok := rawByRID[rid]; ok {
-			_ = writeWhole(cacheDir, o)
-		}
-	}
+	fillMissingOpenChunksFromDisk(c, cellKey, dedup, headOID, rawByRID, metaByOID)
+	writeOpenStateToCache(cacheDir, cellKey, dedup, headOID, rawByRID, metaByOID)
 }
 
 // appendOpenObjects returns frame with any cached open-state objects for head
@@ -472,6 +647,7 @@ func appendOpenObjects(eng Engine, c cell.Cell, head string, frame []byte) []byt
 		}
 	}
 	loadObjectsFromDir(cacheDir, cellKey, rawByRID, metaByOID)
+	fillMissingOpenChunksFromDisk(c, cellKey, dedup, headOID, rawByRID, metaByOID)
 	wantedRIDs := openStateRIDs(cellKey, dedup, headOID, metaByOID)
 	var addedBytes int64
 	var added int
@@ -535,6 +711,19 @@ func openStateRIDs(cellKey, dedup, headOID [32]byte, metaByOID map[[32]byte]meta
 			wantedRIDs = append(wantedRIDs, rid)
 		}
 	}
+	addDirAndPages := func(dirOID [32]byte) {
+		addWanted(metaRID(cellKey, dirOID))
+		if m, ok := metaByOID[dirOID]; ok && m.kind == 3 {
+			var d furrowDir
+			if json.Unmarshal(m.body, &d) == nil {
+				for _, p := range d.Pages {
+					if pid, ok := p.Target.id32(); ok {
+						addWanted(metaRID(cellKey, pid))
+					}
+				}
+			}
+		}
+	}
 	addBlob := func(blobOID [32]byte) {
 		addWanted(metaRID(cellKey, blobOID))
 		bm, ok := metaByOID[blobOID]
@@ -553,8 +742,8 @@ func openStateRIDs(cellKey, dedup, headOID [32]byte, metaByOID map[[32]byte]meta
 	}
 
 	addWanted(snapObj.rid)
-	addWanted(metaRID(cellKey, rootOID))
-	addWanted(metaRID(cellKey, cellDirOID))
+	addDirAndPages(rootOID)
+	addDirAndPages(cellDirOID)
 
 	for _, e := range cellEntries {
 		name := string(e.Name)
@@ -566,10 +755,10 @@ func openStateRIDs(cellKey, dedup, headOID [32]byte, metaByOID map[[32]byte]meta
 		case "File":
 			addBlob(oid)
 		case "Directory":
-			if name != "env" && name != "workspace-carrier" {
+			if name != "env" && name != "workspace-carrier" && name != "receipts" {
 				continue
 			}
-			addWanted(metaRID(cellKey, oid))
+			addDirAndPages(oid)
 			subEntries, _, subOK := decodeDirEntries(oid, metaByOID)
 			if !subOK {
 				continue
@@ -579,6 +768,9 @@ func openStateRIDs(cellKey, dedup, headOID [32]byte, metaByOID map[[32]byte]meta
 					continue
 				}
 				if name == "workspace-carrier" && string(se.Name) != "manifest.json" {
+					continue
+				}
+				if name == "receipts" && (snap.Label == "" || string(se.Name) != snap.Label+".json") {
 					continue
 				}
 				if soid, ok := se.Target.id32(); ok {
@@ -688,6 +880,7 @@ func (f *Fetcher) stageOpenFromInbox(ctx context.Context, c cell.Cell, head, sta
 		return false, nil
 	}
 
+	seededWarm := fileExistsHint(filepath.Join(c.Root, filepath.FromSlash(cell.MetaPath)))
 	var subDirOIDs [][32]byte
 	var envDirOID, carrierDirOID, receiptsDirOID [32]byte
 	var hasEnvDir, hasCarrierDir, hasReceiptsDir bool
@@ -709,9 +902,15 @@ func (f *Fetcher) stageOpenFromInbox(ctx context.Context, c cell.Cell, head, sta
 		case "Directory":
 			switch name {
 			case "env":
+				if _, have := metaByOID[oid]; !have && seededWarm && dirExistsHint(filepath.Join(c.Root, cell.StateDir, "env")) {
+					continue
+				}
 				envDirOID, hasEnvDir = oid, true
 				subDirOIDs = append(subDirOIDs, oid)
 			case "workspace-carrier":
+				if _, have := metaByOID[oid]; !have && seededWarm && dirExistsHint(filepath.Join(c.Root, cell.StateDir, "workspace-carrier")) {
+					continue
+				}
 				carrierDirOID, hasCarrierDir = oid, true
 				subDirOIDs = append(subDirOIDs, oid)
 			case "receipts":
@@ -770,12 +969,27 @@ func (f *Fetcher) stageOpenFromInbox(ctx context.Context, c cell.Cell, head, sta
 		}
 	}
 
+	if seededWarm {
+		filtered := files[:0]
+		for _, spec := range files {
+			if _, have := metaByOID[spec.blobOID]; !have && fileExistsHint(filepath.Join(c.Root, spec.relPath)) {
+				continue
+			}
+			filtered = append(filtered, spec)
+		}
+		files = filtered
+	}
+
 	var blobOIDs [][32]byte
 	for _, spec := range files {
 		blobOIDs = append(blobOIDs, spec.blobOID)
 	}
 	if err := fetchMissingMeta(blobOIDs); err != nil {
 		return false, err
+	}
+
+	if seededWarm {
+		fillMissingOpenChunksFromDisk(c, cellKey, dedup, headOID, rawByRID, metaByOID)
 	}
 
 	blobs := make([]furrowBlob, len(files))
@@ -809,17 +1023,10 @@ func (f *Fetcher) stageOpenFromInbox(ctx context.Context, c cell.Cell, head, sta
 		loadObjectsFromDir(stageInbox, cellKey, rawByRID, metaByOID)
 	}
 
-	if openCache != "" {
-		_ = os.MkdirAll(openCache, 0o700)
-	}
+	writeOpenStateToCache(openCache, cellKey, dedup, headOID, rawByRID, metaByOID)
 	for i, spec := range files {
 		var buf bytes.Buffer
 		buf.Grow(int(blobs[i].TotalLen))
-		if openCache != "" {
-			if bm, ok := metaByOID[spec.blobOID]; ok {
-				_ = writeWhole(openCache, bm.raw)
-			}
-		}
 		for _, ch := range blobs[i].Chunks {
 			cid, _ := ch.ID.id32()
 			rid := chunkRID(dedup, cid)
@@ -832,9 +1039,6 @@ func (f *Fetcher) stageOpenFromInbox(ctx context.Context, c cell.Cell, head, sta
 				return false, nil
 			}
 			buf.Write(plain)
-			if openCache != "" && blobs[i].TotalLen <= openSmallFileLimit {
-				_ = writeWhole(openCache, ro)
-			}
 		}
 		if uint64(buf.Len()) != blobs[i].TotalLen {
 			return false, nil

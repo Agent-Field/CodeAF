@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -58,36 +60,23 @@ func (e Engine) LocalWork(ctx context.Context, c cell.Cell) (bool, error) {
 	if head.Turn.ID == base && e.checkMaterializedStat(c, base) {
 		return false, nil
 	}
+	if err := e.screenCapture(ctx, c); err != nil {
+		return false, err
+	}
 	// The shared snapshot belongs to this chat. A workspace's latest head can
 	// belong to another chat that opened in the same working folder.
 	out, err := e.plan(ctx, c, base)
 	if err != nil {
 		return false, err
 	}
-	work, indexOnly, transcriptChanged, err := localPlanChanges(out)
-	if err != nil {
-		return false, err
-	}
-	if !work && !indexOnly && !transcriptChanged && head.Turn.ID == base {
-		return false, nil
-	}
-	if err := e.screenCapture(ctx, c); err != nil {
-		return false, err
-	}
-	if work {
-		out, err = e.plan(ctx, c, base)
-		if err != nil {
-			return false, err
-		}
-	}
-	work, err = e.workInPlan(ctx, c, base, out)
+	work, err := e.workInPlan(ctx, c, base, out)
 	if err != nil || work {
 		return work, err
 	}
-	if !transcriptChanged && head.Turn.ID == base {
-		return false, nil
-	}
 	same, err := e.sameTranscriptPrefix(ctx, c, base)
+	if err == nil && same && head.Turn.ID == base {
+		e.recordMaterializedStat(c, base)
+	}
 	return !same, err
 }
 
@@ -281,11 +270,33 @@ type statEntry struct {
 }
 
 type statIndex struct {
-	Snapshot      string               `json:"snapshot"`
-	Tree          string               `json:"tree"`
-	TranscriptEnd int64                `json:"transcript_end"`
-	TranscriptMod int64                `json:"transcript_mod"`
-	Entries       map[string]statEntry `json:"entries"`
+	Snapshot       string               `json:"snapshot"`
+	Tree           string               `json:"tree"`
+	TranscriptEnd  int64                `json:"transcript_end"`
+	TranscriptMod  int64                `json:"transcript_mod"`
+	TranscriptHash string               `json:"transcript_hash,omitempty"`
+	Entries        map[string]statEntry `json:"entries"`
+}
+
+func transcriptPrefixHash(path string, end int64) (string, bool) {
+	if end < 0 {
+		return "", false
+	}
+	if end == 0 {
+		sum := sha256.Sum256(nil)
+		return hex.EncodeToString(sum[:]), true
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return "", false
+	}
+	defer f.Close()
+	h := sha256.New()
+	n, err := io.CopyN(h, f, end)
+	if err != nil || n != end {
+		return "", false
+	}
+	return hex.EncodeToString(h.Sum(nil)), true
 }
 
 func (e Engine) statIndexPath(c cell.Cell) string {
@@ -359,17 +370,24 @@ func (e Engine) recordMaterializedStat(c cell.Cell, snapshot string) {
 	if walkErr != nil {
 		return
 	}
+	tPath := rel(c, cell.TranscriptPath)
 	var tEnd, tMod int64
-	if tInfo, err := os.Stat(rel(c, cell.TranscriptPath)); err == nil {
+	var tHash string
+	if tInfo, err := os.Stat(tPath); err == nil {
 		tEnd = tInfo.Size()
 		tMod = tInfo.ModTime().UnixNano()
+		if head, hErr := Head(c); hErr == nil && head != nil && head.Turn.ID == snapshot && head.Receipt.Transcript.End > 0 && head.Receipt.Transcript.End <= tEnd {
+			tEnd = head.Receipt.Transcript.End
+		}
+		tHash, _ = transcriptPrefixHash(tPath, tEnd)
 	}
 	idx := statIndex{
-		Snapshot:      snapshot,
-		Tree:          tree,
-		TranscriptEnd: tEnd,
-		TranscriptMod: tMod,
-		Entries:       entries,
+		Snapshot:       snapshot,
+		Tree:           tree,
+		TranscriptEnd:  tEnd,
+		TranscriptMod:  tMod,
+		TranscriptHash: tHash,
+		Entries:        entries,
 	}
 	raw, err := json.Marshal(idx)
 	if err != nil {
@@ -413,12 +431,18 @@ func (e Engine) checkMaterializedStat(c cell.Cell, base string) bool {
 	if idx.Snapshot != base || idx.Tree != tree {
 		return false
 	}
-	tInfo, err := os.Stat(rel(c, cell.TranscriptPath))
+	tPath := rel(c, cell.TranscriptPath)
+	tInfo, err := os.Stat(tPath)
 	if err != nil {
 		if idx.TranscriptEnd != 0 || !os.IsNotExist(err) {
 			return false
 		}
-	} else if tInfo.Size() != idx.TranscriptEnd || tInfo.ModTime().UnixNano() != idx.TranscriptMod {
+	} else if tInfo.Size() == idx.TranscriptEnd && tInfo.ModTime().UnixNano() == idx.TranscriptMod {
+	} else if tInfo.Size() >= idx.TranscriptEnd && idx.TranscriptHash != "" {
+		if gotHash, ok := transcriptPrefixHash(tPath, idx.TranscriptEnd); !ok || gotHash != idx.TranscriptHash {
+			return false
+		}
+	} else {
 		return false
 	}
 	seen := 0
