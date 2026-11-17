@@ -14,6 +14,12 @@ Every file shows who made it (a person, Afi, or a chat's name), the task it came
 
 Files is the workstream's own library. The app's **Library** is a separate shelf every workstream and agent reads, and nothing in Files reaches it by itself: only Add to Library, chosen by a person, puts a file there.
 
+## Changed lately — previews and All files
+
+At the top of Files, **Changed lately** shows the four most recently changed live files, with first lines read from documents and text uploads, who changed each one, and when. A non-text file or an unreadable file has no text preview. "from a task" appears only when the file names a task it came from. A preview opens the file.
+
+**All files** keeps the ordinary folders-first table below it, with Name, Kind, Changed by and When. A Library shortcut's Kind reads "Shortcut to the Library". New and Upload remain available above the list. Search and stepping into a folder show that list rather than the recent shelf.
+
 ## keep a decision — where is Keep, Afi said press keep, decisions are written down by themselves
 
 **There is no Keep, and nothing to press.** A workstream's decisions are written down by themselves: when the owner answers an Ask on a task, when a private request changes shared work, and when someone sets a rule in People and rules. Each appears in the **Decisions** document, the first row in Files, with who made it, where it came from and when.
