@@ -23,7 +23,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
@@ -2272,19 +2271,9 @@ func mergeClaim(sheet []factory.Claim, cl factory.Claim) []factory.Claim {
 	return append(sheet, cl)
 }
 
-// claimKey is a claim's words for matching: lower case, letters and digits
-// only, single spaces.
-func claimKey(text string) string {
-	var b strings.Builder
-	for _, r := range strings.ToLower(text) {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) {
-			b.WriteRune(r)
-		} else {
-			b.WriteRune(' ')
-		}
-	}
-	return strings.Join(strings.Fields(b.String()), " ")
-}
+// claimKey is a claim's words for matching ([factory.ClaimKey]): lower case,
+// letters and digits only, single spaces.
+func claimKey(text string) string { return factory.ClaimKey(text) }
 
 func loopFirstLine(s string) string {
 	s = strings.TrimSpace(s)

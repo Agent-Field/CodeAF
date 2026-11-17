@@ -27,8 +27,12 @@ func withSendBack(t *testing.T, f *v2Jobs) {
 // repository policy finding, before any pull request.
 func landedAutoFinding() factory.Item {
 	in := autoProof()
-	in.Policy = []factory.Claim{{Text: "FINDING: the changelog entry carries the issue number", Medium: "policy"}}
-	in.Stream.Phases = []factory.Phase{{Name: "write", Kind: factory.StageChat, State: factory.PhaseDone}, {Name: "approve", Kind: factory.StageGate, State: factory.PhaseWaiting}}
+	finding := factory.Claim{Text: "FINDING: the changelog entry carries the issue number", Evidence: "pr: 1758", Medium: "policy"}
+	in.Policy = []factory.Claim{finding}
+	in.Stream.Phases = []factory.Phase{
+		{Name: "write", Kind: factory.StageChat, State: factory.PhaseDone},
+		{Name: "review", Kind: factory.StageChat, State: factory.PhaseDone, Round: 1, Result: &factory.StageResult{Findings: 1, Claims: []factory.Claim{finding}}},
+		{Name: "approve", Kind: factory.StageGate, State: factory.PhaseWaiting}}
 	return in
 }
 
@@ -74,7 +78,7 @@ func TestAPolicyFindingInManualStillWaitsForThePerson(t *testing.T) {
 		t.Fatalf("Manual moved: state=%s ready=%v", j.State, j.Ready)
 	}
 	saved, _ := f.st.Get(it.ID)
-	if saved.State != factory.StateLanded || saved.Stream.AutoRepairs != 0 || len(saved.Stream.Phases) != 2 {
+	if saved.State != factory.StateLanded || saved.Stream.AutoRepairs != 0 || len(saved.Stream.Phases) != 3 {
 		t.Fatalf("Manual was repaired: state=%s repairs=%d phases=%d", saved.State, saved.Stream.AutoRepairs, len(saved.Stream.Phases))
 	}
 }
@@ -93,7 +97,7 @@ func TestAutoRepairsUsedUpFallBackToTheFindingsPause(t *testing.T) {
 		t.Fatalf("the person sees %q", j.AutonomyWhy)
 	}
 	saved, _ := f.st.Get(it.ID)
-	if saved.State != factory.StateLanded || saved.Stream.AutoRepairs != factory.AutoRepairLimit || len(saved.Stream.Phases) != 2 {
+	if saved.State != factory.StateLanded || saved.Stream.AutoRepairs != factory.AutoRepairLimit || len(saved.Stream.Phases) != 3 {
 		t.Fatalf("a repair started past the limit: state=%s repairs=%d", saved.State, saved.Stream.AutoRepairs)
 	}
 }

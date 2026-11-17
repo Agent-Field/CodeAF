@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // ── AUTO FIXES WHAT THE CHECKS FOUND BEFORE IT ASKS THE PERSON ─────────────
@@ -62,7 +63,13 @@ func AutoRepairDue(it Item) (AutoRepair, bool) {
 	if it.Cap <= 0 || JobLifetimeSpent(it) >= it.Cap {
 		return AutoRepair{}, false
 	}
-	r := AutoRepair{Findings: FailingFindings(it)}
+	// ONLY A VERDICT THAT STILL STANDS IS REPAIRED ([CurrentFindings]): a
+	// finding an earlier round reported and a later round of the same step
+	// no longer carries is the old verdict, and keeps today's pause.
+	r := AutoRepair{Findings: CurrentFindings(it)}
+	if len(r.Findings) == 0 {
+		return AutoRepair{}, false
+	}
 	if pr := it.PullRequest; pr != nil {
 		f := it.FollowUp
 		if pr.State != PROpen || f == nil || it.Manual || (it.Merging != nil && it.Merging.State != MergeFailed) {
@@ -87,10 +94,23 @@ func AutoRepairDue(it Item) (AutoRepair, bool) {
 }
 
 // Words is the repair's request: what the checks found, and that each finding
-// is shown fixed in its own words, so the sheet that lands next says whether
-// it is.
+// is reported again as a claim in its own words. A sheet row is found by its
+// words ([ClaimKey]), and a policy row only by a policy claim, so the request
+// quotes each finding exactly as its row holds it, with no label inside the
+// quote, and names the medium a policy finding is reported with: the claim
+// that shows it fixed then lands on the row that failed. (Labelled
+// "repository policy: FINDING: …", as [OverrideSummary] says it, the restated
+// claim was a new row and the failing one stayed.)
 func (r AutoRepair) Words() string {
-	return "Auto repair " + r.count() + ": the checks before publication found problems. Fix each one, verify the fix, and report each finding again in exactly these words, shown with evidence: " + OverrideSummary(r.Findings) + "."
+	parts := make([]string, 0, len(r.Findings))
+	for _, f := range r.Findings {
+		if f.Kind == OverridePolicy {
+			parts = append(parts, "repository policy, reported with medium policy: “"+f.Text+"”")
+		} else {
+			parts = append(parts, "proof: “"+f.Text+"”")
+		}
+	}
+	return "Auto repair " + r.count() + ": the checks before publication found problems. Fix each one and verify the fix, then report each finding again as a claim whose text is exactly the quoted words, shown with evidence: " + strings.Join(parts, "; ") + "."
 }
 
 // Activity is the line the job's history keeps for the repair.
@@ -99,6 +119,62 @@ func (r AutoRepair) Activity() string {
 }
 
 func (r AutoRepair) count() string { return fmt.Sprintf("%d of %d", r.Attempt, r.Limit) }
+
+// CurrentFindings are the landed job's failing findings ([FailingFindings])
+// whose verdict still stands: the latest round of some step still reports the
+// claim. A sheet keeps a row until a claim in the same words replaces it, so a
+// finding an earlier round reported outlives the later round of the same step
+// that repaired it in other words. Job 31 (2026-11-17): Follow PR's readiness
+// review reported the changelog finding as a policy claim; its next round
+// fixed it (f72f8f6883) and proved "the changelog entry carries the pull
+// request number …" as a test claim; the failing policy row stayed, and a
+// week later Auto sent Follow PR to fix it again. Only a step's latest round
+// is kept ([Phase.Result]), so a row no latest round carries is that old
+// verdict. Nothing on the sheet is changed here; the person's pause still
+// shows every failing row.
+func CurrentFindings(it Item) []CheckOverride {
+	var out []CheckOverride
+	for _, f := range FailingFindings(it) {
+		if latestRoundCarries(it, f) {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// latestRoundCarries says the latest round of some step reports the finding's
+// claim, on the same list (a policy claim for a policy finding).
+func latestRoundCarries(it Item, f CheckOverride) bool {
+	if it.Stream == nil {
+		return false
+	}
+	key := ClaimKey(f.Text)
+	for _, ph := range it.Stream.Phases {
+		if ph.Result == nil {
+			continue
+		}
+		for _, cl := range ph.Result.Claims {
+			if (cl.Medium == "policy") == (f.Kind == OverridePolicy) && ClaimKey(cl.Text) == key {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// ClaimKey is a claim's words for matching a sheet row: lower case, letters
+// and digits only, single spaces.
+func ClaimKey(text string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(text) {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			b.WriteRune(r)
+		} else {
+			b.WriteRune(' ')
+		}
+	}
+	return strings.Join(strings.Fields(b.String()), " ")
+}
 
 // BeginAutoRepair records the repair Auto starts for the landed job's failing
 // findings, and answers it. On the pull request it queues the Follow PR round
