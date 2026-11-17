@@ -349,6 +349,14 @@ func Merge(st *store.Store, origin string, items []factory.Item) error {
 			continue
 		}
 		in.ID = 0
+		// AN ISSUE ALREADY OPEN WHEN ITS REPOSITORY WAS TURNED ON waits in
+		// Backlog for a person ([store.Store.OnSince]): its start labels were
+		// there before anyone said the factory may work here.
+		if in.Kind == factory.KindIssue && !in.Created.IsZero() {
+			if on, ok := st.OnSince(factory.RepoOf(in)); ok && in.Created.Before(on) {
+				in.SetupHeld = true
+			}
+		}
 		if in.Autonomy == "" {
 			in.Autonomy = factory.AutonomyAuto
 		}

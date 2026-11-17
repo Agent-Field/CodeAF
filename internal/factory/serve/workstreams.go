@@ -346,7 +346,7 @@ func (h *Handler) createWorkstream(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusUnprocessableEntity, factory.ErrChildPeople.Error())
 		return
 	}
-	rules, err := cleanNewRules(body.Rules)
+	rules, err := cleanNewRules(body.Rules, h.clock())
 	if err != nil {
 		h.fail(w, http.StatusUnprocessableEntity, err.Error())
 		return
@@ -568,7 +568,7 @@ func (h *Handler) patchWorkstream(w http.ResponseWriter, r *http.Request) {
 				return nil, err
 			}
 		}
-		changedRules, err := patchStructure(all, &cur, body, v)
+		changedRules, err := patchStructure(all, &cur, body, v, now)
 		if err != nil {
 			return nil, err
 		}

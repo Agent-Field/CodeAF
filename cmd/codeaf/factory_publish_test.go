@@ -20,6 +20,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/client"
 	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
+	"github.com/Agent-Field/codeaf/internal/factory/publish"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
@@ -257,7 +258,28 @@ func TestFactoryPublisherRefusesAnotherPersonsGitHubAccount(t *testing.T) {
 	}))
 	defer server.Close()
 	_, err := factoryPublisherWith(t.TempDir(), func(token string) factorygithub.API { return forge.NewClient(token).WithBaseURL(server.URL) })(context.Background(), factory.Item{Repo: "acme/api", Assignee: "assignee"})
-	if err == nil || !strings.Contains(err.Error(), "@assignee's GitHub connection") {
-		t.Fatalf("wrong identity = %v", err)
+	// THE REFUSAL SAYS WHAT IS NEEDED AND WHERE: connect GitHub as the
+	// job's person, in Settings › Connectors. It once read as a missing
+	// write access ("Ask for write access to this repo"), which sent a
+	// password person to ask for something the runner already had.
+	code := publish.ErrorCode(publish.Wrap(err, "push"))
+	reason := publish.Reason(code, err.Error())
+	if err == nil || code != publish.CodeGitHubOtherAccount || !strings.Contains(reason, "Connect GitHub as @assignee in Settings › Connectors") || !strings.Contains(reason, "@server-owner") || strings.Contains(reason, "write access") {
+		t.Fatalf("wrong identity = %v, code %q, reason %q", err, code, reason)
+	}
+}
+
+// A computer with no GitHub connection is told to connect one, not to ask
+// for write access.
+func TestFactoryPublisherWithNoGitHubSaysConnectGitHub(t *testing.T) {
+	// The app's own handoff with GitHub removed: no token, whatever the shell has.
+	keys := config.NewAppCredentials()
+	keys.Set("github", "")
+	defer config.UseAppCredentials(keys)()
+	_, err := factoryPublisherWith(t.TempDir(), func(token string) factorygithub.API { return forge.NewClient(token) })(context.Background(), factory.Item{Repo: "acme/api", Assignee: "priya"})
+	code := publish.ErrorCode(publish.Wrap(err, "push"))
+	reason := publish.Reason(code, err.Error())
+	if code != publish.CodeGitHubNotConnected || !strings.HasPrefix(reason, "Connect GitHub to publish") || !strings.Contains(reason, "Settings › Connectors") {
+		t.Fatalf("no connection = %v, code %q, reason %q", err, code, reason)
 	}
 }

@@ -34,6 +34,8 @@ On an organization, the amount is honoured by the organization's server with no 
 
 "Keeps running" lists what works in the workstream without anyone asking. The Factory switch says whether the Factory turns new issues into tasks here. Each standing order belonging to the workstream has its own row — when it runs ("Every Monday at 09:00"), then what it does and who owns its tasks — and one switch. Switching it off pauses it; switching it on again resumes it. Each switch says itself in a note with Undo for five seconds. An order that belongs to no workstream runs exactly as it always did.
 
+On an organization, the server does the Factory switch's work with no app open: each issue opened after the switch went on joins the workstream, owned by the "Owner of incoming work". A workstream listing the issue's repository among its sources takes it first, then one listing no repository; the oldest wins a tie. Its labels never start it: "Start without asking" does, within that amount, or it waits for its owner.
+
 Before an order is switched on, its row opens a preview: the next three times it will run, and the task each run adds — its title, that Afi does it, and its owner (the workstream's "Owner of incoming work"). The switch inside the preview is what turns it on.
 
 ## adding a standing order to a workstream — every Monday, each morning, the 1st of the month

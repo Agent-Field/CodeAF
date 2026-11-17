@@ -257,7 +257,7 @@ func nestNew(all factory.OrgWorkstreams, ws *factory.OrgWorkstream, v Viewer, se
 }
 
 // cleanNewRules checks rules sent with a new workstream.
-func cleanNewRules(r *api.WorkstreamRules) (*factory.WorkstreamRules, error) {
+func cleanNewRules(r *api.WorkstreamRules, now time.Time) (*factory.WorkstreamRules, error) {
 	if r == nil {
 		return nil, nil
 	}
@@ -265,12 +265,13 @@ func cleanNewRules(r *api.WorkstreamRules) (*factory.WorkstreamRules, error) {
 	if err := factory.CleanRules(&out); err != nil {
 		return nil, workstreamInvalid(err.Error())
 	}
+	factory.StampFactorySince(factory.WorkstreamRules{}, &out, now)
 	return &out, nil
 }
 
 // patchStructure lays a patch's rules, steward and parent over cur, under the
 // store's lock. It answers whether the rules changed.
-func patchStructure(all factory.OrgWorkstreams, cur *factory.OrgWorkstream, body api.WorkstreamPatch, v Viewer) (bool, error) {
+func patchStructure(all factory.OrgWorkstreams, cur *factory.OrgWorkstream, body api.WorkstreamPatch, v Viewer, now time.Time) (bool, error) {
 	if body.Rules == nil && body.Steward == nil && body.Parent == nil {
 		return false, nil
 	}
@@ -284,6 +285,7 @@ func patchStructure(all factory.OrgWorkstreams, cur *factory.OrgWorkstream, body
 			return false, workstreamInvalid(err.Error())
 		}
 		before := cur.RulesOrDefault()
+		factory.StampFactorySince(before, &next, now)
 		cur.Rules = &next
 		rulesChanged = !sameWorkstreamRules(before, next)
 	}
