@@ -18,10 +18,8 @@ after a restart.
 Set ids start with a lowercase letter, followed by lowercase letters, digits,
 underscores, dots or hyphens, up to 64 characters. Tool names exclude dots and
 hyphens. Descriptions take 1–2048 bytes; schemas are JSON objects with
-`type: "object"`, up to 16 KiB. Instructions allow 8192 bytes per set. A set
-over a limit is refused whole, with an error naming the limit and the size sent
-(for example "a set allows at most 8192 instruction bytes; this one has 9000").
-Tools declare `read`, `edit` or `create`; reading-only contexts refuse changes.
+`type: "object"`, up to 16 KiB. Instructions allow 8192 bytes per set. Tools
+declare `read`, `edit` or `create`; reading-only contexts refuse changes.
 The usual approval rules apply.
 
 The wait defaults to 30 seconds; apps can choose 1–120 seconds per set.
