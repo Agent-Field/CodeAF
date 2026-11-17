@@ -13,6 +13,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
@@ -95,6 +96,12 @@ type Taker struct {
 	// acquisition when StagePrepare is used, leaving workspace files to arrive
 	// in the background (C1).
 	InstallState func(context.Context, cell.Cell, cell.Cell, string) error
+	// ConcurrentClaim issues StagePrepare and the conditional lease acquire
+	// concurrently from View's head and fence (F1). If the acquire is refused
+	// because the view was stale, Revalidate re-reads the directory record and
+	// falls back to the serial path.
+	ConcurrentClaim bool
+	Revalidate      func(context.Context) (directory.CellView, error)
 }
 
 // Taken is a chat this device now drives.
@@ -153,6 +160,9 @@ func (t Taker) TakeSeen(ctx context.Context, id string, seen *directory.LeaseExp
 	}
 	if seen != nil && seen.Head != "" {
 		how.Expect.Head = seen.Head
+	}
+	if kept != "" {
+		t.ConcurrentClaim = false
 	}
 	head, fence, acquired, err := t.claim(ctx, c, view.Cell.Head, how)
 	if err != nil {
@@ -307,6 +317,110 @@ func (t Taker) fetchAndAcquire(ctx context.Context, stage cell.Cell, from, head 
 		}
 		return nil
 	}
+	if t.ConcurrentClaim && t.StagePrepare != nil {
+		if err := freshDir(stage.Root); err != nil {
+			return "", 0, directory.Cell{}, err
+		}
+		seedDone := Trace(t.OnPhase, "open seed")
+		seedOpenState(from, stage.Root)
+		seedDone()
+
+		optimisticHow := how
+		if optimisticHow.Expect != nil {
+			exp := *optimisticHow.Expect
+			if exp.Head == "" && canExpectHead(t.Dir) {
+				exp.Head = head
+			}
+			optimisticHow.Expect = &exp
+		}
+
+		prepCtx, cancelPrep := context.WithCancel(ctx)
+		var prepErr, acqErr error
+		var got directory.CellView
+		var ready, wg sync.WaitGroup
+		ready.Add(2)
+		wg.Add(2)
+		start := make(chan struct{})
+		go func() {
+			defer wg.Done()
+			ready.Done()
+			<-start
+			done := Trace(t.OnPhase, "fetch")
+			prepErr = t.StagePrepare(prepCtx, stage, head)
+			done()
+		}()
+		go func() {
+			defer wg.Done()
+			ready.Done()
+			<-start
+			if t.OnPhase != nil {
+				t.OnPhase(Phase{Name: "first acquire", Started: time.Now()})
+			}
+			acquiring := Trace(t.OnPhase, "acquire")
+			got, acqErr = t.Dir.Acquire(context.WithoutCancel(ctx), stage.ID, optimisticHow)
+			acquiring()
+			if acqErr != nil && (errors.Is(acqErr, directory.ErrLeaseHeld) || errors.Is(acqErr, directory.ErrFenceStale)) {
+				cancelPrep()
+			}
+		}()
+		ready.Wait()
+		close(start)
+		wg.Wait()
+		cancelPrep()
+
+		if acqErr == nil {
+			if fetcher, ok := t.Fetch.(*cellsync.Fetcher); ok {
+				fetcher.View = &got
+			}
+			staged()
+			staged = nil
+			if ctx.Err() != nil {
+				return "", 0, directory.Cell{}, t.giveBack(ctx, stage.ID, got.Cell.Lease.Fence, fmt.Errorf("handoff: take %s: %w", stage.ID, context.Cause(ctx)))
+			}
+			if prepErr != nil {
+				return "", 0, directory.Cell{}, t.giveBack(ctx, stage.ID, got.Cell.Lease.Fence, prepErr)
+			}
+			if got.Cell.Head != head {
+				_ = os.RemoveAll(stage.Root)
+				head = got.Cell.Head
+				if fetcher, ok := t.Fetch.(*cellsync.Fetcher); ok {
+					fetcher.View = &got
+				}
+				if err := prepare(head); err != nil {
+					return "", 0, directory.Cell{}, t.giveBack(ctx, stage.ID, got.Cell.Lease.Fence, err)
+				}
+			}
+			return head, got.Cell.Lease.Fence, got.Cell, nil
+		}
+
+		// Discard anything fetched for the stale view before revalidating or returning.
+		_ = os.RemoveAll(stage.Root)
+		if fetcher, ok := t.Fetch.(*cellsync.Fetcher); ok && fetcher.Inbox != nil {
+			_ = os.RemoveAll(fetcher.Inbox(stage) + ".stage-" + head)
+		}
+		if t.Revalidate == nil || (!errors.Is(acqErr, directory.ErrLeaseHeld) && !errors.Is(acqErr, directory.ErrFenceStale)) {
+			return "", 0, directory.Cell{}, fmt.Errorf("handoff: take %s: %w", stage.ID, acqErr)
+		}
+		freshView, revErr := t.Revalidate(ctx)
+		if revErr != nil {
+			return "", 0, directory.Cell{}, fmt.Errorf("handoff: take %s: %w", stage.ID, revErr)
+		}
+		head = freshView.Cell.Head
+		if fetcher, ok := t.Fetch.(*cellsync.Fetcher); ok {
+			fetcher.View = &freshView
+		}
+		origExpectHead := ""
+		if how.Expect != nil {
+			origExpectHead = how.Expect.Head
+		}
+		how = displacing(freshView)
+		if t.FreeOnly {
+			how.Force = false
+		}
+		if origExpectHead != "" {
+			how.Expect.Head = origExpectHead
+		}
+	}
 	if err := prepare(head); err != nil {
 		return "", 0, directory.Cell{}, err
 	}
@@ -338,6 +452,13 @@ func (t Taker) fetchAndAcquire(ctx context.Context, stage cell.Cell, from, head 
 		}
 	}
 	return head, got.Cell.Lease.Fence, got.Cell, nil
+}
+
+func canExpectHead(dir directory.Client) bool {
+	if ht, ok := dir.(interface{ HeadTakes() bool }); ok {
+		return ht.HeadTakes()
+	}
+	return true
 }
 
 // bring puts head where the claim restores it from: in the store alone for a

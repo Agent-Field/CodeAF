@@ -135,9 +135,24 @@ func (f *Fetcher) StageChat(ctx context.Context, c cell.Cell, head string, stage
 	if err := os.MkdirAll(mainInbox, 0o700); err != nil {
 		return false, err
 	}
-	if _, _, _, hasKeys := parseKeys(f.Engine, c); hasKeys {
-		if view, vErr := f.cellView(ctx, c.ID); vErr == nil && len(view.Cell.Frames) > 0 {
-			frames := view.Cell.Frames
+	if cellKey, _, _, hasKeys := parseKeys(f.Engine, c); hasKeys {
+		view, vErr := f.cellView(ctx, c.ID)
+		frames := view.Cell.Frames
+		if vErr == nil && len(frames) == 0 {
+			if headOID, ok := parseHexOID(head); ok {
+				headRID := metaRID(cellKey, headOID)
+				f.addOpenRound(1)
+				if loc, lErr := f.Store.Locate(ctx, []string{headRID}); lErr == nil {
+					if l, ok := loc[headRID]; ok && l.Frame != "" {
+						frames = []string{l.Frame}
+						if f.View != nil && len(f.View.Cell.Frames) == 0 {
+							f.View.Cell.Frames = frames
+						}
+					}
+				}
+			}
+		}
+		if vErr == nil && len(frames) > 0 {
 			stageInbox := mainInbox + ".stage-" + head
 			if err := os.MkdirAll(stageInbox, 0o700); err != nil {
 				return false, err

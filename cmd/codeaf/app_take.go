@@ -131,10 +131,19 @@ func (b *appBackend) takeAgent(p appwire.TakeParams, available bool) (agent appw
 		return appwire.Agent{}, appwire.Errorf(appwire.CodeEngine, appSyncOff)
 	}
 	// Check even the already-here fast path against what the person saw.
-	view, err := s.Dir.Cell(ctx, p.Cell)
-	if err != nil {
-		// Unwrapped, so the row says why (sync unreachable, cancelled).
-		return appwire.Agent{}, err
+	var view directory.CellView
+	haveView := false
+	if available {
+		if cached, ok := b.chats.viewFor(p.Cell); ok && cached.Cell.Lease.Expires == 0 && !cached.Cell.Archived && cached.Cell.ParentCell == "" {
+			view, haveView = cached, true
+		}
+	}
+	if !haveView {
+		view, err = s.Dir.Cell(ctx, p.Cell)
+		if err != nil {
+			// Unwrapped, so the row says why (sync unreachable, cancelled).
+			return appwire.Agent{}, err
+		}
 	}
 	s.SupplyCellView(p.Cell, view)
 	if holder := b.chats.holderName(p.Cell); holder != "" {

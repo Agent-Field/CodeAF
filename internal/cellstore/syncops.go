@@ -453,6 +453,10 @@ func (e Engine) Sync(keys SyncKeys, ledger string) SyncEngine {
 			materializer := e
 			materializer.Transport = materializeTransport(e.transport())
 			if e.cellDir(c) != "" {
+				policyDst := filepath.Join(stateDir(c), ".furrowpolicy")
+				if _, statErr := os.Lstat(policyDst); statErr == nil {
+					_ = copyFile(policyDst, filepath.Join(scratch, ".furrowpolicy"))
+				}
 				raw, err := materializer.do(ctx, c, scratch, op)
 				if err != nil {
 					return nil, err
@@ -462,7 +466,7 @@ func (e Engine) Sync(keys SyncKeys, ledger string) SyncEngine {
 				}
 				policySrc := filepath.Join(scratch, ".furrowpolicy")
 				if _, statErr := os.Lstat(policySrc); statErr == nil {
-					if err := copyFile(policySrc, filepath.Join(stateDir(c), ".furrowpolicy")); err != nil {
+					if err := copyFile(policySrc, policyDst); err != nil {
 						return nil, err
 					}
 				}

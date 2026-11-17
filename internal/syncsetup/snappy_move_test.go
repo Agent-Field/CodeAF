@@ -9,6 +9,7 @@ import (
 	"log"
 	"math"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -19,8 +20,10 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/cellsync"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -119,10 +122,9 @@ func (d recordedDir) Cell(ctx context.Context, id string) (directory.CellView, e
 
 func (d recordedDir) List(ctx context.Context) (directory.Listing, error) {
 	d.rec.mu.Lock()
-	acquired := d.rec.acquireDone
 	ch := d.rec.blockAfterAcquire
 	d.rec.mu.Unlock()
-	if acquired && ch != nil {
+	if cell.IsArrivalOwner(ctx) && ch != nil {
 		select {
 		case <-ch:
 		case <-ctx.Done():
@@ -137,13 +139,15 @@ func (d recordedDir) List(ctx context.Context) (directory.Listing, error) {
 	return d.Client.List(ctx)
 }
 
-func (d recordedDir) Acquire(ctx context.Context, id string, opts directory.AcquireOpts) (directory.CellView, error) {
+func (d recordedDir) Acquire(ctx context.Context, id string, opts directory.AcquireOpts) (view directory.CellView, err error) {
 	d.rec.begin("Dir.Acquire")
 	defer func() {
-		d.rec.mu.Lock()
-		d.rec.acquireDone = true
-		d.rec.mu.Unlock()
 		d.rec.end()
+		if err == nil {
+			d.rec.mu.Lock()
+			d.rec.acquireDone = true
+			d.rec.mu.Unlock()
+		}
 	}()
 	return d.Client.Acquire(ctx, id, opts)
 }
@@ -155,17 +159,16 @@ type recordedStore struct {
 
 func (s recordedStore) waitIfBlocked(ctx context.Context) error {
 	s.rec.mu.Lock()
-	acquired := s.rec.acquireDone
 	ch := s.rec.blockAfterAcquire
 	s.rec.mu.Unlock()
-	if acquired && ch != nil {
+	if cell.IsArrivalOwner(ctx) && ch != nil {
 		select {
 		case <-ch:
 		case <-ctx.Done():
 			return ctx.Err()
 		}
 	}
-	if acquired && s.rec.failAfterAcquire.Load() {
+	if cell.IsArrivalOwner(ctx) && s.rec.failAfterAcquire.Load() {
 		return blobstore.ErrAnswered
 	}
 	return nil
@@ -187,9 +190,6 @@ func (s recordedStore) GetFrame(ctx context.Context, id blobstore.FrameID) ([]by
 }
 
 func (s recordedStore) GetFrameBounded(ctx context.Context, id blobstore.FrameID, maxEncoded int64) ([]byte, error) {
-	if err := s.waitIfBlocked(ctx); err != nil {
-		return nil, err
-	}
 	s.rec.begin("Store.GetFrameBounded")
 	defer s.rec.end()
 	var raw []byte
@@ -1210,4 +1210,709 @@ func TestQ4WarmWorkspaceLocalWorkBeforeShownUnder150ms(t *testing.T) {
 		mustNil(t, got.Wait(t.Context()))
 	}
 	assertSameTree(t, bWork, workspaceOf(got.Taken.Cell.Root))
+}
+
+// Contract F1: when a take starts from a view that is already in hand (Home's
+// row, the launch/idle walk's record, the alt+c resume band, or the app's
+// agents.open), open-state fetch and lease acquire run concurrently from that
+// view's head and fence without a redundant directory re-read. At 400ms/request
+// on the fake clock, a fresh view shows in <=2 serial rounds (<=0.8s fake) on
+// every path (1 round for the take itself after the view is in hand, <=2 rounds
+// even including the listing that supplied the view).
+func TestF1FreshViewOpensInAtMostTwoRoundsAcrossPaths(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("CODEAF_TELEMETRY", "off")
+	for _, pathName := range []string{
+		"home_take",
+		"launch_idle_auto_continue",
+		"alt_c_resume_band",
+		"agents_open",
+	} {
+		t.Run(pathName, func(t *testing.T) {
+			h := newTwoHomes(t)
+			seedTree(t, h.work)
+			a := h.openA()
+			a.mustSay("F1 initial turn on A for " + pathName)
+			h.durable(h.cell.ID, h.cell)
+			mustNil(t, a.drive.Close(t.Context()))
+
+			takenB, err := h.continuerB().Take(t.Context(), h.cell.ID)
+			mustNil(t, err)
+			if takenB.Wait != nil {
+				mustNil(t, takenB.Wait(t.Context()))
+			}
+			bWork := workspaceOf(takenB.Taken.Cell.Root)
+			b := h.openOn(h.b, h.engB, takenB.Taken.Cell, bWork, nameB)
+			mustNil(t, os.WriteFile(filepath.Join(bWork, "src", "f1.go"), []byte("package src\nconst F1 = \""+pathName+"\"\n"), 0o600))
+			b.mustSay("F1 turn on B for " + pathName)
+			h.durable(h.cell.ID, takenB.Taken.Cell)
+			mustNil(t, b.drive.Close(t.Context()))
+
+			viewB, err := h.b.Dir.Cell(t.Context(), h.cell.ID)
+			mustNil(t, err)
+			if pathName == "launch_idle_auto_continue" || pathName == "agents_open" {
+				mustNil(t, h.b.Dir.Release(t.Context(), h.cell.ID, viewB.Cell.Lease.Fence))
+				_ = os.Remove(filepath.Join(h.a.Home, "send-leases", h.cell.ID))
+			}
+
+			rows, _, err := h.a.RowsAt(t.Context())
+			mustNil(t, err)
+			if len(rows) != 1 {
+				t.Fatalf("RowsAt returned %d rows, want 1", len(rows))
+			}
+			row := rows[0]
+			if pathName == "alt_c_resume_band" {
+				// Resume band / supplied cell view with full cell record in hand.
+				h.a.SupplyCellView(row.Cell, viewB)
+			}
+
+			rec := newRecordedRelay(t, h.a.Dir, h.a.Store, 400*time.Millisecond)
+			rec.blockBackground()
+			origADir, origAStore := h.a.Dir, h.a.Store
+			h.a.Dir = recordedDir{Client: origADir, rec: rec}
+			h.a.Store = recordedStore{Store: origAStore, rec: rec}
+
+			contA := h.continuerA()
+			var shownRounds, shownDirReads int
+			var shownClock time.Duration
+			var shownEvents []string
+			contA.opt.OnShown = func(Continued) {
+				shownRounds, shownDirReads, _, shownClock, shownEvents = rec.snapshot()
+			}
+
+			seen := &directory.LeaseExpectation{Device: row.DeviceID, Fence: row.Fence}
+			var got Continued
+			switch pathName {
+			case "home_take", "alt_c_resume_band":
+				got, err = contA.TakeSeen(t.Context(), row.Cell, seen)
+			case "launch_idle_auto_continue", "agents_open":
+				got, err = contA.OpenAvailable(t.Context(), row.Cell, seen)
+			}
+			mustNil(t, err)
+			t.Cleanup(func() {
+				rec.unblock()
+				if got.Wait != nil {
+					_ = got.Wait(context.Background())
+				}
+			})
+
+			t.Logf("F1 %s: shownRounds=%d (%s) shownDirReads=%d events=%v",
+				pathName, shownRounds, shownClock, shownDirReads, shownEvents)
+			if shownRounds == 0 || shownRounds > 2 || shownClock > 800*time.Millisecond || shownDirReads != 0 {
+				t.Fatalf("F1 %s: take with fresh view in hand took %d rounds (%s) and %d Dir.Cell reads, want <=2 rounds (<=0.8s) and 0 Dir.Cell reads; events=%v",
+					pathName, shownRounds, shownClock, shownDirReads, shownEvents)
+			}
+			if pathName == "alt_c_resume_band" && (shownRounds != 1 || shownClock != 400*time.Millisecond) {
+				t.Fatalf("F1 %s: take with frame-bearing view took %d rounds (%s), want 1 round (400ms); events=%v",
+					pathName, shownRounds, shownClock, shownEvents)
+			}
+			rec.unblock()
+			mustNil(t, got.Wait(t.Context()))
+			assertSameTree(t, bWork, workspaceOf(got.Taken.Cell.Root))
+		})
+	}
+}
+
+// Contract F1 (stale fallback & racing refusal):
+//   - When the view in hand is stale (another turn was published after the listing),
+//     the optimistic concurrent acquire is refused, what was fetched for the stale
+//     head is discarded, and the take falls back to re-reading, fetching, and
+//     acquiring the newest head with byte-identical history.
+//   - When a racing second computer takes the lease first, the take is still
+//     refused and never creates two writers.
+func TestF1StaleViewFallsBackAndPreservesHistoryAndRefusesRacer(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("CODEAF_TELEMETRY", "off")
+
+	t.Run("stale_view_fallback", func(t *testing.T) {
+		h := newTwoHomes(t)
+		seedTree(t, h.work)
+		a := h.openA()
+		a.mustSay("F1 stale-fallback initial turn on A")
+		h.durable(h.cell.ID, h.cell)
+		mustNil(t, a.drive.Close(t.Context()))
+
+		takenB, err := h.continuerB().Take(t.Context(), h.cell.ID)
+		mustNil(t, err)
+		if takenB.Wait != nil {
+			mustNil(t, takenB.Wait(t.Context()))
+		}
+		bWork := workspaceOf(takenB.Taken.Cell.Root)
+		b := h.openOn(h.b, h.engB, takenB.Taken.Cell, bWork, nameB)
+		b.mustSay("F1 turn H1 on B")
+		h.durable(h.cell.ID, takenB.Taken.Cell)
+
+		// A lists while B is at H1.
+		rows, _, err := h.a.RowsAt(t.Context())
+		mustNil(t, err)
+		row := rows[0]
+		staleHead := row.Head
+
+		// Before A takes, B publishes H2 under the same fence with new history and files.
+		mustNil(t, os.WriteFile(filepath.Join(bWork, "src", "part0.go"), []byte("package src\nconst Part0 = \"H2-from-B\"\n"), 0o600))
+		b.mustSay("F1 newest turn H2 on B after listing")
+		h.durable(h.cell.ID, takenB.Taken.Cell)
+		mustNil(t, b.drive.Close(t.Context()))
+
+		viewB2, err := h.b.Dir.Cell(t.Context(), h.cell.ID)
+		mustNil(t, err)
+		if viewB2.Cell.Head == staleHead {
+			t.Fatalf("expected B head to advance from %s", staleHead)
+		}
+		wantTranscript, err := os.ReadFile(transcriptOf(takenB.Taken.Cell))
+		mustNil(t, err)
+
+		contA := h.continuerA()
+		var shownTranscript []byte
+		contA.opt.OnShown = func(got Continued) {
+			shownTranscript, _ = os.ReadFile(transcriptOf(got.Taken.Cell))
+		}
+		seen := &directory.LeaseExpectation{Device: row.DeviceID, Fence: row.Fence}
+		got, err := contA.TakeSeen(t.Context(), row.Cell, seen)
+		mustNil(t, err)
+		if got.Taken.Driving.Head != viewB2.Cell.Head {
+			t.Fatalf("fallback opened head %s, want newest head %s", got.Taken.Driving.Head, viewB2.Cell.Head)
+		}
+		if !bytes.Equal(shownTranscript, wantTranscript) {
+			t.Fatalf("transcript at shown is not byte-identical to B's newest H2 transcript:\ngot:\n%s\nwant:\n%s", shownTranscript, wantTranscript)
+		}
+		if got.Wait != nil {
+			mustNil(t, got.Wait(t.Context()))
+		}
+		assertSameTree(t, bWork, workspaceOf(got.Taken.Cell.Root))
+	})
+
+	t.Run("racing_second_computer_refused", func(t *testing.T) {
+		h := newTwoHomes(t)
+		seedTree(t, h.work)
+		a := h.openA()
+		a.mustSay("F1 race initial turn on A")
+		h.durable(h.cell.ID, h.cell)
+		mustNil(t, a.drive.Close(t.Context()))
+
+		takenB, err := h.continuerB().Take(t.Context(), h.cell.ID)
+		mustNil(t, err)
+		if takenB.Wait != nil {
+			mustNil(t, takenB.Wait(t.Context()))
+		}
+		bWork := workspaceOf(takenB.Taken.Cell.Root)
+		b := h.openOn(h.b, h.engB, takenB.Taken.Cell, bWork, nameB)
+		b.mustSay("F1 race turn on B")
+		h.durable(h.cell.ID, takenB.Taken.Cell)
+		mustNil(t, b.drive.Close(t.Context()))
+
+		// A lists while B holds the lease.
+		rows, _, err := h.a.RowsAt(t.Context())
+		mustNil(t, err)
+		row := rows[0]
+
+		// A racing third computer C acquires the lease before A's take runs.
+		homeC := t.TempDir()
+		_, err = identity.Adopt(homeC, h.a.Identity, false)
+		mustNil(t, err)
+		syncC := openSync(t, homeC)
+		claimedC, err := syncC.Dir.Acquire(t.Context(), h.cell.ID, directory.AcquireOpts{})
+		mustNil(t, err)
+
+		seen := &directory.LeaseExpectation{Device: row.DeviceID, Fence: row.Fence}
+		_, err = h.continuerA().TakeSeen(t.Context(), row.Cell, seen)
+		if !errors.Is(err, directory.ErrLeaseHeld) {
+			t.Fatalf("racing TakeSeen err = %v, want ErrLeaseHeld", err)
+		}
+		after, err := h.a.Dir.Cell(t.Context(), h.cell.ID)
+		mustNil(t, err)
+		if after.Cell.Lease.Device != syncC.Device.ID() || after.Cell.Lease.Fence != claimedC.Cell.Lease.Fence {
+			t.Fatalf("lease after refused race = %+v, want racer C at fence %d", after.Cell.Lease, claimedC.Cell.Lease.Fence)
+		}
+	})
+}
+
+// Contract F2: a warm 2,500-file copy with NO stat-index.json shows within the
+// F1 budget with <=150ms of local work before shown, and writes stat-index.json
+// at the end of materialize so the next move is fast.
+func TestF2WarmCopyWithoutStatIndexOpensUnder150msAndWritesStatIndex(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping 2,500-file real-clock local-work budget test in -short mode")
+	}
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("CODEAF_TELEMETRY", "off")
+	h := newTwoHomes(t)
+	seedTree(t, h.work)
+
+	for i := 0; i < 2500; i++ {
+		dir := filepath.Join(h.work, "pkg", fmt.Sprintf("mod-%02d", i/100))
+		mustNil(t, os.MkdirAll(dir, 0o700))
+		body := fmt.Sprintf("package mod%02d\n\nconst Value%04d = %q\n%s\n",
+			i/100, i, fmt.Sprintf("v1-%04d", i), strings.Repeat("// workspace line padding\n", 10))
+		mustNil(t, os.WriteFile(filepath.Join(dir, fmt.Sprintf("file_%04d.go", i)), []byte(body), 0o600))
+	}
+
+	a := h.openA()
+	a.mustSay("F2 initial 2500-file turn on A")
+	h.durable(h.cell.ID, h.cell)
+	mustNil(t, a.drive.Close(t.Context()))
+
+	takenB, err := h.continuerB().Take(t.Context(), h.cell.ID)
+	mustNil(t, err)
+	if takenB.Wait != nil {
+		mustNil(t, takenB.Wait(t.Context()))
+	}
+	bWork := workspaceOf(takenB.Taken.Cell.Root)
+	b := h.openOn(h.b, h.engB, takenB.Taken.Cell, bWork, nameB)
+	for w := 0; w < 40; w++ {
+		dir := filepath.Join(bWork, "pkg", fmt.Sprintf("mod-%02d", w/100))
+		body := fmt.Sprintf("package mod%02d\n\nconst Value%04d = %q\n%s\n",
+			w/100, w, fmt.Sprintf("v2-from-B-%04d", w), strings.Repeat("// updated workspace line\n", 200))
+		mustNil(t, os.WriteFile(filepath.Join(dir, fmt.Sprintf("file_%04d.go", w)), []byte(body), 0o600))
+	}
+	b.mustSay("F2 updated reply on B")
+	h.durable(h.cell.ID, takenB.Taken.Cell)
+	mustNil(t, b.drive.Close(t.Context()))
+
+	// Remove stat-index.json on A so A has NO stat index before the move.
+	statIdx := h.engine.StatIndexPath(h.cell)
+	_ = os.Remove(statIdx)
+	if _, err := os.Stat(statIdx); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("stat-index.json still exists before take: %v", err)
+	}
+
+	rows, _, err := h.a.RowsAt(t.Context())
+	mustNil(t, err)
+	row := rows[0]
+
+	rec := newRecordedRelay(t, h.a.Dir, h.a.Store, 400*time.Millisecond)
+	rec.blockBackground()
+	origADir, origAStore := h.a.Dir, h.a.Store
+	h.a.Dir = recordedDir{Client: origADir, rec: rec}
+	h.a.Store = recordedStore{Store: origAStore, rec: rec}
+
+	contA := h.continuerA()
+	var shownRounds int
+	var shownClock time.Duration
+	var wallShown time.Duration
+	wallStart := time.Now()
+	contA.opt.OnShown = func(Continued) {
+		wallShown = time.Since(wallStart)
+		shownRounds, _, _, shownClock, _ = rec.snapshot()
+	}
+
+	seen := &directory.LeaseExpectation{Device: row.DeviceID, Fence: row.Fence}
+	got, err := contA.TakeSeen(t.Context(), row.Cell, seen)
+	mustNil(t, err)
+	t.Cleanup(func() {
+		rec.unblock()
+		if got.Wait != nil {
+			_ = got.Wait(context.Background())
+		}
+	})
+
+	// Subtract the simulated 2ms/round sleep inside recordedRelay to measure real local work.
+	localBeforeShown := wallShown - time.Duration(shownRounds)*2*time.Millisecond
+	t.Logf("F2 warm 2500-file without stat-index: shownRounds=%d shownClock=%s localBeforeShown=%s", shownRounds, shownClock, localBeforeShown)
+	if shownRounds > 2 || shownClock > 800*time.Millisecond {
+		t.Fatalf("F2: shownRounds=%d (%s), want within F1 budget (<=2 rounds, <=800ms)", shownRounds, shownClock)
+	}
+	if localBeforeShown > 150*time.Millisecond {
+		t.Fatalf("F2: local work before shown without stat-index was %s, want <=150ms", localBeforeShown)
+	}
+
+	rec.unblock()
+	mustNil(t, got.Wait(t.Context()))
+	assertSameTree(t, bWork, workspaceOf(got.Taken.Cell.Root))
+
+	// Verify stat-index.json was written at the end of materialize.
+	if _, err := os.Stat(h.engine.StatIndexPath(got.Taken.Cell)); err != nil {
+		t.Fatalf("F2: stat-index.json was not written after materialize: %v", err)
+	}
+}
+
+// Contract F2 (local edit preservation without stat index): when stat-index.json
+// is missing and the local workspace has a real edit, the critical path stays
+// fast and the background full check before workspace swap seals and keeps the
+// local edit on a branch and tells the person as today.
+func TestF2CopyWithLocalEditAndNoStatIndexKeepsEdit(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("CODEAF_TELEMETRY", "off")
+	h := newTwoHomes(t)
+	seedTree(t, h.work)
+
+	a := h.openA()
+	a.mustSay("F2 local-edit initial turn on A")
+	h.durable(h.cell.ID, h.cell)
+	mustNil(t, a.drive.Close(t.Context()))
+
+	takenB, err := h.continuerB().Take(t.Context(), h.cell.ID)
+	mustNil(t, err)
+	if takenB.Wait != nil {
+		mustNil(t, takenB.Wait(t.Context()))
+	}
+	bWork := workspaceOf(takenB.Taken.Cell.Root)
+	b := h.openOn(h.b, h.engB, takenB.Taken.Cell, bWork, nameB)
+	mustNil(t, os.WriteFile(filepath.Join(bWork, "src", "part0.go"), []byte("package src\nconst Part0 = \"remote-from-B\"\n"), 0o600))
+	b.mustSay("F2 remote turn on B")
+	h.durable(h.cell.ID, takenB.Taken.Cell)
+	mustNil(t, b.drive.Close(t.Context()))
+
+	// Remove stat-index.json on A AND make a real local edit in A's workspace.
+	_ = os.Remove(h.engine.StatIndexPath(h.cell))
+	localEditContent := "package src\nconst Part0 = \"unsaved-local-edit-on-A-without-stat-index\"\n"
+	mustNil(t, os.WriteFile(filepath.Join(h.work, "src", "part0.go"), []byte(localEditContent), 0o600))
+
+	rows, _, err := h.a.RowsAt(t.Context())
+	mustNil(t, err)
+	row := rows[0]
+
+	contA := h.continuerA()
+	var wallShown time.Duration
+	wallStart := time.Now()
+	contA.opt.OnShown = func(Continued) {
+		wallShown = time.Since(wallStart)
+	}
+
+	seen := &directory.LeaseExpectation{Device: row.DeviceID, Fence: row.Fence}
+	got, err := contA.TakeSeen(t.Context(), row.Cell, seen)
+	mustNil(t, err)
+	if wallShown > 150*time.Millisecond {
+		t.Fatalf("F2: local work before shown was %s, want <=150ms", wallShown)
+	}
+	if got.Wait != nil {
+		mustNil(t, got.Wait(t.Context()))
+	}
+
+	keptID, keptTurns := got.Taken.Kept, got.KeptTurns
+	if got.KeptBranch != nil && keptID == "" {
+		keptID, keptTurns = got.KeptBranch()
+	}
+	if keptID == "" || keptTurns == 0 {
+		t.Fatalf("F2: expected local edit without stat-index to be kept as a branch, got keptID=%q keptTurns=%d", keptID, keptTurns)
+	}
+	wallJoined := strings.Join(h.wall.all(), "\n")
+	if !strings.Contains(wallJoined, "kept as 1 turn") {
+		t.Fatalf("F2: expected person to be notified of kept branch, wall=%q", wallJoined)
+	}
+
+	// Main workspace on A must have B's remote version after materialize.
+	assertSameTree(t, bWork, workspaceOf(got.Taken.Cell.Root))
+
+	// Opening the kept branch must contain A's local edit intact.
+	branchRoot := filepath.Join(t.TempDir(), keptID)
+	opener := h.a.Continuer(h.engine, TakeOptions{RootFor: func(string) string { return branchRoot }})
+	branchGot, err := opener.OpenBranch(t.Context(), keptID)
+	mustNil(t, err)
+	if branchGot.Wait != nil {
+		mustNil(t, branchGot.Wait(t.Context()))
+	}
+	keptFile, err := os.ReadFile(filepath.Join(workspaceOf(branchGot.Taken.Cell.Root), "src", "part0.go"))
+	mustNil(t, err)
+	if string(keptFile) != localEditContent {
+		t.Fatalf("F2: kept branch part0.go = %q, want %q", string(keptFile), localEditContent)
+	}
+}
+
+// Contract F3: nothing reads workspace files before they arrive. On a move
+// where the workspace files (and withheld .env files) are still arriving in the
+// background, starting the session's warm vault capture (SeatOver WithWarmCapture)
+// and Drive waits on workspace arrival, reads the arrived files once ready, and
+// emits no "could not keep … in the key vault" error.
+func TestF3VaultReadsWaitForWorkspaceArrivalWithNoError(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("CODEAF_TELEMETRY", "off")
+	h := newTwoHomes(t)
+	seedTree(t, h.work)
+
+	envFiles := map[string]string{
+		"control-plane/.env.dev":                   "DEV_SECRET=alpha123\n",
+		"control-plane/web/client/.env":            "CLIENT_KEY=beta456\n",
+		"control-plane/web/client/.env.production": "PROD_KEY=gamma789\n",
+	}
+	for rel, content := range envFiles {
+		full := filepath.Join(h.work, filepath.FromSlash(rel))
+		mustNil(t, os.MkdirAll(filepath.Dir(full), 0o700))
+		mustNil(t, os.WriteFile(full, []byte(content), 0o600))
+	}
+
+	a := h.openA()
+	a.mustSay("F3 turn with dotenv files on A")
+	h.durable(h.cell.ID, h.cell)
+	mustNil(t, a.drive.Close(t.Context()))
+	mustNil(t, h.a.withVault(func(v vaultsync.Syncer) error { return v.Push(t.Context()) }))
+
+	rec := newRecordedRelay(t, h.b.Dir, h.b.Store, 20*time.Millisecond)
+	rec.blockBackground()
+	origBDir, origBStore := h.b.Dir, h.b.Store
+	h.b.Dir = recordedDir{Client: origBDir, rec: rec}
+	h.b.Store = recordedStore{Store: origBStore, rec: rec}
+
+	var noticesMu sync.Mutex
+	var notices []string
+	recordNotice := func(msg string) {
+		noticesMu.Lock()
+		notices = append(notices, msg)
+		noticesMu.Unlock()
+	}
+
+	contB := h.continuerB()
+	contB.opt.Notify = recordNotice
+	var seat executor.Seat
+	var drive *Drive
+	var seatErr, driveErr error
+	startedAtShown := make(chan struct{})
+
+	contB.opt.OnShown = func(got Continued) {
+		bWork := workspaceOf(got.Taken.Cell.Root)
+		eng := h.engB
+		eng.Workspace = bWork
+		// Start Drive and SeatOver (WithWarmCapture) immediately at shown, while
+		// background workspace arrival is still blocked.
+		go func() {
+			defer close(startedAtShown)
+			drive, driveErr = h.b.Drive(t.Context(), eng, got.Taken.Cell, DriveOptions{
+				DeviceName: nameB,
+				OnNotice:   recordNotice,
+			})
+			if driveErr != nil {
+				return
+			}
+			seat, seatErr = cellstore.SeatOver(
+				executor.HostBound,
+				got.Taken.Cell,
+				bWork,
+				nil,
+				nil,
+				func(cellstore.Engine) cellstore.Store { return drive.Store(eng) },
+				cellstore.WithWarmCapture(),
+				cellstore.WithNotices(recordNotice),
+			)
+		}()
+	}
+
+	got, err := contB.Take(t.Context(), h.cell.ID)
+	mustNil(t, err)
+
+	// Give the concurrent SeatOver / Drive goroutine a moment to hit the arrival gate
+	// while files are still arriving, then unblock the background file arrival.
+	time.Sleep(50 * time.Millisecond)
+	rec.unblock()
+
+	mustNil(t, got.Wait(t.Context()))
+	<-startedAtShown
+	mustNil(t, driveErr)
+	mustNil(t, seatErr)
+	if waitable, ok := seat.(interface{ Await(context.Context) error }); ok {
+		mustNil(t, waitable.Await(t.Context()))
+	}
+	mustNil(t, drive.Close(t.Context()))
+
+	noticesMu.Lock()
+	allNotices := append([]string(nil), notices...)
+	noticesMu.Unlock()
+	for _, n := range allNotices {
+		if strings.Contains(n, "could not keep") || strings.Contains(n, "key vault") {
+			t.Fatalf("F3: unexpected vault error notice during arrival: %q (all notices: %v)", n, allNotices)
+		}
+	}
+
+	bWork := workspaceOf(got.Taken.Cell.Root)
+	for rel, want := range envFiles {
+		raw, err := os.ReadFile(filepath.Join(bWork, filepath.FromSlash(rel)))
+		if err != nil || string(raw) != want {
+			t.Fatalf("F3: restored %s = %q, err = %v; want %q", rel, string(raw), err, want)
+		}
+	}
+}
+
+// Round 5b (1): the cross-process arrival marker must never be sealed, captured
+// or published, and must never reach another computer.
+func TestF3bArrivalMarkerNeverSealedCapturedOrPublished(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("CODEAF_TELEMETRY", "off")
+	h := newTwoHomes(t)
+	seedTree(t, h.work)
+
+	a := h.openA()
+	a.mustSay("initial turn on A")
+	h.durable(h.cell.ID, h.cell)
+
+	// Begin an arrival on A and keep it active while sealing a turn.
+	arr := cell.BeginWorkspaceArrival(h.cell.Root, h.work, nil, nil)
+	defer arr.Complete()
+
+	marker := cell.ArrivalMarkerPath(h.cell.Root)
+	if marker == "" {
+		t.Fatal("expected non-empty ArrivalMarkerPath")
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("expected arrival marker at %s while arrival is active: %v", marker, err)
+	}
+	if strings.HasPrefix(marker, h.cell.Root+string(filepath.Separator)) || strings.HasPrefix(marker, h.work+string(filepath.Separator)) {
+		t.Fatalf("arrival marker %q must live outside cell root %q and workspace %q", marker, h.cell.Root, h.work)
+	}
+
+	assertNoArrivingInTree := func(where, root string) {
+		t.Helper()
+		err := filepath.WalkDir(root, func(p string, d os.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if strings.Contains(d.Name(), ".arriving") {
+				t.Fatalf("%s: unexpected arrival marker entry %s inside %s", where, p, root)
+			}
+			return nil
+		})
+		mustNil(t, err)
+	}
+
+	assertNoArrivingInTree("A cell root during arrival", h.cell.Root)
+	assertNoArrivingInTree("A workspace during arrival", h.work)
+
+	// Person sends a message while files arrive: transcript grows, Settle is
+	// called while arrival is active, and a turn seal runs through Drive's store
+	// while the marker file is on disk.
+	engA := h.engine
+	engA.Workspace = h.work
+	appendTo(t, transcriptOf(h.cell), `{"type":"message","role":"user","content":"message sent while files arrive"}`+"\n")
+	sealedDuringArrival, err := a.drive.Store(engA).Seal(cell.WithArrivalOwner(t.Context()), h.cell, cellstore.TurnInfo{
+		Changed: []string{cell.StateDir},
+	})
+	mustNil(t, err)
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("expected arrival marker to remain on disk during turn seal: %v", err)
+	}
+
+	appendTo(t, transcriptOf(h.cell), `{"type":"message","role":"assistant","content":"reply while files arrive"}`+"\n")
+	if settler, ok := a.seat.(executor.Settler); ok {
+		settler.Settle(t.Context())
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("expected arrival marker to remain on disk during Settle: %v", err)
+	}
+
+	// Complete the arrival (waking the scheduled Settle seal) and publish to the relay.
+	arr.Complete()
+	mustNil(t, cellstore.Await(t.Context(), h.cell))
+	h.durable(h.cell.ID, h.cell)
+	mustNil(t, a.drive.Close(t.Context()))
+
+	// 1. Assert no published frame in the store contains .arriving.
+	view, err := h.a.Dir.Cell(t.Context(), h.cell.ID)
+	mustNil(t, err)
+	if len(view.Cell.Frames) == 0 {
+		t.Fatal("expected published frames on relay")
+	}
+	cellKey := h.a.Identity.CellKey()
+	for _, frameID := range view.Cell.Frames {
+		raw, err := h.a.Store.GetFrame(t.Context(), frameID)
+		mustNil(t, err)
+		if bytes.Contains(raw, []byte(".arriving")) {
+			t.Fatalf("frame %s raw bytes contain .arriving", frameID)
+		}
+		_, objs, err := blobstore.Decode(raw)
+		mustNil(t, err)
+		if match, found := cellsync.ObjectContainsEntryName(cellKey, objs, ".arriving"); found {
+			t.Fatalf("frame %s contains .arriving in decrypted object/entry %q", frameID, match)
+		}
+	}
+
+	// 2. Assert no open-state record in the open-state cache contains .arriving.
+	syncA := h.engine.Sync(cellstore.SyncKeys{CellKey: cellKey, Dedup: h.a.Identity.DedupSecret()}, h.a.Ledger)
+	openCache := syncA.OpenCache(h.cell)
+	if entries, err := os.ReadDir(openCache); err == nil {
+		var openObjs []blobstore.Object
+		for _, e := range entries {
+			if strings.Contains(e.Name(), ".arriving") {
+				t.Fatalf("open-state cache %s contains file %s", openCache, e.Name())
+			}
+			if e.IsDir() {
+				continue
+			}
+			b, err := os.ReadFile(filepath.Join(openCache, e.Name()))
+			mustNil(t, err)
+			openObjs = append(openObjs, blobstore.Object{RID: e.Name(), Bytes: b})
+		}
+		if match, found := cellsync.ObjectContainsEntryName(cellKey, openObjs, ".arriving"); found {
+			t.Fatalf("open-state cache %s contains .arriving in %q", openCache, match)
+		}
+	}
+
+	// 3. Assert no sealed snapshot contains .arriving when materialized.
+	headAfter, err := cellstore.Head(h.cell)
+	mustNil(t, err)
+	var snaps []string
+	if sealedDuringArrival.Turn.ID != "" {
+		snaps = append(snaps, sealedDuringArrival.Turn.ID)
+	}
+	if headAfter != nil && headAfter.Turn.ID != "" {
+		snaps = append(snaps, headAfter.Turn.ID)
+	}
+	for _, snap := range snaps {
+		if snap == "" {
+			continue
+		}
+		checkRoot := filepath.Join(t.TempDir(), "snap-check")
+		checkWork := filepath.Join(t.TempDir(), "snap-work")
+		mustNil(t, os.MkdirAll(filepath.Join(checkRoot, cell.StateDir), 0o700))
+		mustNil(t, os.MkdirAll(checkWork, 0o700))
+		checkEng := h.engine
+		checkEng.Workspace = checkWork
+		checkSync := checkEng.Sync(cellstore.SyncKeys{CellKey: cellKey, Dedup: h.a.Identity.DedupSecret()}, h.a.Ledger)
+		mustNil(t, checkSync.Materialize(t.Context(), cell.Cell{ID: h.cell.ID, Root: checkRoot}, snap))
+		assertNoArrivingInTree("materialized snapshot "+snap+" cell root", checkRoot)
+		assertNoArrivingInTree("materialized snapshot "+snap+" workspace", checkWork)
+	}
+
+	// 4. Assert no materialized receiver tree on B (at shown or after full
+	// materialization) contains .arriving.
+	contB := h.continuerB()
+	contB.opt.OnShown = func(got Continued) {
+		assertNoArrivingInTree("B cell root at shown", got.Taken.Cell.Root)
+		assertNoArrivingInTree("B workspace at shown", workspaceOf(got.Taken.Cell.Root))
+	}
+	gotB, err := contB.Take(t.Context(), h.cell.ID)
+	mustNil(t, err)
+	mustNil(t, gotB.Wait(t.Context()))
+	assertNoArrivingInTree("B cell root after materialize", gotB.Taken.Cell.Root)
+	assertNoArrivingInTree("B workspace after materialize", workspaceOf(gotB.Taken.Cell.Root))
+}
+
+// Round 5b (2): a crashed arrival owner in another process must not stall tools
+// or captures in a surviving or new process; waiters ignore and remove the dead
+// owner's marker instead of waiting out the 2-minute stall bound.
+func TestF3bCrashedArrivalOwnerDoesNotStallTools(t *testing.T) {
+	if cellRoot := os.Getenv("CODEAF_TEST_F3B_CRASH_CELL"); cellRoot != "" {
+		workDir := os.Getenv("CODEAF_TEST_F3B_CRASH_WORK")
+		_ = cell.BeginWorkspaceArrival(cellRoot, workDir, nil, nil)
+		os.Exit(0)
+	}
+
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("CODEAF_TELEMETRY", "off")
+	h := newTwoHomes(t)
+	targetFile := filepath.Join(h.work, "hello.txt")
+	mustNil(t, os.WriteFile(targetFile, []byte("survived owner crash\n"), 0o600))
+
+	// Spawn a child process that begins workspace arrival and exits without Complete().
+	cmd := exec.Command(os.Args[0], "-test.run=^TestF3bCrashedArrivalOwnerDoesNotStallTools$")
+	cmd.Env = append(os.Environ(),
+		"CODEAF_TEST_F3B_CRASH_CELL="+h.cell.Root,
+		"CODEAF_TEST_F3B_CRASH_WORK="+h.work,
+	)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("child process failed: %v\n%s", err, out)
+	}
+
+	marker := cell.ArrivalMarkerPath(h.cell.Root)
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("expected crashed child to leave marker at %s: %v", marker, err)
+	}
+
+	start := time.Now()
+	mustNil(t, cell.WaitWorkspace(t.Context(), h.cell.Root, h.work))
+	_, err := h.engine.Seal(t.Context(), h.cell, cellstore.TurnInfo{})
+	mustNil(t, err)
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Fatalf("WaitWorkspace/Seal stalled for %s after arrival owner crashed; expected immediate execution", elapsed)
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("expected dead owner's arrival marker %s to be removed, stat err = %v", marker, err)
+	}
 }

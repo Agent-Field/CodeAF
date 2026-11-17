@@ -19,46 +19,67 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 )
 
+// LocalWorkFast performs the cheap in-process portion of LocalWork without
+// spawning a furrow subprocess (F2). When known is true, dirty is the final
+// answer; when known is false (for example, stat-index.json is missing or
+// stale), the full check must run before the workspace is swapped in.
+func (e Engine) LocalWorkFast(ctx context.Context, c cell.Cell) (dirty bool, known bool, err error) {
+	_, recovery, err := OpenWAL(e.WALPath(c))
+	if err != nil {
+		return false, true, err
+	}
+	// Completed WAL calls remain local work even when their capture fails.
+	if err := Captured(ctx, c); err != nil && len(recovery.Completed) == 0 {
+		return false, true, err
+	}
+	if len(recovery.Completed) > 0 {
+		log.Printf("continuation needs a choice: %d completed calls have not been saved", len(recovery.Completed))
+		return true, true, nil
+	}
+	base, err := sharedBoundary(c)
+	if err != nil {
+		return false, true, err
+	}
+	if base == "" {
+		return true, true, nil
+	}
+	head, err := Head(c)
+	if err != nil || head == nil {
+		return head == nil, true, err
+	}
+	if work, err := transcriptWork(c, head.Receipt.Transcript.End, sizeOf(rel(c, cell.TranscriptPath))); err != nil || work {
+		return work, true, err
+	}
+	if head.Turn.ID != base {
+		work, err := unsharedCalls(c, base)
+		if err != nil || work {
+			return work, true, err
+		}
+		return false, false, nil
+	}
+	if e.checkMaterializedStat(c, base) {
+		return false, true, nil
+	}
+	return false, false, nil
+}
+
 // LocalWork says whether continuing a remote chat needs a local-work choice.
 // Startup can seal unchanged files with fresh bookkeeping, which is a local
 // save but not something a person needs to keep as a branch. Compare
 // against the shared boundary as well as the current head, so an editor's work
 // captured by that startup save is never mistaken for mere bookkeeping.
 func (e Engine) LocalWork(ctx context.Context, c cell.Cell) (bool, error) {
-	_, recovery, err := OpenWAL(e.WALPath(c))
-	if err != nil {
-		return false, err
-	}
-	// Completed WAL calls remain local work even when their capture fails.
-	if err := Captured(ctx, c); err != nil && len(recovery.Completed) == 0 {
-		return false, err
-	}
-	if len(recovery.Completed) > 0 {
-		log.Printf("continuation needs a choice: %d completed calls have not been saved", len(recovery.Completed))
-		return true, nil
+	dirty, known, err := e.LocalWorkFast(ctx, c)
+	if err != nil || known {
+		return dirty, err
 	}
 	base, err := sharedBoundary(c)
 	if err != nil {
 		return false, err
 	}
-	if base == "" {
-		return true, nil
-	}
 	head, err := Head(c)
 	if err != nil || head == nil {
 		return head == nil, err
-	}
-	if work, err := transcriptWork(c, head.Receipt.Transcript.End, sizeOf(rel(c, cell.TranscriptPath))); err != nil || work {
-		return work, err
-	}
-	if head.Turn.ID != base {
-		work, err := unsharedCalls(c, base)
-		if err != nil || work {
-			return work, err
-		}
-	}
-	if head.Turn.ID == base && e.checkMaterializedStat(c, base) {
-		return false, nil
 	}
 	if err := e.screenCapture(ctx, c); err != nil {
 		return false, err
@@ -297,6 +318,11 @@ func transcriptPrefixHash(path string, end int64) (string, bool) {
 		return "", false
 	}
 	return hex.EncodeToString(h.Sum(nil)), true
+}
+
+// StatIndexPath returns the path to c's materialized stat index file.
+func (e Engine) StatIndexPath(c cell.Cell) string {
+	return e.statIndexPath(c)
 }
 
 func (e Engine) statIndexPath(c cell.Cell) string {

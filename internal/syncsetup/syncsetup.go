@@ -75,7 +75,7 @@ type Sync struct {
 	publication     map[string]*pendingPublication
 	publicationSeen map[string]struct{}
 	suppliedMu      sync.Mutex
-	suppliedViews   map[string]directory.CellView
+	suppliedViews   map[string]suppliedCellView
 	suppliedDevices map[string]string
 	// BetweenChats, when set, runs after each chat a PublishLocalChats pass
 	// offers, with the pass's lock released: a pass lasts as long as its
@@ -364,6 +364,11 @@ func (s *Sync) now() time.Time {
 	return time.Now()
 }
 
+type suppliedCellView struct {
+	view     directory.CellView
+	explicit bool
+}
+
 // SupplyCellView caches an already-read directory record for the next take of id on s (C6).
 func (s *Sync) SupplyCellView(id string, view directory.CellView) {
 	if s == nil || id == "" {
@@ -372,22 +377,51 @@ func (s *Sync) SupplyCellView(id string, view directory.CellView) {
 	s.suppliedMu.Lock()
 	defer s.suppliedMu.Unlock()
 	if s.suppliedViews == nil {
-		s.suppliedViews = map[string]directory.CellView{}
+		s.suppliedViews = map[string]suppliedCellView{}
 	}
-	s.suppliedViews[id] = view
+	s.suppliedViews[id] = suppliedCellView{view: view, explicit: true}
 }
 
-func (s *Sync) takeCellView(id string) (directory.CellView, bool) {
+// RememberViews caches the cell views from a directory listing for subsequent takes on s (F1).
+func (s *Sync) RememberViews(l directory.Listing) {
+	if s == nil || len(l.Cells) == 0 {
+		return
+	}
+	s.suppliedMu.Lock()
+	defer s.suppliedMu.Unlock()
+	if s.suppliedViews == nil {
+		s.suppliedViews = map[string]suppliedCellView{}
+	}
+	for id, c := range l.Cells {
+		s.suppliedViews[id] = suppliedCellView{
+			view:     directory.CellView{Cell: c, Now: l.Now},
+			explicit: false,
+		}
+	}
+}
+
+// CachedCellView returns a cached directory record for id without consuming it.
+func (s *Sync) CachedCellView(id string) (directory.CellView, bool) {
 	if s == nil || id == "" {
 		return directory.CellView{}, false
 	}
 	s.suppliedMu.Lock()
 	defer s.suppliedMu.Unlock()
-	view, ok := s.suppliedViews[id]
+	entry, ok := s.suppliedViews[id]
+	return entry.view, ok
+}
+
+func (s *Sync) takeCellView(id string) (directory.CellView, bool, bool) {
+	if s == nil || id == "" {
+		return directory.CellView{}, false, false
+	}
+	s.suppliedMu.Lock()
+	defer s.suppliedMu.Unlock()
+	entry, ok := s.suppliedViews[id]
 	if ok {
 		delete(s.suppliedViews, id)
 	}
-	return view, ok
+	return entry.view, entry.explicit, ok
 }
 
 // SupplyDeviceName remembers a device's display name for takes on s (C6).

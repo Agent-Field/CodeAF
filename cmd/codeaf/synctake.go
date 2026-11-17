@@ -212,6 +212,7 @@ func (s surfaceMachines) RowsForSend(ctx context.Context) ([]chatlist.Row, uint6
 		return nil, 0, err
 	}
 	s.RememberDevices(l.Devices)
+	s.RememberViews(l)
 	key := directory.MetadataKey(s.Identity.CellKey())
 	open := func(sealed string) (string, error) { return directory.OpenName(key, sealed) }
 	rows := chatlist.Rows(l, s.Device.ID(), open)

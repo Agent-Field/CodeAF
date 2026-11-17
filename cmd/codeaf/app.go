@@ -1817,7 +1817,7 @@ func (b *appBackend) OpenAgent(id string) (appwire.Agent, error) {
 	if b.idleHandoffEnabled() {
 		row, found := b.chats.rowFor(id)
 		if found && row.CanOpen && !row.Here {
-			return b.takeAgent(appwire.TakeParams{Cell: row.Cell, Seen: row.Seen}, true)
+			return b.takeAgent(appwire.TakeParams{Cell: row.Cell, Seen: appwire.Seen{Device: row.Seen.Device, Fence: row.Seen.Fence}}, true)
 		}
 	}
 	return b.openAgent(id, false)

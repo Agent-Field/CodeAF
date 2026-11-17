@@ -1115,3 +1115,39 @@ func readSeenFrames(inboxes ...string) (seen map[string]bool, hasPersistent bool
 	}
 	return seen, hasPersistent
 }
+
+// ObjectContainsEntryName reports whether any decrypted furrow metadata or
+// directory object in objects (given the 32-byte cellKey) contains a directory
+// entry or payload matching substr.
+func ObjectContainsEntryName(cellKey []byte, objects []blobstore.Object, substr string) (string, bool) {
+	var ck [32]byte
+	if len(cellKey) == 32 {
+		copy(ck[:], cellKey)
+	}
+	for _, o := range objects {
+		if strings.Contains(string(o.Bytes), substr) {
+			return o.RID, true
+		}
+		if len(cellKey) != 32 {
+			continue
+		}
+		m, ok := decryptMetaObject(ck, o.RID, o.Bytes)
+		if !ok {
+			continue
+		}
+		if strings.Contains(string(m.body), substr) {
+			return o.RID, true
+		}
+		if m.kind == 3 {
+			var d furrowDir
+			if json.Unmarshal(m.body, &d) == nil {
+				for _, e := range d.Entries {
+					if strings.Contains(string(e.Name), substr) {
+						return string(e.Name), true
+					}
+				}
+			}
+		}
+	}
+	return "", false
+}
