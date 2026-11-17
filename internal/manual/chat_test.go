@@ -56,6 +56,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"who can answer a task's question in a workstream", "organization-workstream-tasks"},
 		{"someone left the workstream, who gets their tasks", "organization-workstream-tasks"},
 		{"a file changed while my task was running", "organization-workstream-tasks"},
+		{"why can't I stop someone else's task", "organization-workstream-tasks"},
 		{"the task's owner is Everyone, who decides", "organization-workstream-tasks"},
 		{"how do I tick a person task and what happens to tasks waiting on it", "organization-workstream-tasks"},
 		{"how do I mention someone in a comment so they see it", "organization-workstream-tasks"},

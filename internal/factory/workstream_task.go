@@ -274,6 +274,7 @@ func (e TaskRefused) Error() string { return string(e) }
 var (
 	ErrTaskNotOwner     error = TaskRefused("only the task's owner can do this")
 	ErrTaskNotAnswerer  error = TaskRefused("only the task's owner answers its question")
+	ErrTaskNotStopper   error = TaskRefused("only the task's owner or whoever looks after this workstream can stop or move it")
 	ErrTaskNoAsk              = errors.New("this task is not waiting on a question")
 	ErrTaskOfferGone          = errors.New("that offer is not open")
 	ErrTaskUndoOver           = errors.New("the five seconds to undo this have passed")
@@ -287,6 +288,10 @@ type TaskActor struct {
 	Handle string
 	// Edit is whether they may edit the workstream; view alone reads tasks.
 	Edit bool
+	// Govern is whether they look after the workstream (its steward, or
+	// anyone who may change its people and rules): they may stop or move any
+	// of its tasks, which nobody else but the task's owner may.
+	Govern bool
 }
 
 func (a TaskActor) owns(t WorkstreamTask) bool {
@@ -319,6 +324,13 @@ func MayAnswer(t WorkstreamTask, a TaskActor, fallback string, now time.Time) bo
 }
 
 // MayTick is whether a may tick (or untick) t: a person task, by its owner.
+// MayStop is whether a may stop or move t: its owner, or whoever looks after
+// the workstream (Workstreams final spec, "Who can do what"). Anyone else who
+// edits comments, hands it on or sends it back, and asks them to stop it.
+func MayStop(t WorkstreamTask, a TaskActor) bool {
+	return a.owns(t) || (a.Edit && a.Govern)
+}
+
 func MayTick(t WorkstreamTask, a TaskActor) bool {
 	return t.DoneBy.Kind == TaskByPerson && a.owns(t)
 }
@@ -660,6 +672,9 @@ func ApplyPatch(t WorkstreamTask, p TaskPatch, a TaskActor, by TaskEventBy, all 
 			why = strings.TrimSpace(*p.StateReason)
 		}
 		back := t.State == TaskDone && *p.State == TaskUpNext && (!MayTick(t, a) || why != "")
+		if *p.State == TaskStopped && !MayStop(t, a) {
+			return TaskChange{}, ErrTaskNotStopper
+		}
 		if t.DoneBy.Kind == TaskByPerson && !MayTick(t, a) && !back {
 			return TaskChange{}, TaskRefused("only the task's owner ticks it")
 		}

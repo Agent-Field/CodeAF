@@ -22,10 +22,14 @@ Who owns a new task: whoever asked for it. Work nobody asked for directly (from 
 
 - Tick: only the owner ticks a person's task ("only the task's owner ticks it" otherwise). Ticking it unblocks the tasks that were waiting only on it: a person's task loses its "waiting on", and an Afi or chat task stays in Up next with the line "Ready to start: <the ticked task> is done" until it is started (see *Start — why a task stays in Up next*).
 - Hand to someone: anyone who can edit the workstream changes a task's owner to another person or to Everyone. The thread says "Handed to Marco", and Marco's Inbox row says "handed to you by Priya". Taking a task yourself is not a hand-over and says nothing.
-- Move: More › Move moves a task, with its whole conversation, to another workstream you can edit. Tasks that waited on it here stop waiting.
+- Move: More › Move moves a task, with its whole conversation, to another workstream you can edit. Tasks that waited on it here stop waiting. Only the task's owner or whoever looks after the workstream moves it.
 - Send back: a done task's More has "Send back…". It asks why, then puts the task back in Up next. Anyone who can edit may send work back, a reviewer included. The thread, the task and the doer's Inbox row read "Sent back by Priya: <why>". An Afi or chat task sent back starts again with the reason. A new goal is a new task.
 
-Reading tasks needs view on the workstream; adding, commenting, handing on and moving need edit.
+Reading tasks needs view on the workstream; adding, commenting, handing on and sending back need edit.
+
+## who can stop or move a task — the owner or whoever looks after the workstream
+
+Stopping a task or moving it to another workstream is for the task's owner and for whoever looks after the workstream (its steward, or anyone with full access to it). Anyone else who can edit is refused with "only the task's owner or whoever looks after this workstream can stop or move it", and the desk leaves Stop and Move to another workstream out of their More. They can still comment, hand it to someone or send it back. Answering a task's question and ticking a person's task stay the owner's alone, whoever looks after the workstream.
 
 ## waiting on — the only way to order tasks, no circles
 
