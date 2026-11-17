@@ -19,6 +19,18 @@ const FollowBlockedAttempts = "attempts"
 
 // PRFollowUp keeps the publication record and the PR maintenance cursor.
 // Every later tested head receives its own service-side publication approval.
+// FollowUpUpdateWaiting says a landed job holds a Follow PR repair that passed
+// its checks here and waits only to be pushed to its existing pull request.
+// That wait outranks the pull request's own conflict or changes requested: the
+// forge still shows them because the repair that answers them is not pushed
+// yet. Read the other way round, nothing could push it and nothing could clear
+// them (job 31, 2026-11-17: "PR has a conflict" for hours over a resolved,
+// checked merge; Auto never published it and the manager's approve found no
+// approval waiting).
+func FollowUpUpdateWaiting(it Item) bool {
+	return it.State == StateLanded && it.FollowUp != nil && it.FollowUp.State == "waiting_approval"
+}
+
 type PRFollowUp struct {
 	Reviewed        map[string]string `json:"reviewed,omitempty"`
 	Inspecting      map[string]string `json:"inspecting,omitempty"`

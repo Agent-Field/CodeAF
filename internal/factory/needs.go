@@ -263,6 +263,8 @@ func NeedsKind(it Item) string {
 			return NeedsRunnerOffline
 		}
 		return NeedsFailed
+	case FollowUpUpdateWaiting(it):
+		return NeedsApproveProof
 	case it.PullRequest != nil && it.PullRequest.Conflict:
 		return NeedsConflict
 	case it.PullRequest != nil && it.PullRequest.ReviewDecision == "changes_requested":
