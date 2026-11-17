@@ -949,7 +949,8 @@ model keys and to a workstream's agent on the server. `factory.org_keys` `GET
 `factory.org_key_delete {provider}` `DELETE` are the operator's alone; the only provider
 is `openrouter`, and a key is answered back only as `{provider, last4, set_at,
 set_by}`, never whole. In `server` mode every workstream has one agent on the server,
-run with that key as an ordinary engine conversation whose tools are
+and each person who can edit it has their OWN conversation with it, which nobody else
+reads (the agent's memory is per person too); it is run with that key as an ordinary engine conversation whose tools are
 `workstream_pages` (read the workstream and one page, write a page, make a page,
 suggest a decision) and the eight workstream tools `ws_tasks`, `ws_task_create`,
 `ws_task_update`, `ws_task_comment`, `ws_files`, `ws_file_read`, `ws_file_create`,
@@ -969,17 +970,23 @@ keeps. `factory.org_workstream_agent
 turn?, for?, since?, entries, seq, can_talk, cannot?}`: `state` is `idle`, `working`
 (`for` is whose message) or `stopping` (`for` is who stopped it); `entries` are the
 lines after `since` (at most 200), each `{seq, at, kind, by?, text, tool?, failed?,
-turn}` with `kind` `person`, `agent`, `step` or `note`; `cannot` is the one sentence
-saying why an editor cannot talk now (another runner mode, no key, archived, budget
-spent), absent for a viewer. `factory.org_workstream_agent_send {id, text}` `POST
-.../agent/messages` (`edit`, 1–16384 bytes) answers 202 with the agent working; while
-it answers someone else the refusal is `conflict` with `detail.reason` `busy` and
-`detail.by` `@handle`. `factory.org_workstream_agent_stop {id}` `POST .../agent/stop`
-(`edit`) stops it. The agent writes as the person who asked (their rights are checked
+turn}` with `kind` `person`, `agent`, `step` or `note`, all of them the caller's own
+conversation; `private` is `true` from a server that keeps each person's conversation to
+them (an older server, which kept one conversation everyone read, leaves it out, and the
+desk then must not say "Private to you"); `cannot` is the one sentence saying why an
+editor cannot talk now (another runner mode, no key, archived, budget spent), absent for
+a viewer. `factory.org_workstream_agent_send {id, text, tz?}` `POST
+.../agent/messages` (`edit`, 1–16384 bytes) answers 202 with the agent working; `tz`
+is the sender's IANA time zone (`America/Toronto`), and every turn tells the agent the
+date and time in it, or in the server's own zone when it is absent or unknown; while
+it still answers the caller's previous message the refusal is `conflict` with
+`detail.reason` `busy` (another person's conversation never makes it busy).
+`factory.org_workstream_agent_stop {id}` `POST .../agent/stop` (`edit`) stops the
+caller's own answer. The agent writes as the person who asked (their rights are checked
 on every write); a decision is added `proposed`. What a
 turn spent is posted to the workstream's spend under the asker with `chat` `agent`.
-The server's `agent.entry {id, entry}` and `agent.state {id, state, ...}` reach those
-who can see the workstream and are relayed as `factory.org_workstream_agent
+The server's `agent.entry {id, person, entry}` and `agent.state {id, person, state, ...}`
+reach only `person`, while they can see the workstream, and are relayed as `factory.org_workstream_agent
 {connection, id, entry?, state?}`.
 
 An engine whose hello carries `org_workstream_tasks` reads and changes an organization

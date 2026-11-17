@@ -35,6 +35,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 	}{
 		{"how do I give you my API key safely", "giving-a-password-or-token"},
 		{"run the workstream agent on the organization's server instead of a laptop", "organization-workstream-agent"},
+		{"does the server's Afi know what today's date is in my time zone", "organization-workstream-agent"},
 		{"where do I put the organization's model key for the server", "organization-workstream-agent"},
 		{"who can change a workstream's people and rules", "workstream-people-and-rules"},
 		{"can I put a workstream inside another workstream", "workstream-people-and-rules"},
@@ -58,6 +59,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"open a workstream chat as its own tab", "workstream-chats-and-tools"},
 		{"did Afi save the brief to my Library", "workstream-chats-and-tools"},
 		{"the agent is still answering someone else, how do I stop it", "organization-workstream-agent"},
+		{"can my colleagues read what I ask Afi in our organization workstream", "organization-workstream-agent"},
+		{"Afi on the server wrote pages titled Task instead of making tasks", "organization-workstream-agent"},
 		{"who can answer a task's question in a workstream", "organization-workstream-tasks"},
 		{"someone left the workstream, who gets their tasks", "organization-workstream-tasks"},
 		{"a file changed while my task was running", "organization-workstream-tasks"},
