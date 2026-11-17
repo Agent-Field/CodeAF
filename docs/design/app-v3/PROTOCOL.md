@@ -505,6 +505,13 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.org_workstream_agent` | `in.OrgWorkstreamAgentParams` | `OrgWorkstreamAgent` |
 | `factory.org_workstream_agent_send` | `in.OrgWorkstreamAgentSendParams` | `OrgWorkstreamAgent` |
 | `factory.org_workstream_agent_stop` | `in.OrgWorkstreamParams` | `OrgWorkstreamAgent` |
+| `factory.org_profile` | `in.OrgConn` | `OrgProfile` |
+| `factory.org_profile_set` | `in.OrgProfileSetParams` | `OrgProfile` |
+| `factory.org_setup` | `in.OrgSetupParams` | `OrgSetupView` |
+| `factory.org_setup_send` | `in.OrgSetupSendParams` | `OrgSetupView` |
+| `factory.org_setup_stop` | `in.OrgConn` | `OrgSetupView` |
+| `factory.org_setup_apply` | `in.OrgSetupApplyParams` | `OrgSetupApplied` |
+| `factory.org_setup_by_hand` | `in.OrgConn` | `OrgProfile` |
 | `factory.org_workstream_tasks` | `in.OrgTasksParams` | `OrgTasks` |
 | `factory.org_workstream_task` | `in.OrgTaskParams` | `json.RawMessage` |
 | `factory.org_workstream_task_create` | `in.OrgTaskCreateParams` | `json.RawMessage` |
@@ -1031,6 +1038,22 @@ turn spent is posted to the workstream's spend under the asker with `chat` `agen
 The server's `agent.entry {id, person, entry}` and `agent.state {id, person, state, ...}`
 reach only `person`, while they can see the workstream, and are relayed as `factory.org_workstream_agent
 {connection, id, entry?, state?}`.
+
+Starting an organization (hello `org_setup`, v2 designs J2 and J3). `factory.org_profile`
+`GET /v1/org` answers `{name, description?, set_up, by_hand?}` to anyone signed in;
+`factory.org_profile_set {name?, description?}` `PUT /v1/org` is the operator's "Start your
+organization" (a name of 1 to 40 characters, a line of at most 200 that every Afi on the
+server is told). `factory.org_setup {since?}` `GET /v1/org/setup` is the operator's own
+conversation with Afi about the set-up, `{agent, card?, made, set_up}`, where `card` is
+what Afi's `org_propose_setup` proposed (`{workstreams:[{name, purpose?, people?,
+inside?:[{name, purpose?}]}], teams?:[{name, people?}], invites?:[{name, email?, team?}]}`);
+`factory.org_setup_send {text, tz?}` and `factory.org_setup_stop` work as the workstream
+agent's do, and its lines are relayed as `factory.org_workstream_agent` with id `org-setup`.
+`factory.org_setup_apply {card}` `POST /v1/org/setup/apply` makes the card as the person left
+it in one order (teams, workstreams, the workstreams inside them, invites) and answers
+`{made:[{kind, name, id, parent?, url?}], failed?, done}`; a part that fails is named in
+`failed`, and the same call again makes only what is left. `factory.org_setup_by_hand`
+marks the organization set up with nothing made.
 
 An engine whose hello carries `org_workstream_tasks` reads and changes an organization
 workstream's tasks (Workstreams v5, SPEC §2.2). Every param names the workstream `ws`

@@ -2594,6 +2594,12 @@ type Config struct {
 	// the server's agent touches no shell, file or machine.
 	Workstream WorkstreamDoor
 
+	// OrgSetup is an organization server's door for its setup conversation
+	// (tools_org_setup.go). NIL IS NO DOOR. When it is set the belt is
+	// `org_propose_setup` and nothing else: the conversation that sets an
+	// empty organization up touches no shell, file or machine.
+	OrgSetup OrgSetupDoor
+
 	// factoryWindow overrides how long one factory card holds its tool call
 	// open, for tests that watch the window end. Zero is [factoryCardWindow].
 	factoryWindow time.Duration

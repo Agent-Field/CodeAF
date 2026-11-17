@@ -66,6 +66,11 @@ func factoryWorkstreamAgent(st *store.Store, load func() (config.Config, error))
 			System:     factoryWorkstreamAgentTurnSystem(turn),
 			Workstream: turn.Door,
 		}, profile, true, true)
+		// THE SET-UP CONVERSATION HAS NO WORKSTREAM: its belt is
+		// org_propose_setup alone (session/tools_org_setup.go).
+		if turn.Org != nil {
+			cfg.Workstream, cfg.OrgSetup = nil, turn.Org.Setup
+		}
 		// THE GATE IS THE DOOR, NOT AN APPROVAL ASK. Nobody sits in front of
 		// the server to answer one, and the belt's one tool checks on every
 		// write that the person being answered may change the workstream; so
@@ -264,11 +269,34 @@ func workstreamDoorKeepsWork(door serve.AgentDoor) bool {
 // factoryWorkstreamAgentTurnSystem is the prompt for one turn: a person's
 // message, or one task Afi was started on.
 func factoryWorkstreamAgentTurnSystem(turn serve.AgentTurn) string {
+	if turn.Org != nil {
+		return factoryOrgSetupSystem(turn)
+	}
 	system := factoryWorkstreamAgentSystem(turn.Name, turn.Asker, workstreamDoorKeepsWork(turn.Door), turn.Now, turn.TZ)
+	if about := strings.TrimSpace(turn.About); about != "" {
+		system += "\n\n" + about
+	}
 	if turn.Task == nil {
 		return system
 	}
 	return system + "\n\n" + factoryWorkstreamAgentTaskRun(turn.Task.ID, turn.Task.Title, turn.Asker)
+}
+
+// factoryOrgSetupSystem is the prompt of an organization's set-up
+// conversation (v2 designs J3): Afi, the organization's name and line, who
+// it is talking to, and the one rule for proposing the whole set-up.
+func factoryOrgSetupSystem(turn serve.AgentTurn) string {
+	about := "The organization is called \"" + turn.Org.Name + "\"."
+	if d := strings.TrimSpace(turn.Org.Description); d != "" {
+		about += " What it does, in its founder's words: " + d
+	}
+	return "You are Afi, running on the organization's server. You are helping the person who started the organization set it up." +
+		factoryWorkstreamAgentAsker(turn.Asker) + " " + factoryWorkstreamAgentToday(turn.Now, turn.TZ) + " " + about + "\n\n" +
+		"The organization is empty. Your one tool is " + session.OrgProposeSetupTool + ". " +
+		"This conversation is private to the person you are talking to.\n\n" +
+		session.OrgSetupRule + "\n\n" +
+		"You cannot run commands, read a repository, use the web, or make anything yourself: the person's press does that. " +
+		"Never say \"factory\" for the organization. Answer briefly, in plain words."
 }
 
 // factoryWorkstreamAgentTaskRun turns the prompt from a conversation into one

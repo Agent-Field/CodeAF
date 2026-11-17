@@ -1327,7 +1327,7 @@ installed goes on running them until this version's first start removes it — a
 unknown command would exit 1, which the timer reports as a failure every five minutes.
 Neither is listed in `--help`, and neither takes, checks or refuses a flag.
 
-## What did that task actually do — see one piece of work's turn-by-turn record, with codeaf why
+## What did that task actually do — see one piece of work's turn-by-turn record, what one step of a headless run did, with codeaf why
 
 This prints one piece of work's whole record: every turn, what it said, every tool it
 called with its arguments, what came back, and how it ended.

@@ -21,6 +21,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // ── A WORKSTREAM'S AGENT, RUN BY THE ORGANIZATION'S SERVER ─────────────────
@@ -82,9 +83,23 @@ type AgentTurn struct {
 	Dir string
 	// Door reads and writes the workstream as Asker.
 	Door AgentDoor
+	// About is the organization's name and its one line ("What it does, in
+	// a line. Afi reads this."), empty when nobody wrote one.
+	About string
+	// Org is set for the organization's set-up conversation alone (org_setup.go):
+	// Door is then nil, and the agent carries org_propose_setup and nothing
+	// else.
+	Org *AgentOrg
 	// Step reports one line of the conversation: api.AgentEntryStep with the
 	// tool's name, or api.AgentEntryAgent with the answer.
 	Step func(kind, text, tool string, failed bool)
+}
+
+// AgentOrg is what the set-up conversation knows of its organization, and
+// the door Afi proposes the set-up through.
+type AgentOrg struct {
+	Name, Description string
+	Setup             session.OrgSetupDoor
 }
 
 // AgentTask is the task a turn works.
@@ -317,6 +332,9 @@ func (h *Handler) agentForViewer(r *http.Request, e live.Event) (live.Event, boo
 	if json.Unmarshal(e.Data, &body) != nil || body.ID == "" || body.Person == "" || body.Person != h.orgActor(r) {
 		return e, false
 	}
+	if body.ID == orgSetupSeat {
+		return e, h.isOperator(r)
+	}
 	known, ok, err := h.workstreamCan(r, body.ID, factory.RoleView)
 	return e, known && ok && err == nil
 }
@@ -468,7 +486,7 @@ func (h *Handler) startAgentTurn(ws factory.OrgWorkstream, v wsViewer, asker, te
 	h.addAgentEntry(seat, api.AgentEntry{Kind: api.AgentEntryPerson, By: asker, Text: text, Turn: turn})
 	h.publishAgent(seat, api.AgentEvent{AgentState: &state})
 	door := &agentDoor{h: h, id: ws.ID, asker: asker, operator: v.Operator}
-	run := AgentTurn{Workstream: ws.ID, Name: ws.Name, Turn: turn, Asker: asker, Text: text, Now: now, TZ: tz,
+	run := AgentTurn{Workstream: ws.ID, Name: ws.Name, Turn: turn, Asker: asker, Text: text, Now: now, TZ: tz, About: h.orgAbout(),
 		Key: h.orgModelKey(), Dir: filepath.Join(h.agentDir(seat), "agent"), Door: door,
 		Step: func(kind, text, tool string, failed bool) {
 			switch kind {
@@ -508,8 +526,12 @@ func (h *Handler) runAgentTurn(ctx context.Context, run AgentTurn) {
 	case err != nil && ctx.Err() == nil:
 		h.addAgentEntry(seat, api.AgentEntry{Kind: api.AgentEntryNote, Text: "The agent could not finish: " + err.Error(), Turn: run.Turn})
 	}
-	if end.USD > 0 {
+	// THE SET-UP CONVERSATION HAS NO WORKSTREAM TO POST TO; what it spent is
+	// in the organization's record instead (org_setup.go).
+	if end.USD > 0 && run.Org == nil {
 		h.postAgentSpend(run, end.USD)
+	} else if end.USD > 0 {
+		h.recordAs(context.Background(), run.Asker, record.SettingsChanged, "Afi set-up spend", orgObjectFactory, strconv.FormatFloat(end.USD, 'f', -1, 64)+" USD")
 	}
 	h.setAgentState(seat, api.AgentState{State: api.AgentIdle})
 }

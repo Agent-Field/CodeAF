@@ -164,6 +164,12 @@ func (a *Agent) belt() []bare.Tool {
 		}
 		return belt
 	}
+	// AN ORGANIZATION'S SETUP CONVERSATION CARRIES ITS ONE VERB AND NO OTHER
+	// (tools_org_setup.go): there is no workstream yet to read or write.
+	if a.config.mayOrgSetup() {
+		a.clearShelf()
+		return []bare.Tool{a.orgSetupTool()}
+	}
 	// A MODEL WITH NO TOOLS CARRIES NO BELT, and no shelf a loader could reach
 	// either: the catalog says it cannot call one (chatpage.go).
 	if a.config.promptProfile().chat() {

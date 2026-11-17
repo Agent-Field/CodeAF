@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory/route"
@@ -264,8 +265,14 @@ type Handler struct {
 	areas   repoAreas
 	config  Config
 	factory api.Factory
-	mux     *http.ServeMux
-	watch   *rootWatch
+	// orgName is the name "Start your organization" gave it, read by
+	// factoryNow (org_setup.go); nil is the name it was started with.
+	orgName atomic.Pointer[string]
+	// setupFault, in tests alone, refuses one part of a set-up press by its
+	// key (org_setup.go), so a press that fails half way can be watched.
+	setupFault func(key string) error
+	mux        *http.ServeMux
+	watch      *rootWatch
 
 	workers   *workerService
 	sessions  *accessSessions
@@ -309,6 +316,7 @@ func New(seam factory.Seam, config Config) *Handler {
 		factory: api.Factory{Address: config.Address, Version: config.Version}, mux: http.NewServeMux()}
 	h.seam = h.areas.remembering(seam)
 	h.factory.Name = factory.DisplayName(config.Name, h.nameRepos())
+	h.loadOrgName()
 	h.sessions = &accessSessions{ids: make(map[string]accessSession), now: time.Now}
 	if config.Now != nil {
 		h.sessions.now = config.Now
@@ -375,6 +383,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.agentRoutes()
 	// Settles the task runs a restart cut off, and those that went quiet.
 	h.startTaskSweep()
+	h.orgSetupRoutes()
 	// After presence and the documents, so a canvas registers its own
 	// presence kind and the canvas half of the documents' access.
 	h.canvasRoutes()
@@ -1036,7 +1045,7 @@ func (h *Handler) about(w http.ResponseWriter, r *http.Request) {
 		// SignIn is how a person may sign in, preferred first: "password",
 		// "github". Absent from an older server, which means GitHub only.
 		SignIn []string `json:"sign_in"`
-	}{h.factory, scheme(r), h.aboutName(), h.factory.Version, api.Contract, h.needsWord(),
+	}{h.factoryNow(), scheme(r), h.aboutName(), h.factoryNow().Version, api.Contract, h.needsWord(),
 		h.accessMode(), h.pollingEvery(), h.servedBy(), true, limited, resumes, h.signInMethods()})
 }
 
@@ -1102,7 +1111,7 @@ func (h *Handler) pollingEvery() string {
 }
 
 func (h *Handler) aboutName() string {
-	return h.factory.Name
+	return h.factoryNow().Name
 }
 
 func loopbackListen(address string) bool {
