@@ -275,12 +275,16 @@ func firstNonEmpty(s ...string) string {
 // ── reads ──
 
 // filesAsRead are ws's files the way a reader sees them: a document named by
-// its page's title and counting its versions, a shortcut named after what it
-// shows when it has no name of its own.
+// its page's title and counting its versions and open comment threads, a
+// shortcut named after what it shows when it has no name of its own.
 func (h *Handler) filesAsRead(ws factory.OrgWorkstream, files map[string]factory.WorkstreamFile, q string) (live, deleted []factory.WorkstreamFile, err error) {
 	pages := map[string]factory.WorkstreamPage{}
 	for _, p := range ws.Pages {
 		pages[p.ID] = p
+	}
+	open, err := h.config.Store.OpenPageComments(ws.ID)
+	if err != nil {
+		return nil, nil, err
 	}
 	q = strings.ToLower(strings.TrimSpace(q))
 	for _, f := range files {
@@ -291,6 +295,7 @@ func (h *Handler) filesAsRead(ws factory.OrgWorkstream, files map[string]factory
 				return nil, nil, err
 			}
 			f.Versions = len(vs)
+			f.OpenComments = open[p.ID]
 		}
 		if q != "" && !fileMatches(f, pages[f.PageID], q) {
 			continue
