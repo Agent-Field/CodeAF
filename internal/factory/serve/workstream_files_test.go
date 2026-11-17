@@ -3,7 +3,6 @@ package serve
 import (
 	"net/http/httptest"
 	"slices"
-	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -55,8 +54,8 @@ func TestTwoPeopleShareAWorkstreamsFiles(t *testing.T) {
 	if brief.Kind != factory.FileDocument || brief.PageID == "" || brief.MadeBy.ID != "santosh" {
 		t.Fatalf("the page folds in as a document = %+v", brief)
 	}
-	if d := fileNamed(t, list.Files, "Decisions"); d.Kind != factory.FileDocument {
-		t.Fatalf("Decisions = %+v", d)
+	if slices.ContainsFunc(list.Files, func(f factory.WorkstreamFile) bool { return f.Name == "Decisions" }) {
+		t.Fatalf("the fold makes no Decisions document; the decisions are the kept list: %+v", list.Files)
 	}
 	if l := fileNamed(t, list.Files, "How competitors plan meals"); l.Kind != factory.FileLink || l.URL != "https://example.com/competitors" {
 		t.Fatalf("url source = %+v", l)
@@ -66,9 +65,11 @@ func TestTwoPeopleShareAWorkstreamsFiles(t *testing.T) {
 	}
 	var got api.Workstream
 	o.do(t, "santosh", "GET", "/v1/workstreams/"+ws.ID, -1, nil, 200, &got)
-	at := slices.IndexFunc(got.Pages, func(p factory.WorkstreamPage) bool { return p.Kind == "decisions" })
-	if at < 0 || !strings.Contains(got.Pages[at].BodyMD, "Ship weekly") {
-		t.Fatalf("the Decisions page carries the decisions kept before: %+v", got.Pages)
+	if slices.ContainsFunc(got.Pages, func(p factory.WorkstreamPage) bool { return p.Kind == "decisions" }) {
+		t.Fatalf("no decisions page is added behind it: %+v", got.Pages)
+	}
+	if len(got.Decisions) != 1 || got.Decisions[0].Text != "Ship weekly" {
+		t.Fatalf("the kept decision stays in the list: %+v", got.Decisions)
 	}
 	n := len(list.Files)
 	read("santosh", "")

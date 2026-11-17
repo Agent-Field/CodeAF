@@ -811,8 +811,8 @@ files}`, the parent workstream's files, read-only, when the caller can see it. `
 matches a name, an address or a document's words. The FIRST read of a workstream folds
 in everything it kept before Files: each page becomes a document (a page holding pages
 becomes a folder too), each source a link, repo or (a `file` source) an upload with no
-bytes, each canvas made inside it a canvas file, and a workstream with no `decisions`
-page gets a Decisions document carrying the decisions it kept. Later reads fold in a page,
+bytes, and each canvas made inside it a canvas file. It makes no Decisions document: the
+decisions are the workstream's kept list. Later reads fold in a page,
 source or canvas an older client added through its own route.
 `factory.org_workstream_file_create {id, kind, name?, folder?, from_task?, made_by?,
 body_md?, canvas_id?, url?, repo?, data?, mime?, target?}` `POST .../files` (a document

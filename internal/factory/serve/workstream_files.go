@@ -87,34 +87,10 @@ func (h *Handler) foldFiles(ws factory.OrgWorkstream) (map[string]factory.Workst
 	if err != nil {
 		return nil, err
 	}
-	// A workstream that never had a decisions page gets a Decisions
-	// document, once, carrying the decisions it kept before.
-	if !seeded && ws.ArchivedAt == nil && !slices.ContainsFunc(ws.Pages, func(p factory.WorkstreamPage) bool { return p.Kind == "decisions" }) {
-		id, err := cell.NewID(now)
-		if err != nil {
-			return nil, err
-		}
-		page := factory.WorkstreamPage{
-			ID: "pg_" + id, Title: "Decisions", Kind: "decisions", BodyMD: decisionsBody(ws.Decisions),
-			UpdatedAt: now.Format(time.RFC3339Nano), UpdatedBy: ws.CreatedBy, Rev: 1,
-		}
-		saved, err := st.MirrorWorkstreams(func(all factory.OrgWorkstreams) ([]string, error) {
-			cur, ok := all[ws.ID]
-			if !ok {
-				return nil, errWorkstreamGone
-			}
-			if slices.ContainsFunc(cur.Pages, func(p factory.WorkstreamPage) bool { return p.Kind == "decisions" }) {
-				return nil, nil
-			}
-			cur.Pages = append(slices.Clone(cur.Pages), page)
-			all[ws.ID] = cur
-			return []string{ws.ID}, nil
-		})
-		if err != nil {
-			return nil, err
-		}
-		ws = saved[ws.ID]
-	}
+	// It makes NO Decisions document. The decisions are the workstream's own
+	// kept list, drawn as its Decisions row (screen 12); a second, empty page
+	// of that name was one more thing called Decisions that every chat opened
+	// and found blank (live E6b, B4).
 	var canvases []factory.OrgCanvas
 	if all, err := st.Canvases(); err == nil {
 		for _, c := range all {
@@ -278,19 +254,6 @@ func (h *Handler) canvasTitle(id string) string {
 		return "Canvas"
 	}
 	return s.Title
-}
-
-// decisionsBody is the decisions a workstream kept before Files, as the
-// first words of its Decisions document.
-func decisionsBody(ds []factory.WorkstreamDecision) string {
-	var b strings.Builder
-	for _, d := range ds {
-		if d.State == "superseded" || strings.TrimSpace(d.Text) == "" {
-			continue
-		}
-		b.WriteString("- " + strings.TrimSpace(d.Text) + "\n")
-	}
-	return b.String()
 }
 
 func pageTime(at string, fallback time.Time) time.Time {
