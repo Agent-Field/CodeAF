@@ -106,3 +106,45 @@ func TestAWorkstreamToolCallGoesToTheDoorByName(t *testing.T) {
 		t.Fatalf("a refusal answered %q", out)
 	}
 }
+
+// AFI READS THE PERSON'S OWN CHATS, AND ONLY WHERE THEY LIVE. ws_chats is
+// Afi's, served by the desktop app beside a Personal workstream's chats; no
+// server door carries it, because nothing private to a person reaches a
+// server. Its description keeps the privacy rule where the verb is used, and
+// the chat manual names it.
+func TestAfiReadsYourChatsOnlyOnTheDeskThatHoldsThem(t *testing.T) {
+	afi := WorkstreamAfiTools()
+	if len(afi) != 2 || afi[0].Name != WSChatsTool || afi[0].Category != "read" || afi[1].Name != WSChatStartTool || afi[1].Category != "create" {
+		t.Fatalf("Afi's own tools are %+v, want %s (read) and %s (create)", afi, WSChatsTool, WSChatStartTool)
+	}
+	var schema map[string]any
+	if err := json.Unmarshal(afi[0].InputSchema, &schema); err != nil || schema["type"] != "object" {
+		t.Fatalf("ws_chats' schema is not an object: %v %s", err, afi[0].InputSchema)
+	}
+	if !strings.Contains(afi[0].Description, "never copy them into a task") {
+		t.Errorf("ws_chats does not say its conversations stay private: %q", afi[0].Description)
+	}
+	agent := &Agent{config: Config{Workstream: &workingDoor{}, Workspace: t.TempDir(), ProfileDir: t.TempDir(), Interactive: true}}
+	agent.tools = agent.belt()
+	for _, tool := range agent.offeredTools() {
+		if tool.Name == WSChatsTool || tool.Name == WSChatStartTool {
+			t.Fatalf("a server door offered %s: a person's chats never reach a server", tool.Name)
+		}
+	}
+	for _, name := range []string{WSChatsTool, WSChatStartTool} {
+		if !manual.Chat().Mentions(name) {
+			t.Errorf("no chat manual page mentions the %s tool — add it to internal/manual/chat/", name)
+		}
+	}
+	// A BATCH IS THE CHAT'S TO SPLIT (final spec, "A batch of work"): Afi
+	// names it, briefs it and stays free.
+	var start map[string]any
+	if err := json.Unmarshal(afi[1].InputSchema, &start); err != nil || start["type"] != "object" {
+		t.Fatalf("%s's schema is not an object: %v %s", WSChatStartTool, err, afi[1].InputSchema)
+	}
+	for _, rule := range []string{"you coordinate", "Do not make those tasks yourself", "by its name", "group of the same name"} {
+		if !strings.Contains(strings.ReplaceAll(afi[1].Description, "the person tells you to coordinate", "you coordinate"), rule) {
+			t.Errorf("%s does not say %q", WSChatStartTool, rule)
+		}
+	}
+}

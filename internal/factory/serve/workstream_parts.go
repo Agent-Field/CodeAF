@@ -339,7 +339,7 @@ func (h *Handler) pageOf(w http.ResponseWriter, r *http.Request, write bool) (fa
 func versionWire(v store.PageVersion) api.PageVersion {
 	return api.PageVersion{
 		Version: v.Version, At: v.At, By: v.By, Title: v.Title, Reason: v.Reason,
-		RestoredFrom: v.RestoredFrom, Bytes: v.Bytes, BodyMD: v.BodyMD, State: v.State,
+		RestoredFrom: v.RestoredFrom, BasedOn: v.BasedOn, Bytes: v.Bytes, BodyMD: v.BodyMD, State: v.State,
 	}
 }
 

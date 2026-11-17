@@ -218,3 +218,45 @@ func TestAJobInTheWorkstreamIsAFactoryTaskNeverACopy(t *testing.T) {
 	o.do(t, "abir", "PATCH", path+"/tasks/"+got[0].ID, handed.Rev, map[string]any{"state": "done"}, 409, nil)
 	o.do(t, "santosh", "POST", path+"/tasks", -1, api.TaskCreate{Title: "x", DoneBy: factory.TaskDoneBy{Kind: factory.TaskByFactory, Job: it.ID}}, 422, nil)
 }
+
+func TestReopeningATaskMakesWhatWaitsOnItWaitAgain(t *testing.T) {
+	// Final spec, Tasks › Rules: "Reopening a task makes every task that waits
+	// on it wait again." One already running goes back to Up next; each says why.
+	o, path := taskOrg(t, "edit")
+	notes := o.task(t, "santosh", path, api.TaskCreate{Title: "Draft the release notes", DoneBy: factory.TaskDoneBy{Kind: factory.TaskByAfi}})
+	post := o.task(t, "santosh", path, api.TaskCreate{Title: "Post the notes", DoneBy: factory.TaskDoneBy{Kind: factory.TaskByAfi}, WaitingOn: []string{notes.ID}})
+	var done, running, back, after api.WorkstreamTask
+	o.do(t, "santosh", "PATCH", path+"/tasks/"+notes.ID, notes.Rev, map[string]any{"state": "done"}, 200, &done)
+	o.do(t, "santosh", "GET", path+"/tasks/"+post.ID, -1, nil, 200, &running)
+	o.do(t, "santosh", "PATCH", path+"/tasks/"+post.ID, running.Rev, map[string]any{"state": "running"}, 200, &running)
+	o.do(t, "abir", "PATCH", path+"/tasks/"+notes.ID, done.Rev, map[string]any{"state": "up_next", "state_reason": "mention the import fix"}, 200, &back)
+	o.do(t, "santosh", "GET", path+"/tasks/"+post.ID, -1, nil, 200, &after)
+	if after.State != factory.TaskUpNext || after.Rev != running.Rev+1 {
+		t.Fatalf("what waits on the reopened task is %q rev %d, want up next rev %d", after.State, after.Rev, running.Rev+1)
+	}
+	var thread api.WorkstreamTaskEvents
+	o.do(t, "santosh", "GET", path+"/tasks/"+post.ID+"/events", -1, nil, 200, &thread)
+	if n := len(thread.Events); n == 0 || thread.Events[n-1].Text != "Waiting again: Draft the release notes was reopened" {
+		t.Fatalf("the waiting task's thread: %+v", thread.Events)
+	}
+}
+
+func TestAStopSaysWhoStoppedIt(t *testing.T) {
+	// abir asked for it, so abir owns it and may stop it (only the owner or whoever looks after the workstream stops a task).
+	o, path := taskOrg(t, "edit")
+	made := o.task(t, "abir", path, api.TaskCreate{Title: "Draft the release notes", DoneBy: factory.TaskDoneBy{Kind: factory.TaskByAfi}})
+	var stopped, again api.WorkstreamTask
+	o.do(t, "abir", "PATCH", path+"/tasks/"+made.ID, made.Rev, map[string]any{"state": "stopped"}, 200, &stopped)
+	if stopped.StoppedBy == nil || stopped.StoppedBy.ID != "abir" {
+		t.Fatalf("stopped_by %+v, want abir", stopped.StoppedBy)
+	}
+	var thread api.WorkstreamTaskEvents
+	o.do(t, "santosh", "GET", path+"/tasks/"+made.ID+"/events", -1, nil, 200, &thread)
+	if n := len(thread.Events); n == 0 || thread.Events[n-1].Text != "Stopped by abir" {
+		t.Fatalf("the thread: %+v", thread.Events)
+	}
+	o.do(t, "santosh", "PATCH", path+"/tasks/"+made.ID, stopped.Rev, map[string]any{"state": "running"}, 200, &again)
+	if again.StoppedBy != nil {
+		t.Fatalf("started again, stopped_by is %+v", again.StoppedBy)
+	}
+}

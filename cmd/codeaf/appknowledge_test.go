@@ -108,7 +108,7 @@ func TestLibraryModelSettingUsesTheSameProfileRowAsTheTerminal(t *testing.T) {
 	if err := b.applyExtra(appwire.SettingsPatch{KnowledgeModel: &model}, profile); err != nil {
 		t.Fatal(err)
 	}
-	if got := config.KnowledgeModelAt(profile); got != model {
+	if got := config.KnowledgeModelAt(profile, "chosen/model"); got != model {
 		t.Fatalf("terminal reads %q", got)
 	}
 	var shown appwire.Settings
@@ -120,8 +120,8 @@ func TestLibraryModelSettingUsesTheSameProfileRowAsTheTerminal(t *testing.T) {
 	if err := b.applyExtra(appwire.SettingsPatch{KnowledgeModel: &empty}, profile); err != nil {
 		t.Fatal(err)
 	}
-	if got := config.KnowledgeModelAt(profile); got != config.DefaultKnowledgeModel {
-		t.Fatalf("clearing selected %q", got)
+	if got := config.KnowledgeModelAt(profile, "chosen/model"); got != "chosen/model" {
+		t.Fatalf("clearing selected %q, want the chosen model", got)
 	}
 }
 

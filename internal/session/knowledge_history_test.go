@@ -47,7 +47,7 @@ func knowledgeProviderFixture(t *testing.T, started chan<- struct{}, release <-c
 		if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
 			return nil, err
 		}
-		if body.Model != config.DefaultKnowledgeModel {
+		if body.Model != knowledge.Model {
 			t.Errorf("unexpected model %q", body.Model)
 		}
 		var payload struct{ Messages []knowledge.Source }
@@ -323,6 +323,9 @@ func TestKnowledgeInitialBuildImportsAllProjectsAndAutopopulates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The chat goes quiet: a chat still being written in waits for the Library
+	// (internal/knowledge/build_idle.go).
+	quietKnowledgeChat(t, path)
 	state = waitKnowledgeState(t, v, func(s knowledge.Snapshot) bool {
 		return s.Build.Phase == knowledge.BuildReady && s.Build.Sources == 3 && s.Pending == 0
 	})
@@ -346,7 +349,7 @@ func TestKnowledgeWithoutHistoryWaitsAndLearnsFromFirstSavedChat(t *testing.T) {
 	if !state.Enabled || calls.Load() != 0 || len(state.Pages) != 0 {
 		t.Fatalf("empty history called model: %+v", state)
 	}
-	writeKnowledgeChat(t, root, "project", "first", knowledgeMessage("Cedar queues new work."))
+	quietKnowledgeChat(t, writeKnowledgeChat(t, root, "project", "first", knowledgeMessage("Cedar queues new work.")))
 	state = waitKnowledgeState(t, v, func(s knowledge.Snapshot) bool { return s.Build.Phase == knowledge.BuildReady && len(s.Pages) > 0 })
 	if state.Build.Sources != 1 {
 		t.Fatalf("first chat not automatically captured: %+v", state)
@@ -381,7 +384,7 @@ func TestKnowledgeBuildContinuesPastUnreadableChat(t *testing.T) {
 func TestKnowledgeBuildIsolatesUnreadableProjectAndRetries(t *testing.T) {
 	root := t.TempDir()
 	writeKnowledgeChat(t, root, "project-a", "healthy-a", knowledgeMessage("Cedar keeps earlier healthy history searchable."))
-	writeKnowledgeChat(t, root, "project-b", "recoverable", knowledgeMessage("Cedar recovers restored project history."))
+	quietKnowledgeChat(t, writeKnowledgeChat(t, root, "project-b", "recoverable", knowledgeMessage("Cedar recovers restored project history.")))
 	writeKnowledgeChat(t, root, "project-c", "healthy-c", knowledgeMessage("Cedar keeps later healthy history searchable."))
 	blocked := filepath.Join(root, "project-b")
 	if err := os.Chmod(blocked, 0000); err != nil {
@@ -480,5 +483,16 @@ func TestKnowledgeHistoryExcludesReservedContinuationContext(t *testing.T) {
 	}
 	if len(b.Sources) != 2 || b.Sources[0].Text != "[carry on] Please continue my work." || b.Sources[1].Text != "Cedar uses bounded queues." {
 		t.Fatalf("internal controls entered knowledge or person text was dropped: %+v", b.Sources)
+	}
+}
+
+// quietKnowledgeChat dates a saved chat's journal past the Library's idle
+// window, as a chat nobody has written in for a while is
+// (internal/knowledge/build_idle.go).
+func quietKnowledgeChat(t *testing.T, path string) {
+	t.Helper()
+	past := time.Now().Add(-time.Hour)
+	if err := os.Chtimes(path, past, past); err != nil {
+		t.Fatal(err)
 	}
 }

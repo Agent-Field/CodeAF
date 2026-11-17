@@ -22,8 +22,8 @@ package session
 //     through the agent, and the tool says so in words.
 //
 //   - A PAGE SOMEONE IS EDITING IS NEVER WRITTEN OVER. The door keeps the
-//     agent's text as a version in that page's history instead, and the line it
-//     answers says which version, so the model can tell the person.
+//     agent's text as a suggestion for someone to take instead, and the line
+//     it answers says so, so the model can tell the person.
 //
 //   - A DECISION IS PROPOSED, NEVER KEPT. A person keeps it.
 
@@ -70,7 +70,7 @@ const workstreamPagesDescription = "Read and write the organization workstream y
 	"page (one page whole; set page to its id), write (replace one page's words with body, in Markdown; set page), " +
 	"new (a new page with title and body), or decide (propose one decision, its words in text; a person keeps it). " +
 	"You write as the person whose message you are answering. A page someone has open for editing is not written over: " +
-	"your text is kept as a version in its history and the answer says which; tell the person so they can restore it."
+	"your text waits as a suggestion for someone to take, and the answer says so; tell the person."
 
 func workstreamPagesSchemaJSON() string {
 	return `{"type":"object","properties":{` +

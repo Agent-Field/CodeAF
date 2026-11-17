@@ -9,8 +9,9 @@ import (
 
 // THE FACTORY'S READ AND LOOK RIDE THE PAGE AI'S ROLES: a pin on
 // insight_factory_read moves the read and not the look, a pin on the family
-// moves both, and a profile with neither runs on the page AI's default
-// (the small-work seat when that default's provider is not connected).
+// moves both, and a profile with neither runs on the small-work row the person
+// wrote — the page AI has no default of its own (internal/roles'
+// background.go); with no row either, it is the factory's own model.
 func TestTheFactoryReadAndLookFollowTheirInsightRoles(t *testing.T) {
 	model := func(profile string, role roles.Role) string {
 		t.Helper()
@@ -34,7 +35,7 @@ func TestTheFactoryReadAndLookFollowTheirInsightRoles(t *testing.T) {
 		}
 	}
 	none := factoryPolicyProfile(t, map[string]any{"models.roles": ""})
-	if got := model(none, roles.RoleInsightFactoryScout); got != config.InsightDefault.Model {
-		t.Errorf("unpinned look = %q, want the page AI's default", got)
+	if got := model(none, roles.RoleInsightFactoryScout); got != "tier/low" {
+		t.Errorf("unpinned look = %q, want the small-work row the profile wrote", got)
 	}
 }

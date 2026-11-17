@@ -185,8 +185,9 @@ func TestTheRolesSectionSaysWhatAnswersEachRole(t *testing.T) {
 	}
 }
 
-// A ROLE ON A SMALL-WORK CLASS ANSWERS ON THE MODEL THAT CLASS SHIPS WITH, a
-// role on a crew seat answers on its pin, and a crew seat nothing pinned — with
+// A BACKGROUND ROLE ON A SMALL-WORK CLASS NOTHING WROTE ANSWERS ON THE
+// CONVERSATION'S MODEL (internal/roles' background.go), a role on a crew seat
+// answers on its pin, and a crew seat nothing pinned — with
 // no catalog to route from — falls to the conversation, [roles.Resolve]'s
 // floor, never a model this build chose for everybody.
 func TestARoleFollowsItsClassAndThenTheConversation(t *testing.T) {
@@ -198,11 +199,11 @@ func TestARoleFollowsItsClassAndThenTheConversation(t *testing.T) {
 		role roles.Role
 		want string
 	}{
-		{roles.RoleTitle, config.DefaultLowModel},
-		{roles.RoleReflex, config.DefaultReflexModel},
+		{roles.RoleTitle, a.model},
+		{roles.RoleReflex, a.model},
 	} {
 		if got := roleItem(t, a, c.role).model; got != c.want {
-			t.Errorf("%s resolves to %q, want its class's shipped %q", c.role, got, c.want)
+			t.Errorf("%s resolves to %q, want the conversation's %q", c.role, got, c.want)
 		}
 	}
 	setRow(t, a, config.KeyTierMastermindModel, "vendor/pinned-planner")

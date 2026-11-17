@@ -6,7 +6,13 @@ A workstream's Tasks tab is the shared list of its work; everyone in the workstr
 
 A task has a title, a few lines saying what is wanted (the request), its owner, who does it, where it came from (a chat, a person, the Factory, a standing order), its state, what it waits on, an optional due date, an optional heading that groups it, and the files or links it made. There are no sub-tasks, priorities, estimates or custom fields.
 
-The list's sections are always in this order: Waiting on someone, Running, Up next, Done. Unfinished work keeps the app's words: Failed (with its reason), Interrupted, Stopped by you, Didn't report back. A heading such as "Release 2.4" or "Factory" sits in the most urgent section any of its tasks is in, with all its tasks under it.
+The list's sections are always in this order: Waiting on someone, Running, Up next, Done. Work that ended without finishing sits under Waiting on someone, in the app's words: Failed (with its reason), Interrupted, Stopped by you (to whoever pressed Stop; everyone else reads "Stopped by Marco"), Didn't report back. A heading such as "Release 2.4" or "Factory" sits in the most urgent section any of its tasks is in, with all its tasks under it.
+
+## open a task — in place in Tasks, back to the list, Open as its own tab
+
+A click on a task opens it in place, inside the Tasks tab: the workstream's header and tabs stay, and a bar over the page shows the task's name with "‹ Tasks" to go back, "Open as its own tab", and the task's own More (⋯). Escape, or pressing the Tasks tab again, also goes back, to the same place in the list. A task opened from the Inbox, from a file's "From" line or from a chat's list of what it made opens the same way, in its workstream's Tasks tab.
+
+"Open as its own tab" (or Command-click on a row) shows the task alone in the window's one preview tab: opening the next task replaces it, unless you pinned it or worked in it. A chat keeps its own tab.
 
 A Personal workstream keeps its tasks on this computer; an organization workstream keeps them on the organization's server. They behave the same.
 
@@ -18,12 +24,12 @@ If the owner is Everyone, anyone who can edit the workstream may answer; the fir
 
 Who owns a new task: whoever asked for it. Work nobody asked for directly (from the Factory or a standing order) goes to the workstream's default owner.
 
-## tick a person task, hand a task to someone, move it to another workstream, send it back
+## tick a person task, hand a task to someone, move it to another workstream
 
 - Tick: only the owner ticks a person's task ("only the task's owner ticks it" otherwise). Ticking it unblocks the tasks that were waiting only on it: a person's task loses its "waiting on", and an Afi or chat task stays in Up next with the line "Ready to start: <the ticked task> is done" until it is started (see *Start — why a task stays in Up next*).
 - Hand to someone: anyone who can edit the workstream changes a task's owner to another person or to Everyone. The thread says "Handed to Marco", and Marco's Inbox row says "handed to you by Priya". Taking a task yourself is not a hand-over and says nothing.
 - Move: More › Move moves a task, with its whole conversation, to another workstream you can edit. Tasks that waited on it here stop waiting. Only the task's owner or whoever looks after the workstream moves it.
-- Send back: a done task's More has "Send back…". It asks why, then puts the task back in Up next. Anyone who can edit may send work back, a reviewer included. The thread, the task and the doer's Inbox row read "Sent back by Priya: <why>". An Afi or chat task sent back starts again with the reason. A new goal is a new task.
+- Send back: see *send a done task back* below.
 
 Reading tasks needs view on the workstream; adding, commenting, handing on and sending back need edit.
 
@@ -31,13 +37,19 @@ Reading tasks needs view on the workstream; adding, commenting, handing on and s
 
 Stopping a task or moving it to another workstream is for the task's owner and for whoever looks after the workstream (its steward, or anyone with full access to it). Anyone else who can edit is refused with "only the task's owner or whoever looks after this workstream can stop or move it", and the desk leaves Stop and Move to another workstream out of their More. They can still comment, hand it to someone or send it back. Answering a task's question and ticking a person's task stay the owner's alone, whoever looks after the workstream.
 
+## send a done task back — Send back…, and what waits on it waits again
+
+A done task's page has a framed line under its facts, "Done by Lena on Nov 20 · Not right? Send it back with what to change. A comment does not reopen a task.", with "Send back…" (also in its More). It asks why, then puts the task back in Up next. Anyone who can edit may send work back, a reviewer included. The thread, the task and the doer's Inbox row read "Sent back by Priya: <why>". An Afi or chat task sent back starts again with the reason. Every done task has the line, whatever it made, files only included. A Factory task's Send back reopens its job, with the reason left in the thread; where the job cannot be reopened from here (an organization's Factory), the line says "The Factory's own page reopens its work." instead. A new goal is a new task.
+
+When a done task is sent back or unticked, every unfinished task that waits on it waits again. One that was running goes back to Up next (a Factory task keeps its job's state), and each one's thread says "Waiting again: <title> was reopened". Done tasks that waited on it stay done; send them back too if they need redoing.
+
 ## waiting on — the only way to order tasks, no circles
 
 A task can wait on other tasks of the same workstream. That is the only ordering tool: no start dates. A task cannot wait on itself, on a task of another workstream, or in a circle ("that would make tasks wait on each other in a circle"). Only the owner changes what a task waits on and its due date.
 
-## Start all — five or more tasks from one request wait in Up next
+## a plan — five or more tasks from one request wait for Start (Start all) and Change the plan
 
-When one request makes five or more tasks, they land in Up next under one heading with Start all. Start all wakes the doer of every Afi or chat task of that heading that waits on nothing unfinished, then shows those tasks Running; the rest stay in Up next until they can start. Person tasks are not started (the person does them) and Factory tasks start at the Factory. On an organization's workstream Start all is not offered yet (see *Start — why a task stays in Up next*).
+When one request makes five or more tasks, they arrive as a plan: one heading in Up next with two buttons under it, **Start** and **Change the plan**. Nothing starts until someone presses Start (it was called Start all before). Start wakes the doer of every Afi or chat task of that heading that waits on nothing unfinished, then shows those tasks Running; the rest stay in Up next until they can start. Person tasks are not started (the person does them) and Factory tasks start at the Factory. Change the plan opens Afi's pane with "Change the plan for <name>: " typed, to say what should be different. On an organization's workstream the plan's Start is not offered yet (see *Start — why a task stays in Up next*).
 
 ## a Factory job is a task — its state, its question, never copied
 
@@ -77,11 +89,11 @@ When someone changes the contents of a file that a running task's work read, tha
 
 ## does a comment reopen a done task? — no, a comment never changes a task
 
-A comment or a posted answer on a task never changes its state. Writing a receipt or a piece of news on a finished task leaves it done, and nothing waiting on it is blocked again. To reopen work on purpose, use Send back on the task's More; the owner of a person's task can also untick it.
+A comment or a posted answer on a task never changes its state. Writing a receipt or a piece of news on a finished task leaves it done, and nothing waiting on it is blocked again. To reopen work on purpose, use "Send back…" on the done task's page (or its More); the owner of a person's task can also untick it. Either way, what waits on it waits again.
 
 ## Start — why a task Afi or a chat does stays in Up next, Mark done
 
-A task that Afi or a chat does is Running only while something is actually doing it. When what it waits on is done, or when Start all is pressed, it stays in Up next until its doer is woken. On a Personal workstream the task page shows **Start**: it hands the task to Afi's conversation (or to the chat that does it) and only then shows Running; Start all wakes each doer once with all of its tasks. On an organization's workstream nothing on your computer can wake the server's agent yet, so there is no Start: the task waits in Up next. In every case the task's owner can finish it by hand with **Mark done** in its More, or stop it with Stop.
+A task that Afi or a chat does is Running only while something is actually doing it. When what it waits on is done, it stays in Up next until its doer is woken. On a Personal workstream the task page shows **Start**: it hands the task to Afi's conversation (or to the chat that does it) and only then shows Running; a plan's Start wakes each doer once with all of its tasks. On an organization's workstream nothing on your computer can wake the server's agent yet, so there is no Start: the task waits in Up next. In every case the task's owner can finish it by hand with **Mark done** in its More, or stop it with Stop.
 
 ## due date — pick any day; change it on the task
 
