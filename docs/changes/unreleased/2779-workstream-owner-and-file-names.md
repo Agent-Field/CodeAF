@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Afi requires one task owner and Files shows people by display name
-pr: 2761
+pr: 2779
 surface: [chat, factory, app]
 invalidates:
   - Afi previously accepted everyone as a new task owner; it now requires one person.
