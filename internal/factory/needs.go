@@ -291,6 +291,31 @@ func NeedsKind(it Item) string {
 	}
 }
 
+// QuestionKind is the needs-you kind of the job's open question: the job's
+// [NeedsKind], except where the pull request's own wait outranks a step's open
+// question for the kind (a conflict, changes requested). The kind stays the
+// pull request's, since the queue groups by it, but the question still stands
+// and is the only door that moves the step: its words, its options (Send back
+// among them) and the step it sends back to. Job 31 (2026-11-17) was kind
+// conflict while Follow PR waited on "followpr is not proven after 3 rounds
+// · try again, send it back, or stop the job?", and needs_you carried no
+// question. It is "" when no question kind is outranked.
+func QuestionKind(it Item) string {
+	kind := NeedsKind(it)
+	if (kind != NeedsConflict && kind != NeedsChangesRequested) || it.PullRequest == nil {
+		return kind
+	}
+	bare := it
+	pr := *it.PullRequest
+	pr.Conflict, pr.ReviewDecision = false, ""
+	bare.PullRequest = &pr
+	switch k := NeedsKind(bare); k {
+	case NeedsQuestion, NeedsOutOfAttempts, NeedsRunnerOffline:
+		return k
+	}
+	return kind
+}
+
 // publishFailed is a landed publish the person can retry. Either the first
 // line on the job or publishing.state failed is enough; both name the same wait.
 func publishFailed(it Item) bool {
@@ -331,7 +356,7 @@ func QuestionForm(it Item) (kind string, options []string, who string) {
 	if it.QKind == QKindSpendStopped {
 		return AskYesNo, []string{"yes", "no"}, WhoJobPerson
 	}
-	switch NeedsKind(it) {
+	switch QuestionKind(it) {
 	case NeedsRunnerOffline:
 		return AskOptions, []string{ChoiceTryOnceMore, ChoiceCancel}, WhoJobPerson
 	case NeedsOutOfAttempts:

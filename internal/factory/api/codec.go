@@ -273,10 +273,14 @@ func needsYou(it factory.Item) *NeedsYou {
 	if who := factory.WaitingApprover(it); who != "" && factory.JobPersonOnly(kind) {
 		ny.WhoCanAnswer, ny.Approver = factory.WhoApprover, who
 	}
-	if kind == factory.NeedsQuestion || kind == factory.NeedsOutOfAttempts || kind == factory.NeedsRunnerOffline {
+	// A STEP'S OPEN QUESTION RIDES ON NEEDS_YOU even where a pull request's
+	// conflict or changes requested outranks it for the kind
+	// ([factory.QuestionKind]): the desk's card answers it from here.
+	asked := factory.QuestionKind(it)
+	if asked == factory.NeedsQuestion || asked == factory.NeedsOutOfAttempts || asked == factory.NeedsRunnerOffline {
 		ny.Question = needsQuestion(it)
 	}
-	switch kind {
+	switch asked {
 	case factory.NeedsApprovePlan:
 		ny.BackTo, _ = factory.PlanSendsBack(it)
 	case factory.NeedsApproveStep:
