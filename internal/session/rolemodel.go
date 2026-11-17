@@ -43,6 +43,19 @@ func (a *Agent) roleModels() roleReader {
 	return readerFor(a.config, a.model)
 }
 
+// BackgroundFloor is the floor a background seat that the person may go
+// without (an optional conversation name) asks on: the conversation's own
+// model wherever there is a crew to read or one model was chosen, because
+// nothing ships a model for a background seat (internal/roles/background.go).
+// A reader with neither — a headless run — has no floor, so such a seat buys
+// nothing there.
+func (r roleReader) BackgroundFloor() string {
+	if r.source == nil && !r.one {
+		return ""
+	}
+	return r.model
+}
+
 // roleLadder is [roleReader.Ladder] on this conversation's reader.
 func (a *Agent) roleLadder(role roles.Role, floor string) ([]roles.Call, error) {
 	return a.roleModels().Ladder(role, floor)

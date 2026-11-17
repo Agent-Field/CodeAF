@@ -90,10 +90,10 @@ func TestFactoryParentAutoModeIsExactlyTheOrdinaryGovernance(t *testing.T) {
 		got.TaskModel != want.TaskModel || len(got.ModelFallbacks) != len(want.ModelFallbacks) || len(got.ModelFallbacks) == 0 {
 		t.Fatalf("auto mode changed the parent: %+v", got)
 	}
-	// The read rides insight_factory_read, whose unpinned ladder is the page
-	// AI's default while its provider is connected (factory_insight_roles_test.go).
-	if m, err := factoryTriageModel(config.Config{ProfileDir: profile, Model: "profile/default"}); err != nil || m != config.InsightDefault.Model {
-		t.Fatalf("auto triage = %q, %v; want the page AI's default", m, err)
+	// The read rides insight_factory_read, whose unpinned ladder reads the
+	// small-work row this profile wrote (factory_insight_roles_test.go).
+	if m, err := factoryTriageModel(config.Config{ProfileDir: profile, Model: "profile/default"}); err != nil || m != "tier/low" {
+		t.Fatalf("auto triage = %q, %v; want the written small-work row", m, err)
 	}
 }
 

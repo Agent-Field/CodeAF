@@ -24,7 +24,7 @@ func TestKnowledgeModelChoicePersistsWithoutChangingTheConversation(t *testing.T
 		drive(t, a, key(string(r)))
 	}
 	drive(t, a, key("enter"))
-	if got := config.KnowledgeModelAt(a.profileDir); got != "anthropic/claude-sonnet-4.5" {
+	if got := config.KnowledgeModelRowAt(a.profileDir); got != "anthropic/claude-sonnet-4.5" {
 		t.Fatalf("knowledge model choice was not saved: %q", got)
 	}
 	if a.model != before {
@@ -37,8 +37,12 @@ func TestKnowledgeModelChoicePersistsWithoutChangingTheConversation(t *testing.T
 	if err := row.Apply(""); err != nil {
 		t.Fatal(err)
 	}
-	if got := config.KnowledgeModelAt(a.profileDir); got != "deepseek/deepseek-v4.1-flash" {
-		t.Fatalf("clearing the choice did not restore exact default: %q", got)
+	// Cleared, the row is empty and the Library follows the conversation's model.
+	if got := config.KnowledgeModelRowAt(a.profileDir); got != "" {
+		t.Fatalf("clearing the choice left %q", got)
+	}
+	if got := config.KnowledgeModelAt(a.profileDir, a.model); got != a.model {
+		t.Fatalf("a cleared knowledge row compiles on %q, want the conversation's %q", got, a.model)
 	}
 }
 

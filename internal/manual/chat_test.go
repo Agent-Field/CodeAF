@@ -505,6 +505,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"is my code sent anywhere that logs it?", "models-and-cost"},
 		{"why does my openrouter activity say codeaf dev instead of agentfield ai", "models-and-cost"},
 		{"which model are you using and what does a task cost?", "models-and-cost"},
+		// F-20 (workstreams-v5 live run): background seats follow the chosen
+		// model, and a person billed for models they never picked asks this.
+		{"which model names my chats and builds the library in the background?", "models-and-cost"},
+		{"why is my spending showing gemini when I picked deepseek", "models-and-cost"},
 		{"how do I say no to a task it wants to start", "tasks"},
 		{"I typed no to the task and it started anyway", "tasks"},
 		{"where did the model chips on the proposal go", "tasks"},

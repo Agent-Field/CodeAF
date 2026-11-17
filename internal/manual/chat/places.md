@@ -823,7 +823,7 @@ incomplete status remains visible. The Knowledge view over `--host` is not
 supported.
 
 Settings → Models → **knowledge** (`knowledge.model`) selects the OpenRouter
-model for the next compilation. The default is `deepseek/deepseek-v4.1-flash`.
+model for the next compilation. Left empty, it follows the model you chose to talk to.
 The compiler checks the returned model ID and rejects substitutions. Each
 paid call appears in Spend, including empty and unusable answers. At the daily
 limit the job line says `Knowledge build paused: daily limit reached · $1 spent
