@@ -250,7 +250,7 @@ manual-gates:
 # every package; otherwise each changed Go file contributes its directory, and
 # a directory emptied by the change contributes nothing. BASE may name the
 # pull request's exact base SHA; on a laptop it defaults to origin/dev. This
-# refuses uncommitted Go or module files because the real gate sees BASE..HEAD:
+# refuses uncommitted Go or module files because the real gate sees BASE...HEAD:
 # silently ignoring those files under-tests, while folding a shared checkout's
 # unrelated edits into this run over-tests. Commit the candidate, then prove
 # exactly what the pull request will send. The preflight is separate so
@@ -279,7 +279,7 @@ test-touched-preflight:
 # Every named failure gets one focused rerun and, if needed, a base comparison.
 test-touched: test-touched-preflight
 	@set -eu; \
-	base="$${BASE:-origin/dev}"; \
+	base="$$(git merge-base "$${BASE:-origin/dev}" HEAD)"; \
 	pkgs="$$(BASE="$$base" ./scripts/touched-packages.sh)"; \
 	if test -z "$$pkgs"; then \
 		echo 'No Go file and no module file changed; nothing to run.'; \
@@ -295,7 +295,7 @@ test-touched: test-touched-preflight
 # work, with `make check` as the full-tree laptop/Spark spelling.
 pr-ready: test-touched-preflight
 	$(MAKE) --no-print-directory test-quick
-	@if ! git diff --quiet "$${BASE:-origin/dev}" HEAD -- \
+	@if ! git diff --quiet "$${BASE:-origin/dev}...HEAD" -- \
 		scripts Makefile bench/run.sh bench/canary/lib bench/oneroad/lib/corpus.sh; then \
 		$(MAKE) --no-print-directory test-tooling; \
 	fi
