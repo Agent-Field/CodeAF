@@ -537,6 +537,9 @@ func (h *Handler) answerWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	asked, _, _ := factory.FindAsk(t, body.Ask)
+	// A run of a standing order kept here: Go starts Afi in this same write,
+	// Skip this one and Not right stop the task (workstream_orders.go).
+	wake := orderAnswer(&change.Task, asked.ID, body.Option)
 	_, ownAsk := factory.IsOwnAsk(t, body.Ask)
 	if n, job := factory.IsJobTask(t.ID); job && ownAsk && !h.answerJob(w, r, n, t, body) {
 		return
@@ -571,8 +574,19 @@ func (h *Handler) answerWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 				return err
 			}
 		}
-		return tw.Append(ws.ID, change.Events...)
+		if err := tw.Append(ws.ID, change.Events...); err != nil {
+			return err
+		}
+		if wake {
+			// Last, with the write still open: a Go Afi cannot take keeps no
+			// answer, so the question stays asked.
+			return h.wakeTaskDoer(ws, change.Task, v.Handle)
+		}
+		return nil
 	})
+	if wake && err != nil && !wakeRefused(err) {
+		h.stopTaskTurn(ws.ID, t.ID)
+	}
 	if h.taskRefused(w, err) {
 		return
 	}

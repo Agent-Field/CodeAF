@@ -42,13 +42,17 @@ Before an order is switched on, its row opens a preview: the next three times it
 
 The sheet sets a schedule. It cannot start an order on an event, such as "when a release ships": nothing in the sheet watches for one, so it is not offered.
 
-In Personal, an order runs on your computer while codeaf is open there; what fell due while it was closed runs once, late, when it opens. An organization's workstream is different: see the next section.
+In Personal, an order runs on your computer while codeaf is open there; what fell due while it was closed runs once, late, when it opens. An organization's workstream is different: its server keeps and runs them (next section).
 
-## standing orders in an organization's workstream — why one never runs on your computer
+## standing orders in an organization's workstream — kept and run by its server, never your computer
 
-A standing order in an organization's workstream never runs on a person's computer. A run there would be a general agent with that person's shell, files and connected accounts, over a home that holds every organization they belong to, so codeaf refuses it: making one from this computer is refused with "an organization's standing orders run on its server, never on this computer", and an organization's order made before that rule no longer runs here. Its due times pass with nothing run and nothing asked, and a run started by hand ends at once, Stopped, with that same line.
+In an organization's workstream, standing orders are kept and run by the organization's server. Everyone who can see the workstream sees them under "Keeps running"; only the person who looks after it adds, switches or removes one. They run while every member's computer is off.
 
-"Add a standing order…" is absent from an organization's workstream until its server runs them.
+Each run is the workstream's own agent on the server, with only the workstream's tools (its tasks, files and pages): no shell, and nothing on anybody's computer. It asks the owner of incoming work "Run … now?" on its task unless "Start without asking" covers what one run may spend; Go starts it as whoever said go, and the task's Stop ends it. A run missed while the server was down runs once, late.
+
+The server runs them only when the operator has given it a model key. Without one, "Add a standing order…" is absent and the sheet says "Standing orders run on the organization's server, which needs a model key from the operator."
+
+A standing order is never run on a person's own computer for an organization: codeaf refuses it there ("an organization's standing orders run on its server, never on this computer"), and an organization's order made on a computer before 2026-11-17 no longer runs.
 
 ## a standing order's tasks — Came from, the group in Tasks, and when it asks
 

@@ -50,6 +50,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why does this workstream task say it came from a standing order", "workstream-people-and-rules"},
 		{"can a workstream standing order run when a release ships", "workstream-people-and-rules"},
 		{"does my organization standing order run on my laptop with a shell", "workstream-people-and-rules"},
+		{"can my teammates see the standing orders in our organization workstream", "workstream-people-and-rules"},
 		{"what happens to running tasks when I archive a workstream", "workstream-people-and-rules"},
 		{"keep files in the parent when I archive a workstream inside it", "workstream-people-and-rules"},
 		{"my mac went to sleep, is my workstream work lost", "workstream-people-and-rules"},
