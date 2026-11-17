@@ -138,5 +138,6 @@ func (e Engine) Follow(ctx context.Context, from, to cell.Cell) error {
 	if err := os.MkdirAll(e.LocalDir(to), 0700); err != nil {
 		return err
 	}
+	e.rebindMaterializedStat(to)
 	return os.WriteFile(filepath.Join(e.LocalDir(to), "engine-tree"), []byte(target.Tree), 0600)
 }

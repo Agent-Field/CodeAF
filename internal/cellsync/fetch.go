@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
@@ -49,7 +50,17 @@ type Fetcher struct {
 	// Concurrency bounds how many GetMany requests run in flight at once; 0 is GatherWindow.
 	Concurrency int
 	// Sleep waits between retries; nil uses blobstore.Sleep.
-	Sleep func(context.Context, time.Duration) error
+	Sleep      func(context.Context, time.Duration) error
+	openRounds atomic.Int64
+}
+
+func (f *Fetcher) addOpenRound(n int) {
+	f.openRounds.Add(int64(n))
+}
+
+// OpenRounds reports how many serial store rounds StageChat performed.
+func (f *Fetcher) OpenRounds() int {
+	return int(f.openRounds.Load())
 }
 
 // HostedGetMany is the most rids one GetMany asks the hosted relay for. Its
@@ -117,8 +128,33 @@ func (f *Fetcher) Fetch(ctx context.Context, c cell.Cell, head string) error {
 // leaves any remaining workspace frames for Complete after the chat opens (C1).
 // It reports whether all objects head wants are already in the store.
 func (f *Fetcher) StageChat(ctx context.Context, c cell.Cell, head string, stageState func(context.Context, cell.Cell, string) error) (complete bool, err error) {
+	f.openRounds.Store(0)
 	if err := ctx.Err(); err != nil {
 		return false, err
+	}
+	mainInbox := f.Inbox(c)
+	if err := os.MkdirAll(mainInbox, 0o700); err != nil {
+		return false, err
+	}
+	if _, _, _, hasKeys := parseKeys(f.Engine, c); hasKeys {
+		if view, vErr := f.cellView(ctx, c.ID); vErr == nil && len(view.Cell.Frames) > 0 {
+			frames := view.Cell.Frames
+			stageInbox := mainInbox + ".stage-" + head
+			if err := os.MkdirAll(stageInbox, 0o700); err != nil {
+				return false, err
+			}
+			lastFrame := frames[len(frames)-1]
+			seenStage, _ := readSeenFrames(stageInbox)
+			if !seenStage[lastFrame] {
+				f.addOpenRound(1)
+				if _, fErr := f.fetchFrames(ctx, stageInbox, []string{lastFrame}, func() {}); fErr != nil {
+					return false, fErr
+				}
+			}
+			if ok, sErr := f.stageOpenFromInbox(ctx, c, head, stageInbox, mainInbox); sErr == nil && ok {
+				return false, nil
+			}
+		}
 	}
 	want, err := f.Engine.Want(ctx, c, head)
 	if err != nil {
@@ -132,22 +168,14 @@ func (f *Fetcher) StageChat(ctx context.Context, c cell.Cell, head string, stage
 		}
 		return true, nil
 	}
-	mainInbox := f.Inbox(c)
-	if err := os.MkdirAll(mainInbox, 0o700); err != nil {
-		return false, err
-	}
 	if view, vErr := f.cellView(ctx, c.ID); vErr == nil && len(view.Cell.Frames) > 0 {
 		frames := view.Cell.Frames
 		stageInbox := mainInbox + ".stage-" + head
 		if err := os.MkdirAll(stageInbox, 0o700); err != nil {
 			return false, err
 		}
-		var convFrames []string
-		if f.Engine.Holds(c) || len(frames) == 1 {
-			convFrames = []string{frames[len(frames)-1]}
-		} else {
-			convFrames = []string{frames[0], frames[len(frames)-1]}
-		}
+		convFrames := []string{frames[len(frames)-1]}
+		f.addOpenRound(1)
 		allLanded, err := f.fetchFrames(ctx, stageInbox, convFrames, func() {})
 		if err != nil {
 			return false, err
@@ -155,6 +183,7 @@ func (f *Fetcher) StageChat(ctx context.Context, c cell.Cell, head string, stage
 		if !f.Engine.Holds(c) && len(convFrames) == len(frames) && allLanded {
 			if _, err := f.Engine.ImportPrimed(ctx, c, head, stageInbox); err == nil {
 				_ = os.WriteFile(filepath.Join(mainInbox, ".primed-"+head), []byte("1"), 0o600)
+				markSeenFrames(mainInbox, frames)
 				removeStageInbox(stageInbox)
 			}
 		} else {
@@ -172,6 +201,7 @@ func (f *Fetcher) StageChat(ctx context.Context, c cell.Cell, head string, stage
 				if wErr != nil || len(want) == 0 {
 					break
 				}
+				f.addOpenRound(1)
 				if gErr := f.gather(ctx, stageInbox, want); gErr != nil {
 					break
 				}
@@ -182,6 +212,7 @@ func (f *Fetcher) StageChat(ctx context.Context, c cell.Cell, head string, stage
 				rem, wErr := f.Engine.Want(ctx, c, head)
 				if wErr == nil && len(rem) == 0 {
 					_ = os.WriteFile(filepath.Join(mainInbox, ".primed-"+head), []byte("1"), 0o600)
+					markSeenFrames(mainInbox, frames)
 					removeStageInbox(stageInbox)
 					return true, nil
 				}
@@ -227,6 +258,9 @@ func (f *Fetcher) Complete(ctx context.Context, c cell.Cell, head string) error 
 			return err
 		}
 		if len(want) == 0 {
+			if view, vErr := f.cellView(ctx, c.ID); vErr == nil && len(view.Cell.Frames) > 0 {
+				markSeenFrames(inbox, view.Cell.Frames)
+			}
 			_ = os.Remove(primedMark)
 			return nil
 		}
@@ -446,7 +480,58 @@ func (f *Fetcher) prime(ctx context.Context, c cell.Cell, head, inbox string) er
 	// fetches a warm take's delta by rid.
 	if f.Engine.Holds(c) {
 		if usingStage {
-			_, _ = f.Engine.ImportPartial(ctx, c, head, inbox)
+			for {
+				n, impErr := f.Engine.ImportPartial(ctx, c, head, inbox)
+				if impErr != nil || n == 0 {
+					break
+				}
+			}
+			want, wErr := f.Engine.Want(ctx, c, head)
+			if wErr == nil && len(want) == 0 {
+				if view, vErr := f.cellView(ctx, c.ID); vErr == nil && len(view.Cell.Frames) > 0 {
+					markSeenFrames(mainInbox, view.Cell.Frames)
+				}
+				removeStageInbox(stageInbox)
+				_ = os.WriteFile(filepath.Join(mainInbox, ".primed-"+head), []byte("1"), 0o600)
+				return nil
+			}
+			if wErr == nil && len(want) > 0 {
+				if view, vErr := f.cellView(ctx, c.ID); vErr == nil && len(view.Cell.Frames) > 0 {
+					seen, _ := readSeenFrames(mainInbox, stageInbox)
+					var delta []string
+					for _, id := range view.Cell.Frames {
+						if !seen[id] {
+							delta = append(delta, id)
+						}
+					}
+					if len(delta) > 0 {
+						lap := startOverlap(ctx, f.Engine, c, head, inbox)
+						allLanded, fErr := f.fetchFrames(ctx, inbox, delta, lap.landed)
+						lap.finish()
+						if fErr != nil {
+							_, _ = f.Engine.ImportPartial(context.WithoutCancel(ctx), c, head, inbox)
+							return fErr
+						}
+						if allLanded {
+							if _, impErr := f.Engine.ImportPrimed(ctx, c, head, inbox); impErr == nil {
+								markSeenFrames(mainInbox, view.Cell.Frames)
+								removeStageInbox(stageInbox)
+								_ = os.WriteFile(filepath.Join(mainInbox, ".primed-"+head), []byte("1"), 0o600)
+								return nil
+							}
+						}
+						_, _ = f.Engine.ImportPartial(ctx, c, head, inbox)
+					} else {
+						if _, impErr := f.Engine.ImportPrimed(ctx, c, head, inbox); impErr == nil {
+							markSeenFrames(mainInbox, view.Cell.Frames)
+							removeStageInbox(stageInbox)
+							_ = os.WriteFile(filepath.Join(mainInbox, ".primed-"+head), []byte("1"), 0o600)
+							return nil
+						}
+						_, _ = f.Engine.ImportPartial(ctx, c, head, inbox)
+					}
+				}
+			}
 			removeStageInbox(stageInbox)
 		}
 		if f.WarmFrameHints {
@@ -489,6 +574,7 @@ func (f *Fetcher) prime(ctx context.Context, c cell.Cell, head, inbox string) er
 		}
 		return nil
 	}
+	markSeenFrames(mainInbox, view.Cell.Frames)
 	if usingStage {
 		removeStageInbox(stageInbox)
 	}
@@ -498,7 +584,7 @@ func (f *Fetcher) prime(ctx context.Context, c cell.Cell, head, inbox string) er
 
 func removeStageInbox(inbox string) {
 	_ = os.RemoveAll(inbox)
-	_ = os.RemoveAll(inbox + ".frames")
+	_ = os.Remove(inbox + ".frames-seen")
 }
 
 // clearInbox removes what priming left in it: the loop's own import refuses
@@ -519,8 +605,7 @@ func clearInbox(inbox string) {
 // Downloads race each other but writes go through sink: two frames can carry
 // the same object, and one rid is written once, by one goroutine.
 func (f *Fetcher) fetchFrames(ctx context.Context, inbox string, frames []string, landed func()) (bool, error) {
-	marksDir := inbox + ".frames"
-	_ = os.MkdirAll(marksDir, 0o700)
+	alreadySeen, _ := readSeenFrames(inbox)
 	need := make([]string, 0, len(frames))
 	seen := make(map[string]bool, len(frames))
 	for _, id := range frames {
@@ -528,7 +613,7 @@ func (f *Fetcher) fetchFrames(ctx context.Context, inbox string, frames []string
 			continue
 		}
 		seen[id] = true
-		if _, err := os.Stat(filepath.Join(marksDir, id)); err == nil {
+		if alreadySeen[id] {
 			continue
 		}
 		need = append(need, id)
@@ -613,7 +698,7 @@ func (s *frameSink) keepFrame(inbox, frameID string, objects []blobstore.Object)
 		}
 		s.written[o.RID] = true
 	}
-	_ = os.WriteFile(filepath.Join(inbox+".frames", frameID), []byte("1"), 0o600)
+	markSeenFrames(inbox, []string{frameID})
 }
 
 // writeWhole puts an object in the inbox under its rid only once every byte is

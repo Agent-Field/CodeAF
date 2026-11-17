@@ -88,10 +88,19 @@ func mergeMissingState(from, to string) error {
 			return relErr
 		}
 		dst := filepath.Join(to, name)
-		if _, statErr := os.Lstat(dst); statErr == nil {
+		if dstInfo, statErr := os.Lstat(dst); statErr == nil {
+			if srcInfo, sErr := d.Info(); sErr == nil && dstInfo.Size() == srcInfo.Size() {
+				_ = os.Chtimes(dst, srcInfo.ModTime(), srcInfo.ModTime())
+			}
 			return nil
 		}
-		return copyFile(p, dst)
+		if err := copyFile(p, dst); err != nil {
+			return err
+		}
+		if srcInfo, sErr := d.Info(); sErr == nil {
+			_ = os.Chtimes(dst, srcInfo.ModTime(), srcInfo.ModTime())
+		}
+		return nil
 	})
 	if os.IsNotExist(err) {
 		return nil

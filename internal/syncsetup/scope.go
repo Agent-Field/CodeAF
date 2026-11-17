@@ -15,6 +15,7 @@ import (
 type Scope struct {
 	Store blobstore.Store
 	rec   *cellstats.Recorder
+	c     *blobstore.Counters
 }
 
 // scope is the one place the wire is wrapped: wire, then Counting, then
@@ -31,7 +32,24 @@ func (s *Sync) scope(name string) *Scope {
 	return &Scope{
 		Store: blobstore.NewResuming(blobstore.Counting{Inner: s.Store, C: c}),
 		rec:   cellstats.NewRecorder(s.Home, name, meter(c)),
+		c:     c,
 	}
+}
+
+// Gets returns the store get requests counted in this scope so far.
+func (sc *Scope) Gets() int64 {
+	if sc == nil || sc.c == nil {
+		return 0
+	}
+	return sc.c.Gets.Load()
+}
+
+// BytesDown returns the store bytes downloaded in this scope so far.
+func (sc *Scope) BytesDown() int64 {
+	if sc == nil || sc.c == nil {
+		return 0
+	}
+	return sc.c.BytesDown.Load()
 }
 
 // Flushed writes the line of one publish: what the flush carried and what it

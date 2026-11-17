@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"io/fs"
 	"log"
 	"os"
 	"path"
@@ -54,8 +55,8 @@ func (e Engine) LocalWork(ctx context.Context, c cell.Cell) (bool, error) {
 			return work, err
 		}
 	}
-	if err := e.screenCapture(ctx, c); err != nil {
-		return false, err
+	if head.Turn.ID == base && e.checkMaterializedStat(c, base) {
+		return false, nil
 	}
 	// The shared snapshot belongs to this chat. A workspace's latest head can
 	// belong to another chat that opened in the same working folder.
@@ -63,9 +64,28 @@ func (e Engine) LocalWork(ctx context.Context, c cell.Cell) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	work, err := e.workInPlan(ctx, c, base, out)
+	work, indexOnly, transcriptChanged, err := localPlanChanges(out)
+	if err != nil {
+		return false, err
+	}
+	if !work && !indexOnly && !transcriptChanged && head.Turn.ID == base {
+		return false, nil
+	}
+	if err := e.screenCapture(ctx, c); err != nil {
+		return false, err
+	}
+	if work {
+		out, err = e.plan(ctx, c, base)
+		if err != nil {
+			return false, err
+		}
+	}
+	work, err = e.workInPlan(ctx, c, base, out)
 	if err != nil || work {
 		return work, err
+	}
+	if !transcriptChanged && head.Turn.ID == base {
+		return false, nil
 	}
 	same, err := e.sameTranscriptPrefix(ctx, c, base)
 	return !same, err
@@ -74,7 +94,7 @@ func (e Engine) LocalWork(ctx context.Context, c cell.Cell) (bool, error) {
 // workInPlan asks Git about semantic index entries only when the engine found
 // nothing beyond its directory and index. Other changed paths stay a choice.
 func (e Engine) workInPlan(ctx context.Context, c cell.Cell, base string, raw []byte) (bool, error) {
-	work, indexOnly, err := localPlanWork(raw)
+	work, indexOnly, _, err := localPlanChanges(raw)
 	if err != nil || !indexOnly {
 		return work, err
 	}
@@ -180,15 +200,19 @@ func auxiliaryRole(role string) bool {
 // localPlanWork ignores only reproducible capture bookkeeping. Conversation
 // truth, unknown state and all workspace files still count as local work.
 func localPlanWork(raw []byte) (bool, bool, error) {
+	work, indexOnly, _, err := localPlanChanges(raw)
+	return work, indexOnly, err
+}
+
+func localPlanChanges(raw []byte) (work bool, indexOnly bool, transcriptChanged bool, err error) {
 	var plan struct {
 		Changes []struct {
 			Path string `json:"path"`
 		} `json:"changes"`
 	}
 	if err := json.Unmarshal(raw, &plan); err != nil {
-		return false, false, err
+		return false, false, false, err
 	}
-	indexOnly := false
 	for _, change := range plan.Changes {
 		name := path.Clean(change.Path)
 		if name == cell.StateDir || strings.HasPrefix(name, ReceiptsDir+"/") || name == ReceiptsDir || strings.HasPrefix(name, cell.EnvPath+"/") || name == cell.EnvPath {
@@ -199,6 +223,7 @@ func localPlanWork(raw []byte) (bool, bool, error) {
 			continue
 		case cell.TranscriptPath:
 			// The shared prefix is checked before a changed journal is discarded.
+			transcriptChanged = true
 			continue
 		case cell.StateDir + "/memories.jsonl":
 			continue
@@ -208,9 +233,9 @@ func localPlanWork(raw []byte) (bool, bool, error) {
 			continue
 		}
 		log.Printf("continuation needs a choice for changed path: %s", name)
-		return true, false, nil
+		return true, false, transcriptChanged, nil
 	}
-	return indexOnly, indexOnly, nil
+	return indexOnly, indexOnly, transcriptChanged, nil
 }
 
 // sameTranscriptPrefix reads the shared journal into private scratch. Only an
@@ -247,4 +272,189 @@ func (e Engine) sameTranscriptPrefix(ctx context.Context, c cell.Cell, base stri
 		return false, err
 	}
 	return bytes.Equal(saved, current), nil
+}
+
+type statEntry struct {
+	Size    int64  `json:"s"`
+	ModNano int64  `json:"m"`
+	Mode    uint32 `json:"p"`
+}
+
+type statIndex struct {
+	Snapshot      string               `json:"snapshot"`
+	Tree          string               `json:"tree"`
+	TranscriptEnd int64                `json:"transcript_end"`
+	TranscriptMod int64                `json:"transcript_mod"`
+	Entries       map[string]statEntry `json:"entries"`
+}
+
+func (e Engine) statIndexPath(c cell.Cell) string {
+	return filepath.Join(e.LocalDir(c), "stat-index.json")
+}
+
+func skipStatRel(relSlash string, d fs.DirEntry) (skip bool, skipDir bool) {
+	if relSlash == "." {
+		return true, false
+	}
+	if relSlash == cell.StateDir || strings.HasPrefix(relSlash, cell.StateDir+"/") {
+		return true, d.IsDir()
+	}
+	if relSlash == ".furrow" || strings.HasPrefix(relSlash, ".furrow/") {
+		return true, d.IsDir()
+	}
+	if relSlash == ".git" {
+		return true, false
+	}
+	if strings.HasPrefix(relSlash, ".git/") && relSlash != ".git/index" {
+		return true, d.IsDir()
+	}
+	return false, false
+}
+
+// RecordMaterializedStat snapshots the stat metadata (size, mode, mtime) of c's
+// materialized tree so a subsequent LocalWork check can verify cleanliness by
+// stat without full file hashing on the critical path (R4).
+func (e Engine) RecordMaterializedStat(c cell.Cell, snapshot string) {
+	e.recordMaterializedStat(c, snapshot)
+}
+
+func (e Engine) recordMaterializedStat(c cell.Cell, snapshot string) {
+	if snapshot == "" {
+		return
+	}
+	tree := canonicalTree(e.tree(c))
+	if tree == "" {
+		return
+	}
+	entries := map[string]statEntry{}
+	walkErr := filepath.WalkDir(tree, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		r, rErr := filepath.Rel(tree, p)
+		if rErr != nil {
+			return rErr
+		}
+		relSlash := filepath.ToSlash(r)
+		if skip, skipDir := skipStatRel(relSlash, d); skip {
+			if skipDir {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if d.IsDir() {
+			return nil
+		}
+		info, iErr := d.Info()
+		if iErr != nil {
+			return iErr
+		}
+		entries[relSlash] = statEntry{
+			Size:    info.Size(),
+			ModNano: info.ModTime().UnixNano(),
+			Mode:    uint32(info.Mode()),
+		}
+		return nil
+	})
+	if walkErr != nil {
+		return
+	}
+	var tEnd, tMod int64
+	if tInfo, err := os.Stat(rel(c, cell.TranscriptPath)); err == nil {
+		tEnd = tInfo.Size()
+		tMod = tInfo.ModTime().UnixNano()
+	}
+	idx := statIndex{
+		Snapshot:      snapshot,
+		Tree:          tree,
+		TranscriptEnd: tEnd,
+		TranscriptMod: tMod,
+		Entries:       entries,
+	}
+	raw, err := json.Marshal(idx)
+	if err != nil {
+		return
+	}
+	_ = writeFile(e.statIndexPath(c), raw)
+}
+
+func (e Engine) rebindMaterializedStat(to cell.Cell) {
+	p := e.statIndexPath(to)
+	raw, err := os.ReadFile(p)
+	if err != nil {
+		return
+	}
+	var idx statIndex
+	if json.Unmarshal(raw, &idx) != nil {
+		return
+	}
+	idx.Tree = canonicalTree(e.tree(to))
+	if tInfo, err := os.Stat(rel(to, cell.TranscriptPath)); err == nil && tInfo.Size() == idx.TranscriptEnd {
+		idx.TranscriptMod = tInfo.ModTime().UnixNano()
+	}
+	if out, err := json.Marshal(idx); err == nil {
+		_ = writeFile(p, out)
+	}
+}
+
+func (e Engine) checkMaterializedStat(c cell.Cell, base string) bool {
+	if e.Run != nil {
+		return false
+	}
+	raw, err := os.ReadFile(e.statIndexPath(c))
+	if err != nil {
+		return false
+	}
+	var idx statIndex
+	if json.Unmarshal(raw, &idx) != nil {
+		return false
+	}
+	tree := canonicalTree(e.tree(c))
+	if idx.Snapshot != base || idx.Tree != tree {
+		return false
+	}
+	tInfo, err := os.Stat(rel(c, cell.TranscriptPath))
+	if err != nil {
+		if idx.TranscriptEnd != 0 || !os.IsNotExist(err) {
+			return false
+		}
+	} else if tInfo.Size() != idx.TranscriptEnd || tInfo.ModTime().UnixNano() != idx.TranscriptMod {
+		return false
+	}
+	seen := 0
+	mismatch := false
+	err = filepath.WalkDir(tree, func(p string, d fs.DirEntry, wErr error) error {
+		if wErr != nil {
+			mismatch = true
+			return wErr
+		}
+		r, rErr := filepath.Rel(tree, p)
+		if rErr != nil {
+			mismatch = true
+			return rErr
+		}
+		relSlash := filepath.ToSlash(r)
+		if skip, skipDir := skipStatRel(relSlash, d); skip {
+			if skipDir {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if d.IsDir() {
+			return nil
+		}
+		info, iErr := d.Info()
+		if iErr != nil {
+			mismatch = true
+			return iErr
+		}
+		exp, ok := idx.Entries[relSlash]
+		if !ok || info.Size() != exp.Size || info.ModTime().UnixNano() != exp.ModNano || uint32(info.Mode()) != exp.Mode {
+			mismatch = true
+			return fs.SkipAll
+		}
+		seen++
+		return nil
+	})
+	return err == nil && !mismatch && seen == len(idx.Entries)
 }

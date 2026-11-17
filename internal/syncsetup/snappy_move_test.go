@@ -3,6 +3,7 @@ package syncsetup
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/identity"
 )
 
 type recordedRelay struct {
@@ -80,6 +82,7 @@ func (r *recordedRelay) begin(op string) int {
 }
 
 func (r *recordedRelay) end() {
+	time.Sleep(2 * time.Millisecond)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.inFlight--
@@ -172,6 +175,45 @@ func (s recordedStore) GetFrame(ctx context.Context, id blobstore.FrameID) ([]by
 		s.rec.mu.Unlock()
 	}
 	return raw, err
+}
+
+func (s recordedStore) GetFrameBounded(ctx context.Context, id blobstore.FrameID, maxEncoded int64) ([]byte, error) {
+	if err := s.waitIfBlocked(ctx); err != nil {
+		return nil, err
+	}
+	s.rec.begin("Store.GetFrameBounded")
+	defer s.rec.end()
+	var raw []byte
+	var err error
+	if bs, ok := s.Store.(blobstore.BoundedFrameStore); ok {
+		raw, err = bs.GetFrameBounded(ctx, id, maxEncoded)
+	} else {
+		raw, err = s.Store.GetFrame(ctx, id)
+	}
+	if err == nil {
+		s.rec.mu.Lock()
+		s.rec.fetchedFrames[id]++
+		s.rec.mu.Unlock()
+	}
+	return raw, err
+}
+
+func (s recordedStore) Locate(ctx context.Context, rids []string) (map[string]blobstore.Location, error) {
+	if err := s.waitIfBlocked(ctx); err != nil {
+		return nil, err
+	}
+	s.rec.begin("Store.Locate")
+	defer s.rec.end()
+	return s.Store.Locate(ctx, rids)
+}
+
+func (s recordedStore) Has(ctx context.Context, rids []string) ([]bool, error) {
+	if err := s.waitIfBlocked(ctx); err != nil {
+		return nil, err
+	}
+	s.rec.begin("Store.Has")
+	defer s.rec.end()
+	return s.Store.Has(ctx, rids)
 }
 
 func (s recordedStore) Get(ctx context.Context, rid string) ([]byte, error) {
@@ -393,6 +435,7 @@ func TestC4BackgroundFetchFailureKeepsChatOpenSurfacesPlainWordsAndRetryComplete
 	var mu sync.Mutex
 	var progress []MoveProgress
 	cont := h.continuerB()
+	cont.opt.AsyncFiles = true
 	cont.opt.OnMove = func(p MoveProgress) {
 		mu.Lock()
 		progress = append(progress, p)
@@ -486,5 +529,247 @@ func TestC10MoveFilesFirstEnvRestoresOldOrder(t *testing.T) {
 	if !readmeAtShown {
 		t.Fatalf("C10: expected workspace README.md to be materialized before OnShown when %s=1", MoveFilesFirstVar)
 	}
+	assertSameTree(t, h.work, workspaceOf(got.Taken.Cell.Root))
+}
+
+func countStoreObjects(t *testing.T, store blobstore.Store, frames []string) int {
+	t.Helper()
+	seen := map[string]bool{}
+	for _, fid := range frames {
+		raw, err := store.GetFrame(t.Context(), fid)
+		mustNil(t, err)
+		hdr, _, err := blobstore.Decode(raw)
+		mustNil(t, err)
+		for _, obj := range hdr.Objects {
+			seen[obj.RID] = true
+		}
+	}
+	return len(seen)
+}
+
+// TestR1RealisticColdAndWarmCriticalPathOpensWithinFourRounds verifies R1:
+// a realistic chat with >= 300 conversation objects across frames, journal and
+// tool output plus >= 2,500 workspace objects opens within 4 serial round trips
+// (1.6s fake clock at 400ms/request) in both the warm case (receiver holds a
+// stale older copy of the 2,500-file chat) and the cold case, and completes the
+// workspace byte-identical to the source.
+func TestR1RealisticColdAndWarmCriticalPathOpensWithinFourRounds(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("CODEAF_TELEMETRY", "off")
+	h := newTwoHomes(t)
+	seedTree(t, h.work)
+
+	// Seed 2,500 workspace files across 25 packages so the workspace has >= 2,500 objects.
+	for i := 0; i < 2500; i++ {
+		dir := filepath.Join(h.work, "pkg", fmt.Sprintf("mod-%02d", i/100))
+		mustNil(t, os.MkdirAll(dir, 0o700))
+		body := fmt.Sprintf("package mod%02d\n\n// File %04d content block\nconst Value%04d = %q\n%s\n",
+			i/100, i, i, fmt.Sprintf("initial-v1-%04d", i), strings.Repeat("// workspace line padding\n", 12))
+		mustNil(t, os.WriteFile(filepath.Join(dir, fmt.Sprintf("file_%04d.go", i)), []byte(body), 0o600))
+	}
+
+	a := h.openA()
+	a.mustSay("initial 2500-file workspace turn")
+	h.durable(h.cell.ID, h.cell)
+	mustNil(t, a.drive.Close(t.Context()))
+
+	// Warm receiver B takes the initial 2,500-file chat so B holds an older copy on disk.
+	warmInitial, err := h.continuerB().Take(t.Context(), h.cell.ID)
+	mustNil(t, err)
+	if warmInitial.Wait != nil {
+		mustNil(t, warmInitial.Wait(t.Context()))
+	}
+
+	// A takes the chat back and runs multiple turns that produce >= 300 conversation
+	// objects across frames, journal, tool outputs (logs/stubs), job logs (logs/jobs),
+	// and task journals (.cell/tasks), plus workspace edits across multiple frames.
+	_, err = h.continuerA().Take(t.Context(), h.cell.ID)
+	mustNil(t, err)
+	a = h.openA()
+
+	stubsDir := filepath.Join(h.cell.Root, "logs", "stubs")
+	jobsDir := filepath.Join(h.cell.Root, "logs", "jobs")
+	tasksDir := filepath.Join(h.cell.Root, ".cell", "tasks")
+	mustNil(t, os.MkdirAll(stubsDir, 0o700))
+	mustNil(t, os.MkdirAll(jobsDir, 0o700))
+	mustNil(t, os.MkdirAll(tasksDir, 0o700))
+
+	for turn := 1; turn <= 6; turn++ {
+		for j := 0; j < 30; j++ {
+			idx := (turn-1)*30 + j
+			stubBody := fmt.Sprintf("tool output stub %d (turn %d)\n%s\n", idx, turn, strings.Repeat(fmt.Sprintf("stub-%03d-line ", idx), 200))
+			mustNil(t, os.WriteFile(filepath.Join(stubsDir, fmt.Sprintf("tool-%03d.txt", idx)), []byte(stubBody), 0o600))
+			jobBody := fmt.Sprintf("job log %d (turn %d)\n%s\n", idx, turn, strings.Repeat(fmt.Sprintf("job-%03d-output ", idx), 200))
+			mustNil(t, os.WriteFile(filepath.Join(jobsDir, fmt.Sprintf("job-%03d.log", idx)), []byte(jobBody), 0o600))
+		}
+		for k := 0; k < 10; k++ {
+			tIdx := (turn-1)*10 + k
+			taskBody := fmt.Sprintf("{\"type\":\"task\",\"id\":%d,\"turn\":%d,\"notes\":%q}\n", tIdx, turn, strings.Repeat(fmt.Sprintf("task-%03d-", tIdx), 150))
+			mustNil(t, os.WriteFile(filepath.Join(tasksDir, fmt.Sprintf("task-%03d.jsonl", tIdx)), []byte(taskBody), 0o600))
+		}
+		// Append substantial transcript entries and edit a slice of workspace files each turn.
+		for m := 0; m < 15; m++ {
+			appendTo(t, transcriptOf(h.cell), fmt.Sprintf("{\"type\":\"message\",\"role\":\"user\",\"content\":%q}\n",
+				fmt.Sprintf("turn %d message %d: %s", turn, m, strings.Repeat("question-detail-", 40))))
+		}
+		for w := (turn - 1) * 20; w < turn*20; w++ {
+			dir := filepath.Join(h.work, "pkg", fmt.Sprintf("mod-%02d", w/100))
+			body := fmt.Sprintf("package mod%02d\n\n// Updated in turn %d\nconst Value%04d = %q\n%s\n",
+				w/100, turn, w, fmt.Sprintf("updated-turn-%d-%04d", turn, w), strings.Repeat("// updated workspace line\n", 800))
+			mustNil(t, os.WriteFile(filepath.Join(dir, fmt.Sprintf("file_%04d.go", w)), []byte(body), 0o600))
+		}
+		a.mustSay(fmt.Sprintf("realistic turn %d final reply", turn))
+		h.durable(h.cell.ID, h.cell)
+	}
+	mustNil(t, a.drive.Close(t.Context()))
+
+	viewAfterA, err := h.a.Dir.Cell(t.Context(), h.cell.ID)
+	mustNil(t, err)
+	totalObjs := countStoreObjects(t, h.a.Store, viewAfterA.Cell.Frames)
+	t.Logf("R1 fixture: frames=%d total_objects=%d", len(viewAfterA.Cell.Frames), totalObjs)
+	if totalObjs < 2800 {
+		t.Fatalf("R1 fixture too small: got %d total objects across %d frames; want >= 2800 (300 conv + 2500 workspace)", totalObjs, len(viewAfterA.Cell.Frames))
+	}
+
+	// 1. WARM CASE: B already has the stale 2,500-file copy from turn 1 and now continues turn 6.
+	warmRec := newRecordedRelay(t, h.b.Dir, h.b.Store, 400*time.Millisecond)
+	warmRec.blockBackground()
+	origBDir, origBStore := h.b.Dir, h.b.Store
+	h.b.Dir = recordedDir{Client: origBDir, rec: warmRec}
+	h.b.Store = recordedStore{Store: origBStore, rec: warmRec}
+
+	warmCont := h.continuerB()
+	var warmShownRounds int
+	var warmShownClock time.Duration
+	var warmShownEvents []string
+	var warmShownTranscript string
+	warmCont.opt.OnShown = func(got Continued) {
+		warmShownRounds, _, _, warmShownClock, warmShownEvents = warmRec.snapshot()
+		raw, _ := os.ReadFile(transcriptOf(got.Taken.Cell))
+		warmShownTranscript = string(raw)
+	}
+	warmGot, err := warmCont.Take(t.Context(), h.cell.ID)
+	mustNil(t, err)
+	t.Cleanup(func() {
+		warmRec.unblock()
+		if warmGot.Wait != nil {
+			_ = warmGot.Wait(context.Background())
+		}
+	})
+	t.Logf("R1 warm case: shownRounds=%d shownClock=%s events=%v", warmShownRounds, warmShownClock, warmShownEvents)
+	if warmShownRounds == 0 || warmShownRounds > 4 || warmShownClock > 1600*time.Millisecond {
+		t.Errorf("R1 warm: chat opened after %d serial rounds (%s), events=%v; want <= 4 rounds (<= 1.6s)", warmShownRounds, warmShownClock, warmShownEvents)
+	}
+	if !strings.Contains(warmShownTranscript, "realistic turn 6 final reply") {
+		t.Errorf("R1 warm: latest transcript missing at shown")
+	}
+	warmRec.unblock()
+	mustNil(t, warmGot.Wait(t.Context()))
+	assertSameTree(t, h.work, workspaceOf(warmGot.Taken.Cell.Root))
+	h.b.Dir, h.b.Store = origBDir, origBStore
+
+	// 2. COLD CASE: a fresh third computer C with no prior copy continues the chat.
+	homeC := t.TempDir()
+	_, err = identity.Adopt(homeC, h.a.Identity, false)
+	mustNil(t, err)
+	syncC := openSync(t, homeC)
+	rootsC := t.TempDir()
+	engC := h.engB
+	engC.DataRoot = t.TempDir()
+
+	coldRec := newRecordedRelay(t, syncC.Dir, syncC.Store, 400*time.Millisecond)
+	coldRec.blockBackground()
+	syncC.Dir = recordedDir{Client: syncC.Dir, rec: coldRec}
+	syncC.Store = recordedStore{Store: syncC.Store, rec: coldRec}
+
+	coldCont := syncC.Continuer(engC, TakeOptions{
+		DeviceName: "cold-laptop",
+		RootFor:    func(id string) string { return filepath.Join(rootsC, id) },
+		Notify:     h.wall.add,
+	})
+	var coldShownRounds int
+	var coldShownClock time.Duration
+	var coldShownEvents []string
+	var coldShownTranscript string
+	coldCont.opt.OnShown = func(got Continued) {
+		coldShownRounds, _, _, coldShownClock, coldShownEvents = coldRec.snapshot()
+		raw, _ := os.ReadFile(transcriptOf(got.Taken.Cell))
+		coldShownTranscript = string(raw)
+	}
+	coldGot, err := coldCont.Take(t.Context(), h.cell.ID)
+	mustNil(t, err)
+	t.Cleanup(func() {
+		coldRec.unblock()
+		if coldGot.Wait != nil {
+			_ = coldGot.Wait(context.Background())
+		}
+	})
+	t.Logf("R1 cold case: shownRounds=%d shownClock=%s events=%v", coldShownRounds, coldShownClock, coldShownEvents)
+	if coldShownRounds == 0 || coldShownRounds > 4 || coldShownClock > 1600*time.Millisecond {
+		t.Errorf("R1 cold: chat opened after %d serial rounds (%s), events=%v; want <= 4 rounds (<= 1.6s)", coldShownRounds, coldShownClock, coldShownEvents)
+	}
+	if !strings.Contains(coldShownTranscript, "realistic turn 6 final reply") {
+		t.Errorf("R1 cold: latest transcript missing at shown")
+	}
+	coldRec.unblock()
+	mustNil(t, coldGot.Wait(t.Context()))
+	assertSameTree(t, h.work, workspaceOf(coldGot.Taken.Cell.Root))
+}
+
+// Contract R3 (takeFree / OpenAvailable idle-open path): the launch/idle
+// auto-continue path uses the same early-open split and parallel head-only
+// fetch as Take, opening within <= 4 serial rounds while workspace files finish
+// in the background.
+func TestR3IdleOpenAvailablePathOpensEarlyWithinFourRounds(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("CODEAF_TELEMETRY", "off")
+	h := newTwoHomes(t)
+	seedTree(t, h.work)
+
+	a := h.openA()
+	a.mustSay("turn 1 on A")
+	h.durable(h.cell.ID, h.cell)
+	mustNil(t, os.WriteFile(filepath.Join(h.work, "r3-idle.go"), []byte("package main\n// r3 idle open\n"), 0o600))
+	a.mustSay("realistic turn 6 final reply")
+	h.durable(h.cell.ID, h.cell)
+	mustNil(t, a.drive.Close(t.Context()))
+
+	// Release the lease on A so the chat is idle/free for OpenAvailable (takeFree).
+	view, err := h.a.Dir.Cell(t.Context(), h.cell.ID)
+	mustNil(t, err)
+	mustNil(t, h.a.Dir.Release(t.Context(), h.cell.ID, view.Cell.Lease.Fence))
+
+	rec := newRecordedRelay(t, h.b.Dir, h.b.Store, 400*time.Millisecond)
+	rec.blockBackground()
+	h.b.Dir = recordedDir{Client: h.b.Dir, rec: rec}
+	h.b.Store = recordedStore{Store: h.b.Store, rec: rec}
+
+	cont := h.continuerB()
+	var shownRounds int
+	var shownClock time.Duration
+	var shownEvents []string
+	var shownTranscript string
+	cont.opt.OnShown = func(got Continued) {
+		shownRounds, _, _, shownClock, shownEvents = rec.snapshot()
+		raw, _ := os.ReadFile(transcriptOf(got.Taken.Cell))
+		shownTranscript = string(raw)
+	}
+
+	got, err := cont.OpenAvailable(t.Context(), h.cell.ID, nil)
+	mustNil(t, err)
+	t.Cleanup(func() {
+		rec.unblock()
+		if got.Wait != nil {
+			_ = got.Wait(context.Background())
+		}
+	})
+	if shownRounds == 0 || shownRounds > 4 || shownClock > 1600*time.Millisecond {
+		t.Fatalf("R3 OpenAvailable opened after %d serial rounds (%s), events=%v; want <= 4 rounds (<= 1.6s)", shownRounds, shownClock, shownEvents)
+	}
+	if !strings.Contains(shownTranscript, "realistic turn 6 final reply") {
+		t.Fatalf("R3 OpenAvailable transcript missing latest turn at shown")
+	}
+	rec.unblock()
+	mustNil(t, got.Wait(t.Context()))
 	assertSameTree(t, h.work, workspaceOf(got.Taken.Cell.Root))
 }

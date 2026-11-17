@@ -30,6 +30,44 @@ func seedFrom(src, dst string) {
 	linkTree(src, dst)
 }
 
+// seedOpenState seeds only the top-level conversation state files in .cell/
+// (plus .cell/env and .cell/workspace-carrier) by hardlink without walking or
+// copying the workspace tree on the critical path (R8).
+func seedOpenState(src, dst string) {
+	srcCell := filepath.Join(src, ".cell")
+	entries, err := os.ReadDir(srcCell)
+	if err != nil {
+		return
+	}
+	dstCell := filepath.Join(dst, ".cell")
+	if os.MkdirAll(dstCell, 0o700) != nil {
+		return
+	}
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() {
+			if name != "env" && name != "workspace-carrier" {
+				continue
+			}
+			subSrc := filepath.Join(srcCell, name)
+			subDst := filepath.Join(dstCell, name)
+			subEntries, sErr := os.ReadDir(subSrc)
+			if sErr != nil || os.MkdirAll(subDst, 0o700) != nil {
+				continue
+			}
+			for _, se := range subEntries {
+				if se.Type().IsRegular() {
+					_ = linkFile(filepath.Join(subSrc, se.Name()), filepath.Join(subDst, se.Name()))
+				}
+			}
+			continue
+		}
+		if e.Type().IsRegular() {
+			_ = linkFile(filepath.Join(srcCell, name), filepath.Join(dstCell, name))
+		}
+	}
+}
+
 // cloneTree makes dst, which must not exist, a copy-on-write clone of the tree
 // at src in one call. It is a variable so a test can refuse the clone the way
 // a filesystem that cannot clone does, and its platform file says which

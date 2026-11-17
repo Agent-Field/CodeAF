@@ -231,6 +231,8 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	var phaseMu sync.Mutex
 	phases := map[string]time.Duration{}
 	var shownElapsed, filesElapsed time.Duration
+	var openGets int64
+	var openRounds int
 	loggedPhases := false
 	logPhases := func(outcome string) {
 		phaseMu.Lock()
@@ -240,13 +242,14 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		}
 		loggedPhases = true
 		shown, files := shownElapsed, filesElapsed
+		getsSnap, roundsSnap := openGets, openRounds
 		snap := make(map[string]time.Duration, len(phases))
 		for k, v := range phases {
 			snap[k] = v
 		}
 		phaseMu.Unlock()
-		log.Printf("continue %s phases capture=%s directory=%s retirement=%s fetch=%s acquire=%s restore=%s hooks=%s filing=%s unpublished=%s dirty=%s kept_upload=%s admission=%s shown=%s files=%s total=%s outcome=%s", id,
-			snap["local capture"], snap["directory"], snap["retirement"], snap["fetch"], snap["acquire"], snap["restore"], snap["hooks"], snap["filing"], snap["unpublished check"], snap["dirty check"], snap["kept-branch upload"], snap["staging/preflight"], shown, files, time.Since(started), outcome)
+		log.Printf("continue %s phases capture=%s directory=%s retirement=%s fetch=%s acquire=%s restore=%s hooks=%s filing=%s unpublished=%s dirty=%s kept_upload=%s admission=%s open_seed=%s open_gets=%d open_rounds=%d shown=%s files=%s total=%s outcome=%s", id,
+			snap["local capture"], snap["directory"], snap["retirement"], snap["fetch"], snap["acquire"], snap["restore"], snap["hooks"], snap["filing"], snap["unpublished check"], snap["dirty check"], snap["kept-branch upload"], snap["staging/preflight"], snap["open seed"], getsSnap, roundsSnap, shown, files, time.Since(started), outcome)
 	}
 	parent := ctx
 	moveCtx, cancelMove := context.WithCancelCause(context.WithoutCancel(parent))
@@ -307,6 +310,7 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	root := c.opt.RootFor(id)
 	_, localRootErr := cell.OpenAt(root, id)
 	keepRoot := localRootErr == nil
+	wasWarm := c.holds(id, root)
 	preKept := ""
 	if branches, err := cellsync.OpenBranchMap(c.sync.Home); err == nil {
 		if resolved := branches.Resolve(id); resolved != id {
@@ -330,9 +334,11 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	}
 	localCapture()
 	var view directory.CellView
+	dirRounds := 0
 	if supplied, ok := c.sync.takeCellView(id); ok {
 		view = supplied
 	} else {
+		dirRounds = 1
 		directoryRead := handoff.Trace(c.opt.OnPhase, "directory")
 		readCtx := ctx
 		cancelRead := func() {}
@@ -483,6 +489,10 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	fetcher, _ := taker.Fetch.(*cellsync.Fetcher)
 	if fetcher != nil {
 		fetcher.View = &view
+		if l, ok := fetcher.Engine.(landing); ok {
+			l.warm = map[string]bool{id: wasWarm}
+			fetcher.Engine = l
+		}
 	}
 	taker.Local = localWork
 	var branchedTurns uint32
@@ -598,6 +608,7 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 			if err := os.MkdirAll(target.Root, 0o700); err != nil {
 				return err
 			}
+			preserveExistingSubdirs(filepath.Join(target.Root, cell.StateDir), filepath.Join(staged.Root, cell.StateDir))
 			if err := handoff.Swap(filepath.Join(staged.Root, cell.StateDir), filepath.Join(target.Root, cell.StateDir)); err != nil {
 				return err
 			}
@@ -688,8 +699,17 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		phaseMu.Lock()
 		shownElapsed = time.Since(started)
 		filesElapsed = shownElapsed
+		openGets = sc.Gets()
+		openRounds = dirRounds + 1
+		if fetcher != nil {
+			openRounds += fetcher.OpenRounds()
+		}
+		if taken.Kept != "" && taken.Kept != preKept {
+			openRounds++
+		}
 		phaseMu.Unlock()
 		out = Continued{LocalOnly: storageOff, Taken: taken, Device: c.opt.DeviceName, TaskCopies: taskCopies, Resume: c.arrive(taken.Cell, resolveFrom()), Shown: shownElapsed, Files: filesElapsed, Wait: func(context.Context) error { return nil }, Retry: func() bool { return false }}
+		c.eng.RecordMaterializedStat(taken.Cell, taken.Driving.Head)
 		if taken.Kept != "" && taken.Kept != preKept {
 			if branchedTurns != 0 {
 				out.KeptTurns = branchedTurns
@@ -745,6 +765,14 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	}
 	phaseMu.Lock()
 	shownElapsed = time.Since(started)
+	openGets = sc.Gets()
+	openRounds = dirRounds + 1
+	if fetcher != nil {
+		openRounds += fetcher.OpenRounds()
+	}
+	if taken.Kept != "" && taken.Kept != preKept {
+		openRounds++
+	}
 	phaseMu.Unlock()
 	var keptTurns uint32
 	if taken.Kept != "" && taken.Kept != preKept {
@@ -911,6 +939,7 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 			if initialStashed && os.IsNotExist(stashStillThere) {
 				_ = os.Remove(stashPath)
 			}
+			c.eng.RecordMaterializedStat(taken.Cell, taken.Driving.Head)
 			if taken.Kept != "" && taken.Kept != preKept && keptTurns == 0 {
 				keptTurns = c.orphanTurns(runCtx, taken.Kept)
 			}
@@ -970,7 +999,7 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	}
 	startBg(true)
 
-	runAsync := (!stageComplete && c.opt.OnMove != nil) || c.opt.OnShown != nil || c.opt.AsyncFiles
+	runAsync := (c.opt.OnShown != nil || c.opt.AsyncFiles) && c.eng.HasComposedCellDir(taken.Cell)
 	if !runAsync {
 		if waitErr := waitFn(parent); waitErr != nil {
 			if filed != nil {
@@ -1177,15 +1206,65 @@ type landing struct {
 	cellsync.Engine
 	workspace func(cell.Cell) string
 	rootFor   func(string) string
+	warm      map[string]bool
 }
 
 // Holds consults the existing chat rather than its fresh staging folder, so a
 // return still fetches only its delta before installing the replacement.
 func (l landing) Holds(c cell.Cell) bool {
+	if l.warm != nil {
+		if held, ok := l.warm[c.ID]; ok {
+			return held
+		}
+	}
 	if l.rootFor != nil {
 		c.Root = l.rootFor(c.ID)
 	}
 	return l.Engine.Holds(c)
+}
+
+func (l landing) OpenKeys() ([]byte, []byte) {
+	if ok, has := l.Engine.(interface{ OpenKeys() ([]byte, []byte) }); has {
+		return ok.OpenKeys()
+	}
+	return nil, nil
+}
+
+func (l landing) OpenCache(c cell.Cell) string {
+	if ok, has := l.Engine.(interface{ OpenCache(cell.Cell) string }); has {
+		return ok.OpenCache(c)
+	}
+	return ""
+}
+
+func preserveExistingSubdirs(oldCellDir, newCellDir string) {
+	entries, err := os.ReadDir(oldCellDir)
+	if err != nil {
+		return
+	}
+	_ = os.MkdirAll(newCellDir, 0o700)
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if name == "env" || name == "workspace-carrier" {
+			continue
+		}
+		src := filepath.Join(oldCellDir, name)
+		dst := filepath.Join(newCellDir, name)
+		if _, err := os.Stat(dst); os.IsNotExist(err) {
+			_ = os.Rename(src, dst)
+			continue
+		}
+		if subEntries, err := os.ReadDir(dst); err == nil {
+			for _, se := range subEntries {
+				_ = os.Rename(filepath.Join(dst, se.Name()), filepath.Join(src, se.Name()))
+			}
+			_ = os.RemoveAll(dst)
+			_ = os.Rename(src, dst)
+		}
+	}
 }
 
 func (l landing) Want(ctx context.Context, c cell.Cell, head string) ([]string, error) {

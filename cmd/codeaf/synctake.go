@@ -309,7 +309,18 @@ func (p *takeProgress) start(cell string) {
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.cell, p.ok = cell, false
+	p.cell, p.at, p.ok = cell, tui3.MoveProgress{Step: syncsetup.MovePreparing}, true
+}
+
+func (p *takeProgress) stop(cell string) {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.cell == cell {
+		p.ok = false
+	}
 }
 
 func (p *takeProgress) report(m syncsetup.MoveProgress) {
@@ -358,7 +369,11 @@ func (t takeover) TakeSeen(ctx context.Context, id string, seen *directory.Lease
 	got, err := t.c.TakeSeen(ctx, id, seen)
 	elapsed := time.Since(began)
 	if err != nil {
+		t.moving.stop(id)
 		return tui3.Taken{}, surfaceTakeError(err)
+	}
+	if got.AlreadyHere || got.LocalOnly {
+		t.moving.stop(id)
 	}
 	return surfaceTaken(got, elapsed), nil
 }
@@ -368,7 +383,11 @@ func (t takeover) OpenAvailable(ctx context.Context, id string, seen *directory.
 	t.moving.start(id)
 	got, err := t.c.OpenAvailable(ctx, id, seen)
 	if err != nil {
+		t.moving.stop(id)
 		return tui3.Taken{}, surfaceTakeError(err)
+	}
+	if got.AlreadyHere || got.LocalOnly {
+		t.moving.stop(id)
 	}
 	return surfaceTaken(got, time.Since(began)), nil
 }
@@ -378,7 +397,11 @@ func (t takeover) OpenAvailableWithWorkspaceRoots(ctx context.Context, id string
 	t.moving.start(id)
 	got, err := t.c.OpenAvailableWithWorkspaceRoots(ctx, id, seen, roots)
 	if err != nil {
+		t.moving.stop(id)
 		return tui3.Taken{}, surfaceTakeError(err)
+	}
+	if got.AlreadyHere || got.LocalOnly {
+		t.moving.stop(id)
 	}
 	return surfaceTaken(got, time.Since(began)), nil
 }
@@ -388,7 +411,11 @@ func (t takeover) TakeSeenWithWorkspaceRoots(ctx context.Context, id string, see
 	t.moving.start(id)
 	got, err := t.c.TakeSeenWithWorkspaceRoots(ctx, id, seen, roots)
 	if err != nil {
+		t.moving.stop(id)
 		return tui3.Taken{}, surfaceTakeError(err)
+	}
+	if got.AlreadyHere || got.LocalOnly {
+		t.moving.stop(id)
 	}
 	return surfaceTaken(got, time.Since(began)), nil
 }
@@ -467,6 +494,7 @@ func chatContinuer(s *syncsetup.Sync, notify func(string), onMove func(syncsetup
 		BucketFor:  func(origin string) string { return takeCopyBucketAt(s.Home, origin) },
 		Notify:     notify,
 		OnMove:     onMove,
+		AsyncFiles: true,
 		IdleWithin: syncsetup.MoveIdleWithin,
 	})
 }

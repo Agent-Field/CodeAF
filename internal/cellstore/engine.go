@@ -175,6 +175,7 @@ func (e Engine) Seal(ctx context.Context, c cell.Cell, info TurnInfo) (Sealed, e
 	if err := appendTurn(c, turn); err != nil {
 		return Sealed{}, fmt.Errorf("seal: record turn: %w", err)
 	}
+	e.recordMaterializedStat(c, snapshot.Snapshot)
 	return Sealed{Turn: turn, Receipt: receipt}, nil
 }
 
@@ -397,6 +398,12 @@ func (e Engine) policyDir(c cell.Cell) string {
 		return canonicalTree(c.Root)
 	}
 	return stateDir(c)
+}
+
+// HasComposedCellDir reports whether c uses a separate composed .cell/
+// directory rather than sealing c.Root itself (as a home-folder chat does).
+func (e Engine) HasComposedCellDir(c cell.Cell) bool {
+	return e.cellDir(c) != ""
 }
 
 // cellDir is the cell's private .cell/ directory when it is composed into a

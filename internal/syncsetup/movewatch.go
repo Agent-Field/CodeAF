@@ -66,6 +66,7 @@ type moveWatch struct {
 	err      string
 	arrival  *cell.WorkspaceArrival
 	last     time.Time // last request start, end or byte
+	wake     chan struct{}
 	stop     chan struct{}
 	stopped  sync.Once
 	finished chan struct{}
@@ -80,7 +81,7 @@ func watchMove(ctx context.Context, report func(MoveProgress), idle time.Duratio
 		return ctx, nil, func() {}
 	}
 	ctx, cancel := context.WithCancelCause(ctx)
-	w := &moveWatch{report: report, idle: idle, ctx: ctx, cancel: cancel, step: MovePreparing, last: time.Now(), stop: make(chan struct{}), finished: make(chan struct{})}
+	w := &moveWatch{report: report, idle: idle, ctx: ctx, cancel: cancel, step: MovePreparing, last: time.Now(), wake: make(chan struct{}, 1), stop: make(chan struct{}), finished: make(chan struct{})}
 	go w.run()
 	return blobstore.WithTraffic(ctx, w), w, func() {
 		w.stopped.Do(func() { close(w.stop) })
@@ -107,9 +108,24 @@ func (w *moveWatch) run() {
 		}
 		select {
 		case <-w.stop:
+			now := w.now()
+			if w.report != nil && (!reported || now != sent) {
+				w.report(now)
+			}
 			return
+		case <-w.wake:
 		case <-tick.C:
 		}
+	}
+}
+
+func (w *moveWatch) notify() {
+	if w == nil || w.wake == nil {
+		return
+	}
+	select {
+	case w.wake <- struct{}{}:
+	default:
 	}
 }
 
@@ -166,6 +182,7 @@ func (w *moveWatch) Moved(_, down int64) {
 	if down > 0 {
 		w.done.Add(down)
 		w.setStep(MoveCopying, false)
+		w.notify()
 	}
 	w.touch()
 }
@@ -180,6 +197,7 @@ func (w *moveWatch) phase(p handoff.Phase) {
 		// A move cancelled during the acquire hands the lease back: it is
 		// not opening anything.
 		w.setStep(MoveOpening, true)
+		w.notify()
 	}
 	w.touch()
 }
@@ -198,6 +216,7 @@ func (w *moveWatch) setStep(step string, force bool) {
 func (w *moveWatch) expect(total int64) {
 	if w != nil && total > 0 {
 		w.total.Store(total)
+		w.notify()
 	}
 }
 

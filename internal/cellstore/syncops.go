@@ -190,6 +190,19 @@ func (e SyncEngine) LocalWork(ctx context.Context, c cell.Cell) (bool, error) {
 	return e.Work(ctx, c)
 }
 
+// OpenKeys returns the cell and dedup keys for open-state frame hints.
+func (e SyncEngine) OpenKeys() ([]byte, []byte) {
+	return e.Keys.CellKey, e.Keys.Dedup
+}
+
+// OpenCache returns the directory where open-state objects for c are cached.
+func (e SyncEngine) OpenCache(c cell.Cell) string {
+	if e.Inbox != nil {
+		return e.Inbox(c) + ".open"
+	}
+	return e.outbox(c) + ".open"
+}
+
 // Export implements the sync seam.
 func (e SyncEngine) Export(ctx context.Context, c cell.Cell, head string) (Export, error) {
 	var out Export
@@ -396,6 +409,9 @@ func (e Engine) Sync(keys SyncKeys, ledger string) SyncEngine {
 		Work:      e.LocalWork,
 		Transport: e.transport(),
 		BeforeExport: func(ctx context.Context, c cell.Cell) error {
+			if err := cell.WaitWorkspace(ctx, c.Root, e.workspace(c)); err != nil {
+				return err
+			}
 			if err := Await(ctx, c); err != nil {
 				return err
 			}
@@ -417,7 +433,13 @@ func (e Engine) Sync(keys SyncKeys, ledger string) SyncEngine {
 			// Join a one-shot process before returning; Follow binds the final root.
 			materializer := e
 			materializer.Transport = materializeTransport(e.transport())
-			return materializer.do(ctx, c, e.cellDir(c), op)
+			raw, err := materializer.do(ctx, c, e.cellDir(c), op)
+			if err == nil {
+				if mop, ok := op.(materializeOp); ok {
+					e.recordMaterializedStat(c, mop.Head)
+				}
+			}
+			return raw, err
 		},
 		MaterializeWorkspaceWith: func(ctx context.Context, c cell.Cell, op Op) ([]byte, error) {
 			if err := e.screenCapture(ctx, c); err != nil {
@@ -447,6 +469,9 @@ func (e Engine) Sync(keys SyncKeys, ledger string) SyncEngine {
 				if err := mergeMissingState(scratch, stateDir(c)); err != nil {
 					return nil, err
 				}
+				if mop, ok := op.(materializeOp); ok {
+					e.recordMaterializedStat(c, mop.Head)
+				}
 				return raw, nil
 			}
 			// When the cell's own folder is the tree (e.g. a home-folder chat),
@@ -458,8 +483,14 @@ func (e Engine) Sync(keys SyncKeys, ledger string) SyncEngine {
 			if err != nil {
 				return nil, err
 			}
-			if err := syncState(scratch, stateDir(c)); err != nil {
+			want, err := stateFiles(scratch)
+			if err != nil {
 				return nil, err
+			}
+			for _, name := range want {
+				if err := copyFile(filepath.Join(scratch, name), filepath.Join(stateDir(c), name)); err != nil {
+					return nil, err
+				}
 			}
 			for name := range chainNames {
 				src := filepath.Join(scratch, name)
@@ -469,6 +500,9 @@ func (e Engine) Sync(keys SyncKeys, ledger string) SyncEngine {
 						return nil, err
 					}
 				}
+			}
+			if mop, ok := op.(materializeOp); ok {
+				e.recordMaterializedStat(c, mop.Head)
 			}
 			return raw, nil
 		},

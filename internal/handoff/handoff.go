@@ -274,6 +274,9 @@ func (t Taker) fetchAndAcquire(ctx context.Context, stage cell.Cell, from, head 
 			if err := freshDir(stage.Root); err != nil {
 				return err
 			}
+			seedDone := Trace(t.OnPhase, "open seed")
+			seedOpenState(from, stage.Root)
+			seedDone()
 			done := Trace(t.OnPhase, "fetch")
 			err := t.StagePrepare(ctx, stage, head)
 			done()
@@ -292,7 +295,9 @@ func (t Taker) fetchAndAcquire(ctx context.Context, stage cell.Cell, from, head 
 			if err := freshDir(stage.Root); err != nil {
 				return err
 			}
+			seedDone := Trace(t.OnPhase, "open seed")
 			seedFrom(from, stage.Root)
+			seedDone()
 		}
 		if err := t.bring(ctx, stage, inPlace && t.Preflight == nil, head); err != nil {
 			return fmt.Errorf("handoff: fetch %s: %w", short(head), err)
