@@ -2780,7 +2780,7 @@ the one fact it was opened to report.
 The list is as long as the record is — internal to codeaf each project's record keeps the
 most recent 2000 tasks — and the page scrolls rather than cutting it.
 
-## Work running in another codeaf window — a task started in my other terminal, I cannot click into a running task, open a task another window is running, why is that task page read only, the task page says it cannot ask what the work is doing, can I read another conversation's task over ssh
+## Work running in another codeaf window — a task started in my other terminal, I cannot click into a running task, open a task another window is running, why is that task page read only, the task page says it cannot ask what the work is doing
 
 Two codeaf windows open on one directory can see each other's running work, and `/history`
 is where they see it.
@@ -2888,6 +2888,10 @@ opens is a card saying where the work is and the one thing to do about it:
 If a task you started in another terminal is on **no** row here, that window has closed.
 Its work stopped with it, and the project's record will say `incomplete` against whatever
 it had started.
+
+## Can I read another conversation's task over ssh — --host and --at draw no rows for other conversations
+
+No. The rows for work running in another conversation, and the read-only page they open, exist only where the engine is local. Over `--host` or `--at` codeaf does not draw rows for other conversations at all: the presence those rows are made from stays on the engine's machine and is not carried across the connection. So over a remote session there is no such row and no such page; what you get there is the ordinary record card.
 
 ## Does it know what my other windows are doing — will it notice work from another terminal
 
