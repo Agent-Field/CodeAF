@@ -320,7 +320,10 @@ func compilerSourceSelection(ctx context.Context, payload string) (string, []any
 		return "0", nil
 	}
 	if len(owners) == 0 {
-		return "coalesce(json_extract(" + payload + ",'$.job'),0)=0", nil
+		// A background compile leaves out the chats still being written in
+		// (build_idle.go).
+		held, args := heldClause(ctx, payload)
+		return "coalesce(json_extract(" + payload + ",'$.job'),0)=0 AND " + held, args
 	}
 	clauses := make([]string, 0, len(owners))
 	args := make([]any, 0, len(owners)*3)

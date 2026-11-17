@@ -1313,6 +1313,25 @@ there. With one model turned on, every background call uses that one model.
 Spending lists each background call by its role (`title`, `reflex`, `router`,
 `routerconfirm`, `reply_suggestion`, `knowledge`), so you can see what each one cost.
 
+## When does the Library build? Memory calls that keep running after I stop chatting — they wait until a chat goes quiet, and whose spending they are
+
+The Library is built in the background from your saved chats. A chat that is still
+being written in is **not compiled yet**: its new lines are read, but the compiler waits
+until that chat has had **no new writes for two minutes**, then compiles it in one pass.
+Pressing **Build** on the Library compiles everything at once, busy chats included,
+because that is you asking rather than background work deciding.
+
+Before this, the compiler ran about every two seconds while any chat was growing, so a
+conversation was compiled in many small slices while you were still in it, and each
+slice paid again for the Library's learning steps. One measured session of twelve chats
+made 175 Library calls in 42 passes and was still compiling minutes after the last
+request. Now it is one compile per chat, after the chat goes quiet.
+
+Each Library call is charged to a conversation: a pass that compiles one chat's lines
+puts every one of its calls, the learning steps included, on that chat's line in the
+spending ledger. A pass that compiles several chats at once (a Build) belongs to none of
+them, and the ledger files it under the Library alone.
+
 ## Why reflex has its own model class
 
 `reflex` is the role called **after every finished turn**: one call that updates the

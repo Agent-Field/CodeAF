@@ -190,6 +190,12 @@ var workstreamWorkTools = []WorkstreamWorkTool{
 // workstream; other people cannot).
 const WSChatsTool = "ws_chats"
 
+// WSChatStartTool is how Afi hands big work to a chat of its own (final spec,
+// "A batch of work"): Afi names the chat for the work and gives it the brief,
+// the chat splits the work into tasks under a group of that name and runs
+// them, and Afi stays free for quick questions.
+const WSChatStartTool = "ws_chat_start"
+
 // workstreamAfiTools are the verbs only Afi carries, and only where the
 // person's own chats live: the desktop app serves them on a Personal
 // workstream. THEY ARE ON NO SERVER BELT. A chat is private to the person who
@@ -203,6 +209,15 @@ var workstreamAfiTools = []WorkstreamWorkTool{
 		InputSchema: json.RawMessage(`{"type":"object","properties":{` +
 			`"chat":{"type":"string","description":"One chat's id or name, to read what was said there lately."}` +
 			`},"additionalProperties":false}`)},
+	{Name: WSChatStartTool, Category: "create",
+		Description: "Start a chat of the person's to coordinate big work: work that splits into five or more tasks, or work the person tells you to coordinate. " +
+			"Give it a short name for the work (for example \"Release 2.4\") and the brief: what is to be done, in a few lines, never the conversation. " +
+			"The chat splits the work into tasks under a group of the same name, with owners and what waits on what; five or more wait as a plan in Tasks until the person presses Start. " +
+			"Do not make those tasks yourself. Say in your reply that you started the chat, by its name; you stay free for quick questions.",
+		InputSchema: json.RawMessage(`{"type":"object","properties":{` +
+			`"name":{"type":"string","minLength":1,"maxLength":80,"description":"A short name for the work; the chat and its group of tasks carry it."},` +
+			`"brief":{"type":"string","minLength":1,"maxLength":4000,"description":"What is to be done, in a few lines."}` +
+			`},"required":["name","brief"],"additionalProperties":false}`)},
 }
 
 // WorkstreamAfiTools is the verbs only Afi carries inside a workstream, which
@@ -226,6 +241,7 @@ func init() {
 	glossField[WSFileCreateTool] = "name"
 	glossField[WSFileSuggestTool] = "file"
 	glossField[WSChatsTool] = "chat"
+	glossField[WSChatStartTool] = "name"
 }
 
 // workstreamWorkDoor is the conversation's tasks-and-files door, or nil when
