@@ -130,7 +130,7 @@ func TestStartWithoutAskingIsTheWorkstreamsGoAhead(t *testing.T) {
 	}
 }
 
-// Folding a child back moves its jobs into the parent and archives it; the
+// Folding a child back moves its work into the parent and removes it; the
 // archive question names what the child could leave behind.
 func TestAChildFoldsBackIntoAHeading(t *testing.T) {
 	o := newWSOrg(t)
@@ -151,11 +151,7 @@ func TestAChildFoldsBackIntoAHeading(t *testing.T) {
 	if folded.Heading != "Meal planner" || !slices.Contains(folded.Parent.Jobs, job.ID) {
 		t.Fatalf("folded = %q jobs %v", folded.Heading, folded.Parent.Jobs)
 	}
-	var gone api.Workstream
-	o.do(t, "santosh", "GET", "/v1/workstreams/"+meal.ID, -1, nil, 200, &gone)
-	if gone.ArchivedAt == "" || len(gone.Jobs) != 0 {
-		t.Fatalf("the child after folding = archived %q jobs %v", gone.ArchivedAt, gone.Jobs)
-	}
+	o.do(t, "santosh", "GET", "/v1/workstreams/"+meal.ID, -1, nil, 404, nil)
 	o.do(t, "santosh", "POST", "/v1/workstreams/"+pantry.ID+"/fold", -1, nil, 422, nil)
 }
 

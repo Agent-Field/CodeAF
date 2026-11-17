@@ -428,9 +428,9 @@ func under(files map[string]factory.WorkstreamFile, folder, id string) bool {
 	return false
 }
 
-// readFileNew decodes POST /files, whose body may carry an upload's bytes and
-// so may be larger than the usual JSON body.
-func (h *Handler) readFileNew(w http.ResponseWriter, r *http.Request, out *api.FileNew) bool {
+// readFileJSON decodes a file-bearing request, whose upload bytes may make
+// it larger than the usual JSON body.
+func (h *Handler) readFileJSON(w http.ResponseWriter, r *http.Request, out any) bool {
 	data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, uploadBodyMost))
 	if err != nil {
 		var tooLarge *http.MaxBytesError
@@ -447,6 +447,10 @@ func (h *Handler) readFileNew(w http.ResponseWriter, r *http.Request, out *api.F
 		h.fail(w, http.StatusUnprocessableEntity, "invalid JSON body: "+err.Error())
 		return false
 	}
+	if d.Decode(new(any)) != io.EOF {
+		h.fail(w, http.StatusUnprocessableEntity, "body must contain one JSON object")
+		return false
+	}
 	return true
 }
 
@@ -456,7 +460,7 @@ func (h *Handler) createWorkstreamFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body api.FileNew
-	if !h.readFileNew(w, r, &body) {
+	if !h.readFileJSON(w, r, &body) {
 		return
 	}
 	// Fold first, so a canvas or page made a moment ago through its own
@@ -483,7 +487,7 @@ func (h *Handler) createWorkstreamFile(w http.ResponseWriter, r *http.Request) {
 		maker = factory.FileMaker{Kind: body.MadeBy.Kind, ID: body.MadeBy.ID, Name: firstNonEmpty(strings.TrimSpace(body.MadeBy.Name), "Afi"), For: v.Handle}
 	}
 	f := factory.WorkstreamFile{
-		ID: "fl_" + id, Kind: body.Kind, Name: strings.TrimSpace(body.Name), Folder: body.Folder, FromTask: body.FromTask,
+		ID: "fl_" + id, Kind: body.Kind, Name: strings.TrimSpace(body.Name), Folder: body.Folder, FromTask: body.FromTask, FromChat: body.FromChat,
 		MadeBy: maker, CreatedAt: now, ChangedAt: now, ChangedBy: v.Handle,
 	}
 	if !slices.Contains(factory.FileKinds, f.Kind) {

@@ -276,6 +276,8 @@ type OrgWorkstreamCreateParams struct {
 // OrgWorkstreamPatch is any subset of a workstream's fields. A list sent
 // replaces the list kept, and [] empties it; a field left out is unchanged.
 type OrgWorkstreamPatch struct {
+	FoldInto  string         `json:"fold_into,omitempty"`
+	Unfold    string         `json:"unfold,omitempty"`
 	Name      *string        `json:"name,omitempty"`
 	Purpose   *string        `json:"purpose,omitempty"`
 	Stage     *string        `json:"stage,omitempty"`
@@ -336,6 +338,10 @@ type OrgWorkstreamSharePreviewParams struct {
 // once: the workstream without id, rev, owner or shares, and the id it had on
 // this computer.
 type OrgWorkstreamPackage struct {
+	To          string            `json:"to,omitempty"`
+	Files       []json.RawMessage `json:"files,omitempty"`
+	Tasks       []json.RawMessage `json:"tasks,omitempty"`
+	TaskEvents  []json.RawMessage `json:"task_events,omitempty"`
 	FromLocalID string            `json:"from_local_id"`
 	Name        string            `json:"name"`
 	Stage       string            `json:"stage,omitempty"`
@@ -461,6 +467,7 @@ func withFactoryOrgFeature(hello Hello, e Engine) Hello {
 	if _, ok := e.(FactoryOrg); ok {
 		hello = withFeature(hello, FeatureOrgTeams)
 		hello = withFeature(hello, FeatureOrgWorkstreams)
+		hello = withFeature(hello, "org_workstream_fold_undo")
 		hello = withFeature(hello, FeatureOrgRoles)
 		hello = withFeature(hello, FeatureOrgAgentRunner)
 		hello = withFeature(hello, FeatureOrgAgentServer)
