@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -719,6 +720,32 @@ func (d *agentDoor) fileOf(ctx context.Context, id string, parentToo bool) (fact
 	return factory.WorkstreamFile{}, factory.OrgWorkstream{}, fmt.Errorf("this workstream has no file %q; ws_files lists them", id)
 }
 
+// earlierCopiesMost is how many of a document's earlier copies one
+// ws_file_read names, newest first.
+const earlierCopiesMost = 5
+
+// earlierCopies is what a document's History holds before the words it has
+// now, newest first, as the agent may speak of them: when, and who, never a
+// number (owner decision 4, 2026-11-17). AN AGENT MAY SAY AN EARLIER COPY
+// EXISTS ONLY WHEN THIS LISTS ONE, so an answer with none carries no field and
+// the agent has nothing to claim. A text the agent kept that the page never
+// held is not an earlier copy of the page, and is left out.
+func earlierCopies(list []store.PageVersion, name func(string) string) []map[string]any {
+	wire := versionsWire(list)
+	out := []map[string]any{}
+	for _, v := range wire.Versions {
+		if v.Kept || v.Version == wire.LiveVersion || v.Reason == versionReasonKept {
+			continue
+		}
+		out = append(out, map[string]any{"when": v.At, "by": name(v.By)})
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i]["when"].(string) > out[j]["when"].(string) })
+	if len(out) > earlierCopiesMost {
+		out = out[:earlierCopiesMost]
+	}
+	return out
+}
+
 func pageOf(ws factory.OrgWorkstream, id string) (factory.WorkstreamPage, bool) {
 	i := slices.IndexFunc(ws.Pages, func(p factory.WorkstreamPage) bool { return p.ID == id })
 	if i < 0 {
@@ -752,6 +779,13 @@ func (d *agentDoor) wsFileRead(ctx context.Context, args json.RawMessage) (any, 
 			}
 			if len(comments) > 0 {
 				out["comments"] = comments
+			}
+			list, err := d.h.config.Store.PageVersions(ws.ID, p.ID)
+			if err != nil {
+				return nil, err
+			}
+			if earlier := earlierCopies(list, d.h.personNames()); len(earlier) > 0 {
+				out["earlier_copies"] = earlier
 			}
 		}
 	case factory.FileUpload:

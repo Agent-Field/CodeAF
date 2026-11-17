@@ -201,3 +201,30 @@ func TestLibraryKeepsAWorkstreamFileAndLeadsBackToIt(t *testing.T) {
 		t.Fatal("a file id with a slash was accepted")
 	}
 }
+
+// Owner decision 5 (2026-11-17), E3 F4: Add to Library works with "Learn from
+// chats and jobs" off. It was refused ("Build your Library first"), so the desk
+// left the verb off every menu. Now the file is kept and written on its own,
+// and the hello says so.
+func TestLibraryKeepsAFileWithLearningOff(t *testing.T) {
+	profile := t.TempDir()
+	if err := config.WriteMemoryEnabled(profile, false); err != nil {
+		t.Fatal(err)
+	}
+	var wrote []string
+	was := writeKeptToLibrary
+	writeKeptToLibrary = func(_ *appBackend, session string) { wrote = append(wrote, session) }
+	t.Cleanup(func() { writeKeptToLibrary = was })
+	b := &appBackend{profileDir: profile, now: func() time.Time { return time.Date(2026, 11, 17, 9, 0, 0, 0, time.UTC) }}
+	file := &appwire.KnowledgeFile{Workstream: "ws-7", ID: "f-brief", Name: "Brief"}
+	if err := b.KnowledgeCapture(appwire.KnowledgeCapture{File: file, Text: "Ship on Fridays."}); err != nil {
+		t.Fatalf("Add to Library refused with learning off: %v", err)
+	}
+	if len(wrote) != 1 || wrote[0] != "workstream:ws-7" {
+		t.Fatalf("the add was not written into the Library: %v", wrote)
+	}
+	status, err := knowledge.Open(profile).Status()
+	if err != nil || status.Pending != 1 || status.Enabled {
+		t.Fatalf("kept %d pending (enabled %v, %v); want the one add, learning still off", status.Pending, status.Enabled, err)
+	}
+}

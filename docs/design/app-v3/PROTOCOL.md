@@ -3737,8 +3737,10 @@ Errors contain no source text or credentials. Stale mutations return `conflict`.
 
 | method | params | result |
 |---|---|---|
-| `knowledge.capture` | `{chat, message, text}` | admits a bounded passage from an actual saved agent reply; requires existing opt-in |
-| `knowledge.capture` | `{file: {workstream, id, name?}, text}` | the file form (hello word `knowledge.capture_file`): keeps a workstream file's words, at most 64000 characters, with no chat; requires existing opt-in |
+| `knowledge.capture` | `{chat, message, text}` | admits a bounded passage from an actual saved agent reply (Keep in Library); with hello word `knowledge.keep_always`, works whether or not learning is on |
+| `knowledge.capture` | `{file: {workstream, id, name?}, text}` | the file form (hello word `knowledge.capture_file`): keeps a workstream file's words, at most 64000 characters, with no chat; with `knowledge.keep_always`, works whether or not learning is on |
+
+Both forms are a person's deliberate add. An engine that says `knowledge.keep_always` keeps one with "learn from chats and jobs" off, and writes it into the Library then, scoped to that add's own words: no saved chat is read. With learning on the Library's ordinary build writes it. A desk that does not see the word offers Add to Library and Keep in Library only while `enabled` is true. A guide's head in `knowledge.snapshot`, and its detail in `knowledge.read`, carry `from_chats: true` when learning from chats wrote some of it (any evidence that is not a kept file or passage); the desk marks such a guide "From your chats". The Library's build never reads a conversation marked as a workstream's (`agents.set_workstream`).
 
 The file form names no `chat` or `message`. The engine records the words as a user source of kind `workstream_file`, session `workstream:<workstream>` and id `workstream-file:<workstream>/<id>@<hash of the words>`, so keeping the same words again is one source and keeping an edited file adds a new one beside it. `knowledge.source` on such a source answers `{chat: "", message: "", file: {workstream, id}}`, which the desk opens as that file. A desk that does not see `knowledge.capture_file` in hello leaves "Add to Library" off its file menus.
 

@@ -186,7 +186,8 @@ var workstreamWorkTools = []WorkstreamWorkTool{
 			`},"additionalProperties":false}`)},
 	{Name: WSFileReadTool, Category: "read",
 		Description: "Read one file: a document's words with its version and the comments people left on its passages (each thread's id, the words it is on, who said what, and whether it is resolved), an uploaded text file's words (a long one in parts: pass from to read on), or what a link, upload or repo points to. This is the only way to read the workstream's files; they are not on disk for you. " +
-			"Read a document's comments before you change it.",
+			"Read a document's comments before you change it. " +
+			wsHistoryRule,
 		InputSchema: json.RawMessage(`{"type":"object","properties":{` +
 			`"file":{"type":"string","minLength":1,"description":"The file's id from ws_files."},` +
 			`"from":{"type":"integer","minimum":0,"description":"For a long uploaded text file: the more_from the last read gave, to read on from there."}` +
@@ -223,6 +224,13 @@ var workstreamWorkTools = []WorkstreamWorkTool{
 			`"text":{"type":"string","minLength":1,"maxLength":4000}` +
 			`},"required":["file","text"],"additionalProperties":false}`)},
 }
+
+// wsHistoryRule is what ws_file_read says about a document's History (owner
+// decision 4, 2026-11-17). Documents keep earlier copies a person can bring
+// back, so the agent may speak of one; but a model repeats what it is told, so
+// it speaks of one only when the read lists it, in a person's words, and never
+// of the number it passes as base_version.
+const wsHistoryRule = "earlier_copies lists the copies the document's History keeps from before its current words, newest first (when, and who); it is absent when there are none. Say an earlier copy exists only when earlier_copies lists one, and say it in plain words (\"an earlier copy from Tuesday, by Lena\"), never a number or an id. A person brings one back from the document's History with Restore; you cannot restore one yourself. The version number is only for base_version: never say it to anyone."
 
 // WSChatsTool is Afi's one extra verb in a workstream: reading the person's
 // own chats there (SPEC "Afi and chats": Afi can read your chats in the

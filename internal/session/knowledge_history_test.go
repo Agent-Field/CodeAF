@@ -496,3 +496,40 @@ func quietKnowledgeChat(t *testing.T, path string) {
 		t.Fatal(err)
 	}
 }
+
+// E3 F4: turning learning on read a workstream's Afi chat into the Library,
+// dropped suggestion and all. The turn's own capture already passed a
+// workstream's conversation over; the build's inventory must too, and its
+// tasks' reports with it.
+func TestKnowledgeHistoryPassesOverAWorkstreamsConversation(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	root := PlacesRoot()
+	writeKnowledgeChat(t, root, "project", "ordinary", knowledgeMessage("Pies on Wednesday."))
+	afi := writeKnowledgeChat(t, root, "project", "afi", knowledgeMessage("Suggest the turkey is done at 165 F."))
+	meta, err := json.Marshal(map[string]any{"id": "afi", "workstream": "ws-thanksgiving"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(filepath.Dir(afi), placeMeta), meta, 0600); err != nil {
+		t.Fatal(err)
+	}
+	report := filepath.Join(LooseTasksRoot(), "afi", "20261025-120000.000000_1.jsonl")
+	if err = os.MkdirAll(filepath.Dir(report), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(report, []byte("{\"type\":\"session\",\"version\":1,\"id\":\"r\"}\n{\"type\":\"message\",\"role\":\"assistant\",\"content\":\"Done at 165 F.\"}\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	journals, err := KnowledgeHistory(root).Inventory(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, j := range journals {
+		if strings.Contains(j.ID, string(filepath.Separator)+"afi") || j.Session == "afi" {
+			t.Fatalf("the Library's build would read a workstream's conversation: %+v", j)
+		}
+	}
+	if len(journals) != 1 {
+		t.Fatalf("journals = %d, want the ordinary chat alone", len(journals))
+	}
+}

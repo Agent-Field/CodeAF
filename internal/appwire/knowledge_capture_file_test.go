@@ -21,6 +21,9 @@ func TestKnowledgeCaptureTakesAFileWithNoChat(t *testing.T) {
 	if !slices.Contains(helloFeatures(t, lib), FeatureKnowledgeCaptureFile) {
 		t.Fatal("an engine with a Library does not announce the file form")
 	}
+	if !slices.Contains(helloFeatures(t, lib), FeatureKnowledgeKeepAlways) {
+		t.Fatal("an engine with a Library does not say a deliberate add works with learning off")
+	}
 	call := methods["knowledge.capture"]
 	ok := []string{
 		`{"file":{"workstream":"ws-1","id":"f-1","name":"Brief"},"text":"Ship on Fridays."}`,

@@ -695,8 +695,9 @@ Recall follows your choice across older notes that shared the claim. Changes
 keeps the replaced account’s source chat reachable.
 Deleting a guide suppresses it in later builds and does not delete its chats.
 
-Keep in Library admits a selected passage from a saved agent reply immediately;
-it still needs existing knowledge consent. Use in chat opens a draft with a
+Keep in Library admits a selected passage from a saved agent reply immediately,
+whether or not learning is on: it is your choice, so it never waits on learning.
+Use in chat opens a draft with a
 bounded excerpt and its Library address. The chat can also use
 `search_knowledge` and `read_knowledge` to consult the current guide.
 
@@ -704,17 +705,34 @@ bounded excerpt and its Library address. The chat can also use
 
 In the desktop app, a document or text file in a workstream's Files has "Add to Library"
 in its right-click menu. It keeps the file's words in your
-Library, the same profile-wide vault the terminal's Knowledge reads, and the
-next build files them into guides. A note shows for five seconds with Undo;
+Library, the same profile-wide vault the terminal's Knowledge reads, and they
+are written into its guides. A note shows for five seconds with Undo;
 nothing is kept if you press it.
 
-It needs Library consent, like Keep in Library. A file over 64000 characters
+Add to Library never depends on **learn from chats and jobs**. With learning
+on, the Library's build writes the file in with everything else. With learning
+off, that one file is written in on its own, with your Library model and your
+key, and no chat is read. A file over 64000 characters
 is refused. Adding the same file again with the same words does nothing new;
 after you edit the file, adding it keeps the new words beside the old. A guide
 built from a file leads back to that file, not to a chat. Removing a file from
 Files does not take its words out of the Library; delete the guide for that.
 The other way round, a Files shortcut can open a Library page: Copy Link on
 the page, then New › Shortcut to a File Elsewhere… in Files, and paste it.
+
+## From your chats — what the Library learned by itself, and removing it
+
+The Library fills two ways. What you add on purpose — Add to Library on a
+workstream file, Keep in Library on a passage — goes in whatever learning says.
+What **learn from chats and jobs** adds by itself, reading your saved chats, is
+marked **From your chats**: on the guide's row in its collection, and on the
+guide itself, where **Remove from Library** takes it out (the chats it came
+from stay). Delete Page… in the guide's ⋯ menu does the same for any guide.
+
+Learning is opt-in, and it never reads a workstream's conversations — its Afi
+or its chats. Their work belongs in that workstream's Files, so a suggestion
+you dropped there never reaches the Library; only Add to Library takes a
+workstream's words there.
 
 ## Library disagreements in Inbox and Later
 
