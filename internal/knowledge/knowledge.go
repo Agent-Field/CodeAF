@@ -5,6 +5,7 @@ package knowledge
 import (
 	"context"
 	"crypto/sha256"
+	"time"
 
 	"encoding/hex"
 	"encoding/json"
@@ -116,6 +117,9 @@ type Vault struct {
 	// the one goroutine running [Vault.Run], which backs off while it is the
 	// same from pass to pass.
 	passSeen string
+	// passQuietAt is when the first chat the last pass held back goes quiet
+	// (build_idle.go); zero when it held none. Owned like passSeen.
+	passQuietAt time.Time
 }
 
 func hash(s string) string { sum := sha256.Sum256([]byte(s)); return hex.EncodeToString(sum[:]) }

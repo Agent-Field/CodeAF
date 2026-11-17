@@ -510,6 +510,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// F-20 (workstreams-v5 live run): background seats follow the chosen
 		// model, and a person billed for models they never picked asks this.
 		{"which model names my chats and builds the library in the background?", "models-and-cost"},
+		{"why do memory calls keep running after I stop chatting?", "models-and-cost"},
+		{"when does the library build from my chats?", "models-and-cost"},
 		{"why is my spending showing gemini when I picked deepseek", "models-and-cost"},
 		{"how do I say no to a task it wants to start", "tasks"},
 		{"I typed no to the task and it started anyway", "tasks"},
