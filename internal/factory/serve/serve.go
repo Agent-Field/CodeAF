@@ -648,6 +648,9 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 	}
 	q.Factory = h.factory
 	q.Mode = h.mode()
+	if q.Mode != api.FactorySolo && !operator {
+		h.markNeedsWorkstream(r, q.Repos)
+	}
 	if h.config.DefaultModel != nil {
 		q.Model = strings.TrimSpace(h.config.DefaultModel())
 	}
