@@ -96,7 +96,7 @@ type localSetup struct {
 
 // useLocalHome points the app home, the person's home and the profile at
 // folders of this test, keeps the ambient profile and tokens out, and gives
-// the process only git on its PATH.
+// the process git and the check fixtures' shell utilities on its PATH.
 func useLocalHome(t *testing.T) (appHome, userHome, decoy string) {
 	t.Helper()
 	appHome, userHome, decoy = testHome(t), testHome(t), testHome(t)
@@ -108,8 +108,16 @@ func useLocalHome(t *testing.T) (appHome, userHome, decoy string) {
 	t.Setenv(config.ProfileDirEnv, decoy)
 	t.Setenv("GH_TOKEN", "")
 	t.Setenv("GITHUB_TOKEN", "")
-	if git, err := exec.LookPath("git"); err == nil {
-		t.Setenv("PATH", filepath.Dir(git))
+	// Homebrew's git directory does not contain touch or sleep. Keep the
+	// check fixtures runnable when git and the system utilities live apart.
+	var paths []string
+	for _, name := range []string{"git", "touch", "sleep"} {
+		if binary, err := exec.LookPath(name); err == nil {
+			paths = append(paths, filepath.Dir(binary))
+		}
+	}
+	if len(paths) > 0 {
+		t.Setenv("PATH", strings.Join(paths, string(os.PathListSeparator)))
 	}
 	restore := config.UseAppCredentials(config.NewAppCredentials())
 	t.Cleanup(restore)

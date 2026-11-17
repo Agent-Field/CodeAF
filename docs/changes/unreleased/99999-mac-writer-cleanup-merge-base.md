@@ -8,7 +8,8 @@ invalidates:
 ---
 
 Cell and local factory fixtures stop and join their saving helpers before
-TempDir removes their homes. The memory and plan-file fixtures close factory
+TempDir removes their homes. Local check fixtures retain touch and sleep on
+PATH even when Git comes from Homebrew. The memory and plan-file fixtures close factory
 writers and both process lifetimes before restoring their environment.
 CI and local checks use the same branch point for failure attribution, and
 script fixtures cover a base advancing in a Go package or module file.
