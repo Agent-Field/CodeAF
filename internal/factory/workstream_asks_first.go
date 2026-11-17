@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// THE ASK RULE, AND WHICH TASKS IT WILL STOP (lane L7, v2 boards "Who does
+// THE ASK RULE, AND WHICH TASKS IT WILL STOP (v2 boards "Who does
 // what" and J6, DELTA §4.1). A workstream's rule says how much an agent may do
 // before it asks: cheap, reversible work is done and listed under Assumed, and
 // anything that leaves the workstream (published, sent, posted, paid for) is
