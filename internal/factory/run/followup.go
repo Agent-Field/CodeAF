@@ -73,6 +73,20 @@ func (lp *floorLoop) completedPublishedRepair(captured factory.Item, res factory
 	return candidate
 }
 
+// baseNamed says the job's history already names base on a base-sync line.
+func baseNamed(it factory.Item, base string) bool {
+	if it.Stream == nil || base == "" {
+		return false
+	}
+	short := shortSHA(base)
+	for _, l := range it.Stream.Log {
+		if strings.HasPrefix(l.Text, "Follow PR base sync:") && strings.Contains(l.Text, short) {
+			return true
+		}
+	}
+	return false
+}
+
 func (lp *floorLoop) baseSyncAction(c *loopCtl, it factory.Item, st factory.Stage, dir string) func(context.Context) (string, error) {
 	f := it.FollowUp
 	if !factory.IsCIRepairStage(st) || !st.CanWrite() || f == nil || f.Kind != "pr" || it.PullRequest == nil || it.PullRequest.State != factory.PROpen {
@@ -97,9 +111,18 @@ func (lp *floorLoop) baseSyncAction(c *loopCtl, it factory.Item, st factory.Stag
 			// THE HISTORY SAYS WHICH BASE CAME IN: the live branch head, or
 			// the recorded base when the live one could not be had. Once per
 			// base: a repeat call (the merge still open, or finished and
-			// checked again) names nothing new (review 4).
-			again := next.BaseSyncSHA == base
-			next.BaseSyncSHA = base
+			// checked again, also in a later attempt, which clears
+			// BaseSyncSHA) names nothing new, and nor does an older base the
+			// synced one already contains, which never steps the synced base
+			// back (a recheck whose live read failed fell back to the
+			// recorded base; review 4).
+			synced, again := base, baseNamed(*current, base)
+			if prior := next.BaseSyncSHA; prior != "" && prior != base {
+				if _, e := lp.r.opts.Git.Run(dir, "merge-base", "--is-ancestor", base, prior); e == nil {
+					synced, again = prior, true
+				}
+			}
+			next.BaseSyncSHA = synced
 			switch {
 			case again:
 			case fallback != "":

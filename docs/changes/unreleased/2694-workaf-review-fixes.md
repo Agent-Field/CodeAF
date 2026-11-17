@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: Inbox items clear reliably, a resume carries Auto past its pause, one finished event wakes once
+title: Inbox items clear reliably; Auto resumes past and repairs findings; Follow PR syncs the live base
 pr: 2694
 surface: [app, engine, factory]
 invalidates:
@@ -14,7 +14,8 @@ invalidates:
   - "Was true: the Factory manager had no way to offer the merge again. Is true now: factory_answer action=offer_merge stamps the job's merge_offered_at (RFC 3339, hello feature factory.job_merge_offered) while the merge gate offers Merge, and refuses with the gate's words otherwise."
   - "Was true: a failing finding row stood, and paused Auto, after a later round fixed it and proved it in other words. Is true now: a row no step's latest round still reports is replaced, where every step that ran kept its result; it neither blocks Auto nor is repaired, and older records without results keep the row standing."
   - "Was true: a step's open question was dropped from needs_you while the pull request conflicted or had changes requested. Is true now: needs_you keeps the pull request's kind and carries the step's question, its options and back_to; only the job's person may answer it there, and who_can_answer, can.answer and can.accept_step say so."
-  - "Was true: Follow PR's base sync merged the pull request's recorded base_sha, which the forge refreshes only on a push. Is true now: it merges the base branch's live head on origin (PullRequest.BaseBranch, on the wire as pr.base_branch), falling back to the recorded base with a line on the job's history when the live head cannot be had."
+  - "Was true: Follow PR's base sync merged the pull request's recorded base_sha, which the forge refreshes only on a push. Is true now: it merges the base branch's live head on origin (PullRequest.BaseBranch, on the wire as pr.base_branch), falling back to the recorded base when the live head cannot be had; the job's history names each base that comes in once."
+  - "Was true: publication required the forge's recorded base_sha to equal the base Follow PR synced. Is true now: it accepts a synced base newer than the forge's recorded one as long as it contains it; a forge base past the synced one still refuses, and the approved head must still include the base."
   - "Was true: a Follow PR repair that passed its checks waited behind the conflict it resolves, so nothing pushed it. Is true now: the waiting update outranks the pull request's conflict or changes requested and is the job's proof approval, which Auto records and publishes."
 ---
 

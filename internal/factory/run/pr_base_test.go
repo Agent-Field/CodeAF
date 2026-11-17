@@ -295,6 +295,11 @@ func TestFollowPRSyncBaseMergesTheLiveBaseHead(t *testing.T) {
 		mustGit(t, f.dir, "add", "feature.txt")
 		mustGit(t, f.dir, "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "--no-edit")
 		sync()
+		// A later attempt clears BaseSyncSHA; the same base checked then is not new to the job.
+		if err := f.rig.st.Update(f.id, func(it *factory.Item) error { it.FollowUp.BaseSyncSHA = ""; return nil }); err != nil {
+			t.Fatal(err)
+		}
+		sync()
 		current, err := f.rig.st.Get(f.id)
 		if err != nil {
 			t.Fatal(err)
@@ -307,6 +312,31 @@ func TestFollowPRSyncBaseMergesTheLiveBaseHead(t *testing.T) {
 		}
 		if n != 1 {
 			t.Fatalf("history names the base sync %d times: %+v", n, current.Stream.Log)
+		}
+	})
+
+	t.Run("a merge the agent began itself is named once (review 4)", func(t *testing.T) {
+		f := newPRBaseFixture(t, false)
+		prBaseFixtureCommit(t, f.remote, "feature.txt", "the base's newer change\n")
+		live := mustGit(t, f.remote, "rev-parse", "main")
+		mustGit(t, f.dir, "fetch", "--no-tags", "origin", "main")
+		if _, err := (ExecGit{}).Run(f.dir, "-c", "user.name=t", "-c", "user.email=t@example.com", "merge", "--no-edit", "FETCH_HEAD"); err == nil {
+			t.Fatal("the agent's merge did not conflict")
+		}
+		it, err := f.rig.st.Get(f.id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		c := &loopCtl{id: f.id, ctx: context.Background()}
+		if _, err := f.rig.r.loop().baseSyncAction(c, it, chat(factory.FollowPRStep), f.dir)(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		current, err := f.rig.st.Get(f.id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !logHas(current, "Follow PR base sync: the base branch's live head "+live[:9]) {
+			t.Fatalf("the history does not name the base the agent's merge brings in: %+v", current.Stream.Log)
 		}
 	})
 
