@@ -88,8 +88,8 @@ func TestC7R2ReopeningChatStopsPreviousDrive(t *testing.T) {
 	// acknowledgement rather than assuming it ran before Close returned.
 	select {
 	case <-stopped:
-	case <-time.After(5 * time.Second):
-		t.Fatal("reopened chat left the previous drive running")
+	case <-t.Context().Done():
+		t.Fatal("reopened chat left the previous drive running: ", t.Context().Err())
 	}
 	if next != nil {
 		_ = next.Gate()
