@@ -41,27 +41,29 @@ workstream, close the window or come back the next day.
 
 ## Accept — what Accept does, can I undo setting up a workstream
 
-**Accept** applies the whole card at once: the name, goal and rules; the people and teams; each rule line as a decision;
-the Brief in Files; and the tasks, together as the group "First plan" with what waits on what. Five or more tasks wait
-as a plan with Start and Change the plan, so nothing runs until you press Start. The card then goes away and a toast
-says "<name> is set up" with **Undo**, which takes the tasks, the Brief and the people it added out again and puts back
-the name, goal and rules it replaced; the rule lines stay in Decisions, where you can withdraw them. If a part cannot be applied, the card stays, names what failed, and pressing Accept again does only
-what is left.
+**Accept** turns the card into "Setting up <name>" with **Undo** for five seconds. Nothing is written in that time:
+Undo puts the card back as it was, and leaving the workstream or closing the window then leaves the card waiting.
+When the five seconds run out the whole card is applied at once: the name, goal and rules; the people and teams; each
+rule line as a decision; the Brief in Files; the tasks, together as the group "First plan" with what waits on what;
+and last, in an organization, the workstream handed to who Decides. A toast then says "<name> is set up". After that
+there is no undo of the whole: change the parts in People and rules, on a task or in Files. A task cannot be deleted,
+only stopped. If a part cannot be applied, the card stays, names it ("Couldn't set up the Brief · …"), and **Accept
+the rest** does only what is left.
 
 **Ask Afi to change it** puts "Change the setup: " in Ask Afi for you to finish; Afi answers with a new card that
 replaces this one. **Dismiss** drops the card and changes nothing.
 
 ## Set it up yourself — creating a workstream without Afi, the manual way, no model
 
-Under Afi's first message, **Set it up yourself** draws the same card empty (Incoming work: you, Start without asking:
-never, no tasks) without asking the model anything. Fill in what you want and press Accept; Accept and Undo work the
-same way.
+Under Afi's first message, **Set it up yourself** draws the same card empty, headed "Set it up yourself" (Incoming
+work: you, Start without asking: never, no tasks, the Brief unticked), without asking the model anything. Accept waits
+until it has a name. Fill in what you want and press Accept; Accept and Undo work the same way.
 
 ## making a workstream from a chat — Make workstream, set it up from the chat
 
-Make workstream in a chat on your own computer makes the workstream at once with that chat brought along, and Afi's
-first message becomes "I brought your chat <name> along. Want me to set this workstream up from it?" with **Set it up
-from the chat**. Afi then reads the chat (ws_chats) and proposes the card. In an organization a chat stays on the
+Make workstream in a chat on your own computer makes the workstream at once, named after the chat, with that chat
+brought along, and Afi's first message becomes "I brought your chat <name> along. Want me to set this workstream up
+from it?" with **Set it up from the chat** and **Set it up yourself**. Afi then reads the chat (ws_chats) and proposes the card. In an organization a chat stays on the
 computer it was made on, so that button is absent there and Afi asks its usual question. Making a workstream from a
 document is not there yet.
 
