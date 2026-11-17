@@ -2,13 +2,19 @@
 
 ## a chat inside a workstream is private — what is private and what is shared
 
-A chat you start inside a workstream (the box at the bottom of its Chats tab, "Start a new chat in <workstream>") is yours alone: nobody else in the workstream sees it or what is said in it. What it makes is shared. Its tasks appear in the workstream's Tasks for everyone, with the chat's name as who does them, and its files appear in Files with the chat's name as who made them. The Chats tab says so under the list: "Only you see your chats. The tasks and files they make are shared with everyone in <workstream>."
+A chat you start inside a workstream (the box at the bottom of its Chats tab, "Start a new chat in <workstream>") keeps its messages private to you. Where the organization supplies the shared chat listing, teammates see its name, owner, state, last activity and task count under "Other people's chats"; they never see its messages or Asks. Opening that row lists only the shared tasks it made. On an older server with no listing, that section is absent. What it makes is shared. Its tasks appear in the workstream's Tasks for everyone, with the chat's name as who does them, and its files appear in Files with the chat's name as who made them. The Chats tab says so under the list: "Only you see your chats. The tasks and files they make are shared with everyone in <workstream>."
 
-The same holds for Afi's pane beside the workstream: it is private to you, on a Personal workstream and on an organization's, including when the organization runs its agents on its server. Anything you type to an agent is private; anything on a task or a file is shared.
+Afi's pane is private to you on a Personal workstream. On an organization, read its header: "Private to you" means the server keeps your conversation apart; "Everyone in <workstream> sees this" means an older server keeps a shared conversation. Anything on a task or a file is shared.
 
-## the Chats tab — Afi first, Waiting on you, Working, Resting
+## the Chats tab — Waiting on you, Working, Resting, Other people's chats
 
-The Chats tab lists your own chats in this workstream. Afi is always first, under "Always here"; its row opens Afi's pane. The rest sit in three sections, in this order: **Waiting on you** (the chat asked you something; its face has an amber head), **Working** (something of its is running) and **Resting** (nothing of its is running). Each row shows the chat's face, its name, its latest line and when it last changed. A chat rests when nothing of its is running and wakes when you write to it or a task of its needs you. An empty tab says "No chats yet · start one below".
+The Chats tab lists your own chats in this workstream. Afi is not a row: its box is available below each tab. **Waiting on you** and **Working** show cards with the latest line, task and file counts. An Ask on one of your tasks can be answered on its card. **Resting** shows the newest three chats as lines, with the rest folded under "N earlier". A chat rests when nothing of its is running and wakes when you write to it or a task of its needs you.
+
+Where an organization supplies the metadata listing, **Other people's chats** shows the owner, name, state and task count, never messages or Asks. Pressing a row lists the tasks that chat made, without opening its private conversation. The section is absent when the server supplies no listing.
+
+## opening Afi — the bottom box and the closed pane
+
+A workstream opens with Afi's pane closed. Use the box below the tab to ask Afi; the pane opens on its first reply. The Afi button opens it immediately. Its 340-pixel pane says what it is looking at and who can read it. Close Afi returns to the bottom box. In Files the box says "Ask Afi about these files". Existing conversation history does not open the pane when you enter a workstream.
 
 ## opening a chat in place, or as its own tab — Open as its own tab, back to Chats
 
@@ -20,7 +26,7 @@ A click on a chat opens it in place, inside the Chats tab, with Afi still beside
 
 Yes, yours, and nobody else's. Inside a Personal workstream, Afi carries one more tool than the chats do: `ws_chats`. With it Afi lists your chats in that workstream (each one's name, whether it is waiting on you, working or resting, and its latest line) and reads what was said in one lately. Ask Afi "what is Launch post doing?" or "which of my chats needs me?" and it reads them to answer.
 
-Your teammates cannot see your chats, and neither can their Afi. Afi does not copy what it reads there into a task, a comment or a file; the one line a private request leaves on a task is still the only trace.
+Your teammates and their Afi cannot read your chat messages. The optional shared listing exposes only the chat metadata described above. Afi does not copy what it reads there into a task, a comment or a file; the one line a private request leaves on a task is still the only trace.
 
 On an organization's workstream Afi does not have `ws_chats`: chats are not started there at all (see the next section), so there is nothing for it to read.
 
