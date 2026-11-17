@@ -403,3 +403,147 @@ func TestR3ResumeBandAltCOpensEarly(t *testing.T) {
 		t.Fatalf("open chat status line after early open = %q, want files arriving · 18 of 112 MB", statusPlain)
 	}
 }
+
+// Contract R5d: when a draft typed on Home during a move (R6) arrives in a chat
+// that already has an older saved draft, neither text is lost: the box shows the
+// saved draft, then a newline, then the carried text; the saved draft counts as
+// restored; quitting saves the box as usual; and "saved draft has not been
+// restored" never appears.
+func TestR5dCarriedHomeDraftMergesWithSavedDraftAndSavesOnQuit(t *testing.T) {
+	for _, sameWindowFile := range []bool{false, true} {
+		name := "older_window_draft"
+		if sameWindowFile {
+			name = "same_draft_file"
+		}
+		t.Run(name, func(t *testing.T) {
+			lab := newHomeLab(t)
+			workspace := lab.workspace("project")
+			initial := lab.session("project", "0000000000000601", "Initial", workspace, time.Now().Add(-time.Hour))
+			arrived := lab.session("project", heldCell, "Port the picker", workspace, time.Now())
+			drafts := t.TempDir()
+
+			const savedWords = "older saved draft from before the move"
+			const carriedWords = "carried text typed on home during move"
+			const wantCombined = savedWords + "\n" + carriedWords
+
+			var priorDraft string
+			arrivedDraft := DraftFile(drafts, workspace)
+			if sameWindowFile {
+				previous := lab.app(arrived)
+				previous.draftFile = arrivedDraft
+				previous.input.setText(savedWords)
+				if err := previous.draftSaveOf(previous.mainDraftText()).commit(); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				priorDraft = asWindow(t, deadPid(t), func() string { return DraftFile(drafts, workspace) })
+				previous := lab.app(arrived)
+				previous.draftFile = priorDraft
+				previous.input.setText(savedWords)
+				if err := previous.draftSaveOf(previous.mainDraftText()).commit(); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			openedFake := &fakeAgent{model: "m"}
+			a := lab.app(initial)
+			a.width, a.height = 180, 48
+			a.draftFile = DraftFile(drafts, workspace)
+			a.open = func(where, file string) (Conversation, error) {
+				return Conversation{
+					Agent:       &switchAgent{fakeAgent: openedFake},
+					SessionFile: file,
+					Workspace:   where,
+					DraftFile:   arrivedDraft,
+					Resumed:     true,
+				}, nil
+			}
+
+			src := &scriptedRemoteSource{
+				rows: []chatlist.Row{
+					{Cell: heldCell, Title: "Port the picker", Device: "host-a", Status: chatlist.Off, DurableAgo: time.Minute},
+				},
+			}
+			taker := &movingTaker{
+				active: true,
+				at:     MoveProgress{Step: "copying", Done: 16 << 10},
+				fakeTaker: fakeTaker{
+					taken: Taken{
+						Fence:      1,
+						Transcript: arrived,
+						Resume:     machine.Resume{From: "host-a", Now: workspace},
+					},
+					on: func(cellID string) {
+						for i := range src.rows {
+							if src.rows[i].Cell == cellID {
+								src.rows[i].Status = chatlist.Here
+								src.rows[i].Mine = true
+							}
+						}
+					},
+				},
+			}
+			a.machines = src
+			a.taker = taker
+
+			drain(t, a, a.openHome())
+			drain(t, a, a.askMachines())
+			standOn(t, a, heldCell)
+			_ = stepKeyNoDrain(t, a, "1")
+			takeCmd := stepKeyNoDrain(t, a, "enter")
+			if a.homeTaking != heldCell {
+				t.Fatalf("expected %s take in flight, got %q", heldCell, a.homeTaking)
+			}
+
+			for _, r := range carriedWords {
+				_ = stepKeyNoDrain(t, a, string(r))
+			}
+			if got := a.home.box.String(); got != carriedWords {
+				t.Fatalf("Home box while typing = %q, want %q", got, carriedWords)
+			}
+
+			drain(t, a, takeCmd)
+			if a.at(pageHome) || a.file != arrived {
+				t.Fatalf("move did not open arrived chat: atHome=%v file=%q want=%q", a.at(pageHome), a.file, arrived)
+			}
+			if got := a.input.String(); got != wantCombined {
+				t.Fatalf("arrived chat composer draft = %q, want %q", got, wantCombined)
+			}
+			for _, e := range a.entries {
+				if strings.Contains(e.text, "saved draft has not been restored") || strings.Contains(e.text, draftKeepFailWord) {
+					t.Fatalf("unexpected draft failure notice in entries: %q", e.text)
+				}
+			}
+			if note := plain(lastNote(t, a)); strings.Contains(note, "saved draft has not been restored") || strings.Contains(note, draftKeepFailWord) {
+				t.Fatalf("unexpected draft failure notice in lastNote: %q", note)
+			}
+			if got := readDraft(arrivedDraft); got != wantCombined {
+				t.Fatalf("arrived draft file right after open = %q, want %q", got, wantCombined)
+			}
+
+			// Simulate quitting and verify the combined draft is saved as usual.
+			a.writeDraftsNow(a.leavingDraft())
+			for _, e := range a.entries {
+				if strings.Contains(e.text, "saved draft has not been restored") || strings.Contains(e.text, draftKeepFailWord) {
+					t.Fatalf("unexpected draft failure notice on quit: %q", e.text)
+				}
+			}
+			if got := readDraft(arrivedDraft); got != wantCombined {
+				t.Fatalf("arrived draft file after quit = %q, want %q", got, wantCombined)
+			}
+			if priorDraft != "" {
+				if got := readDraft(priorDraft); got != "" {
+					t.Fatalf("old window draft file still has %q after reunite and quit, want empty", got)
+				}
+			}
+
+			// Reopening the chat in a later window restores the combined draft.
+			reopened := lab.app(arrived)
+			reopened.draftFile = arrivedDraft
+			reopened.restoreDraft()
+			if got := reopened.input.String(); got != wantCombined {
+				t.Fatalf("reopened composer = %q, want %q", got, wantCombined)
+			}
+		})
+	}
+}

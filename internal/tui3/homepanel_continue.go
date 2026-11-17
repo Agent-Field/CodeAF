@@ -498,15 +498,16 @@ func (a *app) presentRow(row chatlist.Row) chatlist.Row {
 
 // homeTakenMsg is the takeover's answer, coming back off the update loop.
 type homeTakenMsg struct {
-	automatic bool
-	seq       uint64
-	row       chatlist.Row
-	taken     Taken
-	err       error
-	roots     map[string]string
-	draft     *composerState
-	send      func() tea.Cmd
-	fromFile  string
+	automatic    bool
+	seq          uint64
+	row          chatlist.Row
+	taken        Taken
+	err          error
+	roots        map[string]string
+	draft        *composerState
+	fromComposer bool
+	send         func() tea.Cmd
+	fromFile     string
 	// A fresh listing can disagree with the taker once without asking again.
 	recoveredHere bool
 }
@@ -577,6 +578,9 @@ func (a *app) takeRemoteState(msg homeTakenMsg) tea.Cmd {
 		if msg.draft == nil && !composer.empty() {
 			msg.draft = &composer
 		}
+	}
+	if msg.draft != nil {
+		msg.fromComposer = true
 	}
 	idleOpen := a.idleOpenEnabled() && msg.row.AutoOpen
 	take := func() tea.Msg {
@@ -963,6 +967,9 @@ func (a *app) openTaken(msg homeTakenMsg) tea.Cmd {
 	}
 	a.homeTakeDraft = &msg
 	a.homeTakenSaid = func() tea.Cmd {
+		if !msg.automatic {
+			a.foldHomeBoxIntoDraft(&msg)
+		}
 		// A local session of this same chat was retired before replacement.
 		// Its old handle cannot remain a selectable copy behind the new one.
 		for _, file := range []string{line.row.Transcript, msg.fromFile} {
@@ -977,19 +984,27 @@ func (a *app) openTaken(msg homeTakenMsg) tea.Cmd {
 		}
 		a.finishHomeTake(false)
 		a.note(joinSaid(moved, kept))
+		if !msg.taken.AlreadyHere && !msg.fromComposer {
+			// A take from Home restores the arrived chat's saved words. The
+			// conversation being left keeps its own composer in its own draft.
+			a.layKeptDrafts(false)
+		}
 		if msg.draft != nil {
-			if msg.taken.AlreadyHere {
-				a.moveTakeDraftCopies(*msg.draft)
+			carried := *msg.draft
+			if !msg.taken.AlreadyHere && !msg.fromComposer {
+				if saved := a.mainComposer(); !saved.empty() {
+					carried = mergeComposerDraft(saved, carried)
+				}
 			}
-			a.putComposer(*msg.draft)
+			if msg.taken.AlreadyHere {
+				a.moveTakeDraftCopies(carried)
+			}
+			a.putComposer(carried)
+			a.claimDraftComposer()
 			if msg.send == nil {
 				a.keepMainDraft()
 				a.note("your message is still in the box; press enter to send it")
 			}
-		} else if !msg.taken.AlreadyHere {
-			// A take from Home restores the arrived chat's saved words. The
-			// conversation being left keeps its own composer in its own draft.
-			a.layKeptDrafts(false)
 		}
 		if a.file == line.row.Transcript {
 			a.offerSetup(msg.taken.Resume)
@@ -1044,7 +1059,7 @@ func (a *app) openTaken(msg homeTakenMsg) tea.Cmd {
 // moveTakeDraft leaves one composer with the arriving chat after its door opens.
 func (a *app) moveTakeDraft(conv Conversation) {
 	msg := a.homeTakeDraft
-	if msg == nil || msg.draft == nil || msg.fromFile == "" || a.file != msg.fromFile {
+	if msg == nil || msg.draft == nil || !msg.fromComposer || msg.fromFile == "" || a.file != msg.fromFile {
 		return
 	}
 	if conv.DraftFile != "" && conv.DraftFile != a.draftFile {
@@ -1059,6 +1074,28 @@ func (a *app) moveTakeDraft(conv Conversation) {
 	}
 	a.keepComposer(mainRecipient, composerState{})
 	a.writeDraftsNow("")
+}
+
+func mergeComposerDraft(saved, carried composerState) composerState {
+	merged := saved
+	savedText := saved.box.String()
+	carriedText := carried.box.String()
+	switch {
+	case savedText != "" && carriedText != "":
+		merged.box.setText(savedText + "\n" + carriedText)
+	case carriedText != "":
+		merged.box.setText(carriedText)
+	}
+	if len(carried.pastes) > 0 {
+		merged.pastes = append(append([]pasteChip(nil), saved.pastes...), carried.pastes...)
+	}
+	if len(carried.chips) > 0 {
+		merged.chips = append(append([]chip(nil), saved.chips...), carried.chips...)
+	}
+	if len(carried.sends) > 0 {
+		merged.sends = append(append([]outboxSnapshot(nil), saved.sends...), carried.sends...)
+	}
+	return merged
 }
 
 // foldHomeBoxIntoDraft moves any text or chips typed on Home during a continue

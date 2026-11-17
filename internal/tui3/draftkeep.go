@@ -1221,8 +1221,12 @@ func (a *app) layKeptDrafts(allowUnowned bool) {
 
 	// Only then the plain file, which is all an older build or a stranger's
 	// orphan can offer ([app.legacyDraftText]).
-	if _, held := states[mainRecipient]; !held && !settled && allowUnowned {
-		if text := a.legacyDraftText(); text != "" {
+	if _, held := states[mainRecipient]; !held && !settled {
+		text := readDraft(a.draftFile)
+		if allowUnowned {
+			text = a.legacyDraftText()
+		}
+		if text != "" {
 			runes := []rune(text)
 			states[mainRecipient] = composerState{box: editor{value: runes, cursor: len(runes)}}
 		}
