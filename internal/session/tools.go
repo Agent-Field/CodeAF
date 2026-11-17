@@ -160,7 +160,7 @@ func (a *Agent) belt() []bare.Tool {
 		// (tools_workstream_work.go); a door that does not leaves them absent.
 		belt := []bare.Tool{a.workstreamTool()}
 		if door := a.config.workstreamWorkDoor(); door != nil {
-			belt = append(belt, workstreamWorkBelt(door)...)
+			belt = append(belt, workstreamWorkBelt(door, a.guardDecisions)...)
 		}
 		return belt
 	}

@@ -21,6 +21,16 @@ import (
 //	factory.org_workstream_task_comment    OrgTaskCommentParams -> OrgTaskEvent  POST  /v1/workstreams/{id}/tasks/{tid}/comment
 //	factory.org_workstream_task_events     OrgTaskParams        -> OrgTaskEvents GET   /v1/workstreams/{id}/tasks/{tid}/events[?seen=1]
 //	factory.org_workstream_tasks_start_all OrgTasksStartAllParams -> OrgTasks    POST  /v1/workstreams/{id}/tasks/start_all
+//	factory.org_workstream_task_view       OrgTaskViewParams    -> OrgTask       POST  /v1/workstreams/{id}/tasks/{tid}/view
+//	factory.org_workstream_decision_withdraw OrgDecisionParams  -> workstream    POST  /v1/workstreams/{id}/decisions/{did}/withdraw
+//	factory.org_workstream_decision_replace  OrgDecisionParams  -> workstream    POST  /v1/workstreams/{id}/decisions/{did}/replace
+//
+// With the hello word org_workstream_decisions, a task carries several Asks
+// (ask, the owner's, and asks, each with its one decider), views on them,
+// and Assumed; answering names the Ask (`ask`); and the workstream's
+// decisions record themselves (an answered Ask, a request_note's `decision`,
+// a rules change). Only the person who made a decision withdraws or replaces
+// it.
 //
 // Every param names the workstream as `ws` and the task as `id`, the same
 // words the desk's Tauri commands take. A Factory job of the workstream is a
@@ -66,6 +76,10 @@ type (
 	OrgRequestable = json.RawMessage
 	OrgRequestSent = json.RawMessage
 )
+
+// FeatureOrgWorkstreamDecisions is the hello word for several Asks with
+// deciders, views, Assumed, and the decisions that record themselves.
+const FeatureOrgWorkstreamDecisions = "org_workstream_decisions"
 
 // OrgTask and OrgTaskEvent are the server's own shapes, passed through whole:
 // the desk's wsTasksModel.ts types them.
@@ -153,8 +167,10 @@ func (p *OrgTaskUpdateParams) UnmarshalJSON(data []byte) error {
 // OrgTaskAnswerParams answers a task's Ask: an option's id, or words.
 type OrgTaskAnswerParams struct {
 	OrgConn
-	WS     string `json:"ws"`
-	ID     string `json:"id"`
+	WS string `json:"ws"`
+	ID string `json:"id"`
+	// Ask names which of the task's Asks; absent, the task's own.
+	Ask    string `json:"ask,omitempty"`
 	Option string `json:"option,omitempty"`
 	Text   string `json:"text,omitempty"`
 }
@@ -172,6 +188,27 @@ type OrgTaskCommentParams struct {
 	Steps     int             `json:"steps,omitempty"`
 	DurationS int             `json:"duration_s,omitempty"`
 	Offer     json.RawMessage `json:"offer,omitempty"`
+	// Decision is, on a request_note, what the request settles in one line.
+	Decision string `json:"decision,omitempty"`
+}
+
+// OrgTaskViewParams puts the caller's view on one of a task's Asks; Text ""
+// takes it away.
+type OrgTaskViewParams struct {
+	OrgConn
+	WS   string `json:"ws"`
+	ID   string `json:"id"`
+	Ask  string `json:"ask"`
+	Text string `json:"text"`
+}
+
+// OrgDecisionParams names one decision of a workstream (id), and for a
+// replace the words that replace it.
+type OrgDecisionParams struct {
+	OrgConn
+	ID       string `json:"id"`
+	Decision string `json:"decision"`
+	Text     string `json:"text,omitempty"`
 }
 
 // OrgTasksStartAllParams starts a group's up-next tasks.
@@ -212,6 +249,7 @@ func withFactoryOrgTasksFeature(hello Hello, e Engine) Hello {
 		hello = withFeature(hello, FeatureOrgWorkstreamTasks)
 		hello = withFeature(hello, FeatureOrgWorkstreamTaskStart)
 		hello = withFeature(hello, FeatureOrgWorkstreamRequests)
+		hello = withFeature(hello, FeatureOrgWorkstreamDecisions)
 	}
 	return hello
 }
@@ -299,7 +337,11 @@ func init() {
 		if len(p.Text) > orgTaskMost {
 			return OrgRequest{}, Errorf(CodeBadParams, "text is at most 16384 bytes")
 		}
-		return OrgRequest{Method: http.MethodPost, Path: path + "/answer", Body: map[string]string{"option": p.Option, "text": p.Text}}, nil
+		body := map[string]string{"option": p.Option, "text": p.Text}
+		if p.Ask != "" {
+			body["ask"] = p.Ask
+		}
+		return OrgRequest{Method: http.MethodPost, Path: path + "/answer", Body: body}, nil
 	})
 	methods["factory.org_workstream_task_comment"] = orgMethod[OrgTaskCommentParams, OrgTaskEvent]("factory.org_workstream_task_comment", func(p OrgTaskCommentParams) (OrgRequest, error) {
 		path, err := orgTaskPath(p.WS, p.ID)
@@ -319,7 +361,8 @@ func init() {
 			Steps     int             `json:"steps,omitempty"`
 			DurationS int             `json:"duration_s,omitempty"`
 			Offer     json.RawMessage `json:"offer,omitempty"`
-		}{p.Kind, p.Text, p.OfferFor, p.Steps, p.DurationS, p.Offer}
+			Decision  string          `json:"decision,omitempty"`
+		}{p.Kind, p.Text, p.OfferFor, p.Steps, p.DurationS, p.Offer, strings.TrimSpace(p.Decision)}
 		return OrgRequest{Method: http.MethodPost, Path: path + "/comment", Body: body}, nil
 	})
 	methods["factory.org_workstream_task_events"] = filled(orgMethod[OrgTaskParams, OrgTaskEvents]("factory.org_workstream_task_events", func(p OrgTaskParams) (OrgRequest, error) {
@@ -340,4 +383,40 @@ func init() {
 		}
 		return OrgRequest{Method: http.MethodPost, Path: path + "/start_all", Body: map[string]string{"group": group}}, nil
 	}), tasks)
+	methods["factory.org_workstream_task_view"] = orgMethod[OrgTaskViewParams, OrgTask]("factory.org_workstream_task_view", func(p OrgTaskViewParams) (OrgRequest, error) {
+		path, err := orgTaskPath(p.WS, p.ID)
+		if err != nil {
+			return OrgRequest{}, err
+		}
+		if strings.TrimSpace(p.Ask) == "" {
+			return OrgRequest{}, Errorf(CodeBadParams, "ask names the Ask the view is on")
+		}
+		if len(p.Text) > orgTaskMost {
+			return OrgRequest{}, Errorf(CodeBadParams, "text is at most 16384 bytes")
+		}
+		return OrgRequest{Method: http.MethodPost, Path: path + "/view", Body: map[string]string{"ask": p.Ask, "text": p.Text}}, nil
+	})
+	decision := func(verb string) func(p OrgDecisionParams) (OrgRequest, error) {
+		return func(p OrgDecisionParams) (OrgRequest, error) {
+			path, err := orgWorkstreamPath(p.ID)
+			if err != nil {
+				return OrgRequest{}, err
+			}
+			did, err := orgSegment("decision", p.Decision)
+			if err != nil {
+				return OrgRequest{}, err
+			}
+			var body any = struct{}{}
+			if verb == "replace" {
+				text := strings.TrimSpace(p.Text)
+				if text == "" || len(text) > orgTaskMost {
+					return OrgRequest{}, Errorf(CodeBadParams, "a decision is replaced with its new words")
+				}
+				body = map[string]string{"text": text}
+			}
+			return OrgRequest{Method: http.MethodPost, Path: path + "/decisions/" + url.PathEscape(did) + "/" + verb, Body: body}, nil
+		}
+	}
+	methods["factory.org_workstream_decision_withdraw"] = orgMethod[OrgDecisionParams, json.RawMessage]("factory.org_workstream_decision_withdraw", decision("withdraw"))
+	methods["factory.org_workstream_decision_replace"] = orgMethod[OrgDecisionParams, json.RawMessage]("factory.org_workstream_decision_replace", decision("replace"))
 }

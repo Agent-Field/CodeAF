@@ -73,6 +73,7 @@ func (h *Handler) workstreamRoutes() {
 	h.workstreamFileRoutes()
 	h.workstreamTaskRoutes()
 	h.workstreamRequestRoutes()
+	h.workstreamDecisionRoutes()
 	h.workstreamStructureRoutes()
 	h.route("/v1/workstreams/{id}/driver", map[string]http.HandlerFunc{http.MethodPut: h.takeWorkstreamDriver, http.MethodDelete: h.dropWorkstreamDriver})
 }
@@ -307,7 +308,7 @@ func (h *Handler) workstreamBody(ws factory.OrgWorkstream, v Viewer) (api.Workst
 		SpendUSD:          spend[ws.ID],
 		Purpose:           ws.Purpose,
 		Pages:             nonNil(ws.Pages),
-		Decisions:         nonNil(ws.Decisions),
+		Decisions:         nameDecisions(nonNil(ws.Decisions), nameOf),
 		Sources:           nonNil(ws.Sources),
 		Links:             nonNil(ws.Links),
 		GoAheads:          goAheads,
@@ -546,6 +547,9 @@ func (h *Handler) patchWorkstream(w http.ResponseWriter, r *http.Request) {
 			cur.Pages = stampPages(*body.Pages, before.Pages, v.Handle, now)
 		}
 		if body.Decisions != nil {
+			if err := foreignDecisionChange(*body.Decisions, before.Decisions, v.Handle); err != nil {
+				return nil, err
+			}
 			// A decision left out is kept as superseded, and the server
 			// stamps whoever changed one.
 			cur.Decisions = stampDecisions(supersedeDropped(*body.Decisions, before.Decisions), before.Decisions, v.Handle, now, false)
@@ -567,6 +571,11 @@ func (h *Handler) patchWorkstream(w http.ResponseWriter, r *http.Request) {
 			return nil, err
 		}
 		rulesChanged = changedRules
+		if changedRules {
+			// A RULE SET IN PEOPLE AND RULES IS A DECISION, made by the
+			// steward who set it.
+			cur.Decisions = append(slices.Clone(cur.Decisions), h.ruleDecisions(before.RulesOrDefault(), cur.RulesOrDefault(), v)...)
+		}
 		if err := cleanWorkstream(&cur, v.Handle, now); err != nil {
 			return nil, err
 		}

@@ -101,9 +101,19 @@ type WorkstreamPage struct {
 type WorkstreamDecision struct {
 	ID    string `json:"id"`
 	Text  string `json:"text"`
-	State string `json:"state" jsonschema:"enum=kept,enum=proposed,enum=superseded"`
+	State string `json:"state" jsonschema:"enum=kept,enum=proposed,enum=superseded,enum=withdrawn"`
 	At    string `json:"at"`
 	By    string `json:"by"`
+	// ByName is the maker's name, as the list shows it.
+	ByName string `json:"by_name,omitempty"`
+	// From is where it came from: an answered Ask, a request that changed
+	// shared work, or a rule set in People and rules.
+	From *DecisionFrom `json:"from,omitempty"`
+	// ReplacedBy is the decision that replaced this one.
+	ReplacedBy string `json:"replaced_by,omitempty"`
+	// ChangedBy and ChangedAt are who withdrew or replaced it, and when.
+	ChangedBy *PersonRef `json:"changed_by,omitempty"`
+	ChangedAt string     `json:"changed_at,omitempty"`
 }
 
 // WorkstreamSource is one thing a workstream reads from.
@@ -118,7 +128,7 @@ type WorkstreamSource struct {
 var (
 	WorkstreamStages        = []string{"shaping", "building", "ongoing", "place", "done"}
 	WorkstreamPageKinds     = []string{"overview", "page", "decisions", "spec", "runbook", "research"}
-	WorkstreamDecisionState = []string{"kept", "proposed", "superseded"}
+	WorkstreamDecisionState = []string{"kept", "proposed", "superseded", "withdrawn"}
 	WorkstreamSourceKinds   = []string{"repo", "url", "file", "chat"}
 )
 

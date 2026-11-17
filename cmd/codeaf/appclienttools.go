@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -407,6 +408,13 @@ func (r *appClientTools) attachedLocked(agent, setID, name string) (int, bool) {
 			if tool.Name == name {
 				return set.DeadlineMS, true
 			}
+		}
+		// A verb a guard sends is answered without being registered, so the
+		// model never holds it ([session.ClientToolUnregistered]).
+		if session.ClientToolUnregistered(name, func(n string) bool {
+			return slices.ContainsFunc(set.Tools, func(t session.ClientTool) bool { return t.Name == n })
+		}) {
+			return set.DeadlineMS, true
 		}
 	}
 	return 0, false

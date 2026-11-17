@@ -515,6 +515,9 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.org_workstream_tasks_start_all` | `in.OrgTasksStartAllParams` | `OrgTasks` |
 | `factory.org_workstreams_requestable` | `in.OrgConn` | `json.RawMessage` |
 | `factory.org_workstream_request` | `in.OrgTaskRequestParams` | `json.RawMessage` |
+| `factory.org_workstream_task_view` | `in.OrgTaskViewParams` | `json.RawMessage` |
+| `factory.org_workstream_decision_withdraw` | `in.OrgDecisionParams` | `json.RawMessage` |
+| `factory.org_workstream_decision_replace` | `in.OrgDecisionParams` | `json.RawMessage` |
 | `factory.org_canvases` | `in.OrgConn` | `OrgCanvasList` |
 | `factory.org_canvas_get` | `in.OrgCanvasParams` | `json.RawMessage` |
 | `factory.org_canvas_create` | `in.OrgCanvasCreateParams` | `json.RawMessage` |
@@ -1083,6 +1086,52 @@ caller can edit `from_ws`, and the thread line "Requested by <name>[ from <works
 The task `from_task` in `from_ws` gains "Sent a request to <workstream>: <title>". It
 answers 201 `{id, ws, ws_name, title, owner, task?}`, the whole task only to someone in
 the workstream.
+
+An engine whose hello carries `org_workstream_decisions` adds Asks, views and decisions
+(Workstreams final spec, "Working with other people"). A task's `ask` is its OWNER's
+Ask; `asks` are its other open Asks, each `{..., decider: {id, name}}`, and the task is
+`needs` while any is open. Every Ask may carry `by` (who raised it, a thread `by`),
+`views` `[{by: {id, name}, text, at}]` (one per person, never the decider's) and
+`against` `{decision, text, by, why}` (the Ask the decision check raised); an option
+may carry `decides`, the decision its answer records in one line. A task may carry
+`assumed` `[{id, text, at, by, overturned_by?}]`, what its agent decided without
+asking. `_task_update` also takes `add_ask` (another Ask, with its `decider`),
+`ask_later {ask, until}` (Later, by that Ask's decider), `assumed` (lines to add) and
+`overturn` (an assumed id; with `state_reason` the why; a done task goes back to its
+doer, its reason reading "instead of “…”, <why>"). `_task_answer` takes `ask` (which
+Ask; absent, the task's own); only its decider answers it (else 403 "only <name>
+answers this Ask"), the task runs again only once no Ask is open, and the answer
+RECORDS A DECISION in the workstream: the option's `decides`, else the question and
+the answer; a changed file's question and "Keep the decision" on a conflict record
+none. `factory.org_workstream_task_view {ws, id, ask, text}` `POST .../tasks/{tid}/view`
+(`edit`) puts the caller's view on an Ask (`text` "" takes it away; the decider's own
+is 403) and answers the task. `_task_comment {kind: request_note, decision}` records
+`decision` as the caller's, from that task. A rules change (`update {rules}`) records
+one decision per rule that changed, the steward's ("Tasks under $5.00 start without
+asking"). A decision (`WorkstreamDecision`) gains `by_name`, `from {kind:
+ask|request|rule, task?, task_title?, ask?, asked_by?, views?, replaces?}`,
+`replaced_by`, `changed_by {id, name}`, `changed_at` and the state `withdrawn`.
+`factory.org_workstream_decision_withdraw {id, decision}` `POST
+/v1/workstreams/{id}/decisions/{did}/withdraw` and `factory.org_workstream_decision_replace
+{id, decision, text}` `POST .../replace` are ITS MAKER'S ALONE (403 "only the person who
+made a decision can withdraw or replace it"); the old one stays, `withdrawn` or
+`superseded` with `replaced_by`, and both answer the workstream. A whole-workstream
+save that changes or leaves out someone else's kept decision is refused the same way.
+
+THE DECISION CHECK runs in the engine's session, around `ws_task_create` and around
+`ws_task_update` with `state` `done`, whichever door answers them. It calls the door's
+`ws_decisions` (`{decisions: [{id, text, by, by_name}]}`, a tool the model also holds)
+and, with any, asks the conversation's model one short question; for finished work it
+reads the task (`ws_tasks {task}`) and up to three result files (`ws_file_read`). A
+conflict makes new work and then raises the Ask, or keeps everything but `done` of
+finished work, through `ws_task_conflict {task, decision, why}` — a verb the doors
+answer and the model never holds — which adds the Ask to the decision's maker with
+"Keep the decision" (recommended, records nothing) and "Go ahead anyway" (records an
+exception). A door without `ws_decisions`, no decisions, or a reply the check cannot
+read lets the call through unchanged. The organization's server answers both for its own Afi
+(`internal/factory/serve/workstream_agent_work.go`), so a server conversation is checked
+the same way, with the server's model; `ws_task_conflict` there is no route, only the
+agent door reaches it.
 
 An engine whose hello carries `org_canvases` reads and writes an organization's
 canvases, which live on its server and are kept there by canvas-core (`canvas rpc`), so
