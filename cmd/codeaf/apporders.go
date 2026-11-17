@@ -641,22 +641,58 @@ func (b *appBackend) sayOrderAsksFrom(store *automation.Store, open map[int64]ap
 		}
 		delete(open, id)
 		closed := appwire.AskClosed{Agent: ask.Agent, ID: ask.ID, By: appwire.ClosedByElsewhere, At: now}
+		answeredElsewhere := false
 		if option, ok := appOrderAnswered.LoadAndDelete(id); ok {
 			closed.By, closed.Option = appwire.ClosedByApp, option.(string)
+		} else if option, ok := appOrderAnsweredElsewhere(store, id); ok {
+			closed.Option, answeredElsewhere = option, true
 		}
 		b.emit.Emit(appwire.EventAskClosed, closed)
 		// A RUN THAT STOPPED WAITING LEAVES THE INBOX TOO. Its ask has no receipt
 		// line in any chat, and the Inbox drops an item only on its receipt, so the
 		// closed run sat in Waiting and in the count until the engine restarted, and
 		// nothing could clear it (owner, 2026-11-16: "Run … now?" rows that stayed).
+		// AN ANSWER GIVEN ELSEWHERE READS AS ANSWERED, in the words every other
+		// Inbox item answered elsewhere leaves ([appReceipt]); only a run that
+		// stopped waiting with no answer is no longer needed.
 		receipt := appwire.Entry{}
-		if closed.By != appwire.ClosedByApp {
+		if answeredElsewhere {
+			receipt.Text = appReceipt(appwire.ClosedByElsewhere, closed.Option, &session.Answer{}, now)
+		} else if closed.By != appwire.ClosedByApp {
 			receipt.Text = "No longer needed · " + now.Format("15:04")
 		} else if closed.Option == appwire.ResolvedDismissed {
 			receipt.Text = appDismissedReceipt(now)
 		}
 		b.inboxResolved(appInboxID(ask.Agent, ask.ID), receipt)
 	}
+}
+
+// appOrderAnsweredElsewhere reads a run that stopped waiting for the answer
+// the person gave it from another surface: Go queued it (so it is queued,
+// running, or over without being passed over), Skip and Not right passed it
+// over with their own line. A run passed over because its order was stopped,
+// or one gone from the store, was not answered.
+func appOrderAnsweredElsewhere(store *automation.Store, id int64) (string, bool) {
+	run, err := store.Run(id)
+	if err != nil {
+		return "", false
+	}
+	switch {
+	case run.Phase == automation.PhaseQueued || run.Phase == automation.PhaseRunning:
+		return appwire.VerdictGo, true
+	case run.Phase != automation.PhaseOver:
+		return "", false
+	case run.Outcome != automation.OutcomeSkipped:
+		return appwire.VerdictGo, true
+	case run.Line == automation.LineNotRight:
+		return appwire.VerdictNotRight, true
+	case run.Line == automation.LineSkipped:
+		if a, err := store.Get(run.AutomationID); err != nil || a.Status == automation.StatusStopped {
+			return "", false
+		}
+		return appwire.VerdictSkip, true
+	}
+	return "", false
 }
 
 // sayOrderResult puts a finished run's line in the chat it answers in.

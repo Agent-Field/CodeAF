@@ -4,6 +4,7 @@ import (
 	"errors"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -264,5 +265,63 @@ func TestAppOrderRunClosedElsewhereLeavesTheInbox(t *testing.T) {
 	})
 	if _, counts, _ := backend.ListInbox(appwire.InboxWaiting, ""); counts.Waiting != 0 {
 		t.Fatalf("a run that stopped waiting is still counted: %+v", counts)
+	}
+}
+
+// A RUN ANSWERED FROM ANOTHER SURFACE READS AS ANSWERED, not as no longer
+// needed: Go and Skip given at the terminal close the Inbox item with the
+// answer, in the words any question answered elsewhere leaves.
+func TestAppOrderRunAnsweredElsewhereReadsAsAnswered(t *testing.T) {
+	for reply, option := range map[automation.Reply]string{automation.ReplyGo: appwire.VerdictGo, automation.ReplySkip: appwire.VerdictSkip} {
+		t.Run(option, func(t *testing.T) {
+			backend, rec, store := ordersBackend(t)
+			transcript := filepath.Join(t.TempDir(), "places", "proj", "abcd1234", "transcript.jsonl")
+			a, err := store.Create(automation.Automation{
+				Title: "weekly update", Schedule: automation.Schedule{Every: "1h", Zone: "UTC"},
+				Action: automation.Action{Do: "draft the weekly update"}, Workspace: t.TempDir(),
+				Status: automation.StatusProposed, Trust: automation.TrustAsksFirst,
+				Origin: automation.Origin{Transcript: transcript},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := store.Ratify(a.ID); err != nil {
+				t.Fatal(err)
+			}
+			run, err := store.QueueAsking(a.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			agent, id := appAgentID(transcript), "order:"+strconv.FormatInt(run.ID, 10)
+			open := map[int64]appwire.Ask{}
+			backend.sayOrderAsks(store, open)
+			rec.waitFor(t, time.Second, func(event string, data any) bool {
+				opened, ok := data.(appwire.AskOpened)
+				return ok && opened.Ask.ID == id
+			})
+			// Answered from another surface, straight in the store.
+			if _, err := store.Answer(run.ID, reply); err != nil {
+				t.Fatal(err)
+			}
+			backend.sayOrderAsks(store, open)
+			rec.waitFor(t, time.Second, func(event string, data any) bool {
+				closed, ok := data.(appwire.AskClosed)
+				return ok && closed.ID == id && closed.By == appwire.ClosedByElsewhere && closed.Option == option
+			})
+			i := rec.waitFor(t, time.Second, func(event string, data any) bool {
+				resolved, ok := data.(appwire.InboxResolvedEvent)
+				return ok && resolved.ID == appInboxID(agent, id)
+			})
+			rec.mu.Lock()
+			resolved := rec.data[i].(appwire.InboxResolvedEvent)
+			rec.mu.Unlock()
+			if resolved.By != appwire.ClosedByElsewhere || !strings.HasPrefix(resolved.Receipt, "Answered · you · ") {
+				t.Fatalf("a run answered %s elsewhere resolved as %+v", option, resolved)
+			}
+			done, _, _ := backend.ListInbox(appwire.InboxDone, "")
+			if len(done) != 1 || done[0].Answered == nil || done[0].Answered.Option != option {
+				t.Fatalf("done reads %+v", done)
+			}
+		})
 	}
 }
