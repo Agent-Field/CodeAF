@@ -124,7 +124,7 @@ func TestServerAgentAnswersEveryoneWhoCanEdit(t *testing.T) {
 		// abir made Retries, so the agent's text for it is a suggestion
 		// that applies nothing.
 		line, err := turn.Door.WritePage(ctx, retries, "", "Retry three times with backoff.")
-		if err != nil || !strings.Contains(line, "was made or edited by a person") || !strings.Contains(line, "kept as version 1") {
+		if err != nil || !strings.Contains(line, "was made or edited by a person") || !strings.Contains(line, "waits as a suggestion") {
 			t.Errorf("writing a person's page: %q, %v", line, err)
 		}
 		made, err := turn.Door.WritePage(ctx, "", "Runbook", "# Runbook\n\nPage someone.")
@@ -132,10 +132,11 @@ func TestServerAgentAnswersEveryoneWhoCanEdit(t *testing.T) {
 			t.Errorf("a new page: %v", err)
 		}
 		runbook := strings.TrimSuffix(made[strings.LastIndex(made, "(")+1:], ")")
-		// Its own page, which no person has edited, it writes directly,
-		// and the words before stay in History.
+		// Its own page, which no person has edited, it writes directly. The
+		// words before are still kept underneath, but the agent is not told
+		// about History, so it never claims the workstream keeps one.
 		line, err = turn.Door.WritePage(ctx, runbook, "", "# Runbook\n\nPage someone, then retry.")
-		if err != nil || !strings.Contains(line, "wrote the page") || !strings.Contains(line, "words before are kept") {
+		if err != nil || line != "wrote the page \"Runbook\"" {
 			t.Errorf("rewriting its own page: %q, %v", line, err)
 		}
 		if _, err := turn.Door.Decide(ctx, "Retries stop after three tries."); err != nil {
@@ -291,7 +292,7 @@ func TestServerAgentKeepsALivePagesTextAsAVersion(t *testing.T) {
 	})
 	o.do(t, "santosh", "POST", "/v1/workstreams/"+webhook.ID+"/agent/messages", -1, api.AgentMessageNew{Text: "plan it"}, 202, nil)
 	o.settle()
-	if err != nil || !strings.Contains(line, "kept as version 1") {
+	if err != nil || !strings.Contains(line, "waits as a suggestion") {
 		t.Fatalf("the agent was told %q, %v", line, err)
 	}
 	var versions api.PageVersions
@@ -338,9 +339,16 @@ func TestServerAgentsKeptVersionIsNotTheLiveOneUntilRestored(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"was not applied", "kept as version 2", "History", "Kept · not applied", "Restore this version"} {
+	for _, want := range []string{"was not applied", "waits as a suggestion for someone who can edit the page to take it"} {
 		if !strings.Contains(line, want) {
 			t.Fatalf("the agent was told %q, missing %q", line, want)
+		}
+	}
+	// NOTHING IN FILES MENTIONS VERSIONS, and a model repeats what it is told: the
+	// answer never names a version, History or restoring (final spec).
+	for _, never := range []string{"version", "Version", "History", "history", "restore", "Restore"} {
+		if strings.Contains(line, never) {
+			t.Fatalf("the agent was told %q, which says %q", line, never)
 		}
 	}
 	list := func() api.PageVersions {

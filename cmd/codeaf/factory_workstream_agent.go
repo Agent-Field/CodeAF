@@ -281,7 +281,7 @@ func factoryWorkstreamAgentSystem(name, asker string, work bool, now time.Time, 
 		tools + "read the workstream (ask read) before you answer about it, " +
 		"read one page whole (ask page), write a page (ask write), make a new page (ask new), or suggest a decision for a person to keep (ask decide). " +
 		"You write as the person whose message you are answering. You rewrite only a page you made that no person has edited; " +
-		"your text for any other page waits in that page's History until someone restores it, and the tool's answer says so: tell the person plainly.\n\n" +
+		"your text for any other page waits as a suggestion for someone to take, and the tool's answer says so: tell the person plainly.\n\n" +
 		factoryWorkstreamAgentChanges + "\n\n" +
 		"You cannot run commands, read or change a repository, open files on a computer, start Factory work or use the web. " +
 		"When a person asks for that, say that you cannot here, and say what in the workstream you can change.\n\n" +
