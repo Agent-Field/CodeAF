@@ -37,6 +37,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"run the workstream agent on the organization's server instead of a laptop", "organization-workstream-agent"},
 		{"does the server's Afi know what today's date is in my time zone", "organization-workstream-agent"},
 		{"where do I put the organization's model key for the server", "organization-workstream-agent"},
+		{"what can't the agent do on the driver's laptop", "organization-workstream-agent"},
 		{"who can change a workstream's people and rules", "workstream-people-and-rules"},
 		{"can Afi see my chats in a workstream", "workstream-chats-and-tools"},
 		{"does leaving a chat stop what it is doing", "workstream-chats-and-tools"},

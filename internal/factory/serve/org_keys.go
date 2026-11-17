@@ -1,6 +1,7 @@
 package serve
 
 import (
+	"github.com/Agent-Field/codeaf/internal/factory"
 	"net/http"
 	"strings"
 	"time"
@@ -67,6 +68,12 @@ func (h *Handler) putOrgKey(w http.ResponseWriter, r *http.Request) {
 	}
 	// The record names the provider and never a character of the key.
 	h.recordOrg(r, record.SettingsChanged, "set model key", orgObjectFactory, provider)
+	if h.agentRunner() == factory.AgentRunnerServer {
+		// With no choice made, a key moves agents onto the server
+		// (runnerOf): nobody drives one on a laptop any more.
+		h.drivers.dropAll()
+	}
+	h.machineEvents()
 	h.write(w, http.StatusOK, api.OrgKey(saved))
 }
 
@@ -85,6 +92,7 @@ func (h *Handler) deleteOrgKey(w http.ResponseWriter, r *http.Request) {
 	}
 	if had {
 		h.recordOrg(r, record.SettingsChanged, "removed model key", orgObjectFactory, provider)
+		h.machineEvents()
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

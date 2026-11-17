@@ -68,7 +68,7 @@ func (h *Handler) runnerPolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.recordOrg(r, record.SettingsChanged, "changed settings", orgObjectFactory, "")
-	if factory.AgentRunnerOf(settings.AgentRunner) == factory.AgentRunnerServer {
+	if h.runnerOf(settings.AgentRunner) == factory.AgentRunnerServer {
 		// The server runs every workstream's agent now; nobody drives one.
 		h.drivers.dropAll()
 	}
@@ -89,7 +89,7 @@ func (h *Handler) agentRunners() []string {
 }
 
 func (h *Handler) settingsView(s api.FactorySettings) api.FactorySettingsView {
-	s.AgentRunner = factory.AgentRunnerOf(s.AgentRunner)
+	s.AgentRunner = h.runnerOf(s.AgentRunner)
 	return api.FactorySettingsView{FactorySettings: s, AgentRunners: h.agentRunners()}
 }
 
@@ -103,7 +103,21 @@ func (h *Handler) agentRunner() string {
 	if err != nil {
 		return factory.AgentRunnerDriver
 	}
-	return factory.AgentRunnerOf(s.AgentRunner)
+	return h.runnerOf(s.AgentRunner)
+}
+
+// runnerOf is where agents run under the saved choice. AN OPERATOR WHO HAS
+// MADE NO CHOICE GETS THE SERVER AS SOON AS IT CAN RUN AGENTS: a workstream's
+// agent on a driver's laptop has none of the workstream's tools (it cannot
+// read or write its tasks, files or pages), so on a fresh organization Afi
+// worked in the driver's home folder where nobody else could see it (final
+// run E2 #3, E3 F3). Before the operator hands the server a model key there
+// is nowhere else to run, and the laptop says what it cannot do.
+func (h *Handler) runnerOf(saved string) string {
+	if strings.TrimSpace(saved) == "" && h.serverAgentServed() {
+		return factory.AgentRunnerServer
+	}
+	return factory.AgentRunnerOf(saved)
 }
 
 // Every presence door reads the same saved silence deadline as lease renewal.

@@ -9,6 +9,12 @@ An organization's workstreams live on its server (`codeaf factory serve`). Where
 
 The server offers `server` only once it can run agents AND the operator has added a key. Until then the choice is not shown, and choosing it anyway is refused with "the server runs agents with the organization's model key; add one first".
 
+Until the operator picks one, the server picks for them: `server` as soon as it has a model key, `driver` before. Adding the key moves every workstream's agent onto the server (and lets go of every driver's hand) unless the operator had chosen `driver`.
+
+## Driver's laptop — what the agent cannot do on a laptop, and moving it onto the server
+
+On a driver's laptop the agent has none of the workstream's tools. It cannot read or change the workstream's tasks, files or pages, and what it makes stays on that laptop, where nobody else sees it. The app says so wherever it runs there: Settings ("There it cannot read or change the workstream's tasks, files or pages; on the organization's server it can.") and the Afi pane's driving line. For Afi to work on the workstream itself, the operator adds a model key, or chooses "Organization's server".
+
 ## the organization's model key — add, replace or remove the key the server uses
 
 Only the operator manages it, in Settings › Organizations › the organization. The key is sent to the server once and is never sent back: the list shows the provider (`openrouter`), the last four characters, who set it and when. No desk ever holds it. Removing it stops the server's agents from taking new messages ("The organization has no model key yet. Its operator adds one in Settings › Organizations.").
@@ -31,7 +37,7 @@ On the server the agent, Afi, carries `workstream_pages` and the workstream tool
 
 With `workstream_pages` it reads the workstream (name, purpose, budget, pages, decisions, sources and links), reads or writes one page, or makes a new page. It does not propose decisions: a decision records itself when an Ask is answered, and nothing waits for a Keep.
 
-It cannot run commands, read or change a repository, open files on a computer, start or stop Factory work, search the web or remember things between workstreams. For any of that, use `driver` mode, where the agent runs on a person's laptop with their tools.
+It cannot run commands, read or change a repository, open files on a computer, start or stop Factory work, search the web or remember things between workstreams. `driver` mode runs the agent on a person's laptop with that laptop's tools instead, and then it has none of the workstream's.
 
 ## does Afi know today's date — the date and time, your time zone, deadlines
 

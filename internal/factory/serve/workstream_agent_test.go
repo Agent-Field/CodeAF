@@ -71,11 +71,11 @@ func TestServerRunnerIsOfferedWithARunnerAndAKey(t *testing.T) {
 		t.Fatalf("a runner with no key offers %v", got)
 	}
 	o.do(t, "owner", "PATCH", "/v1/settings", -1, api.PatchFactorySettings{AgentRunner: &server}, 422, nil)
+	o.do(t, "santosh", "PUT", "/v1/workstreams/"+webhook.ID+"/driver", -1, nil, 200, nil)
 	o.do(t, "owner", "PUT", "/v1/org/keys/openrouter", -1, api.OrgKeyPut{Key: testOrgKey}, 200, nil)
 	if got := runners(); !slices.Equal(got, []string{"driver", "server"}) {
 		t.Fatalf("a runner with a key offers %v", got)
 	}
-	o.do(t, "santosh", "PUT", "/v1/workstreams/"+webhook.ID+"/driver", -1, nil, 200, nil)
 	o.do(t, "owner", "PATCH", "/v1/settings", -1, api.PatchFactorySettings{AgentRunner: &server}, 200, nil)
 	var ws api.Workstream
 	o.do(t, "abir", "GET", "/v1/workstreams/"+webhook.ID, -1, nil, 200, &ws)
@@ -87,6 +87,46 @@ func TestServerRunnerIsOfferedWithARunnerAndAKey(t *testing.T) {
 	if got := runners(); !slices.Equal(got, []string{"driver"}) {
 		t.Fatalf("no runner offers %v", got)
 	}
+}
+
+// WITH NO CHOICE MADE, A SERVER THAT CAN RUN AGENTS RUNS THEM (final run E2
+// #3, E3 F3): a laptop's agent has none of a workstream's tools, so a fresh
+// organization's Afi worked where nobody could see it. Before a key, the
+// laptop is the only place; the key moves agents onto the server and lets go
+// of every driver's hand; saving another setting keeps no choice; and an
+// operator who chose the laptop keeps it.
+func TestAServerThatCanRunAgentsRunsThemUntilTheOperatorChooses(t *testing.T) {
+	o := newWSOrg(t)
+	webhook, _, _, _ := o.orgScene(t)
+	runner := func() string {
+		var got api.FactorySettingsView
+		o.do(t, "abir", "GET", "/v1/settings", -1, nil, 200, &got)
+		return got.AgentRunner
+	}
+	o.h.config.WorkstreamAgent = func(context.Context, AgentTurn) (AgentTurnEnd, error) { return AgentTurnEnd{}, nil }
+	if got := runner(); got != "driver" {
+		t.Fatalf("with no key agents run on %q", got)
+	}
+	days := 30
+	o.do(t, "owner", "PATCH", "/v1/settings", -1, api.PatchFactorySettings{KeepOutputDays: &days}, 200, nil)
+	o.do(t, "santosh", "PUT", "/v1/workstreams/"+webhook.ID+"/driver", -1, nil, 200, nil)
+	o.do(t, "owner", "PUT", "/v1/org/keys/openrouter", -1, api.OrgKeyPut{Key: testOrgKey}, 200, nil)
+	if got := runner(); got != "server" {
+		t.Fatalf("with a key and no choice agents run on %q", got)
+	}
+	var ws api.Workstream
+	o.do(t, "abir", "GET", "/v1/workstreams/"+webhook.ID, -1, nil, 200, &ws)
+	if ws.Driver != nil {
+		t.Fatalf("still driven by %+v once the server runs agents", ws.Driver)
+	}
+	o.do(t, "abir", "PUT", "/v1/workstreams/"+webhook.ID+"/driver", -1, nil, 409, nil)
+
+	driver := "driver"
+	o.do(t, "owner", "PATCH", "/v1/settings", -1, api.PatchFactorySettings{AgentRunner: &driver}, 200, nil)
+	if got := runner(); got != "driver" {
+		t.Fatalf("the operator chose the laptop and agents run on %q", got)
+	}
+	o.do(t, "abir", "PUT", "/v1/workstreams/"+webhook.ID+"/driver", -1, nil, 200, nil)
 }
 
 // serverMode turns the organization to running agents on its server, with

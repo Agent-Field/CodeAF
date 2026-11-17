@@ -28,12 +28,15 @@ type RunnerSettings struct {
 	ReadOnArrival bool `json:"read_on_arrival"`
 	// AgentRunner is where an organization workstream's agent runs, the
 	// operator's choice (factory.AgentRunnerDriver or factory.AgentRunnerServer).
-	// Empty is a store written before the choice existed, and reads as driver.
+	// EMPTY IS NO CHOICE MADE, and stays empty when another setting is saved:
+	// the server reads it as "server" once it can run agents and "driver"
+	// before (serve's runnerOf), because a driver's laptop agent has none of a
+	// workstream's tools (final run E2 #3, E3 F3).
 	AgentRunner string `json:"agent_runner,omitempty"`
 }
 
 func DefaultRunnerSettings() RunnerSettings {
-	return RunnerSettings{RunnerTimeoutSeconds: DefaultRunnerTimeoutSeconds, KeepOutputDays: DefaultKeepOutputDays, KeepOutputMB: DefaultKeepOutputMB, AgentRunner: factory.AgentRunnerDriver}
+	return RunnerSettings{RunnerTimeoutSeconds: DefaultRunnerTimeoutSeconds, KeepOutputDays: DefaultKeepOutputDays, KeepOutputMB: DefaultKeepOutputMB}
 }
 func (v RunnerSettings) Valid() bool {
 	return factory.KnownAgentRunner(v.AgentRunner) && v.RunnerTimeoutSeconds >= factory.MinRunnerTimeoutSeconds && v.RunnerTimeoutSeconds <= factory.MaxRunnerTimeoutSeconds && v.KeepOutputDays >= factory.MinKeepOutputDays && v.KeepOutputDays <= factory.MaxKeepOutputDays && v.KeepOutputMB >= factory.MinKeepOutputMB && v.KeepOutputMB <= factory.MaxKeepOutputMB
@@ -50,7 +53,6 @@ func (st *Store) RunnerSettings() (RunnerSettings, error) {
 	if json.Unmarshal(raw, &out) != nil || !out.Valid() {
 		return DefaultRunnerSettings(), errors.New("invalid runner settings")
 	}
-	out.AgentRunner = factory.AgentRunnerOf(out.AgentRunner)
 	return out, nil
 }
 
