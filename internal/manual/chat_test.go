@@ -53,6 +53,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"who is doing this task, Afi or an agent?", "organization-workstream-tasks"},
 		{"how do I change who does a task", "organization-workstream-tasks"},
 		{"afi gave marco's review to me instead of him", "organization-workstream-tasks"},
+		{"give a task to afi and take it back", "organization-workstream-tasks"},
+		{"what does Your chat mean on a task", "organization-workstream-tasks"},
 		{"hand a task from Afi to Lena", "organization-workstream-tasks"},
 		{"what does for Marco mean on a task row", "organization-workstream-tasks"},
 		{"can Afi see my chats in a workstream", "workstream-chats-and-tools"},
