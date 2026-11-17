@@ -37,7 +37,7 @@ func TestAfiNamesWhoDoesATaskAndTheReviewLandsOnTheReviewer(t *testing.T) {
 	ctx := context.Background()
 	door := &agentDoor{h: o.h, id: strings.TrimPrefix(path, "/v1/workstreams/"), asker: "santosh"}
 	create := func(doneBy string) (factory.TaskDoneBy, error) {
-		line, err := door.Work(ctx, "ws_task_create", json.RawMessage(`{"title":"Review the store text","request":"Read it for tone.","done_by":"`+doneBy+`"}`))
+		line, err := door.Work(ctx, "ws_task_create", json.RawMessage(`{"title":"Review the store text","request":"Read it for tone.","goal":"The store text reads in our voice","deliverable":"Notes on the task","acceptance":["Names each off-tone line","Suggests a fix for each"],"done_by":"`+doneBy+`"}`))
 		if err != nil {
 			return factory.TaskDoneBy{}, err
 		}
