@@ -394,6 +394,16 @@ func (h *Handler) patchWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 		}
 		p.DoneBy = &d
 	}
+	if p.AddAsk != nil && p.AddAsk.Decider != nil {
+		// An Ask names ONE decider in the workstream (workstream_task_asks.go).
+		d, err := h.checkDecider(ws, *p.AddAsk.Decider)
+		if h.taskRefused(w, err) {
+			return
+		}
+		ask := *p.AddAsk
+		ask.Decider = &d
+		p.AddAsk = &ask
+	}
 	var target factory.OrgWorkstream
 	if p.MoveTo != "" && p.MoveTo != ws.ID {
 		other, found, err := h.config.Store.Workstream(p.MoveTo)

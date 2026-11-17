@@ -4,6 +4,14 @@
 
 An Ask is a question that blocks a task, and it has exactly one decider. A task's own Ask is decided by the task's owner; only the owner gets its buttons. When several people must approve something, the task carries several Asks, each with its own decider, and the task waits on every one of them: answering one leaves it waiting until the last is answered. There is no Ask that several people decide together, and no shared owner — that deadlocks or races, so it is not built. An Ask nobody answers for a day also reaches the workstream's fallback person.
 
+## ask someone a question on a task — Ask someone, ask a teammate to decide, answer Yes, No or Reply…
+
+You can ask one person in the workstream to decide something on a task, the same way Afi asks you. On the task, open More, choose "Ask someone" and pick the person; only people in the workstream are listed, and never you. The box below becomes "Ask Marco": its first line is the question and the rest is what they need to know to answer ("Your question for Marco · the first line is the question"). Press "Ask". The toast says "Asked Marco · it waits in their Inbox until they answer".
+
+The task now waits on that Ask. The card says "You asked Marco" to you, "Priya asks you" to Marco and "Priya asks Marco" to everyone else, and the thread says "Priya asks Marco: <question>". Marco sees it under Waiting on you in their Inbox ("Priya asks you") and on Work. Only Marco answers it: "Yes", "No", or "Reply…", which opens a field for an answer in words; Return sends it. A person's Ask has no "Tell it…", because there is no agent to tell. Their answer is kept in the workstream's Decisions as the question and his answer ("Can the two crash fixes land before the 28th? Yes"), and the task goes back to what it was doing: up next stays up next, and Afi's work carries on with the answer.
+
+Limits, in the server's words: someone outside the workstream is refused ("Lena is not in this workstream, so they cannot answer its Asks; ask someone who is"); you cannot ask yourself ("an Ask goes to someone else; you decide your own questions"); and a done task takes no Ask ("this task is done, so nothing waits on an answer; comment and @ them instead"). Ask someone is on an organization's workstreams; Personal has nobody else to ask.
+
 ## add your view to someone else's Ask — a view is not a vote
 
 On an Ask you do not decide, the card has no buttons for you; it says who decides and offers a field, "Add your view for Marco". A view is one short line for the decider to read before answering. Each person has one view per Ask; writing again replaces yours, and clearing it takes it away. The decider never adds a view to their own Ask — they answer it. A view is not a vote: the decider reads the views and decides. When the Ask is answered, its decision says whose views were attached.
