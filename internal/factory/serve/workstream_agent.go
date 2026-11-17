@@ -626,6 +626,26 @@ type agentDoor struct {
 	// the run makes is stamped from it and what it reads is used by it, so the
 	// task page lists both without the agent having to say so.
 	runTask string
+	// goesOn is set for a task's run that carries on an earlier run's work,
+	// after an answer or a restart: what the task already made counts as
+	// written when the run ends (finishTaskRun).
+	goesOn bool
+}
+
+// madeByTask is the files Afi made for task, which an earlier run of it
+// wrote. A file that cannot be listed counts as none.
+func (d *agentDoor) madeByTask(ctx context.Context, task string) []string {
+	files, err := d.files(ctx, "")
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, f := range files.Files {
+		if f.FromTask == task && f.MadeBy.Kind == factory.MakerAfi && f.Kind != factory.FileFolder {
+			out = append(out, f.ID)
+		}
+	}
+	return out
 }
 
 // taskWrites is the files one task run made or rewrote, in the order it wrote

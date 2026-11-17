@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"net/http"
+	"net/url"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -59,12 +61,15 @@ func (h *Handler) taskRunDir(ws, task string) string {
 // the task happens in the run, after the caller's transaction has ended; a
 // caller whose transaction fails after a nil return calls stopTaskTurn.
 func (h *Handler) runTaskTurn(ws factory.OrgWorkstream, task factory.WorkstreamTask, starter, words string) error {
-	return h.startTaskRun(ws, task, starter, words, 0)
+	return h.startTaskRun(ws, task, starter, words, 0, false)
 }
 
 // startTaskRun is runTaskTurn for a run that has already been resumed
-// `resumes` times after a restart cut it off (workstream_task_lease.go).
-func (h *Handler) startTaskRun(ws factory.OrgWorkstream, task factory.WorkstreamTask, starter, words string, resumes int) error {
+// `resumes` times after a restart cut it off (workstream_task_lease.go), and,
+// when answered, for the run an answer to Afi's Ask started. Either one goes on
+// with work an earlier run of the task did, so finishTaskRun counts the files
+// that run made (agentDoor.goesOn).
+func (h *Handler) startTaskRun(ws factory.OrgWorkstream, task factory.WorkstreamTask, starter, words string, resumes int, answered bool) error {
 	if !h.serverAgentServed() {
 		return errTaskNoRunner
 	}
@@ -101,7 +106,7 @@ func (h *Handler) startTaskRun(ws factory.OrgWorkstream, task factory.Workstream
 	owner := d.ownerLocked()
 	d.mu.Unlock()
 
-	door := &agentDoor{h: h, id: ws.ID, asker: starter, wrote: &taskWrites{}, runTask: task.ID}
+	door := &agentDoor{h: h, id: ws.ID, asker: starter, wrote: &taskWrites{}, runTask: task.ID, goesOn: answered || resumes > 0}
 	run := AgentTurn{Workstream: ws.ID, Name: ws.Name, Turn: turn, Asker: starter, Text: strings.TrimSpace(words), Now: now, About: h.orgAbout(),
 		Task: &AgentTask{ID: task.ID, Title: task.Title},
 		Key:  h.orgModelKey(), Dir: filepath.Join(h.taskRunDir(ws.ID, task.ID), "agent"), Door: door,
@@ -194,7 +199,7 @@ func (h *Handler) resumeTaskRun(ws factory.OrgWorkstream, t factory.WorkstreamTa
 	}
 	// A server with no runner was never running Afi here (the same answer a
 	// Start gets), so only an unexpected refusal is worth a line in the log.
-	if err := h.runTaskTurn(ws, cur, starter, words); err != nil && !errors.Is(err, errTaskBusy) && !errors.Is(err, errTaskNoRunner) {
+	if err := h.startTaskRun(ws, cur, starter, words, 0, true); err != nil && !errors.Is(err, errTaskBusy) && !errors.Is(err, errTaskNoRunner) {
 		log.Printf("factory: workstream %s: task %s was answered but Afi could not go on: %v", ws.ID, t.ID, err)
 	}
 }
@@ -231,19 +236,43 @@ func (h *Handler) taskTurnRunning(ws, task string) bool {
 // ended without setting it done or failed, so a task never says running with
 // nothing at work on it.
 //
+// A RUN THAT ENDED CLEANLY LEAVING THE TASK WAITING ON UNFINISHED WORK IS UP
+// NEXT, NOT FAILED: Afi said what the task waits on, and Up next is where a
+// wait shows (factory.WaitAgain), so it starts again once that work is done.
+// The run an answer started set the release notes to wait on the candidate run
+// and the security review and ended, and the task read Failed (mac-studio,
+// 2026-11-17).
+//
 // A RUN THAT ENDED CLEANLY HAVING WRITTEN ITS WORK IS DONE, NOT FAILED: the
 // files it made or rewrote become the task's results, beside any it already
 // had. Afi often writes the page and says so in the thread without the last
 // ws_task_update, and calling that a failure put finished work under Failed
-// (E4 F8). A run that wrote nothing, or ended on an error, is failed with why
-// in plain words.
+// (E4 F8). A run that goes on with an earlier run's work (after an answer or a
+// restart) counts the files the task made as written: the asking run wrote
+// the page, and the run after the answer often only replies. A run that wrote
+// nothing, or ended on an error, is failed with why in plain words.
 func (h *Handler) finishTaskRun(door *agentDoor, task string, err error) {
 	ctx := context.Background()
 	t, terr := door.task(ctx, task)
 	if terr != nil || t.State != factory.TaskRunning {
 		return
 	}
-	if wrote := door.wrote.list(); err == nil && len(wrote) > 0 {
+	if err == nil && len(t.WaitingOn) > 0 {
+		if all, lerr := door.tasks(ctx); lerr == nil && waitsOnUnfinished(t, all) {
+			args, _ := json.Marshal(map[string]any{"state": factory.TaskUpNext})
+			if _, perr := door.call(ctx, h.patchWorkstreamTask, http.MethodPatch, "/v1/workstreams/"+door.id+"/tasks/"+url.PathEscape(task), map[string]string{"tid": task}, json.RawMessage(args), t.Rev); perr == nil {
+				return
+			}
+			if t, terr = door.task(ctx, task); terr != nil || t.State != factory.TaskRunning {
+				return
+			}
+		}
+	}
+	wrote := door.wrote.list()
+	if err == nil && len(wrote) == 0 && door.goesOn {
+		wrote = door.madeByTask(ctx, task)
+	}
+	if err == nil && len(wrote) > 0 {
 		results := []map[string]string{}
 		for _, r := range t.Results {
 			switch {
@@ -275,4 +304,15 @@ func (h *Handler) finishTaskRun(door *agentDoor, task string, err error) {
 	}
 	args, _ := json.Marshal(map[string]any{"task": task, "rev": t.Rev, "state": factory.TaskFailed, "state_reason": why})
 	_, _ = door.Work(ctx, "ws_task_update", args)
+}
+
+// waitsOnUnfinished is whether t waits on a task that is not done.
+func waitsOnUnfinished(t factory.WorkstreamTask, all []factory.WorkstreamTask) bool {
+	done := map[string]bool{}
+	for _, o := range all {
+		if o.State == factory.TaskDone {
+			done[o.ID] = true
+		}
+	}
+	return slices.ContainsFunc(t.WaitingOn, func(w string) bool { return !done[w] })
 }
