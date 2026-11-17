@@ -26,7 +26,7 @@ func TestAnAnswerOnAWaitingTaskRecordsTheDecisionAndStartsNothing(t *testing.T) 
 		mu.Lock()
 		turns = append(turns, turn)
 		mu.Unlock()
-		_, err := turn.Door.(workDoor).Work(ctx, "ws_task_update", json.RawMessage(`{"task":"`+turn.Task.ID+`","state":"done"}`))
+		_, err := turn.Door.(workDoor).Work(ctx, "ws_task_update", json.RawMessage(`{"task":"`+turn.Task.ID+`","state":"done","handoff":"Wrote it."}`))
 		return AgentTurnEnd{}, err
 	})
 	ran := func() int {
@@ -80,7 +80,7 @@ func TestAnAnswerOnATaskWhoseWaitsAreDoneGoesOn(t *testing.T) {
 		mu.Lock()
 		ran++
 		mu.Unlock()
-		_, err := turn.Door.(workDoor).Work(ctx, "ws_task_update", json.RawMessage(`{"task":"`+turn.Task.ID+`","state":"done"}`))
+		_, err := turn.Door.(workDoor).Work(ctx, "ws_task_update", json.RawMessage(`{"task":"`+turn.Task.ID+`","state":"done","handoff":"Wrote it."}`))
 		return AgentTurnEnd{}, err
 	})
 	confirm := o.task(t, "santosh", path, api.TaskCreate{Title: "Confirm the launch date", DoneBy: factory.TaskDoneBy{Kind: factory.TaskByPerson, ID: "santosh", Name: "santosh"}})

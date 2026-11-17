@@ -44,7 +44,7 @@ func TestARunAnAnswerStartedIsNotFailedForEndingOnAReply(t *testing.T) {
 		}
 		if turn.Task.Title == "Waits" && n >= 3 {
 			// Started by itself once its wait was done: it finishes.
-			_, err := d.Work(ctx, "ws_task_update", json.RawMessage(`{"task":"`+id+`","state":"done"}`))
+			_, err := d.Work(ctx, "ws_task_update", json.RawMessage(`{"task":"`+id+`","state":"done","handoff":"Wrote it."}`))
 			return AgentTurnEnd{}, err
 		}
 		if turn.Task.Title == "Waits" {
