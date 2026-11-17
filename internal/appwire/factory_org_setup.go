@@ -119,7 +119,7 @@ func init() {
 		if text == "" || len(text) > orgAgentMessageMost {
 			return OrgRequest{}, Errorf(CodeBadParams, "text is 1 to 16384 bytes of words")
 		}
-		return OrgRequest{Method: http.MethodPost, Path: "/v1/org/setup/messages", Body: orgAgentMessageBody(text, p.TZ)}, nil
+		return OrgRequest{Method: http.MethodPost, Path: "/v1/org/setup/messages", Body: orgAgentMessageBody(text, p.TZ, false)}, nil
 	}), view)
 	methods["factory.org_setup_stop"] = filled(orgMethod[OrgConn, OrgSetupView]("factory.org_setup_stop", func(OrgConn) (OrgRequest, error) {
 		return OrgRequest{Method: http.MethodPost, Path: "/v1/org/setup/stop"}, nil

@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -151,6 +152,11 @@ func factoryAgentConsume(events <-chan session.Event, step func(kind, text, tool
 		case session.EventToolBegin:
 			say()
 		case session.EventToolEnd:
+			// A proposal is its own line already, the cards themselves
+			// (serve/workstream_agent_cards.go); a step saying so twice is noise.
+			if e.Tool == session.WSTaskProposeTool {
+				continue
+			}
 			step(api.AgentEntryStep, factoryAgentStepWords(e), e.Tool, false)
 		case session.EventToolFailed:
 			step(api.AgentEntryStep, factoryAgentStepWords(e), e.Tool, true)
@@ -308,6 +314,8 @@ func factoryAgentWorkWords(e session.Event) (string, bool) {
 		return "suggested a change to a document", true
 	case session.WSFileCommentTool:
 		return "commented on a document", true
+	case session.WSTaskProposeTool:
+		return "proposed tasks", true
 	}
 	return "", false
 }
@@ -337,6 +345,22 @@ func workstreamDoorKeepsWork(door serve.AgentDoor) bool {
 	return ok
 }
 
+// workstreamDoorProposes says the door keeps task cards for the person in
+// this conversation, so its agent carries ws_task_propose; a task's run does
+// not, and is never told about a verb it lacks.
+func workstreamDoorProposes(door serve.AgentDoor) bool {
+	p, ok := door.(session.WorkstreamProposeDoor)
+	return ok && p.Proposes()
+}
+
+// factoryWorkstreamAgentCards is how tasks reach the person in their own
+// conversation with Afi on the server (Workstreams v2, screen 8): as cards
+// they tick and add, never made behind their back. Live use found Afi making
+// a plan of tasks for other people the moment it was asked, and the people
+// named were told before the asker had read the plan.
+var factoryWorkstreamAgentCards = session.WorkstreamCardsRule +
+	"- A plan is proposed the same way: its " + strconv.Itoa(session.WorkstreamPlanFewest) + " to " + strconv.Itoa(session.WorkstreamPlanMost) + " tasks in one " + session.WSTaskProposeTool + " call with one group name. Once added, it waits for one press of Start."
+
 // factoryWorkstreamAgentTurnSystem is the prompt for one turn: a person's
 // message, or one task Afi was started on.
 func factoryWorkstreamAgentTurnSystem(turn serve.AgentTurn) string {
@@ -359,6 +383,9 @@ func factoryWorkstreamAgentTurnSystem(turn serve.AgentTurn) string {
 		system = factoryNamedAgentSystem(*turn.Agent, system)
 	}
 	if turn.Task == nil {
+		if workstreamDoorProposes(turn.Door) {
+			system += "\n\n" + factoryWorkstreamAgentCards
+		}
 		return system
 	}
 	return system + "\n\n" + factoryWorkstreamAgentTaskRun(turn.Task.ID, turn.Task.Title, turn.Asker)
@@ -448,7 +475,7 @@ func factoryWorkstreamAgentSystem(name, asker string, work bool, now time.Time, 
 // this line the server's Afi promised "a chat to coordinate it" and pointed
 // people at one that could never exist. ON THE SERVER A BATCH IS A PLAN.
 const factoryWorkstreamAgentPlan = "Here a batch is a plan, never a chat: there are no chats on this server. " +
-	"Make its tasks yourself with ws_task_create, one group name for all of them (a short name for the work), each done by Afi unless a person is to do it. " +
+	"Its tasks share one group name (a short name for the work), each done by Afi unless a person is to do it. " +
 	"The plan waits in Up next until a person presses Start, which releases all of it; never start a task of it yourself, and never say a chat will run it. " +
 	"When you are asked to coordinate work, that means: make the plan, then read ws_tasks when you are asked how it is going, and report here."
 

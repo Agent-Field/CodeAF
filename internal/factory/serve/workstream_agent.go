@@ -195,15 +195,18 @@ type agentDesk struct {
 	sweepDone chan struct{}
 	// work is each task's Working conversation (workstream_task_work.go).
 	work map[taskRunKey]*taskWork
-	ctx  context.Context
-	stop context.CancelFunc
-	wg   sync.WaitGroup
+	// adding is the cards lines being added now (workstream_agent_cards.go).
+	adding map[cardsKey]bool
+	ctx    context.Context
+	stop   context.CancelFunc
+	wg     sync.WaitGroup
 }
 
 func (h *Handler) agentRoutes() {
 	h.route("/v1/workstreams/{id}/agent", map[string]http.HandlerFunc{http.MethodGet: h.getWorkstreamAgent})
 	h.route("/v1/workstreams/{id}/agent/messages", map[string]http.HandlerFunc{http.MethodPost: h.postAgentMessage})
 	h.route("/v1/workstreams/{id}/agent/stop", map[string]http.HandlerFunc{http.MethodPost: h.stopWorkstreamAgent})
+	h.route("/v1/workstreams/{id}/agent/cards/{seq}", map[string]http.HandlerFunc{http.MethodPost: h.postAgentCards})
 }
 
 // serverAgentServed is whether this server can run workstream agents at all:
@@ -488,7 +491,7 @@ func (h *Handler) postAgentMessage(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusForbidden, "talking to this workstream's agent needs a signed-in person")
 		return
 	}
-	err := h.startAgentTurn(ws, v, asker, chat, text, strings.TrimSpace(body.TZ))
+	err := h.startAgentTurn(ws, v, asker, chat, text, strings.TrimSpace(body.TZ), body.Cards)
 	var gone chatAgentGone
 	if errors.As(err, &gone) {
 		h.fail(w, http.StatusConflict, gone.Error())
@@ -507,7 +510,7 @@ func (h *Handler) postAgentMessage(w http.ResponseWriter, r *http.Request) {
 // startAgentTurn claims asker's conversation with ws's agent for one message
 // and runs it in the background. It is errAgentBusy while their previous
 // message is answered; other people's conversations never make it busy.
-func (h *Handler) startAgentTurn(ws factory.OrgWorkstream, v wsViewer, asker, chat, text, tz string) error {
+func (h *Handler) startAgentTurn(ws factory.OrgWorkstream, v wsViewer, asker, chat, text, tz string, cards bool) error {
 	now := h.clock().UTC()
 	tid, err := cell.NewID(now)
 	if err != nil {
@@ -545,7 +548,7 @@ func (h *Handler) startAgentTurn(ws factory.OrgWorkstream, v wsViewer, asker, ch
 		h.chatTouched(seat, text)
 	}
 	h.publishAgent(seat, api.AgentEvent{AgentState: &state})
-	door := &agentDoor{h: h, id: ws.ID, asker: asker, operator: v.Operator}
+	door := &agentDoor{h: h, id: ws.ID, asker: asker, operator: v.Operator, cards: cards && chat == "" && !ws.Space}
 	run := AgentTurn{Workstream: ws.ID, Name: ws.Name, Turn: turn, Asker: asker, Text: text, Now: now, TZ: tz, About: h.orgAbout(), Chat: chat, Space: ws.Space, Agent: persona,
 		Key: h.orgModelKey(), Dir: filepath.Join(h.agentDir(seat), "agent"), Door: h.withLibrary(door), Library: h.spacesServed(),
 		Step: func(kind, text, tool string, failed bool) {
@@ -694,6 +697,9 @@ type agentDoor struct {
 	// after an answer or a restart: what the task already made counts as
 	// written when the run ends (finishTaskRun).
 	goesOn bool
+	// cards is whether the app this person's message came from draws task
+	// cards (workstream_agent_cards.go); without it the agent never proposes.
+	cards bool
 }
 
 // madeByTask is the files Afi made for task, which an earlier run of it

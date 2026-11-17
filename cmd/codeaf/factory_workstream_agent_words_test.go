@@ -229,3 +229,22 @@ func TestAServerChatIsToldItReadsTheOrganizationsLibraryAndCannotAddToIt(t *test
 		}
 	}
 }
+
+// IN A PERSON'S CONVERSATION THE SERVER'S AFI PROPOSES, AND A TASK'S RUN IS
+// NEVER TOLD OF CARDS (Workstreams v2, screen 8). Before, it made a plan's
+// tasks the moment it was asked and the people they named were told before
+// the asker had read the plan.
+func TestTheServersAfiProposesInAConversationAndNotInARun(t *testing.T) {
+	if !strings.Contains(factoryWorkstreamAgentCards, session.WSTaskProposeTool) || !strings.Contains(factoryWorkstreamAgentCards, "Once added, it waits for one press of Start") {
+		t.Fatalf("the cards prompt %q", factoryWorkstreamAgentCards)
+	}
+	if !strings.Contains(factoryWorkstreamAgentCards, "5 to 8 tasks") {
+		t.Error("the cards prompt does not say a plan's bounds")
+	}
+	if strings.Contains(factoryWorkstreamAgentPlan, "Make its tasks yourself with ws_task_create") {
+		t.Error("the plan line still tells Afi to make a plan's tasks itself")
+	}
+	if workstreamDoorProposes(nil) {
+		t.Error("no door proposes")
+	}
+}

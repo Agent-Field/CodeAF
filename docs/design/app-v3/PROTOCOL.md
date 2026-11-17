@@ -504,6 +504,7 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.org_key_delete` | `in.OrgKeyParams` | `Empty` |
 | `factory.org_workstream_agent` | `in.OrgWorkstreamAgentParams` | `OrgWorkstreamAgent` |
 | `factory.org_workstream_agent_send` | `in.OrgWorkstreamAgentSendParams` | `OrgWorkstreamAgent` |
+| `factory.org_workstream_agent_cards_add` | `in.OrgAgentCardsAddParams` | `OrgWorkstreamAgent` |
 | `factory.org_workstream_agent_stop` | `in.OrgWorkstreamAgentStopParams` | `OrgWorkstreamAgent` |
 | `factory.org_profile` | `in.OrgConn` | `OrgProfile` |
 | `factory.org_profile_set` | `in.OrgProfileSetParams` | `OrgProfile` |
@@ -1128,6 +1129,21 @@ it in one order (teams, workstreams, the workstreams inside them, invites) and a
 `{made:[{kind, name, id, parent?, url?}], failed?, done}`; a part that fails is named in
 `failed`, and the same call again makes only what is left. `factory.org_setup_by_hand`
 marks the organization set up with nothing made.
+
+**Afi's task cards** (hello `org_agent_cards`). A desk that draws them sends `cards: true`
+on `factory.org_workstream_agent_send`; only that turn's agent carries `ws_task_propose`
+(a task's own run never does). A proposal is a line of `kind` `cards` in the caller's own
+conversation, its `text` the plain words ("Proposed 2 tasks: …") and `cards {group?, tasks:
+[{title, request, done_by: afi|person, person?, owner?, due?, waits_on?, checklist?}]}`, 1 to 8 cards,
+`person` and `owner` handles (absent is the caller), `waits_on` the 1-based numbers of
+earlier cards; a `group` is a plan and needs 5 or more. Nothing is written until
+`factory.org_workstream_agent_cards_add {id, seq, group?, tasks}` `POST
+.../agent/cards/{seq}` (`edit`; only the conversation's own person): the ticked cards, as
+changed, are made as tasks in order as the caller (`came_from` Afi), five or more sharing
+one group that waits for Start, and a `note` line `{took: seq, tasks: [ids]}` says "Added
+N tasks · <names> is told". A cards line is added once: again is `conflict`; one no longer
+kept is `not_found`. If some tasks are refused after others were made, the note says
+"Added k of N tasks; the rest were not added: …" with `failed`, and the line is taken.
 
 An engine whose hello carries `org_task_work` reads and steers a task's Working
 conversation: what Afi says and does while it works a task on the organization's
