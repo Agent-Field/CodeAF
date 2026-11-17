@@ -59,6 +59,8 @@ A page or document Afi makes is shown in Files as made by Afi for the person who
 
 Afi rewrites a page directly only when Afi made it and no person has edited it. Any other page, and any page somebody has open for editing, gets Afi's text as a suggestion: it changes nothing in the page and waits for someone who can edit the page to take it. Afi says so in its reply, by the page's name, and never talks about versions or history. The document's header says the same thing to everyone: "Afi suggests edits here; they wait for someone to take them".
 
+When Afi suggests edits to a document (`ws_file_suggest`), they show on the document itself for everyone in the workstream, whether or not someone has it open: each changed passage is marked, with **Keep** and **Drop** beside it, and a bar above the title says how many edits are suggested, with Review one by one, Keep all and Drop all. Keep writes that edit into the page as everyone sees it; Drop removes it. An edit whose words have since changed on the page can no longer be kept, and the bar says so.
+
 ## a new organization workstream starts with an Overview page — never empty
 
 When someone makes a workstream on the organization's server and sends no pages with it, the server gives it one page: titled "Overview", of kind overview, with nothing written in it yet. That is the same page the desktop app sends, so a workstream made from the app, from a script or from any other client always has a page people (and the server's agent) can write in. A workstream made with pages of its own keeps exactly those pages, and no Overview is added.

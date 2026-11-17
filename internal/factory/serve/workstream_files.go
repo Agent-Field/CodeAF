@@ -297,7 +297,7 @@ func (h *Handler) filesAsRead(ws factory.OrgWorkstream, files map[string]factory
 			f.Versions = len(vs)
 			f.OpenComments = open[p.ID]
 		}
-		if q != "" && !fileMatches(f, pages[f.PageID], q) {
+		if q != "" && !fileMatches(f, pages[f.PageID], q) && !h.uploadSays(f, q) {
 			continue
 		}
 		if f.DeletedAt != nil {

@@ -170,7 +170,7 @@ var workstreamWorkTools = []WorkstreamWorkTool{
 		Description: "List the workstream's files and folders (documents, canvases, uploads, links, repos), with who made each and whether a person has edited it. Files from the parent workstream are listed as From <parent>.",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{` +
 			`"folder":{"type":"string","description":"Only what is inside this folder, by its id."},` +
-			`"query":{"type":"string","maxLength":200,"description":"Only files whose name matches."}` +
+			`"query":{"type":"string","maxLength":200,"description":"Only files whose name or words match: a document's words, an uploaded text file's, and on an organization's server a PDF's text."}` +
 			`},"additionalProperties":false}`)},
 	{Name: WSFileReadTool, Category: "read",
 		Description: "Read one file: a document's words with its version and the comments people left on its passages (each thread's id, the words it is on, who said what, and whether it is resolved), an uploaded text file's words (a long one in parts: pass from to read on), or what a link, upload or repo points to. This is the only way to read the workstream's files; they are not on disk for you. " +

@@ -266,6 +266,19 @@ func (st *Store) PutBlob(data []byte) (string, error) {
 	return sha, os.Rename(tmp.Name(), path)
 }
 
+// BlobPath is where the bytes kept under sha are on disk, for a reader that
+// takes a path (a PDF's text layer).
+func (st *Store) BlobPath(sha string) (string, error) {
+	path, err := st.blobPath(sha)
+	if err != nil {
+		return "", err
+	}
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		return "", ErrFileGone
+	}
+	return path, nil
+}
+
 // Blob is the bytes kept under sha.
 func (st *Store) Blob(sha string) ([]byte, error) {
 	path, err := st.blobPath(sha)

@@ -221,6 +221,9 @@ type Handler struct {
 	// commentFlights holds the jobs with a comment on their issue being
 	// posted by this handler (issue_comment.go).
 	commentFlights sync.Map
+	// uploadWords holds each upload's words for a Files search, by the
+	// sha256 its bytes are kept under (workstream_files_search.go).
+	uploadWords uploadWordCache
 
 	// reposMu serializes every change to the watched list: the single-repo switch
 	// reads, edits and saves it, so any other writer must queue behind it. It is
