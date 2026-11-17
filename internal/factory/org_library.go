@@ -4,8 +4,8 @@ import "time"
 
 // ── AN ORGANIZATION'S LIBRARY ──────────────────────────────────────────────
 //
-// An organization keeps one Library on its server (org-space DESIGN §2.1,
-// lane L3): pages that everyone in the organization reads, and that every
+// An organization keeps one Library on its server (org-space DESIGN
+// §2.1): pages that everyone in the organization reads, and that every
 // chat the server runs can search. The rules:
 //
 //   - NOTHING REACHES IT ON ITS OWN (OWNER-DECISIONS §5). A page arrives

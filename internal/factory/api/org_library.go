@@ -1,6 +1,6 @@
 package api
 
-// ── An organization's Library (lane L3, org-space DESIGN §2.1) ──
+// ── An organization's Library (org-space DESIGN §2.1) ──
 //
 //	GET    /v1/library            every page's title, newest first (no words)
 //	GET    /v1/library/{id}       one page with its words

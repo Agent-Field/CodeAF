@@ -3,7 +3,7 @@ package session
 // THE ORGANIZATION'S LIBRARY, FOR AN AGENT ON ITS SERVER.
 //
 // An organization keeps one Library on its server: pages its people added on
-// purpose, which everyone in it reads (lane L3, org-space DESIGN §2.1). A chat
+// purpose, which everyone in it reads (org-space DESIGN §2.1). A chat
 // the server runs, in a workstream or in someone's My space, reads it with one
 // tool, [OrgLibraryTool]: search it by words, or read one page whole.
 //
