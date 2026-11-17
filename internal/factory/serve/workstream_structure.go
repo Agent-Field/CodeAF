@@ -70,6 +70,7 @@ func (h *Handler) workstreamPeople(ws factory.OrgWorkstream, nameOf func(string)
 		} else {
 			m.Name = nameOf(id)
 			m.Steward = factory.NormalizeHandle(id) == steward
+			m.Invited = factory.InvitedPerson(id)
 		}
 		return m
 	}
@@ -113,6 +114,11 @@ func (h *Handler) personNames() func(string) string {
 				if n := strings.TrimSpace(m.Name); n != "" {
 					names[factory.NormalizeHandle(m.Handle)] = n
 				}
+			}
+			// Someone invited and not yet joined goes by the name or email
+			// they were invited with.
+			for ref, n := range h.inviteNames() {
+				names[ref] = n
 			}
 		}
 		if n := names[factory.NormalizeHandle(handle)]; n != "" {

@@ -197,6 +197,11 @@ func (h *Handler) operatorRevokePerson(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
+	// The invite they joined by is closed too, so People stops listing them as Joined (v2 J4): a removed person is
+	// gone from the table, and inviting the same email again makes a fresh invite.
+	if h.failed(w, closeInvitesOf(h.config.TokensPath, handle, h.now())) {
+		return
+	}
 	// A person the operator removes leaves every team with their sign-ins,
 	// and their workstreams go to an heir rather than keep a gone owner.
 	if h.failed(w, h.leaveEveryTeam(r, handle)) {
@@ -205,6 +210,15 @@ func (h *Handler) operatorRevokePerson(w http.ResponseWriter, r *http.Request) {
 	given, err := h.handOnWorkstreams(handle, heir, h.orgActor(r))
 	if h.failed(w, err) {
 		return
+	}
+	// THE TASKS THEY OWN ARE OFFERED TO WHOEVER REMOVED THEM (v2 J4, C6), so
+	// nothing is left without an owner: they arrive in that person's "Handed
+	// to you", from the person who left, to hand on.
+	if admin := h.orgActor(r); h.config.Store != nil && admin != "" && admin != handle {
+		from := &factory.PersonRef{ID: handle, Name: h.personNames()(handle)}
+		if h.failed(w, h.rebindTasks(r, handle, admin, admin, from)) {
+			return
+		}
 	}
 	detail := "jobs moved to Unassigned"
 	if given > 0 {

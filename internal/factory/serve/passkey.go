@@ -1854,6 +1854,8 @@ func (h *Handler) passkeyRegistered(r *http.Request, f passkeyFlow, pk tokens.Pa
 	if err := h.accountEvent(r, f.username, "", "signed up", "signed up with a passkey", f.operator); err != nil {
 		return nil, 0, "", err
 	}
+	// An invite's team, workstreams and tasks are theirs from the first screen.
+	h.settleInvites(r)
 	// A new account starts at generation 1, as SignUp writes it.
 	return &profile, 1, "", nil
 }

@@ -376,6 +376,8 @@ func (h *Handler) signUp(w http.ResponseWriter, r *http.Request, body api.Factor
 	if h.failed(w, h.accountEvent(r, username, "", "signed up", "signed up with a password", tok.Operator)) {
 		return
 	}
+	// An invite's team, workstreams and tasks are theirs from the first screen.
+	h.settleInvites(r)
 	credential, _, err := h.mintSession(w, r, profile, 1)
 	if h.failed(w, err) {
 		return

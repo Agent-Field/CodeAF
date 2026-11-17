@@ -119,6 +119,8 @@ This works in an organization workstream. A Personal workstream has only you in 
 
 When a person is removed from an organization workstream, each of their unfinished tasks there (and in every workstream inside it) is handed to the workstream's fallback person ("If unanswered for a day"), or to the person who looks after the workstream when there is none. The thread says "Handed to mia". Done tasks keep who did them, and a person's own checkbox task moves with the hand-off. Anyone who can edit can hand a task on again by hand.
 
+Someone removed from the whole organization is different: the tasks they owned go to the admin who removed them, into that admin's **Handed to you**, to hand on. A task given to someone invited who has not joined yet waits until they join.
+
 ## attach a file to a task — + Attach, drag a file onto a task, what a task uses, Remove from this task
 
 A task's page lists what it made (**Result**, or **Files** on a person's task) and, under it, what it **uses**: the files its doer reads as inputs. A file the task made is never listed twice.

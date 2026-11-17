@@ -147,7 +147,10 @@ type Config struct {
 	// TokensPath names access-token rows beside the host config. Empty means
 	// only AccessToken is accepted. It is read on each request so a revoke
 	// applies without restarting the service.
-	TokensPath   string
+	TokensPath string
+	// SendMail sends one plain-text email. Nil is a server with no mailer:
+	// an invite is then a link to copy, and nothing says it was emailed.
+	SendMail     func(ctx context.Context, to, subject, body string) error
 	PollingEvery time.Duration
 	// GitHubLimit is when GitHub's spent rate limit resets, zero when it is
 	// not spent. About says it, so an app can show why nothing is read.
@@ -358,6 +361,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.jobVerbs()
 	h.goAheadRoutes()
 	h.teamRoutes()
+	h.inviteRoutes()
 	h.workstreamRoutes()
 	h.presenceRoutes()
 	h.docRoutes()

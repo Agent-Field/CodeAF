@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 	"unicode"
+
+	"github.com/Agent-Field/codeaf/internal/factory/tokens"
 )
 
 // ── A WORKSTREAM'S TASKS (Workstreams v5, SPEC §2.2) ──────────────────────
@@ -265,6 +267,10 @@ type WorkstreamTask struct {
 	// ForYou is the reader's own: the comments on it that are for them and
 	// not yet read. It is FILLED AT READ TIME for one viewer and never kept.
 	ForYou *TaskForYou `json:"for_you,omitempty"`
+	// Unopened is the reader's own too: a task handed to them that they have
+	// not opened since, which Work lists under "Handed to you" once. FILLED AT
+	// READ TIME for one viewer and never kept.
+	Unopened bool `json:"unopened,omitempty"`
 	// StoppedBy is who pressed Stop, while the task is stopped, so the list
 	// says "Stopped by you" to that person alone and "Stopped by Marco" to
 	// everyone else.
@@ -907,6 +913,11 @@ func ApplyPatch(t WorkstreamTask, p TaskPatch, a TaskActor, by TaskEventBy, all 
 	}
 	sentBack := false
 	if p.State != nil && *p.State != t.State {
+		// A TASK DONE BY SOMEONE INVITED WAITS UNTIL THEY JOIN: it is not
+		// failed and nobody starts it for them.
+		if *p.State == TaskRunning && t.DoneBy.Kind == TaskByPerson && InvitedPerson(t.DoneBy.ID) {
+			return TaskChange{}, taskInvalidf("%s has not joined yet; this waits until they do", t.DoneBy.Name)
+		}
 		if t.DoneBy.Kind == TaskByFactory {
 			return TaskChange{}, ErrTaskFactoryState
 		}
@@ -1793,4 +1804,30 @@ func tickChecklist(list []TaskCheckItem, done, undone []string) ([]TaskCheckItem
 		return nil, err
 	}
 	return out, nil
+}
+
+// InvitedPerson is whether id names a person who has been invited and has not
+// joined yet ("invite:<id>"). A task they own or do waits until they join.
+func InvitedPerson(id string) bool { return strings.HasPrefix(id, tokens.InviteRefPrefix) }
+
+// RebindPerson gives an open task from `from` to `to` (named name): its owner
+// and the person who does it, where either is `from`. Who handed it over is
+// kept, so a joiner reads the tasks they were given before they joined as
+// handed to them. Done work keeps who did it; an unchanged task is false.
+func RebindPerson(t WorkstreamTask, from, to, name string, now time.Time) (WorkstreamTask, bool) {
+	if t.State == TaskDone || from == "" || to == "" || from == to {
+		return t, false
+	}
+	changed := false
+	if t.Owner.Kind == TaskOwnerPerson && NormalizeHandle(t.Owner.ID) == NormalizeHandle(from) {
+		t.Owner, changed = TaskOwner{Kind: TaskOwnerPerson, ID: to, Name: name}, true
+	}
+	if t.DoneBy.Kind == TaskByPerson && NormalizeHandle(t.DoneBy.ID) == NormalizeHandle(from) {
+		t.DoneBy, changed = TaskDoneBy{Kind: TaskByPerson, ID: to, Name: name}, true
+	}
+	if !changed {
+		return t, false
+	}
+	t.Rev, t.UpdatedAt = t.Rev+1, now.UTC().Format(time.RFC3339Nano)
+	return t, true
 }

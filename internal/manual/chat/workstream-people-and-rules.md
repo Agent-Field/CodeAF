@@ -10,7 +10,7 @@ Only the person who looks after the workstream (its steward — the person who m
 
 "Add people or a team…" picks persons and teams of your organization. Adding a team adds everyone in it, now and later: someone who joins Engineering next month is in every workstream Engineering is in, with nothing else to do. A team is a group of people, not a place; one workstream can have several teams, and making a workstream never asks "which team".
 
-## removing a person from a workstream — what happens to their open tasks
+## removing a person from a workstream — what happens to someone's open tasks when I remove them from a workstream
 
 Removing a person (or a team they were in through) hands their open tasks in that workstream, and in every workstream inside it, to the fallback person ("If unanswered for a day"). With no fallback set, they go to the person who looks after the workstream.
 

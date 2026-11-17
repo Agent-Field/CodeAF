@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/canvasrpc"
@@ -332,6 +333,15 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 	if servedBy == "factory" && mode == api.FactoryTeam {
 		// THE TEAM SERVER NEVER WRITES TO GITHUB, even with a host override.
 		handlerConfig.ChangeAssignee = nil
+	}
+	// An organization's server mails its invites only when told how to send
+	// mail; without it an invite is a link to copy, and People says so.
+	if servedBy == "factory" && mode == api.FactoryTeam {
+		send, err := serve.SMTPMailer(env.Get("CODEAF_SMTP_URL"), env.Get("CODEAF_SMTP_FROM"))
+		if err != nil {
+			return nil, fmt.Errorf("CODEAF_SMTP_URL: %w", err)
+		}
+		handlerConfig.SendMail = send
 	}
 	handler := serve.New(seam, handlerConfig)
 	server := &http.Server{

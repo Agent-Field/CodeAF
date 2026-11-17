@@ -46,6 +46,14 @@ func (h *Handler) fillForYou(ws factory.OrgWorkstream, v Viewer, tasks []factory
 	if me == "" || len(tasks) == 0 {
 		return
 	}
+	// Handed to you, shown once: a task handed to v that v has not opened.
+	if unopened, err := h.config.Store.HandedUnopened(ws.ID, me); err == nil && len(unopened) > 0 {
+		for i := range tasks {
+			t := &tasks[i]
+			t.Unopened = unopened[t.ID] && t.HandedBy != nil && t.State != factory.TaskDone &&
+				t.Owner.Kind == factory.TaskOwnerPerson && factory.NormalizeHandle(t.Owner.ID) == me
+		}
+	}
 	since := h.clock().Add(-forYouWindow).UTC().Format(time.RFC3339Nano)
 	unread, err := h.config.Store.UnreadComments(ws.ID, me, since)
 	if err != nil || len(unread) == 0 {

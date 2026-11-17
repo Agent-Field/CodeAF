@@ -263,7 +263,7 @@ In the desktop app there are three ways in, and all three open the same **Join a
 
 Paste the invite link someone sent you. Once it is read, the page says **You're invited to** and the organization's name, then offers a passkey, a username and password, or GitHub, in the order the server prefers. **Or join by your organization's address** takes the address (and an access token, if you were given one) instead.
 
-**Settings › Organizations** has one section per organization you are in: your account there (password, passkeys, sign out, **Leave organization…**), its invite links and people, the model key and where agents run, then **Teams in** the organization, then **Factory** for that organization (repositories, AI notes, and the line to its rules, limits and computers). It was called Settings › Factory before.
+**Settings › Organizations** has one section per organization you are in: your account there (password, passkeys, sign out, **Leave organization…**), its invite links, **People in** the organization (invite someone by email with a team and workstreams; see the page on inviting people), the model key and where agents run, then **Teams in** the organization, then **Factory** for that organization (repositories, AI notes, and the line to its rules, limits and computers). It was called Settings › Factory before.
 
 Invite links keep their old spelling, `codeaf://factory/join?url=…#token=…`, so every link already sent still works.
 
