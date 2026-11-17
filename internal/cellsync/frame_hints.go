@@ -970,9 +970,11 @@ func (f *Fetcher) stageOpenFromInbox(ctx context.Context, c cell.Cell, head, sta
 	}
 
 	if seededWarm {
+		journalRel := filepath.Join(cell.StateDir, "journal.jsonl")
+		turnsRel := filepath.Join(cell.StateDir, "turns.jsonl")
 		filtered := files[:0]
 		for _, spec := range files {
-			if _, have := metaByOID[spec.blobOID]; !have && fileExistsHint(filepath.Join(c.Root, spec.relPath)) {
+			if _, have := metaByOID[spec.blobOID]; !have && spec.relPath != journalRel && spec.relPath != turnsRel && fileExistsHint(filepath.Join(c.Root, spec.relPath)) {
 				continue
 			}
 			filtered = append(filtered, spec)

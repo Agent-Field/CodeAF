@@ -63,7 +63,15 @@ func seedOpenState(src, dst string) {
 			continue
 		}
 		if e.Type().IsRegular() {
-			_ = linkFile(filepath.Join(srcCell, name), filepath.Join(dstCell, name))
+			srcFile := filepath.Join(srcCell, name)
+			dstFile := filepath.Join(dstCell, name)
+			if name == "journal.jsonl" {
+				if raw, rErr := os.ReadFile(srcFile); rErr == nil {
+					_ = os.WriteFile(dstFile, raw, 0o600)
+				}
+				continue
+			}
+			_ = linkFile(srcFile, dstFile)
 		}
 	}
 }

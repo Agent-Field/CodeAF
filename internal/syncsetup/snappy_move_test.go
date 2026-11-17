@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"math"
 	"os"
@@ -1915,4 +1916,173 @@ func TestF3bCrashedArrivalOwnerDoesNotStallTools(t *testing.T) {
 	if _, err := os.Stat(marker); !os.IsNotExist(err) {
 		t.Fatalf("expected dead owner's arrival marker %s to be removed, stat err = %v", marker, err)
 	}
+}
+
+// Round 5c (2): a reader in a separate process holding the chat's journal InUse
+// for 3s must never delay shown (stays within the F1 budget), there are never
+// two writers on the same journal, and the history stays byte-identical.
+func TestR5cReaderInSeparateProcessDoesNotDelayShown(t *testing.T) {
+	if cellRoot := os.Getenv("CODEAF_TEST_R5C_HOLD_CELL"); cellRoot != "" {
+		jPath := filepath.Join(cellRoot, filepath.FromSlash(cell.TranscriptPath))
+		f, err := os.Open(jPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "open journal: %v\n", err)
+			os.Exit(2)
+		}
+		if err := filelock.Lock(f, true, true); err != nil {
+			fmt.Fprintf(os.Stderr, "lock journal: %v\n", err)
+			os.Exit(3)
+		}
+		presencePath := filepath.Join(cellRoot, "presence.json")
+		pRaw := fmt.Appendf(nil, `{"schema":1,"sessionId":%q,"pid":%d,"state":%q,"updatedAt":%q}`+"\n",
+			filepath.Base(cellRoot), os.Getpid(), session.PresenceIdle, time.Now().UTC().Format(time.RFC3339Nano))
+		_ = os.WriteFile(presencePath, pRaw, 0o600)
+		_, _ = os.Stdout.WriteString("locked\n")
+		time.Sleep(3 * time.Second)
+		session.CancelTakeover(cellRoot)
+		_ = os.Remove(presencePath)
+		_ = filelock.Unlock(f)
+		_ = f.Close()
+		os.Exit(0)
+	}
+
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("CODEAF_TELEMETRY", "off")
+	h := newTwoHomes(t)
+	seedTree(t, h.work)
+
+	a := h.openA()
+	a.mustSay("R5c initial turn on A")
+	h.durable(h.cell.ID, h.cell)
+	mustNil(t, a.drive.Close(t.Context()))
+
+	// B takes the chat, makes a workspace edit and a reply, publishes, and
+	// releases its lease so A can auto-continue / take it back.
+	takenB, err := h.continuerB().Take(t.Context(), h.cell.ID)
+	mustNil(t, err)
+	if takenB.Wait != nil {
+		mustNil(t, takenB.Wait(t.Context()))
+	}
+	bWork := workspaceOf(takenB.Taken.Cell.Root)
+	b := h.openOn(h.b, h.engB, takenB.Taken.Cell, bWork, nameB)
+	mustNil(t, os.WriteFile(filepath.Join(bWork, "r5c.txt"), []byte("from B in R5c\n"), 0o600))
+	b.mustSay("R5c latest turn on B")
+	h.durable(h.cell.ID, takenB.Taken.Cell)
+	mustNil(t, b.drive.Close(t.Context()))
+
+	wantTranscript, err := os.ReadFile(transcriptOf(takenB.Taken.Cell))
+	mustNil(t, err)
+
+	viewB, err := h.b.Dir.Cell(t.Context(), h.cell.ID)
+	mustNil(t, err)
+	mustNil(t, h.b.Dir.Release(t.Context(), h.cell.ID, viewB.Cell.Lease.Fence))
+	_ = os.Remove(filepath.Join(h.a.Home, "send-leases", h.cell.ID))
+
+	// Simulate an already-branched local turn on A (as on a machine that previously
+	// kept a branch in branches.json) before the child process holds A's journal
+	// InUse as a reader (PresenceIdle) for 3s.
+	appendTo(t, transcriptOf(h.cell), `{"type":"message","role":"user","content":"previously branched local note on A"}`+"\n")
+	localSealed, err := h.engine.Seal(t.Context(), h.cell, cellstore.TurnInfo{Changed: []string{cell.StateDir}})
+	mustNil(t, err)
+	keptID := "01J00000000000000000000055"
+	_, err = h.a.Dir.Create(t.Context(), keptID, directory.CellInit{
+		Head:        localSealed.Turn.ID,
+		ParentCell:  h.cell.ID,
+		OrphanTurns: 1,
+		Frames:      viewB.Cell.Frames,
+	})
+	mustNil(t, err)
+	branchesA, err := cellsync.OpenBranchMap(h.a.Home)
+	mustNil(t, err)
+	mustNil(t, branchesA.Set(h.cell.ID, keptID))
+
+	cmd := exec.Command(os.Args[0], "-test.run=^TestR5cReaderInSeparateProcessDoesNotDelayShown$")
+	cmd.Env = append(os.Environ(), "CODEAF_TEST_R5C_HOLD_CELL="+h.cell.Root)
+	stdout, err := cmd.StdoutPipe()
+	mustNil(t, err)
+	cmd.Stderr = os.Stderr
+	mustNil(t, cmd.Start())
+	t.Cleanup(func() {
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
+		}
+	})
+
+	readyBuf := make([]byte, len("locked\n"))
+	_, err = io.ReadFull(stdout, readyBuf)
+	mustNil(t, err)
+	if string(readyBuf) != "locked\n" {
+		t.Fatalf("unexpected child handshake: %q", string(readyBuf))
+	}
+	if !session.InUse(transcriptOf(h.cell)) {
+		t.Fatal("expected A's journal to be held InUse by child process before take")
+	}
+
+	rec := newRecordedRelay(t, h.a.Dir, h.a.Store, 400*time.Millisecond)
+	rec.blockBackground()
+	origADir, origAStore := h.a.Dir, h.a.Store
+	h.a.Dir = recordedDir{Client: origADir, rec: rec}
+	h.a.Store = recordedStore{Store: origAStore, rec: rec}
+
+	contA := h.continuerA()
+	var shownRounds int
+	var shownClock time.Duration
+	var wallShown time.Duration
+	var writerLockErr error
+	var shownTranscript []byte
+	wallStart := time.Now()
+	contA.opt.OnShown = func(got Continued) {
+		wallShown = time.Since(wallStart)
+		shownRounds, _, _, shownClock, _ = rec.snapshot()
+		shownTranscript, _ = os.ReadFile(transcriptOf(got.Taken.Cell))
+		// Verify the new session can claim the arrived journal immediately at
+		// shown without conflicting with the retiring child process (never two writers).
+		wf, oErr := os.OpenFile(transcriptOf(got.Taken.Cell), os.O_RDWR, 0o600)
+		if oErr != nil {
+			writerLockErr = oErr
+			return
+		}
+		defer wf.Close()
+		if lErr := filelock.Lock(wf, true, true); lErr != nil {
+			writerLockErr = lErr
+			return
+		}
+		_ = filelock.Unlock(wf)
+	}
+
+	seen := &directory.LeaseExpectation{Device: h.b.Device.ID(), Fence: viewB.Cell.Lease.Fence}
+	got, err := contA.OpenAvailable(t.Context(), h.cell.ID, seen)
+	mustNil(t, err)
+	t.Cleanup(func() {
+		rec.unblock()
+		if got.Wait != nil {
+			_ = got.Wait(context.Background())
+		}
+	})
+
+	t.Logf("R5c separate-process 3s reader: wallShown=%s shownRounds=%d shownClock=%s", wallShown, shownRounds, shownClock)
+	if shownRounds == 0 || shownRounds > 2 || shownClock > 800*time.Millisecond {
+		t.Fatalf("R5c: shownRounds=%d (%s), want within F1 budget (<=2 rounds, <=800ms)", shownRounds, shownClock)
+	}
+	if wallShown >= 500*time.Millisecond {
+		t.Fatalf("R5c: shown took %s on wall clock; delayed by 3s reader in separate process (want < 500ms)", wallShown)
+	}
+	if writerLockErr != nil {
+		t.Fatalf("R5c: arrived journal could not be exclusively locked at shown (two writers or shared inode): %v", writerLockErr)
+	}
+	if !bytes.Equal(shownTranscript, wantTranscript) {
+		t.Fatalf("R5c: transcript at shown is not byte-identical to B's published transcript (got %d bytes, want %d bytes)", len(shownTranscript), len(wantTranscript))
+	}
+
+	rec.unblock()
+	mustNil(t, got.Wait(t.Context()))
+	mustNil(t, cmd.Wait())
+
+	finalTranscript, err := os.ReadFile(transcriptOf(got.Taken.Cell))
+	mustNil(t, err)
+	if !bytes.Equal(finalTranscript, wantTranscript) {
+		t.Fatalf("R5c: final transcript after background stage is not byte-identical (got %d bytes, want %d bytes)", len(finalTranscript), len(wantTranscript))
+	}
+	assertSameTree(t, bWork, workspaceOf(got.Taken.Cell.Root))
 }
