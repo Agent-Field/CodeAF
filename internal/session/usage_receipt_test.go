@@ -3,6 +3,7 @@ package session
 import (
 	"path/filepath"
 	"testing"
+	"time"
 
 	procexec "github.com/Agent-Field/codeaf/internal/executor"
 )
@@ -26,7 +27,20 @@ func TestABankedCallReachesTheSeatBesideTheLedger(t *testing.T) {
 	if len(seat.got) != 1 {
 		t.Fatalf("seat told of %d calls, want 1: %+v", len(seat.got), seat.got)
 	}
-	want := procexec.ModelCall{Model: "vendor/m", Role: "planner", TokensIn: 900, TokensOut: 30, TokensCached: 400, CostMicroUSD: 12300}
+	if !FlushUsage() {
+		t.Fatal("call did not reach the ledger")
+	}
+	lines, err := ReadUsage(agent.config.usageLedger, time.Time{})
+	if err != nil || len(lines) != 1 {
+		t.Fatalf("ledger calls=%v, err=%v", lines, err)
+	}
+	// R10a's UsageCallID decision carries the original worker call's identity
+	// into its receipt, so moving its parent cannot bill that call again.
+	id := UsageCallID(lines[0])
+	if id == "" {
+		t.Fatal("ledger call has no portable identity")
+	}
+	want := procexec.ModelCall{CallID: id, Model: "vendor/m", Role: "planner", TokensIn: 900, TokensOut: 30, TokensCached: 400, CostMicroUSD: 12300}
 	if seat.got[0] != want {
 		t.Fatalf("got %+v want %+v", seat.got[0], want)
 	}

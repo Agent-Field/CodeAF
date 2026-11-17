@@ -3,6 +3,7 @@ package executor
 // ModelCall is one model call as a seat is told of it: who answered, for what,
 // and what it cost. The seat that keeps a record puts it in the next receipt.
 type ModelCall struct {
+	CallID       string
 	Model        string
 	Role         string
 	TokensIn     int

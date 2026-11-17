@@ -117,7 +117,7 @@ func foldUsage(d *Digest, _ []byte, e sessionEntry) {
 		return
 	}
 	d.Usage = append(d.Usage, UsageLine{
-		At: parseStamp(e.Timestamp), Model: u.Model, Role: u.Role, Calls: u.Calls,
+		CallID: u.CallID, RemoteEvent: u.RemoteEvent, At: parseStamp(e.Timestamp), Model: u.Model, Role: u.Role, Calls: u.Calls,
 		Input: u.Input, Output: u.Output, USD: u.CostUSD, Empty: u.Empty,
 		Session: d.ID, Workspace: d.Workspace,
 	})

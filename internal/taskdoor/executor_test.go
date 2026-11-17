@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/run"
+	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/taskdoor"
 )
 
@@ -78,7 +79,7 @@ func TestTaskChildHelper(t *testing.T) {
 	_ = steps.Close()
 	ledger, _ := os.OpenFile(os.Getenv("CODEAF_TASK_CHILD_LEDGER"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	_ = json.NewEncoder(ledger).Encode(map[string]any{"session": "another-session", "workspace": work, "model": "other-model", "calls": 1, "usd": 9.0})
-	_ = json.NewEncoder(ledger).Encode(map[string]any{"session": "child-session", "workspace": work, "model": "test-model", "seat": "worker", "calls": 1, "usd": 0.125, "in": 20, "out": 5})
+	_ = json.NewEncoder(ledger).Encode(map[string]any{"at": "2026-11-10T12:00:00.000000123Z", "session": "child-session", "workspace": work, "model": "test-model", "seat": "worker", "calls": 1, "usd": 0.125, "in": 20, "out": 5})
 	_ = ledger.Close()
 	signals := make(chan os.Signal, 1)
 	if os.Getenv("CODEAF_TASK_CHILD_MODE") == "deaf" {
@@ -116,7 +117,7 @@ func TestTaskChildHelper(t *testing.T) {
 	_ = json.NewEncoder(steps).Encode(run.Step{Kind: "step", Step: 2, Command: "second", RecordedOrder: 2})
 	_ = steps.Close()
 	ledger, _ = os.OpenFile(os.Getenv("CODEAF_TASK_CHILD_LEDGER"), os.O_APPEND|os.O_WRONLY, 0600)
-	_ = json.NewEncoder(ledger).Encode(map[string]any{"session": "child-session", "workspace": work, "model": "test-model", "seat": "worker", "calls": 1, "usd": 0.375, "in": 30, "out": 7})
+	_ = json.NewEncoder(ledger).Encode(map[string]any{"at": "2026-11-10T12:00:00.000000123Z", "session": "child-session", "workspace": work, "model": "test-model", "seat": "worker", "calls": 1, "usd": 0.375, "in": 30, "out": 7})
 	_ = ledger.Close()
 	_ = os.WriteFile(filepath.Join(work, "child.txt"), []byte("the child worked"), 0640)
 	stop, code := "done", 0
@@ -504,5 +505,33 @@ func TestIgnoredRuntimeFilesDoNotPreventSendingATaskCopy(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dest, "ignored")); !os.IsNotExist(err) {
 		t.Fatalf("ignored runtime files traveled: %v", err)
+	}
+}
+
+func TestRemoteSpendCarriesTheOriginalWorkerCallIdentity(t *testing.T) {
+	c := newChildRig(t)
+	c.r.serve(c.config(t, false))
+	conn := c.start(t)
+	if err := os.WriteFile(filepath.Join(c.dir, "finish"), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	_, spend, _ := childFinish(t, conn, c.id)
+	paid, err := session.ReadUsage(c.ledger, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := map[string]bool{}
+	for _, line := range paid {
+		if line.Session == "child-session" {
+			ids[session.UsageCallID(line)] = true
+		}
+	}
+	if len(spend) != 2 {
+		t.Fatalf("got %d spend events", len(spend))
+	}
+	for _, event := range spend {
+		if event.Line.CallID == "" || !ids[event.Line.CallID] {
+			t.Fatalf("remote spend lost original paid identity: %+v", event.Line)
+		}
 	}
 }

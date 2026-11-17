@@ -81,6 +81,7 @@ type ServiceRec struct {
 
 // ModelCall is one model call of the turn, by hashes.
 type ModelCall struct {
+	CallID       string `json:"call_id,omitempty"`
 	Model        string `json:"model"`
 	Role         string `json:"role,omitempty"`
 	ParamsHash   string `json:"params_hash"`

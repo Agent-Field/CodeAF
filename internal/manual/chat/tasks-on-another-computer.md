@@ -26,6 +26,8 @@ a Mac it refuses a project whose files belong to a group other than yours,
 saying `portable apply cannot preserve a different owner or group`.
 The other computer uses its own provider keys; its spend appears here against
 the conversation and task, once, and also stays on that computer's ledger.
+Continuing the parent conversation on the worker computer does not bill those
+same calls again; new calls from the other computer are added once.
 
 ## Run a task on my mac mini
 

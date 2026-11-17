@@ -88,6 +88,30 @@ func StampCopyReady(root string) error {
 	return errors.Join(f.Sync(), f.Close())
 }
 
+// PreserveCopyReady keeps this computer's original-copy baseline across a tree restore.
+// Snapshots omit local markers, so recreating only their names loses the older-turn notice.
+func PreserveCopyReady(root string) (func() error, error) {
+	path := filepath.Join(root, filepath.FromSlash(CopyReadyPath))
+	raw, err := os.ReadFile(path)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	keep := err == nil
+	if !keep && filepath.Base(filepath.Dir(root)) == ".moving" {
+		_, lockErr := os.Stat(root + ".lock")
+		keep = lockErr == nil
+	}
+	return func() error {
+		if !keep {
+			return nil
+		}
+		if len(raw) > 0 {
+			return upgradenotice.Write(path, raw)
+		}
+		return StampCopyReady(root)
+	}, nil
+}
+
 // hasSealedTurns reports whether root already holds a cell with at least one
 // sealed turn or adopted remote head. Engine.Seal appends to turns.jsonl only
 // after composing meta.json and capturing the snapshot, and Materialize writes

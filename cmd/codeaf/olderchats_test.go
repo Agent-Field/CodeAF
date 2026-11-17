@@ -331,6 +331,10 @@ func TestCopiedLegacyChatKeepsCopyReadyAfterTakeBack(t *testing.T) {
 			if err != nil {
 				t.Fatalf("copyOlderChat: %v", err)
 			}
+			baseline, err := os.ReadFile(filepath.Join(copied.Root, cell.CopyReadyPath))
+			if err != nil || len(baseline) == 0 {
+				t.Fatalf("copy baseline missing: %v", err)
+			}
 			copiedMeta, err := session.LoadMeta(copied.Root)
 			if err != nil {
 				t.Fatal(err)
@@ -471,6 +475,14 @@ func TestCopiedLegacyChatKeepsCopyReadyAfterTakeBack(t *testing.T) {
 				t.Fatalf("Home row transcript missing laptop turn: err=%v body=%s", err, string(homeRowBody))
 			}
 
+			after, err := os.ReadFile(filepath.Join(copied.Root, cell.CopyReadyPath))
+			if err != nil || string(after) != string(baseline) {
+				t.Fatalf("take-back lost original baseline: %q (%v)", after, err)
+			}
+			source := filepath.Join(original, "transcript.jsonl")
+			if err := os.WriteFile(source, []byte(origJournal+olderNoticeTurn("rollback one")+olderNoticeTurn("rollback two")), 0600); err != nil {
+				t.Fatal(err)
+			}
 			// Opening the stale original path resolves to the taken-back copy without losing Computer 2's turn.
 			opened, err := movablePlace(ctx, session.Place{Dir: original, Workspace: origWork, Owned: tc.owned})
 			if err != nil {
@@ -478,6 +490,9 @@ func TestCopiedLegacyChatKeepsCopyReadyAfterTakeBack(t *testing.T) {
 			}
 			if filepath.Clean(opened.Dir) != filepath.Clean(copied.Root) {
 				t.Fatalf("movablePlace(original) = %s, want %s", opened.Dir, copied.Root)
+			}
+			if notice := v3UpgradeNotice(opened.Dir, true); !strings.Contains(notice, "2 turns typed in an older codeaf") {
+				t.Fatalf("round-trip open hid rollback turns: %q", notice)
 			}
 			rawTranscript, err := os.ReadFile(opened.Transcript())
 			if err != nil || !strings.Contains(string(rawTranscript), "turn added on laptop") {

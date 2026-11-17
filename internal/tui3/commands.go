@@ -258,11 +258,11 @@ var commands = []command{
 	// bare row is the one nearly everybody wants, and a single row carrying
 	// [query] would make it unreachable from the list ([app.runMenu] puts a row
 	// that TAKES something into the draft instead of running it).
-	{name: "memory", desc: "open the Memories tab · " + placeChord(pageMemory)},
+	{name: "memory", desc: "open the Memory tab · " + placeChord(pageMemory)},
 	{name: "memory", args: "<words>", desc: "print the remembered lines those words name"},
-	{name: "memories", desc: "open the Memories tab, or print every line kept here"},
+	{name: "memories", desc: "open the Memory tab, or print every line kept here"},
 	{name: "memories", args: "<words>", desc: "…only the lines those words name"},
-	// THERE IS NO /forget: a line is forgotten on the Memories tab, where it is
+	// THERE IS NO /forget: a line is forgotten on the Memory tab, where it is
 	// in front of the person rather than guessed at from words (memory.go).
 	{name: "remember", args: "<text>", desc: "keep one line for this project · for you everywhere, from home"},
 	// AND /always, THE SAME ERRAND AS /remember UNDER THE WORD PEOPLE WERE TAUGHT:

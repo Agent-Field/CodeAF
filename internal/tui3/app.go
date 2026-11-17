@@ -2334,6 +2334,7 @@ type app struct {
 	// (draft.go); empty means it is not kept at all.
 	draftFile    string
 	draftPending bool
+	draftLoaded  map[string]bool
 	// artifacts is the deliverables index a finished /export records itself in
 	// (export.go). Empty is the door saying nothing, which [app.artifactsIndex]
 	// turns into the product's own path.

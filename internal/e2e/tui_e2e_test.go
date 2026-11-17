@@ -293,12 +293,16 @@ func testNestedGate(t *testing.T) {
 		t.Fatalf("the nested part is not named on the screen:\n%s", screen)
 	}
 
-	// The landing key accepts the nested task once. Finished cards now start
-	// folded, so the visible proof is the batch changing from one done and one
-	// your call to two done; the durable receipt names who spent the answer.
+	// The receipt proves which task the key accepted. The disclosure then
+	// proves the parent and child states on their own rows, beyond model prose.
 	pressLandingKey(r, "a")
+	r.waitFor(20*time.Second,
+		say(t, "taskDoneGlyph")+" Port the parser"+say(t, "settleAcceptReceipt"))
+	r.waitFor(20*time.Second, say(t, "backgroundWorkWord"))
+	r.keys("C-e")
 	settled := r.waitFor(20*time.Second,
-		say(t, "taskDoneGlyph")+" 2"+say(t, "doneRollupWord"))
+		"Rebuild the index"+say(t, "taskDoneWord")+say(t, "taskOpenResultWord"),
+		"Port the parser"+say(t, "taskDoneWord")+say(t, "taskOpenResultWord"))
 	waitForLandingReceipt(t, seedDir, say(t, "settleTookLine"))
 	t.Logf("the nested accept made both tasks done and wrote its receipt:\n%s", settled)
 	r.quit()
@@ -338,12 +342,26 @@ func testRefusedLanding(t *testing.T) {
 	statesPastTheDoor(t, r)
 	r.waitFor(20*time.Second, say(t, "settleAskWord"), say(t, "settleNotRight"))
 	pressLandingKey(r, "n")
-	screen := r.waitFor(20*time.Second, say(t, "taskIncompleteWord"))
-	waitForLandingReceipt(t, seedDir, say(t, "settleNotRightLine"))
-	t.Logf("a refused landing keeps its reason and says incomplete:\n%s", screen)
+	screen := r.waitFor(20*time.Second,
+		say(t, "taskDoneGlyph")+" Review the pull request diff"+say(t, "settleNotRightReceipt"))
 	if strings.Contains(screen, say(t, "taskFailedWord")) {
 		t.Errorf("the refused landing still says failed:\n%s", screen)
 	}
+	r.waitFor(20*time.Second, say(t, "backgroundWorkWord"))
+	r.keys("C-e")
+	row := "Review the pull request diff" + say(t, "taskIncompleteWord") + say(t, "taskOpenResultWord")
+	screen = r.waitFor(20*time.Second, row)
+	waitForLandingReceipt(t, seedDir, say(t, "settleNotRightLine"))
+	t.Logf("the named refused task row says incomplete:\n%s", screen)
+	if strings.Contains(screen, say(t, "taskFailedWord")) {
+		t.Errorf("the refused landing still says failed:\n%s", screen)
+	}
+	clickLineContaining(t, r, row)
+	result := r.waitFor(20*time.Second, say(t, "settleNotRightLine"), say(t, "settleAskWord"))
+	if strings.Contains(result, say(t, "taskFailedWord")) {
+		t.Errorf("the refused result still says failed:\n%s", result)
+	}
+	t.Logf("the refused result keeps the refusal and original reason:\n%s", result)
 	r.quit()
 }
 
@@ -1117,11 +1135,9 @@ func testOneSpendFigure(t *testing.T) {
 
 	// A machine with no conversations on it opens straight into one, which is
 	// the state this scenario wants: one conversation, so the machine's day and
-	// this conversation's total are the same money read two ways. The wait is
-	// on the greeting's own starter line, which that first conversation stands
-	// on. It was on the workspace's name in the status line, which a frame of
-	// this width now cuts from the foot's `project:` clause.
-	r.waitFor(20*time.Second, say(t, "starterTaskWord"))
+	// this conversation's total are the same money read two ways. The first
+	// conversation offers starting points instead of the ordinary greeting.
+	r.waitFor(20*time.Second, say(t, "firstConversationStarterWord"))
 
 	// A question with a long answer, so there is a middle to interrupt.
 	r.lit("count slowly from one to two hundred, one number per line")

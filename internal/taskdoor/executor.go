@@ -19,6 +19,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/run"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 const (
@@ -534,15 +535,7 @@ func (f *childFollower) poll(j Journal) error {
 		f.nextOrder++
 	}
 	return f.lines(f.ledger, "usage", func(raw []byte, offset int64) error {
-		var line struct {
-			At      time.Time `json:"at"`
-			Model   string    `json:"model"`
-			Seat    string    `json:"seat"`
-			Session string    `json:"session"`
-			Input   int       `json:"in"`
-			Output  int       `json:"out"`
-			USD     float64   `json:"usd"`
-		}
+		var line session.UsageLine
 		if err := json.Unmarshal(raw, &line); err != nil {
 			return err
 		}
@@ -559,7 +552,7 @@ func (f *childFollower) poll(j Journal) error {
 			}
 		}
 		if f.sessions[line.Session] {
-			if err := j.Append(Spend{Line: SpendLine{Model: line.Model, Seat: line.Seat, InputTokens: line.Input, OutputTokens: line.Output, USD: line.USD}, Source: "usage", Offset: offset}); err != nil {
+			if err := j.Append(Spend{Line: SpendLine{CallID: session.UsageCallID(line), Model: line.Model, Seat: string(line.Seat), InputTokens: line.Input, OutputTokens: line.Output, USD: line.USD}, Source: "usage", Offset: offset}); err != nil {
 				return err
 			}
 		}

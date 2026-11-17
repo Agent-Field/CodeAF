@@ -234,7 +234,7 @@ func (a *app) landedCard(node *taskNode) {
 		cost:        node.spent(),
 	}
 	card.attention = node.actionNeeded()
-	card.quiet = card.status.Tier != session.TaskTierYourCall && card.attention == ""
+	card.quiet = card.status.Tier != session.TaskTierYourCall && card.attention == "" && !card.status.ChangesUnlanded()
 	if card.span == 0 && !node.began.IsZero() {
 		card.span = a.now().Sub(node.began)
 	}

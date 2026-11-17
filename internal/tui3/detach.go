@@ -670,6 +670,8 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 
 	if side != nil {
 		cmds = append(cmds, a.restoreAside(side))
+	} else if a.homeTakenSaid == nil {
+		a.restoreDraft()
 	}
 	// THE IN-FLIGHT TURN'S STREAM IS PUMPED LAST, so the replay above has
 	// already put the person's own message on the screen: the journal holds it

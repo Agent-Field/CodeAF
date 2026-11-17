@@ -259,10 +259,10 @@ var tuiWords = map[string]tuiWord{
 			"until the place was named for what is in it",
 	},
 	"barMemoryWord": {
-		screen: "Memories",
-		source: "memories",
+		screen: "Memory",
+		source: "memory",
 		why: "the fifth place on the wordmark row, which stands on the bar before the first memory is saved. It " +
-			"was `Memory` until 2026-10-14",
+			"was `Memories` from 2026-10-15 until decision #1943 restored `Memory` on 2026-10-25",
 	},
 	"barAutomationsWord": {
 		screen: "Automations",
@@ -582,9 +582,26 @@ var tuiWords = map[string]tuiWord{
 		pkg:    "internal/session",
 		why:    "the receipt proving the not-right answer reached the engine's settle door",
 	},
-	"doneRollupWord": {
-		screen: " tasks done",
-		why:    "the folded completion batch counts both seeded tasks after the nested landing is accepted",
+	"settleAcceptReceipt": {
+		screen: " → accept · you · ",
+		source: "accept",
+		pkg:    "internal/session",
+		why:    "the decision receipt names the accepted task and the person who answered, before its variable timestamp",
+	},
+	"settleNotRightReceipt": {
+		screen: " → not right · you · ",
+		source: "not right",
+		pkg:    "internal/session",
+		why:    "the decision receipt names the refused task and the person who answered, before its variable timestamp",
+	},
+	"backgroundWorkWord": {
+		screen: "background work",
+		why:    "routine task completions remain available behind the background-work disclosure",
+	},
+	"taskOpenResultWord": {
+		screen: " · open result",
+		source: "open result",
+		why:    "a named completion row offers its result beside its state, distinguishing it from model prose",
 	},
 	"taskIncompleteWord": {
 		screen: " · incomplete",
@@ -599,7 +616,11 @@ var tuiWords = map[string]tuiWord{
 	},
 	"starterTaskWord": {
 		screen: "/task <brief> starts work",
-		why:    "the greeting's own starter line, and the door a person is pointed at before they have typed anything",
+		why:    "the ordinary greeting's starter line, after the machine's first conversation",
+	},
+	"firstConversationStarterWord": {
+		screen: "What would you like to work on?",
+		why:    "the first conversation offers starting points instead of the ordinary greeting's task hint",
 	},
 	"refusedCallRowWord": {
 		screen: "the call was refused",
