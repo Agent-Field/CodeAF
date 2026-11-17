@@ -31,10 +31,12 @@ import (
 //   - A NEW CANVAS IS MADE THE WAY A PERSON'S IS, through the same route
 //     (POST /v1/canvases with the workstream), and named in Files as made by
 //     Afi for the person; in a task's run it is the task's own Result.
-//   - THE AGENT WRITES AS ITSELF. canvas-core records each change as
-//     [canvasrpc.AgentActor], a member of the canvas with edit, so a person's
-//     hand on a frame still wins over it exactly as on a laptop; the
-//     organization's list says the person it answered changed it.
+//   - THE AGENT WRITES AS ITSELF, AS THE CANVAS'S MANAGER. canvas-core records
+//     each change as [canvasrpc.AgentActor], seated through the canvas's
+//     working folder exactly as the desktop app seats its manager, so it sets
+//     the canvas's tokens and a person's hand on a frame still wins over it as
+//     on a laptop; the organization's list says the person it answered
+//     changed it.
 //   - NOTHING ON THE SERVER'S DISK IS REACHABLE. A command reads only the
 //     files the call carried, written into a folder of its own; a verb that
 //     writes a file out, reaches another canvas, or waits is refused.
@@ -101,7 +103,7 @@ func (d *agentDoor) Canvas(ctx context.Context, call session.CanvasCall) (string
 			return "", err
 		}
 	}
-	dir, done, err := d.canvasCallDir(call.Files)
+	dir, done, err := d.canvasCallDir(c.ID, call.Files)
 	if err != nil {
 		return "", err
 	}
@@ -153,17 +155,30 @@ func (d *agentDoor) agentCanvas(id string, read bool) (factory.OrgCanvas, factor
 	return c, ws, nil
 }
 
-// joinCanvas makes the agent a member of canvas id with edit, as a person
-// adding an agent in the app does; a canvas a person made has no agent yet.
+// joinCanvas seats the agent on canvas id as its manager, the way the
+// desktop app seats a canvas's manager: the canvas's own working folder is a
+// member with edit, and the agent, run inside that folder (canvasCallDir),
+// joins through it on its first write. The manager is the one agent that
+// sets a canvas's tokens, which the guide's whole look is built on; an agent
+// added by name instead was refused every `token set`.
 func (d *agentDoor) joinCanvas(ctx context.Context, id string) error {
 	if _, done := d.canvasJoined.Load(id); done {
 		return nil
 	}
-	_, err := d.h.config.Canvas.Command(ctx, id, []string{"members", "add", id, canvasrpc.AgentActor, "--role", "edit", "--kind", "agent", "--name", "Afi"}, d.h.config.Canvas.Root, nil)
+	work := canvasWorkDir(d.h.config.Canvas.Root, id)
+	if err := os.MkdirAll(work, 0o700); err != nil {
+		return err
+	}
+	_, err := d.h.config.Canvas.Command(ctx, id, []string{"members", "add", id, "cwd:" + work, "--role", "edit", "--kind", "agent", "--name", "Afi"}, work, nil)
 	if err == nil {
 		d.canvasJoined.Store(id, true)
 	}
 	return canvasAgentError(err)
+}
+
+// canvasWorkDir is canvas id's working folder, canvas-core's WORK_DIR.
+func canvasWorkDir(root, id string) string {
+	return filepath.Join(root, id, "work")
 }
 
 // canvasNew makes a canvas in the workstream: `new --title T`.
@@ -290,10 +305,11 @@ func canvasAgentFiles(args []string, files map[string]string) error {
 	return nil
 }
 
-// canvasCallDir writes a call's files into a folder of its own, under the
-// canvas root's incoming folder, where the command runs.
-func (d *agentDoor) canvasCallDir(files map[string]string) (string, func(), error) {
-	base := filepath.Join(d.h.config.Canvas.Root, ".incoming")
+// canvasCallDir writes a call's files into a folder of its own inside
+// canvas id's working folder, where the command runs: the agent is then the
+// canvas's manager (joinCanvas), and the files it names are beside it.
+func (d *agentDoor) canvasCallDir(id string, files map[string]string) (string, func(), error) {
+	base := filepath.Join(canvasWorkDir(d.h.config.Canvas.Root, id), ".calls")
 	if err := os.MkdirAll(base, 0o700); err != nil {
 		return "", nil, err
 	}

@@ -48,6 +48,12 @@ func TestServerAfiDrawsACanvasInItsWorkstream(t *testing.T) {
 	if err != nil || !ok || c.Workstream != ws.ID || c.CreatedBy != "santosh" {
 		t.Fatalf("the canvas Afi made = %+v %v %v", c, ok, err)
 	}
+	// THE AGENT IS THE CANVAS'S MANAGER, so the look the guide builds on, its
+	// tokens, is Afi's to set (it was refused not_manager before).
+	canvasCmd(t, run, "", nil, "token", "set", id, "$page", "color", "#1d3b2a")
+	if toks, err := run.Canvas(context.Background(), session.CanvasCall{Args: []string{"token", "list", id}}); err != nil || !strings.Contains(toks, "#1d3b2a") {
+		t.Fatalf("token list = %v %.300s", err, toks)
+	}
 	frame := canvasCmd(t, run, "", nil, "frame", "add", id, "--kind", "design", "--name", "Card one", "--json", `{"w":1080,"h":1080,"part":"Launch cards"}`)
 	page := `<!doctype html><html><body style="background:#1d3b2a;color:#f4efe4"><h1>Pantry is live</h1></body></html>`
 	canvasCmd(t, run, page, nil, "put", id, "--parent", frame["id"].(string), "--type", "html", "--json", `{"w":1080,"h":1080}`, "--html", "-")
@@ -121,6 +127,7 @@ func TestServerAfiDrawsOnACanvasAPersonMade(t *testing.T) {
 	d := &agentDoor{h: o.h, id: ws.ID, asker: "santosh"}
 	canvasCmd(t, d, "", nil, "frame", "add", id, "--kind", "doc", "--name", "The plan")
 	canvasCmd(t, d, "", nil, "title", id, "--title", "One-page plan")
+	canvasCmd(t, d, "", nil, "token", "set", id, "$lead", "color", "#222222")
 	if got := o.h.canvasTitle(id); got != "One-page plan" {
 		t.Fatalf("title = %q", got)
 	}
