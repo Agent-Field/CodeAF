@@ -174,7 +174,9 @@ func (h *Handler) resumeTaskRun(ws factory.OrgWorkstream, t factory.WorkstreamTa
 	if err != nil || cur.State != factory.TaskRunning || cur.DoneBy.Kind != factory.TaskByAfi {
 		return
 	}
-	if err := h.runTaskTurn(ws, cur, starter, words); err != nil && !errors.Is(err, errTaskBusy) {
+	// A server with no runner was never running Afi here (the same answer a
+	// Start gets), so only an unexpected refusal is worth a line in the log.
+	if err := h.runTaskTurn(ws, cur, starter, words); err != nil && !errors.Is(err, errTaskBusy) && !errors.Is(err, errTaskNoRunner) {
 		log.Printf("factory: workstream %s: task %s was answered but Afi could not go on: %v", ws.ID, t.ID, err)
 	}
 }

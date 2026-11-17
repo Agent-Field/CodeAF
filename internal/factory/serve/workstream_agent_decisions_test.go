@@ -22,6 +22,11 @@ func TestServerAgentDoorAnswersTheDecisionCheck(t *testing.T) {
 	o.do(t, "santosh", "PUT", "/v1/workstreams/"+ws.ID+"/shares", -1, sharesPut(factory.Share{Kind: "person", ID: "mia", Role: "edit"}), 200, nil)
 	var task string
 	o.serverMode(t, func(ctx context.Context, turn AgentTurn) (AgentTurnEnd, error) {
+		if turn.Task != nil {
+			// An answered Ask puts Afi back to work on its task in a run of
+			// its own; this scene is the person's turn alone.
+			return AgentTurnEnd{}, nil
+		}
 		d := turn.Door.(workDoor)
 		line, err := d.Work(ctx, "ws_decisions", json.RawMessage(`{}`))
 		if err != nil {
