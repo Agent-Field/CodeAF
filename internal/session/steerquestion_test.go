@@ -292,7 +292,7 @@ func TestTalkingPastAQuestionClaimsItsWordsWithItsWait(t *testing.T) {
 	forget := agent.rememberQuestion(question)
 
 	agent.mu.Lock()
-	taken := agent.talkedPastQuestionsLocked()
+	taken := agent.talkedPastQuestionsLocked(false)
 	// THE BOOK IS ALREADY EMPTY WHILE THE LOCK IS STILL HELD, which is the whole
 	// law: there is no window in which the other road could win.
 	if _, said := agent.claimQuestionLocked(QuestionAsk, question.Token(), true); said {
@@ -393,5 +393,23 @@ func TestATurnTheEngineOpensLeavesTheQuestionsStanding(t *testing.T) {
 	collect(t, events)
 	if open := rig.agent.OpenQuestions(); len(open) != 1 {
 		t.Fatalf("an engine turn closed the person's question: %d left, want 1", len(open))
+	}
+}
+
+// AN ANSWERED QUESTION IS NOT TALKED PAST. The person answers, then types
+// something else: the answer's receipt can still change it, because the new
+// message closes what is still asked and leaves what they already decided.
+func TestAPersonsNewMessageLeavesAnAnsweredQuestionChangeable(t *testing.T) {
+	said := func(words string) step {
+		return func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse(words), nil }
+	}
+	rig := leaveAQuestionStanding(t, said("white it is"), said("on the kitchen"), said("grey, then"), said("noted"), said("noted"))
+	q := rig.agent.OpenQuestions()[0]
+	if err := rig.agent.ResolveQuestion(Answer{Kind: QuestionAsk, ID: q.ID, Key: "1"}); err != nil {
+		t.Fatal(err)
+	}
+	collect(t, mustSubmit(t, rig.agent, "now the kitchen"))
+	if err := rig.agent.ResolveQuestion(Answer{Kind: QuestionAsk, ID: q.ID, Key: "2", Revises: true}); err != nil {
+		t.Fatalf("changing the answer after a new message was refused: %v", err)
 	}
 }

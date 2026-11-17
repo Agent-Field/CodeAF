@@ -316,12 +316,21 @@ func (asked *askedOfThePerson) askedBackLocked(id uint64, answer Answer) bool {
 // put a shape on the wire that every surface would then have to know not to
 // draw. A closed channel is the ending with no value in it, which is exactly
 // what happened.
-func (asked *askedOfThePerson) talkedPastLocked() []uint64 {
+//
+// keepSettled leaves an ANSWERED question kept for a revision
+// ([askSettledKept]) where it is: the person's new message talks past what is
+// still asked, not past what they already decided, so `change` on that
+// receipt still works after they type something else. A steer passes false
+// and takes every entry, as it always has.
+func (asked *askedOfThePerson) talkedPastLocked(keepSettled bool) []uint64 {
 	if len(asked.parked) == 0 {
 		return nil
 	}
 	retired := make([]uint64, 0, len(asked.parked))
-	for id := range asked.parked {
+	for id, have := range asked.parked {
+		if keepSettled && have != nil && have.settled != nil {
+			continue
+		}
 		// Claimed rather than closed off the range variable, so this road obeys
 		// the same primitive the other two do and nothing here can reach a
 		// channel it does not own.

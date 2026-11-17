@@ -111,8 +111,11 @@ const steerTookTheQuestion = "took this instead of the question"
 // so what they read about their own sentence is a claim rather than a coin flip.
 // It is askwait.go's own rule — THE ENTRY IS THE OWNERSHIP — kept for the second
 // map as well as the first.
-func (a *Agent) talkedPastQuestionsLocked() []Question {
-	retired := a.asked.talkedPastLocked()
+//
+// keepSettled is [askedOfThePerson.talkedPastLocked]'s: true leaves answered
+// questions kept for a revision standing.
+func (a *Agent) talkedPastQuestionsLocked(keepSettled bool) []Question {
+	retired := a.asked.talkedPastLocked(keepSettled)
 	if len(retired) == 0 {
 		return nil
 	}
@@ -152,11 +155,16 @@ func (a *Agent) sayTheQuestionsCameDown(taken []Question) {
 // Only the person's own doors count ([userMessage.fromPerson]): a wake note, a
 // runner's note, factory work, a setup turn or an answer to a question is not
 // somebody replying.
+//
+// AN ANSWERED QUESTION IS NOT OPEN. One the person already answered is kept
+// only so its receipt can still change the answer ([askSettledKept]); a new
+// message leaves it standing, or typing anything after answering would make
+// `change` on that receipt refuse.
 func (a *Agent) personClosesQuestionsLocked(user userMessage) []Question {
 	if !user.fromPerson {
 		return nil
 	}
-	return a.talkedPastQuestionsLocked()
+	return a.talkedPastQuestionsLocked(true)
 }
 
 // notePersonWordsLocked keeps a person's message that joined the running turn
