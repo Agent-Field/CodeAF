@@ -972,9 +972,9 @@ set_by}`, never whole. In `server` mode every workstream has one agent on the se
 and each person who can edit it has their OWN conversation with it, which nobody else
 reads (the agent's memory is per person too); it is run with that key as an ordinary engine conversation whose tools are
 `workstream_pages` (read the workstream and one page, write a page, make a page,
-suggest a decision) and the eight workstream tools `ws_tasks`, `ws_task_create`,
+suggest a decision) and the workstream tools `ws_tasks`, `ws_task_create`,
 `ws_task_update`, `ws_task_comment`, `ws_files`, `ws_file_read`, `ws_file_create`,
-`ws_file_suggest`; no shell, repository or machine. Each `ws_*` call is answered by the
+`ws_file_suggest`, `ws_file_comment`; no shell, repository or machine. Each `ws_*` call is answered by the
 same route a person's client uses (`/tasks`, `/tasks/{tid}` with `If-Match`,
 `/tasks/{tid}/comment`, `/files`), as the asker, so the routes' rules hold: what Afi
 adds to a thread is `by {kind:"afi", name:"Afi"}`, a task it makes is `done_by
@@ -985,7 +985,13 @@ name:"Afi", for:<asker>}`. It writes a page directly only when its file is
 `made_by` an agent and not `person_edited`, first keeping the words before as a
 version; any other page, and any page with a live document, gets its text as a page
 version with `reason` `agent` (Kept · not applied), which is also what `ws_file_suggest`
-keeps. `ws_file_read {file, from?}` on an upload whose bytes are UTF-8 text answers
+keeps. `ws_file_read` on a document also answers `comments` `[{thread, quote, comments: [{by,
+text, at}], resolved?}]`, its passage threads, open ones first (at most 100);
+`ws_file_comment {file, quote | thread, text}` answers a thread through
+`/comments/{cid}/reply` or starts one through `/pages/{pid}/comments` on words the page's
+Markdown says exactly once, with `block` `[]` and `block_text` the quote (the desk finds
+them on the live page), as Afi; neither marks anything read for the asker, and neither
+changes the page. `ws_file_read {file, from?}` on an upload whose bytes are UTF-8 text answers
 them as `text` (at most 100 KiB from byte `from`, with `more_from` and `said` when more
 follows); any other upload answers `said`, that it has no words to read. The desk's
 Personal door answers the same shape. `factory.org_workstream_agent

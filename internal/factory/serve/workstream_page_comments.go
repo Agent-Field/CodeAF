@@ -74,8 +74,7 @@ func commentWords(text string) (string, error) {
 
 // publishComments tells everyone in ws that page's threads changed, and that
 // the document's facts (its open threads) did.
-func (h *Handler) publishComments(r *http.Request, ws factory.OrgWorkstream, page string, files bool) {
-	by := h.orgActor(r)
+func (h *Handler) publishComments(by string, ws factory.OrgWorkstream, page string, files bool) {
 	h.publishWorkstreamPart(ws, api.PartPage, page, by, 0, false)
 	if !files {
 		return
@@ -122,12 +121,17 @@ func (h *Handler) postPageComment(w http.ResponseWriter, r *http.Request) {
 	if !h.decode(w, r, &body, false) {
 		return
 	}
+	// THE AGENT POINTS AT WORDS, IT SELECTS NOTHING: it reads the page's
+	// Markdown, never the editor's blocks, so its thread has no block path and
+	// its block text is the quote itself. The desk finds the words on the live
+	// page the same way it finds every thread's (the one place that says them).
+	_, agent := agentCallOf(r)
 	text, err := commentWords(body.Text)
 	switch {
 	case err != nil:
 	case strings.TrimSpace(body.Quote) == "" || len(body.Quote) > factory.PageCommentQuoteMost:
 		err = errCommentQuote
-	case len(body.Block) == 0 || len(body.Block) > factory.PageCommentPathMost || len(body.BlockText) > factory.PageCommentBlockMost:
+	case (len(body.Block) == 0 && !agent) || len(body.Block) > factory.PageCommentPathMost || len(body.BlockText) > factory.PageCommentBlockMost:
 		err = errCommentBlock
 	case !factory.PageCommentPassage(body.BlockText, body.Offset, body.Quote):
 		err = errCommentPassage
@@ -145,12 +149,12 @@ func (h *Handler) postPageComment(w http.ResponseWriter, r *http.Request) {
 		if err := cw.Add(t); err != nil {
 			return err
 		}
-		return cw.Read(t, v.Handle)
+		return readByPerson(r, cw, t, v)
 	})
 	if h.commentRefused(w, err) {
 		return
 	}
-	h.publishComments(r, ws, page.ID, true)
+	h.publishComments(h.orgActor(r), ws, page.ID, true)
 	h.write(w, http.StatusCreated, t)
 }
 
@@ -193,9 +197,20 @@ func (h *Handler) editThread(w http.ResponseWriter, r *http.Request, write bool,
 		return
 	}
 	if changed {
-		h.publishComments(r, ws, out.PageID, write)
+		h.publishComments(h.orgActor(r), ws, out.PageID, write)
 	}
 	h.write(w, status, out)
+}
+
+// readByPerson marks t read for the person who wrote in it. What the
+// workstream's agent writes for them is NOT their own words, so it leaves what
+// they have read alone: the agent's answer, and anything before it, is still
+// for them to read.
+func readByPerson(r *http.Request, cw store.PageCommentWrite, t factory.PageCommentThread, v wsViewer) error {
+	if _, agent := agentCallOf(r); agent {
+		return nil
+	}
+	return cw.Read(t, v.Handle)
 }
 
 // pageLive is whether ws still has page: a deleted page's threads go with it.
@@ -222,7 +237,7 @@ func (h *Handler) replyPageComment(w http.ResponseWriter, r *http.Request) {
 	h.editThread(w, r, true, http.StatusCreated, func(t *factory.PageCommentThread, v wsViewer, cw store.PageCommentWrite) (bool, error) {
 		t.Comments = append(t.Comments, factory.PageComment{ID: h.newTaskID("pc_")(), By: h.taskBy(r, v), Text: text, At: h.clock().UTC().Format(time.RFC3339Nano)})
 		t.Resolved = nil
-		return true, cw.Read(*t, v.Handle)
+		return true, readByPerson(r, cw, *t, v)
 	})
 }
 

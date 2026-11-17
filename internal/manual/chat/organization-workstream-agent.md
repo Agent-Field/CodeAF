@@ -27,7 +27,7 @@ What it spends is posted to the workstream under the person whose message it ans
 
 ## what the server's workstream agent can and cannot do — tasks, files, pages, no shell, no repository
 
-On the server the agent, Afi, carries `workstream_pages` and the eight workstream tools (`ws_tasks`, `ws_task_create`, `ws_task_update`, `ws_task_comment`, `ws_files`, `ws_file_read`, `ws_file_create`, `ws_file_suggest`; the page about chats inside a workstream says what each does). So when you ask it to "turn these asks into tasks", it makes real tasks in the Tasks tab, not pages titled "Task: …", and it reads Tasks before it says who is doing what or what is waiting on you.
+On the server the agent, Afi, carries `workstream_pages` and the workstream tools (`ws_tasks`, `ws_task_create`, `ws_task_update`, `ws_task_comment`, `ws_files`, `ws_file_read`, `ws_file_create`, `ws_file_suggest`, `ws_file_comment`; the page about chats inside a workstream says what each does). So when you ask it to "turn these asks into tasks", it makes real tasks in the Tasks tab, not pages titled "Task: …", and it reads Tasks before it says who is doing what or what is waiting on you.
 
 With `workstream_pages` it reads the workstream (name, purpose, budget, pages, decisions, sources and links), reads or writes one page, or makes a new page. It does not propose decisions: a decision records itself when an Ask is answered, and nothing waits for a Keep.
 

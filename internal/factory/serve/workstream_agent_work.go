@@ -23,7 +23,7 @@ import (
 
 // ── THE WORKSTREAM TOOLS, ANSWERED FOR THE SERVER'S AGENT ──────────────────
 //
-// internal/session spells the nine ws_* tools once (tools_workstream_work.go)
+// internal/session spells the ws_* tools once (tools_workstream_work.go)
 // and puts them on the belt of any conversation whose workstream door also
 // answers Work. This file is that Work for the organization's server: the
 // agent's calls onto the workstream's tasks and files.
@@ -141,6 +141,8 @@ func (d *agentDoor) Work(ctx context.Context, tool string, args json.RawMessage)
 		out, err = d.wsFileCreate(ctx, args)
 	case "ws_file_suggest":
 		out, err = d.wsFileSuggest(ctx, args)
+	case "ws_file_comment":
+		out, err = d.wsFileComment(ctx, args)
 	case "ws_decisions":
 		out, err = d.wsDecisions(ctx, args)
 	case "ws_task_conflict":
@@ -719,6 +721,13 @@ func (d *agentDoor) wsFileRead(ctx context.Context, args json.RawMessage) (any, 
 	case factory.FileDocument:
 		if p, ok := pageOf(ws, f.PageID); ok {
 			out["markdown"] = p.BodyMD
+			comments, err := d.passageComments(ws.ID, p.ID)
+			if err != nil {
+				return nil, err
+			}
+			if len(comments) > 0 {
+				out["comments"] = comments
+			}
 		}
 	case factory.FileUpload:
 		if f.Upload != nil {
