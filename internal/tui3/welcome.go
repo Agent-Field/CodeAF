@@ -1053,6 +1053,13 @@ func (a *app) welcomeUnit(width int) ([]string, []welcomeMark, int, int) {
 		if block == nil {
 			block, x, row = draftBlockWithTags(&a.input, pal, unit, box, a.trafficHint(), a.roomLead(unit), a.input.demotedTags, a.draftInk())
 		}
+		// THE TRAY ABOVE THE DRAFT IS DRAWN HERE TOO. Files dropped on the start
+		// page land on its tray, and the foot of the frame draws that tray above
+		// the box (input.go's [app.inputBlock]); without it the page showed nothing
+		// for a drop and the file surfaced only once the conversation opened.
+		if strip := a.chipStrip(unit); strip != "" {
+			add(strip, welcomeMark{})
+		}
 		caretX, caretRow = lead+x, len(rows)+row
 		for _, line := range block {
 			add(line, welcomeMark{kind: welcomeRowInput})
