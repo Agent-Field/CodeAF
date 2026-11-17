@@ -163,3 +163,11 @@ func TestAfiReadsYourChatsOnlyOnTheDeskThatHoldsThem(t *testing.T) {
 		}
 	}
 }
+
+// Shared workstream rules leave half of the instruction allowance for an app's
+// own guidance so adding client instructions does not remove its tools.
+func TestWorkstreamRulesLeaveRoomInAClientToolSet(t *testing.T) {
+	if len(WorkstreamWorkRules) > ClientToolInstructionsMax/2 {
+		t.Fatalf("WorkstreamWorkRules is %d bytes; an app's set allows %d, and the rules may take at most half", len(WorkstreamWorkRules), ClientToolInstructionsMax)
+	}
+}

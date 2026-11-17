@@ -15,11 +15,9 @@ import (
 
 // Client tool limits are shared by the wire validator and the conversation door.
 //
-// ClientToolInstructionsMax is 8 KiB because the workstream set an app declares
-// carries this engine's own WorkstreamWorkRules (about 3 KiB) verbatim and adds
-// its own lines after them; at 4 KiB the desk's Afi set came to 4521 bytes and
-// was refused, which left Afi with no workstream tools at all. Four sets at the
-// cap still add at most 32 KiB to a turn's prompt.
+// ClientToolInstructionsMax is 8 KiB so an app can combine shared instructions
+// with its own guidance without losing its tools when the declaration is refused.
+// Four sets at the cap still add at most 32 KiB to a turn's prompt.
 const (
 	ClientToolMaxSets           = 4
 	ClientToolMaxPerSet         = 32
