@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
@@ -46,8 +47,9 @@ func (h *Handler) taskRunDir(ws, task string) string {
 // task's previous run is still going and errTaskNoRunner when this server
 // cannot run Afi; on either the caller leaves the task where it was. The run
 // itself sets the task done or failed through ws_task_update; a run that ends
-// without doing either, and was not stopped, leaves the task failed with the
-// reason, so a task never says running with nothing at work on it.
+// without doing either, and was not stopped, is settled by finishTaskRun: done
+// with what it wrote, or failed with the reason, so a task never says running
+// with nothing at work on it.
 //
 // IT TOUCHES NO WORKSTREAMS DATABASE BEFORE IT RETURNS, so a task write may call
 // it inside its own EditWorkstreamTasks transaction: that store has one
@@ -91,7 +93,7 @@ func (h *Handler) runTaskTurn(ws factory.OrgWorkstream, task factory.WorkstreamT
 	d.wg.Add(1)
 	d.mu.Unlock()
 
-	door := &agentDoor{h: h, id: ws.ID, asker: starter}
+	door := &agentDoor{h: h, id: ws.ID, asker: starter, wrote: &taskWrites{}}
 	run := AgentTurn{Workstream: ws.ID, Name: ws.Name, Turn: turn, Asker: starter, Text: strings.TrimSpace(words), Now: now,
 		Task: &AgentTask{ID: task.ID, Title: task.Title},
 		Key:  h.orgModelKey(), Dir: filepath.Join(h.taskRunDir(ws.ID, task.ID), "agent"), Door: door,
@@ -140,13 +142,47 @@ func (h *Handler) taskTurnRunning(ws, task string) bool {
 	return ok
 }
 
-// finishTaskRun leaves a task that still says running failed, with why in
-// plain words, once its run has ended without setting it done or failed.
+// finishTaskRun settles a task that still says running once its run has
+// ended without setting it done or failed, so a task never says running with
+// nothing at work on it.
+//
+// A RUN THAT ENDED CLEANLY HAVING WRITTEN ITS WORK IS DONE, NOT FAILED: the
+// files it made or rewrote become the task's results, beside any it already
+// had. Afi often writes the page and says so in the thread without the last
+// ws_task_update, and calling that a failure put finished work under Failed
+// (E4 F8). A run that wrote nothing, or ended on an error, is failed with why
+// in plain words.
 func (h *Handler) finishTaskRun(door *agentDoor, task string, err error) {
 	ctx := context.Background()
 	t, terr := door.task(ctx, task)
 	if terr != nil || t.State != factory.TaskRunning {
 		return
+	}
+	if wrote := door.wrote.list(); err == nil && len(wrote) > 0 {
+		results := []map[string]string{}
+		for _, r := range t.Results {
+			switch {
+			case r.FileID != "":
+				results = append(results, map[string]string{"file": r.FileID})
+			case r.URL != "":
+				results = append(results, map[string]string{"url": r.URL, "label": r.Label})
+			}
+		}
+		for _, id := range wrote {
+			if !slices.ContainsFunc(t.Results, func(r factory.TaskResult) bool { return r.FileID == id }) {
+				results = append(results, map[string]string{"file": id})
+			}
+		}
+		args, _ := json.Marshal(map[string]any{"task": task, "rev": t.Rev, "state": factory.TaskDone, "results": results})
+		if _, derr := door.Work(ctx, "ws_task_update", args); derr == nil {
+			return
+		}
+		// A result the store refused (a file deleted since) still must not
+		// leave the task running: fall through to failed, with why.
+		t, terr = door.task(ctx, task)
+		if terr != nil || t.State != factory.TaskRunning {
+			return
+		}
 	}
 	why := "Afi stopped before saying the task was done"
 	if err != nil {

@@ -583,6 +583,40 @@ type agentDoor struct {
 	id       string
 	asker    string
 	operator bool
+	// wrote is set for a task's run alone: the files the run made or rewrote,
+	// so a run that ends having written its work is not called a failure
+	// (finishTaskRun). A person's conversation leaves it nil.
+	wrote *taskWrites
+}
+
+// taskWrites is the files one task run made or rewrote, in the order it wrote
+// them, each once. The agent may call its tools side by side, so it locks.
+type taskWrites struct {
+	mu    sync.Mutex
+	files []string
+}
+
+// note records a file the run wrote; a nil one (a conversation) keeps nothing.
+func (w *taskWrites) note(id string) {
+	id = strings.TrimSpace(id)
+	if w == nil || id == "" {
+		return
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if !slices.Contains(w.files, id) {
+		w.files = append(w.files, id)
+	}
+}
+
+// list is the files written so far.
+func (w *taskWrites) list() []string {
+	if w == nil {
+		return nil
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return slices.Clone(w.files)
 }
 
 // viewer is the asker as the access core sees them now: their teams are read
@@ -635,6 +669,7 @@ func (d *agentDoor) WritePage(ctx context.Context, page, title, body string) (st
 		if err := json.Unmarshal(raw, &f); err != nil {
 			return "", err
 		}
+		d.wrote.note(f.ID)
 		return "made the page " + strconv.Quote(title) + " (" + f.PageID + ")", nil
 	}
 	ws, err := d.Workstream(ctx)
