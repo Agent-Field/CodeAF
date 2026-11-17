@@ -59,6 +59,12 @@ func (h *Handler) taskRunDir(ws, task string) string {
 // the task happens in the run, after the caller's transaction has ended; a
 // caller whose transaction fails after a nil return calls stopTaskTurn.
 func (h *Handler) runTaskTurn(ws factory.OrgWorkstream, task factory.WorkstreamTask, starter, words string) error {
+	return h.startTaskRun(ws, task, starter, words, 0)
+}
+
+// startTaskRun is runTaskTurn for a run that has already been resumed
+// `resumes` times after a restart cut it off (workstream_task_lease.go).
+func (h *Handler) startTaskRun(ws factory.OrgWorkstream, task factory.WorkstreamTask, starter, words string, resumes int) error {
 	if !h.serverAgentServed() {
 		return errTaskNoRunner
 	}
@@ -92,6 +98,7 @@ func (h *Handler) runTaskTurn(ws factory.OrgWorkstream, task factory.WorkstreamT
 	ctx, cancel := context.WithCancel(d.ctx)
 	d.tasks[key] = cancel
 	d.wg.Add(1)
+	owner := d.ownerLocked()
 	d.mu.Unlock()
 
 	door := &agentDoor{h: h, id: ws.ID, asker: starter, wrote: &taskWrites{}, runTask: task.ID}
@@ -111,6 +118,17 @@ func (h *Handler) runTaskTurn(ws factory.OrgWorkstream, task factory.WorkstreamT
 		}()
 		defer d.wg.Done()
 		defer cancel()
+		// The lease is kept first and beats while the run goes, so a restart
+		// that cuts the run off leaves a row the next start settles; it is
+		// dropped when the run ends here (before an answer that came meanwhile
+		// starts the next run, whose lease it is not), unless the server is
+		// closing, which is exactly the cut the next start must find.
+		lease := h.holdTaskLease(ctx, key, owner, starter, now, resumes)
+		defer func() {
+			if d.ctx.Err() == nil {
+				lease()
+			}
+		}()
 		end, err := h.config.WorkstreamAgent(ctx, run)
 		if end.USD > 0 {
 			h.postAgentSpend(run, end.USD)

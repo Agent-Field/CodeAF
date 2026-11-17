@@ -162,7 +162,7 @@ func (st *Store) wsDB(create bool) (*sql.DB, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1)
-	if _, err := db.Exec(workstreamsSchema + workstreamTasksSchema + workstreamPageCommentsSchema + workstreamOrdersSchema); err != nil {
+	if _, err := db.Exec(workstreamsSchema + workstreamTasksSchema + workstreamTaskRunsSchema + workstreamPageCommentsSchema + workstreamOrdersSchema); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("the organization's workstreams cannot be opened: %w", err)
 	}

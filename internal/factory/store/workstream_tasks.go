@@ -170,7 +170,7 @@ func (w TaskWrite) Put(t factory.WorkstreamTask, rev int) error {
 // Delete forgets task id of ws; its thread stays only when the task moves
 // (Move), never here.
 func (w TaskWrite) Delete(ws, id string) error {
-	for _, q := range []string{`DELETE FROM tasks WHERE ws = ? AND id = ?`, `DELETE FROM task_events WHERE ws = ? AND task = ?`, `DELETE FROM task_reads WHERE ws = ? AND task = ?`} {
+	for _, q := range []string{`DELETE FROM tasks WHERE ws = ? AND id = ?`, `DELETE FROM task_events WHERE ws = ? AND task = ?`, `DELETE FROM task_reads WHERE ws = ? AND task = ?`, `DELETE FROM task_runs WHERE ws = ? AND task = ?`} {
 		if _, err := w.tx.Exec(q, ws, id); err != nil {
 			return err
 		}
