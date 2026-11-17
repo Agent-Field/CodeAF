@@ -437,6 +437,8 @@ func RecheckItem(it *factory.Item) error {
 	it.State = factory.StateQueued
 	it.PublishStatus, it.Publishing = nil, false
 	it.PublishError = ""
+	// A recheck is a new run of the checks: an override given for the last one does not carry into it.
+	it.Overrides = nil
 	return nil
 }
 

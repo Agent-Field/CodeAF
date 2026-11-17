@@ -3196,6 +3196,8 @@ func sendBackStored(it *factory.Item, words string, now time.Time) (string, erro
 	it.State = factory.StateQueued
 	it.PublishStatus, it.Publishing = nil, false
 	it.PublishError = ""
+	// The checks stay for the new step to build on; the person's override was for the run that is over.
+	it.Overrides = nil
 	loopSay(it, now, "said", "changes requested: "+words)
 	return name, nil
 }

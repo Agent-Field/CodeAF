@@ -10,7 +10,7 @@ import (
 
 // AN OVERRIDE COVERS ONLY THE RUN IT WAS GIVEN FOR: the person tells Auto to
 // carry on past a failing policy finding, then the job runs again (a rerun of
-// a step, or a fresh launch after a failed publish) and lands on a new commit
+// a step, a fresh launch after a failed publish, Request changes or Recheck) and lands on a new commit
 // with the same finding failing. Auto pauses on it again instead of publishing.
 func TestAnOverrideDoesNotCarryIntoTheNextRun(t *testing.T) {
 	finding := factory.Claim{Text: "FINDING: secrets in config", Medium: "policy"}
@@ -31,6 +31,11 @@ func TestAnOverrideDoesNotCarryIntoTheNextRun(t *testing.T) {
 			it.PublishStatus = &factory.Publishing{State: "failed"}
 			return QueueItem(it, now)
 		},
+		"request changes": func(it *factory.Item) error {
+			it.PublishError = "push refused"
+			return SendBackItem(it, "prove the config is a fixture", now)
+		},
+		"recheck": func(it *factory.Item) error { return RecheckItem(it) },
 	} {
 		t.Run(name, func(t *testing.T) {
 			it := landed("1111111111111111111111111111111111111111")
