@@ -188,6 +188,10 @@ func (h *Handler) sweepTaskRuns() {
 				last = parseStamp(l.Beat)
 			}
 			switch {
+			case leased && l.Queued && l.Owner != me && last.Before(since) && now.Sub(since) >= taskRestartSettle:
+				// It was waiting for its place, not working: it waits again,
+				// with nothing to say on its thread.
+				_ = h.startTaskRun(ws, t, l.Starter, l.Words, l.Resumes)
 			case (!leased || l.Owner != me) && last.Before(since) && now.Sub(since) >= taskRestartSettle:
 				h.settleCutRun(ws, t, l, leased)
 			case now.Sub(last) >= taskNoReportAfter:
@@ -329,11 +333,18 @@ func resumeWords(t factory.WorkstreamTask, words string) string {
 func (h *Handler) fillRuns(ws string, all []factory.WorkstreamTask) {
 	for i := range all {
 		t := &all[i]
-		t.Run = nil
+		t.Run, t.Queue = nil, nil
 		if t.State != factory.TaskRunning || t.DoneBy.Kind != factory.TaskByAfi {
 			continue
 		}
 		run := &factory.TaskRunNow{Live: h.taskTurnRunning(ws, t.ID)}
+		d := &h.agentDesk
+		d.mu.Lock()
+		place := d.placeLocked(taskRunKey{ws, t.ID})
+		d.mu.Unlock()
+		if place > 0 {
+			t.Queue = &factory.TaskQueue{Place: place}
+		}
 		if h.config.Store != nil {
 			if l, ok, err := h.config.Store.TaskRunOf(ws, t.ID); err == nil && ok {
 				run.Since = l.Started

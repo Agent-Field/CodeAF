@@ -80,6 +80,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"a file changed while my task was running", "organization-workstream-tasks"},
 		{"my task says interrupted after codeaf restarted", "organization-workstream-tasks"},
 		{"my task is stuck on running after the server restarted", "organization-workstream-tasks"},
+		{"my task says queued 2nd, why is it not running", "organization-workstream-tasks"},
+		{"how many tasks can run at once in a workstream", "organization-workstream-tasks"},
 		{"pressed start on a running task and nothing happened", "organization-workstream-tasks"},
 		{"I pressed Start but the chat was busy", "organization-workstream-tasks"},
 		{"Afi said press keep on the decision but there is no keep button", "workstream-files"},

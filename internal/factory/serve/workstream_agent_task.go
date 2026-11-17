@@ -62,7 +62,9 @@ func (h *Handler) runTaskTurn(ws factory.OrgWorkstream, task factory.WorkstreamT
 }
 
 // startTaskRun is runTaskTurn for a run that has already been resumed
-// `resumes` times after a restart cut it off (workstream_task_lease.go).
+// `resumes` times after a restart cut it off (workstream_task_lease.go). A run
+// over the limits waits in the queue (workstream_task_queue.go) and is
+// accepted all the same: it starts as soon as a place is free.
 func (h *Handler) startTaskRun(ws factory.OrgWorkstream, task factory.WorkstreamTask, starter, words string, resumes int) error {
 	if !h.serverAgentServed() {
 		return errTaskNoRunner
@@ -71,12 +73,6 @@ func (h *Handler) startTaskRun(ws factory.OrgWorkstream, task factory.Workstream
 	if starter == "" {
 		return errors.New("a task's run needs the person who started it")
 	}
-	now := h.clock().UTC()
-	tid, err := cell.NewID(now)
-	if err != nil {
-		return err
-	}
-	turn := "turn_" + tid
 	key := taskRunKey{ws.ID, task.ID}
 	d := &h.agentDesk
 	d.mu.Lock()
@@ -90,18 +86,41 @@ func (h *Handler) startTaskRun(ws factory.OrgWorkstream, task factory.Workstream
 	if d.tasks == nil {
 		d.tasks = map[taskRunKey]context.CancelFunc{}
 	}
-	if _, busy := d.tasks[key]; busy {
+	if _, busy := d.tasks[key]; busy || d.queuedLocked(key) >= 0 {
 		d.mu.Unlock()
 		return errTaskBusy
 	}
+	run := pendingRun{key: key, ws: ws, task: task, starter: starter, words: words, resumes: resumes}
+	if !d.roomLocked(ws.ID) {
+		queued := d.enqueueLocked(run)
+		owner := d.ownerLocked()
+		d.mu.Unlock()
+		h.keepQueued(queued, owner)
+		return nil
+	}
+	err := h.launchLocked(run)
+	d.mu.Unlock()
+	return err
+}
+
+// launchLocked starts run now. d.mu is held, and run's task has no run.
+func (h *Handler) launchLocked(r pendingRun) error {
+	now := h.clock().UTC()
+	tid, err := cell.NewID(now)
+	if err != nil {
+		return err
+	}
+	turn := "turn_" + tid
+	ws, task, starter, key, resumes := r.ws, r.task, r.starter, r.key, r.resumes
+	d := &h.agentDesk
 	ctx, cancel := context.WithCancel(d.ctx)
 	d.tasks[key] = cancel
+	d.servedLocked(ws.ID)
 	d.wg.Add(1)
 	owner := d.ownerLocked()
-	d.mu.Unlock()
 
 	door := &agentDoor{h: h, id: ws.ID, asker: starter, wrote: &taskWrites{}}
-	run := AgentTurn{Workstream: ws.ID, Name: ws.Name, Turn: turn, Asker: starter, Text: strings.TrimSpace(words), Now: now,
+	run := AgentTurn{Workstream: ws.ID, Name: ws.Name, Turn: turn, Asker: starter, Text: strings.TrimSpace(r.words), Now: now,
 		Task: &AgentTask{ID: task.ID, Title: task.Title},
 		Key:  h.orgModelKey(), Dir: filepath.Join(h.taskRunDir(ws.ID, task.ID), "agent"), Door: door,
 		// Nobody reads a task run as a conversation: its lines go nowhere.
@@ -113,6 +132,9 @@ func (h *Handler) startTaskRun(ws factory.OrgWorkstream, task factory.Workstream
 			delete(d.tasks, key)
 			d.mu.Unlock()
 			cancel()
+			// Its place is free: the next run waiting under the limits
+			// takes it.
+			h.dispatchQueued()
 		}()
 		// The lease is kept first and beats while the run goes, so a restart
 		// that cuts the run off leaves a row the next start settles; it is
@@ -142,21 +164,29 @@ func (h *Handler) startTaskRun(ws factory.OrgWorkstream, task factory.Workstream
 func (h *Handler) stopTaskTurn(ws, task string) bool {
 	d := &h.agentDesk
 	d.mu.Lock()
-	defer d.mu.Unlock()
-	cancel, ok := d.tasks[taskRunKey{ws, task}]
+	key := taskRunKey{ws, task}
+	cancel, ok := d.tasks[key]
 	if ok {
 		cancel()
 	}
-	return ok
+	// A run waiting in the queue leaves it.
+	unqueued := d.dequeueLocked(key)
+	owner := d.ownerLocked()
+	d.mu.Unlock()
+	if unqueued {
+		h.dropQueued(key, owner)
+	}
+	return ok || unqueued
 }
 
-// taskTurnRunning is whether task has a run going now.
+// taskTurnRunning is whether task has a run going now, or waiting in the
+// queue for its place.
 func (h *Handler) taskTurnRunning(ws, task string) bool {
 	d := &h.agentDesk
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	_, ok := d.tasks[taskRunKey{ws, task}]
-	return ok
+	return ok || d.queuedLocked(taskRunKey{ws, task}) >= 0
 }
 
 // finishTaskRun settles a task that still says running once its run has

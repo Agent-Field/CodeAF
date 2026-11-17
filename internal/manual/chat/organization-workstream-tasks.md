@@ -115,6 +115,17 @@ A task that says Running while its chat is not working and not asking shows **St
 
 The Factory's tasks are not affected: a Factory task's state is its job's, and the Factory recovers its own steps.
 
+## how many tasks run at once — Queued · 2nd, the limit of 3 per workstream and 10 per organization
+
+On an organization's server, **at most 3 of Afi's tasks run at once in one workstream, and at most 10 in the whole organization.** Starting more is never refused: each extra task is accepted and waits its turn, and its row reads **"Queued · 1st"**, "Queued · 2nd" and so on, its place among that workstream's waiting tasks.
+
+- Inside a workstream, waiting tasks start in the order they were started, each as soon as one of the three running finishes.
+- When the organization is full, a free place goes to the workstream that has waited longest for one, so one workstream's big plan cannot hold back everyone else's.
+- **Stop** on a waiting task takes it out of the queue; the places behind it move up.
+- A task waiting when the server restarts waits again afterwards. It was never working, so it is not Interrupted.
+
+These limits are fixed for now; nobody can change them in Settings yet. On a Personal workstream each chat does one thing at a time, and these limits do not apply.
+
 ## task stuck on Running after the server restarted, or pressed Start on a running task and nothing happened
 
 On an organization workstream, Afi's work on a task runs on the organization's server, and the server keeps a note of every run while it goes. **When the server starts again, every task it was working on is settled within about ten seconds; none is left saying Running with nothing behind it.**

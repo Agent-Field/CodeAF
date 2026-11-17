@@ -270,6 +270,16 @@ type WorkstreamTask struct {
 	// READ TIME by the organization's server and never kept, so a task that
 	// says running with nothing behind it can offer Start (L6).
 	Run *TaskRunNow `json:"run,omitempty"`
+	// Queue is a started task's place while its run waits for room under the
+	// limits (3 runs at once in a workstream, 10 in an organization), read
+	// as "Queued · 2nd". FILLED AT READ TIME and never kept.
+	Queue *TaskQueue `json:"queue,omitempty"`
+}
+
+// TaskQueue is a started task's place in its workstream's queue.
+type TaskQueue struct {
+	// Place counts from 1: the next of the workstream's tasks to start.
+	Place int `json:"place"`
 }
 
 // TaskRunNow is a running task's run, as its server sees it now.
