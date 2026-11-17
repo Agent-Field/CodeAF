@@ -460,6 +460,34 @@ func WorkspaceArriving(paths ...string) bool {
 	return externalArrivalMarker(paths...) != ""
 }
 
+// AbandonedArrival is the refusal a seal or a tool gets for the chat at any of
+// paths when its files failed to arrive and nothing is left to bring them: the
+// process that was fetching them is gone, so the failure stays on disk and
+// every workspace tool and seal in every process refuses until a new arrival
+// replaces it. It matches [ErrWorkspaceArrivalAbandoned] and carries the
+// failure's first words ([AbandonedReason]). Every other answer is nil.
+//
+// IT NEVER WAITS, which is what an open needs and [WaitWorkspace] cannot give
+// it: that waits on a running arrival for as long as its owner lives, and an
+// open must not stand behind the files it is about to let arrive. It answers nil
+// for an arrival a live owner still has in flight in this process or another,
+// for a failure whose owner can still retry it, and for a chat with no arrival
+// at all, so the only chats it names are the ones that will stay refused unless
+// somebody starts the fetch again.
+func AbandonedArrival(paths ...string) error {
+	if LookupWorkspaceArrival(paths...) != nil {
+		return nil
+	}
+	for _, p := range paths {
+		if m := arrivalMarkerPath(p); m != "" {
+			if v := viewArrivalMarker(m); v.abandoned {
+				return arrivalAbandoned(v.reason)
+			}
+		}
+	}
+	return nil
+}
+
 // WaitWorkspace waits for any arriving workspace covering paths to be put in
 // place. It returns nil immediately when no background arrival is pending, in
 // this process or in another one that still lives.
