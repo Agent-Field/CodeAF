@@ -2,6 +2,7 @@ package appwire
 
 import (
 	"encoding/json"
+	"slices"
 	"testing"
 )
 
@@ -31,5 +32,19 @@ func TestInboxDismissIsServedOnlyWithItsDoor(t *testing.T) {
 	}
 	if _, err := methods["inbox.dismiss"].call(&fakeEngine{}, json.RawMessage(`{"id":"a1/ask:9"}`)); codeOf(err) != CodeUnknownMethod {
 		t.Fatalf("an engine without the door = %v", err)
+	}
+}
+
+// hello says inbox.dismiss exactly when the engine has the door, so a client
+// offers Dismiss only where it is served.
+func TestHelloSaysInboxDismissOnlyWithItsDoor(t *testing.T) {
+	if FeatureInboxDismiss != "inbox.dismiss" {
+		t.Fatalf("the feature word is %q, which clients do not check for", FeatureInboxDismiss)
+	}
+	if hello := withInboxDismissFeature(Hello{}, &dismissEngine{}); !slices.Contains(hello.Features, FeatureInboxDismiss) {
+		t.Fatalf("an engine with the door says %v", hello.Features)
+	}
+	if hello := withInboxDismissFeature(Hello{}, &fakeEngine{}); slices.Contains(hello.Features, FeatureInboxDismiss) {
+		t.Fatalf("an engine without the door says %v", hello.Features)
 	}
 }

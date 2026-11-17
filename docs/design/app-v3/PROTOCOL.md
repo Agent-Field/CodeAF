@@ -1673,6 +1673,9 @@ saved model. Provider health is transient and is not saved in setup. hello says
 | `inbox.open` | `in.IDParams` | `AgentTaskResult` |
 | `inbox.undo` | `in.IDParams` | `Empty` |
 
+Hello says `inbox.dismiss` when the engine serves `inbox.dismiss`; a client offers
+Dismiss only then.
+
 ## keys methods
 
 | method | params | result |
