@@ -96,7 +96,17 @@ type Queue struct {
 	// default of the machine running them, absent when this factory does not
 	// know it (a runner elsewhere decides).
 	Model string `json:"model,omitempty"`
+	// GitHub is `not_connected` on a factory on the person's own machine
+	// whose computer has no GitHub connection: its runner runs folder jobs and
+	// repositories it already has a checkout of, but no issue is read and a
+	// repository with no checkout cannot be cloned until GitHub is connected.
+	// Absent when GitHub is connected, on a team server, or when the factory
+	// cannot tell.
+	GitHub string `json:"github,omitempty" jsonschema:"enum=not_connected"`
 }
+
+// GitHubNotConnected is [Queue.GitHub]'s one value.
+const GitHubNotConnected = "not_connected"
 
 // QueueDesk is what the TUI page reads off the floor that the dashboard does
 // not draw. It is one block so a reader of the wire sees at a glance which
@@ -471,6 +481,13 @@ type Job struct {
 	Effort         string              `json:"effort,omitempty"`
 	FollowUp       *factory.PRFollowUp `json:"follow_up,omitempty"`
 	SetupHeld      bool                `json:"setup_held,omitempty"`
+	// Hold is why a job that never ran waits in Backlog when nothing else on it
+	// says so: `import` (it was already open when the factory was set up or
+	// its repository was turned on, [factory.Item.SetupHeld]) or
+	// `pick_up_off` (a factory on the person's own machine whose Pick up
+	// issues is off starts no issue by itself). Absent otherwise. The state's
+	// title and detail say the same in words, with what releases it.
+	Hold string `json:"hold,omitempty" jsonschema:"enum=import,enum=pick_up_off"`
 	// Held is a queued job its person keeps from starting: no worker takes it
 	// until it is resumed. OverLimit is a queued job its person said to start
 	// now, which may take one slot above its computer's Jobs at once.

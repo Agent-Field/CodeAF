@@ -555,6 +555,19 @@ The job keeps what each check found: on its Steps panel, **Before it starts** an
 
 Turning a repository on, in Repos or by its first pick, never starts an issue that was already open on it. Every issue opened before that moment lands in Backlog and waits until someone starts it, even when it carries a start label (`agent-ready`, say) from the repository's own `.codeaf/factory.yaml` or from Pick up issues. Only an issue opened after the repository was turned on can start by its label. The repository keeps the time it was turned on while it stays on; turning it off and on again sets a new one, so the issues opened while it was off wait in Backlog too. A job already on the floor before the repository was turned off comes back exactly as it was.
 
+## why is this issue held — "Held at import", "Held: pick-up is off", an issue that sits in Backlog and never starts
+
+A GitHub issue that waits in Backlog for one of two holds says which, on its row and on its job page, with what releases it:
+
+- **Held at import**: "It was already open when the factory started watching its repository, so it waits for you. Start runs it." Every issue open when the factory was set up, or when its repository was turned on, is held this way (see "turning a repository on runs nothing already open"). Only Start releases it; turning on Pick up issues does not.
+- **Held: pick-up is off**: "Pick up issues is off, so the factory starts no issue by itself. Start runs this one, or turn on Pick up issues on the Jobs tab." Pick up issues is off until you turn it on, so a new `agent-ready` issue on a factory on your own machine waits like this. Turning it on releases every issue that carries one of its labels.
+
+A team server never says the second: it runs its repositories' own start labels whether the switch is on or off. An issue a routing rule, a go-ahead, an ask-first rule or an AgentField reasoner holds keeps that reason's own words. The job's read carries the reason as `hold` (`import` or `pick_up_off`) beside its state's title and detail.
+
+## the runner without GitHub — "GitHub isn't connected", what waits until it is, the Computers page
+
+The runner on this computer runs with GitHub not connected (as `this-computer`), so folder jobs and jobs on a repository this computer already has a checkout of run as usual. What waits is everything that needs GitHub: no issue is read, so nothing new arrives from GitHub; a job on a repository with no checkout here cannot be cloned; and no pull request is opened. The app says so where you look. The Computers page says, under This Mac, "GitHub isn't connected. This Mac runs folder jobs and repositories it has checked out; issues aren't read and other repositories can't be cloned." with **Connect GitHub**, which opens Settings › Connectors › GitHub. A job row on such a repository says "needs GitHub to clone". Connecting GitHub takes both away at the next read. The factory's queue read carries this as `github: not_connected`, on a factory on your own machine only.
+
 ## publishing failed: Connect GitHub to publish — the pull request was not opened, "Ask for write access", signed in with a password
 
 A job's pull request is opened from its person's own GitHub account, through the GitHub connection on the computer that ran it. When that is missing, publishing stops before anything is pushed and the job and its workstream task say **Connect GitHub to publish**, with what is needed and where:
@@ -621,7 +634,7 @@ Ending a go-ahead, stopping it (Mark done) or taking a job out of it starts noth
 
 A team factory (`codeaf factory serve`) follows its go-aheads by itself, after each of its own polls (about once a minute), with every app closed and your laptop shut. It needs no GitHub grant for that: the pass reads only the factory's own jobs.
 
-The factory the desktop app runs on your own machine is different. It follows go-aheads only while the app is open and its runner is on, and the runner turns on only once GitHub is connected; before that the app says "connect GitHub before turning the runner on: the factory needs to know whose jobs these are". With the runner off, a covered job stays in Backlog. Quitting the app stops the factory with it, so nothing a go-ahead covers starts until the app is open with the runner on again. For go-aheads that keep going while you are away, give them on a team factory.
+The factory the desktop app runs on your own machine is different. It follows go-aheads only while the app is open and its runner is on. The runner runs without GitHub (see "the runner without GitHub"), but a covered job on a GitHub repository this computer has no checkout of cannot start until GitHub is connected. With the runner off, a covered job stays in Backlog. Quitting the app stops the factory with it, so nothing a go-ahead covers starts until the app is open with the runner on again. For go-aheads that keep going while you are away, give them on a team factory.
 
 It is the factory's `factory.policy_set`, `factory.policy_get` and `factory.waits_set`, served when `factory.features` lists `group_policy`; an older factory lists nothing, and the app then says "This codeaf can't apply go-aheads yet." A team factory lets only the go-ahead's giver or its operator change it.
 

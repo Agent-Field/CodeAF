@@ -12,6 +12,29 @@ const ConcurrencySettingsHint = "Change Jobs at once in Settings → Organizatio
 // offline or asleep: no runner or Jobs at once setting can start it elsewhere.
 const WaitingForComputer = "waiting_for_computer"
 
+// The two holds a Backlog job can wait under with nothing else to say so,
+// as [Job.Hold] spells them and as a person reads them. Each detail names the
+// one thing that releases it.
+const (
+	HoldImport         = "import"
+	HoldPickUpOff      = "pick_up_off"
+	HeldAtImportTitle  = "Held at import"
+	HeldAtImportDetail = "It was already open when the factory started watching its repository, so it waits for you. Start runs it."
+	PickUpOffTitle     = "Held: pick-up is off"
+	PickUpOffDetail    = "Pick up issues is off, so the factory starts no issue by itself. Start runs this one, or turn on Pick up issues on the Jobs tab."
+)
+
+// ranInRun says one of the job's steps is part of a run: a job that has run
+// is not held at import, whatever its import said.
+func ranInRun(j *Job) bool {
+	for _, s := range j.Steps {
+		if s.InRun {
+			return true
+		}
+	}
+	return false
+}
+
 // PresentJob is shared by every producer. The service narrows controls using
 // its actual doors after caller permissions and runner presence are known.
 func PresentJob(j *Job) {
@@ -105,6 +128,11 @@ func PresentJob(j *Job) {
 		// A job an AgentField reasoner runs (run_on) needs none, so it waits
 		// as ordinary backlog.
 		p.Title, p.Detail = factory.NoRepoTitle, factory.NoRepoDetail
+	case j.State == StateBacklog && j.SetupHeld && !ranInRun(j):
+		// A HOLD SAYS ITS REASON, so an issue held at import never looks like
+		// one held for any other reason (blackmac team run, #337).
+		p.Title, p.Detail = HeldAtImportTitle, HeldAtImportDetail
+		j.Hold = HoldImport
 	case j.State == StateBacklog:
 		p.Title = "Backlog"
 	}

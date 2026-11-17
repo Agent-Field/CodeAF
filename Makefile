@@ -22,6 +22,10 @@ BUILD_STAMP := -X $(BUILDINFO).rev=$(BUILD_REV) -X $(BUILDINFO).dirty=$(BUILD_DI
 # not a secret; a build without one simply has no browser sign-in (the gh
 # login and a pasted token still work). Set it from the environment or the
 # command line: make app-sidecar CODEAF_GITHUB_CLIENT_ID=Ov23li...
+# app-sidecar records the ID it was built with beside the binary
+# (codeaf-<triple>.github-client-id, empty when unset) and warns when it is
+# empty: garble's -literals hides the string itself, so the desktop app's
+# bundle reads that record and refuses a sidecar with no sign-in.
 CODEAF_GITHUB_CLIENT_ID ?=
 ifneq ($(strip $(CODEAF_GITHUB_CLIENT_ID)),)
 BUILD_STAMP += -X github.com/Agent-Field/codeaf/internal/factory/github.clientID=$(strip $(CODEAF_GITHUB_CLIENT_ID))
@@ -547,6 +551,11 @@ app-sidecar: embed $(if $(filter windows,$(APP_GOOS)),,$(GARBLE))
 		printf 'seed=%s\nrev=%s\ntarget=%s/%s\n' "$$seed" "$(BUILD_REV)" "$(APP_GOOS)" "$(APP_GOARCH)" \
 			> "$(APP_SEED_DIR)/$(BUILD_REV)-$(APP_GOOS)-$(APP_GOARCH)-$$sum.seed"; \
 		printf 'app-sidecar: seed kept as %s.seed\n' "$(BUILD_REV)-$(APP_GOOS)-$(APP_GOARCH)-$$sum"; \
+	fi; \
+	printf '%s\n' "$(strip $(CODEAF_GITHUB_CLIENT_ID))" > $(APP_DIST)/codeaf-$$triple$$ext.github-client-id; \
+	if [ -z "$(strip $(CODEAF_GITHUB_CLIENT_ID))" ]; then \
+		printf '\napp-sidecar: WARNING: CODEAF_GITHUB_CLIENT_ID is unset, so this build offers NO GitHub sign-in.\n' >&2; \
+		printf 'app-sidecar: the desktop app'"'"'s bundle refuses it. Rebuild with CODEAF_GITHUB_CLIENT_ID=Ov23liZE8n5kPnDn5RcK (the WorkAF app; public).\n\n' >&2; \
 	fi; \
 	printf 'app-sidecar: %s\n' "$(APP_DIST)/codeaf-$$triple$$ext"
 

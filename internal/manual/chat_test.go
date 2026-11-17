@@ -3811,6 +3811,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"the factory says my repository isn't checked out on this machine", "factory"},
 		{"does the factory clone a private repository it has no checkout of", "factory"},
 		{"factory start refused, not checked out, connect GitHub so the factory can clone it", "factory"},
+		// A HOLD SAYS ITS REASON, and the runner without GitHub says what waits.
+		{"why is my agent-ready issue held and not starting", "factory"},
+		{"what does Held at import mean on an issue", "factory"},
+		{"the issue says Held: pick-up is off", "factory"},
+		{"the Computers page says GitHub isn't connected", "factory"},
+		{"does the runner work before I connect GitHub", "factory"},
 		// WHAT A STEP FOUND REACHES THE STEPS AFTER IT: the plan whole, the
 		// files it names, every claim so far.
 		// JIRA TICKETS ARE WORK: connected with an API token and a JQL, polled,
