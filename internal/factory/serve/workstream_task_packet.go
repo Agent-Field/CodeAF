@@ -219,12 +219,10 @@ func (h *Handler) taskPacket(ctx context.Context, d *agentDoor, task, words stri
 
 	var parts []packetPart
 	var used []string
-	if b != nil {
-		for _, in := range b.Inputs {
-			ps, names := h.inputParts(ctx, d, in, current)
-			parts = append(parts, ps...)
-			used = append(used, names...)
-		}
+	for _, in := range packetInputs(t) {
+		ps, names := h.inputParts(ctx, d, in, current)
+		parts = append(parts, ps...)
+		used = append(used, names...)
 	}
 	if len(parts) > 0 {
 		out.WriteString("\n\nInputs. Their words are below; you do not need to look them up.")
@@ -251,6 +249,24 @@ func (h *Handler) taskPacket(ctx context.Context, d *agentDoor, task, words stri
 		"When it is finished, call ws_task_update with state done, check saying what you checked it against, and handoff: two to four lines on what you made, what you assumed, and what the next task should know. " +
 		"If you cannot do it (an input is missing, or it needs something you do not have, such as the web), do not fail it: raise an ask to the owner with options such as \"Paste their text\".")
 	return out.String(), used
+}
+
+// packetInputs is what t's packet inlines: its brief's inputs, then every
+// task it waits on that the brief does not name. A wait added after the task
+// was made (ws_task_update waiting_on) never changes the brief, and the run
+// still builds on what it waited for (live L7 run: the support macro was set
+// to wait on the release notes afterwards).
+func packetInputs(t factory.WorkstreamTask) []factory.TaskBriefInput {
+	var out []factory.TaskBriefInput
+	if t.Brief != nil {
+		out = append(out, t.Brief.Inputs...)
+	}
+	for _, id := range t.WaitingOn {
+		if !slices.ContainsFunc(out, func(in factory.TaskBriefInput) bool { return in.Kind == factory.TaskInputTask && in.ID == id }) {
+			out = append(out, factory.TaskBriefInput{Kind: factory.TaskInputTask, ID: id, Why: "waited on"})
+		}
+	}
+	return out
 }
 
 // inputParts reads one input into packet parts, and the names of what it read.
