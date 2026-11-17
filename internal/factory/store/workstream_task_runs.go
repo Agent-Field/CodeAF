@@ -28,6 +28,9 @@ CREATE TABLE IF NOT EXISTS task_runs (
 	started TEXT NOT NULL,
 	beat    TEXT NOT NULL,
 	resumes INTEGER NOT NULL DEFAULT 0,
+	words   TEXT NOT NULL DEFAULT '',
+	queued  INTEGER NOT NULL DEFAULT 0,
+	usd     REAL NOT NULL DEFAULT 0,
 	PRIMARY KEY (ws, task)
 );
 `
@@ -46,24 +49,28 @@ type TaskRun struct {
 	// Resumes is how many times this run was taken up again by itself after
 	// it was cut off. A run resumes once; a second cut leaves it Interrupted.
 	Resumes int
+	// Words are what the run was asked, so a run taken up again is asked the
+	// same thing (a revision's words included), not only the task's title.
+	Words string
+	// Queued is a run waiting for a free place under the limits, not yet
+	// going.
+	Queued bool
+	// USD is what the run has spent so far.
+	USD float64
 }
 
 // PutTaskRun keeps r as its task's lease, in place of any it had.
 func (st *Store) PutTaskRun(r TaskRun) error {
 	return st.wsTx(func(tx *sql.Tx) error {
-		_, err := tx.Exec(`INSERT INTO task_runs (ws, task, owner, starter, started, beat, resumes) VALUES (?, ?, ?, ?, ?, ?, ?)
-			ON CONFLICT (ws, task) DO UPDATE SET owner = excluded.owner, starter = excluded.starter,
-			started = excluded.started, beat = excluded.beat, resumes = excluded.resumes`,
-			r.WS, r.Task, r.Owner, r.Starter, r.Started, r.Beat, r.Resumes)
-		return err
+		return putTaskRun(tx, r)
 	})
 }
 
-// BeatTaskRun says owner's run on task is still alive at beat. A lease that
-// owner no longer holds is left alone.
-func (st *Store) BeatTaskRun(ws, task, owner, beat string) error {
+// BeatTaskRun says owner's run on task is still alive at beat, having spent
+// usd so far. A lease that owner no longer holds is left alone.
+func (st *Store) BeatTaskRun(ws, task, owner, beat string, usd float64) error {
 	return st.wsTx(func(tx *sql.Tx) error {
-		_, err := tx.Exec(`UPDATE task_runs SET beat = ? WHERE ws = ? AND task = ? AND owner = ?`, beat, ws, task, owner)
+		_, err := tx.Exec(`UPDATE task_runs SET beat = ?, usd = MAX(usd, ?) WHERE ws = ? AND task = ? AND owner = ?`, beat, usd, ws, task, owner)
 		return err
 	})
 }
@@ -89,11 +96,13 @@ func dropTaskRun(tx *sql.Tx, ws, task, owner string) error {
 func (w TaskWrite) DropRun(ws, task string) error { return dropTaskRun(w.tx, ws, task, "") }
 
 // PutRun keeps r inside a task write.
-func (w TaskWrite) PutRun(r TaskRun) error {
-	_, err := w.tx.Exec(`INSERT INTO task_runs (ws, task, owner, starter, started, beat, resumes) VALUES (?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT (ws, task) DO UPDATE SET owner = excluded.owner, starter = excluded.starter,
-		started = excluded.started, beat = excluded.beat, resumes = excluded.resumes`,
-		r.WS, r.Task, r.Owner, r.Starter, r.Started, r.Beat, r.Resumes)
+func (w TaskWrite) PutRun(r TaskRun) error { return putTaskRun(w.tx, r) }
+
+func putTaskRun(tx *sql.Tx, r TaskRun) error {
+	_, err := tx.Exec(`INSERT INTO task_runs (ws, task, owner, starter, started, beat, resumes, words, queued, usd) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT (ws, task) DO UPDATE SET owner = excluded.owner, starter = excluded.starter, started = excluded.started,
+		beat = excluded.beat, resumes = excluded.resumes, words = excluded.words, queued = excluded.queued, usd = excluded.usd`,
+		r.WS, r.Task, r.Owner, r.Starter, r.Started, r.Beat, r.Resumes, r.Words, r.Queued, r.USD)
 	return err
 }
 
@@ -104,7 +113,7 @@ func (st *Store) TaskRuns() ([]TaskRun, error) {
 	if err != nil || db == nil {
 		return nil, err
 	}
-	rows, err := db.Query(`SELECT ws, task, owner, starter, started, beat, resumes FROM task_runs ORDER BY started`)
+	rows, err := db.Query(`SELECT ws, task, owner, starter, started, beat, resumes, words, queued, usd FROM task_runs ORDER BY started`)
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +121,7 @@ func (st *Store) TaskRuns() ([]TaskRun, error) {
 	var out []TaskRun
 	for rows.Next() {
 		var r TaskRun
-		if err := rows.Scan(&r.WS, &r.Task, &r.Owner, &r.Starter, &r.Started, &r.Beat, &r.Resumes); err != nil {
+		if err := rows.Scan(&r.WS, &r.Task, &r.Owner, &r.Starter, &r.Started, &r.Beat, &r.Resumes, &r.Words, &r.Queued, &r.USD); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
@@ -127,8 +136,8 @@ func (st *Store) TaskRunOf(ws, task string) (TaskRun, bool, error) {
 		return TaskRun{}, false, err
 	}
 	r := TaskRun{WS: ws, Task: task}
-	err = db.QueryRow(`SELECT owner, starter, started, beat, resumes FROM task_runs WHERE ws = ? AND task = ?`, ws, task).
-		Scan(&r.Owner, &r.Starter, &r.Started, &r.Beat, &r.Resumes)
+	err = db.QueryRow(`SELECT owner, starter, started, beat, resumes, words, queued, usd FROM task_runs WHERE ws = ? AND task = ?`, ws, task).
+		Scan(&r.Owner, &r.Starter, &r.Started, &r.Beat, &r.Resumes, &r.Words, &r.Queued, &r.USD)
 	if errors.Is(err, sql.ErrNoRows) {
 		return TaskRun{}, false, nil
 	}

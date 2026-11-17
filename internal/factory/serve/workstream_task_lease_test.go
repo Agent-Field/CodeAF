@@ -39,7 +39,7 @@ func TestARunCutOffByARestartIsInterruptedThenResumesOnce(t *testing.T) {
 	if got := o.one(t, path, cut.ID); got.Run == nil || !got.Run.Live || got.Run.Since == "" {
 		t.Fatalf("a working task does not say a run is going: %+v", got.Run)
 	}
-	if lease.Starter != "abir" || lease.Resumes != 0 {
+	if lease.Starter != "abir" || lease.Resumes != 0 || lease.Words != "Write the release notes\n\nShort." {
 		t.Fatalf("the run's lease is %+v", lease)
 	}
 	// One cut off before leases were kept: running, and nothing in the store
@@ -98,7 +98,7 @@ func TestARunCutOffByARestartIsInterruptedThenResumesOnce(t *testing.T) {
 		}
 	}
 	if turn := asked["Write the release notes"]; turn.Asker != "abir" || !strings.Contains(turn.Text, "Carry on from where you stopped") ||
-		!strings.Contains(turn.Dir, "/tasks/"+cut.ID+"/") {
+		!strings.Contains(turn.Text, "Write the release notes\n\nShort.") || !strings.Contains(turn.Dir, "/tasks/"+cut.ID+"/") {
 		t.Fatalf("the resumed run was handed %+v", turn)
 	}
 	if got := o.one(t, path, twice.ID); got.State != factory.TaskInterrupted || got.StateReason != taskInterruptedWhy {
