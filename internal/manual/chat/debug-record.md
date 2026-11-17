@@ -20,7 +20,9 @@ the process that makes the calls, and ordinarily `codeaf` hands your conversatio
 folder's background session host — which was never told to record, and would leave you a
 folder holding `run.json` and no request bodies at all. So a run that is recording takes
 the in-process road, by the pin exactly as by the flag. The conversation ends with the
-terminal, the way `--no-host` does.
+terminal, the way `--no-host` does, and still anchors to the working folder's project
+(`project: <path>` on the keys row, and the same project memories and rules as a plain
+`codeaf` launch).
 
 **It does not change what the run does.** Nothing is asked differently, nothing is slower,
 no model is told anything new. With it off, a run costs one check and writes nothing at

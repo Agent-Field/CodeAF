@@ -100,6 +100,9 @@ type completion struct {
 	all     []string
 	loaded  bool
 	loading bool
+	// walked is the workspace root the last loadFiles walk was started for, or
+	// empty before loadFiles has walked a directory.
+	walked string
 
 	hits  []int
 	score []int
@@ -204,9 +207,12 @@ func (c *completion) sync(e *editor) {
 		// A WORD ARGUMENT ANSWERS TO THE SAME RULES AS A PATH ONE: tab opens
 		// it over an empty argument, an inserted word is not re-completed, and
 		// every edit while it stands re-ranks the same named list.
+		//
+		// Do not mark [completion.loaded]: that flag belongs to the workspace
+		// file walk ([completion.all]), and setting it here stopped @file: and
+		// /export from ever walking the workspace later in the conversation.
 		if c.words == nil {
 			c.words = wordArgCandidates()
-			c.loaded = true
 		}
 		switch {
 		case query == "" && !(c.open && c.arg):
@@ -222,6 +228,9 @@ func (c *completion) sync(e *editor) {
 		}
 		return
 	}
+	// Any opening outside a word-argument command ranks the workspace file walk,
+	// including path-argument commands (/export, /attach).
+	c.words = nil
 	if at, query, ok := argToken(e.value, e.cursor); ok {
 		switch {
 		case query == "" && !(c.open && c.arg):
@@ -355,12 +364,13 @@ func (c *completion) openArg(e *editor) bool {
 	if at, query, ok := wordArgToken(e.value, e.cursor); ok {
 		// A WORD ARGUMENT IS ITS OWN CATALOG, named at the door and ranked
 		// like any other: the registry is short and already in memory, so
-		// there is no walk to wait for and [completion.loaded] is simply true.
+		// there is no walk to wait for and [completion.filesReady] answers true
+		// without marking the workspace walk loaded.
 		c.words = wordArgCandidates()
-		c.loaded = true
 		c.narrow(at, query, true)
 		return true
 	}
+	c.words = nil
 	at, query, ok := argToken(e.value, e.cursor)
 	if !ok {
 		return false
@@ -488,6 +498,12 @@ func mentionContinuation(r rune) bool {
 	return unicode.IsLetter(r) || unicode.IsDigit(r) || strings.ContainsRune("_-/\\", r)
 }
 
+// filesReady reports whether the candidate list this opening ranks is in memory:
+// the named word list for a word argument, or the workspace walk for everything else.
+func (c *completion) filesReady() bool {
+	return c.loaded || (c.arg && c.words != nil)
+}
+
 // catalogsReady keeps a first pasted search open until the catalog it needs
 // has answered. An empty read is an answer; an unread catalog is not.
 func (c *completion) catalogsReady() bool {
@@ -497,9 +513,9 @@ func (c *completion) catalogsReady() bool {
 	case scopeChat:
 		return c.recentsLoaded
 	case scopeFile:
-		return c.loaded
+		return c.filesReady()
 	default:
-		return c.loaded
+		return c.filesReady()
 	}
 }
 
@@ -812,7 +828,7 @@ func (c *completion) height(width int) int {
 	switch {
 	case !c.open:
 		return 0
-	case !c.loaded && len(c.lines) == 0:
+	case !c.filesReady() && len(c.lines) == 0:
 		return 1
 	case len(c.lines) == 0:
 		return 1
@@ -883,7 +899,7 @@ func (c *completion) rows(width, n int, pal palette, hover int, headKey string) 
 		return nil
 	}
 	if len(c.lines) == 0 {
-		if !c.loaded {
+		if !c.filesReady() {
 			return []string{pal.dim("  looking…")}
 		}
 		return []string{pal.dim("  " + c.emptyWord())}
@@ -953,13 +969,27 @@ type filesLoadedMsg struct {
 // against its own workspace. So a name picked here is a name the far side looks
 // up, which is right when the two machines hold the same project and visibly
 // wrong when they do not.
+// alignFiles drops a previous workspace's file catalog when the conversation's
+// pathRoot moves to another directory, while leaving a preloaded test catalog
+// (whose walked root is empty) untouched.
+func (a *app) alignFiles(root string) {
+	if a.comp.walked == "" || a.comp.walked == root {
+		return
+	}
+	a.comp.all, a.comp.loaded, a.comp.loading = nil, false, false
+	a.comp.walked = root
+	a.comp.rank()
+}
+
 func (a *app) loadFiles() tea.Cmd {
 	root := a.pathRoot()
+	a.alignFiles(root)
 	if a.comp.loaded || a.comp.loading || root == "" {
 		return nil
 	}
+	a.comp.walked = root
 	a.comp.loading = true
-	return func() tea.Msg { return filesLoadedMsg{paths: walkFiles(root, walkCap)} }
+	return func() tea.Msg { return filesLoadedMsg{paths: walkFiles(root, walkCap), root: root} }
 }
 
 // completeFile is enter on the list: the path replaces what was typed after the

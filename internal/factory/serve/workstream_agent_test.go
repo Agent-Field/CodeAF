@@ -121,12 +121,22 @@ func TestServerAgentAnswersEveryoneWhoCanEdit(t *testing.T) {
 			t.Errorf("the door read %q, %v", ws.Name, err)
 		}
 		turn.Step(api.AgentEntryStep, "read the workstream", "workstream", false)
+		// abir made Retries, so the agent's text for it is a suggestion
+		// that applies nothing.
 		line, err := turn.Door.WritePage(ctx, retries, "", "Retry three times with backoff.")
-		if err != nil || !strings.Contains(line, "wrote the page") {
-			t.Errorf("writing an unopened page: %q, %v", line, err)
+		if err != nil || !strings.Contains(line, "was made or edited by a person") || !strings.Contains(line, "kept as version 1") {
+			t.Errorf("writing a person's page: %q, %v", line, err)
 		}
-		if _, err := turn.Door.WritePage(ctx, "", "Runbook", "# Runbook\n\nPage someone."); err != nil {
+		made, err := turn.Door.WritePage(ctx, "", "Runbook", "# Runbook\n\nPage someone.")
+		if err != nil {
 			t.Errorf("a new page: %v", err)
+		}
+		runbook := strings.TrimSuffix(made[strings.LastIndex(made, "(")+1:], ")")
+		// Its own page, which no person has edited, it writes directly,
+		// and the words before stay in History.
+		line, err = turn.Door.WritePage(ctx, runbook, "", "# Runbook\n\nPage someone, then retry.")
+		if err != nil || !strings.Contains(line, "wrote the page") || !strings.Contains(line, "words before are kept") {
+			t.Errorf("rewriting its own page: %q, %v", line, err)
 		}
 		if _, err := turn.Door.Decide(ctx, "Retries stop after three tries."); err != nil {
 			t.Errorf("deciding: %v", err)
@@ -175,13 +185,20 @@ func TestServerAgentAnswersEveryoneWhoCanEdit(t *testing.T) {
 		t.Fatalf("spend %v", ws.SpendUSD)
 	}
 	at := slices.IndexFunc(ws.Pages, func(p api.WorkstreamPage) bool { return p.ID == retries })
-	if ws.Pages[at].BodyMD != "Retry three times with backoff." || ws.Pages[at].UpdatedBy != "mia" {
-		t.Fatalf("retries page %+v", ws.Pages[at])
+	if ws.Pages[at].BodyMD != "" || ws.Pages[at].UpdatedBy != "abir" {
+		t.Fatalf("a suggestion was applied to abir's page: %+v", ws.Pages[at])
 	}
 	if !slices.ContainsFunc(ws.Pages, func(p api.WorkstreamPage) bool {
-		return p.Title == "Runbook" && strings.Contains(p.BodyMD, "Page someone")
+		return p.Title == "Runbook" && strings.Contains(p.BodyMD, "then retry") && p.UpdatedBy == "mia"
 	}) {
-		t.Fatalf("no runbook in %+v", ws.Pages)
+		t.Fatalf("no runbook written for mia in %+v", ws.Pages)
+	}
+	// Files says Afi made the runbook, for mia, who asked (L1 F9).
+	var files api.WorkstreamFiles
+	o.do(t, "abir", "GET", "/v1/workstreams/"+webhook.ID+"/files", -1, nil, 200, &files)
+	i := slices.IndexFunc(files.Files, func(f api.WorkstreamFile) bool { return f.Name == "Runbook" })
+	if i < 0 || files.Files[i].MadeBy.Kind != "afi" || files.Files[i].MadeBy.For != "mia" || files.Files[i].ChangedBy != "mia" {
+		t.Fatalf("the runbook's file %+v", files.Files)
 	}
 	if n := len(ws.Decisions); n != 1 || ws.Decisions[0].State != "proposed" || ws.Decisions[0].By != "mia" {
 		t.Fatalf("decisions %+v", ws.Decisions)

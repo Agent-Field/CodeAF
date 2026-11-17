@@ -697,10 +697,14 @@ func (a *Agent) teamNewsLocked(profile string, roles []teamRole) string {
 	// THE CURSOR IS WRITTEN DOWN ONLY WHEN IT MATTERS AFTER A RESTART: when a
 	// team's first cursor is taken, because a restart would take a later one and
 	// skip what was said while this was closed, and when something was
-	// delivered, because a restart must not deliver it twice. A cursor that
-	// moved over lines addressed to somebody else is kept in memory; a restart
-	// reads those lines again and hands on none of them, which costs a read and
-	// never a message, where a write per step cost a file per step.
+	// delivered, because a restart must not deliver it twice; and when it passed
+	// an entry that wakes this conversation, because the next process seeds its
+	// wake watch from the written cursor and would start a turn on it again (a
+	// member's finished event gives the manager no line, so it woke Afi on the
+	// same two events every launch). A cursor that moved over lines addressed to
+	// somebody else is kept in memory; a restart reads those lines again and
+	// hands on none of them, which costs a read and never a message, where a
+	// write per step cost a file per step.
 	save := false
 	var groups []string
 	for _, role := range roles {
@@ -722,6 +726,9 @@ func (a *Agent) teamNewsLocked(profile string, roles []teamRole) string {
 		var lines []string
 		for _, entry := range entries {
 			cursor = entry.ID
+			if teamWakes(role, entry) {
+				save = true
+			}
 			if !role.joinedAt.IsZero() && entry.At.Before(role.joinedAt) && !a.teamOwnStart(role, entry) {
 				continue
 			}

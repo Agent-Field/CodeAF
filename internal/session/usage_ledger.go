@@ -81,6 +81,7 @@ package session
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
@@ -234,11 +235,10 @@ type UsageLine struct {
 	// reader summing a year of this file has to be able to add those honestly.
 	// Missing-receipt markers carry zero; measured calls carry one.
 	Calls int `json:"calls,omitempty"`
-	// Input and Output are the tokens. The cache split is deliberately not here:
-	// this file answers "how much and on what", and the four-way breakdown with
-	// the cached share in it is in the journal the session id names.
-	Input  int `json:"in,omitempty"`
-	Output int `json:"out,omitempty"`
+	// Input, Output and CacheRead are the tokens.
+	Input     int `json:"in,omitempty"`
+	Output    int `json:"out,omitempty"`
+	CacheRead int `json:"cache_read,omitempty"`
 	// USD is what it cost, and zero means nobody could price it rather than that
 	// it was free — the same reading [TaskIndexEntry.Cost] has.
 	USD float64 `json:"usd,omitempty"`
@@ -1424,6 +1424,7 @@ func (a *Agent) recordUsageLine(call bankedCall) error {
 		Calls:           used.Calls,
 		Input:           used.Input,
 		Output:          used.Output,
+		CacheRead:       used.CacheRead,
 		USD:             used.CostUSD,
 		Empty:           used.EmptyReflex > 0,
 		Reconciled:      call.reconciled,
@@ -1729,4 +1730,64 @@ func (line UsageLine) modelCalls() int {
 		return 0
 	}
 	return max(line.Calls, 1)
+}
+
+// TranscriptCacheReads returns the cached prompt tokens recorded in a
+// conversation's journal at path, grouped by the model each row named.
+func TranscriptCacheReads(path string) map[string]int {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil
+	}
+	defer file.Close()
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+	var (
+		reads      map[string]int
+		remoteSeen map[string]bool
+	)
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if !bytes.Contains(line, []byte(`"cacheRead"`)) {
+			continue
+		}
+		var entry sessionEntry
+		if json.Unmarshal(line, &entry) != nil {
+			continue
+		}
+		switch entry.Type {
+		case "usage":
+			used := entry.Usage
+			if used == nil || used.CacheRead <= 0 {
+				continue
+			}
+			if used.RemoteEvent != "" {
+				if remoteSeen[used.RemoteEvent] {
+					continue
+				}
+				if remoteSeen == nil {
+					remoteSeen = make(map[string]bool)
+				}
+				remoteSeen[used.RemoteEvent] = true
+			}
+			if reads == nil {
+				reads = make(map[string]int)
+			}
+			reads[strings.TrimSpace(used.Model)] += used.CacheRead
+		case "call":
+			call := entry.Call
+			if call == nil || call.Arm == "" || call.CacheRead <= 0 {
+				continue
+			}
+			if reads == nil {
+				reads = make(map[string]int)
+			}
+			reads[strings.TrimSpace(call.Model)] += call.CacheRead
+		}
+	}
+	return reads
 }

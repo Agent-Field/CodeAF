@@ -513,6 +513,8 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.org_workstream_task_comment` | `in.OrgTaskCommentParams` | `json.RawMessage` |
 | `factory.org_workstream_task_events` | `in.OrgTaskParams` | `OrgTaskEvents` |
 | `factory.org_workstream_tasks_start_all` | `in.OrgTasksStartAllParams` | `OrgTasks` |
+| `factory.org_workstreams_requestable` | `in.OrgConn` | `json.RawMessage` |
+| `factory.org_workstream_request` | `in.OrgTaskRequestParams` | `json.RawMessage` |
 | `factory.org_canvases` | `in.OrgConn` | `OrgCanvasList` |
 | `factory.org_canvas_get` | `in.OrgCanvasParams` | `json.RawMessage` |
 | `factory.org_canvas_create` | `in.OrgCanvasCreateParams` | `json.RawMessage` |
@@ -797,7 +799,12 @@ source?}`; `kind` is `folder`, `document`, `canvas`, `upload`, `link`, `repo` or
 `shortcut`. A file POINTS at what it holds: a document is a page of the workstream
 (`page_id`; its words are the page's live document, its versions the page's), a canvas
 an organization canvas made inside it (`canvas_id`), an upload bytes in the server's blob
-store, a shortcut a file in another workstream (`target`), copied nowhere.
+store, a shortcut a file in another workstream (`target`), copied nowhere. A shortcut to
+a Library page is a `link` whose `url` is the page's own address,
+`codeaf://library/<page>` (Copy Link on the page); the desk draws it as "From the Library"
+and opens the page in the Library, and the Personal store accepts that one non-web
+address for a link. Files never mentions `versions` to a person and never offers a
+restore: the desk asks before a delete instead (final spec, Files and the Library).
 `factory.org_workstream_files {id, query?, deleted?}` `GET .../files` answers `{files,
 deleted?, from?}`: the live files, Recently deleted when `deleted`, and `from {id, name,
 files}`, the parent workstream's files, read-only, when the caller can see it. `query`
@@ -942,9 +949,22 @@ model keys and to a workstream's agent on the server. `factory.org_keys` `GET
 `factory.org_key_delete {provider}` `DELETE` are the operator's alone; the only provider
 is `openrouter`, and a key is answered back only as `{provider, last4, set_at,
 set_by}`, never whole. In `server` mode every workstream has one agent on the server,
-run with that key as an ordinary engine conversation whose one tool is
+run with that key as an ordinary engine conversation whose tools are
 `workstream_pages` (read the workstream and one page, write a page, make a page,
-propose a decision; no shell, files, repository or machine). `factory.org_workstream_agent
+suggest a decision) and the eight workstream tools `ws_tasks`, `ws_task_create`,
+`ws_task_update`, `ws_task_comment`, `ws_files`, `ws_file_read`, `ws_file_create`,
+`ws_file_suggest`; no shell, repository or machine. Each `ws_*` call is answered by the
+same route a person's client uses (`/tasks`, `/tasks/{tid}` with `If-Match`,
+`/tasks/{tid}/comment`, `/files`), as the asker, so the routes' rules hold: what Afi
+adds to a thread is `by {kind:"afi", name:"Afi"}`, a task it makes is `done_by
+{kind:"afi"}`, `came_from {kind:"chat", chat_id:"afi", name:"Afi"}` and owned by the
+asker unless it names another person who can edit or Everyone, and it changes only
+tasks whose `done_by` is `afi` or `chat`; a file it makes is `made_by {kind:"afi",
+name:"Afi", for:<asker>}`. It writes a page directly only when its file is
+`made_by` an agent and not `person_edited`, first keeping the words before as a
+version; any other page, and any page with a live document, gets its text as a page
+version with `reason` `agent` (Kept · not applied), which is also what `ws_file_suggest`
+keeps. `factory.org_workstream_agent
 {id, since?}` `GET /v1/workstreams/{id}/agent?since=` (`view`) answers `{id, state,
 turn?, for?, since?, entries, seq, can_talk, cannot?}`: `state` is `idle`, `working`
 (`for` is whose message) or `stopping` (`for` is who stopped it); `entries` are the
@@ -956,8 +976,7 @@ spent), absent for a viewer. `factory.org_workstream_agent_send {id, text}` `POS
 it answers someone else the refusal is `conflict` with `detail.reason` `busy` and
 `detail.by` `@handle`. `factory.org_workstream_agent_stop {id}` `POST .../agent/stop`
 (`edit`) stops it. The agent writes as the person who asked (their rights are checked
-on every write); a page whose live document exists is not written over, the text is
-kept as a page version with `reason` `agent`; a decision is added `proposed`. What a
+on every write); a decision is added `proposed`. What a
 turn spent is posted to the workstream's spend under the asker with `chat` `agent`.
 The server's `agent.entry {id, entry}` and `agent.state {id, state, ...}` reach those
 who can see the workstream and are relayed as `factory.org_workstream_agent
@@ -998,7 +1017,10 @@ Factory task's first overlay) takes any of `title`, `request`, `owner` (hand on)
 `waiting_on` (same workstream, never itself, never a circle: 422), `due`, `group`
 (null clears), `state`, `state_reason`, `results`, `check`, `ask` (null clears) and
 `move_to` (another workstream, edit on both; the thread moves with it). Only the owner
-ticks a person task (`state` `done`). The tick starts nothing: an Afi or chat task that
+ticks a person task (`state` `done`). Stopping (`state` `stopped`) and `move_to` are the
+task owner's or whoever looks after the workstream's (its steward, or full access);
+anyone else gets 403 "only the task's owner or whoever looks after this workstream can
+stop or move it". The tick starts nothing: an Afi or chat task that
 waited only on it stays `up_next`, unchanged, and its thread gains "Ready to start: <title>
 is done"; `running` is set only by whoever wakes the doer. Send back is `state`
 `up_next` on a `done` task by someone other than its owner, or with a `state_reason`:
@@ -1021,6 +1043,21 @@ taker). `_tasks_start_all {ws, group}` `POST .../tasks/start_all` names the grou
 next Afi and chat tasks that wait on nothing unfinished and answers `{tasks}`; it writes
 and publishes nothing, because the caller wakes each doer and then sets `running`.
 Every change publishes `workstream.changed` with `part` `tasks` and `part_id` the task.
+
+A REQUEST INTO ANOTHER WORKSTREAM (hello `org_workstream_requests`; Workstreams final
+spec, flow 7). `factory.org_workstreams_requestable {}` `GET /v1/workstreams/requestable`
+answers `{workstreams: [{id, name, parent?, in, receiver?}]}`: every open workstream
+the caller is in or that is not private, by name, `in` saying whether they are in it
+and `receiver` its owner of incoming work (absent for Everyone).
+`factory.org_workstream_request {ws, title, request?, from_ws?, from_task?}` `POST
+/v1/workstreams/{id}/requests` (any member; 404 for a private workstream they are not
+in, or an archived one) makes a task there: owned by the workstream's owner of
+incoming work, done by that person (Afi when it is Everyone), `up_next`, `came_from`
+`{kind: person, id, name, ws?, ws_name?}` naming the workstream it came from when the
+caller can edit `from_ws`, and the thread line "Requested by <name>[ from <workstream>]".
+The task `from_task` in `from_ws` gains "Sent a request to <workstream>: <title>". It
+answers 201 `{id, ws, ws_name, title, owner, task?}`, the whole task only to someone in
+the workstream.
 
 An engine whose hello carries `org_canvases` reads and writes an organization's
 canvases, which live on its server and are kept there by canvas-core (`canvas rpc`), so
@@ -2258,6 +2295,7 @@ saved model. Provider health is transient and is not saved in setup. hello says
 |---|---|---|
 | `inbox.answer` | `{id, option, scope, text, why}` | `UndoUntilResult` |
 | `inbox.back` | `in.IDParams` | `Empty` |
+| `inbox.dismiss` | `in.IDParams` | `Empty` |
 | `inbox.later` | `in.IDParams` | `Empty` |
 | `inbox.list` | `{list, query}` | `ItemsCountsResult` |
 | `inbox.open` | `in.IDParams` | `AgentTaskResult` |
@@ -3328,7 +3366,9 @@ answered, on a best effort, and is no longer the factory's: it reads
 `factory_owned: false`, as one of the person's own chats in Archived, titled
 "Factory manager (earlier)" when its title was still the manager's own.
 
-Whenever the engine replaces the manager (here, or by `factory.foreman_fresh`)
+Whenever the engine replaces the manager (here, by `factory.foreman_fresh`, or
+when a start or open finishes retiring an earlier manager left behind by an
+interrupted replacement)
 it sends the event `factory.foreman_changed {factory, agent, replaced}`:
 `agent` is the manager now and `replaced` the conversation that no longer is.
 A window showing `replaced` swaps it for `agent`; without the event a tab the

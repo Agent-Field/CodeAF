@@ -378,3 +378,19 @@ func TestCheckRawCallsAgainstSomebodyElsesService(t *testing.T) {
 		t.Errorf("the table still holds")
 	}
 }
+
+func TestAlwaysAsksRule_2678(t *testing.T) {
+	allowAll := Policy{Default: ActionAllow}
+	crit := allowAll.Check("bash", json.RawMessage(`{"command":"rm -rf /var/tmp/x"}`))
+	if !AlwaysAsksRule(crit.Rule) {
+		t.Fatalf("AlwaysAsksRule(%q) = false, want true", crit.Rule)
+	}
+	ext := allowAll.Check("gmail_send", json.RawMessage(`{}`))
+	if !AlwaysAsksRule(ext.Rule) {
+		t.Fatalf("AlwaysAsksRule(%q) = false, want true", ext.Rule)
+	}
+	ordinary := (Policy{Default: ActionPrompt}).Check("bash", json.RawMessage(`{"command":"echo ok"}`))
+	if AlwaysAsksRule(ordinary.Rule) {
+		t.Fatalf("AlwaysAsksRule(%q) = true, want false", ordinary.Rule)
+	}
+}
