@@ -250,3 +250,93 @@ func TestC3CrashedArrivalOwnerDoesNotStallWorkspaceTools(t *testing.T) {
 		t.Fatalf("expected dead owner's marker %s to be removed, stat err = %v", marker, err)
 	}
 }
+
+// Fail closed: the process that was bringing a chat's files fails, then goes
+// away (the person closed its window). The workspace is a partial tree and no
+// retry is coming, so a tool in another process must never run on it, and the
+// person is told in plain words what happened and what to do. Before this the
+// dead owner's marker was removed and the tool ran on the partial tree.
+func TestC3WorkspaceToolNeverRunsAfterTheOwnerOfAFailedArrivalDied(t *testing.T) {
+	if cellRoot := os.Getenv("CODEAF_TEST_C3_FAILED_CELL"); cellRoot != "" {
+		workDir := os.Getenv("CODEAF_TEST_C3_FAILED_WORK")
+		a := cell.BeginWorkspaceArrival(cellRoot, workDir, nil, nil)
+		a.Fail(errors.New("sync could not be reached"))
+		os.Exit(0)
+	}
+
+	var executedOnPartialTree atomic.Int32
+	completer := &scriptedCompleter{
+		steps: []step{
+			func(context.Context, []ai.Message) (*ai.Response, error) {
+				return toolResponse("call_read_abandoned", "read", `{"path":"partial.txt"}`), nil
+			},
+			func(_ context.Context, msgs []ai.Message) (*ai.Response, error) {
+				last := msgs[len(msgs)-1]
+				return textResponse("tool reported: " + strings.TrimSpace(messageText(last))), nil
+			},
+		},
+	}
+	cellRoot := filepath.Join(t.TempDir(), "v3", "cells", "c3-abandoned-cell")
+	if err := os.MkdirAll(filepath.Join(cellRoot, cell.StateDir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	agent, workspace := newTestAgent(t, completer, func(cfg *Config) {
+		cfg.ApprovalPosture = PostureAllow
+		cfg.Place = Place{Dir: cellRoot}
+	})
+	defer agent.Close()
+	if err := os.WriteFile(filepath.Join(workspace, "partial.txt"), []byte("half a tree\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for i := range agent.tools {
+		if agent.tools[i].Name == "read" {
+			orig := agent.tools[i].Execute
+			agent.tools[i].Execute = func(ctx context.Context, args json.RawMessage) (string, bool, error) {
+				executedOnPartialTree.Add(1)
+				return orig(ctx, args)
+			}
+		}
+	}
+
+	cmd := exec.Command(os.Args[0], "-test.run=^TestC3WorkspaceToolNeverRunsAfterTheOwnerOfAFailedArrivalDied$")
+	cmd.Env = append(os.Environ(),
+		"CODEAF_TEST_C3_FAILED_CELL="+cellRoot,
+		"CODEAF_TEST_C3_FAILED_WORK="+workspace,
+	)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("child process failed: %v\n%s", err, out)
+	}
+	marker := cell.ArrivalMarkerPath(cellRoot)
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("expected the failed arrival's marker at %s: %v", marker, err)
+	}
+
+	events, err := agent.Submit(t.Context(), "read partial.txt")
+	if err != nil {
+		t.Fatalf("submit failed: %v", err)
+	}
+	var toolErrText, finalText string
+	for ev := range events {
+		if ev.Kind == EventToolFailed || ev.Kind == EventToolEnd {
+			toolErrText += ev.Output
+		}
+		if ev.Kind == EventTextDelta {
+			finalText += ev.Text
+		}
+	}
+	if finalText == "" {
+		finalText = messageText(lastMessage(agent))
+	}
+	if executedOnPartialTree.Load() != 0 {
+		t.Fatalf("tool executed %d times on a partial workspace tree after its fetch failed and its owner left; want 0", executedOnPartialTree.Load())
+	}
+	combined := toolErrText + "\n" + finalText
+	for _, want := range []string{"workspace files could not arrive", "sync could not be reached", "continue the chat here again"} {
+		if !strings.Contains(combined, want) {
+			t.Fatalf("expected %q in what the person is told, got:\n%s", want, combined)
+		}
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("the failure must outlive its owner: %v", err)
+	}
+}

@@ -453,9 +453,19 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		}
 	}()
 	localCapture := handoff.Trace(c.opt.OnPhase, "local capture")
+	// A FAILED ARRIVAL WHOSE WINDOW CLOSED IS NOT A REFUSAL HERE, IT IS THE RESTART.
+	// The files of this chat did not arrive and nothing is left to retry them, so
+	// every seal and tool in every process refuses. This take is the process that
+	// fetches them again: it carries on, but it never seals or captures the
+	// partial tree (see the restart below), and it never forgets the failure
+	// unless the files land.
+	var abandonedErr error
 	if err := cell.WaitWorkspace(ctx, root); err != nil {
-		localCapture()
-		return Continued{}, err
+		if !errors.Is(err, cell.ErrWorkspaceArrivalAbandoned) {
+			localCapture()
+			return Continued{}, err
+		}
+		abandonedErr = err
 	}
 	if err := cellstore.Await(ctx, cell.Cell{Root: root}); err != nil {
 		localCapture()
@@ -546,7 +556,28 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		}
 		heldHere = err == nil && remote == id && fence == lease.Fence
 	}
-	if heldHere {
+	// RESTARTING THE FILES OF A CHAT THIS COMPUTER HOLDS. The lease is this
+	// computer's own (lapsed or not: the holder may only be late with a heartbeat)
+	// and its send receipt still names the fence, so nothing has to be claimed or
+	// swapped: the conversation here is the record at the head, and only the
+	// workspace is missing files. The take goes on to the background stage that
+	// fetches them, and never answers AlreadyHere without fetching.
+	restart := false
+	if abandonedErr != nil {
+		restart = !branchOnly && known && view.Cell.ParentCell == "" && lease.Device == c.sync.Device.ID()
+		if restart {
+			remote, fence, rErr := c.sync.SendLease(id)
+			restart = rErr == nil && remote == id && fence == lease.Fence
+		}
+		if !restart {
+			// Another computer holds the chat now, or this one was retired, or the
+			// head here is not the shared one. A normal take would set the local
+			// copy aside and seal its "edits", which is the partial tree, so the
+			// refusal stands until the chat is whole again.
+			return Continued{}, abandonedErr
+		}
+	}
+	if heldHere && !restart {
 		opened, err := cell.OpenAt(root, id)
 		if err != nil {
 			return Continued{}, err
@@ -603,7 +634,7 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	storageOff := !c.sync.StorageAllowed()
 	// An own free chat can return without replacing its open local conversation.
 	keepOpen := storageOff && lease.Device == c.sync.Device.ID() && lease.Expires <= view.Now
-	filesFirst := MoveFilesFirst() || branchOnly || view.Cell.ParentCell != ""
+	filesFirst := (MoveFilesFirst() || branchOnly || view.Cell.ParentCell != "") && !restart
 	wantAsync := !filesFirst
 	fastLocalOnly := !filesFirst && !storageOff && c.eng.HasComposedCellDir(cell.Cell{ID: id, Root: root})
 	var unknownClean bool
@@ -657,7 +688,7 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 			return !filesFirst && !storageOff && !retirer.isDone()
 		},
 	}
-	if storageOff {
+	if storageOff && !restart {
 		local := cell.Cell{ID: id, Root: root}
 		if _, err := os.Stat(root); err == nil {
 			head, _, err := localWork.Unpublished(local, view.Cell.Head)
@@ -742,7 +773,15 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	defer func() {
 		if !bgActive {
 			if earlyArrival != nil {
-				earlyArrival.Complete()
+				if restart {
+					// A replacement arrival over an abandoned failure that could not
+					// go on has NOT brought the files: Complete would declare them here.
+					// The failure goes back as it was, for the next take to restart.
+					reason, _ := cell.AbandonedReason(abandonedErr)
+					earlyArrival.Abandon(reason)
+				} else {
+					earlyArrival.Complete()
+				}
 			}
 			if preRoot != "" {
 				_ = os.RemoveAll(preRoot)
@@ -939,14 +978,45 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		after = append(after, recordOrigin)
 		taker.After = after
 	}
-	taken, err := taker.TakeSeen(ctx, id, seen)
-	if err != nil {
-		return Continued{}, err
+	var taken handoff.Taken
+	// giveBackTaken hands the lease back after a failed open, but only a lease
+	// this take acquired. A restart acquired nothing: the hold was this
+	// computer's before the take began, and a failure of the refetch must not
+	// release it.
+	giveBackTaken := func() error {
+		if restart {
+			return nil
+		}
+		return c.giveBack(ctx, id, taken.Driving.Fence)
+	}
+	if restart {
+		opened, openErr := cell.OpenAt(root, id)
+		if openErr != nil {
+			return Continued{}, openErr
+		}
+		if err := c.restoreTakenIdentity(ctx, opened); err != nil {
+			return Continued{}, err
+		}
+		taken = handoff.Taken{Cell: opened, Driving: cellsync.Driving{Cell: opened, Fence: lease.Fence, Head: view.Cell.Head, Frames: view.Cell.Frames, Size: view.Cell.Size}}
+		// THE NEW ARRIVAL REPLACES THE STALE FAILED MARKER, and from here the
+		// waiters in every process wait on it. The background stage below is the
+		// ordinary one: fetch, restore the workspace to the head, run the hooks, and
+		// only then Complete.
+		earlyArrival = cell.BeginWorkspaceArrival(opened.Root, workspaceOf(opened.Root), stallBound, nil)
+		if opened.Root != root {
+			earlyArrival.BindPaths(root)
+		}
+	} else {
+		var takeErr error
+		taken, takeErr = taker.TakeSeen(ctx, id, seen)
+		if takeErr != nil {
+			return Continued{}, takeErr
+		}
 	}
 	place := session.Place{Dir: taken.Cell.Root, Workspace: intendedPrimary}
 	workspacePlan, err := session.TaskWorkspaceTransferPlan(place)
 	if err != nil {
-		return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
+		return Continued{}, errors.Join(err, giveBackTaken())
 	}
 	if workspacePlan != nil {
 		if !session.WorkspaceOwnershipEnabled(place) {
@@ -958,15 +1028,15 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		err = session.ValidateTaskRestoreRoots(place, intendedPrimary)
 	}
 	if err != nil {
-		return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
+		return Continued{}, errors.Join(err, giveBackTaken())
 	}
 	if filesFirst {
 		defer handoff.Trace(c.opt.OnPhase, "filing")()
 		if err := cellstore.AdoptedFrom(taken.Cell, resolveFrom()); err != nil {
-			return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
+			return Continued{}, errors.Join(err, giveBackTaken())
 		}
 		if err := cellstore.NotePublished(taken.Cell, taken.Driving.Head); err != nil {
-			return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
+			return Continued{}, errors.Join(err, giveBackTaken())
 		}
 		recordStep("install_state", "")
 		var filed func()
@@ -976,7 +1046,7 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 			}
 		}()
 		if taken.Cell, filed, err = c.fileCopy(ctx, taken.Cell, keepRoot); err != nil {
-			return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
+			return Continued{}, errors.Join(err, giveBackTaken())
 		}
 		taken.Driving.Cell = taken.Cell
 		recordStep("file_copy", "")
@@ -984,17 +1054,17 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		if workspacePlan != nil {
 			taskCopies, err = session.RestoreTaskWorkspaceSets(ctx, session.Place{Dir: taken.Cell.Root, Workspace: workspaceOf(taken.Cell.Root)}, c.opt.WorkspaceRoots)
 			if err != nil {
-				return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
+				return Continued{}, errors.Join(err, giveBackTaken())
 			}
 		} else {
 			if err := session.AdoptChatWorkspaceIdentity(session.Place{Dir: taken.Cell.Root}); err != nil {
-				return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
+				return Continued{}, errors.Join(err, giveBackTaken())
 			}
 			taskCopies = c.restoreCopies(taken.Cell)
 		}
 		recordStep("adopt", "")
 		if err := c.sync.recordSendLease(taken.Cell.ID, sendLease{Cell: id, Fence: taken.Driving.Fence}); err != nil {
-			return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
+			return Continued{}, errors.Join(err, giveBackTaken())
 		}
 		if c.sync.teamsSharing() {
 			if err := (teamKeys{c.sync.profile(), c.sync.Home, c.sync.Device.ID(), nil}).rebindChat(id, taken.Cell); err != nil {
@@ -1032,10 +1102,10 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	fastFrom := from
 	fromMu.Unlock()
 	if err := cellstore.AdoptedFrom(taken.Cell, fastFrom); err != nil {
-		return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
+		return Continued{}, errors.Join(err, giveBackTaken())
 	}
 	if err := cellstore.NotePublished(taken.Cell, taken.Driving.Head); err != nil {
-		return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
+		return Continued{}, errors.Join(err, giveBackTaken())
 	}
 	recordStep("install_state", "")
 	var filed func()
@@ -1043,7 +1113,7 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		if filed != nil {
 			filed()
 		}
-		return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
+		return Continued{}, errors.Join(err, giveBackTaken())
 	}
 	taken.Driving.Cell = taken.Cell
 	recordStep("file_copy", "")
@@ -1051,14 +1121,14 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		if filed != nil {
 			filed()
 		}
-		return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
+		return Continued{}, errors.Join(err, giveBackTaken())
 	}
 	if workspacePlan == nil {
 		if err := session.AdoptChatWorkspaceIdentity(session.Place{Dir: taken.Cell.Root}); err != nil {
 			if filed != nil {
 				filed()
 			}
-			return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
+			return Continued{}, errors.Join(err, giveBackTaken())
 		}
 	}
 	recordStep("adopt", "")
@@ -1066,7 +1136,7 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		if filed != nil {
 			filed()
 		}
-		return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
+		return Continued{}, errors.Join(err, giveBackTaken())
 	}
 	recordStep("send_lease", "")
 	var keptTurns uint32
