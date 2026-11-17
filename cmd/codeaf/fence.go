@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -51,7 +52,31 @@ func unattendedFence(workspace, profileDir string, receipts ...string) (*executo
 		StateDir:   state,
 		Allow:      executor.ParseFenceAllow(person, words...),
 		Receipts:   receipts,
+		Canvases:   []string{deskCanvasRoot(os.Getenv, person, runtime.GOOS)},
 	})
+}
+
+// deskCanvasRoot is the desktop app's canvas folder as its `canvas` command
+// finds it (codeaf-desk docs/canvas/CONTRACT.md section 1, and the app's own
+// crates/core tools_env.rs): $WORKAF_CANVAS_ROOT, else
+// ~/Library/Application Support/WorkAF/canvases on a Mac, else
+// $XDG_DATA_HOME/workaf/canvases (~/.local/share when that is unset or not
+// absolute). "" when there is no home to find it under.
+func deskCanvasRoot(getenv func(string) string, person, goos string) string {
+	if root := strings.TrimSpace(getenv("WORKAF_CANVAS_ROOT")); root != "" {
+		return root
+	}
+	if strings.TrimSpace(person) == "" {
+		return ""
+	}
+	if goos == "darwin" {
+		return filepath.Join(person, "Library", "Application Support", "WorkAF", "canvases")
+	}
+	data := strings.TrimSpace(getenv("XDG_DATA_HOME"))
+	if data == "" || !filepath.IsAbs(data) {
+		data = filepath.Join(person, ".local", "share")
+	}
+	return filepath.Join(data, "workaf", "canvases")
 }
 
 // fencedSeat is ctx carrying the fenced seat for a door that has no session

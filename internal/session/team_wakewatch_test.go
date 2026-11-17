@@ -24,12 +24,13 @@ import (
 func fastTeamWake(t *testing.T) {
 	t.Helper()
 	teamWatchClockMu.Lock()
-	every, settle := teamWatchEvery, teamWakeSettle
-	teamWatchEvery, teamWakeSettle = 20*time.Millisecond, 300*time.Millisecond
+	every, settle, retry := teamWatchEvery, teamWakeSettle, teamRouseRetry
+	teamWatchEvery, teamWakeSettle, teamRouseRetry = 20*time.Millisecond, 300*time.Millisecond, 50*time.Millisecond
 	teamWatchClockMu.Unlock()
 	t.Cleanup(func() {
+		forgetRouses()
 		teamWatchClockMu.Lock()
-		teamWatchEvery, teamWakeSettle = every, settle
+		teamWatchEvery, teamWakeSettle, teamRouseRetry = every, settle, retry
 		teamWatchClockMu.Unlock()
 	})
 }

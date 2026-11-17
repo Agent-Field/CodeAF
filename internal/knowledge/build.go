@@ -468,7 +468,11 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 	// captured above; they are compiled on the pass after they go quiet, which
 	// [Vault.Run] wakes for, and a pass that compiles one conversation's
 	// sources is charged to that conversation.
-	hot, quietAt := hotSessions(journals, flag(job["backfill"]))
+	waitingSessions, err := pendingSessions(db)
+	if err != nil {
+		return err
+	}
+	hot, quietAt := hotSessions(journals, flag(job["backfill"]), waitingSessions)
 	v.passQuietAt = quietAt
 	ctx = withHeldSessions(ctx, hot)
 	heldSQL, heldArgs := heldClause(ctx, "payload")

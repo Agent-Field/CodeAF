@@ -3,6 +3,7 @@ package knowledge
 import (
 	"context"
 	"database/sql"
+	"sort"
 	"strings"
 	"time"
 
@@ -34,37 +35,103 @@ var (
 	buildNow  = time.Now
 )
 
-// hotSessions is every session whose journal was written within [buildIdle]
-// of now, and the earliest moment one of them goes quiet. A journal with no
-// modification time (a fixture, an inventory that cannot say) is never hot: it
-// cannot be waited out, so it is compiled as it always was. A job's journal is
-// compiled by the job's own session (internal/session/knowledge_usage.go) and
-// is not this loop's to hold.
-func hotSessions(journals []Journal, backfill bool) ([]string, time.Time) {
+// buildBatchMax is the longest a quiet chat waits for the chats still being
+// written in, so that every chat of one sitting is compiled in ONE pass and
+// pays for the vault-wide learning steps once. A person who never stops typing
+// in some chat still gets the quiet ones compiled this long after they went
+// quiet. models-and-cost.md states it; a change here changes that page.
+var buildBatchMax = 10 * time.Minute
+
+// hotSessions is every session whose sources are held back from this pass, and
+// the moment the loop should look again.
+//
+// A session is HOT when its journal was written within [buildIdle] of now. A
+// journal with no modification time (a fixture, an inventory that cannot say)
+// is never hot: it cannot be waited out, so it is compiled as it always was. A
+// job's journal is compiled by the job's own session
+// (internal/session/knowledge_usage.go) and is not this loop's to hold.
+//
+// AND WHILE ANY SESSION IS HOT, THE QUIET ONES WITH WORK WAITING ARE HELD
+// TOO (E6b B3 follow-up). Compiled the moment each went quiet, chats that
+// ended a few minutes apart cost one pass each, and every pass reran the
+// learning steps over the whole vault; held together they are one pass, run
+// once the last of them goes quiet, and after it nothing more is called. A
+// quiet session is held no longer than [buildBatchMax] past its own quiet
+// moment, and once one of them is due every quiet session goes in that pass.
+// pending names the sessions that have sources waiting to compile; only they
+// can be held or make a pass due.
+func hotSessions(journals []Journal, backfill bool, pending map[string]bool) ([]string, time.Time) {
 	if backfill {
 		return nil, time.Time{}
 	}
 	now := buildNow()
-	var hot []string
-	var quietAt time.Time
-	seen := map[string]bool{}
+	var hot, waiting []string
+	var lookAt time.Time
+	soonest := func(at time.Time) {
+		if lookAt.IsZero() || at.Before(lookAt) {
+			lookAt = at
+		}
+	}
+	quietAt := map[string]time.Time{}
 	for _, journal := range journals {
 		if journal.Job || journal.Session == "" || journal.Modified.IsZero() {
 			continue
 		}
 		quiet := journal.Modified.Add(buildIdle)
-		if !now.Before(quiet) {
-			continue
-		}
-		if !seen[journal.Session] {
-			seen[journal.Session] = true
-			hot = append(hot, journal.Session)
-		}
-		if quietAt.IsZero() || quiet.Before(quietAt) {
-			quietAt = quiet
+		if seen, ok := quietAt[journal.Session]; !ok || quiet.After(seen) {
+			quietAt[journal.Session] = quiet
 		}
 	}
-	return hot, quietAt
+	due := false
+	for session, quiet := range quietAt {
+		if now.Before(quiet) {
+			hot = append(hot, session)
+			soonest(quiet)
+			continue
+		}
+		if !pending[session] {
+			continue
+		}
+		waiting = append(waiting, session)
+		deadline := quiet.Add(buildBatchMax)
+		if !now.Before(deadline) {
+			due = true
+		}
+		soonest(deadline)
+	}
+	if len(hot) == 0 || due {
+		// Nothing is being written in, or a quiet chat has waited long
+		// enough: every quiet chat is compiled now, in one pass.
+		lookAt = time.Time{}
+		for _, session := range hot {
+			soonest(quietAt[session])
+		}
+		sort.Strings(hot)
+		return hot, lookAt
+	}
+	held := append(hot, waiting...)
+	sort.Strings(held)
+	return held, lookAt
+}
+
+// pendingSessions is every conversation with sources waiting to compile, outside jobs.
+func pendingSessions(db *sql.DB) (map[string]bool, error) {
+	rows, err := db.Query("SELECT DISTINCT coalesce(json_extract(payload,'$.session'),'') FROM events WHERE partition='profile' AND status IN ('pending','revisit') AND coalesce(json_extract(payload,'$.job'),0)=0")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]bool{}
+	for rows.Next() {
+		var session string
+		if err = rows.Scan(&session); err != nil {
+			return nil, err
+		}
+		if session != "" {
+			out[session] = true
+		}
+	}
+	return out, rows.Err()
 }
 
 type heldSessionsKey struct{}

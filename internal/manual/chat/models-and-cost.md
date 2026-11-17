@@ -1317,7 +1317,11 @@ Spending lists each background call by its role (`title`, `reflex`, `router`,
 
 The Library is built in the background from your saved chats. A chat that is still
 being written in is **not compiled yet**: its new lines are read, but the compiler waits
-until that chat has had **no new writes for two minutes**, then compiles it in one pass.
+until that chat has had **no new writes for two minutes**. While another chat is still
+being written in, a chat that has gone quiet waits for it too, for **up to ten minutes**,
+so the chats of one sitting are compiled together in one pass and the Library's learning
+steps are paid for once. When the last of them is compiled, the Library makes no more
+calls until a chat changes again: an engine left running with nothing new costs nothing.
 Pressing **Build** on the Library compiles everything at once, busy chats included,
 because that is you asking rather than background work deciding.
 
@@ -1325,7 +1329,9 @@ Before this, the compiler ran about every two seconds while any chat was growing
 conversation was compiled in many small slices while you were still in it, and each
 slice paid again for the Library's learning steps. One measured session of twelve chats
 made 175 Library calls in 42 passes and was still compiling minutes after the last
-request. Now it is one compile per chat, after the chat goes quiet.
+request. Then it was one compile per chat, after each chat went quiet; now it is one
+compile per sitting. A scripted replay of that session's shape went from 46 Library calls
+to 12, and then to 2, with none in the idle hour after.
 
 Each Library call is charged to a conversation: a pass that compiles one chat's lines
 puts every one of its calls, the learning steps included, on that chat's line in the

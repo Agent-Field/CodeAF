@@ -72,6 +72,10 @@ If the owner is Everyone, anyone who can edit the workstream may answer; the fir
 
 Every Ask you decide reaches you, not only the task's own: a task's second and third Ask, and the Ask the decision check raises when work goes against a decision, each get their own row under Waiting on you in the Inbox (alike ones can be answered together), and each counts in the Work list's amber number for that workstream.
 
+## Why the Inbox has an amber dot — what counts as waiting on you
+
+The amber dot and number on Inbox in the app's left rail count only what waits on you: a chat's question to you, every Ask you decide (a task's own, the decision check's, and the ones that reach you as a workstream's fallback person), and your work that was cut off before it finished (stopped by a restart, or ended without its report). Nothing else turns it amber. A task that failed is red in Tasks and is not counted; due dates, work sent back to someone else, and comments for you have their own Inbox rows without the dot. A workstream's number in the Work list counts the same things for that workstream.
+
 Who owns a new task: whoever asked for it. Work nobody asked for directly (from the Factory or a standing order) goes to the workstream's default owner.
 
 ## who is doing this task — Your chat, Factory for Marco, and what the row says
