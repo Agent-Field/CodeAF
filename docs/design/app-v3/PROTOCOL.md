@@ -4199,6 +4199,11 @@ request envelope (`uploadBodyMost`) rather than the 1 MiB JSON-only limit.
 
 ### Task Delete and short Undo
 
+| method | params | result |
+|---|---|---|
+| `factory.org_workstream_task_delete` | `{connection, ws, id, rev}` | `{undo_until}` |
+| `factory.org_workstream_task_restore` | `{connection, ws, id}` | `OrgTask` |
+
 Hello `org_workstream_task_delete` announces two person-only methods:
 `factory.org_workstream_task_delete({connection, ws, id, rev})` forwards
 `DELETE /v1/workstreams/{ws}/tasks/{id}` with `If-Match: rev` and returns
