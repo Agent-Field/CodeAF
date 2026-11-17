@@ -15,6 +15,7 @@ import (
 	"sync"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/redact"
@@ -61,7 +62,7 @@ const NodeIDEnv = "CODEAF_FACTORY_NODE_ID"
 
 // defaultNodeID is NodeIDEnv when set, else DefaultNodeID.
 func defaultNodeID() string {
-	if id := strings.ToLower(strings.TrimSpace(os.Getenv(NodeIDEnv))); id != "" {
+	if id := strings.ToLower(strings.TrimSpace(env.Get(NodeIDEnv))); id != "" {
 		return id
 	}
 	return DefaultNodeID
