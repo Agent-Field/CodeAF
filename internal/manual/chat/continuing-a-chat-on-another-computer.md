@@ -376,6 +376,12 @@ Workspace files keep arriving in the background after the chat opens. While they
 
 Each object download is retried at least 3 times with backoff on transient errors before it counts as failed. If the background download still fails, the chat stays open, tools keep waiting rather than running on a partial tree, and the status line names the problem in plain words with a retry (`files couldn't arrive: <reason> · retry`). Retrying (`/retry` or the next tool call) keeps the objects already downloaded. Set `CODEAF_MOVE_FILES_FIRST=1` to restore the old order that downloads and puts all workspace files in place before opening the chat and shows the `copying to this computer` counter on Home while they copy.
 
+## Were my own changes in the folder kept or written over when the files arrived — unsaved edits here, could not be kept yet
+
+When a chat opens before its files arrive, this computer's older copy of the folder may hold a change that was never shared: an edited file, a new file, or something inside `.git` such as a half-written commit message (`.git/COMMIT_EDITMSG`). Before the arriving files replace that folder, codeaf keeps the change as a separate copy of the chat on the sync service and says `your unsaved edits here were kept as <K> turns from <device>`. That sentence can come a few seconds after the chat opens, because the check for a change runs behind the opening when this computer has no saved record that the folder is untouched. The opening line `Moved from <device> in <T>. Everything as you left it.` is about the conversation and does not wait for it. Open or discard the kept turns from their row, as described above.
+
+If the change cannot be kept, for example because sync cannot be reached, the files from the other computer are not put in place. The folder here stays exactly as it is, tools that use the folder keep waiting, and the chat says `your unsaved edits here could not be kept yet (<reason>), so the files here are left as they are`. The status line shows `files couldn't arrive: your unsaved edits here could not be kept yet (<reason>) · retry`. Retrying tries to keep the change again, and once it is kept the files arrive. Nothing is replaced and nothing is said to be kept until the kept copy exists on the sync service.
+
 ## Can the chat on the other computer still open the job logs it mentions — logs, saved tool output, task journals and the task history after a move
 
 On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).

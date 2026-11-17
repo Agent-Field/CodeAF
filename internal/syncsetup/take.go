@@ -777,7 +777,15 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 				return err
 			}
 			if keepRoot && (unknownClean || !retirer.isDone()) && preRoot == "" {
-				preRoot = savePreTakeState(target.Root, preWorkspace, !retirer.isDone(), retirer)
+				// A COPY HERE THAT CANNOT BE SET ASIDE IS NOT REPLACED. The check for
+				// edits it holds runs against that set-aside copy, so without it the
+				// incoming state would go in with the edits unchecked and unkept.
+				saved, saveErr := savePreTakeState(target.Root, preWorkspace, !retirer.isDone(), retirer)
+				if saveErr != nil {
+					log.Printf("continue %s could not set the older copy aside, so nothing is replaced: %v", id, saveErr)
+					return fmt.Errorf("could not set this computer's older copy of the chat aside to check it for unsaved edits, so nothing was replaced (%w)", saveErr)
+				}
+				preRoot = saved
 			}
 			if earlyArrival == nil {
 				earlyArrival = cell.BeginWorkspaceArrival(target.Root, workspaceOf(target.Root), stallBound, nil)
@@ -1072,6 +1080,84 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		if !initial {
 			arrival.BeginRetry()
 		}
+		// keepLocalBeforeSwap seals this computer's older copy if it holds a change
+		// that was never shared, uploads it as a kept branch, records that branch in
+		// the directory and says so, all BEFORE the incoming files are put in place.
+		// Every way it can fail comes back as an error: a check that could not run,
+		// a seal that did not finish, a branch the directory would not record.
+		keepLocalBeforeSwap := func(runCtx context.Context) error {
+			preCell := cell.Cell{ID: id, Root: preRoot}
+			preEng := c.eng
+			preEng.WorkspaceOf = func(cell.Cell) string { return preWorkspace }
+			bgBranched := alreadyBranched
+			if preKept != "" {
+				if kv, ok := c.sync.CachedCellView(preKept); ok && kv.Cell.ParentCell == id {
+					bgBranched = kv.Cell.Head
+				} else if kv, err := dir.Cell(runCtx, preKept); err == nil && kv.Cell.ParentCell == id {
+					bgBranched = kv.Cell.Head
+				} else {
+					bgBranched = ""
+				}
+			}
+			bgLocal := engineLocal{
+				eng:             preEng,
+				ctx:             runCtx,
+				alreadyBranched: bgBranched,
+			}
+			unshared, turns, err := bgLocal.Unpublished(preCell, taken.Driving.Head)
+			if err != nil {
+				return fmt.Errorf("check %s for edits that were never shared: %w", id, err)
+			}
+			dirtyCheck := handoff.Trace(c.opt.OnPhase, "dirty check")
+			dirty, err := bgLocal.Dirty(runCtx, preCell)
+			dirtyCheck()
+			if err != nil {
+				return fmt.Errorf("check %s for unsaved edits: %w", id, err)
+			}
+			if dirty {
+				sealed, added, err := bgLocal.Seal(runCtx, preCell)
+				if err != nil {
+					return fmt.Errorf("seal local edits of %s: %w", id, err)
+				}
+				unshared, turns = sealed, turns+added
+			}
+			if unshared == "" {
+				return nil
+			}
+			if bgBranched != "" && unshared == bgBranched && preKept != "" {
+				bgMu.Lock()
+				finalKept = preKept
+				bgMu.Unlock()
+				return nil
+			}
+			fromDrv := &cellsync.Driving{Cell: preCell, Head: taken.Driving.Head, Frames: taken.Driving.Frames}
+			keptUpload := handoff.Trace(c.opt.OnPhase, "kept-branch upload")
+			keptID, err := taker.Branch(runCtx, fromDrv, unshared, turns)
+			keptUpload()
+			if err != nil {
+				return fmt.Errorf("keep local edits of %s: %w", id, err)
+			}
+			if keptID == "" {
+				return fmt.Errorf("keep local edits of %s: the directory named no branch for them", id)
+			}
+			var kt uint32
+			if branchedTurns != 0 {
+				kt = branchedTurns
+			} else {
+				kt = c.orphanTurns(runCtx, keptID)
+			}
+			bgMu.Lock()
+			finalKept = keptID
+			keptTurns = kt
+			bgMu.Unlock()
+			// Said in the log as well as to the person, so a record of a move can
+			// tell a kept change from one that was never found.
+			log.Printf("continue %s kept local edits as %s (%d turns) before the files arrived", id, keptID, kt)
+			if runAsync && keptID != preKept && c.opt.Notify != nil {
+				c.opt.Notify(chatlist.KeptEdits(kt, c.opt.DeviceName))
+			}
+			return nil
+		}
 		go func() {
 			var runCtx context.Context
 			var runWatch *moveWatch
@@ -1107,6 +1193,22 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 			fetchErr := taker.Fetch.Complete(runCtx, taken.Cell, taken.Driving.Head)
 			fetchDone()
 			if fetchErr != nil {
+				// THE SET-ASIDE COPY IS KEPT ONLY WHILE IT STILL GUARDS AN EDIT. The
+				// files did not come, so nothing is replaced, and the next retry would
+				// otherwise find it again. Finding out now whether it holds anything
+				// lets it go when it does not, and when the edit is kept it goes too.
+				// It stays when the check could not finish, or a session on this
+				// computer may still be writing to the copy.
+				if preRoot != "" && retirer.isDone() {
+					settleCtx, stopSettle := context.WithTimeout(context.WithoutCancel(runCtx), 15*time.Second)
+					if keepErr := keepLocalBeforeSwap(settleCtx); keepErr == nil {
+						_ = os.RemoveAll(preRoot)
+						preRoot = ""
+					} else {
+						log.Printf("continue %s keeps the older copy aside because its edits could not be checked yet: %v", id, keepErr)
+					}
+					stopSettle()
+				}
 				retirer.cancel()
 				if context.Cause(runCtx) == ErrMoveStalled {
 					fetchErr = fmt.Errorf("%w: %w", ErrMoveStalled, fetchErr)
@@ -1126,64 +1228,28 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 			retirer.wait(runCtx, releaseWithin)
 			retireBgDone()
 			if preRoot != "" {
-				preCell := cell.Cell{ID: id, Root: preRoot}
-				preEng := c.eng
-				preEng.WorkspaceOf = func(cell.Cell) string { return preWorkspace }
-				bgBranched := alreadyBranched
-				if preKept != "" {
-					if kv, ok := c.sync.CachedCellView(preKept); ok && kv.Cell.ParentCell == id {
-						bgBranched = kv.Cell.Head
-					} else if kv, err := dir.Cell(runCtx, preKept); err == nil && kv.Cell.ParentCell == id {
-						bgBranched = kv.Cell.Head
-					} else {
-						bgBranched = ""
+				// THE LOCAL EDITS ARE KEPT, OR THE FILES DO NOT ARRIVE. The older copy
+				// here is about to be replaced, and a take that has already opened the
+				// chat cannot be refused the way a take that checks first is, so a keep
+				// that did not finish stops this stage with the gate closed and the
+				// folder as it was. It never goes on to replace files with the change
+				// sealed nowhere or uploaded with no record of it, which is how a change
+				// was lost without a word. The pre-take state stays for the retry.
+				if keepErr := keepLocalBeforeSwap(runCtx); keepErr != nil {
+					log.Printf("continue %s kept nothing of the local edits, so the files stay as they are: %v", id, keepErr)
+					plain := keepFailureWords(plainFetchFailure(keepErr, c.sync.Relay))
+					bgMu.Lock()
+					bgErr = keepErr
+					bgMu.Unlock()
+					arrival.Fail(errors.New(plain))
+					if runWatch != nil {
+						runWatch.setFailed(plain)
 					}
-				}
-				bgLocal := engineLocal{
-					eng:             preEng,
-					ctx:             runCtx,
-					alreadyBranched: bgBranched,
-				}
-				unshared, turns, uErr := bgLocal.Unpublished(preCell, taken.Driving.Head)
-				dirtyCheck := handoff.Trace(c.opt.OnPhase, "dirty check")
-				dirty, dErr := false, error(nil)
-				if uErr == nil {
-					dirty, dErr = bgLocal.Dirty(runCtx, preCell)
-				}
-				dirtyCheck()
-				if uErr == nil && dErr == nil {
-					if dirty {
-						if sealed, added, sErr := bgLocal.Seal(runCtx, preCell); sErr == nil {
-							unshared, turns = sealed, turns+added
-						}
+					if runAsync && c.opt.Notify != nil {
+						c.opt.Notify(plain + ", so the files here are left as they are")
 					}
-					if unshared != "" {
-						if bgBranched != "" && unshared == bgBranched && preKept != "" {
-							bgMu.Lock()
-							finalKept = preKept
-							bgMu.Unlock()
-						} else {
-							fromDrv := &cellsync.Driving{Cell: preCell, Head: taken.Driving.Head, Frames: taken.Driving.Frames}
-							keptUpload := handoff.Trace(c.opt.OnPhase, "kept-branch upload")
-							keptID, bErr := taker.Branch(runCtx, fromDrv, unshared, turns)
-							keptUpload()
-							if bErr == nil && keptID != "" {
-								var kt uint32
-								if branchedTurns != 0 {
-									kt = branchedTurns
-								} else {
-									kt = c.orphanTurns(runCtx, keptID)
-								}
-								bgMu.Lock()
-								finalKept = keptID
-								keptTurns = kt
-								bgMu.Unlock()
-								if runAsync && keptID != preKept && c.opt.Notify != nil {
-									c.opt.Notify(chatlist.KeptEdits(kt, c.opt.DeviceName))
-								}
-							}
-						}
-					}
+					logPhases(fmt.Sprintf("failed reason=%q", keepErr.Error()))
+					return
 				}
 				_ = os.RemoveAll(preRoot)
 				preRoot = ""
@@ -1548,6 +1614,14 @@ func (c *Continuer) fastResume(at cell.Cell, from string) (preflight.Resume, boo
 	return r, stashed
 }
 
+// keepFailureWords is what a person reads when the change their older copy
+// here holds could not be kept, so the files from the other computer have not
+// been put over it. It names the reason in the same plain words a failed
+// fetch uses, and it never says the edits were kept.
+func keepFailureWords(reason string) string {
+	return "your unsaved edits here could not be kept yet (" + reason + ")"
+}
+
 func plainFetchFailure(err error, relay string) string {
 	switch {
 	case errors.Is(err, ErrMoveStalled):
@@ -1878,25 +1952,48 @@ func (c *localWorkCache) invalidate() {
 	c.mu.Unlock()
 }
 
-func savePreTakeState(targetRoot, preWorkspace string, moveJournal bool, retirer *holderRetirer) string {
+// preTakeTemp makes the folder the older copy's state is set aside in. It is a
+// variable only so a test can make the disk refuse it.
+var preTakeTemp = os.MkdirTemp
+
+// savePreTakeState sets this computer's older copy of the chat aside so its
+// unsaved edits can still be checked, sealed and kept after the incoming state
+// has been put in place. It FAILS CLOSED: a copy with nothing to set aside
+// answers "" and no error, but any failure to set it aside is an error, so the
+// take stops before anything is replaced instead of going on with nothing left
+// to check the edits against. A journal it had already moved is moved back.
+func savePreTakeState(targetRoot, preWorkspace string, moveJournal bool, retirer *holderRetirer) (string, error) {
 	srcState := filepath.Join(targetRoot, cell.StateDir)
 	if _, err := os.Stat(srcState); err != nil {
-		return ""
+		if errors.Is(err, os.ErrNotExist) {
+			return "", nil
+		}
+		return "", err
 	}
-	preRoot, err := os.MkdirTemp(filepath.Dir(targetRoot), ".precell-")
+	preRoot, err := preTakeTemp(filepath.Dir(targetRoot), ".precell-")
 	if err != nil {
-		return ""
+		return "", err
+	}
+	srcJournal := filepath.Join(targetRoot, filepath.FromSlash(cell.TranscriptPath))
+	preJournal := filepath.Join(preRoot, filepath.FromSlash(cell.TranscriptPath))
+	movedJournal := false
+	fail := func(err error) (string, error) {
+		if movedJournal && os.Rename(preJournal, srcJournal) == nil && retirer != nil {
+			retirer.rebindJournal(srcJournal)
+		}
+		_ = os.RemoveAll(preRoot)
+		return "", err
 	}
 	if err := os.CopyFS(filepath.Join(preRoot, cell.StateDir), os.DirFS(srcState)); err != nil {
-		_ = os.RemoveAll(preRoot)
-		return ""
+		return fail(err)
 	}
 	if moveJournal {
-		srcJournal := filepath.Join(targetRoot, filepath.FromSlash(cell.TranscriptPath))
-		preJournal := filepath.Join(preRoot, filepath.FromSlash(cell.TranscriptPath))
 		_ = os.Remove(preJournal)
-		if err := os.Rename(srcJournal, preJournal); err == nil && retirer != nil {
-			retirer.rebindJournal(preJournal)
+		if err := os.Rename(srcJournal, preJournal); err == nil {
+			movedJournal = true
+			if retirer != nil {
+				retirer.rebindJournal(preJournal)
+			}
 		}
 	}
 	if !cellstore.ForeignFolder(targetRoot, preWorkspace) {
@@ -1909,10 +2006,9 @@ func savePreTakeState(targetRoot, preWorkspace string, moveJournal bool, retirer
 	m.Workspace = preWorkspace
 	m.Owned = false
 	if err := session.SaveMeta(preRoot, m); err != nil {
-		_ = os.RemoveAll(preRoot)
-		return ""
+		return fail(err)
 	}
-	return preRoot
+	return preRoot, nil
 }
 
 // engineLocal is the Taker's view of a copy of the chat this machine has: what
