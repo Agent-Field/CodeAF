@@ -55,6 +55,8 @@ func TestImportBringsUploadWithItsTaskLinks(t *testing.T) {
 		t.Fatalf("bytes = %q, %v", data, err)
 	}
 	o.do(t, "santosh", "POST", "/v1/workstreams/import", -1, pkg, 200, &ws)
+	pkg["to"] = ws.ID
+	o.do(t, "santosh", "POST", "/v1/workstreams/import", -1, pkg, 200, &ws)
 }
 
 func TestFoldUndoNeverOverwritesLaterWork(t *testing.T) {
