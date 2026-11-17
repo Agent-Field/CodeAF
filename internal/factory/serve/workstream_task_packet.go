@@ -265,7 +265,7 @@ func (h *Handler) inputParts(ctx context.Context, d *agentDoor, in factory.TaskB
 	case factory.TaskInputTask:
 		dep, err := d.task(ctx, in.ID)
 		if err != nil {
-			return []packetPart{{head: "Task " + in.ID + why, lead: "It could not be read: " + oneLineErr(err)}}, nil
+			return []packetPart{{head: "Task " + in.ID + why, lead: "It could not be read: " + packetErr(err)}}, nil
 		}
 		head := fmt.Sprintf("Result of the task %q%s", dep.Title, why)
 		var lead []string
@@ -310,7 +310,7 @@ func (d *agentDoor) filePart(ctx context.Context, id, lead, why string) (packetP
 	args, _ := json.Marshal(map[string]string{"file": id})
 	raw, err := d.Work(ctx, "ws_file_read", args)
 	if err != nil {
-		return packetPart{head: lead + id + why, lead: "It could not be read: " + oneLineErr(err)}, ""
+		return packetPart{head: lead + id + why, lead: "It could not be read: " + packetErr(err)}, ""
 	}
 	var f struct {
 		Name     string `json:"name"`
@@ -356,7 +356,7 @@ func cutBytes(s string, n int) string {
 
 func utf8RuneStart(b byte) bool { return b&0xC0 != 0x80 }
 
-func oneLineErr(err error) string {
+func packetErr(err error) string {
 	return cutRunes(strings.Join(strings.Fields(err.Error()), " "), 200)
 }
 
