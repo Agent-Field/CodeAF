@@ -16,7 +16,11 @@ import (
 // publication despite it.
 //
 // THE OVERRIDE IS PER FINDING. It names the claim's own text, so a finding that
-// fails later and was never overridden pauses Auto again. It is always a
+// fails later and was never overridden pauses Auto again.
+//
+// THE OVERRIDE IS PER RUN. Every path that starts a new run clears the job's
+// checks through [Item.ResetChecks], which drops the overrides with them, so a
+// later run whose same claim fails again pauses Auto again. It is always a
 // person's: the factory records it only from a signed-in caller through the
 // job's resume_auto door, and the job's manager presses that door only with
 // the person's own words from the current turn.
@@ -39,6 +43,13 @@ type CheckOverride struct {
 	At time.Time
 	// Words are what the person said, when the door that recorded it knew.
 	Words string `json:",omitempty"`
+}
+
+// ResetChecks clears the job's proof and policy findings for a new run, and
+// with them every override the person gave the run before: an override covers
+// only the run it was given for.
+func (it *Item) ResetChecks() {
+	it.Proof, it.Policy, it.Overrides = nil, nil, nil
 }
 
 // ClaimOverridden says the person told Auto to carry on past this failing

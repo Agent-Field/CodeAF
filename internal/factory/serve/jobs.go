@@ -617,7 +617,7 @@ func forgetRun(it *factory.Item, recipe factory.Recipe) {
 	it.Asking, it.AnsweredQuestions, it.ManagerAnswer = nil, nil, nil
 	it.Marked, it.OverLimit = false, false
 	it.Briefs, it.BriefWriting, it.BriefSeen = nil, nil, nil
-	it.Proof, it.Policy = nil, nil
+	it.ResetChecks()
 	it.PlannedFiles = nil
 	it.Change, it.ChangeBase, it.HeadCommit = nil, "", ""
 	it.WorktreeMachine = ""

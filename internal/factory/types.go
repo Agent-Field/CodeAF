@@ -672,7 +672,8 @@ type Item struct {
 	PassJudge *PassJudgement `json:",omitempty"`
 	// Overrides are the failing checks the person told Auto to carry on past
 	// ([OverrideFindings]): each names the finding, who said so and when. A
-	// finding not listed here still pauses Auto. Nil is none.
+	// finding not listed here still pauses Auto. A new run clears them with
+	// its checks ([Item.ResetChecks]). Nil is none.
 	Overrides []CheckOverride `json:",omitempty"`
 	// PersonStopped survives state resets, expiry of Undo and engine restarts.
 	// Only an explicit person control may clear it.

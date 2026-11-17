@@ -437,8 +437,11 @@ func QueueCIFollowUp(it *Item, now time.Time) bool {
 	it.State = StateQueued
 	it.Question, it.QKind = "", ""
 	it.Asking, it.Failure, it.Approval = nil, nil, nil
+	// The queued run is a new one, so no override the person gave the last
+	// run carries into it, even when its findings are kept.
+	it.Overrides = nil
 	if !readinessQueued || f.Readiness.External {
-		it.Proof, it.Policy = nil, nil
+		it.ResetChecks()
 	}
 	it.Stream.Log = append(it.Stream.Log, LogLine{At: now, Tone: "said", Text: fmt.Sprintf("Follow PR queued · repair %d · PR #%d", f.Attempt, pr.Number)})
 	return true

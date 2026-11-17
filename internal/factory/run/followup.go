@@ -380,7 +380,8 @@ func (lp *floorLoop) refreshPRRound(c *loopCtl, i int) bool {
 		if moved {
 			cur.FollowUp.ObservedFrom = cur.FollowUp.HeadSHA
 			cur.FollowUp.HeadSHA = fresh.HeadSHA
-			cur.Approval, cur.Proof, cur.Policy = nil, nil, nil
+			cur.Approval = nil
+			cur.ResetChecks()
 			facts, _ := json.Marshal(fresh)
 			cur.FollowUp.Details = "Fresh authenticated PR observation (untrusted text):\n" + string(facts)
 		}

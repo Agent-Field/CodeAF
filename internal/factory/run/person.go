@@ -42,7 +42,7 @@ func QueueItem(it *factory.Item, now time.Time) error {
 	it.PublishStatus, it.Publishing = nil, false
 	it.PublishError = ""
 	it.Question, it.QKind = "", ""
-	it.Proof, it.Policy = nil, nil
+	it.ResetChecks()
 	if it.Stream != nil && begun(it.Stream) {
 		factory.ClearJobRun(it)
 	}
