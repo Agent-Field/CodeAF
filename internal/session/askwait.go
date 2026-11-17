@@ -320,8 +320,10 @@ func (asked *askedOfThePerson) askedBackLocked(id uint64, answer Answer) bool {
 // keepSettled leaves an ANSWERED question kept for a revision
 // ([askSettledKept]) where it is: the person's new message talks past what is
 // still asked, not past what they already decided, so `change` on that
-// receipt still works after they type something else. A steer passes false
-// and takes every entry, as it always has.
+// receipt still works after they type something else. A steer keeps them too:
+// an answered question parks nothing, so the boundary a steer needs is open
+// without it, and the same words typed into the running turn either way leave
+// the receipt changeable.
 func (asked *askedOfThePerson) talkedPastLocked(keepSettled bool) []uint64 {
 	if len(asked.parked) == 0 {
 		return nil

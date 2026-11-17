@@ -12,6 +12,7 @@ package session
 import (
 	"context"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -411,5 +412,35 @@ func TestAPersonsNewMessageLeavesAnAnsweredQuestionChangeable(t *testing.T) {
 	collect(t, mustSubmit(t, rig.agent, "now the kitchen"))
 	if err := rig.agent.ResolveQuestion(Answer{Kind: QuestionAsk, ID: q.ID, Key: "2", Revises: true}); err != nil {
 		t.Fatalf("changing the answer after a new message was refused: %v", err)
+	}
+}
+
+// A STEER LEAVES AN ANSWERED QUESTION CHANGEABLE TOO: the person answers, then
+// types a correction into the turn that is running, then changes the answer
+// from its receipt. Only what is still asked comes down.
+func TestASteerLeavesAnAnsweredQuestionChangeable(t *testing.T) {
+	var hold atomic.Bool
+	h := newHeldTurn()
+	step := func(context.Context, []ai.Message) (*ai.Response, error) {
+		if hold.CompareAndSwap(true, false) {
+			close(h.entered)
+			<-h.release
+		}
+		return textResponse("noted"), nil
+	}
+	rig := leaveAQuestionStanding(t, step, step, step, step, step, step)
+	q := rig.agent.OpenQuestions()[0]
+	if err := rig.agent.ResolveQuestion(Answer{Kind: QuestionAsk, ID: q.ID, Key: "1"}); err != nil {
+		t.Fatal(err)
+	}
+	hold.Store(true)
+	turn := mustSubmit(t, rig.agent, "now the kitchen")
+	h.wait(t)
+	steered := mustSteer(t, rig.agent, "and the hall after")
+	close(h.release)
+	collect(t, turn)
+	collect(t, steered)
+	if err := rig.agent.ResolveQuestion(Answer{Kind: QuestionAsk, ID: q.ID, Key: "2", Revises: true}); err != nil {
+		t.Fatalf("changing the answer after a steer was refused: %v", err)
 	}
 }
