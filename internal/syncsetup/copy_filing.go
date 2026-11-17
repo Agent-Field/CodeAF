@@ -44,8 +44,10 @@ func (c *Continuer) fileCopy(ctx context.Context, at cell.Cell, keepRoot bool) (
 	if err := session.RebaseOwnedCopy(dest); err != nil {
 		return landed, filed, err
 	}
-	if err := c.eng.Follow(ctx, at, landed); err != nil {
-		return landed, filed, err
+	if _, err := os.Stat(filepath.Join(c.eng.LocalDir(at), "engine-tree")); err == nil {
+		if err := c.eng.Follow(ctx, at, landed); err != nil {
+			return landed, filed, err
+		}
 	}
 	opened, err := cell.OpenAt(dest, at.ID)
 	return opened, filed, err

@@ -136,6 +136,10 @@ func (b *appBackend) takeAgent(p appwire.TakeParams, available bool) (agent appw
 		// Unwrapped, so the row says why (sync unreachable, cancelled).
 		return appwire.Agent{}, err
 	}
+	s.SupplyCellView(p.Cell, view)
+	if holder := b.chats.holderName(p.Cell); holder != "" {
+		s.SupplyDeviceName(view.Cell.Lease.Device, holder)
+	}
 	seen := &directory.LeaseExpectation{Device: p.Seen.Device, Fence: p.Seen.Fence, Head: p.Seen.Head}
 	if available && view.Cell.Lease.Expires != 0 {
 		return appwire.Agent{}, appAvailableRefusal(ctx, s, view.Cell.Lease)
@@ -237,16 +241,38 @@ func (b *appBackend) takeAgent(p appwire.TakeParams, available bool) (agent appw
 	agent.Location = location
 	b.chats.endMove(p.Cell, move, nil)
 	taking = false
-	// Acquisition may have been observed before installation and admission.
-	// Reconcile the local id even when no later directory version will arrive.
-	err = b.settleTake(ctx, s, p.Cell)
-	if err != nil {
-		// The take has completed. Inventory recovery belongs to its follower,
-		// whose reading that shows the chat here clears the row's taking.
-		b.startChatInventory()
+	if syncsetup.MoveFilesFirst() {
+		// Acquisition may have been observed before installation and admission.
+		// Reconcile the local id even when no later directory version will arrive.
+		if settleErr := b.settleTake(ctx, s, p.Cell); settleErr != nil {
+			// The take has completed. Inventory recovery belongs to its follower,
+			// whose reading that shows the chat here clears the row's taking.
+			b.startChatInventory()
+		}
+		// A newer cached version skips the reading's own taking.
+		b.publishTaking()
+		return agent, nil
 	}
-	// A newer cached version skips the reading's own taking.
+	b.chats.countTake(p.Cell, -1)
 	b.publishTaking()
+	settleCtx := context.WithoutCancel(ctx)
+	guard.Go("app/take-settle", func() {
+		select {
+		case <-b.left:
+			return
+		default:
+		}
+		settleErr := func() error {
+			b.chats.op.Lock()
+			defer b.chats.op.Unlock()
+			_, err := b.readChats(settleCtx, s, b.chats.feed, true)
+			return err
+		}()
+		if settleErr != nil {
+			b.startChatInventory()
+		}
+		b.publishTaking()
+	})
 	return agent, nil
 }
 

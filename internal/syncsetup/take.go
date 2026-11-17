@@ -2,14 +2,17 @@ package syncsetup
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellindex"
 	"github.com/Agent-Field/codeaf/internal/cellstats"
@@ -46,6 +49,8 @@ type TakeOptions struct {
 	WorkspaceRoots map[string]string
 	// DeviceName is this machine's name: the kept-edits sentence names it.
 	DeviceName string
+	// FromDevice is the holder's device name when Home or the caller already knows it (C6).
+	FromDevice string
 	// RootFor is where this machine keeps the chat with an id: the folder it
 	// already has, or the one a new copy gets.
 	RootFor func(id string) string
@@ -55,8 +60,14 @@ type TakeOptions struct {
 	// Notify hears the one sentence the vault hook says about what it left alone.
 	Notify func(string)
 	// OnMove hears how far a move has got, a few times a second while it
-	// changes. It is never called after the take returns.
+	// changes.
 	OnMove func(MoveProgress)
+	// OnShown is called as soon as the conversation records and lease are in
+	// place and the chat is ready to open (C1).
+	OnShown func(Continued)
+	// AsyncFiles runs workspace fetching, materialization and after-work in the
+	// background even for single-frame chats without OnMove/OnShown.
+	AsyncFiles bool
 	// IdleWithin stops a move that waited this long on the relay with nothing
 	// coming through, with ErrMoveStalled; 0 waits as long as the caller does.
 	IdleWithin time.Duration
@@ -80,6 +91,14 @@ type Continued struct {
 	// one lacks: folders a seal leaves out, commands that were running, tools it
 	// needs. It is empty when there is nothing to say.
 	Resume preflight.Resume
+	// Shown is the elapsed time from the start of the take until the chat was ready to open (C9).
+	Shown time.Duration
+	// Files is the elapsed time from the start of the take until the workspace finished arriving (C9).
+	Files time.Duration
+	// Wait blocks until any background workspace fetch and after-work complete.
+	Wait func(context.Context) error `json:"-"`
+	// Retry retries a failed background workspace fetch (C4).
+	Retry func() bool `json:"-"`
 }
 
 // Continuer is the take side of one machine: `continue here`.
@@ -193,14 +212,69 @@ func (c *Continuer) OpenBranch(ctx context.Context, id string) (Continued, error
 	return c.take(ctx, id, nil, true)
 }
 
+// RetryFiles retries a failed background workspace fetch for chat id (C4).
+func (c *Continuer) RetryFiles(id string) bool {
+	if c == nil || c.opt.RootFor == nil {
+		return false
+	}
+	root := c.opt.RootFor(id)
+	if a := cell.LookupWorkspaceArrival(root, workspaceOf(root)); a != nil {
+		return a.Retry()
+	}
+	return false
+}
+
 func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseExpectation, branchOnly bool) (out Continued, err error) {
 	// Measure one attempt on its own copy: observers must not leak into another
 	// continue, and diagnostics must survive both early refusal and late failure.
 	started := time.Now()
+	var phaseMu sync.Mutex
 	phases := map[string]time.Duration{}
+	var shownElapsed, filesElapsed time.Duration
+	loggedPhases := false
+	logPhases := func(outcome string) {
+		phaseMu.Lock()
+		if loggedPhases {
+			phaseMu.Unlock()
+			return
+		}
+		loggedPhases = true
+		shown, files := shownElapsed, filesElapsed
+		snap := make(map[string]time.Duration, len(phases))
+		for k, v := range phases {
+			snap[k] = v
+		}
+		phaseMu.Unlock()
+		log.Printf("continue %s phases capture=%s directory=%s retirement=%s fetch=%s acquire=%s restore=%s hooks=%s filing=%s unpublished=%s dirty=%s kept_upload=%s admission=%s shown=%s files=%s total=%s outcome=%s", id,
+			snap["local capture"], snap["directory"], snap["retirement"], snap["fetch"], snap["acquire"], snap["restore"], snap["hooks"], snap["filing"], snap["unpublished check"], snap["dirty check"], snap["kept-branch upload"], snap["staging/preflight"], shown, files, time.Since(started), outcome)
+	}
 	parent := ctx
-	ctx, watch, stopWatch := watchMove(ctx, c.opt.OnMove, c.opt.IdleWithin)
-	defer stopWatch()
+	moveCtx, cancelMove := context.WithCancelCause(context.WithoutCancel(parent))
+	var bgMuWatch sync.Mutex
+	bgActive := false
+	bgDetached := false
+	go func() {
+		select {
+		case <-parent.Done():
+			bgMuWatch.Lock()
+			detached := bgDetached
+			bgMuWatch.Unlock()
+			if !detached {
+				cancelMove(context.Cause(parent))
+			}
+		case <-moveCtx.Done():
+		}
+	}()
+	ctx, watch, stopWatch := watchMove(moveCtx, c.opt.OnMove, c.opt.IdleWithin)
+	defer func() {
+		bgMuWatch.Lock()
+		active := bgActive
+		bgMuWatch.Unlock()
+		if !active {
+			stopWatch()
+			cancelMove(nil)
+		}
+	}()
 	defer func() {
 		if err != nil && context.Cause(ctx) == ErrMoveStalled && parent.Err() == nil {
 			err = fmt.Errorf("%w: %w", ErrMoveStalled, err)
@@ -210,7 +284,9 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	report := c.opt.OnPhase
 	observed.opt.OnPhase = func(p handoff.Phase) {
 		if !p.Ended.IsZero() {
+			phaseMu.Lock()
 			phases[p.Name] += p.Ended.Sub(p.Started)
+			phaseMu.Unlock()
 		}
 		watch.phase(p)
 		if report != nil {
@@ -219,12 +295,14 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	}
 	c = &observed
 	defer func() {
+		if bgActive {
+			return
+		}
 		outcome := "done"
 		if err != nil {
 			outcome = fmt.Sprintf("failed reason=%q", err.Error())
 		}
-		log.Printf("continue %s phases capture=%s directory=%s retirement=%s fetch=%s acquire=%s restore=%s hooks=%s filing=%s unpublished=%s dirty=%s kept_upload=%s admission=%s total=%s outcome=%s", id,
-			phases["local capture"], phases["directory"], phases["retirement"], phases["fetch"], phases["acquire"], phases["restore"], phases["hooks"], phases["filing"], phases["unpublished check"], phases["dirty check"], phases["kept-branch upload"], phases["staging/preflight"], time.Since(started), outcome)
+		logPhases(outcome)
 	}()
 	root := c.opt.RootFor(id)
 	_, localRootErr := cell.OpenAt(root, id)
@@ -235,27 +313,41 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 			preKept = resolved
 		}
 	}
-	defer handoff.Arrive(root)()
+	arriveRootFence := handoff.Arrive(root)
+	defer func() {
+		if !bgActive && arriveRootFence != nil {
+			arriveRootFence()
+		}
+	}()
 	localCapture := handoff.Trace(c.opt.OnPhase, "local capture")
+	if err := cell.WaitWorkspace(ctx, root); err != nil {
+		localCapture()
+		return Continued{}, err
+	}
 	if err := cellstore.Await(ctx, cell.Cell{Root: root}); err != nil {
 		localCapture()
 		return Continued{}, err
 	}
 	localCapture()
-	directoryRead := handoff.Trace(c.opt.OnPhase, "directory")
-	readCtx := ctx
-	cancelRead := func() {}
-	if c.freeOnly {
-		readCtx, cancelRead = context.WithTimeout(ctx, chatlist.OpenReadTimeout)
-	}
-	view, err := c.sync.Dir.Cell(readCtx, id)
-	cancelRead()
-	directoryRead()
-	if err != nil {
-		if c.freeOnly && errors.Is(err, context.DeadlineExceeded) {
-			err = fmt.Errorf("%w: %w", directory.ErrUnreachable, err)
+	var view directory.CellView
+	if supplied, ok := c.sync.takeCellView(id); ok {
+		view = supplied
+	} else {
+		directoryRead := handoff.Trace(c.opt.OnPhase, "directory")
+		readCtx := ctx
+		cancelRead := func() {}
+		if c.freeOnly {
+			readCtx, cancelRead = context.WithTimeout(ctx, chatlist.OpenReadTimeout)
 		}
-		return Continued{}, err
+		view, err = c.sync.Dir.Cell(readCtx, id)
+		cancelRead()
+		directoryRead()
+		if err != nil {
+			if c.freeOnly && errors.Is(err, context.DeadlineExceeded) {
+				err = fmt.Errorf("%w: %w", directory.ErrUnreachable, err)
+			}
+			return Continued{}, err
+		}
 	}
 	if err := c.sync.reconcileSendLease(id, id, view); err != nil {
 		return Continued{}, err
@@ -309,11 +401,29 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	if watch != nil && view.Cell.Size > 0 && !c.holds(id, root) {
 		watch.expect(int64(view.Cell.Size))
 	}
-	directoryRead = handoff.Trace(c.opt.OnPhase, "directory")
-	from := c.sync.deviceName(lease.Device)
-	directoryRead()
-	if lease.Device == c.sync.Device.ID() {
-		from = ""
+	fromReady := make(chan string, 1)
+	switch {
+	case lease.Device == "" || lease.Device == c.sync.Device.ID():
+		fromReady <- ""
+	case c.opt.FromDevice != "":
+		fromReady <- c.opt.FromDevice
+	default:
+		if cached, ok := c.sync.cachedDeviceName(lease.Device); ok {
+			fromReady <- cached
+		} else {
+			go func(dev string) {
+				fromReady <- c.sync.deviceName(dev)
+			}(lease.Device)
+		}
+	}
+	var from string
+	var fromResolved bool
+	resolveFrom := func() string {
+		if !fromResolved {
+			from = <-fromReady
+			fromResolved = true
+		}
+		return from
 	}
 	storageOff := !c.sync.StorageAllowed()
 	// An own free chat can return without replacing its open local conversation.
@@ -346,7 +456,7 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 			// An own free chat whose shared turn is here can keep its live reader;
 			// an absent or clean older copy still reads the recorded history normally.
 			if head != "" || dirty || keepOpen && known {
-				return c.takeLocalStorageOff(ctx, id, root, seen)
+				return c.takeLocalStorageOff(ctx, id, root, view, seen)
 			}
 		} else if !errors.Is(err, os.ErrNotExist) {
 			return Continued{}, err
@@ -357,17 +467,38 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		retire()
 	}
 	sc := c.sync.scope(id)
+	settleSync := true
 	defer func() {
-		defer handoff.Trace(c.opt.OnPhase, "filing")()
-		sc.Settle()
+		if settleSync {
+			defer handoff.Trace(c.opt.OnPhase, "filing")()
+			sc.Settle()
+		}
 	}()
 	intendedPrimary := session.Place{Dir: root, Owned: true}.Work()
 	if project, here := projectOf(root); here {
 		intendedPrimary = project
 	}
 	taker := c.taker(ctx, sc)
+	taker.View = &view
+	fetcher, _ := taker.Fetch.(*cellsync.Fetcher)
+	if fetcher != nil {
+		fetcher.View = &view
+	}
 	taker.Local = localWork
-	preflight := func(_ context.Context, staged cell.Cell) error {
+	var branchedTurns uint32
+	origBranch := taker.Branch
+	taker.Branch = func(ctx context.Context, from *cellsync.Driving, head string, turns uint32) (string, error) {
+		if opened, openErr := cell.OpenAt(from.Cell.Root, from.Cell.ID); openErr == nil {
+			if _, t, uErr := cellstore.Unpublished(opened, from.Head); uErr == nil {
+				branchedTurns = t
+			}
+		}
+		if branchedTurns == 0 {
+			branchedTurns = turns
+		}
+		return origBranch(ctx, from, head, turns)
+	}
+	preflightCheck := func(_ context.Context, staged cell.Cell) error {
 		place := session.Place{Dir: staged.Root, Workspace: intendedPrimary}
 		plan, err := session.TaskWorkspaceTransferPlan(place)
 		if err != nil {
@@ -386,45 +517,117 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		}
 		return session.ValidateTaskWorkspaceSetBindingsForDestination(place, root, c.opt.WorkspaceRoots)
 	}
-	taker.Prepare = func(ctx context.Context, staged cell.Cell, head string) error {
-		if err := c.eng.StageAdmission(ctx, staged, head); err != nil {
-			return err
+	filesFirst := MoveFilesFirst() || branchOnly || view.Cell.ParentCell != ""
+	var stageComplete bool
+	if filesFirst {
+		taker.Prepare = func(ctx context.Context, staged cell.Cell, head string) error {
+			if err := c.eng.StageAdmission(ctx, staged, head); err != nil {
+				return err
+			}
+			needed, err := session.TaskWorkspaceAdmissionNeeded(session.Place{Dir: staged.Root, Workspace: intendedPrimary})
+			if err != nil || !needed {
+				return err
+			}
+			if err := c.eng.StageWorkspace(ctx, staged, head); err != nil {
+				return err
+			}
+			return preflightCheck(ctx, staged)
 		}
-		needed, err := session.TaskWorkspaceAdmissionNeeded(session.Place{Dir: staged.Root, Workspace: intendedPrimary})
-		if err != nil || !needed {
-			return err
+		if view.Cell.ParentCell != "" {
+			// The branch's snapshot was sealed before it had its own id. Rebind
+			// its journal before rebuilding the row, so two chats never share an id.
+			taker.After = append([]func(context.Context, cell.Cell) error{branchIdentity}, taker.After...)
 		}
-		if err := c.eng.StageWorkspace(ctx, staged, head); err != nil {
-			return err
+		if project, here := projectOf(c.opt.RootFor(id)); here {
+			// Ownership of this computer's project folder is local. A snapshot
+			// arriving from an owned copy must not turn an in-place return into
+			// tools pointed at a different, empty work/ directory.
+			taker.After = append([]func(context.Context, cell.Cell) error{func(_ context.Context, at cell.Cell) error {
+				meta, err := session.LoadMeta(at.Root)
+				if err != nil {
+					return err
+				}
+				meta.Workspace, meta.Owned, meta.Origin = project, false, ""
+				return session.SaveMeta(at.Root, meta)
+			}}, taker.After...)
 		}
-		return preflight(ctx, staged)
-	}
-	if view.Cell.ParentCell != "" {
-		// The branch's snapshot was sealed before it had its own id. Rebind
-		// its journal before rebuilding the row, so two chats never share an id.
-		taker.After = append([]func(context.Context, cell.Cell) error{branchIdentity}, taker.After...)
-	}
-	if project, here := projectOf(c.opt.RootFor(id)); here {
-		// Ownership of this computer's project folder is local. A snapshot
-		// arriving from an owned copy must not turn an in-place return into
-		// tools pointed at a different, empty work/ directory.
-		taker.After = append([]func(context.Context, cell.Cell) error{func(_ context.Context, at cell.Cell) error {
-			meta, err := session.LoadMeta(at.Root)
+		// Restoration has acquired the requested chat and retired its old writer.
+		// Persist its identity before any hook resolves the vault's chat scope.
+		taker.After = append([]func(context.Context, cell.Cell) error{c.restoreTakenIdentity}, taker.After...)
+	} else {
+		taker.StagePrepare = func(ctx context.Context, staged cell.Cell, head string) error {
+			stageState := c.eng.StageState
+			if fetcher != nil {
+				if ss, ok := fetcher.Engine.(interface {
+					StageState(context.Context, cell.Cell, string) error
+				}); ok {
+					stageState = ss.StageState
+				}
+				var err error
+				stageComplete, err = fetcher.StageChat(ctx, staged, head, stageState)
+				if err != nil {
+					return err
+				}
+			} else {
+				if err := taker.Fetch.Complete(ctx, staged, head); err != nil {
+					return err
+				}
+				if err := stageState(ctx, staged, head); err != nil {
+					return err
+				}
+				stageComplete = true
+			}
+			needed, err := session.TaskWorkspaceAdmissionNeeded(session.Place{Dir: staged.Root, Workspace: intendedPrimary})
 			if err != nil {
 				return err
 			}
-			meta.Workspace, meta.Owned, meta.Origin = project, false, ""
-			return session.SaveMeta(at.Root, meta)
-		}}, taker.After...)
+			if needed {
+				if !stageComplete {
+					if err := taker.Fetch.Complete(ctx, staged, head); err != nil {
+						return err
+					}
+					stageComplete = true
+				}
+				if err := c.eng.StageWorkspace(ctx, staged, head); err != nil {
+					return err
+				}
+			}
+			return preflightCheck(ctx, staged)
+		}
+		taker.InstallState = func(_ context.Context, staged, target cell.Cell, head string) error {
+			if err := os.MkdirAll(target.Root, 0o700); err != nil {
+				return err
+			}
+			if err := handoff.Swap(filepath.Join(staged.Root, cell.StateDir), filepath.Join(target.Root, cell.StateDir)); err != nil {
+				return err
+			}
+			if err := cellstore.NoteAdopted(target, head); err != nil {
+				return err
+			}
+			return cellstore.NotePublished(target, head)
+		}
+		after := []func(context.Context, cell.Cell) error{c.restoreTakenIdentity}
+		if view.Cell.ParentCell != "" {
+			after = append(after, branchIdentity)
+		}
+		after = append(after, seedMeta)
+		if project, here := projectOf(c.opt.RootFor(id)); here {
+			after = append(after, func(_ context.Context, at cell.Cell) error {
+				meta, err := session.LoadMeta(at.Root)
+				if err != nil {
+					return err
+				}
+				meta.Workspace, meta.Owned, meta.Origin = project, false, ""
+				return session.SaveMeta(at.Root, meta)
+			})
+		}
+		after = append(after, recordOrigin)
+		taker.After = after
 	}
-	// Restoration has acquired the requested chat and retired its old writer.
-	// Persist its identity before any hook resolves the vault's chat scope.
-	taker.After = append([]func(context.Context, cell.Cell) error{c.restoreTakenIdentity}, taker.After...)
 	taken, err := taker.TakeSeen(ctx, id, seen)
 	if err != nil {
 		return Continued{}, err
 	}
-	defer handoff.Trace(c.opt.OnPhase, "filing")()
 	place := session.Place{Dir: taken.Cell.Root, Workspace: intendedPrimary}
 	workspacePlan, err := session.TaskWorkspaceTransferPlan(place)
 	if err != nil {
@@ -442,47 +645,354 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	if err != nil {
 		return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
 	}
-	if err := cellstore.AdoptedFrom(taken.Cell, from); err != nil {
+	if filesFirst {
+		defer handoff.Trace(c.opt.OnPhase, "filing")()
+		if err := cellstore.AdoptedFrom(taken.Cell, resolveFrom()); err != nil {
+			return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
+		}
+		if err := cellstore.NotePublished(taken.Cell, taken.Driving.Head); err != nil {
+			return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
+		}
+		var filed func()
+		defer func() {
+			if filed != nil {
+				filed()
+			}
+		}()
+		if taken.Cell, filed, err = c.fileCopy(ctx, taken.Cell, keepRoot); err != nil {
+			return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
+		}
+		taken.Driving.Cell = taken.Cell
+		var taskCopies []string
+		if workspacePlan != nil {
+			taskCopies, err = session.RestoreTaskWorkspaceSets(ctx, session.Place{Dir: taken.Cell.Root, Workspace: workspaceOf(taken.Cell.Root)}, c.opt.WorkspaceRoots)
+			if err != nil {
+				return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
+			}
+		} else {
+			if err := session.AdoptChatWorkspaceIdentity(session.Place{Dir: taken.Cell.Root}); err != nil {
+				return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
+			}
+			taskCopies = c.restoreCopies(taken.Cell)
+		}
+		if err := c.sync.recordSendLease(taken.Cell.ID, sendLease{Cell: id, Fence: taken.Driving.Fence}); err != nil {
+			return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
+		}
+		if c.sync.teamsSharing() {
+			if err := (teamKeys{c.sync.profile(), c.sync.Home, c.sync.Device.ID(), nil}).rebindChat(id, taken.Cell); err != nil {
+				if c.opt.Notify != nil {
+					c.opt.Notify("This chat continued here, but its teams could not be updated yet: " + err.Error())
+				}
+			}
+		}
+		phaseMu.Lock()
+		shownElapsed = time.Since(started)
+		filesElapsed = shownElapsed
+		phaseMu.Unlock()
+		out = Continued{LocalOnly: storageOff, Taken: taken, Device: c.opt.DeviceName, TaskCopies: taskCopies, Resume: c.arrive(taken.Cell, resolveFrom()), Shown: shownElapsed, Files: filesElapsed, Wait: func(context.Context) error { return nil }, Retry: func() bool { return false }}
+		if taken.Kept != "" && taken.Kept != preKept {
+			if branchedTurns != 0 {
+				out.KeptTurns = branchedTurns
+			} else {
+				out.KeptTurns = c.orphanTurns(ctx, taken.Kept)
+			}
+		}
+		if c.opt.OnShown != nil {
+			c.opt.OnShown(out)
+		}
+		return out, nil
+	}
+
+	fastFrom := ""
+	select {
+	case f := <-fromReady:
+		from, fromResolved, fastFrom = f, true, f
+	default:
+	}
+	if err := cellstore.AdoptedFrom(taken.Cell, fastFrom); err != nil {
 		return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
 	}
 	if err := cellstore.NotePublished(taken.Cell, taken.Driving.Head); err != nil {
 		return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
 	}
 	var filed func()
-	defer func() {
+	if taken.Cell, filed, err = c.fileCopy(ctx, taken.Cell, keepRoot); err != nil {
 		if filed != nil {
 			filed()
 		}
-	}()
-	if taken.Cell, filed, err = c.fileCopy(ctx, taken.Cell, keepRoot); err != nil {
 		return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
 	}
 	taken.Driving.Cell = taken.Cell
-	var taskCopies []string
-	if workspacePlan != nil {
-		taskCopies, err = session.RestoreTaskWorkspaceSets(ctx, session.Place{Dir: taken.Cell.Root, Workspace: workspaceOf(taken.Cell.Root)}, c.opt.WorkspaceRoots)
-		if err != nil {
-			return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
+	if err := os.MkdirAll(workspaceOf(taken.Cell.Root), 0o700); err != nil {
+		if filed != nil {
+			filed()
 		}
-	} else {
-		if err := session.AdoptChatWorkspaceIdentity(session.Place{Dir: taken.Cell.Root}); err != nil {
-			return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
-		}
-		taskCopies = c.restoreCopies(taken.Cell)
-	}
-	if err := c.sync.recordSendLease(taken.Cell.ID, sendLease{Cell: id, Fence: taken.Driving.Fence}); err != nil {
 		return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
 	}
-	if c.sync.teamsSharing() {
-		if err := (teamKeys{c.sync.profile(), c.sync.Home, c.sync.Device.ID(), nil}).rebindChat(id, taken.Cell); err != nil {
-			if c.opt.Notify != nil {
-				c.opt.Notify("This chat continued here, but its teams could not be updated yet: " + err.Error())
+	if workspacePlan == nil {
+		if err := session.AdoptChatWorkspaceIdentity(session.Place{Dir: taken.Cell.Root}); err != nil {
+			if filed != nil {
+				filed()
 			}
+			return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
 		}
 	}
-	out = Continued{LocalOnly: storageOff, Taken: taken, Device: c.opt.DeviceName, TaskCopies: taskCopies, Resume: c.arrive(taken.Cell, from)}
+	if err := c.sync.recordSendLease(taken.Cell.ID, sendLease{Cell: id, Fence: taken.Driving.Fence}); err != nil {
+		if filed != nil {
+			filed()
+		}
+		return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
+	}
+	phaseMu.Lock()
+	shownElapsed = time.Since(started)
+	phaseMu.Unlock()
+	var keptTurns uint32
 	if taken.Kept != "" && taken.Kept != preKept {
-		out.KeptTurns = c.orphanTurns(ctx, taken.Kept)
+		keptTurns = branchedTurns
+	}
+	initialResume, initialStashed := c.fastResume(taken.Cell, fastFrom)
+	stallBound := func() time.Duration {
+		if c.opt.IdleWithin > 0 {
+			return c.opt.IdleWithin
+		}
+		return MoveIdleWithin
+	}
+	arrival := cell.BeginWorkspaceArrival(taken.Cell.Root, workspaceOf(taken.Cell.Root), stallBound, nil)
+	if taken.Cell.Root != root {
+		arrival.BindPaths(root)
+	}
+	if filed != nil {
+		filed()
+		filed = nil
+	}
+	if arriveRootFence != nil {
+		arriveRootFence()
+		arriveRootFence = nil
+	}
+	if watch != nil {
+		watch.setArrival(arrival)
+		watch.setArriving()
+	}
+	bgMuWatch.Lock()
+	bgActive = true
+	bgMuWatch.Unlock()
+	settleSync = false
+
+	syncEng := c.eng.Sync(cellstore.SyncKeys{CellKey: c.sync.Identity.CellKey(), Dedup: c.sync.Identity.DedupSecret()}, c.sync.Ledger)
+	var bgMu sync.Mutex
+	var bgRunning bool
+	var bgDone chan struct{}
+	var bgErr error
+	var finalTaskCopies []string
+	var finalResume preflight.Resume
+
+	var startBg func(initial bool)
+	startBg = func(initial bool) {
+		bgMu.Lock()
+		if bgRunning || arrival.Ready() {
+			bgMu.Unlock()
+			return
+		}
+		bgRunning = true
+		doneCh := make(chan struct{})
+		bgDone = doneCh
+		bgErr = nil
+		bgMu.Unlock()
+		if !initial {
+			arrival.BeginRetry()
+		}
+		go func() {
+			var runCtx context.Context
+			var runWatch *moveWatch
+			var runStop func()
+			defer func() {
+				bgMu.Lock()
+				bgRunning = false
+				close(doneCh)
+				bgMu.Unlock()
+				if runStop != nil {
+					runStop()
+				}
+			}()
+			if initial {
+				runCtx, runWatch = ctx, watch
+				runStop = func() {
+					stopWatch()
+					cancelMove(nil)
+				}
+			} else {
+				runCtx, runWatch, runStop = watchMove(context.Background(), c.opt.OnMove, c.opt.IdleWithin)
+				if runWatch != nil {
+					runWatch.setArrival(arrival)
+					runWatch.setArriving()
+				}
+			}
+			fetchDone := handoff.Trace(c.opt.OnPhase, "fetch")
+			fetchErr := taker.Fetch.Complete(runCtx, taken.Cell, taken.Driving.Head)
+			fetchDone()
+			if fetchErr != nil {
+				if context.Cause(runCtx) == ErrMoveStalled {
+					fetchErr = fmt.Errorf("%w: %w", ErrMoveStalled, fetchErr)
+				}
+				plain := plainFetchFailure(fetchErr, c.sync.Relay)
+				bgMu.Lock()
+				bgErr = fetchErr
+				bgMu.Unlock()
+				arrival.Fail(errors.New(plain))
+				if runWatch != nil {
+					runWatch.setFailed(plain)
+				}
+				logPhases(fmt.Sprintf("failed reason=%q", fetchErr.Error()))
+				return
+			}
+			restoreDone := handoff.Trace(c.opt.OnPhase, "restore")
+			var matErr error
+			if fetcher != nil {
+				if mw, ok := fetcher.Engine.(interface {
+					MaterializeWorkspace(context.Context, cell.Cell, string) error
+				}); ok {
+					matErr = mw.MaterializeWorkspace(runCtx, taken.Cell, taken.Driving.Head)
+				} else {
+					matErr = syncEng.MaterializeWorkspace(runCtx, taken.Cell, taken.Driving.Head)
+				}
+			} else {
+				matErr = syncEng.MaterializeWorkspace(runCtx, taken.Cell, taken.Driving.Head)
+			}
+			restoreDone()
+			if matErr != nil {
+				bgMu.Lock()
+				bgErr = matErr
+				bgMu.Unlock()
+				arrival.Fail(matErr)
+				if runWatch != nil {
+					runWatch.setFailed(matErr.Error())
+				}
+				logPhases(fmt.Sprintf("failed reason=%q", matErr.Error()))
+				return
+			}
+			phaseMu.Lock()
+			filesElapsed = time.Since(started)
+			phaseMu.Unlock()
+
+			for _, hook := range []func(context.Context, cell.Cell) error{restoreChatFiles, rebuildIndexes, c.pullVault} {
+				hookDone := handoff.Trace(c.opt.OnPhase, "hooks")
+				hErr := hook(runCtx, taken.Cell)
+				hookDone()
+				if hErr != nil && c.opt.Notify != nil {
+					c.opt.Notify("This chat continued here, but part of its state could not be updated yet: " + hErr.Error())
+				}
+			}
+
+			filingDone := handoff.Trace(c.opt.OnPhase, "filing")
+			var copies []string
+			if workspacePlan != nil {
+				var rErr error
+				copies, rErr = session.RestoreTaskWorkspaceSets(runCtx, session.Place{Dir: taken.Cell.Root, Workspace: workspaceOf(taken.Cell.Root)}, c.opt.WorkspaceRoots)
+				if rErr != nil && c.opt.Notify != nil {
+					c.opt.Notify("a task's working copy could not be set up again here: " + rErr.Error())
+				}
+			} else {
+				copies = c.restoreCopies(taken.Cell)
+			}
+			actualFrom := resolveFrom()
+			if actualFrom != fastFrom {
+				_ = cellstore.AdoptedFrom(taken.Cell, actualFrom)
+			}
+			if c.sync.teamsSharing() {
+				if tErr := (teamKeys{c.sync.profile(), c.sync.Home, c.sync.Device.ID(), nil}).rebindChat(id, taken.Cell); tErr != nil {
+					if c.opt.Notify != nil {
+						c.opt.Notify("This chat continued here, but its teams could not be updated yet: " + tErr.Error())
+					}
+				}
+			}
+			stashPath := filepath.Join(taken.Cell.Root, "resume.pending")
+			_, stashStillThere := os.Stat(stashPath)
+			res := c.arrive(taken.Cell, actualFrom)
+			if initialStashed && os.IsNotExist(stashStillThere) {
+				_ = os.Remove(stashPath)
+			}
+			if taken.Kept != "" && taken.Kept != preKept && keptTurns == 0 {
+				keptTurns = c.orphanTurns(runCtx, taken.Kept)
+			}
+			sc.Settle()
+			filingDone()
+
+			bgMu.Lock()
+			finalTaskCopies = copies
+			finalResume = res
+			bgMu.Unlock()
+
+			arrival.Complete()
+			if runWatch != nil {
+				runWatch.setDone()
+			}
+			if filed != nil {
+				filed()
+				filed = nil
+			}
+			if arriveRootFence != nil {
+				arriveRootFence()
+				arriveRootFence = nil
+			}
+			logPhases("done")
+		}()
+	}
+
+	arrival.SetRetry(func() { startBg(false) })
+	waitFn := func(waitCtx context.Context) error {
+		bgMu.Lock()
+		ch := bgDone
+		bgMu.Unlock()
+		if ch != nil {
+			select {
+			case <-ch:
+			case <-waitCtx.Done():
+				return waitCtx.Err()
+			}
+		}
+		bgMu.Lock()
+		defer bgMu.Unlock()
+		return bgErr
+	}
+
+	out = Continued{
+		LocalOnly: storageOff,
+		Taken:     taken,
+		Device:    c.opt.DeviceName,
+		KeptTurns: keptTurns,
+		Resume:    initialResume,
+		Shown:     shownElapsed,
+		Wait:      waitFn,
+		Retry:     arrival.Retry,
+	}
+	if c.opt.OnShown != nil {
+		c.opt.OnShown(out)
+	}
+	startBg(true)
+
+	runAsync := (!stageComplete && c.opt.OnMove != nil) || c.opt.OnShown != nil || c.opt.AsyncFiles
+	if !runAsync {
+		if waitErr := waitFn(parent); waitErr != nil {
+			if filed != nil {
+				filed()
+			}
+			if arriveRootFence != nil {
+				arriveRootFence()
+			}
+			return Continued{}, errors.Join(waitErr, c.giveBack(parent, id, taken.Driving.Fence))
+		}
+		bgMu.Lock()
+		out.TaskCopies = finalTaskCopies
+		out.Resume = finalResume
+		out.KeptTurns = keptTurns
+		bgMu.Unlock()
+		phaseMu.Lock()
+		out.Files = filesElapsed
+		phaseMu.Unlock()
+	} else {
+		bgMuWatch.Lock()
+		bgDetached = true
+		bgMuWatch.Unlock()
 	}
 	return out, nil
 }
@@ -551,6 +1061,47 @@ func (c *Continuer) arrive(at cell.Cell, from string) preflight.Resume {
 		_ = session.SaveMeta(at.Root, meta)
 	}
 	return resume
+}
+
+// fastResume reads the incoming inventory and updates the local metadata
+// without spawning git status, so the chat can open immediately (C1, C7).
+func (c *Continuer) fastResume(at cell.Cell, from string) (preflight.Resume, bool) {
+	work := workspaceOf(at.Root)
+	var r preflight.Resume
+	if store, err := inventory.Open(at.Root); err == nil {
+		inv := store.Snapshot()
+		r = preflight.Compare(from, inv, preflight.LocalHere{Root: at.Root, Workspace: work}, preflight.Report{})
+	}
+	r.Now, r.ChatNow = work, at.Root
+	if meta, err := session.LoadMeta(at.Root); err == nil && meta.ID != "" {
+		meta.FromDevice, meta.FromWorkspace = from, r.Was
+		_ = session.SaveMeta(at.Root, meta)
+	}
+	stashed := false
+	stashPath := filepath.Join(at.Root, "resume.pending")
+	if r.Empty() && (r.ChatWas == "" || r.ChatWas == r.ChatNow) {
+		_ = os.Remove(stashPath)
+	} else if raw, err := json.Marshal(r); err == nil {
+		if os.WriteFile(stashPath, raw, 0o600) == nil {
+			stashed = true
+		}
+	}
+	return r, stashed
+}
+
+func plainFetchFailure(err error, relay string) string {
+	switch {
+	case errors.Is(err, ErrMoveStalled):
+		return ErrMoveStalled.Error()
+	case errors.Is(err, blobstore.ErrNotFound):
+		return "part of this chat's folder is missing from sync"
+	case errors.Is(err, blobstore.ErrAnswered):
+		return "sync answered with an error"
+	case errors.Is(err, blobstore.ErrUnreachable), errors.Is(err, directory.ErrUnreachable):
+		return "sync could not be reached"
+	default:
+		return syncwords.Explain(err, relay).Error()
+	}
 }
 
 // restoreCopies puts the task working copies the chat carried back to work in
@@ -646,6 +1197,15 @@ func (l landing) Want(ctx context.Context, c cell.Cell, head string) ([]string, 
 		return nil, err
 	}
 	return l.Engine.Want(ctx, c, head)
+}
+
+func (l landing) MaterializeWorkspace(ctx context.Context, c cell.Cell, head string) error {
+	if mw, ok := l.Engine.(interface {
+		MaterializeWorkspace(context.Context, cell.Cell, string) error
+	}); ok {
+		return mw.MaterializeWorkspace(ctx, c, head)
+	}
+	return l.Engine.Materialize(ctx, c, head)
 }
 
 // engineLocal is the Taker's view of a copy of the chat this machine has: what
@@ -766,6 +1326,26 @@ func titleOf(root string) string {
 func restoreChatFiles(_ context.Context, c cell.Cell) error {
 	_, err := chatfiles.Carry{}.Restore(c)
 	return err
+}
+
+// seedMeta writes the session folder's meta.json from the newly installed
+// transcript and sealed truth before the chat opens, while the rest of the
+// derived indexes wait for the background after-work.
+func seedMeta(_ context.Context, c cell.Cell) error {
+	_ = os.Remove(filepath.Join(c.Root, "meta.json"))
+	d, err := session.ReadDigest(session.Place{Dir: c.Root}.Transcript())
+	if err != nil || d.ID == "" {
+		return err
+	}
+	origin := d.Workspace
+	if w := workspaceOf(c.Root); w != "" {
+		d.Workspace = w
+	}
+	held, _ := session.LoadMeta(c.Root)
+	if held.Origin == "" && origin != "" && origin != d.Workspace {
+		held.Origin = origin
+	}
+	return session.SaveMeta(c.Root, d.Derive(held))
 }
 
 // rebuildIndexes makes the session row and the other derived files of a chat
@@ -1026,7 +1606,7 @@ func (c *Continuer) ReleaseUnused(ctx context.Context, id string, fence uint64) 
 }
 
 // takeLocalStorageOff acquires through the directory without uploading or restoring over local turns.
-func (c *Continuer) takeLocalStorageOff(ctx context.Context, id, root string, seen *directory.LeaseExpectation) (Continued, error) {
+func (c *Continuer) takeLocalStorageOff(ctx context.Context, id, root string, view directory.CellView, seen *directory.LeaseExpectation) (Continued, error) {
 	at, err := cell.OpenAt(root, id)
 	if err != nil {
 		return Continued{}, syncwords.ErrContinueStorageOff
@@ -1048,10 +1628,6 @@ func (c *Continuer) takeLocalStorageOff(ctx context.Context, id, root string, se
 			return syncwords.ErrContinueStorageOff
 		}
 		return nil
-	}
-	view, err := c.sync.Dir.Cell(ctx, id)
-	if err != nil {
-		return Continued{}, err
 	}
 	if view.Cell.Lease.Device != seen.Device || view.Cell.Lease.Fence != seen.Fence {
 		return Continued{}, directory.ErrLeaseHeld

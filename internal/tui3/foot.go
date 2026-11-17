@@ -98,7 +98,7 @@ func segGroup(kind hudSeg) hudGroup {
 		return groupElse
 	case segYolo:
 		return groupPosture
-	case segRate, segLink, segQuestions, segSeal, segState:
+	case segRate, segLink, segQuestions, segFiles, segSeal, segState:
 		return groupAlive
 	}
 	return groupOff
@@ -324,7 +324,7 @@ type statusDoor struct {
 // doorKinds is which segments are doors at all.
 func doorKind(kind hudSeg) bool {
 	switch kind {
-	case segCost, segCache, segCtx, segETA:
+	case segCost, segCache, segCtx, segETA, segFiles:
 		return true
 	}
 	return false
@@ -341,7 +341,7 @@ func (a *app) markDoors(parts []hudPart, base, row int) {
 	for i, part := range parts {
 		at += ansi.StringWidth(partSep(parts, i))
 		width := ansi.StringWidth(part.text)
-		if doorKind(part.kind) {
+		if doorKind(part.kind) && (part.kind != segFiles || a.filesMoveFailed()) {
 			a.doors = append(a.doors, statusDoor{kind: part.kind, span: hudSpan{from: at, to: at + width}, row: row})
 		}
 		if part.kind == segCost {
@@ -381,6 +381,10 @@ func (a *app) doorPress(door statusDoor) (tea.Cmd, bool) {
 		return a.openSpending(spendTodayKey), true
 	case segCtx, segETA:
 		return a.runStatusNote(), true
+	case segFiles:
+		if a.filesMoveFailed() {
+			return a.retryFilesMove(), true
+		}
 	}
 	return nil, false
 }

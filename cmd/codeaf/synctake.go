@@ -211,6 +211,7 @@ func (s surfaceMachines) RowsForSend(ctx context.Context) ([]chatlist.Row, uint6
 	if err != nil {
 		return nil, 0, err
 	}
+	s.RememberDevices(l.Devices)
 	key := directory.MetadataKey(s.Identity.CellKey())
 	open := func(sealed string) (string, error) { return directory.OpenName(key, sealed) }
 	rows := chatlist.Rows(l, s.Device.ID(), open)
@@ -314,7 +315,7 @@ func (p *takeProgress) start(cell string) {
 func (p *takeProgress) report(m syncsetup.MoveProgress) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.at, p.ok = tui3.MoveProgress{Step: m.Step, Done: m.Done, Total: m.Total}, true
+	p.at, p.ok = tui3.MoveProgress{Step: m.Step, Done: m.Done, Total: m.Total, Err: m.Err}, m.Step != syncsetup.MoveDone
 }
 
 // MoveProgress says how far the continue of cell has got.
@@ -325,6 +326,14 @@ func (t takeover) MoveProgress(cell string) (tui3.MoveProgress, bool) {
 	t.moving.mu.Lock()
 	defer t.moving.mu.Unlock()
 	return t.moving.at, t.moving.ok && t.moving.cell == cell
+}
+
+// RetryMove retries a failed background workspace fetch for cell (C4).
+func (t takeover) RetryMove(cell string) bool {
+	if t.c == nil {
+		return false
+	}
+	return t.c.RetryFiles(cell)
 }
 
 // surfaceTakeError names a stalled continue in the terminal's words.

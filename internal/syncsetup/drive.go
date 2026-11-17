@@ -657,12 +657,16 @@ func (s *Sync) deviceName(id string) string {
 	if id == "" {
 		return unknownDevice
 	}
+	if name, ok := s.cachedDeviceName(id); ok {
+		return name
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
 	defer cancel()
 	l, err := s.Dir.List(ctx)
 	if err != nil {
 		return chatlist.DeviceName(nil, id, nil)
 	}
+	s.RememberDevices(l.Devices)
 	key := directory.MetadataKey(s.Identity.CellKey())
 	return chatlist.DeviceName(l.Devices, id, func(sealed string) (string, error) { return directory.OpenName(key, sealed) })
 }

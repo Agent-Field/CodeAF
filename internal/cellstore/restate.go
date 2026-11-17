@@ -76,6 +76,29 @@ func syncState(from, to string) error {
 	return removeAbsent(to, have, want)
 }
 
+// mergeMissingState copies files from scratch into to when to does not yet hold
+// them, leaving live state files already installed in to untouched.
+func mergeMissingState(from, to string) error {
+	err := filepath.WalkDir(from, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		name, relErr := filepath.Rel(from, p)
+		if relErr != nil {
+			return relErr
+		}
+		dst := filepath.Join(to, name)
+		if _, statErr := os.Lstat(dst); statErr == nil {
+			return nil
+		}
+		return copyFile(p, dst)
+	})
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
+}
+
 func removeAbsent(dir string, have, want []string) error {
 	keep := make(map[string]bool, len(want))
 	for _, name := range want {

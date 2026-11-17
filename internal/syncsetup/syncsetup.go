@@ -47,6 +47,9 @@ const (
 	// UNSET, SERVE BEHAVES EXACTLY AS IT ALWAYS HAS: it syncs nothing and
 	// publishes no presence, so nobody who never asked sees a change.
 	ServeStateVar = "CODEAF_SERVE_SYNC"
+	// MoveFilesFirstVar restores the legacy continue order (workspace files
+	// fetched and materialized before the chat opens) when set to 1 (C10).
+	MoveFilesFirstVar = "CODEAF_MOVE_FILES_FIRST"
 	// DefaultInterval is the flush interval when IntervalVar is unset.
 	DefaultInterval = 5 * time.Second
 	// requestTimeout bounds one directory request so a silent relay cannot hang
@@ -58,6 +61,10 @@ const (
 // home state and presence in step; only the value 1 does.
 func ServeKeepsState() bool { return strings.TrimSpace(env.Get(ServeStateVar)) == "1" }
 
+// MoveFilesFirst reports whether MoveFilesFirstVar asks a continue to finish
+// copying all workspace files before opening the chat (C10).
+func MoveFilesFirst() bool { return strings.TrimSpace(env.Get(MoveFilesFirstVar)) == "1" }
+
 // ErrNoIdentity is what a machine says when a relay is set but it has no
 // identity to sign with. Its words are the list's own, so every surface agrees.
 var ErrNoIdentity = errors.New(chatlist.NoIdentity)
@@ -67,6 +74,9 @@ type Sync struct {
 	publicationMu   sync.Mutex
 	publication     map[string]*pendingPublication
 	publicationSeen map[string]struct{}
+	suppliedMu      sync.Mutex
+	suppliedViews   map[string]directory.CellView
+	suppliedDevices map[string]string
 	// BetweenChats, when set, runs after each chat a PublishLocalChats pass
 	// offers, with the pass's lock released: a pass lasts as long as its
 	// uploads keep moving, and the caller counts (CountUnshared) and does its
@@ -352,4 +362,88 @@ func (s *Sync) now() time.Time {
 		return s.clock()
 	}
 	return time.Now()
+}
+
+// SupplyCellView caches an already-read directory record for the next take of id on s (C6).
+func (s *Sync) SupplyCellView(id string, view directory.CellView) {
+	if s == nil || id == "" {
+		return
+	}
+	s.suppliedMu.Lock()
+	defer s.suppliedMu.Unlock()
+	if s.suppliedViews == nil {
+		s.suppliedViews = map[string]directory.CellView{}
+	}
+	s.suppliedViews[id] = view
+}
+
+func (s *Sync) takeCellView(id string) (directory.CellView, bool) {
+	if s == nil || id == "" {
+		return directory.CellView{}, false
+	}
+	s.suppliedMu.Lock()
+	defer s.suppliedMu.Unlock()
+	view, ok := s.suppliedViews[id]
+	if ok {
+		delete(s.suppliedViews, id)
+	}
+	return view, ok
+}
+
+// SupplyDeviceName remembers a device's display name for takes on s (C6).
+func (s *Sync) SupplyDeviceName(id, name string) {
+	if s == nil || id == "" || name == "" {
+		return
+	}
+	s.suppliedMu.Lock()
+	defer s.suppliedMu.Unlock()
+	if s.suppliedDevices == nil {
+		s.suppliedDevices = map[string]string{}
+	}
+	s.suppliedDevices[id] = name
+}
+
+// RememberDevices decrypts and caches the device names from a directory listing.
+func (s *Sync) RememberDevices(devices map[string]directory.Device) {
+	if s == nil || len(devices) == 0 {
+		return
+	}
+	key := directory.MetadataKey(s.Identity.CellKey())
+	open := func(sealed string) (string, error) { return directory.OpenName(key, sealed) }
+	s.suppliedMu.Lock()
+	defer s.suppliedMu.Unlock()
+	if s.suppliedDevices == nil {
+		s.suppliedDevices = map[string]string{}
+	}
+	for id := range devices {
+		if name := chatlist.DeviceName(devices, id, open); name != "" {
+			s.suppliedDevices[id] = name
+		}
+	}
+}
+
+func (s *Sync) cachedDeviceName(id string) (string, bool) {
+	if s == nil || id == "" {
+		return "", false
+	}
+	s.suppliedMu.Lock()
+	if name := s.suppliedDevices[id]; name != "" {
+		s.suppliedMu.Unlock()
+		return name, true
+	}
+	s.suppliedMu.Unlock()
+	binding := deviceBindingFor(s.Relay, s.Identity, s.Device)
+	deviceObservers.Lock()
+	snap, ok := deviceObservers.snapshots[binding]
+	deviceObservers.Unlock()
+	if ok {
+		if _, found := snap.Devices[id]; found {
+			key := directory.MetadataKey(s.Identity.CellKey())
+			name := chatlist.DeviceName(snap.Devices, id, func(sealed string) (string, error) { return directory.OpenName(key, sealed) })
+			if name != "" {
+				return name, true
+			}
+		}
+	}
+	return "", false
 }

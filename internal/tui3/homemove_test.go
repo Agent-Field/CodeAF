@@ -30,10 +30,24 @@ func TestMoveSaid(t *testing.T) {
 // movingTaker is a fakeTaker that says how far its continue has got.
 type movingTaker struct {
 	fakeTaker
-	at MoveProgress
+	at      MoveProgress
+	active  bool
+	retried string
 }
 
-func (m *movingTaker) MoveProgress(string) (MoveProgress, bool) { return m.at, true }
+func (m *movingTaker) MoveProgress(string) (MoveProgress, bool) {
+	if !m.active && m.at == (MoveProgress{}) {
+		return MoveProgress{}, false
+	}
+	return m.at, m.active || m.at != (MoveProgress{})
+}
+
+func (m *movingTaker) RetryMove(cell string) bool {
+	m.retried = cell
+	m.at = MoveProgress{Step: "arriving", Done: 40 << 20, Total: 112 << 20}
+	m.active = true
+	return true
+}
 
 // Home's line follows a running continue, and only while home still shows it.
 func TestHomeFollowsAMove(t *testing.T) {
@@ -81,5 +95,81 @@ func TestContinueCardWarnsBeforeABigFolder(t *testing.T) {
 	unnamed.Folder = ""
 	if got := continueReason(unnamed); !strings.Contains(got, "this chat works in a folder on host-a") {
 		t.Fatalf("a chat with no folder name says %q", got)
+	}
+}
+
+// Contract C2 and C4: the open chat's status line shows arriving workspace
+// bytes (never 0 of 0), names a failed background fetch in plain words with a
+// retry door, and clears when the files finish arriving.
+func TestC2FilesArrivingStatusLineAppearsShowsBytesAndClears(t *testing.T) {
+	for _, c := range []struct {
+		p    MoveProgress
+		want string
+	}{
+		{MoveProgress{Step: "arriving", Done: 0, Total: 0}, "files arriving"},
+		{MoveProgress{Step: "arriving", Done: 0, Total: 112 << 20}, "files arriving"},
+		{MoveProgress{Step: "arriving", Done: 100, Total: 200}, "files arriving"},
+		{MoveProgress{Step: "arriving", Done: 40 << 20, Total: 112 << 20}, "files arriving · 40 of 112 MB"},
+		{MoveProgress{Step: "arriving", Done: 40 << 20, Total: 0}, "files arriving · 40 MB"},
+		{MoveProgress{Step: "failed", Err: "sync could not be reached"}, "files couldn't arrive: sync could not be reached · retry"},
+		{MoveProgress{Step: "done", Done: 112 << 20, Total: 112 << 20}, ""},
+	} {
+		got := filesArrivingSaid(c.p)
+		if got != c.want {
+			t.Errorf("filesArrivingSaid(%+v) = %q, want %q", c.p, got, c.want)
+		}
+		if strings.Contains(got, "0 of 0") {
+			t.Errorf("filesArrivingSaid(%+v) violated emptiness law: %q", c.p, got)
+		}
+	}
+
+	taker := &movingTaker{active: true, at: MoveProgress{Step: "arriving", Done: 40 << 20, Total: 112 << 20}}
+	a := continueHome(t, taker, continueRows, 200)
+	a.closeHome()
+	a.file = "/tmp/c-off/.cell/transcript.jsonl"
+	a.homeTakeSeq = 9
+
+	// Appears on the open chat's status line and quotes arriving bytes (C2).
+	_, plain := a.seamTelemetryLabel(lineParts(a.seamParts(200)))
+	if !strings.Contains(plain, "files arriving · 40 of 112 MB") {
+		t.Fatalf("status line while files arrive = %q, want files arriving · 40 of 112 MB", plain)
+	}
+	if cmd := a.followMove(homeMoveTickMsg{seq: 9}); cmd == nil {
+		t.Fatal("followMove stopped ticking while files are still arriving")
+	}
+
+	// Failure names the problem in plain words with a retry door (C4).
+	taker.at = MoveProgress{Step: "failed", Done: 40 << 20, Total: 112 << 20, Err: "sync could not be reached"}
+	ledger, alive := lineParts(a.seamParts(200))
+	_, plain = a.seamTelemetryLabel(ledger, alive)
+	if !strings.Contains(plain, "files couldn't arrive: sync could not be reached · retry") {
+		t.Fatalf("status line on failed background fetch = %q", plain)
+	}
+	a.doors = nil
+	a.markDoors(alive, 0, legendDoorRow)
+	var retryDoor *statusDoor
+	for i := range a.doors {
+		if a.doors[i].kind == segFiles {
+			retryDoor = &a.doors[i]
+			break
+		}
+	}
+	if retryDoor == nil {
+		t.Fatal("failed files segment did not register a retry door")
+	}
+	cmd, handled := a.doorPress(*retryDoor)
+	if !handled || cmd == nil || taker.retried != "c-off" {
+		t.Fatalf("pressing retry door: handled=%v cmd=%v retried=%q", handled, cmd != nil, taker.retried)
+	}
+
+	// Clears when the files finish arriving (C2).
+	taker.at = MoveProgress{Step: "done", Done: 112 << 20, Total: 112 << 20}
+	taker.active = false
+	_, plain = a.seamTelemetryLabel(lineParts(a.seamParts(200)))
+	if strings.Contains(plain, "files arriving") || strings.Contains(plain, "files couldn't arrive") {
+		t.Fatalf("status line did not clear after files arrived: %q", plain)
+	}
+	if cmd := a.followMove(homeMoveTickMsg{seq: 9}); cmd != nil {
+		t.Fatal("followMove kept ticking after files finished arriving")
 	}
 }
