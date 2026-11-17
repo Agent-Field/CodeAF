@@ -187,10 +187,15 @@ func TestConcurrentTurnAndLateSpendStampsKeepTheLatestMeter(t *testing.T) {
 		used:  Usage{Input: 4, Output: 1, CostUSD: .125, Calls: 1},
 		model: "test/model", generationID: "late-concurrent", late: true, ledger: true,
 	})
+	// The late charge already owes its own stamp: bank stamps every bill
+	// outside a live turn ([Agent.bank]). Owing a second one here queued a
+	// second write whenever the first was already waiting on the stamp lock,
+	// and the same .375 was announced twice (4 of 60 on dev). So this waits for
+	// the bank's stamp rather than adding one.
 	lateStarted, lateDone := make(chan struct{}), make(chan struct{})
 	go func() {
 		close(lateStarted)
-		agent.stampSpend()
+		agent.SettleWrites()
 		close(lateDone)
 	}()
 	t.Cleanup(func() { letGo(); waitMetaPatch(t, lateDone) })
