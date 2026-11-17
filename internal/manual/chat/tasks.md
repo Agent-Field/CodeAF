@@ -4356,7 +4356,7 @@ was added.` It tells the worker to do that work in its own hands, or name differ
 work for what is different. The shared tree money limit is described above under
 *The per-task limit covers the whole task tree*.
 
-## How the bash belt run splits work instead of nesting node tasks
+## Bash belt work splitting instead of nested node tasks
 
 With the switch unset, or `CODEAF_TASK_BELT=bash`, a task uses the run engine instead of the node tree.
 Run workers have neither `quick_task` nor `propose_task`; they split with `plandb split`.

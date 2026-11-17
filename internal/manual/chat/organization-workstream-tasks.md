@@ -1,5 +1,13 @@
 # Tasks in a workstream — who owns a task, who answers its question, ticking, waiting on, Factory jobs as tasks
 
+## Organization workstream tasks
+
+An organization workstream keeps its shared tasks on the organization’s server.
+Open its Tasks tab to see who owns each piece of work, who does it, what it waits
+on and which question needs an answer. Afi, a chat, the Factory or a person can
+do the work; each task has one owner. The sections below explain the list,
+permissions, starting, stopping and sending work back.
+
 ## what a task is — one piece of work, one owner, done by Afi, a chat, the Factory or a person
 
 A workstream's Tasks tab is the shared list of its work; everyone in the workstream sees the same list. A task is one piece of work with ONE owner. Who does it varies: Afi, a chat, the Factory, or a person (a person's task is just a checkbox). Who answers for it does not.

@@ -30,7 +30,7 @@ Your teammates and their Afi cannot read your chat messages. The optional shared
 
 On an organization's workstream Afi does not have `ws_chats`: chats are not started there at all (see the next section), so there is nothing for it to read.
 
-## can I start a chat in an organization's workstream — no; ask Afi or add a task
+## Can I start a chat in an organization's workstream
 
 No. Only a Personal workstream starts chats. A chat in an organization's workstream would be a conversation on your computer, outside the organization: what it made would never reach the workstream's Files, Afi could not read it, and it would sit among your own conversations. So an organization's Chats tab has no box to start one, and says where the box would be: "Chats aren't started in an organization's workstream: one would run on this computer, where what it makes never reaches Files and Afi can't read it. Ask Afi or add a task instead."
 
