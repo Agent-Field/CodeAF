@@ -14,12 +14,6 @@ import (
 // The stage verifies the resulting checkout before the normal publication path
 // can update the PR branch. This operation never pushes or changes the PR's
 // target. Its words say when it fell back to the forge's recorded base.
-
-// prBaseStillInProgress answers a base sync while the merge an earlier call
-// began is still open. Its base was named on the history when that merge
-// began, so the history is not told again.
-const prBaseStillInProgress = "The PR base merge begun earlier is still in progress locally. Resolve any conflicts, finish the merge commit, and verify the resulting checkout before publication."
-
 func (lp *floorLoop) syncPRBase(ctx context.Context, id int, dir string) (base, message string, err error) {
 	base, message, fallback, err := lp.syncPRBaseLive(ctx, id, dir)
 	if err != nil {
@@ -125,10 +119,10 @@ func (lp *floorLoop) syncPRBaseLive(ctx context.Context, id int, dir string) (ba
 		// A merge this door began on an earlier call is still that merge,
 		// even if the base branch has moved on since.
 		if pending == base {
-			return base, prBaseStillInProgress, fallback, nil
+			return base, inProgress, fallback, nil
 		}
 		if pending != "" && pending == it.FollowUp.BaseSyncSHA {
-			return pending, prBaseStillInProgress, "", nil
+			return pending, inProgress, "", nil
 		}
 		return "", "", "", errors.New("a different merge is in progress. Finish it before updating the PR base")
 	}

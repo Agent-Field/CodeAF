@@ -272,11 +272,12 @@ func TestFollowPRSyncBaseMergesTheLiveBaseHead(t *testing.T) {
 		}
 	})
 
-	t.Run("a merge in progress is named on the history once (review 4)", func(t *testing.T) {
+	t.Run("a base is named on the history once, however often the door is asked (review 4)", func(t *testing.T) {
 		f := newPRBaseFixture(t, false)
 		prBaseFixtureCommit(t, f.remote, "feature.txt", "the base's newer change\n")
 		c := &loopCtl{id: f.id, ctx: context.Background()}
-		for range 2 {
+		sync := func() {
+			t.Helper()
 			it, err := f.rig.st.Get(f.id)
 			if err != nil {
 				t.Fatal(err)
@@ -285,6 +286,15 @@ func TestFollowPRSyncBaseMergesTheLiveBaseHead(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
+		sync() // begins the merge, which conflicts
+		sync() // the merge is still open
+		// Resolved and committed, then checked again.
+		if err := os.WriteFile(filepath.Join(f.dir, "feature.txt"), []byte("both\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		mustGit(t, f.dir, "add", "feature.txt")
+		mustGit(t, f.dir, "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "--no-edit")
+		sync()
 		current, err := f.rig.st.Get(f.id)
 		if err != nil {
 			t.Fatal(err)

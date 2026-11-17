@@ -94,13 +94,14 @@ func (lp *floorLoop) baseSyncAction(c *loopCtl, it factory.Item, st factory.Stag
 			if next == nil || next.Kind != "pr" || next.State != "running" || next.HeadSHA != f.HeadSHA || current.PullRequest == nil || current.PullRequest.Number != it.PullRequest.Number {
 				return errors.New("PR maintenance ownership changed")
 			}
-			next.BaseSyncSHA = base
 			// THE HISTORY SAYS WHICH BASE CAME IN: the live branch head, or
-			// the recorded base when the live one could not be had. A merge
-			// still in progress was named when it began (review 4: a repeat
-			// call named it again, and as the live head when it may not be).
+			// the recorded base when the live one could not be had. Once per
+			// base: a repeat call (the merge still open, or finished and
+			// checked again) names nothing new (review 4).
+			again := next.BaseSyncSHA == base
+			next.BaseSyncSHA = base
 			switch {
-			case words == prBaseStillInProgress:
+			case again:
 			case fallback != "":
 				loopSay(current, lp.r.now(), "said", "Follow PR base sync: "+fallback)
 			default:
