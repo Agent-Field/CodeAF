@@ -43,6 +43,8 @@ func (h *Handler) workstreamTaskRoutes() {
 	h.route("/v1/workstreams/{id}/tasks/{tid}/events", map[string]http.HandlerFunc{http.MethodGet: h.workstreamTaskEvents})
 	h.route("/v1/workstreams/{id}/tasks/{tid}/answer", map[string]http.HandlerFunc{http.MethodPost: h.answerWorkstreamTask})
 	h.route("/v1/workstreams/{id}/tasks/{tid}/comment", map[string]http.HandlerFunc{http.MethodPost: h.commentWorkstreamTask})
+	h.route("/v1/workstreams/{id}/tasks/{tid}/work", map[string]http.HandlerFunc{http.MethodGet: h.getTaskWork})
+	h.route("/v1/workstreams/{id}/tasks/{tid}/work/messages", map[string]http.HandlerFunc{http.MethodPost: h.postTaskSteer})
 }
 
 var errTaskAnswered = errors.New("this question was already answered")

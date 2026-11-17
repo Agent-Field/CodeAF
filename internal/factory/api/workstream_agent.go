@@ -125,3 +125,51 @@ type OrgKeyList struct {
 type OrgKeyPut struct {
 	Key string `json:"key"`
 }
+
+// ── A TASK'S WORKING CONVERSATION ──────────────────────────────────────────
+//
+// A task Afi works on the server runs in a seat of its own, and what it says
+// and does there is the task's Working conversation: EVERYONE WHO CAN SEE THE
+// WORKSTREAM READS IT (OWNER-DECISIONS 2026-11-17 §8). The task's owner and
+// whoever started the run steer it there, and a steer is read by everyone too.
+// Afi's pane and a person's own chats stay private; only typing on a task is
+// shared.
+//
+//	GET  /v1/workstreams/{id}/tasks/{tid}/work?since=<seq>   -> TaskWork (view)
+//	POST /v1/workstreams/{id}/tasks/{tid}/work/messages TaskSteerNew -> 202 TaskWork (owner or starter, while it runs)
+//
+// Event, heard by everyone who can see the workstream:
+//
+//	task.work {id, task, entry?, state?}  one new line of the run, or the run started or ended
+
+// EventTaskWork is one line of a task's run, or a change to whether it runs.
+const EventTaskWork = "task.work"
+
+// TaskWork is a task's Working conversation as the caller reads it: whether a
+// run is going (State working, For is who started it), the lines after since
+// (the newest AgentEntriesMost when since is 0), and the last seq. CanSteer is
+// whether the caller may steer it now: a run is going, and they own the task
+// or started the run. Steerer is whether they would be allowed while one is.
+type TaskWork struct {
+	ID   string `json:"id"`
+	Task string `json:"task"`
+	AgentState
+	Entries  []AgentEntry `json:"entries"`
+	Seq      int          `json:"seq"`
+	CanSteer bool         `json:"can_steer"`
+	Steerer  bool         `json:"steerer,omitempty"`
+}
+
+// TaskSteerNew is one steer: words to the agent working the task, which
+// everyone in the workstream reads.
+type TaskSteerNew struct {
+	Text string `json:"text"`
+}
+
+// TaskWorkEvent is task.work's body.
+type TaskWorkEvent struct {
+	ID    string      `json:"id"`
+	Task  string      `json:"task"`
+	Entry *AgentEntry `json:"entry,omitempty"`
+	*AgentState
+}

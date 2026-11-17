@@ -18,6 +18,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"path/filepath"
 	"strings"
 	"time"
@@ -100,36 +101,106 @@ func factoryWorkstreamAgent(st *store.Store, load func() (config.Config, error))
 			case <-stopped:
 			}
 		})
-		var said strings.Builder
-		say := func() {
-			if text := strings.TrimSpace(said.String()); text != "" {
-				turn.Step(api.AgentEntryAgent, text, "", false)
-			}
-			said.Reset()
+		// A TASK'S RUN IS STEERED WHILE IT WORKS (serve's workstream_task_work.go):
+		// its owner's or starter's words reach the turn at its next step, and
+		// words that arrive after the turn ended are answered as a turn of
+		// their own, so the run lasts until every steer it took is answered.
+		mainDone := make(chan struct{})
+		steered := make(chan error, 1)
+		if turn.Steers != nil {
+			guard.Go("factory workstream task steers", func() { steered <- factoryAgentSteers(ctx, agent, turn, mainDone) })
+		} else {
+			steered <- nil
 		}
-		var failed error
-		for e := range events {
-			switch e.Kind {
-			case session.EventTextDelta:
-				said.WriteString(e.Text)
-			case session.EventToolBegin:
-				say()
-			case session.EventToolEnd:
-				turn.Step(api.AgentEntryStep, factoryAgentStepWords(e), e.Tool, false)
-			case session.EventToolFailed:
-				turn.Step(api.AgentEntryStep, factoryAgentStepWords(e), e.Tool, true)
-			case session.EventError:
-				if e.Err != nil {
-					failed = e.Err
-				}
-			}
+		failed := factoryAgentConsume(events, turn.Step, false)
+		close(mainDone)
+		if err := <-steered; failed == nil {
+			failed = err
 		}
-		say()
 		usd := max(agent.Usage().CostUSD-before, 0)
 		if ctx.Err() != nil {
 			return serve.AgentTurnEnd{USD: usd}, ctx.Err()
 		}
 		return serve.AgentTurnEnd{USD: usd}, failed
+	}
+}
+
+// factoryAgentConsume reports one turn's stream through step: the agent's
+// words as one line each time it turns to a tool, each tool as a step. With
+// afterFallThrough the stream is a steer's view of a turn the main stream
+// already reports, so only what follows the steer falling through into a turn
+// of its own is reported. It answers the turn's error, if one ended it.
+func factoryAgentConsume(events <-chan session.Event, step func(kind, text, tool string, failed bool), afterFallThrough bool) error {
+	var said strings.Builder
+	say := func() {
+		if text := strings.TrimSpace(said.String()); text != "" {
+			step(api.AgentEntryAgent, text, "", false)
+		}
+		said.Reset()
+	}
+	var failed error
+	live := !afterFallThrough
+	for e := range events {
+		if !live {
+			live = e.Kind == session.EventSteerFellThrough
+			continue
+		}
+		switch e.Kind {
+		case session.EventTextDelta:
+			said.WriteString(e.Text)
+		case session.EventToolBegin:
+			say()
+		case session.EventToolEnd:
+			step(api.AgentEntryStep, factoryAgentStepWords(e), e.Tool, false)
+		case session.EventToolFailed:
+			step(api.AgentEntryStep, factoryAgentStepWords(e), e.Tool, true)
+		case session.EventError:
+			if e.Err != nil {
+				failed = e.Err
+			}
+		}
+	}
+	say()
+	return failed
+}
+
+// factoryAgentSteers hands a task run's steers to agent until the run's first
+// turn has ended (mainDone) and none is waiting. A steer while a turn runs
+// goes into it; one with no turn running starts a turn of its own. Each is
+// answered whole before the next is taken, so the run's lines stay in order.
+func factoryAgentSteers(ctx context.Context, agent *session.Agent, turn serve.AgentTurn, mainDone <-chan struct{}) error {
+	var failed error
+	answer := func(words string) {
+		stream, err := agent.Steer(words)
+		after := true
+		if errors.Is(err, session.ErrNothingToSteer) {
+			stream, err = agent.Submit(ctx, words)
+			after = false
+		}
+		if err != nil {
+			turn.Step(api.AgentEntryNote, "Afi could not read that message: "+err.Error(), "", true)
+			return
+		}
+		if err := factoryAgentConsume(stream, turn.Step, after); err != nil {
+			failed = err
+		}
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return failed
+		case words := <-turn.Steers:
+			answer(words)
+		case <-mainDone:
+			for {
+				select {
+				case words := <-turn.Steers:
+					answer(words)
+				default:
+					return failed
+				}
+			}
+		}
 	}
 }
 
@@ -215,6 +286,8 @@ func factoryAgentWorkWords(e session.Event) (string, bool) {
 			return "noted the request on a task", true
 		}
 		return "wrote on a task", true
+	case session.WSDecisionsTool:
+		return "read the decisions", true
 	case session.WSFilesTool:
 		return "read the files", true
 	case session.WSFileReadTool:
@@ -300,13 +373,14 @@ func factoryOrgSetupSystem(turn serve.AgentTurn) string {
 }
 
 // factoryWorkstreamAgentTaskRun turns the prompt from a conversation into one
-// task's work. Nobody reads a task run as a chat, so the only things a person
-// ever sees of it are what it does to the task: results, a line in its
-// thread, and its state. A run that ends without setting done or failed is
-// left failed by the server.
+// task's work. The run is the task's Working conversation, which everyone in
+// the workstream reads, and the task's owner or its starter may write into it
+// while it works; a comment on the task is still never an instruction. A run
+// that ends without setting done or failed is left failed by the server.
 func factoryWorkstreamAgentTaskRun(id, title, starter string) string {
 	return "This time nobody is chatting with you: " + starter + " started you on one task, \"" + title + "\" (its id, for your tools only: " + id + "). " +
-		"The message below is what the task asks. Do the work with your tools. Nobody reads what you say here; people see only what you do to the task. " +
+		"The message below is what the task asks. Do the work with your tools. Everyone in the workstream can read what you say and do here, as the task's Working conversation, so say briefly what you are doing as you go. " +
+		"The task's owner or the person who started you may write to you here while you work: their words steer the work, so follow them, and say in one line what you changed because of them. " +
 		"Put anything you write in Files with ws_file_create and name it in the task's results. " +
 		"When the work is done, post one plain line saying what you did with ws_task_comment, then set the task done with ws_task_update. " +
 		"If a person must choose before you can go on, raise an Ask with ws_task_update and stop. " +

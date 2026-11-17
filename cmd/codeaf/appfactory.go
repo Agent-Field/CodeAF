@@ -192,7 +192,10 @@ type appFactoryHub struct {
 	// orgAgent relays a line of an organization workstream's server agent,
 	// or what it is doing now; nil drops it.
 	orgAgent func(appwire.FactoryOrgWorkstreamAgent)
-	orgRetry time.Duration
+	// orgTaskWork relays a line of a task's Working conversation on an
+	// organization's server, which everyone who can see the workstream reads.
+	orgTaskWork func(appwire.FactoryOrgTaskWork)
+	orgRetry    time.Duration
 	// docFollow is each followed live document, keyed by connection and
 	// document, and docEvent relays what they carry (appfactory_org_docs.go);
 	// a hub with no docEvent follows none.
@@ -234,6 +237,7 @@ func (b *appBackend) factoryHub() *appFactoryHub {
 		b.factories.orgChanged = func(e appwire.FactoryOrgChanged) { b.emit.Emit(appwire.EventFactoryOrgChanged, e) }
 		b.factories.orgPresence = func(e appwire.FactoryOrgPresence) { b.emit.Emit(appwire.EventFactoryOrgPresence, e) }
 		b.factories.orgAgent = func(e appwire.FactoryOrgWorkstreamAgent) { b.emit.Emit(appwire.EventFactoryOrgWorkstreamAgent, e) }
+		b.factories.orgTaskWork = func(e appwire.FactoryOrgTaskWork) { b.emit.Emit(appwire.EventFactoryOrgTaskWork, e) }
 		b.factories.docEvent = func(name string, data any) { b.emit.Emit(name, data) }
 	})
 	return b.factories

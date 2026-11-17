@@ -514,6 +514,8 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.org_setup_by_hand` | `in.OrgConn` | `OrgProfile` |
 | `factory.org_work_home_get` | `in.OrgConn` | `json.RawMessage` |
 | `factory.org_workstream_overview_get` | `in.OrgTasksParams` | `json.RawMessage` |
+| `factory.org_workstream_task_work` | `in.OrgTaskWorkParams` | `OrgTaskWork` |
+| `factory.org_workstream_task_steer` | `in.OrgTaskSteerParams` | `OrgTaskWork` |
 | `factory.org_workstream_tasks` | `in.OrgTasksParams` | `OrgTasks` |
 | `factory.org_workstream_task` | `in.OrgTaskParams` | `json.RawMessage` |
 | `factory.org_workstream_task_create` | `in.OrgTaskCreateParams` | `json.RawMessage` |
@@ -1056,6 +1058,25 @@ it in one order (teams, workstreams, the workstreams inside them, invites) and a
 `{made:[{kind, name, id, parent?, url?}], failed?, done}`; a part that fails is named in
 `failed`, and the same call again makes only what is left. `factory.org_setup_by_hand`
 marks the organization set up with nothing made.
+
+An engine whose hello carries `org_task_work` reads and steers a task's Working
+conversation: what Afi says and does while it works a task on the organization's
+server (OWNER-DECISIONS 2026-11-17 §8). Unlike Afi's pane, it is shared: everyone who
+can see the workstream reads it. `factory.org_workstream_task_work {ws, id, since?}`
+`GET /v1/workstreams/{ws}/tasks/{id}/work?since=` (`view`) answers `{id, task, state,
+turn?, for?, since?, entries, seq, can_steer, steerer?}`: `state` is `working` while a
+run goes (`for` is who started it) and `idle` otherwise; `entries` are the lines after
+`since` (at most 200) in the pane's shape, a steer being a `person` line with `by`, and
+the run's first line a `note` "Started by <handle>"; `can_steer` is whether the caller may
+steer now, and `steerer` whether they could while a run goes (they own the task, or
+started the run, or the task is everyone's and they can edit).
+`factory.org_workstream_task_steer {ws, id, text}` `POST .../work/messages` (1–16384
+bytes) answers 202 with the conversation; the words reach the run at its next step, or
+start a turn of the run's own when its turn has just ended. With no run going the
+refusal is `conflict` with `detail.reason` `idle`; from anyone else it is `forbidden`.
+The server's `task.work {id, task, entry?, state?}` reaches everyone who can see the
+workstream and is relayed as `factory.org_workstream_task_work {connection, id, task,
+entry?, state?}`.
 
 An engine whose hello carries `org_workstream_tasks` reads and changes an organization
 workstream's tasks (Workstreams v5, SPEC §2.2). Every param names the workstream `ws`
@@ -2976,6 +2997,7 @@ and the reply is empty.
 | `factory.org_changed` | `FactoryOrgChanged` |
 | `factory.org_presence` | `FactoryOrgPresence` |
 | `factory.org_workstream_agent` | `FactoryOrgWorkstreamAgent` |
+| `factory.org_workstream_task_work` | `FactoryOrgTaskWork` |
 | `factory.org_doc_awareness` | `FactoryOrgDocAwareness` |
 | `factory.org_doc_closed` | `FactoryOrgDocClosed` |
 | `factory.org_doc_update` | `FactoryOrgDocUpdate` |
