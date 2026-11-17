@@ -10,13 +10,13 @@ The list's sections are always in this order: Waiting on you, Waiting on others,
 
 ## read tasks side by side with the arrow keys — the split Tasks list
 
-With at least 1100 pixels of content width and Afi's pane closed, Tasks shows a 500-pixel list beside the selected task. The first task waiting on you is selected when there is no current selection; otherwise the first visible task is selected. Click another row to read it beside the list. With focus in the list, Up and Down move through the visible tasks without pressing Back. Running rows show their current step when the runner supplies one.
+With at least 1100 pixels of content width and Afi's pane closed, Tasks shows a 500-pixel list beside the selected task. When there is no current selection, the first task waiting on you is selected; if none is waiting on you, the first visible task is selected. Click another row to read it beside the list. With focus in the list, Up and Down move through the visible tasks without pressing Back. Running rows show their current step when the runner supplies one.
 
 ## open a task — how do I go back to the task list after opening a task, Open as its own tab
 
 Below 1100 pixels of content width, or while Afi's pane is open, selecting a task opens it in place, inside the Tasks tab. The workstream's header and tabs stay, and a bar shows the task's name, “‹ Tasks”, “Open as its own tab”, and the task's More (⋯). Escape, “‹ Tasks”, or pressing the Tasks tab again returns to the same list position. A task opened from the Inbox, a file's “Made by task”, “Used by” or “From” line, or a chat's list of what it made opens in the same workstream's Tasks tab.
 
-“Open as its own tab” shows the task alone in the window's preview tab. In the Tasks list, Command-click (Control-click on Linux) toggles selection instead. A chat keeps its own tab.
+“Open as its own tab” shows the task alone in the window's one preview tab: opening another task replaces it unless you pinned it or worked in it. In the Tasks list, Command-click (Control-click on Linux) toggles selection instead. A chat keeps its own tab.
 
 ## select several tasks — shift click, command click, bulk Done by, Give to Afi
 
