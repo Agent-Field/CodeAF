@@ -2858,7 +2858,9 @@ owns the work:
 could not open that conversation · engine: that conversation is not open here any more
 ```
 
-**And it works where the engine is local.** `--host` and `--at` do not draw rows for other
+## Can I read another conversation's task over ssh
+
+Live pages for another window work only where the engine is local. `--host` and `--at` do not draw rows for other
 conversations at all — the presence those rows are minted from is on the engine's machine and
 is not carried across the connection — so over a remote session (`--host` over ssh, or `--at`)
 you cannot read another conversation's task: there is no such row and no such page. What you

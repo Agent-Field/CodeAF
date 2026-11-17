@@ -304,3 +304,29 @@ On an organization workstream, Afi's work on a task runs on the organization's s
 - A run that stops reporting for a minute while the server is up becomes **Didn't report back**, with "Afi stopped reporting back while working on it. Press Start to run it again."
 
 **Start on a task that says Running with nothing working on it starts it again**: its page shows **Start again** with "Nothing is working on it", and its activity says "Started again by <name>: nothing was working on it". Start on a task Afi really is working on changes nothing.
+
+## delete a workstream task, Undo a deletion, and keep the files it made
+
+Open a task's More menu and choose **Delete**. Only the task's owner or whoever
+looks after the workstream can delete it; for an older task owned by Everyone,
+anyone who can edit may. Running work must be stopped first: "Stop this task
+before deleting it". A task can still have a run finishing behind its displayed
+state; wait for it to stop before deleting. Delete is absent on older org servers
+that do not support it.
+
+Delete removes the task from Tasks, Work and the Inbox, including its unanswered
+questions. Tasks that waited on it stop waiting; their activity gains the dim line
+"No longer waiting: “<title>” was deleted". Deleting a prerequisite does not itself
+start another task. **Files it made stay in Files**, with their contents intact.
+Deleting a standing-order task does not switch off its order. That run stays
+deleted after a Personal restart; future runs still make their own tasks.
+Deleting a Factory task hides it here; it does not delete the Factory job. Personal
+checks the observed job state too. If it cannot read that state, it refuses:
+"The Factory isn't answering; read this task again before deleting it".
+
+"Task deleted · files stay in Files" offers **Undo** for ten seconds, like moving
+from My space. Undo restores the task and its conversation, and restores the waits
+of dependent tasks that have not changed since deletion. It preserves newer edits
+and does not restore waits on prerequisites that have since been deleted. Both
+stores allow thirty seconds for the Undo request to arrive; after that it is
+refused. Afi has no task delete or restore tool: these are a person's actions.

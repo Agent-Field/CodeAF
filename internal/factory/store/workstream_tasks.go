@@ -31,6 +31,7 @@ import (
 // together or not at all.
 
 const workstreamTasksSchema = `
+CREATE TABLE IF NOT EXISTS task_deletions (ws TEXT NOT NULL, id TEXT NOT NULL, doc TEXT NOT NULL, PRIMARY KEY(ws,id));
 CREATE TABLE IF NOT EXISTS tasks (
 	ws  TEXT NOT NULL,
 	id  TEXT NOT NULL,
@@ -77,7 +78,7 @@ func (st *Store) WorkstreamTasks(ws string) ([]factory.WorkstreamTask, error) {
 }
 
 func tasksIn(q rowQuerier, ws string) ([]factory.WorkstreamTask, error) {
-	rows, err := q.Query(`SELECT rev, doc FROM tasks WHERE ws = ? ORDER BY rowid`, ws)
+	rows, err := q.Query(`SELECT rev, doc FROM tasks WHERE ws = ? AND NOT EXISTS (SELECT 1 FROM task_deletions d WHERE d.ws=tasks.ws AND d.id=tasks.id) ORDER BY rowid`, ws)
 	if err != nil {
 		return nil, err
 	}
@@ -145,6 +146,13 @@ func (w TaskWrite) Events(ws, task string) ([]factory.WorkstreamTaskEvent, error
 // task (refused when one is kept under that id), anything else must be the
 // rev kept. t.Rev is what the row then holds.
 func (w TaskWrite) Put(t factory.WorkstreamTask, rev int) error {
+	var deleted int
+	if err := w.tx.QueryRow(`SELECT count(*) FROM task_deletions WHERE ws=? AND id=?`, t.WS, t.ID).Scan(&deleted); err != nil {
+		return err
+	}
+	if deleted > 0 {
+		return ErrTaskGone
+	}
 	var cur int
 	err := w.tx.QueryRow(`SELECT rev FROM tasks WHERE ws = ? AND id = ?`, t.WS, t.ID).Scan(&cur)
 	switch {
@@ -321,4 +329,81 @@ func (st *Store) MarkTaskRead(ws, task, person string) error {
 			ON CONFLICT (ws, task, person) DO UPDATE SET seq = MAX(task_reads.seq, excluded.seq)`, ws, task, person, ws, task)
 		return err
 	})
+}
+
+// TaskWaitBefore keeps only the fields Undo may restore, never a second copy of a task's content.
+type TaskWaitBefore struct {
+	ID        string   `json:"id"`
+	Rev       int      `json:"rev"`
+	WaitingOn []string `json:"waiting_on"`
+	Starts    string   `json:"starts,omitempty"`
+}
+
+// TaskDeletion keeps the short Undo receipt beside the hidden task, so a restart never loses it.
+type TaskDeletion struct {
+	Task  factory.WorkstreamTask `json:"task"`
+	By    string                 `json:"by"`
+	Until string                 `json:"until"`
+	Waits []TaskWaitBefore       `json:"waits"`
+}
+
+// HiddenTaskIDs includes hidden derived jobs without loading historical Undo snapshots on every read.
+func (st *Store) HiddenTaskIDs(ws string) (map[string]bool, error) {
+	db, err := st.wsDB(false)
+	if err != nil || db == nil {
+		return map[string]bool{}, err
+	}
+	return hiddenTaskIDsIn(db, ws)
+}
+func hiddenTaskIDsIn(q rowQuerier, ws string) (map[string]bool, error) {
+	rows, err := q.Query(`SELECT id FROM task_deletions WHERE ws=?`, ws)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]bool{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out[id] = true
+	}
+	return out, rows.Err()
+}
+
+// HiddenTaskIDs reads hidden identities under the task transaction's lock.
+func (w TaskWrite) HiddenTaskIDs(ws string) (map[string]bool, error) {
+	return hiddenTaskIDsIn(w.tx, ws)
+}
+
+// Deletion reads one receipt only when someone asks to undo it.
+func (w TaskWrite) Deletion(ws, id string) (TaskDeletion, error) {
+	var d TaskDeletion
+	var doc string
+	err := w.tx.QueryRow(`SELECT doc FROM task_deletions WHERE ws=? AND id=?`, ws, id).Scan(&doc)
+	if errors.Is(err, sql.ErrNoRows) {
+		return d, ErrTaskGone
+	}
+	if err != nil {
+		return d, err
+	}
+	err = json.Unmarshal([]byte(doc), &d)
+	return d, err
+}
+
+// Hide takes a task off every live read without deleting its thread, runs or files.
+func (w TaskWrite) Hide(ws, id string, d TaskDeletion) error {
+	doc, err := json.Marshal(d)
+	if err != nil {
+		return err
+	}
+	_, err = w.tx.Exec(`INSERT INTO task_deletions(ws,id,doc) VALUES(?,?,?)`, ws, id, string(doc))
+	return err
+}
+
+// Reveal withdraws a receipt before its task is written back with a fresh revision.
+func (w TaskWrite) Reveal(ws, id string) error {
+	_, err := w.tx.Exec(`DELETE FROM task_deletions WHERE ws=? AND id=?`, ws, id)
+	return err
 }

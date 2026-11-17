@@ -84,6 +84,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does the server send the invite email", "inviting-people"},
 		{"what happens to someone's tasks when I remove them from the organization", "inviting-people"},
 		{"who is doing this task, Afi or an agent?", "organization-workstream-tasks"},
+		{"delete a workstream task and undo it", "organization-workstream-tasks"},
+		{"do files stay when I delete a workstream task", "organization-workstream-tasks"},
 		{"how do I change who does a task", "organization-workstream-tasks"},
 		{"afi gave marco's review to me instead of him", "organization-workstream-tasks"},
 		{"give a task to afi and take it back", "organization-workstream-tasks"},

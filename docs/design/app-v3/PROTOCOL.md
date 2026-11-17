@@ -4196,3 +4196,26 @@ blobs. Repeating a whole-workstream import completes the same destination.
 `from_chat` on file creation and file records associates an attachment with its
 chat without changing its maker. File-bearing imports share the ordinary upload
 request envelope (`uploadBodyMost`) rather than the 1 MiB JSON-only limit.
+
+### Task Delete and short Undo
+
+| method | params | result |
+|---|---|---|
+| `factory.org_workstream_task_delete` | `{connection, ws, id, rev}` | `{undo_until}` |
+| `factory.org_workstream_task_restore` | `{connection, ws, id}` | `OrgTask` |
+
+Hello `org_workstream_task_delete` announces two person-only methods:
+`factory.org_workstream_task_delete({connection, ws, id, rev})` forwards
+`DELETE /v1/workstreams/{ws}/tasks/{id}` with `If-Match: rev` and returns
+`{undo_until}`; `factory.org_workstream_task_restore({connection, ws, id})`
+forwards `POST .../tasks/{id}/restore` and returns the restored task. The task's
+owner or workstream steward needs edit access. A running task is refused with
+`Stop this task before deleting it`. The desk offers Undo for ten seconds; the
+server accepts it for thirty. Late Undo returns 409.
+
+Deletion publishes `workstream.changed`, part `tasks`, deleted true. Dependants
+lose that wait atomically and get a state-event explanation; agent tasks newly
+unblocked wait for a person's Start. Undo restores unchanged dependants' waits
+and their start choice. Files and Factory jobs are untouched. Hidden task IDs
+remain suppressed across restarts; stale task writes cannot revive them. Afi's
+workstream toolbelt exposes neither verb.
