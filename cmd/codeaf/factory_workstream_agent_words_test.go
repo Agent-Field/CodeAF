@@ -73,13 +73,14 @@ func TestServerAgentKnowsTodaysDate(t *testing.T) {
 }
 
 // A task run's prompt keeps the same words law, and tells the run that only
-// what it does to the task is seen, how to finish, and how to give up.
+// what it does to the task is seen, how to finish, and that it asks the
+// owner rather than failing when it cannot go on.
 func TestATaskRunsPromptSaysHowItEnds(t *testing.T) {
 	p := factoryWorkstreamAgentTaskRun("tk_1", "Fraction table", "mia")
 	if hit := machineryWords.FindAllString(p, -1); len(hit) > 0 {
 		t.Errorf("the task run's prompt says %q:\n%s", hit, p)
 	}
-	for _, want := range []string{"mia started you", "Everyone in the workstream can read what you say and do here", "their words change the work", "set the task done", "set the task failed", "ws_task_comment"} {
+	for _, want := range []string{"mia started you", "Everyone in the workstream can read what you say and do here", "their words change the work", "set the task done", "do not fail it: raise an Ask to the task's owner", "ws_task_comment"} {
 		if !strings.Contains(p, want) {
 			t.Errorf("the task run's prompt does not say %q:\n%s", want, p)
 		}
