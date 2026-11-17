@@ -186,3 +186,25 @@ func TestAnAppThatCannotDrawCardsGetsNone(t *testing.T) {
 		t.Fatal("a message from an app that draws no cards may propose")
 	}
 }
+
+// CARDS LIVE IN AFI'S OWN CONVERSATION. A person's own chat in the
+// workstream never proposes: the line Add names is numbered in Afi's
+// conversation, so a card drawn in a chat could not be added.
+func TestAPersonsOwnChatNeverProposes(t *testing.T) {
+	o := newWSOrg(t)
+	webhook, _, _, _ := o.orgScene(t)
+	var proposes []bool
+	o.serverMode(t, func(ctx context.Context, turn AgentTurn) (AgentTurnEnd, error) {
+		proposes = append(proposes, turn.Door.(*agentDoor).Proposes())
+		return AgentTurnEnd{}, nil
+	})
+	var side api.AgentChat
+	o.do(t, "mia", "POST", "/v1/workstreams/"+webhook.ID+"/chats", -1, api.AgentChatNew{Title: "Side"}, 201, &side)
+	o.do(t, "mia", "POST", "/v1/workstreams/"+webhook.ID+"/agent/messages", -1, api.AgentMessageNew{Text: "Plan it.", Chat: side.ID, Cards: true}, 202, nil)
+	o.settle()
+	o.do(t, "mia", "POST", "/v1/workstreams/"+webhook.ID+"/agent/messages", -1, api.AgentMessageNew{Text: "Plan it.", Cards: true}, 202, nil)
+	o.settle()
+	if len(proposes) != 2 || proposes[0] || !proposes[1] {
+		t.Fatalf("a chat, then Afi's conversation, proposed %v; want [false true]", proposes)
+	}
+}
