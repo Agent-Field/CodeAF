@@ -4177,3 +4177,18 @@ hold both), with `github_signed_in` false for either; `factory.passkey_list`'s
 `password` says whether the person has a password. `factory.password_change` takes an empty `current` from a
 person with no password yet, which sets their first one.
 
+
+### Workstream Fold and imported files
+
+`factory.org_workstream_update` accepts `fold_into` (destination workstream id),
+or `unfold` (the source id, on the destination). Fold requires governance on both
+workstreams. The response is the destination after Fold, or the restored source
+after Undo. `org_workstream_fold_undo` advertises this capability. The source is
+absent from both live and archived lists. A durable receipt prevents Undo from
+overwriting intervening edits. Fold refuses working tasks and nested sources.
+
+`factory.org_workstream_import` also carries `files: [{file, data?}]`, with upload
+bytes in base64, `tasks` and `task_events`. File and task identities, `from_task`
+and `used_by` links survive. `to` brings a chat's limited package into an existing
+workstream rather than creating one. Imported upload paths are replaced by server
+blobs. Repeating a whole-workstream import completes the same destination.

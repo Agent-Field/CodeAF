@@ -209,6 +209,8 @@ type WorkstreamNew struct {
 // WorkstreamPatch is PATCH /v1/workstreams/{id}'s body: any subset, and an
 // array that is sent REPLACES the one kept.
 type WorkstreamPatch struct {
+	FoldInto  string                `json:"fold_into,omitempty"`
+	Unfold    string                `json:"unfold,omitempty"`
 	Name      *string               `json:"name,omitempty"`
 	Purpose   *string               `json:"purpose,omitempty"`
 	Stage     *string               `json:"stage,omitempty"`
@@ -267,15 +269,19 @@ type WorkstreamSharePreview struct {
 // on the laptop: one the same person already moved in is linked by its new id.
 // CreatedBy is ignored: the copy is the caller's.
 type WorkstreamPackage struct {
-	FromLocalID string               `json:"from_local_id"`
-	Name        string               `json:"name"`
-	Stage       string               `json:"stage,omitempty"`
-	Purpose     string               `json:"purpose,omitempty"`
-	Pages       []WorkstreamPage     `json:"pages,omitempty"`
-	Decisions   []WorkstreamDecision `json:"decisions,omitempty"`
-	Sources     []WorkstreamSource   `json:"sources,omitempty"`
-	Links       []string             `json:"links,omitempty"`
-	CreatedBy   string               `json:"created_by,omitempty"`
+	To          string                        `json:"to,omitempty"`
+	Files       []WorkstreamImportFile        `json:"files,omitempty"`
+	Tasks       []factory.WorkstreamTask      `json:"tasks,omitempty"`
+	TaskEvents  []factory.WorkstreamTaskEvent `json:"task_events,omitempty"`
+	FromLocalID string                        `json:"from_local_id"`
+	Name        string                        `json:"name"`
+	Stage       string                        `json:"stage,omitempty"`
+	Purpose     string                        `json:"purpose,omitempty"`
+	Pages       []WorkstreamPage              `json:"pages,omitempty"`
+	Decisions   []WorkstreamDecision          `json:"decisions,omitempty"`
+	Sources     []WorkstreamSource            `json:"sources,omitempty"`
+	Links       []string                      `json:"links,omitempty"`
+	CreatedBy   string                        `json:"created_by,omitempty"`
 }
 
 // WorkstreamEvent is the payload a workstream change publishes. Part names
@@ -298,4 +304,11 @@ type WorkstreamEvent struct {
 	// Parts names what changed when it is one of a workstream's v5 parts:
 	// "tasks", "files" or "rules".
 	Parts []string `json:"parts,omitempty"`
+}
+
+// WorkstreamImportFile carries the file's identity and task links with its
+// upload bytes, rather than a path that only the originating computer reads.
+type WorkstreamImportFile struct {
+	File WorkstreamFile `json:"file"`
+	Data []byte         `json:"data,omitempty"`
 }
