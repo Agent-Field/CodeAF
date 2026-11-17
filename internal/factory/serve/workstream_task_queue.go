@@ -43,6 +43,9 @@ type pendingRun struct {
 	// on with what the earlier run made, after a wait in the queue too.
 	answered bool
 	seq      int
+	// retried says the run already had its one more try after a model
+	// error (workstream_task_limits.go).
+	retried bool
 }
 
 // runningInLocked is how many runs ws has going; "" counts the organization's.

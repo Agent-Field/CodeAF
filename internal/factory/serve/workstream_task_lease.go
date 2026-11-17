@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
@@ -87,7 +88,7 @@ func (h *Handler) leaseSince() time.Time {
 // answers the drop the run calls when it ends here. It runs inside the run's
 // goroutine, after the write that started the run has ended: that store has
 // one connection.
-func (h *Handler) holdTaskLease(ctx context.Context, key taskRunKey, owner, starter, words string, started time.Time, resumes int) func() {
+func (h *Handler) holdTaskLease(ctx context.Context, key taskRunKey, owner, starter, words string, started time.Time, resumes int, beat func() float64) func() {
 	st := h.config.Store
 	if st == nil {
 		return func() {}
@@ -106,13 +107,16 @@ func (h *Handler) holdTaskLease(ctx context.Context, key taskRunKey, owner, star
 			case <-done:
 				return
 			case <-tick.C:
-				_ = st.BeatTaskRun(key.ws, key.task, owner, stamp(), 0)
+				_ = st.BeatTaskRun(key.ws, key.task, owner, stamp(), beat())
 			}
 		}
 	})
+	var once sync.Once
 	return func() {
-		close(done)
-		_ = st.DropTaskRun(key.ws, key.task, owner)
+		once.Do(func() {
+			close(done)
+			_ = st.DropTaskRun(key.ws, key.task, owner)
+		})
 	}
 }
 

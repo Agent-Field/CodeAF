@@ -1256,7 +1256,11 @@ it", then "Resumed after the restart"; a second cut leaves it `interrupted`) and
 for a minute (`no_report`). At most 3 Afi runs go at once per workstream and 10 per
 organization; a start over either limit is accepted and the task, `running`, carries
 `queue {place}` (read time; its place among the workstream's waiting runs, from 1) until a
-place frees; Stop takes it out of the queue. A Factory task's state is its job's (409). A stale rev is 412.
+place frees; Stop takes it out of the queue. A run past its spending cap (the workstream's
+Start without asking, else $0.50), the workstream's budget, 60 steps or 15 minutes is
+paused: the task goes `needs` with an Ask whose id begins `ask_limit_`, options `keep_going`
+and `stop_here` (thread line "Paused: <title>"); answering `keep_going` starts Afi again,
+`stop_here` stops the task, and neither records a decision. A Factory task's state is its job's (409). A stale rev is 412.
 `_task_answer {ws, id, option?, text?}` `POST .../answer` is the owner's (with owner
 `everyone`, anyone who edits; after a day, also the workstream's fallback), 403
 otherwise; the first answer decides and records `answered_by`, a second is 409; a

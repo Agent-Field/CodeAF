@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -98,7 +99,24 @@ func (h *Handler) startTaskRun(ws factory.OrgWorkstream, task factory.Workstream
 		d.mu.Unlock()
 		return errTaskBusy
 	}
-	run := pendingRun{key: key, ws: ws, task: task, starter: starter, words: words, resumes: resumes, answered: answered}
+	d.mu.Unlock()
+	return h.admitTaskRun(pendingRun{key: key, ws: ws, task: task, starter: starter, words: words, resumes: resumes, answered: answered})
+}
+
+// admitTaskRun starts run now when there is room under the limits, and
+// otherwise puts it in the queue.
+func (h *Handler) admitTaskRun(run pendingRun) error {
+	d := &h.agentDesk
+	ws, key := run.ws, run.key
+	d.mu.Lock()
+	if d.ctx == nil || d.ctx.Err() != nil {
+		d.mu.Unlock()
+		return errors.New("this factory is closing")
+	}
+	if _, busy := d.tasks[key]; busy || d.queuedLocked(key) >= 0 {
+		d.mu.Unlock()
+		return errTaskBusy
+	}
 	if !d.roomLocked(ws.ID) {
 		queued := d.enqueueLocked(run)
 		owner := d.ownerLocked()
@@ -121,8 +139,26 @@ func (h *Handler) launchLocked(r pendingRun) error {
 	turn := "turn_" + tid
 	ws, task, starter, key, resumes := r.ws, r.task, r.starter, r.key, r.resumes
 	d := &h.agentDesk
-	ctx, cancel := context.WithCancel(d.ctx)
+	ctx, pause := context.WithCancelCause(d.ctx)
+	cancel := func() { pause(nil) }
 	d.tasks[key] = cancel
+	if d.gen == nil {
+		d.gen = map[taskRunKey]int{}
+	}
+	d.gen[key]++
+	mine := d.gen[key]
+	// release gives up this run's place, once; a newer run on the task
+	// keeps its own.
+	release := func() {
+		d.mu.Lock()
+		if d.gen[key] == mine {
+			delete(d.tasks, key)
+		}
+		d.mu.Unlock()
+	}
+	// The run is watched for its limits (workstream_task_limits.go).
+	limit := taskSpendCap(ws)
+	watch := &runWatch{}
 	d.servedLocked(ws.ID)
 	d.wg.Add(1)
 	owner := d.ownerLocked()
@@ -132,14 +168,17 @@ func (h *Handler) launchLocked(r pendingRun) error {
 		Task: &AgentTask{ID: task.ID, Title: task.Title},
 		Key:  h.orgModelKey(), Dir: filepath.Join(h.taskRunDir(ws.ID, task.ID), "agent"), Door: h.withLibrary(door), Library: h.spacesServed(),
 		// Every line is a line of the task's Working conversation.
-		Step: h.taskWorkStep(key, turn), Steers: h.openTaskWork(key, turn, starter)}
+		Step: h.taskWorkStep(key, turn), Steers: h.openTaskWork(key, turn, starter),
+		Progress: watch.progress(limit, pause)}
 	guard.Go("factory workstream task", func() {
 		var next *taskResume
 		var failed error
 		defer func() {
-			// Last, once this run is gone: the answer that came while it
-			// was ending starts the next one, then its place is free and
-			// the next run waiting under the limits takes it.
+			// Last, once this run is gone: its place is given up, the answer
+			// that came while it was ending starts the next one, and the next
+			// run waiting under the limits takes what is left.
+			release()
+			cancel()
 			if next != nil {
 				h.resumeTaskRun(ws, next.task, next.starter, next.words)
 			}
@@ -156,13 +195,30 @@ func (h *Handler) launchLocked(r pendingRun) error {
 		// dropped when the run ends here (before an answer that came meanwhile
 		// starts the next run, whose lease it is not), unless the server is
 		// closing, which is exactly the cut the next start must find.
-		lease := h.holdTaskLease(ctx, key, owner, starter, run.Text, now, resumes)
+		lease := h.holdTaskLease(ctx, key, owner, starter, run.Text, now, resumes, func() float64 {
+			// Every beat: a workstream that has spent its budget pauses
+			// the run.
+			usd := watch.spent()
+			if h.overBudget(ws.ID, usd) {
+				pause(runPause{kind: pauseBudget, usd: usd})
+			}
+			return usd
+		})
 		defer func() {
 			if d.ctx.Err() == nil {
 				lease()
 			}
 		}()
-		end, err := h.config.WorkstreamAgent(ctx, run)
+		wall := time.AfterFunc(taskWallMost, func() { pause(runPause{kind: pauseWall, usd: watch.spent()}) })
+		defer wall.Stop()
+		var end AgentTurnEnd
+		var err error
+		if h.overBudget(ws.ID, 0) {
+			// Checked before the run spends anything.
+			pause(runPause{kind: pauseBudget})
+		} else {
+			end, err = h.config.WorkstreamAgent(ctx, run)
+		}
 		if ctx.Err() == nil {
 			failed = err
 		}
@@ -174,20 +230,36 @@ func (h *Handler) launchLocked(r pendingRun) error {
 		// queued behind it is taken, so no answer can land in between
 		// and be lost.
 		d.mu.Lock()
-		delete(d.tasks, key)
-		if r, ok := d.resume[key]; ok {
+		if d.gen[key] == mine {
+			delete(d.tasks, key)
+		}
+		if res, ok := d.resume[key]; ok {
 			delete(d.resume, key)
 			if ctx.Err() == nil {
-				next = &r
+				next = &res
 			}
 		}
 		d.mu.Unlock()
 		if ctx.Err() != nil {
-			// Stopped: whoever stopped it has already said so on the task.
+			var p runPause
+			if errors.As(context.Cause(ctx), &p) && d.ctx.Err() == nil {
+				// Paused at a limit: an Ask to the owner, never a failure.
+				// The place is given up first, so the answer can start the
+				// next run at once.
+				lease()
+				release()
+				h.pauseTaskRun(ws, task.ID, p)
+			}
+			// Otherwise stopped: whoever stopped it has already said so.
 			return
 		}
 		if next != nil {
-			// The task was answered while this run ended: it goes on.
+			// The task was answered while this run ended: it goes on, and
+			// the answer's run is the one try, never a retry beside it.
+			return
+		}
+		if err != nil && end.Transient && !r.retried {
+			h.retryTaskRun(r, err)
 			return
 		}
 		h.finishTaskRun(door, task.ID, err)
