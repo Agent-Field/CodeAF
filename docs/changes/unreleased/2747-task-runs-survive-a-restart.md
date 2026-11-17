@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: An organization task Afi was running survives a server restart, and Start on a stuck Running task starts it
+title: Afi's organization tasks survive a server restart, and Start on a stuck Running task starts it
 pr: 2747
 surface: [factory, docs]
 invalidates:
