@@ -65,7 +65,8 @@ func AutoRepairDue(it Item) (AutoRepair, bool) {
 	}
 	// ONLY A VERDICT THAT STILL STANDS IS REPAIRED ([CurrentFindings]): a
 	// finding an earlier round reported and a later round of the same step
-	// no longer carries is the old verdict, and keeps today's pause.
+	// no longer carries is the old verdict, and neither pauses Auto nor is
+	// repaired ([FindingStands]).
 	r := AutoRepair{Findings: CurrentFindings(it)}
 	if len(r.Findings) == 0 {
 		return AutoRepair{}, false
@@ -130,8 +131,9 @@ func (r AutoRepair) count() string { return fmt.Sprintf("%d of %d", r.Attempt, r
 // request number …" as a test claim; the failing policy row stayed, and a
 // week later Auto sent Follow PR to fix it again. Only a step's latest round
 // is kept ([Phase.Result]), so a row no latest round carries is that old
-// verdict. Nothing on the sheet is changed here; the person's pause still
-// shows every failing row.
+// verdict. Nothing on the sheet is changed here. A row this misses because
+// the record cannot tell ([FindingReplaced] false) is not repaired either,
+// and still pauses Auto.
 func CurrentFindings(it Item) []CheckOverride {
 	var out []CheckOverride
 	for _, f := range FailingFindings(it) {
@@ -160,6 +162,62 @@ func latestRoundCarries(it Item, f CheckOverride) bool {
 		}
 	}
 	return false
+}
+
+// ── ONLY A VERDICT THAT STILL STANDS BLOCKS ────────────────────────────────
+//
+// The owner's decision of 2026-11-17 ("ignore replaced findings"): Auto's
+// pause ([AutonomyBlockReason]), the proof approval and the merge gate count
+// only findings the latest round still reports. Job 31 stayed paused for a
+// week on the changelog policy row its next Follow PR round had fixed and
+// proved in other words, so Auto never pushed the fix.
+
+// FindingStands says a sheet row is a failing finding that still blocks: it
+// fails, no override of the person's covers it, and no later round replaced
+// it ([FindingReplaced]).
+func FindingStands(it Item, kind string, cl Claim) bool {
+	return !cl.OK && !ClaimOverridden(it, kind, cl) && !FindingReplaced(it, kind, cl)
+}
+
+// FindingReplaced says a failing sheet row is an old verdict: no step's latest
+// round reports its claim on its list any more. It says so only when the
+// record can tell ([roundsKnown]); otherwise the row is taken as standing,
+// as before this rule. A passing row is never replaced.
+func FindingReplaced(it Item, kind string, cl Claim) bool {
+	if cl.OK || !roundsKnown(it) {
+		return false
+	}
+	return !latestRoundCarries(it, CheckOverride{Kind: kind, Text: cl.Text})
+}
+
+// roundsKnown says the record keeps every step's latest round, so a row none
+// of them reports is one a later round replaced: every step that ran (done,
+// failed or waiting; an approve step reports no claims) kept its result, and
+// some result carries claims. A record from before results were kept, a
+// step whose result is missing, and a reader's copy whose results carry no
+// claims all read false.
+func roundsKnown(it Item) bool {
+	if it.Stream == nil {
+		return false
+	}
+	claims := false
+	for _, ph := range it.Stream.Phases {
+		switch ph.State {
+		case PhaseDone, PhaseFailed, PhaseWaiting:
+		default:
+			continue
+		}
+		if ph.Kind == StageGate && ph.Result == nil {
+			continue
+		}
+		if ph.Result == nil {
+			return false
+		}
+		if len(ph.Result.Claims) > 0 {
+			claims = true
+		}
+	}
+	return claims
 }
 
 // ClaimKey is a claim's words for matching a sheet row: lower case, letters

@@ -66,8 +66,10 @@ func ClaimOverridden(it Item, kind string, cl Claim) bool {
 	return false
 }
 
-// FailingFindings are the landed job's failing proof and policy claims that no
-// override covers yet, as the overrides that would cover them (By and At unset).
+// FailingFindings are the landed job's failing proof and policy claims that
+// still stand ([FindingStands]): no override covers them yet and no later
+// round replaced them. They come as the overrides that would cover them (By
+// and At unset).
 func FailingFindings(it Item) []CheckOverride {
 	var out []CheckOverride
 	for _, list := range []struct {
@@ -75,7 +77,7 @@ func FailingFindings(it Item) []CheckOverride {
 		claims []Claim
 	}{{OverrideProof, it.Proof}, {OverridePolicy, it.Policy}} {
 		for _, cl := range list.claims {
-			if !cl.OK && !ClaimOverridden(it, list.kind, cl) {
+			if FindingStands(it, list.kind, cl) {
 				out = append(out, CheckOverride{Kind: list.kind, Text: cl.Text})
 			}
 		}

@@ -166,8 +166,8 @@ func TestOfferMergeStampsOnlyAnOpenPullRequestTheGatePasses(t *testing.T) {
 // Auto, landed on the open pull request #2587. Follow PR's readiness review
 // (round 1, head abb64e5) reported the changelog finding as a policy claim;
 // round 2 fixed it (f72f8f6883), verified it, and proved it in other words as
-// a test claim. The failing policy row from round 1 is still on the sheet,
-// and the job pauses on it.
+// a test claim. The failing policy row from round 1 is still on the sheet;
+// every step that ran kept its latest round's report, as job 31's record does.
 func job31() Item {
 	finding := "FINDING: the changelog entry carries the issue number instead of this PR's number — docs/changes/unreleased/1758-fixed-exec-scratch.md is named 1758-... and sets pr: 1758, while docs/rules/changelog.md requires the pull request number and every sibling unreleased entry follows it; the plan deferred exactly this renumbering to PR open and it did not happen. Also missing a trailing newline in the same file."
 	round2 := []Claim{
@@ -184,12 +184,13 @@ func job31() Item {
 			BaseSHA: "ace7888ab16f8b6c911f10f5a9bad75ddebf0d01", ChecksRead: true, ReviewsRead: true, Checks: PRChecks{Passed: 7}},
 		FollowUp: &PRFollowUp{Kind: "pr", State: "waiting_approval", HeadSHA: "abb64e5b71a7c4a5caf32d71cbc2f900509fa534", Attempt: 1, Limit: DefaultPRRepairAttempts},
 		Stream: &Stream{Spent: 3.3, Cur: 6, Phases: []Phase{
-			{Name: "plan", Kind: StageChat, State: PhaseDone, Round: 1},
+			{Name: "plan", Kind: StageChat, State: PhaseDone, Round: 1, Result: &StageResult{Done: true, Claims: []Claim{
+				{Text: "The exec door never calls WithScratch, so scratch defaults to the workspace root", OK: true, Evidence: "cmd/codeaf/exec.go", Medium: "transcript"}}}},
 			{Name: "approve", Kind: StageGate, State: PhaseDone},
-			{Name: "write", Kind: StageChat, State: PhaseDone, Round: 1},
-			{Name: "test", Kind: StageChat, State: PhaseDone, Round: 2},
+			{Name: "write", Kind: StageChat, State: PhaseDone, Round: 1, Result: &StageResult{Done: true, Output: "wired WithScratch on the exec and run doors"}},
+			{Name: "test", Kind: StageChat, State: PhaseDone, Round: 2, Result: &StageResult{Done: true}},
 			{Name: "review", Kind: StageChat, State: PhaseDone, Round: 1, Result: &StageResult{Done: true, Claims: review}},
-			{Name: "proof", Kind: StageChat, State: PhaseDone, Round: 2},
+			{Name: "proof", Kind: StageChat, State: PhaseDone, Round: 2, Result: &StageResult{Done: true}},
 			{Name: FollowPRStep, Kind: StageChat, State: PhaseDone, Round: 2,
 				Rounds: []RoundLine{{Round: 1, Rejected: true, Result: "not proven", Reason: "1 finding"}, {Round: 2, Result: "proven", Reason: "4 of 4 claims shown"}},
 				Result: &StageResult{Done: true, Claims: round2}},
@@ -197,18 +198,15 @@ func job31() Item {
 	return it
 }
 
-// A FINDING A LATER ROUND REPAIRED IS NOT REPAIRED AGAIN. Job 31's failing
-// policy row is round 1's verdict; Follow PR's latest round fixed and proved
-// it in other words, so no step's latest round still reports it. Auto keeps
-// the pause it had (the person's doors are unchanged) rather than spend a
-// Follow PR attempt fixing what is fixed. While the latest round still
-// reports the finding, the repair is due as before.
+// A FINDING A LATER ROUND REPAIRED IS NOT REPAIRED AGAIN, AND DOES NOT PAUSE
+// AUTO. Job 31's failing policy row is round 1's verdict; Follow PR's latest
+// round fixed and proved it in other words, so no step's latest round still
+// reports it. Auto neither spends a Follow PR attempt fixing what is fixed
+// nor pauses on it (the owner's decision of 2026-11-17). While the latest
+// round still reports the finding, the repair is due as before.
 func TestAFindingALaterRoundRepairedIsNotRepairedAgain(t *testing.T) {
 	now := time.Date(2026, 11, 17, 12, 56, 51, 0, time.UTC)
 	it := job31()
-	if !OffersAutoResume(it) {
-		t.Fatal("the fixture does not pause on its failing finding")
-	}
 	if got := CurrentFindings(it); len(got) != 0 {
 		t.Fatalf("a superseded finding reads current: %+v", got)
 	}
@@ -218,8 +216,11 @@ func TestAFindingALaterRoundRepairedIsNotRepairedAgain(t *testing.T) {
 	if _, err := BeginAutoRepair(&it, now); err == nil || it.FollowUp.Attempt != 1 || it.FollowUp.State != "waiting_approval" || it.FollowUp.Request != "" || it.State != StateLanded || len(it.Activity) != 0 {
 		t.Fatalf("a repair began: err=%v follow=%+v state=%s activity=%v", err, it.FollowUp, it.State, it.Activity)
 	}
-	if why := AutonomyBlockReason(it); !strings.HasPrefix(why, "Repository policy needs attention: FINDING: the changelog entry carries the issue number") {
-		t.Fatalf("the person's pause changed: %q", why)
+	if why := AutonomyBlockReason(it); why != "" {
+		t.Fatalf("Auto pauses on a replaced finding: %q", why)
+	}
+	if OffersAutoResume(it) || len(FailingFindings(it)) != 0 {
+		t.Fatalf("a replaced finding still reads failing: %+v", FailingFindings(it))
 	}
 
 	// THE SAME FINDING, STILL REPORTED BY FOLLOW PR'S LATEST ROUND, IS REPAIRED.
@@ -278,5 +279,82 @@ func TestTheRepairRequestQuotesEachFindingAsItsRowHolds(t *testing.T) {
 		if ClaimKey(quoted) != ClaimKey(f.Text) {
 			t.Fatalf("the quoted words %q do not find the row %q", quoted, f.Text)
 		}
+	}
+}
+
+// ONLY A VERDICT THE LATEST ROUND STILL REPORTS BLOCKS (the owner's decision
+// of 2026-11-17). On job 31's record the replaced changelog row neither
+// pauses Auto, reads failing (what the proof approval counts), nor holds the
+// automatic merge; the same row still reported by Follow PR's latest round
+// does all three as before; and a record that cannot tell (a step that ran kept no result, or
+// no result carries claims) blocks as before.
+func TestOnlyAFindingTheLatestRoundStillReportsBlocks(t *testing.T) {
+	mergeReady := func(it Item) Item {
+		it.FollowUp.State = "watching"
+		it.HeadCommit = it.PullRequest.HeadSHA
+		it.PullRequest.Mergeable = MergeableYes
+		it.MergePolicy = &MergePolicy{Auto: true}
+		return it
+	}
+	pauses := func(it Item) bool {
+		return strings.HasPrefix(AutonomyBlockReason(it), "Repository policy needs attention: FINDING: the changelog entry carries the issue number")
+	}
+
+	replaced := mergeReady(job31())
+	if pauses(replaced) || len(FailingFindings(replaced)) != 0 {
+		t.Fatalf("a replaced finding pauses Auto: %q", AutonomyBlockReason(replaced))
+	}
+	if v := MergeGate(replaced, MergeAsk{Auto: true}); !v.OK {
+		t.Fatalf("a replaced finding holds the merge: %+v", v)
+	}
+	if !FindingReplaced(replaced, OverridePolicy, replaced.Policy[0]) || FindingReplaced(replaced, OverridePolicy, replaced.Policy[1]) {
+		t.Fatal("only the failing row no latest round reports is replaced")
+	}
+
+	// THE SAME ROW, STILL REPORTED BY THE LATEST ROUND, BLOCKS AS BEFORE.
+	live := mergeReady(job31())
+	ph := &live.Stream.Phases[len(live.Stream.Phases)-1]
+	ph.Result = &StageResult{Done: true, Findings: 1, Claims: append(append([]Claim(nil), ph.Result.Claims...), Claim{Text: live.Policy[0].Text, Evidence: "pr: 1758", Medium: "policy"})}
+	if !pauses(live) || len(FailingFindings(live)) != 1 {
+		t.Fatalf("a standing finding does not pause Auto: %q", AutonomyBlockReason(live))
+	}
+	if v := MergeGate(live, MergeAsk{Auto: true}); v.OK || !strings.Contains(v.Why, "every claim proven") {
+		t.Fatalf("a standing finding does not hold the merge: %+v", v)
+	}
+
+	// A RECORD THAT CANNOT TELL BLOCKS AS BEFORE.
+	for name, change := range map[string]func(*Item){
+		"a step that ran kept no result": func(it *Item) { it.Stream.Phases[2].Result = nil },
+		"no step kept a result": func(it *Item) {
+			for i := range it.Stream.Phases {
+				it.Stream.Phases[i].Result = nil
+			}
+		},
+		"no result carries claims (a reader's copy)": func(it *Item) {
+			for i := range it.Stream.Phases {
+				if r := it.Stream.Phases[i].Result; r != nil {
+					it.Stream.Phases[i].Result = &StageResult{Done: r.Done, Output: r.Output}
+				}
+			}
+		},
+		"no stream": func(it *Item) { it.Stream = nil },
+	} {
+		old := mergeReady(job31())
+		change(&old)
+		if FindingReplaced(old, OverridePolicy, old.Policy[0]) {
+			t.Errorf("%s: the row reads replaced", name)
+		}
+		if old.Stream != nil && !pauses(old) {
+			t.Errorf("%s: Auto does not pause: %q", name, AutonomyBlockReason(old))
+		}
+		if v := MergeGate(old, MergeAsk{Auto: true}); v.OK {
+			t.Errorf("%s: the merge is not held: %+v", name, v)
+		}
+	}
+
+	// THE PERSON'S OVERRIDE STILL COVERS A STANDING FINDING.
+	live.Overrides = []CheckOverride{{Kind: OverridePolicy, Text: live.Policy[0].Text, By: "zeropoint95"}}
+	if pauses(live) {
+		t.Fatalf("an overridden finding pauses Auto: %q", AutonomyBlockReason(live))
 	}
 }

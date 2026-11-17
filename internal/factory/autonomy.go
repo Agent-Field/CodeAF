@@ -134,14 +134,16 @@ func AutonomyBlockReason(it Item) string {
 			return "Proof is incomplete. Request changes or take over to continue."
 		}
 		// A finding the person told Auto to carry on past no longer pauses it
-		// (override.go); one they did not still does.
+		// (override.go); one they did not still does. Neither does a finding
+		// a later round replaced ([FindingStands]): only a verdict the latest
+		// round still reports pauses Auto.
 		for _, cl := range it.Proof {
-			if !cl.OK && !ClaimOverridden(it, OverrideProof, cl) {
+			if FindingStands(it, OverrideProof, cl) {
 				return proofAttentionLead + cl.Text + ". Request changes or take over to continue."
 			}
 		}
 		for _, cl := range it.Policy {
-			if !cl.OK && !ClaimOverridden(it, OverridePolicy, cl) {
+			if FindingStands(it, OverridePolicy, cl) {
 				return policyAttentionLead + cl.Text + ". Request changes or take over to continue."
 			}
 		}
