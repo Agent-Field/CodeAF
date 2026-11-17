@@ -470,7 +470,7 @@ func (h *Handler) createWorkstreamFile(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
-	maker := factory.FileMaker{Kind: factory.MakerPerson, ID: v.Handle, Name: v.Handle}
+	maker := factory.FileMaker{Kind: factory.MakerPerson, ID: v.Handle, Name: h.personNames()(v.Handle)}
 	if body.MadeBy != nil && (body.MadeBy.Kind == factory.MakerAfi || body.MadeBy.Kind == factory.MakerChat) {
 		// An agent's file is stamped with the person whose agent made it;
 		// the name is the agent's own.

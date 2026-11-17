@@ -2,6 +2,7 @@ package serve
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -115,5 +116,78 @@ func TestATaskNamesItsPeopleByTheNamesTheyJoinedWith(t *testing.T) {
 		if got.CameFrom.Name != "Santosh Kumar" || got.CreatedBy.Name != "Santosh Kumar" {
 			t.Fatalf("%s: came from %+v, created by %+v", where, got.CameFrom, got.CreatedBy)
 		}
+	}
+}
+
+// E1 F10: the thread, the Inbox and Decisions read who did something from the
+// event as it was written, and the server wrote the handle — "Stopped by abir",
+// "Sent back by priya", comment authors "lena". Every line a person's act
+// stamps now carries the name they joined with, and the task they made says it
+// too.
+func TestATasksThreadNamesPeopleByTheNamesTheyJoinedWith(t *testing.T) {
+	o := newPWOrg(t)
+	santosh := o.signUpNamed(o.operatorLink(), "santosh", pwOperator, "Santosh Kumar")
+	abir := o.signUpNamed(o.invite(santosh), "abir", "copper-meadow-47-violin", "Abir Das")
+	call := func(token, method, path string, body any, out any) {
+		t.Helper()
+		r := o.do(method, path, token, body, "")
+		if r.Code >= 300 {
+			t.Fatalf("%s %s = %d %s", method, path, r.Code, r.Body)
+		}
+		if out != nil {
+			if err := json.Unmarshal(r.Body.Bytes(), out); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	var ws api.Workstream
+	call(santosh, "POST", "/v1/workstreams", api.WorkstreamNew{Name: "Pantry"}, &ws)
+	shares := []factory.Share{{Kind: "person", ID: "abir", Role: "edit"}}
+	call(santosh, "PUT", "/v1/workstreams/"+ws.ID+"/shares", api.WorkstreamSharesPut{Shares: &shares, Rev: &ws.Rev}, nil)
+	path := "/v1/workstreams/" + ws.ID
+	var made api.WorkstreamTask
+	call(abir, "POST", path+"/tasks", api.TaskCreate{Title: "Run five user interviews", DoneBy: factory.TaskDoneBy{Kind: factory.TaskByPerson, ID: "abir"}}, &made)
+	if made.CreatedBy.Name != "Abir Das" {
+		t.Fatalf("created by %+v, want Abir Das", made.CreatedBy)
+	}
+	call(abir, "POST", path+"/tasks/"+made.ID+"/comment", map[string]any{"text": "Booked three so far."}, nil)
+	var thread api.WorkstreamTaskEvents
+	call(santosh, "GET", path+"/tasks/"+made.ID+"/events", nil, &thread)
+	if len(thread.Events) == 0 {
+		t.Fatal("no thread")
+	}
+	for _, e := range thread.Events {
+		if e.By.Kind == factory.TaskByPerson && e.By.Name == "abir" {
+			t.Fatalf("a line names the handle: %+v", e)
+		}
+	}
+	last := thread.Events[len(thread.Events)-1]
+	if last.By.Name != "Abir Das" {
+		t.Fatalf("the comment's author is %+v, want Abir Das", last.By)
+	}
+}
+
+// E1 F10: a rule saved with only a handle recorded "marco answers what waits
+// unanswered for a day" in Decisions. The decision names the person.
+func TestARuleDecisionNamesThePersonNotTheHandle(t *testing.T) {
+	o := newPWOrg(t)
+	santosh := o.signUpNamed(o.operatorLink(), "santosh", pwOperator, "Santosh Kumar")
+	o.signUpNamed(o.invite(santosh), "abir", "copper-meadow-47-violin", "Abir Das")
+	before := factory.WorkstreamRules{}
+	after := factory.WorkstreamRules{
+		DefaultOwner: factory.RulesOwner{Kind: factory.RulesOwnerPerson, ID: "abir"},
+		Fallback:     &factory.RulesPerson{ID: "abir", Name: "abir"},
+	}
+	got := o.h.ruleDecisions(before, after, Viewer{Handle: "santosh"})
+	if len(got) < 2 {
+		t.Fatalf("decisions %+v", got)
+	}
+	for _, d := range got {
+		if !strings.HasPrefix(d.Text, "Abir Das ") {
+			t.Errorf("decision %q does not name Abir Das", d.Text)
+		}
+	}
+	if after.Fallback.Name != "abir" {
+		t.Error("the caller's rules were changed")
 	}
 }

@@ -84,3 +84,19 @@ func TestATaskRunsPromptSaysHowItEnds(t *testing.T) {
 		}
 	}
 }
+
+// A STEP IN THE AFI PANE IS NEVER A TOOL'S HANDLE. The organization's Afi
+// showed "ws_decisions" as a step between "read the files" and "read the tasks"
+// (E1 F10); every step reads as words, and one this build has no words for
+// still drops the prefix and the underscores.
+func TestFactoryAgentStepsNeverShowAToolsHandle(t *testing.T) {
+	for _, tool := range []string{session.WSDecisionsTool, session.WSFileCommentTool, session.WSTasksTool, "ws_something_new", "brand_new_tool"} {
+		words := factoryAgentStepWords(session.Event{Tool: tool, Args: `{}`})
+		if words == "" || strings.Contains(words, "_") || strings.Contains(words, "ws ") {
+			t.Errorf("%s reads %q", tool, words)
+		}
+	}
+	if got := factoryAgentStepWords(session.Event{Tool: session.WSDecisionsTool}); got != "read the decisions" {
+		t.Errorf("ws_decisions reads %q", got)
+	}
+}

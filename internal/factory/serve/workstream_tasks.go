@@ -60,7 +60,10 @@ func (h *Handler) taskBy(r *http.Request, v Viewer) factory.TaskEventBy {
 	if call, ok := agentCallOf(r); ok && call.by.Kind != "" {
 		return call.by
 	}
-	return factory.TaskEventBy{Kind: factory.TaskByPerson, ID: v.Handle, Name: v.Handle}
+	// THE NAME IS THE ONE THEY JOINED WITH ("Priya Raman"), never the handle:
+	// the thread, the Inbox and Decisions all read it back as written, and a
+	// bare "priya" beside full names elsewhere is a machinery word.
+	return factory.TaskEventBy{Kind: factory.TaskByPerson, ID: v.Handle, Name: h.personNames()(v.Handle)}
 }
 
 // taskDefaultOwner owns work nobody asked for directly: the workstream's
@@ -290,7 +293,7 @@ func (h *Handler) createWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 		if store.CountWorkstreamTasks(all) >= factory.TasksMost {
 			return factory.TaskInvalid(fmt.Sprintf("a workstream keeps at most %d tasks", factory.TasksMost))
 		}
-		made, err = factory.NewTask(ws.ID, h.newTaskID("tk_")(), body, factory.PersonRef{ID: v.Handle, Name: v.Handle}, taskDefaultOwner(ws), all, now)
+		made, err = factory.NewTask(ws.ID, h.newTaskID("tk_")(), body, factory.PersonRef{ID: v.Handle, Name: h.personNames()(v.Handle)}, taskDefaultOwner(ws), all, now)
 		if err != nil {
 			return err
 		}

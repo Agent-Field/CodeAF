@@ -86,7 +86,8 @@ func TestAReplyReopensAThreadAndUnreadIsPerPerson(t *testing.T) {
 		t.Fatal("a comment is for everyone but the person who wrote it")
 	}
 	o.do(t, "abir", "POST", path+"/comments/"+made.ID+"/resolve", -1, api.PageCommentResolve{}, 200, &got)
-	if got.Resolved == nil || got.Resolved.By != "abir" {
+	// Who resolved it is said by the name they joined with, never the handle (E1 F10).
+	if got.Resolved == nil || got.Resolved.By != o.h.personNames()("abir") {
 		t.Fatalf("resolved %+v", got)
 	}
 	if len(o.threads(t, "santosh", path, page, "")) != 0 || len(o.threads(t, "santosh", path, page, "?resolved=1")) != 1 || len(o.forYou(t, "abir", path)) != 0 {

@@ -350,7 +350,7 @@ func (d *agentDoor) wsTaskCreate(ctx context.Context, args json.RawMessage) (any
 		if owner != nil && owner.Kind == factory.TaskOwnerPerson {
 			who = owner.ID
 		}
-		body.DoneBy = factory.TaskDoneBy{Kind: factory.TaskByPerson, ID: who, Name: who}
+		body.DoneBy = factory.TaskDoneBy{Kind: factory.TaskByPerson, ID: who, Name: d.h.personNames()(who)}
 	case "factory":
 		return nil, errors.New("a Factory task is a Factory job in this workstream: ask the person to start the job in the Factory, and it appears in Tasks by itself")
 	default:

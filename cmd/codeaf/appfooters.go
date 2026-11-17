@@ -11,6 +11,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/fsreplace"
@@ -27,6 +29,10 @@ type appKeptFooter struct {
 	AfterID   *string       `json:"after_id,omitempty"`
 	AfterHash string        `json:"after_hash,omitempty"`
 	Entry     appwire.Entry `json:"entry"`
+	// Retry is the person's words of a failed turn, kept beside that turn's
+	// error entry so Retry message is still offered after the app restarts.
+	// It is empty for every other entry and for a failure that keeps no words.
+	Retry string `json:"retry,omitempty"`
 }
 
 func (b *appBackend) readAppFooters(transcript string) ([]appKeptFooter, error) {
@@ -91,6 +97,16 @@ func (b *appBackend) keepAppEntry(a *appAgent, entry appwire.Entry, afterCall st
 
 // A read-only status exchange is kept atomically, outside the model transcript.
 func (b *appBackend) keepAppEntries(a *appAgent, entries []appwire.Entry, afterCall string) error {
+	return b.keepAppEntriesWith(a, entries, afterCall, "")
+}
+
+// keepAppFailure keeps a failed turn's error entry with the words that turn
+// was sent, which is what lets a later process offer Retry message again.
+func (b *appBackend) keepAppFailure(a *appAgent, entry appwire.Entry, words string) error {
+	return b.keepAppEntriesWith(a, []appwire.Entry{entry}, "", words)
+}
+
+func (b *appBackend) keepAppEntriesWith(a *appAgent, entries []appwire.Entry, afterCall, retry string) error {
 	var transcript, id string
 	b.locked(func() { transcript, id = a.transcript, a.view.ID })
 	b.footerMu.Lock()
@@ -129,7 +145,7 @@ func (b *appBackend) keepAppEntries(a *appAgent, entries []appwire.Entry, afterC
 		return err
 	}
 	for _, entry := range pending {
-		kept = append(kept, appKeptFooter{AfterID: &afterID, AfterHash: afterHash, Entry: entry})
+		kept = append(kept, appKeptFooter{AfterID: &afterID, AfterHash: afterHash, Entry: entry, Retry: retry})
 	}
 	raw, err := json.Marshal(kept)
 	if err != nil {
@@ -227,4 +243,79 @@ func appFooterAnchor(item session.DisplayEntry) string {
 	raw, _ := json.Marshal(stable)
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:])
+}
+
+// recoverFailed reads, once per conversation per process, whether the newest
+// thing that conversation's person sent failed and was never answered — a
+// failure an earlier run of the app left behind — and offers it again.
+//
+// A FAILED MESSAGE IS PAUSED, NOT LOST. The failure lived only in memory, so
+// quitting the app while offline took Retry message away and the person had to
+// type their words again. The words are now kept beside the error entry, and
+// they count only while that error is under the person's newest message: a
+// message sent after it, including the retry itself, is a newer turn.
+func (b *appBackend) recoverFailed(row session.SessionRow) {
+	if row.Transcript == "" {
+		return
+	}
+	a := b.agent(row.ID)
+	skip := false
+	b.locked(func() {
+		skip = a.failedRead || a.live != nil || a.failed != ""
+		a.failedRead = true
+	})
+	if skip {
+		return
+	}
+	words, kind := appRecoverFailed(row.Transcript)
+	if words == "" {
+		return
+	}
+	b.locked(func() {
+		if a.failed == "" && a.live == nil {
+			a.failed, a.failedKind = words, kind
+			a.view.Retryable = true
+		}
+	})
+}
+
+// appRecoverFailed answers the kept words and kind of a failed turn that is
+// still the newest the transcript holds, or nothing.
+func appRecoverFailed(transcript string) (words, kind string) {
+	kept, err := appReadFooters(transcript)
+	if err != nil {
+		return "", ""
+	}
+	newest := -1
+	for i, f := range kept {
+		n, ok := appErrorEntryTurn(f.Entry.ID)
+		if !ok || f.Retry == "" {
+			continue
+		}
+		if newest < 0 || n >= mustErrorTurn(kept[newest].Entry.ID) {
+			newest = i
+		}
+	}
+	if newest < 0 {
+		return "", ""
+	}
+	f := kept[newest]
+	if n, _ := appErrorEntryTurn(f.Entry.ID); n != appUserCount(transcript)-1 {
+		return "", ""
+	}
+	return f.Retry, f.Entry.ErrorKind
+}
+
+// appErrorEntryTurn is the person's message an error entry id ("x<n>") is under.
+func appErrorEntryTurn(id string) (int, bool) {
+	if !strings.HasPrefix(id, "x") {
+		return 0, false
+	}
+	n, err := strconv.Atoi(id[1:])
+	return n, err == nil && n >= 0
+}
+
+func mustErrorTurn(id string) int {
+	n, _ := appErrorEntryTurn(id)
+	return n
 }

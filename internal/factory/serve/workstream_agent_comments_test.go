@@ -59,7 +59,7 @@ func TestServerAgentReadsAndAnswersPassageComments(t *testing.T) {
 		}
 		got := threads[0].(map[string]any)
 		said := got["comments"].([]any)[0].(map[string]any)
-		if got["thread"] != thread || got["quote"] != "Friday" || said["by"] != "abir" || said["text"] != "Which Friday?" {
+		if got["thread"] != thread || got["quote"] != "Friday" || said["by"] != o.h.personNames()("abir") || said["text"] != "Which Friday?" {
 			t.Fatalf("the thread as read: %v", got)
 		}
 		work("ws_file_comment", `{"file":"`+id+`","thread":"`+thread+`","text":"The 21st."}`)
