@@ -819,6 +819,9 @@ func (d *agentDoor) wsFileCreate(ctx context.Context, args json.RawMessage) (any
 	if err := json.Unmarshal(raw, &f); err != nil {
 		return nil, err
 	}
+	if f.Kind != factory.FileFolder {
+		d.wrote.note(f.ID)
+	}
 	return map[string]any{"said": fmt.Sprintf("Made the %s %q; everyone in the workstream sees it.", f.Kind, f.Name), "file": fileBrief(f)}, nil
 }
 
@@ -839,6 +842,7 @@ func (d *agentDoor) rewriteDocument(ctx context.Context, id, markdown string) (a
 	if err != nil {
 		return nil, err
 	}
+	d.wrote.note(f.ID)
 	return map[string]any{"said": line}, nil
 }
 

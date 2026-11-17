@@ -57,6 +57,14 @@ func TestATaskRunsInItsOwnSeatAndReportsOnTheTask(t *testing.T) {
 			}
 			_, err := d.Work(ctx, "ws_task_update", json.RawMessage(`{"task":"`+turn.Task.ID+`","state":"done"}`))
 			return AgentTurnEnd{USD: 0.01}, err
+		case "Writes":
+			// Writes its page and says so in the thread, but never the last
+			// ws_task_update: the work is done, and the task must say so.
+			if _, err := d.Work(ctx, "ws_file_create", json.RawMessage(`{"name":"Help center","markdown":"# Help center\n\nThe fix."}`)); err != nil {
+				return AgentTurnEnd{}, err
+			}
+			_, err := d.Work(ctx, "ws_task_comment", json.RawMessage(`{"task":"`+turn.Task.ID+`","text":"Wrote the page."}`))
+			return AgentTurnEnd{}, err
 		case "Wait":
 			select {
 			case <-release:
@@ -95,6 +103,17 @@ func TestATaskRunsInItsOwnSeatAndReportsOnTheTask(t *testing.T) {
 	o.settle()
 	if got, _ := mia.task(ctx, silent.ID); got.State != factory.TaskFailed || got.StateReason == "" {
 		t.Fatalf("a run that ended without a word left %+v", got)
+	}
+
+	// A run that wrote its page and ended cleanly is Done with the page as
+	// its result, never Failed (E4 F8).
+	writes := newTask("Writes")
+	if err := o.h.runTaskTurn(ws, writes, "mia", "Write the help-center page."); err != nil {
+		t.Fatal(err)
+	}
+	o.settle()
+	if got, _ := mia.task(ctx, writes.ID); got.State != factory.TaskDone || len(got.Results) != 1 || got.Results[0].Kind != "file" || got.Results[0].FileID == "" {
+		t.Fatalf("a run that wrote its page and ended left %+v", got)
 	}
 
 	wait := newTask("Wait")
