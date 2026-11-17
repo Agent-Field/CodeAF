@@ -31,13 +31,21 @@ A workstream that had one shared conversation before gives each person only thei
 
 What it spends is posted to the workstream under the person whose message it answered. A workstream that has spent its budget takes no more messages ("This workstream has spent its budget."). An archived workstream takes none either.
 
-## what the server's workstream agent can and cannot do — tasks, files, pages, no shell, no repository
+## what the server's workstream agent can and cannot do — tasks, files, pages, canvases, no shell, no repository
 
-On the server the agent, Afi, carries `workstream_pages` and the workstream tools (`ws_tasks`, `ws_task_create`, `ws_task_update`, `ws_task_comment`, `ws_files`, `ws_file_read`, `ws_file_create`, `ws_file_suggest`, `ws_file_comment`; the page about chats inside a workstream says what each does). So when you ask it to "turn these asks into tasks", it makes real tasks in the Tasks tab, not pages titled "Task: …", and it reads Tasks before it says who is doing what or what is waiting on you.
+On the server the agent, Afi, carries `workstream_pages`, the workstream tools (`ws_tasks`, `ws_task_create`, `ws_task_update`, `ws_task_comment`, `ws_files`, `ws_file_read`, `ws_file_create`, `ws_file_suggest`, `ws_file_comment`; the page about chats inside a workstream says what each does) and, on a server that keeps canvases, `ws_canvas`, which draws the workstream's canvases (the section on Afi drawing a canvas says how). So when you ask it to "turn these asks into tasks", it makes real tasks in the Tasks tab, not pages titled "Task: …", and it reads Tasks before it says who is doing what or what is waiting on you.
 
 With `workstream_pages` it reads the workstream (name, purpose, budget, pages, decisions, sources and links), reads or writes one page, or makes a new page. It does not propose decisions: a decision records itself when an Ask is answered, and nothing waits for a Keep.
 
 It cannot run commands, read or change a repository, open files on a computer, start or stop Factory work, search the web or remember things between workstreams. `driver` mode runs the agent on a person's laptop with that laptop's tools instead, and then it has none of the workstream's.
+
+## can Afi draw a canvas in an organization — slides, social cards, a one-page plan, posters
+
+Yes. In an organization workstream, the server's Afi draws canvases with `ws_canvas`, the same `canvas` commands and the same canvas guide your own Afi uses on your computer, so an organization's canvas is made to the same standard: the whole set written in one pass, its colours and fonts kept as the canvas's tokens, only the facts you gave it. Ask in the Afi pane ("make a social launch card set", "a one-page plan for the launch on a canvas"). Anything visual goes on a canvas, never into a document.
+
+A canvas Afi makes is in the workstream's **Files and canvases**, shown as made by Afi for the person who asked, where everyone in the workstream sees it and the canvas updates live for anyone who has it open. Made while Afi does a task, it is under that task's **Result**, and a canvas it only looked at is under **Uses**. Afi can also work on a canvas a person made in the workstream: rename it, add frames and pages, set its colours and fonts.
+
+Its limits: it reaches only this workstream's canvases, and only with the rights of the person it is answering (someone who can only view the workstream gets an Afi that can open a canvas but not change it). A frame someone's hand is on keeps Afi's change as a proposal for them, as on a laptop. The server has no screen, so Afi cannot look at a picture of what it drew; it checks the frame's contents instead. It cannot export a canvas, trash or copy one, change who is in it, or bring in a file from the server's disk. A server that has no `canvas` program keeps no canvases, and its Afi has no canvas tool at all.
 
 ## does Afi know today's date — the date and time, your time zone, deadlines
 

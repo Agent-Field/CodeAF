@@ -134,13 +134,48 @@ func (s *Sidecar) Raw(ctx context.Context, id string, req map[string]any) (json.
 	t := s.turn(id)
 	t.Lock()
 	defer t.Unlock()
-	ctx, cancel := context.WithTimeout(ctx, callTimeout)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, s.Bin, "rpc", "--root", s.Root)
-	cmd.Stdin = bytes.NewReader(in)
 	// canvas-core reads no other setting for rpc; a clean environment keeps
 	// the server's own (its tokens, its HOME) out of the child.
-	cmd.Env = []string{"PATH=/usr/bin:/bin", "LANG=C.UTF-8"}
+	return s.exec(ctx, callTimeout, []string{"rpc", "--root", s.Root}, "", []string{"PATH=/usr/bin:/bin", "LANG=C.UTF-8"}, in)
+}
+
+// commandTimeout bounds one agent command: a few are slower than an rpc
+// (a table import, a large page), none is a wait.
+const commandTimeout = 60 * time.Second
+
+// AgentActor is who an organization's agent writes a canvas as. A canvas
+// keeps it in its op log and its members; the desk shows it as the agent.
+const AgentActor = "afi"
+
+// Command runs one `canvas` command for the organization's agent: args are
+// the words after `canvas`, run in dir (where the files it names are) with
+// stdin, writing as [AgentActor] into this server's canvas root. Commands on
+// one canvas take the same turn as the server's own requests about it, so
+// the agent's write and a person's never interleave. The answer is the
+// command's one JSON value; a refusal is an [*Error].
+//
+// THE CALLER HAS ALREADY DECIDED THE COMMAND MAY RUN: which verbs, which
+// canvas, which files. This only carries it, with an environment that names
+// nothing of the server's own but the root.
+func (s *Sidecar) Command(ctx context.Context, id string, args []string, dir string, stdin []byte) (json.RawMessage, error) {
+	if err := os.MkdirAll(s.Root, 0o700); err != nil {
+		return nil, err
+	}
+	t := s.turn(id)
+	t.Lock()
+	defer t.Unlock()
+	env := []string{"PATH=/usr/bin:/bin", "LANG=C.UTF-8", "HOME=" + dir, "WORKAF_CANVAS_ROOT=" + s.Root, "CODEAF_AGENT_DID=" + AgentActor}
+	return s.exec(ctx, commandTimeout, append([]string{"--root", s.Root}, args...), dir, env, stdin)
+}
+
+// exec runs the binary once and reads its one JSON answer.
+func (s *Sidecar) exec(ctx context.Context, timeout time.Duration, args []string, dir string, env []string, in []byte) (json.RawMessage, error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, s.Bin, args...)
+	cmd.Stdin = bytes.NewReader(in)
+	cmd.Dir = dir
+	cmd.Env = env
 	var stdout limited
 	var stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
@@ -157,7 +192,7 @@ func (s *Sidecar) Raw(ctx context.Context, id string, req map[string]any) (json.
 	}
 	if runErr != nil {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return nil, fmt.Errorf("the canvas did not answer within %s", callTimeout)
+			return nil, fmt.Errorf("the canvas did not answer within %s", timeout)
 		}
 		return nil, fmt.Errorf("the canvas program failed: %v %s", runErr, strings.TrimSpace(stderr.String()))
 	}

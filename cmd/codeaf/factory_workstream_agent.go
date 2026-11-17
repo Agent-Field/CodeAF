@@ -355,6 +355,8 @@ func factoryAgentWorkWords(e session.Event) (string, bool) {
 		return "commented on a document", true
 	case session.WSTaskProposeTool:
 		return "proposed tasks", true
+	case session.WSCanvasTool:
+		return factoryAgentCanvasWords(e.Args), true
 	}
 	return "", false
 }
@@ -400,6 +402,21 @@ func workstreamDoorProposes(door serve.AgentDoor) bool {
 var factoryWorkstreamAgentCards = session.WorkstreamCardsRule +
 	"- A plan is proposed the same way: its " + strconv.Itoa(session.WorkstreamPlanFewest) + " to " + strconv.Itoa(session.WorkstreamPlanMost) + " tasks in one " + session.WSTaskProposeTool + " call with one group name. Once added, it waits for one press of Start."
 
+// workstreamDoorKeepsCanvases says the server keeps canvases, so its agent
+// carries ws_canvas (session's tools_workstream_canvas.go).
+func workstreamDoorKeepsCanvases(door serve.AgentDoor) bool {
+	canvases, ok := door.(session.WorkstreamCanvasDoor)
+	return ok && canvases.CanvasesKept()
+}
+
+// factoryWorkstreamAgentCanvas is what the server's agent is told about its
+// canvas. Before it, the prompt said Afi could not make anything visual, and
+// every organization canvas was drawn by hand through the API.
+const factoryWorkstreamAgentCanvas = "You also have " + session.WSCanvasTool + ", which draws the workstream's canvases the way a person's own Afi draws theirs: " +
+	"slides and decks, social cards, posters, a one-page plan, a landing page, a diagram, a board. Anything visual a person asks for goes on a canvas, never into a document or a page. " +
+	"Before your first change in this conversation call it with command guide, and follow the guide. " +
+	"A canvas you make is in the workstream's Files for everyone; name it by its title in your answer."
+
 // factoryWorkstreamAgentTurnSystem is the prompt for one turn: a person's
 // message, or one task Afi was started on.
 func factoryWorkstreamAgentTurnSystem(turn serve.AgentTurn) string {
@@ -411,6 +428,9 @@ func factoryWorkstreamAgentTurnSystem(turn serve.AgentTurn) string {
 		system = factoryMySpaceAgentSystem(turn.Asker, workstreamDoorKeepsWork(turn.Door), turn.Now, turn.TZ)
 	} else {
 		system = factoryWorkstreamAgentSystem(turn.Name, turn.Asker, workstreamDoorKeepsWork(turn.Door), turn.Now, turn.TZ)
+		if workstreamDoorKeepsCanvases(turn.Door) {
+			system += "\n\n" + factoryWorkstreamAgentCanvas
+		}
 		if about := strings.TrimSpace(turn.About); about != "" {
 			system += "\n\n" + about
 		}
@@ -477,7 +497,7 @@ func factoryWorkstreamAgentTaskRun(id, title, starter string) string {
 	return "This time nobody is chatting with you: " + starter + " started you on one task, \"" + title + "\" (its id, for your tools only: " + id + "). " +
 		"The message below is what the task asks: its brief, the decisions in force, and the words of the files and earlier task Results it builds on, already read for you. Start the work from it; read anything else with your tools only when it does not cover what you need. Everyone in the workstream can read what you say and do here, as the task's Working conversation, so say briefly what you are doing as you go. " +
 		"The task's owner or the person who started you may write to you here while you work: their words change the work, so follow them, and say in one line what you changed because of them. Everyone already reads their words here: never repeat them on the task as a note or a comment. " +
-		"Put anything you write in Files with ws_file_create and name it in the task's results. " +
+		"Put anything you write in Files with ws_file_create, and anything visual on a canvas, and name it in the task's results. " +
 		"When the work is done, post one plain line saying what you did with ws_task_comment, then set the task done with ws_task_update, with check saying what you checked it against and handoff: two to four lines on what you made, what you assumed, and what the next task should know. " +
 		"If a person must choose before you can go on, raise an Ask with ws_task_update and stop. " +
 		"If you cannot do it (an input is missing, or it needs something you do not have, such as the web), do not fail it: raise an Ask to the task's owner with ws_task_update, saying what you lack, with options such as \"Paste their text\", \"Do it myself\" and \"Drop it\", and stop."
@@ -586,4 +606,28 @@ func factoryMySpaceAgentSystem(asker string, work bool, now time.Time, tz string
 		"You cannot run commands, read or change a repository, open files on a computer, start Factory work or use the web. " +
 		"When a person asks for that, say that you cannot here.\n\n" +
 		factoryWorkstreamAgentWords + "\n\nAnswer briefly, in plain words."
+}
+
+// factoryAgentCanvasWords is a ws_canvas step as a person reads it: what it
+// did to a canvas, never its command line, which carries ids and whole pages.
+func factoryAgentCanvasWords(raw string) string {
+	var args struct {
+		Command string `json:"command"`
+	}
+	_ = json.Unmarshal([]byte(raw), &args)
+	words := strings.Fields(strings.TrimPrefix(strings.TrimSpace(args.Command), "canvas "))
+	if len(words) == 0 {
+		return "worked on a canvas"
+	}
+	switch words[0] {
+	case "guide":
+		return "read the canvas guide"
+	case "new":
+		return "made a canvas"
+	case "list":
+		return "read the canvases"
+	case "show", "marks", "writers":
+		return "read a canvas"
+	}
+	return "drew on a canvas"
 }

@@ -568,7 +568,7 @@ func (h *Handler) startAgentTurn(ws factory.OrgWorkstream, v wsViewer, asker, ch
 		h.chatTouched(seat, text)
 	}
 	h.publishAgent(seat, api.AgentEvent{AgentState: &state})
-	door := &agentDoor{h: h, id: ws.ID, asker: asker, operator: v.Operator, cards: cards && chat == "" && !ws.Space}
+	door := &agentDoor{h: h, id: ws.ID, asker: asker, operator: v.Operator, cards: cards && chat == "" && !ws.Space, space: ws.Space}
 	run := AgentTurn{Workstream: ws.ID, Name: ws.Name, Turn: turn, Asker: asker, Text: text, Now: now, TZ: tz, About: h.orgAbout(), Chat: chat, Space: ws.Space, Agent: persona,
 		Key: h.orgModelKey(), Dir: filepath.Join(h.agentDir(seat), "agent"), Door: h.withLibrary(door), Library: h.spacesServed(),
 		Step: func(kind, text, tool string, failed bool) {
@@ -720,6 +720,12 @@ type agentDoor struct {
 	// cards is whether the app this person's message came from draws task
 	// cards (workstream_agent_cards.go); without it the agent never proposes.
 	cards bool
+	// canvasJoined are the canvases this door has made the agent a member
+	// of (workstream_agent_canvas.go), so it asks once per canvas.
+	canvasJoined sync.Map
+	// space is whether the workstream is a person's own space (myspace.go),
+	// where the agent draws no canvas: it is told of none there.
+	space bool
 }
 
 // madeByTask is the files Afi made for task, which an earlier run of it
