@@ -1,5 +1,11 @@
 # How work on its own actually runs
 
+## How tasks run
+
+Ordinary tasks run in their own working folder. Workers do the work, checks read
+what they left, and tasks land as done, incomplete or your call. Quick tasks run
+in your current folder; the tasks page describes their limits.
+
 ## What happens when I type /task — the forming line is stuck, the task spinner is not moving, nothing happens after /task
 
 `/task <brief>` raises no forming block: nothing is waited for in front of it. The task
