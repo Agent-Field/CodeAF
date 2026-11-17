@@ -64,10 +64,20 @@ A machine with no factory set up has none of this: the chat's factory tools are 
 On an organization server you do not need a GitHub account of your own to make a job. The organization's repositories are the ones turned on in Repos. Only the operator turns a repository on or off, and only from the list the server's own GitHub connection can read.
 
 - **Everyone signed in reads the organization's repositories**, with a password, a passkey or GitHub. A GitHub member also keeps every repository their own GitHub sign-in reads; nothing they had before is taken away.
-- **A job on one of the organization's repositories is made in a workstream you can edit.** Add job on a workstream's Jobs tab offers them. Someone who can only view the workstream sees its jobs and makes none. A job made outside a workstream on such a repository is refused with "Make this job in a workstream you can edit: this repository is the organization's." The operator, and a GitHub member whose own sign-in reads the repository, may still make one anywhere.
+- **A job on one of the organization's repositories is made in a workstream you can edit.** Factory › New job asks for it with a Workstream field (see "the Workstream field in New job"). Someone who can only view a workstream sees its jobs and makes none there. The operator, and a GitHub member whose own sign-in reads the repository, may still make one in no workstream at all.
 - **When the organization has none on**, Add job says so: someone who is not the operator reads "An admin turns repositories on in Repos"; the operator gets a link straight to Repos.
 
 Turning a repository on is the operator's choice of what every member may read through the server: its jobs, their steps and their pull requests.
+
+## the Workstream field in New job — can't add a job to Backlog, "Choose a workstream you can edit", "Ask someone to give you edit on a workstream"
+
+In Factory › New job, picking one of the organization's repositories that you read only through the organization (you are not the operator, and no GitHub sign-in of your own reads it) adds a **Workstream** field under Repository. It lists only the workstreams you can edit, by name; archived ones and ones you can only view are not offered. Add to Backlog makes the job in the workstream you chose, and anyone who can see that workstream sees the job.
+
+- **You can edit no workstream.** Under Workstream the sheet says "Ask someone to give you edit on a workstream, or ask the operator to make this job." in place of a list, and Add to Backlog stays off. Someone with full access to a workstream, or its steward, can give you edit from its People.
+- **Several to choose from.** Nothing is picked for you and Add to Backlog stays off until you choose; with exactly one, it is already chosen. The list says "Only workstreams you can edit. Everyone in it sees the job."
+- **The server refuses a job with no workstream** on such a repository. A tool or script that names none is refused with "Choose a workstream you can edit for this job: this repository is the organization's." when you can edit one, and with the "Ask someone…" sentence above when you can edit none.
+- **Workstreams have no Jobs tab.** A job is made from Factory › New job, never from inside a workstream.
+- The operator, and a GitHub member whose own sign-in reads the repository, see no Workstream field: their jobs need none.
 
 ## job numbers and GitHub issue numbers — a job with no GitHub issue
 

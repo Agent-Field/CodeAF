@@ -78,3 +78,21 @@ func (h *Handler) repoOnlyThroughOrg(r *http.Request, repo string) bool {
 	sight, filter := h.repoSight(r, []string{key})
 	return filter && sight.viaOrg[key]
 }
+
+// markNeedsWorkstream marks the repositories the caller reads only through the
+// organization: a job on one is refused without a workstream they can edit
+// (newJobWorkstream), so the New job sheet asks for one up front. The same
+// sight repoOnlyThroughOrg reads, taken once for the whole list.
+func (h *Handler) markNeedsWorkstream(r *http.Request, repos []api.Repo) {
+	keys := make([]string, len(repos))
+	for i, repo := range repos {
+		keys[i] = strings.ToLower(strings.TrimSpace(repo.Name))
+	}
+	sight, filter := h.repoSight(r, keys)
+	if !filter {
+		return
+	}
+	for i := range repos {
+		repos[i].NeedsWorkstream = sight.viaOrg[keys[i]]
+	}
+}
