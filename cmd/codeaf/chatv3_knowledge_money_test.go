@@ -250,7 +250,7 @@ func TestKnowledgeDailyLimitBlocksEveryRetry(t *testing.T) {
 				session.FlushUsage()
 				return moneyReply(knowledge.Model, "length", "{", 8000), nil
 			})
-			ctx := knowledgeCalls(context.Background(), profile, false)
+			ctx := knowledgeCalls(t.Context(), profile, false)
 			if retry == "owner" {
 				if err := v.Capture(knowledge.Source{ID: "owned", Session: "stage", Job: true, Role: "user", TS: "2026-11-10T12:00:00Z", Text: "Cedar queues jobs."}); err != nil {
 					t.Fatal(err)
@@ -260,29 +260,67 @@ func TestKnowledgeDailyLimitBlocksEveryRetry(t *testing.T) {
 					return provider.WithBilling(ctx, func(provider.Billed) { owned.Add(1) }), nil
 				})
 			}
-			if retry == "automatic backoff" {
-				worker, cancel := context.WithTimeout(ctx, 7*time.Second)
-				defer cancel()
-				if err := v.Run(worker, moneyHistory{}, func() string { return "fixture" }); !errors.Is(err, context.DeadlineExceeded) {
-					t.Fatal(err)
-				}
-			} else {
+			if retry != "automatic backoff" {
 				if err := v.Flush(ctx, "fixture", true); err == nil || !strings.Contains(err.Error(), "length") {
 					t.Fatalf("initial paid failure: %v", err)
 				}
-				if retry == "owner" {
-					time.Sleep(2200 * time.Millisecond)
-					if err := v.Flush(ctx, "fixture", true); err == nil || !strings.Contains(err.Error(), "daily limit reached") {
-						t.Fatalf("owner retry must pause for daily limit: %v", err)
-					}
-				} else {
+				if !session.FlushUsage() {
+					t.Fatal("the initial paid failure did not reach the ledger")
+				}
+				if retry == "reopen" {
 					v = knowledge.Open(profile)
 				}
-				worker, cancel := context.WithTimeout(ctx, 250*time.Millisecond)
-				defer cancel()
-				if err := v.Run(worker, moneyHistory{}, func() string { return "fixture" }); !errors.Is(err, context.DeadlineExceeded) {
+			}
+			poll := time.NewTicker(10 * time.Millisecond)
+			defer poll.Stop()
+			if retry == "owner" {
+				// The repeat guard may still hold the failed call. Retry only
+				// until that guard yields the actual daily-limit refusal.
+				for {
+					err := v.Flush(ctx, "fixture", true)
+					if err != nil && strings.Contains(err.Error(), "daily limit reached") {
+						break
+					}
+					if err == nil || !strings.Contains(err.Error(), "knowledge retry paused") {
+						t.Fatalf("owner retry must pause for daily limit: %v", err)
+					}
+					select {
+					case <-ctx.Done():
+						t.Fatal(ctx.Err())
+					case <-poll.C:
+					}
+				}
+			}
+			// A deadline ending the worker said nothing about which pass had
+			// finished. Observe its persisted daily pause, then cancel and join it.
+			worker, cancel := context.WithCancel(ctx)
+			done := make(chan struct{})
+			var runErr error
+			go func() {
+				runErr = v.Run(worker, moneyHistory{}, func() string { return "fixture" })
+				close(done)
+			}()
+			t.Cleanup(func() { cancel(); <-done })
+			for {
+				state, err := v.Status()
+				if err != nil {
 					t.Fatal(err)
 				}
+				if state.Build.Phase == knowledge.BuildFailed && strings.Contains(state.Build.Error, "daily limit reached") {
+					break
+				}
+				select {
+				case <-done:
+					t.Fatalf("worker ended before persisting its daily pause: %v", runErr)
+				case <-worker.Done():
+					t.Fatal(worker.Err())
+				case <-poll.C:
+				}
+			}
+			cancel()
+			<-done
+			if !errors.Is(runErr, context.Canceled) {
+				t.Fatalf("stopping the settled worker: %v", runErr)
 			}
 			// The day's figure is the whole bill: the concurrent chat's dollar plus the
 			// ordinary compiler's unusable answer, which reaches the global ledger. An

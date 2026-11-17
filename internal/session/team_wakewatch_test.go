@@ -370,9 +370,12 @@ func TestTeamWakeTheLoopBreakerCountsTenMemberReplies(t *testing.T) {
 		}
 		close(releases[i])
 		collect(t, events)
-		// The member's stream closes after its finished event is written.
-		// Read that event and cross the settle boundary again to prove it
-		// cannot duplicate the explicit reply's wake.
+		// Stream closure queues the finished event; its deferred writer may
+		// still be running. Settle it before the next round can post, so an
+		// older finish cannot land between that round's reply and finish.
+		web.settleTeamEvents()
+		// Cross the settle boundary with the finished event present to prove
+		// it cannot duplicate the explicit reply's wake.
 		tick()
 		select {
 		case <-wakes:
