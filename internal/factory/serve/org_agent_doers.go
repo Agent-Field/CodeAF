@@ -3,8 +3,8 @@ package serve
 import "github.com/Agent-Field/codeaf/internal/factory"
 
 // THE ORGANIZATION'S AGENT LIST IS WHO A WORKSTREAM'S TASKS MAY BE DONE BY
-// (org-space DESIGN §4.6). Lane L1 made [Config.WorkstreamAgents] the seam a
-// task's named doer is checked against; lane L3 keeps the agents. When the
+// (org-space DESIGN §4.6). [Config.WorkstreamAgents] is what a task's named
+// doer is checked against, and the organization's agent store keeps them. When the
 // door that builds this server leaves the seam empty and the server keeps a
 // store, the seam reads that store: the agents a workstream has had shared
 // into it, or added from the organization's list, and that still stand there.

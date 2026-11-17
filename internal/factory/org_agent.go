@@ -5,7 +5,7 @@ import "time"
 // ── AN ORGANIZATION'S AGENTS ───────────────────────────────────────────────
 //
 // An agent in an organization is a name and its instructions, made by one
-// person in their own space (org-space DESIGN §4.6, lane L3). It runs on the
+// person in their own space (org-space DESIGN §4.6). It runs on the
 // organization's server with the organization's key, as a chat in its
 // person's space or as a doer in a workstream that lists it. The rules:
 //
