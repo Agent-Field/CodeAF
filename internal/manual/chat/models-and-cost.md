@@ -621,8 +621,9 @@ whenever one serves the model.
 
 The crew is three seats because those are the calls a task spends most of its money on.
 codeaf also makes smaller calls on your behalf — naming a session, the safety gate, memory
-— and those ride two rows of their own in `/settings` → Models, **reflex** and
-**small work**, which ship pointed at near-free models and are not part of the crew.
+— and those follow **the model you chose**. Two rows in `/settings` → Models, **reflex**
+and **small work**, let you point them at a cheaper model; both ship empty, and neither is
+part of the crew.
 
 **`/model` is untouched.** It is the model you talk to, and nothing about the crew moves
 it.
@@ -1284,6 +1285,34 @@ sent the lowest level it offers instead of a switch-off it would refuse, so `off
 `low` on the wire and the row says `low` with no pin word beside it. That is the section
 *A model that cannot stop thinking*.
 
+## Which model names my chats, summarizes, and builds the Library — background work uses your model, so spending never shows one you did not pick
+
+Calls you did not type and no task asked for run in the background: the title a
+conversation gives itself, the reflex pass after every turn (the running summary and what to
+remember), task and job names, the step captions, the router that asks whether a message
+should have been a task and its second look (`routerconfirm`), suggested replies, the safety
+gate, the page AI, and the compiler that builds your Library. **Every one of them runs on the
+model you chose** — the one `/model` and the desktop's model setting name — and, on an
+organization's server, on the model the organization chose. codeaf ships no model of its own
+for any of them, so picking one model means paying for one model.
+Builds before 2026-11-16 ran some of them on models of their own (a gemini row for the
+reflex, an older deepseek for titles and the router); if Spending still shows those, the
+rows are from before, or from a small work, reflex or pin you wrote.
+
+You can still make them cheaper on purpose:
+
+- **small work** and **reflex** in `/settings` → Models (or Small jobs in the desktop's Task
+  Models) point those calls at a model you name. Both ship empty.
+- A role's own pin (`models.roles`, e.g. `title:vendor/model`) moves that one call.
+- **knowledge** (`knowledge.model`) moves the Library compiler.
+
+What does **not** move them: the crew's worker, checker and planner. Those rows belong to
+tasks; a background call never reads them, even when the crew's router has picked a model
+there. With one model turned on, every background call uses that one model.
+
+Spending lists each background call by its role (`title`, `reflex`, `router`,
+`routerconfirm`, `reply_suggestion`, `knowledge`), so you can see what each one cost.
+
 ## Why reflex has its own model class
 
 `reflex` is the role called **after every finished turn**: one call that updates the
@@ -1361,10 +1390,8 @@ then **the model you are talking to**.
 The page AI's roles add two rungs after their own pin. Every `insight_` override
 (`insight_notes`, `insight_ask`, `insight_themes`, `insight_pipeline`, `insight_views`,
 `insight_factory_read`, `insight_factory_scout`) reads **the `insight` pin** next, so one pin on `insight` moves every page.
-Then comes **codeaf's default for `insight`**: `deepseek/deepseek-v4.1-flash` on
-OpenRouter, while OpenRouter is connected and your allowed models admit it. That default is
-never written into `models.roles`; it stops applying the moment either condition does, and
-any pin you write outranks it. Without it the page AI follows the small work row.
+Then the page AI follows the small work row, and, when that is empty, the model you chose.
+codeaf has no model of its own for it.
 
 Two things worth knowing:
 

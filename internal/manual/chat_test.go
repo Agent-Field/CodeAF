@@ -38,6 +38,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does the server's Afi know what today's date is in my time zone", "organization-workstream-agent"},
 		{"where do I put the organization's model key for the server", "organization-workstream-agent"},
 		{"who can change a workstream's people and rules", "workstream-people-and-rules"},
+		{"can Afi see my chats in a workstream", "workstream-chats-and-tools"},
+		{"does leaving a chat stop what it is doing", "workstream-chats-and-tools"},
 		{"can I put a workstream inside another workstream", "workstream-people-and-rules"},
 		{"how much can an agent spend before it asks me in a workstream", "workstream-people-and-rules"},
 		{"what happens to someone's tasks when I remove them from a workstream", "workstream-people-and-rules"},
@@ -505,6 +507,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"is my code sent anywhere that logs it?", "models-and-cost"},
 		{"why does my openrouter activity say codeaf dev instead of agentfield ai", "models-and-cost"},
 		{"which model are you using and what does a task cost?", "models-and-cost"},
+		// F-20 (workstreams-v5 live run): background seats follow the chosen
+		// model, and a person billed for models they never picked asks this.
+		{"which model names my chats and builds the library in the background?", "models-and-cost"},
+		{"why is my spending showing gemini when I picked deepseek", "models-and-cost"},
 		{"how do I say no to a task it wants to start", "tasks"},
 		{"I typed no to the task and it started anyway", "tasks"},
 		{"where did the model chips on the proposal go", "tasks"},

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/session"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
@@ -141,7 +142,9 @@ func (b *appBackend) organizeNamingDoor(c session.OrganizeConversation) (session
 	if err != nil {
 		return nil, nil, err
 	}
-	resolved, err := roles.Resolve(source, roles.RoleTitle, "")
+	// The floor is the model the person chose: naming is background work and
+	// nothing ships a model for it (internal/roles/background.go).
+	resolved, err := roles.Resolve(source, roles.RoleTitle, config.ChosenModelAt(b.crewProfile()))
 	if err != nil {
 		return nil, nil, session.ErrNoNamingModel
 	}

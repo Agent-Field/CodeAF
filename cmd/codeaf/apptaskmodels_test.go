@@ -269,8 +269,8 @@ func TestAppTaskModelsAuxiliaryPinReadsSetsAndClears(t *testing.T) {
 	if err != nil || cleared.Roles.Auxiliary == nil || cleared.Roles.Auxiliary.Pin != nil {
 		t.Fatalf("after clearing %+v, %v", cleared.Roles.Auxiliary, err)
 	}
-	if model := config.TierModelAt(config.ProfileDir(), config.ModelTierLow); model != config.DefaultLowModel {
-		t.Fatalf("a cleared small-jobs model answers %q, want the build's default %q", model, config.DefaultLowModel)
+	if model := config.TierModelAt(config.ProfileDir(), config.ModelTierLow); model != "" {
+		t.Fatalf("a cleared small-jobs model answers %q, want it to follow the chosen model", model)
 	}
 }
 
@@ -298,11 +298,12 @@ func insightResolves(t *testing.T, role roles.Role) string {
 	return model
 }
 
-// THE PAGE AI's DEFAULT IS THE ENGINE'S, NEVER A WRITTEN PIN. With OpenRouter
-// connected and the model allowed, insight reads no pin and a default of
-// deepseek/deepseek-v4.1-flash on openrouter, the overrides follow insight, and
-// an errand of any of them resolves to that default. Nothing is written.
-func TestAppTaskModelsInsightDefaultIsSeededNotWritten(t *testing.T) {
+// THE PAGE AI HAS NO MODEL OF ITS OWN. It is a background seat
+// (internal/roles' background.go): with OpenRouter connected and the model it
+// used to default to listed and allowed, insight reads no pin and no default,
+// the overrides follow insight, and an errand of any of them resolves to the
+// model the person chose — the floor. Nothing is written.
+func TestAppTaskModelsPageAIFollowsTheChosenModel(t *testing.T) {
 	backend, _ := taskModelsBackend(t)
 	insightModelListed(t)
 	got, err := backend.TaskModels()
@@ -310,8 +311,7 @@ func TestAppTaskModelsInsightDefaultIsSeededNotWritten(t *testing.T) {
 		t.Fatal(err)
 	}
 	insight := got.Roles.Insight
-	want := appwire.ModelRef{ID: "deepseek/deepseek-v4.1-flash", Provider: "openrouter"}
-	if insight == nil || insight.Pin != nil || insight.Default == nil || *insight.Default != want || insight.Follows != "" || insight.EligibleCount == 0 || insight.Label != "Page AI" {
+	if insight == nil || insight.Pin != nil || insight.Default != nil || insight.Follows != "" || insight.EligibleCount == 0 || insight.Label != "Page AI" {
 		t.Fatalf("roles.insight = %+v", insight)
 	}
 	if got.Roles.InsightPipeline == nil || got.Roles.InsightPipeline.Label != "Build with AI" || got.Roles.InsightFactoryScout.Label != "Factory scout" {
@@ -327,17 +327,13 @@ func TestAppTaskModelsInsightDefaultIsSeededNotWritten(t *testing.T) {
 		}
 	}
 	if config.ModelRolesAt(config.ProfileDir()) != "" {
-		t.Fatalf("the default was written as a pin: %q", config.ModelRolesAt(config.ProfileDir()))
+		t.Fatalf("a pin was written: %q", config.ModelRolesAt(config.ProfileDir()))
 	}
 	for _, role := range []roles.Role{roles.RoleInsight, roles.RoleInsightNotes, roles.RoleInsightAsk, roles.RoleInsightThemes,
-		roles.RoleInsightPipeline, roles.RoleInsightViews, roles.RoleInsightFactoryRead, roles.RoleInsightFactoryScout} {
-		if model := insightResolves(t, role); model != want.ID {
-			t.Errorf("%s resolves to %q, want the default %q", role, model, want.ID)
+		roles.RoleInsightPipeline, roles.RoleInsightViews, roles.RoleInsightFactoryRead, roles.RoleInsightFactoryScout, roles.RoleTitle} {
+		if model := insightResolves(t, role); model != "floor/model" {
+			t.Errorf("%s resolves to %q, want the chosen model", role, model)
 		}
-	}
-	// The default never reaches a role outside the family.
-	if model := insightResolves(t, roles.RoleTitle); model == want.ID {
-		t.Errorf("title took the page AI's default")
 	}
 }
 
@@ -353,8 +349,8 @@ func TestAppTaskModelsInsightFollowsItsTierWhenTheDefaultIsNotAllowed(t *testing
 	if got.Roles.Insight == nil || got.Roles.Insight.Default != nil || got.Roles.Insight.Pin != nil {
 		t.Fatalf("roles.insight = %+v", got.Roles.Insight)
 	}
-	if model := insightResolves(t, roles.RoleInsightNotes); model != config.TierModelAt(config.ProfileDir(), config.ModelTierLow) {
-		t.Fatalf("insight_notes resolves to %q, want the small-work tier", model)
+	if model := insightResolves(t, roles.RoleInsightNotes); model != "floor/model" {
+		t.Fatalf("insight_notes resolves to %q, want the chosen model", model)
 	}
 }
 
@@ -426,7 +422,7 @@ func TestAppTaskModelsInsightPinsReadSetAndClear(t *testing.T) {
 		t.Errorf("an insight pin to nothing listed: %v", err)
 	}
 	cleared, err := backend.SetTaskModels(appwire.TaskModelsPatch{Pins: map[string]*appwire.ModelRef{appwire.RoleInsight: nil, appwire.RoleInsightNotes: nil, appwire.RoleInsightFactoryScout: nil}})
-	if err != nil || cleared.Roles.Insight.Pin != nil || cleared.Roles.InsightNotes.Pin != nil || cleared.Roles.Insight.Default == nil {
+	if err != nil || cleared.Roles.Insight.Pin != nil || cleared.Roles.InsightNotes.Pin != nil || cleared.Roles.Insight.Default != nil {
 		t.Fatalf("after clearing insight=%+v notes=%+v %v", cleared.Roles.Insight, cleared.Roles.InsightNotes, err)
 	}
 	if row := config.ModelRolesAt(config.ProfileDir()); row != "title:z-ai/glm-5.3-flash" {

@@ -696,17 +696,13 @@ func (d *agentDoor) WritePage(ctx context.Context, page, title, body string) (st
 		// from the words before; their copy wins, and the agent's goes to
 		// the history below instead.
 		if live, err := h.pageDocLive(d.id, page); err == nil && !live {
-			saved, _, _ := h.config.Store.AddPageVersion(d.id, page, store.PageVersion{At: stamp, By: v.Handle, Title: cur.Title, BodyMD: body, Reason: "manual"})
+			_, _, _ = h.config.Store.AddPageVersion(d.id, page, store.PageVersion{At: stamp, By: v.Handle, Title: cur.Title, BodyMD: body, Reason: "manual"})
 			h.recordAs(ctx, v.Handle, record.WorkstreamChanged, "changed page", orgObjectWorkstream+d.id, page+" by the agent")
 			if w, ok := after[d.id]; ok {
 				h.publishWorkstreamPart(w, api.PartPage, page, v.Handle, cur.Rev, false)
 			}
 			h.agentEditedFile(ws, page, v.Handle)
-			line := "wrote the page " + strconv.Quote(cur.Title)
-			if saved.Version > 1 {
-				line += "; the words before are kept in its History"
-			}
-			return line, nil
+			return "wrote the page " + strconv.Quote(cur.Title), nil
 		}
 	}
 	n, err := d.keepSuggestion(ctx, ws, cur, body, "edited live")

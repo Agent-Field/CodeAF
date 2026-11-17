@@ -209,16 +209,20 @@ func organizeProductionBackend(t *testing.T) (*appBackend, string) {
 	return b, workspace
 }
 
-func TestCrewsOrganizeProductionRequiresNamingOnlyAtDesktopEntry(t *testing.T) {
+// A desktop organize with no naming row written names on the model the person
+// chose, as every background seat does (internal/roles/background.go). It used
+// to refuse with no_naming_model, which was every person who never opened Task
+// Models; the refusal is still the wire's answer where no model resolves at all.
+func TestCrewsOrganizeProductionNamesOnTheChosenModelWithNoNamingRow(t *testing.T) {
 	b, _ := organizeProductionBackend(t)
 	_, err := b.CrewsOrganize(t.Context(), appwire.OrganizeAsk{Pass: "model"})
 	var wire *appwire.Error
-	if !errors.As(err, &wire) || wire.Code != appwire.CodeNoNamingModel {
-		t.Fatalf("missing naming role: %v", err)
+	if errors.As(err, &wire) && wire.Code == appwire.CodeNoNamingModel {
+		t.Fatalf("an unwritten naming row refused organize instead of following the chosen model: %v", err)
 	}
 	for _, a := range b.agents {
 		if a.live != nil {
-			t.Fatal("missing naming role opened a conversation")
+			t.Fatal("the model pass opened a conversation")
 		}
 	}
 }

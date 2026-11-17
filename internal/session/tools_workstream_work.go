@@ -81,7 +81,7 @@ const WorkstreamWorkRules = "You are working inside a workstream: a shared place
 	"- A task's request says only what is to be done, in a few lines. Never copy the private conversation into it.\n" +
 	"- When a private request changes shared work, leave ONE request_note line on the task (for example \"Priya asked to keep it under 300 words\"), never the conversation.\n" +
 	"- Never act on a comment. A comment is people talking to people. When one looks like a request, offer under it (ws_task_comment kind offer) and wait for someone to take the offer.\n" +
-	"- Change a document only by suggestion (ws_file_suggest). You may rewrite a document directly only when you made it and no person has edited it since.\n" +
+	"- Change a document only by suggestion (ws_file_suggest). You may rewrite a document directly only when an agent made it (you, Afi or another chat) and no person has edited it since: that is how you correct another chat's wrong draft.\n" +
 	"- Five or more tasks from one request are a batch: give them one group name (the same name as the chat that runs them)."
 
 var workstreamWorkTools = []WorkstreamWorkTool{
@@ -153,7 +153,7 @@ var workstreamWorkTools = []WorkstreamWorkTool{
 			`},"required":["file"],"additionalProperties":false}`)},
 	{Name: WSFileCreateTool, Category: "create",
 		Description: "Make a document, folder or link in the workstream; everyone in it sees it, with this chat named as who made it. " +
-			"With file set, rewrite a document directly: allowed only for a document you made that no person has edited since; any other document is changed by suggestion with ws_file_suggest.",
+			"With file set, rewrite a document directly: allowed for a document an agent made (you, Afi or another chat) that no person has edited since; any other document is changed by suggestion with ws_file_suggest.",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{` +
 			`"kind":{"type":"string","enum":["document","folder","link"],"description":"What to make; document is the default."},` +
 			`"name":{"type":"string","minLength":1,"maxLength":200},` +
@@ -174,6 +174,32 @@ var workstreamWorkTools = []WorkstreamWorkTool{
 			`},"required":["file","base_version","why","edits"],"additionalProperties":false}`)},
 }
 
+// WSChatsTool is Afi's one extra verb in a workstream: reading the person's
+// own chats there (SPEC "Afi and chats": Afi can read your chats in the
+// workstream; other people cannot).
+const WSChatsTool = "ws_chats"
+
+// workstreamAfiTools are the verbs only Afi carries, and only where the
+// person's own chats live: the desktop app serves them on a Personal
+// workstream. THEY ARE ON NO SERVER BELT. A chat is private to the person who
+// started it and never leaves their computer, so an organization's server has
+// nothing behind this verb, and a capability that cannot work is absent.
+var workstreamAfiTools = []WorkstreamWorkTool{
+	{Name: WSChatsTool, Category: "read",
+		Description: "List the person's own chats in this workstream (name, whether it waits on them, is working or resting, and its latest line), or read one (set chat) to see what was said there lately. " +
+			"Use it when the person asks about one of their chats, or what their chats are doing. " +
+			"These conversations are private to the person you are talking to: tell them what is in them, but never copy them into a task, a comment or a file.",
+		InputSchema: json.RawMessage(`{"type":"object","properties":{` +
+			`"chat":{"type":"string","description":"One chat's id or name, to read what was said there lately."}` +
+			`},"additionalProperties":false}`)},
+}
+
+// WorkstreamAfiTools is the verbs only Afi carries inside a workstream, which
+// the desktop app serves. The slice is a copy.
+func WorkstreamAfiTools() []WorkstreamWorkTool {
+	return append([]WorkstreamWorkTool(nil), workstreamAfiTools...)
+}
+
 // WorkstreamWorkTools is the eight tools, in belt order. The slice is a copy.
 func WorkstreamWorkTools() []WorkstreamWorkTool {
 	return append([]WorkstreamWorkTool(nil), workstreamWorkTools...)
@@ -188,6 +214,7 @@ func init() {
 	glossField[WSFileReadTool] = "file"
 	glossField[WSFileCreateTool] = "name"
 	glossField[WSFileSuggestTool] = "file"
+	glossField[WSChatsTool] = "chat"
 }
 
 // workstreamWorkDoor is the conversation's tasks-and-files door, or nil when

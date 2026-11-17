@@ -85,6 +85,7 @@ CREATE TABLE IF NOT EXISTS page_versions (
 	title         TEXT NOT NULL,
 	reason        TEXT NOT NULL,
 	restored_from INTEGER NOT NULL DEFAULT 0,
+	based_on      INTEGER NOT NULL DEFAULT 0,
 	body_md       TEXT NOT NULL,
 	state         BLOB,
 	PRIMARY KEY (ws, page, version)
@@ -162,6 +163,10 @@ func (st *Store) wsDB(create bool) (*sql.DB, error) {
 	}
 	db.SetMaxOpenConns(1)
 	if _, err := db.Exec(workstreamsSchema + workstreamTasksSchema); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("the organization's workstreams cannot be opened: %w", err)
+	}
+	if err := addPageVersionsBasedOn(db); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("the organization's workstreams cannot be opened: %w", err)
 	}
@@ -467,14 +472,42 @@ type PageVersion struct {
 	Title        string `json:"title"`
 	Reason       string `json:"reason"`
 	RestoredFrom int    `json:"restored_from,omitempty"`
-	Bytes        int    `json:"bytes"`
-	BodyMD       string `json:"body_md,omitempty"`
-	State        []byte `json:"state,omitempty"`
+	// BasedOn is, on a version the agent kept (reason "agent"), the version
+	// whose words it read and changed: the base of a three-way merge onto the
+	// live page at Restore, so nothing typed since is dropped. 0 when unknown.
+	BasedOn int    `json:"based_on,omitempty"`
+	Bytes   int    `json:"bytes"`
+	BodyMD  string `json:"body_md,omitempty"`
+	State   []byte `json:"state,omitempty"`
 }
 
 // pageVersionsKept is how many versions one page keeps; the oldest beyond it
 // are let go when a new one is saved.
 const pageVersionsKept = 200
+
+// addPageVersionsBasedOn gives a page_versions table made before based_on
+// existed that column, once.
+func addPageVersionsBasedOn(db *sql.DB) error {
+	rows, err := db.Query(`SELECT name FROM pragma_table_info('page_versions')`)
+	if err != nil {
+		return err
+	}
+	has := false
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			rows.Close()
+			return err
+		}
+		has = has || name == "based_on"
+	}
+	rows.Close()
+	if has {
+		return nil
+	}
+	_, err = db.Exec(`ALTER TABLE page_versions ADD COLUMN based_on INTEGER NOT NULL DEFAULT 0`)
+	return err
+}
 
 // AddPageVersion saves v as the page's next version, stamping its number. A
 // version whose words and state are the same as the latest is not saved again:
@@ -497,8 +530,8 @@ func (st *Store) AddPageVersion(ws, page string, v PageVersion) (saved PageVersi
 			}
 		}
 		v.Version, v.Bytes = last.Version+1, len(v.BodyMD)
-		if _, err := tx.Exec(`INSERT INTO page_versions (ws, page, version, at, by, title, reason, restored_from, body_md, state)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, ws, page, v.Version, v.At, v.By, v.Title, v.Reason, v.RestoredFrom, v.BodyMD, v.State); err != nil {
+		if _, err := tx.Exec(`INSERT INTO page_versions (ws, page, version, at, by, title, reason, restored_from, based_on, body_md, state)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, ws, page, v.Version, v.At, v.By, v.Title, v.Reason, v.RestoredFrom, v.BasedOn, v.BodyMD, v.State); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(`DELETE FROM page_versions WHERE ws = ? AND page = ? AND version <= ?`, ws, page, v.Version-pageVersionsKept); err != nil {
@@ -516,7 +549,7 @@ func (st *Store) PageVersions(ws, page string) ([]PageVersion, error) {
 	if err != nil || db == nil {
 		return []PageVersion{}, err
 	}
-	rows, err := db.Query(`SELECT version, at, by, title, reason, restored_from, length(CAST(body_md AS BLOB)) FROM page_versions
+	rows, err := db.Query(`SELECT version, at, by, title, reason, restored_from, based_on, length(CAST(body_md AS BLOB)) FROM page_versions
 		WHERE ws = ? AND page = ? ORDER BY version DESC`, ws, page)
 	if err != nil {
 		return nil, err
@@ -525,7 +558,7 @@ func (st *Store) PageVersions(ws, page string) ([]PageVersion, error) {
 	out := []PageVersion{}
 	for rows.Next() {
 		var v PageVersion
-		if err := rows.Scan(&v.Version, &v.At, &v.By, &v.Title, &v.Reason, &v.RestoredFrom, &v.Bytes); err != nil {
+		if err := rows.Scan(&v.Version, &v.At, &v.By, &v.Title, &v.Reason, &v.RestoredFrom, &v.BasedOn, &v.Bytes); err != nil {
 			return nil, err
 		}
 		out = append(out, v)
@@ -540,9 +573,9 @@ func (st *Store) PageVersionAt(ws, page string, version int) (PageVersion, bool,
 		return PageVersion{}, false, err
 	}
 	var v PageVersion
-	err = db.QueryRow(`SELECT version, at, by, title, reason, restored_from, body_md, state FROM page_versions
+	err = db.QueryRow(`SELECT version, at, by, title, reason, restored_from, based_on, body_md, state FROM page_versions
 		WHERE ws = ? AND page = ? AND version = ?`, ws, page, version).
-		Scan(&v.Version, &v.At, &v.By, &v.Title, &v.Reason, &v.RestoredFrom, &v.BodyMD, &v.State)
+		Scan(&v.Version, &v.At, &v.By, &v.Title, &v.Reason, &v.RestoredFrom, &v.BasedOn, &v.BodyMD, &v.State)
 	if errors.Is(err, sql.ErrNoRows) {
 		return v, false, nil
 	}

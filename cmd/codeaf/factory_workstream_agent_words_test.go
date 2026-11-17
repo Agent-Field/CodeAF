@@ -25,6 +25,12 @@ func TestServerAgentPromptKeepsMachineryOut(t *testing.T) {
 		if !strings.Contains(prompt, "never by an id") {
 			t.Errorf("work=%v: the prompt no longer tells the agent to keep ids out of its answers", work)
 		}
+		// NOTHING IN FILES MENTIONS VERSIONS: the agent is never told its text waits in History to be restored.
+		for _, never := range []string{"History", "restore", "version"} {
+			if strings.Contains(prompt, never) {
+				t.Errorf("work=%v: the prompt says %q", work, never)
+			}
+		}
 	}
 	if p := factoryWorkstreamAgentSystem("Pantry", "priya", true, time.Time{}, ""); !strings.Contains(p, "private to the one person") || !strings.Contains(p, "talking to priya") {
 		t.Error("the prompt must say the conversation is private to the person it names (L1 F2)")

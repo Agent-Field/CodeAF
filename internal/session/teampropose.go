@@ -152,10 +152,13 @@ func (a *Agent) ProposeTeams(ctx context.Context, in TeamProposalInput) (TeamPro
 	if closed {
 		return TeamProposal{}, errors.New("the conversation is closed")
 	}
-	// Only a desktop ask requires an explicit naming role. Terminal asks keep
-	// the conversation floor, and one-model mode explicitly chooses that floor.
+	// Only a desktop ask requires a naming model. Naming is background work, so
+	// it floors on the conversation's own model like every other background
+	// seat (internal/roles/background.go): with nothing shipped for the title
+	// seat, an empty floor would refuse every person who never wrote a
+	// small-work row.
 	if in.RequireNaming {
-		if _, err := reader.Resolve(roles.RoleTitle, ""); err != nil {
+		if _, err := reader.Resolve(roles.RoleTitle, model); err != nil {
 			return TeamProposal{}, ErrNoNamingModel
 		}
 	}
