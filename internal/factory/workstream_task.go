@@ -255,13 +255,139 @@ type TaskAssumed struct {
 	OverturnedBy *PersonRef  `json:"overturned_by,omitempty"`
 }
 
+// TaskBrief is what an agent needs to do a task cold (DESIGN §11.1, L7): why
+// it matters, what comes back, how it is checked, what it builds on, and the
+// lines it must keep to. Request stays the one-paragraph summary a person
+// reads in a list; a task made before briefs existed has none.
+//
+// A BRIEF IS WRITTEN FOR AN AGENT THAT NEVER SAW THE CONVERSATION. Every
+// input is a reference (a file, a task's Result, a decision, an address),
+// never prose such as "building on the release notes", so the run that does
+// the task starts with their words in its opening context (the server's
+// taskPacket) instead of hunting for them.
+type TaskBrief struct {
+	Goal        string           `json:"goal,omitempty"`
+	Deliverable string           `json:"deliverable,omitempty"`
+	Acceptance  []string         `json:"acceptance,omitempty"`
+	Inputs      []TaskBriefInput `json:"inputs,omitempty"`
+	Constraints []string         `json:"constraints,omitempty"`
+}
+
+// The kinds of a brief's input.
+const (
+	TaskInputFile     = "file"
+	TaskInputTask     = "task"
+	TaskInputDecision = "decision"
+	TaskInputURL      = "url"
+)
+
+// TaskBriefInput is one thing a task's work builds on. A task input means
+// that task's Result: its result files, its check line and its hand-off note.
+type TaskBriefInput struct {
+	Kind string `json:"kind"`
+	ID   string `json:"id,omitempty"`
+	URL  string `json:"url,omitempty"`
+	Why  string `json:"why,omitempty"`
+}
+
+// The most a brief holds. ONE SOURCE: the tool schema interpolates these.
+const (
+	TaskAcceptanceFewest = 2
+	TaskAcceptanceMost   = 6
+	TaskInputsMost       = 12
+	TaskConstraintsMost  = 8
+	taskBriefLineMost    = 600
+	// TaskHandoffMost is the most a hand-off note holds, in characters.
+	TaskHandoffMost = 1200
+)
+
+// IsEmpty is whether b says nothing.
+func (b *TaskBrief) IsEmpty() bool {
+	return b == nil || (b.Goal == "" && b.Deliverable == "" && len(b.Acceptance) == 0 && len(b.Inputs) == 0 && len(b.Constraints) == 0)
+}
+
+// CleanBrief trims b and checks its sizes and input kinds. It answers nil for
+// a brief that says nothing.
+func CleanBrief(b *TaskBrief) (*TaskBrief, error) {
+	if b == nil {
+		return nil, nil
+	}
+	lines := func(in []string, what string, most int) ([]string, error) {
+		out := []string{}
+		for _, l := range in {
+			if l = strings.TrimSpace(l); l == "" {
+				continue
+			}
+			if len([]rune(l)) > taskBriefLineMost {
+				return nil, taskInvalidf("a line of %s is longer than %d characters", what, taskBriefLineMost)
+			}
+			out = append(out, l)
+		}
+		if len(out) > most {
+			return nil, taskInvalidf("%s has at most %d lines", what, most)
+		}
+		return out, nil
+	}
+	c := TaskBrief{Goal: strings.TrimSpace(b.Goal), Deliverable: strings.TrimSpace(b.Deliverable)}
+	if len([]rune(c.Goal)) > taskBriefLineMost || len([]rune(c.Deliverable)) > taskBriefLineMost {
+		return nil, taskInvalidf("a brief's goal and deliverable are at most %d characters each", taskBriefLineMost)
+	}
+	var err error
+	if c.Acceptance, err = lines(b.Acceptance, "acceptance", TaskAcceptanceMost); err != nil {
+		return nil, err
+	}
+	if c.Constraints, err = lines(b.Constraints, "constraints", TaskConstraintsMost); err != nil {
+		return nil, err
+	}
+	if len(b.Inputs) > TaskInputsMost {
+		return nil, taskInvalidf("a brief has at most %d inputs", TaskInputsMost)
+	}
+	for _, in := range b.Inputs {
+		in.Kind, in.ID, in.URL, in.Why = strings.TrimSpace(in.Kind), strings.TrimSpace(in.ID), strings.TrimSpace(in.URL), strings.TrimSpace(in.Why)
+		switch in.Kind {
+		case TaskInputFile, TaskInputTask, TaskInputDecision:
+			if in.ID == "" {
+				return nil, taskInvalidf("a %s input names its id", in.Kind)
+			}
+		case TaskInputURL:
+			if in.URL == "" {
+				in.URL, in.ID = in.ID, ""
+			}
+			if in.URL == "" {
+				return nil, TaskInvalid("a url input names its address")
+			}
+		default:
+			return nil, taskInvalidf("an input is a file, task, decision or url, not %q", in.Kind)
+		}
+		in.Why = cutWords(in.Why, 300)
+		if !slices.Contains(c.Inputs, in) {
+			c.Inputs = append(c.Inputs, in)
+		}
+	}
+	if c.IsEmpty() {
+		return nil, nil
+	}
+	return &c, nil
+}
+
+// cutWords cuts s to most runes.
+func cutWords(s string, most int) string {
+	if r := []rune(s); len(r) > most {
+		return string(r[:most])
+	}
+	return s
+}
+
 // WorkstreamTask is one task.
 type WorkstreamTask struct {
-	ID          string       `json:"id"`
-	WS          string       `json:"ws"`
-	Rev         int          `json:"rev"`
-	Title       string       `json:"title"`
-	Request     string       `json:"request"`
+	ID      string `json:"id"`
+	WS      string `json:"ws"`
+	Rev     int    `json:"rev"`
+	Title   string `json:"title"`
+	Request string `json:"request"`
+	// Brief is what an agent needs to do the task cold; absent on a task
+	// made before briefs, which reads by its Request.
+	Brief       *TaskBrief   `json:"brief,omitempty"`
 	Owner       TaskOwner    `json:"owner"`
 	DoneBy      TaskDoneBy   `json:"done_by"`
 	CameFrom    TaskCameFrom `json:"came_from"`
@@ -275,7 +401,11 @@ type WorkstreamTask struct {
 	Group     *TaskGroup   `json:"group,omitempty"`
 	Results   []TaskResult `json:"results"`
 	Check     string       `json:"check,omitempty"`
-	Ask       *TaskAsk     `json:"ask,omitempty"`
+	// Handoff is the doer's note when it finished: what it made, what it
+	// assumed, and what the next task should know. It goes into the opening
+	// context of every task that waits on this one or names it as an input.
+	Handoff string   `json:"handoff,omitempty"`
+	Ask     *TaskAsk `json:"ask,omitempty"`
 	// Asks are the task's other open Asks, each with its own decider. The
 	// task waits on all of them and on Ask: approval by several people is
 	// several Asks.
@@ -510,6 +640,7 @@ func JobTaskID(n int) string { return TaskJobPrefix + strconv.Itoa(n) }
 type TaskCreate struct {
 	Title     string        `json:"title"`
 	Request   string        `json:"request,omitempty"`
+	Brief     *TaskBrief    `json:"brief,omitempty"`
 	Owner     *TaskOwner    `json:"owner,omitempty"`
 	DoneBy    TaskDoneBy    `json:"done_by"`
 	CameFrom  *TaskCameFrom `json:"came_from,omitempty"`
@@ -533,6 +664,11 @@ func NewTask(ws, id string, in TaskCreate, by PersonRef, defaultOwner TaskOwner,
 		DoneBy: in.DoneBy, State: TaskUpNext, WaitingOn: cleanIDs(in.WaitingOn), Due: strings.TrimSpace(in.Due),
 		Results: []TaskResult{}, CreatedBy: by, CreatedAt: stamp, UpdatedAt: stamp,
 	}
+	brief, err := CleanBrief(in.Brief)
+	if err != nil {
+		return t, err
+	}
+	t.Brief = brief
 	if in.CameFrom != nil {
 		t.CameFrom = *in.CameFrom
 	} else {
@@ -743,9 +879,12 @@ type TaskPatch struct {
 	StateReason *string       `json:"state_reason,omitempty"`
 	Results     *[]TaskResult `json:"results,omitempty"`
 	Check       *string       `json:"check,omitempty"`
-	Ask         *TaskAsk      `json:"ask,omitempty"`
-	ClearAsk    bool          `json:"-"`
-	MoveTo      string        `json:"move_to,omitempty"`
+	// Brief replaces the task's brief whole; Handoff sets the doer's note.
+	Brief    *TaskBrief `json:"brief,omitempty"`
+	Handoff  *string    `json:"handoff,omitempty"`
+	Ask      *TaskAsk   `json:"ask,omitempty"`
+	ClearAsk bool       `json:"-"`
+	MoveTo   string     `json:"move_to,omitempty"`
 	// AddAsk raises another Ask, to its Decider: the task waits on it too.
 	AddAsk *TaskAsk `json:"add_ask,omitempty"`
 	// AskLater is Later on one of Asks, by its decider.
@@ -815,7 +954,7 @@ func ApplyPatch(t WorkstreamTask, p TaskPatch, a TaskActor, by TaskEventBy, all 
 	event := func(kind, text string) {
 		events = append(events, WorkstreamTaskEvent{ID: newID(), Task: t.ID, At: stamp, By: by, Kind: kind, Text: text})
 	}
-	if p.Title != nil || p.Request != nil {
+	if p.Title != nil || p.Request != nil || p.Brief != nil {
 		if !a.owns(t) && !asker {
 			return TaskChange{}, TaskRefused("only the task's owner and whoever asked for it can change what it asks")
 		}
@@ -824,6 +963,13 @@ func ApplyPatch(t WorkstreamTask, p TaskPatch, a TaskActor, by TaskEventBy, all 
 		}
 		if p.Request != nil {
 			t.Request = strings.TrimSpace(*p.Request)
+		}
+		if p.Brief != nil {
+			brief, err := CleanBrief(p.Brief)
+			if err != nil {
+				return TaskChange{}, err
+			}
+			t.Brief = brief
 		}
 	}
 	if p.Owner != nil && *p.Owner != t.Owner {
@@ -917,6 +1063,9 @@ func ApplyPatch(t WorkstreamTask, p TaskPatch, a TaskActor, by TaskEventBy, all 
 		if t.Check != "" && t.Check != before.Check {
 			event(TaskEventChecked, t.Check)
 		}
+	}
+	if p.Handoff != nil {
+		t.Handoff = cutWords(strings.TrimSpace(*p.Handoff), TaskHandoffMost)
 	}
 	if p.ClearAsk {
 		t.Ask = nil

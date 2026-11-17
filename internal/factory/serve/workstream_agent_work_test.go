@@ -58,7 +58,7 @@ func TestServerAgentKeepsWorkAsTasks(t *testing.T) {
 		if !ok {
 			t.Fatal("the server's door does not answer the ws_* tools")
 		}
-		created := work(ctx, d, "ws_task_create", `{"title":"Parser reads unicode fractions","request":"Make ½ parse."}`)
+		created := work(ctx, d, "ws_task_create", `{"title":"Parser reads unicode fractions","request":"Make ½ parse.","goal":"Ship it right","deliverable":"A document in Files","acceptance":["Covers the change","Plain words"]}`)
 		made := created["task"].(map[string]any)
 		id := made["id"].(string)
 		// The sentence the model repeats names the task, never its id (live2 E6 F11).
@@ -150,7 +150,7 @@ func TestServerAgentWritesNoTaskForSomeoneWhoLostEdit(t *testing.T) {
 	o := newWSOrg(t)
 	_, launch, _, _ := o.orgScene(t)
 	d := &agentDoor{h: o.h, id: launch.ID, asker: "abir"}
-	if _, err := d.Work(context.Background(), "ws_task_create", json.RawMessage(`{"title":"x","request":"y"}`)); err == nil {
+	if _, err := d.Work(context.Background(), "ws_task_create", json.RawMessage(`{"title":"x","request":"y","goal":"Ship it right","deliverable":"A document in Files","acceptance":["Covers the change","Plain words"]}`)); err == nil {
 		t.Fatal("abir, who cannot see Launch plan, made a task in it through the agent")
 	}
 }
@@ -277,7 +277,7 @@ func TestServerAgentTaskRunLinksItsFilesAndTicksItsChecklist(t *testing.T) {
 		}
 		return out
 	}
-	made := work(chat, "ws_task_create", `{"title":"Draft the launch post","request":"A post for Friday","checklist":["Outline","First draft"]}`)
+	made := work(chat, "ws_task_create", `{"title":"Draft the launch post","request":"A post for Friday","checklist":["Outline","First draft"],"goal":"Announce the launch","deliverable":"A post in Files","acceptance":["Names the date","Under 100 words"]}`)
 	task := made["task"].(map[string]any)
 	id := task["id"].(string)
 	list, _ := task["checklist"].([]any)

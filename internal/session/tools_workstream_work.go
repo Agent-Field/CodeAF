@@ -163,7 +163,8 @@ var workstreamWorkTools = []WorkstreamWorkTool{
 		Description: "Create a task in the workstream; everyone in it sees it, with who does it named on it. " +
 			"Name WHO does the work in done_by: a review or sign-off meant for someone is done by that person (person:<their id>), never by its owner. " +
 			"Not everything said in a chat becomes a task: create one for work that runs beyond your reply, changes a file, or matters to someone else, and say so in your reply. " +
-			"request is only what is to be done, in a few lines; never the private conversation. " +
+			"Write it so another agent who never saw this conversation can do it cold: request is a short summary; goal, deliverable and acceptance say why, what comes back and how it is checked; inputs name by id every file, task Result, decision or link the work builds on, so the run starts with their words; constraints are the lines it must keep to; never the private conversation. " +
+			"A task an agent does is refused without goal, deliverable and acceptance. Every task in waiting_on is an input by itself. " +
 			"The person you are talking to owns it unless you name another owner. " +
 			"A task is a deliverable (hours to days of work), never anything under " + strconv.Itoa(WorkstreamTaskSmallestMinutes) + " minutes; big work is " + strconv.Itoa(WorkstreamPlanFewest) + " to " + strconv.Itoa(WorkstreamPlanMost) + " tasks, and one task's steps are its checklist, never tasks of their own. " +
 			"Five or more tasks from one request share one group name (the same name as the chat that runs them) and arrive in Up next as a plan with Start and Change the plan; nothing in a batch starts until a person presses Start. " +
@@ -171,6 +172,11 @@ var workstreamWorkTools = []WorkstreamWorkTool{
 		InputSchema: json.RawMessage(`{"type":"object","properties":{` +
 			`"title":{"type":"string","minLength":1,"maxLength":200},` +
 			`"request":{"type":"string","minLength":1,"maxLength":4000,"description":"What is to be done, in a few lines. Never the conversation."},` +
+			`"goal":{"type":"string","maxLength":600,"description":"One or two lines on why the work matters, and for whom."},` +
+			`"deliverable":{"type":"string","maxLength":600,"description":"What comes back and where: \"a document in Files\", \"a canvas\", \"an answer on the task\"."},` +
+			`"acceptance":{"type":"array","minItems":` + strconv.Itoa(factory.TaskAcceptanceFewest) + `,"maxItems":` + strconv.Itoa(factory.TaskAcceptanceMost) + `,"items":{"type":"string","minLength":1,"maxLength":600},"description":"Checkable lines the result must meet; the doer's check answers each one."},` +
+			`"inputs":{"type":"array","maxItems":` + strconv.Itoa(factory.TaskInputsMost) + `,"items":{"type":"object","properties":{"kind":{"type":"string","enum":["file","task","decision","url"]},"id":{"type":"string","description":"A file's id from ws_files, a task's id from ws_tasks (its Result), or a decision's id from ws_decisions."},"url":{"type":"string","maxLength":2048,"description":"With kind url: the address."},"why":{"type":"string","maxLength":300,"description":"What the work takes from it, in a few words."}},"required":["kind"],"additionalProperties":false},"description":"What the work builds on, as references. The run starts with their words."},` +
+			`"constraints":{"type":"array","maxItems":` + strconv.Itoa(factory.TaskConstraintsMost) + `,"items":{"type":"string","minLength":1,"maxLength":600},"description":"Lines the work must keep to: length, tone, must and must-not (\"No meal planning\")."},` +
 			`"owner":{"type":"string","description":"Who answers for it: \"me\" (the person you are talking to, the default) or a person's id from ws_tasks. Someone invited who has not joined goes by an id starting invite:, and a task they do waits until they join."},` +
 			`"done_by":` + WorkstreamDoneBySchema + `,` +
 			`"waiting_on":{"type":"array","items":{"type":"string"},"maxItems":20,"description":"Ids of tasks in this workstream that must finish first."},` +
@@ -181,7 +187,7 @@ var workstreamWorkTools = []WorkstreamWorkTool{
 	{Name: WSTaskUpdateTool, Category: "edit",
 		Description: "Change a task this chat does: its state, its result, the check of the result against the request, or an Ask for its owner. " +
 			"Only the task's owner answers an Ask; put your recommendation first and mark it recommended. " +
-			"Before calling a task done, check the result against the request and say what you checked in check. " +
+			"Before calling a task done, check the result against each acceptance line and say what you checked in check, and leave handoff: what you made, what you assumed, what the next task should know. Done without a handoff is refused. " +
 			"When a private request changes this shared task, set request_note to ONE line naming who asked for what (\"Priya asked to keep it under 300 words\"), never the conversation, and decision to what it now settles. " +
 			"List what you decided without asking under assumed. Calling a task done is checked against the workstream's decisions; work that goes against one is not done until its maker answers.",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{` +
@@ -192,6 +198,7 @@ var workstreamWorkTools = []WorkstreamWorkTool{
 			`"state":{"type":"string","enum":["running","done","failed","stopped"]},` +
 			`"state_reason":{"type":"string","maxLength":500},` +
 			`"check":{"type":"string","maxLength":500,"description":"What the result was checked against, in one line: \"280 words, plain language, import fix included\"."},` +
+			`"handoff":{"type":"string","maxLength":` + strconv.Itoa(factory.TaskHandoffMost) + `,"description":"With done: two to four lines on what you made, what you assumed, and what the next task should know. It goes to every task that builds on this one."},` +
 			`"results":{"type":"array","maxItems":20,"items":{"type":"object","properties":{"file":{"type":"string"},"url":{"type":"string"},"label":{"type":"string","maxLength":200}},"additionalProperties":false}},` +
 			`"ask":{"type":"object","properties":{"title":{"type":"string","minLength":1,"maxLength":200},"detail":{"type":"string","maxLength":1000},` +
 			`"options":{"type":"array","minItems":1,"maxItems":4,"items":{"type":"object","properties":{"label":{"type":"string","minLength":1,"maxLength":80},"recommended":{"type":"boolean"},"decides":{"type":"string","maxLength":300,"description":"The decision this answer records, as one plain statement: \"The March notes go on the website\"."}},"required":["label"],"additionalProperties":false}}},` +

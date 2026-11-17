@@ -475,10 +475,10 @@ func factoryNamedAgentSystem(a serve.AgentPersona, place string) string {
 // that ends without setting done or failed is left failed by the server.
 func factoryWorkstreamAgentTaskRun(id, title, starter string) string {
 	return "This time nobody is chatting with you: " + starter + " started you on one task, \"" + title + "\" (its id, for your tools only: " + id + "). " +
-		"The message below is what the task asks. Do the work with your tools. Everyone in the workstream can read what you say and do here, as the task's Working conversation, so say briefly what you are doing as you go. " +
+		"The message below is what the task asks: its brief, the decisions in force, and the words of the files and earlier task Results it builds on, already read for you. Start the work from it; read anything else with your tools only when it does not cover what you need. Everyone in the workstream can read what you say and do here, as the task's Working conversation, so say briefly what you are doing as you go. " +
 		"The task's owner or the person who started you may write to you here while you work: their words change the work, so follow them, and say in one line what you changed because of them. Everyone already reads their words here: never repeat them on the task as a note or a comment. " +
 		"Put anything you write in Files with ws_file_create and name it in the task's results. " +
-		"When the work is done, post one plain line saying what you did with ws_task_comment, then set the task done with ws_task_update. " +
+		"When the work is done, post one plain line saying what you did with ws_task_comment, then set the task done with ws_task_update, with check saying what you checked it against and handoff: two to four lines on what you made, what you assumed, and what the next task should know. " +
 		"If a person must choose before you can go on, raise an Ask with ws_task_update and stop. " +
 		"If you cannot do it, set the task failed with ws_task_update and a state_reason saying why in plain words."
 }

@@ -66,7 +66,7 @@ On a Personal workstream the desktop app serves them. On an organization whose a
 
 No. Not everything said in a chat becomes a task. An agent makes a task for work that runs beyond its reply, changes a file, or matters to someone else, and it says so in its reply. A quick answer stays in the chat. Before making a task it reads the workstream's tasks, and when one already covers the work it points you to that task instead of starting a duplicate.
 
-A task's request says only what is to be done, in a few lines. The agent never copies your private conversation into it. You own the tasks you ask for unless you name someone else or Everyone.
+A task an agent does is written as a brief another agent could do cold: a goal, a deliverable, acceptance lines, its inputs as references to files, earlier tasks' Results, decisions or links, and its constraints (see "a task's brief" on the page about tasks). Its request is a short summary. The agent never copies your private conversation into it. When it finishes, the doer leaves a hand-off note for the next task. You own the tasks you ask for unless you name someone else or Everyone.
 
 ## does the agent read comments on a document — answering a comment on a passage
 

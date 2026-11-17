@@ -38,7 +38,7 @@ func TestServerAgentDoorAnswersTheDecisionCheck(t *testing.T) {
 		if json.Unmarshal([]byte(line), &got) != nil || len(got.Decisions) != 1 || got.Decisions[0].Text != "No price change in 2.4" || got.Decisions[0].By != "santosh" {
 			t.Fatalf("ws_decisions = %s", line)
 		}
-		made, err := d.Work(ctx, "ws_task_create", json.RawMessage(`{"title":"Raise Plus to $5.99","request":"Change the price."}`))
+		made, err := d.Work(ctx, "ws_task_create", json.RawMessage(`{"title":"Raise Plus to $5.99","request":"Change the price.","goal":"Ship it right","deliverable":"A document in Files","acceptance":["Covers the change","Plain words"]}`))
 		if err != nil {
 			t.Fatal(err)
 		}

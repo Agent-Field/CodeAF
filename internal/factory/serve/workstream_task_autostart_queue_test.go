@@ -37,7 +37,7 @@ func TestTasksReleasedTogetherStartByThemselvesUnderTheLimits(t *testing.T) {
 		case <-ctx.Done():
 			return AgentTurnEnd{}, ctx.Err()
 		}
-		_, err := turn.Door.(workDoor).Work(ctx, "ws_task_update", json.RawMessage(`{"task":"`+turn.Task.ID+`","state":"done"}`))
+		_, err := turn.Door.(workDoor).Work(ctx, "ws_task_update", json.RawMessage(`{"task":"`+turn.Task.ID+`","state":"done","handoff":"Did the task."}`))
 		return AgentTurnEnd{}, err
 	})
 	brief := o.task(t, "santosh", path, api.TaskCreate{Title: "Brief", DoneBy: afi})

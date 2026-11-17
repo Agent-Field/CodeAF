@@ -46,7 +46,7 @@ func TestAStartOnTheServerWakesAfiAndOnlyThenSaysRunning(t *testing.T) {
 		if _, err := d.Work(ctx, "ws_task_comment", json.RawMessage(`{"task":"`+turn.Task.ID+`","text":"Done: `+turn.Task.Title+`"}`)); err != nil {
 			return AgentTurnEnd{}, err
 		}
-		_, err := d.Work(ctx, "ws_task_update", json.RawMessage(`{"task":"`+turn.Task.ID+`","state":"done"}`))
+		_, err := d.Work(ctx, "ws_task_update", json.RawMessage(`{"task":"`+turn.Task.ID+`","state":"done","handoff":"Made the table."}`))
 		return AgentTurnEnd{}, err
 	})
 
@@ -60,7 +60,7 @@ func TestAStartOnTheServerWakesAfiAndOnlyThenSaysRunning(t *testing.T) {
 	if got := o.one(t, path, alone.ID); got.State != factory.TaskDone || got.DoneBy.Kind != factory.TaskByAfi {
 		t.Fatalf("Afi's run left %+v", got)
 	}
-	if turn := asked["Draft the notes"]; turn.Asker != "abir" || turn.Text != "Draft the notes\n\nTwo paragraphs." {
+	if turn := asked["Draft the notes"]; turn.Asker != "abir" || !strings.HasPrefix(turn.Text, "Draft the notes\n\nTwo paragraphs.") {
 		t.Fatalf("Afi was asked %+v", turn)
 	}
 	if !o.threadSays(t, path, alone.ID, "Done: Draft the notes") {

@@ -68,7 +68,7 @@ func TestPlanStartLeavesUntickedTasksUpNext(t *testing.T) {
 	ticked := o.task(t, "santosh", path, api.TaskCreate{Title: "Write notes", DoneBy: factory.TaskDoneBy{Kind: factory.TaskByAfi}, Group: group})
 	unticked := o.task(t, "santosh", path, api.TaskCreate{Title: "Write docs", DoneBy: factory.TaskDoneBy{Kind: factory.TaskByAfi}, Group: group})
 	o.serverMode(t, func(ctx context.Context, turn AgentTurn) (AgentTurnEnd, error) {
-		_, err := turn.Door.(workDoor).Work(ctx, "ws_task_update", json.RawMessage(`{"task":"`+turn.Task.ID+`","state":"done"}`))
+		_, err := turn.Door.(workDoor).Work(ctx, "ws_task_update", json.RawMessage(`{"task":"`+turn.Task.ID+`","state":"done","handoff":"Did the task."}`))
 		return AgentTurnEnd{}, err
 	})
 	var started api.WorkstreamTasks
