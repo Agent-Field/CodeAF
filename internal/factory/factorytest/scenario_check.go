@@ -350,6 +350,10 @@ func pressDoor(handler http.Handler, st *store.Store, it factory.Item, action st
 		return post("raise_budget", map[string]any{"budget": raisedBudget(it)}), true
 	case factory.DoStart:
 		return post("start_now", nil), true
+	case factory.DoActsApprove:
+		return post(api.ActsApproveVerb, map[string]any{}), true
+	case factory.DoActsDecline:
+		return post(api.ActsDeclineVerb, map[string]any{"words": "Not this."}), true
 	}
 	return Pressed{}, false
 }

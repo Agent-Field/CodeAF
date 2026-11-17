@@ -1402,6 +1402,48 @@ them, which reads as unknown.
   client brings the job's Merge card up again, as it stands now, when the value
   moves. Absent when never re-offered. It merges nothing.
 
+Public acts (no hello word yet; the app does not read them in this phase). A
+job carries `acts`, the public acts on its own pull request, oldest first:
+those that wait for the person's yes, those the factory is carrying out with
+the person's GitHub sign-in, and the last 20 that are over. Absent when the job
+has none.
+
+- Each act: `id`, `kind` (`edit_pr`, `change_base`, `reply`, `comment`,
+  `resolve_thread`, `rerequest_review`, `rerun_checks`, `mark_ready`), the
+  kind's own content (`title`, `body`, `base`, `thread`, `text`, `reviewers`),
+  `by` (`main_agent` or `you`), `why`, `at`, `state` (`proposed`, `approved`,
+  `running`, `done`, `failed`, `declined`), `approved_by`, and once it is over
+  `result` (what it did, or the person's words on a decline), `error` (why it
+  failed), `url` and `done_at`. `text` is a reply's or a comment's words
+  exactly as they are posted, with the footer line "Posted by a WorkAF factory
+  agent." already on. `after_push` is the commit whose push an approved act
+  waits for.
+- While acts are `proposed` the job's `wait` is `{who: "you", action:
+  "approve_acts", words: "Approve: post 2 replies and change the base to
+  dev?"}`, unless a narrower action of the person's is already waiting (a push
+  to approve, a merge, the budget, a question): that wait stays and its `words`
+  name the acts. `offers` then carries `acts_approve` and `acts_decline`.
+- `POST /v1/jobs/{id}/act` with `{acts: [{kind, ...}], by, why?, expect?}`
+  proposes acts; an act is approved at once when `by` may (the person, or the
+  job's manager in Auto) and waits as `proposed` otherwise. `push`, `open_pr`
+  and `merge` are accepted as kinds and never stored: a push presses or points
+  at the waiting publish approval, and a merge only offers the merge card
+  again. A proposal with one act the job refuses is refused whole.
+- `POST /v1/jobs/{id}/acts_approve` with `{ids?, expect?}` is the person's one
+  yes to every act that waits (`ids`, when sent, must be exactly the acts
+  waiting, or the answer is 409); `POST /v1/jobs/{id}/acts_decline` with
+  `{words?, expect?}` is their one no. Approving a waiting publish approval
+  (`approve`) approves the waiting acts with it; they are carried out after
+  that push has landed.
+- All three answer `{factory, job, results: [{id?, kind, state, words}],
+  waiting?, acts?, wait?}`. `expect` is the job's version as a number, or the
+  usual `{version, state, step}` object.
+- `pr.feedback_items[]` gains `Thread` (the review thread's node id),
+  `CommentID`, `ReplyTo`, `By`, `Association` (GitHub's word for the author's
+  standing) and `Untrusted` (anyone who is not an owner, member or
+  collaborator); `pr.reviews[]` gains `association` and `untrusted`; `pr.title`
+  is the pull request's title once an act has edited it.
+
 An engine whose hello carries the feature `factory.estimate` reads an issue
 with a complexity rubric and measures cost from its own finished jobs; a model
 never writes a price. A job's `triage.rubric` is `{scope, clarity, coupling,

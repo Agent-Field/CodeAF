@@ -101,6 +101,9 @@ type Scenario struct {
 	clockFaults []string
 	// refused is what the service refused this computer's runner.
 	refused []string
+	// configure, when set, changes the service's configuration each time the
+	// service is opened ([Scenario.SignIn]).
+	configure func(*serve.Config)
 }
 
 // computer is one runner's own disk: the mirror its jobs run over and the
@@ -364,10 +367,15 @@ func (s *Scenario) open() {
 	if s.Record, err = record.Open(s.Store, record.Options{}); err != nil {
 		s.T.Fatal(err)
 	}
-	s.handler = serve.New(s.seam, serve.Config{
+	config := serve.Config{
 		Address: "http://test", Store: s.Store, Record: s.Record, Now: s.clock.Now,
 		PullWait: 300 * time.Millisecond, LeaseOptions: lease.Options{Now: s.clock.Now},
-	})
+	}
+	// A scenario whose person is signed in to GitHub says so (scenario_acts.go).
+	if s.configure != nil {
+		s.configure(&config)
+	}
+	s.handler = serve.New(s.seam, config)
 	s.server = httptest.NewServer(s.listen(s.handler))
 }
 

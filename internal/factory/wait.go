@@ -57,6 +57,9 @@ const (
 	// ActDecide is the fallback: the job needs the person and no narrower
 	// action names why. Words says it plainly.
 	ActDecide = "decide"
+	// ActApproveActs is public acts on the job's pull request that wait for
+	// the person's yes ([PublicAct]). Words says all of them in one line.
+	ActApproveActs = "approve_acts"
 )
 
 // The actions a job can offer. Each is one door of the service.
@@ -76,6 +79,9 @@ const (
 	DoResumeAuto     = "resume_auto"
 	DoRaiseBudget    = "raise_budget"
 	DoStart          = "start"
+	// The two answers to public acts that wait: one yes or one no for all.
+	DoActsApprove = "acts_approve"
+	DoActsDecline = "acts_decline"
 )
 
 // Who may take an offer.
@@ -214,7 +220,11 @@ func underStall(it Item) Wait {
 
 // WaitOf says what the job waits on, with no clock. It is the one reading of
 // the job's other fields into a wait; [SettleWait] stores it.
-func WaitOf(it Item) Wait {
+func WaitOf(it Item) Wait { return waitWithActs(it, waitUnderActs(it)) }
+
+// waitUnderActs is the wait the job's fields give with its public acts set
+// aside; [waitWithActs] reads those in (public_act.go).
+func waitUnderActs(it Item) Wait {
 	state := JobState(it)
 	if state == "done" {
 		return Wait{Who: WaitDone}
@@ -597,6 +607,16 @@ func OffersOf(it Item) []Offer {
 	if kind == NeedsSpendingLimit || !budgetLeft || (it.FollowUp != nil && it.FollowUp.BlockedBy == FollowBlockedBudget) {
 		add(OfferByYou, DoRaiseBudget)
 	}
+	// PUBLIC ACTS THAT WAIT ARE THE PERSON'S TO APPROVE OR DECLINE whatever
+	// else the job waits on, one answer for all of them. In Auto the manager
+	// may give the yes too.
+	if len(ProposedActs(it)) > 0 {
+		add(OfferByYou, DoActsApprove)
+		add(OfferByYou, DoActsDecline)
+		if Automatic(it) {
+			add(OfferByMainAgent, DoActsApprove)
+		}
+	}
 	return out
 }
 
@@ -626,6 +646,7 @@ var moves = map[string][]string{
 	ActComputer:       {DoRerunStep, DoAnswer},
 	ActResume:         {DoResume, DoResumePipeline},
 	ActDecide:         {DoResumePipeline, DoRerunStep, DoAnswer, DoResumeAuto, DoRaiseBudget},
+	ActApproveActs:    {DoActsApprove, DoActsDecline},
 }
 
 // WaitMoves lists the actions the job offers its person that move it off what
@@ -705,6 +726,7 @@ var actionWords = map[string]string{
 	ActComputer:       "bring a computer online",
 	ActResume:         "resume it",
 	ActDecide:         "decide what happens next",
+	ActApproveActs:    "approve what is to be posted or changed on the pull request",
 }
 
 // WaitLine says the job's stored wait and offers in the words the manager's

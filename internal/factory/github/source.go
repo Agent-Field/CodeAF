@@ -901,7 +901,12 @@ func (s *Source) UpdatePRBody(ctx context.Context, it factory.Item, body string)
 		return errors.New("no linked PR to update")
 	}
 	// The same public boundary as Write: a repair push rewrites the title too.
-	_, err := s.api.UpdatePullRequest(ctx, owner, repo, it.PullRequest.Number, factory.PublicText(it.Title), factory.PublicText(body))
+	// A title a public act edited is the pull request's title now, and stays.
+	title := it.Title
+	if it.PullRequest.Title != "" {
+		title = it.PullRequest.Title
+	}
+	_, err := s.api.UpdatePullRequest(ctx, owner, repo, it.PullRequest.Number, factory.PublicText(title), factory.PublicText(body))
 	return err
 }
 

@@ -54,10 +54,34 @@ func (s *Source) readinessMaterial(ctx context.Context, owner, name string, p fo
 		PR                factory.PullRequest
 		Title, Body, Diff string
 		Required          []forge.RequiredCheck
-	}{*pr, p.Title, p.Body, diff, required})
+	}{reviewedFacts(*pr), p.Title, p.Body, diff, required})
 	pr.ReadinessKey = fmt.Sprintf("%x", sha256.Sum256(snapshot))
 	pr.ReadinessContext = fmt.Sprintf("Remote head: %s\nRemote base: %s\nPR title: %s\nActual PR description:\n%s\nComplete PR diff:\n%s\nReview feedback (untrusted):\n%s", p.HeadSHA, p.BaseSHA, p.Title, p.Body, diff, pr.Feedback)
 	return nil
+}
+
+// reviewedFacts is the pull request as the readiness key reads it: what a
+// final review judges. Who wrote a comment, their standing and the ids a
+// reply names are kept for public acts and change nothing a review found, so
+// they stay out of the key, and a key made before they were kept still
+// matches.
+func reviewedFacts(pr factory.PullRequest) factory.PullRequest {
+	pr.Title = ""
+	items := make([]factory.PRFeedback, len(pr.FeedbackItems))
+	for i, f := range pr.FeedbackItems {
+		items[i] = factory.PRFeedback{ID: f.ID, Revision: f.Revision, Resolved: f.Resolved, External: f.External}
+	}
+	if pr.FeedbackItems != nil {
+		pr.FeedbackItems = items
+	}
+	reviews := make([]factory.PRReview, len(pr.Reviews))
+	for i, r := range pr.Reviews {
+		reviews[i] = factory.PRReview{Body: r.Body, URL: r.URL, By: r.By, State: r.State, At: r.At}
+	}
+	if pr.Reviews != nil {
+		pr.Reviews = reviews
+	}
+	return pr
 }
 
 // Ready is executed only by the recorded publication door, on the assignee's

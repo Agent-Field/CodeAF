@@ -49,6 +49,10 @@ func enrich(e *Event) {
 			e.Verb = "requested changes"
 		case PRReady:
 			e.Verb = "marked ready for review"
+		case ActsApproved:
+			e.Verb = "approved public acts"
+		case ActsDeclined:
+			e.Verb = "declined public acts"
 		case PRMerged:
 			e.Verb = "merged"
 		case PRClosed, SourceClosed:

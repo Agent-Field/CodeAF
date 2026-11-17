@@ -137,6 +137,10 @@ type Config struct {
 	Team           []string
 	// GitHubHTTPClient permits a fake transport while keeping production URLs fixed.
 	GitHubHTTPClient *http.Client
+	// ActsClient, when set, is the GitHub client public acts are carried out
+	// with for a sign-in (acts.go), in place of the real one: a whole-factory
+	// test supplies its own forge. Nil is GitHub itself.
+	ActsClient func(token string) factorygithub.API
 	// Now supplies the session clock, including pruning at startup.
 	Now func() time.Time
 	// TokensPath names access-token rows beside the host config. Empty means
@@ -228,6 +232,8 @@ type Handler struct {
 	floorKept floorLook
 	// stalls is the stall watchdog's manager turns in flight (watchdog.go).
 	stalls stallWatch
+	// acts is the one sender of public acts (acts.go).
+	acts actRun
 
 	seam    factory.Seam
 	areas   repoAreas
@@ -384,6 +390,9 @@ func (h *Handler) Close() {
 		h.jobsMu.Unlock()
 		// A manager turn on a stall is ended, not waited out.
 		h.stalls.stop()
+		// So is a public act being sent: its call ends, and what it wrote
+		// about the act is waited for below.
+		h.acts.stop()
 		h.jobsBusy.Wait()
 	}
 

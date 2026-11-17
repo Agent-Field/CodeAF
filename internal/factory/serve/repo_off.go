@@ -27,6 +27,8 @@ var offVerbs = map[string]bool{
 	"run": true, "start_now": true, "run_again": true, "run-as-new": true, "steps/{sid}/rerun": true, "resume": true,
 	"publish_anyway": true, "approve": true, "retry_publish": true, "merge": true, "request_changes": true, "recheck": true,
 	"sync": true, "issue_comment": true, "pr-ready": true,
+	// Public acts on the job's pull request, and the yes that sends them.
+	api.ActVerb: true, api.ActsApproveVerb: true,
 }
 
 // repoSwitch is the switch the store keeps. A factory with no store of its

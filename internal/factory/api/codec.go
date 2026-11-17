@@ -158,6 +158,20 @@ var Lost = map[string]string{
 	"Item.NeedsAt":        "each store's own clock of when the job's wait on a person began, kept at its writes (factory.NoteWait); it crosses as needs_you.since for a wait with no clock of its own",
 }
 
+// cloneActs is a copy of a job's public acts, each with its own reviewers
+// list, so a job and the item it came from never share one.
+func cloneActs(in []factory.PublicAct) []factory.PublicAct {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]factory.PublicAct, len(in))
+	for i, a := range in {
+		a.Reviewers = append([]string(nil), a.Reviewers...)
+		out[i] = a
+	}
+	return out
+}
+
 // cloneBlocked is a copy of a job's block, so a job and the item it came from
 // never share one.
 func cloneBlocked(b *factory.JobBlocked) *factory.JobBlocked {
@@ -178,6 +192,7 @@ func FromItem(it factory.Item) Job {
 		FromJob: it.FromJob, SplitFrom: it.SplitFrom, SourceIssue: it.SourceIssue, RunOn: it.RunOn, AgentField: it.AgentField, AgentFieldSteps: it.AgentFieldSteps,
 		WaitsOn: append([]int(nil), it.WaitsOn...), PolicyRun: it.PolicyRun, Blocked: cloneBlocked(it.Blocked),
 		Recovery: it.Recovery, Autonomy: it.Autonomy, AutonomyWhy: factory.AutonomyBlockReason(it), FollowUp: it.FollowUp, Wait: it.Wait, Offers: append([]factory.Offer(nil), it.Offers...), Manual: it.Manual, Effort: it.Effort,
+		Acts:      cloneActs(it.Acts),
 		SetupHeld: it.SetupHeld, Held: heldInQueue(it), OverLimit: it.OverLimit && it.State == factory.StateQueued,
 		Owners: append([]string(nil), it.Owners...),
 		ID:     it.ID, Repo: it.Repo, Num: it.Num, Kind: string(it.Kind), Title: it.Title, URL: it.URL,
@@ -625,6 +640,7 @@ func ToItem(j Job) factory.Item {
 		FromJob: j.FromJob, SplitFrom: j.SplitFrom, SourceIssue: j.SourceIssue, RunOn: j.RunOn, AgentField: j.AgentField, AgentFieldSteps: j.AgentFieldSteps,
 		WaitsOn: append([]int(nil), j.WaitsOn...), PolicyRun: j.PolicyRun, PolicyGroup: d.PolicyGroup, Blocked: cloneBlocked(j.Blocked),
 		Recovery: j.Recovery, Autonomy: j.Autonomy, FollowUp: j.FollowUp, Wait: j.Wait, Offers: append([]factory.Offer(nil), j.Offers...), Manual: j.Manual, Effort: j.Effort,
+		Acts:      cloneActs(j.Acts),
 		SetupHeld: j.SetupHeld, StopAfterStep: j.StopAfterStep,
 		Owners: append([]string(nil), j.Owners...),
 		ID:     j.ID, Repo: j.Repo, Num: j.Num, Kind: factory.Kind(j.Kind), Title: j.Title, URL: j.URL, Model: j.Model, AutomaticModels: j.AutomaticModels, FactoryModel: j.FactoryModel,
@@ -769,13 +785,14 @@ func fromPR(pr *factory.PullRequest) *PR {
 		return nil
 	}
 	out := &PR{
-		FeedbackItems: append([]factory.PRFeedback(nil), pr.FeedbackItems...), FeedbackTracked: pr.FeedbackTracked, Problems: append([]factory.PRReadProblem(nil), pr.Problems...), BaseSHA: pr.BaseSHA, BaseBranch: pr.BaseBranch, Feedback: pr.Feedback, CheckRuns: mapList(pr.CheckRuns, fromCheckRun),
+		FeedbackItems: append([]factory.PRFeedback(nil), pr.FeedbackItems...), FeedbackTracked: pr.FeedbackTracked, Problems: append([]factory.PRReadProblem(nil), pr.Problems...), BaseSHA: pr.BaseSHA, Feedback: pr.Feedback, CheckRuns: mapList(pr.CheckRuns, fromCheckRun),
 		ReadinessKey: pr.ReadinessKey, Conflict: pr.Conflict, Draft: pr.Draft, Number: pr.Number, URL: pr.URL, CI: pr.CI, State: pr.State,
 		MergedBy: pr.MergedBy, ReviewDecision: pr.ReviewDecision, RequiredReviews: pr.Required,
 		Reviews: mapList(pr.Reviews, func(r factory.PRReview) PRReview {
-			return PRReview{By: r.By, State: r.State, At: r.At, Body: r.Body, URL: r.URL}
+			return PRReview{By: r.By, State: r.State, At: r.At, Body: r.Body, URL: r.URL, Association: r.Association, Untrusted: r.Untrusted}
 		}),
 		HeadSHA: pr.HeadSHA, HeadBranch: pr.HeadBranch, BaseBranch: pr.BaseBranch, Mergeable: pr.Mergeable, ChecksRead: pr.ChecksRead, ReviewsRead: pr.ReviewsRead,
+		Title: pr.Title,
 	}
 	if !pr.MergedAt.IsZero() {
 		at := pr.MergedAt
@@ -799,13 +816,14 @@ func toPR(pr *PR) *factory.PullRequest {
 		return nil
 	}
 	out := &factory.PullRequest{
-		FeedbackItems: append([]factory.PRFeedback(nil), pr.FeedbackItems...), FeedbackTracked: pr.FeedbackTracked, Problems: append([]factory.PRReadProblem(nil), pr.Problems...), BaseSHA: pr.BaseSHA, BaseBranch: pr.BaseBranch, Feedback: pr.Feedback, CheckRuns: mapList(pr.CheckRuns, toCheckRun),
+		FeedbackItems: append([]factory.PRFeedback(nil), pr.FeedbackItems...), FeedbackTracked: pr.FeedbackTracked, Problems: append([]factory.PRReadProblem(nil), pr.Problems...), BaseSHA: pr.BaseSHA, Feedback: pr.Feedback, CheckRuns: mapList(pr.CheckRuns, toCheckRun),
 		ReadinessKey: pr.ReadinessKey, Conflict: pr.Conflict, Draft: pr.Draft, Number: pr.Number, URL: pr.URL, CI: pr.CI, State: pr.State,
 		MergedBy: pr.MergedBy, ReviewDecision: pr.ReviewDecision, Required: pr.RequiredReviews,
 		Reviews: mapList(pr.Reviews, func(r PRReview) factory.PRReview {
-			return factory.PRReview{By: r.By, State: r.State, At: r.At, Body: r.Body, URL: r.URL}
+			return factory.PRReview{By: r.By, State: r.State, At: r.At, Body: r.Body, URL: r.URL, Association: r.Association, Untrusted: r.Untrusted}
 		}),
 		HeadSHA: pr.HeadSHA, HeadBranch: pr.HeadBranch, BaseBranch: pr.BaseBranch, Mergeable: pr.Mergeable, ChecksRead: pr.ChecksRead, ReviewsRead: pr.ReviewsRead,
+		Title: pr.Title,
 	}
 	if pr.MergedAt != nil {
 		out.MergedAt = *pr.MergedAt

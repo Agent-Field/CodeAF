@@ -467,9 +467,13 @@ type Job struct {
 	// Wait is what the job waits on and Offers the actions the service
 	// takes on it now, as the service stored them (factory.SettleWait).
 	// Readers show them; none works the wait out again.
-	Wait      *factory.Wait   `json:"wait,omitempty"`
-	Offers    []factory.Offer `json:"offers,omitempty"`
-	SetupHeld bool            `json:"setup_held,omitempty"`
+	Wait   *factory.Wait   `json:"wait,omitempty"`
+	Offers []factory.Offer `json:"offers,omitempty"`
+	// Acts are the public acts on the job's pull request (factory.PublicAct):
+	// those that wait for the person's yes (state proposed), those the service
+	// is carrying out, and the last few that are over, each with its result.
+	Acts      []factory.PublicAct `json:"acts,omitempty"`
+	SetupHeld bool                `json:"setup_held,omitempty"`
 	// Held is a queued job its person keeps from starting: no worker takes it
 	// until it is resumed. OverLimit is a queued job its person said to start
 	// now, which may take one slot above its computer's Jobs at once.
@@ -1075,7 +1079,6 @@ type PR struct {
 	Problems        []factory.PRReadProblem `json:"problems,omitempty"`
 	ReadinessKey    string                  `json:"readiness_key,omitempty"`
 	BaseSHA         string                  `json:"base_sha,omitempty"`
-	BaseBranch      string                  `json:"base_branch,omitempty"`
 	Feedback        string                  `json:"feedback,omitempty"`
 	CheckRuns       []CheckRun              `json:"check_runs,omitempty"`
 	Conflict        bool                    `json:"conflict,omitempty"`
@@ -1106,6 +1109,8 @@ type PR struct {
 	// BaseBranch is the branch the pull request asks to merge into, as the
 	// forge names it; Follow PR's base sync merges its live head.
 	BaseBranch string `json:"base_branch,omitempty"`
+	// Title is the pull request's title once a public act has edited it.
+	Title string `json:"title,omitempty"`
 	// Files is the pull request's own file list as the forge reports it, each
 	// path with its status (added, modified, removed, renamed, ...), at most
 	// [factory.PRFilesMost] of FilesTotal, read on the commit FilesHead. A
@@ -1147,6 +1152,10 @@ type PRReview struct {
 	By    string    `json:"by"`
 	State string    `json:"state"`
 	At    time.Time `json:"at"`
+	// Association is GitHub's word for the reviewer's standing on the
+	// repository; Untrusted says it carries no write access.
+	Association string `json:"association,omitempty"`
+	Untrusted   bool   `json:"untrusted,omitempty"`
 }
 
 // RuleChecks is what the factory's own two checks found on a job, each

@@ -441,6 +441,11 @@ type PRReview struct {
 	By    string
 	State string
 	At    time.Time
+	// Association is GitHub's own word for the reviewer's standing on the
+	// repository, and Untrusted says it carries no write access
+	// ([PRFeedback.Untrusted]).
+	Association string `json:",omitempty"`
+	Untrusted   bool   `json:",omitempty"`
 }
 
 // PRChecks is how that pull request's check runs add up. A zero count is
@@ -470,7 +475,23 @@ type PRFeedback struct {
 	ID       string
 	Revision string
 	Resolved bool
+	// External is an automated notice from outside the review (a CLA bot's):
+	// it is never review feedback to act on.
 	External bool
+	// Thread is GitHub's node id of the review thread an inline comment is
+	// in, which resolving it names; CommentID the comment's own id; ReplyTo
+	// the thread's first comment, the only one GitHub takes a reply on.
+	Thread    string `json:",omitempty"`
+	CommentID int64  `json:",omitempty"`
+	ReplyTo   int64  `json:",omitempty"`
+	// By is who wrote it and Association GitHub's own word for their standing
+	// on the repository. Untrusted is anyone who is not its owner, a member
+	// or a collaborator: THE JOB MAY ANSWER THEM, AND CHANGES CODE ON THEIR
+	// WORD ONLY WHEN ITS PERSON SAYS SO. The text its manager and delegates
+	// read marks each such item.
+	By          string `json:",omitempty"`
+	Association string `json:",omitempty"`
+	Untrusted   bool   `json:",omitempty"`
 }
 
 type PullRequest struct {
@@ -528,6 +549,10 @@ type PullRequest struct {
 	Files      []ChangedFile `json:",omitempty"`
 	FilesTotal int           `json:",omitempty"`
 	FilesHead  string        `json:",omitempty"`
+	// Title is the pull request's title once a public act has edited it
+	// ([ActKindEditPR]): a later push keeps it instead of putting the job's
+	// own title back. Empty is a title nobody edited here.
+	Title string `json:",omitempty"`
 }
 
 // PRFilesMost is how many of a pull request's files the factory keeps on the
@@ -876,6 +901,10 @@ type Item struct {
 	// Stall is the watchdog's record of a wait that went wrong and what it
 	// did about it ([Stall]). The store drops it when the job moves on.
 	Stall *Stall `json:",omitempty"`
+	// Acts are the public acts on the job's pull request ([PublicAct]): those
+	// that wait for the person's yes, those the service is carrying out, and
+	// the last few that are over.
+	Acts []PublicAct `json:",omitempty"`
 	// ManagerAnswer confirms the last durable decision independently of lease delivery.
 	ManagerAnswer *ManagerAnswer `json:",omitempty"`
 	// Briefs are the job's brief versions ([BriefVersion]), oldest first, at

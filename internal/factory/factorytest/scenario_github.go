@@ -36,6 +36,15 @@ type FakeGitHub struct {
 	headOf func(branch string) string
 	// down fails every read, as GitHub being unreachable does.
 	down bool
+	// threads are the pull request's review threads and posted every reply
+	// and comment the factory made, word for word (scenario_acts.go).
+	threads []reviewThread
+	posted  []string
+	// holdReplies makes a reply wait once GitHub has it, until its caller
+	// lets go: a service that closes mid-send. replyHeld is closed when one
+	// is waiting.
+	holdReplies bool
+	replyHeld   chan struct{}
 }
 
 // NewFakeGitHub is an empty repository: no pull request yet.
@@ -62,6 +71,8 @@ func (g *FakeGitHub) clone() *FakeGitHub {
 	c.reviews = append([]forge.Review(nil), g.reviews...)
 	c.comments = append([]string(nil), g.comments...)
 	c.writes = append([]string(nil), g.writes...)
+	c.threads = append([]reviewThread(nil), g.threads...)
+	c.posted = append([]string(nil), g.posted...)
 	return c
 }
 

@@ -58,6 +58,8 @@ func (h *Handler) jobVerbs() {
 	h.postJob("model", stored, h.onlyOwner(h.setModel))
 	h.postJob("control", stored, h.onlyOwner(h.controlJob))
 	h.postJob("undo", stored, h.undoJob)
+	// Public acts on the job's pull request: act, acts_approve, acts_decline.
+	h.registerActs()
 }
 
 // startJob is start_now and run: every refusal, then one write, then the
@@ -1095,6 +1097,9 @@ func (h *Handler) approve(w http.ResponseWriter, r *http.Request, it factory.Ite
 			// APPROVING THE PROOF PUBLISHES, and the pull request it opens may
 			// merge on its own only if the pipeline said so at this moment.
 			cur.MergePolicy = pinned
+			// The same yes covers the public acts that wait beside the push;
+			// they are carried out once it has landed (acts.go).
+			approveActsWithPush(cur, who, a.At)
 		}
 		return nil
 	})) {
@@ -1194,6 +1199,12 @@ func (h *Handler) settleJobs(approvalsOnly bool, held []lease.Lease) {
 			h.armJobTimer(pending, now, facts)
 			watchNext = watchDue(pending, facts.of, now)
 		}
+	}
+	// PUBLIC ACTS THAT ARE APPROVED ARE CARRIED OUT FROM HERE (acts.go): the
+	// pass starts their sender and goes on; an act's next try is a clock of
+	// its own, kept beside the watchdog's.
+	if at := h.settleActs(pending); !at.IsZero() && (watchNext.IsZero() || at.Before(watchNext)) {
+		watchNext = at
 	}
 	due := false
 	for _, it := range pending {
@@ -1468,6 +1479,10 @@ func jobTimerDue(items []factory.Item, now time.Time, facts func(factory.Item) f
 		// next look has come: the pass that follows records the one and acts on
 		// the other, so neither stays past for the timer to come round to.
 		if at := factory.WatchAt(it, facts(it), now); !at.IsZero() {
+			soonest(at)
+		}
+		// An approved public act is due at once, or at its next try.
+		if at := factory.ActsDueAt(it, now); !at.IsZero() {
 			soonest(at)
 		}
 	}
