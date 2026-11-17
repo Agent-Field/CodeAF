@@ -5,7 +5,7 @@
 Files is a workstream's shared drive: everything worth keeping, in folders, made by people or by agents. It replaces the separate Pages, Sources and Canvases tabs. A file is one of five kinds, plus folders and shortcuts:
 
 - **Document** — a page you write in together (the same editor, comments and suggestions pages always had);
-- **Canvas** — a canvas made inside the workstream;
+- **Canvas** — a canvas made inside the workstream, by a person from New › Canvas or by Afi or a chat with the `canvas` command: an agent's canvas is filed here by itself, under that chat's name, the first time it changes, so nobody has to attach it (there is no Attach existing);
 - **Upload** — a file from your computer (at most 25 MiB on an organization's server);
 - **Link** — a web address;
 - **Repo** — a connected repository, `owner/name`.
