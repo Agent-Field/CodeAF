@@ -20,7 +20,11 @@ type KnowledgeHead struct {
 	HumanEdited          bool     `json:"human_edited"`
 	NeedsEditorialUpdate bool     `json:"needs_editorial_update"`
 	HasConflict          bool     `json:"has_conflict"`
-	Sections             []string `json:"sections"`
+	// FromChats is set when learning from chats wrote some of this page, not
+	// only what a person added on purpose. The Library marks it "From your
+	// chats", and a person can remove it.
+	FromChats bool     `json:"from_chats,omitempty"`
+	Sections  []string `json:"sections"`
 }
 type KnowledgeBuild struct {
 	Phase    knowledge.BuildPhase `json:"phase"`
@@ -68,6 +72,13 @@ type KnowledgeFile struct {
 // "Add to Library" off a file's menus, because an older engine would refuse
 // every call for want of a chat.
 const FeatureKnowledgeCaptureFile = "knowledge.capture_file"
+
+// FeatureKnowledgeKeepAlways is announced by an engine whose knowledge.capture
+// keeps a person's deliberate add (a file or a passage) with "Learn from chats
+// and jobs" off, and writes it into the Library then (owner decision 5). A desk
+// that does not see it offers Add to Library only while learning is on,
+// because an older engine refuses the call otherwise.
+const FeatureKnowledgeKeepAlways = "knowledge.keep_always"
 
 // MaxKnowledgeCaptureFile bounds a kept file's words. A saved reply's passage is
 // capped at 16000 characters; a file is a whole document, so it gets four times
@@ -123,7 +134,7 @@ type KnowledgeLibrary interface {
 
 func withKnowledgeFeature(h Hello, e Engine) Hello {
 	if _, ok := e.(KnowledgeLibrary); ok {
-		return withFeature(withFeature(h, FeatureKnowledge), FeatureKnowledgeCaptureFile)
+		return withFeature(withFeature(withFeature(h, FeatureKnowledge), FeatureKnowledgeCaptureFile), FeatureKnowledgeKeepAlways)
 	}
 	return h
 }

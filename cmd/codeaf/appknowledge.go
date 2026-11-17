@@ -56,7 +56,7 @@ func (b *appBackend) KnowledgeSnapshot() (appwire.KnowledgeSnapshot, error) {
 		}
 	}
 	for _, p := range s.Pages {
-		h := appwire.KnowledgeHead{ID: p.ID, Title: p.Title, TitleEdited: p.TitleEdited, Folder: append([]string{}, p.Folder...), Kind: p.Kind, Revision: p.Revision, HumanEdited: p.HumanEdited, NeedsEditorialUpdate: p.NeedsEditorialUpdate, Sections: []string{}}
+		h := appwire.KnowledgeHead{ID: p.ID, Title: p.Title, TitleEdited: p.TitleEdited, Folder: append([]string{}, p.Folder...), Kind: p.Kind, Revision: p.Revision, HumanEdited: p.HumanEdited, NeedsEditorialUpdate: p.NeedsEditorialUpdate, FromChats: knowledge.LearnedFromChats(p), Sections: []string{}}
 		for _, e := range p.Evidence {
 			if at, err := time.Parse(time.RFC3339Nano, e.TS); err == nil {
 				previous, _ := time.Parse(time.RFC3339Nano, h.UpdatedAt)
@@ -268,10 +268,12 @@ func (b *appBackend) watchLibrary() {
 	})
 }
 
+// KnowledgeCapture keeps what a person chose to add: a workstream file (Add to
+// Library) or a passage of a saved reply (Keep in Library). A DELIBERATE ADD
+// NEVER WAITS ON LEARNING (owner decision 5, knowledge/keep.go): with "Learn
+// from chats and jobs" off, the words are still kept and written into the
+// Library, and nothing else is read.
 func (b *appBackend) KnowledgeCapture(p appwire.KnowledgeCapture) error {
-	if !b.library().Enabled() {
-		return libraryError(knowledge.ErrDisabled)
-	}
 	if p.File != nil {
 		return b.captureWorkstreamFile(*p.File, p.Text)
 	}
@@ -287,12 +289,8 @@ func (b *appBackend) KnowledgeCapture(p appwire.KnowledgeCapture) error {
 					return appwire.Errorf(appwire.CodeBadParams, "Choose words from a saved agent reply")
 				}
 				sum := sha256.Sum256([]byte(p.Chat + "\x00" + p.Message + "\x00" + p.Text))
-				source := knowledge.Source{ID: fmt.Sprintf("desk:%x", sum), Session: p.Chat, Text: p.Text, TS: entry.At.UTC().Format(time.RFC3339Nano), Role: "assistant", Kind: "agent_synthesis"}
-				if err = b.library().Capture(source); err != nil {
-					return libraryError(err)
-				}
-				b.libraryChanged()
-				return nil
+				source := knowledge.Source{ID: fmt.Sprintf("%s%x", knowledge.KeptPassagePrefix, sum), Session: p.Chat, Text: p.Text, TS: entry.At.UTC().Format(time.RFC3339Nano), Role: "assistant", Kind: "agent_synthesis"}
+				return b.keepInLibrary(source)
 			}
 		}
 		if !more || len(entries) == 0 {
@@ -309,7 +307,7 @@ func (b *appBackend) KnowledgeCapture(p appwire.KnowledgeCapture) error {
 // slash before the hash is the one between them. The hash is of the words, so
 // keeping the same file twice is one source, and keeping it after an edit is a
 // new one beside the old.
-const workstreamFileSourcePrefix = "workstream-file:"
+const workstreamFileSourcePrefix = knowledge.WorkstreamFileSourcePrefix
 
 func (b *appBackend) captureWorkstreamFile(file appwire.KnowledgeFile, text string) error {
 	if strings.ContainsAny(file.ID, "/@") {
@@ -332,11 +330,40 @@ func (b *appBackend) captureWorkstreamFile(file appwire.KnowledgeFile, text stri
 		Role:    "user",
 		Kind:    knowledge.KindWorkstreamFile,
 	}
-	if err := b.library().Capture(source); err != nil {
+	return b.keepInLibrary(source)
+}
+
+// keepInLibrary stores a person's deliberate add and sees it written into the
+// Library. With learning on, the background build writes it as it writes
+// everything; with learning off there is no background build, so this add is
+// written on its own, scoped to its own words ([knowledge.Vault.Write]).
+func (b *appBackend) keepInLibrary(source knowledge.Source) error {
+	v := b.library()
+	if err := v.Admit(source); err != nil {
 		return libraryError(err)
+	}
+	if !v.Enabled() {
+		writeKeptToLibrary(b, source.Session)
 	}
 	b.libraryChanged()
 	return nil
+}
+
+// writeKeptToLibrary writes one deliberate add into the Library in the
+// background, on the engine process's lifetime and the person's own key. A
+// failure leaves the source pending, which the next add or a Build retries.
+// Tests replace it to see that the write was asked for without a model.
+var writeKeptToLibrary = func(b *appBackend, session string) {
+	proc, err := b.process()
+	if err != nil {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(proc.lifetime(), 10*time.Minute)
+		defer cancel()
+		_ = b.library().Write(ctx, config.APIKeyAt(b.profileDir), session)
+		b.libraryChanged()
+	}()
 }
 
 func workstreamFileSource(source string) (appwire.KnowledgeFile, bool) {

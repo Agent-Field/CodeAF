@@ -18,7 +18,7 @@ import (
 const knowledgeProjectionVersion = "knowledge-projection-4"
 
 func (v *Vault) compile(ctx context.Context, key string, force bool) (err error) {
-	if !v.Enabled() {
+	if !v.mayLearn(ctx) {
 		return ErrDisabled
 	}
 	if err = ctx.Err(); err != nil {

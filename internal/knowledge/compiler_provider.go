@@ -263,7 +263,7 @@ func (m compilerModel) callContext(ctx context.Context) (context.Context, error)
 	// wrote it. Its answer is a document, never a reply, so the chat's stream
 	// must not hear it.
 	ctx = provider.WithoutStream(ctx)
-	if !m.explicitRead && !config.MemoryEnabledAt(filepath.Dir(m.root)) {
+	if !m.explicitRead && !deliberate(ctx) && !config.MemoryEnabledAt(filepath.Dir(m.root)) {
 		return nil, ErrDisabled
 	}
 	if m.calls != nil {

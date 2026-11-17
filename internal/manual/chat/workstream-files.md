@@ -36,11 +36,19 @@ The search box finds files by name and by what they say, in this workstream and 
 
 One click selects a file and shows its facts in place of Afi's pane (kind, where, who made it, the task it came from, the tasks that use it, last change, open comments), with Open and Ask Afi about this; Space shows them too. A double click or Return opens it as a tab. Shift-click selects a run of rows, Command-click adds or removes one; with several selected, a bar offers Move to, Copy links and Delete — only what applies to every selected row.
 
-The right-click menu: Open, Open Beside, Rename (in place, in the row), Move To, Copy Link, Add a Shortcut in Another Workstream, Add to Library, Ask Afi About This (adds the file to what Afi is looking at), Delete. A folder has the same menu without Add to Library. Add to Library shows only on a document or a text file, and only when your Library is turned on: a canvas, a picture or a link has no words to keep. Dragging files onto a folder moves them, with Undo for 5 seconds. Moving a file never breaks a task, shortcut or link that points to it.
+The right-click menu: Open, Open Beside, Rename (in place, in the row), Move To, Copy Link, Add a Shortcut in Another Workstream, Add to Library, Ask Afi About This (adds the file to what Afi is looking at), Delete. A folder has the same menu without Add to Library. Add to Library shows only on a document or a text file, whether or not learning from chats is on: a canvas, a picture or a link has no words to keep. Dragging files onto a folder moves them, with Undo for 5 seconds. Moving a file never breaks a task, shortcut or link that points to it.
 
-## delete a file, restore a deleted file, version history — Delete asks first
+## delete a file, restore a deleted file — Delete asks first
 
-Delete asks first, because it cannot be undone: "Delete “Brief”?", saying the file (and anything inside a folder) will be gone for everyone in the workstream, with Cancel and Delete. There is no way to restore a deleted file from the app and no version history of a file in this release, so nothing in Files mentions versions, and Afi and chats must never offer to bring an earlier version back. Several selected files are deleted the same way, with one question for all of them.
+Delete asks first, because it cannot be undone: "Delete “Brief”?", saying the file (and anything inside a folder) will be gone for everyone in the workstream, with Cancel and Delete. There is no way to bring a deleted file back from the app, and Afi and chats never offer to. Several selected files are deleted the same way, with one question for all of them. Undoing a change to a file that still exists is History's job (below), not Delete's.
+
+## History — an earlier copy of a document or canvas, Restore, version history, undo a change
+
+Documents and canvases keep a History, in Personal workstreams and in an organization's alike. On a document it is History in the document's ⋯ menu; on a canvas it is the History button in the canvas's header. History lists the earlier copies in plain words — what changed it, when, and who ("Updated · Nov 9 · by Lena"), with **current** on the copy the page holds now — never as a number or an id.
+
+Choosing an earlier copy shows its words in the page, read-only; **Compare with now** lays today's words under it. **Restore this version** brings it back: the restored words become the newest copy, and the words it replaced stay in History, so nothing is lost. Restoring needs the right to edit, and a document's unsaved typing saved first.
+
+Afi and a workstream's chats can read which earlier copies a document has (ws_file_read lists them, when and by whom). They say an earlier copy exists only when History really has one, in the same plain words, and they cannot restore one themselves: they point you to History. A deleted file has no History to bring back.
 
 ## shortcuts and a parent's files — a file from another workstream or the Library, read-only
 
@@ -53,6 +61,8 @@ A workstream inside another one shows its parent's files as one folder, "From <p
 ## add a file to the Library — keep a workstream file for every workstream
 
 Add to Library, in a file's right-click menu, keeps the file's words in your Library, where every workstream and agent can read them. A note shows for five seconds with Undo; nothing is kept if you press it. This is the only way something in a workstream reaches the Library.
+
+It works whether or not Settings › Memory › learn from chats and jobs is on: adding a file is your choice, so it never waits on learning. With learning off, only the file you added is written into the Library, nothing else. Learning never reads a workstream's Afi or its chats, so a suggestion you dropped there never reaches the Library.
 
 ## can Afi change my document — suggestions, accept and reject, fix another chat's draft
 

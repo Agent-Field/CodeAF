@@ -264,6 +264,12 @@ func (v *Vault) Capture(source Source) error {
 			source.Kind = "user_statement"
 		}
 	}
+	return v.capture(source)
+}
+
+// capture stores one validated source. [Vault.Capture] reaches it only with
+// learning on; [Vault.Admit] reaches it for a person's deliberate add.
+func (v *Vault) capture(source Source) error {
 	db, err := v.database()
 	if err != nil {
 		return err
