@@ -179,9 +179,9 @@ On the task page, its owner opens More › Waiting on and ticks the tasks it sho
 
 ## why my task says Interrupted — codeaf restarted while it was running
 
-**Interrupted means nothing is working on the task any more, and what it already did is kept.** On a Personal workstream, when codeaf's engine starts again (after the app or the computer restarted, or the engine stopped), every turn that was running has ended. Any task Afi or a chat was doing whose chat is not working or asking right now becomes Interrupted, and its activity says "Interrupted: codeaf restarted while this was running".
+**Interrupted means nothing is working on the task any more, and what it already did is kept.** On a Personal workstream, when codeaf's engine starts again (after the app or the computer restarted, or the engine stopped), every turn that was running has ended. Any task Afi or a chat was doing whose chat is not working or asking right now becomes Interrupted, and its activity says "Interrupted: the app closed while this was running".
 
-**It resumes once without anyone pressing anything:** codeaf wakes the same chat (or Afi) again with the task and the words "Carry on from where you stopped", and the activity says "Resumed after codeaf restarted". If codeaf restarts again before that run finishes, the task stays Interrupted under Waiting on someone. Its page then offers **Start** again, which hands it back to the same chat (or to Afi). Its owner can also Mark done or Stop it from More. A chat that was still working or asking when the engine came back keeps its task Running.
+**It resumes once without anyone pressing anything:** codeaf wakes the same chat (or Afi) again with the task and the words "Carry on from where you stopped", and the activity says "Resumed after the app opened again". If codeaf restarts again before that run finishes, the task stays Interrupted under Waiting on someone. Its page then offers **Start** again, which hands it back to the same chat (or to Afi). Its owner can also Mark done or Stop it from More. A chat that was still working or asking when the engine came back keeps its task Running.
 
 A task that says Running while its chat is not working and not asking shows **Start again**, with "Nothing is working on it", and pressing it wakes that chat with the task.
 
