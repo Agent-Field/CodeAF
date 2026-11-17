@@ -799,7 +799,12 @@ source?}`; `kind` is `folder`, `document`, `canvas`, `upload`, `link`, `repo` or
 `shortcut`. A file POINTS at what it holds: a document is a page of the workstream
 (`page_id`; its words are the page's live document, its versions the page's), a canvas
 an organization canvas made inside it (`canvas_id`), an upload bytes in the server's blob
-store, a shortcut a file in another workstream (`target`), copied nowhere.
+store, a shortcut a file in another workstream (`target`), copied nowhere. A shortcut to
+a Library page is a `link` whose `url` is the page's own address,
+`codeaf://library/<page>` (Copy Link on the page); the desk draws it as "From the Library"
+and opens the page in the Library, and the Personal store accepts that one non-web
+address for a link. Files never mentions `versions` to a person and never offers a
+restore: the desk asks before a delete instead (final spec, Files and the Library).
 `factory.org_workstream_files {id, query?, deleted?}` `GET .../files` answers `{files,
 deleted?, from?}`: the live files, Recently deleted when `deleted`, and `from {id, name,
 files}`, the parent workstream's files, read-only, when the caller can see it. `query`

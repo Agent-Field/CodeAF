@@ -702,8 +702,8 @@ bounded excerpt and its Library address. The chat can also use
 
 ## Add a workstream file to the Library (keep a file, save a document to knowledge)
 
-In the desktop app, a file in a workstream's Files has "Add to Library" in its
-More menu and in its right-click menu. It keeps the file's words in your
+In the desktop app, a document or text file in a workstream's Files has "Add to Library"
+in its right-click menu. It keeps the file's words in your
 Library, the same profile-wide vault the terminal's Knowledge reads, and the
 next build files them into guides. A note shows for five seconds with Undo;
 nothing is kept if you press it.
