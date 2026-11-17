@@ -14,8 +14,8 @@ import (
 // answer passed back whole. The hello says so.
 func TestOrgWorkstreamTasksForwardToTheServer(t *testing.T) {
 	o, wire, id := attachOrg(t)
-	if !strings.Contains(wire.hello, `"org_workstream_tasks"`) {
-		t.Fatalf("hello lacks org_workstream_tasks: %s", wire.hello)
+	if !strings.Contains(wire.hello, `"org_workstream_tasks"`) || !strings.Contains(wire.hello, `"org_workstream_requests"`) {
+		t.Fatalf("hello lacks org_workstream_tasks or org_workstream_requests: %s", wire.hello)
 	}
 	if !strings.Contains(wire.hello, `"org_workstream_task_start"`) {
 		t.Fatalf("hello lacks org_workstream_task_start: %s", wire.hello)
@@ -30,6 +30,10 @@ func TestOrgWorkstreamTasksForwardToTheServer(t *testing.T) {
 			return 200, map[string]any{}
 		case strings.HasSuffix(uri, "/comment"):
 			return 201, event
+		case strings.HasSuffix(uri, "/requestable"):
+			return 200, map[string]any{"workstreams": []any{}}
+		case strings.HasSuffix(uri, "/requests"):
+			return 201, map[string]any{"id": "tk_2", "ws": "ws_1", "ws_name": "Engineering", "title": "Fix the share link"}
 		case strings.HasSuffix(uri, "/start_all"), strings.HasSuffix(uri, "/tasks") && method == "GET":
 			return 200, map[string]any{"tasks": []any{task}}
 		case strings.Contains(uri, "/tasks"):
@@ -74,6 +78,10 @@ func TestOrgWorkstreamTasksForwardToTheServer(t *testing.T) {
 		{"factory.org_workstream_task_comment", map[string]any{"id": "tk_1", "offer": map[string]any{"event": "te_2", "state": "taken"}},
 			"POST /v1/workstreams/ws_1/tasks/tk_1/comment", "", `{"offer":{"event":"te_2","state":"taken"}}`},
 		{"factory.org_workstream_task_events", map[string]any{"id": "tk_1"}, "GET /v1/workstreams/ws_1/tasks/tk_1/events", "", ``},
+		{"factory.org_workstream_task_events", map[string]any{"id": "tk_1", "seen": true}, "GET /v1/workstreams/ws_1/tasks/tk_1/events?seen=1", "", ``},
+		{"factory.org_workstreams_requestable", nil, "GET /v1/workstreams/requestable", "", ``},
+		{"factory.org_workstream_request", map[string]any{"title": " Fix the share link ", "from_ws": "ws_2", "from_task": "tk_9"},
+			"POST /v1/workstreams/ws_1/requests", "", `{"from_task":"tk_9","from_ws":"ws_2","request":"","title":"Fix the share link"}`},
 		{"factory.org_workstream_tasks_start_all", map[string]any{"group": "grp_batch-release-2.4"}, "POST /v1/workstreams/ws_1/tasks/start_all", "", `{"group":"grp_batch-release-2.4"}`},
 	} {
 		o.since()

@@ -169,6 +169,14 @@ func (a *Agent) HoldQuestion(kind session.QuestionKind, token string) {
 	}()
 }
 
+// DismissQuestion takes one of the model's own questions down on the far
+// machine because the person dismissed it ([MethodQuestionDismiss]). It waits
+// for the answer, so a question answered first is a refusal the caller sees.
+func (a *Agent) DismissQuestion(token string) error {
+	_, err := a.c.call(nil, MethodQuestionDismiss, QuestionHoldArgs{Kind: session.QuestionAsk, Token: token})
+	return err
+}
+
 // ClockQuestion defers one question's clock on the far machine, or starts a
 // deferred one (start), and answers what the engine's clock now says
 // ([MethodQuestionClock]). It waits for the answer because the caller is about

@@ -365,7 +365,7 @@ func (st *Store) editWorkstreams(bump bool, edit func(all factory.OrgWorkstreams
 				for _, q := range []string{
 					`DELETE FROM workstreams WHERE id = ?`, `DELETE FROM page_versions WHERE ws = ?`,
 					`DELETE FROM parts WHERE ws = ?`, `DELETE FROM spend WHERE ws = ?`,
-					`DELETE FROM tasks WHERE ws = ?`, `DELETE FROM task_events WHERE ws = ?`,
+					`DELETE FROM tasks WHERE ws = ?`, `DELETE FROM task_events WHERE ws = ?`, `DELETE FROM task_reads WHERE ws = ?`,
 				} {
 					if _, err := tx.Exec(q, id); err != nil {
 						return err

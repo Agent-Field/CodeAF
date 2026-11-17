@@ -670,6 +670,10 @@ type Item struct {
 	// approve step the job waits at ([PassJudged]); stale once its key no
 	// longer names the waiting approval.
 	PassJudge *PassJudgement `json:",omitempty"`
+	// Overrides are the failing checks the person told Auto to carry on past
+	// ([OverrideFindings]): each names the finding, who said so and when. A
+	// finding not listed here still pauses Auto. Nil is none.
+	Overrides []CheckOverride `json:",omitempty"`
 	// PersonStopped survives state resets, expiry of Undo and engine restarts.
 	// Only an explicit person control may clear it.
 	PersonStopped *bool     `json:",omitempty"`

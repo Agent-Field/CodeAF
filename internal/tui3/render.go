@@ -3256,6 +3256,9 @@ func (a *app) contextSegment() (string, bool) {
 // tiny, because "there is a cache and it is barely hitting" is a different fact
 // from the empty segment's "there is no cache accounting here at all".
 func (a *app) warmSegment() string {
+	if a.cacheSaved == 0 && len(a.cacheReadByModel) > 0 {
+		a.repriceCache()
+	}
 	share, ok := session.Usage{Input: a.inputTokens, CacheRead: a.cacheRead}.CachedShare()
 	if !ok {
 		return ""

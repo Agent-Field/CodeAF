@@ -12,6 +12,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -956,5 +957,38 @@ func TestAPasswordPersonIsJudgedLikeAGitHubPerson(t *testing.T) {
 		if a != m {
 			t.Errorf("%s %s:\n password %s\n github   %s", c.method, c.path, a, m)
 		}
+	}
+}
+
+// Film D14: a server that already held a GitHub token (GH_TOKEN, or a grant in
+// its home) named the operator link for that token's login, so its landing
+// offered only "Continue with GitHub" and a person who signs in with a password
+// could never claim the server. The operator link makes a password account by
+// default, like an invitation (2646-org-password); GitHub stays a way in.
+func TestAServerWithAGitHubTokenStillLetsAPasswordClaimIt(t *testing.T) {
+	asked := 0
+	o := newPWOrgWith(t, func(seam *factory.Seam, _ *store.Store) {
+		seam.GitHub = func(context.Context) (factory.GitHubLink, error) {
+			asked++
+			return factory.GitHubLink{Login: "host-github"}, nil
+		}
+	})
+	printed, err := o.h.NewOperatorLink(context.Background(), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if printed.Login != "" {
+		t.Fatalf("the operator link was named for @%s", printed.Login)
+	}
+	check, w := o.access(api.FactoryAccessRequest{Link: printed.URL, Verb: "check"})
+	if w.Code != 200 || check.State != "ready" || !slices.Contains(check.Factory.SignIn, "password") {
+		t.Fatalf("check = %d %s", w.Code, w.Body)
+	}
+	token := o.signUp(printed.URL, "santosh", pwOperator)
+	if me, code := o.me(token); code != 200 || !me.Operator || me.SignInKind != "password" {
+		t.Fatalf("me = %d %+v", code, me)
+	}
+	if asked != 0 {
+		t.Fatalf("GitHub was asked %d times to name a link that takes passwords", asked)
 	}
 }

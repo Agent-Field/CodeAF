@@ -50,6 +50,7 @@ func (a *Agent) SetApprovalPolicy(policy *approval.Policy) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.approvalPolicy = policy
+	a.syncConsentMemoLocked(policy)
 }
 
 // approvalGate is the policy as it stands right now: the pushed one if there is

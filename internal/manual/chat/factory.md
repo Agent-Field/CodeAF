@@ -228,7 +228,7 @@ The config keys are `name`, `listen`, `access_token`, `repos` (a list of `owner/
 
 When the GitHub rate limit for a team factory's token is spent, `codeaf factory serve` still answers its address at once; only its GitHub reads pause. The factory logs one line when it meets the limit, `GitHub is rate-limited until HH:MM; the factory keeps serving and reads GitHub again then`, and one line when a GitHub read succeeds again, `GitHub's rate limit has cleared; the factory reads GitHub again`. While the limit is spent, the factory's `/v1/about` carries that sentence as `github_limited` and the reset time as `github_resumes_at`.
 
-The operator access link of a fresh team factory is printed once GitHub names the host's login, after the reset if the limit is spent. A GitHub read whose limit resets more than ninety seconds later is not retried in a loop; the factory's next poll after the reset reads it.
+The operator access link of a fresh team factory is printed at once: it is not named for any GitHub login, so it never waits on GitHub's limit (see "claim the organization with a password"). A GitHub read whose limit resets more than ninety seconds later is not retried in a loop; the factory's next poll after the reset reads it.
 
 ## join an organization — an invite link, joining a factory, where Factory settings went in the desktop app
 
@@ -268,6 +268,14 @@ An organization server (`codeaf factory serve`) takes a username and password; a
 - Changing your password, or a reset, ends every session made with the old one. Signing out ends that session on the server.
 - A session lasts 30 days after you last used it, and 90 days at most.
 - Password sign-in works only over HTTPS, or on the server's own machine, or behind a trusted proxy that says HTTPS.
+
+## claim the organization with a password — operator link only offers GitHub, GH_TOKEN, "This link is for a GitHub account"
+
+The operator link that `codeaf factory serve` prints on a fresh team server is not tied to anyone's GitHub account, even when the server already holds a GitHub token (`GH_TOKEN`, or a GitHub grant in its home). Whoever opens it first chooses how to claim the server: a username and password ("Create operator account"), a passkey where the server offers one, or "Sign in with GitHub instead". The secret in the link is the proof, so share it only with the person who should run the organization.
+
+Until 2026-11-16 a server that already had a GitHub token named its operator link for that token's GitHub login. Its landing then offered only GitHub, and a person who signs in with a password could not claim the server. That is gone.
+
+A recovery link (`codeaf factory serve --new-operator-link`, after someone has claimed the server) is still for the operator who claimed it. An invitation an operator makes for one GitHub login still takes no password: "This link is for a GitHub account".
 
 ## a trusted machine — someone guessing my username, "Too many tries" on a new laptop, device token
 
@@ -383,7 +391,7 @@ The app's Stop is bounded. It interrupts the turn, and a turn that has still not
 
 A Factory manager whose conversation works in a folder the factory refuses for its chats (the codeaf home, a folder above it, or elsewhere inside it) is made again in a folder of its own, `chats/foreman` under the factory. The desktop app does this as its factory starts, and when the manager is next opened if it had not yet; the conversation it replaces is then stopped and archived, and is one of your own chats in Archived from then on, titled "Factory manager (earlier)". The app is told (`factory.foreman_changed`), and a tab still showing the old conversation is swapped for the manager. One made by an older build worked in the home itself, where every save swept the whole home and its tool calls never finished. In a terminal the replaced conversation is not archived: it stays in your list, titled "Factory manager (earlier)" when it still had the manager's name.
 
-The Factory manager is cleared, not archived. `factory.foreman_fresh` starts it over: a new conversation with only its brief takes its place and its `@foreman` address, on the default model and settings, and the old one is stopped and archived with its history kept, as one of your own chats. Opening the Factory manager is your own open, so one you closed or archived comes back open. The manager's conversation stays the factory's across a relaunch: it is not listed among your chats and has no Archive.
+The Factory manager is cleared, not archived. `factory.foreman_fresh` starts it over: a new conversation with only its brief takes its place and its `@foreman` address, on the default model and settings, and the old one is stopped and archived with its history kept, as one of your own chats. An earlier manager left behind by a quit mid-replacement is retired, moved off `@foreman` and put away the same way on the next start or open. Opening the Factory manager is your own open, so one you closed or archived comes back open. The manager's conversation stays the factory's across a relaunch: it is not listed among your chats and has no Archive.
 
 ## the default steps — what a job runs with no factory.yaml, how many rounds, security pass
 

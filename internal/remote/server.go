@@ -2645,6 +2645,18 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		}
 		door.HoldQuestion(args.Kind, args.Token)
 		return nil, nil
+	case MethodQuestionDismiss:
+		args, err := arg[QuestionHoldArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		// A MISSING DOOR REFUSES: a person told their dismissal landed would
+		// leave a question standing that the model is still waiting on.
+		door, ok := agent.(interface{ DismissQuestion(string) error })
+		if !ok || args.Kind != session.QuestionAsk {
+			return nil, errors.New("engine: this session cannot dismiss that question")
+		}
+		return nil, door.DismissQuestion(args.Token)
 	case MethodQuestionClock:
 		args, err := arg[QuestionClockArgs](call)
 		if err != nil {

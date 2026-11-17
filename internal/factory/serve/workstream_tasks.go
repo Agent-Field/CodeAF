@@ -50,7 +50,7 @@ var errTaskAnswered = errors.New("this question was already answered")
 // ── who the caller is to the rules ──
 
 func taskActor(v Viewer, ws factory.OrgWorkstream) factory.TaskActor {
-	return factory.TaskActor{Handle: v.Handle, Edit: v.canWrite(ws) && ws.ArchivedAt == nil}
+	return factory.TaskActor{Handle: v.Handle, Edit: v.canWrite(ws) && ws.ArchivedAt == nil, Govern: v.canGovern(ws)}
 }
 
 // taskBy is who a change is stamped with on the thread: the caller, or Afi
@@ -165,7 +165,7 @@ func findTask(all []factory.WorkstreamTask, id string) (factory.WorkstreamTask, 
 }
 
 func (h *Handler) listWorkstreamTasks(w http.ResponseWriter, r *http.Request) {
-	ws, _, ok := h.findWorkstream(w, r)
+	ws, v, ok := h.findWorkstream(w, r)
 	if !ok {
 		return
 	}
@@ -173,6 +173,7 @@ func (h *Handler) listWorkstreamTasks(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
+	h.fillForYou(ws, v, all)
 	h.write(w, http.StatusOK, api.WorkstreamTasks{Tasks: all})
 }
 
@@ -197,19 +198,28 @@ func (h *Handler) oneTask(w http.ResponseWriter, r *http.Request) (factory.OrgWo
 }
 
 func (h *Handler) getWorkstreamTask(w http.ResponseWriter, r *http.Request) {
-	if _, _, t, _, ok := h.oneTask(w, r); ok {
-		h.write(w, http.StatusOK, t)
+	if ws, v, t, _, ok := h.oneTask(w, r); ok {
+		one := []factory.WorkstreamTask{t}
+		h.fillForYou(ws, v, one)
+		h.write(w, http.StatusOK, one[0])
 	}
 }
 
+// workstreamTaskEvents is a task's thread. With ?seen=1 (a person opened the
+// task on a screen) it also marks the thread read for the caller, so its
+// comments leave their Inbox's "Comments for you". An agent reading the
+// thread never sends it, and so never reads a comment for the person.
 func (h *Handler) workstreamTaskEvents(w http.ResponseWriter, r *http.Request) {
-	ws, _, t, _, ok := h.oneTask(w, r)
+	ws, v, t, _, ok := h.oneTask(w, r)
 	if !ok {
 		return
 	}
 	events, err := h.config.Store.WorkstreamTaskEvents(ws.ID, t.ID)
 	if h.failed(w, err) {
 		return
+	}
+	if r.URL.Query().Get("seen") == "1" {
+		h.markRead(ws, v, t.ID)
 	}
 	h.write(w, http.StatusOK, api.WorkstreamTaskEvents{Events: events})
 }
@@ -402,6 +412,9 @@ func (h *Handler) patchWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 		}
 		if t.Rev != rev {
 			return store.ErrTaskStale
+		}
+		if target.ID != "" && !factory.MayStop(t, actor) {
+			return factory.ErrTaskNotStopper
 		}
 		out, err = factory.ApplyPatch(t, p, actor, by, all, h.newTaskID("te_"), now)
 		if err != nil {
@@ -597,6 +610,10 @@ func (h *Handler) commentWorkstreamTask(w http.ResponseWriter, r *http.Request) 
 	tid := r.PathValue("tid")
 	var out factory.TaskChange
 	var ev factory.WorkstreamTaskEvent
+	var people map[string]string
+	if body.Offer == nil && (body.Kind == "" || body.Kind == factory.TaskEventComment) {
+		people = h.wsPeopleNames(ws)
+	}
 	jobs, err := h.workstreamJobs(r, ws)
 	if h.failed(w, err) {
 		return
@@ -629,6 +646,9 @@ func (h *Handler) commentWorkstreamTask(w http.ResponseWriter, r *http.Request) 
 		out, err = factory.Note(t, body.TaskNote, actor, by, thread, h.newTaskID("te_"), now)
 		if err != nil {
 			return err
+		}
+		if out.Events[0].Kind == factory.TaskEventComment {
+			out.Events[0].Mentions = factory.Mentions(out.Events[0].Text, people)
 		}
 		ev = out.Events[0]
 		if out.Task.Rev != t.Rev {

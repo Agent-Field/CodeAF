@@ -206,6 +206,7 @@ func withForeman(seam factory.Seam, st *store.Store, workspace, profileDir strin
 func foremanMaker(st *store.Store, workspace, profileDir string, load func() (factory.Snapshot, error)) func(context.Context) (string, error) {
 	return func(context.Context) (string, error) {
 		factoryReconcileOnce(profileDir, st)
+		foremanSweep(st, profileDir)
 		if chat, err := st.Foreman(); err == nil && chat != "" {
 			if _, serr := os.Stat(chat); serr == nil && foremanFolderRefusal(st, chat) == nil {
 				foremanRetitle(profileDir, chat)
@@ -326,8 +327,11 @@ func foremanMint(st *store.Store, workspace, profileDir string, load func() (fac
 // mark and is not the one the store names: a making that was cut short
 // between naming the new foreman and retiring the old one left the old one
 // marked, so it was the factory's in every reading, in no list, and behind no
-// door. They are found where a replaced foreman is always left, among the
-// `factory` team's former members under the foreman's handle. It answers the
+// door. They are found in the `factory` team under the foreman's handle —
+// among its former members when the swap finished, or still among its current
+// members when the engine died before the swap — and a current member's place
+// is handed to the foreman the store names. A member without the foreman's
+// mark is the person's own conversation and is never touched. It answers the
 // conversations it retired, for their owner to put away.
 func foremanSweep(st *store.Store, profileDir string) []string {
 	current, err := st.Foreman()
@@ -340,6 +344,18 @@ func foremanSweep(st *store.Store, profileDir string) []string {
 	}
 	var retired []string
 	for _, t := range f.Teams {
+		for _, m := range t.Members {
+			file := strings.TrimSpace(m.File)
+			if file == "" || m.Handle != foremanHandle || sameSessionFile(file, current) || !factoryForemanMarked(file) {
+				continue
+			}
+			if strings.TrimSpace(current) != "" {
+				factoryReconcileOnce(profileDir, st)
+				_ = foremanSwapTeam(profileDir, file, current, foremanWorkspace(current))
+			}
+			foremanRetire(file)
+			retired = append(retired, file)
+		}
 		for _, m := range t.FormerMembers {
 			file := strings.TrimSpace(m.File)
 			if file == "" || m.Handle != foremanHandle || sameSessionFile(file, current) || !factoryForemanMarked(file) {
@@ -350,6 +366,16 @@ func foremanSweep(st *store.Store, profileDir string) []string {
 		}
 	}
 	return retired
+}
+
+// foremanWorkspace is the folder a foreman's conversation records as its own,
+// or "" when its record cannot be read.
+func foremanWorkspace(transcript string) string {
+	meta, err := session.LoadMeta(session.DirOf(transcript))
+	if err != nil {
+		return ""
+	}
+	return meta.Workspace
 }
 
 // foremanRetire makes a replaced foreman an ordinary conversation of the
@@ -493,6 +519,21 @@ func foremanTeamKey(transcript string) string {
 func foremanRetitle(profileDir, transcript string) {
 	foremanRename(transcript, foremanTitle, foremanOldTitle)
 	key := foremanTeamKey(transcript)
+	f, err := teams.Load(profileDir)
+	if err != nil {
+		return
+	}
+	stale := false
+	for _, t := range f.Teams {
+		for _, m := range t.Members {
+			if m.Key == key && m.Word == foremanOldTitle {
+				stale = true
+			}
+		}
+	}
+	if !stale {
+		return
+	}
 	_ = teams.UpdateOpen(profileDir, func(f *teams.File) error {
 		for ti := range f.Teams {
 			for mi := range f.Teams[ti].Members {
