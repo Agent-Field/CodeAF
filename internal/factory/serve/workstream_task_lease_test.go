@@ -70,7 +70,7 @@ func TestARunCutOffByARestartIsInterruptedThenResumesOnce(t *testing.T) {
 		mu.Lock()
 		asked[turn.Task.Title] = turn
 		mu.Unlock()
-		_, err := turn.Door.(workDoor).Work(ctx, "ws_task_update", json.RawMessage(`{"task":"`+turn.Task.ID+`","state":"done"}`))
+		_, err := turn.Door.(workDoor).Work(ctx, "ws_task_update", json.RawMessage(`{"task":"`+turn.Task.ID+`","state":"done","handoff":"Wrote the release notes."}`))
 		return AgentTurnEnd{}, err
 	}
 	o.h = New(o.seam, cfg)
