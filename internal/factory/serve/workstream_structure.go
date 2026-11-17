@@ -399,47 +399,18 @@ func (h *Handler) workstreamArchiveKeep(w http.ResponseWriter, r *http.Request) 
 	h.write(w, http.StatusOK, api.WorkstreamArchiveKeep{Parent: ws.Parent, Keep: factory.ArchiveKeep(ws)})
 }
 
-// foldWorkstream turns a child back into a heading in its parent: its jobs
-// move into the parent and it is archived. The caller must be able to write
-// both.
+// foldWorkstream retains the older parent-only door, using the same complete
+// move and Undo receipt as the destination picker.
 func (h *Handler) foldWorkstream(w http.ResponseWriter, r *http.Request) {
 	ws, v, ok := h.findWorkstream(w, r)
 	if !ok {
 		return
 	}
-	now := h.clock().UTC()
-	var heading string
-	var befores []factory.OrgWorkstream
-	saved, err := h.config.Store.EditWorkstreams(func(all factory.OrgWorkstreams) ([]string, error) {
-		cur, ok := all[ws.ID]
-		if !ok {
-			return nil, errWorkstreamGone
-		}
-		if !v.canWrite(cur) || (cur.Parent != "" && !v.canWrite(all[cur.Parent])) {
-			return nil, errWorkstreamNoWrite
-		}
-		befores = []factory.OrgWorkstream{cur, all[cur.Parent]}
-		name, changed, err := factory.FoldIntoParent(all, ws.ID, now)
-		if err != nil {
-			return nil, workstreamInvalid(err.Error())
-		}
-		heading = name
-		return changed, nil
-	})
-	if h.workstreamRefused(w, err) {
+	if ws.Parent == "" {
+		h.fail(w, http.StatusUnprocessableEntity, "choose a destination workstream")
 		return
 	}
-	parent := saved[ws.Parent]
-	h.recordWorkstream(r, ws.ID, "folded workstream into its parent", parent.ID)
-	for _, b := range befores {
-		h.publishWorkstreams(api.EventWorkstreamChanged, h.orgActor(r), &b, saved[b.ID])
-	}
-	h.syncStartWithoutAsking(ws.ID, parent.ID)
-	body, err := h.workstreamBody(parent, v)
-	if h.failed(w, err) {
-		return
-	}
-	h.write(w, http.StatusOK, api.WorkstreamFolded{Parent: body, Heading: heading})
+	h.foldWorkstreamPatch(w, r, ws, v, ws.Rev, api.WorkstreamPatch{FoldInto: ws.Parent})
 }
 
 // publishChildren says workstream.changed for each workstream inside id, whose

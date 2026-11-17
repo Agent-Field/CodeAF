@@ -117,5 +117,13 @@ func (h *Handler) foldWorkstreamPatch(w http.ResponseWriter, r *http.Request, ws
 	}
 	h.recordWorkstream(r, to, verb, from)
 	h.syncStartWithoutAsking(from, to)
+	if r.Method == http.MethodPost {
+		parent, err := h.workstreamBody(result, v)
+		if h.failed(w, err) {
+			return
+		}
+		h.write(w, http.StatusOK, api.WorkstreamFolded{Parent: parent, Heading: ws.Name})
+		return
+	}
 	h.writeWorkstream(w, http.StatusOK, result, v)
 }
