@@ -179,8 +179,20 @@ On the task page, its owner opens More › Waiting on and ticks the tasks it sho
 
 ## why my task says Interrupted — codeaf restarted while it was running
 
-**Interrupted means nothing is working on the task any more, and what it already did is kept.** On a Personal workstream, when codeaf's engine starts again (after the app or the computer restarted, or the engine stopped), every turn that was running has ended. Any task Afi or a chat was doing whose chat is not working or asking right now becomes Interrupted, and its activity says "Interrupted: codeaf restarted while this was running".
+**Interrupted means nothing is working on the task any more, and what it already did is kept.** On a Personal workstream, when codeaf's engine starts again (after the app or the computer restarted, or the engine stopped), every turn that was running has ended. Any task Afi or a chat was doing whose chat is not working or asking right now becomes Interrupted, and its activity says "Interrupted: the app closed while this was running".
 
-An interrupted task sits under Waiting on someone. Its page offers **Start** again, which hands it back to the same chat (or to Afi). Its owner can also Mark done or Stop it from More. A chat that was still working or asking when the engine came back keeps its task Running, and a chat that picks the task back up says Running again itself.
+**It resumes once without anyone pressing anything:** codeaf wakes the same chat (or Afi) again with the task and the words "Carry on from where you stopped", and the activity says "Resumed after the app opened again". If codeaf restarts again before that run finishes, the task stays Interrupted under Waiting on someone. Its page then offers **Start** again, which hands it back to the same chat (or to Afi). Its owner can also Mark done or Stop it from More. A chat that was still working or asking when the engine came back keeps its task Running.
+
+A task that says Running while its chat is not working and not asking shows **Start again**, with "Nothing is working on it", and pressing it wakes that chat with the task.
 
 The Factory's tasks are not affected: a Factory task's state is its job's, and the Factory recovers its own steps.
+
+## task stuck on Running after the server restarted, or pressed Start on a running task and nothing happened
+
+On an organization workstream, Afi's work on a task runs on the organization's server, and the server keeps a note of every run while it goes. **When the server starts again, every task it was working on is settled within about ten seconds; none is left saying Running with nothing behind it.**
+
+- The task's activity says "Interrupted: the server restarted while Afi was working on it", then "Resumed after the restart". Afi carries on from its own conversation for that task, checking what it already wrote before writing again, with the rights of whoever started it.
+- A task resumes **once** without anyone pressing anything. If the server restarts during that second run too, the task stays **Interrupted** under Waiting on someone, with the reason "The server restarted while Afi was working on it. Press Start to run it again."
+- A run that stops reporting for a minute while the server is up becomes **Didn't report back**, with "Afi stopped reporting back while working on it. Press Start to run it again."
+
+**Start on a task that says Running with nothing working on it starts it again**: its page shows **Start again** with "Nothing is working on it", and its activity says "Started again by <name>: nothing was working on it". Start on a task Afi really is working on changes nothing.

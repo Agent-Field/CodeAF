@@ -147,9 +147,15 @@ type agentDesk struct {
 	// resume holds, for a task whose run is still ending, the run to start
 	// once it has: an answer that arrived while Afi was finishing its turn.
 	resume map[taskRunKey]taskResume
-	ctx    context.Context
-	stop   context.CancelFunc
-	wg     sync.WaitGroup
+	// owner names this process on the task leases it holds, and since is
+	// when it was first asked (workstream_task_lease.go).
+	owner string
+	since time.Time
+	// sweepDone closes when the lease sweep has ended, after Close.
+	sweepDone chan struct{}
+	ctx       context.Context
+	stop      context.CancelFunc
+	wg        sync.WaitGroup
 }
 
 func (h *Handler) agentRoutes() {
@@ -565,8 +571,12 @@ func (h *Handler) closeAgents() {
 		d.ctx, d.stop = context.WithCancel(context.Background())
 	}
 	d.stop()
+	swept := d.sweepDone
 	d.mu.Unlock()
 	d.wg.Wait()
+	if swept != nil {
+		<-swept
+	}
 }
 
 // recordAs appends one organization change made by who, outside a request:

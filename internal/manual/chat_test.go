@@ -85,6 +85,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"someone left the workstream, who gets their tasks", "organization-workstream-tasks"},
 		{"a file changed while my task was running", "organization-workstream-tasks"},
 		{"my task says interrupted after codeaf restarted", "organization-workstream-tasks"},
+		{"my task is stuck on running after the server restarted", "organization-workstream-tasks"},
+		{"pressed start on a running task and nothing happened", "organization-workstream-tasks"},
 		{"I pressed Start but the chat was busy", "organization-workstream-tasks"},
 		{"how do I attach a file to a task", "organization-workstream-tasks"},
 		{"drag a file onto a task", "organization-workstream-tasks"},

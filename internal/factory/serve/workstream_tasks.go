@@ -156,6 +156,7 @@ func (h *Handler) readTasks(r *http.Request, ws factory.OrgWorkstream) ([]factor
 	}
 	slices.SortStableFunc(out, func(a, b factory.WorkstreamTask) int { return strings.Compare(a.CreatedAt, b.CreatedAt) })
 	nameTasks(h.personNames(), out)
+	h.fillRuns(ws.ID, out)
 	return out, nil
 }
 
@@ -427,6 +428,15 @@ func (h *Handler) patchWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 		// A person's start wakes the doer before the task may say running
 		// (workstream_task_wake.go); the agent's own "running" is its run.
 		wake = !byAgent && target.ID == "" && t.State != factory.TaskRunning && out.Task.State == factory.TaskRunning
+		// START ON A TASK THAT SAYS RUNNING WITH NOTHING BEHIND IT STARTS IT
+		// AGAIN (live2 WL: it answered 200 and did nothing, and only Stop then
+		// Start recovered it). A run that is going is left alone.
+		if !byAgent && target.ID == "" && p.State != nil && *p.State == factory.TaskRunning && t.State == factory.TaskRunning &&
+			t.DoneBy.Kind == factory.TaskByAfi && !h.taskTurnRunning(ws.ID, tid) {
+			wake = true
+			out.Events = append(out.Events, factory.WorkstreamTaskEvent{ID: h.newTaskID("te_")(), Task: tid, At: out.Task.UpdatedAt, By: by,
+				Kind: factory.TaskEventState, Text: "Started again by " + by.Name + ": nothing was working on it"})
+		}
 		if err := keepTask(tw, out.Task, rev); err != nil {
 			return err
 		}
