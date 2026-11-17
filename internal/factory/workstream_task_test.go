@@ -292,3 +292,51 @@ func TestAStandingOrdersTaskKeepsItsRunAndTheDefaultOwner(t *testing.T) {
 		t.Fatalf("the run is not on the wire: %s", raw)
 	}
 }
+
+func TestSendBackWithoutAReasonIsRefused(t *testing.T) {
+	// Live2/E1 F8: Send back accepted an empty reason, so the doer's Inbox
+	// said "sent back by priya" and nothing about what to change.
+	notes := afiTask("t1", "marco")
+	notes.State, notes.DoneAt = TaskDone, "2026-11-15T10:00:00Z"
+	upNext, blank := TaskUpNext, "   "
+	for _, p := range []TaskPatch{{State: &upNext}, {State: &upNext, StateReason: &blank}} {
+		if _, err := ApplyPatch(notes, p, TaskActor{Handle: "priya", Edit: true}, byPriya, []WorkstreamTask{notes}, taskIDs(), taskNow); err == nil {
+			t.Fatalf("a send back with no reason was taken: %+v", p)
+		}
+	}
+	// The owner's untick of their own person task is not a send back and needs no reason.
+	memo := personTask("t2", "priya")
+	memo.State = TaskDone
+	if _, err := ApplyPatch(memo, TaskPatch{State: &upNext}, TaskActor{Handle: "priya", Edit: true}, byPriya, []WorkstreamTask{memo}, taskIDs(), taskNow); err != nil {
+		t.Fatalf("the owner's untick was refused: %v", err)
+	}
+}
+
+func TestReopeningATaskMakesADoneDependantWaitAgainAndWhatRestsOnIt(t *testing.T) {
+	// Live2/E1 F7, final spec Tasks › Rules: "Reopening a task makes every
+	// task that waits on it wait again." A done dependant used to stay Done.
+	fix := afiTask("fix", "marco")
+	notes := afiTask("notes", "priya")
+	post := afiTask("post", "priya")
+	other := afiTask("other", "priya")
+	fix.Title, notes.Title = "Fix recipe import", "Write the release notes"
+	fix.State, notes.State, post.State, other.State = TaskDone, TaskDone, TaskDone, TaskDone
+	notes.WaitingOn, post.WaitingOn = []string{"fix"}, []string{"notes"}
+	all := []WorkstreamTask{fix, notes, post, other}
+	upNext, why := TaskUpNext, "the import still crashes"
+	ch, err := ApplyPatch(fix, TaskPatch{State: &upNext, StateReason: &why}, TaskActor{Handle: "priya", Edit: true}, byPriya, all, taskIDs(), taskNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, o := range ch.Rewait {
+		got[o.ID] = ch.RewaitOn[o.ID]
+		again, changed := WaitAgain(o, "2026-11-17T10:00:00Z")
+		if !changed || again.State != TaskUpNext || again.DoneAt != "" {
+			t.Fatalf("%s did not wait again: %+v", o.ID, again)
+		}
+	}
+	if len(got) != 2 || got["notes"] != fix.Title || got["post"] != notes.Title {
+		t.Fatalf("waits again %v, want notes on the fix and post on the notes", got)
+	}
+}

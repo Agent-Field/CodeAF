@@ -22,14 +22,16 @@ When a task needs a choice or an approval, it asks its owner and shows as "Needs
 
 A task can carry more than one Ask — approval by several people is several Asks, each with its one decider, and the task waits on all of them; an Ask with its own decider is answered by that person alone ("only Priya answers this Ask"). Others attach a view instead.
 
-If the owner is Everyone, anyone who can edit the workstream may answer; the first answer decides, a second is refused with "this question was already answered", and the task records who answered. A question left unanswered for a day also goes to the workstream's fallback person, if it has one.
+If the owner is Everyone, anyone who can edit the workstream may answer; the first answer decides, a second is refused with "this question was already answered", and the task records who answered. A question left unanswered for a day also goes to the workstream's fallback person, if it has one: every one of the task's Asks, the decision check's included, appears under Waiting on you in the fallback person's Inbox and gets buttons on the task page.
+
+Every Ask you decide reaches you, not only the task's own: a task's second and third Ask, and the Ask the decision check raises when work goes against a decision, each get their own row under Waiting on you in the Inbox (alike ones can be answered together), and each counts in the Work list's amber number for that workstream.
 
 Who owns a new task: whoever asked for it. Work nobody asked for directly (from the Factory or a standing order) goes to the workstream's default owner.
 
 ## tick a person task, hand a task to someone, move it to another workstream
 
 - Tick: only the owner ticks a person's task ("only the task's owner ticks it" otherwise). Ticking it unblocks the tasks that were waiting only on it: a person's task loses its "waiting on", and an Afi or chat task stays in Up next with the line "Ready to start: <the ticked task> is done" until it is started (see *Start — why a task stays in Up next*).
-- Hand to someone: anyone who can edit the workstream changes a task's owner to another person or to Everyone. The thread says "Handed to Marco", and Marco's Inbox row says "handed to you by Priya". Taking a task yourself is not a hand-over and says nothing.
+- Hand to someone: anyone who can edit the workstream changes a task's owner to another person: anyone named on the workstream, or in one of the teams it is shared with. A task always has one owner, so Add task and Hand to someone never offer Everyone (a task made with owner Everyone before keeps it until handed on). The thread says "Handed to Marco", and Marco's Inbox row says "handed to you by Priya". Taking a task yourself is not a hand-over and says nothing.
 - Move: More › Move moves a task, with its whole conversation, to another workstream you can edit. Tasks that waited on it here stop waiting. Only the task's owner or whoever looks after the workstream moves it.
 - Send back: see *send a done task back* below.
 
@@ -41,9 +43,9 @@ Stopping a task or moving it to another workstream is for the task's owner and f
 
 ## send a done task back — Send back…, and what waits on it waits again
 
-A done task's page has a framed line under its facts, "Done by Lena on Nov 20 · Not right? Send it back with what to change. A comment does not reopen a task.", with "Send back…" (also in its More). It asks why, then puts the task back in Up next. Anyone who can edit may send work back, a reviewer included. The thread, the task and the doer's Inbox row read "Sent back by Priya: <why>". An Afi or chat task sent back starts again with the reason. Every done task has the line, whatever it made, files only included. A Factory task's Send back reopens its job, with the reason left in the thread; where the job cannot be reopened from here (an organization's Factory), the line says "The Factory's own page reopens its work." instead. A new goal is a new task.
+A done task's page has a framed line under its facts, "Done by Lena on Nov 20 · Not right? Send it back with what to change. A comment does not reopen a task.", with "Send back…" (also in its More). It asks why, then puts the task back in Up next; "Send back" stays idle until you write why, and a send back with no reason is refused with "say why it goes back". Anyone who can edit may send work back, a reviewer included. The thread, the task and the doer's Inbox row read "Sent back by Priya: <why>". An Afi or chat task sent back starts again with the reason. Every done task has the line, whatever it made, files only included. A Factory task's Send back reopens its job, with the reason left in the thread; where the job cannot be reopened from here (an organization's Factory), the line says "The Factory's own page reopens its work." instead. A new goal is a new task.
 
-When a done task is sent back or unticked, every unfinished task that waits on it waits again. One that was running goes back to Up next (a Factory task keeps its job's state), and each one's thread says "Waiting again: <title> was reopened". Done tasks that waited on it stay done; send them back too if they need redoing.
+When a done task is sent back or unticked, every task that waits on it waits again, a done one included. One that was running or done goes back to Up next (a Factory task keeps its job's state), and each one's thread says "Waiting again: <title> was reopened". A done task reopened this way reopens what waits on it in turn.
 
 ## waiting on — the only way to order tasks, no circles
 

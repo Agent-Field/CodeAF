@@ -441,7 +441,7 @@ func (h *Handler) patchWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 			}
 			out.Events = append(out.Events, factory.WorkstreamTaskEvent{
 				ID: h.newTaskID("te_")(), Task: o.ID, At: out.Task.UpdatedAt, By: by, Kind: factory.TaskEventState,
-				Text: "Waiting again: " + out.Task.Title + " was reopened",
+				Text: "Waiting again: " + rewaitOn(out, o.ID) + " was reopened",
 			})
 		}
 		// A released task stays up next (factory.Released): its thread says it
@@ -801,4 +801,13 @@ func (h *Handler) startTask(r *http.Request, ws factory.OrgWorkstream, v Viewer,
 		h.stopTaskTurn(ws.ID, tid)
 	}
 	return out.Task, err
+}
+
+// rewaitOn is the title of the reopened task o waits on: the one this change
+// reopened, or a done one that reopened with it.
+func rewaitOn(ch factory.TaskChange, id string) string {
+	if on := ch.RewaitOn[id]; on != "" {
+		return on
+	}
+	return ch.Task.Title
 }
