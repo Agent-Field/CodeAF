@@ -1,6 +1,6 @@
 ---
 kind: added
-title: A new workstream starts as a conversation with Afi and a card; nothing exists until Create workstream
+title: A new workstream starts as a chat with Afi and a card; nothing exists until Create workstream
 pr: 2752
 surface: [app, engine]
 invalidates:
