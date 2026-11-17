@@ -318,7 +318,9 @@ Delete removes the task from Tasks, Work and the Inbox, including its unanswered
 questions. Tasks that waited on it stop waiting; their activity gains the dim line
 "No longer waiting: “<title>” was deleted". Deleting a prerequisite does not itself
 start another task. **Files it made stay in Files**, with their contents intact.
-Deleting a Factory task hides it here; it does not delete the Factory job.
+Deleting a Factory task hides it here; it does not delete the Factory job. Personal
+checks the observed job state too. If it cannot read that state, it refuses:
+"The Factory isn't answering; read this task again before deleting it".
 
 "Task deleted · files stay in Files" offers **Undo** for ten seconds, like moving
 from My space. Undo restores the task and its conversation, and restores the waits
