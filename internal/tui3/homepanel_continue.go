@@ -918,8 +918,6 @@ func (a *app) openTaken(msg homeTakenMsg) tea.Cmd {
 	defer func() { a.homeTakeOpening = false }()
 	if a.presentRow(msg.row).Mine {
 		msg.taken.Resume.From = ""
-	} else if msg.taken.Resume.From == "" && msg.row.Device != "" {
-		msg.taken.Resume.From = msg.row.Device
 	}
 	if a.machineRead.sendHolds == nil {
 		a.machineRead.sendHolds = map[string]sendHold{}
