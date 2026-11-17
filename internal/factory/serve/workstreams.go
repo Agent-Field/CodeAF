@@ -62,6 +62,8 @@ var (
 )
 
 func (h *Handler) workstreamRoutes() {
+	h.route("/v1/work", map[string]http.HandlerFunc{http.MethodGet: h.workHome})
+	h.route("/v1/workstreams/{id}/overview", map[string]http.HandlerFunc{http.MethodGet: h.workOverview})
 	h.route("/v1/workstreams", map[string]http.HandlerFunc{http.MethodGet: h.listWorkstreams, http.MethodPost: h.createWorkstream})
 	h.route("/v1/workstreams/import", map[string]http.HandlerFunc{http.MethodPost: h.importWorkstream})
 	h.route("/v1/workstreams/{id}", map[string]http.HandlerFunc{http.MethodGet: h.getWorkstream, http.MethodPatch: h.patchWorkstream, http.MethodDelete: h.deleteWorkstream})

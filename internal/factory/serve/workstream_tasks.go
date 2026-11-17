@@ -265,6 +265,12 @@ func keepTask(tw store.TaskWrite, t factory.WorkstreamTask, readRev int) error {
 func (h *Handler) publishTasks(ws factory.OrgWorkstream, by string, tasks ...factory.WorkstreamTask) {
 	for _, t := range tasks {
 		h.publishWorkstreamPart(ws, api.PartTasks, t.ID, by, t.Rev, false)
+		// A request's source learns that its shared line changed, without receiving the destination's other work.
+		if t.CameFrom.WS != "" && t.CameFrom.WS != ws.ID {
+			if source, ok, err := h.config.Store.Workstream(t.CameFrom.WS); err == nil && ok && source.ArchivedAt == nil {
+				h.publishWorkstreamPart(source, api.PartTasks, "", by, 0, false)
+			}
+		}
 	}
 }
 
@@ -812,6 +818,10 @@ func (h *Handler) startAllWorkstreamTasks(w http.ResponseWriter, r *http.Request
 	started := []factory.WorkstreamTask{}
 	var refused error
 	for _, ready := range factory.StartAll(body.Group, all, h.clock().UTC()) {
+		if body.IDs != nil && !slices.Contains(body.IDs, ready.ID) {
+			continue
+		}
+
 		t, err := h.startTask(r, ws, v, jobs, ready.ID)
 		if err != nil {
 			refused = err
