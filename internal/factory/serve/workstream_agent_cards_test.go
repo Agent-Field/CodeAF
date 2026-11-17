@@ -10,6 +10,13 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 )
 
+// proposeDoor is a turn's door as these tests use it: one that works and says
+// whether it proposes, whatever wraps it (the Library's door does).
+type proposeDoor interface {
+	workDoor
+	Proposes() bool
+}
+
 // AFI'S TASKS ARRIVE AS CARDS, AND NOTHING IS MADE UNTIL THE PERSON ADDS THEM
 // (Workstreams v2, screen 8). Before, the server's Afi made a plan's tasks
 // the moment it was asked, for people the asker had not yet agreed to hand
@@ -19,7 +26,7 @@ func TestAfisTasksArriveAsCardsAndAreMadeOnlyWhenAdded(t *testing.T) {
 	webhook, _, _, _ := o.orgScene(t)
 	var said string
 	o.serverMode(t, func(ctx context.Context, turn AgentTurn) (AgentTurnEnd, error) {
-		d := turn.Door.(*agentDoor)
+		d := turn.Door.(proposeDoor)
 		if !d.Proposes() {
 			t.Fatal("a person's conversation with Afi does not propose")
 		}
@@ -119,7 +126,7 @@ func TestAddedCardsOfAPlanShareOneGroup(t *testing.T) {
 		for i := 1; i <= 6; i++ {
 			cards = append(cards, `{"title":"Part `+strconv.Itoa(i)+`","request":"Do it."}`)
 		}
-		if _, err := turn.Door.(*agentDoor).Work(ctx, "ws_task_propose", json.RawMessage(`{"group":"Release 0.9","tasks":[`+strings.Join(cards, ",")+`]}`)); err != nil {
+		if _, err := turn.Door.(proposeDoor).Work(ctx, "ws_task_propose", json.RawMessage(`{"group":"Release 0.9","tasks":[`+strings.Join(cards, ",")+`]}`)); err != nil {
 			t.Error(err)
 		}
 		return AgentTurnEnd{}, nil
@@ -177,7 +184,7 @@ func TestAnAppThatCannotDrawCardsGetsNone(t *testing.T) {
 	webhook, _, _, _ := o.orgScene(t)
 	var proposes bool
 	o.serverMode(t, func(ctx context.Context, turn AgentTurn) (AgentTurnEnd, error) {
-		proposes = turn.Door.(*agentDoor).Proposes()
+		proposes = turn.Door.(proposeDoor).Proposes()
 		return AgentTurnEnd{}, nil
 	})
 	o.do(t, "mia", "POST", "/v1/workstreams/"+webhook.ID+"/agent/messages", -1, api.AgentMessageNew{Text: "Plan it."}, 202, nil)
@@ -195,7 +202,7 @@ func TestAPersonsOwnChatNeverProposes(t *testing.T) {
 	webhook, _, _, _ := o.orgScene(t)
 	var proposes []bool
 	o.serverMode(t, func(ctx context.Context, turn AgentTurn) (AgentTurnEnd, error) {
-		proposes = append(proposes, turn.Door.(*agentDoor).Proposes())
+		proposes = append(proposes, turn.Door.(proposeDoor).Proposes())
 		return AgentTurnEnd{}, nil
 	})
 	var side api.AgentChat
