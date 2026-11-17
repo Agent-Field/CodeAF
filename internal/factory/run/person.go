@@ -408,13 +408,51 @@ func KeepAnswer(it *factory.Item, yes bool, words string, now time.Time) error {
 	if it.Asking == nil || it.Asking.With != factory.AskedYou {
 		return fmt.Errorf("%s is not waiting on you", it.Ref())
 	}
-	if err := keepStored(it, answeredWord(loopAnswer{yes: yes, words: strings.TrimSpace(words)}), now); err != nil {
+	follow, question := followAsks(*it), it.Asking.Question
+	word := answeredWord(loopAnswer{yes: yes, words: strings.TrimSpace(words)})
+	if err := keepStored(it, word, now); err != nil {
 		return err
+	}
+	if follow {
+		answerFollow(it, question, word, now)
+		return nil
 	}
 	if it.State == factory.StateRunning && !storedPaused(*it) {
 		it.State = factory.StateQueued
 	}
 	return nil
+}
+
+// followAsks says the question the job waits on is Follow PR's own: a round
+// reported that only the person can decide and parked the job on its reason
+// ([floorLoop.parkCI]), and no round is left waiting for the answer.
+func followAsks(it factory.Item) bool {
+	f, pr := it.FollowUp, it.PullRequest
+	return it.QKind == "scope" && it.State == factory.StateNeedsYou && !it.Manual &&
+		f != nil && f.State == "needs_you" && pr != nil && pr.State == factory.PROpen
+}
+
+// answerFollow starts the Follow PR round the person's answer is for.
+//
+// THE ANSWER TO FOLLOW PR'S QUESTION IS ITS NEXT ROUND'S REQUEST. Kept only as
+// a note, it took the asker's name off the job and left the question, the
+// state and Follow PR's stop exactly where they were: the job went on asking,
+// a second answer was refused as "not waiting on you", and nothing ran
+// (2026-11-17). The round is queued as Resume pipeline queues one, with the
+// question and the answer as what the person asked for. An answer is the
+// person's word for one more round, so a repair count already at its limit
+// gives this one.
+func answerFollow(it *factory.Item, question, answer string, now time.Time) {
+	f := *it.FollowUp
+	f.State, f.BlockedBy, f.EventKey = "watching", "", ""
+	if f.Limit > 0 && f.Attempt >= f.Limit {
+		f.Attempt = f.Limit - 1
+	}
+	f.Request = "The person answered Follow PR's question. Question: " + oneLine(question) + " Answer: " + oneLine(answer)
+	it.FollowUp = &f
+	it.Question, it.QKind = "", ""
+	it.State = factory.StateShipped
+	factory.QueueCIFollowUp(it, now)
 }
 
 // DeclineAskFirst is a no to a job that asked before it starts.

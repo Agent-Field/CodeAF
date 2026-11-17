@@ -138,7 +138,15 @@ func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) erro
 			if a.State != "reviewing" && a.State != "reviewed" && a.State != "ready" && a.State != "checked" {
 				return fmt.Errorf("unknown readiness state")
 			}
-			if a.State == "ready" && (f.Readiness == nil || f.Readiness.State != "reviewed" || !it.Publishing) {
+			// ONLY THE MOVE TO READY NEEDS THE PUBLICATION THAT MAKES IT. A pull
+			// request already marked ready keeps that record on its follow-up,
+			// and every later Follow PR round reports the follow-up whole; a
+			// report that only says again what the service holds was refused
+			// here, so the first round after the pull request went ready lost
+			// its results and the job stopped on "results not saved" with its
+			// runner still holding it (found by the scenario tests, 2026-11-17).
+			already := f.Readiness != nil && f.Readiness.State == "ready"
+			if a.State == "ready" && !already && (f.Readiness == nil || f.Readiness.State != "reviewed" || !it.Publishing) {
 				return fmt.Errorf("ready requires the recorded publication transition")
 			}
 
@@ -885,6 +893,17 @@ func ExternalPRHeadChecked(it factory.Item) bool {
 // head; never overwrite a third, newer service observation or publication.
 func applyFollowObservation(it *factory.Item, report factory.RunReport) error {
 	f, next, pr := it.FollowUp, report.FollowUp, report.PR
+	// THE SERVICE MAY HAVE READ THE NEW HEAD BEFORE THE RUNNER DID. A round
+	// started by a rerun or an answer keeps the head its follow-up was made
+	// on; the runner reads the forge, finds the head moved and says so. When
+	// the poller had already written that same head on the job, the runner's
+	// copy of the pull request had not changed, its report carried none, and
+	// the moved follow-up was refused as "follow-up identity changed": the
+	// round lost its results (found by the scenario tests, 2026-11-17). The
+	// head the service holds is the observation.
+	if pr == nil && f != nil && next != nil && it.PullRequest != nil && f.HeadSHA != next.HeadSHA && it.PullRequest.HeadSHA == next.HeadSHA {
+		pr = it.PullRequest
+	}
 	if f == nil || next == nil || f.Attempt != next.Attempt || pr == nil {
 		return nil
 	}

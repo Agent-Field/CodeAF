@@ -298,7 +298,13 @@ func QueueCIFollowUp(it *Item, now time.Time) bool {
 	releasedBudget := monitorChanged
 	// Only a spending-owned pause may reopen on a fresh observation. Critical
 	// questions, Manual control and exhausted attempts retain their own doors.
-	if f.State == "needs_you" && f.BlockedBy == FollowBlockedBudget && Automatic(*it) && it.Question == "" && it.Cap > JobLifetimeSpent(*it) && f.Attempt < f.Limit {
+	//
+	// A RAISED BUDGET LIFTS THE STOP IN MANUAL TOO. It used to lift only for a
+	// job in Auto, so in Manual the person raised the budget and the job went
+	// on saying "raise the budget" (2026-11-17). The raise is the person's own
+	// word to go on; what Manual keeps is the approval before a repair is
+	// pushed, and that is asked when the round lands.
+	if f.State == "needs_you" && f.BlockedBy == FollowBlockedBudget && !RecoveryPaused(*it) && it.Question == "" && it.Cap > JobLifetimeSpent(*it) && f.Attempt < f.Limit {
 		f.State, f.BlockedBy = "watching", ""
 		f.Reason = "Budget raised. Watching CI, reviews and merge conflicts automatically. Merge remains your decision."
 		if it.Stream != nil {

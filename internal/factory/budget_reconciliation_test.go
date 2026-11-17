@@ -35,8 +35,25 @@ func TestFollowPRBudgetRecoveryKeepsWorkAndAttempts(t *testing.T) {
 	}
 }
 
+// A job in Manual is released as one in Auto is: the raise is the person's
+// word to go on, and Manual still asks before the repair is pushed. It used to
+// stay parked on "raise the budget" after the budget was raised.
+func TestFollowPRBudgetRecoveryReleasesAManualJob(t *testing.T) {
+	it := followItem()
+	it.Autonomy = AutonomyManual
+	it.Stream.Spent = it.Cap
+	it.FollowUp.Attempt = 1
+	if !QueueCIFollowUp(&it, time.Now()) || it.FollowUp.State != "needs_you" || it.FollowUp.BlockedBy != FollowBlockedBudget {
+		t.Fatal("budget exhaustion did not park maintenance")
+	}
+	it.Cap = 10
+	if !QueueCIFollowUp(&it, time.Now()) || it.State != StateQueued || it.FollowUp.State != "queued" {
+		t.Fatalf("the raised budget did not release a Manual job: state=%s follow=%s", it.State, it.FollowUp.State)
+	}
+}
+
 func TestFollowPRBudgetRecoveryPreservesOtherPauses(t *testing.T) {
-	for _, mode := range []string{"takeover", "manual", "critical decision", "attempt limit"} {
+	for _, mode := range []string{"takeover", "critical decision", "attempt limit"} {
 		t.Run(mode, func(t *testing.T) {
 			it := followItem()
 			it.Autonomy = AutonomyAuto
@@ -47,8 +64,6 @@ func TestFollowPRBudgetRecoveryPreservesOtherPauses(t *testing.T) {
 			switch mode {
 			case "takeover":
 				it.Manual = true
-			case "manual":
-				it.Autonomy = AutonomyManual
 			case "critical decision":
 				it.State, it.QKind, it.Question = StateNeedsYou, "scope", "Choose the public API"
 			case "attempt limit":
