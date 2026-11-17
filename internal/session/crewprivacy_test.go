@@ -129,7 +129,11 @@ func TestAlreadyCreatedHelperHonorsOptOutUnlessItsCurrentRowExplicitlyNamesFreeM
 			if err := config.WriteCreditsReading(dir, config.APIKeyAt(dir), credits.Reading{Known: true, Low: true}); err != nil {
 				t.Fatal(err)
 			}
-			frozen := config.TierModelAt(dir, config.ModelTierLow)
+			// The free helper an older build seated automatically on a low,
+			// opted-in account. This build seats none (the helper rows follow
+			// the conversation), but a snapshot taken by an older one may still
+			// be live, and it must still never count as consent.
+			frozen := "thinkingmachines/inkling-small:free"
 			if !crewroute.IsFree(frozen) {
 				t.Fatal("fixture did not construct a free probe")
 			}

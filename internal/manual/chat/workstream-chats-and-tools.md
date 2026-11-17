@@ -4,7 +4,7 @@
 
 A chat you start inside a workstream (the box at the bottom of its Chats tab, "Start a new chat in <workstream>") is yours alone: nobody else in the workstream sees it or what is said in it. What it makes is shared. Its tasks appear in the workstream's Tasks for everyone, with the chat's name as who does them, and its files appear in Files with the chat's name as who made them. The Chats tab says so under the list: "Only you see your chats. The tasks and files they make are shared with everyone in <workstream>."
 
-The same holds for Afi's pane beside the workstream: it is private to you. Anything you type to an agent is private; anything on a task or a file is shared.
+The same holds for Afi's pane beside the workstream: it is private to you, on a Personal workstream and on an organization's, including when the organization runs its agents on its server. Anything you type to an agent is private; anything on a task or a file is shared.
 
 ## the Chats tab — Afi first, Waiting on you, Working, Resting
 
@@ -16,6 +16,18 @@ A click on a chat opens it in place, inside the Chats tab, with Afi still beside
 
 "Open as its own tab" opens the same conversation as a tab whose path reads Work › <workstream> › Chats › <chat>. Its right panel has two tabs, Tasks and Files, listing only what this chat made; a row opens that task or file. Pressing Afi swaps the panel for Afi's pane. A chat is open in one place at a time: opening it as a tab returns the workstream to its list of chats. Leaving a chat or closing its tab stops nothing; it keeps working.
 
+## can Afi see my chats — Afi reads your own chats in the workstream with ws_chats
+
+Yes, yours, and nobody else's. Inside a Personal workstream, Afi carries one more tool than the chats do: `ws_chats`. With it Afi lists your chats in that workstream (each one's name, whether it is waiting on you, working or resting, and its latest line) and reads what was said in one lately. Ask Afi "what is Launch post doing?" or "which of my chats needs me?" and it reads them to answer.
+
+Your teammates cannot see your chats, and neither can their Afi. Afi does not copy what it reads there into a task, a comment or a file; the one line a private request leaves on a task is still the only trace.
+
+On an organization's workstream Afi does not have `ws_chats`: your chats stay on your computer and the organization's server never holds them, so there is nothing for it to read.
+
+## does leaving a chat stop what it is doing — going back or shutting its tab stops nothing
+
+No. Going back to the list, opening another chat, or closing a chat's tab stops nothing: the chat keeps working on whatever it was doing and its tasks keep running. It rests on its own when nothing of its is running, and wakes when you write to it or a task of its needs you. To stop work, stop the task itself, or press stop in the chat while it is answering.
+
 ## the workstream tools — ws_tasks, ws_task_create, ws_task_update, ws_task_comment, ws_files, ws_file_read, ws_file_create, ws_file_suggest
 
 Every chat started inside a workstream, and Afi when it is inside one, carries eight tools onto the workstream's shared work:
@@ -23,6 +35,8 @@ Every chat started inside a workstream, and Afi when it is inside one, carries e
 - `ws_tasks` lists the tasks, or reads one whole with its activity and comments.
 - `ws_task_create` makes a task; `ws_task_update` changes one this chat does (its state, its result, the check against the request, an Ask for its owner); `ws_task_comment` writes on a task's thread.
 - `ws_files` lists files and folders; `ws_file_read` reads one; `ws_file_create` makes a document, folder or link; `ws_file_suggest` suggests edits to a document.
+
+What a chat or Afi makes for the workstream is saved with `ws_file_create` and appears in Files for everyone in it; it is never written to disk as a loose file.
 
 On a Personal workstream the desktop app serves them. On an organization whose agents run on its server, Afi there carries all eight beside `workstream_pages`, with the same rules; the page about an organization workstream's agent says what is different there.
 
@@ -44,9 +58,9 @@ Agents change a document by suggestion: nothing changes until someone in the wor
 
 When something you asked an agent privately changes shared work, the task's thread gets ONE line naming who asked for what, such as "Priya asked Afi to keep it under 300 words". The conversation around it stays private. A private answer is shared only when you post it.
 
-## big work — five or more tasks, a batch, a named chat, Start all
+## big work — five or more tasks, a batch, a named chat, a plan with Start
 
-When Afi is given big work that splits into five or more tasks, it starts a named chat to run it and stays free for quick asks. The tasks share one group with the same name as that chat, land in Up next with "Start all", and nothing starts until a person presses it. Afi tells you with a button, "Open <name>", that opens the chat. In the Chats tab that chat's row says "Started by Afi". On an organization whose agents run on its server, Afi gives the tasks the one group in Up next, but there it starts no separate chat, and nothing yet works an organization's task by itself: each waits in Up next until its owner marks it done or stops it.
+When Afi is given big work that splits into five or more tasks, it starts a named chat to run it and stays free for quick asks. The tasks share one group with the same name as that chat and arrive in Up next as a plan with "Start" and "Change the plan"; nothing starts until a person presses Start. Afi tells you with a button, "Open <name>", that opens the chat. In the Chats tab that chat's row says "Started by Afi". On an organization whose agents run on its server, Afi gives the tasks the one group in Up next, but there it starts no separate chat, and nothing yet works an organization's task by itself: each waits in Up next until its owner marks it done or stops it.
 
 ## did the agent save it to the Library — what a workstream's chat makes goes to its Files, not the Library or disk
 

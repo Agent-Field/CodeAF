@@ -985,25 +985,17 @@ const (
 // [tierKeyFor] is total over it.
 var ModelTiers = []string{ModelTierReflex, ModelTierLow, ModelTierWorker, ModelTierHigh, ModelTierMastermind}
 
-// THE TWO ROWS THAT ARE NOT CREW SEATS arrive pointed at a model. The reflex
-// and small-work tiers carry the calls a conversation makes on its own behalf —
-// twice a turn for the reflex — so a person who never opened the sheet gets a
-// model that costs near nothing rather than the one they are talking to. The
-// three crew seats have no shipped model at all: an unpinned seat is routed per
-// task (crew.go), and a build-chosen worker, planner or checker would be the
-// implicit fallback the router exists to remove.
-//
-// Each is a bare OpenRouter id, spelled ONCE here and read by every caller
-// through [TierModelAt]. Blank is still an answer on both: a row a person
-// emptied on purpose reads empty and follows the model the person is talking
-// to, which is [roles.Resolve]'s floor. UNSET and CLEARED are different answers
-// here ([TierModelAt] says how). The low row is pinned to a DATED build on
-// purpose: the bare `deepseek/deepseek-v4-flash` id resolves to the April
-// build, and the July build costs the same.
-const (
-	DefaultReflexModel = "google/gemini-2.5-flash"
-	DefaultLowModel    = "deepseek/deepseek-v4-flash-0731"
-)
+// THE TWO ROWS THAT ARE NOT CREW SEATS — reflex and small work — SHIP EMPTY.
+// They carry the calls a conversation makes on its own behalf (a title, the
+// reflex twice a turn, the router, a suggested reply), and the owner's rule is
+// that every one of those answers on the model the person chose
+// (internal/roles' background.go): a person who picks one model is billed for
+// one model. A row a person WRITES is theirs and is honoured exactly — that is
+// how somebody who wants the cheap calls cheaper says so — but this build no
+// longer chooses a model for anybody. Until 2026-11-16 these rows arrived
+// pointed at `google/gemini-2.5-flash` and `deepseek/deepseek-v4-flash-0731`,
+// and the workstreams-v5 live run (F-20) found a person on one model billed
+// for three.
 
 // DocumentEngines are the four rungs CODEAF_DOC_ENGINE accepts.
 var DocumentEngines = []string{"auto", "local", "free", "ocr"}
@@ -2544,7 +2536,7 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyTierReflexModel, Category: CategoryModels, Kind: SettingText,
 			Label: "reflex", EmptyLabel: "follows the conversation",
-			Hint: "the near-free model that reads every turn — it decides which remembered " +
+			Hint: "the model that reads every turn — it decides which remembered " +
 				"lines this turn needs and whether the exchange is worth keeping. Routing and " +
 				"extraction, never reasoning. Blank makes it follow the model you are talking to.",
 			read:  func() string { return TierModelAt(dir, ModelTierReflex) },
@@ -2588,9 +2580,9 @@ func (s *Settings) build() []Setting {
 		},
 		Setting{
 			Key: KeyKnowledgeModel, Category: CategoryModels, Kind: SettingText,
-			Label: "knowledge", EmptyLabel: DefaultKnowledgeModel,
-			Hint: "the OpenRouter model that learns and organizes project knowledge in the background. Changes apply to the next compilation; your conversation model stays separate. Blank restores the default.",
-			read: func() string { return KnowledgeModelAt(dir) },
+			Label: "knowledge", EmptyLabel: "follows your model",
+			Hint: "the OpenRouter model that builds your Library in the background. Blank makes it follow the model you chose; changes apply to the next compilation.",
+			read: func() string { return KnowledgeModelRowAt(dir) },
 			write: func(raw string) error {
 				return writeText(dir, KeyKnowledgeModel, strings.TrimSpace(raw))
 			},
@@ -4133,12 +4125,9 @@ func ParseToolApprovals(raw string) (map[string]string, error) {
 // so the calls that ride those tiers outside a task follow the crew without a
 // second place to set it.
 //
-// THE OTHER TWO ROWS KEEP THE RULE THEY HAVE ALWAYS HAD: UNSET AND CLEARED ARE
-// DIFFERENT ANSWERS. A profile that has never held the key gets this build's
-// own near-free model ([DefaultReflexModel], [DefaultLowModel]), because a call
-// made twice a turn is a bill nobody agreed to; a row somebody emptied ON
-// PURPOSE reads empty and follows the conversation, because refusing to let
-// them turn it off would make a default into a rule.
+// THE OTHER TWO ROWS ARE THE PERSON'S OR NOBODY'S. A row somebody wrote is
+// returned as written; a row never written, or emptied, is empty, and every
+// call on it follows the model the person chose ([roles.Resolve]'s floor).
 //
 // The value may carry a level (`moonshotai/kimi-k3:low`) and IS RETURNED WHOLE.
 // Splitting is [roles.SplitEffort]'s job at the point of resolution, because a
@@ -4161,16 +4150,6 @@ func tierKeyFor(tier string) string {
 		return KeyTierMastermindModel
 	}
 	return KeyTierLowModel
-}
-
-// builtinTierModel is the build's own model for the two rows that are not crew
-// seats. A crew seat's tier has none — it is routed — and reads the small-work
-// model only if a caller asks for a tier word this build does not know.
-func builtinTierModel(tier string) string {
-	if tier == ModelTierReflex {
-		return DefaultReflexModel
-	}
-	return DefaultLowModel
 }
 
 // ModelRolesAt resolves the per-role pins as the person wrote them.

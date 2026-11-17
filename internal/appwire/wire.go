@@ -729,7 +729,11 @@ type MemorySettings struct {
 }
 
 type Settings struct {
-	KnowledgeModel     string            `json:"knowledge_model,omitempty"`
+	// KnowledgeModel is the Library compiler's own row, and EMPTY WHEN IT
+	// FOLLOWS the person's chosen model (the default since 2026-11-16). It is
+	// always sent, empty included, so a client can tell "follows" from an engine
+	// that has no such row.
+	KnowledgeModel     string            `json:"knowledge_model"`
 	WhenPlanPaused     map[string]string `json:"when_plan_paused"`
 	Memory             MemorySettings    `json:"memory"`
 	DefaultModel       string            `json:"default_model"`

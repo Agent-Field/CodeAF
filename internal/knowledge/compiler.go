@@ -11,12 +11,9 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/provider"
 )
-
-func knowledgeModel(profile string) string { return config.KnowledgeModelAt(profile) }
 
 const knowledgeProjectionVersion = "knowledge-projection-4"
 
@@ -59,7 +56,7 @@ func (v *Vault) compile(ctx context.Context, key string, force bool) (err error)
 		return err
 	}
 	defer db.Close()
-	model := compilerModel{ctx: ctx, root: v.root, key: key, model: knowledgeModel(v.profile), db: db, calls: v.calls, repeats: v.repeats}
+	model := compilerModel{ctx: ctx, root: v.root, key: key, model: v.model(), db: db, calls: v.calls, repeats: v.repeats}
 	defer func() {
 		message := ""
 		if err != nil {

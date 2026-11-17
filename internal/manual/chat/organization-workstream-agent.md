@@ -15,9 +15,13 @@ Only the operator manages it, in Settings › Organizations › the organization
 
 Over the wire: `GET /v1/org/keys`, `PUT /v1/org/keys/openrouter {"key"}`, `DELETE /v1/org/keys/openrouter`, all operator-only. A key must be one word of 12 to 512 characters.
 
-## talking to the server's workstream agent — who can talk, who can only read, one message at a time, stop the agent while it is still answering someone else
+## talking to the server's workstream agent — private to you, who can talk, one message at a time, stop it
 
-In `server` mode a workstream's Agent panel is one conversation everyone who can see the workstream reads. People who can edit the workstream talk to it; people who can only view it read along with no composer. The agent answers one message at a time: a second message while it works is refused with "the agent is still answering santosh; wait for it, or stop it". Anyone who can edit may stop it; the conversation then says "Stopped by abir.".
+In `server` mode a workstream's Afi pane is private to you: you have your own conversation with the server's agent, and nobody else in the workstream reads it, not your colleagues and not the operator. Its memory is yours too, so it does not repeat what someone else told it. What it does to shared things is visible to everyone as those things: the tasks it makes, the files and pages it writes, the decisions it suggests, and one line on a task when your private request changed it ("Priya asked Afi to keep it under 300 words").
+
+People who can edit the workstream talk to it; people who can only view it have no composer. It answers one of your messages at a time: a second while it works is refused with "the agent is still answering your last message; wait for it, or stop it". Someone else's conversation never makes yours wait. Only you can stop yours; it then says "Stopped.".
+
+A workstream that had one shared conversation before gives each person only their own turns from it; nobody else's are copied.
 
 What it spends is posted to the workstream under the person whose message it answered. A workstream that has spent its budget takes no more messages ("This workstream has spent its budget."). An archived workstream takes none either.
 
@@ -29,6 +33,12 @@ With `workstream_pages` it reads the workstream (name, purpose, budget, pages, d
 
 It cannot run commands, read or change a repository, open files on a computer, start or stop Factory work, search the web or remember things between workstreams. For any of that, use `driver` mode, where the agent runs on a person's laptop with their tools.
 
+## does Afi know today's date — the date and time, your time zone, deadlines
+
+Yes. Every message you send tells the server's Afi the date and time where you are: the app sends your computer's time zone with the message, and Afi works out "today", "tomorrow" and every deadline from that date, never from a date it read on a page. If no time zone arrives, it uses the server's own clock and knows that it is the server's.
+
+When Afi changes something for you, it changes only what you asked, and its answer lists every change it made, including any status, rating, owner or date it changed along the way.
+
 ## Afi made a task on the server — who owns it, who it says made it, what Afi may change
 
 A task Afi makes is owned by the person who asked, unless they named someone else in the workstream or Everyone; "done by" is Afi, and it came from Afi. Lines Afi writes on a thread are signed Afi. Afi changes only work an agent does (its own tasks and chats' tasks); on a person's task or a Factory task it can only comment. An Ask it puts on a task has at most one recommended choice, listed first, and the task then waits on its owner, who alone answers it.
@@ -39,9 +49,9 @@ Everything goes through the same rules a person's app uses, with the rights of t
 
 A page or document Afi makes is shown in Files as made by Afi for the person who asked; the page's last change is in that person's name, not the steward's. The organization's activity names that person too.
 
-## Afi changed my page — suggestions on the server, History, nothing lost
+## Afi changed my page — suggestions on the server, nothing lost
 
-Afi rewrites a page directly only when Afi made it and no person has edited it; the words before are kept in the page's History first. Any other page, and any page somebody has open for editing, gets Afi's text as a suggestion: a new version in the page's History marked Kept · not applied, which changes nothing until someone opens History and presses Restore this version (next sections). Afi says so, naming the version.
+Afi rewrites a page directly only when Afi made it and no person has edited it. Any other page, and any page somebody has open for editing, gets Afi's text as a suggestion: it changes nothing in the page and waits for someone who can edit the page to take it. Afi says so in its reply, by the page's name, and never talks about versions or history. The document's header says the same thing to everyone: "Afi suggests edits here; they wait for someone to take them".
 
 ## a new organization workstream starts with an Overview page — never empty
 
@@ -49,7 +59,7 @@ When someone makes a workstream on the organization's server and sends no pages 
 
 ## the agent's text was kept, not applied — page History, current, Kept · not applied, Restore this version
 
-When the server's agent writes to a page a person made or is editing live, its text does not go into the page. It is kept as the newest version in the page's History, and the agent says so: "your text was not applied: it was kept as version N in the page's History, marked Kept · not applied".
+When the server's agent writes to a page a person made or is editing live, its text does not go into the page. It waits as a suggestion, and the agent says so: "your text was not applied: it waits as a suggestion for someone who can edit the page to take it". Underneath, the page's History menu still lists it as a version marked Kept · not applied.
 
 History marks **current** on the version the page actually holds, which the organization's server names (`live_version` on the page's versions). That is never simply the highest number: a kept version can be newer than the page. A kept version's row reads **Kept · not applied** and is not current.
 

@@ -46,6 +46,6 @@ A workstream inside another one shows its parent's files as one folder, "From <p
 
 Add to Library, in a file's right-click menu, keeps the file's words in your Library, where every workstream and agent can read them. A note shows for five seconds with Undo; nothing is kept if you press it. This is the only way something in a workstream reaches the Library.
 
-## can Afi change my document — suggestions, accept and reject
+## can Afi change my document — suggestions, accept and reject, fix another chat's draft
 
-Afi and chats change a document by suggestion: the old words struck through, the new ones underlined, with Accept and Reject. Anyone in the workstream can accept or reject. An agent edits directly only a file it made that no person has edited yet. A comment never makes Afi act: to have Afi change the text, ask in Afi's pane, and the change arrives as a suggestion. Changing a file flags the running tasks that use it.
+Afi and chats change a document by suggestion: the old words struck through, the new ones underlined, with Accept and Reject. Anyone in the workstream can accept or reject. An agent edits directly only a document an agent made (Afi, itself or another chat) that no person has edited yet, so one chat can correct another chat's wrong draft. Once a person edits a document, every agent changes it only by suggestion. When an agent is refused, it says who made the document and whether a person edited it. A comment never makes Afi act: to have Afi change the text, ask in Afi's pane, and the change arrives as a suggestion. Changing a file flags the running tasks that use it.

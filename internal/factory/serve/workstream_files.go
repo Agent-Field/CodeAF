@@ -596,6 +596,13 @@ func (h *Handler) createWorkstreamFile(w http.ResponseWriter, r *http.Request) {
 		}
 		ws = saved
 		f.PageID = page.ID
+		// A DOCUMENT'S FIRST WORDS ARE ITS FIRST VERSION. Without one, a
+		// document Afi wrote opened History to nothing, and "Show versions"
+		// showed nothing either (L3 F-21); the first save is the one every
+		// later version is compared with.
+		if strings.TrimSpace(page.BodyMD) != "" {
+			_, _, _ = h.config.Store.AddPageVersion(ws.ID, page.ID, store.PageVersion{At: page.UpdatedAt, By: v.Handle, Title: page.Title, BodyMD: page.BodyMD, Reason: "manual"})
+		}
 	}
 	status := http.StatusCreated
 	files, err := h.config.Store.EditWorkstreamFiles(ws.ID, now.Format(time.RFC3339Nano), func(files map[string]factory.WorkstreamFile) ([]string, bool, error) {

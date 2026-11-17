@@ -74,7 +74,7 @@ func TestRecoveryWithoutResultProvenanceKeepsDevRouting(t *testing.T) {
 	a, _ := newTestAgent(t, c, func(config *Config) {
 		config.SessionFile = journal
 		config.AskConsent = true
-		config.RolesSource = tierSettings(map[string]string{roles.TierKey(roles.TierLow): routeScreenModel, roles.TierKey(roles.TierMastermind): routeConfirmModel})
+		config.RolesSource = tierSettings(map[string]string{roles.TierKey(roles.TierLow): routeScreenModel, roles.PinKey(roles.RoleRouterConfirm): routeConfirmModel})
 	})
 	a.principal = NewSteward(routeAsk, Budget{Wall: time.Hour}, nil)
 	a.mu.Lock()

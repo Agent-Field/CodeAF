@@ -4,9 +4,9 @@ package api
 //
 // While the operator runs the organization's workstream agents on its server
 // (agent_runner "server", WAVE2.md §4.3), each workstream has one agent there,
-// run with the organization's own model key, and everyone who can see the
-// workstream reads the same conversation with it. Those who can edit the
-// workstream talk to it; one message is answered at a time.
+// run with the organization's own model key. Each person who can edit the
+// workstream has their own private conversation with it, which nobody else
+// reads; one message of theirs is answered at a time.
 //
 //	GET    /v1/org/keys                              -> OrgKeyList (operator)
 //	PUT    /v1/org/keys/{provider}   OrgKeyPut        -> OrgKey (operator); never answered back
@@ -15,10 +15,10 @@ package api
 //	POST   /v1/workstreams/{id}/agent/messages AgentMessageNew -> 202 WorkstreamAgent (edit)
 //	POST   /v1/workstreams/{id}/agent/stop            -> WorkstreamAgent (edit)
 //
-// Events, heard by everyone who can see the workstream:
+// Events, heard only by the person whose conversation it is (person):
 //
-//	agent.entry {id, entry}  one new line of the conversation
-//	agent.state {id, state, turn?, for?, since?}  the agent started, is stopping or is idle again
+//	agent.entry {id, person, entry}  one new line of the conversation
+//	agent.state {id, person, state, turn?, for?, since?}  the agent started, is stopping or is idle again
 
 // The event kinds the server agent publishes.
 const (
@@ -75,6 +75,9 @@ type WorkstreamAgent struct {
 	Seq     int          `json:"seq"`
 	CanTalk bool         `json:"can_talk"`
 	Cannot  string       `json:"cannot,omitempty"`
+	// Private is true from a server where each person has their own
+	// conversation with the agent, which no one else reads.
+	Private bool `json:"private,omitempty"`
 }
 
 // AgentEntriesMost is how many lines one read answers.
@@ -87,12 +90,17 @@ const AgentMessageMost = 16 << 10
 // AgentMessageNew is what a person says to the agent.
 type AgentMessageNew struct {
 	Text string `json:"text"`
+	// TZ is the sender's time zone, an IANA name ("America/Toronto"), so the
+	// agent reckons today's date and deadlines where they are. Optional.
+	TZ string `json:"tz,omitempty"`
 }
 
-// AgentEvent is agent.entry's and agent.state's body.
+// AgentEvent is agent.entry's and agent.state's body. Person is whose
+// conversation it is; only they hear it.
 type AgentEvent struct {
-	ID    string      `json:"id"`
-	Entry *AgentEntry `json:"entry,omitempty"`
+	ID     string      `json:"id"`
+	Person string      `json:"person,omitempty"`
+	Entry  *AgentEntry `json:"entry,omitempty"`
 	*AgentState
 }
 
