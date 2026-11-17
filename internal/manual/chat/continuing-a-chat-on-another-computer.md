@@ -71,7 +71,7 @@ if Enter raised the continue card, a successful move restores those same words, 
 
 a move opens one conversation for that chat. sending clears the words from its saved drafts, including matching copies left by an earlier window. taking the chat back, reopening it or restarting codeaf then shows an empty box unless you typed a new draft.
 
-taking a chat from Home restores that chat's own saved draft, or leaves its box empty. words typed for a different chat stay with that chat, even when both work in one place on disk. a draft held behind a send's continuation card stays with the chat that raised it. continuing a chat this window already holds keeps its open conversation and typed words.
+taking a chat from Home restores that chat's own saved draft, or leaves its box empty. while a continue started from Home is running, text typed on Home is held as the draft of the chat being moved and lands in its box when it opens; it is never sent automatically, and pressing enter while the move is in flight never starts a new conversation from it. words typed for a different chat stay with that chat, even when both work in one place on disk. a draft held behind a send's continuation card stays with the chat that raised it. continuing a chat this window already holds keeps its open conversation and typed words.
 
 ## Read a finished task's worker conversation after moving its chat
 
@@ -270,7 +270,7 @@ On the hosted sync service this needs sync storage approval (Settings → Device
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
-while a chat you explicitly chose is moving here, the card says `continuing here…`. another explicit continue during that move says `a chat is already continuing here; wait for it to open` on the card. an automatic startup move instead lets your explicit choice go next; see “my choice while an automatic chat is arriving”.
+while a chat you explicitly chose is moving here, Home's bottom line says `opening conversation…` with the bytes received so far (`opening conversation… 24 KB`, updated every 500 ms; or `copying to this computer: …` when `CODEAF_MOVE_FILES_FIRST=1` is set, and `continuing here…` before byte progress begins). another explicit continue during that move says `a chat is already continuing here; wait for it to open` on the card. an automatic startup move instead lets your explicit choice go next; see “my choice while an automatic chat is arriving”.
 
 every failure stays where you are looking: on Home's card with `1 retry` and `2 leave it there`, or inside the open chat window. a fresh reading decides whether a different computer continued first. if the same computer picked the chat up again, the card asks again with `<holder> picked this chat up again; press enter to continue it here`. The desktop's `agents.take` refusal says `<holder> picked this chat up again`, keeping its `conflict` code and `holder_changed` detail. Nothing is taken by either refusal.
 
@@ -370,11 +370,11 @@ Turns that never left that computer are not in the copy you get. If its window i
 
 ## Why is it slow, files still arriving, can I type while it moves — background workspace files and CODEAF_MOVE_FILES_FIRST
 
-When you continue a chat from another computer, the transcript opens and the message box accepts typing as soon as the conversation records and the hold arrive. It does not wait on workspace files, the key vault, task working copies, Git status or local indexes.
+When you continue a chat from another computer, Home's bottom line shows `opening conversation… N KB` (updated every 500 ms) from your keypress until the chat opens, and any text you type on Home during that move is held as the arriving chat's draft and placed in its message box when it opens (pressing Enter on Home during the move never starts a new conversation or sends the draft). The transcript opens and the message box accepts typing as soon as the conversation records and the hold arrive. It does not wait on workspace files, the key vault, task working copies, Git status or local indexes.
 
 Workspace files keep arriving in the background after the chat opens. While they arrive, the status line says `files arriving` with the bytes copied so far (for example `files arriving · 40 of 112 MB` or `files arriving · 12 MB`, never `0 of 0`), and clears when the folder is in place. You can type and send messages while files are still arriving, and the model can answer in words immediately. Any tool or command that reads or writes the workspace or runs in it waits for the files to finish arriving (bounded by the 2-minute stall limit) rather than seeing a half-arrived folder.
 
-Each object download is retried at least 3 times with backoff on transient errors before it counts as failed. If the background download still fails, the chat stays open, tools keep waiting rather than running on a partial tree, and the status line names the problem in plain words with a retry (`files couldn't arrive: <reason> · retry`). Retrying (`/retry` or the next tool call) keeps the objects already downloaded. Set `CODEAF_MOVE_FILES_FIRST=1` to restore the old order that downloads and puts all workspace files in place before opening the chat.
+Each object download is retried at least 3 times with backoff on transient errors before it counts as failed. If the background download still fails, the chat stays open, tools keep waiting rather than running on a partial tree, and the status line names the problem in plain words with a retry (`files couldn't arrive: <reason> · retry`). Retrying (`/retry` or the next tool call) keeps the objects already downloaded. Set `CODEAF_MOVE_FILES_FIRST=1` to restore the old order that downloads and puts all workspace files in place before opening the chat and shows the `copying to this computer` counter on Home while they copy.
 
 ## Can the chat on the other computer still open the job logs it mentions — logs, saved tool output, task journals and the task history after a move
 
