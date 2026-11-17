@@ -23,7 +23,7 @@ Afi answers with one card, made with its tool `org_propose_setup`:
 
 Untick a workstream, a workstream inside one, or a person; remove someone from a workstream; or tell Afi what to change, and it proposes the whole card again. "Each person sees only the workstreams they are in."
 
-NOTHING IS MADE AND NOBODY IS INVITED UNTIL YOU PRESS THE BUTTON. It counts what it makes, for example **Create 5 workstreams and invite 3 people**, and makes the teams, then the workstreams, then the ones inside them, then the invites, with each invite carrying its team and workstreams. Someone with no email gets an invite link to copy and send yourself. When it is done the tab becomes **Work**.
+NOTHING IS MADE AND NOBODY IS INVITED UNTIL YOU PRESS THE BUTTON. It counts what it makes, for example **Create 5 workstreams and invite 3 people**, and makes the teams, then the workstreams, then the ones inside them, then the invites, with each invite carrying its team and workstreams. Someone with no email gets an invite link instead: when it is done, the page lists them with **Copy link** for each, then **Open Work**. With no one like that, the tab becomes **Work** at once.
 
 Only the organization's operator has this conversation, and only while the organization has no workstreams.
 
