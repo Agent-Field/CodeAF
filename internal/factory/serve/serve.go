@@ -728,7 +728,10 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 	}
 	// One token lookup for the whole list. Presenting each job would otherwise
 	// ask again, and the host's answer can start a process.
-	r = h.rememberHostToken(r)
+	r = h.rememberPickUp(h.rememberHostToken(r))
+	if h.githubNotConnected(r) {
+		q.GitHub = api.GitHubNotConnected
+	}
 	for i := range q.Jobs {
 		h.presentJob(r, &q.Jobs[i])
 	}

@@ -34,6 +34,24 @@ func (h *Handler) rememberHostToken(r *http.Request) *http.Request {
 	return r.WithContext(context.WithValue(r.Context(), hostGitHubTokenKey{}, hostGitHubToken{has}))
 }
 
+// githubNotConnected says a factory on the person's own machine knows its
+// computer has no GitHub connection: neither the caller's sign-in nor the
+// host carries a token. THE RUNNER STILL RUNS (#2746), so this is said where
+// the person looks rather than left as a poll that silently reads nothing.
+// A host that cannot answer the question says nothing.
+func (h *Handler) githubNotConnected(r *http.Request) bool {
+	if h.mode() != api.FactorySolo || h.config.GitHubToken == nil {
+		return false
+	}
+	if session, _ := h.credential(r); session.githubToken != "" {
+		return false
+	}
+	if answer, ok := r.Context().Value(hostGitHubTokenKey{}).(hostGitHubToken); ok {
+		return !answer.has
+	}
+	return h.config.GitHubToken(r.Context()) == ""
+}
+
 // presentJob is the job as a READER sees it: the worker's view below with the
 // runner-local conversation paths withheld. Every queue, job and mutation
 // reply goes through here; only the worker pull skips the withholding.
@@ -50,6 +68,69 @@ func (h *Handler) presentJob(r *http.Request, j *api.Job) {
 	}
 	withholdChats(j)
 	withholdTalk(j)
+}
+
+// pickUpOff is the request's one answer to "is this factory's Pick up issues
+// off?", so a queue of a few hundred jobs reads its rules file once.
+type pickUpOff struct{ off bool }
+
+type pickUpOffKey struct{}
+
+// rememberPickUp reads the Pick up issues switch once for the request and
+// returns the request that carries the answer, beside the host token.
+func (h *Handler) rememberPickUp(r *http.Request) *http.Request {
+	if _, ok := r.Context().Value(pickUpOffKey{}).(pickUpOff); ok {
+		return r
+	}
+	return r.WithContext(context.WithValue(r.Context(), pickUpOffKey{}, pickUpOff{h.readPickUpOff()}))
+}
+
+// readPickUpOff says Pick up issues is off on a factory on the person's own
+// machine. A TEAM SERVER RUNS ITS REPOSITORIES' OWN START LABELS EITHER WAY,
+// so the switch being off holds nothing there; a rules file that cannot be
+// read says nothing rather than a reason that may be false.
+func (h *Handler) readPickUpOff() bool {
+	if h.mode() != api.FactorySolo || h.config.Store == nil {
+		return false
+	}
+	house, err := h.config.Store.HouseRules()
+	return err == nil && !house.StartOnItsOwn
+}
+
+// pickUpOffHold gives a GitHub issue that never ran, and waits in Backlog with
+// nothing else to say why, its reason when the reason is that Pick up issues is
+// off: such an issue looked exactly like one held at import (blackmac team
+// run, #337). An issue a routing rule, a go-ahead, an ask-first rule or an
+// AgentField reasoner has a say over keeps its own words.
+func (h *Handler) pickUpOffHold(r *http.Request, j *api.Job) {
+	if j.State != api.StateBacklog || j.StatePresentation.Title != "Backlog" || j.Hold != "" {
+		return
+	}
+	if (j.Kind != string(factory.KindIssue) && j.Kind != "") || j.Desk == nil || j.Desk.Origin != string(factory.OriginForge) {
+		return
+	}
+	if j.Route != nil || j.Blocked != nil || j.AskedFirstReason != "" || j.RuleHold != "" || strings.TrimSpace(j.RunOn) != "" || ranInRun(j) {
+		return
+	}
+	off, ok := r.Context().Value(pickUpOffKey{}).(pickUpOff)
+	if !ok {
+		off = pickUpOff{h.readPickUpOff()}
+	}
+	if !off.off {
+		return
+	}
+	j.Hold = api.HoldPickUpOff
+	j.StatePresentation.Title, j.StatePresentation.Detail = api.PickUpOffTitle, api.PickUpOffDetail
+}
+
+// ranInRun says one of the job's steps is part of a run.
+func ranInRun(j *api.Job) bool {
+	for _, s := range j.Steps {
+		if s.InRun {
+			return true
+		}
+	}
+	return false
 }
 
 func decisionPaused(j *api.Job) bool {
@@ -126,6 +207,7 @@ func (h *Handler) recoveryPauseAvailable() bool {
 // job. A button appears only when its engine door can handle the current facts.
 func (h *Handler) presentWorkerJob(r *http.Request, j *api.Job) {
 	api.PresentJob(j)
+	h.pickUpOffHold(r, j)
 	api.PlainStepNotes(j)
 	h.redactMachines(r, j)
 	active := j.State == api.StateRunning || j.State == api.StateQueued || j.State == api.StateNeedsYou
