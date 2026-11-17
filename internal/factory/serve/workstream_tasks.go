@@ -37,9 +37,10 @@ import (
 // Every change publishes workstream.changed with part "tasks".
 
 func (h *Handler) workstreamTaskRoutes() {
+	h.route("/v1/workstreams/{id}/tasks/{tid}/restore", map[string]http.HandlerFunc{http.MethodPost: h.restoreWorkstreamTask})
 	h.route("/v1/workstreams/{id}/tasks", map[string]http.HandlerFunc{http.MethodGet: h.listWorkstreamTasks, http.MethodPost: h.createWorkstreamTask})
 	h.route("/v1/workstreams/{id}/tasks/start_all", map[string]http.HandlerFunc{http.MethodPost: h.startAllWorkstreamTasks})
-	h.route("/v1/workstreams/{id}/tasks/{tid}", map[string]http.HandlerFunc{http.MethodGet: h.getWorkstreamTask, http.MethodPatch: h.patchWorkstreamTask})
+	h.route("/v1/workstreams/{id}/tasks/{tid}", map[string]http.HandlerFunc{http.MethodGet: h.getWorkstreamTask, http.MethodPatch: h.patchWorkstreamTask, http.MethodDelete: h.deleteWorkstreamTask})
 	h.route("/v1/workstreams/{id}/tasks/{tid}/events", map[string]http.HandlerFunc{http.MethodGet: h.workstreamTaskEvents})
 	h.route("/v1/workstreams/{id}/tasks/{tid}/answer", map[string]http.HandlerFunc{http.MethodPost: h.answerWorkstreamTask})
 	h.route("/v1/workstreams/{id}/tasks/{tid}/comment", map[string]http.HandlerFunc{http.MethodPost: h.commentWorkstreamTask})
@@ -130,6 +131,10 @@ func (h *Handler) workstreamJobs(r *http.Request, ws factory.OrgWorkstream) (map
 // each job as a task (its overlay applied), oldest first. A job's overlay whose
 // job left the workstream is not shown.
 func (h *Handler) readTasks(r *http.Request, ws factory.OrgWorkstream) ([]factory.WorkstreamTask, error) {
+	hidden, err := h.config.Store.HiddenTaskIDs(ws.ID)
+	if err != nil {
+		return nil, err
+	}
 	kept, err := h.config.Store.WorkstreamTasks(ws.ID)
 	if err != nil {
 		return nil, err
@@ -154,6 +159,9 @@ func (h *Handler) readTasks(r *http.Request, ws factory.OrgWorkstream) ([]factor
 	slices.Sort(numbers)
 	owner := taskDefaultOwner(ws)
 	for _, n := range numbers {
+		if _, gone := hidden[factory.TaskJobPrefix+fmt.Sprint(n)]; gone {
+			continue
+		}
 		out = append(out, factory.JobTask(jobs[n], ws.ID, overlays[n], owner))
 	}
 	slices.SortStableFunc(out, func(a, b factory.WorkstreamTask) int { return strings.Compare(a.CreatedAt, b.CreatedAt) })
@@ -245,7 +253,7 @@ func (h *Handler) taskRefused(w http.ResponseWriter, err error) bool {
 	case errors.Is(err, store.ErrTaskGone):
 		h.fail(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, errTaskAnswered), errors.Is(err, factory.ErrTaskNoAsk), errors.Is(err, factory.ErrTaskOfferGone),
-		errors.Is(err, factory.ErrTaskUndoOver), errors.Is(err, factory.ErrTaskFactoryState), wakeRefused(err):
+		errors.Is(err, factory.ErrTaskUndoOver), errors.Is(err, errTaskDeleteUndoOver), errors.Is(err, factory.ErrTaskFactoryState), wakeRefused(err):
 		h.fail(w, http.StatusConflict, err.Error())
 	case errors.As(err, new(factory.TaskInvalid)):
 		h.fail(w, http.StatusUnprocessableEntity, err.Error())
@@ -335,6 +343,10 @@ func (h *Handler) createWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 // one connection, and a read of job membership inside the write's transaction
 // would wait on that transaction for ever.
 func readTasksIn(tw store.TaskWrite, ws factory.OrgWorkstream, jobs map[int]factory.Item) ([]factory.WorkstreamTask, error) {
+	hidden, err := tw.HiddenTaskIDs(ws.ID)
+	if err != nil {
+		return nil, err
+	}
 	kept, err := tw.Tasks(ws.ID)
 	if err != nil {
 		return nil, err
@@ -349,6 +361,9 @@ func readTasksIn(tw store.TaskWrite, ws factory.OrgWorkstream, jobs map[int]fact
 		out = append(out, kept[i])
 	}
 	for n, it := range jobs {
+		if _, gone := hidden[factory.TaskJobPrefix+fmt.Sprint(n)]; gone {
+			continue
+		}
 		out = append(out, factory.JobTask(it, ws.ID, overlays[n], taskDefaultOwner(ws)))
 	}
 	return out, nil

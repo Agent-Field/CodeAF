@@ -66,6 +66,8 @@ func TestOrgWorkstreamTasksForwardToTheServer(t *testing.T) {
 		body    string
 	}{
 		{"factory.org_workstream_tasks", nil, "GET /v1/workstreams/ws_1/tasks", "", ``},
+		{"factory.org_workstream_task_delete", map[string]any{"id": "tk_1", "rev": 2}, "DELETE /v1/workstreams/ws_1/tasks/tk_1", "2", ``},
+		{"factory.org_workstream_task_restore", map[string]any{"id": "tk_1"}, "POST /v1/workstreams/ws_1/tasks/tk_1/restore", "", ``},
 		{"factory.org_workstream_task", map[string]any{"id": "job:7"}, "GET /v1/workstreams/ws_1/tasks/job:7", "", ``},
 		{"factory.org_workstream_task_create", map[string]any{"title": " Draft notes ", "done_by": map[string]any{"kind": "afi"}},
 			"POST /v1/workstreams/ws_1/tasks", "", `{"done_by":{"kind":"afi"},"title":"Draft notes"}`},

@@ -3409,7 +3409,7 @@ hour into the work still draws every row rather than only the ones that moved af
 arrived. This is the same subscription a local surface holds; the only difference is that
 it crosses a connection.
 
-## I started a task over ssh and the sidebar stayed empty — my task ran on the remote machine but there is no row for it
+## can I read another conversation's task over ssh — I started a task over ssh and the sidebar stayed empty — my task ran on the remote machine but there is no row for it
 
 This was a real defect and it is fixed. Before it was, `/task solo <brief>` over `--host`
 answered `single task 1 started · …`, the far worker ran and finished — and the column

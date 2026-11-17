@@ -370,7 +370,7 @@ func (st *Store) editWorkstreams(bump bool, edit func(all factory.OrgWorkstreams
 				for _, q := range []string{
 					`DELETE FROM workstreams WHERE id = ?`, `DELETE FROM page_versions WHERE ws = ?`,
 					`DELETE FROM parts WHERE ws = ?`, `DELETE FROM spend WHERE ws = ?`,
-					`DELETE FROM tasks WHERE ws = ?`, `DELETE FROM task_events WHERE ws = ?`, `DELETE FROM task_reads WHERE ws = ?`,
+					`DELETE FROM task_deletions WHERE ws = ?`, `DELETE FROM tasks WHERE ws = ?`, `DELETE FROM task_events WHERE ws = ?`, `DELETE FROM task_reads WHERE ws = ?`,
 					`DELETE FROM page_comments WHERE ws = ?`, `DELETE FROM page_comment_reads WHERE ws = ?`, `DELETE FROM workstream_orders WHERE ws = ?`,
 				} {
 					if _, err := tx.Exec(q, id); err != nil {
