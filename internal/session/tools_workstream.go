@@ -55,10 +55,10 @@ const WorkstreamPagesTool = "workstream_pages"
 
 // The asks the tool answers.
 const (
-	wsAskRead   = "read"
-	wsAskPage   = "page"
-	wsAskWrite  = "write"
-	wsAskNew    = "new"
+	wsAskRead  = "read"
+	wsAskPage  = "page"
+	wsAskWrite = "write"
+	wsAskNew   = "new"
 	// wsAskDecide is no longer offered (solo-ios-app #4): a proposed decision is one no screen can keep, since
 	// Decisions shows only the decisions that recorded themselves. A call admitted before the upgrade still runs.
 	wsAskDecide = "decide"
