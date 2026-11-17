@@ -33,6 +33,13 @@ import (
 // FeatureOrgWorkstreamTasks is the hello word for the methods above.
 const FeatureOrgWorkstreamTasks = "org_workstream_tasks"
 
+// FeatureOrgWorkstreamTaskStart says a person's Start (state "running") and
+// Start all on an organization's Afi task run Afi on the server inside the
+// same write, refusing with nothing kept when Afi cannot take it. A desk
+// offers Start on an organization only where this word is heard, because an
+// engine without it would mark the task running with nothing behind it.
+const FeatureOrgWorkstreamTaskStart = "org_workstream_task_start"
+
 // A REQUEST INTO ANOTHER WORKSTREAM (Workstreams final spec, flow 7): anyone
 // in the organization asks a workstream that is not private, in it or not,
 // and the request becomes a task there owned by its owner of incoming work.
@@ -203,6 +210,7 @@ func withFactoryOrgTasksFeature(hello Hello, e Engine) Hello {
 	}
 	if _, ok := e.(FactoryOrg); ok {
 		hello = withFeature(hello, FeatureOrgWorkstreamTasks)
+		hello = withFeature(hello, FeatureOrgWorkstreamTaskStart)
 		hello = withFeature(hello, FeatureOrgWorkstreamRequests)
 	}
 	return hello

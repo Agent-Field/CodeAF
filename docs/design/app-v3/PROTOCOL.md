@@ -1034,7 +1034,15 @@ task owner's or whoever looks after the workstream's (its steward, or full acces
 anyone else gets 403 "only the task's owner or whoever looks after this workstream can
 stop or move it". The tick starts nothing: an Afi or chat task that
 waited only on it stays `up_next`, unchanged, and its thread gains "Ready to start: <title>
-is done"; `running` is set only by whoever wakes the doer. Send back is `state`
+is done"; `running` is set only by whoever wakes the doer. On the server that is a
+person's own `state` `running` on an Afi task: the server starts Afi on it in the
+task's own run (the caller's rights, nobody's conversation) inside the same write, and
+the task says `running` only once Afi took it; a server that cannot run Afi, a task
+already being worked on, or a chat's task (woken on its person's machine) is 409 with
+nothing changed. A person's `done`, `stopped` or `up_next` ends a run still going on it.
+An engine whose hello also carries `org_workstream_task_start` serves this Start; a desk
+offers Start and Start all on an organization only where it hears that word.
+Send back is `state`
 `up_next` on a `done` task by someone other than its owner, or with a `state_reason`:
 anyone who edits may do it (a person task included), and the thread line and the
 task's `state_reason` read "Sent back by <name>[: <why>]" until its next change. A done
@@ -1056,8 +1064,9 @@ naming nobody in the workstream, or inside a word (an address), names nobody. Wi
 `offer {event, state}` instead it takes or dismisses an open offer (`undo_until` is five
 seconds on) or, with `state` `open` before then, undoes the take (the owner or the
 taker). `_tasks_start_all {ws, group}` `POST .../tasks/start_all` names the group's up
-next Afi and chat tasks that wait on nothing unfinished and answers `{tasks}`; it writes
-and publishes nothing, because the caller wakes each doer and then sets `running`.
+next Afi tasks that wait on nothing unfinished the way a person's `running` starts one,
+and answers `{tasks}` with those Afi took, now `running`; a chat's tasks are left
+`up_next`. If none could be taken it is that refusal (409).
 Every change publishes `workstream.changed` with `part` `tasks` and `part_id` the task.
 
 A REQUEST INTO ANOTHER WORKSTREAM (hello `org_workstream_requests`; Workstreams final

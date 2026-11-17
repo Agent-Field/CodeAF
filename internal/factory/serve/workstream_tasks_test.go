@@ -175,7 +175,7 @@ func TestMovingATaskTakesItsThreadToTheOtherWorkstream(t *testing.T) {
 	}
 }
 
-func TestStartAllNamesTheGroupOverTheWireAndStartsNone(t *testing.T) {
+func TestStartAllLeavesAChatsTasksForTheChat(t *testing.T) {
 	o, path := taskOrg(t, "edit")
 	g := &factory.TaskGroup{Name: "Release 2.4", Kind: "batch"}
 	var first api.WorkstreamTask
@@ -187,15 +187,17 @@ func TestStartAllNamesTheGroupOverTheWireAndStartsNone(t *testing.T) {
 	}
 	var started api.WorkstreamTasks
 	o.do(t, "abir", "POST", path+"/tasks/start_all", -1, api.TasksStartAll{Group: first.Group.ID}, 200, &started)
-	if len(started.Tasks) != 5 {
-		t.Fatalf("named %d", len(started.Tasks))
+	if len(started.Tasks) != 0 {
+		t.Fatalf("started %d", len(started.Tasks))
 	}
-	// Nothing is marked running: whoever wakes the doer says so (live use, L4 B6).
+	// A chat wakes on its person's machine, so nothing here marks its tasks
+	// running (live use, L4 B6).
 	for _, task := range o.tasks(t, "santosh", path) {
 		if task.State != factory.TaskUpNext {
 			t.Fatalf("%s is %q after start all", task.Title, task.State)
 		}
 	}
+	o.do(t, "abir", "PATCH", path+"/tasks/"+first.ID, first.Rev, map[string]any{"state": "running"}, 409, nil)
 }
 
 func TestAJobInTheWorkstreamIsAFactoryTaskNeverACopy(t *testing.T) {
@@ -223,6 +225,7 @@ func TestReopeningATaskMakesWhatWaitsOnItWaitAgain(t *testing.T) {
 	// Final spec, Tasks › Rules: "Reopening a task makes every task that waits
 	// on it wait again." One already running goes back to Up next; each says why.
 	o, path := taskOrg(t, "edit")
+	o.afiAtWork(t) // Post the notes is running because Afi took it (#2695).
 	notes := o.task(t, "santosh", path, api.TaskCreate{Title: "Draft the release notes", DoneBy: factory.TaskDoneBy{Kind: factory.TaskByAfi}})
 	post := o.task(t, "santosh", path, api.TaskCreate{Title: "Post the notes", DoneBy: factory.TaskDoneBy{Kind: factory.TaskByAfi}, WaitingOn: []string{notes.ID}})
 	var done, running, back, after api.WorkstreamTask
@@ -244,6 +247,7 @@ func TestReopeningATaskMakesWhatWaitsOnItWaitAgain(t *testing.T) {
 func TestAStopSaysWhoStoppedIt(t *testing.T) {
 	// abir asked for it, so abir owns it and may stop it (only the owner or whoever looks after the workstream stops a task).
 	o, path := taskOrg(t, "edit")
+	o.afiAtWork(t) // Starting it again wakes Afi (#2695).
 	made := o.task(t, "abir", path, api.TaskCreate{Title: "Draft the release notes", DoneBy: factory.TaskDoneBy{Kind: factory.TaskByAfi}})
 	var stopped, again api.WorkstreamTask
 	o.do(t, "abir", "PATCH", path+"/tasks/"+made.ID, made.Rev, map[string]any{"state": "stopped"}, 200, &stopped)
