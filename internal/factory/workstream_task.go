@@ -226,6 +226,11 @@ type TaskAsk struct {
 	// Against is the decision the work went against, on the Ask the decision
 	// check raised to whoever made it.
 	Against *TaskAgainst `json:"against,omitempty"`
+	// Then is the state the task goes back to once this, its last open Ask,
+	// is answered: a person's Ask on work that is up next leaves it up next
+	// when answered, rather than saying running with nothing behind it.
+	// Absent, the answered task runs, as an agent's own Ask always has.
+	Then string `json:"then,omitempty"`
 }
 
 // TaskView is one person's view on someone else's Ask.
@@ -1092,6 +1097,20 @@ func ApplyPatch(t WorkstreamTask, p TaskPatch, a TaskActor, by TaskEventBy, all 
 		if ask.Decider == nil || strings.TrimSpace(ask.Decider.ID) == "" {
 			return TaskChange{}, TaskInvalid("an Ask names its one decider")
 		}
+		// AN ASK MAKES THE TASK WAIT, so finished work takes none: there is
+		// nothing left to wait, and a done task's Asks close with it. A
+		// question about finished work is a comment that names the person.
+		if t.State == TaskDone {
+			return TaskChange{}, TaskInvalid("this task is done, so nothing waits on an answer; comment and @ them instead")
+		}
+		if by.Kind == TaskByPerson && NormalizeHandle(ask.Decider.ID) == NormalizeHandle(a.Handle) {
+			return TaskChange{}, TaskInvalid("an Ask goes to someone else; you decide your own questions")
+		}
+		if by.Kind == TaskByPerson && len(ask.Options) == 0 {
+			// A PERSON'S ASK IS ANSWERED YES, NO OR IN WORDS (J7: "Yes / No /
+			// Reply…"); the answer chosen is the decision, in the question's words.
+			ask.Options = []TaskAskOption{{ID: "yes", Label: "Yes"}, {ID: "no", Label: "No"}}
+		}
 		if err := checkAsk(&ask, stamp); err != nil {
 			return TaskChange{}, err
 		}
@@ -1102,9 +1121,18 @@ func ApplyPatch(t WorkstreamTask, p TaskPatch, a TaskActor, by TaskEventBy, all 
 			b := by
 			ask.By = &b
 		}
+		// What the task goes back to once answered: what it was before it
+		// waited, or what the Asks it already waits on go back to.
+		if t.State != TaskNeeds {
+			ask.Then = t.State
+		} else if i := slices.IndexFunc(OpenAsks(t), func(x TaskAsk) bool { return x.Then != "" }); i >= 0 {
+			ask.Then = OpenAsks(t)[i].Then
+		}
 		t.Asks = append(slices.Clone(t.Asks), ask)
-		if t.State != TaskDone {
-			t.State = TaskNeeds
+		t.State = TaskNeeds
+		if by.Kind == TaskByPerson {
+			who := firstNonEmpty(ask.Decider.Name, ask.Decider.ID)
+			event(TaskEventState, firstNonEmpty(by.Name, by.ID)+" asks "+who+": "+ask.Title)
 		}
 	}
 	if l := p.AskLater; l != nil {
@@ -1397,6 +1425,9 @@ func AnswerTask(t WorkstreamTask, askID, option, words string, a TaskActor, by T
 	}
 	if t.Ask == nil && len(t.Asks) == 0 {
 		t.State = TaskRunning
+		if ask.Then != "" {
+			t.State = ask.Then
+		}
 	}
 	if i < 0 && IsCantDoAsk(ask) && t.Ask == nil && len(t.Asks) == 0 {
 		switch option {
