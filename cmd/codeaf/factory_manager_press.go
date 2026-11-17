@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -62,6 +63,9 @@ func (d seamRunDoor) DecidePR(ctx context.Context, conversation, action, words s
 	if action == session.ActionResume {
 		return pressAutoResume(ctx, appLocalPress.Load(), it, words)
 	}
+	if action == session.ActionOfferMerge {
+		return pressOfferMerge(ctx, appLocalPress.Load(), it)
+	}
 	return pressPRDecision(ctx, appLocalPress.Load(), it, action, func() (factory.Item, error) { return d.managed(conversation) })
 }
 
@@ -87,6 +91,28 @@ func pressAutoResume(ctx context.Context, press *localJobPress, it factory.Item,
 		return "", fmt.Errorf("Nothing changed: %w", err)
 	}
 	return "Auto resumed, as the person: it carries on past " + found + ", and the job's history records the override. A new failing check pauses it again. This confirms the override, not the publication; read factory_status for the outcome.", nil
+}
+
+// pressOfferMerge shows the person the job page's Merge card again, through
+// the job's offer_merge door, when the page offers Merge now (factory's
+// merge_offer.go). When it does not, it refuses with the gate's own words, so
+// the manager says why and offers nothing. It merges nothing.
+func pressOfferMerge(ctx context.Context, press *localJobPress, it factory.Item) (string, error) {
+	probe := it
+	if err := factory.OfferMerge(&probe, time.Now()); err != nil {
+		return "", errors.New("Nothing changed: " + err.Error())
+	}
+	if press == nil {
+		return "", errNoPress
+	}
+	if err := (*press)(ctx, it.ID, serve.OfferMergeVerb, guardBody{}); err != nil {
+		var wire *appwire.Error
+		if errors.As(err, &wire) && wire.Code == appwire.CodeUncertain {
+			return "", err
+		}
+		return "", fmt.Errorf("Nothing changed: %w", err)
+	}
+	return fmt.Sprintf("The Merge card for pull request #%d is shown to the person again on the job page, as it stands now. Nothing is merged: the merge stays their press on that card, with its Undo window.", it.PullRequest.Number), nil
 }
 
 // pressPRDecision checks the decision against the job as saved and presses it.

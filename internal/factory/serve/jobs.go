@@ -33,6 +33,7 @@ func (h *Handler) jobVerbs() {
 	h.postJob("context", stored, h.onlyOwner(h.setJobContext))
 	h.postJob("publish_anyway", stored && h.seam.Answer != nil, h.publishAnyway)
 	h.postJob(ResumeAutoVerb, stored, h.resumeAuto)
+	h.postJob(OfferMergeVerb, stored, h.offerMerge)
 	h.postJob("start_now", h.seam.Launch != nil, h.guardedStart())
 	h.postJob("run-as-new", stored && h.seam.NewJob != nil && h.seam.Launch != nil, h.onlyOwner(h.runAsNew))
 	h.postJob("run_again", stored && h.seam.Launch != nil, h.guarded("run_again", h.onlyOwner(h.runAgain)))
@@ -623,7 +624,7 @@ func forgetRun(it *factory.Item, recipe factory.Recipe) {
 	it.WorktreeMachine = ""
 	it.Publish, it.Publishing, it.PublishStatus, it.PublishError = "", false, nil, ""
 	it.PullRequest, it.CommentURL, it.FollowUp = nil, "", nil
-	it.MergePolicy, it.Merging = nil, nil
+	it.MergePolicy, it.Merging, it.MergeOfferedAt = nil, nil, time.Time{}
 	it.Notes = nil
 	it.Stages, it.Adapted = factory.CopyStages(recipe.For(it.Kind)), nil
 	it.StartRules, it.RuleHold, it.RuleChecks = nil, "", nil
@@ -1156,6 +1157,10 @@ func (h *Handler) settleJobs(approvalsOnly bool, held []lease.Lease) {
 		return
 	}
 	pending, err = h.prepareStepRecoveries(pending, held)
+	if err != nil {
+		return
+	}
+	pending, err = h.prepareAutomaticRepairs(pending)
 	if err != nil {
 		return
 	}

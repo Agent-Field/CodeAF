@@ -1353,7 +1353,7 @@ first two segments (`"internal/factory/"`), and a file directly inside one is
 the container (`"internal/"`). Every response that carries the job says the
 same area. It is absent when the job changed no file or only files at the root.
 
-### Factory job facts (`factory.job_source`, `factory.job_steps`, `factory.job_runs_on`)
+### Factory job facts (`factory.job_source`, `factory.job_steps`, `factory.job_runs_on`, `factory.job_merge_offered`)
 
 Each fact below is computed once in the engine (`internal/factory`) and sent on
 every job of `factory.queue` and on `factory.job`; a client draws it and never
@@ -1394,6 +1394,13 @@ them, which reads as unknown.
   person's pick for the job, `factory_model` the default it was queued under,
   and `step.model` the model a step ran on; a worker's report never carries
   `runs_on`.
+- `factory.job_merge_offered`: `merge_offered_at` (RFC 3339) is when the job's
+  manager last offered the person the merge of its open pull request again
+  (`factory_answer` action `offer_merge`, through `POST
+  /v1/jobs/{id}/offer_merge`), which it does when the person asks to merge or
+  whether the job is ready to, and only while the merge gate offers Merge. A
+  client brings the job's Merge card up again, as it stands now, when the value
+  moves. Absent when never re-offered. It merges nothing.
 
 An engine whose hello carries the feature `factory.estimate` reads an issue
 with a complexity rubric and measures cost from its own finished jobs; a model

@@ -136,6 +136,7 @@ var Lost = map[string]string{
 	"Phase.Left":                   "crosses in whole milliseconds",
 	"Item.ChatSpent":               "crosses as the job's cost while it has no run; a start carries it into the run's spend before any worker pulls the job",
 	"Item.ChatModels":              "the service's own split of ChatSpent; a reader gets it summed by model from GET /v1/spend/models, and a start carries it onto the run before any worker pulls the job",
+	"Stream.AutoRepairs":           "service-owned: how many times Auto sent the run's failing findings back before publication, read only by the service that decides Auto; each one reaches readers as a line of the job's activity and a prove step in steps[]",
 	"Stream.Models":                "the service's own split of the run's spend; a reader gets it summed by model from GET /v1/spend/models, and a worker reports each call beside its report through ModelSpendHeader",
 	"CheckRun.AppID":               "server-side readiness matching only; every poll reads it from GitHub again before a required check is matched",
 	"PullRequest.ReadinessContext": "server-side review material up to 384 KiB; a queued final review carries it to the worker as the follow-up's details",
@@ -210,6 +211,10 @@ func FromItem(it factory.Item) Job {
 	j.ReadSize = readSize(it)
 	j.PR = fromPR(it.PullRequest)
 	j.Merge = jobMerge(it)
+	if !it.MergeOfferedAt.IsZero() {
+		at := it.MergeOfferedAt.UTC()
+		j.MergeOfferedAt = &at
+	}
 	if factory.PausedDecision(it) {
 		j.State = StateNeedsYou
 	}
@@ -637,6 +642,9 @@ func ToItem(j Job) factory.Item {
 	}
 	it.PullRequest = toPR(j.PR)
 	it.MergePolicy, it.Merging = unmerge(j.Merge)
+	if j.MergeOfferedAt != nil {
+		it.MergeOfferedAt = j.MergeOfferedAt.UTC()
+	}
 	if j.Draft != nil {
 		it.Draft = *j.Draft
 	}

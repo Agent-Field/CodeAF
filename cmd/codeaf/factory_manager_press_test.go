@@ -102,3 +102,34 @@ func TestTheManagersResumePressesResumeAutoWithThePersonsWords(t *testing.T) {
 		t.Fatalf("a job not paused on a finding was resumed: %v, pressed %q", err, verb)
 	}
 }
+
+// THE MANAGER'S OFFER SHOWS THE MERGE CARD AGAIN through the job's
+// offer_merge door, only while the page offers Merge; otherwise it says why
+// in the gate's words and presses nothing.
+func TestTheManagersOfferMergePressesOfferMergeOnlyWhenMergeIsOffered(t *testing.T) {
+	it := factory.Item{ID: 4, Kind: factory.KindIssue, Publish: "pr", HeadCommit: "abc", State: factory.StateShipped,
+		PullRequest: &factory.PullRequest{Number: 161, State: factory.PROpen, HeadSHA: "abc", Mergeable: factory.MergeableYes, ChecksRead: true, ReviewsRead: true}}
+	var verbs []string
+	press := localJobPress(func(_ context.Context, _ int, verb string, _ any) error {
+		verbs = append(verbs, verb)
+		return nil
+	})
+	line, err := pressOfferMerge(context.Background(), &press, it)
+	if err != nil || !strings.Contains(line, "Merge card for pull request #161") || !strings.Contains(line, "Nothing is merged") {
+		t.Fatalf("offer = %q (%v)", line, err)
+	}
+	if strings.Join(verbs, ",") != "offer_merge" {
+		t.Fatalf("pressed %v", verbs)
+	}
+	conflicted := it
+	pr := *it.PullRequest
+	pr.Conflict, pr.Mergeable = true, factory.MergeableNo
+	conflicted.PullRequest = &pr
+	verbs = nil
+	if _, err := pressOfferMerge(context.Background(), &press, conflicted); err == nil || !strings.HasPrefix(err.Error(), "Nothing changed: merge is not offered: ") || len(verbs) != 0 {
+		t.Fatalf("a conflicted pull request was offered: %v, pressed %v", err, verbs)
+	}
+	if _, err := pressOfferMerge(context.Background(), nil, it); !errors.Is(err, errNoPress) {
+		t.Fatalf("no connection = %v", err)
+	}
+}

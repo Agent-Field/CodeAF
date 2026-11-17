@@ -410,6 +410,10 @@ type Stream struct {
 	// Models is this run's priced calls by the model that answered. A run
 	// recorded before the field has none; that spend cannot be tied to a model.
 	Models []ModelUse `json:",omitempty"`
+	// AutoRepairs is how many times Auto sent this run's failing proof or
+	// policy findings back to be repaired before its first publication
+	// ([BeginAutoRepair]); a new run starts again from none.
+	AutoRepairs int `json:",omitempty"`
 }
 
 // Claim is one row of a proof sheet: what was claimed, whether it was shown,
@@ -675,6 +679,10 @@ type Item struct {
 	// finding not listed here still pauses Auto. A new run clears them with
 	// its checks ([Item.ResetChecks]). Nil is none.
 	Overrides []CheckOverride `json:",omitempty"`
+	// MergeOfferedAt is when the job's manager last offered the person the
+	// merge of its open pull request again ([OfferMerge]), so the job page
+	// shows its Merge card anew; zero is never re-offered.
+	MergeOfferedAt time.Time `json:",omitzero"`
 	// PersonStopped survives state resets, expiry of Undo and engine restarts.
 	// Only an explicit person control may clear it.
 	PersonStopped *bool     `json:",omitempty"`

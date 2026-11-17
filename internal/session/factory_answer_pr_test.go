@@ -89,3 +89,17 @@ func TestTheTurnsPersonWordsAreThePersonsAlone(t *testing.T) {
 		t.Fatalf("a runner's turn holds the person's words %q", got)
 	}
 }
+
+// "IS IT READY TO MERGE?" SHOWS THE MERGE CARD AGAIN: offer_merge reaches the
+// door the page's buttons take, with the person's words.
+func TestFactoryAnswerOfferMergeReachesThePRDecisionDoor(t *testing.T) {
+	d := &prDecisionDoor{}
+	a := &Agent{config: Config{FactoryRun: d}}
+	_, bad, err := a.factoryAnswerTool().Execute(context.Background(), json.RawMessage(`{"action":"offer_merge","answer":"is it ready to merge?"}`))
+	if err != nil || bad || d.action != ActionOfferMerge || d.words != "is it ready to merge?" || d.answers != 0 {
+		t.Fatalf("offer_merge: bad=%v err=%v door=%+v", bad, err, d)
+	}
+	if !strings.Contains(factoryAnswerSchemaJSON, `"offer_merge"`) || !strings.Contains(factoryAnswerDescription, "action=offer_merge") {
+		t.Fatal("the schema or description does not offer offer_merge")
+	}
+}

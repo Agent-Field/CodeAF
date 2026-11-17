@@ -183,9 +183,12 @@ func managerPRDecision(it Item) (person, actions []string) {
 	}
 	if v := MergeOffered(it); v.OK {
 		person = append(person, fmt.Sprintf("Waiting on the person: Merge pull request #%d?", pr.Number))
-		actions = append(actions, "To merge when the person asks in this conversation, call factory_answer with action=merge and answer set to their words; the merge waits out its Undo window first. Never merge on your own judgment, in Auto or Manual.")
+		// THE MERGE CARD IS THE PAUSE (the owner's decision of 2026-11-16): a
+		// person who asks to merge is shown it again, never sent to find it.
+		actions = append(actions, "When the person asks in this conversation to merge, or whether it is ready to merge, call factory_answer with action=offer_merge and answer set to their words: it shows them the Merge card again, as it stands now. Call action=merge only when the person, with the card shown, tells you here to merge it now; the merge waits out its Undo window first. Never merge on your own judgment, in Auto or Manual.")
 	} else if it.Kind != KindPR && it.Publish == "pr" {
 		person = append(person, "Merge is not offered yet: "+v.Why+".")
+		actions = append(actions, "If the person asks to merge, tell them plainly why it cannot merge yet, in these words, and offer nothing.")
 	}
 	return person, actions
 }

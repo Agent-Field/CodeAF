@@ -744,7 +744,7 @@ It does not merge the PR or enable auto-merge.
 
 A job whose pull request is open has **Merge**. Only its assignee may press it, and pressing waits five seconds with **Undo** before anything is sent. Then the runner that holds the assignee's GitHub account reads the pull request again and merges it, handing GitHub the exact commit, so a branch that moved is refused. The job is done when the pull request reads merged.
 
-One check, in code, decides every merge; no model does. A job's manager presses Merge only when you ask it to in its chat ("merge it"), with `factory_answer` and `action=merge`: the same press as the button, as you, with the same five-second Undo, and refused in the same words. It never merges on its own judgment, in Auto or Manual. The check refuses, in these words, when:
+One check, in code, decides every merge; no model does. Ask the job's manager in its chat to merge ("merge it"), or whether it is ready to, and it shows you the Merge card again, as it stands now (`factory_answer` with `action=offer_merge`), or tells you why merge is not offered. It presses Merge (`action=merge`) only when you then tell it to: the same press as the button, as you, with the same five-second Undo, refused in the same words. It never merges on its own judgment, in Auto or Manual. The check refuses, in these words, when:
 
 - the pull request has commits you did not approve (a push after the proof was approved needs the proof approved again);
 - the pull request is a draft, or has conflicts, or GitHub has not said whether it can merge yet;

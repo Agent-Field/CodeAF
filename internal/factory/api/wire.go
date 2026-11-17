@@ -667,7 +667,12 @@ type Job struct {
 	Publishing *factory.Publishing `json:"publishing,omitempty"`
 	// Merge is the job's merging; absent until it has opened a pull request.
 	Merge *JobMerge `json:"merge,omitempty"`
-	Desk  *JobDesk  `json:"desk,omitempty"`
+	// MergeOfferedAt is when the job's manager last offered the person the
+	// merge of its open pull request again (factory_answer offer_merge), so
+	// the job page brings its Merge card up anew; absent when never
+	// re-offered. Hello word `factory.job_merge_offered`.
+	MergeOfferedAt *time.Time `json:"merge_offered_at,omitempty"`
+	Desk           *JobDesk   `json:"desk,omitempty"`
 	// Can is computed for the caller. It is not stored on the job.
 	Can Can `json:"can"`
 }

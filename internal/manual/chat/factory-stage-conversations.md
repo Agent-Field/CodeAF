@@ -540,6 +540,13 @@ The conversation shows the engine's concrete Auto exception immediately, includi
 the needed budget, proof or repository approval. It does not promise publication
 while those checks are blocking it.
 
+A failing proof claim or repository policy finding is not an exception in Auto: Auto
+sends it back to be fixed first. Before the pull request exists, a prove step runs with
+the findings as its request; once it is open, Follow PR repairs it, verifies and updates
+the PR. You see the merge offer once the findings are clean. After three repairs (Follow
+PR's own limit on an open PR), or when the budget runs out, the job waits on you with
+the finding ("Repository policy needs attention: …").
+
 Critical unanswered decisions, fixed repository approval gates, missing access,
 failed publication and budget/attempt exhaustion still stop for a concrete next
 step. Auto lets the manager decide ordinary engineering choices within the issue;
