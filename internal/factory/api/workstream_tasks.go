@@ -83,7 +83,8 @@ type TaskOfferSet struct {
 
 // TasksStartAll names the group whose up-next tasks start.
 type TasksStartAll struct {
-	Group string `json:"group"`
+	Group string   `json:"group"`
+	IDs   []string `json:"ids"`
 }
 
 // RequestableWorkstream is one workstream a person may send a request into:

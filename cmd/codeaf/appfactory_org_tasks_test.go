@@ -83,6 +83,8 @@ func TestOrgWorkstreamTasksForwardToTheServer(t *testing.T) {
 		{"factory.org_workstream_request", map[string]any{"title": " Fix the share link ", "from_ws": "ws_2", "from_task": "tk_9"},
 			"POST /v1/workstreams/ws_1/requests", "", `{"from_task":"tk_9","from_ws":"ws_2","request":"","title":"Fix the share link"}`},
 		{"factory.org_workstream_tasks_start_all", map[string]any{"group": "grp_batch-release-2.4"}, "POST /v1/workstreams/ws_1/tasks/start_all", "", `{"group":"grp_batch-release-2.4"}`},
+		{"factory.org_workstream_tasks_start_all", map[string]any{"group": "grp_batch-release-2.4", "ids": []string{}}, "POST /v1/workstreams/ws_1/tasks/start_all", "", `{"group":"grp_batch-release-2.4","ids":[]}`},
+		{"factory.org_workstream_tasks_start_all", map[string]any{"group": "grp_batch-release-2.4", "ids": []string{"tk_1"}}, "POST /v1/workstreams/ws_1/tasks/start_all", "", `{"group":"grp_batch-release-2.4","ids":["tk_1"]}`},
 	} {
 		o.since()
 		var out json.RawMessage
