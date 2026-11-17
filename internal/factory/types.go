@@ -514,6 +514,10 @@ type PullRequest struct {
 	// HeadBranch is the branch the pull request comes from, which a repair pushes
 	// to: an older branch can leave it named apart from the job's own.
 	HeadBranch string `json:",omitempty"`
+	// BaseBranch is the branch the pull request asks to merge into. Its live
+	// head, not BaseSHA (which the forge refreshes only on the next push), is
+	// what Follow PR's base sync merges.
+	BaseBranch string `json:",omitempty"`
 	// Files is the pull request's change as GitHub lists it, read on the
 	// commit FilesHead, at most [PRFilesMost] of FilesTotal. A FILE LIST IS
 	// ONLY EVER ABOUT ITS OWN HEAD: a reader compares FilesHead with HeadSHA

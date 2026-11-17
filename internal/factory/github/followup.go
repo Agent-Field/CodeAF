@@ -25,7 +25,13 @@ func (s *Source) ciFailureDetails(ctx context.Context, it factory.Item, pr facto
 		lines = append(lines, pr.Feedback)
 	}
 	if pr.Conflict {
-		lines = append(lines, "Merge conflict with the current base at "+pr.BaseSHA+". Fetch and merge the base; preserve both branches’ intended changes.")
+		// GitHub works the conflict out against the base branch's head; its
+		// recorded base commit moves only on the PR's next push.
+		where := "the current base at " + pr.BaseSHA
+		if pr.BaseBranch != "" {
+			where = "the current head of the base branch " + pr.BaseBranch + " (the PR's recorded base " + pr.BaseSHA + " may be older)"
+		}
+		lines = append(lines, "Merge conflict with "+where+". Fetch and merge the base; preserve both branches’ intended changes.")
 	}
 	logger, _ := s.api.(checkLogger)
 	for _, r := range pr.CheckRuns {

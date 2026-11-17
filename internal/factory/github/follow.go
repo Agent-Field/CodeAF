@@ -60,7 +60,7 @@ func (s *Source) followPR(ctx context.Context, owner, repo string, number int, p
 		Number: p.Number, URL: p.URL, Draft: p.Draft,
 		Conflict: p.Mergeable != nil && !*p.Mergeable,
 		State:    pullFollowState(p), MergedBy: p.MergedBy, MergedAt: p.MergedAt,
-		BaseSHA: p.BaseSHA, HeadSHA: p.HeadSHA, HeadBranch: p.Head, Mergeable: mergeableWord(p.Mergeable),
+		BaseSHA: p.BaseSHA, BaseBranch: p.Base, HeadSHA: p.HeadSHA, HeadBranch: p.Head, Mergeable: mergeableWord(p.Mergeable),
 	}
 	// Terminal metadata is authoritative even when optional APIs are unavailable.
 	// A merged or closed pull request costs no file read, but keeps the list

@@ -85,7 +85,7 @@ func (lp *floorLoop) baseSyncAction(c *loopCtl, it factory.Item, st factory.Stag
 		if err := ctx.Err(); err != nil {
 			return "", err
 		}
-		base, words, err := lp.syncPRBase(ctx, c.id, dir)
+		base, words, fallback, err := lp.syncPRBaseLive(ctx, c.id, dir)
 		if err != nil {
 			return "", err
 		}
@@ -95,9 +95,19 @@ func (lp *floorLoop) baseSyncAction(c *loopCtl, it factory.Item, st factory.Stag
 				return errors.New("PR maintenance ownership changed")
 			}
 			next.BaseSyncSHA = base
+			// THE HISTORY SAYS WHICH BASE CAME IN: the live branch head, or
+			// the recorded base when the live one could not be had.
+			if fallback != "" {
+				loopSay(current, lp.r.now(), "said", "Follow PR base sync: "+fallback)
+			} else {
+				loopSay(current, lp.r.now(), "said", "Follow PR base sync: the base branch's live head "+shortSHA(base))
+			}
 			return nil
 		}); err != nil {
 			return "", err
+		}
+		if fallback != "" {
+			words += " " + fallback
 		}
 		return words, nil
 	}
