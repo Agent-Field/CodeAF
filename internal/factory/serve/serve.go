@@ -322,6 +322,11 @@ func New(seam factory.Seam, config Config) *Handler {
 		h.sessions.now = config.Now
 	}
 	h.auth = &deviceFlows{pending: make(map[string]*deviceFlow)}
+	// A named doer is checked against the agents the store keeps for each
+	// workstream, unless the door supplied its own list (org_agent_doers.go).
+	if h.config.WorkstreamAgents == nil {
+		h.config.WorkstreamAgents = h.sharedWorkstreamAgents
+	}
 	h.viewer = newViewerState()
 	h.sessions.err = h.loadSessions()
 	if _, err := tokens.LoadOperator(config.TokensPath); err != nil {
@@ -386,6 +391,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.orgSetupRoutes()
 	h.chatRoutes()
 	h.mySpaceRoutes()
+	h.orgAgentRoutes()
 	// After presence and the documents, so a canvas registers its own
 	// presence kind and the canvas half of the documents' access.
 	h.canvasRoutes()

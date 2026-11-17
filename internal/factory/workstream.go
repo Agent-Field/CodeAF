@@ -31,19 +31,22 @@ type OrgWorkstream struct {
 	// and never writes it again.
 	SharedWith []string `json:"shared_with,omitempty"`
 	// Private is an item only its owner reaches: it has a person owner and
-	// no shares, and the operator sees that it exists but never what it says.
+	// no shares, and the operator is not told it exists (OWNER-DECISIONS §8).
 	Private bool `json:"private,omitempty"`
 	// Space marks a person's own space inside the organization ("My space",
 	// serve/myspace.go): one per person, private to them, holding their pages,
 	// canvases and chats and no tasks. It is never listed with the
 	// workstreams, never shared, moved, nested or archived, and the operator
 	// sees only its totals.
-	Space     bool                 `json:"space,omitempty"`
-	Purpose   string               `json:"purpose"`
-	Pages     []WorkstreamPage     `json:"pages"`
-	Decisions []WorkstreamDecision `json:"decisions"`
-	Sources   []WorkstreamSource   `json:"sources"`
-	Links     []string             `json:"links"`
+	Space bool `json:"space,omitempty"`
+	// Agents are the agents this workstream lists under People and rules ›
+	// Agents (org_agent.go): links, never copies. Only these may be its doers.
+	Agents    []WorkstreamAgentLink `json:"agents,omitempty"`
+	Purpose   string                `json:"purpose"`
+	Pages     []WorkstreamPage      `json:"pages"`
+	Decisions []WorkstreamDecision  `json:"decisions"`
+	Sources   []WorkstreamSource    `json:"sources"`
+	Links     []string              `json:"links"`
 	// Jobs are the factory jobs on this server that belong to the workstream,
 	// by id, in the order they were added. A job belongs to at most one
 	// workstream: adding it to another takes it out of the first.

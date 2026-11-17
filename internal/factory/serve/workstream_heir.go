@@ -58,12 +58,49 @@ func (h *Handler) handOnWorkstreams(leaving, heir, by string) (int, error) {
 		return 0, nil
 	}
 	now := h.clock().UTC()
+	// THE LEAVING PERSON'S AGENTS GO WITH THEIR SPACE: to the heir, still
+	// private to whoever holds them, or with no heir they are deleted. The
+	// workstreams they shared one into keep it, now shared by the heir.
+	theirs := map[string]bool{}
+	if _, err := h.config.Store.EditOrgAgents(func(agents factory.OrgAgents) error {
+		for id, a := range agents {
+			if factory.NormalizeHandle(a.Owner) != leaving {
+				continue
+			}
+			theirs[id] = true
+			if heir == "" {
+				delete(agents, id)
+				continue
+			}
+			a.Owner, a.UpdatedAt = heir, now
+			if a.Roster == factory.AgentRosterAsked {
+				a.Roster = factory.AgentRosterMine
+			}
+			agents[id] = a
+		}
+		return nil
+	}); err != nil {
+		return 0, err
+	}
 	befores := map[string]factory.OrgWorkstream{}
 	given := 0
 	saved, err := h.config.Store.EditWorkstreams(func(all factory.OrgWorkstreams) ([]string, error) {
 		var changed []string
 		for id, ws := range all {
 			before := ws
+			links := slices.Clone(ws.Agents)
+			for i := 0; i < len(links); i++ {
+				if !theirs[links[i].Agent] || factory.NormalizeHandle(links[i].By) != leaving {
+					continue
+				}
+				if heir == "" {
+					links = slices.Delete(links, i, i+1)
+					i--
+					continue
+				}
+				links[i].By = heir
+			}
+			ws.Agents = links
 			owned := ws.Owner.Kind == api.OwnerPerson && ws.Owner.ID == leaving
 			if owned && heir != "" {
 				ws.Owner = api.WorkstreamOwner{Kind: api.OwnerPerson, ID: heir}
@@ -79,7 +116,7 @@ func (h *Handler) handOnWorkstreams(leaving, heir, by string) (int, error) {
 			ws.Shares = withoutOwnerShare(slices.DeleteFunc(slices.Clone(ws.Shares), func(s factory.Share) bool {
 				return s.Kind == factory.ShareToPerson && s.ID == leaving
 			}), ws.Owner)
-			if ws.Owner != before.Owner || !slices.Equal(ws.Shares, before.Shares) {
+			if ws.Owner != before.Owner || !slices.Equal(ws.Shares, before.Shares) || !slices.Equal(ws.Agents, before.Agents) {
 				ws.UpdatedAt = now
 				all[id] = ws
 				befores[id] = before

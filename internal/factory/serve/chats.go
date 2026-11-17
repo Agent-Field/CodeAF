@@ -42,7 +42,9 @@ var chatIDPattern = regexp.MustCompile(`^ch_[0-9A-Za-z]{26}$`)
 
 // chatMeta is a chat's meta.json.
 type chatMeta struct {
-	Title     string `json:"title"`
+	Title string `json:"title"`
+	// Agent is the named agent the chat talks to (org_agents.go), "" for Afi.
+	Agent     string `json:"agent,omitempty"`
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
 }
@@ -162,6 +164,7 @@ func (h *Handler) myChats(ws, person string) []api.AgentChat {
 	if err != nil {
 		return out
 	}
+	var agents factory.OrgAgents
 	for _, e := range entries {
 		if !e.IsDir() || !chatIDPattern.MatchString(e.Name()) {
 			continue
@@ -173,7 +176,19 @@ func (h *Handler) myChats(ws, person string) []api.AgentChat {
 		h.agentDesk.mu.Lock()
 		state := h.agentOfLocked(agentSeat{ws, person, e.Name()}).state.State
 		h.agentDesk.mu.Unlock()
-		out = append(out, api.AgentChat{ID: e.Name(), Title: m.Title, State: state, CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt})
+		row := api.AgentChat{ID: e.Name(), Title: m.Title, State: state, CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt}
+		if m.Agent != "" {
+			if agents == nil {
+				agents, _ = h.config.Store.OrgAgents()
+			}
+			// A deleted agent still names its chat, so the chat stays readable.
+			name := "An agent that was deleted"
+			if a, ok := agents[m.Agent]; ok {
+				name = a.Name
+			}
+			row.Agent = &api.AgentRef{ID: m.Agent, Name: name}
+		}
+		out = append(out, row)
 	}
 	slices.SortFunc(out, func(a, b api.AgentChat) int {
 		if c := strings.Compare(b.UpdatedAt, a.UpdatedAt); c != 0 {
@@ -267,10 +282,52 @@ func (h *Handler) createAgentChat(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
+	var ref *api.AgentRef
+	if id := strings.TrimSpace(body.Agent); id != "" {
+		a, ok := h.chatAgent(ws, person, id)
+		if !ok {
+			h.fail(w, http.StatusNotFound, "that agent is not one you can chat with here; add it under People and rules › Agents first")
+			return
+		}
+		ref = &api.AgentRef{ID: a.ID, Name: a.Name}
+	}
 	chat := "ch_" + id
 	at := now.Format(time.RFC3339Nano)
-	if h.failed(w, writeChatMeta(h.chatDir(ws.ID, person, chat), chatMeta{Title: title, CreatedAt: at, UpdatedAt: at})) {
+	meta := chatMeta{Title: title, CreatedAt: at, UpdatedAt: at}
+	if ref != nil {
+		meta.Agent = ref.ID
+	}
+	if h.failed(w, writeChatMeta(h.chatDir(ws.ID, person, chat), meta)) {
 		return
 	}
-	h.write(w, http.StatusCreated, api.AgentChat{ID: chat, Title: title, State: api.AgentIdle, CreatedAt: at, UpdatedAt: at})
+	h.write(w, http.StatusCreated, api.AgentChat{ID: chat, Title: title, State: api.AgentIdle, CreatedAt: at, UpdatedAt: at, Agent: ref})
+}
+
+// chatAgentGone refuses a message to a chat whose agent is deleted, or no
+// longer one this workstream lists.
+type chatAgentGone struct{ name string }
+
+func (e chatAgentGone) Error() string {
+	if e.name == "" {
+		return "the agent of this chat was deleted; start a new chat"
+	}
+	return e.name + " is no longer one this workstream lists, so this chat takes no more messages; start a new chat"
+}
+
+// chatPersona is the named agent seat s's chat talks to, nil for Afi's
+// conversation or a chat with Afi. It is checked again on every message, so
+// an agent unshared or deleted stops being used at once.
+func (h *Handler) chatPersona(ws factory.OrgWorkstream, s agentSeat) (*AgentPersona, error) {
+	if s.chat == "" {
+		return nil, nil
+	}
+	m, ok := readChatMeta(h.chatDir(s.ws, s.person, s.chat))
+	if !ok || m.Agent == "" {
+		return nil, nil
+	}
+	a, usable := h.chatAgent(ws, s.person, m.Agent)
+	if !usable {
+		return nil, chatAgentGone{name: a.Name}
+	}
+	return &AgentPersona{ID: a.ID, Name: a.Name, Instructions: a.Instructions}, nil
 }

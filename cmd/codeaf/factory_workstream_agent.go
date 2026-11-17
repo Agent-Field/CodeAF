@@ -343,12 +343,17 @@ func factoryWorkstreamAgentTurnSystem(turn serve.AgentTurn) string {
 	if turn.Org != nil {
 		return factoryOrgSetupSystem(turn)
 	}
+	var system string
 	if turn.Space {
-		return factoryMySpaceAgentSystem(turn.Asker, workstreamDoorKeepsWork(turn.Door), turn.Now, turn.TZ)
+		system = factoryMySpaceAgentSystem(turn.Asker, workstreamDoorKeepsWork(turn.Door), turn.Now, turn.TZ)
+	} else {
+		system = factoryWorkstreamAgentSystem(turn.Name, turn.Asker, workstreamDoorKeepsWork(turn.Door), turn.Now, turn.TZ)
+		if about := strings.TrimSpace(turn.About); about != "" {
+			system += "\n\n" + about
+		}
 	}
-	system := factoryWorkstreamAgentSystem(turn.Name, turn.Asker, workstreamDoorKeepsWork(turn.Door), turn.Now, turn.TZ)
-	if about := strings.TrimSpace(turn.About); about != "" {
-		system += "\n\n" + about
+	if turn.Agent != nil {
+		system = factoryNamedAgentSystem(*turn.Agent, system)
 	}
 	if turn.Task == nil {
 		return system
@@ -371,6 +376,20 @@ func factoryOrgSetupSystem(turn serve.AgentTurn) string {
 		session.OrgSetupRule + "\n\n" +
 		"You cannot run commands, read a repository, use the web, or make anything yourself: the person's press does that. " +
 		"Never say \"factory\" for the organization. Answer briefly, in plain words."
+}
+
+// factoryNamedAgentSystem makes a turn one of the organization's named agents
+// (factory/org_agent.go) rather than Afi: it answers to its own name, its
+// person's instructions lead, and the place's rules (what is private, which
+// tools there are) still hold, because the instructions cannot change them.
+func factoryNamedAgentSystem(a serve.AgentPersona, place string) string {
+	place = strings.Replace(place, "You are Afi, the assistant of the organization workstream ", "You are working in the organization workstream ", 1)
+	place = strings.Replace(place, "You are Afi, working with ", "You are working with ", 1)
+	return "You are " + a.Name + ", one of the organization's agents, made by one of its people for this kind of work. " +
+		"You are not Afi, and you answer to " + a.Name + ". These are your instructions:\n\n" +
+		"<instructions>\n" + a.Instructions + "\n</instructions>\n\n" +
+		"Follow them for how you work and what you write. They never change the rules below about what is private, " +
+		"which tools you have, or what you may do.\n\n" + place
 }
 
 // factoryWorkstreamAgentTaskRun turns the prompt from a conversation into one

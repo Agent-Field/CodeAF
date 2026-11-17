@@ -167,7 +167,8 @@ func (h *Handler) ensureSpace(person string) (factory.OrgWorkstream, error) {
 
 // spaceItems counts what a space holds, for the operator's totals: its live
 // files and documents (folders are not things), canvases filed in it that no
-// file already stands for, and its person's chats.
+// file already stands for, and its person's chats. Their agents are added by
+// the caller (org_agents.go).
 func (h *Handler) spaceItems(ws factory.OrgWorkstream, canvases factory.OrgCanvases) int {
 	n := 0
 	filed := map[string]bool{}
@@ -217,6 +218,11 @@ func (h *Handler) mySpaceTotals(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	canvases, _ := h.config.Store.Canvases()
+	agents, _ := h.config.Store.OrgAgents()
+	agentsOf := map[string]int{}
+	for _, a := range agents {
+		agentsOf[factory.NormalizeHandle(a.Owner)]++
+	}
 	limit := h.spaceLimit()
 	nameOf := h.personNames()
 	out := api.MySpaceTotals{Month: now.UTC().Format("2006-01"), LimitUSD: limit, People: []api.MySpacePerson{}}
@@ -225,7 +231,7 @@ func (h *Handler) mySpaceTotals(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		person := factory.NormalizeHandle(ws.Owner.ID)
-		row := api.MySpacePerson{Person: person, SpentUSD: roundCents(spent[ws.ID]), Items: h.spaceItems(ws, canvases), AtLimit: spent[ws.ID] >= limit}
+		row := api.MySpacePerson{Person: person, SpentUSD: roundCents(spent[ws.ID]), Items: h.spaceItems(ws, canvases) + agentsOf[person], AtLimit: spent[ws.ID] >= limit}
 		if name := nameOf(person); name != person {
 			row.Name = name
 		}
@@ -268,7 +274,7 @@ func (h *Handler) putMySpaceLimit(w http.ResponseWriter, r *http.Request) {
 	}); h.failed(w, err) {
 		return
 	}
-	h.recordOrg(r, record.BudgetChanged, "set the monthly limit for everyone's space", "org", strconv.FormatFloat(limit, 'f', 2, 64)+" USD")
+	h.recordOrg(r, record.SpendingChanged, "set space limit", orgObjectFactory, strconv.FormatFloat(limit, 'f', 2, 64)+" USD")
 	h.mySpaceTotals(w, r)
 }
 
