@@ -242,8 +242,9 @@ func TestReopeningATaskMakesWhatWaitsOnItWaitAgain(t *testing.T) {
 }
 
 func TestAStopSaysWhoStoppedIt(t *testing.T) {
+	// abir asked for it, so abir owns it and may stop it (only the owner or whoever looks after the workstream stops a task).
 	o, path := taskOrg(t, "edit")
-	made := o.task(t, "santosh", path, api.TaskCreate{Title: "Draft the release notes", DoneBy: factory.TaskDoneBy{Kind: factory.TaskByAfi}})
+	made := o.task(t, "abir", path, api.TaskCreate{Title: "Draft the release notes", DoneBy: factory.TaskDoneBy{Kind: factory.TaskByAfi}})
 	var stopped, again api.WorkstreamTask
 	o.do(t, "abir", "PATCH", path+"/tasks/"+made.ID, made.Rev, map[string]any{"state": "stopped"}, 200, &stopped)
 	if stopped.StoppedBy == nil || stopped.StoppedBy.ID != "abir" {
