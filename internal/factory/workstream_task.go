@@ -680,8 +680,11 @@ type TaskChange struct {
 	Events   []WorkstreamTaskEvent
 	Released []WorkstreamTask
 	// Rewait is what waits on a task that was done and is not any more (sent
-	// back, unticked): each waits again (see WaitAgain).
-	Rewait []WorkstreamTask
+	// back, unticked), and what waits on a done one that reopens with it:
+	// each waits again (see WaitAgain). RewaitOn names, by task id, the
+	// reopened task each one waits on, for its "Waiting again" line.
+	Rewait   []WorkstreamTask
+	RewaitOn map[string]string
 	// Decisions are what the change settled, for the workstream's Decisions:
 	// an answered Ask, or a request that changed shared work.
 	Decisions []WorkstreamDecision
@@ -872,6 +875,11 @@ func ApplyPatch(t WorkstreamTask, p TaskPatch, a TaskActor, by TaskEventBy, all 
 			why = strings.TrimSpace(*p.StateReason)
 		}
 		back := t.State == TaskDone && *p.State == TaskUpNext && (!MayTick(t, a) || why != "")
+		// WHY IT GOES BACK IS THE POINT OF SEND BACK (live2/E1 F8): a person
+		// sending work back says what to change, or the doer's Inbox cannot.
+		if back && why == "" && by.Kind == TaskByPerson {
+			return TaskChange{}, TaskInvalid("say why it goes back")
+		}
 		if *p.State == TaskStopped && !MayStop(t, a) {
 			return TaskChange{}, ErrTaskNotStopper
 		}
@@ -924,25 +932,52 @@ func ApplyPatch(t WorkstreamTask, p TaskPatch, a TaskActor, by TaskEventBy, all 
 		ch.Released = Released(t.ID, replaced(all, t), by, newID, now)
 	}
 	if before.State == TaskDone && t.State != TaskDone {
-		for _, o := range all {
-			if o.ID != t.ID && o.State != TaskDone && slices.Contains(o.WaitingOn, t.ID) {
-				ch.Rewait = append(ch.Rewait, o)
-			}
-		}
+		ch.Rewait, ch.RewaitOn = rewaiting(t, all)
 	}
 	return ch, nil
 }
 
+// rewaiting is every task that waits on t, which was just reopened, and on
+// what. REOPENING A TASK MAKES EVERY TASK THAT WAITS ON IT WAIT AGAIN, a done
+// one included (final spec, Tasks › Rules; live2/E1 F7): a done dependant is
+// reopened by it, so what waits on THAT one waits again too. A Factory task
+// keeps its job's state, so nothing past it is reopened through it. on maps
+// each task's id to the title of the reopened task it waits on.
+func rewaiting(t WorkstreamTask, all []WorkstreamTask) ([]WorkstreamTask, map[string]string) {
+	var out []WorkstreamTask
+	on := map[string]string{}
+	seen := map[string]bool{t.ID: true}
+	queue := []WorkstreamTask{t}
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
+		for _, o := range all {
+			if seen[o.ID] || !slices.Contains(o.WaitingOn, cur.ID) {
+				continue
+			}
+			seen[o.ID] = true
+			out = append(out, o)
+			on[o.ID] = cur.Title
+			if o.State == TaskDone && o.DoneBy.Kind != TaskByFactory {
+				queue = append(queue, o)
+			}
+		}
+	}
+	return out, on
+}
+
 // WaitAgain is o, which waits on a task that was just reopened, waiting
 // again. REOPENING A TASK MAKES EVERY TASK THAT WAITS ON IT WAIT AGAIN (final
-// spec, Tasks › Rules): one already running goes back to Up next, where its
-// wait shows; a Factory task keeps its job's state. changed says whether o
-// itself changed; the caller writes it and the "Waiting again" line either way.
+// spec, Tasks › Rules): one already running, or already done, goes back to Up
+// next, where its wait shows (live2/E1 F7: a done one used to stay Done
+// resting on work that was not); a Factory task keeps its job's state.
+// changed says whether o itself changed; the caller writes it and the
+// "Waiting again" line either way.
 func WaitAgain(o WorkstreamTask, stamp string) (WorkstreamTask, bool) {
-	if o.State != TaskRunning || o.DoneBy.Kind == TaskByFactory {
+	if (o.State != TaskRunning && o.State != TaskDone) || o.DoneBy.Kind == TaskByFactory {
 		return o, false
 	}
-	o.State, o.Rev, o.UpdatedAt = TaskUpNext, o.Rev+1, stamp
+	o.State, o.Rev, o.UpdatedAt, o.DoneAt = TaskUpNext, o.Rev+1, stamp, ""
 	return o, true
 }
 
