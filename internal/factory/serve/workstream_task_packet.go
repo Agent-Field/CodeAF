@@ -207,7 +207,13 @@ func (h *Handler) taskPacket(ctx context.Context, d *agentDoor, task, words stri
 		out.WriteString("\n\nThe workstream " + ws.Name + " is for: " + p)
 	}
 	current := nameDecisions(factory.CurrentDecisions(ws.Decisions), h.personNames())
-	if len(current) > 0 {
+	// THE PACKET SAYS THE DECISIONS EVEN WHEN THERE ARE NONE. The rules tell
+	// an agent to read the decisions before it writes anything shared, and a
+	// packet silent on them sent every run of the live L7 plan to
+	// ws_decisions "to be thorough".
+	if len(current) == 0 {
+		out.WriteString("\n\nDecisions in force: none yet.")
+	} else {
 		out.WriteString("\n\nDecisions in force (keep to them):")
 		for _, x := range current[max(0, len(current)-taskPacketDecisionsMost):] {
 			out.WriteString("\n- " + x.Text)
@@ -244,7 +250,9 @@ func (h *Handler) taskPacket(ctx context.Context, d *agentDoor, task, words stri
 			}
 		}
 	}
-	out.WriteString("\n\nRead anything else with your tools only if this does not cover it. " +
+	out.WriteString(fmt.Sprintf("\n\nThis is everything the task needs, already read for you: the decisions above are the workstream's decisions, and the inputs' words are above. "+
+		"So do not call ws_decisions, ws_tasks, ws_files or ws_file_read before you write; read with them only something this does not cover. "+
+		"This task's id is %s; leave rev out when you update it. ", t.ID) +
 		"Make the deliverable with ws_file_create, from_task " + t.ID + ". " +
 		"When it is finished, call ws_task_update with state done, check saying what you checked it against, and handoff: two to four lines on what you made, what you assumed, and what the next task should know. " +
 		"If you cannot do it (an input is missing, or it needs something you do not have, such as the web), do not fail it: raise an ask to the owner with options such as \"Paste their text\".")
