@@ -1,6 +1,6 @@
 ---
 kind: added
-title: Afi asks before publishing or sending by default, a plan says which tasks will ask first, and a check names the decisions it was checked against
+title: Afi asks before publishing or sending by default, and a plan says which tasks ask first
 pr: 2755
 surface: [factory, chat, docs]
 invalidates:
