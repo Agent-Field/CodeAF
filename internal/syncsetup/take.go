@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
@@ -134,23 +135,27 @@ func (s *Sync) Continuer(eng cellstore.Engine, opt TakeOptions) *Continuer {
 // it fetches through is counted under the chat it serves, and so is the branch
 // that keeps this machine's unsent edits: both are the cost of taking this chat.
 func (c *Continuer) taker(ctx context.Context, sc *Scope) handoff.Taker {
+	return c.takerWithDir(ctx, sc, c.sync.Dir)
+}
+
+func (c *Continuer) takerWithDir(ctx context.Context, sc *Scope, dir directory.Client) handoff.Taker {
 	s := c.sync
 	sync := c.eng.Sync(cellstore.SyncKeys{CellKey: s.Identity.CellKey(), Dedup: s.Identity.DedupSecret()}, s.Ledger)
 	engine := landing{Engine: sync, workspace: c.eng.WorkspaceOf, rootFor: c.opt.RootFor}
-	pub := &cellsync.Publisher{Engine: engine, Store: sc.Store, Dir: s.Dir}
+	pub := &cellsync.Publisher{Engine: engine, Store: sc.Store, Dir: dir}
 	// THE TAKEOVER'S BRANCHER RUNS WITH Map NIL. The chat being taken keeps its
 	// id on this machine; only the edits set aside live in the branch, and a
 	// mapping from the chat to that branch would make the chat open as the
 	// branch. (The drive side's brancher records the mapping, because there the
 	// local chat does become the branch.)
-	brancher := cellsync.Brancher{Dir: s.Dir, Publisher: pub, NewID: newCellID}
+	brancher := cellsync.Brancher{Dir: dir, Publisher: pub, NewID: newCellID}
 	return handoff.Taker{
 		FreeOnly: c.freeOnly,
 		OnPhase:  c.opt.OnPhase,
-		Dir:      s.Dir,
-		Fetch:    &cellsync.Fetcher{Engine: engine, Store: sc.Store, Dir: s.Dir, Inbox: sync.Inbox, ManyMax: cellsync.ManyMaxFor(s.Relay)},
+		Dir:      dir,
+		Fetch:    &cellsync.Fetcher{Engine: engine, Store: sc.Store, Dir: dir, Inbox: sync.Inbox, ManyMax: cellsync.ManyMaxFor(s.Relay)},
 		Local:    engineLocal{eng: c.eng, ctx: ctx},
-		Branch:   c.branch(brancher),
+		Branch:   c.branchWithDir(brancher, dir),
 		RootFor:  c.opt.RootFor,
 		InPlace:  func(c cell.Cell) bool { return borrowsProject(c.Root) },
 		After:    []func(context.Context, cell.Cell) error{rebuildIndexes, recordOrigin, restoreChatFiles, c.pullVault},
@@ -228,11 +233,44 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	// Measure one attempt on its own copy: observers must not leak into another
 	// continue, and diagnostics must survive both early refusal and late failure.
 	started := time.Now()
+	type openStep struct {
+		name   string
+		dur    time.Duration
+		detail string
+	}
 	var phaseMu sync.Mutex
 	phases := map[string]time.Duration{}
+	var openSteps []openStep
+	stepCursor := started
 	var shownElapsed, filesElapsed time.Duration
 	var openGets int64
 	var openRounds int
+	recordStep := func(name, detail string) {
+		now := time.Now()
+		phaseMu.Lock()
+		if shownElapsed == 0 {
+			dur := now.Sub(stepCursor)
+			stepCursor = now
+			openSteps = append(openSteps, openStep{name: name, dur: dur, detail: detail})
+		}
+		phaseMu.Unlock()
+	}
+	formatOpenPath := func(steps []openStep) string {
+		if len(steps) == 0 {
+			return "none"
+		}
+		var b strings.Builder
+		for i, s := range steps {
+			if i > 0 {
+				b.WriteByte(',')
+			}
+			b.WriteString(s.name)
+			b.WriteByte(':')
+			b.WriteString(s.dur.String())
+			b.WriteString(s.detail)
+		}
+		return b.String()
+	}
 	loggedPhases := false
 	logPhases := func(outcome string) {
 		phaseMu.Lock()
@@ -243,13 +281,14 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		loggedPhases = true
 		shown, files := shownElapsed, filesElapsed
 		getsSnap, roundsSnap := openGets, openRounds
+		stepsSnap := append([]openStep(nil), openSteps...)
 		snap := make(map[string]time.Duration, len(phases))
 		for k, v := range phases {
 			snap[k] = v
 		}
 		phaseMu.Unlock()
-		log.Printf("continue %s phases capture=%s directory=%s retirement=%s fetch=%s acquire=%s restore=%s hooks=%s filing=%s unpublished=%s dirty=%s kept_upload=%s admission=%s open_seed=%s open_gets=%d open_rounds=%d shown=%s files=%s total=%s outcome=%s", id,
-			snap["local capture"], snap["directory"], snap["retirement"], snap["fetch"], snap["acquire"], snap["restore"], snap["hooks"], snap["filing"], snap["unpublished check"], snap["dirty check"], snap["kept-branch upload"], snap["staging/preflight"], snap["open seed"], getsSnap, roundsSnap, shown, files, time.Since(started), outcome)
+		log.Printf("continue %s phases capture=%s directory=%s retirement=%s fetch=%s acquire=%s restore=%s hooks=%s filing=%s unpublished=%s dirty=%s kept_upload=%s admission=%s open_seed=%s open_gets=%d open_rounds=%d open_path=%s shown=%s files=%s total=%s outcome=%s", id,
+			snap["local capture"], snap["directory"], snap["retirement"], snap["fetch"], snap["acquire"], snap["restore"], snap["hooks"], snap["filing"], snap["unpublished check"], snap["dirty check"], snap["kept-branch upload"], snap["staging/preflight"], snap["open seed"], getsSnap, roundsSnap, formatOpenPath(stepsSnap), shown, files, time.Since(started), outcome)
 	}
 	parent := ctx
 	moveCtx, cancelMove := context.WithCancelCause(context.WithoutCancel(parent))
@@ -283,13 +322,48 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 			err = fmt.Errorf("%w: %w", ErrMoveStalled, err)
 		}
 	}()
+	sc := c.sync.scope(id)
+	settleSync := true
+	defer func() {
+		if settleSync {
+			defer handoff.Trace(c.opt.OnPhase, "filing")()
+			sc.Settle()
+		}
+	}()
+	var fetcher *cellsync.Fetcher
+	var lastFetchRounds, lastFetchGets int
 	observed := *c
 	report := c.opt.OnPhase
 	observed.opt.OnPhase = func(p handoff.Phase) {
 		if !p.Ended.IsZero() {
 			phaseMu.Lock()
 			phases[p.Name] += p.Ended.Sub(p.Started)
+			isBeforeShown := shownElapsed == 0
 			phaseMu.Unlock()
+			if isBeforeShown {
+				switch p.Name {
+				case "unpublished check":
+					recordStep("unpublished", "")
+				case "dirty check":
+					recordStep("dirty", "")
+				case "kept-branch upload":
+					recordStep("kept_upload", "")
+				case "open seed":
+					recordStep("open_seed", "")
+				case "fetch":
+					rNow := 0
+					if fetcher != nil {
+						rNow = fetcher.OpenRounds()
+					}
+					gNow := int(sc.Gets())
+					rDelta := max(rNow-lastFetchRounds, 0)
+					gDelta := max(gNow-lastFetchGets, 0)
+					lastFetchRounds, lastFetchGets = rNow, gNow
+					recordStep("fetch", fmt.Sprintf("(r%d,g%d)", rDelta, gDelta))
+				case "acquire":
+					recordStep("acquire", "")
+				}
+			}
 		}
 		watch.phase(p)
 		if report != nil {
@@ -307,10 +381,26 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		}
 		logPhases(outcome)
 	}()
+	dir := &countingDir{Client: c.sync.Dir}
 	root := c.opt.RootFor(id)
 	_, localRootErr := cell.OpenAt(root, id)
 	keepRoot := localRootErr == nil
 	wasWarm := c.holds(id, root)
+	retirer := newHolderRetirer(root)
+	defer func() {
+		if !bgActive {
+			retirer.cancel()
+		}
+	}()
+	// Ask a local reader to let go immediately at the keypress when this device
+	// does not hold an active send lease, overlapping retirement with Dir.Cell.
+	if keepRoot && (seen == nil || seen.Device != c.sync.Device.ID()) {
+		if _, fence, lErr := c.sync.SendLease(id); lErr != nil || fence == 0 {
+			retireDone := handoff.Trace(c.opt.OnPhase, "retirement")
+			retirer.ask()
+			retireDone()
+		}
+	}
 	preKept := ""
 	if branches, err := cellsync.OpenBranchMap(c.sync.Home); err == nil {
 		if resolved := branches.Resolve(id); resolved != id {
@@ -333,19 +423,23 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		return Continued{}, err
 	}
 	localCapture()
+	recordStep("capture", "")
+	localCache := &localWorkCache{eng: c.eng}
 	var view directory.CellView
-	dirRounds := 0
 	if supplied, ok := c.sync.takeCellView(id); ok {
+		dir.calls.Add(1)
 		view = supplied
 	} else {
-		dirRounds = 1
+		if keepRoot {
+			localCache.start(ctx, cell.Cell{ID: id, Root: root})
+		}
 		directoryRead := handoff.Trace(c.opt.OnPhase, "directory")
 		readCtx := ctx
 		cancelRead := func() {}
 		if c.freeOnly {
 			readCtx, cancelRead = context.WithTimeout(ctx, chatlist.OpenReadTimeout)
 		}
-		view, err = c.sync.Dir.Cell(readCtx, id)
+		view, err = dir.Cell(readCtx, id)
 		cancelRead()
 		directoryRead()
 		if err != nil {
@@ -404,29 +498,27 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	if seen == nil {
 		seen = &directory.LeaseExpectation{Device: lease.Device, Fence: lease.Fence}
 	}
-	if watch != nil && view.Cell.Size > 0 && !c.holds(id, root) {
+	if watch != nil && view.Cell.Size > 0 && !wasWarm {
 		watch.expect(int64(view.Cell.Size))
-	}
-	fromReady := make(chan string, 1)
-	switch {
-	case lease.Device == "" || lease.Device == c.sync.Device.ID():
-		fromReady <- ""
-	case c.opt.FromDevice != "":
-		fromReady <- c.opt.FromDevice
-	default:
-		if cached, ok := c.sync.cachedDeviceName(lease.Device); ok {
-			fromReady <- cached
-		} else {
-			go func(dev string) {
-				fromReady <- c.sync.deviceName(dev)
-			}(lease.Device)
-		}
 	}
 	var from string
 	var fromResolved bool
+	var fromMu sync.Mutex
+	switch {
+	case lease.Device == "" || lease.Device == c.sync.Device.ID():
+		from, fromResolved = "", true
+	case c.opt.FromDevice != "":
+		from, fromResolved = c.opt.FromDevice, true
+	default:
+		if cached, ok := c.sync.cachedDeviceName(lease.Device); ok {
+			from, fromResolved = cached, true
+		}
+	}
 	resolveFrom := func() string {
+		fromMu.Lock()
+		defer fromMu.Unlock()
 		if !fromResolved {
-			from = <-fromReady
+			from = c.sync.deviceName(lease.Device)
 			fromResolved = true
 		}
 		return from
@@ -434,20 +526,37 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	storageOff := !c.sync.StorageAllowed()
 	// An own free chat can return without replacing its open local conversation.
 	keepOpen := storageOff && lease.Device == c.sync.Device.ID() && lease.Expires <= view.Now
+	filesFirst := MoveFilesFirst() || branchOnly || view.Cell.ParentCell != ""
+	wantAsync := !filesFirst && (c.opt.OnShown != nil || c.opt.AsyncFiles)
+	alreadyBranched := ""
+	if preKept != "" && keepRoot {
+		if unshared, _, uErr := cellstore.Unpublished(cell.Cell{ID: id, Root: root}, view.Cell.Head); uErr == nil && unshared != "" {
+			if kv, err := dir.Cell(ctx, preKept); err == nil && kv.Cell.ParentCell == id {
+				alreadyBranched = kv.Cell.Head
+			}
+		}
+	}
+	recordStep("directory", "")
 	retire := func() {
 		defer handoff.Trace(c.opt.OnPhase, "retirement")()
-		c.retireHolder(ctx, id)
+		retirer.ask()
+		if !wantAsync || retirer.isWorkingWriter() {
+			retirer.wait(ctx, releaseWithin)
+		}
 	}
 	if !keepOpen {
 		retire()
 	}
-	alreadyBranched := ""
-	if preKept != "" {
-		if kv, err := c.sync.Dir.Cell(ctx, preKept); err == nil && kv.Cell.ParentCell == id {
-			alreadyBranched = kv.Cell.Head
-		}
+	localWork := engineLocal{
+		eng:             c.eng,
+		ctx:             ctx,
+		alreadyBranched: alreadyBranched,
+		cache:           localCache,
+		retireWait: func(wCtx context.Context) {
+			defer handoff.Trace(c.opt.OnPhase, "retirement")()
+			retirer.wait(wCtx, releaseWithin)
+		},
 	}
-	localWork := engineLocal{eng: c.eng, ctx: ctx, alreadyBranched: alreadyBranched}
 	if storageOff {
 		local := cell.Cell{ID: id, Root: root}
 		if _, err := os.Stat(root); err == nil {
@@ -472,21 +581,14 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		// A read-only fetch still replaces files, so it must retire their live reader.
 		retire()
 	}
-	sc := c.sync.scope(id)
-	settleSync := true
-	defer func() {
-		if settleSync {
-			defer handoff.Trace(c.opt.OnPhase, "filing")()
-			sc.Settle()
-		}
-	}()
+	recordStep("retire", "")
 	intendedPrimary := session.Place{Dir: root, Owned: true}.Work()
 	if project, here := projectOf(root); here {
 		intendedPrimary = project
 	}
-	taker := c.taker(ctx, sc)
+	taker := c.takerWithDir(ctx, sc, dir)
 	taker.View = &view
-	fetcher, _ := taker.Fetch.(*cellsync.Fetcher)
+	fetcher, _ = taker.Fetch.(*cellsync.Fetcher)
 	if fetcher != nil {
 		fetcher.View = &view
 		if l, ok := fetcher.Engine.(landing); ok {
@@ -527,7 +629,6 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		}
 		return session.ValidateTaskWorkspaceSetBindingsForDestination(place, root, c.opt.WorkspaceRoots)
 	}
-	filesFirst := MoveFilesFirst() || branchOnly || view.Cell.ParentCell != ""
 	var stageComplete bool
 	if filesFirst {
 		taker.Prepare = func(ctx context.Context, staged cell.Cell, head string) error {
@@ -696,16 +797,14 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 				}
 			}
 		}
+		recordStep("restore", "")
 		phaseMu.Lock()
-		shownElapsed = time.Since(started)
+		shownElapsed = stepCursor.Sub(started)
 		filesElapsed = shownElapsed
 		openGets = sc.Gets()
-		openRounds = dirRounds + 1
+		openRounds = dir.Count()
 		if fetcher != nil {
 			openRounds += fetcher.OpenRounds()
-		}
-		if taken.Kept != "" && taken.Kept != preKept {
-			openRounds++
 		}
 		phaseMu.Unlock()
 		out = Continued{LocalOnly: storageOff, Taken: taken, Device: c.opt.DeviceName, TaskCopies: taskCopies, Resume: c.arrive(taken.Cell, resolveFrom()), Shown: shownElapsed, Files: filesElapsed, Wait: func(context.Context) error { return nil }, Retry: func() bool { return false }}
@@ -723,12 +822,9 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		return out, nil
 	}
 
-	fastFrom := ""
-	select {
-	case f := <-fromReady:
-		from, fromResolved, fastFrom = f, true, f
-	default:
-	}
+	fromMu.Lock()
+	fastFrom := from
+	fromMu.Unlock()
 	if err := cellstore.AdoptedFrom(taken.Cell, fastFrom); err != nil {
 		return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
 	}
@@ -763,22 +859,20 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		}
 		return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
 	}
-	phaseMu.Lock()
-	shownElapsed = time.Since(started)
-	openGets = sc.Gets()
-	openRounds = dirRounds + 1
-	if fetcher != nil {
-		openRounds += fetcher.OpenRounds()
-	}
-	if taken.Kept != "" && taken.Kept != preKept {
-		openRounds++
-	}
-	phaseMu.Unlock()
 	var keptTurns uint32
 	if taken.Kept != "" && taken.Kept != preKept {
 		keptTurns = branchedTurns
 	}
 	initialResume, initialStashed := c.fastResume(taken.Cell, fastFrom)
+	recordStep("restore", "")
+	phaseMu.Lock()
+	shownElapsed = stepCursor.Sub(started)
+	openGets = sc.Gets()
+	openRounds = dir.Count()
+	if fetcher != nil {
+		openRounds += fetcher.OpenRounds()
+	}
+	phaseMu.Unlock()
 	stallBound := func() time.Duration {
 		if c.opt.IdleWithin > 0 {
 			return c.opt.IdleWithin
@@ -859,6 +953,7 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 			fetchErr := taker.Fetch.Complete(runCtx, taken.Cell, taken.Driving.Head)
 			fetchDone()
 			if fetchErr != nil {
+				retirer.cancel()
 				if context.Cause(runCtx) == ErrMoveStalled {
 					fetchErr = fmt.Errorf("%w: %w", ErrMoveStalled, fetchErr)
 				}
@@ -873,6 +968,9 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 				logPhases(fmt.Sprintf("failed reason=%q", fetchErr.Error()))
 				return
 			}
+			retireBgDone := handoff.Trace(c.opt.OnPhase, "retirement")
+			retirer.wait(runCtx, releaseWithin)
+			retireBgDone()
 			restoreDone := handoff.Trace(c.opt.OnPhase, "restore")
 			var matErr error
 			if fetcher != nil {
@@ -1057,28 +1155,115 @@ const releaseWithin = 5 * time.Second
 // rather than on the one that has just arrived. It is the ordinary
 // move-it-here request, so the engine closes the session the way it does for a
 // second window; with no holder there is nothing to ask and nothing is written.
-func (c *Continuer) retireHolder(ctx context.Context, id string) {
-	root := c.opt.RootFor(id)
-	journal := session.Place{Dir: root}.Transcript()
-	if !session.InUse(journal) || session.AskTakeover(root) != nil {
+type holderRetirer struct {
+	mu      sync.Mutex
+	root    string
+	journal string
+	oldFile *os.File
+	asked   bool
+	done    bool
+}
+
+func newHolderRetirer(root string) *holderRetirer {
+	return &holderRetirer{
+		root:    root,
+		journal: session.Place{Dir: root}.Transcript(),
+	}
+}
+
+func (r *holderRetirer) ask() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.asked || r.done {
 		return
 	}
-	defer session.CancelTakeover(root)
-	deadline := time.NewTimer(releaseWithin)
+	if !session.InUse(r.journal) {
+		r.done = true
+		return
+	}
+	f, _ := os.Open(r.journal)
+	if session.AskTakeover(r.root) != nil {
+		if f != nil {
+			_ = f.Close()
+		}
+		r.done = true
+		return
+	}
+	r.oldFile = f
+	r.asked = true
+}
+
+func (r *holderRetirer) isWorkingWriter() bool {
+	holder, ok := session.ReadHolder(r.root, time.Now())
+	return ok && holder.State == session.PresenceWorking
+}
+
+func (r *holderRetirer) inUseLocked() bool {
+	if r.oldFile != nil {
+		if err := filelock.Lock(r.oldFile, true, true); err != nil {
+			return filelock.IsBusy(err)
+		}
+		_ = filelock.Unlock(r.oldFile)
+		return false
+	}
+	return session.InUse(r.journal)
+}
+
+func (r *holderRetirer) wait(ctx context.Context, within time.Duration) {
+	r.mu.Lock()
+	if !r.asked || r.done {
+		r.mu.Unlock()
+		return
+	}
+	r.mu.Unlock()
+	deadline := time.NewTimer(within)
 	defer deadline.Stop()
-	for session.InUse(journal) {
+	for {
+		r.mu.Lock()
+		if r.done || !r.inUseLocked() {
+			if r.oldFile != nil {
+				_ = r.oldFile.Close()
+				r.oldFile = nil
+			}
+			session.CancelTakeover(r.root)
+			r.done = true
+			r.mu.Unlock()
+			return
+		}
+		r.mu.Unlock()
 		select {
 		case <-ctx.Done():
+			r.cancel()
 			return
 		case <-deadline.C:
+			r.cancel()
 			return
 		case <-time.After(releaseBeat):
 		}
 	}
 }
 
+func (r *holderRetirer) cancel() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.oldFile != nil {
+		_ = r.oldFile.Close()
+		r.oldFile = nil
+	}
+	if r.asked && !r.done {
+		session.CancelTakeover(r.root)
+	}
+	r.done = true
+}
+
+func (c *Continuer) retireHolder(ctx context.Context, id string) {
+	r := newHolderRetirer(c.opt.RootFor(id))
+	r.ask()
+	r.wait(ctx, releaseWithin)
+}
+
 // releaseBeat is how often the wait above looks at the journal's lock.
-const releaseBeat = 50 * time.Millisecond
+const releaseBeat = 10 * time.Millisecond
 
 // arrive is the look at this machine that a takeover ends with, taken before
 // anything here seals over the record the chat arrived with. The record is not a
@@ -1177,10 +1362,14 @@ func (c *Continuer) orphanTurns(ctx context.Context, branch string) uint32 {
 // branch is the Taker's Branch: the Brancher, told what to say about the cell
 // the kept edits become.
 func (c *Continuer) branch(b cellsync.Brancher) func(context.Context, *cellsync.Driving, string, uint32) (string, error) {
+	return c.branchWithDir(b, c.sync.Dir)
+}
+
+func (c *Continuer) branchWithDir(b cellsync.Brancher, dir directory.Client) func(context.Context, *cellsync.Driving, string, uint32) (string, error) {
 	return func(ctx context.Context, from *cellsync.Driving, head string, turns uint32) (string, error) {
 		if branches, err := cellsync.OpenBranchMap(c.sync.Home); err == nil {
 			if existing := branches.Resolve(from.Cell.ID); existing != from.Cell.ID {
-				if v, err := c.sync.Dir.Cell(ctx, existing); err == nil && v.Cell.ParentCell == from.Cell.ID && v.Cell.Head == head {
+				if v, err := dir.Cell(ctx, existing); err == nil && v.Cell.ParentCell == from.Cell.ID && v.Cell.Head == head {
 					from.Remote, from.Fence, from.Head = existing, 1, head
 					return existing, nil
 				}
@@ -1197,6 +1386,93 @@ func (c *Continuer) branch(b cellsync.Brancher) func(context.Context, *cellsync.
 		}
 		return b.Branch(ctx, from, head, turns, c.sync.publishInfo(opened, titleOf(opened.Root)))
 	}
+}
+
+type countingDir struct {
+	directory.Client
+	calls atomic.Int64
+}
+
+func (d *countingDir) Count() int { return int(d.calls.Load()) }
+
+func (d *countingDir) List(ctx context.Context) (directory.Listing, error) {
+	d.calls.Add(1)
+	return d.Client.List(ctx)
+}
+
+func (d *countingDir) Cell(ctx context.Context, id string) (directory.CellView, error) {
+	d.calls.Add(1)
+	return d.Client.Cell(ctx, id)
+}
+
+func (d *countingDir) PutDevice(ctx context.Context, id string, dev directory.Device) error {
+	d.calls.Add(1)
+	return d.Client.PutDevice(ctx, id, dev)
+}
+
+func (d *countingDir) Revoke(ctx context.Context, id string) error {
+	d.calls.Add(1)
+	return d.Client.Revoke(ctx, id)
+}
+
+func (d *countingDir) SetVault(ctx context.Context, old, new string) error {
+	d.calls.Add(1)
+	return d.Client.SetVault(ctx, old, new)
+}
+
+func (d *countingDir) Create(ctx context.Context, id string, in directory.CellInit) (directory.CellView, error) {
+	d.calls.Add(1)
+	return d.Client.Create(ctx, id, in)
+}
+
+func (d *countingDir) Acquire(ctx context.Context, id string, opts directory.AcquireOpts) (directory.CellView, error) {
+	d.calls.Add(1)
+	return d.Client.Acquire(ctx, id, opts)
+}
+
+func (d *countingDir) Heartbeat(ctx context.Context, id string, b directory.Beat) (directory.CellView, error) {
+	d.calls.Add(1)
+	return d.Client.Heartbeat(ctx, id, b)
+}
+
+func (d *countingDir) Publish(ctx context.Context, id string, p directory.Publish) (directory.CellView, error) {
+	d.calls.Add(1)
+	return d.Client.Publish(ctx, id, p)
+}
+
+func (d *countingDir) Release(ctx context.Context, id string, fence uint64) error {
+	d.calls.Add(1)
+	return d.Client.Release(ctx, id, fence)
+}
+
+func (d *countingDir) Archive(ctx context.Context, id string) error {
+	d.calls.Add(1)
+	return d.Client.Archive(ctx, id)
+}
+
+func (d *countingDir) Presence(ctx context.Context) (directory.PresenceView, error) {
+	d.calls.Add(1)
+	return d.Client.Presence(ctx)
+}
+
+func (d *countingDir) ApproveRequest(ctx context.Context, code string, a directory.Approval) error {
+	d.calls.Add(1)
+	return d.Client.ApproveRequest(ctx, code, a)
+}
+
+func (d *countingDir) DenyRequest(ctx context.Context, code string) error {
+	d.calls.Add(1)
+	return d.Client.DenyRequest(ctx, code)
+}
+
+func (d *countingDir) Rotate(ctx context.Context, req directory.RotationReq) (directory.RotationView, error) {
+	d.calls.Add(1)
+	return d.Client.Rotate(ctx, req)
+}
+
+func (d *countingDir) Rotation(ctx context.Context) (directory.RotationView, error) {
+	d.calls.Add(1)
+	return d.Client.Rotation(ctx)
 }
 
 // landing is the engine for a chat that has not landed on this machine yet: the
@@ -1287,12 +1563,84 @@ func (l landing) MaterializeWorkspace(ctx context.Context, c cell.Cell, head str
 	return l.Engine.Materialize(ctx, c, head)
 }
 
+type localWorkCache struct {
+	eng     cellstore.Engine
+	mu      sync.Mutex
+	started bool
+	done    chan struct{}
+	work    bool
+	err     error
+}
+
+func (c *localWorkCache) start(ctx context.Context, at cell.Cell) {
+	if c == nil || c.eng.Run != nil {
+		return
+	}
+	c.mu.Lock()
+	if c.started {
+		c.mu.Unlock()
+		return
+	}
+	c.started = true
+	ch := make(chan struct{})
+	c.done = ch
+	c.mu.Unlock()
+	go func() {
+		defer close(ch)
+		w, err := c.eng.LocalWork(ctx, at)
+		c.mu.Lock()
+		c.work, c.err = w, err
+		c.mu.Unlock()
+	}()
+}
+
+func (c *localWorkCache) get(ctx context.Context, eng cellstore.Engine, at cell.Cell) (bool, error) {
+	if c == nil || eng.Run != nil {
+		return eng.LocalWork(ctx, at)
+	}
+	c.mu.Lock()
+	if !c.started {
+		c.mu.Unlock()
+		c.start(ctx, at)
+		c.mu.Lock()
+	}
+	ch := c.done
+	c.mu.Unlock()
+	select {
+	case <-ch:
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		return c.work, c.err
+	case <-ctx.Done():
+		return false, ctx.Err()
+	}
+}
+
+func (c *localWorkCache) invalidate() {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	c.started = false
+	c.done = nil
+	c.mu.Unlock()
+}
+
 // engineLocal is the Taker's view of a copy of the chat this machine has: what
 // the engine says differs from the newest turn, and a seal of it.
 type engineLocal struct {
 	eng             cellstore.Engine
 	ctx             context.Context
 	alreadyBranched string
+	cache           *localWorkCache
+	retireWait      func(context.Context)
+}
+
+func (l engineLocal) localWork(ctx context.Context, c cell.Cell) (bool, error) {
+	if l.cache != nil {
+		return l.cache.get(ctx, l.eng, c)
+	}
+	return l.eng.LocalWork(ctx, c)
 }
 
 func (l engineLocal) Unpublished(c cell.Cell, remoteHead string) (string, uint32, error) {
@@ -1302,9 +1650,12 @@ func (l engineLocal) Unpublished(c cell.Cell, remoteHead string) (string, uint32
 	}
 	// A retired session can seal unchanged bookkeeping after losing its
 	// hold. Only work beyond the shared snapshot belongs in a kept branch.
-	work, err := l.eng.LocalWork(l.ctx, c)
+	work, err := l.localWork(l.ctx, c)
 	if err != nil || !work {
 		return "", 0, err
+	}
+	if l.retireWait != nil {
+		l.retireWait(l.ctx)
 	}
 	return head, turns, nil
 }
@@ -1319,7 +1670,7 @@ func (l engineLocal) Dirty(ctx context.Context, c cell.Cell) (bool, error) {
 	}
 	// Both appended accounting and edits inside an older message must be checked
 	// against the shared snapshot, even when the current journal has the same size.
-	return l.eng.LocalWork(ctx, c)
+	return l.localWork(ctx, c)
 }
 
 func (l engineLocal) Follow(ctx context.Context, from, to cell.Cell) error {
@@ -1329,6 +1680,10 @@ func (l engineLocal) Follow(ctx context.Context, from, to cell.Cell) error {
 // Seal seals the tree as one turn of the copy. The Taker names a cell by id and
 // folder only, and a seal needs the cell's own record, so it is opened here.
 func (l engineLocal) Seal(ctx context.Context, c cell.Cell) (string, uint32, error) {
+	if l.retireWait != nil {
+		l.retireWait(ctx)
+	}
+	l.cache.invalidate()
 	opened, err := cell.OpenAt(c.Root, c.ID)
 	if err != nil {
 		return "", 0, err
