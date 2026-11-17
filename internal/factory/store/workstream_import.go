@@ -36,18 +36,23 @@ func (st *Store) ImportWorkstreamContents(ws string, files []factory.WorkstreamF
 		}
 		tw := TaskWrite{tx: tx}
 		for _, t := range tasks {
-			var found int
-			err := tx.QueryRow(`SELECT rev FROM tasks WHERE ws=? AND id=?`, ws, t.ID).Scan(&found)
+			t.WS, t.Rev = ws, 1
+			t.ForYou, t.Run = nil, nil
+			doc, err := json.Marshal(t)
+			if err != nil {
+				return err
+			}
+			var existing string
+			err = tx.QueryRow(`SELECT doc FROM tasks WHERE ws=? AND id=?`, ws, t.ID).Scan(&existing)
 			if err == nil {
+				if existing != string(doc) {
+					return fmt.Errorf("task %s already exists with different work; its source was kept", t.ID)
+				}
 				continue
 			}
 			if !errors.Is(err, sql.ErrNoRows) {
 				return err
 			}
-			t.WS = ws
-			t.Rev = 1
-			t.ForYou = nil
-			t.Run = nil
 			if err = tw.Put(t, 0); err != nil {
 				return err
 			}
@@ -56,6 +61,14 @@ func (st *Store) ImportWorkstreamContents(ws string, files []factory.WorkstreamF
 			doc, err := json.Marshal(e)
 			if err != nil {
 				return err
+			}
+			var previousWS, previousDoc string
+			checkErr := tx.QueryRow(`SELECT ws,doc FROM task_events WHERE id=?`, e.ID).Scan(&previousWS, &previousDoc)
+			if checkErr == nil && (previousWS != ws || previousDoc != string(doc)) {
+				return fmt.Errorf("this task thread already belongs to another import; its source was kept")
+			}
+			if checkErr != nil && !errors.Is(checkErr, sql.ErrNoRows) {
+				return checkErr
 			}
 			if _, err = tx.Exec(`INSERT OR IGNORE INTO task_events(ws,task,id,doc) VALUES (?,?,?,?)`, ws, e.Task, e.ID, string(doc)); err != nil {
 				return err
