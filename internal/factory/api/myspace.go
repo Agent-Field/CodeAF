@@ -67,6 +67,9 @@ type AgentChat struct {
 	State     string `json:"state"`
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
+	// Agent is the named agent this chat talks to (org_agents.go); absent is
+	// Afi. Its name is read fresh, so a renamed agent reads renamed.
+	Agent *AgentRef `json:"agent,omitempty"`
 }
 
 // AgentChatList is GET /v1/workstreams/{id}/chats's answer: the caller's own
@@ -98,6 +101,9 @@ type OtherChat struct {
 // filled from the chat's first message.
 type AgentChatNew struct {
 	Title string `json:"title,omitempty"`
+	// Agent is the id of a named agent to talk to instead of Afi: one of the
+	// caller's own in their space, or one the workstream lists.
+	Agent string `json:"agent,omitempty"`
 }
 
 // AgentChatsMost is how many chats one person keeps in one workstream.

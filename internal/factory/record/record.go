@@ -110,11 +110,15 @@ const (
 	RoutesChanged     = "routes_changed"
 	SpendingChanged   = "spending_changed"
 	SettingsChanged   = "settings_changed"
+	// AgentChanged is an agent's place on the organization's list (factory
+	// org_agent.go). Its Object is "agent:<id>" and it never names the agent:
+	// every member reads the record.
+	AgentChanged = "agent_changed"
 )
 
 // orgKinds are the organization change kinds; none of them names a job.
 var orgKinds = map[string]bool{TeamChanged: true, WorkstreamChanged: true, PolicyChanged: true,
-	RulesChanged: true, RoutesChanged: true, SpendingChanged: true, SettingsChanged: true}
+	RulesChanged: true, RoutesChanged: true, SpendingChanged: true, SettingsChanged: true, AgentChanged: true}
 
 // OrgVerbs are the words an organization change may read as, by kind. They
 // are what a person reads in an activity list, so each is plain words.
@@ -124,12 +128,14 @@ var OrgVerbs = map[string][]string{
 		"unarchived workstream", "deleted workstream", "changed owner", "changed sharing",
 		"added page", "changed page", "removed page", "restored page", "changed plan",
 		"renamed page", "moved page", "added job", "removed job", "added wake", "changed wake",
-		"added suggestion", "changed suggestion", "set budget", "posted spend"},
+		"added suggestion", "changed suggestion", "set budget", "posted spend",
+		"added agent", "removed agent"},
 	PolicyChanged:   {"changed go-aheads"},
 	RulesChanged:    {"changed rules"},
 	RoutesChanged:   {"changed routing"},
-	SpendingChanged: {"changed spending defaults"},
+	SpendingChanged: {"changed spending defaults", "set space limit"},
 	SettingsChanged: {"changed settings", "set model key", "removed model key"},
+	AgentChanged:    {"asked for org agent", "approved org agent", "declined org agent", "added org agent", "removed org agent"},
 }
 
 // IsOrgKind is whether kind is one of the organization's own changes.

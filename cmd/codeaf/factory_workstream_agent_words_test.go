@@ -183,3 +183,28 @@ func TestMySpaceAgentIsToldTheSpaceIsPrivateAndHoldsNoTasks(t *testing.T) {
 		t.Error("with the work tools, the space prompt must say tasks are refused here")
 	}
 }
+
+// A NAMED AGENT IS NOT AFI. A chat with one of the organization's agents is
+// told its own name and its person's instructions, and keeps the place's rules:
+// in a space, that the space is private.
+func TestANamedAgentSpeaksAsItselfAndKeepsThePlacesRules(t *testing.T) {
+	critic := serve.AgentPersona{ID: "ag_1", Name: "Critic", Instructions: "Find the weakest claim and say why."}
+	for _, space := range []bool{false, true} {
+		p := factoryWorkstreamAgentTurnSystem(serve.AgentTurn{Name: "Pantry", Asker: "priya", Space: space, Agent: &critic})
+		if !strings.HasPrefix(p, "You are Critic,") || !strings.Contains(p, "Find the weakest claim and say why.") {
+			t.Errorf("space=%v: the named agent was not told who it is:\n%s", space, p)
+		}
+		if strings.Contains(p, "You are Afi") {
+			t.Errorf("space=%v: a named agent was told it is Afi:\n%s", space, p)
+		}
+		if strings.Contains(p, "working working") {
+			t.Errorf("space=%v: the place's first line read badly:\n%s", space, p)
+		}
+		if space && !strings.Contains(p, "the operator included") {
+			t.Errorf("the named agent in a space must still be told it is private:\n%s", p)
+		}
+		if hit := machineryWords.FindAllString(strings.ReplaceAll(p, critic.Instructions, ""), -1); len(hit) > 0 {
+			t.Errorf("space=%v: the prompt says %q", space, hit)
+		}
+	}
+}

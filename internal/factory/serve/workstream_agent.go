@@ -78,6 +78,9 @@ type AgentTurn struct {
 	// holds no tasks.
 	Chat  string
 	Space bool
+	// Agent is the named agent this chat talks to (org_agents.go), nil for
+	// Afi: the turn is that agent, with its person's instructions.
+	Agent *AgentPersona
 	// Task is set when this turn works one task rather than answering a
 	// person's message: Text is then what the task asks, and the turn is the
 	// task's Working conversation, which everyone in the workstream reads.
@@ -111,6 +114,11 @@ type AgentTurn struct {
 type AgentOrg struct {
 	Name, Description string
 	Setup             session.OrgSetupDoor
+}
+
+// AgentPersona is a named agent a turn speaks as.
+type AgentPersona struct {
+	ID, Name, Instructions string
 }
 
 // AgentTask is the task a turn works.
@@ -478,6 +486,11 @@ func (h *Handler) postAgentMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	err := h.startAgentTurn(ws, v, asker, chat, text, strings.TrimSpace(body.TZ))
+	var gone chatAgentGone
+	if errors.As(err, &gone) {
+		h.fail(w, http.StatusConflict, gone.Error())
+		return
+	}
 	if errors.Is(err, errAgentBusy) {
 		h.write(w, http.StatusConflict, map[string]string{"error": "the agent is still answering your last message; wait for it, or stop it", "reason": "busy", "by": asker})
 		return
@@ -499,6 +512,10 @@ func (h *Handler) startAgentTurn(ws factory.OrgWorkstream, v wsViewer, asker, ch
 	}
 	turn := "turn_" + tid
 	seat := agentSeat{ws.ID, asker, chat}
+	persona, err := h.chatPersona(ws, seat)
+	if err != nil {
+		return err
+	}
 	d := &h.agentDesk
 	d.mu.Lock()
 	if d.ctx == nil {
@@ -526,7 +543,7 @@ func (h *Handler) startAgentTurn(ws factory.OrgWorkstream, v wsViewer, asker, ch
 	}
 	h.publishAgent(seat, api.AgentEvent{AgentState: &state})
 	door := &agentDoor{h: h, id: ws.ID, asker: asker, operator: v.Operator}
-	run := AgentTurn{Workstream: ws.ID, Name: ws.Name, Turn: turn, Asker: asker, Text: text, Now: now, TZ: tz, About: h.orgAbout(), Chat: chat, Space: ws.Space,
+	run := AgentTurn{Workstream: ws.ID, Name: ws.Name, Turn: turn, Asker: asker, Text: text, Now: now, TZ: tz, About: h.orgAbout(), Chat: chat, Space: ws.Space, Agent: persona,
 		Key: h.orgModelKey(), Dir: filepath.Join(h.agentDir(seat), "agent"), Door: door,
 		Step: func(kind, text, tool string, failed bool) {
 			switch kind {

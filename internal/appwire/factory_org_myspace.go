@@ -43,6 +43,8 @@ type OrgWorkstreamChatNew struct {
 	OrgConn
 	ID    string `json:"id"`
 	Title string `json:"title,omitempty"`
+	// Agent is a named agent to talk to instead of Afi ("org_agents").
+	Agent string `json:"agent,omitempty"`
 }
 
 // orgChatPattern is a chat id as the server makes it.
@@ -99,6 +101,12 @@ func init() {
 		body := map[string]string{}
 		if title != "" {
 			body["title"] = title
+		}
+		if agent := strings.TrimSpace(p.Agent); agent != "" {
+			if _, err := orgSegment("agent", agent); err != nil {
+				return OrgRequest{}, err
+			}
+			body["agent"] = agent
 		}
 		return OrgRequest{Method: http.MethodPost, Path: path + "/chats", Body: body}, nil
 	})

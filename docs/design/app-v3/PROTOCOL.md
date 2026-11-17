@@ -521,6 +521,14 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.org_myspace` | `in.OrgConn` | `{workstream, limit_usd, spent_usd, at_limit?}` |
 | `factory.org_myspace_totals` | `in.OrgConn` | `{month, limit_usd, people}` |
 | `factory.org_myspace_limit_set` | `in.OrgMySpaceLimitParams` | `{month, limit_usd, people}` |
+| `factory.org_agents` | `in.OrgConn` | `{agents}` |
+| `factory.org_agent_new` | `in.OrgAgentNewParams` | the agent |
+| `factory.org_agent_set` | `in.OrgAgentSetParams` | the agent |
+| `factory.org_agent_delete` | `in.OrgAgentParams` | `{}` |
+| `factory.org_agent_roster` | `in.OrgAgentRosterParams` | the agent |
+| `factory.org_workstream_agent_list` | `in.OrgWorkstreamParams` | `{agents}` |
+| `factory.org_workstream_agent_add` | `in.OrgWorkstreamAgentLink` | `{agents}` |
+| `factory.org_workstream_agent_drop` | `in.OrgWorkstreamAgentLink` | `{agents}` |
 | `factory.org_workstream_tasks` | `in.OrgTasksParams` | `OrgTasks` |
 | `factory.org_workstream_task` | `in.OrgTaskParams` | `json.RawMessage` |
 | `factory.org_workstream_task_create` | `in.OrgTaskCreateParams` | `json.RawMessage` |
@@ -1075,6 +1083,30 @@ first message's first line). `factory.org_workstream_agent`, `_send` and `_stop`
 chat, and every turn in a space, runs on the server whatever `agent_runner` says. Since
 `org_myspace`, the operator is no longer told a private workstream or canvas exists:
 the `name_only` row is gone.
+
+An engine whose hello carries `org_agents` keeps an organization's agents: a name and
+instructions one person made in their space. `factory.org_agents` `GET /v1/agents`
+answers `{agents: [{id, name, instructions?, owner, owner_name?, roster?, team?, mine?,
+workstreams?, created_at, updated_at}]}`: the caller's own, the organization's list
+(`roster: "org"`), and for the operator the ones waiting on them (`roster: "asked"`). An
+agent its person keeps to themselves is never in anyone else's answer, the operator's
+included; the totals count it among the space's `items`. `factory.org_agent_new {name,
+instructions, team?}` (`ag_` and 26 letters or digits; name 1–60 characters and never
+"Afi", instructions 1–8000 bytes, at most 100 per person), `_set {agent, name?,
+instructions?, team?}` and `_delete {agent}` are its person's only. `factory.org_agent_roster
+{agent, on}` is its person asking for the organization's list (`asked`; the operator's
+own goes straight to `org`) or leaving it, and the operator approving or declining an
+`asked` one. `factory.org_workstream_agent_list {id}` is People and rules › Agents, the
+list a task's doer is picked from: `{agents: [{id, name, kind: "agent", from:
+"space"|"org", owner, owner_name?, team?, by, at}]}`. `factory.org_workstream_agent_add
+{id, agent}` (`edit`) adds the caller's own (Share, `from: "space"`) or one on the
+organization's list (`from: "org"`) and `_drop` takes one off (`edit`, or its person); a
+space takes none. Off the organization's list, an agent leaves the workstreams others
+added it to; deleted, it leaves them all. `factory.org_workstream_chat_new` takes `agent`
+to talk to one instead of Afi: in a space one's own or one on the list, in a workstream
+one it lists. Its chats carry `agent: {id, name}`, and a message to one whose agent is
+no longer usable there is refused (`conflict`). When the operator removes a person,
+their agents go to the heir.
 
 Starting an organization (hello `org_setup`, v2 designs J2 and J3). `factory.org_profile`
 `GET /v1/org` answers `{name, description?, set_up, by_hand?}` to anyone signed in;
