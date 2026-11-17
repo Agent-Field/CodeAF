@@ -8,4 +8,4 @@ invalidates:
   - Command-click in the Tasks list used to open a task tab; it now toggles selection for bulk Done by.
 ---
 
-The Tasks page documents the 500-pixel list, arrow navigation, the 1100-pixel content-width and open-Afi fallback, and selecting several tasks. Bulk Done by uses the same allowed doers as one task, keeps ownership and results, and refreshes the list after a failed write. Heading probes keep the new questions reachable.
+The Tasks page documents the 500-pixel list, arrow navigation, the 1100-pixel content-width and open-Afi fallback, and selecting several tasks. Bulk Done by uses the same allowed doers as one task, keeps ownership and results, and names refused tasks while the other selected tasks are still handed over. Heading probes keep the new questions reachable.
