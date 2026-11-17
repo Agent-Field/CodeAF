@@ -103,9 +103,9 @@ Reading tasks needs view on the workstream; adding, commenting, handing on and s
 
 Stopping a task or moving it to another workstream is for the task's owner and for whoever looks after the workstream (its steward, or anyone with full access to it). Anyone else who can edit is refused with "only the task's owner or whoever looks after this workstream can stop or move it", and the desk leaves Stop and Move to another workstream out of their More. They can still comment, hand it to someone or send it back. Answering a task's question and ticking a person's task stay the owner's alone, whoever looks after the workstream.
 
-## I answered Afi's question and nothing happened — an answer puts Afi back to work
+## I answered Afi's question and nothing happened — an answer puts Afi back to work, unless the task still waits on other work
 
-When Afi, working a task on an organization's server, asks a question, its run ends and the task shows "Needs" and the person it asks. Answering the last open question on the task sets it Running and starts Afi on it again straight away, in the task's own run, with what it was asked and the answer you chose ("Internal team only"), so it carries on from there. "Go ahead anyway" on a paused task does the same. If the answer lands while Afi is still finishing the turn that asked, it starts again the moment that turn ends. A task with more than one question waits until every one is answered. If the server cannot run Afi any more (no model key), the task stays Running with nothing behind it until its owner stops it or marks it done.
+When Afi, working a task on an organization's server, asks a question, its run ends and the task shows "Needs" and the person it asks. Answering the last open question on the task sets it Running and starts Afi on it again straight away, in the task's own run, with what it was asked and the answer you chose ("Internal team only"), so it carries on from there. "Go ahead anyway" on a paused task does the same. If the answer lands while Afi is still finishing the turn that asked, it starts again the moment that turn ends. A task with more than one question waits until every one is answered. An answer never starts a task that still waits on unfinished work: the answer is kept and its decision recorded, the task goes to Up next, and its thread says "Up next: waits for Confirm the launch date before it starts" (with the titles it waits on). It starts by itself once that work is done, as any waiting task does, and its thread then says "Started: Confirm the launch date is done". If the server cannot run Afi any more (no model key), the task stays Running with nothing behind it until its owner stops it or marks it done.
 
 ## what Afi's conversation shows when you press Start — Start "the task", never words you did not write
 
@@ -308,3 +308,29 @@ On an organization workstream, Afi's work on a task runs on the organization's s
 ## deleting a canvas removes it from Files too
 
 An organization canvas moved to the trash no longer appears in live Files. Restoring the canvas brings its file back with its task links. Permanently deleting the canvas removes it from live Files as well.
+
+## delete a workstream task, Undo a deletion, and keep the files it made
+
+Open a task's More menu and choose **Delete**. Only the task's owner or whoever
+looks after the workstream can delete it; for an older task owned by Everyone,
+anyone who can edit may. Running work must be stopped first: "Stop this task
+before deleting it". A task can still have a run finishing behind its displayed
+state; wait for it to stop before deleting. Delete is absent on older org servers
+that do not support it.
+
+Delete removes the task from Tasks, Work and the Inbox, including its unanswered
+questions. Tasks that waited on it stop waiting; their activity gains the dim line
+"No longer waiting: “<title>” was deleted". Deleting a prerequisite does not itself
+start another task. **Files it made stay in Files**, with their contents intact.
+Deleting a standing-order task does not switch off its order. That run stays
+deleted after a Personal restart; future runs still make their own tasks.
+Deleting a Factory task hides it here; it does not delete the Factory job. Personal
+checks the observed job state too. If it cannot read that state, it refuses:
+"The Factory isn't answering; read this task again before deleting it".
+
+"Task deleted · files stay in Files" offers **Undo** for ten seconds, like moving
+from My space. Undo restores the task and its conversation, and restores the waits
+of dependent tasks that have not changed since deletion. It preserves newer edits
+and does not restore waits on prerequisites that have since been deleted. Both
+stores allow thirty seconds for the Undo request to arrive; after that it is
+refused. Afi has no task delete or restore tool: these are a person's actions.

@@ -71,6 +71,7 @@ type OrgFileCreateParams struct {
 	Kind     string              `json:"kind"`
 	Name     string              `json:"name,omitempty"`
 	Folder   string              `json:"folder,omitempty"`
+	FromChat string              `json:"from_chat,omitempty"`
 	FromTask string              `json:"from_task,omitempty"`
 	MadeBy   *factory.FileMaker  `json:"made_by,omitempty"`
 	BodyMD   string              `json:"body_md,omitempty"`
@@ -177,6 +178,7 @@ func init() {
 			Kind     string              `json:"kind"`
 			Name     string              `json:"name,omitempty"`
 			Folder   string              `json:"folder,omitempty"`
+			FromChat string              `json:"from_chat,omitempty"`
 			FromTask string              `json:"from_task,omitempty"`
 			MadeBy   *factory.FileMaker  `json:"made_by,omitempty"`
 			BodyMD   string              `json:"body_md,omitempty"`
@@ -186,7 +188,7 @@ func init() {
 			Data     []byte              `json:"data,omitempty"`
 			Mime     string              `json:"mime,omitempty"`
 			Target   *factory.FileTarget `json:"target,omitempty"`
-		}{p.Kind, name, p.Folder, p.FromTask, p.MadeBy, p.BodyMD, p.CanvasID, p.URL, p.Repo, p.Data, p.Mime, p.Target}
+		}{p.Kind, name, p.Folder, p.FromChat, p.FromTask, p.MadeBy, p.BodyMD, p.CanvasID, p.URL, p.Repo, p.Data, p.Mime, p.Target}
 		return OrgRequest{Method: http.MethodPost, Path: path + "/files", Body: body}, nil
 	}), one)
 	methods["factory.org_workstream_file_update"] = filled(orgMethod[OrgFileUpdateParams, OrgWorkstreamFile]("factory.org_workstream_file_update", func(p OrgFileUpdateParams) (OrgRequest, error) {

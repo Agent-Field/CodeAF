@@ -83,10 +83,13 @@ func TestC7R2ReopeningChatStopsPreviousDrive(t *testing.T) {
 	if next == kept {
 		t.Fatal("reopened chat retained its displaced drive")
 	}
+	// Closing joins the maintenance loop, but its cancelled ticker's injected
+	// sleeper acknowledges cancellation on its own goroutine. Wait for that
+	// acknowledgement rather than assuming it ran before Close returned.
 	select {
 	case <-stopped:
-	default:
-		t.Error("reopened chat left the previous drive running")
+	case <-t.Context().Done():
+		t.Fatal("reopened chat left the previous drive running: ", t.Context().Err())
 	}
 	if next != nil {
 		_ = next.Gate()

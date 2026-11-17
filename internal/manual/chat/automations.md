@@ -256,6 +256,17 @@ catches up for the paused time; a one-time reminder resumed after its moment run
 late. A finished one offers no pause. The foot names the row's verbs:
 `enter its history · → verbs: run now, pause, edit, delete, open where it was asked · tab next place · esc`.
 
+## Delete a standing order
+
+A standing order is an automation. Open `/automations`, select its row, press `→`,
+then `d`. The first press asks `d again deletes it and its history · esc keeps it`;
+press `d` again to remove the order and its whole history. There is no Undo. A run
+in progress is stopped; worktrees its work left stay for you to review.
+
+Removing just one task from a run leaves the schedule on. Future runs still make
+their own tasks; the workstream task's Delete and short Undo are on the workstream
+tasks page.
+
 ## Change an automation — move my reminder to 5pm, reschedule it, edit its time, what it does or where it runs
 
 **Ask me.** "Move my water reminder to 5pm", "make the weekly update Tuesdays", "have the

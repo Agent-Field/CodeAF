@@ -37,9 +37,10 @@ import (
 // Every change publishes workstream.changed with part "tasks".
 
 func (h *Handler) workstreamTaskRoutes() {
+	h.route("/v1/workstreams/{id}/tasks/{tid}/restore", map[string]http.HandlerFunc{http.MethodPost: h.restoreWorkstreamTask})
 	h.route("/v1/workstreams/{id}/tasks", map[string]http.HandlerFunc{http.MethodGet: h.listWorkstreamTasks, http.MethodPost: h.createWorkstreamTask})
 	h.route("/v1/workstreams/{id}/tasks/start_all", map[string]http.HandlerFunc{http.MethodPost: h.startAllWorkstreamTasks})
-	h.route("/v1/workstreams/{id}/tasks/{tid}", map[string]http.HandlerFunc{http.MethodGet: h.getWorkstreamTask, http.MethodPatch: h.patchWorkstreamTask})
+	h.route("/v1/workstreams/{id}/tasks/{tid}", map[string]http.HandlerFunc{http.MethodGet: h.getWorkstreamTask, http.MethodPatch: h.patchWorkstreamTask, http.MethodDelete: h.deleteWorkstreamTask})
 	h.route("/v1/workstreams/{id}/tasks/{tid}/events", map[string]http.HandlerFunc{http.MethodGet: h.workstreamTaskEvents})
 	h.route("/v1/workstreams/{id}/tasks/{tid}/answer", map[string]http.HandlerFunc{http.MethodPost: h.answerWorkstreamTask})
 	h.route("/v1/workstreams/{id}/tasks/{tid}/comment", map[string]http.HandlerFunc{http.MethodPost: h.commentWorkstreamTask})
@@ -130,6 +131,10 @@ func (h *Handler) workstreamJobs(r *http.Request, ws factory.OrgWorkstream) (map
 // each job as a task (its overlay applied), oldest first. A job's overlay whose
 // job left the workstream is not shown.
 func (h *Handler) readTasks(r *http.Request, ws factory.OrgWorkstream) ([]factory.WorkstreamTask, error) {
+	hidden, err := h.config.Store.HiddenTaskIDs(ws.ID)
+	if err != nil {
+		return nil, err
+	}
 	kept, err := h.config.Store.WorkstreamTasks(ws.ID)
 	if err != nil {
 		return nil, err
@@ -154,6 +159,9 @@ func (h *Handler) readTasks(r *http.Request, ws factory.OrgWorkstream) ([]factor
 	slices.Sort(numbers)
 	owner := taskDefaultOwner(ws)
 	for _, n := range numbers {
+		if _, gone := hidden[factory.TaskJobPrefix+fmt.Sprint(n)]; gone {
+			continue
+		}
 		out = append(out, factory.JobTask(jobs[n], ws.ID, overlays[n], owner))
 	}
 	slices.SortStableFunc(out, func(a, b factory.WorkstreamTask) int { return strings.Compare(a.CreatedAt, b.CreatedAt) })
@@ -245,7 +253,7 @@ func (h *Handler) taskRefused(w http.ResponseWriter, err error) bool {
 	case errors.Is(err, store.ErrTaskGone):
 		h.fail(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, errTaskAnswered), errors.Is(err, factory.ErrTaskNoAsk), errors.Is(err, factory.ErrTaskOfferGone),
-		errors.Is(err, factory.ErrTaskUndoOver), errors.Is(err, factory.ErrTaskFactoryState), wakeRefused(err):
+		errors.Is(err, factory.ErrTaskUndoOver), errors.Is(err, errTaskDeleteUndoOver), errors.Is(err, factory.ErrTaskFactoryState), wakeRefused(err):
 		h.fail(w, http.StatusConflict, err.Error())
 	case errors.As(err, new(factory.TaskInvalid)):
 		h.fail(w, http.StatusUnprocessableEntity, err.Error())
@@ -269,11 +277,15 @@ func keepTask(tw store.TaskWrite, t factory.WorkstreamTask, readRev int) error {
 func (h *Handler) publishTasks(ws factory.OrgWorkstream, by string, tasks ...factory.WorkstreamTask) {
 	for _, t := range tasks {
 		h.publishWorkstreamPart(ws, api.PartTasks, t.ID, by, t.Rev, false)
-		// A request's source learns that its shared line changed, without receiving the destination's other work.
-		if t.CameFrom.WS != "" && t.CameFrom.WS != ws.ID {
-			if source, ok, err := h.config.Store.Workstream(t.CameFrom.WS); err == nil && ok && source.ArchivedAt == nil {
-				h.publishWorkstreamPart(source, api.PartTasks, "", by, 0, false)
-			}
+		h.publishTaskRequestSource(ws.ID, by, t)
+	}
+}
+
+// A request's sender hears its row change without receiving the destination's other work.
+func (h *Handler) publishTaskRequestSource(wsID, by string, t factory.WorkstreamTask) {
+	if t.CameFrom.WS != "" && t.CameFrom.WS != wsID {
+		if source, ok, err := h.config.Store.Workstream(t.CameFrom.WS); err == nil && ok && source.ArchivedAt == nil {
+			h.publishWorkstreamPart(source, api.PartTasks, "", by, 0, false)
 		}
 	}
 }
@@ -335,6 +347,10 @@ func (h *Handler) createWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 // one connection, and a read of job membership inside the write's transaction
 // would wait on that transaction for ever.
 func readTasksIn(tw store.TaskWrite, ws factory.OrgWorkstream, jobs map[int]factory.Item) ([]factory.WorkstreamTask, error) {
+	hidden, err := tw.HiddenTaskIDs(ws.ID)
+	if err != nil {
+		return nil, err
+	}
 	kept, err := tw.Tasks(ws.ID)
 	if err != nil {
 		return nil, err
@@ -349,6 +365,9 @@ func readTasksIn(tw store.TaskWrite, ws factory.OrgWorkstream, jobs map[int]fact
 		out = append(out, kept[i])
 	}
 	for n, it := range jobs {
+		if _, gone := hidden[factory.TaskJobPrefix+fmt.Sprint(n)]; gone {
+			continue
+		}
 		out = append(out, factory.JobTask(it, ws.ID, overlays[n], taskDefaultOwner(ws)))
 	}
 	return out, nil
@@ -393,6 +412,16 @@ func (h *Handler) patchWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		p.DoneBy = &d
+	}
+	if p.AddAsk != nil && p.AddAsk.Decider != nil {
+		// An Ask names ONE decider in the workstream (workstream_task_asks.go).
+		d, err := h.checkDecider(ws, *p.AddAsk.Decider)
+		if h.taskRefused(w, err) {
+			return
+		}
+		ask := *p.AddAsk
+		ask.Decider = &d
+		p.AddAsk = &ask
 	}
 	var target factory.OrgWorkstream
 	if p.MoveTo != "" && p.MoveTo != ws.ID {
@@ -615,12 +644,33 @@ func (h *Handler) answerWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 	if n, job := factory.IsJobTask(t.ID); job && ownAsk && !h.answerJob(w, r, n, t, body) {
 		return
 	}
+	// What the task waits on may be a Factory job, which is read from the
+	// jobs, not the task file.
+	var jobs map[int]factory.Item
+	if len(t.WaitingOn) > 0 {
+		if jobs, err = h.workstreamJobs(r, ws); h.failed(w, err) {
+			return
+		}
+	}
 	err = h.config.Store.EditWorkstreamTasks(func(tw store.TaskWrite) error {
 		kept, err := tw.Tasks(ws.ID)
 		if err != nil {
 			return err
 		}
 		cur, found := findTask(kept, t.ID)
+		if _, job := factory.IsJobTask(t.ID); !job && len(change.Task.WaitingOn) > 0 {
+			// The answer is kept and decided; a task whose waits are not done
+			// is not started by it (factory.AnsweredWaiting), read against the
+			// workstream as it is in this write.
+			all, err := readTasksIn(tw, ws, jobs)
+			if err != nil {
+				return err
+			}
+			if held, line, ok := factory.AnsweredWaiting(change.Task, factory.UnfinishedWaits(change.Task, all)); ok {
+				change.Task, wake = held, false
+				change.Events = append(change.Events, factory.WorkstreamTaskEvent{ID: h.newTaskID("te_")(), Task: t.ID, At: held.UpdatedAt, By: by, Kind: factory.TaskEventState, Text: line})
+			}
+		}
 		if _, job := factory.IsJobTask(t.ID); job {
 			// The job took the answer; the overlay records who gave it.
 			o := factory.JobOverlay(change.Task)

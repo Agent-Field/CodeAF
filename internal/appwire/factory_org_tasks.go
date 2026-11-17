@@ -84,6 +84,9 @@ type OrgWork = json.RawMessage
 // this word: an older server ignores done_by and changes nothing.
 const FeatureOrgWorkstreamTaskDoers = "org_workstream_task_doers"
 
+// FeatureOrgWorkstreamTaskDelete announces person-only Delete and short Undo for tasks.
+const FeatureOrgWorkstreamTaskDelete = "org_workstream_task_delete"
+
 // A REQUEST INTO ANOTHER WORKSTREAM (Workstreams final spec, flow 7): anyone
 // in the organization asks a workstream that is not private, in it or not,
 // and the request becomes a task there owned by its owner of incoming work.
@@ -285,6 +288,7 @@ func withFactoryOrgTasksFeature(hello Hello, e Engine) Hello {
 		hello = withFeature(hello, FeatureOrgWorkstreamTaskStart)
 		hello = withFeature(hello, FeatureOrgTaskStarts)
 		hello = withFeature(hello, FeatureOrgWorkstreamTaskDoers)
+		hello = withFeature(hello, FeatureOrgWorkstreamTaskDelete)
 		hello = withFeature(hello, FeatureOrgWorkstreamRequests)
 		hello = withFeature(hello, FeatureOrgWorkstreamDecisions)
 	}
@@ -354,6 +358,19 @@ func init() {
 			State     string          `json:"state,omitempty"`
 		}{body.Title, body.Request, body.Owner, body.DoneBy, body.CameFrom, body.WaitingOn, body.Due, body.Group, body.State}}, nil
 	})
+	methods["factory.org_workstream_task_delete"] = orgMethod[OrgTaskUpdateParams, json.RawMessage]("factory.org_workstream_task_delete", func(p OrgTaskUpdateParams) (OrgRequest, error) {
+		path, err := orgTaskPath(p.WS, p.ID)
+		if err != nil {
+			return OrgRequest{}, err
+		}
+		rev, err := orgRev(p.Rev, true)
+		return OrgRequest{Method: http.MethodDelete, Path: path, IfMatch: rev}, err
+	})
+	methods["factory.org_workstream_task_restore"] = orgMethod[OrgTaskParams, OrgTask]("factory.org_workstream_task_restore", func(p OrgTaskParams) (OrgRequest, error) {
+		path, err := orgTaskPath(p.WS, p.ID)
+		return OrgRequest{Method: http.MethodPost, Path: path + "/restore"}, err
+	})
+
 	methods["factory.org_workstream_task_update"] = orgMethod[OrgTaskUpdateParams, OrgTask]("factory.org_workstream_task_update", func(p OrgTaskUpdateParams) (OrgRequest, error) {
 		path, err := orgTaskPath(p.WS, p.ID)
 		if err != nil {

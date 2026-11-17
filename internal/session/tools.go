@@ -167,6 +167,11 @@ func (a *Agent) belt() []bare.Tool {
 		if door := a.config.orgLibraryDoor(); door != nil {
 			belt = append(belt, orgLibraryTool(door))
 		}
+		// The canvas rides beside them on a server that keeps canvases
+		// (tools_workstream_canvas.go), and is absent on one that does not.
+		if door := a.config.canvasDoor(); door != nil {
+			belt = append(belt, a.wsCanvasTool(door))
+		}
 		return belt
 	}
 	// AN ORGANIZATION'S SETUP CONVERSATION CARRIES ITS ONE VERB AND NO OTHER

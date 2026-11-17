@@ -383,7 +383,7 @@ func (h *Handler) createWorkstream(w http.ResponseWriter, r *http.Request) {
 	if len(ws.Pages) == 0 {
 		ws.Pages = []factory.WorkstreamPage{defaultOverviewPage()}
 	}
-	h.saveNewWorkstream(w, r, ws, v, false)
+	h.saveNewWorkstream(w, r, ws, v, nil)
 }
 
 // defaultOverviewPage is the page a workstream made with none starts with.
@@ -404,7 +404,7 @@ func (h *Handler) importWorkstream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body api.WorkstreamPackage
-	if !h.decode(w, r, &body, false) {
+	if !h.readFileJSON(w, r, &body) {
 		return
 	}
 	v, err := h.wsViewer(r)
@@ -418,6 +418,10 @@ func (h *Handler) importWorkstream(w http.ResponseWriter, r *http.Request) {
 	body.FromLocalID = strings.TrimSpace(body.FromLocalID)
 	if body.FromLocalID == "" {
 		h.fail(w, http.StatusUnprocessableEntity, "from_local_id is required")
+		return
+	}
+	if body.To != "" {
+		h.bringWorkstreamContents(w, r, v, &body)
 		return
 	}
 	// The copy is the caller's, whatever the package says made it: a name
@@ -434,11 +438,12 @@ func (h *Handler) importWorkstream(w http.ResponseWriter, r *http.Request) {
 	if ws.Stage == "" {
 		ws.Stage = api.WorkstreamShaping
 	}
-	h.saveNewWorkstream(w, r, ws, v, true)
+	h.saveNewWorkstream(w, r, ws, v, &body)
 }
 
 // saveNewWorkstream checks ws, gives it an id and keeps it, answering 201.
-func (h *Handler) saveNewWorkstream(w http.ResponseWriter, r *http.Request, ws factory.OrgWorkstream, v wsViewer, imported bool) {
+func (h *Handler) saveNewWorkstream(w http.ResponseWriter, r *http.Request, ws factory.OrgWorkstream, v wsViewer, pkg *api.WorkstreamPackage) {
+	imported := pkg != nil
 	if err := cleanWorkstream(&ws, v.Handle, ws.CreatedAt); err != nil {
 		h.fail(w, http.StatusUnprocessableEntity, err.Error())
 		return
@@ -483,7 +488,13 @@ func (h *Handler) saveNewWorkstream(w http.ResponseWriter, r *http.Request, ws f
 		return
 	}
 	if again != nil {
+		if !h.importWorkstreamContents(w, *again, v, pkg) {
+			return
+		}
 		h.writeWorkstream(w, http.StatusOK, *again, v)
+		return
+	}
+	if !h.importWorkstreamContents(w, saved[ws.ID], v, pkg) {
 		return
 	}
 	verb := "created workstream"
@@ -522,6 +533,10 @@ func (h *Handler) patchWorkstream(w http.ResponseWriter, r *http.Request) {
 	}
 	if !v.canWrite(ws) {
 		h.fail(w, http.StatusForbidden, errWorkstreamNoWrite.Error())
+		return
+	}
+	if body.FoldInto != "" || body.Unfold != "" {
+		h.foldWorkstreamPatch(w, r, ws, v, rev, body)
 		return
 	}
 	now := h.clock().UTC()

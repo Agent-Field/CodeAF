@@ -2873,7 +2873,10 @@ type Agent struct {
 	ownWorkTold atomic.Bool
 	// workstreamTold is the workstream mark the page and the belt last followed.
 	workstreamTold atomic.Bool
-	remoteAckJobs  sync.WaitGroup
+	// canvasGuided says this conversation has been answered the canvas guide
+	// (tools_workstream_canvas.go), so ws_canvas runs its changes.
+	canvasGuided  atomic.Bool
+	remoteAckJobs sync.WaitGroup
 	// knowledgeWake is signalled after each journal line reaches the file.
 	// initKnowledge creates it once before the agent is reachable and never
 	// replaces it, so writers read it without a lock.

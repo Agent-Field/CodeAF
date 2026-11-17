@@ -99,3 +99,17 @@ Delete appears in More instead of Archive only for a workstream that holds nothi
 No. When the computer running the agents is asleep or offline (this Mac's engine stopped, or an organization's server cannot be reached), the workstream keeps showing what it last read, and the line under its name says so: "This Mac is offline · answers send when it is back; work is paused, not lost" (or "The organization's server is offline · …"). Its tasks, files, Asks and decisions are all kept. An agent's turn that was running stops with the computer; when the computer is back, the task is still there, and a task that did not finish can be started again from its page. Closing the app stops the turns it was running; such a task reads "Interrupted: the app closed while this was running", and Start runs it again.
 
 A message sent while this computer cannot reach the model is kept, not failed: it reads "Paused · can't reach the model from this computer" and "It sends again by itself when the connection is back.", in grey, and is not counted as failed. The chat looks again on a slowing clock (30 seconds, then up to every five minutes) and sends it as soon as the model answers; Retry message sends it at once. Quitting and reopening the app keeps it, with Retry message still offered.
+
+## Fold a workstream into another, and Undo
+
+On a workstream's own tabs, More → **Fold…** opens a sheet to choose another open workstream in the same space. Fold moves its tasks, folders, files and decisions into the destination. Your chats follow on this desk and remain private. The destination keeps its people, rules and existing launch plan. Undo returns the source's saved plan too. The folded workstream disappears from Work and Archived.
+
+Stop working tasks first. If the source contains other workstreams, fold those first. You must look after both workstreams in an organization; older servers without Fold do not offer it.
+
+The toast's **Undo** returns the moved work and the chats to the original workstream. If work changed after folding, Undo refuses rather than replacing it: "work changed after folding; Undo would replace that work". Nothing is discarded by that refusal.
+
+## Bring along a chat's files and attachments, or move into an organization
+
+Bringing a chat into a workstream also carries its recorded outputs and message attachments, files made for its tasks, and files attached as those tasks' inputs. A chat that began outside any workstream brings these into Files too. Attachments keep their original maker. Their task links remain on the files in the destination's Files. Folders and deleted files are not a chat's work.
+
+Moving a Personal workstream into an organization carries its Files, including upload bytes, documents, canvases and task links, together with its non-Factory tasks and their threads. A Personal chat brought into an organization's workstream carries just that chat's tasks and files. The chat conversation stays private on this desk and appears in the destination's Chats. Factory jobs stay where they ran. Each upload keeps the normal 25 MiB limit; the import request, including base64 and metadata, is bounded at 36 MiB. An unreadable or oversized upload prevents the move; it is never replaced with a path the organization's server cannot open.
