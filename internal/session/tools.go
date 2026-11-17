@@ -162,6 +162,11 @@ func (a *Agent) belt() []bare.Tool {
 		if door := a.config.workstreamWorkDoor(); door != nil {
 			belt = append(belt, workstreamWorkBelt(door, a.guardDecisions)...)
 		}
+		// Afi's setup card rides beside them when the door keeps one
+		// (tools_workstream_setup.go).
+		if door := a.config.workstreamSetupDoor(); door != nil {
+			belt = append(belt, workstreamSetupBelt(door)...)
+		}
 		return belt
 	}
 	// A MODEL WITH NO TOOLS CARRIES NO BELT, and no shelf a loader could reach

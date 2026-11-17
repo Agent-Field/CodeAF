@@ -70,6 +70,10 @@ type OrgWorkstream struct {
 	// "team:<id>") was added, for the line "Added Nov 2"; one added before it
 	// was kept has none, and says nothing.
 	PeopleAdded map[string]string `json:"people_added,omitempty"`
+	// SetupCards are the setup cards Afi proposed and their person has not
+	// yet accepted or dropped, one per handle (workstream_setup.go). Each is
+	// private to its person: the wire shows a person only their own.
+	SetupCards map[string]WorkstreamSetupCard `json:"setup_cards,omitempty"`
 }
 
 // OrgWorkstreams are every organization workstream, by id.
