@@ -45,11 +45,11 @@ Yes. Every message you send tells the server's Afi the date and time where you a
 
 When Afi changes something for you, it changes only what you asked, and its answer lists every change it made, including any status, rating, owner or date it changed along the way.
 
-## Afi's task cards — Afi proposes tasks, Add 2 tasks, untick a card, who is told, nothing is made until you add them
+## Afi's task cards — where is what Afi planned, nothing happened yet, Afi proposes, Add 2 tasks, untick a card, who is told
 
-On an organization's workstream, when what you ask for would make tasks that involve someone else (a person does or owns one), carry a due date, or are a plan of 5 to 8 tasks, Afi does not make them. It proposes them in your pane as cards, all at once: each card has a tick, its title, who does it (Afi or a person), its owner and its due date, and you can untick a card or change it. **Nothing is made and nobody is told until you press "Add 2 tasks"** (with the number ticked); the line under the button names who will be told. Then the ticked cards become tasks, made by you with your rights and marked as coming from Afi, in Up next; five or more share one plan, which waits for one press of Start. The cards then read "Added 2 tasks · Lena is told", and the button is gone: a set of cards is added once.
+On an organization's workstream, when what you ask for would involve someone else (a person does or owns it), carry a due date, or be a plan of 5 to 8 deliverables, Afi does not make it straight away. It proposes it in your pane as cards, all at once: each card has a tick, its title, who does it (Afi or a person), its owner, its due date and its checklist, and you can untick a card or change it. **Nothing is made and nobody is told until you press "Add 2 tasks"** (with the number ticked); the line under the button names who will be told. Then the ticked cards are made by you, with your rights, marked as coming from Afi, in Up next; five or more share one plan, which waits for one press of Start. The cards then say "Added 2 tasks · Lena is told", and the button is gone: a set of cards is added once.
 
-One task only for you, with no date, Afi simply makes and names in its answer. A typo or anything under half an hour it does itself. Your cards are private to you, like the rest of your pane. Afi only proposes in an app that draws the cards; a task's own run never proposes.
+Something only for you, with no date, Afi simply makes and names in its answer. A typo or anything under half an hour it does itself. Your cards are private to you, like the rest of your pane. Afi only proposes in an app that draws the cards; Afi working on its own never proposes.
 
 ## Afi made a task on the server — who owns it, who it says made it, what Afi may change
 
