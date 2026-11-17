@@ -1,9 +1,14 @@
 package serve
 
 import (
+	"bufio"
+	"context"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"net/http"
+	"net/http/httptest"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -83,4 +88,35 @@ func TestTaskUndoPreservesNewerWaitEdits(t *testing.T) {
 	if !slices.Equal(got.WaitingOn, []string{c.ID}) {
 		t.Fatalf("Undo overwrote the new wait: %+v", got)
 	}
+}
+
+func TestTaskDeleteNotifiesTheRequestingWorkstream(t *testing.T) {
+	o := newWSOrg(t)
+	dest := o.create(t, "abir", api.WorkstreamNew{Name: "Engineering"})
+	source := o.create(t, "santosh", api.WorkstreamNew{Name: "Marketing"})
+	var sent api.RequestSent
+	o.do(t, "santosh", "POST", "/v1/workstreams/"+dest.ID+"/requests", -1, factory.TaskRequest{Title: "Build release", FromWS: source.ID}, 201, &sent)
+	task := o.tasks(t, "abir", "/v1/workstreams/"+dest.ID)[0]
+	srv := httptest.NewServer(o.h)
+	defer srv.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, "GET", srv.URL+"/v1/events", nil)
+	req.Header.Set("Authorization", "Bearer "+o.tokens["santosh"])
+	res, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("events status: %d", res.StatusCode)
+	}
+	o.do(t, "abir", "DELETE", "/v1/workstreams/"+dest.ID+"/tasks/"+task.ID, task.Rev, nil, 200, nil)
+	scan := bufio.NewScanner(res.Body)
+	for scan.Scan() {
+		if strings.Contains(scan.Text(), source.ID) {
+			return
+		}
+	}
+	t.Fatalf("the requesting workstream did not hear the deletion: %v", scan.Err())
 }

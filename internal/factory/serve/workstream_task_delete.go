@@ -80,6 +80,7 @@ func (h *Handler) deleteWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.publishWorkstreamPart(ws, api.PartTasks, d.Task.ID, h.orgActor(r), d.Task.Rev+1, true)
+	h.publishTaskRequestSource(ws.ID, h.orgActor(r), d.Task)
 	h.publishTasks(ws, h.orgActor(r), changed...)
 	h.write(w, 200, map[string]string{"undo_until": d.Until})
 }
