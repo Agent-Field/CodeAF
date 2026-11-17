@@ -16,7 +16,7 @@ Decisions is the first row in a workstream's Files. It opens the list the workst
 - a request changes shared work — the request's one line on the task, and what it settles (made by whoever asked);
 - a rule is set in People and rules (made by whoever set it).
 
-Each row is the decision in one line, who made it, where it came from, and when. All or Mine filters the list. A click on a row opens the task or Ask it came from. It is the workstream's shared memory: how one person's agents know what another person decided. Agents read it with `ws_decisions`.
+One decision is one row: the same words from the same person, while that decision is still kept, are not recorded again, so answering several identical Asks together, or one request noted on six tasks, keeps a single decision, and the decision check asks its maker about it once. A rule is recorded each time it is set. Each row is the decision in one line, who made it, where it came from (the first task it came from), and when. All or Mine filters the list. A click on a row opens the task or Ask it came from. It is the workstream's shared memory: how one person's agents know what another person decided. Agents read it with `ws_decisions`.
 
 ## withdraw or replace a decision — only the person who made it
 

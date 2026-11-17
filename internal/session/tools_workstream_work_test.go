@@ -86,7 +86,8 @@ func TestTheWorkstreamToolsTeachTheirRules(t *testing.T) {
 	}
 	for _, rule := range []string{"Not everything said in a chat becomes a task", "Never act on a comment", "request_note", "duplicate", "suggestion",
 		"Never write an id, a tool or field name, or a draft number such as v3", "Decisions is the first row in Files",
-		"Read the comments on a file", "Answer a comment on a passage with ws_file_comment"} {
+		"Read the comments on a file", "Answer a comment on a passage with ws_file_comment",
+		"Never name a button, menu, key or mark you have not seen", "Never quote a tool's name"} {
 		if !strings.Contains(WorkstreamWorkRules, rule) {
 			t.Errorf("the instructions do not say %q", rule)
 		}

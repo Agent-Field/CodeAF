@@ -95,12 +95,17 @@ const WorkstreamWorkRules = "You are working inside a workstream: a shared place
 // WorkstreamWordsRule is how a conversation inside a workstream talks about
 // it. Live testing on 2026-11-16 found 33 of 64 replies quoting raw task ids,
 // tool and field names, "Overview v3", "the system", and a "Decisions panel"
-// that does not exist. The tools answer with ids because the next call needs
+// that does not exist; live2 E5 F4 found a chat telling the person to "Press x
+// on its row in Tasks" (a row has only its checkbox), Afi sending them to a
+// "Teams menu" no workstream has, and Afi quoting ws_task_create. The tools answer with ids because the next call needs
 // them, so the reply has to be told to translate them back into the words the
 // person sees on the screen.
 const WorkstreamWordsRule = "- Talk in the words the person sees. Name a task by its title, a file by its name and a person by their name. " +
 	"Never write an id, a tool or field name, or a draft number such as v3, and never talk about the system, a tool or a window. " +
-	"The places are Tasks, Chats and Files. Decisions is the first row in Files: there is no Decisions panel."
+	"The places are Tasks, Chats and Files. Decisions is the first row in Files: there is no Decisions panel.\n" +
+	"- Never name a button, menu, key or mark you have not seen in this workstream's own words (no \"press x on its row\", no Teams menu): " +
+	"when the person must do something themselves, say what to do and where (\"delete it from Tasks\"), not which control to press. " +
+	"Never quote a tool's name, such as ws_task_create, to the person: say what you did (\"I made a task\")."
 
 var workstreamWorkTools = []WorkstreamWorkTool{
 	{Name: WSTasksTool, Category: "read",

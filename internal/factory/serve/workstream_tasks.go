@@ -597,7 +597,26 @@ func (h *Handler) answerWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 		fresh = change.Task
 	}
 	h.publishTasks(ws, h.orgActor(r), fresh)
+	if _, job := factory.IsJobTask(t.ID); !job && change.Task.DoneBy.Kind == factory.TaskByAfi && change.Task.State == factory.TaskRunning {
+		// The last Ask is answered: Afi goes on with the answer in hand.
+		h.resumeTaskRun(ws, change.Task, v.Handle, answeredWords(change.Task, asked, answerLine(asked, body), by.Name))
+	}
 	h.write(w, http.StatusOK, fresh)
+}
+
+// answerLine is the answer in the words the person chose: the option's label,
+// then anything they wrote.
+func answerLine(ask factory.TaskAsk, body api.TaskAnswer) string {
+	var parts []string
+	for _, o := range ask.Options {
+		if o.ID == body.Option {
+			parts = append(parts, o.Label)
+		}
+	}
+	if s := strings.TrimSpace(body.Text); s != "" {
+		parts = append(parts, s)
+	}
+	return strings.Join(parts, " · ")
 }
 
 // answerJob answers job n through its own door (POST /v1/jobs/{n}/answer),

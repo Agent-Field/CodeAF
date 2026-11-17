@@ -144,9 +144,12 @@ type agentDesk struct {
 	agents map[agentSeat]*wsAgent
 	// tasks are the task runs going now, each stopped by its cancel.
 	tasks map[taskRunKey]context.CancelFunc
-	ctx   context.Context
-	stop  context.CancelFunc
-	wg    sync.WaitGroup
+	// resume holds, for a task whose run is still ending, the run to start
+	// once it has: an answer that arrived while Afi was finishing its turn.
+	resume map[taskRunKey]taskResume
+	ctx    context.Context
+	stop   context.CancelFunc
+	wg     sync.WaitGroup
 }
 
 func (h *Handler) agentRoutes() {
