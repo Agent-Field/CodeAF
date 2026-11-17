@@ -40,6 +40,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can I put a workstream inside another workstream", "workstream-people-and-rules"},
 		{"how much can an agent spend before it asks me in a workstream", "workstream-people-and-rules"},
 		{"what happens to someone's tasks when I remove them from a workstream", "workstream-people-and-rules"},
+		{"what does the orange dot with a number next to a workstream mean", "workstream-people-and-rules"},
+		{"how many things are waiting on me in each workstream", "workstream-people-and-rules"},
 		{"add a standing order to my workstream every Monday", "workstream-people-and-rules"},
 		{"why does this workstream task say it came from a standing order", "workstream-people-and-rules"},
 		{"can a workstream standing order run when a release ships", "workstream-people-and-rules"},
