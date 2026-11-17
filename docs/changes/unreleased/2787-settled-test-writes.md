@@ -1,7 +1,7 @@
 ---
 kind: internal
 title: Async regression tests wait for completed work
-pr: 2778
+pr: 2787
 surface: [app, engine]
 invalidates:
   - "Was true: the team loop test assumed stream closure meant the member's finished event had reached traffic. Is true now: it joins the deferred event writer before advancing its manual clock or starting another round."
