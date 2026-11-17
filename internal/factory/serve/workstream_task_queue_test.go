@@ -145,18 +145,6 @@ func TestAFreePlaceGoesRoundTheWorkstreams(t *testing.T) {
 	}
 }
 
-// waitFor waits for ok, failing after five seconds.
-func waitFor(t *testing.T, ok func() bool) {
-	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
-	for !ok() {
-		if time.Now().After(deadline) {
-			t.Fatal("timed out")
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-}
-
 // A TASK WAITING FOR ITS PLACE WHEN THE SERVER RESTARTS WAITS AGAIN: it was
 // never working, so it is neither Interrupted nor resumed, and it is asked
 // what it was asked.
