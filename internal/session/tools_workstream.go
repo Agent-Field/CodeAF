@@ -70,7 +70,7 @@ const workstreamPageCut = 1500
 const workstreamPagesDescription = "Read and write the organization workstream you are this conversation's agent for. " +
 	"ask: read (its name, purpose, budget, every page with the start of its words, decisions, sources and links), " +
 	"page (one page whole; set page to its id), write (replace one page's words with body, in Markdown; set page), " +
-	"or new (a new page with title and body). Decisions record themselves when an Ask is answered: there is nothing to propose and no Keep. " +
+	"or new (a new page with title and body). Decisions are written down by themselves when an Ask is answered: there is nothing to propose and no Keep. " +
 	"You write as the person whose message you are answering. A page someone has open for editing is not written over: " +
 	"your text waits as a suggestion for someone to take, and the answer says so; tell the person."
 

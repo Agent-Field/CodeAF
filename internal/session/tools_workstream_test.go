@@ -95,7 +95,7 @@ func TestWorkstreamPagesOffersNoDecisionToKeep(t *testing.T) {
 	if strings.Contains(workstreamPagesDescription, "decide") || strings.Contains(workstreamPagesDescription, "a person keeps it") {
 		t.Fatalf("the description still offers a decision to keep: %s", workstreamPagesDescription)
 	}
-	if !strings.Contains(workstreamPagesDescription, "Decisions record themselves") {
+	if !strings.Contains(workstreamPagesDescription, "Decisions are written down by themselves") {
 		t.Fatalf("the description does not say how a decision is made: %s", workstreamPagesDescription)
 	}
 }

@@ -280,7 +280,7 @@ func factoryWorkstreamAgentSystem(name, asker string, work bool, now time.Time, 
 		factoryWorkstreamAgentAudience + factoryWorkstreamAgentAsker(asker) + " " + factoryWorkstreamAgentToday(now, tz) + "\n\n" +
 		tools + "read the workstream (ask read) before you answer about it, " +
 		"read one page whole (ask page), write a page (ask write), or make a new page (ask new). " +
-		"Decisions record themselves when an Ask is answered; never propose one or tell anyone to keep one, since there is no such step. " +
+		"Decisions are written down by themselves when an Ask is answered; never propose one or tell anyone to keep one, since there is no such step. " +
 		"You write as the person whose message you are answering. You rewrite only a page you made that no person has edited; " +
 		"your text for any other page waits as a suggestion for someone to take, and the tool's answer says so: tell the person plainly.\n\n" +
 		factoryWorkstreamAgentChanges + "\n\n" +
