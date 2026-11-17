@@ -110,6 +110,10 @@ type AgentTurn struct {
 	// answers it as a new turn when the turn has already ended. Nil on a
 	// person's own conversation, where one message is answered at a time.
 	Steers <-chan string
+	// Progress, on a task's run, is told after every step what the run has
+	// spent so far and how many steps it has taken, so the server can pause
+	// it at a limit (workstream_task_limits.go). Nil on a person's message.
+	Progress func(usd float64, steps int)
 }
 
 // AgentOrg is what the set-up conversation knows of its organization, and
@@ -132,6 +136,9 @@ type AgentTask struct {
 // AgentTurnEnd is what one turn cost.
 type AgentTurnEnd struct {
 	USD float64
+	// Transient says the turn's error may pass by itself (a busy or failing
+	// model provider, a dropped connection), so the run is tried once more.
+	Transient bool
 }
 
 // AgentDoor is how a workstream's agent reads and writes its workstream.
@@ -191,6 +198,19 @@ type agentDesk struct {
 	// when it was first asked (workstream_task_lease.go).
 	owner string
 	since time.Time
+	// queue holds the runs waiting under the limits, in the order they
+	// came; served counts, per workstream, when it last had a run started,
+	// for the round robin (workstream_task_queue.go).
+	// gen counts each task's runs, so a run that ends releases only its
+	// own place, never a newer run's on the same task.
+	gen map[taskRunKey]int
+	// watch is each going run's spending, steps and last step, for the
+	// running row's second line (fillRuns).
+	watch   map[taskRunKey]*runWatch
+	queue   []pendingRun
+	queueN  int
+	served  map[string]int
+	servedN int
 	// sweepDone closes when the lease sweep has ended, after Close.
 	sweepDone chan struct{}
 	// work is each task's Working conversation (workstream_task_work.go).

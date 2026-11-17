@@ -19,9 +19,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"net"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
@@ -30,7 +34,9 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/taxonomy"
 )
 
 // factoryWorkstreamAgentBase is where the runner's model API is: tests point
@@ -102,6 +108,20 @@ func factoryWorkstreamAgent(st *store.Store, load func() (config.Config, error))
 			case <-stopped:
 			}
 		})
+		// EVERY STEP COUNTS TOWARD THE RUN'S LIMITS (serve's
+		// workstream_task_limits.go), a steer's answer's too: after each one the
+		// server is told what the run has spent and how many steps it took, so
+		// it can pause the run at a limit. Two streams can step at once, so the
+		// count is atomic.
+		var steps atomic.Int64
+		show := turn.Step
+		progress := turn.Progress
+		turn.Step = func(kind, text, tool string, failed bool) {
+			show(kind, text, tool, failed)
+			if kind == api.AgentEntryStep && progress != nil {
+				progress(max(agent.Usage().CostUSD-before, 0), int(steps.Add(1)))
+			}
+		}
 		// A TASK'S RUN IS STEERED WHILE IT WORKS (serve's workstream_task_work.go):
 		// its owner's or starter's words reach the turn at its next step, and
 		// words that arrive after the turn ended are answered as a turn of
@@ -122,7 +142,7 @@ func factoryWorkstreamAgent(st *store.Store, load func() (config.Config, error))
 		if ctx.Err() != nil {
 			return serve.AgentTurnEnd{USD: usd}, ctx.Err()
 		}
-		return serve.AgentTurnEnd{USD: usd}, failed
+		return serve.AgentTurnEnd{USD: usd, Transient: transientModelError(failed)}, failed
 	}
 }
 
@@ -208,6 +228,25 @@ func factoryAgentSteers(ctx context.Context, agent *session.Agent, turn serve.Ag
 			}
 		}
 	}
+}
+
+// transientModelError is whether err may pass by itself: the wire, as the
+// taxonomy reads it (a busy or failing provider, a stall, a dropped
+// connection). A refusal of the request, a bad key or a model that cannot do
+// what was asked will not, and is not tried again. ONE FUNCTION TURNS FACTS
+// INTO A MOVE: the provider's facts go to taxonomy.Classify, never a status
+// read here.
+func transientModelError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if taxonomy.Classify(provider.Evidence(err), taxonomy.Limits{}.Floored()).Retries() {
+		return true
+	}
+	// A connection that dropped before the provider said anything carries no
+	// provider facts to classify: it may pass by itself.
+	var nerr net.Error
+	return errors.As(err, &nerr) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, syscall.ECONNRESET)
 }
 
 // factoryAgentStepWords is one step as a person reads it ("read the

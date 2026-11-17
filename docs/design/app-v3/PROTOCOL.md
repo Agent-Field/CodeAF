@@ -1189,7 +1189,7 @@ and the task `id`, the same words the desk's Tauri `workstream_task_*` commands 
 and a task and an event are the server's shapes passed through whole: a task is `{id,
 ws, rev, title, request, owner, done_by, came_from, state, state_reason?, step?,
 waiting_on, due?, group?, results, check?, ask?, cost_usd?, created_by, created_at,
-updated_at, done_at?, answered_by?, handed_by?, for_you?, stopped_by?, run?}`, `state` one of `up_next`, `running`, `needs`,
+updated_at, done_at?, answered_by?, handed_by?, for_you?, stopped_by?, run?, queue?}`, `state` one of `up_next`, `running`, `needs`,
 `done`, `failed`, `interrupted`, `stopped` (Stopped by you, to `stopped_by`; Stopped by
 <name> to everyone else), `no_report` (Didn't report back); an event is `{id, task, at, by, kind, text, steps?, duration_s?, offer?,
 undo_until?, option?, mentions?}`, `option` being the chosen answer's id on an `answered` event; a
@@ -1269,7 +1269,16 @@ at read time: `live` false means nothing on the server is working on it, and a P
 was working on it"); with `live` true that PATCH changes nothing. The server settles a run
 a restart cut off (thread lines "Interrupted: the server restarted while Afi was working on
 it", then "Resumed after the restart"; a second cut leaves it `interrupted`) and one quiet
-for a minute (`no_report`). A Factory task's state is its job's (409). A stale rev is 412.
+for a minute (`no_report`). At most 3 Afi runs go at once per workstream and 10 per
+organization; a start over either limit is accepted and the task, `running`, carries
+`queue {place}` (read time; its place among the workstream's waiting runs, from 1) until a
+place frees; Stop takes it out of the queue. A run past its spending cap (the workstream's
+Start without asking, else $0.50), the workstream's budget, 60 steps or 15 minutes is
+paused: the task goes `needs` with an Ask whose id begins `ask_limit_`, options `keep_going`
+and `stop_here` (thread line "Paused: <title>"); answering `keep_going` starts Afi again,
+`stop_here` stops the task, and neither records a decision. A running task's `run` also
+carries `now` (its last step, in a person's words: the running row's second line), `steps`
+and `usd` (so far; each absent while zero); a queued task has none of them. A Factory task's state is its job's (409). A stale rev is 412.
 `_task_answer {ws, id, option?, text?}` `POST .../answer` is the owner's (with owner
 `everyone`, anyone who edits; after a day, also the workstream's fallback), 403
 otherwise; the first answer decides and records `answered_by`, a second is 409; a

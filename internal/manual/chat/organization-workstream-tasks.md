@@ -235,18 +235,44 @@ On the task page, its owner opens More › Waiting on and ticks the tasks it sho
 
 **Interrupted means nothing is working on the task any more, and what it already did is kept.** On a Personal workstream, when codeaf's engine starts again (after the app or the computer restarted, or the engine stopped), every turn that was running has ended. Any task Afi or a chat was doing whose chat is not working or asking right now becomes Interrupted, and its activity says "Interrupted: the app closed while this was running".
 
-**It resumes once without anyone pressing anything:** codeaf wakes the same chat (or Afi) again with the task and the words "Carry on from where you stopped", and the activity says "Resumed after the app opened again". If codeaf restarts again before that run finishes, the task stays Interrupted under Waiting on someone. Its page then offers **Start** again, which hands it back to the same chat (or to Afi). Its owner can also Mark done or Stop it from More. A chat that was still working or asking when the engine came back keeps its task Running.
+**It resumes once without anyone pressing anything:** codeaf wakes the same chat (or Afi) again with the task and the words "Carry on from where you stopped", and the activity says "Resumed after the app opened again". If codeaf restarts again before that run finishes, the task stays Interrupted, under Waiting on you (its owner's), until someone presses Start. Its page then offers **Start** again, which hands it back to the same chat (or to Afi). Its owner can also Mark done or Stop it from More. A chat that was still working or asking when the engine came back keeps its task Running.
 
 A task that says Running while its chat is not working and not asking shows **Start again**, with "Nothing is working on it", and pressing it wakes that chat with the task.
 
 The Factory's tasks are not affected: a Factory task's state is its job's, and the Factory recovers its own steps.
+
+## how many tasks run at once — Queued · 2nd, the limit of 3 per workstream and 10 per organization
+
+On an organization's server, **at most 3 of Afi's tasks run at once in one workstream, and at most 10 in the whole organization.** Starting more is never refused: each extra task is accepted and waits its turn, and its row reads **"Queued · 1st"**, "Queued · 2nd" and so on, its place among that workstream's waiting tasks.
+
+- Inside a workstream, waiting tasks start in the order they were started, each as soon as one of the three running finishes.
+- When the organization is full, a free place goes to the workstream that has waited longest for one, so one workstream's big plan cannot hold back everyone else's.
+- **Stop** on a waiting task takes it out of the queue; the places behind it move up.
+- A task waiting when the server restarts waits again afterwards. It was never working, so it is not Interrupted.
+
+A running row has a second line saying what Afi is doing at this moment, in words ("Reading crash log 9 of 14"); a task waiting for its place has none. The Work header counts the tasks being worked on, those waiting for a place and those that failed: "7 running · 2 queued · 1 failed", each part only when it is not zero.
+
+These limits are fixed for now; nobody can change them in Settings yet. On a Personal workstream each chat does one thing at a time, and these limits do not apply.
+
+## Afi paused a task to ask whether to continue — spending cap, budget, 60 steps, 15 minutes
+
+On an organization's server, a task Afi runs is **paused with a question to the task's owner, never failed**, when it reaches a limit:
+
+- **Spending:** past the task's cap, the question reads "Afi has spent $0.61 on this · keep going?". The cap is the workstream's **Start without asking** amount when one is set, and **$0.50** otherwise.
+- **The workstream's budget**, once it is spent. This is checked before the run spends anything and every few seconds while it runs; raise the budget first, or Afi pauses again.
+- **Steps:** at 60 tool calls.
+- **Time:** at 15 minutes.
+
+The task moves to its owner's Waiting on you, and its activity says "Paused: …". The owner presses **Keep going**, which starts Afi again on the same conversation with the same allowance again, or **Stop here**, which stops the task. **Tell it…** starts Afi again with what you typed, so you can say how to carry on ("Only the first ten"). None of these is recorded as a workstream decision.
+
+**A model error that may pass** (the provider busy or failing, a dropped connection) is tried once more, 20 seconds later. The activity says "Afi hit a model error and tries again in 20 seconds". A second error, or one that will not pass (a refused key, say), fails the task with its reason.
 
 ## task stuck on Running after the server restarted, or pressed Start on a running task and nothing happened
 
 On an organization workstream, Afi's work on a task runs on the organization's server, and the server keeps a note of every run while it goes. **When the server starts again, every task it was working on is settled within about ten seconds; none is left saying Running with nothing behind it.**
 
 - The task's activity says "Interrupted: the server restarted while Afi was working on it", then "Resumed after the restart". Afi carries on from its own conversation for that task, checking what it already wrote before writing again, with the rights of whoever started it.
-- A task resumes **once** without anyone pressing anything. If the server restarts during that second run too, the task stays **Interrupted** under Waiting on someone, with the reason "The server restarted while Afi was working on it. Press Start to run it again."
+- A task resumes **once** without anyone pressing anything. If the server restarts during that second run too, the task stays **Interrupted**, under its owner's Waiting on you, with the reason "The server restarted while Afi was working on it. Press Start to run it again."
 - A run that stops reporting for a minute while the server is up becomes **Didn't report back**, with "Afi stopped reporting back while working on it. Press Start to run it again."
 
 **Start on a task that says Running with nothing working on it starts it again**: its page shows **Start again** with "Nothing is working on it", and its activity says "Started again by <name>: nothing was working on it". Start on a task Afi really is working on changes nothing.

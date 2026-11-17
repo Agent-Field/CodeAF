@@ -3,7 +3,9 @@ package serve
 import (
 	"context"
 	"errors"
+	"math"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
@@ -87,7 +89,7 @@ func (h *Handler) leaseSince() time.Time {
 // answers the drop the run calls when it ends here. It runs inside the run's
 // goroutine, after the write that started the run has ended: that store has
 // one connection.
-func (h *Handler) holdTaskLease(ctx context.Context, key taskRunKey, owner, starter, words string, started time.Time, resumes int) func() {
+func (h *Handler) holdTaskLease(ctx context.Context, key taskRunKey, owner, starter, words string, started time.Time, resumes int, beat func() float64) func() {
 	st := h.config.Store
 	if st == nil {
 		return func() {}
@@ -106,13 +108,16 @@ func (h *Handler) holdTaskLease(ctx context.Context, key taskRunKey, owner, star
 			case <-done:
 				return
 			case <-tick.C:
-				_ = st.BeatTaskRun(key.ws, key.task, owner, stamp(), 0)
+				_ = st.BeatTaskRun(key.ws, key.task, owner, stamp(), beat())
 			}
 		}
 	})
+	var once sync.Once
 	return func() {
-		close(done)
-		_ = st.DropTaskRun(key.ws, key.task, owner)
+		once.Do(func() {
+			close(done)
+			_ = st.DropTaskRun(key.ws, key.task, owner)
+		})
 	}
 }
 
@@ -188,6 +193,10 @@ func (h *Handler) sweepTaskRuns() {
 				last = parseStamp(l.Beat)
 			}
 			switch {
+			case leased && l.Queued && l.Owner != me && last.Before(since) && now.Sub(since) >= taskRestartSettle:
+				// It was waiting for its place, not working: it waits again,
+				// with nothing to say on its thread.
+				_ = h.startTaskRun(ws, t, l.Starter, l.Words, l.Resumes, false)
 			case (!leased || l.Owner != me) && last.Before(since) && now.Sub(since) >= taskRestartSettle:
 				h.settleCutRun(ws, t, l, leased)
 			case now.Sub(last) >= taskNoReportAfter:
@@ -329,11 +338,23 @@ func resumeWords(t factory.WorkstreamTask, words string) string {
 func (h *Handler) fillRuns(ws string, all []factory.WorkstreamTask) {
 	for i := range all {
 		t := &all[i]
-		t.Run = nil
+		t.Run, t.Queue = nil, nil
 		if t.State != factory.TaskRunning || t.DoneBy.Kind != factory.TaskByAfi {
 			continue
 		}
 		run := &factory.TaskRunNow{Live: h.taskTurnRunning(ws, t.ID)}
+		d := &h.agentDesk
+		d.mu.Lock()
+		place := d.placeLocked(taskRunKey{ws, t.ID})
+		watch := d.watch[taskRunKey{ws, t.ID}]
+		d.mu.Unlock()
+		if watch != nil {
+			run.Now, run.Steps, run.USD = watch.facts()
+			run.USD = math.Round(run.USD*10000) / 10000
+		}
+		if place > 0 {
+			t.Queue = &factory.TaskQueue{Place: place}
+		}
 		if h.config.Store != nil {
 			if l, ok, err := h.config.Store.TaskRunOf(ws, t.ID); err == nil && ok {
 				run.Since = l.Started

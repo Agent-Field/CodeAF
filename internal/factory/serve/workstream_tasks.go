@@ -597,6 +597,19 @@ func (h *Handler) answerWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 	// Skip this one and Not right stop the task (workstream_orders.go).
 	wake := orderAnswer(&change.Task, asked.ID, body.Option)
 	_, ownAsk := factory.IsOwnAsk(t, body.Ask)
+	// A PAUSE AT A LIMIT IS ANSWERED BY ITS OWN TWO ANSWERS
+	// (workstream_task_limits.go): Keep going starts Afi again inside this
+	// write, Stop here stops the task. Neither is a decision of the
+	// workstream's.
+	limit := isLimitAsk(asked) && t.DoneBy.Kind == factory.TaskByAfi
+	if limit && body.Option == limitStopHere {
+		change.Task.State, change.Task.StoppedBy = factory.TaskStopped, &factory.PersonRef{ID: v.Handle, Name: by.Name}
+		change.Events = append(change.Events, factory.WorkstreamTaskEvent{ID: h.newTaskID("te_")(), Task: t.ID, At: change.Task.UpdatedAt,
+			By: by, Kind: factory.TaskEventState, Text: "Stopped by " + by.Name})
+	}
+	if limit {
+		change.Decisions = nil
+	}
 	if n, job := factory.IsJobTask(t.ID); job && ownAsk && !h.answerJob(w, r, n, t, body) {
 		return
 	}
@@ -637,6 +650,11 @@ func (h *Handler) answerWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 			// Last, with the write still open: a Go Afi cannot take keeps no
 			// answer, so the question stays asked.
 			return h.wakeTaskDoer(ws, change.Task, v.Handle)
+		}
+		if limit && change.Task.State == factory.TaskRunning {
+			// Keep going: a new run on the same conversation, with a fresh
+			// allowance. A server that cannot run Afi now refuses the answer.
+			return h.startTaskRun(ws, change.Task, v.Handle, keepGoingWords(change.Task, asked, by.Name, body.Text), 0, true)
 		}
 		return nil
 	})

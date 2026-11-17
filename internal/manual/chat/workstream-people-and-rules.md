@@ -16,7 +16,7 @@ Removing a person (or a team they were in through) hands their open tasks in tha
 
 ## the amber dot and number on the Work list — what is waiting on me in each workstream
 
-The Work list on the left shows the workstreams you are in. A workstream where something waits on you shows an amber dot and a number after its name: "Pantry • 3" means three of its tasks wait on you, the same tasks the Inbox lists under Waiting on you. A task waits on you when its question is yours to decide, or when it has waited a day and you are the fallback person ("If unanswered for a day"). A question you put off with Later stops counting until then; answering one takes it off at once.
+The Work list on the left shows the workstreams you are in. A workstream where something waits on you shows an amber dot and a number after its name: "Pantry • 3" means three of its tasks wait on you, the same tasks the Inbox lists under Waiting on you. A task waits on you when its question is yours to decide, when it has waited a day and you are the fallback person ("If unanswered for a day"), or when it is your task and nothing is working on it any more: **Interrupted** or **Didn't report back**, until you press Start again. A Failed task is not amber; the Work header counts it apart, as in "7 running · 1 failed". A question you put off with Later stops counting until then; answering one takes it off at once.
 
 Nothing waiting draws nothing: no dot, no "0". Amber means only "waiting on you"; a workstream that is busy, failed or someone else's turn is never amber. In an organization's window the numbers are that organization's; Personal counts only Personal. An organization whose server does not keep tasks shows no numbers.
 

@@ -323,6 +323,16 @@ type WorkstreamTask struct {
 	// start". It is FILLED AT READ TIME and never kept: the owner's default
 	// can change without the task changing.
 	StartsWhenReady *bool `json:"starts_when_ready,omitempty"`
+	// Queue is a started task's place while its run waits for room under the
+	// limits (3 runs at once in a workstream, 10 in an organization), read
+	// as "Queued · 2nd". FILLED AT READ TIME and never kept.
+	Queue *TaskQueue `json:"queue,omitempty"`
+}
+
+// TaskQueue is a started task's place in its workstream's queue.
+type TaskQueue struct {
+	// Place counts from 1: the next of the workstream's tasks to start.
+	Place int `json:"place"`
 }
 
 // TaskRunNow is a running task's run, as its server sees it now.
@@ -331,6 +341,14 @@ type TaskRunNow struct {
 	Live bool `json:"live"`
 	// Since is when the run began (RFC 3339), when the server kept it.
 	Since string `json:"since,omitempty"`
+	// Now is what the run is doing, in a person's words: its last step
+	// ("read the workstream", "made the page Release notes"). Absent before
+	// its first step.
+	Now string `json:"now,omitempty"`
+	// Steps is how many steps the run has taken, and USD what it has spent
+	// so far; each is absent while it is zero (the emptiness law).
+	Steps int     `json:"steps,omitempty"`
+	USD   float64 `json:"usd,omitempty"`
 }
 
 // TaskCheckItem is one line of a task's checklist. Who is who ticks it, when
