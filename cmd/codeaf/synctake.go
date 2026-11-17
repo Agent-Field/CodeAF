@@ -57,7 +57,7 @@ func wireSync(o *tui3.Options) {
 		o.NotShared = terminalNotShared
 	}
 	moving := &takeProgress{}
-	take := takeover{c: chatContinuer(s, surfaceNotices.Say, moving.report), moving: moving}
+	take := takeover{c: chatContinuerAsync(s, surfaceNotices.Say, moving.report), moving: moving}
 	if o.Takeover == nil {
 		o.Takeover = take
 	}
@@ -489,20 +489,28 @@ func (t takeover) SafeToContinue(ctx context.Context, id, current string, automa
 // chatContinuer is the terminal's continue: it stops when nothing comes
 // through for syncsetup.MoveIdleWithin, and tells onMove how far it has got.
 func chatContinuer(s *syncsetup.Sync, notify func(string), onMove func(syncsetup.MoveProgress)) *syncsetup.Continuer {
+	return chatContinuerWith(s, notify, onMove, false)
+}
+
+func chatContinuerAsync(s *syncsetup.Sync, notify func(string), onMove func(syncsetup.MoveProgress)) *syncsetup.Continuer {
+	return chatContinuerWith(s, notify, onMove, true)
+}
+
+func chatContinuerWith(s *syncsetup.Sync, notify func(string), onMove func(syncsetup.MoveProgress), asyncFiles bool) *syncsetup.Continuer {
 	return s.Continuer(cellstore.EngineFor(""), syncsetup.TakeOptions{
 		DeviceName: devname.Name(s.Home),
 		RootFor:    func(id string) string { return takeRootForAt(s.Home, id) },
 		BucketFor:  func(origin string) string { return takeCopyBucketAt(s.Home, origin) },
 		Notify:     notify,
 		OnMove:     onMove,
-		AsyncFiles: true,
+		AsyncFiles: asyncFiles,
 		IdleWithin: syncsetup.MoveIdleWithin,
 	})
 }
 
 // chatMover is chatContinuer for a move the app watches.
 func chatMover(s *syncsetup.Sync, onMove func(syncsetup.MoveProgress)) *syncsetup.Continuer {
-	return chatContinuer(s, nil, onMove)
+	return chatContinuerAsync(s, nil, onMove)
 }
 
 // ReleaseUnused leaves the installed files and kept work intact, just as closing

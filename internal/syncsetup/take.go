@@ -1085,14 +1085,18 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 					runStop()
 				}
 			}()
-			if initial {
+			if initial && !runAsync {
 				runCtx, runWatch = ctx, watch
 				runStop = func() {
 					stopWatch()
 					cancelMove(nil)
 				}
 			} else {
-				runCtx, runWatch, runStop = watchMove(context.Background(), c.opt.OnMove, c.opt.IdleWithin)
+				if initial {
+					stopWatch()
+					cancelMove(nil)
+				}
+				runCtx, runWatch, runStop = watchMove(context.WithoutCancel(ctx), c.opt.OnMove, c.opt.IdleWithin)
 				if runWatch != nil {
 					runWatch.setArrival(arrival)
 					runWatch.setArriving()
