@@ -516,7 +516,6 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.org_workstream_overview_get` | `in.OrgTasksParams` | `json.RawMessage` |
 | `factory.org_workstream_task_work` | `in.OrgTaskWorkParams` | `OrgTaskWork` |
 | `factory.org_workstream_task_steer` | `in.OrgTaskSteerParams` | `OrgTaskWork` |
-| `factory.org_workstream_chats` | `in.OrgWorkstreamParams` | `{chats}` |
 | `factory.org_workstream_chats` | `in.OrgWorkstreamParams` | `{chats, others}` |
 | `factory.org_workstream_chat_new` | `in.OrgWorkstreamChatNew` | `{id, title, state, created_at, updated_at}` |
 | `factory.org_myspace` | `in.OrgConn` | `{workstream, limit_usd, spent_usd, at_limit?}` |
