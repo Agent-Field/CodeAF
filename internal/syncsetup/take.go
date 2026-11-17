@@ -122,6 +122,9 @@ type Continuer struct {
 	eng      cellstore.Engine
 	opt      TakeOptions
 	freeOnly bool
+	// restartOnly makes a take do nothing but restart the files of a failed
+	// arrival: when none is abandoned it stops before it reads or claims anything.
+	restartOnly bool
 }
 
 // say puts one sentence in front of the person for chat at. EVERY AFTER-WORK
@@ -256,6 +259,53 @@ func (c *Continuer) RetryFiles(id string) bool {
 		return a.Retry()
 	}
 	return false
+}
+
+// ErrNothingToRestart is what a restart answers when the chat has no abandoned
+// arrival any more: the files landed, or a live owner has them in flight.
+var ErrNothingToRestart = errors.New("this chat's files have no abandoned arrival to restart")
+
+// RestartFiles is what OPENING A CHAT THIS COMPUTER ALREADY HOLDS does about
+// files that failed to arrive. A chat that moved here opens before its files do;
+// if the fetch fails and the window that was fetching them closes, the gate stays
+// shut for every tool and every save, and the refusal says to continue the chat
+// here again, which for a chat this computer holds there is nothing to press for.
+// So the open is the restart: this starts the very same background fetch a take
+// starts, through the same code, with the same rules for the person's local
+// files, and answers once the files are on their way, not when they have landed.
+//
+// IT IS THE ONE PLACE EVERY DOOR THAT OPENS A SAVED CHAT ASKS: the app's open,
+// the terminal's local open and its launch. A door calls it BEFORE it opens the
+// conversation, because the take it runs asks a window holding the chat's journal
+// to let go, and a conversation opened first would be that window.
+//
+// It restarts only an ABANDONED failure (the files did not arrive and the owner
+// that was fetching them is gone), and only for a chat whose lease and send
+// receipt are this computer's, or whose lease still names this computer after
+// its hold ended (released at a quit, or lapsed): it claims, fences and releases
+// nothing. It answers false, with no error, for a chat with no such failure
+// (nothing is read from the relay then), for one a live owner still has in flight
+// (a second arrival would race it), and for one another computer holds or that
+// this one cannot prove is the shared head (the refusal stands, because a fetch
+// there would set the local copy aside and seal the partial tree as edits). An
+// error means the restart was tried and could not start; the failure then stays
+// as it was.
+func (c *Continuer) RestartFiles(ctx context.Context, id string) (restarted bool, err error) {
+	if c == nil || c.opt.RootFor == nil {
+		return false, nil
+	}
+	if cell.AbandonedArrival(c.opt.RootFor(id)) == nil {
+		return false, nil
+	}
+	only := *c
+	only.restartOnly = true
+	if _, err := only.take(ctx, id, nil, false); err != nil {
+		if errors.Is(err, ErrNothingToRestart) || errors.Is(err, cell.ErrWorkspaceArrivalAbandoned) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseExpectation, branchOnly bool) (out Continued, err error) {
@@ -460,7 +510,17 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	// partial tree (see the restart below), and it never forgets the failure
 	// unless the files land.
 	var abandonedErr error
-	if err := cell.WaitWorkspace(ctx, root); err != nil {
+	if c.restartOnly {
+		// AN OPEN THAT FOUND A FAILURE DOES NOT WAIT FOR ONE. Between its look and
+		// this one the failure may have been replaced by a live owner's arrival or
+		// by files that landed, and then there is nothing to restart: it must neither
+		// stand behind that arrival nor go on as an ordinary take, which could claim
+		// a chat the open never meant to.
+		if abandonedErr = cell.AbandonedArrival(root); abandonedErr == nil {
+			localCapture()
+			return Continued{}, ErrNothingToRestart
+		}
+	} else if err := cell.WaitWorkspace(ctx, root); err != nil {
 		if !errors.Is(err, cell.ErrWorkspaceArrivalAbandoned) {
 			localCapture()
 			return Continued{}, err
@@ -568,6 +628,16 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		if restart {
 			remote, fence, rErr := c.sync.SendLease(id)
 			restart = rErr == nil && remote == id && fence == lease.Fence
+			if !restart && c.restartOnly && lease.Expires <= view.Now {
+				// AN OPEN FINDS THE HOLD ENDED, NOT LIVE. A quit releases the lease and
+				// forgets the send receipt, and the read above forgets it for a lease that
+				// lapsed, so the chat a person opens the next morning has no receipt at
+				// all, yet the lease still names this computer: nobody has taken the chat
+				// since. The restart claims nothing, so there is no fence to revive and no
+				// writer to restore, and the conversation that opens afterwards takes the
+				// hold up the ordinary way. A LIVE lease without its receipt stays refused.
+				restart = true
+			}
 		}
 		if !restart {
 			// Another computer holds the chat now, or this one was retired, or the
@@ -1541,7 +1611,13 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 			if arriveRootFence != nil {
 				arriveRootFence()
 			}
-			return Continued{}, errors.Join(waitErr, c.giveBack(parent, id, taken.Driving.Fence))
+			// A restart acquired nothing: the hold was this computer's before it began,
+			// and a refetch that failed must not release it.
+			var giveErr error
+			if !restart {
+				giveErr = c.giveBack(parent, id, taken.Driving.Fence)
+			}
+			return Continued{}, errors.Join(waitErr, giveErr)
 		}
 		bgMu.Lock()
 		out.Taken.Kept = finalKept
