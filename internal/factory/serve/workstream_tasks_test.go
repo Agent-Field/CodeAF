@@ -175,7 +175,12 @@ func TestMovingATaskTakesItsThreadToTheOtherWorkstream(t *testing.T) {
 	}
 }
 
-func TestStartAllLeavesAChatsTasksForTheChat(t *testing.T) {
+// START ALL RUNS A CHAT'S TASKS ON THE SERVER TOO (lane L1, E2 F7), so a
+// server that cannot run agents refuses with the reason and keeps nothing:
+// every task stays in Up next, never Running with nothing behind it. A
+// server that can run them is TestAStartOnTheServerWakesAfiAndOnlyThenSaysRunning's
+// Start all.
+func TestStartAllOnAChatsTasksWithNoRunnerStartsNothingAndSaysWhy(t *testing.T) {
 	o, path := taskOrg(t, "edit")
 	g := &factory.TaskGroup{Name: "Release 2.4", Kind: "batch"}
 	var first api.WorkstreamTask
@@ -185,16 +190,10 @@ func TestStartAllLeavesAChatsTasksForTheChat(t *testing.T) {
 			first = task
 		}
 	}
-	var started api.WorkstreamTasks
-	o.do(t, "abir", "POST", path+"/tasks/start_all", -1, api.TasksStartAll{Group: first.Group.ID}, 200, &started)
-	if len(started.Tasks) != 0 {
-		t.Fatalf("started %d", len(started.Tasks))
-	}
-	// A chat wakes on its person's machine, so nothing here marks its tasks
-	// running (live use, L4 B6).
+	o.do(t, "abir", "POST", path+"/tasks/start_all", -1, api.TasksStartAll{Group: first.Group.ID}, 409, nil)
 	for _, task := range o.tasks(t, "santosh", path) {
 		if task.State != factory.TaskUpNext {
-			t.Fatalf("%s is %q after start all", task.Title, task.State)
+			t.Fatalf("%s is %q after a refused start all", task.Title, task.State)
 		}
 	}
 	o.do(t, "abir", "PATCH", path+"/tasks/"+first.ID, first.Rev, map[string]any{"state": "running"}, 409, nil)
