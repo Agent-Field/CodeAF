@@ -424,7 +424,11 @@ func init() {
 		if err != nil {
 			return OrgRequest{}, err
 		}
-		return OrgRequest{Method: http.MethodPost, Path: path + "/start_all", Body: map[string]any{"group": group, "ids": p.IDs}}, nil
+		body := map[string]any{"group": group}
+		if p.IDs != nil {
+			body["ids"] = p.IDs
+		}
+		return OrgRequest{Method: http.MethodPost, Path: path + "/start_all", Body: body}, nil
 	}), tasks)
 	methods["factory.org_workstream_task_view"] = orgMethod[OrgTaskViewParams, OrgTask]("factory.org_workstream_task_view", func(p OrgTaskViewParams) (OrgRequest, error) {
 		path, err := orgTaskPath(p.WS, p.ID)

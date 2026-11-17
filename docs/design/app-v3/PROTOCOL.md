@@ -512,6 +512,8 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.org_setup_stop` | `in.OrgConn` | `OrgSetupView` |
 | `factory.org_setup_apply` | `in.OrgSetupApplyParams` | `OrgSetupApplied` |
 | `factory.org_setup_by_hand` | `in.OrgConn` | `OrgProfile` |
+| `factory.org_work_home_get` | `in.OrgConn` | `json.RawMessage` |
+| `factory.org_workstream_overview_get` | `in.OrgTasksParams` | `json.RawMessage` |
 | `factory.org_workstream_tasks` | `in.OrgTasksParams` | `OrgTasks` |
 | `factory.org_workstream_task` | `in.OrgTaskParams` | `json.RawMessage` |
 | `factory.org_workstream_task_create` | `in.OrgTaskCreateParams` | `json.RawMessage` |
