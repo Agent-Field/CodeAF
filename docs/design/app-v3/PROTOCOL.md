@@ -518,6 +518,12 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.org_workstream_task_view` | `in.OrgTaskViewParams` | `json.RawMessage` |
 | `factory.org_workstream_decision_withdraw` | `in.OrgDecisionParams` | `json.RawMessage` |
 | `factory.org_workstream_decision_replace` | `in.OrgDecisionParams` | `json.RawMessage` |
+| `factory.org_workstream_page_comments` | `in.OrgPageCommentsParams` | `OrgPageComments` |
+| `factory.org_workstream_page_comment` | `in.OrgPageCommentParams` | `json.RawMessage` |
+| `factory.org_workstream_page_comment_reply` | `in.OrgPageCommentReplyParams` | `json.RawMessage` |
+| `factory.org_workstream_page_comment_resolve` | `in.OrgPageCommentResolveParams` | `json.RawMessage` |
+| `factory.org_workstream_page_comment_seen` | `in.OrgPageCommentSeenParams` | `json.RawMessage` |
+| `factory.org_workstream_page_comments_for_you` | `in.OrgTasksParams` | `OrgPageComments` |
 | `factory.org_canvases` | `in.OrgConn` | `OrgCanvasList` |
 | `factory.org_canvas_get` | `in.OrgCanvasParams` | `json.RawMessage` |
 | `factory.org_canvas_create` | `in.OrgCanvasCreateParams` | `json.RawMessage` |
@@ -1135,6 +1141,31 @@ read lets the call through unchanged. The organization's server answers both for
 (`internal/factory/serve/workstream_agent_work.go`), so a server conversation is checked
 the same way, with the server's model; `ws_task_conflict` there is no route, only the
 agent door reaches it.
+
+COMMENTS ON A PASSAGE OF A PAGE (hello `org_workstream_page_comments`; Workstreams final
+spec, "Comments attach to passages and go to people"). A thread is the desk's Personal
+shape: `{id, ws, page_id, block, block_text, offset, quote, comments: [{id, by: {kind,
+id?, name}, text, at}], resolved?: {by, at}, unread?}`, where `block` is the block's
+path through the editor's content arrays, `block_text` that block's whole text when the
+thread was posted and `offset` the code points before `quote` in it. THE SERVER KEEPS
+THE ANCHOR EXACTLY AS POSTED and never says `anchored`: the page is a live document it
+never parses, so the desk finds the words again in its editor on every read (the path,
+then the one place in that block, then the one place on the page, else not anchored).
+A post is refused 422 only when it contradicts itself (`quote` is not the words at
+`offset` in `block_text`), when it has no words or more than 16384 bytes, a quote over
+4000 bytes, or no block. A page holds at most 2000 threads (413).
+`factory.org_workstream_page_comments {ws, page, resolved?}` `GET
+/v1/workstreams/{id}/pages/{pid}/comments[?resolved=1]` (view) answers the open threads,
+or every one; `_page_comment {ws, page, block, block_text, offset, quote, text}` `POST`
+the same path (edit) answers 201 the thread; `_page_comment_reply {ws, thread, text}`
+`POST /v1/workstreams/{id}/comments/{cid}/reply` (edit, 201) opens a resolved thread
+again; `_page_comment_resolve {ws, thread, reopen?}` `POST .../resolve` (edit);
+`_page_comment_seen {ws, thread}` `POST .../seen` (view) marks it read for the caller
+alone; `_page_comments_for_you {ws}` `GET /v1/workstreams/{id}/comments/for_you`
+answers the open threads with a comment by someone else the caller has not read. A
+person's own comment is read the moment it is written. Every change relays as
+`factory.org_workstream_changed` with part `page` (the page's id) and part `files`, and
+a document's file counts its open threads as `open_comments`.
 
 An engine whose hello carries `org_canvases` reads and writes an organization's
 canvases, which live on its server and are kept there by canvas-core (`canvas rpc`), so
