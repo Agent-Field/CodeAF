@@ -50,7 +50,14 @@ func (e Engine) Capture(ctx context.Context, c cell.Cell) (string, error) {
 // composed .cell/ is restored in place, chain files included, so this is for a
 // snapshot that is the cell's newest state; a rewind uses restoreKeepingChain.
 func (e Engine) Restore(ctx context.Context, c cell.Cell, snapshot string, paths []string) error {
-	return e.restore(ctx, c, snapshot, paths, e.cellDir(c))
+	if err := cell.WaitWorkspace(ctx, c.Root, e.tree(c)); err != nil {
+		return err
+	}
+	err := e.restore(ctx, c, snapshot, paths, e.cellDir(c))
+	if err == nil && len(paths) == 0 {
+		e.recordMaterializedStat(c, snapshot)
+	}
+	return err
 }
 
 func (e Engine) restore(ctx context.Context, c cell.Cell, snapshot string, paths []string, cellDir string) error {

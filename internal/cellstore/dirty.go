@@ -46,6 +46,9 @@ func (e Engine) plan(ctx context.Context, c cell.Cell, snapshot string) ([]byte,
 // The daemon does not serve the plan, so this asks a spawned engine, which is
 // always correct and runs once per takeover.
 func (e Engine) Dirty(ctx context.Context, c cell.Cell) (bool, error) {
+	if err := cell.WaitWorkspace(ctx, c.Root, e.tree(c)); err != nil {
+		return false, err
+	}
 	_, recovery, err := OpenWAL(e.WALPath(c))
 	if err != nil {
 		return false, err

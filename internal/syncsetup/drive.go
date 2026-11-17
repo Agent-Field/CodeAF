@@ -259,6 +259,9 @@ func (d *Drive) syncVaultRound(ctx context.Context, idle bool) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	if err := cell.WaitWorkspace(ctx, d.cell.Root, d.files.Root); err != nil {
+		return err
+	}
 	if idle {
 		if !d.vaultMu.TryLock() {
 			return errStateBusy

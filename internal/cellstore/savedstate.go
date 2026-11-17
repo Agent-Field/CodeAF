@@ -51,6 +51,9 @@ type SavedState struct {
 // SavedState reads and compares outside admission. Extra files are the profile
 // carriers that accompany the ordinary snapshot through the vault.
 func (e Engine) SavedState(ctx context.Context, c cell.Cell, extra ...string) (*SavedState, error) {
+	if err := cell.WaitWorkspace(ctx, c.Root, e.tree(c)); err != nil {
+		return nil, err
+	}
 	head, err := Head(c)
 	if err != nil || head == nil {
 		return nil, err

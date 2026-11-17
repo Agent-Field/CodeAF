@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -171,5 +172,81 @@ func TestC3WorkspaceToolWaitsOnFailedBackgroundFetchAndReportsWhyNeverRunningOnP
 	combined := toolErrText + "\n" + finalText
 	if !strings.Contains(combined, "workspace files could not arrive") || !strings.Contains(combined, "sync could not be reached") {
 		t.Fatalf("expected plain-words failure reason, got:\n%s", combined)
+	}
+}
+
+// Round 5b (2): a crashed owner in another process must not stall workspace
+// tools; a waiter in this process ignores and removes a marker whose owner PID
+// is dead instead of waiting out the 2-minute stall bound.
+func TestC3CrashedArrivalOwnerDoesNotStallWorkspaceTools(t *testing.T) {
+	if cellRoot := os.Getenv("CODEAF_TEST_C3_CRASH_CELL"); cellRoot != "" {
+		workDir := os.Getenv("CODEAF_TEST_C3_CRASH_WORK")
+		_ = cell.BeginWorkspaceArrival(cellRoot, workDir, nil, nil)
+		os.Exit(0)
+	}
+
+	completer := &scriptedCompleter{
+		steps: []step{
+			func(context.Context, []ai.Message) (*ai.Response, error) {
+				return toolResponse("call_read_crash", "read", `{"path":"survived.txt"}`), nil
+			},
+			func(_ context.Context, msgs []ai.Message) (*ai.Response, error) {
+				last := msgs[len(msgs)-1]
+				return textResponse("read saw: " + strings.TrimSpace(messageText(last))), nil
+			},
+		},
+	}
+
+	cellRoot := filepath.Join(t.TempDir(), "v3", "cells", "c3-crash-cell")
+	if err := os.MkdirAll(filepath.Join(cellRoot, cell.StateDir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	agent, workspace := newTestAgent(t, completer, func(cfg *Config) {
+		cfg.ApprovalPosture = PostureAllow
+		cfg.Place = Place{Dir: cellRoot}
+	})
+	defer agent.Close()
+
+	if err := os.WriteFile(filepath.Join(workspace, "survived.txt"), []byte("tool ran after owner crash\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.Command(os.Args[0], "-test.run=^TestC3CrashedArrivalOwnerDoesNotStallWorkspaceTools$")
+	cmd.Env = append(os.Environ(),
+		"CODEAF_TEST_C3_CRASH_CELL="+cellRoot,
+		"CODEAF_TEST_C3_CRASH_WORK="+workspace,
+	)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("child process failed: %v\n%s", err, out)
+	}
+
+	marker := cell.ArrivalMarkerPath(cellRoot)
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("expected crashed child to leave arrival marker at %s: %v", marker, err)
+	}
+
+	start := time.Now()
+	events, err := agent.Submit(t.Context(), "read survived.txt")
+	if err != nil {
+		t.Fatalf("submit failed: %v", err)
+	}
+	var finalText string
+	for ev := range events {
+		if ev.Kind == EventTextDelta {
+			finalText += ev.Text
+		}
+	}
+	if finalText == "" {
+		finalText = messageText(lastMessage(agent))
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Fatalf("workspace tool stalled for %s after owner crash; expected immediate execution", elapsed)
+	}
+	if !strings.Contains(finalText, "tool ran after owner crash") {
+		t.Fatalf("unexpected tool output: %q", finalText)
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("expected dead owner's marker %s to be removed, stat err = %v", marker, err)
 	}
 }
