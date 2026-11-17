@@ -220,6 +220,11 @@ func (h *Handler) launchLocked(r pendingRun) error {
 				lease()
 			}
 		}()
+		// The packet is read here, in the run, after the caller's write has
+		// ended: runTaskTurn touches no workstreams database before it returns.
+		// It comes after the lease, which keeps the plain words: a resume
+		// replays them through startTaskRun, and so through a fresh packet.
+		run.Text, _ = h.taskPacket(ctx, door, task.ID, run.Text)
 		wall := time.AfterFunc(taskWallMost, func() { pause(runPause{kind: pauseWall, usd: watch.spent()}) })
 		defer wall.Stop()
 		var end AgentTurnEnd
@@ -410,7 +415,13 @@ func (h *Handler) finishTaskRun(door *agentDoor, task string, err error) {
 				results = append(results, map[string]string{"file": id})
 			}
 		}
-		args, _ := json.Marshal(map[string]any{"task": task, "rev": t.Rev, "state": factory.TaskDone, "results": results})
+		patch := map[string]any{"task": task, "rev": t.Rev, "state": factory.TaskDone, "results": results}
+		if strings.TrimSpace(t.Handoff) == "" {
+			// Done carries a hand-off note for the next task; a run that ended
+			// without one gets the plainest true note there is.
+			patch["handoff"] = "Made " + door.fileNames(ctx, wrote) + ". Afi left no note of its own on what to carry forward."
+		}
+		args, _ := json.Marshal(patch)
 		if _, derr := door.Work(ctx, "ws_task_update", args); derr == nil {
 			return
 		}

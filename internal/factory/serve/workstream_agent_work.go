@@ -332,6 +332,7 @@ func (d *agentDoor) wsTaskCreate(ctx context.Context, args json.RawMessage) (any
 		Due       string   `json:"due"`
 		Group     string   `json:"group"`
 		Checklist []string `json:"checklist"`
+		agentBriefArgs
 	}
 	if err := agentArgs(args, &a); err != nil {
 		return nil, err
@@ -369,6 +370,9 @@ func (d *agentDoor) wsTaskCreate(ctx context.Context, args json.RawMessage) (any
 			return nil, err
 		}
 		body.Group = &factory.TaskGroup{Name: g, Kind: "batch"}
+	}
+	if body.Brief, err = d.briefOf(ctx, a.agentBriefArgs, a.WaitingOn, body.DoneBy.Kind != factory.TaskByPerson); err != nil {
+		return nil, err
 	}
 	raw, err := d.call(ctx, d.h.createWorkstreamTask, http.MethodPost, "/v1/workstreams/"+d.id+"/tasks", nil, body, -1)
 	if err != nil {
@@ -422,6 +426,7 @@ func (d *agentDoor) wsTaskUpdate(ctx context.Context, args json.RawMessage) (any
 		Assumed     []string  `json:"assumed"`
 		CheckDone   []string  `json:"checklist_done"`
 		CheckUndone []string  `json:"checklist_undone"`
+		Handoff     *string   `json:"handoff"`
 	}
 	if err := agentArgs(args, &a); err != nil {
 		return nil, err
@@ -465,6 +470,15 @@ func (d *agentDoor) wsTaskUpdate(ctx context.Context, args json.RawMessage) (any
 	}
 	if a.Check != nil {
 		p["check"] = cutRunes(strings.TrimSpace(*a.Check), 500)
+	}
+	if a.Handoff != nil {
+		p["handoff"] = cutRunes(strings.TrimSpace(*a.Handoff), factory.TaskHandoffMost)
+	}
+	// DONE CARRIES A HAND-OFF NOTE. The next task's run starts with it, so a
+	// task an agent calls done without one is refused in words the model can
+	// act on; the run's own clean ending (finishTaskRun) writes one for it.
+	if a.State != nil && *a.State == factory.TaskDone && strings.TrimSpace(firstNonEmpty(derefString(a.Handoff), t.Handoff)) == "" {
+		return nil, errors.New("set handoff with done: two to four lines on what you made, what you assumed, and what the next task should know")
 	}
 	if a.Results != nil {
 		rs := []factory.TaskResult{}

@@ -24,7 +24,7 @@ func TestATaskRunsInItsOwnSeatAndReportsOnTheTask(t *testing.T) {
 	mia := &agentDoor{h: o.h, id: webhook.ID, asker: "mia"}
 	newTask := func(title string) factory.WorkstreamTask {
 		t.Helper()
-		line, err := mia.Work(ctx, "ws_task_create", json.RawMessage(`{"title":"`+title+`","request":"Do it."}`))
+		line, err := mia.Work(ctx, "ws_task_create", json.RawMessage(`{"title":"`+title+`","request":"Do it.","goal":"Ship it right","deliverable":"A document in Files","acceptance":["Covers the change","Plain words"]}`))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -55,7 +55,7 @@ func TestATaskRunsInItsOwnSeatAndReportsOnTheTask(t *testing.T) {
 			if _, err := d.Work(ctx, "ws_task_comment", json.RawMessage(`{"task":"`+turn.Task.ID+`","text":"Wrote the table."}`)); err != nil {
 				return AgentTurnEnd{}, err
 			}
-			_, err := d.Work(ctx, "ws_task_update", json.RawMessage(`{"task":"`+turn.Task.ID+`","state":"done"}`))
+			_, err := d.Work(ctx, "ws_task_update", json.RawMessage(`{"task":"`+turn.Task.ID+`","state":"done","handoff":"Made the table."}`))
 			return AgentTurnEnd{USD: 0.01}, err
 		case "Writes":
 			// Writes its page and says so in the thread, but never the last
@@ -82,7 +82,7 @@ func TestATaskRunsInItsOwnSeatAndReportsOnTheTask(t *testing.T) {
 	if got, _ := mia.task(ctx, finish.ID); got.State != factory.TaskDone {
 		t.Fatalf("a run that said done left %+v", got)
 	}
-	if s := seen[0]; s.Asker != "mia" || s.Text != "Write the table." || s.Task.ID != finish.ID || !strings.Contains(s.Dir, "/tasks/"+finish.ID+"/") {
+	if s := seen[0]; s.Asker != "mia" || !strings.HasPrefix(s.Text, "Write the table.\n\nGoal: Ship it right") || s.Task.ID != finish.ID || !strings.Contains(s.Dir, "/tasks/"+finish.ID+"/") {
 		t.Fatalf("the runner was handed %+v", s)
 	}
 

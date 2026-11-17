@@ -81,6 +81,23 @@ func TestTheWorkstreamToolsTeachTheirRules(t *testing.T) {
 			t.Errorf("%s does not say %q", tool, rule)
 		}
 	}
+	// A BRIEF ANOTHER AGENT CAN RUN COLD (lane L7): the create tool asks for
+	// it, and done asks for a hand-off note.
+	for tool, rule := range map[string]string{
+		WSTaskCreateTool: "another agent who never saw this conversation can do it cold",
+		WSTaskUpdateTool: "Done without a handoff is refused",
+	} {
+		if !strings.Contains(describe[tool], rule) {
+			t.Errorf("%s does not say %q", tool, rule)
+		}
+	}
+	for _, field := range []string{`"goal"`, `"deliverable"`, `"acceptance"`, `"inputs"`, `"constraints"`} {
+		for _, def := range WorkstreamWorkTools() {
+			if def.Name == WSTaskCreateTool && !strings.Contains(string(def.InputSchema), field) {
+				t.Errorf("ws_task_create has no %s", field)
+			}
+		}
+	}
 	// Owner decision 4 (E3 F6, "(version 2)"): an earlier copy only when History has one, never a number.
 	for _, rule := range []string{"Say an earlier copy exists only when earlier_copies lists one", "never say it to anyone"} {
 		if !strings.Contains(describe[WSFileReadTool], rule) {
@@ -93,7 +110,8 @@ func TestTheWorkstreamToolsTeachTheirRules(t *testing.T) {
 	for _, rule := range []string{"Not everything said in a chat becomes a task", "Never act on a comment", "request_note", "duplicate", "suggestion",
 		"Never write an id, a tool or field name, or a draft number such as v3", "Decisions is the first row in Files",
 		"Read the comments on a file", "Answer a comment on a passage with ws_file_comment",
-		"Never name a button, menu, key or mark you have not seen", "Never quote a tool's name"} {
+		"Never name a button, menu, key or mark you have not seen", "Never quote a tool's name",
+		"another agent who has never seen this conversation can do it", "leave a hand-off note"} {
 		if !strings.Contains(WorkstreamWorkRules, rule) {
 			t.Errorf("the instructions do not say %q", rule)
 		}

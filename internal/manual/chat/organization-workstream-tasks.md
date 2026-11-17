@@ -12,9 +12,27 @@ permissions, starting, stopping and sending work back.
 
 A workstream's Tasks tab is the shared list of its work; everyone in the workstream sees the same list. A task is one piece of work with ONE owner and one doer. The owner is always a person: the one who answers for it, decides its questions and can send it back. The doer is who does the work: a person, Afi, a named agent or crew, or a Factory job. A task a chat does reads "Your chat" (or "Lena's chat" when it is hers), and its facts say "In the chat <name>". Afi refuses `owner: everyone` when making a task: choose the person talking to Afi ("me") or one person in the workstream, named by their id from `ws_tasks`. There is no shared owner: Everyone is no longer offered as an owner, and a task that already has it keeps it.
 
-A task has a title, a few lines saying what is wanted (the request), its owner, who does it, where it came from (a chat, a person, the Factory, a standing order), its state, what it waits on, an optional due date, an optional heading that groups it, the files or links it made, the files it uses, and an optional checklist of its steps. There are no sub-tasks, priorities, estimates or custom fields: steps of one piece of work go on its checklist.
+A task has a title, a few lines saying what is wanted (the request), a brief when an agent does it (see "a task's brief"), its owner, who does it, where it came from (a chat, a person, the Factory, a standing order), its state, what it waits on, an optional due date, an optional heading that groups it, the files or links it made, the files it uses, and an optional checklist of its steps. There are no sub-tasks, priorities, estimates or custom fields: steps of one piece of work go on its checklist.
 
 The list's sections are always in this order: Waiting on you, Waiting on others, Running, Up next, Done. Empty sections are absent. Everyone shows all the work; Mine shows what you own, do, or need to answer. Work that ended without finishing sits in the appropriate waiting section, in the app's words: Failed (with its reason), Interrupted, Stopped by you (to whoever pressed Stop; everyone else reads "Stopped by Marco"), Didn't report back. A heading such as "Release 2.4" or "Factory" sits in the most urgent section any of its tasks is in, with all its tasks under it.
+
+## a task's brief — goal, deliverable, acceptance, inputs and constraints, so another agent can do it cold
+
+When an agent makes a task for an agent to do, it writes a brief that an agent who never saw your conversation can work from:
+
+- **Goal** — one or two lines on why the work matters, and for whom.
+- **Deliverable** — what comes back and where ("a document in Files").
+- **Acceptance** — two to six lines the result is checked against. The doer's check answers them.
+- **Inputs** — what the work builds on, as references: a file in Files, an earlier task's Result, a decision, or a link. A task it waits on is one of its inputs by itself.
+- **Constraints** — lines it must keep to, such as "No meal planning" or "Under 200 words".
+
+A task an agent does is refused without a goal, a deliverable and its acceptance lines, and an input that names a file or task the workstream does not have is refused too. Your private conversation is never copied into a brief. A person's task may have a brief, and doesn't need one. Tasks made before briefs existed show only their request.
+
+## what a task's run starts with — its inputs already read, and the hand-off note from the task before
+
+On an organization's server, when Afi starts a task, its first message already carries the brief, the decisions in force, and the words of every input: each file's text, and for each earlier task its hand-off note, its check line and its result files. That is at most about 48 KB (twelve thousand tokens); a longer input is cut and says how to read on. Afi reads anything else only when that doesn't cover it. Each file it was handed counts as used by that task, as a file it read itself does.
+
+When an agent finishes a task it leaves a **hand-off note**: two to four lines on what it made, what it assumed, and what the next task should know. Done without one is refused. A run that ends having written its work, without a note, gets "Made ... Afi left no note of its own on what to carry forward." The note is the first thing the next task's run reads about this one.
 
 ## read tasks side by side with the arrow keys — the split Tasks list
 

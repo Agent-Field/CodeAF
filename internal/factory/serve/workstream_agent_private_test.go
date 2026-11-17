@@ -59,7 +59,7 @@ func TestTwoPeopleEachHaveTheirOwnAfi(t *testing.T) {
 	}
 	o.serverMode(t, func(ctx context.Context, turn AgentTurn) (AgentTurnEnd, error) {
 		d := turn.Door.(workDoor)
-		args, _ := json.Marshal(map[string]string{"title": "For " + turn.Asker, "request": turn.Text})
+		args, _ := json.Marshal(map[string]any{"title": "For " + turn.Asker, "request": turn.Text, "goal": "Ship it right", "deliverable": "A document in Files", "acceptance": []string{"Covers the change", "Plain words"}})
 		if _, err := d.Work(ctx, "ws_task_create", args); err != nil {
 			t.Errorf("%s's task: %v", turn.Asker, err)
 		}

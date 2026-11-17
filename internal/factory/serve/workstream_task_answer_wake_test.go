@@ -45,7 +45,7 @@ func TestAnAnsweredAskPutsAfiBackToWork(t *testing.T) {
 			}
 			return AgentTurnEnd{}, nil
 		}
-		_, err := d.Work(ctx, "ws_task_update", json.RawMessage(`{"task":"`+turn.Task.ID+`","state":"done"}`))
+		_, err := d.Work(ctx, "ws_task_update", json.RawMessage(`{"task":"`+turn.Task.ID+`","state":"done","handoff":"Did what the answer asked."}`))
 		return AgentTurnEnd{}, err
 	})
 
