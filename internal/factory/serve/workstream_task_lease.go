@@ -246,7 +246,7 @@ func (h *Handler) settleCutRun(ws factory.OrgWorkstream, seen factory.Workstream
 				return err
 			}
 			settled = t
-			return h.startTaskRun(ws, t, starter, resumeWords(t, l.Words), resumes+1)
+			return h.startTaskRun(ws, t, starter, resumeWords(t, l.Words), resumes+1, false)
 		}
 		t.State, t.StateReason = factory.TaskInterrupted, taskInterruptedWhy
 		if err := keepTask(tw, t, seen.Rev); err != nil {
