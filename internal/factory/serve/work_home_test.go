@@ -81,3 +81,23 @@ func TestPlanStartLeavesUntickedTasksUpNext(t *testing.T) {
 		t.Fatalf("unticked task became %s", got.State)
 	}
 }
+
+func TestOverviewEmptyCollectionsAreArrays(t *testing.T) {
+	o, path := taskOrg(t, "edit")
+	var got map[string]json.RawMessage
+	o.do(t, "santosh", "GET", path+"/overview", -1, nil, 200, &got)
+	for _, key := range []string{"tasks", "children", "people", "decisions", "files", "asked_of", "standing_orders"} {
+		if len(got[key]) == 0 || got[key][0] != '[' {
+			t.Fatalf("%s must be an array, got %s", key, got[key])
+		}
+	}
+}
+
+func TestOverviewShowsFilesBeforeFilesTabIsOpened(t *testing.T) {
+	o, path := taskOrg(t, "edit")
+	var got api.WorkOverview
+	o.do(t, "santosh", "GET", path+"/overview", -1, nil, 200, &got)
+	if len(got.Files) == 0 || got.Files[0].Name != "Overview" {
+		t.Fatalf("the workstream's existing page is missing from Files: %+v", got.Files)
+	}
+}

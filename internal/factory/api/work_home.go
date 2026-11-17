@@ -5,7 +5,7 @@ import "github.com/Agent-Field/codeaf/internal/factory"
 // WorkHome is the viewer's Work page. Operator access alone never adds a row.
 type WorkHome struct {
 	PersonStatus map[string]string        `json:"person_status"`
-	Workstreams  []WorkstreamSummary      `json:"workstreams"`
+	Workstreams  []WorkHomeRow            `json:"workstreams"`
 	Tasks        []factory.WorkstreamTask `json:"tasks"`
 	People       []WorkstreamMember       `json:"people"`
 }
@@ -33,4 +33,10 @@ type WorkRequest struct {
 	Title  string            `json:"title"`
 	Owner  factory.TaskOwner `json:"owner"`
 	State  string            `json:"state"`
+}
+
+// WorkHomeRow carries only members of this workstream, for its faces on Work.
+type WorkHomeRow struct {
+	WorkstreamSummary
+	People []WorkstreamMember `json:"people"`
 }

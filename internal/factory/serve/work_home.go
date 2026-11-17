@@ -27,7 +27,7 @@ func (h *Handler) workHome(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
-	out := api.WorkHome{Workstreams: []api.WorkstreamSummary{}, Tasks: []factory.WorkstreamTask{}, People: []api.WorkstreamMember{}}
+	out := api.WorkHome{Workstreams: []api.WorkHomeRow{}, Tasks: []factory.WorkstreamTask{}, People: []api.WorkstreamMember{}}
 	seen := map[string]bool{}
 	for _, ws := range all {
 		if ws.ArchivedAt != nil || !inWorkstream(v, ws) {
@@ -38,7 +38,7 @@ func (h *Handler) workHome(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		out.Tasks = append(out.Tasks, tasks...)
-		out.Workstreams = append(out.Workstreams, workstreamSummary(ws, workstreamCount{}, v))
+		out.Workstreams = append(out.Workstreams, api.WorkHomeRow{WorkstreamSummary: workstreamSummary(ws, workstreamCount{}, v), People: h.workstreamPeople(ws, h.personNames())})
 		for _, p := range h.workstreamPeople(ws, h.personNames()) {
 			key := p.Kind + ":" + p.ID
 			if !seen[key] {
@@ -47,7 +47,7 @@ func (h *Handler) workHome(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	slices.SortFunc(out.Workstreams, func(a, b api.WorkstreamSummary) int { return strings.Compare(a.Name, b.Name) })
+	slices.SortFunc(out.Workstreams, func(a, b api.WorkHomeRow) int { return strings.Compare(a.Name, b.Name) })
 	out.PersonStatus = h.workPeopleStatus(out.People)
 	h.write(w, http.StatusOK, out)
 }
@@ -61,7 +61,7 @@ func (h *Handler) workOverview(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
-	out := api.WorkOverview{StandingOrders: []api.WorkstreamOrder{}, Tasks: tasks, Steps: map[string][]string{}, Previews: map[string]string{}, Children: []api.WorkstreamSummary{}, People: h.workstreamPeople(ws, h.personNames()), Decisions: nameDecisions(ws.Decisions, h.personNames()), Files: []factory.WorkstreamFile{}, AskedOf: []api.WorkRequest{}}
+	out := api.WorkOverview{StandingOrders: []api.WorkstreamOrder{}, Tasks: tasks, Steps: map[string][]string{}, Previews: map[string]string{}, Children: []api.WorkstreamSummary{}, People: h.workstreamPeople(ws, h.personNames()), Decisions: nameDecisions(nonNil(ws.Decisions), h.personNames()), Files: []factory.WorkstreamFile{}, AskedOf: []api.WorkRequest{}}
 	orders, err := h.config.Store.WorkstreamOrders(ws.ID)
 	if h.failed(w, err) {
 		return
@@ -69,15 +69,22 @@ func (h *Handler) workOverview(w http.ResponseWriter, r *http.Request) {
 	for _, order := range orders {
 		out.StandingOrders = append(out.StandingOrders, orderView(order, h.clock()))
 	}
-	files, err := h.config.Store.WorkstreamFiles(ws.ID)
+	files, err := h.foldFiles(ws)
 	if h.failed(w, err) {
 		return
 	}
-	for _, f := range files {
-		if f.DeletedAt != nil {
-			continue
-		}
-		out.Files = append(out.Files, f)
+	if fresh, found, readErr := h.config.Store.Workstream(ws.ID); readErr != nil {
+		h.failed(w, readErr)
+		return
+	} else if found {
+		ws = fresh
+	}
+	liveFiles, _, err := h.filesAsRead(ws, files, "")
+	if h.failed(w, err) {
+		return
+	}
+	out.Files = nonNil(liveFiles)
+	for _, f := range out.Files {
 		if f.Kind == factory.FileDocument {
 			for _, p := range ws.Pages {
 				if p.ID == f.PageID {
