@@ -3290,8 +3290,8 @@ General · Models · Memory · Tasks · AI teams · Permissions · Spending · C
 ```
 
 Money is on **Spending** and nowhere else. The rows that used to share it are on the two
-tabs beside it: **Permissions** is what codeaf may do without asking you first (ask before
-running, tool exceptions, shell command rules, guardian, approval countdown, task
+tabs beside it: **Permissions** is what codeaf may do without asking you first (tool
+approvals, tool exceptions, shell command rules, guardian, approval countdown, task
 countdown, who settles work that needs a look), and **Tasks** is how work you can walk
 away from is run (starting a task, check task work, task repair rounds, tasks at once,
 busy machine, memory floor, task model).

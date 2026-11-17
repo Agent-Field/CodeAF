@@ -888,12 +888,12 @@ Over `--host` the `place` and `file` values are written in full as `machine:/pat
 
 `/status` carries the tool gate's posture on a line of its own, labelled `approvals`, in
 the person's words: `asks` (it asks you), `guardian` (a small model answers the plainly
-safe ones first), `YOLO` (it runs things without asking) or `refuses` (it refuses).
+safe ones first), `YOLO` (it runs things without asking) or `blocks` (it blocks every call the rules do not name).
 It is **this conversation's** posture — the one the `◇` cell on the legend shows — whichever
 setting decided it. `/status --json` carries the same fact under the `approvals` key, and
 the phone's status sheet has the same row.
 
-The legend spells that fact as a cell: `◇ asks`, `◇ guardian`, `◇ YOLO`, `◇ refuses`. The
+The legend spells that fact as a cell: `◇ asks`, `◇ guardian`, `◇ YOLO`, `◇ blocks`. The
 status line draws `YOLO` only while the gate is open **and** the legend has no cell — a
 conversation whose engine has no approvals door — because there a permanent badge is a badge
 nobody reads. The welcome box draws neither the cell nor the badge: the legend and its cell come up the
@@ -903,7 +903,7 @@ cell, `◇ on its own`, and the badge stays off. A page has room for the whole a
 names the posture whichever it is.
 
 The cell, the badge and the line always agree, because all three read one posture. Walk
-it with `alt+a` and all three move on the keystroke; change "ask before running" in
+it with `alt+a` and all three move on the keystroke; change "tool approvals" in
 `/settings` and they move together for a conversation that follows the rows, or the panel
 says `saved · from the next session`.
 
@@ -1445,7 +1445,7 @@ time — an armed row first, then the panel.
 The heading is `what runs without asking`, drawn whether or not anything is under it. A
 `$` marks a row about one shell command, a `◇` (or `o` in linear mode) a row about a
 whole tool. The dim tail carries only what the heading did not already say: `every call`
-for a tool row, `refused` for a deny, `asks every time` for a prompt, and nothing at all
+for a tool row, `block` for a deny, `ask` for a prompt, and nothing at all
 for an ordinary shell allow. With nothing banked you get the heading and nothing under it.
 
 Shell command rules keep the order they were written in, because first match wins. Tool

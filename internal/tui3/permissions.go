@@ -70,10 +70,13 @@ const permHeading = "what runs without asking"
 
 // The dim tails a row can carry. An allow on a shell command carries NONE: the
 // heading already said what it is, and a column of rows all saying "allowed"
-// would be the heading repeated once per line.
+// would be the heading repeated once per line. The two answer words are the
+// settings sheet's own (config's ChatChoiceLabel: ask by default, block by
+// default) without the "by default", because a row here is an exception and not
+// the default.
 const (
-	permDenyWord   = "refused"
-	permPromptWord = "asks every time"
+	permDenyWord   = "block"
+	permPromptWord = "ask"
 	permToolWord   = "every call"
 	permArmWord    = "enter again to drop it"
 )

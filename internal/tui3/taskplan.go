@@ -701,9 +701,9 @@ const (
 	// promise were two sentences waiting to disagree.
 	taskPlanPickupWord = session.RunNotePickupWord
 	// taskPlanRefusedWord leads the line a refused action draws in a step's
-	// place. It is the permissions page's own word for a call that was refused,
-	// taken from that constant so the two places cannot come to disagree.
-	taskPlanRefusedWord = permDenyWord
+	// place. It says what happened to the call, in the past tense, so it is not
+	// the permissions panel's word for a rule that blocks.
+	taskPlanRefusedWord = "refused"
 	// tasksPlanCancelWord is the cancel key on a plan row and its page, spelled
 	// from the roster's own cancel key and verb rather than re-invented here.
 	tasksPlanCancelWord = "s " + stopActWord
