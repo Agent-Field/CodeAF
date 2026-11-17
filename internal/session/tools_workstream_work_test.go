@@ -82,7 +82,7 @@ func TestTheWorkstreamToolsTeachTheirRules(t *testing.T) {
 		t.Error("ws_task_create does not forbid copying the private conversation into a request")
 	}
 	for _, rule := range []string{"Not everything said in a chat becomes a task", "Never act on a comment", "request_note", "duplicate", "suggestion",
-		"Never write an id, a tool or field name, or a version number", "Decisions is the first row in Files"} {
+		"Never write an id, a tool or field name, or a draft number such as v3", "Decisions is the first row in Files"} {
 		if !strings.Contains(WorkstreamWorkRules, rule) {
 			t.Errorf("the instructions do not say %q", rule)
 		}

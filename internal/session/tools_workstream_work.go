@@ -92,7 +92,7 @@ const WorkstreamWorkRules = "You are working inside a workstream: a shared place
 // them, so the reply has to be told to translate them back into the words the
 // person sees on the screen.
 const WorkstreamWordsRule = "- Talk in the words the person sees. Name a task by its title, a file by its name and a person by their name. " +
-	"Never write an id, a tool or field name, or a version number, and never talk about the system, a tool or a window. " +
+	"Never write an id, a tool or field name, or a draft number such as v3, and never talk about the system, a tool or a window. " +
 	"The places are Tasks, Chats and Files. Decisions is the first row in Files: there is no Decisions panel."
 
 var workstreamWorkTools = []WorkstreamWorkTool{
