@@ -57,6 +57,10 @@ type Taker struct {
 	// OnPhase receives measurements of local work during this take.
 	OnPhase func(Phase)
 
+	// View is an already-read directory record for the cell, avoiding a second
+	// directory round trip when the caller already read it (C6).
+	View *directory.CellView
+
 	Dir   directory.Client
 	Fetch Fetch
 	Local Local
@@ -84,6 +88,13 @@ type Taker struct {
 	// Prepare admits incoming objects in private scratch without changing the
 	// chat's native binding. It replaces staged fetching and Preflight when set.
 	Prepare func(context.Context, cell.Cell, string) error
+	// StagePrepare fetches and stages only what is needed before acquiring the
+	// lease (such as the conversation state in .cell/) when set (C1).
+	StagePrepare func(context.Context, cell.Cell, string) error
+	// InstallState installs the staged conversation state into c after
+	// acquisition when StagePrepare is used, leaving workspace files to arrive
+	// in the background (C1).
+	InstallState func(context.Context, cell.Cell, cell.Cell, string) error
 }
 
 // Taken is a chat this device now drives.
@@ -110,11 +121,20 @@ func (t Taker) Take(ctx context.Context, id string) (Taken, error) {
 // TakeSeen continues the lease the person saw on the card. Older callers
 // without that reading still bind the claim to the record read before fetch.
 func (t Taker) TakeSeen(ctx context.Context, id string, seen *directory.LeaseExpectation) (Taken, error) {
-	directoryRead := Trace(t.OnPhase, "directory")
-	view, err := t.Dir.Cell(ctx, id)
-	directoryRead()
-	if err != nil {
-		return Taken{}, fmt.Errorf("handoff: read chat %s: %w", id, err)
+	var view directory.CellView
+	if t.View != nil {
+		view = *t.View
+	} else {
+		directoryRead := Trace(t.OnPhase, "directory")
+		var err error
+		view, err = t.Dir.Cell(ctx, id)
+		directoryRead()
+		if err != nil {
+			return Taken{}, fmt.Errorf("handoff: read chat %s: %w", id, err)
+		}
+	}
+	if fetcher, ok := t.Fetch.(*cellsync.Fetcher); ok && fetcher.View == nil {
+		fetcher.View = &view
 	}
 	if seen != nil && !seen.Matches(view.Cell) {
 		return Taken{}, directory.ErrLeaseHeld
@@ -250,6 +270,15 @@ func (t Taker) fetchAndAcquire(ctx context.Context, stage cell.Cell, from, head 
 	}()
 	inPlace := t.InPlace != nil && t.InPlace(cell.Cell{ID: stage.ID, Root: from})
 	prepare := func(head string) error {
+		if t.StagePrepare != nil {
+			if err := freshDir(stage.Root); err != nil {
+				return err
+			}
+			done := Trace(t.OnPhase, "fetch")
+			err := t.StagePrepare(ctx, stage, head)
+			done()
+			return err
+		}
 		if t.Prepare != nil {
 			if err := freshDir(stage.Root); err != nil {
 				return err
@@ -296,6 +325,9 @@ func (t Taker) fetchAndAcquire(ctx context.Context, stage cell.Cell, from, head 
 	}
 	if got.Cell.Head != head {
 		head = got.Cell.Head
+		if fetcher, ok := t.Fetch.(*cellsync.Fetcher); ok {
+			fetcher.View = &got
+		}
 		if err := prepare(head); err != nil {
 			return "", 0, directory.Cell{}, t.giveBack(ctx, stage.ID, got.Cell.Lease.Fence, err)
 		}
@@ -361,6 +393,15 @@ func (t Taker) install(ctx context.Context, stage, c cell.Cell, head string) err
 		}
 		return nil
 	}
+	if t.InstallState != nil {
+		if err := t.InstallState(ctx, stage, c, head); err != nil {
+			return err
+		}
+		if err := restoreCopyMarkers(); err != nil {
+			return err
+		}
+		return os.RemoveAll(stage.Root)
+	}
 	if t.InPlace == nil || !t.InPlace(c) {
 		if t.Prepare != nil {
 			if err := freshDir(stage.Root); err != nil {
@@ -395,6 +436,11 @@ func (t Taker) replace(ctx context.Context, stage, c cell.Cell) error {
 		return err
 	}
 	return t.Local.Follow(ctx, stage, c)
+}
+
+// Swap puts stage in place of root, setting any previous root aside during the rename.
+func Swap(stage, root string) error {
+	return swap(stage, root)
 }
 
 // swap puts stage in place of root. What was at root is sealed in the store

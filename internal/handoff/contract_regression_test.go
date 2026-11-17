@@ -76,3 +76,26 @@ func TestTakeF2SameHolderSameHeadFenceChange(t *testing.T) {
 		})
 	}
 }
+
+// C6: when the caller passes the directory record down, handoff and priming
+// do not read the record again.
+func TestC6TakerReusesSuppliedRecordWithoutSecondDirectoryRead(t *testing.T) {
+	w := newWorld(t)
+	a, b := w.device(devA), w.device(devB)
+	a.start(map[string]string{"a.txt": "one"})
+	view, err := b.dir.Cell(context.Background(), chatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.dir.down = errors.New("unexpected second Dir.Cell read")
+	taker := b.taker()
+	taker.View = &view
+	seen := &directory.LeaseExpectation{Device: view.Cell.Lease.Device, Fence: view.Cell.Lease.Fence}
+	taken, err := taker.TakeSeen(context.Background(), chatID, seen)
+	if err != nil {
+		t.Fatalf("TakeSeen with supplied view failed: %v", err)
+	}
+	if tree(t, taken.Cell.Root)["a.txt"] != "one" {
+		t.Fatalf("materialized tree = %v", tree(t, taken.Cell.Root))
+	}
+}
