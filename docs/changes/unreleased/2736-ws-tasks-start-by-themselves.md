@@ -1,5 +1,6 @@
 ---
 kind: changed
+pr: 2736
 title: a workstream task starts by itself when what it waits on is done, unless it says it waits for you
 surface: [factory, engine, docs]
 invalidates:
