@@ -14,6 +14,12 @@ Only the person who looks after the workstream (its steward — the person who m
 
 Removing a person (or a team they were in through) hands their open tasks in that workstream, and in every workstream inside it, to the fallback person ("If unanswered for a day"). With no fallback set, they go to the person who looks after the workstream.
 
+## the amber dot and number on the Work list — what is waiting on me in each workstream
+
+The Work list on the left shows the workstreams you are in. A workstream where something waits on you shows an amber dot and a number after its name: "Pantry • 3" means three of its tasks wait on you, the same tasks the Inbox lists under Waiting on you. A task waits on you when its question is yours to decide, or when it has waited a day and you are the fallback person ("If unanswered for a day"). A question you put off with Later stops counting until then; answering one takes it off at once.
+
+Nothing waiting draws nothing: no dot, no "0". Amber means only "waiting on you"; a workstream that is busy, failed or someone else's turn is never amber. In an organization's window the numbers are that organization's; Personal counts only Personal. An organization whose server does not keep tasks shows no numbers.
+
 ## owner of incoming work, and the fallback person — who is asked
 
 "Owner of incoming work" owns tasks nobody asked for directly, such as ones the Factory creates: a named person, or Everyone (the first person to answer decides, and the task records who answered). It starts as the person who made the workstream. "If unanswered for a day" names a person who is also asked when a task's question has waited a day, and who takes the open tasks of anyone removed.
