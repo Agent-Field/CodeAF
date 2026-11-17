@@ -436,8 +436,10 @@ from the job's budget like the job's steps: everything done for the job spends f
   Pressing Stop yourself does not add a budget notice. Calls already sent can still report charges afterward;
   stopping work cannot reverse a provider charge already incurred. Approved publication
   and merge writes can finish at the cap; they make no model calls. Stop remains available.
-- **Change Budget** by clicking its sidebar value or through Actions. Both menus offer $5,
-  $10, $20 and $30 and share the confirmed value. Decreasing $10 back to $5 is allowed when
+- **Change Budget** by clicking its sidebar value, the Spend fact in the job's header, or
+  through Actions. Each menu offers the $5, $10, $20 and $30 presets and **Other…**, which
+  takes any amount from $1 up, to the cent ($2, $7.50); under $1 it says "A job's budget is
+  at least $1." and sends nothing. They share the confirmed value. Decreasing $10 back to $5 is allowed when
   recorded spend is at most $5. The server rechecks spend while writing the new cap.
   Raising the cap above recorded spend answers a budget question and resumes the interrupted
   step in Auto or Manual, on this computer or a leased worker. Manual still asks before
