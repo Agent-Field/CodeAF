@@ -93,9 +93,9 @@ When someone changes the contents of a file that a running task's work read, tha
 
 A comment or a posted answer on a task never changes its state. Writing a receipt or a piece of news on a finished task leaves it done, and nothing waiting on it is blocked again. To reopen work on purpose, use "Send back…" on the done task's page (or its More); the owner of a person's task can also untick it. Either way, what waits on it waits again.
 
-## Start — why a task Afi or a chat does stays in Up next, Mark done
+## Start — why a task Afi or a chat does stays in Up next, Mark done, I pressed Start but the chat was busy
 
-A task that Afi or a chat does is Running only while something is actually doing it. When what it waits on is done, it stays in Up next until its doer is woken. On a Personal workstream the task page shows **Start**: it hands the task to Afi's conversation (or to the chat that does it) and only then shows Running; a plan's Start wakes each doer once with all of its tasks. On an organization's workstream **Start** runs an Afi task on the organization's server, as the person who pressed it and with their rights, in a run of its own that is not anybody's conversation with Afi: what it did shows in the task's thread and results, and the task ends done or failed with the reason. If the server cannot run Afi (no model key from the organization) Start says so and the task stays in Up next. A chat's task cannot be started from an organization's workstream; it starts from that chat. In every case the task's owner can finish it by hand with **Mark done** in its More, or stop it with Stop.
+A task that Afi or a chat does is Running only while something is actually doing it. When what it waits on is done, it stays in Up next until its doer is woken. On a Personal workstream the task page shows **Start**: it hands the task to Afi's conversation (or to the chat that does it) and only then shows Running; a plan's Start wakes each doer once with all of its tasks. If the chat is in the middle of something when you press Start, the task goes into that chat's queue, the way a message you queue does, and is sent when its current turn ends: the task says Running and a note says "Queued · Nitya v1 starts it when it finishes what it is doing" (with the chat's name). On an organization's workstream **Start** runs an Afi task on the organization's server, as the person who pressed it and with their rights, in a run of its own that is not anybody's conversation with Afi: what it did shows in the task's thread and results, and the task ends done or failed with the reason. If the server cannot run Afi (no model key from the organization) Start says so and the task stays in Up next. A chat's task cannot be started from an organization's workstream; it starts from that chat. In every case the task's owner can finish it by hand with **Mark done** in its More, or stop it with Stop.
 
 ## due date — pick any day; change it on the task
 
@@ -104,3 +104,11 @@ A task can carry one due date, any day at all. Add task's Due opens a month with
 ## set what a task waits on — More › Waiting on
 
 On the task page, its owner opens More › Waiting on and ticks the tasks it should wait on (or unticks one to stop waiting). The menu lists what it already waits on, then the workstream's open tasks, newest first; a task that would make a circle is never offered, and the Factory's own issues stay out of it. The facts line then reads "Waiting on: …", and the task that waits shows "Then: …" on the other.
+
+## why my task says Interrupted — codeaf restarted while it was running
+
+**Interrupted means nothing is working on the task any more, and what it already did is kept.** On a Personal workstream, when codeaf's engine starts again (after the app or the computer restarted, or the engine stopped), every turn that was running has ended. Any task Afi or a chat was doing whose chat is not working or asking right now becomes Interrupted, and its activity says "Interrupted: codeaf restarted while this was running".
+
+An interrupted task sits under Waiting on someone. Its page offers **Start** again, which hands it back to the same chat (or to Afi). Its owner can also Mark done or Stop it from More. A chat that was still working or asking when the engine came back keeps its task Running, and a chat that picks the task back up says Running again itself.
+
+The Factory's tasks are not affected: a Factory task's state is its job's, and the Factory recovers its own steps.

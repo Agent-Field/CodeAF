@@ -36,6 +36,8 @@ Every chat started inside a workstream, and Afi when it is inside one, carries n
 - `ws_task_create` makes a task; `ws_task_update` changes one this chat does (its state, its result, the check against the request, an Ask for its owner, what it assumed without asking); `ws_task_comment` writes on a task's thread. Starting and finishing work are checked against the decisions: work that goes against one is paused, and the person who made it is asked.
 - `ws_files` lists files and folders; `ws_file_read` reads one; `ws_file_create` makes a document, folder or link; `ws_file_suggest` suggests edits to a document.
 
+A canvas in the workstream's Files counts too: the agent drawing on a canvas filed there joins the workstream and carries the same eight tools, so it reads the brief and the other documents with `ws_file_read`. No agent reads a workstream's files from the app's data folder, its database or `/tmp`.
+
 What a chat or Afi makes for the workstream is saved with `ws_file_create` and appears in Files for everyone in it; it is never written to disk as a loose file.
 
 On a Personal workstream the desktop app serves them. On an organization whose agents run on its server, Afi there carries all eight beside `workstream_pages`, with the same rules; the page about an organization workstream's agent says what is different there.

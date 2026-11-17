@@ -14,6 +14,14 @@ Every file shows who made it (a person, Afi, or a chat's name), the task it came
 
 Files is the workstream's own library. The app's **Library** is a separate shelf every workstream and agent reads, and nothing in Files reaches it by itself: only Add to Library, chosen by a person, puts a file there.
 
+## keep a decision — where is Keep, Afi said press keep, decisions record themselves
+
+**There is no Keep, and nothing to press.** A workstream's decisions record themselves: when the owner answers an Ask on a task, when a private request changes shared work, and when someone sets a rule in People and rules. Each appears in the **Decisions** document, the first row in Files, with who made it, where it came from and when.
+
+Afi and the chats never propose a decision for you to keep. To settle a choice, the agent puts an Ask on the task, and your answer becomes the decision. An older workstream may still hold decisions an agent proposed before this changed; they never show in Decisions and nothing can keep them. If one still matters, answer it as an Ask, or say it in a request, and it records itself.
+
+Only the person who made a decision can withdraw or replace it; the old one stays in the list, greyed.
+
 ## where my old pages, sources and canvases went — nothing was lost
 
 The first time a workstream's Files is opened, everything it kept before is folded in, once, and nothing is copied or lost: each page becomes a document (a page that held other pages also becomes a folder holding them), each source becomes a link, a repo or an upload, and each canvas made inside the workstream becomes a canvas file. No Decisions document is made: a workstream's decisions are its Decisions list, kept automatically, not a file in Files.

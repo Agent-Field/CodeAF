@@ -59,6 +59,8 @@ const (
 	wsAskPage   = "page"
 	wsAskWrite  = "write"
 	wsAskNew    = "new"
+	// wsAskDecide is no longer offered (solo-ios-app #4): a proposed decision is one no screen can keep, since
+	// Decisions shows only the decisions that recorded themselves. A call admitted before the upgrade still runs.
 	wsAskDecide = "decide"
 )
 
@@ -68,17 +70,16 @@ const workstreamPageCut = 1500
 const workstreamPagesDescription = "Read and write the organization workstream you are this conversation's agent for. " +
 	"ask: read (its name, purpose, budget, every page with the start of its words, decisions, sources and links), " +
 	"page (one page whole; set page to its id), write (replace one page's words with body, in Markdown; set page), " +
-	"new (a new page with title and body), or decide (propose one decision, its words in text; a person keeps it). " +
+	"or new (a new page with title and body). Decisions record themselves when an Ask is answered: there is nothing to propose and no Keep. " +
 	"You write as the person whose message you are answering. A page someone has open for editing is not written over: " +
 	"your text waits as a suggestion for someone to take, and the answer says so; tell the person."
 
 func workstreamPagesSchemaJSON() string {
 	return `{"type":"object","properties":{` +
-		`"ask":{"type":"string","enum":["` + strings.Join([]string{wsAskRead, wsAskPage, wsAskWrite, wsAskNew, wsAskDecide}, `","`) + `"],"description":"What to do."},` +
+		`"ask":{"type":"string","enum":["` + strings.Join([]string{wsAskRead, wsAskPage, wsAskWrite, wsAskNew}, `","`) + `"],"description":"What to do."},` +
 		`"page":{"type":"string","description":"With page or write: the page's id (pg_…), as read lists it."},` +
 		`"title":{"type":"string","description":"With new: the new page's title."},` +
-		`"body":{"type":"string","description":"With write or new: the page's words, in Markdown, whole."},` +
-		`"text":{"type":"string","description":"With decide: the decision, in one or two sentences."}` +
+		`"body":{"type":"string","description":"With write or new: the page's words, in Markdown, whole."}` +
 		`},"required":["ask"],"additionalProperties":false}`
 }
 

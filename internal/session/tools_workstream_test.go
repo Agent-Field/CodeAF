@@ -78,8 +78,24 @@ func TestWorkstreamPagesReadsAndWritesThroughTheDoor(t *testing.T) {
 	}
 	call(`{"ask":"write","page":"pg_1","body":"new words"}`)
 	call(`{"ask":"new","title":"Runbook","body":"steps"}`)
+	// A call admitted before the upgrade still runs; the verb is no longer offered (below).
 	call(`{"ask":"decide","text":"Ship Friday."}`)
 	if strings.Join(door.written, ";") != "pg_1||new words;|Runbook|steps" || strings.Join(door.decided, ";") != "Ship Friday." {
 		t.Fatalf("door saw %v %v", door.written, door.decided)
+	}
+}
+
+// solo-ios-app #4: a decision the agent proposed waited for a Keep no screen has, because Decisions shows only the
+// decisions that recorded themselves. The tool no longer offers decide, and its words say there is nothing to keep.
+func TestWorkstreamPagesOffersNoDecisionToKeep(t *testing.T) {
+	schema := workstreamPagesSchemaJSON()
+	if strings.Contains(schema, `"decide"`) || strings.Contains(schema, "With decide") {
+		t.Fatalf("the schema still offers decide: %s", schema)
+	}
+	if strings.Contains(workstreamPagesDescription, "decide") || strings.Contains(workstreamPagesDescription, "a person keeps it") {
+		t.Fatalf("the description still offers a decision to keep: %s", workstreamPagesDescription)
+	}
+	if !strings.Contains(workstreamPagesDescription, "Decisions record themselves") {
+		t.Fatalf("the description does not say how a decision is made: %s", workstreamPagesDescription)
 	}
 }
