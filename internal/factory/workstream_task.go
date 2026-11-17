@@ -265,6 +265,19 @@ type WorkstreamTask struct {
 	// says "Stopped by you" to that person alone and "Stopped by Marco" to
 	// everyone else.
 	StoppedBy *PersonRef `json:"stopped_by,omitempty"`
+	// Run is what the server knows of the run behind a running task an agent
+	// does: whether one is going right now, and since when. It is FILLED AT
+	// READ TIME by the organization's server and never kept, so a task that
+	// says running with nothing behind it can offer Start (L6).
+	Run *TaskRunNow `json:"run,omitempty"`
+}
+
+// TaskRunNow is a running task's run, as its server sees it now.
+type TaskRunNow struct {
+	// Live is whether a run is working on the task in the server now.
+	Live bool `json:"live"`
+	// Since is when the run began (RFC 3339), when the server kept it.
+	Since string `json:"since,omitempty"`
 }
 
 // TaskForYou is what a task holds for the person reading it (SPEC "Comments

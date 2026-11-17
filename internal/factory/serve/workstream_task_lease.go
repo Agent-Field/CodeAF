@@ -317,3 +317,23 @@ func resumeWords(t factory.WorkstreamTask) string {
 		"Carry on from where you stopped: check what you already wrote to the workstream before writing it again, then finish the task.\n\n" +
 		taskWords(t)
 }
+
+// fillRuns writes onto each running Afi task whether a run is working on it
+// in this server now, and since when, so a person can tell a stuck task from
+// a working one and its Start is offered. It is read-time only.
+func (h *Handler) fillRuns(ws string, all []factory.WorkstreamTask) {
+	for i := range all {
+		t := &all[i]
+		t.Run = nil
+		if t.State != factory.TaskRunning || t.DoneBy.Kind != factory.TaskByAfi {
+			continue
+		}
+		run := &factory.TaskRunNow{Live: h.taskTurnRunning(ws, t.ID)}
+		if h.config.Store != nil {
+			if l, ok, err := h.config.Store.TaskRunOf(ws, t.ID); err == nil && ok {
+				run.Since = l.Started
+			}
+		}
+		t.Run = run
+	}
+}
