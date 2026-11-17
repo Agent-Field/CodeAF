@@ -40,7 +40,7 @@ Who owns a new task: whoever asked for it. Work nobody asked for directly (from 
 
 ## tick a person task, hand a task to someone, move it to another workstream
 
-- Tick: only the owner ticks a person's task ("only the task's owner ticks it" otherwise). Ticking it unblocks the tasks that were waiting only on it: a person's task loses its "waiting on", and an Afi or chat task starts by itself (see *tasks start by themselves automatically*) or, where it waits for a person's Start, stays in Up next with the line "Ready to start: <the ticked task> is done".
+- Tick: only the owner ticks a person's task ("only the task's owner ticks it" otherwise). Ticking it unblocks the tasks that were waiting only on it: a person's task loses its "waiting on", and an Afi or chat task starts by itself (see *a workstream task starts automatically*) or, where it waits for a person's Start, stays in Up next with the line "Ready to start: <the ticked task> is done".
 - Hand to someone: anyone who can edit the workstream changes a task's owner to another person: anyone named on the workstream, or in one of the teams it is shared with. A task always has one owner, so Add task and Hand to someone never offer Everyone (a task made with owner Everyone before keeps it until handed on). The thread says "Handed to Marco", and Marco's Inbox row says "handed to you by Priya". Taking a task yourself is not a hand-over and says nothing.
 - Move: More › Move moves a task, with its whole conversation, to another workstream you can edit. Tasks that waited on it here stop waiting. Only the task's owner or whoever looks after the workstream moves it.
 - Send back: see *send a done task back* below.
@@ -165,15 +165,15 @@ When someone changes the contents of a file that a running task's work read, tha
 
 A comment or a posted answer on a task never changes its state. Writing a receipt or a piece of news on a finished task leaves it done, and nothing waiting on it is blocked again. To reopen work on purpose, use "Send back…" on the done task's page (or its More); the owner of a person's task can also untick it. Either way, what waits on it waits again.
 
-## tasks start by themselves automatically once what they depend on is done — Starts when ready, or hold one for a Start
+## a workstream task starts automatically once what it depends on is done — Starts when ready, or hold it for your Start
 
-A task Afi or a chat does that waits on other tasks **starts by itself** once everything it waits on is done: nobody presses Start. Its thread says "Started: <the finished task> is done". This is on by default, in Personal and in organizations.
+A task Afi or a chat does that depends on other tasks **starts automatically** once everything it depends on is done: nobody presses Start. Its thread says "Started: <the finished task> is done". This is on by default, in Personal and in organizations.
 
-- **Settings › Work** has one switch, "Start tasks when what they wait on is done". Turned off, such tasks wait in Up next for a Start, with "Ready to start: <title> is done" in their thread. In an organization the server keeps your choice for the tasks you own.
-- **Each task** that waits on others says on its facts line "Starts when ready" or "Waits for you to start". Click it to pick the other; the thread records who did. Only the task's owner, or whoever looks after the workstream, can change it ("only the task's owner or whoever looks after this workstream can say whether it starts by itself"). Picking "Starts when ready" on a task that is already ready starts it at once.
-- **A plan** (five or more tasks from one request) waits for its Start. Pressing Start is consent for the whole plan: what it releases afterwards starts without another click, even with the Settings switch off. A task's own "Waits for you to start" still wins.
-- **Nothing else changes.** An Ask on the task, the workstream's spending rule ("Start without asking") and the decision check still pause it. A task whose doer is a person never starts on its own; it lands in that person's Waiting on you and Due. A Factory task starts at the Factory.
-- **Where it runs.** On Personal this computer wakes the doer while codeaf is open (a doer mid-turn gets it when the turn ends). On an organization the server starts an Afi task with the rights of whoever finished the work it waited on; a chat's task there starts from that chat.
+- **Settings › Work** has one switch, "Start tasks when what they wait on is done". Turned off, such tasks stay in Up next for a Start, with "Ready to start: <title> is done" in their thread. In an organization the server keeps your choice for the tasks you own.
+- **Each task** that depends on others says on its facts line "Starts when ready" or "Waits for you to start". Click it to pick the other; the thread records who did. Only the task's owner, or whoever looks after the workstream, can change it ("only the task's owner or whoever looks after this workstream can say whether it starts by itself"). Picking "Starts when ready" on a task that is already ready starts it at once.
+- **A plan** (five or more tasks from one request) holds for its Start. Pressing Start is consent for the whole plan: what it releases afterwards starts without another click, even with the Settings switch off. A task set to hold still wins.
+- **Nothing else changes.** An Ask on the task, the workstream's spending rule ("Start without asking") and the decision check still pause it. A task done by a person is never started for them; it lands in that person's list and Due. A Factory task starts at the Factory.
+- **Where it runs.** On Personal this computer wakes the doer while codeaf is open (a doer mid-turn gets it when the turn ends). On an organization the server starts an Afi task with the rights of whoever finished the work it depended on; a chat's task there starts from that chat.
 
 ## Start — why a task Afi or a chat does stays in Up next, Mark done, I pressed Start but the chat was busy
 
