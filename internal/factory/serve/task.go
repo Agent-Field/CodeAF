@@ -112,7 +112,13 @@ func (h *Handler) prepareHeldTasks(items []factory.Item, leases []lease.Lease) [
 	}
 	held := make(map[int]bool, len(leases))
 	for _, row := range leases {
-		held[row.Job] = true
+		// A lease that only lends the manager to a reply runs no step, and
+		// StartHeldTask treats it as no hold: the two read the same rule, or
+		// a held task waits out the reply while Auto approves a repair ahead
+		// of it.
+		if !row.ThreadOnly {
+			held[row.Job] = true
+		}
 	}
 	for i, it := range items {
 		if it.FollowUp == nil || strings.TrimSpace(it.FollowUp.Next) == "" || held[it.ID] {
