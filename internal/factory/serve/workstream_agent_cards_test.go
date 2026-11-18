@@ -56,6 +56,10 @@ func TestAfisTasksArriveAsCardsAndAreMadeOnlyWhenAdded(t *testing.T) {
 	if !strings.Contains(said, "Nothing is made until they press Add 2 tasks") || !strings.Contains(said, "Priya Nair is told") {
 		t.Errorf("the proposal answered %q", said)
 	}
+	// Sim v3 D5: the reply stays under the card after Add, so Afi is told never to say the tasks' state.
+	if !strings.Contains(said, "never say whether the tasks exist, and never tell them to press Add or Start") {
+		t.Errorf("the proposal does not keep Afi's reply from going stale: %q", said)
+	}
 
 	// Nothing shared yet: no task, and santosh has not been told.
 	var tasks api.WorkstreamTasks
@@ -126,8 +130,13 @@ func TestAddedCardsOfAPlanShareOneGroup(t *testing.T) {
 		for i := 1; i <= 6; i++ {
 			cards = append(cards, `{"title":"Part `+strconv.Itoa(i)+`","request":"Do it."}`)
 		}
-		if _, err := turn.Door.(proposeDoor).Work(ctx, "ws_task_propose", json.RawMessage(`{"group":"Release 0.9","tasks":[`+strings.Join(cards, ",")+`]}`)); err != nil {
+		said, err := turn.Door.(proposeDoor).Work(ctx, "ws_task_propose", json.RawMessage(`{"group":"Release 0.9","tasks":[`+strings.Join(cards, ",")+`]}`))
+		if err != nil {
 			t.Error(err)
+		}
+		// A plan goes to the Inbox and waits for Start; it is never "press Add" (sim v3 D5).
+		if !strings.Contains(said, "a plan of 6 tasks: it goes to their Inbox and nothing starts until they press Start there") || strings.Contains(said, "until they press Add") {
+			t.Errorf("the plan's proposal answered %q", said)
 		}
 		return AgentTurnEnd{}, nil
 	})

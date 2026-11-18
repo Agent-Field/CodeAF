@@ -54,7 +54,7 @@ func TestTheCardsVerbSaysThePlansBounds(t *testing.T) {
 	if schema.Properties.Tasks.MaxItems != WorkstreamPlanMost {
 		t.Errorf("a proposal holds %d cards; a plan is at most %d", schema.Properties.Tasks.MaxItems, WorkstreamPlanMost)
 	}
-	for _, must := range []string{"nothing is made until then", "involve someone else", "carry a due date", strconv.Itoa(WorkstreamPlanFewest) + " or more", "never also make the same tasks"} {
+	for _, must := range []string{"nothing is made until then", "involve someone else", "carry a due date", strconv.Itoa(WorkstreamPlanFewest) + " or more", "never also make the same tasks", "never say whether the tasks exist yet and never tell them to press Add or Start"} {
 		if !strings.Contains(WorkstreamCardsRule, must) {
 			t.Errorf("the cards rule does not say %q", must)
 		}
