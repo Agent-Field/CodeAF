@@ -86,7 +86,7 @@ In Personal, an order runs on your computer while codeaf is open there; what fel
 
 In an organization's workstream, standing orders are kept and run by the organization's server. Everyone who can see the workstream sees them under "Keeps running"; only the person who looks after it adds, switches or removes one. They run while every member's computer is off.
 
-Each run is the workstream's own agent on the server, with only the workstream's tools (its tasks, files and pages): no shell, and nothing on anybody's computer. It asks the owner of incoming work "Run … now?" on its task unless "Start without asking" covers what one run may spend; Go starts it as whoever said go, and the task's Stop ends it. A run missed while the server was down runs once, late.
+Each run is the workstream's own agent on the server, with only the workstream's tools (its tasks, files and documents): no shell, and nothing on anybody's computer. It asks the owner of incoming work "Run … now?" on its task unless "Start without asking" covers what one run may spend; Go starts it as whoever said go, and the task's Stop ends it. A run missed while the server was down runs once, late.
 
 The server runs them only when the operator has given it a model key. Without one, "Add a standing order…" is absent and the sheet says "Standing orders run on the organization's server, which needs a model key from the operator."
 
@@ -94,7 +94,7 @@ A standing order is never run on a person's own computer for an organization: co
 
 ## a standing order's tasks — Came from, the group in Tasks, and when it asks
 
-Each run of a workstream's standing order adds one task to it. The task says where it came from on its page ("From the standing order Every Monday at 09:00"), is done by Afi, and is owned by the workstream's "Owner of incoming work". In Tasks, an order's tasks fold into one group named after it, so forty runs never bury the work people added by hand.
+Each run of a workstream's standing order adds one task to it. The task says where it came from on its document ("From the standing order Every Monday at 09:00"), is done by Afi, and is owned by the workstream's "Owner of incoming work". In Tasks, an order's tasks fold into one group named after it, so forty runs never bury the work people added by hand.
 
 When "Start without asking" covers what one run may spend, the order runs alone. Otherwise each run first asks its owner "Run … now?" on its task, with Go, Skip this one and Not right; that reaches the owner's Inbox like any question. A run that ends needing a person's call asks on its task too. A run that did not finish shows Failed with its reason; one you skip or stop shows Stopped by you.
 
@@ -124,7 +124,7 @@ Delete appears in More instead of Archive only for a workstream that holds nothi
 
 ## my computer is asleep or offline — is the work lost? no internet, connection refused, message not sent
 
-No. When the computer running the agents is asleep or offline (this Mac's engine stopped, or an organization's server cannot be reached), the workstream keeps showing what it last read, and the line under its name says so: "This Mac is offline · answers send when it is back; work is paused, not lost" (or "The organization's server is offline · …"). Its tasks, files, Asks and decisions are all kept. An agent's turn that was running stops with the computer; when the computer is back, the task is still there, and a task that did not finish can be started again from its page. Closing the app stops the turns it was running; such a task reads "Interrupted: the app closed while this was running", and Start runs it again.
+No. When the computer running the agents is asleep or offline (this Mac's engine stopped, or an organization's server cannot be reached), the workstream keeps showing what it last read, and the line under its name says so: "This Mac is offline · answers send when it is back; work is paused, not lost" (or "The organization's server is offline · …"). Its tasks, files, Asks and decisions are all kept. An agent's turn that was running stops with the computer; when the computer is back, the task is still there, and a task that did not finish can be started again from its document. Closing the app stops the turns it was running; such a task reads "Interrupted: the app closed while this was running", and Start runs it again.
 
 A message sent while this computer cannot reach the model is kept, not failed: it reads "Paused · can't reach the model from this computer" and "It sends again by itself when the connection is back.", in grey, and is not counted as failed. The chat looks again on a slowing clock (30 seconds, then up to every five minutes) and sends it as soon as the model answers; Retry message sends it at once. Quitting and reopening the app keeps it, with Retry message still offered.
 

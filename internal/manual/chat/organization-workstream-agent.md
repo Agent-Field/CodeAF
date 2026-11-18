@@ -13,7 +13,7 @@ Until the operator picks one, the server picks for them: `server` as soon as it 
 
 ## Driver's laptop — what the agent cannot do on a laptop, and moving it onto the server
 
-On a driver's laptop the agent has none of the workstream's tools. It cannot read or change the workstream's tasks, files or pages, and what it makes stays on that laptop, where nobody else sees it. The app says so wherever it runs there: Settings ("There it cannot read or change the workstream's tasks, files or pages; on the organization's server it can.") and the Afi pane's driving line. For Afi to work on the workstream itself, the operator adds a model key, or chooses "Organization's server".
+On a driver's laptop the agent has none of the workstream's tools. It cannot read or change the workstream's tasks, files or documents, and what it makes stays on that laptop, where nobody else sees it. The app says so wherever it runs there: Settings ("There it cannot read or change the workstream's tasks, files or documents; on the organization's server it can.") and the Afi pane's driving line. For Afi to work on the workstream itself, the operator adds a model key, or chooses "Organization's server".
 
 ## the organization's model key — add, replace or remove the key the server uses
 
@@ -23,7 +23,7 @@ Over the wire: `GET /v1/org/keys`, `PUT /v1/org/keys/openrouter {"key"}`, `DELET
 
 ## talking to the server's workstream agent — private to you, who can talk, one message at a time, stop it
 
-In `server` mode a workstream's Afi pane is private to you: you have your own conversation with the server's agent, and nobody else in the workstream reads it, not your colleagues and not the operator. Its memory is yours too, so it does not repeat what someone else told it. What it does to shared things is visible to everyone as those things: the tasks it makes, the files and pages it writes, the decisions it suggests, and one line on a task when your private request changed it ("Priya asked Afi to keep it under 300 words").
+In `server` mode a workstream's Afi pane is private to you: you have your own conversation with the server's agent, and nobody else in the workstream reads it, not your colleagues and not the operator. Its memory is yours too, so it does not repeat what someone else told it. What it does to shared things is visible to everyone as those things: the tasks it makes, the files and documents it writes, the decisions it suggests, and one line on a task when your private request changed it ("Priya asked Afi to keep it under 300 words").
 
 People who can edit the workstream talk to it; people who can only view it have no composer. It answers one of your messages at a time: a second while it works is refused with "the agent is still answering your last message; wait for it, or stop it". Someone else's conversation never makes yours wait. Only you can stop yours; it then says "Stopped.".
 
@@ -31,11 +31,11 @@ A workstream that had one shared conversation before gives each person only thei
 
 What it spends is posted to the workstream under the person whose message it answered. A workstream that has spent its budget takes no more messages ("This workstream has spent its budget."). An archived workstream takes none either.
 
-## what the server's workstream agent can and cannot do — tasks, files, pages, canvases, no shell, no repository
+## what the server's workstream agent can and cannot do — tasks, files, documents, canvases, no shell, no repository
 
-On the server the agent, Afi, carries `workstream_pages`, the workstream tools (`ws_tasks`, `ws_task_create`, `ws_task_update`, `ws_task_comment`, `ws_files`, `ws_file_read`, `ws_file_create`, `ws_file_suggest`, `ws_file_comment`; the page about chats inside a workstream says what each does) and, on a server that keeps canvases, `ws_canvas`, which draws the workstream's canvases (the section on Afi drawing a canvas says how). So when you ask it to "turn these asks into tasks", it makes real tasks in the Tasks tab, not pages titled "Task: …", and it reads Tasks before it says who is doing what or what is waiting on you.
+On the server the agent, Afi, carries `workstream_pages`, the workstream tools (`ws_tasks`, `ws_task_create`, `ws_task_update`, `ws_task_comment`, `ws_files`, `ws_file_read`, `ws_file_create`, `ws_file_suggest`, `ws_file_comment`; the document about chats inside a workstream says what each does) and, on a server that keeps canvases, `ws_canvas`, which draws the workstream's canvases (the section on Afi drawing a canvas says how). So when you ask it to "turn these asks into tasks", it makes real tasks in the Tasks tab, not documents titled "Task: …", and it reads Tasks before it says who is doing what or what is waiting on you.
 
-With `workstream_pages` it reads the workstream (name, purpose, budget, pages, decisions, sources and links), reads or writes one page, or makes a new page. It does not propose decisions: a decision records itself when an Ask is answered, and nothing waits for a Keep.
+With `workstream_pages` it reads the workstream (name, purpose, budget, documents, decisions, sources and links), reads or writes one document, or makes a new document. It does not propose decisions: a decision records itself when an Ask is answered, and nothing waits for a Keep.
 
 It cannot run commands, read or change a repository, open files on a computer, start or stop Factory work, search the web or remember things between workstreams. `driver` mode runs the agent on a person's laptop with that laptop's tools instead, and then it has none of the workstream's.
 
@@ -77,7 +77,7 @@ When Afi suggests edits to a document (`ws_file_suggest`), they show on the docu
 
 ## a new organization workstream starts with an Overview page — never empty
 
-When someone makes a workstream on the organization's server and sends no pages with it, the server gives it one page: titled "Overview", of kind overview, with nothing written in it yet. That is the same page the desktop app sends, so a workstream made from the app, from a script or from any other client always has a page people (and the server's agent) can write in. A workstream made with pages of its own keeps exactly those pages, and no Overview is added.
+When someone makes a workstream on the organization's server and sends no pages with it, the server gives it one document: titled "Overview", of kind overview, with nothing written in it yet. That is the same page the desktop app sends, so a workstream made from the app, from a script or from any other client always has a page people (and the server's agent) can write in. A workstream made with pages of its own keeps exactly those pages, and no Overview is added.
 
 ## page actions — no History or Restore in this release
 
