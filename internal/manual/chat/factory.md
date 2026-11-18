@@ -256,6 +256,7 @@ Add or remove a key on that home: the runner rereads its provider before each le
 On a machine with a factory set up, a conversation can hand work over. Every one of these raises a card and writes nothing until you say yes; none of them starts a job. The terminal chat draws the `factory_item` card (answered as described below); see the limit in that section for the other two.
 
 - `factory_add` offers one piece of work (a title, a brief, a repository) to the factory. Your `add it` writes the item, as new.
+  - A job's own chat (its main agent) offers a new job only on a turn you started. On a turn its team's replies or a stop started, it mentions the finding in its reply instead, so no card about work you never asked for reaches your Inbox.
 - `factory_recipe` offers one line for a repository's recipe: a stage, a policy or a habit, saved to `.codeaf/factory.yaml` on your `bank it`.
 - `factory_item` offers a change to the one item a conversation is about: its stages, gate, budget or thinking, within the recipe's bounds.
 
