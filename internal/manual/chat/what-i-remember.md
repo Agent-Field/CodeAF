@@ -253,7 +253,9 @@ decision, or a lasting fact. It is shown what is already kept, so it does not
 keep the same thing twice. It never keeps something only the assistant said, the
 work in progress, code, or anything with a time in it — and never anything from a
 task's report, a watch's news or a team's message, because you did not type
-those. An `ask here` exchange from home is not noticed either.
+those. An `ask here` exchange from home is not noticed either, and neither is a turn
+in which a permission question was denied, dismissed or left unanswered: one answer to
+one question is not a rule, so nothing is kept about you from that turn.
 
 Every time it keeps a line it says so in the conversation:
 
