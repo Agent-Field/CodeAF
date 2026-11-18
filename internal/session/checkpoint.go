@@ -3463,8 +3463,23 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 	// does ([UserFacingUpdate]: a LEADING marker only, never a mention) — no
 	// guessing at what "next I will" means in any language. An update that ends
 	// by asking the person something is waiting, as everywhere in this file.
+	//
+	// AND AN UPDATE THAT SAYS IT IS WAITING ON SOMETHING ALREADY OUT IS WAITING.
+	// "[update] I've started the render and will report when it lands" is the
+	// marker used truthfully: the render's exit starts a turn by itself, and a
+	// nudge here would buy the poll of it that [checkpointCarryOnCap] was
+	// written against. So the four endings the reader below already honours —
+	// background work still running, the request handed to a live task, a
+	// task of this conversation still out, a landing that came home settled —
+	// are asked FIRST ([Agent.turnEndsWaiting]), and only when none holds is
+	// the update read as a stop. They are asked only once the marker is
+	// there, so an ordinary reply pays for none of them here.
+	//
+	// AT THE CAP THE UPDATE IS AN ORDINARY REPLY. It falls through to
+	// everything below exactly as any reply in words does: a typed turn ends
+	// on it, and a woken turn may still be read for what remains.
 	if meter != nil && ctx.Err() == nil && meter.updateNudges < checkpointUpdateNudgeCap && !endsAskingThePerson(said) {
-		if _, interim := UserFacingUpdate(said); interim {
+		if _, interim := UserFacingUpdate(said); interim && !a.turnEndsWaiting() {
 			meter.updateNudges++
 			hub.send(Event{Kind: EventNotice, Text: checkpointUpdateNudgeNote})
 			a.record(textMessage("user", checkpointUpdateNudgeLead))
@@ -4127,7 +4142,11 @@ type readerLine struct {
 // file is held to: a list of openers — "shall I", "would you like", "do you want"
 // — is a rule about English, and this harness answers in whatever language it was
 // asked in. A question mark at the end of the last thing said is the one mark
-// every written language that has questions actually uses for them.
+// every written language that has questions actually uses for them — and it is
+// not one character. Chinese and Japanese end a question on the full-width
+// `？` (U+FF1F) and Arabic, Persian and Urdu on the reversed `؟` (U+061F), so a
+// check that knew only the ASCII mark would read "你想用哪个主题？" as a turn
+// that stopped and send it back to work while it waited on the person.
 //
 // THE TRAILING DECORATION COMES OFF FIRST, because a model that ends on a
 // question ends on `**…?**` and on `"…?"` about as often as it ends on the bare
@@ -4139,8 +4158,17 @@ type readerLine struct {
 // without explaining themselves.
 func endsAskingThePerson(said string) bool {
 	said = strings.TrimRight(strings.TrimSpace(said), "`*_\"'”’) \t\n")
-	return strings.HasSuffix(said, "?")
+	for _, mark := range questionMarks {
+		if strings.HasSuffix(said, mark) {
+			return true
+		}
+	}
+	return false
 }
+
+// questionMarks are the marks [endsAskingThePerson] reads as the end of a
+// question: ASCII, full-width (U+FF1F) and Arabic (U+061F).
+var questionMarks = []string{"?", "\uFF1F", "\u061F"}
 
 // turnIsWaitingOnItsOwnWork reports that this conversation started background
 // work that is still running at the moment the turn ended.
@@ -4159,6 +4187,26 @@ func endsAskingThePerson(said string) bool {
 // turn it was written for.
 func (a *Agent) turnIsWaitingOnItsOwnWork() bool {
 	return len(a.jobsWorkingNow()) > 0
+}
+
+// turnEndsWaiting reports that a turn ending now is waiting on something that
+// will start the next turn by itself: background work still running
+// ([Agent.turnIsWaitingOnItsOwnWork]), this request handed to a live task
+// ([Agent.turnHandedItsAskOff]), a task of this conversation still out
+// ([Agent.turnIsWaitingOnItsOwnTasks]), or a landing that came home settled
+// ([Agent.turnSettledItsAsk]).
+//
+// IT IS THOSE FOUR GATES AND NOT A FIFTH OPINION. [Agent.checkpointReopen]
+// asks them one by one below its price gate, journalling the task it waits
+// on; the update nudge sits ABOVE that gate, so it asks them here, together
+// and silently, and a turn that is waiting falls through to everything below
+// exactly as it did before the nudge existed.
+func (a *Agent) turnEndsWaiting() bool {
+	if a.turnIsWaitingOnItsOwnWork() || a.turnHandedItsAskOff() || a.turnSettledItsAsk() {
+		return true
+	}
+	_, waiting := a.turnIsWaitingOnItsOwnTasks()
+	return waiting
 }
 
 // checkpointCeiling ends the turn and moves what is left of it onto the one

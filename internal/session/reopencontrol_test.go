@@ -116,7 +116,7 @@ func TestReopenedConversationKeepsEveryContinuationOutOfTheExchange(t *testing.T
 // end a turn are not among them: a surface that leaves the first out keeps
 // every one of the second.
 func TestOnlyTheLinesThatSendATurnBackAreCarryOnNotices(t *testing.T) {
-	for _, line := range []string{checkpointCarryOnNote, checkpointLoadNudgeNote, checkpointAskNudgeNote, " " + checkpointCarryOnNote + "\n"} {
+	for _, line := range []string{checkpointCarryOnNote, checkpointLoadNudgeNote, checkpointAskNudgeNote, checkpointUpdateNudgeNote, " " + checkpointCarryOnNote + "\n"} {
 		if !IsCarryOnNotice(line) {
 			t.Errorf("%q is not read as a carry-on", line)
 		}

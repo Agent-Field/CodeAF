@@ -1374,14 +1374,14 @@ the tree; a green check can stand in for the reader, while a red one is carried 
 Having no configured reader is an absence, not a failed call, and never runs checks on its
 own — see *Leaving it running on its own* in *starting codeaf*.
 
-## A progress update is never where a reply stops — it said "next I write the slides" and stopped, the deck was left blank, it ended on an update
+## A progress update is not where a reply stops — it said "next I write the slides" and stopped, the deck was left blank, it ended on an update
 
 **codeaf puts an interim note to you — a result so far, a blocker, a decision — on screen
 between its steps,** and the model marks that note as an update rather than an answer. An
-update says more work is coming, so it is never where a reply ends.
+update says more work is coming, so a reply that stops on one is usually stopping short.
 
 **If the model sends an update and then calls no tool, the reply is sent back to do the
-work it announced.** This needs no second reader and happens on any reply, short or long,
+work it announced.** This needs no second reader and happens on any reply,
 typed or woken. The update stays on screen, one dim line follows it:
 
 ```
@@ -1391,12 +1391,20 @@ it sent a progress update and stopped · asking it to go on
 and the model continues in the same reply. It is told that, if the work really is
 finished, it should say so as a final answer instead.
 
-**It happens at most twice in one reply.** A model that answers each nudge with another
-promise has the reply end on its third, rather than spending a request on every sentence
-of it.
+**An update is sent back at most twice in one reply.** After the second, a further update
+is treated like any other reply in words: a reply to something you typed ends on it, and a
+reply woken by a job or task landing may still be read by the completion check above,
+which decides for itself whether to carry it on.
 
 **An update that ends by asking you something is left alone.** If it finishes with a
-question mark it is waiting on you, exactly as any other reply that asks you something.
+question mark — `?`, the full-width `？` of Chinese and Japanese, or the Arabic `؟` — it is
+waiting on you, as any reply that asks you something is.
+
+**An update that is waiting on work already out is left alone too.** "I've started the
+render and will report when it lands" is not sent back while a background command, watch
+or render it started is still running, while this request's work is with a task that is
+still going, or while a task of this conversation is still out: the ending wakes the
+conversation by itself (see the next section).
 
 Only a note the model marked as an update counts. An ordinary answer that happens to say
 what it might do next ends the reply as it always did, and the reader described above is
@@ -1404,7 +1412,8 @@ what decides whether that kind of reply is carried on.
 
 ## Waiting on something is not carried on — it kept polling while it waited, it turned my wait into a task, why does it say carry on, why does it say "carried on 3 times", why does it keep asking about a task that is still running
 
-**A reply that ends while something IT started is still running is never carried on.** A
+**A reply that ends while something IT started is still running is never carried on** —
+not by the completion check, and not for ending on a progress update either. A
 background command, a watch, a video or music render — while any of those is still going,
 the reply is waiting on it exactly the way a reply that ends on a question is waiting on
 you, and pushing it on would only make it poll.
