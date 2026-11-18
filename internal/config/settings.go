@@ -1437,6 +1437,11 @@ var OperatorEnvPins = []string{
 	"CODEAF_SYNC_URL",
 	"CODEAF_SYNC_INTERVAL_MS",
 	"CODEAF_MOVE_FILES_FIRST",
+	// CODEAF_LIVE_TRANSFER=off turns off moving a chat between this person's
+	// computers through the relay's pipe while sync storage is closed
+	// (internal/syncsetup). It is the owners' off switch while that road is
+	// new, not a preference, so it stays in the environment.
+	"CODEAF_LIVE_TRANSFER",
 }
 
 // Defaults the registry owns beyond the ones config.go already declares.

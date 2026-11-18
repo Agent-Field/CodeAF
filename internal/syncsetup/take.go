@@ -309,6 +309,11 @@ func (c *Continuer) RestartFiles(ctx context.Context, id string) (restarted bool
 }
 
 func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseExpectation, branchOnly bool) (out Continued, err error) {
+	// A computer that serves this chat's frames must be able to answer for them
+	// once it has taken the chat, and a take that cannot find a chat's frames
+	// says why in words when live transfer is the reason.
+	c.sync.ensureFilesDoor()
+	defer func() { err = c.sync.liveTransferRefusal(err) }()
 	// Measure one attempt on its own copy: observers must not leak into another
 	// continue, and diagnostics must survive both early refusal and late failure.
 	started := time.Now()
@@ -401,7 +406,7 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 			err = fmt.Errorf("%w: %w", ErrMoveStalled, err)
 		}
 	}()
-	sc := c.sync.scope(id)
+	sc := c.sync.chatScope(id)
 	settleSync := true
 	defer func() {
 		if settleSync {
@@ -545,7 +550,7 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	}
 	if hasSupplied && !explicitSupplied {
 		lease := supplied.Cell.Lease
-		eligible := supplied.Cell.Head != "" && !supplied.Cell.Archived && c.sync.StorageAllowed()
+		eligible := supplied.Cell.Head != "" && !supplied.Cell.Archived && !c.sync.ChatStorageOff()
 		if branchOnly {
 			eligible = eligible && supplied.Cell.ParentCell != ""
 		} else {
@@ -572,7 +577,7 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	if hasSupplied {
 		view = supplied
 	} else {
-		if keepRoot && (MoveFilesFirst() || branchOnly || !c.sync.StorageAllowed() || !c.eng.HasComposedCellDir(cell.Cell{ID: id, Root: root})) {
+		if keepRoot && (MoveFilesFirst() || branchOnly || c.sync.ChatStorageOff() || !c.eng.HasComposedCellDir(cell.Cell{ID: id, Root: root})) {
 			localCache.start(ctx, cell.Cell{ID: id, Root: root})
 		}
 		directoryRead := handoff.Trace(c.opt.OnPhase, "directory")
@@ -598,6 +603,9 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		return Continued{}, errors.New("these turns are no longer available to open separately")
 	}
 	lease := view.Cell.Lease
+	// A live store asks the computer that held the chat when this take read its
+	// record; once the take acquires it, the record names this computer instead.
+	sc.Holder(lease.Device)
 	if c.freeOnly && lease.Expires != 0 {
 		return Continued{}, directory.ErrLeaseHeld
 	}
@@ -661,7 +669,7 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		if err := c.restoreTakenIdentity(ctx, opened); err != nil {
 			return Continued{}, err
 		}
-		return Continued{AlreadyHere: true, LocalOnly: !c.sync.StorageAllowed(), Device: c.opt.DeviceName, Taken: handoff.Taken{
+		return Continued{AlreadyHere: true, LocalOnly: c.sync.ChatStorageOff(), Device: c.opt.DeviceName, Taken: handoff.Taken{
 			Cell: opened, Driving: cellsync.Driving{Cell: opened, Fence: lease.Fence, Head: view.Cell.Head, Frames: view.Cell.Frames, Size: view.Cell.Size},
 		}}, nil
 	}
@@ -701,7 +709,7 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		// the rest; the fast road leaves that lookup for after the chat is open.
 		resolveFrom()
 	}
-	storageOff := !c.sync.StorageAllowed()
+	storageOff := c.sync.ChatStorageOff()
 	// An own free chat can return without replacing its open local conversation.
 	keepOpen := storageOff && lease.Device == c.sync.Device.ID() && lease.Expires <= view.Now
 	filesFirst := (MoveFilesFirst() || branchOnly || view.Cell.ParentCell != "") && !restart

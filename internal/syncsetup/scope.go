@@ -1,6 +1,8 @@
 package syncsetup
 
 import (
+	"sync"
+
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/cellstats"
 	"github.com/Agent-Field/codeaf/internal/cellsync"
@@ -16,6 +18,11 @@ type Scope struct {
 	Store blobstore.Store
 	rec   *cellstats.Recorder
 	c     *blobstore.Counters
+	// release lets go of what the store holds open, the tunnels of a live store
+	// for one. It runs once, when the scope is settled for the last time.
+	release func()
+	once    sync.Once
+	hint    func(device string)
 }
 
 // scope is the one place the wire is wrapped: wire, then Counting, then
@@ -29,10 +36,34 @@ type Scope struct {
 // injector, and is counted the same way as the real client.
 func (s *Sync) scope(name string) *Scope {
 	c := &blobstore.Counters{}
-	return &Scope{
-		Store: blobstore.NewResuming(blobstore.Counting{Inner: s.Store, C: c}),
+	return s.scopeOver(name, blobstore.Counting{Inner: s.Store, C: c}, c)
+}
+
+// scopeOver is scope over a store the caller built, whose tally is c. The live
+// store counts only the requests that reach the relay, so the stats files still
+// add up to what the relay counted; what moves between two computers is not
+// the relay's.
+func (s *Sync) scopeOver(name string, store blobstore.Store, c *blobstore.Counters) *Scope {
+	sc := &Scope{
+		Store: blobstore.NewResuming(store),
 		rec:   cellstats.NewRecorder(s.Home, name, meter(c)),
 		c:     c,
+	}
+	if closer, ok := store.(interface{ Close() }); ok {
+		sc.release = closer.Close
+	}
+	if hinted, ok := store.(interface{ Hint(string) }); ok {
+		sc.hint = hinted.Hint
+	}
+	return sc
+}
+
+// Holder tells a scope which computer held its chat before a take acquired it,
+// for a store that has to ask that computer for the chat's objects. Any other
+// store ignores it.
+func (sc *Scope) Holder(device string) {
+	if sc != nil && sc.hint != nil && device != "" {
+		sc.hint(device)
 	}
 }
 
@@ -58,7 +89,12 @@ func (sc *Scope) Flushed(f cellsync.Flush) { sc.rec.OnFlush(f) }
 
 // Settle writes whatever the scope has counted that no flush carried. It is
 // safe to call at any point and writes nothing when there is nothing to write.
-func (sc *Scope) Settle() { sc.rec.Settle() }
+func (sc *Scope) Settle() {
+	sc.rec.Settle()
+	if sc.release != nil {
+		sc.once.Do(sc.release)
+	}
+}
 
 // meter reads a tally as the recorder's snapshot.
 func meter(c *blobstore.Counters) cellstats.Meter {

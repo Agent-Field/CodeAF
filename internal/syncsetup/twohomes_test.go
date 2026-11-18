@@ -47,9 +47,20 @@ type twoHomes struct {
 	link   string // the project path A's session record names; a link to A's folder, removed while B has the chat
 }
 
+// newTwoHomes is two computers in the world before live transfer: the storage-off
+// tests built on it pin what a chat does on a hosted relay when nothing may be
+// stored, and C8 says exactly that behaviour is what CODEAF_LIVE_TRANSFER=off
+// restores. A test of the new road builds its scene with newLiveRig instead.
 func newTwoHomes(t *testing.T, wrap ...func(http.Handler) http.Handler) *twoHomes {
 	t.Helper()
-	r := newDriveRig(t, wrap...)
+	t.Setenv(LiveTransferVar, "off")
+	return twoHomesOver(t, newDriveRig(t, wrap...))
+}
+
+// twoHomesOver is the rig's second half, for a test that must reach into the
+// drive rig first (to put a byte tap in front of its relay, say).
+func twoHomesOver(t *testing.T, r *driveRig) *twoHomes {
+	t.Helper()
 	h := &twoHomes{driveRig: r, rootsB: t.TempDir(), wall: &noticeLog{}}
 	h.block = &blocker{Store: r.a.Store}
 	r.a.Store = h.block

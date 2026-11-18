@@ -106,3 +106,36 @@ const SavedStorageOff = "saved here; sync storage is off for this account, so it
 
 // ErrContinueStorageOff preserves local turns when the recorded history is missing here.
 var ErrContinueStorageOff = errors.New("cannot continue this chat here while sync storage is off because this computer is missing saved turns; your local turns stay here")
+
+// ErrHolderOffline is a take that cannot finish because the computer that has
+// the chat is not running codeaf, so nothing can send its bytes. The chat is
+// safe on that computer; the person is told whose it is and what to do.
+var ErrHolderOffline = errors.New("the computer that has this chat is not on right now")
+
+// HolderOfflineError carries the name of the computer that has the chat.
+// errors.Is(err, ErrHolderOffline) holds for it, and errors.As recovers the name.
+type HolderOfflineError struct {
+	// Name is the person-facing name of the computer, "another computer" when
+	// the directory could not say.
+	Name string
+}
+
+func (e *HolderOfflineError) Error() string { return HolderOffline(e.Name) }
+
+// Is makes the typed error match [ErrHolderOffline] without wrapping anything
+// that a fetch would classify as a transient failure and retry.
+func (e *HolderOfflineError) Is(target error) bool { return target == ErrHolderOffline }
+
+// HolderOffline is the sentence for a chat whose holder is not running codeaf.
+// It is the one place the words live, so Home, the app and the manual agree.
+func HolderOffline(name string) string {
+	if name == "" {
+		name = "another computer"
+	}
+	return name + " has this chat and is not on right now; open codeaf there, then continue here"
+}
+
+// ErrLiveTransferOff is what continuing a chat says when the chat exists only on
+// the computer that shared it live and this computer has live transfer switched
+// off: the record is in the list, but the only road to its frames is shut here.
+var ErrLiveTransferOff = errors.New("this chat is only on the computer that shares it, and live transfer is switched off here; switch it back on (CODEAF_LIVE_TRANSFER) or turn on sync storage to continue it here")

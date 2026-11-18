@@ -48,6 +48,8 @@ func rememberOthers(home string, b deviceBinding, devices map[string]directory.D
 	case others && err != nil:
 		if os.MkdirAll(filepath.Dir(path), 0o700) == nil {
 			_ = os.WriteFile(path, nil, 0o600)
+			// A computer that just learned of another may now share live.
+			notifyLive(home)
 		}
 	case !others && err == nil:
 		_ = os.Remove(path)
