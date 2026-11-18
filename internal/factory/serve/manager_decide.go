@@ -100,6 +100,9 @@ func (h *Handler) managerDecide(w http.ResponseWriter, r *http.Request, it facto
 	}
 	if decision != factory.DecideHandToPerson {
 		_ = h.config.Store.Annotate(it.ID, func(cur *factory.Item) error {
+			// The door's write may have read as the person's move and wiped
+			// the count; the main agent's own decision keeps it.
+			factory.KeepManagerRounds(cur, held)
 			factory.NoteManagerDecision(cur, kind, stopped, decision, words, now)
 			// AN ANSWER GIVEN FOR THE PERSON IS NEVER INVISIBLE: the question
 			// the decision answered is kept as one the main agent answered.

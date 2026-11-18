@@ -377,8 +377,11 @@ func settleHandoff(before Item, it *Item, now time.Time) {
 		h = &cp
 		// THE PERSON'S MOVE WIPES THE COUNT. A job that waited on its person
 		// and now reads another wait was moved by them, or by the world; the
-		// main agent starts again with the step.
-		if prior := before.Wait; prior != nil && prior.Who == WaitYou && prior.key() != key {
+		// main agent starts again with the step. THE MAIN AGENT'S OWN MOVE
+		// NEVER DOES: a write that counts one of its rounds (a task it sent to
+		// a stop already with the person, [NoteManagerTask]) moved the job
+		// itself, and a count it wiped would let it go on for ever.
+		if prior := before.Wait; prior != nil && prior.Who == WaitYou && prior.key() != key && roundsCounted(it.Handoff) <= roundsCounted(before.Handoff) {
 			h.Rounds = nil
 		}
 		if h.Wait != "" && h.Wait != key {
@@ -397,6 +400,17 @@ func settleHandoff(before Item, it *Item, now time.Time) {
 		next.Rounds = h.Rounds
 	}
 	it.Handoff = &next
+}
+
+// roundsCounted is how many rounds the handoff counts, over every step.
+func roundsCounted(h *Handoff) int {
+	n := 0
+	if h != nil {
+		for _, r := range h.Rounds {
+			n += r
+		}
+	}
+	return n
 }
 
 // standingStop is the stop the stored job waits on its person or its main
@@ -485,6 +499,32 @@ func NoteManagerDecision(it *Item, kind, step, decision, why string, now time.Ti
 	if it.Stream != nil {
 		it.Stream.Log = append(it.Stream.Log, LogLine{At: now, Tone: "said", Text: ManagerDecisionLine(decision, why)})
 	}
+}
+
+// KeepManagerRounds puts back the count held, the job's handoff as it stood
+// before the main agent's decision was carried out. The door that carried it
+// out moved the job off its stop in a write of its own, which reads as the
+// person's move when the stop was already with them ([settleHandoff]); THE
+// MAIN AGENT'S OWN DECISION NEVER WIPES ITS COUNT, so the count it had is
+// kept, step by step, wherever that write left a smaller one. It is called
+// in the write that counts the decision ([NoteManagerDecision]).
+func KeepManagerRounds(it *Item, held *Handoff) {
+	if held == nil || len(held.Rounds) == 0 {
+		return
+	}
+	h := Handoff{}
+	if it.Handoff != nil {
+		h = *it.Handoff
+	}
+	rounds := maps.Clone(h.Rounds)
+	if rounds == nil {
+		rounds = map[string]int{}
+	}
+	for step, n := range held.Rounds {
+		rounds[step] = max(rounds[step], n)
+	}
+	h.Rounds = rounds
+	it.Handoff = &h
 }
 
 // ManagerStopStep is the step the stop the job is on is counted against.
