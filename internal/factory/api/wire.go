@@ -1111,6 +1111,9 @@ type PR struct {
 	BaseBranch string `json:"base_branch,omitempty"`
 	// Title is the pull request's title once a public act has edited it.
 	Title string `json:"title,omitempty"`
+	// Body is the pull request's description once a public act has edited
+	// it; a repair push leaves it as it is.
+	Body string `json:"body,omitempty"`
 	// Files is the pull request's own file list as the forge reports it, each
 	// path with its status (added, modified, removed, renamed, ...), at most
 	// [factory.PRFilesMost] of FilesTotal, read on the commit FilesHead. A

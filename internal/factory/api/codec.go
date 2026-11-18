@@ -793,7 +793,7 @@ func fromPR(pr *factory.PullRequest) *PR {
 			return PRReview{By: r.By, State: r.State, At: r.At, Body: r.Body, URL: r.URL, Association: r.Association, Untrusted: r.Untrusted}
 		}),
 		HeadSHA: pr.HeadSHA, HeadBranch: pr.HeadBranch, BaseBranch: pr.BaseBranch, Mergeable: pr.Mergeable, ChecksRead: pr.ChecksRead, ReviewsRead: pr.ReviewsRead,
-		Title: pr.Title,
+		Title: pr.Title, Body: pr.Body,
 	}
 	if !pr.MergedAt.IsZero() {
 		at := pr.MergedAt
@@ -824,7 +824,7 @@ func toPR(pr *PR) *factory.PullRequest {
 			return factory.PRReview{By: r.By, State: r.State, At: r.At, Body: r.Body, URL: r.URL, Association: r.Association, Untrusted: r.Untrusted}
 		}),
 		HeadSHA: pr.HeadSHA, HeadBranch: pr.HeadBranch, BaseBranch: pr.BaseBranch, Mergeable: pr.Mergeable, ChecksRead: pr.ChecksRead, ReviewsRead: pr.ReviewsRead,
-		Title: pr.Title,
+		Title: pr.Title, Body: pr.Body,
 	}
 	if pr.MergedAt != nil {
 		out.MergedAt = *pr.MergedAt
