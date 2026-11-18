@@ -177,6 +177,9 @@ type OrgWorkstream struct {
 	// server answers neither.
 	People []OrgMember         `json:"people,omitempty"`
 	Rules  *OrgWorkstreamRules `json:"rules,omitempty"`
+	// RuleSuggestion is Afi's suggestion to loosen the ask rule, for the
+	// steward, when more than ten Asks wait here.
+	RuleSuggestion *OrgRuleSuggestion `json:"rule_suggestion,omitempty"`
 }
 
 // OrgWorkstreams is factory.org_workstreams's answer: those visible to the

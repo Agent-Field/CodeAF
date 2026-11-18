@@ -420,7 +420,8 @@ func (d *agentDoor) wsTaskUpdate(ctx context.Context, args json.RawMessage) (any
 			Options []agentAskOption `json:"options"`
 			// Reversible is the agent's own word that the answer can be
 			// undone (session.WSAskReversibleRule).
-			Reversible bool `json:"reversible"`
+			Reversible bool   `json:"reversible"`
+			Kind       string `json:"kind"`
 		} `json:"ask"`
 		WaitingOn   *[]string `json:"waiting_on"`
 		Due         *string   `json:"due"`
@@ -434,6 +435,7 @@ func (d *agentDoor) wsTaskUpdate(ctx context.Context, args json.RawMessage) (any
 	if err := agentArgs(args, &a); err != nil {
 		return nil, err
 	}
+	decidedLine := ""
 	id := strings.TrimSpace(a.Task)
 	t, err := d.task(ctx, id)
 	if err != nil {
@@ -549,7 +551,24 @@ func (d *agentDoor) wsTaskUpdate(ctx context.Context, args json.RawMessage) (any
 			options = append(options, factory.TaskAskOption{ID: fmt.Sprintf("o%d", i+1), Label: label, Recommended: o.Recommended,
 				Decides: cutRunes(strings.TrimSpace(o.Decides), 300)})
 		}
-		p["ask"] = factory.TaskAsk{Title: title, Detail: cutRunes(strings.TrimSpace(a.Ask.Detail), 1000), Options: options, Reversible: a.Ask.Reversible}
+		ask := factory.TaskAsk{Title: title, Detail: cutRunes(strings.TrimSpace(a.Ask.Detail), 1000), Options: options, Kind: factory.AskKind(a.Ask.Kind), Reversible: a.Ask.Reversible}
+		// A KIND THE STEWARD LET GO IS NOT ASKED. The server decides it with
+		// the answer the agent recommended and lists it under Assumed, where
+		// Send back still overturns it (owner decisions §13).
+		decided := false
+		if ws, err := d.Workstream(ctx); err == nil {
+			if ex, ok := factory.ExceptionFor(ws.RulesOrDefault(), ask.Kind); ok {
+				asked := ask
+				asked.By = &factory.TaskEventBy{Kind: factory.TaskByAfi}
+				if line, ok := factory.ExceptionAssumed(asked, ex); ok {
+					a.Assumed = append(a.Assumed, line)
+					decidedLine, decided = line, true
+				}
+			}
+		}
+		if !decided {
+			p["ask"] = ask
+		}
 	}
 	if a.WaitingOn != nil {
 		if len(*a.WaitingOn) > 20 {
@@ -566,7 +585,7 @@ func (d *agentDoor) wsTaskUpdate(ctx context.Context, args json.RawMessage) (any
 		p["due"] = *a.Due
 	}
 	if len(a.Assumed) > 0 {
-		if len(a.Assumed) > 10 {
+		if len(a.Assumed) > 10+len(nonEmptyStrings(decidedLine)) {
 			return nil, errors.New("invalid arguments: at most 10 assumed lines at once")
 		}
 		lines := []string{}
@@ -605,7 +624,12 @@ func (d *agentDoor) wsTaskUpdate(ctx context.Context, args json.RawMessage) (any
 			return nil, err
 		}
 	}
-	return map[string]any{"said": fmt.Sprintf("Changed %q.", t.Title), "task": taskBrief(t)}, nil
+	said := fmt.Sprintf("Changed %q.", t.Title)
+	if decidedLine != "" {
+		said += " Your Ask was not raised: this workstream lets Afi decide that kind without asking, so it is listed under Assumed as " +
+			strconv.Quote(decidedLine) + ". Carry on with your recommended answer."
+	}
+	return map[string]any{"said": said, "task": taskBrief(t)}, nil
 }
 
 func (d *agentDoor) wsTaskComment(ctx context.Context, args json.RawMessage) (any, error) {
@@ -1175,4 +1199,15 @@ func (d *agentDoor) ReadPages(ctx context.Context, ids []string) {
 			d.usedByTask(ctx, f, ws)
 		}
 	}
+}
+
+// nonEmptyStrings is the strings of s that are not empty.
+func nonEmptyStrings(s ...string) []string {
+	var out []string
+	for _, x := range s {
+		if x != "" {
+			out = append(out, x)
+		}
+	}
+	return out
 }

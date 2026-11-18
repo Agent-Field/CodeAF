@@ -83,6 +83,11 @@ type DecisionFrom struct {
 	Replaces string `json:"replaces,omitempty"`
 	// Files are the files a move from My space brought in.
 	Files []string `json:"files,omitempty"`
+	// AskKind is the answered Ask's kind ([TaskAsk.Kind]), and Recommended
+	// whether the answer was the one Afi recommended: together they are the
+	// evidence a suggested exception cites ("Six of your last ten answers…").
+	AskKind     string `json:"ask_kind,omitempty"`
+	Recommended bool   `json:"recommended,omitempty"`
 }
 
 // The most a list of views, or of assumptions, holds, and the longest line.
@@ -149,7 +154,7 @@ func IsOwnAsk(t WorkstreamTask, id string) (TaskAsk, bool) {
 // MayAnswerAsk is whether a may answer the Ask id names on t: the task's own
 // Ask by MayAnswer's rule; any other by its decider alone, or the fallback
 // person once it is a day old.
-func MayAnswerAsk(t WorkstreamTask, id string, a TaskActor, fallback string, now time.Time) bool {
+func MayAnswerAsk(t WorkstreamTask, id string, a TaskActor, fallback Standin, now time.Time) bool {
 	ask, i, ok := findAsk(t, id)
 	if !ok || !a.Edit || t.State != TaskNeeds {
 		return false
@@ -160,8 +165,7 @@ func MayAnswerAsk(t WorkstreamTask, id string, a TaskActor, fallback string, now
 	if ask.Decider != nil && a.Handle != "" && NormalizeHandle(ask.Decider.ID) == a.Handle {
 		return true
 	}
-	at, err := time.Parse(time.RFC3339Nano, ask.AskedAt)
-	return fallback != "" && NormalizeHandle(fallback) == a.Handle && err == nil && now.Sub(at) >= TaskFallbackAfter
+	return fallback.ID != "" && NormalizeHandle(fallback.ID) == a.Handle && fallback.Covers(ask.AskedAt, now)
 }
 
 // AddView puts who's view on the Ask id names, replacing their earlier one;
@@ -236,7 +240,7 @@ func askerWords(t WorkstreamTask, ask TaskAsk) string {
 // to a running task is about the run, not the work, and keeping a decision
 // that a conflict already holds ("Keep the decision") would only repeat it.
 func answerDecision(t WorkstreamTask, ask TaskAsk, opt *TaskAskOption, words string, who PersonRef, id string, now time.Time) (WorkstreamDecision, bool) {
-	if strings.HasPrefix(ask.ID, FileChangedAskID) || IsCantDoAsk(ask) {
+	if strings.HasPrefix(ask.ID, FileChangedAskID) || IsCantDoAsk(ask) || IsInviteChaseAsk(ask) {
 		return WorkstreamDecision{}, false
 	}
 	text := ""
@@ -257,7 +261,8 @@ func answerDecision(t WorkstreamTask, ask TaskAsk, opt *TaskAskOption, words str
 	if opt != nil {
 		answer = strings.Join(nonEmpty(opt.Label, words), " · ")
 	}
-	from := &DecisionFrom{Question: ask.Title, Answer: answer, Kind: DecisionFromAsk, Task: t.ID, TaskTitle: t.Title, Ask: ask.ID, AskedBy: askerWords(t, ask)}
+	from := &DecisionFrom{Question: ask.Title, Answer: answer, Kind: DecisionFromAsk, Task: t.ID, TaskTitle: t.Title, Ask: ask.ID, AskedBy: askerWords(t, ask),
+		AskKind: ask.Kind, Recommended: opt != nil && opt.Recommended && strings.TrimSpace(words) == ""}
 	for _, v := range ask.Views {
 		from.Views = append(from.Views, v.By.Name)
 	}
@@ -379,10 +384,13 @@ func RuleDecisions(before, after WorkstreamRules, who PersonRef, names func(orde
 		}
 	}
 	switch b, a := before.Fallback, after.Fallback; {
-	case a != nil && (b == nil || b.ID != a.ID):
-		lines = append(lines, firstNonEmpty(a.Name, a.ID)+" answers what waits unanswered for a day")
+	case a != nil && (b == nil || b.ID != a.ID || before.FallbackAfterHours != after.FallbackAfterHours):
+		lines = append(lines, firstNonEmpty(a.Name, a.ID)+" answers what waits unanswered for "+FallbackAfterWords(after.FallbackAfterHours))
 	case a == nil && b != nil:
-		lines = append(lines, "Nobody answers for an Ask that waits a day")
+		lines = append(lines, "Nobody answers for an Ask that waits unanswered")
+	}
+	if before.AsksBefore != after.AsksBefore && !after.PublishesWithoutAsking {
+		lines = append(lines, AskRuleLine(after))
 	}
 	if before.StartWithoutAskingUSD != after.StartWithoutAskingUSD {
 		if after.StartWithoutAskingUSD <= 0 {
@@ -398,6 +406,7 @@ func RuleDecisions(before, after WorkstreamRules, who PersonRef, names func(orde
 			lines = append(lines, AsksBeforePublishingRule)
 		}
 	}
+	lines = append(lines, exceptionLines(before, after)...)
 	if before.KeepsRunning.Factory != after.KeepsRunning.Factory {
 		if after.KeepsRunning.Factory {
 			lines = append(lines, "The factory keeps running here")

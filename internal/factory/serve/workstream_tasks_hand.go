@@ -27,7 +27,9 @@ func handTasksOn(h *Handler, r *http.Request, wsIDs []string, removed []string, 
 	for _, p := range removed {
 		gone[factory.NormalizeHandle(p)] = true
 	}
-	by := factory.TaskEventBy{Kind: factory.TaskByPerson, ID: h.orgActor(r), Name: h.orgActor(r)}
+	names := h.personNames()
+	by := factory.TaskEventBy{Kind: factory.TaskByPerson, ID: h.orgActor(r), Name: names(h.orgActor(r))}
+	name := names(to)
 	now := h.clock()
 	for _, id := range wsIDs {
 		ws, ok, err := h.config.Store.Workstream(id)
@@ -41,7 +43,7 @@ func handTasksOn(h *Handler, r *http.Request, wsIDs []string, removed []string, 
 				return err
 			}
 			for _, t := range kept {
-				next, events, changed := factory.HandOn(t, gone, to, by, h.newTaskID("te_"), now)
+				next, events, changed := factory.HandOn(t, gone, to, name, by, h.newTaskID("te_"), now)
 				if !changed {
 					continue
 				}

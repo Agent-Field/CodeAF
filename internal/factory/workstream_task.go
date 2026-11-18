@@ -240,6 +240,15 @@ type TaskAsk struct {
 	// can be undone" group and its "Accept Afi's answer on all", and only its
 	// answer is kept in WorkstreamTask.Undoable, to be undone from the task.
 	Reversible bool `json:"reversible,omitempty"`
+	// Kind is what sort of question it is, in a few words the agent that
+	// raised it chose ("docs wording", "release date"). The ask rule's
+	// exceptions are named by it ([AskException]), and Afi suggests one when
+	// many waiting Asks share it. A person's Ask has none.
+	Kind string `json:"kind,omitempty"`
+	// CoveredBy is the workstream's fallback person once this Ask has waited
+	// past the rules' wait on its decider: they may answer it too, and it
+	// reaches their Inbox. FILLED AT READ TIME, never kept ([FillCoveredBy]).
+	CoveredBy *PersonRef `json:"covered_by,omitempty"`
 }
 
 // TaskAnswered is one answer given to a reversible Ask, kept on the task so
@@ -448,6 +457,10 @@ type WorkstreamTask struct {
 	Asks []TaskAsk `json:"asks,omitempty"`
 	// Assumed is what the agent decided without asking.
 	Assumed []TaskAssumed `json:"assumed,omitempty"`
+	// InviteChasedAt is when the owner was last asked to hand on this task
+	// because the person it waits on was invited and has not joined
+	// ([ChaseInvite]); the next ask is another [InviteChaseAfter] away.
+	InviteChasedAt string `json:"invite_chased_at,omitempty"`
 	// Checklist is the steps of this one deliverable (org-space DESIGN §5.2):
 	// lines inside the task, each ticked or not. A line is never a task of
 	// its own: it has no owner, page, due date or state beyond its tick.
@@ -636,26 +649,91 @@ func (a TaskActor) owns(t WorkstreamTask) bool {
 	return a.Edit && a.Handle != "" && NormalizeHandle(t.Owner.ID) == a.Handle
 }
 
+// Standin is who answers for a decider who has not answered: the workstream's
+// fallback person (ID, a handle; "" for none), and how long an Ask waits on
+// its decider before they may (After; zero is [TaskFallbackAfter]).
+type Standin struct {
+	ID    string
+	After time.Duration
+}
+
+// Wait is how long an Ask waits before s may answer it.
+func (s Standin) Wait() time.Duration {
+	if s.After <= 0 {
+		return TaskFallbackAfter
+	}
+	return s.After
+}
+
+// Covers is whether s may answer an Ask asked at askedAt, by now: there is a
+// stand-in and the Ask has waited past the wait.
+func (s Standin) Covers(askedAt string, now time.Time) bool {
+	if strings.TrimSpace(s.ID) == "" {
+		return false
+	}
+	at, err := time.Parse(time.RFC3339Nano, askedAt)
+	return err == nil && now.Sub(at) >= s.Wait()
+}
+
+// StandinFor is r's stand-in: its fallback person and the wait it set.
+func StandinFor(r WorkstreamRules) Standin {
+	s := Standin{After: time.Duration(r.FallbackAfterHours) * time.Hour}
+	if r.Fallback != nil {
+		s.ID = r.Fallback.ID
+	}
+	return s
+}
+
 // AskPastFallback is whether the task's Ask has waited long enough for the
-// fallback person to answer it too.
+// fallback person to answer it too, at the default wait.
 func AskPastFallback(t WorkstreamTask, now time.Time) bool {
 	if t.Ask == nil {
 		return false
 	}
-	at, err := time.Parse(time.RFC3339Nano, t.Ask.AskedAt)
-	return err == nil && now.Sub(at) >= TaskFallbackAfter
+	return Standin{ID: "-"}.Covers(t.Ask.AskedAt, now)
 }
 
 // MayAnswer is whether a may answer t's Ask: its owner (anyone who edits, for
-// Everyone), or the fallback person once the Ask is a day old.
-func MayAnswer(t WorkstreamTask, a TaskActor, fallback string, now time.Time) bool {
+// Everyone), or the stand-in once the Ask has waited past the rules' wait.
+func MayAnswer(t WorkstreamTask, a TaskActor, fallback Standin, now time.Time) bool {
 	if t.Ask == nil || t.State != TaskNeeds || !a.Edit {
 		return false
 	}
 	if a.owns(t) {
 		return true
 	}
-	return fallback != "" && NormalizeHandle(fallback) == a.Handle && AskPastFallback(t, now)
+	return fallback.ID != "" && NormalizeHandle(fallback.ID) == a.Handle && fallback.Covers(t.Ask.AskedAt, now)
+}
+
+// FillCoveredBy names, on every open Ask of tasks that has waited past the
+// wait, who answers for its decider: the stand-in, unless they are the
+// decider. At read time only, so a change of the rules moves every Ask at
+// once and nothing stale is ever kept.
+func FillCoveredBy(s Standin, name string, tasks []WorkstreamTask, now time.Time) {
+	for i := range tasks {
+		t := &tasks[i]
+		if t.State != TaskNeeds {
+			continue
+		}
+		cover := func(ask *TaskAsk) {
+			ask.CoveredBy = nil
+			if !s.Covers(ask.AskedAt, now) || NormalizeHandle(AskDecider(*t, *ask).ID) == NormalizeHandle(s.ID) {
+				return
+			}
+			ask.CoveredBy = &PersonRef{ID: NormalizeHandle(s.ID), Name: firstNonEmpty(name, s.ID)}
+		}
+		if t.Ask != nil {
+			a := *t.Ask
+			cover(&a)
+			t.Ask = &a
+		}
+		if len(t.Asks) > 0 {
+			t.Asks = slices.Clone(t.Asks)
+			for k := range t.Asks {
+				cover(&t.Asks[k])
+			}
+		}
+	}
 }
 
 // MayTick is whether a may tick (or untick) t: a person task, by its owner
@@ -1198,6 +1276,11 @@ func ApplyPatch(t WorkstreamTask, p TaskPatch, a TaskActor, by TaskEventBy, all 
 		if err := checkAsk(&ask, stamp); err != nil {
 			return TaskChange{}, err
 		}
+		if ask.By == nil && (t.Ask == nil || t.Ask.ID != ask.ID) {
+			b := by
+			ask.By = &b
+		}
+		ask.Kind = AskKind(ask.Kind)
 		t.Ask = &ask
 		if t.State != TaskDone {
 			t.State = TaskNeeds
@@ -1228,6 +1311,7 @@ func ApplyPatch(t WorkstreamTask, p TaskPatch, a TaskActor, by TaskEventBy, all 
 		if _, _, dup := findAsk(t, ask.ID); dup {
 			return TaskChange{}, TaskInvalid("this task already has that Ask")
 		}
+		ask.Kind = AskKind(ask.Kind)
 		if ask.By == nil {
 			b := by
 			ask.By = &b
@@ -1579,7 +1663,7 @@ func Released(id string, all []WorkstreamTask, by TaskEventBy, newID func() stri
 // decision (TaskChange.Decisions), made by whoever answered. The caller holds
 // a task that still waits on unfinished work in Up next (AnsweredWaiting),
 // with the workstream's tasks as they are at the write.
-func AnswerTask(t WorkstreamTask, askID, option, words string, a TaskActor, by TaskEventBy, fallback string, newID func() string, now time.Time) (TaskChange, error) {
+func AnswerTask(t WorkstreamTask, askID, option, words string, a TaskActor, by TaskEventBy, fallback Standin, newID func() string, now time.Time) (TaskChange, error) {
 	ask, i, ok := findAsk(t, askID)
 	if !ok || t.State != TaskNeeds {
 		return TaskChange{}, ErrTaskNoAsk
@@ -1634,6 +1718,9 @@ func AnswerTask(t WorkstreamTask, askID, option, words string, a TaskActor, by T
 		case CantDoDrop:
 			t.State, t.StoppedBy = TaskStopped, &who
 		}
+	}
+	if IsInviteChaseAsk(ask) {
+		t = answerInviteChase(t, option, who)
 	}
 	t.Rev, t.UpdatedAt = t.Rev+1, stamp
 	ch := TaskChange{Task: t, Events: []WorkstreamTaskEvent{{ID: newID(), Task: t.ID, At: stamp, By: by, Kind: TaskEventAnswered, Text: text, Option: option}}}
@@ -2150,25 +2237,26 @@ func firstLines(s string, most int) string {
 // the workstream (removed, by normalized handle): the rules' fallback, else
 // the steward. Done work keeps who did it; a task nobody left is unchanged
 // (false). The thread says "Handed to <to>", as a hand-off by hand does.
-func HandOn(t WorkstreamTask, removed map[string]bool, to string, by TaskEventBy, newID func() string, now time.Time) (WorkstreamTask, []WorkstreamTaskEvent, bool) {
+func HandOn(t WorkstreamTask, removed map[string]bool, to, name string, by TaskEventBy, newID func() string, now time.Time) (WorkstreamTask, []WorkstreamTaskEvent, bool) {
 	to = NormalizeHandle(to)
+	name = firstNonEmpty(name, to)
 	if t.State == TaskDone || to == "" || removed[to] {
 		return t, nil, false
 	}
 	changed := false
 	if t.Owner.Kind == TaskOwnerPerson && removed[NormalizeHandle(t.Owner.ID)] {
-		t.Owner, changed = TaskOwner{Kind: TaskOwnerPerson, ID: to, Name: to}, true
+		t.Owner, changed = TaskOwner{Kind: TaskOwnerPerson, ID: to, Name: name}, true
 		t.HandedBy = handedBy(t.Owner, by)
 	}
 	if t.DoneBy.Kind == TaskByPerson && removed[NormalizeHandle(t.DoneBy.ID)] {
-		t.DoneBy, changed = TaskDoneBy{Kind: TaskByPerson, ID: to, Name: to}, true
+		t.DoneBy, changed = TaskDoneBy{Kind: TaskByPerson, ID: to, Name: name}, true
 	}
 	if !changed {
 		return t, nil, false
 	}
 	stamp := now.UTC().Format(time.RFC3339Nano)
 	t.Rev, t.UpdatedAt = t.Rev+1, stamp
-	return t, []WorkstreamTaskEvent{{ID: newID(), Task: t.ID, At: stamp, By: by, Kind: TaskEventHanded, Text: "Handed to " + to}}, true
+	return t, []WorkstreamTaskEvent{{ID: newID(), Task: t.ID, At: stamp, By: by, Kind: TaskEventHanded, Text: "Handed to " + name}}, true
 }
 
 // TaskRequest is a request into a workstream: what is wanted, and the work
@@ -2407,6 +2495,11 @@ func RebindPerson(t WorkstreamTask, from, to, name string, now time.Time) (Works
 	}
 	if !changed {
 		return t, false
+	}
+	// THE PERSON ARRIVED, SO NOTHING IS LEFT TO HAND ON: a "Hand to someone
+	// else?" Ask still open closes, and the task goes back to what it was.
+	if InvitedPerson(from) && InviteHeld(t) == "" {
+		t = closeInviteChases(t)
 	}
 	t.Rev, t.UpdatedAt = t.Rev+1, now.UTC().Format(time.RFC3339Nano)
 	return t, true

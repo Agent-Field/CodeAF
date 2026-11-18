@@ -119,6 +119,11 @@ type Workstream struct {
 	// it runs, filled with the defaults when it never set any.
 	People []WorkstreamMember `json:"people"`
 	Rules  WorkstreamRules    `json:"rules"`
+	// RuleSuggestion is Afi's suggestion to loosen the ask rule, when more
+	// than ten Asks wait here and most share a kind; only the steward, who
+	// alone changes the rules, is shown it. Yes adds the exception through
+	// the rules; Not now adds the kind to rules.not_now.
+	RuleSuggestion *factory.RuleSuggestion `json:"rule_suggestion,omitempty"`
 }
 
 // The kinds a workstream member may be.

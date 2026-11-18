@@ -31,6 +31,16 @@ An invited person is already one of their workstreams' people, marked **invited*
 
 A task done by someone who has not joined **waits**. It is not failed, and nobody can start it for them: Start says "<name> has not joined yet; this waits until they do". When they join, every task they were given becomes theirs and can start.
 
+## invited but never joined — Hand to someone else? after 3 days
+
+If someone invited still has not joined 3 days after the invite, every open task waiting on them gets one Ask from Afi to its owner: **Hand to someone else?** ("Ana was invited three days ago and has not joined, so “Design the badge” has not started."). When the owner is the person who has not joined, whoever looks after the workstream is asked instead. The answers:
+
+- **Hand it to me** — the task becomes yours to do.
+- **Give it to Afi** — Afi does it (offered when the invited person was to do it).
+- **Keep waiting for Ana** — nothing changes; you are asked again in another 3 days.
+
+To give it to a colleague, use Hand to on the task. If they join while the Ask is open, it closes by itself and the task is theirs. A withdrawn or expired invite is asked about the same way.
+
 ## what a new teammate sees first — added you to, Got it, Handed to you
 
 After joining through the link and signing in, a person lands on their organization's page, not on a setup conversation. At the top: **<Name> added you to <organization>** and **You are in N workstreams and the <team>. Your Afi and your chats are private to you.** **Got it** puts it away for good.

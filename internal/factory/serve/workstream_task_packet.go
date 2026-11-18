@@ -253,13 +253,28 @@ func (h *Handler) taskPacket(ctx context.Context, d *agentDoor, task, words stri
 	// THE PREDICTION IS KEPT BY THE RUN. A plan said this task "asks first";
 	// the run is told the same rule, and which step it is, so the Ask comes
 	// where the owner was promised it (v2 J6, DELTA §4.1).
-	switch rules := ws.RulesOrDefault(); {
+	rules := ws.RulesOrDefault()
+	switch {
+	case t.AsksFirst == "starting":
+		out.WriteString("\n\nRule: " + factory.AskRuleLine(rules) + ". Before you start, raise an Ask to the owner (ws_task_update ask) with how you will do it as its recommended option, and stop until it is answered.")
 	case t.AsksFirst != "":
-		out.WriteString("\n\nRule: " + factory.AsksBeforePublishingRule + ". This task involves " + t.AsksFirst +
+		out.WriteString("\n\nRule: " + factory.AskRuleLine(rules) + ". This task involves " + t.AsksFirst +
 			": make it ready, then raise an Ask to the owner (ws_task_update ask, the step as its recommended option) and stop before you do it.")
 	case rules.PublishesWithoutAsking:
 		out.WriteString("\n\nRule: " + factory.PublishesWithoutAskingRule + " in this workstream.")
 	}
+	// THE EXCEPTIONS ARE SAID, AND ENFORCED. The run is told which kinds it
+	// decides itself, and every Ask names its kind, so an Ask of a kind the
+	// steward let go is decided by the server even when the run asks anyway.
+	if len(rules.Exceptions) > 0 {
+		kinds := make([]string, 0, len(rules.Exceptions))
+		for _, e := range rules.Exceptions {
+			kinds = append(kinds, e.Kind)
+		}
+		out.WriteString("\n\nDecided without asking here: " + strings.Join(kinds, "; ") +
+			". Decide questions of these kinds yourself and list each under assumed; do not raise an Ask for them.")
+	}
+	out.WriteString("\n\nEvery Ask you raise names its kind: a few words for what sort of question it is (\"docs wording\", \"release date\"), the same words for the same sort each time.")
 	out.WriteString(fmt.Sprintf("\n\nThis is everything the task needs, already read for you: the decisions above are the workstream's decisions, and the inputs' words are above. "+
 		"So do not call ws_decisions, ws_tasks, ws_files or ws_file_read before you write; read with them only something this does not cover. "+
 		"This task's id is %s; leave rev out when you update it. ", t.ID) +

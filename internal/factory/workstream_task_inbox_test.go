@@ -16,7 +16,7 @@ func TestAReversibleAnswerIsKeptAndUndoneFromItsTask(t *testing.T) {
 	task := asking(afiTask("t1", "marco"), taskNow)
 	task.Ask.Reversible = true
 	task.Ask.Options[0].Decides = "The notes go on the website"
-	ch, err := AnswerTask(task, "", "publish", "", marcoActs, byMarco, "", taskIDs(), taskNow)
+	ch, err := AnswerTask(task, "", "publish", "", marcoActs, byMarco, Standin{}, taskIDs(), taskNow)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func TestAReversibleAnswerIsKeptAndUndoneFromItsTask(t *testing.T) {
 
 func TestAnAskNotMarkedReversibleCannotBeUndone(t *testing.T) {
 	task := asking(afiTask("t1", "marco"), taskNow)
-	ch, err := AnswerTask(task, "", "publish", "", marcoActs, byMarco, "", taskIDs(), taskNow)
+	ch, err := AnswerTask(task, "", "publish", "", marcoActs, byMarco, Standin{}, taskIDs(), taskNow)
 	if err != nil || len(ch.Task.Undoable) != 0 {
 		t.Fatalf("an irreversible answer was kept to undo: %+v %v", ch.Task.Undoable, err)
 	}
@@ -59,7 +59,7 @@ func TestAnAskNotMarkedReversibleCannotBeUndone(t *testing.T) {
 func TestADoneTaskForgetsItsUndoableAnswers(t *testing.T) {
 	task := asking(afiTask("t1", "marco"), taskNow)
 	task.Ask.Reversible = true
-	ch, _ := AnswerTask(task, "", "publish", "", marcoActs, byMarco, "", taskIDs(), taskNow)
+	ch, _ := AnswerTask(task, "", "publish", "", marcoActs, byMarco, Standin{}, taskIDs(), taskNow)
 	done := TaskDone
 	fin, err := ApplyPatch(ch.Task, TaskPatch{State: &done}, TaskActor{Handle: "marco", Edit: true}, TaskEventBy{Kind: TaskByAfi, Name: "Afi"}, []WorkstreamTask{ch.Task}, taskIDs(), taskNow)
 	if err != nil {
@@ -82,7 +82,7 @@ func TestHandToSomeoneElseChangesOnlyTheDecider(t *testing.T) {
 	if ch.Task.Ask != nil || len(ch.Task.Asks) != 1 || ch.Task.Asks[0].Decider.ID != "lena" || ch.Task.Owner.ID != "marco" || ch.Task.State != TaskNeeds {
 		t.Fatalf("handed = %+v %+v", ch.Task.Ask, ch.Task.Asks)
 	}
-	if !MayAnswerAsk(ch.Task, "a1", TaskActor{Handle: "lena", Edit: true}, "", taskNow) || MayAnswerAsk(ch.Task, "a1", marcoActs, "", taskNow) {
+	if !MayAnswerAsk(ch.Task, "a1", TaskActor{Handle: "lena", Edit: true}, Standin{}, taskNow) || MayAnswerAsk(ch.Task, "a1", marcoActs, Standin{}, taskNow) {
 		t.Fatal("the new decider does not answer it alone")
 	}
 	if _, err := ApplyPatch(ch.Task, TaskPatch{AskHand: &TaskAskHand{Ask: "a1", To: PersonRef{ID: "lena"}}}, TaskActor{Handle: "lena", Edit: true}, byPriya, nil, taskIDs(), taskNow); err == nil {

@@ -41,6 +41,9 @@ type OrgRulesPerson struct {
 type OrgKeepsRunning struct {
 	Factory bool     `json:"factory"`
 	Orders  []string `json:"orders"`
+	// FactorySince is when the Factory switch was last turned on; the
+	// server stamps it and ignores what a writer sends.
+	FactorySince string `json:"factory_since,omitempty"`
 }
 
 // OrgWorkstreamRules are how a workstream runs. StartWithoutAskingUSD 0 is
@@ -50,6 +53,47 @@ type OrgWorkstreamRules struct {
 	Fallback              *OrgRulesPerson `json:"fallback,omitempty"`
 	StartWithoutAskingUSD float64         `json:"start_without_asking_usd"`
 	KeepsRunning          OrgKeepsRunning `json:"keeps_running"`
+	// PublishesWithoutAsking turns the ask rule off. AsksBefore is how much
+	// it stops while on: "" or "outward" (published, sent or paid for, the
+	// default), "shared_file", or "every_task". RULES ARE WRITTEN WHOLE, so a
+	// field this struct lacked was wiped by every save from the app.
+	PublishesWithoutAsking bool   `json:"publishes_without_asking,omitempty"`
+	AsksBefore             string `json:"asks_before,omitempty" enum:",outward,shared_file,every_task"`
+	// FallbackAfterHours is how long an Ask waits on its decider before
+	// Fallback answers it too: 0 or 24 is a day; 12, 48 and 72 are offered.
+	FallbackAfterHours int `json:"fallback_after_hours,omitempty"`
+	// Exceptions are the kinds of question Afi decides without asking here;
+	// NotNow the suggested kinds the steward turned down. Absent, the server
+	// keeps what it has; an empty list clears it.
+	Exceptions []OrgAskException `json:"exceptions,omitempty"`
+	NotNow     []OrgAskNotNow    `json:"not_now,omitempty"`
+}
+
+// OrgAskException is one kind of question Afi decides without asking in a
+// workstream; the server stamps who added it and when.
+type OrgAskException struct {
+	Kind    string          `json:"kind"`
+	AddedBy *OrgRulesPerson `json:"added_by,omitempty"`
+	AddedAt string          `json:"added_at,omitempty"`
+}
+
+// OrgAskNotNow is a suggested exception the steward turned down, and when
+// (the server stamps a missing time).
+type OrgAskNotNow struct {
+	Kind string `json:"kind"`
+	At   string `json:"at,omitempty"`
+}
+
+// OrgRuleSuggestion is Afi's suggestion to loosen the ask rule, shown to the
+// steward only: Title is the question, Why its evidence, Yes the button that
+// adds Kind to the rules' exceptions.
+type OrgRuleSuggestion struct {
+	Kind    string `json:"kind"`
+	Title   string `json:"title"`
+	Why     string `json:"why"`
+	Yes     string `json:"yes"`
+	Waiting int    `json:"waiting"`
+	OfKind  int    `json:"of_kind"`
 }
 
 // OrgMember is one person or team in a workstream, with the role access
@@ -62,6 +106,8 @@ type OrgMember struct {
 	Members []string `json:"members,omitempty"`
 	Steward bool     `json:"steward,omitempty"`
 	AddedAt string   `json:"added_at,omitempty"`
+	// Invited marks someone invited who has not joined yet.
+	Invited bool `json:"invited,omitempty"`
 }
 
 // OrgKeepCandidate is one page or source a child could leave in its parent.

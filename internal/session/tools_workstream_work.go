@@ -212,7 +212,8 @@ var workstreamWorkTools = []WorkstreamWorkTool{
 			`"results":{"type":"array","maxItems":20,"items":{"type":"object","properties":{"file":{"type":"string"},"url":{"type":"string"},"label":{"type":"string","maxLength":200}},"additionalProperties":false}},` +
 			`"ask":{"type":"object","properties":{"title":{"type":"string","minLength":1,"maxLength":200},"detail":{"type":"string","maxLength":1000},` +
 			`"options":{"type":"array","minItems":1,"maxItems":4,"items":{"type":"object","properties":{"label":{"type":"string","minLength":1,"maxLength":80},"recommended":{"type":"boolean"},"decides":{"type":"string","maxLength":300,"description":"The decision this answer records, as one plain statement: \"The March notes go on the website\"."}},"required":["label"],"additionalProperties":false}},` +
-			`"reversible":{"type":"boolean","description":"` + WSAskReversibleRule + `"}},` +
+			`"reversible":{"type":"boolean","description":"` + WSAskReversibleRule + `"},` +
+			`"kind":{"type":"string","maxLength":` + strconv.Itoa(factory.AskKindLongest) + `,"description":"What sort of question this is, in a few words, the same words for the same sort each time (\"docs wording\", \"release date\"). A kind the workstream lets you decide without asking is not raised: it is listed under assumed with your recommended answer."}},` +
 			`"required":["title","options"],"additionalProperties":false},` +
 			`"waiting_on":{"type":"array","items":{"type":"string"},"maxItems":20},` +
 			`"due":{"type":"string","pattern":"^([0-9]{4}-[0-9]{2}-[0-9]{2})?$"},` +

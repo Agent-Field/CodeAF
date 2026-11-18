@@ -301,6 +301,14 @@ func (h *Handler) workstreamBody(ws factory.OrgWorkstream, v Viewer) (api.Workst
 	if err != nil {
 		return api.Workstream{}, err
 	}
+	var suggestion *factory.RuleSuggestion
+	if steward := ws.StewardHandle(); steward != "" && factory.NormalizeHandle(v.Handle) == factory.NormalizeHandle(steward) {
+		tasks, err := h.config.Store.WorkstreamTasks(ws.ID)
+		if err != nil {
+			return api.Workstream{}, err
+		}
+		suggestion = factory.SuggestException(ws.RulesOrDefault(), tasks, ws.Decisions, h.clock())
+	}
 	nameOf := h.personNames()
 	summary := workstreamSummary(ws, c, v)
 	if summary.Steward != nil {
@@ -321,6 +329,7 @@ func (h *Handler) workstreamBody(ws factory.OrgWorkstream, v Viewer) (api.Workst
 		Driver:            h.workstreamDriver(ws.ID),
 		People:            h.workstreamPeople(ws, nameOf),
 		Rules:             rulesFor(ws, nameOf),
+		RuleSuggestion:    suggestion,
 	}, nil
 }
 

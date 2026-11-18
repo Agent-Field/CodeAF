@@ -22,10 +22,10 @@ func TestATaskWaitsOnEveryAskAndEachHasOneDecider(t *testing.T) {
 		t.Fatalf("want two open Asks and needs, got %d %s", len(OpenAsks(task)), task.State)
 	}
 	extra := task.Asks[0].ID
-	if _, err := AnswerTask(task, extra, "yes", "", TaskActor{Handle: "marco", Edit: true}, byMarco, "", taskIDs(), taskNow); err == nil {
+	if _, err := AnswerTask(task, extra, "yes", "", TaskActor{Handle: "marco", Edit: true}, byMarco, Standin{}, taskIDs(), taskNow); err == nil {
 		t.Fatal("the task's owner answered an Ask whose decider is Priya")
 	}
-	ch, err = AnswerTask(task, extra, "yes", "", TaskActor{Handle: "priya", Edit: true}, byPriya, "", taskIDs(), taskNow)
+	ch, err = AnswerTask(task, extra, "yes", "", TaskActor{Handle: "priya", Edit: true}, byPriya, Standin{}, taskIDs(), taskNow)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +38,7 @@ func TestATaskWaitsOnEveryAskAndEachHasOneDecider(t *testing.T) {
 	if from := ch.Decisions[0].From; from.Question != "Sign off the pricing page?" || from.Answer != "Sign off" {
 		t.Fatalf("question and answer = %+v", from)
 	}
-	ch, err = AnswerTask(ch.Task, "", "publish", "", TaskActor{Handle: "marco", Edit: true}, byMarco, "", taskIDs(), taskNow)
+	ch, err = AnswerTask(ch.Task, "", "publish", "", TaskActor{Handle: "marco", Edit: true}, byMarco, Standin{}, taskIDs(), taskNow)
 	if err != nil || ch.Task.State != TaskRunning {
 		t.Fatalf("the last answer did not let it run: %v %s", err, ch.Task.State)
 	}
@@ -62,7 +62,7 @@ func TestOthersAttachOneViewEachAndTheDeciderNone(t *testing.T) {
 	if _, err := AddView(got, "", "Yes", TaskActor{Handle: "marco", Edit: true}, PersonRef{ID: "marco"}, taskNow); !errors.Is(err, ErrTaskOwnAsk) {
 		t.Fatalf("the decider added a view: %v", err)
 	}
-	ch, _ := AnswerTask(got, "", "publish", "", TaskActor{Handle: "marco", Edit: true}, byMarco, "", taskIDs(), taskNow)
+	ch, _ := AnswerTask(got, "", "publish", "", TaskActor{Handle: "marco", Edit: true}, byMarco, Standin{}, taskIDs(), taskNow)
 	if f := ch.Decisions[0].From; len(f.Views) != 1 || f.Views[0] != "Lena" {
 		t.Errorf("the decision does not say whose view was attached: %+v", f)
 	}
@@ -106,7 +106,7 @@ func TestAConflictAsksTheDecisionsMaker(t *testing.T) {
 	if len(again.Task.Asks) != 1 {
 		t.Error("the same decision asked twice")
 	}
-	keep, err := AnswerTask(ch.Task, ch.Task.Asks[0].ID, ConflictKeep, "", TaskActor{Handle: "priya", Edit: true}, byPriya, "", taskIDs(), taskNow)
+	keep, err := AnswerTask(ch.Task, ch.Task.Asks[0].ID, ConflictKeep, "", TaskActor{Handle: "priya", Edit: true}, byPriya, Standin{}, taskIDs(), taskNow)
 	if err != nil || len(keep.Decisions) != 0 {
 		t.Fatalf("keeping the decision recorded %+v (%v)", keep.Decisions, err)
 	}

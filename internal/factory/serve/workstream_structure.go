@@ -202,8 +202,8 @@ func (h *Handler) peopleOf(ws factory.OrgWorkstream) map[string]bool {
 }
 
 // WorkstreamPeopleRemoved is told, after a save, who left a workstream (and
-// every workstream inside it) and who takes their open work: the rules'
-// fallback, else the steward. The task list sets it to hand their open
+// every workstream inside it) and who takes their open work: the person who
+// removed them, else the rules' fallback, else the steward. The task list sets it to hand their open
 // tasks on; nil hands nothing.
 var WorkstreamPeopleRemoved func(h *Handler, r *http.Request, ws []string, removed []string, to string)
 
@@ -223,9 +223,17 @@ func (h *Handler) peopleChanged(r *http.Request, before, after factory.OrgWorkst
 		return
 	}
 	sort.Strings(removed)
+	// REMOVING SOMEONE OFFERS THEIR TASKS TO THE REMOVER (build spec v2,
+	// screen 16): whoever took them out is the one who knows where their work
+	// goes next, and it arrives in their Inbox to hand on. A remover no longer
+	// in it (they took themselves out) leaves it to the fallback, else the
+	// steward, as before.
 	to := after.StewardHandle()
 	if rules := after.RulesOrDefault(); rules.Fallback != nil && rules.Fallback.ID != "" {
 		to = rules.Fallback.ID
+	}
+	if who := factory.NormalizeHandle(h.orgActor(r)); who != "" && has[who] {
+		to = who
 	}
 	ids := append([]string{after.ID}, factory.ChildrenOf(all, after.ID)...)
 	WorkstreamPeopleRemoved(h, r, ids, removed, to)
@@ -287,10 +295,11 @@ func patchStructure(all factory.OrgWorkstreams, cur *factory.OrgWorkstream, body
 	rulesChanged := false
 	if body.Rules != nil {
 		next := *body.Rules
+		before := cur.RulesOrDefault()
+		keepUnsentRules(before, &next, v.Handle, now)
 		if err := factory.CleanRules(&next); err != nil {
 			return false, workstreamInvalid(err.Error())
 		}
-		before := cur.RulesOrDefault()
 		factory.StampFactorySince(before, &next, now)
 		cur.Rules = &next
 		rulesChanged = !sameWorkstreamRules(before, next)
@@ -315,6 +324,41 @@ func patchStructure(all factory.OrgWorkstreams, cur *factory.OrgWorkstream, body
 	return rulesChanged, nil
 }
 
+// keepUnsentRules carries over what a rules write left unsaid. RULES ARE
+// WRITTEN WHOLE, so a writer that predates a field would otherwise wipe it: an
+// absent exceptions or not-now list keeps the kept one (an empty list clears
+// it), an empty ask rule or wait keeps the kept setting ("outward" and 24 say
+// the defaults on purpose). The server stamps who added each new exception and
+// when; what a writer says about that is replaced.
+func keepUnsentRules(before factory.WorkstreamRules, next *factory.WorkstreamRules, who string, now time.Time) {
+	if next.Exceptions == nil {
+		next.Exceptions = slices.Clone(before.Exceptions)
+	}
+	if next.NotNow == nil {
+		next.NotNow = slices.Clone(before.NotNow)
+	}
+	if next.AsksBefore == "" {
+		next.AsksBefore = before.AsksBefore
+	}
+	if next.FallbackAfterHours == 0 {
+		next.FallbackAfterHours = before.FallbackAfterHours
+	}
+	stamp := now.UTC().Format(time.RFC3339Nano)
+	for i, e := range next.Exceptions {
+		if kept, ok := factory.ExceptionFor(before, e.Kind); ok {
+			next.Exceptions[i].AddedBy, next.Exceptions[i].AddedAt = kept.AddedBy, kept.AddedAt
+			continue
+		}
+		next.Exceptions[i].AddedBy = &factory.PersonRef{ID: factory.NormalizeHandle(who)}
+		next.Exceptions[i].AddedAt = stamp
+	}
+	for i, n := range next.NotNow {
+		if _, err := time.Parse(time.RFC3339Nano, n.At); err != nil {
+			next.NotNow[i].At = stamp
+		}
+	}
+}
+
 func sameWorkstreamRules(a, b factory.WorkstreamRules) bool {
 	fa, fb := "", ""
 	if a.Fallback != nil {
@@ -325,7 +369,10 @@ func sameWorkstreamRules(a, b factory.WorkstreamRules) bool {
 	}
 	return a.DefaultOwner.Kind == b.DefaultOwner.Kind && a.DefaultOwner.ID == b.DefaultOwner.ID && fa == fb &&
 		a.StartWithoutAskingUSD == b.StartWithoutAskingUSD && a.KeepsRunning.Factory == b.KeepsRunning.Factory &&
-		slices.Equal(a.KeepsRunning.Orders, b.KeepsRunning.Orders) && a.PublishesWithoutAsking == b.PublishesWithoutAsking
+		slices.Equal(a.KeepsRunning.Orders, b.KeepsRunning.Orders) && a.PublishesWithoutAsking == b.PublishesWithoutAsking &&
+		a.AsksBefore == b.AsksBefore && a.FallbackAfterHours == b.FallbackAfterHours &&
+		slices.EqualFunc(a.Exceptions, b.Exceptions, func(x, y factory.AskException) bool { return x.Kind == y.Kind }) &&
+		slices.EqualFunc(a.NotNow, b.NotNow, func(x, y factory.AskNotNow) bool { return x.Kind == y.Kind && x.At == y.At })
 }
 
 // patchedStructure names the structure fields a patch sent, for the record.

@@ -1,7 +1,9 @@
 package factory
 
 import (
+	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -27,6 +29,42 @@ const AsksBeforePublishingRule = "Afi asks before publishing or sending"
 
 // PublishesWithoutAskingRule is the line when the steward turned it off.
 const PublishesWithoutAskingRule = "Afi publishes and sends without asking"
+
+// The rule lines of the two stricter settings (WorkstreamRules.AsksBefore).
+const (
+	AsksBeforeSharedFileRule = "Afi asks before anything that changes a shared file"
+	AsksBeforeEveryTaskRule  = "Afi asks before every task starts"
+)
+
+// AskRuleLine is r's ask rule in the one line every surface and decision
+// says.
+func AskRuleLine(r WorkstreamRules) string {
+	switch {
+	case r.PublishesWithoutAsking:
+		return PublishesWithoutAskingRule
+	case r.AsksBefore == AsksBeforeEveryTask:
+		return AsksBeforeEveryTaskRule
+	case r.AsksBefore == AsksBeforeSharedFile:
+		return AsksBeforeSharedFileRule
+	}
+	return AsksBeforePublishingRule
+}
+
+// FallbackAfterWords is a wait of hours as the rule reads it: "a day",
+// "12 hours", "2 days". Zero is the default day.
+func FallbackAfterWords(hours int) string {
+	switch {
+	case hours <= 0 || hours == 24:
+		return "a day"
+	case hours%24 == 0:
+		return fmt.Sprintf("%d days", hours/24)
+	}
+	return fmt.Sprintf("%d hours", hours)
+}
+
+// changesShared is a step that changes something already there, which the
+// shared-file setting stops for.
+var changesShared = regexp.MustCompile(`(?i)\b(edit|edits|editing|update|updates|updating|change|changes|changing|rewrite|rewrites|rewriting|revise|revises|revising|replace|replaces|delete|deletes|deleting|remove|removes|rename|renames|restructure)\b`)
 
 // outward is each kind of step that leaves the workstream, with the words a
 // task uses for it, in the order they are tried. A noun that only looks like
@@ -68,7 +106,17 @@ func AsksFirst(t WorkstreamTask, r WorkstreamRules) string {
 	// what it makes, and "ready to post to #announcements" is the next task's
 	// step, not this one's (live L7 run: the Discord draft was predicted to
 	// ask). A step written as someone else's is read out the same way.
-	for _, o := range outward {
+	if r.AsksBefore == AsksBeforeEveryTask {
+		return "starting"
+	}
+	steps := outward
+	if r.AsksBefore == AsksBeforeSharedFile {
+		steps = append(slices.Clone(outward), struct {
+			act string
+			re  *regexp.Regexp
+		}{"changing a shared file", changesShared})
+	}
+	for _, o := range steps {
 		for _, s := range []string{t.Title, t.Request} {
 			for _, sentence := range splitSentences(s) {
 				if o.re.MatchString(laterStep.ReplaceAllString(sentence, " ")) {

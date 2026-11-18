@@ -12,7 +12,7 @@ Only the person who looks after the workstream (its steward — the person who m
 
 ## removing a person from a workstream — what happens to someone's open tasks when I remove them from a workstream
 
-Removing a person (or a team they were in through) hands their open tasks in that workstream, and in every workstream inside it, to the fallback person ("If unanswered for a day"). With no fallback set, they go to the person who looks after the workstream.
+Removing a person (or a team they were in through) offers their open tasks in that workstream, and in every workstream inside it, to you, the person who removed them: each becomes yours, its thread says "Handed to <you>", and you can hand it on from there. Finished work keeps who did it. Someone who takes themselves out leaves their tasks to the fallback person, or with none set, to the person who looks after the workstream.
 
 ## the amber dot and number on the Work list — how many things are waiting on me in each workstream
 
@@ -22,7 +22,13 @@ Nothing waiting draws nothing: no dot, no "0". Amber means only "waiting on you"
 
 ## owner of incoming work, and the fallback person — who is asked
 
-"Owner of incoming work" owns tasks nobody asked for directly, such as ones the Factory creates: a named person. Everyone is no longer offered there, because a task has one owner; a workstream that already has Everyone keeps it until someone picks a person (then the first person to answer decides, and the task records who answered). It starts as the person who made the workstream. "If unanswered for a day" names a person who is also asked when a task's question has waited a day, and who takes the open tasks of anyone removed.
+"Owner of incoming work" owns tasks nobody asked for directly, such as ones the Factory creates: a named person. Everyone is no longer offered there, because a task has one owner; a workstream that already has Everyone keeps it until someone picks a person (then the first person to answer decides, and the task records who answered). It starts as the person who made the workstream. The fallback person is also asked when a task's question waits unanswered (see "who answers when the decider is away"), and takes the open tasks of anyone who leaves by themselves.
+
+## who answers when the decider is away — on holiday, out sick, not answering, a stand-in, cover for someone
+
+Every Ask has exactly one decider. If they do not answer, the workstream's fallback person answers for them: People and rules says it as "Santosh answers what waits unanswered for 1 day". The wait is half a day, 1 day (the default), 2 days or 3 days; only the person who looks after the workstream changes it, and the change is kept in Decisions ("Santosh answers what waits unanswered for 12 hours").
+
+Once an Ask has waited that long it reaches the fallback person's Inbox under Waiting on you as well as the decider's, and either may answer; the first answer decides, and the decision records who gave it. Before the wait is up only the decider can answer. With no fallback person set, an Ask simply waits for its decider. There is no "away" switch: the wait is the same whether the decider is on holiday or just busy.
 
 ## start without asking — how much an agent may spend before it must ask
 
@@ -37,6 +43,28 @@ Every workstream has the rule "Afi asks before publishing or sending", on unless
 Which tasks will ask is known before anything runs: a task done by an agent whose title or request says it posts, publishes, sends, replies or pays "asks first" (for example "Post the notes to Discord" or "Reply to the three GitHub issues"), and its run is told to stop for you at that step. Writing a draft, an email's text or a blog post does not ask; sending or posting it does. A task you or a colleague do, or the Factory does (it keeps its own approvals), never asks first. Ask Afi "which of these will ask me first?" and it answers from the plan.
 
 Turning the rule off reads "Afi publishes and sends without asking", and either change is kept in Decisions. Off, nothing asks first, though a task that goes against a decision still asks.
+
+## when Afi and chats ask first — published, sent or paid for; a shared file; every task
+
+The ask rule has three settings, chosen in People and rules by the person who looks after the workstream:
+
+- **Before anything is published, sent or paid for** (the default). Everything else is done and listed under Assumed.
+- **Before anything that changes a shared file.** Also asks before a task edits, updates, rewrites, renames or deletes something already in the workstream.
+- **Before every task starts.** Each agent task first asks its owner, with how it means to do the work as the recommended answer.
+
+The rule line reads "Afi asks before publishing or sending", "Afi asks before anything that changes a shared file" or "Afi asks before every task starts", and each change is kept in Decisions. Whatever the setting, a task that goes against a decision still asks.
+
+## Afi decides without asking — exceptions to the ask rule, fewer Asks, stop asking me about
+
+The way to fewer Asks is a looser rule, not a longer Inbox. Every Ask an agent raises carries a kind, a few words for what sort of question it is ("docs wording", "release date"). People and rules lists, under **Afi decides without asking**, each kind the workstream has let go.
+
+When an agent would ask a kind on that list, it does not ask: it goes ahead with the answer it would have recommended, and the task lists it under Assumed, as "Keep this wording? · Keep Afi's wording (Afi decides docs wording here without asking)". Send back still overturns it. An Ask with no recommended answer is still asked, a person's Ask is never decided for them, and the questions codeaf puts itself (a task that cannot be done, a changed file, a decision conflict, an invite nobody accepted) are never let go. Removing a kind from the list makes Afi ask about it again; both are kept in Decisions.
+
+## Afi suggests loosening the rule — too many Asks waiting, Let Afi decide … here?, Yes, Not now
+
+When more than 10 Asks are waiting in one workstream and at least 3 of them share a kind, People and rules shows the person who looks after it a suggestion from Afi: "Let Afi decide docs wording here?", with its evidence ("Six of your last ten answers about docs wording took Afi's recommendation unchanged.") and two buttons.
+
+**Yes, stop asking about docs wording** adds the kind to "Afi decides without asking". **Not now** hides that suggestion for 7 days. Afi never suggests a kind you mostly answered differently from its recommendation, and never changes the rule by itself. Nobody else in the workstream sees the suggestion.
 
 ## the Factory switch and standing orders in a workstream — what works here without anyone asking
 

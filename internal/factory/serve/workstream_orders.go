@@ -270,6 +270,9 @@ func (h *Handler) closeOrders() {
 	if h.ordersTimer != nil {
 		h.ordersTimer.Stop()
 	}
+	if h.chaseTimer != nil {
+		h.chaseTimer.Stop()
+	}
 }
 
 // runDueOrders makes one run of every order due at now. On a server that

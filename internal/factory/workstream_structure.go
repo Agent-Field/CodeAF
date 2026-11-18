@@ -85,6 +85,24 @@ type WorkstreamRules struct {
 	// default, "Afi asks before publishing or sending" (workstream_asks_first.go),
 	// so every workstream kept before the rule existed asks too.
 	PublishesWithoutAsking bool `json:"publishes_without_asking,omitempty"`
+	// AsksBefore is how much the ask rule stops, when it is on: "" asks
+	// before anything is published, sent or paid for (AsksBeforeOutward, the
+	// default every kept workstream reads as), AsksBeforeSharedFile also
+	// before anything that changes a shared file, AsksBeforeEveryTask before
+	// every task starts (People and rules, screen 16).
+	AsksBefore string `json:"asks_before,omitempty" jsonschema:"enum=,enum=outward,enum=shared_file,enum=every_task"`
+	// FallbackAfterHours is how long an Ask waits on its decider before
+	// Fallback may answer it too ("Santosh answers what waits unanswered for
+	// 1 day"). ZERO IS THE DEFAULT DAY ([TaskFallbackAfter]); a value is one
+	// of [FallbackAfterChoices].
+	FallbackAfterHours int `json:"fallback_after_hours,omitempty"`
+	// Exceptions are the named kinds of question Afi decides without asking
+	// here, each listed under Assumed on its task instead of raised as an Ask
+	// (workstream_ask_exceptions.go). They loosen the rule; nothing else may.
+	Exceptions []AskException `json:"exceptions,omitempty"`
+	// NotNow is each suggested exception the steward turned down, and when,
+	// so Afi does not suggest it again for [SuggestionRestFor].
+	NotNow []AskNotNow `json:"not_now,omitempty"`
 }
 
 // StampFactorySince sets next's [KeepsRunning.FactorySince] from before: kept
@@ -205,6 +223,7 @@ func (w OrgWorkstream) RulesOrDefault() WorkstreamRules {
 			f := *r.Fallback
 			r.Fallback = &f
 		}
+		r.Exceptions, r.NotNow = slices.Clone(r.Exceptions), slices.Clone(r.NotNow)
 		return r
 	}
 	return DefaultRules(w.StewardHandle())
@@ -262,7 +281,20 @@ func CleanRules(r *WorkstreamRules) error {
 		return fmt.Errorf("a workstream keeps at most %d standing orders running", RulesOrdersMost)
 	}
 	r.KeepsRunning.Orders = orders
-	return nil
+	switch r.AsksBefore {
+	case "", AsksBeforeOutward:
+		r.AsksBefore = ""
+	case AsksBeforeSharedFile, AsksBeforeEveryTask:
+	default:
+		return errors.New(`the ask rule is "outward", "shared_file" or "every_task"`)
+	}
+	if r.FallbackAfterHours == int(TaskFallbackAfter/time.Hour) {
+		r.FallbackAfterHours = 0
+	}
+	if r.FallbackAfterHours != 0 && !slices.Contains(FallbackAfterChoices, r.FallbackAfterHours) {
+		return fmt.Errorf("the wait before the fallback answers is one of %v hours", FallbackAfterChoices)
+	}
+	return cleanExceptions(r)
 }
 
 // ChildrenOf is the ids of the workstreams inside id, archived ones included,
