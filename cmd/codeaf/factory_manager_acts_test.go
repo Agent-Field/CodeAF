@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
@@ -387,6 +388,43 @@ func TestTheManagersBriefSaysWhatItMayDoAndWhatGoesPublic(t *testing.T) {
 	for _, name := range []string{"factory_act", "factory_task", "factory_answer"} {
 		if v3BuiltinApprovals()[name] != "allow" {
 			t.Errorf("a turn nobody is at the keyboard of would stop to ask before %s", name)
+		}
+	}
+}
+
+// THE PERSON'S YES IS FOR WHAT THEY HAVE READ. Outside Auto the manager may
+// not approve, on the person's words, acts it proposed after those words were
+// said: it would be proposing a reply and approving it in one breath.
+func TestTheManagerMayNotApproveActsItProposedInTheSameTurn(t *testing.T) {
+	st, web, _ := talkLab(t)
+	sent := fakePress(t, nil)
+	door, ok := runDoor(st, web, "").(session.ManagerPresser)
+	if !ok {
+		t.Fatal("the floor's run door cannot press")
+	}
+	began := time.Now()
+	for _, c := range []struct {
+		name     string
+		mode     string
+		proposed time.Time
+		pressed  bool
+	}{
+		{"Manual, proposed in this turn", factory.AutonomyManual, began.Add(time.Second), false},
+		{"Manual, proposed before the person spoke", factory.AutonomyManual, began.Add(-time.Minute), true},
+		{"Auto, proposed in this turn", factory.AutonomyAuto, began.Add(time.Second), true},
+	} {
+		id, talk := managedJob(t, st, func(it *factory.Item) {
+			hasDraftPullRequest(it)
+			it.Autonomy = c.mode
+			it.Acts = []factory.PublicAct{{ID: "a1", Kind: factory.ActKindComment, Text: "Rebased on dev.", By: factory.ActByMainAgent, State: factory.ActProposed, At: c.proposed}}
+		})
+		*sent = nil
+		_, err := door.Press(context.Background(), talk, session.ManagerPress{Action: session.ActionApproveActs, Said: "yes, post it", TurnAt: began})
+		switch {
+		case c.pressed && (err != nil || len(*sent) != 1 || (*sent)[0].verb != "acts_approve" || (*sent)[0].job != id):
+			t.Errorf("%s: %v, sent %+v; want acts_approve pressed", c.name, err, *sent)
+		case !c.pressed && (err == nil || err.Error() != managerSameTurnRefusal || len(*sent) != 0):
+			t.Errorf("%s: %v, sent %+v; want the same-turn refusal and nothing sent", c.name, err, *sent)
 		}
 	}
 }

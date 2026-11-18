@@ -104,6 +104,10 @@ func (d seamRunDoor) Press(ctx context.Context, conversation string, p session.M
 // on a turn the person spoke in; outside Auto so are approving publication,
 // marking the pull request ready and approving proposed acts. Everything else
 // is the manager's in both modes.
+// managerSameTurnRefusal is the manager approving, outside Auto, acts it
+// proposed in the same turn.
+const managerSameTurnRefusal = "Nothing changed: you proposed these in this same turn, so the person has not read them yet. Show them exactly what will be posted or changed, and approve when they answer."
+
 func managerMayPress(it factory.Item, p session.ManagerPress) error {
 	said := strings.TrimSpace(p.Said) != ""
 	switch p.Action {
@@ -116,7 +120,21 @@ func managerMayPress(it factory.Item, p session.ManagerPress) error {
 	case session.ActionMarkReady:
 		return factory.ManagerMay(it, factory.ManagerMarkReady, said)
 	case session.ActionApproveActs:
-		return factory.ManagerMay(it, factory.ManagerApproveActs, said)
+		if err := factory.ManagerMay(it, factory.ManagerApproveActs, said); err != nil {
+			return err
+		}
+		// THE PERSON'S YES IS FOR WHAT THEY HAVE READ. Outside Auto, acts the
+		// manager proposed in this same turn have not been shown to them yet:
+		// their words opened the turn before the acts existed. Without this
+		// the manager could propose a reply and approve it in one breath.
+		if !factory.Automatic(it) && !p.TurnAt.IsZero() {
+			for _, act := range factory.ProposedActs(it) {
+				if !act.At.Before(p.TurnAt) {
+					return errors.New(managerSameTurnRefusal)
+				}
+			}
+		}
+		return nil
 	}
 	return nil
 }

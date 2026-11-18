@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 )
@@ -44,6 +45,9 @@ type ManagerPress struct {
 	// Said is the person's own latest words in the running turn, "" when the
 	// turn holds none. The door reads authority from it.
 	Said string
+	// TurnAt is when the running turn began. The door uses it to tell acts the
+	// person has had a chance to read from acts proposed in this same turn.
+	TurnAt time.Time
 	// Acts are [ActionAct]'s public acts.
 	Acts []PublicAct
 	// Now is [ActionTask]'s: interrupt the round in progress.
@@ -142,12 +146,20 @@ func pressFailure(detail string) string {
 
 // press hands p to the door of the turn in flight, with the person's own
 // words of the turn.
+// managerTurnAt is when the running turn began.
+func (a *Agent) managerTurnAt() time.Time {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.teamTurnAt
+}
+
 func (a *Agent) press(ctx context.Context, p ManagerPress) (string, bool) {
 	d, ok := a.runDoorForTurn().(ManagerPresser)
 	if !ok || d == nil {
 		return managerTurnOnly, true
 	}
 	p.Said = a.turnPersonWords()
+	p.TurnAt = a.managerTurnAt()
 	line, err := d.Press(ctx, a.config.SessionFile, p)
 	if err != nil {
 		return pressFailure(err.Error()), true
