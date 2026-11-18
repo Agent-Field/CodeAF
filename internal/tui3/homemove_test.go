@@ -10,6 +10,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	machine "github.com/Agent-Field/codeaf/internal/preflight"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 )
 
 // The continue's line says what it is doing and how much has come through.
@@ -106,6 +107,33 @@ func TestAStalledContinueSaysWhy(t *testing.T) {
 	got := a.continueFailure(homeTakenMsg{row: continueRows[0], err: fmt.Errorf("%w: handoff: fetch", ErrMoveStalled)})
 	if !strings.Contains(got, "stopped: nothing came through for 2 minutes; the chat is still on host-a") {
 		t.Fatalf("a stalled continue says %q", got)
+	}
+}
+
+// A chat whose computer is not running codeaf cannot be copied from it. The
+// failure names that computer and says the words typed here are kept (C5).
+func TestContinueNamesTheComputerThatIsNotOn(t *testing.T) {
+	a := continueHome(t, &fakeTaker{}, continueRows, 200)
+	for _, err := range []error{
+		fmt.Errorf("cellsync: fetch object x: %w", &syncwords.HolderOfflineError{Name: "tower"}),
+		fmt.Errorf("handoff: %w", syncwords.ErrHolderOffline),
+	} {
+		row := continueRows[0]
+		row.Device = "tower"
+		got := a.continueFailure(homeTakenMsg{row: row, err: err})
+		if !strings.Contains(got, "tower has this chat and is not on right now; open codeaf there, then continue here") || !strings.Contains(got, "your words are still in the box") {
+			t.Fatalf("a continue whose computer is off says %q", got)
+		}
+	}
+}
+
+// A computer with live transfer switched off says why a chat only a live
+// computer holds cannot be copied, and how to fix it.
+func TestContinueSaysLiveTransferIsOff(t *testing.T) {
+	a := continueHome(t, &fakeTaker{}, continueRows, 200)
+	got := a.continueFailure(homeTakenMsg{row: continueRows[0], err: fmt.Errorf("cellsync: fetch object x: %w", syncwords.ErrLiveTransferOff)})
+	if !strings.Contains(got, "live transfer is switched off here") || !strings.Contains(got, "CODEAF_LIVE_TRANSFER") {
+		t.Fatalf("a continue with live transfer off says %q", got)
 	}
 }
 

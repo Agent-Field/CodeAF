@@ -508,6 +508,17 @@ func (a *app) continueFailure(msg homeTakenMsg) string {
 	switch {
 	case errors.Is(msg.err, syncwords.ErrContinueStorageOff):
 		return syncwords.ErrContinueStorageOff.Error()
+	case errors.Is(msg.err, syncwords.ErrHolderOffline):
+		// The computer that has the chat is not running codeaf, so there is
+		// nothing to copy from. Name it, and say where the words went.
+		name := msg.row.Device
+		var off *syncwords.HolderOfflineError
+		if errors.As(msg.err, &off) && off.Name != "" {
+			name = off.Name
+		}
+		return syncwords.HolderOffline(name) + "; your words are still in the box"
+	case errors.Is(msg.err, syncwords.ErrLiveTransferOff):
+		return syncwords.ErrLiveTransferOff.Error()
 	case errors.Is(msg.err, directory.ErrLeaseHeld):
 		return lostRaceWord
 	case errors.Is(msg.err, ErrMoveStalled):

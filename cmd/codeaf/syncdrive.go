@@ -191,7 +191,7 @@ func startLiveDrive(c cell.Cell, engine cellstore.Engine, report func(error), no
 	if syncsetup.Quiet(home.Dir()) {
 		return nil, syncsetup.ErrQuiet // a fleet of one has nothing to sync with yet
 	}
-	if !s.StorageAllowed() {
+	if s.ChatStorageOff() {
 		return nil, wireauth.ErrStorageOff
 	}
 	var viewer func(syncsetup.Viewer)
