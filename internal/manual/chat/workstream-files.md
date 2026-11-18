@@ -18,7 +18,7 @@ Files is the workstream's own library. The app's **Library** is a separate shelf
 
 At the top of Files, **Changed lately** shows the three most recently changed live files, as rows with one grey preview line read from documents and text uploads, who changed each one, and when. A non-text file or an unreadable file has no text preview. A preview opens the file.
 
-**All files** keeps the ordinary folders-first table below it, with Name, Kind, Changed by and When. A Library shortcut's Kind reads "Shortcut to the Library". When shows a time for today and a day otherwise. The count includes the Decisions row when it is shown. New and Upload remain available above the list. Search and stepping into a folder show that list rather than the recent shelf.
+**All files** keeps the ordinary folders-first table below it, with Name, Kind, Changed by and When. A Library shortcut's Kind reads "Shortcut to the Library". When shows a time for today and a day otherwise. The count matches the Files tab: actual files, including folded and inherited files, without adding folders or the Decisions row. New and Upload remain available above the list. Search and stepping into a folder show that list rather than the recent shelf.
 
 ## keep a decision — where is Keep, Afi said press keep, decisions are written down by themselves
 
