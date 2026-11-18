@@ -12,6 +12,10 @@ The task now waits on that Ask. The card says "You asked Marco" to you, "Priya a
 
 Limits, in the server's words: someone outside the workstream is refused ("Lena is not in this workstream, so they cannot answer its Asks; ask someone who is"); you cannot ask yourself ("an Ask goes to someone else; you decide your own questions"); and a done task takes no Ask ("this task is done, so nothing waits on an answer; comment and @ them instead"). Ask someone is on an organization's workstreams; Personal has nobody else to ask.
 
+## answer Afi's question in your own words — Reply… on an agent's Ask
+
+An Ask from Afi (or another agent) on a task page offers its choices, then **Tell it…**, **Reply…** and **Later**. **Reply…** opens one field under the card, labelled "Reply to Afi · Return sends it": what you type answers the Ask itself, the same as picking a choice. The Ask closes, your words are kept in Decisions as `Asked “<question>”, answered: <your words>`, and the task carries on with them. Use it when no choice fits, or to paste what the agent asked for (the release notes it could not find). **Tell it…** instead opens the conversation with the question quoted, for talking it over; it does not close the Ask. Only the person who may answer the Ask sees either. A task your Personal Factory runs as a job answers its question on the job instead, and has no Reply….
+
 ## can be undone — a reversible Ask, and who marks it
 
 Every Ask says whether its answer can be undone. Whoever raises it says so: Afi and chats mark an Ask "can be undone" only when what the answer lets them do can honestly be undone with nothing lost but a little time (a wording, a draft, an order of work); anything published, sent, paid for, deleted or against a decision is never marked. An Ask a person raises is not marked. Marked Asks gather in the Inbox under "Quick, and can be undone", where "Accept Afi's answer on all" answers them together, and each such answer can be undone from its task until the task is done; the Ask opens again and its decision is withdrawn.
@@ -24,7 +28,7 @@ On an Ask you do not decide, the card has no buttons for you; it says who decide
 
 Open Decisions from the Overview side block or the first row in a workstream's Files. It opens the list the workstream builds itself; nobody writes it. A decision is recorded when:
 
-- an Ask is answered (made by whoever answered it);
+- an Ask is answered (made by whoever answered it). An answer picked from the Ask's choices keeps the choice's words; an answer in words alone is kept as `Asked “<question>”, answered: <your words>`, so a question that names a problem is never recorded as if the problem were settled;
 - a request changes shared work — the request's one line on the task, and what it settles (made by whoever asked);
 - a rule is set in People and rules (made by whoever set it);
 - another workstream is folded into this one: "Marco folded “Launch swag” into this workstream" (made by whoever folded it; Undo removes it).

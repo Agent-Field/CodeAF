@@ -256,6 +256,15 @@ func answerDecision(t WorkstreamTask, ask TaskAsk, opt *TaskAskOption, words str
 			chose = opt.Label
 		}
 		text = strings.TrimSpace(ask.Title + " " + strings.Join(nonEmpty(chose, words), " · "))
+		// AN ANSWER IN WORDS ALONE NEVER MAKES THE ASK'S OWN LINE THE DECISION. An
+		// agent's Ask is often a statement of the trouble ("The release notes
+		// pasted were placeholder text, not the notes"), and joined to the words
+		// it read as that trouble being settled: the drift check then paused the
+		// finished work against what the person had answered (sim, 2026-11-17).
+		// The words are the answer to a question, and say so.
+		if opt == nil {
+			text = "Asked “" + strings.TrimSpace(ask.Title) + "”, answered: " + strings.TrimSpace(words)
+		}
 	}
 	answer := words
 	if opt != nil {
