@@ -124,6 +124,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how many tasks does Afi break big work into", "workstream-chats-and-tools"},
 		{"where do the steps of a task go", "workstream-chats-and-tools"},
 		{"how do I steer the agent on a workstream task", "organization-workstream-tasks"},
+		{"where did the Tell Afi box under Working go", "organization-workstream-tasks"},
+		{"how do I switch the task box from comment to tell afi", "organization-workstream-tasks"},
 		{"Afi proposed tasks as cards, how do I add them", "organization-workstream-agent"},
 		{"nothing happened after Afi planned the tasks, where are they", "organization-workstream-agent"},
 		{"who is told when I add Afi's tasks", "organization-workstream-agent"},
