@@ -334,6 +334,10 @@ func TestScenarioAFollowPRScopeStopIsResumedByTheMainAgent(t *testing.T) {
 		if !s.Delegate.Heard(factory.FollowPRStep, 0, words) {
 			t.Fatalf("the resumed round never heard its instructions: %v\n%s", s.Delegate.notes(), s.Story())
 		}
+		// The round is told who asked for it: the main agent, never the person.
+		if !s.Delegate.Heard(factory.FollowPRStep, 0, "The job's main agent resumed the pipeline") || s.Delegate.Heard(factory.FollowPRStep, 0, "The person resumed the pipeline") {
+			t.Fatalf("the resumed round was not told the main agent asked for it: %v\n%s", s.Delegate.notes(), s.Story())
+		}
 		if !logged(it, "Main agent: resumed the pipeline · "+words) {
 			t.Fatalf("the log does not say what the main agent decided\n%s", s.Story())
 		}

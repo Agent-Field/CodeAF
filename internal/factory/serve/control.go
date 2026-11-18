@@ -16,8 +16,12 @@ import (
 // Resuming reconciles the worktree through the pipeline, never publishes it blindly.
 func (h *Handler) controlJob(w http.ResponseWriter, r *http.Request, it factory.Item) {
 	var body struct {
-		Mode   string      `json:"mode"`
-		Words  string      `json:"words,omitempty"`
+		Mode  string `json:"mode"`
+		Words string `json:"words,omitempty"`
+		// By is who resumes the pipeline when it is not the person: the job's
+		// main agent deciding a stop (manager_decide.go). It changes only who
+		// the Follow PR round is told asked for it.
+		By     string      `json:"by,omitempty"`
 		Expect *api.Expect `json:"expect,omitempty"`
 	}
 	if !h.decode(w, r, &body, false) || !h.fresh(w, r, it, "control", body.Expect) || !h.owns(w, r, it) {
@@ -139,7 +143,11 @@ func (h *Handler) controlJob(w http.ResponseWriter, r *http.Request, it factory.
 				f.Readiness = nil
 				f.Request = ""
 			} else {
-				f.Request = "The person resumed the pipeline. Inspect the current worktree and manual conversation changes, verify them, and maintain this PR. " + strings.TrimSpace(body.Words)
+				who := "The person"
+				if body.By == factory.OfferByMainAgent {
+					who = "The job's main agent"
+				}
+				f.Request = who + " resumed the pipeline. Inspect the current worktree and manual conversation changes, verify them, and maintain this PR. " + strings.TrimSpace(body.Words)
 			}
 			// A PUBLISH THAT FAILED IS OVER ONCE THE PIPELINE RESUMES: the round
 			// queued here makes the next head, and that head gets an approval

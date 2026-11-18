@@ -125,3 +125,20 @@ func TestThePullRequestNamesWhatTheOwnerAccepted(t *testing.T) {
 		t.Fatalf("the body names the machine's checkout:\n%s", body)
 	}
 }
+
+// The accepted note names nobody, since the job's main agent may accept too,
+// and a note saved before that is read as the same note.
+func TestAnAcceptedNoteNamesNobodyAndTheOldSpellingStillReads(t *testing.T) {
+	if strings.Contains(AcceptedPrefix, "owner") {
+		t.Fatalf("the accepted note credits the owner: %q", AcceptedPrefix)
+	}
+	for _, n := range []string{AcceptedPrefix + " go test ./... · failed", "Accepted by the owner: go test ./... · failed"} {
+		rest, ok := CutAccepted(n)
+		if !ok || strings.TrimSpace(rest) != "go test ./... · failed" {
+			t.Errorf("CutAccepted(%q) = %q, %v", n, rest, ok)
+		}
+	}
+	if _, ok := CutAccepted("Unresolved verification command failed: go test"); ok {
+		t.Error("an unresolved check reads as accepted")
+	}
+}

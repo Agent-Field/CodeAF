@@ -161,7 +161,7 @@ func (h *Handler) carryOut(w http.ResponseWriter, r *http.Request, it factory.It
 		}
 		return door(lease.NewDoors(h.workers.desk).StepRerunExpected(it.ID, step, words, "", nil))
 	case factory.DecideResumePipeline:
-		return h.pressed(w, r, map[string]any{"mode": "resume_pipeline", "words": words}, func(w http.ResponseWriter, r *http.Request) { h.controlJob(w, r, it) })
+		return h.pressed(w, r, map[string]any{"mode": "resume_pipeline", "words": words, "by": factory.OfferByMainAgent}, func(w http.ResponseWriter, r *http.Request) { h.controlJob(w, r, it) })
 	case factory.DecideRetryPublish:
 		if !h.requireVerb(w, h.seam.SignOff != nil) {
 			return false

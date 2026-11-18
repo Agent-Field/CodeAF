@@ -1035,7 +1035,7 @@ func (lp *floorLoop) accept(c *loopCtl, i int, name, why string) bool {
 		}
 		accepted := map[string]bool{}
 		for _, n := range kept.Notes {
-			if rest, ok := strings.CutPrefix(n, factory.AcceptedPrefix); ok {
+			if rest, ok := factory.CutAccepted(n); ok {
 				accepted[strings.TrimSpace(rest)] = true
 			}
 		}
