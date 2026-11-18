@@ -423,6 +423,17 @@ func (h *Handler) patchWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 		ask.Decider = &d
 		p.AddAsk = &ask
 	}
+	if p.AskHand != nil {
+		// Hand to someone else names one person in the workstream, by the
+		// same check as raising an Ask (workstream_task_asks.go).
+		d, err := h.checkDecider(ws, p.AskHand.To)
+		if h.taskRefused(w, err) {
+			return
+		}
+		hand := *p.AskHand
+		hand.To = d
+		p.AskHand = &hand
+	}
 	var target factory.OrgWorkstream
 	if p.MoveTo != "" && p.MoveTo != ws.ID {
 		other, found, err := h.config.Store.Workstream(p.MoveTo)
@@ -594,6 +605,10 @@ func (h *Handler) patchWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 		if again.State != factory.TaskRunning {
 			h.stopTaskTurn(ws.ID, again.ID)
 		}
+	}
+	if len(out.Withdrawn) > 0 {
+		// An undone answer takes its decision back with it.
+		h.withdrawDecisions(r, ws.ID, v, out.Withdrawn)
 	}
 	h.recordWorkstream(r, ws.ID, "changed task", tid)
 	if len(autoStarted) > 0 {

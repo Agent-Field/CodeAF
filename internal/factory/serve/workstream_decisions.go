@@ -4,6 +4,8 @@ import (
 	"log"
 	"net/http"
 	"slices"
+	"strings"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
@@ -59,6 +61,38 @@ func (h *Handler) keepDecisions(r *http.Request, id string, v Viewer, ds []facto
 	for _, d := range kept {
 		h.recordWorkstream(r, id, "kept decision", d.ID)
 	}
+	h.publishWorkstreamPart(saved, api.PartWorkstream, "", h.orgActor(r), saved.Rev, false)
+}
+
+// withdrawDecisions withdraws the kept decisions ids names, as v: what an
+// undone answer settled is not settled any more. It stays in the list,
+// greyed, like any withdrawn decision. A failed write is logged, never
+// answered: the answer is already undone and the person sees that.
+func (h *Handler) withdrawDecisions(r *http.Request, id string, v Viewer, ids []string) {
+	now := h.clock().UTC()
+	who := factory.PersonRef{ID: factory.NormalizeHandle(v.Handle), Name: h.personNames()(v.Handle)}
+	_, saved, err := h.editPart(id, v, func(cur *factory.OrgWorkstream, _ factory.OrgWorkstreams) (bool, error) {
+		changed := false
+		for i, d := range cur.Decisions {
+			if d.State != factory.DecisionKept || !slices.Contains(ids, d.ID) {
+				continue
+			}
+			if !changed {
+				cur.Decisions = slices.Clone(cur.Decisions)
+			}
+			cur.Decisions[i].State, cur.Decisions[i].ChangedBy, cur.Decisions[i].ChangedAt = factory.DecisionWithdrawn, &who, now.Format(time.RFC3339Nano)
+			changed = true
+		}
+		if changed {
+			cur.UpdatedAt = now
+		}
+		return changed, nil
+	})
+	if err != nil {
+		log.Printf("factory: workstream %s: an undone answer's decision was not withdrawn: %v", id, err)
+		return
+	}
+	h.recordWorkstream(r, id, "withdrew decision", strings.Join(ids, ","))
 	h.publishWorkstreamPart(saved, api.PartWorkstream, "", h.orgActor(r), saved.Rev, false)
 }
 

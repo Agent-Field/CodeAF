@@ -418,6 +418,9 @@ func (d *agentDoor) wsTaskUpdate(ctx context.Context, args json.RawMessage) (any
 			Title   string           `json:"title"`
 			Detail  string           `json:"detail"`
 			Options []agentAskOption `json:"options"`
+			// Reversible is the agent's own word that the answer can be
+			// undone (session.WSAskReversibleRule).
+			Reversible bool `json:"reversible"`
 		} `json:"ask"`
 		WaitingOn   *[]string `json:"waiting_on"`
 		Due         *string   `json:"due"`
@@ -546,7 +549,7 @@ func (d *agentDoor) wsTaskUpdate(ctx context.Context, args json.RawMessage) (any
 			options = append(options, factory.TaskAskOption{ID: fmt.Sprintf("o%d", i+1), Label: label, Recommended: o.Recommended,
 				Decides: cutRunes(strings.TrimSpace(o.Decides), 300)})
 		}
-		p["ask"] = factory.TaskAsk{Title: title, Detail: cutRunes(strings.TrimSpace(a.Ask.Detail), 1000), Options: options}
+		p["ask"] = factory.TaskAsk{Title: title, Detail: cutRunes(strings.TrimSpace(a.Ask.Detail), 1000), Options: options, Reversible: a.Ask.Reversible}
 	}
 	if a.WaitingOn != nil {
 		if len(*a.WaitingOn) > 20 {

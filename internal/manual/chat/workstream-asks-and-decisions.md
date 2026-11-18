@@ -12,6 +12,10 @@ The task now waits on that Ask. The card says "You asked Marco" to you, "Priya a
 
 Limits, in the server's words: someone outside the workstream is refused ("Lena is not in this workstream, so they cannot answer its Asks; ask someone who is"); you cannot ask yourself ("an Ask goes to someone else; you decide your own questions"); and a done task takes no Ask ("this task is done, so nothing waits on an answer; comment and @ them instead"). Ask someone is on an organization's workstreams; Personal has nobody else to ask.
 
+## can be undone — a reversible Ask, and who marks it
+
+Every Ask says whether its answer can be undone. Whoever raises it says so: Afi and chats mark an Ask "can be undone" only when what the answer lets them do can honestly be undone with nothing lost but a little time (a wording, a draft, an order of work); anything published, sent, paid for, deleted or against a decision is never marked. An Ask a person raises is not marked. Marked Asks gather in the Inbox under "Quick, and can be undone", where "Accept Afi's answer on all" answers them together, and each such answer can be undone from its task until the task is done; the Ask opens again and its decision is withdrawn.
+
 ## add your view to someone else's Ask — a view is not a vote
 
 On an Ask you do not decide, the card has no buttons for you; it says who decides and offers a field, "Add your view for Marco". A view is one short line for the decider to read before answering. Each person has one view per Ask; writing again replaces yours, and clearing it takes it away. The decider never adds a view to their own Ask — they answer it. A view is not a vote: the decider reads the views and decides. When the Ask is answered, its decision says whose views were attached.
