@@ -2383,7 +2383,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	// in the room: a watcher is a person watching their own work, not a guest.
 	switch call.Method {
 	case MethodRunHarness, MethodSubmitBash, MethodSubmitSetup, MethodSubmit, MethodFollowUp, MethodUnqueueFollowUp, MethodSteer, MethodQuestionReplace, MethodSubmitImage, MethodSubmitFiles,
-		MethodTaskSteer, MethodTaskStop, MethodTaskRetry, MethodProcessRerun, MethodProcessRerunAt, MethodProcessStopAt, MethodProcessStopAll, MethodRenderCancel, MethodAppTaskAction, MethodAppQuickTaskAction, MethodAppMoveToTask, MethodAppResumeAfterQuit, MethodAppResumeAfterClose, MethodAppRename,
+		MethodTaskSteer, MethodTaskStop, MethodTaskRetry, MethodProcessRerun, MethodProcessRerunAt, MethodProcessStopAt, MethodProcessStopAll, MethodRenderCancel, MethodAppTaskAction, MethodAppQuickTaskAction, MethodAppMoveToTask, MethodAppResumeAfterQuit, MethodAppResumeAfterClose, MethodAppContinueInterrupted, MethodAppRename,
 		MethodAppTaskRoutingAct, MethodTaskWorkspaceReview, MethodTaskWorkspaceApply, MethodTaskStartOn, MethodTaskRunHere:
 		if err := s.mayDrive(); err != nil {
 			return nil, err
@@ -2401,7 +2401,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		return serveAppProcesses(agent, call)
 	case MethodRenderList, MethodRenderGet, MethodRenderCancel:
 		return dispatchRender(agent, call)
-	case MethodAppTasks, MethodAppTask, MethodAppTaskAction, MethodAppQuickTasks, MethodAppQuickTaskAction, MethodAppMoveToTask, MethodAppResumeAfterQuit, MethodAppResumeAfterClose, MethodAppRename,
+	case MethodAppTasks, MethodAppTask, MethodAppTaskAction, MethodAppQuickTasks, MethodAppQuickTaskAction, MethodAppMoveToTask, MethodAppResumeAfterQuit, MethodAppResumeAfterClose, MethodAppContinueInterrupted, MethodAppRename,
 		MethodAppTaskRouting, MethodAppTaskRoutingAct, MethodAppTaskRoutingOptions, MethodAppProgramActions:
 		return dispatchAppTask(agent, call)
 	case MethodTaskStartOn, MethodTaskRunHere:

@@ -46,6 +46,7 @@ decides which combinations are accepted.
 | `agents.budget.set` | `in.AgentBudgetSetWire` | `AgentBudgetResult` |
 | `agents.close` | `in.IDParams` | `Empty` |
 | `agents.compact` | `in.crewID` | `Empty` |
+| `agents.continue` | `in.IDParams` | `agentResult` |
 | `agents.create` | `in.CreateAsk` | `agentResult` |
 | `agents.debug` | `in.IDParams` | `ConversationDebug` |
 | `agents.delete` | `{confirm, id}` | `Empty` |
@@ -92,6 +93,15 @@ what it had spent. A running factory stage lent to the app, and a turn the
 factory's runner gives a job manager the app holds open, are interrupted but
 never abandoned from here: the runner reads those turns to their end. The job's
 own Stop ends them. A person's own turn in a job manager's chat keeps the bound.
+
+A chat the app's quit or unexpected close stopped mid-turn is never carried on
+by the engine's next start. Its `Agent` reads `interrupted: true`, an
+`interrupted` footer (words "Interrupted") sits where the turn stopped, and an
+open of it holds its recovered task work back. `agents.continue {id}` consumes
+the mark once: held tasks carry on and, when a reply was cut, one turn carries
+on behind a `resumed_after_quit` or `resumed_after_close` footer. A second call
+answers the agent and does nothing. A person's send, queue, steer, answer or
+retry in that chat also clears the mark.
 
 ## Conversation work scope
 

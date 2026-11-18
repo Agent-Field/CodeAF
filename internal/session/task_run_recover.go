@@ -58,6 +58,16 @@ func (a *Agent) recoverBeltRun() {
 		a.reconcileSettledRun(g, kept, root)
 		return
 	}
+	a.resumeInterruptedRun(g, kept)
+}
+
+// resumeInterruptedRun starts the worker an interrupted run needs. A HELD OPEN
+// STOPS HERE, before anything can start one: the row stays interrupted until
+// the person's Continue runs recovery again (resume_quit.go).
+func (a *Agent) resumeInterruptedRun(g *TaskGraph, kept TaskNotice) {
+	if a.holdRecovered(heldBelt) {
+		return
+	}
 	if kept.PendingRun == nil {
 		a.resumeAdmittedRun(g, kept)
 		return
@@ -287,12 +297,17 @@ func (a *Agent) recoverRemoteBeltRun(g *TaskGraph, store *plandb.Store, kept *Ta
 		}
 		return true
 	}
-	_, _ = a.continueRemoteRun(a.rootContext(), *kept)
+	if !a.holdRecovered(heldBelt) {
+		_, _ = a.continueRemoteRun(a.rootContext(), *kept)
+	}
 	return true
 }
 
 // Missing capability leaves the remote intent readable and recoverable without local execution.
 func (a *Agent) resumeRemotePreparation(g *TaskGraph, kept TaskNotice) {
+	if a.holdRecovered(heldBelt) {
+		return
+	}
 	if a.config.TaskComputers == nil {
 		kept.State, kept.Report = TaskInterrupted, taskComputersUnavailable
 		a.publishRunRow(g, kept)

@@ -298,6 +298,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what can a worker do", "coordination-and-workers"},
 		{"can a worker approve pairing", "coordination-and-workers"},
 		{"can a worker read all my chats", "coordination-and-workers"},
+		// X11c: a chat stopped mid-turn by a quit waits for Continue; the page
+		// that says so must be what these questions reach.
+		{"my chat resumed by itself after I reopened the app and spent money", "running-from-the-terminal"},
+		{"what does Interrupted Continue mean in a chat after quitting the app", "running-from-the-terminal"},
+		{"the app closed unexpectedly mid reply, does it carry on", "running-from-the-terminal"},
 		// R25/R29 keep older-client refusals and failed quit saves reachable.
 		{"why can an older computer list chats but not continue a chat that is still running", "continuing-a-chat-on-another-computer"},
 		{"what happens if the final save fails during quit", "continuing-a-chat-on-another-computer"},

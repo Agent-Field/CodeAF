@@ -245,7 +245,7 @@ func TestAppFactoryCreateInvalidExtrasSendNothing(t *testing.T) {
 	b, conn := attachStub(t, testFactoryHub(t), stub, actionTestCredential)
 	w := wireOver(t, b)
 	for field, value := range map[string]any{
-		"group": strings.Repeat("g", 201), "milestone": "bad\x00label", "budget": 7,
+		"group": strings.Repeat("g", 201), "milestone": "bad\x00label", "budget": 0.5,
 		"context": []appwire.FactoryJobContext{{Title: "reference"}}, "key": "a b",
 	} {
 		w.mustFail("factory.job_create", map[string]any{"factory": conn.ID, "repo": "o/r", "title": "Fix", field: value}, appwire.CodeBadParams)

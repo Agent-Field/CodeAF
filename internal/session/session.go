@@ -2297,6 +2297,13 @@ type Config struct {
 	// tasks are runs in the plan store ([Config.mayQuickTask]). The desktop
 	// app sets it.
 	QuickTasks bool
+	// HoldInterruptedWork opens a conversation WITHOUT carrying on the work the
+	// last process left in the middle: an interrupted task run is not resumed and
+	// the task frontier is not turned until [Agent.ContinueInterruptedWork] is
+	// called. The desktop app sets it for a chat the app's quit or close stopped
+	// mid-turn, so opening that chat to look at it spends nothing; the person's
+	// Continue is what carries it on (resume_quit.go).
+	HoldInterruptedWork bool
 
 	// BashBackgroundAfterSeconds is how long a foreground command stays in the
 	// turn before the same running process is kept as a job (promote.go,
@@ -2831,6 +2838,8 @@ type Config struct {
 // events — every Submit streams, whether it started the turn or steered it.
 // The methods live in agent.go; the loop they drive lives in loop.go.
 type Agent struct {
+	// heldWork is the recovery [Config.HoldInterruptedWork] kept back (resume_quit.go).
+	heldWork           heldRecovery
 	settingError       atomic.Pointer[settingResult]
 	settingsWrites     atomic.Int64
 	modelChanges       sync.Mutex

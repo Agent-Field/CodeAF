@@ -50,12 +50,12 @@ func TestAppHealthCheckSaysTheEnginesFacts(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	b.resumeAfterQuit()
+	b.interruptAfterQuit()
 	health, err = b.HealthCheck()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r := health.Resume; r == nil || !r.RepliesResumed || r.Replies != 1 || r.Tasks != 1 || !r.At.Equal(started.Add(90*time.Second)) {
+	if r := health.Resume; r == nil || r.RepliesResumed || r.Replies != 1 || r.Tasks != 1 || !r.At.Equal(started.Add(90*time.Second)) {
 		t.Fatalf("the resume reads %+v", health.Resume)
 	}
 }

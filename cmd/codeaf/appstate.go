@@ -82,6 +82,9 @@ type appStateFile struct {
 	QuitReplies     []string          `json:"quit_replies,omitempty"`
 	QuitTasks       []string          `json:"quit_tasks,omitempty"`
 	QuitStopped     []appwire.Process `json:"quit_stopped,omitempty"`
+	// Interrupted is every chat the app's quit or close stopped mid-turn that
+	// waits for the person's Continue (appinterrupted.go).
+	Interrupted map[string]appInterrupted `json:"interrupted,omitempty"`
 	// CloseResumes and CloseStarts bound automatic work across process deaths.
 	// CloseHandled keeps only the newest handled stamp per existing agent.
 	// These guards rely on one app engine per home: the desktop shell enforces
@@ -252,6 +255,13 @@ func (f appStateFile) clone() appStateFile {
 	out.QuitReplies = append([]string(nil), f.QuitReplies...)
 	out.QuitTasks = append([]string(nil), f.QuitTasks...)
 	out.QuitStopped = append([]appwire.Process(nil), f.QuitStopped...)
+	if f.Interrupted != nil {
+		out.Interrupted = make(map[string]appInterrupted, len(f.Interrupted))
+		for k, v := range f.Interrupted {
+			v.Tasks = slices.Clone(v.Tasks)
+			out.Interrupted[k] = v
+		}
+	}
 	out.CloseStarts = append([]time.Time(nil), f.CloseStarts...)
 	out.CloseResumes = make(map[string]int, len(f.CloseResumes))
 	for k, v := range f.CloseResumes {

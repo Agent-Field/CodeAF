@@ -367,9 +367,10 @@ func TestAppFactoryJobActionsTwoPeopleAgainstTheRealServer(t *testing.T) {
 
 	t.Run("budget and priority carry the factory's own limits", func(t *testing.T) {
 		posts := f.postCount()
-		alice.w.mustFail("factory.job_set_budget", alice.params(t, n, map[string]any{"budget": 7}), appwire.CodeBadParams)
+		// Any amount from $1 is a budget now (#2789); under it is refused here, before the factory.
+		alice.w.mustFail("factory.job_set_budget", alice.params(t, n, map[string]any{"budget": 0.5}), appwire.CodeBadParams)
 		if f.postCount() != posts {
-			t.Fatal("an off-list budget reached the factory")
+			t.Fatal("a budget under $1 reached the factory")
 		}
 		got := alice.act(t, "factory.job_set_budget", n, map[string]any{"budget": 10})
 		if got.Current == nil || got.Current.Budget != 10 {
