@@ -80,13 +80,11 @@ func (a *Agent) approveUserBash(ctx context.Context, hub *eventHub, call ai.Tool
 		if !a.config.AskConsent || hub == nil {
 			return refusal("needs approval but no resolver is attached: " + decision.Rule), false
 		}
-		allowed, err := a.ask(ctx, hub, call, decision)
+		answer, err := a.askAnswer(ctx, hub, call, decision)
 		if err != nil {
 			return refusal(notApprovedWording(err)), false
 		}
-		if !allowed {
-			return refusal("denied by the person: " + decision.Rule), false
-		}
+		return a.consentVerdict(answer, decision)
 	}
 	return toolResult{}, true
 }
