@@ -1499,6 +1499,9 @@ func openV3Agent(cfg session.Config, workspace string, open func(session.Config)
 	if handoff.Arriving(cfg.Place.Dir) {
 		return nil, cfg, "", errors.New(chatArrivingSentence)
 	}
+	// A CHAT THIS COMPUTER HOLDS WHOSE FILES FAILED TO ARRIVE IS RESTARTED BY
+	// BEING OPENED, here, in the one function every terminal open ends in (#2781).
+	restartHeldFilesBeforeOpen(cfg.Place.Dir)
 	model, modelNotice, err := continuedModel(cfg)
 	if err != nil {
 		var missing *continuedModelUnavailable

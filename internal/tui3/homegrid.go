@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/codeaf/internal/automation"
+	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -513,6 +514,11 @@ type homeCell struct {
 	// row is the switcher's own row behind a conversation or a watch, which is
 	// what its verbs are read from (place_home.go's [app.homeRowVerbs]).
 	row *switcherRow
+	// copies are the branch copies folded onto this conversation's row, the
+	// ones its dim `N copy` note counts. The row's strip names the key that
+	// reaches them ([app.keptTurnsVerb]); without it a copy that was folded
+	// away has no door at all.
+	copies []chatlist.BranchCopy
 	// key tells apart two rows of one panel that stand for the same
 	// conversation — two of its tasks running — so the cursor that was on the
 	// second is put back on the second after a rebuild ([homeLine.sameRow]).

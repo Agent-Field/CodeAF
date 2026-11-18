@@ -81,6 +81,16 @@ func (e Engine) LocalWork(ctx context.Context, c cell.Cell) (bool, error) {
 	if err != nil || head == nil {
 		return head == nil, err
 	}
+	if e.FolderGone(c) {
+		// A FOLDER THAT IS NOT THERE HOLDS NO LOCAL FILES, SO ONLY THE
+		// CONVERSATION CAN BE WORK. The screen and the plan below both read the
+		// folder, and the engine answers a missing one with an error, which a
+		// launch used to show as a chat that "could not be put in this folder"
+		// on every start until the person made the folder again by hand.
+		log.Printf("continuation: the chat's folder %s is gone, so there are no local files to keep; checking only the conversation", e.tree(c))
+		same, err := e.sameTranscriptPrefix(ctx, c, base)
+		return !same, err
+	}
 	if err := e.screenCapture(ctx, c); err != nil {
 		return false, err
 	}
@@ -99,6 +109,20 @@ func (e Engine) LocalWork(ctx context.Context, c cell.Cell) (bool, error) {
 		e.recordMaterializedStat(c, base)
 	}
 	return !same, err
+}
+
+// FolderGone says the folder the chat's files live in is not on this computer:
+// the path does not exist, or it is a link whose target does not. ONLY
+// "DOES NOT EXIST" COUNTS. A path that exists but is not a folder, or one this
+// computer may not look at, is a refusal the check still reports, because
+// reading it as "nothing to keep" could throw away edits that are there.
+func (e Engine) FolderGone(c cell.Cell) bool {
+	w := e.workspace(c)
+	if w == "" {
+		return false
+	}
+	_, err := os.Stat(w)
+	return errors.Is(err, fs.ErrNotExist)
 }
 
 // workInPlan asks Git about semantic index entries only when the engine found

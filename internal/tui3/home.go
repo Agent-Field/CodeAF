@@ -737,6 +737,12 @@ type homeView struct {
 	// arming a person cannot see is a keystroke with a memory.
 	armed string
 
+	// keptChat and keptNext are where the walk through a chat's kept copies
+	// stands: the chat the kept-turns key was last pressed on, and the copy its
+	// next press raises the card for ([app.offerKeptCopy]).
+	keptChat string
+	keptNext int
+
 	// ask is the ONE question home is holding about a row on its own list, or
 	// nil (homeconfirm.go). It is not on the block: home takes the frame whole,
 	// so the block's rows are not on screen here, and a card home raised about a

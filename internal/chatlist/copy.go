@@ -218,6 +218,26 @@ func TakeoverLine(r Row) string {
 	return line
 }
 
+// CopyLine is the sentence under the card raised for one copy folded onto a
+// chat's row: what [BranchLine] says of the copy, then, when every turn of it is
+// already in the chat, that discarding loses nothing, so the note on the row has
+// something to point at, and, when the chat has several copies, which of them
+// this is. nth counts from 1.
+func CopyLine(c BranchCopy, nth, of int, merge, separate bool) string {
+	line := BranchLine(c.Row("", ""), merge, separate)
+	if c.Redundant {
+		line += "; " + copyRedundantClause
+	}
+	if of > 1 {
+		line += fmt.Sprintf(" (copy %d of %d)", nth, of)
+	}
+	return line
+}
+
+// copyRedundantClause is said of a copy whose every turn is already in its
+// chat, in the note on the row and on the card for that copy alike.
+const copyRedundantClause = "already in this chat, so discarding loses nothing"
+
 // CopiesLine summarizes branch copies collapsed into a main chat row: how many
 // copies exist, what a copy is, and whether discarding loses anything. Empty
 // when there are no copies (the emptiness law).
@@ -228,7 +248,7 @@ func CopiesLine(copies []BranchCopy) string {
 	count := copiesWord(len(copies))
 	allRedundant, extraTurns := copiesLoss(copies)
 	if allRedundant {
-		return fmt.Sprintf("%s (unsent turns set aside; already in this chat, so discarding loses nothing)", count)
+		return fmt.Sprintf("%s (unsent turns set aside; %s)", count, copyRedundantClause)
 	}
 	if extraTurns > 0 {
 		return fmt.Sprintf("%s (unsent turns set aside; discarding archives %s not in this chat)", count, turns(extraTurns))

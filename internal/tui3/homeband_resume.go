@@ -325,7 +325,7 @@ func (a *app) continuationReady(msg continuationChecked) tea.Cmd {
 			opened = a.openHome()
 		}
 		a.abandonAutomaticTake()
-		failed := homeTakenMsg{row: msg.row, err: msg.err}
+		failed := homeTakenMsg{row: msg.row, err: &continueCheckError{msg.err}}
 		if errors.Is(msg.err, directory.ErrLeaseHeld) {
 			return tea.Batch(opened, a.lostRace(failed))
 		}

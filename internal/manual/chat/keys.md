@@ -2560,8 +2560,8 @@ cross into the neighbouring column; that ended on 2026-09-17.) **`→` opens the
 verbs** on a strip drawn **directly under that row**, pushing the rest of the list down by
 its own height, and while that strip is drawn its letters are the verbs and the box is
 asleep — a question's own answer keys and words; `x delete`, `c copy name`,
-`n new in project` and `o open folder` on a conversation; `s stop it` on work this window
-is running. An `automations` row has no verbs on home; its verbs are on `/automations`.
+`n new in project` and `o open folder` on a conversation, and `k kept turns` on one with
+kept copies; `s stop it` on work this window is running. An `automations` row has no verbs on home; its verbs are on `/automations`.
 `esc` or `←` closes it, `enter` still opens the row, and walking off the row closes it too.
 A row with no verbs draws no strip: on an `ask here` row `→` hands the errand's pane the
 keyboard instead, and on a panel's fold line (`N more`) `enter` opens the panel and shows

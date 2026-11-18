@@ -887,8 +887,8 @@ that starts from the last turn both machines share, and `codeaf cell list --all`
 
 **`codeaf cell discard <branch> [<cell>]`** sets such a branch aside: it is archived, not deleted, and it leaves
 every machine's list. It runs on the machine that holds the chat and says `discarded <branch>`; on any other
-machine it refuses, naming the chat whose hold is missing. (The branch row on home discards from any of your
-machines.) **There is no `codeaf cell merge` in this version:** folding a branch back into its chat is not
+machine it refuses, naming the chat whose hold is missing. (Home discards a branch from any of your
+machines: enter on its row, or `→` then `k` on its chat's row when it is shown there as a `copy` note.) **There is no `codeaf cell merge` in this version:** folding a branch back into its chat is not
 offered anywhere, so a branch row says `discard` alone.
 
 If this computer's clock is more than five minutes off, sync shows `this computer's clock is off by more than 5 minutes`

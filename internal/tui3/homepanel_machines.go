@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"sort"
 	"time"
 
@@ -331,6 +332,10 @@ func decorateCellWithCopies(cell *homeCell, copies []chatlist.BranchCopy, desc b
 	if full == "" {
 		return
 	}
+	// THE NOTE ONLY COUNTS THE COPIES; THE ROW KEEPS THEM so that its strip can
+	// reach each one ([app.keptTurnsVerb]). Cloned because the slice came out
+	// of a map the next reading rebuilds.
+	cell.copies = slices.Clone(copies)
 	if cell.note != "" {
 		baseShort := cell.noteShort
 		if baseShort == "" {

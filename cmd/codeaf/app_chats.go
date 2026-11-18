@@ -52,6 +52,8 @@ type appChats struct {
 	publicationDone chan struct{}
 	publicationWake chan struct{}
 	notes           appNotes
+	// restarting is the chats whose abandoned files an open is restarting now.
+	restarting map[string]bool
 }
 type appLocalChat struct {
 	agent    string

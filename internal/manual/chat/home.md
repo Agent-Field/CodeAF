@@ -539,22 +539,33 @@ up again (say its branch is checked out somewhere else), the sentence `a task's 
 could not be set up again here` names why, and the task's files are still in its folder under
 the chat's `trees` folder.
 
-## Open separately or discard the turns of a branch — "2 turns from tower", archive a branch, can I merge
+## Open separately or discard the turns of a branch — "2 turns from tower", kept turns, archive a branch, can I merge
 
 A chat that was moved to another machine while another machine still held unsent turns leaves those turns
-as a branch. Press enter on its row to be asked **What should happen to these turns?** and
-answer `1 open separately`, `2 discard`, or `3 leave them`, then enter; the cursor starts on `leave
+as a branch, and so does a move onto a computer that held unsaved edits to the chat
+(`your unsaved edits here were kept as <K> turns from <device>`). Both ask **What should happen to these
+turns?** and answer `1 open separately`, `2 discard`, or `3 leave them`, then enter; the cursor starts on `leave
 them`. Opening separately opens its own chat and workspace copy, with the kept turns and
 their files; the main chat stays as it is. **Discard archives** the branch: it leaves this list
 and is not deleted. **Merge is
-not offered on this build**. The row says
-`<K> turns from <device>: open separately / discard`. if the service cannot be reached, enter names its host and says it is still trying, and does nothing.
+not offered on this build**. The card says
+`<K> turns from <device>: open separately / discard`. If the service cannot be reached, the key names its host and says it is still trying, and does nothing.
+
+**Where the branch is depends on its chat.** A branch whose chat is not on this list stands on a row of its own,
+and enter on that row raises the card. A branch of a chat that is on this list, which is what the kept turns of
+a move always are, is folded onto that chat's row as the dim note `1 copy` and has no row of its own, because enter
+on the chat's row opens the chat. Press `→` on the chat's row and then `k`: the strip names `k kept turns` only
+while the row has copies and this build can open or discard them, and `k` does nothing on a chat with none.
+With several copies each press shows the next copy's card, ending `(copy 2 of 3)`, and after the last it starts
+again; the note's count is the number of cards. A copy whose every turn is already in the chat still offers
+`2 discard`, and its card ends `already in this chat, so discarding loses nothing`. A chat another computer holds
+shows its copies as the count only: continue it here first, and the key is on its row.
 
 ## Why do I see the same chat twice on Home — the same chat twice on Home, one row per chat id and collapsed branch copies
 
 Home keys every conversation row by the chat's id rather than its transcript path, both directly on this computer and over `codeaf chat --host`. A chat known both locally on disk and through sync appears once on Home instead of twice. Under `codeaf chat --host`, `continue here` is not offered and a chat the remote host already holds never appears a second time as held elsewhere.
 
-When a chat also has kept branch copies, Home collapses those copies into the main chat's row instead of listing separate duplicate rows for the same chat. The row and its continue card count the copies, say what a copy is, and state whether discarding loses anything:
+When a chat also has kept branch copies, Home collapses those copies into the main chat's row instead of listing separate duplicate rows for the same chat. The row and its continue card count the copies, say what a copy is, and state whether discarding loses anything. To open or discard a copy, press `→` on the chat's row and then `k` (*Open separately or discard the turns of a branch*):
 
 - `1 copy (unsent turns set aside; already in this chat, so discarding loses nothing)` — or `1 copy · unsent, loses nothing` in a narrow column — when every turn in the copy is already in the main chat.
 - `2 copies (unsent turns set aside; discarding archives 3 turns not in this chat)` — or `2 copies · unsent, 3 turns not here` in a narrow column — when a copy holds turns that are not in the main chat.
@@ -2279,7 +2290,8 @@ standing orders; what is coming up is home's `automations` panel.
 ## Copy a conversation name from Home
 
 Select a conversation and press `→` to show its options. The four ordinary actions are
-`x delete`, `c copy name`, `n new in project`, and `o open folder`, in that order.
+`x delete`, `c copy name`, `n new in project`, and `o open folder`, in that order; a chat
+that has kept copies (the dim `N copy` note) adds `k kept turns` after them.
 `c` copies the full current conversation name, even when the screen shortens it. It
 also works on remote conversations and when the project folder is missing. Without
 an existing local folder, the folder actions are absent. `ctrl+y` still copies the
@@ -2329,7 +2341,7 @@ pushes the rows under it down. The options are shown only while their shortcuts 
 
 **The verbs are the row's own:** a question's first two option words on its own answer keys; a
 conversation's `x delete`, `c copy name`, then, where it has a folder, `n new in project`
-and `o open folder`; a task this window runs, `s stop`. A row of the `automations` panel
+and `o open folder`, and `k kept turns` when it has kept copies; a task this window runs, `s stop`. A row of the `automations` panel
 has none: `enter` opens `/automations`, where its verbs are.
 
 **`→` opens the strip on every row of the field that has verbs, at every width** — the arrows never

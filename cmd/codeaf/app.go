@@ -1820,6 +1820,11 @@ func (b *appBackend) OpenAgent(id string) (appwire.Agent, error) {
 			return b.takeAgent(appwire.TakeParams{Cell: row.Cell, Seen: appwire.Seen{Device: row.Seen.Device, Fence: row.Seen.Fence}}, true)
 		}
 	}
+	// A chat this computer holds is opened here, and its files that failed to
+	// arrive are fetched again as part of it ([appBackend.restartHeldFiles]). A
+	// hover's prefetch ([appBackend.WarmAgent]) never gets this far on purpose: a
+	// guess at a view starts no fetch.
+	b.restartHeldFiles(id)
 	return b.openAgent(id, false)
 }
 
