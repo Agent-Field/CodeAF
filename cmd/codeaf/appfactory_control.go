@@ -23,14 +23,10 @@ func (b *appBackend) FactoryJobControl(ctx context.Context, p appwire.FactoryJob
 	if err != nil {
 		return appwire.FactoryJobActed{}, err
 	}
-	if p.Mode == "resume_pipeline" && it.Stream != nil {
-		for _, ph := range it.Stream.Phases {
-			if ph.Chat != "" {
-				if a, ok := session.LiveAgentFor(ph.Chat); ok && a.TurnRunning() {
-					return appwire.FactoryJobActed{}, appwire.Errorf(appwire.CodeConflict, "The working chat is still running. Stop it or wait for it to finish before resuming.")
-				}
-			}
-		}
+	// One rule for the job page and for the Factory manager's press of the
+	// same door (factory_foreman_press.go).
+	if p.Mode == "resume_pipeline" && workingChatRunning(it) {
+		return appwire.FactoryJobActed{}, appwire.Errorf(appwire.CodeConflict, "%s", workingChatBusy)
 	}
 	out, err := b.jobWrite(ctx, p.Factory, p.Mode, p.Job, "control", struct {
 		Mode   string      `json:"mode"`

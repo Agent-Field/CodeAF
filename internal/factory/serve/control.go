@@ -16,8 +16,12 @@ import (
 // Resuming reconciles the worktree through the pipeline, never publishes it blindly.
 func (h *Handler) controlJob(w http.ResponseWriter, r *http.Request, it factory.Item) {
 	var body struct {
-		Mode   string      `json:"mode"`
-		Words  string      `json:"words,omitempty"`
+		Mode  string `json:"mode"`
+		Words string `json:"words,omitempty"`
+		// By is who resumes the pipeline when it is not the person: the job's
+		// main agent deciding a stop (manager_decide.go). It changes only who
+		// the Follow PR round is told asked for it.
+		By     string      `json:"by,omitempty"`
 		Expect *api.Expect `json:"expect,omitempty"`
 	}
 	if !h.decode(w, r, &body, false) || !h.fresh(w, r, it, "control", body.Expect) || !h.owns(w, r, it) {
@@ -76,6 +80,19 @@ func (h *Handler) controlJob(w http.ResponseWriter, r *http.Request, it factory.
 		h.finish(w, err)
 		return
 	}
+	// A ROUND STILL PARKED ON ITS QUESTION IS LET GO BEFORE THE PIPELINE
+	// RESUMES. A step that asked its person keeps its runner's hold while it
+	// waits. Resume pipeline took the question down and queued the job without
+	// telling that runner, so the job read queued while the one runner that
+	// could take it sat parked on an answer nobody could give any more, its
+	// hold renewed for ever (found by the scenario tests, 2026-11-17). The
+	// hold is withdrawn as Take over withdraws it, and the queued work is the
+	// next pull's.
+	if body.Mode == "resume_pipeline" && h.workers != nil && h.workers.desk != nil {
+		if h.failed(w, lease.NewDoors(h.workers.desk).Withdraw(it.ID)) {
+			return
+		}
+	}
 	err := h.config.Store.Update(it.ID, func(cur *factory.Item) error {
 		if factory.RecoveryPaused(*cur) {
 			return run.StepControlRefusal(factory.DecisionPauseDetail(*cur))
@@ -126,8 +143,19 @@ func (h *Handler) controlJob(w http.ResponseWriter, r *http.Request, it factory.
 				f.Readiness = nil
 				f.Request = ""
 			} else {
-				f.Request = "The person resumed the pipeline. Inspect the current worktree and manual conversation changes, verify them, and maintain this PR. " + strings.TrimSpace(body.Words)
+				who := "The person"
+				if body.By == factory.OfferByMainAgent {
+					who = "The job's main agent"
+				}
+				f.Request = who + " resumed the pipeline. Inspect the current worktree and manual conversation changes, verify them, and maintain this PR. " + strings.TrimSpace(body.Words)
 			}
+			// A PUBLISH THAT FAILED IS OVER ONCE THE PIPELINE RESUMES: the round
+			// queued here makes the next head, and that head gets an approval
+			// of its own. Left on the job, the old failure went on reading
+			// "retry publishing" over a commit its approval no longer covered,
+			// and the retry was refused (found by the scenario tests,
+			// 2026-11-17).
+			cur.PublishError, cur.PublishStatus, cur.PublishAnyway = "", nil, nil
 			cur.State = factory.StateShipped
 			factory.QueueCIFollowUp(cur, time.Now().UTC())
 		} else if cur.Stream != nil {

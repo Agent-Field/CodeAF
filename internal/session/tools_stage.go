@@ -285,7 +285,7 @@ func (a *Agent) planEditTool() bare.Tool {
 // a call to tool: the requirement rides the message, so a follow-up queued
 // behind a running turn carries it into the turn it opens and no other.
 func (a *Agent) FollowUpRequiring(text, tool string) (<-chan Event, error) {
-	return a.followUpMarked(text, nil, strings.TrimSpace(tool))
+	return a.followUpMarked(text, nil, strings.TrimSpace(tool), false)
 }
 
 // turnBelt is the options a turn's request is sent with: the belt, and when the

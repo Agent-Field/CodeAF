@@ -23,11 +23,11 @@ func TestTheJobTimerNeverRearmsAtOnceForAPastDeadline(t *testing.T) {
 		{"merge still in its undo", factory.Item{Merging: &factory.MergeRun{State: factory.MergeAsked, UndoUntil: soon}}, soon},
 		{"approval still in its undo", factory.Item{Approval: &factory.Approval{State: "approving", UndoUntil: soon}}, soon},
 	} {
-		if got := jobTimerDue([]factory.Item{c.it}, now); !got.Equal(c.want) {
+		if got := jobTimerDue([]factory.Item{c.it}, now, nil); !got.Equal(c.want) {
 			t.Errorf("%s: due %v, want %v", c.name, got.Sub(now), c.want.Sub(now))
 		}
 	}
-	if got := jobTimerDue([]factory.Item{{}}, now); !got.IsZero() {
+	if got := jobTimerDue([]factory.Item{{}}, now, nil); !got.IsZero() {
 		t.Fatalf("a floor with no deadline arms the timer at %v", got)
 	}
 }

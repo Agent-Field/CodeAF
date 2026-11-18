@@ -22,10 +22,11 @@ import (
 )
 
 // THE LIVE MANUAL RUN: the app's own doors on one real model. A Manual job's
-// Start runs its first step, then every later step waits for Approve; Request
-// changes sends back the step before and the ask comes again. No GitHub.
+// Start runs every step without another word and lands: Manual holds no step
+// for the person before it runs any more (the owner's decision of
+// 2026-11-17), where it used to wait for Approve before each one. No GitHub.
 // Opt-in (CODEAF_LIVE_FACTORY=1), a few cents.
-func TestLiveManualAsksBeforeEveryStepOnOneModel(t *testing.T) {
+func TestLiveManualRunsEveryStepOnOneModel(t *testing.T) {
 	if os.Getenv(liveFactoryOptIn) != "1" {
 		t.Skipf("opt-in live lane: set %s=1 (spends a few cents on OpenRouter)", liveFactoryOptIn)
 	}
@@ -126,45 +127,25 @@ func TestLiveManualAsksBeforeEveryStepOnOneModel(t *testing.T) {
 		var acted appwire.FactoryJobActed
 		w.must(method, params, &acted)
 	}
-	asking := func(step string) func(factory.Item) bool {
-		return func(it factory.Item) bool {
-			return it.State == factory.StateNeedsYou && it.Question == factory.NextStepQuestion(step)
-		}
-	}
-
 	var run appwire.FactoryLocalStatus
 	w.must("factory.local_run", map[string]any{"caller": "live"}, &run)
 	act("factory.job_start", nil)
 
 	var trail []string
-	held := waitFor("asked before verify", asking("verify"))
-	if p := held.Stream.Phases; p[0].State != factory.PhaseDone || p[1].State != factory.PhaseWaiting || p[1].Round != 0 || p[1].Result != nil {
-		t.Fatalf("verify ran before the word: %+v", p)
-	}
-	j := job()
-	if j.NeedsYou == nil || j.NeedsYou.Kind != factory.NeedsApprovePlan || !j.Can.Approve || !j.Can.RejectPlan {
-		t.Fatalf("the page cannot answer: needs=%+v can=%+v", j.NeedsYou, j.Can)
-	}
-	trail = append(trail, "asked: "+held.Question)
-	act("factory.job_approve", map[string]any{"commit": j.HeadCommit})
-
-	held = waitFor("asked before review", asking("review"))
-	if p := held.Stream.Phases; p[1].State != factory.PhaseDone || p[1].Round != 1 || p[2].Round != 0 {
-		t.Fatalf("after the first yes: %+v", p)
-	}
-	trail = append(trail, "asked: "+held.Question)
-	act("factory.job_reject_plan", map[string]any{"words": "check it once more"})
-
-	held = waitFor("asked again after the send-back", func(it factory.Item) bool {
-		return asking("review")(it) && it.Stream.Phases[1].Round == 2
-	})
-	trail = append(trail, "sent back, verify round 2, asked: "+held.Question)
-	act("factory.job_approve", map[string]any{"commit": job().HeadCommit})
-
 	landed := waitFor("landed", func(it factory.Item) bool { return it.State == factory.StateLanded })
-	if p := landed.Stream.Phases; p[2].State != factory.PhaseDone || p[2].Round != 1 {
-		t.Fatalf("review after the last yes: %+v", p)
+	for i, ph := range landed.Stream.Phases {
+		if ph.State != factory.PhaseDone || ph.Round != 1 {
+			t.Fatalf("step %d at landing: %+v", i, ph)
+		}
 	}
+	for _, step := range []string{"verify", "review"} {
+		for _, l := range landed.Stream.Log {
+			if l.Text == factory.NextStepQuestion(step) {
+				t.Fatalf("Manual asked before %s: %q", step, l.Text)
+			}
+		}
+	}
+	trail = append(trail, "ran write, verify and review without asking")
 	stepModels := map[string]string{}
 	for _, s := range job().Steps {
 		stepModels[s.Name] = s.Model

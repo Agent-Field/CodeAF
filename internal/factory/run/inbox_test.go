@@ -321,38 +321,30 @@ func TestTheManagersAnswerIsRecordedOnTheJob(t *testing.T) {
 	}
 }
 
-// A QUESTION THE STEP SAID ONLY A PERSON CAN ANSWER, AND EVERY QUESTION OF A
-// JOB IN MANUAL, GOES STRAIGHT TO THE PERSON: the manager is never given a
-// turn, the question says why it came to them, and their words answer it.
-func TestPersonOnlyAndManualQuestionsSkipTheManager(t *testing.T) {
-	for name, c := range map[string]struct {
-		q      factory.Asked
-		manual bool
-		why    string
-	}{
-		"marked for a person": {q: factory.Asked{Question: "which wording do you prefer?", Person: true}, why: factory.WhyOnlyAPerson},
-		"a job in Manual":     {q: factory.Asked{Question: "which wording do you prefer?"}, manual: true, why: factory.WhyManualAsksYou},
-	} {
-		t.Run(name, func(t *testing.T) {
+// A QUESTION THE STEP SAID ONLY A PERSON CAN ANSWER GOES STRAIGHT TO THE
+// PERSON: the manager is never given a turn, the question says why it came to
+// them, and their words answer it.
+func TestAPersonOnlyQuestionSkipsTheManager(t *testing.T) {
+	q := factory.Asked{Question: "which wording do you prefer?", Person: true}
+	for _, mode := range []string{factory.AutonomyAuto, factory.AutonomyManual} {
+		t.Run(mode, func(t *testing.T) {
 			talk := newFakeTalk()
 			got := make(chan string, 1)
-			g, _ := managed(t, map[factory.StageKind]Executor{factory.StageChat: askingStage(c.q, got)}, talk, time.Hour)
+			g, _ := managed(t, map[factory.StageKind]Executor{factory.StageChat: askingStage(q, got)}, talk, time.Hour)
 			g.r.opts.Inbox = func(context.Context, factory.Item, factory.Asked) (InboxReply, error) {
 				t.Error("the manager was given a question only the person may answer")
 				return InboxReply{Answer: "the manager settled it"}, nil
 			}
 			id := g.add("fix it", chat("write"))
-			if c.manual {
-				if err := g.st.Update(id, func(it *factory.Item) error { it.Autonomy = factory.AutonomyManual; return nil }); err != nil {
-					t.Fatal(err)
-				}
+			if err := g.st.Update(id, func(it *factory.Item) error { it.Autonomy = mode; return nil }); err != nil {
+				t.Fatal(err)
 			}
 			if err := g.r.Launch(id); err != nil {
 				t.Fatal(err)
 			}
-			it := g.asked(id, "write asks: "+c.q.Question)
-			if it.Asking == nil || it.Asking.With != factory.AskedYou || it.Asking.Why != c.why {
-				t.Fatalf("the question is held as %+v, want with you because %q", it.Asking, c.why)
+			it := g.asked(id, "write asks: "+q.Question)
+			if it.Asking == nil || it.Asking.With != factory.AskedYou || it.Asking.Why != factory.WhyOnlyAPerson {
+				t.Fatalf("the question is held as %+v, want with you because %q", it.Asking, factory.WhyOnlyAPerson)
 			}
 			if err := g.r.Answer(id, false, "the short one"); err != nil {
 				t.Fatal(err)
@@ -361,6 +353,43 @@ func TestPersonOnlyAndManualQuestionsSkipTheManager(t *testing.T) {
 				t.Fatalf("the step was answered %q", said)
 			}
 		})
+	}
+}
+
+// A STEP'S QUESTION GOES TO THE MANAGER FIRST IN MANUAL TOO (the owner's
+// decision of 2026-11-17). Manual keeps the plan and everything public for
+// the person; a question about the work is neither, and it used to skip the
+// manager and stop the job on its person every time.
+func TestAManualJobsQuestionGoesToTheManagerFirst(t *testing.T) {
+	talk := newFakeTalk()
+	got := make(chan string, 1)
+	q := factory.Asked{Question: "which wording do you prefer?"}
+	g, _ := managed(t, map[factory.StageKind]Executor{factory.StageChat: askingStage(q, got)}, talk, time.Hour)
+	asked := make(chan factory.Asked, 1)
+	g.r.opts.Inbox = func(_ context.Context, _ factory.Item, q factory.Asked) (InboxReply, error) {
+		asked <- q
+		return InboxReply{Answer: "the short one"}, nil
+	}
+	id := g.add("fix it", chat("write"))
+	if err := g.st.Update(id, func(it *factory.Item) error { it.Autonomy = factory.AutonomyManual; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.r.Launch(id); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case put := <-asked:
+		if put.Question != q.Question {
+			t.Fatalf("the manager was asked %q", put.Question)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("a Manual job's question never reached the manager")
+	}
+	if said := <-got; said != "the manager answered: the short one" {
+		t.Fatalf("the step was answered %q", said)
+	}
+	if why := factory.PersonFirst(factory.Item{Autonomy: factory.AutonomyManual}, q); why != "" {
+		t.Fatalf("Manual still sends a question to the person first: %q", why)
 	}
 }
 

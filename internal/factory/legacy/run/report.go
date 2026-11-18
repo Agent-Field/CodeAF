@@ -773,7 +773,8 @@ func applyFollowObservation(it *factory.Item, report factory.RunReport) error {
 	}
 	f.HeadSHA, f.ObservedFrom = next.HeadSHA, next.ObservedFrom
 	if snapshot || moved {
-		it.Approval, it.Proof, it.Policy = nil, nil, nil
+		it.Approval = nil
+		it.ResetChecks()
 		if f.Kind == "readiness" && next.Readiness != nil {
 			if pr.ReadinessKey == "" || next.Readiness.Key != pr.ReadinessKey || next.Readiness.Head != pr.HeadSHA {
 				return fmt.Errorf("complete current-head review material is required")

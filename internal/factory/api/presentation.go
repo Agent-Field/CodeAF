@@ -161,3 +161,46 @@ func PlainStepNotes(j *Job) {
 func emptyPR(pr *PR) bool {
 	return pr.HeadSHA != "" && pr.FilesHead == pr.HeadSHA && pr.FilesTotal == 0 && len(pr.Files) == 0
 }
+
+// PresentMainAgentHold shows a reader a job whose main agent holds its stop
+// (factory's handoff.go) as WORKING, with the one line that says so, and
+// answers whether it did.
+//
+// A STOP THE MAIN AGENT MAY SETTLE IS NOT YET THE PERSON'S. The app draws its
+// cards and counts from the job's state, its needs_you, its failure and its
+// publish error, so a stop left on the wire as it is stored flashed a card and
+// a notification for something the main agent then settled a minute later.
+// While the handoff stands those are taken off what a reader is sent, and
+// state_presentation says [factory.MainAgentDeciding]; `wait` and `offers`
+// still say the whole truth (wait.who main_agent, and what the person and the
+// agent may press). When the handoff ends the job is sent as it is stored, a
+// stop its person holds.
+//
+// IT IS FOR A READER'S JOB ONLY, as [PlainStepNotes] is: a worker is sent the
+// job as it is stored, and nothing saved is changed.
+func PresentMainAgentHold(j *Job) bool {
+	if j.Wait == nil || j.Wait.Who != factory.WaitMainAgent || j.State != StateNeedsYou {
+		return false
+	}
+	// The reason is a running job's: its pull request's, or its step's
+	// ([factory.JobReason]).
+	j.State, j.Reason = StateRunning, "step"
+	if j.PR != nil {
+		j.Reason = "github"
+	}
+	j.NeedsYou, j.Failure, j.PublishError, j.AutonomyWhy = nil, nil, "", ""
+	j.Ready, j.Gate = false, ""
+	if f := j.FollowUp; f != nil && f.State == "needs_you" {
+		cp := *f
+		cp.State, cp.BlockedBy = "running", ""
+		j.FollowUp = &cp
+	}
+	j.StatePresentation = StatePresentation{Kind: StateRunning, Title: "Running", Detail: factory.MainAgentDeciding}
+	return true
+}
+
+// RegroupNeedsYou reads the queue's needs-you groups again from its jobs, for
+// a queue whose jobs were presented after it was made ([PresentMainAgentHold]).
+func RegroupNeedsYou(q *Queue) {
+	q.NeedsYou = groupNeedsYou(q.Jobs)
+}

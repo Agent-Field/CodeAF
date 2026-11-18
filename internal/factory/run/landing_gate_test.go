@@ -10,13 +10,16 @@ import (
 )
 
 // THE LIVE DESK WALK'S #176, replayed on the runner. A job on a library
-// pipeline (planfix, writefix, runvetand, then the approve step proof2) was
-// switched to Manual, held before runvetand, and switched to Auto during that
-// hold. It ran on and published while proof2 still read "to come": the run
-// landed past its approve step as though landing were the pass. The switch
-// may pass the standing hold (that is Auto's word for Manual's ask), but the
-// approve step after it is still a wait until the proof approval answers it.
-func TestASwitchToAutoDuringAManualHoldLandsWithTheApproveStepWaiting(t *testing.T) {
+// pipeline (planfix, writefix, runvetand, then the approve step proof2) ran on
+// and published while proof2 still read "to come": the run landed past its
+// approve step as though landing were the pass. The approve step is still a
+// wait until the proof approval answers it.
+//
+// MANUAL HOLDS NO STEP BEFORE IT RUNS ANY MORE (the owner's decision of
+// 2026-11-17): the walk's job was held before each step, and this one runs
+// its three steps without a word and waits only at its approve step.
+func TestAManualJobRunsItsStepsAndLandsWithTheApproveStepWaiting(t *testing.T) {
+	var asks []string
 	g := newRig(t, nil, func(o *Options) {
 		o.Exec = map[factory.StageKind]Executor{factory.StageChat: ExecutorFunc(func(ctx context.Context, job Job) (factory.StageResult, error) {
 			return done(job.Stage.Name + " done"), nil
@@ -30,18 +33,15 @@ func TestASwitchToAutoDuringAManualHoldLandsWithTheApproveStepWaiting(t *testing
 	if err := g.r.Launch(id); err != nil {
 		t.Fatal(err)
 	}
-	g.asked(id, factory.NextStepQuestion("writefix"))
-	if err := g.r.Answer(id, true, ""); err != nil {
-		t.Fatal(err)
-	}
-	g.asked(id, factory.NextStepQuestion("runvetand"))
-	if err := g.st.Update(id, func(it *factory.Item) error { it.Autonomy = factory.AutonomyAuto; return nil }); err != nil {
-		t.Fatal(err)
-	}
-	if err := g.r.Answer(id, true, ""); err != nil {
-		t.Fatal(err)
-	}
 	it := g.waitState(id, factory.StateLanded)
+	for _, line := range it.Stream.Log {
+		if line.Tone == "ask" {
+			asks = append(asks, line.Text)
+		}
+	}
+	if len(asks) != 0 {
+		t.Fatalf("Manual asked before a step: %q", asks)
+	}
 	ph := it.Stream.Phases
 	if ph[2].State != factory.PhaseDone || ph[3].Name != "proof2" || ph[3].State != factory.PhaseWaiting || it.Stream.Cur != 3 {
 		t.Fatalf("landed past its approve step: phases %+v cur %d", ph, it.Stream.Cur)

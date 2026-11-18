@@ -16,11 +16,10 @@ import (
 // The desk's Approve on a Manual plan hold is factory.job_approve: POST
 // /v1/jobs/{id}/approve with the head commit the person saw. The service
 // keeps it approving for the undo window and answers the job when the window
-// closes. The job goes past the approve step and runs write; Manual then asks
-// before test. That next hold must read as the step it is (approve_step, an
-// approval of kind step naming test), never as the plan hold the person just
-// approved: the desk walk read it as "Plan ready" with Approve showing again
-// and took it for an approval that bounced.
+// closes. The job goes past the approve step and runs write and test without
+// another word: Manual holds no step before it runs any more (the owner's
+// decision of 2026-11-17), so the next wait is the landing's own, the proof
+// approval, never the plan hold the person just approved.
 func TestADeskApproveOnAManualPlanHoldCarriesOnWhenUndoCloses(t *testing.T) {
 	g := newRig(t)
 	id := manualJob(t, g, append(planGateWrite(), named("test"))...)
@@ -55,20 +54,14 @@ func TestADeskApproveOnAManualPlanHoldCarriesOnWhenUndoCloses(t *testing.T) {
 	if it.Approval == nil || it.Approval.State != "approved" {
 		t.Fatalf("the approval did not settle: %+v (state %s, %q)", it.Approval, it.State, it.Question)
 	}
-	next := g.waitFor(t, id, factory.StateNeedsYou)
-	for deadline := time.Now().Add(10 * time.Second); next.Question != factory.NextStepQuestion("test"); next, _ = g.st.Get(id) {
-		if time.Now().After(deadline) {
-			t.Fatalf("never asked before test: %s %q %+v", next.State, next.Question, next.Stream)
-		}
-		time.Sleep(5 * time.Millisecond)
+	next := g.waitFor(t, id, factory.StateLanded)
+	if phaseState(next, factory.ApproveName) != factory.PhaseDone || phaseState(next, "write") != factory.PhaseDone || phaseState(next, "test") != factory.PhaseDone {
+		t.Fatalf("steps at landing: %+v", next.Stream.Phases)
 	}
-	if phaseState(next, factory.ApproveName) != factory.PhaseDone || phaseState(next, "write") != factory.PhaseDone || phaseState(next, "test") != factory.PhaseWaiting {
-		t.Fatalf("steps at the next hold: %+v", next.Stream.Phases)
+	if kind := factory.NeedsKind(next); kind != factory.NeedsApproveProof {
+		t.Fatalf("the landing reads as %s", kind)
 	}
-	if kind := factory.NeedsKind(next); kind != factory.NeedsApproveStep {
-		t.Fatalf("the hold before test reads as %s, the plan hold the person already approved", kind)
-	}
-	if a := factory.JobApproval(next); a == nil || a.Kind != "step" || a.State != "waiting" {
-		t.Fatalf("the hold before test offers approval %+v", a)
+	if a := factory.JobApproval(next); a == nil || a.Kind != "proof" || a.State != "waiting" {
+		t.Fatalf("the landing offers approval %+v", a)
 	}
 }

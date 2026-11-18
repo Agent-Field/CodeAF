@@ -202,3 +202,32 @@ func TestAutoApprovalBlockedAtItsTimeGoesBackToThePerson(t *testing.T) {
 		t.Fatalf("blocked automatic approval: %+v publishing=%v", saved.Approval, saved.Publishing)
 	}
 }
+
+// A FOLLOW PR REPAIR WAITING TO BE PUSHED IS PUBLISHED BY AUTO, THOUGH THE
+// FORGE STILL SHOWS THE CONFLICT IT RESOLVES (job 31, 2026-11-17): the update
+// is the proof approval Auto records, not a conflict for the person.
+func TestAutoPushesAFollowUpRepairOverTheConflictItResolves(t *testing.T) {
+	f := newV2Jobs(t)
+	in := autoProof()
+	head := strings.Repeat("b", 40)
+	in.PullRequest = &factory.PullRequest{Number: 2587, State: factory.PROpen, Conflict: true, HeadSHA: head}
+	in.FollowUp = &factory.PRFollowUp{Kind: "conflict", State: "waiting_approval", HeadSHA: head}
+	if got := factory.NeedsKind(in); got != factory.NeedsApproveProof {
+		t.Fatalf("needs kind = %q, want the proof approval", got)
+	}
+	if got := factory.JobReason(in); got != "approval_proof" {
+		t.Fatalf("reason = %q, want approval_proof", got)
+	}
+	if a := factory.JobApproval(in); a == nil || a.Kind != "proof" {
+		t.Fatalf("approval = %+v, want a waiting proof approval", a)
+	}
+	it := f.create(t, in)
+	f.read(t, it)
+	saved, err := f.st.Get(it.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !saved.Publishing || saved.Approval == nil || !saved.Approval.Automatic || saved.Approval.State != "approved" {
+		t.Fatalf("Auto did not publish the waiting repair: publishing=%v approval=%+v", saved.Publishing, saved.Approval)
+	}
+}

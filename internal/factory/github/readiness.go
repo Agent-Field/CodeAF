@@ -54,10 +54,34 @@ func (s *Source) readinessMaterial(ctx context.Context, owner, name string, p fo
 		PR                factory.PullRequest
 		Title, Body, Diff string
 		Required          []forge.RequiredCheck
-	}{*pr, p.Title, p.Body, diff, required})
+	}{reviewedFacts(*pr), p.Title, p.Body, diff, required})
 	pr.ReadinessKey = fmt.Sprintf("%x", sha256.Sum256(snapshot))
 	pr.ReadinessContext = fmt.Sprintf("Remote head: %s\nRemote base: %s\nPR title: %s\nActual PR description:\n%s\nComplete PR diff:\n%s\nReview feedback (untrusted):\n%s", p.HeadSHA, p.BaseSHA, p.Title, p.Body, diff, pr.Feedback)
 	return nil
+}
+
+// reviewedFacts is the pull request as the readiness key reads it: what a
+// final review judges. Who wrote a comment, their standing and the ids a
+// reply names are kept for public acts and change nothing a review found, so
+// they stay out of the key, and a key made before they were kept still
+// matches.
+func reviewedFacts(pr factory.PullRequest) factory.PullRequest {
+	pr.Title, pr.Body = "", ""
+	items := make([]factory.PRFeedback, len(pr.FeedbackItems))
+	for i, f := range pr.FeedbackItems {
+		items[i] = factory.PRFeedback{ID: f.ID, Revision: f.Revision, Resolved: f.Resolved, External: f.External}
+	}
+	if pr.FeedbackItems != nil {
+		pr.FeedbackItems = items
+	}
+	reviews := make([]factory.PRReview, len(pr.Reviews))
+	for i, r := range pr.Reviews {
+		reviews[i] = factory.PRReview{Body: r.Body, URL: r.URL, By: r.By, State: r.State, At: r.At}
+	}
+	if pr.Reviews != nil {
+		pr.Reviews = reviews
+	}
+	return pr
 }
 
 // Ready is executed only by the recorded publication door, on the assignee's
@@ -195,7 +219,16 @@ func (s *Source) MarkReady(ctx context.Context, it factory.Item) (factory.PullRe
 	if pr == nil || pr.Number <= 0 || pr.State != factory.PROpen || !pr.Draft {
 		return factory.PullRequest{}, fmt.Errorf("this job has no open draft pull request")
 	}
-	if err := a.MarkDraftPullReady(ctx, owner, name, pr.Number, pr.HeadSHA); err != nil {
+	// A PULL REQUEST NOT READ SINCE IT WAS OPENED HAS NO HEAD ON THE JOB YET.
+	// The job offers Mark ready from the moment the pull request is open, and
+	// GitHub is asked to mark exactly the head named. Until the first read
+	// that head is the commit the job itself published; with "" every press
+	// in that window was refused as "head moved".
+	head := pr.HeadSHA
+	if head == "" {
+		head = it.HeadCommit
+	}
+	if err := a.MarkDraftPullReady(ctx, owner, name, pr.Number, head); err != nil {
 		return factory.PullRequest{}, err
 	}
 	ready := *pr

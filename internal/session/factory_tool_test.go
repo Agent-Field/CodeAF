@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -392,4 +393,47 @@ func TestFactoryHandoffsAlwaysCreateIssues(t *testing.T) {
 			t.Fatal("PR jobs are still offered")
 		}
 	}
+}
+
+// A JOB'S MAIN AGENT RAISES NO NEW-JOB CARD ON A TURN THE PERSON DID NOT
+// START: job 31 (codeaf#1758) woke on its team's replies and put "hand this to
+// the factory?" in the person's Inbox about work they never asked for. With
+// the person's words in the turn the card is raised as before.
+func TestAJobsChatOffersANewJobOnlyWhenThePersonSpoke(t *testing.T) {
+	door := &fakeFactoryDoor{id: 7}
+	root := t.TempDir()
+	talk := filepath.Join(root, "talk.jsonl")
+	agent, err := newAgent(Config{
+		Workspace: root, Place: Place{Dir: root, Workspace: root},
+		Model: "test/model", Interactive: true, AskConsent: true,
+		Factory: door, SessionFile: talk, JobChat: &jobChatStub{talk: talk},
+	}, &scriptedCompleter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = agent.Close() })
+	if agent.jobChatOf() == nil {
+		t.Fatal("the agent is not a job's chat")
+	}
+	out, _, err := agent.factoryAddTool().Execute(context.Background(), json.RawMessage(factoryArgs))
+	if err != nil || out != factoryJobChatUnasked {
+		t.Fatalf("unasked factory_add = %q, %v", out, err)
+	}
+	if len(door.written()) != 0 {
+		t.Fatal("an unasked card wrote an item")
+	}
+
+	agent.mu.Lock()
+	agent.personWords = "put the CI fix on the factory"
+	agent.mu.Unlock()
+	questions, stop := agent.WatchQuestions()
+	t.Cleanup(stop)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	results := runFactoryAdd(t, agent, ctx)
+	if q := awaitFactoryQuestion(t, questions); q.Head != FactoryCardHead {
+		t.Fatalf("head = %q", q.Head)
+	}
+	cancel()
+	awaitResult(t, results)
 }

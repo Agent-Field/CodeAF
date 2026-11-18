@@ -23,7 +23,7 @@ type ManagerPlanRejecter interface {
 }
 
 func (a *Agent) factoryStatusTool() bare.Tool {
-	return bare.Tool{Name: "factory_status", Description: "Read authoritative saved status of the ONE job this conversation manages: completed steps, current blocker, live worker, last progress and supported next action. Read this first for progress questions and before answering a persisted decision. No model, workspace investigation or repair is started.", Schema: json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`), Execute: func(ctx context.Context, _ json.RawMessage) (string, bool, error) {
+	return bare.Tool{Name: "factory_status", Description: "Read authoritative saved status of the ONE job this conversation manages: completed steps, current blocker, live worker, last progress, what it waits on, the public acts that wait for the person's yes, the pull request's open review threads by id, and what you may do next. Read this first for progress questions, before answering a persisted decision, and before proposing a public act. No model, workspace investigation or repair is started.", Schema: json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`), Execute: func(ctx context.Context, _ json.RawMessage) (string, bool, error) {
 		d, ok := a.runDoorForTurn().(ManagerStatusDoor)
 		if !ok {
 			return "No saved manager status is available on this turn.", true, nil

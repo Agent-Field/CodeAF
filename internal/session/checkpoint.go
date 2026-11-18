@@ -1048,6 +1048,51 @@ func answeredNoteUnchanged(messages []ai.Message) bool {
 	return false
 }
 
+// answeredWakeUnchanged reads the other shape [NoChangeReply] answers: a turn
+// the team's traffic woke ([TeamWakeNote]), whose note tells the model to say
+// exactly the token when it has nothing new for the person
+// ([teamWakeDeliveryRule]). The newest message is a tool-less reply that is
+// only the token; the calls before it are the handling the note asked for.
+// Read as an unfinished turn instead, the completion check carried it on and
+// the woken manager answered old questions to the person (owner, 2026-11-16:
+// Afi woke on startup, was reopened twice and posted two stale answers).
+//
+// THE NOTE IS READ OFF THE TRANSCRIPT, NOT THE OPENING MESSAGE. A real wake
+// ([Agent.teamWakeWith]) opens on an empty message marked a wake and the note
+// lands through the steering drain, or the turn's end drained it before the
+// wake started, so the opening message carries no words. The turn must be one
+// nobody typed (user.wake, or a note submitted as-is), and walking back from
+// the reply over the harness's own notes ([isCodeafNote]: taking stock, a
+// silent or stuck nudge, a volatile note) and a "while you worked" batch, the
+// first message to the model must be the team's wake note. A carry-on (which
+// [answeredNoteUnchanged] reads), a line the person typed or any other note
+// first means the token answers something else, and the turn is read as
+// before.
+func answeredWakeUnchanged(user userMessage, messages []ai.Message) bool {
+	last := len(messages) - 1
+	if last < 0 || messages[last].Role != "assistant" || len(messages[last].ToolCalls) > 0 ||
+		!IsNoChangeReply(partsText(messages[last])) {
+		return false
+	}
+	if !user.wake && !TeamWakeNote(partsText(user.message)) {
+		return false
+	}
+	for index := last - 1; index >= 0; index-- {
+		if messages[index].Role != "user" {
+			continue
+		}
+		text := strings.TrimSpace(partsText(messages[index]))
+		if strings.HasPrefix(text, carryOnLead) {
+			return false
+		}
+		if isCodeafNote(text) || strings.HasPrefix(text, "while you worked:") {
+			continue
+		}
+		return TeamWakeNote(text)
+	}
+	return false
+}
+
 // NoChangeReply is the whole of the model's answer to a carry-on it judges
 // mistaken, and the harness's token for "the answer already given stands".
 //
@@ -3385,7 +3430,7 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 	// answer those calls may have made stale, unread; a token after the person's
 	// own words, or after a load or ask nudge, answers something that is not the
 	// reader's note at all.
-	if meter != nil && answeredNoteUnchanged(a.snapshot()) {
+	if meter != nil && (answeredNoteUnchanged(a.snapshot()) || answeredWakeUnchanged(user, a.snapshot())) {
 		return false, false
 	}
 	// A TURN THAT LOADED A TOOL AND STOPPED WITHOUT USING IT IS SENT BACK ONCE,

@@ -23,7 +23,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
@@ -86,6 +85,8 @@ type floorLoop struct {
 	// extra are phases a send-back appended, by name, which are not in the
 	// item's stages: their ask is kept here because a phase's note changes.
 	extra map[int]map[string]factory.Stage
+	// tasks is what is kept about extra tasks (task.go).
+	tasks taskFloor
 
 	// sayMu keeps each item's manager lines in order (manager.go): owed are
 	// the lines a conversation could not take yet, and retrying says a retry
@@ -233,6 +234,7 @@ func (r *Runner) Launch(id int) error {
 	lp.results[id] = map[int]factory.StageResult{}
 	lp.notes[id] = nil
 	delete(lp.extra, id)
+	lp.tasks.forget(id)
 	lp.mu.Unlock()
 
 	// THE MANAGER IS MADE BEFORE THE RUN IS, and what the person told it
@@ -268,7 +270,7 @@ func (r *Runner) Launch(id int) error {
 		it.PublishStatus, it.Publishing = nil, false
 		it.PublishError = ""
 		it.Question, it.QKind = "", ""
-		it.Proof, it.Policy = nil, nil
+		it.ResetChecks()
 		if it.Stream != nil && begun(it.Stream) {
 			factory.ClearJobRun(it)
 		}
@@ -609,6 +611,9 @@ func (lp *floorLoop) drive(c *loopCtl) {
 		go lp.watchTalk(c, watching)
 	}
 	for {
+		// No round is under way here, so a task asked for meanwhile goes in
+		// front of the next step, and a finished one is settled (task.go).
+		lp.tasksBetween(c)
 		lp.retailTail(c)
 		it, err := lp.r.opts.Store.Get(c.id)
 		if err != nil || it.Stream == nil {
@@ -655,6 +660,11 @@ func nextPhase(ph []factory.Phase) int {
 // stage a send-back made.
 func (lp *floorLoop) stageAt(it factory.Item, i int) (factory.Stage, int) {
 	ph := it.Stream.Phases[i]
+	// An extra task is its own stage: its instructions, whatever its note
+	// says by now (task.go).
+	if factory.IsTask(ph) {
+		return factory.TaskStage(ph), -1
+	}
 	if j := factory.StageIndex(it.Stages, ph.Name); j >= 0 {
 		return it.Stages[j], j
 	}
@@ -883,10 +893,11 @@ func (lp *floorLoop) approve(c *loopCtl, i int, name string) bool {
 	return lp.back(c, i, prev, a.words)
 }
 
-// askBeforeStep is Manual's word before step i. A yes leaves the step running,
-// so the drive loop's next pass runs it without asking again; a no sends back
-// the work before it. Either way the drive loop carries on from the store.
-func (lp *floorLoop) askBeforeStep(c *loopCtl, i int, name string) bool {
+// askBeforePost is Manual's word before post step i. A yes leaves the step
+// running, so the drive loop's next pass runs it without asking again; a no
+// sends back the work before it. Either way the drive loop carries on from
+// the store.
+func (lp *floorLoop) askBeforePost(c *loopCtl, i int, name string) bool {
 	a, ok := lp.ask(c, i, "approve", factory.QKindApprove, factory.NextStepQuestion(name), factory.PhaseWaiting, "", "")
 	if !ok {
 		return false
@@ -1024,7 +1035,7 @@ func (lp *floorLoop) accept(c *loopCtl, i int, name, why string) bool {
 		}
 		accepted := map[string]bool{}
 		for _, n := range kept.Notes {
-			if rest, ok := strings.CutPrefix(n, factory.AcceptedPrefix); ok {
+			if rest, ok := factory.CutAccepted(n); ok {
 				accepted[strings.TrimSpace(rest)] = true
 			}
 		}
@@ -1100,8 +1111,14 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 	if !lp.allowRound(c, st) {
 		return false
 	}
-	if factory.AsksBeforeStep(it, i) {
-		return lp.askBeforeStep(c, i, name)
+	// MANUAL NO LONGER HOLDS A STEP FOR THE PERSON'S WORD BEFORE IT RUNS (the
+	// owner's decision of 2026-11-17). Manual is about the plan and about
+	// anything public: the pipeline's approve steps and every public approval
+	// still ask, and the steps between them run on. A post step IS a public
+	// act (it comments, labels, opens or closes on GitHub), so Manual still
+	// asks before one.
+	if factory.AsksBeforePost(it, i) {
+		return lp.askBeforePost(c, i, name)
 	}
 
 	exec := lp.r.opts.Exec[kindOf(st)]
@@ -1123,6 +1140,11 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 	for {
 		if !lp.held(c) {
 			return false
+		}
+		// A task asked for while the last round ran goes first: this step
+		// waits at the round it was about to start (task.go).
+		if lp.taskTurn(c, i, round, limit) {
+			return true
 		}
 		if !lp.capCheck(c, i, name, -1) {
 			return false
@@ -1339,7 +1361,7 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 				lp.stop(c)
 				return false
 			}
-			if words := strings.TrimSpace(a.words); words != "" && words != factory.ChoiceTryOnceMore && !strings.EqualFold(words, "yes") {
+			if words := factory.RoundNote(a.words); words != "" {
 				lp.addNote(c.id, words)
 			}
 			continue
@@ -1497,11 +1519,7 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 				lp.stop(c)
 				return false
 			}
-			words := a.words
-			if token := strings.ToLower(strings.TrimSpace(words)); token == factory.ChoiceTryOnceMore || token == "yes" {
-				words = ""
-			}
-			lp.addNote(c.id, words)
+			lp.addNote(c.id, factory.RoundNote(a.words))
 			round++
 			limit = max(limit, round)
 			_ = lp.write(c, func(it *factory.Item) error { it.Stream.Phases[i].RoundLimit = limit; return nil })
@@ -2209,19 +2227,28 @@ func (lp *floorLoop) fold(c *loopCtl, before factory.Item, st factory.Stage, i i
 
 // retail rebuilds the phases after phase i from the item's stages as they
 // now stand: what has run stays as it ran, and the tail is compiled again.
+//
+// A TASK THAT WAITS IN THE TAIL STAYS IN IT ([factory.KeepTasks]): it is not
+// one of the job's stages, and a step edit is no word to drop it. A tail
+// laid after a task is laid from the last stage's phase before it.
 func retail(it factory.Item, phases []factory.Phase, i int) []factory.Phase {
 	out := append([]factory.Phase(nil), phases[:i+1]...)
-	from := factory.StageIndex(it.Stages, phases[i].Name)
-	if from < 0 {
+	anchor := i
+	for anchor > 0 && factory.IsTask(phases[anchor]) {
+		anchor--
+	}
+	from := factory.StageIndex(it.Stages, phases[anchor].Name)
+	if from < 0 || factory.IsTask(phases[anchor]) {
 		return append(out, phases[i+1:]...)
 	}
+	var laid []factory.Phase
 	for _, s := range it.Stages[from+1:] {
 		if !runsIn(it, s) {
 			continue
 		}
-		out = append(out, factory.Phase{Name: s.Name, Kind: kindOf(s), State: factory.PhasePending, Note: s.Ask})
+		laid = append(laid, factory.Phase{Name: s.Name, Kind: kindOf(s), State: factory.PhasePending, Note: s.Ask})
 	}
-	return out
+	return append(out, factory.KeepTasks(phases[i+1:], laid)...)
 }
 
 // makesSheet says whether a stage's claims go on the proof sheet: the proof
@@ -2272,19 +2299,9 @@ func mergeClaim(sheet []factory.Claim, cl factory.Claim) []factory.Claim {
 	return append(sheet, cl)
 }
 
-// claimKey is a claim's words for matching: lower case, letters and digits
-// only, single spaces.
-func claimKey(text string) string {
-	var b strings.Builder
-	for _, r := range strings.ToLower(text) {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) {
-			b.WriteRune(r)
-		} else {
-			b.WriteRune(' ')
-		}
-	}
-	return strings.Join(strings.Fields(b.String()), " ")
-}
+// claimKey is a claim's words for matching ([factory.ClaimKey]): lower case,
+// letters and digits only, single spaces.
+func claimKey(text string) string { return factory.ClaimKey(text) }
 
 func loopFirstLine(s string) string {
 	s = strings.TrimSpace(s)
@@ -2785,6 +2802,9 @@ func (r *Runner) revive(it factory.Item) error {
 		c.revived = i + 1
 	}
 	lp.ctls[id] = c
+	// A task put into the run since this runner last ran it moved the steps
+	// after it, and the kept results move with them (task.go).
+	lp.rekey(id, it.Stream.Phases)
 	if lp.results[id] == nil {
 		// WHAT THE STEPS BEFORE LEFT comes back from the item, where each
 		// round's result was kept, with the notes they left.
@@ -3048,12 +3068,9 @@ func ApprovalRefused(it *factory.Item, edited bool) error {
 	if edited {
 		return nil
 	}
-	bad := 0
-	for _, cl := range append(append([]factory.Claim(nil), it.Proof...), it.Policy...) {
-		if !cl.OK {
-			bad++
-		}
-	}
+	// A failing finding the person overrode is theirs to have passed
+	// (factory's override.go); every other one still refuses.
+	bad := len(factory.FailingFindings(*it))
 	if bad == 1 {
 		return fmt.Errorf("%s has a claim not shown", it.Ref())
 	}
@@ -3186,19 +3203,8 @@ func sendBackStored(it *factory.Item, words string, now time.Time) (string, erro
 	for k := 2; phaseNamed(s.Phases, name) || factory.StageIndex(it.Stages, name) >= 0; k++ {
 		name = "prove" + strconv.Itoa(k) // one word, as every stage name is
 	}
-	at := 0
-	for k, p := range s.Phases {
-		if p.State == factory.PhaseDone || p.State == factory.PhaseSkipped {
-			at = k + 1
-		}
-	}
-	ph := factory.Phase{Name: name, Kind: factory.StageChat, State: factory.PhasePending, Note: words}
-	s.Phases = append(s.Phases[:at:at], append([]factory.Phase{ph}, s.Phases[at:]...)...)
-	s.Cur = at
-	s.Ended = time.Time{}
-	it.State = factory.StateQueued
-	it.PublishStatus, it.Publishing = nil, false
-	it.PublishError = ""
+	// An extra task on a landed job takes the same road (task.go).
+	requeueLanded(it, factory.Phase{Name: name, Kind: factory.StageChat, State: factory.PhasePending, Note: words})
 	loopSay(it, now, "said", "changes requested: "+words)
 	return name, nil
 }
@@ -3342,16 +3348,26 @@ func tailPhases(it factory.Item, phases []factory.Phase) ([]factory.Phase, bool)
 			last = i
 		}
 	}
+	tasks := false
 	for _, p := range phases[last+1:] {
+		// A task in the tail is kept where it is ([retail]); any other phase
+		// the stages do not name leaves the tail alone.
+		if factory.IsTask(p) {
+			tasks = true
+			continue
+		}
 		if factory.StageIndex(it.Stages, p.Name) < 0 {
 			return phases, false
 		}
 	}
 	var out []factory.Phase
 	if last < 0 {
+		if tasks {
+			return phases, false
+		}
 		out = loopPhases(it)
 	} else {
-		if factory.StageIndex(it.Stages, phases[last].Name) < 0 {
+		if factory.StageIndex(it.Stages, phases[last].Name) < 0 && !factory.IsTask(phases[last]) {
 			return phases, false
 		}
 		out = retail(it, phases, last)

@@ -6,18 +6,31 @@ package session
 // cmd/codeaf's factory_foreman.go, opened from the app by factory.foreman_open):
 // the product-level judgment about what to take first, never the runner. It
 // reads the floor through this one tool, proposes by SELECTING items, and
-// starts or prioritises one job when the person asks ([FloorActor]). ONLY THE FOREMAN CARRIES IT: cmd/codeaf sets [Config.Floor] on
+// acts on one job when the person asks: it starts or prioritises it
+// ([FloorActor]), passes the person's words to its main agent and presses an
+// action the job offers the person ([FloorHand], tools_floor_hand.go). ONLY
+// THE FOREMAN CARRIES IT: cmd/codeaf sets [Config.Floor] on
 // the conversation whose session file the floor names as its foreman and on
 // no other, so an ordinary chat proposes through `factory_add` and an item's
 // own conversation through `factory_item`.
 //
 // ── THE LAWS THIS FILE APPLIES ──
 //
-//   - IT READS, MARKS, STARTS AND PRIORITISES, AND NOTHING ELSE. There is no
-//     argument that stops, ships, merges, posts or otherwise changes an item.
-//     A start and a priority go through the job page's own doors
-//     ([FloorActor]), only when the person asked. A selection (the field is
-//     `mark`) is a proposal the person sees on the floor, and takes or leaves.
+//   - IT READS AND MARKS BY ITSELF, AND ACTS ONLY FOR THE PERSON. A start and
+//     a priority go through the job page's own doors ([FloorActor]), only
+//     when the person asked. A selection (the field is `mark`) is a proposal
+//     the person sees on the floor, and takes or leaves. Nothing here stops
+//     or drops a job.
+//
+//   - A PRESS AND WORDS FOR A JOB'S MAIN AGENT NEED THE PERSON'S OWN WORDS IN
+//     THE TURN ([Agent.turnPersonWords]), read from the turn and never from
+//     the model's arguments. The door checks it again, and presses only what
+//     the job's stored offers list for its person (cmd/codeaf's
+//     factory_foreman_press.go).
+//
+//   - EVERY ROW SAYS THE JOB'S STORED WAIT ([factory.FloorWaitWords]): who it
+//     waits on and what it accepts from the person now. The floor's own
+//     reading of a state never says who a job waits on.
 //
 //   - ONLY A NEW ITEM TAKES A MARK. The door refuses anything else, and the
 //     tool says which items it left alone and why, so the model never believes
@@ -60,8 +73,12 @@ type FloorDoor interface {
 // The foreman uses it only when the person asks; a door that is not one leaves
 // the tool reading and selecting, as before. Each answers the line the model
 // reads back, or a refusal in words.
+//
+// said is the person's own words in the running turn, "" when the turn holds
+// none: a start that would carry a job past an approve step is the person's,
+// and the door refuses it without them.
 type FloorActor interface {
-	StartItem(ctx context.Context, id int) (string, error)
+	StartItem(ctx context.Context, id int, said string) (string, error)
 	SetPriority(ctx context.Context, id int, value string) (string, error)
 }
 
@@ -80,6 +97,7 @@ func (a *Agent) floorTools() []bare.Tool {
 // The asks the tool answers, spelled once for the schema and the switch.
 const (
 	floorAskWaiting  = "waiting"
+	floorAskNeedsYou = "needs_you"
 	floorAskRisky    = "risky"
 	floorAskCheapest = "cheapest"
 	floorAskOldest   = "oldest"
@@ -92,7 +110,7 @@ const (
 )
 
 // floorAsks is every ask in the order the schema and the refusal list them.
-var floorAsks = []string{floorAskRunning, floorAskQueue, floorAskWaiting, floorAskShipped, floorAskRepos, floorAskRisky, floorAskCheapest, floorAskOldest, floorAskAll, floorAskItem}
+var floorAsks = []string{floorAskRunning, floorAskQueue, floorAskWaiting, floorAskNeedsYou, floorAskShipped, floorAskRepos, floorAskRisky, floorAskCheapest, floorAskOldest, floorAskAll, floorAskItem}
 
 // floorShippedDaysMost is how far back `shipped` reads when asked for more
 // than today: a quarter, which is as far as "recent work" reaches.
@@ -101,11 +119,16 @@ const floorShippedDaysMost = 90
 // floorReadWait and floorActWait are how long one call may wait on the
 // factory before the tool answers that it did not. A healthy floor reads in
 // milliseconds; the bound is for the read that never comes back, which once
-// held a manager's turn open until the app was quit. A start or a priority is
-// a request to the factory and is given longer.
+// held a manager's turn open until the app was quit. A start, a priority or a
+// press is a request to the factory and is given longer. Words passed to a
+// job's main agent are a whole turn of that agent's conversation, bounded by
+// [FloorTellWait]: the door stops the turn there, and the tool waits
+// floorTellGrace more for the door to say so.
 const (
-	floorReadWait = 20 * time.Second
-	floorActWait  = 60 * time.Second
+	floorReadWait  = 20 * time.Second
+	floorActWait   = 60 * time.Second
+	FloorTellWait  = 3 * time.Minute
+	floorTellGrace = 10 * time.Second
 )
 
 // The floor's limits on one answer: how many rows a ranked ask lists, how many
@@ -116,6 +139,8 @@ const (
 	floorAllRows  = 50
 	floorBodyCut  = 2000
 	floorTitleCut = 80
+	// floorAsksCut is how much of what a job asks its person a row quotes.
+	floorAsksCut = 240
 )
 
 // The sentences the model reads back. The manual quotes the handoff
@@ -128,11 +153,15 @@ const (
 	floorNoneAsked  = "no items in the factory answer that ask"
 )
 
-const factoryFloorDescription = "Read the whole factory, start or prioritise a job when the person asks, and propose what to take on by selecting items. " +
-	"You are the factory's foreman: you read, rank, propose and sum up. Start a job (start) or set its priority (priority with item) only when the person asks for that job in this conversation; nothing here ships, merges or posts. " +
-	"ask: running (jobs running or queued to run, with their step), queue (jobs not started yet, most urgent then oldest first), waiting (jobs that need the person), shipped (jobs shipped today, with their pull requests and changes, to sum up; set days to read further back), repos (every repository with its count of jobs in each state, for how many and where), risky, cheapest (ten, by estimate), oldest (ten), all, or item (one item in full: its read, facts, stages, question and body; set item). " +
+var factoryFloorDescription = "Read the whole factory, act on one job when the person asks, and propose what to take on by selecting items. " +
+	"You are the factory's foreman, its Factory manager: you read, rank, propose and sum up, and you act on a job only when the person asks for it in this conversation. Nothing here stops or drops a job, and nothing here ships, merges or posts on your own judgment. " +
+	"ask: running (jobs running or queued to run, with their step), queue (jobs not started yet, most urgent then oldest first), waiting (every job that waits on the person, the ones they put away included), needs_you (the jobs that wait on the person now, the longest wait first, each with what it asks and what it accepts), shipped (jobs shipped today, with their pull requests and changes, to sum up; set days to read further back), repos (every repository with its count of jobs in each state, for how many and where), risky, cheapest (ten, by estimate), oldest (ten), all, or item (one item in full: its read, facts, stages, what it waits on, what it accepts, the public acts that wait for approval, its question and body; set item). " +
+	"Every row of a job that has started says what it waits on (the person, its main agent, GitHub, a computer, or nobody while work is under way), whether the factory found it stalled, and what it accepts from the person now. Say who a job waits on from that, never from its state. " +
 	"Every answer but item and repos says the factory's counts by state on its first line, so a how-many question is answered by one read. " +
 	"start takes one job by the number in its ref and starts it as the job page's Start does. priority is p0 (urgent), p1 (high), p2 (medium) or p3 (low), set on item. " +
+	"press (with item) presses, as the person, one action the job's row says it accepts from them: " + floorPressList + ". With answer, words are the person's answer, and choice is one of the choices when the item lists them (a question with listed choices takes only a choice; send_back also takes words saying why). With reject_plan, acts_decline, task, resume_pipeline, resume_auto and approve, words are what the person said to do or why. With raise_budget, budget is the new budget in USD the person named. " +
+	"A press is refused unless the person's own message in this turn asked for it; never press on your own judgment, and merge only when they say to merge. An action the job does not accept now is refused with what it does accept: tell the person that. Before acts_approve, show the person exactly what would be posted or changed (ask item). " + floorPressElsewhere + " " +
+	"tell (with item) passes the person's words to that job's main agent, gives it one turn of its own conversation, and answers what it said, for you to relay. Use it only when the person asks in this turn; the turn is charged to the job's budget and is stopped after " + strconv.Itoa(int(FloorTellWait/time.Minute)) + " minutes. That turn is the factory's, not the person speaking in the job's conversation: outside Auto the job's main agent cannot push, approve, mark the pull request ready or approve public acts on it, and it never merges on it. Never promise that it will; press those here when the person asks and the job accepts them. " +
 	"item, mark and unmark take items by the number in their ref (#4 is 4). Only a new item can be selected; selections stay until the person runs or unselects them. The fields are named mark and unmark; the person calls them select and unselect. " +
 	"A message may start with blocks the app writes: <afi-now> is the app's present state as of when it was sent (\"Waiting on you\" there is the person) and <app-places> says where things are in the app; read here for what they do not say. " +
 	"Name items by their ref in everything you say."
@@ -141,9 +170,14 @@ func factoryFloorSchemaJSON() string {
 	return `{"type":"object","properties":{` +
 		`"ask":{"type":"string","enum":["` + strings.Join(floorAsks, `","`) + `"],"description":"What to read from the factory."},` +
 		`"days":{"type":"integer","description":"With ask shipped: how many days to read, today included (1 is today and the default; at most ` + strconv.Itoa(floorShippedDaysMost) + `)."},` +
-		`"item":{"type":"integer","description":"With ask item or priority: the number in the item's ref (#4 is 4)."},` +
+		`"item":{"type":"integer","description":"With ask item, priority, press or tell: the number in the item's ref (#4 is 4)."},` +
 		`"start":{"type":"integer","description":"The number in the ref of one job to start now, only when the person asked."},` +
 		`"priority":{"type":"string","enum":["p0","p1","p2","p3"],"description":"With item: the priority to set on that job, only when the person asked."},` +
+		`"press":{"type":"string","enum":["` + strings.Join(floorPresses, `","`) + `"],"description":"With item: one action that job accepts from the person now, pressed as them. Only when the person asked for it in this turn."},` +
+		`"words":{"type":"string","description":"With press: the person's words that go with it: their answer, their instructions for a task, what to change in a plan, why they decline."},` +
+		`"choice":{"type":"string","description":"With press answer: the one of the question's listed choices the person chose."},` +
+		`"budget":{"type":"number","description":"With press raise_budget: the new budget in USD the person named."},` +
+		`"tell":{"type":"string","description":"With item: the person's words for that job's main agent, passed on as theirs. Only when the person asked in this turn."},` +
 		`"mark":{"type":"array","items":{"type":"integer"},"description":"Refs' numbers of new items to select for the person's next run."},` +
 		`"unmark":{"type":"array","items":{"type":"integer"},"description":"Refs' numbers whose selection to take off."}` +
 		`},"additionalProperties":false}`
@@ -192,13 +226,18 @@ func withFloorFault(ctx context.Context, fault *floorFault) context.Context {
 // factoryFloorCall is the factory_floor tool's body.
 func (a *Agent) factoryFloorCall(ctx context.Context, args json.RawMessage) (string, bool, error) {
 	var parsed struct {
-		Ask      string `json:"ask"`
-		Item     int    `json:"item"`
-		Mark     []int  `json:"mark"`
-		Unmark   []int  `json:"unmark"`
-		Start    int    `json:"start"`
-		Priority string `json:"priority"`
-		Days     int    `json:"days"`
+		Ask      string  `json:"ask"`
+		Item     int     `json:"item"`
+		Mark     []int   `json:"mark"`
+		Unmark   []int   `json:"unmark"`
+		Start    int     `json:"start"`
+		Priority string  `json:"priority"`
+		Days     int     `json:"days"`
+		Press    string  `json:"press"`
+		Words    string  `json:"words"`
+		Choice   string  `json:"choice"`
+		Budget   float64 `json:"budget"`
+		Tell     string  `json:"tell"`
 	}
 	if len(args) > 0 {
 		if err := decodeToolArguments(args, &parsed); err != nil {
@@ -207,7 +246,20 @@ func (a *Agent) factoryFloorCall(ctx context.Context, args json.RawMessage) (str
 	}
 	ask := strings.ToLower(strings.TrimSpace(parsed.Ask))
 	priority := strings.ToLower(strings.TrimSpace(parsed.Priority))
-	acts := parsed.Start > 0 || priority != ""
+	press := strings.ToLower(strings.TrimSpace(parsed.Press))
+	tell := strings.TrimSpace(parsed.Tell)
+	// ONE ACT A CALL: a start, a priority, a press or words for a main agent,
+	// and nothing else done beside it.
+	acting := 0
+	for _, on := range []bool{parsed.Start > 0, priority != "", press != "", tell != ""} {
+		if on {
+			acting++
+		}
+	}
+	acts := acting > 0
+	if acting > 1 {
+		return rejectToolArguments(ctx, "Invalid arguments: start, priority, press and tell are one to a call."), true, nil
+	}
 	if ask == "" && len(parsed.Mark)+len(parsed.Unmark) == 0 && !acts {
 		ask = floorAskAll
 	}
@@ -220,7 +272,21 @@ func (a *Agent) factoryFloorCall(ctx context.Context, args json.RawMessage) (str
 	if priority != "" && parsed.Item <= 0 {
 		return rejectToolArguments(ctx, "Invalid arguments: priority needs item, the number in the job's ref."), true, nil
 	}
-	if acts {
+	if (press != "" || tell != "") && parsed.Item <= 0 {
+		return rejectToolArguments(ctx, "Invalid arguments: press and tell need item, the number in the job's ref."), true, nil
+	}
+	if press != "" && !slices.Contains(floorPresses, press) {
+		return rejectToolArguments(ctx, "Invalid arguments: press is one of "+strings.Join(floorPresses, ", ")+"."), true, nil
+	}
+	if press == "" && (strings.TrimSpace(parsed.Words) != "" || strings.TrimSpace(parsed.Choice) != "" || parsed.Budget != 0) {
+		return rejectToolArguments(ctx, "Invalid arguments: words, choice and budget go with press."), true, nil
+	}
+	switch {
+	case press != "":
+		return a.floorPress(ctx, parsed.Item, FloorPress{Action: press, Words: strings.TrimSpace(parsed.Words), Choice: strings.TrimSpace(parsed.Choice), Budget: parsed.Budget})
+	case tell != "":
+		return a.floorTell(ctx, parsed.Item, tell)
+	case acts:
 		return a.floorAct(ctx, parsed.Start, parsed.Item, priority)
 	}
 	if ask == floorAskItem && parsed.Item <= 0 {
@@ -244,6 +310,7 @@ func (a *Agent) floorAct(ctx context.Context, start, item int, priority string) 
 	if n <= 0 {
 		n = item
 	}
+	said := a.turnPersonWords()
 	found := floorFind(snap, n)
 	switch {
 	case len(found) == 0:
@@ -253,7 +320,9 @@ func (a *Agent) floorAct(ctx context.Context, start, item int, priority string) 
 	}
 	line, err := floorWithin(ctx, floorActWait, func(ctx context.Context) (string, error) {
 		if start > 0 {
-			return actor.StartItem(ctx, found[0].ID)
+			// The person's own words of the turn ride with a start: going past
+			// an approve step is theirs, and the door refuses it without them.
+			return actor.StartItem(ctx, found[0].ID, said)
 		}
 		value, _ := factory.PriorityFromShort(priority)
 		return actor.SetPriority(ctx, found[0].ID, value)
@@ -489,7 +558,7 @@ func floorAnswer(snap factory.Snapshot, ask string, item, days int) string {
 		}
 		return strings.Join(parts, "\n\n")
 	}
-	rows, head := open, ""
+	rows, head, asks := open, "", false
 	switch ask {
 	case floorAskRunning:
 		rows = floorKeep(open, func(it factory.Item) bool {
@@ -506,8 +575,19 @@ func floorAnswer(snap factory.Snapshot, ask string, item, days int) string {
 		})
 		head = "not started, most urgent then oldest first"
 	case floorAskWaiting:
-		rows = floorKeep(open, func(it factory.Item) bool { return it.State == factory.StateNeedsYou })
+		// WHO A JOB WAITS ON IS ITS STORED WAIT, never the floor's reading of
+		// its state: a landed job waiting for its approval and a published one
+		// ready to merge wait on the person too, and a job whose stop is with
+		// its main agent does not.
+		rows = floorKeep(open, func(it factory.Item) bool {
+			_, yours := factory.WaitsOnPerson(it)
+			return yours
+		})
 		head = "waiting on the person"
+	case floorAskNeedsYou:
+		rows = floorKeep(open, floorNeedsPerson)
+		sort.SliceStable(rows, func(i, j int) bool { return floorWaitSince(rows[i]).Before(floorWaitSince(rows[j])) })
+		head, asks = "waiting on the person now, longest wait first", true
 	case floorAskRisky:
 		rows = floorKeep(open, factory.Match("risky"))
 		head = "risky"
@@ -541,11 +621,34 @@ func floorAnswer(snap factory.Snapshot, ask string, item, days int) string {
 	for _, it := range rows {
 		b.WriteByte('\n')
 		b.WriteString(FloorRow(it, now))
+		if asks {
+			// What the job asks the person, in the wait's own words.
+			// Public acts that wait are already said whole by the row.
+			if w, _ := factory.WaitsOnPerson(it); strings.TrimSpace(w.Words) != "" && w.Action != factory.ActApproveActs {
+				b.WriteString(" · asks: " + floorCut(oneLine(w.Words), floorAsksCut))
+			}
+		}
 	}
 	if more > 0 {
 		fmt.Fprintf(&b, "\nand %d more", more)
 	}
 	return b.String()
+}
+
+// floorNeedsPerson says the job waits on the person now: its stored wait is
+// theirs, and they have not put it away.
+func floorNeedsPerson(it factory.Item) bool {
+	w, yours := factory.WaitsOnPerson(it)
+	return yours && !w.PutAway
+}
+
+// floorWaitSince is when the job's wait began, and when the job was made for
+// a wait that carries no clock.
+func floorWaitSince(it factory.Item) time.Time {
+	if w := it.Wait; w != nil && !w.Since.IsZero() {
+		return w.Since
+	}
+	return it.Created
 }
 
 // floorOpen is every item still the factory's work: not dismissed, and not
@@ -595,25 +698,59 @@ func floorSummary(open []factory.Item, rows int, head string) string {
 
 // The states a count names, in the order a person asks about them, each in
 // the words the rows use.
-var floorCountOrder = []struct {
-	word string
-	keep func(factory.Item) bool
-}{
-	{"running", func(it factory.Item) bool { return it.State == factory.StateRunning }},
-	{"queued to run", func(it factory.Item) bool { return it.State == factory.StateQueued }},
-	{"waiting on the person", func(it factory.Item) bool { return it.State == factory.StateNeedsYou }},
-	{"following a pull request", func(it factory.Item) bool { return it.State == factory.StateShipped && floorFollowing(it) }},
-	{"landed", func(it factory.Item) bool { return it.State == factory.StateLanded }},
-	{"new", func(it factory.Item) bool { return it.State == factory.StateNew }},
+//
+// A JOB IS COUNTED ONCE, AND WHO IT WAITS ON COMES FIRST ([floorBucket]): a
+// job that waits on the person is counted there whatever its stored state, so
+// the count agrees with the rows `waiting` and `needs_you` list.
+const (
+	floorCountRunning   = "running"
+	floorCountQueued    = "queued to run"
+	floorCountMainAgent = "with a main agent"
+	floorCountWaiting   = "waiting on the person"
+	floorCountPutAway   = "put away by the person"
+	floorCountFollowing = "following a pull request"
+	floorCountLanded    = "landed"
+	floorCountNew       = "new"
+)
+
+var floorCountOrder = []string{floorCountRunning, floorCountQueued, floorCountMainAgent, floorCountWaiting, floorCountPutAway, floorCountFollowing, floorCountLanded, floorCountNew}
+
+// floorBucket is the one count an open job is in, "" for none.
+func floorBucket(it factory.Item) string {
+	if w, yours := factory.WaitsOnPerson(it); yours {
+		if w.PutAway {
+			return floorCountPutAway
+		}
+		return floorCountWaiting
+	}
+	switch {
+	case factory.WaitsOnMainAgent(it):
+		return floorCountMainAgent
+	case it.State == factory.StateRunning:
+		return floorCountRunning
+	case it.State == factory.StateQueued, factory.WaitsOnRunner(it):
+		return floorCountQueued
+	case it.State == factory.StateShipped && floorFollowing(it):
+		return floorCountFollowing
+	case it.State == factory.StateLanded:
+		return floorCountLanded
+	case it.State == factory.StateNew:
+		return floorCountNew
+	}
+	return ""
 }
 
 // floorCounts is items counted by state in one line, `2 running, 1 waiting on
 // the person, 40 new`, with nothing said for a state nothing is in.
 func floorCounts(items []factory.Item) string {
+	counts := map[string]int{}
+	for _, it := range items {
+		counts[floorBucket(it)]++
+	}
 	var parts []string
-	for _, c := range floorCountOrder {
-		if n := len(floorKeep(items, c.keep)); n > 0 {
-			parts = append(parts, strconv.Itoa(n)+" "+c.word)
+	for _, word := range floorCountOrder {
+		if n := counts[word]; n > 0 {
+			parts = append(parts, strconv.Itoa(n)+" "+word)
 		}
 	}
 	return strings.Join(parts, ", ")
@@ -768,6 +905,24 @@ func FloorRow(it factory.Item, now time.Time) string {
 	if len(it.Triage.Risk) > 0 {
 		add("risk: " + strings.Join(it.Triage.Risk, ", "))
 	}
+	// WHAT THE JOB WAITS ON AND WHAT IT ACCEPTS NOW, from the wait and offers
+	// the store wrote ([factory.FloorWaitWords]). A job that has not started
+	// or is finished waits on nothing and says nothing here.
+	if waits := factory.FloorWaitWords(it); waits != "" {
+		if w := it.Wait; w != nil && w.Who != factory.WaitWorking {
+			if age := floorAge(now, w.Since); age != "" {
+				waits += ", for " + age
+			}
+		}
+		add(waits)
+		if offers := factory.PersonOffers(it); len(offers) > 0 {
+			add("accepts from the person: " + strings.Join(offers, ", "))
+		}
+	}
+	// PUBLIC ACTS THAT WAIT FOR THE PERSON'S YES, all of them in one line.
+	if acts := factory.ProposedActs(it); len(acts) > 0 {
+		add("waiting for approval to " + factory.ActsSummary(acts))
+	}
 	return strings.Join(parts, " · ")
 }
 
@@ -799,6 +954,15 @@ func FloorItemText(snap factory.Snapshot, it factory.Item, now time.Time) string
 	}
 	fact("author ", it.Author)
 	fact("tier ", string(it.Tier))
+	if it.Stream != nil || it.Autonomy != "" {
+		// The mode says who decides what on the job: in Auto its main agent
+		// pushes and replies itself, and merging is the person's in both.
+		if factory.Automatic(it) {
+			fact("mode ", "Auto")
+		} else {
+			fact("mode ", "Manual")
+		}
+	}
 	if it.Cap > 0 {
 		fact("budget ", floorDollars(it.Cap))
 	}
@@ -825,8 +989,37 @@ func FloorItemText(snap factory.Snapshot, it factory.Item, now time.Time) string
 			line(l)
 		}
 	}
-	if q := oneLine(it.Question); q != "" {
-		line("waiting on the person for: " + q)
+	// THE WAIT IN FULL: who it waits on and what it accepts, what it asks and
+	// the choices its question lists, and the public acts that wait, each said
+	// whole so the person can be shown exactly what an approval would send.
+	if factory.FloorWaitWords(it) == "" {
+		// A job that has not started, or is finished: the row says nothing of
+		// a wait, so the read says where it stands and what it accepts.
+		line(factory.FloorWaitLine(it))
+	}
+	switch w, yours := factory.WaitsOnPerson(it); {
+	case yours:
+		if q := floorAsked(w, it); q != "" {
+			line("waiting on the person for: " + q)
+		}
+		if _, choices, _ := factory.QuestionForm(it); len(choices) > 0 {
+			said := "its question's choices: " + strings.Join(choices, ", ")
+			if slices.Contains(choices, factory.ChoiceCancel) {
+				// Stopping a job is never pressed from here (tools_floor_hand.go).
+				said += " (" + factory.ChoiceCancel + " only on the job page)"
+			}
+			line(said)
+		}
+	case factory.WaitsOnMainAgent(it):
+		if q := floorAsked(w, it); q != "" {
+			line("its main agent is deciding: " + q)
+		}
+	}
+	if offers := factory.MainAgentOffers(it); len(offers) > 0 {
+		line("accepts from its main agent now: " + strings.Join(offers, ", "))
+	}
+	for _, acts := range factory.ManagerActsWords(it) {
+		line(acts)
 	}
 	if body := strings.TrimSpace(it.Body); body != "" {
 		line("body:")
@@ -993,4 +1186,15 @@ const (
 func floorFollowing(it factory.Item) bool {
 	pr := it.PullRequest
 	return pr != nil && pr.Number > 0 && pr.State != factory.PRMerged && pr.State != factory.PRClosed && it.DoneHow == ""
+}
+
+// floorAsked is what the job asks whoever it waits on, on one line: the
+// wait's own words, and the job's whole question when the wait keeps only its
+// first line.
+func floorAsked(w factory.Wait, it factory.Item) string {
+	asked, question := oneLine(w.Words), oneLine(it.Question)
+	if asked == "" || (question != "" && strings.HasPrefix(question, asked)) {
+		return question
+	}
+	return asked
 }

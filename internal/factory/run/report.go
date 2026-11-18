@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -138,7 +139,15 @@ func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) erro
 			if a.State != "reviewing" && a.State != "reviewed" && a.State != "ready" && a.State != "checked" {
 				return fmt.Errorf("unknown readiness state")
 			}
-			if a.State == "ready" && (f.Readiness == nil || f.Readiness.State != "reviewed" || !it.Publishing) {
+			// ONLY THE MOVE TO READY NEEDS THE PUBLICATION THAT MAKES IT. A pull
+			// request already marked ready keeps that record on its follow-up,
+			// and every later Follow PR round reports the follow-up whole; a
+			// report that only says again what the service holds was refused
+			// here, so the first round after the pull request went ready lost
+			// its results and the job stopped on "results not saved" with its
+			// runner still holding it (found by the scenario tests, 2026-11-17).
+			already := f.Readiness != nil && f.Readiness.State == "ready"
+			if a.State == "ready" && !already && (f.Readiness == nil || f.Readiness.State != "reviewed" || !it.Publishing) {
 				return fmt.Errorf("ready requires the recorded publication transition")
 			}
 
@@ -334,7 +343,10 @@ func applyPipeline(it *factory.Item, change *factory.PipelineChange) error {
 			phases = append(phases, kept)
 			continue
 		}
-		phases = append(phases, factory.Phase{Name: ph.Name, Kind: ph.Kind, State: factory.PhasePending, Note: ph.Note})
+		// A task keeps its instructions on the copy that follows the runner's
+		// own writes ([echoes]); the factory's copy already holds every task
+		// its door added, and keeps its own.
+		phases = append(phases, factory.Phase{Name: ph.Name, Kind: ph.Kind, State: factory.PhasePending, Note: ph.Note, Task: ph.Task})
 	}
 	stages := append([]factory.Stage(nil), change.Stages...)
 	// A PERSON'S MODEL PICK OUTLIVES A RUNNER'S RESHAPE: a runner never sends
@@ -350,9 +362,24 @@ func applyPipeline(it *factory.Item, change *factory.PipelineChange) error {
 		}
 	}
 	it.Stages = stages
+	// A TASK THE FACTORY HOLDS AND THE RUNNER DOES NOT KNOW YET STAYS (task.go),
+	// after the phase it followed: the runner laid its steps before the task
+	// reached it, and the pull that takes the job next carries it.
+	prior := it.Stream.Phases
 	it.Stream.Phases = phases
-	if it.Stream.Cur >= len(phases) {
-		it.Stream.Cur = max(len(phases)-1, 0)
+	last := -1
+	for _, ph := range prior {
+		if k := slices.IndexFunc(it.Stream.Phases, func(p factory.Phase) bool { return p.Name == ph.Name }); k >= 0 {
+			last = k
+			continue
+		}
+		if factory.IsTask(ph) {
+			last++
+			it.Stream.Phases = factory.InsertPhase(it.Stream.Phases, last, ph)
+		}
+	}
+	if it.Stream.Cur >= len(it.Stream.Phases) {
+		it.Stream.Cur = max(len(it.Stream.Phases)-1, 0)
 	}
 	return nil
 }
@@ -463,6 +490,20 @@ func ensureStream(it *factory.Item, now time.Time) {
 	}
 }
 
+// sentBackPhase says the phase is the step a request for changes adds to a
+// landed run: a conversation named prove, prove2, …
+func sentBackPhase(ph factory.Phase) bool {
+	rest, ok := strings.CutPrefix(ph.Name, "prove")
+	if !ok || (ph.Kind != "" && ph.Kind != factory.StageChat) {
+		return false
+	}
+	if rest == "" {
+		return true
+	}
+	n, err := strconv.Atoi(rest)
+	return err == nil && n > 1
+}
+
 func phaseIndex(it *factory.Item, name string) int {
 	for i, ph := range it.Stream.Phases {
 		if ph.Name == name {
@@ -473,11 +514,19 @@ func phaseIndex(it *factory.Item, name string) int {
 }
 
 func reportStep(it *factory.Item, step factory.StageReport, now time.Time) error {
-	i, index := phaseIndex(it, step.Name), factory.StageIndex(it.Stages, step.Name)
-	if i < 0 || index < 0 {
+	i := phaseIndex(it, step.Name)
+	if i < 0 {
 		return fmt.Errorf("report names an unknown step")
 	}
-	st := it.Stages[index]
+	// A PHASE THE FACTORY PUT IN THE RUN THAT IS NOT ONE OF THE JOB'S STAGES IS
+	// STILL ITS STEP: an extra task (task.go), or a request for changes'
+	// prove ([sendBackStored]). A runner's report of it invents nothing.
+	// Refused as unknown, every Request changes on a job a worker ran lost
+	// its results and stopped the job on "results not saved".
+	st, index := factory.PhaseStage(*it, it.Stream.Phases[i])
+	if index < 0 && !factory.IsTask(it.Stream.Phases[i]) && !sentBackPhase(it.Stream.Phases[i]) {
+		return fmt.Errorf("report names an unknown step")
+	}
 	if step.State == factory.PhaseSkipped {
 		if st.Kind == factory.StageGate && (!factory.FileCondition(st) || factory.Fits(st, *it)) {
 			return fmt.Errorf("an approve step requires a person's answer or an unmatched file condition")
@@ -748,6 +797,9 @@ func FinishReport(it *factory.Item, state factory.State, now time.Time) error {
 	switch state {
 	case "", factory.StateLanded:
 		landItem(it, now)
+		// A task asked for while the last round was ending runs before
+		// anything is published (task.go).
+		landedWithTask(it)
 	case factory.StateShipped:
 		// A JOB AN AGENTFIELD REASONER RAN IS DONE WHEN ITS RUN SUCCEEDED: it
 		// has no change here for a person to approve, so there is no proof
@@ -885,6 +937,17 @@ func ExternalPRHeadChecked(it factory.Item) bool {
 // head; never overwrite a third, newer service observation or publication.
 func applyFollowObservation(it *factory.Item, report factory.RunReport) error {
 	f, next, pr := it.FollowUp, report.FollowUp, report.PR
+	// THE SERVICE MAY HAVE READ THE NEW HEAD BEFORE THE RUNNER DID. A round
+	// started by a rerun or an answer keeps the head its follow-up was made
+	// on; the runner reads the forge, finds the head moved and says so. When
+	// the poller had already written that same head on the job, the runner's
+	// copy of the pull request had not changed, its report carried none, and
+	// the moved follow-up was refused as "follow-up identity changed": the
+	// round lost its results (found by the scenario tests, 2026-11-17). The
+	// head the service holds is the observation.
+	if pr == nil && f != nil && next != nil && it.PullRequest != nil && f.HeadSHA != next.HeadSHA && it.PullRequest.HeadSHA == next.HeadSHA {
+		pr = it.PullRequest
+	}
 	if f == nil || next == nil || f.Attempt != next.Attempt || pr == nil {
 		return nil
 	}
@@ -902,7 +965,8 @@ func applyFollowObservation(it *factory.Item, report factory.RunReport) error {
 	}
 	f.HeadSHA, f.ObservedFrom = next.HeadSHA, next.ObservedFrom
 	if snapshot || moved {
-		it.Approval, it.Proof, it.Policy = nil, nil, nil
+		it.Approval = nil
+		it.ResetChecks()
 		if f.Kind == "readiness" && next.Readiness != nil {
 			if pr.ReadinessKey == "" || next.Readiness.Key != pr.ReadinessKey || next.Readiness.Head != pr.HeadSHA {
 				return fmt.Errorf("complete current-head review material is required")

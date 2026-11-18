@@ -34,6 +34,9 @@ var Verbs = []Verb{
 	// A job's model is the factory's own record and the lease's model signal.
 	{"model", nil},
 	{"request_changes", []string{"SendBack"}},
+	// A task is the lease desk's own door (lease.Doors.Task): it reads who
+	// holds the job, which no Seam field does.
+	{"task", nil},
 	{"recheck", []string{"Reverify"}},
 	{"take", nil},
 	// Release is un-take: the person who took the job lets it go. Like take,

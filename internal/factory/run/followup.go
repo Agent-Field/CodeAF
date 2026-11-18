@@ -73,6 +73,20 @@ func (lp *floorLoop) completedPublishedRepair(captured factory.Item, res factory
 	return candidate
 }
 
+// baseNamed says the job's history already names base on a base-sync line.
+func baseNamed(it factory.Item, base string) bool {
+	if it.Stream == nil || base == "" {
+		return false
+	}
+	short := shortSHA(base)
+	for _, l := range it.Stream.Log {
+		if strings.HasPrefix(l.Text, "Follow PR base sync:") && strings.Contains(l.Text, short) {
+			return true
+		}
+	}
+	return false
+}
+
 func (lp *floorLoop) baseSyncAction(c *loopCtl, it factory.Item, st factory.Stage, dir string) func(context.Context) (string, error) {
 	f := it.FollowUp
 	if !factory.IsCIRepairStage(st) || !st.CanWrite() || f == nil || f.Kind != "pr" || it.PullRequest == nil || it.PullRequest.State != factory.PROpen {
@@ -85,7 +99,7 @@ func (lp *floorLoop) baseSyncAction(c *loopCtl, it factory.Item, st factory.Stag
 		if err := ctx.Err(); err != nil {
 			return "", err
 		}
-		base, words, err := lp.syncPRBase(ctx, c.id, dir)
+		base, words, fallback, err := lp.syncPRBaseLive(ctx, c.id, dir)
 		if err != nil {
 			return "", err
 		}
@@ -94,10 +108,34 @@ func (lp *floorLoop) baseSyncAction(c *loopCtl, it factory.Item, st factory.Stag
 			if next == nil || next.Kind != "pr" || next.State != "running" || next.HeadSHA != f.HeadSHA || current.PullRequest == nil || current.PullRequest.Number != it.PullRequest.Number {
 				return errors.New("PR maintenance ownership changed")
 			}
-			next.BaseSyncSHA = base
+			// THE HISTORY SAYS WHICH BASE CAME IN: the live branch head, or
+			// the recorded base when the live one could not be had. Once per
+			// base: a repeat call (the merge still open, or finished and
+			// checked again, also in a later attempt, which clears
+			// BaseSyncSHA) names nothing new, and nor does an older base the
+			// synced one already contains, which never steps the synced base
+			// back (a recheck whose live read failed fell back to the
+			// recorded base; review 4).
+			synced, again := base, baseNamed(*current, base)
+			if prior := next.BaseSyncSHA; prior != "" && prior != base {
+				if _, e := lp.r.opts.Git.Run(dir, "merge-base", "--is-ancestor", base, prior); e == nil {
+					synced, again = prior, true
+				}
+			}
+			next.BaseSyncSHA = synced
+			switch {
+			case again:
+			case fallback != "":
+				loopSay(current, lp.r.now(), "said", "Follow PR base sync: "+fallback)
+			default:
+				loopSay(current, lp.r.now(), "said", "Follow PR base sync: the base branch's live head "+shortSHA(base))
+			}
 			return nil
 		}); err != nil {
 			return "", err
+		}
+		if fallback != "" {
+			words += " " + fallback
 		}
 		return words, nil
 	}
@@ -380,7 +418,8 @@ func (lp *floorLoop) refreshPRRound(c *loopCtl, i int) bool {
 		if moved {
 			cur.FollowUp.ObservedFrom = cur.FollowUp.HeadSHA
 			cur.FollowUp.HeadSHA = fresh.HeadSHA
-			cur.Approval, cur.Proof, cur.Policy = nil, nil, nil
+			cur.Approval = nil
+			cur.ResetChecks()
 			facts, _ := json.Marshal(fresh)
 			cur.FollowUp.Details = "Fresh authenticated PR observation (untrusted text):\n" + string(facts)
 		}
