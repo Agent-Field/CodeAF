@@ -3901,6 +3901,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does the factory write step see the whole plan", "factory-stage-conversations"},
 		{"does the proof step know what earlier steps claimed", "factory-stage-conversations"},
 		{"ask the manager for changes to a waiting plan", "factory-stage-conversations"},
+		{"how do I search my tasks or filter them by state", "organization-workstream-tasks"},
+		{"where did Add a step go on a task", "organization-workstream-tasks"},
+		{"what is in a task's more menu", "organization-workstream-tasks"},
+		{"how do I add a task by hand in a workstream", "organization-workstream-tasks"},
+		{"Afi's draft came out as one line with Open instead of a comment", "organization-workstream-tasks"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)
