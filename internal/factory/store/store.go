@@ -66,7 +66,7 @@ type Store struct {
 	outputPolicy func() (int, int)
 	observer     atomic.Pointer[func(before, after factory.Item)]
 	// asked says whose main agents can be asked about a stop now
-	// ([Store.AskMainAgent]); nil asks every job's.
+	// ([Store.AskMainAgent]); nil asks nobody's.
 	asked atomic.Pointer[factory.MainAgentAsked]
 	// shared is the last [Store.ListShared], reused while the floor is unchanged.
 	shared sharedList
@@ -502,7 +502,12 @@ func (st *Store) ObserveWrites(fn func(before, after factory.Item)) {
 // stop now. A write that makes a stop on a job asked says no for leaves it
 // with the job's person at once, instead of handing it to a main agent
 // nobody will ask ([factory.SettleWaitAsking]). It is called under the job's
-// lock, so it must not write the store. Nil asks every job's.
+// lock, so it must not write the store.
+//
+// NOBODY IS ASKED UNTIL A HOST SAYS WHO IS. A store no host told, or told
+// nil, asks no job's main agent: a CLI process opening the floor, a service
+// with no main agent to ask (serve's Config.Stopped nil), or the app before
+// its service starts never hands a stop over only for it to be handed back.
 func (st *Store) AskMainAgent(asked factory.MainAgentAsked) {
 	if asked == nil {
 		st.asked.Store(nil)
@@ -515,8 +520,11 @@ func (st *Store) mainAgentAsked() factory.MainAgentAsked {
 	if p := st.asked.Load(); p != nil {
 		return *p
 	}
-	return nil
+	return nobodyAsked
 }
+
+// nobodyAsked is the asker of a store no host told: no main agent is asked.
+func nobodyAsked(factory.Item) bool { return false }
 
 func (st *Store) tellWritten(before, after factory.Item) {
 	if fn := st.observer.Load(); fn != nil && *fn != nil {

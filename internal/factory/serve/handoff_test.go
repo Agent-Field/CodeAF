@@ -44,6 +44,10 @@ func newStopFloor(t *testing.T, agent bool) *stopFloor {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The store hands every new stop over, as on a host that says its main
+	// agents can be asked: what the service then does with it is under test.
+	// A store no host told hands none over (store's handoff_test.go).
+	st.AskMainAgent(func(factory.Item) bool { return true })
 	f := &stopFloor{t: t, st: st, now: time.Now(), done: make(chan struct{}, 16)}
 	if f.rec, err = record.Open(st, record.Options{Now: f.clock}); err != nil {
 		t.Fatal(err)

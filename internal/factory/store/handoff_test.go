@@ -12,6 +12,7 @@ import (
 // is not made stale by it, as a stall's record does not make one stale.
 func TestAHandoffIsStoredWithTheStopAndIsNoActionOfItsOwn(t *testing.T) {
 	st := open(t)
+	st.AskMainAgent(func(factory.Item) bool { return true })
 	it, err := st.Create(factory.Item{Title: "stops", Repo: "acme/api", Kind: factory.KindIssue, Num: 7, State: factory.StateRunning, Cap: 10,
 		Stream: &factory.Stream{Phases: []factory.Phase{{Name: "write", Kind: factory.StageChat, State: factory.PhaseRunning, Round: 1}}}})
 	if err != nil {
@@ -67,5 +68,43 @@ func TestAHandoffIsStoredWithTheStopAndIsNoActionOfItsOwn(t *testing.T) {
 	}
 	if err := st.CheckActionExpected(it.ID, read); err != nil {
 		t.Fatalf("the handoff's bookkeeping made a press from before it stale: %v", err)
+	}
+}
+
+// NOBODY IS ASKED UNTIL A HOST SAYS WHO IS. A store no host told whose main
+// agents it can ask (a CLI process opening the floor, a service with no main
+// agent to ask) leaves a new stop with the person at once, with no handoff
+// written to be handed back; told nil, it asks nobody again.
+func TestAStoreNoHostToldAsksNoMainAgent(t *testing.T) {
+	for name, tell := range map[string]func(*Store){
+		"never told": func(*Store) {},
+		"told nil": func(st *Store) {
+			st.AskMainAgent(func(factory.Item) bool { return true })
+			st.AskMainAgent(nil)
+		},
+	} {
+		st := open(t)
+		tell(st)
+		it, err := st.Create(factory.Item{Title: "stops", Repo: "acme/api", Kind: factory.KindIssue, Num: 7, State: factory.StateRunning, Cap: 10,
+			Stream: &factory.Stream{Phases: []factory.Phase{{Name: "write", Kind: factory.StageChat, State: factory.PhaseRunning, Round: 1}}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := st.Update(it.ID, func(cur *factory.Item) error {
+			cur.State = factory.StateNew
+			factory.StampFailure(cur, factory.NewFailure("write", factory.CodeToolError, "the delegate crashed", "", factory.FailureStopped, 1, cur.Changed))
+			cur.Stream.Phases[0].State = factory.PhaseFailed
+			cur.Stream.Ended = cur.Changed
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		stopped, err := st.Get(it.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if stopped.Handoff != nil || stopped.Wait == nil || stopped.Wait.Who != factory.WaitYou || stopped.Wait.Action != factory.ActRetry {
+			t.Fatalf("%s: the stop: wait %+v, handoff %+v", name, stopped.Wait, stopped.Handoff)
+		}
 	}
 }
