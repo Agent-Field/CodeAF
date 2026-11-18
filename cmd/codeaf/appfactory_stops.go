@@ -117,11 +117,15 @@ func (h *appFactoryHost) stopHanded(before, after factory.Item) {
 		return
 	}
 	guard.Go("factory/stop-handed", func() {
-		h.mu.Lock()
-		handler := h.handler
-		h.mu.Unlock()
-		if handler != nil {
+		if handler := h.serving(); handler != nil {
 			handler.Wake()
 		}
 	})
+}
+
+// serving is the service this host has made, nil before its first use.
+func (h *appFactoryHost) serving() *serve.Handler {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.handler
 }

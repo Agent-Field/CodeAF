@@ -381,12 +381,16 @@ func pressDoor(handler http.Handler, st *store.Store, it factory.Item, action st
 	return Pressed{}, false
 }
 
+// guardedAnswers are the service's own answers for a caller who is not signed
+// in or does not own the job.
+var guardedAnswers = []int{http.StatusUnauthorized, http.StatusForbidden}
+
 // refusalKind tells a protective refusal from one made for the job's state.
 // Sign-in and ownership are 401 and 403; the budget says its own name.
 func refusalKind(p Pressed) string {
 	words := strings.ToLower(p.Error + " " + p.Body)
 	switch {
-	case p.Status == http.StatusUnauthorized || p.Status == http.StatusForbidden:
+	case slices.Contains(guardedAnswers, p.Status):
 		return pressGuarded
 	case strings.Contains(words, "budget reached") || strings.Contains(words, "raise budget") || strings.Contains(words, "choose a budget"):
 		return pressGuarded
