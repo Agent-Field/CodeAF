@@ -44,3 +44,16 @@ func AlwaysAsks(tool string, args json.RawMessage) bool {
 	_, hit := criticalHit(command, segments)
 	return hit
 }
+
+// AlwaysAsksRule reports whether a decision's rule string is one of the
+// floor's own always-ask reasons — a critical shell command or a call that
+// acts in the person's name outside this machine.
+//
+// It exists so a surface building a consent question from an event that
+// carries the gate's rule reason grades the same floor calls as irreversible
+// that [AlwaysAsks] grades from the raw call.
+func AlwaysAsksRule(rule string) bool {
+	rule = strings.TrimSpace(rule)
+	return strings.HasPrefix(rule, criticalCommandRulePrefix) ||
+		(strings.HasSuffix(rule, actsInPersonsNameSuffix) && len(rule) > len(actsInPersonsNameSuffix))
+}

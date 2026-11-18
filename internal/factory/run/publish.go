@@ -326,7 +326,10 @@ func (r *Runner) publish(ctx context.Context, it factory.Item, trailer string) (
 			return published{}, errors.New("the existing PR closed or its head moved; review it before publishing the repair")
 		}
 		if base := it.FollowUp.BaseSyncSHA; base != "" {
-			if !publish.ValidCommit(base) || fresh.BaseSHA != base {
+			// The synced base may be newer than the forge's recorded one
+			// (the base branch's live head); the check below asks that it
+			// contains the recorded base.
+			if !publish.ValidCommit(base) || !publish.ValidCommit(fresh.BaseSHA) {
 				return published{}, errors.New("the PR base moved before publication; update the branch and verify the new head")
 			}
 			if fresh.HeadBranch == "" {
@@ -385,6 +388,15 @@ func (r *Runner) publish(ctx context.Context, it factory.Item, trailer string) (
 			return published{}, publish.ErrCommitChanged
 		}
 		if existingPR != nil && it.FollowUp.BaseSyncSHA != "" {
+			// THE SYNCED BASE IS THE PR'S BASE OR NEWER. The base sync
+			// merges the base branch's live head, which the forge records
+			// as the PR's base only after the next push; a forge base the
+			// synced one does not contain moved past it.
+			if base := it.FollowUp.BaseSyncSHA; existingPR.BaseSHA != base {
+				if _, err := git.Run(dir, "merge-base", "--is-ancestor", existingPR.BaseSHA, base); err != nil {
+					return published{}, errors.New("the PR base moved before publication; update the branch and verify the new head")
+				}
+			}
 			if _, err := git.Run(dir, "merge-base", "--is-ancestor", it.FollowUp.BaseSyncSHA, approvedHead); err != nil {
 				return published{}, errors.New("the approved head does not include the verified PR base")
 			}

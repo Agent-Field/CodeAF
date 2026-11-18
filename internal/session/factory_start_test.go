@@ -14,13 +14,15 @@ import (
 type fakeStartDoor struct {
 	fakeRunDoor
 	started []string
+	said    []string
 	line    string
 	refuse  error
 	manages bool
 }
 
-func (d *fakeStartDoor) StartRun(_ context.Context, conversation string) (string, error) {
+func (d *fakeStartDoor) StartRun(_ context.Context, conversation, said string) (string, error) {
 	d.started = append(d.started, conversation)
+	d.said = append(d.said, said)
 	return d.line, d.refuse
 }
 
@@ -66,6 +68,18 @@ func TestFactoryStartIsTheManagersStart(t *testing.T) {
 	if out, isErr := startToolCall(t, a); isErr || out != "#12 started" || len(door.started) != 1 || door.started[0] != "/tmp/manager/transcript.jsonl" {
 		t.Fatalf("answered %q (%v), door asked by %v", out, isErr, door.started)
 	}
+	// THE START CARRIES THE PERSON'S OWN WORDS OF THE TURN, "" when the turn
+	// holds none: the door goes past an approve step outside Auto only on a
+	// turn the person spoke in.
+	if door.said[0] != "" {
+		t.Fatalf("a turn with no person words started with %q", door.said[0])
+	}
+	a.personWords = "continue past the plan"
+	if _, isErr := startToolCall(t, a); isErr || door.said[1] != "continue past the plan" {
+		t.Fatalf("the start did not carry the person's words: %q", door.said)
+	}
+	a.personWords = ""
+	door.started, door.said = door.started[:1], door.said[:1]
 	door.refuse = errors.New("#12 is already running")
 	if out, isErr := startToolCall(t, a); !isErr || out != "nothing started: #12 is already running" {
 		t.Fatalf("a refusal answered %q (%v)", out, isErr)

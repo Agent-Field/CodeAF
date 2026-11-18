@@ -228,9 +228,18 @@ func (h *appFactoryHost) solo(_ context.Context) (http.Handler, error) {
 	seam = rememberGitHub(h.ctx, h.floor.Root(), h.chore, seam)
 	h.seam = seam
 	h.syncJiraReplier()
+	// A stop nobody can ask a main agent about is the person's at once
+	// (appfactory_stops.go).
+	h.floor.AskMainAgent(h.asksMainAgent)
 	handler := serve.New(seam, serve.Config{PassJudge: factoryJudge(h.floor, config.Load), ProfileDir: h.profile, DefaultModel: h.defaultModel, RunnerModels: h.runnerModelsOrNone, GitHubToken: func(ctx context.Context) string { token, _ := factorygithub.TokenAt(ctx, h.profile); return token }, GitHubHTTPClient: h.githubHTTP, Mode: api.FactorySolo, ServedBy: "app", Address: h.address, AccessToken: h.token, Name: appLocalName, Store: h.floor, Root: h.floor.Root(), Record: history, PollingEvery: factoryPollEvery,
 		Scout: factoryScoutLook(h.floor, config.Load), Read: factoryClickRead(h.floor, config.Load),
 		Route: h.routeNow,
+		// A stalled job is reported to its manager, one turn of its own
+		// conversation (appfactory_watchdog.go).
+		Stalled: h.stalled,
+		// A stop the main agent may decide is handed to it first, one turn of
+		// the job's own conversation (appfactory_stops.go).
+		Stopped: h.stopped,
 		Pipeline: func(ctx context.Context, repo, dir string) (pipeline.File, error) {
 			if h.rules != nil {
 				return h.rules(ctx, repo, dir)

@@ -1330,7 +1330,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) (f
 			// answered that note; elsewhere it is an ordinary reply, even though every
 			// surface still leaves a reply containing only the token undrawn.
 			answer := response.Text()
-			withdrawn := IsNoChangeReply(answer) && answeredNoteUnchanged(a.snapshot())
+			withdrawn := IsNoChangeReply(answer) && (answeredNoteUnchanged(a.snapshot()) || answeredWakeUnchanged(user, a.snapshot()))
 			if withdrawn {
 				answer = checkpointLastSaid(a.snapshot())
 			}
@@ -2199,6 +2199,9 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 			purpose = purposeTask
 			attemptCtx = provider.WithCallNode(attemptCtx, strconv.FormatUint(a.config.taskID, 10))
 		}
+		// THE FILES OF A MOVED CHAT MAY HAVE LANDED SINCE THE LAST REQUEST, and
+		// with them the project's own instructions (workspace_gate.go).
+		a.followArrivedFiles()
 		if err := a.preparePromptProfile(model); err != nil {
 			return nil, model, err
 		}
@@ -3867,6 +3870,9 @@ func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, cal
 // owns its process, is recorded like every other. A seat that could not log the
 // call did not run it, and says so as the tool's own error.
 func (a *Agent) executeRecorded(ctx context.Context, tool bare.Tool, args json.RawMessage) (text string, isError bool, err error) {
+	if err := a.waitWorkspaceReady(ctx, tool.Name); err != nil {
+		return err.Error(), true, err
+	}
 	// File-only builtins have no arbitrary process/custom-tool execution road.
 	// Everything else must conservatively retain the workspace after restart.
 	switch tool.Name {
@@ -3921,6 +3927,9 @@ func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, ca
 		}
 		if invalid := invalidBashArguments(call.Function.Name, json.RawMessage(call.Function.Arguments)); invalid != "" {
 			return a.finishToolResult(ep, call, toolResult{text: invalid, isError: true, rejected: true})
+		}
+		if err := a.waitWorkspaceReady(ctx, call.Function.Name); err != nil {
+			return a.finishToolResult(ep, call, toolResult{text: err.Error(), isError: true, harness: true})
 		}
 		running, refused, allowed := ep.preAction(ctx, hub, call)
 		if !allowed {

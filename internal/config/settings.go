@@ -1436,6 +1436,7 @@ var OperatorEnvPins = []string{
 	// a machine at a relay it was never told about.
 	"CODEAF_SYNC_URL",
 	"CODEAF_SYNC_INTERVAL_MS",
+	"CODEAF_MOVE_FILES_FIRST",
 }
 
 // Defaults the registry owns beyond the ones config.go already declares.

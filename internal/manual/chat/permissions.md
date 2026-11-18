@@ -29,12 +29,14 @@ when the countdown is off. Silence is never a no.
 **What happens if you just press `enter`?** The pointer is what `enter` takes,
 and where it opens depends on how much the call can cost you. On an **ordinary
 call** it opens on `1 allow once`, so `enter` runs that one call and nothing
-else. On a **grave one** — a call codeaf will always stop you for, such as
-`rm -rf *`, a force-push, or anything sent out in your name — the pointer opens
-on `3 deny` instead. So `enter` you have not aimed means "allow it once" when the
-call can be lived with and "no" when it cannot be taken back. On a grave call the
-pointer never opens on the act: allowing is a key you choose — `1`, or `↑` onto
-it and then `enter` — and refusing is the one that is already under your hand.
+else. On a **grave one** — a call codeaf will always stop you for, such as a
+critical command (`rm -rf /`, `rm -rf /*`, `rm -rf *`, `mkfs*`), a force-push,
+or anything sent out in your name — the pointer opens on `3 deny` instead,
+whether the model asked for the command or you typed it after `!`. So `enter`
+you have not aimed means "allow it once" when the call can be lived with and
+"no" when it cannot be taken back. On a grave call the pointer never opens on
+the act: allowing is a key you choose — `1`, or `↑` onto it and then `enter` —
+and refusing is the one that is already under your hand.
 
 Nothing on a permission is painted in the question's amber except the marks —
 the `?`, the pointer and the recommendation — because the command is the thing
@@ -81,8 +83,8 @@ still require aiming at the question. A draft you are already typing keeps its
 letters. `1`, `2` and `3` always take the corresponding answers.
 
 `[2]` is only drawn, and only acts, when the question is one that can bank an
-answer. Every approval question is about a TOOL and can, so every one of them
-offers it.
+answer. Every ordinary approval question is about a TOOL and can, so it offers
+`2`; a grave call asks every time and leaves `2` off.
 
 **It does not have to be answered in this window.** A conversation stopped on
 this question says so on **home**, with the same three answers on the row —
@@ -1279,13 +1281,18 @@ and their order is your own priority statement. A tool row is removed by name,
 leaving the others in the order they were written. After the drop the list is
 re-read and the cursor holds its place, not its row.
 
-The receipt in the transcript is `dropped · <name>`.
+The receipt in the transcript is `dropped · <name>` when the panel pushed
+the running gate immediately (such as under `--no-host`), and
+`dropped · <name> · from the next session` when the panel could not push the
+gate immediately (such as a plain launch through this machine's engine, or when
+a push seam is absent or refused).
 
 Under `--no-host`, a drop is live on the very next call. A plain launch through
-this machine's engine also reads the changed rules before its next tool
-decision. Its receipt can still be `dropped · <name> · from the next session`
-when the panel could not push the gate immediately. Project and conversation
-overrides retain their precedence.
+this machine's engine also reads the changed rules from disk and drops any
+remembered session allow for that tool before its next tool decision, in that
+conversation and in any other conversation on the same engine, even when the
+panel's receipt reads `dropped · <name> · from the next session`. Project and
+conversation overrides retain their precedence.
 
 `/new` and `/resume` open on the rules as they stand right now, not the ones the
 session launched with.
@@ -1360,3 +1367,13 @@ hold leaves the question waiting and sends nothing.
 A question can close or its conversation can fail during those five seconds.
 The eventual send still checks it again; the app protocol does not publish a
 separate deferred-send failure event.
+
+## Desktop Inbox — dismissing a permission question is not denying it
+
+Dismiss puts a permission question away without answering it. The call does not
+run, and the model is told `not run: the person put this permission question away
+without answering it`, that nothing was decided, and that it may ask again. That is
+different from `3 deny`, which hands it `denied by the person: <rule>`. A dismissal
+leaves no line in the conversation's decision record, and no turn in which a
+permission was denied, dismissed or left unanswered is read for memory, so neither
+becomes a remembered rule in this or another conversation.

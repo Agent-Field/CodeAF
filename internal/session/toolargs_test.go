@@ -487,8 +487,12 @@ func TestNoWholeNumberArgumentIsDeclaredANumber(t *testing.T) {
 		"min": true, "max": true, "default": true}
 	// IT IS EXCUSED IN ITS OWN FILE ONLY, so a future `cap` declared
 	// whole-number-shaped anywhere else is still caught.
+	//
+	// `factory_floor`'s `budget` is the same money by another door: the new
+	// budget in dollars the person named for a job (tools_floor.go).
 	fractionalIn := map[string]map[string]bool{
 		"tools_factory_item.go": {"cap": true},
+		"tools_floor.go":        {"budget": true},
 	}
 	for _, path := range toolArgumentSources(t) {
 		body, err := os.ReadFile(path)

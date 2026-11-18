@@ -7,11 +7,85 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"syscall"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
+
+// FetchRetries is how many times a transient object or frame fetch is retried
+// with backoff before the failure counts as final (C4).
+const FetchRetries = 3
+
+// RetryBackoff is the initial wait before retrying a transient read failure;
+// each subsequent retry doubles it. Tests may shorten it or replace Sleep.
+var RetryBackoff = 10 * time.Millisecond
+
+// Sleep waits d or until ctx ends. Tests may replace it with a fake clock.
+var Sleep = func(ctx context.Context, d time.Duration) error {
+	if d <= 0 {
+		return ctx.Err()
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
+}
+
+type retriedError struct{ err error }
+
+func (e retriedError) Error() string { return e.err.Error() }
+func (e retriedError) Unwrap() error { return e.err }
+
+// Retried reports whether err has already exhausted the store client's retry budget.
+func Retried(err error) bool {
+	var r retriedError
+	return errors.As(err, &r)
+}
+
+// Transient reports whether err is a transient transport or server failure
+// (5xx, request timeout, or connection reset) that a fetch should retry while
+// ctx is still live. Auth refusals, 4xx statuses, quota/damage errors, and
+// caller cancellations are never retried.
+func Transient(ctx context.Context, err error) bool {
+	if err == nil || ctx.Err() != nil {
+		return false
+	}
+	if errors.Is(err, wireauth.ErrUnauthorized) ||
+		errors.Is(err, wireauth.ErrSkew) ||
+		errors.Is(err, wireauth.ErrRevoked) ||
+		errors.Is(err, wireauth.ErrRotated) ||
+		errors.Is(err, wireauth.ErrGone) ||
+		errors.Is(err, wireauth.ErrStorageOff) ||
+		errors.Is(err, wireauth.ErrRateLimited) ||
+		errors.Is(err, wireauth.ErrTooManyIdentities) ||
+		errors.Is(err, ErrNotFound) ||
+		errors.Is(err, ErrBadFrame) ||
+		errors.Is(err, ErrBadRID) ||
+		errors.Is(err, ErrConflict) ||
+		errors.Is(err, ErrTooMany) ||
+		errors.Is(err, ErrDamaged) ||
+		errors.Is(err, ErrFull) {
+		return false
+	}
+	if errors.Is(err, ErrUnreachable) || errors.Is(err, ErrAnswered) || errors.Is(err, wireauth.ErrUnavailable) {
+		return true
+	}
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, syscall.ECONNRESET) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return true
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
+	return false
+}
 
 // HTTP is a Store that lives behind the store wire (contract §3). Every
 // request is signed, so the far side knows whose namespace it is.
@@ -59,7 +133,9 @@ func (c *HTTP) Get(ctx context.Context, rid string) ([]byte, error) {
 	if err := checkGet(rid); err != nil {
 		return nil, err
 	}
-	return c.do(ctx, http.MethodGet, pathObjects+rid, nil)
+	return c.doRead(ctx, func() ([]byte, error) {
+		return c.do(ctx, http.MethodGet, pathObjects+rid, nil)
+	})
 }
 
 // GetMany implements Store: one request, answered by a frame holding a prefix of
@@ -73,13 +149,22 @@ func (c *HTTP) GetMany(ctx context.Context, rids []string) ([]Object, error) {
 	if err := checkMany(rids); err != nil {
 		return nil, err
 	}
-	frame, err := c.do(ctx, http.MethodPost, pathMany, mustJSON(getManyRequest{Rids: rids}))
+	body := mustJSON(getManyRequest{Rids: rids})
+	var objects []Object
+	_, err := c.doRead(ctx, func() ([]byte, error) {
+		frame, err := c.do(ctx, http.MethodPost, pathMany, body)
+		if err != nil {
+			return nil, err
+		}
+		_, decoded, err := Decode(frame)
+		if err != nil || !isPrefix(decoded, rids) {
+			return nil, fmt.Errorf("%w: the answer to a GetMany is not the objects asked for", ErrUnreachable)
+		}
+		objects = decoded
+		return frame, nil
+	})
 	if err != nil {
 		return nil, err
-	}
-	_, objects, err := Decode(frame)
-	if err != nil || !isPrefix(objects, rids) {
-		return nil, fmt.Errorf("%w: the answer to a GetMany is not the objects asked for", ErrUnreachable)
 	}
 	return objects, nil
 }
@@ -106,14 +191,37 @@ func (c *HTTP) GetFrame(ctx context.Context, frame string) ([]byte, error) {
 	if err := checkGet(frame); err != nil {
 		return nil, err
 	}
-	b, err := c.do(ctx, http.MethodGet, pathFrames+"/"+frame, nil)
-	if err != nil {
-		return nil, err
+	return c.doRead(ctx, func() ([]byte, error) {
+		b, err := c.do(ctx, http.MethodGet, pathFrames+"/"+frame, nil)
+		if err != nil {
+			return nil, err
+		}
+		if IDOf(b) != frame {
+			return nil, fmt.Errorf("%w: frame %s answered bytes that are not it", ErrDamaged, frame)
+		}
+		return b, nil
+	})
+}
+
+// doRead retries a transient blob or frame read up to FetchRetries times with
+// exponential backoff. Auth refusals and 4xx errors return at once.
+func (c *HTTP) doRead(ctx context.Context, call func() ([]byte, error)) ([]byte, error) {
+	backoff := RetryBackoff
+	var out []byte
+	var err error
+	for attempt := 0; attempt <= FetchRetries; attempt++ {
+		if attempt > 0 {
+			if sleepErr := Sleep(ctx, backoff); sleepErr != nil {
+				return nil, sleepErr
+			}
+			backoff *= 2
+		}
+		out, err = call()
+		if err == nil || !Transient(ctx, err) {
+			return out, err
+		}
 	}
-	if IDOf(b) != frame {
-		return nil, fmt.Errorf("%w: frame %s answered bytes that are not it", ErrDamaged, frame)
-	}
-	return b, nil
+	return nil, retriedError{err: err}
 }
 
 // Locate implements Store: one request answering where each held rid lies.

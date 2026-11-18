@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/catalog"
+	"github.com/Agent-Field/codeaf/internal/claudemodel"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/roles"
@@ -1128,6 +1129,30 @@ func CrewOffersAt(profileDir string) []CrewOffer {
 			}
 		}
 		out = append(out, offer)
+	}
+	for _, p := range providers {
+		if p.ID == claudemodel.ID {
+			out = append(out, claudeCodeOffers(p, rule, off, facts.health)...)
+		}
+	}
+	return out
+}
+
+// claudeCodeOffers are the claude-code service's rows for the crew picker,
+// matching the rows [claudeCodeRows] builds for the task-models table: the
+// three families and their listed versions, offered whenever claude-code is
+// connected even when the shared catalog has no rows.
+func claudeCodeOffers(p CrewProvider, rule crewroute.Allowed, off crewroute.ProvidersOff, health crewHealth) []CrewOffer {
+	var out []CrewOffer
+	for _, m := range claudemodel.Models() {
+		model := crewroute.Model{ID: claudemodel.ID + "/" + m.ID, Context: m.ContextLength, Tools: true}
+		routes := health.usable([]crewroute.Route{{Provider: p.ID, Send: m.ID, Kind: crewroute.Plan}})
+		if len(routes) == 0 {
+			continue
+		}
+		served := len(off.Routes(routes)) > 0
+		allowed := served && crewPinAdmitted(rule, model.ID, p.ID)
+		out = append(out, CrewOffer{Model: model, Routes: routes, Served: served, Allowed: allowed})
 	}
 	return out
 }

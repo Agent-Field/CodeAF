@@ -20,6 +20,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/dirwatch"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/preflight"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 	"github.com/Agent-Field/codeaf/internal/tui3"
@@ -56,8 +57,8 @@ func wireSync(o *tui3.Options) {
 	if o.NotShared == nil {
 		o.NotShared = terminalNotShared
 	}
-	moving := &takeProgress{}
-	take := takeover{c: chatContinuer(s, surfaceNotices.Say, moving.report), moving: moving}
+	moving := terminalMoving
+	take := takeover{c: chatContinuerWith(s, surfaceNotices.Say, moving.report, true, continueSeams{arrived: terminalArrived(surfaceNotices)}), moving: moving}
 	if o.Takeover == nil {
 		o.Takeover = take
 	}
@@ -211,6 +212,8 @@ func (s surfaceMachines) RowsForSend(ctx context.Context) ([]chatlist.Row, uint6
 	if err != nil {
 		return nil, 0, err
 	}
+	s.RememberDevices(l.Devices)
+	s.RememberViews(l)
 	key := directory.MetadataKey(s.Identity.CellKey())
 	open := func(sealed string) (string, error) { return directory.OpenName(key, sealed) }
 	rows := chatlist.Rows(l, s.Device.ID(), open)
@@ -294,6 +297,12 @@ func (t takeover) IdleHandoffAllowed() bool {
 	return t.c != nil && t.c.IdleHandoffAllowed()
 }
 
+// terminalMoving is how far the terminal's one running continue has got. It is
+// one value for the whole process, not one per [wireSync], because the restart of
+// a held chat's files ([restartHeldFilesBeforeOpen]) runs before any surface is
+// wired, and the status line must say `files arriving` for it as for a move.
+var terminalMoving = &takeProgress{}
+
 // takeProgress is how far the terminal's one running continue has got.
 type takeProgress struct {
 	mu   sync.Mutex
@@ -308,13 +317,24 @@ func (p *takeProgress) start(cell string) {
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.cell, p.ok = cell, false
+	p.cell, p.at, p.ok = cell, tui3.MoveProgress{Step: syncsetup.MovePreparing}, true
+}
+
+func (p *takeProgress) stop(cell string) {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.cell == cell {
+		p.ok = false
+	}
 }
 
 func (p *takeProgress) report(m syncsetup.MoveProgress) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.at, p.ok = tui3.MoveProgress{Step: m.Step, Done: m.Done, Total: m.Total}, true
+	p.at, p.ok = tui3.MoveProgress{Step: m.Step, Done: m.Done, Total: m.Total, Err: m.Err}, m.Step != syncsetup.MoveDone
 }
 
 // MoveProgress says how far the continue of cell has got.
@@ -325,6 +345,14 @@ func (t takeover) MoveProgress(cell string) (tui3.MoveProgress, bool) {
 	t.moving.mu.Lock()
 	defer t.moving.mu.Unlock()
 	return t.moving.at, t.moving.ok && t.moving.cell == cell
+}
+
+// RetryMove retries a failed background workspace fetch for cell (C4).
+func (t takeover) RetryMove(cell string) bool {
+	if t.c == nil {
+		return false
+	}
+	return t.c.RetryFiles(cell)
 }
 
 // surfaceTakeError names a stalled continue in the terminal's words.
@@ -349,7 +377,11 @@ func (t takeover) TakeSeen(ctx context.Context, id string, seen *directory.Lease
 	got, err := t.c.TakeSeen(ctx, id, seen)
 	elapsed := time.Since(began)
 	if err != nil {
+		t.moving.stop(id)
 		return tui3.Taken{}, surfaceTakeError(err)
+	}
+	if got.AlreadyHere || got.LocalOnly {
+		t.moving.stop(id)
 	}
 	return surfaceTaken(got, elapsed), nil
 }
@@ -359,7 +391,11 @@ func (t takeover) OpenAvailable(ctx context.Context, id string, seen *directory.
 	t.moving.start(id)
 	got, err := t.c.OpenAvailable(ctx, id, seen)
 	if err != nil {
+		t.moving.stop(id)
 		return tui3.Taken{}, surfaceTakeError(err)
+	}
+	if got.AlreadyHere || got.LocalOnly {
+		t.moving.stop(id)
 	}
 	return surfaceTaken(got, time.Since(began)), nil
 }
@@ -369,7 +405,11 @@ func (t takeover) OpenAvailableWithWorkspaceRoots(ctx context.Context, id string
 	t.moving.start(id)
 	got, err := t.c.OpenAvailableWithWorkspaceRoots(ctx, id, seen, roots)
 	if err != nil {
+		t.moving.stop(id)
 		return tui3.Taken{}, surfaceTakeError(err)
+	}
+	if got.AlreadyHere || got.LocalOnly {
+		t.moving.stop(id)
 	}
 	return surfaceTaken(got, time.Since(began)), nil
 }
@@ -379,7 +419,11 @@ func (t takeover) TakeSeenWithWorkspaceRoots(ctx context.Context, id string, see
 	t.moving.start(id)
 	got, err := t.c.TakeSeenWithWorkspaceRoots(ctx, id, seen, roots)
 	if err != nil {
+		t.moving.stop(id)
 		return tui3.Taken{}, surfaceTakeError(err)
+	}
+	if got.AlreadyHere || got.LocalOnly {
+		t.moving.stop(id)
 	}
 	return surfaceTaken(got, time.Since(began)), nil
 }
@@ -452,19 +496,51 @@ func (t takeover) SafeToContinue(ctx context.Context, id, current string, automa
 // chatContinuer is the terminal's continue: it stops when nothing comes
 // through for syncsetup.MoveIdleWithin, and tells onMove how far it has got.
 func chatContinuer(s *syncsetup.Sync, notify func(string), onMove func(syncsetup.MoveProgress)) *syncsetup.Continuer {
+	return chatContinuerWith(s, notify, onMove, false, continueSeams{})
+}
+
+func chatContinuerAsync(s *syncsetup.Sync, notify func(string), onMove func(syncsetup.MoveProgress)) *syncsetup.Continuer {
+	return chatContinuerWith(s, notify, onMove, true, continueSeams{})
+}
+
+// continueSeams are the two ways a surface hears about the work a continue
+// does after the chat has opened, beyond the one desk Notify speaks to.
+type continueSeams struct {
+	// noticeAt files a sentence under the chat it is about, for a surface that
+	// holds several chats (the app). It replaces Notify.
+	noticeAt func(cell.Cell, string)
+	// arrived hears the look at this computer once the files are in, which an
+	// early open could only carry in part.
+	arrived func(cell.Cell, preflight.Resume)
+}
+
+func chatContinuerWith(s *syncsetup.Sync, notify func(string), onMove func(syncsetup.MoveProgress), asyncFiles bool, seams continueSeams) *syncsetup.Continuer {
 	return s.Continuer(cellstore.EngineFor(""), syncsetup.TakeOptions{
 		DeviceName: devname.Name(s.Home),
 		RootFor:    func(id string) string { return takeRootForAt(s.Home, id) },
 		BucketFor:  func(origin string) string { return takeCopyBucketAt(s.Home, origin) },
 		Notify:     notify,
+		NotifyAt:   seams.noticeAt,
+		OnArrived:  seams.arrived,
 		OnMove:     onMove,
+		AsyncFiles: asyncFiles,
 		IdleWithin: syncsetup.MoveIdleWithin,
 	})
 }
 
-// chatMover is chatContinuer for a move the app watches.
-func chatMover(s *syncsetup.Sync, onMove func(syncsetup.MoveProgress)) *syncsetup.Continuer {
-	return chatContinuer(s, nil, onMove)
+// chatMover is chatContinuer for a move the app watches. EVERY SENTENCE THE
+// CONTINUE SAYS AFTER THE CHAT HAS OPENED goes to say, for the chat it is
+// about: the app has no one desk to put a line on, and a continuer built with
+// neither seam drops a failed after-work step without a word.
+func chatMover(s *syncsetup.Sync, onMove func(syncsetup.MoveProgress), say func(cell.Cell, string)) *syncsetup.Continuer {
+	return chatContinuerWith(s, nil, onMove, true, continueSeams{noticeAt: say})
+}
+
+// terminalArrived hands the terminal's open window the whole look at this
+// computer once a moved chat's files are in: the setup card gains what only the
+// files could show (tools this computer lacks, uncommitted work).
+func terminalArrived(desk *tui3.Notices) func(cell.Cell, preflight.Resume) {
+	return func(c cell.Cell, r preflight.Resume) { desk.Arrived(filepath.Base(c.Root), r) }
 }
 
 // ReleaseUnused leaves the installed files and kept work intact, just as closing

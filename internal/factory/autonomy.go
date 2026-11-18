@@ -15,19 +15,28 @@ func Automatic(it Item) bool {
 	return !StoppedByPerson(it) && it.Autonomy == AutonomyAuto && !it.Manual && !RecoveryPaused(it)
 }
 
-// AsksBeforeStep says Manual holds phase i for the person's word before its
-// first round. Only an explicit Manual asks: a record with no saved mode keeps
-// its pipeline's own approve steps. Start is the word for the first step, an
-// approve step just passed is the word for the step after it, and a step that
-// has run once (a retry, a send-back) is the same step, not a new one. Follow PR
-// has its own door: Manual asks before each repair push.
-func AsksBeforeStep(it Item, i int) bool {
+// AsksBeforePost says Manual holds phase i, a post step, for the person's word
+// before its first round. A POST STEP IS A PUBLIC ACT: it comments, labels,
+// opens or closes on GitHub, and in Manual nothing public goes out without
+// the person. It is what is left of Manual's hold before every step, which
+// the owner dropped on 2026-11-17: every other step now runs on.
+//
+// Only an explicit Manual asks: a record with no saved mode keeps its
+// pipeline's own approve steps. An approve step just passed is the word for
+// the post after it, and a post that has run once (a retry, a send-back) is
+// the same step, not a new one.
+func AsksBeforePost(it Item, i int) bool {
 	if it.Autonomy != AutonomyManual || it.Stream == nil || i < 0 || i >= len(it.Stream.Phases) {
 		return false
 	}
 	ph := it.Stream.Phases
 	p := ph[i]
-	if p.Kind == StageGate || p.State != PhasePending || p.Round > 0 || it.FollowUp != nil || p.Name == FollowPRStep {
+	if p.Kind != StagePost || p.State != PhasePending || p.Round > 0 || it.FollowUp != nil {
+		return false
+	}
+	// An extra task was asked for in so many words; nobody is asked again
+	// before it runs (task.go).
+	if IsTask(p) {
 		return false
 	}
 	return PreviousWork(ph, i) >= 0 && !answeredByApprove(it, i)
@@ -71,6 +80,12 @@ func CheckAutomaticApproval(it Item) error {
 	}
 	return nil
 }
+
+// The leads of a pause on a failing finding, which [OffersAutoResume] reads.
+const (
+	proofAttentionLead  = "Proof needs attention: "
+	policyAttentionLead = "Repository policy needs attention: "
+)
 
 // AutonomyBlockReason explains a saved exception without asking a model to
 // infer why Auto has stopped. A routine approval in flight has no exception.
@@ -127,14 +142,18 @@ func AutonomyBlockReason(it Item) string {
 		if len(it.Proof) == 0 {
 			return "Proof is incomplete. Request changes or take over to continue."
 		}
+		// A finding the person told Auto to carry on past no longer pauses it
+		// (override.go); one they did not still does. Neither does a finding
+		// a later round replaced ([FindingStands]): only a verdict the latest
+		// round still reports pauses Auto.
 		for _, cl := range it.Proof {
-			if !cl.OK {
-				return "Proof needs attention: " + cl.Text + ". Request changes or take over to continue."
+			if FindingStands(it, OverrideProof, cl) {
+				return proofAttentionLead + cl.Text + ". Request changes or take over to continue."
 			}
 		}
 		for _, cl := range it.Policy {
-			if !cl.OK {
-				return "Repository policy needs attention: " + cl.Text + ". Request changes or take over to continue."
+			if FindingStands(it, OverridePolicy, cl) {
+				return policyAttentionLead + cl.Text + ". Request changes or take over to continue."
 			}
 		}
 		for i := len(it.Stages) - 1; i >= 0; i-- {

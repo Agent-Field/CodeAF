@@ -20,9 +20,12 @@ import (
 
 // RunStarter is what a [RunDoor] may also do: start, resume or continue the
 // run of the ONE item conversation manages, answering the line the floor
-// shows, or why nothing changed.
+// shows, or why nothing changed. said is the person's own latest words in
+// the running turn, "" when it holds none: outside Auto the door goes past an
+// approve step only on a turn the person spoke in (internal/factory's
+// manager_authority.go).
 type RunStarter interface {
-	StartRun(ctx context.Context, conversation string) (string, error)
+	StartRun(ctx context.Context, conversation, said string) (string, error)
 }
 
 // RunManagerDoor is what a [RunDoor] may also say: whether conversation is
@@ -41,7 +44,7 @@ func (c Config) mayStart() bool {
 
 const factoryStartDescription = "Start the run of the ONE factory item this conversation manages, when the person asks you to start, run, go, resume or continue. " +
 	"It is the same control as the run button on the item's page: a run that has not started is launched with the steps as they stand now, a paused run goes on with the same step in the same chat, and a run held at an approve step goes past it. " +
-	"Go past an approve step only when the person clearly said so in this chat, never on your own judgment. " +
+	"Go past an approve step only when the person clearly said so in this chat, never on your own judgment: outside Auto it is refused on a turn the person did not speak in. " +
 	"There is nothing to look up first: call it, then say the line it answers in one short sentence. The answer is what happened, or why nothing changed."
 
 const factoryStartSchema = `{"type":"object","properties":{},"additionalProperties":false}`
@@ -59,7 +62,7 @@ func (a *Agent) factoryStartTool() bare.Tool {
 			if !ok {
 				return "nothing started: this turn cannot start the run", true, nil
 			}
-			line, err := starter.StartRun(ctx, a.config.SessionFile)
+			line, err := starter.StartRun(ctx, a.config.SessionFile, a.turnPersonWords())
 			if err != nil {
 				return "nothing started: " + strings.Join(strings.Fields(err.Error()), " "), true, nil
 			}

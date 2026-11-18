@@ -22,6 +22,10 @@ const (
 	InboxDone    = "done"
 
 	ResolvedNoLongerNeeded = "no_longer_needed"
+	// ResolvedDismissed is an item the person dismissed (inbox.dismiss): its
+	// question closed with nothing decided. It is also the option a dismissed
+	// ask closes with.
+	ResolvedDismissed = "dismissed"
 )
 
 // InboxItem is one ask in the Inbox, with where it comes from and the two
@@ -82,6 +86,28 @@ type Inboxer interface {
 	UndoInbox(id string) error
 	LaterInbox(id string, later bool) error
 	OpenInbox(id string) (agent, task string, err error)
+}
+
+// InboxDismisser is the engine's Dismiss: the item moves to done and its
+// question closes with nothing decided, its agent told. It is separate so an
+// engine without it answers inbox.dismiss as unknown rather than failing to
+// build.
+type InboxDismisser interface {
+	DismissInbox(id string) error
+}
+
+// FeatureInboxDismiss is hello's word for an engine that is an
+// [InboxDismisser], so a client offers Dismiss only where inbox.dismiss is
+// served.
+const FeatureInboxDismiss = "inbox.dismiss"
+
+// withInboxDismissFeature is hello carrying [FeatureInboxDismiss] for an
+// engine with the door.
+func withInboxDismissFeature(hello Hello, e Engine) Hello {
+	if _, ok := e.(InboxDismisser); ok {
+		return withFeature(hello, FeatureInboxDismiss)
+	}
+	return hello
 }
 
 func init() {
@@ -161,6 +187,17 @@ var inboxMethods = map[string]method{
 	"inbox.undo":  inboxVerb("inbox.undo", func(i Inboxer, id string) error { return i.UndoInbox(id) }),
 	"inbox.later": inboxVerb("inbox.later", func(i Inboxer, id string) error { return i.LaterInbox(id, true) }),
 	"inbox.back":  inboxVerb("inbox.back", func(i Inboxer, id string) error { return i.LaterInbox(id, false) }),
+	"inbox.dismiss": typed(func(e Engine, p IDParams) (*Empty, error) {
+		d, ok := e.(InboxDismisser)
+		if !ok {
+			return nil, Errorf(CodeUnknownMethod, "this engine does not serve inbox.dismiss")
+		}
+		id, err := required("id", p.ID)
+		if err != nil {
+			return nil, err
+		}
+		return done(d.DismissInbox(id))
+	}),
 	"inbox.open": typed(func(e Engine, p IDParams) (*AgentTaskResult, error) {
 		i, err := inboxer(e, "inbox.open")
 		if err != nil {

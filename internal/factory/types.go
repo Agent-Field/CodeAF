@@ -379,6 +379,9 @@ type Phase struct {
 	// Passed is who passed an approve step, once it is done ([StampPassed]);
 	// nil on every other step, and again once the step waits or is sent back.
 	Passed *Passed `json:",omitempty"`
+	// Task is set on the phase of an extra task (task.go): its instructions
+	// and who gave them. Nil on every step of the pipeline.
+	Task *TaskAsk `json:",omitempty"`
 }
 
 // ResultOutputMost is how much of a step's output [Phase.Result] keeps, in
@@ -410,6 +413,10 @@ type Stream struct {
 	// Models is this run's priced calls by the model that answered. A run
 	// recorded before the field has none; that spend cannot be tied to a model.
 	Models []ModelUse `json:",omitempty"`
+	// AutoRepairs is how many times Auto sent this run's failing proof or
+	// policy findings back to be repaired before its first publication
+	// ([BeginAutoRepair]); a new run starts again from none.
+	AutoRepairs int `json:",omitempty"`
 }
 
 // Claim is one row of a proof sheet: what was claimed, whether it was shown,
@@ -437,6 +444,11 @@ type PRReview struct {
 	By    string
 	State string
 	At    time.Time
+	// Association is GitHub's own word for the reviewer's standing on the
+	// repository, and Untrusted says it carries no write access
+	// ([PRFeedback.Untrusted]).
+	Association string `json:",omitempty"`
+	Untrusted   bool   `json:",omitempty"`
 }
 
 // PRChecks is how that pull request's check runs add up. A zero count is
@@ -466,7 +478,23 @@ type PRFeedback struct {
 	ID       string
 	Revision string
 	Resolved bool
+	// External is an automated notice from outside the review (a CLA bot's):
+	// it is never review feedback to act on.
 	External bool
+	// Thread is GitHub's node id of the review thread an inline comment is
+	// in, which resolving it names; CommentID the comment's own id; ReplyTo
+	// the thread's first comment, the only one GitHub takes a reply on.
+	Thread    string `json:",omitempty"`
+	CommentID int64  `json:",omitempty"`
+	ReplyTo   int64  `json:",omitempty"`
+	// By is who wrote it and Association GitHub's own word for their standing
+	// on the repository. Untrusted is anyone who is not its owner, a member
+	// or a collaborator: THE JOB MAY ANSWER THEM, AND CHANGES CODE ON THEIR
+	// WORD ONLY WHEN ITS PERSON SAYS SO. The text its manager and delegates
+	// read marks each such item.
+	By          string `json:",omitempty"`
+	Association string `json:",omitempty"`
+	Untrusted   bool   `json:",omitempty"`
 }
 
 type PullRequest struct {
@@ -510,6 +538,10 @@ type PullRequest struct {
 	// HeadBranch is the branch the pull request comes from, which a repair pushes
 	// to: an older branch can leave it named apart from the job's own.
 	HeadBranch string `json:",omitempty"`
+	// BaseBranch is the branch the pull request asks to merge into. Its live
+	// head, not BaseSHA (which the forge refreshes only on the next push), is
+	// what Follow PR's base sync merges.
+	BaseBranch string `json:",omitempty"`
 	// Files is the pull request's change as GitHub lists it, read on the
 	// commit FilesHead, at most [PRFilesMost] of FilesTotal. A FILE LIST IS
 	// ONLY EVER ABOUT ITS OWN HEAD: a reader compares FilesHead with HeadSHA
@@ -520,6 +552,15 @@ type PullRequest struct {
 	Files      []ChangedFile `json:",omitempty"`
 	FilesTotal int           `json:",omitempty"`
 	FilesHead  string        `json:",omitempty"`
+	// Title is the pull request's title once a public act has edited it
+	// ([ActKindEditPR]): a later push keeps it instead of putting the job's
+	// own title back. Empty is a title nobody edited here.
+	Title string `json:",omitempty"`
+	// Body is the pull request's description once a public act has edited
+	// it, the person's or the manager's: a later repair push leaves it as it
+	// is instead of writing the proof over it. Empty is a description nobody
+	// edited here.
+	Body string `json:",omitempty"`
 }
 
 // PRFilesMost is how many of a pull request's files the factory keeps on the
@@ -670,6 +711,15 @@ type Item struct {
 	// approve step the job waits at ([PassJudged]); stale once its key no
 	// longer names the waiting approval.
 	PassJudge *PassJudgement `json:",omitempty"`
+	// Overrides are the failing checks the person told Auto to carry on past
+	// ([OverrideFindings]): each names the finding, who said so and when. A
+	// finding not listed here still pauses Auto. A new run clears them with
+	// its checks ([Item.ResetChecks]). Nil is none.
+	Overrides []CheckOverride `json:",omitempty"`
+	// MergeOfferedAt is when the job's manager last offered the person the
+	// merge of its open pull request again ([OfferMerge]), so the job page
+	// shows its Merge card anew; zero is never re-offered.
+	MergeOfferedAt time.Time `json:",omitzero"`
 	// PersonStopped survives state resets, expiry of Undo and engine restarts.
 	// Only an explicit person control may clear it.
 	PersonStopped *bool     `json:",omitempty"`
@@ -851,6 +901,22 @@ type Item struct {
 	// undone, a failed merge or a pull request's review. Zero while the job
 	// waits on nobody.
 	NeedsAt time.Time `json:",omitzero"`
+	// Wait is what the job waits on, and Offers the actions the service takes
+	// on it now. The store sets both on every write ([SettleWait]); nothing
+	// else writes them.
+	Wait   *Wait   `json:",omitempty"`
+	Offers []Offer `json:",omitempty"`
+	// Stall is the watchdog's record of a wait that went wrong and what it
+	// did about it ([Stall]). The store drops it when the job moves on.
+	Stall *Stall `json:",omitempty"`
+	// Acts are the public acts on the job's pull request ([PublicAct]): those
+	// that wait for the person's yes, those the service is carrying out, and
+	// the last few that are over.
+	Acts []PublicAct `json:",omitempty"`
+	// Handoff is the main agent's hold on the stop the job is on, and its
+	// count of the rounds it has given ([Handoff]). The store keeps it with
+	// the wait ([SettleWait]); the service gives the turn and ends it.
+	Handoff *Handoff `json:",omitempty"`
 	// ManagerAnswer confirms the last durable decision independently of lease delivery.
 	ManagerAnswer *ManagerAnswer `json:",omitempty"`
 	// Briefs are the job's brief versions ([BriefVersion]), oldest first, at
@@ -1213,22 +1279,22 @@ type Asked struct {
 }
 
 // The reasons a step's question goes straight to the person, said where the
-// manager's own reason would be ([Asked.Why]).
+// manager's own reason would be ([Asked.Why]). WhyManualAsksYou is no longer
+// given: it stays for the questions a job saved in Manual still carries.
 const (
 	WhyManualAsksYou = "Manual: every step question comes to you"
 	WhyOnlyAPerson   = "the step said only a person can answer this"
 )
 
 // PersonFirst is why a step's question skips the job's manager and goes
-// straight to the person, "" when the manager answers first as usual. A job
-// in Manual sends every step question to its person; a question the step
-// marked as needing a person goes to them in every mode. Neither reads a
-// pipeline's or a step's name.
-func PersonFirst(it Item, q Asked) string {
-	switch {
-	case it.Autonomy == AutonomyManual:
-		return WhyManualAsksYou
-	case q.Person:
+// straight to the person, "" when the manager answers first as usual. Only a
+// question the step marked as needing a person does, in every mode. A STEP'S
+// QUESTION GOES TO THE MANAGER FIRST IN MANUAL TOO (the owner's decision of
+// 2026-11-17): Manual keeps the plan and everything public for the person,
+// and a question about the work is neither. It reads no pipeline's or step's
+// name.
+func PersonFirst(_ Item, q Asked) string {
+	if q.Person {
 		return WhyOnlyAPerson
 	}
 	return ""

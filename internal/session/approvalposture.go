@@ -183,6 +183,7 @@ func (a *Agent) SetApprovalPosture(posture string) error {
 	}
 	a.mu.Lock()
 	a.approvalPolicy = policy
+	a.syncConsentMemoLocked(policy)
 	a.approvalPosture = word
 	a.guardianOverride = &guardian
 	a.mu.Unlock()
@@ -209,7 +210,12 @@ func (a *Agent) SetApprovalPosture(posture string) error {
 // the rows' own, and a rule banked under `--yolo` keeps the flag's open gate
 // exactly as it did before this scope existed.
 func (a *Agent) RebuildApprovalGate() error {
-	_, err := a.refreshApprovalGate()
+	policy, err := a.refreshApprovalGate()
+	if err == nil {
+		a.mu.Lock()
+		a.syncConsentMemoLocked(policy)
+		a.mu.Unlock()
+	}
 	return err
 }
 
@@ -239,7 +245,11 @@ func (a *Agent) refreshApprovalGate() (*approval.Policy, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if err == nil {
+		changed := a.approvalPolicy != policy
 		a.approvalPolicy = policy
+		if changed {
+			a.syncConsentMemoLocked(policy)
+		}
 		if stored != "" {
 			a.guardianOverride = &guardian
 		}

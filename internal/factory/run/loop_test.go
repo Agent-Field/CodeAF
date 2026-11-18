@@ -1053,6 +1053,41 @@ func TestAClaimWithNoEvidenceIsNotShown(t *testing.T) {
 	}
 }
 
+// AN AUTO REPAIR'S PROVE STEP CLEARS THE ROW IT WAS SENT FOR. The request
+// quotes the finding as its row holds it; the prove step's claim in those
+// words, as a policy claim, replaces the failing policy row, and the landed
+// job no longer pauses on it. The old request labelled the finding
+// ("repository policy: FINDING: …"), so the same restatement was a new row and
+// the failing one stood: the repair could not come back clean.
+func TestAnAutoRepairsProveClaimReplacesTheFailingRow(t *testing.T) {
+	finding := factory.Claim{Text: "FINDING: the changelog entry carries the issue number", Evidence: "pr: 1758", Medium: "policy"}
+	it := factory.Item{Autonomy: factory.AutonomyAuto, Assignee: "sam", Cap: 5, State: factory.StateLanded,
+		Proof:  []factory.Claim{{Text: "tests pass", OK: true, Evidence: "go test"}},
+		Policy: []factory.Claim{finding},
+		Stream: &factory.Stream{Spent: 1, Phases: []factory.Phase{
+			{Name: "review", Kind: factory.StageChat, State: factory.PhaseDone, Round: 1, Result: &factory.StageResult{Findings: 1, Claims: []factory.Claim{finding}}},
+		}}}
+	r, ok := factory.AutoRepairDue(it)
+	if !ok {
+		t.Fatal("no repair is due")
+	}
+	words := r.Words()
+	open, end := strings.Index(words, "“"), strings.Index(words, "”")
+	if open < 0 || end < open {
+		t.Fatalf("the request quotes nothing: %q", words)
+	}
+	quoted := words[open+len("“") : end]
+	it.Stream.Phases = append(it.Stream.Phases, factory.Phase{Name: "prove", Kind: factory.StageChat, Round: 1})
+	foldResult(&it, factory.Stage{Name: "prove", Kind: factory.StageChat, Until: factory.UntilDone}, 1,
+		factory.StageResult{Done: true, Claims: []factory.Claim{{Text: quoted, OK: true, Evidence: "renamed to 2587-…; make changelog-check exit 0", Medium: "policy"}}}, time.Now())
+	if len(it.Policy) != 1 || !it.Policy[0].OK {
+		t.Fatalf("the failing row stood beside its repair: %+v", it.Policy)
+	}
+	if len(factory.FailingFindings(it)) != 0 {
+		t.Fatalf("the job still pauses on %q", factory.AutonomyBlockReason(it))
+	}
+}
+
 // pauseExec is a chat executor that opens a chat of its own name each round,
 // tells the loop, and waits to be cut or released. It keeps every job it saw.
 type pauseExec struct {

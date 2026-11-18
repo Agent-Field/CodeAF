@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
@@ -56,12 +57,20 @@ func snapshotChildren(payload []byte) ([]string, error) {
 	if s.Parent != "" {
 		kids = append(kids, s.Parent)
 	}
-	rids := make([]string, 0, len(s.Files))
-	for _, rid := range s.Files {
-		rids = append(rids, rid)
+	var statePaths, workRids []string
+	for path, rid := range s.Files {
+		if path == ".cell" || strings.HasPrefix(path, ".cell/") {
+			statePaths = append(statePaths, path)
+		} else {
+			workRids = append(workRids, rid)
+		}
 	}
-	sort.Strings(rids)
-	return append(kids, rids...), nil
+	sort.Strings(statePaths)
+	for _, path := range statePaths {
+		kids = append(kids, s.Files[path])
+	}
+	sort.Strings(workRids)
+	return append(kids, workRids...), nil
 }
 
 func decodeSnapshot(payload []byte) (s snapshot, err error) {
@@ -484,6 +493,43 @@ func (f *FakeEngine) Materialize(_ context.Context, c cell.Cell, head string) er
 		return err
 	}
 	return fc.writeFiles(c.Root, snap)
+}
+
+// StageState writes only the conversation files (.cell/) of head's snapshot
+// into c.Root without requiring workspace blobs to be present yet (C1).
+func (f *FakeEngine) StageState(_ context.Context, c cell.Cell, head string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	fc := f.cell(c)
+	rawHead, ok := fc.objects[head]
+	if !ok {
+		return fmt.Errorf("fake engine: head %s is not held here", head)
+	}
+	_, payload, err := unpack(rawHead)
+	if err != nil {
+		return err
+	}
+	snap, err := decodeSnapshot(payload)
+	if err != nil {
+		return err
+	}
+	for path, rid := range snap.Files {
+		if path != ".cell" && !strings.HasPrefix(path, ".cell/") {
+			continue
+		}
+		rawBlob, ok := fc.objects[rid]
+		if !ok {
+			return fmt.Errorf("fake engine: state object %s (%s) is not held here", rid, path)
+		}
+		_, content, err := unpack(rawBlob)
+		if err != nil {
+			return err
+		}
+		if err := replaceFile(filepath.Join(c.Root, path), content); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // writeFiles restores snap over root the way the real engine does: a file

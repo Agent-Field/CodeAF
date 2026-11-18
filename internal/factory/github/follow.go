@@ -60,7 +60,17 @@ func (s *Source) followPR(ctx context.Context, owner, repo string, number int, p
 		Number: p.Number, URL: p.URL, Draft: p.Draft,
 		Conflict: p.Mergeable != nil && !*p.Mergeable,
 		State:    pullFollowState(p), MergedBy: p.MergedBy, MergedAt: p.MergedAt,
-		BaseSHA: p.BaseSHA, HeadSHA: p.HeadSHA, HeadBranch: p.Head, Mergeable: mergeableWord(p.Mergeable),
+		BaseSHA: p.BaseSHA, BaseBranch: p.Base, HeadSHA: p.HeadSHA, HeadBranch: p.Head, Mergeable: mergeableWord(p.Mergeable),
+	}
+	// A title a public act edited is followed from then on, so a later push
+	// keeps what GitHub shows instead of putting the job's own title back.
+	if prev != nil && prev.Title != "" {
+		out.Title = p.Title
+	}
+	// So is a description one edited: the next push leaves it alone. One
+	// someone emptied by hand since is still one a push leaves alone.
+	if prev != nil && prev.Body != "" {
+		out.Body = firstOf(p.Body, prev.Body)
 	}
 	// Terminal metadata is authoritative even when optional APIs are unavailable.
 	// A merged or closed pull request costs no file read, but keeps the list
@@ -106,7 +116,8 @@ func (s *Source) followPR(ctx context.Context, owner, repo string, number int, p
 		} else {
 			out.FeedbackTracked = true
 			for _, item := range state.Items {
-				out.FeedbackItems = append(out.FeedbackItems, factory.PRFeedback{ID: item.ID, Revision: item.Revision, Resolved: item.Resolved, External: item.External})
+				out.FeedbackItems = append(out.FeedbackItems, factory.PRFeedback{ID: item.ID, Revision: item.Revision, Resolved: item.Resolved, External: item.External,
+					Thread: item.Thread, CommentID: item.CommentID, ReplyTo: item.ReplyTo, By: item.By, Association: item.Association, Untrusted: forge.Untrusted(item.Association)})
 			}
 		}
 	} else if feedback, ok := s.api.(interface {
@@ -216,7 +227,7 @@ func factoryReviews(in []forge.Review) []factory.PRReview {
 	}
 	out := make([]factory.PRReview, 0, len(in))
 	for _, r := range in {
-		out = append(out, factory.PRReview{By: r.User, State: strings.ToLower(r.State), At: r.At, Body: r.Body, URL: r.URL})
+		out = append(out, factory.PRReview{By: r.User, State: strings.ToLower(r.State), At: r.At, Body: r.Body, URL: r.URL, Association: r.Association, Untrusted: forge.Untrusted(r.Association)})
 	}
 	return out
 }
@@ -397,6 +408,11 @@ func followOpened(ctx context.Context, src factory.Source, st *store.Store) erro
 			// this network read is in flight. Never restore the old head's
 			// green checks or draft status over that newer local receipt.
 			if item.PullRequest.HeadSHA != it.PullRequest.HeadSHA || item.PullRequest.Draft != it.PullRequest.Draft || item.PullRequest.State != it.PullRequest.State {
+				return nil
+			}
+			// Nor a base, a title or a description a public act changed while
+			// this read was in flight: the next read carries them.
+			if item.PullRequest.BaseBranch != it.PullRequest.BaseBranch || item.PullRequest.Title != it.PullRequest.Title || item.PullRequest.Body != it.PullRequest.Body {
 				return nil
 			}
 			cp := next

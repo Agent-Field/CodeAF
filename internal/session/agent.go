@@ -11,6 +11,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
+	"github.com/Agent-Field/codeaf/internal/cell"
 	preferences "github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/env"
@@ -193,6 +194,9 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// with the header's id, which survives every resume.
 		id: NewSessionID(),
 	}
+	// A CHAT OPENED WHILE ITS FILES ARE STILL ARRIVING renders its page from a
+	// workspace that is not all there ([Agent.followArrivedFiles]).
+	agent.filesArriving = cell.WorkspaceArriving(agent.arrivalPaths()...)
 	if config.Place.Dir != "" {
 		if meta, err := LoadMeta(config.Place.Dir); err == nil {
 			if meta.Model == config.Model {
@@ -1207,6 +1211,7 @@ func (a *Agent) submitTextAnswer(ctx context.Context, text string, person *messa
 		user.said = said
 		user.person = person
 		user.answer = answer
+		user.fromPerson = !answer
 		return a.submitUser(ctx, user)
 	}
 	user := userText(text)
@@ -1215,6 +1220,7 @@ func (a *Agent) submitTextAnswer(ctx context.Context, text string, person *messa
 	}
 	user.person = person
 	user.answer = answer
+	user.fromPerson = !answer
 	return a.submitUser(ctx, user)
 }
 
@@ -1270,12 +1276,17 @@ func (a *Agent) submitUser(ctx context.Context, user userMessage) (<-chan Event,
 		// the turn's creation team unknown (creation_team.go).
 		a.mixCreationLocked(user)
 		a.steering = append(a.steering, user)
+		// The person's reply closes what is still open before the pending cards
+		// are read, so the new subscriber is not handed a question it ended.
+		retired := a.personClosesQuestionsLocked(user)
+		a.notePersonWordsLocked(user)
 		// Subscribing under a.mu — not after releasing it — is what makes the
 		// returned channel live rather than a coin flip: the turn's goroutine
 		// clears running under this same lock BEFORE it closes the hub, so
 		// running == true here means the hub cannot already be closed.
 		events := a.hub.subscribePending(a.stillAskedLocked())
 		a.mu.Unlock()
+		a.sayTheQuestionsCameDown(retired)
 		return events, nil
 	}
 	// The spend rail is checked here, before anything is recorded: a refused
@@ -1287,8 +1298,11 @@ func (a *Agent) submitUser(ctx context.Context, user userMessage) (<-chan Event,
 			return refusedStream(err), nil
 		}
 	}
+	// Only once the message is accepted: a refused one closes nothing.
+	retired := a.personClosesQuestionsLocked(user)
 	events := a.startTurnLocked(user.turnContext(ctx), user, nil)
 	a.mu.Unlock()
+	a.sayTheQuestionsCameDown(retired)
 	return events, nil
 }
 
@@ -1432,6 +1446,13 @@ type userMessage struct {
 	// answer continues an existing question, including a replacement or
 	// clarification, so ownership is checked at its tools rather than admission.
 	answer bool
+	// fromPerson marks a new message the person sent through one of their own
+	// doors (Submit, SubmitMessage, SubmitImage, SubmitComposed, SteerMessage,
+	// FollowUpMessage). Their reply
+	// closes every question this agent still has open (steerquestion.go's
+	// [Agent.personClosesQuestionsLocked]); engine notes, briefs, setup and
+	// answers to a question never set it.
+	fromPerson bool
 
 	// closeKey belongs only to the pending continuation this note consumes.
 	closeKey string
@@ -2075,8 +2096,17 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	a.rebindClientLocked(a.model)
 	a.stopJobWakeLocked()
 	a.running = true
+	a.takeHeldNotesLocked()
 	a.factoryAutomaticTurn = user.factoryWork || user.wake && !user.answersPerson && !user.answer
 	a.runnerTurn = user.runner
+	// The person's words belong to the turn they open; a woken turn answering a
+	// line they typed at the end of the last one keeps that line.
+	if !user.answersPerson {
+		a.personWords = ""
+	}
+	if user.fromPerson {
+		a.personWords = user.text()
+	}
 	a.teamTurnAt = time.Now()
 	a.teamTurnSerial++
 	a.lastTurnTruncated = false
@@ -2317,7 +2347,11 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 			// there must be no window in which a Submit could start a turn and
 			// have the follow-up land behind it, out of the order the person
 			// typed them in.
+			var retired []Question
 			if next, ok := a.nextFollowUpLocked(completed); ok {
+				// THE PERSON'S QUEUED WORDS ARE THEIR REPLY once their turn
+				// starts, as a sent message's are (said below, after the unlock).
+				retired = a.personClosesQuestionsLocked(next.message)
 				// context.Background rather than the finished turn's: the
 				// Submit that would have carried a context never happened, and
 				// a follow-up inheriting a cancelled one would end before it
@@ -2344,6 +2378,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 				// their transcript and silence, which is what they asked for.
 			}
 			a.mu.Unlock()
+			a.sayTheQuestionsCameDown(retired)
 			// AND NO QUESTION OF THE MODEL'S OWN OUTLIVES THE TURN THAT RAISED
 			// IT UNLESS IT SAID IT WOULD. It is [Agent.handBackUnsettled]'s law
 			// one lane over: a ratify nobody answered and a question somebody
@@ -2399,8 +2434,14 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 // A follow-up queued while nothing is running starts immediately: there is no
 // turn end coming to drain it, and a message that sat in a queue until the
 // person happened to ask something else would be a silent hold.
+//
+// THE WORDS ARE NOT THE PERSON'S BY THIS DOOR. An engine caller hands words on
+// through it too (a factory stage's delivery falls back to it), so the turn it
+// opens does not count as one the person started. The person's own doors —
+// a queued message from a surface, a remote client's follow-up — come by
+// [Agent.FollowUpMessage], which does.
 func (a *Agent) FollowUp(text string) (<-chan Event, error) {
-	return a.followUpMarked(text, nil, "")
+	return a.followUpMarked(text, nil, "", false)
 }
 
 // FollowUpMessage is [Agent.FollowUp] for a door that knows more about the
@@ -2408,19 +2449,24 @@ func (a *Agent) FollowUp(text string) (<-chan Event, error) {
 // model reads Text when its turn comes, and the record keeps the mark on the
 // message's own line. A mark that does not fit refuses the message whole,
 // before anything is queued.
+//
+// It is THE PERSON'S door, marked or not: the turn the message opens is one
+// they started ([userMessage.fromPerson]), so the tools that act only on the
+// person's own words read them from it.
 func (a *Agent) FollowUpMessage(message Submission) (<-chan Event, error) {
 	message.proven = a.provenCreation(message.Creation)
 	mark, err := message.mark()
 	if err != nil {
 		return nil, err
 	}
-	return a.followUpMarked(message.Text, mark, "")
+	return a.followUpMarked(message.Text, mark, "", true)
 }
 
 // followUpMarked is FollowUp's body with the person's mark beside the words,
-// and the one tool the turn must call first when it owes one
-// ([Agent.FollowUpRequiring]).
-func (a *Agent) followUpMarked(text string, person *messagePresentation, mustCall string) (<-chan Event, error) {
+// the one tool the turn must call first when it owes one
+// ([Agent.FollowUpRequiring]), and whether the words came by one of the
+// person's own doors.
+func (a *Agent) followUpMarked(text string, person *messagePresentation, mustCall string, fromPerson bool) (<-chan Event, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return nil, errors.New("session: empty message")
@@ -2430,6 +2476,10 @@ func (a *Agent) followUpMarked(text string, person *messagePresentation, mustCal
 	}
 
 	a.mu.Lock()
+	// WHAT THE PERSON'S WORDS TOOK DOWN IS SAID AFTER THE LOCK, as submitUser
+	// says it: the deferred call runs after the unlock below it.
+	var retired []Question
+	defer func() { a.sayTheQuestionsCameDown(retired) }()
 	defer a.mu.Unlock()
 	if a.closed {
 		return nil, errors.New("session: agent is closed")
@@ -2441,6 +2491,7 @@ func (a *Agent) followUpMarked(text string, person *messagePresentation, mustCal
 	user := userText(text)
 	user.person = person
 	user.mustCall = mustCall
+	user.fromPerson = fromPerson
 	if a.running {
 		a.followups = append(a.followups, followUp{message: user, stream: stream})
 		return stream.out, nil
@@ -2448,6 +2499,10 @@ func (a *Agent) followUpMarked(text string, person *messagePresentation, mustCal
 	if err := a.railBlockLocked(); err != nil {
 		return refuseOn(stream, err), nil
 	}
+	// A FOLLOW-UP FROM THE PERSON'S OWN DOOR IS THEIR REPLY, as a sent message
+	// is, and it is taken only once the message is accepted: a refused one
+	// closes nothing. A queued one is taken when its turn starts, in the drain.
+	retired = a.personClosesQuestionsLocked(user)
 	return a.startTurnLocked(context.Background(), user, stream), nil
 }
 
@@ -3299,11 +3354,14 @@ func (a *Agent) rememberPersonLocked(user userMessage, kept ai.Message) func() {
 // messages not yet in it — after a boundary that let messages go
 // ([presentationIndex.retain]).
 func (a *Agent) retainPresentationLocked() {
-	queued := make([]ai.Message, 0, len(a.steering)+len(a.ambient)+len(a.followups))
+	queued := make([]ai.Message, 0, len(a.steering)+len(a.ambient)+len(a.heldNotes)+len(a.followups))
 	for _, user := range a.steering {
 		queued = append(queued, user.message)
 	}
 	for _, user := range a.ambient {
+		queued = append(queued, user.message)
+	}
+	for _, user := range a.heldNotes {
 		queued = append(queued, user.message)
 	}
 	for _, follow := range a.followups {
@@ -4225,6 +4283,53 @@ func (a *Agent) enqueueWatchNote(name, text string, fired bool) {
 // guidance is an instruction for the next model step and stays on steering.
 func (a *Agent) enqueueAmbientNote(text string) {
 	a.enqueueNote(userText(text))
+}
+
+// enqueueNextTurnNote is step guidance about something THE PERSON did that
+// the model must hear, and that nobody is waiting on: a question they
+// dismissed or talked past (askdismiss.go, steerquestion.go).
+//
+// WHILE A TURN RUNS it is [Agent.enqueueAmbientNote]: the steering queue,
+// read at the model's next step. WHILE NONE RUNS it is held for the next turn
+// instead ([Agent.heldNotes]). A note on steering in an idle session is work
+// the session looks like it still owes, so it would keep the session from
+// being handed off idle until somebody happened to type; and the seat check
+// [Agent.enqueueNote] makes would drop it outright on a seat that cannot work
+// right now, when nothing is written until a turn opens, and that turn makes
+// its own check.
+//
+// The choice is made under the lock the turn's start and end take, so the note
+// cannot land on steering in the instant after the last drain of a turn.
+func (a *Agent) enqueueNextTurnNote(text string) bool {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return false
+	}
+	note := userText(text)
+	note.message = textMessage("user", text)
+	note.authored = true
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.closed {
+		return false
+	}
+	if a.running {
+		a.steering = append(a.steering, note)
+	} else {
+		a.heldNotes = append(a.heldNotes, note)
+	}
+	return true
+}
+
+// takeHeldNotesLocked moves the notes held for the next turn onto steering,
+// where the turn now opening reads them at its first step. The caller holds
+// a.mu and is starting that turn.
+func (a *Agent) takeHeldNotesLocked() {
+	if len(a.heldNotes) == 0 {
+		return
+	}
+	a.steering = append(a.steering, a.heldNotes...)
+	a.heldNotes = nil
 }
 
 // enqueueAmbient is the boundary-held context queue's one door. It mirrors

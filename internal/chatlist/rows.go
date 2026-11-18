@@ -36,6 +36,15 @@ type BranchCopy struct {
 	Redundant   bool
 }
 
+// Row is the copy as the branch row it is in the directory, so the surface
+// that folded it onto its chat's row can raise the same branch card, on the
+// same door, as a branch row that stands alone. The parent and title are the
+// chat's, because a copy's own are not carried.
+func (c BranchCopy) Row(parent, title string) Row {
+	return Row{Cell: c.Cell, Title: title, Device: c.Device, Parent: parent, Status: Branch,
+		OrphanTurns: c.OrphanTurns, BranchRedundant: c.Redundant}
+}
+
 // OpenReadTimeout bounds the ownership reading before an ordinary chat open.
 // Transferring a reachable chat keeps its separate move budget.
 const OpenReadTimeout = 2 * time.Second

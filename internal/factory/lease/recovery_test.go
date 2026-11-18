@@ -103,7 +103,7 @@ func TestRecoveryRunnerLossIsBoundedDurableAndKeepsWork(t *testing.T) {
 }
 
 func TestRecoveryWaitingForRunnerExpiresAndModeBudgetChangesStopAdmission(t *testing.T) {
-	for _, change := range []string{"deadline", "manual", "budget"} {
+	for _, change := range []string{"deadline", "take-over", "budget"} {
 		t.Run(change, func(t *testing.T) {
 			f := setup(t)
 			it := recoveryJob()
@@ -120,8 +120,10 @@ func TestRecoveryWaitingForRunnerExpiresAndModeBudgetChangesStopAdmission(t *tes
 				f.now = f.now.Add(factory.RunnerReturnWindow)
 			} else {
 				if e := f.store.Update(it.ID, func(cur *factory.Item) error {
-					if change == "manual" {
-						cur.Autonomy = factory.AutonomyManual
+					if change == "take-over" {
+						// Manual alone no longer stops a retry
+						// (factory.RecoveryBlockReason); a take-over does.
+						cur.Manual = true
 					} else {
 						cur.Cap = 1
 					}
@@ -453,8 +455,7 @@ func TestRecoveryAnEndedRemoteRunIsStillAnInterruptedStep(t *testing.T) {
 // (live e2e round 8, job 77): its run succeeded and opened its pull request,
 // its end reached the job's record, and the quit came before the step's own
 // end did. The hold that runs out then stamps no failure — the job is queued
-// for the runner that reads that end as the step's — even in Manual, where a
-// failure would have waited on the person with no automatic retry.
+// for the runner that reads that end as the step's, in Manual as in Auto.
 func TestRecoveryARunThatEndedThisRoundIsReadNotLost(t *testing.T) {
 	f := setup(t)
 	d := recoveryDesk(t, f)

@@ -228,6 +228,9 @@ func runApp(args []string) error {
 	// And the press a job's manager makes Merge and Mark ready through, the
 	// job page's own (factory_manager_press.go).
 	defer installAppLocalPress(backend)()
+	// And the turn the Factory manager gives a job's main agent when the
+	// person has words for it (factory_foreman_press.go).
+	defer installAppLocalTell(backend)()
 	guard.Go("app/crews-start", func() { backend.crews() })
 	// THE APP IS AN OPEN WINDOW for as long as it runs, so the clock that runs
 	// standing orders runs while it is open (apporders.go).
@@ -1817,9 +1820,14 @@ func (b *appBackend) OpenAgent(id string) (appwire.Agent, error) {
 	if b.idleHandoffEnabled() {
 		row, found := b.chats.rowFor(id)
 		if found && row.CanOpen && !row.Here {
-			return b.takeAgent(appwire.TakeParams{Cell: row.Cell, Seen: row.Seen}, true)
+			return b.takeAgent(appwire.TakeParams{Cell: row.Cell, Seen: appwire.Seen{Device: row.Seen.Device, Fence: row.Seen.Fence}}, true)
 		}
 	}
+	// A chat this computer holds is opened here, and its files that failed to
+	// arrive are fetched again as part of it ([appBackend.restartHeldFiles]). A
+	// hover's prefetch ([appBackend.WarmAgent]) never gets this far on purpose: a
+	// guess at a view starts no fetch.
+	b.restartHeldFiles(id)
 	return b.openAgent(id, false)
 }
 
@@ -2273,6 +2281,8 @@ func appReceipt(by, option string, answer *session.Answer, at time.Time) string 
 		word = "Kept running"
 	case appwire.OptionAllowNever:
 		word = "Kept running, never restarted"
+	case appwire.ResolvedDismissed:
+		word = "Dismissed"
 	}
 	who := "you"
 	switch by {

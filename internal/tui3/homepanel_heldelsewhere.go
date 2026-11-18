@@ -493,6 +493,15 @@ func (a *app) failedTake(msg homeTakenMsg) string {
 	return a.continueFailure(msg)
 }
 
+// continueCheckError marks an error that came back from the look at this
+// computer's copy of a chat, which runs before any take starts. It reads and
+// unwraps as the error it carries, so every classified failure above still
+// matches, and only the catch-all tells it apart from a failed take.
+type continueCheckError struct{ err error }
+
+func (e *continueCheckError) Error() string { return e.err.Error() }
+func (e *continueCheckError) Unwrap() error { return e.err }
+
 // continueFailure describes an error without retiring local authority. A failed
 // safety reading has not started a take and must not cancel one already running.
 func (a *app) continueFailure(msg homeTakenMsg) string {
@@ -522,6 +531,9 @@ func (a *app) continueFailure(msg homeTakenMsg) string {
 		return continueStoreBusy
 	case strings.Contains(msg.err.Error(), "rewind cancelled"), strings.Contains(msg.err.Error(), "changed during rewind"):
 		return continueFails + " because the folder changed during the move; your words are still in the box"
+	case errors.As(msg.err, new(*continueCheckError)):
+		log.Printf("continue chat %s: could not check this computer's copy: %v", msg.row.Cell, msg.err)
+		return continueCheckFails
 	default:
 		log.Printf("continue chat %s: %v", msg.row.Cell, msg.err)
 		return continueFails + " because the chat could not be put in this folder; your words are still in the box. Try continue here again."

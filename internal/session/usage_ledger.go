@@ -81,6 +81,7 @@ package session
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
@@ -234,11 +235,10 @@ type UsageLine struct {
 	// reader summing a year of this file has to be able to add those honestly.
 	// Missing-receipt markers carry zero; measured calls carry one.
 	Calls int `json:"calls,omitempty"`
-	// Input and Output are the tokens. The cache split is deliberately not here:
-	// this file answers "how much and on what", and the four-way breakdown with
-	// the cached share in it is in the journal the session id names.
-	Input  int `json:"in,omitempty"`
-	Output int `json:"out,omitempty"`
+	// Input, Output and CacheRead are the tokens.
+	Input     int `json:"in,omitempty"`
+	Output    int `json:"out,omitempty"`
+	CacheRead int `json:"cache_read,omitempty"`
 	// USD is what it cost, and zero means nobody could price it rather than that
 	// it was free — the same reading [TaskIndexEntry.Cost] has.
 	USD float64 `json:"usd,omitempty"`
@@ -595,6 +595,15 @@ type usageWriter struct {
 	overflow     map[chan struct{}]struct{}
 	overflowRows []usageWrite
 	missed       int64 // pending rows already in usageDropped, under overflowMu
+
+	// retrySleep waits out one backoff between a failed write and its retry. It
+	// is nil everywhere but a test, where nil means [time.Sleep]: a test that
+	// repairs a disk and then waits for the retry would otherwise be racing a
+	// real timer of up to [usageRetryCap] against a real ceiling, and which of
+	// them wins would depend on how busy the machine is. It is read on the
+	// writer's goroutine only after a row has been handed over, so a test sets
+	// it before recording, the way it sets beforeWrite.
+	retrySleep func(time.Duration)
 }
 
 // usageDropped counts serialization and filesystem failures across all ledgers,
@@ -702,6 +711,16 @@ func (w *usageWriter) pendingOverflow() []chan struct{} {
 	return pending
 }
 
+// waitOutRetry sleeps one backoff before a failed write is tried again, through
+// the seam a test may have put in [usageWriter.retrySleep].
+func (w *usageWriter) waitOutRetry(delay time.Duration) {
+	if w.retrySleep != nil {
+		w.retrySleep(delay)
+		return
+	}
+	time.Sleep(delay)
+}
+
 // run projects journaled rows in order. Failed rows stay in memory with capped
 // backoff; close can reach its deadline while the journal keeps the durable copy.
 func (w *usageWriter) run(path string) {
@@ -780,7 +799,7 @@ func (w *usageWriter) run(path string) {
 				}
 			}
 			delay = nextUsageRetryDelay(delay)
-			time.Sleep(delay)
+			w.waitOutRetry(delay)
 		}
 	}
 	batch := make([]usageWrite, 0, usageWriteBatchSize)
@@ -1424,6 +1443,7 @@ func (a *Agent) recordUsageLine(call bankedCall) error {
 		Calls:           used.Calls,
 		Input:           used.Input,
 		Output:          used.Output,
+		CacheRead:       used.CacheRead,
 		USD:             used.CostUSD,
 		Empty:           used.EmptyReflex > 0,
 		Reconciled:      call.reconciled,
@@ -1729,4 +1749,64 @@ func (line UsageLine) modelCalls() int {
 		return 0
 	}
 	return max(line.Calls, 1)
+}
+
+// TranscriptCacheReads returns the cached prompt tokens recorded in a
+// conversation's journal at path, grouped by the model each row named.
+func TranscriptCacheReads(path string) map[string]int {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil
+	}
+	defer file.Close()
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+	var (
+		reads      map[string]int
+		remoteSeen map[string]bool
+	)
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if !bytes.Contains(line, []byte(`"cacheRead"`)) {
+			continue
+		}
+		var entry sessionEntry
+		if json.Unmarshal(line, &entry) != nil {
+			continue
+		}
+		switch entry.Type {
+		case "usage":
+			used := entry.Usage
+			if used == nil || used.CacheRead <= 0 {
+				continue
+			}
+			if used.RemoteEvent != "" {
+				if remoteSeen[used.RemoteEvent] {
+					continue
+				}
+				if remoteSeen == nil {
+					remoteSeen = make(map[string]bool)
+				}
+				remoteSeen[used.RemoteEvent] = true
+			}
+			if reads == nil {
+				reads = make(map[string]int)
+			}
+			reads[strings.TrimSpace(used.Model)] += used.CacheRead
+		case "call":
+			call := entry.Call
+			if call == nil || call.Arm == "" || call.CacheRead <= 0 {
+				continue
+			}
+			if reads == nil {
+				reads = make(map[string]int)
+			}
+			reads[strings.TrimSpace(call.Model)] += call.CacheRead
+		}
+	}
+	return reads
 }

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
+	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/handoff"
 )
 
@@ -32,6 +33,9 @@ const (
 	MovePreparing = "preparing" // reading the record, keeping local edits
 	MoveCopying   = "copying"   // bytes are arriving
 	MoveOpening   = "opening"   // the chat is ours; it is being put in place
+	MoveArriving  = "arriving"  // chat is open; workspace files are arriving in the background
+	MoveFailed    = "failed"    // background workspace fetch failed after retries
+	MoveDone      = "done"      // move and background workspace files are complete
 )
 
 // MoveProgress is how far one move has got.
@@ -42,6 +46,8 @@ type MoveProgress struct {
 	// Total is the bytes the chat's record says a copy takes, 0 when it says
 	// nothing or this computer already holds most of it.
 	Total int64
+	// Err is the plain-words reason a background workspace fetch stopped, "" otherwise.
+	Err string
 }
 
 // moveWatch follows one move: it reports progress, and ends the move once it
@@ -57,7 +63,10 @@ type moveWatch struct {
 	inflight atomic.Int64
 	mu       sync.Mutex
 	step     string
+	err      string
+	arrival  *cell.WorkspaceArrival
 	last     time.Time // last request start, end or byte
+	wake     chan struct{}
 	stop     chan struct{}
 	stopped  sync.Once
 	finished chan struct{}
@@ -72,7 +81,7 @@ func watchMove(ctx context.Context, report func(MoveProgress), idle time.Duratio
 		return ctx, nil, func() {}
 	}
 	ctx, cancel := context.WithCancelCause(ctx)
-	w := &moveWatch{report: report, idle: idle, ctx: ctx, cancel: cancel, step: MovePreparing, last: time.Now(), stop: make(chan struct{}), finished: make(chan struct{})}
+	w := &moveWatch{report: report, idle: idle, ctx: ctx, cancel: cancel, step: MovePreparing, last: time.Now(), wake: make(chan struct{}, 1), stop: make(chan struct{}), finished: make(chan struct{})}
 	go w.run()
 	return blobstore.WithTraffic(ctx, w), w, func() {
 		w.stopped.Do(func() { close(w.stop) })
@@ -99,15 +108,30 @@ func (w *moveWatch) run() {
 		}
 		select {
 		case <-w.stop:
+			now := w.now()
+			if w.report != nil && (!reported || now != sent) {
+				w.report(now)
+			}
 			return
+		case <-w.wake:
 		case <-tick.C:
 		}
 	}
 }
 
+func (w *moveWatch) notify() {
+	if w == nil || w.wake == nil {
+		return
+	}
+	select {
+	case w.wake <- struct{}{}:
+	default:
+	}
+}
+
 func (w *moveWatch) now() MoveProgress {
 	w.mu.Lock()
-	step := w.step
+	step, errText := w.step, w.err
 	w.mu.Unlock()
 	done, total := w.done.Load(), w.total.Load()
 	if done > total {
@@ -115,7 +139,7 @@ func (w *moveWatch) now() MoveProgress {
 		// arrive outside its count): say what has arrived, not a wrong share.
 		total = 0
 	}
-	return MoveProgress{Step: step, Done: done, Total: total}
+	return MoveProgress{Step: step, Done: done, Total: total, Err: errText}
 }
 
 // stalled says a request has waited the whole limit with nothing coming
@@ -133,7 +157,11 @@ func (w *moveWatch) stalled() bool {
 func (w *moveWatch) touch() {
 	w.mu.Lock()
 	w.last = time.Now()
+	arr := w.arrival
 	w.mu.Unlock()
+	if arr != nil {
+		arr.Touch()
+	}
 }
 
 // Begin implements blobstore.TrafficWatch.
@@ -154,6 +182,7 @@ func (w *moveWatch) Moved(_, down int64) {
 	if down > 0 {
 		w.done.Add(down)
 		w.setStep(MoveCopying, false)
+		w.notify()
 	}
 	w.touch()
 }
@@ -168,6 +197,7 @@ func (w *moveWatch) phase(p handoff.Phase) {
 		// A move cancelled during the acquire hands the lease back: it is
 		// not opening anything.
 		w.setStep(MoveOpening, true)
+		w.notify()
 	}
 	w.touch()
 }
@@ -186,5 +216,57 @@ func (w *moveWatch) setStep(step string, force bool) {
 func (w *moveWatch) expect(total int64) {
 	if w != nil && total > 0 {
 		w.total.Store(total)
+		w.notify()
+	}
+}
+
+func (w *moveWatch) setArrival(a *cell.WorkspaceArrival) {
+	if w == nil {
+		return
+	}
+	w.mu.Lock()
+	w.arrival = a
+	w.mu.Unlock()
+}
+
+func (w *moveWatch) setArriving() {
+	if w == nil {
+		return
+	}
+	w.mu.Lock()
+	w.step = MoveArriving
+	w.err = ""
+	w.last = time.Now()
+	w.mu.Unlock()
+	if w.report != nil {
+		w.report(w.now())
+	}
+}
+
+func (w *moveWatch) setFailed(reason string) {
+	if w == nil {
+		return
+	}
+	w.mu.Lock()
+	w.step = MoveFailed
+	w.err = reason
+	w.last = time.Now()
+	w.mu.Unlock()
+	if w.report != nil {
+		w.report(w.now())
+	}
+}
+
+func (w *moveWatch) setDone() {
+	if w == nil {
+		return
+	}
+	w.mu.Lock()
+	w.step = MoveDone
+	w.err = ""
+	w.last = time.Now()
+	w.mu.Unlock()
+	if w.report != nil {
+		w.report(w.now())
 	}
 }

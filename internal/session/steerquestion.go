@@ -65,7 +65,10 @@ package session
 // through the same drain and the same send every other step uses, carrying the
 // question's result and then their words.
 
-import "strconv"
+import (
+	"strconv"
+	"strings"
+)
 
 // askTalkedPast is what the `ask` tool hands back when the person said
 // something else instead of answering.
@@ -81,6 +84,11 @@ const askTalkedPast = "the person did not answer this question: they said someth
 // person would use about their own act. It is what [Withdrawal.Reason] carries
 // onto every surface still drawing the row.
 const askTalkedPastReason = "you said something else instead"
+
+// askTalkedPastNote is what the model reads about a question it was not
+// waiting on (a [Question.Later] one, one a task is stopped on) that the
+// person's words took down: no call is left to hand [askTalkedPast] to.
+const askTalkedPastNote = "the person said something else instead of answering it, and it is no longer on their screen: nothing was decided. Carry on without the answer; ask again later only if you still need it."
 
 // steerTookTheQuestion is where the correction landed when it retired a
 // question. It is a [SteerNote.Landing] and therefore person-facing: it names
@@ -108,8 +116,11 @@ const steerTookTheQuestion = "took this instead of the question"
 // so what they read about their own sentence is a claim rather than a coin flip.
 // It is askwait.go's own rule — THE ENTRY IS THE OWNERSHIP — kept for the second
 // map as well as the first.
-func (a *Agent) talkedPastQuestionsLocked() []Question {
-	retired := a.asked.talkedPastLocked()
+//
+// keepSettled is [askedOfThePerson.talkedPastLocked]'s: true leaves answered
+// questions kept for a revision standing.
+func (a *Agent) talkedPastQuestionsLocked(keepSettled bool) []Question {
+	retired := a.asked.talkedPastLocked(keepSettled)
 	if len(retired) == 0 {
 		return nil
 	}
@@ -131,5 +142,53 @@ func (a *Agent) talkedPastQuestionsLocked() []Question {
 func (a *Agent) sayTheQuestionsCameDown(taken []Question) {
 	for _, q := range taken {
 		a.sayWithdrawn(q, askTalkedPastReason)
+		// A call parked on it reads [askTalkedPast]; one nothing waited on is
+		// told at the model's next step, as a dismissed one is.
+		if q.Later || len(q.Blocking.Tasks) > 0 {
+			a.enqueueNextTurnNote("Your question \"" + strings.TrimSpace(q.Head) + "\": " + askTalkedPastNote)
+		}
 	}
+}
+
+// personClosesQuestionsLocked ends every question this agent still has open
+// when the person's own new message arrives, whether a turn is running or not,
+// and answers the questions it retired for the caller to say out loud once the
+// lock is down.
+//
+// A REPLY FROM THE PERSON IS THEIR ANSWER TO WHAT WAS ON THE SCREEN. A steer
+// already retired every ask; a fresh turn retired nothing, so a question the
+// turn did not wait for ([Question.Later]) or one a task is stopped on stood in
+// the Inbox after the person had moved on. It is the steer's own road
+// ([Agent.talkedPastQuestionsLocked]), so the receipt and the Inbox read the
+// same either way, and the model is free to ask again if it still needs to.
+//
+// Only the person's own doors count ([userMessage.fromPerson]): a wake note, a
+// runner's note, factory work, a setup turn or an answer to a question is not
+// somebody replying.
+//
+// AN ANSWERED QUESTION IS NOT OPEN. One the person already answered is kept
+// only so its receipt can still change the answer ([askSettledKept]); a new
+// message leaves it standing, or typing anything after answering would make
+// `change` on that receipt refuse.
+func (a *Agent) personClosesQuestionsLocked(user userMessage) []Question {
+	if !user.fromPerson {
+		return nil
+	}
+	return a.talkedPastQuestionsLocked(true)
+}
+
+// notePersonWordsLocked keeps a person's message that joined the running turn
+// as that turn's latest words from them ([Agent.personWords]).
+func (a *Agent) notePersonWordsLocked(user userMessage) {
+	if user.fromPerson {
+		a.personWords = user.text()
+	}
+}
+
+// turnPersonWords is the person's latest own words in the running turn, and
+// "" when the turn holds none.
+func (a *Agent) turnPersonWords() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return strings.TrimSpace(a.personWords)
 }

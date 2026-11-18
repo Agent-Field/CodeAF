@@ -699,6 +699,7 @@ func (a *Agent) SubmitComposed(ctx context.Context, message Submission) (Submiss
 			return SubmissionReceipt{}, nil, err
 		}
 		user.person = mark
+		user.fromPerson = true
 		if digest := a.planDigest(); digest != "" {
 			user = planDigestedParts(digest, user)
 		}

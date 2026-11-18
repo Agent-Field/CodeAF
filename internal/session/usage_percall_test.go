@@ -25,6 +25,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -519,10 +520,66 @@ func TestANestedFamilyIsOnTheLedgerExactlyOnce(t *testing.T) {
 
 // ── 4 ───────────────────────────────────────────────────────────────────────
 
+// holdUsageRetry puts the retry of path's failed writes in the test's hands.
+// The writer's wait between a failed write and its next try becomes: say so on
+// `waiting`, then stay put until release. A test that repairs a disk and then
+// waits for the retry would otherwise be racing a real backoff of up to a second
+// against a real two-second ceiling, and which one wins is how busy the machine
+// is. Set before the first row is recorded, the way beforeWrite is.
+func holdUsageRetry(t *testing.T, path string) (waiting <-chan struct{}, release func()) {
+	t.Helper()
+	parked := make(chan struct{}, 1)
+	let := make(chan struct{})
+	var once sync.Once
+	release = func() { once.Do(func() { close(let) }) }
+	usageWriterFor(path).retrySleep = func(time.Duration) {
+		select {
+		case parked <- struct{}{}:
+		default:
+		}
+		<-let
+	}
+	// A test that fails while the writer is held must not leave it held: its
+	// next step is a directory removal the writer would rebuild.
+	t.Cleanup(func() { release(); StopUsageWriter(path) })
+	return parked, release
+}
+
+// awaitUsageSignal waits for ch under a ceiling long enough that only a broken test
+// reaches it, so a hang is reported as a failure rather than as a timeout of
+// the whole package.
+func awaitUsageSignal[T any](t *testing.T, ch <-chan T, what string) T {
+	t.Helper()
+	select {
+	case got := <-ch:
+		return got
+	case <-time.After(time.Minute):
+		t.Fatalf("gave up waiting for %s", what)
+		panic("unreachable")
+	}
+}
+
+// withUsageFlushLimit holds the flush ceiling at limit and hands back the way to
+// restore it. A test that wants a deadline to FIRE says so with a short one,
+// rather than put load on the box to provoke it; a test that wants to wait for a
+// retry says so with a long one, so the ceiling can never be what decides.
+func withUsageFlushLimit(limit time.Duration) (restore func()) {
+	previous := usageFlushLimit
+	usageFlushLimit = limit
+	return func() { usageFlushLimit = previous }
+}
+
 // A ROW THAT NEVER REACHED A FILE IS COUNTED, because a ledger that quietly
 // loses rows reads as a machine that spent less — the flattering direction, and
 // the one direction a bill must never be wrong in. The drop itself stays right:
 // a spending record is worth less than the turn that earned it.
+//
+// THE RETRY IS WAITED ON, NEVER TIMED. This test used to repair the disk and then
+// race the writer's real backoff (up to a second) and the write itself against a
+// real two-second ceiling, so it passed only while a loaded machine happened to
+// stay inside that margin (issue #2784). Now the writer's wait is held by the
+// test and the second flush has a ceiling nothing but a broken retry can reach:
+// the outcome is the retry having happened, not how fast anything ran.
 func TestALedgerWriteThatFailsIsCountedRatherThanSwallowed(t *testing.T) {
 	// A path that cannot be a ledger: its parent is a FILE, so the directory the
 	// writer would make cannot be made and the row has nowhere to go.
@@ -530,24 +587,56 @@ func TestALedgerWriteThatFailsIsCountedRatherThanSwallowed(t *testing.T) {
 	if err := os.WriteFile(blocker, []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	path := filepath.Join(blocker, UsageLedgerName)
+	waiting, release := holdUsageRetry(t, path)
 	before := UsageDrops()
 
-	path := filepath.Join(blocker, UsageLedgerName)
 	RecordUsage(path, UsageLine{
 		At: time.Now(), Model: "test/model", Calls: 1, Input: 100, Output: 20, USD: 0.31,
 	})
-	FlushUsage()
+	// The writer has now tried and failed, and is waiting out its backoff.
+	awaitUsageSignal(t, waiting, "the writer to fail its first write")
 
+	// This flush is MEANT to give up, so its ceiling is short on purpose: the
+	// only writer is held, so nothing can satisfy it.
+	restore := withUsageFlushLimit(50 * time.Millisecond)
+	drained := flushUsage(path)
+	restore()
+	if drained {
+		t.Fatal("a flush answered true while the only writer was held in its backoff")
+	}
 	if got := UsageDrops() - before; got != 1 {
 		t.Fatalf("a row that could not be written moved the counter by %d, want 1", got)
 	}
+
 	// Repair the disk and prove the failed row was retained, rather than discarded.
 	if err := os.Remove(blocker); err != nil {
 		t.Fatal(err)
 	}
-	if !flushUsage(path) {
+	restoreLimit := withUsageFlushLimit(time.Minute)
+	defer restoreLimit()
+	flushed := make(chan bool, 1)
+	go func() { flushed <- flushUsage(path) }()
+	// Two flush markers sit behind the row the writer is holding: the first
+	// flush's, which gave up long ago, and this one's. Until the retry runs
+	// nothing can answer this one but its ceiling, a minute away.
+	queued := time.Now().Add(time.Minute)
+	for len(usageWriterFor(path).queue) < 2 {
+		if time.Now().After(queued) {
+			t.Fatal("the second flush never queued its marker")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	select {
+	case got := <-flushed:
+		t.Fatalf("a flush answered %v before the retry ran: it must wait on the retry, not on a timer", got)
+	default:
+	}
+	release()
+	if !awaitUsageSignal(t, flushed, "the flush behind the retry") {
 		t.Fatal("retained charge did not retry")
 	}
+	restoreLimit()
 	if !StopUsageWriter(path) {
 		t.Fatal("retry writer did not stop")
 	}
@@ -565,6 +654,51 @@ func TestALedgerWriteThatFailsIsCountedRatherThanSwallowed(t *testing.T) {
 	FlushUsage()
 	if got := UsageDrops() - steady; got != 0 {
 		t.Fatalf("a row that was written moved the drop counter by %d, want 0", got)
+	}
+}
+
+// A FLUSH ANSWERS FOR THE RETRY AND NOT FOR THE DISK. The disk here is repaired
+// before the flush starts, yet with the retry held the flush has nothing to say
+// but its ceiling, so it answers false and the row is still counted as short. It
+// is what keeps the assertion in the test above meaning something: a retry that
+// never came would fail that test by its ceiling, with "retained charge did not
+// retry", and not pass by luck.
+func TestAFlushWhoseRetryNeverComesGivesUpAndLeavesTheRowCounted(t *testing.T) {
+	blocker := filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(blocker, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(blocker, UsageLedgerName)
+	waiting, release := holdUsageRetry(t, path)
+	before := UsageDrops()
+
+	RecordUsage(path, UsageLine{
+		At: time.Now(), Model: "test/model", Calls: 1, Input: 100, Output: 20, USD: 0.31,
+	})
+	awaitUsageSignal(t, waiting, "the writer to fail its first write")
+	if err := os.Remove(blocker); err != nil {
+		t.Fatal(err)
+	}
+
+	restore := withUsageFlushLimit(50 * time.Millisecond)
+	drained := flushUsage(path)
+	restore()
+	if drained {
+		t.Fatal("a flush answered true although the retry had not run")
+	}
+	if got := UsageDrops() - before; got != 1 {
+		t.Fatalf("a row still waiting for its retry moved the counter by %d, want 1", got)
+	}
+
+	// Let the retry through: the row lands and the count comes back.
+	release()
+	restoreLimit := withUsageFlushLimit(time.Minute)
+	defer restoreLimit()
+	if !flushUsage(path) {
+		t.Fatal("the flush after the retry did not drain")
+	}
+	if got := UsageDrops() - before; got != 0 {
+		t.Fatalf("a row written by its retry still counts as missing by %d", got)
 	}
 }
 

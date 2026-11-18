@@ -316,6 +316,11 @@ func (a *app) runMemories(query string) tea.Cmd {
 //
 // THE EMPTY STATE IS ONE LINE AND IT NAMES THE REASON. Nothing remembered at
 // all and nothing matching a word are different facts about the same store.
+//
+// THE FIRST ROW HAS NO LEADING BULLET OF ITS OWN. An [entryNote] already
+// prefixes its first line with "· " and its continuation lines with two spaces
+// (render.go), so a bullet on row zero would print as "· ·" while rows after
+// it carry one bullet each.
 func memoriesText(query string, lines []session.MemoryLine) string {
 	if len(lines) == 0 {
 		if strings.TrimSpace(query) != "" {
@@ -324,8 +329,11 @@ func memoriesText(query string, lines []session.MemoryLine) string {
 		return "nothing is remembered here yet · /remember <text> keeps a line"
 	}
 	rows := make([]string, 0, len(lines))
-	for _, line := range lines {
-		row := "· " + line.Text
+	for i, line := range lines {
+		row := line.Text
+		if i > 0 {
+			row = "· " + row
+		}
 		if line.Where != "" {
 			row += "  · " + line.Where
 		}

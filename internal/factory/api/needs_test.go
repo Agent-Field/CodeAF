@@ -61,6 +61,85 @@ func TestNeedsYouKindsQuestionsAndWhoMayAnswer(t *testing.T) {
 	}
 }
 
+// A STEP'S OPEN QUESTION RIDES ON NEEDS_YOU UNDER A PULL REQUEST'S KIND. Job
+// 31 (2026-11-17): Follow PR waited on its out-of-rounds question while the
+// open pull request conflicted with dev. The kind stays conflict (the queue
+// groups by it), and needs_you carries the question with its options and the
+// step Send back reruns. With no open question a conflict stays bare.
+func TestAnOpenStepQuestionRidesOnAPullRequestsNeedsYou(t *testing.T) {
+	job31 := func() factory.Item {
+		return factory.Item{ID: 31, State: factory.StateNeedsYou, Autonomy: factory.AutonomyAuto, Starter: "zeropoint95", Publish: "pr",
+			Question: "followpr is not proven after 3 rounds: 1 finding · try again, send it back, or stop the job?", QKind: factory.QKindOutOfAttempts,
+			Asking:      &factory.Asked{Stage: factory.FollowPRStep, Question: "followpr is not proven after 3 rounds: 1 finding · try again, send it back, or stop the job?"},
+			PullRequest: &factory.PullRequest{Number: 2587, State: factory.PROpen, Conflict: true, Mergeable: factory.MergeableNo, HeadSHA: "abb64e5b71a7c4a5caf32d71cbc2f900509fa534", ChecksRead: true, ReviewsRead: true, Checks: factory.PRChecks{Passed: 7}},
+			FollowUp:    &factory.PRFollowUp{Kind: "pr", State: "running", Attempt: 2, Limit: 3},
+			Stream: &factory.Stream{Cur: 6, Phases: []factory.Phase{
+				{Name: "plan", Kind: factory.StageChat, State: factory.PhaseDone},
+				{Name: "approve", Kind: factory.StageGate, State: factory.PhaseDone},
+				{Name: "write", Kind: factory.StageChat, State: factory.PhaseDone},
+				{Name: "test", Kind: factory.StageChat, State: factory.PhaseDone},
+				{Name: "review", Kind: factory.StageChat, State: factory.PhaseDone},
+				{Name: "proof", Kind: factory.StageChat, State: factory.PhaseDone},
+				{Name: factory.FollowPRStep, Kind: factory.StageChat, State: factory.PhaseWaiting, Round: 3},
+			}}}
+	}
+	for name, change := range map[string]func(*factory.Item){
+		"conflict": func(*factory.Item) {},
+		"changes requested": func(it *factory.Item) {
+			it.PullRequest.Conflict, it.PullRequest.ReviewDecision = false, "changes_requested"
+		},
+	} {
+		it := job31()
+		change(&it)
+		ny := FromItem(it).NeedsYou
+		want := factory.NeedsConflict
+		if name == "changes requested" {
+			want = factory.NeedsChangesRequested
+		}
+		if ny == nil || ny.Kind != want {
+			t.Fatalf("%s: needs_you = %+v", name, ny)
+		}
+		q := ny.Question
+		if q == nil || q.Text != it.Question || q.Kind != factory.AskOptions || q.FromStep != factory.FollowPRStep || !reflect.DeepEqual(q.Options, factory.OutOfAttemptOptions) {
+			t.Fatalf("%s: the step's question did not ride on needs_you: %+v", name, q)
+		}
+		if ny.BackTo != "proof" {
+			t.Fatalf("%s: back_to = %q, want proof", name, ny.BackTo)
+		}
+		// THE JOB'S PERSON CAN ANSWER IT; NO ONE ELSE (review 4): the answer
+		// door takes only the job's person under a pull request's wait.
+		if c := CanFor(it, "zeropoint95"); !c.Answer {
+			t.Fatalf("%s: the job's person cannot answer: %+v", name, c)
+		}
+		if c := CanFor(it, "someone-else"); c.Answer || c.AcceptStep {
+			t.Fatalf("%s: another person may answer: %+v", name, c)
+		}
+	}
+
+	// A STEP'S FREE QUESTION UNDER A CONFLICT says only the job's person answers.
+	free := job31()
+	free.QKind = factory.QKindStep
+	if ny := FromItem(free).NeedsYou; ny == nil || ny.Question == nil || ny.Question.WhoCanAnswer != factory.WhoJobPerson {
+		t.Fatalf("a free step question under a conflict = %+v", ny)
+	}
+	if c := CanFor(free, "zeropoint95"); !c.Answer {
+		t.Fatalf("the job's person cannot answer a free question under a conflict: %+v", c)
+	}
+
+	// A BARE CONFLICT, NO QUESTION OPEN, IS UNCHANGED.
+	bare := job31()
+	bare.Question, bare.QKind, bare.Asking = "", "", nil
+	if ny := FromItem(bare).NeedsYou; ny == nil || ny.Kind != factory.NeedsConflict || ny.Question != nil || ny.BackTo != "" {
+		t.Fatalf("a bare conflict = %+v", ny)
+	}
+	// AN APPROVAL IS NOT A STEP'S QUESTION: it does not ride on a conflict.
+	plan := job31()
+	plan.QKind, plan.Question, plan.Asking = factory.QKindApprove, "ready?", nil
+	if ny := FromItem(plan).NeedsYou; ny == nil || ny.Kind != factory.NeedsConflict || ny.Question != nil {
+		t.Fatalf("an approval rode on a conflict: %+v", ny)
+	}
+}
+
 // A STUCK STEP NAMES WHERE IT COULD BE SENT BACK TO, and only a finished
 // step that is not a gate: the first step names none.
 func TestAStuckStepNamesTheStepItCanBeSentBackTo(t *testing.T) {

@@ -530,6 +530,20 @@ func (r doRequest) residentWaitOrDefault() time.Duration {
 	return defaultResidentWait
 }
 
+// context is the base context for this invocation: the host seat, and the run
+// id the door minted when it opened one ([trace.WithRun]). Carrying the run id
+// on the context rather than leaving it to the process fallback is what keeps
+// the run engine's session workers — whose turns call [trace.ConversationRun]
+// and mint a fresh id when the context carries none — filing their model-call
+// rows under this invocation's own run id (#2684).
+func (r doRequest) context() context.Context {
+	ctx := hostSeated(context.Background())
+	if run := strings.TrimSpace(r.run); run != "" {
+		ctx = trace.WithRun(ctx, run)
+	}
+	return ctx
+}
+
 // applyContextLaw puts this run's two window dials where the law reads them.
 //
 // internal/ctxbudget is deliberately environment-driven and imports nothing: it
@@ -925,7 +939,7 @@ func errandRun(request doRequest, seats config.Seats, started time.Time) (outcom
 	// during the unwind kills the process the way it always did. SIGKILL is
 	// outside all of this and stays correct by accident: no defer runs, so
 	// nothing deletes the store either.
-	signalled, stopSignals := signal.NotifyContext(hostSeated(context.Background()), os.Interrupt, syscall.SIGTERM)
+	signalled, stopSignals := signal.NotifyContext(request.context(), os.Interrupt, syscall.SIGTERM)
 	defer stopSignals()
 	// The person's own ending of the run is the one fact the usage counts
 	// keep about how it ended: the interrupt word, not a failure word.
@@ -3810,7 +3824,7 @@ func runErrand(request doRequest, seats config.Seats) (outcome headlessOutcome, 
 	// under a short --timeout the open alone could spend the whole deadline
 	// before a single node had started.
 	memorySection := doMemory(workspace)
-	signalled, stopSignals := signal.NotifyContext(hostSeated(context.Background()), os.Interrupt, syscall.SIGTERM)
+	signalled, stopSignals := signal.NotifyContext(request.context(), os.Interrupt, syscall.SIGTERM)
 	defer stopSignals()
 	ctx, cancel := context.WithTimeout(signalled, request.timeout)
 	defer cancel()

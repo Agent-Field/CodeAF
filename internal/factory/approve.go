@@ -265,7 +265,11 @@ func NeedsPublishApproval(it Item) bool {
 	return false
 }
 
-// NextStepQuestion is what Manual asks before a step no approve step answers for.
+// NextStepQuestion is what Manual asks before a post step no approve step
+// answers for ([AsksBeforePost]). Manual asked it before every step until the
+// owner dropped that hold on 2026-11-17; a job saved while it waited on the
+// question before another kind of step still carries it, and its person
+// still answers it ([StepHold]).
 func NextStepQuestion(step string) string {
 	return step + " is next · continue, or send back the step before?"
 }

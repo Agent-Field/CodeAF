@@ -80,13 +80,11 @@ func (a *Agent) approveUserBash(ctx context.Context, hub *eventHub, call ai.Tool
 		if !a.config.AskConsent || hub == nil {
 			return refusal("needs approval but no resolver is attached: " + decision.Rule), false
 		}
-		allowed, err := a.ask(ctx, hub, call, decision)
+		answer, err := a.askAnswer(ctx, hub, call, decision)
 		if err != nil {
 			return refusal(notApprovedWording(err)), false
 		}
-		if !allowed {
-			return refusal("denied by the person: " + decision.Rule), false
-		}
+		return a.consentVerdict(answer, decision)
 	}
 	return toolResult{}, true
 }
@@ -158,24 +156,28 @@ func (a *Agent) runUserBash(ctx context.Context, hub *eventHub, command string) 
 	// Only the consent hook distinguishes a command the person entered directly.
 	ep := a.newEpisode()
 	ep.userBash = true
-	checked, refused, allowed := ep.preAction(ctx, hub, call)
 	var output string
 	var failed bool
-	if !allowed {
-		output, failed = refused.text, true
-	} else if ctx.Err() != nil {
-		output, failed = "Command cancelled", true
+	if err := a.waitWorkspaceReady(ctx, "bash"); err != nil {
+		output, failed = err.Error(), true
 	} else {
-		caps := a.resultCaps()
-		writer := &shellOutput{hub: hub, id: call.ID, tool: "bash", bytes: caps.MaxBytes, lines: caps.MaxLines}
-		var err error
-		// C5 includes changes made by the person as well as model tools.
-		// Bash has unknown changes, so its recorded call visits the whole tree.
-		output, failed, err = a.executeRecorded(procexec.Deferring(ctx), bare.Tool{Name: "bash", Execute: func(runCtx context.Context, args json.RawMessage) (string, bool, error) {
-			return bare.RunBash(runCtx, a.config.Workspace, args, caps, writer)
-		}}, json.RawMessage(checked.Function.Arguments))
-		if err != nil {
-			output, failed = err.Error(), true
+		checked, refused, allowed := ep.preAction(ctx, hub, call)
+		if !allowed {
+			output, failed = refused.text, true
+		} else if ctx.Err() != nil {
+			output, failed = "Command cancelled", true
+		} else {
+			caps := a.resultCaps()
+			writer := &shellOutput{hub: hub, id: call.ID, tool: "bash", bytes: caps.MaxBytes, lines: caps.MaxLines}
+			var err error
+			// C5 includes changes made by the person as well as model tools.
+			// Bash has unknown changes, so its recorded call visits the whole tree.
+			output, failed, err = a.executeRecorded(procexec.Deferring(ctx), bare.Tool{Name: "bash", Execute: func(runCtx context.Context, args json.RawMessage) (string, bool, error) {
+				return bare.RunBash(runCtx, a.config.Workspace, args, caps, writer)
+			}}, json.RawMessage(checked.Function.Arguments))
+			if err != nil {
+				output, failed = err.Error(), true
+			}
 		}
 	}
 	result := textMessage("tool", output)

@@ -404,34 +404,20 @@ func TestRaisedJobBudgetReachesTheAssigneesRunner(t *testing.T) {
 	}
 }
 
-// A raise above spend answers Manual's cap question. The next step still
-// needs the person's approval before it runs.
-func TestRaisedBudgetResumesManualCapAskThenAsksBeforeNextStep(t *testing.T) {
+// A raise above spend answers Manual's cap question, and the next step runs
+// on: Manual holds no step for the person's word before it runs any more (the
+// owner's decision of 2026-11-17). It used to stop again on "after is next".
+func TestRaisedBudgetResumesManualCapAskAndTheNextStepRuns(t *testing.T) {
 	g, id := capParked(t, factory.AutonomyManual, 2, 2)
 	g.raise(t, id, 10)
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		it, err := g.st.Get(id)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if it.State == factory.StateNeedsYou && it.QKind == factory.QKindApprove {
-			if it.Question != "after is next · continue, or send back the step before?" || it.Cap != 10 || it.Stream.Spent != 2 || it.Stream.Phases[1].Round != 0 {
-				t.Fatalf("Manual did not keep its next-step decision: %+v", it)
-			}
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("raise did not pass the Manual cap ask: state=%s qkind=%q question=%q", it.State, it.QKind, it.Question)
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-	if err := g.floor.Answer(id, true, ""); err != nil {
-		t.Fatal(err)
-	}
 	it := g.waitFor(t, id, factory.StateLanded)
 	if it.Cap != 10 || it.Stream.Spent != 7 || it.Question != "" || it.Asking != nil || it.Stream.Phases[1].Round != 1 {
-		t.Fatalf("approved Manual step did not finish once: %+v", it)
+		t.Fatalf("the Manual step after the raise did not finish once: %+v", it)
+	}
+	for _, line := range it.Stream.Log {
+		if line.Text == factory.NextStepQuestion("after") {
+			t.Fatalf("Manual asked before the next step: %+v", it.Stream.Log)
+		}
 	}
 }
 
