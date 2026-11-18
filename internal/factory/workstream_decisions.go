@@ -66,6 +66,9 @@ const MoveUndoWindow = 30 * time.Second
 // Ask on Draft the March release notes", "from her request on Refresh the
 // store screenshots", "People and rules".
 type DecisionFrom struct {
+	// Question and Answer preserve what the person read and chose before the Ask is cleared.
+	Question  string `json:"question,omitempty"`
+	Answer    string `json:"answer,omitempty"`
 	Kind      string `json:"kind" jsonschema:"enum=ask,enum=request,enum=rule,enum=move,enum=fold"`
 	Task      string `json:"task,omitempty"`
 	TaskTitle string `json:"task_title,omitempty"`
@@ -250,7 +253,11 @@ func answerDecision(t WorkstreamTask, ask TaskAsk, opt *TaskAskOption, words str
 		}
 		text = strings.TrimSpace(ask.Title + " " + strings.Join(nonEmpty(chose, words), " · "))
 	}
-	from := &DecisionFrom{Kind: DecisionFromAsk, Task: t.ID, TaskTitle: t.Title, Ask: ask.ID, AskedBy: askerWords(t, ask)}
+	answer := words
+	if opt != nil {
+		answer = strings.Join(nonEmpty(opt.Label, words), " · ")
+	}
+	from := &DecisionFrom{Question: ask.Title, Answer: answer, Kind: DecisionFromAsk, Task: t.ID, TaskTitle: t.Title, Ask: ask.ID, AskedBy: askerWords(t, ask)}
 	for _, v := range ask.Views {
 		from.Views = append(from.Views, v.By.Name)
 	}

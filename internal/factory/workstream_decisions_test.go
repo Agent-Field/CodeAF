@@ -35,6 +35,9 @@ func TestATaskWaitsOnEveryAskAndEachHasOneDecider(t *testing.T) {
 	if len(ch.Decisions) != 1 || ch.Decisions[0].Text != "The pricing page is signed off" || ch.Decisions[0].By != "priya" || ch.Decisions[0].From.Kind != DecisionFromAsk {
 		t.Fatalf("decision = %+v", ch.Decisions)
 	}
+	if from := ch.Decisions[0].From; from.Question != "Sign off the pricing page?" || from.Answer != "Sign off" {
+		t.Fatalf("question and answer = %+v", from)
+	}
 	ch, err = AnswerTask(ch.Task, "", "publish", "", TaskActor{Handle: "marco", Edit: true}, byMarco, "", taskIDs(), taskNow)
 	if err != nil || ch.Task.State != TaskRunning {
 		t.Fatalf("the last answer did not let it run: %v %s", err, ch.Task.State)
