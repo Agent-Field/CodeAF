@@ -181,7 +181,9 @@ func StatusForManagerWaiting(it Item, held, threadOnly bool, waitingFor string, 
 		if it.Wait != nil {
 			wait = *it.Wait
 		}
-		if wait.Who == WaitMainAgent || wait.Who == WaitYou {
+		// A job its person put away (a paused recovery) is theirs to
+		// resume, so the guide to settling a stop is not said there.
+		if wait.Who == WaitMainAgent || (wait.Who == WaitYou && !wait.PutAway && !RecoveryPaused(it)) {
 			actions = append(actions, managerStopGuide)
 		}
 		if managerActsWaiting(it) {
